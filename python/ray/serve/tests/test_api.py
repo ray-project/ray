@@ -18,14 +18,14 @@ from ray.serve._private.constants import (
     DEFAULT_MAX_ONGOING_REQUESTS,
     SERVE_DEFAULT_APP_NAME,
 )
-from ray.serve._private.replica_scheduler.common import (
+from ray.serve._private.request_router.common import (
     PendingRequest,
 )
-from ray.serve._private.replica_scheduler.replica_scheduler import (
-    ReplicaScheduler,
-)
-from ray.serve._private.replica_scheduler.replica_wrapper import (
+from ray.serve._private.request_router.replica_wrapper import (
     RunningReplica,
+)
+from ray.serve._private.request_router.request_router import (
+    RequestRouter,
 )
 from ray.serve.deployment import Application
 from ray.serve.exceptions import RayServeException
@@ -71,7 +71,7 @@ class AsyncCounter:
         return {"count": self.count}
 
 
-class FakeRequestRouter(ReplicaScheduler):
+class FakeRequestRouter(RequestRouter):
     async def choose_replicas(
         self,
         replicas_ranks: List[List[RunningReplica]],

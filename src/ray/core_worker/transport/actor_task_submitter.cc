@@ -181,7 +181,7 @@ Status ActorTaskSubmitter::SubmitTask(TaskSpecification task_spec) {
     RAY_CHECK(queue != client_queues_.end());
     if (queue->second.state == rpc::ActorTableData::DEAD &&
         queue->second.is_restartable && queue->second.owned) {
-      RestartActor(actor_id);
+      RestartActorForLineageReconstruction(actor_id);
     }
     if (queue->second.state != rpc::ActorTableData::DEAD) {
       // We must fix the send order prior to resolving dependencies, which may
@@ -338,7 +338,7 @@ void ActorTaskSubmitter::ConnectActor(const ActorID &actor_id,
   FailInflightTasks(inflight_task_callbacks);
 }
 
-void ActorTaskSubmitter::RestartActor(const ActorID &actor_id) {
+void ActorTaskSubmitter::RestartActorForLineageReconstruction(const ActorID &actor_id) {
   RAY_LOG(INFO).WithField(actor_id) << "Reconstructing actor";
   auto queue = client_queues_.find(actor_id);
   RAY_CHECK(queue != client_queues_.end());
@@ -346,7 +346,7 @@ void ActorTaskSubmitter::RestartActor(const ActorID &actor_id) {
   RAY_CHECK(queue->second.is_restartable) << "This actor is no longer restartable";
   queue->second.state = rpc::ActorTableData::RESTARTING;
   queue->second.num_restarts_due_to_lineage_reconstructions += 1;
-  RAY_CHECK_OK(actor_creator_.AsyncRestartActor(
+  RAY_CHECK_OK(actor_creator_.AsyncRestartActorForLineageReconstruction(
       actor_id,
       queue->second.num_restarts_due_to_lineage_reconstructions,
       [this,
@@ -410,7 +410,7 @@ void ActorTaskSubmitter::DisconnectActor(const ActorID &actor_id,
         RAY_CHECK(inflight_task_callbacks.empty());
         if (!queue->second.actor_submit_queue->Empty()) {
           // There are pending lineage reconstruction tasks.
-          RestartActor(actor_id);
+          RestartActorForLineageReconstruction(actor_id);
         }
       } else {
         // If there are pending requests, treat the pending tasks as failed.

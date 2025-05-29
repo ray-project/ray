@@ -24,12 +24,12 @@ from ray.serve._private.common import (
 from ray.serve._private.config import DeploymentConfig
 from ray.serve._private.constants import RAY_SERVE_COLLECT_AUTOSCALING_METRICS_ON_HANDLE
 from ray.serve._private.replica_result import ReplicaResult
-from ray.serve._private.replica_scheduler import (
+from ray.serve._private.request_router import (
     PendingRequest,
-    ReplicaScheduler,
+    RequestRouter,
     RunningReplica,
 )
-from ray.serve._private.replica_scheduler.common import ReplicaQueueLengthCache
+from ray.serve._private.request_router.common import ReplicaQueueLengthCache
 from ray.serve._private.router import (
     QUEUED_REQUESTS_KEY,
     AsyncioRouter,
@@ -132,7 +132,7 @@ class FakeReplica(RunningReplica):
                 )
 
 
-class FakeReplicaScheduler(ReplicaScheduler):
+class FakeRequestRouter(RequestRouter):
     def __init__(self, use_queue_len_cache: bool):
         self._block_requests = False
         self._blocked_requests: List[asyncio.Event] = []
@@ -225,11 +225,11 @@ class FakeReplicaScheduler(ReplicaScheduler):
 
 @pytest.fixture
 @pytest.mark.asyncio
-def setup_router(request) -> Tuple[AsyncioRouter, FakeReplicaScheduler]:
+def setup_router(request) -> Tuple[AsyncioRouter, FakeRequestRouter]:
     if not hasattr(request, "param"):
         request.param = {}
 
-    fake_replica_scheduler = FakeReplicaScheduler(
+    fake_request_router = FakeRequestRouter(
         request.param.get("enable_queue_len_cache", False)
     )
     router = AsyncioRouter(
@@ -243,13 +243,13 @@ def setup_router(request) -> Tuple[AsyncioRouter, FakeReplicaScheduler]:
         enable_strict_max_ongoing_requests=request.param.get(
             "enable_strict_max_ongoing_requests", False
         ),
-        replica_scheduler=fake_replica_scheduler,
+        request_router=fake_request_router,
         node_id="test-node-id",
         availability_zone="test-az",
         prefer_local_node_routing=False,
         _request_router_initialized_event=asyncio.Event(),
     )
-    return router, fake_replica_scheduler
+    return router, fake_request_router
 
 
 def dummy_request_metadata(is_streaming: bool = False) -> RequestMetadata:
@@ -265,16 +265,16 @@ class TestAssignRequest:
     @pytest.mark.parametrize("is_streaming", [False, True])
     async def test_basic(
         self,
-        setup_router: Tuple[AsyncioRouter, FakeReplicaScheduler],
+        setup_router: Tuple[AsyncioRouter, FakeRequestRouter],
         is_streaming: bool,
     ):
-        router, fake_replica_scheduler = setup_router
+        router, fake_request_router = setup_router
 
         r1_id = ReplicaID(
             unique_id="test-replica-1", deployment_id=DeploymentID(name="test")
         )
         replica = FakeReplica(r1_id)
-        fake_replica_scheduler.set_replica_to_return(replica)
+        fake_request_router.set_replica_to_return(replica)
 
         request_metadata = RequestMetadata(
             request_id="test-request-1",
@@ -306,10 +306,10 @@ class TestAssignRequest:
     @pytest.mark.parametrize("is_streaming", [False, True])
     async def test_basic_with_rejection(
         self,
-        setup_router: Tuple[AsyncioRouter, FakeReplicaScheduler],
+        setup_router: Tuple[AsyncioRouter, FakeRequestRouter],
         is_streaming: bool,
     ):
-        router, fake_replica_scheduler = setup_router
+        router, fake_request_router = setup_router
 
         r1_id = ReplicaID(
             unique_id="test-replica-1", deployment_id=DeploymentID(name="test")
@@ -320,7 +320,7 @@ class TestAssignRequest:
                 accepted=True, num_ongoing_requests=10
             ),
         )
-        fake_replica_scheduler.set_replica_to_return(replica)
+        fake_request_router.set_replica_to_return(replica)
 
         request_metadata = RequestMetadata(
             request_id="test-request-1",
@@ -332,7 +332,7 @@ class TestAssignRequest:
         assert replica_result._replica_id == r1_id
 
         if router._request_router._use_queue_len_cache:
-            assert fake_replica_scheduler.replica_queue_len_cache.get(r1_id) == 10
+            assert fake_request_router.replica_queue_len_cache.get(r1_id) == 10
 
     @pytest.mark.parametrize(
         "setup_router",
@@ -351,10 +351,10 @@ class TestAssignRequest:
     @pytest.mark.parametrize("is_streaming", [False, True])
     async def test_retry_with_rejection(
         self,
-        setup_router: Tuple[AsyncioRouter, FakeReplicaScheduler],
+        setup_router: Tuple[AsyncioRouter, FakeRequestRouter],
         is_streaming: bool,
     ):
-        router, fake_replica_scheduler = setup_router
+        router, fake_request_router = setup_router
 
         r1_id = ReplicaID(
             unique_id="test-replica-1", deployment_id=DeploymentID(name="test")
@@ -365,7 +365,7 @@ class TestAssignRequest:
                 accepted=False, num_ongoing_requests=10
             ),
         )
-        fake_replica_scheduler.set_replica_to_return(replica1)
+        fake_request_router.set_replica_to_return(replica1)
 
         r2_id = ReplicaID(
             unique_id="test-replica-2", deployment_id=DeploymentID(name="test")
@@ -376,7 +376,7 @@ class TestAssignRequest:
                 accepted=True, num_ongoing_requests=20
             ),
         )
-        fake_replica_scheduler.set_replica_to_return_on_retry(replica2)
+        fake_request_router.set_replica_to_return_on_retry(replica2)
 
         request_metadata = RequestMetadata(
             request_id="test-request-1",
@@ -388,8 +388,8 @@ class TestAssignRequest:
         assert replica_result._replica_id == r2_id
 
         if router._request_router._use_queue_len_cache:
-            assert fake_replica_scheduler.replica_queue_len_cache.get(r1_id) == 10
-            assert fake_replica_scheduler.replica_queue_len_cache.get(r2_id) == 20
+            assert fake_request_router.replica_queue_len_cache.get(r1_id) == 10
+            assert fake_request_router.replica_queue_len_cache.get(r2_id) == 20
 
     @pytest.mark.parametrize(
         "setup_router",
@@ -397,15 +397,15 @@ class TestAssignRequest:
         indirect=True,
     )
     async def test_cross_lang_no_rejection(
-        self, setup_router: Tuple[AsyncioRouter, FakeReplicaScheduler]
+        self, setup_router: Tuple[AsyncioRouter, FakeRequestRouter]
     ):
-        router, fake_replica_scheduler = setup_router
+        router, fake_request_router = setup_router
 
         r1_id = ReplicaID(
             unique_id="test-replica-1", deployment_id=DeploymentID(name="test")
         )
         replica = FakeReplica(r1_id, is_cross_language=True)
-        fake_replica_scheduler.set_replica_to_return(replica)
+        fake_request_router.set_replica_to_return(replica)
 
         request_metadata = RequestMetadata(
             request_id="test-request-1",
@@ -416,17 +416,17 @@ class TestAssignRequest:
         assert replica_result._replica_id == r1_id
 
     async def test_max_queued_requests_no_limit(
-        self, setup_router: Tuple[AsyncioRouter, FakeReplicaScheduler]
+        self, setup_router: Tuple[AsyncioRouter, FakeRequestRouter]
     ):
-        router, fake_replica_scheduler = setup_router
-        fake_replica_scheduler.set_should_block_requests(True)
+        router, fake_request_router = setup_router
+        fake_request_router.set_should_block_requests(True)
         router.update_deployment_config(DeploymentConfig(max_queued_requests=-1))
 
         r1_id = ReplicaID(
             unique_id="test-replica-1", deployment_id=DeploymentID(name="test")
         )
         replica = FakeReplica(r1_id)
-        fake_replica_scheduler.set_replica_to_return(replica)
+        fake_request_router.set_replica_to_return(replica)
 
         request_metadata = RequestMetadata(
             request_id="test-request-1",
@@ -442,8 +442,8 @@ class TestAssignRequest:
         _, pending = await asyncio.wait(assign_request_tasks, timeout=0.01)
         assert len(pending) == len(assign_request_tasks)
 
-        # Unblock the requests, now they should all get scheduled.
-        fake_replica_scheduler.unblock_requests(100)
+        # Unblock the requests, now they should all get routed.
+        fake_request_router.unblock_requests(100)
         assert all(
             [
                 not replica_result._is_generator_object
@@ -453,17 +453,17 @@ class TestAssignRequest:
         )
 
     async def test_max_queued_requests_limited(
-        self, setup_router: Tuple[AsyncioRouter, FakeReplicaScheduler]
+        self, setup_router: Tuple[AsyncioRouter, FakeRequestRouter]
     ):
-        router, fake_replica_scheduler = setup_router
-        fake_replica_scheduler.set_should_block_requests(True)
+        router, fake_request_router = setup_router
+        fake_request_router.set_should_block_requests(True)
         router.update_deployment_config(DeploymentConfig(max_queued_requests=5))
 
         r1_id = ReplicaID(
             unique_id="test-replica-1", deployment_id=DeploymentID(name="test")
         )
         replica = FakeReplica(r1_id)
-        fake_replica_scheduler.set_replica_to_return(replica)
+        fake_request_router.set_replica_to_return(replica)
 
         request_metadata = RequestMetadata(
             request_id="test-request-1",
@@ -485,7 +485,7 @@ class TestAssignRequest:
                 await router.assign_request(request_metadata)
 
         # Unblock a request.
-        fake_replica_scheduler.unblock_requests(1)
+        fake_request_router.unblock_requests(1)
         done, pending = await asyncio.wait(assign_request_tasks, timeout=0.01)
         assert len(done) == 1
         replica_result = await done.pop()
@@ -500,8 +500,8 @@ class TestAssignRequest:
         _, pending = await asyncio.wait(assign_request_tasks, timeout=0.01)
         assert len(pending) == len(assign_request_tasks)
 
-        # Unblock the requests, now they should all get scheduled.
-        fake_replica_scheduler.unblock_requests(5)
+        # Unblock the requests, now they should all get routed.
+        fake_request_router.unblock_requests(5)
         assert all(
             [
                 not replica_result._is_generator_object
@@ -511,17 +511,17 @@ class TestAssignRequest:
         )
 
     async def test_max_queued_requests_updated(
-        self, setup_router: Tuple[AsyncioRouter, FakeReplicaScheduler]
+        self, setup_router: Tuple[AsyncioRouter, FakeRequestRouter]
     ):
-        router, fake_replica_scheduler = setup_router
-        fake_replica_scheduler.set_should_block_requests(True)
+        router, fake_request_router = setup_router
+        fake_request_router.set_should_block_requests(True)
         router.update_deployment_config(DeploymentConfig(max_queued_requests=5))
 
         r1_id = ReplicaID(
             unique_id="test-replica-1", deployment_id=DeploymentID(name="test")
         )
         replica = FakeReplica(r1_id)
-        fake_replica_scheduler.set_replica_to_return(replica)
+        fake_request_router.set_replica_to_return(replica)
 
         request_metadata = RequestMetadata(
             request_id="test-request-1",
@@ -570,7 +570,7 @@ class TestAssignRequest:
             with pytest.raises(BackPressureError):
                 await router.assign_request(request_metadata)
 
-        fake_replica_scheduler.unblock_requests(5)
+        fake_request_router.unblock_requests(5)
         done, pending = await asyncio.wait(assign_request_tasks, timeout=0.01)
         assert len(pending) == 5
         assert all(
@@ -588,8 +588,8 @@ class TestAssignRequest:
             with pytest.raises(BackPressureError):
                 await router.assign_request(request_metadata)
 
-        # Unblock the requests, now they should all get scheduled.
-        fake_replica_scheduler.unblock_requests(5)
+        # Unblock the requests, now they should all get routed.
+        fake_request_router.unblock_requests(5)
         assert all(
             [
                 not replica_result._is_generator_object
@@ -609,17 +609,17 @@ class TestAssignRequest:
         indirect=True,
     )
     async def test_replica_actor_died(
-        self, setup_router: Tuple[AsyncioRouter, FakeReplicaScheduler]
+        self, setup_router: Tuple[AsyncioRouter, FakeRequestRouter]
     ):
-        router, fake_replica_scheduler = setup_router
+        router, fake_request_router = setup_router
         d_id = DeploymentID(name="test")
         r1_id = ReplicaID(unique_id="r1", deployment_id=d_id)
         r2_id = ReplicaID(unique_id="r2", deployment_id=d_id)
 
-        fake_replica_scheduler.set_replica_to_return(
+        fake_request_router.set_replica_to_return(
             FakeReplica(r1_id, error=ActorDiedError())
         )
-        fake_replica_scheduler.set_replica_to_return_on_retry(
+        fake_request_router.set_replica_to_return_on_retry(
             FakeReplica(
                 r2_id,
                 queue_len_info=ReplicaQueueLengthInfo(
@@ -628,7 +628,7 @@ class TestAssignRequest:
             )
         )
         await router.assign_request(dummy_request_metadata())
-        assert r1_id in fake_replica_scheduler.dropped_replicas
+        assert r1_id in fake_request_router.dropped_replicas
 
     @pytest.mark.parametrize(
         "setup_router",
@@ -641,16 +641,16 @@ class TestAssignRequest:
         indirect=True,
     )
     async def test_replica_actor_unavailable(
-        self, setup_router: Tuple[AsyncioRouter, FakeReplicaScheduler]
+        self, setup_router: Tuple[AsyncioRouter, FakeRequestRouter]
     ):
-        router, fake_replica_scheduler = setup_router
+        router, fake_request_router = setup_router
         # Two replicas
         d_id = DeploymentID(name="test")
         r1_id = ReplicaID(unique_id="r1", deployment_id=d_id)
         r2_id = ReplicaID(unique_id="r2", deployment_id=d_id)
 
         # First request is sent to r1, cache should be populated with r1:5
-        fake_replica_scheduler.set_replica_to_return(
+        fake_request_router.set_replica_to_return(
             FakeReplica(
                 r1_id,
                 queue_len_info=ReplicaQueueLengthInfo(
@@ -661,11 +661,11 @@ class TestAssignRequest:
         replica_result = await router.assign_request(dummy_request_metadata())
         assert replica_result._replica_id == r1_id
         # Cache should have R1:5
-        assert fake_replica_scheduler.replica_queue_len_cache.get(r1_id) == 5
-        assert fake_replica_scheduler.replica_queue_len_cache.get(r2_id) is None
+        assert fake_request_router.replica_queue_len_cache.get(r1_id) == 5
+        assert fake_request_router.replica_queue_len_cache.get(r2_id) is None
 
         # Second request is sent to r2, cache should be populated with r2:10
-        fake_replica_scheduler.set_replica_to_return(
+        fake_request_router.set_replica_to_return(
             FakeReplica(
                 r2_id,
                 queue_len_info=ReplicaQueueLengthInfo(
@@ -676,18 +676,18 @@ class TestAssignRequest:
         replica_result = await router.assign_request(dummy_request_metadata())
         assert replica_result._replica_id == r2_id
         # Cache should have R1:5, R2:10
-        assert fake_replica_scheduler.replica_queue_len_cache.get(r1_id) == 5
-        assert fake_replica_scheduler.replica_queue_len_cache.get(r2_id) == 10
+        assert fake_request_router.replica_queue_len_cache.get(r1_id) == 5
+        assert fake_request_router.replica_queue_len_cache.get(r2_id) == 10
 
         # Third request is sent to r1 again, but system message yields
         # an ActorUnavailableError
-        fake_replica_scheduler.set_replica_to_return(
+        fake_request_router.set_replica_to_return(
             FakeReplica(
                 r1_id,
                 error=ActorUnavailableError(error_message="unavailable", actor_id=None),
             )
         )
-        fake_replica_scheduler.set_replica_to_return_on_retry(
+        fake_request_router.set_replica_to_return_on_retry(
             FakeReplica(
                 r2_id,
                 queue_len_info=ReplicaQueueLengthInfo(
@@ -697,8 +697,8 @@ class TestAssignRequest:
         )
         await router.assign_request(dummy_request_metadata())
         # R1 should be REMOVED from cache, cache should now be R2:15
-        assert fake_replica_scheduler.replica_queue_len_cache.get(r1_id) is None
-        assert fake_replica_scheduler.replica_queue_len_cache.get(r2_id) == 15
+        assert fake_request_router.replica_queue_len_cache.get(r1_id) is None
+        assert fake_request_router.replica_queue_len_cache.get(r2_id) == 15
 
 
 def running_replica_info(replica_id: ReplicaID) -> RunningReplicaInfo:
@@ -1041,9 +1041,9 @@ class TestRouterMetricsManager:
 class TestSingletonThreadRouter:
     @pytest.fixture
     def setup_singleton_thread_router(
-        self, setup_router: Tuple[AsyncioRouter, FakeReplicaScheduler]
+        self, setup_router: Tuple[AsyncioRouter, FakeRequestRouter]
     ) -> SingletonThreadRouter:
-        asyncio_router, fake_replica_scheduler = setup_router
+        asyncio_router, fake_request_router = setup_router
 
         router = SingletonThreadRouter(
             controller_handle=Mock(),
@@ -1051,7 +1051,7 @@ class TestSingletonThreadRouter:
             handle_id="test",
             self_actor_id="test",
             handle_source="test",
-            replica_scheduler=fake_replica_scheduler,
+            request_router=fake_request_router,
             enable_strict_max_ongoing_requests=False,
             resolve_request_arg_func=Mock(),
             node_id="test-node-id",
@@ -1063,17 +1063,17 @@ class TestSingletonThreadRouter:
 
     def test_request_assignment(
         self,
-        setup_router: Tuple[AsyncioRouter, FakeReplicaScheduler],
+        setup_router: Tuple[AsyncioRouter, FakeRequestRouter],
         setup_singleton_thread_router: SingletonThreadRouter,
     ):
-        _, fake_replica_scheduler = setup_router
+        _, fake_request_router = setup_router
         thread_router = setup_singleton_thread_router
 
         r1_id = ReplicaID(
             unique_id="test-replica-1", deployment_id=DeploymentID(name="test")
         )
         replica = FakeReplica(r1_id)
-        fake_replica_scheduler.set_replica_to_return(replica)
+        fake_request_router.set_replica_to_return(replica)
 
         request_metadata = RequestMetadata(
             request_id="test-request-1",
@@ -1087,7 +1087,7 @@ class TestSingletonThreadRouter:
     @pytest.mark.asyncio
     async def test_cancellation_propagation(
         self,
-        setup_router: Tuple[AsyncioRouter, FakeReplicaScheduler],
+        setup_router: Tuple[AsyncioRouter, FakeRequestRouter],
         setup_singleton_thread_router: SingletonThreadRouter,
     ):
         fake_router, _ = setup_router
@@ -1145,7 +1145,7 @@ class TestSingletonThreadRouter:
     @pytest.mark.asyncio
     async def test_replica_result_cancellation(
         self,
-        setup_router: Tuple[AsyncioRouter, FakeReplicaScheduler],
+        setup_router: Tuple[AsyncioRouter, FakeRequestRouter],
         setup_singleton_thread_router: SingletonThreadRouter,
     ):
         fake_router, _ = setup_router
@@ -1186,7 +1186,7 @@ class TestSingletonThreadRouter:
     @pytest.mark.asyncio
     async def test_assign_request_with_exception(
         self,
-        setup_router: Tuple[AsyncioRouter, FakeReplicaScheduler],
+        setup_router: Tuple[AsyncioRouter, FakeRequestRouter],
         setup_singleton_thread_router: SingletonThreadRouter,
     ):
         fake_router, _ = setup_router
@@ -1209,7 +1209,7 @@ class TestSingletonThreadRouter:
     @pytest.mark.asyncio
     async def test_assign_request_with_exception_during_cancellation(
         self,
-        setup_router: Tuple[AsyncioRouter, FakeReplicaScheduler],
+        setup_router: Tuple[AsyncioRouter, FakeRequestRouter],
         setup_singleton_thread_router: SingletonThreadRouter,
     ):
         fake_router, _ = setup_router
