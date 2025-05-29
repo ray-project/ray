@@ -512,7 +512,7 @@ def download_and_cache_file(url: str, filename: Optional[str] = None):
 # This function was modified to include the whole
 # conversation as prompt instead of only message 1 and 2.
 def sample_sharegpt_requests(
-    dataset_path: str,
+    dataset_link: str,
     num_requests: int,
     tokenizer: PreTrainedTokenizerBase,
     min_output_len: int,
@@ -521,16 +521,11 @@ def sample_sharegpt_requests(
     prefix_length: int = 100,  # Length of prefix to consider for grouping
 ) -> List[Tuple[str, int, int, int]]:
 
-    # Load the dataset
-    if dataset_path == "" or not os.path.exists(dataset_path):
-        if dataset_path == "":
-            dataset_path = download_and_cache_file(SHAREGPT_URL)
-        else:
-            # Download to the specified path if it doesn't exist
-            dataset_path = download_and_cache_file(SHAREGPT_URL, dataset_path)
-    print(f"Loading dataset from {dataset_path}")
-    with open(dataset_path, encoding="utf-8") as f:
-        dataset = json.load(f)
+    # Download and load the dataset from the link every time
+    print(f"Downloading dataset from {dataset_link}")
+    response = requests.get(dataset_link)
+    response.raise_for_status()
+    dataset = response.json()
 
     # Collect all conversations
     all_conversations = []
@@ -1001,7 +996,6 @@ async def benchmark(
     if not current_is_warmup:
         with open(output_file, "a") as file:
             file.write(json.dumps(result) + "\n")
-    print(f"result within benchmark.py: {result}")
     return result
 
 
@@ -1124,7 +1118,7 @@ def run_benchmark(args_: argparse.Namespace):
 
     if args.dataset_name == "sharegpt":
         input_requests = sample_sharegpt_requests(
-            dataset_path=args.dataset_path,
+            dataset_link=args.dataset_link,
             num_requests=args.num_prompts,
             tokenizer=tokenizer,
             min_output_len=args.min_output_len,
@@ -1227,7 +1221,7 @@ def parse_arguments():
         help="Name of the dataset to benchmark on.",
     )
     parser.add_argument(
-        "--dataset-path", type=str, default="", help="Path to the dataset."
+        "--dataset-link", type=str, default="", help="Link to the dataset (will be downloaded every time)."
     )
     parser.add_argument(
         "--model",

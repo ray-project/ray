@@ -18,7 +18,7 @@ DEFAULT_CONFIG = {
     "scheduler_strategies_dict": {
         # "random": "ray.serve._private.replica_scheduler.random_scheduler.RandomReplicaScheduler",
         # "round_robin": "ray.serve._private.replica_scheduler.round_robin_scheduler.RoundRobinReplicaScheduler",
-        # "pow_of_2": "ray.serve._private.replica_scheduler.llm_pow_2_scheduler.LLMPowerOfTwoChoicesReplicaScheduler",
+        # "pow_of_2": "ray.serve._private.replica_scheduler.pow_2_scheduler.PowerOfTwoChoicesReplicaScheduler",
         "prefix_aware": "ray.serve._private.replica_scheduler.prefix_aware_scheduler.PrefixAwareReplicaScheduler",
     },
     # Model Info
@@ -46,8 +46,7 @@ DEFAULT_CONFIG = {
     "num_prompts": 1000,  # Number of prompts to sample from ShareGPT
     "max_conversations": 10000,  # Max conversations to include from ShareGPT; num_unique_prefixes is approximately 3/100 * max_conversations.
     # To aim for average_prompts_per_prefix = 3, set max_conversations = 10 * num_prompts.
-    "dataset_path": "/home/ray/default/work/ray/_benchmarking_scripts/sharegpt.json",  # Path to ShareGPT dataset
-    # "dataset_path": ""
+    "dataset_link": "https://huggingface.co/datasets/samos123/share-gpt-long-convos/resolve/main/sharegpt_16_messages_or_more.json",
 }
 
 
@@ -202,10 +201,10 @@ def parse_arguments():
         help="Number of prompts to sample from ShareGPT",
     )
     parser.add_argument(
-        "--dataset-path",
+        "--dataset-link",
         type=str,
-        default=DEFAULT_CONFIG["dataset_path"],
-        help="Path to ShareGPT dataset",
+        default=DEFAULT_CONFIG["dataset_link"],
+        help="Link to ShareGPT dataset (will be downloaded every time)",
     )
 
     return parser.parse_args()
@@ -283,6 +282,9 @@ def restart_server_with_strategy(strategy, args):
     cmd = ["serve", "run", temp_path]
     print(f"Executing: {' '.join(cmd)}")
 
+    # Create logs directory if it doesn't exist
+    os.makedirs("logs", exist_ok=True)
+
     # Open log files for writing
     stdout_log = open(f"logs/{strategy}_stdout.log", "w")
     stderr_log = open(f"logs/{strategy}_stderr.log", "w")
@@ -314,7 +316,13 @@ def restart_server_with_strategy(strategy, args):
                 )
         except Exception as e:
             print(f"Health check attempt {i+1}/{max_retries}: {e}")
-
+        finally:
+            # Delete the temporary config file after server process starts
+            try:
+                os.remove(temp_path)
+                print(f"Deleted temporary config file: {temp_path}")
+            except Exception as e:
+                print(f"Warning: Failed to delete temporary config file: {e}")
     print(
         f"Failed to start server with strategy {strategy} after {max_retries} attempts"
     )
@@ -389,8 +397,8 @@ def run_single_benchmark(strategy, args):
             str(args.router_port),
             "--dataset-name",
             "sharegpt",
-            "--dataset-path",
-            args.dataset_path,
+            "--dataset-link",
+            args.dataset_link,
             "--output-file",
             str(output_file),
             "--min-output-len",
@@ -413,15 +421,11 @@ def run_single_benchmark(strategy, args):
             "--num-prompts",
             str(args.num_prompts),
         ]
-    print("Running command:", " ".join(cmd))
-    print(f"cmd: {cmd}")
     subprocess.run(cmd, check=True)
 
     with open(output_file, "r") as f:
         line = f.readline().strip()
-        print(f"line: {line}")
         result = json.loads(line)
-        print(f"result: {result}")
         os.remove(output_file)
 
     # Add additional metadata to the result.
@@ -459,7 +463,6 @@ def run_single_benchmark(strategy, args):
                 "num_prompts": args.num_prompts,
             }
         )
-    print(f"result after updating: {result}")
     return result
 
 
