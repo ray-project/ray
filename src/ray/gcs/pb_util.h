@@ -246,8 +246,9 @@ inline void FillTaskInfo(rpc::TaskInfoEntry *task_info,
     task_info->set_call_site(task_spec.GetMessage().call_site());
   }
   if (task_spec.GetMessage().label_selector().size() > 0) {
-    task_info->mutable_label_selector()->insert(task_spec.GetMessage().label_selector().begin(),
-                                                task_spec.GetMessage().label_selector().end());
+    task_info->mutable_label_selector()->insert(
+        task_spec.GetMessage().label_selector().begin(),
+        task_spec.GetMessage().label_selector().end());
   }
 }
 
@@ -305,8 +306,9 @@ inline void FillExportTaskInfo(rpc::ExportTaskEventData::TaskInfoEntry *task_inf
     task_info->set_placement_group_id(pg_id.Binary());
   }
   if (task_spec.GetMessage().label_selector().size() > 0) {
-    task_info->mutable_label_selector()->insert(task_spec.GetMessage().label_selector().begin(),
-                                                task_spec.GetMessage().label_selector().end());
+    task_info->mutable_label_selector()->insert(
+        task_spec.GetMessage().label_selector().begin(),
+        task_spec.GetMessage().label_selector().end());
   }
 }
 

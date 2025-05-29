@@ -146,8 +146,8 @@ class GcsActor {
       actor_table_data_.set_call_site(task_spec.call_site());
     }
     if (task_spec.label_selector().size() > 0) {
-      actor_table_data_.mutable_label_selector()->insert(task_spec.label_selector().begin(),
-                                                        task_spec.label_selector().end());
+      actor_table_data_.mutable_label_selector()->insert(
+          task_spec.label_selector().begin(), task_spec.label_selector().end());
     }
     RefreshMetrics();
     export_event_write_enabled_ = IsExportAPIEnabledActor();
@@ -499,14 +499,14 @@ class GcsActorManager : public rpc::ActorInfoHandler {
   /// Get the created actors.
   ///
   /// \return The created actors.
-  const absl::flat_hash_map<NodeID, absl::flat_hash_map<WorkerID, ActorID>>
-      &GetCreatedActors() const;
+  const absl::flat_hash_map<NodeID, absl::flat_hash_map<WorkerID, ActorID>> &
+  GetCreatedActors() const;
 
   const absl::flat_hash_map<ActorID, std::shared_ptr<GcsActor>> &GetRegisteredActors()
       const;
 
-  const absl::flat_hash_map<ActorID, std::vector<RegisterActorCallback>>
-      &GetActorRegisterCallbacks() const;
+  const absl::flat_hash_map<ActorID, std::vector<RegisterActorCallback>> &
+  GetActorRegisterCallbacks() const;
 
   std::string DebugString() const;
 
