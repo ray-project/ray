@@ -423,7 +423,6 @@ RT_ENV_AGENT_SLOW_STARTUP_PLUGIN_CLASS_PATH = (
 
 
 class RtEnvAgentSlowStartupPlugin(RuntimeEnvPlugin):
-
     name = RT_ENV_AGENT_SLOW_STARTUP_PLUGIN_NAME
 
     def __init__(self):
@@ -741,7 +740,6 @@ runtime_env_retry_times = 0
 # This plugin can make runtime env creation failed before the retry times
 # increased to `success_retry_number`.
 class MyPlugin(RuntimeEnvPlugin):
-
     name = MY_PLUGIN_NAME
 
     @staticmethod
@@ -843,7 +841,6 @@ def test_serialize_deserialize(option):
 
 
 def test_runtime_env_interface():
-
     # Test the interface related to working_dir
     default_working_dir = "s3://bucket/key.zip"
     modify_working_dir = "s3://bucket/key_A.zip"
@@ -985,6 +982,18 @@ def test_runtime_env_interface():
 
     runtime_env.pop("container")
     assert runtime_env.to_dict() == {}
+
+
+def test_working_dir_is_not_mutated(start_cluster, tmp_working_dir):
+    cluster, address = start_cluster
+
+    runtime_env = {
+        "working_dir": tmp_working_dir,
+    }
+
+    ray.init(address, runtime_env=runtime_env)
+
+    assert runtime_env["working_dir"] == tmp_working_dir
 
 
 if __name__ == "__main__":
