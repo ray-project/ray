@@ -53,9 +53,9 @@ class KuberayJobManager:
     @property
     def command_env(self):
         return {
-            "TEST_OUTPUT_JSON": self._RESULT_OUTPUT_JSON,
-            "METRICS_OUTPUT_JSON": self._METRICS_OUTPUT_JSON,
-            "USER_GENERATED_ARTIFACT": self._USER_GENERATED_ARTIFACT,
+            "TEST_OUTPUT_JSON": _RESULT_OUTPUT_JSON,
+            "METRICS_OUTPUT_JSON": _METRICS_OUTPUT_JSON,
+            "USER_GENERATED_ARTIFACT": _USER_GENERATED_ARTIFACT,
             "BUILDKITE_BRANCH": os.environ.get("BUILDKITE_BRANCH", ""),
         }
 
