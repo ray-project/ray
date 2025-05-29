@@ -13,11 +13,9 @@ def test_globally_disable_task_events(
 ):
     """Test that globally disabled task events overrides per-actor/task options."""
     system_config = {
-        "task_events_report_interval_ms": 100,
+        "task_events_report_interval_ms": 0,
         "metrics_report_interval_ms": 200,
         "enable_timeline": False,
-        "task_events_report_interval_ms": 0,
-        # "enable_task_events": system_enable_task_events,
     }
     ray.init(
         num_cpus=1,
