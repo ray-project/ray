@@ -41,6 +41,7 @@ from ray._private.label_utils import (
             "Label string is not a key-value pair",
         ),
     ],
+    ids=["empty-string", "empty-value", "multi-kv", "not-kv"],
 )
 def test_parse_node_labels_from_string(
     labels_string, should_raise, expected_result, expected_error_msg
@@ -131,6 +132,7 @@ def test_parse_node_labels_from_missing_yaml_file():
             None,
         ),
     ],
+    ids=["empty", "invalid-key", "invalid-value", "empty-value", "multi-kv"],
 )
 def test_parse_node_labels_from_yaml_file(
     content: str,
@@ -169,6 +171,7 @@ def test_parse_node_labels_from_yaml_file(
             None,
         ),
     ],
+    ids=["invalid-key-prefix", "invalid-key", "invalid-value", "valid"],
 )
 def test_validate_node_label_syntax(labels_dict, expected_error, expected_message):
     if expected_error:
@@ -189,6 +192,7 @@ def test_validate_node_label_syntax(labels_dict, expected_error, expected_messag
         ("ray!.io/accelerator-type", "Invalid label key prefix"),
         ("a" * 64, "Invalid label key name"),
     ],
+    ids=["valid1", "valid2", "invalid-prefix", "invalid-suffix", "invalid-noteq", "too-long"],
 )
 def test_validate_label_key(key, expected_error):
     error_msg = validate_label_key(key)
@@ -208,6 +212,7 @@ def test_validate_label_key(key, expected_error):
         ("@invalid", True, "Invalid label key value"),
         ("a" * 64, True, "Invalid label key value"),
     ],
+    ids=["empty", "valid", "invalid-prefix", "invalid-suffix", "bad-char", "too-long"],
 )
 def test_validate_label_value(value, should_raise, expected_message):
     if should_raise:
@@ -234,6 +239,7 @@ def test_validate_label_value(value, should_raise, expected_message):
         ("!!!in(H100, TPU)", "Invalid label selector value"),
         ("a" * 64, "Invalid label selector value"),
     ],
+    ids=["spot", "no-gpu", "in", "not-in", "valid", "invalid-prefix", "invalid-suffix", "invalid-in", "unfinished-in", "invalid-noteq", "triple-noteq", "too-long"],
 )
 def test_validate_label_selector_value(selector, expected_error):
     error_msg = validate_label_selector_value(selector)
