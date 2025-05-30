@@ -213,14 +213,10 @@ class VLLMEngine(LLMEngine):
                 os.environ["VLLM_NIXL_SIDE_CHANNEL_HOST"] = vllm.utils.get_ip()
 
             # We need to overwrite the engine_id to make it unique across replicas.
-            engine_id = getattr(
-                kv_transfer_config, "engine_id", str(uuid.uuid4())
-            )
+            engine_id = getattr(kv_transfer_config, "engine_id", str(uuid.uuid4()))
             host = vllm.envs.VLLM_NIXL_SIDE_CHANNEL_HOST
             port = vllm.envs.VLLM_NIXL_SIDE_CHANNEL_PORT
-            kv_transfer_config.engine_id = "-".join(
-                [engine_id, host, str(port)]
-            )
+            kv_transfer_config.engine_id = "-".join([engine_id, host, str(port)])
 
         assert isinstance(
             llm_config, LLMConfig
