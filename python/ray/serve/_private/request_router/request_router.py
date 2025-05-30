@@ -1000,6 +1000,29 @@ class RequestRouter(ABC):
             [self.create_replica_wrapper(r) for r in running_replicas]
         )
 
+    def select_available_replicas(
+        self, candidates: Optional[List[RunningReplica]] = None
+    ) -> List[RunningReplica]:
+        """Select available replicas from the list of candidates.
+
+        This method is used to select replicas that are available to take more
+        requests based on the queue length cache. If the queue length is not
+        available in the cache, the replica is considered available. It does
+        not actively probe the replicas for their queue length.
+
+        If input candidates is `None`, all replicas are considered.
+        """
+        if candidates is None:
+            candidates = list(self._replicas.values())
+
+        available_replicas = []
+        for r in candidates:
+            queue_len = self._replica_queue_len_cache.get(r.replica_id)
+            if queue_len is None or queue_len < r.max_ongoing_requests:
+                available_replicas.append(r)
+
+        return available_replicas
+
     @abstractmethod
     async def choose_replicas(
         self,
