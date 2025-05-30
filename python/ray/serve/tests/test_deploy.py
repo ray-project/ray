@@ -34,7 +34,7 @@ def test_deploy_basic(serve_instance, use_handle):
             handle = serve.get_deployment_handle("d", "default")
             return handle.remote().result()
         else:
-            return httpx.get("http://localhost:8000/d").json()
+            return httpx.get("http://localhost:8000/d", timeout=None).json()
 
     serve.run(d.bind())
     resp, pid1 = call()
@@ -157,7 +157,7 @@ def test_redeploy_single_replica(serve_instance, use_handle):
             handle = serve.get_deployment_handle(name, "app")
             return handle.handler.remote().result()
         else:
-            return httpx.get("http://localhost:8000/").json()
+            return httpx.get("http://localhost:8000/", timeout=None).json()
 
     signal_name = f"signal-{get_random_string()}"
     signal = SignalActor.options(name=signal_name).remote()
