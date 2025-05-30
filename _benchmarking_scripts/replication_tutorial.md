@@ -1,14 +1,14 @@
 # File directory tutorial:
 
 ## Core Files (Outside _benchmarking_scripts)
-- `python/ray/serve/_private/replica_scheduler/prefix_aware_scheduler.py`: Implements the prefix-aware replica scheduler that routes requests to replicas based on prefix matching
-- `python/ray/llm/_internal/serve/replica_scheduler/prefix_aware/prefix_tree.py`: Data structure for efficient prefix matching and tracking of replica KV cache states
-- `python/ray/llm/tests/serve/cpu/deployments/test_prefix_aware_replica_scheduler.py`: Unit tests for the prefix-aware scheduler
+- `python/ray/serve/_private/request_router/prefix_aware_request_router.py`: Implements the prefix-aware request router that routes requests to replicas based on prefix matching
+- `python/ray/llm/_internal/serve/request_router/prefix_aware/prefix_tree.py`: Data structure for efficient prefix matching and tracking of replica KV cache states
+- `python/ray/llm/tests/serve/cpu/deployments/test_prefix_aware_request_router.py`: Unit tests for the prefix-aware router
 - `python/ray/llm/tests/serve/cpu/deployments/test_prefix_tree.py`: Unit tests for the prefix tree data structure
-- `python/ray/llm/_internal/serve/deployments/llm/llm_server.py`: Main server implementation that wraps LLM deployments with replica schedulers
+- `python/ray/llm/_internal/serve/deployments/llm/llm_server.py`: Main server implementation that wraps LLM deployments with request routers
 
 ## Benchmarking Scripts (_benchmarking_scripts/)
-- `sweep_strategies.py`: Main script for running benchmarks with different replica schedulers and configurations
+- `sweep_strategies.py`: Main script for running benchmarks with different request routers and configurations
 - `benchmark.py`: Script for running individual benchmarks and measuring performance metrics
 - `visualize_results.ipynb`: Jupyter notebook for visualizing benchmark results
 - `prefix_tree_operation_benchmark.ipynb`: Jupyter notebook for benchmarking prefix tree operations and analyzing their performance
@@ -21,7 +21,7 @@
   - `vllm_generated-shared-prefix_sweep_results.csv`: vLLM metrics from synthetic benchmarks
 - `custom_results/`: Directory for storing custom benchmark results and analysis
   - `char_count_over_time/`: Contains measurements of prefix tree size over time by querying the `tenant_to_char_count` dictionary, useful for monitoring eviction policy effectiveness
-  - `scheduling_mismatches/`: Contains logs investigating scheduling mismatches by comparing each task's initial request with its final assigned request
+  - `routing_mismatches/`: Contains logs investigating routing mismatches by comparing each task's initial request with its final assigned request
 - `replication_tutorial.md`: This file - comprehensive guide for setting up and running benchmarks
 
 # Setup:
@@ -49,7 +49,7 @@
     pip install -c python/requirements_compiled.txt -r python/requirements/test-requirements.txt
     pip install -r python/requirements/llm/llm-requirements.txt -r python/requirements/llm/llm-test-requirements.txt
     python -m pytest -v -s /home/ray/default/work/ray/python/ray/llm/tests/serve/cpu/deployments/test_prefix_tree.py
-    python -m pytest -v -s /home/ray/default/work/ray/python/ray/llm/tests/serve/cpu/deployments/test_prefix_aware_replica_scheduler.py
+    python -m pytest -v -s /home/ray/default/work/ray/python/ray/llm/tests/serve/cpu/deployments/test_prefix_aware_request_router.py
     ```
 8. Linting:
     ```bash
@@ -61,17 +61,17 @@
 ## Spin up vLLM replica
 1. `cd work/_benchmarking_scripts`
 2. `serve run config.yaml` will run `build_openai_app` and spin up 2 Qwen-0.5B models, accessible at `localhost:8000`. Ensure `accelerator_type` matches your workspace's head node.
-3. By default, the replicas use the Pow2 replica scheduler, except I modified `llm_server.py`: I wrap `LLMDeployment` with `@serve.deployment(replica_scheduler=PrefixAwareReplicaScheduler)`. So these two vLLM replicas will be configured with a prefix aware replica scheduler.
-    - To revert back to Pow2, just comment out `@serve.deployment(replica_scheduler=PrefixAwareReplicaScheduler)`. Previously, I did hack together a configuration field in `llm_configs` in `config.yaml`, but I removed this to use Gene's `@serve.deployment` method. After Gene's PRs for custom replica scheduling API land, there should be a field configurable in `config.yaml` to set the replica scheduler.
+3. By default, the replicas use the Pow2 request router, except I modified `llm_server.py`: I wrap `LLMDeployment` with `@serve.deployment(request_router=PrefixAwareRequestRouter)`. So these two vLLM replicas will be configured with a prefix aware request router.
+    - To revert back to Pow2, just comment out `@serve.deployment(request_router=PrefixAwareRequestRouter)`. Previously, I did hack together a configuration field in `llm_configs` in `config.yaml`, but I removed this to use Gene's `@serve.deployment` method. After Gene's PRs for custom request routing API land, there should be a field configurable in `config.yaml` to set the request router.
 4. You can run a single query to make sure it was configured correctly:
     ```
     curl -X POST http://localhost:8000/v1/completions \
         -H "Content-Type: application/json" \
-        -d '{"model":"qwen-0.5b","prompt":"Why is the sky blue?","max_tokens":50, "stream": false}'
+        -d '{"model":"Qwen/Qwen2.5-1.5B-Instruct","prompt":"Why is the sky blue?","max_tokens":50, "stream": false}'
     ```
-5. When I was implementing and tinkering with the prefix aware scheduler, my workflow was usually:
-    1. Make a change to the prefix scheduler logic.
-    2. Add logs in the scheduler (e.g. print the input text, the matched text, the matched replica).
+5. When I was implementing and tinkering with the prefix aware router, my workflow was usually:
+    1. Make a change to the prefix router logic.
+    2. Add logs in the router (e.g. print the input text, the matched text, the matched replica).
     3. `serve run config.yaml`.
     4. Send curl queries and observe if the logs match my expectations.
 
@@ -102,23 +102,23 @@
     - `max-concurrency=40` means the client will only have max 40 requests ongoing at once. I set this to 40 because we have 4 LLM replicas, each with their own `max-concurrency=20`, and we want them to each be saturated but not overloaded.
     - `request-rate=100` instead of infinity helps request send-offs to be staggered instead of immediate. When this was set to infinity, we noticed jumps and drops in the load distribution graph (see the slide "3/27-4/2 Progress" in my result slides).
     - `disable-ignore-eos=false` means the LLM does not stop generating once it generates an EOS token. This is intended since to control the `output-len` for each request.
-    - `disable-stream=false` means the response is streamed back to the client, which lets us measure TTFT and TPOT. When we were using a Serve deployment instead of Ray actor for the scheduler, having streaming on meant the event loop was bogged down, causing long deployment overhead. See the slide "4/17-4/30 Progress" to see a comparison between streaming on and off. But now that we use a Ray actor, the overhead of `actor.remote()` calls is very small.
+    - `disable-stream=false` means the response is streamed back to the client, which lets us measure TTFT and TPOT. When we were using a Serve deployment instead of Ray actor for the request router, having streaming on meant the event loop was bogged down, causing long deployment overhead. See the slide "4/17-4/30 Progress" to see a comparison between streaming on and off. But now that we use a Ray actor, the overhead of `actor.remote()` calls is very small.
 
     Parameters specific to ShareGPT:
     - The dataset is downloaded from [ShareGPT](https://huggingface.co/datasets/samos123/share-gpt-long-convos/tree/main). I don't keep it in the file directory since it's too large for Github.
     - Each request's output length is a random integer between `min-output-len` and `max-output-len`. This is preferred over a constant output length so requests finish at staggered times.
     - `max-conversations=10_000` limits the pool of conversations to select from. For example, say the ShareGPT dataset has 100K conversations, each with 5 back-and-forth User-Assistant turns. The way our requests are created is we first select `max-conversations=10K` out of the 100K conversations. Then, we break the 10K selected conversations into 50K pieces of conversations. To clarify, suppose one conversation looks like "User: U1 / Asst: A1 / User: U2 ... Asst: A5". Then we extract 5 conversation pieces: "User: U1 / Asst: A1", "User: U1 ... Asst: A2", ..., "User: U1 ... Asst: A5". Now, we select `num-prompts=1K` out of the 50K pieces of conversations. I find that setting `max-conversations=10K, num-prompts=1K` results in about 333 unique "groups" of prompts, with about 3 prompts per group. This is a good balance to measure the improvement of prefix-aware over pow2: if we have 1000 unique groups of prompts, then we'd have no KV cache reuse, and prefix-aware would be no better than pow2. If we have 1 unique group of 1000 prompts, then all the replicas' KV caches would be saturated anyways, so pow2 will be very similar to prefix-aware. Having a middle-ground means that pow2 won't be able to smartly route requests to utilize GPUs' KV caches, whereas prefix aware will.
 
-2. So `benchmark.py` runs a single benchmark by generating a batch of queries and sending them to a running LLM router. But how do I run multiple benchmarks, with differing replica schedulers?
+2. So `benchmark.py` runs a single benchmark by generating a batch of queries and sending them to a running LLM router. But how do I run multiple benchmarks, with differing request routers?
     - I wrote `sweep_strategies.py` to do this. It uses the parameters set in `DEFAULT_CONFIG` to 1) set up an LLM server and 2) call `benchmark.py`.
     - For example, here are the default configs:
         ```py
         # Configs to set up server:
         host: 127.0.0.1,
         router_port: 8000,
-        scheduler_strategies_dict: {
-            "pow_of_2": "ray.serve...PowerOfTwoChoicesReplicaScheduler",
-            "prefix_aware": "ray.serve...PrefixAwareReplicaScheduler"
+        routing_strategies_dict: {
+            "pow_of_2": "ray.serve...PowerOfTwoChoicesRequestRouter",
+            "prefix_aware": "ray.serve...PrefixAwareRequestRouter"
         }
         model_name: "Qwen/Qwen2.5-1.5B-Instruct",
         gpu_type: "L4",
@@ -131,8 +131,8 @@
         # Configs to run benchmark (same as the ones in `benchmark.py`):
         # e.g. max_concurrency, min-output-len, disable_ignore_eos, ...
         ```
-    - So if I make a code change to `PrefixAwareReplicaScheduler.py` and want to benchmark its performance, I just have to edit `benchmark_label`, run `python sweep_strategies.py`, and the benchmark will be run with my default parameters. If I'm not editing Pow2, I can comment out "pow_of_2" in `scheduler_strategies_dict` so the benchmark is only being run with the prefix aware scheduler.
-        - Note: the ability to sweep multiple strategies in a single `python sweep_strategies.py` is dependent on being able to configure `replica_scheduler` in `temp_config.yaml`. I mentioned in "Spin up vLLM replica" that I removed this in favor of the `@serve.deployment(replica_scheduler=...)` wrapper, but this means that `sweep_strategies.py` currently does *not* spin up LLM servers with different replica schedulers. You have to manually comment out `@serve.deployment()` in `llm_server.py` if you want to switch between PrefixAware, Pow2, or another replica scheduler.
+    - So if I make a code change to `PrefixAwareRequestRouter.py` and want to benchmark its performance, I just have to edit `benchmark_label`, run `python sweep_strategies.py`, and the benchmark will be run with my default parameters. If I'm not editing Pow2, I can comment out "pow_of_2" in `routing_strategies_dict` so the benchmark is only being run with the prefix aware request router.
+        - Note: the ability to sweep multiple strategies in a single `python sweep_strategies.py` is dependent on being able to configure `request_router` in `temp_config.yaml`. I mentioned in "Spin up vLLM replica" that I removed this in favor of the `@serve.deployment(request_router=...)` wrapper, but this means that `sweep_strategies.py` currently does *not* spin up LLM servers with different request routers. You have to manually comment out `@serve.deployment()` in `llm_server.py` if you want to switch between PrefixAware, Pow2, or another request router.
     - Also, I redirect the stdout to `logs/{strategy}_stdout.log` and `logs/{strategy}_stderr.log`, so if you have logging statements in your code, you can look for them there. These can be large files, so delete them when pushing to Git.
     - By default, `benchmark.py` doesn't write the results anywhere. I modify it to take in `output-file` as a parameter, and write the results there. Then, `sweep_strategies.py` will generate an `output-file` path, call `benchmark.py` with it, read the written results, and compile them in a single CSV line to `serve_sharegpt_sweep_results.csv`.
         - Note: you'll notice I have `serve_generated-shared-prefix_sweep_results.csv`. These are leftover from when I was using a different dataset, before ShareGPT. This dataset is designed by [SGLang](https://github.com/sgl-project/sglang/pull/1990) and generates synthetic data with configurable prefix length, output length, number of prefix groups. Essentially, it offers more fine-grained control over how much "prefix sharing" you want in the dataset. Here's a writeup on [Generated Shared Prefix](https://docs.google.com/document/d/1Osit1QZJDktvx8ETjSIpHtN80k42KUzYHmoImmXmuEk/edit?tab=t.0). I still leave the option to use Generated Shared Prefix instead of ShareGPT; just change `dataset-name` to `generated-shared-prefix` in `sweep_strategies.py`.
@@ -147,7 +147,7 @@
         | enable_prefix_caching        | True                               |
         | enable_chunked_prefill       | True                               |
         | benchmark_label              | prefix_aware_with_eviction           |
-        | scheduler_strategy           | prefix_aware                       |
+        | request_router               | prefix_aware                       |
         | min_output_len               | 10                                 |
         | max_output_len               | 200                                |
         | max_concurrency              | 40                                 |

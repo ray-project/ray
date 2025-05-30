@@ -15,11 +15,11 @@ DEFAULT_CONFIG = {
     "host": "127.0.0.1",
     "router_port": 8000,
     # "worker_ports": "8001,8002,8003,8004",
-    "scheduler_strategies_dict": {
-        # "random": "ray.serve._private.replica_scheduler.random_scheduler.RandomReplicaScheduler",
-        # "round_robin": "ray.serve._private.replica_scheduler.round_robin_scheduler.RoundRobinReplicaScheduler",
-        # "pow_of_2": "ray.serve._private.replica_scheduler.pow_2_scheduler.PowerOfTwoChoicesReplicaScheduler",
-        "prefix_aware": "ray.serve._private.replica_scheduler.prefix_aware_scheduler.PrefixAwareReplicaScheduler",
+    "routing_strategies_dict": {
+        # "random": "ray.serve._private.request_router.random_router.RandomRequestRouter",
+        # "round_robin": "ray.serve._private.request_router.round_robin_router.RoundRobinRequestRouter",
+        # "pow_of_2": "ray.serve._private.request_router.pow_2_router.PowerOfTwoChoicesRequestRouter",
+        "prefix_aware": "ray.serve._private.request_router.prefix_aware_router.PrefixAwareRequestRouter",
     },
     # Model Info
     "model_name": "Qwen/Qwen2.5-1.5B-Instruct",
@@ -28,7 +28,7 @@ DEFAULT_CONFIG = {
     "enable_prefix_caching": True,
     "enable_chunked_prefill": True,
     # Benchmark Info
-    "benchmark_label": "no_eviction_no_tracking_replicate_vllmV0_no_probing_rewritten_benchmark",
+    "benchmark_label": "merged_with_master",
     "dataset_name": "sharegpt",
     "max_concurrency": 40,  # Max concurrency (total)
     "min_output_len": 10,
@@ -66,11 +66,11 @@ def parse_arguments():
     )
     # parser.add_argument("--worker-ports", type=str, default=DEFAULT_CONFIG["worker_ports"], help="Comma-separated list of worker ports")
     parser.add_argument(
-        "--scheduler-strategies-dict",
+        "--routing-strategies-dict",
         type=str,
         nargs="+",
-        default=DEFAULT_CONFIG["scheduler_strategies_dict"],
-        help="List of scheduler strategies paths to benchmark",
+        default=DEFAULT_CONFIG["routing_strategies_dict"],
+        help="List of request router strategies paths to benchmark",
     )
 
     # Model info
@@ -261,7 +261,7 @@ def restart_server_with_strategy(strategy, args):
                                 },
                             },
                             # "log_engine_metrics": True,
-                            # "replica_scheduler_cls_path": args.scheduler_strategies_dict[strategy]
+                            # "request_router_cls_path": args.routing_strategies_dict[strategy]
                         }
                     ]
                 },
@@ -277,7 +277,7 @@ def restart_server_with_strategy(strategy, args):
         yaml.dump(config, f)
 
     print(
-        f"Starting server with strategy '{strategy}': {args.scheduler_strategies_dict[strategy]}"
+        f"Starting server with strategy '{strategy}': {args.routing_strategies_dict[strategy]}"
     )
     cmd = ["serve", "run", temp_path]
     print(f"Executing: {' '.join(cmd)}")
@@ -442,7 +442,7 @@ def run_single_benchmark(strategy, args):
             "enable_prefix_caching": args.enable_prefix_caching,
             "enable_chunked_prefill": args.enable_chunked_prefill,
             "benchmark_label": args.benchmark_label,
-            "scheduler_strategy": strategy,
+            "routing_strategy": strategy,
             "min_output_len": args.min_output_len,
             "max_output_len": args.max_output_len,
             "max_concurrency": args.max_concurrency,
@@ -481,7 +481,7 @@ def save_results_to_csv(results, args):
         "enable_prefix_caching",
         "enable_chunked_prefill",
         "benchmark_label",
-        "scheduler_strategy",
+        "routing_strategy",
         "min_output_len",
         "max_output_len",
         "max_concurrency",
@@ -651,7 +651,7 @@ def main():
             setattr(args, key, value)
 
         # try:
-        for strategy in args.scheduler_strategies_dict.keys():
+        for strategy in args.routing_strategies_dict.keys():
             # Store the returned log file handles
             server_process, stdout_log, stderr_log = restart_server_with_strategy(
                 strategy, args
