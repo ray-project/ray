@@ -775,6 +775,7 @@ class Dataset:
         query: str,
         view_name: str = "batch",
         engine: str = "duckdb",
+        pushwdown_filter: bool = True,
         *,
         batch_size: Union[int, None, Literal["default"]],
         compute: Optional[ComputeStrategy],
@@ -806,6 +807,10 @@ class Dataset:
                 Defaults to "batch".
             engine: The SQL engine to use for executing the query. Supported values are "duckdb".
                 Defaults to "duckdb".
+            pushdown_filter: If set to `True`, extract the filter expression from the SQL query
+                and run as a Ray Dataset filter function, which can push the filter down to the source.
+                If set to `False`, the query is run as-is with the SQL engine, which won't support
+                pushdown filters or predicates.
             batch_size: The desired number of rows in each batch.
             compute: The compute strategy to use for the operation.
             zero_copy_batch: Whether to provide zero-copy, read-only batches to the SQL engine.
@@ -974,16 +979,20 @@ class Dataset:
                     f"Consider using `ray.dataset.{'join' if op == ' join ' else 'groupBy'} instead if you need data across multiple blocks",
                 )
 
-        base_query, filter_expr = safe_ray_filter_for_sql(query)
-        use_ray_filter = filter_expr is not None
+        if pushwdown_filter is True:
+            base_query, filter_expr = safe_ray_filter_for_sql(query)
+            use_ray_filter = filter_expr is not None
 
-        if use_ray_filter:
-            self = self.filter(expr=filter_expr)
+            if use_ray_filter:
+                self = self.filter(expr=filter_expr)
+        else:
+            base_query = query
 
         supported_engines = {"duckdb", "polars"}
         if engine.lower() not in supported_engines:
-            raise ValueError(
-                f"Unsupported engine '{engine}'. Supported engines are: {supported_engines}."
+            warnings.warn(
+                f"Unsupported engine '{engine}'. Supported engines are: {supported_engines}.",
+                UserWarning,
             )
 
         if not view_name.isidentifier():
@@ -1012,14 +1021,16 @@ class Dataset:
             ray_remote_args["memory"] = memory
 
         if not isinstance(base_query, str):
-            raise ValueError(
+            warnings.warn(
                 "SQL query must be a string. "
-                "Please use the `query` argument to pass a SQL query."
+                "Please use the `query` argument to pass a SQL query.",
+                UserWarning,
             )
         if not isinstance(view_name, str):
-            raise ValueError(
+            warnings.warn(
                 "View name must be a string. "
-                "Please use the `view_name` argument to pass a view name."
+                "Please use the `view_name` argument to pass a view name.",
+                UserWarning,
             )
 
         if engine.lower() == "duckdb":
