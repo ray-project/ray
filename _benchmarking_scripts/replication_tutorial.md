@@ -29,6 +29,7 @@
 ## Environment setup
 1. Create an Anyscale Workspace, using `anyscale/ray:nightly-py311-cu124` and 4xL4 head node. I tried setting `VLLM_USE_V1=1` as an environment variable, but a lot of annoying warnings came up so I turned it off. Also, VLLM V1 seemed to cause longer model loading times.
     - Weird bug that Seiji helped me discover: you need to turn off Pip Packages in Workspace -> Dependencies, or else we run into dependency issues.
+    - Another weird bug: in fact you need to explicitly set `VLLM_USE_V1=0` or else vllm gets confused and tries to import stuff from V1.
 2. `mkdir work, cd work`. Clone my repo, then `cd ray`.
 3. `python python/ray/setup-dev.py` for `serve`, `llm`, and `serve/llm`.
 4. To output vllm metrics more frequently than the default 10 seconds, run: `ray start --head --system-config='{"metrics_report_interval_ms": 100}' --port 5000 --metrics-export-port 5001 --dashboard-port 5002`.
