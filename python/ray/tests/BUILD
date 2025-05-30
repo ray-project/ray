@@ -66,6 +66,7 @@ py_test_module_list(
         "test_reference_counting_2.py",
         "test_reference_counting_standalone.py",
         "test_runtime_env_agent.py",
+        "test_task_events_3.py",
     ],
     tags = [
         "exclusive",
@@ -533,6 +534,23 @@ py_test_module_list(
 )
 
 py_test_module_list(
+    size = "medium",
+    files = [
+        "test_gpu_objects.py",
+    ],
+    tags = [
+        "exclusive",
+        "gpu_objects",
+        "no_windows",
+        "team:core",
+    ],
+    deps = [
+        ":conftest",
+        "//:ray_lib",
+    ],
+)
+
+py_test_module_list(
     size = "small",
     data = glob(["tls/*"]),
     files = [
@@ -774,7 +792,6 @@ py_test_module_list(
         "test_runtime_env_working_dir_remote_uri.py",
         "test_state_api.py",
         "test_task_events_2.py",
-        "test_task_events_3.py",
     ],
     tags = [
         "exclusive",
