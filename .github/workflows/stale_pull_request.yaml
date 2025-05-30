@@ -62,8 +62,8 @@ jobs:
           exempt-all-pr-milestones: true
 
           # --- Shared Settings & Other Options ---
-          # Limit the number of actions per run. Increase from 30 to 300. 
-          operations-per-run: 300
+          # Limit the number of actions per run.
+          operations-per-run: 500
 
           # Remove stale label from PRs on update (default is true)
           remove-pr-stale-when-updated: true
