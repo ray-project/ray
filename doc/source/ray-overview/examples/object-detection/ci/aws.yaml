@@ -9,6 +9,10 @@ head_node_type:
     cpu: 8
 
 # Worker nodes
-auto_select_worker_config: true
-flags:
-  allow-cross-zone-autoscaling: true
+worker_node_types:
+  - name: "gpu-workers"
+    instance_type: "g4dn.xlarge"
+    min_workers: 0
+    max_workers: 10
+auto_select_worker_config: false
+
