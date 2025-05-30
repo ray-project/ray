@@ -60,9 +60,10 @@ _MIN_PYARROW_VERSION_TO_NUMPY_ZERO_COPY_ONLY = parse_version("13.0.0")
 
 
 # Set the max chunk size in bytes for Arrow to Batches conversion in
-# ArrowBlockAccessor.iter_rows().
-ARROW_BATCHES_MAX_CHUNK_SIZE_BYTES = env_integer(
-    "RAY_DATA_ARROW_TO_BATCHES_MAX_CHUNK_SIZE_BYTES",
+# ArrowBlockAccessor.iter_rows(). Default to 4MB, to optimize for image
+# datasets in parquet format.
+ARROW_MAX_CHUNK_SIZE_BYTES = env_integer(
+    "RAY_DATA_ARROW_MAX_CHUNK_SIZE_BYTES",
     int(DEFAULT_TARGET_MAX_BLOCK_SIZE / 32),
 )
 
@@ -168,7 +169,7 @@ class ArrowBlockBuilder(TableBlockBuilder):
         return BlockType.ARROW
 
 
-def _get_batch_max_chunk_size(
+def _get_max_chunk_size(
     table: "pyarrow.Table", max_chunk_size_bytes: int
 ) -> Optional[int]:
     """
@@ -196,8 +197,8 @@ class ArrowBlockAccessor(TableBlockAccessor):
         super().__init__(table)
         # Set the max chunk size in rows for Arrow to Batches conversion in
         # ArrowBlockAccessor.iter_rows().
-        self._batch_max_chunk_size = _get_batch_max_chunk_size(
-            self._table, ARROW_BATCHES_MAX_CHUNK_SIZE_BYTES
+        self._max_chunk_size = _get_max_chunk_size(
+            self._table, ARROW_MAX_CHUNK_SIZE_BYTES
         )
 
     def column_names(self) -> List[str]:
@@ -423,7 +424,7 @@ class ArrowBlockAccessor(TableBlockAccessor):
     ) -> Iterator[Union[Mapping, np.ndarray]]:
         table = self._table
         if public_row_format:
-            for batch in table.to_batches(max_chunksize=self._batch_max_chunk_size):
+            for batch in table.to_batches(max_chunksize=self._max_chunk_size):
                 yield from batch.to_pylist()
         else:
             for i in range(self.num_rows()):
