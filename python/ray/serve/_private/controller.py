@@ -288,6 +288,45 @@ class ServeController:
             send_timestamp=send_timestamp,
         )
 
+    async def record_application_qps(
+        self, application_name: str, qps_value: float, timestamp: float
+    ):
+        """Records the QPS for all deployments in a given application."""
+        try:
+            deployment_names = self.application_state_manager.list_deployment_details(
+                application_name
+            ).keys()
+        except KeyError:
+            logger.warning(
+                f"Application '{application_name}' not found. " "Cannot record QPS."
+            )
+            return
+
+        if not deployment_names:
+            logger.debug(
+                f"No deployments found for application '{application_name}'. "
+                "Skipping QPS recording."
+            )
+            return
+
+        for dep_name in deployment_names:
+            deployment_id = DeploymentID(name=dep_name, app_name=application_name)
+            # QPS value is for the entire application, which is currently
+            # distributed/duplicated to each deployment within that application.
+            # The autoscaling policy for each deployment will use this QPS.
+            # This might lead to over-scaling if multiple deployments exist in one app
+            # and all use this app-level QPS.
+            # Future refinement might involve distributing QPS among deployments
+            # or having deployment-specific QPS.
+            self.autoscaling_state_manager.record_qps_metric(
+                deployment_id, qps_value, timestamp
+            )
+
+        logger.debug(
+            f"Recorded QPS {qps_value} for application '{application_name}' "
+            f"at timestamp {timestamp} for deployments: {list(deployment_names)}."
+        )
+
     def _dump_autoscaling_metrics_for_testing(self):
         return self.autoscaling_state_manager.get_metrics()
 
