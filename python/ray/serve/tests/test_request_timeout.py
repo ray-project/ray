@@ -225,17 +225,17 @@ def test_streaming_request_already_sent_and_timed_out(ray_instance, shutdown_ser
         timeout=10,
     )
 
-    r = httpx.get("http://localhost:8000", stream=True)
-    iterator = r.iter_content(chunk_size=None, decode_unicode=True)
+    with httpx.stream("GET", "http://localhost:8000") as r:
+        iterator = r.iter_text()
 
-    # The first chunk should be received successfully.
-    assert iterator.__next__() == "generated 0"
-    assert r.status_code == 200
+        # The first chunk should be received successfully.
+        assert next(iterator) == "generated 0"
+        assert r.status_code == 200
 
-    # The second chunk should time out and raise error.
-    with pytest.raises(httpx.exceptions.ChunkedEncodingError) as request_error:
-        iterator.__next__()
-    assert "Connection broken" in str(request_error.value)
+        # The second chunk should time out and raise error.
+        with pytest.raises(httpx.RemoteProtocolError) as request_error:
+            next(iterator)
+            assert "peer closed connection" in str(request_error.value)
 
 
 @pytest.mark.parametrize(

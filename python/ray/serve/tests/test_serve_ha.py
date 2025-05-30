@@ -26,14 +26,14 @@ serve.run(GetPID.options(num_replicas={num_replicas}).bind())
 
 check_script = """
 import ray
-import httpx
+import requests
 
 @ray.remote
 def get_pid():
-    return httpx.get("http://127.0.0.1:8000/").json()["pid"]
+    return requests.get("http://127.0.0.1:8000/").json()["pid"]
 
 pids = {{
-    httpx.get("http://127.0.0.1:8000/").json()["pid"]
+    requests.get("http://127.0.0.1:8000/").json()["pid"]
     for _ in range(20)
 }}
 print(pids)
@@ -107,13 +107,13 @@ def test_ray_serve_basic(docker_cluster):
     # Make sure the serve controller still runs on the head node after restart.
     check_controller_head_node_script = """
 import ray
-import httpx
+import requests
 from ray.serve.schema import ServeInstanceDetails
 from ray._private.resource_spec import HEAD_NODE_RESOURCE_NAME
 ray.init(address="auto")
 head_node_id = ray.get_runtime_context().get_node_id()
 serve_details = ServeInstanceDetails(
-    **httpx.get("http://localhost:8265/api/serve/applications/").json())
+    **requests.get("http://localhost:8265/api/serve/applications/").json())
 assert serve_details.controller_info.node_id == head_node_id
 """
     output = head.exec_run(cmd=f"python -c '{check_controller_head_node_script}'")
