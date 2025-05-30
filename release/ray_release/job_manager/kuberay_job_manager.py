@@ -179,7 +179,7 @@ class KuberayJobManager:
         login_request = {"secretKey": kuberay_service_secret_key}
         login_response = requests.post(login_url, json=login_request)
         login_response.raise_for_status()
-        
+
         # Cache the token as instance variable
         self._kuberay_service_token = login_response.json()["token"]
         return self._kuberay_service_token
