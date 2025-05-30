@@ -146,10 +146,6 @@ class KuberayJobManager:
         if "jobs" not in response_json or len(response_json["jobs"]) == 0:
             raise Exception(f"No jobs found for {self.job_name}")
         if len(response_json["jobs"]) > 1:
-            print(f"{self.job_name}Jobs: \n")
-            for job in response_json["jobs"]:
-                print(job)
-                print()
             raise Exception(f"Multiple jobs found for {self.job_name}")
         return response_json["jobs"][0]
 
@@ -163,6 +159,10 @@ class KuberayJobManager:
         return job["status"]
 
     def _get_kuberay_server_token(self) -> str:
+        # Use cached token if available
+        if hasattr(self, "_kuberay_service_token"):
+            return self._kuberay_service_token
+
         session = boto3.session.Session()
         client = session.client("secretsmanager", region_name="us-west-2")
         try:
@@ -179,7 +179,10 @@ class KuberayJobManager:
         login_request = {"secretKey": kuberay_service_secret_key}
         login_response = requests.post(login_url, json=login_request)
         login_response.raise_for_status()
-        return login_response.json()["token"]
+        
+        # Cache the token as instance variable
+        self._kuberay_service_token = login_response.json()["token"]
+        return self._kuberay_service_token
 
     def fetch_results(self) -> Dict[str, Any]:
         # TODO: implement this
