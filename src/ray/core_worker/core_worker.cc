@@ -40,6 +40,7 @@
 #include "ray/common/task/task_util.h"
 #include "ray/gcs/gcs_client/gcs_client.h"
 #include "ray/gcs/pb_util.h"
+#include "ray/rpc/event_aggregator_client.h"
 #include "ray/util/container_util.h"
 #include "ray/util/event.h"
 #include "ray/util/subreaper.h"
@@ -416,7 +417,9 @@ CoreWorker::CoreWorker(CoreWorkerOptions options, const WorkerID &worker_id)
   }
 
   task_event_buffer_ = std::make_unique<worker::TaskEventBufferImpl>(
-      std::make_shared<gcs::GcsClient>(options_.gcs_options));
+      std::make_shared<gcs::GcsClient>(options_.gcs_options),
+      std::make_unique<rpc::EventAggregatorClientImpl>(
+          "127.0.0.1", options_.metrics_agent_port, *client_call_manager_));
 
   // Initialize task receivers.
   if (options_.worker_type == WorkerType::WORKER || options_.is_local_mode) {
@@ -759,6 +762,7 @@ CoreWorker::CoreWorker(CoreWorkerOptions options, const WorkerID &worker_id)
           /*attempt_number=*/0,
           rpc::TaskStatus::RUNNING,
           /*timestamp=*/absl::GetCurrentTimeNanos(),
+          /*is_actor_task_event=*/spec.IsActorTask(),
           std::make_shared<const TaskSpecification>(std::move(spec)));
       task_event_buffer_->AddTaskEvent(std::move(task_event));
     }
@@ -1079,7 +1083,8 @@ void CoreWorker::Disconnect(
         worker_context_.GetCurrentJobID(),
         /* attempt_number */ 0,
         rpc::TaskStatus::FINISHED,
-        /* timestamp */ absl::GetCurrentTimeNanos());
+        /* timestamp */ absl::GetCurrentTimeNanos(),
+        /*is_actor_task_event=*/worker_context_.GetCurrentActorID().IsNil());
     task_event_buffer_->AddTaskEvent(std::move(task_event));
   }
 
