@@ -309,6 +309,12 @@ def restart_server_with_strategy(strategy, args):
                 print(
                     f"Health check attempt {i+1}/{max_retries}: Server started successfully with strategy {strategy}"
                 )
+                # Delete the temporary config file after server process starts
+                try:
+                    os.remove(temp_path)
+                    print(f"Deleted temporary config file: {temp_path}")
+                except Exception as e:
+                    print(f"Warning: Failed to delete temporary config file: {e}")
                 return server_process, stdout_log, stderr_log
             else:
                 print(
@@ -316,16 +322,15 @@ def restart_server_with_strategy(strategy, args):
                 )
         except Exception as e:
             print(f"Health check attempt {i+1}/{max_retries}: {e}")
-        finally:
-            # Delete the temporary config file after server process starts
-            try:
-                os.remove(temp_path)
-                print(f"Deleted temporary config file: {temp_path}")
-            except Exception as e:
-                print(f"Warning: Failed to delete temporary config file: {e}")
     print(
         f"Failed to start server with strategy {strategy} after {max_retries} attempts"
     )
+    # Delete the temporary config file if server fails to start
+    try:
+        os.remove(temp_path)
+        print(f"Deleted temporary config file: {temp_path}")
+    except Exception as e:
+        print(f"Warning: Failed to delete temporary config file: {e}")
     return None, None, None
 
 
@@ -530,7 +535,7 @@ def save_results_to_csv(results, args):
     df[numeric_columns] = df[numeric_columns].round(4)
 
     # Save Serve results
-    serve_csv_file = f"/home/ray/default/work/ray/_benchmarking_scripts/serve_{args.dataset_name}_sweep_results.csv"
+    serve_csv_file = f"/home/ray/default/work/ray/_benchmarking_scripts/csv_results/serve_{args.dataset_name}_sweep_results.csv"
     df.to_csv(serve_csv_file, mode="a", index=False)
     print(f"\nAppended Serve results to {serve_csv_file}")
 
@@ -619,7 +624,7 @@ def save_results_to_csv(results, args):
         vllm_record = {**base_record, **vllm_summary}
         vllm_df = pd.DataFrame([vllm_record])
 
-        vllm_csv_file = f"/home/ray/default/work/ray/_benchmarking_scripts/vllm_{args.dataset_name}_sweep_results.csv"
+        vllm_csv_file = f"/home/ray/default/work/ray/_benchmarking_scripts/csv_results/vllm_{args.dataset_name}_sweep_results.csv"
         vllm_df.to_csv(vllm_csv_file, mode="a", index=False)
 
     except subprocess.CalledProcessError:

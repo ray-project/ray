@@ -102,7 +102,7 @@ class PrefixAwareReplicaScheduler(
         self._vllm_metrics_path = (
             "/home/ray/default/work/ray/_benchmarking_scripts/results/vllm_metrics"
         )
-        self._char_count_over_time_path = "/home/ray/default/work/ray/_benchmarking_scripts/results/char_count_over_time"
+        self._char_count_over_time_path = "/home/ray/default/work/ray/_benchmarking_scripts/custom_results/char_count_over_time"
         self._vllm_metrics_over_time = {}
         self._char_count_over_time = {}
         self._benchmark_start_time = 0.0
