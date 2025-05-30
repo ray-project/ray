@@ -2,11 +2,15 @@ from typing import Any, Dict, List, Optional, Tuple
 
 import ray
 from ray.data._internal.execution.interfaces import RefBundle, TaskContext
-from ray.data._internal.planner.exchange.interfaces import ExchangeTaskScheduler
+from ray.data._internal.planner.exchange.interfaces import (
+    ExchangeTaskScheduler,
+    _unzip_tuples,
+)
 from ray.data._internal.planner.exchange.shuffle_task_spec import ShuffleTaskSpec
 from ray.data._internal.remote_fn import cached_remote_fn
 from ray.data._internal.split import _split_at_indices
 from ray.data._internal.stats import StatsDict
+from ray.data._internal.util import unify_block_metadata_schema
 from ray.data.block import Block, BlockAccessor, BlockMetadata
 from ray.types import ObjectRef
 
@@ -89,11 +93,12 @@ class SplitRepartitionTaskScheduler(ExchangeTaskScheduler):
             if len(split_block_refs[j]) > 0
         ]
 
-        reduce_block_refs, reduce_metadata = zip(*reduce_return)
-        reduce_metadata = reduce_bar.fetch_until_complete(list(reduce_metadata))
-        reduce_block_refs, reduce_metadata = list(reduce_block_refs), list(
-            reduce_metadata
+        reduce_block_refs, reduce_metadata_schema = _unzip_tuples(2, reduce_return)
+        reduce_metadata_schema = reduce_bar.fetch_until_complete(
+            list(reduce_metadata_schema)
         )
+        reduce_block_refs = list(reduce_block_refs)
+        reduce_metadata, reduce_schema = _unzip_tuples(2, reduce_metadata_schema)
 
         # Handle empty blocks.
         if len(reduce_block_refs) < output_num_blocks:
@@ -106,7 +111,7 @@ class SplitRepartitionTaskScheduler(ExchangeTaskScheduler):
             )
 
             num_empty_blocks = output_num_blocks - len(reduce_block_refs)
-            first_block_schema = reduce_metadata[0].schema
+            first_block_schema = reduce_schema[0]
             if first_block_schema is None:
                 raise ValueError(
                     "Cannot split partition on blocks with unknown block format."
@@ -135,4 +140,5 @@ class SplitRepartitionTaskScheduler(ExchangeTaskScheduler):
             "reduce": reduce_metadata,
         }
 
-        return (output, stats)
+        schema = unify_block_metadata_schema(reduce_schema)
+        return (output, stats, schema)

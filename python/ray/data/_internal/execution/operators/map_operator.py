@@ -5,6 +5,7 @@ import logging
 from abc import ABC, abstractmethod
 from collections import defaultdict, deque
 from typing import (
+    TYPE_CHECKING,
     Any,
     Callable,
     Deque,
@@ -47,7 +48,7 @@ from ray.data._internal.execution.operators.map_transformer import (
 )
 from ray.data._internal.execution.util import memory_string
 from ray.data._internal.stats import StatsDict
-from ray.data._internal.util import MemoryProfiler
+from ray.data._internal.util import MemoryProfiler, unify_block_metadata_schema
 from ray.data.block import (
     Block,
     BlockAccessor,
@@ -59,6 +60,8 @@ from ray.data.block import (
 from ray.data.context import DataContext
 from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
 
+if TYPE_CHECKING:
+    import pyarrow as pa
 logger = logging.getLogger(__name__)
 
 
@@ -381,10 +384,19 @@ class MapOperator(OneToOneOperator, InternalQueueOperatorMixin, ABC):
         self._next_data_task_idx += 1
         self._metrics.on_task_submitted(task_index, inputs)
 
-        def _output_ready_callback(task_index, output: RefBundle):
+        def _output_ready_callback(
+            task_index, output: RefBundle, schema: "pa.lib.Schema"
+        ):
             # Since output is streamed, it should only contain one block.
             assert len(output) == 1
+            assert schema is not None
             self._metrics.on_task_output_generated(task_index, output)
+
+            # unify schemas
+            if self._schema is None:
+                self._schema = schema
+            elif schema:
+                self._schema = unify_block_metadata_schema([self._schema, schema])
 
             # Notify output queue that the task has produced an new output.
             self._output_queue.notify_task_output_ready(task_index, output)
@@ -422,7 +434,7 @@ class MapOperator(OneToOneOperator, InternalQueueOperatorMixin, ABC):
         self._data_tasks[task_index] = DataOpTask(
             task_index,
             gen,
-            lambda output: _output_ready_callback(task_index, output),
+            lambda output, schema: _output_ready_callback(task_index, output, schema),
             functools.partial(_task_done_callback, task_index),
         )
 
@@ -552,12 +564,13 @@ def _map_task(
         for b_out in map_transformer.apply_transform(iter(blocks), ctx):
             # TODO(Clark): Add input file propagation from input blocks.
             m_out = BlockAccessor.for_block(b_out).get_metadata()
+            s_out = BlockAccessor.for_block(b_out).schema()
             m_out.exec_stats = stats.build()
             m_out.exec_stats.udf_time_s = map_transformer.udf_time()
             m_out.exec_stats.task_idx = ctx.task_idx
             m_out.exec_stats.max_uss_bytes = profiler.estimate_max_uss()
             yield b_out
-            yield m_out
+            yield (m_out, s_out)
             stats = BlockExecStats.builder()
             profiler.reset()
 

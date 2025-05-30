@@ -481,7 +481,6 @@ def op_two_block():
             BlockMetadata(
                 num_rows=block_params["num_rows"][i],
                 size_bytes=block_params["size_bytes"][i],
-                schema=None,
                 input_files=None,
                 exec_stats=block_exec_stats,
             )

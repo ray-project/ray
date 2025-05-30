@@ -370,7 +370,7 @@ class ArrowBlockAccessor(TableBlockAccessor):
     @staticmethod
     def merge_sorted_blocks(
         blocks: List[Block], sort_key: "SortKey"
-    ) -> Tuple[Block, BlockMetadata]:
+    ) -> Tuple[Block, Tuple[BlockMetadata, "pyarrow.lib.Schema"]]:
         stats = BlockExecStats.builder()
         blocks = [b for b in blocks if b.num_rows > 0]
         if len(blocks) == 0:
@@ -380,7 +380,9 @@ class ArrowBlockAccessor(TableBlockAccessor):
             blocks = TableBlockAccessor.normalize_block_types(blocks, BlockType.ARROW)
             concat_and_sort = get_concat_and_sort_transform(DataContext.get_current())
             ret = concat_and_sort(blocks, sort_key, promote_types=True)
-        return ret, ArrowBlockAccessor(ret).get_metadata(exec_stats=stats.build())
+        meta = ArrowBlockAccessor(ret).get_metadata(exec_stats=stats.build())
+        schema = ArrowBlockAccessor(ret).schema()
+        return ret, (meta, schema)
 
     def block_type(self) -> BlockType:
         return BlockType.ARROW

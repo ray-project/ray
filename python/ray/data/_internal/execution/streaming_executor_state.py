@@ -548,6 +548,12 @@ def update_operator_states(topology: Topology) -> None:
         if dependents_completed:
             op.mark_execution_finished()
 
+    prev_op = None
+    for op, op_state in list(topology.items()):
+        if op.execution_finished() and op._schema is None and prev_op is not None:
+            op._schema = prev_op._schema
+        prev_op = op
+
 
 def get_eligible_operators(
     topology: Topology,

@@ -1,13 +1,13 @@
 import functools
 from typing import Any, Dict, Optional, Union
 
+from ray.data._internal.logical.interfaces import SourceOperatorMixin
 from ray.data._internal.logical.operators.map_operator import AbstractMap
-from ray.data._internal.util import unify_block_metadata_schema
 from ray.data.block import BlockMetadata
 from ray.data.datasource.datasource import Datasource, Reader
 
 
-class Read(AbstractMap):
+class Read(AbstractMap, SourceOperatorMixin):
     """Logical operator for read."""
 
     def __init__(
@@ -33,6 +33,12 @@ class Read(AbstractMap):
         self._concurrency = concurrency
         self._detected_parallelism = None
 
+    def guess_schema(self):
+        return self._datasource._schema
+
+    def output_data(self):
+        return None
+
     def set_detected_parallelism(self, parallelism: int):
         """
         Set the true parallelism that should be used during execution. This
@@ -46,7 +52,7 @@ class Read(AbstractMap):
         """
         return self._detected_parallelism
 
-    def aggregate_output_metadata(self) -> BlockMetadata:
+    def guess_metadata(self) -> BlockMetadata:
         """A ``BlockMetadata`` that represents the aggregate metadata of the outputs.
 
         This method gets metadata from the read tasks. It doesn't trigger any actual
@@ -58,13 +64,13 @@ class Read(AbstractMap):
     def _cached_output_metadata(self) -> BlockMetadata:
         # Legacy datasources might not implement `get_read_tasks`.
         if self._datasource.should_create_reader:
-            return BlockMetadata(None, None, None, None, None)
+            return BlockMetadata(None, None, None, None)
 
         # HACK: Try to get a single read task to get the metadata.
         read_tasks = self._datasource.get_read_tasks(1)
         if len(read_tasks) == 0:
             # If there are no read tasks, the dataset is probably empty.
-            return BlockMetadata(None, None, None, None, None)
+            return BlockMetadata(None, None, None, None)
 
         # `get_read_tasks` isn't guaranteed to return exactly one read task.
         metadata = [read_task.metadata for read_task in read_tasks]
@@ -79,8 +85,6 @@ class Read(AbstractMap):
         else:
             size_bytes = None
 
-        schema = unify_block_metadata_schema(metadata)
-
         input_files = []
         for meta in metadata:
             if meta.input_files is not None:
@@ -89,14 +93,9 @@ class Read(AbstractMap):
         return BlockMetadata(
             num_rows=num_rows,
             size_bytes=size_bytes,
-            schema=schema,
             input_files=input_files,
             exec_stats=None,
         )
-
-    @classmethod
-    def is_read_op(cls):
-        return True
 
     def can_modify_num_rows(self) -> bool:
         # NOTE: Returns true, since most of the readers expands its input

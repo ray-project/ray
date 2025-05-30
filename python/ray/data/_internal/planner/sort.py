@@ -1,5 +1,5 @@
 from functools import partial
-from typing import List, Optional, Tuple
+from typing import TYPE_CHECKING, List, Optional, Tuple
 
 from ray.data._internal.execution.interfaces import (
     AllToAllTransformFn,
@@ -14,8 +14,10 @@ from ray.data._internal.planner.exchange.push_based_shuffle_task_scheduler impor
 )
 from ray.data._internal.planner.exchange.sort_task_spec import SortKey, SortTaskSpec
 from ray.data._internal.stats import StatsDict
-from ray.data._internal.util import unify_block_metadata_schema
 from ray.data.context import DataContext, ShuffleStrategy
+
+if TYPE_CHECKING:
+    import pyarrow as pa
 
 
 def generate_sort_fn(
@@ -29,16 +31,15 @@ def generate_sort_fn(
     def fn(
         sort_key: SortKey,
         refs: List[RefBundle],
+        schema: Optional["pa.lib.Schema"],
         ctx: TaskContext,
     ) -> Tuple[List[RefBundle], StatsDict]:
         blocks = []
-        metadata = []
         for ref_bundle in refs:
             blocks.extend(ref_bundle.block_refs)
-            metadata.extend(ref_bundle.metadata)
         if len(blocks) == 0:
             return (blocks, {})
-        sort_key.validate_schema(unify_block_metadata_schema(metadata))
+        sort_key.validate_schema(schema)
 
         num_mappers = len(blocks)
         # Use same number of output partitions.

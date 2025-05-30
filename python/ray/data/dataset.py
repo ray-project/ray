@@ -59,6 +59,7 @@ from ray.data._internal.execution.util import memory_string
 from ray.data._internal.iterator.iterator_impl import DataIteratorImpl
 from ray.data._internal.iterator.stream_split_iterator import StreamSplitDataIterator
 from ray.data._internal.logical.interfaces import LogicalPlan
+from ray.data._internal.logical.interfaces.source_operator import GuessMetadataMixin
 from ray.data._internal.logical.operators.all_to_all_operator import (
     RandomizeBlocks,
     RandomShuffle,
@@ -1915,7 +1916,8 @@ class Dataset:
                     for b, m in zip(block_refs_split, metadata_split)
                 ]
                 logical_plan = LogicalPlan(
-                    InputData(input_data=ref_bundles), self.context
+                    InputData(input_data=ref_bundles, schema=self._plan.schema()),
+                    self.context,
                 )
                 split_datasets.append(
                     MaterializedDataset(
@@ -2034,7 +2036,9 @@ class Dataset:
 
         split_datasets = []
         for bundle in per_split_bundles:
-            logical_plan = LogicalPlan(InputData(input_data=[bundle]), self.context)
+            logical_plan = LogicalPlan(
+                InputData(input_data=[bundle], schema=self._plan.schema()), self.context
+            )
             split_datasets.append(
                 MaterializedDataset(
                     ExecutionPlan(stats, self.context.copy()),
@@ -2108,7 +2112,10 @@ class Dataset:
             ref_bundles = [
                 RefBundle([(b, m)], owns_blocks=False) for b, m in zip(bs, ms)
             ]
-            logical_plan = LogicalPlan(InputData(input_data=ref_bundles), self.context)
+            logical_plan = LogicalPlan(
+                InputData(input_data=ref_bundles, schema=self._plan.schema()),
+                self.context,
+            )
 
             splits.append(
                 MaterializedDataset(
@@ -3294,8 +3301,11 @@ class Dataset:
             in-memory size is not known.
         """
         # If the size is known from metadata, return it.
-        if self._logical_plan.dag.aggregate_output_metadata().size_bytes is not None:
-            return self._logical_plan.dag.aggregate_output_metadata().size_bytes
+        if (
+            isinstance(self._logical_plan.dag, GuessMetadataMixin)
+            and self._logical_plan.dag.guess_metadata().size_bytes is not None
+        ):
+            return self._logical_plan.dag.guess_metadata().size_bytes
 
         metadata = self._plan.execute().metadata
         if not metadata or metadata[0].size_bytes is None:
@@ -5647,7 +5657,9 @@ class Dataset:
             )
             for block_with_metadata in blocks_with_metadata
         ]
-        logical_plan = LogicalPlan(InputData(input_data=ref_bundles), self.context)
+        logical_plan = LogicalPlan(
+            InputData(input_data=ref_bundles, schema=copy._plan.schema()), self.context
+        )
         output = MaterializedDataset(
             ExecutionPlan(copy._plan.stats(), data_context=copy.context),
             logical_plan,

@@ -38,7 +38,7 @@ from ray.data._internal.execution.interfaces.physical_operator import (
     OpTask,
 )
 from ray.data._internal.table_block import TableBlockAccessor
-from ray.data._internal.util import GiB, MiB
+from ray.data._internal.util import GiB, MiB, unify_block_metadata_schema
 from ray.data.block import (
     Block,
     BlockAccessor,
@@ -592,7 +592,10 @@ class HashShufflingOperatorBase(PhysicalOperator):
             f"partition id is {self._last_finalized_partition_id})"
         )
 
-        def _on_bundle_ready(bundle: RefBundle):
+        def _on_bundle_ready(bundle: RefBundle, schema: "pa.lib.Schema"):
+            assert schema is not None
+            # unify schemas
+            self._schema = unify_block_metadata_schema([self._schema, schema])
             # Add finalized block to the output queue
             self._output_queue.append(bundle)
             self._metrics.on_output_queued(bundle)
@@ -1095,7 +1098,7 @@ class HashShuffleAggregator:
 
     def finalize(
         self, partition_id: int
-    ) -> AsyncGenerator[Union[Block, BlockMetadata], None]:
+    ) -> AsyncGenerator[Union[Block, BlockMetadata, "pa.lib.Schema"], None]:
         with self._lock:
             # Finalize given partition id
             result = self._agg.finalize(partition_id)
@@ -1103,5 +1106,6 @@ class HashShuffleAggregator:
             self._agg.clear(partition_id)
 
         # TODO break down blocks to target size
+        accessor = BlockAccessor.for_block(result)
         yield result
-        yield BlockAccessor.for_block(result).get_metadata()
+        yield accessor.get_metadata(), accessor.schema()

@@ -1,4 +1,4 @@
-from typing import Callable, List, Optional
+from typing import TYPE_CHECKING, Callable, List, Optional
 
 from ray.data._internal.execution.interfaces import (
     ExecutionOptions,
@@ -7,6 +7,9 @@ from ray.data._internal.execution.interfaces import (
 )
 from ray.data._internal.stats import StatsDict
 from ray.data.context import DataContext
+
+if TYPE_CHECKING:
+    import pyarrow as pa
 
 
 class InputDataBuffer(PhysicalOperator):
@@ -22,6 +25,7 @@ class InputDataBuffer(PhysicalOperator):
         input_data: Optional[List[RefBundle]] = None,
         input_data_factory: Optional[Callable[[int], List[RefBundle]]] = None,
         num_output_blocks: Optional[int] = None,
+        schema: Optional["pa.lib.Schema"] = None,
     ):
         """Create an InputDataBuffer.
 
@@ -31,7 +35,9 @@ class InputDataBuffer(PhysicalOperator):
             num_output_blocks: The number of output blocks. If not specified, progress
                 bars total will be set based on num output bundles instead.
         """
-        super().__init__("Input", [], data_context, target_max_block_size=None)
+        super().__init__(
+            "Input", [], data_context, target_max_block_size=None, schema=schema
+        )
         if input_data is not None:
             assert input_data_factory is None
             # Copy the input data to avoid mutating the original list.

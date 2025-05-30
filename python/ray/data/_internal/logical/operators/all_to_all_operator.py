@@ -1,11 +1,14 @@
-from typing import Any, Dict, List, Optional
+from typing import TYPE_CHECKING, Any, Dict, List, Optional
 
-from ray.data._internal.logical.interfaces import LogicalOperator
+from ray.data._internal.logical.interfaces import GuessMetadataMixin, LogicalOperator
 from ray.data._internal.planner.exchange.interfaces import ExchangeTaskSpec
 from ray.data._internal.planner.exchange.shuffle_task_spec import ShuffleTaskSpec
 from ray.data._internal.planner.exchange.sort_task_spec import SortKey, SortTaskSpec
 from ray.data.aggregate import AggregateFn
 from ray.data.block import BlockMetadata
+
+if TYPE_CHECKING:
+    import pyarrow as pa
 
 
 class AbstractAllToAll(LogicalOperator):
@@ -37,7 +40,7 @@ class AbstractAllToAll(LogicalOperator):
         self._sub_progress_bar_names = sub_progress_bar_names
 
 
-class RandomizeBlocks(AbstractAllToAll):
+class RandomizeBlocks(AbstractAllToAll, GuessMetadataMixin):
     """Logical operator for randomize_block_order."""
 
     def __init__(
@@ -51,12 +54,22 @@ class RandomizeBlocks(AbstractAllToAll):
         )
         self._seed = seed
 
-    def aggregate_output_metadata(self) -> BlockMetadata:
+    def guess_metadata(self) -> BlockMetadata:
         assert len(self._input_dependencies) == 1, len(self._input_dependencies)
-        return self._input_dependencies[0].aggregate_output_metadata()
+        inp = self.input_dependencies[0]
+        if isinstance(inp, GuessMetadataMixin):
+            return inp.guess_metadata()
+        return BlockMetadata(None, None, None, None)
+
+    def guess_schema(self) -> Optional["pa.lib.Schema"]:
+        assert len(self._input_dependencies) == 1, len(self._input_dependencies)
+        inp = self.input_dependencies[0]
+        if isinstance(inp, GuessMetadataMixin):
+            return inp.guess_schema()
+        return None
 
 
-class RandomShuffle(AbstractAllToAll):
+class RandomShuffle(AbstractAllToAll, GuessMetadataMixin):
     """Logical operator for random_shuffle."""
 
     def __init__(
@@ -77,12 +90,22 @@ class RandomShuffle(AbstractAllToAll):
         )
         self._seed = seed
 
-    def aggregate_output_metadata(self) -> BlockMetadata:
+    def guess_metadata(self) -> BlockMetadata:
         assert len(self._input_dependencies) == 1, len(self._input_dependencies)
-        return self._input_dependencies[0].aggregate_output_metadata()
+        inp = self.input_dependencies[0]
+        if isinstance(inp, GuessMetadataMixin):
+            return inp.guess_metadata()
+        return BlockMetadata(None, None, None, None)
+
+    def guess_schema(self) -> Optional["pa.lib.Schema"]:
+        assert len(self._input_dependencies) == 1, len(self._input_dependencies)
+        inp = self.input_dependencies[0]
+        if isinstance(inp, GuessMetadataMixin):
+            return inp.guess_schema()
+        return None
 
 
-class Repartition(AbstractAllToAll):
+class Repartition(AbstractAllToAll, GuessMetadataMixin):
     """Logical operator for repartition."""
 
     def __init__(
@@ -112,12 +135,22 @@ class Repartition(AbstractAllToAll):
         self._keys = keys
         self._sort = sort
 
-    def aggregate_output_metadata(self) -> BlockMetadata:
+    def guess_metadata(self) -> BlockMetadata:
         assert len(self._input_dependencies) == 1, len(self._input_dependencies)
-        return self._input_dependencies[0].aggregate_output_metadata()
+        inp = self.input_dependencies[0]
+        if isinstance(inp, GuessMetadataMixin):
+            return inp.guess_metadata()
+        return BlockMetadata(None, None, None, None)
+
+    def guess_schema(self) -> Optional["pa.lib.Schema"]:
+        assert len(self._input_dependencies) == 1, len(self._input_dependencies)
+        inp = self.input_dependencies[0]
+        if isinstance(inp, GuessMetadataMixin):
+            return inp.guess_schema()
+        return None
 
 
-class Sort(AbstractAllToAll):
+class Sort(AbstractAllToAll, GuessMetadataMixin):
     """Logical operator for sort."""
 
     def __init__(
@@ -138,9 +171,19 @@ class Sort(AbstractAllToAll):
         self._sort_key = sort_key
         self._batch_format = batch_format
 
-    def aggregate_output_metadata(self) -> BlockMetadata:
+    def guess_metadata(self) -> BlockMetadata:
         assert len(self._input_dependencies) == 1, len(self._input_dependencies)
-        return self._input_dependencies[0].aggregate_output_metadata()
+        inp = self.input_dependencies[0]
+        if isinstance(inp, GuessMetadataMixin):
+            return inp.guess_metadata()
+        return BlockMetadata(None, None, None, None)
+
+    def guess_schema(self) -> Optional["pa.lib.Schema"]:
+        assert len(self._input_dependencies) == 1, len(self._input_dependencies)
+        inp = self.input_dependencies[0]
+        if isinstance(inp, GuessMetadataMixin):
+            return inp.guess_schema()
+        return None
 
 
 class Aggregate(AbstractAllToAll):

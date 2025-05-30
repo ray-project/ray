@@ -3,7 +3,17 @@ import logging
 import uuid
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
-from typing import Any, Callable, Dict, Iterator, List, Optional, Tuple, Union
+from typing import (
+    TYPE_CHECKING,
+    Any,
+    Callable,
+    Dict,
+    Iterator,
+    List,
+    Optional,
+    Tuple,
+    Union,
+)
 
 import ray
 from .ref_bundle import RefBundle
@@ -20,6 +30,9 @@ from ray.data._internal.logical.interfaces import LogicalOperator, Operator
 from ray.data._internal.output_buffer import OutputBlockSizeOption
 from ray.data._internal.stats import StatsDict, Timer
 from ray.data.context import DataContext
+
+if TYPE_CHECKING:
+    import pyarrow as pa
 
 logger = logging.getLogger(__name__)
 
@@ -78,7 +91,7 @@ class DataOpTask(OpTask):
         self,
         task_index: int,
         streaming_gen: ObjectRefGenerator,
-        output_ready_callback: Callable[[RefBundle], None],
+        output_ready_callback: Callable[[RefBundle, "pa.lib.Schema"], None],
         task_done_callback: Callable[[Optional[Exception]], None],
         task_resource_bundle: Optional[ExecutionResources] = None,
     ):
@@ -122,7 +135,7 @@ class DataOpTask(OpTask):
                 break
 
             try:
-                meta = ray.get(next(self._streaming_gen))
+                meta, schema = ray.get(next(self._streaming_gen))
             except StopIteration:
                 # The generator should always yield 2 values (block and metadata)
                 # each time. If we get a StopIteration here, it means an error
@@ -137,7 +150,7 @@ class DataOpTask(OpTask):
                     self._task_done_callback(ex)
                     raise ex from None
             self._output_ready_callback(
-                RefBundle([(block_ref, meta)], owns_blocks=True)
+                RefBundle([(block_ref, meta)], owns_blocks=True), schema
             )
             bytes_read += meta.size_bytes
         return bytes_read
@@ -226,6 +239,7 @@ class PhysicalOperator(Operator):
         input_dependencies: List["PhysicalOperator"],
         data_context: DataContext,
         target_max_block_size: Optional[int],
+        schema: Optional["pa.lib.Schema"] = None,
     ):
         super().__init__(name, input_dependencies)
 
@@ -248,6 +262,7 @@ class PhysicalOperator(Operator):
         self._id = str(uuid.uuid4())
         # Initialize metrics after data_context is set
         self._metrics = OpRuntimeMetrics(self)
+        self._schema: Optional["pa.lib.Schema"] = schema
 
     def __reduce__(self):
         raise ValueError("Operator is not serializable.")

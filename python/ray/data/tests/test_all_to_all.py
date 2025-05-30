@@ -1619,13 +1619,13 @@ def test_groupby_aggregations_are_associative(
     for aggregated_blocks in itertools.permutations(aggregated_sub_blocks):
         cur = aggregated_blocks[0]
         for next_ in aggregated_blocks[1:]:
-            cur, _ = BlockAccessor.for_block(cur)._combine_aggregated_blocks(
+            cur, (_, _) = BlockAccessor.for_block(cur)._combine_aggregated_blocks(
                 [cur, next_], group_by_key, aggs, finalize=False
             )
 
-        finalized_block, _ = BlockAccessor.for_block(cur)._combine_aggregated_blocks(
-            [cur], group_by_key, aggs, finalize=True
-        )
+        finalized_block, (_, _) = BlockAccessor.for_block(
+            cur
+        )._combine_aggregated_blocks([cur], group_by_key, aggs, finalize=True)
 
         # NOTE: _combine_aggregated_blocks could be producing
         #   - Arrow blocks when using vectorized or full Arrow-native aggregations

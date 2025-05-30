@@ -307,6 +307,8 @@ class ClickHouseDatasource(Datasource):
             sample_block_schema,
         ) = self._get_sampled_estimates()
 
+        self.set_schema(sample_block_schema)
+
         def _get_read_task(
             block_rows: int, offset_rows: int, parallelized: bool
         ) -> ReadTask:
@@ -323,7 +325,6 @@ class ClickHouseDatasource(Datasource):
                 BlockMetadata(
                     num_rows=block_rows,
                     size_bytes=estimated_size_bytes_per_row * block_rows,
-                    schema=sample_block_schema,
                     input_files=None,
                     exec_stats=None,
                 ),

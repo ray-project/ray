@@ -25,7 +25,6 @@ def ref_bundle_generator(num_rows: int, num_blocks: int) -> Iterator[RefBundle]:
         metadata = BlockMetadata(
             num_rows=num_rows,
             size_bytes=0,
-            schema=None,
             input_files=[],
             exec_stats=None,
         )

@@ -554,7 +554,7 @@ class PandasBlockAccessor(TableBlockAccessor):
     @staticmethod
     def merge_sorted_blocks(
         blocks: List[Block], sort_key: "SortKey"
-    ) -> Tuple["pandas.DataFrame", BlockMetadata]:
+    ) -> Tuple[Block, Tuple[BlockMetadata, "pyarrow.lib.Schema"]]:
         pd = lazy_import_pandas()
         stats = BlockExecStats.builder()
         blocks = [b for b in blocks if b.shape[0] > 0]
@@ -566,7 +566,9 @@ class PandasBlockAccessor(TableBlockAccessor):
             ret = pd.concat(blocks, ignore_index=True)
             columns, ascending = sort_key.to_pandas_sort_args()
             ret = ret.sort_values(by=columns, ascending=ascending)
-        return ret, PandasBlockAccessor(ret).get_metadata(exec_stats=stats.build())
+        meta = PandasBlockAccessor(ret).get_metadata(exec_stats=stats.build())
+        schema = PandasBlockAccessor(ret).schema()
+        return ret, (meta, schema)
 
     def block_type(self) -> BlockType:
         return BlockType.PANDAS

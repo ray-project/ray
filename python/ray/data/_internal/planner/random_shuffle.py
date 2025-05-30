@@ -1,5 +1,5 @@
 import time
-from typing import Any, Dict, List, Optional, Tuple
+from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple
 
 from ray.data._internal.execution.interfaces import (
     AllToAllTransformFn,
@@ -18,6 +18,9 @@ from ray.data._internal.stats import StatsDict
 from ray.data.context import DataContext, ShuffleStrategy
 from ray.util.common import INT32_MAX
 
+if TYPE_CHECKING:
+    import pyarrow as pa
+
 
 def generate_random_shuffle_fn(
     data_context: DataContext,
@@ -34,6 +37,7 @@ def generate_random_shuffle_fn(
 
     def fn(
         refs: List[RefBundle],
+        schema: Optional["pa.lib.Schema"],
         ctx: TaskContext,
     ) -> Tuple[List[RefBundle], StatsDict]:
         num_input_blocks = sum(len(r.blocks) for r in refs)

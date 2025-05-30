@@ -1,4 +1,4 @@
-from typing import List, Tuple
+from typing import TYPE_CHECKING, List, Optional, Tuple
 
 from ray.data._internal.execution.interfaces import (
     AllToAllTransformFn,
@@ -8,6 +8,9 @@ from ray.data._internal.execution.interfaces import (
 from ray.data._internal.logical.operators.all_to_all_operator import RandomizeBlocks
 from ray.data._internal.stats import StatsDict
 
+if TYPE_CHECKING:
+    import pyarrow as pa
+
 
 def generate_randomize_blocks_fn(
     op: RandomizeBlocks,
@@ -15,7 +18,7 @@ def generate_randomize_blocks_fn(
     """Generate function to randomize order of blocks."""
 
     def fn(
-        refs: List[RefBundle], context: TaskContext
+        refs: List[RefBundle], schema: Optional["pa.lib.Schema"], context: TaskContext
     ) -> Tuple[List[RefBundle], StatsDict]:
         import random
 
@@ -46,6 +49,6 @@ def generate_randomize_blocks_fn(
                         owns_blocks=input_owned,
                     )
                 )
-            return output, {op._name: stats_list}
+            return output, {op._name: stats_list}, schema
 
     return fn

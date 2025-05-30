@@ -1,6 +1,6 @@
 import logging
 import math
-from typing import Any, Dict, List, Optional, Tuple, TypeVar, Union
+from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple, TypeVar, Union
 
 import ray
 from ray._private.ray_constants import CALLER_MEMORY_USAGE_PER_OBJECT_REF
@@ -8,15 +8,22 @@ from ray.data._internal.execution.interfaces import RefBundle, TaskContext
 from ray.data._internal.planner.exchange.interfaces import (
     ExchangeTaskScheduler,
     ExchangeTaskSpec,
+    _unzip_tuples,
 )
 from ray.data._internal.progress_bar import ProgressBar
 from ray.data._internal.remote_fn import cached_remote_fn
 from ray.data._internal.stats import StatsDict
-from ray.data._internal.util import convert_bytes_to_human_readable_str
+from ray.data._internal.util import (
+    convert_bytes_to_human_readable_str,
+    unify_block_metadata_schema,
+)
 from ray.data.block import Block, BlockAccessor, BlockExecStats, BlockMetadata, to_stats
 from ray.data.context import DataContext
 from ray.types import ObjectRef
 from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
+
+if TYPE_CHECKING:
+    import pyarrow as pa
 
 logger = logging.getLogger(__name__)
 
@@ -191,30 +198,30 @@ class _PipelinedStageExecutor:
     def __iter__(self):
         return self
 
-    def __next__(self) -> List[BlockMetadata]:
+    def __next__(self) -> List[Tuple[BlockMetadata, "pa.lib.Schema"]]:
         """
         Submit one round of tasks. If we already have the max concurrent rounds
         in flight, first wait for the oldest round of tasks to finish.
         """
-        prev_metadata = []
+        prev_metadata_and_schema = []
         if all(len(r) == 0 for r in self._rounds):
             raise StopIteration
 
         if len(self._rounds) >= self._max_concurrent_rounds:
-            prev_metadata_refs = self._rounds.pop(0)
-            if prev_metadata_refs:
+            prev_metadata_schema_refs = self._rounds.pop(0)
+            if prev_metadata_schema_refs:
                 if self._progress_bar is not None:
-                    prev_metadata = self._progress_bar.fetch_until_complete(
-                        prev_metadata_refs
+                    prev_metadata_and_schema = self._progress_bar.fetch_until_complete(
+                        prev_metadata_schema_refs
                     )
                     # TODO(swang): Eagerly free the previous round's args.
                     # See https://github.com/ray-project/ray/issues/42145.
                 else:
-                    prev_metadata = ray.get(prev_metadata_refs)
+                    prev_metadata_and_schema = ray.get(prev_metadata_schema_refs)
 
         self._submit_round()
 
-        return prev_metadata
+        return prev_metadata_and_schema
 
     def _submit_round(self):
         assert len(self._rounds) < self._max_concurrent_rounds
@@ -254,10 +261,10 @@ class _MapStageIterator:
             block,
             *self._map_args,
         )
-        metadata_ref = map_result.pop(-1)
+        metadata_schema_ref = map_result.pop(-1)
         self._map_results.append(map_result)
         self._mapper_idx += 1
-        return metadata_ref
+        return metadata_schema_ref
 
     def pop_map_results(self) -> List[List[ObjectRef]]:
         map_results = self._map_results
@@ -308,13 +315,13 @@ class _MergeStageIterator:
             *merge_args,
             reduce_args=self._reduce_args,
         )
-        metadata_ref = merge_result.pop(-1)
+        metadata_schema_ref = merge_result.pop(-1)
         self._all_merge_results[self._merge_idx].append(merge_result)
         del merge_result
 
         self._merge_idx += 1
         self._merge_idx %= self._stage.merge_schedule.num_merge_tasks_per_round
-        return metadata_ref
+        return metadata_schema_ref
 
     def pop_merge_results(self) -> List[List[ObjectRef]]:
         """Return a nested list of merge task results. The list at index i
@@ -383,13 +390,13 @@ class _ReduceStageIterator:
         # outputs produced by the corresponding merge task.
         # We also add the merge task arguments so that the reduce task
         # is colocated with its inputs.
-        block, meta = self._shuffle_reduce.options(
+        block, meta_schema = self._shuffle_reduce.options(
             **self._ray_remote_args,
             **self._stage.get_merge_task_options(merge_idx),
             num_returns=2,
         ).remote(*self._reduce_args, *reduce_arg_blocks, partial_reduce=False)
         self._reduce_results.append((reduce_idx, block))
-        return meta
+        return meta_schema
 
     def pop_reduce_results(self):
         reduce_results = self._reduce_results
@@ -441,7 +448,7 @@ class PushBasedShuffleTaskScheduler(ExchangeTaskScheduler):
         reduce_ray_remote_args: Optional[Dict[str, Any]] = None,
         merge_factor: float = 2,
         _debug_limit_execution_to_num_blocks: int = None,
-    ) -> Tuple[List[RefBundle], StatsDict]:
+    ) -> Tuple[List[RefBundle], StatsDict, "pa.lib.Schema"]:
         logger.debug("Using experimental push-based shuffle.")
         # TODO: Preemptively clear the blocks list since we will incrementally delete
         # the last remaining references as we submit the dependent map tasks during the
@@ -543,17 +550,17 @@ class PushBasedShuffleTaskScheduler(ExchangeTaskScheduler):
         # also execute the map tasks for the following round.
         map_done = False
         merge_done = False
-        map_stage_metadata = []
-        merge_stage_metadata = []
+        map_stage_metadata_schema = []
+        merge_stage_metadata_schema = []
         while not (map_done and merge_done):
             try:
-                map_stage_metadata += next(map_stage_executor)
+                map_stage_metadata_schema += next(map_stage_executor)
             except StopIteration:
                 map_done = True
                 break
 
             try:
-                merge_stage_metadata += next(merge_stage_executor)
+                merge_stage_metadata_schema += next(merge_stage_executor)
             except StopIteration:
                 merge_done = True
                 break
@@ -600,10 +607,10 @@ class PushBasedShuffleTaskScheduler(ExchangeTaskScheduler):
             max_concurrent_rounds=2,
             progress_bar=reduce_bar,
         )
-        reduce_stage_metadata = []
+        reduce_stage_metadata_schema = []
         while True:
             try:
-                reduce_stage_metadata += next(reduce_stage_executor)
+                reduce_stage_metadata_schema += next(reduce_stage_executor)
             except StopIteration:
                 break
 
@@ -611,14 +618,12 @@ class PushBasedShuffleTaskScheduler(ExchangeTaskScheduler):
 
         new_blocks = reduce_stage_iter.pop_reduce_results()
         sorted_blocks = [
-            (block[0], block[1], reduce_stage_metadata[i])
+            (block[0], block[1], reduce_stage_metadata_schema[i])
             for i, block in enumerate(new_blocks)
         ]
         sorted_blocks.sort(key=lambda x: x[0])
 
-        new_blocks, reduce_stage_metadata = [], []
-        if sorted_blocks:
-            _, new_blocks, reduce_stage_metadata = zip(*sorted_blocks)
+        _, new_blocks, reduce_stage_metadata_schema = _unzip_tuples(3, sorted_blocks)
         del sorted_blocks
 
         if _debug_limit_execution_to_num_blocks is not None:
@@ -631,6 +636,9 @@ class PushBasedShuffleTaskScheduler(ExchangeTaskScheduler):
         ), f"Expected {output_num_blocks} outputs, produced {len(new_blocks)}"
 
         output = []
+        reduce_stage_metadata, reduce_stage_schema = _unzip_tuples(
+            2, reduce_stage_metadata_schema
+        )
         for block, meta in zip(new_blocks, reduce_stage_metadata):
             output.append(
                 RefBundle(
@@ -644,13 +652,21 @@ class PushBasedShuffleTaskScheduler(ExchangeTaskScheduler):
                 )
             )
 
+        map_stage_metadata, map_stage_schema = _unzip_tuples(
+            2, map_stage_metadata_schema
+        )
+        merge_stage_metadata, merge_stage_schema = _unzip_tuples(
+            2, merge_stage_metadata_schema
+        )
+
         stats = {
             "map": to_stats(map_stage_metadata),
             "merge": to_stats(merge_stage_metadata),
             "reduce": to_stats(reduce_stage_metadata),
         }
 
-        return (output, stats)
+        schema = unify_block_metadata_schema(reduce_stage_schema)
+        return (output, stats, schema)
 
     @staticmethod
     def _map_partition(
@@ -684,8 +700,9 @@ class PushBasedShuffleTaskScheduler(ExchangeTaskScheduler):
             mapper_outputs,
             "The last output should be a BlockMetadata",
         )
-        assert isinstance(mapper_outputs[0], BlockMetadata)
-        yield mapper_outputs[0]
+        assert len(mapper_outputs[0]) == 2, mapper_outputs
+        assert isinstance(mapper_outputs[0][0], BlockMetadata), mapper_outputs
+        yield (mapper_outputs[0][0], mapper_outputs[0][1])
 
         assert merge_idx == schedule.num_merge_tasks_per_round, (
             merge_idx,
@@ -710,23 +727,27 @@ class PushBasedShuffleTaskScheduler(ExchangeTaskScheduler):
 
         num_rows = 0
         size_bytes = 0
-        schema = None
+        schemas = []
         for i, mapper_outputs in enumerate(zip(*all_mapper_outputs)):
-            block, meta = reduce_fn(*reduce_args, *mapper_outputs, partial_reduce=True)
+            block, (meta, schema) = reduce_fn(
+                *reduce_args, *mapper_outputs, partial_reduce=True
+            )
             yield block
 
             block = BlockAccessor.for_block(block)
             num_rows += block.num_rows()
             size_bytes += block.size_bytes()
-            schema = block.schema()
             del block
+            schemas.append(schema)
 
-        yield BlockMetadata(
-            num_rows=num_rows,
-            size_bytes=size_bytes,
-            schema=schema,
-            input_files=None,
-            exec_stats=stats.build(),
+        yield (
+            BlockMetadata(
+                num_rows=num_rows,
+                size_bytes=size_bytes,
+                input_files=None,
+                exec_stats=stats.build(),
+            ),
+            unify_block_metadata_schema(schemas),
         )
 
     @staticmethod

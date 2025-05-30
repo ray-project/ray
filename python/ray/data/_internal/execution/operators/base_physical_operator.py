@@ -116,7 +116,9 @@ class AllToAllOperator(InternalQueueOperatorMixin, PhysicalOperator):
         )
         # NOTE: We don't account object store memory use from intermediate `bulk_fn`
         # outputs (e.g., map outputs for map-reduce).
-        self._output_buffer, self._stats = self._bulk_fn(self._input_buffer, ctx)
+        self._output_buffer, self._stats, self._schema = self._bulk_fn(
+            self._input_buffer, self._input_dependencies[0]._schema, ctx
+        )
 
         while self._input_buffer:
             refs = self._input_buffer.pop()

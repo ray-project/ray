@@ -304,14 +304,12 @@ def _split_meta(
     left = BlockMetadata(
         num_rows=left_size,
         size_bytes=left_bytes,
-        schema=m.schema,
         input_files=m.input_files,
         exec_stats=None,
     )
     right = BlockMetadata(
         num_rows=m.num_rows - left_size,
         size_bytes=m.size_bytes - left_bytes,
-        schema=m.schema,
         input_files=m.input_files,
         exec_stats=None,
     )

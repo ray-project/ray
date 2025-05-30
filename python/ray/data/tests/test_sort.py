@@ -208,7 +208,7 @@ def test_sort_arrow_with_empty_blocks(
 
         assert (
             BlockAccessor.for_block(pa.Table.from_pydict({}))
-            .merge_sorted_blocks([pa.Table.from_pydict({})], SortKey("A"))[0]
+            .merge_sorted_blocks([pa.Table.from_pydict({})], SortKey("A"))[1][0]
             .num_rows
             == 0
         )
@@ -317,7 +317,7 @@ def test_sort_pandas_with_empty_blocks(ray_start_regular, configure_shuffle_meth
 
     assert (
         BlockAccessor.for_block(pa.Table.from_pydict({}))
-        .merge_sorted_blocks([pa.Table.from_pydict({})], SortKey("A"))[0]
+        .merge_sorted_blocks([pa.Table.from_pydict({})], SortKey("A"))[1][0]
         .num_rows
         == 0
     )

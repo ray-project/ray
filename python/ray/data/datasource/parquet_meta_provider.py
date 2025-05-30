@@ -1,4 +1,4 @@
-from typing import TYPE_CHECKING, List, Optional, Union
+from typing import TYPE_CHECKING, List, Optional
 
 import ray.cloudpickle as cloudpickle
 from ray.data._internal.util import call_with_retry
@@ -66,7 +66,6 @@ class ParquetMetadataProvider(FileMetadataProvider):
     def _get_block_metadata(
         self,
         paths: List[str],
-        schema: Optional[Union[type, "pyarrow.lib.Schema"]],
         *,
         num_fragments: int,
         prefetched_metadata: Optional[List["_ParquetFileFragmentMetaData"]],
@@ -96,7 +95,6 @@ class ParquetMetadataProvider(FileMetadataProvider):
             block_metadata = BlockMetadata(
                 num_rows=sum(m.num_rows for m in prefetched_metadata),
                 size_bytes=sum(m.total_byte_size for m in prefetched_metadata),
-                schema=schema,
                 input_files=paths,
                 exec_stats=None,
             )  # Exec stats filled in later.
@@ -106,7 +104,6 @@ class ParquetMetadataProvider(FileMetadataProvider):
             block_metadata = BlockMetadata(
                 num_rows=None,
                 size_bytes=None,
-                schema=schema,
                 input_files=paths,
                 exec_stats=None,
             )

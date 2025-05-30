@@ -42,7 +42,6 @@ class FileMetadataProvider:
     def _get_block_metadata(
         self,
         paths: List[str],
-        schema: Optional[Union[type, "pyarrow.lib.Schema"]],
         **kwargs,
     ) -> BlockMetadata:
         """Resolves and returns block metadata for files in the given paths.
@@ -51,8 +50,6 @@ class FileMetadataProvider:
 
         Args:
             paths: The file paths for a single dataset block.
-            schema: The user-provided or inferred schema for the given paths,
-                if any.
 
         Returns:
             BlockMetadata aggregated across the given paths.
@@ -62,10 +59,9 @@ class FileMetadataProvider:
     def __call__(
         self,
         paths: List[str],
-        schema: Optional[Union[type, "pyarrow.lib.Schema"]],
         **kwargs,
     ) -> BlockMetadata:
-        return self._get_block_metadata(paths, schema, **kwargs)
+        return self._get_block_metadata(paths, **kwargs)
 
 
 @DeveloperAPI
@@ -84,7 +80,6 @@ class BaseFileMetadataProvider(FileMetadataProvider):
     def _get_block_metadata(
         self,
         paths: List[str],
-        schema: Optional[Union[type, "pyarrow.lib.Schema"]],
         *,
         rows_per_file: Optional[int],
         file_sizes: List[Optional[int]],
@@ -151,7 +146,6 @@ class DefaultFileMetadataProvider(BaseFileMetadataProvider):
     def _get_block_metadata(
         self,
         paths: List[str],
-        schema: Optional[Union[type, "pyarrow.lib.Schema"]],
         *,
         rows_per_file: Optional[int],
         file_sizes: List[Optional[int]],
@@ -163,7 +157,6 @@ class DefaultFileMetadataProvider(BaseFileMetadataProvider):
         return BlockMetadata(
             num_rows=num_rows,
             size_bytes=None if None in file_sizes else int(sum(file_sizes)),
-            schema=schema,
             input_files=paths,
             exec_stats=None,
         )  # Exec stats filled in later.

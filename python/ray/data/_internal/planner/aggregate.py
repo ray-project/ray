@@ -1,4 +1,4 @@
-from typing import List, Optional, Tuple, Union
+from typing import TYPE_CHECKING, List, Optional, Tuple, Union
 
 from ray.data._internal.execution.interfaces import (
     AllToAllTransformFn,
@@ -16,9 +16,11 @@ from ray.data._internal.planner.exchange.push_based_shuffle_task_scheduler impor
 )
 from ray.data._internal.planner.exchange.sort_task_spec import SortKey, SortTaskSpec
 from ray.data._internal.stats import StatsDict
-from ray.data._internal.util import unify_block_metadata_schema
 from ray.data.aggregate import AggregateFn
 from ray.data.context import DataContext, ShuffleStrategy
+
+if TYPE_CHECKING:
+    import pyarrow as pa
 
 
 def generate_aggregate_fn(
@@ -41,6 +43,7 @@ def generate_aggregate_fn(
 
     def fn(
         refs: List[RefBundle],
+        schema: Optional["pa.lib.Schema"],
         ctx: TaskContext,
     ) -> Tuple[List[RefBundle], StatsDict]:
         blocks = []
@@ -50,9 +53,8 @@ def generate_aggregate_fn(
             metadata.extend(ref_bundle.metadata)
         if len(blocks) == 0:
             return (blocks, {})
-        unified_schema = unify_block_metadata_schema(metadata)
         for agg_fn in aggs:
-            agg_fn._validate(unified_schema)
+            agg_fn._validate(schema)
 
         num_mappers = len(blocks)
 

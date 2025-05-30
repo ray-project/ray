@@ -62,6 +62,8 @@ class LanceDatasource(Datasource):
             if len(fragments) <= 0:
                 continue
 
+            self.set_schema(fragments[0].schema)
+
             fragment_ids = [f.metadata.id for f in fragments]
             num_rows = sum(f.count_rows() for f in fragments)
             input_files = [
@@ -71,7 +73,6 @@ class LanceDatasource(Datasource):
             # TODO(chengsu): Take column projection into consideration for schema.
             metadata = BlockMetadata(
                 num_rows=num_rows,
-                schema=fragments[0].schema,
                 input_files=input_files,
                 size_bytes=None,
                 exec_stats=None,

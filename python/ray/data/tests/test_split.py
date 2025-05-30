@@ -485,7 +485,6 @@ def _create_meta(num_rows):
     return BlockMetadata(
         num_rows=num_rows,
         size_bytes=None,
-        schema=None,
         input_files=None,
         exec_stats=None,
     )

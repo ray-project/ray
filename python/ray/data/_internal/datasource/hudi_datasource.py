@@ -46,6 +46,7 @@ class HudiDatasource(Datasource):
         }
 
         schema = hudi_table.get_schema()
+        self.set_schema(schema)
         read_tasks = []
         for file_slices_split in hudi_table.get_file_slices_splits(parallelism):
             num_rows = 0
@@ -66,7 +67,6 @@ class HudiDatasource(Datasource):
 
             metadata = BlockMetadata(
                 num_rows=num_rows,
-                schema=schema,
                 input_files=input_files,
                 size_bytes=size_bytes,
                 exec_stats=None,
