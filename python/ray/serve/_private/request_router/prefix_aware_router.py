@@ -1,28 +1,27 @@
-from ray.llm._internal.serve.request_router.prefix_aware.prefix_tree import (
-    PrefixTreeActor,
-)
-from ray.serve._private.common import ReplicaID
-from ray.serve._private.replica_result import ReplicaResult
-
-import ray
-import time
-
 # These imports are used for metrics tracking, will remove for PR
 import asyncio
-import requests
-import os
+import csv
 import json
-
 import logging
+import os
 import random
+import time
 from typing import (
     List,
     Optional,
 )
 
+import requests
+
+import ray
+from ray.llm._internal.serve.request_router.prefix_aware.prefix_tree import (
+    PrefixTreeActor,
+)
+from ray.serve._private.common import ReplicaID
 from ray.serve._private.constants import (
     SERVE_LOGGER_NAME,
 )
+from ray.serve._private.replica_result import ReplicaResult
 from ray.serve._private.request_router import (
     PowerOfTwoChoicesRequestRouter,
 )
@@ -41,9 +40,7 @@ from ray.serve._private.request_router.request_router import (
 logger = logging.getLogger(SERVE_LOGGER_NAME)
 
 
-class PrefixAwareRequestRouter(
-    LocalityMixin, MultiplexMixin, RequestRouter
-):
+class PrefixAwareRequestRouter(LocalityMixin, MultiplexMixin, RequestRouter):
     """Extends the PowerOfTwoChoicesRequestRouter with prefix-matching capabilities.
 
     This request router optimizes replica selection by considering input text prefixes:
@@ -100,14 +97,16 @@ class PrefixAwareRequestRouter(
 
         # === Metrics tracking ===
         # Just used for benchmarking, will remove for PR eventually
-        self._do_track_metrics = False
+        self._do_track_metrics = True
         self._track_metrics_task = None
-        self._vllm_metrics_path = (
-            "/home/ray/default/work/ray/_benchmarking_scripts/results/vllm_metrics"
-        )
+        self._vllm_metrics_path = "/home/ray/default/work/ray/_benchmarking_scripts/custom_results/vllm_metrics"
         self._char_count_over_time_path = "/home/ray/default/work/ray/_benchmarking_scripts/custom_results/char_count_over_time"
+        self._load_distribution_path = "/home/ray/default/work/ray/_benchmarking_scripts/custom_results/load_distribution"
+        self._prefix_match_rate_path = "/home/ray/default/work/ray/_benchmarking_scripts/custom_results/prefix_match_rate"
         self._vllm_metrics_over_time = {}
         self._char_count_over_time = {}
+        self._load_distribution_over_time = {}
+        self._prefix_match_rates = []  # List of (time, replica_id, match_rate) tuples
         self._benchmark_start_time = 0.0
         self._num_requests_seen = 0
         self._zero_load_count = 0
@@ -202,6 +201,23 @@ class PrefixAwareRequestRouter(
                         current_char_count[tenant] = char_count
                 self._char_count_over_time[elapsed] = current_char_count
 
+                # === Load distribution over time ===
+                current_load_distribution = {}
+                if self._replicas:
+                    # Get queue lengths from cache first
+                    for replica_id, replica in self._replicas.items():
+                        queue_len = self._replica_queue_len_cache.get(replica_id)
+                        if queue_len is None:
+                            # If not in cache, probe the queue length
+                            queue_lens = await self._probe_queue_lens([replica], 0)
+                            if queue_lens:
+                                queue_len = queue_lens[0][1]
+                        if queue_len is not None:
+                            current_load_distribution[
+                                replica_id.to_full_id_str()
+                            ] = queue_len
+                self._load_distribution_over_time[elapsed] = current_load_distribution
+
                 # === End condition ===
                 if self._num_requests_seen > 10 and total_load == 0:
                     print(
@@ -215,6 +231,9 @@ class PrefixAwareRequestRouter(
                         # Dump vLLM metrics
                         os.makedirs(self._vllm_metrics_path, exist_ok=True)
                         os.makedirs(self._char_count_over_time_path, exist_ok=True)
+                        os.makedirs(self._load_distribution_path, exist_ok=True)
+                        os.makedirs(self._prefix_match_rate_path, exist_ok=True)
+
                         with open(
                             os.path.join(
                                 self._vllm_metrics_path,
@@ -231,6 +250,25 @@ class PrefixAwareRequestRouter(
                             "w",
                         ) as f:
                             json.dump(self._char_count_over_time, f, indent=2)
+                        with open(
+                            os.path.join(
+                                self._load_distribution_path,
+                                f"prefix_aware_{int(time.time())}_id_{random.randint(0, 1000000)}.json",
+                            ),
+                            "w",
+                        ) as f:
+                            json.dump(self._load_distribution_over_time, f, indent=2)
+
+                        # Write prefix match rates to CSV
+                        csv_path = os.path.join(
+                            self._prefix_match_rate_path,
+                            f"prefix_aware_{int(time.time())}_id_{random.randint(0, 1000000)}.csv",
+                        )
+                        with open(csv_path, "w") as f:
+                            writer = csv.writer(f)
+                            writer.writerow(["time", "replica_id", "match_rate"])
+                            writer.writerows(self._prefix_match_rates)
+
                         break
                 else:
                     self._zero_load_count = 0
@@ -482,6 +520,24 @@ class PrefixAwareRequestRouter(
         ):
             input_text = self._extract_text_from_request(pending_request)
             if input_text is not None:
+                # Track prefix match rate
+                if self._do_track_metrics:
+                    current_time = time.time() - self._benchmark_start_time
+                    matched_text, _ = ray.get(
+                        self._tree_actor.prefix_match.remote(
+                            input_text, [replica_id.to_full_id_str()]
+                        )
+                    )
+                    match_rate = len(matched_text) / len(input_text)
+                    self._prefix_match_rates.append(
+                        (
+                            round(current_time, 2),
+                            replica_id.to_full_id_str(),
+                            match_rate,
+                        )
+                    )
+
+                # Insert into prefix tree
                 ray.get(
                     self._tree_actor.insert.remote(
                         input_text, replica_id.to_full_id_str(), time.time()

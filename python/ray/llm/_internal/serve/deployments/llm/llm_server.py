@@ -63,12 +63,12 @@ from ray.llm._internal.serve.deployments.utils.server_utils import (
     get_response_for_error,
     get_serve_request_id,
 )
-from ray.serve._private.request_router import (
-    PrefixAwareRequestRouter,
-)
 from ray.llm._internal.serve.observability.logging import get_logger
 from ray.llm._internal.serve.observability.usage_telemetry.usage import (
     push_telemetry_report_for_all_models,
+)
+from ray.serve._private.request_router import (
+    PrefixAwareRequestRouter,
 )
 
 logger = get_logger(__name__)

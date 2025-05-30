@@ -836,9 +836,6 @@ async def benchmark(
         extra_request_body=extra_request_body,
         prefix_id=test_prefix_id,  # Add prefix_id to RequestFuncInput
     )
-    print(f"test_input: {test_input}")
-    print(f"disable_stream: {disable_stream}")
-    print(f"disable_ignore_eos: {disable_ignore_eos}")
     test_output = await request_func(
         request_func_input=test_input,
         disable_stream=disable_stream,

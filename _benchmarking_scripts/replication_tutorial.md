@@ -35,7 +35,7 @@
 4. To output vllm metrics more frequently than the default 10 seconds, run: `ray start --head --system-config='{"metrics_report_interval_ms": 100}' --port 5000 --metrics-export-port 5001 --dashboard-port 5002`.
     - My metric logging scripts are set up to curl from http://localhost:5001/metrics, instead of the default http://localhost:8085/metrics. If you switch to using `log_engine_metrics=True`, make sure to edit my scripts to curl from 8085. Also edit `sweep_strategies.py` to shut down the server after each benchmark run at the default dashboard port instead of 5002.
     - I've also modified `vllm_engine.py` to add `RayPrometheusStatLogger` to `MQLLMEngine`. I know that I can set `VLLM_USE_V1=1` to output metrics and bypass modifying `vllm_engine`, but besides the annoying warnings, longer model loading times I observed, I also don't know how to customize the metrics report interval. So all my results are obtained with VLLM V0.
-5. `pip install vllm==0.8.5`. You might need to `pip uninstall llvmlite && pip install llvmlite`
+5. `pip install vllm==0.8.5`.
 6. Some of Gene's changes that aren't merged into master yet aren't compiled in protobuf by nightly. So I manually regenerate protobuf:
     ```bash
     ci/env/install-bazel.sh
@@ -184,3 +184,75 @@
         ```
 3. Great! So now you can run `sweep_strategies.py`, wait 1-2 minutes, and the results will pop up in `serve_sharegpt_sweep_results.csv` and `vllm_sharegpt_sweep_results.csv`. Now comes the fun part: visualization.
     - `visualize_results.ipynb` is your one-stop-shop. Simply copy the results you want to visualize from `{serve, vllm}_sharegpt_sweep_results.csv` to `{serve, vllm}_chosen_sweep_results.csv` and call any visualization function with that file path.
+
+## Visualization Functions
+
+Here's an outline of all the visualization functions available:
+
+1. `plot_serve_metric_summary(file_name, metric)`
+   - Plots a bar chart comparing different routing strategies for a given Serve metric
+   - Shows min-max whiskers and averages across multiple runs
+   - Metrics include duration, TTFT, TPOT, E2E latency, etc.
+   - How to obtain data: just run `python sweep_strategies` and copy the relevant rows from `serve_sharegpt_sweep_results.csv` to `serve_chosen_sweep_results.csv`.
+
+2. `plot_serve_load_distribution(json_file_path, title=None)`
+   - Plots the load distribution over time for each replica
+   - Shows individual replica loads and average load
+   - Useful for analyzing load balancing effectiveness
+   - How to obtain data: This load distribution is measured manually in `prefix_aware_router.py`, in `_track_metrics`. Set `track_metrics=True` and a loop will run in the background of a benchmark. Every 1 second (configurable), it will query the replica queue length cache and record the load count for each replica. At the end of the benchmark, it will write to `/home/ray/default/work/ray/_benchmarking_scripts/custom_results/load_distribution`. Note that because we have 4 vLLM replicas and 4x2=8 prefix router replicas, each `python sweep_strategies.py` run will create 8 json files. You can just delete everything except the last one.
+
+3. `plot_serve_prefix_match_rate(csv_file_path, title=None)`
+   - Plots prefix match rates for each replica over time
+   - Shows individual replica hit rates and overall average
+   - Helps analyze prefix caching effectiveness
+   - How to obtain data: Similar to `plot_serve_load_distribution`, this is measured manually in `prefix_aware_router.py`. However, it is tracked in the `on_request_routed` callback, not in a background loop. So, if we have 8 prefix router replicas, and 1000 requests, each replica will see on average 125 requests. So you should combine all 8 files in `/home/ray/default/work/ray/_benchmarking_scripts/custom_results/prefix_match_rate` into 1 large file, then visualize the match rate (else, you only see the prefix match rate of one request routing replica).
+
+4. `plot_vllm_metric_summary(file_name, metric)`
+   - Plots a bar chart comparing different routing strategies for a given vLLM metric
+   - Shows min-max whiskers and averages across multiple runs
+   - Metrics include queue time, prefill time, decode time, etc.
+   - How to obtain data: Similar to `plot_serve_metric_summary`, just run `python sweep_strategies` and it will query the Ray metrics port at the end of the benchmark. Then, copy relevant data from `vllm_sharegpt_sweep_results.csv` to `vllm_chosen_sweep_results.csv`. Note that these data are different from `serve` because they are measured within the VLLM replica, whereas `serve` metrics contain the communication overhead.
+
+5. `plot_vllm_metric_timeseries(json_file_path, metric_name, title=None, window_sec=None)`
+   - Plots vLLM metrics over time for each replica
+   - Supports histogram metrics with configurable averaging windows
+   - Shows individual replica metrics and overall trends
+   - How to obtain data: This requires continual querying of vllm metrics throughout the benchmark. So, we use the same background loop used in `plot_serve_load_distribution` to query metrics every 1 second and store in `/home/ray/default/work/ray/_benchmarking_scripts/custom_results/vllm_metrics`.
+
+6. `plot_deployment_overhead(json_file_path, title=None)`
+   - Plots a breakdown of deployment overhead timing
+   - Shows router-to-deployment, processing, and deployment-to-router times
+   - Helps analyze performance bottlenecks
+   - How to obtain data: I deleted the code to log this data, but you can reproduce by logging `time.time()` within the request router, and log the time taken between different stages (e.g. from request received to calling prefix match, from calling prefix match to receiving the match rate from the ray actor) to a `.txt` file.
+
+7. `count_routing_matches(title, log_file)`
+   - Prints statistics about routing match rates
+   - Shows how often requests were routed to their intended replicas
+   - Useful for debugging routing decisions
+   - How to obtain data: Similar to `plot_deployment_overhead`, you'll need to inject code into the request router. Essentially, whenever a routing task completes, log both the request it was initially started with and the request it was matched with. This is useful for comparing FIFO vs exact-match routing decisions.
+
+8. `plot_eviction_policy(char_count_file_path, vllm_metrics_file_path, eviction_threshold_chars, eviction_target_chars, interval_secs, title)`
+   - Plots token counts and GPU cache usage over time
+   - Shows eviction threshold and target lines
+   - Helps analyze eviction policy effectiveness
+   - How to obtain data: This uses the background loop in the request router to track the size of the prefix tree throughout the benchmark. It also uses the vllm metrics to overlay the total tokens processed by all 4 replicas and the GPU cache usage on top of the prefix tree size. This is useful for seeing the eviction policy in action, as well as seeing how full the GPU cache gets as the prefix tree grows in size.
+
+9. `plot_benchmark_comparison(csv_path, title=None)`
+   - Plots relative performance comparison between pow2 and prefix-aware strategies
+   - Shows TTFT, TPOT, and E2E latency ratios
+   - Helps visualize performance improvements
+   - How to obtain data: This is just a more polished, streamlined version of `plot_serve_metric_summary`. I used this to generate my graphs for my intern presentation.
+
+Example usage:
+```python
+# Plot Serve metrics
+plot_serve_metric_summary("serve_chosen_sweep_results.csv", "mean_ttft_ms")
+
+# Plot vLLM metrics
+plot_vllm_metric_timeseries("vllm_metrics.json", "ray_vllm:request_prefill_time_seconds")
+
+# Plot eviction policy
+plot_eviction_policy("char_count.json", "vllm_metrics.json", 400000, 360000, 10, "Default")
+```
+
+I have included some example function calls in `visualize_results.ipynb`, along with existing data files from my latest benchmark runs. Note that I had to delete `/home/ray/default/work/ray/_benchmarking_scripts/custom_results/vllm_metrics/prefix_aware.json` because it is a large file, so running the cells that use that file will fail.

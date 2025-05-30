@@ -178,7 +178,9 @@ class TestPrefixAwareLogic:
     """Tests that exercise actual prefix-aware request routing logic."""
 
     @pytest.mark.asyncio
-    async def test_high_match_rate_selects_matching_replica(self, prefix_request_router):
+    async def test_high_match_rate_selects_matching_replica(
+        self, prefix_request_router
+    ):
         """High match rate → use matched replica instead of Pow2."""
         r1 = FakeRunningReplica("r1")
         r1.set_queue_len_response(0)
@@ -245,12 +247,16 @@ class TestPrefixAwareLogic:
         prompt_req = fake_pending_request(prompt="z")
         for _ in range(10):
             # Both tenants have 0% match rate, so the smaller tenant (r1) is chosen
-            assert await prefix_request_router.choose_replica_for_request(prompt_req) == r1
+            assert (
+                await prefix_request_router.choose_replica_for_request(prompt_req) == r1
+            )
 
         chat_req = fake_pending_request(messages=[{"content": "z"}])
         for _ in range(10):
             # Both tenants have 0% match rate, so the smaller tenant (r1) is chosen
-            assert await prefix_request_router.choose_replica_for_request(chat_req) == r1
+            assert (
+                await prefix_request_router.choose_replica_for_request(chat_req) == r1
+            )
 
 
 class TestEvictionBehavior:
