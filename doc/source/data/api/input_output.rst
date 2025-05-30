@@ -331,6 +331,17 @@ WebDataset
 
 .. _data_source_api:
 
+XML
+----------
+
+.. autosummary::
+   :nosignatures:
+   :toctree: doc/
+
+   read_xml
+
+.. _data_source_api:
+
 Datasource API
 --------------
 

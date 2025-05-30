@@ -1,0 +1,140 @@
+import os
+import pytest
+import ray
+
+# Example single-record and multi-record XML
+SIMPLE_XML = """<root>
+  <user id="1" active="true">
+    <name>John</name>
+    <email>john@example.com</email>
+    <info>
+      <age>35</age>
+      <city>NY</city>
+    </info>
+  </user>
+</root>"""
+
+MULTI_XML = """<root>
+  <user id="1" active="true">
+    <name>John</name>
+    <email>john@example.com</email>
+    <info>
+      <age>35</age>
+      <city>NY</city>
+    </info>
+  </user>
+  <user id="2">
+    <name>Jane</name>
+    <info>
+      <age>25</age>
+      <city>LA</city>
+    </info>
+  </user>
+</root>"""
+
+EMPTY_XML = "<root></root>"
+
+
+def write_xml(tmp_path, fname, content):
+    path = os.path.join(tmp_path, fname)
+    with open(path, "w") as f:
+        f.write(content)
+    return path
+
+
+def test_read_xml_simple(tmp_path):
+    path = write_xml(tmp_path, "simple.xml", SIMPLE_XML)
+    ds = ray.data.read_xml(paths=path, record_tag="user")
+    rows = ds.take_all()
+    assert len(rows) == 1
+    row = rows[0]
+    assert row["@id"] == "1"
+    assert row["name"] == "John"
+    assert row["info.age"] == "35"
+    assert row["info.city"] == "NY"
+    assert row["@active"] == "true"
+    assert row["email"] == "john@example.com"
+
+
+def test_read_xml_multiple(tmp_path):
+    path = write_xml(tmp_path, "multi.xml", MULTI_XML)
+    ds = ray.data.read_xml(paths=path, record_tag="user")
+    rows = ds.take_all()
+    assert len(rows) == 2
+    john, jane = rows
+    assert john["@id"] == "1"
+    assert jane["name"] == "Jane"
+    assert jane["info.city"] == "LA"
+
+
+def test_empty_xml(tmp_path):
+    path = write_xml(tmp_path, "empty.xml", EMPTY_XML)
+    ds = ray.data.read_xml(paths=path, record_tag="user")
+    assert ds.count() == 0
+
+
+def test_read_xml_many_files(tmp_path):
+    path1 = write_xml(tmp_path, "multi1.xml", MULTI_XML)
+    path2 = write_xml(tmp_path, "multi2.xml", MULTI_XML)
+    ds = ray.data.read_xml(paths=[path1, path2], record_tag="user")
+    rows = ds.take_all()
+    assert len(rows) == 4
+    # Ensure all user ids present (unordered)
+    ids = sorted([int(r["@id"]) for r in rows if "@id" in r])
+    assert ids == [1, 1, 2, 2]
+
+
+def test_read_xml_empty_files(tmp_path):
+    path1 = write_xml(tmp_path, "e1.xml", EMPTY_XML)
+    path2 = write_xml(tmp_path, "e2.xml", EMPTY_XML)
+    ds = ray.data.read_xml(paths=[path1, path2], record_tag="user")
+    assert ds.count() == 0
+
+
+def test_read_xml_schema(tmp_path):
+    path = write_xml(tmp_path, "multi.xml", MULTI_XML)
+    ds = ray.data.read_xml(paths=path, record_tag="user")
+    schema = ds.schema()
+    field_names = set(schema.names)
+    # Check expected fields present
+    assert "name" in field_names
+    assert "info.age" in field_names
+    assert "info.city" in field_names
+    assert "@id" in field_names
+
+
+def test_read_xml_large(tmp_path):
+    """Test with a large XML file."""
+    n = 500
+    content = (
+        "<root>"
+        + "".join(
+            [
+                f'<user id="{i}"><name>User{i}</name><info><age>{20+i}</age></info></user>'
+                for i in range(n)
+            ]
+        )
+        + "</root>"
+    )
+    path = write_xml(tmp_path, "large.xml", content)
+    ds = ray.data.read_xml(paths=path, record_tag="user")
+    assert ds.count() == n
+    df = ds.to_pandas()
+    assert df.shape[0] == n
+    assert all(df["name"].str.startswith("User"))
+
+
+# Test missing record_tag
+def test_record_tag_none(tmp_path):
+    xml = "<root><person><foo>x</foo></person></root>"
+    path = write_xml(tmp_path, "x.xml", xml)
+    ds = ray.data.read_xml(paths=path)
+    rows = ds.take_all()
+    assert len(rows) == 1
+    assert rows[0]["foo"] == "x"
+
+
+if __name__ == "__main__":
+    import sys
+
+    sys.exit(pytest.main(["-v", __file__]))
