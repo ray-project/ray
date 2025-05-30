@@ -138,8 +138,8 @@ def _get_node_id_and_az() -> Tuple[str, Optional[str]]:
 CreateRouterCallable = Callable[[str, DeploymentID, InitHandleOptions], Router]
 
 
-def create_scheduler(
-    actor_id: str,
+def create_router(
+    handle_id: str,
     deployment_id: DeploymentID,
     handle_options: InitHandleOptions,
     request_router_class: Optional[Callable] = None,

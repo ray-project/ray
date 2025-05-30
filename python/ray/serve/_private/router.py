@@ -671,6 +671,7 @@ class AsyncioRouter:
         **request_kwargs,
     ) -> ReplicaResult:
         """Assign a request to a replica and return the resulting object_ref."""
+
         if not self._deployment_available:
             raise DeploymentUnavailableError(self.deployment_id)
 
@@ -736,9 +737,6 @@ class AsyncioRouter:
 
     async def shutdown(self):
         await self._metrics_manager.shutdown()
-
-    def same_scheduler_class(self, replica_scheduler: ReplicaScheduler) -> bool:
-        return isinstance(self._replica_scheduler, replica_scheduler)
 
 
 class SingletonThreadRouter(Router):
@@ -842,9 +840,6 @@ class SingletonThreadRouter(Router):
         return asyncio.run_coroutine_threadsafe(
             self._asyncio_router.shutdown(), loop=self._asyncio_loop
         )
-
-    def same_scheduler_class(self, replica_scheduler: ReplicaScheduler) -> bool:
-        return self._asyncio_router.same_scheduler_class(replica_scheduler)
 
 
 class SharedRouterLongPollClient:

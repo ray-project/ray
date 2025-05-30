@@ -236,8 +236,6 @@ class Deployment:
         graceful_shutdown_timeout_s: Default[float] = DEFAULT.VALUE,
         health_check_period_s: Default[float] = DEFAULT.VALUE,
         health_check_timeout_s: Default[float] = DEFAULT.VALUE,
-        request_scheduling_stats_period_s: Default[float] = DEFAULT.VALUE,
-        request_scheduling_stats_timeout_s: Default[float] = DEFAULT.VALUE,
         logging_config: Default[Union[Dict, LoggingConfig, None]] = DEFAULT.VALUE,
         request_router_class: Default[Union[str, RequestRouter, None]] = DEFAULT.VALUE,
         _init_args: Default[Tuple[Any]] = DEFAULT.VALUE,
@@ -367,16 +365,6 @@ class Deployment:
         if health_check_timeout_s is not DEFAULT.VALUE:
             new_deployment_config.health_check_timeout_s = health_check_timeout_s
 
-        if request_scheduling_stats_period_s is not DEFAULT.VALUE:
-            new_deployment_config.request_scheduling_stats_period_s = (
-                request_scheduling_stats_period_s
-            )
-
-        if request_scheduling_stats_timeout_s is not DEFAULT.VALUE:
-            new_deployment_config.request_scheduling_stats_timeout_s = (
-                request_scheduling_stats_timeout_s
-            )
-
         if logging_config is not DEFAULT.VALUE:
             if isinstance(logging_config, LoggingConfig):
                 logging_config = logging_config.dict()
@@ -448,8 +436,6 @@ def deployment_to_schema(d: Deployment) -> DeploymentSchema:
         "graceful_shutdown_timeout_s": d._deployment_config.graceful_shutdown_timeout_s,
         "health_check_period_s": d._deployment_config.health_check_period_s,
         "health_check_timeout_s": d._deployment_config.health_check_timeout_s,
-        "request_scheduling_stats_period_s": d._deployment_config.request_scheduling_stats_period_s,
-        "request_scheduling_stats_timeout_s": d._deployment_config.request_scheduling_stats_timeout_s,
         "ray_actor_options": ray_actor_options_schema,
         "placement_group_strategy": d._replica_config.placement_group_strategy,
         "placement_group_bundles": d._replica_config.placement_group_bundles,
@@ -514,8 +500,6 @@ def schema_to_deployment(s: DeploymentSchema) -> Deployment:
         graceful_shutdown_timeout_s=s.graceful_shutdown_timeout_s,
         health_check_period_s=s.health_check_period_s,
         health_check_timeout_s=s.health_check_timeout_s,
-        request_scheduling_stats_period_s=s.request_scheduling_stats_period_s,
-        request_scheduling_stats_timeout_s=s.request_scheduling_stats_timeout_s,
         logging_config=s.logging_config,
     )
     deployment_config.user_configured_option_names = (

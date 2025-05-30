@@ -333,8 +333,6 @@ def deployment(
     graceful_shutdown_timeout_s: Default[float] = DEFAULT.VALUE,
     health_check_period_s: Default[float] = DEFAULT.VALUE,
     health_check_timeout_s: Default[float] = DEFAULT.VALUE,
-    request_scheduling_stats_period_s: Default[float] = DEFAULT.VALUE,
-    request_scheduling_stats_timeout_s: Default[float] = DEFAULT.VALUE,
     logging_config: Default[Union[Dict, LoggingConfig, None]] = DEFAULT.VALUE,
     request_router_class: Default[Union[str, RequestRouter, None]] = DEFAULT.VALUE,
 ) -> Callable[[Callable], Deployment]:
@@ -460,7 +458,6 @@ def deployment(
     if isinstance(logging_config, LoggingConfig):
         logging_config = logging_config.dict()
 
-    # print(f"in deployment {replica_scheduler=}")
     deployment_config = DeploymentConfig.from_default(
         num_replicas=num_replicas if num_replicas is not None else 1,
         user_config=user_config,
@@ -471,8 +468,6 @@ def deployment(
         graceful_shutdown_timeout_s=graceful_shutdown_timeout_s,
         health_check_period_s=health_check_period_s,
         health_check_timeout_s=health_check_timeout_s,
-        request_scheduling_stats_period_s=request_scheduling_stats_period_s,
-        request_scheduling_stats_timeout_s=request_scheduling_stats_timeout_s,
         logging_config=logging_config,
     )
     deployment_config.user_configured_option_names = set(user_configured_option_names)

@@ -120,10 +120,6 @@ class DeploymentConfig(BaseModel):
         health_check_timeout_s: Timeout that the controller waits for a
             response from the replica's health check before marking it
             unhealthy.
-        request_scheduling_stats_period_s: Frequency at which the controller
-            record request scheduling stats.
-        request_scheduling_stats_timeout_s: Timeout that the controller waits
-            for a response from the replica's record scheduling stats call.
         autoscaling_config: Autoscaling configuration.
         logging_config: Configuration for deployment logs.
         user_configured_option_names: The names of options manually
@@ -160,15 +156,6 @@ class DeploymentConfig(BaseModel):
     )
     health_check_timeout_s: PositiveFloat = Field(
         default=DEFAULT_HEALTH_CHECK_TIMEOUT_S,
-        update_type=DeploymentOptionUpdateType.NeedsReconfigure,
-    )
-
-    request_scheduling_stats_period_s: PositiveFloat = Field(
-        default=DEFAULT_REQUEST_SCHEDULING_STATS_PERIOD_S,
-        update_type=DeploymentOptionUpdateType.NeedsReconfigure,
-    )
-    request_scheduling_stats_timeout_s: PositiveFloat = Field(
-        default=DEFAULT_REQUEST_SCHEDULING_STATS_TIMEOUT_S,
         update_type=DeploymentOptionUpdateType.NeedsReconfigure,
     )
 
@@ -278,44 +265,6 @@ class DeploymentConfig(BaseModel):
     def needs_pickle(self):
         return _needs_pickle(self.deployment_language, self.is_cross_language)
 
-    # def __init__(self, **kwargs):
-    #     super().__init__(**kwargs)
-    #     self.serialize_replica_scheduler()
-
-    @root_validator
-    def serialize_replica_scheduler(cls, values) -> Dict[str, Any]:
-        """Serialize replica scheduler with cloudpickle.
-
-        Import the replica scheduler if it's passed in as a string import path.
-        Then cloudpickle the replica scheduler and set
-        `_serialized_replica_scheduler_def` if not already set.
-        """
-        replica_scheduler = values.get("replica_scheduler")
-        # print(f"serialize_replica_scheduler is called {replica_scheduler=}")
-        if isinstance(replica_scheduler, Callable):
-            replica_scheduler = (
-                f"{replica_scheduler.__module__}.{replica_scheduler.__name__}"
-            )
-
-        if not replica_scheduler:
-            replica_scheduler = DEFAULT_REPLICA_SCHEDULER
-
-        replica_scheduler_path = replica_scheduler
-        replica_scheduler = import_attr(replica_scheduler)
-
-        # if not values.get("serialized_replica_scheduler_def"):
-        values["serialized_replica_scheduler_def"] = cloudpickle.dumps(
-            replica_scheduler
-        )
-        values["replica_scheduler"] = replica_scheduler_path
-        # print(f"{values['replica_scheduler']=} {values['serialized_replica_scheduler_def']=}")
-        return values
-
-    def get_replica_scheduler_class(self) -> Callable:
-        """Deserialize replica scheduler from cloudpickled bytes."""
-        # print(f"in get_replica_scheduler_class {self.serialized_replica_scheduler_def=}")
-        return cloudpickle.loads(self.serialized_replica_scheduler_def)
-
     def to_proto(self):
         data = self.dict()
         if data.get("user_config") is not None:
@@ -402,11 +351,8 @@ class DeploymentConfig(BaseModel):
             TypeError: when a keyword that's not an argument to the class is
                 passed in.
         """
-        # print(f"in from_default {kwargs=}")
-        # config = cls(replica_scheduler=kwargs.pop("replica_scheduler"))
         config = cls()
         valid_config_options = set(config.dict().keys())
-        # valid_config_options.add("_replica_scheduler")
 
         # Friendly error if a non-DeploymentConfig kwarg was passed in
         for key, val in kwargs.items():

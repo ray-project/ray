@@ -3,7 +3,7 @@ import concurrent.futures
 import logging
 import time
 import warnings
-from typing import Any, AsyncIterator, Callable, Dict, Iterator, Optional, Tuple, Union
+from typing import Any, AsyncIterator, Dict, Iterator, Optional, Tuple, Union
 
 import ray
 from ray import serve
@@ -59,7 +59,6 @@ class _DeploymentHandleBase:
         self.handle_options: DynamicHandleOptionsBase = (
             handle_options or create_dynamic_handle_options()
         )
-        # print(f"DeploymentHandle.__init__ {self.handle_options==handle_options=} {self.handle_options=} {handle_options=}")
 
         # Handle ID is shared among handles that are returned by
         # `handle.options` or `handle.method`
@@ -139,7 +138,6 @@ class _DeploymentHandleBase:
             )
 
         init_options = create_init_handle_options(**kwargs)
-        # print(f"DeploymentHandle._init {self.deployment_name} {self._router}")
         self._router = self._create_router(
             handle_id=self.handle_id,
             deployment_id=self.deployment_id,
@@ -175,20 +173,6 @@ class _DeploymentHandleBase:
         if not self.is_initialized:
             self._init()
 
-        # print(f"DeploymentHandle._options {kwargs.get('replica_scheduler')=} {new_handle_options=} {self.handle_options=}")
-        if kwargs.get(
-            "replica_scheduler"
-        ) != DEFAULT.VALUE and not self._router.same_scheduler_class(
-            new_handle_options.replica_scheduler
-        ):
-            # print(f"recreating router {replica_scheduler} {self.handle_options} {kwargs}")
-            self._router = self._create_router(
-                handle_id=self.handle_id,
-                deployment_id=self.deployment_id,
-                handle_options=self.init_options,
-                replica_scheduler_class=new_handle_options.replica_scheduler,
-            )
-
         return DeploymentHandle(
             self.deployment_name,
             self.app_name,
@@ -208,7 +192,6 @@ class _DeploymentHandleBase:
         if not self.is_initialized:
             self._init()
 
-        # print(f"DeploymentHandle._remote {self.deployment_name} {self._router._asyncio_router._replica_scheduler}")
         metadata = serve._private.default_impl.get_request_metadata(
             self.init_options, self.handle_options
         )
@@ -220,10 +203,7 @@ class _DeploymentHandleBase:
             }
         )
 
-        return (
-            self._router.assign_request(metadata, *args, **kwargs),
-            metadata,
-        )
+        return self._router.assign_request(metadata, *args, **kwargs), metadata
 
     def __getattr__(self, name):
         return self.options(method_name=name)
@@ -695,7 +675,6 @@ class DeploymentHandle(_DeploymentHandleBase):
         stream: Union[bool, DEFAULT] = DEFAULT.VALUE,
         use_new_handle_api: Union[bool, DEFAULT] = DEFAULT.VALUE,
         _prefer_local_routing: Union[bool, DEFAULT] = DEFAULT.VALUE,
-        replica_scheduler: Union[str, Callable, DEFAULT] = DEFAULT.VALUE,
     ) -> "DeploymentHandle":
         """Set options for this handle and return an updated copy of it.
 
@@ -725,7 +704,6 @@ class DeploymentHandle(_DeploymentHandleBase):
             multiplexed_model_id=multiplexed_model_id,
             stream=stream,
             _prefer_local_routing=_prefer_local_routing,
-            replica_scheduler=replica_scheduler,
         )
 
     def remote(
@@ -758,6 +736,7 @@ class DeploymentHandle(_DeploymentHandleBase):
             **kwargs: Keyword arguments to be serialized and passed to the
                 remote method call.
         """
+
         future, request_metadata = self._remote(args, kwargs)
         if self.handle_options.stream:
             response_cls = DeploymentResponseGenerator
