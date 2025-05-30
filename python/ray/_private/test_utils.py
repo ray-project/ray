@@ -1583,6 +1583,7 @@ class EC2InstanceTerminator(NodeKillerBase):
             self.killed.add(node_id)
 
     def _terminate_ec2_instance(self, ip):
+        logging.info(f"Terminating instance, {ip=}")
         # This command uses IMDSv2 to get the host instance id and region.
         # After that it terminates itself using aws cli.
         multi_line_command = (
@@ -1635,6 +1636,8 @@ class EC2InstanceTerminatorWithGracePeriod(EC2InstanceTerminator):
 
     def _drain_node(self, node_id: str) -> None:
         assert ray.NodeID.from_hex(node_id) != ray.NodeID.nil()
+
+        logging.info(f"Draining node {node_id}")
         address = services.canonicalize_bootstrap_address_or_die(addr=None)
         gcs_client = ray._raylet.GcsClient(address=address)
         deadline_timestamp_ms = (time.time_ns() // 1e6) + (self._grace_period_s * 1e3)
