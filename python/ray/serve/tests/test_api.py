@@ -152,7 +152,10 @@ def test_starlette_response_redirect(serve_instance):
 
     serve.run(basic.bind(), name="app1", route_prefix="/")
     serve.run(redirect.bind(), name="app2", route_prefix="/redirect")
-    assert httpx.get("http://127.0.0.1:8000/redirect").text == "Hello, world!"
+    assert (
+        httpx.get("http://127.0.0.1:8000/redirect", follow_redirects=True).text
+        == "Hello, world!"
+    )
 
 
 def test_starlette_response_streaming(serve_instance):

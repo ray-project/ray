@@ -205,7 +205,7 @@ def test_shutdown_remote(start_and_shutdown_ray_cli_function, tmp_path):
         subprocess.check_output([sys.executable, str(deploy_file)])
         assert httpx.get("http://localhost:8000/f").text == "got f"
         subprocess.check_output([sys.executable, str(shutdown_file)])
-        with pytest.raises(httpx.exceptions.ConnectionError):
+        with pytest.raises(httpx.ConnectError):
             httpx.get("http://localhost:8000/f")
 
 
