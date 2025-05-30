@@ -15,6 +15,7 @@ from ray.llm._internal.serve.configs.server_models import (
     parse_args as parse_llm_configs,
 )
 from ray.llm._internal.serve.deployments.llm.llm_server import ResponsePostprocessor
+from ray.llm._internal.serve.deployments.llm.vllm.vllm_engine import KVTransferParams
 from ray.llm._internal.serve.deployments.llm.vllm.vllm_models import (
     KV_TRANSFER_PARAMS_KEY,
 )
@@ -114,14 +115,14 @@ class PDProxyServer(LLMServer):
             prompt.parameters.get(KV_TRANSFER_PARAMS_KEY, None) is None
         ), f"{KV_TRANSFER_PARAMS_KEY} should be empty before proxy"
         prefill_prompt = prompt.model_copy(deep=True)
-        prefill_prompt.parameters[KV_TRANSFER_PARAMS_KEY] = {
-            "do_remote_decode": True,
-            "do_remote_prefill": False,
-            "remote_engine_id": None,
-            "remote_block_ids": None,
-            "remote_host": None,
-            "remote_port": None,
-        }
+        prefill_prompt.parameters[KV_TRANSFER_PARAMS_KEY] = KVTransferParams(
+            do_remote_decode=True,
+            do_remote_prefill=False,
+            remote_engine_id=None,
+            remote_block_ids=None,
+            remote_host=None,
+            remote_port=None,
+        ).model_dump()
         prefill_prompt.parameters["max_tokens"] = 1
 
         prefill_response_gen: AsyncGenerator[

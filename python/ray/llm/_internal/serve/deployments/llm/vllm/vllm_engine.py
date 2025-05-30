@@ -171,6 +171,17 @@ class _EngineBackgroundProcess:
         return self._error
 
 
+class KVTransferParams(BaseModel):
+    """Schema for KV transfer params."""
+
+    do_remote_decode: bool
+    do_remote_prefill: bool
+    remote_engine_id: Optional[str] = None
+    remote_block_ids: Optional[list[int]] = None
+    remote_host: Optional[str] = None
+    remote_port: Optional[int] = None
+
+
 class VLLMEngine(LLMEngine):
     def __init__(
         self,
