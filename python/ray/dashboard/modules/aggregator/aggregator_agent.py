@@ -160,9 +160,14 @@ class AggregatorAgent(
                     f"event {event.event_id.decode()} failed to add to buffer with error {e}"
                 )
 
-        status_message = (
-            ", ".join(status_messages) if status_messages else "all events received"
-        )
+        status_message = "all events received"
+        if status_messages:
+            truncate_num = 5
+            status_message = ", ".join(status_messages[:truncate_num])
+            if len(status_messages) > truncate_num:
+                status_message += (
+                    f", and {len(status_messages) - truncate_num} more events dropped"
+                )
         status = events_event_aggregator_service_pb2.AddEventStatus(
             status_code=status_code, status_message=status_message
         )
