@@ -955,7 +955,7 @@ class ActorReplicaWrapper:
             logger.warning(
                 "Didn't receive routing stats response for replica "
                 f"{self._replica_id} after "
-                f"{self.request_routing_stats_timeout_s}s, retrying."
+                f"{self.request_routing_stats_timeout_s}s, retrying. {self._routing_stats=}"
             )
             self._record_routing_stats_ref = None
 
@@ -2235,6 +2235,7 @@ class DeploymentState:
                     },
                 )
                 routing_stats = replica.get_routing_stats()
+                print(f"in check_and_update_replicas {routing_stats=}")
                 replica.record_routing_stats(routing_stats)
             else:
                 logger.warning(
