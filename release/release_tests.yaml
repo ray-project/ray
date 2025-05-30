@@ -4383,14 +4383,19 @@
     byod:
       type: cu123  # anyscale/ray:<PR_RAY_VERSION>-py311-cu123
       post_build_script: byod_e2e_xgboost.sh  # release/ray_release/byod/
-    cluster_compute: config/aws.yaml  # <working_dir>/
+    cluster_compute: ci/aws.yaml  # relative to working_dir
 
   run:
     timeout: 3600
-    script: PYTHONPATH=. python dist_xgboost/train.py  # <working_dir>/
+    script: PYTHONPATH=. python dist_xgboost/train.py  # relative to working_dir
 
   variations:
     - __suffix__: aws  # uses default specs above
+    - __suffix__: gce
+      env: gce
+      frequency: manual
+      cluster:
+        cluster_compute: ci/gce.yaml  # relative to working_dir
 
 
 - name: entity_recognition_with_llms  # do not use dashes (regex sensitive)
@@ -4437,6 +4442,11 @@
 
   variations:
     - __suffix__: aws
+    - __suffix__: gce
+      env: gce
+      frequency: manual
+      cluster:
+        cluster_compute: ci/gce.yaml  # relative to working_dir
 
 - name: e2e_multimodal_ai_workloads  # do not use dashes (regex sensitive)
   frequency: weekly
