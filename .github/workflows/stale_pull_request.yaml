@@ -20,7 +20,7 @@ jobs:
           # --- Ignore Issues ---
           # Set to -1 so we never mark issues as stale or closed.
           days-before-issue-stale: -1
-          day-before-issue-closed: -1
+          days-before-issue-close: -1
 
           # --- Pull Request Specific Settings ---
           # Number of days of inactivity before a Pull Request becomes stale (currently 2 weeks)
@@ -62,8 +62,8 @@ jobs:
           exempt-all-pr-milestones: true
 
           # --- Shared Settings & Other Options ---
-          # Limit the number of actions per run
-          operations-per-run: 30
+          # Limit the number of actions per run. Increase from 30 to 300. 
+          operations-per-run: 300
 
           # Remove stale label from PRs on update (default is true)
           remove-pr-stale-when-updated: true
