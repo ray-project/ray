@@ -200,35 +200,27 @@ class VLLMEngine(LLMEngine):
                 "VLLM_NIXL_SIDE_CHANNEL_PORT" not in vllm.envs.environment_variables
                 or "VLLM_NIXL_SIDE_CHANNEL_HOST" not in vllm.envs.environment_variables
             ):
-                logger.warning(
+                raise ValueError(
                     "This vLLM version does not support VLLM_NIXL_SIDE_CHANNEL_PORT"
                     "or VLLM_NIXL_SIDE_CHANNEL_HOST environment variable. It's likely"
                     "that you are using an older version of vLLM."
                 )
-            else:
-                if not vllm.envs.is_set("VLLM_NIXL_SIDE_CHANNEL_PORT"):
-                    port: int = vllm.utils.get_open_port()
-                    os.environ["VLLM_NIXL_SIDE_CHANNEL_PORT"] = str(port)
-                if not vllm.envs.is_set("VLLM_NIXL_SIDE_CHANNEL_HOST"):
-                    os.environ["VLLM_NIXL_SIDE_CHANNEL_HOST"] = vllm.utils.get_ip()
 
-                # We need to overwrite the engine_id to make it unique across replicas.
-                # "engine_id" is added in vllm 0.9.0, so do existance check.
-                try:
-                    engine_id = getattr(
-                        kv_transfer_config, "engine_id", str(uuid.uuid4())
-                    )
-                    host = vllm.envs.VLLM_NIXL_SIDE_CHANNEL_HOST
-                    port = vllm.envs.VLLM_NIXL_SIDE_CHANNEL_PORT
-                    kv_transfer_config.engine_id = "-".join(
-                        [engine_id, host, str(port)]
-                    )
-                except ValueError:
-                    # TODO(lk-chen): Raise error once vllm 0.9.0 is pinned to rayllm
-                    logger.warning(
-                        "engine_id is not supported in vllm < 0.9.0, NIXL-backed kv transfer "
-                        "is not supported."
-                    )
+            if not vllm.envs.is_set("VLLM_NIXL_SIDE_CHANNEL_PORT"):
+                port: int = vllm.utils.get_open_port()
+                os.environ["VLLM_NIXL_SIDE_CHANNEL_PORT"] = str(port)
+            if not vllm.envs.is_set("VLLM_NIXL_SIDE_CHANNEL_HOST"):
+                os.environ["VLLM_NIXL_SIDE_CHANNEL_HOST"] = vllm.utils.get_ip()
+
+            # We need to overwrite the engine_id to make it unique across replicas.
+            engine_id = getattr(
+                kv_transfer_config, "engine_id", str(uuid.uuid4())
+            )
+            host = vllm.envs.VLLM_NIXL_SIDE_CHANNEL_HOST
+            port = vllm.envs.VLLM_NIXL_SIDE_CHANNEL_PORT
+            kv_transfer_config.engine_id = "-".join(
+                [engine_id, host, str(port)]
+            )
 
         assert isinstance(
             llm_config, LLMConfig
