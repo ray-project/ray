@@ -1,7 +1,9 @@
 from __future__ import annotations
-from ray.util.annotations import DeveloperAPI
-from typing import Iterator, Deque, TYPE_CHECKING
+
 import collections
+from typing import TYPE_CHECKING, Deque, Iterator
+
+from ray.util.annotations import DeveloperAPI
 
 if TYPE_CHECKING:
     import ray

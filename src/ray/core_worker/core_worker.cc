@@ -375,7 +375,6 @@ CoreWorker::CoreWorker(CoreWorkerOptions options, const WorkerID &worker_id)
       periodical_runner_(PeriodicalRunner::Create(io_service_)),
       task_queue_length_(0),
       num_executed_tasks_(0),
-      grpc_service_(io_service_, *this),
       task_execution_service_work_(task_execution_service_.get_executor()),
       exiting_detail_(std::nullopt),
       pid_(getpid()),
@@ -528,7 +527,10 @@ CoreWorker::CoreWorker(CoreWorkerOptions options, const WorkerID &worker_id)
       std::make_unique<rpc::GrpcServer>(WorkerTypeString(options_.worker_type),
                                         assigned_port,
                                         options_.node_ip_address == "127.0.0.1");
-  core_worker_server_->RegisterService(grpc_service_, false /* token_auth */);
+
+  core_worker_server_->RegisterService(
+      std::make_unique<rpc::CoreWorkerGrpcService>(io_service_, *this),
+      false /* token_auth */);
   core_worker_server_->Run();
 
   // Set our own address.
@@ -1175,12 +1177,6 @@ void CoreWorker::Exit(
            "raylet disconnects the client because it kills this worker.";
   }
 
-  RAY_LOG(DEBUG) << "Exit signal received, remove all local references.";
-  /// Since this core worker is exiting, it's necessary to release all local references,
-  /// otherwise the frontend code may not release its references and this worker will be
-  /// leaked. See https://github.com/ray-project/ray/issues/19639.
-  reference_counter_->ReleaseAllLocalReferences();
-
   // Callback to shutdown.
   auto shutdown = [this, exit_type, detail, creation_task_exception_pb_bytes]() {
     // To avoid problems, make sure shutdown is always called from the same
@@ -1220,17 +1216,29 @@ void CoreWorker::Exit(
             not_actor_task = actor_id_.IsNil();
           }
           if (not_actor_task) {
-            // If we are a task, then we cannot hold any object references in the
-            // heap. Therefore, any active object references are being held by other
-            // processes. Wait for these processes to release their references
-            // before we shutdown. NOTE(swang): This could still cause this worker
-            // process to stay alive forever if another process holds a reference
-            // forever.
+            // Normal tasks should not hold any object references in the heap after
+            // executing, but they could in the case that one was stored as a glob
+            // variable (anti-pattern, but possible). We decrement the reference count
+            // for all local references to account for this. After this call, the only
+            // references left to drain should be those that are in use by remote
+            // workers. If these workers hold their references forever, the call to
+            // drain the reference counter will hang forever and this process will not
+            // exit until it is forcibly removed (e.g., via SIGKILL).
+            //
+            // NOTE(edoakes): this is only safe to do _after_ we have drained executing
+            // tasks in the task_receiver_, otherwise there might still be user code
+            // running that relies on the state of the reference counter.
+            // See: https://github.com/ray-project/ray/pull/53002.
+            RAY_LOG(INFO)
+                << "Releasing local references, then draining reference counter.";
+            reference_counter_->ReleaseAllLocalReferences();
             reference_counter_->DrainAndShutdown(shutdown);
           } else {
             // If we are an actor, then we may be holding object references in the
             // heap. Then, we should not wait to drain the object references before
             // shutdown since this could hang.
+            RAY_LOG(INFO)
+                << "Not draining reference counter since this is an actor worker.";
             shutdown();
           }
         },
@@ -2141,10 +2149,16 @@ Status CoreWorker::Delete(const std::vector<ObjectID> &object_ids, bool local_on
         request.add_object_ids(obj_id.Binary());
       }
       request.set_local_only(local_only);
-      conn->DeleteObjects(request,
-                          [](const Status &status, const rpc::DeleteObjectsReply &reply) {
-                            RAY_LOG(INFO) << "Completed object delete request " << status;
-                          });
+      conn->DeleteObjects(
+          request,
+          [object_ids](const Status &status, const rpc::DeleteObjectsReply &reply) {
+            if (status.ok()) {
+              RAY_LOG(INFO) << "Completed object delete request " << status;
+            } else {
+              RAY_LOG(ERROR) << "Failed to delete objects, status: " << status
+                             << ", object IDs: " << debug_string(object_ids);
+            }
+          });
     }
   }
   // Also try to delete all objects locally.
@@ -2411,7 +2425,8 @@ void CoreWorker::BuildCommonTaskSpec(
     int64_t generator_backpressure_num_objects,
     bool enable_task_events,
     const std::unordered_map<std::string, std::string> &labels,
-    const std::unordered_map<std::string, std::string> &label_selector) {
+    const std::unordered_map<std::string, std::string> &label_selector,
+    const rpc::TensorTransport &tensor_transport) {
   // Build common task spec.
   auto override_runtime_env_info =
       OverrideTaskOrActorRuntimeEnvInfo(serialized_runtime_env_info);
@@ -2460,7 +2475,8 @@ void CoreWorker::BuildCommonTaskSpec(
       concurrency_group_name,
       enable_task_events,
       labels,
-      label_selector);
+      label_selector,
+      tensor_transport);
   // Set task arguments.
   for (const auto &arg : args) {
     builder.AddArg(*arg);
@@ -2890,7 +2906,10 @@ Status CoreWorker::SubmitActorTask(
                       /*include_job_config*/ false,
                       /*generator_backpressure_num_objects*/
                       task_options.generator_backpressure_num_objects,
-                      /*enable_task_events*/ task_options.enable_task_events);
+                      /*enable_task_events*/ task_options.enable_task_events,
+                      /*labels*/ {},
+                      /*label_selector*/ {},
+                      /*tensor_transport*/ task_options.tensor_transport);
   // NOTE: placement_group_capture_child_tasks and runtime_env will
   // be ignored in the actor because we should always follow the actor's option.
 
@@ -3366,6 +3385,7 @@ Status CoreWorker::ExecuteTask(
   } else if (task_spec.IsActorTask()) {
     name_of_concurrency_group_to_execute = task_spec.ConcurrencyGroupName();
   }
+
   status = options_.task_execution_callback(
       task_spec.CallerAddress(),
       task_type,
@@ -3388,7 +3408,8 @@ Status CoreWorker::ExecuteTask(
       /*is_streaming_generator=*/task_spec.IsStreamingGenerator(),
       /*retry_exception=*/task_spec.ShouldRetryExceptions(),
       /*generator_backpressure_num_objects=*/
-      task_spec.GeneratorBackpressureNumObjects());
+      task_spec.GeneratorBackpressureNumObjects(),
+      /*tensor_transport=*/task_spec.TensorTransport());
 
   // Get the reference counts for any IDs that we borrowed during this task,
   // remove the local reference for these IDs, and return the ref count info to
@@ -3790,7 +3811,7 @@ Status CoreWorker::GetAndPinArgsForExecutor(const TaskSpecification &task,
       args->push_back(std::make_shared<RayObject>(
           std::move(data), std::move(metadata), task.ArgInlinedRefs(i), copy_data));
       auto &arg_ref = arg_refs->emplace_back();
-      arg_ref.set_object_id(ObjectID::Nil().Binary());
+      arg_ref.set_object_id(task.ArgId(i).Binary());
       // The task borrows all ObjectIDs that were serialized in the inlined
       // arguments. The task will receive references to these IDs, so it is
       // possible for the task to continue borrowing these arguments by the

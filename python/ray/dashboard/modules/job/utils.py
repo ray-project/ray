@@ -8,6 +8,7 @@ from dataclasses import dataclass
 from typing import Any, AsyncIterator, Dict, List, Optional, Tuple, Union
 
 from ray._private import ray_constants
+from ray._raylet import GcsClient
 from ray.dashboard.modules.job.common import (
     JOB_ID_METADATA_KEY,
     JobInfoStorageClient,
@@ -16,7 +17,6 @@ from ray.dashboard.modules.job.common import (
 )
 from ray.dashboard.modules.job.pydantic_models import DriverInfo, JobDetails, JobType
 from ray.runtime_env import RuntimeEnv
-from ray._raylet import GcsClient
 
 try:
     # package `aiohttp` is not in ray's minimal dependencies
