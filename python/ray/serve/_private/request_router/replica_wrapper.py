@@ -153,6 +153,7 @@ class RunningReplica:
         """Set of model IDs on this replica."""
         return self._multiplexed_model_ids
 
+
     @property
     def max_ongoing_requests(self) -> int:
         """Max concurrent requests that can be sent to this replica."""

@@ -84,7 +84,8 @@ def do_link(package, force=False, skip_list=None, allow_list=None, local_path=No
             generated_folder = os.path.join(package_home, "generated")
             if not os.path.exists(serve_temp_dir):
                 os.makedirs(serve_temp_dir)
-            subprocess.check_call(["mv", "-r", generated_folder, serve_temp_dir])
+            # subprocess.check_call(["mv", "-r", generated_folder, serve_temp_dir])
+            subprocess.check_call(["cp", "-r", generated_folder, serve_temp_dir])
 
         # Create backup of the old directory if it exists
         if os.path.exists(package_home):
@@ -146,26 +147,26 @@ if __name__ == "__main__":
     packages_to_link = {
         "llm": None,
         "serve/llm": None,
-        "data/llm.py": None,
-        "rllib": "../../../rllib",
-        "air": None,
-        "tune": None,
-        "train": None,
-        "autoscaler": None,
-        "cloudpickle": None,
-        "data": None,
-        "scripts": None,
-        "internal": None,
-        "tests": None,
-        "experimental": None,
-        "util": None,
-        "workflow": None,
+        # "data/llm.py": None,
+        # "rllib": "../../../rllib",
+        # "air": None,
+        # "tune": None,
+        # "train": None,
+        # "autoscaler": None,
+        # "cloudpickle": None,
+        # "data": None,
+        # "scripts": None,
+        # "internal": None,
+        # "tests": None,
+        # "experimental": None,
+        # "util": None,
+        # "workflow": None,
         "serve": None,
-        "dag": None,
-        "widgets": None,
-        "cluster_utils.py": None,
-        "_private": None,
-        "dashboard": None,
+        # "dag": None,
+        # "widgets": None,
+        # "cluster_utils.py": None,
+        # "_private": None,
+        # "dashboard": None,
     }
 
     # Link all packages using a for loop
