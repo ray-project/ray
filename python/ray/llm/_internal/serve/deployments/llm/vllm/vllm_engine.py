@@ -63,6 +63,8 @@ if TYPE_CHECKING:
     from vllm.engine.protocol import EngineClient
     from vllm.outputs import PoolingRequestOutput, RequestOutput
 
+from vllm.transformers_utils.config import maybe_register_config_serialize_by_value
+
 vllm = try_import("vllm")
 logger = get_logger(__name__)
 
@@ -530,12 +532,17 @@ class VLLMEngine(LLMEngine):
 
         executor_class = Executor.get_class(vllm_config)
         logger.info(f"Using executor class: {executor_class}")
+        logger.critical(
+            f"[SEIJI] About to create AsyncLLMEngine with vllm_config: {vllm_config}"
+        )
+        maybe_register_config_serialize_by_value()
         engine = vllm.engine.async_llm_engine.AsyncLLMEngine(
             vllm_config=vllm_config,
             executor_class=executor_class,
             log_stats=not engine_args.disable_log_stats,
             stat_loggers=custom_stat_loggers,
         )
+        logger.critical(f"[SEIJI] Successfully created AsyncLLMEngine: {engine}")
 
         return engine
 
