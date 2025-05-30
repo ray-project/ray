@@ -13,7 +13,7 @@ applications:
         deployment_config:
           autoscaling_config:
             min_replicas: 2
-            max_replicas: 1000
+            max_replicas: 2
       decode_config:
         model_loading_config:
           model_id: neuralmagic/Meta-Llama-3.1-8B-Instruct-quantized.w4a16
@@ -27,7 +27,7 @@ applications:
         deployment_config:
           autoscaling_config:
             min_replicas: 6
-            max_replicas: 1000
+            max_replicas: 6
     import_path: ray.llm._internal.serve.deployments.prefill_decode_disagg.prefill_decode_disagg:build_app
     name: llm-endpoint
     route_prefix: /
