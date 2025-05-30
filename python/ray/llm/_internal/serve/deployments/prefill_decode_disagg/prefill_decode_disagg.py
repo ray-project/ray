@@ -2,8 +2,8 @@
 """
 import asyncio
 import logging
-from typing import AsyncGenerator, Union
 import uuid
+from typing import AsyncGenerator, Union
 
 from pydantic import BaseModel
 from vllm.config import KVTransferConfig
