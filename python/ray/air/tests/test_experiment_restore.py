@@ -150,9 +150,7 @@ def test_experiment_restore(tmp_path, runner_type):
 
         # Sleep for a random amount of time, then stop the run.
         start_time = time.monotonic()
-        stopping_time = start_time + timeout_s
-        while time.monotonic() < stopping_time:
-            time.sleep(poll_interval_s)
+        time.sleep(timeout_s)
         total_runtime += time.monotonic() - start_time
 
         return_code = run.poll()
