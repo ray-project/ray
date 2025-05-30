@@ -23,8 +23,16 @@ namespace telemetry {
 using OpenTelemetryMetricRecorder = ray::telemetry::OpenTelemetryMetricRecorder;
 using StatsConfig = ray::stats::StatsConfig;
 
-DECLARE_stats(metric_test);
-DEFINE_stats(metric_test, "A test gauge metric", ("Tag1", "Tag2"), (), ray::stats::GAUGE);
+DECLARE_stats(metric_gauge_test);
+DEFINE_stats(
+    metric_gauge_test, "A test gauge metric", ("Tag1", "Tag2"), (), ray::stats::GAUGE);
+
+DECLARE_stats(metric_counter_test);
+DEFINE_stats(metric_counter_test,
+             "A test counter metric",
+             ("Tag1", "Tag2"),
+             (),
+             ray::stats::COUNT);
 
 class MetricTest : public ::testing::Test {
  public:
@@ -40,10 +48,17 @@ class MetricTest : public ::testing::Test {
 };
 
 TEST_F(MetricTest, TestGaugeMetric) {
-  STATS_metric_test.Record(42.0, {{"Tag1", "Value1"}, {"Tag2", "Value2"}});
+  STATS_metric_gauge_test.Record(42.0, {{"Tag1", "Value1"}, {"Tag2", "Value2"}});
   ASSERT_EQ(OpenTelemetryMetricRecorder::GetInstance().GetMetricValue(
-                "metric_test", {{"Tag1", "Value1"}, {"Tag2", "Value2"}}),
+                "metric_gauge_test", {{"Tag1", "Value1"}, {"Tag2", "Value2"}}),
             42.0);
+}
+
+TEST_F(MetricTest, TestCounterMetric) {
+  STATS_metric_counter_test.Record(10.0, {{"Tag1", "Value1"}, {"Tag2", "Value2"}});
+  ASSERT_EQ(OpenTelemetryMetricRecorder::GetInstance().GetMetricValue(
+                "metric_counter_test", {{"Tag1", "Value1"}, {"Tag2", "Value2"}}),
+            10.0);
 }
 
 }  // namespace telemetry
