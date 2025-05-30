@@ -3,6 +3,7 @@ steps:
   - label: ":tapioca: build: wheel {{matrix}} (x86_64)"
     key: linux_wheels
     tags:
+      - release_wheels
       - linux_wheels
       - oss
     instance_type: large
@@ -124,5 +125,12 @@ steps:
       - export CPP_WHEEL_URL="https://files.pythonhosted.org/packages/50/ae/c094818fd526bfb0a361a76bda5708a73cbc888b51edfc7d6aab9de837cd/ray_cpp-2.44.1-cp39-cp39-manylinux2014_x86_64.whl"
       - bash build-docker.sh --progress-plain
       - docker run -ti --rm rayproject/ray:dev python -c "import ray; print(ray.__version__)"
+    depends_on:
+      - forge
+
+  - label: ":tapioca: Generate indexes"
+    instance_type: small
+    commands:
+      - bazel run //ci/ray_ci/automation:generate_index -- --prefix nightly
     depends_on:
       - forge

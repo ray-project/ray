@@ -15,8 +15,12 @@ import pyarrow.parquet as pq
 import pytest
 
 import ray
+from ray._private.arrow_utils import get_pyarrow_version
 from ray._private.test_utils import run_string_as_driver, wait_for_condition
 from ray.data import Dataset
+from ray.data._internal.arrow_ops.transform_pyarrow import (
+    MIN_PYARROW_VERSION_TYPE_PROMOTION,
+)
 from ray.data._internal.execution.interfaces.ref_bundle import (
     _ref_bundles_iterator_to_block_refs_list,
 )
@@ -1949,6 +1953,51 @@ def test_map_op_backpressure_configured_properly():
     )
 
     assert list(range(5))[:-1] == vals
+
+
+@pytest.mark.skipif(
+    get_pyarrow_version() < MIN_PYARROW_VERSION_TYPE_PROMOTION,
+    reason="Requires pyarrow>=14 for unify_schemas in OneHotEncoder",
+)
+def test_map_names():
+    """To test different UDF format such that the operator
+    has the correct representation.
+
+    The actual name is handled by
+    AbstractUDFMap._get_operator_name()
+    """
+
+    ds = ray.data.range(5)
+
+    r = ds.map(lambda x: {"id": str(x["id"])}).__repr__()
+    assert r.startswith("Map(<lambda>)"), r
+
+    class C:
+        def __call__(self, x):
+            return x
+
+    r = ds.map(C, concurrency=4).__repr__()
+    assert r.startswith("Map(C)"), r
+
+    # Simple and partial functions
+    def func(x, y):
+        return x
+
+    r = ds.map(func, fn_args=[0]).__repr__()
+    assert r.startswith("Map(func)")
+
+    from functools import partial
+
+    r = ds.map(partial(func, y=1)).__repr__()
+    assert r.startswith("Map(func)"), r
+
+    # Preprocessor
+    from ray.data.preprocessors import OneHotEncoder
+
+    ds = ray.data.from_items(["a", "b", "c", "a", "b", "c"])
+    enc = OneHotEncoder(columns=["item"])
+    r = enc.fit_transform(ds).__repr__()
+    assert r.startswith("OneHotEncoder"), r
 
 
 if __name__ == "__main__":

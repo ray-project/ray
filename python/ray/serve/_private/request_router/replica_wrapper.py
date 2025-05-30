@@ -14,7 +14,7 @@ from ray.serve._private.common import (
 )
 from ray.serve._private.constants import SERVE_LOGGER_NAME
 from ray.serve._private.replica_result import ActorReplicaResult, ReplicaResult
-from ray.serve._private.replica_scheduler.common import PendingRequest
+from ray.serve._private.request_router.common import PendingRequest
 from ray.serve._private.utils import JavaActorHandleProxy
 from ray.serve.generated.serve_pb2 import RequestMetadata as RequestMetadataProto
 
@@ -118,7 +118,7 @@ class ActorReplicaWrapper(ReplicaWrapper):
 
 class RunningReplica:
     """Contains info on a running replica.
-    Also defines the interface for a scheduler to talk to a replica.
+    Also defines the interface for a request router to talk to a replica.
     """
 
     def __init__(self, replica_info: RunningReplicaInfo):
