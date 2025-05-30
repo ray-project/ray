@@ -24,9 +24,7 @@ class Patient:
 
     async def record_routing_stats(self):
         if self.should_hang:
-            import time
-
-            time.sleep(10000)
+            await asyncio.sleep(10000)
 
         if self.should_fail:
             raise Exception("intended to fail")
@@ -36,9 +34,9 @@ class Patient:
     def __call__(self, *args) -> ReplicaID:
         return self.replica_id
 
-    def set_routing_stats(self, routing_stats: Dict[str, Any]):
-        print(f"set_routing_stats {routing_stats=}")
+    def set_routing_stats(self, routing_stats: Dict[str, Any]) -> ReplicaID:
         self.routing_stats = routing_stats
+        return self.replica_id
 
     def set_should_fail(self):
         self.should_fail = True
@@ -105,7 +103,7 @@ async def test_user_defined_method_fails(serve_instance):
     await h.set_should_fail.remote()
     await asyncio.gather(*[h.remote() for _ in range(100)])
 
-    # After the failure the previous routing stats should still accessible
+    # After the failure, the previous routing stats should still accessible
     wait_for_condition(
         check_routing_stats_recorded,
         handle=h,
@@ -114,45 +112,61 @@ async def test_user_defined_method_fails(serve_instance):
     )
 
 
-# @pytest.mark.asyncio
-# async def test_user_defined_method_hangs(serve_instance):
-#     """Check the behavior when a user-defined method hangs."""
-#     expected_stats = {"foo": "bar"}
-#     h = serve.run(Patient.bind())
-#     await h.set_routing_stats.remote(expected_stats)
-#     replica_id = await h.remote()
-#
-#     # Ensure the routing stats are recorded correctly before the failure
-#     wait_for_condition(check_routing_stats_recorded, handle=h, expected_stats=expected_stats, replica_id=replica_id)
-#
-#     print("A")
-#     await h.set_should_hang.remote()
-#     print("B")
-#     await asyncio.gather(*[h.remote() for _ in range(100)])
-#     print("C")
-#     # After the failure the previous routing stats should still accessible
-#     wait_for_condition(check_routing_stats_recorded, handle=h, expected_stats=expected_stats, replica_id=replica_id)
-#
-#
-# @pytest.mark.asyncio
-# async def test_multiple_replicas(serve_instance):
-#     h = serve.run(Patient.options(num_replicas=2).bind())
-#     actors = {
-#         a._actor_id for a in await asyncio.gather(*[h.remote() for _ in range(100)])
-#     }
-#     assert len(actors) == 2
-#
-#     await h.set_should_fail.remote()
-#
-#     await async_wait_for_condition(
-#         check_new_actor_started, handle=h, original_actors=actors
-#     )
-#
-#     new_actors = {
-#         a._actor_id for a in await asyncio.gather(*[h.remote() for _ in range(100)])
-#     }
-#     assert len(new_actors) == 2
-#     assert len(new_actors.intersection(actors)) == 1
+@pytest.mark.asyncio
+async def test_user_defined_method_hangs(serve_instance):
+    """Check the behavior when a user-defined method hangs."""
+    expected_stats = {"foo": "bar"}
+    h = serve.run(Patient.bind())
+    await h.set_routing_stats.remote(expected_stats)
+    replica_id = await h.remote()
+
+    # Ensure the routing stats are recorded correctly before the failure
+    wait_for_condition(
+        check_routing_stats_recorded,
+        handle=h,
+        expected_stats=expected_stats,
+        replica_id=replica_id,
+    )
+
+    await h.set_should_hang.remote()
+    await asyncio.gather(*[h.remote() for _ in range(100)])
+
+    # After the hang, the previous routing stats should still accessible
+    wait_for_condition(
+        check_routing_stats_recorded,
+        handle=h,
+        expected_stats=expected_stats,
+        replica_id=replica_id,
+    )
+
+
+@pytest.mark.asyncio
+async def test_multiple_replicas(serve_instance):
+    """Check the behavior with multiple replicas."""
+    h = serve.run(Patient.options(num_replicas=2).bind())
+    replica_ids = set(await asyncio.gather(*[h.remote() for _ in range(100)]))
+
+    assert len(replica_ids) == 2
+
+    # Ensure that the routing stats is set for one of the replicas.
+    expected_stats = {"foo": "bar"}
+    updated_stats_replica_id = await h.set_routing_stats.remote(expected_stats)
+    wait_for_condition(
+        check_routing_stats_recorded,
+        handle=h,
+        expected_stats=expected_stats,
+        replica_id=updated_stats_replica_id,
+    )
+
+    # Ensure that the routing stats is not set for the other replica.
+    replica_ids.remove(updated_stats_replica_id)
+    unupdated_stats_replica_id = replica_ids.pop()
+    wait_for_condition(
+        check_routing_stats_recorded,
+        handle=h,
+        expected_stats={},
+        replica_id=unupdated_stats_replica_id,
+    )
 
 
 if __name__ == "__main__":
