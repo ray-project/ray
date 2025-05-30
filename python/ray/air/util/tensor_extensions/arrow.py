@@ -765,6 +765,17 @@ class ArrowTensorArray(_ArrowTensorScalarIndexingMixin, pa.ExtensionArray):
         total_num_items = arr.size
         num_items_per_element = np.prod(element_shape) if element_shape else 1
 
+        from ray.data import DataContext
+
+        ctx = DataContext.get_current()
+
+        if ctx.use_arrow_native_fixed_shape_tensor_type:
+            pa_type_ = pa.fixed_shape_tensor(scalar_dtype, element_shape)
+        elif ctx.use_arrow_tensor_v2:
+            pa_type_ = ArrowTensorTypeV2(element_shape, scalar_dtype)
+        else:
+            pa_type_ = ArrowTensorType(element_shape, scalar_dtype)
+
         # Data buffer.
         if pa.types.is_boolean(scalar_dtype):
             # NumPy doesn't represent boolean arrays as bit-packed, so we manually
@@ -772,17 +783,11 @@ class ArrowTensorArray(_ArrowTensorScalarIndexingMixin, pa.ExtensionArray):
             # NOTE: Arrow expects LSB bit-packed ordering.
             # NOTE: This creates a copy.
             arr = np.packbits(arr, bitorder="little")
+
         data_buffer = pa.py_buffer(arr)
         data_array = pa.Array.from_buffers(
             scalar_dtype, total_num_items, [None, data_buffer]
         )
-
-        from ray.data import DataContext
-
-        if DataContext.get_current().use_arrow_tensor_v2:
-            pa_type_ = ArrowTensorTypeV2(element_shape, scalar_dtype)
-        else:
-            pa_type_ = ArrowTensorType(element_shape, scalar_dtype)
 
         # Create Offset buffer
         offset_buffer = pa.py_buffer(
