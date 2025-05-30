@@ -421,9 +421,9 @@ class DeploymentSchema(BaseModel, allow_population_by_field_name=True):
         default=DEFAULT.VALUE,
         description="Logging config for configuring serve deployment logs.",
     )
-    replica_scheduler: str = Field(
+    request_router_class: str = Field(
         default=DEFAULT.VALUE,
-        description="The replica scheduler to use for this deployment.",
+        description="The path pointing to the custom request router class to use for this deployment.",
     )
 
     @root_validator
@@ -505,7 +505,7 @@ def _deployment_info_to_schema(name: str, info: DeploymentInfo) -> DeploymentSch
         request_scheduling_stats_period_s=info.deployment_config.request_scheduling_stats_period_s,
         request_scheduling_stats_timeout_s=info.deployment_config.request_scheduling_stats_timeout_s,
         ray_actor_options=info.replica_config.ray_actor_options,
-        replica_scheduler=info.deployment_config.replica_scheduler,
+        request_router_class=info.deployment_config.request_router_class,
     )
 
     if info.deployment_config.autoscaling_config is not None:
@@ -1203,14 +1203,14 @@ class ServeInstanceDetails(BaseModel, extra=Extra.forbid):
         """Generates json serializable dictionary with user facing data."""
         values = super().dict(*args, **kwargs)
 
-        # `serialized_policy_def` and `serialize_replica_scheduler` are only used
+        # `serialized_policy_def` and `serialized_request_router_cls` are only used
         # internally and should not be exposed to the REST api. This method iteratively
         # removes them from each deployment and autoscaling config if exists.
         for app_name, application in values["applications"].items():
             for deployment_name, deployment in application["deployments"].items():
                 if "deployment_config" in deployment:
                     deployment["deployment_config"].pop(
-                        "serialize_replica_scheduler", None
+                        "serialized_request_router_cls", None
                     )
                     if "autoscaling_config" in deployment["deployment_config"]:
                         deployment["deployment_config"]["autoscaling_config"].pop(

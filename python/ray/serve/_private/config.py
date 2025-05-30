@@ -26,9 +26,7 @@ from ray.serve._private.constants import (
     DEFAULT_HEALTH_CHECK_PERIOD_S,
     DEFAULT_HEALTH_CHECK_TIMEOUT_S,
     DEFAULT_MAX_ONGOING_REQUESTS,
-    DEFAULT_REPLICA_SCHEDULER,
-    DEFAULT_REQUEST_SCHEDULING_STATS_PERIOD_S,
-    DEFAULT_REQUEST_SCHEDULING_STATS_TIMEOUT_S,
+    DEFAULT_REQUEST_ROUTER_PATH,
     MAX_REPLICAS_PER_NODE_MAX_VALUE,
 )
 from ray.serve._private.utils import DEFAULT, DeploymentOptionUpdateType
@@ -199,11 +197,13 @@ class DeploymentConfig(BaseModel):
     # Contains the names of deployment options manually set by the user
     user_configured_option_names: Set[str] = set()
 
-    # Cloudpickled replica scheduler definition.
-    serialized_replica_scheduler_def: bytes = Field(default=b"")
+    # Cloudpickled request router class.
+    serialized_request_router_cls: bytes = Field(default=b"")
 
-    # Custom replica scheduler config. Defaults to the power of two replica scheduler.
-    replica_scheduler: Union[str, Callable] = Field(default=DEFAULT_REPLICA_SCHEDULER)
+    # Custom request router config. Defaults to the power of two request router.
+    request_router_class: Union[str, Callable] = Field(
+        default=DEFAULT_REQUEST_ROUTER_PATH
+    )
 
     class Config:
         validate_assignment = True
@@ -247,6 +247,33 @@ class DeploymentConfig(BaseModel):
             )
 
         return v
+
+    @root_validator
+    def import_and_serialize_request_router_cls(cls, values) -> Dict[str, Any]:
+        """Import and serialize request router class with cloudpickle.
+
+        Import the request router if it's passed in as a string import path.
+        Then cloudpickle the request router and set to
+        `serialized_request_router_cls`.
+        """
+        request_router_class = values.get("request_router_class")
+        if isinstance(request_router_class, Callable):
+            request_router_class = (
+                f"{request_router_class.__module__}.{request_router_class.__name__}"
+            )
+
+        request_router_path = request_router_class or DEFAULT_REQUEST_ROUTER_PATH
+        request_router_class = import_attr(request_router_path)
+
+        values["serialized_request_router_cls"] = cloudpickle.dumps(
+            request_router_class
+        )
+        values["request_router_class"] = request_router_path
+        return values
+
+    def get_request_router_class(self) -> Callable:
+        """Deserialize request router from cloudpickled bytes."""
+        return cloudpickle.loads(self.serialized_request_router_cls)
 
     def needs_pickle(self):
         return _needs_pickle(self.deployment_language, self.is_cross_language)

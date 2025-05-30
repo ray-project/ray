@@ -898,6 +898,9 @@ class ServeController:
     ) -> Optional[DeploymentConfig]:
         """Get the deployment config for the given deployment id.
 
+        Args:
+            deployment_id: The deployment id to get the config for.
+
         Returns:
             A deployment config object if the deployment id exist,
             None otherwise.
