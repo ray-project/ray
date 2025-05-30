@@ -1598,11 +1598,8 @@ class EC2InstanceTerminatorWithGracePeriod(NodeKillerBase):
                 self._kill_threads.remove(thread)
 
         def _kill_node_with_grace_period(node_id, node_to_kill_ip):
-            # Drain the node.
             self._drain_node(node_id)
-            # Wait for the grace period to finish.
             time.sleep(self._grace_period_s)
-            # Kill the node.
             _terminate_ec2_instance(node_id)
 
         thread = threading.Thread(
