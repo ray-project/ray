@@ -3,10 +3,11 @@ autoscaler
 [Bb]ackpressure
 Dask
 [Dd]ata('s)?
-[Dd]atasource
+[Dd]atasource(s)?
 [Dd]iscretizer(s)?
 dtype
 [Gg]roupby
+[Hh]asher(s)?
 [Hh]udi
 [Ii]ndexable
 [Ii]ngest
@@ -29,4 +30,7 @@ runai
 Spotify('s)?
 TFRecord(s)?
 UDF(s)?
+VLM(s)?
 XGBoost
+[Ss]harding
+[Ss]harded

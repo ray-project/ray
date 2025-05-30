@@ -21,6 +21,7 @@ ray_cc_test(
     ],
     tags = ["team:core"],
     deps = [
+        "//:ray_mock",
         "//src/ray/object_manager:object_buffer_pool",
         "@com_google_googletest//:gtest_main",
     ],

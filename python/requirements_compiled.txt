@@ -352,7 +352,7 @@ crc32c==2.3
     # via -r python/requirements/ml/data-requirements.txt
 crcmod==1.7
     # via gsutil
-cryptography==44.0.3
+cryptography==44.0.3 ; sys_platform != "darwin"
     # via
     #   -r python/requirements/test-requirements.txt
     #   adal
@@ -540,7 +540,6 @@ flatbuffers==23.5.26
     # via
     #   onnxruntime
     #   tensorflow
-    #   tf2onnx
 fonttools==4.45.1
     # via matplotlib
 fqdn==1.5.1
@@ -712,7 +711,7 @@ gymnasium==1.0.0
     #   pettingzoo
     #   shimmy
     #   supersuit
-h11==0.14.0
+h11==0.16.0
     # via
     #   -r python/requirements/test-requirements.txt
     #   httpcore
@@ -731,7 +730,7 @@ holidays==0.39
     #   prophet
 hpbandster==0.7.4 ; python_version < "3.12"
     # via -r python/requirements/ml/tune-requirements.txt
-httpcore==1.0.7
+httpcore==1.0.9
     # via
     #   -r python/requirements/test-requirements.txt
     #   httpx
@@ -1284,7 +1283,6 @@ numpy==1.26.4
     #   tensorflow
     #   tensorflow-datasets
     #   tensorflow-probability
-    #   tf2onnx
     #   tifffile
     #   tinyscaler
     #   torch-geometric
@@ -1307,9 +1305,7 @@ oauth2client==4.1.3
 oauthlib==3.2.2
     # via requests-oauthlib
 onnx==1.15.0 ; sys_platform != "darwin" or platform_machine != "arm64"
-    # via
-    #   -r python/requirements/ml/rllib-requirements.txt
-    #   tf2onnx
+    # via -r python/requirements/ml/rllib-requirements.txt
 onnxruntime==1.18.0 ; sys_platform != "darwin" or platform_machine != "arm64"
     # via -r python/requirements/ml/rllib-requirements.txt
 open-spiel==1.4
@@ -1339,6 +1335,7 @@ opentelemetry-api==1.26.0
     #   opentelemetry-exporter-opencensus
     #   opentelemetry-exporter-otlp-proto-grpc
     #   opentelemetry-exporter-otlp-proto-http
+    #   opentelemetry-exporter-prometheus
     #   opentelemetry-sdk
     #   opentelemetry-semantic-conventions
 opentelemetry-exporter-opencensus==0.47b0
@@ -1356,6 +1353,8 @@ opentelemetry-exporter-otlp-proto-grpc==1.26.0
     # via opentelemetry-exporter-otlp
 opentelemetry-exporter-otlp-proto-http==1.26.0
     # via opentelemetry-exporter-otlp
+opentelemetry-exporter-prometheus==0.47b0
+    # via -r python/requirements.txt
 opentelemetry-proto==1.26.0
     # via
     #   opentelemetry-exporter-otlp-proto-common
@@ -1370,6 +1369,7 @@ opentelemetry-sdk==1.26.0
     #   opentelemetry-exporter-opencensus
     #   opentelemetry-exporter-otlp-proto-grpc
     #   opentelemetry-exporter-otlp-proto-http
+    #   opentelemetry-exporter-prometheus
 opentelemetry-semantic-conventions==0.47b0
     # via opentelemetry-sdk
 opt-einsum==3.3.0
@@ -1528,6 +1528,7 @@ prometheus-client==0.19.0
     #   jupyter-server
     #   nbclassic
     #   notebook
+    #   opentelemetry-exporter-prometheus
 promise==2.3
     # via tensorflow-datasets
 prompt-toolkit==3.0.41
@@ -1566,7 +1567,6 @@ protobuf==3.20.3
     #   tensorflow
     #   tensorflow-datasets
     #   tensorflow-metadata
-    #   tf2onnx
     #   wandb
 proxy-py==2.4.3
     # via -r python/requirements/test-requirements.txt
@@ -1865,7 +1865,7 @@ pyzmq==26.0.3
     #   notebook
 qpd==0.4.4
     # via fugue
-raydp==1.7.0b20231020.dev0
+raydp==1.7.0b20250423.dev0
     # via -r python/requirements/ml/data-test-requirements.txt
 redis==4.4.2
     # via -r python/requirements/test-requirements.txt
@@ -1921,7 +1921,6 @@ requests==2.32.3
     #   sphinx
     #   tensorboard
     #   tensorflow-datasets
-    #   tf2onnx
     #   torch-geometric
     #   torchtext
     #   transformers
@@ -2102,7 +2101,6 @@ six==1.16.0
     #   tensorboard
     #   tensorflow
     #   tensorflow-probability
-    #   tf2onnx
     #   triad
     #   vapi-runtime
 smart-open==6.2.0
@@ -2245,8 +2243,6 @@ terminado==0.18.1
     #   notebook
 testfixtures==7.0.0
     # via -r python/requirements/test-requirements.txt
-tf2onnx==1.15.1 ; sys_platform != "darwin" or platform_machine != "arm64"
-    # via -r python/requirements/ml/rllib-requirements.txt
 threadpoolctl==3.1.0
     # via
     #   -r python/requirements/test-requirements.txt

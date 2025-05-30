@@ -261,8 +261,8 @@ class RayActorOptionsSchema(BaseModel):
             return
 
         uris = v.get("py_modules", [])
-        if "working_dir" in v and v["working_dir"] not in uris:
-            uris.append(v["working_dir"])
+        if "working_dir" in v:
+            uris = [*uris, v["working_dir"]]
 
         for uri in uris:
             if uri is not None:
@@ -421,9 +421,9 @@ class DeploymentSchema(BaseModel, allow_population_by_field_name=True):
         default=DEFAULT.VALUE,
         description="Logging config for configuring serve deployment logs.",
     )
-    replica_scheduler: str = Field(
+    request_router_class: str = Field(
         default=DEFAULT.VALUE,
-        description="The replica scheduler to use for this deployment.",
+        description="The path pointing to the custom request router class to use for this deployment.",
     )
 
     @root_validator
@@ -505,7 +505,7 @@ def _deployment_info_to_schema(name: str, info: DeploymentInfo) -> DeploymentSch
         request_scheduling_stats_period_s=info.deployment_config.request_scheduling_stats_period_s,
         request_scheduling_stats_timeout_s=info.deployment_config.request_scheduling_stats_timeout_s,
         ray_actor_options=info.replica_config.ray_actor_options,
-        replica_scheduler=info.deployment_config.replica_scheduler,
+        request_router_class=info.deployment_config.request_router_class,
     )
 
     if info.deployment_config.autoscaling_config is not None:
@@ -598,8 +598,8 @@ class ServeApplicationSchema(BaseModel):
             return
 
         uris = v.get("py_modules", [])
-        if "working_dir" in v and v["working_dir"] not in uris:
-            uris.append(v["working_dir"])
+        if "working_dir" in v:
+            uris = [*uris, v["working_dir"]]
 
         for uri in uris:
             if uri is not None:
@@ -927,6 +927,7 @@ class ServeActorDetails(BaseModel, frozen=True):
     Attributes:
         node_id: ID of the node that the actor is running on.
         node_ip: IP address of the node that the actor is running on.
+        node_instance_id: Cloud provider instance id of the node that the actor is running on.
         actor_id: Actor ID.
         actor_name: Actor name.
         worker_id: Worker ID.
@@ -939,6 +940,9 @@ class ServeActorDetails(BaseModel, frozen=True):
     )
     node_ip: Optional[str] = Field(
         description="IP address of the node that the actor is running on."
+    )
+    node_instance_id: Optional[str] = Field(
+        description="Cloud provider instance id of the node that the actor is running on."
     )
     actor_id: Optional[str] = Field(description="Actor ID.")
     actor_name: Optional[str] = Field(description="Actor name.")
@@ -1096,6 +1100,7 @@ class ProxyDetails(ServeActorDetails, frozen=True):
 class Target(BaseModel, frozen=True):
     ip: str = Field(description="IP address of the target.")
     port: int = Field(description="Port of the target.")
+    instance_id: str = Field(description="Instance ID of the target.")
 
 
 @PublicAPI(stability="alpha")
@@ -1198,14 +1203,14 @@ class ServeInstanceDetails(BaseModel, extra=Extra.forbid):
         """Generates json serializable dictionary with user facing data."""
         values = super().dict(*args, **kwargs)
 
-        # `serialized_policy_def` and `serialize_replica_scheduler` are only used
+        # `serialized_policy_def` and `serialized_request_router_cls` are only used
         # internally and should not be exposed to the REST api. This method iteratively
         # removes them from each deployment and autoscaling config if exists.
         for app_name, application in values["applications"].items():
             for deployment_name, deployment in application["deployments"].items():
                 if "deployment_config" in deployment:
                     deployment["deployment_config"].pop(
-                        "serialize_replica_scheduler", None
+                        "serialized_request_router_cls", None
                     )
                     if "autoscaling_config" in deployment["deployment_config"]:
                         deployment["deployment_config"]["autoscaling_config"].pop(
