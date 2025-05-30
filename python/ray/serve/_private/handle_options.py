@@ -19,6 +19,7 @@ class InitHandleOptionsBase(ABC):
 
     _prefer_local_routing: bool = False
     _source: DeploymentHandleSource = DeploymentHandleSource.UNKNOWN
+    request_router_class: Callable = PowerOfTwoChoicesRequestRouter
 
     @classmethod
     @abstractmethod
@@ -42,6 +43,13 @@ class InitHandleOptions(InitHandleOptionsBase):
         ):
             kwargs["_source"] = DeploymentHandleSource.REPLICA
 
+        # Import the request router class if it's a string
+        if "request_router_class" in kwargs:
+            request_router_class = kwargs["request_router_class"]
+            if isinstance(request_router_class, str):
+                request_router_class = import_attr(request_router_class)
+            kwargs["request_router_class"] = request_router_class
+
         return cls(**kwargs)
 
 
@@ -55,7 +63,6 @@ class DynamicHandleOptionsBase(ABC):
     method_name: str = "__call__"
     multiplexed_model_id: str = ""
     stream: bool = False
-    request_router_class: Callable = PowerOfTwoChoicesRequestRouter
 
     @abstractmethod
     def copy_and_update(self, **kwargs) -> "DynamicHandleOptionsBase":
@@ -70,11 +77,6 @@ class DynamicHandleOptions(DynamicHandleOptionsBase):
         for f in fields(self):
             if f.name not in kwargs or kwargs[f.name] == DEFAULT.VALUE:
                 new_kwargs[f.name] = getattr(self, f.name)
-            elif f.name == "request_router_class":
-                request_router_class = kwargs[f.name]
-                if isinstance(request_router_class, str):
-                    request_router_class = import_attr(kwargs[f.name])
-                new_kwargs[f.name] = request_router_class
             else:
                 new_kwargs[f.name] = kwargs[f.name]
 

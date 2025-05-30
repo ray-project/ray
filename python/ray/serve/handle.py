@@ -127,9 +127,13 @@ class _DeploymentHandleBase:
         to initialize a handle with custom init options, you must do it
         before calling `.options()` or `.remote()`.
         """
-        if self._router is not None:
+        self.init_options = create_init_handle_options(**kwargs)
+        if self._router is not None and self._router.same_request_router_class(
+            self.init_options.request_router_class
+        ):
             raise RuntimeError(
-                "Handle has already been initialized. Note that a handle is implicitly "
+                "Handle has already been initialized and the request router "
+                "class has not been modified. Note that a handle is implicitly "
                 "initialized when you call `.options()` or `.remote()`. You either "
                 "tried to call `._init()` twice or called `._init()` after calling "
                 "`.options()` or `.remote()`. If you want to modify the init options, "
@@ -137,13 +141,19 @@ class _DeploymentHandleBase:
                 f"was initialized with {self.init_options}."
             )
 
-        init_options = create_init_handle_options(**kwargs)
+        # Only reconfigure the request router if the request router class has
+        # changed. Else create a new router without specifying the request
+        # router class and let the update loop to propagate the class.
+        request_router_class = (
+            self.init_options.request_router_class if self._router else None
+        )
+
         self._router = self._create_router(
             handle_id=self.handle_id,
             deployment_id=self.deployment_id,
-            handle_options=init_options,
+            handle_options=self.init_options,
+            request_router_class=request_router_class,
         )
-        self.init_options = init_options
 
         logger.info(
             f"Initialized DeploymentHandle {self.handle_id} for {self.deployment_id}.",
@@ -157,7 +167,12 @@ class _DeploymentHandleBase:
         ):
             ServeUsageTag.DEPLOYMENT_HANDLE_API_USED.record("1")
 
-    def _options(self, _prefer_local_routing=DEFAULT.VALUE, **kwargs):
+    def _options(
+        self,
+        _prefer_local_routing: Union[bool, DEFAULT] = DEFAULT.VALUE,
+        request_router_class: Union[str, Callable, DEFAULT] = DEFAULT.VALUE,
+        **kwargs,
+    ):
         if kwargs.get("stream") is True and inside_ray_client_context():
             raise RuntimeError(
                 "Streaming DeploymentHandles are not currently supported when "
@@ -165,25 +180,17 @@ class _DeploymentHandleBase:
             )
 
         new_handle_options = self.handle_options.copy_and_update(**kwargs)
+        init_options_dict = {}
 
         # TODO(zcin): remove when _prefer_local_routing is removed from options() path
         if _prefer_local_routing != DEFAULT.VALUE:
-            self._init(_prefer_local_routing=_prefer_local_routing)
+            init_options_dict["_prefer_local_routing"] = _prefer_local_routing
 
-        if not self.is_initialized:
-            self._init()
+        if request_router_class != DEFAULT.VALUE:
+            init_options_dict["request_router_class"] = request_router_class
 
-        if kwargs.get(
-            "request_router_class"
-        ) != DEFAULT.VALUE and not self._router.same_request_router_class(
-            new_handle_options.request_router_class
-        ):
-            self._router = self._create_router(
-                handle_id=self.handle_id,
-                deployment_id=self.deployment_id,
-                handle_options=self.init_options,
-                request_router_class=new_handle_options.request_router_class,
-            )
+        if not self.is_initialized or init_options_dict:
+            self._init(**init_options_dict)
 
         return DeploymentHandle(
             self.deployment_name,

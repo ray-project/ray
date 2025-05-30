@@ -79,19 +79,19 @@ def test_init_handle_options():
     assert proxy_options._source == DeploymentHandleSource.PROXY
 
 
-def test_dynamic_handle_options_with_request_router_class():
+def test_init_handle_options_with_request_router_class():
     # Default options should use PowerOfTwoChoicesRequestRouter
-    default_options = DynamicHandleOptions()
+    default_options = InitHandleOptions.create()
     assert default_options.request_router_class == PowerOfTwoChoicesRequestRouter
 
     # Test setting request router class with a callable.
-    updated_options_callable_class = default_options.copy_and_update(
+    updated_options_callable_class = InitHandleOptions.create(
         request_router_class=RequestRouter
     )
     assert updated_options_callable_class.request_router_class == RequestRouter
 
     # Test setting request router class with a string.
-    updated_options_string_class = default_options.copy_and_update(
+    updated_options_string_class = InitHandleOptions.create(
         request_router_class="ray.serve.request_router:RequestRouter"
     )
     assert updated_options_string_class.request_router_class == RequestRouter
