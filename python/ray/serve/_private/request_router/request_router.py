@@ -34,6 +34,7 @@ from ray.serve._private.constants import (
     RAY_SERVE_QUEUE_LENGTH_RESPONSE_DEADLINE_S,
     SERVE_LOGGER_NAME,
 )
+from ray.serve._private.replica_result import ReplicaResult
 from ray.serve._private.request_router.common import (
     PendingRequest,
     ReplicaQueueLengthCache,
@@ -999,6 +1000,29 @@ class RequestRouter(ABC):
             [self.create_replica_wrapper(r) for r in running_replicas]
         )
 
+    def select_available_replicas(
+        self, candidates: Optional[List[RunningReplica]] = None
+    ) -> List[RunningReplica]:
+        """Select available replicas from the list of candidates.
+
+        This method is used to select replicas that are available to take more
+        requests based on the queue length cache. If the queue length is not
+        available in the cache, the replica is considered available. It does
+        not actively probe the replicas for their queue length.
+
+        If input candidates is `None`, all replicas are considered.
+        """
+        if candidates is None:
+            candidates = list(self._replicas.values())
+
+        available_replicas = []
+        for r in candidates:
+            queue_len = self._replica_queue_len_cache.get(r.replica_id)
+            if queue_len is None or queue_len < r.max_ongoing_requests:
+                available_replicas.append(r)
+
+        return available_replicas
+
     @abstractmethod
     async def choose_replicas(
         self,
@@ -1022,5 +1046,18 @@ class RequestRouter(ABC):
             A list of lists of replicas, where each inner list represents a
             rank of replicas. The first rank is the most preferred and the last
             rank is the least preferred.
+        """
+        pass
+
+    def on_request_routed(
+        self,
+        pending_request: PendingRequest,
+        replica_id: ReplicaID,
+        result: ReplicaResult,
+    ):
+        """Called when a request is routed to a replica.
+
+        This is used as a callback to update the state of the request router
+        after a response is generated.
         """
         pass
