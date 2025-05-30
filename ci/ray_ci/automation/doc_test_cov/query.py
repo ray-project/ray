@@ -2,19 +2,21 @@ import subprocess
 import json
 from typing import Dict, List
 
-class BazelQuery:
+class Query:
 
     @staticmethod
     def get_all_test_targets(ray_path: str) -> List[str]: # update this to be a SET
         """
         Get all test targets in the workspace using bazel query.
         """
+        cmd = "bazel query 'kind(\".*_test rule\", //doc/...)'"
         result = subprocess.run(
-            ["bazel", "query", "\"//doc/...\""],
+            #["bazel", "query", "\"//doc/...\""],
+            cmd,
             cwd=ray_path,
             capture_output=True,
             text=True,
-            check=True
+            shell=True
         )
         return result.stdout.strip().split("\n")
 
@@ -26,13 +28,14 @@ class BazelQuery:
         files_for_targets = {}
         for target in targets:
             try:
-                cmd = f"bazel query 'filter(\"\\.rst$|\\.md$|\\.ipynb$|\\.py$\", deps({target}, 1))'"
+                #cmd = f"bazel query 'filter(\"\\.rst$|\\.md$|\\.ipynb$|\\.py$\", deps({target}, 1))'"
+                cmd = f"bazel query 'kind(\"source file\", filter(\"source/.*\", deps({target})))'"
                 result = subprocess.run(
                     cmd,
-                cwd=ray_path,
-                capture_output=True,
-                text=True,
-                shell=True
+                    cwd=ray_path,
+                    capture_output=True,
+                    text=True,
+                    shell=True
                 )
                 files_for_targets[target] = (result.stdout.strip().split("\n"))
             except subprocess.CalledProcessError as e:
@@ -48,10 +51,6 @@ class BazelQuery:
         Returns: Dict[target_name, status]
         """
         executed_tests = {}
-        print("Looking for these targets:")
-        for target in targets:
-            print(f"  {target}")
-
         for log_file in log_files:
             if "metadata" not in log_file:
                 print(f"\nParsing log file: {log_file}")
@@ -78,21 +77,43 @@ class BazelQuery:
                         return {}
 
         print(f"\nFound {len(executed_tests)} total test results:")
-        for target, status in executed_tests.items():
-            print(f"  {target} = {status}")
 
         print("\nFiltering for matching targets...")
         filtered_tests = {}
 
         for label, status in executed_tests.items():
-            print(f" label: {label}")
             if label in targets:
                 filtered_tests[label] = status
         print(f"\nAfter filtering, found {len(filtered_tests)} matching target tests:")
         return filtered_tests, executed_tests
 
     @staticmethod
-    def output_test_coverage(filtered_tests: Dict[str, str], executed_tests: Dict[str, str], targets: List[str], target_file_map: Dict[str, List[str]], bk_build_url: str):
+    def get_file_references(target_file_map: Dict[str, List[str]], ray_path: str) -> Dict[str, List[str]]:
+        """
+        Get file references in the doc/ directory.
+        """
+        file_references = {}
+        for file_paths in target_file_map.values():
+            for file_path in file_paths:
+                fp = file_path.lstrip("//").split(":")[-1].split("/")[-1]
+                # Use find to get all matching files and show matching lines with filename
+                cmd = f"find {ray_path}/doc -type f -name '*.rst' -o -name '*.md' -o -name '*.html' | xargs grep -H '{fp}'"
+                print(f"cmd: {cmd}")
+                result = subprocess.run(["bash", "-c", cmd],
+                    cwd=ray_path,
+                    capture_output=True,
+                    text=True)
+
+                print(f"Exit code: {result.returncode}")
+                if result.stderr:
+                    print(f"stderr: {result.stderr}")
+
+                stdout = result.stdout.strip()
+                file_references[file_path] = stdout.split("\n") if stdout else []
+        return file_references
+
+    @staticmethod
+    def output_test_coverage(filtered_tests: Dict[str, str], executed_tests: Dict[str, str], targets: List[str], target_file_map: Dict[str, List[str]], bk_build_url: str, bk_job_names: List[str], ray_path: str):
         """
         Get test coverage for the executed tests that match the targets.
         """
@@ -103,6 +124,7 @@ class BazelQuery:
             f.write("===================\n\n")
             f.write(f"BK Build URL: {bk_build_url}\n\n")
             f.write("--------------------\n")
+            f.write(f"BK Job Names: {bk_job_names}\n\n")
             f.write("\nTest Coverage Summary:\n")
             f.write("--------------------\n")
             f.write(f"ALL TARGETS: {len(target_file_map)}\n")
@@ -121,22 +143,25 @@ class BazelQuery:
                     untested_targets.append(target)
             f.write("\nUNTESTED TARGETS:\n")
             f.write("--------------------\n")
+            filtered_target_file_map = {k: v for k, v in target_file_map.items() if k in untested_targets}
+            file_ref_map = Query.get_file_references(filtered_target_file_map, ray_path)
             for target in untested_targets:
                 f.write(f"{target} : NOT TESTED\n")
-                for file in target_file_map[target]:
+                for file in filtered_target_file_map[target]:
                     file_name = file.split(".")[0]
                     if file_name not in executed_tests:
                         file_list[file] = "NOT TESTED"
                         f.write(f"      {file}\n")
+                        for ref in file_ref_map[file]:
+                            f.write(f"              {ref}\n")
             f.write("--------------------\n")
             f.write(f"Total Bazel targets: {len(targets)}\n")
             f.write(f"Tested Bazel Targets: {len(filtered_tests)}\n")
             f.write(f"Untested Bazel Targets: {len(untested_targets)}\n")
-            f.write(f"Test coverage per target: {len(filtered_tests) / len(targets) * 100:.2f}%\n")
 
+            f.write(f"Test coverage per target: {len(filtered_tests) / len(targets) * 100:.2f}%\n")
             not_tested_count = sum(1 for status in file_list.values() if status == "NOT TESTED")
+            f.write(f"Total files: {len(file_list.keys())}\n")
+            f.write(f"Tested files: {len(file_list.keys()) - not_tested_count}\n")
             f.write(f"Test coverage per file: {(len(file_list.keys()) - not_tested_count) / len(file_list.keys()) * 100:.2f}%\n")
-        with open("results/file_list.txt", "w") as f:
-            for key in file_list.keys():
-                f.write(f"{key} : {file_list[key]}\n")
         print("\nResults have been written to test_results.txt")

@@ -1,7 +1,7 @@
 import os
 import argparse
 from s3 import S3DataSource
-from query import BazelQuery
+from query import Query
 from buildkite import BuildKiteClient
 
 S3_BUCKET = "ray-travis-logs"
@@ -9,7 +9,12 @@ BK_ORGANIZATION = "ray-project"
 BK_PIPELINE = "postmerge"
 BK_HOST = "https://api.buildkite.com/v2"
 
+def cleanup():
+    os.system("rm -f results/*")
+    os.system("rm -f bazel_events/")
+
 def main():
+    cleanup()
     parser = argparse.ArgumentParser(description="Analyze Bazel test execution")
     parser.add_argument("--ray-path", help="path to ray repo")
     parser.add_argument("--bk-api-token", help="buildkite api token")
@@ -29,6 +34,7 @@ def main():
         print("No release-automation bk builds found")
         return
     print(f"Found {len(release_automation_bk_builds)} release-automation bk jobs")
+
     # prompt user for build number
     for build in release_automation_bk_builds:
         print(f"Build {build["number"]}: {build["web_url"]}")
@@ -44,32 +50,29 @@ def main():
     commit = user_selected_build["commit"]
 
     # get doc test bk job ids
-    doc_test_bk_job_ids = bk_client.get_doc_test_jobs_for_build(user_selected_build)
+    doc_test_bk_job_ids,doc_test_bk_job_names = bk_client.get_doc_test_jobs_for_build(user_selected_build)
     print(f"Found {doc_test_bk_job_ids} doc test bk jobs")
 
     # Get all available test targets
     print("Querying available test targets...")
     print(args.ray_path)
-    all_targets = BazelQuery.get_all_test_targets(args.ray_path)
+    all_targets = Query.get_all_test_targets(args.ray_path)
     print(f"Found {len(all_targets)} total test targets")
 
     # get all rst,md,ipynb files for target
-    files_for_targets = BazelQuery.get_files_for_targets(all_targets, args.ray_path)
-    with open("files_for_targets.txt", "w") as f:
-        for target, files in files_for_targets.items():
-            f.write(f"{target}: {files}\n")
+    files_for_targets = Query.get_files_for_targets(all_targets, args.ray_path)
 
-    # List and Get all bazel events from s3
+    # # List and Get all bazel events from s3
     s3_source = S3DataSource(S3_BUCKET, commit, doc_test_bk_job_ids)
     s3_source.list_all_bazel_events()
     log_files = s3_source.download_all_bazel_events(f"{os.getcwd()}/bazel_events")
 
     # Parse log file for executed tests
-    filtered_tests, executed_tests = BazelQuery.parse_bazel_json(log_files, all_targets)
+    filtered_tests, executed_tests = Query.parse_bazel_json(log_files, all_targets)
     print(f"Found {len(executed_tests)} executed tests")
     print(f"Found {len(filtered_tests)} filtered tests")
     print(f"Found {len(all_targets)} total targets")
-    BazelQuery.output_test_coverage(filtered_tests, executed_tests, all_targets, files_for_targets, user_selected_build["web_url"])
+    Query.output_test_coverage(filtered_tests, executed_tests, all_targets, files_for_targets, user_selected_build["web_url"], doc_test_bk_job_names, args.ray_path)
 
 if __name__ == "__main__":
     main()

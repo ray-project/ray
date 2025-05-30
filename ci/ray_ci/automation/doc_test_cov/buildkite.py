@@ -53,4 +53,4 @@ class BuildKiteClient:
                 job_ids.append(job["id"])
                 job_names.append(job["name"])
         print(f"job_names: {job_names}")
-        return job_ids
+        return job_ids, job_names
