@@ -371,6 +371,7 @@ cdef extern from "ray/core_worker/common.h" nogil:
             c_bool is_detached,
             double max_cpu_fraction_per_node,
             CNodeID soft_target_node_id,
+            const c_vector[unordered_map[c_string, c_string]] &bundle_label_selector,
         )
 
     cdef cppclass CObjectLocation "ray::core::ObjectLocation":

@@ -1,11 +1,12 @@
+import asyncio
 import sys
+from unittest.mock import AsyncMock, call, patch
 
+import aiohttp
 import aiohttp.web_exceptions
 import pytest
-from unittest.mock import AsyncMock, patch, call
+
 from ray.llm._internal.batch.stages.http_request_stage import HttpRequestUDF
-import asyncio
-import aiohttp
 
 
 @pytest.fixture
