@@ -1,7 +1,9 @@
+(kuberay-index)=
 # Ray on Kubernetes
 
 ```{toctree}
 :hidden:
+
 
 getting-started
 user-guides
@@ -12,24 +14,40 @@ troubleshooting
 references
 ```
 
-(kuberay-index)=
-## Overview
+You can deploy your Ray workloads using Kubernetes. The pages in this section provide an overview of configuring and deploying Ray with Kubernetes.
 
-In this section we cover how to execute your distributed Ray programs on a Kubernetes cluster.
+## Choose a Ray operator
 
-We recommend using an implementation of the Kubernetes [operator pattern](https://kubernetes.io/docs/concepts/extend-kubernetes/operator/). Available options for operators are:
-* [KubeRay operator](https://github.com/ray-project/kuberay) (self-managed). The operator provides a Kubernetes-native way to manage Ray clusters.
-Each Ray cluster consists of a head node pod and a collection of worker node pods. Optional
-autoscaling support allows the KubeRay operator to size your Ray clusters according to the
-requirements of your Ray workload, adding and removing Ray pods as needed. KubeRay supports
-heterogenous compute nodes (including GPUs) as well as running multiple Ray clusters with
-different Ray versions in the same Kubernetes cluster.
+The Ray team recommends using a Kubernetes [operator](https://kubernetes.io/docs/concepts/extend-kubernetes/operator/) for a Kubernetes-native way to manage Ray clusters. Options include the following:
 
-* [Anyscale operator](https://docs.anyscale.com/administration/cloud-deployment/kubernetes/) (managed service). The Anyscale operator for Kubernetes enables deploying the Anyscale platform on Kubernetes clusters on Amazon Elastic Kubernetes Service (EKS), Google Kubernetes Engine (GKE), Azure Kubernetes Service (AKS), Oracle Kubernetes Engine (OKE), CoreWeave, or other Kubernetes clusters running in the cloud or on-prem.
+- Use the self-managed KubeRay operator if you want full control over all aspects of your Kubernetes and Ray platforms.
+- Use the Anyscale operator if you're looking for a managed service with enterprise support.
 
-See [Considerations for Building a Ray ML Platform](considerations-build-ml-platform) when choosing an operator (self-managed vs managed service)
+The documentation in this section focuses mostly on KubeRay. Many of the patterns, configurations, and integrations documented also apply to the Anyscale operator. Migrating workloads between these operators requires some refactoring, but patterns and features are generally similar.
 
-## Kuberay Overview
+### KubeRay
+
+[KubeRay](https://github.com/ray-project/kuberay) is an open source Kubernetes operator that's a widely adopted and well-documented solution for running Ray on Kubernetes.
+
+KubeRay is a self-managed solution, meaning that you have full control to customize infrastructure, fine-tune configurations, and integrate with other existing systems. When optimized properly, KubeRay can provide efficiency and performance.
+
+### Anyscale operator for Kubernetes
+
+The [Anyscale operator for Kubernetes](https://docs.anyscale.com/administration/cloud-deployment/kubernetes/) is a managed service offered by Anyscale. This operator deploys the Anyscale platform on top of your Kubernetes cluster, adding platform capabilities including an image repository, Ray cluster management, observability dashboards, and audit logs. 
+
+Supported Kubernetes clusters include the following:
+  - Amazon Elastic Kubernetes Service (EKS)
+  - Google Kubernetes Engine (GKE) 
+  - Azure Kubernetes Service (AKS) 
+  - Self-hosted on-prem Kubernetes clusters
+
+Many features of the Anyscale platform aim to reduce the complexity of developing new Ray workloads on Kubernetes.
+
+## KubeRay Overview
+
+KuberRay provides an open source, Kubernetes-native way to manage Ray clusters. 
+
+Each Ray cluster consists of a head node pod and a collection of worker node pods. Optional autoscaling support allows the KubeRay operator to size your Ray clusters according to the requirements of your Ray workload, adding and removing Ray pods as needed. KubeRay supports heterogenous compute nodes (including GPUs) as well as running multiple Ray clusters with different Ray versions in the same Kubernetes cluster.
 
 ```{eval-rst}
 .. image:: images/ray_on_kubernetes.png
