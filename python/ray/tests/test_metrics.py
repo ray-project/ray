@@ -207,6 +207,14 @@ def test_node_object_metrics(ray_start_cluster):
 
     # Test with detached owned
     # detached actor is owned by GCS. So it's not counted in the owner stats
+    @ray.remote(resources={"node_2": 0.5}, num_cpus=0)
+    class A:
+        def ready(self):
+            return
+
+        def gen(self):
+            return ray.put(10)
+
     detached_actor = A.options(lifetime="detached", name="A").remote()
     ray.get(detached_actor.ready.remote())
     for i in range(3):
