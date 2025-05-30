@@ -743,14 +743,18 @@ class ArrowTensorArray(_ArrowTensorScalarIndexingMixin, pa.ExtensionArray):
         if len(arr) > 0 and np.isscalar(arr[0]):
             # Elements are scalar so a plain Arrow Array will suffice.
             return pa.array(arr)
+
         if _is_ndarray_variable_shaped_tensor(arr):
             # Tensor elements have variable shape, so we delegate to
             # ArrowVariableShapedTensorArray.
             return ArrowVariableShapedTensorArray.from_numpy(arr)
+
         if not arr.flags.c_contiguous:
             # We only natively support C-contiguous ndarrays.
             arr = np.ascontiguousarray(arr)
+
         scalar_dtype = pa.from_numpy_dtype(arr.dtype)
+
         if pa.types.is_string(scalar_dtype):
             if arr.dtype.byteorder == ">" or (
                 arr.dtype.byteorder == "=" and sys.byteorder == "big"
@@ -760,21 +764,11 @@ class ArrowTensorArray(_ArrowTensorScalarIndexingMixin, pa.ExtensionArray):
                     f"but got: {arr.dtype}",
                 )
             scalar_dtype = pa.binary(arr.dtype.itemsize)
+
         outer_len = arr.shape[0]
         element_shape = arr.shape[1:]
         total_num_items = arr.size
         num_items_per_element = np.prod(element_shape) if element_shape else 1
-
-        from ray.data import DataContext
-
-        ctx = DataContext.get_current()
-
-        if ctx.use_arrow_native_fixed_shape_tensor_type:
-            pa_type_ = pa.fixed_shape_tensor(scalar_dtype, element_shape)
-        elif ctx.use_arrow_tensor_v2:
-            pa_type_ = ArrowTensorTypeV2(element_shape, scalar_dtype)
-        else:
-            pa_type_ = ArrowTensorType(element_shape, scalar_dtype)
 
         # Data buffer.
         if pa.types.is_boolean(scalar_dtype):
@@ -789,21 +783,39 @@ class ArrowTensorArray(_ArrowTensorScalarIndexingMixin, pa.ExtensionArray):
             scalar_dtype, total_num_items, [None, data_buffer]
         )
 
-        # Create Offset buffer
-        offset_buffer = pa.py_buffer(
-            pa_type_.OFFSET_DTYPE(
-                [i * num_items_per_element for i in range(outer_len + 1)]
+        from ray.data import DataContext
+
+        ctx = DataContext.get_current()
+
+        if ctx.use_arrow_native_fixed_shape_tensor_type:
+            tensor_type = pa.fixed_shape_tensor(scalar_dtype, shape=element_shape)
+
+            # NOTE: Since we're using fixed-size list array there's actually no need
+            #       for offsets (since all elements are of the same size)
+            storage = pa.FixedSizeListArray.from_arrays(data_array, list_size=num_items_per_element)
+
+            return pa.ExtensionArray.from_storage(tensor_type, storage)
+        else:
+            if ctx.use_arrow_tensor_v2:
+                tensor_type = ArrowTensorTypeV2(element_shape, scalar_dtype)
+            else:
+                tensor_type = ArrowTensorType(element_shape, scalar_dtype)
+
+            # Create offsets buffer
+            offset_buffer = pa.py_buffer(
+                tensor_type.OFFSET_DTYPE(
+                    [i * num_items_per_element for i in range(outer_len + 1)]
+                )
             )
-        )
 
-        storage = pa.Array.from_buffers(
-            pa_type_.storage_type,
-            outer_len,
-            [None, offset_buffer],
-            children=[data_array],
-        )
+            storage = pa.Array.from_buffers(
+                tensor_type.storage_type,
+                outer_len,
+                [None, offset_buffer],
+                children=[data_array],
+            )
 
-        return pa.ExtensionArray.from_storage(pa_type_, storage)
+            return pa.ExtensionArray.from_storage(tensor_type, storage)
 
     def _to_numpy(self, index: Optional[int] = None, zero_copy_only: bool = False):
         """
