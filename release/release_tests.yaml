@@ -4326,6 +4326,28 @@
     long_running: false
     script: python run_llm_serve_test_and_bms.py --serve-config-file configs/serve_llama_3dot1_8b_quantized_tp1_1p1d.yaml --skip-hf-token true
 
+- name: llm_serve_llama_3dot1_8B_quantized_tp1_2p6d
+  frequency: nightly
+  python: "3.11"
+  group: llm-serve
+  team: llm
+  working_dir: llm_tests/serve
+
+  cluster:
+    byod:
+      type: llm-cu124
+      # TODO(lk-chen): remove once we bump vllm to 0.9.0
+      post_build_script: byod_llm_pd_disagg_test.sh
+    cluster_compute: llm_auto_select_worker.yaml
+    # NOTE: Important for getting the correct secrets
+    cloud_id: cld_wy5a6nhazplvu32526ams61d98
+    project_id: prj_lhlrf1u5yv8qz9qg3xzw8fkiiq
+
+  run:
+    timeout: 3600
+    long_running: false
+    script: python run_llm_serve_test_and_bms.py --serve-config-file configs/serve_llama_3dot1_8b_quantized_tp1_2p6d.yaml --skip-hf-token true
+
 
 ##############
 # LLM Batch
@@ -4383,14 +4405,19 @@
     byod:
       type: cu123  # anyscale/ray:<PR_RAY_VERSION>-py311-cu123
       post_build_script: byod_e2e_xgboost.sh  # release/ray_release/byod/
-    cluster_compute: config/aws.yaml  # <working_dir>/
+    cluster_compute: ci/aws.yaml  # relative to working_dir
 
   run:
     timeout: 3600
-    script: PYTHONPATH=. python dist_xgboost/train.py  # <working_dir>/
+    script: PYTHONPATH=. python dist_xgboost/train.py  # relative to working_dir
 
   variations:
     - __suffix__: aws  # uses default specs above
+    - __suffix__: gce
+      env: gce
+      frequency: manual
+      cluster:
+        cluster_compute: ci/gce.yaml  # relative to working_dir
 
 
 - name: entity_recognition_with_llms  # do not use dashes (regex sensitive)
@@ -4438,3 +4465,8 @@
 
   variations:
     - __suffix__: aws
+    - __suffix__: gce
+      env: gce
+      frequency: manual
+      cluster:
+        cluster_compute: ci/gce.yaml  # relative to working_dir

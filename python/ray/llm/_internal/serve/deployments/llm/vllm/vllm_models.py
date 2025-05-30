@@ -1,18 +1,15 @@
 import os
-from typing import Any, Dict, List, Literal, Optional, TYPE_CHECKING, Union
+from typing import TYPE_CHECKING, Any, Dict, List, Literal, Optional, Union
 
-from pydantic import ConfigDict, Field, field_validator, ValidationError
-from ray.util.placement_group import (
-    PlacementGroup,
-    get_current_placement_group,
-    placement_group,
-    placement_group_table,
-)
-from ray.llm._internal.utils import try_import
+from pydantic import ConfigDict, Field, ValidationError, field_validator
 
-from ray.llm._internal.serve.observability.logging import get_logger
 from ray.llm._internal.common.base_pydantic import BaseModelExtended
 from ray.llm._internal.common.utils.cloud_utils import CloudMirrorConfig
+from ray.llm._internal.serve.configs.constants import (
+    ALLOW_NEW_PLACEMENT_GROUPS_IN_DEPLOYMENT,
+    ENV_VARS_TO_PROPAGATE,
+)
+from ray.llm._internal.serve.configs.prompt_formats import Prompt
 from ray.llm._internal.serve.configs.server_models import (
     DiskMultiplexConfig,
     GenerationRequest,
@@ -20,12 +17,14 @@ from ray.llm._internal.serve.configs.server_models import (
     LLMConfig,
     SamplingParams,
 )
-from ray.llm._internal.serve.configs.constants import (
-    ALLOW_NEW_PLACEMENT_GROUPS_IN_DEPLOYMENT,
-    ENV_VARS_TO_PROPAGATE,
+from ray.llm._internal.serve.observability.logging import get_logger
+from ray.llm._internal.utils import try_import
+from ray.util.placement_group import (
+    PlacementGroup,
+    get_current_placement_group,
+    placement_group,
+    placement_group_table,
 )
-from ray.llm._internal.serve.configs.prompt_formats import Prompt
-
 
 # The key for the kv_transfer_params in the internal metadata.
 KV_TRANSFER_PARAMS_KEY = "kv_transfer_params"

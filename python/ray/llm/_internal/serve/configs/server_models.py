@@ -1,23 +1,20 @@
-import pydantic
 import os
-import ray
-
+import time
 from enum import Enum
-from ray.llm._internal.serve.configs.error_handling import TooManyStoppingSequences
-
 from typing import (
     Any,
     Dict,
     List,
     Optional,
+    Sequence,
+    Set,
+    Tuple,
     Type,
     TypeVar,
     Union,
-    Tuple,
-    Sequence,
-    Set,
 )
-import time
+
+import pydantic
 from pydantic import (
     BaseModel,
     ConfigDict,
@@ -28,32 +25,32 @@ from pydantic import (
     model_validator,
 )
 
+import ray
+import ray.util.accelerators.accelerators as accelerators
 from ray.llm._internal.common.base_pydantic import BaseModelExtended
 from ray.llm._internal.common.utils.cloud_utils import (
     CloudMirrorConfig,
     is_remote_path,
 )
-from ray.llm._internal.utils import try_import
-
-from ray.llm._internal.serve.observability.logging import get_logger
-import ray.util.accelerators.accelerators as accelerators
-from ray.serve._private.config import DeploymentConfig
-
 from ray.llm._internal.serve.configs.constants import (
     DEFAULT_MULTIPLEX_DOWNLOAD_TIMEOUT_S,
     DEFAULT_MULTIPLEX_DOWNLOAD_TRIES,
-    MAX_NUM_STOPPING_SEQUENCES,
     ENABLE_WORKER_PROCESS_SETUP_HOOK,
+    MAX_NUM_STOPPING_SEQUENCES,
     MODEL_RESPONSE_BATCH_TIMEOUT_MS,
 )
-from ray.llm._internal.serve.configs.prompt_formats import (
-    Prompt,
-    HuggingFacePromptFormat,
-)
+from ray.llm._internal.serve.configs.error_handling import TooManyStoppingSequences
 from ray.llm._internal.serve.configs.openai_api_models_patch import (
     ErrorResponse,
     ResponseFormatType,
 )
+from ray.llm._internal.serve.configs.prompt_formats import (
+    HuggingFacePromptFormat,
+    Prompt,
+)
+from ray.llm._internal.serve.observability.logging import get_logger
+from ray.llm._internal.utils import try_import
+from ray.serve._private.config import DeploymentConfig
 
 transformers = try_import("transformers")
 

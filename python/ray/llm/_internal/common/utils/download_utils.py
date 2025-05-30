@@ -5,7 +5,6 @@ from typing import List, Optional
 
 from filelock import FileLock
 
-from ray.llm._internal.utils import try_import
 from ray.llm._internal.common.observability.logging import get_logger
 from ray.llm._internal.common.utils.cloud_utils import (
     CloudFileSystem,
@@ -13,6 +12,7 @@ from ray.llm._internal.common.utils.cloud_utils import (
     CloudModelAccessor,
     is_remote_path,
 )
+from ray.llm._internal.utils import try_import
 
 torch = try_import("torch")
 

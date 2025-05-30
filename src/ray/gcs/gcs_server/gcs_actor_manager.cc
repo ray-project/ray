@@ -1780,14 +1780,11 @@ void GcsActorManager::NotifyCoreWorkerToKillActor(const std::shared_ptr<GcsActor
           .WithField(actor->GetWorkerID())
           .WithField(actor->GetNodeID())
       << "Send request to kill actor to worker at node";
-  actor_client->KillActor(
-      request, [actor_id = actor->GetActorID()](auto &status, auto &&) {
-        RAY_LOG(DEBUG) << "Killing status: " << status.ToString()
-                       << ", actor_id: " << actor_id;
-        if (!status.ok() && !status.IsInvalid()) {
-          RAY_LOG(ERROR) << "Failed to kill actor " << actor_id << ", status: " << status;
-        }
-      });
+  actor_client->KillActor(request,
+                          [actor_id = actor->GetActorID()](auto &status, auto &&) {
+                            RAY_LOG(DEBUG) << "Killing status: " << status.ToString()
+                                           << ", actor_id: " << actor_id;
+                          });
 }
 
 void GcsActorManager::KillActor(const ActorID &actor_id, bool force_kill) {

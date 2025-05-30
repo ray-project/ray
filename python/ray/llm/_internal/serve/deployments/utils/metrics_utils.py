@@ -1,8 +1,7 @@
 from typing import Optional
 
-from ray.util.metrics import Counter
-
 from ray.llm._internal.serve.configs.server_models import LLMRawResponse
+from ray.util.metrics import Counter
 
 _MODEL_ID_TAG_KEY = "model_id"
 _USER_ID_TAG_KEY = "user_id"

@@ -17,28 +17,17 @@ from typing import (
 
 from fastapi import FastAPI, HTTPException, status
 from fastapi.middleware.cors import CORSMiddleware
-from ray import serve
-from ray._common.utils import get_or_create_event_loop
-from ray.serve.handle import DeploymentHandle
 from starlette.responses import JSONResponse, Response, StreamingResponse
 
+from ray import serve
+from ray._common.utils import get_or_create_event_loop
 from ray.llm._internal.serve.configs.constants import (
     RAYLLM_ROUTER_HTTP_TIMEOUT,
-    ROUTER_TO_MODEL_REPLICA_RATIO,
-    RAYLLM_ROUTER_MIN_REPLICAS,
     RAYLLM_ROUTER_INITIAL_REPLICAS,
     RAYLLM_ROUTER_MAX_REPLICAS,
+    RAYLLM_ROUTER_MIN_REPLICAS,
     RAYLLM_ROUTER_TARGET_ONGOING_REQUESTS,
-)
-from ray.llm._internal.serve.observability.logging import get_logger
-from ray.llm._internal.serve.observability.metrics.fast_api_metrics import (
-    add_http_metrics_middleware,
-    metrics_lifespan,
-)
-from ray.llm._internal.serve.deployments.llm.multiplex.utils import (
-    get_base_model_id,
-    get_lora_model_ids,
-    get_lora_model_metadata,
+    ROUTER_TO_MODEL_REPLICA_RATIO,
 )
 from ray.llm._internal.serve.configs.openai_api_models import (
     ChatCompletionRequest,
@@ -60,15 +49,26 @@ from ray.llm._internal.serve.configs.openai_api_models_patch import (
 )
 from ray.llm._internal.serve.configs.server_models import (
     LLMConfig,
-    ModelData,
     Model,
+    ModelData,
+)
+from ray.llm._internal.serve.deployments.llm.multiplex.utils import (
+    get_base_model_id,
+    get_lora_model_ids,
+    get_lora_model_metadata,
 )
 from ray.llm._internal.serve.deployments.routers.middleware import (
     SetRequestIdMiddleware,
     add_exception_handling_middleware,
 )
 from ray.llm._internal.serve.deployments.utils.server_utils import replace_prefix
+from ray.llm._internal.serve.observability.logging import get_logger
+from ray.llm._internal.serve.observability.metrics.fast_api_metrics import (
+    add_http_metrics_middleware,
+    metrics_lifespan,
+)
 from ray.serve.config import AutoscalingConfig
+from ray.serve.handle import DeploymentHandle
 
 # Import asyncio timeout depends on python version
 if sys.version_info >= (3, 11):
