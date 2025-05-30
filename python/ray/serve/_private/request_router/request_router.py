@@ -34,6 +34,7 @@ from ray.serve._private.constants import (
     RAY_SERVE_QUEUE_LENGTH_RESPONSE_DEADLINE_S,
     SERVE_LOGGER_NAME,
 )
+from ray.serve._private.replica_result import ReplicaResult
 from ray.serve._private.request_router.common import (
     PendingRequest,
     ReplicaQueueLengthCache,
@@ -1022,5 +1023,18 @@ class RequestRouter(ABC):
             A list of lists of replicas, where each inner list represents a
             rank of replicas. The first rank is the most preferred and the last
             rank is the least preferred.
+        """
+        pass
+
+    def on_request_routed(
+        self,
+        pending_request: PendingRequest,
+        replica_id: ReplicaID,
+        result: ReplicaResult,
+    ):
+        """Called when a request is routed to a replica.
+
+        This is used as a callback to update the state of the request router
+        after a response is generated.
         """
         pass
