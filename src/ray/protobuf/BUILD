@@ -325,7 +325,7 @@ cc_proto_library(
 
 python_grpc_compile(
     name = "pubsub_py_proto",
-    protos = [":pubsub_proto"],
+    deps = [":pubsub_proto"],
 )
 
 # runtime env agent gRPC lib.
