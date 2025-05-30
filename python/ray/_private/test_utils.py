@@ -47,7 +47,6 @@ from ray.core.generated import (
     gcs_service_pb2,
     node_manager_pb2,
 )
-from ray.core.generated.autoscaler_pb2 import DrainNodeReason
 from ray.util.queue import Empty, Queue, _QueueActor
 from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
 
@@ -1576,35 +1575,15 @@ class EC2InstanceTerminator(NodeKillerBase):
     def _kill_resource(self, node_id, node_to_kill_ip, _):
         if node_to_kill_ip is not None:
             try:
-                self._terminate_ec2_instance(node_to_kill_ip)
+                _terminate_ec2_instance(node_to_kill_ip)
             except Exception:
                 pass
             logging.info(f"Terminated instance, {node_id=}, address={node_to_kill_ip}")
             self.killed.add(node_id)
 
-    def _terminate_ec2_instance(self, ip):
-        logging.info(f"Terminating instance, {ip=}")
-        # This command uses IMDSv2 to get the host instance id and region.
-        # After that it terminates itself using aws cli.
-        multi_line_command = (
-            'TOKEN=$(curl -X PUT "http://169.254.169.254/latest/api/token" -H "X-aws-ec2-metadata-token-ttl-seconds: 21600");'  # noqa: E501
-            'instanceId=$(curl -H "X-aws-ec2-metadata-token: $TOKEN" http://169.254.169.254/latest/meta-data/instance-id/);'  # noqa: E501
-            'region=$(curl -H "X-aws-ec2-metadata-token: $TOKEN" http://169.254.169.254/latest/meta-data/placement/region);'  # noqa: E501
-            "aws ec2 terminate-instances --region $region --instance-ids $instanceId"  # noqa: E501
-        )
-        # This is a feature on Anyscale platform that enables
-        # easy ssh access to worker nodes.
-        ssh_command = f"ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -p 2222 ray@{ip} '{multi_line_command}'"  # noqa: E501
-
-        result = subprocess.run(
-            ssh_command, shell=True, capture_output=True, text=True, check=True
-        )
-        print(f"STDOUT:\n{result.stdout}\n")
-        print(f"STDERR:\n{result.stderr}\n")
-
 
 @ray.remote(num_cpus=0)
-class EC2InstanceTerminatorWithGracePeriod(EC2InstanceTerminator):
+class EC2InstanceTerminatorWithGracePeriod(NodeKillerBase):
     def __init__(self, *args, grace_period_s: int = 30, **kwargs):
         super().__init__(*args, **kwargs)
 
@@ -1613,7 +1592,7 @@ class EC2InstanceTerminatorWithGracePeriod(EC2InstanceTerminator):
 
     def _kill_resource(self, node_id, node_to_kill_ip, _):
         # Clean up any completed threads.
-        for thread in self._kill_threads:
+        for thread in self._kill_threads.copy():
             if not thread.is_alive():
                 thread.join()
                 self._kill_threads.remove(thread)
@@ -1624,7 +1603,7 @@ class EC2InstanceTerminatorWithGracePeriod(EC2InstanceTerminator):
             # Wait for the grace period to finish.
             time.sleep(self._grace_period_s)
             # Kill the node.
-            super()._kill_resource(node_id, node_to_kill_ip, _)
+            _terminate_ec2_instance(node_id)
 
         thread = threading.Thread(
             target=_kill_node_with_grace_period,
@@ -1635,6 +1614,10 @@ class EC2InstanceTerminatorWithGracePeriod(EC2InstanceTerminator):
         self._kill_threads.add(thread)
 
     def _drain_node(self, node_id: str) -> None:
+        # We need to lazily import this object. Otherwise, Ray can't serialize the
+        # class.
+        from ray.core.generated import autoscaler_pb2
+
         assert ray.NodeID.from_hex(node_id) != ray.NodeID.nil()
 
         logging.info(f"Draining node {node_id}")
@@ -1642,12 +1625,15 @@ class EC2InstanceTerminatorWithGracePeriod(EC2InstanceTerminator):
         gcs_client = ray._raylet.GcsClient(address=address)
         deadline_timestamp_ms = (time.time_ns() // 1e6) + (self._grace_period_s * 1e3)
         is_accepted, _ = gcs_client.drain_node(
-            node_id, DrainNodeReason.PREEMPTION, "", deadline_timestamp_ms
+            node_id,
+            autoscaler_pb2.DrainNodeReason.Value("DRAIN_NODE_REASON_PREEMPTION"),
+            "",
+            deadline_timestamp_ms,
         )
         assert is_accepted, "Drain node request was rejected"
 
     def _cleanup(self):
-        for thread in self._kill_threads:
+        for thread in self._kill_threads.copy():
             thread.join()
             self._kill_threads.remove(thread)
 
@@ -2244,3 +2230,26 @@ def check_library_usage_telemetry(
         assert all(
             [extra_usage_tags[k] == v for k, v in expected_extra_usage_tags.items()]
         ), extra_usage_tags
+
+
+def _terminate_ec2_instance(ip):
+    logging.info(f"Terminating instance, {ip=}")
+    # This command uses IMDSv2 to get the host instance id and region.
+    # After that it terminates itself using aws cli.
+    multi_line_command = (
+        'TOKEN=$(curl -X PUT "http://169.254.169.254/latest/api/token" -H "X-aws-ec2-metadata-token-ttl-seconds: 21600");'  # noqa: E501
+        'instanceId=$(curl -H "X-aws-ec2-metadata-token: $TOKEN" http://169.254.169.254/latest/meta-data/instance-id/);'  # noqa: E501
+        'region=$(curl -H "X-aws-ec2-metadata-token: $TOKEN" http://169.254.169.254/latest/meta-data/placement/region);'  # noqa: E501
+        "aws ec2 terminate-instances --region $region --instance-ids $instanceId"  # noqa: E501
+    )
+    # This is a feature on Anyscale platform that enables
+    # easy ssh access to worker nodes.
+    ssh_command = f"ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -p 2222 ray@{ip} '{multi_line_command}'"  # noqa: E501
+
+    try:
+        subprocess.run(
+            ssh_command, shell=True, capture_output=True, text=True, check=True
+        )
+    except subprocess.CalledProcessError as e:
+        print("Exit code:", e.returncode)
+        print("Stderr:", e.stderr)
