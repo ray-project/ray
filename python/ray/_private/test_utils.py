@@ -1,6 +1,6 @@
 import asyncio
-import inspect
 import fnmatch
+import inspect
 import io
 import json
 import logging
@@ -12,46 +12,46 @@ import socket
 import subprocess
 import sys
 import tempfile
-import uuid
+import threading
 import time
 import timeit
 import traceback
+import uuid
 from collections import defaultdict
 from contextlib import contextmanager, redirect_stderr, redirect_stdout
+from dataclasses import dataclass
 from datetime import datetime
 from enum import Enum
-
 from typing import Any, Callable, Dict, List, Optional, Set, Tuple
-from dataclasses import dataclass
 
 import requests
-from ray._raylet import Config
-
-import psutil  # We must import psutil after ray because we bundle it with ray.
-from ray._private import (
-    ray_constants,
-)
-from ray._private.worker import RayContext
 import yaml
 
 import ray
 import ray._private.gcs_utils as gcs_utils
 import ray._private.memory_monitor as memory_monitor
 import ray._private.services
+import ray._private.services as services
 import ray._private.usage.usage_lib as ray_usage_lib
 import ray._private.utils
 from ray._common.utils import get_or_create_event_loop
+from ray._private import (
+    ray_constants,
+)
 from ray._private.internal_api import memory_summary
 from ray._private.tls_utils import generate_self_signed_tls_certs
-from ray._raylet import GcsClientOptions, GlobalStateAccessor
+from ray._private.worker import RayContext
+from ray._raylet import Config, GcsClientOptions, GlobalStateAccessor
 from ray.core.generated import (
     gcs_pb2,
-    node_manager_pb2,
     gcs_service_pb2,
+    node_manager_pb2,
 )
+from ray.core.generated.autoscaler_pb2 import DrainNodeReason
 from ray.util.queue import Empty, Queue, _QueueActor
 from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
 
+import psutil  # We must import psutil after ray because we bundle it with ray.
 
 logger = logging.getLogger(__name__)
 
@@ -62,7 +62,7 @@ REDIS_EXECUTABLE = os.path.join(
 )
 
 try:
-    from prometheus_client.parser import text_string_to_metric_families, Sample
+    from prometheus_client.parser import Sample, text_string_to_metric_families
 except (ImportError, ModuleNotFoundError):
 
     Sample = None
@@ -1476,6 +1476,7 @@ class ResourceKillerActor:
             await asyncio.sleep(self.kill_interval_s - sleep_interval)
 
         self.done.set_result(True)
+        await self.stop_run()
 
     async def _find_resources_to_kill(self):
         raise NotImplementedError
@@ -1485,6 +1486,9 @@ class ResourceKillerActor:
 
     async def stop_run(self):
         was_running = self.is_running
+        if was_running:
+            self._cleanup()
+
         self.is_running = False
         return was_running
 
@@ -1492,6 +1496,13 @@ class ResourceKillerActor:
         """Get the total number of killed resources"""
         await self.done
         return self.killed
+
+    def _cleanup(self):
+        """Cleanup any resources created by the killer.
+
+        Overriding this method is optional.
+        """
+        pass
 
 
 class NodeKillerBase(ResourceKillerActor):
@@ -1546,6 +1557,7 @@ class RayletKiller(NodeKillerBase):
     def _kill_raylet(self, ip, port, graceful=False):
         import grpc
         from grpc._channel import _InactiveRpcError
+
         from ray.core.generated import node_manager_pb2_grpc
 
         raylet_address = f"{ip}:{port}"
@@ -1591,6 +1603,55 @@ class EC2InstanceTerminator(NodeKillerBase):
 
 
 @ray.remote(num_cpus=0)
+class EC2InstanceTerminatorWithGracePeriod(EC2InstanceTerminator):
+    def __init__(self, *args, grace_period_s: int = 30, **kwargs):
+        super().__init__(*args, **kwargs)
+
+        self._grace_period_s = grace_period_s
+        self._kill_threads: Set[threading.Thread] = set()
+
+    def _kill_resource(self, node_id, node_to_kill_ip, _):
+        # Clean up any completed threads.
+        for thread in self._kill_threads:
+            if not thread.is_alive():
+                thread.join()
+                self._kill_threads.remove(thread)
+
+        def _kill_node_with_grace_period(node_id, node_to_kill_ip):
+            # Drain the node.
+            self._drain_node(node_id)
+            # Wait for the grace period to finish.
+            time.sleep(self._grace_period_s)
+            # Kill the node.
+            super()._kill_resource(node_id, node_to_kill_ip, _)
+
+        thread = threading.Thread(
+            target=_kill_node_with_grace_period,
+            args=(node_id, node_to_kill_ip),
+            daemon=True,
+        )
+        thread.start()
+        self._kill_threads.add(thread)
+
+    def _drain_node(self, node_id: str) -> None:
+        assert ray.NodeID.from_hex(node_id) != ray.NodeID.nil()
+        address = services.canonicalize_bootstrap_address_or_die(addr=None)
+        gcs_client = ray._raylet.GcsClient(address=address)
+        deadline_timestamp_ms = (time.time_ns() // 1e6) + (self._grace_period_s * 1e3)
+        is_accepted, _ = gcs_client.drain_node(
+            node_id, DrainNodeReason.PREEMPTION, "", deadline_timestamp_ms
+        )
+        assert is_accepted, "Drain node request was rejected"
+
+    def _cleanup(self):
+        for thread in self._kill_threads:
+            thread.join()
+            self._kill_threads.remove(thread)
+
+        assert not self._kill_threads
+
+
+@ray.remote(num_cpus=0)
 class WorkerKillerActor(ResourceKillerActor):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -1599,8 +1660,8 @@ class WorkerKillerActor(ResourceKillerActor):
         # not finish successfully on its own.
         self.kill_immediately_after_found = True
 
-        from ray.util.state.common import ListApiOptions
         from ray.util.state.api import StateApiClient
+        from ray.util.state.common import ListApiOptions
 
         self.client = StateApiClient()
         self.task_options = ListApiOptions(
@@ -1892,6 +1953,7 @@ def wandb_setup_api_key_hook():
 # Get node stats from node manager.
 def get_node_stats(raylet, num_retry=5, timeout=2):
     import grpc
+
     from ray.core.generated import node_manager_pb2_grpc
 
     raylet_address = f'{raylet["NodeManagerAddress"]}:{raylet["NodeManagerPort"]}'
@@ -1943,6 +2005,7 @@ def get_load_metrics_report(webui_url):
 def kill_raylet(raylet, graceful=False):
     import grpc
     from grpc._channel import _InactiveRpcError
+
     from ray.core.generated import node_manager_pb2_grpc
 
     raylet_address = f'{raylet["NodeManagerAddress"]}:{raylet["NodeManagerPort"]}'
