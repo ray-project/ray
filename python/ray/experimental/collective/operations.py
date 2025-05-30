@@ -30,7 +30,7 @@ def _bind(
     """
     Bind inputs (input nodes or lists of input nodes) with a collective operation.
     The collective operation is directly applied to the torch tensors from the input
-    nodes. The output nodesare the results of the collective operation in the same
+    nodes. The output nodes are the results of the collective operation in the same
     torch tensors.
 
     Requirements:
@@ -50,18 +50,16 @@ def _bind(
             specified, the default NCCL is used.
 
     Returns:
-        A list of collective output nodes.
+        A list of collective output nodes or a list of lists of collective output nodes.
+        Each output node or list of output nodes has the same order and belongs to the
+        same actor as the corresponding input node or lists of input node.
     """
     if isinstance(inputs[0], list) and not isinstance(op, AllReduceOp):
         raise ValueError(
             "Currently binding a list of dag nodes is only supported for allreduce"
         )
 
-    if isinstance(inputs[0], list):
-        if len({len(inp) for inp in inputs}) != 1:
-            raise ValueError("Expected equal number of nodes bound from all actors")
-        if len(inputs[0]) == 1:
-            inputs = [inp[0] for inp in inputs]
+    inputs = [inp if isinstance(inp, list) else [inp] for inp in inputs]
 
     if transport is None:
         transport = TorchTensorType.NCCL
@@ -77,16 +75,17 @@ def _bind(
     else:
         raise ValueError(f"Expected a collective operation, but got {op}")
 
-    for inp in inputs:
-        if isinstance(inp, list):
-            actor_handle: Optional["ray.actor.ActorHandle"] = inp[0]._get_actor_handle()
-        else:
-            actor_handle: Optional["ray.actor.ActorHandle"] = inp._get_actor_handle()
+    for input_node_list in inputs:
+        actor_handle: Optional["ray.actor.ActorHandle"] = input_node_list[
+            0
+        ]._get_actor_handle()
         if actor_handle is None:
             raise ValueError("Expected an actor handle from the input node")
         collective_output_node = CollectiveOutputNode(
             method_name=method_name,
-            method_args=tuple(inp) if isinstance(inp, list) else (inp,),
+            method_args=tuple(input_node_list)
+            if isinstance(input_node_list, list)
+            else (input_node_list,),
             method_kwargs=dict(),
             method_options=dict(),
             other_args_to_resolve={
@@ -97,9 +96,9 @@ def _bind(
         )
         actor_handle._ray_dag_bind_index += 1
 
-        if isinstance(inp, list):
+        if len(input_node_list) > 1:
             output_nodes: List[ClassMethodNode] = []
-            for i in range(len(inp)):
+            for i in range(len(input_node_list)):
                 output_node = ClassMethodNode(
                     f"return_idx_{i}",
                     (collective_output_node, i),

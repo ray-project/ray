@@ -46,36 +46,37 @@ class _CollectiveOperation:
         if len(inputs) == 0:
             raise ValueError("Expected input nodes for a collective operation")
 
-        if isinstance(inputs[0], DAGNode):
-            if len(set(inputs)) != len(inputs):
-                raise ValueError(
-                    "Expected unique input nodes for a collective operation"
-                )
-        elif isinstance(inputs[0], list):
-            assert all(isinstance(input_node_list, list) for input_node_list in inputs)
-            if not all(
-                len(set(input_node_list)) == len(input_node_list)
-                for input_node_list in inputs
-            ):
-                raise ValueError(
-                    "Expected unique input nodes for a collective operation"
-                )
+        assert all(isinstance(input_node_list, list) for input_node_list in inputs)
+
+        # Check elements in input list are DAGNode instances
+        if not all(
+            isinstance(input_node, DAGNode)
+            for input_node_list in inputs
+            for input_node in input_node_list
+        ):
+            raise ValueError("Expected inputs to be of type DAGNode")
+
+        # Check inputs nodes from each actor are unique
+        if not all(
+            len(set(input_node_list)) == len(input_node_list)
+            for input_node_list in inputs
+        ):
+            raise ValueError("Expected unique input nodes for a collective operation")
+
+        # Check equal number of input nodes from each actor
+        if len({len(input_node_list) for input_node_list in inputs}) != 1:
+            raise ValueError("Expected equal number of nodes bound from all actors")
 
         self._actor_handles: List["ray.actor.ActorHandle"] = []
-        for inp in inputs:
-            if isinstance(inp, list):
-                if not len({node._get_actor_handle() for node in inp}) == 1:
-                    raise ValueError("Expected list of input nodes from the same actor")
-                actor_handle = inp[0]._get_actor_handle()
-            elif isinstance(inp, DAGNode):
-                actor_handle = inp._get_actor_handle()
-            else:
-                raise ValueError(
-                    f"Expected a list of input nodes or a single input node, but got {type(inp)}"
-                )
+        for input_node_list in inputs:
+            # Check that all input nodes in the list are from the same actor
+            if not len({node._get_actor_handle() for node in input_node_list}) == 1:
+                raise ValueError("Expected list of input nodes from the same actor")
+            actor_handle = input_node_list[0]._get_actor_handle()
             if actor_handle is None:
                 raise ValueError("Expected an actor handle from the input node")
             self._actor_handles.append(actor_handle)
+
         if len(set(self._actor_handles)) != len(self._actor_handles):
             invalid_input_nodes = [
                 inp
@@ -135,6 +136,15 @@ class _CollectiveOperation:
         """
         Call the collective operation on the input tensor(s). Output tensor(s) are
         allocated and returned.
+
+        Args:
+            send_buf: A variable number of torch tensors to send to the collective
+            operation. The tensors have the same order as the input nodes.
+
+        Returns:
+            A torch tensor or a tuple of torch tensors containing the results of the
+            collective operation. The output tensors have the same length and order
+            as the input node list of the actor of this operation.
         """
         import torch
 
@@ -144,21 +154,9 @@ class _CollectiveOperation:
         if len(send_buf) == 1:
             send_buf = send_buf[0]
 
-        if isinstance(self._op, AllReduceOp):
-            if isinstance(send_buf, torch.Tensor):
-                recv_buf = self._execute_tensor(send_buf)
-            else:
-                recv_buf = self._execute_tuple(send_buf)
-        else:
-            recv_buf = self._execute_tensor(send_buf)
-
-        return recv_buf
-
-    def _execute_tensor(self, send_buf: "torch.Tensor") -> "torch.Tensor":
-        import torch
-
         communicator = self.get_communicator()
         if isinstance(self._op, AllGatherOp):
+            assert isinstance(send_buf, torch.Tensor)
             world_size = len(self._actor_handles)
             recv_buf = torch.empty(
                 (send_buf.shape[0] * world_size, *send_buf.shape[1:]),
@@ -167,9 +165,16 @@ class _CollectiveOperation:
             )
             communicator.allgather(send_buf, recv_buf)
         elif isinstance(self._op, AllReduceOp):
-            recv_buf = torch.empty_like(send_buf)
-            communicator.allreduce(send_buf, recv_buf, self._op.reduceOp)
+            if isinstance(send_buf, torch.Tensor):
+                recv_buf = torch.empty_like(send_buf)
+                communicator.allreduce(send_buf, recv_buf, self._op.reduceOp)
+            else:
+                recv_buf = tuple(torch.empty_like(t) for t in send_buf)
+                flat_buf = torch.nn.utils.parameters_to_vector(send_buf)
+                communicator.allreduce(flat_buf, flat_buf, self._op.reduceOp)
+                torch.nn.utils.vector_to_parameters(flat_buf, recv_buf)
         elif isinstance(self._op, ReduceScatterOp):
+            assert isinstance(send_buf, torch.Tensor)
             world_size = len(self._actor_handles)
             if send_buf.shape[0] % world_size != 0:
                 raise ValueError(
@@ -183,16 +188,6 @@ class _CollectiveOperation:
             )
             communicator.reducescatter(send_buf, recv_buf, self._op.reduceOp)
         return recv_buf
-
-    def _execute_tuple(self, send_bufs: Tuple["torch.Tensor"]) -> Tuple["torch.Tensor"]:
-        import torch
-
-        communicator = self.get_communicator()
-        recv_bufs = tuple(torch.empty_like(t) for t in send_bufs)
-        flat_buf = torch.nn.utils.parameters_to_vector(send_bufs)
-        communicator.allreduce(flat_buf, flat_buf, self._op.reduceOp)
-        torch.nn.utils.vector_to_parameters(flat_buf, recv_bufs)
-        return recv_bufs
 
 
 @DeveloperAPI
