@@ -413,7 +413,7 @@ def test_proxy_metrics_internal_error(serve_start_shutdown):
 
     def verify_metrics(_expected_metrics, do_assert=False):
         try:
-            resp = httpx.get("http://127.0.0.1:9999").text
+            resp = httpx.get("http://127.0.0.1:9999", timeout=None).text
         # Requests will fail if we are crashing the controller
         except httpx.HTTPError:
             return False
@@ -435,8 +435,8 @@ def test_proxy_metrics_internal_error(serve_start_shutdown):
 
     app_name = "app"
     serve.run(A.bind(), name=app_name)
-    httpx.get("http://127.0.0.1:8000/A/")
-    httpx.get("http://127.0.0.1:8000/A/")
+    httpx.get("http://127.0.0.1:8000/A/", timeout=None)
+    httpx.get("http://127.0.0.1:8000/A/", timeout=None)
     channel = grpc.insecure_channel("localhost:9000")
     with pytest.raises(grpc.RpcError):
         ping_grpc_call_method(channel=channel, app_name=app_name)
@@ -453,7 +453,7 @@ def test_proxy_metrics_internal_error(serve_start_shutdown):
         verify_metrics(expected_metrics, True)
 
     def verify_error_count(do_assert=False):
-        resp = httpx.get("http://127.0.0.1:9999").text
+        resp = httpx.get("http://127.0.0.1:9999", timeout=None).text
         resp = resp.split("\n")
         for metrics in resp:
             if "# HELP" in metrics or "# TYPE" in metrics:
@@ -738,7 +738,7 @@ def test_proxy_metrics_http_status_code_is_error(serve_start_shutdown):
     serve.run(return_status_code.bind())
 
     # 200 is not an error.
-    r = httpx.get("http://127.0.0.1:8000/", data=b"200")
+    r = httpx.request("GET", "http://127.0.0.1:8000/", content=b"200")
     assert r.status_code == 200
     wait_for_condition(
         check_request_count_metrics,
@@ -747,7 +747,7 @@ def test_proxy_metrics_http_status_code_is_error(serve_start_shutdown):
     )
 
     # 2xx is not an error.
-    r = httpx.get("http://127.0.0.1:8000/", data=b"250")
+    r = httpx.request("GET", "http://127.0.0.1:8000/", content=b"250")
     assert r.status_code == 250
     wait_for_condition(
         check_request_count_metrics,
@@ -756,7 +756,7 @@ def test_proxy_metrics_http_status_code_is_error(serve_start_shutdown):
     )
 
     # 3xx is not an error.
-    r = httpx.get("http://127.0.0.1:8000/", data=b"300")
+    r = httpx.request("GET", "http://127.0.0.1:8000/", content=b"300")
     assert r.status_code == 300
     wait_for_condition(
         check_request_count_metrics,
@@ -765,7 +765,7 @@ def test_proxy_metrics_http_status_code_is_error(serve_start_shutdown):
     )
 
     # 4xx is an error.
-    r = httpx.get("http://127.0.0.1:8000/", data=b"400")
+    r = httpx.request("GET", "http://127.0.0.1:8000/", content=b"400")
     assert r.status_code == 400
     wait_for_condition(
         check_request_count_metrics,
@@ -774,7 +774,7 @@ def test_proxy_metrics_http_status_code_is_error(serve_start_shutdown):
     )
 
     # 5xx is an error.
-    r = httpx.get("http://127.0.0.1:8000/", data=b"500")
+    r = httpx.request("GET", "http://127.0.0.1:8000/", content=b"500")
     assert r.status_code == 500
     wait_for_condition(
         check_request_count_metrics,

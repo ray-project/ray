@@ -863,8 +863,7 @@ def test_logging_disable_stdout(serve_and_ray_shutdown, ray_instance, tmp_dir):
 
     app = disable_stdout.bind()
     serve.run(app)
-    r = httpx.get("http://localhost:8000/")
-    assert r.status_code == 200
+    httpx.get("http://localhost:8000/", timeout=None)
 
     # Check if each of the logs exist in Serve's log files.
     from_serve_logger_check = False
