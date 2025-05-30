@@ -235,12 +235,12 @@ def test_run_multi_app(ray_start_stop):
     )
     print('Application "app1" is reachable over HTTP.')
     wait_for_condition(
-        lambda: httpx.post("http://localhost:8000/app2", json={"ADD": 2}).text
+        lambda: httpx.post("http://localhost:8000/app2", json=["ADD", 2]).text
         == "12 pizzas please!",
         timeout=15,
     )
     wait_for_condition(
-        lambda: httpx.post("http://localhost:8000/app2", json={"MUL": 2}).text
+        lambda: httpx.post("http://localhost:8000/app2", json=["MUL", 2]).text
         == "20 pizzas please!",
         timeout=15,
     )
@@ -251,7 +251,7 @@ def test_run_multi_app(ray_start_stop):
     with pytest.raises(httpx.HTTPError):
         _ = httpx.post("http://localhost:8000/app1").text
     with pytest.raises(httpx.HTTPError):
-        _ = httpx.post("http://localhost:8000/app2", json={"ADD": 0}).text
+        _ = httpx.post("http://localhost:8000/app2", json=["ADD", 0]).text
     print("Kill successful! Deployments are not reachable over HTTP.")
 
 
