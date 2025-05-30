@@ -1,49 +1,52 @@
-import asyncio
-import json
-import logging
-import os
-import random
+from ray.llm._internal.serve.request_router.prefix_aware.prefix_tree import (
+    PrefixTreeActor,
+)
+from ray.serve._private.common import ReplicaID
+from ray.serve._private.replica_result import ReplicaResult
+
+import ray
 import time
+
+# These imports are used for metrics tracking, will remove for PR
+import asyncio
+import requests
+import os
+import json
+
+import logging
+import random
 from typing import (
     List,
     Optional,
 )
 
-import requests
-
-import ray
-from ray.llm._internal.serve.replica_scheduler.prefix_aware.prefix_tree import (
-    PrefixTreeActor,
-)
-from ray.serve._private.common import ReplicaID
 from ray.serve._private.constants import (
     SERVE_LOGGER_NAME,
 )
-from ray.serve._private.replica_result import ReplicaResult
-from ray.serve._private.replica_scheduler import (
-    PowerOfTwoChoicesReplicaScheduler,
-    ReplicaScheduler,
+from ray.serve._private.request_router import (
+    PowerOfTwoChoicesRequestRouter,
 )
-from ray.serve._private.replica_scheduler.common import (
+from ray.serve._private.request_router.common import (
     PendingRequest,
 )
-from ray.serve._private.replica_scheduler.replica_scheduler import (
-    LocalityScheduleMixin,
-    MultiplexScheduleMixin,
-)
-from ray.serve._private.replica_scheduler.replica_wrapper import (
+from ray.serve._private.request_router.replica_wrapper import (
     RunningReplica,
+)
+from ray.serve._private.request_router.request_router import (
+    LocalityMixin,
+    MultiplexMixin,
+    RequestRouter,
 )
 
 logger = logging.getLogger(SERVE_LOGGER_NAME)
 
 
-class PrefixAwareReplicaScheduler(
-    LocalityScheduleMixin, MultiplexScheduleMixin, ReplicaScheduler
+class PrefixAwareRequestRouter(
+    LocalityMixin, MultiplexMixin, RequestRouter
 ):
-    """Extends the PowerOfTwoChoicesReplicaScheduler with prefix-matching capabilities.
+    """Extends the PowerOfTwoChoicesRequestRouter with prefix-matching capabilities.
 
-    This scheduler optimizes replica selection by considering input text prefixes:
+    This request router optimizes replica selection by considering input text prefixes:
 
     1. Mixes between three strategies to balance prefix cache hit rate and load balancing:
        - When load is balanced (queue length difference < threshold), it selects replicas
@@ -52,8 +55,8 @@ class PrefixAwareReplicaScheduler(
        - When load is imbalanced, it uses the default Power of Two selection
 
     2. Maintains a prefix tree to track which replicas have processed similar inputs:
-       - Inserts prompt text into the prefix tree after scheduling
-       - Uses this history to inform future scheduling decisions
+       - Inserts prompt text into the prefix tree after routing
+       - Uses this history to inform future routing decisions
 
     This approach improves performance by routing related requests to the same replicas,
     increasing cache locality and reducing overhead for language model inference.
@@ -79,7 +82,7 @@ class PrefixAwareReplicaScheduler(
         else:
             self._tree_actor = tree_actor
 
-        # === Prefix-aware scheduling logic hyperparameters ===
+        # === Prefix-aware routing logic hyperparameters ===
         self._imbalanced_threshold = imbalanced_threshold
         self._match_rate_threshold = match_rate_threshold
 
@@ -284,7 +287,7 @@ class PrefixAwareReplicaScheduler(
     ) -> List[RunningReplica]:
         """
         Returns a set of candidate replicas, of which the one with the smallest replica queue will be chosen.
-        0. Default: same as pow 2 scheduler, return 2 replicas at random.
+        0. Default: same as pow 2 request router, return 2 replicas at random.
         1. If load is balanced, choose replica(s) with highest prefix match rate. If highest hit rate is below 10% or no match found, use replicas with smallest KV cache usage.
         2. If load is imbalanced, use default.
         """
@@ -363,9 +366,9 @@ class PrefixAwareReplicaScheduler(
         ray.get(self._tree_actor.remove_tenants.remote([replica_id.to_full_id_str()]))
 
     def update_replicas(self, replicas: List[RunningReplica]):
-        """Update the set of available replicas to be considered for scheduling.
+        """Update the set of available replicas to be considered for routing.
 
-        When the set of replicas changes, we may spawn additional scheduling tasks
+        When the set of replicas changes, we may spawn additional routing tasks
         if there are pending requests.
         """
         # 1) Record the old replica IDs
@@ -409,7 +412,6 @@ class PrefixAwareReplicaScheduler(
         replicas_ranks: List[List[RunningReplica]],
         pending_request: Optional[PendingRequest] = None,
     ) -> List[List[RunningReplica]]:
-        self._num_requests_seen += 1
         """One iteration of the power of two choices procedure that chooses
          (at most) two random available replicas.
 
@@ -418,8 +420,10 @@ class PrefixAwareReplicaScheduler(
         model ID are available after that timeout, it will fall back to the regular
         procedure.
         """
-        # Get fallback replicas from PowerOfTwoChoicesReplicaScheduler
-        fallback_replicas = await PowerOfTwoChoicesReplicaScheduler.choose_replicas(
+        self._num_requests_seen += 1
+
+        # Get fallback replicas from PowerOfTwoChoicesRequestRouter
+        fallback_replicas = await PowerOfTwoChoicesRequestRouter.choose_replicas(
             self,
             replicas_ranks=replicas_ranks,
             pending_request=pending_request,
@@ -427,16 +431,21 @@ class PrefixAwareReplicaScheduler(
         if pending_request is None or not fallback_replicas:
             return fallback_replicas
 
-        if pending_request.metadata.multiplexed_model_id:
+        if (
+            pending_request is not None
+            and pending_request.metadata.multiplexed_model_id
+        ):
             # Get candidates for multiplexed model ID.
-            candidate_replica_ids = self.apply_multiplex_scheduling(
+            candidate_replica_ids = self.apply_multiplex_routing(
                 pending_request=pending_request,
             )
         else:
             # Get candidates for locality preference.
-            candidate_replica_ids = self.apply_locality_scheduling(
+            candidate_replica_ids = self.apply_locality_routing(
                 pending_request=pending_request,
             )
+        if not candidate_replica_ids:
+            return fallback_replicas
 
         # Convert candidate replica IDs to RunningReplica objects.
         replica_id_to_replica_map = {
@@ -446,8 +455,6 @@ class PrefixAwareReplicaScheduler(
             replica_id_to_replica_map[candidate_replica_id]
             for candidate_replica_id in candidate_replica_ids
         ]
-        if not candidate_replicas:
-            return fallback_replicas
         chosen_replicas = await self._prefix_match_best_replicas(
             pending_request, candidate_replicas
         )
@@ -456,16 +463,16 @@ class PrefixAwareReplicaScheduler(
 
         return fallback_replicas
 
-    def on_request_scheduled(
+    def on_request_routed(
         self,
         pending_request: PendingRequest,
         replica_id: ReplicaID,
         result: ReplicaResult,
     ):
-        """Called when a request is scheduled to a replica.
+        """Called when a request is routed to a replica.
 
-        This is used as a callback to update the state of the scheduler after
-        a response is generated.
+        This is used as a callback to update the state of the request router
+        after a response is generated.
         """
         # Right now this only inserts the prompt into the prefix tree, not the response (streaming response makes things complicated)
         if (

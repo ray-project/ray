@@ -3,7 +3,7 @@ import ray
 from typing import Set, List
 import asyncio
 
-from ray.llm._internal.serve.replica_scheduler.prefix_aware.prefix_tree import (
+from ray.llm._internal.serve.request_router.prefix_aware.prefix_tree import (
     PrefixTree,
     PrefixTreeActor,
     Node,

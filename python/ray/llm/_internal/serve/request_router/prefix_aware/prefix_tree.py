@@ -90,7 +90,7 @@ class PrefixTree:
         # Root is always the head of the LRU list for each tenant.
         self.root: Node = Node()
 
-        # Tracks total character count per tenant. Can be used by the replica scheduler to determine which tenant to evict, and by how much.
+        # Tracks total character count per tenant. Can be used by the replica request router to determine which tenant to evict, and by how much.
         # Also uses the keys to track the active tenants in the tree.
         self.tenant_to_char_count: Dict[str, int] = {}
 

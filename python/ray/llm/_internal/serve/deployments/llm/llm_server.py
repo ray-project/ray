@@ -63,8 +63,8 @@ from ray.llm._internal.serve.deployments.utils.server_utils import (
     get_response_for_error,
     get_serve_request_id,
 )
-from ray.serve._private.request_router.prefix_aware_scheduler import (
-    PrefixAwareReplicaScheduler,
+from ray.serve._private.request_router import (
+    PrefixAwareRequestRouter,
 )
 from ray.llm._internal.serve.observability.logging import get_logger
 from ray.llm._internal.serve.observability.usage_telemetry.usage import (
@@ -697,7 +697,7 @@ class LLMServer(_LLMServerBase):
 
 
 @serve.deployment(
-    request_router_class=PrefixAwareReplicaScheduler,
+    request_router_class=PrefixAwareRequestRouter,
     # TODO make this configurable
     autoscaling_config={
         "min_replicas": 1,

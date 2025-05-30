@@ -351,6 +351,7 @@ class DeploymentConfig(BaseModel):
             TypeError: when a keyword that's not an argument to the class is
                 passed in.
         """
+
         config = cls()
         valid_config_options = set(config.dict().keys())
 

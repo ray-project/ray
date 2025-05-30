@@ -925,7 +925,6 @@ class DeploymentReplica:
         )
         self._multiplexed_model_ids: List = []
 
-
     def get_running_replica_info(
         self, cluster_node_info_cache: ClusterNodeInfoCache
     ) -> RunningReplicaInfo:
@@ -2356,6 +2355,7 @@ class DeploymentState:
             if replica.replica_id == replica_id:
                 replica.record_multiplexed_model_ids(multiplexed_model_ids)
                 self._multiplexed_model_ids_updated = True
+                return
 
         logger.warning(f"{replica_id} not found.")
 
