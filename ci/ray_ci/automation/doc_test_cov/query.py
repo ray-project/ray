@@ -98,15 +98,10 @@ class Query:
                 fp = file_path.lstrip("//").split(":")[-1].split("/")[-1]
                 # Use find to get all matching files and show matching lines with filename
                 cmd = f"find {ray_path}/doc -type f -name '*.rst' -o -name '*.md' -o -name '*.html' | xargs grep -H '{fp}'"
-                print(f"cmd: {cmd}")
                 result = subprocess.run(["bash", "-c", cmd],
                     cwd=ray_path,
                     capture_output=True,
                     text=True)
-
-                print(f"Exit code: {result.returncode}")
-                if result.stderr:
-                    print(f"stderr: {result.stderr}")
 
                 stdout = result.stdout.strip()
                 file_references[file_path] = stdout.split("\n") if stdout else []
@@ -138,7 +133,7 @@ class Query:
                     f.write(f"{target}: TESTED : {filtered_tests[target]}\n")
                     for file in target_file_map[target]:
                         file_list[file] = "TESTED"
-                        f.write(f"      {file}\n")
+                        f.write(f",{file}\n")
                 else:
                     untested_targets.append(target)
             f.write("\nUNTESTED TARGETS:\n")
@@ -151,9 +146,9 @@ class Query:
                     file_name = file.split(".")[0]
                     if file_name not in executed_tests:
                         file_list[file] = "NOT TESTED"
-                        f.write(f"      {file}\n")
+                        f.write(f",{file}\n")
                         for ref in file_ref_map[file]:
-                            f.write(f"              {ref}\n")
+                            f.write(f",,{ref}\n")
             f.write("--------------------\n")
             f.write(f"Total Bazel targets: {len(targets)}\n")
             f.write(f"Tested Bazel Targets: {len(filtered_tests)}\n")

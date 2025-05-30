@@ -11,7 +11,7 @@ BK_HOST = "https://api.buildkite.com/v2"
 
 def cleanup():
     os.system("rm -f results/*")
-    os.system("rm -f bazel_events/")
+    os.system("rm -f bazel_events/*")
 
 def main():
     cleanup()
