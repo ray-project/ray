@@ -30,6 +30,14 @@ GRAFANA_DASHBOARD_GLOBAL_FILTERS_OVERRIDE_ENV_VAR_TEMPLATE = (
     "RAY_GRAFANA_{name}_DASHBOARD_GLOBAL_FILTERS"
 )
 
+# Grafana dashboard layout constants
+# Dashboard uses a 24-column grid with 2-column panels
+PANEL_HEIGHT = 8  # Height of each panel
+PANEL_WIDTH = 12  # Half of dashboard width
+ROW_HEIGHT = 1  # Height of row container
+ROW_WIDTH = 24  # Full dashboard width
+PANELS_PER_ROW = 2
+
 
 def _read_configs_for_dashboard(
     dashboard_config: DashboardConfig,
@@ -165,36 +173,160 @@ def _generate_grafana_dashboard(dashboard_config: DashboardConfig) -> str:
     return json.dumps(base_json, indent=4), uid
 
 
+def _generate_panel_template(
+    panel: Panel, panel_global_filters: List[str], panel_index: int, y_position: int = 0
+) -> dict:
+    """
+    Helper method to generate a panel template with common configuration.
+
+    Args:
+        panel: The panel configuration
+        panel_global_filters: List of global filters to apply
+        panel_index: The index of the panel within its row (0-based)
+        y_position: The y-coordinate of the row in the dashboard grid (0 for top-level panels)
+
+    Returns:
+        dict: The configured panel template
+    """
+    # Create base template from panel configuration
+    template = copy.deepcopy(panel.template.value)
+    template.update(
+        {
+            "title": panel.title,
+            "description": panel.description,
+            "id": panel.id,
+            "targets": _generate_targets(panel, panel_global_filters),
+        }
+    )
+
+    # Set panel position and dimensions
+    if panel.grid_pos:
+        template["gridPos"] = asdict(panel.grid_pos)
+    else:
+        # Calculate panel position in 2-column grid layout
+        # x: 0 or 12 (left or right column)
+        # y: base position + (row number * panel height)
+        template["gridPos"] = {
+            "h": PANEL_HEIGHT,
+            "w": PANEL_WIDTH,
+            "x": PANEL_WIDTH * (panel_index % PANELS_PER_ROW),
+            "y": y_position + (panel_index // PANELS_PER_ROW) * PANEL_HEIGHT,
+        }
+
+    # Configure panel visualization settings
+    template["yaxes"][0]["format"] = panel.unit
+    template["fill"] = panel.fill
+    template["stack"] = panel.stack
+    template["linewidth"] = panel.linewidth
+
+    # Handle stacking visualization
+    if panel.stack is True:
+        template["nullPointMode"] = "connected"
+
+    return template
+
+
+def _create_row_panel(row: Panel, y_position: int) -> dict:
+    """
+    Creates a Grafana row panel that spans the full dashboard width.
+    Row panels can be collapsed to hide their contained panels.
+
+    Args:
+        row: Row config with title, id, and collapse state
+        y_position: Vertical position in dashboard grid
+
+    Returns:
+        Grafana row panel configuration
+    """
+    return {
+        "collapsed": row.collapsed,
+        "gridPos": {"h": ROW_HEIGHT, "w": ROW_WIDTH, "x": 0, "y": y_position},
+        "id": row.id,
+        "title": row.title,
+        "type": "row",
+        "panels": [],
+    }
+
+
+def _calculate_panel_positions(num_panels: int, current_y: int) -> int:
+    """
+    Calculate the new y position for a set of panels.
+
+    Args:
+        num_panels: Number of panels to position
+        current_y: Current y position in the dashboard grid
+
+    Returns:
+        New y position after accounting for the panels
+    """
+    rows_needed = (num_panels + 1) // PANELS_PER_ROW
+    return current_y + rows_needed * PANEL_HEIGHT
+
+
 def _generate_grafana_panels(
     config: DashboardConfig, global_filters: List[str]
 ) -> List[dict]:
-    out = []
+    """
+    Generates Grafana panel configurations for a dashboard.
+
+    The dashboard layout follows these rules:
+    - Panels are arranged in 2 columns (12 units wide each)
+    - Each panel is 8 units high
+    - Rows are 1 unit high and can be collapsed
+    - Panels within rows follow the same 2-column layout
+    - Panel positions can be overridden via panel.grid_pos or auto-calculated
+
+    Args:
+        config: Dashboard configuration containing panels and rows
+        global_filters: List of filters to apply to all panels
+
+    Returns:
+        List of Grafana panel configurations for the dashboard
+    """
+    panels = []
     panel_global_filters = [*config.standard_global_filters, *global_filters]
-    for i, panel in enumerate(config.panels):
-        template = copy.deepcopy(panel.template.value)
-        template.update(
-            {
-                "title": panel.title,
-                "description": panel.description,
-                "id": panel.id,
-                "targets": _generate_targets(panel, panel_global_filters),
-            }
+    current_y_position = 0
+
+    # Add top-level panels in 2-column grid
+    for panel_index, panel in enumerate(config.panels):
+        panel_template = _generate_panel_template(
+            panel, panel_global_filters, panel_index, 0
         )
-        if panel.grid_pos:
-            template["gridPos"] = asdict(panel.grid_pos)
-        else:
-            template["gridPos"]["y"] = i // 2
-            template["gridPos"]["x"] = 12 * (i % 2)
-        template["yaxes"][0]["format"] = panel.unit
-        template["fill"] = panel.fill
-        template["stack"] = panel.stack
-        if panel.stack is True:
-            # If connected is not True, any nulls will cause the stacking visualization to break
-            # making the total appear much smaller than it actually is.
-            template["nullPointMode"] = "connected"
-        template["linewidth"] = panel.linewidth
-        out.append(template)
-    return out
+        panels.append(panel_template)
+
+    # Calculate space needed for top-level panels
+    current_y_position = _calculate_panel_positions(
+        len(config.panels), current_y_position
+    )
+
+    # Add rows and their panels
+    if not config.rows:
+        return panels
+
+    for row in config.rows:
+        # Create and add row panel
+        row_panel = _create_row_panel(row, current_y_position)
+        panels.append(row_panel)
+        current_y_position += ROW_HEIGHT
+
+        # Add panels within row using 2-column grid
+        for panel_index, panel in enumerate(row.panels):
+            panel_template = _generate_panel_template(
+                panel, panel_global_filters, panel_index, current_y_position
+            )
+
+            # Add panel to row if collapsed, otherwise to main dashboard
+            if row.collapsed:
+                row_panel["panels"].append(panel_template)
+            else:
+                panels.append(panel_template)
+
+        # Update y position for next row
+        current_y_position = _calculate_panel_positions(
+            len(row.panels), current_y_position
+        )
+
+    return panels
 
 
 def gen_incrementing_alphabets(length):
