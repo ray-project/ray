@@ -22,9 +22,17 @@ import ray.dashboard.utils as dashboard_utils
 from ray._common.utils import get_or_create_event_loop
 from ray._private import utils
 from ray._private.metrics_agent import Gauge, MetricsAgent, Record
-from ray._private.ray_constants import DEBUG_AUTOSCALING_STATUS, env_integer
-from ray._raylet import WorkerID
-from ray.core.generated import reporter_pb2, reporter_pb2_grpc
+from ray._private.ray_constants import (
+    DEBUG_AUTOSCALING_STATUS,
+    RAY_EXPERIMENTAL_ENABLE_OPEN_TELEMETRY_ON_AGENT,
+    RAY_EXPERIMENTAL_ENABLE_OPEN_TELEMETRY_ON_CORE,
+    env_integer,
+)
+from ray._private.telemetry.open_telemetry_metric_recorder import (
+    OpenTelemetryMetricRecorder,
+)
+from ray._raylet import GCS_PID_KEY, WorkerID
+from ray.core.generated import metrics_service_pb2_grpc, reporter_pb2, reporter_pb2_grpc
 from ray.dashboard import k8s_utils
 from ray.dashboard.consts import (
     CLUSTER_TAG_KEYS,
@@ -34,6 +42,7 @@ from ray.dashboard.consts import (
     GPU_TAG_KEYS,
     NODE_TAG_KEYS,
 )
+from ray.dashboard.modules.reporter.gpu_profile_manager import GpuProfilingManager
 from ray.dashboard.modules.reporter.profile_manager import (
     CpuProfilingManager,
     MemoryProfilingManager,
@@ -350,7 +359,9 @@ class GpuUtilizationInfo(TypedDict):
 
 
 class ReporterAgent(
-    dashboard_utils.DashboardAgentModule, reporter_pb2_grpc.ReporterServiceServicer
+    dashboard_utils.DashboardAgentModule,
+    reporter_pb2_grpc.ReporterServiceServicer,
+    metrics_service_pb2_grpc.MetricsServiceServicer,
 ):
     """A monitor process for monitoring Ray nodes.
 
@@ -397,6 +408,7 @@ class ReporterAgent(
         ]  # time, (bytes read, bytes written, read ops, write ops)
         self._metrics_collection_disabled = dashboard_agent.metrics_collection_disabled
         self._metrics_agent = None
+        self._open_telemetry_metric_recorder = None
         self._session_name = dashboard_agent.session_name
         if not self._metrics_collection_disabled:
             try:
@@ -422,6 +434,7 @@ class ReporterAgent(
                 stats_module.stats.stats_recorder,
                 stats_exporter,
             )
+            self._open_telemetry_metric_recorder = OpenTelemetryMetricRecorder()
             if self._metrics_agent.proxy_exporter_collector:
                 # proxy_exporter_collector is None
                 # if Prometheus server is not started.
@@ -434,6 +447,10 @@ class ReporterAgent(
             max_workers=RAY_DASHBOARD_REPORTER_AGENT_TPE_MAX_WORKERS,
             thread_name_prefix="reporter_agent_executor",
         )
+        self._gcs_pid = None
+
+        self._gpu_profiling_manager = GpuProfilingManager(self._log_dir)
+        self._gpu_profiling_manager.start_monitoring_daemon()
 
     async def GetTraceback(self, request, context):
         pid = request.pid
@@ -452,6 +469,14 @@ class ReporterAgent(
             pid, format=format, duration=duration, native=native
         )
         return reporter_pb2.CpuProfilingReply(output=output, success=success)
+
+    async def GpuProfiling(self, request, context):
+        pid = request.pid
+        num_iterations = request.num_iterations
+        success, output = await self._gpu_profiling_manager.gpu_profile(
+            pid=pid, num_iterations=num_iterations
+        )
+        return reporter_pb2.GpuProfilingReply(success=success, output=output)
 
     async def MemoryProfiling(self, request, context):
         pid = request.pid
@@ -492,6 +517,19 @@ class ReporterAgent(
         except Exception:
             logger.error(traceback.format_exc())
         return reporter_pb2.ReportOCMetricsReply()
+
+    async def Export(self, request, context):
+        """
+        GRPC method that receives the open telemetry metrics exported from other Ray
+        components running in the same node (e.g., raylet, worker, etc.). This method
+        implements an interface of `metrics_service_pb2_grpc.MetricsServiceServicer`,
+        which is the default open-telemetry metrics service interface.
+        """
+        # This method suppposes to forward data to self._open_telemetry_metric_recorder
+        # to record them to Prometheus. Currently, that logic is not yet implemented.
+        # Unless RAY_EXPERIMENTAL_ENABLE_OPEN_TELEMETRY_ON_CORE is set to True,
+        # this is a no-op.
+        pass
 
     @staticmethod
     def _get_cpu_percent(in_k8s: bool):
@@ -836,6 +874,13 @@ class ReporterAgent(
             pass
         return None
 
+    def _get_gcs(self):
+        if self._gcs_pid:
+            gcs_proc = psutil.Process(self._gcs_pid)
+            if gcs_proc:
+                return gcs_proc.as_dict(attrs=PSUTIL_PROCESS_ATTRS)
+        return {}
+
     def _get_raylet(self):
         raylet_proc = self._get_raylet_proc()
         if raylet_proc is None:
@@ -890,7 +935,7 @@ class ReporterAgent(
         self._disk_io_stats_hist.append((now, disk_stats))
         disk_speed_stats = self._compute_speed_from_hist(self._disk_io_stats_hist)
 
-        result = {
+        stats = {
             "now": now,
             "hostname": self._hostname,
             "ip": self._ip,
@@ -913,8 +958,9 @@ class ReporterAgent(
             # Deprecated field, should be removed with frontend.
             "cmdline": self._get_raylet().get("cmdline", []),
         }
-
-        return result
+        if self._is_head_node:
+            stats["gcs"] = self._get_gcs()
+        return stats
 
     def _generate_reseted_stats_record(self, component_name: str) -> List[Record]:
         """Return a list of Record that will reset
@@ -1401,6 +1447,15 @@ class ReporterAgent(
         Record system stats.
         """
 
+        if self._is_head_node:
+            gcs_stats = stats["gcs"]
+            if gcs_stats:
+                records_reported.extend(
+                    self._generate_system_stats_record(
+                        [gcs_stats], "gcs", pid=str(gcs_stats["pid"])
+                    )
+                )
+
         # Record component metrics.
         raylet_stats = stats["raylet"]
         if raylet_stats:
@@ -1421,7 +1476,6 @@ class ReporterAgent(
                 )
             )
 
-        # TODO(sang): Record GCS metrics.
         # NOTE: Dashboard metrics is recorded within the dashboard because
         # it can be deployed as a standalone instance. It shouldn't
         # depend on the agent.
@@ -1472,6 +1526,14 @@ class ReporterAgent(
                             timeout=GCS_RPC_TIMEOUT_SECONDS,
                         )
                     )
+                    self._gcs_pid = await self._gcs_client.async_internal_kv_get(
+                        GCS_PID_KEY.encode(),
+                        None,
+                        timeout=GCS_RPC_TIMEOUT_SECONDS,
+                    )
+                    self._gcs_pid = (
+                        int(self._gcs_pid.decode()) if self._gcs_pid else None
+                    )
 
                 # NOTE: Stats collection is executed inside the thread-pool
                 #       executor (TPE) to avoid blocking the Agent's event-loop
@@ -1505,13 +1567,22 @@ class ReporterAgent(
 
             records = self._to_records(stats, cluster_stats)
 
-            self._metrics_agent.record_and_export(
-                records,
-                global_tags={
-                    "Version": ray.__version__,
-                    "SessionName": self._session_name,
-                },
-            )
+            if RAY_EXPERIMENTAL_ENABLE_OPEN_TELEMETRY_ON_AGENT:
+                self._open_telemetry_metric_recorder.record_and_export(
+                    records,
+                    global_tags={
+                        "Version": ray.__version__,
+                        "SessionName": self._session_name,
+                    },
+                )
+            else:
+                self._metrics_agent.record_and_export(
+                    records,
+                    global_tags={
+                        "Version": ray.__version__,
+                        "SessionName": self._session_name,
+                    },
+                )
 
             self._metrics_agent.clean_all_dead_worker_metrics()
 
@@ -1520,6 +1591,10 @@ class ReporterAgent(
     async def run(self, server):
         if server:
             reporter_pb2_grpc.add_ReporterServiceServicer_to_server(self, server)
+            if RAY_EXPERIMENTAL_ENABLE_OPEN_TELEMETRY_ON_CORE:
+                metrics_service_pb2_grpc.add_MetricsServiceServicer_to_server(
+                    self, server
+                )
 
         await self._run_loop()
 

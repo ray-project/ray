@@ -373,6 +373,8 @@ steps:
     commands:
       - bazel run //ci/ray_ci:test_in_docker -- //:all //src/... core
         --run-flaky-tests --build-type clang
+    depends_on:
+      - corebuild
 
   - label: ":ray: core: flaky tests"
     key: core_flaky_tests
@@ -387,6 +389,8 @@ steps:
         --install-mask all-ray-libraries
         --run-flaky-tests
         --except-tags multi_gpu
+    depends_on:
+      - corebuild
 
   - label: ":ray: core: flaky gpu tests"
     key: core_flaky_gpu_tests
@@ -463,6 +467,8 @@ steps:
         --parallelism-per-worker 3
         --only-tags spark_on_ray
         --except-tags kubernetes
+    depends_on:
+      - corebuild
 
   # block on premerge and microcheck
   - block: "run multi gpu tests"

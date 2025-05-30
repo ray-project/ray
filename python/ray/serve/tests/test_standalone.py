@@ -4,6 +4,7 @@ requires a shared Serve instance.
 """
 import logging
 import os
+import random
 import socket
 import sys
 import time
@@ -12,11 +13,8 @@ import pytest
 import requests
 
 import ray
-import ray._private.gcs_utils as gcs_utils
 from ray import serve
-from ray._private.services import new_port
 from ray._private.test_utils import (
-    convert_actor_state,
     run_string_as_driver,
     wait_for_condition,
 )
@@ -34,14 +32,11 @@ from ray.serve._private.utils import block_until_http_ready, format_actor_name
 from ray.serve.config import DeploymentMode, HTTPOptions, ProxyLocation
 from ray.serve.context import _get_global_client
 from ray.serve.schema import ServeApplicationSchema, ServeDeploySchema
-
-# Explicitly importing it here because it is a ray core tests utility (
-# not in the tree)
-from ray.tests.conftest import (
-    maybe_setup_external_redis,  # noqa: F401
-    ray_start_with_dashboard,  # noqa: F401
-)
 from ray.util.state import list_actors
+
+
+def _get_random_port() -> int:
+    return random.randint(10000, 65535)
 
 
 @pytest.fixture
@@ -136,7 +131,7 @@ def test_single_app_shutdown_actors(ray_shutdown):
     Ensures that after deploying a (nameless) app using serve.run(), serve.shutdown()
     deletes all actors (controller, http proxy, all replicas) in the "serve" namespace.
     """
-    ray.init(num_cpus=16)
+    address = ray.init(num_cpus=16)["address"]
     serve.start(http_options=dict(port=8003))
 
     @serve.deployment
@@ -153,13 +148,15 @@ def test_single_app_shutdown_actors(ray_shutdown):
 
     def check_alive():
         actors = list_actors(
-            filters=[("ray_namespace", "=", SERVE_NAMESPACE), ("state", "=", "ALIVE")]
+            address=address,
+            filters=[("ray_namespace", "=", SERVE_NAMESPACE), ("state", "=", "ALIVE")],
         )
         return {actor["class_name"] for actor in actors} == actor_names
 
     def check_dead():
         actors = list_actors(
-            filters=[("ray_namespace", "=", SERVE_NAMESPACE), ("state", "=", "ALIVE")]
+            address=address,
+            filters=[("ray_namespace", "=", SERVE_NAMESPACE), ("state", "=", "ALIVE")],
         )
         return len(actors) == 0
 
@@ -174,7 +171,7 @@ def test_multi_app_shutdown_actors(ray_shutdown):
     Ensures that after deploying multiple distinct applications, serve.shutdown()
     deletes all actors (controller, http proxy, all replicas) in the "serve" namespace.
     """
-    ray.init(num_cpus=16)
+    address = ray.init(num_cpus=16)["address"]
     serve.start(http_options=dict(port=8003))
 
     @serve.deployment
@@ -193,13 +190,15 @@ def test_multi_app_shutdown_actors(ray_shutdown):
 
     def check_alive():
         actors = list_actors(
-            filters=[("ray_namespace", "=", SERVE_NAMESPACE), ("state", "=", "ALIVE")]
+            address=address,
+            filters=[("ray_namespace", "=", SERVE_NAMESPACE), ("state", "=", "ALIVE")],
         )
         return {actor["class_name"] for actor in actors} == actor_names
 
     def check_dead():
         actors = list_actors(
-            filters=[("ray_namespace", "=", SERVE_NAMESPACE), ("state", "=", "ALIVE")]
+            address=address,
+            filters=[("ray_namespace", "=", SERVE_NAMESPACE), ("state", "=", "ALIVE")],
         )
         return len(actors) == 0
 
@@ -294,8 +293,7 @@ def test_multiple_routers(ray_cluster):
     cluster.add_node(num_cpus=4)
 
     ray.init(head_node.address)
-    node_ids = ray._private.state.node_ids()
-    assert len(node_ids) == 2
+    assert len(ray.nodes()) == 2
     serve.start(http_options=dict(port=8005, location="EveryNode"))
 
     @serve.deployment(
@@ -387,7 +385,7 @@ def test_middleware(ray_shutdown):
     from starlette.middleware import Middleware
     from starlette.middleware.cors import CORSMiddleware
 
-    port = new_port()
+    port = _get_random_port()
     serve.start(
         http_options=dict(
             port=port,
@@ -425,7 +423,7 @@ def test_http_root_path(ray_shutdown):
     def hello():
         return "hello"
 
-    port = new_port()
+    port = _get_random_port()
     root_path = "/serve"
     serve.start(http_options=dict(root_path=root_path, port=port))
     serve.run(hello.bind(), route_prefix="/hello")
@@ -456,17 +454,16 @@ def test_no_http(ray_shutdown):
         {"http_options": {"location": "NoServer"}},
     ]
 
-    ray.init(num_cpus=16)
+    address = ray.init(num_cpus=16)["address"]
     for i, option in enumerate(options):
         print(f"[{i+1}/{len(options)}] Running with {option}")
         serve.start(**option)
 
         # Only controller actor should exist
-        live_actors = [
-            actor
-            for actor in ray._private.state.actors().values()
-            if actor["State"] == convert_actor_state(gcs_utils.ActorTableData.ALIVE)
-        ]
+        live_actors = list_actors(
+            address=address,
+            filters=[("state", "=", "ALIVE")],
+        )
         assert len(live_actors) == 1
         controller = serve.context._global_client._controller
         assert len(ray.get(controller.get_proxies.remote())) == 0
@@ -484,23 +481,18 @@ def test_no_http(ray_shutdown):
 
 def test_http_head_only(ray_cluster):
     cluster = ray_cluster
-    head_node = cluster.add_node(num_cpus=4)
+    head_node = cluster.add_node(num_cpus=4, dashboard_port=_get_random_port())
     cluster.add_node(num_cpus=4)
 
     ray.init(head_node.address)
-    node_ids = ray._private.state.node_ids()
-    assert len(node_ids) == 2
+    assert len(ray.nodes()) == 2
 
-    serve.start(http_options={"port": new_port(), "location": "HeadOnly"})
+    serve.start(http_options={"port": _get_random_port(), "location": "HeadOnly"})
 
-    # Only the controller and head node actor should be started
-    assert len(ray._private.state.actors()) == 2
-
-    # They should all be placed on the head node
-    cpu_per_nodes = {
-        r["CPU"] for r in ray._private.state.available_resources_per_node().values()
-    }
-    assert cpu_per_nodes == {4}
+    # Only the controller and head node proxy should be started, both on the head node.
+    actors = list_actors(address=head_node.address)
+    assert len(actors) == 2
+    assert all([actor.node_id == head_node.node_id for actor in actors])
 
 
 def test_serve_shutdown(ray_shutdown):
@@ -559,7 +551,9 @@ serve.run(A.bind())"""
     )
 
 
-def test_serve_start_different_http_checkpoint_options_warning(propagate_logs, caplog):
+def test_serve_start_different_http_checkpoint_options_warning(
+    ray_shutdown, propagate_logs, caplog
+):
     logger = logging.getLogger("ray.serve")
     caplog.set_level(logging.WARNING, logger="ray.serve")
 
@@ -575,7 +569,7 @@ def test_serve_start_different_http_checkpoint_options_warning(propagate_logs, c
     serve.start()
 
     # create a different config
-    test_http = dict(host="127.1.1.8", port=new_port())
+    test_http = dict(host="127.1.1.8", port=_get_random_port())
 
     serve.start(http_options=test_http)
 
@@ -584,9 +578,6 @@ def test_serve_start_different_http_checkpoint_options_warning(propagate_logs, c
             if "Autoscaling metrics pusher thread" in msg:
                 continue
             assert test_msg in msg
-
-    serve.shutdown()
-    ray.shutdown()
 
 
 def test_recovering_controller_no_redeploy():
