@@ -302,7 +302,6 @@ Java_io_ray_runtime_RayNativeRuntime_nativeInitialize(JNIEnv *env,
   options.raylet_ip_address = JavaStringToNativeString(env, nodeIpAddress);
   options.driver_name = JavaStringToNativeString(env, driverName);
   options.task_execution_callback = task_execution_callback;
-  options.on_worker_shutdown = [](const WorkerID &) {};
   options.gc_collect = gc_collect;
   options.serialized_job_config = serialized_job_config;
   options.metrics_agent_port = -1;
