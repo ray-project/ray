@@ -1,72 +1,67 @@
 import asyncio
 import os
+import re
 import time
-from typing import AsyncGenerator, List, Optional, Tuple, TYPE_CHECKING
 import uuid
+from concurrent.futures.thread import ThreadPoolExecutor
+from typing import TYPE_CHECKING, AsyncGenerator, List, Optional, Tuple
 
 import ray
-import re
-from concurrent.futures.thread import ThreadPoolExecutor
-from ray.util import metrics
-from ray.util.placement_group import PlacementGroup
-from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
-
-from ray.llm._internal.serve.observability.logging import get_logger
-from ray.llm._internal.serve.observability.metrics.utils import (
-    LONG_RANGE_LATENCY_HISTOGRAM_BUCKETS_MS,
-    ClockUnit,
-    MsClock,
+from ray.llm._internal.serve.configs.constants import (
+    MAX_NUM_TOPLOGPROBS_ALLOWED,
+    MIN_NUM_TOPLOGPROBS_ALLOWED,
+    RAYLLM_ENABLE_REQUEST_PROMPT_LOGS,
+    RAYLLM_GUIDED_DECODING_BACKEND,
 )
 from ray.llm._internal.serve.configs.error_handling import (
     InputTooLong,
     ValidationError,
 )
+from ray.llm._internal.serve.configs.server_models import (
+    DiskMultiplexConfig,
+    FinishReason,
+    GenerationRequest,
+    LLMConfig,
+    LLMRawResponse,
+    LogProb,
+    LogProbs,
+    Prompt,
+)
+from ray.llm._internal.serve.deployments.llm.llm_engine import LLMEngine
 from ray.llm._internal.serve.deployments.llm.vllm.vllm_engine_stats import (
     ArgUsage,
     VLLMEngineStatTracker,
     usage_counters,
 )
 from ray.llm._internal.serve.deployments.llm.vllm.vllm_models import (
+    KV_TRANSFER_PARAMS_KEY,
+    VLLMEmbeddingRequest,
     VLLMEngineConfig,
     VLLMGenerationRequest,
-    VLLMEmbeddingRequest,
     VLLMSamplingParams,
-    KV_TRANSFER_PARAMS_KEY,
 )
-from ray.llm._internal.serve.deployments.utils.server_utils import floats_to_base64
 from ray.llm._internal.serve.deployments.utils.node_initialization_utils import (
     InitializeNodeOutput,
-)
-from ray.llm._internal.serve.deployments.utils.node_initialization_utils import (
     initialize_node as initialize_node_util,
 )
-from ray.llm._internal.serve.configs.server_models import (
-    Prompt,
-    GenerationRequest,
-    DiskMultiplexConfig,
-    LLMConfig,
-    LLMRawResponse,
-    LogProb,
-    LogProbs,
-    FinishReason,
-)
-
-from ray.llm._internal.serve.configs.constants import (
-    RAYLLM_ENABLE_REQUEST_PROMPT_LOGS,
-    RAYLLM_GUIDED_DECODING_BACKEND,
-    MIN_NUM_TOPLOGPROBS_ALLOWED,
-    MAX_NUM_TOPLOGPROBS_ALLOWED,
+from ray.llm._internal.serve.deployments.utils.server_utils import floats_to_base64
+from ray.llm._internal.serve.observability.logging import get_logger
+from ray.llm._internal.serve.observability.metrics.utils import (
+    LONG_RANGE_LATENCY_HISTOGRAM_BUCKETS_MS,
+    ClockUnit,
+    MsClock,
 )
 from ray.llm._internal.utils import try_import
-
-from ray.llm._internal.serve.deployments.llm.llm_engine import LLMEngine
+from ray.util import metrics
+from ray.util.placement_group import PlacementGroup
+from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
 
 if TYPE_CHECKING:
     from vllm import SamplingParams as VLLMInternalSamplingParams
     from vllm.config import ModelConfig, VllmConfig
     from vllm.engine.arg_utils import AsyncEngineArgs
     from vllm.engine.protocol import EngineClient
-    from vllm.outputs import RequestOutput, PoolingRequestOutput
+    from vllm.outputs import PoolingRequestOutput, RequestOutput
 
 vllm = try_import("vllm")
 logger = get_logger(__name__)
@@ -542,8 +537,8 @@ class VLLMEngine(LLMEngine):
         disk_lora_model: Optional[DiskMultiplexConfig] = None,
     ) -> GenerationRequest:
         from vllm.entrypoints.chat_utils import (
-            parse_chat_messages_futures,
             apply_hf_chat_template as _apply_hf_chat_template,
+            parse_chat_messages_futures,
         )
 
         model_config = self.model_config
