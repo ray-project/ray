@@ -426,7 +426,7 @@ def test_run_config_port1(ray_start_stop, config_file):
     )
     p = subprocess.Popen(["serve", "run", config_file_name])
     wait_for_condition(
-        lambda: httpx.post("http://localhost:8000/app1").text == "wonderful world",
+        lambda: httpx.post("http://localhost:8000/").text == "wonderful world",
         timeout=15,
     )
     p.send_signal(signal.SIGINT)
@@ -444,7 +444,7 @@ def test_run_config_port2(ray_start_stop, config_file):
     )
     p = subprocess.Popen(["serve", "run", config_file_name])
     wait_for_condition(
-        lambda: httpx.post("http://localhost:8000/app1").text == "wonderful world",
+        lambda: httpx.post("http://localhost:8005/").text == "wonderful world",
         timeout=15,
     )
     p.send_signal(signal.SIGINT)
@@ -800,7 +800,7 @@ def test_deployment_contains_utils(ray_start_stop):
 
     subprocess.check_output(["serve", "deploy", config_file], stderr=subprocess.STDOUT)
     wait_for_condition(
-        lambda: httpx.post("http://localhost:8000/app1").text == "hello_from_utils"
+        lambda: httpx.post("http://localhost:8000/").text == "hello_from_utils"
     )
 
 

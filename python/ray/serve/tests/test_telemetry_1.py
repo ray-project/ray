@@ -280,7 +280,7 @@ def test_handle_apis_detected(manage_ray_with_telemetry, call_in_deployment):
     handle = serve.run(Caller.bind(Downstream.bind()))
 
     if call_in_deployment:
-        assert httpx.get("http://localhost:8000/").text == "hi"
+        result = httpx.get("http://localhost:8000/").text
     else:
         result = handle.remote(call_downstream=False).result()
 
@@ -320,7 +320,7 @@ def test_deployment_handle_to_obj_ref_detected(manage_ray_with_telemetry, mode):
     handle = serve.run(Caller.bind(Downstream.bind()))
 
     if mode == "http":
-        assert httpx.get("http://localhost:8000/").text == "hi"
+        result = httpx.get("http://localhost:8000/").text
     elif mode == "outside_deployment":
         result = ray.get(handle.get.remote()._to_object_ref_sync())
     else:

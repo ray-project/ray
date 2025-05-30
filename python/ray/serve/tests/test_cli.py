@@ -252,8 +252,7 @@ def test_deploy_multi_app_basic(ray_start_stop):
 
         # Test app1 (simple wonderful world) and app2 (add + mul)
         wait_for_condition(
-            lambda: httpx.post("http://localhost:8000/app1", json=None).text
-            == "wonderful world",
+            lambda: httpx.post("http://localhost:8000/app1").text == "wonderful world",
             timeout=15,
         )
         print('Application "app1" is reachable over HTTP.')
@@ -347,26 +346,22 @@ def test_deploy_multi_app_builder_with_args(ray_start_stop):
     subprocess.check_output(["serve", "deploy", apps_with_args])
 
     wait_for_condition(
-        lambda: httpx.post("http://localhost:8000/untyped_default", json=None).text
-        == "DEFAULT",
+        lambda: httpx.post("http://localhost:8000/untyped_default").text == "DEFAULT",
         timeout=10,
     )
 
     wait_for_condition(
-        lambda: httpx.post("http://localhost:8000/untyped_hello", json=None).text
-        == "hello",
+        lambda: httpx.post("http://localhost:8000/untyped_hello").text == "hello",
         timeout=10,
     )
 
     wait_for_condition(
-        lambda: httpx.post("http://localhost:8000/typed_default", json=None).text
-        == "DEFAULT",
+        lambda: httpx.post("http://localhost:8000/typed_default").text == "DEFAULT",
         timeout=10,
     )
 
     wait_for_condition(
-        lambda: httpx.post("http://localhost:8000/typed_hello", json=None).text
-        == "hello",
+        lambda: httpx.post("http://localhost:8000/typed_hello").text == "hello",
         timeout=10,
     )
 

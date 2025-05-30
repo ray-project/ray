@@ -133,7 +133,7 @@ def test_http_proxy_request_cancellation(serve_instance):
 
     # Sending another request to verify that only one request has been
     # processed so far.
-    assert httpx.get("http://localhost:8000/A").text == "2"
+    assert httpx.get(url).text == "2"
 
 
 def test_nonserializable_deployment(serve_instance):

@@ -914,7 +914,7 @@ def test_serve_logging_file_names(serve_and_ray_shutdown, ray_instance):
 
     app = app.bind()
     serve.run(app, logging_config=logging_config)
-    r = httpx.get("http://localhost:8000/")
+    r = httpx.get("http://127.0.0.1:8000/")
     assert r.status_code == 200
 
     # Construct serve log file names.
@@ -1012,7 +1012,7 @@ def test_json_logging_with_unpickleable_exc_info(
             return "foo"
 
     serve.run(App.bind())
-    r = httpx.get("http://localhost:8000/")
+    r = httpx.get("http://127.0.0.1:8000/")
     assert r.status_code == 200
     for log_file in os.listdir(logs_dir):
         with open(logs_dir / log_file) as f:
