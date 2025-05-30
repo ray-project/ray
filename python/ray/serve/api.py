@@ -28,9 +28,7 @@ from ray.serve._private.http_util import (
 )
 from ray.serve._private.local_testing_mode import make_local_deployment_handle
 from ray.serve._private.logging_utils import configure_component_logger
-from ray.serve._private.request_router.request_router import (
-    RequestRouter,
-)
+from ray.serve._private.request_router.request_router import RequestRouter
 from ray.serve._private.usage import ServeUsageTag
 from ray.serve._private.utils import (
     DEFAULT,

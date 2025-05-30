@@ -120,10 +120,6 @@ class DeploymentConfig(BaseModel):
         health_check_timeout_s: Timeout that the controller waits for a
             response from the replica's health check before marking it
             unhealthy.
-        request_scheduling_stats_period_s: Frequency at which the controller
-            record request scheduling stats.
-        request_scheduling_stats_timeout_s: Timeout that the controller waits
-            for a response from the replica's record scheduling stats call.
         autoscaling_config: Autoscaling configuration.
         logging_config: Configuration for deployment logs.
         user_configured_option_names: The names of options manually
@@ -355,6 +351,7 @@ class DeploymentConfig(BaseModel):
             TypeError: when a keyword that's not an argument to the class is
                 passed in.
         """
+
         config = cls()
         valid_config_options = set(config.dict().keys())
 

@@ -59,7 +59,6 @@ class _DeploymentHandleBase:
         self.handle_options: DynamicHandleOptionsBase = (
             handle_options or create_dynamic_handle_options()
         )
-        # print(f"DeploymentHandle.__init__ {self.handle_options==handle_options=} {self.handle_options=} {handle_options=}")
 
         # Handle ID is shared among handles that are returned by
         # `handle.options` or `handle.method`
@@ -139,7 +138,6 @@ class _DeploymentHandleBase:
             )
 
         init_options = create_init_handle_options(**kwargs)
-        # print(f"DeploymentHandle._init {self.deployment_name} {self._router}")
         self._router = self._create_router(
             handle_id=self.handle_id,
             deployment_id=self.deployment_id,
@@ -205,10 +203,7 @@ class _DeploymentHandleBase:
             }
         )
 
-        return (
-            self._router.assign_request(metadata, *args, **kwargs),
-            metadata,
-        )
+        return self._router.assign_request(metadata, *args, **kwargs), metadata
 
     def __getattr__(self, name):
         return self.options(method_name=name)
@@ -741,6 +736,7 @@ class DeploymentHandle(_DeploymentHandleBase):
             **kwargs: Keyword arguments to be serialized and passed to the
                 remote method call.
         """
+
         future, request_metadata = self._remote(args, kwargs)
         if self.handle_options.stream:
             response_cls = DeploymentResponseGenerator

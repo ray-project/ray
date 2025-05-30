@@ -182,8 +182,6 @@ def test_get_serve_instance_details_json_serializable(serve_instance, policy):
                                 "graceful_shutdown_timeout_s": 20.0,
                                 "health_check_period_s": 10.0,
                                 "health_check_timeout_s": 30.0,
-                                "request_scheduling_stats_period_s": 10.0,
-                                "request_scheduling_stats_timeout_s": 30.0,
                                 "ray_actor_options": {
                                     "num_cpus": 1.0,
                                 },

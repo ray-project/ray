@@ -352,9 +352,6 @@ class Router(ABC):
     def shutdown(self) -> concurrent.futures.Future:
         pass
 
-    def same_scheduler_class(self, request_router: RequestRouter) -> bool:
-        return True
-
 
 async def create_event() -> asyncio.Event:
     """Helper to create an asyncio event in the current event loop."""
@@ -674,6 +671,7 @@ class AsyncioRouter:
         **request_kwargs,
     ) -> ReplicaResult:
         """Assign a request to a replica and return the resulting object_ref."""
+
         if not self._deployment_available:
             raise DeploymentUnavailableError(self.deployment_id)
 
@@ -739,9 +737,6 @@ class AsyncioRouter:
 
     async def shutdown(self):
         await self._metrics_manager.shutdown()
-
-    def same_scheduler_class(self, request_router: RequestRouter) -> bool:
-        return isinstance(self._request_router, request_router)
 
 
 class SingletonThreadRouter(Router):
@@ -845,9 +840,6 @@ class SingletonThreadRouter(Router):
         return asyncio.run_coroutine_threadsafe(
             self._asyncio_router.shutdown(), loop=self._asyncio_loop
         )
-
-    def same_scheduler_class(self, request_router: RequestRouter) -> bool:
-        return self._asyncio_router.same_scheduler_class(request_router)
 
 
 class SharedRouterLongPollClient:
