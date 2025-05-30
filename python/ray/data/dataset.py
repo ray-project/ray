@@ -3,6 +3,7 @@ import copy
 import html
 import itertools
 import logging
+import re
 import time
 import warnings
 from typing import (
@@ -93,6 +94,7 @@ from ray.data._internal.util import (
     ConsumptionAPI,
     _validate_rows_per_file_args,
     get_compute_strategy,
+   _check_import,
 )
 from ray.data.aggregate import AggregateFn, Max, Mean, Min, Std, Sum, Unique
 from ray.data.block import (
@@ -827,6 +829,144 @@ class Dataset:
             ValueError: If the SQL query, view name, or engine is invalid.
             NotImplementedError: If the specified engine is not supported.
         """
+        _check_import(self, module="sqlglot", package="sqlglot")
+        import sqlglot
+        from sqlglot import exp
+
+        def safe_ray_filter_for_sql(query: str):
+            """
+            Attempt to extract a WHERE filter *only* if FROM is a single simple table (no joins),
+            and the expression is simple. Otherwise, fall back to original SQL.
+            Returns (possibly re-emitted query, expr or None).
+            Never raises.
+            """
+            try:
+                parsed = sqlglot.parse_one(query)
+                # Check for joins: any Join node in AST means we must skip
+                if any(isinstance(n, exp.Join) for n in parsed.walk()):
+                    return query, None
+                # FROM must be a single table (not a subquery, not a comma, not a join)
+                from_ = parsed.args.get("from")
+                if not from_ or not single_table_source(from_):
+                    return query, None
+                # Only proceed if WHERE is present
+                where = parsed.args.get("where")
+                if not where:
+                    return query, None
+                parsed.set("where", None)
+                base_query = parsed.sql()
+                expr = ast_to_pyexpr_safe(where.this)
+                if expr is None:
+                    return query, None
+                # Paranoia: if subquery, function, etc, in WHERE, abort
+                if any(isinstance(n, (exp.Subquery, exp.Exists, exp.Function, exp.Case, exp.Window)) for n in where.walk()):
+                    return query, None
+                return base_query, expr
+            except Exception:
+                return query, None
+
+        def single_table_source(from_ast: Any):
+            """Returns True if FROM is a single Table or Alias(Table), else False."""
+            # FROM foo AS bar
+            if isinstance(from_ast, exp.Alias):
+                return isinstance(from_ast.this, exp.Table)
+            # FROM foo
+            if isinstance(from_ast, exp.Table):
+                return True
+            # Anything else (comma, subquery, etc): Reject
+            return False
+
+        def ast_to_pyexpr_safe(ast: Any):
+            """
+            Recursively attempt to convert sqlglot expression AST to a valid
+            Ray Dataset expr string. Returns None if not safely supported.
+            """
+            if isinstance(ast, exp.Column):
+                return ast.name
+            elif isinstance(ast, exp.Literal):
+                if isinstance(ast.this, str):
+                    return f'"{ast.this}"'
+                return str(ast.this)
+            elif isinstance(ast, exp.Paren):
+                child = ast_to_pyexpr_safe(ast.this)
+                return f"({child})" if child else None
+            elif isinstance(ast, exp.And):
+                l, r = ast_to_pyexpr_safe(ast.left), ast_to_pyexpr_safe(ast.right)
+                if l and r:
+                    return f"{l} and {r}"
+                return None
+            elif isinstance(ast, exp.Or):
+                l, r = ast_to_pyexpr_safe(ast.left), ast_to_pyexpr_safe(ast.right)
+                if l and r:
+                    return f"{l} or {r}"
+                return None
+            elif isinstance(ast, exp.Not):
+                sub = ast_to_pyexpr_safe(ast.this)
+                return f"not {sub}" if sub else None
+            elif isinstance(ast, exp.EQ):
+                l, r = ast_to_pyexpr_safe(ast.left), ast_to_pyexpr_safe(ast.right)
+                if l and r:
+                    return f"{l} == {r}"
+                return None
+            elif isinstance(ast, exp.NEQ):
+                l, r = ast_to_pyexpr_safe(ast.left), ast_to_pyexpr_safe(ast.right)
+                if l and r:
+                    return f"{l} != {r}"
+                return None
+            elif isinstance(ast, exp.GT):
+                l, r = ast_to_pyexpr_safe(ast.left), ast_to_pyexpr_safe(ast.right)
+                if l and r:
+                    return f"{l} > {r}"
+                return None
+            elif isinstance(ast, exp.GTE):
+                l, r = ast_to_pyexpr_safe(ast.left), ast_to_pyexpr_safe(ast.right)
+                if l and r:
+                    return f"{l} >= {r}"
+                return None
+            elif isinstance(ast, exp.LT):
+                l, r = ast_to_pyexpr_safe(ast.left), ast_to_pyexpr_safe(ast.right)
+                if l and r:
+                    return f"{l} < {r}"
+                return None
+            elif isinstance(ast, exp.LTE):
+                l, r = ast_to_pyexpr_safe(ast.left), ast_to_pyexpr_safe(ast.right)
+                if l and r:
+                    return f"{l} <= {r}"
+                return None
+            elif isinstance(ast, exp.Is):
+                left = ast_to_pyexpr_safe(ast.left)
+                if isinstance(ast.right, exp.Null):
+                    return f"{left} is None" if left else None
+                else:
+                    right = ast_to_pyexpr_safe(ast.right)
+                    return f"{left} is {right}" if left and right else None
+            elif isinstance(ast, exp.In):
+                left = ast_to_pyexpr_safe(ast.args['this'])
+                vals = [ast_to_pyexpr_safe(e) for e in ast.args['expressions']]
+                if left and all(vals):
+                    return f"{left} in [{', '.join(vals)}]"
+                return None
+            elif isinstance(ast, exp.NotIn):
+                left = ast_to_pyexpr_safe(ast.args['this'])
+                vals = [ast_to_pyexpr_safe(e) for e in ast.args['expressions']]
+                if left and all(vals):
+                    return f"{left} not in [{', '.join(vals)}]"
+                return None
+            elif isinstance(ast, exp.Between):
+                val = ast_to_pyexpr_safe(ast.this)
+                low = ast_to_pyexpr_safe(ast.args['low'])
+                high = ast_to_pyexpr_safe(ast.args['high'])
+                if val and low and high:
+                    return f"({val} >= {low} and {val} <= {high})"
+                return None
+            return None
+
+        base_query, filter_expr = safe_ray_filter_for_sql(query)
+        use_ray_filter = filter_expr is not None
+
+        if use_ray_filter:
+            self = self.filter(expr=filter_expr)
+
         supported_engines = {"duckdb", "polars"}
         if engine.lower() not in supported_engines:
             raise ValueError(
@@ -858,10 +998,10 @@ class Dataset:
         if memory is not None:
             ray_remote_args["memory"] = memory
 
-        if not isinstance(query, str):
+        if not isinstance(base_query, str):
             raise ValueError(
                 "SQL query must be a string. "
-                "Please use the `sql_query` argument to pass a SQL query."
+                "Please use the `query` argument to pass a SQL query."
             )
         if not isinstance(view_name, str):
             raise ValueError(
@@ -911,7 +1051,7 @@ class Dataset:
             batch_format="pyarrow",
             zero_copy_batch=zero_copy_batch,
             min_rows_per_bundled_input=batch_size,
-            fn_args=[query, view_name],
+            fn_args=[base_query, view_name],
             fn_kwargs=fn_kwargs,
             fn_constructor_args=fn_constructor_args,
             fn_constructor_kwargs=fn_constructor_kwargs,
