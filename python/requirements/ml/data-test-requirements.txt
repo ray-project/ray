@@ -24,3 +24,4 @@ clickhouse-connect
 hudi==0.2.0
 polars
 duckdb
+sqlglot

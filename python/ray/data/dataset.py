@@ -3,7 +3,6 @@ import copy
 import html
 import itertools
 import logging
-import re
 import time
 import warnings
 from typing import (
@@ -92,9 +91,9 @@ from ray.data._internal.stats import DatasetStats, DatasetStatsSummary, StatsMan
 from ray.data._internal.util import (
     AllToAllAPI,
     ConsumptionAPI,
+    _check_import,
     _validate_rows_per_file_args,
     get_compute_strategy,
-   _check_import,
 )
 from ray.data.aggregate import AggregateFn, Max, Mean, Min, Std, Sum, Unique
 from ray.data.block import (
@@ -859,7 +858,13 @@ class Dataset:
                 if expr is None:
                     return query, None
                 # Paranoia: if subquery, function, etc, in WHERE, abort
-                if any(isinstance(n, (exp.Subquery, exp.Exists, exp.Function, exp.Case, exp.Window)) for n in where.walk()):
+                if any(
+                    isinstance(
+                        n,
+                        (exp.Subquery, exp.Exists, exp.Function, exp.Case, exp.Window),
+                    )
+                    for n in where.walk()
+                ):
                     return query, None
                 return base_query, expr
             except Exception:
@@ -941,25 +946,33 @@ class Dataset:
                     right = ast_to_pyexpr_safe(ast.right)
                     return f"{left} is {right}" if left and right else None
             elif isinstance(ast, exp.In):
-                left = ast_to_pyexpr_safe(ast.args['this'])
-                vals = [ast_to_pyexpr_safe(e) for e in ast.args['expressions']]
+                left = ast_to_pyexpr_safe(ast.args["this"])
+                vals = [ast_to_pyexpr_safe(e) for e in ast.args["expressions"]]
                 if left and all(vals):
                     return f"{left} in [{', '.join(vals)}]"
                 return None
             elif isinstance(ast, exp.NotIn):
-                left = ast_to_pyexpr_safe(ast.args['this'])
-                vals = [ast_to_pyexpr_safe(e) for e in ast.args['expressions']]
+                left = ast_to_pyexpr_safe(ast.args["this"])
+                vals = [ast_to_pyexpr_safe(e) for e in ast.args["expressions"]]
                 if left and all(vals):
                     return f"{left} not in [{', '.join(vals)}]"
                 return None
             elif isinstance(ast, exp.Between):
                 val = ast_to_pyexpr_safe(ast.this)
-                low = ast_to_pyexpr_safe(ast.args['low'])
-                high = ast_to_pyexpr_safe(ast.args['high'])
+                low = ast_to_pyexpr_safe(ast.args["low"])
+                high = ast_to_pyexpr_safe(ast.args["high"])
                 if val and low and high:
                     return f"({val} >= {low} and {val} <= {high})"
                 return None
             return None
+
+        shuffle_ops = [" join ", " group by "]
+        for op in shuffle_ops:
+            if op in query.lower():
+                print(
+                    f"Warning: {op} found in query. Note that this will only be run on each block independently",
+                    f"Consider using `ray.dataset.{'join' if op == ' join ' else 'groupBy'} instead if you need data across multiple blocks",
+                )
 
         base_query, filter_expr = safe_ray_filter_for_sql(query)
         use_ray_filter = filter_expr is not None
