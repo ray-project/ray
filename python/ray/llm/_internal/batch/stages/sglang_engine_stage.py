@@ -6,8 +6,9 @@ import time
 import uuid
 from contextlib import nullcontext
 from enum import Enum
+from typing import Any, AsyncIterator, Dict, List, Optional, Tuple, Type
+
 from pydantic import BaseModel, root_validator
-from typing import Any, Dict, AsyncIterator, Optional, List, Tuple, Type
 
 from ray.llm._internal.batch.stages.base import (
     StatefulStage,
