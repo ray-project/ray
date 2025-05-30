@@ -1,9 +1,9 @@
-import os
 import argparse
 import base64
 import json
-import time
+import os
 import sys
+import time
 
 import ray
 import ray._private.node
@@ -12,8 +12,8 @@ import ray._private.utils
 import ray.actor
 from ray._private.async_compat import try_install_uvloop
 from ray._private.parameter import RayParams
-from ray._private.runtime_env.setup_hook import load_and_execute_setup_hook
 from ray._private.ray_logging import get_worker_log_file_name
+from ray._private.runtime_env.setup_hook import load_and_execute_setup_hook
 
 parser = argparse.ArgumentParser(
     description=("Parse addresses for the worker to connect to.")

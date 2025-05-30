@@ -500,10 +500,11 @@ def _push_candidate_node_if_ready(
     node: _DAGOperationGraphNode,
 ) -> None:
     """
-    Push the node to the candidates if ready. If it has synchronous nodes, its NCCL
-    operation is not ready until all the nodes are pending, then all the nodes will be
-    pushed to the candidates.
+    Push the node with a zero in-degree to the candidates if its operation is ready.
+    If it has synchronous nodes, its NCCL operation is not ready until all the nodes
+    are pending, then all the nodes will be pushed to the candidates.
     """
+    assert node.in_degree == 0, "Expected to have a zero in-degree"
     # For the NCCL write node, update the in-degrees of the downstream NCCL read nodes
     # and update them as pending. This is necessary because the data dependency edges
     # between NCCL write and read nodes are only updated here. The NCCL P2P operation
@@ -1186,16 +1187,15 @@ def _generate_actor_to_execution_schedule(
             actor_to_execution_schedule[node.actor_handle].append(node)
         # Update the in-degree of the downstream nodes.
         for node in nodes:
-            # The downstream NCCL read nodes are already updated.
-            if node.is_nccl_write:
-                continue
             for out_node_task_idx, out_node_type in node.out_edges:
                 out_node = graph[out_node_task_idx][out_node_type]
-                out_node.in_edges.pop((node.task_idx, node.operation.type))
-                if out_node.in_degree == 0 and out_node not in visited_nodes:
+                if out_node in visited_nodes:
                     # If the downstream node is already visited, it has been added
                     # to the execution schedule. They are the NCCL read nodes in
                     # case 2.
+                    continue
+                out_node.in_edges.pop((node.task_idx, node.operation.type))
+                if out_node.in_degree == 0:
                     _push_candidate_node_if_ready(actor_to_candidates, graph, out_node)
     assert len(visited_nodes) == len(graph) * 3, "Expected all nodes to be visited"
 
