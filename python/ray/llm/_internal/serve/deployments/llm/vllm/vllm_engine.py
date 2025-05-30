@@ -508,7 +508,7 @@ class VLLMEngine(LLMEngine):
 
         custom_stat_loggers = None
         if self.llm_config.log_engine_metrics:
-            from ray.llm._internal.serve.deployments.llm.vllm.vllm_loggers import (
+            from vllm.v1.metrics.ray_wrappers import (
                 RayPrometheusStatLogger,
             )
 
