@@ -262,8 +262,9 @@ def test_gcs_connection_no_leak(ray_start_cluster):
 
     def get_gcs_num_of_connections():
         p = psutil.Process(gcs_server_pid)
-        print(">>", len(p.connections()))
-        return len(p.connections())
+        num_connections = p.net_connections()
+        print(">>", num_connections)
+        return num_connections
 
     @ray.remote
     class A:
