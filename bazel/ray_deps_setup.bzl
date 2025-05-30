@@ -241,6 +241,9 @@ def ray_deps_setup():
         urls = [
             "https://github.com/abseil/abseil-cpp/archive/refs/tags/20230802.1.tar.gz",
         ],
+        patches = [
+            "@com_github_ray_project_ray//thirdparty/patches:abseil-cpp-shadow.patch",
+        ],
     )
 
     # OpenCensus depends on jupp0r/prometheus-cpp
@@ -342,6 +345,7 @@ def ray_deps_setup():
         sha256 = "83c37c9ad926bbee68d564d9f53c6cbb057c1f755c264043ddd87d89e36d15bb",
         patches = [
             "@com_github_ray_project_ray//thirdparty/patches:msgpack-windows-iovec.patch",
+            "@com_github_ray_project_ray//thirdparty/patches:msgpack-shadow.patch",
         ],
     )
 

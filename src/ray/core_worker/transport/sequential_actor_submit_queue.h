@@ -59,7 +59,7 @@ class SequentialActorSubmitQueue : public IActorSubmitQueue {
 
  private:
   /// The ID of the actor.
-  ActorID actor_id;
+  ActorID actor_id_;
 
   /// The actor's pending requests, ordered by the sequence number in the request.
   /// The bool indicates whether the dependencies for that task have been resolved yet.
