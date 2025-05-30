@@ -160,6 +160,37 @@ class ModelLoadingConfig(BaseModelExtended):
 EngineConfigType = Union[None, "VLLMEngineConfig"]  # noqa: F821
 
 
+def _is_yaml_file(filename: str) -> bool:
+    yaml_extensions = [".yml", ".yaml", ".json"]
+    for s in yaml_extensions:
+        if filename.endswith(s):
+            return True
+    return False
+
+
+def _parse_path_args(cls, path: str) -> List[Type["LLMConfig"]]:
+    assert os.path.exists(
+        path
+    ), f"Could not load model from {path}, as it does not exist."
+    if os.path.isfile(path):
+        with open(path, "r") as f:
+            llm_config = cls.parse_yaml(f)
+            return [llm_config]
+    elif os.path.isdir(path):
+        apps = []
+        for root, _dirs, files in os.walk(path):
+            for p in files:
+                if _is_yaml_file(p):
+                    with open(os.path.join(root, p), "r") as f:
+                        llm_config = ray.serve.llm.LLMConfig.parse_yaml(f)
+                        apps.append(llm_config)
+        return apps
+    else:
+        raise ValueError(
+            f"Could not load model from {path}, as it is not a file or directory."
+        )
+
+
 class LLMConfig(BaseModelExtended):
     # model_config is a Pydantic setting. This setting merges with
     # model_configs in parent classes.
@@ -494,81 +525,50 @@ class LLMConfig(BaseModelExtended):
 
         return deployment_config
 
+    @classmethod
+    def parse_from(
+        cls,
+        args: Union[str, "LLMConfig", Any, Sequence[Union["LLMConfig", str, Any]]],
+    ) -> List[Type["LLMConfig"]]:
+        """Parse the input args and return a standardized list of LLMConfig objects
 
-def _is_yaml_file(filename: str) -> bool:
-    yaml_extensions = [".yml", ".yaml", ".json"]
-    for s in yaml_extensions:
-        if filename.endswith(s):
-            return True
-    return False
+        Supported args format:
+        1. The path to a yaml file defining your LLMConfig
+        2. The path to a folder containing yaml files, which define your LLMConfigs
+        3. A list of yaml files defining multiple LLMConfigs
+        4. A dict or LLMConfig object
+        5. A list of dicts or LLMConfig objects
+        """
 
+        raw_models = [args]
+        if isinstance(args, list):
+            raw_models = args
 
-def _parse_path_args(path: str) -> List["ray.serve.llm.LLMConfig"]:
-    assert os.path.exists(
-        path
-    ), f"Could not load model from {path}, as it does not exist."
-    if os.path.isfile(path):
-        with open(path, "r") as f:
-            llm_config = ray.serve.llm.LLMConfig.parse_yaml(f)
-            return [llm_config]
-    elif os.path.isdir(path):
-        apps = []
-        for root, _dirs, files in os.walk(path):
-            for p in files:
-                if _is_yaml_file(p):
-                    with open(os.path.join(root, p), "r") as f:
-                        llm_config = ray.serve.llm.LLMConfig.parse_yaml(f)
-                        apps.append(llm_config)
-        return apps
-    else:
-        raise ValueError(
-            f"Could not load model from {path}, as it is not a file or directory."
-        )
-
-
-def parse_args(
-    args: Union[str, LLMConfig, Any, Sequence[Union[LLMConfig, str, Any]]],
-) -> List["ray.serve.llm.LLMConfig"]:
-    """Parse the input args and return a standardized list of LLMConfig objects
-
-    Supported args format:
-    1. The path to a yaml file defining your LLMConfig
-    2. The path to a folder containing yaml files, which define your LLMConfigs
-    3. A list of yaml files defining multiple LLMConfigs
-    4. A dict or LLMConfig object
-    5. A list of dicts or LLMConfig objects
-    """
-    PublicLLMConfigCls = ray.serve.llm.LLMConfig
-
-    raw_models = [args]
-    if isinstance(args, list):
-        raw_models = args
-
-    # For each
-    models: List[PublicLLMConfigCls] = []
-    for raw_model in raw_models:
-        if isinstance(raw_model, str):
-            if os.path.exists(raw_model):
-                parsed_models = _parse_path_args(raw_model)
+        # For each
+        models: List[ray.serve.llm.LLMConfig] = []
+        for raw_model in raw_models:
+            if isinstance(raw_model, str):
+                if os.path.exists(raw_model):
+                    parsed_models = _parse_path_args(cls, raw_model)
+                else:
+                    try:
+                        llm_config = cls.parse_yaml(raw_model)
+                        parsed_models = [llm_config]
+                    except pydantic.ValidationError as e:
+                        raise ValueError(
+                            f"Could not parse string as yaml. If you are "
+                            "specifying a path, make sure it exists and can be "
+                            f"reached. raw_model: {raw_model}"
+                        ) from e
             else:
                 try:
-                    llm_config = PublicLLMConfigCls.parse_yaml(raw_model)
+                    llm_config = cls.model_validate(raw_model)
                     parsed_models = [llm_config]
-                except pydantic.ValidationError as e:
-                    raise ValueError(
-                        f"Could not parse string as yaml. If you are "
-                        "specifying a path, make sure it exists and can be "
-                        f"reached. raw_model: {raw_model}"
-                    ) from e
-        else:
-            try:
-                llm_config = PublicLLMConfigCls.model_validate(raw_model)
-                parsed_models = [llm_config]
-            except pydantic.ValidationError:
-                parsed_models = [PublicLLMConfigCls.model_validate(raw_model)]
-        models += parsed_models
+                except pydantic.ValidationError:
+                    parsed_models = [cls.model_validate(raw_model)]
+            models += parsed_models
 
-    return models
+        return models
 
 
 class LLMServingArgs(BaseModel):
@@ -581,7 +581,7 @@ class LLMServingArgs(BaseModel):
 
         llm_configs = []
         for config in self.llm_configs:
-            parsed_config = parse_args(config)[0]
+            parsed_config = LLMConfig.parse_from(config)[0]
             if not isinstance(parsed_config, LLMConfig):
                 raise ValueError(
                     "When using the new Serve config format, all model "

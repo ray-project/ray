@@ -5,7 +5,7 @@ import logging
 from typing import AsyncGenerator, Union
 import uuid
 
-from pydantic import BaseModel
+from pydantic import BaseModel, field_validator
 from vllm.config import KVTransferConfig
 
 from ray import serve
@@ -35,16 +35,18 @@ class PDServingArgs(BaseModel):
     prefill_config: Union[str, LLMConfig]
     decode_config: Union[str, LLMConfig]
 
+    @field_validator("prefill_config", "decode_config")
+    @classmethod
+    def validate_configs(cls, value):
+        return LLMConfig.parse_from([value])[0]
+
     def parse_args(self) -> "PDServingArgs":
         """Converts this LLMServingArgs object into an DeployArgs object."""
 
-        def parse_configs_and_cast_type(config: Union[str, LLMConfig]) -> LLMConfig:
-            return LLMConfig.parse_from([config])[0]
-
         return PDServingArgs(
             # Parse string file path into LLMConfig
-            prefill_config=parse_configs_and_cast_type(self.prefill_config),
-            decode_config=parse_configs_and_cast_type(self.decode_config),
+            prefill_config=self.prefill_config,
+            decode_config=self.decode_config,
         )
 
 

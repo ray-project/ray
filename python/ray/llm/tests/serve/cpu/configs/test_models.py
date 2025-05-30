@@ -323,6 +323,7 @@ class TestPublicLLMConfig:
 
     def test_extend_config(self):
         """Test that public users can define their own config that uses LLMConfig."""
+
         class MyLLMConfig(pydantic.BaseModel):
             llm_config: PublicLLMConfig
 
