@@ -209,7 +209,7 @@ def main(scale_factor: int):
             .flat_map(patch_image)
             .map_batches(ProcessPatches(transform))
             .map_batches(
-                EmbedPatches,
+                FakeEmbedPatches,
                 batch_size=BATCH_SIZE,
                 compute=ActorPoolStrategy(min_size=1, max_size=100),
                 num_gpus=1,
