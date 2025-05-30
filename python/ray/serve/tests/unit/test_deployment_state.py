@@ -4797,6 +4797,49 @@ class TestStopReplicasOnDrainingNodes:
             ],
         )
 
+    def test_stop_unallocated_replica(self, mock_deployment_state_manager):
+        """Test that replicas are stopped with correct graceful value based on their state.
+
+        When stopping a replica:
+        - If it's in PENDING_ALLOCATION state, stop() should be called with graceful=False
+        - Otherwise, stop() should be called with the provided graceful_stop value
+        """
+        create_dsm, _, _, _ = mock_deployment_state_manager
+        dsm = create_dsm()
+        info1, v1 = deployment_info(version="1")
+        assert dsm.deploy(TEST_DEPLOYMENT_ID, info1)
+        ds = dsm._deployment_states[TEST_DEPLOYMENT_ID]
+
+        dsm.update()
+        check_counts(ds, total=1, by_state=[(ReplicaState.STARTING, 1, v1)])
+        replica = ds._replicas.get(states=[ReplicaState.STARTING])[0]
+
+        stop_graceful_value = None
+        original_stop = replica.stop
+
+        def mock_stop(graceful):
+            nonlocal stop_graceful_value
+            stop_graceful_value = graceful
+            return original_stop(graceful=graceful)
+
+        replica.stop = mock_stop
+
+        # Test Case 1: PENDING_ALLOCATION state
+        def mock_pending_allocation():
+            return ReplicaStartupStatus.PENDING_ALLOCATION, None
+
+        replica.check_started = mock_pending_allocation
+        ds.stop_replicas([replica.replica_id])
+        assert stop_graceful_value is False
+
+        # Test Case 2: SUCCEEDED state
+        def mock_pending_initialization():
+            return ReplicaStartupStatus.PENDING_INITIALIZATION, None
+
+        replica.check_started = mock_pending_initialization
+        ds.stop_replicas([replica.replica_id])
+        assert stop_graceful_value is True
+
 
 def test_docs_path_not_updated_for_different_version(mock_deployment_state_manager):
     # Create deployment state manager
