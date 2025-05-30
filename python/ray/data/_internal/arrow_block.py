@@ -168,6 +168,25 @@ class ArrowBlockBuilder(TableBlockBuilder):
         return BlockType.ARROW
 
 
+def _get_batch_max_chunk_size(
+    table: "pyarrow.Table", max_chunk_size_bytes: int
+) -> Optional[int]:
+    """
+    Calculate the max chunk size in rows for Arrow to Batches conversion in
+    ArrowBlockAccessor.iter_rows().
+    Args:
+        table: The pyarrow table to calculate the max chunk size for.
+        max_chunk_size_bytes: The max chunk size in bytes.
+    Returns:
+        The max chunk size in rows, or None if the table is empty.
+    """
+    if table.nbytes == 0:
+        return None
+    else:
+        avg_row_size = int(table.nbytes / table.num_rows)
+        return max(1, int(max_chunk_size_bytes / avg_row_size))
+
+
 class ArrowBlockAccessor(TableBlockAccessor):
     ROW_TYPE = ArrowRow
 
@@ -177,12 +196,9 @@ class ArrowBlockAccessor(TableBlockAccessor):
         super().__init__(table)
         # Set the max chunk size in rows for Arrow to Batches conversion in
         # ArrowBlockAccessor.iter_rows().
-        self._batch_max_chunk_size = None
-        if self._table.nbytes > 0:
-            avg_row_size = int(self._table.nbytes / self._table.num_rows)
-            self._batch_max_chunk_size = max(
-                1, int(ARROW_BATCHES_MAX_CHUNK_SIZE_BYTES / avg_row_size)
-            )
+        self._batch_max_chunk_size = _get_batch_max_chunk_size(
+            self._table, ARROW_BATCHES_MAX_CHUNK_SIZE_BYTES
+        )
 
     def column_names(self) -> List[str]:
         return self._table.column_names
