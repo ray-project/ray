@@ -129,3 +129,8 @@ starlette>=0.40.0
 requests>=2.32.3
 docker>=7.1.0
 protobuf>=4,<5
+
+# TODO(aslonnie): remove this
+# this is required as some packages depends on ray and will pick up older version of
+# ray, which has overly strict version requirements.
+ray>=2.46.0
