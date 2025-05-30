@@ -100,6 +100,7 @@ def _tempfile(content: str) -> ContextManager[str]:
     try:
         f.write(content)
         f.flush()
+        f.close()
         yield f.name
     finally:
         os.unlink(f.name)
