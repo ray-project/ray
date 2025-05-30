@@ -153,7 +153,7 @@ class PullManager {
   /// Check whether the pull request is currently active or waiting for object
   /// size information. If this returns false, then the pull request is most
   /// likely inactive due to lack of memory.
-  bool PullRequestActiveOrWaitingForMetadata(uint64_t request_id) const;
+  bool PullRequestActiveOrWaitingForMetadata(uint64_t request_id);
 
   /// Whether we are have requests queued that are not currently active. This
   /// can happen when we are at capacity in the object store or temporarily, if
@@ -179,11 +179,7 @@ class PullManager {
   /// A helper structure for tracking information about each ongoing object pull.
   struct ObjectPullRequest {
     explicit ObjectPullRequest(double first_retry_time)
-        : client_locations(),
-          spilled_url(),
-          next_pull_time(first_retry_time),
-          num_retries(0),
-          bundle_request_ids() {}
+        : next_pull_time(first_retry_time) {}
     std::vector<NodeID> client_locations;
     std::string spilled_url;
     NodeID spilled_node_id;
@@ -194,7 +190,7 @@ class PullManager {
     double expiration_time_seconds = 0;
     int64_t activate_time_ms = 0;
     int64_t request_start_time_ms = absl::GetCurrentTimeNanos() / 1e3;
-    uint8_t num_retries;
+    uint8_t num_retries = 0;
     bool object_size_set = false;
     size_t object_size = 0;
     // All bundle requests that haven't been canceled yet that require this
@@ -223,15 +219,14 @@ class PullManager {
 
   /// A helper structure for tracking information about each ongoing bundle pull request.
   struct BundlePullRequest {
-    BundlePullRequest(std::vector<ObjectID> requested_objects,
-                      const TaskMetricsKey &task_key)
-        : objects(std::move(requested_objects)), task_key(task_key) {}
+    BundlePullRequest(std::vector<ObjectID> requested_objects, TaskMetricsKey task_key)
+        : objects(std::move(requested_objects)), task_key(std::move(task_key)) {}
     // All the objects that this bundle is trying to pull.
-    const std::vector<ObjectID> objects;
+    std::vector<ObjectID> objects;
     // All the objects that are pullable.
     absl::flat_hash_set<ObjectID> pullable_objects;
     // The name of the task, if a task arg request, otherwise the empty string.
-    const TaskMetricsKey task_key;
+    TaskMetricsKey task_key;
 
     void MarkObjectAsPullable(const ObjectID &object) {
       pullable_objects.emplace(object);
@@ -427,7 +422,6 @@ class PullManager {
   /// If the next bundle is not ready for pulling, 0L will be returned.
   int64_t NextRequestBundleSize(const BundlePullRequestQueue &bundles) const;
 
-  const BundlePullRequestQueue &GetBundlePullRequestQueue(uint64_t request_id) const;
   BundlePullRequestQueue &GetBundlePullRequestQueue(uint64_t request_id);
 
   /// See the constructor's arguments.
