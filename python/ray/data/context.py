@@ -110,6 +110,11 @@ DEFAULT_ENABLE_TENSOR_EXTENSION_CASTING = env_bool(
 #       V2 in turn relies on int64 offsets, therefore having a limit of ~9Eb (exabytes)
 DEFAULT_USE_ARROW_TENSOR_V2 = env_bool("RAY_DATA_USE_ARROW_TENSOR_V2", True)
 
+DEFAULT_USE_ARROW_NATIVE_FIXED_SHAPE_TENSOR_TYPE = env_bool(
+    "RAY_DATA_DEFAULT_USE_ARROW_NATIVE_FIXED_SHAPE_TENSOR_TYPE",
+    False,
+)
+
 DEFAULT_AUTO_LOG_STATS = False
 
 DEFAULT_VERBOSE_STATS_LOG = False
@@ -390,6 +395,7 @@ class DataContext:
     min_parallelism: int = DEFAULT_MIN_PARALLELISM
     read_op_min_num_blocks: int = DEFAULT_READ_OP_MIN_NUM_BLOCKS
     enable_tensor_extension_casting: bool = DEFAULT_ENABLE_TENSOR_EXTENSION_CASTING
+    use_arrow_native_fixed_shape_tensor_type: bool = DEFAULT_USE_ARROW_NATIVE_FIXED_SHAPE_TENSOR_TYPE
     use_arrow_tensor_v2: bool = DEFAULT_USE_ARROW_TENSOR_V2
     enable_fallback_to_arrow_object_ext_type: Optional[bool] = None
     enable_auto_log_stats: bool = DEFAULT_AUTO_LOG_STATS
