@@ -3334,25 +3334,25 @@ class Dataset:
         **arrow_parquet_args,
     ) -> None:
         """Writes the :class:`~ray.data.Dataset` to parquet files under the provided ``path``.
-    
+
         The number of files is determined by the number of blocks in the dataset.
         To control the number of number of blocks, call
         :meth:`~ray.data.Dataset.repartition`.
-    
+
         If pyarrow can't represent your data, this method errors.
-    
+
         By default, the format of the output files is ``{uuid}_{block_idx}.parquet``,
         where ``uuid`` is a unique id for the dataset. To modify this behavior,
         implement a custom :class:`~ray.data.datasource.FilenameProvider` and pass it in
         as the ``filename_provider`` argument.
-    
+
         Examples:
             >>> import ray
             >>> ds = ray.data.range(100)
             >>> ds.write_parquet("local:///tmp/data/")
-    
+
         Time complexity: O(dataset size / parallelism)
-    
+
         Args:
             path: The path to the destination root directory, where
                 parquet files are written to.
@@ -3626,14 +3626,14 @@ class Dataset:
         concurrency: Optional[int] = None,
     ) -> None:
         """Writes the :class:`~ray.data.Dataset` to images.
-    
+
         Examples:
             >>> import ray
             >>> ds = ray.data.read_images("s3://anonymous@ray-example-data/image-datasets/simple")
             >>> ds.write_images("local:///tmp/images", column="image")
-    
+
         Time complexity: O(dataset size / parallelism)
-    
+
         Args:
             path: The path to the destination root directory, where
                 the images are written to.

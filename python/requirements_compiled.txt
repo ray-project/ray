@@ -458,6 +458,8 @@ docutils==0.19
     #   -r python/requirements/lint-requirements.txt
     #   myst-parser
     #   sphinx
+duckdb==1.3.0
+    # via -r python/requirements/ml/data-test-requirements.txt
 dulwich==0.21.6
     # via comet-ml
 ecdsa==0.18.0
@@ -1515,7 +1517,9 @@ plotly==5.23.0
 pluggy==1.3.0
     # via pytest
 polars==0.14.21
-    # via -r python/requirements/test-requirements.txt
+    # via
+    #   -r python/requirements/ml/data-test-requirements.txt
+    #   -r python/requirements/test-requirements.txt
 portalocker==2.8.2
     # via
     #   azure-cli-telemetry
