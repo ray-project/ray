@@ -32,11 +32,11 @@
 2. `mkdir work, cd work`. Clone my repo, then `cd ray`.
 3. `python python/ray/setup-dev.py` for `serve`, `llm`, and `serve/llm`.
 4. To output vllm metrics more frequently than the default 10 seconds, run: `ray start --head --system-config='{"metrics_report_interval_ms": 100}' --port 5000 --metrics-export-port 5001 --dashboard-port 5002`.
-    - My metric logging scripts are set up to curl from http://localhost:5001/metrics, instead of the default http://localhost:8085/metrics. If you switch to using `log_engine_metrics=True`, make sure to edit my scripts to curl from 8085. Also edit `sweep_strategies.py` to shut down the server at the default dashboard port instead of 5002.
+    - My metric logging scripts are set up to curl from http://localhost:5001/metrics, instead of the default http://localhost:8085/metrics. If you switch to using `log_engine_metrics=True`, make sure to edit my scripts to curl from 8085. Also edit `sweep_strategies.py` to shut down the server after each benchmark run at the default dashboard port instead of 5002.
     - I've also modified `vllm_engine.py` to add `RayPrometheusStatLogger` to `MQLLMEngine`. I know that I can set `VLLM_USE_V1=1` to output metrics and bypass modifying `vllm_engine`, but besides the annoying warnings, longer model loading times I observed, I also don't know how to customize the metrics report interval. So all my results are obtained with VLLM V0.
 5. `pip install vllm==0.8.5`
 6. Some of Gene's changes that aren't merged into master yet aren't compiled in protobuf by nightly. So I manually regenerate protobuf:
-    ```
+    ```bash
     ci/env/install-bazel.sh
     cd ~/bin/
     export PATH="$HOME/bin:$PATH"
@@ -45,14 +45,14 @@
     bazel build //:install_py_proto
     ```
 7. To run unit tests:
-    ```
+    ```bash
     pip install -c python/requirements_compiled.txt -r python/requirements/test-requirements.txt
     pip install -r python/requirements/llm/llm-requirements.txt -r python/requirements/llm/llm-test-requirements.txt
     python -m pytest -v -s /home/ray/default/work/ray/python/ray/llm/tests/serve/cpu/deployments/test_prefix_tree.py
     python -m pytest -v -s /home/ray/default/work/ray/python/ray/llm/tests/serve/cpu/deployments/test_prefix_aware_replica_scheduler.py
     ```
 8. Linting:
-    ```
+    ```bash
     pip install -c python/requirements_compiled.txt -r python/requirements/lint-requirements.txt
     scripts/format.sh
     ./ci/lint/lint.sh pre_commit
@@ -77,11 +77,11 @@
 
 ## Benchmark
 1. `benchmark.py` is based off of [sglang's serving benchmark](https://github.com/sgl-project/sglang/blob/844a8f42c74bcd917e9f1456d406ba4f1deebda3/python/sglang/bench_serving.py#L4). This script generates a batch of queries, sends them to a port that corresponds to a running LLM router, and measures serving metrics. For example, this is the same command I used for all my benchmark results:
-    ```
+    ```bash
     python -m benchmark \
         --backend vllm \
         --model Qwen/Qwen2.5-1.5B-Instruct \
-        --host localhost \
+        --host 127.0.0.1 \
         --port 8000 \
         --dataset-name sharegpt \
         --dataset-link "https://huggingface.co/datasets/samos123/share-gpt-long-convos/resolve/main/sharegpt_16_messages_or_more.json" \
@@ -96,6 +96,8 @@
         --max-conversations 10000 \
         --num-prompts 1000
     ```
+    Note: This command only runs a benchmark on a given port, it does not spin up the server on that port. To successfully run this, first run `serve run config.yaml`, then run the command above. Or, run `python sweep_strategies`, which handles both starting the server *and* running the benchmark.
+
     General benchmark parameters:
     - `max-concurrency=40` means the client will only have max 40 requests ongoing at once. I set this to 40 because we have 4 LLM replicas, each with their own `max-concurrency=20`, and we want them to each be saturated but not overloaded.
     - `request-rate=100` instead of infinity helps request send-offs to be staggered instead of immediate. When this was set to infinity, we noticed jumps and drops in the load distribution graph (see the slide "3/27-4/2 Progress" in my result slides).

@@ -2,8 +2,8 @@ applications:
 - args:
     llm_configs:
         - model_loading_config:
-            model_id: qwen-0.5b
-            model_source: Qwen/Qwen2.5-0.5B-Instruct
+            model_id: Qwen/Qwen2.5-1.5B-Instruct
+            model_source: Qwen/Qwen2.5-1.5B-Instruct
           accelerator_type: L4
           engine_kwargs:
             enable_prefix_caching: true,
@@ -11,9 +11,9 @@ applications:
             disable_log_requests: false,
           deployment_config:
             autoscaling_config:
-                initial_replicas: 2
-                min_replicas: 2
-                max_replicas: 2
+                initial_replicas: 4
+                min_replicas: 4
+                max_replicas: 4
           # log_engine_metrics: true
   import_path: ray.serve.llm:build_openai_app
   name: llm_app
