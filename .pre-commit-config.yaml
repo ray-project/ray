@@ -65,6 +65,7 @@ repos:
           # --check-style-mismatch=True, # Bring this back once things are a bit cleaner
         ]
         types: [python]
+        language: system
         files: '^python/ray/'
 
   - repo: https://github.com/cpplint/cpplint

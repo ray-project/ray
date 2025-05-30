@@ -206,7 +206,9 @@ def test_redirect(serve_instance, base_path):
     assert len(r.history) == 1
     assert r.json() == "hello from /"
 
-    r = httpx.get(f"http://localhost:8000{route_prefix}redirect2", follow_redirects=True)
+    r = httpx.get(
+        f"http://localhost:8000{route_prefix}redirect2", follow_redirects=True
+    )
     assert r.status_code == 200
     assert len(r.history) == 2
     assert r.json() == "hello from /"

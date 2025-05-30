@@ -8,8 +8,8 @@ import zipfile
 from typing import Dict, Iterable, List
 from unittest import mock
 
-import pytest
 import httpx
+import pytest
 
 import ray
 import ray.util.state as state_api

@@ -409,7 +409,10 @@ def test_deploy_application_basic(serve_instance):
 
     # Test FastAPI
     serve.run(MyFastAPIDeployment.bind(), name="FastAPI", route_prefix="/hello")
-    assert httpx.get("http://127.0.0.1:8000/hello", follow_redirects=True).text == '"Hello, world!"'
+    assert (
+        httpx.get("http://127.0.0.1:8000/hello", follow_redirects=True).text
+        == '"Hello, world!"'
+    )
 
 
 def test_delete_application(serve_instance):
