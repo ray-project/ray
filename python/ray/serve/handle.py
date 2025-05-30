@@ -140,7 +140,6 @@ class _DeploymentHandleBase:
         to initialize a handle with custom init options, you must do it
         before calling `.options()` or `.remote()`.
         """
-        print(f"before init, {self._router=}, {request_router_class=}")
         if self._router is not None and request_router_class is None:
             raise RuntimeError(
                 "Handle has already been initialized and the request router "
@@ -155,13 +154,9 @@ class _DeploymentHandleBase:
             request_router_class = self._load_request_router_class(
                 request_router_class=request_router_class
             )
-            print(
-                f"{self._router._asyncio_router._request_router=} {request_router_class=}"
-            )
             if self._router.same_request_router_class(request_router_class):
                 request_router_class = None
 
-        print(f"in init, {request_router_class=}")
         init_options = create_init_handle_options(**kwargs)
         self._router = self._create_router(
             handle_id=self.handle_id,
