@@ -322,20 +322,15 @@ def ray_deps_setup():
     # protobuf library that Ray supports.
     http_archive(
         name = "com_google_protobuf_rules_proto_grpc",
-        sha256 = "b2340aa47faf7ef10a0328190319d3f3bee1b24f426d4ce8f4253b6f27ce16db",
-        strip_prefix = "protobuf-28.2",
-        urls = [
-            "https://github.com/protocolbuffers/protobuf/archive/refs/tags/v28.2.tar.gz",
-        ],
-        patches = [
-            "@com_github_ray_project_ray//thirdparty/patches:protobuf-windows-const-nan.patch",
-        ],
+        strip_prefix = "protobuf-3.19.4",
+        urls = ["https://github.com/protocolbuffers/protobuf/archive/v3.19.4.tar.gz"],
+        sha256 = "3bd7828aa5af4b13b99c191e8b1e884ebfa9ad371b0ce264605d347f135d2568",
     )
 
     auto_http_archive(
         name = "rules_proto_grpc",
-        url = "https://github.com/rules-proto-grpc/rules_proto_grpc/archive/refs/tags/4.6.0.tar.gz",
-        sha256 = "c0d718f4d892c524025504e67a5bfe83360b3a982e654bc71fed7514eb8ac8ad",
+        url = "https://github.com/rules-proto-grpc/rules_proto_grpc/archive/a74fef39c5fe636580083545f76d1eab74f6450d.tar.gz",
+        sha256 = "2f6606151ec042e23396f07de9e7dcf6ca9a5db1d2b09f0cc93a7fc7f4008d1b",
         repo_mapping = {
             "@com_google_protobuf": "@com_google_protobuf_rules_proto_grpc",
         },
