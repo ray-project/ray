@@ -80,7 +80,10 @@ def make_local_deployment_handle(
         raise
 
     def _create_local_router(
-        handle_id: str, deployment_id: DeploymentID, handle_options: Any
+        handle_id: str,
+        deployment_id: DeploymentID,
+        handle_options: Any,
+        request_router_class: Optional[Callable] = None,
     ) -> Router:
         return LocalRouter(
             user_callable_wrapper,
