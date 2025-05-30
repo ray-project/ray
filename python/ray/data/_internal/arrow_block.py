@@ -180,9 +180,9 @@ class ArrowBlockAccessor(TableBlockAccessor):
         self._batch_max_chunk_size = None
         if self._table.nbytes > 0:
             avg_row_size = int(self._table.nbytes / self._table.num_rows)
-            self._batch_max_chunk_size = max(1, int(
-                ARROW_BATCHES_MAX_CHUNK_SIZE_BYTES / avg_row_size
-            ))
+            self._batch_max_chunk_size = max(
+                1, int(ARROW_BATCHES_MAX_CHUNK_SIZE_BYTES / avg_row_size)
+            )
 
     def column_names(self) -> List[str]:
         return self._table.column_names
