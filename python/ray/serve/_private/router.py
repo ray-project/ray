@@ -742,10 +742,7 @@ class AsyncioRouter:
         await self._metrics_manager.shutdown()
 
     def same_request_router_class(self, request_router_class: Callable) -> bool:
-        return (
-            isinstance(self._request_router, request_router_class)
-            or self._request_router is None
-        )
+        return isinstance(self._request_router, request_router_class)
 
 
 class SingletonThreadRouter(Router):

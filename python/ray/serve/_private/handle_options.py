@@ -1,11 +1,8 @@
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, fields
-from typing import Callable
 
 import ray
-from ray._common.utils import import_attr
 from ray.serve._private.common import DeploymentHandleSource
-from ray.serve._private.request_router import PowerOfTwoChoicesRequestRouter
 from ray.serve._private.utils import DEFAULT
 
 
@@ -19,7 +16,6 @@ class InitHandleOptionsBase(ABC):
 
     _prefer_local_routing: bool = False
     _source: DeploymentHandleSource = DeploymentHandleSource.UNKNOWN
-    request_router_class: Callable = PowerOfTwoChoicesRequestRouter
 
     @classmethod
     @abstractmethod
@@ -42,13 +38,6 @@ class InitHandleOptions(InitHandleOptionsBase):
             and ray.serve.context._get_internal_replica_context() is not None
         ):
             kwargs["_source"] = DeploymentHandleSource.REPLICA
-
-        # Import the request router class if it's a string
-        if "request_router_class" in kwargs:
-            request_router_class = kwargs["request_router_class"]
-            if isinstance(request_router_class, str):
-                request_router_class = import_attr(request_router_class)
-            kwargs["request_router_class"] = request_router_class
 
         return cls(**kwargs)
 

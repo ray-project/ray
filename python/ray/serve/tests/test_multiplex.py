@@ -323,7 +323,7 @@ def test_multiplexed_replica_info(serve_instance):
         model_ids: List[str],
     ):
         if not handle.is_initialized:
-            handle._init()
+            handle.init()
 
         request_router = _get_request_router(handle)
         for replica in request_router.curr_replicas.values():
@@ -364,7 +364,7 @@ def test_multiplexed_replica_info(serve_instance):
 
 def check_model_id_in_replicas(handle: DeploymentHandle, model_id: str) -> bool:
     if not handle.is_initialized:
-        handle._init()
+        handle.init()
 
     request_router = _get_request_router(handle)
     replica_to_model_ids = {

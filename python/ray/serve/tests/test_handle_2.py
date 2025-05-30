@@ -528,13 +528,13 @@ def test_reconfigure_request_router(serve_instance):
     assert handle._router.same_request_router_class(FakeRequestRouter) is False
 
     # Reconfigure to FakeRequestRouter.
-    new_handle = handle.options(request_router_class=FakeRequestRouter)
-    assert new_handle.remote().result() == "hello"
+    handle.init(request_router_class=FakeRequestRouter)
+    assert handle.remote().result() == "hello"
     assert (
-        new_handle._router.same_request_router_class(PowerOfTwoChoicesRequestRouter)
+        handle._router.same_request_router_class(PowerOfTwoChoicesRequestRouter)
         is False
     )
-    assert new_handle._router.same_request_router_class(FakeRequestRouter) is True
+    assert handle._router.same_request_router_class(FakeRequestRouter) is True
 
 
 if __name__ == "__main__":

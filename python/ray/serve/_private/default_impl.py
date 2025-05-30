@@ -188,7 +188,7 @@ def get_proxy_handle(endpoint: DeploymentID, info: EndpointInfo):
     if not handle.is_initialized:
         # NOTE(zcin): since the router is eagerly initialized here, the
         # proxy will receive the replica set from the controller early.
-        handle._init(
+        handle.init(
             _prefer_local_routing=RAY_SERVE_PROXY_PREFER_LOCAL_NODE_ROUTING,
             _source=DeploymentHandleSource.PROXY,
         )
