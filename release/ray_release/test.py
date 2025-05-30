@@ -381,7 +381,7 @@ class Test(dict):
         Returns whether this test is running on GCE.
         """
         return self.get("env") == "gce"
-    
+
     def is_kuberay(self) -> bool:
         """
         Returns whether this test is running on Kuberay.

@@ -42,7 +42,12 @@ from ray_release.signal_handling import (
     reset_signal_handling,
     register_handler,
 )
-from ray_release.util import convert_cluster_compute_to_kuberay_compute_config, upload_working_dir, KUBERAY_SERVER_URL, DEFAULT_KUBERAY_NAMESPACE
+from ray_release.util import (
+    convert_cluster_compute_to_kuberay_compute_config,
+    upload_working_dir,
+    KUBERAY_SERVER_URL,
+    DEFAULT_KUBERAY_NAMESPACE,
+)
 
 type_str_to_command_runner = {
     "job": JobRunner,
@@ -56,6 +61,7 @@ command_runner_to_cluster_manager = {
 
 DEFAULT_RUN_TYPE = "anyscale_job"
 TIMEOUT_BUFFER_MINUTES = 15
+
 
 def _get_extra_tags_from_env() -> dict:
     env_vars = (
@@ -407,9 +413,11 @@ def run_release_test(
         result.stable = test.get("stable", True)
         result.smoke_test = smoke_test
         cluster_compute = load_test_cluster_compute(test, test_definition_root)
-        kuberay_compute_config = convert_cluster_compute_to_kuberay_compute_config(cluster_compute)
+        kuberay_compute_config = convert_cluster_compute_to_kuberay_compute_config(
+            cluster_compute
+        )
         working_dir_upload_path = upload_working_dir(get_working_dir(test))
-        
+
         command_timeout = int(test["run"].get("timeout", DEFAULT_COMMAND_TIMEOUT))
 
         kuberay_job_manager = KuberayJobManager()
@@ -421,7 +429,7 @@ def run_release_test(
             working_dir=working_dir_upload_path,
             pip=test.get_byod_pips(),
             compute_config=kuberay_compute_config,
-            timeout=command_timeout
+            timeout=command_timeout,
         )
         kuberay_job_manager.fetch_results()
         result.return_code = retcode

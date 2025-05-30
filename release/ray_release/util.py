@@ -6,6 +6,7 @@ import random
 import string
 import subprocess
 import time
+import tempfile
 from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple
 
 import requests
@@ -16,6 +17,7 @@ from google.cloud import storage
 
 if TYPE_CHECKING:
     from anyscale.sdk.anyscale_client.sdk import AnyscaleSDK
+
 
 class DeferredEnvVar:
     def __init__(self, var: str, default: Optional[str] = None):
@@ -36,6 +38,7 @@ ERROR_LOG_PATTERNS = [
 ]
 KUBERAY_SERVER_URL = "https://kuberaytest.anyscale.dev"
 DEFAULT_KUBERAY_NAMESPACE = "kuberayportal-kevin"
+
 
 def get_read_state_machine_aws_bucket(allow_pr_bucket: bool = False) -> str:
     # We support by default reading from the branch bucket only, since most of the use
@@ -227,7 +230,7 @@ def convert_cluster_compute_to_kuberay_compute_config(compute_config: dict) -> d
             "groupName": worker_node_type.get("name"),
             "instanceType": worker_node_type.get("instance_type"),
             "minNodes": worker_node_type.get("min_workers"),
-            "maxNodes": worker_node_type.get("max_workers")
+            "maxNodes": worker_node_type.get("max_workers"),
         }
         if worker_node_type.get("resources", {}):
             worker_node_config["resources"] = worker_node_type.get("resources", {})
@@ -237,7 +240,7 @@ def convert_cluster_compute_to_kuberay_compute_config(compute_config: dict) -> d
         "headNode": {
             "instanceType": head_node_instance_type,
         },
-        "workerNodes": kuberay_worker_nodes
+        "workerNodes": kuberay_worker_nodes,
     }
     if head_node_resources:
         config["headNode"]["resources"] = head_node_resources
@@ -246,15 +249,12 @@ def convert_cluster_compute_to_kuberay_compute_config(compute_config: dict) -> d
 
 def upload_working_dir(working_dir: str) -> str:
     """Upload working directory to GCS bucket.
-    
+
     Args:
         working_dir: Path to directory to upload.
     Returns:
         GCS path where directory was uploaded.
     """
-    import tempfile
-    import time
-
     # Create archive of working dir
     timestamp = str(int(time.time()))
     archived_filename = f"ray_release_{timestamp}.zip"

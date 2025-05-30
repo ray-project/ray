@@ -21,20 +21,40 @@ job_status_to_return_code = {
     "CANCELLED": -2,
 }
 
+
 class KuberayJobManager:
     def __init__(self):
         self.cluster_startup_timeout = 600
         self.job_id = None
 
-    def run_and_wait(self, job_name: str, image: str, cmd_to_run: str, timeout: int, env_vars: Dict[str, Any], working_dir: Optional[str] = None, pip: Optional[List[str]] = None, compute_config: Optional[Dict[str, Any]] = None) -> Tuple[int, float]:
+    def run_and_wait(
+        self,
+        job_name: str,
+        image: str,
+        cmd_to_run: str,
+        timeout: int,
+        env_vars: Dict[str, Any],
+        working_dir: Optional[str] = None,
+        pip: Optional[List[str]] = None,
+        compute_config: Optional[Dict[str, Any]] = None,
+    ) -> Tuple[int, float]:
         self.job_name = job_name
-        self._run_job(job_name, image, cmd_to_run, env_vars, working_dir, pip, compute_config)
+        self._run_job(
+            job_name, image, cmd_to_run, env_vars, working_dir, pip, compute_config
+        )
         return self._wait_job(timeout)
 
-    def _run_job(self, job_name: str, image: str, cmd_to_run: str, env_vars: Dict[str, Any], working_dir: Optional[str] = None, pip: Optional[List[str]] = None, compute_config: Optional[Dict[str, Any]] = None) -> None:
-        logger.info(
-            f"Executing {cmd_to_run} with {env_vars} via RayJob CRD"
-        )
+    def _run_job(
+        self,
+        job_name: str,
+        image: str,
+        cmd_to_run: str,
+        env_vars: Dict[str, Any],
+        working_dir: Optional[str] = None,
+        pip: Optional[List[str]] = None,
+        compute_config: Optional[Dict[str, Any]] = None,
+    ) -> None:
+        logger.info(f"Executing {cmd_to_run} with {env_vars} via RayJob CRD")
         request = {
             "namespace": DEFAULT_KUBERAY_NAMESPACE,
             "name": job_name,
@@ -44,19 +64,19 @@ class KuberayJobManager:
             "runtimeEnv": {
                 "env_vars": env_vars,
                 "pip": pip or [],
-                "working_dir": working_dir
-            }
+                "working_dir": working_dir,
+            },
         }
-        if compute_config.get("headNode", {}).get("resources", {}):
+        if compute_config.get("autoscalerVersion"):
             request["autoscalerConfig"] = {
-                "version": "v2"
+                "version": compute_config["autoscalerVersion"]
             }
 
         url = f"{KUBERAY_SERVER_URL}/api/v1/jobs"
         token = self._get_kuberay_server_token()
         headers = {
             "Authorization": "Bearer " + token,
-            "Content-Type": "application/json"
+            "Content-Type": "application/json",
         }
 
         logger.info(f"Submitting KubeRay job request: {request}")
@@ -66,9 +86,7 @@ class KuberayJobManager:
             response.raise_for_status()
         except Exception as e:
             raise JobStartupFailed(
-                "Error starting job with name "
-                f"{self.job_name}: "
-                f"{e}"
+                "Error starting job with name " f"{self.job_name}: " f"{e}"
             ) from e
 
     def _wait_job(self, timeout: int = 7200) -> Tuple[int, float]:
@@ -90,9 +108,13 @@ class KuberayJobManager:
 
             if now >= next_status:
                 if job_running:
-                    logger.info(f"... job still running ... ({int(now - start_time)} seconds, {int(timeout_at - now)} seconds to timeout)")
+                    logger.info(
+                        f"... job still running ... ({int(now - start_time)} seconds, {int(timeout_at - now)} seconds to timeout)"
+                    )
                 else:
-                    logger.info(f"... job not yet running ... ({int(now - start_time)} seconds, {int(timeout_at - now)} seconds to timeout)")
+                    logger.info(
+                        f"... job not yet running ... ({int(now - start_time)} seconds, {int(timeout_at - now)} seconds to timeout)"
+                    )
                 next_status += 10
 
             status = self._get_job_status()
@@ -142,19 +164,19 @@ class KuberayJobManager:
 
     def _get_kuberay_server_token(self) -> str:
         session = boto3.session.Session()
-        client = session.client('secretsmanager', region_name='us-west-2')
+        client = session.client("secretsmanager", region_name="us-west-2")
         try:
             secret_response = client.get_secret_value(
                 SecretId=KUBERAY_SERVICE_SECRET_KEY_SECRET_NAME
             )
-            kuberay_service_secret_key = secret_response['SecretString']
+            kuberay_service_secret_key = secret_response["SecretString"]
         except Exception as e:
-            logger.error(f"Failed to get KubeRay server token from AWS Secrets Manager: {e}")
+            logger.error(
+                f"Failed to get KubeRay server token from AWS Secrets Manager: {e}"
+            )
             raise
         login_url = f"{KUBERAY_SERVER_URL}/api/v1/login"
-        login_request = {
-            "secretKey": kuberay_service_secret_key
-        }
+        login_request = {"secretKey": kuberay_service_secret_key}
         login_response = requests.post(login_url, json=login_request)
         login_response.raise_for_status()
         return login_response.json()["token"]
@@ -162,7 +184,7 @@ class KuberayJobManager:
     def fetch_results(self) -> Dict[str, Any]:
         # TODO: implement this
         return {}
-    
+
     def _terminate_job(self) -> None:
         # TODO: implement this
         pass
