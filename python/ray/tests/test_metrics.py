@@ -1,6 +1,7 @@
 import os
 import platform
 import sys
+import time
 
 import psutil
 import pytest
@@ -204,36 +205,12 @@ def test_node_object_metrics(ray_start_cluster):
         lambda: get_owner_info(node_ids) == ([(4, 0), (3, 0), (0, 0)], [1, 1, 1])
     )
 
-    # Test with assigned owned
-    @ray.remote(resources={"node_2": 0.5}, num_cpus=0)
-    class A:
-        def ready(self):
-            return
-
-        def gen(self):
-            return ray.put(10)
-
-    # actor is owned by node_0
-    # actor is not an object, so no object store copies
-    actor = A.remote()  # noqa: F841
-    ray.get(actor.ready.remote())
-    # o is owned by actor (node_2)
-    # o is stored in object store of node_0
-    # XXX: FIX.
-    return
-    o = ray.put(1, _owner=actor)  # noqa: F841
-    wait_for_condition(
-        lambda: get_owner_info(node_ids) == ([(4, 1), (3, 0), (1, 0)], [2, 1, 1])
-    )
-
     # Test with detached owned
     # detached actor is owned by GCS. So it's not counted in the owner stats
     detached_actor = A.options(lifetime="detached", name="A").remote()
     ray.get(detached_actor.ready.remote())
     for i in range(3):
         assert get_owner_info(node_ids) == ([(4, 1), (3, 0), (1, 0)], [2, 1, 1])
-        import time
-
         time.sleep(1)
     # gen_obj is owned by node_0
     # the inner object is owned by A (node_2)
@@ -263,8 +240,6 @@ def test_running_tasks(ray_start_cluster):
 
     @ray.remote
     def f(t):
-        import time
-
         time.sleep(t)
 
     tasks = [
