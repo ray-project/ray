@@ -40,7 +40,7 @@ install_miniforge() {
         ;;
     esac
 
-    local miniforge_url="https://repo.continuum.io/miniforge/${miniforge_version}-${miniforge_platform}-${HOSTTYPE}${exe_suffix}"
+    local miniforge_url="https://github.com/conda-forge/miniforge/releases/download/25.3.0-1/${miniforge_version}-${miniforge_platform}-${HOSTTYPE}${exe_suffix}"
     local miniforge_target="${HOME}/${miniforge_url##*/}"
     curl -f -s -L -o "${miniforge_target}" "${miniforge_url}"
     chmod +x "${miniforge_target}"
