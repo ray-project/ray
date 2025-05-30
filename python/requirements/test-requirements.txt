@@ -128,4 +128,4 @@ pyopenssl>=25.0.0
 starlette>=0.40.0
 requests>=2.32.3
 docker>=7.1.0
-protobuf>=4
+protobuf>=4,<5
