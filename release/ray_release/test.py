@@ -550,7 +550,7 @@ class Test(dict):
             os.environ["BUILDKITE_BRANCH"],
         )
         pr = os.environ.get("BUILDKITE_PULL_REQUEST", "false")
-        ray_version = commit[:6]
+        ray_version = "6fc0a2"
         if pr != "false":
             ray_version = f"pr-{pr}.{ray_version}"
         elif branch.startswith("releases/"):
