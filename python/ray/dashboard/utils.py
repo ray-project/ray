@@ -11,8 +11,8 @@ from abc import ABCMeta, abstractmethod
 from base64 import b64decode
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
-from typing import Optional, Dict, List, Any, TYPE_CHECKING
 from enum import IntEnum
+from typing import TYPE_CHECKING, Any, Dict, List, Optional
 
 if TYPE_CHECKING:
     from ray.core.generated.node_manager_pb2 import GetNodeStatsReply
