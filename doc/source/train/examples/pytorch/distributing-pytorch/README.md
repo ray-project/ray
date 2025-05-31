@@ -71,7 +71,7 @@ def train_func():
     batch_size = 512
 
     # Get dataloaders inside the worker training function
-    train_dataloader, test_dataloader = get_dataloaders(batch_size=batch_size)
+    train_dataloader, valid_dataloader = get_dataloaders(batch_size=batch_size)
 
     model = VisionTransformer(
         image_size=32,   # CIFAR-10 image size is 32x32
@@ -101,21 +101,21 @@ def train_func():
             optimizer.step()
 
         model.eval()
-        test_loss, num_correct, num_total = 0, 0, 0
+        valid_loss, num_correct, num_total = 0, 0, 0
         with torch.no_grad():
-            for X, y in tqdm(test_dataloader, desc=f"Test Epoch {epoch}"):
+            for X, y in tqdm(valid_dataloader, desc=f"Valid Epoch {epoch}"):
                 X, y = X.to(device), y.to(device)
                 pred = model(X)
                 loss = loss_fn(pred, y)
 
-                test_loss += loss.item()
+                valid_loss += loss.item()
                 num_total += y.shape[0]
                 num_correct += (pred.argmax(1) == y).sum().item()
 
-        test_loss /= len(train_dataloader)
+        valid_loss /= len(train_dataloader)
         accuracy = num_correct / num_total
 
-        print({"epoch_num": epoch, "loss": test_loss, "accuracy": accuracy})
+        print({"epoch_num": epoch, "loss": valid_loss, "accuracy": accuracy})
 ```
 
 Finally, run training.
@@ -129,9 +129,9 @@ If everything works as expected, the training should take around 2 minutes 10 se
 
 ## Step 2: Distribute training to multiple machines with Ray Train
 
-Let’s modify this example to run with Ray Train on multiple machines. Essentially, Ray Train allows you to wrap your PyTorch training code in a function and run that function on each of the workers in your Ray Cluster. With just a few modifications, you get all the fault tolerance and auto-scaling of a [Ray Cluster](https://docs.ray.io/en/latest/cluster/getting-started.html), as well as the observability and ease-of-use of [Ray Train](https://docs.ray.io/en/latest/train/train.html).
+Let’s modify this example to run with Ray Train on multiple machines with distributed data parallel (DDP) training. In DDP training, each process trains a copy of the model on a subset of the data and synchronizes gradients across all processes after each backward pass to keep models consistent. Essentially, Ray Train allows you to wrap your PyTorch training code in a function and run that function on each of the workers in your Ray Cluster. With just a few modifications, you get all the fault tolerance and auto-scaling of a [Ray Cluster](https://docs.ray.io/en/latest/cluster/getting-started.html), as well as the observability and ease-of-use of [Ray Train](https://docs.ray.io/en/latest/train/train.html).
 
-First, import a few Ray Train modules and enable [Ray Train v2](https://github.com/ray-project/enhancements/blob/main/reps/2024-10-18-train-tune-api-revamp/2024-10-18-train-tune-api-revamp.md).
+First, set some environment variables and import some modules.
 
 
 ```bash
@@ -154,6 +154,7 @@ from ray.train import RunConfig, ScalingConfig
 from ray.train.torch import TorchTrainer
 
 import tempfile
+import uuid
 ```
 
 Next, modify the training function you wrote earlier. Every difference from the previous script is highlighted and explained with a numbered comment; for example, “[1].”
@@ -166,14 +167,17 @@ def train_func_per_worker(config: Dict):
     batch_size = config["batch_size_per_worker"]
 
     # Get dataloaders inside the worker training function
-    train_dataloader, test_dataloader = get_dataloaders(batch_size=batch_size)
+    train_dataloader, valid_dataloader = get_dataloaders(batch_size=batch_size)
 
     # [1] Prepare Dataloader for distributed training
-    # The prepare_data_loader method shards the dataset among workers and
-    # moves batches to the correct device
-    # ===================================================================
+    # The prepare_data_loader method assigns unique rows of data to each worker so that
+    # the model sees each row once per epoch.
+    # NOTE: This only works for map-style datasets. For a general distributed 
+    # preprocessing and sharding solution, see the next part using Ray Data for data 
+    # ingestion.
+    # =================================================================================
     train_dataloader = ray.train.torch.prepare_data_loader(train_dataloader)
-    test_dataloader = ray.train.torch.prepare_data_loader(test_dataloader)
+    valid_dataloader = ray.train.torch.prepare_data_loader(valid_dataloader)
 
     model = VisionTransformer(
         image_size=32,   # CIFAR-10 image size is 32x32
@@ -209,32 +213,32 @@ def train_func_per_worker(config: Dict):
             optimizer.step()
 
         model.eval()
-        test_loss, num_correct, num_total = 0, 0, 0
+        valid_loss, num_correct, num_total = 0, 0, 0
         with torch.no_grad():
-            for X, y in tqdm(test_dataloader, desc=f"Test Epoch {epoch}"):
+            for X, y in tqdm(valid_dataloader, desc=f"Valid Epoch {epoch}"):
                 pred = model(X)
                 loss = loss_fn(pred, y)
 
-                test_loss += loss.item()
+                valid_loss += loss.item()
                 num_total += y.shape[0]
                 num_correct += (pred.argmax(1) == y).sum().item()
 
-        test_loss /= len(train_dataloader)
+        valid_loss /= len(train_dataloader)
         accuracy = num_correct / num_total
 
-        # [3] Report metrics to Ray Train
-        # ===============================
+        # [3] (Optional) Report checkpoints and attached metrics to Ray Train
+        # ====================================================================
         with tempfile.TemporaryDirectory() as temp_checkpoint_dir:
             torch.save(
                 model.module.state_dict(),
                 os.path.join(temp_checkpoint_dir, "model.pt")
             )
             ray.train.report(
-                metrics={"loss": test_loss, "accuracy": accuracy},
+                metrics={"loss": valid_loss, "accuracy": accuracy},
                 checkpoint=ray.train.Checkpoint.from_directory(temp_checkpoint_dir),
             )
             if ray.train.get_context().get_world_rank() == 0:
-                print({"epoch_num": epoch, "loss": test_loss, "accuracy": accuracy})
+                print({"epoch_num": epoch, "loss": valid_loss, "accuracy": accuracy})
 ```
 
 Finally, run the training function on the Ray Cluster with a TorchTrainer using GPU workers.
@@ -263,7 +267,10 @@ def train_cifar_10(num_workers, use_gpu):
     # Run `train_func_per_worker` on those workers
     # ============================================
     scaling_config = ScalingConfig(num_workers=num_workers, use_gpu=use_gpu)
-    run_config = RunConfig(storage_path="/mnt/cluster_storage", name="ray_train_run")
+    run_config = RunConfig(
+        storage_path="/mnt/cluster_storage", 
+        name=f"train_run-{uuid.uuid4().hex}",
+    )
     trainer = TorchTrainer(
         train_loop_per_worker=train_func_per_worker,
         train_loop_config=train_config,
@@ -302,29 +309,34 @@ You can also click the "Metrics" tab on the navigation bar to view useful stats 
 
 Let’s modify this example to load data with Ray Data instead of the native PyTorch DataLoader. With just a few modifications, you can scale data preprocessing and training separately; for example, you can do the former with a pool of CPU workers and the latter with a pool of GPU workers. See [here](https://docs.ray.io/en/latest/data/comparisons.html#how-does-ray-data-compare-to-other-solutions-for-ml-training-ingest) for a comparison between Ray Data and PyTorch data loading.
 
-First, create a [Ray Data Dataset](https://docs.ray.io/en/latest/data/key-concepts.html#datasets-and-blocks). Note the following about the code below:
-* You are now loading the data from the [Ansycale default storage bucket](https://docs.anyscale.com/configuration/storage/#anyscale-default-storage-bucket) instead of from PyTorch directly. 
-* Each row of a Ray Data Dataset is a dict so you need to access its contents by key.
-* Ray Data loads and transforms data lazily, which means that only the training workers materialize the data.
+First, create [Ray Data Datasets](https://docs.ray.io/en/latest/data/key-concepts.html#datasets-and-blocks) from some S3 data and inspect their schemas.
 
 
 ```python
-STORAGE_PATH_PREFIX = os.environ.get("ANYSCALE_ARTIFACT_STORAGE", "artifact_storage")
-STORAGE_PATH = f"{STORAGE_PATH_PREFIX}/ray_summit_24_train_demo"
+import numpy as np
 
-def transform_cifar(row: dict):
+STORAGE_PATH = "s3://air-example-data/cifar-10/parquet/"
+train_dataset = ray.data.read_parquet(f'{STORAGE_PATH}/train')
+test_dataset = ray.data.read_parquet(f'{STORAGE_PATH}/test')
+train_dataset.schema()
+test_dataset.schema()
+```
+
+Next, use Ray Data to transform the data. Note that both loading and transformation happen lazily, which means that only the training workers materialize the data.
+
+
+```python
+def transform_cifar(row: Dict[str, np.ndarray]) -> Dict[str, np.ndarray]:
     # Define the torchvision transform.
     transform = transforms.Compose([ToTensor(), Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5))])
     row["image"] = transform(row["image"])
     return row
 
-train_dataset = ray.data.read_parquet(f'{STORAGE_PATH}/cifar10-parquet/train').map(transform_cifar)
-test_dataset = ray.data.read_parquet(f'{STORAGE_PATH}/cifar10-parquet/test').map(transform_cifar)
+train_dataset = train_dataset.map(transform_cifar)
+test_dataset = test_dataset.map(transform_cifar)
 ```
 
 Next, modify the training function you wrote earlier. Every difference from the previous script is highlighted and explained with a numbered comment; for example, “[1].”
-
-
 
 
 ```python
@@ -340,9 +352,9 @@ def train_func_per_worker(config: Dict):
     # The iter_torch_batches method lazily shards the dataset among workers
     # ============================================================================
     train_data_shard = ray.train.get_dataset_shard("train")
-    test_data_shard = ray.train.get_dataset_shard("test")
+    valid_data_shard = ray.train.get_dataset_shard("valid")
     train_dataloader = train_data_shard.iter_torch_batches(batch_size=batch_size)
-    test_dataloader = test_data_shard.iter_torch_batches(batch_size=batch_size)
+    valid_dataloader = valid_data_shard.iter_torch_batches(batch_size=batch_size)
 
     model = VisionTransformer(
         image_size=32,   # CIFAR-10 image size is 32x32
@@ -372,9 +384,9 @@ def train_func_per_worker(config: Dict):
             optimizer.step()
 
         model.eval()
-        test_loss, num_correct, num_total, num_batches = 0, 0, 0, 0
+        valid_loss, num_correct, num_total, num_batches = 0, 0, 0, 0
         with torch.no_grad():
-            for batch in tqdm(test_dataloader, desc=f"Test Epoch {epoch}"):
+            for batch in tqdm(valid_dataloader, desc=f"Valid Epoch {epoch}"):
                 # [2] Each Ray Data batch is a dict so you must access the
                 # underlying data using the appropriate keys.
                 # =======================================================
@@ -382,12 +394,12 @@ def train_func_per_worker(config: Dict):
                 pred = model(X)
                 loss = loss_fn(pred, y)
 
-                test_loss += loss.item()
+                valid_loss += loss.item()
                 num_total += y.shape[0]
                 num_batches += 1
                 num_correct += (pred.argmax(1) == y).sum().item()
 
-        test_loss /= num_batches
+        valid_loss /= num_batches
         accuracy = num_correct / num_total
 
         with tempfile.TemporaryDirectory() as temp_checkpoint_dir:
@@ -396,11 +408,11 @@ def train_func_per_worker(config: Dict):
                 os.path.join(temp_checkpoint_dir, "model.pt")
             )
             ray.train.report(
-                metrics={"loss": test_loss, "accuracy": accuracy},
+                metrics={"loss": valid_loss, "accuracy": accuracy},
                 checkpoint=ray.train.Checkpoint.from_directory(temp_checkpoint_dir),
             )
             if ray.train.get_context().get_world_rank() == 0:
-                print({"epoch_num": epoch, "loss": test_loss, "accuracy": accuracy})
+                print({"epoch_num": epoch, "loss": valid_loss, "accuracy": accuracy})
 ```
 
 Finally, run the training function with the Ray Data Dataset on the Ray Cluster with 8 GPU workers.
@@ -418,14 +430,17 @@ def train_cifar_10(num_workers, use_gpu):
 
     # Configure computation resources
     scaling_config = ScalingConfig(num_workers=num_workers, use_gpu=use_gpu)
-    run_config = RunConfig(storage_path="/mnt/cluster_storage", name="ray_train_run")
+    run_config = RunConfig(
+        storage_path="/mnt/cluster_storage", 
+        name=f"train_data_run-{uuid.uuid4().hex}",
+    )
 
     # Initialize a Ray TorchTrainer
     trainer = TorchTrainer(
         train_loop_per_worker=train_func_per_worker,
         # [1] With Ray Data you pass the Dataset directly to the Trainer.
         # ==============================================================
-        datasets={"train": train_dataset, "test": test_dataset},
+        datasets={"train": train_dataset, "valid": test_dataset},
         train_loop_config=train_config,
         scaling_config=scaling_config,
         run_config=run_config,
