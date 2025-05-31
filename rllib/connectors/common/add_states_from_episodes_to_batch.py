@@ -5,7 +5,7 @@ import gymnasium as gym
 import numpy as np
 import tree  # pip install dm_tree
 
-from ray.rllib.connectors.connector_v2 import ConnectorV2
+from ray.rllib.connectors.connector_v2 import ConnectorV2, ConnectorV2BatchFormats
 from ray.rllib.core import DEFAULT_MODULE_ID
 from ray.rllib.core.columns import Columns
 from ray.rllib.core.rl_module.multi_rl_module import MultiRLModule
@@ -32,6 +32,7 @@ class AddStatesFromEpisodesToBatch(ConnectorV2):
         AddObservationsFromEpisodesToBatch,
         AddTimeDimToBatchAndZeroPad,
         AddStatesFromEpisodesToBatch,
+        RemapModuleToColumns,  # only in single-agent setups!
         AgentToModuleMapping,  # only in multi-agent setups!
         BatchIndividualItems,
         NumpyToTensor,
@@ -43,6 +44,7 @@ class AddStatesFromEpisodesToBatch(ConnectorV2):
         AddColumnsFromEpisodesToTrainBatch,
         AddTimeDimToBatchAndZeroPad,
         AddStatesFromEpisodesToBatch,
+        RemapModuleToColumns,  # only in single-agent setups!
         AgentToModuleMapping,  # only in multi-agent setups!
         BatchIndividualItems,
         NumpyToTensor,
@@ -174,6 +176,21 @@ class AddStatesFromEpisodesToBatch(ConnectorV2):
             },
         )
     """
+
+    # Incoming batches have the format:
+    # [column name] -> [(episodeID, agentID, moduleID)-tuple] -> [.. individual items]
+    # For more details on the various possible batch formats, see the
+    # `ray.rllib.connectors.connector_v2.ConnectorV2BatchFormats` Enum.
+    INPUT_BATCH_FORMAT = (
+        ConnectorV2BatchFormats.BATCH_FORMAT_COLUMN_TO_EPISODE_TO_INDIVIDUAL_ITEMS
+    )
+    # Returned batches have the format:
+    # [column name] -> [(episodeID, agentID, moduleID)-tuple] -> [.. individual items]
+    # For more details on the various possible batch formats, see the
+    # `ray.rllib.connectors.connector_v2.ConnectorV2BatchFormats` Enum.
+    OUTPUT_BATCH_FORMAT = (
+        ConnectorV2BatchFormats.BATCH_FORMAT_COLUMN_TO_EPISODE_TO_INDIVIDUAL_ITEMS
+    )
 
     def __init__(
         self,

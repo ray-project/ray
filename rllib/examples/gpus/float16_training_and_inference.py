@@ -99,6 +99,8 @@ class WriteObsAndRewardsAsFloat16(ConnectorV2):
 
     Note that users can also write a gymnasium.Wrapper for observations and rewards
     to achieve the same thing.
+
+    This connector piece doesn't alter the incoming `batch` and returns it as-is.
     """
 
     def recompute_output_observation_space(

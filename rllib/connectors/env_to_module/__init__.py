@@ -10,6 +10,7 @@ from ray.rllib.connectors.common.add_time_dim_to_batch_and_zero_pad import (
 from ray.rllib.connectors.common.agent_to_module_mapping import AgentToModuleMapping
 from ray.rllib.connectors.common.batch_individual_items import BatchIndividualItems
 from ray.rllib.connectors.common.numpy_to_tensor import NumpyToTensor
+from ray.rllib.connectors.common.remap_module_to_columns import RemapModuleToColumns
 from ray.rllib.connectors.env_to_module.env_to_module_pipeline import (
     EnvToModulePipeline,
 )
@@ -36,5 +37,6 @@ __all__ = [
     "MeanStdFilter",
     "NumpyToTensor",
     "PrevActionsPrevRewards",
+    "RemapModuleToColumns",
     "WriteObservationsToEpisodes",
 ]

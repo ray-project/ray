@@ -27,6 +27,7 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
+@OldAPIStack
 def __preprocessing_enabled(config: "AlgorithmConfig"):
     if config._disable_preprocessor_api:
         return False
@@ -38,6 +39,7 @@ def __preprocessing_enabled(config: "AlgorithmConfig"):
     return True
 
 
+@OldAPIStack
 def __clip_rewards(config: "AlgorithmConfig"):
     # Same logic as in RolloutWorker.__init__.
     # We always clip rewards for Atari games.
