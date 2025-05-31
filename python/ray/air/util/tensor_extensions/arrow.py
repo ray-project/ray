@@ -791,9 +791,6 @@ class ArrowTensorArray(_ArrowTensorScalarIndexingMixin, pa.ExtensionArray):
 
         ctx = DataContext.get_current()
 
-        if ctx.use_arrow_native_fixed_shape_tensor_type:
-            tensor_type = pa.fixed_shape_tensor(scalar_dtype, shape=element_shape)
-
         if ctx.use_arrow_native_fixed_shape_tensor_type and scalar_dtype in _FIXED_SHAPE_TENSOR_ARRAY_SUPPORTED_SCALAR_TYPES:
             return pa.FixedShapeTensorArray.from_numpy_ndarray(arr)
         else:
