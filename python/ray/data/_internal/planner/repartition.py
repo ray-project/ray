@@ -48,7 +48,7 @@ def generate_repartition_fn(
             map_transformer.set_target_max_block_size(float("inf"))
 
             def upstream_map_fn(blocks):
-                return map_transformer.apply_transform(blocks, ctx)
+                return map_transformer.apply_transform(blocks, ctx, None, None)
 
         shuffle_spec = ShuffleTaskSpec(
             ctx.target_max_block_size,

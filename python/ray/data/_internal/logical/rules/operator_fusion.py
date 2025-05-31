@@ -318,6 +318,16 @@ class FuseOperators(Rule):
 
         # Fused physical map operator.
         assert up_op.data_context is down_op.data_context
+
+        assert not isinstance(
+            up_op, ActorPoolMapOperator
+        ), "Fusing ActorPoolMapOperator as upstream op currently not supported"
+        udf_fn_constructor_args = None
+        if isinstance(down_op, ActorPoolMapOperator):
+            udf_fn_constructor_args = down_op._udf_fn_constructor_args
+        udf_fn_constructor_kwargs = None
+        if isinstance(down_op, ActorPoolMapOperator):
+            udf_fn_constructor_kwargs = down_op._udf_fn_constructor_kwargs
         op = MapOperator.create(
             up_op.get_map_transformer().fuse(down_op.get_map_transformer()),
             input_op,
@@ -326,6 +336,8 @@ class FuseOperators(Rule):
             name=name,
             compute_strategy=compute,
             min_rows_per_bundle=min_rows_per_bundled_input,
+            udf_fn_constructor_args=udf_fn_constructor_args,
+            udf_fn_constructor_kwargs=udf_fn_constructor_kwargs,
             ray_remote_args=ray_remote_args,
             ray_remote_args_fn=ray_remote_args_fn,
         )
