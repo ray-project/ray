@@ -403,7 +403,6 @@ def get_arrow_extension_tensor_types():
     return (
         *get_arrow_extension_fixed_shape_tensor_types(),
         *get_arrow_extension_variable_shape_tensor_types(),
-        FixedShapeTensorType,
     )
 
 
@@ -412,7 +411,7 @@ def get_arrow_extension_fixed_shape_tensor_types():
     """Returns list of Arrow extension types holding multidimensional
     tensors of *fixed* shape
     """
-    return ArrowTensorType, ArrowTensorTypeV2
+    return ArrowTensorType, ArrowTensorTypeV2, FixedShapeTensorType
 
 
 @DeveloperAPI
