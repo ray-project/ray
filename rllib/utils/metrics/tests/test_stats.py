@@ -1093,6 +1093,74 @@ def test_merge_in_parallel_empty_and_nan_values():
     check(nan_stats3.values, stats_with_values3.values)
 
 
+def test_percentiles():
+    """Test that percentiles work correctly."""
+    # Test basic functionality with single stats
+    stats = Stats(reduce=None, percentiles=True, window=5)
+    stats.push(5)
+    stats.push(2)
+    stats.push(8)
+    stats.push(1)
+    stats.push(9)
+
+    # Values should be sorted when peeking
+    check(stats.peek(), [1, 2, 5, 8, 9])
+
+    # Test with window constraint
+    stats.push(3)
+
+    # Window is 5, so the oldest value (5) should be dropped
+    check(stats.peek(), [1, 2, 3, 8, 9])
+
+    # Test reduce
+    reduced_values = stats.reduce()
+    check(reduced_values, [1, 2, 3, 8, 9])
+
+    # Test merge_in_parallel
+    stats1 = Stats(reduce=None, percentiles=True, window=10)
+    stats1.push(10)
+    stats1.push(30)
+    stats1.push(20)
+    check(stats1.reduce(), [10, 20, 30])
+    check(stats1.values, [10, 20, 30])
+
+    stats2 = Stats(reduce=None, percentiles=True, window=10)
+    stats2.push(15)
+    stats2.push(5)
+    stats2.push(25)
+    check(stats2.reduce(), [5, 15, 25])
+    check(stats2.values, [5, 15, 25])
+
+    merged_stats = Stats(reduce=None, percentiles=True, window=10)
+    merged_stats.merge_in_parallel(stats1, stats2)
+    # Should merge and sort values from both stats
+    # Merged values should be sorted, as incoming values are sorted
+    check(merged_stats.values, [5, 10, 15, 20, 25, 30])
+    check(merged_stats.peek(), [5, 10, 15, 20, 25, 30])
+
+    # Test validation - window required
+    with pytest.raises(ValueError, match="A window must be specified"):
+        Stats(reduce=None, percentiles=True, window=None)
+
+    # Test validation - percentiles must be a list
+    with pytest.raises(ValueError, match="must be a list or bool"):
+        Stats(reduce=None, percentiles=0.5, window=5)
+
+    # Test validation - percentiles must contain numbers
+    with pytest.raises(ValueError, match="must contain only ints or floats"):
+        Stats(reduce=None, window=5, percentiles=["invalid"])
+
+    # Test validation - percentiles must be between 0 and 100
+    with pytest.raises(ValueError, match="must contain only values between 0 and 100"):
+        Stats(reduce=None, window=5, percentiles=[-1, 50, 101])
+
+    # Test validation - percentiles must be None for other reduce methods
+    with pytest.raises(
+        ValueError, match="`percentiles` must be False when `reduce` is not `None`"
+    ):
+        Stats(reduce="mean", window=5, percentiles=[50])
+
+
 if __name__ == "__main__":
     import sys
 
