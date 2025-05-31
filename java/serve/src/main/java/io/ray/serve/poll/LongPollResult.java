@@ -34,14 +34,16 @@ public class LongPollResult implements Serializable {
       return null;
     }
     LongPollResult longPollResult = new LongPollResult();
-    Map<KeyType, UpdatedObject> updatedObjects =
-        new HashMap<>(pbLongPollResult.getUpdatedObjectsMap().size());
-    for (Map.Entry<String, io.ray.serve.generated.UpdatedObject> entry :
-        pbLongPollResult.getUpdatedObjectsMap().entrySet()) {
-      KeyType keyType = KeyType.parseFrom(entry.getKey());
-      updatedObjects.put(keyType, UpdatedObject.parseFrom(keyType, entry.getValue()));
+    if (pbLongPollResult.getUpdatedObjectsMap() != null) {
+      Map<KeyType, UpdatedObject> updatedObjects =
+          new HashMap<>(pbLongPollResult.getUpdatedObjectsMap().size());
+      for (Map.Entry<String, io.ray.serve.generated.UpdatedObject> entry :
+          pbLongPollResult.getUpdatedObjectsMap().entrySet()) {
+        KeyType keyType = KeyType.parseFrom(entry.getKey());
+        updatedObjects.put(keyType, UpdatedObject.parseFrom(keyType, entry.getValue()));
+      }
+      longPollResult.setUpdatedObjects(updatedObjects);
     }
-    longPollResult.setUpdatedObjects(updatedObjects);
     return longPollResult;
   }
 }

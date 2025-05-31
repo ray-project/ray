@@ -285,7 +285,7 @@ public class DeploymentConfig implements Serializable {
               Lists.newArrayList(DeploymentLanguage.values())));
     }
     deploymentConfig.setDeploymentLanguage(proto.getDeploymentLanguage());
-    if (proto.getUserConfig().size() != 0) {
+    if (proto.getUserConfig() != null && proto.getUserConfig().size() != 0) {
       deploymentConfig.setUserConfig(
           MessagePackSerializer.decode(
               proto.getUserConfig().toByteArray(), Object.class)); // TODO-xlang
