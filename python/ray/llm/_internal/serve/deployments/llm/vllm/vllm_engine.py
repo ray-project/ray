@@ -516,12 +516,6 @@ class VLLMEngine(LLMEngine):
             # For now, assume folks enabling log_engine_metrics do not require LoggingStatLogger, PrometheusStatLogger
             custom_stat_loggers = [RayPrometheusStatLogger]
 
-        if os.environ.get("CUDA_VISIBLE_DEVICES") == "":
-            logger.info(
-                "Unsetting empty CUDA_VISIBLE_DEVICES to avoid device capability detection issues"
-            )
-            del os.environ["CUDA_VISIBLE_DEVICES"]
-
         executor_class = Executor.get_class(vllm_config)
         logger.info(f"Using executor class: {executor_class}")
         engine = vllm.engine.async_llm_engine.AsyncLLMEngine(

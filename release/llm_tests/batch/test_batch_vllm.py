@@ -1,4 +1,5 @@
 import sys
+import os
 
 import pytest
 
@@ -175,6 +176,9 @@ def test_vllm_vision_language_models(
     model_source, tp_size, pp_size, concurrency, sample_size
 ):
     """Test vLLM with vision language models using different configurations."""
+
+    # Avoid AssertionError due to torch compile cache corruption (https://github.com/vllm-project/vllm/issues/18851)
+    os.rmdir(os.path.expanduser("~/.cache/vllm/torch_compile_cache"))
 
     # vLLM v1 does not support decoupled tokenizer,
     # but since the tokenizer is in a separate process,
