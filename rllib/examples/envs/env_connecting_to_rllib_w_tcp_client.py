@@ -1,6 +1,6 @@
 """Example of running against a TCP-connected external env performing its own inference.
 
-The example uses a custom EnvRunner (TcpClientInferenceEnvRunner) to allow
+The example uses a custom EnvRunner (EnvRunnerServerForExternalInference) to allow
 connections from one or more TCP clients to RLlib's EnvRunner actors, which act as
 RL servers.
 In this example, action inference for stepping the env is performed on the client's
@@ -67,9 +67,9 @@ import gymnasium as gym
 import numpy as np
 
 from ray.rllib.core.rl_module.default_model_config import DefaultModelConfig
-from ray.rllib.env.tcp_client_inference_env_runner import (
+from ray.rllib.env.external.env_runner_server_for_external_inference import (
     _dummy_client,
-    TcpClientInferenceEnvRunner,
+    EnvRunnerServerForExternalInference,
 )
 from ray.rllib.utils.test_utils import (
     add_rllib_example_script_args,
@@ -118,7 +118,7 @@ if __name__ == "__main__":
         )
         .env_runners(
             # Point RLlib to the custom EnvRunner to be used here.
-            env_runner_cls=TcpClientInferenceEnvRunner,
+            env_runner_cls=EnvRunnerServerForExternalInference,
         )
         .training(
             num_epochs=10,
