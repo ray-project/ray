@@ -2,7 +2,10 @@ import io
 import logging
 import threading
 import traceback
-from typing import Any, Optional
+from typing import TYPE_CHECKING, Any, List, Optional, Tuple, Union
+
+if TYPE_CHECKING:
+    import torch
 
 import google.protobuf.message
 
@@ -251,7 +254,37 @@ class SerializationContext:
                     object_ref
                 )
 
-    def _deserialize_pickle5_data(self, data):
+    def _deserialize_pickle5_data(
+        self, data: Any, object_id: Optional[str] = None
+    ) -> Any:
+        """
+        If `object_id` exists in `in_actor_object_store`, it means that tensors are sent
+        out-of-band instead of through the object store. In this case, we need to retrieve
+        the tensors from the in-actor object store. Then, we deserialize `data` with the
+        retrieved tensors in the serialization context.
+
+        Args:
+            data: The data to deserialize.
+            object_id: The object ID to use as the key for the in-actor object store
+                to retrieve tensors.
+
+        Returns:
+            Any: The deserialized object.
+        """
+        from ray.experimental.channel import ChannelContext
+
+        ctx = ChannelContext.get_current().serialization_context
+        worker = ray._private.worker.global_worker
+
+        gpu_object_manager = worker.gpu_object_manager
+        enable_gpu_objects = gpu_object_manager.has_gpu_object(object_id)
+        if enable_gpu_objects:
+            tensors = gpu_object_manager.get_gpu_object(object_id)
+            ctx.reset_out_of_band_tensors(tensors)
+            # TODO(kevin85421): The current garbage collection implementation for the in-actor object store
+            # is naive. We garbage collect each object after it is consumed once.
+            gpu_object_manager.remove_gpu_object(object_id)
+
         try:
             in_band, buffers = unpack_pickle5_buffers(data)
             if len(buffers) > 0:
@@ -261,13 +294,18 @@ class SerializationContext:
         # cloudpickle does not provide error types
         except pickle.pickle.PicklingError:
             raise DeserializationError()
+        finally:
+            if enable_gpu_objects:
+                ctx.reset_out_of_band_tensors([])
         return obj
 
-    def _deserialize_msgpack_data(self, data, metadata_fields):
+    def _deserialize_msgpack_data(
+        self, data, metadata_fields, object_id: Optional[str] = None
+    ):
         msgpack_data, pickle5_data = split_buffer(data)
 
         if metadata_fields[0] == ray_constants.OBJECT_METADATA_TYPE_PYTHON:
-            python_objects = self._deserialize_pickle5_data(pickle5_data)
+            python_objects = self._deserialize_pickle5_data(pickle5_data, object_id)
         else:
             python_objects = []
 
@@ -312,7 +350,9 @@ class SerializationContext:
                 ray_constants.OBJECT_METADATA_TYPE_CROSS_LANGUAGE,
                 ray_constants.OBJECT_METADATA_TYPE_PYTHON,
             ]:
-                return self._deserialize_msgpack_data(data, metadata_fields)
+                return self._deserialize_msgpack_data(
+                    data, metadata_fields, object_ref.hex()
+                )
             # Check if the object should be returned as raw bytes.
             if metadata_fields[0] == ray_constants.OBJECT_METADATA_TYPE_RAW:
                 if data is None:
@@ -539,11 +579,43 @@ class SerializationContext:
             metadata, msgpack_data, contained_object_refs, pickle5_serialized_object
         )
 
-    def serialize(self, value):
+    def serialize_and_store_gpu_objects(
+        self,
+        value: Any,
+        obj_id: bytes,
+    ) -> MessagePackSerializedObject:
+        """Retrieve GPU data from `value` and store it in the GPU object store. Then, return the serialized value.
+
+        Args:
+            value: The value to serialize.
+            obj_id: The object ID of the value. `obj_id` is required, and the GPU data (e.g. tensors) in `value`
+                will be stored in the GPU object store with the key `obj_id`.
+
+        Returns:
+            Serialized value.
+        """
+        assert (
+            obj_id is not None
+        ), "`obj_id` is required, and it is the key to retrieve corresponding tensors from the GPU object store."
+        serialized_val, tensors = self._serialize_and_retrieve_tensors(value)
+        if tensors:
+            obj_id = obj_id.decode("ascii")
+            worker = ray._private.worker.global_worker
+            gpu_object_manager = worker.gpu_object_manager
+            gpu_object_manager.add_gpu_object(obj_id, tensors)
+
+        return serialized_val
+
+    def serialize(
+        self, value: Any
+    ) -> Union[RawSerializedObject, MessagePackSerializedObject]:
         """Serialize an object.
 
         Args:
             value: The value to serialize.
+
+        Returns:
+            Serialized value.
         """
         if isinstance(value, bytes):
             # If the object is a byte array, skip serializing it and
@@ -552,3 +624,23 @@ class SerializationContext:
             return RawSerializedObject(value)
         else:
             return self._serialize_to_msgpack(value)
+
+    def _serialize_and_retrieve_tensors(
+        self, value: Any
+    ) -> Tuple[MessagePackSerializedObject, List["torch.Tensor"]]:
+        """
+        Serialize `value` and return the serialized value and any tensors retrieved from `value`.
+        This is only used for GPU objects.
+        """
+        from ray.experimental.channel import ChannelContext
+
+        ctx = ChannelContext.get_current().serialization_context
+        prev_use_external_transport = ctx.use_external_transport
+        ctx.set_use_external_transport(True)
+        try:
+            serialized_val = self._serialize_to_msgpack(value)
+        finally:
+            ctx.set_use_external_transport(prev_use_external_transport)
+
+        tensors, _ = ctx.reset_out_of_band_tensors([])
+        return serialized_val, tensors
