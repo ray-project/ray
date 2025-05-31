@@ -11,89 +11,25 @@ RAY_RUNTIME_ENV_HOOK=ray._private.runtime_env.uv_runtime_env_hook.hook
 ```
 For more information about this feature, please reference [here](https://www.anyscale.com/blog/uv-ray-pain-free-python-dependencies-in-clusters)
 
-<details>
-  <summary>ray-cluster.uv.yaml</summary>
-
+Here are some steps for preparing `ray-cluster.uv.yaml`:
+- enable the new feature.
 ```yaml
-apiVersion: ray.io/v1
-kind: RayCluster
-metadata:
-  name: raycluster-uv
-spec:
-  rayVersion: '2.45.0' # should match the Ray version in the image of the containers
-  headGroupSpec:
-    rayStartParams: {}
-    template:
-      spec:
-        containers:
-        - name: ray-head
-          image: rayproject/ray:2.45.0
-          env:
-           - name: RAY_RUNTIME_ENV_HOOK
-             value: ray._private.runtime_env.uv_runtime_env_hook.hook
-          resources:
-            limits:
-              cpu: 1
-              memory: 2Gi
-            requests:
-              cpu: 500m
-              memory: 2Gi
-          ports:
-          - containerPort: 6379
-            name: gcs-server
-          - containerPort: 8265 # Ray dashboard
-            name: dashboard
-          - containerPort: 10001
-            name: client
-          volumeMounts:
-          - mountPath: /home/ray/samples
-            name: code-sample
-        volumes:
-          - name: code-sample
-            configMap:
-              name: ray-uv-code-sample
-              items:
-                - key: sample_code.py
-                  path: sample_code.py
-  workerGroupSpecs:
-  - replicas: 1
-    minReplicas: 1
-    maxReplicas: 5
-    groupName: small-group
-    rayStartParams: {}
-    template:
-      spec:
-        containers:
-        - name: ray-worker
-          image: rayproject/ray:2.45.0
-          env:
-           - name: RAY_RUNTIME_ENV_HOOK
-             value: ray._private.runtime_env.uv_runtime_env_hook.hook
-          resources:
-            limits:
-              cpu: "1"
-              memory: "1G"
-            requests:
-              cpu: "500m"
-              memory: "1G"
----
-apiVersion: v1
-kind: ConfigMap
-metadata:
-  name: ray-uv-code-sample
-data:
-  sample_code.py: |
-    import emoji
-    import ray
-  
-    @ray.remote
-    def f():
-        return emoji.emojize('Python is :thumbs_up:')
-        # Execute 10 copies of f across a cluster.
-  
-    print(ray.get([f.remote() for _ in range(10)]))
+env:
+- name: RAY_RUNTIME_ENV_HOOK
+  value: ray._private.runtime_env.uv_runtime_env_hook.hook
 ```
-</details>
+- prepare `sample_code.py` and mount on `/home/ray/samples`.
+```python
+import emoji
+import ray
+
+@ray.remote
+def f():
+  return emoji.emojize('Python is :thumbs_up:')
+
+# Execute 10 copies of f across a cluster.
+print(ray.get([f.remote() for _ in range(10)]))
+```
 
 ## Run with uv
 
