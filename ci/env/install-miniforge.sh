@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 
-install_miniconda() {
+install_miniforge() {
   if [ "${OSTYPE}" = msys ]; then
     # Windows is on GitHub Actions, whose built-in Python installations we added direct support for.
     python --version
@@ -13,56 +13,56 @@ install_miniconda() {
   fi
 
   if [ ! -x "${conda}" ] || [ "${MINIMAL_INSTALL-}" = 1 ]; then  # If no conda is found, install it
-    local miniconda_dir  # Keep directories user-independent, to help with Bazel caching
-    local miniconda_version="Miniconda3-py311_24.4.0-0"
-    local miniconda_platform=""
+    local miniforge_dir  # Keep directories user-independent, to help with Bazel caching
+    local miniforge_version="Miniforge3-25.3.0-1"
+    local miniforge_platform=""
     local exe_suffix=".sh"
 
     case "${OSTYPE}" in
       linux*)
-        miniconda_dir="/opt/miniconda"
-        miniconda_platform=Linux
+        miniforge_dir="/opt/miniforge"
+        miniforge_platform=Linux
         ;;
       darwin*)
         if [ "$(uname -m)" = "arm64" ]; then
           HOSTTYPE="arm64"
-          miniconda_dir="/opt/homebrew/opt/miniconda"
+          miniforge_dir="/opt/homebrew/opt/miniforge"
         else
           HOSTTYPE="x86_64"
-          miniconda_dir="/usr/local/opt/miniconda"
+          miniforge_dir="/usr/local/opt/miniforge"
         fi
-        miniconda_platform=MacOSX
+        miniforge_platform=MacOSX
         ;;
       msys*)
-        miniconda_dir="${ALLUSERSPROFILE}\Miniconda3" # Avoid spaces; prefer the default path
-        miniconda_platform=Windows
+        miniforge_dir="${ALLUSERSPROFILE}\Miniforge3" # Avoid spaces; prefer the default path
+        miniforge_platform=Windows
         exe_suffix=".exe"
         ;;
     esac
 
-    local miniconda_url="https://repo.continuum.io/miniconda/${miniconda_version}-${miniconda_platform}-${HOSTTYPE}${exe_suffix}"
-    local miniconda_target="${HOME}/${miniconda_url##*/}"
-    curl -f -s -L -o "${miniconda_target}" "${miniconda_url}"
-    chmod +x "${miniconda_target}"
+    local miniforge_url="https://github.com/conda-forge/miniforge/releases/download/25.3.0-1/${miniforge_version}-${miniforge_platform}-${HOSTTYPE}${exe_suffix}"
+    local miniforge_target="${HOME}/${miniforge_url##*/}"
+    curl -f -s -L -o "${miniforge_target}" "${miniforge_url}"
+    chmod +x "${miniforge_target}"
 
     case "${OSTYPE}" in
       msys*)
         # We set /AddToPath=0 because
         # (1) it doesn't take care of the current shell, and
         # (2) it's consistent with -b in the UNIX installers.
-        MSYS2_ARG_CONV_EXCL="*" "${miniconda_target}" \
-          /RegisterPython=0 /AddToPath=0 /InstallationType=AllUsers /S /D="${miniconda_dir}"
-        conda="${miniconda_dir}\Scripts\conda.exe"
+        MSYS2_ARG_CONV_EXCL="*" "${miniforge_target}" \
+          /RegisterPython=0 /AddToPath=0 /InstallationType=AllUsers /S /D="${miniforge_dir}"
+        conda="${miniforge_dir}\Scripts\conda.exe"
         ;;
       *)
         if [ "${MINIMAL_INSTALL-}" = 1 ]; then
-          rm -rf "${miniconda_dir}"
+          rm -rf "${miniforge_dir}"
         fi
-        mkdir -p -- "${miniconda_dir}"
+        mkdir -p -- "${miniforge_dir}"
         # We're forced to pass -b for non-interactive mode.
         # Unfortunately it inhibits PATH modifications as a side effect.
-        "${WORKSPACE_DIR}"/ci/suppress_output "${miniconda_target}" -f -b -p "${miniconda_dir}"
-        conda="${miniconda_dir}/bin/conda"
+        "${WORKSPACE_DIR}"/ci/suppress_output "${miniforge_target}" -f -b -p "${miniforge_dir}"
+        conda="${miniforge_dir}/bin/conda"
         ;;
     esac
   fi
@@ -85,7 +85,6 @@ install_miniconda() {
     (
       set +x
       echo "Updating Anaconda Python ${python_version} to ${PYTHON}..."
-      "${WORKSPACE_DIR}"/ci/suppress_output conda remove --force -y anaconda-anon-usage
       "${WORKSPACE_DIR}"/ci/suppress_output conda install -q -y python="${PYTHON}"
     )
   elif [ "${MINIMAL_INSTALL-}" = "1" ]; then  # Reset environment
@@ -111,5 +110,5 @@ if [[ "${BASH_SOURCE[0]}" == "${0}" ]]; then
 
   SCRIPT_DIR=$(builtin cd "$(dirname "${BASH_SOURCE:-$0}")"; pwd)
   WORKSPACE_DIR="${SCRIPT_DIR}/../.."
-  install_miniconda
+  install_miniforge
 fi
