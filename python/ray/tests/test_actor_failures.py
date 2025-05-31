@@ -13,11 +13,11 @@ import ray
 from ray.actor import exit_actor
 from ray.exceptions import AsyncioActorExit
 import ray.cluster_utils
+from ray._common.synchronization_actors import SignalActor
 from ray._private.test_utils import (
     wait_for_condition,
     wait_for_pid_to_exit,
     generate_system_config_map,
-    SignalActor,
 )
 
 SIGKILL = signal.SIGKILL if sys.platform != "win32" else signal.SIGTERM

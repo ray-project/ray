@@ -7,9 +7,9 @@ import gc
 
 import ray
 from ray.experimental.state.api import list_actors
+from ray._common.synchronization_actors import SignalActor
 from ray._private.test_utils import (
     wait_for_condition,
-    SignalActor,
 )
 
 RECONSTRUCTION_CONFIG = {
