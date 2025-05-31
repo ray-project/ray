@@ -60,7 +60,6 @@ for ((i=0; i<${#PY_MMS[@]}; ++i)); do
 
   # NOTE: We expect conda to set the PATH properly.
   PIP_CMD=pip
-  PYTHON_EXE=python
 
   $PIP_CMD install --upgrade pip
 
