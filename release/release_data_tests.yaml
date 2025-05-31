@@ -488,7 +488,7 @@
   working_dir: nightly_tests
 
   cluster:
-    cluster_compute: dataset/autoscalling_100_gpu_compute.yaml
+    cluster_compute: dataset/autoscaling_100_cpu_compute.yaml
 
   run:
     timeout: 3600
@@ -506,7 +506,7 @@
   working_dir: nightly_tests
 
   cluster:
-    cluster_compute: dataset/fixed_size_100_gpu_compute.yaml
+    cluster_compute: dataset/fixed_size_100_cpu_compute.yaml
 
   run:
     timeout: 3600
