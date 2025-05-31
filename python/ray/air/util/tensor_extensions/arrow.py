@@ -989,25 +989,11 @@ class ArrowTensorArray(_ArrowTensorScalarIndexingMixin, pa.ExtensionArray):
             new_arrs = []
             for a in arrs:
                 if isinstance(a.type, get_arrow_extension_fixed_shape_tensor_types()):
-                    a = a.to_variable_shaped_tensor_array()
+                    a = ArrowVariableShapedTensorArray.from_numpy(a.to_numpy_ndarray())
                 assert isinstance(a.type, ArrowVariableShapedTensorType)
                 new_arrs.append(a)
             arrs = new_arrs
         return pa.chunked_array(arrs)
-
-    def to_variable_shaped_tensor_array(self) -> "ArrowVariableShapedTensorArray":
-        """
-        Convert this tensor array to a variable-shaped tensor array.
-
-        This is primarily used when concatenating multiple chunked tensor arrays where
-        at least one chunked array is already variable-shaped and/or the shapes of the
-        chunked arrays differ, in which case the resulting concatenated tensor array
-        will need to be in the variable-shaped representation.
-        """
-        # TODO(Clark): Eliminate this NumPy roundtrip by directly constructing the
-        # underlying storage array buffers (NumPy roundtrip will not be zero-copy for
-        # e.g. boolean arrays).
-        return ArrowVariableShapedTensorArray.from_numpy(self.to_numpy())
 
 
 @PublicAPI(stability="alpha")
