@@ -12,7 +12,7 @@ applications:
           tensor_parallel_size: 1
         deployment_config:
           autoscaling_config:
-            min_replicas: 1
+            min_replicas: 8
             max_replicas: 1000
       decode_config:
         model_loading_config:
@@ -26,7 +26,7 @@ applications:
           tensor_parallel_size: 1
         deployment_config:
           autoscaling_config:
-            min_replicas: 1
+            min_replicas: 24
             max_replicas: 1000
     import_path: ray.llm._internal.serve.deployments.prefill_decode_disagg.prefill_decode_disagg:build_app
     name: llm-endpoint

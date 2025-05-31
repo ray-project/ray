@@ -3,7 +3,6 @@ applications:
       prefill_config:
         model_loading_config:
           model_id: neuralmagic/Meta-Llama-3.1-8B-Instruct-quantized.w4a16
-        accelerator_type: A10G
         runtime_env:
           env_vars:
             VLLM_USE_V1: "1"
@@ -12,12 +11,11 @@ applications:
           tensor_parallel_size: 1
         deployment_config:
           autoscaling_config:
-            min_replicas: 1
+            min_replicas: 3
             max_replicas: 1000
       decode_config:
         model_loading_config:
           model_id: neuralmagic/Meta-Llama-3.1-8B-Instruct-quantized.w4a16
-        accelerator_type: A10G
         runtime_env:
           env_vars:
             VLLM_USE_V1: "1"
