@@ -23,6 +23,7 @@ from typing import (
 )
 
 import numpy as np
+import pyarrow as pa
 
 import ray
 import ray.cloudpickle as pickle
@@ -1164,6 +1165,116 @@ class Dataset:
         )
         logical_plan = LogicalPlan(select_op, self.context)
         return Dataset(plan, logical_plan)
+
+    @PublicAPI(api_group=BT_API_GROUP)
+    def fillna(
+        self: "Dataset",
+        value: Union[Any, Dict[str, Any]],
+        subset: Optional[Union[str, List[str], tuple]] = None,
+        enforce_schema: bool = False,
+        *,
+        concurrency: Optional[int] = None,
+        **ray_remote_args,
+    ) -> "Dataset":
+        """
+        Fill null values in a Ray Dataset using PyArrow.
+
+        This function replaces missing (null/NA) values in each column of the Dataset.
+        If `value` is a scalar, nulls in compatible columns (optionally limited via `subset`)
+        are replaced with that value. If `value` is a dict, nulls in the listed columns
+        are replaced by the corresponding dict values. Incompatible column/value pairs
+        and missing columns are ignored if ``enforce_schema=False``,
+        or raise an exception (and halt) if ``enforce_schema=True``.
+
+        The column type is always determined at runtime, making this robust for varying schemas.
+
+        Examples
+        --------
+        >>> import ray
+        >>> import pyarrow as pa
+        >>> ds = ray.data.from_arrow(pa.table({"a": [None, 1], "b": [None, "z"]}))
+        >>> ds2 = ds.fillna(0)
+        >>> ds2.take_all()
+        [{'a': 0, 'b': None}, {'a': 1, 'b': 'z'}]
+        >>> ds3 = ds.fillna("n/a", subset=["b"])
+        >>> ds3.take_all()
+        [{'a': None, 'b': 'n/a'}, {'a': 1, 'b': 'z'}]
+        >>> ds4 = ds.fillna({"a": 99, "b": "foo"})
+        >>> ds4.take_all()
+        [{'a': 99, 'b': 'foo'}, {'a': 1, 'b': 'z'}]
+        >>> # Raises ArrowInvalid if enforce_schema is True and incompatible
+        >>> try:
+        ...     ds.fillna(0, enforce_schema=True)
+        ... except Exception as e:
+        ...     print(type(e).__name__)
+        ArrowInvalid
+
+        Args:
+            value: Scalar or dict mapping column name to fill value.
+            subset: str, list, or tuple of columns (optional). Only applies for scalar `value`.
+            enforce_schema: If True, raise an error if a fill value is not compatible with a column type.
+                            If False (default), silently skip incompatible fills.
+            concurrency: Maximum Ray workers.
+            ray_remote_args: Ray remote resources.
+
+        Returns:
+            Dataset: Dataset with filled columns.
+
+        Raises:
+            ArrowInvalid, ArrowTypeError: If enforce_schema is True and a fill value is incompatible.
+
+        """
+
+        def fillna_batch(batch: pa.Table) -> pa.Table:
+            columns = batch.column_names
+            if isinstance(value, dict):
+                new_arrays = []
+                for col in columns:
+                    arr = batch[col]
+                    if col in value:
+                        try:
+                            scalar = pa.scalar(value[col], type=arr.type)
+                            filled = pa.compute.fill_null(arr, scalar)
+                            new_arrays.append(filled)
+                        except (pa.ArrowInvalid, pa.ArrowTypeError):
+                            if enforce_schema:
+                                raise
+                            # Silently skip incompatible fills
+                            new_arrays.append(arr)
+                    else:
+                        new_arrays.append(arr)
+                return pa.table(new_arrays, names=columns)
+            else:
+                # Scalar value, optional subset
+                subcols = (
+                    columns
+                    if subset is None
+                    else ([subset] if isinstance(subset, str) else list(subset))
+                )
+                new_arrays = []
+                for col in columns:
+                    arr = batch[col]
+                    if col in subcols:
+                        try:
+                            scalar = pa.scalar(value, type=arr.type)
+                            filled = pa.compute.fill_null(arr, scalar)
+                            new_arrays.append(filled)
+                        except (pa.ArrowInvalid, pa.ArrowTypeError):
+                            if enforce_schema:
+                                raise
+                            # Silently skip incompatible fills
+                            new_arrays.append(arr)
+                    else:
+                        new_arrays.append(arr)
+                return pa.table(new_arrays, names=columns)
+
+        return self.map_batches(
+            fillna_batch,
+            batch_format="pyarrow",
+            concurrency=concurrency,
+            zero_copy_batch=False,
+            **ray_remote_args,
+        )
 
     @PublicAPI(api_group=BT_API_GROUP)
     def flat_map(
