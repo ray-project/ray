@@ -1392,3 +1392,17 @@ py_test(
         "//:ray_lib",
     ],
 )
+
+py_test(
+    name = "test_distinct",
+    size = "small",
+    srcs = ["tests/test_distinct.py"],
+    tags = [
+        "exclusive",
+        "team:data",
+    ],
+    deps = [
+        ":conftest",
+        "//:ray_lib",
+    ],
+)
