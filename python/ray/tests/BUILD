@@ -862,6 +862,7 @@ py_test_module_list(
 py_test_module_list(
     size = "large",
     files = [
+        "test_executor.py",
         "test_failure_4.py",
         "test_object_spilling.py",
         "test_object_spilling_3.py",
