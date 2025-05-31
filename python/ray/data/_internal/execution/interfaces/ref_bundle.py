@@ -1,11 +1,11 @@
 from collections import defaultdict
 from dataclasses import dataclass
-from typing import Dict, Iterator, List, Optional, Tuple
+from typing import Any, Dict, Iterator, List, Optional, Tuple
 
 import ray
 from .common import NodeIdStr
 from ray.data._internal.memory_tracing import trace_deallocation
-from ray.data.block import Block, BlockMetadata
+from ray.data.block import Block, BlockMetadata, SchemaRegistry
 from ray.data.context import DataContext
 from ray.types import ObjectRef
 
@@ -58,6 +58,63 @@ class RefBundle:
                 raise ValueError(
                     "The size in bytes of the block must be known: {}".format(b)
                 )
+
+    def __getstate__(self) -> Dict[str, Any]:
+        def hash_to_ids_and_schema() -> Dict[int, Tuple[int, Any]]:
+            mapping = {}
+            last_id = 0
+            for meta in self.metadata:
+                if meta.schema is not None:
+                    schema_ = SchemaRegistry.to_hashable_obj(meta.schema)
+                    if schema_ not in mapping:
+                        mapping[schema_] = (last_id, meta.schema)
+                        last_id += 1
+            return mapping
+
+        def schema_ids(mapping) -> List[int]:
+            schema_ids = []
+            for meta in self.metadata:
+                if meta.schema is not None:
+                    schema_ = SchemaRegistry.to_hashable_obj(meta.schema)
+                    schema_ids.append(mapping[schema_][0])
+                    meta.schema = None
+                else:
+                    # issues serializing None, so using -1
+                    schema_ids.append(-1)
+            return schema_ids
+
+        mapping = hash_to_ids_and_schema()
+        sids = schema_ids(mapping)
+
+        state = self.__dict__.copy()
+        additional_meta = {
+            "ids_and_schema": tuple(mapping.values()),
+            "schema_ids": sids,
+        }
+        state.update(additional_meta)
+        return state
+
+    def __setstate__(self, state: Dict[str, Any]):
+        assert "ids_and_schema" in state
+        ids_and_schema: List[Tuple[int, Any]] = state.pop("ids_and_schema")
+
+        assert "schema_ids" in state
+        schema_ids = state.pop("schema_ids")
+
+        self.__dict__.update(state)
+        assert len(schema_ids) == len(self.metadata)
+
+        def ids_to_schema():
+            ids_to_schema: List[Any] = [None] * len(ids_and_schema)
+            for id, schema in ids_and_schema:
+                ids_to_schema[id] = schema
+            return ids_to_schema
+
+        mapping = ids_to_schema()
+
+        for id, meta in zip(schema_ids, self.metadata):
+            if id >= 0:
+                meta.schema = mapping[id]
 
     def __setattr__(self, key, value):
         if hasattr(self, key) and key in ["blocks", "owns_blocks"]:
