@@ -4416,3 +4416,29 @@
 
   variations:
     - __suffix__: aws
+
+
+- name: object_detection  # do not use dashes (regex sensitive)
+  frequency: weekly
+  python: "3.11"
+  group: ray-examples
+  team: ml
+  working_dir: //doc/source/ray-overview/examples/object-detection
+
+  cluster:
+    byod:
+      type: llm-cu124  # anyscale/ray-llm:<PR_RAY_VERSION>-py311-cu124
+      post_build_script: byod_object_detection.sh # release/ray_release/byod/
+    cluster_compute: ci/aws.yaml  # relative to working_dir
+
+  run:
+    timeout: 3600
+    script: bash ci/tests.sh  # relative to working_dir
+
+  variations:
+    - __suffix__: aws
+    - __suffix__: gce
+      env: gce
+      frequency: manual
+      cluster:
+        cluster_compute: ci/gce.yaml  # relative to working_dir
