@@ -77,7 +77,7 @@ class FakeRequestRouter(RequestRouter):
         candidate_replicas: List[RunningReplica],
         pending_request: Optional[PendingRequest] = None,
     ) -> List[List[RunningReplica]]:
-        return candidate_replicas
+        return [candidate_replicas]
 
 
 @serve.deployment(request_router_class=FakeRequestRouter)
