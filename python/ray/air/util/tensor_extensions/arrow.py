@@ -10,6 +10,7 @@ from typing import Any, Dict, Iterable, List, Optional, Sequence, Tuple, Union
 import numpy as np
 import pyarrow as pa
 from packaging.version import parse as parse_version
+from pyarrow.lib import FixedShapeTensorType
 
 from ray._private.arrow_utils import get_pyarrow_version
 from ray.air.util.tensor_extensions.utils import (
@@ -402,6 +403,7 @@ def get_arrow_extension_tensor_types():
     return (
         *get_arrow_extension_fixed_shape_tensor_types(),
         *get_arrow_extension_variable_shape_tensor_types(),
+        FixedShapeTensorType,
     )
 
 
