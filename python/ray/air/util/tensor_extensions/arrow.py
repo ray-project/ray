@@ -39,6 +39,20 @@ NUM_BYTES_PER_UNICODE_CHAR = 4
 #       its offsets
 INT32_OVERFLOW_THRESHOLD = 2 * GiB
 
+# List of scalar types supported by Arrow's FixedShapeTensorArray
+_FIXED_SHAPE_TENSOR_ARRAY_SUPPORTED_SCALAR_TYPES = (
+    pa.int8(),
+    pa.uint8(),
+    pa.int16(),
+    pa.uint32(),
+    pa.int32(),
+    pa.uint64(),
+    pa.int64(),
+    pa.float16(),
+    pa.float32(),
+    pa.float64(),
+)
+
 
 logger = logging.getLogger(__name__)
 
@@ -756,7 +770,7 @@ class ArrowTensorArray(_ArrowTensorScalarIndexingMixin, pa.ExtensionArray):
             # We only natively support C-contiguous ndarrays.
             arr = np.ascontiguousarray(arr)
 
-        scalar_dtype = pa.from_numpy_dtype(arr.dtype)
+        scalar_dtype: pa.DataType = pa.from_numpy_dtype(arr.dtype)
 
         if pa.types.is_string(scalar_dtype):
             if arr.dtype.byteorder == ">" or (
@@ -773,19 +787,6 @@ class ArrowTensorArray(_ArrowTensorScalarIndexingMixin, pa.ExtensionArray):
         total_num_items = arr.size
         num_items_per_element = np.prod(element_shape) if element_shape else 1
 
-        # Data buffer.
-        if pa.types.is_boolean(scalar_dtype):
-            # NumPy doesn't represent boolean arrays as bit-packed, so we manually
-            # bit-pack the booleans before handing the buffer off to Arrow.
-            # NOTE: Arrow expects LSB bit-packed ordering.
-            # NOTE: This creates a copy.
-            arr = np.packbits(arr, bitorder="little")
-
-        data_buffer = pa.py_buffer(arr)
-        data_array = pa.Array.from_buffers(
-            scalar_dtype, total_num_items, [None, data_buffer]
-        )
-
         from ray.data import DataContext
 
         ctx = DataContext.get_current()
@@ -793,16 +794,26 @@ class ArrowTensorArray(_ArrowTensorScalarIndexingMixin, pa.ExtensionArray):
         if ctx.use_arrow_native_fixed_shape_tensor_type:
             tensor_type = pa.fixed_shape_tensor(scalar_dtype, shape=element_shape)
 
-            # NOTE: Since we're using fixed-size list array there's actually no need
-            #       for offsets (since all elements are of the same size)
-            storage = pa.FixedSizeListArray.from_arrays(data_array, list_size=num_items_per_element)
-
-            return pa.ExtensionArray.from_storage(tensor_type, storage)
+        if ctx.use_arrow_native_fixed_shape_tensor_type and scalar_dtype in _FIXED_SHAPE_TENSOR_ARRAY_SUPPORTED_SCALAR_TYPES:
+            return pa.FixedShapeTensorArray.from_numpy_ndarray(arr)
         else:
             if ctx.use_arrow_tensor_v2:
                 tensor_type = ArrowTensorTypeV2(element_shape, scalar_dtype)
             else:
                 tensor_type = ArrowTensorType(element_shape, scalar_dtype)
+
+            # Data buffer.
+            if pa.types.is_boolean(scalar_dtype):
+                # NumPy doesn't represent boolean arrays as bit-packed, so we manually
+                # bit-pack the booleans before handing the buffer off to Arrow.
+                # NOTE: Arrow expects LSB bit-packed ordering.
+                # NOTE: This creates a copy.
+                arr = np.packbits(arr, bitorder="little")
+
+            data_buffer = pa.py_buffer(arr)
+            data_array = pa.Array.from_buffers(
+                scalar_dtype, total_num_items, [None, data_buffer]
+            )
 
             # Create offsets buffer
             offset_buffer = pa.py_buffer(
