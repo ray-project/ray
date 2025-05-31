@@ -97,7 +97,7 @@ class PrefixAwareRequestRouter(LocalityMixin, MultiplexMixin, RequestRouter):
 
         # === Metrics tracking ===
         # Just used for benchmarking, will remove for PR eventually
-        self._do_track_metrics = True
+        self._do_track_metrics = False
         self._track_metrics_task = None
         self._vllm_metrics_path = "/home/ray/default/work/ray/_benchmarking_scripts/custom_results/vllm_metrics"
         self._char_count_over_time_path = "/home/ray/default/work/ray/_benchmarking_scripts/custom_results/char_count_over_time"

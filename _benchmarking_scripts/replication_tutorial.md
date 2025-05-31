@@ -243,6 +243,11 @@ Here's an outline of all the visualization functions available:
    - Helps visualize performance improvements
    - How to obtain data: This is just a more polished, streamlined version of `plot_serve_metric_summary`. I used this to generate my graphs for my intern presentation.
 
+10. `prefix_tree_operation_benchmarking.ipynb` (not in `visualize_results.ipynb`)
+  - This just benchmarks the prefix tree itself, not the prefix aware request router.
+  - It fills up the tree with `insert` operations, then measures the time each of `{insert, prefix_match, evict_tenant_by_lru}` takes.
+  - I used this when optimizing my prefix tree to use a doubly-linked list to evict nodes based on LRU access time. Before, it was just a min-heap, and `evict_tenant_by_lru` took tens of milliseconds--now each operation is less than a millisecond.
+
 Example usage:
 ```python
 # Plot Serve metrics
@@ -255,4 +260,4 @@ plot_vllm_metric_timeseries("vllm_metrics.json", "ray_vllm:request_prefill_time_
 plot_eviction_policy("char_count.json", "vllm_metrics.json", 400000, 360000, 10, "Default")
 ```
 
-I have included some example function calls in `visualize_results.ipynb`, along with existing data files from my latest benchmark runs. Note that I had to delete `/home/ray/default/work/ray/_benchmarking_scripts/custom_results/vllm_metrics/prefix_aware.json` because it is a large file, so running the cells that use that file will fail.
+I have included some example function calls in `visualize_results.ipynb`, along with existing data files from my latest benchmark runs. Note that I had to delete `/home/ray/default/work/ray/_benchmarking_scripts/custom_results/vllm_metrics/prefix_aware.json` because it is a large file, so running the cells that use that file will fail. Simply set `track_metrics=True`, run `python sweep_strategies.py` with default hyperparameters, and `.../custom_results/vllm_metrics/` will generate a json file.
