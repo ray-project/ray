@@ -58,7 +58,8 @@ class LanceDatasource(Datasource):
 
     def get_read_tasks(self, parallelism: int) -> List[ReadTask]:
         read_tasks = []
-        for fragments in np.array_split(self.lance_ds.get_fragments(), parallelism):
+        num_read_tasks = min(self.lance_ds.get_fragments(), parallelism)
+        for fragments in np.array_split(self.lance_ds.get_fragments(), num_read_tasks):
             if len(fragments) <= 0:
                 continue
 
