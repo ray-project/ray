@@ -1,8 +1,8 @@
 import asyncio
 import time
 
+import httpx
 import pytest
-import requests
 from starlette.requests import Request
 
 import ray
@@ -137,7 +137,7 @@ def test_passing_object_ref_to_deployment_not_pinned_to_memory(serve_instance):
     serve.run(target=app)
 
     length = 10
-    response = requests.get(f"http://localhost:8000?length={length}").json()
+    response = httpx.get(f"http://localhost:8000?length={length}").json()
     assert response["result"] == length * 2
     assert response["length"] == length
 

@@ -1,7 +1,7 @@
 import sys
 
+import httpx
 import pytest
-import requests
 from fastapi import FastAPI
 from fastapi.responses import PlainTextResponse
 
@@ -22,13 +22,15 @@ class TestHTTPRoute:
 
         # No route prefix, should return "/" regardless of full route.
         serve.run(A.bind())
-        assert requests.get("http://localhost:8000/").text == "/"
-        assert requests.get("http://localhost:8000/subpath").text == "/"
+        r = httpx.get("http://localhost:8000/")
+        assert r.status_code == 200
+        assert r.text == "/"
+        assert httpx.get("http://localhost:8000/subpath").text == "/"
 
         # Configured route prefix should be set.
         serve.run(A.bind(), route_prefix="/prefix")
-        assert requests.get("http://localhost:8000/prefix").text == "/prefix"
-        assert requests.get("http://localhost:8000/prefix/subpath").text == "/prefix"
+        assert httpx.get("http://localhost:8000/prefix").text == "/prefix"
+        assert httpx.get("http://localhost:8000/prefix/subpath").text == "/prefix"
 
     def test_matching_fastapi_route(self):
         fastapi_app = FastAPI()
@@ -46,22 +48,20 @@ class TestHTTPRoute:
 
         # No route prefix, should return matched fastapi route.
         serve.run(A.bind())
+        assert httpx.get("http://localhost:8000/fastapi-path").text == "/fastapi-path"
         assert (
-            requests.get("http://localhost:8000/fastapi-path").text == "/fastapi-path"
-        )
-        assert (
-            requests.get("http://localhost:8000/dynamic/abc123").text
+            httpx.get("http://localhost:8000/dynamic/abc123").text
             == "/dynamic/{user_id}"
         )
 
         # Configured route prefix, should return matched route prefix + fastapi route.
         serve.run(A.bind(), route_prefix="/prefix")
         assert (
-            requests.get("http://localhost:8000/prefix/fastapi-path").text
+            httpx.get("http://localhost:8000/prefix/fastapi-path").text
             == "/prefix/fastapi-path"
         )
         assert (
-            requests.get("http://localhost:8000/prefix/dynamic/abc123").text
+            httpx.get("http://localhost:8000/prefix/dynamic/abc123").text
             == "/prefix/dynamic/{user_id}"
         )
 

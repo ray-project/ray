@@ -9,8 +9,8 @@ from tempfile import NamedTemporaryFile
 from typing import Pattern
 
 import grpc
+import httpx
 import pytest
-import requests
 import yaml
 
 import ray
@@ -44,8 +44,8 @@ def ping_endpoint(endpoint: str, params: str = ""):
     endpoint = endpoint.lstrip("/")
 
     try:
-        return requests.get(f"http://localhost:8000/{endpoint}{params}").text
-    except requests.exceptions.ConnectionError:
+        return httpx.get(f"http://localhost:8000/{endpoint}{params}").text
+    except httpx.HTTPError:
         return CONNECTION_ERROR_MSG
 
 
@@ -188,11 +188,11 @@ def test_run_application(ray_start_stop, number_of_kill_signals):
     print('Running config file "arithmetic.yaml".')
     p = subprocess.Popen(["serve", "run", "--address=auto", config_file_name])
     wait_for_condition(
-        lambda: requests.post("http://localhost:8000/", json=["ADD", 0]).json() == 1,
+        lambda: httpx.post("http://localhost:8000/", json=["ADD", 0]).json() == 1,
         timeout=15,
     )
     wait_for_condition(
-        lambda: requests.post("http://localhost:8000/", json=["SUB", 5]).json() == 3,
+        lambda: httpx.post("http://localhost:8000/", json=["SUB", 5]).json() == 3,
         timeout=15,
     )
     print("Run successful! Deployments are live and reachable over HTTP. Killing run.")
@@ -200,8 +200,8 @@ def test_run_application(ray_start_stop, number_of_kill_signals):
     for _ in range(number_of_kill_signals):
         p.send_signal(signal.SIGINT)  # Equivalent to ctrl-C
     p.wait()
-    with pytest.raises(requests.exceptions.ConnectionError):
-        requests.post("http://localhost:8000/", json=["ADD", 0]).json()
+    with pytest.raises(httpx.HTTPError):
+        httpx.post("http://localhost:8000/", json=["ADD", 0]).json()
     print("Kill successful! Deployments are not reachable over HTTP.")
 
     print('Running node at import path "ray.serve.tests.test_cli_2.parrot_node".')
@@ -230,17 +230,17 @@ def test_run_multi_app(ray_start_stop):
     print('Running config file "pizza_world.yaml".')
     p = subprocess.Popen(["serve", "run", "--address=auto", config_file_name])
     wait_for_condition(
-        lambda: requests.post("http://localhost:8000/app1").text == "wonderful world",
+        lambda: httpx.post("http://localhost:8000/app1").text == "wonderful world",
         timeout=15,
     )
     print('Application "app1" is reachable over HTTP.')
     wait_for_condition(
-        lambda: requests.post("http://localhost:8000/app2", json=["ADD", 2]).text
+        lambda: httpx.post("http://localhost:8000/app2", json=["ADD", 2]).text
         == "12 pizzas please!",
         timeout=15,
     )
     wait_for_condition(
-        lambda: requests.post("http://localhost:8000/app2", json=["MUL", 2]).text
+        lambda: httpx.post("http://localhost:8000/app2", json=["MUL", 2]).text
         == "20 pizzas please!",
         timeout=15,
     )
@@ -248,10 +248,10 @@ def test_run_multi_app(ray_start_stop):
 
     p.send_signal(signal.SIGINT)  # Equivalent to ctrl-C
     p.wait()
-    with pytest.raises(requests.exceptions.ConnectionError):
-        requests.post("http://localhost:8000/app1")
-    with pytest.raises(requests.exceptions.ConnectionError):
-        requests.post("http://localhost:8000/app2", json=["ADD", 0])
+    with pytest.raises(httpx.HTTPError):
+        _ = httpx.post("http://localhost:8000/app1").text
+    with pytest.raises(httpx.HTTPError):
+        _ = httpx.post("http://localhost:8000/app2", json=["ADD", 0]).text
     print("Kill successful! Deployments are not reachable over HTTP.")
 
 
@@ -426,7 +426,7 @@ def test_run_config_port1(ray_start_stop, config_file):
     )
     p = subprocess.Popen(["serve", "run", config_file_name])
     wait_for_condition(
-        lambda: requests.post("http://localhost:8000/").text == "wonderful world",
+        lambda: httpx.post("http://localhost:8000/").text == "wonderful world",
         timeout=15,
     )
     p.send_signal(signal.SIGINT)
@@ -444,7 +444,7 @@ def test_run_config_port2(ray_start_stop, config_file):
     )
     p = subprocess.Popen(["serve", "run", config_file_name])
     wait_for_condition(
-        lambda: requests.post("http://localhost:8005/").text == "wonderful world",
+        lambda: httpx.post("http://localhost:8005/").text == "wonderful world",
         timeout=15,
     )
     p.send_signal(signal.SIGINT)
@@ -749,8 +749,7 @@ def test_run_config_request_timeout():
         ["ray", "start", "--head"],
     )
     wait_for_condition(
-        lambda: requests.get("http://localhost:8265/api/ray/version").status_code
-        == 200,
+        lambda: httpx.get("http://localhost:8265/api/ray/version").status_code == 200,
         timeout=15,
     )
 
@@ -764,14 +763,13 @@ def test_run_config_request_timeout():
     # Ensure the http request is killed and failed when the deployment runs longer than
     # the 0.1 request_timeout_s set in in the config yaml
     wait_for_condition(
-        lambda: requests.get("http://localhost:8000/app1?sleep_s=0.11").status_code
-        == 408,
+        lambda: httpx.get("http://localhost:8000/app1?sleep_s=0.11").status_code == 408,
     )
 
     # Ensure the http request returned the correct response when the deployment runs
     # shorter than the 0.1 request_timeout_s set up in the config yaml
     wait_for_condition(
-        lambda: requests.get("http://localhost:8000/app1?sleep_s=0.09").text
+        lambda: httpx.get("http://localhost:8000/app1?sleep_s=0.09").text
         == "Task Succeeded!",
     )
 
@@ -802,7 +800,7 @@ def test_deployment_contains_utils(ray_start_stop):
 
     subprocess.check_output(["serve", "deploy", config_file], stderr=subprocess.STDOUT)
     wait_for_condition(
-        lambda: requests.post("http://localhost:8000/").text == "hello_from_utils"
+        lambda: httpx.post("http://localhost:8000/").text == "hello_from_utils"
     )
 
 

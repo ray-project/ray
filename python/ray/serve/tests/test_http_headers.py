@@ -3,8 +3,8 @@ import uuid
 from typing import Any, Dict, Optional, Tuple
 
 import aiohttp
+import httpx
 import pytest
-import requests
 import starlette
 from aiohttp import ClientSession, TCPConnector
 from fastapi import FastAPI
@@ -24,7 +24,7 @@ def test_request_id_header_by_default(serve_instance):
             return request_id
 
     serve.run(Model.bind())
-    resp = requests.get("http://localhost:8000")
+    resp = httpx.get("http://localhost:8000")
     assert resp.status_code == 200
     assert resp.text == resp.headers["x-request-id"]
 
@@ -41,9 +41,7 @@ def test_request_id_header_by_default(serve_instance):
 class TestUserProvidedRequestIDHeader:
     def verify_result(self):
         for header_attr in ["X-Request-ID"]:
-            resp = requests.get(
-                "http://localhost:8000", headers={header_attr: "123-234"}
-            )
+            resp = httpx.get("http://localhost:8000", headers={header_attr: "123-234"})
             assert resp.status_code == 200
             assert resp.json() == 1
             assert resp.headers[header_attr] == "123-234"
@@ -98,7 +96,7 @@ def test_set_request_id_headers_with_two_attributes(serve_instance):
             return request_id
 
     serve.run(Model.bind())
-    resp = requests.get(
+    resp = httpx.get(
         "http://localhost:8000",
         headers={
             "X-Request-ID": "234",
