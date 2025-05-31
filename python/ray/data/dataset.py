@@ -1207,7 +1207,6 @@ class Dataset:
         ...     ds.fillna(0, enforce_schema=True)
         ... except Exception as e:
         ...     print(type(e).__name__)
-        ArrowInvalid
 
         Args:
             value: Scalar or dict mapping column name to fill value.
@@ -1219,10 +1218,6 @@ class Dataset:
 
         Returns:
             Dataset: Dataset with filled columns.
-
-        Raises:
-            ArrowInvalid, ArrowTypeError: If enforce_schema is True and a fill value is incompatible.
-
         """
 
         def fillna_batch(batch: pa.Table) -> pa.Table:
