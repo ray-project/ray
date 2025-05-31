@@ -111,6 +111,10 @@ void OpenTelemetryMetricRecorder::RegisterGaugeMetric(const std::string &name,
   registered_instruments_[name] = instrument;
 }
 
+bool OpenTelemetryMetricRecorder::IsMetricRegistered(const std::string &name) const {
+  return registered_instruments_.find(name) != registered_instruments_.end();
+}
+
 void OpenTelemetryMetricRecorder::SetMetricValue(
     const std::string &name,
     absl::flat_hash_map<std::string, std::string> &&tags,
