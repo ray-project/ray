@@ -1,5 +1,6 @@
 import asyncio
 import pytest
+import sys
 import ray
 from ray._common.synchronization_actors import SignalActor, Semaphore
 from ray._private.test_utils import wait_for_condition
@@ -80,3 +81,7 @@ async def test_semaphore_concurrent(ray_init):
 
     # Verify semaphore is not locked
     wait_for_condition(lambda: ray.get(sema.locked.remote()) is False)
+
+
+if __name__ == "__main__":
+    sys.exit(pytest.main(["-sv", __file__]))
