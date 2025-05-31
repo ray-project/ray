@@ -16,6 +16,7 @@
 
 #include <opentelemetry/metrics/meter.h>
 #include <opentelemetry/metrics/observer_result.h>
+#include <opentelemetry/metrics/sync_instruments.h>
 #include <opentelemetry/sdk/metrics/meter_provider.h>
 
 #include <cassert>
@@ -53,6 +54,9 @@ class OpenTelemetryMetricRecorder {
   // Registers a gauge metric with the given name and description
   void RegisterGaugeMetric(const std::string &name, const std::string &description);
 
+  // Registers a counter metric with the given name and description
+  void RegisterCounterMetric(const std::string &name, const std::string &description);
+
   // Check if a metric with the given name is registered.
   bool IsMetricRegistered(const std::string &name) const;
 
@@ -62,7 +66,7 @@ class OpenTelemetryMetricRecorder {
                       double value);
 
   // Get the value of a metric given the tags.
-  std::optional<double> GetMetricValue(
+  std::optional<double> GetObservableMetricValue(
       const std::string &name,
       const absl::flat_hash_map<std::string, std::string> &tags) const;
 
@@ -90,13 +94,31 @@ class OpenTelemetryMetricRecorder {
       std::string,
       absl::flat_hash_map<absl::flat_hash_map<std::string, std::string>, double>>
       observations_by_name_;
-  // Map of metric names to their instrument pointers. This is used to ensure that
-  // each metric is only registered once.
+  // Map of metric names to their observable instrument pointers. This is used to ensure
+  // that each metric is only registered once.
   absl::flat_hash_map<std::string,
                       std::shared_ptr<opentelemetry::metrics::ObservableInstrument>>
-      registered_instruments_;
+      registered_observable_instruments_;
+  // Map of metric names to their synchronous instrument pointers. This is used to ensure
+  // that each metric is only registered once.
+  absl::flat_hash_map<std::string,
+                      std::unique_ptr<opentelemetry::metrics::SynchronousInstrument>>
+      registered_synchronous_instruments_;
   // Lock for thread safety when modifying state.
   std::mutex mutex_;
+
+  bool setObservableMetricValue(const std::string &name,
+                                absl::flat_hash_map<std::string, std::string> &&tags,
+                                double value);
+
+  bool setSynchronousMetricValue(const std::string &name,
+                                 absl::flat_hash_map<std::string, std::string> &&tags,
+                                 double value);
+
+  bool isObservableMetric(const std::string &name) const {
+    return registered_observable_instruments_.find(name) !=
+           registered_observable_instruments_.end();
+  }
 
   std::shared_ptr<opentelemetry::metrics::Meter> getMeter() {
     return meter_provider_->GetMeter("ray");

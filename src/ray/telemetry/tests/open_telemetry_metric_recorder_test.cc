@@ -39,8 +39,18 @@ class OpenTelemetryMetricRecorderTest : public ::testing::Test {
 TEST_F(OpenTelemetryMetricRecorderTest, TestGaugeMetric) {
   recorder_.RegisterGaugeMetric("test_metric", "Test metric description");
   recorder_.SetMetricValue("test_metric", {{"tag1", "value1"}}, 42.0);
-  ASSERT_EQ(recorder_.GetMetricValue("test_metric", {{"tag1", "value1"}}), 42.0);
-  ASSERT_EQ(recorder_.GetMetricValue("test_metric", {{"tag1", "value2"}}), std::nullopt);
+  // Get a non-empty value of a registered gauge metric and tags
+  ASSERT_EQ(recorder_.GetObservableMetricValue("test_metric", {{"tag1", "value1"}}),
+            42.0);
+  // Get an empty value of a registered gauge metric with unregistered tags
+  ASSERT_EQ(recorder_.GetObservableMetricValue("test_metric", {{"tag1", "value2"}}),
+            std::nullopt);
+}
+
+TEST_F(OpenTelemetryMetricRecorderTest, TestCounterMetric) {
+  recorder_.RegisterCounterMetric("test_counter", "Test counter description");
+  // Check that the counter metric is registered
+  ASSERT_TRUE(recorder_.IsMetricRegistered("test_counter"));
 }
 
 }  // namespace telemetry
