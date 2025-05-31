@@ -10,6 +10,7 @@ import pyarrow.dataset as pds
 import pyarrow.parquet as pq
 import pytest
 from packaging.version import parse as parse_version
+from pyarrow import FixedShapeTensorType
 from pytest_lazy_fixtures import lf as lazy_fixture
 
 import ray
@@ -1337,8 +1338,9 @@ def test_partitioning_in_dataset_kwargs_raises_error(ray_start_regular_shared):
         )
 
 
+@pytest.mark.parametrize("new_tensor_format", ["arrow_native", "v2"])
 def test_tensors_in_tables_parquet(
-    ray_start_regular_shared, tmp_path, restore_data_context
+    ray_start_regular_shared, tmp_path, new_tensor_format, restore_data_context
 ):
     """This test verifies both V1 and V2 Tensor Type extensions of
     Arrow Array types
@@ -1401,12 +1403,16 @@ def test_tensors_in_tables_parquet(
     _assert_equal(ds.take_all(), expected_tuples)
 
     #
-    # Test #2: Verify writing tensors as ArrowTensorTypeV2
+    # Test #2: Verify writing tensors as either
+    #   - ArrowTensorTypeV2 or
+    #   - (Arrow-native) FixedShapeTensorType
     #
 
-    DataContext.get_current().use_arrow_tensor_v2 = True
+    ctx = DataContext.get_current()
+    ctx.use_arrow_native_fixed_shape_tensor_type = new_tensor_format == "arrow_native"
+    ctx.use_arrow_tensor_v2 = new_tensor_format == "v2"
 
-    tensor_v2_path = f"{tmp_path}/tensor_v2"
+    tensor_v2_path = f"{tmp_path}/tensor_{new_tensor_format}"
 
     ds = ray.data.from_pandas([df])
     ds.write_parquet(tensor_v2_path)
@@ -1417,8 +1423,13 @@ def test_tensors_in_tables_parquet(
         override_num_blocks=10,
     )
 
+    if new_tensor_format == "arrow_native":
+        expected_tensor_type = FixedShapeTensorType
+    else:
+        expected_tensor_type = ArrowTensorTypeV2
+
     assert isinstance(
-        ds.schema().base_schema.field_by_name(tensor_col_name).type, ArrowTensorTypeV2
+        ds.schema().base_schema.field_by_name(tensor_col_name).type, expected_tensor_type
     )
 
     _assert_equal(ds.take_all(), expected_tuples)
