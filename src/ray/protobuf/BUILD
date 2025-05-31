@@ -141,6 +141,11 @@ proto_library(
     ],
 )
 
+python_grpc_compile(
+    name = "metrics_service_py_proto",
+    deps = ["@com_github_opentelemetry_proto//:metrics_service_proto"],
+)
+
 cc_proto_library(
     name = "reporter_cc_proto",
     deps = [":reporter_proto"],
@@ -399,23 +404,6 @@ python_grpc_compile(
     deps = [":export_dataset_metadata_proto"],
 )
 
-# Agent manager gRPC lib.
-proto_library(
-    name = "agent_manager_proto",
-    srcs = ["agent_manager.proto"],
-    deps = [],
-)
-
-python_grpc_compile(
-    name = "agent_manager_py_proto",
-    deps = [":agent_manager_proto"],
-)
-
-cc_proto_library(
-    name = "agent_manager_cc_proto",
-    deps = [":agent_manager_proto"],
-)
-
 # Ray Client gRPC lib
 proto_library(
     name = "ray_client_proto",
@@ -438,6 +426,7 @@ proto_library(
         ":gcs_proto",
         ":logging_proto",
         ":reporter_proto",
+        "@com_github_opentelemetry_proto//:metrics_service_proto",
     ],
 )
 
@@ -451,7 +440,6 @@ proto_library(
     name = "runtime_env_agent_proto",
     srcs = ["runtime_env_agent.proto"],
     deps = [
-        ":agent_manager_proto",
         ":common_proto",
         ":runtime_env_common_proto",
     ],

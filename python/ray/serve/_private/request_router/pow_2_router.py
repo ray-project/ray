@@ -8,28 +8,28 @@ from typing import (
 from ray.serve._private.constants import (
     SERVE_LOGGER_NAME,
 )
-from ray.serve._private.replica_scheduler.common import (
+from ray.serve._private.request_router.common import (
     PendingRequest,
 )
-from ray.serve._private.replica_scheduler.replica_scheduler import (
-    FIFOMixin,
-    LocalityScheduleMixin,
-    MultiplexScheduleMixin,
-    ReplicaScheduler,
-)
-from ray.serve._private.replica_scheduler.replica_wrapper import (
+from ray.serve._private.request_router.replica_wrapper import (
     RunningReplica,
+)
+from ray.serve._private.request_router.request_router import (
+    FIFOMixin,
+    LocalityMixin,
+    MultiplexMixin,
+    RequestRouter,
 )
 
 logger = logging.getLogger(SERVE_LOGGER_NAME)
 
 
-class PowerOfTwoChoicesReplicaScheduler(
-    FIFOMixin, LocalityScheduleMixin, MultiplexScheduleMixin, ReplicaScheduler
+class PowerOfTwoChoicesRequestRouter(
+    FIFOMixin, LocalityMixin, MultiplexMixin, RequestRouter
 ):
     """Chooses a replica for each request using the "power of two choices" procedure.
 
-    Requests are scheduled in FIFO order.
+    Requests are routed in FIFO order.
 
     When a request comes in, two candidate replicas are chosen randomly. Each replica
     is sent a control message to fetch its queue length.
@@ -43,7 +43,7 @@ class PowerOfTwoChoicesReplicaScheduler(
     replica is chosen, so the caller should use timeouts and cancellation to avoid
     hangs.
 
-    Each request being scheduled may spawn an independent task that runs the scheduling
+    Each request being routed may spawn an independent task that runs the routing
     procedure concurrently. This task will not necessarily satisfy the request that
     started it (in order to maintain the FIFO order). The total number of tasks is
     capped at (2 * num_replicas).
@@ -51,7 +51,7 @@ class PowerOfTwoChoicesReplicaScheduler(
 
     async def choose_replicas(
         self,
-        replicas_ranks: List[List[RunningReplica]],
+        candidate_replicas: List[RunningReplica],
         pending_request: Optional[PendingRequest] = None,
     ) -> List[List[RunningReplica]]:
         """One iteration of the power of two choices procedure that chooses
@@ -67,12 +67,12 @@ class PowerOfTwoChoicesReplicaScheduler(
             and pending_request.metadata.multiplexed_model_id
         ):
             # Get candidates for multiplexed model ID.
-            candidate_replica_ids = self.apply_multiplex_scheduling(
+            candidate_replica_ids = self.apply_multiplex_routing(
                 pending_request=pending_request,
             )
         else:
             # Get candidates for locality preference.
-            candidate_replica_ids = self.apply_locality_scheduling(
+            candidate_replica_ids = self.apply_locality_routing(
                 pending_request=pending_request,
             )
 
@@ -84,6 +84,6 @@ class PowerOfTwoChoicesReplicaScheduler(
             k=min(2, len(candidate_replica_ids)),
         )
         replica_id_to_replica_map = {
-            replica.replica_id: replica for replica in replicas_ranks[0]
+            replica.replica_id: replica for replica in candidate_replicas
         }
         return [[replica_id_to_replica_map[chosen_id] for chosen_id in chosen_ids]]

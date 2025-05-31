@@ -892,9 +892,9 @@ gymnasium==1.0.0 \
     # via
     #   -c python/requirements_compiled_rayllm_test_py311_cpu.txt
     #   -r python/requirements.txt
-h11==0.14.0 \
-    --hash=sha256:8f19fbbe99e72420ff35c00b27a34cb9937e902a8b810e2c88300c6f0a3b699d \
-    --hash=sha256:e3fe4ac4b851c468cc8363d500db52c2ead036020723024a109d37346efaa761
+h11==0.16.0 \
+    --hash=sha256:4e35b956cf45792e4caa5885e69fba00bdbc6ffafbfa020300e549b208ee5ff1 \
+    --hash=sha256:63cf8bbe7522de3bf65932fda1d9c2772064ffb3dae62d55932da54b31cb6c86
     # via
     #   -c python/requirements_compiled_rayllm_test_py311_cpu.txt
     #   httpcore
@@ -910,9 +910,9 @@ hf-xet==1.0.4 \
     # via
     #   -c python/requirements_compiled_rayllm_test_py311_cpu.txt
     #   huggingface-hub
-httpcore==1.0.7 \
-    --hash=sha256:8551cb62a169ec7162ac7be8d4817d561f60e08eaa485234898414bb5a8a0b4c \
-    --hash=sha256:a3fff8f43dc260d5bd363d9f9cf1830fa3a458b332856f34282de498ed420edd
+httpcore==1.0.9 \
+    --hash=sha256:2d400746a40668fc9dec9810239072b40b4484b640a8c38fd654a024c7a1bf55 \
+    --hash=sha256:6e34463af53fd2ab5d807f399a9b45ea31c3dfa2276f15a2c3f00afff6e176e8
     # via
     #   -c python/requirements_compiled_rayllm_test_py311_cpu.txt
     #   httpx
@@ -1332,6 +1332,12 @@ memray==1.10.0 ; sys_platform != 'win32' \
     # via
     #   -c python/requirements_compiled_rayllm_test_py311_cpu.txt
     #   -r python/requirements.txt
+meson==1.8.0 \
+    --hash=sha256:0a9b23311271519bd03dca12d7d8b0eab582c3a2c5da433d465b6e519dc88e2f \
+    --hash=sha256:472b7b25da286447333d32872b82d1c6f1a34024fb8ee017d7308056c25fec1f
+    # via
+    #   -c python/requirements_compiled_rayllm_test_py311_cpu.txt
+    #   -r python/requirements/llm/llm-requirements.txt
 mistral-common==1.5.4 \
     --hash=sha256:0af4124ab09d1409761e91ec61681476882d46f9418eea8908d39c01222e0f6b \
     --hash=sha256:acef3367a4386d5dd3d9e23330348bbebe90a5cbd2fc5587d8a8d13d9893e537
@@ -1697,6 +1703,7 @@ opentelemetry-api==1.26.0 \
     #   -r python/requirements.txt
     #   opentelemetry-exporter-otlp-proto-grpc
     #   opentelemetry-exporter-otlp-proto-http
+    #   opentelemetry-exporter-prometheus
     #   opentelemetry-sdk
     #   opentelemetry-semantic-conventions
     #   vllm
@@ -1726,6 +1733,12 @@ opentelemetry-exporter-otlp-proto-http==1.26.0 \
     # via
     #   -c python/requirements_compiled_rayllm_test_py311_cpu.txt
     #   opentelemetry-exporter-otlp
+opentelemetry-exporter-prometheus==0.47b0 \
+    --hash=sha256:03e8ebccdaeae3a7dad9909d1203dfce5d6c3311ff715911156ed61d9928ab44 \
+    --hash=sha256:d65d73da0689f5ec4da9951b209f04ecc8596864daf9b7422bac0d7dc3cb7b76
+    # via
+    #   -c python/requirements_compiled_rayllm_test_py311_cpu.txt
+    #   -r python/requirements.txt
 opentelemetry-proto==1.26.0 \
     --hash=sha256:6c4d7b4d4d9c88543bcf8c28ae3f8f0448a753dc291c18c5390444c90b76a725 \
     --hash=sha256:c5c18796c0cab3751fc3b98dee53855835e90c0422924b484432ac852d93dc1e
@@ -1742,6 +1755,7 @@ opentelemetry-sdk==1.26.0 \
     #   -r python/requirements.txt
     #   opentelemetry-exporter-otlp-proto-grpc
     #   opentelemetry-exporter-otlp-proto-http
+    #   opentelemetry-exporter-prometheus
     #   vllm
 opentelemetry-semantic-conventions==0.47b0 \
     --hash=sha256:4ff9d595b85a59c1c1413f02bba320ce7ea6bf9e2ead2b0913c4395c7bbc1063 \
@@ -1929,6 +1943,7 @@ prometheus-client==0.19.0 \
     # via
     #   -c python/requirements_compiled_rayllm_test_py311_cpu.txt
     #   -r python/requirements.txt
+    #   opentelemetry-exporter-prometheus
     #   prometheus-fastapi-instrumentator
     #   vllm
 prometheus-fastapi-instrumentator==7.0.2 \
@@ -2163,6 +2178,12 @@ pyasn1-modules==0.3.0 \
     # via
     #   -c python/requirements_compiled_rayllm_test_py311_cpu.txt
     #   google-auth
+pybind11==2.13.6 \
+    --hash=sha256:237c41e29157b962835d356b370ededd57594a26d5894a795960f0047cb5caf5 \
+    --hash=sha256:ba6af10348c12b24e92fa086b39cfba0eff619b61ac77c406167d813b096d39a
+    # via
+    #   -c python/requirements_compiled_rayllm_test_py311_cpu.txt
+    #   -r python/requirements/llm/llm-requirements.txt
 pycountry==24.6.1 \
     --hash=sha256:b61b3faccea67f87d10c1f2b0fc0be714409e8fcdcc1315613174f6466c10221 \
     --hash=sha256:f1a4fb391cd7214f8eefd39556d740adcc233c778a27f8942c8dca351d6ce06f

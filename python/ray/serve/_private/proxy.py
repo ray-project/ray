@@ -1267,7 +1267,7 @@ class ProxyActor:
 
     def _dump_ingress_replicas_for_testing(self, route: str) -> Set[ReplicaID]:
         _, handle, _ = self.http_proxy.proxy_router.match_route(route)
-        return handle._router._asyncio_router._replica_scheduler._replica_id_set
+        return handle._router._asyncio_router._request_router._replica_id_set
 
     async def ready(self) -> str:
         """Blocks until the proxy HTTP (and optionally gRPC) servers are running.
