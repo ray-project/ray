@@ -574,8 +574,7 @@ bool TaskManager::TryDelObjectRefStreamInternal(const ObjectID &generator_id) {
   // after the generator goes out of scope at the caller.
   auto signal_it = ref_stream_execution_signal_callbacks_.find(generator_id);
   if (signal_it != ref_stream_execution_signal_callbacks_.end()) {
-    RAY_LOG(DEBUG) << "Deleting execution signal callbacks for generator "
-                   << generator_id;
+    RAY_LOG(INFO) << "Deleting execution signal callbacks for generator " << generator_id;
     for (const auto &execution_signal : signal_it->second) {
       execution_signal(Status::NotFound("Stream is deleted."), -1);
     }
@@ -598,7 +597,7 @@ bool TaskManager::TryDelObjectRefStreamInternal(const ObjectID &generator_id) {
 
   int64_t num_objects_generated = stream_it->second.EofIndex();
   if (num_objects_generated == -1) {
-    RAY_LOG(DEBUG) << "Skip streaming generator deletion, EOF not written yet";
+    RAY_LOG(INFO) << "Skip streaming generator deletion, EOF not written yet";
     // Generator task has not finished yet. Wait for EoF to be marked before
     // deleting.
     return false;
@@ -684,6 +683,7 @@ bool TaskManager::HandleReportGeneratorItemReturns(
         return false;
       }
     }
+    // TODO(irabbani): this else case looks important. What is the correct behavior here?
   }
 
   // NOTE: If it is the first execution (e.g., CompletePendingTask has never been called),
@@ -716,10 +716,31 @@ bool TaskManager::HandleReportGeneratorItemReturns(
     }
     // When an object is reported, the object is ready to be fetched.
     reference_counter_.UpdateObjectPendingCreation(object_id, false);
-    HandleTaskReturn(object_id,
-                     return_object,
-                     NodeID::FromBinary(request.worker_addr().raylet_id()),
-                     /*store_in_plasma=*/store_in_plasma_ids.contains(object_id));
+    bool inlined_object =
+        HandleTaskReturn(object_id,
+                         return_object,
+                         NodeID::FromBinary(request.worker_addr().raylet_id()),
+                         /*store_in_plasma=*/store_in_plasma_ids.contains(object_id));
+
+    // This is a hack to see if tests pass.
+    if (!inlined_object) {
+      absl::MutexLock lock(&mu_);
+      auto task_entry_it = submissible_tasks_.find(task_id);
+      // TODO(irabbani): I think the task can be removed from submissible during
+      // execution.
+      if (task_entry_it == submissible_tasks_.end()) {
+        execution_signal_callback(
+            Status::NotFound("Stale object reports from the previous attempt."), -1);
+        return false;
+      }
+      // if we've received an object for a task, then it's eligible for lineage
+      // reconstruction.
+      // TODO(irabbani): this isn't a clean semantic since the generator can have holes it
+      // in it and objects can be returned out of order. A cleaner semantic would be,
+      // whatever has been consumed through next(generator) by the caller needs to be
+      // reconstructed.
+      task_entry_it->second.reconstructable_return_ids.emplace(object_id);
+    }
   }
 
   // Handle backpressure if needed.
@@ -1298,7 +1319,13 @@ absl::flat_hash_set<ObjectID> TaskManager::GetTaskReturnObjectsToStoreInPlasma(
     // from submissible_tasks_. Do nothing in this case.
     return {};
   }
+
   first_execution = it->second.num_successful_executions == 0;
+  // TODO(irabbani): Can the underlying iterator become invalid outside of the mutex?
+  // if (it->second.spec.IsStreamingGenerator()) {
+  //   store_in_plasma_ids = it->second.reconstructable_return_ids;
+  //   return store_in_plasma_ids;
+  // }
   if (!first_execution) {
     store_in_plasma_ids = it->second.reconstructable_return_ids;
   }
@@ -1343,6 +1370,8 @@ void TaskManager::MarkTaskReturnObjectsFailed(
     const auto generator_id = spec.ReturnId(0);
     MarkEndOfStream(generator_id, /*item_index*/ -1);
 
+    // TODO(irabbani): Can the underlying iterator become invalid outside of the mutex?
+
     // If it was a streaming generator, try failing all the return object refs.
     // In a normal time, it is no-op because the object ref values are already
     // written, and Ray doesn't allow to overwrite values for the object ref.
@@ -1350,10 +1379,22 @@ void TaskManager::MarkTaskReturnObjectsFailed(
     // case, all these objects are lost from the plasma store, so we
     // can overwrite them. See the test test_dynamic_generator_reconstruction_fails
     // for more details.
-    auto num_streaming_generator_returns = spec.NumStreamingGeneratorReturns();
+    absl::MutexLock lock(&object_ref_stream_ops_mu_);
+    absl::MutexLock other_lock(&mu_);
+
+    auto it = submissible_tasks_.find(task_id);
+    auto object_ref_stream_it = object_ref_streams_.find(generator_id);
+    // TODO(irabbani): Can this be deleted? I think it can, but I need to double check.
+    RAY_CHECK(it != submissible_tasks_.end());
+    RAY_CHECK(object_ref_stream_it != object_ref_streams_.end());
+
+    auto num_streaming_generator_returns = std::max(
+        spec.NumStreamingGeneratorReturns(),
+        static_cast<size_t>(object_ref_stream_it->second.LastConsumedIndex() + 1));
     for (size_t i = 0; i < num_streaming_generator_returns; i++) {
       const auto generator_return_id = spec.StreamingGeneratorReturnId(i);
-      if (store_in_plasma_ids.contains(generator_return_id)) {
+      // if (store_in_plasma_ids.contains(generator_return_id)) {
+      if (it->second.reconstructable_return_ids.contains(generator_return_id)) {
         put_in_local_plasma_callback_(error, generator_return_id);
       } else {
         in_memory_store_.Put(error, generator_return_id);
