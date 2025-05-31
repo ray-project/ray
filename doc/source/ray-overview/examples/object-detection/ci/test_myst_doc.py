@@ -12,6 +12,7 @@ import tempfile
 from pathlib import Path
 
 import jupytext
+import os
 
 parser = argparse.ArgumentParser(description=__doc__)
 parser.add_argument(
@@ -80,5 +81,12 @@ if __name__ == "__main__":
     remainder.insert(0, name)
     remainder.insert(0, sys.executable)
 
+    # # Run the notebook
+    # subprocess.run(remainder, check=True)
+
     # Run the notebook
-    subprocess.run(remainder, check=True)
+    try:
+        subprocess.run(remainder, check=True)
+    finally:
+        # clean up the temp script no matter what
+        os.unlink(name)
