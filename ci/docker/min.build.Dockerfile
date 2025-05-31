@@ -36,7 +36,9 @@ elif [[ "${EXTRA_DEPENDENCY}" == "default" ]]; then
 elif [[ "${EXTRA_DEPENDENCY}" == "serve" ]]; then
   pip-compile -o min_requirements.txt /tmp/min_build_requirements.txt python/setup.py --extra "serve-grpc"
 fi
-rm /tmp/min_build_requirements.txt
+if [[ -f /tmp/min_build_requirements.txt ]]; then
+  rm /tmp/min_build_requirements.txt
+fi
 
 if [[ -f min_requirements.txt ]]; then
   pip install -r min_requirements.txt
