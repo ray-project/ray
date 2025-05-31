@@ -28,4 +28,4 @@ Demonstrate a real-world video analytics workflow: read a video from S3, split i
 />
 
 [4.object_detection_serve.ipynb](4.object_detection_serve.ipynb)  
-Deploy the trained Faster R-CNN mask detector as a production-ready microservice using Ray Serve and FastAPI. Set up ingress, configure autoscaling and fractional GPU allocation, test the HTTP endpoint, and manage the service lifecycle both locally and via Anyscale Services.
+Deploy the trained Faster R-CNN mask detector as a production-ready microservice using Ray Serve and FastAPI. Set up ingress, configure autoscaling and fractional GPU allocation, test the HTTP endpoint, and manage the service lifecycle both locally and through Anyscale Services.
