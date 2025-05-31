@@ -53,10 +53,15 @@ class MockWorkerPool : public WorkerPoolInterface {
     workers.push_front(worker);
   }
 
-  const std::vector<std::shared_ptr<WorkerInterface>> GetAllRegisteredWorkers(
+  std::vector<std::shared_ptr<WorkerInterface>> GetAllRegisteredWorkers(
       bool filter_dead_workers, bool filter_io_workers) const override {
     RAY_CHECK(false) << "Not used.";
     return {};
+  }
+
+  bool IsWorkerAvailableForScheduling() const override {
+    RAY_CHECK(false) << "Not used.";
+    return false;
   }
 
   std::shared_ptr<WorkerInterface> GetRegisteredWorker(
