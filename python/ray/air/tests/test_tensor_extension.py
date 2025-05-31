@@ -568,16 +568,23 @@ def test_arrow_tensor_array_getitem(chunked, restore_data_context, tensor_format
             np.testing.assert_array_equal(item, arr[idx])
     else:
         for idx in range(outer_dim):
-            print(f">>> [DBG] t_arr: {t_arr[idx].type}, {t_arr[idx].__class__}")
+            np.testing.assert_array_equal(t_arr[idx].to_numpy(), arr[idx])
 
-            np.testing.assert_array_equal(t_arr[idx], arr[idx])
+            # NOTE: In addition we verify that for existing ``ArrowTensorScalar``
+            #       implements `__array__` method therefore implementing Numpy
+            #       array protocol
+            if tensor_format != "arrow_native":
+                np.testing.assert_array_equal(t_arr[idx], arr[idx])
 
     # Test __iter__.
     for t_subarr, subarr in zip(t_arr, arr):
-        np.testing.assert_array_equal(t_subarr, subarr)
+        np.testing.assert_array_equal(t_subarr.to_numpy(), subarr)
 
     # Test to_pylist.
-    np.testing.assert_array_equal(t_arr.to_pylist(), list(arr))
+    if tensor_format == "arrow_native":
+        np.testing.assert_array_equal(t_arr.to_pylist(), arr.reshape(outer_dim, -1))
+    else:
+        np.testing.assert_array_equal(t_arr.to_pylist(), list(arr))
 
     # Test slicing and indexing.
     t_arr2 = t_arr[1:]
@@ -588,9 +595,9 @@ def test_arrow_tensor_array_getitem(chunked, restore_data_context, tensor_format
         # TODO(Clark): Fix this in Arrow by (1) providing an ExtensionArray hook for
         # concatenation, and (2) using that + a to_numpy() call on the resulting
         # ExtensionArray.
-        t_arr2_npy = t_arr2.chunk(0).to_numpy()
+        t_arr2_npy = t_arr2.chunk(0).to_numpy_ndarray()
     else:
-        t_arr2_npy = t_arr2.to_numpy()
+        t_arr2_npy = t_arr2.to_numpy_ndarray()
 
     np.testing.assert_array_equal(t_arr2_npy, arr[1:])
 
@@ -598,6 +605,7 @@ def test_arrow_tensor_array_getitem(chunked, restore_data_context, tensor_format
         chunked
         and pyarrow_version >= parse_version("8.0.0")
         and pyarrow_version < parse_version("9.0.0")
+        and tensor_format != "arrow_native"
     ):
         for idx in range(1, outer_dim):
             item = t_arr2[idx - 1]
@@ -606,7 +614,7 @@ def test_arrow_tensor_array_getitem(chunked, restore_data_context, tensor_format
             np.testing.assert_array_equal(item, arr[idx])
     else:
         for idx in range(1, outer_dim):
-            np.testing.assert_array_equal(t_arr2[idx - 1], arr[idx])
+            np.testing.assert_array_equal(t_arr2[idx - 1].to_numpy(), arr[idx])
 
 
 @pytest.mark.parametrize("tensor_format", ["arrow_native", "v1", "v2"])
