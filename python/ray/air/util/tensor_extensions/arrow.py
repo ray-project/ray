@@ -917,6 +917,13 @@ class ArrowTensorArray(_ArrowTensorScalarIndexingMixin, pa.ExtensionArray):
             )
         return np.ndarray(shape, dtype=ext_dtype, buffer=data_buffer, offset=offset)
 
+    def to_numpy_ndarray(self):
+        """Converts array into fixed-shape multi-dimensional ndarray.
+
+        NOTE: This conversion is zero-copy
+        """
+        return self._to_numpy(zero_copy_only=True)
+
     def to_numpy(self, zero_copy_only: bool = True):
         """
         Convert the entire array of tensors into a single ndarray.
