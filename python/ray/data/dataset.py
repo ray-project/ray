@@ -856,6 +856,7 @@ class Dataset:
             """
             import sqlglot
             from sqlglot import exp
+
             try:
                 parsed = sqlglot.parse_one(query)
                 # Check for joins: any Join node in AST means we must skip
@@ -890,6 +891,7 @@ class Dataset:
         def single_table_source(from_ast: Any):
             """Returns True if FROM is a single Table or Alias(Table), else False."""
             from sqlglot import exp
+
             # FROM foo AS bar
             if isinstance(from_ast, exp.Alias):
                 return isinstance(from_ast.this, exp.Table)
@@ -905,6 +907,7 @@ class Dataset:
             Ray Dataset expr string. Returns None if not safely supported.
             """
             from sqlglot import exp
+
             if isinstance(ast, exp.Column):
                 return ast.name
             elif isinstance(ast, exp.Literal):
