@@ -7,7 +7,7 @@ from starlette.requests import Request
 
 import ray
 from ray import serve
-from ray._private.test_utils import SignalActor
+from ray._common.synchronization_actors import SignalActor
 from ray.serve._private.constants import SERVE_DEFAULT_APP_NAME
 from ray.serve.handle import DeploymentHandle
 

@@ -4,6 +4,7 @@ load("//bazel:python.bzl", "py_test_module_list")
 py_test_module_list(
     size = "small",
     files = [
+        "test_synchronization_actors.py",
         "test_utils.py",
     ],
     tags = [
