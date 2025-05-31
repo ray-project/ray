@@ -88,9 +88,9 @@ for ((i=0; i<${#PY_MMS[@]}; ++i)); do
     # Add the correct Python to the path and build the wheel. This is only
     # needed so that the installation finds the cython executable.
     # build ray wheel
-    $PYTHON_EXE setup.py bdist_wheel
+    $PIP_CMD wheel -q
     # build ray-cpp wheel
-    RAY_INSTALL_CPP=1 $PYTHON_EXE setup.py bdist_wheel
+    RAY_INSTALL_CPP=1 $PIP_CMD wheel -q
     mv dist/*.whl ../.whl/
   popd
 
