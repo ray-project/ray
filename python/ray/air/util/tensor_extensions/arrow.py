@@ -10,7 +10,7 @@ from typing import Any, Dict, Iterable, List, Optional, Sequence, Tuple, Union
 import numpy as np
 import pyarrow as pa
 from packaging.version import parse as parse_version
-from pyarrow.lib import FixedShapeTensorType
+from pyarrow import FixedShapeTensorArray, FixedShapeTensorScalar, FixedShapeTensorType
 
 from ray._private.arrow_utils import get_pyarrow_version
 from ray.air.util.tensor_extensions.utils import (
@@ -1142,7 +1142,7 @@ class ArrowVariableShapedTensorArray(
 
     @classmethod
     def from_numpy(
-        cls, arr: Union[np.ndarray, List[np.ndarray], Tuple[np.ndarray]]
+        cls, arr: Union[ArrayLike, List[ArrayLike], Tuple[ArrayLike]]
     ) -> "ArrowVariableShapedTensorArray":
         """
         Convert an ndarray or an iterable of heterogeneous-shaped ndarrays to an array
@@ -1177,7 +1177,16 @@ class ArrowVariableShapedTensorArray(
         shapes, sizes, raveled = [], [], []
         ndim = None
         for a in arr:
-            a = np.asarray(a)
+            # Convert into ndarray view
+            #
+            # NOTE: While `ArrowTensorScalar` implements ndarray protocol,
+            #       `FixedShapeTensorScalar` is not and hence have to be handled
+            #       explicitly
+            if isinstance(a, FixedShapeTensorScalar):
+                a = a.to_numpy()
+            else:
+                a = np.asarray(a)
+
             if ndim is not None and a.ndim != ndim:
                 raise ValueError(
                     "ArrowVariableShapedTensorArray only supports tensor elements that "
