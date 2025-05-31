@@ -50,6 +50,7 @@ class FileMetadataProvider:
 
         Args:
             paths: The file paths for a single dataset block.
+            **kwargs: Additional kwargs used to determine block metadata.
 
         Returns:
             BlockMetadata aggregated across the given paths.
@@ -90,8 +91,6 @@ class BaseFileMetadataProvider(FileMetadataProvider):
             paths: The file paths for a single dataset block. These
                 paths will always be a subset of those previously returned from
                 :meth:`.expand_paths`.
-            schema: The user-provided or inferred schema for the given file
-                paths, if any.
             rows_per_file: The fixed number of rows per input file, or None.
             file_sizes: Optional file size per input file previously returned
                 from :meth:`.expand_paths`, where `file_sizes[i]` holds the size of

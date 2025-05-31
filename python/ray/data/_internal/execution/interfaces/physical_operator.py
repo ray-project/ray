@@ -95,12 +95,14 @@ class DataOpTask(OpTask):
         task_done_callback: Callable[[Optional[Exception]], None],
         task_resource_bundle: Optional[ExecutionResources] = None,
     ):
-        """
+        """Create a DataOpTask
         Args:
+            task_index: Index of the task. Used for callbacks.
             streaming_gen: The streaming generator of this task. It should yield blocks.
             output_ready_callback: The callback to call when a new RefBundle is output
                 from the generator.
             task_done_callback: The callback to call when the task is done.
+            task_resource_bundle: The execution resources of this task.
         """
         super().__init__(task_index, task_resource_bundle)
         # TODO(hchen): Right now, the streaming generator is required to yield a Block

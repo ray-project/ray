@@ -103,9 +103,9 @@ def test_pipelined_execution(ray_start_10_cpus_shared, restore_data_context):
         ctx,
     )
 
-    def reverse_sort(inputs: List[RefBundle], ctx):
+    def reverse_sort(inputs: List[RefBundle], schema, ctx):
         reversed_list = inputs[::-1]
-        return reversed_list, {}
+        return reversed_list, {}, schema
 
     ctx = DataContext.get_current()
     o4 = AllToAllOperator(reverse_sort, o3, ctx, ctx.target_max_block_size)

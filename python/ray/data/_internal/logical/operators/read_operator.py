@@ -34,7 +34,7 @@ class Read(AbstractMap, SourceOperatorMixin):
         self._detected_parallelism = None
 
     def guess_schema(self):
-        return self._datasource._schema
+        return self._datasource.get_schema()
 
     def output_data(self):
         return None

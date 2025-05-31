@@ -52,7 +52,7 @@ def generate_aggregate_fn(
             blocks.extend(ref_bundle.block_refs)
             metadata.extend(ref_bundle.metadata)
         if len(blocks) == 0:
-            return (blocks, {})
+            return (blocks, {}, schema)
         for agg_fn in aggs:
             agg_fn._validate(schema)
 

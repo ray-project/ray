@@ -377,7 +377,7 @@ class ExecutionPlan:
             with executor:
                 # Make sure executor is fully shutdown upon exiting
                 for _ in iter_ref_bundles:
-                    schema = executor._output_node[0]._schema
+                    schema = executor._output_node[0]._schema or None
                     if schema is not None:
                         break
         self.cache_schema(schema)
@@ -516,7 +516,7 @@ class ExecutionPlan:
                         dataset_uuid=self._dataset_uuid,
                         preserve_order=preserve_order,
                     )
-                    schema = executor._output_node[0]._schema
+                    schema = executor._output_node[0]._schema or None
                     bundle = RefBundle(
                         tuple(blocks.iter_blocks_with_metadata()),
                         owns_blocks=blocks._owned_by_consumer,

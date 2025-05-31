@@ -74,8 +74,6 @@ class ParquetMetadataProvider(FileMetadataProvider):
 
         Args:
             paths: The file paths for a single dataset block.
-            schema: The user-provided or inferred schema for the given file
-                paths, if any.
             num_fragments: The number of Parquet file fragments derived from the input
                 file paths.
             prefetched_metadata: Metadata previously returned from

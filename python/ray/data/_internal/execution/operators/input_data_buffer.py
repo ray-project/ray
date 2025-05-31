@@ -30,10 +30,13 @@ class InputDataBuffer(PhysicalOperator):
         """Create an InputDataBuffer.
 
         Args:
+            data_context: :class:`~ray.data.context.DataContext`
+                object to use injestion.
             input_data: The list of bundles to output from this operator.
             input_data_factory: The factory to get input data, if input_data is None.
             num_output_blocks: The number of output blocks. If not specified, progress
                 bars total will be set based on num output bundles instead.
+            schema: The schema of the `input_data` if Known. Defaults to `None`.
         """
         super().__init__(
             "Input", [], data_context, target_max_block_size=None, schema=schema

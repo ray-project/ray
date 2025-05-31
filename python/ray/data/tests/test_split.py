@@ -104,7 +104,7 @@ def _test_equal_split_balanced(block_sizes, num_splits):
         ref_bundles.append(RefBundle((blk,), owns_blocks=True))
         total_rows += block_size
 
-    logical_plan = LogicalPlan(InputData(input_data=ref_bundles), ctx)
+    logical_plan = LogicalPlan(InputData(input_data=ref_bundles, schema=None), ctx)
     stats = DatasetStats(metadata={"TODO": []}, parent=None)
     ds = Dataset(
         ExecutionPlan(stats, ctx),
