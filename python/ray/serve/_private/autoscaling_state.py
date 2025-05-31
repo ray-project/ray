@@ -307,7 +307,6 @@ class AutoscalingState:
         for id in self._running_replicas:
             if id in self._replica_requests:
                 total_requests += self._replica_requests[id].running_requests
-
         return total_requests
 
 
