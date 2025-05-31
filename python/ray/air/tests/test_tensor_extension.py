@@ -5,6 +5,7 @@ import pandas as pd
 import pyarrow as pa
 import pytest
 from packaging.version import parse as parse_version
+from pyarrow.lib import FixedShapeTensorType
 
 from ray._private.arrow_utils import get_pyarrow_version
 from ray.air.util.tensor_extensions.arrow import (
@@ -775,20 +776,26 @@ def test_arrow_tensor_array_concat(a1, a2, restore_data_context, tensor_format):
     ta1 = ArrowTensorArray.from_numpy(a1)
     ta2 = ArrowTensorArray.from_numpy(a2)
     ta = ArrowTensorArray._concat_same_type([ta1, ta2])
+
     assert len(ta) == a1.shape[0] + a2.shape[0]
+
     if a1.shape[1:] == a2.shape[1:]:
         if tensor_format == "v1":
             tensor_type_class = ArrowTensorType
         elif tensor_format == "v2":
             tensor_type_class = ArrowTensorTypeV2
+        elif tensor_format == "arrow_native":
+            tensor_type_class = FixedShapeTensorType
         else:
             raise ValueError(f"unexpected format: {tensor_format}")
 
         assert isinstance(ta.type, tensor_type_class)
         assert ta.type.storage_type == ta1.type.storage_type
         assert ta.type.storage_type == ta2.type.storage_type
-        assert ta.type.shape == a1.shape[1:]
-        np.testing.assert_array_equal(ta.to_numpy(), np.concatenate([a1, a2]))
+        assert tuple(ta.type.shape) == a1.shape[1:]
+
+        np.testing.assert_array_equal(ta.to_numpy_ndarray(), np.concatenate([a1, a2]))
+
     else:
         assert isinstance(ta.type, ArrowVariableShapedTensorType)
         assert pa.types.is_struct(ta.type.storage_type)
