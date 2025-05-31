@@ -17,4 +17,5 @@ pip3 install --no-cache-dir \
     torchvision==0.21.0 \
     xmltodict==0.14.2 \
     torchmetrics==1.6.1 \
-    decord==0.6.0
+    decord==0.6.0 \
+    jupytext==0.6.5
