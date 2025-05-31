@@ -488,10 +488,7 @@ class MockPDDisaggVLLMEngineClient(EngineClient):
                             logprobs=None,
                         )
                     ],
-                    # In vllm==0.8.5, RequestOutput does not accept kv_transfer_params
-                    # which will raise exception. see https://github.com/vllm-project/vllm/pull/18513
-                    # TODO(lk-chen): uncomment this once we bump vllm version in test env.
-                    # kv_transfer_params=kv_transfer_params,
+                    kv_transfer_params=kv_transfer_params,
                 )
 
         return generate_response()
