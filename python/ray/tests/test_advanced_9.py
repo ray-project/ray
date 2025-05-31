@@ -6,6 +6,7 @@ import sys
 import pytest
 
 import ray
+import ray.util.state
 import ray._private.ray_constants as ray_constants
 from ray._private.test_utils import (
     Semaphore,
@@ -262,7 +263,7 @@ def test_gcs_connection_no_leak(ray_start_cluster):
 
     def get_gcs_num_of_connections():
         p = psutil.Process(gcs_server_pid)
-        num_connections = p.net_connections()
+        num_connections = len(p.connections())
         print(">>", num_connections)
         return num_connections
 
@@ -273,8 +274,8 @@ def test_gcs_connection_no_leak(ray_start_cluster):
             return "WORLD"
 
     with ray.init(cluster.address):
-        # Wait for everything to be ready.
-        wait_for_condition(lambda: get_gcs_num_of_connections() == 21)
+        # Wait for workers  to be ready.
+        wait_for_condition(lambda: len(ray.util.state.list_workers()) == 2)
         # Note: `fds_without_workers` need to be recorded *after* `ray.init`, because
         # a prestarted worker is started on the first driver init. This worker keeps 1
         # connection to the GCS, and it stays alive even after the driver exits. If
@@ -291,7 +292,7 @@ def test_gcs_connection_no_leak(ray_start_cluster):
     # Make sure the # of fds opened by the GCS dropped.
     # This assumes worker processes are not created after the actor worker
     # processes die.
-    wait_for_condition(lambda: get_gcs_num_of_connections() <= fds_without_workers)
+    wait_for_condition(lambda: get_gcs_num_of_connections() < fds_without_workers)
     num_fds_after_workers_die = get_gcs_num_of_connections()
 
     n = cluster.add_node(wait=True)
@@ -302,7 +303,7 @@ def test_gcs_connection_no_leak(ray_start_cluster):
     cluster.remove_node(n)
 
     # Make sure the # of fds opened by the GCS dropped.
-    wait_for_condition(lambda: get_gcs_num_of_connections() <= fds_without_workers)
+    wait_for_condition(lambda: get_gcs_num_of_connections() < fds_without_workers)
 
 
 @pytest.mark.parametrize(
