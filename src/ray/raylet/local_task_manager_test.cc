@@ -42,28 +42,31 @@ class MockWorkerPool : public WorkerPoolInterface {
  public:
   MockWorkerPool() : num_pops(0) {}
 
-  void PopWorker(const TaskSpecification &task_spec, const PopWorkerCallback &callback) {
+  void PopWorker(const TaskSpecification &task_spec,
+                 const PopWorkerCallback &callback) override {
     num_pops++;
     const int runtime_env_hash = task_spec.GetRuntimeEnvHash();
     callbacks[runtime_env_hash].push_back(callback);
   }
 
-  void PushWorker(const std::shared_ptr<WorkerInterface> &worker) {
+  void PushWorker(const std::shared_ptr<WorkerInterface> &worker) override {
     workers.push_front(worker);
   }
 
   const std::vector<std::shared_ptr<WorkerInterface>> GetAllRegisteredWorkers(
-      bool filter_dead_workers, bool filter_io_workers) const {
+      bool filter_dead_workers, bool filter_io_workers) const override {
     RAY_CHECK(false) << "Not used.";
     return {};
   }
 
-  std::shared_ptr<WorkerInterface> GetRegisteredWorker(const WorkerID &worker_id) const {
+  std::shared_ptr<WorkerInterface> GetRegisteredWorker(
+      const WorkerID &worker_id) const override {
     RAY_CHECK(false) << "Not used.";
     return nullptr;
   };
 
-  std::shared_ptr<WorkerInterface> GetRegisteredDriver(const WorkerID &worker_id) const {
+  std::shared_ptr<WorkerInterface> GetRegisteredDriver(
+      const WorkerID &worker_id) const override {
     RAY_CHECK(false) << "Not used.";
     return nullptr;
   }
@@ -126,6 +129,8 @@ class MockWorkerPool : public WorkerPoolInterface {
   int num_pops;
 };
 
+namespace {
+
 std::shared_ptr<ClusterResourceScheduler> CreateSingleNodeScheduler(
     const std::string &id, double num_cpus, gcs::GcsClient &gcs_client) {
   absl::flat_hash_map<std::string, double> local_node_resources;
@@ -175,6 +180,8 @@ RayTask CreateTask(const std::unordered_map<std::string, double> &required_resou
 
   return RayTask(std::move(spec_builder).ConsumeAndBuild());
 }
+
+}  // namespace
 
 class LocalTaskManagerTest : public ::testing::Test {
  public:
@@ -262,28 +269,12 @@ TEST_F(LocalTaskManagerTest, TestTaskDispatchingOrder) {
   auto task_f1 = CreateTask({{ray::kCPU_ResourceLabel, 1}}, "f");
   auto task_f2 = CreateTask({{ray::kCPU_ResourceLabel, 1}}, "f");
   rpc::RequestWorkerLeaseReply reply;
-  bool callback_occurred = false;
-  bool *callback_occurred_ptr = &callback_occurred;
-  auto callback = [callback_occurred_ptr](
-                      Status, std::function<void()>, std::function<void()>) {
-    *callback_occurred_ptr = true;
-  };
   local_task_manager_->WaitForTaskArgsRequests(std::make_shared<internal::Work>(
-      task_f1,
-      false,
-      false,
-      &reply,
-      [callback] { callback(Status::OK(), nullptr, nullptr); },
-      internal::WorkStatus::WAITING));
+      task_f1, false, false, &reply, [] {}, internal::WorkStatus::WAITING));
   local_task_manager_->ScheduleAndDispatchTasks();
   pool_.TriggerCallbacks();
   local_task_manager_->WaitForTaskArgsRequests(std::make_shared<internal::Work>(
-      task_f2,
-      false,
-      false,
-      &reply,
-      [callback] { callback(Status::OK(), nullptr, nullptr); },
-      internal::WorkStatus::WAITING));
+      task_f2, false, false, &reply, [] {}, internal::WorkStatus::WAITING));
   local_task_manager_->ScheduleAndDispatchTasks();
   pool_.TriggerCallbacks();
 
@@ -293,38 +284,52 @@ TEST_F(LocalTaskManagerTest, TestTaskDispatchingOrder) {
   auto task_f5 = CreateTask({{ray::kCPU_ResourceLabel, 1}}, "f");
   auto task_g1 = CreateTask({{ray::kCPU_ResourceLabel, 1}}, "g");
   local_task_manager_->WaitForTaskArgsRequests(std::make_shared<internal::Work>(
-      task_f3,
-      false,
-      false,
-      &reply,
-      [callback] { callback(Status::OK(), nullptr, nullptr); },
-      internal::WorkStatus::WAITING));
+      task_f3, false, false, &reply, [] {}, internal::WorkStatus::WAITING));
   local_task_manager_->WaitForTaskArgsRequests(std::make_shared<internal::Work>(
-      task_f4,
-      false,
-      false,
-      &reply,
-      [callback] { callback(Status::OK(), nullptr, nullptr); },
-      internal::WorkStatus::WAITING));
+      task_f4, false, false, &reply, [] {}, internal::WorkStatus::WAITING));
   local_task_manager_->WaitForTaskArgsRequests(std::make_shared<internal::Work>(
-      task_f5,
-      false,
-      false,
-      &reply,
-      [callback] { callback(Status::OK(), nullptr, nullptr); },
-      internal::WorkStatus::WAITING));
+      task_f5, false, false, &reply, [] {}, internal::WorkStatus::WAITING));
   local_task_manager_->WaitForTaskArgsRequests(std::make_shared<internal::Work>(
-      task_g1,
-      false,
-      false,
-      &reply,
-      [callback] { callback(Status::OK(), nullptr, nullptr); },
-      internal::WorkStatus::WAITING));
+      task_g1, false, false, &reply, [] {}, internal::WorkStatus::WAITING));
   local_task_manager_->ScheduleAndDispatchTasks();
   pool_.TriggerCallbacks();
   auto tasks_to_dispatch_ = local_task_manager_->GetTaskToDispatch();
   // Only task f in queue now as g is dispatched.
   ASSERT_EQ(tasks_to_dispatch_.size(), 1);
+}
+
+TEST_F(LocalTaskManagerTest, TestNoLeakOnImpossibleInfeasibleTask) {
+  // Note that ideally it ideally shouldn't be possible for an infeasible task to
+  // make it to the local task manager.
+
+  // 2 CPU's available.
+  std::shared_ptr<MockWorker> worker1 =
+      std::make_shared<MockWorker>(WorkerID::FromRandom(), 0);
+  std::shared_ptr<MockWorker> worker2 =
+      std::make_shared<MockWorker>(WorkerID::FromRandom(), 0);
+  pool_.PushWorker(std::static_pointer_cast<WorkerInterface>(worker1));
+
+  // Create 2 tasks that requires 3 CPU's each.
+  auto task1 = CreateTask({{"infeasible_resource", 3}}, "f");
+  auto task2 = CreateTask({{"infeasible_resource", 3}}, "f2");
+
+  // Submit the tasks to the local task manager.
+  int num_callbacks_called = 0;
+  auto callback = [&num_callbacks_called]() { ++num_callbacks_called; };
+  rpc::RequestWorkerLeaseReply reply1;
+  local_task_manager_->WaitForTaskArgsRequests(std::make_shared<internal::Work>(
+      task1, false, false, &reply1, callback, internal::WorkStatus::WAITING));
+  rpc::RequestWorkerLeaseReply reply2;
+  local_task_manager_->WaitForTaskArgsRequests(std::make_shared<internal::Work>(
+      task2, false, false, &reply2, callback, internal::WorkStatus::WAITING));
+  local_task_manager_->ScheduleAndDispatchTasks();
+
+  // Make sure the the correct rpc replies were actually sent back.
+  ASSERT_EQ(reply1.failure_type(),
+            rpc::RequestWorkerLeaseReply::SCHEDULING_CANCELLED_UNSCHEDULABLE);
+  ASSERT_EQ(reply2.failure_type(),
+            rpc::RequestWorkerLeaseReply::SCHEDULING_CANCELLED_UNSCHEDULABLE);
+  ASSERT_EQ(num_callbacks_called, 2);
 }
 
 int main(int argc, char **argv) {
