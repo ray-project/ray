@@ -162,13 +162,12 @@ class ImageFileMetadataProvider(DefaultFileMetadataProvider):
     def _get_block_metadata(
         self,
         paths: List[str],
-        schema: Optional[Union[type, "pyarrow.lib.Schema"]],
         *,
         rows_per_file: Optional[int],
         file_sizes: List[Optional[int]],
     ) -> BlockMetadata:
         metadata = super()._get_block_metadata(
-            paths, schema, rows_per_file=rows_per_file, file_sizes=file_sizes
+            paths, rows_per_file=rows_per_file, file_sizes=file_sizes
         )
         if metadata.size_bytes is not None:
             metadata.size_bytes = int(metadata.size_bytes * self._encoding_ratio)

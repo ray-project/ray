@@ -1,10 +1,13 @@
-from typing import List, Tuple, Union
+from typing import TYPE_CHECKING, List, Tuple, Union
 
 from ray.data._internal.planner.exchange.interfaces import ExchangeTaskSpec
 from ray.data._internal.planner.exchange.sort_task_spec import SortKey
 from ray.data._internal.table_block import TableBlockAccessor
 from ray.data.aggregate import AggregateFn, AggregateFnV2, Count
 from ray.data.block import Block, BlockAccessor, BlockExecStats, BlockMetadata, KeyType
+
+if TYPE_CHECKING:
+    import pyarrow as pa
 
 
 class SortAggregateTaskSpec(ExchangeTaskSpec):
@@ -43,7 +46,7 @@ class SortAggregateTaskSpec(ExchangeTaskSpec):
         boundaries: List[KeyType],
         sort_key: SortKey,
         aggs: List[AggregateFn],
-    ) -> List[Union[BlockMetadata, Block]]:
+    ) -> List[Union[Block, Tuple[BlockMetadata, "pa.lib.Schema"]]]:
         stats = BlockExecStats.builder()
 
         block = SortAggregateTaskSpec._prune_unused_columns(block, sort_key, aggs)
@@ -57,8 +60,10 @@ class SortAggregateTaskSpec(ExchangeTaskSpec):
         parts = [
             BlockAccessor.for_block(p)._aggregate(sort_key, aggs) for p in partitions
         ]
-        meta = BlockAccessor.for_block(block).get_metadata(exec_stats=stats.build())
-        return parts + [meta]
+        accessor = BlockAccessor.for_block(block)
+        meta = accessor.get_metadata(exec_stats=stats.build())
+        schema = accessor.schema()
+        return parts + [(meta, schema)]
 
     @staticmethod
     def reduce(
@@ -67,14 +72,17 @@ class SortAggregateTaskSpec(ExchangeTaskSpec):
         batch_format: str,
         *mapper_outputs: List[Block],
         partial_reduce: bool = False,
-    ) -> Tuple[Block, BlockMetadata]:
+    ) -> Tuple[Block, Tuple[BlockMetadata, "pa.lib.Schema"]]:
         normalized_blocks = TableBlockAccessor.normalize_block_types(
             mapper_outputs,
             target_block_type=ExchangeTaskSpec._derive_target_block_type(batch_format),
         )
-        return BlockAccessor.for_block(normalized_blocks[0])._combine_aggregated_blocks(
+        blocks, (meta, schema) = BlockAccessor.for_block(
+            normalized_blocks[0]
+        )._combine_aggregated_blocks(
             list(normalized_blocks), key, aggs, finalize=not partial_reduce
         )
+        return blocks, (meta, schema)
 
     @staticmethod
     def _prune_unused_columns(

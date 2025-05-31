@@ -205,7 +205,7 @@ class BlockMetadata(BlockStats):
     """Metadata about the block."""
 
     #: The pyarrow schema or types of the block elements, or None.
-    schema: Optional[Union[type, "pyarrow.lib.Schema"]]
+    # schema: Optional[Union[type, "pyarrow.lib.Schema"]]
     #: The list of file paths used to generate this block, or
     #: the empty list if indeterminate.
     input_files: Optional[List[str]]
@@ -348,7 +348,6 @@ class BlockAccessor:
         return BlockMetadata(
             num_rows=self.num_rows(),
             size_bytes=self.size_bytes(),
-            schema=self.schema(),
             input_files=input_files,
             exec_stats=exec_stats,
         )
@@ -492,7 +491,7 @@ class BlockAccessor:
     @staticmethod
     def merge_sorted_blocks(
         blocks: List["Block"], sort_key: "SortKey"
-    ) -> Tuple[Block, BlockMetadata]:
+    ) -> Tuple[Block, Tuple[BlockMetadata, "pyarrow.lib.Schema"]]:
         """Return a sorted block by merging a list of sorted blocks."""
         raise NotImplementedError
 
@@ -502,7 +501,7 @@ class BlockAccessor:
         sort_key: "SortKey",
         aggs: Tuple["AggregateFn"],
         finalize: bool = True,
-    ) -> Tuple[Block, BlockMetadata]:
+    ) -> Tuple[Block, Tuple[BlockMetadata, "pyarrow.lib.Schema"]]:
         """Aggregate partially combined and sorted blocks."""
         raise NotImplementedError
 

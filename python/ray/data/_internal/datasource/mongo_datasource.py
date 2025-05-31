@@ -107,7 +107,6 @@ class MongoDatasource(Datasource):
             metadata = BlockMetadata(
                 num_rows=partition["count"],
                 size_bytes=partition["count"] * self._avg_obj_size,
-                schema=None,
                 input_files=None,
                 exec_stats=None,
             )
@@ -119,7 +118,7 @@ class MongoDatasource(Datasource):
                 partition["_id"]["min"],
                 partition["_id"]["max"],
                 i == len(partitions_ids) - 1,
-                self._schema,
+                self.get_schema(),
                 self._mongo_args,
             )
             read_task = ReadTask(

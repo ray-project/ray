@@ -1,7 +1,10 @@
-from typing import Optional
+from typing import TYPE_CHECKING, Optional
 
-from ray.data._internal.logical.interfaces import LogicalOperator
+from ray.data._internal.logical.interfaces import GuessMetadataMixin, LogicalOperator
 from ray.data.block import BlockMetadata
+
+if TYPE_CHECKING:
+    import pyarrow as pa
 
 
 class AbstractOneToOne(LogicalOperator):
@@ -34,7 +37,7 @@ class AbstractOneToOne(LogicalOperator):
         ...
 
 
-class Limit(AbstractOneToOne):
+class Limit(AbstractOneToOne, GuessMetadataMixin):
     """Logical operator for limit."""
 
     def __init__(
@@ -51,22 +54,26 @@ class Limit(AbstractOneToOne):
     def can_modify_num_rows(self) -> bool:
         return True
 
-    def aggregate_output_metadata(self) -> BlockMetadata:
+    def guess_metadata(self) -> BlockMetadata:
         return BlockMetadata(
             num_rows=self._num_rows(),
             size_bytes=None,
-            schema=self._schema(),
             input_files=self._input_files(),
             exec_stats=None,
         )
 
-    def _schema(self):
+    def guess_schema(self) -> Optional["pa.lib.Schema"]:
         assert len(self._input_dependencies) == 1, len(self._input_dependencies)
-        return self._input_dependencies[0].aggregate_output_metadata().schema
+        inp = self.input_dependencies[0]
+        if isinstance(inp, GuessMetadataMixin):
+            return inp.guess_schema()
+        return None
 
     def _num_rows(self):
         assert len(self._input_dependencies) == 1, len(self._input_dependencies)
-        input_rows = self._input_dependencies[0].aggregate_output_metadata().num_rows
+        input_rows = None
+        if isinstance(self._input_dependencies[0], GuessMetadataMixin):
+            input_rows = self._input_dependencies[0].guess_metadata().num_rows
         if input_rows is not None:
             return min(input_rows, self._limit)
         else:
@@ -74,4 +81,7 @@ class Limit(AbstractOneToOne):
 
     def _input_files(self):
         assert len(self._input_dependencies) == 1, len(self._input_dependencies)
-        return self._input_dependencies[0].aggregate_output_metadata().input_files
+        inp = self._input_dependencies[0]
+        if isinstance(inp, GuessMetadataMixin):
+            return inp.guess_metadata().input_files
+        return None

@@ -131,11 +131,13 @@ class SortTaskSpec(ExchangeTaskSpec):
         output_num_blocks: int,
         boundaries: List[T],
         sort_key: SortKey,
-    ) -> List[Union[BlockMetadata, Block]]:
+    ) -> List[Union[Block, Tuple["pyarrow.lib.Schema", BlockMetadata]]]:
         stats = BlockExecStats.builder()
-        out = BlockAccessor.for_block(block).sort_and_partition(boundaries, sort_key)
-        meta = BlockAccessor.for_block(block).get_metadata(exec_stats=stats.build())
-        return out + [meta]
+        accessor = BlockAccessor.for_block(block)
+        out = accessor.sort_and_partition(boundaries, sort_key)
+        meta = accessor.get_metadata(exec_stats=stats.build())
+        schema = accessor.schema()
+        return out + [(meta, schema)]
 
     @staticmethod
     def reduce(
@@ -143,14 +145,15 @@ class SortTaskSpec(ExchangeTaskSpec):
         batch_format: str,
         *mapper_outputs: List[Block],
         partial_reduce: bool = False,
-    ) -> Tuple[Block, BlockMetadata]:
+    ) -> Tuple[Block, Tuple[BlockMetadata, "pyarrow.lib.Schema"]]:
         normalized_blocks = TableBlockAccessor.normalize_block_types(
             mapper_outputs,
             target_block_type=ExchangeTaskSpec._derive_target_block_type(batch_format),
         )
-        return BlockAccessor.for_block(normalized_blocks[0]).merge_sorted_blocks(
-            normalized_blocks, sort_key
-        )
+        blocks, (meta, schema) = BlockAccessor.for_block(
+            normalized_blocks[0]
+        ).merge_sorted_blocks(normalized_blocks, sort_key)
+        return blocks, (meta, schema)
 
     @staticmethod
     def sample_boundaries(

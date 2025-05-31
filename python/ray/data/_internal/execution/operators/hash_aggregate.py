@@ -82,7 +82,7 @@ class ReducingShuffleAggregation(StatefulShuffleAggregation):
         assert len(self._aggregated_blocks) > 0
 
         block_accessor = BlockAccessor.for_block(self._aggregated_blocks[0])
-        combined_block, _ = block_accessor._combine_aggregated_blocks(
+        combined_block, (_, _) = block_accessor._combine_aggregated_blocks(
             self._aggregated_blocks,
             sort_key=self._sort_key,
             aggs=self._aggregation_fns,

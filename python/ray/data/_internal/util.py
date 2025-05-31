@@ -676,18 +676,22 @@ def capitalize(s: str):
     return "".join(capfirst(x) for x in s.split("_"))
 
 
-def pandas_df_to_arrow_block(df: "pandas.DataFrame") -> "Block":
+def pandas_df_to_arrow_block(
+    df: "pandas.DataFrame",
+) -> Tuple["Block", "BlockMetadata", "pyarrow.lib.Schema"]:
     from ray.data.block import BlockAccessor, BlockExecStats
 
     block = BlockAccessor.for_block(df).to_arrow()
     stats = BlockExecStats.builder()
-    return (
-        block,
-        BlockAccessor.for_block(block).get_metadata(exec_stats=stats.build()),
-    )
+    accessor = BlockAccessor.for_block(block)
+    meta = accessor.get_metadata(exec_stats=stats.build())
+    schema = accessor.schema()
+    return block, (meta, schema)
 
 
-def ndarray_to_block(ndarray: np.ndarray, ctx: DataContext) -> "Block":
+def ndarray_to_block(
+    ndarray: np.ndarray, ctx: DataContext
+) -> Tuple["Block", "BlockMetadata", "pyarrow.lib.Schema"]:
     from ray.data.block import BlockAccessor, BlockExecStats
 
     DataContext._set_current(ctx)
@@ -695,20 +699,24 @@ def ndarray_to_block(ndarray: np.ndarray, ctx: DataContext) -> "Block":
     stats = BlockExecStats.builder()
     block = BlockAccessor.batch_to_block({"data": ndarray})
     metadata = BlockAccessor.for_block(block).get_metadata(exec_stats=stats.build())
-    return block, metadata
+    schema = BlockAccessor.for_block(block).schema()
+    return block, (metadata, schema)
 
 
-def get_table_block_metadata(
+def get_table_block_metadata_schema(
     table: Union["pyarrow.Table", "pandas.DataFrame"],
-) -> "BlockMetadata":
+) -> Tuple["BlockMetadata", "pyarrow.lib.Schema"]:
     from ray.data.block import BlockAccessor, BlockExecStats
 
     stats = BlockExecStats.builder()
-    return BlockAccessor.for_block(table).get_metadata(exec_stats=stats.build())
+    accessor = BlockAccessor.for_block(table)
+    metadata = accessor.get_metadata(exec_stats=stats.build())
+    schema = accessor.schema()
+    return metadata, schema
 
 
 def unify_block_metadata_schema(
-    metadata: List["BlockMetadata"],
+    schemas_to_unify: List["pyarrow.lib.Schema"],
 ) -> Optional[Union[type, "pyarrow.lib.Schema"]]:
     """For the input list of BlockMetadata, return a unified schema of the
     corresponding blocks. If the metadata have no valid schema, returns None.
@@ -719,10 +727,10 @@ def unify_block_metadata_schema(
 
     # First check if there are blocks with computed schemas, then unify
     # valid schemas from all such blocks.
-    schemas_to_unify = []
-    for m in metadata:
-        if m.schema is not None and (m.num_rows is None or m.num_rows > 0):
-            schemas_to_unify.append(m.schema)
+    # schemas_to_unify = []
+    # for schema in schemas:
+    #     if schema is not None and (m.num_rows is None or m.num_rows > 0):
+    #         schemas_to_unify.append(m.schema)
     if schemas_to_unify:
         # Check valid pyarrow installation before attempting schema unification
         try:

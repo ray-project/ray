@@ -1,5 +1,5 @@
 import itertools
-from typing import List, Optional, Tuple
+from typing import TYPE_CHECKING, List, Optional, Tuple
 
 import ray
 from ray.data._internal.delegating_block_builder import DelegatingBlockBuilder
@@ -7,9 +7,11 @@ from ray.data._internal.execution.interfaces import PhysicalOperator, RefBundle
 from ray.data._internal.execution.operators.base_physical_operator import (
     InternalQueueOperatorMixin,
 )
+from ray.data._internal.planner.exchange.interfaces import _unzip_tuples
 from ray.data._internal.remote_fn import cached_remote_fn
 from ray.data._internal.split import _split_at_indices
 from ray.data._internal.stats import StatsDict
+from ray.data._internal.util import unify_block_metadata_schema
 from ray.data.block import (
     Block,
     BlockAccessor,
@@ -19,6 +21,9 @@ from ray.data.block import (
     to_stats,
 )
 from ray.data.context import DataContext
+
+if TYPE_CHECKING:
+    import pyarrow as pa
 
 
 class ZipOperator(InternalQueueOperatorMixin, PhysicalOperator):
@@ -86,7 +91,7 @@ class ZipOperator(InternalQueueOperatorMixin, PhysicalOperator):
             self._metrics.on_input_queued(refs)
 
     def all_inputs_done(self) -> None:
-        self._output_buffer, self._stats = self._zip(
+        self._output_buffer, self._stats, self._schema = self._zip(
             self._left_buffer, self._right_buffer
         )
 
@@ -117,7 +122,7 @@ class ZipOperator(InternalQueueOperatorMixin, PhysicalOperator):
 
     def _zip(
         self, left_input: List[RefBundle], right_input: List[RefBundle]
-    ) -> Tuple[List[RefBundle], StatsDict]:
+    ) -> Tuple[List[RefBundle], StatsDict, "pa.lib.Schema"]:
         """Zip the RefBundles from `left_input` and `right_input` together.
 
         Zip is done in 2 steps: aligning blocks, and zipping blocks from
@@ -197,22 +202,24 @@ class ZipOperator(InternalQueueOperatorMixin, PhysicalOperator):
         zip_one_block = cached_remote_fn(_zip_one_block, num_returns=2)
 
         output_blocks = []
-        output_metadata = []
+        output_metadata_schema = []
         for left_block, right_blocks in zip(left_blocks, right_blocks_list):
             # For each block from left side, zip it together with 1 or more blocks from
             # right side. We're guaranteed to have that left_block has the same number
             # of rows as right_blocks has cumulatively.
-            res, meta = zip_one_block.remote(
+            res, meta_schema = zip_one_block.remote(
                 left_block, *right_blocks, inverted=input_side_inverted
             )
             output_blocks.append(res)
-            output_metadata.append(meta)
+            output_metadata_schema.append(meta_schema)
 
         # Early release memory.
         del left_blocks, right_blocks_list
 
         # TODO(ekl) it might be nice to have a progress bar here.
-        output_metadata = ray.get(output_metadata)
+        output_metadata_schema = ray.get(output_metadata_schema)
+        output_metadata, schema = _unzip_tuples(2, output_metadata_schema)
+
         output_refs = []
         input_owned = all(b.owns_blocks for b in left_input)
         for block, meta in zip(output_blocks, output_metadata):
@@ -235,7 +242,8 @@ class ZipOperator(InternalQueueOperatorMixin, PhysicalOperator):
         for ref in right_input:
             ref.destroy_if_owned()
 
-        return output_refs, stats
+        schema = unify_block_metadata_schema(schema)
+        return output_refs, stats, schema
 
     def _calculate_blocks_rows_and_bytes(
         self,
@@ -277,7 +285,7 @@ def _zip_one_block(
     # Zip block and other blocks.
     result = BlockAccessor.for_block(block).zip(other_block)
     br = BlockAccessor.for_block(result)
-    return result, br.get_metadata(exec_stats=stats.build())
+    return result, (br.get_metadata(exec_stats=stats.build()), br.schema())
 
 
 def _get_num_rows_and_bytes(block: Block) -> Tuple[int, int]:

@@ -1,6 +1,7 @@
 from typing import Callable, Iterable, List, Optional
 
 import numpy as np
+import pyarrow as pa
 
 from ray.data._internal.util import _check_pyarrow_version
 from ray.data.block import Block, BlockMetadata
@@ -29,6 +30,16 @@ class Datasource:
         :meth:`~ray.data.Datasource.estimate_inmemory_data_size` instead.
         """
         raise NotImplementedError
+
+    def set_schema(self, schema: Optional[pa.lib.Schema]):
+        """Set the schema if known"""
+        self._schema = schema
+
+    def get_schema(self):
+        """Get the schema after `set_schema`. Defaults to `None`"""
+        if hasattr(self, "_schema"):
+            return self._schema
+        return None
 
     def get_name(self) -> str:
         """Return a human-readable name for this datasource.
@@ -209,7 +220,7 @@ class RandomIntRowDatasource(Datasource):
                 names=[f"c_{i}" for i in range(num_columns)],
             )
 
-        schema = pyarrow.Table.from_pydict(
+        self._schema = pyarrow.Table.from_pydict(
             {f"c_{i}": [0] for i in range(num_columns)}
         ).schema
 
@@ -219,7 +230,6 @@ class RandomIntRowDatasource(Datasource):
             meta = BlockMetadata(
                 num_rows=count,
                 size_bytes=8 * count * num_columns,
-                schema=schema,
                 input_files=None,
                 exec_stats=None,
             )

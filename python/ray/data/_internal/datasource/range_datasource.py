@@ -1,6 +1,5 @@
 import builtins
 import functools
-from copy import copy
 from typing import Iterable, List, Optional, Tuple
 
 import numpy as np
@@ -96,7 +95,6 @@ class RangeDatasource(Datasource):
             meta = BlockMetadata(
                 num_rows=count,
                 size_bytes=8 * count * element_size,
-                schema=copy(self._schema),
                 input_files=None,
                 exec_stats=None,
             )
@@ -136,4 +134,5 @@ class RangeDatasource(Datasource):
             schema = int
         else:
             raise ValueError("Unsupported block type", self._block_format)
+        self.set_schema(schema)
         return schema

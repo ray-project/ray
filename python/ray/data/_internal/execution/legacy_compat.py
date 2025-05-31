@@ -15,7 +15,6 @@ from ray.data._internal.execution.interfaces.executor import OutputIterator
 from ray.data._internal.logical.util import record_operators_usage
 from ray.data._internal.plan import ExecutionPlan
 from ray.data._internal.stats import DatasetStats
-from ray.data._internal.util import unify_block_metadata_schema
 from ray.data.block import BlockMetadata
 
 # Warn about tasks larger than this.
@@ -48,6 +47,7 @@ def execute_to_legacy_bundle_iterator(
         dag = dag_rewrite(dag)
 
     bundle_iter = executor.execute(dag, initial_stats=stats)
+    last_op = executor._output_node[0]
 
     class CacheMetadataIterator(OutputIterator):
         """Wrapper for `bundle_iterator` above.
@@ -65,7 +65,6 @@ def execute_to_legacy_bundle_iterator(
             self._collected_metadata = BlockMetadata(
                 num_rows=0,
                 size_bytes=0,
-                schema=None,
                 input_files=None,
                 exec_stats=None,
             )
@@ -79,6 +78,7 @@ def execute_to_legacy_bundle_iterator(
                 # Once the iterator is completely exhausted, we are done
                 # collecting metadata. We can add this cached metadata to the plan.
                 plan._snapshot_metadata = self._collected_metadata
+                plan._schema = last_op._schema
                 raise
 
         def _collect_metadata(self, bundle: RefBundle) -> RefBundle:
@@ -87,9 +87,6 @@ def execute_to_legacy_bundle_iterator(
             row count, schema, etc., after iteration completes."""
             self._collected_metadata.num_rows += bundle.num_rows()
             self._collected_metadata.size_bytes += bundle.size_bytes()
-            self._collected_metadata.schema = unify_block_metadata_schema(
-                [self._collected_metadata, *bundle.metadata]
-            )
             return bundle
 
     return CacheMetadataIterator(bundle_iter)

@@ -22,7 +22,6 @@ def test_average_max_uss_per_task():
         metadata = BlockMetadata(
             num_rows=0,
             size_bytes=0,
-            schema=None,
             input_files=None,
             exec_stats=stats,
         )

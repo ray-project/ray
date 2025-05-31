@@ -586,7 +586,6 @@ def test_limit_no_redundant_read(
                             sys.getsizeof(i)
                             for i in range(parallelism * i, parallelism * i + n)
                         ),
-                        schema=None,
                         input_files=None,
                         exec_stats=None,
                     ),
@@ -630,7 +629,6 @@ def test_limit_no_num_row_info(ray_start_regular_shared):
                     BlockMetadata(
                         num_rows=None,
                         size_bytes=sys.getsizeof(1) * n,
-                        schema=None,
                         input_files=None,
                         exec_stats=None,
                     ),

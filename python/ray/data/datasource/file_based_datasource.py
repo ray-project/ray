@@ -305,7 +305,6 @@ class FileBasedDatasource(Datasource):
 
             meta = self._meta_provider(
                 read_paths,
-                self._schema,
                 rows_per_file=self._rows_per_file(),
                 file_sizes=file_sizes,
             )
