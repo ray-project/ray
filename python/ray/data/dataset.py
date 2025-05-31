@@ -23,6 +23,7 @@ from typing import (
 )
 
 import numpy as np
+import pyarrow as pa
 
 import ray
 import ray.cloudpickle as pickle
@@ -896,6 +897,42 @@ class Dataset:
             zero_copy_batch=False,
             **ray_remote_args,
         )
+
+    @PublicAPI(api_group=BT_API_GROUP)
+    def distinct(self: "Dataset") -> "Dataset":
+        """
+        Remove duplicate rows across the entire dataset, returning only unique records
+        (by all columns).
+
+        Returns:
+            Dataset: A Dataset with one instance of each unique row.
+
+        .. warning::
+            This is an expensive operations and calling distinct will cause the dataset to be materialized
+
+        Example:
+            >>> import ray
+            >>> import pyarrow as pa
+            >>> ds = ray.data.from_arrow(pa.table({"a": [1,2,1,2,3], "b": ["x","y","x","y","z"]}))
+            >>> ds.distinct().sort(key=["a","b"]).take_all()
+            [{'a': 1, 'b': 'x'}, {'a': 2, 'b': 'y'}, {'a': 3, 'b': 'z'}]
+        """
+
+        def drop_arrow_dups(batch: pa.Table) -> pa.Table:
+            return batch.drop_duplicates()
+
+        self = self.map_batches(
+            drop_arrow_dups,
+            batch_format="pyarrow",
+            zero_copy_batch=False,
+        )
+        all_cols = self.columns()
+
+        deduped = self.groupby(all_cols).map_groups(
+            lambda batch: batch.slice(0, 1), batch_format="pyarrow"
+        )
+
+        return deduped
 
     @PublicAPI(api_group=BT_API_GROUP)
     def drop_columns(
