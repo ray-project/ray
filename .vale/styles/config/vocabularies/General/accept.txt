@@ -45,6 +45,7 @@ dev
 dev to prod
 DPO
 EKS
+eval
 Flink
 GGUF
 GKE
@@ -78,6 +79,7 @@ rollouts
 serverless
 SFT
 ShareGPT
+Softmax
 teardown
 deserialization
 VPC(s)?
