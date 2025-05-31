@@ -15,9 +15,6 @@ class Datasource:
     To read a datasource into a dataset, use :meth:`~ray.data.read_datasource`.
     """  # noqa: E501
 
-    def __init__(self):
-        self._schema = None
-
     @Deprecated
     def create_reader(self, **read_args) -> "Reader":
         """
@@ -37,6 +34,12 @@ class Datasource:
     def set_schema(self, schema: Optional[pa.lib.Schema]):
         """Set the schema if known"""
         self._schema = schema
+
+    def get_schema(self):
+        """Get the schema after `set_schema`. Defaults to `None`"""
+        if hasattr(self, "_schema"):
+            return self._schema
+        return None
 
     def get_name(self) -> str:
         """Return a human-readable name for this datasource.

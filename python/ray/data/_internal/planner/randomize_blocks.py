@@ -28,7 +28,7 @@ def generate_randomize_blocks_fn(
             blocks_with_metadata.extend(ref_bundle.blocks)
 
         if len(blocks_with_metadata) == 0:
-            return refs, {op._name: []}
+            return refs, {op._name: []}, schema
         else:
             if op._seed is not None:
                 random.seed(op._seed)

@@ -33,12 +33,12 @@ def generate_sort_fn(
         refs: List[RefBundle],
         schema: Optional["pa.lib.Schema"],
         ctx: TaskContext,
-    ) -> Tuple[List[RefBundle], StatsDict]:
+    ) -> Tuple[List[RefBundle], StatsDict, Optional["pa.lib.Schema"]]:
         blocks = []
         for ref_bundle in refs:
             blocks.extend(ref_bundle.block_refs)
         if len(blocks) == 0:
-            return (blocks, {})
+            return (blocks, {}, schema)
         sort_key.validate_schema(schema)
 
         num_mappers = len(blocks)
