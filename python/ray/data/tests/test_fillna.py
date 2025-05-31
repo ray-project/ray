@@ -1,6 +1,7 @@
-import pytest
-import ray
 import pyarrow as pa
+import pytest
+
+import ray
 
 
 def test_fill_scalar_default(ray_start):
