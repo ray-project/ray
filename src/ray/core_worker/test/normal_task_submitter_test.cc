@@ -477,7 +477,8 @@ TEST(NormalTaskSubmitterTest, TestLocalityAwareSubmitOneTask) {
                                 kLongTimeout,
                                 actor_creator,
                                 JobID::Nil(),
-                                kOneRateLimiter);
+                                kOneRateLimiter,
+                                []() {});
 
   TaskSpecification task = BuildEmptyTaskSpec();
 
@@ -530,7 +531,8 @@ TEST(NormalTaskSubmitterTest, TestSubmitOneTask) {
                                 kLongTimeout,
                                 actor_creator,
                                 JobID::Nil(),
-                                kOneRateLimiter);
+                                kOneRateLimiter,
+                                []() {});
 
   TaskSpecification task = BuildEmptyTaskSpec();
 
@@ -582,7 +584,8 @@ TEST(NormalTaskSubmitterTest, TestRetryTaskApplicationLevelError) {
                                 kLongTimeout,
                                 actor_creator,
                                 JobID::Nil(),
-                                kOneRateLimiter);
+                                kOneRateLimiter,
+                                []() {});
   TaskSpecification task = BuildEmptyTaskSpec();
   task.GetMutableMessage().set_retry_exceptions(true);
 
@@ -639,7 +642,8 @@ TEST(NormalTaskSubmitterTest, TestHandleTaskFailure) {
                                 kLongTimeout,
                                 actor_creator,
                                 JobID::Nil(),
-                                kOneRateLimiter);
+                                kOneRateLimiter,
+                                []() {});
   TaskSpecification task = BuildEmptyTaskSpec();
 
   ASSERT_TRUE(submitter.SubmitTask(task).ok());
@@ -683,7 +687,8 @@ TEST(NormalTaskSubmitterTest, TestHandleUnschedulableTask) {
                                 kLongTimeout,
                                 actor_creator,
                                 JobID::Nil(),
-                                kTwoRateLimiter);
+                                kTwoRateLimiter,
+                                []() {});
 
   TaskSpecification task1 = BuildEmptyTaskSpec();
   TaskSpecification task2 = BuildEmptyTaskSpec();
@@ -754,7 +759,8 @@ TEST(NormalTaskSubmitterTest, TestHandleRuntimeEnvSetupFailed) {
                                 kLongTimeout,
                                 actor_creator,
                                 JobID::Nil(),
-                                kTwoRateLimiter);
+                                kTwoRateLimiter,
+                                []() {});
 
   TaskSpecification task1 = BuildEmptyTaskSpec();
   TaskSpecification task2 = BuildEmptyTaskSpec();
@@ -824,7 +830,8 @@ TEST(NormalTaskSubmitterTest, TestWorkerHandleLocalRayletDied) {
                                 kLongTimeout,
                                 actor_creator,
                                 JobID::Nil(),
-                                kTwoRateLimiter);
+                                kTwoRateLimiter,
+                                []() {});
 
   TaskSpecification task1 = BuildEmptyTaskSpec();
   ASSERT_TRUE(submitter.SubmitTask(task1).ok());
@@ -854,7 +861,8 @@ TEST(NormalTaskSubmitterTest, TestDriverHandleLocalRayletDied) {
                                 kLongTimeout,
                                 actor_creator,
                                 JobID::Nil(),
-                                kTwoRateLimiter);
+                                kTwoRateLimiter,
+                                []() {});
 
   TaskSpecification task1 = BuildEmptyTaskSpec();
   TaskSpecification task2 = BuildEmptyTaskSpec();
@@ -912,7 +920,8 @@ TEST(NormalTaskSubmitterTest, TestConcurrentWorkerLeases) {
                                 kLongTimeout,
                                 actor_creator,
                                 JobID::Nil(),
-                                rateLimiter);
+                                rateLimiter,
+                                []() {});
 
   std::vector<TaskSpecification> tasks;
   for (int i = 0; i < 2 * concurrency; i++) {
@@ -991,7 +1000,8 @@ TEST(NormalTaskSubmitterTest, TestConcurrentWorkerLeasesDynamic) {
                                 kLongTimeout,
                                 actor_creator,
                                 JobID::Nil(),
-                                rateLimiter);
+                                rateLimiter,
+                                []() {});
 
   std::vector<TaskSpecification> tasks;
   for (int i = 0; i < 2 * concurrency; i++) {
@@ -1099,7 +1109,8 @@ TEST(NormalTaskSubmitterTest, TestConcurrentWorkerLeasesDynamicWithSpillback) {
                                 kLongTimeout,
                                 actor_creator,
                                 JobID::Nil(),
-                                rateLimiter);
+                                rateLimiter,
+                                []() {});
 
   std::vector<TaskSpecification> tasks;
   for (int i = 0; i < 2 * concurrency; i++) {
@@ -1204,7 +1215,8 @@ TEST(NormalTaskSubmitterTest, TestSubmitMultipleTasks) {
                                 kLongTimeout,
                                 actor_creator,
                                 JobID::Nil(),
-                                kOneRateLimiter);
+                                kOneRateLimiter,
+                                []() {});
 
   TaskSpecification task1 = BuildEmptyTaskSpec();
   TaskSpecification task2 = BuildEmptyTaskSpec();
@@ -1277,7 +1289,8 @@ TEST(NormalTaskSubmitterTest, TestReuseWorkerLease) {
                                 kLongTimeout,
                                 actor_creator,
                                 JobID::Nil(),
-                                kOneRateLimiter);
+                                kOneRateLimiter,
+                                []() {});
 
   TaskSpecification task1 = BuildEmptyTaskSpec();
   TaskSpecification task2 = BuildEmptyTaskSpec();
@@ -1350,7 +1363,8 @@ TEST(NormalTaskSubmitterTest, TestRetryLeaseCancellation) {
                                 kLongTimeout,
                                 actor_creator,
                                 JobID::Nil(),
-                                kOneRateLimiter);
+                                kOneRateLimiter,
+                                []() {});
   TaskSpecification task1 = BuildEmptyTaskSpec();
   TaskSpecification task2 = BuildEmptyTaskSpec();
   TaskSpecification task3 = BuildEmptyTaskSpec();
@@ -1418,7 +1432,8 @@ TEST(NormalTaskSubmitterTest, TestConcurrentCancellationAndSubmission) {
                                 kLongTimeout,
                                 actor_creator,
                                 JobID::Nil(),
-                                kOneRateLimiter);
+                                kOneRateLimiter,
+                                []() {});
   TaskSpecification task1 = BuildEmptyTaskSpec();
   TaskSpecification task2 = BuildEmptyTaskSpec();
   TaskSpecification task3 = BuildEmptyTaskSpec();
@@ -1483,7 +1498,8 @@ TEST(NormalTaskSubmitterTest, TestWorkerNotReusedOnError) {
                                 kLongTimeout,
                                 actor_creator,
                                 JobID::Nil(),
-                                kOneRateLimiter);
+                                kOneRateLimiter,
+                                []() {});
   TaskSpecification task1 = BuildEmptyTaskSpec();
   TaskSpecification task2 = BuildEmptyTaskSpec();
 
@@ -1539,7 +1555,8 @@ TEST(NormalTaskSubmitterTest, TestWorkerNotReturnedOnExit) {
                                 kLongTimeout,
                                 actor_creator,
                                 JobID::Nil(),
-                                kOneRateLimiter);
+                                kOneRateLimiter,
+                                []() {});
   TaskSpecification task1 = BuildEmptyTaskSpec();
 
   ASSERT_TRUE(submitter.SubmitTask(task1).ok());
@@ -1596,7 +1613,8 @@ TEST(NormalTaskSubmitterTest, TestSpillback) {
                                 kLongTimeout,
                                 actor_creator,
                                 JobID::Nil(),
-                                kOneRateLimiter);
+                                kOneRateLimiter,
+                                []() {});
   TaskSpecification task = BuildEmptyTaskSpec();
 
   ASSERT_TRUE(submitter.SubmitTask(task).ok());
@@ -1671,7 +1689,8 @@ TEST(NormalTaskSubmitterTest, TestSpillbackRoundTrip) {
                                 kLongTimeout,
                                 actor_creator,
                                 JobID::Nil(),
-                                kOneRateLimiter);
+                                kOneRateLimiter,
+                                []() {});
   TaskSpecification task = BuildEmptyTaskSpec();
 
   ASSERT_TRUE(submitter.SubmitTask(task).ok());
@@ -1749,7 +1768,8 @@ void TestSchedulingKey(const std::shared_ptr<CoreWorkerMemoryStore> store,
                                 kLongTimeout,
                                 actor_creator,
                                 JobID::Nil(),
-                                kOneRateLimiter);
+                                kOneRateLimiter,
+                                []() {});
 
   ASSERT_TRUE(submitter.SubmitTask(same1).ok());
   ASSERT_TRUE(submitter.SubmitTask(same2).ok());
@@ -1907,7 +1927,8 @@ TEST(NormalTaskSubmitterTest, TestBacklogReport) {
                                 kLongTimeout,
                                 actor_creator,
                                 JobID::Nil(),
-                                kOneRateLimiter);
+                                kOneRateLimiter,
+                                []() {});
 
   TaskSpecification task1 = BuildEmptyTaskSpec();
 
@@ -1984,7 +2005,8 @@ TEST(NormalTaskSubmitterTest, TestWorkerLeaseTimeout) {
                                 /*lease_timeout_ms=*/5,
                                 actor_creator,
                                 JobID::Nil(),
-                                kOneRateLimiter);
+                                kOneRateLimiter,
+                                []() {});
   TaskSpecification task1 = BuildEmptyTaskSpec();
   TaskSpecification task2 = BuildEmptyTaskSpec();
   TaskSpecification task3 = BuildEmptyTaskSpec();
@@ -2051,7 +2073,8 @@ TEST(NormalTaskSubmitterTest, TestKillExecutingTask) {
                                 kLongTimeout,
                                 actor_creator,
                                 JobID::Nil(),
-                                kOneRateLimiter);
+                                kOneRateLimiter,
+                                []() {});
   TaskSpecification task = BuildEmptyTaskSpec();
 
   ASSERT_TRUE(submitter.SubmitTask(task).ok());
@@ -2113,7 +2136,8 @@ TEST(NormalTaskSubmitterTest, TestKillPendingTask) {
                                 kLongTimeout,
                                 actor_creator,
                                 JobID::Nil(),
-                                kOneRateLimiter);
+                                kOneRateLimiter,
+                                []() {});
   TaskSpecification task = BuildEmptyTaskSpec();
 
   ASSERT_TRUE(submitter.SubmitTask(task).ok());
@@ -2158,7 +2182,8 @@ TEST(NormalTaskSubmitterTest, TestKillResolvingTask) {
                                 kLongTimeout,
                                 actor_creator,
                                 JobID::Nil(),
-                                kOneRateLimiter);
+                                kOneRateLimiter,
+                                []() {});
   TaskSpecification task = BuildEmptyTaskSpec();
   ObjectID obj1 = ObjectID::FromRandom();
   task.GetMutableMessage().add_args()->mutable_object_ref()->set_object_id(obj1.Binary());
