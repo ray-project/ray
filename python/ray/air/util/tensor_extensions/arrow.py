@@ -792,7 +792,10 @@ class ArrowTensorArray(_ArrowTensorScalarIndexingMixin, pa.ExtensionArray):
 
         ctx = DataContext.get_current()
 
-        if ctx.use_arrow_native_fixed_shape_tensor_type and scalar_dtype in _FIXED_SHAPE_TENSOR_ARRAY_SUPPORTED_SCALAR_TYPES:
+        if (
+            ctx.use_arrow_native_fixed_shape_tensor_type
+            and scalar_dtype in _FIXED_SHAPE_TENSOR_ARRAY_SUPPORTED_SCALAR_TYPES
+        ):
             return pa.FixedShapeTensorArray.from_numpy_ndarray(arr)
         else:
             if ctx.use_arrow_tensor_v2:
@@ -942,10 +945,16 @@ class ArrowTensorArray(_ArrowTensorScalarIndexingMixin, pa.ExtensionArray):
     def _concat_same_type(
         cls,
         to_concat: Sequence[
-            Union["ArrowTensorArray", "FixedShapeTensorArray", "ArrowVariableShapedTensorArray"]
+            Union[
+                "ArrowTensorArray",
+                "FixedShapeTensorArray",
+                "ArrowVariableShapedTensorArray",
+            ]
         ],
         ensure_copy: bool = False,
-    ) -> Union["ArrowTensorArray", "FixedShapeTensorArray", "ArrowVariableShapedTensorArray"]:
+    ) -> Union[
+        "ArrowTensorArray", "FixedShapeTensorArray", "ArrowVariableShapedTensorArray"
+    ]:
         """
         Concatenate multiple tensor arrays.
 

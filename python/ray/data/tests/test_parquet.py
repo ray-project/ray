@@ -1429,7 +1429,8 @@ def test_tensors_in_tables_parquet(
         expected_tensor_type = ArrowTensorTypeV2
 
     assert isinstance(
-        ds.schema().base_schema.field_by_name(tensor_col_name).type, expected_tensor_type
+        ds.schema().base_schema.field_by_name(tensor_col_name).type,
+        expected_tensor_type,
     )
 
     _assert_equal(ds.take_all(), expected_tuples)
