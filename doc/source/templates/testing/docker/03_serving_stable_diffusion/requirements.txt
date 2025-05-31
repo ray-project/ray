@@ -4,5 +4,5 @@ fastapi==0.97.0
 ipywidgets
 matplotlib==3.7.1
 numpy==1.24.3
-torch==2.0.1
+torch==2.7.0
 transformers==4.30.1
