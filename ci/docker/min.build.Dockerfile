@@ -30,9 +30,9 @@ fi
 if [[ "${EXTRA_DEPENDENCY}" == "core" ]]; then
   ./ci/env/install-core-prerelease-dependencies.sh
 elif [[ "${EXTRA_DEPENDENCY}" == "ml" ]]; then
-  pip-compile -o min_requirements.txt python/setup.py --extra tune
+  pip-compile -o min_requirements.txt /tmp/min_build_requirements.txt python/setup.py --extra tune
 elif [[ "${EXTRA_DEPENDENCY}" == "default" ]]; then
-  pip-compile -o min_requirements.txt python/setup.py --extra default
+  pip-compile -o min_requirements.txt /tmp/min_build_requirements.txt python/setup.py --extra default
 elif [[ "${EXTRA_DEPENDENCY}" == "serve" ]]; then
   pip-compile -o min_requirements.txt /tmp/min_build_requirements.txt python/setup.py --extra "serve-grpc"
 fi
