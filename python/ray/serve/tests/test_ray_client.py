@@ -128,7 +128,7 @@ serve.run(A.bind(), route_prefix="/A")
     )
     run_string_as_driver(fastapi)
 
-    assert httpx.get("http://localhost:8000/A").json() == "hello"
+    assert httpx.get("http://localhost:8000/A", follow_redirects=True).json() == "hello"
 
     serve.shutdown()
     ray.util.disconnect()
