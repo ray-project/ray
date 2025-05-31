@@ -5,7 +5,6 @@ import pytest
 import numpy as np
 
 import ray
-from ray._private.test_utils import skip_flaky_core_test_premerge
 from ray.exceptions import OwnerDiedError
 
 
