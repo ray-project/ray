@@ -205,7 +205,7 @@ class ArrowBlockAccessor(TableBlockAccessor):
                 # For Arrow 9.0.0+, accessing an element in a chunked tensor array
                 # produces an ArrowTensorScalar, which we convert to an ndarray using
                 # .as_py().
-                element = element.as_py()
+                element = element.to_numpy()
             else:
                 # For Arrow 8.*, accessing an element in a chunked tensor array produces
                 # an ExtensionScalar, which we convert to an ndarray using our custom
