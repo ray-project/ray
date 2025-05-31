@@ -274,6 +274,9 @@ void GcsActor::WriteActorExportEvent() const {
   export_actor_data_ptr->set_repr_name(actor_table_data_.repr_name());
   export_actor_data_ptr->mutable_labels()->insert(task_spec_.get()->labels().begin(),
                                                   task_spec_.get()->labels().end());
+  export_actor_data_ptr->mutable_label_selector()->insert(
+      actor_table_data_.label_selector().begin(),
+      actor_table_data_.label_selector().end());
 
   RayExportEvent(export_actor_data_ptr).SendEvent();
 }
@@ -1713,18 +1716,18 @@ void GcsActorManager::Initialize(const GcsInitData &gcs_init_data) {
   }
 }
 
-const absl::flat_hash_map<NodeID, absl::flat_hash_map<WorkerID, ActorID>>
-    &GcsActorManager::GetCreatedActors() const {
+const absl::flat_hash_map<NodeID, absl::flat_hash_map<WorkerID, ActorID>> &
+GcsActorManager::GetCreatedActors() const {
   return created_actors_;
 }
 
-const absl::flat_hash_map<ActorID, std::shared_ptr<GcsActor>>
-    &GcsActorManager::GetRegisteredActors() const {
+const absl::flat_hash_map<ActorID, std::shared_ptr<GcsActor>> &
+GcsActorManager::GetRegisteredActors() const {
   return registered_actors_;
 }
 
-const absl::flat_hash_map<ActorID, std::vector<RegisterActorCallback>>
-    &GcsActorManager::GetActorRegisterCallbacks() const {
+const absl::flat_hash_map<ActorID, std::vector<RegisterActorCallback>> &
+GcsActorManager::GetActorRegisterCallbacks() const {
   RAY_CHECK(thread_checker_.IsOnSameThread());
   return actor_to_register_callbacks_;
 }

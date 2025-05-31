@@ -33,6 +33,7 @@ export type Actor = {
   exitDetail: string;
   reprName: string;
   callSite?: string | undefined;
+  labelSelector: { [key: string]: string } | null;
 };
 
 export type ActorDetail = {
