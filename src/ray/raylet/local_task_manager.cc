@@ -410,12 +410,15 @@ void LocalTaskManager::DispatchScheduledTasksToWorkers() {
           << debug_string(front_task.GetRequiredPlacementResources().GetResourceMap())
           << "\n Scheduling strategy: "
           << front_task.GetSchedulingStrategy().scheduling_strategy_case();
-      for (const auto &work : dispatch_queue) {
+      // Have to copy because the queue will be erased from the map when empty by the
+      // erase_if in CancelTasks.
+      auto dispatch_queue_copy = dispatch_queue;
+      for (const auto &work : dispatch_queue_copy) {
         CancelTask(work->task.GetTaskSpecification().TaskId(),
                    rpc::RequestWorkerLeaseReply::SCHEDULING_CANCELLED_UNSCHEDULABLE,
                    "Scheduling failed due to the task becoming infeasible.");
       }
-      tasks_to_dispatch_.erase(shapes_it++);
+      shapes_it++;
     } else if (dispatch_queue.empty()) {
       tasks_to_dispatch_.erase(shapes_it++);
     } else {

@@ -252,8 +252,6 @@ class LocalTaskManagerTest : public ::testing::Test {
 };
 
 TEST_F(LocalTaskManagerTest, TestTaskDispatchingOrder) {
-  RAY_LOG(INFO) << "Starting TestTaskDispatchingOrder";
-
   // Initial setup: 3 CPUs available.
   std::shared_ptr<MockWorker> worker1 =
       std::make_shared<MockWorker>(WorkerID::FromRandom(), 0);
@@ -324,12 +322,13 @@ TEST_F(LocalTaskManagerTest, TestNoLeakOnImpossibleInfeasibleTask) {
       task2, false, false, &reply2, callback, internal::WorkStatus::WAITING));
   local_task_manager_->ScheduleAndDispatchTasks();
 
-  // Make sure the the correct rpc replies were actually sent back.
+  // Assert that the the correct rpc replies were sent back and the dispatch map is empty.
   ASSERT_EQ(reply1.failure_type(),
             rpc::RequestWorkerLeaseReply::SCHEDULING_CANCELLED_UNSCHEDULABLE);
   ASSERT_EQ(reply2.failure_type(),
             rpc::RequestWorkerLeaseReply::SCHEDULING_CANCELLED_UNSCHEDULABLE);
   ASSERT_EQ(num_callbacks_called, 2);
+  ASSERT_EQ(local_task_manager_->GetTaskToDispatch().size(), 0);
 }
 
 int main(int argc, char **argv) {
