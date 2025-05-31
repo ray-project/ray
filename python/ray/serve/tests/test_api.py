@@ -74,10 +74,10 @@ class AsyncCounter:
 class FakeRequestRouter(RequestRouter):
     async def choose_replicas(
         self,
-        replicas_ranks: List[List[RunningReplica]],
+        candidate_replicas: List[RunningReplica],
         pending_request: Optional[PendingRequest] = None,
     ) -> List[List[RunningReplica]]:
-        return replicas_ranks
+        return candidate_replicas
 
 
 @serve.deployment(request_router_class=FakeRequestRouter)
