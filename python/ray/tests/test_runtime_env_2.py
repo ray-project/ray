@@ -180,6 +180,9 @@ class TestNoUserInfoInLogs:
         }
         ray.init(runtime_env=runtime_env)
 
+        # we can't have `working_dir` in `runtime_env` anymore because it's only allowed as input to `ray.init`
+        runtime_env.pop("working_dir")
+
         # Run a function to ensure the runtime env is set up.
         @ray.remote
         def f():
