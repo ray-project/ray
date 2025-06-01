@@ -21,7 +21,7 @@ kind create cluster
 
 ```sh
 # Path: kuberay/
-./install/prometheus/install.sh
+./install/prometheus/install.sh --auto-load-dashboard true
 
 # Check the installation
 kubectl get all -n prometheus-system
@@ -33,9 +33,9 @@ kubectl get all -n prometheus-system
 # deployment.apps/prometheus-kube-state-metrics         1/1     1            1           46s
 ```
 
-* KubeRay provides an [install.sh script](https://github.com/ray-project/kuberay/blob/master/install/prometheus/install.sh) to install the [kube-prometheus-stack v48.2.1](https://github.com/prometheus-community/helm-charts/tree/kube-prometheus-stack-48.2.1/charts/kube-prometheus-stack) chart and related custom resources, including **PodMonitor** and **PrometheusRule**, in the namespace `prometheus-system` automatically.
-
-* Starting with KubeRay v1.4.0,`install.sh` provides a flag to automatically imports the Grafana dashboard JSON files from [config/grafana](https://github.com/ray-project/kuberay/tree/master/config/grafana) into Grafana. You can automatically load Grafana dashboard JSON with command `install.sh --auto-load-dashboard true`. If you want to use JSON files from a different Ray version, you can manually import them by following the instructions in [Step 10](#step-10-access-grafana).
+* KubeRay provides an [install.sh script](https://github.com/ray-project/kuberay/blob/master/install/prometheus/install.sh) to:
+  * Install the [kube-prometheus-stack v48.2.1](https://github.com/prometheus-community/helm-charts/tree/kube-prometheus-stack-48.2.1/charts/kube-prometheus-stack) chart and related custom resources, including **PodMonitor** and **PrometheusRule**, in the namespace `prometheus-system` automatically. 
+  * Import Ray Dashboard’s [Grafana JSON files](https://github.com/ray-project/kuberay/tree/master/config/grafana) into Grafana using the `--auto-load-dashboard true` flag. If the flag is not set, the following step also provides instructions for manual import.
 
 * We made some modifications to the original `values.yaml` in kube-prometheus-stack chart to allow embedding Grafana panels in Ray Dashboard. See [overrides.yaml](https://github.com/ray-project/kuberay/tree/master/install/prometheus/overrides.yaml) for more details.
   ```yaml
@@ -357,6 +357,10 @@ Refer to [this Grafana document](https://grafana.com/tutorials/run-grafana-behin
 
 * The default password is defined by `grafana.adminPassword` in the [values.yaml](https://github.com/prometheus-community/helm-charts/blob/main/charts/kube-prometheus-stack/values.yaml) of the kube-prometheus-stack chart.
 
+## Step 11: Import Grafana dashboards manually (optional)
+
+If `--auto-load-dashboard true` is set when running `install.sh`, you can skip this step.
+
 * Import Grafana dashboards manually
   * Click "Dashboards" icon in the left panel.
   * Click "New".
@@ -367,7 +371,7 @@ Refer to [this Grafana document](https://grafana.com/tutorials/run-grafana-behin
     * Case 2: Otherwise, import the JSON files from the head Pod's `/tmp/ray/session_latest/metrics/grafana/dashboards/` directory. You can use `kubectl cp` to copy the files from the head Pod to your local machine. `kubectl cp $(kubectl get pods --selector ray.io/node-type=head,ray.io/cluster=raycluster-embed-grafana -o jsonpath={..metadata.name}):/tmp/ray/session_latest/metrics/grafana/dashboards/ /tmp/`
   * Click "Import".
 
-## Step 11: View metrics from different RayCluster CRs
+## Step 12: View metrics from different RayCluster CRs
 
 Once the Ray Dashboard is imported into Grafana, you can filter metrics by using the `Cluster` variable. Ray Dashboard automatically applies this variable by default when you use the provided `PodMonitor` configuration. You don't need any additional setup for this labeling.
 
@@ -379,7 +383,7 @@ For example, in the following figures, one selects the metrics from the RayClust
 
 ![Grafana Ray Dashboard2](../images/grafana_ray_dashboard2.png)
 
-## Step 12: Embed Grafana panels in Ray Dashboard
+## Step 13: Embed Grafana panels in Ray Dashboard
 
 ```sh
 kubectl port-forward service/raycluster-embed-grafana-head-svc dashboard
