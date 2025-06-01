@@ -908,7 +908,7 @@ class Dataset:
             Dataset: A Dataset with one instance of each unique row.
 
         .. warning::
-            This is an expensive operations and calling distinct will cause the dataset to be materialized
+            This is an expensive operations
 
         Example:
             >>> import ray
@@ -921,18 +921,20 @@ class Dataset:
         def drop_pandas_dups(batch: pa.Table) -> pa.Table:
             return batch.drop_duplicates()
 
-        self = self.map_batches(
-            drop_pandas_dups,
-            batch_format="pandas",
-            zero_copy_batch=False,
-        )
         all_cols = self.columns()
 
-        deduped = self.groupby(all_cols).map_groups(
-            lambda batch: batch.slice(0, 1), batch_format="pyarrow"
-        )
-
-        return deduped
+        if len(all_cols) > 0:
+            self = self.map_batches(
+                drop_pandas_dups,
+                batch_format="pandas",
+                zero_copy_batch=False,
+            )
+            deduped = self.groupby(all_cols).map_groups(
+                lambda batch: batch.slice(0, 1), batch_format="pyarrow"
+            )
+            return deduped
+        else:
+            return self
 
     @PublicAPI(api_group=BT_API_GROUP)
     def drop_columns(
