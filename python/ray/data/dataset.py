@@ -1177,42 +1177,32 @@ class Dataset:
         **ray_remote_args,
     ) -> "Dataset":
         """
-        Fill null values in a Ray Dataset using PyArrow.
+        This function replaces null values in each column of the Dataset.
 
-        This function replaces missing (null/NA) values in each column of the Dataset.
-        If `value` is a scalar, nulls in compatible columns (optionally limited via `subset`)
+        If ``value`` is a scalar, nulls in compatible columns (optionally limited via `subset`)
         are replaced with that value. If `value` is a dict, nulls in the listed columns
         are replaced by the corresponding dict values. Incompatible column/value pairs
         and missing columns are ignored if ``enforce_schema=False``,
         or raise an exception (and halt) if ``enforce_schema=True``.
 
-        The column type is always determined at runtime, making this robust for varying schemas.
+        .. testcode::
 
-        Examples
-        --------
-        >>> import ray
-        >>> import pyarrow as pa
-        >>> ds = ray.data.from_arrow(pa.table({"a": [None, 1], "b": [None, "z"]}))
-        >>> ds2 = ds.fillna(0)
-        >>> ds2.take_all()
-        [{'a': 0, 'b': None}, {'a': 1, 'b': 'z'}]
-        >>> ds3 = ds.fillna("n/a", subset=["b"])
-        >>> ds3.take_all()
-        [{'a': None, 'b': 'n/a'}, {'a': 1, 'b': 'z'}]
-        >>> ds4 = ds.fillna({"a": 99, "b": "foo"})
-        >>> ds4.take_all()
-        [{'a': 99, 'b': 'foo'}, {'a': 1, 'b': 'z'}]
-        >>> # Raises ArrowInvalid if enforce_schema is True and incompatible
-        >>> try:
-        ...     ds.fillna(0, enforce_schema=True)
-        ... except Exception as e:
-        ...     print(type(e).__name__)
+            import pyarrow as pa
+            import ray
+
+            ds = ray.data.from_arrow(pa.table({"a": [None, 1], "b": [None, "z"]}))
+            ds = ds.fillna(0)
+            ds.take_all()
+
+        .. testoutput::
+
+            [{'a': 0, 'b': None}, {'a': 1, 'b': 'z'}]
 
         Args:
             value: Scalar or dict mapping column name to fill value.
-            subset: str, list, or tuple of columns (optional). Only applies for scalar `value`.
-            enforce_schema: If True, raise an error if a fill value is not compatible with a column type.
-                            If False (default), silently skip incompatible fills.
+            subset: str, list, or tuple of columns (optional).
+            enforce_schema: If ``True``, raise an error if a fill value is not compatible with a column type.
+                            If ``False`` (default), silently skip incompatible columns.
             concurrency: Maximum Ray workers.
             ray_remote_args: Ray remote resources.
 
