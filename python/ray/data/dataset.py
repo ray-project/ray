@@ -1221,32 +1221,36 @@ class Dataset:
         """
 
         def fillna_batch(batch: pa.Table) -> pa.Table:
+            if batch.num_rows == 0:
+                return batch
+
             columns = batch.column_names
+            new_arrays = []
             if isinstance(value, dict):
-                new_arrays = []
+                # Dict: match columns in value
                 for col in columns:
                     arr = batch[col]
                     if col in value:
                         try:
+                            # Try fill; skip incompatible
                             scalar = pa.scalar(value[col], type=arr.type)
                             filled = pa.compute.fill_null(arr, scalar)
                             new_arrays.append(filled)
                         except (pa.ArrowInvalid, pa.ArrowTypeError):
                             if enforce_schema:
                                 raise
-                            # Silently skip incompatible fills
                             new_arrays.append(arr)
                     else:
                         new_arrays.append(arr)
-                return pa.table(new_arrays, names=columns)
             else:
-                # Scalar value, optional subset
-                subcols = (
-                    columns
-                    if subset is None
-                    else ([subset] if isinstance(subset, str) else list(subset))
-                )
-                new_arrays = []
+                # Scalar: fill for all columns in `subset` (or all)
+                if subset is None:
+                    subcols = set(columns)
+                else:
+                    if isinstance(subset, str):
+                        subcols = {subset}
+                    else:
+                        subcols = set(subset)
                 for col in columns:
                     arr = batch[col]
                     if col in subcols:
@@ -1257,11 +1261,10 @@ class Dataset:
                         except (pa.ArrowInvalid, pa.ArrowTypeError):
                             if enforce_schema:
                                 raise
-                            # Silently skip incompatible fills
                             new_arrays.append(arr)
                     else:
                         new_arrays.append(arr)
-                return pa.table(new_arrays, names=columns)
+            return pa.table(new_arrays, names=columns)
 
         return self.map_batches(
             fillna_batch,
