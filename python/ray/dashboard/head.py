@@ -1,28 +1,31 @@
 import asyncio
 import logging
-from concurrent.futures import ThreadPoolExecutor
 import os
-import psutil
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
-from typing import Optional, Set, List, Tuple, TYPE_CHECKING
+from typing import TYPE_CHECKING, List, Optional, Set, Tuple
 
 import ray
 import ray.dashboard.consts as dashboard_consts
 import ray.dashboard.utils as dashboard_utils
 import ray.experimental.internal_kv as internal_kv
 from ray._private import ray_constants
+from ray._private.async_utils import enable_monitor_loop_lag
 from ray._private.ray_constants import env_integer
 from ray._private.usage.usage_lib import TagKey, record_extra_usage_tag
-from ray._private.async_utils import enable_monitor_loop_lag
 from ray._raylet import GcsClient
-from ray.dashboard.consts import DASHBOARD_METRIC_PORT
+from ray.dashboard.consts import (
+    AVAILABLE_COMPONENT_NAMES_FOR_METRICS,
+    DASHBOARD_METRIC_PORT,
+)
 from ray.dashboard.dashboard_metrics import DashboardPrometheusMetrics
-from ray.dashboard.consts import AVAILABLE_COMPONENT_NAMES_FOR_METRICS
 from ray.dashboard.utils import (
     DashboardHeadModule,
     DashboardHeadModuleConfig,
     async_loop_forever,
 )
+
+import psutil
 
 try:
     import prometheus_client
@@ -253,11 +256,11 @@ class DashboardHead:
             logger.info("Subprocess modules not loaded in minimal mode.")
             return []
 
+        from ray.dashboard.subprocesses.handle import SubprocessModuleHandle
         from ray.dashboard.subprocesses.module import (
             SubprocessModule,
             SubprocessModuleConfig,
         )
-        from ray.dashboard.subprocesses.handle import SubprocessModuleHandle
 
         handles = []
         subprocess_cls_list = dashboard_utils.get_all_modules(SubprocessModule)
