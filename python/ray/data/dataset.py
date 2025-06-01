@@ -799,23 +799,47 @@ class Dataset:
         **ray_remote_args,
     ) -> "Dataset":
         """
-        Apply an SQL query to batches of data using the specified SQL engine.
+        Map a SQL query to blocks of the Ray Dataset using a SQL engine.
 
         This method allows you to perform SQL transformations on batches of data
         using a supported SQL engine such as DuckDB.
 
         Examples:
-            >>> import ray
-            >>> ds = ray.data.range(1000)
-            >>> ds.map_sql("SELECT * FROM batch WHERE id > 500").show()
+
+        .. testcode::
+
+                import ray
+                ds = ray.data.range(1000)
+                print(ds.map_sql("SELECT * FROM batch WHERE id > 500").count())
+
+            .. testoutput::
+
+                500
+
+        .. tip::
+            This method is useful for complicated SQL queries that are either more difficult to
+            implement or migrate to Python or would be faster running on top of lightweight
+            SQL engines like DuckDB or Polars.
+
+        .. note::
+
+            This does not support a SQL operation on top of the whole dataset (i.e. joins across
+            blocks), but rather just maps SQL operations. For operations like groupBys or joins,
+            use the native Ray Dataset operations like ``ray.dataset.join`` if you need data
+            from multiple blocks.
+
+        .. warning::
+            ``map_sql`` is currently experimental, and may result in issues. Please
+            `report any issues <https://github.com/ray-project/ray/issues/new/choose>`_
+            to the Ray team.
 
         Args:
             query: The SQL query to execute on each batch of data.
             view_name: The name of the temporary view created for the batch in the SQL engine.
-                Defaults to "batch".
+                Defaults to ``"batch"``.
             engine: The SQL engine to use for executing the query. Supported values are "duckdb".
-                Defaults to "duckdb".
-            pushdown_filter: If set to `True`, extract the filter expression from the SQL query
+                Defaults to ``"duckdb"``.
+            pushdown_filter: If set to ``True``, extract the filter expression from the SQL query
                 and run as a Ray Dataset filter function, which can push the filter down to the source.
                 If set to `False`, the query is run as-is with the SQL engine, which won't support
                 pushdown filters or predicates.
@@ -837,9 +861,6 @@ class Dataset:
         Returns:
             Dataset: A new Dataset with the applied SQL transformation.
 
-        Raises:
-            ValueError: If the SQL query, view name, or engine is invalid.
-            NotImplementedError: If the specified engine is not supported.
         """
         if pushdown_filter is True:
             _check_import(self, module="sqlglot", package="sqlglot")

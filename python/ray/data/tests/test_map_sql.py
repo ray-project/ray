@@ -91,3 +91,9 @@ def test_map_sql_combined_expr(dataset):
     # a=2,b=20; a=3,b=30
     assert result["a"].to_pylist() == [2, 3]
     assert result["b"].to_pylist() == [20, 30]
+
+
+if __name__ == "__main__":
+    import sys
+
+    sys.exit(pytest.main(["-v", __file__]))
