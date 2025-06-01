@@ -708,6 +708,9 @@ def test_fastapi_same_app_multiple_deployments(serve_instance):
 
 
 @pytest.mark.parametrize("two_fastapi", [True, False])
+@pytest.mark.skip(
+    reason="Enable when https://github.com/ray-project/ray/issues/53024 is resolved"
+)
 def test_two_fastapi_in_one_application(
     serve_instance: ServeControllerClient, two_fastapi
 ):
