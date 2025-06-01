@@ -3,7 +3,11 @@ from typing import TYPE_CHECKING, Any, Dict, Iterator, List, Optional
 
 import numpy as np
 
-from ray.data._internal.util import _check_import, call_with_retry
+from ray.data._internal.util import (
+    _check_import,
+    call_with_retry,
+    unify_block_metadata_schema,
+)
 from ray.data.block import BlockMetadata
 from ray.data.context import DataContext
 from ray.data.datasource.datasource import Datasource, ReadTask
@@ -58,11 +62,11 @@ class LanceDatasource(Datasource):
 
     def get_read_tasks(self, parallelism: int) -> List[ReadTask]:
         read_tasks = []
+        schemas = []
         for fragments in np.array_split(self.lance_ds.get_fragments(), parallelism):
             if len(fragments) <= 0:
                 continue
-
-            self.set_schema(fragments[0].schema)
+            schemas.append(fragments[0].schema)
 
             fragment_ids = [f.metadata.id for f in fragments]
             num_rows = sum(f.count_rows() for f in fragments)
@@ -91,7 +95,7 @@ class LanceDatasource(Datasource):
                 metadata,
             )
             read_tasks.append(read_task)
-
+        self.set_schema(unify_block_metadata_schema(schemas))
         return read_tasks
 
     def estimate_inmemory_data_size(self) -> Optional[int]:

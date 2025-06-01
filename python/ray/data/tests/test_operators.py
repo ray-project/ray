@@ -108,10 +108,10 @@ def test_input_data_buffer(ray_start_regular_shared):
 
 
 def test_all_to_all_operator():
-    def dummy_all_transform(bundles: List[RefBundle], ctx):
+    def dummy_all_transform(bundles: List[RefBundle], schema, ctx):
         assert len(ctx.sub_progress_bar_dict) == 2
         assert list(ctx.sub_progress_bar_dict.keys()) == ["Test1", "Test2"]
-        return make_ref_bundles([[1, 2], [3, 4]]), {"FooStats": []}
+        return make_ref_bundles([[1, 2], [3, 4]]), {"FooStats": []}, schema
 
     input_op = InputDataBuffer(
         DataContext.get_current(), make_ref_bundles([[i] for i in range(100)])
@@ -1146,8 +1146,8 @@ def test_all_to_all_estimated_num_output_bundles():
         DataContext.get_current(), make_ref_bundles([[i] for i in range(100)])
     )
 
-    def all_transform(bundles: List[RefBundle], ctx):
-        return bundles, {}
+    def all_transform(bundles: List[RefBundle], schema, ctx):
+        return bundles, {}, schema
 
     estimated_output_blocks = 500
     op1 = AllToAllOperator(

@@ -312,27 +312,27 @@ def test_read_with_map_batches_fused_successfully(
         ),
         (
             # No fusion (could drastically reduce dataset)
-            Filter(InputData([]), lambda x: False),
+            Filter(InputData([], None), lambda x: False),
             False,
         ),
         (
             # No fusion (could drastically expand/reduce dataset)
-            FlatMap(InputData([]), lambda x: x),
+            FlatMap(InputData([], None), lambda x: x),
             False,
         ),
         (
             # Fusion
-            MapBatches(InputData([]), lambda x: x),
+            MapBatches(InputData([], None), lambda x: x),
             True,
         ),
         (
             # Fusion
-            MapRows(InputData([]), lambda x: x),
+            MapRows(InputData([], None), lambda x: x),
             True,
         ),
         (
             # Fusion
-            Project(InputData([])),
+            Project(InputData([], None)),
             True,
         ),
     ],

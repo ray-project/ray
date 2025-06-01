@@ -380,6 +380,8 @@ class ExecutionPlan:
                     schema = executor._output_node[0]._schema or None
                     if schema is not None:
                         break
+            if schema is None:
+                schema = executor._output_node[0]._schema or None
         self.cache_schema(schema)
         return self._schema
 
