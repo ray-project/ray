@@ -4,7 +4,7 @@ import pytest
 import ray
 
 
-def test_fill_scalar_default(ray_start):
+def test_fill_scalar_default():
     table = pa.table({"a": [None, 1], "b": [None, "x"]})
     ds = ray.data.from_arrow(table)
     out = ds.fillna(0).take_all()
@@ -12,7 +12,7 @@ def test_fill_scalar_default(ray_start):
     assert out == [{"a": 0, "b": None}, {"a": 1, "b": "x"}]
 
 
-def test_fill_scalar_string(ray_start):
+def test_fill_scalar_string():
     table = pa.table({"a": [None, 1], "b": [None, "x"]})
     ds = ray.data.from_arrow(table)
     out = ds.fillna("missing").take_all()
@@ -20,21 +20,21 @@ def test_fill_scalar_string(ray_start):
     assert out == [{"a": None, "b": "missing"}, {"a": 1, "b": "x"}]
 
 
-def test_fill_dict(ray_start):
+def test_fill_dict():
     table = pa.table({"a": [None, 1], "b": [None, "x"]})
     ds = ray.data.from_arrow(table)
     out = ds.fillna({"a": 9, "b": "y"}).take_all()
     assert out == [{"a": 9, "b": "y"}, {"a": 1, "b": "x"}]
 
 
-def test_fill_subset(ray_start):
+def test_fill_subset():
     table = pa.table({"a": [None, 1], "b": [None, None], "c": ["x", "y"]})
     ds = ray.data.from_arrow(table)
     out = ds.fillna("zzz", subset=["b", "c"]).take_all()
     assert out == [{"a": None, "b": "zzz", "c": "x"}, {"a": 1, "b": "zzz", "c": "y"}]
 
 
-def test_fill_scalar_enforce_schema_raises(ray_start):
+def test_fill_scalar_enforce_schema_raises():
     table = pa.table({"a": [None, 1], "b": [None, "x"]})
     ds = ray.data.from_arrow(table)
     # Will raise ArrowInvalid because 0 isn't allowed for string column
@@ -44,7 +44,7 @@ def test_fill_scalar_enforce_schema_raises(ray_start):
     ds.fillna({"a": 0, "b": "x"}, enforce_schema=True).take_all()
 
 
-def test_fill_dict_enforce_schema_raises(ray_start):
+def test_fill_dict_enforce_schema_raises():
     table = pa.table({"a": [None, 1], "b": [None, "x"]})
     ds = ray.data.from_arrow(table)
     # b can't take integer
@@ -52,7 +52,7 @@ def test_fill_dict_enforce_schema_raises(ray_start):
         ds.fillna({"b": 0}, enforce_schema=True).take_all()
 
 
-def test_fill_missing_column(ray_start):
+def test_fill_missing_column():
     # Should ignore fill for missing column
     table = pa.table({"a": [None, 42]})
     ds = ray.data.from_arrow(table)
@@ -63,7 +63,7 @@ def test_fill_missing_column(ray_start):
     assert result == [{"a": None}, {"a": 42}]
 
 
-def test_fill_on_multiple_batches(ray_start):
+def test_fill_on_multiple_batches():
     # Test with more data than single batch
     size = 1000
     table = pa.table(
