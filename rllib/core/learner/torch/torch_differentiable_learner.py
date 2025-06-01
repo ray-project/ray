@@ -1,7 +1,7 @@
 import contextlib
 import logging
 
-from typing import Any, Dict, Tuple
+from typing import Any, Dict, Optional, Tuple
 
 from ray.rllib.algorithms.algorithm_config import (
     TorchCompileWhatToCompile,
@@ -19,7 +19,7 @@ from ray.rllib.utils.metrics import (
     WEIGHTS_SEQ_NO,
 )
 from ray.rllib.utils.torch_utils import convert_to_torch_tensor
-from ray.rllib.utils.typing import ModuleID, NamedParamDict, TensorType
+from ray.rllib.utils.typing import DeviceType, ModuleID, NamedParamDict, TensorType
 
 logger = logging.getLogger("__name__")
 
@@ -324,7 +324,7 @@ class TorchDifferentiableLearner(DifferentiableLearner):
         self.metrics.log_dict(off_policyness, window=1)
 
     @override(DifferentiableLearner)
-    def build(self) -> None:
+    def build(self, device: Optional[DeviceType] = None) -> None:
         """Builds the TorchDifferentiableLearner.
 
         This method is specific to TorchDifferentiableLearner. Before running super() it will
@@ -338,7 +338,7 @@ class TorchDifferentiableLearner(DifferentiableLearner):
         # TODO (simon): Allow different `DifferentiableLearner` instances in a
         # `MetaLearner` to run on different GPUs.
 
-        super().build()
+        super().build(device=device)
 
         if self._torch_compile_complete_update:
             torch._dynamo.reset()

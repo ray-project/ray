@@ -6,6 +6,8 @@ import pytest
 import ray
 from ray import serve
 from ray._private.test_utils import wait_for_condition
+from ray.serve._private.common import DeploymentID
+from ray.serve._private.config import DeploymentConfig
 from ray.serve._private.constants import (
     DEFAULT_AUTOSCALING_POLICY,
     SERVE_DEFAULT_APP_NAME,
@@ -183,6 +185,7 @@ def test_get_serve_instance_details_json_serializable(serve_instance, policy):
                                 "ray_actor_options": {
                                     "num_cpus": 1.0,
                                 },
+                                "request_router_class": "ray.serve._private.request_router:PowerOfTwoChoicesRequestRouter",
                             },
                             "target_num_replicas": 1,
                             "required_resources": {"CPU": 1},
@@ -239,6 +242,30 @@ def test_get_serve_instance_details_json_serializable(serve_instance, policy):
     deployment = application["deployments"]["autoscaling_app"]
     autoscaling_config = deployment["deployment_config"]["autoscaling_config"]
     assert "_serialized_policy_def" not in autoscaling_config
+
+
+def test_get_deployment_config(serve_instance):
+    """Test getting deployment config."""
+
+    controller = _get_global_client()._controller
+    deployment_id = DeploymentID(name="App", app_name="default")
+    deployment_config = ray.get(
+        controller.get_deployment_config.remote(deployment_id=deployment_id)
+    )
+    # Before any deployment is created, the config should be None.
+    assert deployment_config is None
+
+    @serve.deployment
+    class App:
+        pass
+
+    serve.run(App.bind())
+
+    deployment_config = ray.get(
+        controller.get_deployment_config.remote(deployment_id=deployment_id)
+    )
+    # After the deployment is created, the config should be DeploymentConfig.
+    assert isinstance(deployment_config, DeploymentConfig)
 
 
 if __name__ == "__main__":

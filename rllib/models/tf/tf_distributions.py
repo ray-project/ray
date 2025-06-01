@@ -87,7 +87,7 @@ class TfCategorical(TfDistribution):
         tf.Tensor([2 3], shape=(2,), dtype=int32)
 
     Args:
-        probs: The probablities of each event.
+        probs: The probabilities of each event.
         logits: Event log probabilities (unnormalized)
         temperature: In case of using logits, this parameter can be used to determine
             the sharpness of the distribution. i.e.
