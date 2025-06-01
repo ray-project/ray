@@ -20,7 +20,30 @@
 #include <opentelemetry/sdk/metrics/instruments.h>
 
 #include <cassert>
-#include <chrono>
+#include <utility>
+
+#include "ray/util/logging.h"
+
+// Anonymous namespace that contains the private callback functions for the
+// OpenTelemetry metrics.
+namespace {
+using ray::telemetry::OpenTelemetryMetricRecorder;
+
+static void _DoubleGaugeCallback(
+    std::variant<std::shared_ptr<opentelemetry::metrics::ObserverResultT<long>>,
+                 std::shared_ptr<opentelemetry::metrics::ObserverResultT<double>>>
+        observer,
+    void *state) {
+  const std::string *name_ptr = static_cast<const std::string *>(state);
+  const std::string &name = *name_ptr;
+  OpenTelemetryMetricRecorder &recorder = OpenTelemetryMetricRecorder::GetInstance();
+  // Note: The observer is expected to be of type double, so we can safely cast it.
+  auto obs = std::get<std::shared_ptr<opentelemetry::metrics::ObserverResultT<double>>>(
+      observer);
+  recorder.CollectGaugeMetricValues(name, obs);
+}
+
+}  // anonymous namespace
 
 namespace ray {
 namespace telemetry {
@@ -56,6 +79,64 @@ OpenTelemetryMetricRecorder::OpenTelemetryMetricRecorder() {
   opentelemetry::metrics::Provider::SetMeterProvider(
       opentelemetry::nostd::shared_ptr<opentelemetry::metrics::MeterProvider>(
           meter_provider_));
+}
+
+void OpenTelemetryMetricRecorder::Shutdown() { meter_provider_->ForceFlush(); }
+
+void OpenTelemetryMetricRecorder::CollectGaugeMetricValues(
+    const std::string &name,
+    const std::shared_ptr<opentelemetry::metrics::ObserverResultT<double>> &observer) {
+  std::lock_guard<std::mutex> lock(mutex_);
+  auto it = observations_by_name_.find(name);
+  if (it == observations_by_name_.end()) {
+    return;  // Not registered
+  }
+  for (const auto &observation : it->second) {
+    observer->Observe(observation.second, observation.first);
+  }
+  // Clear the observations after exporting so the next interval starts fresh
+  observations_by_name_[name].clear();
+}
+
+void OpenTelemetryMetricRecorder::RegisterGaugeMetric(const std::string &name,
+                                                      const std::string &description) {
+  std::lock_guard<std::mutex> lock(mutex_);
+  if (registered_instruments_.find(name) != registered_instruments_.end()) {
+    return;  // Already registered
+  }
+  auto instrument = getMeter()->CreateDoubleObservableGauge(name, description, "");
+  std::string *name_ptr = new std::string(name);
+  instrument->AddCallback(&_DoubleGaugeCallback, static_cast<void *>(name_ptr));
+  observations_by_name_[name] = {};
+  registered_instruments_[name] = instrument;
+}
+
+void OpenTelemetryMetricRecorder::SetMetricValue(
+    const std::string &name,
+    absl::flat_hash_map<std::string, std::string> &&tags,
+    double value) {
+  std::lock_guard<std::mutex> lock(mutex_);
+  auto it = observations_by_name_.find(name);
+  if (it == observations_by_name_.end()) {
+    RAY_CHECK(false) << "Metric " << name
+                     << " is not registered. Please register it before setting a value.";
+    return;  // Not registered
+  }
+  it->second[std::move(tags)] = value;  // Set or update the value
+}
+
+std::optional<double> OpenTelemetryMetricRecorder::GetMetricValue(
+    const std::string &name,
+    const absl::flat_hash_map<std::string, std::string> &tags) const {
+  auto it = observations_by_name_.find(name);
+  if (it == observations_by_name_.end()) {
+    return std::nullopt;  // Not registered
+  }
+  auto tag_it = it->second.find(tags);
+  if (tag_it != it->second.end()) {
+    return tag_it->second;  // Get the value
+  }
+  return std::nullopt;
 }
 
 }  // namespace telemetry

@@ -15,9 +15,18 @@
 #pragma once
 
 #include <opentelemetry/metrics/meter.h>
+#include <opentelemetry/metrics/observer_result.h>
 #include <opentelemetry/sdk/metrics/meter_provider.h>
 
+#include <cassert>
 #include <chrono>
+#include <map>
+#include <mutex>
+#include <optional>
+#include <unordered_map>
+#include <vector>
+
+#include "absl/container/flat_hash_map.h"
 
 namespace ray {
 namespace telemetry {
@@ -37,6 +46,30 @@ class OpenTelemetryMetricRecorder {
                             std::chrono::milliseconds interval,
                             std::chrono::milliseconds timeout);
 
+  // Flush the remaining metrics. Note that this is a reset rather than a complete
+  // shutdown, so it can be consistent with the shutdown behavior of stats.h.
+  void Shutdown();
+
+  // Registers a gauge metric with the given name and description
+  void RegisterGaugeMetric(const std::string &name, const std::string &description);
+
+  // Set the value of a metric given the tags and the metric value.
+  void SetMetricValue(const std::string &name,
+                      absl::flat_hash_map<std::string, std::string> &&tags,
+                      double value);
+
+  // Get the value of a metric given the tags.
+  std::optional<double> GetMetricValue(
+      const std::string &name,
+      const absl::flat_hash_map<std::string, std::string> &tags) const;
+
+  // Helper function to collect gauge metric values. This function is called only once
+  // per interval for each metric. It collects the values from the observations_by_name_
+  // map and passes them to the observer.
+  void CollectGaugeMetricValues(
+      const std::string &name,
+      const std::shared_ptr<opentelemetry::metrics::ObserverResultT<double>> &observer);
+
   // Delete copy constructors and assignment operators. Skip generation of the move
   // constructors and assignment operators.
   OpenTelemetryMetricRecorder(const OpenTelemetryMetricRecorder &) = delete;
@@ -46,6 +79,25 @@ class OpenTelemetryMetricRecorder {
  private:
   OpenTelemetryMetricRecorder();
   std::shared_ptr<opentelemetry::sdk::metrics::MeterProvider> meter_provider_;
+
+  // Map of metric names to their observations (aka. set of tags and metric values).
+  // This contains all data points for a given metric for a given interval. This map is
+  // cleared at the end of each interval.
+  absl::flat_hash_map<
+      std::string,
+      absl::flat_hash_map<absl::flat_hash_map<std::string, std::string>, double>>
+      observations_by_name_;
+  // Map of metric names to their instrument pointers. This is used to ensure that
+  // each metric is only registered once.
+  absl::flat_hash_map<std::string,
+                      std::shared_ptr<opentelemetry::metrics::ObservableInstrument>>
+      registered_instruments_;
+  // Lock for thread safety when modifying state.
+  std::mutex mutex_;
+
+  std::shared_ptr<opentelemetry::metrics::Meter> getMeter() {
+    return meter_provider_->GetMeter("ray");
+  }
 };
 }  // namespace telemetry
 }  // namespace ray
