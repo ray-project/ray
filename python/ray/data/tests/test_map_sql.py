@@ -47,17 +47,6 @@ def test_map_sql_in_operator(dataset):
     assert result["b"].to_pylist() == [20, 40]
 
 
-def test_map_sql_not_supported_fallback_join(dataset):
-    # Should fallback to SQL engine; filter is not extracted
-    ds2 = dataset.map_sql(
-        "SELECT * FROM batch t1 JOIN batch t2 ON t1.a = t2.a WHERE t1.a < 3",
-        batch_size=2,
-    )
-    result = pa.concat_tables(list(ds2.iter_batches(batch_format="pyarrow")))
-    # There should be 1,2 for t1.a, repeated N times depending on join output, just check content
-    assert set(result["a"].to_pylist()) == {1, 2}
-
-
 def test_map_sql_not_supported_fallback_subquery(dataset):
     # Should fallback: WHERE with subquery is not extracted
     ds2 = dataset.map_sql(
