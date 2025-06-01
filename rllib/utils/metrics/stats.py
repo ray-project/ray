@@ -628,7 +628,7 @@ class Stats:
 
     def get_state(self) -> Dict[str, Any]:
         state = {
-            "values": self.values,
+            "values": self._numpy_if_necessary(self.values),
             "reduce": self._reduce_method,
             "reduce_per_index_on_aggregate": self._reduce_per_index_on_aggregate,
             "window": self._window,
