@@ -918,12 +918,12 @@ class Dataset:
             [{'a': 1, 'b': 'x'}, {'a': 2, 'b': 'y'}, {'a': 3, 'b': 'z'}]
         """
 
-        def drop_arrow_dups(batch: pa.Table) -> pa.Table:
+        def drop_pandas_dups(batch: pa.Table) -> pa.Table:
             return batch.drop_duplicates()
 
         self = self.map_batches(
-            drop_arrow_dups,
-            batch_format="pyarrow",
+            drop_pandas_dups,
+            batch_format="pandas",
             zero_copy_batch=False,
         )
         all_cols = self.columns()
