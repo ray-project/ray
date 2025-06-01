@@ -807,7 +807,7 @@ class Dataset:
         Examples:
             >>> import ray
             >>> ds = ray.data.range(1000)
-            >>> ds.map_sql("SELECT * FROM batch WHERE value > 500").show()
+            >>> ds.map_sql("SELECT * FROM batch WHERE id > 500").show()
 
         Args:
             query: The SQL query to execute on each batch of data.
