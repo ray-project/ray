@@ -103,7 +103,8 @@ void PushManager::HandleNodeRemoved(const NodeID &node_id) {
 }
 
 void PushManager::RecordMetrics() const {
-  ray::stats::STATS_push_manager_in_flight_pushes.Record(NumPushesInFlight());
+  ray::stats::STATS_push_manager_num_pushes_remaining.Record(
+      NumPushRequestsWithChunksToSend());
   ray::stats::STATS_push_manager_chunks.Record(NumChunksInFlight(), "InFlight");
   ray::stats::STATS_push_manager_chunks.Record(NumChunksRemaining(), "Remaining");
 }
@@ -111,7 +112,7 @@ void PushManager::RecordMetrics() const {
 std::string PushManager::DebugString() const {
   std::stringstream result;
   result << "PushManager:";
-  result << "\n- num pushes in flight: " << NumPushesInFlight();
+  result << "\n- num pushes remaining: " << NumPushRequestsWithChunksToSend();
   result << "\n- num chunks in flight: " << NumChunksInFlight();
   result << "\n- num chunks remaining: " << NumChunksRemaining();
   result << "\n- max chunks allowed: " << max_chunks_in_flight_;

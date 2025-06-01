@@ -57,16 +57,13 @@ class PushManager {
   /// Cancel all pushes that have not yet been sent to the removed node.
   void HandleNodeRemoved(const NodeID &node_id);
 
-  /// Return the number of chunks currently in flight. For testing only.
+  /// Return the number of chunks currently in flight. For metrics and testing.
   int64_t NumChunksInFlight() const { return chunks_in_flight_; };
 
-  /// Return the number of chunks remaining. For testing only.
+  /// Return the number of chunks remaining. For metrics and testing.
   int64_t NumChunksRemaining() const { return chunks_remaining_; }
 
-  /// Return the number of pushes currently in flight. For testing only.
-  int64_t NumPushesInFlight() const { return push_state_map_.size(); };
-
-  /// Return the number of push requests with remaining chunks. For testing only.
+  /// Return the number of push requests with remaining chunks. For metrics and testing.
   int64_t NumPushRequestsWithChunksToSend() const {
     return push_requests_with_chunks_to_send_.size();
   };
@@ -78,6 +75,8 @@ class PushManager {
 
  private:
   FRIEND_TEST(TestPushManager, TestPushState);
+  FRIEND_TEST(TestPushManager, TestNodeRemoved);
+
   /// Tracks the state of an active object push to another node.
   struct PushState {
     NodeID node_id;
@@ -112,12 +111,11 @@ class PushManager {
 
     /// Send one chunk. Return true if a new chunk is sent, false if no more chunk to
     /// send.
-    bool SendOneChunk() {
+    void SendOneChunk() {
       num_chunks_to_send--;
       // Send the next chunk for this push.
       chunk_send_fn(next_chunk_id);
       next_chunk_id = (next_chunk_id + 1) % num_chunks;
-      return true;
     }
   };
 
