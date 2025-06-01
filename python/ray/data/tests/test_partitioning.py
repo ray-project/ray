@@ -1,14 +1,14 @@
 import json
 import os
 import posixpath
-from typing import Any, Callable, Dict, List, Optional, Union
+from typing import Any, Callable, Dict, Iterator, List, Optional, Union
 
 import pandas as pd
 import pyarrow
 import pyarrow as pa
 import pytest
 from pyarrow.fs import FileType
-from pytest_lazyfixture import lazy_fixture
+from pytest_lazy_fixtures import lf as lazy_fixture
 
 import ray
 from ray.data.block import Block
@@ -25,19 +25,26 @@ from ray.tests.conftest import *  # noqa
 
 
 class CSVDatasource(FileBasedDatasource):
-    def __init__(self, block_type: Union[pd.DataFrame, pa.Table]):
+    def __init__(
+        self,
+        paths,
+        block_type: Union[pd.DataFrame, pa.Table],
+        **file_based_datasource_kwargs,
+    ):
+        super().__init__(paths, **file_based_datasource_kwargs)
+
         self._block_type = block_type
 
-    def _read_file(self, f: pa.NativeFile, path: str, **kwargs) -> Block:
+    def _read_stream(self, f: pa.NativeFile, path: str) -> Iterator[Block]:
         assert self._block_type in {pd.DataFrame, pa.Table}
 
         if self._block_type is pa.Table:
             from pyarrow import csv
 
-            return csv.read_csv(f)
+            yield csv.read_csv(f)
 
         if self._block_type is pd.DataFrame:
-            return pd.read_csv(f)
+            yield pd.read_csv(f)
 
 
 def write_csv(data: Dict[str, List[Any]], path: str) -> None:
@@ -52,8 +59,8 @@ def read_csv(
     partitioning: Partitioning,
     block_type: Union[pd.DataFrame, pa.Table],
 ) -> Dataset:
-    datasource = CSVDatasource(block_type=block_type)
-    return ray.data.read_datasource(datasource, paths=paths, partitioning=partitioning)
+    datasource = CSVDatasource(paths, block_type=block_type, partitioning=partitioning)
+    return ray.data.read_datasource(datasource)
 
 
 class PathPartitionEncoder:
@@ -90,7 +97,7 @@ class PathPartitionEncoder:
         Returns:
             The new partition path encoder.
         """
-        scheme = Partitioning(style, base_dir, field_names, filesystem)
+        scheme = Partitioning(style, base_dir, field_names, None, filesystem)
         return PathPartitionEncoder(scheme)
 
     def __init__(self, partitioning: Partitioning):
@@ -868,6 +875,25 @@ def test_path_partition_filter_directory(fs, base_dir):
         posixpath.join(base_dir, "1/2/"),
         posixpath.join(base_dir, "1/2/3"),
     ]
+
+
+@pytest.mark.parametrize(
+    "partition_value,expected_type",
+    [
+        ("1", int),
+        ("1.0", float),
+        ("spam", str),
+        ("true", bool),
+    ],
+)
+def test_field_types(partition_value, expected_type):
+    partitioning = Partitioning(style="hive", field_types={"key": expected_type})
+    parse = PathPartitionParser(partitioning)
+
+    partitions = parse(f"key={partition_value}/data.parquet")
+
+    assert set(partitions.keys()) == {"key"}
+    assert isinstance(partitions["key"], expected_type)
 
 
 if __name__ == "__main__":

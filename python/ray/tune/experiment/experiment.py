@@ -1,54 +1,46 @@
 import copy
 import datetime
-import warnings
-from functools import partial
 import logging
-import os
-from pathlib import Path
-from pickle import PicklingError
 import pprint as pp
 import traceback
+from functools import partial
+from pathlib import Path
+from pickle import PicklingError
 from typing import (
+    TYPE_CHECKING,
     Any,
-    Dict,
-    Optional,
-    Sequence,
-    Union,
     Callable,
-    Type,
+    Dict,
     List,
     Mapping,
-    TYPE_CHECKING,
+    Optional,
+    Sequence,
+    Type,
+    Union,
 )
 
 import ray
-from ray.air import CheckpointConfig
-from ray.air._internal.uri_utils import URI
 from ray.exceptions import RpcError
-from ray.train._internal.storage import _use_storage_context, StorageContext
+from ray.tune import CheckpointConfig, SyncConfig
+from ray.train._internal.storage import StorageContext
+from ray.train.constants import DEFAULT_STORAGE_PATH
 from ray.tune.error import TuneError
-from ray.tune.registry import register_trainable, is_function_trainable
-from ray.tune.result import _get_defaults_results_dir
+from ray.tune.registry import is_function_trainable, register_trainable
 from ray.tune.stopper import CombinedStopper, FunctionStopper, Stopper, TimeoutStopper
-from ray.train import SyncConfig
-from ray.tune.utils import date_str
-from ray.tune.utils.util import _resolve_storage_path, _split_remote_local_path
-from ray.util import log_once
-
-from ray.util.annotations import DeveloperAPI, Deprecated
+from ray.util.annotations import Deprecated, DeveloperAPI
 
 if TYPE_CHECKING:
     import pyarrow.fs
 
-    from ray.tune.experiment import Trial
     from ray.tune import PlacementGroupFactory
+    from ray.tune.experiment import Trial
 
 
 logger = logging.getLogger(__name__)
 
 
 def _validate_log_to_file(log_to_file):
-    """Validate ``train.RunConfig``'s ``log_to_file`` parameter. Return
+    """Validate ``tune.RunConfig``'s ``log_to_file`` parameter. Return
     validated relative stdout and stderr filenames."""
     if not log_to_file:
         stdout_file = stderr_file = None
@@ -73,29 +65,6 @@ def _validate_log_to_file(log_to_file):
             )
         )
     return stdout_file, stderr_file
-
-
-def _get_local_dir_with_expand_user(local_dir: Optional[str]) -> str:
-    return (
-        Path(local_dir or _get_defaults_results_dir())
-        .expanduser()
-        .absolute()
-        .as_posix()
-    )
-
-
-def _get_dir_name(run, explicit_name: Optional[str], combined_name: str) -> str:
-    # If the name has been set explicitly, we don't want to create
-    # dated directories. The same is true for string run identifiers.
-    if (
-        int(os.environ.get("TUNE_DISABLE_DATED_SUBDIR", 0)) == 1
-        or explicit_name
-        or isinstance(run, str)
-    ):
-        dir_name = combined_name
-    else:
-        dir_name = "{}_{}".format(combined_name, date_str())
-    return dir_name
 
 
 @DeveloperAPI
@@ -124,15 +93,11 @@ class Experiment:
             checkpoint_freq=10,
             max_failures=2)
 
-    Args:
-        TODO(xwjiang): Add the whole list.
-        _experiment_checkpoint_dir: Internal use only. If present, use this
-            as the root directory for experiment checkpoint. If not present,
-            the directory path will be deduced from trainable name instead.
     """
 
     # Keys that will be present in `public_spec` dict.
     PUBLIC_KEYS = {"stop", "num_samples", "time_budget_s"}
+    _storage_context_cls = StorageContext
 
     def __init__(
         self,
@@ -148,7 +113,6 @@ class Experiment:
         num_samples: int = 1,
         storage_path: Optional[str] = None,
         storage_filesystem: Optional["pyarrow.fs.FileSystem"] = None,
-        _experiment_checkpoint_dir: Optional[str] = None,
         sync_config: Optional[Union[SyncConfig, dict]] = None,
         checkpoint_config: Optional[Union[CheckpointConfig, dict]] = None,
         trial_name_creator: Optional[Callable[["Trial"], str]] = None,
@@ -170,7 +134,7 @@ class Experiment:
                 raise ValueError(
                     "'checkpoint_at_end' cannot be used with a function trainable. "
                     "You should include one last call to "
-                    "`ray.train.report(metrics=..., checkpoint=...)` "
+                    "`ray.tune.report(metrics=..., checkpoint=...)` "
                     "at the end of your training loop to get this behavior."
                 )
             if checkpoint_config.checkpoint_frequency:
@@ -178,7 +142,7 @@ class Experiment:
                     "'checkpoint_frequency' cannot be set for a function trainable. "
                     "You will need to report a checkpoint every "
                     "`checkpoint_frequency` iterations within your training loop using "
-                    "`ray.train.report(metrics=..., checkpoint=...)` "
+                    "`ray.tune.report(metrics=..., checkpoint=...)` "
                     "to get this behavior."
                 )
         try:
@@ -196,80 +160,24 @@ class Experiment:
             else:
                 raise e
 
-        self.storage = None
-        if _use_storage_context():
-            if not name:
-                name = StorageContext.get_experiment_dir_name(run)
+        if not name:
+            name = StorageContext.get_experiment_dir_name(run)
 
-            self.storage = StorageContext(
-                storage_path=storage_path,
-                storage_filesystem=storage_filesystem,
-                sync_config=sync_config,
-                experiment_dir_name=name,
-            )
-            logger.debug(f"StorageContext on the DRIVER:\n{self.storage}")
-
-            self._legacy_local_storage_path = None
-            self._legacy_remote_storage_path = None
-            self.legacy_sync_config = None
-            self.legacy_dir_name = None
-            self.legacy_name = None
-        else:
-            if isinstance(sync_config, dict):
-                sync_config = SyncConfig(**sync_config)
-            else:
-                sync_config = sync_config or SyncConfig()
-
-            self.legacy_sync_config = sync_config
-
-            # Resolve storage_path
-            local_storage_path, remote_storage_path = _resolve_storage_path(
-                storage_path,
-                local_dir,
-                sync_config.upload_dir,
-                error_location="Experiment",
-            )
-
-            if local_dir:
-                if log_once("tune_experiment_local_dir"):
-                    warnings.warn(
-                        "The `local_dir` argument of `Experiment is deprecated. "
-                        "Use `storage_path` or set the `TUNE_RESULT_DIR` "
-                        "environment variable instead."
-                    )
-
-                local_storage_path = local_dir
-
-            full_local_storage_path = _get_local_dir_with_expand_user(
-                local_storage_path
-            )
-
-            # `_experiment_checkpoint_dir` is for internal use only for better
-            # support of Tuner API.
-            # If set, it should be a subpath under `local_dir`. Also deduce `dir_name`.
-            if _experiment_checkpoint_dir:
-                experiment_checkpoint_dir_path = Path(_experiment_checkpoint_dir)
-                local_dir_path = Path(full_local_storage_path)
-                assert local_dir_path in experiment_checkpoint_dir_path.parents, (
-                    local_dir_path,
-                    str(list(experiment_checkpoint_dir_path.parents)),
-                )
-                # `dir_name` is set by `_experiment_checkpoint_dir` indirectly.
-                self.legacy_dir_name = os.path.relpath(
-                    _experiment_checkpoint_dir, full_local_storage_path
-                )
-
-            self._legacy_local_storage_path = full_local_storage_path
-            self._legacy_remote_storage_path = remote_storage_path
-
-            self.legacy_name = name or self._run_identifier
-
-            if not _experiment_checkpoint_dir:
-                self.legacy_dir_name = _get_dir_name(run, name, self.legacy_name)
-
-            assert self.legacy_dir_name
+        storage_path = storage_path or DEFAULT_STORAGE_PATH
+        self.storage = self._storage_context_cls(
+            storage_path=storage_path,
+            storage_filesystem=storage_filesystem,
+            sync_config=sync_config,
+            experiment_dir_name=name,
+        )
+        logger.debug(f"StorageContext on the DRIVER:\n{self.storage}")
 
         config = config or {}
+        if not isinstance(config, dict):
+            raise ValueError(
+                f"`Experiment(config)` must be a dict, got: {type(config)}. "
+                "Please convert your search space to a dict before passing it in."
+            )
 
         self._stopper = None
         stopping_criteria = {}
@@ -281,7 +189,7 @@ class Experiment:
                 stopper_types = [type(s) for s in stop]
                 raise ValueError(
                     "If you pass a list as the `stop` argument to "
-                    "`train.RunConfig()`, each element must be an instance of "
+                    "`tune.RunConfig()`, each element must be an instance of "
                     f"`tune.stopper.Stopper`. Got {stopper_types}."
                 )
             self._stopper = CombinedStopper(*stop)
@@ -321,18 +229,15 @@ class Experiment:
             "config": config,
             "resources_per_trial": resources_per_trial,
             "num_samples": num_samples,
-            "experiment_path": self.path,
-            "experiment_dir_name": self.legacy_dir_name,
-            "sync_config": self.legacy_sync_config,
             "checkpoint_config": checkpoint_config,
             "trial_name_creator": trial_name_creator,
             "trial_dirname_creator": trial_dirname_creator,
             "log_to_file": (stdout_file, stderr_file),
             "export_formats": export_formats or [],
             "max_failures": max_failures,
-            "restore": Path(restore).expanduser().absolute().as_posix()
-            if restore
-            else None,
+            "restore": (
+                Path(restore).expanduser().absolute().as_posix() if restore else None
+            ),
             "storage": self.storage,
         }
         self.spec = spec
@@ -455,64 +360,23 @@ class Experiment:
             raise type(e)(str(e) + " " + extra_msg) from None
         return name
 
-    @classmethod
-    def get_experiment_checkpoint_dir(
-        cls,
-        run_obj: Union[str, Callable, Type],
-        storage_path: Optional[str] = None,
-        name: Optional[str] = None,
-    ):
-        """Get experiment checkpoint dir without setting up an experiment.
-
-        This is only used internally for better support of Tuner API.
-
-        Args:
-            run_obj: Trainable to run.
-            storage_path: The path to Ray AIR's result storage.
-            name: The name of the experiment specified by user.
-
-        Returns:
-            Checkpoint directory for experiment.
-        """
-        assert run_obj
-
-        local_path, _ = _split_remote_local_path(storage_path, None)
-        local_path = _get_local_dir_with_expand_user(local_path)
-
-        run_identifier = cls.get_trainable_name(run_obj)
-        combined_name = name or run_identifier
-
-        dir_name = _get_dir_name(run_obj, name, combined_name)
-
-        return os.path.join(local_path, dir_name)
-
     @property
     def stopper(self):
         return self._stopper
 
     @property
     def local_path(self) -> Optional[str]:
-        if _use_storage_context():
-            return self.storage.experiment_local_path
-
-        if not self._legacy_local_storage_path:
-            return None
-        return str(Path(self._legacy_local_storage_path) / self.legacy_dir_name)
+        return self.storage.experiment_driver_staging_path
 
     @property
     @Deprecated("Replaced by `local_path`")
     def local_dir(self):
-        # Deprecate: Raise in 2.5, Remove in 2.6
-        return self.local_path
+        # TODO(justinvyu): [Deprecated] Remove in 2.11.
+        raise DeprecationWarning("Use `local_path` instead of `local_dir`.")
 
     @property
     def remote_path(self) -> Optional[str]:
-        if _use_storage_context():
-            return self.storage.experiment_fs_path
-
-        if not self._legacy_remote_storage_path:
-            return None
-        return str(URI(self._legacy_remote_storage_path) / self.legacy_dir_name)
+        return self.storage.experiment_fs_path
 
     @property
     def path(self) -> Optional[str]:
@@ -523,17 +387,10 @@ class Experiment:
         return self.spec.get("checkpoint_config")
 
     @property
-    @Deprecated("Replaced by `checkpoint_dir`")
+    @Deprecated("Replaced by `local_path`")
     def checkpoint_dir(self):
-        # Deprecate: Raise in 2.5, Remove in 2.6
-        # Provided when initializing Experiment, if so, return directly.
-        return self.local_path
-
-    @property
-    @Deprecated("Replaced by `remote_path`")
-    def remote_checkpoint_dir(self) -> Optional[str]:
-        # Deprecate: Raise in 2.5, Remove in 2.6
-        return self.remote_path
+        # TODO(justinvyu): [Deprecated] Remove in 2.11.
+        raise DeprecationWarning("Use `local_path` instead of `checkpoint_dir`.")
 
     @property
     def run_identifier(self):

@@ -1,4 +1,5 @@
 import os
+import sys
 import time
 
 import numpy as np
@@ -161,16 +162,15 @@ def test_actor_task_refs(ray_start_regular):
     x_id = actor.f.remote(np.zeros(100000))
     info = ray.get(x_id)
     print(info)
-    # Note, the actor will always hold a handle to the actor itself.
-    assert num_objects(info) == 5, info
+    assert num_objects(info) == 4, info
     # Actor handle, task argument id, task return id.
     assert count(info, ACTOR_TASK_CALL_OBJ) == 3, info
     assert count(info, DRIVER_PID) == 3, info
-    assert count(info, WORKER_PID) == 2, info
+    assert count(info, WORKER_PID) == 1, info
     assert count(info, LOCAL_REF) == 1, info
     assert count(info, PINNED_IN_MEMORY) == 1, info
     assert count(info, USED_BY_PENDING_TASK) == 1, info
-    assert count(info, ACTOR_HANDLE) == 2, info
+    assert count(info, ACTOR_HANDLE) == 1, info
     assert count(info, DESER_ACTOR_TASK_ARG) == 1, info
     del x_id
 
@@ -378,9 +378,4 @@ def test_task_status(ray_start_regular):
 
 
 if __name__ == "__main__":
-    import sys
-
-    if os.environ.get("PARALLEL_CI"):
-        sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))
-    else:
-        sys.exit(pytest.main(["-sv", __file__]))
+    sys.exit(pytest.main(["-sv", __file__]))

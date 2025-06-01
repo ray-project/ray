@@ -1,29 +1,17 @@
 import copy
-from collections import OrderedDict
-import pytest
 import sys
 import unittest
+from collections import OrderedDict
 from unittest.mock import patch
 
-from ray.tune.utils.util import wait_for_gpu
-from ray.tune.utils.util import flatten_dict, unflatten_dict, unflatten_list_dict
-from ray.tune.trainable.util import TrainableUtil
+import pytest
 
-
-@pytest.mark.parametrize(
-    "checkpoint_path",
-    [
-        "~/tmp/exp/trial/checkpoint0",
-        "~/tmp/exp/trial/checkpoint0/",
-        "~/tmp/exp/trial/checkpoint0/checkpoint",
-        "~/tmp/exp/trial/checkpoint0/foo/bar/baz",
-    ],
+from ray.tune.utils.util import (
+    flatten_dict,
+    unflatten_dict,
+    unflatten_list_dict,
+    wait_for_gpu,
 )
-@pytest.mark.parametrize("logdir", ["~/tmp/exp/trial", "~/tmp/exp/trial/"])
-def test_find_rel_checkpoint_dir(checkpoint_path, logdir):
-    assert (
-        TrainableUtil.find_rel_checkpoint_dir(logdir, checkpoint_path) == "checkpoint0"
-    )
 
 
 class FlattenDictTest(unittest.TestCase):
@@ -193,6 +181,4 @@ class GPUTest(unittest.TestCase):
 
 
 if __name__ == "__main__":
-    import pytest
-
     sys.exit(pytest.main(["-v", __file__]))

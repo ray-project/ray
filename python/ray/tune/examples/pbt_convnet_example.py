@@ -1,22 +1,28 @@
 #!/usr/bin/env python
 
-# flake8: noqa
+# ruff: noqa
 # fmt: off
 
 # __tutorial_imports_begin__
 import argparse
 import os
+
 import numpy as np
 import torch
 import torch.optim as optim
 from torchvision import datasets
-from ray.tune.examples.mnist_pytorch import train_func, test_func, ConvNet,\
-    get_data_loaders
 
 import ray
-from ray import train, tune
+from ray import tune
+from ray.tune.examples.mnist_pytorch import (
+    ConvNet,
+    get_data_loaders,
+    test_func,
+    train_func,
+)
 from ray.tune.schedulers import PopulationBasedTraining
 from ray.tune.utils import validate_save_restore
+
 # __tutorial_imports_end__
 
 
@@ -103,11 +109,11 @@ if __name__ == "__main__":
 
     tuner = tune.Tuner(
         PytorchTrainable,
-        run_config=train.RunConfig(
+        run_config=tune.RunConfig(
             name="pbt_test",
             stop=stopper,
             verbose=1,
-            checkpoint_config=train.CheckpointConfig(
+            checkpoint_config=tune.CheckpointConfig(
                 checkpoint_score_attribute="mean_accuracy",
                 checkpoint_frequency=5,
                 num_to_keep=4,

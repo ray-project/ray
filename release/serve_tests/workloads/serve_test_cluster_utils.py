@@ -36,7 +36,7 @@ def setup_local_single_node_cluster(
             resources={str(i): 2, "proxy": 1},
         )
     ray.init(address=cluster.address, dashboard_host="0.0.0.0", namespace=namespace)
-    serve.start(detached=True, proxy_location=DeploymentMode.EveryNode)
+    serve.start(proxy_location=DeploymentMode.EveryNode)
 
     return _get_global_client(), cluster
 

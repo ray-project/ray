@@ -1,27 +1,25 @@
 import functools
+import sys
 import time
+from contextlib import nullcontext
 from unittest.mock import patch
+
 import pytest
-from ray.train._internal.worker_group import WorkerGroup
-from ray.train.trainer import TrainingIterator
 
 import ray
 from ray import train
-from ray.train import CheckpointConfig, DataConfig
 from ray.air._internal.util import StartTraceback
-from ray.train.backend import BackendConfig
-from ray.train._internal.session import init_session, get_session
+from ray.train import DataConfig
 from ray.train._internal.backend_executor import BackendExecutor
+from ray.train._internal.session import get_session, init_session
 from ray.train._internal.utils import construct_train_func
-from ray.train._internal.checkpoint import CheckpointManager
-from ray.train.examples.tf.tensorflow_mnist_example import (
-    train_func as tensorflow_mnist_train_func,
-)
+from ray.train._internal.worker_group import WorkerGroup
+from ray.train.backend import BackendConfig
 from ray.train.examples.pytorch.torch_linear_example import (
     train_func as linear_train_func,
 )
-
 from ray.train.tests.util import mock_storage_context
+from ray.train.trainer import TrainingIterator
 
 MAX_RETRIES = 3
 
@@ -92,7 +90,7 @@ def create_iterator(
 ):
     # Similar logic to the old Trainer.run_iterator().
 
-    train_func = construct_train_func(train_func, None)
+    train_func = construct_train_func(train_func, None, train_func_context=nullcontext)
 
     backend_executor = backend_executor_cls(
         backend_config=backend_config, num_workers=num_workers, max_retries=MAX_RETRIES
@@ -103,13 +101,10 @@ def create_iterator(
         backend_executor=backend_executor,
         backend_config=backend_config,
         train_func=train_func,
-        run_dir=None,
         datasets={},
         metadata={},
         data_config=DataConfig(),
         checkpoint=None,
-        checkpoint_strategy=CheckpointConfig(),
-        checkpoint_manager=CheckpointManager(),
     )
 
 
@@ -288,7 +283,10 @@ class KillCallback:
         self.counter += 1
 
 
-@pytest.mark.parametrize("backend", ["test", "torch", "tf", "horovod"])
+@pytest.mark.parametrize(
+    "backend",
+    ["test", "torch", "tf"] if sys.version_info < (3, 12) else ["test", "torch"],
+)
 def test_worker_kill(ray_start_4_cpus, backend):
     if backend == "test":
         test_config = BackendConfig()
@@ -300,10 +298,6 @@ def test_worker_kill(ray_start_4_cpus, backend):
         from ray.train.tensorflow import TensorflowConfig
 
         test_config = TensorflowConfig()
-    elif backend == "horovod":
-        from ray.train.horovod import HorovodConfig
-
-        test_config = HorovodConfig()
 
     def train_func():
         for i in range(2):
@@ -332,11 +326,17 @@ def test_worker_kill(ray_start_4_cpus, backend):
     assert kill_callback.counter == 4
 
 
+@pytest.mark.skipif(
+    sys.version_info >= (3, 12), reason="tensorflow is not installed in python 3.12+"
+)
 def test_tensorflow_mnist_fail(ray_start_4_cpus):
     """Tests if tensorflow example works even with worker failure."""
     epochs = 3
     num_workers = 2
 
+    from ray.train.examples.tf.tensorflow_mnist_example import (
+        train_func as tensorflow_mnist_train_func,
+    )
     from ray.train.tensorflow import TensorflowConfig
 
     test_config = TensorflowConfig()

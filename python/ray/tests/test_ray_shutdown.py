@@ -2,6 +2,8 @@ import sys
 import time
 import platform
 import os
+import signal
+import multiprocessing
 
 import pytest
 import ray
@@ -12,25 +14,27 @@ from ray._private.test_utils import (
     wait_for_condition,
     run_string_as_driver_nonblocking,
 )
+from ray.util.state import get_worker, list_tasks
+from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
 
 WAIT_TIMEOUT = 20
 
 
 def get_all_ray_worker_processes():
-    processes = [
-        p.info["cmdline"] for p in psutil.process_iter(attrs=["pid", "name", "cmdline"])
-    ]
-
+    processes = psutil.process_iter(attrs=["pid", "name", "cmdline", "status"])
     result = []
     for p in processes:
-        if p is not None and len(p) > 0 and "ray::" in p[0]:
-            result.append(p[0])
+        cmdline = p.info["cmdline"]
+        if cmdline is not None and len(cmdline) > 0 and "ray::" in cmdline[0]:
+            result.append(p)
+    print(f"all ray worker processes: {result}")
     return result
 
 
 @pytest.fixture
 def short_gcs_publish_timeout(monkeypatch):
     monkeypatch.setenv("RAY_MAX_GCS_PUBLISH_RETRIES", "3")
+    monkeypatch.setenv("RAY_gcs_rpc_server_reconnect_timeout_s", "1")
     yield
 
 
@@ -337,8 +341,147 @@ def test_raylet_graceful_exit_upon_runtime_env_agent_exit(ray_start_cluster):
     assert exit_code == 0
 
 
+@pytest.mark.skipif(platform.system() == "Windows", reason="Hang on Windows.")
+def test_worker_sigterm(shutdown_only):
+    """Verify a worker process is killed by a sigterm."""
+    ray.init(num_cpus=1)
+
+    @ray.remote
+    def f():
+        return os.getpid(), ray.get_runtime_context().get_worker_id()
+
+    pid, worker_id = ray.get(f.remote())
+    os.kill(pid, signal.SIGTERM)
+
+    def verify():
+        w = get_worker(id=worker_id)
+        alive = w.is_alive
+        assert not alive
+        assert "SIGTERM" in w.exit_detail
+        assert w.exit_type == "SYSTEM_ERROR"
+        return True
+
+    wait_for_condition(verify)
+
+    @ray.remote(num_cpus=1)
+    class Actor:
+        def pid(self):
+            return os.getpid(), ray.get_runtime_context().get_worker_id()
+
+    a = Actor.remote()
+    pid, worker_id = ray.get(a.pid.remote())
+    os.kill(pid, signal.SIGTERM)
+
+    def verify():
+        w = get_worker(id=worker_id)
+        alive = w.is_alive
+        assert not alive
+        assert "SIGTERM" in w.exit_detail
+        assert w.exit_type == "SYSTEM_ERROR"
+        return True
+
+    wait_for_condition(verify)
+
+
+@pytest.mark.skipif(platform.system() == "Windows", reason="Hang on Windows.")
+def test_worker_proc_child_no_leak(shutdown_only):
+    """Verify a worker process is not leaked when placement group is removed"""
+    ray.init(num_cpus=1)
+
+    @ray.remote(num_cpus=1)
+    class Actor:
+        def __init__(self) -> None:
+            self.p = None
+
+        def sleep(self):
+            mp_context = multiprocessing.get_context("spawn")
+            self.p = mp_context.Process(target=time.sleep, args=(1000,))
+            self.p.daemon = True
+            self.p.start()
+
+            print(f"[pid={os.getpid()}ppid={os.getppid()}]sleeping for 1")
+            time.sleep(1)
+            return ray.get_runtime_context().get_worker_id(), self.p.pid
+
+    # Create a placement group
+    pg = ray.util.placement_group([{"CPU": 1}])
+    ray.get(pg.ready())
+
+    # Create an actor to a placement group.
+    actor = Actor.options(
+        scheduling_strategy=PlacementGroupSchedulingStrategy(
+            placement_group=pg,
+        )
+    ).remote()
+
+    ray.get(actor.__ray_ready__.remote())
+    worker_id, child_pid = ray.get(actor.sleep.remote())
+
+    # Remove the placement group
+    ray.util.remove_placement_group(pg)
+
+    def verify():
+        try:
+            psutil.Process(pid=child_pid).status()
+        except psutil.NoSuchProcess:
+            return True
+
+    wait_for_condition(verify)
+
+    def verify():
+        w = get_worker(id=worker_id)
+        assert "placement group was removed" in w.exit_detail
+        assert w.exit_type == "INTENDED_SYSTEM_EXIT"
+        return True
+
+    wait_for_condition(verify)
+
+
+@pytest.mark.skipif(platform.system() == "Windows", reason="Hang on Windows.")
+@pytest.mark.parametrize("is_get", [False, True])
+def test_sigterm_while_ray_get_and_wait(shutdown_only, is_get):
+    """Verify when sigterm is received while running
+    ray.get, it will clean up the worker process properly.
+    """
+
+    @ray.remote(max_retries=0)
+    def f():
+        time.sleep(300)
+
+    @ray.remote(max_retries=0)
+    def ray_get_wait_task():
+        ref = f.remote()
+        if is_get:
+            ray.get(ref)
+        else:
+            ray.wait([ref])
+
+    # TODO(sang): The task failure is not properly propagated.
+    r = ray_get_wait_task.remote()
+
+    def wait_for_task():
+        t = list_tasks(filters=[("name", "=", "ray_get_wait_task")])[0]
+        return t.state == "RUNNING"
+
+    wait_for_condition(wait_for_task)
+
+    # Kill a task that's blocked by ray.get
+    t = list_tasks(filters=[("name", "=", "ray_get_wait_task")])[0]
+    os.kill(t.worker_pid, signal.SIGTERM)
+
+    with pytest.raises(ray.exceptions.WorkerCrashedError):
+        ray.get(r)
+
+    def verify():
+        t = list_tasks(filters=[("name", "=", "ray_get_wait_task")])[0]
+        w = get_worker(t.worker_id)
+        assert t.state == "FAILED"
+        assert w.exit_type == "SYSTEM_ERROR"
+        assert "SIGTERM" in w.exit_detail
+        return True
+
+    wait_for_condition(verify)
+
+
 if __name__ == "__main__":
-    if os.environ.get("PARALLEL_CI"):
-        sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))
-    else:
-        sys.exit(pytest.main(["-sv", __file__]))
+    sys.exit(pytest.main(["-sv", __file__]))

@@ -61,12 +61,12 @@ def assert_cluster_resource_constraints(
     # We only have 1 constraint for now.
     assert len(state.cluster_resource_constraints) == 1
 
-    min_bundles = state.cluster_resource_constraints[0].min_bundles
-    assert len(min_bundles) == len(expected_bundles) == len(expected_count)
+    resource_requests = state.cluster_resource_constraints[0].resource_requests
+    assert len(resource_requests) == len(expected_bundles) == len(expected_count)
 
     # Sort all the bundles by bundle's resource names
-    min_bundles = sorted(
-        min_bundles,
+    resource_requests = sorted(
+        resource_requests,
         key=lambda bundle_by_count: "".join(
             bundle_by_count.request.resources_bundle.keys()
         ),
@@ -76,7 +76,7 @@ def assert_cluster_resource_constraints(
         expected, key=lambda bundle_count: "".join(bundle_count[0].keys())
     )
 
-    for actual_bundle_count, expected_bundle_count in zip(min_bundles, expected):
+    for actual_bundle_count, expected_bundle_count in zip(resource_requests, expected):
         assert (
             dict(actual_bundle_count.request.resources_bundle)
             == expected_bundle_count[0]
@@ -242,11 +242,12 @@ def assert_gang_requests(
 
 
 def test_request_cluster_resources_basic(shutdown_only):
-    ray.init(num_cpus=1)
+    ctx = ray.init(num_cpus=1)
     stub = _autoscaler_state_service_stub()
+    gcs_address = ctx.address_info["gcs_address"]
 
     # Request one
-    request_cluster_resources([{"CPU": 1}])
+    request_cluster_resources(gcs_address, [{"CPU": 1}])
 
     def verify():
         state = get_cluster_resource_state(stub)
@@ -256,7 +257,7 @@ def test_request_cluster_resources_basic(shutdown_only):
     wait_for_condition(verify)
 
     # Request another overrides the previous request
-    request_cluster_resources([{"CPU": 2, "GPU": 1}, {"CPU": 1}])
+    request_cluster_resources(gcs_address, [{"CPU": 2, "GPU": 1}, {"CPU": 1}])
 
     def verify():
         state = get_cluster_resource_state(stub)
@@ -266,7 +267,7 @@ def test_request_cluster_resources_basic(shutdown_only):
         return True
 
     # Request multiple is aggregated by shape.
-    request_cluster_resources([{"CPU": 1}] * 100)
+    request_cluster_resources(gcs_address, [{"CPU": 1}] * 100)
 
     def verify():
         state = get_cluster_resource_state(stub)
@@ -460,6 +461,131 @@ def test_node_state_lifecycle_basic(ray_start_cluster):
     wait_for_condition(verify_cluster_no_node)
 
 
+# We test that a node with only workers blocked on get
+# is considered idle.
+def test_idle_node_blocked(ray_start_cluster):
+    cluster = ray_start_cluster
+    cluster.add_node(num_cpus=1)
+    ray.init(address=cluster.address)
+
+    stub = _autoscaler_state_service_stub()
+
+    # We don't have node id from `add_node` unfortunately.
+    def nodes_up():
+        nodes = list_nodes()
+        assert len(nodes) == 1
+        return True
+
+    wait_for_condition(nodes_up)
+
+    head_node_id = get_node_ids()
+
+    def verify_cluster_idle():
+        state = get_cluster_resource_state(stub)
+        assert_node_states(
+            state,
+            [
+                ExpectedNodeState(
+                    head_node_id, NodeStatus.IDLE, lambda idle_ms: idle_ms > 0
+                ),
+            ],
+        )
+        return True
+
+    wait_for_condition(verify_cluster_idle)
+
+    # Unschedulable
+    @ray.remote(num_cpus=10000)
+    def f():
+        pass
+
+    # Schedule a task running
+    @ray.remote(num_cpus=1)
+    def g():
+        ray.get(f.remote())
+
+    t = g.remote()
+
+    def verify_cluster_busy():
+        state = get_cluster_resource_state(stub)
+        assert_node_states(
+            state,
+            [
+                ExpectedNodeState(
+                    head_node_id, NodeStatus.RUNNING, lambda idle_ms: idle_ms == 0
+                ),
+            ],
+        )
+        return True
+
+    wait_for_condition(verify_cluster_busy)
+    for _ in range(10):
+        time.sleep(0.5)
+        verify_cluster_busy()
+
+    # Kill the task
+    ray.cancel(t, force=True)
+    wait_for_condition(verify_cluster_idle)
+
+
+def test_idle_node_no_resource(ray_start_cluster):
+    cluster = ray_start_cluster
+    cluster.add_node(num_cpus=1)
+    ray.init(address=cluster.address)
+
+    stub = _autoscaler_state_service_stub()
+
+    # We don't have node id from `add_node` unfortunately.
+    def nodes_up():
+        nodes = list_nodes()
+        assert len(nodes) == 1
+        return True
+
+    wait_for_condition(nodes_up)
+
+    head_node_id = get_node_ids()
+
+    def verify_cluster_idle():
+        state = get_cluster_resource_state(stub)
+        assert_node_states(
+            state,
+            [
+                ExpectedNodeState(
+                    head_node_id, NodeStatus.IDLE, lambda idle_ms: idle_ms > 0
+                ),
+            ],
+        )
+        return True
+
+    wait_for_condition(verify_cluster_idle)
+
+    # Schedule a task running
+    @ray.remote(num_cpus=0)
+    def f():
+        while True:
+            pass
+
+    t = f.remote()
+
+    def verify_cluster_busy():
+        state = get_cluster_resource_state(stub)
+        assert_node_states(
+            state,
+            [
+                ExpectedNodeState(
+                    head_node_id, NodeStatus.RUNNING, lambda idle_ms: idle_ms == 0
+                ),
+            ],
+        )
+        return True
+
+    wait_for_condition(verify_cluster_busy)
+
+    # Kill the task
+    ray.cancel(t, force=True)
+    wait_for_condition(verify_cluster_idle)
+
+
 def test_get_cluster_status_resources(ray_start_cluster):
     cluster = ray_start_cluster
     # Head node
@@ -486,7 +612,7 @@ def test_get_cluster_status_resources(ray_start_cluster):
     actor.loop.remote()
 
     def verify_cpu_resources_all_used():
-        cluster_status = get_cluster_status()
+        cluster_status = get_cluster_status(cluster.address)
         total_cluster_resources = get_total_resources(
             cluster_status.cluster_resource_usage
         )
@@ -504,7 +630,7 @@ def test_get_cluster_status_resources(ray_start_cluster):
     [loop.remote() for _ in range(2)]
 
     def verify_task_demands():
-        resource_demands = get_cluster_status().resource_demands
+        resource_demands = get_cluster_status(cluster.address).resource_demands
         assert len(resource_demands.ray_task_actor_demand) == 1
         assert resource_demands.ray_task_actor_demand[0].bundles_by_count == [
             ResourceRequestByCount(
@@ -517,10 +643,12 @@ def test_get_cluster_status_resources(ray_start_cluster):
     wait_for_condition(verify_task_demands)
 
     # Request resources through SDK
-    request_cluster_resources(to_request=[{"GPU": 1, "CPU": 2}])
+    request_cluster_resources(
+        gcs_address=cluster.address, to_request=[{"GPU": 1, "CPU": 2}]
+    )
 
     def verify_cluster_constraint_demand():
-        resource_demands = get_cluster_status().resource_demands
+        resource_demands = get_cluster_status(cluster.address).resource_demands
         assert len(resource_demands.cluster_constraint_demand) == 1
         assert resource_demands.cluster_constraint_demand[0].bundles_by_count == [
             ResourceRequestByCount(
@@ -536,7 +664,7 @@ def test_get_cluster_status_resources(ray_start_cluster):
     pg1 = ray.util.placement_group([{"CPU": 1}] * 3)
 
     def verify_pg_demands():
-        resource_demands = get_cluster_status().resource_demands
+        resource_demands = get_cluster_status(cluster.address).resource_demands
         assert len(resource_demands.placement_group_demand) == 1
         assert resource_demands.placement_group_demand[0].bundles_by_count == [
             ResourceRequestByCount(
@@ -566,9 +694,9 @@ def test_get_cluster_status(ray_start_cluster):
     head_node_id, worker_node_ids = get_node_ids()
 
     def verify_nodes():
-        cluster_status = get_cluster_status()
+        cluster_status = get_cluster_status(cluster.address)
         assert_nodes(
-            cluster_status.healthy_nodes,
+            cluster_status.idle_nodes,
             [
                 ExpectedNodeInfo(
                     worker_node_ids[0],
@@ -599,9 +727,15 @@ def test_get_cluster_status(ray_start_cluster):
     f.remote()
 
     def verify_nodes_busy():
-        cluster_status = get_cluster_status()
+        cluster_status = get_cluster_status(cluster.address)
         assert_nodes(
-            cluster_status.healthy_nodes,
+            cluster_status.idle_nodes,
+            [
+                ExpectedNodeInfo(head_node_id, "IDLE", lambda idle_ms: idle_ms > 0),
+            ],
+        )
+        assert_nodes(
+            cluster_status.active_nodes,
             [
                 ExpectedNodeInfo(
                     worker_node_ids[0],
@@ -610,7 +744,6 @@ def test_get_cluster_status(ray_start_cluster):
                     total_resources={"CPU": 2.0},
                     available_resources={"CPU": 0.0},
                 ),
-                ExpectedNodeInfo(head_node_id, "IDLE", lambda idle_ms: idle_ms > 0),
             ],
         )
         return True
@@ -620,7 +753,9 @@ def test_get_cluster_status(ray_start_cluster):
     stub = _autoscaler_state_service_stub()
     state = autoscaler_pb2.AutoscalingState(
         last_seen_cluster_resource_state_version=0,
-        autoscaler_state_version=1,
+        # since the autoscaler will also update the autoscaler_state_version periodically,
+        # we need to use a large number here, such as 10, to override it to avoid flaky test.
+        autoscaler_state_version=10,
         pending_instance_requests=[
             autoscaler_pb2.PendingInstanceRequest(
                 instance_type_name="m5.large",
@@ -654,7 +789,7 @@ def test_get_cluster_status(ray_start_cluster):
     def verify_autoscaler_state():
         # TODO(rickyx): Add infeasible asserts.
 
-        cluster_status = get_cluster_status()
+        cluster_status = get_cluster_status(cluster.address)
         assert len(cluster_status.pending_launches) == 1
         assert_launches(
             cluster_status,

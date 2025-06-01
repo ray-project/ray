@@ -22,7 +22,7 @@ class Unity3DEnv(MultiAgentEnv):
     `rllib/examples/unity3d_env_local.py`
     For an example on how to use it inside a Unity game client, which
     connects to an RLlib Policy server, see:
-    `rllib/examples/serving/unity3d_[client|server].py`
+    `rllib/examples/envs/external_envs/unity3d_[client|server].py`
 
     Supports all Unity3D (MLAgents) examples, multi- or single-agent and
     gets converted automatically into an ExternalMultiAgentEnv, when used
@@ -64,10 +64,6 @@ class Unity3DEnv(MultiAgentEnv):
                 Note: The game itself may contain its own episode length
                 limits, which are always obeyed (on top of this value here).
         """
-        # Skip env checking as the nature of the agent IDs depends on the game
-        # running in the connected Unity editor.
-        self._skip_env_checking = True
-
         super().__init__()
 
         if file_name is None:
@@ -84,7 +80,7 @@ class Unity3DEnv(MultiAgentEnv):
         port_ = None
         while True:
             # Sleep for random time to allow for concurrent startup of many
-            # environments (num_workers >> 1). Otherwise, would lead to port
+            # environments (num_env_runners >> 1). Otherwise, would lead to port
             # conflicts sometimes.
             if port_ is not None:
                 time.sleep(random.randint(1, 10))

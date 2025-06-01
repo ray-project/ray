@@ -70,11 +70,10 @@ void FillNil(T *data) {
 }
 
 WorkerID ComputeDriverIdFromJob(const JobID &job_id) {
-  std::vector<uint8_t> data(WorkerID::Size(), 0);
+  std::string data(WorkerID::Size(), '\0');
   std::memcpy(data.data(), job_id.Data(), JobID::Size());
-  std::fill_n(data.data() + JobID::Size(), WorkerID::Size() - JobID::Size(), 0xFF);
-  return WorkerID::FromBinary(
-      std::string(reinterpret_cast<const char *>(data.data()), data.size()));
+  std::fill_n(data.data() + JobID::Size(), WorkerID::Size() - JobID::Size(), (char)0xFF);
+  return WorkerID::FromBinary(data);
 }
 
 // This code is from https://sites.google.com/site/murmurhash/
@@ -105,16 +104,22 @@ __suppress_ubsan__("undefined") uint64_t
   switch (len & 7) {
   case 7:
     h ^= uint64_t(data2[6]) << 48;
+    [[fallthrough]];
   case 6:
     h ^= uint64_t(data2[5]) << 40;
+    [[fallthrough]];
   case 5:
     h ^= uint64_t(data2[4]) << 32;
+    [[fallthrough]];
   case 4:
     h ^= uint64_t(data2[3]) << 24;
+    [[fallthrough]];
   case 3:
     h ^= uint64_t(data2[2]) << 16;
+    [[fallthrough]];
   case 2:
     h ^= uint64_t(data2[1]) << 8;
+    [[fallthrough]];
   case 1:
     h ^= uint64_t(data2[0]);
     h *= m;
@@ -255,11 +260,9 @@ ObjectID ObjectID::FromIndex(const TaskID &task_id, ObjectIDIndexType index) {
 }
 
 ObjectID ObjectID::FromRandom() {
-  std::vector<uint8_t> task_id_bytes(TaskID::kLength, 0x0);
+  std::string task_id_bytes(TaskID::kLength, (char)0xFF);
   FillRandom(&task_id_bytes);
-
-  return GenerateObjectId(std::string(
-      reinterpret_cast<const char *>(task_id_bytes.data()), task_id_bytes.size()));
+  return GenerateObjectId(task_id_bytes);
 }
 
 ObjectID ObjectID::ForActorHandle(const ActorID &actor_id) {
@@ -293,10 +296,9 @@ ObjectID ObjectID::GenerateObjectId(const std::string &task_id_binary,
 }
 
 JobID JobID::FromInt(uint32_t value) {
-  std::vector<uint8_t> data(JobID::Size(), 0);
+  std::string data(JobID::Size(), '\0');
   std::memcpy(data.data(), &value, JobID::Size());
-  return JobID::FromBinary(
-      std::string(reinterpret_cast<const char *>(data.data()), data.size()));
+  return JobID::FromBinary(data);
 }
 
 uint32_t JobID::ToInt() {

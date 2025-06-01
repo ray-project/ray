@@ -47,7 +47,7 @@ def textproto_split(input_lines, json_encoder):
     prev_comma = False
     prev_tail = b""
     for full_line in input_lines:
-        pieces = re.split(b"(\\r|\\n)", full_line, 1)
+        pieces = re.split(b"(\\r|\\n)", full_line, maxsplit=1)
         pieces[1:] = [b"".join(pieces[1:])]
         [line, tail] = pieces
         next_line = pat_open.sub(b'\\1["\\2",\\3[', line)

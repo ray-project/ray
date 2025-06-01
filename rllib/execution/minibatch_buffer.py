@@ -1,10 +1,10 @@
 from typing import Any, Tuple
 import queue
 
-from ray.rllib.utils.deprecation import deprecation_warning
-from ray.util import log_once
+from ray.rllib.utils.annotations import OldAPIStack
 
 
+@OldAPIStack
 class MinibatchBuffer:
     """Ring buffer of recent data batches for minibatch SGD.
 
@@ -23,13 +23,13 @@ class MinibatchBuffer:
 
         Args:
            inqueue (queue.Queue): Queue to populate the internal ring buffer
-           from.
+              from.
            size: Max number of data items to buffer.
            timeout: Queue timeout
            num_passes: Max num times each data item should be emitted.
            init_num_passes: Initial passes for each data item.
-           Maxiumum number of passes per item are increased to num_passes over
-           time.
+              Maxiumum number of passes per item are increased to num_passes over
+              time.
         """
         self.inqueue = inqueue
         self.size = size
@@ -39,10 +39,6 @@ class MinibatchBuffer:
         self.buffers = [None] * size
         self.ttl = [0] * size
         self.idx = 0
-        if log_once("minibatch-buffer-deprecation-warning"):
-            deprecation_warning(
-                old="ray.rllib.execution.minibatch_buffer.MinibatchBuffer"
-            )
 
     def get(self) -> Tuple[Any, bool]:
         """Get a new batch from the internal ring buffer.

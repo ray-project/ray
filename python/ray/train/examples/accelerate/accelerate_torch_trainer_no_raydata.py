@@ -6,11 +6,12 @@ https://github.com/huggingface/accelerate/blob/main/examples/nlp_example.py
 Fine-tune a BERT model with Hugging Face Accelerate and Ray Train
 """
 
+from tempfile import TemporaryDirectory
+
 import evaluate
 import torch
 from accelerate import Accelerator
 from datasets import load_dataset
-from tempfile import TemporaryDirectory
 from torch.optim import AdamW
 from torch.utils.data import DataLoader
 from transformers import (
@@ -21,7 +22,7 @@ from transformers import (
 )
 
 import ray.train
-from ray.train import ScalingConfig, Checkpoint
+from ray.train import Checkpoint, ScalingConfig
 from ray.train.torch import TorchTrainer
 
 
@@ -157,6 +158,10 @@ if __name__ == "__main__":
         train_func,
         train_loop_config=config,
         scaling_config=ScalingConfig(num_workers=4, use_gpu=True),
+        # If running in a multi-node cluster, this is where you
+        # should configure the run's persistent storage that is accessible
+        # across all worker nodes.
+        # run_config=ray.train.RunConfig(storage_path="s3://..."),
     )
 
     result = trainer.fit()

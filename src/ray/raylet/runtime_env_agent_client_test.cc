@@ -13,18 +13,19 @@
 // limitations under the License.
 #include "ray/raylet/runtime_env_agent_client.h"
 
+#include <algorithm>
 #include <boost/asio.hpp>
 #include <boost/beast/core.hpp>
 #include <boost/beast/http.hpp>
 #include <boost/beast/version.hpp>
 #include <boost/chrono.hpp>
 #include <boost/date_time/posix_time/posix_time.hpp>
-#include <boost/optional.hpp>
 #include <boost/thread.hpp>
 #include <memory>
 #include <string>
 #include <thread>
 #include <unordered_map>
+#include <utility>
 
 #include "gtest/gtest.h"
 #include "ray/common/asio/asio_util.h"
@@ -40,7 +41,7 @@ using tcp = boost::asio::ip::tcp;
 using boost::asio::ip::port_type;
 
 port_type GetFreePort() {
-  boost::asio::io_service io_service;
+  boost::asio::io_context io_service;
   boost::asio::ip::tcp::acceptor acceptor(io_service);
   boost::asio::ip::tcp::endpoint endpoint;
 
@@ -53,22 +54,27 @@ port_type GetFreePort() {
   return port;
 }
 
-// Handler function that reads from a request and writes to a response.
-using HttpConnectionHandler = std::function<void(const http::request<http::string_body> &,
-                                                 http::response<http::string_body> &)>;
+// Handler functions that reads from a request and writes to a response.
+// It can take a sync form or an async form. Under the hood it's always async as we will
+// call the user provided sync one in our async impl.
+class HttpConnection;
+using AsyncHandler = std::function<void(std::shared_ptr<class HttpConnection>)>;
+using SyncHandler = std::function<void(const http::request<http::string_body> &,
+                                       http::response<http::string_body> &)>;
 
 // Accepts 1 HTTP connection and handles it.
 class HttpConnection : public std::enable_shared_from_this<HttpConnection> {
  public:
   // `handler` must out live this HttpConnection.
-  HttpConnection(net::io_context &ioc_, const HttpConnectionHandler &handler)
-      : socket_(ioc_), handler_(handler) {}
+  HttpConnection(net::io_context &ioc, const AsyncHandler &handler)
+      : ioc_(ioc), socket_(ioc), handler_(handler) {}
 
   // Initiate the asynchronous operations associated with the connection.
   void start() { read_request(); }
 
+  net::io_context &ioc_;
   tcp::socket socket_;
-  const HttpConnectionHandler &handler_;
+  AsyncHandler handler_;
   beast::flat_buffer buffer_{8192};
   http::request<http::string_body> request_;
   http::response<http::string_body> response_;
@@ -95,8 +101,7 @@ class HttpConnection : public std::enable_shared_from_this<HttpConnection> {
   void process_request() {
     response_.version(request_.version());
     response_.keep_alive(false);
-    handler_(request_, response_);
-    write_response();
+    handler_(shared_from_this());
   }
 
   // Asynchronously transmit the response message.
@@ -115,9 +120,17 @@ class HttpConnection : public std::enable_shared_from_this<HttpConnection> {
 // RAII: On dtor, stops the thread and cancels all requests.
 class HttpServerThread {
  public:
-  HttpServerThread(HttpConnectionHandler handler, std::string address, port_type port)
+  HttpServerThread(SyncHandler sync_handler, std::string address, port_type port)
       : ioc_(),
-        handler_(std::move(handler)),
+        handler_([sync_handler](std::shared_ptr<HttpConnection> conn) {
+          sync_handler(conn->request_, conn->response_);
+          conn->write_response();
+        }),
+        acceptor_(ioc_),
+        endpoint_(net::ip::make_address(address), port) {}
+  HttpServerThread(AsyncHandler async_handler, std::string address, port_type port)
+      : ioc_(),
+        handler_(std::move(async_handler)),
         acceptor_(ioc_),
         endpoint_(net::ip::make_address(address), port) {}
 
@@ -154,7 +167,7 @@ class HttpServerThread {
     }
   }
   net::io_context ioc_;
-  HttpConnectionHandler handler_;
+  AsyncHandler handler_;
   tcp::acceptor acceptor_;
   tcp::endpoint endpoint_;
   std::thread thread_;
@@ -174,6 +187,8 @@ delay_after(instrumented_io_context &ioc) {
   };
 }
 
+auto dummy_shutdown_raylet_gracefully = [](const rpc::NodeDeathInfo &) {};
+
 TEST(RuntimeEnvAgentClientTest, GetOrCreateRuntimeEnvOK) {
   int port = GetFreePort();
   HttpServerThread http_server_thread(
@@ -183,8 +198,6 @@ TEST(RuntimeEnvAgentClientTest, GetOrCreateRuntimeEnvOK) {
         ASSERT_TRUE(req.ParseFromString(request.body()));
         ASSERT_EQ(req.job_id(), "7b000000");  // Hex 7B == Int 123
         ASSERT_EQ(req.runtime_env_config().setup_timeout_seconds(), 12);
-        ASSERT_EQ(req.serialized_allocated_resource_instances(),
-                  "serialized_allocated_resource_instances");
         ASSERT_EQ(req.serialized_runtime_env(), "serialized_runtime_env");
 
         rpc::GetOrCreateRuntimeEnvReply reply;
@@ -205,14 +218,13 @@ TEST(RuntimeEnvAgentClientTest, GetOrCreateRuntimeEnvOK) {
                                             "127.0.0.1",
                                             port,
                                             delay_after(ioc),
+                                            dummy_shutdown_raylet_gracefully,
                                             /*agent_register_timeout_ms=*/10000,
                                             /*agent_manager_retry_interval_ms=*/100);
   auto job_id = JobID::FromInt(123);
   std::string serialized_runtime_env = "serialized_runtime_env";
   ray::rpc::RuntimeEnvConfig runtime_env_config;
   runtime_env_config.set_setup_timeout_seconds(12);
-  std::string serialized_allocated_resource_instances =
-      "serialized_allocated_resource_instances";
 
   size_t called_times = 0;
   auto callback = [&](bool successful,
@@ -224,11 +236,8 @@ TEST(RuntimeEnvAgentClientTest, GetOrCreateRuntimeEnvOK) {
     called_times += 1;
   };
 
-  client->GetOrCreateRuntimeEnv(job_id,
-                                serialized_runtime_env,
-                                runtime_env_config,
-                                serialized_allocated_resource_instances,
-                                callback);
+  client->GetOrCreateRuntimeEnv(
+      job_id, serialized_runtime_env, runtime_env_config, callback);
 
   ioc.run();
   ASSERT_EQ(called_times, 1);
@@ -243,8 +252,6 @@ TEST(RuntimeEnvAgentClientTest, GetOrCreateRuntimeEnvApplicationError) {
         ASSERT_TRUE(req.ParseFromString(request.body()));
         ASSERT_EQ(req.job_id(), "7b000000");  // Hex 7B == Int 123
         ASSERT_EQ(req.runtime_env_config().setup_timeout_seconds(), 12);
-        ASSERT_EQ(req.serialized_allocated_resource_instances(),
-                  "serialized_allocated_resource_instances");
         ASSERT_EQ(req.serialized_runtime_env(), "serialized_runtime_env");
 
         rpc::GetOrCreateRuntimeEnvReply reply;
@@ -265,14 +272,13 @@ TEST(RuntimeEnvAgentClientTest, GetOrCreateRuntimeEnvApplicationError) {
                                             "127.0.0.1",
                                             port,
                                             delay_after(ioc),
+                                            dummy_shutdown_raylet_gracefully,
                                             /*agent_register_timeout_ms=*/10000,
                                             /*agent_manager_retry_interval_ms=*/100);
   auto job_id = JobID::FromInt(123);
   std::string serialized_runtime_env = "serialized_runtime_env";
   ray::rpc::RuntimeEnvConfig runtime_env_config;
   runtime_env_config.set_setup_timeout_seconds(12);
-  std::string serialized_allocated_resource_instances =
-      "serialized_allocated_resource_instances";
 
   size_t called_times = 0;
   auto callback = [&](bool successful,
@@ -284,11 +290,8 @@ TEST(RuntimeEnvAgentClientTest, GetOrCreateRuntimeEnvApplicationError) {
     called_times += 1;
   };
 
-  client->GetOrCreateRuntimeEnv(job_id,
-                                serialized_runtime_env,
-                                runtime_env_config,
-                                serialized_allocated_resource_instances,
-                                callback);
+  client->GetOrCreateRuntimeEnv(
+      job_id, serialized_runtime_env, runtime_env_config, callback);
 
   ioc.run();
   ASSERT_EQ(called_times, 1);
@@ -306,8 +309,6 @@ TEST(RuntimeEnvAgentClientTest, GetOrCreateRuntimeEnvRetriesOnServerNotStarted) 
         ASSERT_TRUE(req.ParseFromString(request.body()));
         ASSERT_EQ(req.job_id(), "7b000000");  // Hex 7B == Int 123
         ASSERT_EQ(req.runtime_env_config().setup_timeout_seconds(), 12);
-        ASSERT_EQ(req.serialized_allocated_resource_instances(),
-                  "serialized_allocated_resource_instances");
         ASSERT_EQ(req.serialized_runtime_env(), "serialized_runtime_env");
 
         rpc::GetOrCreateRuntimeEnvReply reply;
@@ -330,14 +331,13 @@ TEST(RuntimeEnvAgentClientTest, GetOrCreateRuntimeEnvRetriesOnServerNotStarted) 
         http_server_thread.start();
         return execute_after(ioc, task, std::chrono::milliseconds(delay_ms));
       },
+      dummy_shutdown_raylet_gracefully,
       /*agent_register_timeout_ms=*/10000,
       /*agent_manager_retry_interval_ms=*/100);
   auto job_id = JobID::FromInt(123);
   std::string serialized_runtime_env = "serialized_runtime_env";
   ray::rpc::RuntimeEnvConfig runtime_env_config;
   runtime_env_config.set_setup_timeout_seconds(12);
-  std::string serialized_allocated_resource_instances =
-      "serialized_allocated_resource_instances";
 
   size_t called_times = 0;
   auto callback = [&](bool successful,
@@ -349,11 +349,8 @@ TEST(RuntimeEnvAgentClientTest, GetOrCreateRuntimeEnvRetriesOnServerNotStarted) 
     called_times += 1;
   };
 
-  client->GetOrCreateRuntimeEnv(job_id,
-                                serialized_runtime_env,
-                                runtime_env_config,
-                                serialized_allocated_resource_instances,
-                                callback);
+  client->GetOrCreateRuntimeEnv(
+      job_id, serialized_runtime_env, runtime_env_config, callback);
 
   ioc.run();
   ASSERT_EQ(called_times, 1);
@@ -386,6 +383,7 @@ TEST(RuntimeEnvAgentClientTest, DeleteRuntimeEnvIfPossibleOK) {
                                             "127.0.0.1",
                                             port,
                                             delay_after(ioc),
+                                            dummy_shutdown_raylet_gracefully,
                                             /*agent_register_timeout_ms=*/10000,
                                             /*agent_manager_retry_interval_ms=*/100);
 
@@ -429,6 +427,7 @@ TEST(RuntimeEnvAgentClientTest, DeleteRuntimeEnvIfPossibleApplicationError) {
                                             "127.0.0.1",
                                             port,
                                             delay_after(ioc),
+                                            dummy_shutdown_raylet_gracefully,
                                             /*agent_register_timeout_ms=*/10000,
                                             /*agent_manager_retry_interval_ms=*/100);
 
@@ -477,6 +476,7 @@ TEST(RuntimeEnvAgentClientTest, DeleteRuntimeEnvIfPossibleRetriesOnServerNotStar
         http_server_thread.start();
         return execute_after(ioc, task, std::chrono::milliseconds(delay_ms));
       },
+      dummy_shutdown_raylet_gracefully,
       /*agent_register_timeout_ms=*/10000,
       /*agent_manager_retry_interval_ms=*/100);
 
@@ -490,6 +490,115 @@ TEST(RuntimeEnvAgentClientTest, DeleteRuntimeEnvIfPossibleRetriesOnServerNotStar
 
   ioc.run();
   ASSERT_EQ(called_times, 1);
+}
+
+// Why do we make a constexpr function instead of a variable? It's compilers' hubris.
+// The number is used in a lambda. Being constexpr, it it *not* required to be captured.
+// Hence If we capture it, in macos and linux we have this error:
+//
+// error: lambda capture 'expected_succs' is not required to be captured for this use
+// [-Werror,-Wunused-lambda-capture]
+//
+// So let's remove it from the capture list! Then in windows we have this:
+//
+// error C3493: 'expected_succs' cannot be implicitly captured because no default capture
+// mode has been specified
+//
+// Good job MSVC for not following the standard!
+constexpr size_t expected_succs() { return 42; }
+
+TEST(RuntimeEnvAgentClientTest, HoldsConcurrency) {
+  int port = GetFreePort();
+
+  // Async HTTP server that completes the request after sleeping 1 sec.
+  // The server returns success in the first 42 requests, then all failures.
+  std::mutex server_mutex;
+  size_t concurrency = 0;
+  size_t max_concurrency = 0;
+  size_t issued_succs = 0;
+  HttpServerThread http_server_thread(
+      [&](std::shared_ptr<HttpConnection> conn) {
+        {
+          std::lock_guard lock(server_mutex);
+          concurrency += 1;
+        }
+
+        auto timer = std::make_shared<boost::asio::steady_timer>(conn->ioc_,
+                                                                 std::chrono::seconds(1));
+        timer->async_wait(
+            [timer, conn, &server_mutex, &max_concurrency, &concurrency, &issued_succs](
+                const boost::system::error_code &ec) {
+              // We have to redefine this number again due to compilers being picky &
+              // fool.
+
+              const http::request<http::string_body> &request = conn->request_;
+              http::response<http::string_body> &response = conn->response_;
+
+              rpc::DeleteRuntimeEnvIfPossibleRequest req;
+              ASSERT_TRUE(req.ParseFromString(request.body()));
+              ASSERT_EQ(req.serialized_runtime_env(), "serialized_runtime_env");
+              ASSERT_EQ(req.source_process(), "raylet");
+
+              rpc::DeleteRuntimeEnvIfPossibleReply reply;
+              {
+                std::lock_guard lock(server_mutex);
+
+                if (issued_succs < expected_succs()) {
+                  reply.set_status(rpc::AGENT_RPC_STATUS_OK);
+                  issued_succs += 1;
+                } else {
+                  reply.set_status(rpc::AGENT_RPC_STATUS_FAILED);
+                  reply.set_error_message("the server is not feeling well");
+                }
+              }
+              response.body() = reply.SerializeAsString();
+              response.content_length(response.body().size());
+              response.result(http::status::ok);
+              {
+                std::lock_guard lock(server_mutex);
+                RAY_LOG(INFO) << "server sending " << concurrency
+                              << " concurrent results, max = " << max_concurrency;
+                max_concurrency = std::max(max_concurrency, concurrency);
+                concurrency -= 1;
+              }
+              conn->write_response();
+            });
+      },
+      "127.0.0.1",
+      port);
+  http_server_thread.start();
+
+  instrumented_io_context ioc;
+
+  auto client =
+      raylet::RuntimeEnvAgentClient::Create(ioc,
+                                            "127.0.0.1",
+                                            port,
+                                            delay_after(ioc),
+                                            dummy_shutdown_raylet_gracefully,
+                                            /*agent_register_timeout_ms=*/10000,
+                                            /*agent_manager_retry_interval_ms=*/100);
+
+  std::atomic<size_t> seen_succs = 0;
+  std::atomic<size_t> seen_failures = 0;
+  auto callback = [&](bool successful) {
+    if (successful) {
+      seen_succs += 1;
+    } else {
+      seen_failures += 1;
+    }
+  };
+
+  for (int i = 0; i < 100; ++i) {
+    client->DeleteRuntimeEnvIfPossible("serialized_runtime_env", callback);
+  }
+
+  ioc.run();
+  EXPECT_EQ(issued_succs, expected_succs());
+  EXPECT_EQ(seen_succs, expected_succs());
+  EXPECT_EQ(seen_failures, 100 - expected_succs());
+  EXPECT_EQ(concurrency, 0);
+  EXPECT_EQ(max_concurrency, 10);
 }
 
 }  // namespace ray

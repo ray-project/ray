@@ -14,10 +14,12 @@
 
 #include "ray/object_manager/plasma/create_request_queue.h"
 
+#include <memory>
+#include <unordered_set>
+
 #include "gmock/gmock.h"
 #include "gtest/gtest.h"
 #include "ray/common/status.h"
-#include "ray/util/filesystem.h"
 
 namespace plasma {
 
@@ -25,8 +27,10 @@ class MockClient : public ClientInterface {
  public:
   MOCK_METHOD1(SendFd, Status(MEMFD_TYPE));
   MOCK_METHOD0(GetObjectIDs, const std::unordered_set<ray::ObjectID> &());
-  MOCK_METHOD1(MarkObjectAsUsed, void(const ObjectID &object_id));
-  MOCK_METHOD1(MarkObjectAsUnused, void(const ObjectID &object_id));
+  MOCK_METHOD2(MarkObjectAsUsed,
+               void(const ObjectID &object_id,
+                    std::optional<MEMFD_TYPE> fallback_allocated_fd));
+  MOCK_METHOD1(MarkObjectAsUnused, bool(const ObjectID &object_id));
 };
 
 #define ASSERT_REQUEST_UNFINISHED(queue, req_id)                    \
@@ -36,16 +40,16 @@ class MockClient : public ClientInterface {
     ASSERT_FALSE(queue.GetRequestResult(req_id, &result, &status)); \
   }
 
-#define ASSERT_REQUEST_FINISHED(queue, req_id, expected_status)    \
-  {                                                                \
-    PlasmaObject result = {};                                      \
-    PlasmaError status;                                            \
-                                                                   \
-    ASSERT_TRUE(queue.GetRequestResult(req_id, &result, &status)); \
-    if (expected_status == PlasmaError::OK) {                      \
-      ASSERT_EQ(result.data_size, 1234);                           \
-    }                                                              \
-    ASSERT_EQ(status, expected_status);                            \
+#define ASSERT_REQUEST_FINISHED(queue, req_id, expected_status)        \
+  {                                                                    \
+    PlasmaObject __result = {};                                        \
+    PlasmaError __status;                                              \
+                                                                       \
+    ASSERT_TRUE(queue.GetRequestResult(req_id, &__result, &__status)); \
+    if (expected_status == PlasmaError::OK) {                          \
+      ASSERT_EQ(__result.data_size, 1234);                             \
+    }                                                                  \
+    ASSERT_EQ(__status, expected_status);                              \
   }
 
 class CreateRequestQueueTest : public ::testing::Test {

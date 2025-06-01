@@ -6,24 +6,19 @@ https://github.com/huggingface/accelerate/blob/main/examples/nlp_example.py
 Fine-tune a BERT model with DeepSpeed ZeRO-3 and Ray Train
 """
 
+from tempfile import TemporaryDirectory
+
 import deepspeed
 import torch
-
 from datasets import load_dataset
 from deepspeed.accelerator import get_accelerator
-from tempfile import TemporaryDirectory
 from torch.utils.data import DataLoader
 from torchmetrics.classification import BinaryAccuracy, BinaryF1Score
-from transformers import (
-    AutoModelForSequenceClassification,
-    AutoTokenizer,
-    set_seed,
-)
+from transformers import AutoModelForSequenceClassification, AutoTokenizer, set_seed
 
 import ray
 import ray.train
-
-from ray.train import ScalingConfig, Checkpoint
+from ray.train import Checkpoint, ScalingConfig
 from ray.train.torch import TorchTrainer
 
 
@@ -169,11 +164,15 @@ if __name__ == "__main__":
         train_func,
         train_loop_config=training_config,
         scaling_config=ScalingConfig(num_workers=4, use_gpu=True),
+        # If running in a multi-node cluster, this is where you
+        # should configure the run's persistent storage that is accessible
+        # across all worker nodes.
+        # run_config=ray.train.RunConfig(storage_path="s3://..."),
     )
 
     result = trainer.fit()
 
     # Retrieve the best checkponints from results
-    result.best_checkpoints
+    _ = result.best_checkpoints
 
 # __deepspeed_torch_basic_example_no_raydata_end__

@@ -30,8 +30,8 @@ class MockGcsActorSchedulerInterface : public GcsActorSchedulerInterface {
               (override));
   MOCK_METHOD(
       void,
-      ReleaseUnusedWorkers,
-      ((const std::unordered_map<NodeID, std::vector<WorkerID>> &node_to_workers)),
+      ReleaseUnusedActorWorkers,
+      ((const absl::flat_hash_map<NodeID, std::vector<WorkerID>> &node_to_workers)),
       (override));
 };
 
@@ -43,6 +43,20 @@ namespace gcs {
 
 class MockGcsActorScheduler : public GcsActorScheduler {
  public:
+  MockGcsActorScheduler(instrumented_io_context &io_context,
+                        GcsActorTable &gcs_actor_table,
+                        const GcsNodeManager &gcs_node_manager)
+      : GcsActorScheduler(
+            io_context,
+            gcs_actor_table,
+            gcs_node_manager,
+            nullptr,
+            [](std::shared_ptr<GcsActor>,
+               rpc::RequestWorkerLeaseReply::SchedulingFailureType,
+               const std::string &) {},
+            [](std::shared_ptr<GcsActor>, const rpc::PushTaskReply &) {},
+            nullptr) {}
+
   MOCK_METHOD(void, Schedule, (std::shared_ptr<GcsActor> actor), (override));
   MOCK_METHOD(void, Reschedule, (std::shared_ptr<GcsActor> actor), (override));
   MOCK_METHOD(std::vector<ActorID>, CancelOnNode, (const NodeID &node_id), (override));
@@ -56,13 +70,9 @@ class MockGcsActorScheduler : public GcsActorScheduler {
               (override));
   MOCK_METHOD(
       void,
-      ReleaseUnusedWorkers,
-      ((const std::unordered_map<NodeID, std::vector<WorkerID>> &node_to_workers)),
+      ReleaseUnusedActorWorkers,
+      ((const absl::flat_hash_map<NodeID, std::vector<WorkerID>> &node_to_workers)),
       (override));
-  MOCK_METHOD(std::shared_ptr<rpc::GcsNodeInfo>,
-              SelectNode,
-              (std::shared_ptr<GcsActor> actor),
-              (override));
   MOCK_METHOD(void,
               HandleWorkerLeaseReply,
               (std::shared_ptr<GcsActor> actor,
@@ -84,22 +94,5 @@ class MockGcsActorScheduler : public GcsActorScheduler {
 }  // namespace ray
 
 namespace ray {
-namespace gcs {
-
-class MockRayletBasedActorScheduler : public RayletBasedActorScheduler {
- public:
-  MOCK_METHOD(std::shared_ptr<rpc::GcsNodeInfo>,
-              SelectNode,
-              (std::shared_ptr<GcsActor> actor),
-              (override));
-  MOCK_METHOD(void,
-              HandleWorkerLeaseReply,
-              (std::shared_ptr<GcsActor> actor,
-               std::shared_ptr<rpc::GcsNodeInfo> node,
-               const Status &status,
-               const rpc::RequestWorkerLeaseReply &reply),
-              (override));
-};
-
-}  // namespace gcs
+namespace gcs {}  // namespace gcs
 }  // namespace ray

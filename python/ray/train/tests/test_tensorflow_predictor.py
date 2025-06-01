@@ -1,20 +1,27 @@
 import re
+import sys
+from typing import Tuple
+
 import numpy as np
 import pandas as pd
 import pytest
-import tensorflow as tf
 
 from ray.air.constants import MAX_REPR_LENGTH
 from ray.air.util.data_batch_conversion import (
-    _convert_pandas_to_batch_type,
     _convert_batch_type_to_pandas,
+    _convert_pandas_to_batch_type,
 )
 from ray.data.preprocessor import Preprocessor
 from ray.train.predictor import TYPE_TO_ENUM
-from ray.train.tensorflow import TensorflowCheckpoint, TensorflowPredictor
-from typing import Tuple
-
 from ray.train.tests.dummy_preprocessor import DummyPreprocessor
+
+if sys.version_info >= (3, 12):
+    # Tensorflow is not installed for Python 3.12 because of keras compatibility.
+    sys.exit(0)
+else:
+    import tensorflow as tf
+
+    from ray.train.tensorflow import TensorflowCheckpoint, TensorflowPredictor
 
 
 def build_raw_model() -> tf.keras.Model:
@@ -69,7 +76,7 @@ def test_repr():
     assert pattern.match(representation)
 
 
-def create_checkpoint_preprocessor() -> Tuple[TensorflowCheckpoint, Preprocessor]:
+def create_checkpoint_preprocessor() -> Tuple["TensorflowCheckpoint", Preprocessor]:
     preprocessor = DummyPreprocessor()
     checkpoint = TensorflowCheckpoint.from_model(
         build_model(), preprocessor=preprocessor

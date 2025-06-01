@@ -106,7 +106,7 @@ def test_asyncio_actor_high_concurrency(ray_start_regular_shared):
                 await self.event.wait()
             return sorted(self.batch)
 
-    batch_size = sys.getrecursionlimit() * 4
+    batch_size = sys.getrecursionlimit()
     actor = AsyncConcurrencyBatcher.options(max_concurrency=batch_size * 2).remote(
         batch_size
     )
@@ -130,7 +130,7 @@ async def test_asyncio_get(ray_start_regular_shared, event_loop):
 
     @ray.remote
     def task_throws():
-        1 / 0
+        _ = 1 / 0
 
     with pytest.raises(ray.exceptions.RayTaskError):
         await task_throws.remote().as_future()
@@ -148,7 +148,7 @@ async def test_asyncio_get(ray_start_regular_shared, event_loop):
             return "a" * (str_len)
 
         def throw_error(self):
-            1 / 0
+            _ = 1 / 0
 
     actor = Actor.remote()
 
@@ -406,10 +406,27 @@ def test_asyncio_actor_shutdown_when_non_async_method_mixed(ray_start_regular_sh
         ray.get([a.ping.remote() for _ in range(10000)])
 
 
-if __name__ == "__main__":
-    import pytest
+def test_asyncio_actor_argument_collision(ray_start_regular_shared):
+    """Regression test for https://github.com/ray-project/ray/issues/41272."""
 
-    if os.environ.get("PARALLEL_CI"):
-        sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))
-    else:
-        sys.exit(pytest.main(["-sv", __file__]))
+    @ray.remote
+    class A:
+        async def hi_async(self, task_id: str, specified_cgname: str):
+            return f"Hi from async: {task_id}! cgname: {specified_cgname}."
+
+        def hi_sync(self, task_id: str, *, specified_cgname: str):
+            return f"Hi from sync: {task_id}! cgname: {specified_cgname}."
+
+    a = A.remote()
+    assert (
+        ray.get(a.hi_async.remote(task_id="TEST", specified_cgname="test2"))
+        == "Hi from async: TEST! cgname: test2."
+    )
+    assert (
+        ray.get(a.hi_sync.remote(task_id="TEST", specified_cgname="test2"))
+        == "Hi from sync: TEST! cgname: test2."
+    )
+
+
+if __name__ == "__main__":
+    sys.exit(pytest.main(["-sv", __file__]))

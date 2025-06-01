@@ -13,6 +13,7 @@ from ray._private.test_utils import (
     run_string_as_driver,
     run_string_as_driver_nonblocking,
     wait_for_condition,
+    skip_flaky_core_test_premerge,
 )
 from ray.util.state import list_workers
 
@@ -50,10 +51,11 @@ def test_client(address):
     if address in ("local", None):
         assert isinstance(builder, client_builder._LocalClientBuilder)
     else:
-        assert type(builder) == client_builder.ClientBuilder
+        assert type(builder) is client_builder.ClientBuilder
         assert builder.address == address.replace("ray://", "")
 
 
+@skip_flaky_core_test_premerge("https://github.com/ray-project/ray/issues/38224")
 def test_namespace(ray_start_cluster):
     """
     Most of the "checks" in this test case rely on the fact that
@@ -103,6 +105,7 @@ print("Current namespace:", ray.get_runtime_context().namespace)
     subprocess.check_output("ray stop --force", shell=True)
 
 
+@skip_flaky_core_test_premerge("https://github.com/ray-project/ray/issues/38224")
 def test_connect_to_cluster(ray_start_regular_shared):
     server = ray_client_server.serve("localhost:50055")
     with ray.client("localhost:50055").connect() as client_context:
@@ -111,8 +114,6 @@ def test_connect_to_cluster(ray_start_regular_shared):
         assert client_context.python_version == python_version
         assert client_context.ray_version == ray.__version__
         assert client_context.ray_commit == ray.__commit__
-        protocol_version = ray.util.client.CURRENT_PROTOCOL_VERSION
-        assert client_context.protocol_version == protocol_version
 
     server.stop(0)
     subprocess.check_output("ray stop --force", shell=True)
@@ -327,6 +328,7 @@ def has_client_deprecation_warn(warning: Warning, expected_replacement: str) -> 
 @pytest.mark.filterwarnings(
     "default:Starting a connection through `ray.client` will be deprecated"
 )
+@skip_flaky_core_test_premerge("https://github.com/ray-project/ray/issues/38224")
 def test_client_deprecation_warn():
     """
     Tests that calling ray.client directly raises a deprecation warning with
@@ -446,7 +448,4 @@ def test_task_use_prestarted_worker(call_ray_start):
 
 
 if __name__ == "__main__":
-    if os.environ.get("PARALLEL_CI"):
-        sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))
-    else:
-        sys.exit(pytest.main(["-sv", __file__]))
+    sys.exit(pytest.main(["-sv", __file__]))

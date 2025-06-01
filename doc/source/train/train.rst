@@ -3,6 +3,29 @@
 Ray Train: Scalable Model Training
 ==================================
 
+.. toctree::
+    :hidden:
+
+    Overview <overview>
+    PyTorch Guide <getting-started-pytorch>
+    PyTorch Lightning Guide <getting-started-pytorch-lightning>
+    Hugging Face Transformers Guide <getting-started-transformers>
+    XGBoost Guide <getting-started-xgboost>
+    more-frameworks
+    User Guides <user-guides>
+    Examples <examples>
+    Benchmarks <benchmarks>
+    api/api
+
+
+.. div:: sd-d-flex-row sd-align-major-center sd-align-minor-center
+
+    .. div:: sd-w-50
+
+        .. raw:: html
+           :file: images/logo.svg
+
+
 Ray Train is a scalable machine learning library for distributed training and fine-tuning.
 
 Ray Train allows you to scale model training code from a single machine to a cluster of machines in the cloud, and abstracts away the complexities of distributed computing.
@@ -89,7 +112,7 @@ Get started
             :outline:
             :expand:
 
-            Try Ray Train and Lightning
+            Try Ray Train with Lightning
 
     .. grid-item-card::
 
@@ -151,10 +174,11 @@ Learn more
         Browse end-to-end code examples for different use cases.
 
         +++
-        .. button-ref:: train-examples
+        .. button-ref:: examples
             :color: primary
             :outline:
             :expand:
+            :ref-type: doc
 
             Learn through examples
 
@@ -166,7 +190,7 @@ Learn more
         Consult the API Reference for full descriptions of the Ray Train API.
 
         +++
-        .. button-ref:: air-trainer-ref
+        .. button-ref:: train-api
             :color: primary
             :outline:
             :expand:

@@ -128,7 +128,7 @@ More about Ray Scheduling
     :maxdepth: 1
 
     resources
-    ../tasks/using-ray-with-gpus
+    accelerators
     placement-group
     memory-management
     ray-oom-prevention

@@ -1,20 +1,28 @@
+import os
+import sys
 from typing import Dict, Tuple
 from unittest.mock import patch
 
-import pytest
 import numpy as np
-import tensorflow as tf
+import pytest
 
 import ray
 from ray import train
-from ray.air.integrations.keras import ReportCheckpointCallback
-from ray.train.constants import TRAIN_DATASET_KEY
 from ray.train import ScalingConfig
-from ray.train.tensorflow import (
-    TensorflowTrainer,
-    TensorflowPredictor,
-    TensorflowCheckpoint,
-)
+from ray.train.constants import TRAIN_DATASET_KEY
+
+if sys.version_info >= (3, 12):
+    # Tensorflow is not installed for Python 3.12 because of keras compatibility.
+    sys.exit(0)
+else:
+    import tensorflow as tf
+
+    from ray.air.integrations.keras import ReportCheckpointCallback
+    from ray.train.tensorflow import (
+        TensorflowCheckpoint,
+        TensorflowPredictor,
+        TensorflowTrainer,
+    )
 
 
 class TestReportCheckpointCallback:
@@ -62,7 +70,7 @@ class TestReportCheckpointCallback:
         # simulates the end of an epoch, and asserts that a metric and checkpoint are
         # reported.
         callback = ReportCheckpointCallback()
-        callback.model = model
+        callback.set_model(model)
 
         callback.on_epoch_end(0, {"loss": 0})
 
@@ -138,7 +146,23 @@ class TestReportCheckpointCallback:
         assert second_metric == {"loss": 1}
         assert second_checkpoint is not None
 
-    def parse_call(self, call) -> Tuple[Dict, ray.air.Checkpoint]:
+    @patch("ray.train.report")
+    def test_report_delete_tempdir(self, mock_report, model):
+        # This tests `ReportCheckpointCallback`. The test simulates the end of an epoch,
+        # and asserts that the temporary checkpoint directory is deleted afterwards.
+        callback = ReportCheckpointCallback()
+        callback.model = model
+
+        callback.on_epoch_end(0, {"loss": 0})
+
+        assert len(ray.train.report.call_args_list) == 1
+        metrics, checkpoint = self.parse_call(ray.train.report.call_args_list[0])
+        assert metrics == {"loss": 0}
+        assert checkpoint is not None
+        assert checkpoint.path is not None
+        assert not os.path.exists(checkpoint.path)
+
+    def parse_call(self, call) -> Tuple[Dict, train.Checkpoint]:
         (metrics,), kwargs = call
         checkpoint = kwargs["checkpoint"]
         return metrics, checkpoint

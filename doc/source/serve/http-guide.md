@@ -2,10 +2,11 @@
 # Set Up FastAPI and HTTP
 
 This section helps you understand how to:
-- send HTTP requests to Serve deployments
-- use Ray Serve to integrate with FastAPI
-- use customized HTTP adapters
-- choose which feature to use for your use case
+- Send HTTP requests to Serve deployments
+- Use Ray Serve to integrate with FastAPI
+- Use customized HTTP adapters
+- Choose which feature to use for your use case
+- Set up keep alive timeout
 
 ## Choosing the right HTTP feature
 
@@ -54,13 +55,16 @@ To prevent an async call from being interrupted by `asyncio.CancelledError`, use
 :language: python
 ```
 
-When the request is cancelled, a cancellation error is raised inside the `SnoringSleeper` deployment's `__call__()` method. However, the cancellation is not raised inside the `snore()` call, so `ZZZ` is printed even if the request is cancelled. Note that `asyncio.shield` cannot be used on a `ServeHandle` call to prevent the downstream handler from being cancelled. You need to explicitly handle the cancellation error in that handler as well.
+When the request is cancelled, a cancellation error is raised inside the `SnoringSleeper` deployment's `__call__()` method. However, the cancellation is not raised inside the `snore()` call, so `ZZZ` is printed even if the request is cancelled. Note that `asyncio.shield` cannot be used on a `DeploymentHandle` call to prevent the downstream handler from being cancelled. You need to explicitly handle the cancellation error in that handler as well.
 
 (serve-fastapi-http)=
 ## FastAPI HTTP Deployments
 
-If you want to define more complex HTTP handling logic, Serve integrates with [FastAPI](https://fastapi.tiangolo.com/). This allows you to define a Serve deployment using the {mod}`@serve.ingress <ray.serve.api.ingress>` decorator that wraps a FastAPI app with its full range of features. The most basic example of this is shown below, but for more details on all that FastAPI has to offer such as variable routes, automatic type validation, dependency injection (e.g., for database connections), and more, please check out [their documentation](https://fastapi.tiangolo.com/).
+If you want to define more complex HTTP handling logic, Serve integrates with [FastAPI](https://fastapi.tiangolo.com/). This allows you to define a Serve deployment using the {mod}`@serve.ingress <ray.serve.ingress>` decorator that wraps a FastAPI app with its full range of features. The most basic example of this is shown below, but for more details on all that FastAPI has to offer such as variable routes, automatic type validation, dependency injection (e.g., for database connections), and more, please check out [their documentation](https://fastapi.tiangolo.com/).
 
+:::{note}
+A Serve application that's integrated with FastAPI still respects the `route_prefix` set through Serve. The routes are that registered through the FastAPI `app` object are layered on top of the route prefix. For instance, if your Serve application has `route_prefix = /my_app` and you decorate a method with `@app.get("/fetch_data")`, then you can call that method by sending a GET request to the path `/my_app/fetch_data`.
+:::
 ```{literalinclude} doc_code/http_guide/http_guide.py
 :start-after: __begin_fastapi__
 :end-before: __end_fastapi__
@@ -118,7 +122,7 @@ This is supported for basic HTTP ingress deployments using a `__call__` method a
 
 The code below defines a Serve application that incrementally streams numbers up to a provided `max`.
 The client-side code is also updated to handle the streaming outputs.
-This code uses the `stream=True` option to the [requests](https://requests.readthedocs.io/en/latest/user/advanced/#streaming-requests) library.
+This code uses the `stream=True` option to the [requests](https://requests.readthedocs.io/en/latest/user/advanced.html#streaming-requests) library.
 
 ```{literalinclude} doc_code/http_guide/streaming_example.py
 :start-after: __begin_example__
@@ -132,7 +136,7 @@ Save this code in `stream.py` and run it:
 $ python stream.py
 [2023-05-25 10:44:23]  INFO ray._private.worker::Started a local Ray instance. View the dashboard at http://127.0.0.1:8265
 (ServeController pid=40401) INFO 2023-05-25 10:44:25,296 controller 40401 deployment_state.py:1259 - Deploying new version of deployment default_StreamingResponder.
-(HTTPProxyActor pid=40403) INFO:     Started server process [40403]
+(ProxyActor pid=40403) INFO:     Started server process [40403]
 (ServeController pid=40401) INFO 2023-05-25 10:44:25,333 controller 40401 deployment_state.py:1498 - Adding 1 replica to deployment default_StreamingResponder.
 Got result 0.0s after start: '0'
 Got result 0.1s after start: '1'
@@ -166,7 +170,7 @@ In the example below, the generator streams responses forever until the client d
 $ python stream.py
 [2023-07-10 16:08:41]  INFO ray._private.worker::Started a local Ray instance. View the dashboard at http://127.0.0.1:8265
 (ServeController pid=50801) INFO 2023-07-10 16:08:42,296 controller 40401 deployment_state.py:1259 - Deploying new version of deployment default_StreamingResponder.
-(HTTPProxyActor pid=50803) INFO:     Started server process [50803]
+(ProxyActor pid=50803) INFO:     Started server process [50803]
 (ServeController pid=50805) INFO 2023-07-10 16:08:42,963 controller 50805 deployment_state.py:1586 - Adding 1 replica to deployment default_StreamingResponder.
 Got result 0.0s after start: '0'
 Got result 0.1s after start: '1'
@@ -183,3 +187,16 @@ Client disconnecting
 (ServeReplica:default_StreamingResponder pid=50842) Cancelled! Exiting.
 (ServeReplica:default_StreamingResponder pid=50842) INFO 2023-07-10 16:08:45,756 default_StreamingResponder default_StreamingResponder#cmpnmF ahteNDQSWx / default replica.py:691 - __CALL__ OK 1019.1ms
 ```
+
+
+(serve-http-guide-keep-alive-timeout)=
+## Set keep alive timeout
+
+Serve uses a Uvicorn HTTP server internally to serve HTTP requests. By default, Uvicorn
+keeps HTTP connections alive for 5 seconds between requests. Modify the keep-alive
+timeout by setting the `keep_alive_timeout_s` in the `http_options` field of the Serve
+config files. This config is global to your Ray cluster, and you can't update it during
+runtime. You can also set the `RAY_SERVE_HTTP_KEEP_ALIVE_TIMEOUT_S` environment variable to
+set the keep alive timeout. `RAY_SERVE_HTTP_KEEP_ALIVE_TIMEOUT_S` takes
+precedence over the `keep_alive_timeout_s` config if both are set. See
+Uvicorn's keep alive timeout [guide](https://www.uvicorn.org/server-behavior/#timeouts) for more information.

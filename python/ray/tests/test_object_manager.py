@@ -1,4 +1,5 @@
 import multiprocessing
+import sys
 import time
 import warnings
 from collections import defaultdict
@@ -8,7 +9,6 @@ import pytest
 
 import ray
 from ray.cluster_utils import Cluster, cluster_not_supported
-from ray.exceptions import GetTimeoutError
 from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
 
 if (
@@ -56,12 +56,11 @@ def test_object_transfer_during_oom(ray_start_cluster_head):
     def put():
         return np.random.rand(5 * 1024 * 1024)  # 40 MB data
 
-    local_ref = ray.put(np.random.rand(5 * 1024 * 1024))
+    _ = ray.put(np.random.rand(5 * 1024 * 1024))
     remote_ref = put.remote()
 
-    with pytest.raises(GetTimeoutError):
-        ray.get(remote_ref, timeout=1)
-    del local_ref
+    # Getting the remote ref is possible even though we don't have enough
+    # memory locally to hold both objects once.
     ray.get(remote_ref)
 
 
@@ -730,10 +729,4 @@ def test_maximize_concurrent_pull_race_condition(ray_start_cluster_head):
 
 
 if __name__ == "__main__":
-    import sys
-    import os
-
-    if os.environ.get("PARALLEL_CI"):
-        sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))
-    else:
-        sys.exit(pytest.main(["-sv", __file__]))
+    sys.exit(pytest.main(["-sv", __file__]))

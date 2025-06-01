@@ -1,17 +1,11 @@
-from typing import Any, Dict, Callable, Optional, Union, TYPE_CHECKING
+from typing import Any, Callable, Dict, Optional, Union
 
-from ray.air.config import ScalingConfig, RunConfig
-from ray.train import DataConfig
-from ray.train.trainer import GenDataset
-from ray.air.checkpoint import Checkpoint
-
-
+from ray.air.config import RunConfig, ScalingConfig
+from ray.train import Checkpoint, DataConfig
 from ray.train.data_parallel_trainer import DataParallelTrainer
 from ray.train.horovod.config import HorovodConfig
+from ray.train.trainer import GenDataset
 from ray.util.annotations import PublicAPI
-
-if TYPE_CHECKING:
-    from ray.data.preprocessor import Preprocessor
 
 
 @PublicAPI(stability="beta")
@@ -43,7 +37,7 @@ class HorovodTrainer(DataParallelTrainer):
     the "train" key), then it will be split into multiple dataset
     shards that can then be accessed by ``ray.train.get_dataset_shard("train")`` inside
     ``train_loop_per_worker``. All the other datasets will not be split and
-    ``ray.train.get_dataset_shard(...)`` will return the the entire Dataset.
+    ``ray.train.get_dataset_shard(...)`` will return the entire Dataset.
 
     Inside the ``train_loop_per_worker`` function, you can use any of the
     :ref:`Ray Train loop methods <train-loop-api>`.
@@ -86,15 +80,18 @@ class HorovodTrainer(DataParallelTrainer):
     .. testcode::
         :skipif: True
 
+        import os
+        import tempfile
+
         import ray
-        import ray.train as train
-        import ray.train.torch. # Need this to use `train.torch.get_device()`
         import horovod.torch as hvd
         import torch
         import torch.nn as nn
+
+        from ray import train
+        import ray.train.torch  # Need this to use `train.torch.get_device()`
+        from ray.train import Checkpoint, ScalingConfig
         from ray.train.horovod import HorovodTrainer
-        from ray.train.torch import LegacyTorchCheckpoint
-        from ray.air.config import ScalingConfig
 
         # If using GPUs, set this to True.
         use_gpu = False
@@ -140,12 +137,16 @@ class HorovodTrainer(DataParallelTrainer):
                     loss.backward()
                     optimizer.step()
                     print(f"epoch: {epoch}, loss: {loss.item()}")
-                train.report(
-                    {},
-                    checkpoint=LegacyTorchCheckpoint.from_state_dict(
-                        model.state_dict()
-                    ),
-                )
+
+                # Save a model checkpoint at the end of each epoch
+                with tempfile.TemporaryDirectory() as temp_checkpoint_dir:
+                    ckpt_path = os.path.join(temp_checkpoint_dir, "model.pt")
+                    torch.save(model.state_dict(), ckpt_path)
+                    train.report(
+                        {"loss": loss.item(), "epoch": epoch},
+                        checkpoint=Checkpoint.from_directory(temp_checkpoint_dir),
+                    )
+
         train_dataset = ray.data.from_items([{"x": x, "y": x + 1} for x in range(32)])
         scaling_config = ScalingConfig(num_workers=3, use_gpu=use_gpu)
         trainer = HorovodTrainer(
@@ -187,8 +188,6 @@ class HorovodTrainer(DataParallelTrainer):
         datasets: Optional[Dict[str, GenDataset]] = None,
         metadata: Optional[Dict[str, Any]] = None,
         resume_from_checkpoint: Optional[Checkpoint] = None,
-        # Deprecated.
-        preprocessor: Optional["Preprocessor"] = None,
     ):
         super().__init__(
             train_loop_per_worker=train_loop_per_worker,
@@ -198,7 +197,6 @@ class HorovodTrainer(DataParallelTrainer):
             dataset_config=dataset_config,
             run_config=run_config,
             datasets=datasets,
-            preprocessor=preprocessor,
             resume_from_checkpoint=resume_from_checkpoint,
             metadata=metadata,
         )

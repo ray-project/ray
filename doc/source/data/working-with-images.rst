@@ -26,7 +26,7 @@ To view the full list of supported file formats, see the
 
     .. tab-item:: Raw images
 
-        To load raw images like JPEG files, call :func:`~ray.data.read_images`.
+        To load raw images like JPEG files, call :func:`~ray.data.read_images`.  In the schema, the column name defaults to "image".
 
         .. note::
 
@@ -106,7 +106,7 @@ To view the full list of supported file formats, see the
             def decode_bytes(row: Dict[str, Any]) -> Dict[str, Any]:
                 data = row["image"]
                 image = Image.open(io.BytesIO(data))
-                row["image"] = np.array(image)
+                row["image"] = np.asarray(image)
                 return row
 
             ds = (
@@ -230,7 +230,7 @@ Finally, call :meth:`Dataset.map_batches() <ray.data.Dataset.map_batches>`.
 
     predictions = ds.map_batches(
         ImageClassifier,
-        compute=ray.data.ActorPoolStrategy(size=2),
+        concurrency=2,
         batch_size=4
     )
     predictions.show(3)
@@ -243,7 +243,7 @@ Finally, call :meth:`Dataset.map_batches() <ray.data.Dataset.map_batches>`.
 
 For more information on performing inference, see
 :ref:`End-to-end: Offline Batch Inference <batch_inference_home>`
-and :ref:`Transforming batches with actors <transforming_data_actors>`.
+and :ref:`Stateful Transforms <stateful_transforms>`.
 
 .. _saving_images:
 

@@ -2,7 +2,7 @@ import numpy as np
 from typing import Optional, Union
 
 from ray.rllib.models.action_dist import ActionDistribution
-from ray.rllib.utils.annotations import override, PublicAPI
+from ray.rllib.utils.annotations import OldAPIStack, override
 from ray.rllib.utils.exploration.gaussian_noise import GaussianNoise
 from ray.rllib.utils.framework import (
     try_import_tf,
@@ -18,7 +18,7 @@ tf1, tf, tfv = try_import_tf()
 torch, _ = try_import_torch()
 
 
-@PublicAPI
+@OldAPIStack
 class OrnsteinUhlenbeckNoise(GaussianNoise):
     """An exploration that adds Ornstein-Uhlenbeck noise to continuous actions.
 

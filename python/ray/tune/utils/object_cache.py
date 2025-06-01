@@ -1,5 +1,4 @@
-from collections import defaultdict, Counter
-
+from collections import Counter, defaultdict
 from typing import Dict, Generator, List, Optional, TypeVar
 
 # Grouping key - must be hashable

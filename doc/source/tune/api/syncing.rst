@@ -1,5 +1,5 @@
-Syncing in Tune (train.SyncConfig)
-==================================
+Syncing in Tune
+===============
 
 .. seealso::
 
@@ -12,6 +12,7 @@ Tune Syncing Configuration
 --------------------------
 
 .. autosummary::
+    :nosignatures:
+    :toctree: doc/
 
-    ray.train.SyncConfig
-        :noindex:
+    ~ray.tune.SyncConfig

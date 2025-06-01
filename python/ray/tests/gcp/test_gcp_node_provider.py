@@ -1,8 +1,10 @@
+import logging
+import sys
 from typing import Dict
 from threading import RLock
-import pytest
 from unittest.mock import MagicMock, patch, call
-import logging
+
+import pytest
 
 from ray.autoscaler._private.gcp.node import (
     GCPCompute,
@@ -18,6 +20,7 @@ from ray.autoscaler._private.gcp.config import (
     _get_num_tpu_chips,
     _is_single_host_tpu,
     _has_tpus_in_node_configs,
+    tpu_accelerator_config_to_type,
 )
 from ray.autoscaler._private.gcp.tpu_command_runner import (
     TPUCommandRunner,
@@ -46,6 +49,7 @@ def test_create_node_returns_dict():
         self.lock = RLock()
         self.cached_nodes: Dict[str, GCPNode] = {}
         self.resources: Dict[GCPNodeType, GCPResource] = {}
+        self.cache_stopped_nodes = False
         self.resources[GCPNodeType.COMPUTE] = mock_resource
 
     with patch.object(GCPNodeProvider, "__init__", __init__):
@@ -70,6 +74,7 @@ def test_terminate_nodes():
         self.lock = RLock()
         self.cached_nodes: Dict[str, GCPNode] = {}
         self.resources: Dict[GCPNodeType, GCPResource] = {}
+        self.cache_stopped_nodes = False
         self.resources[GCPNodeType.COMPUTE] = mock_resource
 
     with patch.object(GCPNodeProvider, "__init__", __init__):
@@ -222,6 +227,50 @@ def test_tpu_resource_returns_tpu_command_runner(test_case):
     assert isinstance(command_runner._command_runners[0], expected_runner)
 
 
+@pytest.mark.parametrize(
+    "test_case",
+    [
+        ({"acceleratorType": "v4-16"}, "TPU-v4-16-head"),
+        ({"acceleratorType": "v4-32"}, "TPU-v4-32-head"),
+        ({"acceleratorType": "v3-8"}, "TPU-v3-8-head"),
+        ({"acceleratorConfig": {"type": "V4", "topology": "2x2x2"}}, "TPU-v4-16-head"),
+        ({"acceleratorConfig": {"type": "V4", "topology": "4x4x4"}}, "TPU-v4-128-head"),
+        (
+            {"acceleratorConfig": {"type": "V5LITE_POD", "topology": "2x4"}},
+            "TPU-v5litepod-8-head",
+        ),
+        (
+            {"acceleratorConfig": {"type": "V6E", "topology": "2x4"}},
+            "TPU-v6e-8-head",
+        ),
+    ],
+)
+def test_tpu_node_fillout(test_case):
+    accelerator_config, expected_resource_str = test_case
+
+    cluster_config = {
+        "available_node_types": {
+            "ray_tpu": {
+                "resources": {"TPU": 4},
+                "node_config": {
+                    "runtimeVersion": "tpu-vm-v4-base",
+                },
+            },
+        },
+    }
+
+    cluster_config["available_node_types"]["ray_tpu"]["node_config"].update(
+        accelerator_config
+    )
+
+    new_config = GCPNodeProvider.fillout_available_node_types_resources(
+        cluster_config=cluster_config
+    )
+    resource_config = new_config["available_node_types"]["ray_tpu"]["resources"]
+    assert expected_resource_str in resource_config
+    assert resource_config[expected_resource_str] == 1
+
+
 def test_tpu_config_cannot_have_accelerator_type_and_config():
     node = {
         "acceleratorType": "abc",
@@ -272,6 +321,8 @@ def test_invalid_accelerator_configs(node_config):
         ({"acceleratorType": "v4-4096"}, 2048, False),
         ({"acceleratorConfig": {"type": "V4", "topology": "2x2x8"}}, 32, False),
         ({"acceleratorConfig": {"type": "V4", "topology": "4x4x4"}}, 64, False),
+        ({"acceleratorConfig": {"type": "V5LITE_POD", "topology": "2x4"}}, 8, True),
+        ({"acceleratorConfig": {"type": "V6E", "topology": "2x4"}}, 8, True),
     ],
 )
 def test_tpu_chip_calculation_single_host_logic(test_case):
@@ -318,6 +369,16 @@ def test_tpu_chip_calculation_single_host_logic(test_case):
             GCPNodeType.TPU,
             True,
         ),
+        (
+            {"acceleratorConfig": {"type": "V5LITE_POD", "topology": "2x4"}},
+            GCPNodeType.TPU,
+            True,
+        ),
+        (
+            {"acceleratorConfig": {"type": "V6E", "topology": "2x4"}},
+            GCPNodeType.TPU,
+            True,
+        ),
     ],
 )
 def test_get_node_type_and_has_tpu(test_case):
@@ -357,7 +418,28 @@ def test_tpu_pod_emits_warning(propagate_logs, caplog, accelerator_pod_tuple):
             assert "TPU pod detected" not in caplog.text
 
 
-if __name__ == "__main__":
-    import sys
+@pytest.mark.parametrize(
+    "test_case",
+    [
+        ("v4-8", "V4", "2x2x1"),
+        ("v4-16", "V4", "2x2x2"),
+        ("v4-128", "V4", "4x4x4"),
+        ("v4-256", "V4", "4x4x8"),
+        ("v5litepod-8", "V5LITE_POD", "2x4"),
+        ("v6e-8", "V6E", "2x4"),
+    ],
+)
+def test_tpu_accelerator_config_to_type(test_case):
+    expected, accel_type, topology = test_case
+    accelerator_config = {
+        "type": accel_type,
+        "topology": topology,
+    }
+    accelerator_type = tpu_accelerator_config_to_type(
+        accelerator_config=accelerator_config
+    )
+    assert accelerator_type == expected
 
+
+if __name__ == "__main__":
     sys.exit(pytest.main(["-v", __file__]))

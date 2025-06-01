@@ -40,7 +40,7 @@ def deprecation_warning(
     )
 
     if error:
-        if not type(error) is bool and issubclass(error, Exception):
+        if not isinstance(error, bool) and issubclass(error, Exception):
             # error is an Exception
             raise error(msg)
         else:
@@ -67,26 +67,29 @@ def Deprecated(old=None, *, new=None, help=None, error):
     In a further major release, the class, method, function should be erased
     entirely from the codebase.
 
-    Examples:
-        >>> from ray.rllib.utils.deprecation import Deprecated
-        >>> # Deprecated class: Patches the constructor to warn if the class is
-        ... # used.
-        ... @Deprecated(new="NewAndMuchCoolerClass", error=False)
-        ... class OldAndUncoolClass:
-        ...     ...
 
-        >>> # Deprecated class method: Patches the method to warn if called.
-        ... class StillCoolClass:
-        ...     ...
-        ...     @Deprecated(new="StillCoolClass.new_and_much_cooler_method()",
-        ...                 error=False)
-        ...     def old_and_uncool_method(self, uncool_arg):
-        ...         ...
+    .. testcode::
+        :skipif: True
 
-        >>> # Deprecated function: Patches the function to warn if called.
-        ... @Deprecated(new="new_and_much_cooler_function", error=False)
-        ... def old_and_uncool_function(*uncool_args):
-        ...     ...
+        from ray.rllib.utils.deprecation import Deprecated
+        # Deprecated class: Patches the constructor to warn if the class is
+        # used.
+        @Deprecated(new="NewAndMuchCoolerClass", error=False)
+        class OldAndUncoolClass:
+            ...
+
+        # Deprecated class method: Patches the method to warn if called.
+        class StillCoolClass:
+            ...
+            @Deprecated(new="StillCoolClass.new_and_much_cooler_method()",
+                        error=False)
+            def old_and_uncool_method(self, uncool_arg):
+                ...
+
+        # Deprecated function: Patches the function to warn if called.
+        @Deprecated(new="new_and_much_cooler_function", error=False)
+        def old_and_uncool_function(*uncool_args):
+            ...
     """
 
     def _inner(obj):
@@ -129,11 +132,3 @@ def Deprecated(old=None, *, new=None, help=None, error):
 
     # Return the prepared decorator.
     return _inner
-
-
-ALGO_DEPRECATION_WARNING = (
-    "This algorithm will be removed by ray 2.9 It is being "
-    "moved to the ray/rllib_contrib dir. See "
-    "https://github.com/ray-project/enhancements/blob/main/reps/2023-04-28-remove-algorithms-from-rllib.md "  # noqa: E501
-    "for more details. Any associated components (e.g. policies) will also be moved."
-)

@@ -1,14 +1,17 @@
 # syntax=docker/dockerfile:1.3-labs
 
-FROM ubuntu:20.04
+FROM ubuntu:22.04
 
 ARG BUILDKITE_BAZEL_CACHE_URL
 
 ENV DEBIAN_FRONTEND=noninteractive
 ENV PATH="/home/forge/.local/bin:${PATH}"
 ENV BUILDKITE_BAZEL_CACHE_URL=${BUILDKITE_BAZEL_CACHE_URL}
+ENV RAY_BUILD_ENV=ubuntu22.04_forge
 
-RUN <<EOF
+RUN \
+  --mount=type=bind,source=ci/k8s/install-k8s-tools.sh,target=install-k8s-tools.sh \
+<<EOF
 #!/bin/bash
 
 set -euo pipefail
@@ -38,11 +41,12 @@ apt-get install -y \
 
 # As a convention, we pin all python packages to a specific version. This
 # is to to make sure we can control version upgrades through code changes.
-python -m pip install pip==23.2.1
+python -m pip install pip==25.0 cffi==1.16.0
 
 # Needs to be synchronized to the host group id as we map /var/run/docker.sock
 # into the container.
-addgroup --gid 1001 docker
+addgroup --gid 1001 docker0  # Used on old buildkite AMIs.
+addgroup --gid 993 docker
 
 # Install bazelisk
 npm install -g @bazel/bazelisk
@@ -50,7 +54,12 @@ ln -s /usr/local/bin/bazel /usr/local/bin/bazelisk
 
 # A non-root user. Use 2000, which is the same as our buildkite agent VM uses.
 adduser --home /home/forge --uid 2000 forge --gid 100
+usermod -a -G docker0 forge
 usermod -a -G docker forge
+
+if [[ "$(uname -i)" == "x86_64" ]]; then
+  bash install-k8s-tools.sh
+fi
 
 EOF
 
@@ -70,3 +79,6 @@ set -euo pipefail
 EOF
 
 CMD ["echo", "ray forge"]
+
+
+# last update: 2025-05-23

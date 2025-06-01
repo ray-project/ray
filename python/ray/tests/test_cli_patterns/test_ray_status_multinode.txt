@@ -1,7 +1,9 @@
 ======== Autoscaler status: .+
 Node status
 ---------------------------------------------------------------
-Healthy:
+Active:
+ \(no active nodes\)
+Idle:
  1 node_.+
  1 node_.+
  1 node_.+
@@ -13,10 +15,12 @@ Recent failures:
 
 Resources
 ---------------------------------------------------------------
-Usage:
+Total Usage:
  0.0/8.0 CPU
  0.+
  0.+
 
-Demands:
+Total Constraints:
+ \(no request_resources\(\) constraints\)
+Total Demands:
  \(no resource demands\)

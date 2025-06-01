@@ -1,0 +1,101 @@
+group: others
+depends_on:
+  - forge
+steps:
+  # dependencies
+  - label: ":tapioca: build: pip-compile dependencies"
+    key: pip_compile_dependencies
+    tags: always
+    instance_type: small
+    commands:
+      # uncomment the following line to update the pinned versions of pip dependencies
+      # to the latest versions; otherwise, the pinned versions will be re-used as much
+      # as possible
+      # - rm ./python/requirements_compiled.txt
+      - cp ./python/requirements_compiled.txt requirements_compiled_backup.txt
+      - ./ci/ci.sh compile_pip_dependencies
+      - cp -f ./python/requirements_compiled.txt /artifact-mount/
+      - diff ./python/requirements_compiled.txt requirements_compiled_backup.txt || (echo "requirements_compiled.txt is not up to date. Please download it from Artifacts tab and git push the changes." && exit 1)
+    job_env: oss-ci-base_test-py3.11
+    depends_on: oss-ci-base_test-multipy
+
+  - label: ":tapioca: build: uv pip compile LLM dependencies"
+    key: uv_pip_compile_llm_dependencies
+    tags: always
+    instance_type: small
+    command: ./ci/test_compile_llm_requirements.sh
+    job_env: oss-ci-base_test-py3.11
+    depends_on: oss-ci-base_test-multipy
+
+  # docs
+  - name: doctestbuild
+    wanda: ci/docker/doctest.build.wanda.yaml
+    depends_on: oss-ci-base_build
+
+  - label: doc tests
+    tags: python
+    instance_type: large
+    commands:
+      # Disable test DB to avoid any hidden failures going forward.
+      - RAYCI_DISABLE_TEST_DB=1 bazel run //ci/ray_ci:test_in_docker -- //python/ray/... //doc/... none
+        --build-name doctestbuild
+        --only-tags doctest
+        --except-tags gpu
+        --parallelism-per-worker 3
+    depends_on: doctestbuild
+
+  # java
+  - label: ":java: java tests"
+    tags: java
+    instance_type: medium
+    commands:
+      - bazel run //ci/ray_ci:test_in_docker -- //... core --build-only
+      - docker run -i --rm --volume /tmp/artifacts:/artifact-mount --shm-size=2.5gb
+        "$${RAYCI_WORK_REPO}":"$${RAYCI_BUILD_ID}"-corebuild /bin/bash -iecuo pipefail
+        "./java/test.sh"
+    depends_on: corebuild
+
+  # bot
+  - label: ":robot_face: CI weekly green metric"
+    tags:
+      - skip-on-premerge
+      - oss
+    if: build.branch == "master"
+    instance_type: small
+    commands:
+      - bazel run //ci/ray_ci/automation:weekly_green_metric -- --production
+
+  - label: ":robot_face: {{matrix}} microcheck test coverage"
+    tags:
+      - skip-on-premerge
+      - oss
+    if: build.branch == "master"
+    instance_type: small
+    commands:
+      - bazel run //ci/ray_ci/automation:determine_microcheck_tests -- {{matrix}} 100 --test-prefix linux:__ --production
+      # we use master branch to determine microcheck tests for darwin and windows, because darwin and windows tests do not run on premerge branches
+      - bazel run //ci/ray_ci/automation:determine_microcheck_tests -- {{matrix}} 100 --test-prefix darwin:__ --consider-master-branch --production
+      - bazel run //ci/ray_ci/automation:determine_microcheck_tests -- {{matrix}} 100 --test-prefix windows:__ --consider-master-branch --production
+    matrix:
+      - "core"
+      - "serve"
+      - "data"
+      - "ml"
+      - "rllib"
+      - "ci"
+
+  - name: fossa-base
+    wanda: ci/docker/fossa.wanda.yaml
+    depends_on: forge
+
+  - label: "fossa analyze"
+    key: fossa-analyze
+    tags:
+      - skip-on-premerge
+      - fossa
+      - oss
+    instance_type: small
+    commands:
+      - bash ci/fossa/analyze.sh
+    depends_on: fossa-base
+    job_env: fossa-base

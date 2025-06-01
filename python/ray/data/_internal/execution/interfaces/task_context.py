@@ -1,10 +1,14 @@
-from dataclasses import dataclass
+import threading
+from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any, Dict, Optional
 
 from ray.data._internal.progress_bar import ProgressBar
 
 if TYPE_CHECKING:
     from ray.data._internal.execution.operators.map_transformer import MapTransformer
+
+
+_thread_local = threading.local()
 
 
 @dataclass
@@ -14,6 +18,9 @@ class TaskContext:
     # The index of task. Each task has a unique task index within the same
     # operator.
     task_idx: int
+
+    # Name of the operator that this task belongs to.
+    op_name: str
 
     # The dictionary of sub progress bar to update. The key is name of sub progress
     # bar. Note this is only used on driver side.
@@ -36,3 +43,34 @@ class TaskContext:
     # The Ray remote arguments of the fused upstream MapOperator.
     # This should be set if upstream_map_transformer is set.
     upstream_map_ray_remote_args: Optional[Dict[str, Any]] = None
+
+    # The target maximum number of bytes to include in the task's output block.
+    target_max_block_size: Optional[int] = None
+
+    # Additional keyword arguments passed to the task.
+    kwargs: Dict[str, Any] = field(default_factory=dict)
+
+    @classmethod
+    def get_current(cls) -> Optional["TaskContext"]:
+        """Get the TaskContext for the current thread.
+        Returns None if no TaskContext has been set.
+        """
+
+        return getattr(_thread_local, "task_context", None)
+
+    @classmethod
+    def set_current(cls, context):
+        """Set the TaskContext for the current thread.
+
+        Args:
+            context: The TaskContext instance to set for this thread
+        """
+
+        _thread_local.task_context = context
+
+    @classmethod
+    def reset_current(cls):
+        """Clear the current thread's TaskContext."""
+
+        if hasattr(_thread_local, "task_context"):
+            delattr(_thread_local, "task_context")

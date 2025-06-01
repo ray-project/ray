@@ -5,7 +5,7 @@ from typing import Dict, List, Union
 
 from ray.util import log_once
 from ray.rllib.models.modelv2 import ModelV2
-from ray.rllib.utils.annotations import override, PublicAPI
+from ray.rllib.utils.annotations import OldAPIStack, override
 from ray.rllib.utils.deprecation import deprecation_warning
 from ray.rllib.utils.framework import try_import_tf
 from ray.rllib.utils.typing import ModelConfigDict, TensorType
@@ -13,7 +13,7 @@ from ray.rllib.utils.typing import ModelConfigDict, TensorType
 tf1, tf, tfv = try_import_tf()
 
 
-@PublicAPI
+@OldAPIStack
 class TFModelV2(ModelV2):
     """TF version of ModelV2, which should contain a tf keras Model.
 
@@ -42,11 +42,6 @@ class TFModelV2(ModelV2):
                 self.base_model = tf.keras.Model(
                     input_layer, [output_layer, value_layer])
         """
-        if log_once("deprecated_tfmodelv2"):
-            deprecation_warning(
-                old="ray.rllib.models.tf.tf_modelv2.TFModelV2",
-                new="ray.rllib.core.rl_module.RLModule",
-            )
         super().__init__(
             obs_space, action_space, num_outputs, model_config, name, framework="tf"
         )

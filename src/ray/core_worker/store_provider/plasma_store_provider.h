@@ -14,6 +14,11 @@
 
 #pragma once
 
+#include <memory>
+#include <string>
+#include <utility>
+#include <vector>
+
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "ray/common/buffer.h"
@@ -90,7 +95,7 @@ class CoreWorkerPlasmaStoreProvider {
   CoreWorkerPlasmaStoreProvider(
       const std::string &store_socket,
       const std::shared_ptr<raylet::RayletClient> raylet_client,
-      const std::shared_ptr<ReferenceCounter> reference_counter,
+      ReferenceCounter &reference_counter,
       std::function<Status()> check_signals,
       bool warmup,
       std::function<std::string()> get_current_call_site = nullptr);
@@ -126,7 +131,8 @@ class CoreWorkerPlasmaStoreProvider {
                 const ObjectID &object_id,
                 const rpc::Address &owner_address,
                 std::shared_ptr<Buffer> *data,
-                bool created_by_worker);
+                bool created_by_worker,
+                bool is_mutable = false);
 
   /// Seal an object buffer created with Create().
   ///
@@ -163,6 +169,19 @@ class CoreWorkerPlasmaStoreProvider {
   Status GetIfLocal(const std::vector<ObjectID> &ids,
                     absl::flat_hash_map<ObjectID, std::shared_ptr<RayObject>> *results);
 
+  /// Get an experimental mutable object. The object must be
+  /// local to this node.
+  ///
+  /// \param[in] object_id The object to get.
+  /// \param[out] mutable_object Metadata needed to read and write the mutable
+  /// object. Keeping the returned pointer in scope will pin the object in the
+  /// object store.
+  ///
+  /// \return Status OK if we got the mutable object. Can fail if the object
+  /// was not local or is not mutable.
+  Status GetExperimentalMutableObject(
+      const ObjectID &object_id, std::unique_ptr<plasma::MutableObject> *mutable_object);
+
   Status Contains(const ObjectID &object_id, bool *has_object);
 
   Status Wait(const absl::flat_hash_set<ObjectID> &object_ids,
@@ -180,6 +199,8 @@ class CoreWorkerPlasmaStoreProvider {
 
   std::string MemoryUsageString();
 
+  std::shared_ptr<plasma::PlasmaClient> &store_client() { return store_client_; }
+
  private:
   /// Ask the raylet to fetch a set of objects and then attempt to get them
   /// from the local plasma store. Successfully fetched objects will be removed
@@ -190,7 +211,6 @@ class CoreWorkerPlasmaStoreProvider {
   /// \param[in] timeout_ms Timeout in milliseconds.
   /// \param[in] fetch_only Whether the raylet should only fetch or also attempt to
   /// reconstruct objects.
-  /// \param[in] in_direct_call_task Whether the current task is direct call.
   /// \param[in] task_id The current TaskID.
   /// \param[out] results Map of objects to write results into. This method will only
   /// add to this map, not clear or remove from it, so the caller can pass in a non-empty
@@ -203,7 +223,6 @@ class CoreWorkerPlasmaStoreProvider {
       const std::vector<ObjectID> &batch_ids,
       int64_t timeout_ms,
       bool fetch_only,
-      bool in_direct_call_task,
       const TaskID &task_id,
       absl::flat_hash_map<ObjectID, std::shared_ptr<RayObject>> *results,
       bool *got_exception);
@@ -220,9 +239,9 @@ class CoreWorkerPlasmaStoreProvider {
   Status WarmupStore();
 
   const std::shared_ptr<raylet::RayletClient> raylet_client_;
-  plasma::PlasmaClient store_client_;
+  std::shared_ptr<plasma::PlasmaClient> store_client_;
   /// Used to look up a plasma object's owner.
-  const std::shared_ptr<ReferenceCounter> reference_counter_;
+  ReferenceCounter &reference_counter_;
   std::function<Status()> check_signals_;
   std::function<std::string()> get_current_call_site_;
   uint32_t object_store_full_delay_ms_;

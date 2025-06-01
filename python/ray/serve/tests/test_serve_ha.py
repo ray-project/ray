@@ -1,12 +1,12 @@
-import os
-import pytest
 import sys
 import threading
 from time import sleep
 
-from ray.tests.conftest_docker import *  # noqa
-from ray._private.test_utils import wait_for_condition
+import pytest
+
 from ray._private.resource_spec import HEAD_NODE_RESOURCE_NAME
+from ray._private.test_utils import wait_for_condition
+from ray.tests.conftest_docker import *  # noqa
 
 scripts = """
 import json
@@ -65,7 +65,7 @@ def test_ray_serve_basic(docker_cluster):
     head, worker = docker_cluster
     output = worker.exec_run(cmd=f"python -c '{scripts.format(num_replicas=1)}'")
     assert output.exit_code == 0, output.output
-    assert b"Adding 1 replica to deployment " in output.output
+    assert b"Adding 1 replica to Deployment(" in output.output
 
     output = worker.exec_run(cmd=f"python -c '{check_script.format(num_replicas=1)}'")
     assert output.exit_code == 0, output.output
@@ -113,7 +113,7 @@ from ray._private.resource_spec import HEAD_NODE_RESOURCE_NAME
 ray.init(address="auto")
 head_node_id = ray.get_runtime_context().get_node_id()
 serve_details = ServeInstanceDetails(
-    **requests.get("http://localhost:52365/api/serve/applications/").json())
+    **requests.get("http://localhost:8265/api/serve/applications/").json())
 assert serve_details.controller_info.node_id == head_node_id
 """
     output = head.exec_run(cmd=f"python -c '{check_controller_head_node_script}'")
@@ -121,7 +121,4 @@ assert serve_details.controller_info.node_id == head_node_id
 
 
 if __name__ == "__main__":
-    if os.environ.get("PARALLEL_CI"):
-        sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))
-    else:
-        sys.exit(pytest.main(["-sv", __file__]))
+    sys.exit(pytest.main(["-sv", __file__]))

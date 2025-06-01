@@ -38,7 +38,7 @@ async def measure_throughput_tps(async_fn, args, expected_output, duration_secs=
 
 
 async def benchmark_throughput_tps(
-    dag_handle,
+    async_fn,
     expected,
     duration_secs=10,
     num_clients=1,
@@ -49,7 +49,7 @@ async def benchmark_throughput_tps(
     throughput_stats_tps_list = await asyncio.gather(
         *[
             client_task(
-                dag_handle.predict.remote,
+                async_fn,
                 0,
                 expected,
                 duration_secs=duration_secs,
@@ -66,14 +66,14 @@ async def benchmark_throughput_tps(
     return mean, std
 
 
-async def benchmark_latency_ms(dag_handle, expected, num_requests=100, num_clients=1):
+async def benchmark_latency_ms(async_fn, expected, num_requests=100, num_clients=1):
     """Call deployment handle in a blocking for loop from multiple clients."""
     client_tasks = [measure_latency_ms for _ in range(num_clients)]
 
     latency_stats_ms_list = await asyncio.gather(
         *[
             client_task(
-                dag_handle.predict.remote,
+                async_fn,
                 0,
                 expected,
                 num_requests=num_requests,

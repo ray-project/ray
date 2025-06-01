@@ -18,9 +18,9 @@ SIGKILL = signal.SIGKILL if sys.platform != "win32" else signal.SIGTERM
 @pytest.fixture
 def config(request):
     config = {
-        "health_check_initial_delay_ms": 0,
+        "health_check_initial_delay_ms": 5000,
         "health_check_period_ms": 100,
-        "health_check_failure_threshold": 10,
+        "health_check_failure_threshold": 20,
         "object_timeout_milliseconds": 200,
     }
 
@@ -573,9 +573,4 @@ def test_reconstruction_chain(config, ray_start_cluster, reconstruction_enabled)
 
 
 if __name__ == "__main__":
-    import pytest
-
-    if os.environ.get("PARALLEL_CI"):
-        sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))
-    else:
-        sys.exit(pytest.main(["-sv", __file__]))
+    sys.exit(pytest.main(["-sv", __file__]))

@@ -11,6 +11,7 @@ To maintain feature completeness, we simply wrap the existing `SSHCommandRunner`
 `DockerCommandRunner` and run them as batched calls.
 
 """
+import copy
 from concurrent.futures import ThreadPoolExecutor
 from types import ModuleType
 from typing import Any, Dict, Optional
@@ -25,9 +26,19 @@ from ray.autoscaler.node_provider import NodeProvider
 class TPUVMSSHCommandRunner(SSHCommandRunner):
     """An SSH command runner with overwritten IP address calls."""
 
-    def __init__(self, internal_ip: str, external_ip: str, *args, **kwargs):
+    def __init__(
+        self,
+        internal_ip: str,
+        external_ip: str,
+        worker_id: int,
+        accelerator_type: str,
+        *args,
+        **kwargs,
+    ):
         self._internal_ip = internal_ip
         self._external_ip = external_ip
+        self._worker_id = worker_id
+        self._accelerator_type = accelerator_type
         super().__init__(*args, **kwargs)
 
     def _get_node_ip(self) -> str:
@@ -35,6 +46,50 @@ class TPUVMSSHCommandRunner(SSHCommandRunner):
             return self._internal_ip
         else:
             return self._external_ip
+
+    def run(
+        self,
+        cmd,
+        timeout=120,
+        exit_on_fail=False,
+        port_forward=None,
+        with_output=False,
+        environment_variables: Dict[str, object] = None,
+        run_env="auto",  # Unused argument.
+        ssh_options_override_ssh_key="",
+        shutdown_after_run=False,
+    ) -> str:
+        """Override the SSH run for TPU VM pods.
+
+        Main functionality here we need to inject is to intercept the resources
+        provided by the node_provider TPU node type fillout.
+
+        node_provider will provide a resource "TPU-{TPU_POD_TYPE}-head" which:
+        1) allows application developers to target worker 0 of an arbitary TPU pod, and
+        2) signals to the autoscaler how to address the demand for more TPU pods.
+
+        Without this intercept, then all workers of a TPU pod will have the
+        "TPU-{TPU_POD_TYPE}-head" resource which will violate functionality (1)
+        above.
+
+        """
+
+        if environment_variables:
+            environment_variables = _maybe_remove_head_resource(
+                environment_variables, self._worker_id, self._accelerator_type
+            )
+
+        return super().run(
+            cmd=cmd,
+            timeout=timeout,
+            exit_on_fail=exit_on_fail,
+            port_forward=port_forward,
+            with_output=with_output,
+            environment_variables=environment_variables,
+            run_env=run_env,
+            ssh_options_override_ssh_key=ssh_options_override_ssh_key,
+            shutdown_after_run=shutdown_after_run,
+        )
 
 
 class TPUVMDockerCommandRunner(DockerCommandRunner):
@@ -45,11 +100,48 @@ class TPUVMDockerCommandRunner(DockerCommandRunner):
         docker_config: Dict[str, Any],
         internal_ip: str,
         external_ip: str,
-        **common_args
+        worker_id: int,
+        accelerator_type: str,
+        **common_args,
     ):
         super().__init__(docker_config=docker_config, **common_args)
+        self._worker_id = worker_id
+        self._accelerator_type = accelerator_type
+
         self.ssh_command_runner = TPUVMSSHCommandRunner(
-            internal_ip=internal_ip, external_ip=external_ip, **common_args
+            internal_ip=internal_ip,
+            external_ip=external_ip,
+            worker_id=worker_id,
+            accelerator_type=accelerator_type,
+            **common_args,
+        )
+
+    def run(
+        self,
+        cmd,
+        timeout=120,
+        exit_on_fail=False,
+        port_forward=None,
+        with_output=False,
+        environment_variables: Optional[Dict[str, object]] = None,
+        run_env="auto",
+        ssh_options_override_ssh_key="",
+        shutdown_after_run=False,
+    ):
+        if environment_variables:
+            environment_variables = _maybe_remove_head_resource(
+                environment_variables, self._worker_id, self._accelerator_type
+            )
+        return super().run(
+            cmd,
+            timeout,
+            exit_on_fail,
+            port_forward,
+            with_output,
+            environment_variables,
+            run_env,
+            ssh_options_override_ssh_key,
+            shutdown_after_run,
         )
 
 
@@ -69,13 +161,15 @@ class TPUCommandRunner(CommandRunnerInterface):
         docker_config: Optional[Dict[str, Any]] = None,
     ):
         def create_command_runner(
-            worker_id: int, internal_ip: str, external_ip: str
+            worker_id: int, accelerator_type: str, internal_ip: str, external_ip: str
         ) -> CommandRunnerInterface:
             """Returns the correct base command runner."""
 
             common_args = {
                 "internal_ip": internal_ip,
                 "external_ip": external_ip,
+                "worker_id": worker_id,
+                "accelerator_type": accelerator_type,
                 "log_prefix": "[tpu_worker_{}] ".format(worker_id) + log_prefix,
                 "node_id": node_id,
                 "provider": provider,
@@ -97,6 +191,7 @@ class TPUCommandRunner(CommandRunnerInterface):
             self._command_runners.append(
                 create_command_runner(
                     worker_id=i,
+                    accelerator_type=instance.get("acceleratorType"),
                     internal_ip=instance.get_internal_ip(i),
                     external_ip=instance.get_external_ip(i),
                 )
@@ -118,10 +213,31 @@ class TPUCommandRunner(CommandRunnerInterface):
         )
         return min(self._num_workers, num_max_concurrent_active_connections)
 
-    def run(self, *args, **kwargs) -> str:
+    def run(
+        self,
+        cmd,
+        timeout=120,
+        exit_on_fail=False,
+        port_forward=None,
+        with_output=False,
+        environment_variables: Dict[str, object] = None,
+        run_env="auto",  # Unused argument.
+        ssh_options_override_ssh_key="",
+        shutdown_after_run=False,
+    ) -> str:
         with ThreadPoolExecutor(self.num_connections) as executor:
             results = executor.map(
-                lambda i: self._command_runners[i].run(*args, **kwargs),
+                lambda i: self._command_runners[i].run(
+                    cmd=cmd,
+                    timeout=timeout,
+                    exit_on_fail=exit_on_fail,
+                    port_forward=port_forward,
+                    with_output=with_output,
+                    environment_variables=copy.deepcopy(environment_variables),
+                    run_env=run_env,
+                    ssh_options_override_ssh_key=ssh_options_override_ssh_key,
+                    shutdown_after_run=shutdown_after_run,
+                ),
                 range(self._num_workers),
             )
         # Note: the `run` abstract function may return a string representing
@@ -178,3 +294,35 @@ class TPUCommandRunner(CommandRunnerInterface):
         # Here we return whether any workers require initialization, which may not be
         # the expected result.
         return any(results)
+
+
+def _maybe_remove_head_resource(
+    environment_variables: Dict[str, Any], worker_id: int, accelerator_type: str
+):
+    """
+    node_provider will provide a resource "TPU-{TPU_POD_TYPE}-head" which:
+    1) allows application developers to target worker 0 of an arbitary TPU pod, and
+    2) signals to the autoscaler how to address the demand for more TPU pods.
+
+    Without this intercept, then all workers of a TPU pod will have the
+    "TPU-{TPU_POD_TYPE}-head" resource which will violate functionality (1)
+    above.
+    """
+    resources = environment_variables.get(
+        ray_constants.RESOURCES_ENVIRONMENT_VARIABLE, None
+    )
+
+    if resources:
+        # For TPU pod support, we need to ensure that the
+        # tpu pod resource type only propagates to worker 0.
+        if worker_id != 0:
+            tpu_pod_resource_type = f"TPU-{accelerator_type}-head"
+            if tpu_pod_resource_type in resources:
+                resources = copy.copy(resources)
+                resources.pop(tpu_pod_resource_type, None)
+        environment_variables = {
+            **environment_variables,
+            ray_constants.RESOURCES_ENVIRONMENT_VARIABLE: resources,
+        }
+
+    return environment_variables

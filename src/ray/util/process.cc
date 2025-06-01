@@ -22,6 +22,7 @@
 #include <Winternl.h>
 #include <process.h>
 #else
+#include <fcntl.h>
 #include <poll.h>
 #include <signal.h>
 #include <stddef.h>
@@ -30,23 +31,28 @@
 #include <unistd.h>
 #endif
 
-#include <string.h>
-
 #include <algorithm>
+#include <array>
 #include <atomic>
+#include <cstdio>
+#include <cstring>
 #include <fstream>
+#include <functional>
+#include <memory>
 #include <string>
+#include <utility>
 #include <vector>
 
+#include "ray/util/cmd_line_utils.h"
 #include "ray/util/filesystem.h"
 #include "ray/util/logging.h"
 #include "ray/util/macros.h"
-#include "ray/util/util.h"
+#include "ray/util/subreaper.h"
 
 #ifdef __APPLE__
 extern char **environ;
 
-// macOS dosn't come with execvpe.
+// macOS doesn't come with execvpe.
 // https://stackoverflow.com/questions/7789750/execve-with-path-search
 int execvpe(const char *program, char *const argv[], char *const envp[]) {
   char **saved = environ;
@@ -62,6 +68,19 @@ int execvpe(const char *program, char *const argv[], char *const envp[]) {
 #endif
 
 namespace ray {
+
+#if !defined(_WIN32)
+void SetFdCloseOnExec(int fd) {
+  if (fd < 0) {
+    return;
+  }
+  int flags = fcntl(fd, F_GETFD, 0);
+  RAY_CHECK_NE(flags, -1) << "fcntl error: errno = " << errno << ", fd = " << fd;
+  const int ret = fcntl(fd, F_SETFD, flags | FD_CLOEXEC);
+  RAY_CHECK_NE(ret, -1) << "fcntl error: errno = " << errno << ", fd = " << fd;
+  RAY_LOG(DEBUG) << "set FD_CLOEXEC to fd " << fd;
+}
+#endif
 
 bool EnvironmentVariableLess::operator()(char a, char b) const {
   // TODO(mehrdadn): This is only used on Windows due to current lack of Unicode support.
@@ -87,12 +106,13 @@ class ProcessFD {
  public:
   ~ProcessFD();
   ProcessFD();
-  ProcessFD(pid_t pid, intptr_t fd = -1);
-  ProcessFD(const ProcessFD &other);
+  explicit ProcessFD(pid_t pid, intptr_t fd = -1);
   ProcessFD(ProcessFD &&other);
-  ProcessFD &operator=(const ProcessFD &other);
   ProcessFD &operator=(ProcessFD &&other);
-  intptr_t CloneFD() const;
+
+  ProcessFD(const ProcessFD &other) = delete;
+  ProcessFD &operator=(const ProcessFD &other) = delete;
+
   void CloseFD();
   intptr_t GetFD() const;
   pid_t GetId() const;
@@ -101,7 +121,8 @@ class ProcessFD {
   static ProcessFD spawnvpe(const char *argv[],
                             std::error_code &ec,
                             bool decouple,
-                            const ProcessEnvironment &env) {
+                            const ProcessEnvironment &env,
+                            bool pipe_to_stdin) {
     ec = std::error_code();
     intptr_t fd;
     pid_t pid;
@@ -171,10 +192,23 @@ class ProcessFD {
     // TODO(mehrdadn): Use clone() on Linux or posix_spawnp() on Mac to avoid duplicating
     // file descriptors into the child process, as that can be problematic.
     int pipefds[2];  // Create pipe to get PID & track lifetime
+    int parent_lifetime_pipe[2];
+
+    // Create pipes to health check parent <> child.
+    // pipefds is used for parent to check child's health.
     if (pipe(pipefds) == -1) {
       pipefds[0] = pipefds[1] = -1;
     }
+    // parent_lifetime_pipe is used for child to check parent's health.
+    if (pipe_to_stdin) {
+      if (pipe(parent_lifetime_pipe) == -1) {
+        parent_lifetime_pipe[0] = parent_lifetime_pipe[1] = -1;
+      }
+    }
+
     pid = pipefds[1] != -1 ? fork() : -1;
+
+    // If we don't pipe to stdin close pipes that are not needed.
     if (pid <= 0 && pipefds[0] != -1) {
       close(pipefds[0]);  // not the parent, so close the read end of the pipe
       pipefds[0] = -1;
@@ -182,7 +216,34 @@ class ProcessFD {
     if (pid != 0 && pipefds[1] != -1) {
       close(pipefds[1]);  // not the child, so close the write end of the pipe
       pipefds[1] = -1;
+      // make sure the read end of the pipe is closed on exec
+      SetFdCloseOnExec(pipefds[0]);
     }
+
+    // Create a pipe and redirect the read pipe to a child's stdin.
+    // Child can use it to detect the parent's lifetime.
+    // See the below link for details.
+    // https://stackoverflow.com/questions/12193581/detect-death-of-parent-process
+    if (pipe_to_stdin) {
+      if (pid <= 0 && parent_lifetime_pipe[1] != -1) {
+        // Child. Close sthe write end of the pipe from child.
+        close(parent_lifetime_pipe[1]);
+        parent_lifetime_pipe[1] = -1;
+        SetFdCloseOnExec(parent_lifetime_pipe[0]);
+      }
+      if (pid != 0 && parent_lifetime_pipe[0] != -1) {
+        // Parent. Close the read end of the pipe.
+        close(parent_lifetime_pipe[0]);
+        parent_lifetime_pipe[0] = -1;
+        // Make sure the write end of the pipe is closed on exec.
+        SetFdCloseOnExec(parent_lifetime_pipe[1]);
+      }
+    } else {
+      // parent_lifetime_pipe pipes are not used.
+      parent_lifetime_pipe[0] = -1;
+      parent_lifetime_pipe[1] = -1;
+    }
+
     if (pid == 0) {
       // Child process case. Reset the SIGCHLD handler.
       signal(SIGCHLD, SIG_DFL);
@@ -190,6 +251,13 @@ class ProcessFD {
       if (pid_t pid2 = decouple ? fork() : 0) {
         _exit(pid2 == -1 ? errno : 0);  // Parent of grandchild; must exit
       }
+
+      // Redirect the read pipe to stdin so that child can track the
+      // parent lifetime.
+      if (parent_lifetime_pipe[0] != -1) {
+        dup2(parent_lifetime_pipe[0], STDIN_FILENO);
+      }
+
       // This is the spawned process. Any intermediate parent is now dead.
       pid_t my_pid = getpid();
       if (write(pipefds[1], &my_pid, sizeof(my_pid)) == sizeof(my_pid)) {
@@ -217,17 +285,7 @@ class ProcessFD {
   }
 };
 
-ProcessFD::~ProcessFD() {
-  if (fd_ != -1) {
-    bool success;
-#ifdef _WIN32
-    success = !!CloseHandle(reinterpret_cast<HANDLE>(fd_));
-#else
-    success = close(static_cast<int>(fd_)) == 0;
-#endif
-    RAY_CHECK(success) << "error " << errno << " closing process " << pid_ << " FD";
-  }
-}
+ProcessFD::~ProcessFD() { CloseFD(); }
 
 ProcessFD::ProcessFD() : pid_(-1), fd_(-1) {}
 
@@ -277,17 +335,7 @@ ProcessFD::ProcessFD(pid_t pid, intptr_t fd) : pid_(pid), fd_(fd) {
   }
 }
 
-ProcessFD::ProcessFD(const ProcessFD &other) : ProcessFD(other.pid_, other.CloneFD()) {}
-
 ProcessFD::ProcessFD(ProcessFD &&other) : ProcessFD() { *this = std::move(other); }
-
-ProcessFD &ProcessFD::operator=(const ProcessFD &other) {
-  if (this != &other) {
-    // Construct a copy, then call the move constructor
-    *this = static_cast<ProcessFD>(other);
-  }
-  return *this;
-}
 
 ProcessFD &ProcessFD::operator=(ProcessFD &&other) {
   if (this != &other) {
@@ -299,32 +347,19 @@ ProcessFD &ProcessFD::operator=(ProcessFD &&other) {
   return *this;
 }
 
-intptr_t ProcessFD::CloneFD() const {
-  intptr_t fd;
+void ProcessFD::CloseFD() {
   if (fd_ != -1) {
+    bool success;
 #ifdef _WIN32
-    HANDLE handle;
-    BOOL inheritable = FALSE;
-    fd = DuplicateHandle(GetCurrentProcess(),
-                         reinterpret_cast<HANDLE>(fd_),
-                         GetCurrentProcess(),
-                         &handle,
-                         0,
-                         inheritable,
-                         DUPLICATE_SAME_ACCESS)
-             ? reinterpret_cast<intptr_t>(handle)
-             : -1;
+    success = !!CloseHandle(reinterpret_cast<HANDLE>(fd_));
 #else
-    fd = dup(static_cast<int>(fd_));
+    success = close(static_cast<int>(fd_)) == 0;
 #endif
-    RAY_DCHECK(fd != -1);
-  } else {
-    fd = -1;
+    RAY_CHECK(success) << "error " << errno << " closing process " << pid_ << " FD";
   }
-  return fd;
-}
 
-void ProcessFD::CloseFD() { fd_ = -1; }
+  fd_ = -1;
+}
 
 intptr_t ProcessFD::GetFD() const { return fd_; }
 
@@ -349,12 +384,24 @@ Process::Process(const char *argv[],
                  void *io_service,
                  std::error_code &ec,
                  bool decouple,
-                 const ProcessEnvironment &env) {
+                 const ProcessEnvironment &env,
+                 bool pipe_to_stdin) {
+  /// TODO: use io_service with boost asio notify_fork.
   (void)io_service;
-  ProcessFD procfd = ProcessFD::spawnvpe(argv, ec, decouple, env);
+#ifdef __linux__
+  KnownChildrenTracker::instance().AddKnownChild([&, this]() -> pid_t {
+    ProcessFD procfd = ProcessFD::spawnvpe(argv, ec, decouple, env, pipe_to_stdin);
+    if (!ec) {
+      this->p_ = std::make_shared<ProcessFD>(std::move(procfd));
+    }
+    return this->GetId();
+  });
+#else
+  ProcessFD procfd = ProcessFD::spawnvpe(argv, ec, decouple, env, pipe_to_stdin);
   if (!ec) {
     p_ = std::make_shared<ProcessFD>(std::move(procfd));
   }
+#endif
 }
 
 std::error_code Process::Call(const std::vector<std::string> &args,
@@ -383,9 +430,9 @@ std::string Process::Exec(const std::string command) {
 #ifdef _WIN32
   std::unique_ptr<FILE, decltype(&_pclose)> pipe(_popen(command.c_str(), "r"), _pclose);
 #else
-  std::unique_ptr<FILE, decltype(&pclose)> pipe(popen(command.c_str(), "r"), pclose);
+  std::unique_ptr<FILE, int (*)(FILE *)> pipe(popen(command.c_str(), "r"), pclose);
 #endif
-  RAY_CHECK(pipe) << "popen() failed for command: " + command;
+  RAY_CHECK(pipe != nullptr) << "popen() failed for command: " << command;
   while (fgets(buffer.data(), buffer.size(), pipe.get()) != nullptr) {
     result += buffer.data();
   }
@@ -417,6 +464,7 @@ std::pair<Process, std::error_code> Process::Spawn(const std::vector<std::string
                                                    const std::string &pid_file,
                                                    const ProcessEnvironment &env) {
   std::vector<const char *> argv;
+  argv.reserve(args.size() + 1);
   for (size_t i = 0; i != args.size(); ++i) {
     argv.push_back(args[i].c_str());
   }
@@ -725,7 +773,7 @@ namespace std {
 
 bool equal_to<ray::Process>::operator()(const ray::Process &x,
                                         const ray::Process &y) const {
-  using namespace ray;
+  using namespace ray;  // NOLINT
   return !x.IsNull()
              ? !y.IsNull()
                    ? x.IsValid()
@@ -737,7 +785,7 @@ bool equal_to<ray::Process>::operator()(const ray::Process &x,
 }
 
 size_t hash<ray::Process>::operator()(const ray::Process &value) const {
-  using namespace ray;
+  using namespace ray;  // NOLINT
   return !value.IsNull() ? value.IsValid() ? hash<pid_t>()(value.GetId())
                                            : hash<void const *>()(value.Get())
                          : size_t();

@@ -14,8 +14,13 @@
 
 #pragma once
 
+#include <filesystem>
+#include <fstream>
 #include <memory>
+#include <string>
+#include <unordered_map>
 #include <utility>
+#include <vector>
 
 #include "gmock/gmock.h"
 #include "ray/common/asio/instrumented_io_context.h"
@@ -61,11 +66,13 @@ struct Mocker {
                               1,
                               false,
                               false,
+                              -1,
                               required_resources,
                               required_placement_resources,
                               "",
                               0,
-                              TaskID::Nil());
+                              TaskID::Nil(),
+                              "");
     rpc::SchedulingStrategy scheduling_strategy;
     scheduling_strategy.mutable_default_scheduling_strategy();
     builder.SetActorCreationTaskSpec(actor_id,
@@ -78,7 +85,7 @@ struct Mocker {
                                      detached,
                                      name,
                                      ray_namespace);
-    return builder.Build();
+    return std::move(builder).ConsumeAndBuild();
   }
 
   static rpc::CreateActorRequest GenCreateActorRequest(
@@ -168,6 +175,7 @@ struct Mocker {
                                   strategy,
                                   /* is_detached */ false,
                                   /* max_cpu_fraction_per_node */ 1.0,
+                                  /* soft_target_node_id */ NodeID::Nil(),
                                   job_id,
                                   actor_id,
                                   /* is_creator_detached */ false);
@@ -287,8 +295,30 @@ struct Mocker {
       auto new_events = data.add_events_by_task();
       new_events->CopyFrom(events);
     }
-    data.set_num_profile_task_events_dropped(num_profile_task_events_dropped);
-    data.set_num_status_task_events_dropped(num_status_task_events_dropped);
+
+    for (int i = 0; i < num_status_task_events_dropped; ++i) {
+      rpc::TaskAttempt rpc_task_attempt;
+      rpc_task_attempt.set_task_id(RandomTaskId().Binary());
+      rpc_task_attempt.set_attempt_number(0);
+      *(data.add_dropped_task_attempts()) = rpc_task_attempt;
+    }
+
+    data.set_num_profile_events_dropped(num_profile_task_events_dropped);
+    data.set_job_id(JobID::FromInt(0).Binary());
+
+    return data;
+  }
+
+  static rpc::TaskEventData GenTaskEventsDataLoss(
+      const std::vector<TaskAttempt> &drop_tasks, int job_id = 0) {
+    rpc::TaskEventData data;
+    for (const auto &task_attempt : drop_tasks) {
+      rpc::TaskAttempt rpc_task_attempt;
+      rpc_task_attempt.set_task_id(task_attempt.first.Binary());
+      rpc_task_attempt.set_attempt_number(task_attempt.second);
+      *(data.add_dropped_task_attempts()) = rpc_task_attempt;
+    }
+    data.set_job_id(JobID::FromInt(job_id).Binary());
 
     return data;
   }
@@ -314,7 +344,8 @@ struct Mocker {
       const absl::flat_hash_map<std::string, double> &available_resources,
       const absl::flat_hash_map<std::string, double> &total_resources,
       int64_t idle_ms = 0,
-      bool is_draining = false) {
+      bool is_draining = false,
+      int64_t draining_deadline_timestamp_ms = -1) {
     resources_data.set_node_id(node_id.Binary());
     for (const auto &resource : available_resources) {
       (*resources_data.mutable_resources_available())[resource.first] = resource.second;
@@ -324,12 +355,12 @@ struct Mocker {
     }
     resources_data.set_idle_duration_ms(idle_ms);
     resources_data.set_is_draining(is_draining);
+    resources_data.set_draining_deadline_timestamp_ms(draining_deadline_timestamp_ms);
   }
 
   static void FillResourcesData(rpc::ResourcesData &data,
                                 const std::string &node_id,
-                                std::vector<rpc::ResourceDemand> demands,
-                                bool resource_load_changed = true) {
+                                std::vector<rpc::ResourceDemand> demands) {
     auto load_by_shape = data.mutable_resource_load_by_shape();
     auto agg_load = data.mutable_resource_load();
     for (const auto &demand : demands) {
@@ -340,7 +371,6 @@ struct Mocker {
                                 demand.num_infeasible_requests_queued()));
       }
     }
-    data.set_resource_load_changed(resource_load_changed);
     data.set_node_id(node_id);
   }
 
@@ -395,12 +425,22 @@ struct Mocker {
     for (size_t i = 0; i < request_resources.size(); i++) {
       auto &resource = request_resources[i];
       auto count = count_array[i];
-      auto bundle = constraint.add_min_bundles();
+      auto bundle = constraint.add_resource_requests();
       bundle->set_count(count);
       bundle->mutable_request()->mutable_resources_bundle()->insert(resource.begin(),
                                                                     resource.end());
     }
     return constraint;
+  }
+  // Read all lines of a file into vector vc
+  static void ReadContentFromFile(std::vector<std::string> &vc, std::string log_file) {
+    std::string line;
+    std::ifstream read_file;
+    read_file.open(log_file, std::ios::binary);
+    while (std::getline(read_file, line)) {
+      vc.push_back(line);
+    }
+    read_file.close();
   }
 };
 

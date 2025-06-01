@@ -32,9 +32,7 @@ def add_resources(dict1: Dict[str, float], dict2: Dict[str, float]) -> Dict[str,
     return new_dict
 
 
-def freq_of_dicts(
-    dicts: List[Dict], serializer=lambda d: frozenset(d.items()), deserializer=dict
-) -> DictCount:
+def freq_of_dicts(dicts: List[Dict], serializer=None, deserializer=dict) -> DictCount:
     """Count a list of dictionaries (or unhashable types).
 
     This is somewhat annoying because mutable data structures aren't hashable,
@@ -53,6 +51,9 @@ def freq_of_dicts(
             is a tuple containing a unique entry from `dicts` and its
             corresponding frequency count.
     """
+    if serializer is None:
+        serializer = lambda d: frozenset(d.items())  # noqa: E731
+
     freqs = Counter(serializer(d) for d in dicts)
     as_list = []
     for as_set, count in freqs.items():
@@ -69,17 +70,16 @@ class LoadMetrics:
     """
 
     def __init__(self):
-        self.last_used_time_by_ip = {}
         self.last_heartbeat_time_by_ip = {}
         self.static_resources_by_ip = {}
         self.dynamic_resources_by_ip = {}
         self.raylet_id_by_ip = {}
-        self.resource_load_by_ip = {}
         self.waiting_bundles = []
         self.infeasible_bundles = []
         self.pending_placement_groups = []
         self.resource_requests = []
         self.cluster_full_of_actors_detected = False
+        self.ray_nodes_last_used_time_by_ip = {}
 
     def __bool__(self):
         """A load metrics instance is Falsey iff the autoscaler process
@@ -93,13 +93,12 @@ class LoadMetrics:
         raylet_id: bytes,
         static_resources: Dict[str, Dict],
         dynamic_resources: Dict[str, Dict],
-        resource_load: Dict[str, Dict],
+        node_idle_duration_s: float,
         waiting_bundles: List[Dict[str, float]] = None,
         infeasible_bundles: List[Dict[str, float]] = None,
         pending_placement_groups: List[PlacementGroupTableData] = None,
         cluster_full_of_actors_detected: bool = False,
     ):
-        self.resource_load_by_ip[ip] = resource_load
         self.static_resources_by_ip[ip] = static_resources
         self.raylet_id_by_ip[ip] = raylet_id
         self.cluster_full_of_actors_detected = cluster_full_of_actors_detected
@@ -122,11 +121,7 @@ class LoadMetrics:
         self.dynamic_resources_by_ip[ip] = dynamic_resources_update
 
         now = time.time()
-        if (
-            ip not in self.last_used_time_by_ip
-            or self.static_resources_by_ip[ip] != self.dynamic_resources_by_ip[ip]
-        ):
-            self.last_used_time_by_ip[ip] = now
+        self.ray_nodes_last_used_time_by_ip[ip] = now - node_idle_duration_s
         self.last_heartbeat_time_by_ip[ip] = now
         self.waiting_bundles = waiting_bundles
         self.infeasible_bundles = infeasible_bundles
@@ -169,11 +164,10 @@ class LoadMetrics:
                 )
             assert not (unwanted_ips & set(mapping))
 
-        prune(self.last_used_time_by_ip, should_log=True)
+        prune(self.ray_nodes_last_used_time_by_ip, should_log=True)
         prune(self.static_resources_by_ip, should_log=False)
         prune(self.raylet_id_by_ip, should_log=False)
         prune(self.dynamic_resources_by_ip, should_log=False)
-        prune(self.resource_load_by_ip, should_log=False)
         prune(self.last_heartbeat_time_by_ip, should_log=False)
 
     def get_node_resources(self):
@@ -202,21 +196,10 @@ class LoadMetrics:
         return self.dynamic_resources_by_ip
 
     def _get_resource_usage(self):
-        num_nodes = 0
-        num_nonidle = 0
         resources_used = {}
         resources_total = {}
         for ip, max_resources in self.static_resources_by_ip.items():
-            # Nodes without resources don't count as nodes (e.g. unmanaged
-            # nodes)
-            if any(max_resources.values()):
-                num_nodes += 1
             avail_resources = self.dynamic_resources_by_ip[ip]
-            resource_load = self.resource_load_by_ip[ip]
-            max_frac = 0.0
-            for resource_id, amount in resource_load.items():
-                if amount > 0:
-                    max_frac = 1.0  # the resource is saturated
             for resource_id, amount in max_resources.items():
                 used = amount - avail_resources[resource_id]
                 if resource_id not in resources_used:
@@ -225,12 +208,6 @@ class LoadMetrics:
                 resources_used[resource_id] += used
                 resources_total[resource_id] += amount
                 used = max(0, used)
-                if amount > 0:
-                    frac = used / float(amount)
-                    if frac > max_frac:
-                        max_frac = frac
-            if max_frac > 0:
-                num_nonidle += 1
 
         return resources_used, resources_total
 
@@ -357,7 +334,7 @@ class LoadMetrics:
         resources_used, resources_total = self._get_resource_usage()
 
         now = time.time()
-        idle_times = [now - t for t in self.last_used_time_by_ip.values()]
+        idle_times = [now - t for t in self.ray_nodes_last_used_time_by_ip.values()]
         heartbeat_times = [now - t for t in self.last_heartbeat_time_by_ip.values()]
         most_delayed_heartbeats = sorted(
             self.last_heartbeat_time_by_ip.items(), key=lambda pair: pair[1]

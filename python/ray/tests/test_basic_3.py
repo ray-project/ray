@@ -1,9 +1,9 @@
 # coding: utf-8
 import logging
+import random
 import sys
 import time
 
-import numpy as np
 import pytest
 
 import ray
@@ -83,7 +83,11 @@ def test_many_fractional_resources(shutdown_only):
 
     # Check that the resource are assigned correctly.
     result_ids = []
-    for rand1, rand2, rand3 in np.random.uniform(size=(100, 3)):
+    for i in range(100):
+        rand1 = random.random()
+        rand2 = random.random()
+        rand3 = random.random()
+
         resource_set = {"CPU": int(rand1 * 10000) / 10000}
         result_ids.append(
             f._remote([False, resource_set], num_cpus=resource_set["CPU"])
@@ -145,9 +149,5 @@ def test_many_fractional_resources(shutdown_only):
 
 
 if __name__ == "__main__":
-    import os
 
-    if os.environ.get("PARALLEL_CI"):
-        sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))
-    else:
-        sys.exit(pytest.main(["-sv", __file__]))
+    sys.exit(pytest.main(["-sv", __file__]))

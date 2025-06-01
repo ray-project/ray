@@ -9,7 +9,8 @@ from gymnasium.spaces import Space
 
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.policy.view_requirement import ViewRequirement
-from ray.rllib.utils.framework import try_import_tf, try_import_torch
+from ray.rllib.utils.annotations import OldAPIStack
+from ray.rllib.utils.framework import try_import_torch
 from ray.rllib.utils.spaces.space_utils import (
     flatten_to_single_ndarray,
     get_dummy_batch_for_space,
@@ -20,11 +21,9 @@ from ray.rllib.utils.typing import (
     TensorType,
     ViewRequirementsDict,
 )
-from ray.util.annotations import PublicAPI
 
 logger = logging.getLogger(__name__)
 
-_, tf, _ = try_import_tf()
 torch, _ = try_import_torch()
 
 
@@ -48,7 +47,7 @@ def _get_buffered_slice_with_paddings(d, inds):
     return element_at_t
 
 
-@PublicAPI
+@OldAPIStack
 class AgentCollector:
     """Collects samples for one agent in one trajectory (episode).
 
@@ -70,7 +69,7 @@ class AgentCollector:
         intial_states: Optional[List[TensorType]] = None,
         is_policy_recurrent: bool = False,
         is_training: bool = True,
-        _enable_rl_module_api: bool = False,
+        _enable_new_api_stack: bool = False,
     ):
         """Initialize an AgentCollector.
 
@@ -81,7 +80,7 @@ class AgentCollector:
             intial_states: The initial states from the policy.get_initial_states()
             is_policy_recurrent: If True, the policy is recurrent.
             is_training: Sets the is_training flag for the buffers. if True, all the
-                timesteps are stored in the buffers until explictly build_for_training
+                timesteps are stored in the buffers until explicitly build_for_training
                 () is called. if False, only the content required for the last time
                 step is stored in the buffers. This will save memory during inference.
                 You can change the behavior at runtime by calling is_training(mode).
@@ -93,7 +92,7 @@ class AgentCollector:
         self.initial_states = intial_states if intial_states is not None else []
         self.is_policy_recurrent = is_policy_recurrent
         self._is_training = is_training
-        self._enable_rl_module_api = _enable_rl_module_api
+        self._enable_new_api_stack = _enable_new_api_stack
 
         # Determine the size of the buffer we need for data before the actual
         # episode starts. This is used for 0-buffering of e.g. prev-actions,
@@ -284,7 +283,7 @@ class AgentCollector:
             )
             # Note (Artur) RL Modules's states need no flattening
             should_flatten_state_key = (
-                k.startswith("state_out") and not self._enable_rl_module_api
+                k.startswith("state_out") and not self._enable_new_api_stack
             )
             if (
                 k == SampleBatch.INFOS
@@ -403,8 +402,8 @@ class AgentCollector:
 
         Args:
             view_requirements: The viewrequirements dict needed to build the
-            SampleBatch from the raw buffers (which may have data shifts as well as
-            mappings from view-col to data-col in them).
+                SampleBatch from the raw buffers, which may have data shifts as well as
+                mappings from view-col to data-col in them.
 
         Returns:
             SampleBatch: The built SampleBatch for this agent, ready to go into
@@ -568,7 +567,7 @@ class AgentCollector:
             )
             # Note (Artur) RL Modules's states need no flattening
             should_flatten_state_key = (
-                col.startswith("state_out") and not self._enable_rl_module_api
+                col.startswith("state_out") and not self._enable_new_api_stack
             )
             if (
                 col == SampleBatch.INFOS
@@ -651,7 +650,7 @@ class AgentCollector:
         # add them to the buffer in case they don't exist yet
         is_state = True
         if data_col.startswith("state_out"):
-            if self._enable_rl_module_api:
+            if self._enable_new_api_stack:
                 self._build_buffers({data_col: self.initial_states})
             else:
                 if not self.is_policy_recurrent:

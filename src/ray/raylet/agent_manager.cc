@@ -14,14 +14,15 @@
 
 #include "ray/raylet/agent_manager.h"
 
+#include <memory>
+#include <string>
 #include <thread>
+#include <vector>
 
 #include "ray/common/ray_config.h"
-#include "ray/raylet/raylet_util.h"
-#include "ray/util/event.h"
-#include "ray/util/event_label.h"
 #include "ray/util/logging.h"
 #include "ray/util/process.h"
+#include "ray/util/thread_utils.h"
 #include "ray/util/util.h"
 
 namespace ray {
@@ -29,6 +30,7 @@ namespace raylet {
 
 void AgentManager::StartAgent() {
   std::vector<const char *> argv;
+  argv.reserve(options_.agent_commands.size());
   for (const std::string &arg : options_.agent_commands) {
     argv.push_back(arg.c_str());
   }
@@ -43,16 +45,30 @@ void AgentManager::StartAgent() {
   }
 
   // Do this after the debug print for argv.data()
-  argv.push_back(NULL);
+  argv.push_back(nullptr);
 
   // Set node id to agent.
   ProcessEnvironment env;
   env.insert({"RAY_NODE_ID", options_.node_id.Hex()});
   env.insert({"RAY_RAYLET_PID", std::to_string(getpid())});
+  env.insert({"RAY_enable_pipe_based_agent_to_parent_health_check",
+              RayConfig::instance().enable_pipe_based_agent_to_parent_health_check()
+                  ? "1"
+                  : "0"});
 
   // Launch the process to create the agent.
   std::error_code ec;
-  process_ = Process(argv.data(), nullptr, ec, false, env);
+  // NOTE: we pipe to stdin so that agent can read stdin to detect when
+  // the parent dies. See
+  // https://stackoverflow.com/questions/12193581/detect-death-of-parent-process
+  process_ =
+      Process(argv.data(),
+              nullptr,
+              ec,
+              false,
+              env,
+              /*pipe_to_stdin*/
+              RayConfig::instance().enable_pipe_based_agent_to_parent_health_check());
   if (!process_.IsValid() || ec) {
     // The worker failed to start. This is a fatal error.
     RAY_LOG(FATAL) << "Failed to start agent " << options_.agent_name
@@ -79,10 +95,14 @@ void AgentManager::StartAgent() {
              "Read the log `cat "
              "/tmp/ray/session_latest/logs/{dashboard_agent|runtime_env_agent}.log`. "
              "You can find the log file structure here "
-             "https://docs.ray.io/en/master/ray-observability/"
-             "ray-logging.html#logging-directory-structure.\n"
+             "https://docs.ray.io/en/master/ray-observability/user-guides/"
+             "configure-logging.html#logging-directory-structure.\n"
              "- The agent is killed by the OS (e.g., out of memory).";
-      ShutdownRayletGracefully();
+      rpc::NodeDeathInfo node_death_info;
+      node_death_info.set_reason(rpc::NodeDeathInfo::UNEXPECTED_TERMINATION);
+      node_death_info.set_reason_message(options_.agent_name +
+                                         " failed and raylet fate-shares with it.");
+      shutdown_raylet_gracefully_(node_death_info);
       // If the process is not terminated within 10 seconds, forcefully kill raylet
       // itself.
       delay_executor_([]() { QuickExit(); }, /*ms*/ 10000);

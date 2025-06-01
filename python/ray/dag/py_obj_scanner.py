@@ -1,15 +1,7 @@
 import io
-import sys
 from typing import Any, Dict, Generic, List, Tuple, Type, TypeVar, Union
 
-# For python < 3.8 we need to explicitly use pickle5 to support protocol 5
-if sys.version_info < (3, 8):
-    try:
-        import pickle5 as pickle  # noqa: F401
-    except ImportError:
-        import pickle  # noqa: F401
-else:
-    import pickle  # noqa: F401
+import pickle  # noqa: F401
 
 import ray
 from ray.dag.base import DAGNodeBase
@@ -78,7 +70,14 @@ class _PyObjScanner(ray.cloudpickle.CloudPickler, Generic[SourceType, Transforme
         return super().reducer_override(obj)
 
     def find_nodes(self, obj: Any) -> List[SourceType]:
-        """Find top-level DAGNodes."""
+        """
+        Serialize `obj` and store all instances of `source_type` found in `_found`.
+
+        Args:
+            obj: The object to scan for `source_type`.
+        Returns:
+            A list of all instances of `source_type` found in `obj`.
+        """
         assert (
             self._found is None
         ), "find_nodes cannot be called twice on the same PyObjScanner instance."

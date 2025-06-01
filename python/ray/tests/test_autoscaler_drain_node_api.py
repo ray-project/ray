@@ -1,6 +1,7 @@
 import logging
 import platform
 import time
+import sys
 
 import pytest
 
@@ -31,8 +32,12 @@ class MockFakeProvider(FakeMultiNodeProvider):
 class MockAutoscalingCluster(AutoscalingCluster):
     """AutoscalingCluster modified to used the above MockFakeProvider."""
 
-    def _generate_config(self, head_resources, worker_node_types):
-        config = super()._generate_config(head_resources, worker_node_types)
+    def _generate_config(
+        self, head_resources, worker_node_types, autoscaler_v2: bool = False
+    ):
+        config = super()._generate_config(
+            head_resources, worker_node_types, autoscaler_v2=autoscaler_v2
+        )
         config["provider"]["type"] = "external"
         config["provider"][
             "module"
@@ -41,7 +46,8 @@ class MockAutoscalingCluster(AutoscalingCluster):
 
 
 @pytest.mark.skipif(platform.system() == "Windows", reason="Failing on Windows.")
-def test_drain_api(shutdown_only):
+@pytest.mark.parametrize("autoscaler_v2", [False, True], ids=["v1", "v2"])
+def test_drain_api(autoscaler_v2, shutdown_only):
     """E2E test of the autoscaler's use of the DrainNode API.
 
     Adapted from test_autoscaler_fake_multinode.py.
@@ -72,6 +78,7 @@ def test_drain_api(shutdown_only):
                 "max_workers": 2,
             },
         },
+        autoscaler_v2=autoscaler_v2,
     )
 
     try:
@@ -108,10 +115,4 @@ def test_drain_api(shutdown_only):
 
 
 if __name__ == "__main__":
-    import os
-    import sys
-
-    if os.environ.get("PARALLEL_CI"):
-        sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))
-    else:
-        sys.exit(pytest.main(["-sv", __file__]))
+    sys.exit(pytest.main(["-sv", __file__]))

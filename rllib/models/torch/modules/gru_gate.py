@@ -1,9 +1,11 @@
+from ray.rllib.utils.annotations import OldAPIStack
 from ray.rllib.utils.framework import try_import_torch
-from ray.rllib.utils.framework import TensorType
+from ray.rllib.utils.typing import TensorType
 
 torch, nn = try_import_torch()
 
 
+@OldAPIStack
 class GRUGate(nn.Module):
     """Implements a gated recurrent unit for use in AttentionNet"""
 

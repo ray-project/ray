@@ -14,6 +14,8 @@
 
 #pragma once
 
+#include <deque>
+
 #include "absl/container/flat_hash_map.h"
 #include "ray/common/ray_config.h"
 #include "ray/common/task/task_spec.h"
@@ -40,14 +42,8 @@ class SchedulerResourceReporter {
   /// resource_load and resource_load_by_shape.
   ///
   /// \param[out] data: Output parameter. `resource_load` and `resource_load_by_shape` are
-  /// the only
-  ///                   fields used.
-  /// \param[in] last_reported_resources: The last reported resources. Used to check
-  /// whether
-  ///                                     resources have been changed.
-  void FillResourceUsage(
-      rpc::ResourcesData &data,
-      const std::shared_ptr<NodeResources> &last_reported_resources) const;
+  /// the only fields used.
+  void FillResourceUsage(rpc::ResourcesData &data) const;
 
   /// Populate the count of pending and infeasible actor tasks, organized by shape.
   ///

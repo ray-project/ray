@@ -16,6 +16,9 @@
 // build.
 #include "ray/raylet/scheduling/local_resource_manager.h"
 
+#include <memory>
+#include <string>
+
 #include "gtest/gtest.h"
 
 namespace ray {
@@ -46,11 +49,11 @@ class LocalResourceManagerTest : public ::testing::Test {
     }
   }
 
-  rpc::ResourcesData GetSyncMessageForResourceReport() {
+  syncer::ResourceViewSyncMessage GetSyncMessageForResourceReport() {
     auto msg = manager->CreateSyncMessage(0, syncer::MessageType::RESOURCE_VIEW);
-    rpc::ResourcesData resources_data;
-    resources_data.ParseFromString(msg->sync_message());
-    return resources_data;
+    syncer::ResourceViewSyncMessage resource_view_sync_messge;
+    resource_view_sync_messge.ParseFromString(msg->sync_message());
+    return resource_view_sync_messge;
   }
 
   scheduling::NodeID local_node_id = scheduling::NodeID(0);
@@ -74,6 +77,7 @@ TEST_F(LocalResourceManagerTest, BasicGetResourceUsageMapTest) {
                            {ResourceID(pg_wildcard_resource), 4.0},
                            {ResourceID(pg_index_0_resource), 2.0},
                            {ResourceID(pg_index_1_resource), 2.0}}),
+      nullptr,
       nullptr,
       nullptr,
       nullptr);
@@ -142,6 +146,7 @@ TEST_F(LocalResourceManagerTest, NodeDrainingTest) {
       CreateNodeResources({{ResourceID::CPU(), 8.0}}),
       nullptr,
       nullptr,
+      [](const rpc::NodeDeathInfo &node_death_info) { _Exit(1); },
       nullptr);
 
   // Make the node non-idle.
@@ -153,7 +158,9 @@ TEST_F(LocalResourceManagerTest, NodeDrainingTest) {
     manager->AllocateLocalTaskResources(resource_request, task_allocation);
   }
 
-  manager->SetLocalNodeDraining();
+  rpc::DrainRayletRequest drain_request;
+  drain_request.set_deadline_timestamp_ms(std::numeric_limits<int64_t>::max());
+  manager->SetLocalNodeDraining(drain_request);
   ASSERT_TRUE(manager->IsLocalNodeDraining());
 
   // Make the node idle so that the node is drained and terminated.
@@ -172,13 +179,16 @@ TEST_F(LocalResourceManagerTest, ObjectStoreMemoryDrainingTest) {
       /* get_used_object_store_memory */
       [&used_object_store]() { return *used_object_store; },
       nullptr,
+      [](const rpc::NodeDeathInfo &node_death_info) { _Exit(1); },
       nullptr);
 
   // Make the node non-idle.
   *used_object_store = 1;
   manager->UpdateAvailableObjectStoreMemResource();
 
-  manager->SetLocalNodeDraining();
+  rpc::DrainRayletRequest drain_request;
+  drain_request.set_deadline_timestamp_ms(std::numeric_limits<int64_t>::max());
+  manager->SetLocalNodeDraining(drain_request);
   ASSERT_TRUE(manager->IsLocalNodeDraining());
 
   // Free object store memory so that the node is drained and terminated.
@@ -205,6 +215,7 @@ TEST_F(LocalResourceManagerTest, IdleResourceTimeTest) {
       /* get_used_object_store_memory */
       [&used_object_store]() { return *used_object_store; },
       nullptr,
+      nullptr,
       nullptr);
 
   /// Test when the resource is all idle when initialized.
@@ -215,7 +226,9 @@ TEST_F(LocalResourceManagerTest, IdleResourceTimeTest) {
 
     ASSERT_NE(idle_time, absl::nullopt);
     ASSERT_NE(*idle_time, absl::InfinitePast());
-    auto dur = absl::ToInt64Seconds(absl::Now() - *idle_time);
+    // Adds a 100ms buffer time. The idle time counting does not always
+    // guarantee to be strictly longer than the sleep time.
+    auto dur = absl::ToInt64Seconds(absl::Now() - *idle_time + absl::Milliseconds(100));
     ASSERT_GE(dur, 1);
   }
 
@@ -264,7 +277,9 @@ TEST_F(LocalResourceManagerTest, IdleResourceTimeTest) {
       // Test allocates same resource have the right idle time.
       auto idle_time = manager->GetResourceIdleTime();
       ASSERT_TRUE(idle_time.has_value());
-      ASSERT_GE(absl::Now() - *idle_time, absl::Seconds(1));
+      // Gives it 100ms buffer time. The idle time counting does not always
+      // guarantee that it is larger than 1 second after a 1 second sleep.
+      ASSERT_GE(absl::Now() - *idle_time, absl::Seconds(1) - absl::Milliseconds(100));
     }
 
     // Allocate the resource
@@ -282,8 +297,8 @@ TEST_F(LocalResourceManagerTest, IdleResourceTimeTest) {
       auto idle_time = manager->GetResourceIdleTime();
       ASSERT_EQ(idle_time, absl::nullopt);
 
-      const auto &resources_data = GetSyncMessageForResourceReport();
-      ASSERT_EQ(resources_data.idle_duration_ms(), 0);
+      const auto &resource_view_sync_messge = GetSyncMessageForResourceReport();
+      ASSERT_EQ(resource_view_sync_messge.idle_duration_ms(), 0);
     }
 
     // Deallocate the resource
@@ -303,9 +318,9 @@ TEST_F(LocalResourceManagerTest, IdleResourceTimeTest) {
       ASSERT_GE(dur, absl::ZeroDuration());
       ASSERT_LE(dur, absl::Seconds(1));
 
-      const auto &resources_data = GetSyncMessageForResourceReport();
-      ASSERT_GE(resources_data.idle_duration_ms(), 0);
-      ASSERT_LE(resources_data.idle_duration_ms(), 1 * 1000);
+      const auto &resource_view_sync_messge = GetSyncMessageForResourceReport();
+      ASSERT_GE(resource_view_sync_messge.idle_duration_ms(), 0);
+      ASSERT_LE(resource_view_sync_messge.idle_duration_ms(), 1 * 1000);
     }
   }
 
@@ -316,8 +331,8 @@ TEST_F(LocalResourceManagerTest, IdleResourceTimeTest) {
     auto idle_time = manager->GetResourceIdleTime();
     ASSERT_EQ(idle_time, absl::nullopt);
 
-    const auto &resources_data = GetSyncMessageForResourceReport();
-    ASSERT_EQ(resources_data.idle_duration_ms(), 0);
+    const auto &resource_view_sync_messge = GetSyncMessageForResourceReport();
+    ASSERT_EQ(resource_view_sync_messge.idle_duration_ms(), 0);
   }
 
   // Free object store memory usage should make node resource idle.
@@ -330,8 +345,8 @@ TEST_F(LocalResourceManagerTest, IdleResourceTimeTest) {
     ASSERT_GE(dur, absl::ZeroDuration());
 
     // And syncer messages should be created correctly for resource reporting.
-    const auto &resources_data = GetSyncMessageForResourceReport();
-    ASSERT_GE(resources_data.idle_duration_ms(), 0);
+    const auto &resource_view_sync_messge = GetSyncMessageForResourceReport();
+    ASSERT_GE(resource_view_sync_messge.idle_duration_ms(), 0);
   }
 }
 
@@ -346,13 +361,14 @@ TEST_F(LocalResourceManagerTest, CreateSyncMessageNegativeResourceAvailability) 
       /* get_used_object_store_memory */
       [&used_object_store]() { return *used_object_store; },
       nullptr,
+      nullptr,
       nullptr);
 
   manager->SubtractResourceInstances(
       ResourceID::CPU(), {2.0}, /*allow_going_negative=*/true);
 
-  const auto &resources_data = GetSyncMessageForResourceReport();
-  ASSERT_EQ(resources_data.resources_available().at("CPU"), 0);
+  const auto &resource_view_sync_messge = GetSyncMessageForResourceReport();
+  ASSERT_EQ(resource_view_sync_messge.resources_available().at("CPU"), 0);
 }
 
 }  // namespace ray

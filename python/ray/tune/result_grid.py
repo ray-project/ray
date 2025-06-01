@@ -1,18 +1,13 @@
-from functools import partial
-import os
-import pandas as pd
-import pyarrow
 from typing import Optional, Union
 
+import pandas as pd
+import pyarrow
+
 from ray.air.result import Result
-from ray.train._internal.storage import _use_storage_context
-from ray.cloudpickle import cloudpickle
 from ray.exceptions import RayTaskError
 from ray.tune.analysis import ExperimentAnalysis
-from ray.tune.analysis.experiment_analysis import NewExperimentAnalysis
 from ray.tune.error import TuneError
 from ray.tune.experiment import Trial
-from ray.tune.trainable.util import TrainableUtil
 from ray.util import PublicAPI
 
 
@@ -29,7 +24,7 @@ class ResultGrid:
     .. testcode::
 
         import random
-        from ray import train, tune
+        from ray import tune
         def random_error_trainable(config):
             if random.random() < 0.5:
                 return {"loss": 0.0}
@@ -37,7 +32,7 @@ class ResultGrid:
                 raise ValueError("This is an error")
         tuner = tune.Tuner(
             random_error_trainable,
-            run_config=train.RunConfig(name="example-experiment"),
+            run_config=tune.RunConfig(name="example-experiment"),
             tune_config=tune.TuneConfig(num_samples=10),
         )
         try:
@@ -187,16 +182,14 @@ class ResultGrid:
 
             .. testcode::
 
-                from ray import train
-                from ray.train import RunConfig
-                from ray.tune import Tuner
+                import ray.tune
 
                 def training_loop_per_worker(config):
-                    train.report({"accuracy": 0.8})
+                    ray.tune.report({"accuracy": 0.8})
 
-                result_grid = Tuner(
+                result_grid = ray.tune.Tuner(
                     trainable=training_loop_per_worker,
-                    run_config=RunConfig(name="my_tune_run")
+                    run_config=ray.tune.RunConfig(name="my_tune_run")
                 ).fit()
 
                 # Get last reported results per trial
@@ -258,69 +251,27 @@ class ResultGrid:
     def _populate_exception(trial: Trial) -> Optional[Union[TuneError, RayTaskError]]:
         if trial.status == Trial.TERMINATED:
             return None
-        if trial.pickled_error_file and os.path.exists(trial.pickled_error_file):
-            with open(trial.pickled_error_file, "rb") as f:
-                e = cloudpickle.load(f)
-                return e
-        elif trial.error_file and os.path.exists(trial.error_file):
-            with open(trial.error_file, "r") as f:
-                return TuneError(f.read())
-        return None
+        return trial.get_pickled_error() or trial.get_error()
 
     def _trial_to_result(self, trial: Trial) -> Result:
-        if _use_storage_context():
-            from ray.train._internal.checkpoint_manager import (
-                _CheckpointManager as _NewCheckpointManager,
-            )
+        cpm = trial.run_metadata.checkpoint_manager
+        checkpoint = None
+        if cpm.latest_checkpoint_result:
+            checkpoint = cpm.latest_checkpoint_result.checkpoint
+        best_checkpoint_results = cpm.best_checkpoint_results
+        best_checkpoints = [
+            (checkpoint_result.checkpoint, checkpoint_result.metrics)
+            for checkpoint_result in best_checkpoint_results
+        ]
 
-            cpm = trial.run_metadata.checkpoint_manager
-            assert isinstance(cpm, _NewCheckpointManager)
-            checkpoint = None
-            if cpm.latest_checkpoint_result:
-                checkpoint = cpm.latest_checkpoint_result.checkpoint
-            best_checkpoint_results = cpm.best_checkpoint_results
-            best_checkpoints = [
-                (checkpoint_result.checkpoint, checkpoint_result.metrics)
-                for checkpoint_result in best_checkpoint_results
-            ]
-        else:
-            local_to_remote_path_fn = (
-                partial(
-                    TrainableUtil.get_remote_storage_path,
-                    local_path_prefix=trial.local_path,
-                    remote_path_prefix=trial.remote_path,
-                )
-                if trial.uses_cloud_checkpointing
-                else None
-            )
-
-            checkpoint = trial.checkpoint.to_air_checkpoint(
-                local_to_remote_path_fn,
-            )
-            best_checkpoints = [
-                (
-                    checkpoint.to_air_checkpoint(local_to_remote_path_fn),
-                    checkpoint.metrics,
-                )
-                for checkpoint in trial.get_trial_checkpoints()
-            ]
-
-        if _use_storage_context():
-            metrics_df = self._experiment_analysis.trial_dataframes.get(trial.trial_id)
-        else:
-            metrics_df = self._experiment_analysis.trial_dataframes.get(
-                trial.local_path
-            )
+        metrics_df = self._experiment_analysis.trial_dataframes.get(trial.trial_id)
 
         result = Result(
             checkpoint=checkpoint,
             metrics=trial.last_result.copy(),
             error=self._populate_exception(trial),
-            _local_path=trial.local_path,
-            _remote_path=trial.remote_path,
-            _storage_filesystem=self._experiment_analysis._fs
-            if isinstance(self._experiment_analysis, NewExperimentAnalysis)
-            else None,
+            path=trial.path,
+            _storage_filesystem=self._experiment_analysis._fs,
             metrics_dataframe=metrics_df,
             best_checkpoints=best_checkpoints,
         )

@@ -1,11 +1,16 @@
 import copy
 import os
-from typing import Any, Dict, Optional
+from typing import Any, Dict, Optional, List, Tuple
 
 from ray_release.aws import RELEASE_AWS_BUCKET
 from ray_release.buildkite.concurrency import get_concurrency_group
 from ray_release.test import Test, TestState
-from ray_release.config import DEFAULT_ANYSCALE_PROJECT, DEFAULT_CLOUD_ID, as_smoke_test
+from ray_release.config import (
+    DEFAULT_ANYSCALE_PROJECT,
+    DEFAULT_CLOUD_ID,
+    as_smoke_test,
+    get_test_project_id,
+)
 from ray_release.env import DEFAULT_ENVIRONMENT, load_environment
 from ray_release.template import get_test_env_var
 from ray_release.util import DeferredEnvVar
@@ -57,11 +62,52 @@ DEFAULT_STEP_TEMPLATE: Dict[str, Any] = {
 }
 
 
+def get_step_for_test_group(
+    grouped_tests: Dict[str, List[Tuple[Test, bool]]],
+    minimum_run_per_test: int = 1,
+    test_collection_file: List[str] = None,
+    env: Optional[Dict] = None,
+    priority: int = 0,
+    global_config: Optional[str] = None,
+    is_concurrency_limit: bool = True,
+):
+    steps = []
+    for group in sorted(grouped_tests):
+        tests = grouped_tests[group]
+        group_steps = []
+        for test, smoke_test in tests:
+            for run_id in range(max(test.get("repeated_run", 1), minimum_run_per_test)):
+                step = get_step(
+                    test,
+                    test_collection_file,
+                    run_id=run_id,
+                    # Always report performance data to databrick. Since the data is
+                    # indexed by branch and commit hash, we can always filter data later
+                    report=True,
+                    smoke_test=smoke_test,
+                    env=env,
+                    priority_val=priority,
+                    global_config=global_config,
+                )
+
+                if not is_concurrency_limit:
+                    step.pop("concurrency", None)
+                    step.pop("concurrency_group", None)
+
+                group_steps.append(step)
+
+        group_step = {"group": group, "steps": group_steps}
+        steps.append(group_step)
+
+    return steps
+
+
 def get_step(
     test: Test,
+    test_collection_file: List[str] = None,
+    run_id: int = 1,
     report: bool = False,
     smoke_test: bool = False,
-    ray_wheels: Optional[str] = None,
     env: Optional[Dict] = None,
     priority_val: int = 0,
     global_config: Optional[str] = None,
@@ -70,7 +116,15 @@ def get_step(
 
     step = copy.deepcopy(DEFAULT_STEP_TEMPLATE)
 
-    cmd = ["./release/run_release_test.sh", test["name"]]
+    cmd = [
+        "./release/run_release_test.sh",
+        test["name"],
+        "--log-streaming-limit",
+        "100",
+    ]
+
+    for file in test_collection_file or []:
+        cmd += ["--test-collection-file", file]
 
     if global_config:
         cmd += ["--global-config", global_config]
@@ -81,17 +135,21 @@ def get_step(
     if smoke_test:
         cmd += ["--smoke-test"]
 
-    if ray_wheels:
-        cmd += ["--ray-wheels", ray_wheels]
-
     step["plugins"][0][DOCKER_PLUGIN_KEY]["command"] = cmd
 
     env_to_use = test.get("env", DEFAULT_ENVIRONMENT)
     env_dict = load_environment(env_to_use)
     env_dict.update(env)
 
+    # Set the project id for the test, based on the follow priority:
+    #  1. Specified in the test, as "project_id" field.
+    #  2. Specified in the specific test environment, as RELEASE_DEFAULT_PROJECT env var
+    #  3. Specified in the global environment, as RELEASE_DEFAULT_PROJECT env var
+    default_project_id = env_dict.get("RELEASE_DEFAULT_PROJECT")
+    env_dict["ANYSCALE_PROJECT"] = get_test_project_id(test, default_project_id)
+
     step["env"].update(env_dict)
-    step["plugins"][0][DOCKER_PLUGIN_KEY]["image"] = "python:3.8"
+    step["plugins"][0][DOCKER_PLUGIN_KEY]["image"] = "python:3.9"
 
     commit = get_test_env_var("RAY_COMMIT")
     branch = get_test_env_var("RAY_BRANCH")
@@ -129,7 +187,7 @@ def get_step(
     full_label += test["name"]
     if smoke_test:
         full_label += " [smoke test] "
-    full_label += f" ({label})"
+    full_label += f" ({label}) ({run_id})"
 
     step["label"] = full_label
 

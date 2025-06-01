@@ -1,13 +1,13 @@
+# syntax=docker/dockerfile:1.3-labs
+
 ARG BASE_IMAGE
-FROM rayproject/ray-deps:nightly"$BASE_IMAGE"
+ARG FULL_BASE_IMAGE=rayproject/ray-deps:nightly"$BASE_IMAGE"
+FROM $FULL_BASE_IMAGE
+
 ARG WHEEL_PATH
 ARG FIND_LINKS_PATH=".whl"
 ARG CONSTRAINTS_FILE="requirements_compiled.txt"
-# For Click
-ENV LC_ALL=C.UTF-8
-ENV LANG=C.UTF-8
-COPY requirements_compiled.txt ./
-COPY requirements_compiled_py37.txt ./
+
 COPY $WHEEL_PATH .
 COPY $FIND_LINKS_PATH $FIND_LINKS_PATH
 

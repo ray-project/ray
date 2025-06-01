@@ -1,9 +1,16 @@
 import inspect
 import logging
+import math
 import pickle
-from typing import Dict, Optional, Type, Union, List, Sequence
+from typing import Dict, List, Optional, Sequence, Type, Union
 
 from ray.tune.result import DEFAULT_METRIC
+from ray.tune.search import (
+    UNDEFINED_METRIC_MODE,
+    UNDEFINED_SEARCH_SPACE,
+    UNRESOLVED_SEARCH_SPACE,
+    Searcher,
+)
 from ray.tune.search.sample import (
     Categorical,
     Domain,
@@ -11,12 +18,6 @@ from ray.tune.search.sample import (
     Integer,
     LogUniform,
     Quantized,
-)
-from ray.tune.search import (
-    UNRESOLVED_SEARCH_SPACE,
-    UNDEFINED_METRIC_MODE,
-    UNDEFINED_SEARCH_SPACE,
-    Searcher,
 )
 from ray.tune.search.variant_generator import parse_spec_vars
 from ray.tune.utils.util import flatten_dict, unflatten_dict
@@ -341,7 +342,7 @@ class NevergradSearch(Searcher):
             if isinstance(domain, Float):
                 if isinstance(sampler, LogUniform):
                     return ng.p.Log(
-                        lower=domain.lower, upper=domain.upper, exponent=sampler.base
+                        lower=domain.lower, upper=domain.upper, exponent=math.e
                     )
                 return ng.p.Scalar(lower=domain.lower, upper=domain.upper)
 
@@ -350,7 +351,7 @@ class NevergradSearch(Searcher):
                     return ng.p.Log(
                         lower=domain.lower,
                         upper=domain.upper - 1,  # Upper bound exclusive
-                        exponent=sampler.base,
+                        exponent=math.e,
                     ).set_integer_casting()
                 return ng.p.Scalar(
                     lower=domain.lower,

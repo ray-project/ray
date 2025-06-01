@@ -14,15 +14,23 @@
 
 #include "ray/core_worker/task_manager.h"
 
+#include <memory>
+#include <string>
+#include <unordered_set>
+#include <utility>
+#include <vector>
+
 #include "gmock/gmock.h"
 #include "gtest/gtest.h"
 #include "mock/ray/gcs/gcs_client/gcs_client.h"
+#include "mock/ray/pubsub/publisher.h"
+#include "mock/ray/pubsub/subscriber.h"
 #include "ray/common/task/task_spec.h"
+#include "ray/common/task/task_util.h"
 #include "ray/common/test_util.h"
 #include "ray/core_worker/reference_count.h"
 #include "ray/core_worker/store_provider/memory_store/memory_store.h"
 #include "ray/core_worker/task_event_buffer.h"
-#include "ray/pubsub/mock_pubsub.h"
 
 namespace ray {
 namespace core {
@@ -30,7 +38,8 @@ namespace core {
 TaskSpecification CreateTaskHelper(uint64_t num_returns,
                                    std::vector<ObjectID> dependencies,
                                    bool dynamic_returns = false,
-                                   bool streaming_generator = false) {
+                                   bool streaming_generator = false,
+                                   int64_t generator_backpressure_num_objects = -1) {
   TaskSpecification task;
   task.GetMutableMessage().set_task_id(TaskID::FromRandom(JobID::FromInt(1)).Binary());
   task.GetMutableMessage().set_num_returns(num_returns);
@@ -44,6 +53,8 @@ TaskSpecification CreateTaskHelper(uint64_t num_returns,
   }
   if (streaming_generator) {
     task.GetMutableMessage().set_streaming_generator(true);
+    task.GetMutableMessage().set_generator_backpressure_num_objects(
+        generator_backpressure_num_objects);
   }
 
   return task;
@@ -99,29 +110,30 @@ class MockTaskEventBuffer : public worker::TaskEventBuffer {
 
   MOCK_METHOD(bool, Enabled, (), (const, override));
 
-  MOCK_METHOD(const std::string, DebugString, (), (override));
+  MOCK_METHOD(std::string, DebugString, (), (override));
 };
 
 class TaskManagerTest : public ::testing::Test {
  public:
-  TaskManagerTest(bool lineage_pinning_enabled = false,
-                  int64_t max_lineage_bytes = 1024 * 1024 * 1024)
+  explicit TaskManagerTest(bool lineage_pinning_enabled = false,
+                           int64_t max_lineage_bytes = 1024 * 1024 * 1024)
       : lineage_pinning_enabled_(lineage_pinning_enabled),
         addr_(GetRandomWorkerAddr()),
-        publisher_(std::make_shared<mock_pubsub::MockPublisher>()),
-        subscriber_(std::make_shared<mock_pubsub::MockSubscriber>()),
+        publisher_(std::make_shared<pubsub::MockPublisher>()),
+        subscriber_(std::make_shared<pubsub::MockSubscriber>()),
         task_event_buffer_mock_(std::make_unique<MockTaskEventBuffer>()),
-        reference_counter_(std::shared_ptr<ReferenceCounter>(new ReferenceCounter(
+        reference_counter_(std::make_shared<ReferenceCounter>(
             addr_,
             publisher_.get(),
             subscriber_.get(),
             [this](const NodeID &node_id) { return all_nodes_alive_; },
-            lineage_pinning_enabled))),
-        store_(std::shared_ptr<CoreWorkerMemoryStore>(
-            new CoreWorkerMemoryStore(reference_counter_))),
+            lineage_pinning_enabled)),
+        io_context_("TaskManagerTest"),
+        store_(std::make_shared<CoreWorkerMemoryStore>(io_context_.GetIoService(),
+                                                       reference_counter_.get())),
         manager_(
-            store_,
-            reference_counter_,
+            *store_,
+            *reference_counter_,
             [this](const RayObject &object, const ObjectID &object_id) {
               stored_in_plasma.insert(object_id);
             },
@@ -149,7 +161,8 @@ class TaskManagerTest : public ::testing::Test {
 
   void CompletePendingStreamingTask(const TaskSpecification &spec,
                                     const rpc::Address &caller_address,
-                                    int64_t num_streaming_generator_returns) {
+                                    int64_t num_streaming_generator_returns,
+                                    bool set_in_plasma = false) {
     rpc::PushTaskReply reply;
     for (size_t i = 0; i < spec.NumReturns(); i++) {
       const auto return_id = spec.ReturnId(i);
@@ -161,16 +174,18 @@ class TaskManagerTest : public ::testing::Test {
     for (int64_t i = 0; i < num_streaming_generator_returns; i++) {
       auto return_id_proto = reply.add_streaming_generator_return_ids();
       return_id_proto->set_object_id(spec.ReturnId(i + 1).Binary());
+      return_id_proto->set_is_plasma_object(set_in_plasma);
     }
     manager_.CompletePendingTask(spec.TaskId(), reply, caller_address, false);
   }
 
   bool lineage_pinning_enabled_;
   rpc::Address addr_;
-  std::shared_ptr<mock_pubsub::MockPublisher> publisher_;
-  std::shared_ptr<mock_pubsub::MockSubscriber> subscriber_;
+  std::shared_ptr<pubsub::MockPublisher> publisher_;
+  std::shared_ptr<pubsub::MockSubscriber> subscriber_;
   std::unique_ptr<MockTaskEventBuffer> task_event_buffer_mock_;
   std::shared_ptr<ReferenceCounter> reference_counter_;
+  InstrumentedIOContextWithThread io_context_;
   std::shared_ptr<CoreWorkerMemoryStore> store_;
   bool all_nodes_alive_ = true;
   TaskManager manager_;
@@ -626,14 +641,15 @@ TEST_F(TaskManagerTest, TestLocalityDataAdded) {
   auto return_id = spec.ReturnId(0);
   auto node_id = NodeID::FromRandom();
   int object_size = 100;
-  store_->GetAsync(return_id, [&](std::shared_ptr<RayObject> obj) {
-    // By the time the return object is available to get, we should be able
-    // to get the locality data too.
-    auto locality_data = reference_counter_->GetLocalityData(return_id);
-    ASSERT_TRUE(locality_data.has_value());
-    ASSERT_EQ(locality_data->object_size, object_size);
-    ASSERT_TRUE(locality_data->nodes_containing_object.contains(node_id));
-  });
+  store_->GetAsync(
+      return_id, [return_id, object_size, node_id, this](std::shared_ptr<RayObject> obj) {
+        // By the time the return object is available to get, we should be able
+        // to get the locality data too.
+        auto locality_data = reference_counter_->GetLocalityData(return_id);
+        ASSERT_TRUE(locality_data.has_value());
+        ASSERT_EQ(locality_data->object_size, object_size);
+        ASSERT_TRUE(locality_data->nodes_containing_object.contains(node_id));
+      });
 
   rpc::PushTaskReply reply;
   auto return_object = reply.add_return_objects();
@@ -644,6 +660,69 @@ TEST_F(TaskManagerTest, TestLocalityDataAdded) {
   worker_addr.set_raylet_id(node_id.Binary());
   manager_.AddPendingTask(rpc::Address(), spec, "", 0);
   manager_.CompletePendingTask(spec.TaskId(), reply, worker_addr, false);
+}
+
+// Test to make sure that the task spec and actor
+// for an actor task return object are
+// pinned when lineage pinning is enabled in the ReferenceCounter.
+TEST_F(TaskManagerLineageTest, TestActorLineagePinned) {
+  rpc::Address caller_address;
+  ActorID actor_id = ActorID::FromHex("f4ce02420592ca68c1738a0d01000000");
+  const ObjectID actor_creation_dummy_object_id =
+      ObjectID::FromIndex(TaskID::ForActorCreationTask(actor_id), /*index=*/1);
+  int num_retries = 3;
+  TaskSpecBuilder builder;
+  builder.SetCommonTaskSpec(
+      TaskID::ForActorTask(JobID::Nil(), TaskID::Nil(), 0, actor_id),
+      "dummy_actor_task",
+      Language::PYTHON,
+      FunctionDescriptorBuilder::BuildPython("a", "", "", ""),
+      JobID::Nil(),
+      rpc::JobConfig(),
+      TaskID::Nil(),
+      0,
+      TaskID::Nil(),
+      rpc::Address(),
+      1,
+      false,
+      false,
+      -1,
+      {},
+      {},
+      "",
+      0,
+      TaskID::Nil(),
+      "");
+  builder.SetActorTaskSpec(
+      actor_id, actor_creation_dummy_object_id, num_retries, false, "", 0);
+  TaskSpecification spec = std::move(builder).ConsumeAndBuild();
+
+  ASSERT_EQ(reference_counter_->NumObjectIDsInScope(), 0);
+  manager_.AddPendingTask(caller_address, spec, "", num_retries);
+  auto return_id = spec.ReturnId(0);
+  ASSERT_TRUE(manager_.IsTaskPending(spec.TaskId()));
+  // 2 objects are in scope: actor handle and actor task return object.
+  ASSERT_EQ(reference_counter_->NumObjectIDsInScope(), 2);
+
+  // The task completes.
+  rpc::PushTaskReply reply;
+  auto return_object = reply.add_return_objects();
+  return_object->set_object_id(return_id.Binary());
+  auto data = GenerateRandomBuffer();
+  return_object->set_data(data->Data(), data->Size());
+  return_object->set_in_plasma(true);
+  manager_.CompletePendingTask(spec.TaskId(), reply, rpc::Address(), false);
+
+  // The task should still be in the lineage because its return ID is in scope.
+  ASSERT_TRUE(manager_.IsTaskSubmissible(spec.TaskId()));
+  ASSERT_TRUE(reference_counter_->HasReference(spec.ActorCreationDummyObjectId()));
+  ASSERT_TRUE(reference_counter_->HasReference(return_id));
+
+  // All lineage should be erased.
+  reference_counter_->RemoveLocalReference(return_id, nullptr);
+  ASSERT_FALSE(manager_.IsTaskSubmissible(spec.TaskId()));
+  ASSERT_FALSE(reference_counter_->HasReference(spec.ActorCreationDummyObjectId()));
+  ASSERT_FALSE(reference_counter_->HasReference(return_id));
 }
 
 // Test to make sure that the task spec and dependencies for an object are
@@ -912,7 +991,6 @@ TEST_F(TaskManagerLineageTest, TestResubmitTask) {
   ASSERT_EQ(last_delay_ms_, 0);
   ASSERT_EQ(last_object_recovery_, true);
   resubmitted_task_deps.clear();
-  ASSERT_TRUE(reference_counter_->IsObjectPendingCreation(return_id));
 
   // The return ID goes out of scope.
   reference_counter_->RemoveLocalReference(return_id, nullptr);
@@ -1209,16 +1287,18 @@ TEST_F(TaskManagerTest, TestObjectRefStreamCreateDelete) {
   rpc::Address caller_address;
   manager_.AddPendingTask(caller_address, spec, "", 0);
   ASSERT_TRUE(manager_.ObjectRefStreamExists(generator_id));
-  manager_.DelObjectRefStream(generator_id);
-  ASSERT_FALSE(manager_.ObjectRefStreamExists(generator_id));
-  // Test DelObjectRefStream is idempotent
-  manager_.DelObjectRefStream(generator_id);
-  manager_.DelObjectRefStream(generator_id);
-  manager_.DelObjectRefStream(generator_id);
-  manager_.DelObjectRefStream(generator_id);
-  ASSERT_FALSE(manager_.ObjectRefStreamExists(generator_id));
+  // Deletion does not succeed until task is completed too.
+  ASSERT_FALSE(manager_.TryDelObjectRefStream(generator_id));
+  ASSERT_TRUE(manager_.ObjectRefStreamExists(generator_id));
+  // Test TryDelObjectRefStream is idempotent
+  ASSERT_FALSE(manager_.TryDelObjectRefStream(generator_id));
+  ASSERT_TRUE(manager_.ObjectRefStreamExists(generator_id));
 
+  // Task completes. Deletion succeeds.
   CompletePendingStreamingTask(spec, caller_address, 0);
+  reference_counter_->RemoveLocalReference(generator_id, nullptr);
+  ASSERT_TRUE(manager_.TryDelObjectRefStream(generator_id));
+  ASSERT_FALSE(manager_.ObjectRefStreamExists(generator_id));
 }
 
 TEST_F(TaskManagerTest, TestObjectRefStreamDeletedStreamIgnored) {
@@ -1231,7 +1311,9 @@ TEST_F(TaskManagerTest, TestObjectRefStreamDeletedStreamIgnored) {
   auto generator_id = spec.ReturnId(0);
   rpc::Address caller_address;
   manager_.AddPendingTask(caller_address, spec, "", 0);
-  manager_.DelObjectRefStream(generator_id);
+  CompletePendingStreamingTask(spec, caller_address, 0);
+  reference_counter_->RemoveLocalReference(generator_id, nullptr);
+  ASSERT_TRUE(manager_.TryDelObjectRefStream(generator_id));
   ASSERT_FALSE(manager_.ObjectRefStreamExists(generator_id));
 
   auto dynamic_return_id = ObjectID::FromIndex(spec.TaskId(), 2);
@@ -1245,8 +1327,8 @@ TEST_F(TaskManagerTest, TestObjectRefStreamDeletedStreamIgnored) {
       /*dynamic_return_id*/ dynamic_return_id,
       /*data*/ data,
       /*set_in_plasma*/ false);
-  ASSERT_FALSE(manager_.HandleReportGeneratorItemReturns(req));
-  CompletePendingStreamingTask(spec, caller_address, 0);
+  ASSERT_FALSE(manager_.HandleReportGeneratorItemReturns(
+      req, /*execution_signal_callback*/ [](Status, int64_t) {}));
 }
 
 TEST_F(TaskManagerTest, TestObjectRefStreamBasic) {
@@ -1277,24 +1359,19 @@ TEST_F(TaskManagerTest, TestObjectRefStreamBasic) {
         /*data*/ data,
         /*set_in_plasma*/ false);
     // WRITE * 2
-    ASSERT_TRUE(manager_.HandleReportGeneratorItemReturns(req));
+    ASSERT_TRUE(manager_.HandleReportGeneratorItemReturns(
+        req, /*execution_signal_callback*/ [](Status, int64_t) {}));
   }
 
-  // Finish the task.
-  rpc::PushTaskReply reply;
-  auto return_object = reply.add_return_objects();
-  return_object->set_object_id(generator_id.Binary());
-  auto data = GenerateRandomBuffer();
-  return_object->set_data(data->Data(), data->Size());
-  manager_.CompletePendingTask(spec.TaskId(), reply, caller_address, false);
+  CompletePendingStreamingTask(spec, caller_address, last_idx);
 
-  ObjectID obj_id;
   // Verify PeekObjectRefStream is idempotent and doesn't consume indexes.
   for (auto i = 0; i < 10; i++) {
-    obj_id = manager_.PeekObjectRefStream(generator_id);
+    auto [obj_id, ready] = manager_.PeekObjectRefStream(generator_id);
     ASSERT_EQ(obj_id, dynamic_return_ids[0]);
   }
 
+  ObjectID obj_id;
   for (auto i = 0; i < last_idx; i++) {
     // READ * 2
     auto status = manager_.TryReadObjectRefStream(generator_id, &obj_id);
@@ -1305,7 +1382,158 @@ TEST_F(TaskManagerTest, TestObjectRefStreamBasic) {
   auto status = manager_.TryReadObjectRefStream(generator_id, &obj_id);
   ASSERT_TRUE(status.IsObjectRefEndOfStream());
   // DELETE
-  manager_.DelObjectRefStream(generator_id);
+  manager_.TryDelObjectRefStream(generator_id);
+}
+
+TEST_F(TaskManagerTest, TestObjectRefStreamCancellation) {
+  /**
+   * Test streaming generator task cancelled during execution. The caller
+   * should receive an EOF error the next time it tries to read from the stream
+   * after the task has been marked cancelled, even if we already received a
+   * value for that return index.
+   */
+  auto spec =
+      CreateTaskHelper(1, {}, /*dynamic_returns=*/true, /*is_streaming_generator=*/true);
+  auto generator_id = spec.ReturnId(0);
+  rpc::Address caller_address;
+  manager_.AddPendingTask(caller_address, spec, "", 0);
+
+  auto last_idx = 2;
+  std::vector<ObjectID> dynamic_return_ids;
+  std::vector<std::shared_ptr<Buffer>> datas;
+  for (auto i = 0; i < last_idx; i++) {
+    auto dynamic_return_id = ObjectID::FromIndex(spec.TaskId(), i + 2);
+    dynamic_return_ids.push_back(dynamic_return_id);
+    auto data = GenerateRandomBuffer();
+    datas.push_back(data);
+
+    auto req = GetIntermediateTaskReturn(
+        /*idx*/ i,
+        /*finished*/ false,
+        generator_id,
+        /*dynamic_return_id*/ dynamic_return_id,
+        /*data*/ data,
+        /*set_in_plasma*/ false);
+    // WRITE * 2
+    ASSERT_TRUE(manager_.HandleReportGeneratorItemReturns(
+        req, /*execution_signal_callback*/ [](Status, int64_t) {}));
+  }
+
+  // Read first object.
+  {
+    ObjectID obj_id;
+    auto status = manager_.TryReadObjectRefStream(generator_id, &obj_id);
+    ASSERT_TRUE(status.ok());
+    ASSERT_EQ(obj_id, dynamic_return_ids[0]);
+  }
+
+  manager_.MarkTaskCanceled(spec.TaskId());
+  auto error = rpc::ErrorType::WORKER_DIED;
+  ASSERT_FALSE(manager_.FailOrRetryPendingTask(spec.TaskId(), error));
+
+  // Next object should return EOS error, even though we have a value stored
+  // for the object.
+  {
+    ObjectID obj_id;
+    auto status = manager_.TryReadObjectRefStream(generator_id, &obj_id);
+    ASSERT_TRUE(status.IsObjectRefEndOfStream());
+    ASSERT_EQ(obj_id, dynamic_return_ids[1]);
+  }
+
+  manager_.TryDelObjectRefStream(generator_id);
+}
+
+TEST_F(TaskManagerTest, TestObjectRefStreamCancellationOutOfOrderReports) {
+  /**
+   * Test streaming generator task cancelled during execution, and the caller
+   * receives out-of-order item reports. The caller should receive an EOF error
+   * the next time it tries to read from the stream after the task has been
+   * marked cancelled, instead of hanging waiting for that index to be
+   * reported.
+   */
+  auto spec =
+      CreateTaskHelper(1, {}, /*dynamic_returns=*/true, /*is_streaming_generator=*/true);
+  auto generator_id = spec.ReturnId(0);
+  rpc::Address caller_address;
+  manager_.AddPendingTask(caller_address, spec, "", 0);
+
+  std::vector<int64_t> idx_to_report = {0, 3};
+  std::vector<ObjectID> dynamic_return_ids;
+  std::vector<std::shared_ptr<Buffer>> datas;
+  for (auto idx : idx_to_report) {
+    auto dynamic_return_id = ObjectID::FromIndex(spec.TaskId(), idx + 2);
+    dynamic_return_ids.push_back(dynamic_return_id);
+    auto data = GenerateRandomBuffer();
+    datas.push_back(data);
+
+    auto req = GetIntermediateTaskReturn(
+        /*idx*/ idx,
+        /*finished*/ false,
+        generator_id,
+        /*dynamic_return_id*/ dynamic_return_id,
+        /*data*/ data,
+        /*set_in_plasma*/ false);
+    // WRITE * 2
+    ASSERT_TRUE(manager_.HandleReportGeneratorItemReturns(
+        req, /*execution_signal_callback*/ [](Status, int64_t) {}));
+  }
+
+  // Read first object.
+  {
+    ObjectID obj_id;
+    int64_t idx_expected = 0;
+    auto status = manager_.TryReadObjectRefStream(generator_id, &obj_id);
+    ASSERT_TRUE(status.ok());
+    ASSERT_EQ(obj_id, ObjectID::FromIndex(spec.TaskId(), idx_expected + 2));
+  }
+
+  manager_.MarkTaskCanceled(spec.TaskId());
+  auto error = rpc::ErrorType::WORKER_DIED;
+  ASSERT_FALSE(manager_.FailOrRetryPendingTask(spec.TaskId(), error));
+
+  // Next object should return EOS error instead of blocking the caller to wait
+  // for the index to be reported.
+  {
+    ObjectID obj_id;
+    int64_t idx_expected = 1;
+    auto status = manager_.TryReadObjectRefStream(generator_id, &obj_id);
+    ASSERT_TRUE(status.IsObjectRefEndOfStream());
+    ASSERT_EQ(obj_id, ObjectID::FromIndex(spec.TaskId(), idx_expected + 2));
+  }
+
+  manager_.TryDelObjectRefStream(generator_id);
+}
+
+TEST_F(TaskManagerTest, TestPeekObjectReady) {
+  auto spec =
+      CreateTaskHelper(1, {}, /*dynamic_returns=*/true, /*is_streaming_generator=*/true);
+  auto generator_id = spec.ReturnId(0);
+  rpc::Address caller_address;
+  manager_.AddPendingTask(caller_address, spec, "", 0);
+
+  // WRITE
+  auto dynamic_return_id = ObjectID::FromIndex(spec.TaskId(), 2);
+  auto data = GenerateRandomBuffer();
+  auto req = GetIntermediateTaskReturn(
+      /*idx*/ 0,
+      /*finished*/ false,
+      generator_id,
+      /*dynamic_return_id*/ dynamic_return_id,
+      /*data*/ data,
+      /*set_in_plasma*/ false);
+
+  {
+    auto [obj_id, ready] = manager_.PeekObjectRefStream(generator_id);
+    ASSERT_FALSE(ready);
+  }
+  ASSERT_TRUE(manager_.HandleReportGeneratorItemReturns(
+      req, /*execution_signal_callback*/ [](Status, int64_t) {}));
+
+  {
+    auto [obj_id, ready] = manager_.PeekObjectRefStream(generator_id);
+    ASSERT_TRUE(ready);
+  }
+  CompletePendingStreamingTask(spec, caller_address, 1);
 }
 
 TEST_F(TaskManagerTest, TestObjectRefStreamMixture) {
@@ -1336,7 +1564,8 @@ TEST_F(TaskManagerTest, TestObjectRefStreamMixture) {
         /*data*/ data,
         /*set_in_plasma*/ false);
     // WRITE
-    ASSERT_TRUE(manager_.HandleReportGeneratorItemReturns(req));
+    ASSERT_TRUE(manager_.HandleReportGeneratorItemReturns(
+        req, /*execution_signal_callback*/ [](Status, int64_t) {}));
     // READ
     ObjectID obj_id;
     auto status = manager_.TryReadObjectRefStream(generator_id, &obj_id);
@@ -1351,7 +1580,7 @@ TEST_F(TaskManagerTest, TestObjectRefStreamMixture) {
   auto status = manager_.TryReadObjectRefStream(generator_id, &obj_id);
   ASSERT_TRUE(status.IsObjectRefEndOfStream());
   // DELETE
-  manager_.DelObjectRefStream(generator_id);
+  manager_.TryDelObjectRefStream(generator_id);
 }
 
 TEST_F(TaskManagerTest, TestObjectRefEndOfStream) {
@@ -1375,7 +1604,8 @@ TEST_F(TaskManagerTest, TestObjectRefEndOfStream) {
       /*dynamic_return_id*/ dynamic_return_id,
       /*data*/ data,
       /*set_in_plasma*/ false);
-  ASSERT_TRUE(manager_.HandleReportGeneratorItemReturns(req));
+  ASSERT_TRUE(manager_.HandleReportGeneratorItemReturns(
+      req, /*execution_signal_callback*/ [](Status, int64_t) {}));
   CompletePendingStreamingTask(spec, caller_address, 1);
   // READ (works)
   ObjectID obj_id;
@@ -1393,7 +1623,8 @@ TEST_F(TaskManagerTest, TestObjectRefEndOfStream) {
       /*dynamic_return_id*/ dynamic_return_id,
       /*data*/ data,
       /*set_in_plasma*/ false);
-  ASSERT_FALSE(manager_.HandleReportGeneratorItemReturns(req));
+  ASSERT_FALSE(manager_.HandleReportGeneratorItemReturns(
+      req, /*execution_signal_callback*/ [](Status, int64_t) {}));
   // READ (doesn't works because EoF is already written)
   status = manager_.TryReadObjectRefStream(generator_id, &obj_id);
   ASSERT_TRUE(status.IsObjectRefEndOfStream());
@@ -1420,7 +1651,8 @@ TEST_F(TaskManagerTest, TestObjectRefStreamIndexDiscarded) {
       /*dynamic_return_id*/ dynamic_return_id,
       /*data*/ data,
       /*set_in_plasma*/ false);
-  ASSERT_TRUE(manager_.HandleReportGeneratorItemReturns(req));
+  ASSERT_TRUE(manager_.HandleReportGeneratorItemReturns(
+      req, /*execution_signal_callback*/ [](Status, int64_t) {}));
   // READ
   ObjectID obj_id;
   auto status = manager_.TryReadObjectRefStream(generator_id, &obj_id);
@@ -1437,7 +1669,8 @@ TEST_F(TaskManagerTest, TestObjectRefStreamIndexDiscarded) {
       /*dynamic_return_id*/ dynamic_return_id,
       /*data*/ data,
       /*set_in_plasma*/ false);
-  ASSERT_FALSE(manager_.HandleReportGeneratorItemReturns(req));
+  ASSERT_FALSE(manager_.HandleReportGeneratorItemReturns(
+      req, /*execution_signal_callback*/ [](Status, int64_t) {}));
   // READ (New write will be ignored).
   status = manager_.TryReadObjectRefStream(generator_id, &obj_id);
   ASSERT_TRUE(status.ok());
@@ -1472,7 +1705,8 @@ TEST_F(TaskManagerTest, TestObjectRefStreamReadIgnoredWhenNothingWritten) {
       /*dynamic_return_id*/ dynamic_return_id,
       /*data*/ data,
       /*set_in_plasma*/ false);
-  ASSERT_TRUE(manager_.HandleReportGeneratorItemReturns(req));
+  ASSERT_TRUE(manager_.HandleReportGeneratorItemReturns(
+      req, /*execution_signal_callback*/ [](Status, int64_t) {}));
   // READ (works this time)
   status = manager_.TryReadObjectRefStream(generator_id, &obj_id);
   ASSERT_TRUE(status.ok());
@@ -1511,7 +1745,8 @@ TEST_F(TaskManagerTest, TestObjectRefStreamEndtoEnd) {
       /*dynamic_return_id*/ dynamic_return_id,
       /*data*/ data,
       /*set_in_plasma*/ false);
-  ASSERT_TRUE(manager_.HandleReportGeneratorItemReturns(req));
+  ASSERT_TRUE(manager_.HandleReportGeneratorItemReturns(
+      req, /*execution_signal_callback*/ [](Status, int64_t) {}));
 
   // NumObjectIDsInScope == Generator + intermediate result.
   ASSERT_EQ(reference_counter_->NumObjectIDsInScope(), 2);
@@ -1541,7 +1776,8 @@ TEST_F(TaskManagerTest, TestObjectRefStreamEndtoEnd) {
       /*dynamic_return_id*/ dynamic_return_id2,
       /*data*/ data,
       /*set_in_plasma*/ false);
-  ASSERT_TRUE(manager_.HandleReportGeneratorItemReturns(req));
+  ASSERT_TRUE(manager_.HandleReportGeneratorItemReturns(
+      req, /*execution_signal_callback*/ [](Status, int64_t) {}));
 
   // NumObjectIDsInScope == Generator + 2 intermediate result.
   results.clear();
@@ -1557,7 +1793,7 @@ TEST_F(TaskManagerTest, TestObjectRefStreamEndtoEnd) {
   status = manager_.TryReadObjectRefStream(generator_id, &obj_id);
   ASSERT_TRUE(status.IsObjectRefEndOfStream());
 
-  manager_.DelObjectRefStream(generator_id);
+  manager_.TryDelObjectRefStream(generator_id);
 }
 
 TEST_F(TaskManagerTest, TestObjectRefStreamDelCleanReferences) {
@@ -1587,7 +1823,8 @@ TEST_F(TaskManagerTest, TestObjectRefStreamDelCleanReferences) {
       /*dynamic_return_id*/ dynamic_return_id,
       /*data*/ data,
       /*set_in_plasma*/ false);
-  ASSERT_TRUE(manager_.HandleReportGeneratorItemReturns(req));
+  ASSERT_TRUE(manager_.HandleReportGeneratorItemReturns(
+      req, /*execution_signal_callback*/ [](Status, int64_t) {}));
   // WRITE 2
   auto dynamic_return_id2 = ObjectID::FromIndex(spec.TaskId(), 3);
   data = GenerateRandomBuffer();
@@ -1598,7 +1835,8 @@ TEST_F(TaskManagerTest, TestObjectRefStreamDelCleanReferences) {
       /*dynamic_return_id*/ dynamic_return_id2,
       /*data*/ data,
       /*set_in_plasma*/ false);
-  ASSERT_TRUE(manager_.HandleReportGeneratorItemReturns(req));
+  ASSERT_TRUE(manager_.HandleReportGeneratorItemReturns(
+      req, /*execution_signal_callback*/ [](Status, int64_t) {}));
 
   // NumObjectIDsInScope == Generator + 2 WRITE
   ASSERT_EQ(reference_counter_->NumObjectIDsInScope(), 3);
@@ -1614,12 +1852,134 @@ TEST_F(TaskManagerTest, TestObjectRefStreamDelCleanReferences) {
   results.clear();
 
   // DELETE. This should clean all references except generator id.
-  manager_.DelObjectRefStream(generator_id);
-  ASSERT_EQ(reference_counter_->NumObjectIDsInScope(), 1);
-  // All the in memory objects should be cleaned up.
-  ASSERT_EQ(store_->Size(), 0);
+  CompletePendingStreamingTask(spec, caller_address, 2);
+  ASSERT_FALSE(manager_.TryDelObjectRefStream(generator_id));
+  // All the in memory objects should be cleaned up. The generator ref returns
+  // a direct result that would be GCed once it goes out of scope.
+  ASSERT_EQ(store_->Size(), 1);
   ASSERT_TRUE(store_->Get({dynamic_return_id}, 1, 1, ctx, false, &results).IsTimedOut());
   results.clear();
+  ASSERT_TRUE(store_->Get({dynamic_return_id2}, 1, 1, ctx, false, &results).IsTimedOut());
+  results.clear();
+
+  // Clean up the generator ID. Now all lineage is safe to remove.
+  reference_counter_->RemoveLocalReference(generator_id, nullptr);
+  ASSERT_TRUE(manager_.TryDelObjectRefStream(generator_id));
+
+  ASSERT_EQ(reference_counter_->NumObjectIDsInScope(), 0);
+
+  // NOTE: We panic if READ is called after DELETE. The
+  // API caller should guarantee this doesn't happen.
+  // So we don't test it.
+  // WRITE 3. Should be ignored.
+  auto dynamic_return_id3 = ObjectID::FromIndex(spec.TaskId(), 4);
+  data = GenerateRandomBuffer();
+  req = GetIntermediateTaskReturn(
+      /*idx*/ 2,
+      /*finished*/ false,
+      generator_id,
+      /*dynamic_return_id*/ dynamic_return_id3,
+      /*data*/ data,
+      /*set_in_plasma*/ false);
+  bool signal_called = false;
+  ASSERT_FALSE(manager_.HandleReportGeneratorItemReturns(
+      req, /*execution_signal_callback*/ [&](Status status, int64_t) {
+        signal_called = true;
+      }));
+  ASSERT_TRUE(signal_called);
+  // The write should have been no op. No refs and no obj values.
+  ASSERT_EQ(reference_counter_->NumObjectIDsInScope(), 0);
+  // All the in memory objects should be cleaned up.
+  ASSERT_EQ(store_->Size(), 1);
+  ASSERT_TRUE(store_->Get({dynamic_return_id3}, 1, 1, ctx, false, &results).IsTimedOut());
+  results.clear();
+}
+
+TEST_F(TaskManagerTest, TestObjectRefStreamDelCleanReferencesLineageInScope) {
+  /**
+   * Verify DEL cleans all references/objects and ignore all future WRITE.
+   * However, stream and task metadata is not deleted until the generator refs'
+   * lineage has gone out of scope.
+   *
+   * CREATE WRITE WRITE DEL (make sure no refs are leaked)
+   */
+  // Submit a task so that generator ID will be available
+  // to the reference counter.
+  rpc::Address caller_address;
+  auto spec =
+      CreateTaskHelper(1, {}, /*dynamic_returns=*/true, /*is_streaming_generator=*/true);
+  auto generator_id = spec.ReturnId(0);
+  manager_.AddPendingTask(caller_address, spec, "", /*num_retries=*/0);
+  manager_.MarkDependenciesResolved(spec.TaskId());
+  manager_.MarkTaskWaitingForExecution(
+      spec.TaskId(), NodeID::FromRandom(), WorkerID::FromRandom());
+
+  // WRITE
+  auto dynamic_return_id = ObjectID::FromIndex(spec.TaskId(), 2);
+  auto data = GenerateRandomBuffer();
+  auto req = GetIntermediateTaskReturn(
+      /*idx*/ 0,
+      /*finished*/ false,
+      generator_id,
+      /*dynamic_return_id*/ dynamic_return_id,
+      /*data*/ data,
+      /*set_in_plasma*/ true);
+  ASSERT_TRUE(manager_.HandleReportGeneratorItemReturns(
+      req, /*execution_signal_callback*/ [](Status, int64_t) {}));
+  // WRITE 2
+  auto dynamic_return_id2 = ObjectID::FromIndex(spec.TaskId(), 3);
+  data = GenerateRandomBuffer();
+  req = GetIntermediateTaskReturn(
+      /*idx*/ 1,
+      /*finished*/ false,
+      generator_id,
+      /*dynamic_return_id*/ dynamic_return_id2,
+      /*data*/ data,
+      /*set_in_plasma*/ true);
+  ASSERT_TRUE(manager_.HandleReportGeneratorItemReturns(
+      req, /*execution_signal_callback*/ [](Status, int64_t) {}));
+
+  // NumObjectIDsInScope == Generator + 2 WRITE
+  ASSERT_EQ(reference_counter_->NumObjectIDsInScope(), 3);
+  // 2 in memory objects.
+  ASSERT_EQ(store_->Size(), 2);
+  std::vector<std::shared_ptr<RayObject>> results;
+  WorkerContext ctx(WorkerType::WORKER, WorkerID::FromRandom(), JobID::FromInt(0));
+  RAY_CHECK_OK(store_->Get({dynamic_return_id}, 1, 1, ctx, false, &results));
+  ASSERT_EQ(results.size(), 1);
+  results.clear();
+
+  // Consume one ref.
+  ObjectID obj_id;
+  auto status = manager_.TryReadObjectRefStream(generator_id, &obj_id);
+  ASSERT_TRUE(status.ok());
+  ASSERT_EQ(obj_id, dynamic_return_id);
+
+  // Write one ref that will stay unconsumed.
+  RAY_CHECK_OK(store_->Get({dynamic_return_id2}, 1, 1, ctx, false, &results));
+  ASSERT_EQ(results.size(), 1);
+  results.clear();
+
+  // DELETE. This should clean all references except generator id.
+  CompletePendingStreamingTask(spec, caller_address, 2);
+  ASSERT_FALSE(manager_.TryDelObjectRefStream(generator_id));
+  // All the unconsumed objects should be cleaned up. The generator ref returns
+  // a direct result that would be GCed once it goes out of scope.
+  ASSERT_EQ(store_->Size(), 2);
+  ASSERT_TRUE(store_->Get({dynamic_return_id2}, 1, 1, ctx, false, &results).IsTimedOut());
+  results.clear();
+
+  // Clean up the generator ID.
+  reference_counter_->RemoveLocalReference(generator_id, nullptr);
+  ASSERT_FALSE(manager_.TryDelObjectRefStream(generator_id));
+  // Clean up the consumed dynamic return.
+  reference_counter_->RemoveLocalReference(dynamic_return_id, nullptr);
+  ASSERT_TRUE(manager_.TryDelObjectRefStream(dynamic_return_id));
+
+  ASSERT_EQ(reference_counter_->NumObjectIDsInScope(), 0);
+  // All the unconsumed in memory objects should be cleaned up. Check for 2
+  // in-memory objects: one consumed object ref and the generator ref.
+  ASSERT_EQ(store_->Size(), 2);
   ASSERT_TRUE(store_->Get({dynamic_return_id2}, 1, 1, ctx, false, &results).IsTimedOut());
   results.clear();
 
@@ -1636,15 +1996,70 @@ TEST_F(TaskManagerTest, TestObjectRefStreamDelCleanReferences) {
       /*dynamic_return_id*/ dynamic_return_id3,
       /*data*/ data,
       /*set_in_plasma*/ false);
-  ASSERT_FALSE(manager_.HandleReportGeneratorItemReturns(req));
+  bool signal_called = false;
+  ASSERT_FALSE(manager_.HandleReportGeneratorItemReturns(
+      req, /*execution_signal_callback*/ [&](Status, int64_t) { signal_called = true; }));
+  ASSERT_TRUE(signal_called);
   // The write should have been no op. No refs and no obj values except the generator id.
-  ASSERT_EQ(reference_counter_->NumObjectIDsInScope(), 1);
-  // All the in memory objects should be cleaned up.
-  ASSERT_EQ(store_->Size(), 0);
+  ASSERT_EQ(reference_counter_->NumObjectIDsInScope(), 0);
+  // All the unconsumed in memory objects should be cleaned up. Check for 2
+  // in-memory objects: one consumed object ref and the generator ref.
+  ASSERT_EQ(store_->Size(), 2);
   ASSERT_TRUE(store_->Get({dynamic_return_id3}, 1, 1, ctx, false, &results).IsTimedOut());
   results.clear();
+}
 
+TEST_F(TaskManagerTest, TestObjectRefStreamDelCleanReferencesLineageBeforeTaskCompletes) {
+  /**
+   * Verify DEL cleans all references/objects and ignore all future WRITE.
+   * However, stream and task metadata is not deleted until the generator refs'
+   * lineage has gone out of scope.
+   *
+   * CREATE WRITE WRITE DEL (make sure no refs are leaked)
+   */
+  // Submit a task so that generator ID will be available
+  // to the reference counter.
+  rpc::Address caller_address;
+  auto spec =
+      CreateTaskHelper(1, {}, /*dynamic_returns=*/true, /*is_streaming_generator=*/true);
+  auto generator_id = spec.ReturnId(0);
+  manager_.AddPendingTask(caller_address, spec, "", /*num_retries=*/0);
+  manager_.MarkDependenciesResolved(spec.TaskId());
+  manager_.MarkTaskWaitingForExecution(
+      spec.TaskId(), NodeID::FromRandom(), WorkerID::FromRandom());
+
+  // WRITE
+  auto dynamic_return_id = ObjectID::FromIndex(spec.TaskId(), 2);
+  auto data = GenerateRandomBuffer();
+  auto req = GetIntermediateTaskReturn(
+      /*idx*/ 0,
+      /*finished*/ false,
+      generator_id,
+      /*dynamic_return_id*/ dynamic_return_id,
+      /*data*/ data,
+      /*set_in_plasma*/ true);
+  ASSERT_TRUE(manager_.HandleReportGeneratorItemReturns(
+      req, /*execution_signal_callback*/ [](Status, int64_t) {}));
+
+  // NumObjectIDsInScope == Generator + 2 WRITE
+  ASSERT_EQ(reference_counter_->NumObjectIDsInScope(), 2);
+  // 2 in memory objects.
+  ASSERT_EQ(store_->Size(), 1);
+
+  // Consume one ref.
+  ObjectID obj_id;
+  auto status = manager_.TryReadObjectRefStream(generator_id, &obj_id);
+  ASSERT_TRUE(status.ok());
+  ASSERT_EQ(obj_id, dynamic_return_id);
+
+  // Clear consumers' references.
+  reference_counter_->RemoveLocalReference(generator_id, nullptr);
+  reference_counter_->RemoveLocalReference(dynamic_return_id, nullptr);
+  // Stream metadata cannot be GCed because EOF not written yet.
+  ASSERT_FALSE(manager_.TryDelObjectRefStream(generator_id));
+  // DELETE. This should clean all references except generator id.
   CompletePendingStreamingTask(spec, caller_address, 2);
+  ASSERT_TRUE(manager_.TryDelObjectRefStream(generator_id));
 }
 
 TEST_F(TaskManagerTest, TestObjectRefStreamOutofOrder) {
@@ -1676,7 +2091,8 @@ TEST_F(TaskManagerTest, TestObjectRefStreamOutofOrder) {
         /*data*/ data,
         /*set_in_plasma*/ false);
     // WRITE * 2
-    ASSERT_TRUE(manager_.HandleReportGeneratorItemReturns(req));
+    ASSERT_TRUE(manager_.HandleReportGeneratorItemReturns(
+        req, /*execution_signal_callback*/ [](Status, int64_t) {}));
   }
 
   // Verify read works.
@@ -1685,12 +2101,14 @@ TEST_F(TaskManagerTest, TestObjectRefStreamOutofOrder) {
     auto status = manager_.TryReadObjectRefStream(generator_id, &obj_id);
     ASSERT_TRUE(status.ok());
     ASSERT_EQ(obj_id, dynamic_return_ids[i]);
+    reference_counter_->RemoveLocalReference(obj_id, nullptr);
   }
+  reference_counter_->RemoveLocalReference(generator_id, nullptr);
 
   // READ (EoF)
   auto status = manager_.TryReadObjectRefStream(generator_id, &obj_id);
   ASSERT_TRUE(status.IsObjectRefEndOfStream());
-  manager_.DelObjectRefStream(generator_id);
+  ASSERT_TRUE(manager_.TryDelObjectRefStream(generator_id));
 }
 
 TEST_F(TaskManagerTest, TestObjectRefStreamDelOutOfOrder) {
@@ -1720,14 +2138,17 @@ TEST_F(TaskManagerTest, TestObjectRefStreamDelOutOfOrder) {
       /*dynamic_return_id*/ dynamic_return_id_index_1,
       /*data*/ data,
       /*set_in_plasma*/ false);
-  ASSERT_TRUE(manager_.HandleReportGeneratorItemReturns(req));
+  ASSERT_TRUE(manager_.HandleReportGeneratorItemReturns(
+      req, /*execution_signal_callback*/ [](Status, int64_t) {}));
   ASSERT_TRUE(reference_counter_->HasReference(dynamic_return_id_index_1));
 
   // Delete the stream. This should remove references from ^.
-  manager_.DelObjectRefStream(generator_id);
+  CompletePendingStreamingTask(spec, caller_address, 0);
+  reference_counter_->RemoveLocalReference(generator_id, nullptr);
+  ASSERT_TRUE(manager_.TryDelObjectRefStream(generator_id));
   ASSERT_FALSE(reference_counter_->HasReference(dynamic_return_id_index_1));
 
-  // WRITE to index 0. It should fail cuz the stream has been removed.
+  // WRITE to index 0. It should fail because the stream has been removed.
   auto dynamic_return_id_index_0 = ObjectID::FromIndex(spec.TaskId(), 2);
   data = GenerateRandomBuffer();
   req = GetIntermediateTaskReturn(
@@ -1737,14 +2158,13 @@ TEST_F(TaskManagerTest, TestObjectRefStreamDelOutOfOrder) {
       /*dynamic_return_id*/ dynamic_return_id_index_0,
       /*data*/ data,
       /*set_in_plasma*/ false);
-  ASSERT_FALSE(manager_.HandleReportGeneratorItemReturns(req));
+  ASSERT_FALSE(manager_.HandleReportGeneratorItemReturns(
+      req, /*execution_signal_callback*/ [](Status, int64_t) {}));
   ASSERT_FALSE(reference_counter_->HasReference(dynamic_return_id_index_0));
 
-  // There must be only a generator ID.
-  ASSERT_EQ(reference_counter_->NumObjectIDsInScope(), 1);
-  // All the objects should be cleaned up.
-  ASSERT_EQ(store_->Size(), 0);
-  CompletePendingStreamingTask(spec, caller_address, 0);
+  ASSERT_EQ(reference_counter_->NumObjectIDsInScope(), 0);
+  // All the objects except the generator ref should be cleaned up.
+  ASSERT_EQ(store_->Size(), 1);
 }
 
 TEST_F(TaskManagerTest, TestObjectRefStreamTemporarilyOwnGeneratorReturnRefIfNeeded) {
@@ -1776,7 +2196,7 @@ TEST_F(TaskManagerTest, TestObjectRefStreamTemporarilyOwnGeneratorReturnRefIfNee
 
   /**
    * Test TemporarilyOwnGeneratorReturnRefIfNeeded called before any
-   * HandleReportGeneratorItemReturns adds a refernece.
+   * HandleReportGeneratorItemReturns adds a reference.
    */
   manager_.TemporarilyOwnGeneratorReturnRefIfNeeded(dynamic_return_id_index_0,
                                                     generator_id);
@@ -1797,7 +2217,8 @@ TEST_F(TaskManagerTest, TestObjectRefStreamTemporarilyOwnGeneratorReturnRefIfNee
       /*dynamic_return_id*/ dynamic_return_id_index_0,
       /*data*/ data,
       /*set_in_plasma*/ false);
-  ASSERT_TRUE(manager_.HandleReportGeneratorItemReturns(req));
+  ASSERT_TRUE(manager_.HandleReportGeneratorItemReturns(
+      req, /*execution_signal_callback*/ [](Status, int64_t) {}));
   auto dynamic_return_id_index_1 = ObjectID::FromIndex(spec.TaskId(), 3);
   data = GenerateRandomBuffer();
   req = GetIntermediateTaskReturn(
@@ -1807,7 +2228,8 @@ TEST_F(TaskManagerTest, TestObjectRefStreamTemporarilyOwnGeneratorReturnRefIfNee
       /*dynamic_return_id*/ dynamic_return_id_index_1,
       /*data*/ data,
       /*set_in_plasma*/ false);
-  ASSERT_TRUE(manager_.HandleReportGeneratorItemReturns(req));
+  ASSERT_TRUE(manager_.HandleReportGeneratorItemReturns(
+      req, /*execution_signal_callback*/ [](Status, int64_t) {}));
 
   // READ 0 -> READ 1
   for (auto i = 0; i < 2; i++) {
@@ -1835,9 +2257,211 @@ TEST_F(TaskManagerTest, TestObjectRefStreamTemporarilyOwnGeneratorReturnRefIfNee
   manager_.TemporarilyOwnGeneratorReturnRefIfNeeded(dynamic_return_id_index_2,
                                                     generator_id);
   ASSERT_TRUE(reference_counter_->HasReference(dynamic_return_id_index_2));
-  manager_.DelObjectRefStream(generator_id);
+  CompletePendingStreamingTask(spec, caller_address, 2);
+  manager_.TryDelObjectRefStream(generator_id);
   ASSERT_FALSE(reference_counter_->HasReference(dynamic_return_id_index_2));
+}
 
+TEST_F(TaskManagerTest, TestObjectRefStreamBackpressure) {
+  /**
+   * Test the RPC is not replied when backpressured.
+   * Test the RPC is replied when the stream is deleted.
+   * Test the RPC is replied when the data is consumed.
+   */
+  auto spec = CreateTaskHelper(1,
+                               {},
+                               /*dynamic_returns=*/true,
+                               /*is_streaming_generator=*/true,
+                               /*generator_backpressure_num_objects*/ 2);
+  auto generator_id = spec.ReturnId(0);
+  rpc::Address caller_address;
+  manager_.AddPendingTask(caller_address, spec, "", 0);
+
+  /// 1 generate, 0 consumed, 2 threshold -> should signal immediately.
+  auto dynamic_return_id = ObjectID::FromIndex(spec.TaskId(), 2);
+  auto data = GenerateRandomBuffer();
+  auto req = GetIntermediateTaskReturn(
+      /*idx*/ 0,
+      /*finished*/ false,
+      generator_id,
+      /*dynamic_return_id*/ dynamic_return_id,
+      /*data*/ data,
+      /*set_in_plasma*/ false);
+  bool signal_called = false;
+  ASSERT_TRUE(manager_.HandleReportGeneratorItemReturns(
+      req,
+      /*execution_signal_callback*/ [&signal_called](Status status,
+                                                     int64_t num_objects_consumed) {
+        signal_called = true;
+        ASSERT_TRUE(status.ok());
+        ASSERT_EQ(num_objects_consumed, 0);
+      }));
+  ASSERT_TRUE(signal_called);
+
+  /// 2 generate, 0 consumed, 2 threshold -> backpressured
+  dynamic_return_id = ObjectID::FromIndex(spec.TaskId(), 3);
+  data = GenerateRandomBuffer();
+  req = GetIntermediateTaskReturn(
+      /*idx*/ 1,
+      /*finished*/ false,
+      generator_id,
+      /*dynamic_return_id*/ dynamic_return_id,
+      /*data*/ data,
+      /*set_in_plasma*/ false);
+  signal_called = false;
+  ASSERT_TRUE(manager_.HandleReportGeneratorItemReturns(
+      req,
+      /*execution_signal_callback*/ [&signal_called](Status status,
+                                                     int64_t num_objects_consumed) {
+        signal_called = true;
+        ASSERT_TRUE(status.ok());
+        ASSERT_EQ(num_objects_consumed, 1);
+      }));
+  ASSERT_FALSE(signal_called);
+
+  ObjectID obj_id;
+  // Read should signal the executor.
+  auto status = manager_.TryReadObjectRefStream(generator_id, &obj_id);
+  ASSERT_TRUE(signal_called);
+  reference_counter_->RemoveLocalReference(obj_id, nullptr);
+
+  /// 3 generate, 1 consumed, 2 threshold -> backpressured
+  dynamic_return_id = ObjectID::FromIndex(spec.TaskId(), 4);
+  data = GenerateRandomBuffer();
+  req = GetIntermediateTaskReturn(
+      /*idx*/ 2,
+      /*finished*/ false,
+      generator_id,
+      /*dynamic_return_id*/ dynamic_return_id,
+      /*data*/ data,
+      /*set_in_plasma*/ false);
+  signal_called = false;
+  ASSERT_TRUE(manager_.HandleReportGeneratorItemReturns(
+      req,
+      /*execution_signal_callback*/ [&signal_called](Status status,
+                                                     int64_t num_objects_consumed) {
+        signal_called = true;
+        ASSERT_TRUE(status.IsNotFound());
+        ASSERT_EQ(num_objects_consumed, -1);
+      }));
+  ASSERT_FALSE(signal_called);
+
+  // Deleting the stream should send a signal.
+  CompletePendingStreamingTask(spec, caller_address, 2);
+  reference_counter_->RemoveLocalReference(generator_id, nullptr);
+  ASSERT_TRUE(manager_.TryDelObjectRefStream(generator_id));
+  ASSERT_TRUE(signal_called);
+
+  /// No need to test out of order case. It won't be different.
+}
+
+TEST_F(TaskManagerTest, TestBackpressureAfterReconstruction) {
+  // Consumed objects should be signaled immediately.
+  // Unconsumed objects should not be.
+  auto spec = CreateTaskHelper(1,
+                               {},
+                               /*dynamic_returns=*/true,
+                               /*is_streaming_generator=*/true,
+                               /*generator_backpressure_num_objects*/ 2);
+  auto generator_id = spec.ReturnId(0);
+  rpc::Address caller_address;
+  manager_.AddPendingTask(caller_address, spec, "", 1);
+
+  /// 1 generate, 0 consumed, 2 threshold -> should signal immediately.
+  auto dynamic_return_id = ObjectID::FromIndex(spec.TaskId(), 2);
+  auto data = GenerateRandomBuffer();
+  auto req = GetIntermediateTaskReturn(
+      /*idx*/ 0,
+      /*finished*/ false,
+      generator_id,
+      /*dynamic_return_id*/ dynamic_return_id,
+      /*data*/ data,
+      /*set_in_plasma*/ false);
+  bool signal_called = false;
+  ASSERT_TRUE(manager_.HandleReportGeneratorItemReturns(
+      req,
+      /*execution_signal_callback*/ [&signal_called](Status status,
+                                                     int64_t num_objects_consumed) {
+        signal_called = true;
+        ASSERT_TRUE(status.ok());
+        ASSERT_EQ(num_objects_consumed, 0);
+      }));
+  ASSERT_TRUE(signal_called);
+
+  /// 2 generate, 0 consumed, 2 threshold -> backpressured
+  dynamic_return_id = ObjectID::FromIndex(spec.TaskId(), 3);
+  data = GenerateRandomBuffer();
+  req = GetIntermediateTaskReturn(
+      /*idx*/ 1,
+      /*finished*/ false,
+      generator_id,
+      /*dynamic_return_id*/ dynamic_return_id,
+      /*data*/ data,
+      /*set_in_plasma*/ false);
+  signal_called = false;
+  ASSERT_TRUE(manager_.HandleReportGeneratorItemReturns(
+      req,
+      /*execution_signal_callback*/ [&signal_called](Status status,
+                                                     int64_t num_objects_consumed) {
+        signal_called = true;
+        ASSERT_TRUE(status.ok());
+        ASSERT_EQ(num_objects_consumed, 1);
+      }));
+  ASSERT_FALSE(signal_called);
+
+  // Worker failure. New worker should start reporting the task.
+  auto error = rpc::ErrorType::WORKER_DIED;
+  ASSERT_TRUE(manager_.FailOrRetryPendingTask(spec.TaskId(), error));
+
+  // Two report will come again. The first one should reply immediately (because)
+  // it is already replied and the second one should be backpressured.
+  /// 1 generate, 0 consumed, 2 threshold -> should signal immediately.
+  dynamic_return_id = ObjectID::FromIndex(spec.TaskId(), 2);
+  req = GetIntermediateTaskReturn(
+      /*idx*/ 0,
+      /*finished*/ false,
+      generator_id,
+      /*dynamic_return_id*/ dynamic_return_id,
+      /*data*/ data,
+      /*set_in_plasma*/ false);
+  bool retry_signal_called = false;
+  ASSERT_FALSE(manager_.HandleReportGeneratorItemReturns(
+      req,
+      /*execution_signal_callback*/ [&retry_signal_called](Status status,
+                                                           int64_t num_objects_consumed) {
+        retry_signal_called = true;
+        ASSERT_TRUE(status.ok());
+        ASSERT_EQ(num_objects_consumed, 0);
+      }));
+  ASSERT_TRUE(retry_signal_called);
+
+  /// 2 generate, 0 consumed, 2 threshold -> backpressured
+  dynamic_return_id = ObjectID::FromIndex(spec.TaskId(), 3);
+  data = GenerateRandomBuffer();
+  req = GetIntermediateTaskReturn(
+      /*idx*/ 1,
+      /*finished*/ false,
+      generator_id,
+      /*dynamic_return_id*/ dynamic_return_id,
+      /*data*/ data,
+      /*set_in_plasma*/ false);
+  retry_signal_called = false;
+  ASSERT_FALSE(manager_.HandleReportGeneratorItemReturns(
+      req,
+      /*execution_signal_callback*/ [&retry_signal_called](Status status,
+                                                           int64_t num_objects_consumed) {
+        retry_signal_called = true;
+        ASSERT_TRUE(status.ok());
+        ASSERT_EQ(num_objects_consumed, 1);
+      }));
+  // Backpressured.
+  ASSERT_FALSE(retry_signal_called);
+
+  ObjectID obj_id;
+  // Read should signal both executor.
+  auto status = manager_.TryReadObjectRefStream(generator_id, &obj_id);
+  ASSERT_TRUE(signal_called);
+  ASSERT_TRUE(retry_signal_called);
   CompletePendingStreamingTask(spec, caller_address, 2);
 }
 

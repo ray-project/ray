@@ -16,7 +16,7 @@ Continue on for examples, or jump to the :ref:`OpenAPI specification <ray-job-re
     import time
 
     resp = requests.post(
-        "http://127.0.0.1:8265/api/jobs/",
+        "http://127.0.0.1:8265/api/jobs/", # Don't forget the trailing slash!
         json={
             "entrypoint": "echo hello",
             "runtime_env": {},
@@ -64,6 +64,22 @@ Continue on for examples, or jump to the :ref:`OpenAPI specification <ray-job-re
     )
     print(resp.json())
     # {"job_id": {"metadata": ..., "status": ..., "message": ...}, ...}
+
+**Stop a Job**
+
+.. code-block:: python
+
+    import json
+    import time
+    import requests
+
+    resp = requests.post(
+        "http://127.0.0.1:8265/api/jobs/{job_or_submission_id}/stop",
+    )
+    rst = json.loads(resp.text)
+    json = rst.json()
+    stopped = json["stopped"]
+    print(stopped)
 
 .. _ray-job-rest-api-spec:
 

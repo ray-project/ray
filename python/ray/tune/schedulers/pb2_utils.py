@@ -1,9 +1,8 @@
-import numpy as np
-from scipy.optimize import minimize
-
 import GPy
-from GPy.kern import Kern
+import numpy as np
 from GPy.core import Param
+from GPy.kern import Kern
+from scipy.optimize import minimize
 from sklearn.metrics import pairwise_distances
 from sklearn.metrics.pairwise import euclidean_distances
 

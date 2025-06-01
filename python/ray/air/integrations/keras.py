@@ -1,10 +1,10 @@
+import shutil
 from typing import Dict, List, Optional, Union
 
 from tensorflow.keras.callbacks import Callback as KerasCallback
 
 import ray
-from ray.train._internal.storage import _use_storage_context
-from ray.train.tensorflow import TensorflowCheckpoint, LegacyTensorflowCheckpoint
+from ray.train.tensorflow import TensorflowCheckpoint
 from ray.util.annotations import PublicAPI
 
 
@@ -103,14 +103,14 @@ class _Callback(KerasCallback):
 
 @PublicAPI(stability="alpha")
 class ReportCheckpointCallback(_Callback):
-    """Keras callback for Ray AIR reporting and checkpointing.
+    """Keras callback for Ray Train reporting and checkpointing.
 
     .. note::
         Metrics are always reported with checkpoints, even if the event isn't specified
         in ``report_metrics_on``.
 
     Example:
-        .. code-block: python
+        .. code-block:: python
 
             ############# Using it in TrainSession ###############
             from ray.air.integrations.keras import ReportCheckpointCallback
@@ -159,13 +159,13 @@ class ReportCheckpointCallback(_Callback):
         metrics = self._get_reported_metrics(logs)
 
         should_checkpoint = when in self._checkpoint_on
-        checkpoint = None
         if should_checkpoint:
-            if _use_storage_context():
-                checkpoint = TensorflowCheckpoint.from_model(self.model)
-            else:
-                checkpoint = LegacyTensorflowCheckpoint.from_model(self.model)
-        ray.train.report(metrics, checkpoint=checkpoint)
+            checkpoint = TensorflowCheckpoint.from_model(self.model)
+            ray.train.report(metrics, checkpoint=checkpoint)
+            # Clean up temporary checkpoint
+            shutil.rmtree(checkpoint.path, ignore_errors=True)
+        else:
+            ray.train.report(metrics, checkpoint=None)
 
     def _get_reported_metrics(self, logs: Dict) -> Dict:
         assert isinstance(self._metrics, (type(None), str, list, dict))

@@ -1,5 +1,5 @@
-from docutils import nodes
-from docutils.parsers.rst import directives
+from docutils import nodes, utils, frontend
+from docutils.parsers.rst import directives, Parser
 from sphinx.util.docutils import SphinxDirective
 
 
@@ -55,7 +55,7 @@ class URLQueryParamRefDirective(SphinxDirective):
                     "refdocname": self.env.docname,
                     "refdomain": "std" if ref_type in {"ref", "doc"} else "",
                     "reftype": ref_type,
-                    "refexplicit": content[0] if content else reftarget,
+                    "refexplicit": content if content else reftarget,
                     "refwarn": True,
                 }
             )
@@ -65,15 +65,30 @@ class URLQueryParamRefDirective(SphinxDirective):
 def on_doctree_resolved(app, doctree, docname):
     """Replace URLQueryParamRefNode instances with real references.
 
+    Any text that lives inside a URLQueryParamRefNode is parsed as usual.
+
     Args:
         app: Sphinx application
         doctree: Doctree which has just been resolved
         docname: Name of the document containing the reference nodes
     """
+    parser = Parser()
     for node in doctree.traverse(URLQueryParamRefNode):
-        content = node.rawsource["refexplicit"]
+        tmp_node = utils.new_document(
+            "Content nested under URLQueryParamRefNode",
+            frontend.OptionParser(components=[Parser]).get_default_values(),
+        )
+        text = "\n".join(node.rawsource["refexplicit"])
 
-        ref_node = nodes.reference(content, content)
+        # Parse all child RST as usual, then append any parsed nodes to the
+        # reference node.
+        parser.parse(text, tmp_node)
+        ref_node = nodes.reference(
+            rawsource=text,
+            text="",
+        )
+        for child in tmp_node.children:
+            ref_node.append(child)
 
         # Pass all URLQueryParamRefNode attributes to ref node;
         # possibly not necessary

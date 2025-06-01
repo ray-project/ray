@@ -4,8 +4,11 @@ import logging
 import os
 import re
 import time
-from functools import partial
+from functools import partial, reduce
 
+import google_auth_httplib2
+import googleapiclient
+import httplib2
 from cryptography.hazmat.backends import default_backend
 from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric import rsa
@@ -13,7 +16,8 @@ from google.oauth2 import service_account
 from google.oauth2.credentials import Credentials as OAuthCredentials
 from googleapiclient import discovery, errors
 
-from ray._private import accelerator, ray_constants
+from ray._private.accelerators import TPUAcceleratorManager
+from ray._private.accelerators import tpu
 from ray.autoscaler._private.gcp.node import MAX_POLLS, POLL_INTERVAL, GCPNodeType
 from ray.autoscaler._private.util import check_legacy_fields
 
@@ -49,6 +53,36 @@ HAS_TPU_PROVIDER_FIELD = "_has_tpus"
 # with ServiceAccounts.
 
 
+def tpu_accelerator_config_to_type(accelerator_config: dict) -> str:
+    """Convert a provided accelerator_config to accelerator_type.
+
+    Args:
+        accelerator_config: A dictionary defining the spec of a
+            TPU accelerator. The dictionary should consist of
+            the keys 'type', indicating the TPU chip type, and
+            'topology', indicating the topology of the TPU.
+
+    Returns:
+        A string, accelerator_type, e.g. "v4-8".
+
+    """
+    generation = accelerator_config["type"].lower()
+    topology = accelerator_config["topology"]
+    # Reduce e.g. "2x2x2" to 8
+    chip_dimensions = [int(chip_count) for chip_count in topology.split("x")]
+    num_chips = reduce(lambda x, y: x * y, chip_dimensions)
+
+    # V5LitePod is rendered as "V5LITE_POD" in accelerator configuration but
+    # accelerator type uses a format like "v5litepod-{cores}", so we need
+    # to manually convert the string here.
+    if generation == "v5lite_pod":
+        generation = "v5litepod"
+
+    num_cores = tpu.get_tpu_cores_per_chip(generation) * num_chips
+
+    return f"{generation}-{num_cores}"
+
+
 def _validate_tpu_config(node: dict):
     """Validate the provided node with TPU support.
 
@@ -65,7 +99,11 @@ def _validate_tpu_config(node: dict):
         )
     if "acceleratorType" in node:
         accelerator_type = node["acceleratorType"]
-        accelerator.assert_tpu_accelerator_type(accelerator_type)
+        if not TPUAcceleratorManager.is_valid_tpu_accelerator_type(accelerator_type):
+            raise ValueError(
+                "`acceleratorType` should match v(generation)-(cores/chips). "
+                f"Got {accelerator_type}."
+            )
     else:  # "acceleratorConfig" in node
         accelerator_config = node["acceleratorConfig"]
         if "type" not in accelerator_config or "topology" not in accelerator_config:
@@ -79,7 +117,7 @@ def _validate_tpu_config(node: dict):
         generation_pattern = re.compile(r"^V\d+[a-zA-Z]*$")
         topology_pattern = re.compile(r"^\d+x\d+(x\d+)?$")
 
-        if not generation_pattern.match(generation):
+        if generation != "V5LITE_POD" and not generation_pattern.match(generation):
             raise ValueError(f"type should match V(generation). Got {generation}.")
         if generation == "V2" or generation == "V3":
             raise ValueError(
@@ -97,7 +135,7 @@ def _get_num_tpu_chips(node: dict) -> int:
         accelerator_type = node["acceleratorType"]
         # `acceleratorType` is typically v{generation}-{cores}
         cores = int(accelerator_type.split("-")[1])
-        chips = cores / ray_constants.RAY_TPU_CORES_PER_CHIP
+        chips = cores / tpu.get_tpu_cores_per_chip(accelerator_type)
     if "acceleratorConfig" in node:
         topology = node["acceleratorConfig"]["topology"]
         # `topology` is typically {chips}x{chips}x{chips}
@@ -109,7 +147,14 @@ def _get_num_tpu_chips(node: dict) -> int:
 
 
 def _is_single_host_tpu(node: dict) -> bool:
-    return _get_num_tpu_chips(node) == ray_constants.RAY_TPU_NUM_CHIPS_PER_HOST
+    accelerator_type = ""
+    if "acceleratorType" in node:
+        accelerator_type = node["acceleratorType"]
+    else:
+        accelerator_type = tpu_accelerator_config_to_type(node["acceleratorConfig"])
+    return _get_num_tpu_chips(node) <= tpu.get_num_tpu_visible_chips_per_host(
+        accelerator_type
+    )
 
 
 def get_node_type(node: dict) -> GCPNodeType:
@@ -254,21 +299,40 @@ def _is_head_node_a_tpu(config: dict) -> bool:
     return get_node_type(node_configs[config["head_node_type"]]) == GCPNodeType.TPU
 
 
+def build_request(http, *args, **kwargs):
+    new_http = google_auth_httplib2.AuthorizedHttp(
+        http.credentials, http=httplib2.Http()
+    )
+    return googleapiclient.http.HttpRequest(new_http, *args, **kwargs)
+
+
 def _create_crm(gcp_credentials=None):
     return discovery.build(
-        "cloudresourcemanager", "v1", credentials=gcp_credentials, cache_discovery=False
+        "cloudresourcemanager",
+        "v1",
+        credentials=gcp_credentials,
+        requestBuilder=build_request,
+        cache_discovery=False,
     )
 
 
 def _create_iam(gcp_credentials=None):
     return discovery.build(
-        "iam", "v1", credentials=gcp_credentials, cache_discovery=False
+        "iam",
+        "v1",
+        credentials=gcp_credentials,
+        requestBuilder=build_request,
+        cache_discovery=False,
     )
 
 
 def _create_compute(gcp_credentials=None):
     return discovery.build(
-        "compute", "v1", credentials=gcp_credentials, cache_discovery=False
+        "compute",
+        "v1",
+        credentials=gcp_credentials,
+        requestBuilder=build_request,
+        cache_discovery=False,
     )
 
 
@@ -277,6 +341,7 @@ def _create_tpu(gcp_credentials=None):
         "tpu",
         TPU_VERSION,
         credentials=gcp_credentials,
+        requestBuilder=build_request,
         cache_discovery=False,
         discoveryServiceUrl="https://tpu.googleapis.com/$discovery/rest",
     )
@@ -704,7 +769,13 @@ def _add_iam_policy_binding(service_account, roles, crm):
     email = service_account["email"]
     member_id = "serviceAccount:" + email
 
-    policy = crm.projects().getIamPolicy(resource=project_id, body={}).execute()
+    policy = (
+        crm.projects()
+        .getIamPolicy(
+            resource=project_id, body={"options": {"requestedPolicyVersion": 3}}
+        )
+        .execute()
+    )
 
     already_configured = True
     for role in roles:

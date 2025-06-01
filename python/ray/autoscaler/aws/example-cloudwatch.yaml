@@ -31,7 +31,7 @@ provider:
             # 2. `/tmp/ray/session_*/logs/**.err` are shipped to the `{cluster_name}-ray_logs_err` CloudWatch Log Group.
             # If enabled, Prometheus metrics can be found in the CloudWatch > Metrics > `{cluster-name}-ray-prometheus` namespace.
             # CloudWatch Log Stream names will be the same as your cluster head node's EC2 instance ID.
-            # See https://docs.ray.io/en/master/ray-logging.html for ray logging system details.
+            # See https://docs.ray.io/en/master/ray-observability/user-guides/configure-logging.html for ray logging system details.
 
             # Path to Unified CloudWatch Agent config file
             config: "cloudwatch/example-cloudwatch-agent-config.json"

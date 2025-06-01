@@ -1,41 +1,39 @@
-import warnings
 import copy
 import json
 import logging
+import os
+import platform
+import re
+import time
+import uuid
 from contextlib import contextmanager
 from functools import partial
 from numbers import Number
-import os
 from pathlib import Path
-import platform
-import re
-import shutil
-import time
-from typing import Any, Dict, Optional, Sequence, Union, Callable, List, Tuple
-import uuid
+from typing import Any, Callable, Dict, List, Optional, Sequence, Tuple, Union
 
 import ray
-from ray.air import CheckpointConfig
-from ray.air._internal.uri_utils import URI
-from ray.air._internal.checkpoint_manager import _TrackedCheckpoint, CheckpointStorage
+import ray.cloudpickle as cloudpickle
+from ray._private.utils import binary_to_hex, hex_to_binary
 from ray.air.constants import (
-    EXPR_ERROR_PICKLE_FILE,
     EXPR_ERROR_FILE,
+    EXPR_ERROR_PICKLE_FILE,
     TRAINING_ITERATION,
 )
-
-import ray.cloudpickle as cloudpickle
 from ray.exceptions import RayActorError, RayTaskError
-from ray.train import Checkpoint
-from ray.train.constants import RAY_CHDIR_TO_TRIAL_DIR
-from ray.train._internal.checkpoint_manager import (
-    _TrainingResult,
-    _CheckpointManager as _NewCheckpointManager,
+from ray.tune import Checkpoint, CheckpointConfig
+from ray.train._internal.checkpoint_manager import _CheckpointManager
+from ray.train._internal.session import _FutureTrainingResult, _TrainingResult
+from ray.train._internal.storage import StorageContext, _exists_at_fs_path
+from ray.train.constants import (
+    RAY_CHDIR_TO_TRIAL_DIR,
+    RAY_TRAIN_COUNT_PREEMPTION_AS_FAILURE,
 )
-from ray.train._internal.storage import _use_storage_context, StorageContext
-from ray.tune import TuneError
-from ray.tune.error import _TuneRestoreError
-from ray.tune.execution.checkpoint_manager import _CheckpointManager
+from ray.tune.error import TuneError
+from ray.tune.execution.placement_groups import (
+    PlacementGroupFactory,
+    resource_dict_to_pg_factory,
+)
 from ray.tune.logger import NoopLogger
 
 # NOTE(rkn): We import ray.tune.registry here instead of importing the names we
@@ -43,31 +41,20 @@ from ray.tune.logger import NoopLogger
 # have been defined yet. See https://github.com/ray-project/ray/issues/1716.
 from ray.tune.registry import get_trainable_cls, validate_trainable
 from ray.tune.result import (
+    DEBUG_METRICS,
     DONE,
     NODE_IP,
     PID,
-    TRIAL_ID,
-    DEBUG_METRICS,
-    TRIAL_INFO,
-    STDOUT_FILE,
     STDERR_FILE,
-    DEFAULT_EXPERIMENT_NAME,
-    _get_defaults_results_dir,
-)
-from ray.train import SyncConfig
-from ray.tune.execution.placement_groups import (
-    PlacementGroupFactory,
-    resource_dict_to_pg_factory,
+    STDOUT_FILE,
+    TRIAL_ID,
+    TRIAL_INFO,
 )
 from ray.tune.trainable.metadata import _TrainingRunMetadata
-from ray.tune.utils.serialization import TuneFunctionDecoder, TuneFunctionEncoder
-from ray.tune.trainable.util import TrainableUtil
 from ray.tune.utils import date_str, flatten_dict
-from ray.tune.utils.util import _split_remote_local_path
-from ray.util.annotations import DeveloperAPI, Deprecated
-from ray.util.debug import log_once
-from ray._private.utils import binary_to_hex, hex_to_binary
-
+from ray.tune.utils.serialization import TuneFunctionDecoder, TuneFunctionEncoder
+from ray.util import log_once
+from ray.util.annotations import Deprecated, DeveloperAPI
 
 DEBUG_PRINT_INTERVAL = 5
 _DEFAULT_WIN_MAX_PATH_LENGTH = 260
@@ -111,7 +98,7 @@ class ExportFormat:
         """Validates formats.
 
         Raises:
-            ValueError if the format is unknown.
+            ValueError: if the format is unknown.
         """
         for i in range(len(formats)):
             formats[i] = formats[i].strip().lower()
@@ -122,46 +109,6 @@ class ExportFormat:
                 ExportFormat.H5,
             ]:
                 raise TuneError("Unsupported import/export format: " + formats[i])
-
-
-class _CheckpointDeleter:
-    """Checkpoint deleter callback for a runner."""
-
-    def __init__(self, trial_id, ray_actor):
-        self.trial_id = trial_id
-        self.ray_actor = ray_actor
-
-    def __call__(self, checkpoint: _TrackedCheckpoint):
-        """Requests checkpoint deletion asynchronously.
-
-        Args:
-            checkpoint: Checkpoint to delete.
-        """
-        if not self.ray_actor:
-            return
-
-        if (
-            checkpoint.storage_mode == CheckpointStorage.PERSISTENT
-            and checkpoint.dir_or_data
-        ):
-            checkpoint_path = checkpoint.dir_or_data
-
-            logger.debug(
-                "Trial %s: Deleting checkpoint %s", self.trial_id, checkpoint_path
-            )
-
-            # TODO(ujvl): Batch remote deletes.
-            # We first delete the remote checkpoint. If it is on the same
-            # node as the driver, it will also remove the local copy.
-            ray.get(self.ray_actor.delete_checkpoint.remote(checkpoint_path))
-
-            # Delete local copy, if any exists.
-            if os.path.exists(checkpoint_path):
-                try:
-                    checkpoint_dir = TrainableUtil.find_checkpoint_dir(checkpoint_path)
-                    shutil.rmtree(checkpoint_dir)
-                except FileNotFoundError:
-                    logger.debug("Local checkpoint dir not found during deletion.")
 
 
 class _TrialInfo:
@@ -209,12 +156,12 @@ class _TemporaryTrialState:
     def __init__(self):
         self.location = _Location()
 
-        self.ray_actor = None
+        self.ray_actor: Optional[ray.actor.ActorHandle] = None
 
-        self.saving_to = None
-        self.restoring_from = None
+        self.saving_to: Optional[_FutureTrainingResult] = None
+        self.restoring_from: Optional[_TrainingResult] = None
 
-        self.num_restore_failures = 0
+        self.num_restore_failures: int = 0
 
     def __getstate__(self):
         return {}
@@ -258,7 +205,9 @@ def _noop_logger_creator(config: Dict[str, Any], logdir: str):
 def _get_trainable_kwargs(trial: "Trial") -> Dict[str, Any]:
     trial.init_local_path()
 
-    logger_creator = partial(_noop_logger_creator, logdir=trial.local_path)
+    logger_creator = partial(
+        _noop_logger_creator, logdir=trial.storage.trial_working_directory
+    )
 
     trial_config = copy.deepcopy(trial.config)
     trial_config[TRIAL_INFO] = _TrialInfo(trial)
@@ -266,21 +215,13 @@ def _get_trainable_kwargs(trial: "Trial") -> Dict[str, Any]:
     trial_config[STDOUT_FILE] = stdout_file
     trial_config[STDERR_FILE] = stderr_file
 
+    assert trial.storage.trial_dir_name
+
     kwargs = {
         "config": trial_config,
         "logger_creator": logger_creator,
+        "storage": trial.storage,
     }
-
-    if _use_storage_context():
-        assert trial.storage
-        assert trial.storage.trial_dir_name
-        kwargs["storage"] = trial.storage
-
-    if trial.uses_cloud_checkpointing:
-        # We keep these kwargs separate for backwards compatibility
-        # with trainables that don't provide these keyword arguments
-        kwargs["remote_checkpoint_dir"] = trial.remote_path
-        kwargs["sync_config"] = trial.legacy_sync_config
 
     return kwargs
 
@@ -355,13 +296,10 @@ class Trial:
         config: Optional[Dict] = None,
         trial_id: Optional[str] = None,
         storage: Optional[StorageContext] = None,
-        experiment_path: Optional[str] = None,
-        experiment_dir_name: Optional[str] = None,
         evaluated_params: Optional[Dict] = None,
         experiment_tag: str = "",
         placement_group_factory: Optional[PlacementGroupFactory] = None,
         stopping_criterion: Optional[Dict[str, float]] = None,
-        sync_config: Optional[SyncConfig] = None,
         checkpoint_config: Optional[CheckpointConfig] = None,
         export_formats: Optional[List[str]] = None,
         restore_path: Optional[str] = None,
@@ -371,8 +309,6 @@ class Trial:
         max_failures: int = 0,
         stub: bool = False,
         _setup_default_resource: bool = True,
-        # Deprecated
-        local_dir: Optional[str] = None,
     ):
         """Initialize a new trial.
 
@@ -402,78 +338,6 @@ class Trial:
         # Create a copy, since `init_local_path` updates the context with the
         # generated trial dirname.
         self.storage = copy.copy(storage)
-
-        if _use_storage_context():
-            self._legacy_orig_experiment_path = None
-            self._legacy_orig_experiment_dir_name = None
-            self._legacy_local_experiment_path = None
-            self._legacy_remote_experiment_path = None
-            self._legacy_experiment_dir_name = None
-            self.legacy_sync_config = None
-        else:
-            # Set to pass through on `Trial.reset()`
-            self._legacy_orig_experiment_path = experiment_path
-            self._legacy_orig_experiment_dir_name = experiment_dir_name
-
-            self._legacy_experiment_dir_name = experiment_dir_name
-
-            # Sync config
-            self.legacy_sync_config = sync_config or SyncConfig()
-
-            local_experiment_path, remote_experiment_path = _split_remote_local_path(
-                experiment_path, None
-            )
-
-            # Backwards compatibility for `local_dir`
-            if local_dir:
-                if local_experiment_path:
-                    raise ValueError(
-                        "Only one of `local_dir` or `experiment_path` "
-                        "can be passed to `Trial()`."
-                    )
-                local_experiment_path = local_dir
-
-            # Derive experiment dir name from local path
-            if not experiment_dir_name and local_experiment_path:
-                # Maybe derive experiment dir name from local storage dir
-                experiment_dir_name = Path(local_experiment_path).name
-            elif not experiment_dir_name:
-                experiment_dir_name = DEFAULT_EXPERIMENT_NAME
-
-            # Set default experiment dir name
-            if not local_experiment_path:
-                local_experiment_path = str(
-                    Path(_get_defaults_results_dir()) / experiment_dir_name
-                )
-                os.makedirs(local_experiment_path, exist_ok=True)
-
-            # Set remote experiment path if upload_dir is set
-            if self.legacy_sync_config.upload_dir:
-                if remote_experiment_path:
-                    if not remote_experiment_path.startswith(
-                        self.legacy_sync_config.upload_dir
-                    ):
-                        raise ValueError(
-                            f"Both a `SyncConfig.upload_dir` and an `experiment_path` "
-                            f"pointing to remote storage were passed, but they do not "
-                            f"point to the same location. Got: "
-                            f"`experiment_path={experiment_path}` and "
-                            "`SyncConfig.upload_dir="
-                            f"{self.legacy_sync_config.upload_dir}`. "
-                        )
-                    warnings.warn(
-                        "If `experiment_path` points to a remote storage location, "
-                        "do not set `SyncConfig.upload_dir`. ",
-                        DeprecationWarning,
-                    )
-                else:
-                    remote_experiment_path = str(
-                        URI(self.legacy_sync_config.upload_dir) / experiment_dir_name
-                    )
-
-            # Finally, set properties
-            self._legacy_local_experiment_path = local_experiment_path
-            self._legacy_remote_experiment_path = remote_experiment_path
 
         self.config = config or {}
         # Save a copy of the original unresolved config so that we can swap
@@ -523,21 +387,10 @@ class Trial:
 
         # Checkpoint config
         checkpoint_config = checkpoint_config or CheckpointConfig()
-        if not _use_storage_context():
-            # TODO(justinvyu): Why is this needed?
-            checkpoint_config.checkpoint_score_attribute = (
-                checkpoint_config.checkpoint_score_attribute or TRAINING_ITERATION
-            )
 
-        if _use_storage_context():
-            self.run_metadata.checkpoint_manager = _NewCheckpointManager(
-                checkpoint_config=checkpoint_config
-            )
-        else:
-            self.run_metadata.checkpoint_manager = _CheckpointManager(
-                checkpoint_config=checkpoint_config,
-                delete_fn=_CheckpointDeleter(str(self), self.temporary_state.ray_actor),
-            )
+        self.run_metadata.checkpoint_manager = _CheckpointManager(
+            checkpoint_config=checkpoint_config
+        )
 
         # Restoration fields
         self.restore_path = restore_path
@@ -676,134 +529,29 @@ class Trial:
 
     @property
     def experiment_dir_name(self):
-        if _use_storage_context():
-            return self.storage.experiment_dir_name
-
-        return self._legacy_experiment_dir_name
-
-    @experiment_dir_name.setter
-    def experiment_dir_name(self, name: str):
-        if _use_storage_context():
-            raise RuntimeError("Set storage.experiment_dir_name instead.")
-
-        self._legacy_experiment_dir_name = name
+        return self.storage.experiment_dir_name
 
     @property
     def remote_experiment_path(self) -> str:
-        if _use_storage_context():
-            return self.storage.experiment_fs_path
-
-        return str(self._legacy_remote_experiment_path)
-
-    @remote_experiment_path.setter
-    def remote_experiment_path(self, remote_path: str):
-        if _use_storage_context():
-            raise RuntimeError("Set storage.experiment_dir_name instead.")
-
-        self._legacy_remote_experiment_path = remote_path
+        return self.storage.experiment_fs_path
 
     @property
     def local_experiment_path(self) -> str:
-        if _use_storage_context():
-            return self.storage.experiment_local_path
-
-        return str(self._legacy_local_experiment_path)
-
-    @local_experiment_path.setter
-    def local_experiment_path(self, local_path: str):
-        if _use_storage_context():
-            raise RuntimeError("Set storage.experiment_dir_name instead.")
-
-        relative_checkpoint_dirs = []
-        if self.local_path:
-            # Save the relative paths of persistent trial checkpoints, which are saved
-            # relative to the old `local_dir`/`logdir`
-            for checkpoint in self.get_trial_checkpoints():
-                checkpoint_dir = checkpoint.dir_or_data
-                if not isinstance(checkpoint_dir, str):
-                    logger.warning(
-                        f"No data found in checkpoint for trial {self} and metrics "
-                        f"{checkpoint.metrics} (type: {type(checkpoint_dir)}). "
-                        f"Skipping."
-                    )
-                    continue
-
-                relative_checkpoint_dirs.append(
-                    os.path.relpath(checkpoint_dir, self.local_path)
-                )
-
-        # Update the underlying `_legacy_local_experiment_path`,
-        # which also updates the trial `local_path`
-        self._legacy_local_experiment_path = local_path
-
-        if self.local_path:
-            for checkpoint, relative_checkpoint_dir in zip(
-                self.get_trial_checkpoints(), relative_checkpoint_dirs
-            ):
-                # Reconstruct the checkpoint dir using the (possibly updated)
-                # trial logdir and the relative checkpoint directory.
-                checkpoint.dir_or_data = os.path.join(
-                    self.local_path, relative_checkpoint_dir
-                )
+        return self.storage.experiment_driver_staging_path
 
     @property
     @Deprecated("Replaced by `local_path`")
     def logdir(self) -> Optional[str]:
-        # Deprecate: Raise in 2.5, Remove in 2.6
-        return self.local_path
+        # TODO(justinvyu): [Deprecated] Remove in 2.11.
+        raise DeprecationWarning("Use `local_path` instead of `logdir`.")
 
     @property
     def local_path(self) -> Optional[str]:
-        if _use_storage_context():
-            return self.storage.trial_local_path
-
-        if not self.local_experiment_path or not self.relative_logdir:
-            return None
-        return str(Path(self.local_experiment_path).joinpath(self.relative_logdir))
-
-    @local_path.setter
-    def local_path(self, logdir):
-        if _use_storage_context():
-            raise RuntimeError("Set storage.trial_dir_name instead.")
-
-        relative_logdir = Path(logdir).relative_to(self.local_experiment_path)
-        if ".." in str(relative_logdir):
-            raise ValueError(
-                f"The `local_path` points to a directory outside the trial's "
-                f"`local_experiment_path` ({self.local_experiment_path}), "
-                f"which is unsupported. Use a logdir within the "
-                f"local directory instead. Got: {logdir}"
-            )
-        if log_once("logdir_setter"):
-            logger.warning(
-                "Deprecated. In future versions only the relative logdir "
-                "will be used and calling logdir will raise an error."
-            )
-        self.relative_logdir = relative_logdir
-
-    @property
-    @Deprecated("Replaced by `remote_path`")
-    def remote_checkpoint_dir(self) -> Optional[str]:
-        # Deprecate: Raise in 2.5, Remove in 2.6
-        return self.remote_path
-
-    @property
-    def remote_path(self) -> Optional[str]:
-        # TODO(justinvyu): Remove remote_path. It's just path vs local_path now.
-        if _use_storage_context():
-            return self.path
-
-        if not self._legacy_remote_experiment_path or not self.relative_logdir:
-            return None
-        uri = URI(self._legacy_remote_experiment_path)
-        return str(uri / self.relative_logdir)
+        return self.storage.trial_driver_staging_path
 
     @property
     def path(self) -> Optional[str]:
-        if _use_storage_context():
-            return self.storage.trial_fs_path
-
-        return self.remote_path or self.local_path
+        return self.storage.trial_fs_path
 
     @property
     def has_reported_at_least_once(self) -> bool:
@@ -811,14 +559,7 @@ class Trial:
 
     @property
     def node_ip(self):
-        return self.location.hostname
-
-    @property
-    def sync_on_checkpoint(self):
-        if _use_storage_context():
-            return self.storage.sync_config.sync_on_checkpoint
-
-        return self.legacy_sync_config.sync_on_checkpoint
+        return self.temporary_state.location.hostname
 
     @property
     def checkpoint_at_end(self):
@@ -842,40 +583,17 @@ class Trial:
     @property
     def checkpoint(self) -> Optional[Checkpoint]:
         """Returns the most recent checkpoint if one has been saved."""
-        if _use_storage_context():
-            return (
-                self.latest_checkpoint_result.checkpoint
-                if self.latest_checkpoint_result
-                else None
-            )
-
-        if self.status == Trial.ERROR:
-            checkpoint = (
-                self.run_metadata.checkpoint_manager.newest_persistent_checkpoint
-            )
-        else:
-            checkpoint = self.run_metadata.checkpoint_manager.newest_checkpoint
-        if checkpoint.dir_or_data is None:
-            checkpoint = _TrackedCheckpoint(
-                dir_or_data=self.restore_path,
-                storage_mode=CheckpointStorage.PERSISTENT,
-            )
-        return checkpoint
+        return (
+            self.latest_checkpoint_result.checkpoint
+            if self.latest_checkpoint_result
+            else None
+        )
 
     @classmethod
     def generate_id(cls):
         return str(uuid.uuid4().hex)[:8]
 
-    @property
-    def uses_cloud_checkpointing(self):
-        # TODO(justinvyu): This is entangled in the old restore codepaths.
-        # Remove this once those are gone.
-        if _use_storage_context():
-            return False
-
-        return bool(self.remote_path)
-
-    def reset(self):
+    def reset(self) -> "Trial":
         # If there is `default_resource_request` associated with the trainable,
         # clear `resources` and `placement_group_factory`.
         # This is mainly relevant for RLlib tuning jobs, where we save users
@@ -894,13 +612,10 @@ class Trial:
             self.trainable_name,
             config=self.config,
             trial_id=None,
-            experiment_path=self._legacy_orig_experiment_path,
-            experiment_dir_name=self._legacy_orig_experiment_dir_name,
             evaluated_params=self.evaluated_params,
             experiment_tag=self.experiment_tag,
             placement_group_factory=placement_group_factory,
             stopping_criterion=self.stopping_criterion,
-            sync_config=self.legacy_sync_config,
             checkpoint_config=checkpoint_config,
             export_formats=self.export_formats,
             restore_path=self.restore_path,
@@ -913,8 +628,8 @@ class Trial:
 
     @Deprecated("Replaced by `init_local_path()`")
     def init_logdir(self):
-        # Deprecate: Raise in 2.5, Remove in 2.6
-        self.init_local_path()
+        # TODO(justinvyu): [Deprecated] Remove in 2.11.
+        raise DeprecationWarning("Use `init_local_path` instead of `init_logdir`.")
 
     def init_local_path(self):
         """Init logdir."""
@@ -922,10 +637,7 @@ class Trial:
             self.relative_logdir = _create_unique_logdir_name(
                 str(self.local_experiment_path), self._generate_dirname()
             )
-
-        if _use_storage_context():
             # Populate the storage context with the trial dir name we just generated.
-            assert self.storage
             self.storage.trial_dir_name = self.relative_logdir
 
         assert self.local_path
@@ -948,7 +660,7 @@ class Trial:
         Should only be called when the trial is not running.
 
         Raises:
-            ValueError if trial status is running.
+            ValueError: if trial status is running.
         """
         if self.status is Trial.RUNNING:
             raise ValueError("Cannot update resources while Trial is running.")
@@ -968,10 +680,6 @@ class Trial:
             # property is accessed
             self._default_result_or_future = ray_actor.get_auto_filled_metrics.remote(
                 debug_metrics_only=True
-            )
-        if not _use_storage_context():
-            self.run_metadata.checkpoint_manager.set_delete_fn(
-                _CheckpointDeleter(str(self), ray_actor)
             )
 
     def set_location(self, location):
@@ -994,6 +702,36 @@ class Trial:
         self.experiment_tag = experiment_tag
         self.invalidate_json_state()
 
+    def set_storage(self, new_storage: StorageContext):
+        """Updates the storage context of the trial.
+
+        If the `storage_path` or `experiment_dir_name` has changed, then this setter
+        also updates the paths of all checkpoints tracked by the checkpoint manager.
+        This enables restoration from a checkpoint if the user moves the directory.
+        """
+        original_storage = self.storage
+
+        checkpoint_manager = self.run_metadata.checkpoint_manager
+
+        for checkpoint_result in checkpoint_manager.best_checkpoint_results:
+            checkpoint_result.checkpoint = Checkpoint(
+                path=checkpoint_result.checkpoint.path.replace(
+                    original_storage.trial_fs_path, new_storage.trial_fs_path, 1
+                ),
+                filesystem=new_storage.storage_filesystem,
+            )
+        latest_checkpoint_result = checkpoint_manager.latest_checkpoint_result
+        if latest_checkpoint_result:
+            latest_checkpoint_result.checkpoint = Checkpoint(
+                path=latest_checkpoint_result.checkpoint.path.replace(
+                    original_storage.trial_fs_path, new_storage.trial_fs_path, 1
+                ),
+                filesystem=new_storage.storage_filesystem,
+            )
+
+        self.storage = new_storage
+        self.invalidate_json_state()
+
     @property
     def num_failures(self):
         return self.run_metadata.num_failures
@@ -1006,31 +744,96 @@ class Trial:
     def error_file(self):
         if not self.local_path or not self.run_metadata.error_filename:
             return None
-        return os.path.join(self.local_path, self.run_metadata.error_filename)
+        return Path(self.local_path, self.run_metadata.error_filename).as_posix()
 
     @property
     def pickled_error_file(self):
         if not self.local_path or not self.run_metadata.pickled_error_filename:
             return None
-        return os.path.join(self.local_path, self.run_metadata.pickled_error_filename)
+        return Path(
+            self.local_path, self.run_metadata.pickled_error_filename
+        ).as_posix()
 
-    def handle_error(self, exc: Optional[Union[TuneError, RayTaskError]] = None):
-        if isinstance(exc, _TuneRestoreError):
-            exc = exc.exc
-            if self.temporary_state.num_restore_failures >= int(
-                os.environ.get("TUNE_RESTORE_RETRY_NUM", 0)
-            ):
-                # Restore was unsuccessful, try again without checkpoint.
-                self.clear_checkpoint()
-                self.run_metadata.num_failures += 1
-            else:
-                self.temporary_state.num_restore_failures += 1
+    def get_pickled_error(self) -> Optional[Exception]:
+        """Returns the pickled error object if it exists in storage.
+
+        This is a pickled version of the latest error that the trial encountered.
+        """
+        error_filename = self.run_metadata.pickled_error_filename
+        if error_filename is None:
+            return None
+
+        fs = self.storage.storage_filesystem
+        pickled_error_fs_path = Path(
+            self.storage.trial_fs_path, error_filename
+        ).as_posix()
+
+        if _exists_at_fs_path(fs=fs, fs_path=pickled_error_fs_path):
+            with fs.open_input_stream(pickled_error_fs_path) as f:
+                return cloudpickle.loads(f.readall())
+        return None
+
+    def get_error(self) -> Optional[TuneError]:
+        """Returns the error text file trace as a TuneError object
+        if it exists in storage.
+
+        This is a text trace of the latest error that the trial encountered,
+        which is used in the case that the error is not picklable.
+        """
+        error_filename = self.run_metadata.error_filename
+        if error_filename is None:
+            return None
+
+        fs = self.storage.storage_filesystem
+        txt_error_fs_path = Path(self.storage.trial_fs_path, error_filename).as_posix()
+
+        if _exists_at_fs_path(fs=fs, fs_path=txt_error_fs_path):
+            with fs.open_input_stream(txt_error_fs_path) as f:
+                return f.readall().decode()
+        return None
+
+    def _handle_restore_error(self, exc: Exception):
+        # For Restoration errors, we only increment the restore failure count
+        # if the number of failures exceeds the restore retry limit.
+        if self.temporary_state.num_restore_failures >= int(
+            os.environ.get("TUNE_RESTORE_RETRY_NUM", 0)
+        ):
+            self.run_metadata.num_failures += 1
+        else:
+            self.temporary_state.num_restore_failures += 1
+
+    def _handle_ray_actor_error(self, exc: RayActorError):
+        count_preemption_errors = bool(
+            int(os.environ.get(RAY_TRAIN_COUNT_PREEMPTION_AS_FAILURE, "0"))
+        )
+        if not exc.preempted or count_preemption_errors:
+            # Only count non-preempted actor errors as failures.
+            self.run_metadata.num_failures += 1
+
+    def _handle_ray_task_error(self, exc: RayTaskError):
+        cause = exc.as_instanceof_cause()
+        if isinstance(cause, RayActorError):
+            # Handle the RayActorError directly (ex: Ray Train worker actor errors)
+            return self._handle_ray_actor_error(cause)
+
+        # Increment failures for all user errors (which get raised as RayTaskError)
+        self.run_metadata.num_failures += 1
+
+    def handle_error(
+        self, exc: Optional[Union[TuneError, RayTaskError, RayActorError]] = None
+    ):
+        if self.is_restoring:
+            self._handle_restore_error(exc)
+        elif isinstance(exc, RayActorError):
+            self._handle_ray_actor_error(exc)
+        elif isinstance(exc, RayTaskError):
+            self._handle_ray_task_error(exc)
         else:
             self.run_metadata.num_failures += 1
 
         if self.local_path:
             self.run_metadata.error_filename = EXPR_ERROR_FILE
-            if isinstance(exc, RayTaskError):
+            if isinstance(exc, (RayTaskError, RayActorError)):
                 # Piping through the actual error to result grid.
                 self.run_metadata.pickled_error_filename = EXPR_ERROR_PICKLE_FILE
                 with open(self.pickled_error_file, "wb") as f:
@@ -1049,18 +852,21 @@ class Trial:
         if result.get(DONE):
             return True
 
-        for criteria, stop_value in self.stopping_criterion.items():
-            if criteria not in result:
-                raise TuneError(
-                    "Stopping criteria {} not provided in result dict. Keys "
-                    "are {}.".format(criteria, list(result.keys()))
-                )
-            elif isinstance(criteria, dict):
+        for criterion, stop_value in self.stopping_criterion.items():
+            if isinstance(criterion, dict):
                 raise ValueError(
                     "Stopping criteria is now flattened by default. "
                     "Use forward slashes to nest values `key1/key2/key3`."
                 )
-            elif result[criteria] >= stop_value:
+            elif criterion not in result:
+                if log_once("tune_trial_stop_criterion_not_found"):
+                    logger.warning(
+                        f"Stopping criterion '{criterion}' not found in result dict! "
+                        f"Available keys are {list(result.keys())}. If '{criterion}' is"
+                        " never reported, the run will continue until training is "
+                        "finished."
+                    )
+            elif result[criterion] >= stop_value:
                 return True
         return False
 
@@ -1074,49 +880,27 @@ class Trial:
             and result.get(TRAINING_ITERATION, 0) % self.checkpoint_freq == 0
         )
 
-    def has_checkpoint(self):
-        if _use_storage_context():
-            return self.checkpoint is not None
-        return self.checkpoint.dir_or_data is not None
+    def has_checkpoint(self) -> bool:
+        return self.checkpoint is not None
 
-    def clear_checkpoint(self):
-        if _use_storage_context():
-            if self.latest_checkpoint_result:
-                self.latest_checkpoint_result.checkpoint = None
-            self.temporary_state.restoring_from = None
-            self.run_metadata.invalidate_cache()
-            return
-
-        self.checkpoint.dir_or_data = None
-        self.temporary_state.restoring_from = None
-        self.run_metadata.invalidate_cache()
-
-    def on_checkpoint(self, checkpoint: Union[_TrackedCheckpoint, _TrainingResult]):
+    def on_checkpoint(self, checkpoint_result: _TrainingResult):
         """Hook for handling checkpoints taken by the Trainable.
 
         Args:
             checkpoint: Checkpoint taken.
         """
-        if _use_storage_context():
-            checkpoint_result = checkpoint
-            assert isinstance(checkpoint_result, _TrainingResult)
-            self.run_metadata.checkpoint_manager.register_checkpoint(checkpoint_result)
-            # Increment the checkpoint index to keep the checkpoint index in sync.
-            # This index will get restored when the trial is restored and will
-            # be passed to the Trainable as the starting checkpoint index.
-            self.storage.current_checkpoint_index += 1
-        else:
-            self.run_metadata.checkpoint_manager.on_checkpoint(checkpoint)
+        self.run_metadata.checkpoint_manager.register_checkpoint(checkpoint_result)
+        # Update the checkpoint index to keep the checkpoint index in sync.
+        # This index will get restored when the trial is restored and will
+        # be passed to the Trainable as the starting checkpoint index.
+        self.storage._update_checkpoint_index(checkpoint_result.metrics)
+
         self.invalidate_json_state()
         self.run_metadata.invalidate_cache()
 
     def on_restore(self):
         """Handles restoration completion."""
         assert self.is_restoring
-
-        if _use_storage_context():
-            assert isinstance(self.temporary_state.restoring_from, _TrainingResult)
-
         self.run_metadata.last_result = self.temporary_state.restoring_from.metrics
         self.run_metadata.last_result.setdefault("config", self.config)
         self.temporary_state.restoring_from = None
@@ -1125,19 +909,17 @@ class Trial:
     def should_recover(self):
         """Returns whether the trial qualifies for retrying.
 
-        This is if the trial has not failed more than max_failures. Note this
-        may return true even when there is no checkpoint, either because
+        `num_failures` should represent the number of times the trial has
+        failed *up to the moment this method is called.* If we've failed
+        5 times and `max_failures=5`, then we should recover, since
+        we only pass the limit on the 6th failure.
+
+        Note this may return true even when there is no checkpoint, either because
         `self.checkpoint_freq` is `0` or because the trial failed before
         a checkpoint has been made.
         """
         return (
-            self.run_metadata.num_failures < self.max_failures
-            or self.max_failures < 0
-            or (
-                self.run_metadata.num_failures == self.max_failures
-                and self.temporary_state.num_restore_failures
-                < int(os.environ.get("TUNE_RESTORE_RETRY_NUM", 0))
-            )
+            self.run_metadata.num_failures <= self.max_failures or self.max_failures < 0
         )
 
     def update_last_result(self, result):
@@ -1162,9 +944,6 @@ class Trial:
         if self.stub:
             return None
         return get_trainable_cls(self.trainable_name)
-
-    def get_trial_checkpoints(self) -> List[_TrackedCheckpoint]:
-        return self.run_metadata.checkpoint_manager.best_checkpoints()
 
     def is_finished(self):
         return self.status in [Trial.ERROR, Trial.TERMINATED]
@@ -1247,13 +1026,13 @@ class Trial:
     def from_directory(
         cls, path: Union[str, os.PathLike], stub: bool = False
     ) -> "Trial":
-        metadata_path = os.path.join(path, TRIAL_STATE_FILENAME)
-        if not os.path.exists(metadata_path):
+        metadata_path = Path(path, TRIAL_STATE_FILENAME)
+        if not metadata_path.exists():
             raise FileNotFoundError(
                 f"Can't restore trial from path: File `{metadata_path}` not found."
             )
 
-        json_state = Path(metadata_path).read_text()
+        json_state = metadata_path.read_text()
         return cls.from_json_state(json_state, stub=stub)
 
     def __getstate__(self):

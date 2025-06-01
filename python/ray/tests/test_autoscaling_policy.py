@@ -3,6 +3,7 @@ import copy
 import logging
 import yaml
 import tempfile
+import sys
 from typing import Dict, Callable, List
 import shutil
 from queue import PriorityQueue
@@ -372,7 +373,7 @@ class Simulator:
                 raylet_id=node.raylet_id,
                 static_resources=node.total_resources,
                 dynamic_resources=node.available_resources,
-                resource_load={},
+                node_idle_duration_s=0,
                 waiting_bundles=waiting_bundles,
                 infeasible_bundles=infeasible_bundles,
                 pending_placement_groups=placement_groups,
@@ -619,10 +620,4 @@ class AutoscalingPolicyTest(unittest.TestCase):
 
 
 if __name__ == "__main__":
-    import os
-    import sys
-
-    if os.environ.get("PARALLEL_CI"):
-        sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))
-    else:
-        sys.exit(pytest.main(["-sv", __file__]))
+    sys.exit(pytest.main(["-sv", __file__]))

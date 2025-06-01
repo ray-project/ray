@@ -2,14 +2,14 @@
 
 | Template Specification | Description |
 | ---------------------- | ----------- |
-| Summary | This app provides users a one click production option for serving a pre-trained Stable Diffusion model from HuggingFace.  It leverages [Ray Serve](https://docs.ray.io/en/latest/serve/index.html) to deploy locally and built in IDE integration on an Anyscale Workspace to iterate and add additional logic to the application. You can then use a simple CLI to deploy to production with [Anyscale Services](https://docs.anyscale.com/productionize/services/get-started). |
+| Summary | This app provides users a one click production option for serving a pre-trained Stable Diffusion model from Hugging Face.  It leverages [Ray Serve](https://docs.ray.io/en/latest/serve/index.html) to deploy locally and the built-in IDE integration on an Anyscale Workspace so you can iterate and add additional logic to the app. You can then use a simple CLI to deploy to production with [Anyscale Services](https://docs.anyscale.com/productionize/services/get-started?utm_source=ray_docs&utm_medium=docs&utm_campaign=stable_diffusion). |
 | Time to Run | Around 2 minutes to setup the models and generate your first image(s). Less than 10 seconds for every subsequent round of image generation (depending on the image size). |
-| Minimum Compute Requirements | At least 1 GPU node. The default is 4 nodes, each with 1 NVIDIA T4 GPU. |
-| Cluster Environment | This template uses a docker image built on top of the latest Anyscale-provided Ray image using Python 3.9: [`anyscale/ray:latest-py39-cu118`](https://docs.anyscale.com/reference/base-images/overview). See the appendix below for more details. |
+| Minimum Compute Requirements | At least 1 GPU node with 1 NVIDIA A10 GPU. |
+| Cluster Environment | This template uses a docker image built on top of the latest Anyscale-provided Ray 2.9 image using Python 3.9: [`anyscale/ray:latest-py39-cu118`](https://docs.anyscale.com/reference/base-images/overview?utm_source=ray_docs&utm_medium=docs&utm_campaign=stable_diffusion). See the appendix below for more details. |
 
 ## Get Started
 
-**When the workspace is up and running, start coding by clicking on the Jupyter or VSCode icon above. Open the `start.ipynb` file and follow the instructions there.**
+**When the workspace is up and running, start coding by clicking on the Jupyter or VS Code icon above. Open the `start.ipynb` file and follow the instructions there.**
 
 By the end, we'll have an application that generates images using stable diffusion for a given prompt!
 
@@ -67,7 +67,7 @@ You can call the service programmatically (see the instruction from top right co
 
 #### Option 1: Build a new cluster environment on Anyscale
 
-You'll find a `cluster_env.yaml` file in the working directory of the template. Feel free to modify this to include more requirements, then follow [this guide](https://docs.anyscale.com/configure/dependency-management/cluster-environments#creating-a-cluster-environment) use the `anyscale` CLI to create a new cluster environment.
+Find a `cluster_env.yaml` file in the working directory of the template. Feel free to modify this YAML to include more requirements, then follow [this guide](https://docs.anyscale.com/configure/dependency-management/cluster-environments#creating-a-cluster-environment?utm_source=ray_docs&utm_medium=docs&utm_campaign=stable_diffusion) to create a new cluster environment with the `anyscale` CLI .
 
 Finally, update your workspace's cluster environment to this new one after it's done building.
 

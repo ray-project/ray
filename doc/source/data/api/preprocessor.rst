@@ -12,6 +12,7 @@ Constructor
 ~~~~~~~~~~~
 
 .. autosummary::
+    :nosignatures:
     :toctree: doc/
 
     ~preprocessor.Preprocessor
@@ -20,28 +21,32 @@ Fit/Transform APIs
 ~~~~~~~~~~~~~~~~~~
 
 .. autosummary::
+    :nosignatures:
     :toctree: doc/
 
     ~preprocessor.Preprocessor.fit
     ~preprocessor.Preprocessor.fit_transform
     ~preprocessor.Preprocessor.transform
     ~preprocessor.Preprocessor.transform_batch
-    ~preprocessor.Preprocessor.transform_stats
+    ~preprocessor.PreprocessorNotFittedException
 
 
 Generic Preprocessors
 ---------------------
 
 .. autosummary::
+    :nosignatures:
     :toctree: doc/
 
     ~preprocessors.Concatenator
     ~preprocessors.SimpleImputer
+    ~preprocessors.Chain
 
 Categorical Encoders
 --------------------
 
 .. autosummary::
+    :nosignatures:
     :toctree: doc/
 
     ~preprocessors.Categorizer
@@ -54,6 +59,7 @@ Feature Scalers
 ---------------
 
 .. autosummary::
+    :nosignatures:
     :toctree: doc/
 
     ~preprocessors.MaxAbsScaler
@@ -67,7 +73,28 @@ K-Bins Discretizers
 -------------------
 
 .. autosummary::
+    :nosignatures:
     :toctree: doc/
 
     ~preprocessors.CustomKBinsDiscretizer
     ~preprocessors.UniformKBinsDiscretizer
+
+Feature Hashers and Vectorizers
+-------------------------------
+
+.. autosummary::
+    :nosignatures:
+    :toctree: doc/
+
+    ~preprocessors.FeatureHasher
+    ~preprocessors.CountVectorizer
+    ~preprocessors.HashingVectorizer
+
+Specialized Preprocessors
+-------------------------
+
+.. autosummary::
+    :nosignatures:
+    :toctree: doc/
+
+    ~preprocessors.TorchVisionPreprocessor

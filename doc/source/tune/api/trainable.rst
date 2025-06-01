@@ -4,10 +4,10 @@
     API does not really have a signature to just describe.
 .. TODO: Reusing actors and advanced resources allocation seem ill-placed.
 
-Training in Tune (tune.Trainable, session.report)
+Training in Tune (tune.Trainable, tune.report)
 =================================================
 
-Training can be done with either a **Function API** (:ref:`session.report <tune-function-docstring>`) or
+Training can be done with either a **Function API** (:func:`tune.report() <ray.tune.report>`) or
 **Class API** (:ref:`tune.Trainable <tune-trainable-docstring>`).
 
 For the sake of example, let's maximize this objective function:
@@ -28,14 +28,14 @@ into a Ray actor process and runs in parallel.
 The ``config`` argument in the function is a dictionary populated automatically by Ray Tune and corresponding to
 the hyperparameters selected for the trial from the :ref:`search space <tune-key-concepts-search-spaces>`.
 
-With the Function API, you can report intermediate metrics by simply calling ``session.report`` within the function.
+With the Function API, you can report intermediate metrics by simply calling :func:`tune.report() <ray.tune.report>` within the function.
 
 .. literalinclude:: /tune/doc_code/trainable.py
     :language: python
     :start-after: __function_api_report_intermediate_metrics_start__
     :end-before: __function_api_report_intermediate_metrics_end__
 
-.. tip:: Do not use ``session.report`` within a ``Trainable`` class.
+.. tip:: Do not use :func:`tune.report() <ray.tune.report>` within a ``Trainable`` class.
 
 In the previous example, we reported on every step, but this metric reporting frequency
 is configurable. For example, we could also report only a single time at the end with the final score:
@@ -62,7 +62,7 @@ See how to configure checkpointing for a function trainable :ref:`here <tune-fun
 Class Trainable API
 --------------------------
 
-.. caution:: Do not use ``session.report`` within a ``Trainable`` class.
+.. caution:: Do not use :func:`tune.report() <ray.tune.report>` within a ``Trainable`` class.
 
 The Trainable **class API** will require users to subclass ``ray.tune.Trainable``. Here's a naive example of this API:
 
@@ -107,27 +107,68 @@ It is up to the user to correctly update the hyperparameters of your trainable.
 
 .. code-block:: python
 
-    class PytorchTrainble(tune.Trainable):
-        """Train a Pytorch ConvNet."""
+    from time import sleep
+    import ray
+    from ray import tune
+    from ray.tune.tuner import Tuner
 
+
+    def expensive_setup():
+        print("EXPENSIVE SETUP")
+        sleep(1)
+
+
+    class QuadraticTrainable(tune.Trainable):
         def setup(self, config):
-            self.train_loader, self.test_loader = get_data_loaders()
-            self.model = ConvNet()
-            self.optimizer = optim.SGD(
-                self.model.parameters(),
-                lr=config.get("lr", 0.01),
-                momentum=config.get("momentum", 0.9))
+            self.config = config
+            expensive_setup()  # use reuse_actors=True to only run this once
+            self.max_steps = 5
+            self.step_count = 0
+
+        def step(self):
+            # Extract hyperparameters from the config
+            h1 = self.config["hparam1"]
+            h2 = self.config["hparam2"]
+
+            # Compute a simple quadratic objective where the optimum is at hparam1=3 and hparam2=5
+            loss = (h1 - 3) ** 2 + (h2 - 5) ** 2
+
+            metrics = {"loss": loss}
+
+            self.step_count += 1
+            if self.step_count > self.max_steps:
+                metrics["done"] = True
+
+            # Return the computed loss as the metric
+            return metrics
 
         def reset_config(self, new_config):
-            for param_group in self.optimizer.param_groups:
-                if "lr" in new_config:
-                    param_group["lr"] = new_config["lr"]
-                if "momentum" in new_config:
-                    param_group["momentum"] = new_config["momentum"]
-
-            self.model = ConvNet()
+            # Update the configuration for a new trial while reusing the actor
             self.config = new_config
             return True
+
+
+    ray.init()
+
+
+    tuner_with_reuse = Tuner(
+        QuadraticTrainable,
+        param_space={
+            "hparam1": tune.uniform(-10, 10),
+            "hparam2": tune.uniform(-10, 10),
+        },
+        tune_config=tune.TuneConfig(
+            num_samples=10,
+            max_concurrent_trials=1,
+            reuse_actors=True,  # Enable actor reuse and avoid expensive setup
+        ),
+        run_config=ray.tune.RunConfig(
+            verbose=0,
+            checkpoint_config=ray.tune.CheckpointConfig(checkpoint_at_end=False),
+        ),
+    )
+    tuner_with_reuse.fit()
+
 
 
 Comparing Tune's Function API and Class API
@@ -138,10 +179,10 @@ Here are a few key concepts and what they look like for the Function and Class A
 ======================= =============================================== ==============================================
 Concept                 Function API                                    Class API
 ======================= =============================================== ==============================================
-Training Iteration      Increments on each `session.report` call        Increments on each `Trainable.step` call
-Report  metrics         `session.report(metrics)`                       Return metrics from `Trainable.step`
-Saving a checkpoint     `session.report(..., checkpoint=checkpoint)`    `Trainable.save_checkpoint`
-Loading a checkpoint    `session.get_checkpoint()`                      `Trainable.load_checkpoint`
+Training Iteration      Increments on each `tune.report` call           Increments on each `Trainable.step` call
+Report  metrics         `tune.report(metrics)`                          Return metrics from `Trainable.step`
+Saving a checkpoint     `tune.report(..., checkpoint=checkpoint)`       `Trainable.save_checkpoint`
+Loading a checkpoint    `tune.get_checkpoint()`                         `Trainable.load_checkpoint`
 Accessing config        Passed as an argument `def train_func(config):` Passed through `Trainable.setup`
 ======================= =============================================== ==============================================
 
@@ -166,7 +207,7 @@ then you should use :func:`tune.with_resources <ray.tune.with_resources>` like t
             {"GPU": 1},
             {"GPU": 1}
         ])),
-        run_config=air.RunConfig(name="my_trainable")
+        run_config=RunConfig(name="my_trainable")
     )
 
 The ``Trainable`` also provides the ``default_resource_requests`` interface to automatically
@@ -174,22 +215,31 @@ declare the resources per trial based on the given configuration.
 
 It is also possible to specify memory (``"memory"``, in bytes) and custom resource requirements.
 
-
-.. _tune-function-docstring:
-
-session (Function API)
-----------------------
-
 .. currentmodule:: ray
 
-.. autosummary::
+Function API
+------------
+For reporting results and checkpoints with the function API,
+see the :ref:`Ray Train utilities <train-loop-api>` documentation.
 
-    air.session.report
-    air.session.get_checkpoint
-    air.session.get_trial_name
-    air.session.get_trial_id
-    air.session.get_trial_resources
-    air.session.get_trial_dir
+**Classes**
+
+.. autosummary::
+    :nosignatures:
+    :toctree: doc/
+
+    ~tune.Checkpoint
+    ~tune.TuneContext
+
+**Functions**
+
+.. autosummary::
+    :nosignatures:
+    :toctree: doc/
+
+    ~tune.get_checkpoint
+    ~tune.get_context
+    ~tune.report
 
 .. _tune-trainable-docstring:
 
@@ -200,6 +250,7 @@ Constructor
 ~~~~~~~~~~~
 
 .. autosummary::
+    :nosignatures:
     :toctree: doc/
 
     ~tune.Trainable
@@ -209,6 +260,7 @@ Trainable Methods to Implement
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 .. autosummary::
+    :nosignatures:
     :toctree: doc/
 
     ~tune.Trainable.setup
@@ -229,6 +281,7 @@ Tune Data Ingestion Utilities
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 .. autosummary::
+    :nosignatures:
     :toctree: doc/
 
     tune.with_parameters
@@ -238,6 +291,7 @@ Tune Resource Assignment Utilities
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 .. autosummary::
+    :nosignatures:
     :toctree: doc/
 
     tune.with_resources
@@ -249,7 +303,9 @@ Tune Trainable Debugging Utilities
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 .. autosummary::
+    :nosignatures:
     :toctree: doc/
 
     tune.utils.diagnose_serialization
     tune.utils.validate_save_restore
+    tune.utils.util.validate_warmstart

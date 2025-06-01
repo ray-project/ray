@@ -1,15 +1,10 @@
-from typing import TYPE_CHECKING, Any, Callable, Dict, Optional, Union
+from typing import Any, Callable, Dict, Optional, Union
 
-from ray.air.checkpoint import Checkpoint
-from ray.air.config import RunConfig, ScalingConfig
-from ray.train import DataConfig
+from ray.train import Checkpoint, DataConfig, RunConfig, ScalingConfig
 from ray.train.data_parallel_trainer import DataParallelTrainer
 from ray.train.torch.config import TorchConfig
 from ray.train.trainer import GenDataset
 from ray.util import PublicAPI
-
-if TYPE_CHECKING:
-    from ray.data.preprocessor import Preprocessor
 
 
 @PublicAPI(stability="stable")
@@ -25,7 +20,11 @@ class TorchTrainer(DataParallelTrainer):
     4. Runs the input ``train_loop_per_worker(train_loop_config)``
        on all workers.
 
-    For more details, see the :ref:`PyTorch User Guide <train-pytorch>`.
+    For more details, see:
+
+    * :ref:`PyTorch Guide <train-pytorch>`
+    * :ref:`PyTorch Lightning Guide <train-pytorch-lightning>`
+    * :ref:`Hugging Face Transformers Guide <train-pytorch-transformers>`
 
     Example:
 
@@ -147,16 +146,18 @@ class TorchTrainer(DataParallelTrainer):
             :ref:`Ray Train Loop utilities <train-loop-api>`.
         train_loop_config: A configuration ``Dict`` to pass in as an argument to
             ``train_loop_per_worker``.
-            This is typically used for specifying hyperparameters.
+            This is typically used for specifying hyperparameters. Passing large
+            datasets via `train_loop_config` is not recommended and may introduce
+            large overhead and unknown issues with serialization and deserialization.
         torch_config: The configuration for setting up the PyTorch Distributed backend.
             If set to None, a default configuration will be used in which
             GPU training uses NCCL and CPU training uses Gloo.
         scaling_config: The configuration for how to scale data parallel training.
             ``num_workers`` determines how many Python processes are used for training,
             and ``use_gpu`` determines whether or not each process should use GPUs.
-            See :class:`~ray.air.ScalingConfig` for more info.
+            See :class:`~ray.train.ScalingConfig` for more info.
         run_config: The configuration for the execution of the training run.
-            See :class:`~ray.air.RunConfig` for more info.
+            See :class:`~ray.train.RunConfig` for more info.
         datasets: The Ray Datasets to ingest for training.
             Datasets are keyed by name (``{name: dataset}``).
             Each dataset can be accessed from within the ``train_loop_per_worker``
@@ -186,8 +187,6 @@ class TorchTrainer(DataParallelTrainer):
         dataset_config: Optional[DataConfig] = None,
         metadata: Optional[Dict[str, Any]] = None,
         resume_from_checkpoint: Optional[Checkpoint] = None,
-        # Deprecated.
-        preprocessor: Optional["Preprocessor"] = None,
     ):
         if not torch_config:
             torch_config = TorchConfig()
@@ -200,7 +199,6 @@ class TorchTrainer(DataParallelTrainer):
             dataset_config=dataset_config,
             run_config=run_config,
             datasets=datasets,
-            preprocessor=preprocessor,
             resume_from_checkpoint=resume_from_checkpoint,
             metadata=metadata,
         )

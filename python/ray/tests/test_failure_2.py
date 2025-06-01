@@ -99,6 +99,7 @@ def test_warning_for_too_many_nested_tasks(shutdown_only):
     [g.remote(remote_waits, nested_waits) for _ in range(num_root_tasks)]
 
     errors = get_error_message(p, 1, ray_constants.WORKER_POOL_LARGE_ERROR)
+
     assert len(errors) == 1
     assert errors[0]["type"] == ray_constants.WORKER_POOL_LARGE_ERROR
     p.close()
@@ -417,9 +418,4 @@ time.sleep(60)
 
 
 if __name__ == "__main__":
-    import pytest
-
-    if os.environ.get("PARALLEL_CI"):
-        sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))
-    else:
-        sys.exit(pytest.main(["-sv", __file__]))
+    sys.exit(pytest.main(["-sv", __file__]))

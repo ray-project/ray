@@ -128,7 +128,7 @@ def rsync(
     source: Optional[str],
     target: Optional[str],
     down: bool,
-    ip_address: str = None,
+    ip_address: Optional[str] = None,
     use_internal_ip: bool = False,
     no_config_cache: bool = False,
     should_bootstrap: bool = True
@@ -149,7 +149,7 @@ def rsync(
         should_bootstrap: whether to bootstrap cluster config before syncing
 
     Raises:
-        RuntimeError if the cluster head node is not found.
+        RuntimeError: If the cluster head node is not found.
     """
     with _as_config_file(cluster_config) as config_file:
         return commands.rsync(
@@ -178,7 +178,7 @@ def get_head_node_ip(cluster_config: Union[dict, str]) -> str:
         The ip address of the cluster head node.
 
     Raises:
-        RuntimeError if the cluster is not found.
+        RuntimeError: If the cluster is not found.
     """
     with _as_config_file(cluster_config) as config_file:
         return commands.get_head_node_ip(config_file)
@@ -196,7 +196,7 @@ def get_worker_node_ips(cluster_config: Union[dict, str]) -> List[str]:
         List of worker node ip addresses.
 
     Raises:
-        RuntimeError if the cluster is not found.
+        RuntimeError: If the cluster is not found.
     """
     with _as_config_file(cluster_config) as config_file:
         return commands.get_worker_node_ips(config_file)

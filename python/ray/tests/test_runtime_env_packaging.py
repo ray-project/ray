@@ -14,7 +14,6 @@ import ray
 
 import pytest
 
-from ray._private.gcs_utils import GcsAioClient
 from ray._private.ray_constants import (
     KV_NAMESPACE_PACKAGE,
     RAY_RUNTIME_ENV_IGNORE_GITIGNORE,
@@ -29,6 +28,7 @@ from ray._private.runtime_env.packaging import (
     download_and_unpack_package,
     get_local_dir_from_uri,
     get_top_level_dir_from_compressed_package,
+    get_uri_for_file,
     get_uri_for_directory,
     get_uri_for_package,
     is_whl_uri,
@@ -56,11 +56,19 @@ ARCHIVE_NAME = "archive.zip"
 # If you find that confusing, take it up with @jiaodong...
 HTTPS_PACKAGE_URI = "https://github.com/shrekris-anyscale/test_module/archive/HEAD.zip"
 S3_PACKAGE_URI = "s3://runtime-env-test/test_runtime_env.zip"
-GS_PACKAGE_URI = "gs://public-runtime-env-test/test_module.zip"
+S3_WHL_PACKAGE_URI = "s3://runtime-env-test/test_module-0.0.1-py3-none-any.whl"
 
 
 def random_string(size: int = 10):
     return "".join(random.choice(string.ascii_uppercase) for _ in range(size))
+
+
+@pytest.fixture
+def random_file(tmp_path) -> Path:
+    p = tmp_path / (random_string(10) + ".py")
+    with p.open("w") as f:
+        f.write(random_string(100))
+    yield p
 
 
 @pytest.fixture
@@ -132,6 +140,38 @@ def random_zip_file_with_top_level_dir(tmp_path):
         TOP_LEVEL_DIR_NAME,
     )
     yield str(path / ARCHIVE_NAME)
+
+
+class TestGetURIForFile:
+    def test_invalid_file(self):
+        with pytest.raises(ValueError):
+            get_uri_for_file("/does/not/exist.py")
+
+        with pytest.raises(ValueError):
+            get_uri_for_file("does/not/exist.py")
+
+    def test_determinism(self, random_file):
+        # Check that it's deterministic for same data.
+        uris = {get_uri_for_file(str(random_file)) for _ in range(10)}
+        assert len(uris) == 1
+
+        # Append one line, should be different now.
+        with open(random_file, "a") as f:
+            f.write(random_string())
+
+        assert {get_uri_for_file(str(random_file))} != uris
+
+    def test_relative_paths(self, random_file):
+        # Check that relative or absolute paths result in the same URI.
+        p = Path(random_file)
+        relative_uri = get_uri_for_file(os.path.relpath(p))
+        absolute_uri = get_uri_for_file(str(p.resolve()))
+        assert relative_uri == absolute_uri
+
+    def test_uri_hash_length(self, random_file):
+        uri = get_uri_for_file(str(random_file))
+        hex_hash = uri.split("_")[-1][: -len(".zip")]
+        assert len(hex_hash) == 16
 
 
 class TestGetURIForDirectory:
@@ -450,6 +490,11 @@ class TestParseUri:
             ("s3://bucket/file.zip", Protocol.S3, "s3_bucket_file.zip"),
             ("https://test.com/file.zip", Protocol.HTTPS, "https_test_com_file.zip"),
             ("gs://bucket/file.zip", Protocol.GS, "gs_bucket_file.zip"),
+            (
+                "https://test.com/package-0.0.1-py2.py3-none-any.whl?param=value",
+                Protocol.HTTPS,
+                "package-0.0.1-py2.py3-none-any.whl",
+            ),
         ],
     )
     def test_parsing_remote_basic(self, parsing_tuple):
@@ -507,9 +552,45 @@ class TestParseUri:
                 Protocol.FILE,
                 "file__fake_2022-10-21T13_11_35_00_00_package.zip",
             ),
+            (
+                "file:///fake/2022-10-21T13:11:35+00:00/(package).zip",
+                Protocol.FILE,
+                "file__fake_2022-10-21T13_11_35_00_00__package_.zip",
+            ),
         ],
     )
     def test_parse_uris_with_disallowed_chars(self, parsing_tuple):
+        raw_uri, protocol, parsed_uri = parsing_tuple
+        parsed_protocol, parsed_package_name = parse_uri(raw_uri)
+        assert parsed_protocol == protocol
+        assert parsed_package_name == parsed_uri
+
+    @pytest.mark.parametrize(
+        "parsing_tuple",
+        [
+            (
+                "https://username:PAT@github.com/repo/archive:2/commit_hash.whl",
+                Protocol.HTTPS,
+                "commit_hash.whl",
+            ),
+            (
+                "gs://fake/2022-10-21T13:11:35+00:00/package.whl",
+                Protocol.GS,
+                "package.whl",
+            ),
+            (
+                "s3://fake/2022-10-21T13:11:35+00:00/package.whl",
+                Protocol.S3,
+                "package.whl",
+            ),
+            (
+                "file:///fake/2022-10-21T13:11:35+00:00/package.whl",
+                Protocol.FILE,
+                "package.whl",
+            ),
+        ],
+    )
+    def test_parse_remote_whl_uris(self, parsing_tuple):
         raw_uri, protocol, parsed_uri = parsing_tuple
         parsed_protocol, parsed_package_name = parse_uri(raw_uri)
         assert parsed_protocol == protocol
@@ -547,15 +628,13 @@ class TestDownloadAndUnpackPackage:
                 await download_and_unpack_package(
                     pkg_uri=pkg_uri,
                     base_directory=temp_dir,
-                    gcs_aio_client=None,
+                    gcs_client=None,
                 )
 
     async def test_download_and_unpack_package_with_gcs_uri(self, ray_start_regular):
         # Test downloading and unpacking a GCS package with a GCS client.
 
-        gcs_aio_client = GcsAioClient(
-            address=ray._private.worker.global_worker.gcs_client.address
-        )
+        gcs_client = ray._private.worker.global_worker.gcs_client
 
         with tempfile.TemporaryDirectory() as temp_dir:
             zipfile_path = Path(temp_dir) / "test-zip-file.zip"
@@ -571,7 +650,7 @@ class TestDownloadAndUnpackPackage:
             local_dir = await download_and_unpack_package(
                 pkg_uri=pkg_uri,
                 base_directory=temp_dir,
-                gcs_aio_client=gcs_aio_client,
+                gcs_client=gcs_client,
             )
 
             # Check that the file was extracted to the destination directory
@@ -593,6 +672,13 @@ class TestDownloadAndUnpackPackage:
                 pkg_uri=S3_PACKAGE_URI, base_directory=temp_dest_dir
             )
             assert (Path(local_dir) / "test_module").exists()
+
+        # test download whl from remote S3
+        with tempfile.TemporaryDirectory() as temp_dest_dir:
+            wheel_uri = await download_and_unpack_package(
+                pkg_uri=S3_WHL_PACKAGE_URI, base_directory=temp_dest_dir
+            )
+            assert (Path(local_dir) / wheel_uri).exists()
 
     async def test_download_and_unpack_package_with_file_uri(self):
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -763,7 +849,4 @@ def test_get_local_dir_from_uri():
 
 
 if __name__ == "__main__":
-    if os.environ.get("PARALLEL_CI"):
-        sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))
-    else:
-        sys.exit(pytest.main(["-sv", __file__]))
+    sys.exit(pytest.main(["-sv", __file__]))

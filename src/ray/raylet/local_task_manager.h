@@ -14,6 +14,13 @@
 
 #pragma once
 
+#include <deque>
+#include <list>
+#include <memory>
+#include <string>
+#include <utility>
+#include <vector>
+
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "ray/common/ray_object.h"
@@ -61,8 +68,6 @@ class LocalTaskManager : public ILocalTaskManager {
   /// \param cluster_resource_scheduler: The resource scheduler which contains
   ///                                    the state of the cluster.
   /// \param task_dependency_manager_ Used to fetch task's dependencies.
-  /// \param is_owner_alive: A callback which returns if the owner process is alive
-  ///                        (according to our ownership model).
   /// \param get_node_info: Function that returns the node info for a node.
   /// \param worker_pool: A reference to the worker pool.
   /// \param leased_workers: A reference to the leased workers map.
@@ -76,9 +81,8 @@ class LocalTaskManager : public ILocalTaskManager {
   ///                                   cap. If it's a large number, the cap is hard.
   LocalTaskManager(
       const NodeID &self_node_id,
-      std::shared_ptr<ClusterResourceScheduler> cluster_resource_scheduler,
+      ClusterResourceScheduler &cluster_resource_scheduler,
       TaskDependencyManagerInterface &task_dependency_manager,
-      std::function<bool(const WorkerID &, const NodeID &)> is_owner_alive,
       internal::NodeInfoGetter get_node_info,
       WorkerPoolInterface &worker_pool,
       absl::flat_hash_map<WorkerID, std::shared_ptr<WorkerInterface>> &leased_workers,
@@ -87,7 +91,7 @@ class LocalTaskManager : public ILocalTaskManager {
           get_task_arguments,
       size_t max_pinned_task_arguments_bytes,
       std::function<int64_t(void)> get_time_ms =
-          []() { return (int64_t)(absl::GetCurrentTimeNanos() / 1e6); },
+          []() { return static_cast<int64_t>(absl::GetCurrentTimeNanos() / 1e6); },
       int64_t sched_cls_cap_interval_ms =
           RayConfig::instance().worker_cap_initial_backoff_delay_ms());
 
@@ -111,29 +115,24 @@ class LocalTaskManager : public ILocalTaskManager {
   /// \param task: Output parameter.
   void TaskFinished(std::shared_ptr<WorkerInterface> worker, RayTask *task);
 
-  /// Attempt to cancel an already queued task.
+  /// Attempt to cancel all queued tasks that match the predicate.
   ///
-  /// \param task_id: The id of the task to remove.
-  /// \param failure_type: The failure type.
-  ///
-  /// \return True if task was successfully removed. This function will return
-  /// false if the task is already running.
-  bool CancelTask(const TaskID &task_id,
-                  rpc::RequestWorkerLeaseReply::SchedulingFailureType failure_type =
-                      rpc::RequestWorkerLeaseReply::SCHEDULING_CANCELLED_INTENDED,
-                  const std::string &scheduling_failure_message = "") override;
+  /// \param predicate: A function that returns true if a task needs to be cancelled.
+  /// \param failure_type: The reason for cancellation.
+  /// \param scheduling_failure_message: The reason message for cancellation.
+  /// \return True if any task was successfully cancelled.
+  bool CancelTasks(std::function<bool(const std::shared_ptr<internal::Work> &)> predicate,
+                   rpc::RequestWorkerLeaseReply::SchedulingFailureType failure_type,
+                   const std::string &scheduling_failure_message) override;
 
-  /// Return if any tasks are pending resource acquisition.
+  /// Return with an exemplar if any tasks are pending resource acquisition.
   ///
-  /// \param[out] example: An example task that is deadlocking.
-  /// \param[in,out] any_pending: True if there's any pending example.
   /// \param[in,out] num_pending_actor_creation: Number of pending actor creation tasks.
   /// \param[in,out] num_pending_tasks: Number of pending tasks.
-  /// \return True if any progress is any tasks are pending.
-  bool AnyPendingTasksForResourceAcquisition(RayTask *example,
-                                             bool *any_pending,
-                                             int *num_pending_actor_creation,
-                                             int *num_pending_tasks) const override;
+  /// \return An example task that is deadlocking if any tasks are pending resource
+  /// acquisition.
+  const RayTask *AnyPendingTasksForResourceAcquisition(
+      int *num_pending_actor_creation, int *num_pending_tasks) const override;
 
   /// Call once a task finishes (i.e. a worker is returned).
   ///
@@ -147,7 +146,7 @@ class LocalTaskManager : public ILocalTaskManager {
   /// \param worker: The worker who will give up the CPU resources.
   /// \return true if the cpu resources of the specified worker are released successfully,
   /// else false.
-  bool ReleaseCpuResourcesFromUnblockedWorker(std::shared_ptr<WorkerInterface> worker);
+  bool ReleaseCpuResourcesFromBlockedWorker(std::shared_ptr<WorkerInterface> worker);
 
   /// When a task is no longer blocked in a ray.get or ray.wait, the CPU resources that
   /// the worker gave up should be returned to it.
@@ -155,7 +154,7 @@ class LocalTaskManager : public ILocalTaskManager {
   /// \param worker The blocked worker.
   /// \return true if the cpu resources are returned back to the specified worker, else
   /// false.
-  bool ReturnCpuResourcesToBlockedWorker(std::shared_ptr<WorkerInterface> worker);
+  bool ReturnCpuResourcesToUnblockedWorker(std::shared_ptr<WorkerInterface> worker);
 
   /// TODO(Chong-Li): Removing this and maintaining normal task resources by local
   /// resource manager.
@@ -164,9 +163,9 @@ class LocalTaskManager : public ILocalTaskManager {
 
   void SetWorkerBacklog(SchedulingClass scheduling_class,
                         const WorkerID &worker_id,
-                        int64_t backlog_size);
+                        int64_t backlog_size) override;
 
-  void ClearWorkerBacklog(const WorkerID &worker_id);
+  void ClearWorkerBacklog(const WorkerID &worker_id) override;
 
   const absl::flat_hash_map<SchedulingClass, std::deque<std::shared_ptr<internal::Work>>>
       &GetTaskToDispatch() const override {
@@ -202,6 +201,18 @@ class LocalTaskManager : public ILocalTaskManager {
                            bool is_detached_actor,
                            const rpc::Address &owner_address,
                            const std::string &runtime_env_setup_error_message);
+
+  /// Attempt to cancel an already queued task.
+  ///
+  /// \param task_id: The id of the task to remove.
+  /// \param failure_type: The failure type.
+  ///
+  /// \return True if task was successfully removed. This function will return
+  /// false if the task is already running.
+  bool CancelTask(const TaskID &task_id,
+                  rpc::RequestWorkerLeaseReply::SchedulingFailureType failure_type =
+                      rpc::RequestWorkerLeaseReply::SCHEDULING_CANCELLED_INTENDED,
+                  const std::string &scheduling_failure_message = "");
 
   /// Attempts to dispatch all tasks which are ready to run. A task
   /// will be dispatched if it is on `tasks_to_dispatch_` and there are still
@@ -254,9 +265,6 @@ class LocalTaskManager : public ILocalTaskManager {
 
   void Spillback(const NodeID &spillback_to, const std::shared_ptr<internal::Work> &work);
 
-  /// Sum up the backlog size across all workers for a given scheduling class.
-  int64_t TotalBacklogSize(SchedulingClass scheduling_class);
-
   // Helper function to pin a task's args immediately before dispatch. This
   // returns false if there are missing args (due to eviction) or if there is
   // not enough memory available to dispatch the task, due to other executing
@@ -270,12 +278,11 @@ class LocalTaskManager : public ILocalTaskManager {
 
  private:
   const NodeID &self_node_id_;
+  const scheduling::NodeID self_scheduling_node_id_;
   /// Responsible for resource tracking/view of the cluster.
-  std::shared_ptr<ClusterResourceScheduler> cluster_resource_scheduler_;
+  ClusterResourceScheduler &cluster_resource_scheduler_;
   /// Class to make task dependencies to be local.
   TaskDependencyManagerInterface &task_dependency_manager_;
-  /// Function to check if the owner is alive on a given node.
-  std::function<bool(const WorkerID &, const NodeID &)> is_owner_alive_;
   /// Function to get the node information of a given node id.
   internal::NodeInfoGetter get_node_info_;
 
@@ -285,11 +292,13 @@ class LocalTaskManager : public ILocalTaskManager {
   /// class. This information is used to place a cap on the number of running
   /// running tasks per scheduling class.
   struct SchedulingClassInfo {
-    SchedulingClassInfo(int64_t cap)
+    explicit SchedulingClassInfo(int64_t cap)
         : running_tasks(),
           capacity(cap),
           next_update_time(std::numeric_limits<int64_t>::max()) {}
     /// Track the running task ids in this scheduling class.
+    ///
+    /// TODO(hjiang): Store cgroup manager along with task id as the value for map.
     absl::flat_hash_set<TaskID> running_tasks;
     /// The total number of tasks that can run from this scheduling class.
     const uint64_t capacity;
@@ -309,6 +318,7 @@ class LocalTaskManager : public ILocalTaskManager {
   /// All tasks in this map that have dependencies should be registered with
   /// the dependency manager, in case a dependency gets evicted while the task
   /// is still queued.
+  /// Note that if a queue exists, it should be guaranteed to be non-empty.
   absl::flat_hash_map<SchedulingClass, std::deque<std::shared_ptr<internal::Work>>>
       tasks_to_dispatch_;
 
@@ -328,6 +338,7 @@ class LocalTaskManager : public ILocalTaskManager {
   /// in this queue may not match the order in which we initially received the
   /// tasks. This also means that the PullManager may request dependencies for
   /// these tasks in a different order than the waiting task queue.
+  /// Note that if a queue exists, it should be guaranteed to be non-empty.
   std::list<std::shared_ptr<internal::Work>> waiting_task_queue_;
 
   /// An index for the above queue.
@@ -386,7 +397,9 @@ class LocalTaskManager : public ILocalTaskManager {
   friend class SchedulerResourceReporter;
   friend class ClusterTaskManagerTest;
   friend class SchedulerStats;
+  friend class LocalTaskManagerTest;
   FRIEND_TEST(ClusterTaskManagerTest, FeasibleToNonFeasible);
+  FRIEND_TEST(LocalTaskManagerTest, TestTaskDispatchingOrder);
 };
 }  // namespace raylet
 }  // namespace ray

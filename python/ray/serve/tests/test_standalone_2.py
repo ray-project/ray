@@ -2,22 +2,20 @@ import os
 import subprocess
 import sys
 from contextlib import contextmanager
-from tempfile import NamedTemporaryFile
 
 import pytest
 import requests
 
 import ray
-import ray.actor
 import ray._private.state
-from ray.util.state import list_actors
-
+import ray.actor
 from ray import serve
 from ray._private.test_utils import wait_for_condition
 from ray.exceptions import RayActorError
-from ray.serve._private.constants import SERVE_NAMESPACE, SERVE_DEFAULT_APP_NAME
+from ray.serve._private.constants import SERVE_DEFAULT_APP_NAME, SERVE_NAMESPACE
 from ray.serve.context import _get_global_client
 from ray.tests.conftest import call_ray_stop_only  # noqa: F401
+from ray.util.state import list_actors
 
 
 @pytest.fixture
@@ -51,7 +49,7 @@ def start_and_shutdown_ray_cli_function():
 
 def _check_ray_stop():
     try:
-        requests.get("http://localhost:52365/api/ray/version")
+        requests.get("http://localhost:8265/api/ray/version")
         return False
     except Exception:
         return True
@@ -87,12 +85,11 @@ def test_memory_omitted_option(shutdown_ray_and_serve):
     ray.init(num_gpus=3, namespace="serve")
     handle = serve.run(hello.bind())
 
-    assert ray.get(handle.remote()) == "world"
+    assert handle.remote().result() == "world"
 
 
-@pytest.mark.parametrize("detached", [True, False])
 @pytest.mark.parametrize("ray_namespace", ["arbitrary", SERVE_NAMESPACE, None])
-def test_serve_namespace(shutdown_ray_and_serve, detached, ray_namespace):
+def test_serve_namespace(shutdown_ray_and_serve, ray_namespace):
     """Test that Serve starts in SERVE_NAMESPACE regardless of driver namespace."""
 
     with ray.init(namespace=ray_namespace) as ray_context:
@@ -118,8 +115,7 @@ def test_serve_namespace(shutdown_ray_and_serve, detached, ray_namespace):
         assert requests.get("http://localhost:8000/f").text == "got f"
 
 
-@pytest.mark.parametrize("detached", [True, False])
-def test_update_num_replicas(shutdown_ray_and_serve, detached):
+def test_update_num_replicas(shutdown_ray_and_serve):
     """Test updating num_replicas."""
 
     with ray.init() as ray_context:
@@ -154,13 +150,12 @@ def test_update_num_replicas(shutdown_ray_and_serve, detached):
         assert len(updated_actors) == len(actors) - 1
 
 
-@pytest.mark.parametrize("detached", [True, False])
-def test_refresh_controller_after_death(shutdown_ray_and_serve, detached):
+def test_refresh_controller_after_death(shutdown_ray_and_serve):
     """Check if serve.start() refreshes the controller handle if it's dead."""
 
     ray.init(namespace="ray_namespace")
     serve.shutdown()  # Ensure serve isn't running before beginning the test
-    serve.start(detached=detached)
+    serve.start()
 
     old_handle = _get_global_client()._controller
     ray.kill(old_handle, no_restart=True)
@@ -175,7 +170,7 @@ def test_refresh_controller_after_death(shutdown_ray_and_serve, detached):
     wait_for_condition(controller_died, handle=old_handle, timeout=15)
 
     # Call start again to refresh handle
-    serve.start(detached=detached)
+    serve.start()
 
     new_handle = _get_global_client()._controller
     assert new_handle is not old_handle
@@ -209,16 +204,10 @@ def test_controller_deserialization_deployment_def(
     def run_graph():
         """Deploys a Serve application to the controller's Ray cluster."""
         from ray import serve
-        from ray._private.utils import import_attr
-        from ray.serve.api import build
+        from ray._common.utils import import_attr
 
         # Import and build the graph
         graph = import_attr("test_config_files.pizza.serve_dag")
-        app = build(graph, SERVE_DEFAULT_APP_NAME)
-
-        # Override options for each deployment
-        for name in app.deployments:
-            app.deployments[name].set_options(ray_actor_options={"num_cpus": 0.1})
 
         # Run the graph locally on the cluster
         serve.run(graph)
@@ -227,9 +216,7 @@ def test_controller_deserialization_deployment_def(
     ray.init(
         address="auto",
         namespace="serve",
-        runtime_env={
-            "working_dir": os.path.join(os.path.dirname(__file__), "storage_tests")
-        },
+        runtime_env={"working_dir": os.path.join(os.path.dirname(__file__), "common")},
     )
     serve.start()
     serve.context._global_client = None
@@ -340,7 +327,7 @@ def test_controller_recover_and_delete(shutdown_ray_and_serve):
     )
 
 
-def test_serve_stream_logs(start_and_shutdown_ray_cli_function):
+def test_serve_stream_logs(start_and_shutdown_ray_cli_function, tmp_path):
     """Test that serve logs show up across different drivers."""
 
     file1 = """from ray import serve
@@ -357,26 +344,61 @@ class B:
         return "Hello B"
 serve.run(B.bind())"""
 
-    with NamedTemporaryFile() as f1, NamedTemporaryFile() as f2:
-        f1.write(file1.encode("utf-8"))
-        f1.seek(0)
-        # Driver 1 (starts Serve controller)
-        output = subprocess.check_output(["python", f1.name], stderr=subprocess.STDOUT)
-        assert "Connecting to existing Ray cluster" in output.decode("utf-8")
-        assert (
-            "Adding 1 replica to deployment A in application 'default'"
-            in output.decode("utf-8")
-        )
+    f1 = tmp_path / "file1.py"
+    f1.write_text(file1)
+    # Driver 1 (starts Serve controller)
+    output = subprocess.check_output(
+        [sys.executable, str(f1)], stderr=subprocess.STDOUT
+    )
+    assert "Connecting to existing Ray cluster" in output.decode("utf-8")
+    assert "Adding 1 replica to Deployment(name='A'" in output.decode("utf-8")
 
-        f2.write(file2.encode("utf-8"))
-        f2.seek(0)
-        # Driver 2 (reconnects to the same Serve controller)
-        output = subprocess.check_output(["python", f2.name], stderr=subprocess.STDOUT)
-        assert "Connecting to existing Ray cluster" in output.decode("utf-8")
-        assert (
-            "Adding 1 replica to deployment B in application 'default'"
-            in output.decode("utf-8")
-        )
+    f2 = tmp_path / "file2.py"
+    f2.write_text(file2)
+    # Driver 2 (reconnects to the same Serve controller)
+    output = subprocess.check_output(
+        [sys.executable, str(f2)], stderr=subprocess.STDOUT
+    )
+    assert "Connecting to existing Ray cluster" in output.decode("utf-8")
+    assert "Adding 1 replica to Deployment(name='B'" in output.decode("utf-8")
+
+
+def test_checkpoint_deleted_on_serve_shutdown(
+    start_and_shutdown_ray_cli_function, tmp_path
+):
+    """Test the application target state checkpoint is deleted when Serve is shutdown"""
+
+    file1 = """from ray import serve
+@serve.deployment
+class A:
+    def __call__(self):
+        return "Hello A"
+serve.run(A.bind())"""
+
+    file2 = """from ray import serve
+@serve.deployment
+class B:
+    def __call__(self):
+        return "Hello B"
+serve.run(B.bind())"""
+
+    f1 = tmp_path / "file1.py"
+    f1.write_text(file1)
+    output = subprocess.check_output(
+        [sys.executable, str(f1)], stderr=subprocess.STDOUT
+    )
+    print(output.decode("utf-8"))
+    assert "Connecting to existing Ray cluster" in output.decode("utf-8")
+    subprocess.check_output(["serve", "shutdown", "-y"])
+
+    f2 = tmp_path / "file2.py"
+    f2.write_text(file2)
+    output = subprocess.check_output(
+        [sys.executable, str(f2)], stderr=subprocess.STDOUT
+    )
+    print(output.decode("utf-8"))
+    assert "Connecting to existing Ray cluster" in output.decode("utf-8")
+    assert "Recovering target state for application" not in output.decode("utf-8")
 
 
 if __name__ == "__main__":

@@ -1,31 +1,64 @@
+.. include:: /_includes/rllib/we_are_hiring.rst
+
 .. _learner-reference-docs:
+
+LearnerGroup API
+================
+
+.. include:: /_includes/rllib/new_api_stack.rst
+
+Configuring a LearnerGroup and Learner actors
+---------------------------------------------
+
+.. currentmodule:: ray.rllib.algorithms.algorithm_config
+
+.. autosummary::
+    :nosignatures:
+    :toctree: doc/
+
+    AlgorithmConfig.learners
+
+
+Constructing a LearnerGroup
+---------------------------
+
+.. autosummary::
+    :nosignatures:
+    :toctree: doc/
+
+    AlgorithmConfig.build_learner_group
+
+
+.. currentmodule:: ray.rllib.core.learner.learner_group
+
+.. autosummary::
+    :nosignatures:
+    :toctree: doc/
+
+    LearnerGroup
+
+
 
 Learner API
 ===========
 
-Learner specifications and configurations
------------------------------------------
+
+Constructing a Learner
+----------------------
+
+.. currentmodule:: ray.rllib.algorithms.algorithm_config
+
+.. autosummary::
+    :nosignatures:
+    :toctree: doc/
+
+    AlgorithmConfig.build_learner
+
 
 .. currentmodule:: ray.rllib.core.learner.learner
 
 .. autosummary::
-    :toctree: doc/
-
-    FrameworkHyperparameters
-    LearnerHyperparameters
-
-TorchLearner configurations
-+++++++++++++++++++++++++++
-
-.. autosummary::
-    :toctree: doc/
-
-    TorchCompileWhatToCompile
-
-Constructor
------------
-
-.. autosummary::
+    :nosignatures:
     :toctree: doc/
 
     Learner
@@ -33,35 +66,46 @@ Constructor
     Learner._check_is_built
     Learner._make_module
 
-Performing Updates
+
+Implementing a custom RLModule to fit a Learner
+----------------------------------------------------
+
+.. autosummary::
+    :nosignatures:
+    :toctree: doc/
+
+    Learner.rl_module_required_apis
+    Learner.rl_module_is_compatible
+
+
+Performing updates
 ------------------
 
 .. autosummary::
+    :nosignatures:
     :toctree: doc/
 
     Learner.update
-    Learner._update
-    Learner.additional_update
-    Learner.additional_update_for_module
-    Learner._convert_batch_type
+    Learner.before_gradient_based_update
+    Learner.after_gradient_based_update
 
 
-Computing Losses
+Computing losses
 ----------------
 
 .. autosummary::
+    :nosignatures:
     :toctree: doc/
 
-    Learner.compute_loss
+    Learner.compute_losses
     Learner.compute_loss_for_module
-    Learner._is_module_compatible_with_learner
-    Learner._get_tensor_variable
 
 
-Configuring Optimizers
+Configuring optimizers
 ----------------------
 
 .. autosummary::
+    :nosignatures:
     :toctree: doc/
 
     Learner.configure_optimizers_for_module
@@ -74,83 +118,40 @@ Configuring Optimizers
     Learner.filter_param_dict_for_optimizer
     Learner._check_registered_optimizer
     Learner._set_optimizer_lr
-    Learner._get_clip_function
 
 
-Gradient Computation
+Gradient computation
 --------------------
 
 .. autosummary::
+    :nosignatures:
     :toctree: doc/
 
     Learner.compute_gradients
     Learner.postprocess_gradients
     Learner.postprocess_gradients_for_module
     Learner.apply_gradients
+    Learner._get_clip_function
 
-Saving, Loading, Checkpointing, and Restoring States
-----------------------------------------------------
+Saving and restoring
+--------------------
 
 .. autosummary::
+    :nosignatures:
     :toctree: doc/
 
-    Learner.save_state
-    Learner.load_state
-    Learner._save_optimizers
-    Learner._load_optimizers
+    Learner.save_to_path
+    Learner.restore_from_path
+    Learner.from_checkpoint
     Learner.get_state
     Learner.set_state
-    Learner.get_optimizer_state
-    Learner.set_optimizer_state
-    Learner._get_metadata
-    
-Adding and Removing Modules
+
+Adding and removing modules
 ---------------------------
 
 .. autosummary::
+    :nosignatures:
     :toctree: doc/
 
     Learner.add_module
     Learner.remove_module
-
-Managing Results
-----------------
-
-.. autosummary::
-    :toctree: doc/
-
-    Learner.compile_results
-    Learner.register_metric
-    Learner.register_metrics
-    Learner._check_result
-
-
-
-LearnerGroup API
-================
-
-Configuring a LearnerGroup
---------------------------
-
-.. autosummary::
-    :toctree: doc/
-
-    LearnerSpec
-
-.. currentmodule:: ray.rllib.core.learner.learner_group
-    
-.. autosummary::
-    :toctree: doc/
-
-    LearnerGroup
-
-
-
-
-
-
-
-
-
-
-

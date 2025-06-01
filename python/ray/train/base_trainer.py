@@ -4,44 +4,39 @@ import inspect
 import json
 import logging
 import os
-from pathlib import Path
-import tempfile
-from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Type, Union
 import warnings
+from functools import partial
+from pathlib import Path
+from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Type, Union
 
 import pyarrow.fs
 
 import ray
 import ray.cloudpickle as pickle
-from ray.air._internal.config import ensure_only_allowed_dataclass_keys_updated
-from ray.air._internal.remote_storage import (
-    download_from_uri,
-    is_non_local_path_uri,
-    list_at_uri,
-)
+from ray._private.dict import deep_update
+from ray._private.usage import usage_lib
 from ray.air._internal import usage as air_usage
-from ray.air._internal.uri_utils import URI
+from ray.air._internal.config import ensure_only_allowed_dataclass_keys_updated
 from ray.air._internal.usage import AirEntrypoint
 from ray.air.config import RunConfig, ScalingConfig
 from ray.air.result import Result
-from ray.train._internal import session
+from ray.train import Checkpoint
+from ray.train._internal.session import get_session
 from ray.train._internal.storage import (
+    StorageContext,
     _exists_at_fs_path,
-    _use_storage_context,
     get_fs_and_path,
 )
-
-from ray.train import Checkpoint
-from ray.train.constants import TRAIN_DATASET_KEY
-from ray.util import PublicAPI
-from ray.util.annotations import DeveloperAPI
-from ray._private.dict import merge_dicts
-
+from ray.train.constants import (
+    V2_MIGRATION_GUIDE_MESSAGE,
+    _v2_migration_warnings_enabled,
+)
+from ray.train.context import _GET_METADATA_DEPRECATION_MESSAGE
+from ray.train.utils import _log_deprecation_warning
+from ray.util.annotations import Deprecated, DeveloperAPI, PublicAPI
 
 if TYPE_CHECKING:
     from ray.data import Dataset
-    from ray.data.preprocessor import Preprocessor
-
     from ray.tune import Trainable
 
 _TRAINER_PKL = "trainer.pkl"
@@ -60,6 +55,16 @@ PREPROCESSOR_DEPRECATION_MESSAGE = (
     "in using the `metadata` argument of the `Trainer`. "
     "For a full example, see "
     "https://docs.ray.io/en/master/train/user-guides/data-loading-preprocessing.html#preprocessing-structured-data "  # noqa:E501
+)
+
+_TRAINER_RESTORE_DEPRECATION_WARNING = (
+    "The `restore` and `can_restore` APIs are deprecated and "
+    f"will be removed in a future release. {V2_MIGRATION_GUIDE_MESSAGE}"
+)
+
+_RESUME_FROM_CHECKPOINT_DEPRECATION_WARNING = (
+    "`resume_from_checkpoint` is deprecated and will be removed in an upcoming "
+    f"release. {V2_MIGRATION_GUIDE_MESSAGE}"
 )
 
 
@@ -84,6 +89,40 @@ class TrainingFailedError(RuntimeError):
     )
 
 
+def _train_coordinator_fn(
+    config: dict, trainer_cls: Type["BaseTrainer"], metadata: dict
+):
+    """This is the function that defines the logic of the Ray Train coordinator.
+    This is responsible for setting up a remote instance of the `trainer_cls`
+    (a different instance than the one calling `trainer.fit` on the driver!)
+    and running the training loop.
+    """
+    assert metadata is not None, metadata
+    # Propagate user metadata from the Trainer constructor.
+    get_session().metadata = metadata
+
+    # config already contains merged values.
+    # Instantiate new Trainer in Trainable.
+    trainer = trainer_cls(**config)
+
+    # Get the checkpoint from Tune and pass it to workers later on.
+    checkpoint = ray.tune.get_checkpoint()
+    if checkpoint:
+        # Set `starting_checkpoint` for auto-recovery fault-tolerance
+        # as well as manual restoration.
+        trainer.starting_checkpoint = checkpoint
+    # else: Train will restore from the user-provided
+    # `resume_from_checkpoint` == `starting_checkpoint`.
+
+    # Evaluate datasets if they are wrapped in a factory.
+    trainer.datasets = {
+        k: d() if callable(d) else d for k, d in trainer.datasets.items()
+    }
+
+    trainer.setup()
+    trainer.training_loop()
+
+
 @DeveloperAPI
 class BaseTrainer(abc.ABC):
     """Defines interface for distributed training on Ray.
@@ -91,7 +130,7 @@ class BaseTrainer(abc.ABC):
     Note: The base ``BaseTrainer`` class cannot be instantiated directly. Only
     one of its subclasses can be used.
 
-    Note to AIR developers: If a new AIR trainer is added, please update
+    Note to developers: If a new trainer is added, please update
     `air/_internal/usage.py`.
 
     **How does a trainer work?**
@@ -103,9 +142,7 @@ class BaseTrainer(abc.ABC):
       called in sequence on the remote actor.
     - ``trainer.setup()``: Any heavyweight Trainer setup should be
       specified here.
-    - ``trainer.preprocess_datasets()``: The datasets passed to the Trainer will be
-      setup here.
-    - ``trainer.train_loop()``: Executes the main training logic.
+    - ``trainer.training_loop()``: Executes the main training logic.
     - Calling ``trainer.fit()`` will return a ``ray.result.Result``
       object where you can access metrics from your training run, as well
       as any checkpoints that may have been saved.
@@ -189,7 +226,6 @@ class BaseTrainer(abc.ABC):
 
     _scaling_config_allowed_keys: List[str] = [
         "trainer_resources",
-        "_max_cpu_fraction_per_node",
     ]
     _handles_checkpoint_freq: bool = False
     _handles_checkpoint_at_end: bool = False
@@ -206,17 +242,22 @@ class BaseTrainer(abc.ABC):
         datasets: Optional[Dict[str, GenDataset]] = None,
         metadata: Optional[Dict[str, Any]] = None,
         resume_from_checkpoint: Optional[Checkpoint] = None,
-        # Deprecated.
-        preprocessor: Optional["Preprocessor"] = None,
     ):
         self.scaling_config = (
             scaling_config if scaling_config is not None else ScalingConfig()
         )
-        self.run_config = run_config if run_config is not None else RunConfig()
+        self.run_config = (
+            copy.copy(run_config) if run_config is not None else RunConfig()
+        )
         self.metadata = metadata
         self.datasets = datasets if datasets is not None else {}
-        self.preprocessor = preprocessor
         self.starting_checkpoint = resume_from_checkpoint
+
+        if _v2_migration_warnings_enabled():
+            if metadata is not None:
+                _log_deprecation_warning(_GET_METADATA_DEPRECATION_MESSAGE)
+            if resume_from_checkpoint is not None:
+                _log_deprecation_warning(_RESUME_FROM_CHECKPOINT_DEPRECATION_WARNING)
 
         # These attributes should only be set through `BaseTrainer.restore`
         self._restore_path = None
@@ -224,19 +265,16 @@ class BaseTrainer(abc.ABC):
 
         self._validate_attributes()
 
+        usage_lib.record_library_usage("train")
         air_usage.tag_air_trainer(self)
 
-        if preprocessor is not None:
-            raise DeprecationWarning(PREPROCESSOR_DEPRECATION_MESSAGE)
-
-    @PublicAPI(stability="alpha")
     @classmethod
+    @Deprecated(message=_TRAINER_RESTORE_DEPRECATION_WARNING)
     def restore(
         cls: Type["BaseTrainer"],
         path: Union[str, os.PathLike],
         storage_filesystem: Optional[pyarrow.fs.FileSystem] = None,
         datasets: Optional[Dict[str, GenDataset]] = None,
-        preprocessor: Optional["Preprocessor"] = None,
         scaling_config: Optional[ScalingConfig] = None,
         **kwargs,
     ) -> "BaseTrainer":
@@ -245,6 +283,25 @@ class BaseTrainer(abc.ABC):
         Restore should be used for experiment-level fault tolerance in the event
         that the head node crashes (e.g., OOM or some other runtime error) or the
         entire cluster goes down (e.g., network error affecting all nodes).
+
+        A run that has already completed successfully will not be resumed from this API.
+        To continue training from a successful run, launch a new run with the
+        ``<Framework>Trainer(resume_from_checkpoint)`` API instead, passing in a
+        checkpoint from the previous run to start with.
+
+        .. note::
+
+            Restoring an experiment from a path that's pointing to a *different*
+            location than the original experiment path is supported. However, Ray Train
+            assumes that the full experiment directory is available
+            (including checkpoints) so that it's possible to resume trials from their
+            latest state.
+
+            For example, if the original experiment path was run locally, then the
+            results are uploaded to cloud storage, Ray Train expects the full contents
+            to be available in cloud storage if attempting to resume
+            via ``<Framework>Trainer.restore("s3://...")``. The restored run will
+            continue writing results to the same cloud storage location.
 
         The following example can be paired with implementing job retry using
         :ref:`Ray Jobs <jobs-overview>` to produce a Train experiment that will
@@ -295,6 +352,9 @@ class BaseTrainer(abc.ABC):
             path: The path to the experiment directory of the training run to restore.
                 This can be a local path or a remote URI if the experiment was
                 uploaded to the cloud.
+            storage_filesystem: Custom ``pyarrow.fs.FileSystem``
+                corresponding to the ``path``. This may be necessary if the original
+                experiment passed in a custom filesystem.
             datasets: Re-specified datasets used in the original training run.
                 This must include all the datasets that were passed in the
                 original trainer constructor.
@@ -308,22 +368,19 @@ class BaseTrainer(abc.ABC):
         Returns:
             BaseTrainer: A restored instance of the class that is calling this method.
         """
+        if _v2_migration_warnings_enabled():
+            _log_deprecation_warning(_TRAINER_RESTORE_DEPRECATION_WARNING)
+
         if not cls.can_restore(path, storage_filesystem):
             raise ValueError(
                 f"Invalid restore path: {path}. Make sure that this path exists and "
                 "is the experiment directory that results from a call to "
                 "`trainer.fit()`."
             )
-        if _use_storage_context():
-            fs, fs_path = get_fs_and_path(path, storage_filesystem)
-            with fs.open_input_file(os.path.join(fs_path, _TRAINER_PKL)) as f:
-                trainer_cls, param_dict = pickle.loads(f.readall())
-        else:
-            trainer_state_path = cls._maybe_sync_down_trainer_state(path)
-            assert trainer_state_path.exists()
-
-            with open(trainer_state_path, "rb") as fp:
-                trainer_cls, param_dict = pickle.load(fp)
+        fs, fs_path = get_fs_and_path(path, storage_filesystem)
+        trainer_pkl_path = Path(fs_path, _TRAINER_PKL).as_posix()
+        with fs.open_input_file(trainer_pkl_path) as f:
+            trainer_cls, param_dict = pickle.loads(f.readall())
 
         if trainer_cls is not cls:
             warnings.warn(
@@ -350,10 +407,6 @@ class BaseTrainer(abc.ABC):
             )
         param_dict["datasets"] = datasets
 
-        # If no preprocessor is re-specified, then it will be set to None
-        # here and loaded from the latest checkpoint
-        param_dict["preprocessor"] = preprocessor
-
         if scaling_config:
             param_dict["scaling_config"] = scaling_config
 
@@ -374,8 +427,11 @@ class BaseTrainer(abc.ABC):
         trainer._restore_storage_filesystem = storage_filesystem
         return trainer
 
-    @PublicAPI(stability="alpha")
     @classmethod
+    @Deprecated(
+        message=_TRAINER_RESTORE_DEPRECATION_WARNING,
+        warning=_v2_migration_warnings_enabled(),
+    )
     def can_restore(
         cls: Type["BaseTrainer"],
         path: Union[str, os.PathLike],
@@ -391,11 +447,12 @@ class BaseTrainer(abc.ABC):
         Returns:
             bool: Whether this path exists and contains the trainer state to resume from
         """
-        if _use_storage_context():
-            fs, fs_path = get_fs_and_path(path, storage_filesystem)
-            return _exists_at_fs_path(fs, os.path.join(fs_path, _TRAINER_PKL))
+        if _v2_migration_warnings_enabled():
+            _log_deprecation_warning(_TRAINER_RESTORE_DEPRECATION_WARNING)
 
-        return _TRAINER_PKL in list_at_uri(str(path))
+        fs, fs_path = get_fs_and_path(path, storage_filesystem)
+        trainer_pkl_path = Path(fs_path, _TRAINER_PKL).as_posix()
+        return _exists_at_fs_path(fs, trainer_pkl_path)
 
     def __repr__(self):
         # A dictionary that maps parameters to their default values.
@@ -451,18 +508,7 @@ class BaseTrainer(abc.ABC):
             )
         else:
             for key, dataset in self.datasets.items():
-                if isinstance(dataset, ray.data.DatasetPipeline):
-                    raise ValueError(
-                        f"The Dataset under '{key}' key is a "
-                        f"`ray.data.DatasetPipeline`. Only `ray.data.Dataset` are "
-                        f"allowed to be passed in.  Pipelined/streaming ingest can be "
-                        f"configured via the `dataset_config` arg. See "
-                        "https://docs.ray.io/en/latest/ray-air/check-ingest.html#enabling-streaming-ingest"  # noqa: E501
-                        "for an example."
-                    )
-                elif not isinstance(dataset, ray.data.Dataset) and not callable(
-                    dataset
-                ):
+                if not isinstance(dataset, ray.data.Dataset) and not callable(dataset):
                     raise ValueError(
                         f"The Dataset under '{key}' key is not a "
                         "`ray.data.Dataset`. "
@@ -482,15 +528,6 @@ class BaseTrainer(abc.ABC):
                 f"{self.metadata}: {e}"
             )
 
-        # Preprocessor
-        if self.preprocessor is not None and not isinstance(
-            self.preprocessor, ray.data.Preprocessor
-        ):
-            raise ValueError(
-                f"`preprocessor` should be an instance of `ray.data.Preprocessor`, "
-                f"found {type(self.preprocessor)} with value `{self.preprocessor}`."
-            )
-
         if self.starting_checkpoint is not None and not isinstance(
             self.starting_checkpoint, Checkpoint
         ):
@@ -500,6 +537,58 @@ class BaseTrainer(abc.ABC):
                 f"with value `{self.starting_checkpoint}`."
             )
 
+        self._log_v2_deprecation_warnings()
+
+    def _log_v2_deprecation_warnings(self):
+        """Logs deprecation warnings for v2 migration.
+
+        Log them here in the Ray Train case rather than in the configuration
+        constructors to avoid logging incorrect deprecation warnings when
+        `ray.train.RunConfig` is passed to Ray Tune.
+        """
+
+        if not _v2_migration_warnings_enabled():
+            return
+
+        from ray.train.v2._internal.migration_utils import (
+            CALLBACKS_DEPRECATION_MESSAGE,
+            FAIL_FAST_DEPRECATION_MESSAGE,
+            LOG_TO_FILE_DEPRECATION_MESSAGE,
+            PROGRESS_REPORTER_DEPRECATION_MESSAGE,
+            STOP_DEPRECATION_MESSAGE,
+            SYNC_CONFIG_DEPRECATION_MESSAGE,
+            TRAINER_RESOURCES_DEPRECATION_MESSAGE,
+            VERBOSE_DEPRECATION_MESSAGE,
+        )
+
+        # ScalingConfig deprecations
+        if self.scaling_config.trainer_resources is not None:
+            _log_deprecation_warning(TRAINER_RESOURCES_DEPRECATION_MESSAGE)
+
+        # FailureConfig deprecations
+        if self.run_config.failure_config.fail_fast:
+            _log_deprecation_warning(FAIL_FAST_DEPRECATION_MESSAGE)
+
+        # RunConfig deprecations
+        # NOTE: _verbose is the original verbose value passed by the user
+        if self.run_config._verbose is not None:
+            _log_deprecation_warning(VERBOSE_DEPRECATION_MESSAGE)
+
+        if self.run_config.log_to_file:
+            _log_deprecation_warning(LOG_TO_FILE_DEPRECATION_MESSAGE)
+
+        if self.run_config.stop is not None:
+            _log_deprecation_warning(STOP_DEPRECATION_MESSAGE)
+
+        if self.run_config.callbacks is not None:
+            _log_deprecation_warning(CALLBACKS_DEPRECATION_MESSAGE)
+
+        if self.run_config.progress_reporter is not None:
+            _log_deprecation_warning(PROGRESS_REPORTER_DEPRECATION_MESSAGE)
+
+        if self.run_config.sync_config != ray.train.SyncConfig():
+            _log_deprecation_warning(SYNC_CONFIG_DEPRECATION_MESSAGE)
+
     @classmethod
     def _validate_scaling_config(cls, scaling_config: ScalingConfig) -> ScalingConfig:
         """Returns scaling config dataclass after validating updated keys."""
@@ -508,22 +597,6 @@ class BaseTrainer(abc.ABC):
             allowed_keys=cls._scaling_config_allowed_keys,
         )
         return scaling_config
-
-    @classmethod
-    def _maybe_sync_down_trainer_state(cls, restore_path: str) -> Path:
-        """Syncs down trainer state from remote storage.
-
-        Returns:
-            str: Local directory containing the trainer state
-        """
-        if not is_non_local_path_uri(restore_path):
-            return Path(os.path.expanduser(restore_path)) / _TRAINER_PKL
-
-        tempdir = Path(tempfile.mkdtemp("tmp_experiment_dir"))
-
-        uri = URI(restore_path)
-        download_from_uri(str(uri / _TRAINER_PKL), str(tempdir / _TRAINER_PKL))
-        return tempdir / _TRAINER_PKL
 
     def setup(self) -> None:
         """Called during fit() to perform initial setup on the Trainer.
@@ -539,42 +612,11 @@ class BaseTrainer(abc.ABC):
         pass
 
     def preprocess_datasets(self) -> None:
-        """Called during fit() to preprocess dataset attributes with preprocessor.
-
-        .. note:: This method is run on a remote process.
-
-        This method is called prior to entering the training_loop.
-
-        If the ``Trainer`` has both a datasets dict and
-        a preprocessor, the datasets dict contains a training dataset (denoted by
-        the "train" key), and the preprocessor has not yet
-        been fit, then it will be fit on the train dataset.
-
-        Then, all Trainer's datasets will be transformed by the preprocessor.
-
-        The transformed datasets will be set back in the ``self.datasets`` attribute
-        of the Trainer to be used when overriding ``training_loop``.
-        """
-        # Evaluate all datasets.
-        self.datasets = {k: d() if callable(d) else d for k, d in self.datasets.items()}
-
-        if self.preprocessor:
-            train_dataset = self.datasets.get(TRAIN_DATASET_KEY, None)
-            if train_dataset and self.preprocessor.fit_status() in (
-                ray.data.Preprocessor.FitStatus.NOT_FITTED,
-                ray.data.Preprocessor.FitStatus.PARTIALLY_FITTED,
-            ):
-                self.preprocessor.fit(train_dataset)
-
-            # Execute dataset transformations serially for now.
-            # Cannot execute them in remote tasks due to dataset ownership model:
-            # if datasets are created on a remote node, then if that node fails,
-            # we cannot recover the dataset.
-            new_datasets = {}
-            for key, dataset in self.datasets.items():
-                new_datasets[key] = self.preprocessor.transform(dataset)
-
-            self.datasets = new_datasets
+        """Deprecated."""
+        raise DeprecationWarning(
+            "`preprocess_datasets` is no longer used, since preprocessors "
+            f"are no longer accepted by Trainers.\n{PREPROCESSOR_DEPRECATION_MESSAGE}"
+        )
 
     @abc.abstractmethod
     def training_loop(self) -> None:
@@ -582,10 +624,11 @@ class BaseTrainer(abc.ABC):
 
         .. note:: This method runs on a remote process.
 
-        ``self.datasets`` have already been preprocessed by ``self.preprocessor``.
+        ``self.datasets`` have already been evaluated if they were wrapped in a factory.
 
-        You can use the :ref:`Tune Function API functions <tune-function-docstring>`
-        (``train.report()`` and ``train.get_checkpoint()``) inside
+        You can use the :ref:`Ray Train utilities <train-loop-api>`
+        (:func:`train.report() <ray.train.report>` and
+        :func:`train.get_checkpoint() <ray.train.get_checkpoint>`) inside
         this training loop.
 
         Example:
@@ -612,22 +655,37 @@ class BaseTrainer(abc.ABC):
             A Result object containing the training result.
 
         Raises:
-            TrainingFailedError: If any failures during the execution of
-            ``self.as_trainable()``, or during the Tune execution loop.
+            ray.train.base_trainer.TrainingFailedError: If any failures during the execution
+                of ``self.as_trainable()``, or during the Tune execution loop.
         """
-        from ray.tune.tuner import Tuner, TunerInternal
-        from ray.tune import TuneError
+        from ray.tune import ResumeConfig, TuneError
+        from ray.tune.tuner import Tuner
 
         trainable = self.as_trainable()
         param_space = self._extract_fields_for_tuner_param_space()
+
+        self.run_config.name = (
+            self.run_config.name or StorageContext.get_experiment_dir_name(trainable)
+        )
+        # The storage context here is only used to access the resolved
+        # storage fs and experiment path, in order to avoid duplicating that logic.
+        # This is NOT the storage context object that gets passed to remote workers.
+        storage = StorageContext(
+            storage_path=self.run_config.storage_path,
+            experiment_dir_name=self.run_config.name,
+            storage_filesystem=self.run_config.storage_filesystem,
+        )
 
         if self._restore_path:
             tuner = Tuner.restore(
                 path=self._restore_path,
                 trainable=trainable,
                 param_space=param_space,
-                resume_unfinished=True,
-                resume_errored=True,
+                _resume_config=ResumeConfig(
+                    finished=ResumeConfig.ResumeType.RESUME,
+                    unfinished=ResumeConfig.ResumeType.RESUME,
+                    errored=ResumeConfig.ResumeType.RESUME,
+                ),
                 storage_filesystem=self._restore_storage_filesystem,
             )
         else:
@@ -638,16 +696,11 @@ class BaseTrainer(abc.ABC):
                 _entrypoint=AirEntrypoint.TRAINER,
             )
 
-        experiment_local_path, _ = TunerInternal.setup_create_experiment_checkpoint_dir(
-            trainable, self.run_config
-        )
-
-        experiment_local_path = Path(experiment_local_path)
-        self._save(experiment_local_path)
+        self._save(storage.storage_filesystem, storage.experiment_fs_path)
 
         restore_msg = TrainingFailedError._RESTORE_MSG.format(
             trainer_cls_name=self.__class__.__name__,
-            path=str(experiment_local_path),
+            path=str(storage.experiment_fs_path),
         )
 
         try:
@@ -671,7 +724,7 @@ class BaseTrainer(abc.ABC):
             ) from result.error
         return result
 
-    def _save(self, experiment_path: Union[str, Path]):
+    def _save(self, fs: pyarrow.fs.FileSystem, experiment_path: str):
         """Saves the current trainer's class along with the `param_dict` of
         parameters passed to this trainer's constructor.
 
@@ -700,9 +753,9 @@ class BaseTrainer(abc.ABC):
 
         cls_and_param_dict = (self.__class__, param_dict)
 
-        experiment_path = Path(experiment_path)
-        with open(experiment_path / _TRAINER_PKL, "wb") as fp:
-            pickle.dump(cls_and_param_dict, fp)
+        fs.create_dir(experiment_path)
+        with fs.open_output_stream(Path(experiment_path, _TRAINER_PKL).as_posix()) as f:
+            f.write(pickle.dumps(cls_and_param_dict))
 
     def _extract_fields_for_tuner_param_space(self) -> Dict:
         """Extracts fields to be included in `Tuner.param_space`.
@@ -733,45 +786,17 @@ class BaseTrainer(abc.ABC):
 
         trainer_cls = self.__class__
         scaling_config = self.scaling_config
-        restored = bool(self._restore_path)
         metadata = self.metadata
 
-        def train_func(config):
-            assert metadata is not None, metadata
-            # Propagate user metadata from the Trainer constructor.
-            session._get_session().metadata = metadata
-
-            # config already contains merged values.
-            # Instantiate new Trainer in Trainable.
-            trainer = trainer_cls(**config)
-
-            # Get the checkpoint from Tune and pass it to workers later on.
-            checkpoint = session.get_checkpoint()
-            if checkpoint:
-                # Set `starting_checkpoint` for auto-recovery fault-tolerance
-                # as well as manual restoration.
-                trainer.starting_checkpoint = checkpoint
-
-                # TODO(justinvyu): Remove this when Preprocessor is removed from Trainer
-                if not _use_storage_context():
-                    # Always load the preprocessor from an available checkpoint
-                    # Unless we are restoring the experiment and have explicitly
-                    # passed in a new preprocessor
-                    if not (restored and trainer.preprocessor):
-                        trainer.preprocessor = checkpoint.get_preprocessor()
-            # Else: Train will restore from the user-provided
-            # `resume_from_checkpoint` == `starting_checkpoint`.
-
-            trainer.setup()
-            trainer.preprocess_datasets()
-            trainer.training_loop()
-
+        train_coordinator_fn = partial(
+            _train_coordinator_fn, trainer_cls=trainer_cls, metadata=metadata
+        )
         # Change the name of the training function to match the name of the Trainer
         # class. This will mean the Tune trial name will match the name of Trainer on
         # stdout messages and the results directory.
-        train_func.__name__ = trainer_cls.__name__
+        train_coordinator_fn.__name__ = trainer_cls.__name__
 
-        trainable_cls = wrap_function(train_func, warn=False)
+        trainable_cls = wrap_function(train_coordinator_fn)
         has_base_dataset = bool(self.datasets)
         if has_base_dataset:
             from ray.data.context import DataContext
@@ -798,13 +823,21 @@ class BaseTrainer(abc.ABC):
 
             def setup(self, config, **kwargs):
                 base_config = dict(kwargs)
-                # Create a new config by merging the dicts.
+                # Merge Tuner param space hyperparameters in `config` into the
+                # base config passed to the Trainer constructor, which is `base_config`.
+                # `base_config` is pulled from the object store from the usage of
+                # tune.with_parameters in `BaseTrainer.as_trainable`.
+
                 # run_config is not a tunable hyperparameter so it does not need to be
                 # merged.
                 run_config = base_config.pop("run_config", None)
-                self._merged_config = merge_dicts(base_config, self.config)
+                self._merged_config = deep_update(
+                    base_config, self.config, new_keys_allowed=True
+                )
                 self._merged_config["run_config"] = run_config
-                merged_scaling_config = self._merged_config.get("scaling_config")
+                merged_scaling_config = self._merged_config.get(
+                    "scaling_config", ScalingConfig()
+                )
                 if isinstance(merged_scaling_config, dict):
                     merged_scaling_config = ScalingConfig(**merged_scaling_config)
                 self._merged_config[
@@ -835,21 +868,14 @@ class BaseTrainer(abc.ABC):
                 if not isinstance(trial_resources, PlacementGroupFactory):
                     return scaling_config
 
-                if scaling_config:
-                    scaling_config = trainer_cls._validate_scaling_config(
-                        scaling_config
-                    )
-                scaling_config_from_trial_resources = (
-                    ScalingConfig.from_placement_group_factory(trial_resources)
-                )
+                # Ignore ResourceChangingScheduler workaround when resource bundles
+                # are unchanged
+                if self.trial_resources == scaling_config.as_placement_group_factory():
+                    return scaling_config
 
-                # This check should always pass if ResourceChangingScheduler is not
-                # used.
-                if scaling_config_from_trial_resources != scaling_config:
-                    scaling_config = trainer_cls._validate_scaling_config(
-                        scaling_config_from_trial_resources
-                    )
-                return scaling_config
+                trainer_cls._validate_scaling_config(scaling_config)
+
+                return ScalingConfig.from_placement_group_factory(trial_resources)
 
             def _trainable_func(self, config):
                 # We ignore the config passed by Tune and instead use the merged

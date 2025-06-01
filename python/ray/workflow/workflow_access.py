@@ -62,9 +62,9 @@ def resume_workflow_task(
 
     Args:
         job_id: The ID of the job that submits the workflow execution. The ID
-        is used to identify the submitter of the workflow.
+                is used to identify the submitter of the workflow.
         workflow_id: The ID of the workflow job. The ID is used to identify
-            the workflow.
+                the workflow.
         task_id: The task to resume in the workflow.
 
     Raises:
@@ -319,12 +319,17 @@ class WorkflowManagementActor:
         name = common.HTTP_EVENT_PROVIDER_NAME, if one doesn't exist
         """
         ray.serve.start(detached=True)
-        try:
-            ray.serve.get_deployment(common.HTTP_EVENT_PROVIDER_NAME)
-        except KeyError:
+        provider_exists = (
+            common.HTTP_EVENT_PROVIDER_NAME in ray.serve.status().applications
+        )
+        if not provider_exists:
             from ray.workflow.http_event_provider import HTTPEventProvider
 
-            HTTPEventProvider.deploy()
+            ray.serve.run(
+                HTTPEventProvider.bind(),
+                name=common.HTTP_EVENT_PROVIDER_NAME,
+                route_prefix="/event",
+            )
 
     def ready(self) -> None:
         """A no-op to make sure the actor is ready."""

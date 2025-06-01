@@ -275,8 +275,8 @@ paths:
     get:
       summary: Tail Job Logs
       description: |
-        WebSocket endpoint for tailing the logs of a job 
-        (Not documented in OpenAPI, see 
+        WebSocket endpoint for tailing the logs of a job
+        (Not documented in OpenAPI, see
         https://docs.ray.io/en/latest/_modules/ray/dashboard/modules/job/sdk.html#JobSubmissionClient.tail_job_logs
         for example usage).
       parameters:
@@ -306,7 +306,7 @@ paths:
               schema:
                 description: The error message.
                 type: string
-        
+
 
 
 components:
@@ -411,6 +411,9 @@ components:
         entrypoint_num_gpus:
           type: number
           description: "Number of GPUs to allocate for the execution of the entrypoint command, separately from any Ray tasks or actors that are created by it."
+        entrypoint_memory:
+          type: integer
+          description: "The quantity of memory to reserve for the execution of the entrypoint command, separately from any tasks or actors launched by it."
         entrypoint_resources:
           type: object
           description: "The quantity of various custom resources to allocate for the execution of the entrypoint command, separately from any Ray tasks or actors that are created by it."

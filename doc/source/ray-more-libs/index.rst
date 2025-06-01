@@ -1,6 +1,20 @@
 More Ray ML Libraries
 =====================
 
+.. toctree::
+    :hidden:
+
+    joblib
+    multiprocessing
+    ray-collective
+    dask-on-ray
+    raydp
+    mars-on-ray
+    modin/index
+    data_juicer_distributed_data_processing
+    Ray Workflows (Deprecated) <../workflows/index>
+
+
 .. TODO: we added the three Ray Core examples below, since they don't really belong there.
     Going forward, make sure that all "Ray Lightning" and XGBoost topics are in one document or group,
     and not next to each other.
@@ -14,6 +28,7 @@ Ray has a variety of additional integrations with ecosystem libraries.
 - :ref:`spark-on-ray`
 - :ref:`mars-on-ray`
 - :ref:`modin-on-ray`
+- `daft <https://www.getdaft.io>`_
 
 .. _air-ecosystem-map:
 

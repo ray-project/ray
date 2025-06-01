@@ -1,16 +1,12 @@
 import json
 import logging
-import numpy as np
-import os
-
+from pathlib import Path
 from typing import TYPE_CHECKING, Dict, TextIO
 
-from ray.air.constants import (
-    EXPR_PARAM_FILE,
-    EXPR_PARAM_PICKLE_FILE,
-    EXPR_RESULT_FILE,
-)
+import numpy as np
+
 import ray.cloudpickle as cloudpickle
+from ray.air.constants import EXPR_PARAM_FILE, EXPR_PARAM_PICKLE_FILE, EXPR_RESULT_FILE
 from ray.tune.logger.logger import _LOGGER_DEPRECATION_WARNING, Logger, LoggerCallback
 from ray.tune.utils.util import SafeFallbackEncoder
 from ray.util.annotations import Deprecated, PublicAPI
@@ -41,8 +37,8 @@ class JsonLogger(Logger):
 
     def _init(self):
         self.update_config(self.config)
-        local_file = os.path.join(self.logdir, EXPR_RESULT_FILE)
-        self.local_out = open(local_file, "a")
+        local_file = Path(self.logdir, EXPR_RESULT_FILE)
+        self.local_out = local_file.open("a")
 
     def on_result(self, result: Dict):
         json.dump(result, self, cls=SafeFallbackEncoder)
@@ -61,11 +57,11 @@ class JsonLogger(Logger):
 
     def update_config(self, config: Dict):
         self.config = config
-        config_out = os.path.join(self.logdir, EXPR_PARAM_FILE)
+        config_out = Path(self.logdir, EXPR_PARAM_FILE)
         with open(config_out, "w") as f:
             json.dump(self.config, f, indent=2, sort_keys=True, cls=SafeFallbackEncoder)
-        config_pkl = os.path.join(self.logdir, EXPR_PARAM_PICKLE_FILE)
-        with open(config_pkl, "wb") as f:
+        config_pkl = Path(self.logdir, EXPR_PARAM_PICKLE_FILE)
+        with config_pkl.open("wb") as f:
             cloudpickle.dump(self.config, f)
 
 
@@ -93,12 +89,12 @@ class JsonLoggerCallback(LoggerCallback):
 
         # Make sure logdir exists
         trial.init_local_path()
-        local_file = os.path.join(trial.local_path, EXPR_RESULT_FILE)
+        local_file = Path(trial.local_path, EXPR_RESULT_FILE)
 
         # Resume the file from remote storage.
         self._restore_from_remote(EXPR_RESULT_FILE, trial)
 
-        self._trial_files[trial] = open(local_file, "at")
+        self._trial_files[trial] = local_file.open("at")
 
     def log_trial_result(self, iteration: int, trial: "Trial", result: Dict):
         if trial not in self._trial_files:
@@ -117,8 +113,8 @@ class JsonLoggerCallback(LoggerCallback):
     def update_config(self, trial: "Trial", config: Dict):
         self._trial_configs[trial] = config
 
-        config_out = os.path.join(trial.local_path, EXPR_PARAM_FILE)
-        with open(config_out, "w") as f:
+        config_out = Path(trial.local_path, EXPR_PARAM_FILE)
+        with config_out.open("w") as f:
             json.dump(
                 self._trial_configs[trial],
                 f,
@@ -127,6 +123,6 @@ class JsonLoggerCallback(LoggerCallback):
                 cls=SafeFallbackEncoder,
             )
 
-        config_pkl = os.path.join(trial.local_path, EXPR_PARAM_PICKLE_FILE)
-        with open(config_pkl, "wb") as f:
+        config_pkl = Path(trial.local_path, EXPR_PARAM_PICKLE_FILE)
+        with config_pkl.open("wb") as f:
             cloudpickle.dump(self._trial_configs[trial], f)

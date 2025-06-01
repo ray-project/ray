@@ -57,15 +57,7 @@ def _update_docker_compose(
         cmd = ["down"]
         shutdown = True
     try:
-        # Loop through parsed docker-compose and create node-specific
-        # host directories if needed
-        for node_id, node_conf in docker_compose_config["services"].items():
-            for volume_mount in node_conf["volumes"]:
-                host_dir, container_dir = volume_mount.split(":", maxsplit=1)
-                if container_dir == "/cluster/node" and not os.path.exists(host_dir):
-                    os.makedirs(host_dir, 0o755, exist_ok=True)
-
-        subprocess.check_output(
+        subprocess.check_call(
             ["docker", "compose", "-f", docker_compose_path, "-p", project_name]
             + cmd
             + [
@@ -107,23 +99,34 @@ def _get_ip(
 def _update_docker_status(
     docker_compose_path: str, project_name: str, docker_status_path: str
 ):
+    data_str = ""
     try:
-        data_str = subprocess.check_output(
-            [
-                "docker",
-                "compose",
-                "-f",
-                docker_compose_path,
-                "-p",
-                project_name,
-                "ps",
-                "--format",
-                "json",
-            ]
+        data_str = (
+            subprocess.check_output(
+                [
+                    "docker",
+                    "compose",
+                    "-f",
+                    docker_compose_path,
+                    "-p",
+                    project_name,
+                    "ps",
+                    "--format",
+                    "json",
+                ]
+            )
+            .decode("utf-8")
+            .strip()
+            .split("\n")
         )
-        data: List[Dict[str, str]] = json.loads(data_str)
+        data: List[Dict[str, str]] = []
+        for line in data_str:
+            line = line.strip()
+            if line:
+                data.append(json.loads(line))
     except Exception as e:
         print(f"Ran into error when fetching status: {e}")
+        print(f"docker compose ps output: {data_str}")
         return None
 
     status = {}

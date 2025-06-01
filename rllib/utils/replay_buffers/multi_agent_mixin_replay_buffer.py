@@ -41,34 +41,65 @@ class MultiAgentMixInReplayBuffer(MultiAgentPrioritizedReplayBuffer):
     in between, all newly added batches are returned (plus some older samples
     according to the "replay ratio").
 
-    Examples:
-        # replay ratio 0.66 (2/3 replayed, 1/3 new samples):
-        >>> buffer = MultiAgentMixInReplayBuffer(capacity=100,
-        ...                                      replay_ratio=0.66)
-        >>> buffer.add(<A>)
-        >>> buffer.add(<B>)
-        >>> buffer.sample(1)
-        ... [<A>, <B>, <B>]
-        >>> buffer.add(<C>)
-        >>> buffer.sample(1)
-        ... [<C>, <A>, <B>]
-        >>> # or: [<C>, <A>, <A>], [<C>, <B>, <A>] or [<C>, <B>, <B>],
-        >>> # but always <C> as it is the newest sample
+    .. testcode::
+        :skipif: True
 
-        >>> buffer.add(<D>)
-        >>> buffer.sample(1)
-        ... [<D>, <A>, <C>]
-        >>> # or: [<D>, <A>, <A>], [<D>, <B>, <A>] or [<D>, <B>, <C>], etc..
-        >>> # but always <D> as it is the newest sample
+        # replay ratio 0.66 (2/3 replayed, 1/3 new samples):
+        buffer = MultiAgentMixInReplayBuffer(capacity=100,
+                                             replay_ratio=0.66)
+        buffer.add(<A>)
+        buffer.add(<B>)
+        buffer.sample(1)
+
+    .. testoutput::
+
+        ..[<A>, <B>, <B>]
+
+    .. testcode::
+        :skipif: True
+
+        buffer.add(<C>)
+        buffer.sample(1)
+
+    .. testoutput::
+
+        [<C>, <A>, <B>]
+        or: [<C>, <A>, <A>], [<C>, <B>, <A>] or [<C>, <B>, <B>],
+        but always <C> as it is the newest sample
+
+    .. testcode::
+        :skipif: True
+
+        buffer.add(<D>)
+        buffer.sample(1)
+
+    .. testoutput::
+
+        [<D>, <A>, <C>]
+        or [<D>, <A>, <A>], [<D>, <B>, <A>] or [<D>, <B>, <C>], etc..
+        but always <D> as it is the newest sample
+
+    .. testcode::
+        :skipif: True
 
         # replay proportion 0.0 -> replay disabled:
-        >>> buffer = MixInReplay(capacity=100, replay_ratio=0.0)
-        >>> buffer.add(<A>)
-        >>> buffer.sample()
-        ... [<A>]
-        >>> buffer.add(<B>)
-        >>> buffer.sample()
-        ... [<B>]
+        buffer = MixInReplay(capacity=100, replay_ratio=0.0)
+        buffer.add(<A>)
+        buffer.sample()
+
+    .. testoutput::
+
+        [<A>]
+
+    .. testcode::
+        :skipif: True
+
+        buffer.add(<B>)
+        buffer.sample()
+
+    .. testoutput::
+
+        [<B>]
     """
 
     def __init__(
@@ -86,7 +117,7 @@ class MultiAgentMixInReplayBuffer(MultiAgentPrioritizedReplayBuffer):
         prioritized_replay_alpha: float = 0.6,
         prioritized_replay_beta: float = 0.4,
         prioritized_replay_eps: float = 1e-6,
-        **kwargs
+        **kwargs,
     ):
         """Initializes MultiAgentMixInReplayBuffer instance.
 
@@ -156,7 +187,7 @@ class MultiAgentMixInReplayBuffer(MultiAgentPrioritizedReplayBuffer):
             prioritized_replay_alpha=prioritized_replay_alpha,
             prioritized_replay_beta=prioritized_replay_beta,
             prioritized_replay_eps=prioritized_replay_eps,
-            **kwargs
+            **kwargs,
         )
 
         self.replay_ratio = replay_ratio
@@ -251,7 +282,7 @@ class MultiAgentMixInReplayBuffer(MultiAgentPrioritizedReplayBuffer):
         Args:
             num_items: Number of items to sample from this buffer.
             policy_id: ID of the policy that produced the experiences to be
-            sampled.
+                sampled.
             **kwargs: Forward compatibility kwargs.
 
         Returns:

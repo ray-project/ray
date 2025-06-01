@@ -1,6 +1,15 @@
 # Ray on Cloud VMs
 (cloud-vm-index)=
 
+```{toctree}
+:hidden:
+
+getting-started
+User Guides <user-guides/index>
+Examples <examples/index>
+references/index
+```
+
 ## Overview
 
 In this section we cover how to launch Ray clusters on Cloud VMs. Ray ships with built-in support
@@ -23,14 +32,14 @@ The Ray docs present all the information you need to start running Ray workloads
 .. grid:: 1 2 2 2
     :gutter: 1
     :class-container: container pb-3
-    
+
     .. grid-item-card::
-    
+
         **Getting Started**
         ^^^
-    
+
         Learn how to start a Ray cluster and deploy Ray applications in the cloud.
-    
+
         +++
         .. button-ref:: vm-cluster-quick-start
             :color: primary
@@ -38,14 +47,14 @@ The Ray docs present all the information you need to start running Ray workloads
             :expand:
 
             Get Started with Ray on Cloud VMs
-    
+
     .. grid-item-card::
 
         **Examples**
         ^^^
-    
+
         Try example Ray workloads in the Cloud
-    
+
         +++
         .. button-ref:: vm-cluster-examples
             :color: primary
@@ -53,14 +62,14 @@ The Ray docs present all the information you need to start running Ray workloads
             :expand:
 
             Try example workloads
-    
+
     .. grid-item-card::
 
         **User Guides**
         ^^^
-    
+
         Learn best practices for configuring cloud clusters
-    
+
         +++
         .. button-ref:: vm-cluster-guides
             :color: primary
@@ -68,14 +77,14 @@ The Ray docs present all the information you need to start running Ray workloads
             :expand:
 
             Read the User Guides
-    
+
     .. grid-item-card::
 
         **API Reference**
         ^^^
-    
+
         Find API references for cloud clusters
-    
+
         +++
         .. button-ref:: vm-cluster-api-references
             :color: primary

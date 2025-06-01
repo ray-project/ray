@@ -4,11 +4,6 @@ import time
 
 from random import random
 
-try:
-    import pytest_timeout
-except ImportError:
-    pytest_timeout = None
-
 import ray
 import ray.cluster_utils
 from ray._private.test_utils import wait_for_condition
@@ -132,9 +127,5 @@ def test_placement_group_remove_stress(ray_start_cluster, execution_number):
 
 
 if __name__ == "__main__":
-    import os
 
-    if os.environ.get("PARALLEL_CI"):
-        sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))
-    else:
-        sys.exit(pytest.main(["-sv", __file__]))
+    sys.exit(pytest.main(["-sv", __file__]))

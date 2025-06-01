@@ -1,7 +1,7 @@
 import abc
 from dataclasses import dataclass, field
 import functools
-from typing import Callable, List, Optional, Tuple, TYPE_CHECKING, Union
+from typing import Callable, Dict, List, Optional, Tuple, TYPE_CHECKING, Union
 
 import numpy as np
 
@@ -10,7 +10,7 @@ from ray.rllib.models.torch.misc import (
     same_padding_transpose_after_stride,
     valid_padding,
 )
-from ray.rllib.models.utils import get_activation_fn
+from ray.rllib.models.utils import get_activation_fn, get_initializer_fn
 from ray.rllib.utils.annotations import ExperimentalAPI
 
 if TYPE_CHECKING:
@@ -122,6 +122,22 @@ class _MLPConfig(ModelConfig):
             except for the output). The default activation for hidden layers is "relu".
         hidden_layer_use_layernorm: Whether to insert a LayerNorm functionality
             in between each hidden layer's output and its activation.
+        hidden_layer_weights_initializer: The initializer function or class to use for
+            weight initialization in the hidden layers. If `None` the default
+            initializer of the respective dense layer of a framework (`"torch"` or
+            `"tf2"`) is used. Note, all initializers defined in the framework `"tf2`)
+            are allowed. For `"torch"` only the in-place initializers, i.e. ending with
+            an underscore "_" are allowed.
+        hidden_layer_weights_initializer_config: Configuration to pass into the
+            initializer defined in `hidden_layer_weights_initializer`.
+        hidden_layer_bias_initializer: The initializer function or class to use for
+            bias initialization in the hidden layers. If `None` the default initializer
+            of the respective dense layer of a framework (`"torch"` or `"tf2"`) is used.
+            Note, all initializers defined in the framework `"tf2`) are allowed. For
+            `"torch"` only the in-place initializers, i.e. ending with an underscore "_"
+            are allowed.
+        hidden_layer_bias_initializer_config: Configuration to pass into the
+            initializer defined in `hidden_layer_bias_initializer`.
         output_layer_dim: An int indicating the size of the output layer. This may be
             set to `None` in case no extra output layer should be built and only the
             layers specified by `hidden_layer_dims` will be part of the network.
@@ -129,18 +145,52 @@ class _MLPConfig(ModelConfig):
         output_layer_activation: The activation function to use for the output layer,
             if any. The default activation for the output layer, if any, is "linear",
             meaning no activation.
+        output_layer_weights_initializer: The initializer function or class to use for
+            weight initialization in the output layers. If `None` the default
+            initializer of the respective dense layer of a framework (`"torch"` or `
+            "tf2"`) is used. Note, all initializers defined in the framework `"tf2`) are
+            allowed. For `"torch"` only the in-place initializers, i.e. ending with an
+            underscore "_" are allowed.
+        output_layer_weights_initializer_config: Configuration to pass into the
+            initializer defined in `output_layer_weights_initializer`.
+        output_layer_bias_initializer: The initializer function or class to use for
+            bias initialization in the output layers. If `None` the default initializer
+            of the respective dense layer of a framework (`"torch"` or `"tf2"`) is used.
+            For `"torch"` only the in-place initializers, i.e. ending with an underscore
+            "_" are allowed.
+        output_layer_bias_initializer_config: Configuration to pass into the
+            initializer defined in `output_layer_bias_initializer`.
+        clip_log_std: If log std should be clipped by `log_std_clip_param`. This applies
+            only to the action distribution parameters that encode the log standard
+            deviation of a `DiagGaussian` distribution.
+        log_std_clip_param: The clipping parameter for the log std, if clipping should
+            be applied - i.e. `clip_log_std=True`. The default value is 20, i.e. log
+            stds are clipped in between -20 and 20.
     """
 
     hidden_layer_dims: Union[List[int], Tuple[int]] = (256, 256)
     hidden_layer_use_bias: bool = True
     hidden_layer_activation: str = "relu"
     hidden_layer_use_layernorm: bool = False
+    hidden_layer_weights_initializer: Optional[Union[str, Callable]] = None
+    hidden_layer_weights_initializer_config: Optional[Dict] = None
+    hidden_layer_bias_initializer: Optional[Union[str, Callable]] = None
+    hidden_layer_bias_initializer_config: Optional[Dict] = None
 
     # Optional last output layer with - possibly - different activation and use_bias
     # settings.
     output_layer_dim: Optional[int] = None
     output_layer_use_bias: bool = True
     output_layer_activation: str = "linear"
+    output_layer_weights_initializer: Optional[Union[str, Callable]] = None
+    output_layer_weights_initializer_config: Optional[Dict] = None
+    output_layer_bias_initializer: Optional[Union[str, Callable]] = None
+    output_layer_bias_initializer_config: Optional[Dict] = None
+
+    # Optional clipping of log standard deviation.
+    clip_log_std: bool = False
+    # Optional clip parameter for the log standard deviation.
+    log_std_clip_param: float = 20.0
 
     @property
     def output_dims(self):
@@ -151,7 +201,7 @@ class _MLPConfig(ModelConfig):
             )
 
         # Infer `output_dims` automatically.
-        return (self.output_layer_dim or self.hidden_layer_dims[-1],)
+        return (int(self.output_layer_dim or self.hidden_layer_dims[-1]),)
 
     def _validate(self, framework: str = "torch"):
         """Makes sure that settings are valid."""
@@ -166,10 +216,19 @@ class _MLPConfig(ModelConfig):
                 "1D, e.g. `[32]`! This is an inferred value, hence other settings might"
                 " be wrong."
             )
+        if self.log_std_clip_param is None:
+            raise ValueError(
+                "`log_std_clip_param` of _MLPConfig must be a float value, but is "
+                "`None`."
+            )
 
         # Call these already here to catch errors early on.
         get_activation_fn(self.hidden_layer_activation, framework=framework)
         get_activation_fn(self.output_layer_activation, framework=framework)
+        get_initializer_fn(self.hidden_layer_weights_initializer, framework=framework)
+        get_initializer_fn(self.hidden_layer_bias_initializer, framework=framework)
+        get_initializer_fn(self.output_layer_weights_initializer, framework=framework)
+        get_initializer_fn(self.output_layer_bias_initializer, framework=framework)
 
 
 @ExperimentalAPI
@@ -213,6 +272,9 @@ class MLPHeadConfig(_MLPConfig):
             hidden_layer_activation="silu",
             hidden_layer_use_layernorm=True,
             hidden_layer_use_bias=False,
+            # Initializer for `framework="torch"`.
+            hidden_layer_weights_initializer="xavier_normal_",
+            hidden_layer_weights_initializer_config={"gain": 0.8},
             # No final output layer (use last dim in `hidden_layer_dims`
             # as the size of the last layer in the stack).
             output_layer_dim=None,
@@ -262,7 +324,9 @@ class FreeLogStdMLPHeadConfig(_MLPConfig):
     free std-variable.
 
     Example:
-    .. code-block:: python
+    .. testcode::
+        :skipif: True
+
         # Configuration:
         config = FreeLogStdMLPHeadConfig(
             input_dims=[2],
@@ -282,7 +346,9 @@ class FreeLogStdMLPHeadConfig(_MLPConfig):
         # Tensor((8,), float32)  # for the free (observation independent) std outputs
 
     Example:
-    .. code-block:: python
+    .. testcode::
+        :skipif: True
+
         # Configuration:
         config = FreeLogStdMLPHeadConfig(
             input_dims=[2],
@@ -394,6 +460,21 @@ class CNNTransposeHeadConfig(ModelConfig):
             Conv2DTranspose layer. We will make sure the input is transformed to
             these dims via a preceding initial Dense layer, followed by a reshape,
             before entering the Conv2DTranspose stack.
+        initial_dense_weights_initializer: The initializer function or class to use for
+            weight initialization in the initial dense layer. If `None` the default
+            initializer of the respective dense layer of a framework (`"torch"` or
+            `"tf2"`) is used. Note, all initializers defined in the framework `"tf2`)
+            are allowed. For `"torch"` only the in-place initializers, i.e. ending with
+            an underscore "_" are allowed.
+        initial_dense_weights_initializer_config: Configuration to pass into the
+            initializer defined in `initial_dense_weights_initializer`.
+        initial_dense_bias_initializer: The initializer function or class to use for
+            bias initialization in the initial dense layer. If `None` the default
+            initializer of the respective CNN layer of a framework (`"torch"` or `"tf2"`
+            ) is used. For `"torch"` only the in-place initializers, i.e. ending with an
+            underscore "_" are allowed.
+        initial_dense_bias_initializer_config: Configuration to pass into the
+            initializer defined in `initial_dense_bias_initializer`.
         cnn_transpose_filter_specifiers: A list of lists, where each element of an inner
             list contains elements of the form
             `[number of channels/filters, [kernel width, kernel height], stride]` to
@@ -403,13 +484,33 @@ class CNNTransposeHeadConfig(ModelConfig):
             (except for the output).
         cnn_transpose_use_layernorm: Whether to insert a LayerNorm functionality
             in between each Conv2DTranspose layer's output and its activation.
+        cnn_transpose_kernel_initializer: The initializer function or class to use for
+            kernel initialization in the CNN layers. If `None` the default initializer
+            of the respective CNN layer of a framework (`"torch"` or `"tf2"`) is used.
+            Note, all initializers defined in the framework `"tf2`) are allowed. For
+            `"torch"` only the in-place initializers, i.e. ending with an underscore "_"
+            are allowed.
+        cnn_transpose_kernel_initializer_config: Configuration to pass into the
+            initializer defined in `cnn_transpose_kernel_initializer`.
+        cnn_transpose_bias_initializer: The initializer function or class to use for
+            bias initialization in the CNN layers. If `None` the default initializer of
+            the respective CNN layer of a framework (`"torch"` or `"tf2"`) is used.
+            For `"torch"` only the in-place initializers, i.e. ending with an underscore
+            "_" are allowed.
+        cnn_transpose_bias_initializer_config: Configuration to pass into the
+            initializer defined in `cnn_transpose_bias_initializer`.
 
     Example:
-    .. code-block:: python
+    .. testcode::
+        :skipif: True
+
         # Configuration:
         config = CNNTransposeHeadConfig(
             input_dims=[10],  # 1D input vector (possibly coming from another NN)
             initial_image_dims=[4, 4, 96],  # first image input to deconv stack
+            # Initializer for TensorFlow.
+            initial_dense_weights_initializer="HeNormal",
+            initial_dense_weights_initializer={"seed": 334},
             cnn_transpose_filter_specifiers=[
                 [48, [4, 4], 2],
                 [24, [4, 4], 2],
@@ -439,7 +540,9 @@ class CNNTransposeHeadConfig(ModelConfig):
         # )
 
     Example:
-    .. code-block:: python
+    .. testcode::
+        :skipif: True
+
         # Configuration:
         config = CNNTransposeHeadConfig(
             input_dims=[128],  # 1D input vector (possibly coming from another NN)
@@ -451,6 +554,10 @@ class CNNTransposeHeadConfig(ModelConfig):
             cnn_transpose_activation="relu",
             cnn_transpose_use_layernorm=True,
             cnn_use_bias=False,
+            # Initializer for `framework="tf2"`.
+            # Note, for Torch only in-place initializers are allowed.
+            cnn_transpose_kernel_initializer="xavier_normal_",
+            cnn_transpose_kernel_initializer_config={"gain": 0.8},
         )
         model = config.build(framework="torch)
 
@@ -472,12 +579,20 @@ class CNNTransposeHeadConfig(ModelConfig):
     initial_image_dims: Union[List[int], Tuple[int]] = field(
         default_factory=lambda: [4, 4, 96]
     )
+    initial_dense_weights_initializer: Optional[Union[str, Callable]] = None
+    initial_dense_weights_initializer_config: Optional[Dict] = None
+    initial_dense_bias_initializer: Optional[Union[str, Callable]] = None
+    initial_dense_bias_initializer_config: Optional[Dict] = None
     cnn_transpose_filter_specifiers: List[List[Union[int, List[int]]]] = field(
         default_factory=lambda: [[48, [4, 4], 2], [24, [4, 4], 2], [3, [4, 4], 2]]
     )
     cnn_transpose_use_bias: bool = True
     cnn_transpose_activation: str = "relu"
     cnn_transpose_use_layernorm: bool = False
+    cnn_transpose_kernel_initializer: Optional[Union[str, Callable]] = None
+    cnn_transpose_kernel_initializer_config: Optional[Dict] = None
+    cnn_transpose_bias_initializer: Optional[Union[str, Callable]] = None
+    cnn_transpose_bias_initializer_config: Optional[Dict] = None
 
     @property
     def output_dims(self):
@@ -520,7 +635,7 @@ class CNNTransposeHeadConfig(ModelConfig):
 
     @_framework_implemented()
     def build(self, framework: str = "torch") -> "Model":
-        self._validate()
+        self._validate(framework)
 
         if framework == "torch":
             from ray.rllib.core.models.torch.heads import TorchCNNTransposeHead
@@ -610,6 +725,21 @@ class CNNEncoderConfig(ModelConfig):
         cnn_use_layernorm: Whether to insert a LayerNorm functionality
             in between each CNN layer's output and its activation. Note that
             the output layer.
+        cnn_kernel_initializer: The initializer function or class to use for kernel
+            initialization in the CNN layers. If `None` the default initializer of the
+            respective CNN layer of a framework (`"torch"` or `"tf2"`) is used. Note,
+            all initializers defined in the framework `"tf2`) are allowed. For `"torch"`
+            only the in-place initializers, i.e. ending with an underscore "_" are
+            allowed.
+        cnn_kernel_initializer_config: Configuration to pass into the initializer
+            defined in `cnn_kernel_initializer`.
+        cnn_bias_initializer: The initializer function or class to use for bias
+            initialization in the CNN layers. If `None` the default initializer of
+            the respective CNN layer of a framework (`"torch"` or `"tf2"`) is used.
+            For `"torch"` only the in-place initializers, i.e. ending with an underscore
+            "_" are allowed.
+        cnn_bias_initializer_config: Configuration to pass into the initializer defined
+            in  `cnn_bias_initializer`.
         flatten_at_end: Whether to flatten the output of the last conv 2D layer into
             a 1D tensor. By default, this is True. Note that if you set this to False,
             you might simply stack another CNNEncoder on top of this one (maybe with
@@ -623,6 +753,10 @@ class CNNEncoderConfig(ModelConfig):
     cnn_use_bias: bool = True
     cnn_activation: str = "relu"
     cnn_use_layernorm: bool = False
+    cnn_kernel_initializer: Optional[Union[str, Callable]] = None
+    cnn_kernel_initializer_config: Optional[Dict] = None
+    cnn_bias_initializer: Optional[Union[str, Callable]] = None
+    cnn_bias_initializer_config: Optional[Dict] = None
     flatten_at_end: bool = True
 
     @property
@@ -682,7 +816,7 @@ class CNNEncoderConfig(ModelConfig):
 
     @_framework_implemented()
     def build(self, framework: str = "torch") -> "Model":
-        self._validate()
+        self._validate(framework)
 
         if framework == "torch":
             from ray.rllib.core.models.torch.encoder import TorchCNNEncoder
@@ -704,6 +838,7 @@ class MLPEncoderConfig(_MLPConfig):
 
     Example:
     .. testcode::
+
         # Configuration:
         config = MLPEncoderConfig(
             input_dims=[4],  # must be 1D tensor
@@ -720,6 +855,7 @@ class MLPEncoderConfig(_MLPConfig):
 
     Example:
     .. testcode::
+
         # Configuration:
         config = MLPEncoderConfig(
             input_dims=[2],
@@ -746,7 +882,7 @@ class MLPEncoderConfig(_MLPConfig):
 
     @_framework_implemented()
     def build(self, framework: str = "torch") -> "Encoder":
-        self._validate()
+        self._validate(framework)
 
         if framework == "torch":
             from ray.rllib.core.models.torch.encoder import TorchMLPEncoder
@@ -767,7 +903,6 @@ class RecurrentEncoderConfig(ModelConfig):
     - Zero or one tokenizers
     - N LSTM/GRU layers stacked on top of each other and feeding
     their outputs as inputs to the respective next layer.
-    - One linear output layer
 
     This makes for the following flow of tensors:
 
@@ -780,8 +915,6 @@ class RecurrentEncoderConfig(ModelConfig):
     (...)
     |
     LSTM layer n
-    |
-    Linear output layer
     |
     Outputs
 
@@ -796,6 +929,7 @@ class RecurrentEncoderConfig(ModelConfig):
 
     Example:
     .. testcode::
+
         # Configuration:
         config = RecurrentEncoderConfig(
             recurrent_layer_type="lstm",
@@ -815,6 +949,7 @@ class RecurrentEncoderConfig(ModelConfig):
 
     Example:
     .. testcode::
+
         # Configuration:
         config = RecurrentEncoderConfig(
             recurrent_layer_type="gru",
@@ -841,20 +976,35 @@ class RecurrentEncoderConfig(ModelConfig):
         num_layers: The number of recurrent (LSTM or GRU) layers to stack.
         batch_major: Wether the input is batch major (B, T, ..) or
             time major (T, B, ..).
+        hidden_weights_initializer: The initializer function or class to use for
+            kernel initialization in the hidden layers. If `None` the default
+            initializer of the respective recurrent layer of a framework (`"torch"` or
+            `"tf2"`) is used. Note, all initializers defined in the frameworks (
+            `"torch"` or `"tf2`) are allowed. For `"torch"` only the in-place
+            initializers, i.e. ending with an underscore "_" are allowed.
+        hidden_weights_initializer_config: Configuration to pass into the
+            initializer defined in `hidden_weights_initializer`.
         use_bias: Whether to use bias on the recurrent layers in the network.
-        view_requirements_dict: The view requirements to use if anything else than
-            observation_space or action_space is to be encoded. This signifies an
-            advanced use case.
+        hidden_bias_initializer: The initializer function or class to use for bias
+            initialization in the hidden layers. If `None` the default initializer of
+            the respective recurrent layer of a framework (`"torch"` or `"tf2"`) is
+            used. For `"torch"` only the in-place initializers, i.e. ending with an
+            underscore "_" are allowed.
+        hidden_bias_initializer_config: Configuration to pass into the initializer
+            defined in `hidden_bias_initializer`.
         tokenizer_config: A ModelConfig to build tokenizers for observations,
-            actions and other spaces that might be present in the
-            view_requirements_dict.
+            actions and other spaces.
     """
 
     recurrent_layer_type: str = "lstm"
     hidden_dim: int = None
     num_layers: int = None
     batch_major: bool = True
+    hidden_weights_initializer: Optional[Union[str, Callable]] = None
+    hidden_weights_initializer_config: Optional[Dict] = None
     use_bias: bool = True
+    hidden_bias_initializer: Optional[Union[str, Callable]] = None
+    hidden_bias_initializer_config: Optional[Dict] = None
     tokenizer_config: ModelConfig = None
 
     @property
@@ -912,10 +1062,14 @@ class ActorCriticEncoderConfig(ModelConfig):
     Attributes:
         base_encoder_config: The configuration for the wrapped encoder(s).
         shared: Whether the base encoder is shared between the actor and critic.
+        inference_only: Whether the configured encoder will only ever be used as an
+            actor-encoder, never as a value-function encoder. Thus, if True and `shared`
+            is False, will only build the actor-related components.
     """
 
     base_encoder_config: ModelConfig = None
     shared: bool = True
+    inference_only: bool = False
 
     @_framework_implemented()
     def build(self, framework: str = "torch") -> "Encoder":

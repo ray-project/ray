@@ -1,4 +1,4 @@
-load("//bazel:ray.bzl", "ray_cc_test")
+load("//bazel:ray.bzl", "ray_cc_binary", "ray_cc_library", "ray_cc_test")
 
 ray_cc_test(
     name = "resource_request_test",
@@ -42,10 +42,15 @@ ray_cc_test(
 ray_cc_test(
     name = "ray_syncer_test",
     srcs = ["ray_syncer_test.cc"],
-    tags = ["team:core"],
+    tags = [
+        "no_tsan",
+        "no_ubsan",
+        "no_windows",
+        "team:core",
+    ],
     deps = [
         "//:grpc_common_lib",
-        "//:ray_mock",
+        "//:ray_mock_syncer",
         "//src/ray/common:ray_syncer",
         "@com_google_googletest//:gtest",
     ],
@@ -63,6 +68,17 @@ ray_cc_test(
 )
 
 ray_cc_test(
+    name = "event_stats_test",
+    size = "small",
+    srcs = ["event_stats_test.cc"],
+    tags = ["team:core"],
+    deps = [
+        "//src/ray/common:event_stats",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+ray_cc_test(
     name = "ray_config_test",
     size = "small",
     srcs = ["ray_config_test.cc"],
@@ -70,6 +86,17 @@ ray_cc_test(
     deps = [
         "//src/ray/common:grpc_util",
         "//src/ray/common:ray_config",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+ray_cc_test(
+    name = "postable_test",
+    size = "small",
+    srcs = ["postable_test.cc"],
+    tags = ["team:core"],
+    deps = [
+        "//src/ray/common:asio",
         "@com_google_googletest//:gtest_main",
     ],
 )
@@ -87,7 +114,7 @@ ray_cc_test(
     ],
 )
 
-cc_binary(
+ray_cc_binary(
     name = "syncer_service_e2e_test",
     srcs = ["syncer_service_e2e_test.cc"],
     deps = [
@@ -101,7 +128,7 @@ ray_cc_test(
     tags = ["team:core"],
     deps = [
         "//src/ray/common:task_common",
-        "@com_google_googletest//:gtest",
+        "@com_google_googletest//:gtest_main",
     ],
 )
 
@@ -130,6 +157,13 @@ ray_cc_test(
     ],
 )
 
+ray_cc_library(
+    name = "testing",
+    testonly = True,
+    hdrs = ["testing.h"],
+    deps = ["//src/ray/util:macros"],
+)
+
 ray_cc_test(
     name = "status_test",
     size = "small",
@@ -146,12 +180,27 @@ ray_cc_test(
 )
 
 ray_cc_test(
+    name = "status_or_test",
+    size = "small",
+    srcs = ["status_or_test.cc"],
+    tags = ["team:core"],
+    deps = [
+        ":testing",
+        "//src/ray/common:status_or",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+ray_cc_test(
     name = "memory_monitor_test",
     size = "small",
     srcs = [
         "memory_monitor_test.cc",
     ],
-    tags = ["team:core"],
+    tags = [
+        "no_windows",
+        "team:core",
+    ],
     target_compatible_with = [
         "@platforms//os:linux",
     ],
@@ -169,6 +218,33 @@ ray_cc_test(
     size = "small",
     srcs = [
         "scheduling_ids_test.cc",
+    ],
+    tags = ["team:core"],
+    deps = [
+        "//src/ray/common:task_common",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+ray_cc_test(
+    name = "grpc_util_test",
+    size = "small",
+    srcs = [
+        "grpc_util_test.cc",
+    ],
+    tags = ["team:core"],
+    deps = [
+        "//src/ray/common:grpc_util",
+        "//src/ray/protobuf:common_cc_proto",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+ray_cc_test(
+    name = "label_selector_test",
+    size = "small",
+    srcs = [
+        "label_selector_test.cc",
     ],
     tags = ["team:core"],
     deps = [

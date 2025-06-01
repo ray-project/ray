@@ -1,84 +1,143 @@
-from collections import defaultdict, deque
+import copy
 from functools import partial
+import itertools
 import pathlib
 from typing import (
     Any,
     Callable,
+    Collection,
+    Dict,
     List,
-    Mapping,
     Optional,
     Set,
     Type,
     TYPE_CHECKING,
     Union,
 )
-import uuid
 
 import ray
-from ray.rllib.core.learner.reduce_result_dict_fn import _reduce_mean_results
-from ray.rllib.core.rl_module.rl_module import (
-    ModuleID,
-    SingleAgentRLModuleSpec,
-    RLMODULE_STATE_DIR_NAME,
+from ray.rllib.core import (
+    COMPONENT_LEARNER,
+    COMPONENT_RL_MODULE,
 )
-from ray.rllib.core.learner.learner import LearnerSpec
+from ray.rllib.core.learner.learner import Learner
+from ray.rllib.core.learner.training_data import TrainingData
+from ray.rllib.core.rl_module import validate_module_id
+from ray.rllib.core.rl_module.multi_rl_module import MultiRLModuleSpec
+from ray.rllib.core.rl_module.rl_module import RLModuleSpec
+from ray.rllib.policy.policy import PolicySpec
 from ray.rllib.policy.sample_batch import MultiAgentBatch
-from ray.rllib.utils.actor_manager import FaultTolerantActorManager
-from ray.rllib.utils.minibatch_utils import ShardBatchIterator
-from ray.rllib.utils.typing import ResultDict
-from ray.rllib.utils.numpy import convert_to_numpy
+from ray.rllib.utils.actor_manager import (
+    FaultTolerantActorManager,
+    RemoteCallResults,
+    ResultOrError,
+)
+from ray.rllib.utils.annotations import override
+from ray.rllib.utils.checkpoints import Checkpointable
+from ray.rllib.utils.deprecation import Deprecated
+from ray.rllib.utils.typing import (
+    EpisodeType,
+    ModuleID,
+    RLModuleSpecType,
+    ShouldModuleBeUpdatedFn,
+    StateDict,
+    T,
+)
 from ray.train._internal.backend_executor import BackendExecutor
-from ray.tune.utils.file_transfer import sync_dir_between_nodes
-
+from ray.util.annotations import PublicAPI
 
 if TYPE_CHECKING:
-    from ray.rllib.core.learner.learner import Learner
+    from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
+    from ray.util.placement_group import PlacementGroup
 
 
-def _get_backend_config(learner_class: Type["Learner"]) -> str:
+def _get_backend_config(learner_class: Type[Learner]) -> str:
     if learner_class.framework == "torch":
-        from ray.train.torch import TorchConfig
+        from ray.train.torch.config import TorchConfig, _TorchBackend
 
-        backend_config = TorchConfig()
+        # Override `_TorchBackend` share_cuda_visible_devices=True setting.
+        # We need this to be False to make sure Learner actors only see their
+        # own GPU. There is no need in RLlib's LearnerGroups for 2 different Learner
+        # actors to communicate with each other through their GPUs.
+        class _RLlibTorchBackend(_TorchBackend):
+            share_cuda_visible_devices = False
+
+        class RLlibTorchConfig(TorchConfig):
+            @property
+            def backend_cls(self):
+                return _RLlibTorchBackend
+
+        backend_config = RLlibTorchConfig()
+
     elif learner_class.framework == "tf2":
         from ray.train.tensorflow import TensorflowConfig
 
         backend_config = TensorflowConfig()
     else:
-        raise ValueError("framework must be either torch or tf")
+        raise ValueError(
+            "`learner_class.framework` must be either 'torch' or 'tf2' (but is "
+            f"{learner_class.framework}!"
+        )
 
     return backend_config
 
 
-def _is_module_trainable(module_id: ModuleID, batch: MultiAgentBatch) -> bool:
-    """Default implemntation for is_module_trainable()
+class RLlibBackendExecutor(BackendExecutor):
+    # Override `BackendExecutor` placement group creation logic. We need to pass our own
+    # to make sure the one of the Algorithm (Trainable) is used for all the
+    # Algorithm's actors.
+    def _create_placement_group(self):
+        pass
 
-    It assumes that the module is trainable by default.
-    """
-    return True
+    # TODO (sven): Change this once there is a better (public) API for this in the
+    #  superclass.
+    def set_placement_group(self, placement_group):
+        if placement_group is not None:
+            self._placement_group = placement_group
 
 
-class LearnerGroup:
-    """Coordinator of Learners.
+@PublicAPI(stability="alpha")
+class LearnerGroup(Checkpointable):
+    """Coordinator of n (possibly remote) Learner workers.
 
-    Args:
-        learner_spec: The specification for constructing Learners.
-        max_queue_len: The maximum number of batches to queue up if doing async_update
-            If the queue is full itwill evict the oldest batch first.
-
+    Each Learner worker has a copy of the RLModule, the loss function(s), and
+    one or more optimizers.
     """
 
     def __init__(
         self,
-        learner_spec: LearnerSpec,
-        max_queue_len: int = 20,
+        *,
+        config: "AlgorithmConfig",
+        # TODO (sven): Rename into `rl_module_spec`.
+        module_spec: Optional[RLModuleSpecType] = None,
+        placement_group: Optional["PlacementGroup"] = None,
     ):
-        scaling_config = learner_spec.learner_group_scaling_config
-        learner_class = learner_spec.learner_class
+        """Initializes a LearnerGroup instance.
 
-        # TODO (Kourosh): Go with a _remote flag instead of _is_local to be more
-        #  explicit.
-        self._is_local = scaling_config.num_workers == 0
+        Args:
+            config: The AlgorithmConfig object to use to configure this LearnerGroup.
+                Call the `learners(num_learners=...)` method on your config to
+                specify the number of learner workers to use.
+                Call the same method with arguments `num_cpus_per_learner` and/or
+                `num_gpus_per_learner` to configure the compute used by each
+                Learner worker in this LearnerGroup.
+                Call the `training(learner_class=...)` method on your config to specify,
+                which exact Learner class to use.
+                Call the `rl_module(rl_module_spec=...)` method on your config to set up
+                the specifics for your RLModule to be used in each Learner.
+            module_spec: If not already specified in `config`, a separate overriding
+                RLModuleSpec may be provided via this argument.
+            placement_group: An optional `PlacementGroup` instance to set the
+                `RLlibBackendExecutor`'s `self._placement_group` attribute to.
+                If run within an Algorithm (tune.Trainable), the placement group of tune
+                trial actor is passed through here.
+        """
+        self.config = config.copy(copy_frozen=False)
+        self._module_spec = module_spec
+
+        learner_class = self.config.learner_class
+        module_spec = module_spec or self.config.get_multi_rl_module_spec()
+
         self._learner = None
         self._workers = None
         # If a user calls self.shutdown() on their own then this flag is set to true.
@@ -87,241 +146,521 @@ class LearnerGroup:
         # ray train.
         self._is_shut_down = False
 
-        self._is_module_trainable = _is_module_trainable
-
         # How many timesteps had to be dropped due to a full input queue?
-        self._in_queue_ts_dropped = 0
+        self._ts_dropped = 0
 
-        if self._is_local:
-            self._learner = learner_class(**learner_spec.get_params_dict())
+        # A single local Learner.
+        if not self.is_remote:
+            self._learner = learner_class(config=config, module_spec=module_spec)
             self._learner.build()
             self._worker_manager = None
-            self._in_queue = []
+        # N remote Learner workers.
         else:
             backend_config = _get_backend_config(learner_class)
-            backend_executor = BackendExecutor(
+
+            num_cpus_per_learner = (
+                self.config.num_cpus_per_learner
+                if self.config.num_cpus_per_learner != "auto"
+                else 1
+                if self.config.num_gpus_per_learner == 0
+                else 0
+            )
+            num_gpus_per_learner = max(0, self.config.num_gpus_per_learner)
+            resources_per_learner = {
+                "CPU": num_cpus_per_learner,
+                "GPU": num_gpus_per_learner,
+            }
+
+            backend_executor = RLlibBackendExecutor(
                 backend_config=backend_config,
-                num_workers=scaling_config.num_workers,
-                num_cpus_per_worker=scaling_config.num_cpus_per_worker,
-                num_gpus_per_worker=scaling_config.num_gpus_per_worker,
+                num_workers=self.config.num_learners,
+                resources_per_worker=resources_per_learner,
                 max_retries=0,
             )
+            # Set the placement group - if any - of the BackendExecutor.
+            backend_executor.set_placement_group(placement_group)
             backend_executor.start(
                 train_cls=learner_class,
-                train_cls_kwargs=learner_spec.get_params_dict(),
+                train_cls_kwargs={
+                    "config": config,
+                    "module_spec": module_spec,
+                },
             )
             self._backend_executor = backend_executor
 
             self._workers = [w.actor for w in backend_executor.worker_group.workers]
+
+            ray.get(
+                [
+                    worker._set_learner_index_and_placement_group.remote(
+                        learner_index=idx,
+                        placement_group=placement_group,
+                    )
+                    for idx, worker in enumerate(self._workers)
+                ]
+            )
 
             # Run the neural network building code on remote workers.
             ray.get([w.build.remote() for w in self._workers])
 
             self._worker_manager = FaultTolerantActorManager(
                 self._workers,
-                # TODO (sven): This probably works even without any restriction
-                #  (allowing for any arbitrary number of requests in-flight). Test with
-                #  3 first, then with unlimited, and if both show the same behavior on
-                #  an async algo, remove this restriction entirely.
-                max_remote_requests_in_flight_per_actor=3,
+                max_remote_requests_in_flight_per_actor=(
+                    self.config.max_requests_in_flight_per_learner
+                ),
             )
-            # This is a list of the tags for asynchronous update requests that are
-            # inflight, and is used for grouping together the results of requests
-            # that were sent to the workers at the same time.
-            self._inflight_request_tags: Set[str] = set()
-            self._in_queue = deque(maxlen=max_queue_len)
 
-    def get_in_queue_stats(self) -> Mapping[str, Any]:
+    # TODO (sven): Replace this with call to `self.metrics.peek()`?
+    #  Currently LearnerGroup does not have a metrics object.
+    def get_stats(self) -> Dict[str, Any]:
         """Returns the current stats for the input queue for this learner group."""
         return {
-            "learner_group_queue_size": len(self._in_queue),
-            "learner_group_queue_ts_dropped": self._in_queue_ts_dropped,
+            "learner_group_ts_dropped_lifetime": self._ts_dropped,
+            "actor_manager_num_outstanding_async_reqs": (
+                0
+                if self.is_local
+                else self._worker_manager.num_outstanding_async_reqs()
+            ),
         }
 
     @property
+    def is_remote(self) -> bool:
+        return self.config.num_learners > 0
+
+    @property
     def is_local(self) -> bool:
-        return self._is_local
+        return not self.is_remote
 
     def update(
         self,
-        batch: MultiAgentBatch,
         *,
-        minibatch_size: Optional[int] = None,
-        num_iters: int = 1,
-        reduce_fn: Optional[Callable[[List[Mapping[str, Any]]], ResultDict]] = (
-            _reduce_mean_results
-        ),
-    ) -> Union[Mapping[str, Any], List[Mapping[str, Any]]]:
-        """Do one or more gradient based updates to the Learner(s) based on given data.
+        batch: Optional[MultiAgentBatch] = None,
+        batches: Optional[List[MultiAgentBatch]] = None,
+        batch_refs: Optional[List[ray.ObjectRef]] = None,
+        episodes: Optional[List[EpisodeType]] = None,
+        episodes_refs: Optional[List[ray.ObjectRef]] = None,
+        data_iterators: Optional[List[ray.data.DataIterator]] = None,
+        training_data: Optional[TrainingData] = None,
+        timesteps: Optional[Dict[str, Any]] = None,
+        async_update: bool = False,
+        return_state: bool = False,
+        # User kwargs passed onto the Learners.
+        **kwargs,
+    ) -> List[Dict[str, Any]]:
+        """Performs gradient based updates on Learners, based on given training data.
 
         Args:
-            batch: The data batch to use for the update.
-            minibatch_size: The minibatch size to use for the update.
-            num_iters: The number of complete passes over all the sub-batches in the
-                input multi-agent batch.
-            reduce_fn: An optional callable to reduce the results from a list of the
-                Learner actors into a single result. This can be any arbitrary function
-                that takes a list of dictionaries and returns a single dictionary. For
-                example you can either take an average (default) or concatenate the
-                results (for example for metrics) or be more selective about you want to
-                report back to the algorithm's training_step. If None is passed, the
-                results will not get reduced.
+            batch: A data batch to use for the update. If there are more
+                than one Learner workers, the batch is split amongst these and one
+                shard is sent to each Learner.
+            batch_refs:
+            episodes: A list of Episodes to process and perform the update
+                for. If there are more than one Learner workers, the list of episodes
+                is split amongst these and one list shard is sent to each Learner.
+            episodes_refs:
+            timesteps:
+            async_update: Whether the update request(s) to the Learner workers should be
+                sent asynchronously. If True, will return NOT the results from the
+                update on the given data, but all results from prior asynchronous update
+                requests that have not been returned thus far.
+            return_state: Whether to include one of the Learner worker's state from
+                after the update step in the returned results dict (under the
+                `_rl_module_state_after_update` key). Note that after an update, all
+                Learner workers' states should be identical, so we use the first
+                Learner's state here. Useful for avoiding an extra `get_weights()` call,
+                e.g. for synchronizing EnvRunner weights.
+            num_epochs: The number of complete passes over the entire train batch. Each
+                pass might be further split into n minibatches (if `minibatch_size`
+                provided).
+            minibatch_size: The size of minibatches to use to further split the train
+                `batch` into sub-batches. The `batch` is then iterated over n times
+                where n is `len(batch) // minibatch_size`.
+            shuffle_batch_per_epoch: Whether to shuffle the train batch once per epoch.
+                If the train batch has a time rank (axis=1), shuffling will only take
+                place along the batch axis to not disturb any intact (episode)
+                trajectories. Also, shuffling is always skipped if `minibatch_size` is
+                None, meaning the entire train batch is processed each epoch, making it
+                unnecessary to shuffle.
+            **kwargs:
 
         Returns:
-            A dictionary with the reduced results of the updates from the Learner(s) or
-            a list of dictionaries of results from the updates from the Learner(s).
-        """
-
-        # Construct a multi-agent batch with only the trainable modules.
-        train_batch = {}
-        for module_id in batch.policy_batches.keys():
-            if self._is_module_trainable(module_id, batch):
-                train_batch[module_id] = batch.policy_batches[module_id]
-        train_batch = MultiAgentBatch(train_batch, batch.count)
-
-        if self.is_local:
-            results = [
-                self._learner.update(
-                    train_batch,
-                    minibatch_size=minibatch_size,
-                    num_iters=num_iters,
-                    reduce_fn=reduce_fn,
-                )
-            ]
-        else:
-
-            def _learner_update(learner, minibatch):
-                return learner.update(
-                    minibatch,
-                    minibatch_size=minibatch_size,
-                    num_iters=num_iters,
-                    reduce_fn=reduce_fn,
-                )
-
-            results = self._get_results(
-                self._worker_manager.foreach_actor(
-                    [
-                        partial(_learner_update, minibatch=minibatch)
-                        for minibatch in ShardBatchIterator(batch, len(self._workers))
-                    ]
-                )
-            )
-
-        # TODO(sven): Move reduce_fn to the training_step
-        if reduce_fn is None:
-            return results
-        else:
-            return reduce_fn(results)
-
-    def async_update(
-        self,
-        batch: MultiAgentBatch,
-        *,
-        minibatch_size: Optional[int] = None,
-        num_iters: int = 1,
-        reduce_fn: Optional[Callable[[List[Mapping[str, Any]]], ResultDict]] = (
-            _reduce_mean_results
-        ),
-    ) -> Union[List[Mapping[str, Any]], List[List[Mapping[str, Any]]]]:
-        """Asnychronously do gradient based updates to the Learner(s) with `batch`.
-
-        Args:
-            batch: The data batch to use for the update.
-            minibatch_size: The minibatch size to use for the update.
-            num_iters: The number of complete passes over all the sub-batches in the
-                input multi-agent batch.
-            reduce_fn: An optional callable to reduce the results from a list of the
-                Learner actors into a single result. This can be any arbitrary function
-                that takes a list of dictionaries and returns a single dictionary. For
-                example you can either take an average (default) or concatenate the
-                results (for example for metrics) or be more selective about you want to
-                report back to the algorithm's training_step. If None is passed, the
-                results will not get reduced.
-
-        Returns:
-            A list of list of dictionaries of results, where the outer list
-            corresponds to separate calls to `async_update`, and the inner
-            list corresponds to the results from each Learner(s). Or if the results
-            are reduced, a list of dictionaries of the reduced results from each
+            If `async_update` is False, a dictionary with the reduced results of the
+            updates from the Learner(s) or a list of dictionaries of results from the
+            updates from the Learner(s).
+            If `async_update` is True, a list of list of dictionaries of results, where
+            the outer list corresponds to separate previous calls to this method, and
+            the inner list corresponds to the results from each Learner(s). Or if the
+            results are reduced, a list of dictionaries of the reduced results from each
             call to async_update that is ready.
         """
-        if self.is_local:
-            raise ValueError(
-                "Cannot call `async_update` when running in local mode with "
-                "num_workers=0."
+        # Create and validate TrainingData object, if not already provided.
+        if training_data is None:
+            training_data = TrainingData(
+                batch=batch,
+                batches=batches,
+                batch_refs=batch_refs,
+                episodes=episodes,
+                episodes_refs=episodes_refs,
+                data_iterators=data_iterators,
             )
-        else:
-            if minibatch_size is not None:
-                minibatch_size //= len(self._workers)
+        training_data.validate()
 
-            def _learner_update(learner, minibatch):
-                return learner.update(
-                    minibatch,
-                    minibatch_size=minibatch_size,
-                    num_iters=num_iters,
-                    reduce_fn=reduce_fn,
+        # Local Learner instance.
+        if self.is_local:
+            if async_update:
+                raise ValueError(
+                    "Can't call `update(async_update=True)` when running with "
+                    "`num_learners=0`! Set `config.num_learners > 0` to allow async "
+                    "updates."
+                )
+            # Solve all ray refs locally already here.
+            training_data.solve_refs()
+            if return_state:
+                kwargs["return_state"] = return_state
+            # Return the single Learner's update results.
+            return [
+                self._learner.update(
+                    training_data=training_data,
+                    timesteps=timesteps,
+                    **kwargs,
+                )
+            ]
+
+        # Remote Learner actors' kwargs.
+        remote_call_kwargs = [
+            dict(
+                training_data=td_shard,
+                timesteps=timesteps,
+                # If `return_state=True`, only return it from the first Learner
+                # actor.
+                return_state=(return_state and i == 0),
+                **kw,
+                **kwargs,
+            )
+            for i, (td_shard, kw) in enumerate(
+                training_data.shard(
+                    num_shards=len(self),
+                    len_lookback_buffer=self.config.episode_lookback_horizon,
+                    **kwargs,
+                )
+            )
+        ]
+
+        # Async updates.
+        if async_update:
+            # Retrieve all ready results (kicked off by prior calls to this method).
+            results = self._worker_manager.fetch_ready_async_reqs(timeout_seconds=0.0)
+            # Send out new request(s), if there is still capacity on the actors
+            # (each actor is allowed only some number of max in-flight requests
+            # at the same time).
+            num_sent_requests = self._worker_manager.foreach_actor_async(
+                "update",
+                kwargs=remote_call_kwargs,
+            )
+
+            # Some requests were dropped, record lost ts/data.
+            if num_sent_requests != len(self):
+                factor = 1 - (num_sent_requests / len(self))
+                # TODO (sven): Move this logic into a TrainingData API as well
+                #  (`TrainingData.env_steps()`).
+                if training_data.batch_refs is not None:
+                    dropped = (
+                        len(training_data.batch_refs)
+                        * self.config.train_batch_size_per_learner
+                    )
+                elif training_data.batch is not None:
+                    dropped = len(training_data.batch)
+                # List of Ray ObjectRefs (each object ref is a list of episodes of
+                # total len=`rollout_fragment_length * num_envs_per_env_runner`)
+                elif training_data.episodes_refs is not None:
+                    dropped = (
+                        len(training_data.episodes_refs)
+                        * self.config.get_rollout_fragment_length()
+                        * self.config.num_envs_per_env_runner
+                    )
+                else:
+                    assert training_data.episodes is not None
+                    dropped = sum(len(e) for e in training_data.episodes)
+
+                self._ts_dropped += factor * dropped
+        # Sync updates.
+        else:
+            results = self._worker_manager.foreach_actor(
+                "update",
+                kwargs=remote_call_kwargs,
+            )
+
+        results = self._get_results(results)
+        return results
+
+    def add_module(
+        self,
+        *,
+        module_id: ModuleID,
+        module_spec: RLModuleSpec,
+        config_overrides: Optional[Dict] = None,
+        new_should_module_be_updated: Optional[ShouldModuleBeUpdatedFn] = None,
+    ) -> MultiRLModuleSpec:
+        """Adds a module to the underlying MultiRLModule.
+
+        Changes this Learner's config in order to make this architectural change
+        permanent wrt. to checkpointing.
+
+        Args:
+            module_id: The ModuleID of the module to be added.
+            module_spec: The ModuleSpec of the module to be added.
+            config_overrides: The `AlgorithmConfig` overrides that should apply to
+                the new Module, if any.
+            new_should_module_be_updated: An optional sequence of ModuleIDs or a
+                callable taking ModuleID and SampleBatchType and returning whether the
+                ModuleID should be updated (trained).
+                If None, will keep the existing setup in place. RLModules,
+                whose IDs are not in the list (or for which the callable
+                returns False) will not be updated.
+
+        Returns:
+            The new MultiRLModuleSpec (after the change has been performed).
+        """
+        validate_module_id(module_id, error=True)
+
+        # Force-set inference-only = False.
+        module_spec = copy.deepcopy(module_spec)
+        module_spec.inference_only = False
+
+        results = self.foreach_learner(
+            func=lambda _learner: _learner.add_module(
+                module_id=module_id,
+                module_spec=module_spec,
+                config_overrides=config_overrides,
+                new_should_module_be_updated=new_should_module_be_updated,
+            ),
+        )
+        marl_spec = self._get_results(results)[0]
+
+        # Change our config (AlgorithmConfig) to contain the new Module.
+        # TODO (sven): This is a hack to manipulate the AlgorithmConfig directly,
+        #  but we'll deprecate config.policies soon anyway.
+        self.config.policies[module_id] = PolicySpec()
+        if config_overrides is not None:
+            self.config.multi_agent(
+                algorithm_config_overrides_per_module={module_id: config_overrides}
+            )
+        self.config.rl_module(rl_module_spec=marl_spec)
+        if new_should_module_be_updated is not None:
+            self.config.multi_agent(policies_to_train=new_should_module_be_updated)
+
+        return marl_spec
+
+    def remove_module(
+        self,
+        module_id: ModuleID,
+        *,
+        new_should_module_be_updated: Optional[ShouldModuleBeUpdatedFn] = None,
+    ) -> MultiRLModuleSpec:
+        """Removes a module from the Learner.
+
+        Args:
+            module_id: The ModuleID of the module to be removed.
+            new_should_module_be_updated: An optional sequence of ModuleIDs or a
+                callable taking ModuleID and SampleBatchType and returning whether the
+                ModuleID should be updated (trained).
+                If None, will keep the existing setup in place. RLModules,
+                whose IDs are not in the list (or for which the callable
+                returns False) will not be updated.
+
+        Returns:
+            The new MultiRLModuleSpec (after the change has been performed).
+        """
+        results = self.foreach_learner(
+            func=lambda _learner: _learner.remove_module(
+                module_id=module_id,
+                new_should_module_be_updated=new_should_module_be_updated,
+            ),
+        )
+        marl_spec = self._get_results(results)[0]
+
+        # Change self.config to reflect the new architecture.
+        # TODO (sven): This is a hack to manipulate the AlgorithmConfig directly,
+        #  but we'll deprecate config.policies soon anyway.
+        del self.config.policies[module_id]
+        self.config.algorithm_config_overrides_per_module.pop(module_id, None)
+        if new_should_module_be_updated is not None:
+            self.config.multi_agent(policies_to_train=new_should_module_be_updated)
+        self.config.rl_module(rl_module_spec=marl_spec)
+
+        return marl_spec
+
+    @override(Checkpointable)
+    def get_state(
+        self,
+        components: Optional[Union[str, Collection[str]]] = None,
+        *,
+        not_components: Optional[Union[str, Collection[str]]] = None,
+        **kwargs,
+    ) -> StateDict:
+        state = {}
+
+        if self._check_component(COMPONENT_LEARNER, components, not_components):
+            if self.is_local:
+                state[COMPONENT_LEARNER] = self._learner.get_state(
+                    components=self._get_subcomponents(COMPONENT_LEARNER, components),
+                    not_components=self._get_subcomponents(
+                        COMPONENT_LEARNER, not_components
+                    ),
+                    **kwargs,
+                )
+            else:
+                worker = self._worker_manager.healthy_actor_ids()[0]
+                assert len(self) == self._worker_manager.num_healthy_actors()
+                _comps = self._get_subcomponents(COMPONENT_LEARNER, components)
+                _not_comps = self._get_subcomponents(COMPONENT_LEARNER, not_components)
+                results = self._worker_manager.foreach_actor(
+                    lambda w: w.get_state(_comps, not_components=_not_comps, **kwargs),
+                    remote_actor_ids=[worker],
+                )
+                state[COMPONENT_LEARNER] = self._get_results(results)[0]
+
+        return state
+
+    @override(Checkpointable)
+    def set_state(self, state: StateDict) -> None:
+        if COMPONENT_LEARNER in state:
+            if self.is_local:
+                self._learner.set_state(state[COMPONENT_LEARNER])
+            else:
+                state_ref = ray.put(state[COMPONENT_LEARNER])
+                self.foreach_learner(
+                    lambda _learner, _ref=state_ref: _learner.set_state(ray.get(_ref))
                 )
 
-            # Queue the new batches.
-            # If queue is full, kick out the oldest item (and thus add its
-            # length to the "dropped ts" counter).
-            if len(self._in_queue) == self._in_queue.maxlen:
-                self._in_queue_ts_dropped += len(self._in_queue[0])
+    def get_weights(
+        self, module_ids: Optional[Collection[ModuleID]] = None
+    ) -> StateDict:
+        """Convenience method instead of self.get_state(components=...).
 
-            self._in_queue.append(batch)
+        Args:
+            module_ids: An optional collection of ModuleIDs for which to return weights.
+                If None (default), return weights of all RLModules.
 
-            # Retrieve all ready results (kicked off by prior calls to this method).
-            results = self._worker_manager.fetch_ready_async_reqs(
-                tags=list(self._inflight_request_tags)
-            )
-            # Only if there are no more requests in-flight on any of the learners,
-            # we can send in one new batch for sharding and parallel learning.
-            if self._worker_manager_ready():
-                count = 0
-                # TODO (sven): This probably works even without any restriction
-                #  (allowing for any arbitrary number of requests in-flight). Test with
-                #  3 first, then with unlimited, and if both show the same behavior on
-                #  an async algo, remove this restriction entirely.
-                while len(self._in_queue) > 0 and count < 3:
-                    # Pull a single batch from the queue (from the left side, meaning:
-                    # use the oldest one first).
-                    update_tag = str(uuid.uuid4())
-                    self._inflight_request_tags.add(update_tag)
-                    batch = self._in_queue.popleft()
-                    self._worker_manager.foreach_actor_async(
-                        [
-                            partial(_learner_update, minibatch=minibatch)
-                            for minibatch in ShardBatchIterator(
-                                batch, len(self._workers)
-                            )
-                        ],
-                        tag=update_tag,
-                    )
-                    count += 1
+        Returns:
+            The results of
+            `self.get_state(components='learner/rl_module')['learner']['rl_module']`.
+        """
+        # Return the entire RLModule state (all possible single-agent RLModules).
+        if module_ids is None:
+            components = COMPONENT_LEARNER + "/" + COMPONENT_RL_MODULE
+        # Return a subset of the single-agent RLModules.
+        else:
+            components = [
+                "".join(tup)
+                for tup in itertools.product(
+                    [COMPONENT_LEARNER + "/" + COMPONENT_RL_MODULE + "/"],
+                    list(module_ids),
+                )
+            ]
+        state = self.get_state(components)[COMPONENT_LEARNER][COMPONENT_RL_MODULE]
+        return state
 
-            # NOTE: There is a strong assumption here that the requests launched to
-            # learner workers will return at the same time, since they are have a
-            # barrier inside of themselves for gradient aggregation. Therefore results
-            # should be a list of lists where each inner list should be the length of
-            # the number of learner workers, if results from an  non-blocking update are
-            # ready.
-            results = self._get_async_results(results)
+    def set_weights(self, weights) -> None:
+        """Convenience method instead of self.set_state({'learner': {'rl_module': ..}}).
 
-            # TODO(sven): Move reduce_fn to the training_step
-            if reduce_fn is None:
-                return results
-            else:
-                return [reduce_fn(r) for r in results]
+        Args:
+            weights: The weights dict of the MultiRLModule of a Learner inside this
+                LearnerGroup.
+        """
+        self.set_state({COMPONENT_LEARNER: {COMPONENT_RL_MODULE: weights}})
 
-    def _worker_manager_ready(self):
-        # TODO (sven): This probably works even without any restriction (allowing for
-        #  any arbitrary number of requests in-flight). Test with 3 first, then with
-        #  unlimited, and if both show the same behavior on an async algo, remove
-        #  this method entirely.
+    @override(Checkpointable)
+    def get_ctor_args_and_kwargs(self):
         return (
-            self._worker_manager.num_outstanding_async_reqs()
-            <= self._worker_manager.num_actors() * 2
+            (),  # *args
+            {
+                "config": self.config,
+                "module_spec": self._module_spec,
+            },  # **kwargs
         )
+
+    @override(Checkpointable)
+    def get_checkpointable_components(self):
+        # Return the entire ActorManager, if remote. Otherwise, return the
+        # local worker. Also, don't give the component (Learner) a name ("")
+        # as it's the only component in this LearnerGroup to be saved.
+        return [
+            (
+                COMPONENT_LEARNER,
+                self._learner if self.is_local else self._worker_manager,
+            )
+        ]
+
+    def foreach_learner(
+        self,
+        func: Callable[[Learner, Optional[Any]], T],
+        *,
+        healthy_only: bool = True,
+        remote_actor_ids: List[int] = None,
+        timeout_seconds: Optional[float] = None,
+        return_obj_refs: bool = False,
+        mark_healthy: bool = False,
+        **kwargs,
+    ) -> RemoteCallResults:
+        r"""Calls the given function on each Learner L with the args: (L, \*\*kwargs).
+
+        Args:
+            func: The function to call on each Learner L with args: (L, \*\*kwargs).
+            healthy_only: If True, applies `func` only to Learner actors currently
+                tagged "healthy", otherwise to all actors. If `healthy_only=False` and
+                `mark_healthy=True`, will send `func` to all actors and mark those
+                actors "healthy" that respond to the request within `timeout_seconds`
+                and are currently tagged as "unhealthy".
+            remote_actor_ids: Apply func on a selected set of remote actors. Use None
+                (default) for all actors.
+            timeout_seconds: Time to wait (in seconds) for results. Set this to 0.0 for
+                fire-and-forget. Set this to None (default) to wait infinitely (i.e. for
+                synchronous execution).
+            return_obj_refs: whether to return ObjectRef instead of actual results.
+                Note, for fault tolerance reasons, these returned ObjectRefs should
+                never be resolved with ray.get() outside of the context of this manager.
+            mark_healthy: Whether to mark all those actors healthy again that are
+                currently marked unhealthy AND that returned results from the remote
+                call (within the given `timeout_seconds`).
+                Note that actors are NOT set unhealthy, if they simply time out
+                (only if they return a RayActorError).
+                Also not that this setting is ignored if `healthy_only=True` (b/c this
+                setting only affects actors that are currently tagged as unhealthy).
+
+        Returns:
+            A list of size len(Learners) with the return values of all calls to `func`.
+        """
+        if self.is_local:
+            results = RemoteCallResults()
+            results.add_result(
+                None,
+                ResultOrError(result=func(self._learner, **kwargs)),
+                None,
+            )
+            return results
+
+        return self._worker_manager.foreach_actor(
+            func=partial(func, **kwargs),
+            healthy_only=healthy_only,
+            remote_actor_ids=remote_actor_ids,
+            timeout_seconds=timeout_seconds,
+            return_obj_refs=return_obj_refs,
+            mark_healthy=mark_healthy,
+        )
+
+    def __len__(self):
+        return 0 if self.is_local else len(self._workers)
+
+    def shutdown(self):
+        """Shuts down the LearnerGroup."""
+        if self.is_remote and hasattr(self, "_backend_executor"):
+            self._backend_executor.shutdown(graceful_termination=True)
+        self._is_shut_down = True
+
+    def __del__(self):
+        if not self._is_shut_down:
+            self.shutdown()
 
     def _get_results(self, results):
         processed_results = []
@@ -333,512 +672,88 @@ class LearnerGroup:
                 raise result_or_error
         return processed_results
 
-    def _get_async_results(self, results):
-        """Get results from the worker manager and group them by tag.
+    @Deprecated(new="LearnerGroup.update(batch=.., **kwargs)", error=False)
+    def update_from_batch(self, batch, **kwargs):
+        return self.update(batch=batch, **kwargs)
 
-        Returns:
-            A list of lists of results, where each inner list contains all results
-            for same tags.
+    @Deprecated(new="LearnerGroup.update(episodes=.., **kwargs)", error=False)
+    def update_from_episodes(self, episodes, **kwargs):
+        return self.update(episodes=episodes, **kwargs)
 
-        """
-        unprocessed_results = defaultdict(list)
-        for result in results:
-            result_or_error = result.get()
-            if result.ok:
-                assert (
-                    result.tag
-                ), "Cannot call _get_async_results on untagged async requests."
-                unprocessed_results[result.tag].append(result_or_error)
-            else:
-                raise result_or_error
+    @Deprecated(new="LearnerGroup.update_from_batch(async=True)", error=True)
+    def async_update(self, *args, **kwargs):
+        pass
 
-        for tag in unprocessed_results.keys():
-            self._inflight_request_tags.remove(tag)
-        return list(unprocessed_results.values())
-
-    def additional_update(
-        self,
-        *,
-        reduce_fn: Callable[[ResultDict], ResultDict] = _reduce_mean_results,
-        **kwargs,
-    ) -> Union[Mapping[str, Any], List[Mapping[str, Any]]]:
-        """Apply additional non-gradient based updates to the Learners.
-
-        For example, this could be used to do a polyak averaging update
-        of a target network in off policy algorithms like SAC or DQN.
-
-        By default this is a pass through that calls `Learner.additional_update`
-
-        Args:
-            reduce_fn: See `update()` documentation for more details.
-            **kwargs: Keyword arguments to pass to each Learner.
-
-        Returns:
-            A list of dictionaries of results from the updates from each worker.
-        """
-
-        if self.is_local:
-            return self._learner.additional_update(**kwargs)
-        else:
-            results = self._worker_manager.foreach_actor(
-                [lambda w: w.additional_update(**kwargs) for _ in self._workers]
-            )
-            results = self._get_results(results)
-            if reduce_fn is None:
-                return results
-            # TODO(sven): Move reduce_fn to the training_step
-            return reduce_fn(results)
-
-    def add_module(
-        self,
-        *,
-        module_id: ModuleID,
-        module_spec: SingleAgentRLModuleSpec,
-    ) -> None:
-        """Add a module to the Learners maintained by this LearnerGroup.
-
-        Args:
-            module_id: The id of the module to add.
-            module_spec:  #TODO (Kourosh) fill in here.
-        """
-        if self.is_local:
-            self._learner.add_module(
-                module_id=module_id,
-                module_spec=module_spec,
-            )
-        else:
-            results = self._worker_manager.foreach_actor(
-                lambda w: w.add_module(
-                    module_id=module_id,
-                    module_spec=module_spec,
-                )
-            )
-            return self._get_results(results)
-
-    def remove_module(self, module_id: ModuleID) -> None:
-        """Remove a module from the Learners maintained by this LearnerGroup.
-
-        Args:
-            module_id: The id of the module to remove.
-
-        """
-        if self.is_local:
-            self._learner.remove_module(module_id)
-        else:
-            refs = []
-            for worker in self._workers:
-                ref = worker.remove_module.remote(module_id)
-                refs.append(ref)
-            ray.get(refs)
-
-    def set_weights(self, weights: Mapping[str, Any]) -> None:
-        """Set the weights of the MultiAgentRLModule maintained by each Learner.
-
-        The weights don't have to include all the modules in the MARLModule.
-            This way the weights of only some of the Agents can be set.
-
-        Args:
-            weights: The weights to set each RLModule in the MARLModule to.
-
-        """
-        if self.is_local:
-            self._learner.set_module_state(weights)
-        else:
-            results_or_errors = self._worker_manager.foreach_actor(
-                lambda w: w.set_module_state(weights)
-            )
-            # raise errors if any
-            self._get_results(results_or_errors)
-
-    def get_weights(self, module_ids: Optional[Set[str]] = None) -> Mapping[str, Any]:
-        """Get the weights of the MultiAgentRLModule maintained by each Learner.
-
-        Args:
-            module_ids: The ids of the modules to get the weights of.
-
-        Returns:
-            A mapping of module ids to their weights.
-
-        """
-        if self.is_local:
-            state = self._learner.get_module_state(module_ids)
-        else:
-            worker = self._worker_manager.healthy_actor_ids()[0]
-            assert len(self._workers) == self._worker_manager.num_healthy_actors()
-            state = self._worker_manager.foreach_actor(
-                lambda w: w.get_module_state(module_ids), remote_actor_ids=[worker]
-            )
-            state = self._get_results(state)[0]
-
-        return convert_to_numpy(state)
-
-    def get_state(self) -> Mapping[ModuleID, Mapping[str, Any]]:
-        """Get the states of the first Learners.
-
-        This should be the same across Learners
-        """
-        if self.is_local:
-            return self._learner.get_state()
-        else:
-            worker = self._worker_manager.healthy_actor_ids()[0]
-            assert len(self._workers) == self._worker_manager.num_healthy_actors()
-            results = self._worker_manager.foreach_actor(
-                lambda w: w.get_state(), remote_actor_ids=[worker]
-            )
-            return self._get_results(results)[0]
-
-    def set_state(self, state: List[Mapping[ModuleID, Mapping[str, Any]]]) -> None:
-        """Sets the states of the Learners.
-
-        Args:
-            state: The state of the Learners
-
-        """
-        if self.is_local:
-            self._learner.set_state(state)
-        else:
-            self._worker_manager.foreach_actor(lambda w: w.set_state(state))
-
-    def set_is_module_trainable(
-        self, is_module_trainable: Callable[[ModuleID, MultiAgentBatch], bool] = None
-    ) -> None:
-        """Sets the function that determines whether a module is trainable.
-
-        Args:
-            is_module_trainable: A function that takes in a module id and a batch
-                and returns a boolean indicating whether the module should be trained
-                on the batch.
-        """
-        if is_module_trainable is not None:
-            self._is_module_trainable = is_module_trainable
-
-    def save_state(self, path: str) -> None:
-        """Saves the state of the LearnerGroup.
-
-        Args:
-            path: The path to save the state to.
-        """
-        if self.is_local:
-            self._learner.save_state(path)
-        else:
-            worker = self._worker_manager.healthy_actor_ids()[0]
-            worker_ip_addr = self._worker_manager.foreach_actor(
-                self._get_ip_address, remote_actor_ids=[worker]
-            )
-            worker_ip_addr = self._get_results(worker_ip_addr)[0]
-            self_ip_addr = self._get_ip_address()
-
-            if worker_ip_addr == self_ip_addr:
-                self._worker_manager.foreach_actor(
-                    lambda w: w.save_state(path), remote_actor_ids=[worker]
-                )
-            else:
-                # save the checkpoint to a temporary location on the worker
-
-                # create a temporary directory on the worker
-                worker_temp_dir = self._worker_manager.foreach_actor(
-                    self._create_temporary_dir, remote_actor_ids=[worker]
-                )
-                worker_temp_dir = self._get_results(worker_temp_dir)[0]
-
-                # save the checkpoint to the temporary directory on the worker
-                self._worker_manager.foreach_actor(
-                    lambda w: w.save_state(worker_temp_dir), remote_actor_ids=[worker]
-                )
-
-                # sync the temporary directory on the worker to the local directory
-                sync_dir_between_nodes(
-                    worker_ip_addr, worker_temp_dir, self_ip_addr, path
-                )
-
-                # creating this function here instead of making it a member funciton
-                # becasue it uses the worker_temp_dir variable, and this can't
-                # be passed in as an argument to foreach_actor
-                def remove_dir(w):
-                    import shutil
-
-                    shutil.rmtree(worker_temp_dir)
-
-                # remove the temporary directory on the worker
-                self._worker_manager.foreach_actor(
-                    remove_dir, remote_actor_ids=[worker]
-                )
-
-    def load_state(self, path: str) -> None:
-        """Loads the state of the LearnerGroup.
-
-        Args:
-            path: The path to load the state from.
-        """
-        path = str(self._resolve_checkpoint_path(path))
-
-        if self.is_local:
-            self._learner.load_state(path)
-        else:
-            assert len(self._workers) == self._worker_manager.num_healthy_actors()
-            head_node_ip = ray.util.get_node_ip_address()
-            workers = self._worker_manager.healthy_actor_ids()
-
-            def _load_state(w):
-                # doing imports here since they might not be imported on the worker
-                import ray
-                import tempfile
-
-                worker_node_ip = ray.util.get_node_ip_address()
-                # if the worker is on the same node as the head, load the checkpoint
-                # directly from the path otherwise sync the checkpoint from the head
-                # to the worker and load it from there
-                if worker_node_ip == head_node_ip:
-                    w.load_state(path)
-                else:
-                    with tempfile.TemporaryDirectory() as temp_dir:
-                        sync_dir_between_nodes(
-                            head_node_ip, path, worker_node_ip, temp_dir
-                        )
-                        w.load_state(temp_dir)
-
-            self._worker_manager.foreach_actor(_load_state, remote_actor_ids=workers)
-
+    @Deprecated(new="LearnerGroup.load_from_path(path=..., component=...)", error=False)
     def load_module_state(
         self,
         *,
-        marl_module_ckpt_dir: Optional[str] = None,
+        multi_rl_module_ckpt_dir: Optional[str] = None,
         modules_to_load: Optional[Set[str]] = None,
-        rl_module_ckpt_dirs: Optional[Mapping[ModuleID, str]] = None,
+        rl_module_ckpt_dirs: Optional[Dict[ModuleID, str]] = None,
     ) -> None:
-
         """Load the checkpoints of the modules being trained by this LearnerGroup.
 
         `load_module_state` can be used 3 ways:
-            1. Load a checkpoint for the MultiAgentRLModule being trained by this
+            1. Load a checkpoint for the MultiRLModule being trained by this
                 LearnerGroup. Limit the modules that are loaded from the checkpoint
                 by specifying the `modules_to_load` argument.
             2. Load the checkpoint(s) for single agent RLModules that
-                are in the MultiAgentRLModule being trained by this LearnerGroup.
-            3. Load a checkpoint for the MultiAgentRLModule being trained by this
+                are in the MultiRLModule being trained by this LearnerGroup.
+            3. Load a checkpoint for the MultiRLModule being trained by this
                 LearnerGroup and load the checkpoint(s) for single agent RLModules
-                that are in the MultiAgentRLModule. The checkpoints for the single
+                that are in the MultiRLModule. The checkpoints for the single
                 agent RLModules take precedence over the module states in the
-                MultiAgentRLModule checkpoint.
+                MultiRLModule checkpoint.
 
-        NOTE: At lease one of marl_module_ckpt_dir or rl_module_ckpt_dirs is
+        NOTE: At lease one of multi_rl_module_ckpt_dir or rl_module_ckpt_dirs is
             must be specified. modules_to_load can only be specified if
-            marl_module_ckpt_dir is specified.
+            multi_rl_module_ckpt_dir is specified.
 
         Args:
-            marl_module_ckpt_dir: The path to the checkpoint for the
-                MultiAgentRLModule.
+            multi_rl_module_ckpt_dir: The path to the checkpoint for the
+                MultiRLModule.
             modules_to_load: A set of module ids to load from the checkpoint.
             rl_module_ckpt_dirs: A mapping from module ids to the path to a
                 checkpoint for a single agent RLModule.
         """
-        if not (marl_module_ckpt_dir or rl_module_ckpt_dirs):
+        if not (multi_rl_module_ckpt_dir or rl_module_ckpt_dirs):
             raise ValueError(
-                "At least one of multi_agent_module_state or "
-                "single_agent_module_states must be specified."
+                "At least one of `multi_rl_module_ckpt_dir` or "
+                "`rl_module_ckpt_dirs` must be provided!"
             )
-        if marl_module_ckpt_dir:
-            if not isinstance(marl_module_ckpt_dir, str):
-                raise ValueError("multi_agent_module_state must be a string path.")
-            marl_module_ckpt_dir = self._resolve_checkpoint_path(marl_module_ckpt_dir)
+        if multi_rl_module_ckpt_dir:
+            multi_rl_module_ckpt_dir = pathlib.Path(multi_rl_module_ckpt_dir)
         if rl_module_ckpt_dirs:
-            if not isinstance(rl_module_ckpt_dirs, dict):
-                raise ValueError("single_agent_module_states must be a dictionary.")
             for module_id, path in rl_module_ckpt_dirs.items():
-                if not isinstance(path, str):
-                    raise ValueError(
-                        "rl_module_ckpt_dirs must be a dictionary "
-                        "mapping module ids to string paths."
-                    )
-                rl_module_ckpt_dirs[module_id] = self._resolve_checkpoint_path(path)
-        if modules_to_load:
-            if not isinstance(modules_to_load, set):
-                raise ValueError("modules_to_load must be a set.")
-            for module_id in modules_to_load:
-                if not isinstance(module_id, str):
-                    raise ValueError("modules_to_load must be a list of strings.")
+                rl_module_ckpt_dirs[module_id] = pathlib.Path(path)
 
-        if self.is_local:
-            module_keys = set(self._learner.module.keys())
-        else:
-            workers = self._worker_manager.healthy_actor_ids()
-            module_keys = set(
-                self._get_results(
-                    self._worker_manager.foreach_actor(
-                        lambda w: w.module.keys(), remote_actor_ids=[workers[0]]
-                    )
-                )[0]
-            )
-
-        if marl_module_ckpt_dir and rl_module_ckpt_dirs:
-            # If both a MARLModule checkpoint and RLModule checkpoints are specified,
-            # the RLModule checkpoints take precedence over the MARLModule checkpoint,
-            # so we should not load any modules in the MARLModule checkpoint that are
-            # also in the RLModule checkpoints.
-            if modules_to_load:
-                if any(
-                    module_id in modules_to_load
-                    for module_id in rl_module_ckpt_dirs.keys()
-                ):
-                    raise ValueError(
-                        f"module_id {module_id} was specified in both "
-                        "modules_to_load and rl_module_ckpt_dirs. Please only "
-                        "specify a module to be loaded only once, either in "
-                        "modules_to_load or rl_module_ckpt_dirs, but not both."
-                    )
+        # MultiRLModule checkpoint is provided.
+        if multi_rl_module_ckpt_dir:
+            # Restore the entire MultiRLModule state.
+            if modules_to_load is None:
+                self.restore_from_path(
+                    multi_rl_module_ckpt_dir,
+                    component=COMPONENT_LEARNER + "/" + COMPONENT_RL_MODULE,
+                )
+            # Restore individual module IDs.
             else:
-                modules_to_load = module_keys - set(rl_module_ckpt_dirs.keys())
-
-        # No need to do any file transfer operations if we are running training
-        # on the experiment head node.
-        if self._is_local:
-            if marl_module_ckpt_dir:
-                # load the MARLModule checkpoint if they were specified
-                self._learner.module.load_state(
-                    marl_module_ckpt_dir, modules_to_load=modules_to_load
-                )
-            if rl_module_ckpt_dirs:
-                # load the RLModule if they were specified
-                for module_id, path in rl_module_ckpt_dirs.items():
-                    self._learner.module[module_id].load_state(
-                        path / RLMODULE_STATE_DIR_NAME
+                for module_id in modules_to_load:
+                    self.restore_from_path(
+                        multi_rl_module_ckpt_dir / module_id,
+                        component=(
+                            COMPONENT_LEARNER
+                            + "/"
+                            + COMPONENT_RL_MODULE
+                            + "/"
+                            + module_id
+                        ),
                     )
-        else:
-            self._distributed_load_module_state(
-                marl_module_ckpt_dir=marl_module_ckpt_dir,
-                modules_to_load=modules_to_load,
-                rl_module_ckpt_dirs=rl_module_ckpt_dirs,
-            )
-
-    def _distributed_load_module_state(
-        self,
-        *,
-        marl_module_ckpt_dir: Optional[str] = None,
-        modules_to_load: Optional[Set[str]] = None,
-        rl_module_ckpt_dirs: Optional[Mapping[ModuleID, str]] = None,
-    ):
-        """Load the checkpoints of the modules being trained by this LearnerGroup.
-
-           This method only needs to be called if the LearnerGroup is training
-           distributed learners (e.g num_learner_workers > 0).
-
-        Args:
-            marl_module_ckpt_dir: The path to the checkpoint for the
-                MultiAgentRLModule.
-            modules_to_load: A set of module ids to load from the checkpoint.
-            rl_module_ckpt_dirs: A mapping from module ids to the path to a
-                checkpoint for a single agent RLModule.
-
-        """
-
-        assert len(self._workers) == self._worker_manager.num_healthy_actors()
-        workers = self._worker_manager.healthy_actor_ids()
-        head_node_ip = ray.util.get_node_ip_address()
-
-        def _load_module_state(w):
-            # doing imports here since they might not be imported on the worker
-            import ray
-            import tempfile
-            import shutil
-
-            worker_node_ip = ray.util.get_node_ip_address()
-            # sync the checkpoints from the head to the worker if the worker is not
-            # on the same node as the head
-            tmp_marl_module_ckpt_dir = marl_module_ckpt_dir
-            tmp_rl_module_ckpt_dirs = rl_module_ckpt_dirs
-            if worker_node_ip != head_node_ip:
-                if marl_module_ckpt_dir:
-                    tmp_marl_module_ckpt_dir = tempfile.mkdtemp()
-                    sync_dir_between_nodes(
-                        source_ip=head_node_ip,
-                        source_path=marl_module_ckpt_dir,
-                        target_ip=worker_node_ip,
-                        target_path=tmp_marl_module_ckpt_dir,
-                    )
-                if rl_module_ckpt_dirs:
-                    tmp_rl_module_ckpt_dirs = {}
-                    for module_id, path in rl_module_ckpt_dirs.items():
-                        tmp_rl_module_ckpt_dirs[module_id] = tempfile.mkdtemp()
-                        sync_dir_between_nodes(
-                            source_ip=head_node_ip,
-                            source_path=path,
-                            target_ip=worker_node_ip,
-                            target_path=tmp_rl_module_ckpt_dirs[module_id],
-                        )
-                        tmp_rl_module_ckpt_dirs[module_id] = pathlib.Path(
-                            tmp_rl_module_ckpt_dirs[module_id]
-                        )
-            if marl_module_ckpt_dir:
-                # load the MARLModule checkpoint if they were specified
-                w.module.load_state(
-                    tmp_marl_module_ckpt_dir, modules_to_load=modules_to_load
+        if rl_module_ckpt_dirs:
+            for module_id, path in rl_module_ckpt_dirs.items():
+                self.restore_from_path(
+                    path,
+                    component=(
+                        COMPONENT_LEARNER + "/" + COMPONENT_RL_MODULE + "/" + module_id
+                    ),
                 )
-            if rl_module_ckpt_dirs:
-                # load the RLModule if they were specified
-                for module_id, path in tmp_rl_module_ckpt_dirs.items():
-                    w.module[module_id].load_state(path / RLMODULE_STATE_DIR_NAME)
-
-            # remove the temporary directories on the worker if any were created
-            if worker_node_ip != head_node_ip:
-                if marl_module_ckpt_dir:
-                    shutil.rmtree(tmp_marl_module_ckpt_dir)
-                if rl_module_ckpt_dirs:
-                    for module_id, path in tmp_rl_module_ckpt_dirs.items():
-                        shutil.rmtree(path)
-
-        self._worker_manager.foreach_actor(_load_module_state, remote_actor_ids=workers)
-
-    @staticmethod
-    def _resolve_checkpoint_path(path: str) -> pathlib.Path:
-        """Checks that the provided checkpoint path is a dir and makes it absolute."""
-        path = pathlib.Path(path)
-        if not path.is_dir():
-            raise ValueError(
-                f"Path {path} is not a directory. "
-                "Please specify a directory containing the checkpoint files."
-            )
-        if not path.exists():
-            raise ValueError(f"Path {path} does not exist.")
-        path = path.absolute()
-        return path
-
-    @staticmethod
-    def _create_temporary_dir(_=None) -> str:
-        """Creates a temporary directory.
-
-        Args:
-            _: Unused arg. Exists to make this function compatible with foreach_actor
-            calls.
-
-        Returns:
-            The path to the temporary directory.
-        """
-        import tempfile
-
-        return tempfile.mkdtemp()
-
-    @staticmethod
-    def _get_ip_address(_=None) -> str:
-        """Returns this process's address.
-
-        Args:
-            _: Unused arg. Exists to make this function compatible with foreach_actor
-            calls.
-
-        Returns:
-            The address of this process.
-
-        """
-        import ray
-
-        return ray.util.get_node_ip_address()
-
-    def shutdown(self):
-        """Shuts down the LearnerGroup."""
-        if not self._is_local:
-            self._backend_executor.shutdown()
-            self._is_shut_down = True
-
-    def __del__(self):
-        if not self._is_shut_down:
-            self.shutdown()

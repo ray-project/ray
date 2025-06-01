@@ -1,24 +1,19 @@
-from ray.air.checkpoint import Checkpoint
 from ray.air.config import (
-    DatasetConfig,
+    CheckpointConfig,
+    FailureConfig,
     RunConfig,
     ScalingConfig,
-    FailureConfig,
-    CheckpointConfig,
 )
 from ray.air.data_batch_type import DataBatchType
-from ray.air.result import Result
-
 from ray.air.execution.resources.request import AcquiredResources, ResourceRequest
-
+from ray.air.result import Result
+import ray.data  # noqa: F401  # TODO: This is a hack to avoid circular import
 
 __all__ = [
-    "Checkpoint",
     "DataBatchType",
     "RunConfig",
     "Result",
     "ScalingConfig",
-    "DatasetConfig",
     "FailureConfig",
     "CheckpointConfig",
     "AcquiredResources",

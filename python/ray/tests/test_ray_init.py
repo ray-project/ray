@@ -1,19 +1,26 @@
+import json
 import os
 import sys
 import unittest.mock
+import signal
 import subprocess
+import tempfile
+from pathlib import Path
 
 import grpc
 import pytest
 
 import ray
 import ray._private.services
+import ray._private.utils as utils
 from ray.client_builder import ClientContext
 from ray.cluster_utils import Cluster
 from ray.util.client.common import ClientObjectRef
 from ray.util.client.ray_client_helpers import ray_start_client_server
 from ray.util.client.worker import Worker
-from ray._private.test_utils import wait_for_condition, enable_external_redis
+from ray._private.test_utils import wait_for_condition, external_redis_test_enabled
+from ray._private import ray_constants
+from ray.runtime_env.runtime_env import RuntimeEnv
 
 
 @pytest.mark.skipif(
@@ -123,7 +130,7 @@ def test_ray_init_existing_instance_crashed(address):
     ray._private.utils.write_ray_address("localhost:6379")
     try:
         # If no address is specified, we will default to an existing cluster.
-        ray._private.node.NUM_REDIS_GET_RETRIES = 1
+        ray_constants.NUM_REDIS_GET_RETRIES = 1
         with pytest.raises(ConnectionError):
             ray.init(address=address)
     finally:
@@ -239,7 +246,7 @@ def test_new_ray_instance_new_session_dir(shutdown_only):
     session_dir = ray._private.worker._global_node.get_session_dir_path()
     ray.shutdown()
     ray.init()
-    if enable_external_redis():
+    if external_redis_test_enabled():
         assert ray._private.worker._global_node.get_session_dir_path() == session_dir
     else:
         assert ray._private.worker._global_node.get_session_dir_path() != session_dir
@@ -254,7 +261,7 @@ def test_new_cluster_new_session_dir(ray_start_cluster):
     cluster.shutdown()
     cluster.add_node()
     ray.init(address=cluster.address)
-    if enable_external_redis():
+    if external_redis_test_enabled():
         assert ray._private.worker._global_node.get_session_dir_path() == session_dir
     else:
         assert ray._private.worker._global_node.get_session_dir_path() != session_dir
@@ -262,12 +269,132 @@ def test_new_cluster_new_session_dir(ray_start_cluster):
     cluster.shutdown()
 
 
+@pytest.mark.skipif(sys.platform == "win32", reason="SIGTERM only on posix")
+def test_ray_init_sigterm_handler():
+    TEST_FILENAME = "sigterm.txt"
+
+    def sigterm_handler_cmd(ray_init=False):
+        return f"""
+import os
+import sys
+import signal
+def sigterm_handler(signum, frame):
+    f = open("{TEST_FILENAME}", "w")
+    sys.exit(0)
+signal.signal(signal.SIGTERM, sigterm_handler)
+
+import ray
+{"ray.init()" if ray_init else ""}
+os.kill(os.getpid(), signal.SIGTERM)
+"""
+
+    # test if sigterm handler is not overwritten by import ray
+    test_child = subprocess.run(["python", "-c", sigterm_handler_cmd()])
+    assert test_child.returncode == 0 and os.path.exists(TEST_FILENAME)
+    os.remove(TEST_FILENAME)
+
+    # test if sigterm handler is overwritten by ray.init
+    test_child = subprocess.run(["python", "-c", sigterm_handler_cmd(ray_init=True)])
+    assert test_child.returncode == signal.SIGTERM and not os.path.exists(TEST_FILENAME)
+
+
+@pytest.fixture
+def ray_shutdown():
+    yield
+    ray.shutdown()
+
+
+def test_ray_init_resource_isolation_disabled_by_default(ray_shutdown):
+    ray.init(address="local")
+    node = ray._private.worker._global_node
+    assert node is not None
+    assert not node.resource_isolation_config.is_enabled()
+
+
+def test_ray_init_with_resource_isolation_default_values(monkeypatch, ray_shutdown):
+    total_system_cpu = 10
+    monkeypatch.setattr(utils, "get_num_cpus", lambda *args, **kwargs: total_system_cpu)
+    ray.init(address="local", enable_resource_isolation=True)
+    node = ray._private.worker._global_node
+    assert node is not None
+    assert node.resource_isolation_config.is_enabled()
+
+
+def test_ray_init_with_resource_isolation_override_defaults(monkeypatch, ray_shutdown):
+    cgroup_path = "/sys/fs/cgroup/subcgroup"
+    system_reserved_cpu = 1
+    system_reserved_memory = 1 * 10**9
+    total_system_cpu = 10
+    total_system_memory = 25 * 10**9
+    object_store_memory = 1 * 10**9
+    monkeypatch.setattr(utils, "get_num_cpus", lambda *args, **kwargs: total_system_cpu)
+    monkeypatch.setattr(
+        utils, "get_system_memory", lambda *args, **kwargs: total_system_memory
+    )
+    ray.init(
+        address="local",
+        enable_resource_isolation=True,
+        _cgroup_path=cgroup_path,
+        system_reserved_cpu=system_reserved_cpu,
+        system_reserved_memory=system_reserved_memory,
+        object_store_memory=object_store_memory,
+    )
+    node = ray._private.worker._global_node
+    assert node is not None
+    assert node.resource_isolation_config.is_enabled()
+    assert node.resource_isolation_config.system_reserved_cpu_weight == 1000
+    assert (
+        node.resource_isolation_config.system_reserved_memory
+        == system_reserved_memory + object_store_memory
+    )
+
+
+@pytest.fixture
+def runtime_env_working_dir():
+    with tempfile.TemporaryDirectory() as tmp_dir:
+        path = Path(tmp_dir)
+        working_dir = path / "working_dir"
+        working_dir.mkdir(parents=True)
+        yield working_dir
+
+
+@pytest.fixture
+def py_module_whl():
+    f = tempfile.NamedTemporaryFile(suffix=".whl", delete=False)
+    f.close()
+    yield f.name
+    os.unlink(f.name)
+
+
+def test_ray_init_with_runtime_env_as_dict(
+    runtime_env_working_dir, py_module_whl, ray_shutdown
+):
+    working_dir_path = runtime_env_working_dir
+    working_dir_str = str(working_dir_path)
+    ray.init(
+        runtime_env={"working_dir": working_dir_str, "py_modules": [py_module_whl]}
+    )
+    worker = ray._private.worker.global_worker.core_worker
+    parsed_runtime_env = json.loads(worker.get_current_runtime_env())
+    assert "gcs://" in parsed_runtime_env["working_dir"]
+    assert len(parsed_runtime_env["py_modules"]) == 1
+    assert "gcs://" in parsed_runtime_env["py_modules"][0]
+
+
+def test_ray_init_with_runtime_env_as_object(
+    runtime_env_working_dir, py_module_whl, ray_shutdown
+):
+    working_dir_path = runtime_env_working_dir
+    working_dir_str = str(working_dir_path)
+    ray.init(
+        runtime_env=RuntimeEnv(working_dir=working_dir_str, py_modules=[py_module_whl])
+    )
+    worker = ray._private.worker.global_worker.core_worker
+    parsed_runtime_env = json.loads(worker.get_current_runtime_env())
+    assert "gcs://" in parsed_runtime_env["working_dir"]
+    assert len(parsed_runtime_env["py_modules"]) == 1
+    assert "gcs://" in parsed_runtime_env["py_modules"][0]
+
+
 if __name__ == "__main__":
-    import sys
-
-    import pytest
-
-    if os.environ.get("PARALLEL_CI"):
-        sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))
-    else:
-        sys.exit(pytest.main(["-sv", __file__]))
+    sys.exit(pytest.main(["-sv", __file__]))

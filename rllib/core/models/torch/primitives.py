@@ -1,4 +1,4 @@
-from typing import Callable, List, Optional, Union, Tuple
+from typing import Callable, Dict, List, Optional, Union, Tuple
 
 from ray.rllib.core.models.torch.utils import Stride2D
 from ray.rllib.models.torch.misc import (
@@ -6,7 +6,7 @@ from ray.rllib.models.torch.misc import (
     same_padding_transpose_after_stride,
     valid_padding,
 )
-from ray.rllib.models.utils import get_activation_fn
+from ray.rllib.models.utils import get_activation_fn, get_initializer_fn
 from ray.rllib.utils.framework import try_import_torch
 
 torch, nn = try_import_torch()
@@ -32,9 +32,17 @@ class TorchMLP(nn.Module):
         hidden_layer_activation: Union[str, Callable] = "relu",
         hidden_layer_use_bias: bool = True,
         hidden_layer_use_layernorm: bool = False,
+        hidden_layer_weights_initializer: Optional[Union[str, Callable]] = None,
+        hidden_layer_weights_initializer_config: Optional[Union[str, Callable]] = None,
+        hidden_layer_bias_initializer: Optional[Union[str, Callable]] = None,
+        hidden_layer_bias_initializer_config: Optional[Dict] = None,
         output_dim: Optional[int] = None,
         output_use_bias: bool = True,
         output_activation: Union[str, Callable] = "linear",
+        output_weights_initializer: Optional[Union[str, Callable]] = None,
+        output_weights_initializer_config: Optional[Dict] = None,
+        output_bias_initializer: Optional[Union[str, Callable]] = None,
+        output_bias_initializer_config: Optional[Dict] = None,
     ):
         """Initialize a TorchMLP object.
 
@@ -50,6 +58,18 @@ class TorchMLP(nn.Module):
                 (except for the output). Either a torch.nn.[activation fn] callable or
                 the name thereof, or an RLlib recognized activation name,
                 e.g. "ReLU", "relu", "tanh", "SiLU", or "linear".
+            hidden_layer_weights_initializer: The initializer function or class to use
+                forweights initialization in the hidden layers. If `None` the default
+                initializer of the respective dense layer is used. Note, only the
+                in-place initializers, i.e. ending with an underscore "_" are allowed.
+            hidden_layer_weights_initializer_config: Configuration to pass into the
+                initializer defined in `hidden_layer_weights_initializer`.
+            hidden_layer_bias_initializer: The initializer function or class to use for
+                bias initialization in the hidden layers. If `None` the default
+                initializer of the respective dense layer is used. Note, only the
+                in-place initializers, i.e. ending with an underscore "_" are allowed.
+            hidden_layer_bias_initializer_config: Configuration to pass into the
+                initializer defined in `hidden_layer_bias_initializer`.
             output_dim: The output dimension of the network. If None, no specific output
                 layer will be added and the last layer in the stack will have
                 size=`hidden_layer_dims[-1]`.
@@ -59,6 +79,18 @@ class TorchMLP(nn.Module):
                 (if any). Either a torch.nn.[activation fn] callable or
                 the name thereof, or an RLlib recognized activation name,
                 e.g. "ReLU", "relu", "tanh", "SiLU", or "linear".
+            output_layer_weights_initializer: The initializer function or class to use
+                for weights initialization in the output layers. If `None` the default
+                initializer of the respective dense layer is used. Note, only the
+                in-place initializers, i.e. ending with an underscore "_" are allowed.
+            output_layer_weights_initializer_config: Configuration to pass into the
+                initializer defined in `output_layer_weights_initializer`.
+            output_layer_bias_initializer: The initializer function or class to use for
+                bias initialization in the output layers. If `None` the default
+                initializer of the respective dense layer is used. Note, only the
+                in-place initializers, i.e. ending with an underscore "_" are allowed.
+            output_layer_bias_initializer_config: Configuration to pass into the
+                initializer defined in `output_layer_bias_initializer`.
         """
         super().__init__()
         assert input_dim > 0
@@ -67,6 +99,18 @@ class TorchMLP(nn.Module):
 
         hidden_activation = get_activation_fn(
             hidden_layer_activation, framework="torch"
+        )
+        hidden_weights_initializer = get_initializer_fn(
+            hidden_layer_weights_initializer, framework="torch"
+        )
+        hidden_bias_initializer = get_initializer_fn(
+            hidden_layer_bias_initializer, framework="torch"
+        )
+        output_weights_initializer = get_initializer_fn(
+            output_weights_initializer, framework="torch"
+        )
+        output_bias_initializer = get_initializer_fn(
+            output_bias_initializer, framework="torch"
         )
 
         layers = []
@@ -79,13 +123,37 @@ class TorchMLP(nn.Module):
             # Whether we are already processing the last (special) output layer.
             is_output_layer = output_dim is not None and i == len(dims) - 2
 
-            layers.append(
-                nn.Linear(
-                    dims[i],
-                    dims[i + 1],
-                    bias=output_use_bias if is_output_layer else hidden_layer_use_bias,
-                )
+            layer = nn.Linear(
+                dims[i],
+                dims[i + 1],
+                bias=output_use_bias if is_output_layer else hidden_layer_use_bias,
             )
+            # Initialize layers, if necessary.
+            if is_output_layer:
+                # Initialize output layer weigths if necessary.
+                if output_weights_initializer:
+                    output_weights_initializer(
+                        layer.weight, **output_weights_initializer_config or {}
+                    )
+                # Initialize output layer bias if necessary.
+                if output_bias_initializer:
+                    output_bias_initializer(
+                        layer.bias, **output_bias_initializer_config or {}
+                    )
+            # Must be hidden.
+            else:
+                # Initialize hidden layer weights if necessary.
+                if hidden_layer_weights_initializer:
+                    hidden_weights_initializer(
+                        layer.weight, **hidden_layer_weights_initializer_config or {}
+                    )
+                # Initialize hidden layer bias if necessary.
+                if hidden_layer_bias_initializer:
+                    hidden_bias_initializer(
+                        layer.bias, **hidden_layer_bias_initializer_config or {}
+                    )
+
+            layers.append(layer)
 
             # We are still in the hidden layer section: Possibly add layernorm and
             # hidden activation.
@@ -93,7 +161,8 @@ class TorchMLP(nn.Module):
                 # Insert a layer normalization in between layer's output and
                 # the activation.
                 if hidden_layer_use_layernorm:
-                    layers.append(nn.LayerNorm(dims[i + 1]))
+                    # We use an epsilon of 0.001 here to mimick the Tf default behavior.
+                    layers.append(nn.LayerNorm(dims[i + 1], eps=0.001))
                 # Add the activation function.
                 if hidden_activation is not None:
                     layers.append(hidden_activation())
@@ -105,10 +174,8 @@ class TorchMLP(nn.Module):
 
         self.mlp = nn.Sequential(*layers)
 
-        self.expected_input_dtype = torch.float32
-
     def forward(self, x):
-        return self.mlp(x.type(self.expected_input_dtype))
+        return self.mlp(x)
 
 
 class TorchCNN(nn.Module):
@@ -130,6 +197,10 @@ class TorchCNN(nn.Module):
         cnn_use_bias: bool = True,
         cnn_use_layernorm: bool = False,
         cnn_activation: str = "relu",
+        cnn_kernel_initializer: Optional[Union[str, Callable]] = None,
+        cnn_kernel_initializer_config: Optional[Dict] = None,
+        cnn_bias_initializer: Optional[Union[str, Callable]] = None,
+        cnn_bias_initializer_config: Optional[Dict] = None,
     ):
         """Initializes a TorchCNN instance.
 
@@ -158,13 +229,30 @@ class TorchCNN(nn.Module):
             cnn_activation: The activation function to use after each Conv2D layer.
             cnn_use_layernorm: Whether to insert a LayerNormalization functionality
                 in between each Conv2D layer's outputs and its activation.
+            cnn_kernel_initializer: The initializer function or class to use for kernel
+                initialization in the CNN layers. If `None` the default initializer of
+                the respective CNN layer is used. Note, only the in-place
+                initializers, i.e. ending with an underscore "_" are allowed.
+            cnn_kernel_initializer_config: Configuration to pass into the initializer
+                defined in `cnn_kernel_initializer`.
+            cnn_bias_initializer: The initializer function or class to use for bias
+                initializationcin the CNN layers. If `None` the default initializer of
+                the respective CNN layer is used. Note, only the in-place initializers,
+                i.e. ending with an underscore "_" are allowed.
+            cnn_bias_initializer_config: Configuration to pass into the initializer
+                defined in `cnn_bias_initializer`.
         """
         super().__init__()
 
         assert len(input_dims) == 3
 
         cnn_activation = get_activation_fn(cnn_activation, framework="torch")
-
+        cnn_kernel_initializer = get_initializer_fn(
+            cnn_kernel_initializer, framework="torch"
+        )
+        cnn_bias_initializer = get_initializer_fn(
+            cnn_bias_initializer, framework="torch"
+        )
         layers = []
 
         # Add user-specified hidden convolutional layers first
@@ -188,13 +276,25 @@ class TorchCNN(nn.Module):
             else:
                 out_size = valid_padding(in_size, kernel_size, strides)
 
-            layers.append(
-                nn.Conv2d(in_depth, out_depth, kernel_size, strides, bias=cnn_use_bias)
+            layer = nn.Conv2d(
+                in_depth, out_depth, kernel_size, strides, bias=cnn_use_bias
             )
+
+            # Initialize CNN layer kernel if necessary.
+            if cnn_kernel_initializer:
+                cnn_kernel_initializer(
+                    layer.weight, **cnn_kernel_initializer_config or {}
+                )
+            # Initialize CNN layer bias if necessary.
+            if cnn_bias_initializer:
+                cnn_bias_initializer(layer.bias, **cnn_bias_initializer_config or {})
+
+            layers.append(layer)
 
             # Layernorm.
             if cnn_use_layernorm:
-                layers.append(nn.LayerNorm((out_depth, out_size[0], out_size[1])))
+                # We use an epsilon of 0.001 here to mimick the Tf default behavior.
+                layers.append(LayerNorm1D(out_depth, eps=0.001))
             # Activation.
             if cnn_activation is not None:
                 layers.append(cnn_activation())
@@ -205,13 +305,11 @@ class TorchCNN(nn.Module):
         # Create the CNN.
         self.cnn = nn.Sequential(*layers)
 
-        self.expected_input_dtype = torch.float32
-
     def forward(self, inputs):
         # Permute b/c data comes in as channels_last ([B, dim, dim, channels]) ->
         # Convert to `channels_first` for torch:
         inputs = inputs.permute(0, 3, 1, 2)
-        out = self.cnn(inputs.type(self.expected_input_dtype))
+        out = self.cnn(inputs)
         # Permute back to `channels_last`.
         return out.permute(0, 2, 3, 1)
 
@@ -236,6 +334,10 @@ class TorchCNNTranspose(nn.Module):
         cnn_transpose_use_bias: bool = True,
         cnn_transpose_activation: str = "relu",
         cnn_transpose_use_layernorm: bool = False,
+        cnn_transpose_kernel_initializer: Optional[Union[str, Callable]] = None,
+        cnn_transpose_kernel_initializer_config: Optional[Dict] = None,
+        cnn_transpose_bias_initializer: Optional[Union[str, Callable]] = None,
+        cnn_transpose_bias_initializer_config: Optional[Dict] = None,
     ):
         """Initializes a TorchCNNTranspose instance.
 
@@ -258,6 +360,18 @@ class TorchCNNTranspose(nn.Module):
             cnn_transpose_activation: The activation function to use after each layer
                 (except for the last Conv2DTranspose layer, which is always
                 non-activated).
+            cnn_transpose_kernel_initializer: The initializer function or class to use
+                for kernel initialization in the CNN layers. If `None` the default
+                initializer of the respective CNN layer is used. Note, only the
+                in-place initializers, i.e. ending with an underscore "_" are allowed.
+            cnn_transpose_kernel_initializer_config: Configuration to pass into the
+                initializer defined in `cnn_transpose_kernel_initializer`.
+            cnn_transpose_bias_initializer: The initializer function or class to use for
+                bias initialization in the CNN layers. If `None` the default initializer
+                of the respective CNN layer is used. Note, only the in-place
+                initializers, i.e. ending with an underscore "_" are allowed.
+            cnn_transpose_bias_initializer_config: Configuration to pass into the
+                initializer defined in `cnn_transpose_bias_initializer`.
         """
         super().__init__()
 
@@ -265,6 +379,12 @@ class TorchCNNTranspose(nn.Module):
 
         cnn_transpose_activation = get_activation_fn(
             cnn_transpose_activation, framework="torch"
+        )
+        cnn_transpose_kernel_initializer = get_initializer_fn(
+            cnn_transpose_kernel_initializer, framework="torch"
+        )
+        cnn_transpose_bias_initializer = get_initializer_fn(
+            cnn_transpose_bias_initializer, framework="torch"
         )
 
         layers = []
@@ -295,24 +415,36 @@ class TorchCNNTranspose(nn.Module):
             # Then do the Conv2DTranspose operation
             # (now that we have padded and strided manually, w/o any more padding using
             # stride=1).
-            layers.append(
-                nn.ConvTranspose2d(
-                    in_depth,
-                    out_depth,
-                    kernel,
-                    # Force-set stride to 1 as we already took care of it.
-                    1,
-                    # Disable torch auto-padding (torch interprets the padding setting
-                    # as: dilation (==1.0) * [`kernel` - 1] - [`padding`]).
-                    padding=(k_w - 1, k_h - 1),
-                    # Last layer always uses bias (b/c has no LayerNorm, regardless of
-                    # config).
-                    bias=cnn_transpose_use_bias or is_final_layer,
-                ),
+
+            layer = nn.ConvTranspose2d(
+                in_depth,
+                out_depth,
+                kernel,
+                # Force-set stride to 1 as we already took care of it.
+                1,
+                # Disable torch auto-padding (torch interprets the padding setting
+                # as: dilation (==1.0) * [`kernel` - 1] - [`padding`]).
+                padding=(k_w - 1, k_h - 1),
+                # Last layer always uses bias (b/c has no LayerNorm, regardless of
+                # config).
+                bias=cnn_transpose_use_bias or is_final_layer,
             )
+
+            # Initialize CNN Transpose layer kernel if necessary.
+            if cnn_transpose_kernel_initializer:
+                cnn_transpose_kernel_initializer(
+                    layer.weight, **cnn_transpose_kernel_initializer_config or {}
+                )
+            # Initialize CNN Transpose layer bias if necessary.
+            if cnn_transpose_bias_initializer:
+                cnn_transpose_bias_initializer(
+                    layer.bias, **cnn_transpose_bias_initializer_config or {}
+                )
+
+            layers.append(layer)
             # Layernorm (never for final layer).
             if cnn_transpose_use_layernorm and not is_final_layer:
-                layers.append(nn.LayerNorm((out_depth, out_size[0], out_size[1])))
+                layers.append(LayerNorm1D(out_depth, eps=0.001))
             # Last layer is never activated (regardless of config).
             if cnn_transpose_activation is not None and not is_final_layer:
                 layers.append(cnn_transpose_activation())
@@ -323,10 +455,25 @@ class TorchCNNTranspose(nn.Module):
         # Create the final CNNTranspose network.
         self.cnn_transpose = nn.Sequential(*layers)
 
-        self.expected_input_dtype = torch.float32
-
     def forward(self, inputs):
         # Permute b/c data comes in as [B, dim, dim, channels]:
         out = inputs.permute(0, 3, 1, 2)
-        out = self.cnn_transpose(out.type(self.expected_input_dtype))
+        out = self.cnn_transpose(out)
         return out.permute(0, 2, 3, 1)
+
+
+class LayerNorm1D(nn.Module):
+    def __init__(self, num_features, **kwargs):
+        super().__init__()
+        self.layer_norm = nn.LayerNorm(num_features, **kwargs)
+
+    def forward(self, x):
+        # x shape: (B, dim, dim, channels).
+        batch_size, channels, h, w = x.size()
+        # Reshape to (batch_size * height * width, channels) for LayerNorm
+        x = x.permute(0, 2, 3, 1).reshape(-1, channels)
+        # Apply LayerNorm
+        x = self.layer_norm(x)
+        # Reshape back to (batch_size, dim, dim, channels)
+        x = x.reshape(batch_size, h, w, channels).permute(0, 3, 1, 2)
+        return x

@@ -1,4 +1,4 @@
-# flake8: noqa
+# ruff: noqa
 # isort: skip_file
 
 import os
@@ -7,7 +7,10 @@ import tempfile
 tempdir = tempfile.TemporaryDirectory()
 os.environ["SHARED_STORAGE_PATH"] = tempdir.name
 
-from lightning_exp_tracking_model_dl import DummyModel, dataloader
+from ray.train.examples.experiment_tracking.lightning_exp_tracking_model_dl import (
+    DummyModel,
+    dataloader,
+)
 
 # __lightning_experiment_tracking_tensorboard_start__
 import os
@@ -36,7 +39,7 @@ def train_func(config):
     ptl_trainer.fit(model, train_dataloaders=dataloader)
 
 
-scaling_config = ScalingConfig(num_workers=4, use_gpu=False)
+scaling_config = ScalingConfig(num_workers=2, use_gpu=False)
 
 assert (
     "SHARED_STORAGE_PATH" in os.environ

@@ -2,9 +2,8 @@ import pytest
 
 import ray
 from ray._raylet import GcsClient
-from ray.serve._private.default_impl import (
-    create_cluster_node_info_cache,
-)
+from ray.serve._private.default_impl import create_cluster_node_info_cache
+from ray.serve._private.test_utils import get_node_id
 from ray.tests.conftest import *  # noqa
 
 
@@ -15,10 +14,6 @@ def test_get_alive_nodes(ray_start_cluster):
     worker_node = cluster.add_node(resources={"worker": 1})
     cluster.wait_for_nodes()
 
-    @ray.remote
-    def get_node_id():
-        return ray.get_runtime_context().get_node_id()
-
     head_node_id = ray.get(get_node_id.options(resources={"head": 1}).remote())
     worker_node_id = ray.get(get_node_id.options(resources={"worker": 1}).remote())
 
@@ -26,8 +21,8 @@ def test_get_alive_nodes(ray_start_cluster):
     cluster_node_info_cache = create_cluster_node_info_cache(gcs_client)
     cluster_node_info_cache.update()
     assert set(cluster_node_info_cache.get_alive_nodes()) == {
-        (head_node_id, ray.nodes()[0]["NodeName"]),
-        (worker_node_id, ray.nodes()[0]["NodeName"]),
+        (head_node_id, ray.nodes()[0]["NodeName"], ""),
+        (worker_node_id, ray.nodes()[0]["NodeName"], ""),
     }
     assert cluster_node_info_cache.get_alive_node_ids() == {
         head_node_id,
@@ -44,7 +39,7 @@ def test_get_alive_nodes(ray_start_cluster):
     # The killed worker node shouldn't show up in the alive node list.
     cluster_node_info_cache.update()
     assert cluster_node_info_cache.get_alive_nodes() == [
-        (head_node_id, ray.nodes()[0]["NodeName"])
+        (head_node_id, ray.nodes()[0]["NodeName"], "")
     ]
     assert cluster_node_info_cache.get_alive_node_ids() == {head_node_id}
     assert (

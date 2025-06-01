@@ -1,24 +1,16 @@
+# syntax=docker/dockerfile:1.3-labs
+
 ARG BASE_IMAGE
-FROM rayproject/ray:nightly"$BASE_IMAGE"
+ARG FULL_BASE_IMAGE=rayproject/ray:nightly"$BASE_IMAGE"
+FROM "$FULL_BASE_IMAGE"
 
-# We have to uninstall wrapt this way for Tensorflow compatibility
-COPY requirements.txt ./
-COPY requirements_compiled.txt ./
-COPY dl-cpu-requirements.txt ./
-COPY dl-gpu-requirements.txt ./
-COPY ray-docker-requirements.txt ./
-COPY core-requirements.txt ./
-COPY data-requirements.txt ./
-COPY rllib-requirements.txt ./
-COPY rllib-test-requirements.txt ./
-COPY tune-requirements.txt ./
-COPY tune-test-requirements.txt ./
-COPY train-requirements.txt ./
-COPY train-test-requirements.txt ./
+COPY python/*requirements.txt \
+     python/requirements/ml/*requirements.txt  \
+     python/requirements/docker/*requirements.txt ./
+COPY docker/ray-ml/install-ml-docker-requirements.sh ./
 
-COPY install-ml-docker-requirements.sh ./
-
-RUN sudo chmod +x install-ml-docker-requirements.sh && ./install-ml-docker-requirements.sh
+RUN sudo chmod +x install-ml-docker-requirements.sh \
+    && ./install-ml-docker-requirements.sh
 
 # Export installed packages
 RUN $HOME/anaconda3/bin/pip freeze > /home/ray/pip-freeze.txt

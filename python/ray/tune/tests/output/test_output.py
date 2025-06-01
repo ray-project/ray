@@ -1,31 +1,29 @@
 import argparse
-
+import sys
 from unittest import mock
 
 import pytest
-import sys
-
 from freezegun import freeze_time
 
 from ray import tune
 from ray.air.constants import TRAINING_ITERATION
+from ray.tune.experiment.trial import Trial
 from ray.tune.experimental.output import (
-    _get_time_str,
-    _get_trials_by_state,
-    _get_trial_info,
-    _infer_user_metrics,
-    _max_len,
-    _current_best_trial,
-    _best_trial_str,
-    _get_trial_table_data,
-    _get_dict_as_table_data,
-    _infer_params,
     AirVerbosity,
     TrainReporter,
     TuneTerminalReporter,
+    _best_trial_str,
+    _current_best_trial,
+    _get_dict_as_table_data,
+    _get_time_str,
+    _get_trial_info,
+    _get_trial_table_data,
+    _get_trials_by_state,
+    _infer_params,
+    _infer_user_metrics,
+    _max_len,
 )
-from ray.tune.experiment.trial import Trial
-
+from ray.tune.utils.mock_trainable import MOCK_TRAINABLE_NAME
 
 LAST_RESULT = {
     "custom_metrics": {},
@@ -89,16 +87,16 @@ def test_get_time_str():
 
 
 def test_get_trials_by_state():
-    t1 = Trial("__fake", stub=True)
+    t1 = Trial(MOCK_TRAINABLE_NAME, stub=True)
     t1.set_status(Trial.RUNNING)
-    t2 = Trial("__fake", stub=True)
+    t2 = Trial(MOCK_TRAINABLE_NAME, stub=True)
     t2.set_status(Trial.PENDING)
     trials = [t1, t2]
     assert _get_trials_by_state(trials) == {"RUNNING": [t1], "PENDING": [t2]}
 
 
 def test_infer_user_metrics():
-    t = Trial("__fake", stub=True)
+    t = Trial(MOCK_TRAINABLE_NAME, stub=True)
     t.run_metadata.last_result = LAST_RESULT
     result = [
         "episode_reward_max",
@@ -117,15 +115,15 @@ def test_max_len():
 
 
 def test_current_best_trial():
-    t1 = Trial("__fake", stub=True)
-    t2 = Trial("__fake", stub=True)
+    t1 = Trial(MOCK_TRAINABLE_NAME, stub=True)
+    t2 = Trial(MOCK_TRAINABLE_NAME, stub=True)
     t1.run_metadata.last_result = {"metric": 2}
     t2.run_metadata.last_result = {"metric": 1}
     assert _current_best_trial([t1, t2], metric="metric", mode="min") == (t2, "metric")
 
 
 def test_best_trial_str():
-    t = Trial("__fake", stub=True)
+    t = Trial(MOCK_TRAINABLE_NAME, stub=True)
     t.trial_id = "18ae7_00005"
     t.run_metadata.last_result = {
         "loss": 0.5918508041056858,
@@ -139,7 +137,7 @@ def test_best_trial_str():
 
 
 def test_get_trial_info():
-    t = Trial("__fake", stub=True)
+    t = Trial(MOCK_TRAINABLE_NAME, stub=True)
     t.trial_id = "af42b609"
     t.set_status(Trial.RUNNING)
     t.run_metadata.last_result = LAST_RESULT
@@ -153,13 +151,13 @@ def test_get_trial_info():
             "episode_len_mean",
             "episodes_this_iter",
         ],
-    ) == ["__fake_af42b609", "RUNNING", 214.45, 500.0, 54.0, 214.45, 66]
+    ) == ["mock_trainable_af42b609", "RUNNING", 214.45, 500.0, 54.0, 214.45, 66]
 
 
 def test_get_trial_table_data_less_than_20():
     trials = []
     for i in range(20):
-        t = Trial("__fake", stub=True)
+        t = Trial(MOCK_TRAINABLE_NAME, stub=True)
         t.trial_id = str(i)
         t.set_status(Trial.RUNNING)
         t.run_metadata.last_result = {"episode_reward_mean": 100 + i}
@@ -179,7 +177,7 @@ def test_get_trial_table_data_more_than_20():
     # total of 30 trials.
     for status in [Trial.RUNNING, Trial.TERMINATED, Trial.PENDING]:
         for i in range(10):
-            t = Trial("__fake", stub=True)
+            t = Trial(MOCK_TRAINABLE_NAME, stub=True)
             t.trial_id = str(i)
             t.set_status(status)
             t.run_metadata.last_result = {"episode_reward_mean": 100 + i}
@@ -331,7 +329,7 @@ def test_heartbeat_reset(progress_reporter_cls):
 
         # Let's report a result. This will reset the heartbeat timer
         reporter.on_trial_result(
-            0, [], Trial("__fake", stub=True), {TRAINING_ITERATION: 1}
+            0, [], Trial(MOCK_TRAINABLE_NAME, stub=True), {TRAINING_ITERATION: 1}
         )
 
         # Progress another half heartbeat. In Tune this triggers a heartbeat,

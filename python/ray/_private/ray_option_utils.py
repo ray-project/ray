@@ -1,18 +1,19 @@
 """Manage, parse and validate options for Ray tasks, actors and actor methods."""
 import warnings
 from dataclasses import dataclass
-from typing import Any, Callable, Dict, Iterable, Optional, Tuple, Union
+from typing import Any, Callable, Dict, Optional, Tuple, Union
 
-import logging
 import ray
 from ray._private import ray_constants
+from ray._private.label_utils import (
+    validate_label_selector,
+)
 from ray._private.utils import get_ray_doc_version
-from ray.util.accelerators import accelerators
 from ray.util.placement_group import PlacementGroup
 from ray.util.scheduling_strategies import (
     NodeAffinitySchedulingStrategy,
-    PlacementGroupSchedulingStrategy,
     NodeLabelSchedulingStrategy,
+    PlacementGroupSchedulingStrategy,
 )
 
 
@@ -79,6 +80,18 @@ def _validate_resource_quantity(name, quantity):
             f"The precision of the fractional quantity of resource {name}"
             " cannot go beyond 0.0001"
         )
+    resource_name = "GPU" if name == "num_gpus" else name
+    if resource_name in ray._private.accelerators.get_all_accelerator_resource_names():
+        (
+            valid,
+            error_message,
+        ) = ray._private.accelerators.get_accelerator_manager_for_resource(
+            resource_name
+        ).validate_resource_request_quantity(
+            quantity
+        )
+        if not valid:
+            return error_message
     return None
 
 
@@ -109,97 +122,8 @@ def _validate_resources(resources: Optional[Dict[str, float]]) -> Optional[str]:
     return None
 
 
-def _maybe_warn_misconfigured_tpu_chips(resources: Dict[str, Any]):
-    """Possibly warn against misconfigured TPU chip configuration."""
-    num_tpus = resources.get(ray_constants.TPU, 0)
-    if num_tpus not in ray_constants.TPU_VALID_CHIP_OPTIONS:
-        logging.warning(
-            f"The number of requested 'TPU' was set to {num_tpus} which "
-            "is not a supported chip configuration. Supported configs: "
-            f"{ray_constants.TPU_VALID_CHIP_OPTIONS}"
-        )
-
-
-def _validate_accelerators(options: Dict[str, Any]):
-    """Validate options for accelerators - support only one out of multiple options.
-
-    GPUs, NeuronCore accelerators (neuron_cores), and TPUs are valid options, but
-    individual nodes do not support heterogeneous accelerators. This function
-    guards against this setting.
-
-    The control flow is as follows:
-        - For each accelerator, determine if the options indicate usage of
-          a particular accelerator, captured by booleans.
-            - For GPUs, this is set if num_gpus > 0.
-            - For custom resources, this is set if the
-              resource name ("neuron_cores" or "TPU") or
-              accelerator_type ("aws-neuron-core", "TPU-V2", "TPU-V3", etc.)
-              is requested.
-        - If we identify that >1 resource type is requested,
-          we raise an error indicating that heterogeneous raylets
-          are not supported.
-
-    Args:
-        options: The options to be validated.
-
-    Raises:
-        ValueError: If the options are invalid.
-    """
-    num_gpus = options.get("num_gpus", None)
-    non_zero_gpus = num_gpus is not None and num_gpus > 0
-    resources = options["resources"] if "resources" in options else None
-
-    def non_zero_custom_resource(
-        resource_id: str, accelerator_ids: Iterable[str]
-    ) -> bool:
-        """Return whether or not the options includes >0 of a custom resource."""
-        result = False
-        accelerator_type_value: str = options.get("accelerator_type", "")
-        if resources is not None:
-            num_resources: int = resources.get(resource_id, 0)
-            if num_resources > 0:
-                result = True
-        if accelerator_type_value in accelerator_ids:
-            result = True
-        return result
-
-    non_zero_neuron_cores = non_zero_custom_resource(
-        resource_id=ray_constants.NEURON_CORES,
-        accelerator_ids=[accelerators.AWS_NEURON_CORE],
-    )
-    non_zero_tpus = non_zero_custom_resource(
-        resource_id=ray_constants.TPU,
-        accelerator_ids=[
-            accelerators.GOOGLE_TPU_V2,
-            accelerators.GOOGLE_TPU_V3,
-            accelerators.GOOGLE_TPU_V4,
-        ],
-    )
-
-    if non_zero_tpus:
-        _maybe_warn_misconfigured_tpu_chips(resources)
-
-    num_configured_accelerators = sum(
-        [non_zero_gpus, non_zero_tpus, non_zero_neuron_cores]
-    )
-    if num_configured_accelerators > 1:
-        hardware_requested = []
-        if non_zero_gpus:
-            hardware_requested.append("GPU")
-        if non_zero_neuron_cores:
-            hardware_requested.append("neuron_cores")
-        if non_zero_tpus:
-            hardware_requested.append("TPU")
-        hardware_str = ",".join(hardware_requested)
-        raise ValueError(
-            "Only one of 'num_gpus', 'neuron_cores/accelerator_type:aws-neuron-core' "
-            "and 'TPU/accelerator_type:TPU-V*' can be set. "
-            f"Detected {num_configured_accelerators} "
-            f"options were configured: {hardware_str}."
-        )
-
-
 _common_options = {
+    "label_selector": Option((dict, type(None)), lambda x: validate_label_selector(x)),
     "accelerator_type": Option((str, type(None))),
     "memory": _resource_option("memory"),
     "name": Option((str, type(None))),
@@ -226,6 +150,8 @@ _common_options = {
         )
     ),
     "_metadata": Option((dict, type(None))),
+    "enable_task_events": Option(bool, default_value=True),
+    "_labels": Option((dict, type(None))),
 }
 
 
@@ -249,9 +175,15 @@ _task_only_options = {
         (int, str, type(None)),
         lambda x: None
         if (x is None or x == "dynamic" or x == "streaming" or x >= 0)
-        else "The keyword 'num_returns' only accepts None, a non-negative integer, or "
-        '"dynamic" (for generators)',
-        default_value=1,
+        else "Default None. When None is passed, "
+        "The default value is 1 for a task and actor task, and "
+        "'streaming' for generator tasks and generator actor tasks. "
+        "The keyword 'num_returns' only accepts None, "
+        "a non-negative integer, "
+        "'streaming' (for generators), or 'dynamic'. 'dynamic' flag "
+        "will be deprecated in the future, and it is recommended to use "
+        "'streaming' instead.",
+        default_value=None,
     ),
     "object_store_memory": Option(  # override "_common_options"
         (int, type(None)),
@@ -271,6 +203,17 @@ _task_only_options = {
         )
         else "retry_exceptions must be either a boolean or a list of exceptions",
         default_value=False,
+    ),
+    "_generator_backpressure_num_objects": Option(
+        (int, type(None)),
+        lambda x: None
+        if x != 0
+        else (
+            "_generator_backpressure_num_objects=0 is not allowed. "
+            "Use a value > 0. If the value is equal to 1, the behavior "
+            "is identical to Python generator (generator 1 object "
+            "whenever `next` is called). Use -1 to disable this feature. "
+        ),
     ),
 }
 
@@ -383,7 +326,6 @@ def validate_task_options(options: Dict[str, Any], in_options: bool):
     if in_options and "max_calls" in options:
         raise ValueError("Setting 'max_calls' is not supported in '.options()'.")
     _check_deprecate_placement_group(options)
-    _validate_accelerators(options)
 
 
 def validate_actor_options(options: Dict[str, Any], in_options: bool):
@@ -407,12 +349,6 @@ def validate_actor_options(options: Dict[str, Any], in_options: bool):
             "Setting 'concurrency_groups' is not supported in '.options()'."
         )
 
-    if options.get("max_restarts", 0) == 0 and options.get("max_task_retries", 0) != 0:
-        raise ValueError(
-            "'max_task_retries' cannot be set if 'max_restarts' "
-            "is 0 or if 'max_restarts' is not set."
-        )
-
     if options.get("get_if_exists") and not options.get("name"):
         raise ValueError("The actor name must be specified to use `get_if_exists`.")
 
@@ -428,7 +364,6 @@ def validate_actor_options(options: Dict[str, Any], in_options: bool):
         )
 
     _check_deprecate_placement_group(options)
-    _validate_accelerators(options)
 
 
 def update_options(

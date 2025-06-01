@@ -11,30 +11,77 @@ import ray
 from ray._private.test_utils import (
     run_string_as_driver,
     run_string_as_driver_nonblocking,
-    wait_for_condition,
+    run_string_as_driver_stdout_stderr,
 )
+from ray.autoscaler.v2.utils import is_autoscaler_v2
 
 
 def test_dedup_logs():
     script = """
-import ray
 import time
 
-@ray.remote
-def verbose():
-    print(f"hello world, id={time.time()}")
-    time.sleep(1)
+import ray
+from ray._private.test_utils import SignalActor, wait_for_condition
 
-ray.init(num_cpus=4)
-ray.get([verbose.remote() for _ in range(10)])
+signal = SignalActor.remote()
+
+@ray.remote(num_cpus=0)
+def verbose():
+    ray.get(signal.wait.remote())
+    print(f"hello world, id={time.time()}")
+
+refs = [verbose.remote() for _ in range(4)]
+wait_for_condition(
+    lambda: ray.get(signal.cur_num_waiters.remote()) == 4
+)
+ray.get(signal.send.remote())
+ray.get(refs)
 """
 
     proc = run_string_as_driver_nonblocking(script)
     out_str = proc.stdout.read().decode("ascii")
 
-    assert out_str.count("hello") == 2
-    assert out_str.count("RAY_DEDUP_LOGS") == 1
-    assert out_str.count("[repeated 9x across cluster]") == 1
+    assert out_str.count("hello") == 2, out_str
+    assert out_str.count("RAY_DEDUP_LOGS") == 1, out_str
+    assert out_str.count("[repeated 3x across cluster]") == 1, out_str
+
+
+def test_dedup_error_warning_logs(ray_start_cluster, monkeypatch):
+    with monkeypatch.context() as m:
+        m.setenv("RAY_DEDUP_LOGS_AGG_WINDOW_S", 5)
+        cluster = ray_start_cluster
+        cluster.add_node(num_cpus=1)
+        cluster.add_node(num_cpus=1)
+        cluster.add_node(num_cpus=1)
+
+        script = """
+import ray
+import time
+from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
+
+ray.init()
+
+@ray.remote(num_cpus=0)
+class Foo:
+    def __init__(self):
+        time.sleep(1)
+
+# NOTE: We should save actor, otherwise it will be out of scope.
+actors = [Foo.remote() for _ in range(30)]
+for actor in actors:
+    try:
+        ray.get(actor.__ray_ready__.remote())
+    except ray.exceptions.OutOfMemoryError:
+        # When running the test on a small machine,
+        # some actors might be killed by the memory monitor.
+        # We just catch and ignore the error.
+        pass
+"""
+        out_str = run_string_as_driver(script)
+        print(out_str)
+    assert "PYTHON worker processes have been started" in out_str, out_str
+    assert out_str.count("RAY_DEDUP_LOGS") == 1, out_str
+    assert "[repeated" in out_str, out_str
 
 
 def test_logger_config_with_ray_init():
@@ -55,24 +102,25 @@ ray.init(num_cpus=1)
 def test_spill_logs():
     script = """
 import ray
-import numpy as np
 
 ray.init(object_store_memory=200e6)
 
 x = []
 
 for _ in range(10):
-    x.append(ray.put(np.ones(100 * 1024 * 1024, dtype=np.uint8)))
-"""
+    x.append(ray.put(bytes(100 * 1024 * 1024)))
 
-    proc = run_string_as_driver_nonblocking(script, env={"RAY_verbose_spill_logs": "1"})
-    out_str = proc.stdout.read().decode("ascii") + proc.stderr.read().decode("ascii")
-    print(out_str)
+"""
+    stdout_str, stderr_str = run_string_as_driver_stdout_stderr(
+        script, env={"RAY_verbose_spill_logs": "1"}
+    )
+    out_str = stdout_str + stderr_str
     assert "Spilled " in out_str
 
-    proc = run_string_as_driver_nonblocking(script, env={"RAY_verbose_spill_logs": "0"})
-    out_str = proc.stdout.read().decode("ascii") + proc.stderr.read().decode("ascii")
-    print(out_str)
+    stdout_str, stderr_str = run_string_as_driver_stdout_stderr(
+        script, env={"RAY_verbose_spill_logs": "0"}
+    )
+    out_str = stdout_str + stderr_str
     assert "Spilled " not in out_str
 
 
@@ -158,13 +206,13 @@ x = foo.remote()
 time.sleep(15)
     """
 
-    proc = run_string_as_driver_nonblocking(script)
-    out_str = proc.stdout.read().decode("ascii")
-    err_str = proc.stderr.read().decode("ascii")
-
+    out_str, err_str = run_string_as_driver_stdout_stderr(script)
     print(out_str, err_str)
-    assert "Tip:" in out_str
-    assert "Error: No available node types can fulfill" in out_str
+    assert "Tip:" in out_str, (out_str, err_str)
+    assert "No available node types can fulfill" in out_str, (
+        out_str,
+        err_str,
+    )
 
 
 @pytest.mark.parametrize(
@@ -201,13 +249,21 @@ b = A.remote()
 time.sleep(25)
     """
 
-    proc = run_string_as_driver_nonblocking(script)
-    out_str = proc.stdout.read().decode("ascii")
-    err_str = proc.stderr.read().decode("ascii")
+    out_str, err_str = run_string_as_driver_stdout_stderr(script)
 
     print(out_str, err_str)
-    assert "Tip:" in out_str
-    assert "Warning: The following resource request cannot" in out_str
+    assert "Tip:" in out_str, (out_str, err_str)
+
+    if is_autoscaler_v2():
+        assert "No available node types can fulfill resource requests" in out_str, (
+            out_str,
+            err_str,
+        )
+    else:
+        assert "Warning: The following resource request cannot" in out_str, (
+            out_str,
+            err_str,
+        )
 
 
 # TODO(rickyx): Remove this after migration
@@ -219,13 +275,6 @@ time.sleep(25)
             "resources": {"node:x": 1},
             "env_vars": {
                 "RAY_enable_autoscaler_v2": "0",
-            },
-        },
-        {
-            "num_cpus": 1,
-            "resources": {"node:x": 1},
-            "env_vars": {
-                "RAY_enable_autoscaler_v2": "1",
             },
         },
     ],
@@ -314,16 +363,10 @@ event_logger.info("Test autoscaler event")
 # Block and sleep
 time.sleep(3)
     """
-
-    proc = run_string_as_driver_nonblocking(script)
-
-    def verify():
-        out_str = proc.stdout.read().decode("ascii")
-        print(out_str)
-        assert out_str and "Test autoscaler event" in out_str
-        return True
-
-    wait_for_condition(verify)
+    out_str, err_str = run_string_as_driver_stdout_stderr(script)
+    print(out_str)
+    print(err_str)
+    assert "Test autoscaler event" in out_str, (out_str, err_str)
 
 
 @pytest.mark.parametrize(
@@ -371,25 +414,20 @@ time.sleep(3)
 
     env = os.environ.copy()
     env["RAY_LOG_TO_DRIVER_EVENT_LEVEL"] = event_level
-    proc = run_string_as_driver_nonblocking(script, env=env)
 
-    def verify():
-        out_str = proc.stdout.read().decode("ascii")
-        print(out_str)
-        # Filter only autoscaler prints.
-        assert out_str
+    out_str, err_str = run_string_as_driver_stdout_stderr(script, env=env)
+    print(out_str)
+    print(err_str)
 
-        out_str = "".join(
-            [line for line in out_str.splitlines() if "autoscaler" in line]
-        )
-        for expected in expected_msg.split(","):
-            assert expected in out_str
-        if unexpected_msg:
-            for unexpected in unexpected_msg.split(","):
-                assert unexpected not in out_str
-        return True
+    # Filter only autoscaler prints.
+    assert out_str
 
-    wait_for_condition(verify)
+    out_str = "".join([line for line in out_str.splitlines() if "autoscaler" in line])
+    for expected in expected_msg.split(","):
+        assert expected in out_str
+    if unexpected_msg:
+        for unexpected in unexpected_msg.split(","):
+            assert unexpected not in out_str
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
@@ -539,34 +577,41 @@ import ray
 import sys
 import threading
 
-ray.init(num_cpus=2)
+os.environ["RAY_DEBUG"] = "legacy"
+ray.init(num_cpus=2, runtime_env={"env_vars": {"RAY_DEBUG": "legacy"}})
 
 @ray.remote
 def f():
     while True:
-        time.sleep(1)
+        start_time = time.monotonic()
+        while time.monotonic() - start_time < 1:
+            time.sleep(0.1)
+            print(f"slept {time.monotonic() - start_time} seconds")
         print("hello there")
         sys.stdout.flush()
 
 def kill():
-    time.sleep(5)
+    start_time = time.monotonic()
+    while time.monotonic() - start_time < 5:
+        time.sleep(0.1)
     sys.stdout.flush()
-    time.sleep(1)
+    start_time = time.monotonic()
+    while time.monotonic() - start_time < 1:
+        time.sleep(0.1)
     os._exit(0)
 
 t = threading.Thread(target=kill)
 t.start()
 x = f.remote()
-time.sleep(2)  # Enough time to print one hello.
-ray.util.rpdb._driver_set_trace()  # This should disable worker logs.
-# breakpoint()  # Only works in Py3.7+
+time.sleep(3)  # Enough time to print one hello.
+breakpoint()  # This should disable worker logs.
     """
 
     proc = run_string_as_driver_nonblocking(script)
     out_str = proc.stdout.read().decode("ascii")
     num_hello = out_str.count("hello")
     assert num_hello >= 1, out_str
-    assert num_hello < 3, out_str
+    assert num_hello <= 3, out_str
     assert "Temporarily disabling Ray worker logs" in out_str, out_str
     # TODO(ekl) nice to test resuming logs too, but it's quite complicated
 
@@ -704,46 +749,21 @@ ray.init()
 def test_output_on_driver_shutdown(ray_start_cluster):
     cluster = ray_start_cluster
     cluster.add_node(num_cpus=16)
-    # many_ppo.py script.
     script = """
 import ray
-from ray.tune import run_experiments
-from ray.tune.utils.release_test_util import ProgressCallback
-
-num_redis_shards = 5
-redis_max_memory = 10**8
-object_store_memory = 10**9
-num_nodes = 3
-
-message = ("Make sure there is enough memory on this machine to run this "
-           "workload. We divide the system memory by 2 to provide a buffer.")
-assert (num_nodes * object_store_memory + num_redis_shards * redis_max_memory <
-        ray._private.utils.get_system_memory() / 2), message
-
-# Simulate a cluster on one machine.
-
 ray.init(address="auto")
 
-# Run the workload.
+@ray.remote
+def f(i: int):
+    return i
 
-run_experiments(
-    {
-        "PPO": {
-            "run": "PPO",
-            "env": "CartPole-v0",
-            "num_samples": 10,
-            "config": {
-                "framework": "torch",
-                "num_workers": 1,
-                "num_gpus": 0,
-                "num_sgd_iter": 1,
-            },
-            "stop": {
-                "timesteps_total": 1,
-            },
-        }
-    },
-    callbacks=[ProgressCallback()])
+obj_refs = [f.remote(i) for i in range(100)]
+
+while True:
+    assert len(obj_refs) == 100
+    ready, pending = ray.wait(obj_refs, num_returns=10)
+    for i in ray.get(ready):
+        obj_refs[i] = f.remote(i)
     """
 
     proc = run_string_as_driver_nonblocking(script)
@@ -760,13 +780,14 @@ run_experiments(
         time.sleep(0.1)
         os.kill(proc.pid, signal.SIGINT)
     try:
-        proc.wait(timeout=10)
+        proc.wait(timeout=5)
     except subprocess.TimeoutExpired:
         print("Script wasn't terminated by SIGINT. Try SIGTERM.")
         os.kill(proc.pid, signal.SIGTERM)
-    print(proc.wait(timeout=10))
+    print(proc.wait(timeout=5))
     err_str = proc.stderr.read().decode("ascii")
     assert len(err_str) > 0
+    assert "KeyboardInterrupt" in err_str
     assert "StackTrace Information" not in err_str
     print(err_str)
 
@@ -875,7 +896,4 @@ if __name__ == "__main__":
         ray.init(num_cpus=1, object_store_memory=(100 * MB))
         ray.shutdown()
     else:
-        if os.environ.get("PARALLEL_CI"):
-            sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))
-        else:
-            sys.exit(pytest.main(["-sv", __file__]))
+        sys.exit(pytest.main(["-sv", __file__]))

@@ -3,7 +3,6 @@ import sys
 
 from ray._private.ray_constants import (  # noqa F401
     AUTOSCALER_RESOURCE_REQUEST_CHANNEL,
-    DEFAULT_OBJECT_STORE_MAX_MEMORY_BYTES,
     DEFAULT_OBJECT_STORE_MEMORY_PROPORTION,
     LABELS_ENVIRONMENT_VARIABLE,
     LOGGER_FORMAT,
@@ -30,8 +29,9 @@ AUTOSCALER_UTILIZATION_SCORER_KEY = "RAY_AUTOSCALER_UTILIZATION_SCORER"
 # Whether to avoid launching GPU nodes for CPU only tasks.
 AUTOSCALER_CONSERVE_GPU_NODES = env_integer("AUTOSCALER_CONSERVE_GPU_NODES", 1)
 
-# How long to wait for a node to start, in seconds.
+# How long to wait for a node to start and terminate, in seconds.
 AUTOSCALER_NODE_START_WAIT_S = env_integer("AUTOSCALER_NODE_START_WAIT_S", 900)
+AUTOSCALER_NODE_TERMINATE_WAIT_S = env_integer("AUTOSCALER_NODE_TERMINATE_WAIT_S", 900)
 
 # Interval at which to check if node SSH became available.
 AUTOSCALER_NODE_SSH_INTERVAL_S = env_integer("AUTOSCALER_NODE_SSH_INTERVAL_S", 5)
@@ -49,6 +49,14 @@ AUTOSCALER_MAX_LAUNCH_BATCH = env_integer("AUTOSCALER_MAX_LAUNCH_BATCH", 5)
 AUTOSCALER_MAX_CONCURRENT_LAUNCHES = env_integer(
     "AUTOSCALER_MAX_CONCURRENT_LAUNCHES", 10
 )
+
+# Default upscaling speed for the autoscaler. This specifies how many nodes
+# to request at a time, where the desired number to upscale is
+#   min(1, upscaling_speed * current_num_nodes)
+# e.g. 1.0 means to request enough nodes to double
+# the cluster size in each round of requests.
+# When the upscaling speed is 0.0, the autoscaler will request 1 node.
+DEFAULT_UPSCALING_SPEED = 0.0
 
 # Interval at which to perform autoscaling updates.
 AUTOSCALER_UPDATE_INTERVAL_S = env_integer("AUTOSCALER_UPDATE_INTERVAL_S", 5)
@@ -73,7 +81,9 @@ AUTOSCALER_REPORT_PER_NODE_STATUS = (
 # The maximum allowed resource demand vector size to guarantee the resource
 # demand scheduler bin packing algorithm takes a reasonable amount of time
 # to run.
-AUTOSCALER_MAX_RESOURCE_DEMAND_VECTOR_SIZE = 1000
+AUTOSCALER_MAX_RESOURCE_DEMAND_VECTOR_SIZE = env_integer(
+    "AUTOSCALER_MAX_RESOURCE_DEMAND_VECTOR_SIZE", 1000
+)
 
 # Port that autoscaler prometheus metrics will be exported to
 AUTOSCALER_METRIC_PORT = env_integer("AUTOSCALER_METRIC_PORT", 44217)
@@ -130,4 +140,3 @@ DISABLE_NODE_UPDATERS_KEY = "disable_node_updaters"
 DISABLE_LAUNCH_CONFIG_CHECK_KEY = "disable_launch_config_check"
 FOREGROUND_NODE_LAUNCH_KEY = "foreground_node_launch"
 WORKER_LIVENESS_CHECK_KEY = "worker_liveness_check"
-WORKER_RPC_DRAIN_KEY = "worker_rpc_drain"

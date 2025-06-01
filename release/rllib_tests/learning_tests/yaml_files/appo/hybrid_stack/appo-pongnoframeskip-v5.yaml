@@ -1,0 +1,50 @@
+appo-pongnoframeskip-v5:
+    env: ale_py:ALE/Pong-v5
+    run: APPO
+    # Minimum reward and total ts (in given time_total_s) to pass this test.
+    pass_criteria:
+        sampler_results/episode_reward_mean: 18.0
+        timesteps_total: 10000000
+    stop:
+        time_total_s: 1800
+    config:
+        # Make analogous to old v4 + NoFrameskip.
+        env_config:
+            frameskip: 1
+            full_action_space: false
+            repeat_action_probability: 0.0
+        vtrace: True
+        use_kl_loss: False
+        rollout_fragment_length: 50
+        train_batch_size: 4000
+        lr: 0.0006
+        # On a 32 CPU machine (g3.2xlarge), we use 30 CPUs for the rollout workers
+        # and 2 for the learner workers.
+        num_workers: 31
+        broadcast_interval: 1
+        max_sample_requests_in_flight_per_worker: 1
+        num_envs_per_env_runner: 8
+        num_sgd_iter: 2
+        vf_loss_coeff: 1.0
+        clip_param: 0.3
+
+        grad_clip: 10.0
+        grad_clip_by: global_norm
+        model:
+            dim: 42
+            conv_filters: [[16, 4, 2], [32, 4, 2], [64, 4, 2], [128, 4, 2]]
+            conv_activation: relu
+            post_fcnet_hiddens: [256]
+
+        # Run with Learner- and RLModule API (new stack).
+        _enable_new_api_stack: true
+        # Use N Learner worker on the GPU
+        num_learner_workers: 4
+        num_gpus_per_learner_worker: 1
+        num_gpus: 0  # No GPU needed for driver.
+        # Since we are using learner workers, the driver process does not need
+        # a CPU in particular.
+        num_cpus_for_local_worker: 1
+        # Need to unset this b/c we are using the RLModule API, which
+        # provides exploration control via the RLModule's `forward_exploration` method.
+        exploration_config: {}

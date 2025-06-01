@@ -14,27 +14,37 @@
 
 #pragma once
 
+#include <memory>
+#include <string>
+#include <utility>
+#include <vector>
+
+#include "ray/gcs/gcs_server/gcs_init_data.h"
+#include "ray/gcs/gcs_server/gcs_kv_manager.h"
+#include "ray/gcs/pubsub/gcs_pub_sub.h"
 #include "ray/rpc/gcs_server/gcs_rpc_server.h"
 #include "ray/rpc/node_manager/node_manager_client_pool.h"
+#include "ray/util/thread_checker.h"
 #include "src/ray/protobuf/gcs.pb.h"
 
 namespace ray {
-class ClusterResourceManager;
 namespace gcs {
 
-class GcsResourceManager;
+class GcsActorManager;
 class GcsNodeManager;
 class GcsPlacementGroupManager;
+class GcsResourceManager;
 
 class GcsAutoscalerStateManager : public rpc::autoscaler::AutoscalerStateHandler {
  public:
-  GcsAutoscalerStateManager(
-      const std::string &session_name,
-      const ClusterResourceManager &cluster_resource_manager,
-      const GcsResourceManager &gcs_resource_manager,
-      const GcsNodeManager &gcs_node_manager,
-      const GcsPlacementGroupManager &gcs_placement_group_manager,
-      std::shared_ptr<rpc::NodeManagerClientPool> raylet_client_pool);
+  GcsAutoscalerStateManager(std::string session_name,
+                            GcsNodeManager &gcs_node_manager,
+                            GcsActorManager &gcs_actor_manager,
+                            const GcsPlacementGroupManager &gcs_placement_group_manager,
+                            rpc::NodeManagerClientPool &raylet_client_pool,
+                            InternalKVInterface &kv,
+                            instrumented_io_context &io_context,
+                            GcsPublisher *gcs_publisher);
 
   void HandleGetClusterResourceState(
       rpc::autoscaler::GetClusterResourceStateRequest request,
@@ -59,11 +69,32 @@ class GcsAutoscalerStateManager : public rpc::autoscaler::AutoscalerStateHandler
                        rpc::autoscaler::DrainNodeReply *reply,
                        rpc::SendReplyCallback send_reply_callback) override;
 
+  void HandleReportClusterConfig(rpc::autoscaler::ReportClusterConfigRequest request,
+                                 rpc::autoscaler::ReportClusterConfigReply *reply,
+                                 rpc::SendReplyCallback send_reply_callback) override;
+
+  void UpdateResourceLoadAndUsage(rpc::ResourcesData data);
+
   void RecordMetrics() const { throw std::runtime_error("Unimplemented"); }
 
-  std::string DebugString() const { throw std::runtime_error("Unimplemented"); }
+  std::string DebugString() const;
+
+  void Initialize(const GcsInitData &gcs_init_data);
+
+  void OnNodeAdd(const rpc::GcsNodeInfo &node);
+
+  void OnNodeDead(const NodeID &node) { node_resource_info_.erase(node); }
+
+  const absl::flat_hash_map<ray::NodeID, std::pair<absl::Time, rpc::ResourcesData>>
+      &GetNodeResourceInfo() const {
+    return node_resource_info_;
+  }
 
  private:
+  /// \brief Get the aggregated resource load from all nodes.
+  absl::flat_hash_map<google::protobuf::Map<std::string, double>, rpc::ResourceDemand>
+  GetAggregatedResourceLoad() const;
+
   /// \brief Internal method for populating the rpc::ClusterResourceState
   /// protobuf.
   /// \param state The state to be filled.
@@ -122,23 +153,45 @@ class GcsAutoscalerStateManager : public rpc::autoscaler::AutoscalerStateHandler
   /// more details. This is requested through autoscaler SDK for request_resources().
   void GetClusterResourceConstraints(rpc::autoscaler::ClusterResourceState *state);
 
-  // Ray cluster session name.
-  const std::string session_name_ = "";
+  /// \brief Get the autoscaler infeasible request resource shapes for each node.
+  /// \return a map of node id to the corresponding infeasible resource requests shapes.
+  ///
+  /// The function takes the infeasible requests from `autoscaling_state_` and maps the
+  /// corresponding resource shapes to the ResourceLoad of each node in
+  /// `node_resource_info_` to get the infeasible requests per node.
+  /// The resource shapes that meets the following criteria are added to the map:
+  /// (1) It is in the `infeasible_resource_requests` of the `autoscaling_state_`.
+  /// (2) The `num_infeasible_requests_queued` in the `ResourceDemand` of the shape in
+  ///    corresponding entry in `node_resource_info_` is greater than 0.
+  absl::flat_hash_map<ray::NodeID,
+                      std::vector<google::protobuf::Map<std::string, double>>>
+  GetPerNodeInfeasibleResourceRequests() const;
 
-  /// Cluster resources manager that provides cluster resources information.
-  const ClusterResourceManager &cluster_resource_manager_;
+  /// \brief Cancel the tasks with autoscaler infeasible requests.
+  /// TODO: Implement the function
+  void CancelInfeasibleRequests() const;
+
+  // Ray cluster session name.
+  const std::string session_name_;
 
   /// Gcs node manager that provides node status information.
-  const GcsNodeManager &gcs_node_manager_;
+  GcsNodeManager &gcs_node_manager_;
 
-  /// GCS resource manager that provides resource demand/load information.
-  const GcsResourceManager &gcs_resource_manager_;
+  /// Gcs actor manager that provides actor information.
+  GcsActorManager &gcs_actor_manager_;
 
   /// GCS placement group manager reference.
   const GcsPlacementGroupManager &gcs_placement_group_manager_;
 
   /// Raylet client pool.
-  std::shared_ptr<rpc::NodeManagerClientPool> raylet_client_pool_;
+  rpc::NodeManagerClientPool &raylet_client_pool_;
+
+  // Handler for internal KV
+  InternalKVInterface &kv_;
+  instrumented_io_context &io_context_;
+
+  // A publisher for publishing gcs messages.
+  GcsPublisher *gcs_publisher_;
 
   // The default value of the last seen version for the request is 0, which indicates
   // no version has been reported. So the first reported version should be 1.
@@ -157,13 +210,27 @@ class GcsAutoscalerStateManager : public rpc::autoscaler::AutoscalerStateHandler
 
   /// The most recent cluster resource constraints requested.
   /// This is requested through autoscaler SDK from request_resources().
-  absl::optional<rpc::autoscaler::ClusterResourceConstraint>
-      cluster_resource_constraint_ = absl::nullopt;
+  std::optional<rpc::autoscaler::ClusterResourceConstraint> cluster_resource_constraint_ =
+      std::nullopt;
 
   /// Cached autoscaling state.
-  absl::optional<rpc::autoscaler::AutoscalingState> autoscaling_state_ = absl::nullopt;
+  std::optional<rpc::autoscaler::AutoscalingState> autoscaling_state_ = std::nullopt;
+
+  /// Resource load and usage of all nodes.
+  /// Note: This is similar to the data structure in `gcs_resource_manager`
+  /// but we update load and usage together.
+  ///
+  /// The absl::Time in the pair is the last time the item was updated.
+  absl::flat_hash_map<ray::NodeID, std::pair<absl::Time, rpc::ResourcesData>>
+      node_resource_info_;
+
+  ThreadChecker thread_checker_;
 
   FRIEND_TEST(GcsAutoscalerStateManagerTest, TestReportAutoscalingState);
+  FRIEND_TEST(GcsAutoscalerStateManagerTest,
+              TestGetPerNodeInfeasibleResourceRequests_NoInfeasibleRequests);
+  FRIEND_TEST(GcsAutoscalerStateManagerTest,
+              TestGetPerNodeInfeasibleResourceRequests_WithInfeasibleRequests);
 };
 
 }  // namespace gcs

@@ -1,24 +1,24 @@
-# Finetuning Llama-2 series models with Deepspeed, Accelerate, and Ray Train TorchTrainer
+# Fine-tuning Llama-2 series models with Deepspeed, Accelerate, and Ray Train TorchTrainer
 | Template Specification | Description |
 | ---------------------- | ----------- |
-| Summary | This template, demonstrates how to perform full parameter fine-tuning for Llama-2 series models (7B, 13B, and 70B) using TorchTrainer with the DeepSpeed ZeRO-3 strategy. |
-| Time to Run | ~14 min. for 7B for 1 epoch on 3.5M tokens. ~26 min for 13B for 1 epoch.  |
+| Summary | This template, demonstrates how to perform fine-tuning (full parameter or LoRA) for Llama-2 series models (7B, 13B, and 70B) using TorchTrainer with the DeepSpeed ZeRO-3 strategy. |
+| Time to Run | 1 epoch (3.5M tokens) training wall-clock time: ~14 min. for 7B, ~26 min. for 13B, and ~190 min. for 70B (see the setup details below)  |
 | Minimum Compute Requirements | 16xg5.4xlarge for worker nodes for 7B model, 4xg5.12xlarge nodes for 13B model, and 4xg5.48xlarge (or 2xp4de.24xlarge) nodes for 70B|
-| Cluster Environment | This template uses a docker image built on top of the latest Anyscale-provided Ray image using Python 3.9: [`anyscale/ray:latest-py39-cu118`](https://docs.anyscale.com/reference/base-images/overview). |
+| Cluster Environment | This template uses a Docker image built on top of the latest Anyscale-provided Ray image using Python 3.9: [`anyscale/ray:latest-py39-cu118`](https://docs.anyscale.com/reference/base-images/overview?utm_source=ray_docs&utm_medium=docs&utm_campaign=finetuning_llms). |
 
 ## Getting Started
 
-For 7B, set up a cluster on AWS with the following settings:
+For a full-parameter fine-tuning of 7B models, set up a cluster on AWS with the following settings:
 
 |            | num | instance type | GPU per node | GPU Memory | CPU Memory |
 |------------|-----|---------------|--------------|------------|------------|
 | Head node  | 1   | m5.xlarge   | -     | -     | -     |
 | Worker node| 16  | g5.4xlarge    | 1 x A10G     | 24 GB      | 64 GB      |
 
-And launch the following script:
+And launch the following script to fine-tune LLaMA 2 7B:
 
 ```
-./run_llama_ft.sh --size=7b [--as-test]
+./run_llama_ft.sh --size=7b --as-test
 ```
 
 The flag `--as-test` is for demo / testing purposes as it runs through only one forward and backward pass of the model. The model loading, and remote checkpointing would still run. 
@@ -66,7 +66,7 @@ aws s3 ls s3://<bucket_path>/checkpoint_00000
 └── tokenizer_config.json
 ```
 
-After training we can use [Aviary](https://github.com/ray-project/aviary) to deploy our fine-tuned LLM by providing the checkpoint path stored on cloud directly.
+After training we can use [RayLLM](https://github.com/ray-project/ray-llm) to deploy our fine-tuned LLM by providing the checkpoint path stored on cloud directly.
 
 ### Creating the dataset
 
@@ -84,7 +84,7 @@ And the special tokens can be:
 {"tokens": ["<ASSISTANT>", "</ASSISTANT>", "<USER>", "</USER>"]}
 ```
 
-Depending on the dataset you want to finetune on, the tokenization and dataset pre-processing will likely need to be adjusted. The current code is configured to train on the Grade School Math 8k (GSM8K) dataset. By running the code below we create three files that are needed to launch the training script with. 
+Depending on the dataset you want to fine-tune on, the tokenization and dataset pre-processing will likely need to be adjusted. The current code is configured to train on the Grade School Math 8k (GSM8K) dataset. By running the code below we create three files that are needed to launch the training script with. 
 
 ```
 python create_dataset.py
@@ -100,7 +100,7 @@ This dataset is trained with a context length of 512 which includes excessive pa
 
 The script is written using Ray Train + Deepspeed integration via accelerate API. The script is general enough that it can be used to fine-tune all released sizes of Llama-2 models. 
 
-The CLI for seeing all the options is:
+The command for seeing all the options is:
 
 ```
 python finetune_hf_llm.py --help
@@ -116,6 +116,34 @@ This script was tested across three model sizes on the following cluster configu
 | 70B        | `meta-llama/Llama-2-70b-hf`  | 8                     | 32x A10G (24G) | ~190 min.             |
 
 
+To launch a full fine-tuning you can use the following command:
+
+```
+./run_llama_ft.sh --size=7b
+```
+
+### Launching LoRA fine-tuning
+
+You can utilize [LoRA](https://arxiv.org/abs/2106.09685) to achieve more resource efficient fine-tuning results than full-parameter fine-tuning, but unlocking smaller instance types and more efficient model serving.
+To launch a LoRA fine-tuning, you can use the following command or similar commands for other model sizes:
+
+```
+./run_llama_ft.sh --size=7b --lora
+```
+
+Fine-tuning a model with LoRA results in a checkpoint containing only the fine-tuned weights.
+As an example, the default Llama 2 LoRA configuration should yield a 42/64/202MB checkpoint for 7B/13B/70B models.
+If we want to evaluate the model after training, we can merge the model weights with the original (non-fine-tuned) model.
+We provide a script to merge the fine-tuned weights with the original weights to produce a full-parameter checkpoint.
+The script has high CPU memory requirements because it requires us to load all parameters into memory at the same time, 
+13GB/24GB/152GB for 7B/13B/70B models. Downloading and loading the original weights should take ~1min/~2min/~10min each 
+on a p4de.24xlarge instance. You can run the script as follows:
+
+```
+python merge_lora_weights.py --model-name=7b --checkpoint=<path to your checkpoint> --output-path=<desired output path>
+```
+
+This leaves a self-contained LoRA fine-tuned model, config and tokenizer at the desired output path.
 
 ### Guideline on how to pick node instances when A100s are not available.
 
@@ -183,13 +211,13 @@ So availability of enough CPU RAM is very important when using optimizer state o
 
 2. CPU RAM requirement during checkpointing
 
-During checkpointing in the middle of training, we have to aggregate the weights from all the shards back to rank 0 so that it can save the model. We can also save the weights of each shard indepedently and aggregate the weights later offline. The extra CPU memory requirement would not get solved tho. 
+During checkpointing in the middle of training, we have to aggregate the weights from all the shards back to rank 0 so that it can save the model. We can also save the weights of each shard independently and aggregate the weights later offline. The extra CPU memory requirement would not get solved tho. 
 
 Emprically the implementation that `accelerate` provides needs `O(4M)` CPU RAM on rank 0 machine where M is the model size. This would mean that for 70B we need 280GB of CPU on top of what we needed before (e.g. due to CPU offloading). This requirement is only for rank 0 though and not any other machine. So it's important to schedule this process on a machine with this much of RAM while the other processes can get scheduled on machines with lower RAM requirements. 
 
 For example, for 70B model, with 32-way sharding on a machine with 8xA10Gs (g5.48xlarge), you need 280G (because of checkpointing) and 315 GB (because of optimizer state offloading) making the total memory requirement ~595 GB.
 
-Ray provides an easy way to control which process gets launched on what machine type. To do this, in your cluster config add a custom lable for those machines that satisifies the CPU RAM requirement of rank 0 and call them `large_cpu_mem` instances. Then in our script we specify the custom tag as a resource requiremnet for the `trainer` actor which is in the same machine that rank zero process will get executed on.
+Ray provides an easy way to control which process gets launched on what machine type. To do this, in your cluster config add a custom label for those machines that satisfies the CPU RAM requirement of rank 0 and call them `large_cpu_mem` instances. Then in our script we specify the custom tag as a resource requirement for the `trainer` actor which is in the same machine that rank zero process will get executed on.
 
 ```
 scaling_config=air.ScalingConfig(
@@ -201,7 +229,6 @@ scaling_config=air.ScalingConfig(
     resources_per_worker={"GPU": 1},
 )
 ```
-
 
 ### Submiting a production job
 You can easily submit a production job using the following command:

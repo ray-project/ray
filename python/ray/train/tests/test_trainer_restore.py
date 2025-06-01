@@ -1,28 +1,21 @@
+from functools import partial
 from pathlib import Path
 from typing import Dict, List
+
+import pyarrow.fs
 import pytest
-import warnings
 
 import ray
 from ray import train
-from ray.train import (
-    CheckpointConfig,
-    RunConfig,
-    ScalingConfig,
-)
 from ray.air._internal.uri_utils import URI
+from ray.train import CheckpointConfig, RunConfig, ScalingConfig
 from ray.train.base_trainer import BaseTrainer
-from ray.train.trainer import TrainingFailedError
-from ray.train.data_parallel_trainer import (
-    DataParallelTrainer,
-)
-from ray.train.torch import TorchTrainer
-from ray.train.xgboost import XGBoostTrainer
+from ray.train.data_parallel_trainer import DataParallelTrainer
 from ray.train.lightgbm import LightGBMTrainer
-from ray.train.huggingface import TransformersTrainer
-from ray.tune import Callback
-
 from ray.train.tests.util import create_dict_checkpoint, load_dict_checkpoint
+from ray.train.trainer import TrainingFailedError
+from ray.train.xgboost import XGBoostTrainer
+from ray.tune import Callback
 from ray.tune.experiment import Trial
 
 
@@ -150,10 +143,7 @@ def test_gbdt_trainer_restore(ray_start_6_cpus, tmp_path, trainer_cls, monkeypat
     - Picks up at the right iteration. 2 before crash. 3 after. 5 total trees.
     - Results are being logged to the same directory as before.
     """
-    # TODO(krfricke): Re-enable this once gbdt trainers are supported.
-    # Also runs into the same problem as the test below.
-    pytest.skip("GBDT trainers are not supported yet.")
-    monkeypatch.setenv("RAY_AIR_LOCAL_CACHE_DIR", str(tmp_path))
+    monkeypatch.setenv("TUNE_GLOBAL_CHECKPOINT_S", "0")
     exp_name = f"{trainer_cls.__name__}_restore_test"
     datasets = {
         "train": ray.data.from_items([{"x": x, "y": x + 1} for x in range(100)])
@@ -174,6 +164,7 @@ def test_gbdt_trainer_restore(ray_start_6_cpus, tmp_path, trainer_cls, monkeypat
             num_workers=2, trainer_resources={"CPU": 0}, resources_per_worker={"CPU": 1}
         ),
         run_config=RunConfig(
+            storage_path=str(tmp_path),
             name=exp_name,
             checkpoint_config=CheckpointConfig(
                 num_to_keep=1, checkpoint_frequency=1, checkpoint_at_end=False
@@ -193,81 +184,24 @@ def test_gbdt_trainer_restore(ray_start_6_cpus, tmp_path, trainer_cls, monkeypat
     assert tmp_path / exp_name in Path(result.path).parents
 
 
-@pytest.mark.parametrize("trainer_cls", [TransformersTrainer])
-def test_trainer_with_init_fn_restore(
-    ray_start_4_cpus, tmp_path, trainer_cls, monkeypatch
-):
-    """Tests restore for data parallel trainers that take in a `train_init` function
-    and config. Success criteria: same as for data parallel trainers."""
-    # TODO(justinvyu): Failure injection callback doesn't work very well to test this.
-    pytest.skip("Re-enable after coming up with a better way to inject a failure.")
-    monkeypatch.setenv("RAY_AIR_LOCAL_CACHE_DIR", str(tmp_path))
-    exp_name = f"{trainer_cls.__name__}_restore_test"
-
-    if trainer_cls == TransformersTrainer:
-        from ray.train.tests.test_transformers_trainer import (
-            train_function as hf_init,
-            train_df,
-        )
-
-        trainer_init_fn = hf_init
-        trainer_init_config = {"epochs": 5, "save_strategy": "epoch"}
-        datasets = {"train": ray.data.from_pandas(train_df)}
-    # TODO(ml-team): Add MosaicTrainer test after Mosaic checkpointing is supported
-    # else:
-    #     from ray.train.tests.test_mosaic_trainer import (
-    #         trainer_init_per_worker as mosaic_init,
-    #     )
-
-    #     trainer_init_fn = mosaic_init
-    #     trainer_init_config = {"max_duration": "5ep"}
-    #     datasets = {}
-
-    fail_marker_path = tmp_path / "fail_marker"
-    fail_marker_path.touch()
-
-    trainer = trainer_cls(
-        trainer_init_per_worker=trainer_init_fn,
-        trainer_init_config=trainer_init_config,
-        datasets=datasets,
-        scaling_config=ScalingConfig(num_workers=2),
-        run_config=RunConfig(
-            name=exp_name,
-            checkpoint_config=CheckpointConfig(num_to_keep=1),
-            callbacks=[FailureInjectionCallback(fail_marker_path, num_iters=2)],
-        ),
-    )
-    with pytest.raises(TrainingFailedError):
-        result = trainer.fit()
-
-    trainer = trainer_cls.restore(str(tmp_path / exp_name), datasets=datasets)
-    result = trainer.fit()
-    assert not result.error
-    assert result.metrics["training_iteration"] == 5
-    assert result.metrics["iterations_since_restore"] == 3
-    assert tmp_path / exp_name in Path(result.path).parents
-
-
+@pytest.mark.parametrize("name", [None, "restore_from_uri"])
 def test_restore_from_uri_s3(
-    ray_start_4_cpus, tmp_path, monkeypatch, mock_s3_bucket_uri
+    ray_start_4_cpus, tmp_path, monkeypatch, mock_s3_bucket_uri, name
 ):
     """Restoration from S3 should work."""
-    monkeypatch.setenv("RAY_AIR_LOCAL_CACHE_DIR", str(tmp_path))
     trainer = DataParallelTrainer(
         train_loop_per_worker=lambda config: train.report({"score": 1}),
         scaling_config=ScalingConfig(num_workers=2),
-        run_config=RunConfig(name="restore_from_uri", storage_path=mock_s3_bucket_uri),
+        run_config=RunConfig(name=name, storage_path=mock_s3_bucket_uri),
     )
-    trainer.fit()
+    result = trainer.fit()
 
-    # Restore from local dir
-    DataParallelTrainer.restore(str(tmp_path / "restore_from_uri"))
+    if name is None:
+        name = Path(result.path).parent.name
 
     # Restore from S3
-    assert DataParallelTrainer.can_restore(
-        str(URI(mock_s3_bucket_uri) / "restore_from_uri")
-    )
-    DataParallelTrainer.restore(str(URI(mock_s3_bucket_uri) / "restore_from_uri"))
+    assert DataParallelTrainer.can_restore(str(URI(mock_s3_bucket_uri) / name))
+    DataParallelTrainer.restore(str(URI(mock_s3_bucket_uri) / name))
 
 
 def test_restore_with_datasets(ray_start_4_cpus, tmpdir):
@@ -281,9 +215,9 @@ def test_restore_with_datasets(ray_start_4_cpus, tmpdir):
         train_loop_per_worker=lambda config: train.report({"score": 1}),
         datasets=datasets,
         scaling_config=ScalingConfig(num_workers=2),
-        run_config=RunConfig(name="datasets_respecify_test", local_dir=tmpdir),
+        run_config=RunConfig(name="datasets_respecify_test"),
     )
-    trainer._save(tmpdir)
+    trainer._save(pyarrow.fs.LocalFileSystem(), str(tmpdir))
 
     # Restore should complain, if all the datasets don't get passed in again
     with pytest.raises(ValueError):
@@ -299,44 +233,6 @@ def test_restore_with_datasets(ray_start_4_cpus, tmpdir):
         )
 
     trainer = DataParallelTrainer.restore(str(tmpdir), datasets=datasets)
-
-
-def test_restore_with_different_trainer(tmpdir):
-    """Tests that an error is raised if trying to restore a XTrainer with
-    `YTrainer.restore`"""
-    trainer = DataParallelTrainer(
-        train_loop_per_worker=lambda config: train.report({"score": 1}),
-        scaling_config=ScalingConfig(num_workers=1),
-        run_config=RunConfig(name="restore_with_diff_trainer"),
-    )
-    trainer._save(tmpdir)
-
-    def attempt_restore(trainer_cls, should_warn: bool, should_raise: bool):
-        def check_for_raise():
-            if should_raise:
-                with pytest.raises(ValueError):
-                    trainer_cls.restore(str(tmpdir))
-            else:
-                trainer_cls.restore(str(tmpdir))
-
-        if should_warn:
-            with pytest.warns(Warning) as warn_record:
-                check_for_raise()
-                assert any(
-                    "Invalid trainer type" in str(record.message)
-                    for record in warn_record
-                )
-        else:
-            with warnings.catch_warnings():
-                warnings.simplefilter("error")
-                check_for_raise()
-
-    attempt_restore(BaseTrainer, should_warn=True, should_raise=True)
-    attempt_restore(XGBoostTrainer, should_warn=True, should_raise=True)
-    # This won't raise because the DataParallelTrainer args can technically
-    # be fed into a TorchTrainer.
-    attempt_restore(TorchTrainer, should_warn=True, should_raise=False)
-    attempt_restore(DataParallelTrainer, should_warn=False, should_raise=False)
 
 
 def test_restore_from_invalid_dir(tmpdir):
@@ -362,7 +258,7 @@ def test_trainer_can_restore_utility(tmp_path):
         scaling_config=ScalingConfig(num_workers=1),
     )
     (tmp_path / name).mkdir(exist_ok=True)
-    trainer._save(tmp_path / name)
+    trainer._save(pyarrow.fs.LocalFileSystem(), str(tmp_path / name))
 
     assert DataParallelTrainer.can_restore(path)
 
@@ -412,6 +308,46 @@ def test_retry_with_max_failures(ray_start_4_cpus, eventual_success):
         assert not result.error
         checkpoint = load_dict_checkpoint(result.checkpoint)
         assert checkpoint["iter"] == final_iter
+
+
+def test_restoration_after_termination(tmp_path):
+    """Test that the train loop can be run again if restoring the trainer
+    after the run finished running successfully."""
+
+    def train_func_per_worker(config, num_epochs=5):
+        ckpt = train.get_checkpoint()
+        start_iter = 1
+        if ckpt:
+            ckpt = load_dict_checkpoint(ckpt)
+            start_iter = ckpt["iter"] + 1
+
+        for i in range(start_iter, num_epochs + 1):
+            with create_dict_checkpoint(dict(iter=i)) as checkpoint:
+                train.report(dict(iter=i), checkpoint=checkpoint)
+
+    name = "exp_name"
+    path = tmp_path / name
+
+    trainer = DataParallelTrainer(
+        train_loop_per_worker=train_func_per_worker,
+        scaling_config=ScalingConfig(num_workers=1),
+        run_config=RunConfig(
+            name=name,
+            storage_path=tmp_path,
+            checkpoint_config=CheckpointConfig(num_to_keep=2),
+        ),
+    )
+    result = trainer.fit()
+    assert result.metrics["iter"] == 5
+
+    restored_trainer = DataParallelTrainer.restore(
+        str(path), train_loop_per_worker=partial(train_func_per_worker, num_epochs=10)
+    )
+    new_result = restored_trainer.fit()
+    assert new_result.metrics["iter"] == 10
+
+    assert new_result.path == result.path
+    assert len(list(Path(new_result.path).glob("checkpoint*"))) == 2
 
 
 if __name__ == "__main__":

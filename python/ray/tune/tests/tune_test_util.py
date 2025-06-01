@@ -43,7 +43,7 @@ def create_tune_experiment_checkpoint(trials: list, **runner_kwargs) -> str:
         for trial in trials:
             runner.add_trial(trial)
 
-        runner.checkpoint(force=True)
+        runner.checkpoint(force=True, wait=True)
     finally:
         os.environ.clear()
         os.environ.update(orig_env)

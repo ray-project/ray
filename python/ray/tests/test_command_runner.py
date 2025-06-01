@@ -1,3 +1,7 @@
+import hashlib
+import sys
+from getpass import getuser
+
 import pytest
 
 from ray.tests.test_autoscaler import MockProvider, MockProcessRunner
@@ -8,8 +12,6 @@ from ray.autoscaler._private.command_runner import (
     _with_environment_variables,
 )
 from ray.autoscaler.sdk import get_docker_host_mount_location
-from getpass import getuser
-import hashlib
 
 auth_config = {
     "ssh_user": "ray",
@@ -60,8 +62,8 @@ def test_ssh_command_runner():
     provider = MockProvider()
     provider.create_node({}, {}, 1)
     cluster_name = "cluster"
-    ssh_control_hash = hashlib.md5(cluster_name.encode()).hexdigest()
-    ssh_user_hash = hashlib.md5(getuser().encode()).hexdigest()
+    ssh_control_hash = hashlib.sha1(cluster_name.encode()).hexdigest()
+    ssh_user_hash = hashlib.sha1(getuser().encode()).hexdigest()
     ssh_control_path = "/tmp/ray_ssh_{}/{}".format(
         ssh_user_hash[:10], ssh_control_hash[:10]
     )
@@ -127,8 +129,8 @@ def test_docker_command_runner():
     provider = MockProvider()
     provider.create_node({}, {}, 1)
     cluster_name = "cluster"
-    ssh_control_hash = hashlib.md5(cluster_name.encode()).hexdigest()
-    ssh_user_hash = hashlib.md5(getuser().encode()).hexdigest()
+    ssh_control_hash = hashlib.sha1(cluster_name.encode()).hexdigest()
+    ssh_user_hash = hashlib.sha1(getuser().encode()).hexdigest()
     ssh_control_path = "/tmp/ray_ssh_{}/{}".format(
         ssh_user_hash[:10], ssh_control_hash[:10]
     )
@@ -389,10 +391,4 @@ def test_docker_shm_override(run_option_type):
 
 
 if __name__ == "__main__":
-    import os
-    import sys
-
-    if os.environ.get("PARALLEL_CI"):
-        sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))
-    else:
-        sys.exit(pytest.main(["-sv", __file__]))
+    sys.exit(pytest.main(["-sv", __file__]))

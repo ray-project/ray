@@ -86,9 +86,7 @@ class StatsTest : public ::testing::Test {
     ray::stats::StatsConfig::instance().SetHarvestInterval(harvest_interval);
     const stats::TagsType global_tags = {
         {stats::TagKeyType::Register(stats::kResourceNameKey), "CPU"}};
-    std::shared_ptr<stats::MetricExporterClient> exporter(
-        new stats::StdoutExporterClient());
-    ray::stats::Init(global_tags, MetricsAgentPort, WorkerID::Nil(), exporter);
+    ray::stats::Init(global_tags, MetricsAgentPort, WorkerID::Nil());
     MockExporter::Register();
   }
 
@@ -110,12 +108,9 @@ TEST_F(StatsTest, InitializationTest) {
   ASSERT_TRUE(ray::stats::StatsConfig::instance().IsInitialized());
   auto test_tag_value_that_shouldnt_be_applied = "TEST";
   for (size_t i = 0; i < 20; ++i) {
-    std::shared_ptr<stats::MetricExporterClient> exporter(
-        new stats::StdoutExporterClient());
     ray::stats::Init({{stats::LanguageKey, test_tag_value_that_shouldnt_be_applied}},
                      MetricsAgentPort,
-                     WorkerID::Nil(),
-                     exporter);
+                     WorkerID::Nil());
   }
 
   auto &first_tag = ray::stats::StatsConfig::instance().GetGlobalTags()[0];
@@ -127,10 +122,8 @@ TEST_F(StatsTest, InitializationTest) {
   // Reinitialize. It should be initialized now.
   const stats::TagsType global_tags = {
       {stats::LanguageKey, test_tag_value_that_shouldnt_be_applied}};
-  std::shared_ptr<stats::MetricExporterClient> exporter(
-      new stats::StdoutExporterClient());
 
-  ray::stats::Init(global_tags, MetricsAgentPort, WorkerID::Nil(), exporter);
+  ray::stats::Init(global_tags, MetricsAgentPort, WorkerID::Nil());
   ASSERT_TRUE(ray::stats::StatsConfig::instance().IsInitialized());
   auto &new_first_tag = ray::stats::StatsConfig::instance().GetGlobalTags()[0];
   ASSERT_TRUE(new_first_tag.second == test_tag_value_that_shouldnt_be_applied);
@@ -138,9 +131,7 @@ TEST_F(StatsTest, InitializationTest) {
 
 TEST(Metric, MultiThreadMetricRegisterViewTest) {
   ray::stats::Shutdown();
-  std::shared_ptr<stats::MetricExporterClient> exporter(
-      new stats::StdoutExporterClient());
-  ray::stats::Init({}, MetricsAgentPort, WorkerID::Nil(), exporter);
+  ray::stats::Init({}, MetricsAgentPort, WorkerID::Nil());
   std::vector<std::thread> threads;
   const std::string tag1 = "k1";
   const std::string tag2 = "k2";
@@ -148,19 +139,19 @@ TEST(Metric, MultiThreadMetricRegisterViewTest) {
     threads.emplace_back([tag1, tag2, index]() {
       for (int i = 0; i < 100; i++) {
         stats::Count random_counter(
-            "ray.random.counter" + std::to_string(index) + std::to_string(i),
+            "ray_random_counter" + std::to_string(index) + std::to_string(i),
             "",
             "",
             {tag1, tag2});
         random_counter.Record(i);
         stats::Gauge random_gauge(
-            "ray.random.gauge" + std::to_string(index) + std::to_string(i),
+            "ray_random_gauge" + std::to_string(index) + std::to_string(i),
             "",
             "",
             {tag1, tag2});
         random_gauge.Record(i);
         stats::Sum random_sum(
-            "ray.random.sum" + std::to_string(index) + std::to_string(i),
+            "ray_random_sum" + std::to_string(index) + std::to_string(i),
             "",
             "",
             {tag1, tag2});
@@ -186,12 +177,10 @@ TEST_F(StatsTest, MultiThreadedInitializationTest) {
   for (int i = 0; i < 5; i++) {
     threads.emplace_back([global_tags]() {
       for (int i = 0; i < 5; i++) {
-        std::shared_ptr<stats::MetricExporterClient> exporter(
-            new stats::StdoutExporterClient());
         unsigned int upper_bound = 100;
         unsigned int init_or_shutdown = (rand() % upper_bound);
         if (init_or_shutdown >= (upper_bound / 2)) {
-          ray::stats::Init(global_tags, MetricsAgentPort, WorkerID::Nil(), exporter);
+          ray::stats::Init(global_tags, MetricsAgentPort, WorkerID::Nil());
         } else {
           ray::stats::Shutdown();
         }
@@ -203,9 +192,7 @@ TEST_F(StatsTest, MultiThreadedInitializationTest) {
   }
   ray::stats::Shutdown();
   ASSERT_FALSE(ray::stats::StatsConfig::instance().IsInitialized());
-  std::shared_ptr<stats::MetricExporterClient> exporter(
-      new stats::StdoutExporterClient());
-  ray::stats::Init(global_tags, MetricsAgentPort, WorkerID::Nil(), exporter);
+  ray::stats::Init(global_tags, MetricsAgentPort, WorkerID::Nil());
   ASSERT_TRUE(ray::stats::StatsConfig::instance().IsInitialized());
 }
 
@@ -217,24 +204,20 @@ TEST_F(StatsTest, TestShutdownTakesLongTime) {
   // The test will have memory corruption if it doesn't work as expected.
   const stats::TagsType global_tags = {{stats::LanguageKey, "CPP"},
                                        {stats::WorkerPidKey, "1000"}};
-  std::shared_ptr<stats::MetricExporterClient> exporter(
-      new stats::StdoutExporterClient());
 
   // Flush interval is 30 seconds. Shutdown should not take 30 seconds in this case.
-  uint32_t kReportFlushInterval = 30000;
-  absl::Duration report_interval = absl::Milliseconds(kReportFlushInterval);
-  absl::Duration harvest_interval = absl::Milliseconds(kReportFlushInterval);
+  uint32_t override_report_flush_interval = 30000;
+  absl::Duration report_interval = absl::Milliseconds(override_report_flush_interval);
+  absl::Duration harvest_interval = absl::Milliseconds(override_report_flush_interval);
   ray::stats::StatsConfig::instance().SetReportInterval(report_interval);
   ray::stats::StatsConfig::instance().SetHarvestInterval(harvest_interval);
-  ray::stats::Init(global_tags, MetricsAgentPort, WorkerID::Nil(), exporter);
+  ray::stats::Init(global_tags, MetricsAgentPort, WorkerID::Nil());
   ray::stats::Shutdown();
 }
 
 TEST_F(StatsTest, STAT_DEF) {
   ray::stats::Shutdown();
-  std::shared_ptr<stats::MetricExporterClient> exporter(
-      new stats::StdoutExporterClient());
-  ray::stats::Init({}, MetricsAgentPort, WorkerID::Nil(), exporter);
+  ray::stats::Init({}, MetricsAgentPort, WorkerID::Nil());
   STATS_test.Record(1.0);
   STATS_test_declare.Record(1.0, "Test");
 }

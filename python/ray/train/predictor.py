@@ -1,17 +1,17 @@
 import abc
-from typing import Dict, Type, Optional, Union, Callable
+from typing import Callable, Dict, Optional, Type, Union
 
 import numpy as np
 import pandas as pd
 
-from ray.air.checkpoint import Checkpoint
 from ray.air.data_batch_type import DataBatchType
 from ray.air.util.data_batch_conversion import (
     BatchFormat,
-    _convert_batch_type_to_pandas,
     _convert_batch_type_to_numpy,
+    _convert_batch_type_to_pandas,
 )
 from ray.data import Preprocessor
+from ray.train import Checkpoint
 from ray.util.annotations import DeveloperAPI, PublicAPI
 
 try:
@@ -108,13 +108,13 @@ class Predictor(abc.ABC):
 
         class PandasUDFPredictor(Predictor):
             @classmethod
-            def from_checkpoint(cls, checkpoint: Checkpoint, **kwargs):
+            def from_checkpoint(cls, checkpoint: Checkpoint, **kwargs) -> "Predictor":
                 return PandasUDFPredictor()
 
             def _predict_pandas(self, df, **kwargs) -> "pd.DataFrame":
                 return pandas_udf(df, **kwargs)
 
-        return PandasUDFPredictor.from_checkpoint(Checkpoint.from_dict({"dummy": 1}))
+        return PandasUDFPredictor()
 
     def get_preprocessor(self) -> Optional[Preprocessor]:
         """Get the preprocessor to use prior to executing predictions."""
@@ -171,7 +171,7 @@ class Predictor(abc.ABC):
         Args:
             data: A batch of input data of type ``DataBatchType``.
             kwargs: Arguments specific to predictor implementations. These are passed
-            directly to ``_predict_numpy`` or ``_predict_pandas``.
+                directly to ``_predict_numpy`` or ``_predict_pandas``.
 
         Returns:
             DataBatchType:

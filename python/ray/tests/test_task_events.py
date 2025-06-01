@@ -1,7 +1,6 @@
 from collections import defaultdict
 from typing import Dict
 
-import os
 import pytest
 import sys
 import threading
@@ -13,14 +12,12 @@ from ray.exceptions import RuntimeEnvSetupError
 from ray.runtime_env import RuntimeEnv
 
 import ray
-from ray.util.state.common import ListApiOptions, StateResource
 from ray._private.test_utils import (
     raw_metrics,
-    run_string_as_driver,
     run_string_as_driver_nonblocking,
     wait_for_condition,
 )
-from ray.util.state import StateApiClient, list_tasks
+from ray.util.state import list_tasks
 
 from ray._private.worker import RayContext
 
@@ -203,7 +200,8 @@ ray.get(x)
         verify_failed_task,
         name="node-killed",
         error_type="NODE_DIED",
-        error_message="Task failed due to the node dying",
+        error_message="Task failed due to the node (where this task was running) "
+        " was dead or unavailable",
     )
 
 
@@ -272,6 +270,8 @@ def test_failed_task_unschedulable(shutdown_only):
 
 
 def test_failed_task_runtime_env_setup(shutdown_only):
+    import conda
+
     @ray.remote
     def f():
         pass
@@ -282,11 +282,17 @@ def test_failed_task_runtime_env_setup(shutdown_only):
     ):
         ray.get(f.options(runtime_env=bad_env, name="task-runtime-env-failed").remote())
 
+    conda_major_version = int(conda.__version__.split(".")[0])
+    error_message = (
+        "PackagesNotFoundError"
+        if conda_major_version >= 24
+        else "ResolvePackageNotFound"
+    )
     wait_for_condition(
         verify_failed_task,
         name="task-runtime-env-failed",
         error_type="RUNTIME_ENV_SETUP_FAILED",
-        error_message="ResolvePackageNotFound",
+        error_message=error_message,
     )
 
 
@@ -426,81 +432,129 @@ def test_parent_task_id_concurrent_actor(shutdown_only, actor_concurrency):
     )
 
 
-def test_parent_task_id_tune_e2e(shutdown_only):
-    # Test a tune e2e workload should not have any task with parent_task_id that's
-    # not found.
-    ray.init(_system_config=_SYSTEM_CONFIG)
-    job_id = ray.get_runtime_context().get_job_id()
-    script = """
-import numpy as np
-import ray
-import ray.train
-from ray import tune
-import time
+def test_is_debugger_paused(shutdown_only):
+    ray.init(num_cpus=1, _system_config=_SYSTEM_CONFIG)
 
-ray.init("auto")
+    @ray.remote(max_retries=0)
+    def f():
+        import time
 
-@ray.remote
-def train_step_1():
-    time.sleep(0.5)
-    return 1
+        # Pause 5 seconds inside debugger
+        with ray._private.worker.global_worker.task_paused_by_debugger():
+            time.sleep(5)
 
-def train_function(config):
-    for i in range(5):
-        loss = config["mean"] * np.random.randn() + ray.get(
-            train_step_1.remote())
-        ray.train.report(dict(loss=loss, nodes=ray.nodes()))
+    def verify(num_paused):
+        tasks = list_tasks(filters=[("is_debugger_paused", "=", "True")])
+        return len(tasks) == num_paused
 
+    f_task = f.remote()  # noqa
 
-def tune_function():
-    analysis = tune.run(
-        train_function,
-        metric="loss",
-        mode="min",
-        config={
-            "mean": tune.grid_search([1, 2, 3, 4, 5]),
-        },
-        resources_per_trial=tune.PlacementGroupFactory([{
-            'CPU': 1.0
-        }] + [{
-            'CPU': 1.0
-        }] * 3),
+    wait_for_condition(
+        verify,
+        timeout=20,
+        retry_interval_ms=100,
+        num_paused=1,
     )
-    return analysis.best_config
+
+    wait_for_condition(
+        verify,
+        timeout=20,
+        retry_interval_ms=100,
+        num_paused=0,
+    )
 
 
-tune_function()
-    """
+@pytest.mark.parametrize("actor_concurrency", [1, 3])
+def test_is_debugger_paused_actor(shutdown_only, actor_concurrency):
+    ray.init(_system_config=_SYSTEM_CONFIG)
 
-    run_string_as_driver(script)
-    client = StateApiClient()
+    @ray.remote
+    class TestActor:
+        def main_task(self, i):
+            if i == 0:
+                import time
 
-    def list_tasks():
-        return client.list(
-            StateResource.TASKS,
-            # Filter out this driver
-            options=ListApiOptions(
-                exclude_driver=False, filters=[("job_id", "!=", job_id)], limit=1000
-            ),
-            raise_on_missing_output=True,
-        )
+                # Pause 5 seconds inside debugger
+                with ray._private.worker.global_worker.task_paused_by_debugger():
+                    time.sleep(5)
 
-    def verify():
-        tasks = list_tasks()
+    def verify(expected_task_name):
+        tasks = list_tasks(filters=[("is_debugger_paused", "=", "True")])
+        return len(tasks) == 1 and f"{expected_task_name}_0" in tasks[0]["name"]
 
-        task_id_map = {task["task_id"]: task for task in tasks}
-        for task in tasks:
-            if task["type"] == "DRIVER_TASK":
-                continue
-            assert task_id_map.get(task["parent_task_id"], None) is not None, task
+    test_actor = TestActor.options(max_concurrency=actor_concurrency).remote()
+    refs = [  # noqa
+        test_actor.main_task.options(name=f"TestActor.main_task_{i}").remote(i)
+        for i in range(20)
+    ]
 
-        return True
+    wait_for_condition(verify, expected_task_name="TestActor.main_task")
 
-    wait_for_condition(verify)
+
+@pytest.mark.parametrize("actor_concurrency", [1, 3])
+def test_is_debugger_paused_threaded_actor(shutdown_only, actor_concurrency):
+    ray.init(_system_config=_SYSTEM_CONFIG)
+
+    @ray.remote
+    class ThreadedActor:
+        def main_task(self, i):
+            def thd_task():
+                @ray.remote
+                def thd_task():
+                    if i == 0:
+                        import time
+
+                        # Pause 5 seconds inside debugger
+                        with ray._private.worker.global_worker.task_paused_by_debugger():  # noqa: E501
+                            time.sleep(5)
+
+                ray.get(thd_task.options(name=f"ThreadedActor.main_task_{i}").remote())
+
+            thd = threading.Thread(target=thd_task)
+            thd.start()
+            thd.join()
+
+    def verify(expected_task_name):
+        tasks = list_tasks(filters=[("is_debugger_paused", "=", "True")])
+        return len(tasks) == 1 and f"{expected_task_name}_0" in tasks[0]["name"]
+
+    threaded_actor = ThreadedActor.options(max_concurrency=actor_concurrency).remote()
+    refs = [  # noqa
+        threaded_actor.main_task.options(name=f"ThreadedActor.main_task_{i}").remote(i)
+        for i in range(20)
+    ]
+
+    wait_for_condition(verify, expected_task_name="ThreadedActor.main_task")
+
+
+@pytest.mark.parametrize("actor_concurrency", [1, 3])
+def test_is_debugger_paused_async_actor(shutdown_only, actor_concurrency):
+    ray.init(_system_config=_SYSTEM_CONFIG)
+
+    @ray.remote
+    class AsyncActor:
+        async def main_task(self, i):
+            if i == 0:
+                import time
+
+                # Pause 5 seconds inside debugger
+                print()
+                with ray._private.worker.global_worker.task_paused_by_debugger():
+                    time.sleep(5)
+
+    def verify(expected_task_name):
+        tasks = list_tasks(filters=[("is_debugger_paused", "=", "True")])
+        print(tasks)
+        return len(tasks) == 1 and f"{expected_task_name}_0" in tasks[0]["name"]
+
+    async_actor = AsyncActor.options(max_concurrency=actor_concurrency).remote()
+    refs = [  # noqa
+        async_actor.main_task.options(name=f"AsyncActor.main_task_{i}").remote(i)
+        for i in range(20)
+    ]
+
+    wait_for_condition(verify, expected_task_name="AsyncActor.main_task")
 
 
 if __name__ == "__main__":
-    if os.environ.get("PARALLEL_CI"):
-        sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))
-    else:
-        sys.exit(pytest.main(["-sv", __file__]))
+    sys.exit(pytest.main(["-sv", __file__]))

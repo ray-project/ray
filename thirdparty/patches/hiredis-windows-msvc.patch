@@ -17,7 +17,7 @@ diff --git sds.h sds.h
 diff --git fmacros.h fmacros.h
 --- fmacros.h
 +++ fmacros.h
-@@ -12,0 +12,3 @@
+@@ -13,0 +13,3 @@
 +#if defined(_MSC_VER) && !defined(__clang__) && !defined(strdup)
 +#define strdup _strdup
 +#endif

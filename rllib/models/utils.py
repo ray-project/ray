@@ -1,78 +1,7 @@
 from typing import Callable, Optional, Union
 
-from ray.rllib.core.models.specs.specs_base import TensorSpec
-from ray.rllib.core.models.specs.specs_dict import SpecDict
 from ray.rllib.utils.annotations import DeveloperAPI
 from ray.rllib.utils.framework import try_import_jax, try_import_tf, try_import_torch
-
-
-@DeveloperAPI
-def input_to_output_specs(
-    input_specs: SpecDict,
-    num_input_feature_dims: int,
-    output_key: str,
-    output_feature_spec: TensorSpec,
-) -> SpecDict:
-    """Convert an input spec to an output spec, based on a module.
-
-    Drops the feature dimension(s) from an input_specs, replacing them with
-    output_feature_spec dimension(s).
-
-    Examples:
-        input_to_output_specs(
-            input_specs=SpecDict({
-                "bork": "batch, time, feature0",
-                "dork": "batch, time, feature1"
-                }, feature0=2, feature1=3
-            ),
-            num_input_feature_dims=1,
-            output_key="outer_product",
-            output_feature_spec=TensorSpec("row, col", row=2, col=3)
-        )
-
-        will return:
-        SpecDict({"outer_product": "batch, time, row, col", row=2, col=3})
-
-        input_to_output_specs(
-            input_specs=SpecDict({
-                "bork": "batch, time, h, w, c",
-                }, h=32, w=32, c=3,
-            ),
-            num_input_feature_dims=3,
-            output_key="latent_image_representation",
-            output_feature_spec=TensorSpec("feature", feature=128)
-        )
-
-        will return:
-        SpecDict({"latent_image_representation": "batch, time, feature"}, feature=128)
-
-
-    Args:
-        input_specs: SpecDict describing input to a specified module
-        num_input_dims: How many feature dimensions the module will process. E.g.
-            a linear layer will only process the last dimension (1), while a CNN
-            might process the last two dimensions (2)
-        output_key: The key in the output spec we will write the resulting shape to
-        output_feature_spec: A spec denoting the feature dimensions output by a
-            specified module
-
-    Returns:
-        A SpecDict based on the input_specs, with the trailing dimensions replaced
-            by the output_feature_spec
-
-    """
-    assert num_input_feature_dims >= 1, "Must specify at least one feature dim"
-    num_dims = [len(v.shape) != len for v in input_specs.values()]
-    assert all(
-        nd == num_dims[0] for nd in num_dims
-    ), "All specs in input_specs must all have the same number of dimensions"
-
-    # All keys in input should have the same numbers of dims
-    # so it doesn't matter which key we use
-    key = list(input_specs.keys())[0]
-    batch_spec = input_specs[key].rdrop(num_input_feature_dims)
-    full_spec = batch_spec.append(output_feature_spec)
-    return SpecDict({output_key: full_spec})
 
 
 @DeveloperAPI
@@ -154,6 +83,87 @@ def get_activation_fn(
 
 
 @DeveloperAPI
+def get_initializer_fn(name: Optional[Union[str, Callable]], framework: str = "torch"):
+    """Returns the framework-specific initializer class or function.
+
+    This function relies fully on the specified initializer classes and
+    functions in the frameworks `torch` and `tf2` (see for `torch`
+    https://pytorch.org/docs/stable/nn.init.html and for `tf2` see
+    https://www.tensorflow.org/api_docs/python/tf/keras/initializers).
+
+    Note, for framework `torch` the in-place initializers are needed, i.e. names
+    should end with an underscore `_`, e.g. `glorot_uniform_`.
+
+    Args:
+        name: Name of the initializer class or function in one of the two
+            supported frameworks, i.e. `torch` or `tf2`.
+        framework: The framework string, either `torch  or `tf2`.
+
+    Returns:
+        A framework-specific function or class defining an initializer to be used
+        for network initialization,
+
+    Raises:
+        `ValueError` if the `name` is neither class or function in the specified
+        `framework`. Raises also a `ValueError`, if `name` does not define an
+        in-place initializer for framework `torch`.
+    """
+    # Already a callable or `None` return as is. If `None` we use the default
+    # initializer defined in the framework-specific layers themselves.
+    if callable(name) or name is None:
+        return name
+
+    if framework == "torch":
+        name_lower = name.lower() if isinstance(name, str) else name
+
+        _, nn = try_import_torch()
+
+        # Check, if the name includes an underscore. We must use the
+        # in-place initialization from Torch.
+        if not name_lower.endswith("_"):
+            raise ValueError(
+                "Not an in-place initializer: Torch weight initializers "
+                "need to be provided as their in-place version, i.e. "
+                "<initializaer_name> + '_'. See "
+                "https://pytorch.org/docs/stable/nn.init.html. "
+                f"User provided {name}."
+            )
+
+        # First, try to get the initialization directly from `nn.init`.
+        # Note, that all initialization methods in `nn.init` are lower
+        # case and that `<method>_` defines the "in-place" method.
+        fn = getattr(nn.init, name_lower, None)
+        if fn is not None:
+            # TODO (simon): Raise a warning if not "in-place" method.
+            return fn
+        # Unknown initializer.
+        else:
+            # Inform the user that this initializer does not exist.
+            raise ValueError(
+                f"Unknown initializer name: {name_lower} is not a method in "
+                "`torch.nn.init`!"
+            )
+    elif framework == "tf2":
+        # Note, as initializer classes in TensorFlow can be either given by their
+        # name in camel toe typing or by their shortcut we use the `name` as it is.
+        # See https://www.tensorflow.org/api_docs/python/tf/keras/initializers.
+
+        _, tf, _ = try_import_tf()
+
+        # Try to get the initialization function directly from `tf.keras.initializers`.
+        fn = getattr(tf.keras.initializers, name, None)
+        if fn is not None:
+            return fn
+        # Unknown initializer.
+        else:
+            # Inform the user that this initializer does not exist.
+            raise ValueError(
+                f"Unknown initializer: {name} is not a initializer in "
+                "`tf.keras.initializers`!"
+            )
+
+
+@DeveloperAPI
 def get_filter_config(shape):
     """Returns a default Conv2D filter config (list) for a given image shape.
 
@@ -164,18 +174,6 @@ def get_filter_config(shape):
         List[list]: The Conv2D filter configuration usable as `conv_filters`
             inside a model config dict.
     """
-    # VizdoomGym (large 480x640).
-    filters_480x640 = [
-        [16, [24, 32], [14, 18]],
-        [32, [6, 6], 4],
-        [256, [9, 9], 1],
-    ]
-    # VizdoomGym (small 240x320).
-    filters_240x320 = [
-        [16, [12, 16], [7, 9]],
-        [32, [6, 6], 4],
-        [256, [9, 9], 1],
-    ]
     # 96x96x3 (e.g. CarRacing-v0).
     filters_96x96 = [
         [16, [8, 8], 4],
@@ -188,12 +186,12 @@ def get_filter_config(shape):
         [32, [4, 4], 2],
         [256, [11, 11], 1],
     ]
-    # Dreamer-style (S-sized model) Atari or DM Control Suite.
+    # Dreamer-style (XS-sized model) Atari or DM Control Suite.
     filters_64x64 = [
+        [16, [4, 4], 2],
         [32, [4, 4], 2],
         [64, [4, 4], 2],
         [128, [4, 4], 2],
-        [256, [4, 4], 2],
     ]
     # Small (1/2) Atari.
     filters_42x42 = [
@@ -208,11 +206,7 @@ def get_filter_config(shape):
     ]
 
     shape = list(shape)
-    if len(shape) in [2, 3] and (shape[:2] == [480, 640] or shape[1:] == [480, 640]):
-        return filters_480x640
-    elif len(shape) in [2, 3] and (shape[:2] == [240, 320] or shape[1:] == [240, 320]):
-        return filters_240x320
-    elif len(shape) in [2, 3] and (shape[:2] == [96, 96] or shape[1:] == [96, 96]):
+    if len(shape) in [2, 3] and (shape[:2] == [96, 96] or shape[1:] == [96, 96]):
         return filters_96x96
     elif len(shape) in [2, 3] and (shape[:2] == [84, 84] or shape[1:] == [84, 84]):
         return filters_84x84
@@ -223,13 +217,21 @@ def get_filter_config(shape):
     elif len(shape) in [2, 3] and (shape[:2] == [10, 10] or shape[1:] == [10, 10]):
         return filters_10x10
     else:
+        if list(shape) == [210, 160, 3]:
+            atari_help = (
+                "This is the default atari obs shape. You may want to look at one of "
+                "RLlib's Atari examples for an example of how to wrap an Atari env. "
+            )
+        else:
+            atari_help = ""
         raise ValueError(
-            "No default configuration for obs shape {}".format(shape)
-            + ", you must specify `conv_filters` manually as a model option. "
+            "No default CNN configuration for obs shape {}. ".format(shape)
+            + atari_help
+            + "You can specify `conv_filters` manually through your "
+            "AlgorithmConfig's model_config. "
             "Default configurations are only available for inputs of the following "
-            "shapes: [42, 42, K], [84, 84, K], [64, 64, K], [10, 10, K], "
-            "[240, 320, K], and [480, 640, K]. You may alternatively want "
-            "to use a custom model or preprocessor."
+            "shapes: [42, 42, K], [84, 84, K], [64, 64, K], [10, 10, K]. You may "
+            "want to use a custom RLModule or a ConnectorV2 for that."
         )
 
 

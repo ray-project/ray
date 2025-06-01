@@ -16,6 +16,8 @@
 
 #include <boost/asio.hpp>
 #include <limits>
+#include <memory>
+#include <string>
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/synchronization/mutex.h"
@@ -28,7 +30,11 @@ class instrumented_io_context : public boost::asio::io_context {
  public:
   /// Initializes the global stats struct after calling the base contructor.
   /// TODO(ekl) allow taking an externally defined event tracker.
-  instrumented_io_context() : event_stats_(std::make_shared<EventTracker>()) {}
+  ///
+  /// \param enable_lag_probe If true, and if related Ray configs are set, schedule a
+  /// probe to measure the event loop lag. After a probe is done, it schedules another one
+  /// so a io_context.run() call will never return.
+  explicit instrumented_io_context(bool enable_lag_probe = false);
 
   /// A proxy post function that collects count, queueing, and execution statistics for
   /// the given handler.
@@ -36,14 +42,8 @@ class instrumented_io_context : public boost::asio::io_context {
   /// \param handler The handler to be posted to the event loop.
   /// \param name A human-readable name for the handler, to be used for viewing stats
   /// for the provided handler.
-  void post(std::function<void()> handler, const std::string name);
-
-  /// A proxy post function where the operation start is manually recorded. For example,
-  /// this is useful for tracking the number of active outbound RPC calls.
-  ///
-  /// \param handler The handler to be posted to the event loop.
-  /// \param handle The stats handle returned by RecordStart() previously.
-  void post(std::function<void()> handler, std::shared_ptr<StatsHandle> handle);
+  /// \param delay_us Delay time before the handler will be executed.
+  void post(std::function<void()> handler, std::string name, int64_t delay_us = 0);
 
   /// A proxy post function that collects count, queueing, and execution statistics for
   /// the given handler.
@@ -51,7 +51,7 @@ class instrumented_io_context : public boost::asio::io_context {
   /// \param handler The handler to be posted to the event loop.
   /// \param name A human-readable name for the handler, to be used for viewing stats
   /// for the provided handler.
-  void dispatch(std::function<void()> handler, const std::string name);
+  void dispatch(std::function<void()> handler, std::string name);
 
   EventTracker &stats() const { return *event_stats_; };
 

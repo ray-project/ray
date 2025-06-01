@@ -36,7 +36,7 @@
 #include "ray/object_manager/plasma/create_request_queue.h"
 #include "ray/object_manager/plasma/eviction_policy.h"
 #include "ray/object_manager/plasma/get_request_queue.h"
-#include "ray/object_manager/plasma/object_lifecycle_manager.h"
+#include "ray/object_manager/plasma/obj_lifecycle_mgr.h"
 #include "ray/object_manager/plasma/object_store.h"
 #include "ray/object_manager/plasma/plasma.h"
 #include "ray/object_manager/plasma/plasma_allocator.h"
@@ -82,6 +82,18 @@ class PlasmaStore {
 
   /// Return the plasma object bytes that are consumed by core workers.
   int64_t GetConsumedBytes();
+
+  /// Return the number of plasma objects that have been created.
+  int64_t GetCumulativeCreatedObjects() const {
+    absl::MutexLock lock(&mutex_);
+    return object_lifecycle_mgr_.GetNumObjectsCreatedTotal();
+  }
+
+  /// Return the plasma object bytes that have been created.
+  int64_t GetCumulativeCreatedBytes() const {
+    absl::MutexLock lock(&mutex_);
+    return object_lifecycle_mgr_.GetNumBytesCreatedTotal();
+  }
 
   /// Get the available memory for new objects to be created. This includes
   /// memory that is currently being used for created but unsealed objects.
@@ -174,10 +186,12 @@ class PlasmaStore {
       ABSL_EXCLUSIVE_LOCKS_REQUIRED(mutex_);
 
   /// Record the fact that a particular client is no longer using an object.
+  /// This function is idempotent thus can be called multiple times.
   ///
   /// \param object_id The object ID of the object that is being released.
   /// \param client The client making this request.
-  void ReleaseObject(const ObjectID &object_id, const std::shared_ptr<Client> &client)
+  /// \return bool The client should unmap the mmap section for this object.
+  bool ReleaseObject(const ObjectID &object_id, const std::shared_ptr<Client> &client)
       ABSL_EXCLUSIVE_LOCKS_REQUIRED(mutex_);
 
   /// Connect a new client to the PlasmaStore.
@@ -192,9 +206,24 @@ class PlasmaStore {
   void DisconnectClient(const std::shared_ptr<Client> &client)
       ABSL_EXCLUSIVE_LOCKS_REQUIRED(mutex_);
 
-  Status ProcessMessage(const std::shared_ptr<Client> &client,
-                        plasma::flatbuf::MessageType type,
-                        const std::vector<uint8_t> &message) ABSL_LOCKS_EXCLUDED(mutex_);
+  /// Handle an unexpected connection error from the client.
+  /// The client will be disconnected and no more messages will be processed.
+  ///
+  /// \param client The client whose connection the error occurred on.
+  /// \param error The error details.
+  void HandleClientConnectionError(std::shared_ptr<Client> client,
+                                   const boost::system::error_code &error)
+      ABSL_LOCKS_EXCLUDED(mutex_);
+
+  /// Process a message from the client.
+  ///
+  /// \param client The client that the message is from.
+  /// \param type The message type.
+  /// \param message The message data.
+  Status ProcessClientMessage(std::shared_ptr<Client> client,
+                              plasma::flatbuf::MessageType type,
+                              const std::vector<uint8_t> &message)
+      ABSL_LOCKS_EXCLUDED(mutex_);
 
   PlasmaError HandleCreateObjectRequest(const std::shared_ptr<Client> &client,
                                         const std::vector<uint8_t> &message,
@@ -207,13 +236,15 @@ class PlasmaStore {
                            uint64_t req_id) ABSL_EXCLUSIVE_LOCKS_REQUIRED(mutex_);
 
   void AddToClientObjectIds(const ObjectID &object_id,
+                            std::optional<MEMFD_TYPE> fallback_allocated_fd,
                             const std::shared_ptr<ClientInterface> &client)
       ABSL_EXCLUSIVE_LOCKS_REQUIRED(mutex_);
 
   void ReturnFromGet(const std::shared_ptr<GetRequest> &get_request);
 
-  int RemoveFromClientObjectIds(const ObjectID &object_id,
-                                const std::shared_ptr<Client> &client)
+  // Returns: the client should unmap the mmap section for this object.
+  bool RemoveFromClientObjectIds(const ObjectID &object_id,
+                                 const std::shared_ptr<Client> &client)
       ABSL_EXCLUSIVE_LOCKS_REQUIRED(mutex_);
 
   // Start listening for clients.

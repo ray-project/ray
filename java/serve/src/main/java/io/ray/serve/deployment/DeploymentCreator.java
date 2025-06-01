@@ -1,12 +1,20 @@
 package io.ray.serve.deployment;
 
 import com.google.common.base.Preconditions;
+import io.ray.serve.api.Serve;
 import io.ray.serve.config.AutoscalingConfig;
 import io.ray.serve.config.DeploymentConfig;
+import io.ray.serve.config.ReplicaConfig;
 import io.ray.serve.generated.DeploymentLanguage;
+import io.ray.serve.util.CommonUtil;
 import java.util.Map;
+import org.apache.commons.lang3.StringUtils;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 public class DeploymentCreator {
+
+  private static final Logger LOGGER = LoggerFactory.getLogger(Serve.class);
 
   private String deploymentDef;
 
@@ -21,14 +29,7 @@ public class DeploymentCreator {
    * is re-deployed with a version change, a rolling update of the replicas will be performed. If
    * not provided, every deployment will be treated as a new version.
    */
-  private String version;
-
-  /**
-   * Version of the existing deployment which is used as a precondition for the next deployment. If
-   * prev_version does not match with the existing deployment's version, the deployment will fail.
-   * If not provided, deployment procedure will not check the existing deployment's version.
-   */
-  private String prevVersion;
+  @Deprecated private String version;
 
   /**
    * The number of processes to start up that will handle requests to this deployment. Defaults to
@@ -41,16 +42,6 @@ public class DeploymentCreator {
    * These can also be passed when you call `.deploy()` on the returned Deployment.
    */
   private Object[] initArgs;
-
-  /**
-   * Requests to paths under this HTTP path prefix will be routed to this deployment. Defaults to
-   * '/{name}'. When set to 'None', no HTTP endpoint will be created. Routing is done based on
-   * longest-prefix match, so if you have deployment A with a prefix of '/a' and deployment B with a
-   * prefix of '/a/b', requests to '/a', '/a/', and '/a/c' go to A and requests to '/a/b', '/a/b/',
-   * and '/a/b/c' go to B. Routes must not end with a '/' unless they're the root (just '/'), which
-   * acts as a catch-all.
-   */
-  private String routePrefix;
 
   /** Options to be passed to the Ray actor constructor such as resource requirements. */
   private Map<String, Object> rayActorOptions;
@@ -65,7 +56,7 @@ public class DeploymentCreator {
    * The maximum number of queries that will be sent to a replica of this deployment without
    * receiving a response. Defaults to 100.
    */
-  private Integer maxConcurrentQueries;
+  private Integer maxOngoingRequests;
 
   private AutoscalingConfig autoscalingConfig;
 
@@ -77,20 +68,30 @@ public class DeploymentCreator {
 
   private Double healthCheckTimeoutS;
 
-  private boolean routed;
-
   private DeploymentLanguage language;
 
-  public Deployment create() {
+  // TODO is_driver_deployment\placement_group_bundles\placement_group_strategy
 
-    Preconditions.checkArgument(
-        numReplicas == null || numReplicas == 0 || autoscalingConfig == null,
-        "Manually setting num_replicas is not allowed when autoscalingConfig is provided.");
+  public Deployment create(boolean check) {
 
-    DeploymentConfig config =
+    if (check) {
+      Preconditions.checkArgument(
+          numReplicas == null || numReplicas != 0, "num_replicas is expected to larger than 0");
+
+      Preconditions.checkArgument(
+          numReplicas == null || autoscalingConfig == null,
+          "Manually setting num_replicas is not allowed when autoscalingConfig is provided.");
+    }
+
+    if (version != null) {
+      LOGGER.warn(
+          "DeprecationWarning: `version` in `@serve.deployment` has been deprecated. Explicitly specifying version will raise an error in the future!");
+    }
+
+    DeploymentConfig deploymentConfig =
         new DeploymentConfig()
-            .setNumReplicas(numReplicas)
-            .setMaxConcurrentQueries(maxConcurrentQueries)
+            .setNumReplicas(numReplicas != null ? numReplicas : 1)
+            .setMaxOngoingRequests(maxOngoingRequests)
             .setUserConfig(userConfig)
             .setAutoscalingConfig(autoscalingConfig)
             .setGracefulShutdownWaitLoopS(gracefulShutdownWaitLoopS)
@@ -99,15 +100,21 @@ public class DeploymentCreator {
             .setHealthCheckTimeoutS(healthCheckTimeoutS)
             .setDeploymentLanguage(language);
 
+    ReplicaConfig replicaConfig = new ReplicaConfig(deploymentDef, initArgs, rayActorOptions);
+
     return new Deployment(
-        deploymentDef,
-        name,
-        config,
-        version,
-        prevVersion,
-        initArgs,
-        routed ? routePrefix : "/" + name,
-        rayActorOptions);
+        StringUtils.isNotBlank(name) ? name : CommonUtil.getDeploymentName(deploymentDef),
+        deploymentConfig,
+        replicaConfig,
+        version);
+  }
+
+  public Deployment create() {
+    return create(true);
+  }
+
+  public Application bind(Object... args) {
+    return create().bind(args);
   }
 
   public String getDeploymentDef() {
@@ -137,15 +144,6 @@ public class DeploymentCreator {
     return this;
   }
 
-  public String getPrevVersion() {
-    return prevVersion;
-  }
-
-  public DeploymentCreator setPrevVersion(String prevVersion) {
-    this.prevVersion = prevVersion;
-    return this;
-  }
-
   public Integer getNumReplicas() {
     return numReplicas;
   }
@@ -161,16 +159,6 @@ public class DeploymentCreator {
 
   public DeploymentCreator setInitArgs(Object[] initArgs) {
     this.initArgs = initArgs;
-    return this;
-  }
-
-  public String getRoutePrefix() {
-    return routePrefix;
-  }
-
-  public DeploymentCreator setRoutePrefix(String routePrefix) {
-    this.routePrefix = routePrefix;
-    this.routed = true;
     return this;
   }
 
@@ -192,12 +180,12 @@ public class DeploymentCreator {
     return this;
   }
 
-  public Integer getMaxConcurrentQueries() {
-    return maxConcurrentQueries;
+  public Integer getMaxOngoingRequests() {
+    return maxOngoingRequests;
   }
 
-  public DeploymentCreator setMaxConcurrentQueries(Integer maxConcurrentQueries) {
-    this.maxConcurrentQueries = maxConcurrentQueries;
+  public DeploymentCreator setMaxOngoingRequests(Integer maxOngoingRequests) {
+    this.maxOngoingRequests = maxOngoingRequests;
     return this;
   }
 

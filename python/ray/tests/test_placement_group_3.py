@@ -1,3 +1,4 @@
+import os
 import sys
 import time
 
@@ -7,7 +8,11 @@ import ray
 import ray._private.gcs_utils as gcs_utils
 import ray.cluster_utils
 import ray.experimental.internal_kv as internal_kv
-from ray._private.ray_constants import DEBUG_AUTOSCALING_ERROR, DEBUG_AUTOSCALING_STATUS
+from ray._private.ray_constants import (
+    DEBUG_AUTOSCALING_ERROR,
+    DEBUG_AUTOSCALING_STATUS,
+)
+from ray.autoscaler._private.constants import AUTOSCALER_UPDATE_INTERVAL_S
 from ray._private.test_utils import (
     convert_actor_state,
     generate_system_config_map,
@@ -19,14 +24,8 @@ from ray._private.test_utils import (
 )
 from ray.autoscaler._private.commands import debug_status
 from ray.exceptions import RaySystemError
-from ray.util.client.ray_client_helpers import connect_to_client_or_not
 from ray.util.placement_group import placement_group, remove_placement_group
 from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
-
-try:
-    import pytest_timeout
-except ImportError:
-    pytest_timeout = None
 
 
 def get_ray_status_output(address):
@@ -34,12 +33,13 @@ def get_ray_status_output(address):
     internal_kv._initialize_internal_kv(gcs_client)
     status = internal_kv._internal_kv_get(DEBUG_AUTOSCALING_STATUS)
     error = internal_kv._internal_kv_get(DEBUG_AUTOSCALING_ERROR)
+    print(debug_status(status, error, address=address))
     return {
-        "demand": debug_status(status, error)
+        "demand": debug_status(status, error, address=address)
         .split("Demands:")[1]
         .strip("\n")
         .strip(" "),
-        "usage": debug_status(status, error)
+        "usage": debug_status(status, error, address=address)
         .split("Demands:")[0]
         .split("Usage:")[1]
         .strip("\n")
@@ -127,29 +127,25 @@ def test_placement_group_wait_api_timeout(shutdown_only):
     assert 5 <= time.time() - start
 
 
-@pytest.mark.parametrize("connect_to_client", [False, True])
-def test_schedule_placement_groups_at_the_same_time(connect_to_client):
+def test_schedule_placement_groups_at_the_same_time(shutdown_only):
     ray.init(num_cpus=4)
 
-    with connect_to_client_or_not(connect_to_client):
-        pgs = [placement_group([{"CPU": 2}]) for _ in range(6)]
+    pgs = [placement_group([{"CPU": 2}]) for _ in range(6)]
 
-        wait_pgs = {pg.ready(): pg for pg in pgs}
+    wait_pgs = {pg.ready(): pg for pg in pgs}
 
-        def is_all_placement_group_removed():
-            ready, _ = ray.wait(list(wait_pgs.keys()), timeout=0.5)
-            if ready:
-                ready_pg = wait_pgs[ready[0]]
-                remove_placement_group(ready_pg)
-                del wait_pgs[ready[0]]
+    def is_all_placement_group_removed():
+        ready, _ = ray.wait(list(wait_pgs.keys()), timeout=0.5)
+        if ready:
+            ready_pg = wait_pgs[ready[0]]
+            remove_placement_group(ready_pg)
+            del wait_pgs[ready[0]]
 
-            if len(wait_pgs) == 0:
-                return True
-            return False
+        if len(wait_pgs) == 0:
+            return True
+        return False
 
-        wait_for_condition(is_all_placement_group_removed)
-
-    ray.shutdown()
+    wait_for_condition(is_all_placement_group_removed)
 
 
 def test_detached_placement_group(ray_start_cluster):
@@ -352,36 +348,33 @@ ray.shutdown()
     assert error_count == 1
 
 
-@pytest.mark.parametrize("connect_to_client", [False, True])
-def test_placement_group_synchronous_registration(ray_start_cluster, connect_to_client):
+def test_placement_group_synchronous_registration(ray_start_cluster):
     cluster = ray_start_cluster
     # One node which only has one CPU.
     cluster.add_node(num_cpus=1)
     cluster.wait_for_nodes()
     ray.init(address=cluster.address)
 
-    with connect_to_client_or_not(connect_to_client):
-        # Create a placement group that has two bundles and `STRICT_PACK`
-        # strategy so its registration will successful but scheduling failed.
-        placement_group = ray.util.placement_group(
-            name="name",
-            strategy="STRICT_PACK",
-            bundles=[
-                {
-                    "CPU": 1,
-                },
-                {"CPU": 1},
-            ],
-        )
-        # Make sure we can properly remove it immediately
-        # as its registration is synchronous.
-        ray.util.remove_placement_group(placement_group)
+    # Create a placement group that has two bundles and `STRICT_PACK`
+    # strategy so its registration will successful but scheduling failed.
+    placement_group = ray.util.placement_group(
+        name="name",
+        strategy="STRICT_PACK",
+        bundles=[
+            {
+                "CPU": 1,
+            },
+            {"CPU": 1},
+        ],
+    )
+    # Make sure we can properly remove it immediately
+    # as its registration is synchronous.
+    ray.util.remove_placement_group(placement_group)
 
-        wait_for_condition(lambda: is_placement_group_removed(placement_group))
+    wait_for_condition(lambda: is_placement_group_removed(placement_group))
 
 
-@pytest.mark.parametrize("connect_to_client", [False, True])
-def test_placement_group_gpu_set(ray_start_cluster, connect_to_client):
+def test_placement_group_gpu_set(ray_start_cluster):
     cluster = ray_start_cluster
     # One node which only has one CPU.
     cluster.add_node(num_cpus=1, num_gpus=1)
@@ -389,36 +382,34 @@ def test_placement_group_gpu_set(ray_start_cluster, connect_to_client):
     cluster.wait_for_nodes()
     ray.init(address=cluster.address)
 
-    with connect_to_client_or_not(connect_to_client):
-        placement_group = ray.util.placement_group(
-            name="name",
-            strategy="PACK",
-            bundles=[{"CPU": 1, "GPU": 1}, {"CPU": 1, "GPU": 1}],
+    placement_group = ray.util.placement_group(
+        name="name",
+        strategy="PACK",
+        bundles=[{"CPU": 1, "GPU": 1}, {"CPU": 1, "GPU": 1}],
+    )
+
+    @ray.remote(num_gpus=1)
+    def get_gpus():
+        return ray.get_gpu_ids()
+
+    result = get_gpus.options(
+        scheduling_strategy=PlacementGroupSchedulingStrategy(
+            placement_group=placement_group, placement_group_bundle_index=0
         )
+    ).remote()
+    result = ray.get(result)
+    assert result == [0]
 
-        @ray.remote(num_gpus=1)
-        def get_gpus():
-            return ray.get_gpu_ids()
-
-        result = get_gpus.options(
-            scheduling_strategy=PlacementGroupSchedulingStrategy(
-                placement_group=placement_group, placement_group_bundle_index=0
-            )
-        ).remote()
-        result = ray.get(result)
-        assert result == [0]
-
-        result = get_gpus.options(
-            scheduling_strategy=PlacementGroupSchedulingStrategy(
-                placement_group=placement_group, placement_group_bundle_index=1
-            )
-        ).remote()
-        result = ray.get(result)
-        assert result == [0]
+    result = get_gpus.options(
+        scheduling_strategy=PlacementGroupSchedulingStrategy(
+            placement_group=placement_group, placement_group_bundle_index=1
+        )
+    ).remote()
+    result = ray.get(result)
+    assert result == [0]
 
 
-@pytest.mark.parametrize("connect_to_client", [False, True])
-def test_placement_group_gpu_assigned(ray_start_cluster, connect_to_client):
+def test_placement_group_gpu_assigned(ray_start_cluster):
     cluster = ray_start_cluster
     cluster.add_node(num_gpus=2)
     ray.init(address=cluster.address)
@@ -426,37 +417,34 @@ def test_placement_group_gpu_assigned(ray_start_cluster, connect_to_client):
 
     @ray.remote(num_gpus=1, num_cpus=0)
     def f():
-        import os
-
         return os.environ["CUDA_VISIBLE_DEVICES"]
 
-    with connect_to_client_or_not(connect_to_client):
-        pg1 = ray.util.placement_group([{"GPU": 1}])
-        pg2 = ray.util.placement_group([{"GPU": 1}])
+    pg1 = ray.util.placement_group([{"GPU": 1}])
+    pg2 = ray.util.placement_group([{"GPU": 1}])
 
-        assert pg1.wait(10)
-        assert pg2.wait(10)
+    assert pg1.wait(10)
+    assert pg2.wait(10)
 
-        gpu_ids_res.add(
-            ray.get(
-                f.options(
-                    scheduling_strategy=PlacementGroupSchedulingStrategy(
-                        placement_group=pg1
-                    )
-                ).remote()
-            )
+    gpu_ids_res.add(
+        ray.get(
+            f.options(
+                scheduling_strategy=PlacementGroupSchedulingStrategy(
+                    placement_group=pg1
+                )
+            ).remote()
         )
-        gpu_ids_res.add(
-            ray.get(
-                f.options(
-                    scheduling_strategy=PlacementGroupSchedulingStrategy(
-                        placement_group=pg2
-                    )
-                ).remote()
-            )
+    )
+    gpu_ids_res.add(
+        ray.get(
+            f.options(
+                scheduling_strategy=PlacementGroupSchedulingStrategy(
+                    placement_group=pg2
+                )
+            ).remote()
         )
+    )
 
-        assert len(gpu_ids_res) == 2
+    assert len(gpu_ids_res) == 2
 
 
 @pytest.mark.repeat(3)
@@ -517,8 +505,7 @@ def test_actor_scheduling_not_block_with_placement_group(ray_start_cluster):
         )
 
 
-@pytest.mark.parametrize("connect_to_client", [False, True])
-def test_placement_group_gpu_unique_assigned(ray_start_cluster, connect_to_client):
+def test_placement_group_gpu_unique_assigned(ray_start_cluster):
     cluster = ray_start_cluster
     cluster.add_node(num_gpus=4, num_cpus=4)
     ray.init(address=cluster.address)
@@ -623,17 +610,21 @@ def test_placement_group_status(ray_start_cluster, enable_v2):
     pg = ray.util.placement_group([{"CPU": 1}])
     ray.get(pg.ready())
 
-    # Wait until the usage is updated, which is
+    # Wait until the usage is updated to the expected, which is
     # when the demand is also updated.
     def is_usage_updated():
         demand_output = get_ray_status_output(cluster.address)
-        return demand_output["usage"] != ""
+        cpu_usage = demand_output["usage"]
+        if cpu_usage == "":
+            return False
+        cpu_usage = cpu_usage.split("\n")[0]
+        expected = "0.0/4.0 CPU (0.0 used of 1.0 reserved in placement groups)"
+        if cpu_usage != expected:
+            assert cpu_usage == "0.0/4.0 CPU"
+            return False
+        return True
 
-    wait_for_condition(is_usage_updated)
-    demand_output = get_ray_status_output(cluster.address)
-    cpu_usage = demand_output["usage"].split("\n")[0]
-    expected = "0.0/4.0 CPU (0.0 used of 1.0 reserved in placement groups)"
-    assert cpu_usage == expected
+    wait_for_condition(is_usage_updated, AUTOSCALER_UPDATE_INTERVAL_S)
 
     # 2 CPU + 1 PG CPU == 3.0/4.0 CPU (1 used by pg)
     actors = [A.remote() for _ in range(2)]
@@ -647,7 +638,7 @@ def test_placement_group_status(ray_start_cluster, enable_v2):
     ray.get([actor.ready.remote() for actor in actors])
     ray.get([actor.ready.remote() for actor in actors_in_pg])
     # Wait long enough until the usage is propagated to GCS.
-    time.sleep(5)
+    time.sleep(AUTOSCALER_UPDATE_INTERVAL_S)
     demand_output = get_ray_status_output(cluster.address)
     cpu_usage = demand_output["usage"].split("\n")[0]
     expected = "3.0/4.0 CPU (1.0 used of 1.0 reserved in placement groups)"
@@ -697,7 +688,6 @@ def test_placement_group_local_resource_view(monkeypatch, ray_start_cluster):
         # Increase broadcasting interval so that node resource will arrive
         # at raylet after local resource all being allocated.
         m.setenv("RAY_raylet_report_resources_period_milliseconds", "2000")
-        m.setenv("RAY_grpc_based_resource_broadcast", "true")
         cluster = ray_start_cluster
 
         cluster.add_node(num_cpus=16, object_store_memory=1e9)
@@ -762,9 +752,4 @@ def test_fractional_resources_handle_correct(ray_start_cluster):
 
 
 if __name__ == "__main__":
-    import os
-
-    if os.environ.get("PARALLEL_CI"):
-        sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))
-    else:
-        sys.exit(pytest.main(["-sv", __file__]))
+    sys.exit(pytest.main(["-sv", __file__]))

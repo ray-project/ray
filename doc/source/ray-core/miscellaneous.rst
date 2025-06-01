@@ -247,24 +247,6 @@ In Ubuntu, the ARP cache size can be tuned in ``/etc/sysctl.conf`` by increasing
 the value of ``net.ipv4.neigh.default.gc_thresh1`` - ``net.ipv4.neigh.default.gc_thresh3``.
 For more details, please refer to the OS manual.
 
-Tuning Ray Settings
-~~~~~~~~~~~~~~~~~~~
-
-.. note::
-  There is an ongoing `project <https://github.com/ray-project/ray/projects/15>`_ focusing on
-  improving Ray's scalability and stability. Feel free to share your thoughts and use cases.
-
-To run a large cluster, several parameters need to be tuned in Ray.
-
-Resource broadcasting
-*********************
-
-In Ray 2.3+, lightweight resource broadcasting is supported as an experimental feature.
-Turning it on can significantly reduce GCS load and thus
-improve its overall stability and scalability. To turn it on, this OS environment
-should be set: ``RAY_use_ray_syncer=true``. This feature will be turned on by
-default in 2.4+.
-
 Benchmark
 ~~~~~~~~~
 
@@ -284,7 +266,6 @@ The OS setup:
 
 The Ray setup:
 
-- ``RAY_use_ray_syncer=true``
 - ``RAY_event_stats=false``
 
 Test workload:

@@ -1,6 +1,15 @@
 workspace(name = "com_github_ray_project_ray")
 
 load("@bazel_tools//tools/build_defs/repo:http.bzl", "http_archive")
+
+http_archive(
+    name = "platforms",
+    sha256 = "5eda539c841265031c2f82d8ae7a3a6490bd62176e0c038fc469eabf91f6149b",
+    urls = [
+        "https://github.com/bazelbuild/platforms/releases/download/0.0.9/platforms-0.0.9.tar.gz",
+    ],
+)
+
 load("//bazel:ray_deps_setup.bzl", "ray_deps_setup")
 
 ray_deps_setup()
@@ -18,23 +27,21 @@ grpc_extra_deps()
 
 load("@bazel_skylib//lib:versions.bzl", "versions")
 
-# TODO (shrekris-anyscale): Update the min version to 4.2.2 once Windows uses
-# it in CI.
+# Please keep this in sync with the .bazelversion file.
+versions.check(
+    maximum_bazel_version = "6.5.0",
+    minimum_bazel_version = "6.5.0",
+)
 
-# Please keep this in sync with the .bazeliskrc file.
-versions.check(minimum_bazel_version = "5.4.1")
-
-# Tools to generate `compile_commands.json` to enable awesome tooling of the C language family.
-# Just run `bazel run @hedron_compile_commands//:refresh_all`
 load("@hedron_compile_commands//:workspace_setup.bzl", "hedron_compile_commands_setup")
 
 hedron_compile_commands_setup()
 
 http_archive(
     name = "rules_python",
-    sha256 = "94750828b18044533e98a129003b6a68001204038dc4749f40b195b24c38f49f",
-    strip_prefix = "rules_python-0.21.0",
-    url = "https://github.com/bazelbuild/rules_python/releases/download/0.21.0/rules_python-0.21.0.tar.gz",
+    sha256 = "c68bdc4fbec25de5b5493b8819cfc877c4ea299c0dcb15c244c5a00208cde311",
+    strip_prefix = "rules_python-0.31.0",
+    url = "https://github.com/bazelbuild/rules_python/releases/download/0.31.0/rules_python-0.31.0.tar.gz",
 )
 
 load("@rules_python//python:repositories.bzl", "python_register_toolchains")
@@ -58,27 +65,9 @@ pip_parse(
     requirements_lock = "//release:requirements_buildkite.txt",
 )
 
-pip_parse(
-    name = "py_deps_ray_ci",
-    python_interpreter_target = python39,
-    requirements_lock = "//release:requirements_buildkite.txt",
-)
-
-pip_parse(
-    name = "py_deps_compile_py_proto",
-    python_interpreter_target = python39,
-    requirements_lock = "//ci/compile_py_proto:requirements_compile_py_proto.txt",
-)
-
 load("@py_deps_buildkite//:requirements.bzl", install_py_deps_buildkite = "install_deps")
-load("@py_deps_ray_ci//:requirements.bzl", install_py_deps_ray_ci = "install_deps")
-load("@py_deps_compile_py_proto//:requirements.bzl", install_py_deps_compile_py_proto = "install_deps")
 
 install_py_deps_buildkite()
-
-install_py_deps_ray_ci()
-
-install_py_deps_compile_py_proto()
 
 register_toolchains("//:python_toolchain")
 
@@ -86,3 +75,42 @@ register_execution_platforms(
     "@local_config_platform//:host",
     "//:hermetic_python_platform",
 )
+
+http_archive(
+    name = "crane_linux_x86_64",
+    build_file_content = """
+filegroup(
+    name = "file",
+    srcs = glob(["**"]),
+    visibility = ["//visibility:public"],
+)
+""",
+    sha256 = "daa629648e1d1d10fc8bde5e6ce4176cbc0cd48a32211b28c3fd806e0fa5f29b",
+    urls = ["https://github.com/google/go-containerregistry/releases/download/v0.19.0/go-containerregistry_Linux_x86_64.tar.gz"],
+)
+
+http_archive(
+    name = "registry_x86_64",
+    build_file_content = """
+filegroup(
+    name = "file",
+    srcs = glob(["**"]),
+    visibility = ["//visibility:public"],
+)
+""",
+    sha256 = "61c9a2c0d5981a78482025b6b69728521fbc78506d68b223d4a2eb825de5ca3d",
+    urls = ["https://github.com/distribution/distribution/releases/download/v3.0.0/registry_3.0.0_linux_amd64.tar.gz"],
+)
+
+http_archive(
+    name = "com_github_storypku_bazel_iwyu",
+    sha256 = "aa78c331a2cb139f73f7d74eeb4d5ab29794af82023ef5d6d5194f76b7d37449",
+    strip_prefix = "bazel_iwyu-0.19.2",
+    urls = [
+        "https://github.com/storypku/bazel_iwyu/archive/0.19.2.tar.gz",
+    ],
+)
+
+load("@com_github_storypku_bazel_iwyu//bazel:dependencies.bzl", "bazel_iwyu_dependencies")
+
+bazel_iwyu_dependencies()

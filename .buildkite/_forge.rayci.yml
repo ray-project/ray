@@ -5,42 +5,96 @@ steps:
 
   - name: manylinux
     wanda: ci/docker/manylinux.wanda.yaml
-  
-  - name: oss-ci-base_test
-    wanda: ci/docker/base.test.wanda.yaml
-  
-  - name: oss-ci-base_build
-    wanda: ci/docker/base.build.wanda.yaml
-    depends_on: oss-ci-base_test
 
-  - name: oss-ci-base_ml
-    wanda: ci/docker/base.ml.wanda.yaml
-    depends_on: oss-ci-base_test
+  - name: raycudabase
+    label: "wanda: ray.py{{matrix.python}}.cu{{matrix.cuda}}.base"
+    tags:
+      - python_dependencies
+      - docker
+    wanda: ci/docker/ray.cuda.base.wanda.yaml
+    matrix:
+      setup:
+        python:
+          - "3.9"
+          - "3.10"
+          - "3.11"
+          - "3.12"
+        cuda:
+          - "11.7.1-cudnn8"
+          - "11.8.0-cudnn8"
+          - "12.1.1-cudnn8"
+          - "12.3.2-cudnn9"
+          - "12.4.1-cudnn"
+          - "12.5.1-cudnn"
+          - "12.8.1-cudnn"
+    env:
+      PYTHON_VERSION: "{{matrix.python}}"
+      CUDA_VERSION: "{{matrix.cuda}}"
 
-  - name: corebuild
-    wanda: ci/docker/core.build.wanda.yaml
-    depends_on: oss-ci-base_build
 
-  - name: data6build
-    wanda: ci/docker/data6.build.wanda.yaml
-    depends_on: oss-ci-base_ml
+  - name: raycpubase
+    label: "wanda: ray.py{{matrix}}.cpu.base"
+    tags:
+      - python_dependencies
+      - python
+      - docker
+      - tune
+      - serve
+    wanda: ci/docker/ray.cpu.base.wanda.yaml
+    matrix:
+      - "3.9"
+      - "3.10"
+      - "3.11"
+      - "3.12"
+    env:
+      PYTHON_VERSION: "{{matrix}}"
 
-  - name: data12build
-    wanda: ci/docker/data12.build.wanda.yaml
-    depends_on: oss-ci-base_ml
+  - name: ray-llmbase
+    label: "wanda: ray-llm.py{{matrix.python}}.cu{{matrix.cuda}}.base"
+    tags:
+      - python_dependencies
+      - docker
+    wanda: ci/docker/ray-llm.base.wanda.yaml
+    depends_on: raycudabase
+    matrix:
+      setup:
+        python:
+          - "3.11"
+        cuda:
+          - "12.4.1-cudnn"
+    env:
+      PYTHON_VERSION: "{{matrix.python}}"
+      CUDA_VERSION: "{{matrix.cuda}}"
 
-  - name: datanbuild
-    wanda: ci/docker/datan.build.wanda.yaml
-    depends_on: oss-ci-base_ml
+  - name: ray-mlcudabase
+    label: "wanda: ray-ml.py{{matrix.python}}.cu{{matrix.cuda}}.base"
+    tags:
+      - python_dependencies
+      - docker
+    wanda: ci/docker/ray-ml.cuda.base.wanda.yaml
+    depends_on: raycudabase
+    matrix:
+      setup:
+        python:
+          - "3.9"
+          - "3.10"
+          - "3.11"
+        cuda:
+          - "12.1.1-cudnn8"
+    env:
+      PYTHON_VERSION: "{{matrix.python}}"
+      CUDA_VERSION: "{{matrix.cuda}}"
 
-  - name: databbuild
-    wanda: ci/docker/datab.build.wanda.yaml
-    depends_on: oss-ci-base_ml
-
-  - name: servebuild
-    wanda: ci/docker/serve.build.wanda.yaml
-    depends_on: oss-ci-base_build
-
-  - name: serverlessbuild
-    wanda: ci/docker/serverless.build.wanda.yaml
-    depends_on: oss-ci-base_build
+  - name: ray-mlcpubase
+    label: "wanda: ray-ml.py{{matrix}}.cpu.base"
+    tags:
+      - python_dependencies
+      - docker
+    wanda: ci/docker/ray-ml.cpu.base.wanda.yaml
+    depends_on: raycpubase
+    matrix:
+      - "3.9"
+      - "3.10"
+      - "3.11"
+    env:
+      PYTHON_VERSION: "{{matrix}}"

@@ -34,6 +34,8 @@ from functools import wraps
 from typing import Any, Dict, List, Optional, Tuple, Union
 from uuid import uuid4
 
+import httplib2
+from google_auth_httplib2 import AuthorizedHttp
 from googleapiclient.discovery import Resource
 from googleapiclient.errors import HttpError
 
@@ -166,7 +168,9 @@ class GCPNode(UserDict, metaclass=abc.ABCMeta):
 class GCPComputeNode(GCPNode):
     """Abstraction around compute nodes"""
 
+    # https://cloud.google.com/compute/docs/instances/instance-life-cycle
     NON_TERMINATED_STATUSES = {"PROVISIONING", "STAGING", "RUNNING"}
+    TERMINATED_STATUSES = {"TERMINATED", "SUSPENDED"}
     RUNNING_STATUSES = {"RUNNING"}
     STATUS_FIELD = "status"
 
@@ -233,6 +237,11 @@ class GCPResource(metaclass=abc.ABCMeta):
         self.cluster_name = cluster_name
 
     @abc.abstractmethod
+    def get_new_authorized_http(self, http: AuthorizedHttp) -> AuthorizedHttp:
+        """Generate a new AuthorizedHttp object with the given credentials."""
+        return
+
+    @abc.abstractmethod
     def wait_for_operation(
         self,
         operation: dict,
@@ -243,7 +252,11 @@ class GCPResource(metaclass=abc.ABCMeta):
         return None
 
     @abc.abstractmethod
-    def list_instances(self, label_filters: Optional[dict] = None) -> List["GCPNode"]:
+    def list_instances(
+        self,
+        label_filters: Optional[dict] = None,
+        is_terminated: bool = False,
+    ) -> List["GCPNode"]:
         """Returns a filtered list of all instances.
 
         The filter removes all terminated instances and, if ``label_filters``
@@ -307,9 +320,24 @@ class GCPResource(metaclass=abc.ABCMeta):
         """Deletes an instance and returns result."""
         return
 
+    @abc.abstractmethod
+    def stop_instance(self, node_id: str, wait_for_operation: bool = True) -> dict:
+        """Deletes an instance and returns result."""
+        return
+
+    @abc.abstractmethod
+    def start_instance(self, node_id: str, wait_for_operation: bool = True) -> dict:
+        """Starts a single instance and returns result."""
+        return
+
 
 class GCPCompute(GCPResource):
     """Abstraction around GCP compute resource"""
+
+    def get_new_authorized_http(self, http: AuthorizedHttp) -> AuthorizedHttp:
+        """Generate a new AuthorizedHttp object with the given credentials."""
+        new_http = AuthorizedHttp(http.credentials, http=httplib2.Http())
+        return new_http
 
     def wait_for_operation(
         self,
@@ -331,7 +359,7 @@ class GCPCompute(GCPResource):
                     operation=operation["name"],
                     zone=self.availability_zone,
                 )
-                .execute()
+                .execute(http=self.get_new_authorized_http(self.resource._http))
             )
             if "error" in result:
                 raise Exception(result["error"])
@@ -348,7 +376,9 @@ class GCPCompute(GCPResource):
         return result
 
     def list_instances(
-        self, label_filters: Optional[dict] = None
+        self,
+        label_filters: Optional[dict] = None,
+        is_terminated: bool = False,
     ) -> List[GCPComputeNode]:
         label_filters = label_filters or {}
 
@@ -366,13 +396,16 @@ class GCPCompute(GCPResource):
         else:
             label_filter_expr = ""
 
+        statuses = (
+            GCPComputeNode.TERMINATED_STATUSES
+            if is_terminated
+            else GCPComputeNode.NON_TERMINATED_STATUSES
+        )
+
         instance_state_filter_expr = (
             "("
             + " OR ".join(
-                [
-                    "(status = {status})".format(status=status)
-                    for status in GCPComputeNode.NON_TERMINATED_STATUSES
-                ]
+                ["(status = {status})".format(status=status) for status in statuses]
             )
             + ")"
         )
@@ -405,7 +438,7 @@ class GCPCompute(GCPResource):
                 zone=self.availability_zone,
                 filter=filter_expr,
             )
-            .execute()
+            .execute(http=self.get_new_authorized_http(self.resource._http))
         )
 
         instances = response.get("items", [])
@@ -440,7 +473,7 @@ class GCPCompute(GCPResource):
                 instance=node_id,
                 body=body,
             )
-            .execute()
+            .execute(http=self.get_new_authorized_http(self.resource._http))
         )
 
         if wait_for_operation:
@@ -455,7 +488,7 @@ class GCPCompute(GCPResource):
     ) -> Dict[str, Any]:
         """Ensures that resources are in their full URL form.
 
-        GCP expects machineType and accleratorType to be a full URL (e.g.
+        GCP expects machineType and acceleratorType to be a full URL (e.g.
         `zones/us-west1/machineTypes/n1-standard-2`) instead of just the
         type (`n1-standard-2`)
 
@@ -530,7 +563,7 @@ class GCPCompute(GCPResource):
                 sourceInstanceTemplate=source_instance_template,
                 body=config,
             )
-            .execute()
+            .execute(http=self.get_new_authorized_http(self.resource._http))
         )
 
         if wait_for_operation:
@@ -558,6 +591,41 @@ class GCPCompute(GCPResource):
 
         return result
 
+    def stop_instance(self, node_id: str, wait_for_operation: bool = True) -> dict:
+        operation = (
+            self.resource.instances()
+            .stop(
+                project=self.project_id,
+                zone=self.availability_zone,
+                instance=node_id,
+            )
+            .execute()
+        )
+
+        if wait_for_operation:
+            result = self.wait_for_operation(operation)
+        else:
+            result = operation
+        return result
+
+    def start_instance(self, node_id: str, wait_for_operation: bool = True) -> dict:
+
+        operation = (
+            self.resource.instances()
+            .start(
+                project=self.project_id,
+                zone=self.availability_zone,
+                instance=node_id,
+            )
+            .execute(http=self.get_new_authorized_http(self.resource._http))
+        )
+
+        if wait_for_operation:
+            result = self.wait_for_operation(operation)
+        else:
+            result = operation
+        return result
+
 
 class GCPTPU(GCPResource):
     """Abstraction around GCP TPU resource"""
@@ -567,6 +635,11 @@ class GCPTPU(GCPResource):
     @property
     def path(self):
         return f"projects/{self.project_id}/locations/{self.availability_zone}"
+
+    def get_new_authorized_http(self, http: AuthorizedHttp) -> AuthorizedHttp:
+        """Generate a new AuthorizedHttp object with the given credentials."""
+        new_http = AuthorizedHttp(http.credentials, http=httplib2.Http())
+        return new_http
 
     def wait_for_operation(
         self,
@@ -586,7 +659,7 @@ class GCPTPU(GCPResource):
                 .locations()
                 .operations()
                 .get(name=f"{operation['name']}")
-                .execute()
+                .execute(http=self.get_new_authorized_http(self.resource._http))
             )
             if "error" in result:
                 raise Exception(result["error"])
@@ -602,13 +675,17 @@ class GCPTPU(GCPResource):
 
         return result
 
-    def list_instances(self, label_filters: Optional[dict] = None) -> List[GCPTPUNode]:
+    def list_instances(
+        self,
+        label_filters: Optional[dict] = None,
+        is_terminated: bool = False,
+    ) -> List[GCPTPUNode]:
         response = (
             self.resource.projects()
             .locations()
             .nodes()
             .list(parent=self.path)
-            .execute()
+            .execute(http=self.get_new_authorized_http(self.resource._http))
         )
 
         instances = response.get("nodes", [])
@@ -641,7 +718,11 @@ class GCPTPU(GCPResource):
 
     def get_instance(self, node_id: str) -> GCPTPUNode:
         instance = (
-            self.resource.projects().locations().nodes().get(name=node_id).execute()
+            self.resource.projects()
+            .locations()
+            .nodes()
+            .get(name=node_id)
+            .execute(http=self.get_new_authorized_http(self.resource._http))
         )
 
         return GCPTPUNode(instance, self)
@@ -666,7 +747,7 @@ class GCPTPU(GCPResource):
                 updateMask=update_mask,
                 body=body,
             )
-            .execute()
+            .execute(http=self.get_new_authorized_http(self.resource._http))
         )
 
         if wait_for_operation:
@@ -715,7 +796,7 @@ class GCPTPU(GCPResource):
                 body=config,
                 nodeId=name,
             )
-            .execute()
+            .execute(http=self.get_new_authorized_http(self.resource._http))
         )
 
         if wait_for_operation:
@@ -727,10 +808,46 @@ class GCPTPU(GCPResource):
 
     def delete_instance(self, node_id: str, wait_for_operation: bool = True) -> dict:
         operation = (
-            self.resource.projects().locations().nodes().delete(name=node_id).execute()
+            self.resource.projects()
+            .locations()
+            .nodes()
+            .delete(name=node_id)
+            .execute(http=self.get_new_authorized_http(self.resource._http))
         )
 
         # No need to increase MAX_POLLS for deletion
+        if wait_for_operation:
+            result = self.wait_for_operation(operation, max_polls=MAX_POLLS)
+        else:
+            result = operation
+
+        return result
+
+    def stop_instance(self, node_id: str, wait_for_operation: bool = True) -> dict:
+        operation = (
+            self.resource.projects()
+            .locations()
+            .nodes()
+            .stop(name=node_id)
+            .execute(http=self.get_new_authorized_http(self.resource._http))
+        )
+
+        if wait_for_operation:
+            result = self.wait_for_operation(operation, max_polls=MAX_POLLS)
+        else:
+            result = operation
+
+        return result
+
+    def start_instance(self, node_id: str, wait_for_operation: bool = True) -> dict:
+        operation = (
+            self.resource.projects()
+            .locations()
+            .nodes()
+            .start(name=node_id)
+            .execute(http=self.get_new_authorized_http(self.resource._http))
+        )
+
         if wait_for_operation:
             result = self.wait_for_operation(operation, max_polls=MAX_POLLS)
         else:

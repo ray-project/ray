@@ -53,7 +53,7 @@ class DreamerModel(tf.keras.Model):
         Args:
              model_size: The "Model Size" used according to [1] Appendinx B.
                 Use None for manually setting the different network sizes.
-             action_space: The action space the our environment used.
+             action_space: The action space of the environment used.
              world_model: The WorldModel component.
              actor: The ActorNetwork component.
              critic: The CriticNetwork component.
@@ -113,6 +113,7 @@ class DreamerModel(tf.keras.Model):
         actions,
         is_first,
         start_is_terminated_BxT,
+        gamma,
     ):
         """Main call method for building this model in order to generate its variables.
 

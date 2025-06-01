@@ -1,5 +1,7 @@
 import os
+import sys
 import time
+from typing import Optional
 
 import pytest
 
@@ -14,20 +16,7 @@ from ray._private.test_utils import (
     wait_for_condition,
 )
 
-try:
-    import pytest_timeout
-except ImportError:
-    pytest_timeout = None
 
-
-# TODO(rliaw): The proper way to do this is to have the pytest config setup.
-
-
-@pytest.mark.skipif(
-    pytest_timeout is None,
-    reason="Timeout package not installed; skipping test that may hang.",
-)
-@pytest.mark.timeout(30)
 def test_replenish_resources(ray_start_regular):
     cluster_resources = ray.cluster_resources()
     available_resources = ray.available_resources()
@@ -38,43 +27,110 @@ def test_replenish_resources(ray_start_regular):
         pass
 
     ray.get(cpu_task.remote())
-    resources_reset = False
 
-    while not resources_reset:
-        available_resources = ray.available_resources()
-        resources_reset = cluster_resources == available_resources
-    assert resources_reset
+    wait_for_condition(lambda: ray.available_resources() == cluster_resources)
 
 
-@pytest.mark.skipif(
-    pytest_timeout is None,
-    reason="Timeout package not installed; skipping test that may hang.",
-)
-@pytest.mark.timeout(30)
 def test_uses_resources(ray_start_regular):
     cluster_resources = ray.cluster_resources()
 
+    @ray.remote(num_cpus=1)
+    class Actor:
+        pass
+
+    actor = Actor.remote()
+    ray.get(actor.__ray_ready__.remote())
+
+    wait_for_condition(
+        lambda: ray.available_resources().get("CPU", 0)
+        == cluster_resources.get("CPU", 0) - 1
+    )
+
+
+def test_available_resources_per_node(ray_start_cluster_head):
+    cluster = ray_start_cluster_head
+
     @ray.remote
-    def cpu_task():
-        time.sleep(1)
+    def get_node_id():
+        return ray.get_runtime_context().get_node_id()
 
-    cpu_task.remote()
-    resource_used = False
+    head_node_id = ray.get(get_node_id.remote())
 
-    while not resource_used:
-        available_resources = ray.available_resources()
-        resource_used = (
-            available_resources.get("CPU", 0) == cluster_resources.get("CPU", 0) - 1
-        )
+    worker_node = cluster.add_node(num_cpus=3, resources={"worker": 1})
 
-    assert resource_used
+    @ray.remote(num_cpus=1, resources={"worker": 1})
+    class Actor:
+        def ping(self):
+            return ray.get_runtime_context().get_node_id()
+
+    actor = Actor.remote()
+    worker_node_id = ray.get(actor.ping.remote())
+
+    def available_resources_per_node_check1():
+        available_resources_per_node = ray._private.state.available_resources_per_node()
+        assert len(available_resources_per_node) == 2
+        assert available_resources_per_node[head_node_id]["CPU"] == 1
+        assert available_resources_per_node[worker_node_id]["CPU"] == 2
+        assert available_resources_per_node[worker_node_id].get("worker", 0) == 0
+        return True
+
+    wait_for_condition(available_resources_per_node_check1)
+
+    cluster.remove_node(worker_node)
+    cluster.wait_for_nodes()
+
+    def available_resources_per_node_check2():
+        # Make sure worker node is not returned
+        available_resources_per_node = ray._private.state.available_resources_per_node()
+        assert len(available_resources_per_node) == 1
+        assert available_resources_per_node[head_node_id]["CPU"] == 1
+        return True
+
+    wait_for_condition(available_resources_per_node_check2)
 
 
-@pytest.mark.skipif(
-    pytest_timeout is None,
-    reason="Timeout package not installed; skipping test that may hang.",
-)
-@pytest.mark.timeout(120)
+def test_total_resources_per_node(ray_start_cluster_head):
+    cluster = ray_start_cluster_head
+
+    @ray.remote
+    def get_node_id():
+        return ray.get_runtime_context().get_node_id()
+
+    head_node_id = ray.get(get_node_id.remote())
+
+    worker_node = cluster.add_node(num_cpus=3, resources={"worker": 1})
+
+    @ray.remote(num_cpus=1, resources={"worker": 1})
+    class Actor:
+        def ping(self):
+            return ray.get_runtime_context().get_node_id()
+
+    actor = Actor.remote()
+    worker_node_id = ray.get(actor.ping.remote())
+
+    def total_resources_per_node_check1():
+        total_resources_per_node = ray._private.state.total_resources_per_node()
+        assert len(total_resources_per_node) == 2
+        assert total_resources_per_node[head_node_id]["CPU"] == 1
+        assert total_resources_per_node[worker_node_id]["CPU"] == 3
+        assert total_resources_per_node[worker_node_id].get("worker", 0) == 1
+        return True
+
+    wait_for_condition(total_resources_per_node_check1)
+
+    cluster.remove_node(worker_node)
+    cluster.wait_for_nodes()
+
+    def total_resources_per_node_check2():
+        # Make sure worker node is not returned
+        total_resources_per_node = ray._private.state.total_resources_per_node()
+        assert len(total_resources_per_node) == 1
+        assert total_resources_per_node[head_node_id]["CPU"] == 1
+        return True
+
+    wait_for_condition(total_resources_per_node_check2)
+
+
 def test_add_remove_cluster_resources(ray_start_cluster_head):
     """Tests that Global State API is consistent with actual cluster."""
     cluster = ray_start_cluster_head
@@ -447,55 +503,216 @@ def test_next_job_id(ray_start_regular):
     assert job_id_1.int() + 1 == job_id_2.int()
 
 
+def test_get_cluster_config(shutdown_only):
+    ray.init(num_cpus=1)
+    gcs_client = GcsClient(address=ray.get_runtime_context().gcs_address)
+
+    cluster_config = ray._private.state.state.get_cluster_config()
+    assert cluster_config is None
+
+    cluster_config = autoscaler_pb2.ClusterConfig()
+    cluster_config.max_resources["CPU"] = 100
+    node_group_config = autoscaler_pb2.NodeGroupConfig()
+    node_group_config.name = "m5.large"
+    node_group_config.resources["CPU"] = 5
+    node_group_config.max_count = -1
+    cluster_config.node_group_configs.append(node_group_config)
+    gcs_client.report_cluster_config(cluster_config.SerializeToString())
+    assert ray._private.state.state.get_cluster_config() == cluster_config
+
+
+@pytest.mark.parametrize(
+    "description, cluster_config, num_cpu",
+    [
+        (
+            "should return None since empty config is provided",
+            autoscaler_pb2.ClusterConfig(),
+            None,
+        ),
+        (
+            "should return None since no node_group_config is provided",
+            autoscaler_pb2.ClusterConfig(
+                max_resources={"CPU": 100},
+            ),
+            None,
+        ),
+        (
+            "should return None since no CPU is provided under node_group_configs",
+            autoscaler_pb2.ClusterConfig(
+                max_resources={"CPU": 100},
+                node_group_configs=[autoscaler_pb2.NodeGroupConfig(name="m5.large")],
+            ),
+            None,
+        ),
+        (
+            "should return None since 0 instance is provided under node_group_configs",
+            autoscaler_pb2.ClusterConfig(
+                max_resources={"CPU": 100},
+                node_group_configs=[
+                    autoscaler_pb2.NodeGroupConfig(
+                        resources={"CPU": 50},
+                        name="m5.large",
+                        max_count=0,
+                    )
+                ],
+            ),
+            None,
+        ),
+        (
+            "should return max since max_count=-1 under node_group_configs",
+            autoscaler_pb2.ClusterConfig(
+                max_resources={"CPU": 100},
+                node_group_configs=[
+                    autoscaler_pb2.NodeGroupConfig(
+                        resources={"CPU": 50},
+                        name="m5.large",
+                        max_count=-1,
+                    )
+                ],
+            ),
+            sys.maxsize,
+        ),
+        (
+            "should return the total under node_group_configs since it is less than max_resources",
+            autoscaler_pb2.ClusterConfig(
+                max_resources={"CPU": 100},
+                node_group_configs=[
+                    autoscaler_pb2.NodeGroupConfig(
+                        resources={"CPU": 50},
+                        name="m5.large",
+                        max_count=1,
+                    )
+                ],
+            ),
+            50,
+        ),
+        (
+            "should return the total under max_resources since it is less than node_group_configs total",
+            autoscaler_pb2.ClusterConfig(
+                max_resources={"CPU": 30},
+                node_group_configs=[
+                    autoscaler_pb2.NodeGroupConfig(
+                        resources={"CPU": 50},
+                        name="m5.large",
+                        max_count=1,
+                    )
+                ],
+            ),
+            30,
+        ),
+        (
+            "should return the total under node_group_configs - no max_resources",
+            autoscaler_pb2.ClusterConfig(
+                node_group_configs=[
+                    autoscaler_pb2.NodeGroupConfig(
+                        resources={"CPU": 50},
+                        name="m5.large",
+                        max_count=1,
+                    )
+                ],
+            ),
+            50,
+        ),
+        (
+            "should return the total under node_group_configs - multiple node_group_config",
+            autoscaler_pb2.ClusterConfig(
+                node_group_configs=[
+                    autoscaler_pb2.NodeGroupConfig(
+                        resources={"CPU": 50},
+                        name="m5.large",
+                        max_count=1,
+                    ),
+                    autoscaler_pb2.NodeGroupConfig(
+                        resources={"CPU": 10},
+                        name="m5.small",
+                        max_count=4,
+                    ),
+                ],
+            ),
+            90,
+        ),
+    ],
+)
+def test_get_max_cpus_from_cluster_config(
+    shutdown_only,
+    description: str,
+    cluster_config: autoscaler_pb2.ClusterConfig,
+    num_cpu: Optional[int],
+):
+    ray.init(num_cpus=1)
+    gcs_client = GcsClient(address=ray.get_runtime_context().gcs_address)
+
+    gcs_client.report_cluster_config(cluster_config.SerializeToString())
+    max_resources = ray._private.state.state.get_max_resources_from_cluster_config()
+    assert (max_resources and max_resources["CPU"]) == num_cpu, description
+
+
 def test_get_draining_nodes(ray_start_cluster):
     cluster = ray_start_cluster
     cluster.add_node()
     ray.init(address=cluster.address)
-    cluster.add_node(resources={"worker": 1})
+    cluster.add_node(resources={"worker1": 1})
+    cluster.add_node(resources={"worker2": 1})
     cluster.wait_for_nodes()
 
     @ray.remote
     def get_node_id():
         return ray.get_runtime_context().get_node_id()
 
-    worker_node_id = ray.get(get_node_id.options(resources={"worker": 1}).remote())
+    worker1_node_id = ray.get(get_node_id.options(resources={"worker1": 1}).remote())
+    worker2_node_id = ray.get(get_node_id.options(resources={"worker2": 1}).remote())
 
     # Initially there is no draining node.
-    assert ray._private.state.state.get_draining_nodes() == set()
+    assert ray._private.state.state.get_draining_nodes() == {}
 
-    @ray.remote(num_cpus=1, resources={"worker": 1})
+    @ray.remote
     class Actor:
         def ping(self):
             pass
 
-    actor = Actor.remote()
-    ray.get(actor.ping.remote())
+    actor1 = Actor.options(num_cpus=1, resources={"worker1": 1}).remote()
+    actor2 = Actor.options(num_cpus=1, resources={"worker2": 1}).remote()
+    ray.get(actor1.ping.remote())
+    ray.get(actor2.ping.remote())
 
     gcs_client = GcsClient(address=ray.get_runtime_context().gcs_address)
 
-    # Drain the worker node.
-    is_accepted = gcs_client.drain_node(
-        worker_node_id,
+    # Drain the worker nodes.
+    is_accepted, _ = gcs_client.drain_node(
+        worker1_node_id,
         autoscaler_pb2.DrainNodeReason.Value("DRAIN_NODE_REASON_PREEMPTION"),
         "preemption",
+        2**63 - 2,
     )
     assert is_accepted
 
-    wait_for_condition(
-        lambda: ray._private.state.state.get_draining_nodes() == {worker_node_id}
+    is_accepted, _ = gcs_client.drain_node(
+        worker2_node_id,
+        autoscaler_pb2.DrainNodeReason.Value("DRAIN_NODE_REASON_PREEMPTION"),
+        "preemption",
+        0,
     )
+    assert is_accepted
 
-    # Kill the actor running on the draining worker node so
-    # that the worker node becomes idle and can be drained.
-    ray.kill(actor)
+    def get_draining_nodes_check():
+        draining_nodes = ray._private.state.state.get_draining_nodes()
+        if (
+            draining_nodes[worker1_node_id] == (2**63 - 2)
+            and draining_nodes[worker2_node_id] == 0
+        ):
+            return True
+        else:
+            return False
 
-    wait_for_condition(lambda: ray._private.state.state.get_draining_nodes() == set())
+    wait_for_condition(get_draining_nodes_check)
+
+    # Kill the actors running on the draining worker nodes so
+    # that the worker nodes become idle and can be drained.
+    ray.kill(actor1)
+    ray.kill(actor2)
+
+    wait_for_condition(lambda: ray._private.state.state.get_draining_nodes() == {})
 
 
 if __name__ == "__main__":
-    import sys
-
-    if os.environ.get("PARALLEL_CI"):
-        sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))
-    else:
-        sys.exit(pytest.main(["-sv", __file__]))
+    sys.exit(pytest.main(["-sv", __file__]))

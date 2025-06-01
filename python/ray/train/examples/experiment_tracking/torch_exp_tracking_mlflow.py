@@ -1,5 +1,6 @@
-# flake8: noqa
+# ruff: noqa
 # isort: skip_file
+from filelock import FileLock
 import os
 import tempfile
 
@@ -44,16 +45,20 @@ def train_func(config):
 
     # Data
     transform = transforms.Compose(
-        [transforms.ToTensor(), transforms.Normalize((0.5,), (0.5,))]
+        [transforms.ToTensor(), transforms.Normalize((0.28604,), (0.32025,))]
     )
-    train_data = datasets.FashionMNIST(
-        root="./data", train=True, download=True, transform=transform
-    )
+    with FileLock("./data.lock"):
+        train_data = datasets.FashionMNIST(
+            root="./data", train=True, download=True, transform=transform
+        )
     train_loader = DataLoader(train_data, batch_size=128, shuffle=True)
     train_loader = ray.train.torch.prepare_data_loader(train_loader)
 
     # Training
-    for epoch in range(2):
+    for epoch in range(1):
+        if ray.train.get_context().get_world_size() > 1:
+            train_loader.sampler.set_epoch(epoch)
+
         for images, labels in train_loader:
             outputs = model(images)
             loss = criterion(outputs, labels)
@@ -72,7 +77,7 @@ trainer = TorchTrainer(
     train_loop_config={
         "save_dir": os.path.join(os.environ["SHARED_STORAGE_PATH"], "mlruns")
     },
-    scaling_config=ScalingConfig(num_workers=4),
+    scaling_config=ScalingConfig(num_workers=2),
 )
 trainer.fit()
 # __end__

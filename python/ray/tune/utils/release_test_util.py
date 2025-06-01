@@ -1,15 +1,16 @@
-from collections import Counter
 import json
-import numpy as np
 import os
 import pickle
 import tempfile
 import time
+from collections import Counter
 
-from ray import train, tune
-from ray.train import Checkpoint
-from ray.tune.callback import Callback
+import numpy as np
+
+from ray import tune
 from ray._private.test_utils import safe_write_to_results_json
+from ray.tune import Checkpoint
+from ray.tune.callback import Callback
 
 
 class ProgressCallback(Callback):
@@ -95,9 +96,9 @@ def function_trainable(config):
                     checkpoint_data = np.random.uniform(0, 1, size=checkpoint_num_items)
                     with open(checkpoint_file, "wb") as fp:
                         pickle.dump(checkpoint_data, fp)
-                train.report(metrics, checkpoint=Checkpoint.from_directory(tmpdir))
+                tune.report(metrics, checkpoint=Checkpoint.from_directory(tmpdir))
         else:
-            train.report(metrics)
+            tune.report(metrics)
 
         time.sleep(sleep_time)
 

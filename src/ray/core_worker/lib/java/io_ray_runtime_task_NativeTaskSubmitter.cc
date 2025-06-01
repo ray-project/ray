@@ -16,7 +16,13 @@
 
 #include <jni.h>
 
-#include "jni_utils.h"
+#include <memory>
+#include <string>
+#include <unordered_map>
+#include <utility>
+#include <vector>
+
+#include "jni_utils.h"  // NOLINT(build/include_subdir)
 #include "ray/common/id.h"
 #include "ray/core_worker/common.h"
 #include "ray/core_worker/core_worker.h"
@@ -82,7 +88,8 @@ inline std::vector<std::unique_ptr<TaskArg>> ToTaskArgs(JNIEnv *env, jobject arg
             static_cast<jbyteArray>(env->GetObjectField(arg, java_function_arg_value));
         RAY_CHECK(java_value) << "Both id and value of FunctionArg are null.";
         auto value = JavaNativeRayObjectToNativeRayObject(env, java_value);
-        return std::unique_ptr<TaskArg>(new TaskArgByValue(value));
+        std::unique_ptr<TaskArg> task_arg = std::make_unique<TaskArgByValue>(value);
+        return task_arg;
       });
   return task_args;
 }
@@ -150,8 +157,12 @@ inline TaskOptions ToTaskOptions(JNIEnv *env, jint numReturns, jobject callOptio
     }
   }
 
-  TaskOptions task_options{
-      name, numReturns, resources, concurrency_group_name, serialzied_runtime_env_info};
+  TaskOptions task_options{name,
+                           numReturns,
+                           resources,
+                           concurrency_group_name,
+                           /*generator_backpressure_num_objects*/ -1,
+                           serialzied_runtime_env_info};
   return task_options;
 }
 
@@ -263,8 +274,8 @@ inline ActorCreationOptions ToActorCreationOptions(JNIEnv *env,
 
     max_pending_calls = static_cast<int32_t>(env->GetIntField(
         actorCreationOptions, java_actor_creation_options_max_pending_calls));
-    is_async = (bool)env->GetBooleanField(actorCreationOptions,
-                                          java_actor_creation_options_is_async);
+    is_async = static_cast<bool>(
+        env->GetBooleanField(actorCreationOptions, java_actor_creation_options_is_async));
   }
 
   rpc::SchedulingStrategy scheduling_strategy;
@@ -375,7 +386,9 @@ Java_io_ray_runtime_task_NativeTaskSubmitter_nativeSubmitTask(JNIEnv *env,
         placement_group_options.second);
     placement_group_scheduling_strategy->set_placement_group_capture_child_tasks(false);
   }
-  // TODO (kfstorm): Allow setting `max_retries` via `CallOptions`.
+  // TODO(kfstorm): Allow setting `max_retries` via `CallOptions`.
+  // TODO(ryw): support `call_site` in SubmitTask. Problem is it needs to
+  // happen in Java, while we don't yet expose RayConfig to Java.
   auto return_refs =
       CoreWorkerProcess::GetCoreWorker().SubmitTask(ray_function,
                                                     task_args,
@@ -416,6 +429,7 @@ Java_io_ray_runtime_task_NativeTaskSubmitter_nativeCreateActor(
                                                                task_args,
                                                                actor_creation_options,
                                                                /*extension_data*/ "",
+                                                               /*call_site=*/"",
                                                                &actor_id);
 
   THROW_EXCEPTION_AND_RETURN_IF_NOT_OK(env, status, nullptr);
@@ -438,9 +452,26 @@ Java_io_ray_runtime_task_NativeTaskSubmitter_nativeSubmitActorTask(
   auto task_args = ToTaskArgs(env, args);
   RAY_CHECK(callOptions != nullptr);
   auto task_options = ToTaskOptions(env, numReturns, callOptions);
+
+  // NOTE: An actor method call from Java ActorHandle only recognizes the actor's
+  // max_task_retries. It does NOT recognize per-method max_retries. It also only retries
+  // on actor death, not on user exceptions. The max_task_retries is read from CoreWorker.
+  // TODO(ryw): support Java max_retries and retry_exceptions.
+  const auto native_actor_handle =
+      CoreWorkerProcess::GetCoreWorker().GetActorHandle(actor_id);
+  int max_retries = native_actor_handle->MaxTaskRetries();
+
   std::vector<rpc::ObjectReference> return_refs;
   auto status = CoreWorkerProcess::GetCoreWorker().SubmitActorTask(
-      actor_id, ray_function, task_args, task_options, return_refs);
+      actor_id,
+      ray_function,
+      task_args,
+      task_options,
+      max_retries,
+      /*retry_exceptions=*/false,
+      /*serialized_retry_exception_allowlist=*/"",
+      /*call_site=*/"",
+      return_refs);
   if (!status.ok()) {
     std::stringstream ss;
     ss << "The task " << ray_function.GetFunctionDescriptor()->ToString()

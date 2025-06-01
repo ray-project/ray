@@ -1,8 +1,9 @@
 import logging
 import os
-from packaging import version
 from copy import deepcopy
 from typing import TYPE_CHECKING, Dict, Optional
+
+from packaging import version
 
 from ray._private.dict import flatten_dict
 

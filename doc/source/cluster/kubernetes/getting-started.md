@@ -2,6 +2,16 @@
 
 # Getting Started with KubeRay
 
+```{toctree}
+:hidden:
+
+getting-started/kuberay-operator-installation
+getting-started/raycluster-quick-start
+getting-started/rayjob-quick-start
+getting-started/rayservice-quick-start
+```
+
+
 ## Custom Resource Definitions (CRDs)
 
 [KubeRay](https://github.com/ray-project/kuberay) is a powerful, open-source Kubernetes operator that simplifies the deployment and management of Ray applications on Kubernetes.

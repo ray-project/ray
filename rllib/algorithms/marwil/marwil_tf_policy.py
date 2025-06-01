@@ -1,7 +1,6 @@
 import logging
 from typing import Any, Dict, List, Optional, Type, Union
 
-from ray.rllib.evaluation.episode import Episode
 from ray.rllib.evaluation.postprocessing import compute_advantages, Postprocessing
 from ray.rllib.models.action_dist import ActionDistribution
 from ray.rllib.models.modelv2 import ModelV2
@@ -38,7 +37,7 @@ class PostprocessAdvantages:
         self,
         sample_batch: SampleBatch,
         other_agent_batches: Optional[Dict[Any, SampleBatch]] = None,
-        episode: Optional["Episode"] = None,
+        episode=None,
     ):
         sample_batch = super().postprocess_trajectory(
             sample_batch, other_agent_batches, episode
@@ -55,7 +54,7 @@ class PostprocessAdvantages:
             # Create an input dict according to the Model's requirements.
             index = "last" if SampleBatch.NEXT_OBS in sample_batch else -1
             input_dict = sample_batch.get_single_step_input_dict(
-                self.model.view_requirements, index=index
+                self.view_requirements, index=index
             )
             last_r = self._value(**input_dict)
 

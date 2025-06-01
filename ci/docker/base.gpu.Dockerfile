@@ -1,14 +1,15 @@
-FROM nvidia/cuda:11.8.0-cudnn8-devel-ubuntu20.04
+FROM nvidia/cuda:12.1.1-cudnn8-devel-ubuntu20.04
 
 ARG REMOTE_CACHE_URL
 ARG BUILDKITE_PULL_REQUEST
 ARG BUILDKITE_COMMIT
 ARG BUILDKITE_PULL_REQUEST_BASE_BRANCH
-ARG PYTHON=3.8
+ARG PYTHON=3.9
 
 ENV DEBIAN_FRONTEND=noninteractive
 ENV TZ=America/Los_Angeles
 
+ENV RAY_BUILD_ENV=ubuntu20.04_cuda12.1_py$PYTHON
 ENV BUILDKITE=true
 ENV CI=true
 ENV PYTHON=$PYTHON
@@ -18,12 +19,6 @@ ENV RAY_INSTALL_JAVA=0
 ENV BUILDKITE_PULL_REQUEST=${BUILDKITE_PULL_REQUEST}
 ENV BUILDKITE_COMMIT=${BUILDKITE_COMMIT}
 ENV BUILDKITE_PULL_REQUEST_BASE_BRANCH=${BUILDKITE_PULL_REQUEST_BASE_BRANCH}
-# For wheel build
-# https://github.com/docker-library/docker/blob/master/20.10/docker-entrypoint.sh
-ENV DOCKER_TLS_CERTDIR=/certs
-ENV DOCKER_HOST=tcp://docker:2376
-ENV DOCKER_TLS_VERIFY=1
-ENV DOCKER_CERT_PATH=/certs/client
 ENV TRAVIS_COMMIT=${BUILDKITE_COMMIT}
 ENV BUILDKITE_BAZEL_CACHE_URL=${REMOTE_CACHE_URL}
 
@@ -35,14 +30,11 @@ RUN apt-get install -y -qq \
     libgtk2.0-dev zlib1g-dev libgl1-mesa-dev \
     clang-format-12 jq \
     clang-tidy-12 clang-12
-# Make using GCC 9 explicit.
-RUN update-alternatives --install /usr/bin/gcc gcc /usr/bin/gcc-9 90 --slave /usr/bin/g++ g++ /usr/bin/g++-9 \
-    --slave /usr/bin/gcov gcov /usr/bin/gcov-9
 RUN ln -s /usr/bin/clang-format-12 /usr/bin/clang-format && \
     ln -s /usr/bin/clang-tidy-12 /usr/bin/clang-tidy && \
     ln -s /usr/bin/clang-12 /usr/bin/clang
 
-RUN curl -o- https://get.docker.com | sh
+RUN curl -o- https://get.docker.com | sh -s -- --version 27.2
 
 # System conf for tests
 RUN locale -a
@@ -62,5 +54,6 @@ WORKDIR /ray
 # Below should be re-run each time
 COPY . .
 
-RUN ./ci/env/install-dependencies.sh
-RUN RLLIB_TESTING=1 TRAIN_TESTING=1 TUNE_TESTING=1 bash --login -i ./ci/env/install-dependencies.sh
+RUN bash --login -ie -c '\
+    BUILD=1 SKIP_PYTHON_PACKAGES=1 ./ci/env/install-dependencies.sh \
+'

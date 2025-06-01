@@ -136,7 +136,7 @@ Then check the memory usage from the head node from the node memory usage view i
 The Ray head node has more memory-demanding system components such as GCS or the dashboard. 
 Also, the driver runs from a head node by default. If the head node has the same memory capacity as worker nodes
 and if you execute the same number of Tasks and Actors from a head node, it can easily have out-of-memory problems.
-In this case, do not run any Tasks and Actors on the head node by specifying ``--num-cpus=0`` when starting a head node by ``ray start --head``. If you use Kuberay, view `here <kuberay-num-cpus>`.
+In this case, do not run any Tasks and Actors on the head node by specifying ``--num-cpus=0`` when starting a head node by ``ray start --head``. If you use KubeRay, view `here <kuberay-num-cpus>`.
 
 .. _troubleshooting-out-of-memory-reduce-parallelism:
 
@@ -172,7 +172,6 @@ Profiling Task and Actor memory usage
 It is also possible tasks and actors use more memory than you expect. For example, actors or tasks can have a memory leak or have unnecessary copies.
 
 View the instructions below to learn how to memory profile individual actors and tasks.
-
 
 .. _memray-profiling:
 

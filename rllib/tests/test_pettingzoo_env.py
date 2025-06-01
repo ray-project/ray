@@ -54,6 +54,10 @@ class TestPettingZooEnv(unittest.TestCase):
 
         config = (
             PPOConfig()
+            .api_stack(
+                enable_env_runner_and_connector_v2=False,
+                enable_rl_module_and_learner=False,
+            )
             .environment("pistonball", env_config={"local_ratio": 0.5})
             .multi_agent(
                 # Set of policy IDs (by default, will use Algorithms's
@@ -63,8 +67,8 @@ class TestPettingZooEnv(unittest.TestCase):
                 policy_mapping_fn=lambda agent_id, episode, worker, **kwargs: "av",
             )
             .debugging(log_level="DEBUG")
-            .rollouts(
-                num_rollout_workers=1,
+            .env_runners(
+                num_env_runners=1,
                 # Fragment length, collected at once from each worker
                 # and for each agent!
                 rollout_fragment_length=30,
@@ -82,8 +86,12 @@ class TestPettingZooEnv(unittest.TestCase):
 
         config = (
             PPOConfig()
+            .api_stack(
+                enable_env_runner_and_connector_v2=False,
+                enable_rl_module_and_learner=False,
+            )
             .environment("simple_spread")
-            .rollouts(num_rollout_workers=0, rollout_fragment_length=30)
+            .env_runners(num_env_runners=0, rollout_fragment_length=30)
             .debugging(log_level="DEBUG")
             .training(train_batch_size=200)
             .multi_agent(

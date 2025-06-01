@@ -1,21 +1,22 @@
+import evaluate
+import numpy as np
+
 # Minimal Example adapted from https://huggingface.co/docs/transformers/training
 from datasets import load_dataset
-from transformers import AutoTokenizer
-from transformers import AutoModelForSequenceClassification
-from transformers import TrainingArguments, Trainer
-import numpy as np
-import evaluate
-
-from ray.train.huggingface.transformers import (
-    prepare_trainer,
-    RayTrainReportCallback,
+from transformers import (
+    AutoModelForSequenceClassification,
+    AutoTokenizer,
+    Trainer,
+    TrainingArguments,
 )
+
 from ray.train import ScalingConfig
+from ray.train.huggingface.transformers import RayTrainReportCallback, prepare_trainer
 from ray.train.torch import TorchTrainer
 
 
-# [1] Define a training function that includes all your training logics
-# =====================================================================
+# [1] Define a training function that includes all your training logic
+# ====================================================================
 def train_func(config):
     # Datasets
     dataset = load_dataset("yelp_review_full")
@@ -34,7 +35,7 @@ def train_func(config):
         "bert-base-cased", num_labels=5
     )
 
-    # Evaluation Metrics
+    # Evaluation metrics
     metric = evaluate.load("accuracy")
 
     def compute_metrics(eval_pred):
@@ -42,7 +43,7 @@ def train_func(config):
         predictions = np.argmax(logits, axis=-1)
         return metric.compute(predictions=predictions, references=labels)
 
-    # HuggingFace Trainer
+    # Hugging Face Trainer
     training_args = TrainingArguments(
         output_dir="test_trainer", evaluation_strategy="epoch", report_to="none"
     )
@@ -59,7 +60,7 @@ def train_func(config):
     # ===============================================
     trainer.add_callback(RayTrainReportCallback())
 
-    # [3] Prepare your trainer for Ray Data Integration
+    # [3] Prepare your trainer for Ray Data integration
     # =================================================
     trainer = prepare_trainer(trainer)
 

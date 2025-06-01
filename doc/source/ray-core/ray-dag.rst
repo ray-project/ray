@@ -18,6 +18,15 @@ computation graph.
      2) Build libraries on top of the Ray DAG APIs.
 
 
+.. note::
+    
+    Ray has introduced an experimental API for high-performance workloads that is
+    especially well suited for applications using multiple GPUs. This API is built on top of
+    the Ray DAG API.
+
+    See :ref:`Ray Compiled Graph <ray-compiled-graph>` for more details.
+
+
 When ``.bind()`` is called on a ``ray.remote`` decorated class or function, it will
 generate an intermediate representation (IR) node that act as backbone and
 building blocks of the DAG that is statically holding the computation graph
@@ -38,7 +47,7 @@ executed as root node while iterating, or used as input args or kwargs of other
 functions to form more complex DAGs.
 
 Any IR node can be executed directly ``dag_node.execute()`` that acts as root
-of the DAG, where all other non-reachable nodes from the root will be igored.
+of the DAG, where all other non-reachable nodes from the root will be ignored.
 
 .. tab-set::
 
@@ -88,10 +97,44 @@ as args of ``dag_node.execute()``
           :start-after: __dag_input_node_begin__
           :end-before: __dag_input_node_end__
 
-More Resources
+Ray DAG with multiple MultiOutputNode
+-------------------------------------
+
+``MultiOutputNode`` is useful when you have more than 1 output from a DAG. ``dag_node.execute()``
+returns a list of Ray object references passed to ``MultiOutputNode``. The below example
+shows the multi output node of 2 outputs.
+
+.. tab-set::
+
+    .. tab-item:: Python
+
+        .. literalinclude:: ./doc_code/ray-dag.py
+          :language: python
+          :start-after: __dag_multi_output_node_begin__
+          :end-before: __dag_multi_output_node_end__
+
+Reuse Ray Actors in DAGs
+------------------------
+Actors can be a part of the DAG definition with the ``Actor.bind()`` API.
+However, when a DAG finishes execution, Ray kills Actors created with ``bind``.
+
+You can avoid killing your Actors whenever DAG finishes by creating Actors with ``Actor.remote()``.
+
+.. tab-set::
+
+    .. tab-item:: Python
+
+        .. literalinclude:: ./doc_code/ray-dag.py
+          :language: python
+          :start-after: __dag_actor_reuse_begin__
+          :end-before: __dag_actor_reuse_end__
+
+
+More resources
 --------------
 
 You can find more application patterns and examples in the following resources
 from other Ray libraries built on top of Ray DAG API with the same mechanism.
 
-| `Visualization of DAGs <https://docs.ray.io/en/master/serve/model_composition.html#visualizing-the-graph>`_
+|  `Ray Serve Compositions of Models <https://docs.ray.io/en/master/serve/model_composition.html>`_
+|  `Visualization of Ray Compiled Graph <https://docs.ray.io/en/latest/ray-core/compiled-graph/profiling.html#visualization>`_

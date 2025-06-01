@@ -2,26 +2,20 @@ import asyncio
 import os
 import sys
 from typing import Generator, Set
-import time
 
-from fastapi import FastAPI
 import pytest
 import requests
-from starlette.responses import StreamingResponse
+from fastapi import FastAPI
 from starlette.requests import Request
+from starlette.responses import StreamingResponse
 
 import ray
-from ray.dashboard.modules.serve.sdk import ServeSubmissionClient
-from ray.util.state import list_tasks
-from ray._private.test_utils import SignalActor, wait_for_condition
-
 from ray import serve
-from ray.serve.schema import ServeInstanceDetails
-from ray.serve.tests.test_cancellation import send_signal_on_cancellation
-from ray.serve._private.common import ApplicationStatus
-from ray.serve._private.constants import (
-    RAY_SERVE_ENABLE_EXPERIMENTAL_STREAMING,
-)
+from ray._private.test_utils import SignalActor, wait_for_condition
+from ray.dashboard.modules.serve.sdk import ServeSubmissionClient
+from ray.serve._private.test_utils import send_signal_on_cancellation
+from ray.serve.schema import ApplicationStatus, ServeInstanceDetails
+from ray.util.state import list_tasks
 
 
 @ray.remote
@@ -101,11 +95,7 @@ def test_request_hangs_in_execution(ray_instance, shutdown_serve):
     serve.run(HangsOnFirstRequest.bind())
 
     response = requests.get("http://localhost:8000")
-    if RAY_SERVE_ENABLE_EXPERIMENTAL_STREAMING:
-        assert response.status_code == 408
-    else:
-        assert response.status_code == 200
-        assert response.text == "Success!"
+    assert response.status_code == 408
 
     ray.get(signal_actor.send.remote())
 
@@ -138,16 +128,16 @@ def test_with_rest_api(ray_start_stop):
                 "name": "app",
                 "route_prefix": "/",
                 "import_path": (
-                    "ray.serve.tests." "test_request_timeout:hangs_on_first_request_app"
+                    "ray.serve.tests.test_request_timeout:hangs_on_first_request_app"
                 ),
             }
         ],
     }
-    ServeSubmissionClient("http://localhost:52365").deploy_applications(config)
+    ServeSubmissionClient("http://localhost:8265").deploy_applications(config)
 
     def application_running():
         response = requests.get(
-            "http://localhost:52365/api/serve/applications/", timeout=15
+            "http://localhost:8265/api/serve/applications/", timeout=15
         )
         assert response.status_code == 200
 
@@ -158,16 +148,12 @@ def test_with_rest_api(ray_start_stop):
     print("Application has started running. Testing requests...")
 
     response = requests.get("http://localhost:8000")
-    if RAY_SERVE_ENABLE_EXPERIMENTAL_STREAMING:
-        assert response.status_code == 408
-    else:
-        assert response.status_code == 200
-        assert response.text == "Success!"
+    assert response.status_code == 408
 
     response = requests.get("http://localhost:8000")
     assert response.status_code == 200
     print("Requests succeeded! Deleting application.")
-    ServeSubmissionClient("http://localhost:52365").delete_applications()
+    ServeSubmissionClient("http://localhost:8265").delete_applications()
 
 
 @pytest.mark.parametrize(
@@ -184,7 +170,7 @@ def test_request_hangs_in_assignment(ray_instance, shutdown_serve):
     """
     signal_actor = SignalActor.remote()
 
-    @serve.deployment(graceful_shutdown_timeout_s=0, max_concurrent_queries=1)
+    @serve.deployment(graceful_shutdown_timeout_s=0, max_ongoing_requests=1)
     class HangsOnFirstRequest:
         def __init__(self):
             self._saw_first_request = False
@@ -199,25 +185,17 @@ def test_request_hangs_in_assignment(ray_instance, shutdown_serve):
     response_ref1 = do_request.remote()
     response_ref2 = do_request.remote()
 
-    if RAY_SERVE_ENABLE_EXPERIMENTAL_STREAMING:
-        # Streaming path does not retry on timeouts, so the requests should be failed.
-        assert ray.get(response_ref1).status_code == 408
-        assert ray.get(response_ref2).status_code == 408
-        ray.get(signal_actor.send.remote())
-        assert ray.get(do_request.remote()).status_code == 200
-    else:
-        # Legacy path retries on timeouts, so the requests should succeed.
-        ray.get(signal_actor.send.remote())
-        assert ray.get(response_ref1).status_code == 200
-        assert ray.get(response_ref1).text == "Success!"
-        assert ray.get(response_ref2).status_code == 200
-        assert ray.get(response_ref2).text == "Success!"
+    # Streaming path does not retry on timeouts, so the requests should be failed.
+    assert ray.get(response_ref1).status_code == 408
+    assert ray.get(response_ref2).status_code == 408
+    ray.get(signal_actor.send.remote())
+    assert ray.get(do_request.remote()).status_code == 200
 
 
 @pytest.mark.parametrize(
     "ray_instance",
     [
-        {"RAY_SERVE_REQUEST_PROCESSING_TIMEOUT_S": "0.1"},
+        {"RAY_SERVE_REQUEST_PROCESSING_TIMEOUT_S": "5"},
     ],
     indirect=True,
 )
@@ -226,47 +204,49 @@ def test_streaming_request_already_sent_and_timed_out(ray_instance, shutdown_ser
     Verify that streaming requests are timed out even if some chunks have already
     been sent.
     """
+    signal_actor = SignalActor.remote()
 
-    @serve.deployment(graceful_shutdown_timeout_s=0, max_concurrent_queries=1)
-    class SleepForNSeconds:
-        def __init__(self, sleep_s: int):
-            self.sleep_s = sleep_s
-
-        def generate_numbers(self) -> Generator[str, None, None]:
+    @serve.deployment(graceful_shutdown_timeout_s=0, max_ongoing_requests=1)
+    class BlockOnSecondChunk:
+        async def generate_numbers(self) -> Generator[str, None, None]:
             for i in range(2):
                 yield f"generated {i}"
-                time.sleep(self.sleep_s)
+                await signal_actor.wait.remote()
 
         def __call__(self, request: Request) -> StreamingResponse:
             gen = self.generate_numbers()
             return StreamingResponse(gen, status_code=200, media_type="text/plain")
 
-    if RAY_SERVE_ENABLE_EXPERIMENTAL_STREAMING:
-        serve.run(SleepForNSeconds.bind(0.11))  # 0.11s > 0.1s timeout
+    serve.run(BlockOnSecondChunk.bind())
 
-        r = requests.get("http://localhost:8000", stream=True)
-        iterator = r.iter_content(chunk_size=None, decode_unicode=True)
+    # Wait for the server to start by doing health check.
+    wait_for_condition(
+        lambda: requests.get("http://localhost:8000/-/healthz").status_code == 200,
+        timeout=10,
+    )
 
-        # The first chunk should be received successfully.
-        assert iterator.__next__() == "generated 0"
-        assert r.status_code == 200
+    r = requests.get("http://localhost:8000", stream=True)
+    iterator = r.iter_content(chunk_size=None, decode_unicode=True)
 
-        # The second chunk should time out and raise error.
-        with pytest.raises(requests.exceptions.ChunkedEncodingError) as request_error:
-            iterator.__next__()
-        assert "Connection broken" in str(request_error.value)
+    # The first chunk should be received successfully.
+    assert iterator.__next__() == "generated 0"
+    assert r.status_code == 200
+
+    # The second chunk should time out and raise error.
+    with pytest.raises(requests.exceptions.ChunkedEncodingError) as request_error:
+        iterator.__next__()
+    assert "Connection broken" in str(request_error.value)
 
 
 @pytest.mark.parametrize(
     "ray_instance",
     [
-        {"RAY_SERVE_REQUEST_PROCESSING_TIMEOUT_S": "0.5"},
+        {
+            "RAY_SERVE_REQUEST_PROCESSING_TIMEOUT_S": "0.5",
+            "RAY_SERVE_ENABLE_TASK_EVENTS": "1",
+        },
     ],
     indirect=True,
-)
-@pytest.mark.skipif(
-    not RAY_SERVE_ENABLE_EXPERIMENTAL_STREAMING,
-    reason="Only relevant on streaming codepath.",
 )
 def test_request_timeout_does_not_leak_tasks(ray_instance, shutdown_serve):
     """Verify that the ASGI-related tasks exit when a request is timed out.
@@ -293,7 +273,7 @@ def test_request_timeout_does_not_leak_tasks(ray_instance, shutdown_serve):
             )
         )
 
-    assert get_num_running_tasks() == 0
+    wait_for_condition(lambda: get_num_running_tasks() == 0)
 
     # Send a number of requests that all will be timed out.
     results = ray.get([do_request.remote() for _ in range(10)])
@@ -303,10 +283,6 @@ def test_request_timeout_does_not_leak_tasks(ray_instance, shutdown_serve):
     wait_for_condition(lambda: get_num_running_tasks() == 0)
 
 
-@pytest.mark.skipif(
-    not RAY_SERVE_ENABLE_EXPERIMENTAL_STREAMING,
-    reason="Only implemented for streaming codepath.",
-)
 @pytest.mark.parametrize(
     "ray_instance",
     [
@@ -326,7 +302,8 @@ def test_cancel_on_http_timeout_during_execution(
 
     @serve.deployment
     async def inner():
-        await send_signal_on_cancellation(inner_signal_actor)
+        async with send_signal_on_cancellation(inner_signal_actor):
+            pass
 
     if use_fastapi:
         app = FastAPI()
@@ -335,39 +312,34 @@ def test_cancel_on_http_timeout_during_execution(
         @serve.ingress(app)
         class Ingress:
             def __init__(self, handle):
-                self._handle = handle.options(use_new_handle_api=True)
+                self._handle = handle
 
             @app.get("/")
             async def wait_for_cancellation(self):
-                await self._handle.remote()._to_object_ref()
-                await send_signal_on_cancellation(outer_signal_actor)
+                _ = self._handle.remote()
+                async with send_signal_on_cancellation(outer_signal_actor):
+                    pass
 
     else:
 
         @serve.deployment
         class Ingress:
             def __init__(self, handle):
-                self._handle = handle.options(use_new_handle_api=True)
+                self._handle = handle
 
             async def __call__(self, request: Request):
-                await self._handle.remote()._to_object_ref()
-                await send_signal_on_cancellation(outer_signal_actor)
+                _ = self._handle.remote()
+                async with send_signal_on_cancellation(outer_signal_actor):
+                    pass
 
     serve.run(Ingress.bind(inner.bind()))
 
     # Request should time out, causing the handler and handle call to be cancelled.
-    if RAY_SERVE_ENABLE_EXPERIMENTAL_STREAMING:
-        assert requests.get("http://localhost:8000").status_code == 408
-    else:
-        assert requests.get("http://localhost:8000").status_code == 500
+    assert requests.get("http://localhost:8000").status_code == 408
     ray.get(inner_signal_actor.wait.remote())
     ray.get(outer_signal_actor.wait.remote())
 
 
-@pytest.mark.skipif(
-    not RAY_SERVE_ENABLE_EXPERIMENTAL_STREAMING,
-    reason="Only implemented for streaming codepath.",
-)
 @pytest.mark.parametrize(
     "ray_instance",
     [
@@ -381,7 +353,7 @@ def test_cancel_on_http_timeout_during_assignment(ray_instance, shutdown_serve):
     """Test the client disconnecting while the proxy is assigning the request."""
     signal_actor = SignalActor.remote()
 
-    @serve.deployment(max_concurrent_queries=1)
+    @serve.deployment(max_ongoing_requests=1)
     class Ingress:
         def __init__(self):
             self._num_requests = 0
@@ -392,7 +364,7 @@ def test_cancel_on_http_timeout_during_assignment(ray_instance, shutdown_serve):
 
             return self._num_requests
 
-    h = serve.run(Ingress.bind()).options(use_new_handle_api=True)
+    h = serve.run(Ingress.bind())
 
     # Send a request and wait for it to be ongoing so we know that further requests
     # will be blocking trying to assign a replica.
@@ -408,6 +380,44 @@ def test_cancel_on_http_timeout_during_assignment(ray_instance, shutdown_serve):
     assert initial_response.result() == 1
     for i in range(2, 12):
         assert h.remote().result() == i
+
+
+@pytest.mark.parametrize(
+    "ray_instance",
+    [
+        {
+            "RAY_SERVE_REQUEST_PROCESSING_TIMEOUT_S": "0.5",
+        },
+    ],
+    indirect=True,
+)
+def test_timeout_error_in_child_deployment_of_fastapi(ray_instance, shutdown_serve):
+    """Test that timeout error in child deployment returns 408 with FastAPI ingress."""
+    app = FastAPI()
+    signal = SignalActor.remote()
+
+    @serve.deployment
+    class Child:
+        async def __call__(self):
+            await signal.wait.remote()
+            return "ok"
+
+    @serve.deployment
+    @serve.ingress(app)
+    class Parent:
+        def __init__(self, child):
+            self.child = child
+
+        @app.get("/")
+        async def root(self):
+            return await self.child.remote()
+
+    serve.run(Parent.bind(Child.bind()))
+
+    r = requests.get("http://localhost:8000/")
+    assert r.status_code == 408
+
+    ray.get(signal.send.remote())
 
 
 if __name__ == "__main__":

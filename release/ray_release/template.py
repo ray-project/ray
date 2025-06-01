@@ -1,20 +1,14 @@
 import copy
 import datetime
 import os
-import re
 from typing import Optional, Dict, TYPE_CHECKING
 
 import jinja2
 import yaml
 
 from ray_release.bazel import bazel_runfile
-from ray_release.config import (
-    parse_python_version,
-    get_test_cloud_id,
-)
-from ray_release.test import DEFAULT_PYTHON_VERSION
+from ray_release.config import get_test_cloud_id
 from ray_release.exception import ReleaseTestConfigError
-from ray_release.util import python_version_str
 
 if TYPE_CHECKING:
     from ray_release.config import Test
@@ -42,29 +36,9 @@ def get_test_environment():
     return _test_env
 
 
-def set_test_env_var(key: str, value: str):
-    test_env = get_test_environment()
-    test_env[key] = value
-
-
 def get_test_env_var(key: str, default: Optional[str] = None):
     test_env = get_test_environment()
     return test_env.get(key, default)
-
-
-def get_wheels_sanity_check(commit: Optional[str] = None):
-    if not commit:
-        cmd = (
-            "python -c 'import ray; print("
-            '"No commit sanity check available, but this is the '
-            "Ray wheel commit:\", ray.__commit__)'"
-        )
-    else:
-        cmd = (
-            f"python -c 'import ray; "
-            f'assert ray.__commit__ == "{commit}", ray.__commit__\''
-        )
-    return cmd
 
 
 def load_and_render_yaml_template(
@@ -98,52 +72,21 @@ def render_yaml_template(template: str, env: Optional[Dict] = None):
         ) from e
 
 
-def get_cluster_env_path(test: "Test") -> str:
+def get_working_dir(test: "Test", test_definition_root: Optional[str] = None) -> str:
     working_dir = test.get("working_dir", "")
-    cluster_env_file = test["cluster"]["cluster_env"]
-    return bazel_runfile("release", working_dir, cluster_env_file)
+    if working_dir.startswith("//"):
+        return bazel_runfile(working_dir.lstrip("//"))
+    if test_definition_root:
+        return os.path.join(test_definition_root, working_dir)
+    return bazel_runfile("release", working_dir)
 
 
-def load_test_cluster_env(test: "Test", ray_wheels_url: str) -> Optional[Dict]:
-    cluster_env_path = get_cluster_env_path(test)
-
-    env = populate_cluster_env_variables(test, ray_wheels_url=ray_wheels_url)
-
-    return load_and_render_yaml_template(cluster_env_path, env=env)
-
-
-def populate_cluster_env_variables(test: "Test", ray_wheels_url: str) -> Dict:
-    env = get_test_environment()
-
-    commit = env.get("RAY_COMMIT", None)
-
-    if not commit:
-        match = re.search(r"/([a-f0-9]{40})/", ray_wheels_url)
-        if match:
-            commit = match.group(1)
-
-    env["RAY_WHEELS_SANITY_CHECK"] = get_wheels_sanity_check(commit)
-    env["RAY_WHEELS"] = ray_wheels_url
-
-    if "python" in test:
-        python_version = parse_python_version(test["python"])
-    else:
-        python_version = DEFAULT_PYTHON_VERSION
-
-    env[
-        "RAY_IMAGE_NIGHTLY_CPU"
-    ] = f"anyscale/ray:nightly-py{python_version_str(python_version)}"
-    env[
-        "RAY_IMAGE_ML_NIGHTLY_GPU"
-    ] = f"anyscale/ray-ml:nightly-py{python_version_str(python_version)}-gpu"
-
-    return env
-
-
-def load_test_cluster_compute(test: "Test") -> Optional[Dict]:
+def load_test_cluster_compute(
+    test: "Test", test_definition_root: Optional[str] = None
+) -> Optional[Dict]:
     cluster_compute_file = test["cluster"]["cluster_compute"]
-    working_dir = test.get("working_dir", "")
-    f = bazel_runfile("release", working_dir, cluster_compute_file)
+    working_dir = get_working_dir(test, test_definition_root)
+    f = os.path.join(working_dir, cluster_compute_file)
     env = populate_cluster_compute_variables(test)
     return load_and_render_yaml_template(f, env=env)
 

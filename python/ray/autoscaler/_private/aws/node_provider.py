@@ -9,8 +9,8 @@ from typing import Any, Dict, List
 import botocore
 from boto3.resources.base import ServiceResource
 
+import ray
 import ray._private.ray_constants as ray_constants
-from ray._private.utils import get_neuron_core_constraint_name
 from ray.autoscaler._private.aws.cloudwatch.cloudwatch_helper import (
     CLOUDWATCH_AGENT_INSTALLED_AMI_TAG,
     CLOUDWATCH_AGENT_INSTALLED_TAG,
@@ -38,6 +38,7 @@ from ray.autoscaler.tags import (
 logger = logging.getLogger(__name__)
 
 TAG_BATCH_DELAY = 1
+LIST_RETRY_DELAY_SEC = 1
 
 
 def to_aws_format(tags):
@@ -439,14 +440,18 @@ class AWSNodeProvider(NodeProvider):
 
                         # The correct value is technically
                         # {"code": "0", "Message": "pending"}
-                        state_reason = instance.state_reason or {"Message": "pending"}
+                        state_reason = "pending"
+                        if instance.state_reason:
+                            state_reason = (
+                                instance.state_reason["Message"] or state_reason
+                            )
 
                         cli_logger.print(
                             "Launched instance {}",
                             instance.instance_id,
                             _tags=dict(
                                 state=instance.state["Name"],
-                                info=state_reason["Message"],
+                                info=state_reason,
                             ),
                         )
                 break
@@ -590,9 +595,24 @@ class AWSNodeProvider(NodeProvider):
 
         # Node not in {pending, running} -- retry with a point query. This
         # usually means the node was recently preempted or terminated.
-        matches = list(self.ec2.instances.filter(InstanceIds=[node_id]))
-        assert len(matches) == 1, "Invalid instance id {}".format(node_id)
-        return matches[0]
+        # The EC2 API is eventually consistent. This means that an instance
+        # might not be immediately visible. So we need to retry the query a few times.
+        # See: https://docs.aws.amazon.com/ec2/latest/devguide/eventual-consistency.html
+        # and https://github.com/ray-project/ray/issues/51861
+        for attempts in range(max(BOTO_MAX_RETRIES, 1)):  # at least try once.
+            matches = list(self.ec2.instances.filter(InstanceIds=[node_id]))
+            if len(matches) == 1:
+                return matches[0]
+            cli_logger.warning(
+                "Attempt to fetch EC2 instances that have instance ID {}. Got {} matching EC2 instances. Will retry after {} second. This is retry number {}, and the maximum number of retries is {}.",
+                node_id,
+                len(matches),
+                LIST_RETRY_DELAY_SEC,
+                attempts + 1,
+                BOTO_MAX_RETRIES,
+            )
+            time.sleep(LIST_RETRY_DELAY_SEC)
+        raise AssertionError("Invalid instance id {}".format(node_id))
 
     def _get_cached_node(self, node_id):
         """Return node info from cache if possible, otherwise fetches it."""
@@ -641,33 +661,27 @@ class AWSNodeProvider(NodeProvider):
                     memory_resources = int(memory_total * prop)
                     autodetected_resources["memory"] = memory_resources
 
-                gpus = instances_dict[instance_type].get("GpuInfo", {}).get("Gpus")
-                if gpus is not None:
-                    # TODO(ameer): currently we support one gpu type per node.
-                    assert len(gpus) == 1
-                    gpu_name = gpus[0]["Name"]
-                    autodetected_resources.update(
-                        {"GPU": gpus[0]["Count"], f"accelerator_type:{gpu_name}": 1}
+                for (
+                    accelerator_manager
+                ) in ray._private.accelerators.get_all_accelerator_managers():
+                    num_accelerators = (
+                        accelerator_manager.get_ec2_instance_num_accelerators(
+                            instance_type, instances_dict
+                        )
                     )
-                # TODO: AWS SDK (public API) doesn't yet expose the NeuronCore
-                #  information. It will be available (work-in-progress)
-                #  as xxAcceleratorInfo in InstanceTypeInfo.
-                #  https://docs.aws.amazon.com/AWSEC2/latest/APIReference/API_InstanceTypeInfo.html
-                #  See https://github.com/ray-project/ray/issues/38473
-                if (
-                    instance_type.lower()
-                    in ray_constants.AWS_NEURON_INSTANCE_MAP.keys()
-                    and gpus is None
-                ):
-                    neuron_cores = ray_constants.AWS_NEURON_INSTANCE_MAP.get(
-                        instance_type.lower()
+                    accelerator_type = (
+                        accelerator_manager.get_ec2_instance_accelerator_type(
+                            instance_type, instances_dict
+                        )
                     )
-                    autodetected_resources.update(
-                        {
-                            ray_constants.NEURON_CORES: neuron_cores,
-                            get_neuron_core_constraint_name(): neuron_cores,
-                        }
-                    )
+                    if num_accelerators:
+                        autodetected_resources[
+                            accelerator_manager.get_resource_name()
+                        ] = num_accelerators
+                        if accelerator_type:
+                            autodetected_resources[
+                                f"accelerator_type:{accelerator_type}"
+                            ] = 1
 
                 autodetected_resources.update(
                     available_node_types[node_type].get("resources", {})

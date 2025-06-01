@@ -24,18 +24,6 @@ cdef class Config:
                 .object_timeout_milliseconds())
 
     @staticmethod
-    def get_timeout_milliseconds():
-        return RayConfig.instance().get_timeout_milliseconds()
-
-    @staticmethod
-    def worker_get_request_size():
-        return RayConfig.instance().worker_get_request_size()
-
-    @staticmethod
-    def worker_fetch_request_size():
-        return RayConfig.instance().worker_fetch_request_size()
-
-    @staticmethod
     def raylet_client_num_connect_attempts():
         return RayConfig.instance().raylet_client_num_connect_attempts()
 
@@ -98,10 +86,6 @@ cdef class Config:
         return RayConfig.instance().record_ref_creation_sites()
 
     @staticmethod
-    def start_python_importer_thread():
-        return RayConfig.instance().start_python_importer_thread()
-
-    @staticmethod
     def REDIS_CA_CERT():
         return RayConfig.instance().REDIS_CA_CERT()
 
@@ -160,3 +144,19 @@ cdef class Config:
     @staticmethod
     def enable_autoscaler_v2():
         return RayConfig.instance().enable_autoscaler_v2()
+
+    @staticmethod
+    def nums_py_gcs_reconnect_retry():
+        return RayConfig.instance().nums_py_gcs_reconnect_retry()
+
+    @staticmethod
+    def py_gcs_connect_timeout_s():
+        return RayConfig.instance().py_gcs_connect_timeout_s()
+
+    @staticmethod
+    def gcs_rpc_server_reconnect_timeout_s():
+        return RayConfig.instance().gcs_rpc_server_reconnect_timeout_s()
+
+    @staticmethod
+    def maximum_gcs_destroyed_actor_cached_count():
+        return RayConfig.instance().maximum_gcs_destroyed_actor_cached_count()

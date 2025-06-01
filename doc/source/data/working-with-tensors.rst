@@ -1,7 +1,7 @@
 .. _working_with_tensors:
 
-Working with Tensors
-====================
+Working with Tensors / NumPy
+============================
 
 N-dimensional arrays (in other words, tensors) are ubiquitous in ML workloads. This guide
 describes the limitations and best practices of working with such data.
@@ -21,11 +21,7 @@ Ray Data represents tensors as
 
 .. testoutput::
 
-    Dataset(
-       num_blocks=...,
-       num_rows=100,
-       schema={image: numpy.ndarray(shape=(28, 28), dtype=uint8)}
-    )
+    Dataset(num_rows=100, schema=...)
 
 Batches of fixed-shape tensors
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -148,4 +144,4 @@ formats, see the :ref:`Input/Output reference <input-output>`.
             ds = ray.data.read_images("s3://anonymous@ray-example-data/image-datasets/simple")
             ds.write_json("/tmp/simple")
 
-For more information on saving data, read :ref:`Saving data <loading_data>`.
+For more information on saving data, read :ref:`Saving data <saving-data>`.

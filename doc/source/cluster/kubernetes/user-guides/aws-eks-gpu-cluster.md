@@ -7,7 +7,7 @@ The configuration outlined here can be applied to most KubeRay examples found in
 
 ## Step 1: Create a Kubernetes cluster on Amazon EKS
 
-Follow the first two steps in [this AWS documentation](https://docs.aws.amazon.com/eks/latest/userguide/getting-started-console.html#) to: 
+Follow the first two steps in [this AWS documentation](https://docs.aws.amazon.com/eks/latest/userguide/getting-started-console.html#) to:
 (1) create your Amazon EKS cluster and (2) configure your computer to communicate with your cluster.
 
 ## Step 2: Create node groups for the Amazon EKS cluster
@@ -17,7 +17,7 @@ The following section provides more detailed information.
 
 ### Create a CPU node group
 
-Typically, avoid running GPU workloads on the Ray head. Create a CPU node group for all Pods except Ray GPU 
+Typically, avoid running GPU workloads on the Ray head. Create a CPU node group for all Pods except Ray GPU
 workers, such as the KubeRay operator, Ray head, and CoreDNS Pods.
 
 Here's a common configuration that works for most KubeRay examples in the docs:
@@ -35,31 +35,31 @@ Create a GPU node group for Ray GPU workers.
    * Disk size: 1024 GB
    * Desired size: 1, Min size: 0, Max size: 1
 
-> **Note:** If you encounter permission issues with `kubectl`, follow "Step 2: Configure your computer to communicate with your cluster"
-in the [AWS documentation](https://docs.aws.amazon.com/eks/latest/userguide/getting-started-console.html#).
-
 2. Please install the NVIDIA device plugin. (Note: You can skip this step if you used the `BOTTLEROCKET_x86_64_NVIDIA` AMI in the step above.)
    * Install the DaemonSet for NVIDIA device plugin to run GPU enabled containers in your Amazon EKS cluster. You can refer to the [Amazon EKS optimized accelerated Amazon Linux AMIs](https://docs.aws.amazon.com/eks/latest/userguide/eks-optimized-ami.html#gpu-ami)
    or [NVIDIA/k8s-device-plugin](https://github.com/NVIDIA/k8s-device-plugin) repository for more details.
    * If the GPU nodes have taints, add `tolerations` to `nvidia-device-plugin.yml` to enable the DaemonSet to schedule Pods on the GPU nodes.
 
-```sh
-# Install the DaemonSet
-kubectl apply -f https://raw.githubusercontent.com/NVIDIA/k8s-device-plugin/v0.9.0/nvidia-device-plugin.yml
+   > **Note:** If you encounter permission issues with `kubectl`, follow "Step 2: Configure your computer to communicate with your cluster"
+   in the [AWS documentation](https://docs.aws.amazon.com/eks/latest/userguide/getting-started-console.html#).
 
-# Verify that your nodes have allocatable GPUs. If the GPU node fails to detect GPUs,
-# please verify whether the DaemonSet schedules the Pod on the GPU node.
-kubectl get nodes "-o=custom-columns=NAME:.metadata.name,GPU:.status.allocatable.nvidia\.com/gpu"
+   ```sh
+   # Install the DaemonSet
+   kubectl apply -f https://raw.githubusercontent.com/NVIDIA/k8s-device-plugin/v0.9.0/nvidia-device-plugin.yml
 
-# Example output:
-# NAME                                GPU
-# ip-....us-west-2.compute.internal   4
-# ip-....us-west-2.compute.internal   <none>
-```
+   # Verify that your nodes have allocatable GPUs. If the GPU node fails to detect GPUs,
+   # please verify whether the DaemonSet schedules the Pod on the GPU node.
+   kubectl get nodes "-o=custom-columns=NAME:.metadata.name,GPU:.status.allocatable.nvidia\.com/gpu"
+
+   # Example output:
+   # NAME                                GPU
+   # ip-....us-west-2.compute.internal   4
+   # ip-....us-west-2.compute.internal   <none>
+   ```
 
 3. Add a Kubernetes taint to prevent scheduling CPU Pods on this GPU node group. For KubeRay examples, add the following taint to the GPU nodes: `Key: ray.io/node-type, Value: worker, Effect: NoSchedule`, and include the corresponding `tolerations` for GPU Ray worker Pods.
 
-> Warning: GPU nodes are extremely expensive. Please remember to delete the cluster if you no longer need it.
+   > Warning: GPU nodes are extremely expensive. Please remember to delete the cluster if you no longer need it.
 
 ## Step 3: Verify the node groups
 

@@ -1,16 +1,17 @@
-# flake8: noqa
+# ruff: noqa
 # fmt: off
+# # isort: skip_file
 
 from lightning_exp_tracking_model_dl import DummyModel, dataloader
 
 # __lightning_experiment_tracking_wandb_start__
 import os
 import pytorch_lightning as pl
+import wandb
 from pytorch_lightning.loggers.wandb import WandbLogger
 import ray
 from ray.train import ScalingConfig
 from ray.train.torch import TorchTrainer
-import wandb
 
 
 def train_func(config):
@@ -30,7 +31,7 @@ def train_func(config):
         wandb.finish()
 
 
-scaling_config = ScalingConfig(num_workers=4, use_gpu=False)
+scaling_config = ScalingConfig(num_workers=2, use_gpu=False)
 
 assert (
     "WANDB_API_KEY" in os.environ

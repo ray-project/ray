@@ -1,0 +1,137 @@
+group: Pre-release checks
+depends_on:
+  - forge
+steps:
+  - block: "Run pre-release checks"
+    if: build.env("RAY_VERSION") != null
+    key: block-pre-release-checks
+    depends_on: []
+
+  - label: "Check release blockers"
+    key: check-release-blockers
+    instance_type: small_branch
+    commands:
+      - bazel run //ci/ray_ci/automation:weekly_green_metric -- --check
+
+  - label: "Check commit hash"
+    key: check-commit-hash
+    commands:
+      - bash .buildkite/release-automation/check-commit-hash.sh
+
+  - label: "Build update version binary"
+    key: build-update-version-zip
+    instance_type: default
+    commands:
+      - bazel build --build_python_zip --incompatible_use_python_toolchains=false --python_path=python //ci/ray_ci/automation:update_version
+      - cp bazel-bin/ci/ray_ci/automation/update_version /artifact-mount/
+
+  - label: "Trigger Postmerge test"
+    if: build.env("RAYCI_WEEKLY_RELEASE_NIGHTLY") != "1"
+    trigger: "postmerge"
+    key: trigger-postmerge
+    depends_on: check-commit-hash
+    build:
+      commit: "${BUILDKITE_COMMIT}"
+      branch: "${BUILDKITE_BRANCH}"
+      message: "Triggered by release-automation build #${BUILDKITE_BUILD_NUMBER}"
+      env:
+        RAYCI_RELEASE: 1
+
+  - label: "Trigger Postmerge nightly build & test"
+    if: build.env("RAYCI_WEEKLY_RELEASE_NIGHTLY") == "1"
+    trigger: "postmerge"
+    key: trigger-postmerge-nightly
+    depends_on: check-commit-hash
+    build:
+      commit: "${BUILDKITE_COMMIT}"
+      branch: "${BUILDKITE_BRANCH}"
+      message: "Triggered by release-automation build #${BUILDKITE_BUILD_NUMBER}"
+      env:
+        RAYCI_RELEASE: 1
+        RAYCI_SCHEDULE: "nightly"
+
+  - label: "Check Ray commit in {{matrix}} nightly images"
+    key: check-ray-commit
+    if: build.branch !~ /^releases\// && build.env("RAYCI_WEEKLY_RELEASE_NIGHTLY") == "1"
+    depends_on: trigger-postmerge-nightly
+    allow_dependency_failure: true
+    commands:
+      - bazel run //ci/ray_ci/automation:check_nightly_ray_commit -- --ray_type={{matrix}} --expected_commit="${BUILDKITE_COMMIT}"
+    matrix:
+      - ray
+      - ray-ml
+
+  - label: "Trigger :kubernetes: Kuberay CI Tests"
+    if: build.env("RAYCI_WEEKLY_RELEASE_NIGHTLY") == "1"
+    trigger: "ray-ecosystem-ci-kuberay-ci"
+    key: trigger-kuberay
+    depends_on: check-ray-commit
+    build:
+      branch: "release-1.3"
+      message: "Triggered by release-automation build #${BUILDKITE_BUILD_NUMBER}"
+      env:
+        # KubeRay CI will pull an image based on this commit and the current date
+        RAY_NIGHTLY_COMMIT: "${BUILDKITE_COMMIT}"
+        IS_FROM_RAY_RELEASE_AUTOMATION: 1
+
+  - label: "Trigger Postmerge MacOS test"
+    key: trigger-postmerge-macos
+    trigger: "postmerge-macos"
+    depends_on: check-commit-hash
+    build:
+      commit: "${BUILDKITE_COMMIT}"
+      branch: "${BUILDKITE_BRANCH}"
+      message: "Triggered by release-automation build #${BUILDKITE_BUILD_NUMBER}"
+      env:
+        RAYCI_RELEASE: 1
+
+  - block: "Trigger Release nightly test"
+    if: build.env("RAYCI_WEEKLY_RELEASE_NIGHTLY") != "1"
+    key: block-release-nightly-test
+    depends_on: check-commit-hash
+
+  - label: "Trigger Release nightly test"
+    key: trigger-release-nightly
+    trigger: "release"
+    depends_on: block-release-nightly-test
+    build:
+      commit: "${BUILDKITE_COMMIT}"
+      branch: "${BUILDKITE_BRANCH}"
+      message: "Nightly test - triggered by release-automation build #${BUILDKITE_BUILD_NUMBER}"
+      env:
+        AUTOMATIC: 1
+        RELEASE_FREQUENCY: "nightly"
+
+  - block: "Trigger Release nightly-3x test"
+    if: build.env("RAYCI_WEEKLY_RELEASE_NIGHLTY_3X") != "1"
+    key: block-release-nightly-3x-test
+    depends_on: check-commit-hash
+
+  - label: "Trigger Release nightly-3x test"
+    key: trigger-release-nightly-3x
+    depends_on: block-release-nightly-3x-test
+    trigger: "release"
+    build:
+      commit: "${BUILDKITE_COMMIT}"
+      branch: "${BUILDKITE_BRANCH}"
+      message: "Nightly-3x test - triggered by release-automation build #${BUILDKITE_BUILD_NUMBER}"
+      env:
+        AUTOMATIC: 1
+        RELEASE_FREQUENCY: "nightly-3x"
+
+  - block: "Trigger Release weekly test"
+    if: build.env("RAYCI_WEEKLY_RELEASE_WEEKLY") != "1"
+    key: block-release-weekly-test
+    depends_on: check-commit-hash
+
+  - label: "Trigger Release weekly test"
+    key: trigger-release-weekly
+    trigger: "release"
+    depends_on: block-release-weekly-test
+    build:
+      commit: "${BUILDKITE_COMMIT}"
+      branch: "${BUILDKITE_BRANCH}"
+      message: "Weekly test - triggered by release-automation build #${BUILDKITE_BUILD_NUMBER}"
+      env:
+        AUTOMATIC: 1
+        RELEASE_FREQUENCY: "weekly"

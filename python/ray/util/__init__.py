@@ -3,10 +3,12 @@ from typing import List
 import ray
 from ray._private.client_mode_hook import client_mode_hook
 from ray._private.auto_init_hook import wrap_auto_init
-from ray._private.services import get_node_ip_address
+from ray._private.services import get_node_instance_id, get_node_ip_address
 from ray.util import iter
 from ray.util import rpdb as pdb
+from ray.util import debugpy as ray_debugpy
 from ray.util.actor_pool import ActorPool
+from ray.util import accelerators
 from ray.util.annotations import PublicAPI
 from ray.util.check_serialize import inspect_serializability
 from ray.util.client_connect import connect, disconnect
@@ -48,6 +50,7 @@ def list_named_actors(all_namespaces: bool = False) -> List[str]:
 
 
 __all__ = [
+    "accelerators",
     "ActorPool",
     "disable_log_once_globally",
     "enable_periodic_logging",
@@ -58,8 +61,10 @@ __all__ = [
     "placement_group_table",
     "get_placement_group",
     "get_current_placement_group",
+    "get_node_instance_id",
     "get_node_ip_address",
     "remove_placement_group",
+    "ray_debugpy",
     "inspect_serializability",
     "collective",
     "connect",
