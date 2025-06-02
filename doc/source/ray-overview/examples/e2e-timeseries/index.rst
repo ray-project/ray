@@ -1,9 +1,9 @@
 .. _ref-e2e-timeseries:
 
-End-to-end timeseries
-=====================
+End-to-end time-series
+======================
 
-An end-to-end tutorial to train a timeseries model.
+An end-to-end tutorial to train a time-series model.
 
 .. toctree::
 
