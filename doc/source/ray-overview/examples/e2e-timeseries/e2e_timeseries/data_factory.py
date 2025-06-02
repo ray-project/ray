@@ -2,7 +2,7 @@ import numpy as np
 import ray
 from data_loader import Dataset_ETT_hour
 
-# make ray data less verbose
+# Make Ray Data less verbose.
 ray.data.DataContext.get_current().enable_progress_bars = False
 ray.data.DataContext.get_current().print_on_execution_start = False
 
