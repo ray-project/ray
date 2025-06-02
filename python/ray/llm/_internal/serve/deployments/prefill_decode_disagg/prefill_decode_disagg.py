@@ -154,7 +154,11 @@ class PDProxyServer(LLMServer):
     @classmethod
     def as_deployment(cls) -> serve.Deployment:
         """Turns PDProxyServer into a Ray Serve deployment."""
-        return serve.deployment()(cls)
+        # TODO(lk-chen): Enable autoscaling_config for PDProxyServer
+        deployment_decorator = serve.deployment(
+            max_ongoing_requests=1000,
+        )
+        return deployment_decorator(cls)
 
 
 def build_app(pd_serving_args: dict) -> Application:
