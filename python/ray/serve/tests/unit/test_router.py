@@ -141,6 +141,7 @@ class FakeRequestRouter(RequestRouter):
         self._replica_queue_len_cache = ReplicaQueueLengthCache()
         self._dropped_replicas: Set[ReplicaID] = set()
         self._use_queue_len_cache = use_queue_len_cache
+        self.on_request_routed_called = False
 
     def create_replica_wrapper(self, replica_info: RunningReplicaInfo):
         return FakeReplica(replica_info)
@@ -217,10 +218,18 @@ class FakeRequestRouter(RequestRouter):
 
     async def choose_replicas(
         self,
-        replicas_ranks: List[List[RunningReplica]],
+        candidate_replicas: List[RunningReplica],
         pending_request: Optional[PendingRequest] = None,
     ) -> List[List[RunningReplica]]:
         pass
+
+    def on_request_routed(
+        self,
+        pending_request: PendingRequest,
+        replica_id: ReplicaID,
+        result: ReplicaResult,
+    ):
+        self.on_request_routed_called = True
 
 
 @pytest.fixture
@@ -699,6 +708,44 @@ class TestAssignRequest:
         # R1 should be REMOVED from cache, cache should now be R2:15
         assert fake_request_router.replica_queue_len_cache.get(r1_id) is None
         assert fake_request_router.replica_queue_len_cache.get(r2_id) == 15
+
+    @pytest.mark.parametrize(
+        "setup_router",
+        [
+            {
+                "enable_strict_max_ongoing_requests": True,
+            },
+        ],
+        indirect=True,
+    )
+    @pytest.mark.parametrize("is_streaming", [False, True])
+    async def test_on_request_routed(
+        self,
+        setup_router: Tuple[AsyncioRouter, FakeRequestRouter],
+        is_streaming: bool,
+    ):
+        """Test that on_request_routed is called when a request is routed."""
+        router, fake_request_router = setup_router
+
+        # Before the request is routed, on_request_routed_called should be False.
+        assert fake_request_router.on_request_routed_called is False
+
+        r1_id = ReplicaID(
+            unique_id="test-replica-1", deployment_id=DeploymentID(name="test")
+        )
+        replica = FakeReplica(
+            r1_id,
+            queue_len_info=ReplicaQueueLengthInfo(
+                accepted=True, num_ongoing_requests=1
+            ),
+        )
+        fake_request_router.set_replica_to_return(replica)
+
+        replica_result = await router.assign_request(dummy_request_metadata())
+        assert replica_result._replica_id == r1_id
+
+        # After the request is routed, on_request_routed_called should be False.
+        assert fake_request_router.on_request_routed_called is True
 
 
 def running_replica_info(replica_id: ReplicaID) -> RunningReplicaInfo:

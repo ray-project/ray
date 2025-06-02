@@ -289,6 +289,7 @@ class TestSelectNextNodes:
             ),
         }
         set_sync_idxs_collective(mock_graph, [dag_idx_1, dag_idx_2])
+        set_sync_idxs_collective(mock_graph, [dag_idx_1, dag_idx_2])
 
         mock_actor_to_candidates = {
             fake_actor_1: [mock_graph[dag_idx_1]],
@@ -346,6 +347,8 @@ class TestSelectNextNodes:
                 is_nccl_compute=True,
             ),
         }
+        set_sync_idxs_collective(mock_graph, [dag_idx_1, dag_idx_2])
+        set_sync_idxs_collective(mock_graph, [dag_idx_3, dag_idx_4])
         set_sync_idxs_collective(mock_graph, [dag_idx_1, dag_idx_2])
         set_sync_idxs_collective(mock_graph, [dag_idx_3, dag_idx_4])
 

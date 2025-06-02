@@ -19,17 +19,14 @@ from typing import (
     List,
     Literal,
     Optional,
-    Union,
     TypeVar,
+    Union,
 )
 
 from pydantic import (
     BaseModel,
     Field,
     model_validator,
-)
-from ray.serve._private.utils import (
-    generate_request_id,
 )
 from typing_extensions import Annotated, Required, TypeAlias, TypedDict
 
@@ -38,11 +35,13 @@ from ray.llm._internal.serve.configs.openai_api_models_patch import (
     ResponseFormatType as ResponseFormat,
 )
 from ray.llm._internal.serve.configs.server_models import (
-    ModelData,
     LLMConfig,
     LLMRawResponse,
+    ModelData,
 )
-
+from ray.serve._private.utils import (
+    generate_request_id,
+)
 
 # openai.types.chat aliases.
 # We use aliases becasuse openai.types.chat is not installed in the docs build.

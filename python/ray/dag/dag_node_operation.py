@@ -159,9 +159,9 @@ class _DAGOperationGraphNode:
     @property
     def is_ready(self) -> bool:
         """
-        If a node is not a NCCL collective, it is ready when it has a zero
-        in-degree. If it is a NCCL collective, it is ready when all the nodes
-        in its collective operation have zero in-degrees.
+        If a node is not a NCCL operation, it is ready when it has a zero in-degree.
+        If it is a NCCL operation, it is ready when all the nodes in the operation
+        have zero in-degrees.
         """
         return self.in_degree == 0 and (
             len(self.pending_sync_idxs) == len(self.sync_idxs)
@@ -232,19 +232,26 @@ def _push_candidate_node_if_ready(
     node: _DAGOperationGraphNode,
 ) -> None:
     """
-    Push the node to the candidates if ready. If it has synchronous nodes, its NCCL
-    operation is not ready until all the nodes are pending, then all the nodes will be
-    pushed to the candidates.
+    Push the node with a zero in-degree to the candidates if its operation is ready.
+    If it has synchronous nodes, its NCCL operation is not ready until all the nodes
+    are pending, then all the nodes will be pushed to the candidates.
     """
-    # [TODO] Sync branch.
+    assert node.in_degree == 0, "Expected to have a zero in-degree"
+    # For the NCCL write node, update the in-degrees of the downstream NCCL read nodes
+    # and update them as pending. This is necessary because the data dependency edges
+    # between NCCL write and read nodes are only updated here. The NCCL P2P operation
+    # becomes ready after both the write and read nodes are marked as pending.
     if node.is_nccl_write:
         for task_idx in node.out_edges:
             read_node = graph[task_idx]
             read_node.in_edges.pop(node.task_idx)
             assert read_node.is_nccl_read and len(read_node.in_edges) == 0
             _update_pending_sync_idxs(graph, read_node)
+    # For the NCCL operation node, update it as pending.
     if len(node.sync_idxs) != 0:
         _update_pending_sync_idxs(graph, node)
+    # The NCCL operation is ready when all the nodes have zero in-degrees. When the last
+    # node in the operation is updated as pending, push all the nodes to the candidates.
     if node.is_ready:
         if len(node.sync_idxs) == 0:
             heapq.heappush(
@@ -660,16 +667,15 @@ def _generate_actor_to_execution_schedule(
             actor_to_execution_schedule[node.actor_handle].append(node)
         # Update the in-degree of the downstream nodes.
         for node in nodes:
-            # The downstream NCCL read nodes are already updated.
-            if node.is_nccl_write:
-                continue
             for out_node_task_idx in node.out_edges:
                 out_node = graph[out_node_task_idx]
-                out_node.in_edges.pop(node.task_idx)
-                if out_node.in_degree == 0 and out_node not in visited_nodes:
+                if out_node in visited_nodes:
                     # If the downstream node is already visited, it has been added
                     # to the execution schedule. They are the NCCL read nodes in
                     # case 2.
+                    continue
+                out_node.in_edges.pop(node.task_idx)
+                if out_node.in_degree == 0:
                     _push_candidate_node_if_ready(actor_to_candidates, graph, out_node)
     assert len(visited_nodes) == len(graph), "Expected all nodes to be visited"
 

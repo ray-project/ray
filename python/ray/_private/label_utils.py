@@ -148,6 +148,22 @@ def validate_label_value(value: str):
         )
 
 
+def validate_label_selector(label_selector: Optional[Dict[str, str]]) -> Optional[str]:
+    if label_selector is None:
+        return None
+
+    for key, value in label_selector.items():
+        possible_error_message = validate_label_key(key)
+        if possible_error_message:
+            return possible_error_message
+        if value is not None:
+            possible_error_message = validate_label_selector_value(value)
+            if possible_error_message:
+                return possible_error_message
+
+    return None
+
+
 def validate_label_selector_value(selector: str) -> Optional[str]:
     if selector == "":
         return None

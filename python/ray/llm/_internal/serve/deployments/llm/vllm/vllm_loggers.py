@@ -1,16 +1,18 @@
 from typing import Optional, Type, cast
-from ray.util import metrics as ray_metrics
-from vllm.config import SupportsMetricsInfo, VllmConfig, SpeculativeConfig
-from vllm.v1.engine import FinishReason
+
+import prometheus_client
+from vllm.config import SpeculativeConfig, SupportsMetricsInfo, VllmConfig
 from vllm.engine.metrics import (
-    _RayGaugeWrapper,
     _RayCounterWrapper,
+    _RayGaugeWrapper,
     _RayHistogramWrapper,
 )
+from vllm.v1.engine import FinishReason
 from vllm.v1.metrics.loggers import StatLoggerBase, build_1_2_5_buckets
 from vllm.v1.metrics.stats import IterationStats, SchedulerStats
 from vllm.v1.spec_decode.metrics import SpecDecodingStats
-import prometheus_client
+
+from ray.util import metrics as ray_metrics
 
 
 class SpecDecodingProm:
