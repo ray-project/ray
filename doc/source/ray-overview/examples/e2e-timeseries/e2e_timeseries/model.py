@@ -51,7 +51,7 @@ class series_decomp(nn.Module):
 
     def __init__(self, kernel_size: int):
         super().__init__()
-        # stride=1 is used here to ensure the moving average output has the same sequence length
+        # stride=1 is used here to ensure the moving average output has the same sequence length.
         self.moving_avg = moving_avg(kernel_size, stride=1)
 
     def forward(self, x: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
