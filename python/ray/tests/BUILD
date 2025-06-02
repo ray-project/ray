@@ -198,13 +198,6 @@ py_test_module_list(
         "test_placement_group_3.py",
         "test_placement_group_4.py",
         "test_placement_group_5.py",
-        "test_runtime_env.py",
-        "test_runtime_env_complicated.py",
-        "test_runtime_env_conda_and_pip.py",
-        "test_runtime_env_failure.py",
-        "test_runtime_env_uv_run.py",
-        "test_runtime_env_working_dir.py",
-        "test_runtime_env_working_dir_remote_uri.py",
         "test_scheduling.py",
         "test_scheduling_2.py",
         "test_wait.py",
@@ -213,6 +206,60 @@ py_test_module_list(
     tags = [
         "exclusive",
         "ray_client",
+        "team:core",
+    ],
+    deps = [
+        ":conftest",
+        "//:ray_lib",
+    ],
+)
+
+# Ray Client runtime_env tests that *don't* require being part of the post-wheel build.
+py_test_module_list(
+    size = "large",
+    env = {
+        "RAY_CLIENT_MODE": "1",
+    },
+    files = [
+        "test_runtime_env.py",
+        "test_runtime_env_failure.py",
+        "test_runtime_env_working_dir.py",
+        "test_runtime_env_working_dir_remote_uri.py",
+    ],
+    data = ["pip_install_test-0.5-py3-none-any.whl"],
+    name_suffix = "_client_mode",
+    tags = [
+        "exclusive",
+        "ray_client",
+        "team:core",
+    ],
+    deps = [
+        ":conftest",
+        "//:ray_lib",
+    ],
+)
+
+# Ray Client runtime_env tests that *do* require being part of the post-wheel build.
+py_test_module_list(
+    size = "large",
+    env = {
+        "RAY_CLIENT_MODE": "1",
+    },
+    files = [
+        "test_runtime_env_complicated.py",
+        "test_runtime_env_failure.py",
+        "test_runtime_env_working_dir.py",
+        "test_runtime_env_working_dir_remote_uri.py",
+    ],
+    data = [
+        "pip_install_test-0.5-py3-none-any.whl",
+        "//python/ray/experimental/packaging/example_pkg",
+    ],
+    name_suffix = "_client_mode",
+    tags = [
+        "exclusive",
+        "ray_client",
+        "post_wheel_build",
         "team:core",
     ],
     deps = [
