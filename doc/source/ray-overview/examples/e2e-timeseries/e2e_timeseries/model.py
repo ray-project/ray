@@ -29,16 +29,16 @@ class moving_avg(nn.Module):
             torch.Tensor: Output tensor of shape (batch_size, seq_len, num_features)
                           after applying moving average.
         """
-        # padding on the both ends of time series
-        # Input x: [Batch, SeqLen, Features]
+        # Padding on the both ends of time series.
+        # Input x: [Batch, SeqLen, Features].
         front = x[:, 0:1, :].repeat(1, (self.kernel_size - 1) // 2, 1)
         end = x[:, -1:, :].repeat(1, (self.kernel_size - 1) // 2, 1)
         x_padded = torch.cat(
             [front, x, end], dim=1
-        )  # [Batch, padded_seq_len, Features]
-        # self.avg expects [Batch, Features, padded_seq_len]
+        )  # [Batch, padded_seq_len, Features].
+        # self.avg expects [Batch, Features, padded_seq_len].
         x_avg = self.avg(x_padded.permute(0, 2, 1))
-        # permute back to [Batch, SeqLen, Features]
+        # Permute back to [Batch, SeqLen, Features].
         x_out = x_avg.permute(0, 2, 1)
         return x_out
 
