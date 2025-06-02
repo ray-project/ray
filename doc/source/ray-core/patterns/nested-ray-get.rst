@@ -14,6 +14,7 @@ This behavior can harm performance and stability because the caller continues to
 Therefore, it is always better to pass ``ObjectRefs`` as direct arguments to a task and avoid calling ``ray.get`` inside of the task, if possible.
 
 For example, in the following code, prefer the latter method of invoking the dependent task.
+
 .. literalinclude:: ../doc_code/anti_pattern_nested_ray_get.py
     :language: python
     :start-after: __anti_pattern_start__
