@@ -332,6 +332,7 @@ class TaskSpecification : public MessageWrapper<rpc::TaskSpec> {
 
   void SetNumStreamingGeneratorReturns(uint64_t num_streaming_generator_returns);
 
+  /// Return true if the argument is passed by reference.
   bool ArgByRef(size_t arg_index) const;
 
   ObjectID ArgId(size_t arg_index) const;
@@ -467,7 +468,7 @@ class TaskSpecification : public MessageWrapper<rpc::TaskSpec> {
 
   NodeID CallerNodeId() const;
 
-  uint64_t ActorCounter() const;
+  uint64_t SequenceNumber() const;
 
   ObjectID ActorCreationDummyObjectId() const;
 
@@ -514,6 +515,10 @@ class TaskSpecification : public MessageWrapper<rpc::TaskSpec> {
 
   /// \return true if task events from this task should be reported.
   bool EnableTaskEvents() const;
+
+  TaskAttempt GetTaskAttempt() const;
+
+  const rpc::TensorTransport TensorTransport() const;
 
  private:
   void ComputeResources();

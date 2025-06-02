@@ -745,7 +745,7 @@ class HashShufflingOperatorBase(PhysicalOperator):
         )
 
     def completed(self) -> bool:
-        # TODO remove impl from base class
+        # TODO separate marking as completed from the check
         return self._is_finalized() and super().completed()
 
     def implements_accurate_memory_accounting(self) -> bool:

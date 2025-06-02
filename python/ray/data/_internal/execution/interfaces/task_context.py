@@ -19,6 +19,9 @@ class TaskContext:
     # operator.
     task_idx: int
 
+    # Name of the operator that this task belongs to.
+    op_name: str
+
     # The dictionary of sub progress bar to update. The key is name of sub progress
     # bar. Note this is only used on driver side.
     # TODO(chengsu): clean it up from TaskContext with new optimizer framework.

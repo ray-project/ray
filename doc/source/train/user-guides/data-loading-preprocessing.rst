@@ -325,6 +325,22 @@ For more details, see the following sections for each framework:
     Instatiating the Dataset outside of the ``train_loop_per_worker`` and passing it in via global scope
     can cause errors due to the Dataset not being serializable.
 
+.. note::
+
+    When using PyTorch DataLoader with more than 1 worker, you should set the
+    process start method to be `forkserver` or `spawn`.
+    :ref:`Forking Ray Actors and Tasks is an anti-pattern <forking-ray-processes-antipattern>` that
+    can lead to unexpected issues such as deadlocks.
+
+    .. code-block:: python
+
+        data_loader = DataLoader(
+            dataset,
+            num_workers=2, 
+            multiprocessing_context=multiprocessing.get_context("forkserver"), 
+            ...
+        )
+
 .. _train-datasets-split:
 
 Splitting datasets
