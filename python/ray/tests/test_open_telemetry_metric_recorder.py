@@ -21,6 +21,7 @@ def test_register_gauge_metric(mock_get_meter, mock_set_meter_provider):
     mock_get_meter.return_value = MagicMock()
     recorder = OpenTelemetryMetricRecorder()
     recorder.register_gauge_metric(name="test_gauge", description="Test Gauge")
+    assert recorder._is_observable_metric("test_gauge")
 
     # Record a value for the gauge
     recorder.set_metric_value(
