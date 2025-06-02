@@ -26,7 +26,6 @@
 #include <utility>
 #include <vector>
 
-#include "absl/functional/bind_front.h"
 #include "absl/strings/str_format.h"
 #include "absl/time/clock.h"
 #include "ray/common/asio/asio_util.h"
@@ -119,7 +118,9 @@ NodeManager::NodeManager(
     std::unique_ptr<pubsub::SubscriberInterface> core_worker_subscriber,
     std::unique_ptr<IObjectDirectory> object_directory,
     std::unique_ptr<ObjectManagerInterface> object_manager,
-    std::unique_ptr<plasma::PlasmaClientInterface> store_client,
+    plasma::PlasmaClientInterface &store_client,
+    std::unique_ptr<core::experimental::MutableObjectProviderInterface>
+        mutable_object_provider,
     std::function<void(const rpc::NodeDeathInfo &)> shutdown_raylet_gracefully)
     : self_node_id_(self_node_id),
       self_node_name_(std::move(self_node_name)),
@@ -165,7 +166,8 @@ NodeManager::NodeManager(
       core_worker_subscriber_(std::move(core_worker_subscriber)),
       object_directory_(std::move(object_directory)),
       object_manager_(std::move(object_manager)),
-      store_client_(std::move(store_client)),
+      store_client_(store_client),
+      mutable_object_provider_(std::move(mutable_object_provider)),
       periodical_runner_(PeriodicalRunner::Create(io_service)),
       report_resources_period_ms_(config.report_resources_period_ms),
       initial_config_(config),
@@ -182,7 +184,6 @@ NodeManager::NodeManager(
       node_manager_server_("NodeManager",
                            config.node_manager_port,
                            config.node_manager_address == "127.0.0.1"),
-      node_manager_service_(io_service, *this),
       local_object_manager_(
           self_node_id_,
           config.node_manager_address,
@@ -215,7 +216,6 @@ NodeManager::NodeManager(
       record_metrics_period_ms_(config.record_metrics_period_ms),
       next_resource_seq_no_(0),
       ray_syncer_(io_service_, self_node_id_.Binary()),
-      ray_syncer_service_(ray_syncer_),
       worker_killing_policy_(
           CreateWorkerKillingPolicy(RayConfig::instance().worker_killing_policy())),
       memory_monitor_(std::make_unique<MemoryMonitor>(
@@ -305,10 +305,12 @@ NodeManager::NodeManager(
       RayConfig::instance().raylet_check_for_unexpected_worker_disconnect_interval_ms(),
       "NodeManager.CheckForUnexpectedWorkerDisconnects");
 
-  RAY_CHECK_OK(store_client_->Connect(config.store_socket_name));
+  RAY_CHECK_OK(store_client_.Connect(config.store_socket_name));
   // Run the node manager rpc server.
-  node_manager_server_.RegisterService(node_manager_service_, false);
-  node_manager_server_.RegisterService(ray_syncer_service_);
+  node_manager_server_.RegisterService(
+      std::make_unique<rpc::NodeManagerGrpcService>(io_service, *this), false);
+  node_manager_server_.RegisterService(
+      std::make_unique<syncer::RaySyncerService>(ray_syncer_));
   node_manager_server_.Run();
   // GCS will check the health of the service named with the node id.
   // Fail to setup this will lead to the health check failure.
@@ -334,21 +336,7 @@ NodeManager::NodeManager(
   periodical_runner_->RunFnPeriodically([this]() { GCTaskFailureReason(); },
                                         RayConfig::instance().task_failure_entry_ttl_ms(),
                                         "NodeManager.GCTaskFailureReason");
-
-  mutable_object_provider_ = std::make_unique<core::experimental::MutableObjectProvider>(
-      *store_client_, absl::bind_front(&NodeManager::CreateRayletClient, this), nullptr);
 }
-
-std::shared_ptr<raylet::RayletClient> NodeManager::CreateRayletClient(
-    const NodeID &node_id, rpc::ClientCallManager &client_call_manager) {
-  const rpc::GcsNodeInfo *node_info = gcs_client_->Nodes().Get(node_id);
-  RAY_CHECK(node_info) << "No GCS info for node " << node_id;
-  std::shared_ptr<ray::rpc::NodeManagerWorkerClient> grpc_client =
-      rpc::NodeManagerWorkerClient::make(node_info->node_manager_address(),
-                                         node_info->node_manager_port(),
-                                         client_call_manager);
-  return std::make_shared<raylet::RayletClient>(std::move(grpc_client));
-};
 
 ray::Status NodeManager::RegisterGcs() {
   auto on_node_change = [this](const NodeID &node_id, const GcsNodeInfo &data) {
@@ -855,24 +843,20 @@ void NodeManager::QueryAllWorkerStates(
 // Note that this can print the false negative messages
 // e.g., there are many actors taking up resources for a long time.
 void NodeManager::WarnResourceDeadlock() {
-  ray::RayTask exemplar;
-  bool any_pending = false;
   int pending_actor_creations = 0;
   int pending_tasks = 0;
-  std::string available_resources;
 
   // Check if any progress is being made on this raylet.
-  for (const auto &worker : worker_pool_.GetAllRegisteredWorkers()) {
-    if (worker->IsAvailableForScheduling()) {
-      // Progress is being made in a task, don't warn.
-      resource_deadlock_warned_ = 0;
-      return;
-    }
+  if (worker_pool_.IsWorkerAvailableForScheduling()) {
+    // Progress is being made in a task, don't warn.
+    resource_deadlock_warned_ = 0;
+    return;
   }
 
+  auto exemplar = cluster_task_manager_->AnyPendingTasksForResourceAcquisition(
+      &pending_actor_creations, &pending_tasks);
   // Check if any tasks are blocked on resource acquisition.
-  if (!cluster_task_manager_->AnyPendingTasksForResourceAcquisition(
-          &exemplar, &any_pending, &pending_actor_creations, &pending_tasks)) {
+  if (exemplar == nullptr) {
     // No pending tasks, no need to warn.
     resource_deadlock_warned_ = 0;
     return;
@@ -883,7 +867,7 @@ void NodeManager::WarnResourceDeadlock() {
   // case resource_deadlock_warned_:  0 => first time, don't do anything yet
   // case resource_deadlock_warned_:  1 => second time, print a warning
   // case resource_deadlock_warned_: >1 => global gc but don't print any warnings
-  if (any_pending && resource_deadlock_warned_++ > 0) {
+  if (resource_deadlock_warned_++ > 0) {
     // Actor references may be caught in cycles, preventing them from being deleted.
     // Trigger global GC to hopefully free up resource slots.
     TriggerGlobalGC();
@@ -893,9 +877,8 @@ void NodeManager::WarnResourceDeadlock() {
       return;
     }
 
-    std::ostringstream error_message;
-    error_message
-        << "The actor or task with ID " << exemplar.GetTaskSpecification().TaskId()
+    RAY_LOG(WARNING)
+        << "The actor or task with ID " << exemplar->GetTaskSpecification().TaskId()
         << " cannot be scheduled right now. You can ignore this message if this "
         << "Ray cluster is expected to auto-scale or if you specified a "
         << "runtime_env for this actor or task, which may take time to install.  "
@@ -903,16 +886,13 @@ void NodeManager::WarnResourceDeadlock() {
         << "by actors. To resolve the issue, consider creating fewer actors or "
         << "increasing the resources available to this Ray cluster.\n"
         << "Required resources for this actor or task: "
-        << exemplar.GetTaskSpecification().GetRequiredPlacementResources().DebugString()
+        << exemplar->GetTaskSpecification().GetRequiredPlacementResources().DebugString()
         << "\n"
         << "Available resources on this node: "
         << cluster_resource_scheduler_->GetClusterResourceManager()
                .GetNodeResourceViewString(scheduling::NodeID(self_node_id_.Binary()))
         << " In total there are " << pending_tasks << " pending tasks and "
         << pending_actor_creations << " pending actors on this node.";
-
-    std::string error_message_str = error_message.str();
-    RAY_LOG(WARNING) << error_message_str;
     RAY_LOG_EVERY_MS(WARNING, 10 * 1000) << cluster_task_manager_->DebugStr();
   }
   // Try scheduling tasks. Without this, if there's no more tasks coming in, deadlocked
@@ -2255,7 +2235,7 @@ void NodeManager::MarkObjectsAsFailed(
         << "Mark the object as failed due to " << error_type;
     std::shared_ptr<Buffer> data;
     Status status;
-    status = store_client_->TryCreateImmediately(
+    status = store_client_.TryCreateImmediately(
         object_id,
         ref.owner_address(),
         0,
@@ -2264,7 +2244,7 @@ void NodeManager::MarkObjectsAsFailed(
         &data,
         plasma::flatbuf::ObjectSource::ErrorStoredByRaylet);
     if (status.ok()) {
-      status = store_client_->Seal(object_id);
+      status = store_client_.Seal(object_id);
     }
     if (!status.ok() && !status.IsObjectExists()) {
       RAY_LOG(DEBUG).WithField(object_id) << "Marking plasma object failed.";
@@ -2583,7 +2563,7 @@ bool NodeManager::GetObjectsFromPlasma(const std::vector<ObjectID> &object_ids,
   // since we must wait for the plasma store's reply. We should consider using
   // an `AsyncGet` instead.
   if (!store_client_
-           ->Get(object_ids, /*timeout_ms=*/0, &plasma_results, /*is_from_worker=*/false)
+           .Get(object_ids, /*timeout_ms=*/0, &plasma_results, /*is_from_worker=*/false)
            .ok()) {
     return false;
   }
@@ -2909,7 +2889,7 @@ void NodeManager::TriggerGlobalGC() {
 
 void NodeManager::Stop() {
   // This never fails.
-  RAY_CHECK_OK(store_client_->Disconnect());
+  RAY_CHECK_OK(store_client_.Disconnect());
   object_manager_->Stop();
   dashboard_agent_manager_.reset();
   runtime_env_agent_manager_.reset();

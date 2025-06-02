@@ -1,10 +1,14 @@
 from typing import Literal
 
 from ray.core.generated.common_pb2 import (
+    GLOO,
+    NCCL,
+    OBJECT_STORE,
     ErrorType,
     Language,
     TaskStatus,
     TaskType,
+    TensorTransport,
     WorkerExitType,
     WorkerType,
 )
@@ -117,6 +121,15 @@ ERROR_TYPE = [
 # and any modifications must be backward compatible.
 LANGUAGE = ["PYTHON", "JAVA", "CPP"]
 
+# See `common.proto` for more details.
+TENSOR_TRANSPORT = [
+    "OBJECT_STORE",
+    "NCCL",
+    "GLOO",
+]
+TypeTensorTransport = Literal[tuple(TENSOR_TRANSPORT)]
+TypeTensorTransportEnum = Literal[OBJECT_STORE, NCCL, GLOO]
+
 
 def validate_protobuf_enum(grpc_enum, custom_enum):
     """Validate the literal contains the correct enum values from protobuf"""
@@ -144,3 +157,4 @@ validate_protobuf_enum(WorkerExitType, WORKER_EXIT_TYPE)
 validate_protobuf_enum(TaskType, TASK_TYPE)
 validate_protobuf_enum(ErrorType, ERROR_TYPE)
 validate_protobuf_enum(Language, LANGUAGE)
+validate_protobuf_enum(TensorTransport, TENSOR_TRANSPORT)
