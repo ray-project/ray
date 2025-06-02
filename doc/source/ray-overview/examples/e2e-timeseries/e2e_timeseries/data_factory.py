@@ -26,7 +26,7 @@ def data_provider(config: dict, flag: str) -> ray.data.Dataset:
 
     def preprocess_items(item: dict) -> dict:
         # ray.data.from_torch wraps items in a dictionary {'item': (tensor_x, tensor_y)}
-        # We want to convert these to numpy arrays and assign to 'x' and 'y' keys.
+        # Convert these to numpy arrays and assign to 'x' and 'y' keys.
         # The tensors from PyTorch Dataset are already on CPU.
         return {"x": np.array(item["item"][0]), "y": np.array(item["item"][1])}
 
