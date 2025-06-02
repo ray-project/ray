@@ -163,7 +163,7 @@ class EmbedPatches:
 
 
 class FakeEmbedPatches:
-    def __init__(self, model, _):
+    def __init__(self, model, device):
         self._model = ray.get(model)
         self._model.eval()
 
@@ -212,7 +212,6 @@ def main(scale_factor: int):
                 FakeEmbedPatches,
                 batch_size=BATCH_SIZE,
                 compute=ActorPoolStrategy(min_size=1, max_size=100),
-                num_gpus=1,
                 fn_constructor_kwargs={"model": model_ref, "device": "cuda"},
             )
             .write_parquet(WRITE_PATH)
