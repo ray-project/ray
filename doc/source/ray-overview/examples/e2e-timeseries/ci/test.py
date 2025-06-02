@@ -75,7 +75,7 @@ def execute_script(script_path: Path, working_dir: Path) -> None:
             cwd=str(working_dir),
         )
 
-        # Print output for visibility
+        # Print output for visibility.
         if result.stdout:
             print(f"stdout from {script_path.name}:")
             print(result.stdout)
