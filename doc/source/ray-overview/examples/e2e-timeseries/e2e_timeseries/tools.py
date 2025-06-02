@@ -30,7 +30,7 @@ def adjust_learning_rate(optimizer, epoch, config: dict):
     else:
         # Default or unknown lradj type, maybe raise an error or use a default behavior
         print(
-            f"Warning: lradj type '{config['lradj']}' not recognized. Learning rate not adjusted."
+            f"Warning: learning rate adjustment type '{config['lradj']}' not recognized. Learning rate not adjusted."
         )
         return
 
