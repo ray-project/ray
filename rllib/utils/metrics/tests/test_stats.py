@@ -971,7 +971,7 @@ def test_basic_throughput():
         ),
     ],
 )
-def test_merging_multiples_rounds(
+def test_aggregation_multiple_rounds(
     reduce_method,
     reduce_per_index,
     clear_on_reduce,
@@ -1094,7 +1094,11 @@ def test_merge_in_parallel_empty_and_nan_values():
 
 
 def test_percentiles():
-    """Test that percentiles work correctly."""
+    """Test that percentiles work correctly.
+
+    We don't test percentiles as part of aggregation tests because it is not compabible
+    with `reduce_per_index_on_parallel_merge` only used for reduce=None.
+    """
     # Test basic functionality with single stats
     stats = Stats(reduce=None, percentiles=True, window=5)
     stats.push(5)
@@ -1156,9 +1160,16 @@ def test_percentiles():
 
     # Test validation - percentiles must be None for other reduce methods
     with pytest.raises(
-        ValueError, match="`percentiles` must be False when `reduce` is not `None`"
+        ValueError, match="`reduce` must be `None` when `percentiles` is not `False"
     ):
         Stats(reduce="mean", window=5, percentiles=[50])
+
+    with pytest.raises(
+        ValueError, match="`reduce_per_index_on_aggregate` must be `False`"
+    ):
+        Stats(
+            reduce=None, reduce_per_index_on_aggregate=True, percentiles=True, window=5
+        )
 
 
 if __name__ == "__main__":

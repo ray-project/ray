@@ -112,6 +112,7 @@ class Stats:
             raise ValueError(
                 "`reduce` must be one of `mean|min|max|sum|percentiles` or None!"
             )
+
         # One or both window and ema_coeff must be None.
         if window is not None and ema_coeff is not None:
             raise ValueError("Only one of `window` or `ema_coeff` can be specified!")
@@ -121,11 +122,21 @@ class Stats:
                 "`ema_coeff` arg only allowed (not None) when `reduce=mean`!"
             )
 
-        if reduce is None and percentiles is not False:
+        if percentiles is not False:
+            if reduce is not None:
+                raise ValueError(
+                    "`reduce` must be `None` when `percentiles` is not `False`!"
+                )
             if window in (None, float("inf")):
                 raise ValueError(
                     "A window must be specified when reduce is 'percentiles'!"
                 )
+            if reduce_per_index_on_aggregate is not False:
+                print(reduce_per_index_on_aggregate)
+                raise ValueError(
+                    "`reduce_per_index_on_aggregate` must be `False` when `percentiles` is not `False`!"
+                )
+
             if percentiles is True:
                 percentiles = [0, 0.5, 0.75, 0.9, 0.95, 0.99, 1]
             else:
@@ -140,8 +151,6 @@ class Stats:
                         raise ValueError(
                             "`percentiles` must contain only values between 0 and 100!"
                         )
-        elif percentiles is not False:
-            raise ValueError("`percentiles` must be False when `reduce` is not `None`!")
 
         self._percentiles = percentiles
 
@@ -502,8 +511,7 @@ class Stats:
         # Stop as soon as we reach the window size.
         new_values = []
         tmp_values = []
-        # Loop from index=-1 backward to index=start until our new_values list has
-        # at least a len of `win`.
+
         if self._percentiles is not False:
             # Use heapq to sort values (assumes that the values are already sorted)
             # and then pick the correct percentiles
@@ -511,6 +519,8 @@ class Stats:
             merged = list(heapq.merge(*lists_to_merge))
             self._set_values(merged)
         else:
+            # Loop from index=-1 backward to index=start until our new_values list has
+            # at least a len of `win`.
             for i in range(1, max(map(len, stats_to_merge)) + 1):
                 # Per index, loop through all involved stats, including `self` and add
                 # to `tmp_values`.

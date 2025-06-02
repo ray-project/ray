@@ -568,7 +568,7 @@ class MetricsLogger:
                 `reduce` must be "mean".
                 The reduction formula for EMA is:
                 EMA(t1) = (1.0 - ema_coeff) * EMA(t0) + ema_coeff * new_value
-            If reduce is `None`, we can compute the percentiles of the
+            percentiles: If reduce is `None`, we can compute the percentiles of the
                 values list given by `percentiles`. Defaults to [0, 0.5, 0.75, 0.9, 0.95,
                 0.99, 1] if set to True. When using percentiles, a window must be provided.
                 This window should be chosen carfully. RLlib computes exact percentiles and
@@ -883,7 +883,7 @@ class MetricsLogger:
                 `reduce` must be "mean".
                 The reduction formula for EMA is:
                 EMA(t1) = (1.0 - ema_coeff) * EMA(t0) + ema_coeff * new_value
-            If reduce is `None`, we can compute the percentiles of the
+            percentiles: If reduce is `None`, we can compute the percentiles of the
                 values list given by `percentiles`. Defaults to [0, 0.5, 0.75, 0.9, 0.95,
                 0.99, 1] if set to True. When using percentiles, a window must be provided.
                 This window should be chosen carfully. RLlib computes exact percentiles and
@@ -1073,7 +1073,7 @@ class MetricsLogger:
                 The reduction formula for EMA is:
                 EMA(t1) = (1.0 - ema_coeff) * EMA(t0) + ema_coeff * new_value
                 Note that this is only applied if `key` does not exist in `self` yet.
-            If reduce is `None`, we can compute the percentiles of the
+            percentiles: If reduce is `None`, we can compute the percentiles of the
                 values list given by `percentiles`. Defaults to [0, 0.5, 0.75, 0.9, 0.95,
                 0.99, 1] if set to True. When using percentiles, a window must be provided.
                 This window should be chosen carfully. RLlib computes exact percentiles and
