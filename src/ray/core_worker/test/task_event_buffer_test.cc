@@ -59,7 +59,7 @@ class TaskEventBufferTest : public ::testing::Test {
   )");
 
     task_event_buffer_ = std::make_unique<TaskEventBufferImpl>(
-        std::make_unique<ray::gcs::MockGcsClient>(),
+        std::make_shared<ray::gcs::MockGcsClient>(),
         std::make_unique<ray::MockEventAggregatorExporter>());
   }
 
