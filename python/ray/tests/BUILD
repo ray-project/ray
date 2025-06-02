@@ -484,6 +484,7 @@ py_test_module_list(
         "test_raylet_output.py",
         "test_reconstruction_stress.py",
         "test_reconstruction_stress_spill.py",
+        "test_runtime_env_get_wheel_names.py",
         "test_state_api_summary.py",
         "test_streaming_generator_regression.py",
         "test_system_metrics.py",
@@ -1171,25 +1172,6 @@ py_test(
     name = "test_collections_utils",
     size = "small",
     srcs = ["test_collections_utils.py"],
-    tags = [
-        "exclusive",
-        "small_size_python_tests",
-        "team:core",
-    ],
-    deps = [
-        ":conftest",
-        "//:ray_lib",
-    ],
-)
-
-py_test(
-    name = "test_runtime_env_validation",
-    size = "small",
-    srcs = ["test_runtime_env_validation.py"],
-    data = [
-        "test_runtime_env_validation_1_schema.json",
-        "test_runtime_env_validation_2_schema.json",
-    ],
     tags = [
         "exclusive",
         "small_size_python_tests",
