@@ -876,9 +876,6 @@ def _start_cluster(cluster, request):
 # Used to enforce that `start_cluster` and `start_cluster_shared` fixtures aren't mixed.
 _START_CLUSTER_SHARED_USED = False
 
-# Used to test both Ray Client and non-Ray Client codepaths.
-# Usage: In your test, call `ray.init(address)`.
-@pytest.fixture(scope="function", params=["ray_client", "no_ray_client"])
 def start_cluster(ray_start_cluster_enabled, request):
     if _START_CLUSTER_SHARED_USED:
         pytest.fail(
@@ -888,7 +885,6 @@ def start_cluster(ray_start_cluster_enabled, request):
     yield _start_cluster(ray_start_cluster_enabled, request)
 
 
-@pytest.fixture(scope="module", params=["ray_client", "no_ray_client"])
 def _start_cluster_shared(ray_start_cluster_enabled_shared, request):
     global _START_CLUSTER_SHARED_USED
     _START_CLUSTER_SHARED_USED = True
