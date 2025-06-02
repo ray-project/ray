@@ -46,6 +46,19 @@ async def test_signal_actor_multiple_waiters(ray_init):
     # Verify all waiters are done
     wait_for_condition(lambda: ray.get(signal.cur_num_waiters.remote()) == 0)
 
+    # check that .wait() doesn't block if the signal is already sent
+    await signal.wait.remote()
+
+    assert await signal.cur_num_waiters.remote() == 0
+
+    # clear the signal
+    await signal.send.remote(clear=True)
+    signal.wait.remote()
+    # Verify all waiters are done
+    wait_for_condition(lambda: ray.get(signal.cur_num_waiters.remote()) == 1)
+
+    await signal.send.remote()
+
 
 @pytest.mark.asyncio
 async def test_semaphore_basic(ray_init):

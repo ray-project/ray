@@ -18,7 +18,7 @@ from ray.util.state import list_nodes
 from ray._private.metrics_agent import PrometheusServiceDiscoveryWriter
 from ray._private.metrics_agent import Gauge as MetricsAgentGauge
 from ray._private.ray_constants import PROMETHEUS_SERVICE_DISCOVERY_FILE
-from ray._common.synchronization_actors import SignalActor
+from ray._common.test_utils import SignalActor
 from ray._private.test_utils import (
     fetch_prometheus,
     fetch_prometheus_metrics,

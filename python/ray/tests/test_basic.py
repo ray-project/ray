@@ -11,7 +11,7 @@ import pytest
 
 import ray
 import ray.cluster_utils
-from ray._common.synchronization_actors import SignalActor
+from ray._common.test_utils import SignalActor
 from ray._private.test_utils import (
     client_test_enabled,
     run_string_as_driver,

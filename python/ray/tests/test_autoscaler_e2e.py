@@ -10,7 +10,7 @@ from ray._private.test_utils import (
     get_metric_check_condition,
     MetricSamplePattern,
 )
-from ray._common.synchronization_actors import SignalActor
+from ray._common.test_utils import SignalActor
 from ray.autoscaler.node_launch_exception import NodeLaunchException
 
 

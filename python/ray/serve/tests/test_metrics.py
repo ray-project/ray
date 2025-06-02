@@ -17,7 +17,7 @@ from websockets.sync.client import connect
 import ray
 import ray.util.state as state_api
 from ray import serve
-from ray._common.synchronization_actors import SignalActor
+from ray._common.test_utils import SignalActor
 from ray._private.test_utils import (
     fetch_prometheus_metrics,
     wait_for_condition,

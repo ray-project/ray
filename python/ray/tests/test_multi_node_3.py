@@ -19,7 +19,7 @@ from ray._private.test_utils import (
     wait_for_children_of_pid,
     wait_for_children_of_pid_to_exit,
 )
-from ray._common.synchronization_actors import Semaphore
+from ray._common.test_utils import Semaphore
 from ray._private.utils import detect_fate_sharing_support
 
 
@@ -338,7 +338,7 @@ def test_multi_driver_logging(ray_start_regular):
     driver_script_template = """
 import ray
 import sys
-from ray._common.synchronization_actors import Semaphore
+from ray._common.test_utils import Semaphore
 
 @ray.remote(num_cpus=0)
 def remote_print(s, file=None):

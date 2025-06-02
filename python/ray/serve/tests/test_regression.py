@@ -10,7 +10,7 @@ from fastapi.responses import JSONResponse
 
 import ray
 from ray import serve
-from ray._common.synchronization_actors import SignalActor
+from ray._common.test_utils import SignalActor
 from ray.serve.context import _get_global_client
 from ray.serve.handle import DeploymentHandle
 

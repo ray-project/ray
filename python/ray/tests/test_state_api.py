@@ -33,7 +33,7 @@ from ray._private.test_utils import (
     async_wait_for_condition,
     find_free_port,
 )
-from ray._common.synchronization_actors import SignalActor
+from ray._common.test_utils import SignalActor
 from ray.cluster_utils import cluster_not_supported
 from ray._raylet import NodeID
 from ray.core.generated.common_pb2 import (

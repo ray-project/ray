@@ -10,7 +10,7 @@ from uuid import uuid4
 import pytest
 
 import ray
-from ray._common.synchronization_actors import SignalActor
+from ray._common.test_utils import SignalActor
 from ray._private.ray_constants import (
     DEFAULT_DASHBOARD_AGENT_LISTEN_PORT,
     KV_HEAD_NODE_ID_KEY,

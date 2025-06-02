@@ -9,7 +9,7 @@ import requests
 
 import ray
 from ray import serve
-from ray._common.synchronization_actors import SignalActor
+from ray._common.test_utils import SignalActor
 from ray._private.pydantic_compat import ValidationError
 from ray._private.test_utils import wait_for_condition
 from ray.serve._private.utils import get_random_string

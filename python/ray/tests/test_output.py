@@ -21,7 +21,7 @@ def test_dedup_logs():
 import time
 
 import ray
-from ray._common.synchronization_actors import SignalActor
+from ray._common.test_utils import SignalActor
 from ray._private.test_utils import wait_for_condition
 
 signal = SignalActor.remote()

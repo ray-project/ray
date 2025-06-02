@@ -4,7 +4,7 @@ from typing import AsyncIterator, Tuple
 import pytest
 
 from ray import serve
-from ray._common.synchronization_actors import SignalActor
+from ray._common.test_utils import SignalActor
 from ray._private.test_utils import async_wait_for_condition
 from ray.serve._private.proxy_response_generator import ProxyResponseGenerator
 

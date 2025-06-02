@@ -16,7 +16,7 @@ import pytest
 
 import ray
 import ray.cluster_utils
-from ray._common.synchronization_actors import SignalActor
+from ray._common.test_utils import SignalActor
 from ray._private.test_utils import (
     kill_actor_and_wait_for_failure,
     put_object,

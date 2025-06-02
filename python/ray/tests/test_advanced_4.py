@@ -9,7 +9,7 @@ from ray._private.test_utils import (
     wait_for_condition,
     get_gcs_memory_used,
 )
-from ray._common.synchronization_actors import Semaphore
+from ray._common.test_utils import Semaphore
 from ray.experimental.internal_kv import _internal_kv_list
 
 

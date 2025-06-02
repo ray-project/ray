@@ -18,7 +18,7 @@ from ray._private.test_utils import (
     run_string_as_driver_nonblocking,
     wait_for_condition,
 )
-from ray._common.synchronization_actors import Semaphore
+from ray._common.test_utils import Semaphore
 from ray.cluster_utils import cluster_not_supported
 from ray.experimental.internal_kv import _internal_kv_get
 

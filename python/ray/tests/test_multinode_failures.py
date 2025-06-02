@@ -8,7 +8,7 @@ import pytest
 import ray
 import ray._private.ray_constants as ray_constants
 from ray._private.test_utils import get_other_nodes
-from ray._common.synchronization_actors import Semaphore
+from ray._common.test_utils import Semaphore
 from ray.cluster_utils import Cluster, cluster_not_supported
 
 SIGKILL = signal.SIGKILL if sys.platform != "win32" else signal.SIGTERM
