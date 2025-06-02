@@ -4437,7 +4437,6 @@
     timeout: 3600
     script: bash ci/tests.sh  # relative to working_dir
 
-
   variations:
     - __suffix__: aws  # uses default specs above
     - __suffix__: gce
