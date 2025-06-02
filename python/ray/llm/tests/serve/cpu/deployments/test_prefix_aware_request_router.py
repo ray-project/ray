@@ -1,16 +1,10 @@
-import pytest
-import ray
-from ray._common.utils import get_or_create_event_loop
 import asyncio
 import time
 
-from ray.serve.tests.unit.test_pow_2_request_router import (
-    FakeRunningReplica,
-)  # Reuse the FakeRunningReplica from the Pow2 test
+import pytest
 
-from ray.serve._private.request_router.prefix_aware_router import (
-    PrefixAwareRequestRouter,
-)
+import ray
+from ray._common.utils import get_or_create_event_loop
 from ray.llm._internal.serve.request_router.prefix_aware.prefix_tree import (
     PrefixTreeActor,
 )
@@ -20,8 +14,14 @@ from ray.serve._private.common import (
     RequestMetadata,
 )
 from ray.serve._private.request_router.common import PendingRequest
-from ray.serve._private.utils import generate_request_id
+from ray.serve._private.request_router.prefix_aware_router import (
+    PrefixAwareRequestRouter,
+)
 from ray.serve._private.test_utils import MockTimer
+from ray.serve._private.utils import generate_request_id
+from ray.serve.tests.unit.test_pow_2_request_router import (
+    FakeRunningReplica,
+)  # Reuse the FakeRunningReplica from the Pow2 test
 
 TIMER = MockTimer()
 DEFAULT_MAX_ONGOING_REQUESTS = 10
