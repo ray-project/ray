@@ -3,6 +3,7 @@ import copy
 import html
 import itertools
 import logging
+import re
 import time
 import warnings
 from typing import (
@@ -1572,6 +1573,102 @@ class Dataset:
 
         logical_plan = LogicalPlan(op, self.context)
         return Dataset(plan, logical_plan)
+
+    @PublicAPI(api_group=SSR_API_GROUP)
+    def compact(self,
+        target_block_bytes: Union[int, str] = "128MiB"):
+        """
+        Repartition Ray Dataset so block sizes are close to target_block_bytes.
+
+        Args:
+            target_block_bytes: Bytes as int or string (e.g. '128MiB'). Must be >= 1MiB.
+
+        Returns:
+            The repartitioned Dataset (or original).
+        """
+        SIZE_UNITS = {
+            "B": 1,
+            "KIB": 1024,
+            "MIB": 1024**2,
+            "GIB": 1024**3,
+            "TIB": 1024**4,
+            "KB": 1024,
+            "MB": 1024**2,
+            "GB": 1024**3,
+            "TB": 1024**4,
+        }
+
+        def parse_size(size: Union[int, str]) -> int:
+            if isinstance(size, int):
+                if size < 1:
+                    raise ValueError("target_block_bytes must be a positive integer or valid size string.")
+                return size
+            elif isinstance(size, str):
+                size = size.strip().upper().replace(" ", "")
+
+                if size.isdigit():
+                    return int(size)
+
+                match = re.match(r"^(\d+(?:\.\d+)?)([KMGT]I?B)$", size)
+                if not match:
+                    raise ValueError(
+                        f"Invalid size string: '{size}'. Use formats like '128MiB', '4GiB', etc."
+                    )
+                value, unit = match.groups()
+                value = float(value)
+                if unit not in SIZE_UNITS:
+                    raise ValueError(f"Unknown unit '{unit}'. Known: {list(SIZE_UNITS.keys())}")
+                return int(value * SIZE_UNITS[unit])
+            else:
+                raise TypeError("target_block_bytes must be int or str")
+
+        def human_size(num_bytes: int) -> str:
+            """Format bytes as human-readable (B, KiB, MiB, GiB, TiB)."""
+            thresholds = [
+                (1024 ** 4, "TiB"),
+                (1024 ** 3, "GiB"),
+                (1024 ** 2, "MiB"),
+                (1024 ** 1, "KiB"),
+            ]
+            for factor, suffix in thresholds:
+                if num_bytes >= factor:
+                    return f"{num_bytes / factor:.2f} {suffix}"
+            return f"{num_bytes} B"
+
+        try:
+            block_size_bytes = parse_size(target_block_bytes)
+            if block_size_bytes < SIZE_UNITS["MIB"]:
+                raise ValueError("Block size should be at least 1MiB.")
+        except Exception as exc:
+            logger.error(f"Failed to parse block size: {exc}")
+            raise
+
+        total_bytes = 0
+        num_blocks = 0
+        for ref_bundle in self.iter_internal_ref_bundles():
+            for _, block_md in ref_bundle.blocks:
+                if block_md.size_bytes is not None:
+                    total_bytes += block_md.size_bytes
+                num_blocks += 1
+
+        if total_bytes == 0:
+            logger.info("Dataset is empty. No compaction performed.")
+            return self
+
+        ideal_blocks = max(1, math.ceil(total_bytes / block_size_bytes))
+
+        logger.info(
+            f"Current: {num_blocks} blocks, total size: {human_size(total_bytes)}. "
+            f"Target: {human_size(block_size_bytes)} per block → {ideal_blocks} blocks."
+        )
+
+        if ideal_blocks != num_blocks:
+            logger.info(f"Repartitioning from {num_blocks} to {ideal_blocks} blocks.")
+            return self.repartition(ideal_blocks)
+        else:
+            logger.info("No repartition needed; already at optimal size.")
+            return self
+
 
     @AllToAllAPI
     @PublicAPI(api_group=SSR_API_GROUP)
