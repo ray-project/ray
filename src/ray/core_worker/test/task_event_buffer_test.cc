@@ -21,6 +21,7 @@
 #include <fstream>
 #include <memory>
 #include <string>
+#include <unordered_map>
 #include <utility>
 #include <vector>
 
@@ -32,6 +33,7 @@
 #include "mock/ray/core_worker/event_aggregator_exporter.h"
 #include "mock/ray/gcs/gcs_client/gcs_client.h"
 #include "ray/common/task/task_spec.h"
+#include "ray/common/task/task_util.h"
 #include "ray/common/test_util.h"
 #include "ray/util/event.h"
 
@@ -73,6 +75,58 @@ class TaskEventBufferTest : public ::testing::Test {
       task_ids.push_back(RandomTaskId());
     }
     return task_ids;
+  }
+
+  TaskSpecification BuildTaskSpec(TaskID task_id, int32_t attempt_num) {
+    TaskSpecBuilder builder;
+    rpc::Address empty_address;
+    rpc::JobConfig config;
+    std::unordered_map<std::string, double> resources = {{"CPU", 1}};
+    std::unordered_map<std::string, std::string> labels = {{"label1", "value1"}};
+    builder.SetCommonTaskSpec(task_id,
+                              "dummy_task",
+                              Language::PYTHON,
+                              FunctionDescriptorBuilder::BuildPython(
+                                  "dummy_module", "dummy_class", "dummy_function", ""),
+                              JobID::Nil(),
+                              config,
+                              TaskID::Nil(),
+                              0,
+                              TaskID::Nil(),
+                              empty_address,
+                              1,
+                              false,
+                              false,
+                              -1,
+                              resources,
+                              resources,
+                              "",
+                              0,
+                              TaskID::Nil(),
+                              "",
+                              std::make_shared<rpc::RuntimeEnvInfo>(),
+                              "",
+                              true,
+                              labels);
+    return std::move(builder).ConsumeAndBuild();
+  }
+
+  std::unique_ptr<TaskEvent> GenFullStatusTaskEvent(TaskID task_id, int32_t attempt_num) {
+    // Generate a task spec
+    auto task_spec = BuildTaskSpec(task_id, attempt_num);
+
+    // Generate a status update
+    auto status_update = TaskStatusEvent::TaskStateUpdate(123u);
+
+    return std::make_unique<TaskStatusEvent>(
+        task_id,
+        JobID::FromInt(0),
+        attempt_num,
+        rpc::TaskStatus::RUNNING,
+        1,
+        /*is_actor_task_event=*/false,
+        std::make_shared<TaskSpecification>(task_spec),
+        status_update);
   }
 
   std::unique_ptr<TaskEvent> GenStatusTaskEvent(
@@ -327,7 +381,7 @@ TEST_P(TaskEventBufferTestDifferentDestination, TestFlushEvents) {
 
   std::vector<std::unique_ptr<TaskEvent>> task_events;
   for (const auto &task_id : task_ids) {
-    task_events.push_back(GenStatusTaskEvent(task_id, 0));
+    task_events.push_back(GenFullStatusTaskEvent(task_id, 0));
   }
 
   // Expect data flushed match. Generate expected data

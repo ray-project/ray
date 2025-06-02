@@ -20,7 +20,7 @@
 
 namespace ray {
 
-/// TODO: Update to match the new event aggregator service.
+/// The class that sends ray events to the event aggregator.
 class EventAggregatorExporter {
  public:
   EventAggregatorExporter() = default;
@@ -28,6 +28,11 @@ class EventAggregatorExporter {
       : client_impl_(client) {}
   virtual ~EventAggregatorExporter() = default;
 
+  /// Send ray events to the event aggregator.
+  ///
+  /// \param data_ptr The ray event data to be added.
+  /// \param callback The callback to be called when the event is added.
+  /// \return The status of the operation.
   virtual Status AsyncAddRayEventData(std::unique_ptr<rpc::events::RayEventData> data_ptr,
                                       std::function<void(Status status)> callback);
 

@@ -957,6 +957,7 @@ RAY_CONFIG(std::vector<std::string>, enable_export_api_write_config, {})
 RAY_CONFIG(bool, enable_core_worker_task_event_to_gcs, true)
 
 // Whether to enable the ray event to send to the event aggregator.
+// Currently, only task events are supported.
 RAY_CONFIG(bool, enable_core_worker_ray_event_to_aggregator, false)
 
 // Configuration for pipe logger buffer size.

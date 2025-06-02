@@ -43,11 +43,18 @@ namespace worker {
 
 using TaskAttempt = std::pair<TaskID, int32_t>;
 
-/// A  wrapper class that will be converted to rpc::TaskEvents
+/// A wrapper class that will be converted to protobuf task events representation.
 ///
-/// This will be created by CoreWorker and stored in TaskEventBuffer, and
-/// when it is being flushed periodically to GCS, it will be converted to
-/// rpc::TaskEvents.
+/// This will be created by CoreWorker and stored in TaskEventBuffer.
+///
+/// Currently there are 3 paths to send task events:
+/// 1. Flushing to GCS (will be deprecated): the flush to GCS will be periodic and it
+/// will be converted to rpc::TaskEvents.
+/// 2. Flushing to the event aggregator: the flush to the event aggregator will be
+/// periodic and it will be converted to rpc::events::RayEventData.
+/// 3. Export API (will be deprecated): Priodically flush to the file system. When
+/// flushing, it will be converted to rpc::ExportTaskEventData.
+///
 /// This is an optimization so that converting to protobuf (which is costly)
 /// will not happen in the critical path of task execution/submission.
 class TaskEvent {
@@ -160,6 +167,25 @@ class TaskStatusEvent : public TaskEvent {
   bool IsProfileEvent() const override { return false; }
 
  private:
+  // Helper functions to populate the task definition event of rpc::events::RayEvent
+  // This function assumes task_spec_ is not null.
+  // This function also checks T must be one of rpc::events::ActorTaskDefinitionEvent or
+  // rpc::events::TaskDefinitionEvent
+  template <typename T>
+  void PopulateRpcRayTaskDefinitionEvent(T &definition_event_data);
+
+  // Helper functions to populate the task execution event of rpc::events::RayEvent
+  // This function checks T must be one of rpc::events::ActorTaskExecutionEvent or
+  // rpc::events::TaskExecutionEvent
+  template <typename T>
+  void PopulateRpcRayTaskExecutionEvent(T &execution_event_data,
+                                        google::protobuf::Timestamp timestamp);
+
+  // Helper functions to populate the base fields of rpc::events::RayEvent
+  void PopulateRpcRayEventBaseFields(rpc::events::RayEvent &ray_event,
+                                     bool is_definition_event,
+                                     google::protobuf::Timestamp timestamp);
+
   /// The task status change if it's a status change event.
   rpc::TaskStatus task_status_ = rpc::TaskStatus::NIL;
   /// The time when the task status change happens.
@@ -421,7 +447,7 @@ class TaskEventBufferImpl : public TaskEventBuffer {
       const absl::flat_hash_set<TaskAttempt> &dropped_task_attempts_to_send,
       std::unique_ptr<rpc::events::RayEventData> &data);
 
-  /// TODO: Add comments
+  /// Reset the metrics counters for flush.
   void ResetCountersForFlush();
 
   /// Get the task events to GCS.
@@ -456,11 +482,13 @@ class TaskEventBufferImpl : public TaskEventBuffer {
   }
 
   /// Send task events to GCS.
-  /// TODO: Add comments
+  ///
+  /// \param data The task event data to be sent.
   void SendTaskEventsToGCS(std::unique_ptr<rpc::TaskEventData> data);
 
   /// Send ray events to the event aggregator.
-  /// TODO: Add comments
+  ///
+  /// \param data The ray event data to be sent.
   void SendRayEventsToAggregator(std::unique_ptr<rpc::events::RayEventData> data);
 
   /// Reset the task event counters during flushing data.
@@ -537,8 +565,6 @@ class TaskEventBufferImpl : public TaskEventBuffer {
   std::shared_ptr<gcs::GcsClient> gcs_client_ ABSL_GUARDED_BY(mutex_);
 
   /// Client to the event aggregator used to push ray events to it.
-  // TODO(myan): think about whether we should have one event_aggregator_exporter per
-  // core_worker or per node
   std::unique_ptr<EventAggregatorExporter> event_aggregator_exporter_;
 
   /// True if the TaskEventBuffer is enabled.
