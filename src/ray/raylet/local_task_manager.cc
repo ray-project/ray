@@ -319,16 +319,16 @@ void LocalTaskManager::DispatchScheduledTasksToWorkers() {
         continue;
       }
 
+      // Check if the task arguments can be pinned in memory and update state if it can.
       bool args_missing = false;
       bool success = PinTaskArgsIfMemoryAvailable(spec, &args_missing);
-      // An argument was evicted since this task was added to the dispatch
-      // queue. Move it back to the waiting queue. The caller is responsible
-      // for notifying us when the task is unblocked again.
       if (!success) {
         if (args_missing) {
+          // An argument was evicted since this task was added to the dispatch
+          // queue. Move it back to the waiting queue. The caller is responsible
+          // for notifying us when the task is unblocked again.
           // Insert the task at the head of the waiting queue because we
           // prioritize spilling from the end of the queue.
-          // TODO(scv119): where does pulling happen?
           auto it = waiting_task_queue_.insert(waiting_task_queue_.begin(),
                                                std::move(*work_it));
           RAY_CHECK(waiting_tasks_index_.emplace(task_id, it).second);
@@ -726,6 +726,7 @@ void LocalTaskManager::TaskFinished(std::shared_ptr<WorkerInterface> worker,
 // TODO(scv119): task args related logic probaly belongs task dependency manager.
 bool LocalTaskManager::PinTaskArgsIfMemoryAvailable(const TaskSpecification &spec,
                                                     bool *args_missing) {
+  // Are arguments missing
   std::vector<std::unique_ptr<RayObject>> args;
   auto deps = spec.GetDependencyIds();
   if (!deps.empty()) {
@@ -750,12 +751,32 @@ bool LocalTaskManager::PinTaskArgsIfMemoryAvailable(const TaskSpecification &spe
       }
     }
   }
-
   *args_missing = false;
+
+  // Pinning bookkeeping
   size_t task_arg_bytes = 0;
-  for (auto &arg : args) {
-    task_arg_bytes += arg->GetSize();
+  if (executing_task_args_.contains(spec.TaskId())) {
+    // TODO(swang): This should really be an assertion, but we can sometimes
+    // receive a duplicate task request if there is a failure and the original
+    // version of the task has not yet been canceled.
+    RAY_LOG(DEBUG) << "Scheduler received duplicate task " << spec.TaskId()
+                   << ", most likely because the first execution failed";
+    return true;
   }
+  for (size_t i = 0; i < deps.size(); i++) {
+    auto [it, pinned_task_arg_inserted] =
+        pinned_task_arguments_.emplace(deps[i], std::make_pair(std::move(args[i]), 0));
+    auto &[arg, num_dependent_tasks] = it->second;
+    if (pinned_task_arg_inserted) {
+      // This is the first task that needed this argument.
+      pinned_task_arguments_bytes_ += arg->GetSize();
+    }
+    task_arg_bytes += arg->GetSize();
+    num_dependent_tasks++;
+  }
+  executing_task_args_.emplace(spec.TaskId(), std::move(deps));
+
+  // Can the arguments be pinned
   RAY_LOG(DEBUG) << "RayTask " << spec.TaskId() << " has args of size " << task_arg_bytes;
   if (max_pinned_task_arguments_bytes_ == 0) {
     // No limit on pinned task arguments.
@@ -767,32 +788,12 @@ bool LocalTaskManager::PinTaskArgsIfMemoryAvailable(const TaskSpecification &spe
         << ", but the max memory allowed for arguments of executing tasks is only "
         << max_pinned_task_arguments_bytes_;
   } else if (pinned_task_arguments_bytes_ > max_pinned_task_arguments_bytes_) {
+    ReleaseTaskArgs(spec.TaskId());
     RAY_LOG(DEBUG) << "Cannot dispatch task " << spec.TaskId()
                    << " with arguments of size " << task_arg_bytes
                    << " current pinned bytes is " << pinned_task_arguments_bytes_;
     return false;
   }
-
-  if (executing_task_args_.contains(spec.TaskId())) {
-    // TODO(swang): This should really be an assertion, but we can sometimes
-    // receive a duplicate task request if there is a failure and the original
-    // version of the task has not yet been canceled.
-    RAY_LOG(DEBUG) << "Scheduler received duplicate task " << spec.TaskId()
-                   << ", most likely because the first execution failed";
-    return true;
-  }
-
-  for (size_t i = 0; i < deps.size(); i++) {
-    auto [it, pinned_task_arg_inserted] =
-        pinned_task_arguments_.emplace(deps[i], std::make_pair(std::move(args[i]), 0));
-    auto &[arg, num_dependent_tasks] = it->second;
-    if (pinned_task_arg_inserted) {
-      // This is the first task that needed this argument.
-      pinned_task_arguments_bytes_ += arg->GetSize();
-    }
-    num_dependent_tasks++;
-  }
-  executing_task_args_.emplace(spec.TaskId(), std::move(deps));
 
   RAY_LOG(DEBUG) << "Size of pinned task args is now " << pinned_task_arguments_bytes_;
   return true;
