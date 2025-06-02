@@ -9,16 +9,16 @@ def convert_notebook(input_path: str, output_path: str) -> None:
     Reads a Jupyter notebook and converts it into a Python script.
 
     This function processes each code cell from the input notebook:
-    - Cells starting with `%%bash` (cell magic) are converted into a
-      single `subprocess.run` call executing the cell's content as a bash script.
-    - For other code cells, lines starting with `!` (IPython shell escape)
-      are converted into individual `subprocess.run` calls.
-    - Regular Python code lines are written to the script as is.
+    - Converts cells starting with `%%bash` (cell magic) into a
+      single `subprocess.run` call that executes the cell's content as a bash script.
+    - For other code cells, converts lines starting with `!` (IPython shell escape)
+      into individual `subprocess.run` calls.
+    - Writes regular Python code lines to the script as is.
 
-    All `subprocess.run` calls are configured to use `shell=True`, `check=True`
+    All `subprocess.run` calls use `shell=True`, `check=True`
     (raising an exception on non-zero exit codes), and `executable='/bin/bash'`.
-    The `import subprocess` statement is added once at the beginning of the
-    script if any bash commands or shell escapes are found.
+    The function adds the `import subprocess` statement once at the beginning of the
+    script if it finds any bash commands or shell escapes.
     """
     nb = nbformat.read(input_path, as_version=4)
     # Flag to ensure 'import subprocess' is written only once in the output script.
@@ -47,7 +47,7 @@ def convert_notebook(input_path: str, output_path: str) -> None:
                 )
             else:
                 # For non-%%bash cells, check for IPython '!' shell escapes within the cell.
-                # These lines will be converted individually.
+                # Convert these lines individually.
                 is_shell_escape_cell = any(
                     line.lstrip().startswith("!") for line in source_lines
                 )
