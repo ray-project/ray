@@ -14,7 +14,8 @@ import requests
 import ray
 import ray.util.state as state_api
 from ray import serve
-from ray._private.test_utils import SignalActor, wait_for_condition
+from ray._common.test_utils import SignalActor
+from ray._private.test_utils import wait_for_condition
 from ray.serve._private.common import (
     DeploymentID,
     DeploymentStatus,
