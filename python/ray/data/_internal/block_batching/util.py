@@ -41,28 +41,57 @@ def _calculate_ref_hits(refs: List[ObjectRef[Any]]) -> Tuple[int, int, int]:
 def resolve_block_refs(
     block_ref_iter: Iterator[ObjectRef[Block]],
     stats: Optional[DatasetStats] = None,
+    batch_size: int = 5,
 ) -> Iterator[Block]:
     """Resolves the block references for each logical batch.
 
     Args:
         block_ref_iter: An iterator over block object references.
         stats: An optional stats object to recording block hits and misses.
+        batch_size: Number of block references to batch in a single ray.get() call.
+            Defaults to 5 to balance memory usage and performance while being conservative
+            for backpressure scenarios.
     """
     hits = 0
     misses = 0
     unknowns = 0
 
+    # Collect block references in batches
+    batch = []
     for block_ref in block_ref_iter:
-        current_hit, current_miss, current_unknown = _calculate_ref_hits([block_ref])
-        hits += current_hit
-        misses += current_miss
-        unknowns += current_unknown
+        batch.append(block_ref)
 
-        # TODO(amogkam): Optimized further by batching multiple references in a single
-        # `ray.get()` call.
+        # Process batch when it reaches the desired size
+        if len(batch) >= batch_size:
+            # Calculate ref hits for the entire batch
+            batch_hits, batch_misses, batch_unknowns = _calculate_ref_hits(batch)
+            hits += batch_hits
+            misses += batch_misses
+            unknowns += batch_unknowns
+
+            # Batch the ray.get() call for better performance
+            with stats.iter_get_s.timer() if stats else nullcontext():
+                blocks = ray.get(batch)
+
+            # Yield all blocks in the batch
+            for block in blocks:
+                yield block
+
+            # Reset batch for next iteration
+            batch = []
+
+    # Process any remaining block references in the final batch
+    if batch:
+        batch_hits, batch_misses, batch_unknowns = _calculate_ref_hits(batch)
+        hits += batch_hits
+        misses += batch_misses
+        unknowns += batch_unknowns
+
         with stats.iter_get_s.timer() if stats else nullcontext():
-            block = ray.get(block_ref)
-        yield block
+            blocks = ray.get(batch)
+
+        for block in blocks:
+            yield block
 
     if stats:
         stats.iter_blocks_local = hits

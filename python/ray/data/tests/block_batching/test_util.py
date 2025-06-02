@@ -36,6 +36,43 @@ def test_resolve_block_refs(ray_start_regular_shared):
     assert list(resolved_iter) == [0, 1, 2]
 
 
+def test_resolve_block_refs_batching(ray_start_regular_shared):
+    """Test that batching in resolve_block_refs works correctly and improves performance."""
+    import time
+
+    # Create a larger number of block references to test batching
+    num_blocks = 50
+    block_refs = [ray.put(i) for i in range(num_blocks)]
+
+    # Test with different batch sizes
+    for batch_size in [1, 5, 10, 25]:
+        start_time = time.time()
+        resolved_iter = resolve_block_refs(iter(block_refs), batch_size=batch_size)
+        results = list(resolved_iter)
+        end_time = time.time()
+
+        # Verify correctness
+        assert results == list(range(num_blocks))
+
+        # Print timing for manual verification (larger batch sizes should be faster)
+        print(f"Batch size {batch_size}: {end_time - start_time:.4f} seconds")
+
+    # Test edge cases
+    # Empty iterator
+    empty_iter = resolve_block_refs(iter([]), batch_size=10)
+    assert list(empty_iter) == []
+
+    # Single block
+    single_ref = [ray.put(42)]
+    single_iter = resolve_block_refs(iter(single_ref), batch_size=10)
+    assert list(single_iter) == [42]
+
+    # Batch size larger than number of blocks
+    small_refs = [ray.put(i) for i in range(3)]
+    large_batch_iter = resolve_block_refs(iter(small_refs), batch_size=10)
+    assert list(large_batch_iter) == [0, 1, 2]
+
+
 @pytest.mark.parametrize("block_size", [1, 10])
 @pytest.mark.parametrize("drop_last", [True, False])
 def test_blocks_to_batches(block_size, drop_last):
