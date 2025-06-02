@@ -69,9 +69,14 @@ def test_failure_without_runtime_env(start_cluster_shared_two_nodes):
     with pytest.raises(ModuleNotFoundError):
         ray.get(actor_obj_ref)
 
+
 @pytest.mark.skipif(sys.platform == "win32", reason="Flaky on Windows.")
 @pytest.mark.parametrize("option", ["working_dir", "py_modules"])
-@pytest.mark.parametrize("remote_uri", [HTTPS_PACKAGE_URI, S3_PACKAGE_URI, S3_WHL_PACKAGE_URI], ids=["https", "s3", "whl"])
+@pytest.mark.parametrize(
+    "remote_uri",
+    [HTTPS_PACKAGE_URI, S3_PACKAGE_URI, S3_WHL_PACKAGE_URI],
+    ids=["https", "s3", "whl"],
+)
 @pytest.mark.parametrize("per_task_actor", [True, False])
 def test_remote_package_uri_multi_node(
     start_cluster_shared_two_nodes, option, remote_uri, per_task_actor
