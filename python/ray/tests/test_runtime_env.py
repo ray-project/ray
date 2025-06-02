@@ -1,22 +1,16 @@
-import logging
+"""All tests in this file use a module-scoped fixture to reduce runtime.
+
+If you need a customized Ray instance (e.g., to change system config or env vars),
+put the test in `test_runtime_env_standalone.py`.
+"""
 import os
 import sys
-import time
-from pathlib import Path
-from typing import List
 
 import pytest
 
 import ray
-from ray._private.runtime_env.context import RuntimeEnvContext
-from ray._private.runtime_env.plugin import RuntimeEnvPlugin
-from ray._private.test_utils import (
-    get_error_message,
-    get_log_sources,
-    wait_for_condition,
-)
 from ray.exceptions import RuntimeEnvSetupError
-from ray.runtime_env import RuntimeEnv
+from ray.runtime_env import RuntimeEnv, RuntimeEnvConfig
 
 
 @pytest.mark.parametrize("runtime_env_class", [dict, RuntimeEnv])

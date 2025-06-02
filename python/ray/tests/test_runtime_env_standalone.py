@@ -1,3 +1,8 @@
+"""runtime_env tests that require their own custom fixture.
+
+The other runtime_env tests use a shared Ray instance across the test module
+to reduce overheads & overall test runtime.
+"""
 import logging
 import os
 import sys
