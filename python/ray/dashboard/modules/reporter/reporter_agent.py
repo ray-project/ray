@@ -401,7 +401,7 @@ class ReporterAgent(
         self._agent_proc = None
         # The last reported worker proc names (e.g., ray::*).
         self._latest_worker_proc_names = set()
-        self._latest_gpu_proc = {}
+        self._latest_gpu_proc = set()
         self._network_stats_hist = [(0, (0.0, 0.0))]  # time, (sent, recv)
         self._disk_io_stats_hist = [
             (0, (0.0, 0.0, 0, 0))
@@ -1140,7 +1140,7 @@ class ReporterAgent(
 
         # Generate records for GPU utilization and memory usage
         records = []
-        gpu_proc = {}
+        gpu_proc = set()
 
         def _generate_records(proc_name, pid):
             for gpu in gpus:
@@ -1150,9 +1150,9 @@ class ReporterAgent(
                     if pid == proc["pid"]:
                         tags = {
                             "Component": proc_name,
-                            "pid": str(pid),
-                            "GpuIndex": str(gpu["index"]),
-                            "GpuDeviceName": gpu["name"] if gpu["name"] else "",
+                            # "pid": str(pid),
+                            # "GpuIndex": str(gpu["index"]),
+                            # "GpuDeviceName": gpu["name"] if gpu["name"] else "",
                         }
                         records.append(
                             Record(
@@ -1171,32 +1171,33 @@ class ReporterAgent(
                                     tags=tags,
                                 )
                             )
-                            tags["_has_gpu_utilization"] = "true"
-                        gpu_proc[pid] = tags
+                        gpu_proc.add(proc_name)
                         break  # Same pid can be in multiple GPUs
 
         for pid, proc_name in worker_processes.items():
             _generate_records(proc_name, pid)
 
         # Generate reset records for stale processes
-        stale_procs = self._latest_gpu_proc.keys() - gpu_proc.keys()
+        stale_procs = self._latest_gpu_proc - gpu_proc
         for stale_proc in stale_procs:
-            tags = self._latest_gpu_proc[stale_proc]
             records.append(
                 Record(
                     gauge=METRICS_GAUGES["component_gpu_memory_usage"],
                     value=0,
-                    tags=tags,
+                    tags={
+                        "Component": stale_proc,
+                    },
                 )
             )
-            if "_has_gpu_utilization" in tags:
-                records.append(
-                    Record(
-                        gauge=METRICS_GAUGES["component_gpu_utilization"],
-                        value=0,
-                        tags=tags,
-                    )
+            records.append(
+                Record(
+                    gauge=METRICS_GAUGES["component_gpu_utilization"],
+                    value=0,
+                    tags={
+                        "Component": stale_proc,
+                    },
                 )
+            )
 
         self._latest_gpu_proc = gpu_proc
 

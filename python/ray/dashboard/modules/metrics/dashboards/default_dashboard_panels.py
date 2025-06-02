@@ -463,8 +463,8 @@ DEFAULT_GRAFANA_PANELS = [
         unit="GPUs",
         targets=[
             Target(
-                expr="sum(ray_component_gpu_utilization{{{global_filters}}} / 100) by (Component, GpuIndex, GpuDeviceName)",
-                legend="{{Component}}, gpu.{{GpuIndex}}, {{GpuDeviceName}}",
+                expr="sum(ray_component_gpu_utilization{{{global_filters}}} / 100) by (Component)",
+                legend="{{Component}}",
             ),
         ],
     ),
@@ -475,8 +475,8 @@ DEFAULT_GRAFANA_PANELS = [
         unit="bytes",
         targets=[
             Target(
-                expr="sum(ray_component_gpu_memory_usage{{{global_filters}}}) by (Component, GpuIndex, GpuDeviceName)",
-                legend="{{Component}}, gpu.{{GpuIndex}}, {{GpuDeviceName}}",
+                expr="sum(ray_component_gpu_memory_usage{{{global_filters}}}) by (Component)",
+                legend="{{Component}}",
             ),
             Target(
                 expr='(sum(ray_node_gram_available{{instance=~"$Instance",{global_filters}}}) + sum(ray_node_gram_used{{instance=~"$Instance",{global_filters}}}))*1024*1024',
