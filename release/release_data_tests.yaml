@@ -19,14 +19,9 @@
 # Reading tests
 ###############
 
-- name: "read_parquet_{{scaling}}"
-
+- name: read_parquet_fixed_size
   cluster:
-    cluster_compute: "{{scaling}}_cpu_compute.yaml"
-
-  matrix:
-    setup:
-      scaling: [fixed_size, autoscaling]
+    cluster_compute: fixed_size_cpu_compute.yaml
 
   run:
     timeout: 3600
@@ -34,35 +29,65 @@
       python read_and_consume_benchmark.py
       s3://ray-benchmark-data-internal/imagenet/parquet --format parquet
       --iter-bundles
-  
+
   variations:
     - __suffix__: kuberay
       env: kuberay
       frequency: manual
       cluster:
-        cluster_compute: "kuberay_{{scaling}}_cpu_compute.yaml"
+        cluster_compute: kuberay_fixed_size_cpu_compute.yaml
 
-- name: "read_images_{{scaling}}"
-
+- name: read_parquet_autoscaling
   cluster:
-    cluster_compute: "{{scaling}}_cpu_compute.yaml"
+    cluster_compute: autoscaling_cpu_compute.yaml
 
-  matrix:
-    setup:
-      scaling: [fixed_size, autoscaling]
+  run:
+    timeout: 3600
+    script: >
+      python read_and_consume_benchmark.py
+      s3://ray-benchmark-data-internal/imagenet/parquet --format parquet
+      --iter-bundles
+
+  variations:
+    - __suffix__: kuberay
+      env: kuberay
+      frequency: manual
+      cluster:
+        cluster_compute: kuberay_autoscaling_cpu_compute.yaml
+
+- name: read_images_fixed_size
+  cluster:
+    cluster_compute: fixed_size_cpu_compute.yaml
 
   run:
     timeout: 3600
     script: >
       python read_and_consume_benchmark.py
       s3://anyscale-imagenet/ILSVRC/Data/CLS-LOC/ --format image --iter-bundles
-  
+
   variations:
     - __suffix__: kuberay
       env: kuberay
       frequency: manual
       cluster:
-        cluster_compute: "kuberay_{{scaling}}_cpu_compute.yaml"
+        cluster_compute: kuberay_fixed_size_cpu_compute.yaml
+
+- name: read_images_autoscaling
+  cluster:
+    cluster_compute: autoscaling_cpu_compute.yaml
+
+  run:
+    timeout: 3600
+    script: >
+      python read_and_consume_benchmark.py
+      s3://anyscale-imagenet/ILSVRC/Data/CLS-LOC/ --format image --iter-bundles
+
+  variations:
+    - __suffix__: kuberay
+      env: kuberay
+      frequency: manual
+      cluster:
+        cluster_compute: kuberay_autoscaling_cpu_compute.yaml
 
 - name: read_tfrecords
   run:
@@ -72,14 +97,9 @@
       s3://ray-benchmark-data-internal/imagenet/tfrecords --format tfrecords
       --iter-bundles
 
-- name: "read_from_uris_{{scaling}}"
-
+- name: read_from_uris_fixed_size
   cluster:
-    cluster_compute: "{{scaling}}_cpu_compute.yaml"
-
-  matrix:
-    setup:
-      scaling: [fixed_size, autoscaling]
+    cluster_compute: fixed_size_cpu_compute.yaml
 
   run:
     timeout: 5400
@@ -90,7 +110,22 @@
       env: kuberay
       frequency: manual
       cluster:
-        cluster_compute: "kuberay_{{scaling}}_cpu_compute.yaml"
+        cluster_compute: kuberay_fixed_size_cpu_compute.yaml
+
+- name: read_from_uris_autoscaling
+  cluster:
+    cluster_compute: autoscaling_cpu_compute.yaml
+
+  run:
+    timeout: 5400
+    script: python read_from_uris_benchmark.py
+  
+  variations:
+    - __suffix__: kuberay
+      env: kuberay
+      frequency: manual
+      cluster:
+        cluster_compute: kuberay_autoscaling_cpu_compute.yaml
 
 - name: read_images_comparison_microbenchmark_single_node
   frequency: manual
@@ -119,27 +154,39 @@
 # Aggregation tests
 ###################
 
-- name: "count_parquet_{{scaling}}"
-
+- name: count_parquet_fixed_size
   cluster:
-    cluster_compute: "{{scaling}}_cpu_compute.yaml"
-
-  matrix:
-    setup:
-      scaling: [fixed_size, autoscaling]
+    cluster_compute: fixed_size_cpu_compute.yaml
 
   run:
     timeout: 600
     script: >
       python read_and_consume_benchmark.py
       s3://ray-benchmark-data/tpch/parquet/sf10000/lineitem --format parquet --count
-  
+
   variations:
     - __suffix__: kuberay
       env: kuberay
       frequency: manual
       cluster:
-        cluster_compute: "kuberay_{{scaling}}_cpu_compute.yaml"
+        cluster_compute: kuberay_fixed_size_cpu_compute.yaml
+
+- name: count_parquet_autoscaling
+  cluster:
+    cluster_compute: autoscaling_cpu_compute.yaml
+
+  run:
+    timeout: 600
+    script: >
+      python read_and_consume_benchmark.py
+      s3://ray-benchmark-data/tpch/parquet/sf10000/lineitem --format parquet --count
+
+  variations:
+    - __suffix__: kuberay
+      env: kuberay
+      frequency: manual
+      cluster:
+        cluster_compute: kuberay_autoscaling_cpu_compute.yaml
 
 ###############
 # Groupby tests
