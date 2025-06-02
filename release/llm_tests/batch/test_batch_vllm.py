@@ -164,6 +164,17 @@ def test_vllm_llama_lora():
     assert all("resp" in out for out in outs)
 
 
+@ray.remote
+def delete_torch_compile_cache_on_worker():
+    """Delete torch compile cache on worker.
+    Avoids AssertionError due to torch compile cache corruption (https://github.com/vllm-project/vllm/issues/18851)
+    """
+    torch_compile_cache_path = os.path.expanduser("~/.cache/vllm/torch_compile_cache")
+    if os.path.exists(torch_compile_cache_path):
+        shutil.rmtree(torch_compile_cache_path)
+        print(f"Deleted torch compile cache at {torch_compile_cache_path}")
+
+
 @pytest.mark.parametrize(
     "model_source,tp_size,pp_size,concurrency,sample_size",
     [
@@ -178,10 +189,7 @@ def test_vllm_vision_language_models(
 ):
     """Test vLLM with vision language models using different configurations."""
 
-    # Avoid AssertionError due to torch compile cache corruption (https://github.com/vllm-project/vllm/issues/18851)
-    torch_compile_cache_path = os.path.expanduser("~/.cache/vllm/torch_compile_cache")
-    if os.path.exists(torch_compile_cache_path):
-        shutil.rmtree(torch_compile_cache_path)
+    ray.get(delete_torch_compile_cache_on_worker.remote())
 
     # vLLM v1 does not support decoupled tokenizer,
     # but since the tokenizer is in a separate process,
