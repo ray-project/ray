@@ -142,4 +142,4 @@ class DLinear(nn.Module):
             )  # Output: [Batch, Channel, PredLen]
 
         output_x = seasonal_output + trend_output  # Shape: [Batch, Channel, PredLen]
-        return output_x.permute(0, 2, 1)  # to [Batch, PredLen, Channel]
+        return output_x.permute(0, 2, 1)  # to [Batch, PredLen, Channel].
