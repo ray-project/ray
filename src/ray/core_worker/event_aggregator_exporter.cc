@@ -21,7 +21,6 @@
 
 namespace ray {
 
-/// TODO: Update to match the new event aggregator service.
 Status EventAggregatorExporter::AsyncAddRayEventData(
     std::unique_ptr<rpc::events::RayEventData> data_ptr,
     std::function<void(Status status)> callback) {
