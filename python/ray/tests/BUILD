@@ -217,6 +217,7 @@ py_test_module_list(
 # Ray Client runtime_env tests that *don't* require being part of the post-wheel build.
 py_test_module_list(
     size = "large",
+    data = ["pip_install_test-0.5-py3-none-any.whl"],
     env = {
         "RAY_CLIENT_MODE": "1",
     },
@@ -226,7 +227,6 @@ py_test_module_list(
         "test_runtime_env_working_dir.py",
         "test_runtime_env_working_dir_remote_uri.py",
     ],
-    data = ["pip_install_test-0.5-py3-none-any.whl"],
     name_suffix = "_client_mode",
     tags = [
         "exclusive",
@@ -242,6 +242,10 @@ py_test_module_list(
 # Ray Client runtime_env tests that *do* require being part of the post-wheel build.
 py_test_module_list(
     size = "large",
+    data = [
+        "pip_install_test-0.5-py3-none-any.whl",
+        "//python/ray/experimental/packaging/example_pkg",
+    ],
     env = {
         "RAY_CLIENT_MODE": "1",
     },
@@ -251,15 +255,11 @@ py_test_module_list(
         "test_runtime_env_working_dir.py",
         "test_runtime_env_working_dir_remote_uri.py",
     ],
-    data = [
-        "pip_install_test-0.5-py3-none-any.whl",
-        "//python/ray/experimental/packaging/example_pkg",
-    ],
     name_suffix = "_client_mode",
     tags = [
         "exclusive",
-        "ray_client",
         "post_wheel_build",
+        "ray_client",
         "team:core",
     ],
     deps = [
