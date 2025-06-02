@@ -6,7 +6,6 @@
 </div>
 
 
-## Overview
 
 These tutorials implement an end-to-end time-series application including:
 
