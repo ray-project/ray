@@ -127,5 +127,11 @@ TEST_F(MetricTest, TestHistogramMetric) {
       "legacy_metric_histogram_test"));
 }
 
+TEST_F(MetricTest, TestCounterMetric) {
+  ASSERT_TRUE(OpenTelemetryMetricRecorder::GetInstance().IsMetricRegistered(
+      "metric_counter_test"));
+  STATS_metric_counter_test.Record(100.0, {{"Tag1", "Value1"}, {"Tag2", "Value2"}});
+}
+
 }  // namespace telemetry
 }  // namespace ray
