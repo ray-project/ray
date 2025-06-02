@@ -1,7 +1,7 @@
 cloud_id: {{env["ANYSCALE_CLOUD_ID"]}}
 region: us-west-2
 
-# Head node
+# Head node.
 head_node_type:
   name: head
   instance_type: m5.2xlarge
