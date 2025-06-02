@@ -71,7 +71,7 @@ class _DAGOperationGraphNode:
         operation: _DAGNodeOperation,
         task_idx: int,
         actor_handle: "ray.actor.ActorHandle",
-        nccl_op_type: Optional[_NcclOperationType] = None,
+        nccl_op_type: Optional[_NcclOperationType],
     ):
         """
         _DAGOperationGraphNode represents a node in the DAG operation graph.
@@ -376,8 +376,12 @@ def _build_dag_node_operation_graph(
         for i, node in enumerate(op_nodes):
             assert node.task_idx not in graph
             graph[node.task_idx] = node
-            if i > 0 and not node.is_nccl_op:
-                _add_edge(op_nodes[i - 1], node, control_dependency=True)
+            if i > 0:
+                prev_node = op_nodes[i - 1]
+                # Skip adding a control dependency edge for the created NCCL P2P
+                # send/recv nodes, which have the same task index as the previous node.
+                if prev_node.task_idx != node.task_idx:
+                    _add_edge(prev_node, node, control_dependency=True)
 
     # Add data edges from an upstream task to its downstream tasks.
     # Set synchronous nodes for NCCL P2P operations.
@@ -685,9 +689,7 @@ def _generate_overlapped_execution_schedule(
     compute node to swap with so that the NCCL read operation can be overlapped
     with computation.
 
-    Overlapping collective communications and computations is in alpha stage.
-    They are overlapped by prioritizing NCCL operations over non-NCCL operations
-    and executing them in different streams.
+    Collective operations are not yet supported.
 
     Args:
         actor_to_execution_schedule: A dictionary that maps an actor handle to
@@ -696,7 +698,7 @@ def _generate_overlapped_execution_schedule(
 
     Returns:
         A dictionary that maps an actor handle to the overlapped execution schedule
-            for the actor.
+        for the actor.
     """
 
     actor_to_overlapped_schedule: Dict[
