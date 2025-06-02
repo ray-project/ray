@@ -10,7 +10,7 @@ from starlette.responses import StreamingResponse
 
 import ray
 from ray import serve
-from ray._private.test_utils import SignalActor
+from ray._common.test_utils import SignalActor
 from ray.serve.handle import DeploymentHandle
 
 
