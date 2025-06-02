@@ -4,6 +4,7 @@ import html
 import itertools
 import logging
 import re
+import math
 import time
 import warnings
 from typing import (
@@ -1575,16 +1576,43 @@ class Dataset:
         return Dataset(plan, logical_plan)
 
     @PublicAPI(api_group=SSR_API_GROUP)
-    def compact(self,
-        target_block_bytes: Union[int, str] = "128MiB"):
+    def compact(self, target_block_bytes: Union[int, str] = "128MiB"):
         """
-        Repartition Ray Dataset so block sizes are close to target_block_bytes.
+        Repartition the :class:`Dataset` so that each block is approximately the target size in bytes.
+
+        This method is particularly useful for tuning performance and optimizing I/O by ensuring that
+        blocks are of a size appropriate for downstream processing or storage.
+        For example, tuning block sizes can improve read and write speeds, and can also be used to optimize
+        the number of output files when saving data.
+        See :ref:`Advanced: Performance Tips and Tuning <data_performance_tips>` for more details.
+
+        If your workload is I/O-bound, setting an appropriate block size can reduce file system overhead and improve parallelism.
+        This method will repartition the dataset internally by combining smaller blocks or splitting larger blocks
+        so that each block is close to ``target_block_bytes``. No shuffle is performed, and the minimal data movement
+        necessary is used to achieve the target sizes.
+
+        .. note::
+
+            ``compact`` only triggers repartitioning if the current block sizes differ significantly from the requested target size.
+            Block sizes are best-effort approximations; the operation chooses the number of blocks so the average is near the target value.
+
+        Example:
+            >>> import ray
+            >>> ds = ray.data.range(1_000_000).repartition(50).materialize()
+            >>> ds = ds.compact("64MiB")
+            >>> print(ds.num_blocks())
+            # The number of blocks will now be set so each is about 64MiB, depending on data density.
+
+        Time complexity: O(dataset size / parallelism)
 
         Args:
-            target_block_bytes: Bytes as int or string (e.g. '128MiB'). Must be >= 1MiB.
+            target_block_bytes: Target block size in bytes. Can be specified as an integer number of bytes or as a string with units
+                (e.g., "128MiB", "1GiB"). Minimum is 1 MiB. Supported units are B, KiB, MiB, GiB, TiB (case-insensitive, spaces optional).
+                It is recommended to keep target_block_bytes around 128MiB.
 
         Returns:
-            The repartitioned Dataset (or original).
+            The repartitioned :class:`Dataset` with blocks approximately of the specified size,
+            or the original :class:`Dataset` if no repartitioning is needed.
         """
         SIZE_UNITS = {
             "B": 1,
@@ -1601,7 +1629,9 @@ class Dataset:
         def parse_size(size: Union[int, str]) -> int:
             if isinstance(size, int):
                 if size < 1:
-                    raise ValueError("target_block_bytes must be a positive integer or valid size string.")
+                    raise ValueError(
+                        "target_block_bytes must be a positive integer or valid size string."
+                    )
                 return size
             elif isinstance(size, str):
                 size = size.strip().upper().replace(" ", "")
@@ -1617,7 +1647,9 @@ class Dataset:
                 value, unit = match.groups()
                 value = float(value)
                 if unit not in SIZE_UNITS:
-                    raise ValueError(f"Unknown unit '{unit}'. Known: {list(SIZE_UNITS.keys())}")
+                    raise ValueError(
+                        f"Unknown unit '{unit}'. Known: {list(SIZE_UNITS.keys())}"
+                    )
                 return int(value * SIZE_UNITS[unit])
             else:
                 raise TypeError("target_block_bytes must be int or str")
@@ -1625,10 +1657,10 @@ class Dataset:
         def human_size(num_bytes: int) -> str:
             """Format bytes as human-readable (B, KiB, MiB, GiB, TiB)."""
             thresholds = [
-                (1024 ** 4, "TiB"),
-                (1024 ** 3, "GiB"),
-                (1024 ** 2, "MiB"),
-                (1024 ** 1, "KiB"),
+                (1024**4, "TiB"),
+                (1024**3, "GiB"),
+                (1024**2, "MiB"),
+                (1024**1, "KiB"),
             ]
             for factor, suffix in thresholds:
                 if num_bytes >= factor:
@@ -1664,11 +1696,19 @@ class Dataset:
 
         if ideal_blocks != num_blocks:
             logger.info(f"Repartitioning from {num_blocks} to {ideal_blocks} blocks.")
-            return self.repartition(ideal_blocks)
+            op = Repartition(
+                self._logical_plan.dag,
+                num_outputs=ideal_blocks,
+                shuffle=False,
+                keys=None,
+                sort=False,
+            )
+            plan = self._plan.copy()
+            logical_plan = LogicalPlan(op, self.context)
+            return Dataset(plan, logical_plan)
         else:
-            logger.info("No repartition needed; already at optimal size.")
+            logger.info("No repartition needed; already at target size.")
             return self
-
 
     @AllToAllAPI
     @PublicAPI(api_group=SSR_API_GROUP)
