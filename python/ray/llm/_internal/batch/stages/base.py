@@ -1,9 +1,10 @@
 """The base class for all stages."""
 import logging
-from typing import Any, Dict, AsyncIterator, List, Callable, Type, Optional
+from typing import Any, AsyncIterator, Callable, Dict, List, Optional, Type
 
 import pyarrow
 from pydantic import BaseModel, Field
+
 from ray.data.block import UserDefinedFunction
 
 logger = logging.getLogger(__name__)

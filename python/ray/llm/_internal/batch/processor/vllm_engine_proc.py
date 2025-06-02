@@ -1,40 +1,38 @@
 """The vLLM engine processor."""
 
 from typing import Any, Dict, Optional
+
+import transformers
 from pydantic import Field, root_validator
 
 import ray
-from ray.data.block import UserDefinedFunction
 from ray.data._internal.execution.operators.actor_pool_map_operator import (
     DEFAULT_MAX_TASKS_IN_FLIGHT,
 )
+from ray.data.block import UserDefinedFunction
+from ray.llm._internal.batch.observability.usage_telemetry.usage import (
+    BatchModelTelemetry,
+    TelemetryAgent,
+    get_or_create_telemetry_agent,
+)
 from ray.llm._internal.batch.processor.base import (
-    Processor,
     OfflineProcessorConfig,
+    Processor,
     ProcessorBuilder,
 )
 from ray.llm._internal.batch.stages import (
-    vLLMEngineStage,
     ChatTemplateStage,
+    DetokenizeStage,
     PrepareImageStage,
     TokenizeStage,
-    DetokenizeStage,
+    vLLMEngineStage,
 )
 from ray.llm._internal.batch.stages.vllm_engine_stage import vLLMTaskType
-from ray.llm._internal.batch.observability.usage_telemetry.usage import (
-    TelemetryAgent,
-    BatchModelTelemetry,
-)
 from ray.llm._internal.common.observability.telemetry_utils import DEFAULT_GPU_TYPE
 from ray.llm._internal.common.utils.download_utils import (
-    download_model_files,
     NodeModelDownloadable,
+    download_model_files,
 )
-from ray.llm._internal.batch.observability.usage_telemetry.usage import (
-    get_or_create_telemetry_agent,
-)
-
-import transformers
 
 DEFAULT_MODEL_ARCHITECTURE = "UNKNOWN_MODEL_ARCHITECTURE"
 
