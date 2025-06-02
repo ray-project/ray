@@ -114,7 +114,7 @@ def main() -> None:
 
     args = parser.parse_args()
 
-    # Get absolute paths and validate inputs
+    # Get absolute paths and validate inputs.
     target_dir = Path(args.target_dir).resolve()
     if not target_dir.exists() or not target_dir.is_dir():
         print(
