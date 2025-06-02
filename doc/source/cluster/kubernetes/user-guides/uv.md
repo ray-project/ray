@@ -1,5 +1,6 @@
+<!-- vale off -->
 (kuberay-uv)=
-
+<!-- vale on -->
 # Using `uv` for Python package management
 
 [uv](https://github.com/astral-sh/uv) is a modern Python package manager written in Rust.

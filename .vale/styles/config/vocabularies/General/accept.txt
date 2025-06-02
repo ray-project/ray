@@ -74,5 +74,6 @@ CRD[s]
 VM[s]
 uncaptured
 URI[s]
+uv
 [Vv]ision LMs
 VS Code
