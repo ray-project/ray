@@ -35,7 +35,7 @@ def find_notebooks(target_dir: str) -> List[Path]:
             # Files without numerical prefix go last, sorted alphabetically.
             return (float("inf"), filename)
 
-    # Sort by numerical prefix first, then by filename
+    # Sort by numerical prefix first, then by filename.
     sorted_paths = sorted(notebook_paths, key=numerical_sort_key)
     return [Path(p) for p in sorted_paths]
 
