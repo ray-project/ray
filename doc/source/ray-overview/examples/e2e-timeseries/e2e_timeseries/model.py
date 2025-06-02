@@ -113,7 +113,7 @@ class DLinear(nn.Module):
 
         # seasonal_init, trend_init shapes: [Batch, SeqLen, Channel]
         seasonal_init, trend_init = self.decompsition(x)
-        # permute to [Batch, Channel, SeqLen] for Linear layers
+        # Permute to [Batch, Channel, SeqLen] for Linear layers.
         seasonal_init = seasonal_init.permute(0, 2, 1)
         trend_init = trend_init.permute(0, 2, 1)
 
