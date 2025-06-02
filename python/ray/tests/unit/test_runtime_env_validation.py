@@ -290,7 +290,7 @@ test_env_invalid_path = os.path.join(
     os.path.dirname(__file__), "test_runtime_env_validation_non_existent.json"
 )
 test_env_bad_json = os.path.join(
-    os.path.dirname(__file__), "test_runtime_env_validation_bad_2_schema.json"
+    os.path.dirname(__file__), "test_runtime_env_validation_bad_schema.json"
 )
 
 
