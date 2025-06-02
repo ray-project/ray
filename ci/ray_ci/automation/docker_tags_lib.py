@@ -626,6 +626,7 @@ def _write_to_file(file_path: str, content: List[str]) -> None:
 
 
 def generate_index(index_name: str, tags: List[str]) -> bool:
+    authorize_docker()
     # Make sure tag is an image and not an index
     for tag in tags:
         print(f"Checking manifest for {tag}")
@@ -645,3 +646,14 @@ def generate_index(index_name: str, tags: List[str]) -> bool:
         return False
     logger.info(f"Generated index {index_name} successfully")
     return True
+
+
+def authorize_docker():
+    """
+    Authorize docker hub access to rayproject/ray
+    """
+    subprocess.check_call(
+        ["bazel", "run", ".buildkite:copy_files", "--", "--destination", "docker_login"],
+        stdout=sys.stdout,
+        stderr=sys.stderr,
+    )
