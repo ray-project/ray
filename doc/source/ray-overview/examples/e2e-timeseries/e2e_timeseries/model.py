@@ -67,7 +67,7 @@ class series_decomp(nn.Module):
                 - moving_mean (torch.Tensor): Trend component of shape (batch_size, seq_len, num_features).
         """
         moving_mean = self.moving_avg(x)
-        res = x - moving_mean  # Seasonal part
+        res = x - moving_mean  # Seasonal part.
         return res, moving_mean
 
 
