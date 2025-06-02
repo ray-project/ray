@@ -13,11 +13,8 @@ import pytest
 import ray
 import ray._private.ray_constants
 import ray._private.utils
-import ray.cluster_utils
-import ray.util.accelerators
 from ray._private.test_utils import check_call_ray, wait_for_num_actors
-
-import setproctitle
+from ray._private.thirdparty import setproctitle
 
 logger = logging.getLogger(__name__)
 

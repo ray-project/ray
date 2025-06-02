@@ -97,8 +97,7 @@ from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
 from ray.util.tracing.tracing_helper import _import_from_string
 from ray.widgets import Template
 from ray.widgets.util import repr_with_fallback
-
-import setproctitle
+from ray._private.thirdparty import setproctitle
 
 if TYPE_CHECKING:
     pass

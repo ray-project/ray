@@ -21,13 +21,8 @@ from ray._private.test_utils import SignalActor
 from ray.core.generated import gcs_pb2
 from ray._private.utils import hex_to_binary
 from ray._private.state_api_test_utils import invoke_state_api, invoke_state_api_n
-
 from ray.util.state import list_actors
-
-
-# NOTE: We have to import setproctitle after ray because we bundle setproctitle
-# with ray.
-import setproctitle  # noqa
+from ray._private.thirdparty import setproctitle
 
 
 @pytest.mark.parametrize("set_enable_auto_connect", [True, False], indirect=True)

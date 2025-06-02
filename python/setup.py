@@ -38,6 +38,7 @@ BAZEL_ARGS = os.getenv("BAZEL_ARGS")
 BAZEL_LIMIT_CPUS = os.getenv("BAZEL_LIMIT_CPUS")
 
 THIRDPARTY_SUBDIR = os.path.join("ray", "thirdparty_files")
+PRIVATE_THIRDPARTY_SUBDIR = os.path.join("ray", "_private", "thirdparty")
 RUNTIME_ENV_AGENT_THIRDPARTY_SUBDIR = os.path.join(
     "ray", "_private", "runtime_env", "agent", "thirdparty_files"
 )
@@ -573,7 +574,7 @@ def build(build_python, build_java, build_cpp):
     # that certain flags will not be passed along such as --user or sudo.
     # TODO(rkn): Fix this.
     if not os.getenv("SKIP_THIRDPARTY_INSTALL_CONDA_FORGE"):
-        pip_packages = ["psutil", "setproctitle==1.2.2", "colorama"]
+        pip_packages = ["psutil", "colorama"]
         subprocess.check_call(
             [
                 sys.executable,
@@ -601,6 +602,20 @@ def build(build_python, build_java, build_cpp):
             ]
             + runtime_env_agent_pip_packages
         )
+    # Vendor setproctitle which is a C extension by
+    # copying the so file to the ray/private/thirdparty/ folder.
+    subprocess.check_call(
+        [
+            sys.executable,
+            "-m",
+            "pip",
+            "install",
+            "-q",
+            "--target=" + os.path.join(ROOT_DIR, PRIVATE_THIRDPARTY_SUBDIR),
+            "setproctitle==1.2.2",
+        ],
+        env=dict(os.environ, CC="gcc"),
+    )
 
     bazel_flags = ["--verbose_failures"]
     if BAZEL_ARGS:

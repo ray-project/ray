@@ -18,8 +18,8 @@ from ray.core.generated.common_pb2 import (
     RayException,
 )
 from ray.util.annotations import DeveloperAPI, PublicAPI
+from ray._private.thirdparty import setproctitle
 
-import setproctitle
 
 logger = logging.getLogger(__name__)
 
