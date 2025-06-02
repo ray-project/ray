@@ -705,13 +705,13 @@ class ExecutableTask:
             except Exception as exc:
                 input_exc = exc
 
-            # A NCCL P2P send operation does not have an output writer. Write the
-            # exception to the downstream task.
+            # A NCCL P2P send operation writes the exception to the downstream task
+            # when executing the task.
             if input_exc is not None and self.requires_nccl_write:
                 input_values = [input_exc]
                 input_exc = None
 
-        # Write the exception to the downstream task.
+        # Write the exception to the downstream task and return.
         if input_exc is not None:
             try:
                 assert self.output_writer is not None
