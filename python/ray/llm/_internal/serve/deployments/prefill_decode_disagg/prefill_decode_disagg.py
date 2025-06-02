@@ -2,8 +2,8 @@
 """
 import asyncio
 import logging
-from typing import AsyncGenerator, Union
 import uuid
+from typing import AsyncGenerator, Union
 
 from pydantic import BaseModel
 from vllm.config import KVTransferConfig
@@ -141,9 +141,11 @@ class PDProxyServer(LLMServer):
             yield prefill_response
             return
 
-        prompt.parameters[KV_TRANSFER_PARAMS_KEY] = prefill_response.metadata[
-            KV_TRANSFER_PARAMS_KEY
-        ]
+        kv_transfer_params = prefill_response.metadata[KV_TRANSFER_PARAMS_KEY]
+        logger.debug(
+            f"Prefill metadata[{KV_TRANSFER_PARAMS_KEY}]: {kv_transfer_params}"
+        )
+        prompt.parameters[KV_TRANSFER_PARAMS_KEY] = kv_transfer_params
 
         async for chunk in self.decode_server.options(stream=True)._predict.remote(
             request_id=request_id, prompt=prompt, stream=stream
