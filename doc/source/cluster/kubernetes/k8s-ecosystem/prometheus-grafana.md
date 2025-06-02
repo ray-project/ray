@@ -227,7 +227,46 @@ spec:
   # raycluster-kuberay-worker-workergroup-5stpm   1/1     Running   0          3h16m
   ```
 
-## Step 7: Collect custom metrics with Recording Rules
+## Step 7: Collect KubeRay Metrics with ServiceMonitor
+
+Starting from KubeRay 1.4.0, KubeRay includes a new [ServiceMonitor](https://github.com/ray-project/kuberay/blob/master/config/prometheus/serviceMonitor.yaml) to help Prometheus discover and scrape custom KubeRay metrics.
+
+```yaml
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  labels:
+    # `release: $HELM_RELEASE`: Prometheus can only detect ServiceMonitor with this label.
+    release: prometheus
+  name: kuberay-operator-monitor
+  namespace: prometheus-system
+spec:
+  # Only select Kubernetes Services in the "default" namespace.
+  namespaceSelector:
+    matchNames:
+      - default
+  # Only select Kubernetes Services with "matchLabels".
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: kuberay-operator
+  endpoints:
+    - port: http
+      path: /metrics
+      # honorLabels ensures that Prometheus uses the labels provided by the exporter
+      honorLabels: true
+
+```
+* Same as PodMonitor, the **install.sh** script also creates the above YAML example, [podMonitor.yaml](https://github.com/ray-project/kuberay/blob/master/config/prometheus/podMonitor.yaml#L26-L63) so you don't need to create anything.
+* See the official [ServiceMonitor doc](https://github.com/prometheus-operator/prometheus-operator/blob/main/Documentation/api-reference/api.md#servicemonitor) for more details about configurations.
+
+* Prometheus uses `namespaceSelector` and `selector` to select Kubernetes Service.
+```sh
+kubectl get service -n default -l app.kubernetes.io/name=kuberay-operator 
+NAME               TYPE        CLUSTER-IP      EXTERNAL-IP   PORT(S)    AGE
+kuberay-operator   ClusterIP   10.96.205.229   <none>        8080/TCP   53m
+```
+
+## Step 8: Collect custom metrics with Recording Rules
 
 [Recording Rules](https://prometheus.io/docs/prometheus/latest/configuration/recording_rules/) allow KubeRay to precompute frequently needed or computationally expensive [PromQL](https://prometheus.io/docs/prometheus/latest/querying/basics/) expressions and save their result as custom metrics. Note that this behavior is different from [Custom application-level metrics](application-level-metrics), which are for the visibility of Ray applications.
 
@@ -275,7 +314,7 @@ $$\frac{ number\ of\ update\ resource\ usage\ RPCs\ that\ have\ RTT\ smaller\ th
 * PrometheusRule can be reloaded at runtime. Use `kubectl apply {modified prometheusRules.yaml}` to reconfigure the rules if needed.
 
 
-## Step 8: Define Alert Conditions with Alerting Rules
+## Step 9: Define Alert Conditions with Alerting Rules (optional)
 
 [Alerting rules](https://prometheus.io/docs/prometheus/latest/configuration/alerting_rules/) allow us to define alert conditions based on [PromQL](https://prometheus.io/docs/prometheus/latest/querying/basics/) expressions and to send notifications about firing alerts to [Alertmanager](https://prometheus.io/docs/alerting/latest/alertmanager) which adds summarization, notification rate limiting, silencing and alert dependencies on top of the simple alert definitions.
 
@@ -320,7 +359,7 @@ spec:
 
 * Alerting rules are configured in the same way as recording rules.
 
-## Step 9: Access Prometheus Web UI
+## Step 10: Access Prometheus Web UI
 
 ```sh
 # Forward the port of Prometheus Web UI in the Prometheus server Pod.
@@ -341,7 +380,7 @@ kubectl port-forward -n prometheus-system service/prometheus-kube-prometheus-pro
 - Go to `${YOUR_IP}:9090/alerts`. You should be able to see:
   - Alerting Rules (e.g. `MissingMetricRayGlobalControlStore`).
 
-## Step 10: Access Grafana
+## Step 11: Access Grafana
 
 ```sh
 # Forward the Grafana port
@@ -357,7 +396,7 @@ Refer to [this Grafana document](https://grafana.com/tutorials/run-grafana-behin
 
 * The default password is defined by `grafana.adminPassword` in the [values.yaml](https://github.com/prometheus-community/helm-charts/blob/main/charts/kube-prometheus-stack/values.yaml) of the kube-prometheus-stack chart.
 
-## Step 11: Import Grafana dashboards manually (optional)
+## Step 12: Import Grafana dashboards manually (optional)
 
 If `--auto-load-dashboard true` is set when running `install.sh`, you can skip this step.
 
@@ -371,7 +410,7 @@ If `--auto-load-dashboard true` is set when running `install.sh`, you can skip t
     * Case 2: Otherwise, import the JSON files from the head Pod's `/tmp/ray/session_latest/metrics/grafana/dashboards/` directory. You can use `kubectl cp` to copy the files from the head Pod to your local machine. `kubectl cp $(kubectl get pods --selector ray.io/node-type=head,ray.io/cluster=raycluster-embed-grafana -o jsonpath={..metadata.name}):/tmp/ray/session_latest/metrics/grafana/dashboards/ /tmp/`
   * Click "Import".
 
-## Step 12: View metrics from different RayCluster CRs
+## Step 13: View metrics from different RayCluster CRs
 
 Once the Ray Dashboard is imported into Grafana, you can filter metrics by using the `Cluster` variable. Ray Dashboard automatically applies this variable by default when you use the provided `PodMonitor` configuration. You don't need any additional setup for this labeling.
 
@@ -383,7 +422,7 @@ For example, in the following figures, one selects the metrics from the RayClust
 
 ![Grafana Ray Dashboard2](../images/grafana_ray_dashboard2.png)
 
-## Step 13: Embed Grafana panels in Ray Dashboard
+## Step 14: Embed Grafana panels in Ray Dashboard (optional)
 
 ```sh
 kubectl port-forward service/raycluster-embed-grafana-head-svc dashboard
