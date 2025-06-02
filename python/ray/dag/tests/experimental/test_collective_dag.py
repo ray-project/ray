@@ -83,6 +83,10 @@ class MockCommunicator(CPUCommunicator):
     def send_stream(self) -> Optional["cp.cuda.ExternalStream"]:
         raise NotImplementedError
 
+    @property
+    def coll_stream(self) -> Optional["cp.cuda.ExternalStream"]:
+        raise NotImplementedError
+
     def destroy(self) -> None:
         raise NotImplementedError
 

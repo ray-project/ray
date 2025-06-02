@@ -349,6 +349,10 @@ class _NcclGroup(Communicator):
     def send_stream(self) -> Optional["cp.cuda.ExternalStream"]:
         return self._send_stream
 
+    @property
+    def coll_stream(self) -> Optional["cp.cuda.ExternalStream"]:
+        return self._cuda_stream
+
     def destroy(self) -> None:
         """
         Destroy the NCCL group.

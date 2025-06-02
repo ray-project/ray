@@ -25,7 +25,7 @@ import asyncio
 from ray.dag.compiled_dag_node import build_compiled_dag_from_ray_dag
 from ray.experimental.channel import ChannelOutputType
 from ray.experimental.channel.communicator import Communicator
-from ray.experimental.util.types import Device
+from ray.experimental.util.types import Device, _NcclOpType
 
 T = TypeVar("T")
 
@@ -217,6 +217,18 @@ class DAGNode(DAGNodeBase):
         if isinstance(self._type_hint, AutoTransportType):
             self._original_type_hint = self._type_hint
         self._type_hint = type_hint
+
+    @property
+    def nccl_op_type(self) -> Optional[_NcclOpType]:
+        """Return the NCCL operation type for this node."""
+        return None
+
+    @property
+    def nccl_op(
+        self,
+    ) -> Optional["ray.dag.communication_node._NcclOperation"]:
+        """Return the NCCL operation for this node."""
+        return None
 
     def get_args(self) -> Tuple[Any]:
         """Return the tuple of arguments for this node."""

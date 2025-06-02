@@ -4,29 +4,27 @@ import sys
 from typing import Dict, List, Tuple
 
 import pytest
-
 from ray.actor import ActorHandle
 from ray.dag import ClassMethodNode, InputNode, MultiOutputNode
 from ray.dag.compiled_dag_node import CompiledTask
 from ray.dag.dag_node_operation import (
-    _DAGNodeOperationType,
-    _NCCLOperationType_EXP,
-    _DAGOperationGraphNode,
-    _DAGOperationGraphNode_EXP,
-    _DAGNodeOperation,
-    _DAGNodeOperation_EXP,
-    _extract_execution_schedule,
-    _extract_execution_schedule_EXP,
-    _select_next_nodes,
-    _select_next_nodes_EXP,
-    _build_dag_node_operation_graph,
-    _build_dag_node_operation_graph_EXP,
     _add_edge,
     _add_edge_EXP,
+    _build_dag_node_operation_graph,
+    _build_dag_node_operation_graph_EXP,
+    _DAGNodeOperation,
+    _DAGNodeOperation_EXP,
+    _DAGNodeOperationType,
+    _DAGOperationGraphNode,
+    _DAGOperationGraphNode_EXP,
+    _extract_execution_schedule,
+    _extract_execution_schedule_EXP,
     _generate_actor_to_execution_schedule,
     _generate_actor_to_execution_schedule_EXP,
+    _NcclOperationType_EXP,
+    _select_next_nodes,
+    _select_next_nodes_EXP,
 )
-from ray.dag.compiled_dag_node import CompiledTask
 from ray.tests.conftest import *  # noqa
 
 if sys.platform != "linux" and sys.platform != "darwin":
@@ -79,11 +77,11 @@ def generate_dag_graph_node_EXP(
 ) -> _DAGOperationGraphNode_EXP:
     nccl_op_type = None
     if is_nccl_read:
-        nccl_op_type = _NCCLOperationType_EXP.P2P_READ
+        nccl_op_type = _NcclOperationType_EXP.P2P_READ
     elif is_nccl_compute:
-        nccl_op_type = _NCCLOperationType_EXP.COLLECTIVE
+        nccl_op_type = _NcclOperationType_EXP.COLLECTIVE
     elif is_nccl_write:
-        nccl_op_type = _NCCLOperationType_EXP.P2P_WRITE
+        nccl_op_type = _NcclOperationType_EXP.P2P_WRITE
     graph_node = _DAGOperationGraphNode_EXP(
         _DAGNodeOperation_EXP(exec_task_idx),
         task_idx,
@@ -1017,7 +1015,7 @@ class TestBuildDAGNodeOperationGraph_EXP:
         task_idx_2: int,
     ):
         """
-        # [TODO]
+        # [TODO] Comments.
         Check whether the edge from COMPUTE with `bind_index` i to COMPUTE with
             `bind_index` i+1 if they belong to the same actor.
 
@@ -1039,7 +1037,7 @@ class TestBuildDAGNodeOperationGraph_EXP:
         """
         driver -> fake_actor_1.op -> fake_actor_2.op -> driver
 
-        # [TODO]
+        # [TODO] Comments.
         This test case aims to verify whether the function correctly adds an edge
         from the writer's WRITE operation to the reader's READ operation.
         """

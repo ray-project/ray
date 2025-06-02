@@ -1,26 +1,199 @@
-from typing import Any, Dict, List, Union, Tuple, Optional, TYPE_CHECKING
+from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     import torch
 
-import ray
-from ray.dag import (
-    DAGNode,
-    ClassMethodNode,
-)
+from abc import ABC, abstractmethod
+from typing import Any, Dict, List, Optional, Tuple, Union
+
+from ray.dag import ClassMethodNode, DAGNode
 from ray.dag.constants import COLLECTIVE_OPERATION_KEY
-from ray.experimental.channel import ChannelContext
-from ray.experimental.channel.torch_tensor_type import Communicator, TorchTensorType
+from ray.experimental.channel import ChannelContext, ChannelInterface
+from ray.experimental.channel.torch_tensor_type import (
+    Communicator,
+    TorchTensorType,
+)
 from ray.experimental.util.types import (
-    _CollectiveOp,
     AllGatherOp,
     AllReduceOp,
     ReduceScatterOp,
+    _CollectiveOp,
+    _P2POp,
 )
 from ray.util.annotations import DeveloperAPI
 
+import ray
 
-class _CollectiveOperation:
+
+class _NcclOperation(ABC):
+    """
+    Represent metadata for a NCCL communication operation.
+    """
+
+    @abstractmethod
+    def execute(self, *args, **kwargs) -> Any:
+        """
+        Execute the NCCL communication operation in `ExecutableTask`.
+        """
+        raise NotImplementedError
+
+
+class _P2POperation(_NcclOperation):
+    """
+    Represent an executable NCCL P2P operation.
+    """
+
+    def __init__(self):
+        self._nccl_ch: Optional[ChannelInterface] = None
+
+    @property
+    def nccl_ch(self) -> Optional[ChannelInterface]:
+        return self._nccl_ch
+
+    @nccl_ch.setter
+    def nccl_ch(self, nccl_ch: ChannelInterface) -> None:
+        self._nccl_ch = nccl_ch
+
+
+class _P2PSendOperation(_P2POperation):
+    """
+    Represent an executable NCCL P2P send operation.
+    """
+
+    def __init__(self):
+        super().__init__()
+
+    def execute(self, data: Any) -> None:
+        """
+        Execute the NCCL P2P send operation. Write the data via the NCCL channel.
+        Args:
+            data: The data to send.
+        """
+        self.nccl_ch.write(data)
+
+
+class _P2PRecvOperation(_P2POperation):
+    """
+    Represent an executable NCCL P2P recv operation.
+    """
+
+    def __init__(self):
+        super().__init__()
+
+    def execute(self) -> Any:
+        """
+        Execute the NCCL P2P recv operation. Read the data from the NCCL channel.
+        Return:
+            Data read from the NCCL channel.
+        """
+        return self.nccl_ch.read()
+
+
+@DeveloperAPI
+class P2PSendNode(ClassMethodNode):
+    """Represents a NCCL P2P send operation in a Ray DAG."""
+
+    def __init__(
+        self,
+        method_args: Tuple[ClassMethodNode],
+        other_args_to_resolve: Dict[str, Any],
+    ):
+        super().__init__(
+            method_name="p2p_send",
+            method_args=method_args,
+            method_kwargs=dict(),
+            method_options=dict(),
+            other_args_to_resolve=other_args_to_resolve,
+        )
+        self._send_op = _P2PSendOperation()
+
+        # Parse the input node.
+        if not (
+            isinstance(method_args, tuple)
+            and len(method_args) == 1
+            and isinstance(method_args[0], ClassMethodNode)
+        ):
+            raise ValueError("Expected a single input node as ClassMethodNode")
+        if isinstance(method_args[0], P2PSendNode) or isinstance(
+            method_args[0], P2PRecvNode
+        ):
+            raise ValueError("P2P send node cannot bind to another P2P node")
+
+    def _copy_impl(
+        self,
+        new_args: List[Any],
+        new_kwargs: Dict[str, Any],
+        new_options: Dict[str, Any],
+        new_other_args_to_resolve: Dict[str, Any],
+    ):
+        return P2PSendNode(
+            self._method_name,
+            new_args,
+            new_kwargs,
+            new_options,
+            other_args_to_resolve=new_other_args_to_resolve,
+        )
+
+    @property
+    def nccl_op_type(self) -> _P2POp:
+        return _P2POp.SEND
+
+    @property
+    def nccl_op(self) -> _P2PSendOperation:
+        return self._send_op
+
+
+@DeveloperAPI
+class P2PRecvNode(ClassMethodNode):
+    """Represents a NCCL P2P recv operation in a Ray DAG."""
+
+    def __init__(
+        self,
+        method_args: Tuple[P2PSendNode],
+        other_args_to_resolve: Dict[str, Any],
+    ):
+        super().__init__(
+            method_name="p2p_recv",
+            method_args=method_args,
+            method_kwargs=dict(),
+            method_options=dict(),
+            other_args_to_resolve=other_args_to_resolve,
+        )
+        self._recv_op = _P2PRecvOperation()
+
+        # Parse the input node.
+        if not (
+            isinstance(method_args, tuple)
+            and len(method_args) == 1
+            and isinstance(method_args[0], P2PSendNode)
+        ):
+            raise ValueError("Expected a single input node as _P2PSendNode")
+
+    def _copy_impl(
+        self,
+        new_args: List[Any],
+        new_kwargs: Dict[str, Any],
+        new_options: Dict[str, Any],
+        new_other_args_to_resolve: Dict[str, Any],
+    ):
+        return P2PRecvNode(
+            self._method_name,
+            new_args,
+            new_kwargs,
+            new_options,
+            other_args_to_resolve=new_other_args_to_resolve,
+        )
+
+    @property
+    def nccl_op_type(self) -> _P2POp:
+        return _P2POp.RECV
+
+    @property
+    def nccl_op(self) -> _P2PRecvOperation:
+        return self._recv_op
+
+
+class _CollectiveOperation(_NcclOperation):
     """
     Represent metadata for a NCCL collective operation.
 
@@ -90,6 +263,10 @@ class _CollectiveOperation:
     def type_hint(self) -> TorchTensorType:
         return self._type_hint
 
+    @property
+    def nccl_op_type(self) -> _CollectiveOp:
+        return self._op
+
     def get_communicator(self) -> Communicator:
         if self._type_hint.communicator_id is not None:
             ctx = ChannelContext.get_current()
@@ -154,6 +331,14 @@ class CollectiveOutputNode(ClassMethodNode):
         method_options: Dict[str, Any],
         other_args_to_resolve: Dict[str, Any],
     ):
+        super().__init__(
+            method_name,
+            method_args,
+            method_kwargs,
+            method_options,
+            other_args_to_resolve,
+        )
+
         # Parse the input node.
         if not (
             isinstance(method_args, tuple)
@@ -168,14 +353,6 @@ class CollectiveOutputNode(ClassMethodNode):
         )
         if self._collective_op is None:
             raise ValueError("Expected a collective operation")
-
-        super().__init__(
-            method_name,
-            method_args,
-            method_kwargs,
-            method_options,
-            other_args_to_resolve,
-        )
 
     def _copy_impl(
         self,
@@ -198,5 +375,9 @@ class CollectiveOutputNode(ClassMethodNode):
         )
 
     @property
-    def collective_op(self) -> _CollectiveOperation:
+    def nccl_op_type(self) -> _CollectiveOp:
+        return self._collective_op.nccl_op_type
+
+    @property
+    def nccl_op(self) -> _CollectiveOperation:
         return self._collective_op
