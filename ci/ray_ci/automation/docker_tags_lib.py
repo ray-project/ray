@@ -628,6 +628,7 @@ def _write_to_file(file_path: str, content: List[str]) -> None:
 def generate_index(index_name: str, tags: List[str]) -> bool:
     # Make sure tag is an image and not an index
     for tag in tags:
+        print(f"Checking manifest for {tag}")
         return_code, output = _call_crane_manifest(tag)
         if return_code:
             logger.info(f"Failed to get manifest for {tag}")
