@@ -4468,7 +4468,7 @@
       env: gce
       frequency: manual
       cluster:
-        cluster_compute: ci/gce.yaml  # relative to working_dir
+        cluster_compute: ci/gce.yaml  # Relative to working_dir.
 
 - name: e2e_timeseries
   frequency: weekly
