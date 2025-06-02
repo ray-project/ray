@@ -1511,7 +1511,7 @@ plotly==5.23.0
     # via ax-platform
 pluggy==1.3.0
     # via pytest
-polars==0.14.21
+polars==1.30.0
     # via
     #   -r python/requirements/ml/data-test-requirements.txt
     #   -r python/requirements/test-requirements.txt
