@@ -48,7 +48,9 @@ def convert_notebook(input_path: str, output_path: str) -> None:
             else:
                 # For non-%%bash cells, check for IPython '!' shell escapes within the cell.
                 # These lines will be converted individually.
-                is_shell_escape_cell = any(line.lstrip().startswith("!") for line in source_lines)
+                is_shell_escape_cell = any(
+                    line.lstrip().startswith("!") for line in source_lines
+                )
 
                 if is_shell_escape_cell:
                     if not subprocess_imported:
@@ -72,7 +74,9 @@ def convert_notebook(input_path: str, output_path: str) -> None:
                             # Write regular Python lines, preserving original trailing whitespace
                             # and adding a newline.
                             out.write(line.rstrip() + "\n")
-                    out.write("\n")  # Add a blank line after processing this mixed-content cell.
+                    out.write(
+                        "\n"
+                    )  # Add a blank line after processing this mixed-content cell.
                 else:
                     # Regular Python code cell: write its content directly.
                     # rstrip() removes trailing newlines from the cell source,

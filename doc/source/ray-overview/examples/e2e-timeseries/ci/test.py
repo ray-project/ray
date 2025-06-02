@@ -47,7 +47,12 @@ def convert_notebook_to_script(notebook_path: Path, nb2py_script: Path) -> Path:
     print(f"Converting {notebook_path} to {output_path}")
 
     try:
-        subprocess.run([sys.executable, str(nb2py_script), str(notebook_path), str(output_path)], check=True, capture_output=True, text=True)
+        subprocess.run(
+            [sys.executable, str(nb2py_script), str(notebook_path), str(output_path)],
+            check=True,
+            capture_output=True,
+            text=True,
+        )
     except subprocess.CalledProcessError as e:
         print(f"Error converting {notebook_path}: {e}")
         print(f"stdout: {e.stdout}")
@@ -62,7 +67,13 @@ def execute_script(script_path: Path, working_dir: Path) -> None:
     print(f"Executing {script_path}")
 
     try:
-        result = subprocess.run([sys.executable, str(script_path.resolve())], check=True, capture_output=True, text=True, cwd=str(working_dir))
+        result = subprocess.run(
+            [sys.executable, str(script_path.resolve())],
+            check=True,
+            capture_output=True,
+            text=True,
+            cwd=str(working_dir),
+        )
 
         # Print output for visibility
         if result.stdout:
@@ -88,16 +99,27 @@ def cleanup_generated_scripts(script_paths: List[Path]) -> None:
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Convert Jupyter notebooks to Python scripts and execute them in order")
-    parser.add_argument("target_dir", help="Directory containing the .ipynb files to convert and execute")
-    parser.add_argument("--nb2py-script", default="ci/nb2py.py", help="Path to the nb2py.py conversion script (default: ci/nb2py.py)")
+    parser = argparse.ArgumentParser(
+        description="Convert Jupyter notebooks to Python scripts and execute them in order"
+    )
+    parser.add_argument(
+        "target_dir",
+        help="Directory containing the .ipynb files to convert and execute",
+    )
+    parser.add_argument(
+        "--nb2py-script",
+        default="ci/nb2py.py",
+        help="Path to the nb2py.py conversion script (default: ci/nb2py.py)",
+    )
 
     args = parser.parse_args()
 
     # Get absolute paths and validate inputs
     target_dir = Path(args.target_dir).resolve()
     if not target_dir.exists() or not target_dir.is_dir():
-        print(f"Error: Target directory {target_dir} does not exist or is not a directory")
+        print(
+            f"Error: Target directory {target_dir} does not exist or is not a directory"
+        )
         sys.exit(1)
 
     nb2py_script = Path(args.nb2py_script).resolve()
@@ -120,7 +142,9 @@ def main() -> None:
             script_path = convert_notebook_to_script(notebook, nb2py_script)
             generated_scripts.append(script_path)
 
-        print(f"\nSuccessfully converted {len(generated_scripts)} notebooks to Python scripts")
+        print(
+            f"\nSuccessfully converted {len(generated_scripts)} notebooks to Python scripts"
+        )
 
         # Execute scripts in order from the target directory
         print("\nExecuting scripts in order...")

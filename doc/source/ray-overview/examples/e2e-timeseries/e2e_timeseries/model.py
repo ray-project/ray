@@ -33,7 +33,9 @@ class moving_avg(nn.Module):
         # Input x: [Batch, SeqLen, Features]
         front = x[:, 0:1, :].repeat(1, (self.kernel_size - 1) // 2, 1)
         end = x[:, -1:, :].repeat(1, (self.kernel_size - 1) // 2, 1)
-        x_padded = torch.cat([front, x, end], dim=1)  # [Batch, padded_seq_len, Features]
+        x_padded = torch.cat(
+            [front, x, end], dim=1
+        )  # [Batch, padded_seq_len, Features]
         # self.avg expects [Batch, Features, padded_seq_len]
         x_avg = self.avg(x_padded.permute(0, 2, 1))
         # permute back to [Batch, SeqLen, Features]
@@ -116,18 +118,28 @@ class DLinear(nn.Module):
         trend_init = trend_init.permute(0, 2, 1)
 
         if self.individual:
-            seasonal_output = torch.zeros([seasonal_init.size(0), seasonal_init.size(1), self.pred_len], dtype=seasonal_init.dtype).to(
-                seasonal_init.device
-            )
-            trend_output = torch.zeros([trend_init.size(0), trend_init.size(1), self.pred_len], dtype=trend_init.dtype).to(trend_init.device)
+            seasonal_output = torch.zeros(
+                [seasonal_init.size(0), seasonal_init.size(1), self.pred_len],
+                dtype=seasonal_init.dtype,
+            ).to(seasonal_init.device)
+            trend_output = torch.zeros(
+                [trend_init.size(0), trend_init.size(1), self.pred_len],
+                dtype=trend_init.dtype,
+            ).to(trend_init.device)
             for i in range(self.channels):
-                seasonal_output[:, i, :] = self.Linear_Seasonal[i](seasonal_init[:, i, :])
+                seasonal_output[:, i, :] = self.Linear_Seasonal[i](
+                    seasonal_init[:, i, :]
+                )
                 trend_output[:, i, :] = self.Linear_Trend[i](trend_init[:, i, :])
         else:
             # seasonal_init shape: [Batch, Channel, SeqLen]
             # Linear layer applies to the last dim (SeqLen)
-            seasonal_output = self.Linear_Seasonal(seasonal_init)  # Output: [Batch, Channel, PredLen]
-            trend_output = self.Linear_Trend(trend_init)  # Output: [Batch, Channel, PredLen]
+            seasonal_output = self.Linear_Seasonal(
+                seasonal_init
+            )  # Output: [Batch, Channel, PredLen]
+            trend_output = self.Linear_Trend(
+                trend_init
+            )  # Output: [Batch, Channel, PredLen]
 
         output_x = seasonal_output + trend_output  # Shape: [Batch, Channel, PredLen]
         return output_x.permute(0, 2, 1)  # to [Batch, PredLen, Channel]
