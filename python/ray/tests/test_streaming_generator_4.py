@@ -11,7 +11,7 @@ from typing import Optional
 from pydantic import BaseModel
 
 import ray
-from ray._private.test_utils import SignalActor
+from ray._common.test_utils import SignalActor
 
 RECONSTRUCTION_CONFIG = {
     "health_check_failure_threshold": 10,

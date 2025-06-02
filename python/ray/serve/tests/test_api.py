@@ -10,8 +10,9 @@ from fastapi import FastAPI
 
 import ray
 from ray import serve
+from ray._common.test_utils import SignalActor
 from ray._private.pydantic_compat import BaseModel, ValidationError
-from ray._private.test_utils import SignalActor, wait_for_condition
+from ray._private.test_utils import wait_for_condition
 from ray.serve._private.api import call_user_app_builder_with_args_if_necessary
 from ray.serve._private.common import DeploymentID
 from ray.serve._private.constants import (
@@ -74,10 +75,10 @@ class AsyncCounter:
 class FakeRequestRouter(RequestRouter):
     async def choose_replicas(
         self,
-        replicas_ranks: List[List[RunningReplica]],
+        candidate_replicas: List[RunningReplica],
         pending_request: Optional[PendingRequest] = None,
     ) -> List[List[RunningReplica]]:
-        return replicas_ranks
+        return [candidate_replicas]
 
 
 @serve.deployment(request_router_class=FakeRequestRouter)
