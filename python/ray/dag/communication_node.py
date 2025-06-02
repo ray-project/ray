@@ -1,10 +1,5 @@
-from typing import TYPE_CHECKING
-
-if TYPE_CHECKING:
-    import torch
-
 from abc import ABC, abstractmethod
-from typing import Any, Dict, List, Optional, Tuple, Union
+from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple, Union
 
 from ray.dag import ClassMethodNode, DAGNode
 from ray.dag.constants import COLLECTIVE_OPERATION_KEY
@@ -24,16 +19,19 @@ from ray.util.annotations import DeveloperAPI
 
 import ray
 
+if TYPE_CHECKING:
+    import torch
+
 
 class _NcclOperation(ABC):
     """
-    Represent metadata for a NCCL communication operation.
+    Represent metadata for a NCCL operation.
     """
 
     @abstractmethod
     def execute(self, *args, **kwargs) -> Any:
         """
-        Execute the NCCL communication operation in `ExecutableTask`.
+        Execute the NCCL operation in `ExecutableTask`.
         """
         raise NotImplementedError
 
@@ -66,6 +64,7 @@ class _P2PSendOperation(_P2POperation):
     def execute(self, data: Any) -> None:
         """
         Execute the NCCL P2P send operation. Write the data via the NCCL channel.
+
         Args:
             data: The data to send.
         """
@@ -83,6 +82,7 @@ class _P2PRecvOperation(_P2POperation):
     def execute(self) -> Any:
         """
         Execute the NCCL P2P recv operation. Read the data from the NCCL channel.
+
         Return:
             Data read from the NCCL channel.
         """
@@ -167,7 +167,7 @@ class P2PRecvNode(ClassMethodNode):
             and len(method_args) == 1
             and isinstance(method_args[0], P2PSendNode)
         ):
-            raise ValueError("Expected a single input node as _P2PSendNode")
+            raise ValueError("Expected a single input node as P2PSendNode")
 
     def _copy_impl(
         self,
