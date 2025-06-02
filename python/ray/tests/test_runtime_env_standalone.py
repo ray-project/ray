@@ -3,6 +3,7 @@
 The other runtime_env tests use a shared Ray instance across the test module
 to reduce overheads & overall test runtime.
 """
+import fnmatch
 import logging
 import os
 import sys
@@ -22,6 +23,7 @@ from ray._private.test_utils import (
 )
 from ray.exceptions import RuntimeEnvSetupError
 from ray.runtime_env import RuntimeEnv
+from ray.job_submission import JobStatus, JobSubmissionClient
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="Flaky on Windows.")
