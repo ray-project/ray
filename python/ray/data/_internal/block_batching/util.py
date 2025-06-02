@@ -50,23 +50,16 @@ def resolve_block_refs(
         stats: An optional stats object to recording block hits and misses.
         batch_size: Number of block references to batch together in a single ray.get() call.
     """
-    hits = 0
-    misses = 0
-    unknowns = 0
+    all_refs = []  # Keep track of all refs for stats calculation
 
     # Collect block references in batches
     batch = []
     for block_ref in block_ref_iter:
         batch.append(block_ref)
+        all_refs.append(block_ref)
 
         # Process batch when it reaches the desired size
         if len(batch) >= batch_size:
-            # Calculate stats for the entire batch
-            batch_hits, batch_misses, batch_unknowns = _calculate_ref_hits(batch)
-            hits += batch_hits
-            misses += batch_misses
-            unknowns += batch_unknowns
-
             # Resolve all references in the batch with a single ray.get() call
             with stats.iter_get_s.timer() if stats else nullcontext():
                 blocks = ray.get(batch)
@@ -80,18 +73,15 @@ def resolve_block_refs(
 
     # Process any remaining references in the final partial batch
     if batch:
-        batch_hits, batch_misses, batch_unknowns = _calculate_ref_hits(batch)
-        hits += batch_hits
-        misses += batch_misses
-        unknowns += batch_unknowns
-
         with stats.iter_get_s.timer() if stats else nullcontext():
             blocks = ray.get(batch)
 
         for block in blocks:
             yield block
 
-    if stats:
+    # Calculate stats once for all refs at the end to avoid performance overhead
+    if stats and all_refs:
+        hits, misses, unknowns = _calculate_ref_hits(all_refs)
         stats.iter_blocks_local = hits
         stats.iter_blocks_remote = misses
         stats.iter_unknown_location = unknowns
