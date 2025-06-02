@@ -15,6 +15,7 @@
 
 #include <opentelemetry/exporters/otlp/otlp_grpc_metric_exporter.h>
 #include <opentelemetry/metrics/provider.h>
+#include <opentelemetry/nostd/shared_ptr.h>
 #include <opentelemetry/sdk/metrics/export/periodic_exporting_metric_reader.h>
 #include <opentelemetry/sdk/metrics/instruments.h>
 
@@ -52,7 +53,9 @@ void OpenTelemetryMetricRecorder::RegisterGrpcExporter(
 OpenTelemetryMetricRecorder::OpenTelemetryMetricRecorder() {
   // Default constructor
   meter_provider_ = std::make_shared<opentelemetry::sdk::metrics::MeterProvider>();
-  opentelemetry::metrics::Provider::SetMeterProvider(meter_provider_);
+  opentelemetry::metrics::Provider::SetMeterProvider(
+      opentelemetry::nostd::shared_ptr<opentelemetry::metrics::MeterProvider>(
+          meter_provider_));
 }
 
 }  // namespace telemetry
