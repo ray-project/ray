@@ -58,7 +58,7 @@ def make_task_actor(*, runtime_env: Optional[Dict]) -> Tuple:
 def test_failure_without_runtime_env(start_cluster_shared_two_nodes):
     """Sanity checks that the test task & actor fail without a runtime_env."""
     cluster, address = start_cluster_shared_two_nodes
-]
+
     task, actor = make_task_actor(runtime_env=None)
     task_obj_ref = task.remote()
     a = actor.remote()
