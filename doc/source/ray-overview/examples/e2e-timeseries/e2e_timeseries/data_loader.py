@@ -22,10 +22,10 @@ class Dataset_ETT_hour(Dataset):
         # encoder_sequence_length (seq_len): The length of the input sequence fed to the encoder.
         # decoder_context_length (label_len): The length of the historical sequence segment provided as context to the decoder.
         #                                     This segment typically overlaps with the end of the encoder_sequence.
-        # prediction_horizon_length (pred_len): The number of future time steps the model is tasked to predict.
+        # prediction_horizon_length (pred_len): The number of future time steps predicted by the model.
 
         if size is None:
-            # Default lengths if not specified.
+            # Default lengths when not specified.
             self.encoder_seq_len = 24 * 4 * 4
             self.decoder_context_len = 24 * 4
             self.prediction_horizon = 24 * 4
@@ -174,8 +174,8 @@ class Dataset_ETT_hour(Dataset):
         # Define indices for the target sequence (y).
         # The target sequence (y) comprises two parts:
         # 1. Decoder context: A segment of length decoder_context_len that ends where the encoder input ends.
-        #    Some models, like Transformers, use this value as input to the decoder.
-        # 2. Prediction horizon: The actual future values of length prediction_horizon that the model must predict.
+        #    This value is used as input to the decoder by some models, like Transformers.
+        # 2. Prediction horizon: The actual future values of length prediction_horizon that must be predicted by the model.
 
         # Start of the decoder context part of y. It overlaps with the end of the encoder_input_sequence.
         decoder_context_start_idx = encoder_input_end_idx - self.decoder_context_len
@@ -195,7 +195,7 @@ class Dataset_ETT_hour(Dataset):
     def __len__(self):
         # The number of samples that can be generated depends on the total length of the data,
         # the input sequence length, and the prediction horizon.
-        # We need enough data points for an input sequence of encoder_seq_len
+        # Enough data points are needed for an input sequence of encoder_seq_len
         # followed by a target sequence of prediction_horizon.
         # The decoder_context_len overlaps with encoder_seq_len and doesn't reduce the number of samples further than prediction_horizon.
         if (
