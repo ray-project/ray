@@ -10,7 +10,7 @@ STRIDE = 1
 class moving_avg(nn.Module):
     """
     Moving average block to highlight the trend of time series.
-    Applies a 1D average pooling to the input tensor.
+    This block applies a 1D average pooling to the input tensor.
     """
 
     def __init__(self, kernel_size: int = KERNEL_SIZE, stride: int = STRIDE):
@@ -29,16 +29,16 @@ class moving_avg(nn.Module):
             torch.Tensor: Output tensor of shape (batch_size, seq_len, num_features)
                           after applying moving average.
         """
-        # Padding on the both ends of time series.
-        # Input x: [Batch, SeqLen, Features].
+        # Pad both ends of time series.
+        # Input x has shape: [Batch, SeqLen, Features].
         front = x[:, 0:1, :].repeat(1, (self.kernel_size - 1) // 2, 1)
         end = x[:, -1:, :].repeat(1, (self.kernel_size - 1) // 2, 1)
         x_padded = torch.cat(
             [front, x, end], dim=1
-        )  # [Batch, padded_seq_len, Features].
-        # self.avg expects [Batch, Features, padded_seq_len].
+        )  # Shape: [Batch, padded_seq_len, Features].
+        # self.avg expects input shape: [Batch, Features, padded_seq_len].
         x_avg = self.avg(x_padded.permute(0, 2, 1))
-        # Permute back to [Batch, SeqLen, Features].
+        # Permute back to shape: [Batch, SeqLen, Features].
         x_out = x_avg.permute(0, 2, 1)
         return x_out
 
@@ -46,12 +46,12 @@ class moving_avg(nn.Module):
 class series_decomp(nn.Module):
     """
     Series decomposition block.
-    Decomposes the input time series into trend and seasonal components.
+    This block decomposes the input time series into trend and seasonal components.
     """
 
     def __init__(self, kernel_size: int):
         super().__init__()
-        # stride=1 is used here to ensure the moving average output has the same sequence length.
+        # Use stride=1 here to ensure the moving average output has the same sequence length.
         self.moving_avg = moving_avg(kernel_size, stride=1)
 
     def forward(self, x: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
@@ -67,7 +67,7 @@ class series_decomp(nn.Module):
                 - moving_mean (torch.Tensor): Trend component of shape (batch_size, seq_len, num_features).
         """
         moving_mean = self.moving_avg(x)
-        res = x - moving_mean  # Seasonal part.
+        res = x - moving_mean  # Extract seasonal part.
         return res, moving_mean
 
 
@@ -141,5 +141,5 @@ class DLinear(nn.Module):
                 trend_init
             )  # Output: [Batch, Channel, PredLen].
 
-        output_x = seasonal_output + trend_output  # Shape: [Batch, Channel, PredLen]
-        return output_x.permute(0, 2, 1)  # to [Batch, PredLen, Channel].
+        output_x = seasonal_output + trend_output  # Shape: [Batch, Channel, PredLen].
+        return output_x.permute(0, 2, 1)  # Transform to [Batch, PredLen, Channel].
