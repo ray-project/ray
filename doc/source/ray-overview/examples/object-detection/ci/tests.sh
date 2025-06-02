@@ -5,7 +5,10 @@
 # aren't being consumed/hidden
 
 for nb in object_detection_train 2.object_detection_batch_inference_eval 3.video_processing_batch_inference 4.object_detection_serve; do
-  python ci/nb2py.py notebooks/${nb}.ipynb notebooks/${nb}.py  # convert notebook to script
-  (cd notebooks && python ${nb}.py)  # run generated script
-  (cd notebooks && rm ${nb}.py)  # remove the generated script
+  # Convert .ipynb → .py (in the current dir)
+  python ci/nb2py.py "${nb}.ipynb" "${nb}.py"
+  # Run the generated script (also in the current dir)
+  python "${nb}.py"
+  # Remove the generated .py
+  rm "${nb}.py"
 done
