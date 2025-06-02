@@ -1,5 +1,5 @@
 load("@rules_python//python:defs.bzl", "py_library", "py_test")
-load("//bazel:python.bzl", "py_test_module_list", "py_test_run_all_subdirectory")
+load("//bazel:python.bzl", "py_test_run_all_subdirectory")
 
 py_library(
     name = "conftest",
@@ -13,9 +13,9 @@ py_test_run_all_subdirectory(
     exclude = ["test_runtime_env_validation.py"],
     extra_srcs = [],
     tags = [
-        "team:core",
         "exclusive",
         "small_size_python_tests",
+        "team:core",
     ],
     deps = [
         ":conftest",
@@ -31,9 +31,9 @@ py_test(
         "test_runtime_env_validation_*_schema.json",
     ]),
     tags = [
-        "team:core",
         "exclusive",
         "small_size_python_tests",
+        "team:core",
     ],
     deps = [
         ":conftest",

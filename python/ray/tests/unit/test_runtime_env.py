@@ -1,27 +1,20 @@
 from dataclasses import dataclass
 import dataclasses
 import json
-import logging
 import os
 import subprocess
 import sys
 import tempfile
-import time
-from pathlib import Path
-from typing import Any, Dict, List
+from typing import Any, Dict
 from unittest import mock
 
 import pytest
 from ray.runtime_env.runtime_env import (
     RuntimeEnvConfig,
     _merge_runtime_env,
-    _validate_no_local_paths,
 )
-import requests
 
 import ray
-from ray._private.runtime_env.context import RuntimeEnvContext
-from ray._private.runtime_env.plugin import RuntimeEnvPlugin
 from ray._private.runtime_env.uri_cache import URICache
 from ray._private.runtime_env.utils import (
     SubprocessCalledProcessError,
@@ -29,16 +22,7 @@ from ray._private.runtime_env.utils import (
 )
 from ray._private.test_utils import (
     chdir,
-    get_error_message,
-    get_log_sources,
-    wait_for_condition,
 )
-from ray._private.utils import (
-    get_master_wheel_url,
-    get_release_wheel_url,
-    get_wheel_filename,
-)
-from ray.exceptions import RuntimeEnvSetupError
 from ray.runtime_env import RuntimeEnv
 
 import ray._private.ray_constants as ray_constants
@@ -107,8 +91,6 @@ def test_runtime_env_merge():
         "env_vars": {"A": "2"},
         "conda": ["requests"],
     }
-
-
 
 
 def test_current_py_version_supported():

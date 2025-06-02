@@ -508,7 +508,6 @@ class TestValidateEnvVars:
             validation.parse_and_validate_env_vars({1.23: "hi"})
 
 
-
 def test_validate_no_local_paths_raises_exceptions_on_type_mismatch():
     with pytest.raises(TypeError):
         _validate_no_local_paths(1)
