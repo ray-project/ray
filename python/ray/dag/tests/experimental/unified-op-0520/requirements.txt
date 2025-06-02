@@ -3,5 +3,6 @@ fire
 graphviz
 ipykernel
 jupyter
+pydot
 pytest
 torch
