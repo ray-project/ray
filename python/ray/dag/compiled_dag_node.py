@@ -20,18 +20,11 @@ from ray.dag.constants import (
     RAY_CGRAPH_VISUALIZE_SCHEDULE,
 )
 from ray.dag.dag_node_operation import (
-    _build_dag_node_operation_graph,
     _build_dag_node_operation_graph_EXP,
-    _DAGNodeOperation,
     _DAGNodeOperation_EXP,
-    _DAGNodeOperationType,
-    _DAGOperationGraphNode,
     _DAGOperationGraphNode_EXP,
-    _extract_execution_schedule,
     _extract_execution_schedule_EXP,
-    _generate_actor_to_execution_schedule,
     _generate_actor_to_execution_schedule_EXP,
-    _generate_overlapped_execution_schedule,
     _visualize_execution_schedule,
 )
 from ray.dag.dag_operation_future import (
@@ -188,88 +181,88 @@ def do_allocate_channel(
     return output_channel
 
 
-@DeveloperAPI
-def do_exec_tasks(
-    self,
-    tasks: List["ExecutableTask"],
-    schedule: List[_DAGNodeOperation],
-    overlap_gpu_communication: bool = False,
-) -> None:
-    """A generic actor method to begin executing the operations belonging to an
-    actor. This runs an infinite loop to execute each _DAGNodeOperation in the
-    order specified by the schedule. It exits only if the actor dies or an
-    exception is thrown.
+# @DeveloperAPI
+# def do_exec_tasks(
+#     self,
+#     tasks: List["ExecutableTask"],
+#     schedule: List[_DAGNodeOperation],
+#     overlap_gpu_communication: bool = False,
+# ) -> None:
+#     """A generic actor method to begin executing the operations belonging to an
+#     actor. This runs an infinite loop to execute each _DAGNodeOperation in the
+#     order specified by the schedule. It exits only if the actor dies or an
+#     exception is thrown.
 
-    Args:
-        tasks: the executable tasks corresponding to the actor methods.
-        schedule: A list of _DAGNodeOperation that should be executed in order.
-        overlap_gpu_communication: Whether to overlap GPU communication with
-            computation during DAG execution to improve performance.
-    """
-    try:
-        for task in tasks:
-            task.prepare(overlap_gpu_communication=overlap_gpu_communication)
+#     Args:
+#         tasks: the executable tasks corresponding to the actor methods.
+#         schedule: A list of _DAGNodeOperation that should be executed in order.
+#         overlap_gpu_communication: Whether to overlap GPU communication with
+#             computation during DAG execution to improve performance.
+#     """
+#     try:
+#         for task in tasks:
+#             task.prepare(overlap_gpu_communication=overlap_gpu_communication)
 
-        if RAY_CGRAPH_ENABLE_NVTX_PROFILING:
-            assert (
-                not RAY_CGRAPH_ENABLE_TORCH_PROFILING
-            ), "NVTX and torch profiling cannot be enabled at the same time."
-            try:
-                import nvtx
-            except ImportError:
-                raise ImportError(
-                    "Please install nvtx to enable nsight profiling. "
-                    "You can install it by running `pip install nvtx`."
-                )
-            nvtx_profile = nvtx.Profile()
-            nvtx_profile.enable()
+#         if RAY_CGRAPH_ENABLE_NVTX_PROFILING:
+#             assert (
+#                 not RAY_CGRAPH_ENABLE_TORCH_PROFILING
+#             ), "NVTX and torch profiling cannot be enabled at the same time."
+#             try:
+#                 import nvtx
+#             except ImportError:
+#                 raise ImportError(
+#                     "Please install nvtx to enable nsight profiling. "
+#                     "You can install it by running `pip install nvtx`."
+#                 )
+#             nvtx_profile = nvtx.Profile()
+#             nvtx_profile.enable()
 
-        if RAY_CGRAPH_ENABLE_TORCH_PROFILING:
-            assert (
-                not RAY_CGRAPH_ENABLE_NVTX_PROFILING
-            ), "NVTX and torch profiling cannot be enabled at the same time."
+#         if RAY_CGRAPH_ENABLE_TORCH_PROFILING:
+#             assert (
+#                 not RAY_CGRAPH_ENABLE_NVTX_PROFILING
+#             ), "NVTX and torch profiling cannot be enabled at the same time."
 
-            import torch
+#             import torch
 
-            torch_profile = torch.profiler.profile(
-                activities=[
-                    torch.profiler.ProfilerActivity.CPU,
-                    torch.profiler.ProfilerActivity.CUDA,
-                ],
-                with_stack=True,
-                on_trace_ready=torch.profiler.tensorboard_trace_handler(
-                    "compiled_graph_torch_profiles"
-                ),
-            )
-            torch_profile.start()
-            logger.info("Torch profiling started")
+#             torch_profile = torch.profiler.profile(
+#                 activities=[
+#                     torch.profiler.ProfilerActivity.CPU,
+#                     torch.profiler.ProfilerActivity.CUDA,
+#                 ],
+#                 with_stack=True,
+#                 on_trace_ready=torch.profiler.tensorboard_trace_handler(
+#                     "compiled_graph_torch_profiles"
+#                 ),
+#             )
+#             torch_profile.start()
+#             logger.info("Torch profiling started")
 
-        done = False
-        while True:
-            if done:
-                break
-            for operation in schedule:
-                done = tasks[operation.exec_task_idx].exec_operation(
-                    self, operation.type, overlap_gpu_communication
-                )
-                if done:
-                    break
+#         done = False
+#         while True:
+#             if done:
+#                 break
+#             for operation in schedule:
+#                 done = tasks[operation.exec_task_idx].exec_operation(
+#                     self, operation.type, overlap_gpu_communication
+#                 )
+#                 if done:
+#                     break
 
-        if RAY_CGRAPH_ENABLE_NVTX_PROFILING:
-            nvtx_profile.disable()
+#         if RAY_CGRAPH_ENABLE_NVTX_PROFILING:
+#             nvtx_profile.disable()
 
-        if RAY_CGRAPH_ENABLE_TORCH_PROFILING:
-            torch_profile.stop()
-            logger.info("Torch profiling stopped")
-    except Exception:
-        logging.exception("Compiled DAG task exited with exception")
-        raise
+#         if RAY_CGRAPH_ENABLE_TORCH_PROFILING:
+#             torch_profile.stop()
+#             logger.info("Torch profiling stopped")
+#     except Exception:
+#         logging.exception("Compiled DAG task exited with exception")
+#         raise
 
 
 @DeveloperAPI
 def do_exec_tasks_EXP(
     self,
-    tasks: List["ExecutableTask"],
+    tasks: List["ExecutableTask_EXP"],
     schedule: List[_DAGNodeOperation_EXP],
     overlap_gpu_communication: bool = False,
 ) -> None:
@@ -396,7 +389,7 @@ def do_profile_tasks(
 
 
 @DeveloperAPI
-def do_cancel_executable_tasks(self, tasks: List["ExecutableTask"]) -> None:
+def do_cancel_executable_tasks(self, tasks: List["ExecutableTask_EXP"]) -> None:
     # CUDA events should be destroyed before other CUDA resources.
     for task in tasks:
         task.destroy_cuda_event()
@@ -551,313 +544,313 @@ class _ExecutableTaskInput:
         return value
 
 
-@DeveloperAPI
-class ExecutableTask:
-    """A task that can be executed in a compiled DAG, and it
-    corresponds to an actor method.
-    """
+# @DeveloperAPI
+# class ExecutableTask:
+#     """A task that can be executed in a compiled DAG, and it
+#     corresponds to an actor method.
+#     """
 
-    def __init__(
-        self,
-        task: "CompiledTask",
-        resolved_args: List[Any],
-        resolved_kwargs: Dict[str, Any],
-    ):
-        """
-        Args:
-            task: The CompiledTask that this ExecutableTask corresponds to.
-            resolved_args: The arguments to the method. Arguments that are
-                not Channels will get passed through to the actor method.
-                If the argument is a channel, it will be replaced by the
-                value read from the channel before the method executes.
-            resolved_kwargs: The keyword arguments to the method. Currently, we
-                do not support binding kwargs to other DAG nodes, so the values
-                of the dictionary cannot be Channels.
-        """
-        from ray.dag import CollectiveOutputNode
+#     def __init__(
+#         self,
+#         task: "CompiledTask",
+#         resolved_args: List[Any],
+#         resolved_kwargs: Dict[str, Any],
+#     ):
+#         """
+#         Args:
+#             task: The CompiledTask that this ExecutableTask corresponds to.
+#             resolved_args: The arguments to the method. Arguments that are
+#                 not Channels will get passed through to the actor method.
+#                 If the argument is a channel, it will be replaced by the
+#                 value read from the channel before the method executes.
+#             resolved_kwargs: The keyword arguments to the method. Currently, we
+#                 do not support binding kwargs to other DAG nodes, so the values
+#                 of the dictionary cannot be Channels.
+#         """
+#         from ray.dag import CollectiveOutputNode
 
-        self.method_name = task.dag_node.get_method_name()
-        self.bind_index = task.dag_node._get_bind_index()
-        self.output_channels = task.output_channels
-        self.output_idxs = task.output_idxs
-        self.input_type_hints: List[ChannelOutputType] = task.arg_type_hints
-        self.output_type_hint: ChannelOutputType = task.dag_node.type_hint
+#         self.method_name = task.dag_node.get_method_name()
+#         self.bind_index = task.dag_node._get_bind_index()
+#         self.output_channels = task.output_channels
+#         self.output_idxs = task.output_idxs
+#         self.input_type_hints: List[ChannelOutputType] = task.arg_type_hints
+#         self.output_type_hint: ChannelOutputType = task.dag_node.type_hint
 
-        # The NCCL collective operation.
-        self.collective_op: Optional["ray.dag.CollectiveOperation"] = None
-        if isinstance(task.dag_node, CollectiveOutputNode):
-            self.collective_op = task.dag_node.nccl_op
+#         # The NCCL collective operation.
+#         self.collective_op: Optional["ray.dag.CollectiveOperation"] = None
+#         if isinstance(task.dag_node, CollectiveOutputNode):
+#             self.collective_op = task.dag_node.nccl_op
 
-        self.input_channels: List[ChannelInterface] = []
-        self.task_inputs: List[_ExecutableTaskInput] = []
-        self.resolved_kwargs: Dict[str, Any] = resolved_kwargs
-        # A unique index which can be used to index into `idx_to_task` to get
-        # the corresponding task.
-        self.task_idx = task.idx
+#         self.input_channels: List[ChannelInterface] = []
+#         self.task_inputs: List[_ExecutableTaskInput] = []
+#         self.resolved_kwargs: Dict[str, Any] = resolved_kwargs
+#         # A unique index which can be used to index into `idx_to_task` to get
+#         # the corresponding task.
+#         self.task_idx = task.idx
 
-        # Reverse map for input_channels: maps an input channel to
-        # its index in input_channels.
-        input_channel_to_idx: dict[ChannelInterface, int] = {}
+#         # Reverse map for input_channels: maps an input channel to
+#         # its index in input_channels.
+#         input_channel_to_idx: dict[ChannelInterface, int] = {}
 
-        for arg in resolved_args:
-            if isinstance(arg, ChannelInterface):
-                channel = arg
-                if channel in input_channel_to_idx:
-                    # The same channel was added before, so reuse the index.
-                    channel_idx = input_channel_to_idx[channel]
-                else:
-                    # Add a new channel to the list of input channels.
-                    self.input_channels.append(channel)
-                    channel_idx = len(self.input_channels) - 1
-                    input_channel_to_idx[channel] = channel_idx
+#         for arg in resolved_args:
+#             if isinstance(arg, ChannelInterface):
+#                 channel = arg
+#                 if channel in input_channel_to_idx:
+#                     # The same channel was added before, so reuse the index.
+#                     channel_idx = input_channel_to_idx[channel]
+#                 else:
+#                     # Add a new channel to the list of input channels.
+#                     self.input_channels.append(channel)
+#                     channel_idx = len(self.input_channels) - 1
+#                     input_channel_to_idx[channel] = channel_idx
 
-                task_input = _ExecutableTaskInput(arg, channel_idx)
-            else:
-                task_input = _ExecutableTaskInput(arg, None)
-            self.task_inputs.append(task_input)
+#                 task_input = _ExecutableTaskInput(arg, channel_idx)
+#             else:
+#                 task_input = _ExecutableTaskInput(arg, None)
+#             self.task_inputs.append(task_input)
 
-        # Currently DAGs do not support binding kwargs to other DAG nodes.
-        for val in self.resolved_kwargs.values():
-            assert not isinstance(val, ChannelInterface)
+#         # Currently DAGs do not support binding kwargs to other DAG nodes.
+#         for val in self.resolved_kwargs.values():
+#             assert not isinstance(val, ChannelInterface)
 
-        # Input reader to read input data from upstream DAG nodes.
-        self.input_reader: ReaderInterface = SynchronousReader(self.input_channels)
-        # Output writer to write output data to downstream DAG nodes.
-        self.output_writer: WriterInterface = SynchronousWriter(
-            self.output_channels, self.output_idxs
-        )
-        # The intermediate future for a READ or COMPUTE operation,
-        # and `wait()` must be called to get the actual result of the operation.
-        # The result of a READ operation will be used by a COMPUTE operation,
-        # and the result of a COMPUTE operation will be used by a WRITE operation.
-        self._intermediate_future: Optional[DAGOperationFuture] = None
+#         # Input reader to read input data from upstream DAG nodes.
+#         self.input_reader: ReaderInterface = SynchronousReader(self.input_channels)
+#         # Output writer to write output data to downstream DAG nodes.
+#         self.output_writer: WriterInterface = SynchronousWriter(
+#             self.output_channels, self.output_idxs
+#         )
+#         # The intermediate future for a READ or COMPUTE operation,
+#         # and `wait()` must be called to get the actual result of the operation.
+#         # The result of a READ operation will be used by a COMPUTE operation,
+#         # and the result of a COMPUTE operation will be used by a WRITE operation.
+#         self._intermediate_future: Optional[DAGOperationFuture] = None
 
-    def cancel(self):
-        """
-        Close all the input channels and the output channel. The exact behavior
-        depends on the type of channel. Typically, it will release the resources
-        used by the channels.
-        """
-        self.input_reader.close()
-        self.output_writer.close()
+#     def cancel(self):
+#         """
+#         Close all the input channels and the output channel. The exact behavior
+#         depends on the type of channel. Typically, it will release the resources
+#         used by the channels.
+#         """
+#         self.input_reader.close()
+#         self.output_writer.close()
 
-    def destroy_cuda_event(self):
-        """
-        If this executable task has created a GPU future that is not yet waited on,
-        that future is in the channel context cache. Remove the future from the cache
-        and destroy its CUDA event.
-        """
-        GPUFuture.remove_gpu_future(self.task_idx)
+#     def destroy_cuda_event(self):
+#         """
+#         If this executable task has created a GPU future that is not yet waited on,
+#         that future is in the channel context cache. Remove the future from the cache
+#         and destroy its CUDA event.
+#         """
+#         GPUFuture.remove_gpu_future(self.task_idx)
 
-    def prepare(self, overlap_gpu_communication: bool = False):
-        """
-        Prepare the task for execution. The `exec_operation` function can only
-        be called after `prepare` has been called.
+#     def prepare(self, overlap_gpu_communication: bool = False):
+#         """
+#         Prepare the task for execution. The `exec_operation` function can only
+#         be called after `prepare` has been called.
 
-        Args:
-            overlap_gpu_communication: Whether to overlap GPU communication with
-                computation during DAG execution to improve performance
-        """
-        for typ_hint in self.input_type_hints:
-            typ_hint.register_custom_serializer()
-        self.output_type_hint.register_custom_serializer()
-        self.input_reader.start()
-        self.output_writer.start()
+#         Args:
+#             overlap_gpu_communication: Whether to overlap GPU communication with
+#                 computation during DAG execution to improve performance
+#         """
+#         for typ_hint in self.input_type_hints:
+#             typ_hint.register_custom_serializer()
+#         self.output_type_hint.register_custom_serializer()
+#         self.input_reader.start()
+#         self.output_writer.start()
 
-        self._send_stream: Union["cp.cuda.Stream", nullcontext] = nullcontext()
-        self._recv_stream: Union["cp.cuda.Stream", nullcontext] = nullcontext()
-        if not overlap_gpu_communication:
-            return
+#         self._send_stream: Union["cp.cuda.Stream", nullcontext] = nullcontext()
+#         self._recv_stream: Union["cp.cuda.Stream", nullcontext] = nullcontext()
+#         if not overlap_gpu_communication:
+#             return
 
-        # Set up send_stream and recv_stream when overlap_gpu_communication
-        # is configured
-        if self.output_type_hint.requires_nccl():
-            nccl_group_id = _get_nccl_group_id(self.output_type_hint)
-            nccl_group = ChannelContext.get_current().communicators.get(nccl_group_id)
-            assert nccl_group is not None
-            self._send_stream = nccl_group.send_stream
-        if self.input_type_hints:
-            for type_hint in self.input_type_hints:
-                if type_hint.requires_nccl():
-                    nccl_group_id = _get_nccl_group_id(type_hint)
-                    nccl_group = ChannelContext.get_current().communicators.get(
-                        nccl_group_id
-                    )
-                    assert nccl_group is not None
-                    if not isinstance(self._recv_stream, nullcontext):
-                        assert self._recv_stream == nccl_group.recv_stream, (
-                            "Currently all torch tensor input channels of a "
-                            "Compiled Graph task should use the same recv cuda stream."
-                        )
-                    self._recv_stream = nccl_group.recv_stream
+#         # Set up send_stream and recv_stream when overlap_gpu_communication
+#         # is configured
+#         if self.output_type_hint.requires_nccl():
+#             nccl_group_id = _get_nccl_group_id(self.output_type_hint)
+#             nccl_group = ChannelContext.get_current().communicators.get(nccl_group_id)
+#             assert nccl_group is not None
+#             self._send_stream = nccl_group.send_stream
+#         if self.input_type_hints:
+#             for type_hint in self.input_type_hints:
+#                 if type_hint.requires_nccl():
+#                     nccl_group_id = _get_nccl_group_id(type_hint)
+#                     nccl_group = ChannelContext.get_current().communicators.get(
+#                         nccl_group_id
+#                     )
+#                     assert nccl_group is not None
+#                     if not isinstance(self._recv_stream, nullcontext):
+#                         assert self._recv_stream == nccl_group.recv_stream, (
+#                             "Currently all torch tensor input channels of a "
+#                             "Compiled Graph task should use the same recv cuda stream."
+#                         )
+#                     self._recv_stream = nccl_group.recv_stream
 
-    def wrap_and_set_intermediate_future(
-        self, val: Any, wrap_in_gpu_future: bool
-    ) -> None:
-        """
-        Wrap the value in a `DAGOperationFuture` and store to the intermediate future.
-        The value corresponds to result of a READ or COMPUTE operation.
+#     def wrap_and_set_intermediate_future(
+#         self, val: Any, wrap_in_gpu_future: bool
+#     ) -> None:
+#         """
+#         Wrap the value in a `DAGOperationFuture` and store to the intermediate future.
+#         The value corresponds to result of a READ or COMPUTE operation.
 
-        If wrap_in_gpu_future is True, the value will be wrapped in a GPUFuture,
-        Otherwise, the future will be a ResolvedFuture.
+#         If wrap_in_gpu_future is True, the value will be wrapped in a GPUFuture,
+#         Otherwise, the future will be a ResolvedFuture.
 
-        Args:
-            val: The value to wrap in a future.
-            wrap_in_gpu_future: Whether to wrap the value in a GPUFuture.
-        """
-        assert self._intermediate_future is None
+#         Args:
+#             val: The value to wrap in a future.
+#             wrap_in_gpu_future: Whether to wrap the value in a GPUFuture.
+#         """
+#         assert self._intermediate_future is None
 
-        if wrap_in_gpu_future:
-            future = GPUFuture(val, self.task_idx)
-        else:
-            future = ResolvedFuture(val)
-        self._intermediate_future = future
+#         if wrap_in_gpu_future:
+#             future = GPUFuture(val, self.task_idx)
+#         else:
+#             future = ResolvedFuture(val)
+#         self._intermediate_future = future
 
-    def reset_and_wait_intermediate_future(self) -> Any:
-        """
-        Reset the intermediate future and wait for the result.
+#     def reset_and_wait_intermediate_future(self) -> Any:
+#         """
+#         Reset the intermediate future and wait for the result.
 
-        The wait does not block the CPU because:
-        - If the future is a ResolvedFuture, the result is immediately returned.
-        - If the future is a GPUFuture, the result is only waited by the current
-            CUDA stream, and the CPU is not blocked.
+#         The wait does not block the CPU because:
+#         - If the future is a ResolvedFuture, the result is immediately returned.
+#         - If the future is a GPUFuture, the result is only waited by the current
+#             CUDA stream, and the CPU is not blocked.
 
-        Returns:
-            The result of a READ or COMPUTE operation from the intermediate future.
-        """
-        future = self._intermediate_future
-        self._intermediate_future = None
-        return future.wait()
+#         Returns:
+#             The result of a READ or COMPUTE operation from the intermediate future.
+#         """
+#         future = self._intermediate_future
+#         self._intermediate_future = None
+#         return future.wait()
 
-    def _read(self, overlap_gpu_communication: bool) -> bool:
-        """
-        Read input data from upstream DAG nodes and cache the intermediate result.
+#     def _read(self, overlap_gpu_communication: bool) -> bool:
+#         """
+#         Read input data from upstream DAG nodes and cache the intermediate result.
 
-        Args:
-            overlap_gpu_communication: Whether to overlap GPU communication with
-                computation during DAG execution to improve performance.
+#         Args:
+#             overlap_gpu_communication: Whether to overlap GPU communication with
+#                 computation during DAG execution to improve performance.
 
-        Returns:
-            True if system error occurs and exit the loop; otherwise, False.
-        """
-        assert self._intermediate_future is None
-        exit = False
-        try:
-            input_data = self.input_reader.read()
-            # When overlap_gpu_communication is enabled, wrap the result in
-            # a GPUFuture so that this read operation (communication) can
-            # be overlapped with computation.
-            self.wrap_and_set_intermediate_future(
-                input_data, wrap_in_gpu_future=overlap_gpu_communication
-            )
-        except RayChannelError:
-            # Channel closed. Exit the loop.
-            exit = True
-        return exit
+#         Returns:
+#             True if system error occurs and exit the loop; otherwise, False.
+#         """
+#         assert self._intermediate_future is None
+#         exit = False
+#         try:
+#             input_data = self.input_reader.read()
+#             # When overlap_gpu_communication is enabled, wrap the result in
+#             # a GPUFuture so that this read operation (communication) can
+#             # be overlapped with computation.
+#             self.wrap_and_set_intermediate_future(
+#                 input_data, wrap_in_gpu_future=overlap_gpu_communication
+#             )
+#         except RayChannelError:
+#             # Channel closed. Exit the loop.
+#             exit = True
+#         return exit
 
-    def _compute(
-        self,
-        overlap_gpu_communication: bool,
-        class_handle,
-    ) -> bool:
-        """
-        Retrieve the intermediate result from the READ operation and perform the
-        computation. Then, cache the new intermediate result. The caller must ensure
-        that the last operation executed is READ so that the function retrieves the
-        correct intermediate result.
+#     def _compute(
+#         self,
+#         overlap_gpu_communication: bool,
+#         class_handle,
+#     ) -> bool:
+#         """
+#         Retrieve the intermediate result from the READ operation and perform the
+#         computation. Then, cache the new intermediate result. The caller must ensure
+#         that the last operation executed is READ so that the function retrieves the
+#         correct intermediate result.
 
-        Args:
-            overlap_gpu_communication: Whether to overlap GPU communication with
-                computation during DAG execution to improve performance.
-            class_handle: An instance of the class to which the actor belongs. For
-                example, the type of `class_handle` is <class 'xxxx.Worker'> if the
-                actor belongs to the `class Worker` class.
-        Returns:
-            True if system error occurs and exit the loop; otherwise, False.
-        """
-        input_data = self.reset_and_wait_intermediate_future()
-        try:
-            _process_return_vals(input_data, return_single_output=False)
-        except Exception as exc:
-            # Previous task raised an application-level exception.
-            # Propagate it and skip the actual task. We don't need to wrap the
-            # exception in a RayTaskError here because it has already been wrapped
-            # by the previous task.
-            self.wrap_and_set_intermediate_future(
-                exc, wrap_in_gpu_future=overlap_gpu_communication
-            )
-            return False
+#         Args:
+#             overlap_gpu_communication: Whether to overlap GPU communication with
+#                 computation during DAG execution to improve performance.
+#             class_handle: An instance of the class to which the actor belongs. For
+#                 example, the type of `class_handle` is <class 'xxxx.Worker'> if the
+#                 actor belongs to the `class Worker` class.
+#         Returns:
+#             True if system error occurs and exit the loop; otherwise, False.
+#         """
+#         input_data = self.reset_and_wait_intermediate_future()
+#         try:
+#             _process_return_vals(input_data, return_single_output=False)
+#         except Exception as exc:
+#             # Previous task raised an application-level exception.
+#             # Propagate it and skip the actual task. We don't need to wrap the
+#             # exception in a RayTaskError here because it has already been wrapped
+#             # by the previous task.
+#             self.wrap_and_set_intermediate_future(
+#                 exc, wrap_in_gpu_future=overlap_gpu_communication
+#             )
+#             return False
 
-        resolved_inputs = []
-        for task_input in self.task_inputs:
-            resolved_inputs.append(task_input.resolve(input_data))
+#         resolved_inputs = []
+#         for task_input in self.task_inputs:
+#             resolved_inputs.append(task_input.resolve(input_data))
 
-        if self.collective_op is not None:
-            # Run a NCCL collective operation.
-            method = self.collective_op.execute
-        else:
-            # Run an actor method.
-            method = getattr(class_handle, self.method_name)
-        try:
-            output_val = method(*resolved_inputs, **self.resolved_kwargs)
-        except Exception as exc:
-            output_val = _wrap_exception(exc)
+#         if self.collective_op is not None:
+#             # Run a NCCL collective operation.
+#             method = self.collective_op.execute
+#         else:
+#             # Run an actor method.
+#             method = getattr(class_handle, self.method_name)
+#         try:
+#             output_val = method(*resolved_inputs, **self.resolved_kwargs)
+#         except Exception as exc:
+#             output_val = _wrap_exception(exc)
 
-        # When overlap_gpu_communication is enabled, wrap the result in a GPUFuture
-        # so that this compute operation can be overlapped with communication.
-        self.wrap_and_set_intermediate_future(
-            output_val, wrap_in_gpu_future=overlap_gpu_communication
-        )
-        return False
+#         # When overlap_gpu_communication is enabled, wrap the result in a GPUFuture
+#         # so that this compute operation can be overlapped with communication.
+#         self.wrap_and_set_intermediate_future(
+#             output_val, wrap_in_gpu_future=overlap_gpu_communication
+#         )
+#         return False
 
-    def _write(self) -> bool:
-        """
-        Retrieve the intermediate result from the COMPUTE operation and write to its
-        downstream DAG nodes. The caller must ensure that the last operation executed
-        is COMPUTE so that the function retrieves the correct intermediate result.
+#     def _write(self) -> bool:
+#         """
+#         Retrieve the intermediate result from the COMPUTE operation and write to its
+#         downstream DAG nodes. The caller must ensure that the last operation executed
+#         is COMPUTE so that the function retrieves the correct intermediate result.
 
-        Returns:
-            True if system error occurs and exit the loop; otherwise, False.
-        """
-        output_val = self.reset_and_wait_intermediate_future()
-        exit = False
-        try:
-            self.output_writer.write(output_val)
-        except RayChannelError:
-            # Channel closed. Exit the loop.
-            exit = True
-        return exit
+#         Returns:
+#             True if system error occurs and exit the loop; otherwise, False.
+#         """
+#         output_val = self.reset_and_wait_intermediate_future()
+#         exit = False
+#         try:
+#             self.output_writer.write(output_val)
+#         except RayChannelError:
+#             # Channel closed. Exit the loop.
+#             exit = True
+#         return exit
 
-    def exec_operation(
-        self,
-        class_handle,
-        op_type: _DAGNodeOperationType,
-        overlap_gpu_communication: bool = False,
-    ) -> bool:
-        """
-        An ExecutableTask corresponds to a DAGNode. It consists of three
-        operations: READ, COMPUTE, and WRITE, which should be executed in
-        order to ensure that each operation can read the correct intermediate
-        result.
-        Args:
-            class_handle: The handle of the class to which the actor belongs.
-            op_type: The type of the operation. Possible types are READ,
-                COMPUTE, and WRITE.
-            overlap_gpu_communication: Whether to overlap GPU communication with
-                computation during DAG execution to improve performance.
-        Returns:
-            True if the next operation should not be executed; otherwise, False.
-        """
-        if op_type == _DAGNodeOperationType.READ:
-            with _device_context_manager():
-                with self._recv_stream:
-                    return self._read(overlap_gpu_communication)
-        elif op_type == _DAGNodeOperationType.COMPUTE:
-            return self._compute(overlap_gpu_communication, class_handle)
-        elif op_type == _DAGNodeOperationType.WRITE:
-            with _device_context_manager():
-                with self._send_stream:
-                    return self._write()
+#     def exec_operation(
+#         self,
+#         class_handle,
+#         op_type: _DAGNodeOperationType,
+#         overlap_gpu_communication: bool = False,
+#     ) -> bool:
+#         """
+#         An ExecutableTask corresponds to a DAGNode. It consists of three
+#         operations: READ, COMPUTE, and WRITE, which should be executed in
+#         order to ensure that each operation can read the correct intermediate
+#         result.
+#         Args:
+#             class_handle: The handle of the class to which the actor belongs.
+#             op_type: The type of the operation. Possible types are READ,
+#                 COMPUTE, and WRITE.
+#             overlap_gpu_communication: Whether to overlap GPU communication with
+#                 computation during DAG execution to improve performance.
+#         Returns:
+#             True if the next operation should not be executed; otherwise, False.
+#         """
+#         if op_type == _DAGNodeOperationType.READ:
+#             with _device_context_manager():
+#                 with self._recv_stream:
+#                     return self._read(overlap_gpu_communication)
+#         elif op_type == _DAGNodeOperationType.COMPUTE:
+#             return self._compute(overlap_gpu_communication, class_handle)
+#         elif op_type == _DAGNodeOperationType.WRITE:
+#             with _device_context_manager():
+#                 with self._send_stream:
+#                     return self._write()
 
 
 @DeveloperAPI
@@ -1371,12 +1364,12 @@ class CompiledDAG:
         # This is used for type hint resolution for with_tensor_transport("auto").
         self.actor_to_gpu_ids: Dict["ray.actor.ActorHandle", List[str]] = {}
         self.actor_to_executable_tasks: Dict[
-            "ray.actor.ActorHandle", List["ExecutableTask"]
+            "ray.actor.ActorHandle", List["ExecutableTask_EXP"]
         ] = {}
         # Mapping from the actor handle to the execution schedule which is a list
         # of operations to be executed.
         self.actor_to_execution_schedule: Dict[
-            "ray.actor.ActorHandle", List[_DAGNodeOperation]
+            "ray.actor.ActorHandle", List[_DAGNodeOperation_EXP]
         ] = defaultdict(list)
         # Mapping from the actor handle to the node ID that the actor is on.
         # A None actor handle means the actor is the driver.
@@ -2422,83 +2415,83 @@ class CompiledDAG:
         self._dag_submitter.start()
         self._dag_output_fetcher.start()
 
-    def _generate_dag_operation_graph_node(
-        self,
-    ) -> Dict["ray.actor.ActorHandle", List[List[_DAGOperationGraphNode]]]:
-        """
-        Generate READ, COMPUTE, and WRITE operations for each DAG node.
+    # def _generate_dag_operation_graph_node(
+    #     self,
+    # ) -> Dict["ray.actor.ActorHandle", List[List[_DAGOperationGraphNode]]]:
+    #     """
+    #     Generate READ, COMPUTE, and WRITE operations for each DAG node.
 
-        Returns:
-            A dictionary that maps an actor handle to a list of lists of
-            _DAGOperationGraphNode. For the same actor, the index of the
-            outer list corresponds to the index of the ExecutableTask in
-            the list of `executable_tasks` in `actor_to_executable_tasks`,
-            i.e. `exec_task_idx`. In the inner list, the order of operations
-            is READ, COMPUTE, and WRITE.
+    #     Returns:
+    #         A dictionary that maps an actor handle to a list of lists of
+    #         _DAGOperationGraphNode. For the same actor, the index of the
+    #         outer list corresponds to the index of the ExecutableTask in
+    #         the list of `executable_tasks` in `actor_to_executable_tasks`,
+    #         i.e. `exec_task_idx`. In the inner list, the order of operations
+    #         is READ, COMPUTE, and WRITE.
 
-            Example:
-            {
-                actor1: [
-                    [READ COMPUTE WRITE] # exec_task_idx 0
-                    [READ COMPUTE WRITE] # exec_task_idx 1
-                ]
-            }
-        """
-        from ray.dag.communication_node import CollectiveOutputNode
+    #         Example:
+    #         {
+    #             actor1: [
+    #                 [READ COMPUTE WRITE] # exec_task_idx 0
+    #                 [READ COMPUTE WRITE] # exec_task_idx 1
+    #             ]
+    #         }
+    #     """
+    #     from ray.dag.communication_node import CollectiveOutputNode
 
-        assert self.idx_to_task
-        assert self.actor_to_executable_tasks
+    #     assert self.idx_to_task
+    #     assert self.actor_to_executable_tasks
 
-        actor_to_operation_nodes: Dict[
-            "ray.actor.ActorHandle", List[List[_DAGOperationGraphNode]]
-        ] = defaultdict(list)
+    #     actor_to_operation_nodes: Dict[
+    #         "ray.actor.ActorHandle", List[List[_DAGOperationGraphNode]]
+    #     ] = defaultdict(list)
 
-        for actor_handle, executable_tasks in self.actor_to_executable_tasks.items():
-            for exec_task_idx, exec_task in enumerate(executable_tasks):
-                # Divide a DAG node into three _DAGOperationGraphNodes: READ, COMPUTE,
-                # and WRITE. Each _DAGOperationGraphNode has a _DAGNodeOperation.
-                task_idx = exec_task.task_idx
-                dag_node = self.idx_to_task[task_idx].dag_node
-                method_name = exec_task.method_name
-                actor_handle = dag_node._get_actor_handle()
-                requires_nccl_read = False
-                for upstream_node in dag_node._upstream_nodes:
-                    if upstream_node.type_hint.requires_nccl():
-                        requires_nccl_read = True
-                        break
-                requires_nccl_compute = isinstance(dag_node, CollectiveOutputNode)
-                requires_nccl_write = dag_node.type_hint.requires_nccl()
+    #     for actor_handle, executable_tasks in self.actor_to_executable_tasks.items():
+    #         for exec_task_idx, exec_task in enumerate(executable_tasks):
+    #             # Divide a DAG node into three _DAGOperationGraphNodes: READ, COMPUTE,
+    #             # and WRITE. Each _DAGOperationGraphNode has a _DAGNodeOperation.
+    #             task_idx = exec_task.task_idx
+    #             dag_node = self.idx_to_task[task_idx].dag_node
+    #             method_name = exec_task.method_name
+    #             actor_handle = dag_node._get_actor_handle()
+    #             requires_nccl_read = False
+    #             for upstream_node in dag_node._upstream_nodes:
+    #                 if upstream_node.type_hint.requires_nccl():
+    #                     requires_nccl_read = True
+    #                     break
+    #             requires_nccl_compute = isinstance(dag_node, CollectiveOutputNode)
+    #             requires_nccl_write = dag_node.type_hint.requires_nccl()
 
-                read_node = _DAGOperationGraphNode(
-                    _DAGNodeOperation(
-                        exec_task_idx, _DAGNodeOperationType.READ, method_name
-                    ),
-                    task_idx,
-                    actor_handle,
-                    requires_nccl_read,
-                )
-                compute_node = _DAGOperationGraphNode(
-                    _DAGNodeOperation(
-                        exec_task_idx, _DAGNodeOperationType.COMPUTE, method_name
-                    ),
-                    task_idx,
-                    actor_handle,
-                    requires_nccl_compute,
-                )
-                write_node = _DAGOperationGraphNode(
-                    _DAGNodeOperation(
-                        exec_task_idx, _DAGNodeOperationType.WRITE, method_name
-                    ),
-                    task_idx,
-                    actor_handle,
-                    requires_nccl_write,
-                )
+    #             read_node = _DAGOperationGraphNode(
+    #                 _DAGNodeOperation(
+    #                     exec_task_idx, _DAGNodeOperationType.READ, method_name
+    #                 ),
+    #                 task_idx,
+    #                 actor_handle,
+    #                 requires_nccl_read,
+    #             )
+    #             compute_node = _DAGOperationGraphNode(
+    #                 _DAGNodeOperation(
+    #                     exec_task_idx, _DAGNodeOperationType.COMPUTE, method_name
+    #                 ),
+    #                 task_idx,
+    #                 actor_handle,
+    #                 requires_nccl_compute,
+    #             )
+    #             write_node = _DAGOperationGraphNode(
+    #                 _DAGNodeOperation(
+    #                     exec_task_idx, _DAGNodeOperationType.WRITE, method_name
+    #                 ),
+    #                 task_idx,
+    #                 actor_handle,
+    #                 requires_nccl_write,
+    #             )
 
-                actor_to_operation_nodes[actor_handle].append(
-                    [read_node, compute_node, write_node]
-                )
+    #             actor_to_operation_nodes[actor_handle].append(
+    #                 [read_node, compute_node, write_node]
+    #             )
 
-        return actor_to_operation_nodes
+    #     return actor_to_operation_nodes
 
     def _generate_dag_operation_graph_node_EXP(
         self,
@@ -2551,66 +2544,66 @@ class CompiledDAG:
 
         return actor_to_operation_nodes
 
-    def _build_execution_schedule(
-        self,
-    ) -> Dict["ray.actor.ActorHandle", List[_DAGNodeOperation]]:
-        """
-        Generate an execution schedule for each actor. The schedule is a list of
-        _DAGNodeOperation.
+    # def _build_execution_schedule(
+    #     self,
+    # ) -> Dict["ray.actor.ActorHandle", List[_DAGNodeOperation]]:
+    #     """
+    #     Generate an execution schedule for each actor. The schedule is a list of
+    #     _DAGNodeOperation.
 
-        Step 1: Generate a DAG node operation graph. Refer to the functions
-        `_generate_dag_operation_graph_node` and `_build_dag_node_operation_graph`
-        for more details.
+    #     Step 1: Generate a DAG node operation graph. Refer to the functions
+    #     `_generate_dag_operation_graph_node` and `_build_dag_node_operation_graph`
+    #     for more details.
 
-        Step 2: Topological sort
+    #     Step 2: Topological sort
 
-        It is possible to have multiple _DAGOperationGraphNodes with zero in-degree.
-        Refer to the function `_select_next_nodes` for the logic of selecting nodes.
+    #     It is possible to have multiple _DAGOperationGraphNodes with zero in-degree.
+    #     Refer to the function `_select_next_nodes` for the logic of selecting nodes.
 
-        Then, put the selected nodes into the corresponding actors' schedules.
+    #     Then, put the selected nodes into the corresponding actors' schedules.
 
-        The schedule should be intuitive to users, meaning that the execution should
-        perform operations in ascending order of `bind_index` as much as possible.
+    #     The schedule should be intuitive to users, meaning that the execution should
+    #     perform operations in ascending order of `bind_index` as much as possible.
 
-        [Example]:
+    #     [Example]:
 
-        See `test_execution_schedule` for more examples.
+    #     See `test_execution_schedule` for more examples.
 
-        Returns:
-            actor_to_execution_schedule: A dictionary that maps an actor handle to
-                the execution schedule which is a list of operations to be executed.
-        """
-        # Step 1: Build a graph of _DAGOperationGraphNode
-        actor_to_operation_nodes = self._generate_dag_operation_graph_node()
-        graph = _build_dag_node_operation_graph(
-            self.idx_to_task, actor_to_operation_nodes
-        )
-        # Step 2: Generate an execution schedule for each actor using topological sort
-        actor_to_execution_schedule = _generate_actor_to_execution_schedule(graph)
+    #     Returns:
+    #         actor_to_execution_schedule: A dictionary that maps an actor handle to
+    #             the execution schedule which is a list of operations to be executed.
+    #     """
+    #     # Step 1: Build a graph of _DAGOperationGraphNode
+    #     actor_to_operation_nodes = self._generate_dag_operation_graph_node()
+    #     graph = _build_dag_node_operation_graph(
+    #         self.idx_to_task, actor_to_operation_nodes
+    #     )
+    #     # Step 2: Generate an execution schedule for each actor using topological sort
+    #     actor_to_execution_schedule = _generate_actor_to_execution_schedule(graph)
 
-        # Step 3: Overlap GPU communication for the execution schedule if configured
-        actor_to_overlapped_schedule = None
-        if self._overlap_gpu_communication:
-            actor_to_overlapped_schedule = _generate_overlapped_execution_schedule(
-                actor_to_execution_schedule
-            )
+    #     # Step 3: Overlap GPU communication for the execution schedule if configured
+    #     actor_to_overlapped_schedule = None
+    #     if self._overlap_gpu_communication:
+    #         actor_to_overlapped_schedule = _generate_overlapped_execution_schedule(
+    #             actor_to_execution_schedule
+    #         )
 
-        if RAY_CGRAPH_VISUALIZE_SCHEDULE:
-            _visualize_execution_schedule(
-                actor_to_execution_schedule, actor_to_overlapped_schedule, graph
-            )
+    #     if RAY_CGRAPH_VISUALIZE_SCHEDULE:
+    #         _visualize_execution_schedule(
+    #             actor_to_execution_schedule, actor_to_overlapped_schedule, graph
+    #         )
 
-        if actor_to_overlapped_schedule is not None:
-            return _extract_execution_schedule(actor_to_overlapped_schedule)
-        else:
-            return _extract_execution_schedule(actor_to_execution_schedule)
+    #     if actor_to_overlapped_schedule is not None:
+    #         return _extract_execution_schedule(actor_to_overlapped_schedule)
+    #     else:
+    #         return _extract_execution_schedule(actor_to_execution_schedule)
 
     def _build_execution_schedule_EXP(
         self,
-    ) -> Dict["ray.actor.ActorHandle", List[_DAGNodeOperation]]:
+    ) -> Dict["ray.actor.ActorHandle", List[_DAGNodeOperation_EXP]]:
         """
         Generate an execution schedule for each actor. The schedule is a list of
-        _DAGNodeOperation.
+        _DAGNodeOperation_EXP.
 
         Step 1: Generate a DAG node operation graph. Refer to the functions
         `_generate_dag_operation_graph_node` and `_build_dag_node_operation_graph`
@@ -2656,9 +2649,9 @@ class CompiledDAG:
             )
 
         if actor_to_overlapped_schedule is not None:
-            return _extract_execution_schedule(actor_to_overlapped_schedule)
+            return _extract_execution_schedule_EXP(actor_to_overlapped_schedule)
         else:
-            return _extract_execution_schedule(actor_to_execution_schedule)
+            return _extract_execution_schedule_EXP(actor_to_execution_schedule)
 
     def _detect_deadlock(self) -> bool:
         """
