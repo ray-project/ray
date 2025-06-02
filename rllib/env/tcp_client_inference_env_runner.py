@@ -427,7 +427,7 @@ def _get_message(sock_):
         # Check for proper protocol.
         if "type" not in message:
             raise ConnectionError(
-                "Protocol Error! Message from peer does not contain `type` " "field."
+                "Protocol Error! Message from peer does not contain `type` field."
             )
         return rllink(message.pop("type")), message
     except Exception as e:

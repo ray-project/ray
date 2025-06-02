@@ -40,6 +40,17 @@ enum { PID_MAX_LIMIT = 1 << 22 };
 
 namespace ray {
 
+#if !defined(_WIN32)
+/// Sets the FD_CLOEXEC flag on a file descriptor.
+/// This means when the process is forked, this fd would be closed in the child process
+/// side.
+///
+/// Idempotent.
+/// Not thread safe.
+/// See https://github.com/ray-project/ray/issues/40813
+void SetFdCloseOnExec(int fd);
+#endif
+
 class EnvironmentVariableLess {
  public:
   bool operator()(char a, char b) const;

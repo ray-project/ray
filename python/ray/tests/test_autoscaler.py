@@ -77,7 +77,7 @@ class DrainNodeOutcome(str, Enum):
     differently by the autoscaler.
     """
 
-    # Return a reponse indicating all nodes were succesfully drained.
+    # Return a reponse indicating all nodes were successfully drained.
     Succeeded = "Succeeded"
     # Return response indicating at least one node failed to be drained.
     NotAllDrained = "NotAllDrained"
@@ -438,7 +438,7 @@ class AutoscalingTest(unittest.TestCase):
 
         Args:
             foreground_node_launcher: Whether workers nodes are expected to be
-            launched in the foreground.
+                launched in the foreground.
 
         """
         worker_ids = self.provider.non_terminated_nodes(tag_filters=WORKER_FILTER)
@@ -1167,7 +1167,7 @@ class AutoscalingTest(unittest.TestCase):
         autoscaler.update()
 
         # Expect the next message in the logs.
-        msg = "Failed to launch 2 node(s) of type worker. " "(didn't work): never did."
+        msg = "Failed to launch 2 node(s) of type worker. (didn't work): never did."
 
         def expected_message_logged():
             print(autoscaler.event_summarizer.summary())
@@ -1210,7 +1210,7 @@ class AutoscalingTest(unittest.TestCase):
         autoscaler.update()
 
         # Expect the next message in the logs.
-        msg = "Failed to launch 2 node(s) of type worker. " "(didn't work): never did."
+        msg = "Failed to launch 2 node(s) of type worker. (didn't work): never did."
 
         def expected_message_logged():
             print(autoscaler.event_summarizer.summary())
@@ -1399,7 +1399,7 @@ class AutoscalingTest(unittest.TestCase):
         # Check the outdated node removal event is generated.
         autoscaler.update()
         events = autoscaler.event_summarizer.summary()
-        assert "Removing 10 nodes of type " "worker (outdated)." in events, events
+        assert "Removing 10 nodes of type worker (outdated)." in events, events
         assert mock_metrics.stopped_nodes.inc.call_count == 10
         mock_metrics.started_nodes.inc.assert_called_with(5)
         assert mock_metrics.worker_create_node_time.observe.call_count == 5
@@ -1591,7 +1591,7 @@ class AutoscalingTest(unittest.TestCase):
 
         # Check the scale-down event is generated.
         events = autoscaler.event_summarizer.summary()
-        assert "Removing 1 nodes of type worker " "(max_workers_per_type)." in events
+        assert "Removing 1 nodes of type worker (max_workers_per_type)." in events
         assert mock_metrics.stopped_nodes.inc.call_count == 1
 
         # Update the config to increase the cluster size
@@ -2239,14 +2239,13 @@ class AutoscalingTest(unittest.TestCase):
         )
 
         autoscaler.update()
+        # TODO(rueian): This is a hack to avoid running into race conditions
+        # within v1 autoscaler. These should no longer be relevant in v2.
+        self.waitForNodes(2)
         autoscaler.update()
         self.waitForNodes(2)
         self.provider.finish_starting_nodes()
-        # TODO(rickyx): This is a hack to avoid running into race conditions
-        # within v1 autoscaler. These should no longer be relevant in v2.
-        time.sleep(3)
         autoscaler.update()
-        time.sleep(3)
         self.waitForNodes(2, tag_filters={TAG_RAY_NODE_STATUS: STATUS_UP_TO_DATE})
 
     def testReportsConfigFailures(self):
@@ -2296,7 +2295,7 @@ class AutoscalingTest(unittest.TestCase):
         # Check the launch failure event is generated.
         autoscaler.update()
         events = autoscaler.event_summarizer.summary()
-        assert "Removing 2 nodes of type " "worker (launch failed)." in events, events
+        assert "Removing 2 nodes of type worker (launch failed)." in events, events
 
     def testConfiguresOutdatedNodes(self):
         from ray.autoscaler._private.cli_logger import cli_logger
@@ -2492,7 +2491,7 @@ class AutoscalingTest(unittest.TestCase):
         autoscaler.update()
         events = autoscaler.event_summarizer.summary()
         assert (
-            "Restarting 1 nodes of type " "worker (lost contact with raylet)." in events
+            "Restarting 1 nodes of type worker (lost contact with raylet)." in events
         ), events
         assert mock_metrics.drain_node_exceptions.inc.call_count == 0
 
@@ -3620,7 +3619,9 @@ class AutoscalingTest(unittest.TestCase):
         worker_ip = self.provider.non_terminated_node_ips(WORKER_FILTER)[0]
         # Mark the node as idle
         lm.update(worker_ip, mock_raylet_id(), {"CPU": 1}, {"CPU": 1}, 20)
+        assert lm.is_active(worker_ip)
         autoscaler.update()
+        assert not lm.is_active(worker_ip)
         assert self.provider.internal_ip("1") == worker_ip
         events = autoscaler.event_summarizer.summary()
         assert "Removing 1 nodes of type worker (idle)." in events, events
@@ -3650,6 +3651,8 @@ class AutoscalingTest(unittest.TestCase):
         )
 
         runner = MockProcessRunner()
+        # Avoid the "Unable to deserialize `image_env` to Python object" error in the DockerCommandRunner.
+        runner.respond_to_call("json .Config.Env", ["[]" for i in range(2)])
         lm = LoadMetrics()
         mock_gcs_client = MockGcsClient()
         autoscaler = MockAutoscaler(
@@ -3664,11 +3667,12 @@ class AutoscalingTest(unittest.TestCase):
         autoscaler.update()
         # 1 worker is ready upfront.
         self.waitForNodes(1, tag_filters=WORKER_FILTER)
+        # clear the summary for later check.
+        autoscaler.event_summarizer.clear()
 
         # Restore min_workers to allow scaling down to 0.
         config["available_node_types"]["worker"]["min_workers"] = 0
         self.write_config(config)
-        autoscaler.update()
 
         # Create a placement group with 2 bundles that require 2 workers.
         placement_group_table_data = gcs_pb2.PlacementGroupTableData(
@@ -3697,6 +3701,9 @@ class AutoscalingTest(unittest.TestCase):
             [placement_group_table_data],
         )
         autoscaler.update()
+        # TODO(rueian): This is a hack to avoid running into race conditions
+        # within v1 autoscaler. These should no longer be relevant in v2.
+        self.waitForNodes(2, tag_filters=WORKER_FILTER)
 
         events = autoscaler.event_summarizer.summary()
         assert "Removing 1 nodes of type worker (idle)." not in events, events
@@ -3728,8 +3735,4 @@ def test_prom_null_metric_inc_fix():
 
 
 if __name__ == "__main__":
-
-    if os.environ.get("PARALLEL_CI"):
-        sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))
-    else:
-        sys.exit(pytest.main(["-sv", __file__]))
+    sys.exit(pytest.main(["-sv", __file__]))

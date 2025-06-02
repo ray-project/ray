@@ -48,7 +48,7 @@ class MockTaskFinisherInterface : public TaskFinisherInterface {
                const std::vector<ObjectID> &contained_ids),
               (override));
   MOCK_METHOD(bool, MarkTaskCanceled, (const TaskID &task_id), (override));
-  MOCK_METHOD(absl::optional<TaskSpecification>,
+  MOCK_METHOD(std::optional<TaskSpecification>,
               GetTaskSpec,
               (const TaskID &task_id),
               (const, override));

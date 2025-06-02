@@ -274,7 +274,7 @@ class CQLConfig(SACConfig):
             return RLModuleSpec(module_class=DefaultCQLTorchRLModule)
         else:
             raise ValueError(
-                f"The framework {self.framework_str} is not supported. " "Use `torch`."
+                f"The framework {self.framework_str} is not supported. Use `torch`."
             )
 
     @property
@@ -330,7 +330,7 @@ class CQL(SAC):
             )
 
             # Log training results.
-            self.metrics.merge_and_log_n_dicts(learner_results, key=LEARNER_RESULTS)
+            self.metrics.aggregate(learner_results, key=LEARNER_RESULTS)
 
     @OldAPIStack
     def _training_step_old_api_stack(self) -> ResultDict:

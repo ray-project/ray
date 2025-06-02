@@ -1,4 +1,5 @@
 import pytest
+
 from ray.serve._private.constants import (
     DEFAULT_LATENCY_BUCKET_MS,
     parse_latency_buckets,

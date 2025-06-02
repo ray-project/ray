@@ -1,7 +1,7 @@
 import inspect
 import logging
 import weakref
-from typing import Any, Dict, List, Literal, Optional, Tuple, Union
+from typing import Any, Dict, List, Literal, Optional, Tuple, Union, TYPE_CHECKING
 
 import ray._private.ray_constants as ray_constants
 import ray._private.signature as signature
@@ -22,7 +22,7 @@ from ray._private.inspect_util import (
     is_static_method,
 )
 from ray._private.ray_option_utils import _warn_if_using_deprecated_placement_group
-from ray._private.utils import get_runtime_env_info, parse_runtime_env
+from ray._private.utils import get_runtime_env_info, parse_runtime_env_for_task_or_actor
 from ray._raylet import (
     STREAMING_GENERATOR_RETURN,
     ObjectRefGenerator,
@@ -41,6 +41,15 @@ from ray.util.tracing.tracing_helper import (
     _tracing_actor_creation,
     _tracing_actor_method_invocation,
 )
+from ray._private.custom_types import (
+    TENSOR_TRANSPORT,
+    TypeTensorTransport,
+    TypeTensorTransportEnum,
+)
+from ray.core.generated.common_pb2 import TensorTransport, OBJECT_STORE
+
+if TYPE_CHECKING:
+    pass
 
 logger = logging.getLogger(__name__)
 
@@ -76,6 +85,7 @@ def method(*args, **kwargs):
         "retry_exceptions",
         "_generator_backpressure_num_objects",
         "enable_task_events",
+        "tensor_transport",
     ]
     error_string = (
         "The @ray.method decorator must be applied using at least one of "
@@ -105,6 +115,15 @@ def method(*args, **kwargs):
             ]
         if "enable_task_events" in kwargs and kwargs["enable_task_events"] is not None:
             method.__ray_enable_task_events__ = kwargs["enable_task_events"]
+        if "tensor_transport" in kwargs:
+            tensor_transport_str = kwargs["tensor_transport"].upper()
+            if tensor_transport_str not in TENSOR_TRANSPORT:
+                raise ValueError(
+                    f"Invalid tensor transport {tensor_transport_str}, must be one of {TENSOR_TRANSPORT}."
+                )
+            method.__ray_tensor_transport__ = TensorTransport.Value(
+                tensor_transport_str
+            )
         return method
 
     return annotate_method
@@ -144,6 +163,8 @@ class ActorMethod:
             should call the function that was passed into the decorator and
             return the resulting ObjectRefs. For an example, see
             "test_decorated_method" in "python/ray/tests/test_actor.py".
+        _tensor_transport: The tensor transport protocol to use for the actor method.
+            The valid values are OBJECT_STORE (default), NCCL, or GLOO, and they are case-insensitive.
     """
 
     def __init__(
@@ -159,7 +180,35 @@ class ActorMethod:
         decorator=None,
         signature: Optional[List[inspect.Parameter]] = None,
         hardref=False,
+        tensor_transport: Optional[TypeTensorTransportEnum] = None,
     ):
+        """Initialize an ActorMethod.
+
+        Args:
+            actor: The actor instance this method belongs to.
+            method_name: The name of the actor method.
+            num_returns: The default number of return values that the method
+                invocation should return. If None is given, it uses
+                DEFAULT_ACTOR_METHOD_NUM_RETURN_VALS for a normal actor task
+                and "streaming" for a generator task (when `is_generator` is True).
+            max_task_retries: Number of retries on method failure.
+            retry_exceptions: Boolean of whether you want to retry all user-raised
+                exceptions, or a list of allowlist exceptions to retry.
+            is_generator: True if a given method is a Python generator.
+            generator_backpressure_num_objects: Generator-only config.
+                If a number of unconsumed objects reach this threshold,
+                a actor task stop pausing.
+            enable_task_events: True if task events is enabled, i.e., task events from
+                the actor should be reported. Defaults to True.
+            decorator: An optional decorator that should be applied to the actor
+                method invocation.
+            signature: The signature of the actor method. It is None only when cross
+                language feature is used.
+            hardref: Whether to keep a hard reference to the actor.
+            tensor_transport: The tensor transport protocol to use for the actor method.
+                The valid values are OBJECT_STORE (default), NCCL, or GLOO, and they are case-insensitive.
+        """
+        # A weakref handle to the actor.
         self._actor_ref = weakref.ref(actor)
         self._method_name = method_name
         self._num_returns = num_returns
@@ -190,6 +239,11 @@ class ActorMethod:
             self._actor_hard_ref = actor
         else:
             self._actor_hard_ref = None
+        # If the task call doesn't specify a tensor transport option, use `_tensor_transport`
+        # as the default transport for this actor method.
+        self._tensor_transport: TypeTensorTransportEnum = (
+            tensor_transport or OBJECT_STORE
+        )
 
     def __call__(self, *args, **kwargs):
         raise TypeError(
@@ -332,6 +386,7 @@ class ActorMethod:
         concurrency_group=None,
         _generator_backpressure_num_objects=None,
         enable_task_events=None,
+        tensor_transport: Optional[TypeTensorTransport] = None,
     ):
         if num_returns is None:
             num_returns = self._num_returns
@@ -347,14 +402,30 @@ class ActorMethod:
             _generator_backpressure_num_objects = (
                 self._generator_backpressure_num_objects
             )
+        if tensor_transport is None:
+            tensor_transport = self._tensor_transport
+        else:
+            if tensor_transport not in TENSOR_TRANSPORT:
+                raise ValueError(
+                    f"Invalid tensor transport {tensor_transport}, must be one of {TENSOR_TRANSPORT}"
+                )
+            # Convert `tensor_transport` from string to enum.
+            tensor_transport = TensorTransport.Value(tensor_transport)
+        args = args or []
+        kwargs = kwargs or {}
 
         def invocation(args, kwargs):
-            actor = self._actor_hard_ref or self._actor_ref()
+            dst_actor = self._actor_hard_ref or self._actor_ref()
+            if dst_actor is None:
+                # See https://github.com/ray-project/ray/issues/6265 for more details.
+                raise RuntimeError(
+                    "Lost reference to actor. Actor handles must be stored as variables, e.g. `actor = MyActor.remote()` before calling methods."
+                )
 
-            if actor is None:
-                raise RuntimeError("Lost reference to actor")
+            gpu_object_manager = ray._private.worker.global_worker.gpu_object_manager
+            gpu_object_manager.trigger_out_of_band_tensor_transfer(dst_actor, args)
 
-            return actor._actor_method_call(
+            return dst_actor._actor_method_call(
                 self._method_name,
                 args=args,
                 kwargs=kwargs,
@@ -367,13 +438,25 @@ class ActorMethod:
                     _generator_backpressure_num_objects
                 ),
                 enable_task_events=enable_task_events,
+                tensor_transport=tensor_transport,
             )
 
         # Apply the decorator if there is one.
         if self._decorator is not None:
             invocation = self._decorator(invocation)
 
-        return invocation(args, kwargs)
+        obj_ref = invocation(args, kwargs)
+        if tensor_transport != OBJECT_STORE:
+            if num_returns != 1:
+                raise ValueError(
+                    f"Currently, methods with tensor_transport={TensorTransport.Name(tensor_transport)} only support 1 return value. "
+                    "Please make sure the actor method returns a single object."
+                )
+
+            gpu_object_manager = ray._private.worker.global_worker.gpu_object_manager
+            gpu_object_manager.add_gpu_object_ref(obj_ref, self._actor_ref())
+
+        return obj_ref
 
     def __getstate__(self):
         return {
@@ -461,6 +544,7 @@ class _ActorClassMethodMetadata(object):
         self.enable_task_events = {}
         self.generator_backpressure_num_objects = {}
         self.concurrency_group_for_methods = {}
+        self.method_name_to_tensor_transport: Dict[str, TypeTensorTransportEnum] = {}
 
         for method_name, method in actor_methods:
             # Whether or not this method requires binding of its first
@@ -516,6 +600,11 @@ class _ActorClassMethodMetadata(object):
                     method_name
                 ] = method.__ray_generator_backpressure_num_objects__
 
+            if hasattr(method, "__ray_tensor_transport__"):
+                self.method_name_to_tensor_transport[
+                    method_name
+                ] = method.__ray_tensor_transport__
+
         # Update cache.
         cls._cache[actor_creation_function_descriptor] = self
         return self
@@ -538,6 +627,9 @@ class _ActorClassMetadata:
             task.
         memory: The heap memory quota for this actor.
         resources: The default resources required by the actor creation task.
+        label_selector: The labels required for the node on which this actor
+            can be scheduled on. The label selector consist of key-value pairs, where the keys
+            are label names and the value are expressions consisting of an operator with label values or just a value to indicate equality.
         accelerator_type: The specified type of accelerator required for the
             node on which this actor runs.
             See :ref:`accelerator types <accelerator_types>`.
@@ -565,6 +657,7 @@ class _ActorClassMetadata:
         memory,
         object_store_memory,
         resources,
+        label_selector,
         accelerator_type,
         runtime_env,
         concurrency_groups,
@@ -583,6 +676,7 @@ class _ActorClassMetadata:
         self.memory = memory
         self.object_store_memory = object_store_memory
         self.resources = resources
+        self.label_selector = label_selector
         self.accelerator_type = accelerator_type
         self.runtime_env = runtime_env
         self.concurrency_groups = concurrency_groups
@@ -604,7 +698,9 @@ def _process_option_dict(actor_options):
     for k, v in ray_option_utils.actor_options.items():
         if k in arg_names:
             _filled_options[k] = actor_options.get(k, v.default_value)
-    _filled_options["runtime_env"] = parse_runtime_env(_filled_options["runtime_env"])
+    _filled_options["runtime_env"] = parse_runtime_env_for_task_or_actor(
+        _filled_options["runtime_env"]
+    )
     return _filled_options
 
 
@@ -777,6 +873,8 @@ class ActorClass:
             resources (Dict[str, float]): The quantity of various custom resources
                 to reserve for this task or for the lifetime of the actor.
                 This is a dictionary mapping strings (resource names) to floats.
+            label_selector (Dict[str, str]): If specified, requires that the actor run
+                on a node which meets the specified label conditions (equals, in, not in, etc.).
             accelerator_type: If specified, requires that the task or actor run
                 on a node with the specified type of accelerator.
                 See :ref:`accelerator types <accelerator_types>`.
@@ -870,7 +968,7 @@ class ActorClass:
 
         # only update runtime_env when ".options()" specifies new runtime_env
         if "runtime_env" in actor_options:
-            updated_options["runtime_env"] = parse_runtime_env(
+            updated_options["runtime_env"] = parse_runtime_env_for_task_or_actor(
                 updated_options["runtime_env"]
             )
 
@@ -1235,6 +1333,7 @@ class ActorClass:
             scheduling_strategy=scheduling_strategy,
             enable_task_events=enable_task_events,
             labels=actor_options.get("_labels"),
+            label_selector=actor_options.get("label_selector"),
         )
 
         if _actor_launch_hook:
@@ -1255,6 +1354,7 @@ class ActorClass:
             meta.method_meta.retry_exceptions,
             meta.method_meta.generator_backpressure_num_objects,
             meta.method_meta.enable_task_events,
+            meta.method_meta.method_name_to_tensor_transport,
             actor_method_cpu,
             meta.actor_creation_function_descriptor,
             worker.current_cluster_and_job,
@@ -1312,6 +1412,8 @@ class ActorHandle:
         _ray_method_enable_task_events: The value of whether task
             tracing is enabled for the actor methods. This overrides the
             actor's default value (`_ray_enable_task_events`).
+        _ray_method_name_to_tensor_transport: A dictionary mapping method names to their tensor transport protocol settings.
+            The valid values are OBJECT_STORE (default), NCCL, or GLOO, and they are case-insensitive.
         _ray_actor_method_cpus: The number of CPUs required by actor methods.
         _ray_original_handle: True if this is the original actor handle for a
             given actor. If this is true, then the actor will be destroyed when
@@ -1342,12 +1444,35 @@ class ActorHandle:
         method_retry_exceptions: Dict[str, Union[bool, list, tuple]],
         method_generator_backpressure_num_objects: Dict[str, int],
         method_enable_task_events: Dict[str, bool],
+        method_name_to_tensor_transport: Dict[str, TypeTensorTransportEnum],
         actor_method_cpus: int,
         actor_creation_function_descriptor,
         cluster_and_job,
         original_handle=False,
         weak_ref: bool = False,
     ):
+        """Initialize an ActorHandle.
+
+        Args:
+            language: The actor language.
+            actor_id: The ID of the actor.
+            max_task_retries: The maximum number of times to retry a task when it fails.
+            enable_task_events: Whether task events should be enabled for this actor.
+            method_is_generator: Dictionary mapping method names to whether they are generator methods.
+            method_decorators: Dictionary mapping method names to their decorators.
+            method_signatures: Dictionary mapping method names to their signatures.
+            method_num_returns: Dictionary mapping method names to their number of return values.
+            method_max_task_retries: Dictionary mapping method names to their maximum task retries.
+            method_retry_exceptions: Dictionary mapping method names to their retry exception settings.
+            method_generator_backpressure_num_objects: Dictionary mapping method names to their generator backpressure settings.
+            method_enable_task_events: Dictionary mapping method names to whether task events are enabled.
+            method_name_to_tensor_transport: Dictionary mapping method names to their tensor transport settings.
+            actor_method_cpus: The number of CPUs required by actor methods.
+            actor_creation_function_descriptor: The function descriptor for actor creation.
+            cluster_and_job: The cluster and job information.
+            original_handle: Whether this is the original actor handle.
+            weak_ref: Whether this is a weak reference to the actor.
+        """
         self._ray_actor_language = language
         self._ray_actor_id = actor_id
         self._ray_max_task_retries = max_task_retries
@@ -1365,6 +1490,7 @@ class ActorHandle:
             method_generator_backpressure_num_objects
         )
         self._ray_method_enable_task_events = method_enable_task_events
+        self._ray_method_name_to_tensor_transport = method_name_to_tensor_transport
         self._ray_actor_method_cpus = actor_method_cpus
         self._ray_cluster_and_job = cluster_and_job
         self._ray_is_cross_language = language != Language.PYTHON
@@ -1408,6 +1534,9 @@ class ActorHandle:
                     ),
                     decorator=self._ray_method_decorators.get(method_name),
                     signature=self._ray_method_signatures[method_name],
+                    tensor_transport=self._ray_method_name_to_tensor_transport.get(
+                        method_name
+                    ),
                 )
                 setattr(self, method_name, method)
 
@@ -1425,7 +1554,7 @@ class ActorHandle:
                 if worker.connected and hasattr(worker, "core_worker"):
                     worker.core_worker.remove_actor_handle_reference(self._ray_actor_id)
         except AttributeError:
-            # Suppress the attribtue error which is caused by
+            # Suppress the attribute error which is caused by
             # python destruction ordering issue.
             # It only happen when python exits.
             pass
@@ -1442,6 +1571,7 @@ class ActorHandle:
         concurrency_group_name: Optional[str] = None,
         generator_backpressure_num_objects: Optional[int] = None,
         enable_task_events: Optional[bool] = None,
+        tensor_transport: TypeTensorTransportEnum = OBJECT_STORE,
     ):
         """Method execution stub for an actor handle.
 
@@ -1459,8 +1589,13 @@ class ActorHandle:
             max_task_retries: Number of retries when method fails.
             retry_exceptions: Boolean of whether you want to retry all user-raised
                 exceptions, or a list of allowlist exceptions to retry.
+            concurrency_group_name: The name of the concurrency group to use.
+            generator_backpressure_num_objects: The number of objects to generate
+                before applying backpressure.
             enable_task_events: True if tracing is enabled, i.e., task events from
                 the actor should be reported.
+            tensor_transport: The tensor transport protocol to use for the actor method.
+                The valid values are OBJECT_STORE (default), NCCL, or GLOO, and they are case-insensitive.
 
         Returns:
             object_refs: A list of object refs returned by the remote actor
@@ -1529,6 +1664,7 @@ class ActorHandle:
             concurrency_group_name if concurrency_group_name is not None else b"",
             generator_backpressure_num_objects,
             enable_task_events,
+            tensor_transport,
         )
 
         if num_returns == STREAMING_GENERATOR_RETURN:

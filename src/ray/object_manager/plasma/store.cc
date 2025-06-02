@@ -28,18 +28,15 @@
 
 #include "ray/object_manager/plasma/store.h"
 
-#include <limits.h>
-#include <stdlib.h>
-#include <string.h>
-
 #include <boost/bind/bind.hpp>
 #include <chrono>
+#include <climits>
+#include <cstdlib>
+#include <cstring>
 #include <ctime>
 #include <deque>
 #include <memory>
 #include <string>
-#include <unordered_map>
-#include <unordered_set>
 #include <utility>
 #include <vector>
 
@@ -482,13 +479,6 @@ Status PlasmaStore::ProcessClientMessage(std::shared_ptr<Client> client,
     RAY_RETURN_NOT_OK(ReadSealRequest(input, input_size, &object_id));
     SealObjects({object_id});
     RAY_RETURN_NOT_OK(SendSealReply(client, object_id, PlasmaError::OK));
-  } break;
-  case fb::MessageType::PlasmaEvictRequest: {
-    // This code path should only be used for testing.
-    int64_t num_bytes;
-    RAY_RETURN_NOT_OK(ReadEvictRequest(input, input_size, &num_bytes));
-    int64_t num_bytes_evicted = object_lifecycle_mgr_.RequireSpace(num_bytes);
-    RAY_RETURN_NOT_OK(SendEvictReply(client, num_bytes_evicted));
   } break;
   case fb::MessageType::PlasmaConnectRequest: {
     RAY_RETURN_NOT_OK(SendConnectReply(client, allocator_.GetFootprintLimit()));

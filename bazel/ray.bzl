@@ -15,6 +15,7 @@ COPTS_WITHOUT_LOG = select({
         "-Wunused-result",
         "-Wconversion-null",
         "-Wno-misleading-indentation",
+        "-Wimplicit-fallthrough",
     ],
 }) + select({
     "//:clang-cl": [
@@ -32,6 +33,7 @@ PYX_COPTS = select({
         # Ignore this warning since CPython and Cython have issue removing deprecated tp_print on MacOS
         "-Wno-deprecated-declarations",
         "-Wno-shadow",
+        "-Wno-implicit-fallthrough",
     ],
 }) + select({
     "@platforms//os:windows": [
@@ -217,3 +219,10 @@ filter_files_with_suffix = rule(
         "suffix": attr.string(),
     },
 )
+
+# It will be passed to the FlatBuffers compiler when defining flatbuffer_cc_library
+FLATC_ARGS = [
+    "--gen-object-api",
+    "--gen-mutable",
+    "--scoped-enums",
+]

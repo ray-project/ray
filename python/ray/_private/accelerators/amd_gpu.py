@@ -1,9 +1,9 @@
-import os
 import logging
-from typing import Optional, List, Tuple
+import os
+from typing import List, Optional, Tuple
 
-from ray._private.accelerators.nvidia_gpu import CUDA_VISIBLE_DEVICES_ENV_VAR
 from ray._private.accelerators.accelerator import AcceleratorManager
+from ray._private.accelerators.nvidia_gpu import CUDA_VISIBLE_DEVICES_ENV_VAR
 
 logger = logging.getLogger(__name__)
 

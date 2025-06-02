@@ -213,8 +213,8 @@ class CQLTorchLearner(SACTorchLearner):
                 # TODO (simon): Add these keys to SAC Learner.
                 "cql_loss": cql_loss,
                 "alpha_loss": alpha_loss,
-                "alpha_value": alpha,
-                "log_alpha_value": torch.log(alpha),
+                "alpha_value": alpha[0],
+                "log_alpha_value": torch.log(alpha)[0],
                 "target_entropy": self.target_entropy[module_id],
                 LOGPS_KEY: torch.mean(
                     fwd_out["logp_resampled"]

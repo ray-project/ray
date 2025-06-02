@@ -3,7 +3,7 @@
 # Atari
 ale_py==0.10.1
 imageio==2.34.2
-opencv-python-headless==4.8.1.78
+opencv-python-headless==4.9.0.80
 
 # For testing MuJoCo envs with gymnasium.
 mujoco==3.2.4

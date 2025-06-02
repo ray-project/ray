@@ -302,6 +302,8 @@ py_test(
         "learning_tests_pytorch_use_all_core",
         "team:rllib",
         "torch_only",
+        # Test is failing: https://github.com/ray-project/ray/issues/52270
+        "manual",
     ],
 )
 
@@ -557,6 +559,61 @@ py_test(
         "learning_tests_pytorch_use_all_core",
         "team:rllib",
         "torch_only",
+        # Disabled: https://github.com/ray-project/ray/issues/50532
+        "manual",
+    ],
+)
+
+py_test(
+    name = "learning_tests_cartpole_bc_with_offline_evaluation",
+    size = "medium",
+    srcs = ["tuned_examples/bc/cartpole_bc_with_offline_evaluation.py"],
+    args = [
+        "--as-test",
+        "--enable-new-api-stack",
+        "--offline-evaluation-interval=1",
+        "--num-offline-eval-runners=2",
+    ],
+    # Include the offline data files.
+    data = [
+        "tests/data/cartpole/cartpole-v1_large",
+    ],
+    main = "tuned_examples/bc/cartpole_bc_with_offline_evaluation.py",
+    tags = [
+        "exclusive",
+        "learning_tests",
+        "learning_tests_discrete",
+        "learning_tests_pytorch_use_all_core",
+        "team:rllib",
+        "torch_only",
+    ],
+)
+
+py_test(
+    name = "learning_tests_cartpole_bc_with_offline_evaluation_gpu",
+    size = "medium",
+    srcs = ["tuned_examples/bc/cartpole_bc_with_offline_evaluation.py"],
+    args = [
+        "--as-test",
+        "--enable-new-api-stack",
+        "--num-gpus-per-learner=1",
+        "--offline-evaluation-interval=1",
+        "--num-offline-eval-runners=2",
+        "--num-gpus-per-offline-eval-runner=0.5",
+    ],
+    # Include the offline data files.
+    data = [
+        "tests/data/cartpole/cartpole-v1_large",
+    ],
+    main = "tuned_examples/bc/cartpole_bc_with_offline_evaluation.py",
+    tags = [
+        "exclusive",
+        "learning_tests",
+        "learning_tests_discrete",
+        "learning_tests_pytorch_use_all_core",
+        "multi_gpu",
+        "team:rllib",
+        "torch_only",
     ],
 )
 
@@ -583,6 +640,8 @@ py_test(
         "learning_tests_pytorch_use_all_core",
         "team:rllib",
         "torch_only",
+        # Disabled: https://github.com/ray-project/ray/issues/43808
+        "manual",
     ],
 )
 
@@ -610,6 +669,8 @@ py_test(
         "learning_tests_pytorch_use_all_core",
         "team:rllib",
         "torch_only",
+        # Disabled: https://github.com/ray-project/ray/issues/50538
+        "manual",
     ],
 )
 
@@ -695,6 +756,8 @@ py_test(
         "multi_gpu",
         "team:rllib",
         "torch_only",
+        # Disabled: https://github.com/ray-project/ray/issues/47216
+        "manual",
     ],
 )
 
@@ -1857,40 +1920,6 @@ py_test(
 )
 
 py_test(
-    name = "test_callbacks_on_algorithm",
-    size = "large",
-    srcs = ["algorithms/tests/test_callbacks_on_algorithm.py"],
-    tags = [
-        "algorithms_dir",
-        "algorithms_dir_generic",
-        "team:rllib",
-    ],
-)
-
-py_test(
-    name = "test_callbacks_on_env_runner",
-    size = "medium",
-    srcs = ["algorithms/tests/test_callbacks_on_env_runner.py"],
-    tags = [
-        "algorithms_dir",
-        "algorithms_dir_generic",
-        "team:rllib",
-    ],
-)
-
-# @OldAPIStack
-py_test(
-    name = "test_callbacks_old_api_stack",
-    size = "medium",
-    srcs = ["algorithms/tests/test_callbacks_old_api_stack.py"],
-    tags = [
-        "algorithms_dir",
-        "algorithms_dir_generic",
-        "team:rllib",
-    ],
-)
-
-py_test(
     name = "test_registry",
     size = "small",
     srcs = ["algorithms/tests/test_registry.py"],
@@ -2103,6 +2132,37 @@ py_test(
 #
 # Tag: callbacks
 # --------------------------------------------------------------------
+py_test(
+    name = "test_callbacks_on_algorithm",
+    size = "large",
+    srcs = ["callbacks/tests/test_callbacks_on_algorithm.py"],
+    tags = [
+        "callbacks_dir",
+        "team:rllib",
+    ],
+)
+
+py_test(
+    name = "test_callbacks_on_env_runner",
+    size = "medium",
+    srcs = ["callbacks/tests/test_callbacks_on_env_runner.py"],
+    tags = [
+        "callbacks_dir",
+        "team:rllib",
+    ],
+)
+
+# @OldAPIStack
+py_test(
+    name = "test_callbacks_old_api_stack",
+    size = "medium",
+    srcs = ["callbacks/tests/test_callbacks_old_api_stack.py"],
+    tags = [
+        "callbacks_dir",
+        "team:rllib",
+    ],
+)
+
 py_test(
     name = "test_multicallback",
     size = "medium",
@@ -2641,6 +2701,34 @@ py_test(
     ],
 )
 
+py_test(
+    name = "test_offline_evaluation_runner",
+    size = "medium",
+    srcs = ["offline/tests/test_offline_evaluation_runner.py"],
+    # Include the offline data files.
+    data = [
+        "tests/data/cartpole/cartpole-v1_large",
+    ],
+    tags = [
+        "offline",
+        "team:rllib",
+    ],
+)
+
+py_test(
+    name = "test_offline_evaluation_runner_group",
+    size = "medium",
+    srcs = ["offline/tests/test_offline_evaluation_runner_group.py"],
+    # Include the offline data files.
+    data = [
+        "tests/data/cartpole/cartpole-v1_large",
+    ],
+    tags = [
+        "offline",
+        "team:rllib",
+    ],
+)
+
 # TODO (sven, simon): This runs fine locally, but fails in the CI
 # py_test(
 #    # TODO(#50340): test is flaky.
@@ -2810,6 +2898,27 @@ py_test(
     name = "test_explorations",
     size = "large",
     srcs = ["utils/exploration/tests/test_explorations.py"],
+    tags = [
+        "team:rllib",
+        "utils",
+    ],
+)
+
+# Test metrics (metrics logger, stats)
+py_test(
+    name = "test_metrics_logger",
+    size = "small",
+    srcs = ["utils/metrics/tests/test_metrics_logger.py"],
+    tags = [
+        "team:rllib",
+        "utils",
+    ],
+)
+
+py_test(
+    name = "test_stats",
+    size = "small",
+    srcs = ["utils/metrics/tests/test_stats.py"],
     tags = [
         "team:rllib",
         "utils",
@@ -3252,6 +3361,21 @@ py_test(
 )
 
 py_test(
+    name = "examples/actions/custom_action_distribution",
+    size = "large",
+    srcs = ["examples/actions/custom_action_distribution.py"],
+    args = [
+        "--enable-new-api-stack",
+        "--temperature=0.75",
+    ],
+    main = "examples/actions/custom_action_distribution.py",
+    tags = [
+        "examples",
+        "team:rllib",
+    ],
+)
+
+py_test(
     name = "examples/actions/nested_action_spaces_ppo",
     size = "large",
     srcs = ["examples/actions/nested_action_spaces.py"],
@@ -3292,6 +3416,44 @@ py_test(
 
 # subdirectory: algorithms/
 # ....................................
+py_test(
+    name = "examples/algorithms/appo_custom_algorithm_w_shared_data_actor",
+    size = "medium",
+    srcs = ["examples/algorithms/appo_custom_algorithm_w_shared_data_actor.py"],
+    args = [
+        "--enable-new-api-stack",
+        "--as-test",
+    ],
+    main = "examples/algorithms/appo_custom_algorithm_w_shared_data_actor.py",
+    tags = [
+        "examples",
+        "team:rllib",
+    ],
+)
+
+py_test(
+    name = "examples/algorithms/maml_lr_supervised_learning",
+    size = "large",
+    srcs = ["examples/algorithms/maml_lr_supervised_learning.py"],
+    args = [
+        "--enable-new-api-stack",
+        "--as-test",
+        "--stop-iters=70000",
+        "--meta-lr=0.001",
+        "--meta-train-batch-size=5",
+        "--fine-tune-iters=10",
+        "--fine-tune-batch-size=5",
+        "--fine-tune-lr=0.01",
+        "--noise-std=0.0",
+        "--no-plot",
+    ],
+    main = "examples/algorithms/maml_lr_supervised_learning.py",
+    tags = [
+        "examples",
+        "team:rllib",
+    ],
+)
+
 py_test(
     name = "examples/algorithms/vpg_custom_algorithm",
     size = "medium",
@@ -3429,49 +3591,6 @@ py_test(
     tags = [
         "examples",
         "exclusive",
-        "team:rllib",
-    ],
-)
-
-#@OldAPIStack
-py_test(
-    name = "examples/checkpoints/onnx_tf2",
-    size = "small",
-    srcs = ["examples/checkpoints/onnx_tf.py"],
-    args = ["--framework=tf2"],
-    main = "examples/checkpoints/onnx_tf.py",
-    tags = [
-        "examples",
-        "exclusive",
-        "no_main",
-        "team:rllib",
-    ],
-)
-
-#@OldAPIStack
-py_test(
-    name = "examples/checkpoints/onnx_torch",
-    size = "small",
-    srcs = ["examples/checkpoints/onnx_torch.py"],
-    main = "examples/checkpoints/onnx_torch.py",
-    tags = [
-        "examples",
-        "exclusive",
-        "no_main",
-        "team:rllib",
-    ],
-)
-
-#@OldAPIStack
-py_test(
-    name = "examples/checkpoints/onnx_torch_lstm",
-    size = "small",
-    srcs = ["examples/checkpoints/onnx_torch_lstm.py"],
-    main = "examples/checkpoints/onnx_torch_lstm.py",
-    tags = [
-        "examples",
-        "exclusive",
-        "no_main",
         "team:rllib",
     ],
 )
@@ -3639,6 +3758,8 @@ py_test(
         "examples",
         "exclusive",
         "team:rllib",
+        # Test is failing: https://github.com/ray-project/ray/issues/47717
+        "manual",
     ],
 )
 
@@ -3707,6 +3828,8 @@ py_test(
         "examples",
         "exclusive",
         "team:rllib",
+        # Disabled: https://github.com/ray-project/ray/issues/47435
+        "manual",
     ],
 )
 
@@ -3732,25 +3855,22 @@ py_test(
         "team:rllib",
     ],
 )
-# IMPALA
-# TODO (sven): Make IMPALA learn Pendulum OR make this script flexible to accept
-#  (lopsided obs) CartPole as well.
-# py_test(
-#    name = "examples/connectors/mean_std_filtering_impala",
-#    main = "examples/connectors/mean_std_filtering.py",
-#    tags = ["team:rllib", "exclusive", "examples"],
-#    size = "medium",
-#    srcs = ["examples/connectors/mean_std_filtering.py"],
-#    args = ["--enable-new-api-stack", "--as-test", "--stop-reward=-300.0", "--framework=torch", "--algo=IMPALA", "--num-env-runners=2"]
-# )
-# py_test(
-#    name = "examples/connectors/mean_std_filtering_multi_agent_impala",
-#    main = "examples/connectors/mean_std_filtering.py",
-#    tags = ["team:rllib", "exclusive", "examples"],
-#    size = "medium",
-#    srcs = ["examples/connectors/mean_std_filtering.py"],
-#    args = ["--enable-new-api-stack", "--num-agents=2", "--as-test", "--stop-reward=-600.0", "--framework=torch", "--algo=IMPALA", "--num-env-runners=5", "--num-cpus=6"]
-# )
+
+py_test(
+    name = "examples/connectors/multi_agent_with_different_observation_spaces",
+    size = "medium",
+    srcs = ["examples/connectors/multi_agent_with_different_observation_spaces.py"],
+    args = [
+        "--enable-new-api-stack",
+        "--num-agents=2",
+    ],
+    main = "examples/connectors/multi_agent_with_different_observation_spaces.py",
+    tags = [
+        "examples",
+        "exclusive",
+        "team:rllib",
+    ],
+)
 
 # subdirectory: curiosity/
 # ....................................
@@ -4452,12 +4572,46 @@ py_test(
 )
 
 py_test(
+    name = "examples/inference/policy_inference_after_training_w_onnx",
+    size = "medium",
+    srcs = ["examples/inference/policy_inference_after_training.py"],
+    args = [
+        "--enable-new-api-stack",
+        "--stop-reward=100.0",
+        "--use-onnx-for-inference",
+    ],
+    main = "examples/inference/policy_inference_after_training.py",
+    tags = [
+        "examples",
+        "exclusive",
+        "team:rllib",
+    ],
+)
+
+py_test(
     name = "examples/inference/policy_inference_after_training_w_connector",
     size = "medium",
     srcs = ["examples/inference/policy_inference_after_training_w_connector.py"],
     args = [
         "--enable-new-api-stack",
         "--stop-reward=150.0",
+    ],
+    main = "examples/inference/policy_inference_after_training_w_connector.py",
+    tags = [
+        "examples",
+        "exclusive",
+        "team:rllib",
+    ],
+)
+
+py_test(
+    name = "examples/inference/policy_inference_after_training_w_connector_w_onnx",
+    size = "medium",
+    srcs = ["examples/inference/policy_inference_after_training_w_connector.py"],
+    args = [
+        "--enable-new-api-stack",
+        "--stop-reward=150.0",
+        "--use-onnx-for-inference",
     ],
     main = "examples/inference/policy_inference_after_training_w_connector.py",
     tags = [

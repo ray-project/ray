@@ -57,6 +57,52 @@ def test_deploy_basic(serve_instance, use_handle):
     assert pid3 != pid2
 
 
+@pytest.mark.parametrize(
+    "component_name_with_special_character",
+    [
+        "test@component",
+        "test#123",
+        "component/name",
+        "component.name",
+        "component!name",
+        "component$name",
+        "component%name",
+        "component^name",
+        "component&name",
+        "component*name",
+        "component_name",
+    ],
+)
+def test_deploy_with_any_characters(
+    serve_instance, component_name_with_special_character
+):
+    """The function should not fail when the deployment name contains special characters."""
+
+    # V1 blocks on signal
+    @serve.deployment
+    class V1:
+        async def handler(self):
+            return True
+
+        async def __call__(self):
+            return await self.handler()
+
+    # Check that deployment succeeds with special characters
+    deployment = V1.options(name=component_name_with_special_character).bind()
+    serve.run(deployment, name="app")
+
+    status = serve.status()
+
+    handle_name = serve.get_deployment_handle(
+        component_name_with_special_character, "app"
+    ).deployment_name
+
+    assert handle_name == component_name_with_special_character
+
+    app = status.applications["app"]
+    assert app.status == "RUNNING"
+
+
 def test_empty_decorator(serve_instance):
     @serve.deployment
     def func(*args):
@@ -174,6 +220,12 @@ def test_redeploy_single_replica(serve_instance, use_handle):
 
 @pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
 def test_redeploy_multiple_replicas(serve_instance):
+    """
+    This test demonstrates zero downtime when redeploying a deployment with
+    multiple replicas. The inflight requests to the old version are allowed to
+    complete, it also shows that the old version stops accepting new requests.
+    The new requests are routed to the new version.
+    """
     client = serve_instance
     name = "test"
     signal = SignalActor.remote()
@@ -203,12 +255,13 @@ def test_redeploy_multiple_replicas(serve_instance):
 
     # Redeploy new version.
     serve._run(V2.bind(), _blocking=False, name="app")
-    with pytest.raises(TimeoutError):
-        client._wait_for_application_running("app", timeout_s=2)
 
-    # Two new replicas should be started.
-    vals2, pids2 = zip(*[h.remote(block=False).result() for _ in range(10)])
-    assert set(vals2) == {"v2"}
+    while True:
+        # Wait for the new version to be started and ready to handle requests.
+        vals2, pids2 = zip(*[h.remote(block=False).result() for _ in range(10)])
+        if set(vals2) == {"v2"}:
+            break
+        time.sleep(1)
 
     # Signal the original call to exit.
     ray.get(signal.send.remote())
@@ -218,7 +271,7 @@ def test_redeploy_multiple_replicas(serve_instance):
 
     # Now the goal and requests to the new version should complete.
     # We should have two running replicas of the new version.
-    client._wait_for_application_running("app", timeout_s=10)
+    client._wait_for_application_running("app")
     vals3, pids3 = zip(*[h.remote(block=False).result() for _ in range(10)])
     assert set(vals3) == {"v2"}
     assert len(set(pids3)) == 2

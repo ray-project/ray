@@ -1,9 +1,10 @@
 """The base class for all stages."""
 import logging
-from typing import Any, Dict, AsyncIterator, List, Callable, Type, Optional
+from typing import Any, AsyncIterator, Callable, Dict, List, Optional, Type
 
 import pyarrow
 from pydantic import BaseModel, Field
+
 from ray.data.block import UserDefinedFunction
 
 logger = logging.getLogger(__name__)
@@ -68,9 +69,9 @@ class StatefulStageUDF:
 
     Args:
         data_column: The internal data column name of the processor. The
-        __call__ method will take the data column as the input of the udf
-        method, and encapsulate the output of the udf method into the data
-        column for the next stage.
+                     __call__ method takes the data column as the input of the UDF
+                     method, and encapsulates the output of the UDF method into the data
+                     column for the next stage.
         expected_input_keys: The expected input keys of the stage.
     """
 

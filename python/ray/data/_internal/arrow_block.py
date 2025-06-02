@@ -7,6 +7,7 @@ from typing import (
     Dict,
     Iterator,
     List,
+    Mapping,
     Optional,
     Tuple,
     TypeVar,
@@ -14,8 +15,10 @@ from typing import (
 )
 
 import numpy as np
+from packaging.version import parse as parse_version
 
 from ray._private.arrow_utils import get_pyarrow_version
+from ray._private.ray_constants import env_integer
 from ray.air.constants import TENSOR_COLUMN_NAME
 from ray.air.util.tensor_extensions.arrow import (
     convert_to_pyarrow_array,
@@ -25,18 +28,17 @@ from ray.data._internal.arrow_ops import transform_polars, transform_pyarrow
 from ray.data._internal.arrow_ops.transform_pyarrow import shuffle
 from ray.data._internal.row import TableRow
 from ray.data._internal.table_block import TableBlockAccessor, TableBlockBuilder
-from ray.data._internal.util import find_partitions
 from ray.data.block import (
     Block,
     BlockAccessor,
+    BlockColumn,
+    BlockColumnAccessor,
     BlockExecStats,
     BlockMetadata,
     BlockType,
     U,
-    BlockColumnAccessor,
-    BlockColumn,
 )
-from ray.data.context import DataContext
+from ray.data.context import DEFAULT_TARGET_MAX_BLOCK_SIZE, DataContext
 
 try:
     import pyarrow
@@ -52,6 +54,18 @@ if TYPE_CHECKING:
 
 T = TypeVar("T")
 logger = logging.getLogger(__name__)
+
+
+_MIN_PYARROW_VERSION_TO_NUMPY_ZERO_COPY_ONLY = parse_version("13.0.0")
+
+
+# Set the max chunk size in bytes for Arrow to Batches conversion in
+# ArrowBlockAccessor.iter_rows(). Default to 4MB, to optimize for image
+# datasets in parquet format.
+ARROW_MAX_CHUNK_SIZE_BYTES = env_integer(
+    "RAY_DATA_ARROW_MAX_CHUNK_SIZE_BYTES",
+    int(DEFAULT_TARGET_MAX_BLOCK_SIZE / 32),
+)
 
 
 # We offload some transformations to polars for performance.
@@ -155,6 +169,25 @@ class ArrowBlockBuilder(TableBlockBuilder):
         return BlockType.ARROW
 
 
+def _get_max_chunk_size(
+    table: "pyarrow.Table", max_chunk_size_bytes: int
+) -> Optional[int]:
+    """
+    Calculate the max chunk size in rows for Arrow to Batches conversion in
+    ArrowBlockAccessor.iter_rows().
+    Args:
+        table: The pyarrow table to calculate the max chunk size for.
+        max_chunk_size_bytes: The max chunk size in bytes.
+    Returns:
+        The max chunk size in rows, or None if the table is empty.
+    """
+    if table.nbytes == 0:
+        return None
+    else:
+        avg_row_size = int(table.nbytes / table.num_rows)
+        return max(1, int(max_chunk_size_bytes / avg_row_size))
+
+
 class ArrowBlockAccessor(TableBlockAccessor):
     ROW_TYPE = ArrowRow
 
@@ -162,20 +195,28 @@ class ArrowBlockAccessor(TableBlockAccessor):
         if pyarrow is None:
             raise ImportError("Run `pip install pyarrow` for Arrow support")
         super().__init__(table)
+        # Set the max chunk size in rows for Arrow to Batches conversion in
+        # ArrowBlockAccessor.iter_rows().
+        self._max_chunk_size = _get_max_chunk_size(
+            self._table, ARROW_MAX_CHUNK_SIZE_BYTES
+        )
 
     def column_names(self) -> List[str]:
         return self._table.column_names
 
-    def append_column(self, name: str, data: Any) -> Block:
+    def fill_column(self, name: str, value: Any) -> Block:
         assert name not in self._table.column_names
 
-        if any(isinstance(item, np.ndarray) for item in data):
-            raise NotImplementedError(
-                f"`{self.__class__.__name__}.append_column()` doesn't support "
-                "array-like data."
-            )
+        import pyarrow.compute as pc
 
-        return self._table.append_column(name, [data])
+        if isinstance(value, pyarrow.Scalar):
+            type = value.type
+        else:
+            type = pyarrow.infer_type([value])
+
+        array = pyarrow.nulls(len(self._table), type=type)
+        array = pc.fill_null(array, value)
+        return self._table.append_column(name, array)
 
     @classmethod
     def from_bytes(cls, data: bytes) -> "ArrowBlockAccessor":
@@ -356,7 +397,9 @@ class ArrowBlockAccessor(TableBlockAccessor):
         elif len(boundaries) == 0:
             return [table]
 
-        return find_partitions(table, boundaries, sort_key)
+        return BlockAccessor.for_block(table)._find_partitions_sorted(
+            boundaries, sort_key
+        )
 
     @staticmethod
     def merge_sorted_blocks(
@@ -375,6 +418,17 @@ class ArrowBlockAccessor(TableBlockAccessor):
 
     def block_type(self) -> BlockType:
         return BlockType.ARROW
+
+    def iter_rows(
+        self, public_row_format: bool
+    ) -> Iterator[Union[Mapping, np.ndarray]]:
+        table = self._table
+        if public_row_format:
+            for batch in table.to_batches(max_chunksize=self._max_chunk_size):
+                yield from batch.to_pylist()
+        else:
+            for i in range(self.num_rows()):
+                yield self._get_row(i)
 
 
 class ArrowBlockColumnAccessor(BlockColumnAccessor):
@@ -450,6 +504,13 @@ class ArrowBlockColumnAccessor(BlockColumnAccessor):
 
     def to_pylist(self) -> List[Any]:
         return self._column.to_pylist()
+
+    def to_numpy(self, zero_copy_only: bool = False) -> np.ndarray:
+        # NOTE: Pyarrow < 13.0.0 does not support ``zero_copy_only``
+        if get_pyarrow_version() < _MIN_PYARROW_VERSION_TO_NUMPY_ZERO_COPY_ONLY:
+            return self._column.to_numpy()
+
+        return self._column.to_numpy(zero_copy_only=zero_copy_only)
 
     def _as_arrow_compatible(self) -> Union[List[Any], "pyarrow.Array"]:
         return self._column

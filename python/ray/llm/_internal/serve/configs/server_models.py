@@ -1,23 +1,20 @@
-import pydantic
 import os
-import ray
-
+import time
 from enum import Enum
-from ray.llm._internal.serve.configs.error_handling import TooManyStoppingSequences
-
 from typing import (
     Any,
     Dict,
     List,
     Optional,
+    Sequence,
+    Set,
+    Tuple,
     Type,
     TypeVar,
     Union,
-    Tuple,
-    Sequence,
-    Set,
 )
-import time
+
+import pydantic
 from pydantic import (
     BaseModel,
     ConfigDict,
@@ -28,31 +25,32 @@ from pydantic import (
     model_validator,
 )
 
+import ray
+import ray.util.accelerators.accelerators as accelerators
 from ray.llm._internal.common.base_pydantic import BaseModelExtended
 from ray.llm._internal.common.utils.cloud_utils import (
     CloudMirrorConfig,
     is_remote_path,
 )
-from ray.llm._internal.utils import try_import
-
-from ray.llm._internal.serve.observability.logging import get_logger
-import ray.util.accelerators.accelerators as accelerators
-from ray.serve._private.config import DeploymentConfig
-
 from ray.llm._internal.serve.configs.constants import (
     DEFAULT_MULTIPLEX_DOWNLOAD_TIMEOUT_S,
     DEFAULT_MULTIPLEX_DOWNLOAD_TRIES,
-    MAX_NUM_STOPPING_SEQUENCES,
     ENABLE_WORKER_PROCESS_SETUP_HOOK,
+    MAX_NUM_STOPPING_SEQUENCES,
+    MODEL_RESPONSE_BATCH_TIMEOUT_MS,
 )
-from ray.llm._internal.serve.configs.prompt_formats import (
-    Prompt,
-    HuggingFacePromptFormat,
-)
+from ray.llm._internal.serve.configs.error_handling import TooManyStoppingSequences
 from ray.llm._internal.serve.configs.openai_api_models_patch import (
     ErrorResponse,
     ResponseFormatType,
 )
+from ray.llm._internal.serve.configs.prompt_formats import (
+    HuggingFacePromptFormat,
+    Prompt,
+)
+from ray.llm._internal.serve.observability.logging import get_logger
+from ray.llm._internal.utils import try_import
+from ray.serve._private.config import DeploymentConfig
 
 transformers = try_import("transformers")
 
@@ -141,8 +139,8 @@ class ModelLoadingConfig(BaseModelExtended):
         default=None,
         description=(
             "Where to obtain the model weights from. "
-            "Should be a HuggingFace model ID, S3 mirror config, or GCS "
-            "mirror config. When omitted, defaults to the model_id as a "
+            "Should be a HuggingFace model ID, S3 mirror config, GCS mirror config, "
+            "or a local path. When omitted, defaults to the model_id as a "
             "HuggingFace model ID."
         ),
     )
@@ -223,6 +221,24 @@ class LLMConfig(BaseModelExtended):
         """,
     )
 
+    experimental_configs: Dict[str, Any] = Field(
+        default_factory=dict,
+        description="Experimental configurations for Ray Serve LLM. This is a "
+        "dictionary of key-value pairs. Current supported keys are:\n"
+        "- `stream_batching_interval_ms`: Ray Serve LLM batches streaming "
+        "requests together. This config decides how long to wait for the "
+        "batch before processing the requests. Defaults to "
+        f"{MODEL_RESPONSE_BATCH_TIMEOUT_MS}.\n"
+        "- `num_router_replicas`: The number of replicas for the router. Ray "
+        "Serve will take the max amount all the replicas. Default would be 2 "
+        "router replicas per model replica.\n",
+    )
+
+    log_engine_metrics: Optional[bool] = Field(
+        False,
+        description="Enable additional engine metrics via Ray Prometheus port. Only compatible with V1 vLLM engine.",
+    )
+
     _supports_vision: bool = PrivateAttr(False)
     _model_architecture: str = PrivateAttr("")
     _prompt_format: HuggingFacePromptFormat = PrivateAttr(
@@ -298,7 +314,10 @@ class LLMConfig(BaseModelExtended):
         return self.engine_kwargs.get("max_model_len")
 
     @field_validator("accelerator_type")
-    def validate_accelerator_type(cls, value: str):
+    def validate_accelerator_type(cls, value: Optional[str]):
+        if value is None:
+            return value
+
         # Ensure A10 is converted to A10G.
         if value == "A10":
             value = "A10G"
@@ -411,14 +430,13 @@ class LLMConfig(BaseModelExtended):
 
         return deployment_config
 
-    def _get_deployment_name(self, name_prefix: str) -> str:
-        unsanitized_deployment_name = name_prefix + self.model_id
-        return unsanitized_deployment_name.replace("/", "--").replace(".", "_")
+    def _get_deployment_name(self) -> str:
+        return self.model_id.replace("/", "--").replace(".", "_")
 
     def get_serve_options(
         self,
         *,
-        name_prefix: str,
+        name_prefix: Optional[str] = None,
     ) -> Dict[str, Any]:
         """Get the Serve options for the given LLM config.
 
@@ -441,8 +459,8 @@ class LLMConfig(BaseModelExtended):
                 llm_app = LLMServer.as_deployment().options(**serve_options).bind(llm_config)
                 serve.run(llm_app)
 
-        Keyword Args:
-            name_prefix: The prefix to use for the deployment name.
+        Args:
+            name_prefix: Optional prefix to be used for the deployment name.
 
         Returns:
             The dictionary to use in .options() when creating the deployment.
@@ -466,7 +484,11 @@ class LLMConfig(BaseModelExtended):
         deployment_config["ray_actor_options"] = ray_actor_options
 
         # Set the name of the deployment config to map to the model ID.
-        deployment_config["name"] = self._get_deployment_name(name_prefix)
+        if "name" not in deployment_config:
+            deployment_config["name"] = self._get_deployment_name()
+        if name_prefix:
+            deployment_config["name"] = name_prefix + deployment_config["name"]
+
         return deployment_config
 
 
@@ -693,7 +715,7 @@ class LLMRawResponse(ComputedPropertyMixin, BaseModelExtended):
         timestamp: The timestamp of the response.
         finish_reason: The reason the generation finished.
         error: The error, if any.
-
+        metadata: The metadata for internal usage.
     """
 
     generated_text: Optional[str] = None
@@ -707,6 +729,7 @@ class LLMRawResponse(ComputedPropertyMixin, BaseModelExtended):
     timestamp: Optional[float] = Field(default_factory=time.time)
     finish_reason: Optional[str] = None
     error: Optional[ErrorResponse] = None
+    metadata: Optional[Dict[str, Any]] = None
 
     @model_validator(mode="before")
     @classmethod
@@ -799,6 +822,7 @@ class LLMRawResponse(ComputedPropertyMixin, BaseModelExtended):
             timestamp=responses[-1].timestamp,
             finish_reason=responses[-1].finish_reason,
             error=error,
+            metadata=responses[-1].metadata,
         )
 
     @property
@@ -863,7 +887,8 @@ def merge_dicts(base: Dict, overwrite: Dict) -> Dict:
 
 
 class SamplingParams(BaseModelExtended):
-    """
+    """Parameters for controlling text generation sampling.
+
     Args:
         max_tokens: The maximum number of tokens to generate. Defaults to inf.
         temperature: What sampling temperature to use.
@@ -888,7 +913,6 @@ class SamplingParams(BaseModelExtended):
             the completion.
         response_format: Format to return the final response in. Can be for ex:
             response_format={"type": "json", "schema": "{...}"}
-
     """
 
     _ignored_fields: Set[str] = set()
@@ -908,7 +932,7 @@ class SamplingParams(BaseModelExtended):
     best_of: int = 1
     response_format: Optional[ResponseFormatType] = None
 
-    def model_dump(self, **kwargs):
+    def model_dump(self, **kwargs) -> Dict[str, Any]:
         if kwargs.get("exclude", None) is None:
             kwargs["exclude"] = self._ignored_fields
         return super().model_dump(**kwargs)
@@ -926,22 +950,34 @@ class SamplingParams(BaseModelExtended):
                 len(unique_val), MAX_NUM_STOPPING_SEQUENCES
             ).raise_exception()
 
-        return unique_val
+        return list(unique_val)
+
+    @field_validator("stop_tokens", mode="before")
+    @classmethod
+    def validate_stop_tokens(cls, values):
+        if not values:
+            return values
+        return sorted(set(values))
 
     @classmethod
-    def from_prompt(cls: Type[ModelT], prompt: Prompt) -> ModelT:
-        # Extract parameters object from prompt
+    def _get_model_validate_kwargs(cls: Type[ModelT], prompt: Prompt) -> Dict[str, Any]:
         generate_kwargs = prompt.parameters or {}
         if not isinstance(generate_kwargs, dict):
             generate_kwargs = generate_kwargs.model_dump(exclude_unset=True)
 
-        generate_kwargs["stop"] = set(generate_kwargs.get("stop", []))
-        generate_kwargs["stop_tokens"] = set(generate_kwargs.get("stop_tokens", []))
+        return generate_kwargs
 
+    @classmethod
+    def from_prompt(cls: Type[ModelT], prompt: Prompt) -> ModelT:
+        # Extract parameters object from prompt
+        generate_kwargs = cls._get_model_validate_kwargs(prompt)
         return cls.model_validate(generate_kwargs)
 
 
 class GenerationRequest(BaseModelExtended):
     prompt: Union[str, List[int], List[str]]
+    prompt_token_ids: Optional[List[int]] = None
     request_id: Union[str, List[str]]
     sampling_params: Optional[Union[SamplingParams, List[SamplingParams]]] = None
+    stream: bool = False
+    metadata: Optional[Dict[str, Any]] = None

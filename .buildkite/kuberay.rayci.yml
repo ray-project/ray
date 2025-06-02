@@ -21,8 +21,7 @@ steps:
 
   - label: ":kubernetes: kuberay doc tests"
     tags:
-      - python
-      - docker
+      - k8s_doc
     instance_type: medium
     commands:
       - bash ci/k8s/run-kuberay-doc-tests.sh

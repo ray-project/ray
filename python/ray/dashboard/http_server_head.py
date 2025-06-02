@@ -21,13 +21,12 @@ from ray._private.usage.usage_lib import TagKey, record_extra_usage_tag
 from ray.dashboard.dashboard_metrics import DashboardPrometheusMetrics
 from ray.dashboard.head import DashboardHeadModule
 
-from ray.dashboard.subprocesses.handle import SubprocessModuleHandle
-from ray.dashboard.subprocesses.routes import SubprocessRouteTable
-
 # All third-party dependencies that are not included in the minimal Ray
 # installation must be included in this file. This allows us to determine if
 # the agent has the necessary dependencies to be started.
 from ray.dashboard.optional_deps import aiohttp, hdrs
+from ray.dashboard.subprocesses.handle import SubprocessModuleHandle
+from ray.dashboard.subprocesses.routes import SubprocessRouteTable
 
 # Logger for this module. It should be configured at the entry point
 # into the program using Ray. Ray provides a default configuration at
@@ -264,7 +263,7 @@ class HttpServerDashboardHead:
         self.runner = aiohttp.web.AppRunner(
             app,
             access_log_format=(
-                "%a %t '%r' %s %b bytes %D us " "'%{Referer}i' '%{User-Agent}i'"
+                "%a %t '%r' %s %b bytes %D us '%{Referer}i' '%{User-Agent}i'"
             ),
         )
         await self.runner.setup()
