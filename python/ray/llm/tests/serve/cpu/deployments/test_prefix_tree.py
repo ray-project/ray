@@ -1,12 +1,13 @@
-import pytest
-import ray
-from typing import Set, List
 import asyncio
+from typing import List, Set
 
+import pytest
+
+import ray
 from ray.llm._internal.serve.request_router.prefix_aware.prefix_tree import (
+    Node,
     PrefixTree,
     PrefixTreeActor,
-    Node,
 )
 
 
