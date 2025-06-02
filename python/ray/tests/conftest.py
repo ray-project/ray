@@ -1457,18 +1457,6 @@ def set_runtime_env_plugins(request):
         del os.environ["RAY_RUNTIME_ENV_PLUGINS"]
 
 
-@pytest.fixture
-def set_runtime_env_plugin_schemas(request):
-    runtime_env_plugin_schemas = getattr(request, "param", "0")
-    try:
-        os.environ["RAY_RUNTIME_ENV_PLUGIN_SCHEMAS"] = runtime_env_plugin_schemas
-        # Clear and reload schemas.
-        RuntimeEnvPluginSchemaManager.clear()
-        yield runtime_env_plugin_schemas
-    finally:
-        del os.environ["RAY_RUNTIME_ENV_PLUGIN_SCHEMAS"]
-
-
 @pytest.fixture(scope="function")
 def temp_file(request):
     with tempfile.NamedTemporaryFile("r+b") as fp:

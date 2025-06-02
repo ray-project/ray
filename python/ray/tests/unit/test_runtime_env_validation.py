@@ -49,6 +49,19 @@ def test_directory():
         os.chdir(old_dir)
 
 
+
+@pytest.fixture
+def set_runtime_env_plugin_schemas(request):
+    runtime_env_plugin_schemas = getattr(request, "param", "0")
+    try:
+        os.environ["RAY_RUNTIME_ENV_PLUGIN_SCHEMAS"] = runtime_env_plugin_schemas
+        # Clear and reload schemas.
+        RuntimeEnvPluginSchemaManager.clear()
+        yield runtime_env_plugin_schemas
+    finally:
+        del os.environ["RAY_RUNTIME_ENV_PLUGIN_SCHEMAS"]
+
+
 def test_key_with_value_none():
     parsed_runtime_env = RuntimeEnv(pip=None)
     assert parsed_runtime_env == {}
