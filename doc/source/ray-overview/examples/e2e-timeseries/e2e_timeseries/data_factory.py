@@ -19,7 +19,7 @@ def data_provider(config: dict, flag: str) -> ray.data.Dataset:
     print(f"{flag} subset size: {len(data_set)}")
 
     # Convert PyTorch Dataset to Ray Dataset.
-    # Note: this will print `ArrowConversionError: Error converting data to Arrow` due to
+    # Note: This command prints `ArrowConversionError: Error converting data to Arrow` due to
     # the data having an extra feature dimension. However, Ray falls back to using
     # pickle to store the data and continue without issue.
     ds = ray.data.from_torch(data_set)
