@@ -876,6 +876,7 @@ def _start_cluster(cluster, request):
 _START_CLUSTER_SHARED_USED = False
 
 
+@pytest.fixture
 def start_cluster(ray_start_cluster_enabled, request):
     if _START_CLUSTER_SHARED_USED:
         pytest.fail(
@@ -885,6 +886,7 @@ def start_cluster(ray_start_cluster_enabled, request):
     yield _start_cluster(ray_start_cluster_enabled, request)
 
 
+@pytest.fixture(scope="module")
 def _start_cluster_shared(ray_start_cluster_enabled_shared, request):
     global _START_CLUSTER_SHARED_USED
     _START_CLUSTER_SHARED_USED = True
