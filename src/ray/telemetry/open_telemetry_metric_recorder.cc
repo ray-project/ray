@@ -58,6 +58,8 @@ void OpenTelemetryMetricRecorder::RegisterGrpcExporter(
   // Create an OTLP exporter
   opentelemetry::exporter::otlp::OtlpGrpcMetricExporterOptions exporter_options;
   exporter_options.endpoint = endpoint;
+  exporter_options.aggregation_temporality =
+      opentelemetry::exporter::otlp::PreferredAggregationTemporality::kDelta;
   auto exporter = std::make_unique<opentelemetry::exporter::otlp::OtlpGrpcMetricExporter>(
       exporter_options);
 
@@ -168,23 +170,11 @@ std::optional<double> OpenTelemetryMetricRecorder::GetObservableMetricValue(
   if (it == observations_by_name_.end()) {
     return std::nullopt;  // Not registered
   }
-  auto &instrument = it->second;
-  if (auto *sync_instr_ptr =
-          std::get_if<std::unique_ptr<opentelemetry::metrics::SynchronousInstrument>>(
-              &instrument)) {
-    if (auto *counter = dynamic_cast<opentelemetry::metrics::Counter<double> *>(
-            sync_instr_ptr->get())) {
-      counter->Add(value, std::move(tags));
-    } else {
-      // Unknown or unsupported instrument type
-      RAY_CHECK(false) << "Unsupported synchronous instrument type for metric: " << name;
-    }
-  } else {
-    // Not a synchronous instrument, so we cannot set a value
-    RAY_CHECK(false)
-        << "Metric " << name
-        << " is not a synchronous instrument. Please register it as a gauge.";
+  auto tag_it = it->second.find(tags);
+  if (tag_it != it->second.end()) {
+    return tag_it->second;  // Get the value
   }
+  return std::nullopt;
 }
 
 void OpenTelemetryMetricRecorder::SetObservableMetricValue(
