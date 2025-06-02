@@ -512,10 +512,20 @@ class ReporterAgent(
         for resource_metrics in request.resource_metrics:
             for scope_metrics in resource_metrics.scope_metrics:
                 for metric in scope_metrics.metrics:
-                    self._open_telemetry_metric_recorder.register_gauge_metric(
-                        metric.name, metric.description or ""
-                    )
-                    for data_point in metric.gauge.data_points:
+                    data_points = []
+                    # gauge metrics
+                    if metric.WhichOneof("data") == "gauge":
+                        self._open_telemetry_metric_recorder.register_gauge_metric(
+                            metric.name, metric.description or ""
+                        )
+                        data_points = metric.gauge.data_points
+                    # counter metrics
+                    if metric.WhichOneof("data") == "sum" and metric.sum.is_monotonic:
+                        self._open_telemetry_metric_recorder.register_counter_metric(
+                            metric.name, metric.description or ""
+                        )
+                        data_points = metric.sum.data_points
+                    for data_point in data_points:
                         self._open_telemetry_metric_recorder.set_metric_value(
                             metric.name,
                             {

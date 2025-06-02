@@ -57,14 +57,62 @@ class OpenTelemetryMetricRecorder:
                 callbacks=[callback],
             )
             self._registered_instruments[name] = instrument
+            self._observations_by_name[name] = {}
+
+    def register_counter_metric(self, name: str, description: str) -> None:
+        """
+        Register a counter metric with the given name and description.
+        """
+        with self._lock:
+            if name in self._registered_instruments:
+                # Counter with the same name is already registered.
+                return
+
+            instrument = self.meter.create_counter(
+                name=f"{NAMESPACE}_{name}",
+                description=description,
+                unit="1",
+            )
+            self._registered_instruments[name] = instrument
 
     def set_metric_value(self, name: str, tags: dict, value: float):
         """
-        Set the value of a metric with the given name and tags.
-        This will create a gauge if it does not exist.
+        Set the value of a metric with the given name and tags. If the metric is not
+        registered, it lazily records the value for observable metrics or is a no-op for
+        synchronous metrics.
         """
         with self._lock:
-            self._observations_by_name[name][frozenset(tags.items())] = value
+            if self._is_observable_metric(name):
+                self._set_observable_metric_value(name, tags, value)
+            else:
+                self._set_synchronous_metric_value(name, tags, value)
+
+    def _set_observable_metric_value(self, name: str, tags: dict, value: float):
+        """
+        Set the value of an observable metric with the given name and tags. It lazily
+        records the metric value by storing it in a dictionary until the value actually
+        gets exported by OpenTelemetry.
+        """
+        self._observations_by_name[name][frozenset(tags.items())] = value
+
+    def _set_synchronous_metric_value(self, name: str, tags: dict, value: float):
+        """
+        Set the value of a synchronous metric with the given name and tags. It is a
+        no-op if the metric is not registered.
+        """
+        instrument = self._registered_instruments.get(name)
+        if isinstance(instrument, metrics.Counter):
+            instrument.add(value, attributes=tags)
+        else:
+            logger.warning(
+                f"Unsupported synchronous instrument type for metric: {name}."
+            )
+
+    def _is_observable_metric(self, name: str) -> bool:
+        """
+        Check if a metric with the given name is an observable metric.
+        """
+        return self._observations_by_name.get(name) is not None
 
     def record_and_export(self, records: List[Record], global_tags=None):
         """
@@ -84,7 +132,7 @@ class OpenTelemetryMetricRecorder:
                     f"Failed to record metric {gauge.name} with value {value} with tags {tags!r} and global tags {global_tags!r} due to: {e!r}"
                 )
 
-    def _get_metric_value(self, name: str, tags: dict) -> Optional[float]:
+    def _get_observable_metric_value(self, name: str, tags: dict) -> Optional[float]:
         """
         Get the value of a metric with the given name and tags. This method is mainly
         used for testing purposes.
