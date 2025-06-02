@@ -39,7 +39,7 @@ Tune provides support for three scenarios:
 
 .. seealso::
 
-    See :class:`~ray.train.SyncConfig` for the full set of configuration options as well as more details.
+    See :class:`~ray.tune.SyncConfig` for the full set of configuration options as well as more details.
 
 
 .. _tune-cloud-checkpointing:
@@ -55,11 +55,10 @@ We can configure cloud storage by telling Ray Tune to **upload to a remote** ``s
 .. code-block:: python
 
     from ray import tune
-    from ray.train import RunConfig
 
     tuner = tune.Tuner(
         trainable,
-        run_config=RunConfig(
+        run_config=tune.RunConfig(
             name="experiment_name",
             storage_path="s3://bucket-name/sub-path/",
         )
@@ -88,11 +87,11 @@ All we need to do is **set the shared network filesystem as the path to save res
 
 .. code-block:: python
 
-    from ray import train, tune
+    from ray import tune
 
     tuner = tune.Tuner(
         trainable,
-        run_config=train.RunConfig(
+        run_config=tune.RunConfig(
             name="experiment_name",
             storage_path="/mnt/path/to/shared/storage/",
         )
@@ -113,23 +112,22 @@ On a single-node cluster
 If you're just running an experiment on a single node (e.g., on a laptop), Tune will use the
 local filesystem as the default storage location for checkpoints and other artifacts.
 Results are saved to ``~/ray_results`` in a sub-directory with a unique auto-generated name by default,
-unless you customize this with ``storage_path`` and ``name`` in :class:`~ray.train.RunConfig`.
+unless you customize this with ``storage_path`` and ``name`` in :class:`~ray.tune.RunConfig`.
 
 .. code-block:: python
 
     from ray import tune
-    from ray.train import RunConfig
 
     tuner = tune.Tuner(
         trainable,
-        run_config=RunConfig(
+        run_config=tune.RunConfig(
             storage_path="/tmp/custom/storage/path",
             name="experiment_name",
         )
     )
     tuner.fit()
 
-In this example, all experiment results can found locally at ``/tmp/custom/storage/path/experiment_name`` for further processing.
+In this example, all experiment results can be found locally at ``/tmp/custom/storage/path/experiment_name`` for further processing.
 
 
 On a multi-node cluster (Deprecated)
@@ -166,20 +164,20 @@ that implements saving and loading checkpoints.
 
     import os
     import ray
-    from ray import train, tune
+    from ray import tune
     from your_module import my_trainable
 
 
     tuner = tune.Tuner(
         my_trainable,
-        run_config=train.RunConfig(
+        run_config=tune.RunConfig(
             # Name of your experiment
             name="my-tune-exp",
             # Configure how experiment data and checkpoints are persisted.
             # We recommend cloud storage checkpointing as it survives the cluster when
             # instances are terminated and has better performance.
             storage_path="s3://my-checkpoints-bucket/path/",
-            checkpoint_config=train.CheckpointConfig(
+            checkpoint_config=tune.CheckpointConfig(
                 # We'll keep the best five checkpoints at all times
                 # (with the highest AUC scores, a metric reported by the trainable)
                 checkpoint_score_attribute="max-auc",
@@ -212,7 +210,7 @@ you can resume it any time starting from the experiment state saved in the cloud
 There are a few options for restoring an experiment:
 ``resume_unfinished``, ``resume_errored`` and ``restart_errored``.
 Please see the documentation of
-:meth:`Tuner.restore() <ray.tune.tuner.Tuner.restore>` for more details.
+:meth:`~ray.tune.Tuner.restore` for more details.
 
 
 Advanced configuration

@@ -1,4 +1,4 @@
-"""Example of using an env-task curriculum via implementing a custom callback.
+"""Example of using an env-task curriculum by implementing a custom callback.
 
 This example:
     - demonstrates how to define your own curriculum-capable environments using
@@ -56,14 +56,16 @@ Policy NOT using the curriculum (trying to solve the hardest task right away):
 """
 from functools import partial
 
+from ray.tune.result import TRAINING_ITERATION
 from ray.rllib.algorithms.algorithm import Algorithm
-from ray.rllib.algorithms.callbacks import DefaultCallbacks
-from ray.rllib.connectors.env_to_module import (
-    AddObservationsFromEpisodesToBatch,
-    FlattenObservations,
-    WriteObservationsToEpisodes,
+from ray.rllib.callbacks.callbacks import RLlibCallback
+from ray.rllib.connectors.env_to_module import FlattenObservations
+from ray.rllib.core.rl_module.default_model_config import DefaultModelConfig
+from ray.rllib.utils.metrics import (
+    ENV_RUNNER_RESULTS,
+    EPISODE_RETURN_MEAN,
+    NUM_ENV_STEPS_SAMPLED_LIFETIME,
 )
-from ray.rllib.utils.metrics import ENV_RUNNER_RESULTS
 from ray.rllib.utils.test_utils import (
     add_rllib_example_script_args,
     run_rllib_example_script_experiment,
@@ -71,6 +73,7 @@ from ray.rllib.utils.test_utils import (
 from ray.tune.registry import get_trainable_cls
 
 parser = add_rllib_example_script_args(default_iters=100, default_timesteps=600000)
+parser.set_defaults(enable_new_api_stack=True)
 parser.add_argument(
     "--upgrade-task-threshold",
     type=float,
@@ -84,7 +87,7 @@ parser.add_argument(
     "hardest task right away).",
 )
 
-
+# __curriculum_learning_example_env_options__
 ENV_OPTIONS = {
     "is_slippery": False,
     # Limit the number of steps the agent is allowed to make in the env to
@@ -128,9 +131,10 @@ ENV_MAPS = [
         "FHFFFFFG",
     ],
 ]
+# __END_curriculum_learning_example_env_options__
 
 
-# Simple function sent to an EnvRunner to change the map of all its gym.Envs from
+# Simple function sent to an EnvRunner to change the map of all its gym. Envs from
 # the current one to a new (tougher) one, in which the goal position is further away
 # from the starting position. Note that a map is a list of strings, each one
 # representing one row in the map. Each character in the strings represent a single
@@ -142,7 +146,7 @@ def _remote_fn(env_runner, new_task: int):
     env_runner.make_env()
 
 
-class EnvTaskCallback(DefaultCallbacks):
+class EnvTaskCallback(RLlibCallback):
     """Custom callback implementing `on_train_result()` for changing the envs' maps."""
 
     def on_train_result(
@@ -163,7 +167,7 @@ class EnvTaskCallback(DefaultCallbacks):
         # to a more difficult task (if possible). If we already mastered the most
         # difficult task, we publish our victory in the result dict.
         result["task_solved"] = 0.0
-        current_return = result[ENV_RUNNER_RESULTS]["episode_return_mean"]
+        current_return = result[ENV_RUNNER_RESULTS][EPISODE_RETURN_MEAN]
         if current_return > args.upgrade_task_threshold:
             if current_task < 2:
                 new_task = current_task + 1
@@ -171,7 +175,7 @@ class EnvTaskCallback(DefaultCallbacks):
                     f"Switching task/map on all EnvRunners to #{new_task} (0=easiest, "
                     f"2=hardest), b/c R={current_return} on current task."
                 )
-                algorithm.workers.foreach_worker(
+                algorithm.env_runner_group.foreach_env_runner(
                     func=partial(_remote_fn, new_task=new_task)
                 )
                 algorithm._counters["current_env_task"] = new_task
@@ -186,7 +190,9 @@ class EnvTaskCallback(DefaultCallbacks):
                 "Emergency brake: Our policy seemed to have collapsed -> Setting task "
                 "back to 0."
             )
-            algorithm.workers.foreach_worker(func=partial(_remote_fn, new_task=0))
+            algorithm.env_runner_group.foreach_env_runner(
+                func=partial(_remote_fn, new_task=0)
+            )
             algorithm._counters["current_env_task"] = 0
 
 
@@ -208,30 +214,26 @@ if __name__ == "__main__":
                 **ENV_OPTIONS,
             },
         )
-        .training(
-            num_sgd_iter=6,
-            vf_loss_coeff=0.01,
-            lr=0.0002,
-            model={"vf_share_layers": True},
-        )
         .env_runners(
             num_envs_per_env_runner=5,
-            env_to_module_connector=lambda env: [
-                AddObservationsFromEpisodesToBatch(),
-                FlattenObservations(),
-                WriteObservationsToEpisodes(),
-            ],
+            env_to_module_connector=lambda env, spaces, device: FlattenObservations(),
         )
+        .training(
+            num_epochs=6,
+            vf_loss_coeff=0.01,
+            lr=0.0002,
+        )
+        .rl_module(model_config=DefaultModelConfig(vf_share_layers=True))
     )
 
     stop = {
-        "training_iteration": args.stop_iters,
+        TRAINING_ITERATION: args.stop_iters,
         # Reward directly does not matter to us as we would like to continue
         # after the policy reaches a return of ~1.0 on the 0-task (easiest).
         # But we DO want to stop, once the entire task is learned (policy achieves
         # return of 1.0 on the most difficult task=2).
         "task_solved": 1.0,
-        "num_env_steps_sampled_lifetime": args.stop_timesteps,
+        NUM_ENV_STEPS_SAMPLED_LIFETIME: args.stop_timesteps,
     }
 
     run_rllib_example_script_experiment(

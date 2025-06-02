@@ -1,13 +1,18 @@
+import sys
 import threading
 from typing import Dict
 from unittest.mock import MagicMock, patch
 
 import numpy as np
+import pyarrow as pa
 import pytest
-import tensorflow as tf
 import torch
 
 import ray
+
+if sys.version_info <= (3, 12):
+    # Skip this test for Python 3.12+ due to to incompatibility tensorflow
+    import tensorflow as tf
 
 
 def build_model():
@@ -86,28 +91,41 @@ def test_basic_dataset_iter_rows(ray_start_regular_shared):
     # assert it.stats() == ds.stats()
 
 
-def test_tf_conversion(ray_start_regular_shared):
+@pytest.mark.parametrize("include_additional_columns", [False, True])
+def test_tf_conversion(ray_start_regular_shared, include_additional_columns):
     ds = ray.data.range(5)
     it = ds.iterator()
-    tf_dataset = it.to_tf("id", "id")
+
+    if include_additional_columns:
+        tf_dataset = it.to_tf("id", "id", additional_columns="id")
+    else:
+        tf_dataset = it.to_tf("id", "id")
+
     for i, row in enumerate(tf_dataset):
         assert all(row[0] == i)
         assert all(row[1] == i)
         assert isinstance(row[0], tf.Tensor)
         assert isinstance(row[1], tf.Tensor)
+        if include_additional_columns:
+            assert all(row[2] == i)
+            assert isinstance(row[2], tf.Tensor)
 
 
-def test_tf_e2e(ray_start_regular_shared):
+@pytest.mark.parametrize("include_additional_columns", [False, True])
+def test_tf_e2e(ray_start_regular_shared, include_additional_columns):
     ds = ray.data.range(5)
     it = ds.iterator()
     model = build_model()
-    model.fit(it.to_tf("id", "id"), epochs=3)
+    if include_additional_columns:
+        model.fit(it.to_tf("id", "id", additional_columns="id"), epochs=3)
+    else:
+        model.fit(it.to_tf("id", "id"), epochs=3)
 
 
 def test_torch_conversion(ray_start_regular_shared):
     ds = ray.data.range(5)
     it = ds.iterator()
-    it.iter_batches = MagicMock()
+    it._iter_batches = MagicMock()
 
     for batch in it.iter_torch_batches():
         assert isinstance(batch["id"], torch.Tensor)
@@ -117,7 +135,7 @@ def test_torch_conversion(ray_start_regular_shared):
     #  `_collate_fn` (handles formatting and Tensor creation)
     # and `_finalize_fn` (handles host to device data transfer)
     # are used in `DataIterator.iter_batches()`.
-    iter_batches_calls_kwargs = [a.kwargs for a in it.iter_batches.call_args_list]
+    iter_batches_calls_kwargs = [a.kwargs for a in it._iter_batches.call_args_list]
     assert all(
         callable(kwargs["_collate_fn"]) and callable(kwargs["_finalize_fn"])
         for kwargs in iter_batches_calls_kwargs
@@ -164,18 +182,49 @@ def test_torch_conversion_collate_fn(ray_start_regular_shared):
         devices = ray.air._internal.torch_utils.get_devices()
         assert devices[0].type == "cuda"
 
-        it.iter_batches = MagicMock()
+        it._iter_batches = MagicMock()
         for batch in it.iter_torch_batches(collate_fn=collate_fn):
             assert batch.device.type == "cpu"
             assert isinstance(batch, torch.Tensor)
             assert batch.tolist() == list(range(5, 10))
 
-        # When collate_fn is specified, check that`_finalize_fn`
-        # is not used in `DataIterator.iter_batches()`.
-        iter_batches_calls_kwargs = [a.kwargs for a in it.iter_batches.call_args_list]
+        # Check that _finalize_fn is always used in `DataIterator.iter_batches()`.
+        iter_batches_calls_kwargs = [a.kwargs for a in it._iter_batches.call_args_list]
         assert all(
-            kwargs["_finalize_fn"] is None for kwargs in iter_batches_calls_kwargs
+            kwargs["_finalize_fn"] is not None for kwargs in iter_batches_calls_kwargs
         ), iter_batches_calls_kwargs
+
+
+@pytest.fixture(params=["regular", "chunked"])
+def null_array_table(request):
+    """Fixture that returns a PyArrow table with either a regular or chunked null array."""
+    if request.param == "regular":
+        # Regular array
+        return pa.table({"fruit_apple": pa.array([None, None, None], type=pa.null())})
+    else:
+        # Chunked array
+        return pa.table(
+            {
+                "fruit_apple": pa.chunked_array(
+                    [
+                        pa.array([None], type=pa.null()),
+                        pa.array([None, None], type=pa.null()),
+                    ]
+                )
+            }
+        )
+
+
+def test_torch_conversion_null_type(ray_start_regular_shared, null_array_table):
+    """Test iter_torch_batches with a PyArrow table containing null type arrays."""
+    ds = ray.data.from_arrow(null_array_table)
+    it = ds.iterator()
+    for batch in it.iter_torch_batches():
+        assert isinstance(batch, dict)
+        assert "fruit_apple" in batch
+        assert isinstance(batch["fruit_apple"], torch.Tensor)
+        assert torch.isnan(batch["fruit_apple"]).all()
+        assert batch["fruit_apple"].shape == (3,)
 
 
 def test_iterator_to_materialized_dataset(ray_start_regular_shared):
@@ -219,5 +268,9 @@ def test_iterator_to_materialized_dataset(ray_start_regular_shared):
 
 if __name__ == "__main__":
     import sys
+
+    if sys.version_info >= (3, 12):
+        # Skip this test for Python 3.12+ due to to incompatibility tensorflow
+        sys.exit(0)
 
     sys.exit(pytest.main(["-v", __file__]))

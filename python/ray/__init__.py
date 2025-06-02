@@ -3,6 +3,7 @@ from ray._private import log  # isort: skip # noqa: F401
 import logging
 import os
 import sys
+from typing import TYPE_CHECKING
 
 log.generate_logging_config()
 logger = logging.getLogger(__name__)
@@ -129,6 +130,8 @@ from ray._private.worker import (  # noqa: E402,F401
     wait,
 )
 
+from ray._private.ray_logging.logging_config import LoggingConfig  # noqa: E402
+
 # We import ray.actor because some code is run in actor.py which initializes
 # some functions in the worker.
 import ray.actor  # noqa: E402,F401
@@ -201,6 +204,7 @@ __all__ = [
     "LOCAL_MODE",
     "SCRIPT_MODE",
     "WORKER_MODE",
+    "LoggingConfig",
 ]
 
 # Public APIs that should automatically trigger ray.init().
@@ -239,6 +243,7 @@ NON_AUTO_INIT_APIS = {
     "show_in_dashboard",
     "shutdown",
     "timeline",
+    "LoggingConfig",
 }
 
 assert set(__all__) == AUTO_INIT_APIS | NON_AUTO_INIT_APIS
@@ -276,15 +281,24 @@ __all__ += [
 ]
 
 
-# Delay importing of expensive, isolated subpackages.
-def __getattr__(name: str):
-    import importlib
+# Delay importing of expensive, isolated subpackages. Note that for proper type
+# checking support these imports must be kept in sync between type checking and
+# runtime behavior.
+if TYPE_CHECKING:
+    from ray import autoscaler
+    from ray import data
+    from ray import workflow
+else:
 
-    if name in ["data", "workflow", "autoscaler"]:
-        return importlib.import_module("." + name, __name__)
-    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
+    def __getattr__(name: str):
+        import importlib
+
+        if name in ["data", "workflow", "autoscaler"]:
+            return importlib.import_module("." + name, __name__)
+        raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
 
 
 del os
 del logging
 del sys
+del TYPE_CHECKING

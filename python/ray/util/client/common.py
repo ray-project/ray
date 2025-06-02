@@ -25,12 +25,9 @@ from ray._private.signature import extract_signature, get_signature
 from ray._private.utils import check_oversized_function
 from ray.util.client import ray
 from ray.util.client.options import validate_options
+from ray.util.common import INT32_MAX
 
 logger = logging.getLogger(__name__)
-
-# The maximum field value for int32 id's -- which is also the maximum
-# number of simultaneous in-flight requests.
-INT32_MAX = (2**31) - 1
 
 # gRPC status codes that the client shouldn't attempt to recover from
 # Resource exhausted: Server is low on resources, or has hit the max number
@@ -196,7 +193,12 @@ class ClientObjectRef(raylet.ObjectRef):
 
 
 class ClientActorRef(raylet.ActorID):
-    def __init__(self, id: Union[bytes, Future]):
+    def __init__(
+        self,
+        id: Union[bytes, Future],
+        weak_ref: Optional[bool] = False,
+    ):
+        self._weak_ref = weak_ref
         self._mutex = threading.Lock()
         self._worker = ray.get_context().client_worker
         if isinstance(id, bytes):
@@ -208,6 +210,9 @@ class ClientActorRef(raylet.ActorID):
             raise TypeError("Unexpected type for id {}".format(id))
 
     def __del__(self):
+        if self._weak_ref:
+            return
+
         if self._worker is not None and self._worker.is_connected():
             try:
                 if not self.is_nil():
@@ -432,7 +437,9 @@ class ClientActorHandle(ClientStub):
     """
 
     def __init__(
-        self, actor_ref: ClientActorRef, actor_class: Optional[ClientActorClass] = None
+        self,
+        actor_ref: ClientActorRef,
+        actor_class: Optional[ClientActorClass] = None,
     ):
         self.actor_ref = actor_ref
         self._dir: Optional[List[str]] = None
@@ -697,7 +704,7 @@ def _get_client_id_from_context(context: Any) -> str:
     Get `client_id` from gRPC metadata. If the `client_id` is not present,
     this function logs an error and sets the status_code.
     """
-    metadata = {k: v for k, v in context.invocation_metadata()}
+    metadata = dict(context.invocation_metadata())
     client_id = metadata.get("client_id") or ""
     if client_id == "":
         logger.error("Client connecting with no client_id")
@@ -735,6 +742,7 @@ def _id_is_newer(id1: int, id2: int) -> bool:
     still be used to replace the one in cache.
     """
     diff = abs(id2 - id1)
+    # Int32 max is also the maximum number of simultaneous in-flight requests.
     if diff > (INT32_MAX // 2):
         # Rollover likely occurred. In this case the smaller ID is newer
         return id1 < id2

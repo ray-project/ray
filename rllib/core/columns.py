@@ -43,7 +43,10 @@ class Columns:
 
     # Common extra RLModule output keys.
     STATE_IN = "state_in"
+    NEXT_STATE_IN = "next_state_in"
     STATE_OUT = "state_out"
+    NEXT_STATE_OUT = "next_state_out"
+    EMBEDDINGS = "embeddings"
     ACTION_DIST_INPUTS = "action_dist_inputs"
     ACTION_PROB = "action_prob"
     ACTION_LOGP = "action_logp"
@@ -58,3 +61,13 @@ class Columns:
     # Postprocessing columns.
     ADVANTAGES = "advantages"
     VALUE_TARGETS = "value_targets"
+
+    # Intrinsic rewards (learning with curiosity).
+    INTRINSIC_REWARDS = "intrinsic_rewards"
+    # Discounted sum of rewards till the end of the episode (or chunk).
+    RETURNS_TO_GO = "returns_to_go"
+
+    # Loss mask. If provided in a train batch, a Learner's compute_loss_for_module
+    # method should respect the False-set value in here and mask out the respective
+    # items form the loss.
+    LOSS_MASK = "loss_mask"

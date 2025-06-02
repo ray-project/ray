@@ -30,7 +30,7 @@ class MockGcsActorSchedulerInterface : public GcsActorSchedulerInterface {
               (override));
   MOCK_METHOD(
       void,
-      ReleaseUnusedWorkers,
+      ReleaseUnusedActorWorkers,
       ((const absl::flat_hash_map<NodeID, std::vector<WorkerID>> &node_to_workers)),
       (override));
 };
@@ -70,7 +70,7 @@ class MockGcsActorScheduler : public GcsActorScheduler {
               (override));
   MOCK_METHOD(
       void,
-      ReleaseUnusedWorkers,
+      ReleaseUnusedActorWorkers,
       ((const absl::flat_hash_map<NodeID, std::vector<WorkerID>> &node_to_workers)),
       (override));
   MOCK_METHOD(void,

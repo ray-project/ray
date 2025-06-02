@@ -573,7 +573,7 @@ def parse_args():
         choices=["no", "fp16", "bf16", "fp8"],
         help="Whether to use mixed precision. Choose"
         "between fp16 and bf16 (bfloat16). Bf16 requires PyTorch >= 1.10."
-        "and an Nvidia Ampere GPU.",
+        "and an NVIDIA Ampere GPU.",
     )
 
     parser.add_argument(
@@ -702,14 +702,9 @@ def main():
     ds_plugin = DeepSpeedPlugin(hf_ds_config=config.get("ds_config"))
     config.update(ds_plugin=ds_plugin)
 
-    os.environ["RAY_AIR_LOCAL_CACHE_DIR"] = args.output_dir
-
     ray.init(
         runtime_env={
-            "env_vars": {
-                "HF_HOME": "/mnt/local_storage/.cache/huggingface",
-                "RAY_AIR_LOCAL_CACHE_DIR": os.environ["RAY_AIR_LOCAL_CACHE_DIR"],
-            },
+            "env_vars": {"HF_HOME": "/mnt/local_storage/.cache/huggingface"},
             "working_dir": ".",
         }
     )

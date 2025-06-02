@@ -145,9 +145,9 @@ def main():
     assert creation_perf["p50_ms"] * 100 > creation_perf_final["p50_ms"]
 
     if "TEST_OUTPUT_JSON" in os.environ:
-        out_file = open(os.environ["TEST_OUTPUT_JSON"], "w")
-        results = {}
-        json.dump(results, out_file)
+        with open(os.environ["TEST_OUTPUT_JSON"], "w") as out_file:
+            results = {}
+            json.dump(results, out_file)
 
 
 main()

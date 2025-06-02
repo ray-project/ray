@@ -6,6 +6,7 @@ from google.protobuf.descriptor import FieldDescriptor
 from google.protobuf.message import Message
 
 from ray import cloudpickle
+from ray._common.utils import import_attr
 from ray._private import ray_option_utils
 from ray._private.pydantic_compat import (
     BaseModel,
@@ -14,6 +15,7 @@ from ray._private.pydantic_compat import (
     NonNegativeInt,
     PositiveFloat,
     PositiveInt,
+    root_validator,
     validator,
 )
 from ray._private.serialization import pickle_dumps
@@ -24,17 +26,19 @@ from ray.serve._private.constants import (
     DEFAULT_HEALTH_CHECK_PERIOD_S,
     DEFAULT_HEALTH_CHECK_TIMEOUT_S,
     DEFAULT_MAX_ONGOING_REQUESTS,
+    DEFAULT_REQUEST_ROUTER_PATH,
     MAX_REPLICAS_PER_NODE_MAX_VALUE,
-    NEW_DEFAULT_MAX_ONGOING_REQUESTS,
 )
 from ray.serve._private.utils import DEFAULT, DeploymentOptionUpdateType
 from ray.serve.config import AutoscalingConfig
-from ray.serve.generated.serve_pb2 import AutoscalingConfig as AutoscalingConfigProto
-from ray.serve.generated.serve_pb2 import DeploymentConfig as DeploymentConfigProto
-from ray.serve.generated.serve_pb2 import DeploymentLanguage
-from ray.serve.generated.serve_pb2 import EncodingType as EncodingTypeProto
-from ray.serve.generated.serve_pb2 import LoggingConfig as LoggingConfigProto
-from ray.serve.generated.serve_pb2 import ReplicaConfig as ReplicaConfigProto
+from ray.serve.generated.serve_pb2 import (
+    AutoscalingConfig as AutoscalingConfigProto,
+    DeploymentConfig as DeploymentConfigProto,
+    DeploymentLanguage,
+    EncodingType as EncodingTypeProto,
+    LoggingConfig as LoggingConfigProto,
+    ReplicaConfig as ReplicaConfigProto,
+)
 from ray.util.placement_group import validate_placement_group
 
 
@@ -61,8 +65,19 @@ def _proto_to_dict(proto: Message) -> Dict:
     data = {}
     # Fill data with non-empty fields.
     for field, value in proto.ListFields():
+        # Handle repeated fields
+        if field.label == FieldDescriptor.LABEL_REPEATED:
+            # if we dont do this block the repeated field will be a list of
+            # `google.protobuf.internal.containers.RepeatedScalarFieldContainer
+            # Explicitly convert to list
+            if field.type == FieldDescriptor.TYPE_MESSAGE:
+                data[field.name] = [
+                    _proto_to_dict(v) for v in value
+                ]  # Convert each item
+            else:
+                data[field.name] = list(value)  # Convert to list directly
         # Recursively call if the field is another protobuf.
-        if field.type == FieldDescriptor.TYPE_MESSAGE:
+        elif field.type == FieldDescriptor.TYPE_MESSAGE:
             data[field.name] = _proto_to_dict(value)
         else:
             data[field.name] = value
@@ -75,7 +90,6 @@ def _proto_to_dict(proto: Message) -> Dict:
             and not field.containing_oneof  # skip optional fields
         ):
             data[field.name] = field.default_value
-
     return data
 
 
@@ -87,7 +101,7 @@ class DeploymentConfig(BaseModel):
             handles requests to this deployment. Defaults to 1.
         max_ongoing_requests: The maximum number of queries
             that is sent to a replica of this deployment without receiving
-            a response. Defaults to 100.
+            a response. Defaults to 5.
         max_queued_requests: Maximum number of requests to this deployment that will be
             queued at each *caller* (proxy or DeploymentHandle). Once this limit is
             reached, subsequent requests will raise a BackPressureError (for handles) or
@@ -154,7 +168,7 @@ class DeploymentConfig(BaseModel):
     is_cross_language: bool = False
 
     # This flag is used to let controller know which language does
-    # the deploymnent use.
+    # the deployment use.
     deployment_language: Any = DeploymentLanguage.PYTHON
 
     version: Optional[str] = Field(
@@ -169,6 +183,14 @@ class DeploymentConfig(BaseModel):
 
     # Contains the names of deployment options manually set by the user
     user_configured_option_names: Set[str] = set()
+
+    # Cloudpickled request router class.
+    serialized_request_router_cls: bytes = Field(default=b"")
+
+    # Custom request router config. Defaults to the power of two request router.
+    request_router_class: Union[str, Callable] = Field(
+        default=DEFAULT_REQUEST_ROUTER_PATH
+    )
 
     class Config:
         validate_assignment = True
@@ -199,7 +221,6 @@ class DeploymentConfig(BaseModel):
         from ray.serve.schema import LoggingConfig
 
         v = LoggingConfig(**v).dict()
-
         return v
 
     @validator("max_queued_requests", always=True)
@@ -213,6 +234,33 @@ class DeploymentConfig(BaseModel):
             )
 
         return v
+
+    @root_validator
+    def import_and_serialize_request_router_cls(cls, values) -> Dict[str, Any]:
+        """Import and serialize request router class with cloudpickle.
+
+        Import the request router if it's passed in as a string import path.
+        Then cloudpickle the request router and set to
+        `serialized_request_router_cls`.
+        """
+        request_router_class = values.get("request_router_class")
+        if isinstance(request_router_class, Callable):
+            request_router_class = (
+                f"{request_router_class.__module__}.{request_router_class.__name__}"
+            )
+
+        request_router_path = request_router_class or DEFAULT_REQUEST_ROUTER_PATH
+        request_router_class = import_attr(request_router_path)
+
+        values["serialized_request_router_cls"] = cloudpickle.dumps(
+            request_router_class
+        )
+        values["request_router_class"] = request_router_path
+        return values
+
+    def get_request_router_class(self) -> Callable:
+        """Deserialize request router from cloudpickled bytes."""
+        return cloudpickle.loads(self.serialized_request_router_cls)
 
     def needs_pickle(self):
         return _needs_pickle(self.deployment_language, self.is_cross_language)
@@ -332,18 +380,11 @@ def handle_num_replicas_auto(
     """Return modified `max_ongoing_requests` and `autoscaling_config`
     for when num_replicas="auto".
 
-    If `max_ongoing_requests` is unspecified (DEFAULT.VALUE), returns
-    the modified value NEW_DEFAULT_MAX_ONGOING_REQUESTS. Otherwise,
-    doesn't change `max_ongoing_requests`.
-
     If `autoscaling_config` is unspecified, returns the modified value
     AutoscalingConfig.default().
     If it is specified, the specified fields in `autoscaling_config`
     override that of AutoscalingConfig.default().
     """
-
-    if max_ongoing_requests is DEFAULT.VALUE:
-        max_ongoing_requests = NEW_DEFAULT_MAX_ONGOING_REQUESTS
 
     if autoscaling_config in [DEFAULT.VALUE, None]:
         # If autoscaling config wasn't specified, use default
@@ -548,7 +589,6 @@ class ReplicaConfig:
             "memory",
             "num_cpus",
             "num_gpus",
-            "object_store_memory",
             "resources",
             # Other options
             "runtime_env",

@@ -10,9 +10,14 @@ from typing import Any, Callable, Dict, List, Optional, Set, Tuple
 
 import ray
 from ray.serve._private.cluster_node_info_cache import ClusterNodeInfoCache
-from ray.serve._private.common import DeploymentID, ReplicaID
+from ray.serve._private.common import (
+    CreatePlacementGroupRequest,
+    DeploymentID,
+    ReplicaID,
+)
 from ray.serve._private.config import ReplicaConfig
 from ray.serve._private.constants import (
+    RAY_SERVE_HIGH_PRIORITY_CUSTOM_RESOURCES,
     RAY_SERVE_USE_COMPACT_SCHEDULING_STRATEGY,
     SERVE_LOGGER_NAME,
 )
@@ -34,6 +39,9 @@ class SpreadDeploymentSchedulingPolicy:
 
 @total_ordering
 class Resources(dict):
+    # Custom resource priority from environment variable
+    CUSTOM_PRIORITY: List[str] = RAY_SERVE_HIGH_PRIORITY_CUSTOM_RESOURCES
+
     def get(self, key: str):
         val = super().get(key)
         if val is not None:
@@ -73,18 +81,23 @@ class Resources(dict):
 
     def __lt__(self, other):
         """Determines priority when sorting a list of SoftResources.
-        1. GPU
-        2. CPU
-        3. memory
-        4. custom resources
-        This means a resource with a larger number of GPUs is always
-        sorted higher than a resource with a smaller number of GPUs,
-        regardless of the values of the other resource types. Similarly
-        for CPU next, memory next, etc.
+        1. Custom resources defined in RAY_SERVE_HIGH_PRIORITY_CUSTOM_RESOURCES (sorted by priority)
+        2. GPU
+        3. CPU
+        4. memory
+        5. Other custom resources
+        This means a resource with a larger number of high-priority resources is always
+        sorted higher than one with fewer, regardless of other types.
         """
 
         keys = set(self.keys()) | set(other.keys())
-        keys = keys - {"GPU", "CPU", "memory"}
+        custom_keys = keys - {"GPU", "CPU", "memory"}
+
+        for key in self.CUSTOM_PRIORITY:
+            if self.get(key) < other.get(key):
+                return True
+            elif self.get(key) > other.get(key):
+                return False
 
         if self.get("GPU") < other.get("GPU"):
             return True
@@ -101,7 +114,7 @@ class Resources(dict):
         elif self.get("memory") > other.get("memory"):
             return False
 
-        for key in keys:
+        for key in custom_keys - set(self.CUSTOM_PRIORITY):
             if self.get(key) < other.get(key):
                 return True
             elif self.get(key) > other.get(key):
@@ -115,6 +128,7 @@ class ReplicaSchedulingRequestStatus(str, Enum):
 
     IN_PROGRESS = "IN_PROGRESS"
     SUCCEEDED = "SUCCEEDED"
+    ACTOR_CREATION_FAILED = "ACTOR_CREATION_FAILED"
     PLACEMENT_GROUP_CREATION_FAILED = "PLACEMENT_GROUP_CREATION_FAILED"
 
 
@@ -549,19 +563,19 @@ class DeploymentScheduler(ABC):
             )
             try:
                 pg = self._create_placement_group_fn(
-                    scheduling_request.placement_group_bundles,
-                    placement_group_strategy,
-                    _soft_target_node_id=target_node_id,
-                    lifetime="detached",
-                    name=scheduling_request.actor_options["name"],
+                    CreatePlacementGroupRequest(
+                        bundles=scheduling_request.placement_group_bundles,
+                        strategy=placement_group_strategy,
+                        target_node_id=target_node_id,
+                        name=scheduling_request.actor_options["name"],
+                    )
                 )
             except Exception:
                 # We add a defensive exception here, so the controller can
                 # make progress even if the placement group isn't created.
                 # See https://github.com/ray-project/ray/issues/43888.
                 logger.exception(
-                    "Replica scheduling failed. Failed to create a "
-                    f"placement group for {replica_id}."
+                    f"Failed to create a placement group for {replica_id}."
                 )
                 scheduling_request.status = (
                     ReplicaSchedulingRequestStatus.PLACEMENT_GROUP_CREATION_FAILED
@@ -595,10 +609,19 @@ class DeploymentScheduler(ABC):
                 f"{deployment_id.app_name}:{deployment_id.name}"
             ] = (1.0 / scheduling_request.max_replicas_per_node)
 
-        actor_handle = scheduling_request.actor_def.options(
-            scheduling_strategy=scheduling_strategy,
-            **actor_options,
-        ).remote(*scheduling_request.actor_init_args)
+        try:
+            actor_handle = scheduling_request.actor_def.options(
+                scheduling_strategy=scheduling_strategy,
+                **actor_options,
+            ).remote(*scheduling_request.actor_init_args)
+        except Exception:
+            # We add a defensive exception here, so the controller can
+            # make progress even if the actor options are misconfigured.
+            logger.exception(f"Failed to create an actor for {replica_id}.")
+            scheduling_request.status = (
+                ReplicaSchedulingRequestStatus.ACTOR_CREATION_FAILED
+            )
+            return
 
         del self._pending_replicas[deployment_id][replica_id]
         self._on_replica_launching(

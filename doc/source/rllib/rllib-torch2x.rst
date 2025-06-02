@@ -6,7 +6,7 @@
 Using RLlib with torch 2.x compile
 ==================================
 
-torch 2.x comes with the ``torch.compile()`` `API <https://pytorch.org/docs/stable/generated/torch.compile.html#torch.compile>`_, which can be used to JIT-compile wrapped code. We integrate ``torch.compile()`` with RLlib in the context of `RLModules <rllib-rlmodule.html>`_ and Learners.
+torch 2.x comes with the ``torch.compile()`` `API <https://pytorch.org/docs/stable/generated/torch.compile.html#torch.compile>`_, which can be used to JIT-compile wrapped code. We integrate ``torch.compile()`` with RLlib in the context of `RLModules <rl-modules.html>`_ and Learners.
 
 We have integrated this feature with RLModules. You can set the backend and mode via ``framework()`` API on an :py:class:`~ray.rllib.algorithms.algorithm_config.AlgorithmConfig` object. Alternatively, you can compile the :py:class:`~ray.rllib.core.rl_module.rl_module.RLModule` directly during stand-alone usage, such as inference.
 
@@ -80,7 +80,7 @@ Some meta-level comments
 
 Exploration
 ------------
-In RLlib, you can now set the configuration so that it uses the compiled module during sampling of an RL agent training process. By default, the rollout workers run on CPU, therefore it is recommended to use the ``ipex`` or ``onnxrt`` backend. However, you can still run the sampling part on GPUs as well by setting ``num_gpus_per_worker`` in which case other backends can be used as well. For enabling torch-compile during training you can also set `torch_compile_learner` equivalents.
+In RLlib, you can now set the configuration so that it uses the compiled module during sampling of an RL agent training process. By default, the rollout workers run on CPU, therefore it's recommended to use the ``ipex`` or ``onnxrt`` backend. However, you can still run the sampling part on GPUs as well by setting ``num_gpus_per_env_runner`` in which case other backends can be used as well. For enabling torch-compile during training you can also set `torch_compile_learner` equivalents.
 
 
 

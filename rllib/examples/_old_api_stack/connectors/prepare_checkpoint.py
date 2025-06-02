@@ -1,12 +1,20 @@
+# @OldAPIStack
 import random
 
 from ray.rllib.algorithms.appo import APPOConfig
 from ray.rllib.algorithms.sac import SACConfig
 
 
-def create_appo_cartpole_checkpoint(output_dir):
-    # enable_connectors defaults to True. Just trying to be explicit here.
-    config = APPOConfig().environment("CartPole-v1").env_runners(enable_connectors=True)
+def create_appo_cartpole_checkpoint(output_dir, use_lstm=False):
+    config = (
+        APPOConfig()
+        .api_stack(
+            enable_rl_module_and_learner=False,
+            enable_env_runner_and_connector_v2=False,
+        )
+        .environment("CartPole-v1")
+        .training(model={"use_lstm": use_lstm})
+    )
     # Build algorithm object.
     algo = config.build()
     algo.save(checkpoint_dir=output_dir)

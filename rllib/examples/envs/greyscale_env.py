@@ -1,3 +1,4 @@
+# @OldAPIStack
 """
 Example of interfacing with an environment that produces 2D observations.
 
@@ -23,11 +24,16 @@ from supersuit import (
     resize_v1,
 )
 
+from ray.tune.result import TRAINING_ITERATION
 from ray.rllib.algorithms.ppo import PPOConfig
 from ray.rllib.env import PettingZooEnv
+from ray.rllib.utils.metrics import (
+    ENV_RUNNER_RESULTS,
+    EPISODE_RETURN_MEAN,
+    NUM_ENV_STEPS_SAMPLED_LIFETIME,
+)
 from ray.tune.registry import register_env
 from ray import tune
-from ray import air
 
 
 parser = argparse.ArgumentParser()
@@ -94,11 +100,11 @@ config = (
         vf_loss_coeff=0.1,
         clip_param=0.1,
         vf_clip_param=10.0,
-        num_sgd_iter=10,
+        num_epochs=10,
         kl_coeff=0.5,
         lr=0.0001,
         grad_clip=100,
-        sgd_minibatch_size=500,
+        minibatch_size=500,
         train_batch_size=5000 if not args.as_test else 1000,
         model={"vf_share_layers": True},
     )
@@ -109,11 +115,11 @@ config = (
 tune.Tuner(
     "PPO",
     param_space=config.to_dict(),
-    run_config=air.RunConfig(
+    run_config=tune.RunConfig(
         stop={
-            "training_iteration": args.stop_iters,
-            "num_env_steps_sampled_lifetime": args.stop_timesteps,
-            "env_runner_results/episode_return_mean": args.stop_reward,
+            TRAINING_ITERATION: args.stop_iters,
+            NUM_ENV_STEPS_SAMPLED_LIFETIME: args.stop_timesteps,
+            f"{ENV_RUNNER_RESULTS}/{EPISODE_RETURN_MEAN}": args.stop_reward,
         },
         verbose=2,
     ),

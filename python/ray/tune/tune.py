@@ -24,7 +24,7 @@ import ray
 from ray.air._internal import usage as air_usage
 from ray.air._internal.usage import AirEntrypoint
 from ray.air.util.node import _force_on_current_node
-from ray.train import CheckpointConfig, SyncConfig
+from ray.tune import CheckpointConfig, SyncConfig
 from ray.train.constants import _DEPRECATED_VALUE, RAY_CHDIR_TO_TRIAL_DIR
 from ray.tune.analysis import ExperimentAnalysis
 from ray.tune.callback import Callback
@@ -429,7 +429,7 @@ def run(
             directory name. Otherwise, trials could overwrite artifacts and checkpoints
             of other trials. The return value cannot be a path.
         chdir_to_trial_dir: Deprecated. Set the `RAY_CHDIR_TO_TRIAL_DIR` env var instead
-        sync_config: Configuration object for syncing. See train.SyncConfig.
+        sync_config: Configuration object for syncing. See tune.SyncConfig.
         export_formats: List of formats that exported at the end of
             the experiment. Default is None.
         max_failures: Try to recover a trial at least this many times.
@@ -566,28 +566,30 @@ def run(
 
     del remote_run_kwargs
 
-    # TODO(justinvyu): [Deprecated] Raise in 2.20
+    # TODO(justinvyu): [Deprecated] Remove in 2.30
     ENV_VAR_DEPRECATION_MESSAGE = (
-        "The environment variable "
-        "`{}` is deprecated and will be removed in the future. "
-        "They are no longer used and will not have any effect. "
-        "You should set the `storage_path` instead. "
+        "The environment variable `{}` is deprecated. "
+        "It is no longer used and will not have any effect. "
+        "You should set the `storage_path` instead. Files will no longer be "
+        "written to `~/ray_results` as long as `storage_path` is set."
+        "See the docs: https://docs.ray.io/en/latest/train/user-guides/"
+        "persistent-storage.html#setting-the-local-staging-directory"
     )
     if os.environ.get("TUNE_RESULT_DIR"):
-        warnings.warn(ENV_VAR_DEPRECATION_MESSAGE.format("TUNE_RESULT_DIR"))
+        raise DeprecationWarning(ENV_VAR_DEPRECATION_MESSAGE.format("TUNE_RESULT_DIR"))
 
     if os.environ.get("RAY_AIR_LOCAL_CACHE_DIR"):
-        warnings.warn(ENV_VAR_DEPRECATION_MESSAGE.format("RAY_AIR_LOCAL_CACHE_DIR"))
+        raise DeprecationWarning(
+            ENV_VAR_DEPRECATION_MESSAGE.format("RAY_AIR_LOCAL_CACHE_DIR")
+        )
 
     if local_dir is not None:
-        warnings.warn(
-            "The `local_dir` argument is deprecated and will be removed. "
-            "This will pass-through to set the `storage_path` for now "
-            "but will raise an error in the future. "
-            "You should only set the `storage_path` from now on."
+        raise DeprecationWarning(
+            "The `local_dir` argument is deprecated. "
+            "You should set the `storage_path` instead. "
+            "See the docs: https://docs.ray.io/en/latest/train/user-guides/"
+            "persistent-storage.html#setting-the-local-staging-directory"
         )
-        # Have `storage_path` fall back to `local_dir` if only `local_dir` is set.
-        storage_path = storage_path or local_dir
 
     ray._private.usage.usage_lib.record_library_usage("tune")
 

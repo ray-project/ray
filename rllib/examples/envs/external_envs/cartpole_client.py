@@ -80,7 +80,7 @@ if __name__ == "__main__":
     env = gym.make("CartPole-v1")
 
     # If server has n workers, all ports between 9900 and 990[n-1] should
-    # be listened on. E.g. if server has num_workers=2, try 9900 or 9901.
+    # be listened on. E.g. if server has num_env_runners=2, try 9900 or 9901.
     # Note that no config is needed in this script as it will be defined
     # on and sent from the server.
     client = PolicyClient(

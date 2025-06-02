@@ -1,5 +1,7 @@
+import sys
 import threading
 
+import pandas as pd
 import pytest
 
 import ray
@@ -97,13 +99,16 @@ def test_torch_iteration(shutdown_only):
     check_iter_torch_batches_no_spill(ctx, ds)
 
 
+@pytest.mark.skipif(
+    sys.version_info >= (3, 12), reason="No tensorflow for Python 3.12+"
+)
 def test_tf_iteration(shutdown_only):
     # The object store is about 800MB.
     ctx = ray.init(num_cpus=1, object_store_memory=800e6)
     # The size of dataset is 500*(80*80*4)*8B, about 100MB.
     ds = ray.data.range_tensor(
         500, shape=(80, 80, 4), override_num_blocks=100
-    ).add_column("label", lambda x: 1)
+    ).add_column("label", lambda df: pd.Series([1] * len(df)))
 
     # to_tf
     check_to_tf_no_spill(ctx, ds.map(lambda x: x))

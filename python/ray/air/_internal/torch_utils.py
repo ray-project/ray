@@ -1,70 +1,32 @@
-import os
 import warnings
-from typing import Any, Dict, List, Optional, Union
+from typing import Any, Dict, List, Optional, Union, Sequence
 
 import numpy as np
 import pandas as pd
 import torch
+import pyarrow
 
-import ray
-from ray._private.accelerators.hpu import HPU_PACKAGE_AVAILABLE
+from ray.air._internal.device_manager import get_torch_device_manager_by_context
 from ray.air.util.data_batch_conversion import _unwrap_ndarray_object_type_if_needed
-
-if HPU_PACKAGE_AVAILABLE:
-    import habana_frameworks.torch.hpu as torch_hpu
+from ray.data.collate_fn import (
+    TensorBatchType,
+    TensorBatchReturnType,
+    _is_tensor,
+    _is_tensor_sequence,
+    _is_nested_tensor_sequence,
+    _is_tensor_mapping,
+    _is_tensor_sequence_mapping,
+)
 
 
 def get_devices() -> List[torch.device]:
     """Gets the correct torch device list configured for this process.
 
-    Returns a list of torch CUDA devices allocated for the current worker.
-    If no GPUs are assigned, then it returns a list with a single CPU device.
-
-    Assumes that `CUDA_VISIBLE_DEVICES` is set and is a
-    superset of the `ray.get_gpu_ids()`.
+    Returns a list of torch accelerator (GPU, HPU, NPU...) devices allocated for
+    the current worker.
+    If no accelerators are assigned, then it returns a list with a single CPU device.
     """
-    if torch.cuda.is_available():
-        # GPU IDs are assigned by Ray after you specify "use_gpu"
-        # GPU `ray.get_gpu_ids()` may return ints or may return strings.
-        # We should always convert to strings.
-        gpu_ids = [str(id) for id in ray.get_gpu_ids()]
-
-        device_ids = []
-
-        if len(gpu_ids) > 0:
-            cuda_visible_str = os.environ.get("CUDA_VISIBLE_DEVICES", "")
-            if cuda_visible_str and cuda_visible_str != "NoDevFiles":
-                cuda_visible_list = cuda_visible_str.split(",")
-            else:
-                cuda_visible_list = []
-
-            # By default, there should only be one GPU ID if `use_gpu=True`.
-            # If there are multiple GPUs, return a list of devices.
-            # If using fractional GPUs, these IDs are not guaranteed
-            # to be unique across different processes.
-            for gpu_id in gpu_ids:
-                try:
-                    device_ids.append(cuda_visible_list.index(gpu_id))
-                except IndexError:
-                    raise RuntimeError(
-                        "CUDA_VISIBLE_DEVICES set incorrectly. "
-                        f"Got {cuda_visible_str}, expected to include {gpu_id}. "
-                        "Did you override the `CUDA_VISIBLE_DEVICES` environment"
-                        " variable? If not, please help file an issue on Github."
-                    )
-
-        else:
-            # If called on the driver or outside of Ray Train, return the
-            # 0th device.
-            device_ids.append(0)
-
-        devices = [torch.device(f"cuda:{device_id}") for device_id in device_ids]
-    elif HPU_PACKAGE_AVAILABLE and torch_hpu.is_available():
-        devices = [torch.device("hpu")]
-    else:
-        devices = [torch.device("cpu")]
-
-    return devices
+    return get_torch_device_manager_by_context().get_devices()
 
 
 def convert_pandas_to_torch_tensor(
@@ -105,7 +67,7 @@ def convert_pandas_to_torch_tensor(
 
     multi_input = columns and (isinstance(columns[0], (list, tuple)))
 
-    if not multi_input and column_dtypes and type(column_dtypes) != torch.dtype:
+    if not multi_input and column_dtypes and not isinstance(column_dtypes, torch.dtype):
         raise TypeError(
             "If `columns` is a list of strings, "
             "`column_dtypes` must be None or a single `torch.dtype`."
@@ -179,7 +141,7 @@ def convert_pandas_to_torch_tensor(
 def convert_ndarray_to_torch_tensor(
     ndarray: np.ndarray,
     dtype: Optional[torch.dtype] = None,
-    device: Optional[str] = None,
+    device: Optional[Union[str, "torch.device"]] = None,
 ) -> torch.Tensor:
     """Convert a NumPy ndarray to a Torch Tensor.
 
@@ -217,7 +179,7 @@ def convert_ndarray_to_torch_tensor(
 def convert_ndarray_batch_to_torch_tensor_batch(
     ndarrays: Union[np.ndarray, Dict[str, np.ndarray]],
     dtypes: Optional[Union[torch.dtype, Dict[str, torch.dtype]]] = None,
-    device: Optional[str] = None,
+    device: Optional[Union[str, "torch.device"]] = None,
 ) -> Union[torch.Tensor, Dict[str, torch.Tensor]]:
     """Convert a NumPy ndarray batch to a Torch Tensor batch.
 
@@ -340,3 +302,213 @@ c18da597e0bb1c1aecc97c77a73fed1849057fa4/torch/nn/modules/utils.py
             metadata[newkey] = metadata.pop(key)
 
     return state_dict
+
+
+def convert_ndarray_list_to_torch_tensor_list(
+    ndarrays: Dict[str, List[np.ndarray]],
+    dtypes: Optional[Union[torch.dtype, Dict[str, torch.dtype]]] = None,
+    device: Optional[Union[str, "torch.device"]] = None,
+) -> Dict[str, List[torch.Tensor]]:
+    """Convert a dict mapping column names to lists of ndarrays to Torch Tensors.
+
+    Args:
+        ndarrays: A dict mapping column names to lists of ndarrays that we wish to convert
+            to Torch Tensors.
+        dtypes: A (dict of) Torch dtype(s) for the created tensors; if None, the dtype
+            will be inferred from the NumPy ndarray data.
+        device: The device on which the tensor(s) should be placed; if None, the Torch
+            tensor(s) will be constructed on the CPU.
+
+    Returns: A dict mapping column names to lists of Tensors.
+    """
+    return {
+        col_name: [
+            convert_ndarray_batch_to_torch_tensor_batch(
+                ndarray,
+                dtypes=dtypes[col_name] if isinstance(dtypes, dict) else dtypes,
+                device=device,
+            )
+            for ndarray in col_ndarrays
+        ]
+        for col_name, col_ndarrays in ndarrays.items()
+    }
+
+
+def arrow_batch_to_tensors(
+    batch: pyarrow.Table,
+    dtypes: Optional[Union[torch.dtype, Dict[str, torch.dtype]]] = None,
+    combine_chunks: bool = False,
+) -> Dict[str, List[torch.Tensor]]:
+    """Convert PyArrow batch to PyTorch tensors.
+
+    Args:
+        batch: PyArrow batch to convert
+        dtypes: A (dict of) Torch dtype(s) for the created tensors; if None, the dtype
+            will be inferred from the NumPy ndarray data.
+        combine_chunks: If True, combine chunks in Arrow batch before converting to
+            tensors.
+
+    Returns:
+        A dictionary of column name to list of tensors. For non-chunked columns,
+        the list will contain a single tensor.
+    """
+    from ray.data._internal.arrow_ops import transform_pyarrow
+    from ray.data._internal.arrow_block import ArrowBlockAccessor
+
+    if combine_chunks:
+        numpy_batch = ArrowBlockAccessor(batch).to_batch_format("numpy")
+        return {
+            col_name: convert_ndarray_batch_to_torch_tensor_batch(
+                col_array,
+                dtypes=dtypes[col_name] if isinstance(dtypes, dict) else dtypes,
+            )
+            for col_name, col_array in numpy_batch.items()
+        }
+    else:
+        numpy_list = transform_pyarrow.table_to_numpy_dict_chunked(
+            batch,
+        )
+        return convert_ndarray_list_to_torch_tensor_list(
+            numpy_list,
+            dtypes=dtypes,
+        )
+
+
+@torch.no_grad()
+def concat_tensors_to_device(
+    tensor_sequence: Sequence[torch.Tensor],
+    device: Optional[Union[str, "torch.device"]] = None,
+    non_blocking: bool = False,
+) -> torch.Tensor:
+    """Stack sequence of tensors into a contiguous GPU tensor.
+
+    Args:
+        tensor_sequence: Sequence of tensors to stack
+        device: The device to move tensors to
+        non_blocking: If True, perform device transfer without forcing a
+            synchronization.
+
+    Returns:
+        A contiguous tensor on the target device
+    """
+    # Assumes tensors have the same shape/dtype
+    assert (
+        tensor_sequence
+    ), f"Cannot stack empty sequence of tensors. Received: {tensor_sequence}"
+
+    assert all(
+        isinstance(t, torch.Tensor) for t in tensor_sequence
+    ), "All items must be torch.Tensor. Found invalid types: " + str(
+        [type(t) for t in tensor_sequence if not isinstance(t, torch.Tensor)]
+    )
+
+    first_dtype = tensor_sequence[0].dtype
+    assert all(t.dtype == first_dtype for t in tensor_sequence), (
+        "All tensors must have the same dtype. "
+        f"Expected: {first_dtype}, got: {[t.dtype for t in tensor_sequence]}"
+    )
+
+    first_shape = tensor_sequence[0].shape[1:]
+    assert all(t.shape[1:] == first_shape for t in tensor_sequence), (
+        "All tensors must have the same shape[1:]. "
+        f"Expected: {first_shape}, got: {[t.shape[1:] for t in tensor_sequence]}"
+    )
+
+    first = tensor_sequence[0]
+    dtype = first.dtype
+    shape_tail = first.shape[1:]
+    total_rows = sum(t.shape[0] for t in tensor_sequence)
+
+    # Allocate an empty Tensor on device
+    result = torch.empty((total_rows, *shape_tail), dtype=dtype, device=device)
+
+    row_start = 0
+    for t in tensor_sequence:
+        row_end = row_start + t.shape[0]
+        result[row_start:row_end].copy_(t, non_blocking=non_blocking)
+        row_start = row_end
+
+    return result
+
+
+def _get_type_str(batch: Any) -> str:
+    """Get a string representation of the possibly nested type of the batch.
+
+    >>> import torch
+    >>> _get_type_str([1, 2, "???"])
+    'list[int | str]'
+    >>> _get_type_str({"a": [1, 2, 3], "b": 4})
+    'dict[str, int | list[int]]'
+    >>> _get_type_str({"a": torch.tensor(1), "b": [torch.tensor(2)]})
+    'dict[str, Tensor | list[Tensor]]'
+    >>> _get_type_str({"a": torch.tensor(1), "b": {"c": torch.tensor(2)}})
+    'dict[str, Tensor | dict[str, Tensor]]'
+    """
+    curr_type = type(batch).__name__
+    if isinstance(batch, (list, tuple)):
+        val_types = " | ".join(sorted({_get_type_str(v) for v in batch}))
+        invalid_type_str = f"{curr_type}[{val_types}]"
+    elif isinstance(batch, dict):
+        val_types = " | ".join(sorted({_get_type_str(v) for v in batch.values()}))
+        invalid_type_str = f"{curr_type}[str, {val_types}]"
+    else:
+        invalid_type_str = curr_type
+    return invalid_type_str
+
+
+@torch.no_grad()
+def move_tensors_to_device(
+    batch: TensorBatchType,
+    device: Optional[Union[str, "torch.device"]] = None,
+    non_blocking: bool = False,
+) -> TensorBatchReturnType:
+    """Move tensors to the specified device.
+
+    Concatenate nested lists/tuples of tensors along the first (batch) dimension.
+    For example, for the input
+    ((feature_0_chunk_0,), (feature_1_chunk_0, feature_1_chunk_1))
+    the output will be (feature_0_chunk_0, feature_1_chunk_0+1)
+    where each feature is concatenated along the batch dimension.
+
+    Args:
+        batch: A tensor or collection of tensors to move to device. Can be:
+            - A single tensor
+            - A sequence of tensors
+            - A sequence of sequences of tensors. The inner sequence of tensors is
+              combined during GPU transfer.
+            - A mapping (e.g., dict) of keys to tensors or sequences of tensors. The
+              sequence of tensors is combined during GPU transfer.
+        device: The device to move tensors to. If None, tensors are not moved.
+        non_blocking: If True, perform device transfer without forcing a
+            synchronization.
+
+    Returns:
+        The input tensors moved to the specified device
+    """
+    if device is None:
+        return batch
+
+    if _is_tensor(batch):
+        return batch.to(device, non_blocking=non_blocking)
+    elif _is_tensor_sequence(batch):
+        return type(batch)([t.to(device, non_blocking=non_blocking) for t in batch])
+    elif _is_nested_tensor_sequence(batch):
+        return type(batch)(
+            [concat_tensors_to_device(t, device, non_blocking) for t in batch]
+        )
+    elif _is_tensor_mapping(batch):
+        return {k: t.to(device, non_blocking=non_blocking) for k, t in batch.items()}
+    elif _is_tensor_sequence_mapping(batch):
+        return {
+            k: concat_tensors_to_device(v, device, non_blocking)
+            for k, v in batch.items()
+        }
+    else:
+        raise ValueError(
+            f"Invalid input type: {_get_type_str(batch)}.\n"
+            "Expected one of the following: "
+            "torch.Tensor, "
+            "List/Tuple[torch.Tensor], "
+            "Dict[str, torch.Tensor], "
+            "Mapping[str, List/Tuple[torch.Tensor]]"
+        )

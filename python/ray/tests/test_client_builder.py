@@ -51,7 +51,7 @@ def test_client(address):
     if address in ("local", None):
         assert isinstance(builder, client_builder._LocalClientBuilder)
     else:
-        assert type(builder) == client_builder.ClientBuilder
+        assert type(builder) is client_builder.ClientBuilder
         assert builder.address == address.replace("ray://", "")
 
 
@@ -448,7 +448,4 @@ def test_task_use_prestarted_worker(call_ray_start):
 
 
 if __name__ == "__main__":
-    if os.environ.get("PARALLEL_CI"):
-        sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))
-    else:
-        sys.exit(pytest.main(["-sv", __file__]))
+    sys.exit(pytest.main(["-sv", __file__]))

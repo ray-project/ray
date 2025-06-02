@@ -29,7 +29,6 @@ marwil-halfcheetah-v4:
         evaluation_config:
             input: sampler
             off_policy_estimation_methods: null
-        always_attach_evaluation_results: True
         num_workers: 8
         lr: 0.001
         grad_clip: 40

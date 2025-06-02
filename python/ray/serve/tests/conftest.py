@@ -9,7 +9,7 @@ import requests
 
 import ray
 from ray import serve
-from ray._private.test_utils import wait_for_condition
+from ray._private.test_utils import SignalActor, wait_for_condition
 from ray._private.usage import usage_lib
 from ray.cluster_utils import AutoscalingCluster, Cluster
 from ray.serve._private.test_utils import (
@@ -127,9 +127,20 @@ def serve_instance(_shared_serve_instance):
     _shared_serve_instance.shutdown_cached_handles()
 
 
+@pytest.fixture
+def serve_instance_with_signal(serve_instance):
+    client = serve_instance
+
+    signal = SignalActor.options(name="signal123").remote()
+    yield client, signal
+
+    # Delete signal actor so there is no conflict between tests
+    ray.kill(signal)
+
+
 def check_ray_stop():
     try:
-        requests.get("http://localhost:52365/api/ray/version")
+        requests.get("http://localhost:8265/api/ray/version")
         return False
     except Exception:
         return True
@@ -144,7 +155,7 @@ def ray_start_stop():
     )
     subprocess.check_output(["ray", "start", "--head"])
     wait_for_condition(
-        lambda: requests.get("http://localhost:52365/api/ray/version").status_code
+        lambda: requests.get("http://localhost:8265/api/ray/version").status_code
         == 200,
         timeout=15,
     )
@@ -167,7 +178,7 @@ def ray_start_stop_in_specific_directory(request):
 
     subprocess.check_output(["ray", "start", "--head"])
     wait_for_condition(
-        lambda: requests.get("http://localhost:52365/api/ray/version").status_code
+        lambda: requests.get("http://localhost:8265/api/ray/version").status_code
         == 200,
         timeout=15,
     )

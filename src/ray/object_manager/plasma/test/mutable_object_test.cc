@@ -13,15 +13,17 @@
 // limitations under the License.
 
 #include <limits>
+#include <memory>
+#include <string>
+#include <utility>
+#include <vector>
 
-#include "absl/random/random.h"
-#include "absl/strings/str_format.h"
 #include "gmock/gmock.h"
 #include "gtest/gtest.h"
 #include "ray/core_worker/experimental_mutable_object_manager.h"
 #include "ray/object_manager/common.h"
 
-using namespace testing;
+using testing::Test;
 
 namespace ray {
 namespace experimental {
@@ -79,7 +81,10 @@ void Read(PlasmaObjectHeader *header,
   int64_t version_to_read = 1;
   for (size_t i = 0; i < num_reads; i++) {
     int64_t version_read = 0;
-    if (!header->ReadAcquire(sem, version_to_read, version_read).ok()) {
+    if (!header
+             ->ReadAcquire(
+                 ObjectID::FromRandom(), sem, version_to_read, version_read, nullptr)
+             .ok()) {
       data_results.push_back("error");
       metadata_results.push_back("error");
       return;
@@ -613,6 +618,39 @@ TEST(MutableObjectTest, TestReadMultipleAcquireDuringFailure) {
     ASSERT_EQ(data_results[i].back(), "error");
     ASSERT_EQ(metadata_results[i].back(), "error");
   }
+}
+
+// Tests that MutableObjectManager instances destruct properly when there are multiple
+// instances.
+// The core worker and the raylet each have their own MutableObjectManager instance, and
+// when both a reader and a writer are on the same machine, the reader and writer will
+// each register the same object with separate MutableObjectManager instances. Thus, we
+// must ensure that the object and its associated metadata (such as the semaphores) are
+// destructed the proper number of times.
+TEST(MutableObjectTest, TestMutableObjectManagerDestruct) {
+  MutableObjectManager manager1;
+  MutableObjectManager manager2;
+  ObjectID object_id = ObjectID::FromRandom();
+  std::string unique_name;
+
+  {
+    std::unique_ptr<plasma::MutableObject> object1 = MakeObject();
+    object1->header->Init();
+    unique_name = std::string(object1->header->unique_name);
+    ASSERT_TRUE(
+        manager1.RegisterChannel(object_id, std::move(object1), /*reader=*/true).ok());
+  }
+  {
+    std::unique_ptr<plasma::MutableObject> object2 = MakeObject();
+    object2->header->Init();
+    memset(object2->header->unique_name, 0, sizeof(object2->header->unique_name));
+    memcpy(object2->header->unique_name, unique_name.c_str(), unique_name.size());
+    ASSERT_TRUE(
+        manager2.RegisterChannel(object_id, std::move(object2), /*reader=*/false).ok());
+  }
+  // The purpose of this test is to ensure that neither the MutableObjectManager instance
+  // destructor crashes when the two instances go out of scope below at the end of this
+  // function.
 }
 
 #endif  // defined(__APPLE__) || defined(__linux__)

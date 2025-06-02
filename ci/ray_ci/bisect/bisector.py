@@ -38,7 +38,7 @@ class Bisector:
             if self._checkout_and_validate(revisions[mid]):
                 revisions = revisions[mid:]
             else:
-                revisions = revisions[:mid]
+                revisions = revisions[: (mid + 1)]
 
         return revisions[-1]
 
@@ -65,4 +65,4 @@ class Bisector:
         """
         subprocess.check_call(["git", "clean", "-df"], cwd=self.git_dir)
         subprocess.check_call(["git", "checkout", revision], cwd=self.git_dir)
-        self.validator.run(self.test, revision)
+        return self.validator.run(self.test, revision)

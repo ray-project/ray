@@ -1,7 +1,13 @@
+# @OldAPIStack
 import numpy as np
 
 from ray.rllib.algorithms.appo import APPOConfig
 from ray.rllib.examples.envs.classes.multi_agent import MultiAgentCartPole
+from ray.rllib.utils.metrics import (
+    ENV_RUNNER_RESULTS,
+    EVALUATION_RESULTS,
+    NUM_ENV_STEPS_SAMPLED_LIFETIME,
+)
 from ray.tune.registry import register_env
 
 
@@ -17,6 +23,10 @@ num_envs_per_env_runner = 5
 # Define the config as an APPOConfig object.
 config = (
     APPOConfig()
+    .api_stack(
+        enable_rl_module_and_learner=False,
+        enable_env_runner_and_connector_v2=False,
+    )
     .environment("multi_cartpole")
     .env_runners(
         num_env_runners=4,
@@ -29,7 +39,7 @@ config = (
             "fcnet_activation": "linear",
             "vf_share_layers": True,
         },
-        num_sgd_iter=1,
+        num_epochs=1,
         vf_loss_coeff=0.005,
         vtrace=True,
     )
@@ -69,6 +79,6 @@ config = (
 
 # Define some stopping criteria.
 stop = {
-    "evaluation/policy_reward_mean/pol0": 50.0,
-    "timesteps_total": 500000,
+    f"{EVALUATION_RESULTS}/{ENV_RUNNER_RESULTS}/policy_reward_mean/pol0": 50.0,
+    f"{NUM_ENV_STEPS_SAMPLED_LIFETIME}": 500000,
 }

@@ -1,6 +1,6 @@
-# TODO (sven): Move this example script into the new API stack.
+# @OldAPIStack
 
-"""Example of creating a custom input api
+"""Example of creating a custom input API
 
 Custom input apis are useful when your data source is in a custom format or
 when it is necessary to use an external data loading mechanism.
@@ -16,9 +16,15 @@ import argparse
 import os
 
 import ray
-from ray import air, tune
+from ray import tune
 from ray.rllib.offline import JsonReader, ShuffledInput, IOContext, InputReader
+from ray.rllib.utils.metrics import (
+    ENV_RUNNER_RESULTS,
+    EPISODE_RETURN_MEAN,
+    EVALUATION_RESULTS,
+)
 from ray.tune.registry import get_trainable_cls, register_input
+from ray.tune.result import TRAINING_ITERATION
 
 parser = argparse.ArgumentParser()
 parser.add_argument(
@@ -118,11 +124,11 @@ if __name__ == "__main__":
         )
 
     stop = {
-        "training_iteration": args.stop_iters,
-        "evaluation_results/env_runner_results/episode_return_mean": -600,
+        TRAINING_ITERATION: args.stop_iters,
+        f"{EVALUATION_RESULTS}/{ENV_RUNNER_RESULTS}/{EPISODE_RETURN_MEAN}": -600,
     }
 
     tuner = tune.Tuner(
-        args.run, param_space=config, run_config=air.RunConfig(stop=stop, verbose=1)
+        args.run, param_space=config, run_config=tune.RunConfig(stop=stop, verbose=1)
     )
     tuner.fit()

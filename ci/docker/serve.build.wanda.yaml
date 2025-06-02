@@ -7,5 +7,6 @@ srcs:
   - python/requirements/test-requirements.txt
 build_args:
   - DOCKER_IMAGE_BASE_BUILD=cr.ray.io/rayproject/oss-ci-base_build-py$PYTHON
+  - PYTHON=$PYTHON
 tags:
   - cr.ray.io/rayproject/servebuild-py$PYTHON

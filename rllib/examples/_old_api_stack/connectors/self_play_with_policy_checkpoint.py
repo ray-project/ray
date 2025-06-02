@@ -1,6 +1,7 @@
-"""Example showing how one can restore a connector enabled TF policy
+# @OldAPIStack
+"""Example showing to restore a connector enabled TF policy
 checkpoint for a new self-play PyTorch training job.
-The checkpointed policy may be trained with a different algorithm too.
+You can train the checkpointed policy with a different algorithm too.
 """
 
 import argparse
@@ -9,8 +10,9 @@ import os
 import tempfile
 
 import ray
-from ray import air, tune
-from ray.rllib.algorithms.callbacks import DefaultCallbacks
+from ray import tune
+from ray.tune.result import TRAINING_ITERATION
+from ray.rllib.callbacks.callbacks import RLlibCallback
 from ray.rllib.algorithms.sac import SACConfig
 from ray.rllib.env.utils import try_import_pyspiel
 from ray.rllib.env.wrappers.open_spiel import OpenSpielEnv
@@ -18,6 +20,11 @@ from ray.rllib.examples._old_api_stack.connectors.prepare_checkpoint import (
     create_open_spiel_checkpoint,
 )
 from ray.rllib.policy.policy import Policy
+from ray.rllib.utils.metrics import (
+    ENV_RUNNER_RESULTS,
+    NUM_ENV_STEPS_SAMPLED_LIFETIME,
+    NUM_EPISODES,
+)
 from ray.tune import CLIReporter, register_env
 
 
@@ -41,7 +48,7 @@ MAIN_POLICY_ID = "main"
 OPPONENT_POLICY_ID = "opponent"
 
 
-class AddPolicyCallback(DefaultCallbacks):
+class AddPolicyCallback(RLlibCallback):
     def __init__(self, checkpoint_dir):
         self._checkpoint_dir = checkpoint_dir
         super().__init__()
@@ -57,7 +64,7 @@ class AddPolicyCallback(DefaultCallbacks):
         algorithm.add_policy(
             policy_id=OPPONENT_POLICY_ID,
             policy=policy,
-            evaluation_workers=True,
+            add_to_eval_env_runners=True,
         )
 
 
@@ -98,29 +105,27 @@ def main(checkpoint_dir):
         )
     )
 
-    stop = {
-        "training_iteration": args.train_iteration,
-    }
+    stop = {TRAINING_ITERATION: args.train_iteration}
 
     # Train the "main" policy to play really well using self-play.
     tuner = tune.Tuner(
         "SAC",
         param_space=config.to_dict(),
-        run_config=air.RunConfig(
+        run_config=tune.RunConfig(
             stop=stop,
-            checkpoint_config=air.CheckpointConfig(
+            checkpoint_config=tune.CheckpointConfig(
                 checkpoint_at_end=True,
                 checkpoint_frequency=10,
             ),
             verbose=2,
             progress_reporter=CLIReporter(
                 metric_columns={
-                    "training_iteration": "iter",
+                    TRAINING_ITERATION: "iter",
                     "time_total_s": "time_total_s",
-                    "num_env_steps_sampled_lifetime": "ts",
-                    "env_runner_results/num_episodes": "train_episodes",
+                    f"{NUM_ENV_STEPS_SAMPLED_LIFETIME}": "ts",
+                    f"{ENV_RUNNER_RESULTS}/{NUM_EPISODES}": "train_episodes",
                     (
-                        "env_runner_results/module_episode_returns_mean/" "main"
+                        f"{ENV_RUNNER_RESULTS}/module_episode_returns_mean/main"
                     ): "reward_main",
                 },
                 sort_by_metric=True,

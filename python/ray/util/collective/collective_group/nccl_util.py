@@ -45,6 +45,7 @@ if torch_available():
     import torch.utils.dlpack
 
     TORCH_NCCL_DTYPE_MAP = {
+        torch.bool: nccl.NCCL_INT8,
         # INT types
         torch.int: nccl.NCCL_INT,
         torch.uint8: nccl.NCCL_UINT8,
@@ -60,6 +61,10 @@ if torch_available():
         torch.float64: nccl.NCCL_FLOAT64,
         torch.double: nccl.NCCL_DOUBLE,
     }
+
+    # Older versions of cupy don't support bfloat16.
+    if hasattr(nccl, "NCCL_BFLOAT16"):
+        TORCH_NCCL_DTYPE_MAP[torch.bfloat16] = nccl.NCCL_BFLOAT16
 
     TORCH_NUMPY_DTYPE_MAP = {
         # INT types

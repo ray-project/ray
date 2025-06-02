@@ -1,9 +1,9 @@
 """Ray constants used in the Python code."""
 
+import json
 import logging
 import os
 import sys
-import json
 
 logger = logging.getLogger(__name__)
 
@@ -20,6 +20,21 @@ def env_integer(key, default):
             f"provided default {default}."
         )
         return default
+    return default
+
+
+def env_float(key, default):
+    if key in os.environ:
+        value = os.environ[key]
+        try:
+            return float(value)
+        except ValueError:
+            logger.debug(
+                f"Found {key} in environment, but value must "
+                f"be a float. Got: {value}. Returning "
+                f"provided default {default}."
+            )
+            return default
     return default
 
 
@@ -40,6 +55,8 @@ def env_set_by_user(key):
 # Whether event logging to driver is enabled. Set to 0 to disable.
 AUTOSCALER_EVENTS = env_integer("RAY_SCHEDULER_EVENTS", 1)
 
+RAY_LOG_TO_DRIVER = env_bool("RAY_LOG_TO_DRIVER", True)
+
 # Filter level under which events will be filtered out, i.e. not printing to driver
 RAY_LOG_TO_DRIVER_EVENT_LEVEL = os.environ.get("RAY_LOG_TO_DRIVER_EVENT_LEVEL", "INFO")
 
@@ -48,17 +65,43 @@ DEBUG_AUTOSCALING_ERROR = "__autoscaling_error"
 DEBUG_AUTOSCALING_STATUS = "__autoscaling_status"
 DEBUG_AUTOSCALING_STATUS_LEGACY = "__autoscaling_status_legacy"
 
-# Sync with src/ray/common/constants.h
-AUTOSCALER_V2_ENABLED_KEY = "__autoscaler_v2_enabled"
-AUTOSCALER_NAMESPACE = "__autoscaler"
-
 ID_SIZE = 28
 
 # The default maximum number of bytes to allocate to the object store unless
 # overridden by the user.
-DEFAULT_OBJECT_STORE_MAX_MEMORY_BYTES = 200 * 10**9
+DEFAULT_OBJECT_STORE_MAX_MEMORY_BYTES = env_integer(
+    "RAY_DEFAULT_OBJECT_STORE_MAX_MEMORY_BYTES", (200) * (10**9)  # 200 GB
+)
 # The default proportion of available memory allocated to the object store
-DEFAULT_OBJECT_STORE_MEMORY_PROPORTION = 0.3
+DEFAULT_OBJECT_STORE_MEMORY_PROPORTION = env_float(
+    "RAY_DEFAULT_OBJECT_STORE_MEMORY_PROPORTION",
+    0.3,
+)
+
+# The following values are only used when resource isolation is enabled
+# ===== The default number of bytes to reserve for ray system processes
+DEFAULT_SYSTEM_RESERVED_MEMORY_BYTES = env_integer(
+    "RAY_DEFAULT_DEFAULT_SYSTEM_RESERVED_MEMORY_BYTES", (25) * (10**9)
+)
+# The default proportion available memory to reserve for ray system processes
+DEFAULT_SYSTEM_RESERVED_MEMORY_PROPORTION = env_integer(
+    "RAY_DEFAULT_SYSTEM_RESERVED_MEMORY_PROPORTION", 0.10
+)
+# The default number of cpu cores to reserve for ray system processes
+DEFAULT_SYSTEM_RESERVED_CPU_CORES = env_float(
+    "RAY_DEFAULT_SYSTEM_RESERVED_CPU_CORES", 1.0
+)
+# The default proportion of cpu cores to reserve for ray system processes
+DEFAULT_SYSTEM_RESERVED_CPU_PROPORTION = env_float(
+    "RAY_DEFAULT_SYSTEM_RESERVED_CPU_PROPORTION", 0.05
+)
+# The smallest number of cores that ray system processes can be guaranteed
+MINIMUM_SYSTEM_RESERVED_CPU_CORES = 0.5
+# The smallest number of bytes that ray system processes can be guaranteed
+MINIMUM_SYSTEM_RESERVED_MEMORY_BYTES = (100) * (10**6)
+# The default path for cgroupv2
+DEFAULT_CGROUP_PATH = "/sys/fs/cgroup"
+
 # The smallest cap on the memory used by the object store that we allow.
 # This must be greater than MEMORY_RESOURCE_UNIT_BYTES
 OBJECT_STORE_MINIMUM_MEMORY_BYTES = 75 * 1024 * 1024
@@ -69,11 +112,6 @@ CALLER_MEMORY_USAGE_PER_OBJECT_REF = 3000
 # TODO(swang): Ideally this should be pulled directly from the
 # config in case the user overrides it.
 DEFAULT_MAX_DIRECT_CALL_OBJECT_SIZE = 100 * 1024
-# The default maximum number of bytes that the non-primary Redis shards are
-# allowed to use unless overridden by the user.
-DEFAULT_REDIS_MAX_MEMORY_BYTES = 10**10
-# The smallest cap on the memory used by Redis that we allow.
-REDIS_MINIMUM_MEMORY_BYTES = 10**7
 # Above this number of bytes, raise an error by default unless the user sets
 # RAY_ALLOW_SLOW_STORAGE=1. This avoids swapping with large object stores.
 REQUIRE_SHM_SIZE_THRESHOLD = 10**10
@@ -82,7 +120,7 @@ REQUIRE_SHM_SIZE_THRESHOLD = 10**10
 # (see https://github.com/ray-project/ray/issues/20388 for details)
 # The workaround here is to limit capacity to 2GB for Mac by default,
 # and raise error if the capacity is overwritten by user.
-MAC_DEGRADED_PERF_MMAP_SIZE_LIMIT = 2 * 2**30
+MAC_DEGRADED_PERF_MMAP_SIZE_LIMIT = (2) * (2**30)
 # If a user does not specify a port for the primary Ray service,
 # we attempt to start the service running at this port.
 DEFAULT_PORT = 6379
@@ -123,6 +161,7 @@ RAY_JOB_HEADERS = "RAY_JOB_HEADERS"
 DEFAULT_DASHBOARD_IP = "127.0.0.1"
 DEFAULT_DASHBOARD_PORT = 8265
 DASHBOARD_ADDRESS = "dashboard"
+DASHBOARD_CLIENT_MAX_SIZE = 100 * 1024**2
 PROMETHEUS_SERVICE_DISCOVERY_FILE = "prom_metrics_service_discovery.json"
 DEFAULT_DASHBOARD_AGENT_LISTEN_PORT = 52365
 # Default resource requirements for actors when no resource requirements are
@@ -192,9 +231,6 @@ RESOURCE_CONSTRAINT_PREFIX = "accelerator_type:"
 RESOURCES_ENVIRONMENT_VARIABLE = "RAY_OVERRIDE_RESOURCES"
 LABELS_ENVIRONMENT_VARIABLE = "RAY_OVERRIDE_LABELS"
 
-# The reporter will report its statistics this often (milliseconds).
-REPORTER_UPDATE_INTERVAL_MS = env_integer("REPORTER_UPDATE_INTERVAL_MS", 2500)
-
 # Temporary flag to disable log processing in the dashboard.  This is useful
 # if the dashboard is overloaded by logs and failing to process other
 # dashboard API requests (e.g. Job Submission).
@@ -203,7 +239,11 @@ DISABLE_DASHBOARD_LOG_INFO = env_integer("RAY_DISABLE_DASHBOARD_LOG_INFO", 0)
 LOGGER_FORMAT = "%(asctime)s\t%(levelname)s %(filename)s:%(lineno)s -- %(message)s"
 LOGGER_FORMAT_ESCAPE = json.dumps(LOGGER_FORMAT.replace("%", "%%"))
 LOGGER_FORMAT_HELP = f"The logging format. default={LOGGER_FORMAT_ESCAPE}"
-LOGGER_LEVEL = "info"
+# Configure the default logging levels for various Ray components.
+# TODO (kevin85421): Currently, I don't encourage Ray users to configure
+# `RAY_LOGGER_LEVEL` until its scope and expected behavior are clear and
+# easy to understand. Now, only Ray developers should use it.
+LOGGER_LEVEL = os.environ.get("RAY_LOGGER_LEVEL", "info")
 LOGGER_LEVEL_CHOICES = ["debug", "info", "warning", "error", "critical"]
 LOGGER_LEVEL_HELP = (
     "The logging level threshold, choices=['debug', 'info',"
@@ -227,15 +267,12 @@ PROCESS_TYPE_REAPER = "reaper"
 PROCESS_TYPE_MONITOR = "monitor"
 PROCESS_TYPE_RAY_CLIENT_SERVER = "ray_client_server"
 PROCESS_TYPE_LOG_MONITOR = "log_monitor"
-# TODO(sang): Delete it.
-PROCESS_TYPE_REPORTER = "reporter"
 PROCESS_TYPE_DASHBOARD = "dashboard"
 PROCESS_TYPE_DASHBOARD_AGENT = "dashboard_agent"
 PROCESS_TYPE_RUNTIME_ENV_AGENT = "runtime_env_agent"
 PROCESS_TYPE_WORKER = "worker"
 PROCESS_TYPE_RAYLET = "raylet"
 PROCESS_TYPE_REDIS_SERVER = "redis_server"
-PROCESS_TYPE_WEB_UI = "web_ui"
 PROCESS_TYPE_GCS_SERVER = "gcs_server"
 PROCESS_TYPE_PYTHON_CORE_WORKER_DRIVER = "python-core-driver"
 PROCESS_TYPE_PYTHON_CORE_WORKER = "python-core-worker"
@@ -329,6 +366,8 @@ OBJECT_METADATA_DEBUG_PREFIX = b"DEBUG:"
 
 AUTOSCALER_RESOURCE_REQUEST_CHANNEL = b"autoscaler_resource_request"
 
+REDIS_DEFAULT_USERNAME = ""
+
 REDIS_DEFAULT_PASSWORD = ""
 
 # The default ip address to bind to.
@@ -367,9 +406,9 @@ DEFAULT_RUNTIME_ENV_TIMEOUT_SECONDS = 600
 # created.
 CALL_STACK_LINE_DELIMITER = " | "
 
-# The default gRPC max message size is 4 MiB, we use a larger number of 250 MiB
+# The default gRPC max message size is 4 MiB, we use a larger number of 512 MiB
 # NOTE: This is equal to the C++ limit of (RAY_CONFIG::max_grpc_message_size)
-GRPC_CPP_MAX_MESSAGE_SIZE = 250 * 1024 * 1024
+GRPC_CPP_MAX_MESSAGE_SIZE = 512 * 1024 * 1024
 
 # The gRPC send & receive max length for "dashboard agent" server.
 # NOTE: This is equal to the C++ limit of RayConfig::max_grpc_message_size
@@ -396,6 +435,7 @@ KV_NAMESPACE_PDB = b"ray_pdb"
 KV_NAMESPACE_HEALTHCHECK = b"healthcheck"
 KV_NAMESPACE_JOB = b"job"
 KV_NAMESPACE_CLUSTER = b"cluster"
+KV_HEAD_NODE_ID_KEY = b"head_node_id"
 # TODO: Set package for runtime env
 # We need to update ray client for this since runtime env use ray client
 # This might introduce some compatibility issues so leave it here for now.
@@ -405,16 +445,11 @@ KV_NAMESPACE_FUNCTION_TABLE = b"fun"
 
 LANGUAGE_WORKER_TYPES = ["python", "java", "cpp"]
 
-# Accelerator constants
-NOSET_CUDA_VISIBLE_DEVICES_ENV_VAR = "RAY_EXPERIMENTAL_NOSET_CUDA_VISIBLE_DEVICES"
-
-CUDA_VISIBLE_DEVICES_ENV_VAR = "CUDA_VISIBLE_DEVICES"
-NEURON_RT_VISIBLE_CORES_ENV_VAR = "NEURON_RT_VISIBLE_CORES"
-TPU_VISIBLE_CHIPS_ENV_VAR = "TPU_VISIBLE_CHIPS"
-
 NEURON_CORES = "neuron_cores"
 GPU = "GPU"
 TPU = "TPU"
+NPU = "NPU"
+HPU = "HPU"
 
 
 RAY_WORKER_NICENESS = "RAY_worker_niceness"
@@ -423,6 +458,12 @@ RAY_WORKER_NICENESS = "RAY_worker_niceness"
 # tasks.
 DEFAULT_TASK_MAX_RETRIES = 3
 
+# Default max_concurrency option in @ray.remote for threaded actors.
+DEFAULT_MAX_CONCURRENCY_THREADED = 1
+
+# Default max_concurrency option in @ray.remote for async actors.
+DEFAULT_MAX_CONCURRENCY_ASYNC = 1000
+
 # Prefix for namespaces which are used internally by ray.
 # Jobs within these namespaces should be hidden from users
 # and should not be considered user activity.
@@ -430,6 +471,15 @@ DEFAULT_TASK_MAX_RETRIES = 3
 # in /src/ray/gcs/gcs_server/gcs_job_manager.h.
 RAY_INTERNAL_NAMESPACE_PREFIX = "_ray_internal_"
 RAY_INTERNAL_DASHBOARD_NAMESPACE = f"{RAY_INTERNAL_NAMESPACE_PREFIX}dashboard"
+
+# Ray internal flags. These flags should not be set by users, and we strip them on job
+# submission.
+# This should be consistent with src/ray/common/ray_internal_flag_def.h
+RAY_INTERNAL_FLAGS = [
+    "RAY_JOB_ID",
+    "RAY_RAYLET_PID",
+    "RAY_OVERRIDE_NODE_ID_FOR_TESTING",
+]
 
 
 def gcs_actor_scheduling_enabled():
@@ -441,7 +491,7 @@ DEFAULT_RESOURCES = {"CPU", "GPU", "memory", "object_store_memory"}
 # Supported Python versions for runtime env's "conda" field. Ray downloads
 # Ray wheels into the conda environment, so the Ray wheels for these Python
 # versions must be available online.
-RUNTIME_ENV_CONDA_PY_VERSIONS = [(3, 8), (3, 9), (3, 10), (3, 11)]
+RUNTIME_ENV_CONDA_PY_VERSIONS = [(3, 9), (3, 10), (3, 11), (3, 12)]
 
 # Whether to enable Ray clusters (in addition to local Ray).
 # Ray clusters are not explicitly supported for Windows and OSX.
@@ -482,7 +532,70 @@ RAY_DEFAULT_LABEL_KEYS_PREFIX = "ray.io/"
 
 RAY_TPU_MAX_CONCURRENT_CONNECTIONS_ENV_VAR = "RAY_TPU_MAX_CONCURRENT_ACTIVE_CONNECTIONS"
 
-
 RAY_NODE_IP_FILENAME = "node_ip_address.json"
 
 PLACEMENT_GROUP_BUNDLE_RESOURCE_NAME = "bundle"
+
+RAY_LOGGING_CONFIG_ENCODING = os.environ.get("RAY_LOGGING_CONFIG_ENCODING")
+
+RAY_BACKEND_LOG_JSON_ENV_VAR = "RAY_BACKEND_LOG_JSON"
+
+# Write export API event of all resource types to file if enabled.
+# RAY_enable_export_api_write_config will not be considered if
+# this is enabled.
+RAY_ENABLE_EXPORT_API_WRITE = env_bool("RAY_enable_export_api_write", False)
+
+# Comma separated string containing individual resource
+# to write export API events for. This configuration is only used if
+# RAY_enable_export_api_write is not enabled. Full list of valid
+# resource types in ExportEvent.SourceType enum in
+# src/ray/protobuf/export_api/export_event.proto
+# Example config:
+# `export RAY_enable_export_api_write_config='EXPORT_SUBMISSION_JOB,EXPORT_ACTOR'`
+RAY_ENABLE_EXPORT_API_WRITE_CONFIG_STR = os.environ.get(
+    "RAY_enable_export_api_write_config", ""
+)
+RAY_ENABLE_EXPORT_API_WRITE_CONFIG = RAY_ENABLE_EXPORT_API_WRITE_CONFIG_STR.split(",")
+
+RAY_EXPORT_EVENT_MAX_FILE_SIZE_BYTES = env_bool(
+    "RAY_EXPORT_EVENT_MAX_FILE_SIZE_BYTES", 100 * 1e6
+)
+
+RAY_EXPORT_EVENT_MAX_BACKUP_COUNT = env_bool("RAY_EXPORT_EVENT_MAX_BACKUP_COUNT", 20)
+
+# If this flag is set and you run the driver with `uv run`, Ray propagates the `uv run`
+# environment to all workers. Ray does this by setting the `py_executable` to the
+# `uv run`` command line and by propagating the working directory
+# via the `working_dir` plugin so uv finds the pyproject.toml.
+# If you enable RAY_ENABLE_UV_RUN_RUNTIME_ENV AND you run the driver
+# with `uv run`, Ray deactivates the regular RAY_RUNTIME_ENV_HOOK
+# because in most cases the hooks wouldn't work unless you specifically make the code
+# for the runtime env hook available in your uv environment and make sure your hook
+# is compatible with your uv runtime environment. If you want to combine a custom
+# RAY_RUNTIME_ENV_HOOK with `uv run`, you should flag off RAY_ENABLE_UV_RUN_RUNTIME_ENV
+# and call ray._private.runtime_env.uv_runtime_env_hook.hook manually in your hook or
+# manually set the py_executable in your runtime environment hook.
+RAY_ENABLE_UV_RUN_RUNTIME_ENV = env_bool("RAY_ENABLE_UV_RUN_RUNTIME_ENV", True)
+
+# Prometheus metric cardinality level setting, either "legacy" or "recommended".
+#
+# Legacy: report all metrics to prometheus with the set of labels that are reported by
+#   the component, including WorkerId, (task or actor) Name, etc. This is the default.
+# Recommended: report only the node level metrics to prometheus. This means that the
+#   WorkerId will be removed from all metrics.
+RAY_METRIC_CARDINALITY_LEVEL = os.environ.get("RAY_metric_cardinality_level", "legacy")
+
+# Whether enable OpenTelemetry as the metrics collection backend on the driver
+# component. This flag is only used during the migration of the  metric collection
+# backend from OpenCensus to OpenTelemetry. It will be removed in the future.
+RAY_EXPERIMENTAL_ENABLE_OPEN_TELEMETRY_ON_AGENT = env_bool(
+    "RAY_experimental_enable_open_telemetry_on_agent", False
+)
+
+# Whether enable OpenTelemetry as the metrics collection backend on the core
+# components (core workers, gcs server, raylet, etc.). This flag is only used during
+# the migration of the  metric collection backend from OpenCensus to OpenTelemetry.
+# It will be removed in the future.
+RAY_EXPERIMENTAL_ENABLE_OPEN_TELEMETRY_ON_CORE = env_bool(
+    "RAY_experimental_enable_open_telemetry_on_core", False
+)

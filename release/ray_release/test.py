@@ -3,10 +3,11 @@ import concurrent.futures
 import enum
 import os
 import platform
+import subprocess
 import json
 import time
 from itertools import chain
-from typing import Awaitable, Optional, List, Dict
+from typing import Awaitable, Optional, List, Dict, Set
 from dataclasses import dataclass
 
 import aioboto3
@@ -27,6 +28,8 @@ from ray_release.util import (
     get_write_state_machine_aws_bucket,
 )
 
+MICROCHECK_COMMAND = "@microcheck"
+
 AWS_TEST_KEY = "ray_tests"
 AWS_TEST_RESULT_KEY = "ray_test_results"
 DEFAULT_PYTHON_VERSION = tuple(
@@ -34,6 +37,7 @@ DEFAULT_PYTHON_VERSION = tuple(
 )
 DATAPLANE_ECR_REPO = "anyscale/ray"
 DATAPLANE_ECR_ML_REPO = "anyscale/ray-ml"
+DATAPLANE_ECR_LLM_REPO = "anyscale/ray-llm"
 
 MACOS_TEST_PREFIX = "darwin:"
 LINUX_TEST_PREFIX = "linux:"
@@ -90,6 +94,7 @@ class TestResult:
     timestamp: int
     pull_request: str
     rayci_step_id: str
+    duration_ms: Optional[float] = None
 
     @classmethod
     def from_result(cls, result: Result):
@@ -101,6 +106,7 @@ class TestResult:
             timestamp=int(time.time() * 1000),
             pull_request=os.environ.get("BUILDKITE_PULL_REQUEST", ""),
             rayci_step_id=os.environ.get("RAYCI_STEP_ID", ""),
+            duration_ms=result.runtime,
         )
 
     @classmethod
@@ -113,6 +119,9 @@ class TestResult:
                 buildkite_url=(
                     f"{os.environ.get('BUILDKITE_BUILD_URL')}"
                     f"#{os.environ.get('BUILDKITE_JOB_ID')}"
+                ),
+                runtime=cls._to_float_or_none(
+                    event["testResult"].get("testAttemptDurationMillis")
                 ),
             )
         )
@@ -127,7 +136,15 @@ class TestResult:
             timestamp=result["timestamp"],
             pull_request=result.get("pull_request", ""),
             rayci_step_id=result.get("rayci_step_id", ""),
+            duration_ms=result.get("duration_ms"),
         )
+
+    @classmethod
+    def _to_float_or_none(cls, s: str) -> Optional[float]:
+        try:
+            return float(s)
+        except (ValueError, TypeError):
+            return None
 
     def is_failing(self) -> bool:
         return not self.is_passing()
@@ -195,21 +212,147 @@ class Test(dict):
         ]
 
     @classmethod
-    def gen_high_impact_tests(cls, prefix: str) -> Dict[str, List]:
+    def gen_microcheck_step_ids(cls, prefix: str, bazel_workspace_dir: str) -> Set[str]:
         """
-        Obtain the mapping from rayci step id to high impact tests with the given prefix
+        This function is used to get the buildkite step ids of the microcheck tests
+        with the given test prefix. This is used to determine the buildkite steps in
+        the microcheck pipeline.
+        """
+        step_ids = set()
+        test_targets = cls.gen_microcheck_tests(prefix, bazel_workspace_dir)
+        for test_target in test_targets:
+            test = cls.gen_from_name(f"{prefix}{test_target}")
+            if not test:
+                continue
+            recent_results = test.get_test_results()
+            if not recent_results:
+                continue
+            test_step_ids = {
+                result.rayci_step_id
+                for result in recent_results
+                if result.commit == recent_results[0].commit and result.rayci_step_id
+            }
+            if test_step_ids and not step_ids.intersection(test_step_ids):
+                step_ids.add(sorted(test_step_ids)[0])
+
+        return step_ids
+
+    @classmethod
+    def gen_microcheck_tests(
+        cls, prefix: str, bazel_workspace_dir: str, team: Optional[str] = None
+    ) -> Set[str]:
+        """
+        Obtain all microcheck tests with the given prefix
+        """
+        high_impact_tests = Test._gen_high_impact_tests(prefix, team)
+        changed_tests = Test._get_changed_tests(bazel_workspace_dir)
+        human_specified_tests = Test._get_human_specified_tests(bazel_workspace_dir)
+
+        return high_impact_tests.union(changed_tests, human_specified_tests)
+
+    @classmethod
+    def _gen_high_impact_tests(
+        cls, prefix: str, team: Optional[str] = None
+    ) -> Set[str]:
+        """
+        Obtain all high impact tests with the given prefix
         """
         high_impact_tests = [
             test for test in cls.gen_from_s3(prefix) if test.is_high_impact()
         ]
-        step_id_to_tests = {}
-        for test in high_impact_tests:
-            step_id = test.get_test_results(limit=1)[0].rayci_step_id
-            if not step_id:
-                continue
-            step_id_to_tests[step_id] = step_id_to_tests.get(step_id, []) + [test]
+        if team:
+            high_impact_tests = [
+                test for test in high_impact_tests if test.get_oncall() == team
+            ]
 
-        return step_id_to_tests
+        return {test.get_target() for test in high_impact_tests}
+
+    @classmethod
+    def _get_human_specified_tests(cls, bazel_workspace_dir: str) -> Set[str]:
+        """
+        Get all test targets that are specified by humans
+        """
+        base = os.environ.get("BUILDKITE_PULL_REQUEST_BASE_BRANCH")
+        head = os.environ.get("BUILDKITE_COMMIT")
+        if not base or not head:
+            # if not in a PR, return an empty set
+            return set()
+
+        tests = set()
+        messages = subprocess.check_output(
+            ["git", "rev-list", "--format=%b", f"origin/{base}...{head}"],
+            cwd=bazel_workspace_dir,
+        )
+        for message in messages.decode().splitlines():
+            if not message.startswith(MICROCHECK_COMMAND):
+                continue
+            tests = tests.union(message[len(MICROCHECK_COMMAND) :].strip().split(" "))
+
+        return tests
+
+    @classmethod
+    def _get_changed_tests(cls, bazel_workspace_dir: str) -> Set[str]:
+        """
+        Get all changed tests in the current PR
+        """
+        return set(
+            chain.from_iterable(
+                [
+                    cls._get_test_targets_per_file(file, bazel_workspace_dir)
+                    for file in cls._get_changed_files(bazel_workspace_dir)
+                ]
+            )
+        )
+
+    @classmethod
+    def _get_changed_files(cls, bazel_workspace_dir: str) -> Set[str]:
+        """
+        Get all changed files in the current PR
+        """
+        base = os.environ.get("BUILDKITE_PULL_REQUEST_BASE_BRANCH")
+        head = os.environ.get("BUILDKITE_COMMIT")
+        if not base or not head:
+            # if not in a PR, return an empty set
+            return set()
+
+        changes = subprocess.check_output(
+            ["git", "diff", "--name-only", f"origin/{base}...{head}"],
+            cwd=bazel_workspace_dir,
+        )
+        return {
+            file.strip() for file in changes.decode().splitlines() if file is not None
+        }
+
+    @classmethod
+    def _get_test_targets_per_file(
+        cls, file: str, bazel_workspace_dir: str
+    ) -> Set[str]:
+        """
+        Get the test target from a file path
+        """
+        try:
+            package = (
+                subprocess.check_output(
+                    ["bazel", "query", file], cwd=bazel_workspace_dir
+                )
+                .decode()
+                .strip()
+            )
+            if not package:
+                return set()
+            targets = subprocess.check_output(
+                ["bazel", "query", f"tests(attr('srcs', {package}, //...))"],
+                cwd=bazel_workspace_dir,
+            )
+            targets = {
+                target.strip()
+                for target in targets.decode().splitlines()
+                if target is not None
+            }
+
+            return targets
+        except subprocess.CalledProcessError:
+            return set()
 
     def is_jailed_with_open_issue(self, ray_github: Repository) -> bool:
         """
@@ -239,12 +382,6 @@ class Test(dict):
         """
         return self.get("env") == "gce"
 
-    def is_byod_cluster(self) -> bool:
-        """
-        Returns whether this test is running on a BYOD cluster.
-        """
-        return self["cluster"].get("byod") is not None
-
     def is_high_impact(self) -> bool:
         # a test is high impact if it catches regressions frequently, this field is
         # populated by the determine_microcheck_tests.py script
@@ -270,36 +407,49 @@ class Test(dict):
             return WINDOWS_BISECT_DAILY_RATE_LIMIT
         return BISECT_DAILY_RATE_LIMIT
 
-    def get_byod_type(self) -> Optional[str]:
+    def get_byod_type(self) -> str:
         """
         Returns the type of the BYOD cluster.
         """
-        if not self.is_byod_cluster():
-            return None
         return self["cluster"]["byod"].get("type", "cpu")
+
+    def get_tag_suffix(self) -> str:
+        """
+        Returns the tag suffix for the BYOD image.
+        """
+        byod_type = self.get_byod_type()
+        if byod_type.startswith("llm-"):
+            return byod_type[len("llm-") :]
+        return byod_type
 
     def get_byod_post_build_script(self) -> Optional[str]:
         """
         Returns the post-build script for the BYOD cluster.
         """
-        if not self.is_byod_cluster():
-            return None
         return self["cluster"]["byod"].get("post_build_script")
 
     def get_byod_runtime_env(self) -> Dict[str, str]:
         """
         Returns the runtime environment variables for the BYOD cluster.
         """
-        if not self.is_byod_cluster():
-            return {}
-        return _convert_env_list_to_dict(self["cluster"]["byod"].get("runtime_env", []))
+        default = {
+            "RAY_BACKEND_LOG_JSON": "1",
+            # Logs the full stack trace from Ray Data in case of exception,
+            # which is useful for debugging failures.
+            "RAY_DATA_LOG_INTERNAL_STACK_TRACE_TO_STDOUT": "1",
+            # To make ray data compatible across multiple pyarrow versions.
+            "RAY_DATA_AUTOLOAD_PYEXTENSIONTYPE": "1",
+        }
+        default.update(
+            _convert_env_list_to_dict(self["cluster"]["byod"].get("runtime_env", []))
+        )
+
+        return default
 
     def get_byod_pips(self) -> List[str]:
         """
         Returns the list of pips for the BYOD cluster.
         """
-        if not self.is_byod_cluster():
-            return []
         return self["cluster"]["byod"].get("pip", [])
 
     def get_name(self) -> str:
@@ -401,7 +551,7 @@ class Test(dict):
             release_name = branch[len("releases/") :]
             ray_version = f"{release_name}.{ray_version}"
         python_version = f"py{self.get_python_version().replace('.',   '')}"
-        return f"{ray_version}-{python_version}-{self.get_byod_type()}"
+        return f"{ray_version}-{python_version}-{self.get_tag_suffix()}"
 
     def get_byod_image_tag(self) -> str:
         """
@@ -418,12 +568,17 @@ class Test(dict):
         """Returns whether to use the ML image for this test."""
         return self.get_byod_type() == "gpu"
 
+    def use_byod_llm_image(self) -> bool:
+        return self.get_byod_type().startswith("llm-")
+
     def get_byod_repo(self) -> str:
         """
         Returns the byod repo to use for this test.
         """
         if self.use_byod_ml_image():
             return DATAPLANE_ECR_ML_REPO
+        if self.use_byod_llm_image():
+            return DATAPLANE_ECR_LLM_REPO
         return DATAPLANE_ECR_REPO
 
     def get_byod_ecr(self) -> str:
@@ -445,6 +600,8 @@ class Test(dict):
         repo = self.get_byod_repo()
         if repo == DATAPLANE_ECR_REPO:
             repo_name = config["byod_ray_cr_repo"]
+        elif repo == DATAPLANE_ECR_LLM_REPO:
+            repo_name = config["byod_ray_llm_cr_repo"]
         elif repo == DATAPLANE_ECR_ML_REPO:
             repo_name = config["byod_ray_ml_cr_repo"]
         else:

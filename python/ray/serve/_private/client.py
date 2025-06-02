@@ -1,40 +1,48 @@
 import logging
 import random
 import time
+from collections.abc import Sequence
 from functools import wraps
-from typing import Callable, Dict, Iterable, List, Optional, Tuple, Union
+from typing import Callable, Dict, List, Optional, Tuple, Union
 
 import ray
 from ray.actor import ActorHandle
+from ray.serve._private.application_state import StatusOverview
+from ray.serve._private.build_app import BuiltApplication
 from ray.serve._private.common import (
-    ApplicationStatus,
-    DeploymentHandleSource,
     DeploymentID,
     DeploymentStatus,
     DeploymentStatusInfo,
     MultiplexedReplicaInfo,
-    StatusOverview,
 )
 from ray.serve._private.constants import (
     CLIENT_CHECK_CREATION_POLLING_INTERVAL_S,
     CLIENT_POLLING_INTERVAL_S,
     MAX_CACHED_HANDLES,
     SERVE_DEFAULT_APP_NAME,
+    SERVE_LOGGER_NAME,
 )
 from ray.serve._private.controller import ServeController
 from ray.serve._private.deploy_utils import get_deploy_args
 from ray.serve._private.deployment_info import DeploymentInfo
+from ray.serve._private.utils import get_random_string
 from ray.serve.config import HTTPOptions
 from ray.serve.exceptions import RayServeException
-from ray.serve.generated.serve_pb2 import DeploymentArgs, DeploymentRoute
 from ray.serve.generated.serve_pb2 import (
+    DeploymentArgs,
+    DeploymentRoute,
     DeploymentStatusInfo as DeploymentStatusInfoProto,
+    StatusOverview as StatusOverviewProto,
 )
-from ray.serve.generated.serve_pb2 import StatusOverview as StatusOverviewProto
-from ray.serve.handle import DeploymentHandle, _HandleOptions
-from ray.serve.schema import LoggingConfig, ServeApplicationSchema, ServeDeploySchema
+from ray.serve.handle import DeploymentHandle
+from ray.serve.schema import (
+    ApplicationStatus,
+    LoggingConfig,
+    ServeApplicationSchema,
+    ServeDeploySchema,
+)
 
-logger = logging.getLogger(__file__)
+logger = logging.getLogger(SERVE_LOGGER_NAME)
 
 
 def _ensure_connected(f: Callable) -> Callable:
@@ -240,51 +248,81 @@ class ServeControllerClient:
             )
 
     @_ensure_connected
-    def deploy_application(
+    def deploy_applications(
         self,
-        name,
-        deployments: List[Dict],
-        _blocking: bool = True,
-    ):
-        deployment_args_list = []
-        for deployment in deployments:
-            deployment_args = get_deploy_args(
-                deployment["name"],
-                replica_config=deployment["replica_config"],
-                ingress=deployment["ingress"],
-                deployment_config=deployment["deployment_config"],
-                version=deployment["version"],
-                route_prefix=deployment["route_prefix"],
-                docs_path=deployment["docs_path"],
+        built_apps: Sequence[BuiltApplication],
+        *,
+        wait_for_ingress_deployment_creation: bool = True,
+        wait_for_applications_running: bool = True,
+    ) -> List[DeploymentHandle]:
+        name_to_deployment_args_list = {}
+        for app in built_apps:
+            deployment_args_list = []
+            for deployment in app.deployments:
+                if deployment.logging_config is None and app.logging_config:
+                    deployment = deployment.options(logging_config=app.logging_config)
+
+                is_ingress = deployment.name == app.ingress_deployment_name
+                deployment_args = get_deploy_args(
+                    deployment.name,
+                    ingress=is_ingress,
+                    replica_config=deployment._replica_config,
+                    deployment_config=deployment._deployment_config,
+                    version=deployment._version or get_random_string(),
+                    route_prefix=app.route_prefix if is_ingress else None,
+                    docs_path=deployment._docs_path,
+                )
+
+                deployment_args_proto = DeploymentArgs()
+                deployment_args_proto.deployment_name = deployment_args[
+                    "deployment_name"
+                ]
+                deployment_args_proto.deployment_config = deployment_args[
+                    "deployment_config_proto_bytes"
+                ]
+                deployment_args_proto.replica_config = deployment_args[
+                    "replica_config_proto_bytes"
+                ]
+                deployment_args_proto.deployer_job_id = deployment_args[
+                    "deployer_job_id"
+                ]
+                if deployment_args["route_prefix"]:
+                    deployment_args_proto.route_prefix = deployment_args["route_prefix"]
+                deployment_args_proto.ingress = deployment_args["ingress"]
+                if deployment_args["docs_path"]:
+                    deployment_args_proto.docs_path = deployment_args["docs_path"]
+
+                deployment_args_list.append(deployment_args_proto.SerializeToString())
+
+            name_to_deployment_args_list[app.name] = deployment_args_list
+
+        ray.get(
+            self._controller.deploy_applications.remote(name_to_deployment_args_list)
+        )
+
+        handles = []
+        for app in built_apps:
+            # The deployment state is not guaranteed to be created after
+            # deploy_application returns; the application state manager will
+            # need another reconcile iteration to create it.
+            if wait_for_ingress_deployment_creation:
+                self._wait_for_deployment_created(app.ingress_deployment_name, app.name)
+
+            if wait_for_applications_running:
+                self._wait_for_application_running(app.name)
+                if app.route_prefix is not None:
+                    url_part = " at " + self._root_url + app.route_prefix
+                else:
+                    url_part = ""
+                logger.info(f"Application '{app.name}' is ready{url_part}.")
+
+            handles.append(
+                self.get_handle(
+                    app.ingress_deployment_name, app.name, check_exists=False
+                )
             )
 
-            deployment_args_proto = DeploymentArgs()
-            deployment_args_proto.deployment_name = deployment_args["deployment_name"]
-            deployment_args_proto.deployment_config = deployment_args[
-                "deployment_config_proto_bytes"
-            ]
-            deployment_args_proto.replica_config = deployment_args[
-                "replica_config_proto_bytes"
-            ]
-            deployment_args_proto.deployer_job_id = deployment_args["deployer_job_id"]
-            if deployment_args["route_prefix"]:
-                deployment_args_proto.route_prefix = deployment_args["route_prefix"]
-            deployment_args_proto.ingress = deployment_args["ingress"]
-            if deployment_args["docs_path"]:
-                deployment_args_proto.docs_path = deployment_args["docs_path"]
-
-            deployment_args_list.append(deployment_args_proto.SerializeToString())
-
-        ray.get(self._controller.deploy_application.remote(name, deployment_args_list))
-        if _blocking:
-            self._wait_for_application_running(name)
-            for deployment in deployments:
-                deployment_name = deployment["name"]
-                tag = f"component=serve deployment={deployment_name}"
-                url = deployment["url"]
-                version = deployment["version"]
-
-                self.log_deployment_ready(deployment_name, version, url, tag)
+        return handles
 
     @_ensure_connected
     def deploy_apps(
@@ -359,15 +397,6 @@ class ServeControllerClient:
         self.delete_apps(all_apps, blocking)
 
     @_ensure_connected
-    def delete_deployments(self, names: Iterable[str], blocking: bool = True) -> None:
-        """Delete 1.x deployments."""
-
-        ray.get(self._controller.delete_deployments.remote(names))
-        if blocking:
-            for name in names:
-                self._wait_for_deployment_deleted(name, "")
-
-    @_ensure_connected
     def get_deployment_info(
         self, name: str, app_name: str
     ) -> Tuple[DeploymentInfo, str]:
@@ -378,11 +407,6 @@ class ServeControllerClient:
             DeploymentInfo.from_proto(deployment_route.deployment_info),
             deployment_route.route if deployment_route.route != "" else None,
         )
-
-    @_ensure_connected
-    def get_app_config(self, name: str = SERVE_DEFAULT_APP_NAME) -> Dict:
-        """Returns the most recently requested Serve config."""
-        return ray.get(self._controller.get_app_config.remote(name))
 
     @_ensure_connected
     def get_serve_status(self, name: str = SERVE_DEFAULT_APP_NAME) -> StatusOverview:
@@ -423,8 +447,6 @@ class ServeControllerClient:
         Returns:
             DeploymentHandle
         """
-        from ray.serve.context import _get_internal_replica_context
-
         deployment_id = DeploymentID(name=deployment_name, app_name=app_name)
         cache_key = (deployment_name, app_name, check_exists)
         if cache_key in self.handle_cache:
@@ -435,18 +457,7 @@ class ServeControllerClient:
             if deployment_id not in all_deployments:
                 raise KeyError(f"{deployment_id} does not exist.")
 
-        if _get_internal_replica_context() is not None:
-            handle = DeploymentHandle(
-                deployment_name,
-                app_name,
-                handle_options=_HandleOptions(_source=DeploymentHandleSource.REPLICA),
-            )
-        else:
-            handle = DeploymentHandle(
-                deployment_name,
-                app_name,
-            )
-
+        handle = DeploymentHandle(deployment_name, app_name)
         self.handle_cache[cache_key] = handle
         if cache_key in self._evicted_handle_keys:
             logger.warning(
@@ -467,36 +478,6 @@ class ServeControllerClient:
             self.handle_cache.pop(evict_key)
 
         return handle
-
-    @_ensure_connected
-    def log_deployment_update_status(
-        self, name: str, version: str, updating: bool
-    ) -> str:
-        tag = f"component=serve deployment={name}"
-
-        if updating:
-            msg = f"Updating deployment '{name}'"
-            if version is not None:
-                msg += f" to version '{version}'"
-            logger.info(f"{msg}. {tag}")
-        else:
-            logger.info(
-                f"Deployment '{name}' is already at version "
-                f"'{version}', not updating. {tag}"
-            )
-
-        return tag
-
-    @_ensure_connected
-    def log_deployment_ready(self, name: str, version: str, url: str, tag: str) -> None:
-        if url is not None:
-            url_part = f" at `{url}`"
-        else:
-            url_part = ""
-        logger.info(
-            f"Deployment '{name}{':'+version if version else ''}' is ready"
-            f"{url_part}. {tag}"
-        )
 
     @_ensure_connected
     def record_multiplexed_replica_info(self, info: MultiplexedReplicaInfo):

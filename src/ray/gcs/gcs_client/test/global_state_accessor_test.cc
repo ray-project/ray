@@ -14,9 +14,12 @@
 
 #include "ray/gcs/gcs_client/global_state_accessor.h"
 
+#include <memory>
+#include <string>
+#include <vector>
+
 #include "gtest/gtest.h"
 #include "ray/common/asio/instrumented_io_context.h"
-#include "ray/common/test_util.h"
 #include "ray/gcs/gcs_server/gcs_server.h"
 #include "ray/gcs/test/gcs_test_util.h"
 #include "ray/rpc/gcs_server/gcs_rpc_client.h"
@@ -61,7 +64,9 @@ class GlobalStateAccessorTest : public ::testing::TestWithParam<bool> {
     io_service_.reset(new instrumented_io_context());
     gcs_server_.reset(new gcs::GcsServer(config, *io_service_));
     gcs_server_->Start();
-    work_ = std::make_unique<boost::asio::io_service::work>(*io_service_);
+    work_ = std::make_unique<
+        boost::asio::executor_work_guard<boost::asio::io_context::executor_type>>(
+        io_service_->get_executor());
     thread_io_service_.reset(new std::thread([this] { io_service_->run(); }));
 
     // Wait until server starts listening.
@@ -70,7 +75,11 @@ class GlobalStateAccessorTest : public ::testing::TestWithParam<bool> {
     }
 
     // Create GCS client and global state.
-    gcs::GcsClientOptions options("127.0.0.1:6379");
+    gcs::GcsClientOptions options("127.0.0.1",
+                                  6379,
+                                  ClusterID::Nil(),
+                                  /*allow_cluster_id_nil=*/true,
+                                  /*fetch_cluster_id_if_nil=*/false);
     gcs_client_ = std::make_unique<gcs::GcsClient>(options);
     global_state_ = std::make_unique<gcs::GlobalStateAccessor>(options);
     RAY_CHECK_OK(gcs_client_->Connect(*io_service_));
@@ -79,6 +88,10 @@ class GlobalStateAccessorTest : public ::testing::TestWithParam<bool> {
   }
 
   void TearDown() override {
+    // Make sure any pending work with pointers to gcs_server_ is not run after
+    // gcs_server_ is destroyed.
+    io_service_->stop();
+
     global_state_->Disconnect();
     global_state_.reset();
 
@@ -90,7 +103,6 @@ class GlobalStateAccessorTest : public ::testing::TestWithParam<bool> {
       TestSetupUtil::FlushAllRedisServers();
     }
 
-    io_service_->stop();
     thread_io_service_->join();
     gcs_server_.reset();
   }
@@ -108,7 +120,9 @@ class GlobalStateAccessorTest : public ::testing::TestWithParam<bool> {
 
   // Timeout waiting for GCS server reply, default is 2s.
   const std::chrono::milliseconds timeout_ms_{2000};
-  std::unique_ptr<boost::asio::io_service::work> work_;
+  std::unique_ptr<
+      boost::asio::executor_work_guard<boost::asio::io_context::executor_type>>
+      work_;
 };
 
 TEST_P(GlobalStateAccessorTest, TestJobTable) {
@@ -170,6 +184,34 @@ TEST_P(GlobalStateAccessorTest, TestNodeTable) {
         node_data.node_name(),
         std::string("Mocker_node_") + std::to_string(node_data.node_manager_port() * 10));
   }
+}
+
+TEST_P(GlobalStateAccessorTest, TestGetAllTotalResources) {
+  ASSERT_EQ(global_state_->GetAllTotalResources().size(), 0);
+
+  // Register node
+  auto node_table_data = Mocker::GenNodeInfo();
+  node_table_data->mutable_resources_total()->insert({"CPU", 1});
+  node_table_data->mutable_resources_total()->insert({"GPU", 10});
+
+  std::promise<bool> promise;
+  RAY_CHECK_OK(gcs_client_->Nodes().AsyncRegister(
+      *node_table_data, [&promise](Status status) { promise.set_value(status.ok()); }));
+  WaitReady(promise.get_future(), timeout_ms_);
+  ASSERT_EQ(global_state_->GetAllNodeInfo().size(), 1);
+
+  // Assert get total resources right.
+  std::vector<rpc::TotalResources> all_total_resources;
+  for (const auto &string_of_total_resources_by_node_id :
+       global_state_->GetAllTotalResources()) {
+    rpc::TotalResources total_resources_by_node_id;
+    total_resources_by_node_id.ParseFromString(string_of_total_resources_by_node_id);
+    all_total_resources.push_back(total_resources_by_node_id);
+  }
+  ASSERT_EQ(all_total_resources.size(), 1);
+  ASSERT_EQ(all_total_resources[0].resources_total_size(), 2);
+  ASSERT_EQ((*all_total_resources[0].mutable_resources_total())["CPU"], 1.0);
+  ASSERT_EQ((*all_total_resources[0].mutable_resources_total())["GPU"], 10.0);
 }
 
 TEST_P(GlobalStateAccessorTest, TestGetAllResourceUsage) {
@@ -307,11 +349,15 @@ INSTANTIATE_TEST_SUITE_P(RedisRemovalTest,
 
 int main(int argc, char **argv) {
   ray::RayLog::InstallFailureSignalHandler(argv[0]);
-  InitShutdownRAII ray_log_shutdown_raii(ray::RayLog::StartRayLog,
-                                         ray::RayLog::ShutDownRayLog,
-                                         argv[0],
-                                         ray::RayLogLevel::INFO,
-                                         /*log_dir=*/"");
+  InitShutdownRAII ray_log_shutdown_raii(
+      ray::RayLog::StartRayLog,
+      ray::RayLog::ShutDownRayLog,
+      argv[0],
+      ray::RayLogLevel::INFO,
+      ray::RayLog::GetLogFilepathFromDirectory(/*log_dir=*/"", /*app_name=*/argv[0]),
+      ray::RayLog::GetErrLogFilepathFromDirectory(/*log_dir=*/"", /*app_name=*/argv[0]),
+      ray::RayLog::GetRayLogRotationMaxBytesOrDefault(),
+      ray::RayLog::GetRayLogRotationBackupCountOrDefault());
   ::testing::InitGoogleTest(&argc, argv);
   RAY_CHECK(argc == 3);
   ray::TEST_REDIS_SERVER_EXEC_PATH = argv[1];

@@ -70,7 +70,14 @@ class _PyObjScanner(ray.cloudpickle.CloudPickler, Generic[SourceType, Transforme
         return super().reducer_override(obj)
 
     def find_nodes(self, obj: Any) -> List[SourceType]:
-        """Find top-level DAGNodes."""
+        """
+        Serialize `obj` and store all instances of `source_type` found in `_found`.
+
+        Args:
+            obj: The object to scan for `source_type`.
+        Returns:
+            A list of all instances of `source_type` found in `obj`.
+        """
         assert (
             self._found is None
         ), "find_nodes cannot be called twice on the same PyObjScanner instance."

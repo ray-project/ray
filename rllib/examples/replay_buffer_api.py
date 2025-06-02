@@ -1,4 +1,4 @@
-# Move this example to the new API stack.
+# @OldAPIStack
 
 # __sphinx_doc_replay_buffer_api_example_script_begin__
 """Simple example of how to modify replay buffer behaviour.
@@ -12,9 +12,11 @@ which includes and a priority update, given that a fitting buffer is provided.
 import argparse
 
 import ray
-from ray import air, tune
+from ray import tune
+from ray.tune.result import TRAINING_ITERATION
 from ray.rllib.algorithms.dqn import DQNConfig
 from ray.rllib.utils.framework import try_import_tf
+from ray.rllib.utils.metrics import NUM_ENV_STEPS_SAMPLED_LIFETIME
 from ray.rllib.utils.replay_buffers.replay_buffer import StorageUnit
 
 tf1, tf, tfv = try_import_tf()
@@ -65,14 +67,14 @@ if __name__ == "__main__":
     )
 
     stop_config = {
-        "num_env_steps_sampled_lifetime": args.stop_timesteps,
-        "training_iteration": args.stop_iters,
+        NUM_ENV_STEPS_SAMPLED_LIFETIME: args.stop_timesteps,
+        TRAINING_ITERATION: args.stop_iters,
     }
 
     results = tune.Tuner(
         config.algo_class,
         param_space=config,
-        run_config=air.RunConfig(stop=stop_config),
+        run_config=tune.RunConfig(stop=stop_config),
     ).fit()
 
     ray.shutdown()
