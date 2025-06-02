@@ -1,21 +1,22 @@
 import asyncio
 import json
+import sys
 from types import SimpleNamespace
 from typing import List
 from unittest.mock import Mock
-import sys
+
 import pytest
 
-from ray.llm._internal.serve.configs.server_models import FinishReason
+from ray.llm._internal.serve.configs.server_models import (
+    FinishReason,
+    LLMConfig,
+)
 from ray.llm._internal.serve.deployments.llm.vllm.vllm_engine import (
     VLLMEngine,
 )
 from ray.llm._internal.serve.deployments.llm.vllm.vllm_models import (
     VLLMGenerationRequest,
     VLLMSamplingParams,
-)
-from ray.llm._internal.serve.configs.server_models import (
-    LLMConfig,
 )
 
 

@@ -11,7 +11,8 @@ from starlette.responses import StreamingResponse
 
 import ray
 from ray import serve
-from ray._private.test_utils import SignalActor, wait_for_condition
+from ray._common.test_utils import SignalActor
+from ray._private.test_utils import wait_for_condition
 from ray.dashboard.modules.serve.sdk import ServeSubmissionClient
 from ray.serve._private.test_utils import send_signal_on_cancellation
 from ray.serve.schema import ApplicationStatus, ServeInstanceDetails
@@ -137,7 +138,7 @@ def test_with_rest_api(ray_start_stop):
 
     def application_running():
         response = requests.get(
-            "http://localhost:52365/api/serve/applications/", timeout=15
+            "http://localhost:8265/api/serve/applications/", timeout=15
         )
         assert response.status_code == 200
 

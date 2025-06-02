@@ -9,7 +9,8 @@ import pytest
 
 import ray
 from ray._common.utils import get_or_create_event_loop
-from ray._private.test_utils import run_string_as_driver, SignalActor
+from ray._private.test_utils import run_string_as_driver
+from ray._common.test_utils import SignalActor
 
 
 # This tests the methods are executed in the correct eventloop.
@@ -319,9 +320,5 @@ actor = A.remote()
 
 
 if __name__ == "__main__":
-    import os
 
-    if os.environ.get("PARALLEL_CI"):
-        sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))
-    else:
-        sys.exit(pytest.main(["-sv", __file__]))
+    sys.exit(pytest.main(["-sv", __file__]))

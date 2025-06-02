@@ -1,7 +1,7 @@
 import asyncio
 import os
 import sys
-from typing import Dict, Optional
+from typing import Dict, List, Optional
 
 import pytest
 import requests
@@ -10,13 +10,23 @@ from fastapi import FastAPI
 
 import ray
 from ray import serve
+from ray._common.test_utils import SignalActor
 from ray._private.pydantic_compat import BaseModel, ValidationError
-from ray._private.test_utils import SignalActor, wait_for_condition
+from ray._private.test_utils import wait_for_condition
 from ray.serve._private.api import call_user_app_builder_with_args_if_necessary
 from ray.serve._private.common import DeploymentID
 from ray.serve._private.constants import (
     DEFAULT_MAX_ONGOING_REQUESTS,
     SERVE_DEFAULT_APP_NAME,
+)
+from ray.serve._private.request_router.common import (
+    PendingRequest,
+)
+from ray.serve._private.request_router.replica_wrapper import (
+    RunningReplica,
+)
+from ray.serve._private.request_router.request_router import (
+    RequestRouter,
 )
 from ray.serve.deployment import Application
 from ray.serve.exceptions import RayServeException
@@ -60,6 +70,21 @@ class AsyncCounter:
         self.count += 1
         await asyncio.sleep(0.01)
         return {"count": self.count}
+
+
+class FakeRequestRouter(RequestRouter):
+    async def choose_replicas(
+        self,
+        candidate_replicas: List[RunningReplica],
+        pending_request: Optional[PendingRequest] = None,
+    ) -> List[List[RunningReplica]]:
+        return [candidate_replicas]
+
+
+@serve.deployment(request_router_class=FakeRequestRouter)
+class AppWithCustomRequestRouter:
+    def __call__(self) -> str:
+        return "Hello, world!"
 
 
 def test_e2e(serve_instance):
@@ -1060,6 +1085,14 @@ def test_max_ongoing_requests_none(serve_instance):
 
     serve.run(serve.deployment(A).options(max_ongoing_requests=12).bind())
     assert get_max_ongoing_requests() == 12
+
+
+def test_deploy_app_with_custom_request_router(serve_instance):
+    """Test deploying an app with a custom request router configured in the
+    deployment decorator."""
+
+    handle = serve.run(AppWithCustomRequestRouter.bind())
+    assert handle.remote().result() == "Hello, world!"
 
 
 if __name__ == "__main__":

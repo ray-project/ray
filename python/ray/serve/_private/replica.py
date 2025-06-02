@@ -61,7 +61,10 @@ from ray.serve._private.constants import (
     SERVE_LOGGER_NAME,
     SERVE_NAMESPACE,
 )
-from ray.serve._private.default_impl import create_replica_impl
+from ray.serve._private.default_impl import (
+    create_replica_impl,
+    create_replica_metrics_manager,
+)
 from ray.serve._private.http_util import (
     ASGIAppReplicaWrapper,
     ASGIArgs,
@@ -134,11 +137,13 @@ class ReplicaMetricsManager:
         replica_id: ReplicaID,
         event_loop: asyncio.BaseEventLoop,
         autoscaling_config: Optional[AutoscalingConfig],
+        ingress: bool,
     ):
         self._replica_id = replica_id
         self._metrics_pusher = MetricsPusher()
         self._metrics_store = InMemoryMetricsStore()
         self._autoscaling_config = autoscaling_config
+        self._ingress = ingress
         self._controller_handle = ray.get_actor(
             SERVE_CONTROLLER_NAME, namespace=SERVE_NAMESPACE
         )
@@ -239,15 +244,18 @@ class ReplicaMetricsManager:
 
         await self._metrics_pusher.graceful_shutdown()
 
+    def should_collect_metrics(self) -> bool:
+        return (
+            not RAY_SERVE_COLLECT_AUTOSCALING_METRICS_ON_HANDLE
+            and self._autoscaling_config
+        )
+
     def set_autoscaling_config(self, autoscaling_config: Optional[AutoscalingConfig]):
         """Dynamically update autoscaling config."""
 
         self._autoscaling_config = autoscaling_config
 
-        if (
-            not RAY_SERVE_COLLECT_AUTOSCALING_METRICS_ON_HANDLE
-            and self._autoscaling_config
-        ):
+        if self.should_collect_metrics():
             self._metrics_pusher.start()
 
             # Push autoscaling metrics to the controller periodically.
@@ -326,11 +334,13 @@ class ReplicaBase(ABC):
         init_kwargs: Dict,
         deployment_config: DeploymentConfig,
         version: DeploymentVersion,
+        ingress: bool,
     ):
         self._version = version
         self._replica_id = replica_id
         self._deployment_id = replica_id.deployment_id
         self._deployment_config = deployment_config
+        self._ingress = ingress
         self._component_name = f"{self._deployment_id.name}"
         if self._deployment_id.app_name:
             self._component_name = (
@@ -369,13 +379,15 @@ class ReplicaBase(ABC):
         # servable_object will be populated in `initialize_and_get_metadata`.
         self._set_internal_replica_context(servable_object=None)
 
-        self._metrics_manager = ReplicaMetricsManager(
-            replica_id,
-            self._event_loop,
-            self._deployment_config.autoscaling_config,
+        self._metrics_manager = create_replica_metrics_manager(
+            replica_id=replica_id,
+            event_loop=self._event_loop,
+            autoscaling_config=self._deployment_config.autoscaling_config,
+            ingress=ingress,
         )
 
         self._port: Optional[int] = None
+        self._docs_path: Optional[str] = None
 
     def _set_internal_replica_context(self, *, servable_object: Callable = None):
         ray.serve.context._set_internal_replica_context(
@@ -690,6 +702,10 @@ class ReplicaBase(ABC):
                     self._user_callable_asgi_app = await asyncio.wrap_future(
                         self._user_callable_wrapper.initialize_callable()
                     )
+                    if self._user_callable_asgi_app:
+                        self._docs_path = (
+                            self._user_callable_wrapper._callable.docs_path
+                        )
                     await self._on_initialized()
                     self._user_callable_initialized = True
 
@@ -754,12 +770,19 @@ class ReplicaBase(ABC):
 
     def get_metadata(
         self,
-    ) -> Tuple[DeploymentConfig, DeploymentVersion, Optional[float], Optional[int]]:
+    ) -> Tuple[
+        DeploymentConfig,
+        DeploymentVersion,
+        Optional[float],
+        Optional[int],
+        Optional[str],
+    ]:
         return (
             self._version.deployment_config,
             self._version,
             self._initialization_latency,
             self._port,
+            self._docs_path,
         )
 
     @abstractmethod
@@ -917,6 +940,7 @@ class ReplicaActor:
         serialized_init_kwargs: bytes,
         deployment_config_proto_bytes: bytes,
         version: DeploymentVersion,
+        ingress: bool,
     ):
         deployment_config = DeploymentConfig.from_proto_bytes(
             deployment_config_proto_bytes
@@ -932,6 +956,7 @@ class ReplicaActor:
             init_kwargs=cloudpickle.loads(serialized_init_kwargs),
             deployment_config=deployment_config,
             version=version,
+            ingress=ingress,
         )
 
     def push_proxy_handle(self, handle: ActorHandle):
@@ -966,6 +991,7 @@ class ReplicaActor:
             ray.get_runtime_context().get_worker_id(),
             ray.get_runtime_context().get_node_id(),
             ray.util.get_node_ip_address(),
+            ray.util.get_node_instance_id(),
             get_component_logger_file_path(),
         )
 
@@ -1352,6 +1378,23 @@ class UserCallableWrapper:
     def user_callable(self) -> Optional[Callable]:
         return self._callable
 
+    async def _initialize_asgi_callable(self) -> None:
+        self._callable: ASGIAppReplicaWrapper
+
+        app: Starlette = self._callable.app
+
+        # The reason we need to do this is because BackPressureError is a serve internal exception
+        # and FastAPI doesn't know how to handle it, so it treats it as a 500 error.
+        # With same reasoning, we are not handling TimeoutError because it's a generic exception
+        # the FastAPI knows how to handle. See https://www.starlette.io/exceptions/
+        def handle_exception(_: Request, exc: Exception):
+            return self.handle_exception(exc)
+
+        for exc in self.service_unavailable_exceptions:
+            app.add_exception_handler(exc, handle_exception)
+
+        await self._callable._run_asgi_lifespan_startup()
+
     @_run_on_user_code_event_loop
     async def initialize_callable(self) -> Optional[ASGIApp]:
         """Initialize the user callable.
@@ -1390,18 +1433,7 @@ class UserCallableWrapper:
             )
 
             if isinstance(self._callable, ASGIAppReplicaWrapper):
-                app: Starlette = self._callable.app
-                # The reason we need to do this is because BackPressureError is a serve internal exception
-                # and FastAPI doesn't know how to handle it, so it treats it as a 500 error.
-                # With same reasoning, we are not handling TimeoutError because it's a generic exception
-                # the FastAPI knows how to handle. See https://www.starlette.io/exceptions/
-                def handle_exception(_: Request, exc: Exception):
-                    return self.handle_exception(exc)
-
-                for exc in self.service_unavailable_exceptions:
-                    app.add_exception_handler(exc, handle_exception)
-
-                await self._callable._run_asgi_lifespan_startup()
+                await self._initialize_asgi_callable()
 
         self._user_health_check = getattr(self._callable, HEALTH_CHECK_METHOD, None)
 

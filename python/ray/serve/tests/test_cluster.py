@@ -8,7 +8,8 @@ import requests
 
 import ray
 from ray import serve
-from ray._private.test_utils import SignalActor, wait_for_condition
+from ray._common.test_utils import SignalActor
+from ray._private.test_utils import wait_for_condition
 from ray.cluster_utils import Cluster
 from ray.exceptions import RayActorError
 from ray.serve._private.common import DeploymentID, ReplicaState
@@ -194,7 +195,7 @@ def test_replica_startup_status_transitions(ray_cluster):
 
     wait_for_condition(is_replica_pending_initialization, timeout=25)
 
-    # send signal to complete replica intialization
+    # send signal to complete replica initialization
     signal.send.remote()
     wait_for_condition(
         lambda: replica.check_started()[0] == ReplicaStartupStatus.SUCCEEDED

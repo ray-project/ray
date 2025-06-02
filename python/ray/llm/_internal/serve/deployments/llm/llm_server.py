@@ -1,7 +1,7 @@
 import asyncio
 import os
 from abc import ABC, abstractmethod
-from typing import AsyncGenerator, Dict, Any, Optional, Type, Union
+from typing import Any, AsyncGenerator, Dict, Optional, Type, Union
 
 # Third-party imports
 from ray import serve
@@ -12,11 +12,9 @@ from ray.llm._internal.serve.configs.constants import (
     DEFAULT_HEALTH_CHECK_PERIOD_S,
     DEFAULT_HEALTH_CHECK_TIMEOUT_S,
     ENGINE_START_TIMEOUT_S,
-    RAYLLM_VLLM_ENGINE_CLS_ENV,
     MODEL_RESPONSE_BATCH_TIMEOUT_MS,
+    RAYLLM_VLLM_ENGINE_CLS_ENV,
 )
-
-from ray.llm._internal.serve.deployments.utils.batcher import OpenAIResponseBatcher
 from ray.llm._internal.serve.configs.openai_api_models import (
     ChatCompletionLogProb,
     ChatCompletionLogProbs,
@@ -47,8 +45,8 @@ from ray.llm._internal.serve.configs.server_models import (
     LLMConfig,
     LLMRawResponse,
 )
-from ray.llm._internal.serve.deployments.llm.llm_engine import LLMEngine
 from ray.llm._internal.serve.deployments.llm.image_retriever import ImageRetriever
+from ray.llm._internal.serve.deployments.llm.llm_engine import LLMEngine
 from ray.llm._internal.serve.deployments.llm.multiplex.lora_model_loader import (
     LoraModelLoader,
 )
@@ -56,6 +54,7 @@ from ray.llm._internal.serve.deployments.llm.vllm.vllm_engine import VLLMEngine
 from ray.llm._internal.serve.deployments.llm.vllm.vllm_models import (
     VLLMEmbeddingRequest,
 )
+from ray.llm._internal.serve.deployments.utils.batcher import OpenAIResponseBatcher
 from ray.llm._internal.serve.deployments.utils.error_handling_utils import (
     StreamingErrorHandler,
 )
@@ -612,8 +611,11 @@ class LLMServer(_LLMServerBase):
         """
         return self._process_llm_request(request, is_chat=False)
 
-    async def check_health(self) -> bool:
-        """Check the health of the llm engine."""
+    async def check_health(self) -> None:
+        """
+        Check the health of the replica. Does not return anything. Raise error when
+        the engine is dead and needs to be restarted.
+        """
         return await self.engine.check_health()
 
     async def embeddings(self, request: EmbeddingRequest) -> LLMEmbeddingsResponse:

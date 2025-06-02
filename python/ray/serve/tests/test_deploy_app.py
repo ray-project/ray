@@ -15,7 +15,8 @@ import ray
 import ray._private.state
 import ray.actor
 from ray import serve
-from ray._private.test_utils import SignalActor, wait_for_condition
+from ray._common.test_utils import SignalActor
+from ray._private.test_utils import wait_for_condition
 from ray.serve._private.client import ServeControllerClient
 from ray.serve._private.common import DeploymentID, DeploymentStatus, ReplicaID
 from ray.serve._private.constants import SERVE_DEFAULT_APP_NAME, SERVE_NAMESPACE
@@ -70,7 +71,7 @@ def start_and_shutdown_ray_cli_module():
 
 def _check_ray_stop():
     try:
-        requests.get("http://localhost:52365/api/ray/version")
+        requests.get("http://localhost:8265/api/ray/version")
         return False
     except Exception:
         return True
@@ -79,7 +80,7 @@ def _check_ray_stop():
 @pytest.fixture(scope="function")
 def client(start_and_shutdown_ray_cli_module, shutdown_ray_and_serve):
     wait_for_condition(
-        lambda: requests.get("http://localhost:52365/api/ray/version").status_code
+        lambda: requests.get("http://localhost:8265/api/ray/version").status_code
         == 200,
         timeout=15,
     )
@@ -1056,10 +1057,12 @@ def test_deploy_nonexistent_deployment(client: ServeControllerClient):
     def check_app_message():
         details = ray.get(client._controller.get_serve_instance_details.remote())
         # The error message should be descriptive
-        # e.g. no deployment "x" in application "y"
+        # e.g. no deployment "x" in application "y", available deployments: "z"
+        message = details["applications"]["random1"]["message"]
         return (
-            "application" in details["applications"]["random1"]["message"]
-            and "deployment" in details["applications"]["random1"]["message"]
+            "Deployment" in message
+            and "Available" in message
+            and "application" in message
         )
 
     wait_for_condition(check_app_message)
@@ -1158,7 +1161,7 @@ def test_redeploy_old_config_after_failed_deployment(
     else:
         # Set config for a nonexistent deployment
         new_app_config["deployments"] = [{"name": "nonexistent", "num_replicas": 1}]
-        err_msg = "nonexistent deployment 'nonexistent'"
+        err_msg = "Deployment 'nonexistent' does not exist."
     client.deploy_apps(ServeDeploySchema(**{"applications": [new_app_config]}))
 
     def check_deploy_failed(message):
