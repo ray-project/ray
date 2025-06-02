@@ -571,7 +571,7 @@ class PrefixTree:
             ]
 
     def start_eviction_loop(
-        self, eviction_threshold, eviction_target, interval_secs
+        self, eviction_threshold: int, eviction_target: int, interval_secs: float
     ) -> bool:
         """Start a single eviction loop within the actor itself
         Parameters:
