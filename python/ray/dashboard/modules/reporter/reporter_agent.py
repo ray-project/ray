@@ -24,11 +24,14 @@ from ray._private.metrics_agent import Gauge, MetricsAgent, Record
 from ray._private.ray_constants import (
     DEBUG_AUTOSCALING_STATUS,
     RAY_EXPERIMENTAL_ENABLE_OPEN_TELEMETRY_ON_AGENT,
-    RAY_EXPERIMENTAL_ENABLE_OPEN_TELEMETRY_ON_CORE_WORKER,
+    RAY_EXPERIMENTAL_ENABLE_OPEN_TELEMETRY_ON_CORE,
     env_integer,
 )
-from ray._raylet import WorkerID, GCS_PID_KEY
-from ray.core.generated import reporter_pb2, reporter_pb2_grpc, metrics_service_pb2_grpc
+from ray._private.telemetry.open_telemetry_metric_recorder import (
+    OpenTelemetryMetricRecorder,
+)
+from ray._raylet import GCS_PID_KEY, WorkerID
+from ray.core.generated import metrics_service_pb2_grpc, reporter_pb2, reporter_pb2_grpc
 from ray.dashboard import k8s_utils
 from ray.dashboard.consts import (
     CLUSTER_TAG_KEYS,
@@ -37,13 +40,10 @@ from ray.dashboard.consts import (
     GPU_TAG_KEYS,
     NODE_TAG_KEYS,
 )
+from ray.dashboard.modules.reporter.gpu_profile_manager import GpuProfilingManager
 from ray.dashboard.modules.reporter.profile_manager import (
     CpuProfilingManager,
     MemoryProfilingManager,
-)
-from ray.dashboard.modules.reporter.gpu_profile_manager import GpuProfilingManager
-from ray._private.telemetry.open_telemetry_metric_recorder import (
-    OpenTelemetryMetricRecorder,
 )
 
 import psutil
@@ -510,7 +510,7 @@ class ReporterAgent(
         """
         # This method suppposes to forward data to self._open_telemetry_metric_recorder
         # to record them to Prometheus. Currently, that logic is not yet implemented.
-        # Unless RAY_EXPERIMENTAL_ENABLE_OPEN_TELEMETRY_ON_CORE_WORKER is set to True,
+        # Unless RAY_EXPERIMENTAL_ENABLE_OPEN_TELEMETRY_ON_CORE is set to True,
         # this is a no-op.
         pass
 
@@ -1374,7 +1374,7 @@ class ReporterAgent(
     async def run(self, server):
         if server:
             reporter_pb2_grpc.add_ReporterServiceServicer_to_server(self, server)
-            if RAY_EXPERIMENTAL_ENABLE_OPEN_TELEMETRY_ON_CORE_WORKER:
+            if RAY_EXPERIMENTAL_ENABLE_OPEN_TELEMETRY_ON_CORE:
                 metrics_service_pb2_grpc.add_MetricsServiceServicer_to_server(
                     self, server
                 )
