@@ -1591,6 +1591,8 @@ class EC2InstanceTerminatorWithGracePeriod(NodeKillerBase):
         self._kill_threads: Set[threading.Thread] = set()
 
     def _kill_resource(self, node_id, node_to_kill_ip, _):
+        assert node_id not in self.killed
+
         # Clean up any completed threads.
         for thread in self._kill_threads.copy():
             if not thread.is_alive():
@@ -1602,6 +1604,7 @@ class EC2InstanceTerminatorWithGracePeriod(NodeKillerBase):
             time.sleep(self._grace_period_s)
             _terminate_ec2_instance(node_to_kill_ip)
 
+        logger.info(f"Starting killing thread {node_id=}, {node_to_kill_ip=}")
         thread = threading.Thread(
             target=_kill_node_with_grace_period,
             args=(node_id, node_to_kill_ip),
@@ -1609,6 +1612,7 @@ class EC2InstanceTerminatorWithGracePeriod(NodeKillerBase):
         )
         thread.start()
         self._kill_threads.add(thread)
+        self.killed.add(node_id)
 
     def _drain_node(self, node_id: str) -> None:
         # We need to lazily import this object. Otherwise, Ray can't serialize the
@@ -1617,16 +1621,22 @@ class EC2InstanceTerminatorWithGracePeriod(NodeKillerBase):
 
         assert ray.NodeID.from_hex(node_id) != ray.NodeID.nil()
 
-        logging.info(f"Draining node {node_id}")
+        logging.info(f"Draining node {node_id=}")
         address = services.canonicalize_bootstrap_address_or_die(addr="auto")
         gcs_client = ray._raylet.GcsClient(address=address)
         deadline_timestamp_ms = (time.time_ns() // 1e6) + (self._grace_period_s * 1e3)
-        is_accepted, _ = gcs_client.drain_node(
-            node_id,
-            autoscaler_pb2.DrainNodeReason.Value("DRAIN_NODE_REASON_PREEMPTION"),
-            "",
-            deadline_timestamp_ms,
-        )
+
+        try:
+            is_accepted, _ = gcs_client.drain_node(
+                node_id,
+                autoscaler_pb2.DrainNodeReason.Value("DRAIN_NODE_REASON_PREEMPTION"),
+                "",
+                deadline_timestamp_ms,
+            )
+        except ray.exceptions.RayError as e:
+            logger.error(f"Failed to drain node {node_id=}")
+            raise e
+
         assert is_accepted, "Drain node request was rejected"
 
     def _cleanup(self):
