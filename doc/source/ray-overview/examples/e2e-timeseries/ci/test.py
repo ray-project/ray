@@ -137,7 +137,7 @@ def main() -> None:
     generated_scripts = []
 
     try:
-        # Convert all notebooks to Python scripts
+        # Convert all notebooks to Python scripts.
         for notebook in notebooks:
             script_path = convert_notebook_to_script(notebook, nb2py_script)
             generated_scripts.append(script_path)
