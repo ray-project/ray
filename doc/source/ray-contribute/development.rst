@@ -242,7 +242,7 @@ The following links were correct during the writing of this section. In case the
 - Bazel 6.5.0 (https://github.com/bazelbuild/bazel/releases/tag/6.5.0)
 - Microsoft Visual Studio 2019 (or Microsoft Build Tools 2019 - https://visualstudio.microsoft.com/downloads/#build-tools-for-visual-studio-2019)
 - JDK 15 (https://www.oracle.com/java/technologies/javase-jdk15-downloads.html)
-- Miniforge 3 (https://docs.conda.io/en/latest/miniforge.html)
+- Miniforge 3 (https://github.com/conda-forge/miniforge/blob/main/README.md)
 - git for Windows, version 2.31.1 or later (https://git-scm.com/download/win)
 
 You can also use the included script to install Bazel:
