@@ -223,6 +223,7 @@ py_test_module_list(
     },
     files = [
         "test_runtime_env.py",
+        "test_runtime_env_env_vars.py",
         "test_runtime_env_failure.py",
         "test_runtime_env_working_dir.py",
         "test_runtime_env_working_dir_remote_uri.py",
@@ -251,9 +252,8 @@ py_test_module_list(
     },
     files = [
         "test_runtime_env_complicated.py",
-        "test_runtime_env_failure.py",
-        "test_runtime_env_working_dir.py",
-        "test_runtime_env_working_dir_remote_uri.py",
+        "test_runtime_env_conda_and_pip.py",
+        "test_runtime_env_uv_run.py",
     ],
     name_suffix = "_client_mode",
     tags = [
