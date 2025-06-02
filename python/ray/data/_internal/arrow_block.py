@@ -195,11 +195,6 @@ class ArrowBlockAccessor(TableBlockAccessor):
         if pyarrow is None:
             raise ImportError("Run `pip install pyarrow` for Arrow support")
         super().__init__(table)
-        # Set the max chunk size in rows for Arrow to Batches conversion in
-        # ArrowBlockAccessor.iter_rows().
-        self._max_chunk_size = _get_max_chunk_size(
-            self._table, ARROW_MAX_CHUNK_SIZE_BYTES
-        )
 
     def column_names(self) -> List[str]:
         return self._table.column_names
@@ -424,6 +419,10 @@ class ArrowBlockAccessor(TableBlockAccessor):
     ) -> Iterator[Union[Mapping, np.ndarray]]:
         table = self._table
         if public_row_format:
+            if not hasattr(self, "_max_chunk_size"):
+                self._max_chunk_size = _get_max_chunk_size(
+                    self._table, ARROW_MAX_CHUNK_SIZE_BYTES
+                )
             for batch in table.to_batches(max_chunksize=self._max_chunk_size):
                 yield from batch.to_pylist()
         else:
