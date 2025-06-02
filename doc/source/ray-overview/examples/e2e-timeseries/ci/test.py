@@ -146,7 +146,7 @@ def main() -> None:
             f"\nSuccessfully converted {len(generated_scripts)} notebooks to Python scripts"
         )
 
-        # Execute scripts in order from the target directory
+        # Execute scripts in order from the target directory.
         print("\nExecuting scripts in order...")
         for script_path in generated_scripts:
             execute_script(script_path, target_dir)
