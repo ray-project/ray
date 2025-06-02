@@ -26,11 +26,7 @@ Follow the [RayCluster Quickstart](kuberay-operator-deploy) to install the lates
 
 ## Step 3: Create a RayCluster with `uv` enabled
 
-```sh
-kubectl apply -f https://raw.githubusercontent.com/ray-project/kuberay/master/ray-operator/config/samples/ray-cluster.uv.yaml
-```
-
-The `ray-cluster.uv.yaml` YAML file contains a RayCluster custom resource and a ConfigMap that includes a sample Ray Python script.
+`ray-cluster.uv.yaml` YAML file contains a RayCluster custom resource and a ConfigMap that includes a sample Ray Python script.
 * The `RAY_RUNTIME_ENV_HOOK` feature flag enables the `uv` integration in Ray. Future versions may enable this by default.
     ```yaml
     env:
@@ -50,6 +46,10 @@ The `ray-cluster.uv.yaml` YAML file contains a RayCluster custom resource and a 
     print(ray.get([f.remote() for _ in range(10)]))
     ```
 
+```sh
+kubectl apply -f https://raw.githubusercontent.com/ray-project/kuberay/master/ray-operator/config/samples/ray-cluster.uv.yaml
+```
+
 ## Step 4: Execute a Ray Python script with `uv`
 
 ```sh
@@ -68,6 +68,6 @@ kubectl exec -it $HEAD_POD -- /bin/bash -c "cd samples && uv run --with emoji /h
 # ['Python is 👍', 'Python is 👍', 'Python is 👍', 'Python is 👍', 'Python is 👍', 'Python is 👍', 'Python is 👍', 'Python is 👍', 'Python is 👍', 'Python is 👍']
 ```
 
-> NOTE: Use `/bin/bash -c` to execute the command while changing the current directory to `/home/ray/samples`. The default `working_dir` would be the current directory.
-This avoids uploading files under `/home/ray` when executing `uv run`.
+> NOTE: Use `/bin/bash -c` to execute the command while changing the current directory to `/home/ray/samples`. By default, `working_dir` is set to the current directory.
+This prevents uploading all files under `/home/ray`, which can take a long time when executing `uv run`.
 Alternatively, you can use `ray job submit --runtime-env-json ...` to specify the `working_dir` manually.
