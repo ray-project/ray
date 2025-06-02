@@ -1,4 +1,5 @@
 (kuberay-uv)=
+
 # Using `uv` for Python package management
 
 [uv](https://github.com/astral-sh/uv) is a modern Python package manager written in Rust.
@@ -6,7 +7,7 @@
 Starting with Ray 2.45, the `rayproject/ray:2.45.0` image includes `uv` as one of its dependencies.
 This guide provides a simple example of using `uv` to manage Python dependencies on KubeRay.
 
-To learn more about the `uv` integration in Ray, please refer to:
+To learn more about the `uv` integration in Ray, refer to:
 
 * [Environment Dependencies](https://docs.ray.io/en/latest/ray-core/handling-dependencies.html#using-uv-for-package-management)
 * [uv + Ray: Pain-Free Python Dependencies in Clusters](https://www.anyscale.com/blog/uv-ray-pain-free-python-dependencies-in-clusters)
@@ -67,6 +68,6 @@ kubectl exec -it $HEAD_POD -- /bin/bash -c "cd samples && uv run --with emoji /h
 # ['Python is 👍', 'Python is 👍', 'Python is 👍', 'Python is 👍', 'Python is 👍', 'Python is 👍', 'Python is 👍', 'Python is 👍', 'Python is 👍', 'Python is 👍']
 ```
 
-> NOTE: Use `/bin/bash -c` to execute the command while changing the current directory to `/home/ray/samples`. The default `working_dir` will be the current directory.
+> NOTE: Use `/bin/bash -c` to execute the command while changing the current directory to `/home/ray/samples`. The default `working_dir` would be the current directory.
 This avoids uploading files under `/home/ray` when executing `uv run`.
 Alternatively, you can use `ray job submit --runtime-env-json ...` to specify the `working_dir` manually.
