@@ -22,11 +22,14 @@
 #include <string>
 #include <vector>
 
+#include "absl/container/flat_hash_set.h"
+#include "ray/common/asio/instrumented_io_context.h"
 #include "ray/common/buffer.h"
 #include "ray/common/status.h"
 #include "ray/object_manager/common.h"
 #include "ray/object_manager/plasma/common.h"
-#include "ray/util/visibility.h"
+#include "ray/object_manager/plasma/connection.h"
+#include "ray/object_manager/plasma/shared_memory.h"
 #include "src/ray/protobuf/common.pb.h"
 
 namespace plasma {
@@ -67,17 +70,10 @@ class PlasmaClientInterface {
   ///
   /// \param store_socket_name The name of the UNIX domain socket to use to
   ///        connect to the Plasma store.
-  /// \param manager_socket_name The name of the UNIX domain socket to use to
-  ///        connect to the local Plasma manager. If this is "", then this
-  ///        function will not connect to a manager.
-  ///        Note that plasma manager is no longer supported, this function
-  ///        will return failure if this is not "".
   /// \param release_delay Deprecated (not used).
   /// \param num_retries number of attempts to connect to IPC socket, default 50
   /// \return The return status.
-  virtual Status Connect(const std::string &store_socket_name,
-                         const std::string &manager_socket_name = "",
-                         int num_retries = -1) = 0;
+  virtual Status Connect(const std::string &store_socket_name, int num_retries = -1) = 0;
 
   /// Tell Plasma that the client no longer needs the object. This should be
   /// called after Get() or Create() when the client is done with the object.
@@ -238,13 +234,12 @@ class PlasmaClientInterface {
   virtual Status Delete(const std::vector<ObjectID> &object_ids) = 0;
 };
 
-class PlasmaClient : public PlasmaClientInterface {
+class PlasmaClient : public PlasmaClientInterface,
+                     public std::enable_shared_from_this<PlasmaClient> {
  public:
-  PlasmaClient();
+  PlasmaClient() = default;
 
-  Status Connect(const std::string &store_socket_name,
-                 const std::string &manager_socket_name = "",
-                 int num_retries = -1) override;
+  Status Connect(const std::string &store_socket_name, int num_retries = -1) override;
 
   Status CreateAndSpillIfNeeded(const ObjectID &object_id,
                                 const ray::rpc::Address &owner_address,
@@ -298,27 +293,87 @@ class PlasmaClient : public PlasmaClientInterface {
   int64_t store_capacity();
 
  private:
-  /// Retry a previous create call using the returned request ID.
+  /// Helper method to read and process the reply of a create request.
+  Status HandleCreateReply(const ObjectID &object_id,
+                           bool is_experimental_mutable_object,
+                           const uint8_t *metadata,
+                           uint64_t *retry_with_request_id,
+                           std::shared_ptr<Buffer> *data);
+
+  /// Check if store_fd has already been received from the store. If yes,
+  /// return it. Otherwise, receive it from the store (see analogous logic
+  /// in store.cc).
   ///
-  /// \param object_id The ID to use for the newly created object.
-  /// \param request_id The request ID returned by the previous Create call.
-  /// \param metadata The object's metadata. If there is no metadata, this
-  /// pointer should be NULL.
-  /// \param retry_with_request_id If the request is not yet fulfilled, this
-  ///        will be set to a unique ID with which the client should retry.
-  /// \param data The address of the newly created object will be written here.
-  Status RetryCreate(const ObjectID &object_id,
-                     uint64_t request_id,
-                     const uint8_t *metadata,
-                     uint64_t *retry_with_request_id,
-                     std::shared_ptr<Buffer> *data);
+  /// \param store_fd File descriptor to fetch from the store.
+  /// \return The pointer corresponding to store_fd.
+  uint8_t *GetStoreFdAndMmap(MEMFD_TYPE store_fd, int64_t map_size);
 
-  friend class PlasmaBuffer;
-  friend class PlasmaMutableBuffer;
-  bool IsInUse(const ObjectID &object_id);
+  /// This is a helper method for marking an object as unused by this client.
+  ///
+  /// \param object_id The object ID we mark unused.
+  /// \return The return status.
+  Status MarkObjectUnused(const ObjectID &object_id);
 
-  class Impl;
-  std::shared_ptr<Impl> impl_;
+  /// Common helper for Get() variants
+  Status GetBuffers(const ObjectID *object_ids,
+                    int64_t num_objects,
+                    int64_t timeout_ms,
+                    const std::function<std::shared_ptr<Buffer>(
+                        const ObjectID &, const std::shared_ptr<Buffer> &)> &wrap_buffer,
+                    ObjectBuffer *object_buffers,
+                    bool is_from_worker);
+
+  uint8_t *LookupMmappedFile(MEMFD_TYPE store_fd_val) const;
+
+  ray::PlasmaObjectHeader *GetPlasmaObjectHeader(const PlasmaObject &object) const {
+    auto base_ptr = LookupMmappedFile(object.store_fd);
+    auto header_ptr = base_ptr + object.header_offset;
+    return reinterpret_cast<ray::PlasmaObjectHeader *>(header_ptr);
+  }
+
+  void InsertObjectInUse(const ObjectID &object_id,
+                         std::unique_ptr<PlasmaObject> object,
+                         bool is_sealed);
+
+  void IncrementObjectCount(const ObjectID &object_id);
+
+  /// The boost::asio IO context for the client.
+  instrumented_io_context main_service_;
+  /// The connection to the store service.
+  std::shared_ptr<StoreConn> store_conn_;
+  /// Table of dlmalloc buffer files that have been memory mapped so far. This
+  /// is a hash table mapping a file descriptor to a struct containing the
+  /// address of the corresponding memory-mapped file.
+  absl::flat_hash_map<MEMFD_TYPE, std::unique_ptr<ClientMmapTableEntry>> mmap_table_;
+  /// Used to clean up old fd entries in mmap_table_ that are no longer needed,
+  /// since their fd has been reused. TODO(ekl) we should be more proactive about
+  /// unmapping unused segments.
+  absl::flat_hash_map<MEMFD_TYPE_NON_UNIQUE, MEMFD_TYPE> dedup_fd_table_;
+
+  struct ObjectInUseEntry {
+    /// A count of the number of times this client has called PlasmaClient::Create
+    /// or
+    /// PlasmaClient::Get on this object ID minus the number of calls to
+    /// PlasmaClient::Release.
+    /// When this count reaches zero, we remove the entry from the ObjectsInUse
+    /// and decrement a count in the relevant ClientMmapTableEntry.
+    int count = 0;
+    /// Cached information to read the object.
+    PlasmaObject object;
+    /// A flag representing whether the object has been sealed.
+    bool is_sealed = false;
+  };
+  /// A hash table of the object IDs that are currently being used by this
+  /// client.
+  absl::flat_hash_map<ObjectID, std::unique_ptr<ObjectInUseEntry>> objects_in_use_;
+  /// The amount of memory available to the Plasma store. The client needs this
+  /// information to make sure that it does not delay in releasing so much
+  /// memory that the store is unable to evict enough objects to free up space.
+  int64_t store_capacity_ = 0;
+  /// A hash set to record the ids that users want to delete but still in use.
+  absl::flat_hash_set<ObjectID> deletion_cache_;
+  /// A mutex which protects this class.
+  std::mutex client_mutex_;
 };
 
 }  // namespace plasma

@@ -83,22 +83,20 @@ class PushManager {
     /// The function to send chunks with.
     std::function<void(int64_t)> chunk_send_fn;
     /// The index of the next chunk to send.
-    int64_t next_chunk_id;
+    int64_t next_chunk_id = 0;
     /// The number of chunks pending completion.
-    int64_t num_chunks_inflight;
+    int64_t num_chunks_inflight = 0;
     /// The number of chunks remaining to send.
     int64_t num_chunks_to_send;
 
     PushState(int64_t num_chunks, std::function<void(int64_t)> chunk_send_fn)
         : num_chunks(num_chunks),
-          chunk_send_fn(chunk_send_fn),
-          next_chunk_id(0),
-          num_chunks_inflight(0),
+          chunk_send_fn(std::move(chunk_send_fn)),
           num_chunks_to_send(num_chunks) {}
 
     /// Resend all chunks and returns how many more chunks will be sent.
     int64_t ResendAllChunks(std::function<void(int64_t)> send_fn) {
-      chunk_send_fn = send_fn;
+      chunk_send_fn = std::move(send_fn);
       int64_t additional_chunks_to_send = num_chunks - num_chunks_to_send;
       num_chunks_to_send = num_chunks;
       return additional_chunks_to_send;
@@ -134,7 +132,7 @@ class PushManager {
   void ScheduleRemainingPushes();
 
   /// Pair of (destination, object_id).
-  typedef std::pair<NodeID, ObjectID> PushID;
+  using PushID = std::pair<NodeID, ObjectID>;
 
   /// Max number of chunks in flight allowed.
   const int64_t max_chunks_in_flight_;
