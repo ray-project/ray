@@ -76,7 +76,7 @@ def set_sync_idxs_collective_EXP(
     graph: Dict[int, _DAGOperationGraphNode_EXP],
     task_idxs: List[int],
 ) -> None:
-    collective_idxs = {task_idx for task_idx in task_idxs}
+    collective_idxs = set(task_idxs)
     for task_idx in task_idxs:
         node = graph[task_idx]
         node.sync_idxs.update(collective_idxs)

@@ -485,7 +485,6 @@ class ExecutableTask_EXP:
                 do not support binding kwargs to other DAG nodes, so the values
                 of the dictionary cannot be Channels.
         """
-        from ray.dag import CollectiveOutputNode
         from ray.dag.communication_node import (
             _NcclOperation,
             _P2PRecvOperation,
@@ -2046,8 +2045,6 @@ class CompiledDAG:
                 ]
             }
         """
-        from ray.dag.communication_node import CollectiveOutputNode
-
         assert self.idx_to_task
         assert self.actor_to_executable_tasks
 
