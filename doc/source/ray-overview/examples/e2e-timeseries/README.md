@@ -1,10 +1,9 @@
-# Time-Series Forecasting with DLinear
+# Time-series forecasting with DLinear
 
 <div align="left">
 <a target="_blank" href="https://console.anyscale.com/"><img src="https://img.shields.io/badge/🚀%20Run%20on-Anyscale-9hf"></a>&nbsp;
 <a href="https://github.com/anyscale/e2e-timeseries" role="button"><img src="https://img.shields.io/static/v1?label=&message=View%20On%20GitHub&color=586069&logo=github&labelColor=2f363d"></a>
 </div>
-
 
 
 These tutorials implement an end-to-end time-series application including:
