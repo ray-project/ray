@@ -23,6 +23,7 @@ from typing import (
 )
 
 import numpy as np
+import pyarrow as pa
 
 import ray
 import ray.cloudpickle as pickle
@@ -952,6 +953,105 @@ class Dataset:
             zero_copy_batch=True,
             compute=compute,
             concurrency=concurrency,
+            **ray_remote_args,
+        )
+
+    @PublicAPI(api_group=BT_API_GROUP)
+    def dropna(
+        self,
+        how: str = "any",
+        thresh: Optional[int] = None,
+        subset: Optional[Union[str, List[str], Tuple[str, ...]]] = None,
+        *,
+        concurrency: Optional[int] = None,
+        **ray_remote_args: Any,
+    ) -> "Dataset":
+        """
+        Drop rows with missing (null) values from the dataset.
+
+        Args:
+            how: "any" or "all". If "any" (default), drop rows containing
+                any NA values in the subset of columns. If "all", drop rows
+                only if all values in the subset are NA. Ignored if `thresh` set.
+            thresh: int, optional. If specified, require at least this many non-NA values
+                in the subset of columns; otherwise row is dropped. Overrides `how`.
+            subset: Optional[str, List[str], Tuple[str, ...]]. Only consider these columns for NA test.
+                Default is all columns.
+            concurrency: Max Ray batch workers.
+            ray_remote_args: Ray resources.
+
+        Returns:
+            Dataset: with rows containing nulls dropped according to the rules.
+
+        Examples:
+            >>> import ray
+            >>> import pyarrow as pa
+            >>> ds = ray.data.from_arrow(pa.table({
+            ...     "a": [1, None, None, 3],
+            ...     "b": ["x", None, "y", "z"]
+            ... }))
+            >>> # Drop rows with NA in any column
+            >>> ds.dropna().take_all()
+            [{'a': 1, 'b': 'x'}, {'a': 3, 'b': 'z'}]
+
+            >>> # Drop rows where ALL columns are NA
+            >>> ds2 = ray.data.from_arrow(pa.table({"a": [None, None], "b": [None, "foo"]}))
+            >>> ds2.dropna(how="all").take_all()
+            [{'a': None, 'b': 'foo'}]
+
+            >>> # thresh=2: Require at least 2 non-NA fields in row to keep it
+            >>> ds.dropna(thresh=2).take_all()
+            [{'a': 1, 'b': 'x'}, {'a': 3, 'b': 'z'}]
+
+            >>> # Subset: Only consider column "a"
+            >>> ds.dropna(subset="a").take_all()
+            [{'a': 1, 'b': 'x'}, {'a': 3, 'b': 'z'}]
+
+            >>> # Subset: Only rows with both "a" and "b" not None are kept (like thresh=2)
+            >>> ds.dropna(subset=["a", "b"]).take_all()
+            [{'a': 1, 'b': 'x'}, {'a': 3, 'b': 'z'}]
+        """
+
+        def get_cols(batch: pa.Table) -> List[str]:
+            if subset is None:
+                return list(batch.column_names)
+            if isinstance(subset, str):
+                return [subset]
+            return list(subset)
+
+        def dropna_arrow_batch(batch: pa.Table) -> pa.Table:
+            cols = get_cols(batch)
+            if not cols:
+                return batch
+
+            arrays = [batch[col] for col in cols]
+            masks = [~arr.is_null() for arr in arrays]  # List[pa.BooleanArray]
+
+            if thresh is not None:
+                nonnull_count = sum(
+                    mask.to_numpy(zero_copy_only=False).astype(int) for mask in masks
+                )
+                keep_mask = nonnull_count >= thresh
+            else:
+                if how == "any":
+                    stacked_masks = np.vstack(
+                        [mask.to_numpy(zero_copy_only=False) for mask in masks]
+                    )
+                    keep_mask = np.all(stacked_masks, axis=0)
+                elif how == "all":
+                    stacked_masks = np.vstack(
+                        [mask.to_numpy(zero_copy_only=False) for mask in masks]
+                    )
+                    keep_mask = np.any(stacked_masks, axis=0)
+                else:
+                    raise ValueError(f"how must be 'any' or 'all', got '{how}'")
+            return batch.filter(pa.array(keep_mask))
+
+        return self.map_batches(
+            dropna_arrow_batch,
+            batch_format="pyarrow",
+            concurrency=concurrency,
+            zero_copy_batch=False,
             **ray_remote_args,
         )
 
