@@ -18,7 +18,7 @@ class Dataset_ETT_hour(Dataset):
         train_only=False,
         smoke_test=False,
     ):
-        # sequence_lengths: A list containing [encoder_sequence_length, decoder_context_length, prediction_horizon_length]
+        # sequence_lengths: A list containing [encoder_sequence_length, decoder_context_length, prediction_horizon_length].
         # encoder_sequence_length (seq_len): The length of the input sequence fed to the encoder.
         # decoder_context_length (label_len): The length of the historical sequence segment provided as context to the decoder.
         #                                     This segment typically overlaps with the end of the encoder_sequence.
@@ -136,9 +136,9 @@ class Dataset_ETT_hour(Dataset):
         else:
             processed_data = data_subset_df.values
 
-        # Store the processed data for the current split (train, val, or test)
+        # Store the processed data for the current split (train, val, or test).
         # Both self.timeseries_data_for_inputs and self.timeseries_data_for_targets initially point to the same processed data block.
-        # Slicing in __getitem__ will then create specific input (x) and target (y) sequences.
+        # Slicing in __getitem__ then creates specific input (x) and target (y) sequences.
         self.timeseries_data_for_inputs = processed_data[
             current_split_start_idx:current_split_end_idx
         ]
@@ -164,22 +164,22 @@ class Dataset_ETT_hour(Dataset):
                 f"encoder_seq_len: {self.encoder_seq_len}, prediction_horizon: {self.prediction_horizon})"
             )
 
-        # Define indices for the encoder input sequence (x)
+        # Define indices for the encoder input sequence (x).
         encoder_input_start_idx = index
         encoder_input_end_idx = encoder_input_start_idx + self.encoder_seq_len
         encoder_input_sequence = self.timeseries_data_for_inputs[
             encoder_input_start_idx:encoder_input_end_idx
         ]
 
-        # Define indices for the target sequence (y)
+        # Define indices for the target sequence (y).
         # The target sequence (y) comprises two parts:
         # 1. Decoder context: A segment of length `decoder_context_len` that ends where the encoder input ends.
-        #    This is used by some models (e.g., Transformers) as input to the decoder.
+        #    Some models, like Transformers, use this value as input to the decoder.
         # 2. Prediction horizon: The actual future values of length `prediction_horizon` that the model must predict.
 
-        # Start of the decoder context part of y. It overlaps with the end of the encoder_input_sequence.
+        # Start of the decoder context part of y. It overlaps with the end of the `encoder_input_sequence`.
         decoder_context_start_idx = encoder_input_end_idx - self.decoder_context_len
-        # End of the target sequence y (includes decoder context and future prediction horizon).
+        # End of the target sequence y, which includes decoder context and future prediction horizon.
         target_sequence_end_idx = (
             decoder_context_start_idx
             + self.decoder_context_len
@@ -197,12 +197,12 @@ class Dataset_ETT_hour(Dataset):
         # the input sequence length, and the prediction horizon.
         # We need enough data points for an input sequence of `encoder_seq_len`
         # followed by a target sequence of `prediction_horizon`.
-        # The `decoder_context_len` overlaps with `encoder_seq_len` and does not reduce the number of samples further than `prediction_horizon`.
+        # The `decoder_context_len` overlaps with `encoder_seq_len` and doesn't reduce the number of samples further than `prediction_horizon`.
         if (
             len(self.timeseries_data_for_inputs)
             <= self.encoder_seq_len + self.prediction_horizon - 1
         ):
-            return 0  # Not enough data to form even one sample
+            return 0  # Not enough data to form even one sample.
         return (
             len(self.timeseries_data_for_inputs)
             - self.encoder_seq_len
