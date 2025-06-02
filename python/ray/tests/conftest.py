@@ -876,6 +876,7 @@ def _start_cluster(cluster, request):
 # Used to enforce that `start_cluster` and `start_cluster_shared` fixtures aren't mixed.
 _START_CLUSTER_SHARED_USED = False
 
+
 def start_cluster(ray_start_cluster_enabled, request):
     if _START_CLUSTER_SHARED_USED:
         pytest.fail(
