@@ -4475,7 +4475,7 @@
   python: "3.11"
   group: ray-examples
   team: ml
-  working_dir: //doc/source/ray-overview/examples/e2e-timeseries  # use // to access from repo's root
+  working_dir: //doc/source/ray-overview/examples/e2e-timeseries  # Use // to access from repo's root.
 
   cluster:
     byod:
