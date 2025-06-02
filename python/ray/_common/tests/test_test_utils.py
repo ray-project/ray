@@ -1,9 +1,9 @@
-import asyncio
 import pytest
 import sys
 import ray
 from ray._common.test_utils import SignalActor, Semaphore
 from ray._private.test_utils import wait_for_condition
+import time
 
 
 @pytest.fixture(scope="module")
@@ -13,25 +13,20 @@ def ray_init():
     ray.shutdown()
 
 
-@pytest.mark.asyncio
-async def test_signal_actor_basic(ray_init):
+def test_signal_actor_basic(ray_init):
     signal = SignalActor.remote()
 
     # Test initial state
-    assert await signal.cur_num_waiters.remote() == 0
+    assert ray.get(signal.cur_num_waiters.remote()) == 0
 
     # Test send and wait
-    signal.send.remote()
-    await signal.wait.remote()
-    assert await signal.cur_num_waiters.remote() == 0
+    ray.get(signal.send.remote())
+    signal.wait.remote()
+    assert ray.get(signal.cur_num_waiters.remote()) == 0
 
 
-@pytest.mark.asyncio
-async def test_signal_actor_multiple_waiters(ray_init):
+def test_signal_actor_multiple_waiters(ray_init):
     signal = SignalActor.remote()
-
-    async def waiter():
-        await signal.wait.remote()
 
     # Create multiple waiters
     for _ in range(3):
@@ -41,56 +36,51 @@ async def test_signal_actor_multiple_waiters(ray_init):
     wait_for_condition(lambda: ray.get(signal.cur_num_waiters.remote()) == 3)
 
     # Send signal and wait for all waiters
-    signal.send.remote()
+    ray.get(signal.send.remote())
 
     # Verify all waiters are done
     wait_for_condition(lambda: ray.get(signal.cur_num_waiters.remote()) == 0)
 
     # check that .wait() doesn't block if the signal is already sent
-    await signal.wait.remote()
+    ray.get(signal.wait.remote())
 
-    assert await signal.cur_num_waiters.remote() == 0
+    assert ray.get(signal.cur_num_waiters.remote()) == 0
 
     # clear the signal
-    await signal.send.remote(clear=True)
+    ray.get(signal.send.remote(clear=True))
     signal.wait.remote()
     # Verify all waiters are done
     wait_for_condition(lambda: ray.get(signal.cur_num_waiters.remote()) == 1)
 
-    await signal.send.remote()
+    ray.get(signal.send.remote())
 
 
-@pytest.mark.asyncio
-async def test_semaphore_basic(ray_init):
+def test_semaphore_basic(ray_init):
     sema = Semaphore.remote(value=2)
 
     # Test initial state
     wait_for_condition(lambda: ray.get(sema.locked.remote()) is False)
 
     # Test acquire and release
-    await sema.acquire.remote()
-    await sema.acquire.remote()
+    ray.get(sema.acquire.remote())
+    ray.get(sema.acquire.remote())
     wait_for_condition(lambda: ray.get(sema.locked.remote()) is True)
 
-    await sema.release.remote()
-    await sema.release.remote()
+    ray.get(sema.release.remote())
+    ray.get(sema.release.remote())
     wait_for_condition(lambda: ray.get(sema.locked.remote()) is False)
 
 
-@pytest.mark.asyncio
-async def test_semaphore_concurrent(ray_init):
+def test_semaphore_concurrent(ray_init):
     sema = Semaphore.remote(value=2)
 
-    async def worker():
-        await sema.acquire.remote()
-        await asyncio.sleep(0.1)
-        await sema.release.remote()
+    def worker():
+        ray.get(sema.acquire.remote())
+        time.sleep(0.1)
+        ray.get(sema.release.remote())
 
     # Create multiple workers
-    workers = [worker() for _ in range(4)]
-
-    # Run workers concurrently
-    await asyncio.gather(*workers)
+    _ = [worker() for _ in range(4)]
 
     # Verify semaphore is not locked
     wait_for_condition(lambda: ray.get(sema.locked.remote()) is False)
