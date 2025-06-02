@@ -134,7 +134,6 @@ steps:
     tags:
       - docker
       - oss
-      - skip-on-premerge
     commands:
       - bazel run //ci/ray_ci/automation:generate_index -- --prefix nightly
     depends_on:
