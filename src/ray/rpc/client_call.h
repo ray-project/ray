@@ -254,7 +254,7 @@ class ClientCallManager {
         &call->context_, request, cqs_[rr_index_++ % num_threads_].get());
     call->response_reader_->StartCall();
     call->response_reader_->Finish(
-        &call->reply_, &call->status_, static_cast<void *>(std::move(call)));
+        &call->reply_, &call->status_, static_cast<void *>(call));
   }
 
   /// Get the cluster ID.
@@ -270,8 +270,6 @@ class ClientCallManager {
   /// objects.
   void PollEventsFromCompletionQueue(int index) {
     SetThreadName("client.poll" + std::to_string(index));
-    void *got_tag = nullptr;
-    bool ok = false;
     // Keep reading events from the `CompletionQueue` until it's shutdown.
     // NOTE(edoakes): we use AsyncNext here because for some unknown reason,
     // synchronous cq_.Next blocks indefinitely in the case that the process
@@ -279,6 +277,8 @@ class ClientCallManager {
     while (true) {
       auto deadline = gpr_time_add(gpr_now(GPR_CLOCK_REALTIME),
                                    gpr_time_from_millis(250, GPR_TIMESPAN));
+      void *got_tag = nullptr;
+      bool ok = false;
       auto status = cqs_[index]->AsyncNext(&got_tag, &ok, deadline);
       if (status == grpc::CompletionQueue::SHUTDOWN) {
         break;
@@ -291,10 +291,8 @@ class ClientCallManager {
         // NOTE: CompletionQueue::TIMEOUT and gRPC deadline exceeded are different.
         // If the client deadline is exceeded, event is obtained at this block.
         auto call = static_cast<ClientCall *>(got_tag);
-        // Refresh the tag.
-        got_tag = nullptr;
         call->SetReturnStatus();
-        std::shared_ptr<StatsHandle> stats_handle = call->GetStatsHandle();
+        auto stats_handle = call->GetStatsHandle();
         RAY_CHECK_NE(stats_handle, nullptr);
         if (ok && !main_service_.stopped() && !shutdown_) {
           // Post the callback to the main event loop.
