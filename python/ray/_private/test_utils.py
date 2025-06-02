@@ -1597,14 +1597,14 @@ class EC2InstanceTerminatorWithGracePeriod(NodeKillerBase):
                 thread.join()
                 self._kill_threads.remove(thread)
 
-        def _kill_node_with_grace_period(node_id, node_to_kill_ip):
+        def _kill_node_with_grace_period(node_id):
             self._drain_node(node_id)
             time.sleep(self._grace_period_s)
             _terminate_ec2_instance(node_id)
 
         thread = threading.Thread(
             target=_kill_node_with_grace_period,
-            args=(node_id, node_to_kill_ip),
+            args=(node_id,),
             daemon=True,
         )
         thread.start()
@@ -1618,7 +1618,7 @@ class EC2InstanceTerminatorWithGracePeriod(NodeKillerBase):
         assert ray.NodeID.from_hex(node_id) != ray.NodeID.nil()
 
         logging.info(f"Draining node {node_id}")
-        address = services.canonicalize_bootstrap_address_or_die(addr=None)
+        address = services.canonicalize_bootstrap_address_or_die(addr="auto")
         gcs_client = ray._raylet.GcsClient(address=address)
         deadline_timestamp_ms = (time.time_ns() // 1e6) + (self._grace_period_s * 1e3)
         is_accepted, _ = gcs_client.drain_node(
