@@ -10,7 +10,7 @@ import ray
 logger = logging.getLogger(__name__)
 
 
-class _NcclOperationType_EXP(Enum):
+class _NcclOperationType(Enum):
     """
     There are three types of NCCL operations:
     1. READ: Read from a P2P channel.
@@ -23,7 +23,7 @@ class _NcclOperationType_EXP(Enum):
     WRITE = "WRITE"
 
 
-class _DAGNodeOperation_EXP:
+class _DAGNodeOperation:
     def __init__(
         self,
         exec_task_idx: int,
@@ -57,20 +57,20 @@ class _DAGNodeOperation_EXP:
     def __hash__(self):
         return hash(self.exec_task_idx)
 
-    def __eq__(self, other: "_DAGNodeOperation_EXP"):
+    def __eq__(self, other: "_DAGNodeOperation"):
         # An operation is uniquely identified by its `exec_task_idx`.
         # `method_name` is only for debugging purposes.
         return self.exec_task_idx == other.exec_task_idx
 
 
 @total_ordering
-class _DAGOperationGraphNode_EXP:
+class _DAGOperationGraphNode:
     def __init__(
         self,
-        operation: _DAGNodeOperation_EXP,
+        operation: _DAGNodeOperation,
         task_idx: int,
         actor_handle: "ray.actor.ActorHandle",
-        nccl_op_type: Optional[_NcclOperationType_EXP] = None,
+        nccl_op_type: Optional[_NcclOperationType] = None,
     ):
         """
         _DAGOperationGraphNode represents a node in the DAG operation graph.
@@ -117,7 +117,7 @@ class _DAGOperationGraphNode_EXP:
             f"nccl_op_type: {self.nccl_op_type})"
         )
 
-    def __lt__(self, other: "_DAGOperationGraphNode_EXP"):
+    def __lt__(self, other: "_DAGOperationGraphNode"):
         """
         This function defines the order of the nodes in the priority queue used in
         `_select_next_nodes`. The priority queue is a min-heap, so the node with
@@ -136,7 +136,7 @@ class _DAGOperationGraphNode_EXP:
                 other.task_idx,
             )
 
-    def __eq__(self, other: "_DAGOperationGraphNode_EXP"):
+    def __eq__(self, other: "_DAGOperationGraphNode"):
         """
         Two operations are equal only when they have the same `exec_task_idx`
         and belong to the same actor.
@@ -169,15 +169,15 @@ class _DAGOperationGraphNode_EXP:
 
     @property
     def is_nccl_read(self) -> bool:
-        return self.nccl_op_type == _NcclOperationType_EXP.READ
+        return self.nccl_op_type == _NcclOperationType.READ
 
     @property
     def is_nccl_compute(self) -> bool:
-        return self.nccl_op_type == _NcclOperationType_EXP.COMPUTE
+        return self.nccl_op_type == _NcclOperationType.COMPUTE
 
     @property
     def is_nccl_write(self) -> bool:
-        return self.nccl_op_type == _NcclOperationType_EXP.WRITE
+        return self.nccl_op_type == _NcclOperationType.WRITE
 
     @property
     def is_nccl_op(self) -> bool:
@@ -194,9 +194,9 @@ class _DAGOperationGraphNode_EXP:
         return self.actor_handle._ray_actor_id.hex()
 
 
-def _add_edge_EXP(
-    from_node: _DAGOperationGraphNode_EXP,
-    to_node: _DAGOperationGraphNode_EXP,
+def _add_edge(
+    from_node: _DAGOperationGraphNode,
+    to_node: _DAGOperationGraphNode,
     label: str = "",
     control_dependency: bool = False,
 ):
@@ -214,9 +214,9 @@ def _add_edge_EXP(
     to_node.in_edges[from_node.task_idx] = (label, control_dependency)
 
 
-def _update_pending_sync_idxs_EXP(
-    graph: Dict[int, _DAGOperationGraphNode_EXP],
-    node: _DAGOperationGraphNode_EXP,
+def _update_pending_sync_idxs(
+    graph: Dict[int, _DAGOperationGraphNode],
+    node: _DAGOperationGraphNode,
 ) -> None:
     """
     Mark the node as ready for its synchronous nodes.
@@ -226,10 +226,10 @@ def _update_pending_sync_idxs_EXP(
         sync_node.pending_sync_idxs.add(node.task_idx)
 
 
-def _push_candidate_node_if_ready_EXP(
-    actor_to_candidates: Dict["ray._raylet.ActorID", List[_DAGOperationGraphNode_EXP]],
-    graph: Dict[int, _DAGOperationGraphNode_EXP],
-    node: _DAGOperationGraphNode_EXP,
+def _push_candidate_node_if_ready(
+    actor_to_candidates: Dict["ray._raylet.ActorID", List[_DAGOperationGraphNode]],
+    graph: Dict[int, _DAGOperationGraphNode],
+    node: _DAGOperationGraphNode,
 ) -> None:
     """
     Push the node to the candidates if ready. If it has synchronous nodes, its NCCL
@@ -242,9 +242,9 @@ def _push_candidate_node_if_ready_EXP(
             read_node = graph[task_idx]
             read_node.in_edges.pop(node.task_idx)
             assert read_node.is_nccl_read and len(read_node.in_edges) == 0
-            _update_pending_sync_idxs_EXP(graph, read_node)
+            _update_pending_sync_idxs(graph, read_node)
     if len(node.sync_idxs) != 0:
-        _update_pending_sync_idxs_EXP(graph, node)
+        _update_pending_sync_idxs(graph, node)
     if node.is_ready:
         if len(node.sync_idxs) == 0:
             heapq.heappush(
@@ -260,10 +260,10 @@ def _push_candidate_node_if_ready_EXP(
                 )
 
 
-def _select_next_nodes_EXP(
-    actor_to_candidates: Dict["ray._raylet.ActorID", List[_DAGOperationGraphNode_EXP]],
-    graph: Dict[int, _DAGOperationGraphNode_EXP],
-) -> Optional[List[_DAGOperationGraphNode_EXP]]:
+def _select_next_nodes(
+    actor_to_candidates: Dict["ray._raylet.ActorID", List[_DAGOperationGraphNode]],
+    graph: Dict[int, _DAGOperationGraphNode],
+) -> Optional[List[_DAGOperationGraphNode]]:
     """
     This function selects the next nodes for the topological sort to generate
     execution schedule. If there are multiple candidate _DAGOperationGraphNodes,
@@ -334,12 +334,12 @@ def _select_next_nodes_EXP(
     return next_nodes
 
 
-def _build_dag_node_operation_graph_EXP(
+def _build_dag_node_operation_graph(
     idx_to_task: Dict[int, "ray.dag.compiled_dag_node.CompiledTask"],
     actor_to_operation_nodes: Dict[
-        "ray.actor.ActorHandle", List[_DAGOperationGraphNode_EXP]
+        "ray.actor.ActorHandle", List[_DAGOperationGraphNode]
     ],
-) -> Dict[int, _DAGOperationGraphNode_EXP]:
+) -> Dict[int, _DAGOperationGraphNode]:
     """
     [TODO] Comments.
     Generate a DAG node operation graph by adding edges based on the
@@ -372,14 +372,14 @@ def _build_dag_node_operation_graph_EXP(
     from ray.dag import ClassMethodNode, CollectiveOutputNode, MultiOutputNode
     from ray.dag.communication_node import _CollectiveOperation
 
-    graph: Dict[int, _DAGOperationGraphNode_EXP] = {}
+    graph: Dict[int, _DAGOperationGraphNode] = {}
     # Add control edges between tasks from the same actor.
     for op_nodes in actor_to_operation_nodes.values():
         for i, node in enumerate(op_nodes):
             assert node.task_idx not in graph
             graph[node.task_idx] = node
             if i > 0 and not node.is_nccl_op:
-                _add_edge_EXP(op_nodes[i - 1], node, control_dependency=True)
+                _add_edge(op_nodes[i - 1], node, control_dependency=True)
 
     # Add data edges from an upstream task to its downstream tasks.
     # Set synchronous nodes for NCCL P2P operations.
@@ -408,7 +408,7 @@ def _build_dag_node_operation_graph_EXP(
                 for consumer_idx in consumer_idxs:
                     if consumer_idx in graph:
                         read_node = graph[consumer_idx]
-                        _add_edge_EXP(
+                        _add_edge(
                             write_node,
                             read_node,
                             "nccl" if write_node.is_nccl_write else "shm",
@@ -419,7 +419,7 @@ def _build_dag_node_operation_graph_EXP(
                                 node.sync_idxs.update(idxs)
                 continue
             read_node = graph[downstream_task_idx]
-            _add_edge_EXP(
+            _add_edge(
                 write_node,
                 read_node,
                 "nccl" if write_node.is_nccl_write else "shm",
@@ -454,7 +454,7 @@ def _actor_viz_label(actor: "ray.actor.ActorHandle"):
 
 
 def _node_viz_id_and_label(
-    node: _DAGOperationGraphNode_EXP, idx: int, optimized_index: int
+    node: _DAGOperationGraphNode, idx: int, optimized_index: int
 ):
     """
     Returns the visualization id and label of a node. The visualization id is unique
@@ -472,12 +472,12 @@ def _node_viz_id_and_label(
 
 def _visualize_execution_schedule(
     actor_to_execution_schedule: Dict[
-        "ray.actor.ActorHandle", List[_DAGOperationGraphNode_EXP]
+        "ray.actor.ActorHandle", List[_DAGOperationGraphNode]
     ],
     actor_to_overlapped_schedule: Optional[
-        Dict["ray.actor.ActorHandle", List[_DAGOperationGraphNode_EXP]]
+        Dict["ray.actor.ActorHandle", List[_DAGOperationGraphNode]]
     ],
-    graph: Dict[int, _DAGOperationGraphNode_EXP],
+    graph: Dict[int, _DAGOperationGraphNode],
 ):
     """
     Visualize the execution schedule for each actor.
@@ -525,7 +525,7 @@ def _visualize_execution_schedule(
 
     dot = graphviz.Digraph(comment="DAG")
     # A dictionary that maps a node to its visualization id
-    node_to_viz_id: Dict[_DAGOperationGraphNode_EXP, str] = {}
+    node_to_viz_id: Dict[_DAGOperationGraphNode, str] = {}
 
     if actor_to_overlapped_schedule is None:
         # TODO(rui): make the visualization more concise by only displaying
@@ -600,9 +600,9 @@ def _visualize_execution_schedule(
     dot.render("compiled_graph_schedule", format="png", view=False)
 
 
-def _generate_actor_to_execution_schedule_EXP(
-    graph: Dict[int, _DAGOperationGraphNode_EXP],
-) -> Dict["ray.actor.ActorHandle", List[_DAGOperationGraphNode_EXP]]:
+def _generate_actor_to_execution_schedule(
+    graph: Dict[int, _DAGOperationGraphNode],
+) -> Dict["ray.actor.ActorHandle", List[_DAGOperationGraphNode]]:
     """
     Generate an execution schedule for each actor. The schedule is a list of
     operation nodes to be executed. The function uses a topological sort
@@ -624,21 +624,21 @@ def _generate_actor_to_execution_schedule_EXP(
     # Mapping from the actor handle to the execution schedule which is a list
     # of operations to be executed.
     actor_to_execution_schedule: Dict[
-        "ray.actor.ActorHandle", List[_DAGOperationGraphNode_EXP]
+        "ray.actor.ActorHandle", List[_DAGOperationGraphNode]
     ] = defaultdict(list)
 
     # A dictionary mapping an actor id to a list of candidate nodes. The list
     # is maintained as a priority queue, so the head of the queue, i.e.,
     # `candidates[0]`, is the node with the smallest `bind_index`.
     actor_to_candidates: Dict[
-        "ray._raylet.ActorID", List[_DAGOperationGraphNode_EXP]
+        "ray._raylet.ActorID", List[_DAGOperationGraphNode]
     ] = defaultdict(list)
     for _, node in graph.items():
         # A node with a zero in-degree edge means all of its dependencies
         # have been satisfied, including both data and control dependencies.
         # Therefore, it is a candidate for execution.
         if node.in_degree == 0:
-            _push_candidate_node_if_ready_EXP(actor_to_candidates, graph, node)
+            _push_candidate_node_if_ready(actor_to_candidates, graph, node)
 
     visited_nodes = set()
 
@@ -650,7 +650,7 @@ def _generate_actor_to_execution_schedule_EXP(
         #    read operations are also returned.
         # 3. If a selected node is a NCCL collective operation, all the nodes in
         #    its collective operation are returned.
-        nodes = _select_next_nodes_EXP(actor_to_candidates, graph)
+        nodes = _select_next_nodes(actor_to_candidates, graph)
         if nodes is None:
             break
         # Add the selected nodes to the execution schedule.
@@ -670,19 +670,17 @@ def _generate_actor_to_execution_schedule_EXP(
                     # If the downstream node is already visited, it has been added
                     # to the execution schedule. They are the NCCL read nodes in
                     # case 2.
-                    _push_candidate_node_if_ready_EXP(
-                        actor_to_candidates, graph, out_node
-                    )
+                    _push_candidate_node_if_ready(actor_to_candidates, graph, out_node)
     assert len(visited_nodes) == len(graph), "Expected all nodes to be visited"
 
     return actor_to_execution_schedule
 
 
-def _extract_execution_schedule_EXP(
+def _extract_execution_schedule(
     actor_to_execution_schedule: Dict[
-        "ray.actor.ActorHandle", List[_DAGOperationGraphNode_EXP]
+        "ray.actor.ActorHandle", List[_DAGOperationGraphNode]
     ],
-) -> Dict["ray.actor.ActorHandle", List[_DAGNodeOperation_EXP]]:
+) -> Dict["ray.actor.ActorHandle", List[_DAGNodeOperation]]:
     """
     Extract _DAGNodeOperation from _DAGOperationGraphNode in the schedule
     and discard unnecessary information.

@@ -20,11 +20,11 @@ from ray.dag.constants import (
     RAY_CGRAPH_VISUALIZE_SCHEDULE,
 )
 from ray.dag.dag_node_operation import (
-    _build_dag_node_operation_graph_EXP,
-    _DAGNodeOperation_EXP,
-    _DAGOperationGraphNode_EXP,
-    _extract_execution_schedule_EXP,
-    _generate_actor_to_execution_schedule_EXP,
+    _build_dag_node_operation_graph,
+    _DAGNodeOperation,
+    _DAGOperationGraphNode,
+    _extract_execution_schedule,
+    _generate_actor_to_execution_schedule,
     _visualize_execution_schedule,
 )
 from ray.dag.dag_operation_future import DAGOperationFuture, GPUFuture
@@ -178,10 +178,10 @@ def do_allocate_channel(
 
 
 @DeveloperAPI
-def do_exec_tasks_EXP(
+def do_exec_tasks(
     self,
-    tasks: List["ExecutableTask_EXP"],
-    schedule: List[_DAGNodeOperation_EXP],
+    tasks: List["ExecutableTask"],
+    schedule: List[_DAGNodeOperation],
     overlap_gpu_communication: bool = False,
 ) -> None:
     """A generic actor method to begin executing the operations belonging to an
@@ -258,8 +258,8 @@ def do_exec_tasks_EXP(
 @DeveloperAPI
 def do_profile_tasks(
     self,
-    tasks: List["ExecutableTask_EXP"],
-    schedule: List[_DAGNodeOperation_EXP],
+    tasks: List["ExecutableTask"],
+    schedule: List[_DAGNodeOperation],
     overlap_gpu_communication: bool = False,
 ) -> None:
     """A generic actor method similar to `do_exec_tasks`, but with profiling enabled.
@@ -307,7 +307,7 @@ def do_profile_tasks(
 
 
 @DeveloperAPI
-def do_cancel_executable_tasks(self, tasks: List["ExecutableTask_EXP"]) -> None:
+def do_cancel_executable_tasks(self, tasks: List["ExecutableTask"]) -> None:
     # CUDA events should be destroyed before other CUDA resources.
     for task in tasks:
         task.destroy_cuda_event()
@@ -463,7 +463,7 @@ class _ExecutableTaskInput:
 
 
 @DeveloperAPI
-class ExecutableTask_EXP:
+class ExecutableTask:
     """A task that can be executed in a compiled DAG, and it
     corresponds to an actor method.
     """
@@ -972,12 +972,12 @@ class CompiledDAG:
         # This is used for type hint resolution for with_tensor_transport("auto").
         self.actor_to_gpu_ids: Dict["ray.actor.ActorHandle", List[str]] = {}
         self.actor_to_executable_tasks: Dict[
-            "ray.actor.ActorHandle", List["ExecutableTask_EXP"]
+            "ray.actor.ActorHandle", List["ExecutableTask"]
         ] = {}
         # Mapping from the actor handle to the execution schedule which is a list
         # of operations to be executed.
         self.actor_to_execution_schedule: Dict[
-            "ray.actor.ActorHandle", List[_DAGNodeOperation_EXP]
+            "ray.actor.ActorHandle", List[_DAGNodeOperation]
         ] = defaultdict(list)
         # Mapping from the actor handle to the node ID that the actor is on.
         # A None actor handle means the actor is the driver.
@@ -1922,7 +1922,7 @@ class CompiledDAG:
                     self._channel_dict[arg_channel] = arg_channel
 
             # Step 3: create executable tasks for the actor
-            executable_tasks: List[ExecutableTask_EXP] = []
+            executable_tasks: List[ExecutableTask] = []
             for task in tasks:
                 resolved_args: List[Any] = []
                 for arg in task.args:
@@ -1937,7 +1937,7 @@ class CompiledDAG:
                     else:
                         # Constant arg
                         resolved_args.append(arg)
-                executable_task = ExecutableTask_EXP(
+                executable_task = ExecutableTask(
                     task,
                     resolved_args,
                     task.kwargs,
@@ -1964,10 +1964,10 @@ class CompiledDAG:
         if RAY_CGRAPH_ENABLE_PROFILING:
             exec_task_func = do_profile_tasks
         else:
-            exec_task_func = do_exec_tasks_EXP
+            exec_task_func = do_exec_tasks
 
         # Build an execution schedule for each actor
-        self.actor_to_execution_schedule = self._build_execution_schedule_EXP()
+        self.actor_to_execution_schedule = self._build_execution_schedule()
         for actor_handle, executable_tasks in self.actor_to_executable_tasks.items():
             self.worker_task_refs[actor_handle] = actor_handle.__ray_call__.options(
                 concurrency_group="_ray_system"
@@ -2023,9 +2023,9 @@ class CompiledDAG:
         self._dag_submitter.start()
         self._dag_output_fetcher.start()
 
-    def _generate_dag_operation_graph_node_EXP(
+    def _generate_dag_operation_graph_node(
         self,
-    ) -> Dict["ray.actor.ActorHandle", List[_DAGOperationGraphNode_EXP]]:
+    ) -> Dict["ray.actor.ActorHandle", List[_DAGOperationGraphNode]]:
         """
         Generate READ, COMPUTE, and WRITE operations for each DAG node.
 
@@ -2049,7 +2049,7 @@ class CompiledDAG:
         assert self.actor_to_executable_tasks
 
         actor_to_operation_nodes: Dict[
-            "ray.actor.ActorHandle", List[_DAGOperationGraphNode_EXP]
+            "ray.actor.ActorHandle", List[_DAGOperationGraphNode]
         ] = defaultdict(list)
 
         for actor_handle, executable_tasks in self.actor_to_executable_tasks.items():
@@ -2062,8 +2062,8 @@ class CompiledDAG:
                 actor_handle = dag_node._get_actor_handle()
                 nccl_op_type = dag_node.nccl_op_type
 
-                compute_node = _DAGOperationGraphNode_EXP(
-                    _DAGNodeOperation_EXP(exec_task_idx, method_name),
+                compute_node = _DAGOperationGraphNode(
+                    _DAGNodeOperation(exec_task_idx, method_name),
                     task_idx,
                     actor_handle,
                     nccl_op_type,
@@ -2072,12 +2072,12 @@ class CompiledDAG:
 
         return actor_to_operation_nodes
 
-    def _build_execution_schedule_EXP(
+    def _build_execution_schedule(
         self,
-    ) -> Dict["ray.actor.ActorHandle", List[_DAGNodeOperation_EXP]]:
+    ) -> Dict["ray.actor.ActorHandle", List[_DAGNodeOperation]]:
         """
         Generate an execution schedule for each actor. The schedule is a list of
-        _DAGNodeOperation_EXP.
+        _DAGNodeOperation.
 
         Step 1: Generate a DAG node operation graph. Refer to the functions
         `_generate_dag_operation_graph_node` and `_build_dag_node_operation_graph`
@@ -2102,12 +2102,12 @@ class CompiledDAG:
                 the execution schedule which is a list of operations to be executed.
         """
         # Step 1: Build a graph of _DAGOperationGraphNode
-        actor_to_operation_nodes = self._generate_dag_operation_graph_node_EXP()
-        graph = _build_dag_node_operation_graph_EXP(
+        actor_to_operation_nodes = self._generate_dag_operation_graph_node()
+        graph = _build_dag_node_operation_graph(
             self.idx_to_task, actor_to_operation_nodes
         )
         # Step 2: Generate an execution schedule for each actor using topological sort
-        actor_to_execution_schedule = _generate_actor_to_execution_schedule_EXP(graph)
+        actor_to_execution_schedule = _generate_actor_to_execution_schedule(graph)
 
         # Step 3: Overlap GPU communication for the execution schedule if configured
         # actor_to_overlapped_schedule = None
@@ -2123,9 +2123,9 @@ class CompiledDAG:
             )
 
         if actor_to_overlapped_schedule is not None:
-            return _extract_execution_schedule_EXP(actor_to_overlapped_schedule)
+            return _extract_execution_schedule(actor_to_overlapped_schedule)
         else:
-            return _extract_execution_schedule_EXP(actor_to_execution_schedule)
+            return _extract_execution_schedule(actor_to_execution_schedule)
 
     def _detect_deadlock(self) -> bool:
         """

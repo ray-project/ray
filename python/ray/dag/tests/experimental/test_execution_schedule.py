@@ -8,14 +8,14 @@ from ray.actor import ActorHandle
 from ray.dag import ClassMethodNode, InputNode, MultiOutputNode
 from ray.dag.compiled_dag_node import CompiledTask
 from ray.dag.dag_node_operation import (
-    _add_edge_EXP,
-    _build_dag_node_operation_graph_EXP,
-    _DAGNodeOperation_EXP,
-    _DAGOperationGraphNode_EXP,
-    _extract_execution_schedule_EXP,
-    _generate_actor_to_execution_schedule_EXP,
-    _NcclOperationType_EXP,
-    _select_next_nodes_EXP,
+    _add_edge,
+    _build_dag_node_operation_graph,
+    _DAGNodeOperation,
+    _DAGOperationGraphNode,
+    _extract_execution_schedule,
+    _generate_actor_to_execution_schedule,
+    _NcclOperationType,
+    _select_next_nodes,
 )
 from ray.tests.conftest import *  # noqa
 
@@ -35,23 +35,23 @@ def mock_init(self):
     pass
 
 
-def generate_dag_graph_node_EXP(
+def generate_dag_graph_node(
     exec_task_idx,
     task_idx,
     actor_handle,
     is_nccl_read=False,
     is_nccl_compute=False,
     is_nccl_write=False,
-) -> _DAGOperationGraphNode_EXP:
+) -> _DAGOperationGraphNode:
     nccl_op_type = None
     if is_nccl_read:
-        nccl_op_type = _NcclOperationType_EXP.READ
+        nccl_op_type = _NcclOperationType.READ
     elif is_nccl_compute:
-        nccl_op_type = _NcclOperationType_EXP.COMPUTE
+        nccl_op_type = _NcclOperationType.COMPUTE
     elif is_nccl_write:
-        nccl_op_type = _NcclOperationType_EXP.WRITE
-    graph_node = _DAGOperationGraphNode_EXP(
-        _DAGNodeOperation_EXP(exec_task_idx),
+        nccl_op_type = _NcclOperationType.WRITE
+    graph_node = _DAGOperationGraphNode(
+        _DAGNodeOperation(exec_task_idx),
         task_idx,
         actor_handle,
         nccl_op_type,
@@ -59,8 +59,8 @@ def generate_dag_graph_node_EXP(
     return graph_node
 
 
-def set_sync_idxs_p2p_EXP(
-    graph: Dict[int, _DAGOperationGraphNode_EXP],
+def set_sync_idxs_p2p(
+    graph: Dict[int, _DAGOperationGraphNode],
     write_idx: int,
     read_idx: int,
 ) -> None:
@@ -72,8 +72,8 @@ def set_sync_idxs_p2p_EXP(
         node.pending_sync_idxs.update(p2p_idxs)
 
 
-def set_sync_idxs_collective_EXP(
-    graph: Dict[int, _DAGOperationGraphNode_EXP],
+def set_sync_idxs_collective(
+    graph: Dict[int, _DAGOperationGraphNode],
     task_idxs: List[int],
 ) -> None:
     collective_idxs = set(task_idxs)
@@ -83,13 +83,11 @@ def set_sync_idxs_collective_EXP(
         node.pending_sync_idxs.update(collective_idxs)
 
 
-def _generate_and_extract_execution_schedule_EXP(graph):
-    return _extract_execution_schedule_EXP(
-        _generate_actor_to_execution_schedule_EXP(graph)
-    )
+def _generate_and_extract_execution_schedule(graph):
+    return _extract_execution_schedule(_generate_actor_to_execution_schedule(graph))
 
 
-class TestSelectNextNodes_EXP:
+class TestSelectNextNodes:
     """
     Test whether `_select_next_nodes` function selects the next nodes for
     topological sort to generate execution schedule correctly.
@@ -116,8 +114,8 @@ class TestSelectNextNodes_EXP:
         # The DAG node has a global index of 1, and its index in the
         # actor's `executable_tasks` list is 0.
         task_idx_1 = 1
-        dag_node_1 = _DAGOperationGraphNode_EXP(
-            _DAGNodeOperation_EXP(0),
+        dag_node_1 = _DAGOperationGraphNode(
+            _DAGNodeOperation(0),
             task_idx_1,
             fake_actor,
             False,
@@ -125,8 +123,8 @@ class TestSelectNextNodes_EXP:
         # The DAG node has a global index of 2, and its index in the
         # actor's `executable_tasks` list is 1.
         task_idx_2 = 2
-        dag_node_2 = _DAGOperationGraphNode_EXP(
-            _DAGNodeOperation_EXP(1),
+        dag_node_2 = _DAGOperationGraphNode(
+            _DAGNodeOperation(1),
             task_idx_2,
             fake_actor,
             False,
@@ -137,7 +135,7 @@ class TestSelectNextNodes_EXP:
                 dag_node_2,
             ],
         }
-        next_nodes = _select_next_nodes_EXP(mock_actor_to_candidates, None)
+        next_nodes = _select_next_nodes(mock_actor_to_candidates, None)
         assert next_nodes == [dag_node_1]
 
     def test_only_one_nccl_write(self, monkeypatch):
@@ -157,13 +155,13 @@ class TestSelectNextNodes_EXP:
         fake_actor_1, task_idx_1, exec_task_idx_1 = ActorHandle("fake_actor_1"), 1, 0
         fake_actor_2, task_idx_2, exec_task_idx_2 = ActorHandle("fake_actor_2"), 2, 0
         mock_graph = {
-            task_idx_1: generate_dag_graph_node_EXP(
+            task_idx_1: generate_dag_graph_node(
                 exec_task_idx_1,
                 task_idx_1,
                 fake_actor_1,
                 is_nccl_write=True,
             ),
-            task_idx_2: generate_dag_graph_node_EXP(
+            task_idx_2: generate_dag_graph_node(
                 exec_task_idx_2,
                 task_idx_2,
                 fake_actor_2,
@@ -171,13 +169,13 @@ class TestSelectNextNodes_EXP:
             ),
         }
 
-        _add_edge_EXP(mock_graph[task_idx_1], mock_graph[task_idx_2])
-        set_sync_idxs_p2p_EXP(mock_graph, task_idx_1, task_idx_2)
+        _add_edge(mock_graph[task_idx_1], mock_graph[task_idx_2])
+        set_sync_idxs_p2p(mock_graph, task_idx_1, task_idx_2)
         mock_actor_to_candidates = {
             fake_actor_1: [mock_graph[task_idx_1]],
             fake_actor_2: [mock_graph[task_idx_2]],
         }
-        next_nodes = _select_next_nodes_EXP(mock_actor_to_candidates, mock_graph)
+        next_nodes = _select_next_nodes(mock_actor_to_candidates, mock_graph)
         assert next_nodes == [
             mock_graph[task_idx_1],
             mock_graph[task_idx_2],
@@ -211,25 +209,25 @@ class TestSelectNextNodes_EXP:
         # is deterministic.
         for _ in range(20):
             mock_graph = {
-                task_idx_1_0: generate_dag_graph_node_EXP(
+                task_idx_1_0: generate_dag_graph_node(
                     exec_task_idx_1_0,
                     task_idx_1_0,
                     fake_actor_1,
                     is_nccl_write=True,
                 ),
-                task_idx_1_1: generate_dag_graph_node_EXP(
+                task_idx_1_1: generate_dag_graph_node(
                     exec_task_idx_1_1,
                     task_idx_1_1,
                     fake_actor_1,
                     is_nccl_read=True,
                 ),
-                task_idx_2_0: generate_dag_graph_node_EXP(
+                task_idx_2_0: generate_dag_graph_node(
                     exec_task_idx_2_0,
                     task_idx_2_0,
                     fake_actor_2,
                     is_nccl_write=True,
                 ),
-                task_idx_2_1: generate_dag_graph_node_EXP(
+                task_idx_2_1: generate_dag_graph_node(
                     exec_task_idx_2_1,
                     task_idx_2_1,
                     fake_actor_2,
@@ -237,14 +235,14 @@ class TestSelectNextNodes_EXP:
                 ),
             }
 
-            _add_edge_EXP(mock_graph[task_idx_1_0], mock_graph[task_idx_2_1])
-            _add_edge_EXP(mock_graph[task_idx_2_0], mock_graph[task_idx_1_1])
-            _add_edge_EXP(mock_graph[task_idx_2_1], mock_graph[task_idx_2_1])
-            _add_edge_EXP(mock_graph[task_idx_2_1], mock_graph[task_idx_2_1])
-            _add_edge_EXP(mock_graph[task_idx_1_1], mock_graph[task_idx_1_1])
-            _add_edge_EXP(mock_graph[task_idx_1_1], mock_graph[task_idx_1_1])
-            set_sync_idxs_p2p_EXP(mock_graph, task_idx_1_0, task_idx_2_1)
-            set_sync_idxs_p2p_EXP(mock_graph, task_idx_2_0, task_idx_1_1)
+            _add_edge(mock_graph[task_idx_1_0], mock_graph[task_idx_2_1])
+            _add_edge(mock_graph[task_idx_2_0], mock_graph[task_idx_1_1])
+            _add_edge(mock_graph[task_idx_2_1], mock_graph[task_idx_2_1])
+            _add_edge(mock_graph[task_idx_2_1], mock_graph[task_idx_2_1])
+            _add_edge(mock_graph[task_idx_1_1], mock_graph[task_idx_1_1])
+            _add_edge(mock_graph[task_idx_1_1], mock_graph[task_idx_1_1])
+            set_sync_idxs_p2p(mock_graph, task_idx_1_0, task_idx_2_1)
+            set_sync_idxs_p2p(mock_graph, task_idx_2_0, task_idx_1_1)
             mock_actor_to_candidates = {
                 fake_actor_1: [
                     mock_graph[task_idx_1_0],
@@ -256,7 +254,7 @@ class TestSelectNextNodes_EXP:
                 ],
             }
 
-            next_nodes = _select_next_nodes_EXP(mock_actor_to_candidates, mock_graph)
+            next_nodes = _select_next_nodes(mock_actor_to_candidates, mock_graph)
             assert next_nodes == [
                 mock_graph[task_idx_1_0],
                 mock_graph[task_idx_2_1],
@@ -277,26 +275,26 @@ class TestSelectNextNodes_EXP:
         fake_actor_2, dag_idx_2, local_idx_2 = ActorHandle("fake_actor_2"), 2, 0
 
         mock_graph = {
-            dag_idx_1: generate_dag_graph_node_EXP(
+            dag_idx_1: generate_dag_graph_node(
                 local_idx_1,
                 dag_idx_1,
                 fake_actor_1,
                 is_nccl_compute=True,
             ),
-            dag_idx_2: generate_dag_graph_node_EXP(
+            dag_idx_2: generate_dag_graph_node(
                 local_idx_2,
                 dag_idx_2,
                 fake_actor_2,
                 is_nccl_compute=True,
             ),
         }
-        set_sync_idxs_collective_EXP(mock_graph, [dag_idx_1, dag_idx_2])
+        set_sync_idxs_collective(mock_graph, [dag_idx_1, dag_idx_2])
 
         mock_actor_to_candidates = {
             fake_actor_1: [mock_graph[dag_idx_1]],
             fake_actor_2: [mock_graph[dag_idx_2]],
         }
-        next_nodes = _select_next_nodes_EXP(mock_actor_to_candidates, mock_graph)
+        next_nodes = _select_next_nodes(mock_actor_to_candidates, mock_graph)
         assert set(next_nodes) == {
             mock_graph[dag_idx_1],
             mock_graph[dag_idx_2],
@@ -323,33 +321,33 @@ class TestSelectNextNodes_EXP:
         fake_actor_4, dag_idx_4, local_idx_4 = ActorHandle("fake_actor_4"), 4, 0
 
         mock_graph = {
-            dag_idx_1: generate_dag_graph_node_EXP(
+            dag_idx_1: generate_dag_graph_node(
                 local_idx_1,
                 dag_idx_1,
                 fake_actor_1,
                 is_nccl_compute=True,
             ),
-            dag_idx_2: generate_dag_graph_node_EXP(
+            dag_idx_2: generate_dag_graph_node(
                 local_idx_2,
                 dag_idx_2,
                 fake_actor_2,
                 is_nccl_compute=True,
             ),
-            dag_idx_3: generate_dag_graph_node_EXP(
+            dag_idx_3: generate_dag_graph_node(
                 local_idx_3,
                 dag_idx_3,
                 fake_actor_3,
                 is_nccl_compute=True,
             ),
-            dag_idx_4: generate_dag_graph_node_EXP(
+            dag_idx_4: generate_dag_graph_node(
                 local_idx_4,
                 dag_idx_4,
                 fake_actor_4,
                 is_nccl_compute=True,
             ),
         }
-        set_sync_idxs_collective_EXP(mock_graph, [dag_idx_1, dag_idx_2])
-        set_sync_idxs_collective_EXP(mock_graph, [dag_idx_3, dag_idx_4])
+        set_sync_idxs_collective(mock_graph, [dag_idx_1, dag_idx_2])
+        set_sync_idxs_collective(mock_graph, [dag_idx_3, dag_idx_4])
 
         mock_actor_to_candidates = {
             fake_actor_1: [mock_graph[dag_idx_1]],
@@ -357,19 +355,19 @@ class TestSelectNextNodes_EXP:
             fake_actor_3: [mock_graph[dag_idx_3]],
             fake_actor_4: [mock_graph[dag_idx_4]],
         }
-        next_nodes = _select_next_nodes_EXP(mock_actor_to_candidates, mock_graph)
+        next_nodes = _select_next_nodes(mock_actor_to_candidates, mock_graph)
         assert set(next_nodes) == {
             mock_graph[dag_idx_1],
             mock_graph[dag_idx_2],
         }
-        next_nodes = _select_next_nodes_EXP(mock_actor_to_candidates, mock_graph)
+        next_nodes = _select_next_nodes(mock_actor_to_candidates, mock_graph)
         assert set(next_nodes) == {
             mock_graph[dag_idx_3],
             mock_graph[dag_idx_4],
         }
 
 
-class TestBuildDAGNodeOperationGraph_EXP:
+class TestBuildDAGNodeOperationGraph:
     """
     Test whether `_build_dag_node_operation_graph` function adds the correct
     edges between the nodes in the operation graph base on the 3 rules mentioned
@@ -378,7 +376,7 @@ class TestBuildDAGNodeOperationGraph_EXP:
 
     def check_edge_between_compute_nodes(
         self,
-        graph: Dict[int, _DAGOperationGraphNode_EXP],
+        graph: Dict[int, _DAGOperationGraphNode],
         task_idx_1: int,
         task_idx_2: int,
     ):
@@ -423,12 +421,10 @@ class TestBuildDAGNodeOperationGraph_EXP:
         idx_to_task[1].downstream_task_idxs = {2: fake_actor_2}
 
         actor_to_operation_nodes = {
-            fake_actor_1: [generate_dag_graph_node_EXP(0, task_idx_1, fake_actor_1)],
-            fake_actor_2: [generate_dag_graph_node_EXP(0, task_idx_2, fake_actor_2)],
+            fake_actor_1: [generate_dag_graph_node(0, task_idx_1, fake_actor_1)],
+            fake_actor_2: [generate_dag_graph_node(0, task_idx_2, fake_actor_2)],
         }
-        graph = _build_dag_node_operation_graph_EXP(
-            idx_to_task, actor_to_operation_nodes
-        )
+        graph = _build_dag_node_operation_graph(idx_to_task, actor_to_operation_nodes)
         assert len(graph) == 2
 
         self.check_edge_between_compute_nodes(graph, task_idx_1, task_idx_2)
@@ -456,13 +452,11 @@ class TestBuildDAGNodeOperationGraph_EXP:
 
         actor_to_operation_nodes = {
             fake_actor: [
-                generate_dag_graph_node_EXP(0, task_idx_1, fake_actor),
-                generate_dag_graph_node_EXP(1, task_idx_2, fake_actor),
+                generate_dag_graph_node(0, task_idx_1, fake_actor),
+                generate_dag_graph_node(1, task_idx_2, fake_actor),
             ],
         }
-        graph = _build_dag_node_operation_graph_EXP(
-            idx_to_task, actor_to_operation_nodes
-        )
+        graph = _build_dag_node_operation_graph(idx_to_task, actor_to_operation_nodes)
         assert len(graph) == 2
 
         self.check_edge_between_compute_nodes(graph, task_idx_1, task_idx_2)
@@ -496,24 +490,22 @@ class TestBuildDAGNodeOperationGraph_EXP:
 
         actor_to_operation_nodes = {
             fake_actor_1: [
-                generate_dag_graph_node_EXP(0, task_idx_1, fake_actor_1),
-                generate_dag_graph_node_EXP(1, task_idx_3, fake_actor_1),
+                generate_dag_graph_node(0, task_idx_1, fake_actor_1),
+                generate_dag_graph_node(1, task_idx_3, fake_actor_1),
             ],
             fake_actor_2: [
-                generate_dag_graph_node_EXP(0, task_idx_2, fake_actor_2),
-                generate_dag_graph_node_EXP(1, task_idx_4, fake_actor_2),
+                generate_dag_graph_node(0, task_idx_2, fake_actor_2),
+                generate_dag_graph_node(1, task_idx_4, fake_actor_2),
             ],
         }
-        graph = _build_dag_node_operation_graph_EXP(
-            idx_to_task, actor_to_operation_nodes
-        )
+        graph = _build_dag_node_operation_graph(idx_to_task, actor_to_operation_nodes)
         assert len(graph) == 4
 
         self.check_edge_between_compute_nodes(graph, task_idx_1, task_idx_4)
         self.check_edge_between_compute_nodes(graph, task_idx_2, task_idx_3)
 
 
-class TestGenerateActorToExecutionSchedule_EXP:
+class TestGenerateActorToExecutionSchedule:
     """
     Test whether `_generate_actor_to_execution_schedule` function generates the
     correct execution schedule for each actor.
@@ -521,8 +513,8 @@ class TestGenerateActorToExecutionSchedule_EXP:
 
     def add_data_dependeny(
         self,
-        writer: _DAGOperationGraphNode_EXP,
-        reader: _DAGOperationGraphNode_EXP,
+        writer: _DAGOperationGraphNode,
+        reader: _DAGOperationGraphNode,
     ):
         """
         Add a data dependency between the WRITE operation of the writer and the READ
@@ -534,12 +526,12 @@ class TestGenerateActorToExecutionSchedule_EXP:
             reader_operations: A dictionary where the key is the operation type and the
                 value is the operation node of the reader.
         """
-        _add_edge_EXP(writer, reader)
+        _add_edge(writer, reader)
 
     def add_control_dependency(
         self,
-        prev: _DAGOperationGraphNode_EXP,
-        next: _DAGOperationGraphNode_EXP,
+        prev: _DAGOperationGraphNode,
+        next: _DAGOperationGraphNode,
     ):
         """
         Add a control dependency between the COMPUTE operation of the task with
@@ -552,7 +544,7 @@ class TestGenerateActorToExecutionSchedule_EXP:
             operations_2: A dictionary where the key is the operation type and the value
                 is the operation node of the task with bind_index i+1.
         """
-        _add_edge_EXP(prev, next)
+        _add_edge(prev, next)
 
     def test_single_actor_1(self, monkeypatch):
         """
@@ -569,19 +561,17 @@ class TestGenerateActorToExecutionSchedule_EXP:
         task_idx_1, exec_task_idx_1 = 1, 0
         task_idx_2, exec_task_idx_2 = 2, 1
         graph = {
-            task_idx_1: generate_dag_graph_node_EXP(
+            task_idx_1: generate_dag_graph_node(
                 exec_task_idx_1, task_idx_1, fake_actor
             ),
-            task_idx_2: generate_dag_graph_node_EXP(
+            task_idx_2: generate_dag_graph_node(
                 exec_task_idx_2, task_idx_2, fake_actor
             ),
         }
         self.add_data_dependeny(graph[task_idx_1], graph[task_idx_2])
         self.add_control_dependency(graph[task_idx_1], graph[task_idx_2])
 
-        actor_to_execution_schedule = _generate_and_extract_execution_schedule_EXP(
-            graph
-        )
+        actor_to_execution_schedule = _generate_and_extract_execution_schedule(graph)
         assert len(actor_to_execution_schedule) == 1
         assert len(actor_to_execution_schedule[fake_actor]) == 2
         assert actor_to_execution_schedule[fake_actor] == [
@@ -608,13 +598,13 @@ class TestGenerateActorToExecutionSchedule_EXP:
         task_idx_3, exec_task_idx_3 = 3, 2
 
         graph = {
-            task_idx_1: generate_dag_graph_node_EXP(
+            task_idx_1: generate_dag_graph_node(
                 exec_task_idx_1, task_idx_1, fake_actor
             ),
-            task_idx_2: generate_dag_graph_node_EXP(
+            task_idx_2: generate_dag_graph_node(
                 exec_task_idx_2, task_idx_2, fake_actor
             ),
-            task_idx_3: generate_dag_graph_node_EXP(
+            task_idx_3: generate_dag_graph_node(
                 exec_task_idx_3, task_idx_3, fake_actor
             ),
         }
@@ -623,9 +613,7 @@ class TestGenerateActorToExecutionSchedule_EXP:
         self.add_control_dependency(graph[task_idx_1], graph[task_idx_2])
         self.add_control_dependency(graph[task_idx_2], graph[task_idx_3])
 
-        actor_to_execution_schedule = _generate_and_extract_execution_schedule_EXP(
-            graph
-        )
+        actor_to_execution_schedule = _generate_and_extract_execution_schedule(graph)
         assert len(actor_to_execution_schedule) == 1
         assert len(actor_to_execution_schedule[fake_actor]) == 3
         assert actor_to_execution_schedule[fake_actor] == [
@@ -656,16 +644,16 @@ class TestGenerateActorToExecutionSchedule_EXP:
         task_idx_2_2, exec_task_idx_2_2 = 3, 1
 
         graph = {
-            task_idx_1_1: generate_dag_graph_node_EXP(
+            task_idx_1_1: generate_dag_graph_node(
                 exec_task_idx_1_1, task_idx_1_1, fake_actor_1
             ),
-            task_idx_2_1: generate_dag_graph_node_EXP(
+            task_idx_2_1: generate_dag_graph_node(
                 exec_task_idx_2_1, task_idx_2_1, fake_actor_2
             ),
-            task_idx_2_2: generate_dag_graph_node_EXP(
+            task_idx_2_2: generate_dag_graph_node(
                 exec_task_idx_2_2, task_idx_2_2, fake_actor_2
             ),
-            task_idx_1_2: generate_dag_graph_node_EXP(
+            task_idx_1_2: generate_dag_graph_node(
                 exec_task_idx_1_2, task_idx_1_2, fake_actor_1
             ),
         }
@@ -674,9 +662,7 @@ class TestGenerateActorToExecutionSchedule_EXP:
         self.add_control_dependency(graph[task_idx_1_1], graph[task_idx_1_2])
         self.add_control_dependency(graph[task_idx_2_1], graph[task_idx_2_2])
 
-        actor_to_execution_schedule = _generate_and_extract_execution_schedule_EXP(
-            graph
-        )
+        actor_to_execution_schedule = _generate_and_extract_execution_schedule(graph)
         assert len(actor_to_execution_schedule) == 2
         assert len(actor_to_execution_schedule[fake_actor_1]) == 2
         assert len(actor_to_execution_schedule[fake_actor_2]) == 2
@@ -711,39 +697,37 @@ class TestGenerateActorToExecutionSchedule_EXP:
         task_idx_2_2, exec_task_idx_2_2 = 3, 1
 
         graph = {
-            task_idx_1_1: generate_dag_graph_node_EXP(
+            task_idx_1_1: generate_dag_graph_node(
                 exec_task_idx_1_1,
                 task_idx_1_1,
                 fake_actor_1,
                 is_nccl_write=True,
             ),
-            task_idx_2_1: generate_dag_graph_node_EXP(
+            task_idx_2_1: generate_dag_graph_node(
                 exec_task_idx_2_1,
                 task_idx_2_1,
                 fake_actor_2,
                 is_nccl_write=True,
             ),
-            task_idx_2_2: generate_dag_graph_node_EXP(
+            task_idx_2_2: generate_dag_graph_node(
                 exec_task_idx_2_2,
                 task_idx_2_2,
                 fake_actor_2,
                 is_nccl_read=True,
             ),
-            task_idx_1_2: generate_dag_graph_node_EXP(
+            task_idx_1_2: generate_dag_graph_node(
                 exec_task_idx_1_2,
                 task_idx_1_2,
                 fake_actor_1,
                 is_nccl_read=True,
             ),
         }
-        set_sync_idxs_p2p_EXP(graph, task_idx_1_1, task_idx_2_2)
-        set_sync_idxs_p2p_EXP(graph, task_idx_2_1, task_idx_1_2)
+        set_sync_idxs_p2p(graph, task_idx_1_1, task_idx_2_2)
+        set_sync_idxs_p2p(graph, task_idx_2_1, task_idx_1_2)
         self.add_data_dependeny(graph[task_idx_1_1], graph[task_idx_2_2])
         self.add_data_dependeny(graph[task_idx_2_1], graph[task_idx_1_2])
 
-        actor_to_execution_schedule = _generate_and_extract_execution_schedule_EXP(
-            graph
-        )
+        actor_to_execution_schedule = _generate_and_extract_execution_schedule(graph)
         assert len(actor_to_execution_schedule) == 2
         assert len(actor_to_execution_schedule[fake_actor_1]) == 2
         assert len(actor_to_execution_schedule[fake_actor_2]) == 2
@@ -786,28 +770,28 @@ class TestGenerateActorToExecutionSchedule_EXP:
 
         # No NCCL operation.
         graph = {
-            task_idx_1_1: generate_dag_graph_node_EXP(
+            task_idx_1_1: generate_dag_graph_node(
                 exec_task_idx_1_1, task_idx_1_1, worker_1
             ),
-            task_idx_1_2: generate_dag_graph_node_EXP(
+            task_idx_1_2: generate_dag_graph_node(
                 exec_task_idx_1_2, task_idx_1_2, worker_1
             ),
-            task_idx_1_3: generate_dag_graph_node_EXP(
+            task_idx_1_3: generate_dag_graph_node(
                 exec_task_idx_1_3, task_idx_1_3, worker_1
             ),
-            task_idx_1_4: generate_dag_graph_node_EXP(
+            task_idx_1_4: generate_dag_graph_node(
                 exec_task_idx_1_4, task_idx_1_4, worker_1
             ),
-            task_idx_2_1: generate_dag_graph_node_EXP(
+            task_idx_2_1: generate_dag_graph_node(
                 exec_task_idx_2_1, task_idx_2_1, worker_2
             ),
-            task_idx_2_2: generate_dag_graph_node_EXP(
+            task_idx_2_2: generate_dag_graph_node(
                 exec_task_idx_2_2, task_idx_2_2, worker_2
             ),
-            task_idx_2_3: generate_dag_graph_node_EXP(
+            task_idx_2_3: generate_dag_graph_node(
                 exec_task_idx_2_3, task_idx_2_3, worker_2
             ),
-            task_idx_2_4: generate_dag_graph_node_EXP(
+            task_idx_2_4: generate_dag_graph_node(
                 exec_task_idx_2_4, task_idx_2_4, worker_2
             ),
         }
@@ -824,9 +808,7 @@ class TestGenerateActorToExecutionSchedule_EXP:
         self.add_control_dependency(graph[task_idx_2_2], graph[task_idx_2_3])
         self.add_control_dependency(graph[task_idx_2_3], graph[task_idx_2_4])
 
-        actor_to_execution_schedule = _generate_and_extract_execution_schedule_EXP(
-            graph
-        )
+        actor_to_execution_schedule = _generate_and_extract_execution_schedule(graph)
         assert len(actor_to_execution_schedule) == 2
         assert len(actor_to_execution_schedule[worker_1]) == 4
         assert len(actor_to_execution_schedule[worker_2]) == 4
@@ -878,89 +860,89 @@ class TestGenerateActorToExecutionSchedule_EXP:
         task_idx_2_8, exec_task_idx_2_8 = 16, 7
 
         graph = {
-            task_idx_1_1: generate_dag_graph_node_EXP(
+            task_idx_1_1: generate_dag_graph_node(
                 exec_task_idx_1_1,
                 task_idx_1_1,
                 worker_1,
             ),
-            task_idx_1_3: generate_dag_graph_node_EXP(
+            task_idx_1_3: generate_dag_graph_node(
                 exec_task_idx_1_3,
                 task_idx_1_3,
                 worker_1,
             ),
-            task_idx_1_6: generate_dag_graph_node_EXP(
+            task_idx_1_6: generate_dag_graph_node(
                 exec_task_idx_1_6,
                 task_idx_1_6,
                 worker_1,
             ),
-            task_idx_1_8: generate_dag_graph_node_EXP(
+            task_idx_1_8: generate_dag_graph_node(
                 exec_task_idx_1_8,
                 task_idx_1_8,
                 worker_1,
             ),
-            task_idx_1_2: generate_dag_graph_node_EXP(
+            task_idx_1_2: generate_dag_graph_node(
                 exec_task_idx_1_2,
                 task_idx_1_2,
                 worker_1,
                 is_nccl_write=True,
             ),
-            task_idx_1_4: generate_dag_graph_node_EXP(
+            task_idx_1_4: generate_dag_graph_node(
                 exec_task_idx_1_4,
                 task_idx_1_4,
                 worker_1,
                 is_nccl_write=True,
             ),
-            task_idx_1_5: generate_dag_graph_node_EXP(
+            task_idx_1_5: generate_dag_graph_node(
                 exec_task_idx_1_5,
                 task_idx_1_5,
                 worker_1,
                 is_nccl_read=True,
             ),
-            task_idx_1_7: generate_dag_graph_node_EXP(
+            task_idx_1_7: generate_dag_graph_node(
                 exec_task_idx_1_7,
                 task_idx_1_7,
                 worker_1,
                 is_nccl_read=True,
             ),
-            task_idx_2_2: generate_dag_graph_node_EXP(
+            task_idx_2_2: generate_dag_graph_node(
                 exec_task_idx_2_2,
                 task_idx_2_2,
                 worker_2,
             ),
-            task_idx_2_3: generate_dag_graph_node_EXP(
+            task_idx_2_3: generate_dag_graph_node(
                 exec_task_idx_2_3,
                 task_idx_2_3,
                 worker_2,
             ),
-            task_idx_2_6: generate_dag_graph_node_EXP(
+            task_idx_2_6: generate_dag_graph_node(
                 exec_task_idx_2_6,
                 task_idx_2_6,
                 worker_2,
             ),
-            task_idx_2_7: generate_dag_graph_node_EXP(
+            task_idx_2_7: generate_dag_graph_node(
                 exec_task_idx_2_7,
                 task_idx_2_7,
                 worker_2,
             ),
-            task_idx_2_1: generate_dag_graph_node_EXP(
+            task_idx_2_1: generate_dag_graph_node(
                 exec_task_idx_2_1,
                 task_idx_2_1,
                 worker_2,
                 is_nccl_read=True,
             ),
-            task_idx_2_4: generate_dag_graph_node_EXP(
+            task_idx_2_4: generate_dag_graph_node(
                 exec_task_idx_2_4,
                 task_idx_2_4,
                 worker_2,
                 is_nccl_write=True,
             ),
-            task_idx_2_5: generate_dag_graph_node_EXP(
+            task_idx_2_5: generate_dag_graph_node(
                 exec_task_idx_2_5,
                 task_idx_2_5,
                 worker_2,
                 is_nccl_read=True,
             ),
-            task_idx_2_8: generate_dag_graph_node_EXP(
+            task_idx_2_8: generate_dag_graph_node(
                 exec_task_idx_2_8,
                 task_idx_2_8,
                 worker_2,
@@ -968,10 +950,10 @@ class TestGenerateActorToExecutionSchedule_EXP:
             ),
         }
 
-        set_sync_idxs_p2p_EXP(graph, task_idx_1_2, task_idx_2_1)
-        set_sync_idxs_p2p_EXP(graph, task_idx_1_4, task_idx_2_5)
-        set_sync_idxs_p2p_EXP(graph, task_idx_2_4, task_idx_1_5)
-        set_sync_idxs_p2p_EXP(graph, task_idx_2_8, task_idx_1_7)
+        set_sync_idxs_p2p(graph, task_idx_1_2, task_idx_2_1)
+        set_sync_idxs_p2p(graph, task_idx_1_4, task_idx_2_5)
+        set_sync_idxs_p2p(graph, task_idx_2_4, task_idx_1_5)
+        set_sync_idxs_p2p(graph, task_idx_2_8, task_idx_1_7)
 
         self.add_data_dependeny(graph[task_idx_1_1], graph[task_idx_1_2])
         self.add_data_dependeny(graph[task_idx_1_3], graph[task_idx_1_4])
@@ -997,9 +979,7 @@ class TestGenerateActorToExecutionSchedule_EXP:
         self.add_control_dependency(graph[task_idx_2_3], graph[task_idx_2_6])
         self.add_control_dependency(graph[task_idx_2_6], graph[task_idx_2_7])
 
-        actor_to_execution_schedule = _generate_and_extract_execution_schedule_EXP(
-            graph
-        )
+        actor_to_execution_schedule = _generate_and_extract_execution_schedule(graph)
         assert len(actor_to_execution_schedule) == 2
         assert len(actor_to_execution_schedule[worker_1]) == 8
         assert len(actor_to_execution_schedule[worker_2]) == 8
