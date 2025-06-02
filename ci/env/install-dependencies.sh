@@ -416,6 +416,10 @@ install_thirdparty_packages() {
   mkdir -p "${WORKSPACE_DIR}/python/ray/thirdparty_files"
   RAY_THIRDPARTY_FILES="$(realpath "${WORKSPACE_DIR}/python/ray/thirdparty_files")"
   CC=gcc python -m pip install psutil==5.9.6 colorama==0.4.6 --target="${RAY_THIRDPARTY_FILES}"
+
+  mkdir -p "${WORKSPACE_DIR}/python/ray/_private/thirdparty"
+  RAY_PRIVATE_THIRDPARTY_FILES="$(realpath "${WORKSPACE_DIR}/python/ray/_private/thirdparty")"
+  CC=gcc python -m pip install setproctitle==1.2.2 --target="${RAY_PRIVATE_THIRDPARTY_FILES}"
 }
 
 install_dependencies() {

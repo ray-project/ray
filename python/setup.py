@@ -611,6 +611,7 @@ def build(build_python, build_java, build_cpp):
             "pip",
             "install",
             "-q",
+            "--no-deps",
             "--target=" + os.path.join(ROOT_DIR, PRIVATE_THIRDPARTY_SUBDIR),
             "setproctitle==1.2.2",
         ],
