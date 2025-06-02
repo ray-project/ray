@@ -1597,14 +1597,14 @@ class EC2InstanceTerminatorWithGracePeriod(NodeKillerBase):
                 thread.join()
                 self._kill_threads.remove(thread)
 
-        def _kill_node_with_grace_period(node_id):
+        def _kill_node_with_grace_period(node_id, node_to_kill_ip):
             self._drain_node(node_id)
             time.sleep(self._grace_period_s)
-            _terminate_ec2_instance(node_id)
+            _terminate_ec2_instance(node_to_kill_ip)
 
         thread = threading.Thread(
             target=_kill_node_with_grace_period,
-            args=(node_id,),
+            args=(node_id, node_to_kill_ip),
             daemon=True,
         )
         thread.start()
