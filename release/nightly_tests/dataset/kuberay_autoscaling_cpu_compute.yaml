@@ -7,7 +7,7 @@ head_node_type:
         memory: "32Gi"
       requests:
         cpu: "8"
-        memory: "256Gi"
+        memory: "32Gi"
 
 worker_node_types:
     - name: worker_node
@@ -17,6 +17,6 @@ worker_node_types:
           memory: "32Gi"
         requests:
           cpu: "8"
-          memory: "8Gi"
+          memory: "32Gi"
       min_workers: 0
       max_workers: 10
