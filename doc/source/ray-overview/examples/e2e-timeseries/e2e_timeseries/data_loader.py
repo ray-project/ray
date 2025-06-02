@@ -25,7 +25,7 @@ class Dataset_ETT_hour(Dataset):
         # prediction_horizon_length (pred_len): The number of future time steps the model is tasked to predict.
 
         if size is None:
-            # Default lengths if not specified
+            # Default lengths if not specified.
             self.encoder_seq_len = 24 * 4 * 4
             self.decoder_context_len = 24 * 4
             self.prediction_horizon = 24 * 4
