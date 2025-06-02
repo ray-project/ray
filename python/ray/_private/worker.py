@@ -74,6 +74,7 @@ from ray._private.runtime_env.setup_hook import (
     upload_worker_process_setup_hook_if_needed,
 )
 from ray._private.runtime_env.working_dir import upload_working_dir_if_needed
+from ray._private.thirdparty import setproctitle
 from ray._private.utils import get_ray_doc_version, load_class
 from ray._raylet import (
     ObjectRefGenerator,
@@ -97,7 +98,6 @@ from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
 from ray.util.tracing.tracing_helper import _import_from_string
 from ray.widgets import Template
 from ray.widgets.util import repr_with_fallback
-from ray._private.thirdparty import setproctitle
 
 if TYPE_CHECKING:
     pass
