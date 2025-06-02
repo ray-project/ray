@@ -100,7 +100,7 @@ def cleanup_generated_scripts(script_paths: List[Path]) -> None:
 
 def main() -> None:
     parser = argparse.ArgumentParser(
-        description="Convert Jupyter notebooks to Python scripts and execute them in order"
+        description="Convert Jupyter notebooks to Python scripts and execute them in order."
     )
     parser.add_argument(
         "target_dir",
