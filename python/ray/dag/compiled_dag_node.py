@@ -934,21 +934,18 @@ class ExecutableTask_EXP:
         for val in self.resolved_kwargs.values():
             assert not isinstance(val, ChannelInterface)
 
-        # NCCL channel for P2P send/recv.
-        self.nccl_ch: Optional[ChannelInterface] = None
+        # Set the NCCL channel for P2P send/recv.
         if self.requires_nccl_read:
-            assert len(self.input_channels) == 1
-            self.nccl_ch = self.input_channels[0]
-            assert isinstance(self.nccl_op, _P2PRecvOperation)
-            self.nccl_op.nccl_ch = self.nccl_ch
             # NCCL P2P recv will not have an input reader.
+            assert len(self.input_channels) == 1
+            assert isinstance(self.nccl_op, _P2PRecvOperation)
+            self.nccl_op.nccl_ch = self.input_channels[0]
             self.input_channels = []
         elif self.requires_nccl_write:
-            assert len(self.output_channels) == 1
-            self.nccl_ch = self.output_channels[0]
-            assert isinstance(self.nccl_op, _P2PSendOperation)
-            self.nccl_op.nccl_ch = self.nccl_ch
             # NCCL P2P send will not have an output writer.
+            assert len(self.output_channels) == 1
+            assert isinstance(self.nccl_op, _P2PSendOperation)
+            self.nccl_op.nccl_ch = self.output_channels[0]
             self.output_channels = []
 
         # Input reader to read input data from upstream DAG nodes.
@@ -989,9 +986,8 @@ class ExecutableTask_EXP:
             self.input_reader.close()
         if self.output_writer is not None:
             self.output_writer.close()
-        # [TODO] `nccl_ch`.
-        if self.nccl_ch is not None:
-            self.nccl_ch.close()
+        if self.requires_nccl_read or self.requires_nccl_write:
+            self.nccl_op.nccl_ch.close()
 
     def destroy_cuda_event(self):
         """
@@ -1019,11 +1015,6 @@ class ExecutableTask_EXP:
             self.input_reader.start()
         if self.output_writer is not None:
             self.output_writer.start()
-
-        # [TODO] Comments? `nccl_ch`.
-        if self.requires_nccl_write:
-            assert self.nccl_op is not None
-            self.nccl_op.nccl_ch.ensure_registered_as_writer()
 
         self.stream: Union["cp.cuda.Stream", nullcontext] = nullcontext()
         if not overlap_gpu_communication:
@@ -2353,13 +2344,12 @@ class CompiledDAG:
                 executable_tasks.append(executable_task)
             # Sort executable tasks based on their bind index, i.e., submission order
             # so that they will be executed in that order.
-            # [TODO] Comments?
+            # If the bind index is the same, there are P2P send/recv tasks.
+            # The order is determined as follows:
+            # 1. P2P recv tasks (requires_nccl_read=True).
+            # 2. Non-P2P tasks (requires_nccl_read=False, requires_nccl_write=False).
+            # 3. P2P send tasks (requires_nccl_write=True).
             executable_tasks.sort(
-                # If the bind index is the same, there are P2P send/recv tasks.
-                # The order is determined as follows:
-                # 1. P2P recv tasks.
-                # 2. Non-P2P tasks.
-                # 3. P2P send tasks.
                 key=lambda task: (
                     task.bind_index,
                     not task.requires_nccl_read,

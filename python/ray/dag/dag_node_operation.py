@@ -41,15 +41,14 @@ class _DAGNodeOperationType(Enum):
 class _NcclOperationType_EXP(Enum):
     """
     There are three types of NCCL operations:
-    1. P2P_READ: Read from a P2P channel.
-    2. P2P_WRITE: Write to a P2P channel.
-    3. COLLECTIVE: Collective operation.
+    1. READ: Read from a P2P channel.
+    2. COMPUTE: Collective operation.
+    3. WRITE: Write to a P2P channel.
     """
 
-    # [TODO] Clena "P2P_".
-    P2P_READ = "P2P_READ"
-    P2P_WRITE = "P2P_WRITE"
-    COLLECTIVE = "COLLECTIVE"
+    READ = "READ"
+    COMPUTE = "COMPUTE"
+    WRITE = "WRITE"
 
 
 class _DAGNodeOperation:
@@ -59,7 +58,6 @@ class _DAGNodeOperation:
         operation_type: _DAGNodeOperationType,
         method_name: Optional[str] = None,
     ):
-        raise NotImplementedError
         """
         Args:
             exec_task_idx: The index of the task that this operation belongs to
@@ -389,15 +387,15 @@ class _DAGOperationGraphNode_EXP:
 
     @property
     def is_nccl_read(self) -> bool:
-        return self.nccl_op_type == _NcclOperationType_EXP.P2P_READ
+        return self.nccl_op_type == _NcclOperationType_EXP.READ
 
     @property
     def is_nccl_compute(self) -> bool:
-        return self.nccl_op_type == _NcclOperationType_EXP.COLLECTIVE
+        return self.nccl_op_type == _NcclOperationType_EXP.COMPUTE
 
     @property
     def is_nccl_write(self) -> bool:
-        return self.nccl_op_type == _NcclOperationType_EXP.P2P_WRITE
+        return self.nccl_op_type == _NcclOperationType_EXP.WRITE
 
     @property
     def is_nccl_op(self) -> bool:

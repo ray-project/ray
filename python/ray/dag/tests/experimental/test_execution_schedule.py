@@ -77,11 +77,11 @@ def generate_dag_graph_node_EXP(
 ) -> _DAGOperationGraphNode_EXP:
     nccl_op_type = None
     if is_nccl_read:
-        nccl_op_type = _NcclOperationType_EXP.P2P_READ
+        nccl_op_type = _NcclOperationType_EXP.READ
     elif is_nccl_compute:
-        nccl_op_type = _NcclOperationType_EXP.COLLECTIVE
+        nccl_op_type = _NcclOperationType_EXP.COMPUTE
     elif is_nccl_write:
-        nccl_op_type = _NcclOperationType_EXP.P2P_WRITE
+        nccl_op_type = _NcclOperationType_EXP.WRITE
     graph_node = _DAGOperationGraphNode_EXP(
         _DAGNodeOperation_EXP(exec_task_idx),
         task_idx,
