@@ -420,6 +420,8 @@ class ArrowBlockAccessor(TableBlockAccessor):
         table = self._table
         if public_row_format:
             if not hasattr(self, "_max_chunk_size"):
+                # Calling _get_max_chunk_size in constructor makes it slow, so we
+                # are calling it here only when needed.
                 self._max_chunk_size = _get_max_chunk_size(
                     self._table, ARROW_MAX_CHUNK_SIZE_BYTES
                 )
