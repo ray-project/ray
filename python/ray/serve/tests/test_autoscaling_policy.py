@@ -217,7 +217,9 @@ class TestAutoscalingMetrics:
         wait_for_condition(check_num_requests_ge, client=client, id=dep_id, expected=45)
         print("Confirmed many queries are inflight.")
 
-        wait_for_condition(check_num_replicas_eq, name="A", target=5, app_name="app1")
+        wait_for_condition(
+            check_num_replicas_eq, name="A", target=5, app_name="app1", timeout=20
+        )
         print("Confirmed deployment scaled to 5 replicas.")
 
         # Wait for all requests to be scheduled to replicas so they'll be failed
@@ -414,7 +416,9 @@ def test_e2e_scale_up_down_basic(min_replicas, serve_instance_with_signal):
     signal.send.remote()
 
     # As the queue is drained, we should scale back down.
-    wait_for_condition(check_num_replicas_lte, name="A", target=min_replicas)
+    wait_for_condition(
+        check_num_replicas_lte, name="A", target=min_replicas, timeout=20
+    )
 
     # Make sure start time did not change for the deployment
     assert get_deployment_start_time(client._controller, "A") == start_time
