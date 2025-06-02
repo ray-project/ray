@@ -921,7 +921,7 @@ py_test_module_list(
     data = ["pip_install_test-0.5-py3-none-any.whl"],
     files = [
         "test_runtime_env.py",
-        "test_runtime_env_2.py",
+        "test_runtime_env_standalone.py",
         "test_runtime_env_working_dir.py",
         "test_runtime_env_working_dir_2.py",
         "test_runtime_env_working_dir_3.py",
