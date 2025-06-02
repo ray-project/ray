@@ -21,7 +21,7 @@ def convert_notebook(input_path: str, output_path: str) -> None:
     script if any bash commands or shell escapes are found.
     """
     nb = nbformat.read(input_path, as_version=4)
-    # Flag to ensure 'import subprocess' is written only once in the output script
+    # Flag to ensure 'import subprocess' is written only once in the output script.
     subprocess_imported = False
 
     with open(output_path, "w") as out:
