@@ -25,6 +25,7 @@ from ray.dag.dag_node_operation import (
     _DAGOperationGraphNode,
     _extract_execution_schedule,
     _generate_actor_to_execution_schedule,
+    _generate_overlapped_execution_schedule,
     _visualize_execution_schedule,
 )
 from ray.dag.dag_operation_future import DAGOperationFuture, GPUFuture
@@ -656,14 +657,16 @@ class ExecutableTask:
         operations: READ, COMPUTE, and WRITE, which should be executed in
         order to ensure that each operation can read the correct intermediate
         result.
+
         Args:
             class_handle: The handle of the class to which the actor belongs.
             op_type: The type of the operation. Possible types are READ,
                 COMPUTE, and WRITE.
             overlap_gpu_communication: Whether to overlap GPU communication with
                 computation during DAG execution to improve performance.
+
         Returns:
-            True if the next operation should not be executed; otherwise, False.
+            True if system error occurs and exit the loop; otherwise, False.
         """
         with _device_context_manager():
             with self.stream:
@@ -1629,7 +1632,12 @@ class CompiledDAG:
         node._bound_args = tuple(new_args)
 
     def _build_from_ray_dag(self, root: "ray.dag.DAGNode") -> None:
-        # [TODO] Comments.
+        """
+        Build the compiled DAG from a Ray DAG. Create a `P2PSendNode`/`P2PRecvNode` for each NCCL P2P send/recv operation, where the NCCL P2P method is executed from
+        the newly created node. This is consistent with the behavior of a NCCL
+        collective operation, where the NCCL collective method is executed from the
+        created `CollectiveOutputNode` during the DAG definition.
+        """
         from ray.dag import DAGNode
         from ray.dag.communication_node import P2PSendNode
 
@@ -2108,12 +2116,11 @@ class CompiledDAG:
         actor_to_execution_schedule = _generate_actor_to_execution_schedule(graph)
 
         # Step 3: Overlap GPU communication for the execution schedule if configured
-        # actor_to_overlapped_schedule = None
-        # if self._overlap_gpu_communication:
-        #     actor_to_overlapped_schedule = _generate_overlapped_execution_schedule(
-        #         actor_to_execution_schedule
-        #     )
-        actor_to_overlapped_schedule = actor_to_execution_schedule
+        actor_to_overlapped_schedule = None
+        if self._overlap_gpu_communication:
+            actor_to_overlapped_schedule = _generate_overlapped_execution_schedule(
+                actor_to_execution_schedule
+            )
 
         if RAY_CGRAPH_VISUALIZE_SCHEDULE:
             _visualize_execution_schedule(
