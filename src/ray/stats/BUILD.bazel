@@ -25,6 +25,7 @@ ray_cc_library(
         "//src/ray/util",
         "//src/ray/util:logging",
         "//src/ray/util:size_literals",
+        "//src/ray/telemetry:open_telemetry_metric_recorder",
         "@com_github_jupp0r_prometheus_cpp//pull",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/container:flat_hash_map",

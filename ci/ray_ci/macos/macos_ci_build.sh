@@ -18,7 +18,7 @@ build_x86_64() {
   # Cleanup environments
   rm -rf /tmp/bazel_event_logs
   # shellcheck disable=SC2317
-  cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }
+  cleanup() { if [[ "${BUILDKITE_PULL_REQUEST}" = "false" ]]; then ./ci/build/upload_build_info.sh; fi }
   trap cleanup EXIT
   (which bazel && bazel clean) || true
   # TODO(simon): make sure to change both PR and wheel builds
@@ -43,21 +43,20 @@ build_x86_64() {
   bash ./java/build-jar-multiplatform.sh darwin
   # Upload the wheels and jars
   # We don't want to push on PRs, in fact, the copy_files will fail because unauthenticated.
-  if [ "$BUILDKITE_PULL_REQUEST" != "false" ]; then exit 0; fi
-  pip install -q docker aws_requests_auth boto3
+  if [[ "$BUILDKITE_PULL_REQUEST" != "false" ]]; then exit 0; fi
   # Upload to branch directory.
-  python .buildkite/copy_files.py --destination branch_wheels --path ./.whl
-  python .buildkite/copy_files.py --destination branch_jars --path ./.jar/darwin
+  bazel run .buildkite:copy_files -- --destination branch_wheels --path "${PWD}/.whl"
+  bazel run .buildkite:copy_files -- --destination branch_jars --path "${PWD}/.jar/darwin"
   # Upload to latest directory.
-  if [ "$BUILDKITE_BRANCH" = "master" ]; then python .buildkite/copy_files.py --destination wheels --path ./.whl; fi
-  if [ "$BUILDKITE_BRANCH" = "master" ]; then python .buildkite/copy_files.py --destination jars --path ./.jar/darwin; fi
+  if [[ "$BUILDKITE_BRANCH" = "master" ]]; then bazel run .buildkite:copy_files -- --destination wheels --path "${PWD}/.whl" ; fi
+  if [[ "$BUILDKITE_BRANCH" = "master" ]]; then bazel run .buildkite:copy_files -- --destination jars --path "${PWD}/.jar/darwin" ; fi
 }
 
 build_aarch64() {
   # Cleanup environments
   rm -rf /tmp/bazel_event_logs
   # shellcheck disable=SC2317
-  cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }
+  cleanup() { if [[ "${BUILDKITE_PULL_REQUEST}" = "false" ]]; then ./ci/build/upload_build_info.sh; fi }
   trap cleanup EXIT
   (which bazel && bazel clean) || true
   brew install pkg-config nvm node || true
@@ -84,14 +83,13 @@ build_aarch64() {
   bash ./java/build-jar-multiplatform.sh darwin
   # Upload the wheels and jars
   # We don't want to push on PRs, in fact, the copy_files will fail because unauthenticated.
-  if [ "$BUILDKITE_PULL_REQUEST" != "false" ]; then exit 0; fi
-  python -m pip install -q docker aws_requests_auth boto3
+  if [[ "$BUILDKITE_PULL_REQUEST" != "false" ]]; then exit 0; fi
   # Upload to branch directory.
-  python .buildkite/copy_files.py --destination branch_wheels --path ./.whl
-  python .buildkite/copy_files.py --destination branch_jars --path ./.jar/darwin
+  bazel run .buildkite:copy_files -- --destination branch_wheels --path "${PWD}/.whl"
+  bazel run .buildkite:copy_files -- --destination branch_jars --path "${PWD}/.jar/darwin"
   # Upload to latest directory.
-  if [ "$BUILDKITE_BRANCH" = "master" ]; then python .buildkite/copy_files.py --destination wheels --path ./.whl; fi
-  if [ "$BUILDKITE_BRANCH" = "master" ]; then python .buildkite/copy_files.py --destination jars --path ./.jar/darwin; fi
+  if [[ "$BUILDKITE_BRANCH" = "master" ]]; then bazel run .buildkite:copy_files -- --destination wheels --path "${PWD}/.whl" ; fi
+  if [[ "$BUILDKITE_BRANCH" = "master" ]]; then bazel run .buildkite:copy_files -- --destination jars --path "${PWD}/.jar/darwin" ; fi
 }
 
 "$@"
