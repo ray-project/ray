@@ -41,47 +41,34 @@ def _calculate_ref_hits(refs: List[ObjectRef[Any]]) -> Tuple[int, int, int]:
 def resolve_block_refs(
     block_ref_iter: Iterator[ObjectRef[Block]],
     stats: Optional[DatasetStats] = None,
-    batch_size: int = 10,
 ) -> Iterator[Block]:
     """Resolves the block references for each logical batch.
 
     Args:
         block_ref_iter: An iterator over block object references.
         stats: An optional stats object to recording block hits and misses.
-        batch_size: Number of block references to batch together in a single ray.get() call.
     """
-    all_refs = []  # Keep track of all refs for stats calculation
+    # TODO(amogkam): Optimized further by batching multiple references in a single
+    # ray.get() call. This would require careful consideration of backpressure.
+    hits = 0
+    misses = 0
+    unknowns = 0
 
-    # Collect block references in batches
-    batch = []
     for block_ref in block_ref_iter:
-        batch.append(block_ref)
-        all_refs.append(block_ref)
+        # Calculate stats for this block reference
+        if stats:
+            ref_hits, ref_misses, ref_unknowns = _calculate_ref_hits([block_ref])
+            hits += ref_hits
+            misses += ref_misses
+            unknowns += ref_unknowns
 
-        # Process batch when it reaches the desired size
-        if len(batch) >= batch_size:
-            # Resolve all references in the batch with a single ray.get() call
-            with stats.iter_get_s.timer() if stats else nullcontext():
-                blocks = ray.get(batch)
-
-            # Yield each resolved block
-            for block in blocks:
-                yield block
-
-            # Reset batch for next iteration
-            batch = []
-
-    # Process any remaining references in the final partial batch
-    if batch:
+        # Resolve the block reference
         with stats.iter_get_s.timer() if stats else nullcontext():
-            blocks = ray.get(batch)
+            block = ray.get(block_ref)
+        yield block
 
-        for block in blocks:
-            yield block
-
-    # Calculate stats once for all refs at the end to avoid performance overhead
-    if stats and all_refs:
-        hits, misses, unknowns = _calculate_ref_hits(all_refs)
+    # Update stats after processing all blocks
+    if stats:
         stats.iter_blocks_local = hits
         stats.iter_blocks_remote = misses
         stats.iter_unknown_location = unknowns
