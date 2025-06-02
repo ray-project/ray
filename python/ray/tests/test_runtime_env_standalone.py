@@ -304,9 +304,7 @@ class TestNoUserInfoInLogs:
         runtime_env = {
             "working_dir": str(working_dir),
             "pip": [USER_SECRET],
-            # Append address to ensure different runtime envs for client and non-client
-            # code paths to force reinstalling the runtime env instead of reusing it.
-            "env_vars": {USER_SECRET: USER_SECRET + str(address)},
+            "env_vars": {USER_SECRET: USER_SECRET},
         }
         ray.init(runtime_env=runtime_env)
 
