@@ -32,7 +32,7 @@ def find_notebooks(target_dir: str) -> List[Path]:
         if match:
             return (int(match.group(1)), filename)
         else:
-            # Files without numerical prefix go last, sorted alphabetically
+            # Files without numerical prefix go last, sorted alphabetically.
             return (float("inf"), filename)
 
     # Sort by numerical prefix first, then by filename
