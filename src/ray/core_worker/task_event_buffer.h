@@ -557,8 +557,6 @@ class TaskEventBufferImpl : public TaskEventBuffer {
   std::unique_ptr<rpc::EventAggregatorClient> event_aggregator_client_;
 
   /// Client to the event aggregator used to push ray events to it.
-  // TODO(myan): think about whether we should have one event_aggregator_exporter per
-  // core_worker or per node
   std::unique_ptr<EventAggregatorExporter> event_aggregator_exporter_;
 
   /// True if the TaskEventBuffer is enabled.
