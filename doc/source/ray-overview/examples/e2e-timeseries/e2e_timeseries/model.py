@@ -111,7 +111,7 @@ class DLinear(nn.Module):
         # DLinear model (and many time series models) expect input of shape:
         # (batch_size, sequence_length, num_input_features).
 
-        # seasonal_init, trend_init shapes: [Batch, SeqLen, Channel]
+        # seasonal_init, trend_init shapes: [Batch, SeqLen, Channel].
         seasonal_init, trend_init = self.decompsition(x)
         # Permute to [Batch, Channel, SeqLen] for Linear layers.
         seasonal_init = seasonal_init.permute(0, 2, 1)
