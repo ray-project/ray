@@ -34,6 +34,13 @@
       python read_and_consume_benchmark.py
       s3://ray-benchmark-data-internal/imagenet/parquet --format parquet
       --iter-bundles
+  
+  variations:
+    - __suffix__: kuberay
+      env: kuberay
+      frequency: manual
+      cluster:
+        cluster_compute: "kuberay_{{scaling}}_cpu_compute.yaml"
 
 - name: "read_images_{{scaling}}"
 
@@ -49,6 +56,13 @@
     script: >
       python read_and_consume_benchmark.py
       s3://anyscale-imagenet/ILSVRC/Data/CLS-LOC/ --format image --iter-bundles
+  
+  variations:
+    - __suffix__: kuberay
+      env: kuberay
+      frequency: manual
+      cluster:
+        cluster_compute: "kuberay_{{scaling}}_cpu_compute.yaml"
 
 - name: read_tfrecords
   run:
@@ -70,6 +84,13 @@
   run:
     timeout: 5400
     script: python read_from_uris_benchmark.py
+  
+  variations:
+    - __suffix__: kuberay
+      env: kuberay
+      frequency: manual
+      cluster:
+        cluster_compute: "kuberay_{{scaling}}_cpu_compute.yaml"
 
 - name: read_images_comparison_microbenchmark_single_node
   frequency: manual
@@ -112,6 +133,13 @@
     script: >
       python read_and_consume_benchmark.py
       s3://ray-benchmark-data/tpch/parquet/sf10000/lineitem --format parquet --count
+  
+  variations:
+    - __suffix__: kuberay
+      env: kuberay
+      frequency: manual
+      cluster:
+        cluster_compute: "kuberay_{{scaling}}_cpu_compute.yaml"
 
 ###############
 # Groupby tests
