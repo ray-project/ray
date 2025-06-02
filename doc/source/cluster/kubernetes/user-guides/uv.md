@@ -1,6 +1,6 @@
 (kuberay-uv)=
 
-# Using `uv` for Python package management
+# Using `uv` for Python package management in KubeRay
 
 [uv](https://github.com/astral-sh/uv) is a modern Python package manager written in Rust.
 
