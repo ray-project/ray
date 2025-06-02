@@ -133,7 +133,7 @@ class DLinear(nn.Module):
                 trend_output[:, i, :] = self.Linear_Trend[i](trend_init[:, i, :])
         else:
             # seasonal_init shape: [Batch, Channel, SeqLen]
-            # Linear layer applies to the last dim (SeqLen)
+            # Linear layer applies to the last dim (SeqLen).
             seasonal_output = self.Linear_Seasonal(
                 seasonal_init
             )  # Output: [Batch, Channel, PredLen].
