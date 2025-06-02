@@ -21,9 +21,9 @@ rm -rf python/ray/thirdparty_files
 
 # install test requirements
 python -m pip install -U pip-tools==7.3.0
-echo "pytest" > /tmp/min_build_requirements.txt
+echo "pytest==7.0.1" > /tmp/min_build_requirements.txt
 if [[ "${EXTRA_DEPENDENCY}" == "serve" ]]; then
-   echo "httpx" >> /tmp/min_build_requirements.txt
+   echo "httpx==0.27.2" >> /tmp/min_build_requirements.txt
 fi
 
 # install extra dependencies
