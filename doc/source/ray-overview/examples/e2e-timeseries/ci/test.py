@@ -3,10 +3,10 @@
 Script to convert Jupyter notebooks to Python scripts and execute them in order.
 
 This script:
-1. Finds all .ipynb files in the specified target directory
-2. Converts them to .py files using the nb2py.py converter
-3. Executes the generated Python scripts in numerical order (01*.py, 02*.py, etc.)
-4. Fails if any script execution fails
+1. Finds all .ipynb files in the specified target directory.
+2. Converts them to .py files using the nb2py.py converter.
+3. Executes the generated Python scripts in numerical order (01*.py, 02*.py, etc.).
+4. Fails if any script execution fails.
 """
 
 import argparse
@@ -27,7 +27,7 @@ def find_notebooks(target_dir: str) -> List[Path]:
     def numerical_sort_key(path_str: str) -> tuple:
         """Extract numerical prefix for proper sorting (e.g., '01-' -> 1)."""
         filename = os.path.basename(path_str)
-        # Look for numerical prefix at the start of filename
+        # Look for numerical prefix at the start of filename.
         match = re.match(r"^(\d+)", filename)
         if match:
             return (int(match.group(1)), filename)
