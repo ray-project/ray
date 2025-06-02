@@ -1,0 +1,20 @@
+{
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "$id": "http://github.com/ray-project/ray/runtime_env/pip_schema.json",
+    "title": "test_env_1",
+    "type": "object",
+    "properties": {
+      "array": {
+        "type": "array",
+        "items": {
+          "type": "string"
+        }
+      },
+      "bool": {
+        "type": "boolean"
+      }
+    },
+    "required": [
+      "array"
+    ]
+}
