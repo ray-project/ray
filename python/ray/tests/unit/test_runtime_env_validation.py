@@ -49,7 +49,6 @@ def test_directory():
         os.chdir(old_dir)
 
 
-
 @pytest.fixture
 def set_runtime_env_plugin_schemas(request):
     runtime_env_plugin_schemas = getattr(request, "param", "0")
