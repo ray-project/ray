@@ -598,8 +598,12 @@ class JobHead(SubprocessModule):
                 # No-op
                 pass
             elif resp.status != 200:
-                logger.error(f"Failed to delete job events (received {resp.status}, message='{resp.text()}')")
-                raise RuntimeError(f"Request failed with status code {resp.status}: {resp.text()}")
+                logger.error(
+                    f"Failed to delete job events (received {resp.status}, message='{resp.text()}')"
+                )
+                raise RuntimeError(
+                    f"Request failed with status code {resp.status}: {resp.text()}"
+                )
 
     @routes.get("/api/jobs/{job_or_submission_id}")
     async def get_job_info(self, req: Request) -> Response:
@@ -877,7 +881,9 @@ class JobHead(SubprocessModule):
         while True:
             try:
                 if not self._dashboard_address:
-                    self._dashboard_address = await _fetch_dashboard_address(self.gcs_client)
+                    self._dashboard_address = await _fetch_dashboard_address(
+                        self.gcs_client
+                    )
 
                 return self._dashboard_address
             except Exception:

@@ -6,12 +6,13 @@ from concurrent.futures import ThreadPoolExecutor
 from typing import Union
 
 import ray._private.ray_constants as ray_constants
-import ray.dashboard.consts as dashboard_consts
 import ray.dashboard.utils as dashboard_utils
 from ray.dashboard.modules.event import event_consts
 from ray.dashboard.modules.event.event_consts import TARGET_EVENT_SOURCE_TYPES
-from ray.dashboard.modules.event.event_utils import monitor_events, \
-    _fetch_dashboard_address
+from ray.dashboard.modules.event.event_utils import (
+    monitor_events,
+    _fetch_dashboard_address,
+)
 from ray.dashboard.utils import async_loop_forever, create_task
 
 logger = logging.getLogger(__name__)
@@ -57,7 +58,9 @@ class JobEventAgent(dashboard_utils.DashboardAgentModule):
         while True:
             try:
                 if not self._dashboard_http_address:
-                    self._dashboard_http_address = await _fetch_dashboard_address(self._gcs_client)
+                    self._dashboard_http_address = await _fetch_dashboard_address(
+                        self._gcs_client
+                    )
 
                 return self._dashboard_http_address
             except Exception:
