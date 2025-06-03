@@ -1,17 +1,14 @@
 import sys
 import os
 
-# Add the parent directory to Python path for imports
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
-
 import pytest
 
 import ray
 from ray.data.llm import build_llm_processor, vLLMEngineProcessorConfig
-from test_utils import get_hf_token_env_var
 
-REGION_NAME = "us-west-2"
-SECRET_NAME = "llm_release_test_hf_token"
+# Add the parent directory to Python path for imports
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
+from test_utils import get_hf_token_env_var
 
 
 def test_chat_template_with_vllm():
