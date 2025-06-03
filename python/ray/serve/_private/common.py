@@ -567,6 +567,12 @@ class ServeComponentType(str, Enum):
 
 @dataclass
 class RequestRoutingInfo:
+    """Information about the request routing.
+
+    It includes deployment name (from ReplicaID), replica tag (from ReplicaID),
+    multiplex model ids, and routing stats.
+    """
+
     replica_id: ReplicaID
     multiplexed_model_ids: Optional[List[str]] = None
     routing_stats: Optional[Dict[str, Any]] = None
