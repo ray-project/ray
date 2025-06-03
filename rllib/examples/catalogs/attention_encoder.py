@@ -20,6 +20,8 @@ For logging to your WandB account, use:
 --wandb-run-name=[optional: WandB run name (within the defined project)]`
 """
 
+# __sphinx_doc_begin__
+>>>>>>> Initial addition of changes. Will polish shortly.
 import gymnasium as gym
 import numpy as np
 
@@ -35,7 +37,6 @@ from ray.rllib.utils.test_utils import (
 from ray.rllib.env.wrappers.repeated_wrapper import ObsVectorizationWrapper
 from ray.rllib.examples.catalogs.models.attention_encoder import AttentionEncoderConfig
 from ray.rllib.examples.envs.classes.repeated_obs_env import RepeatedObsEnv
-
 
 from ray.rllib.utils.metrics import (
     ENV_RUNNER_RESULTS,
