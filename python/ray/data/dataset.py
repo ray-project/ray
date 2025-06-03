@@ -808,13 +808,13 @@ class Dataset:
 
         .. testcode::
 
-                import ray
-                ds = ray.data.range(1000)
-                print(ds.map_sql("SELECT * FROM batch WHERE id > 500").count())
+            import ray
+            ds = ray.data.range(1000)
+            print(ds.map_sql("SELECT * FROM batch WHERE id > 500").count())
 
-            .. testoutput::
+        .. testoutput::
 
-                500
+            500
 
         .. tip::
             This method is useful for complicated SQL queries that are either more difficult to
