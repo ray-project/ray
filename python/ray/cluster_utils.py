@@ -296,8 +296,8 @@ class Cluster:
                 ray.shutdown()
                 raise ValueError(
                     "Removing a node that is connected to this Ray client "
-                    "is not allowed because it will break the driver."
-                    "You can use the get_other_node utility to avoid removing"
+                    "is not allowed because it will break the driver. "
+                    "You can use the get_other_node utility to avoid removing "
                     "a node that the Ray client is connected."
                 )
 

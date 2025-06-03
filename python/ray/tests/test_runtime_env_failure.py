@@ -12,8 +12,8 @@ import ray
 from ray.exceptions import RuntimeEnvSetupError
 
 
-def using_ray_client(address):
-    return address.startswith("ray://")
+def using_ray_client():
+    return ray._private.client_mode_hook.is_client_mode_enabled
 
 
 # Set scope to "class" to force this to run before start_cluster, whose scope
@@ -30,22 +30,10 @@ def fail_download():
         yield
 
 
-@pytest.fixture
-def client_connection_timeout_1s():
-    """Lower Ray Client ray.init() timeout to 1 second (default 30s) to save time"""
-    with mock.patch.dict(
-        os.environ,
-        {
-            "RAY_CLIENT_RECONNECT_GRACE_PERIOD": "1",
-        },
-    ):
-        yield
-
-
 class TestRuntimeEnvFailure:
     @pytest.mark.parametrize("plugin", ["working_dir", "py_modules"])
     def test_fail_upload(
-        self, tmpdir, monkeypatch, start_cluster, plugin, client_connection_timeout_1s
+        self, tmpdir, monkeypatch, start_cluster, plugin
     ):
         """Simulate failing to upload the working_dir to the GCS.
 
@@ -61,16 +49,15 @@ class TestRuntimeEnvFailure:
         with pytest.raises(RuntimeEnvSetupError) as e:
             ray.init(address, runtime_env=runtime_env)
         assert "Failed to upload" in str(e.value)
+        ray.shutdown()
 
     @pytest.mark.parametrize("plugin", ["working_dir", "py_modules"])
     def test_fail_download(
         self,
         tmpdir,
-        monkeypatch,
         fail_download,
         start_cluster,
         plugin,
-        client_connection_timeout_1s,
     ):
         """Simulate failing to download the working_dir from the GCS.
 
@@ -85,7 +72,7 @@ class TestRuntimeEnvFailure:
         def init_ray():
             ray.init(address, runtime_env=runtime_env)
 
-        if using_ray_client(address):
+        if using_ray_client():
             # Fails at ray.init() because the working_dir is downloaded for the
             # Ray Client server.
             with pytest.raises(ConnectionAbortedError) as e:
@@ -112,7 +99,7 @@ class TestRuntimeEnvFailure:
             ) in str(e.value)
 
     def test_eager_install_fail(
-        self, tmpdir, monkeypatch, start_cluster, client_connection_timeout_1s
+        self, tmpdir, start_cluster
     ):
         """Simulate failing to install a runtime_env in ray.init().
 
@@ -126,7 +113,7 @@ class TestRuntimeEnvFailure:
             # validation but fail during installation.
             ray.init(address, runtime_env={"pip": ["ray-nonexistent-pkg"]})
 
-        if using_ray_client(address):
+        if using_ray_client():
             # Fails at ray.init() because the `pip` package is downloaded for the
             # Ray Client server.
             with pytest.raises(ConnectionAbortedError) as e:
