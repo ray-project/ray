@@ -240,8 +240,10 @@ def convert_cluster_compute_to_kuberay_compute_config(compute_config: dict) -> d
         "headNode": {
             "instanceType": head_node_instance_type,
         },
-        "workerNodes": kuberay_worker_nodes
+        "workerNodes": kuberay_worker_nodes,
     }
+    if compute_config.get("autoscalerVersion"):
+        config["autoscalerVersion"] = compute_config.get("autoscalerVersion")
     if head_node_resources:
         config["headNode"]["resources"] = head_node_resources
     return config
