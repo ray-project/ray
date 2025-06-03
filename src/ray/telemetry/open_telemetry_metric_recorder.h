@@ -134,18 +134,6 @@ class OpenTelemetryMetricRecorder {
     return observations_by_name_.contains(name);
   }
 
-  void SetObservableMetricValue(const std::string &name,
-                                absl::flat_hash_map<std::string, std::string> &&tags,
-                                double value);
-
-  void SetSynchronousMetricValue(const std::string &name,
-                                 absl::flat_hash_map<std::string, std::string> &&tags,
-                                 double value);
-
-  bool IsObservableMetric(const std::string &name) const {
-    return observations_by_name_.contains(name);
-  }
-
   opentelemetry::nostd::shared_ptr<opentelemetry::metrics::Meter> GetMeter() {
     return meter_provider_->GetMeter(meter_name_);
   }
