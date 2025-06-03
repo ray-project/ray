@@ -62,7 +62,10 @@ from ray.serve._private.constants import (
     SERVE_LOGGER_NAME,
     SERVE_NAMESPACE,
 )
-from ray.serve._private.default_impl import create_replica_impl
+from ray.serve._private.default_impl import (
+    create_replica_impl,
+    create_replica_metrics_manager,
+)
 from ray.serve._private.http_util import (
     ASGIAppReplicaWrapper,
     ASGIArgs,
@@ -135,11 +138,13 @@ class ReplicaMetricsManager:
         replica_id: ReplicaID,
         event_loop: asyncio.BaseEventLoop,
         autoscaling_config: Optional[AutoscalingConfig],
+        ingress: bool,
     ):
         self._replica_id = replica_id
         self._metrics_pusher = MetricsPusher()
         self._metrics_store = InMemoryMetricsStore()
         self._autoscaling_config = autoscaling_config
+        self._ingress = ingress
         self._controller_handle = ray.get_actor(
             SERVE_CONTROLLER_NAME, namespace=SERVE_NAMESPACE
         )
@@ -240,15 +245,18 @@ class ReplicaMetricsManager:
 
         await self._metrics_pusher.graceful_shutdown()
 
+    def should_collect_metrics(self) -> bool:
+        return (
+            not RAY_SERVE_COLLECT_AUTOSCALING_METRICS_ON_HANDLE
+            and self._autoscaling_config
+        )
+
     def set_autoscaling_config(self, autoscaling_config: Optional[AutoscalingConfig]):
         """Dynamically update autoscaling config."""
 
         self._autoscaling_config = autoscaling_config
 
-        if (
-            not RAY_SERVE_COLLECT_AUTOSCALING_METRICS_ON_HANDLE
-            and self._autoscaling_config
-        ):
+        if self.should_collect_metrics():
             self._metrics_pusher.start()
 
             # Push autoscaling metrics to the controller periodically.
@@ -327,11 +335,13 @@ class ReplicaBase(ABC):
         init_kwargs: Dict,
         deployment_config: DeploymentConfig,
         version: DeploymentVersion,
+        ingress: bool,
     ):
         self._version = version
         self._replica_id = replica_id
         self._deployment_id = replica_id.deployment_id
         self._deployment_config = deployment_config
+        self._ingress = ingress
         self._component_name = f"{self._deployment_id.name}"
         if self._deployment_id.app_name:
             self._component_name = (
@@ -370,10 +380,11 @@ class ReplicaBase(ABC):
         # servable_object will be populated in `initialize_and_get_metadata`.
         self._set_internal_replica_context(servable_object=None)
 
-        self._metrics_manager = ReplicaMetricsManager(
-            replica_id,
-            self._event_loop,
-            self._deployment_config.autoscaling_config,
+        self._metrics_manager = create_replica_metrics_manager(
+            replica_id=replica_id,
+            event_loop=self._event_loop,
+            autoscaling_config=self._deployment_config.autoscaling_config,
+            ingress=ingress,
         )
 
         self._port: Optional[int] = None
@@ -941,6 +952,7 @@ class ReplicaActor:
         serialized_init_kwargs: bytes,
         deployment_config_proto_bytes: bytes,
         version: DeploymentVersion,
+        ingress: bool,
     ):
         deployment_config = DeploymentConfig.from_proto_bytes(
             deployment_config_proto_bytes
@@ -956,6 +968,7 @@ class ReplicaActor:
             init_kwargs=cloudpickle.loads(serialized_init_kwargs),
             deployment_config=deployment_config,
             version=version,
+            ingress=ingress,
         )
 
     def push_proxy_handle(self, handle: ActorHandle):

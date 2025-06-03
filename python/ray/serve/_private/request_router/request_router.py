@@ -886,11 +886,11 @@ class RequestRouter(ABC):
                         extra={"log_to_stderr": False},
                     )
 
-                replica_ranks = [list(self._replicas.values())]
+                replica_ranks = list(self._replicas.values())
                 chosen_replicas: List[
                     List[RunningReplica]
                 ] = await self.choose_replicas(
-                    replicas_ranks=replica_ranks,
+                    candidate_replicas=replica_ranks,
                     pending_request=pending_request,
                 )
                 for replicas in chosen_replicas:
@@ -1075,7 +1075,7 @@ class RequestRouter(ABC):
     @abstractmethod
     async def choose_replicas(
         self,
-        replicas_ranks: List[List[RunningReplica]],
+        candidate_replicas: List[RunningReplica],
         pending_request: Optional[PendingRequest] = None,
     ) -> List[List[RunningReplica]]:
         """Chooses a subset of candidate replicas from available replicas.
@@ -1085,9 +1085,8 @@ class RequestRouter(ABC):
         replica selection.
 
         Args:
-            replicas_ranks: A list of lists of replicas, where each inner list
-                represents a rank of replicas. The first rank is the most
-                preferred and the last rank is the least preferred.
+            candidate_replicas: A list of candidate replicas to be considered in the
+                policy.
             pending_request: The request to be routed. This is used to
                 determine which replicas are eligible for routing.
 

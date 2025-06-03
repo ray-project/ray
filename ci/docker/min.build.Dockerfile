@@ -20,17 +20,24 @@ MINIMAL_INSTALL=1 PYTHON=${PYTHON_VERSION} ci/env/install-dependencies.sh
 rm -rf python/ray/thirdparty_files
 
 # install test requirements
-python -m pip install -U pytest==7.0.1 pip-tools==7.3.0
+python -m pip install -U pip-tools==7.3.0
+echo "pytest==7.0.1" > /tmp/min_build_requirements.txt
+if [[ "${EXTRA_DEPENDENCY}" == "serve" ]]; then
+   echo "httpx==0.27.2" >> /tmp/min_build_requirements.txt
+fi
 
 # install extra dependencies
 if [[ "${EXTRA_DEPENDENCY}" == "core" ]]; then
   ./ci/env/install-core-prerelease-dependencies.sh
 elif [[ "${EXTRA_DEPENDENCY}" == "ml" ]]; then
-  pip-compile -o min_requirements.txt python/setup.py --extra tune
+  pip-compile -o min_requirements.txt /tmp/min_build_requirements.txt python/setup.py --extra tune
 elif [[ "${EXTRA_DEPENDENCY}" == "default" ]]; then
-  pip-compile -o min_requirements.txt python/setup.py --extra default
+  pip-compile -o min_requirements.txt /tmp/min_build_requirements.txt python/setup.py --extra default
 elif [[ "${EXTRA_DEPENDENCY}" == "serve" ]]; then
-  pip-compile -o min_requirements.txt python/setup.py --extra serve-grpc
+  pip-compile -o min_requirements.txt /tmp/min_build_requirements.txt python/setup.py --extra "serve-grpc"
+fi
+if [[ -f /tmp/min_build_requirements.txt ]]; then
+  rm /tmp/min_build_requirements.txt
 fi
 
 if [[ -f min_requirements.txt ]]; then

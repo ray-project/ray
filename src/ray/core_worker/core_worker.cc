@@ -1016,10 +1016,6 @@ void CoreWorker::Shutdown() {
     }
     task_execution_service_.stop();
   }
-  if (options_.on_worker_shutdown) {
-    // Running in a main thread.
-    options_.on_worker_shutdown(GetWorkerID());
-  }
 
   task_event_buffer_->FlushEvents(/*forced=*/true);
   task_event_buffer_->Stop();
@@ -2784,7 +2780,8 @@ Status CoreWorker::CreatePlacementGroup(
       placement_group_creation_options.soft_target_node_id,
       worker_context_.GetCurrentJobID(),
       worker_context_.GetCurrentActorID(),
-      worker_context_.CurrentActorDetached());
+      worker_context_.CurrentActorDetached(),
+      placement_group_creation_options.bundle_label_selector);
   PlacementGroupSpecification placement_group_spec = builder.Build();
   *return_placement_group_id = placement_group_id;
   RAY_LOG(INFO).WithField(placement_group_id)

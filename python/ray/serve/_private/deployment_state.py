@@ -452,6 +452,7 @@ class ActorReplicaWrapper:
                 else cloudpickle.dumps({}),
                 deployment_info.deployment_config.to_proto_bytes(),
                 self._version,
+                deployment_info.ingress,
             )
         # TODO(simon): unify the constructor arguments across language
         elif (
