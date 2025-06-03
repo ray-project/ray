@@ -568,6 +568,14 @@ class JobHead(SubprocessModule):
             )
 
         try:
+            # First, clean up jobs events
+            await self.delete_job_events(job_or_submission_id)
+
+            # Then, delete job info from GCS (via Job Agent)
+            #
+            # NOTE: We clean up from the GCS last to make sure if prior operations
+            #       fail these could be handled on retries. After job info is deleted
+            #       from GCS, this endpoint will be short-circuiting.
             job_agent_client = await self.get_target_agent()
             resp = await job_agent_client.delete_job_internal(job.submission_id)
         except Exception:
@@ -579,6 +587,19 @@ class JobHead(SubprocessModule):
         return Response(
             text=json.dumps(dataclasses.asdict(resp)), content_type="application/json"
         )
+
+    async def delete_job_events(self, job_or_submission_id):
+        dashboard_address = self._get_dashboard_http_address()
+
+        async with self.http_session.delete(
+            f"{dashboard_address}/delete_events?job_id={job_or_submission_id}"
+        ) as resp:
+            if resp.status == 404:
+                # No-op
+                pass
+            elif resp.status != 200:
+                logger.error(f"Failed to delete job events (received {resp.status}, message='{resp.text()}')")
+                raise RuntimeError(f"Request failed with status code {resp.status}: {resp.text()}")
 
     @routes.get("/api/jobs/{job_or_submission_id}")
     async def get_job_info(self, req: Request) -> Response:
