@@ -26,6 +26,7 @@ from ray.dag.dag_node_operation import (
     _extract_execution_schedule,
     _generate_actor_to_execution_schedule,
     _generate_overlapped_execution_schedule,
+    _NcclOperationType,
     _visualize_execution_schedule,
 )
 from ray.dag.dag_operation_future import DAGOperationFuture, GPUFuture
@@ -570,12 +571,12 @@ class ExecutableTask:
         return self.nccl_op_type == _P2POp.RECV
 
     @property
-    def requires_nccl_write(self) -> bool:
-        return self.nccl_op_type == _P2POp.SEND
-
-    @property
     def requires_nccl_compute(self) -> bool:
         return isinstance(self.nccl_op_type, _CollectiveOp)
+
+    @property
+    def requires_nccl_write(self) -> bool:
+        return self.nccl_op_type == _P2POp.SEND
 
     def cancel(self):
         """
@@ -616,6 +617,8 @@ class ExecutableTask:
             self.input_reader.start()
         if self.output_writer is not None:
             self.output_writer.start()
+        if self.requires_nccl_write:
+            self.nccl_op.nccl_ch.ensure_registered_as_writer()
 
         self.stream: Union["cp.cuda.Stream", nullcontext] = nullcontext()
         if not overlap_gpu_communication:
@@ -2072,7 +2075,13 @@ class CompiledDAG:
                 dag_node = self.idx_to_task[task_idx].dag_node
                 method_name = exec_task.method_name
                 actor_handle = dag_node._get_actor_handle()
-                nccl_op_type = dag_node.nccl_op_type
+                nccl_op_type = None
+                if exec_task.requires_nccl_read:
+                    nccl_op_type = _NcclOperationType.READ
+                elif exec_task.requires_nccl_compute:
+                    nccl_op_type = _NcclOperationType.COMPUTE
+                elif exec_task.requires_nccl_write:
+                    nccl_op_type = _NcclOperationType.WRITE
 
                 compute_node = _DAGOperationGraphNode(
                     _DAGNodeOperation(exec_task_idx, method_name),

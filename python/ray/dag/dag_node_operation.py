@@ -243,8 +243,9 @@ def _push_candidate_node_if_ready(
         for task_idx in node.out_edges:
             read_node = graph[task_idx]
             read_node.in_edges.pop(node.task_idx)
-            assert read_node.is_nccl_read and len(read_node.in_edges) == 0
-            _update_pending_sync_idxs(graph, read_node)
+            if read_node.is_nccl_read:
+                assert len(read_node.in_edges) == 0
+                _update_pending_sync_idxs(graph, read_node)
     # For the NCCL operation node, update it as pending.
     if len(node.sync_idxs) != 0:
         _update_pending_sync_idxs(graph, node)
@@ -328,14 +329,6 @@ def _select_next_nodes(
         candidates.remove(node)
         heapq.heapify(candidates)
 
-    # Remove the selected nodes from the candidates.
-    for node in next_nodes:
-        candidates = actor_to_candidates[node.actor_handle._actor_id]
-        #  The NCCL read nodes are not added to the candidates.
-        if node in candidates:
-            candidates.remove(node)
-            heapq.heapify(candidates)
-
     return next_nodes
 
 
@@ -376,10 +369,11 @@ def _build_dag_node_operation_graph(
         for i, node in enumerate(op_nodes):
             assert node.task_idx not in graph
             graph[node.task_idx] = node
-            if i > 0:
+            # Skip the control edge into a NCCL operation node.
+            if i > 0 and not node.is_nccl_op:
                 prev_node = op_nodes[i - 1]
-                # Skip adding a control dependency edge for the created NCCL P2P
-                # send/recv nodes, which have the same task index as the previous node.
+                # Skip the control dependency edge from/into the created NCCL P2P
+                # recv/send nodes, which have the same task index as the previous node.
                 if prev_node.task_idx != node.task_idx:
                     _add_edge(prev_node, node, control_dependency=True)
 
