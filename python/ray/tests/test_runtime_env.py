@@ -9,7 +9,6 @@ import sys
 import pytest
 
 import ray
-from ray.exceptions import RuntimeEnvSetupError
 from ray.runtime_env import RuntimeEnv, RuntimeEnvConfig
 
 
