@@ -1,0 +1,91 @@
+from typing import List, Dict
+import json
+
+class TestResults:
+    def __init__(self):
+        self.build_url = ""
+        self.buildkite_jobs = []
+        self.targets = List[BazelTarget]
+        self.stats = {}
+
+    def to_dict(self) -> Dict:
+        """Convert the test results to a dictionary for JSON serialization"""
+        return {
+            "build_url": self.build_url,
+            "buildkite_jobs": self.buildkite_jobs,
+            "targets": [target.to_dict() for target in self.targets],
+            "stats": self.stats
+        }
+
+    def set_buildkite_metadata(self, build_url: str, buildkite_jobs: Dict[str, str], commit: str):
+        self.build_url = build_url
+        self.buildkite_jobs = buildkite_jobs
+        self.commit = commit
+
+    def set_targets(self, targets: List[str]):
+        self.targets = [BazelTarget(target) for target in targets]
+
+    def set_tested_targets(self, tested_targets: Dict[str, List[str]]):
+        self.tested_targets = tested_targets
+
+    def set_untested_targets(self, untested_targets: Dict[str, List[str]]):
+        self.untested_targets = untested_targets
+
+    def save_test_results(self, filename: str = "results/test_results.json"):
+        """Save test results to a JSON file"""
+        print(f"saving test results to {filename}")
+        self.targets = [target for target in self.targets if not target.tested]
+        with open(filename, "w") as f:
+            json.dump(self.to_dict(), f, indent=4)
+
+    def calculate_test_coverage(self):
+        tested_targets, tested_files, untested_targets, untested_files = 0, 0, 0, 0
+        for target in self.targets:
+            if target.active:
+                if target.tested:
+                    tested_targets += 1
+                    tested_files += len(target.files)
+                else:
+                    untested_targets += 1
+                    untested_files += len(target.files)
+
+        self.stats = {
+                "tested_targets": tested_targets,
+                "tested_files": tested_files,
+                "untested_targets": untested_targets,
+                "untested_files": untested_files,
+                # "test_coverage_per_target": tested_targets / (tested_targets + untested_targets) * 100,
+                # "test_coverage_per_file": tested_files / (tested_files + untested_files) * 100
+            }
+
+class BazelTarget:
+    def __init__(self, target: str):
+        self.target_name = target
+        self.tested = False
+        self.status = ""
+        self.active = False
+        self.files = List[BazelFile]
+        self.bazel_file_location = ""
+
+    def to_dict(self) -> Dict:
+        return {
+            "target_name": self.target_name,
+            "tested": self.tested,
+            "status": self.status,
+            "active": self.active,
+            "files": [file.to_dict() for file in self.files],
+            "bazel_file_location": self.bazel_file_location
+        }
+
+    def set_files(self, files: List[str]):
+        self.files = [BazelFile(file) for file in files]
+
+class BazelFile:
+    def __init__(self, file: str):
+        self.file_name = file
+        self.file_refs = []
+
+    def to_dict(self) -> Dict:
+        return {
+            "file_refs": self.file_refs
+        }
