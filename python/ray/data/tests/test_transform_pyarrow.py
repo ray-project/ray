@@ -28,7 +28,6 @@ from ray.data.extensions import (
     ArrowTensorArray,
     ArrowTensorType,
     ArrowVariableShapedTensorType,
-    _object_extension_type_allowed,
 )
 
 
@@ -999,9 +998,6 @@ def _create_dataset(op, data):
     return ds
 
 
-@pytest.mark.skipif(
-    _object_extension_type_allowed(), reason="Arrow table supports pickled objects"
-)
 @pytest.mark.parametrize(
     "op, data",
     [

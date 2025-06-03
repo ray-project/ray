@@ -15,7 +15,6 @@ from ray.data._internal.pandas_block import (
     PandasBlockColumnAccessor,
 )
 from ray.data._internal.util import is_null
-from ray.data.extensions.object_extension import _object_extension_type_allowed
 
 # Set seed for the test for size as it related to sampling
 np.random.seed(42)
@@ -201,9 +200,6 @@ def test_pandas_block_timestamp_ns(ray_start_regular_shared):
         ), "Timestamp mismatch in PandasBlockBuilder output"
 
 
-@pytest.mark.skipif(
-    _object_extension_type_allowed(), reason="Objects can be put into Arrow"
-)
 def test_dict_fallback_to_pandas_block(ray_start_regular_shared):
     # If the UDF returns a column with dict, this throws
     # an error during block construction because we cannot cast dicts

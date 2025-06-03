@@ -8,7 +8,6 @@ from ray.data.extensions.object_extension import (
     ArrowPythonObjectType,
     PythonObjectArray,
     PythonObjectDtype,
-    _object_extension_type_allowed,
 )
 from ray.data.extensions.tensor_extension import (
     ArrowConversionError,
@@ -40,6 +39,5 @@ __all__ = [
     "ArrowPythonObjectScalar",
     "PythonObjectArray",
     "PythonObjectDtype",
-    "_object_extension_type_allowed",
     "get_arrow_extension_tensor_types",
 ]

@@ -185,7 +185,6 @@ def test_strict_schema(ray_start_regular_shared):
     from ray.data._internal.pandas_block import PandasBlockSchema
     from ray.data.extensions.object_extension import (
         ArrowPythonObjectType,
-        _object_extension_type_allowed,
     )
     from ray.data.extensions.tensor_extension import ArrowTensorType
 
@@ -203,21 +202,13 @@ def test_strict_schema(ray_start_regular_shared):
 
     ds = ray.data.from_items([{"x": 2, "y": object(), "z": [1, 2]}])
     schema = ds.schema()
-    if _object_extension_type_allowed():
-        assert isinstance(schema.base_schema, pa.lib.Schema)
-        assert schema.names == ["x", "y", "z"]
-        assert schema.types == [
-            pa.int64(),
-            ArrowPythonObjectType(),
-            pa.list_(pa.int64()),
-        ]
-    else:
-        assert schema.names == ["x", "y", "z"]
-        assert schema.types == [
-            pa.int64(),
-            object,
-            object,
-        ]
+    assert isinstance(schema.base_schema, pa.lib.Schema)
+    assert schema.names == ["x", "y", "z"]
+    assert schema.types == [
+        pa.int64(),
+        ArrowPythonObjectType(),
+        pa.list_(pa.int64()),
+    ]
 
     ds = ray.data.from_numpy(np.ones((100, 10)))
     schema = ds.schema()

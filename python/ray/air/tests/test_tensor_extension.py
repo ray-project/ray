@@ -517,20 +517,8 @@ def test_arrow_tensor_array_getitem(chunked, restore_data_context, tensor_format
     if chunked:
         t_arr = pa.chunked_array(t_arr)
 
-    pyarrow_version = get_pyarrow_version()
-    if (
-        chunked
-        and pyarrow_version >= parse_version("8.0.0")
-        and pyarrow_version < parse_version("9.0.0")
-    ):
-        for idx in range(outer_dim):
-            item = t_arr[idx]
-            assert isinstance(item, pa.ExtensionScalar)
-            item = item.type._extension_scalar_to_ndarray(item)
-            np.testing.assert_array_equal(item, arr[idx])
-    else:
-        for idx in range(outer_dim):
-            np.testing.assert_array_equal(t_arr[idx], arr[idx])
+    for idx in range(outer_dim):
+        np.testing.assert_array_equal(t_arr[idx], arr[idx])
 
     # Test __iter__.
     for t_subarr, subarr in zip(t_arr, arr):
@@ -554,19 +542,8 @@ def test_arrow_tensor_array_getitem(chunked, restore_data_context, tensor_format
 
     np.testing.assert_array_equal(t_arr2_npy, arr[1:])
 
-    if (
-        chunked
-        and pyarrow_version >= parse_version("8.0.0")
-        and pyarrow_version < parse_version("9.0.0")
-    ):
-        for idx in range(1, outer_dim):
-            item = t_arr2[idx - 1]
-            assert isinstance(item, pa.ExtensionScalar)
-            item = item.type._extension_scalar_to_ndarray(item)
-            np.testing.assert_array_equal(item, arr[idx])
-    else:
-        for idx in range(1, outer_dim):
-            np.testing.assert_array_equal(t_arr2[idx - 1], arr[idx])
+    for idx in range(1, outer_dim):
+        np.testing.assert_array_equal(t_arr2[idx - 1], arr[idx])
 
 
 @pytest.mark.parametrize("tensor_format", ["v1", "v2"])
@@ -589,20 +566,8 @@ def test_arrow_variable_shaped_tensor_array_getitem(
     if chunked:
         t_arr = pa.chunked_array(t_arr)
 
-    pyarrow_version = get_pyarrow_version()
-    if (
-        chunked
-        and pyarrow_version >= parse_version("8.0.0")
-        and pyarrow_version < parse_version("9.0.0")
-    ):
-        for idx in range(outer_dim):
-            item = t_arr[idx]
-            assert isinstance(item, pa.ExtensionScalar)
-            item = item.type._extension_scalar_to_ndarray(item)
-            np.testing.assert_array_equal(item, arr[idx])
-    else:
-        for idx in range(outer_dim):
-            np.testing.assert_array_equal(t_arr[idx], arr[idx])
+    for idx in range(outer_dim):
+        np.testing.assert_array_equal(t_arr[idx], arr[idx])
 
     # Test __iter__.
     for t_subarr, subarr in zip(t_arr, arr):
@@ -628,19 +593,8 @@ def test_arrow_variable_shaped_tensor_array_getitem(
     for t_subarr, subarr in zip(t_arr2_npy, arr[1:]):
         np.testing.assert_array_equal(t_subarr, subarr)
 
-    if (
-        chunked
-        and pyarrow_version >= parse_version("8.0.0")
-        and pyarrow_version < parse_version("9.0.0")
-    ):
-        for idx in range(1, outer_dim):
-            item = t_arr2[idx - 1]
-            assert isinstance(item, pa.ExtensionScalar)
-            item = item.type._extension_scalar_to_ndarray(item)
-            np.testing.assert_array_equal(item, arr[idx])
-    else:
-        for idx in range(1, outer_dim):
-            np.testing.assert_array_equal(t_arr2[idx - 1], arr[idx])
+    for idx in range(1, outer_dim):
+        np.testing.assert_array_equal(t_arr2[idx - 1], arr[idx])
 
 
 @pytest.mark.parametrize("tensor_format", ["v1", "v2"])
