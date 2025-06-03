@@ -6,9 +6,39 @@ _common/ (not in tests/) to be accessible in the Ray package distribution.
 """
 
 import asyncio
+import os
+import tempfile
+import errno
 
-import ray
+try:
+    import ray
 
+    RAY_AVAILABLE = True
+except ImportError:
+    RAY_AVAILABLE = False
+
+# Always try to import the actual function for testing
+try:
+    import sys
+
+    sys.path.insert(0, os.path.dirname(__file__))
+    from utils import try_to_create_directory as ray_try_to_create_directory
+    from utils import get_system_memory as ray_get_system_memory
+    from utils import load_class as ray_load_class
+
+    RAY_FUNCTION_AVAILABLE = True
+except ImportError:
+    RAY_FUNCTION_AVAILABLE = False
+
+try:
+    import psutil
+
+    PSUTIL_AVAILABLE = True
+except ImportError:
+    PSUTIL_AVAILABLE = False
+
+
+if RAY_AVAILABLE:
 
 @ray.remote(num_cpus=0)
 class SignalActor:
@@ -22,19 +52,19 @@ class SignalActor:
         self.ready_event = asyncio.Event()
         self.num_waiters = 0
 
-    def send(self, clear: bool = False):
-        self.ready_event.set()
-        if clear:
-            self.ready_event.clear()
+        def send(self, clear: bool = False):
+            self.ready_event.set()
+            if clear:
+                self.ready_event.clear()
 
-    async def wait(self, should_wait: bool = True):
-        if should_wait:
-            self.num_waiters += 1
-            await self.ready_event.wait()
-            self.num_waiters -= 1
+        async def wait(self, should_wait: bool = True):
+            if should_wait:
+                self.num_waiters += 1
+                await self.ready_event.wait()
+                self.num_waiters -= 1
 
-    async def cur_num_waiters(self) -> int:
-        return self.num_waiters
+        async def cur_num_waiters(self) -> int:
+            return self.num_waiters
 
 
 @ray.remote(num_cpus=0)
@@ -48,11 +78,11 @@ class Semaphore:
     def __init__(self, value: int = 1):
         self._sema = asyncio.Semaphore(value=value)
 
-    async def acquire(self):
-        await self._sema.acquire()
+        async def acquire(self):
+            await self._sema.acquire()
 
-    async def release(self):
-        self._sema.release()
+        async def release(self):
+            self._sema.release()
 
     async def locked(self) -> bool:
         return self._sema.locked()
