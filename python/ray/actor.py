@@ -127,14 +127,14 @@ def method(*args, **kwargs):
     return annotate_method
 
 
-class ActorMethodShell:
-    """A class used to invoke an actor method.
+class ActorMethodMetadata:
+    """A container for the metadata required to invoke an actor method.
 
-    This class holds static metadata about the actor method, such as
-    the method name, number of return values, and whether the method is a
-    generator. It does not hold a reference to the actor handle.
-    This is used to create ActorMethod objects that hold a strong reference
-    to the actor handle for the duration of the invocation.
+    This class intentionally does *not* hold a reference to the `ActorHandle`, as that causes
+    a circular reference that delays `ActorHandle` destruction until the Python GC runs.
+
+    Instead, it can be used as a factory to lazily generate `ActorMethod` instances that can
+    be used to submit actor tasks for this method.
     """
 
     def __init__(
@@ -150,7 +150,7 @@ class ActorMethodShell:
         signature: Optional[List[inspect.Parameter]] = None,
         tensor_transport: Optional[TypeTensorTransportEnum] = None,
     ):
-        """Initialize an ActorMethodShell.
+        """Initialize an ActorMethodMetadata.
 
         Args:
             method_name: The name of the actor method.
@@ -167,7 +167,7 @@ class ActorMethodShell:
             signature: The signature of the actor method.
             tensor_transport: The tensor transport protocol to use for the actor method.
         """
-        self.method_name = method_name
+        self._method_name = method_name
 
         # Default case.
         if num_returns is None:
@@ -175,32 +175,32 @@ class ActorMethodShell:
                 num_returns = "streaming"
             else:
                 num_returns = ray_constants.DEFAULT_ACTOR_METHOD_NUM_RETURN_VALS
-        self.num_returns = num_returns
-        self.max_task_retries = max_task_retries
-        self.retry_exceptions = retry_exceptions
-        self.is_generator = is_generator
-        self.generator_backpressure_num_objects = generator_backpressure_num_objects
-        self.enable_task_events = enable_task_events
-        self.decorator = decorator
-        self.signature = signature
-        self.tensor_transport = tensor_transport
+        self._num_returns = num_returns
+        self._max_task_retries = max_task_retries
+        self._retry_exceptions = retry_exceptions
+        self._is_generator = is_generator
+        self._generator_backpressure_num_objects = generator_backpressure_num_objects
+        self._enable_task_events = enable_task_events
+        self._decorator = decorator
+        self._signature = signature
+        self._tensor_transport = tensor_transport
 
-    def bind(self, actor_handle):
+    def bind(self, actor_handle: "ActorHandle") -> "ActorMethod":
         """
         Produce a bound ActorMethod that holds a strong reference to actor_handle.
         """
         return ActorMethod(
             actor_handle,
-            self.method_name,
-            self.num_returns,
-            self.max_task_retries,
-            self.retry_exceptions,
-            self.is_generator,
-            self.generator_backpressure_num_objects,
-            self.enable_task_events,
-            decorator=self.decorator,
-            signature=self.signature,
-            tensor_transport=self.tensor_transport,
+            self._method_name,
+            self._num_returns,
+            self._max_task_retries,
+            self._retry_exceptions,
+            self._is_generator,
+            self._generator_backpressure_num_objects,
+            self._enable_task_events,
+            decorator=self._decorator,
+            signature=self._signature,
+            tensor_transport=self._tensor_transport,
         )
 
 
@@ -210,29 +210,28 @@ class ActorMethodShell:
 class ActorMethod:
     """A class used to invoke an actor method.
 
-    Note: When bound (via ActorMethodShell.bind), each instance holds a
-    strong reference to its ActorHandle for the duration of the invocation,
-    preventing premature GC and simplifying lifecycle semantics.
+    Note: This class should not be instantiated directly. Instead, it should
+    only be used as a return value from the `@ray.method` decorator.
 
     Attributes:
-        actor: A handle to the actor.
-        method_name: The name of the actor method.
-        num_returns: The default number of return values that the method
+        _actor: A handle to the actor.
+        _method_name: The name of the actor method.
+        _num_returns: The default number of return values that the method
             invocation should return. If None is given, it uses
             DEFAULT_ACTOR_METHOD_NUM_RETURN_VALS for a normal actor task
             and "streaming" for a generator task (when `is_generator` is True).
-        max_task_retries: Number of retries on method failure.
-        retry_exceptions: Boolean of whether you want to retry all user-raised
+        _max_task_retries: Number of retries on method failure.
+        _retry_exceptions: Boolean of whether you want to retry all user-raised
             exceptions, or a list of allowlist exceptions to retry.
-        is_generator: True if a given method is a Python generator.
-        generator_backpressure_num_objects: Generator-only config.
+        _is_generator: True if a given method is a Python generator.
+        _generator_backpressure_num_objects: Generator-only config.
             If a number of unconsumed objects reach this threshold,
             a actor task stop pausing.
         enable_task_events: True if task events is enabled, i.e., task events from
             the actor should be reported. Defaults to True.
-        signature: The signature of the actor method. It is None only when cross
+        _signature: The signature of the actor method. It is None only when cross
             language feature is used.
-        decorator: An optional decorator that should be applied to the actor
+        _decorator: An optional decorator that should be applied to the actor
             method invocation (as opposed to the actor method execution) before
             invoking the method. The decorator must return a function that
             takes in two arguments ("args" and "kwargs"). In most cases, it
@@ -1582,10 +1581,12 @@ class ActorHandle:
                 )
                 self._ray_function_descriptor[method_name] = function_descriptor
 
-        # Build one ActorMethodShell per method, avoid cycles
+        # Build an ActorMethodMetadata per method to cache expensive parsing logic.
+        # The ActorMethodMetadata doesn't take a reference to this ActorHandle to avoid a circular reference.
+        # Instead, we will lazily bind this ActorHandle to the ActorMethodMetadata when a method is invoked.
         self._method_shells = {}
         for method_name, method_signature in self._ray_method_signatures.items():
-            self._method_shells[method_name] = ActorMethodShell(
+            self._method_shells[method_name] = ActorMethodMetadata(
                 method_name=method_name,
                 num_returns=self._ray_method_num_returns.get(method_name, None),
                 max_task_retries=self._ray_method_max_task_retries.get(
@@ -1747,9 +1748,33 @@ class ActorHandle:
 
         return object_refs
 
-    def __getattr__(self, item):
-        # first, if this name matches a remote method, bind and return it
-        if hasattr(self, "_method_shells") and item in self._method_shells:
+    def __getattr__(self, item: str) -> Any:
+        """Handle dynamic attribute access for actor methods.
+
+        This method is called when accessing attributes that don't exist as direct
+        instance attributes. It's the core mechanism for actor method invocation.
+
+        For Python actors (99% of cases):
+        - We use strict validation: only methods in _method_shells are allowed
+        - This prevents typos and provides clear error messages
+        - Returns a bound ActorMethod created from the cached ActorMethodShell
+
+        For cross-language actors:
+        - We can't validate method names client-side (the target language defines them)
+        - We allow arbitrary method calls to pass through
+        - Some Python-specific methods like `__ray_terminate__` are blocked with warnings
+
+        Args:
+            item: The attribute/method name being accessed
+
+        Returns:
+            ActorMethod: A bound method ready for .remote() calls
+
+        Raises:
+            AttributeError: For Python actors when accessing non-existent methods
+        """
+        # If this name matches a remote method, bind and return it.
+        if item in self._method_shells:
             return self._method_shells[item].bind(self)
 
         if not self._ray_is_cross_language:

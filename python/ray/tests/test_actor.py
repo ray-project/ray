@@ -1696,6 +1696,7 @@ def test_one_liner_actor_method_invocation(shutdown_only):
 
     # This one‐liner used to fail with “Lost reference to actor”.
     # Now it should succeed and return our value.
+    # See https://github.com/ray-project/ray/pull/53178
     result = ray.get(Foo.remote().method.remote())
     assert result == "ok"
 
