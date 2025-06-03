@@ -49,7 +49,7 @@ sudo apt-get install -y kmod pkg-config librdmacm-dev
     echo "Installing GDRCopy"
     cd "${TEMP_DIR}"
     [[ -d "/lib/modules/${KVER}" ]] || sudo apt-get install linux-headers-${KVER} -y
-    NV_DRIVER_VERSION="570.153.02"
+    NV_DRIVER_VERSION="550.163.01"
     wget "https://us.download.nvidia.com/XFree86/Linux-x86_64/${NV_DRIVER_VERSION}/NVIDIA-Linux-x86_64-${NV_DRIVER_VERSION}.run" -q
     sh NVIDIA-Linux-x86_64-${NV_DRIVER_VERSION}.run -x
     sudo NVIDIA-Linux-x86_64-${NV_DRIVER_VERSION}/nvidia-installer \
