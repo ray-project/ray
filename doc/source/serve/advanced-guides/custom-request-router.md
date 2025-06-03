@@ -11,7 +11,7 @@ This guide shows how to use RequestRouter API to achieve custom load balancing a
 replicas of a given deployment. It will cover the following:
 - Define a simple uniform request router for load balancing
 - Deploy an app with the uniform request router
-- Utility Mixins for Multiplex and Locality aware request routing
+- Utility mixins for request routing
 - Define a complex throughput-aware request router
 - Deploy an app with the throughput-aware request router
 
@@ -66,9 +66,28 @@ you need to reconfigure a request router on the deployment handle, please open a
 request on the [Ray GitHub repository](https://github.com/ray-project/ray/issues)
 :::
 
-(multiplexed-locality-mixin)=
-## Utility Mixins for Multiplex and Locality aware request routing
-TODO
+(utility-mixin)=
+## Utility mixins request routing
+Ray Serve provides utility mixins that can be used to extend the functionality of the
+request router. These mixins can be used to implement common routing policies such as
+locality-aware routing, multiplexed model support, and FIFO request routing.
+
+- `ray.serve.request_router.FIFOMixin`: This mixin implements first in first out (FIFO)
+  request routing. The default behavior for the request router is to route requests to
+  the exact replica got assigned by the request passed to the `choose_replicas`. 
+  This mixin is useful for routing algorithm that can work independently of the
+  request content so the requests can be routed as soon as possible in the order they
+  were received.
+- `ray.serve.request_router.LocalityMixin`: This mixin implements locality-aware
+  request routing. It updates the internal states when between replica updates and offer
+  helpers `apply_locality_routing` and `rank_replicas_via_locality` to route and ranks
+  replicas based on their locality to the request, which can be useful for reducing
+  latency and improving performance.
+- `ray.serve.request_router.MultiplexedModelMixin`: This mixin implements
+  multiplexed model support. It updates the internal states when between replica updates
+  and offer helpers `apply_multiplex_routing` and `rank_replicas_via_multiplex` to route
+  and ranks replicas based on their multiplexed model is of the request.
+
 
 (throughput-aware-request-router)=
 ## Define a complex throughput-aware request router
