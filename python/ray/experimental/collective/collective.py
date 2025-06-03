@@ -5,18 +5,20 @@ import uuid
 import ray
 from ray.experimental.collective.communicator import Communicator, CommunicatorHandle
 from ray.experimental.collective.util import get_address_and_port
+import ray.experimental.internal_kv as internal_kv
 from ray.util.collective.types import Backend
+from ray.util.collective.util import get_master_address_metadata_key
 from ray.util.collective.util import Info
 
-
-_local_communicator_manager: "Optional[LocalCommunicatorManager]" = None
-_local_communicator_manager_lock = threading.Lock()
 
 _remote_communicator_manager: "Optional[RemoteCommunicatorManager]" = None
 _remote_communicator_manager_lock = threading.Lock()
 
 
 class RemoteCommunicatorManager:
+    """Singleton class to store the mapping between actors and communicators
+    that the actors are a part of.
+    """
     def __init__(self):
         # Handles to communicators that we created. Key is a user-provided
         # name or UUID.
@@ -56,55 +58,26 @@ class RemoteCommunicatorManager:
         return collectives
 
 
-class LocalCommunicatorManager:
-    """
-    Class to manage all communicators that we are a member of.
-    """
-
-    def __init__(self):
-        # Communicators that we are a member of. Key is a user-provided
-        # name or UUID.
-        self._communicators: Dict[str, Communicator] = {}
-
-    @staticmethod
-    def get() -> "LocalCommunicatorManager":
-        global _local_communicator_manager
-        with _local_communicator_manager_lock:
-            if _local_communicator_manager is None:
-                _local_communicator_manager = LocalCommunicatorManager()
-            return _local_communicator_manager
-
-    def add_communicator(self, name: str, comm: Communicator):
-        self._communicators[name] = comm
-
-    def remove_communicator(self, name: str) -> Communicator:
-        try:
-            popped = self._communicators.pop(name)
-        except KeyError:
-            popped = None
-        return popped
-
-
 def _do_init_collective_group(
     self,
     world_size: int,
     rank: int,
-    backend=Backend.NCCL,
+    backend: str = Backend.NCCL,
     name: str = "default",
 ):
+    """Helper method that runs as a task on a remote actor to create a
+    collective group.
+    """
     ray.util.collective.init_collective_group(
         world_size, rank, backend, group_name=name
     )
 
-    manager = LocalCommunicatorManager.get()
-    comm = Communicator(name, rank, backend)
-    manager.add_communicator(name, comm)
-
 
 def _do_destroy_collective_group(self, name):
-    manager = LocalCommunicatorManager.get()
-    if manager.remove_communicator(name):
-        ray.util.collective.destroy_collective_group(name)
+    """Helper method that runs as a task on a remote actor to destroy a
+    collective group.
+    """
+    ray.util.collective.destroy_collective_group(name)
 
 
 def get_collective_groups(
@@ -171,37 +144,35 @@ def create_collective_group(
     if len(set(actor_ids)) != len(actor_ids):
         raise ValueError(f"All actors must be unique, got: {actors}")
 
-    info_actor = None
+    metadata_key = None
     if backend == Backend.TORCH_GLOO:
         # Perform extra setup for torch.distributed.
         # torch.distributed requires a master address and port. Find a suitable
         # port on one of the actors.
-        master_metadata = ray.get(
+        master_addr, master_port = ray.get(
             actors[0].__ray_call__.remote(lambda self: get_address_and_port())
         )
 
         # Store the metadata on a named actor that all of the other
         # actors can access.
-        info_actor_name = "info_" + name
-        info_actor = Info.options(name=info_actor_name).remote()
-        actor_ids = [a._ray_actor_id for a in actors]
-        ray.get(
-            info_actor.set_info.remote(
-                actor_ids, world_size, -1, backend, -1, master_metadata
+        metadata_key = get_master_address_metadata_key(name)
+        internal_kv._internal_kv_put(
+                metadata_key, f"{master_addr}:{master_port}"
+                )
+
+    try:
+        init_tasks = [
+            actor.__ray_call__.remote(
+                _do_init_collective_group, world_size, rank, backend, name
             )
-        )
-
-    init_tasks = [
-        actor.__ray_call__.remote(
-            _do_init_collective_group, world_size, rank, backend, name
-        )
-        for rank, actor in enumerate(actors)
-    ]
-    ray.get(init_tasks)
-
-    # Make sure the temporary named actor is cleaned up.
-    if info_actor is not None:
-        ray.kill(info_actor, no_restart=True)
+            for rank, actor in enumerate(actors)
+        ]
+        ray.get(init_tasks)
+    finally:
+        # Clean up the metadata once collective group is initialized
+        # (or failed to initialize).
+        if metadata_key is not None:
+            internal_kv._internal_kv_del(metadata_key)
 
     # Group was successfully created.
     comm = CommunicatorHandle(actors, name, backend)
@@ -239,6 +210,12 @@ def destroy_collective_group(group_or_name: Union[CommunicatorHandle, str]):
 
 
 def destroy_all_collective_groups():
+    """
+    Destroy all collective groups. This will destroy all collective groups that
+    were previously created by this process. After this function returns, the
+    actors participating in those collective groups can be reused to create a
+    new collective group.
+    """
     manager = RemoteCommunicatorManager.get()
     for collective in manager.get_collective_groups():
         destroy_collective_group(collective.name)

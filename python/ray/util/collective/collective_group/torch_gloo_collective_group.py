@@ -3,6 +3,8 @@ import torch
 import torch.distributed as dist
 import ray
 
+import ray.experimental.internal_kv as internal_kv
+from ray.util.collective.util import get_master_address_metadata_key
 from ray.util.collective.collective_group.base_collective_group import BaseGroup
 from ray.util.collective.types import (
     AllReduceOptions,
@@ -33,18 +35,19 @@ class TorchGLOOGroup(BaseGroup):
         rank: int,
         group_name: str,
     ):
+        metadata_key = get_master_address_metadata_key(group_name)
         info_actor_name = "info_" + group_name
         try:
-            info_actor = ray.get_actor(info_actor_name)
+            metadata = internal_kv._internal_kv_get(metadata_key)
         except ValueError:
             raise RuntimeError(
-                f"TorchGLOOGroup expected actor with name `{info_actor_name}` to be created. TorchGLOOGroup should not be instantiated directly. Use ray.experimental.collective.create_collective_group to create the group."
+                f"TorchGLOOGroup expected metadata in internal_kv with name `{metadata_key}`. TorchGLOOGroup should not be instantiated directly. Use ray.experimental.collective.create_collective_group to create the group."
             )
 
-        _, _, _, _, _, metadata = ray.get(info_actor.get_info.remote())
-        master_addr, master_port = metadata
+        metadata = metadata.decode()
+        master_addr, master_port = metadata.split(":")
         os.environ["MASTER_ADDR"] = master_addr
-        os.environ["MASTER_PORT"] = str(master_port)
+        os.environ["MASTER_PORT"] = master_port
 
         dist.init_process_group(
             backend="gloo", init_method="env://", world_size=world_size, rank=rank

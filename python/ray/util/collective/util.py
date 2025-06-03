@@ -56,10 +56,9 @@ class Info:
         self.rank = -1
         self.backend = None
         self.gloo_timeout = 30000
-        self.group_metadata = None
 
     def set_info(
-        self, ids, world_size, rank, backend, gloo_timeout, group_metadata=None
+        self, ids, world_size, rank, backend, gloo_timeout
     ):
         """Store collective information."""
         self.ids = ids
@@ -67,7 +66,6 @@ class Info:
         self.rank = rank
         self.backend = backend
         self.gloo_timeout = gloo_timeout
-        self.group_metadata = group_metadata
 
     def get_info(self):
         """Get previously stored collective information."""
@@ -77,5 +75,8 @@ class Info:
             self.rank,
             self.backend,
             self.gloo_timeout,
-            self.group_metadata,
         )
+
+
+def get_master_address_metadata_key(group_name: str):
+    return f"collective_group_master_address_{group_name}"
