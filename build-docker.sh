@@ -67,7 +67,7 @@ cp python/requirements_compiled.txt "${RAY_DEPS_BUILD_DIR}/python/requirements_c
 
 BUILD_CMD=(
     docker build "${BUILD_ARGS[@]}"
-    --build-arg BASE_IMAG="$BASE_IMAGE"
+    --build-arg BASE_IMAGE="$BASE_IMAGE"
     --build-arg PYTHON_VERSION="${PYTHON_VERSION}"
     -t "rayproject/base-deps:dev$GPU" "${RAY_DEPS_BUILD_DIR}"
 )
