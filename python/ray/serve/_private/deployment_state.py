@@ -1181,7 +1181,7 @@ class DeploymentReplica:
         """
         return self._actor.check_health()
 
-    def get_routing_stats(self) -> Optional[Dict[str, Any]]:
+    def pull_routing_stats(self) -> Optional[Dict[str, Any]]:
         """Get the latest response from the routing stats on the replica.
 
         Returns None if the replica is still calculating the stats.
@@ -2235,7 +2235,7 @@ class DeploymentState:
                         "application": self.app_name,
                     },
                 )
-                routing_stats = replica.get_routing_stats()
+                routing_stats = replica.pull_routing_stats()
                 replica.record_routing_stats(routing_stats)
             else:
                 logger.warning(

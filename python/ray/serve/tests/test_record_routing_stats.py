@@ -16,15 +16,15 @@ from ray.serve.handle import DeploymentHandle
 )
 class Patient:
     def __init__(self):
-        self.routing_stats = {}
-        self.should_hang = False
-        self.should_fail = False
+        self.routing_stats: Dict[str, Any] = {}
+        self.should_hang: Optional[asyncio.Event] = None
+        self.should_fail: bool = False
         context = _get_internal_replica_context()
         self.replica_id: ReplicaID = context.replica_id
 
     async def record_routing_stats(self):
         if self.should_hang:
-            await asyncio.sleep(10000)
+            await self.should_hang.wait()
 
         if self.should_fail:
             raise Exception("intended to fail")
@@ -42,7 +42,7 @@ class Patient:
         self.should_fail = True
 
     def set_should_hang(self):
-        self.should_hang = True
+        self.should_hang = asyncio.Event()
 
 
 def check_routing_stats_recorded(
