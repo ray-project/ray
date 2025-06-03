@@ -249,5 +249,6 @@ class EventHead(
             self._event_dir,
             lambda data: self._update_events(parse_event_strings(data)),
             self._executor,
-            source_types=TARGET_EVENT_SOURCE_TYPES,
+            # NOTE: Make watcher track all event-types
+            source_types=None,
         )

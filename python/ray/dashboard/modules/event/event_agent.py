@@ -104,7 +104,8 @@ class EventAgent(dashboard_utils.DashboardAgentModule):
             self._event_dir,
             lambda data: create_task(self._cached_events.put(data)),
             self._executor,
-            source_types=TARGET_EVENT_SOURCE_TYPES,
+            # NOTE: Make watcher track all event-types
+            source_types=None,
         )
 
         await asyncio.gather(

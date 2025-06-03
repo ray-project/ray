@@ -25,12 +25,12 @@ def _get_source_files(event_dir, source_types=None, event_file_filter=None):
     source_files = {}
 
     if source_types is not None:
-        all_source_types = set(event_consts.EVENT_SOURCE_ALL)
+        all_source_types = set(event_consts.ALL_EVENT_SOURCE_TYPES)
         assert all(
             [source in all_source_types for source in source_types]
         ), f"Only source types allowed are: {all_source_types}, got: {source_types}"
     else:
-        source_types = event_consts.EVENT_SOURCE_ALL
+        source_types = event_consts.ALL_EVENT_SOURCE_TYPES
 
     for source_type in source_types:
         files = []
