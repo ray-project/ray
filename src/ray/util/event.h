@@ -125,6 +125,8 @@ class LogEventReporter : public BaseEventReporter {
 
   virtual void Flush();
 
+  std::shared_ptr<spdlog::logger> getLogSinkLazy();
+
   std::string GetReporterKey() override { return "log.event.reporter"; }
 
  protected:
