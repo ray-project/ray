@@ -5,11 +5,11 @@ import pytest
 
 import ray
 from ray._private.test_utils import (
-    Semaphore,
     client_test_enabled,
     wait_for_condition,
     get_gcs_memory_used,
 )
+from ray._common.test_utils import Semaphore
 from ray.experimental.internal_kv import _internal_kv_list
 
 

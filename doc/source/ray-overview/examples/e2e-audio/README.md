@@ -19,10 +19,6 @@ Because this example expresses every as a Ray transformation the same script sca
 
 ```bash
 # Install dependencies.
-pip install -q "ray[data]==2.23.0" "torch==2.5.1" "torchaudio==2.2.3" \
-              "transformers==4.47.1" "datasets==2.18.0"
-
-# Run the pipeline locally.
-python e2e_audio/curation.py
+pip install -r requirements.txt
 ```
 

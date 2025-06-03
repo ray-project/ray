@@ -1,15 +1,15 @@
 import subprocess
-import docker
 import re
 from datetime import datetime
 from typing import List, Optional, Callable, Tuple
 import os
 import sys
 from dateutil import parser
-import runfiles
 import platform
 
+import docker
 import requests
+import runfiles
 
 from ci.ray_ci.utils import logger
 from ci.ray_ci.builder_container import DEFAULT_ARCHITECTURE, DEFAULT_PYTHON_VERSION

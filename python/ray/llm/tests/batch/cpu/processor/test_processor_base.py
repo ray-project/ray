@@ -6,8 +6,8 @@ import pytest
 import ray
 from ray.llm._internal.batch.processor.base import (
     Processor,
-    ProcessorConfig,
     ProcessorBuilder,
+    ProcessorConfig,
 )
 from ray.llm._internal.batch.stages.base import StatefulStage, StatefulStageUDF
 
