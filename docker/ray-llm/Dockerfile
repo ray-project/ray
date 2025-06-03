@@ -7,6 +7,7 @@ COPY python/requirements_*.txt ./
 
 ARG KVER="5.15.0-139-generic"
 ARG ROOT_DIR="/usr/local"
+ARG GDR_COPY_VER="2.4.1"
 ARG GDR_HOME="${ROOT_DIR}/gdrcopy"
 ARG UCX_HOME="${ROOT_DIR}/ucx"
 ARG NIXL_HOME="${ROOT_DIR}/nixl"
@@ -59,9 +60,9 @@ sudo apt-get install -y kmod pkg-config librdmacm-dev
         --utility-prefix="/usr"
 
     (
-        wget "https://github.com/NVIDIA/gdrcopy/archive/refs/tags/v2.5.tar.gz" -q
-        tar xzf v2.5.tar.gz; rm v2.5.tar.gz
-        cd gdrcopy-2.5
+        wget "https://github.com/NVIDIA/gdrcopy/archive/refs/tags/v${GDR_COPY_VER}.tar.gz" -q
+        tar xzf v${GDR_COPY_VER}.tar.gz; rm v${GDR_COPY_VER}.tar.gz
+        cd gdrcopy-${GDR_COPY_VER}
         sudo make prefix=$GDR_HOME CUDA=$CUDA_HOME KVER=${KVER} all install
     )
 
