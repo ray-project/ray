@@ -129,14 +129,10 @@ class EventHead(
         all_job_events = defaultdict(JobEvents)
         for event in event_list:
             event_id = event["event_id"]
-            custom_fields = event.get("custom_fields")
-            system_event = False
-            if custom_fields:
-                job_id = custom_fields.get("job_id", "global") or "global"
-            else:
-                job_id = "global"
-            if system_event is False:
-                all_job_events[job_id][event_id] = event
+            custom_fields = event.get("custom_fields", {})
+            job_id = custom_fields.get("job_id") or "global"
+
+            all_job_events[job_id][event_id] = event
 
         for job_id, new_job_events in all_job_events.items():
             job_events = self.events[job_id]
