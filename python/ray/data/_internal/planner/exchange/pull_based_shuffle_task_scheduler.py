@@ -6,7 +6,6 @@ from ray.data._internal.execution.interfaces import RefBundle, TaskContext
 from ray.data._internal.planner.exchange.interfaces import (
     ExchangeTaskScheduler,
     ExchangeTaskSpec,
-    _unzip_tuples,
 )
 from ray.data._internal.remote_fn import cached_remote_fn
 from ray.data._internal.stats import StatsDict
@@ -14,7 +13,11 @@ from ray.data._internal.util import (
     convert_bytes_to_human_readable_str,
     unify_block_metadata_schema,
 )
-from ray.data.block import to_stats
+from ray.data.block import (
+    _decompose_metadata_and_schema,
+    _unzip_list_of_tuples,
+    to_stats,
+)
 
 if TYPE_CHECKING:
     import pyarrow as pa
@@ -132,12 +135,12 @@ class PullBasedShuffleTaskScheduler(ExchangeTaskScheduler):
         # Release map task outputs from the Ray object store.
         del shuffle_map_out
 
-        new_blocks, new_metadata_schema = _unzip_tuples(2, shuffle_reduce_out)
+        new_blocks, new_metadata_schema = _unzip_list_of_tuples(2, shuffle_reduce_out)
         new_metadata_schema = reduce_bar.fetch_until_complete(list(new_metadata_schema))
 
         self.warn_on_high_local_memory_store_usage()
 
-        new_metadata, new_schema = _unzip_tuples(2, new_metadata_schema)
+        new_metadata, new_schema = _decompose_metadata_and_schema(new_metadata_schema)
 
         output = []
         for block, meta in zip(new_blocks, new_metadata):
@@ -153,8 +156,8 @@ class PullBasedShuffleTaskScheduler(ExchangeTaskScheduler):
                 )
             )
 
-        shuffle_map_metadata, shuffle_map_schema = _unzip_tuples(
-            2, shuffle_map_metadata_schema
+        shuffle_map_metadata, shuffle_map_schema = _decompose_metadata_and_schema(
+            shuffle_map_metadata_schema
         )
 
         stats = {

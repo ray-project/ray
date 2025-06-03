@@ -7,7 +7,6 @@ from ray.data._internal.execution.interfaces import PhysicalOperator, RefBundle
 from ray.data._internal.execution.operators.base_physical_operator import (
     InternalQueueOperatorMixin,
 )
-from ray.data._internal.planner.exchange.interfaces import _unzip_tuples
 from ray.data._internal.remote_fn import cached_remote_fn
 from ray.data._internal.split import _split_at_indices
 from ray.data._internal.stats import StatsDict
@@ -16,14 +15,16 @@ from ray.data.block import (
     Block,
     BlockAccessor,
     BlockExecStats,
-    BlockMetadata,
     BlockPartition,
+    _decompose_metadata_and_schema,
     to_stats,
 )
 from ray.data.context import DataContext
 
 if TYPE_CHECKING:
     import pyarrow as pa
+
+    from ray.data.block import MetadataAndSchema
 
 
 class ZipOperator(InternalQueueOperatorMixin, PhysicalOperator):
@@ -218,7 +219,7 @@ class ZipOperator(InternalQueueOperatorMixin, PhysicalOperator):
 
         # TODO(ekl) it might be nice to have a progress bar here.
         output_metadata_schema = ray.get(output_metadata_schema)
-        output_metadata, schema = _unzip_tuples(2, output_metadata_schema)
+        output_metadata, schema = _decompose_metadata_and_schema(output_metadata_schema)
 
         output_refs = []
         input_owned = all(b.owns_blocks for b in left_input)
@@ -269,7 +270,7 @@ class ZipOperator(InternalQueueOperatorMixin, PhysicalOperator):
 
 def _zip_one_block(
     block: Block, *other_blocks: Block, inverted: bool = False
-) -> Tuple[Block, BlockMetadata]:
+) -> Tuple[Block, "MetadataAndSchema"]:
     """Zip together `block` with `other_blocks`."""
     stats = BlockExecStats.builder()
     # Concatenate other blocks.
@@ -285,7 +286,12 @@ def _zip_one_block(
     # Zip block and other blocks.
     result = BlockAccessor.for_block(block).zip(other_block)
     br = BlockAccessor.for_block(result)
-    return result, (br.get_metadata(exec_stats=stats.build()), br.schema())
+    from ray.data.block import MetadataAndSchema
+
+    meta_schema = MetadataAndSchema(
+        metadata=br.get_metadata(exec_stats=stats.build()), schema=br.schema()
+    )
+    return result, meta_schema
 
 
 def _get_num_rows_and_bytes(block: Block) -> Tuple[int, int]:

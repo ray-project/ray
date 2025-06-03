@@ -61,7 +61,6 @@ from ray.data._internal.logical.operators.from_operators import (
 )
 from ray.data._internal.logical.operators.read_operator import Read
 from ray.data._internal.plan import ExecutionPlan
-from ray.data._internal.planner.exchange.interfaces import _unzip_tuples
 from ray.data._internal.remote_fn import cached_remote_fn
 from ray.data._internal.stats import DatasetStats
 from ray.data._internal.util import (
@@ -71,7 +70,13 @@ from ray.data._internal.util import (
     pandas_df_to_arrow_block,
     unify_block_metadata_schema,
 )
-from ray.data.block import Block, BlockAccessor, BlockExecStats, BlockMetadata
+from ray.data.block import (
+    Block,
+    BlockAccessor,
+    BlockExecStats,
+    BlockMetadata,
+    _decompose_metadata_and_schema,
+)
 from ray.data.context import DataContext
 from ray.data.dataset import Dataset, MaterializedDataset
 from ray.data.datasource import (
@@ -2825,7 +2830,7 @@ def from_pandas_refs(
     if context.enable_pandas_block:
         get_metadata_schema = cached_remote_fn(get_table_block_metadata_schema)
         metadata_schema = ray.get([get_metadata_schema.remote(df) for df in dfs])
-        metadata, schemas = _unzip_tuples(2, metadata_schema)
+        metadata, schemas = _decompose_metadata_and_schema(metadata_schema)
         execution_plan = ExecutionPlan(
             DatasetStats(metadata={"FromPandas": metadata}, parent=None),
             DataContext.get_current().copy(),
@@ -2842,9 +2847,9 @@ def from_pandas_refs(
     df_to_block = cached_remote_fn(pandas_df_to_arrow_block, num_returns=2)
 
     res = [df_to_block.remote(df) for df in dfs]
-    blocks, metadata_schema = _unzip_tuples(2, res)
+    blocks, metadata_schema = map(list, zip(*res))
     metadata_schema = ray.get(metadata_schema)
-    metadata, schemas = _unzip_tuples(2, metadata_schema)
+    metadata, schemas = _decompose_metadata_and_schema(metadata_schema)
     execution_plan = ExecutionPlan(
         DatasetStats(metadata={"FromPandas": metadata}, parent=None),
         DataContext.get_current().copy(),
@@ -2935,9 +2940,9 @@ def from_numpy_refs(
     ndarray_to_block_remote = cached_remote_fn(ndarray_to_block, num_returns=2)
 
     res = [ndarray_to_block_remote.remote(ndarray, ctx) for ndarray in ndarrays]
-    blocks, metadata_schema = _unzip_tuples(2, res)
+    blocks, metadata_schema = map(list, zip(*res))
     metadata_schema = ray.get(metadata_schema)
-    metadata, schemas = _unzip_tuples(2, metadata_schema)
+    metadata, schemas = _decompose_metadata_and_schema(metadata_schema)
 
     execution_plan = ExecutionPlan(
         DatasetStats(metadata={"FromNumpy": metadata}, parent=None),
@@ -3024,7 +3029,7 @@ def from_arrow_refs(
     get_metadata_schema = cached_remote_fn(get_table_block_metadata_schema)
     x = [get_metadata_schema.remote(t) for t in tables]
     metadata_schema = ray.get(x)
-    metadata, schemas = _unzip_tuples(2, metadata_schema)
+    metadata, schemas = _decompose_metadata_and_schema(metadata_schema)
     execution_plan = ExecutionPlan(
         DatasetStats(metadata={"FromArrow": metadata}, parent=None),
         DataContext.get_current().copy(),

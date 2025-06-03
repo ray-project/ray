@@ -53,8 +53,8 @@ from ray.data.block import (
     Block,
     BlockAccessor,
     BlockExecStats,
-    BlockMetadata,
     BlockStats,
+    MetadataAndSchema,
     to_stats,
 )
 from ray.data.context import DataContext
@@ -538,7 +538,7 @@ def _map_task(
     ctx: TaskContext,
     *blocks: Block,
     **kwargs: Dict[str, Any],
-) -> Iterator[Union[Block, List[BlockMetadata]]]:
+) -> Iterator[Union[Block, "MetadataAndSchema"]]:
     """Remote function for a single operator task.
 
     Args:
@@ -550,6 +550,8 @@ def _map_task(
         A generator of blocks, followed by the list of BlockMetadata for the blocks
         as the last generator return.
     """
+    from ray.data.block import MetadataAndSchema
+
     logger.debug(
         "Executing map task of operator %s with task index %d",
         ctx.op_name,
@@ -569,8 +571,9 @@ def _map_task(
             m_out.exec_stats.udf_time_s = map_transformer.udf_time()
             m_out.exec_stats.task_idx = ctx.task_idx
             m_out.exec_stats.max_uss_bytes = profiler.estimate_max_uss()
+            meta_schema = MetadataAndSchema(metadata=m_out, schema=s_out)
             yield b_out
-            yield (m_out, s_out)
+            yield meta_schema
             stats = BlockExecStats.builder()
             profiler.reset()
 

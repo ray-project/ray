@@ -34,6 +34,8 @@ from ray.data.context import DataContext
 if TYPE_CHECKING:
     import pyarrow as pa
 
+    from ray.data.block import MetadataAndSchema
+
 logger = logging.getLogger(__name__)
 
 
@@ -137,7 +139,7 @@ class DataOpTask(OpTask):
                 break
 
             try:
-                meta, schema = ray.get(next(self._streaming_gen))
+                meta_schema: "MetadataAndSchema" = ray.get(next(self._streaming_gen))
             except StopIteration:
                 # The generator should always yield 2 values (block and metadata)
                 # each time. If we get a StopIteration here, it means an error
@@ -151,10 +153,12 @@ class DataOpTask(OpTask):
                 except Exception as ex:
                     self._task_done_callback(ex)
                     raise ex from None
+
             self._output_ready_callback(
-                RefBundle([(block_ref, meta)], owns_blocks=True), schema
+                RefBundle([(block_ref, meta_schema.metadata)], owns_blocks=True),
+                meta_schema.schema,
             )
-            bytes_read += meta.size_bytes
+            bytes_read += meta_schema.metadata.size_bytes
         return bytes_read
 
 

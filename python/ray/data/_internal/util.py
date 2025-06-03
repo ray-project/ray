@@ -40,7 +40,11 @@ if TYPE_CHECKING:
 
     from ray.data._internal.compute import ComputeStrategy
     from ray.data._internal.planner.exchange.sort_task_spec import SortKey
-    from ray.data.block import Block, BlockMetadata, UserDefinedFunction
+    from ray.data.block import (
+        Block,
+        MetadataAndSchema,
+        UserDefinedFunction,
+    )
     from ray.data.datasource import Datasource, Reader
     from ray.util.placement_group import PlacementGroup
 
@@ -678,21 +682,22 @@ def capitalize(s: str):
 
 def pandas_df_to_arrow_block(
     df: "pandas.DataFrame",
-) -> Tuple["Block", "BlockMetadata", "pyarrow.lib.Schema"]:
-    from ray.data.block import BlockAccessor, BlockExecStats
+) -> Tuple["Block", "MetadataAndSchema"]:
+    from ray.data.block import BlockAccessor, BlockExecStats, MetadataAndSchema
 
     block = BlockAccessor.for_block(df).to_arrow()
     stats = BlockExecStats.builder()
     accessor = BlockAccessor.for_block(block)
     meta = accessor.get_metadata(exec_stats=stats.build())
     schema = accessor.schema()
-    return block, (meta, schema)
+    meta_schema = MetadataAndSchema(metadata=meta, schema=schema)
+    return block, meta_schema
 
 
 def ndarray_to_block(
     ndarray: np.ndarray, ctx: DataContext
-) -> Tuple["Block", "BlockMetadata", "pyarrow.lib.Schema"]:
-    from ray.data.block import BlockAccessor, BlockExecStats
+) -> Tuple["Block", "MetadataAndSchema"]:
+    from ray.data.block import BlockAccessor, BlockExecStats, MetadataAndSchema
 
     DataContext._set_current(ctx)
 
@@ -700,19 +705,21 @@ def ndarray_to_block(
     block = BlockAccessor.batch_to_block({"data": ndarray})
     metadata = BlockAccessor.for_block(block).get_metadata(exec_stats=stats.build())
     schema = BlockAccessor.for_block(block).schema()
-    return block, (metadata, schema)
+    meta_schema = MetadataAndSchema(metadata=metadata, schema=schema)
+    return block, meta_schema
 
 
 def get_table_block_metadata_schema(
     table: Union["pyarrow.Table", "pandas.DataFrame"],
-) -> Tuple["BlockMetadata", "pyarrow.lib.Schema"]:
-    from ray.data.block import BlockAccessor, BlockExecStats
+) -> "MetadataAndSchema":
+    from ray.data.block import BlockAccessor, BlockExecStats, MetadataAndSchema
 
     stats = BlockExecStats.builder()
     accessor = BlockAccessor.for_block(table)
     metadata = accessor.get_metadata(exec_stats=stats.build())
     schema = accessor.schema()
-    return metadata, schema
+    meta_schema = MetadataAndSchema(metadata=metadata, schema=schema)
+    return meta_schema
 
 
 def unify_block_metadata_schema(

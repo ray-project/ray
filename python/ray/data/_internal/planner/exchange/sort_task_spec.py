@@ -8,13 +8,15 @@ from ray.data._internal.progress_bar import ProgressBar
 from ray.data._internal.remote_fn import cached_remote_fn
 from ray.data._internal.table_block import TableBlockAccessor
 from ray.data._internal.util import NULL_SENTINEL
-from ray.data.block import Block, BlockAccessor, BlockExecStats, BlockMetadata
+from ray.data.block import Block, BlockAccessor, BlockExecStats
 from ray.types import ObjectRef
 
 T = TypeVar("T")
 
 if TYPE_CHECKING:
     import pyarrow
+
+    from ray.data.block import MetadataAndSchema
 
 
 class SortKey:
@@ -131,13 +133,16 @@ class SortTaskSpec(ExchangeTaskSpec):
         output_num_blocks: int,
         boundaries: List[T],
         sort_key: SortKey,
-    ) -> List[Union[Block, Tuple["pyarrow.lib.Schema", BlockMetadata]]]:
+    ) -> List[Union[Block, "MetadataAndSchema"]]:
         stats = BlockExecStats.builder()
         accessor = BlockAccessor.for_block(block)
         out = accessor.sort_and_partition(boundaries, sort_key)
         meta = accessor.get_metadata(exec_stats=stats.build())
         schema = accessor.schema()
-        return out + [(meta, schema)]
+        from ray.data.block import MetadataAndSchema
+
+        meta_schema = MetadataAndSchema(metadata=meta, schema=schema)
+        return out + [meta_schema]
 
     @staticmethod
     def reduce(
@@ -145,15 +150,15 @@ class SortTaskSpec(ExchangeTaskSpec):
         batch_format: str,
         *mapper_outputs: List[Block],
         partial_reduce: bool = False,
-    ) -> Tuple[Block, Tuple[BlockMetadata, "pyarrow.lib.Schema"]]:
+    ) -> Tuple[Block, "MetadataAndSchema"]:
         normalized_blocks = TableBlockAccessor.normalize_block_types(
             mapper_outputs,
             target_block_type=ExchangeTaskSpec._derive_target_block_type(batch_format),
         )
-        blocks, (meta, schema) = BlockAccessor.for_block(
+        blocks, meta_schema = BlockAccessor.for_block(
             normalized_blocks[0]
         ).merge_sorted_blocks(normalized_blocks, sort_key)
-        return blocks, (meta, schema)
+        return blocks, meta_schema
 
     @staticmethod
     def sample_boundaries(

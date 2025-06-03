@@ -1,16 +1,18 @@
 import logging
-from typing import TYPE_CHECKING, Any, Dict, Iterable, List, Optional, Tuple, Union
+from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple, Union
 
 import ray._private.worker
 from ray.air.util.data_batch_conversion import BatchFormat
 from ray.data._internal.execution.interfaces import RefBundle
 from ray.data._internal.stats import StatsDict
 from ray.data._internal.util import convert_bytes_to_human_readable_str
-from ray.data.block import Block, BlockMetadata, BlockType
+from ray.data.block import Block, BlockType
 from ray.data.context import DataContext
 
 if TYPE_CHECKING:
     import pyarrow as pa
+
+    from ray.data.block import MetadataAndSchema
 
 logger = logging.getLogger(__name__)
 
@@ -47,7 +49,7 @@ class ExchangeTaskSpec:
         idx: int,
         block: Block,
         output_num_blocks: int,
-    ) -> List[Union[Block, Tuple["pa.lib.Schema", BlockMetadata]]]:
+    ) -> List[Union[Block, "MetadataAndSchema"]]:
         """
         Map function to be run on each input block.
 
@@ -59,7 +61,7 @@ class ExchangeTaskSpec:
     def reduce(
         *mapper_outputs: List[Block],
         partial_reduce: bool = False,
-    ) -> Tuple[Block, Tuple[BlockMetadata, "pa.lib.Schema"]]:
+    ) -> Tuple[Block, "MetadataAndSchema"]:
         """
         Reduce function to be run for each output block.
 
@@ -143,12 +145,3 @@ class ExchangeTaskScheduler:
             logger.warning(log_str)
             # Double the threshold to avoid verbose warnings.
             self.warn_on_driver_memory_usage_bytes = memory_usage_bytes * 2
-
-
-# TODO(justin): probably a better way to do this
-def _unzip_tuples(n: int, iterable: Iterable[Tuple[Any, ...]]) -> Tuple[List[Any], ...]:
-    # Materialize once into a list to support multiple passes
-    data = list(iterable)
-    if not data:
-        return tuple([] for _ in range(n))  # return empty tuple if no data
-    return tuple(map(list, zip(*data)))

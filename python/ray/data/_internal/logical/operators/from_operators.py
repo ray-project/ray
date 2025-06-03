@@ -10,6 +10,8 @@ from ray.types import ObjectRef
 if TYPE_CHECKING:
     import pyarrow as pa
 
+    from ray.data.block import PandasBlockSchema
+
     ArrowTable = Union["pa.Table", bytes]
 
 
@@ -20,7 +22,7 @@ class AbstractFrom(LogicalOperator, SourceOperatorMixin, metaclass=abc.ABCMeta):
         self,
         input_blocks: List[ObjectRef[Block]],
         input_metadata: List[BlockMetadata],
-        schema: Optional["pa.lib.Schema"],
+        schema: Optional[Union["PandasBlockSchema", "pa.lib.Schema"]],
     ):
         super().__init__(self.__class__.__name__, [], len(input_blocks))
         assert len(input_blocks) == len(input_metadata), (

@@ -8,6 +8,7 @@ from typing import (
     Any,
     Callable,
     Dict,
+    Iterable,
     Iterator,
     List,
     Optional,
@@ -18,6 +19,7 @@ from typing import (
 )
 
 import numpy as np
+import pyarrow as pa
 
 import ray
 from ray.air.util.tensor_extensions.arrow import ArrowConversionError
@@ -31,6 +33,7 @@ if TYPE_CHECKING:
     import pyarrow
 
     from ray.data._internal.block_builder import BlockBuilder
+    from ray.data._internal.pandas_block import PandasBlockSchema
     from ray.data._internal.planner.exchange.sort_task_spec import SortKey
     from ray.data.aggregate import AggregateFn
 
@@ -205,7 +208,6 @@ class BlockMetadata(BlockStats):
     """Metadata about the block."""
 
     #: The pyarrow schema or types of the block elements, or None.
-    # schema: Optional[Union[type, "pyarrow.lib.Schema"]]
     #: The list of file paths used to generate this block, or
     #: the empty list if indeterminate.
     input_files: Optional[List[str]]
@@ -220,6 +222,33 @@ class BlockMetadata(BlockStats):
 
         if self.input_files is None:
             self.input_files = []
+
+
+@DeveloperAPI
+@dataclass
+class MetadataAndSchema:
+    metadata: BlockMetadata
+    schema: Optional[Union["PandasBlockSchema", "pyarrow.lib.Schema"]]
+
+
+def _unzip_list_of_tuples(n: int, data: List[Tuple[Any, ...]]) -> Tuple[List[Any], ...]:
+    if not data:
+        return tuple([] for _ in range(n))
+    return tuple(map(list, zip(*data)))
+
+
+def _decompose_metadata_and_schema(
+    iterable: Iterable["MetadataAndSchema"],
+) -> Tuple[
+    List["BlockMetadata"],
+    List[Optional[Union["PandasBlockSchema", "pa.lib.Schema"]]],
+]:
+    metadatas = []
+    schemas = []
+    for item in iterable:
+        metadatas.append(item.metadata)
+        schemas.append(item.schema)
+    return metadatas, schemas
 
 
 @DeveloperAPI
@@ -491,7 +520,7 @@ class BlockAccessor:
     @staticmethod
     def merge_sorted_blocks(
         blocks: List["Block"], sort_key: "SortKey"
-    ) -> Tuple[Block, Tuple[BlockMetadata, "pyarrow.lib.Schema"]]:
+    ) -> Tuple[Block, MetadataAndSchema]:
         """Return a sorted block by merging a list of sorted blocks."""
         raise NotImplementedError
 
@@ -501,7 +530,7 @@ class BlockAccessor:
         sort_key: "SortKey",
         aggs: Tuple["AggregateFn"],
         finalize: bool = True,
-    ) -> Tuple[Block, Tuple[BlockMetadata, "pyarrow.lib.Schema"]]:
+    ) -> Tuple[Block, MetadataAndSchema]:
         """Aggregate partially combined and sorted blocks."""
         raise NotImplementedError
 

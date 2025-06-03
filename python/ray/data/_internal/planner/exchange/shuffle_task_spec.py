@@ -10,8 +10,7 @@ from ray.data.block import Block, BlockAccessor, BlockExecStats, BlockMetadata
 from ray.data.context import MAX_SAFE_BLOCK_SIZE_FACTOR
 
 if TYPE_CHECKING:
-    import pyarrow as pa
-
+    from ray.data.block import MetadataAndSchema
 logger = logging.getLogger(__name__)
 
 
@@ -50,7 +49,7 @@ class ShuffleTaskSpec(ExchangeTaskSpec):
         upstream_map_fn: Optional[Callable[[Iterable[Block]], Iterable[Block]]],
         random_shuffle: bool,
         random_seed: Optional[int],
-    ) -> List[Union[Block, Tuple[BlockMetadata, "pa.lib.Schema"]]]:
+    ) -> List[Union[Block, "MetadataAndSchema"]]:
         stats = BlockExecStats.builder()
         if upstream_map_fn:
             # TODO: Support dynamic block splitting in
@@ -105,7 +104,10 @@ class ShuffleTaskSpec(ExchangeTaskSpec):
         assert num_rows == block.num_rows(), (num_rows, block.num_rows())
         metadata = block.get_metadata(input_files=None, exec_stats=stats.build())
         schema = block.schema()
-        return slices + [(metadata, schema)]
+        from ray.data.block import MetadataAndSchema
+
+        meta_schema = MetadataAndSchema(metadata=metadata, schema=schema)
+        return slices + [meta_schema]
 
     @staticmethod
     def reduce(
@@ -113,7 +115,7 @@ class ShuffleTaskSpec(ExchangeTaskSpec):
         random_seed: Optional[int],
         *mapper_outputs: List[Block],
         partial_reduce: bool = False,
-    ) -> Tuple[Block, Tuple[BlockMetadata, "pa.lib.Schema"]]:
+    ) -> Tuple[Block, "MetadataAndSchema"]:
         # TODO: Support fusion with other downstream operators.
         stats = BlockExecStats.builder()
         builder = DelegatingBlockBuilder()
@@ -132,4 +134,7 @@ class ShuffleTaskSpec(ExchangeTaskSpec):
             input_files=None,
             exec_stats=stats.build(),
         )
-        return new_block, (new_metadata, accessor.schema())
+        from ray.data.block import MetadataAndSchema
+
+        meta_schema = MetadataAndSchema(metadata=new_metadata, schema=accessor.schema())
+        return new_block, meta_schema
