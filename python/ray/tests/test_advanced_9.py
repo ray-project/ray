@@ -9,7 +9,6 @@ import ray
 import ray.util.state
 import ray._private.ray_constants as ray_constants
 from ray._private.test_utils import (
-    Semaphore,
     external_redis_test_enabled,
     client_test_enabled,
     run_string_as_driver,
@@ -17,6 +16,7 @@ from ray._private.test_utils import (
     get_gcs_memory_used,
     run_string_as_driver_nonblocking,
 )
+from ray._common.test_utils import Semaphore
 from ray.experimental.internal_kv import _internal_kv_list
 from ray.tests.conftest import call_ray_start
 
