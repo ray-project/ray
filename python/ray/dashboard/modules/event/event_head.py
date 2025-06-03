@@ -225,5 +225,5 @@ class JobEventHead(
             self._event_dir,
             lambda data: self._update_events(parse_event_strings(data)),
             self._executor,
-            source_types=[Event.SourceType.JOBS]
+            source_types=[Event.SourceType.JOBS],
         )
