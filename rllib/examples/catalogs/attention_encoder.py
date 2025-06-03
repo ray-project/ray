@@ -5,7 +5,7 @@ It demonstrates:
 
  - How to write a custom catalog and pytorch Encoder
  - How to operate upon a Repeated observation space when training a model
- 
+
 How to run this script
 ----------------------
 `python [script file name].py
