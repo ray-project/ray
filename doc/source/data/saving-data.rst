@@ -216,7 +216,7 @@ Ray Data interoperates with distributed data processing frameworks like `Daft <h
 
     .. tab-item:: Daft
 
-        To convert a :class:`~ray.data.dataset.Dataset` to a `Daft Dataframe <https://www.getdaft.io/projects/docs/en/stable/api_docs/dataframe.html>`_, call
+        To convert a :class:`~ray.data.dataset.Dataset` to a `Daft Dataframe <https://docs.getdaft.io/en/stable/api/dataframe/>`_, call
         :meth:`Dataset.to_daft() <ray.data.Dataset.to_daft>`.
 
         .. testcode::
@@ -230,7 +230,7 @@ Ray Data interoperates with distributed data processing frameworks like `Daft <h
     .. tab-item:: Dask
 
         To convert a :class:`~ray.data.dataset.Dataset` to a
-        `Dask DataFrame <https://docs.dask.org/en/stable/dataframe.html>`__, call
+        `Dask DataFrame <https://docs.getdaft.io/en/stable/api/dataframe/>`__, call
         :meth:`Dataset.to_dask() <ray.data.Dataset.to_dask>`.
 
         .. testcode::
