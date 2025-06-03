@@ -488,7 +488,7 @@
   working_dir: nightly_tests
 
   cluster:
-    cluster_compute: dataset/autoscalling_100_gpu_compute.yaml
+    cluster_compute: dataset/autoscaling_100_cpu_compute.yaml
 
   run:
     timeout: 3600
@@ -499,14 +499,16 @@
     - __suffix__: regular
     - __suffix__: chaos
       run:
-        prepare: python setup_chaos.py --chaos TerminateEC2Instance --batch-size-to-kill 10 --max-to-kill 100 --kill-delay 120
+        prepare: >
+          python setup_chaos.py --chaos TerminateEC2InstanceWithGracePeriod
+          --batch-size-to-kill 10 --max-to-kill 100 --kill-delay 120
 
 - name: batch_inference_mock_image_pipeline_fixed
   frequency: manual
   working_dir: nightly_tests
 
   cluster:
-    cluster_compute: dataset/fixed_size_100_gpu_compute.yaml
+    cluster_compute: dataset/fixed_size_100_cpu_compute.yaml
 
   run:
     timeout: 3600
@@ -517,7 +519,9 @@
     - __suffix__: regular
     - __suffix__: chaos
       run:
-        prepare: python setup_chaos.py --chaos TerminateEC2Instance --batch-size-to-kill 10 --max-to-kill 100 --kill-delay 120
+        prepare: >
+          python setup_chaos.py --chaos TerminateEC2InstanceWithGracePeriod
+          --batch-size-to-kill 10 --max-to-kill 100 --kill-delay 120
 
 ##############
 # TPCH Queries
