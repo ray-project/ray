@@ -373,16 +373,6 @@ void LocalTaskManager::DispatchScheduledTasksToWorkers() {
               const std::shared_ptr<WorkerInterface> &worker,
               PopWorkerStatus status,
               const std::string &runtime_env_setup_error_message) -> bool {
-            // TODO(hjiang): After getting the ready-to-use worker and task id, we're
-            // able to get physical execution context.
-            //
-            // ownership chain: raylet has-a node manager, node manager has-a local task
-            // manager.
-            //
-            // - PID: could get from available worker
-            // - Attempt id: could pass a global attempt id generator from raylet
-            // - Cgroup application folder: could pass from raylet
-
             return PoppedWorkerHandler(worker,
                                        status,
                                        task_id,
@@ -726,7 +716,7 @@ void LocalTaskManager::TaskFinished(std::shared_ptr<WorkerInterface> worker,
 // TODO(scv119): task args related logic probaly belongs task dependency manager.
 bool LocalTaskManager::PinTaskArgsIfMemoryAvailable(const TaskSpecification &spec,
                                                     bool *args_missing) {
-  // Are arguments missing
+  // Checking if arguments are missing
   std::vector<std::unique_ptr<RayObject>> args;
   auto deps = spec.GetDependencyIds();
   if (!deps.empty()) {
@@ -753,7 +743,7 @@ bool LocalTaskManager::PinTaskArgsIfMemoryAvailable(const TaskSpecification &spe
   }
   *args_missing = false;
 
-  // Pinning bookkeeping
+  // Update fields tracking pinned task arguments.
   size_t task_arg_bytes = 0;
   if (executing_task_args_.contains(spec.TaskId())) {
     // TODO(swang): This should really be an assertion, but we can sometimes
@@ -776,7 +766,7 @@ bool LocalTaskManager::PinTaskArgsIfMemoryAvailable(const TaskSpecification &spe
   }
   executing_task_args_.emplace(spec.TaskId(), std::move(deps));
 
-  // Can the arguments be pinned
+  // Checking if the arguments can be pinned.
   RAY_LOG(DEBUG) << "RayTask " << spec.TaskId() << " has args of size " << task_arg_bytes;
   if (max_pinned_task_arguments_bytes_ == 0) {
     // No limit on pinned task arguments.
