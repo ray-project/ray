@@ -227,7 +227,7 @@ spec:
   # raycluster-kuberay-worker-workergroup-5stpm   1/1     Running   0          3h16m
   ```
 
-## Step 7: Collect KubeRay Metrics with ServiceMonitor
+## Step 7: Collect KubeRay metrics with ServiceMonitor
 
 Starting from KubeRay 1.4.0, KubeRay includes a new [ServiceMonitor](https://github.com/ray-project/kuberay/blob/master/config/prometheus/serviceMonitor.yaml) to help Prometheus discover and scrape custom KubeRay metrics.
 
@@ -258,7 +258,7 @@ spec:
 ```
 * Same as PodMonitor, the **install.sh** script also creates the above YAML example, [serviceMonitor.yaml](https://github.com/ray-project/kuberay/blob/master/config/prometheus/serviceMonitor.yaml) so you don't need to create anything.
 * See the official [ServiceMonitor doc](https://github.com/prometheus-operator/prometheus-operator/blob/main/Documentation/api-reference/api.md#servicemonitor) for more details about configurations.
-
+* KubeRay Operator provides metrics for RayCluster, RayService, and RayJob, see the [KubeRay Metrics References](https://docs.ray.io/en/latest/cluster/kubernetes/k8s-ecosystem/metrics-references.html) for more details.
 * Prometheus uses `namespaceSelector` and `selector` to select Kubernetes Service.
 ```sh
 kubectl get service -n default -l app.kubernetes.io/name=kuberay-operator 
