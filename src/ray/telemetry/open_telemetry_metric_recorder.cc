@@ -177,6 +177,16 @@ void OpenTelemetryMetricRecorder::RegisterSumMetric(const std::string &name,
   registered_instruments_[name] = std::move(instrument);
 }
 
+void OpenTelemetryMetricRecorder::RegisterSumMetric(const std::string &name,
+                                                    const std::string &description) {
+  std::lock_guard<std::mutex> lock(mutex_);
+  if (registered_instruments_.contains(name)) {
+    return;  // Already registered
+  }
+  auto instrument = GetMeter()->CreateDoubleUpDownCounter(name, description, "");
+  registered_instruments_[name] = std::move(instrument);
+}
+
 void OpenTelemetryMetricRecorder::SetMetricValue(
     const std::string &name,
     absl::flat_hash_map<std::string, std::string> &&tags,
