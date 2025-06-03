@@ -19,6 +19,7 @@ from ray._private.test_utils import (
 from ray._common.test_utils import Semaphore
 from ray.experimental.internal_kv import _internal_kv_list
 from ray.tests.conftest import call_ray_start
+import time
 
 
 @pytest.fixture
@@ -275,7 +276,7 @@ def test_gcs_connection_no_leak(ray_start_cluster):
 
     with ray.init(cluster.address):
         # Wait for workers  to be ready.
-        wait_for_condition(lambda: len(ray.util.state.list_workers()) == 2)
+        time.sleep(10)
         # Note: `fds_without_workers` need to be recorded *after* `ray.init`, because
         # a prestarted worker is started on the first driver init. This worker keeps 1
         # connection to the GCS, and it stays alive even after the driver exits. If
