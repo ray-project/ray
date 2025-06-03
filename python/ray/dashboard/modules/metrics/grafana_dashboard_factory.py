@@ -32,11 +32,11 @@ GRAFANA_DASHBOARD_GLOBAL_FILTERS_OVERRIDE_ENV_VAR_TEMPLATE = (
 
 # Grafana dashboard layout constants
 # Dashboard uses a 24-column grid with 2-column panels
-PANEL_HEIGHT = 8  # Height of each panel
-PANEL_WIDTH = 12  # Half of dashboard width
-ROW_HEIGHT = 1  # Height of row container
 ROW_WIDTH = 24  # Full dashboard width
 PANELS_PER_ROW = 2
+PANEL_WIDTH = ROW_WIDTH // PANELS_PER_ROW  # Width of each panel
+PANEL_HEIGHT = 8  # Height of each panel
+ROW_HEIGHT = 1  # Height of row container
 
 
 def _read_configs_for_dashboard(
@@ -174,7 +174,10 @@ def _generate_grafana_dashboard(dashboard_config: DashboardConfig) -> str:
 
 
 def _generate_panel_template(
-    panel: Panel, panel_global_filters: List[str], panel_index: int, y_position: int = 0
+    panel: Panel,
+    panel_global_filters: List[str],
+    panel_index: int,
+    base_y_position: int,
 ) -> dict:
     """
     Helper method to generate a panel template with common configuration.
@@ -183,7 +186,7 @@ def _generate_panel_template(
         panel: The panel configuration
         panel_global_filters: List of global filters to apply
         panel_index: The index of the panel within its row (0-based)
-        y_position: The y-coordinate of the row in the dashboard grid (0 for top-level panels)
+        base_y_position: The base y-coordinate for the row in the dashboard grid
 
     Returns:
         dict: The configured panel template
@@ -206,11 +209,12 @@ def _generate_panel_template(
         # Calculate panel position in 2-column grid layout
         # x: 0 or 12 (left or right column)
         # y: base position + (row number * panel height)
+        row_number = panel_index // PANELS_PER_ROW
         template["gridPos"] = {
             "h": PANEL_HEIGHT,
             "w": PANEL_WIDTH,
             "x": PANEL_WIDTH * (panel_index % PANELS_PER_ROW),
-            "y": y_position + (panel_index // PANELS_PER_ROW) * PANEL_HEIGHT,
+            "y": base_y_position + (row_number * PANEL_HEIGHT),
         }
 
     # Configure panel visualization settings
@@ -248,19 +252,18 @@ def _create_row_panel(row: Panel, y_position: int) -> dict:
     }
 
 
-def _calculate_panel_positions(num_panels: int, current_y: int) -> int:
+def _calculate_panel_heights(num_panels: int) -> int:
     """
-    Calculate the new y position for a set of panels.
+    Calculate the total height needed for a set of panels.
 
     Args:
         num_panels: Number of panels to position
-        current_y: Current y position in the dashboard grid
 
     Returns:
-        New y position after accounting for the panels
+        Total height needed for the panels
     """
-    rows_needed = (num_panels + 1) // PANELS_PER_ROW
-    return current_y + rows_needed * PANEL_HEIGHT
+    rows_needed = (num_panels + PANELS_PER_ROW - 1) // PANELS_PER_ROW
+    return rows_needed * PANEL_HEIGHT
 
 
 def _generate_grafana_panels(
@@ -290,14 +293,12 @@ def _generate_grafana_panels(
     # Add top-level panels in 2-column grid
     for panel_index, panel in enumerate(config.panels):
         panel_template = _generate_panel_template(
-            panel, panel_global_filters, panel_index, 0
+            panel, panel_global_filters, panel_index, current_y_position
         )
         panels.append(panel_template)
 
     # Calculate space needed for top-level panels
-    current_y_position = _calculate_panel_positions(
-        len(config.panels), current_y_position
-    )
+    current_y_position += _calculate_panel_heights(len(config.panels))
 
     # Add rows and their panels
     if not config.rows:
@@ -322,9 +323,7 @@ def _generate_grafana_panels(
                 panels.append(panel_template)
 
         # Update y position for next row
-        current_y_position = _calculate_panel_positions(
-            len(row.panels), current_y_position
-        )
+        current_y_position += _calculate_panel_heights(len(row.panels))
 
     return panels
 
