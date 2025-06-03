@@ -26,8 +26,8 @@ Create a file `custom_request_router.py` with the following code:
 :language: python
 ```
 This code defines a simple uniform request router that routes requests a random replica
-to distribute the load evenly regardless of the queue length of each replica or body of
-the request. The router is defined as a class that inherits from 
+to distribute the load evenly regardless of the queue length of each replica or the body
+of the request. The router is defined as a class that inherits from
 `ray.serve.request_router.RequestRouter`. It implements the `choose_replicas`
 method, which returns the random replica for all incoming requests. The returned type
 is a list of lists of replicas, where each inner list represents a rank of replicas.
@@ -67,7 +67,7 @@ request on the [Ray GitHub repository](https://github.com/ray-project/ray/issues
 :::
 
 (utility-mixin)=
-## Utility mixins request routing
+## Utility mixins for request routing
 Ray Serve provides utility mixins that can be used to extend the functionality of the
 request router. These mixins can be used to implement common routing policies such as
 locality-aware routing, multiplexed model support, and FIFO request routing.
@@ -79,13 +79,16 @@ locality-aware routing, multiplexed model support, and FIFO request routing.
   request content so the requests can be routed as soon as possible in the order they
   were received.
 - `ray.serve.request_router.LocalityMixin`: This mixin implements locality-aware
-  request routing. It updates the internal states when between replica updates and offer
-  helpers `apply_locality_routing` and `rank_replicas_via_locality` to route and ranks
-  replicas based on their locality to the request, which can be useful for reducing
-  latency and improving performance.
-- `ray.serve.request_router.MultiplexedModelMixin`: This mixin implements
-  multiplexed model support. It updates the internal states when between replica updates
-  and offer helpers `apply_multiplex_routing` and `rank_replicas_via_multiplex` to route
+  request routing. It updates the internal states when between replica updates to track
+  the location between replicas in the same node, same zone, and everything else. It
+  offers helpers `apply_locality_routing` and `rank_replicas_via_locality` to route and
+  ranks replicas based on their locality to the request, which can be useful for
+  reducing latency and improving performance.
+- `ray.serve.request_router.MultiplexedModelMixin`: When you use model-multiplexing
+  you need to route requests based on knowing which replica has already a hot version of
+  the model. It updates the internal states when between replica updates to track the
+  model loaded on each replica, and size of the model cache on each replica. It offers
+  helpers `apply_multiplex_routing` and `rank_replicas_via_multiplex` to route
   and ranks replicas based on their multiplexed model is of the request.
 
 

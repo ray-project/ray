@@ -77,8 +77,8 @@ class ThroughputAwareRequestRouterApp:
         current_timestamp_ms = _time_ms()
 
         # Under high concurrency, requests can come in at different times. This
-        # early return helps to skip if the current_timestamp_ms is a second
-        # older than the last throughput bucket.
+        # early return helps to skip if the current_timestamp_ms is more than a
+        # second older than the last throughput bucket.
         if current_timestamp_ms < self.last_throughput_buckets - 1000:
             return
 
