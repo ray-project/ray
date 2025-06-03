@@ -26,12 +26,14 @@ class Queue(Generic[T]):
 
     The behavior and use cases are similar to those of the asyncio.Queue class.
 
-    Features both sync and async put and get methods.  Provides the option to
+    Features both sync and async put and get methods. Provides the option to
     block until space is available when calling put on a full queue,
     or to block until items are available when calling get on an empty queue.
 
     Optionally supports batched put and get operations to minimize
     serialization overhead.
+
+    Supports generic typing for specifying the type of items in the queue.
 
     Args:
         maxsize (optional, int): maximum size of the queue. If zero, size is
@@ -51,6 +53,12 @@ class Queue(Generic[T]):
                 q.put(item)
             for item in items:
                 assert item == q.get()
+
+            # Create a generic Queue for strings
+            q = Queue[str]()
+            q.put("hello")
+            assert q.get() == "hello"
+
             # Create Queue with the underlying actor reserving 1 CPU.
             q = Queue(actor_options={"num_cpus": 1})
     """
