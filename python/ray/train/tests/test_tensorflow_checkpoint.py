@@ -1,16 +1,23 @@
 import os.path
+import sys
 import tempfile
 import unittest
 from typing import List
 
 import pytest
-import tensorflow as tf
 from numpy import ndarray
 
 from ray import train
 from ray.data import Preprocessor
 from ray.train import ScalingConfig
-from ray.train.tensorflow import TensorflowCheckpoint, TensorflowTrainer
+
+if sys.version_info >= (3, 12):
+    # Tensorflow is not installed for Python 3.12 because of keras compatibility.
+    sys.exit(0)
+else:
+    import tensorflow as tf
+
+    from ray.train.tensorflow import TensorflowCheckpoint, TensorflowTrainer
 
 
 class DummyPreprocessor(Preprocessor):

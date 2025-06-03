@@ -22,6 +22,22 @@
   z-index: 1000;
 }
 
+@keyframes jump {
+  0% {
+    transform: scale(1);
+    box-shadow: 0 1px 2px rgba(0,0,0,.15);
+  }
+  100% {
+    transform: scale(1.05);
+    box-shadow: 0 4px 20px rgba(0,0,0,.1);
+  }
+}
+.search-button__wrapper.show ~ .chat-widget {
+  z-index: 1050;
+  animation: .4s jump ease infinite alternate;
+  filter: brightness(1.5);
+}
+
 .chat-popup {
   display: none;
   position: fixed;

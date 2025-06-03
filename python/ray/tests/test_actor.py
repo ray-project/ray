@@ -17,7 +17,13 @@ from ray._private.test_utils import (
 )
 from ray.actor import ActorClassInheritanceException
 from ray.tests.client_test_utils import create_remote_signal_actor
-from ray._private.test_utils import SignalActor
+from ray._common.test_utils import SignalActor
+from ray.core.generated import gcs_pb2
+from ray._private.utils import hex_to_binary
+from ray._private.state_api_test_utils import invoke_state_api, invoke_state_api_n
+
+from ray.util.state import list_actors
+
 
 # NOTE: We have to import setproctitle after ray because we bundle setproctitle
 # with ray.
@@ -87,7 +93,7 @@ def test_not_reusing_task_workers(shutdown_only):
 
 
 def test_remote_function_within_actor(ray_start_10_cpus):
-    # Make sure we can use remote funtions within actors.
+    # Make sure we can use remote functions within actors.
 
     # Create some values to close over.
     val1 = 1
@@ -134,7 +140,7 @@ def test_remote_function_within_actor(ray_start_10_cpus):
 
 
 def test_define_actor_within_actor(ray_start_10_cpus):
-    # Make sure we can use remote funtions within actors.
+    # Make sure we can use remote functions within actors.
 
     @ray.remote
     class Actor1:
@@ -211,7 +217,7 @@ def test_use_actor_twice(ray_start_10_cpus):
 
 
 def test_define_actor_within_remote_function(ray_start_10_cpus):
-    # Make sure we can define and actors within remote funtions.
+    # Make sure we can define and actors within remote functions.
 
     @ray.remote
     def f(x, n):
@@ -233,7 +239,7 @@ def test_define_actor_within_remote_function(ray_start_10_cpus):
 
 
 def test_use_actor_within_remote_function(ray_start_10_cpus):
-    # Make sure we can create and use actors within remote funtions.
+    # Make sure we can create and use actors within remote functions.
 
     @ray.remote
     class Actor1:
@@ -279,6 +285,44 @@ def test_actor_import_counter(ray_start_10_cpus):
         return ray.get(actor.get_val.remote())
 
     assert ray.get(g.remote()) == num_remote_functions - 1
+
+
+@pytest.mark.parametrize("enable_concurrency_group", [False, True])
+def test_exit_actor(ray_start_regular, enable_concurrency_group):
+    concurrency_groups = {"io": 1} if enable_concurrency_group else None
+
+    @ray.remote(concurrency_groups=concurrency_groups)
+    class TestActor:
+        def exit(self):
+            ray.actor.exit_actor()
+
+    num_actors = 30
+    actor_class_name = TestActor.__ray_metadata__.class_name
+
+    actors = [TestActor.remote() for _ in range(num_actors)]
+    ray.get([actor.__ray_ready__.remote() for actor in actors])
+    invoke_state_api(
+        lambda res: len(res) == num_actors,
+        list_actors,
+        filters=[("state", "=", "ALIVE"), ("class_name", "=", actor_class_name)],
+        limit=1000,
+    )
+
+    ray.wait([actor.exit.remote() for actor in actors], timeout=10.0)
+
+    invoke_state_api_n(
+        lambda res: len(res) == 0,
+        list_actors,
+        filters=[("state", "=", "ALIVE"), ("class_name", "=", actor_class_name)],
+        limit=1000,
+    )
+
+    invoke_state_api(
+        lambda res: len(res) == num_actors,
+        list_actors,
+        filters=[("state", "=", "DEAD"), ("class_name", "=", actor_class_name)],
+        limit=1000,
+    )
 
 
 @pytest.mark.skipif(client_test_enabled(), reason="internal api")
@@ -646,6 +690,74 @@ def test_decorator_args(ray_start_regular_shared):
     class Actor:  # noqa: F811
         def __init__(self):
             pass
+
+
+@pytest.mark.parametrize(
+    "label_selector, expected_error",
+    [
+        (  # Valid: multiple labels with implicit 'equals' condition
+            {"ray.io/market-type": "spot", "ray.io/accelerator-type": "H100"},
+            None,
+        ),
+        (  # Valid: not equals condition
+            {"ray.io/market-type": "!spot"},
+            None,
+        ),
+        (  # Valid: in condition
+            {"ray.io/accelerator-type": "in(H100, B200, TPU)"},
+            None,
+        ),
+        (  # Valid: not in condition
+            {"ray.io/accelerator-type": "!in(H100, B200)"},
+            None,
+        ),
+        (  # Invalid: label_selector expects a dict
+            "",
+            TypeError,
+        ),
+        (  # Invalid: Invalid label prefix
+            {"r!a!y.io/market_type": "spot"},
+            ValueError,
+        ),
+        (  # Invalid: Invalid label name
+            {"??==ags!": "true"},
+            ValueError,
+        ),
+        (  # Invalid: Invalid label value
+            {"ray.io/accelerator_type": "??==ags!"},
+            ValueError,
+        ),
+        (  # Invalid: non-supported label selector condition
+            {"ray.io/accelerator_type": "matches(TPU)"},
+            ValueError,
+        ),
+        (  # Invalid: in condition with incorrectly formatted string
+            {"ray.io/accelerator_type": "in(H100,, B200)"},
+            ValueError,
+        ),
+        (  # Invalid: unclosed parentheses in condition
+            {"ray.io/accelerator_type": "in(TPU, H100, B200"},
+            ValueError,
+        ),
+    ],
+)
+def test_decorator_label_selector_args(
+    ray_start_regular_shared, label_selector, expected_error
+):
+    if expected_error:
+        with pytest.raises(expected_error):
+
+            @ray.remote(label_selector=label_selector)  # noqa: F811
+            class Actor:  # noqa: F811
+                def __init__(self):
+                    pass
+
+    else:
+
+        @ray.remote(label_selector=label_selector)  # noqa: F811
+        class Actor:  # noqa: F811
+            def __init__(self):
+                pass
 
 
 def test_random_id_generation(ray_start_regular_shared):
@@ -1044,6 +1156,7 @@ def test_actor_creation_latency(ray_start_regular_shared):
     )
 
 
+@pytest.mark.parametrize("enable_concurrency_group", [True, False])
 @pytest.mark.parametrize(
     "exit_condition",
     [
@@ -1053,13 +1166,17 @@ def test_actor_creation_latency(ray_start_regular_shared):
         "ray.kill",
     ],
 )
-def test_atexit_handler(ray_start_regular_shared, exit_condition):
-    @ray.remote
+def test_atexit_handler(
+    ray_start_regular_shared, exit_condition, enable_concurrency_group
+):
+    concurrency_groups = {"io": 1} if enable_concurrency_group else None
+
+    @ray.remote(concurrency_groups=concurrency_groups)
     class A:
         def __init__(self, tmpfile, data):
             import atexit
 
-            def f(*args, **kwargs):
+            def f():
                 with open(tmpfile, "w") as f:
                     f.write(data)
                     f.flush()
@@ -1265,7 +1382,8 @@ def test_actor_parent_task_correct(shutdown_only, actor_type):
         core_worker = ray._private.worker.global_worker.core_worker
         refs = [child_actor.child.remote(), child.remote()]
         expected = {ref.task_id().hex() for ref in refs}
-        task_id = ray.get_runtime_context().task_id
+        task_id_hex = ray.get_runtime_context().get_task_id()
+        task_id = ray.TaskID(hex_to_binary(task_id_hex))
         children_task_ids = core_worker.get_pending_children_task_ids(task_id)
         actual = {task_id.hex() for task_id in children_task_ids}
         ray.get(refs)
@@ -1341,7 +1459,8 @@ def test_parent_task_correct_concurrent_async_actor(shutdown_only):
             refs = [child.remote(sig) for _ in range(2)]
             core_worker = ray._private.worker.global_worker.core_worker
             expected = {ref.task_id().hex() for ref in refs}
-            task_id = ray.get_runtime_context().task_id
+            task_id_hex = ray.get_runtime_context().get_task_id()
+            task_id = ray.TaskID(hex_to_binary(task_id_hex))
             children_task_ids = core_worker.get_pending_children_task_ids(task_id)
             actual = {task_id.hex() for task_id in children_task_ids}
             await sig.wait.remote()
@@ -1515,8 +1634,59 @@ def test_self_handle_leak(ray_start_regular_shared):
     wait_for_pid_to_exit(pid)
 
 
-if __name__ == "__main__":
-    if os.environ.get("PARALLEL_CI"):
-        sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))
+@pytest.mark.skipif(client_test_enabled(), reason="internal api")
+def test_get_local_actor_state(ray_start_regular_shared):
+    @ray.remote
+    class Actor:
+        def ping(self):
+            pass
+
+    actor = Actor.remote()
+    ray.get(actor.ping.remote())
+    assert actor._get_local_state() == gcs_pb2.ActorTableData.ActorState.ALIVE
+    ray.kill(actor)
+    wait_for_condition(
+        lambda: actor._get_local_state() == gcs_pb2.ActorTableData.ActorState.DEAD
+    )
+
+
+@pytest.mark.parametrize("exit_type", ["ray.kill", "out_of_scope"])
+def test_exit_immediately_after_creation(ray_start_regular_shared, exit_type: str):
+    if client_test_enabled() and exit_type == "out_of_scope":
+        pytest.skip("out_of_scope actor cleanup doesn't work with Ray client.")
+
+    @ray.remote
+    class A:
+        pass
+
+    a = A.remote()
+    a_id = a._actor_id.hex()
+    b = A.remote()
+    b_id = b._actor_id.hex()
+
+    def _num_actors_alive() -> int:
+        still_alive = list(
+            filter(
+                lambda a: a.actor_id in {a_id, b_id},
+                list_actors(filters=[("state", "=", "ALIVE")]),
+            )
+        )
+        print(still_alive)
+        return len(still_alive)
+
+    wait_for_condition(lambda: _num_actors_alive() == 2)
+
+    if exit_type == "ray.kill":
+        ray.kill(a)
+        ray.kill(b)
+    elif exit_type == "out_of_scope":
+        del a
+        del b
     else:
-        sys.exit(pytest.main(["-sv", __file__]))
+        pytest.fail(f"Unrecognized exit_type: '{exit_type}'.")
+
+    wait_for_condition(lambda: _num_actors_alive() == 0)
+
+
+if __name__ == "__main__":
+    sys.exit(pytest.main(["-sv", __file__]))

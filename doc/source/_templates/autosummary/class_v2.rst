@@ -1,8 +1,11 @@
-{{ name | escape | underline}}
-
 .. currentmodule:: {{ module }}
 
+{% if name | has_public_constructor(module) %}
+{{ name }}
+{{ '-' * name | length }}
+
 .. autoclass:: {{ objname }}
+{% endif %}
 
 {% block methods %}
 {% if methods %}
@@ -10,7 +13,8 @@
 {% for api_group in api_groups %}
 
 {% if api_groups | length > 1 %}
-.. rubric:: {{ api_group | capitalize }}
+{{ api_group }}
+{{ '-' * api_group | length }}
 {% endif %}
 
 .. autosummary::

@@ -14,8 +14,8 @@ import ray
 import ray._private.ray_constants as ray_constants
 import ray.experimental.internal_kv as internal_kv
 from ray import NodeID
+from ray._common.test_utils import SignalActor
 from ray._private.test_utils import (
-    SignalActor,
     get_error_message,
     init_error_pubsub,
     run_string_as_driver,
@@ -803,9 +803,5 @@ def test_shows_both_user_exception_system_error_same_time(ray_start_cluster):
 
 
 if __name__ == "__main__":
-    import os
 
-    if os.environ.get("PARALLEL_CI"):
-        sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))
-    else:
-        sys.exit(pytest.main(["-sv", __file__]))
+    sys.exit(pytest.main(["-sv", __file__]))

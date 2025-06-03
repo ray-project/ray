@@ -13,7 +13,6 @@
 // limitations under the License.
 
 syntax = "proto3";
-option cc_enable_arenas = true;
 
 package ray.rpc;
 
@@ -39,11 +38,10 @@ enum TablePrefix {
   DIRECT_ACTOR = 14;
   // WORKER is already used in WorkerType, so use WORKERS here.
   WORKERS = 15;
-  INTERNAL_CONFIG = 16;
-  PLACEMENT_GROUP_SCHEDULE = 17;
-  PLACEMENT_GROUP = 18;
-  KV = 19;
-  ACTOR_TASK_SPEC = 20;
+  PLACEMENT_GROUP_SCHEDULE = 16;
+  PLACEMENT_GROUP = 17;
+  KV = 18;
+  ACTOR_TASK_SPEC = 19;
 }
 
 // The channel that Add operations to the Table should be published on, if any.
@@ -73,11 +71,6 @@ message GcsEntry {
   GcsChangeMode change_mode = 1;
   bytes id = 2;
   repeated bytes entries = 3;
-}
-
-message ObjectTableData {
-  // The node manager ID that this object appeared on or was evicted by.
-  bytes manager = 1;
 }
 
 message ActorTableData {
@@ -110,9 +103,9 @@ message ActorTableData {
   // This will be greater by 1 than what's published before in ALIVE.
   // ALIVE:0 RESTARTING:1 ALIVE:1 RESTARTING:2, etc
   uint64 num_restarts = 8;
-  // The address of the the actor.
+  // The address of the actor.
   Address address = 9;
-  // The address of the the actor's owner (parent).
+  // The address of the actor's owner (parent).
   Address owner_address = 10;
   // Whether the actor is persistent.
   bool is_detached = 11;
@@ -158,6 +151,12 @@ message ActorTableData {
   string repr_name = 31;
   // Whether the actor was on a preempted node
   bool preempted = 32;
+  // Number of times this actor is restarted due to lineage reconstructions.
+  uint64 num_restarts_due_to_lineage_reconstruction = 33;
+  // Human readable stacktrace of the actor creation. The exact data
+  // format depends on the language. Only populated if
+  // `RAY_record_task_actor_creation_sites` is set to `true`.
+  optional string call_site = 34;
 }
 
 message ErrorTableData {
@@ -168,6 +167,8 @@ message ErrorTableData {
   // The error message.
   string error_message = 3;
   // The timestamp of the error message.
+  // Unit: millisecond.
+  // TODO(hjiang): Update field naming from `timestamp` to `timestamp_millisec`.
   double timestamp = 4;
 }
 
@@ -230,7 +231,7 @@ message TaskStateUpdate {
   optional bool is_debugger_paused = 13;
   // Key is the integer value of TaskStatus enum (protobuf doesn't support Enum as key).
   // Value is the timestamp when status changes to the target status indicated by the key.
-  map<int32, int64> state_ts = 14;
+  map<int32, int64> state_ts_ns = 14;
 }
 
 // Represents events and state changes from a single task run.
@@ -247,13 +248,6 @@ message TaskEvents {
   optional ProfileEvents profile_events = 5;
   // Job id of the task
   bytes job_id = 6;
-}
-
-message TaskAttempt {
-  // The task id of the task attempt.
-  bytes task_id = 1;
-  // The attempt number of the task attempt.
-  int32 attempt_number = 2;
 }
 
 // Represents a compact list of task state events by different tasks,
@@ -470,10 +464,6 @@ message WorkerDeltaData {
   bytes worker_id = 2;
 }
 
-message StoredConfig {
-  string config = 1;
-}
-
 message PubSubMessage {
   bytes id = 1;
   bytes data = 2;
@@ -631,12 +621,14 @@ message PlacementGroupTableData {
   enum PlacementGroupState {
     // Placement Group is pending or scheduling
     PENDING = 0;
+    // Placement Group is scheduled, and all nodes have prepared the resources.
+    PREPARED = 1;
     // Placement Group is created.
-    CREATED = 1;
+    CREATED = 2;
     // Placement Group is already removed and won't be reschedule.
-    REMOVED = 2;
+    REMOVED = 3;
     // Placement Group is rescheduling because the node it placed is dead.
-    RESCHEDULING = 3;
+    RESCHEDULING = 4;
   }
 
   // ID of the PlacementGroup.
@@ -703,7 +695,8 @@ message JobTableData {
   // The optional JobInfo from the Ray Job API.
   optional JobsAPIInfo job_info = 10;
   // Whether this job has running tasks.
-  bool is_running_tasks = 11;
+  // In GetAllJobInfo, if GCS can't reach the driver, it will be unset.
+  optional bool is_running_tasks = 11;
   // Address of the driver that started this job.
   Address driver_address = 12;
 }

@@ -12,12 +12,15 @@ class CSVDatasink(BlockBasedFileDatasink):
         self,
         path: str,
         *,
-        arrow_csv_args_fn: Callable[[], Dict[str, Any]] = lambda: {},
+        arrow_csv_args_fn: Optional[Callable[[], Dict[str, Any]]] = None,
         arrow_csv_args: Optional[Dict[str, Any]] = None,
         file_format="csv",
         **file_datasink_kwargs,
     ):
         super().__init__(path, file_format=file_format, **file_datasink_kwargs)
+
+        if arrow_csv_args_fn is None:
+            arrow_csv_args_fn = lambda: {}  # noqa: E731
 
         if arrow_csv_args is None:
             arrow_csv_args = {}

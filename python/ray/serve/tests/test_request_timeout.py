@@ -3,25 +3,25 @@ import os
 import sys
 from typing import Generator, Set
 
+import httpx
 import pytest
-import requests
 from fastapi import FastAPI
 from starlette.requests import Request
 from starlette.responses import StreamingResponse
 
 import ray
 from ray import serve
-from ray._private.test_utils import SignalActor, wait_for_condition
+from ray._common.test_utils import SignalActor
+from ray._private.test_utils import wait_for_condition
 from ray.dashboard.modules.serve.sdk import ServeSubmissionClient
-from ray.serve._private.common import ApplicationStatus
 from ray.serve._private.test_utils import send_signal_on_cancellation
-from ray.serve.schema import ServeInstanceDetails
+from ray.serve.schema import ApplicationStatus, ServeInstanceDetails
 from ray.util.state import list_tasks
 
 
 @ray.remote
 def do_request():
-    return requests.get("http://localhost:8000")
+    return httpx.get("http://localhost:8000")
 
 
 @pytest.fixture
@@ -95,7 +95,7 @@ def test_request_hangs_in_execution(ray_instance, shutdown_serve):
 
     serve.run(HangsOnFirstRequest.bind())
 
-    response = requests.get("http://localhost:8000")
+    response = httpx.get("http://localhost:8000")
     assert response.status_code == 408
 
     ray.get(signal_actor.send.remote())
@@ -129,7 +129,7 @@ def test_with_rest_api(ray_start_stop):
                 "name": "app",
                 "route_prefix": "/",
                 "import_path": (
-                    "ray.serve.tests." "test_request_timeout:hangs_on_first_request_app"
+                    "ray.serve.tests.test_request_timeout:hangs_on_first_request_app"
                 ),
             }
         ],
@@ -137,8 +137,8 @@ def test_with_rest_api(ray_start_stop):
     ServeSubmissionClient("http://localhost:8265").deploy_applications(config)
 
     def application_running():
-        response = requests.get(
-            "http://localhost:52365/api/serve/applications/", timeout=15
+        response = httpx.get(
+            "http://localhost:8265/api/serve/applications/", timeout=15
         )
         assert response.status_code == 200
 
@@ -148,10 +148,10 @@ def test_with_rest_api(ray_start_stop):
     wait_for_condition(application_running, timeout=15)
     print("Application has started running. Testing requests...")
 
-    response = requests.get("http://localhost:8000")
+    response = httpx.get("http://localhost:8000")
     assert response.status_code == 408
 
-    response = requests.get("http://localhost:8000")
+    response = httpx.get("http://localhost:8000")
     assert response.status_code == 200
     print("Requests succeeded! Deleting application.")
     ServeSubmissionClient("http://localhost:8265").delete_applications()
@@ -220,17 +220,23 @@ def test_streaming_request_already_sent_and_timed_out(ray_instance, shutdown_ser
 
     serve.run(BlockOnSecondChunk.bind())
 
-    r = requests.get("http://localhost:8000", stream=True)
-    iterator = r.iter_content(chunk_size=None, decode_unicode=True)
+    # Wait for the server to start by doing health check.
+    wait_for_condition(
+        lambda: httpx.get("http://localhost:8000/-/healthz").status_code == 200,
+        timeout=10,
+    )
 
-    # The first chunk should be received successfully.
-    assert iterator.__next__() == "generated 0"
-    assert r.status_code == 200
+    with httpx.stream("GET", "http://localhost:8000") as r:
+        iterator = r.iter_text()
 
-    # The second chunk should time out and raise error.
-    with pytest.raises(requests.exceptions.ChunkedEncodingError) as request_error:
-        iterator.__next__()
-    assert "Connection broken" in str(request_error.value)
+        # The first chunk should be received successfully.
+        assert next(iterator) == "generated 0"
+        assert r.status_code == 200
+
+        # The second chunk should time out and raise error.
+        with pytest.raises(httpx.RemoteProtocolError) as request_error:
+            next(iterator)
+            assert "peer closed connection" in str(request_error.value)
 
 
 @pytest.mark.parametrize(
@@ -297,7 +303,8 @@ def test_cancel_on_http_timeout_during_execution(
 
     @serve.deployment
     async def inner():
-        await send_signal_on_cancellation(inner_signal_actor)
+        async with send_signal_on_cancellation(inner_signal_actor):
+            pass
 
     if use_fastapi:
         app = FastAPI()
@@ -311,7 +318,8 @@ def test_cancel_on_http_timeout_during_execution(
             @app.get("/")
             async def wait_for_cancellation(self):
                 _ = self._handle.remote()
-                await send_signal_on_cancellation(outer_signal_actor)
+                async with send_signal_on_cancellation(outer_signal_actor):
+                    pass
 
     else:
 
@@ -322,12 +330,13 @@ def test_cancel_on_http_timeout_during_execution(
 
             async def __call__(self, request: Request):
                 _ = self._handle.remote()
-                await send_signal_on_cancellation(outer_signal_actor)
+                async with send_signal_on_cancellation(outer_signal_actor):
+                    pass
 
     serve.run(Ingress.bind(inner.bind()))
 
     # Request should time out, causing the handler and handle call to be cancelled.
-    assert requests.get("http://localhost:8000").status_code == 408
+    assert httpx.get("http://localhost:8000").status_code == 408
     ray.get(inner_signal_actor.wait.remote())
     ray.get(outer_signal_actor.wait.remote())
 
@@ -364,7 +373,7 @@ def test_cancel_on_http_timeout_during_assignment(ray_instance, shutdown_serve):
     wait_for_condition(lambda: ray.get(signal_actor.cur_num_waiters.remote()) == 1)
 
     # Request should time out, causing the handler and handle call to be cancelled.
-    assert requests.get("http://localhost:8000").status_code == 408
+    assert httpx.get("http://localhost:8000").status_code == 408
 
     # Now signal the initial request to finish and check that the request sent via HTTP
     # never reaches the replica.
@@ -372,6 +381,44 @@ def test_cancel_on_http_timeout_during_assignment(ray_instance, shutdown_serve):
     assert initial_response.result() == 1
     for i in range(2, 12):
         assert h.remote().result() == i
+
+
+@pytest.mark.parametrize(
+    "ray_instance",
+    [
+        {
+            "RAY_SERVE_REQUEST_PROCESSING_TIMEOUT_S": "0.5",
+        },
+    ],
+    indirect=True,
+)
+def test_timeout_error_in_child_deployment_of_fastapi(ray_instance, shutdown_serve):
+    """Test that timeout error in child deployment returns 408 with FastAPI ingress."""
+    app = FastAPI()
+    signal = SignalActor.remote()
+
+    @serve.deployment
+    class Child:
+        async def __call__(self):
+            await signal.wait.remote()
+            return "ok"
+
+    @serve.deployment
+    @serve.ingress(app)
+    class Parent:
+        def __init__(self, child):
+            self.child = child
+
+        @app.get("/")
+        async def root(self):
+            return await self.child.remote()
+
+    serve.run(Parent.bind(Child.bind()))
+
+    r = httpx.get("http://localhost:8000/")
+    assert r.status_code == 408
+
+    ray.get(signal.send.remote())
 
 
 if __name__ == "__main__":

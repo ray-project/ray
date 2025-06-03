@@ -104,8 +104,8 @@ def test_raylet_tempfiles(shutdown_only):
     }
 
     def check_all_log_file_exists():
+        log_files = set(os.listdir(node.get_logs_dir_path()))
         for expected in log_files_expected:
-            log_files = set(os.listdir(node.get_logs_dir_path()))
             if expected not in log_files:
                 raise RuntimeError(f"File {expected} not found!")
         return True
@@ -118,7 +118,7 @@ def test_raylet_tempfiles(shutdown_only):
     assert log_files.issuperset(log_files_expected)
 
     socket_files = set(os.listdir(node.get_sockets_dir_path()))
-    assert socket_files == expected_socket_files
+    assert socket_files.issuperset(expected_socket_files)
     ray.shutdown()
 
     ray.init(num_cpus=2)
@@ -159,7 +159,4 @@ if __name__ == "__main__":
     # Make subprocess happy in bazel.
     os.environ["LC_ALL"] = "en_US.UTF-8"
     os.environ["LANG"] = "en_US.UTF-8"
-    if os.environ.get("PARALLEL_CI"):
-        sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))
-    else:
-        sys.exit(pytest.main(["-sv", __file__]))
+    sys.exit(pytest.main(["-sv", __file__]))

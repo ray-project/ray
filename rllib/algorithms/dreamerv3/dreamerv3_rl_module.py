@@ -14,19 +14,18 @@ from ray.rllib.algorithms.dreamerv3.tf.models.critic_network import CriticNetwor
 from ray.rllib.algorithms.dreamerv3.tf.models.dreamer_model import DreamerModel
 from ray.rllib.algorithms.dreamerv3.tf.models.world_model import WorldModel
 from ray.rllib.core.columns import Columns
-from ray.rllib.core.models.specs.specs_dict import SpecDict
 from ray.rllib.core.rl_module.rl_module import RLModule
 from ray.rllib.policy.eager_tf_policy import _convert_to_tf
-from ray.rllib.utils.annotations import ExperimentalAPI, override
+from ray.rllib.utils.annotations import override
 from ray.rllib.utils.framework import try_import_tf
-from ray.rllib.utils.nested_dict import NestedDict
 from ray.rllib.utils.numpy import one_hot
+from ray.util.annotations import DeveloperAPI
 
 
 _, tf, _ = try_import_tf()
 
 
-@ExperimentalAPI
+@DeveloperAPI(stability="alpha")
 class DreamerV3RLModule(RLModule, abc.ABC):
     @override(RLModule)
     def setup(self):
@@ -34,36 +33,35 @@ class DreamerV3RLModule(RLModule, abc.ABC):
 
         # Gather model-relevant settings.
         B = 1
-        T = self.config.model_config_dict["batch_length_T"]
-        horizon_H = self.config.model_config_dict["horizon_H"]
-        gamma = self.config.model_config_dict["gamma"]
+        T = self.model_config["batch_length_T"]
+        horizon_H = self.model_config["horizon_H"]
+        gamma = self.model_config["gamma"]
         symlog_obs = do_symlog_obs(
-            self.config.observation_space,
-            self.config.model_config_dict.get("symlog_obs", "auto"),
+            self.observation_space,
+            self.model_config.get("symlog_obs", "auto"),
         )
-        model_size = self.config.model_config_dict["model_size"]
+        model_size = self.model_config["model_size"]
 
-        if self.config.model_config_dict["use_float16"]:
+        if self.model_config["use_float16"]:
             tf.compat.v1.keras.layers.enable_v2_dtype_behavior()
             tf.keras.mixed_precision.set_global_policy("mixed_float16")
 
         # Build encoder and decoder from catalog.
-        catalog = self.config.get_catalog()
-        self.encoder = catalog.build_encoder(framework=self.framework)
-        self.decoder = catalog.build_decoder(framework=self.framework)
+        self.encoder = self.catalog.build_encoder(framework=self.framework)
+        self.decoder = self.catalog.build_decoder(framework=self.framework)
 
         # Build the world model (containing encoder and decoder).
         self.world_model = WorldModel(
             model_size=model_size,
-            observation_space=self.config.observation_space,
-            action_space=self.config.action_space,
+            observation_space=self.observation_space,
+            action_space=self.action_space,
             batch_length_T=T,
             encoder=self.encoder,
             decoder=self.decoder,
             symlog_obs=symlog_obs,
         )
         self.actor = ActorNetwork(
-            action_space=self.config.action_space,
+            action_space=self.action_space,
             model_size=model_size,
         )
         self.critic = CriticNetwork(
@@ -71,28 +69,30 @@ class DreamerV3RLModule(RLModule, abc.ABC):
         )
         # Build the final dreamer model (containing the world model).
         self.dreamer_model = DreamerModel(
-            model_size=self.config.model_config_dict["model_size"],
-            action_space=self.config.action_space,
+            model_size=self.model_config["model_size"],
+            action_space=self.action_space,
             world_model=self.world_model,
             actor=self.actor,
             critic=self.critic,
             horizon=horizon_H,
             gamma=gamma,
         )
-        self.action_dist_cls = catalog.get_action_dist_cls(framework=self.framework)
+        self.action_dist_cls = self.catalog.get_action_dist_cls(
+            framework=self.framework
+        )
 
         # Perform a test `call()` to force building the dreamer model's variables.
         if self.framework == "tf2":
             test_obs = np.tile(
-                np.expand_dims(self.config.observation_space.sample(), (0, 1)),
-                reps=(B, T) + (1,) * len(self.config.observation_space.shape),
+                np.expand_dims(self.observation_space.sample(), (0, 1)),
+                reps=(B, T) + (1,) * len(self.observation_space.shape),
             )
-            if isinstance(self.config.action_space, gym.spaces.Discrete):
+            if isinstance(self.action_space, gym.spaces.Discrete):
                 test_actions = np.tile(
                     np.expand_dims(
                         one_hot(
-                            self.config.action_space.sample(),
-                            depth=self.config.action_space.n,
+                            self.action_space.sample(),
+                            depth=self.action_space.n,
                         ),
                         (0, 1),
                     ),
@@ -100,7 +100,7 @@ class DreamerV3RLModule(RLModule, abc.ABC):
                 )
             else:
                 test_actions = np.tile(
-                    np.expand_dims(self.config.action_space.sample(), (0, 1)),
+                    np.expand_dims(self.action_space.sample(), (0, 1)),
                     reps=(B, T, 1),
                 )
 
@@ -119,49 +119,12 @@ class DreamerV3RLModule(RLModule, abc.ABC):
         self.critic.init_ema()
 
     @override(RLModule)
-    def get_initial_state(self) -> NestedDict:
+    def get_initial_state(self) -> Dict:
         # Use `DreamerModel`'s `get_initial_state` method.
         return self.dreamer_model.get_initial_state()
 
     @override(RLModule)
-    def input_specs_inference(self) -> SpecDict:
-        return [Columns.OBS, Columns.STATE_IN, "is_first"]
-
-    @override(RLModule)
-    def output_specs_inference(self) -> SpecDict:
-        return [Columns.ACTIONS, Columns.STATE_OUT]
-
-    @override(RLModule)
-    def input_specs_exploration(self):
-        return self.input_specs_inference()
-
-    @override(RLModule)
-    def output_specs_exploration(self) -> SpecDict:
-        return self.output_specs_inference()
-
-    @override(RLModule)
-    def input_specs_train(self) -> SpecDict:
-        return [Columns.OBS, Columns.ACTIONS, "is_first"]
-
-    @override(RLModule)
-    def output_specs_train(self) -> SpecDict:
-        return [
-            "sampled_obs_symlog_BxT",
-            "obs_distribution_means_BxT",
-            "reward_logits_BxT",
-            "rewards_BxT",
-            "continue_distribution_BxT",
-            "continues_BxT",
-            # Sampled, discrete posterior z-states (t1 to T).
-            "z_posterior_states_BxT",
-            "z_posterior_probs_BxT",
-            "z_prior_probs_BxT",
-            # Deterministic, continuous h-states (t1 to T).
-            "h_states_BxT",
-        ]
-
-    @override(RLModule)
-    def _forward_inference(self, batch: NestedDict) -> Dict[str, Any]:
+    def _forward_inference(self, batch: Dict[str, Any]) -> Dict[str, Any]:
         # Call the Dreamer-Model's forward_inference method and return a dict.
         actions, next_state = self.dreamer_model.forward_inference(
             observations=batch[Columns.OBS],
@@ -171,7 +134,7 @@ class DreamerV3RLModule(RLModule, abc.ABC):
         return {Columns.ACTIONS: actions, Columns.STATE_OUT: next_state}
 
     @override(RLModule)
-    def _forward_exploration(self, batch: NestedDict) -> Dict[str, Any]:
+    def _forward_exploration(self, batch: Dict[str, Any]) -> Dict[str, Any]:
         # Call the Dreamer-Model's forward_exploration method and return a dict.
         actions, next_state = self.dreamer_model.forward_exploration(
             observations=batch[Columns.OBS],
@@ -181,7 +144,7 @@ class DreamerV3RLModule(RLModule, abc.ABC):
         return {Columns.ACTIONS: actions, Columns.STATE_OUT: next_state}
 
     @override(RLModule)
-    def _forward_train(self, batch: NestedDict):
+    def _forward_train(self, batch: Dict[str, Any]):
         # Call the Dreamer-Model's forward_train method and return its outputs as-is.
         return self.dreamer_model.forward_train(
             observations=batch[Columns.OBS],

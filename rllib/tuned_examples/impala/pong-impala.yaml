@@ -5,7 +5,7 @@
 #    16 workers -> 40 min+
 # See also: pong-impala-fast.yaml, pong-impala-vectorized.yaml
 pong-impala:
-    env: ALE/Pong-v5
+    env: ale_py:ALE/Pong-v5
     run: IMPALA
     config:
         # Make analogous to old v4 + NoFrameskip.

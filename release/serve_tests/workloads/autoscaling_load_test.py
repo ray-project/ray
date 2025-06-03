@@ -31,12 +31,13 @@ logging.basicConfig(level=logging.INFO)
 
 
 URI = "https://serve-resnet-benchmark-data.s3.us-west-1.amazonaws.com/000000000019.jpeg"
+CLOUD = "serve_release_tests_cloud"
 
 
 @click.command()
 @click.option("--output-path", "-o", type=str, default=None)
-@click.option("--cluster-env", type=str, default=None)
-def main(output_path: Optional[str], cluster_env: Optional[str]):
+@click.option("--image-uri", type=str, default=None)
+def main(output_path: Optional[str], image_uri: Optional[str]):
     resnet_application = {
         "import_path": "resnet_50:app",
         "deployments": [
@@ -47,7 +48,7 @@ def main(output_path: Optional[str], cluster_env: Optional[str]):
         ],
     }
     compute_config = ComputeConfig(
-        cloud="serve_release_tests_cloud",
+        cloud=CLOUD,
         head_node=HeadNodeConfig(instance_type="m5.8xlarge"),
         worker_nodes=[
             WorkerNodeGroupConfig(
@@ -63,12 +64,14 @@ def main(output_path: Optional[str], cluster_env: Optional[str]):
 
     with start_service(
         "autoscaling-load-test",
+        image_uri=image_uri,
         compute_config=compute_config,
         applications=[resnet_application],
-        cluster_env=cluster_env,
+        working_dir="workloads",
+        cloud=CLOUD,
     ) as service_name:
         ray.init(address="auto")
-        status = service.status(name=service_name)
+        status = service.status(name=service_name, cloud=CLOUD)
 
         # Start the locust workload
         num_locust_workers = int(ray.available_resources()["CPU"]) - 1

@@ -1,11 +1,11 @@
-import os
-import sys
-import logging
 import asyncio
-import subprocess
 import copy
+import logging
+import os
+import subprocess
+import sys
 from pathlib import Path
-from typing import Tuple, List, Dict, Optional
+from typing import Dict, List, Optional, Tuple
 
 from ray._private.runtime_env.context import RuntimeEnvContext
 from ray._private.runtime_env.plugin import RuntimeEnvPlugin
@@ -20,7 +20,6 @@ default_logger = logging.getLogger(__name__)
 NSIGHT_DEFAULT_CONFIG = {
     "t": "cuda,cudnn,cublas,nvtx",
     "o": "'worker_process_%p'",
-    "cudabacktrace": "all",
     "stop-on-exit": "true",
 }
 

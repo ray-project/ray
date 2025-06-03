@@ -17,7 +17,6 @@ from ray.rllib.algorithms.impala.impala_torch_policy import (
     make_time_major,
     VTraceOptimizer,
 )
-from ray.rllib.evaluation.episode import Episode
 from ray.rllib.evaluation.postprocessing import (
     compute_bootstrap_value,
     compute_gae_for_sample_batch,
@@ -69,6 +68,8 @@ class APPOTorchPolicy(
 
     def __init__(self, observation_space, action_space, config):
         config = dict(ray.rllib.algorithms.appo.appo.APPOConfig().to_dict(), **config)
+        config["enable_rl_module_and_learner"] = False
+        config["enable_env_runner_and_connector_v2"] = False
 
         # Although this is a no-op, we call __init__ here to make it clear
         # that base.__init__ will use the make_model() call.
@@ -378,7 +379,7 @@ class APPOTorchPolicy(
         self,
         sample_batch: SampleBatch,
         other_agent_batches: Optional[Dict[Any, SampleBatch]] = None,
-        episode: Optional["Episode"] = None,
+        episode=None,
     ):
         # Call super's postprocess_trajectory first.
         # sample_batch = super().postprocess_trajectory(

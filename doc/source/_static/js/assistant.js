@@ -47,6 +47,7 @@ document.body.appendChild(blurDiv);
 
 // blur background when chat popup is open
 document.getElementById('openChatBtn').addEventListener('click', function () {
+  document.querySelector('.search-button__wrapper').classList.remove('show');
   document.getElementById('chatPopup').style.display = 'block';
   blurDiv.classList.remove('blurDiv-hidden');
 });

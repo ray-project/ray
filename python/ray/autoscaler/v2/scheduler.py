@@ -169,6 +169,9 @@ class SchedulingNode:
     # The instance id of the IM(Instance Manager) instance. None if the node
     # is not yet in IM.
     im_instance_id: Optional[str] = None
+    # The instance status of the IM(Instance Manager) instance. None if the in-flight node
+    # has not yet been assigned to an IM instance.
+    im_instance_status: Optional[Instance.InstanceStatus.ValueType] = None
     # The ray node id of the ray node. None if the node is not included in
     # ray cluster's GCS report yet (not running ray yet).
     ray_node_id: Optional[str] = None
@@ -187,6 +190,7 @@ class SchedulingNode:
         labels: Dict[str, str],
         status: SchedulingNodeStatus,
         im_instance_id: str = "",
+        im_instance_status: Optional[Instance.InstanceStatus.ValueType] = None,
         ray_node_id: str = "",
         idle_duration_ms: int = 0,
         launch_config_hash: str = "",
@@ -206,6 +210,7 @@ class SchedulingNode:
         self.labels = labels
         self.status = status
         self.im_instance_id = im_instance_id
+        self.im_instance_status = im_instance_status
         self.ray_node_id = ray_node_id
         self.idle_duration_ms = idle_duration_ms
         self.launch_config_hash = launch_config_hash
@@ -274,6 +279,7 @@ class SchedulingNode:
                 labels=dict(instance.ray_node.dynamic_labels),
                 status=SchedulingNodeStatus.SCHEDULABLE,
                 im_instance_id=instance.im_instance.instance_id,
+                im_instance_status=instance.im_instance.status,
                 ray_node_id=instance.im_instance.node_id,
                 idle_duration_ms=instance.ray_node.idle_duration_ms,
                 launch_config_hash=instance.im_instance.launch_config_hash,
@@ -303,9 +309,11 @@ class SchedulingNode:
                 labels={},
                 status=SchedulingNodeStatus.TO_TERMINATE,
                 im_instance_id=instance.im_instance.instance_id,
+                im_instance_status=instance.im_instance.status,
                 termination_request=TerminationRequest(
                     id=str(uuid.uuid4()),
                     instance_id=instance.im_instance.instance_id,
+                    instance_status=instance.im_instance.status,
                     cause=TerminationRequest.Cause.OUTDATED,
                     instance_type=instance.im_instance.instance_type,
                 ),
@@ -1074,6 +1082,7 @@ class ResourceDemandScheduler(IResourceScheduler):
                 ray_node_id=node.ray_node_id,
                 cause=cause,
                 instance_type=node.node_type,
+                instance_status=node.im_instance_status,
                 details=(
                     f"Terminating node due to {TerminationRequest.Cause.Name(cause)}: "
                     f"max_num_nodes={max_num_nodes}, "
@@ -1194,9 +1203,8 @@ class ResourceDemandScheduler(IResourceScheduler):
             return []
 
         constraint = constraints[0]
-        min_bundles = constraint.min_bundles
         # Flatten the requests for iterating through.
-        requests = ResourceRequestUtil.ungroup_by_count(min_bundles)
+        requests = ResourceRequestUtil.ungroup_by_count(constraint.resource_requests)
 
         # Pass the empty nodes to schedule.
         scheduled_nodes, infeasible = ResourceDemandScheduler._try_schedule(
@@ -1551,6 +1559,7 @@ class ResourceDemandScheduler(IResourceScheduler):
                     instance_id=node.im_instance_id,
                     ray_node_id=node.ray_node_id,
                     instance_type=node.node_type,
+                    instance_status=node.im_instance_status,
                     cause=TerminationRequest.Cause.OUTDATED,
                     details=f"node from {node.node_type} has outdated config",
                 )
@@ -1568,6 +1577,10 @@ class ResourceDemandScheduler(IResourceScheduler):
         Args:
             ctx: The schedule context.
         """
+        count_by_node_type = ctx.get_cluster_shape()
+        node_type_configs = ctx.get_node_type_configs()
+        terminate_nodes_by_type: Dict[NodeType, int] = defaultdict(int)
+
         nodes = ctx.get_nodes()
         s_to_ms = 1000
         for node in nodes:
@@ -1580,6 +1593,11 @@ class ResourceDemandScheduler(IResourceScheduler):
                 continue
 
             idle_timeout_s = ctx.get_idle_timeout_s()
+            # Override the scheduler idle_timeout_s if set for this node_type.
+            node_type = node.node_type
+            if node_type in node_type_configs:
+                if node_type_configs[node_type].idle_timeout_s is not None:
+                    idle_timeout_s = node_type_configs[node_type].idle_timeout_s
             if idle_timeout_s is None:
                 # No idle timeout is set, skip the idle termination.
                 continue
@@ -1588,18 +1606,46 @@ class ResourceDemandScheduler(IResourceScheduler):
                 # The node is not idle for too long, skip it.
                 continue
 
+            if node.sched_requests[ResourceRequestSource.PENDING_DEMAND]:
+                # The node is needed by the pending requests.
+                # Skip it.
+                logger.debug(
+                    "Node {} (idle for {} secs) is needed by the pending requests, "
+                    "skip idle termination.".format(
+                        node.ray_node_id, node.idle_duration_ms / s_to_ms
+                    )
+                )
+                continue
+
             if node.sched_requests[ResourceRequestSource.CLUSTER_RESOURCE_CONSTRAINT]:
                 # The node is needed by the resource constraints.
                 # Skip it.
-                if node.idle_duration_ms > ctx.get_idle_timeout_s() * s_to_ms:
-                    logger.debug(
-                        "Node {}(idle for {} secs) is needed by the cluster resource "
-                        "constraints, skip idle termination.".format(
-                            node.ray_node_id, node.idle_duration_ms / s_to_ms
-                        )
+                logger.debug(
+                    "Node {} (idle for {} secs) is needed by the cluster resource "
+                    "constraints, skip idle termination.".format(
+                        node.ray_node_id, node.idle_duration_ms / s_to_ms
                     )
+                )
                 continue
 
+            # Honor the min_worker_nodes setting for the node type.
+            min_count = 0
+            if node_type in node_type_configs:
+                min_count = node_type_configs[node_type].min_worker_nodes
+            if (
+                count_by_node_type.get(node_type, 0)
+                - terminate_nodes_by_type[node_type]
+                <= min_count
+            ):
+                logger.info(
+                    "Node {} (idle for {} secs) belongs to node_type {} and is "
+                    "required by min_worker_nodes, skipping idle termination.".format(
+                        node.ray_node_id, node.idle_duration_ms / s_to_ms, node_type
+                    )
+                )
+                continue
+
+            terminate_nodes_by_type[node.node_type] += 1
             # The node is idle for too long, terminate it.
             node.status = SchedulingNodeStatus.TO_TERMINATE
             node.termination_request = TerminationRequest(
@@ -1608,6 +1654,7 @@ class ResourceDemandScheduler(IResourceScheduler):
                 ray_node_id=node.ray_node_id,
                 cause=TerminationRequest.Cause.IDLE,
                 instance_type=node.node_type,
+                instance_status=node.im_instance_status,
                 idle_duration_ms=node.idle_duration_ms,
                 details=f"idle for {node.idle_duration_ms/s_to_ms} secs > "
                 f"timeout={idle_timeout_s} secs",

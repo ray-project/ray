@@ -23,12 +23,6 @@ public class DeploymentConfig implements Serializable {
   private Integer numReplicas = 1;
 
   /**
-   * [DEPRECATED] The maximum number of queries that can be sent to a replica of this deployment
-   * without receiving a response. Defaults to 100.
-   */
-  private Integer maxConcurrentQueries = 100;
-
-  /**
    * The maximum number of requests that can be sent to a replica of this deployment without
    * receiving a response. Defaults to 100.
    */
@@ -81,20 +75,8 @@ public class DeploymentConfig implements Serializable {
     return this;
   }
 
-  public Integer getMaxConcurrentQueries() {
-    return maxConcurrentQueries;
-  }
-
   public Integer getMaxOngoingRequests() {
     return maxOngoingRequests;
-  }
-
-  public DeploymentConfig setMaxConcurrentQueries(Integer maxConcurrentQueries) {
-    if (maxConcurrentQueries != null) {
-      Preconditions.checkArgument(maxConcurrentQueries > 0, "max_concurrent_queries must be > 0");
-      this.maxConcurrentQueries = maxConcurrentQueries;
-    }
-    return this;
   }
 
   public DeploymentConfig setMaxOngoingRequests(Integer maxOngoingRequests) {
@@ -208,12 +190,6 @@ public class DeploymentConfig implements Serializable {
   }
 
   public byte[] toProtoBytes() {
-    Integer maxOngoingRequests;
-    if (this.maxOngoingRequests == null) {
-      maxOngoingRequests = this.maxConcurrentQueries;
-    } else {
-      maxOngoingRequests = this.maxOngoingRequests;
-    }
     io.ray.serve.generated.DeploymentConfig.Builder builder =
         io.ray.serve.generated.DeploymentConfig.newBuilder()
             .setNumReplicas(numReplicas)
@@ -262,7 +238,6 @@ public class DeploymentConfig implements Serializable {
       return deploymentConfig;
     }
     deploymentConfig.setNumReplicas(proto.getNumReplicas());
-    deploymentConfig.setMaxConcurrentQueries(proto.getMaxOngoingRequests());
     deploymentConfig.setMaxOngoingRequests(proto.getMaxOngoingRequests());
     deploymentConfig.setGracefulShutdownWaitLoopS(proto.getGracefulShutdownWaitLoopS());
     deploymentConfig.setGracefulShutdownTimeoutS(proto.getGracefulShutdownTimeoutS());

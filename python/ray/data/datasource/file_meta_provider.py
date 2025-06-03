@@ -18,6 +18,7 @@ import numpy as np
 
 from ray.data._internal.progress_bar import ProgressBar
 from ray.data._internal.remote_fn import cached_remote_fn
+from ray.data._internal.util import RetryingPyFileSystem
 from ray.data.block import BlockMetadata
 from ray.data.datasource.partitioning import Partitioning
 from ray.util.annotations import DeveloperAPI
@@ -109,7 +110,7 @@ class BaseFileMetadataProvider(FileMetadataProvider):
     def expand_paths(
         self,
         paths: List[str],
-        filesystem: Optional["pyarrow.fs.FileSystem"],
+        filesystem: Optional["RetryingPyFileSystem"],
         partitioning: Optional[Partitioning] = None,
         ignore_missing_paths: bool = False,
     ) -> Iterator[Tuple[str, int]]:
@@ -170,7 +171,7 @@ class DefaultFileMetadataProvider(BaseFileMetadataProvider):
     def expand_paths(
         self,
         paths: List[str],
-        filesystem: "pyarrow.fs.FileSystem",
+        filesystem: "RetryingPyFileSystem",
         partitioning: Optional[Partitioning] = None,
         ignore_missing_paths: bool = False,
     ) -> Iterator[Tuple[str, int]]:
@@ -195,7 +196,7 @@ class FastFileMetadataProvider(DefaultFileMetadataProvider):
     def expand_paths(
         self,
         paths: List[str],
-        filesystem: "pyarrow.fs.FileSystem",
+        filesystem: "RetryingPyFileSystem",
         partitioning: Optional[Partitioning] = None,
         ignore_missing_paths: bool = False,
     ) -> Iterator[Tuple[str, int]]:
@@ -252,7 +253,7 @@ def _handle_read_os_error(error: OSError, paths: Union[str, List[str]]) -> str:
 
 def _expand_paths(
     paths: List[str],
-    filesystem: "pyarrow.fs.FileSystem",
+    filesystem: "RetryingPyFileSystem",
     partitioning: Optional[Partitioning],
     ignore_missing_paths: bool = False,
 ) -> Iterator[Tuple[str, int]]:
@@ -262,7 +263,7 @@ def _expand_paths(
     from ray.data.datasource.file_based_datasource import (
         FILE_SIZE_FETCH_PARALLELIZATION_THRESHOLD,
     )
-    from ray.data.datasource.path_util import _unwrap_protocol
+    from ray.data.datasource.path_util import _is_http_url, _unwrap_protocol
 
     # We break down our processing paths into a few key cases:
     # 1. If len(paths) < threshold, fetch the file info for the individual files/paths
@@ -272,10 +273,14 @@ def _expand_paths(
     #    provided paths on the client; this should be a single file info request.
     # 3. If more than threshold requests required, parallelize them via Ray tasks.
     # 1. Small # of paths case.
+    is_local = isinstance(filesystem, LocalFileSystem)
+    if isinstance(filesystem, RetryingPyFileSystem):
+        is_local = isinstance(filesystem.unwrap(), LocalFileSystem)
+
     if (
         len(paths) < FILE_SIZE_FETCH_PARALLELIZATION_THRESHOLD
         # Local file systems are very fast to hit.
-        or isinstance(filesystem, LocalFileSystem)
+        or is_local
     ):
         yield from _get_file_infos_serial(paths, filesystem, ignore_missing_paths)
     else:
@@ -285,10 +290,13 @@ def _expand_paths(
         # If parent directory (or base directory, if using partitioning) is common to
         # all paths, fetch all file infos at that prefix and filter the response to the
         # provided paths.
-        if (
-            partitioning is not None
-            and common_path == _unwrap_protocol(partitioning.base_dir)
-        ) or all(str(pathlib.Path(path).parent) == common_path for path in paths):
+        if not _is_http_url(common_path) and (
+            (
+                partitioning is not None
+                and common_path == _unwrap_protocol(partitioning.base_dir)
+            )
+            or all(str(pathlib.Path(path).parent) == common_path for path in paths)
+        ):
             yield from _get_file_infos_common_path_prefix(
                 paths, common_path, filesystem, ignore_missing_paths
             )
@@ -300,7 +308,7 @@ def _expand_paths(
 
 def _get_file_infos_serial(
     paths: List[str],
-    filesystem: "pyarrow.fs.FileSystem",
+    filesystem: "RetryingPyFileSystem",
     ignore_missing_paths: bool = False,
 ) -> Iterator[Tuple[str, int]]:
     for path in paths:
@@ -347,7 +355,7 @@ def _get_file_infos_common_path_prefix(
 
 def _get_file_infos_parallel(
     paths: List[str],
-    filesystem: "pyarrow.fs.FileSystem",
+    filesystem: "RetryingPyFileSystem",
     ignore_missing_paths: bool = False,
 ) -> Iterator[Tuple[str, int]]:
     from ray.data.datasource.file_based_datasource import (
@@ -398,7 +406,9 @@ def _fetch_metadata_parallel(
     # dominates the Ray task overhead while ensuring good parallelism.
     # Always launch at least 2 parallel fetch tasks.
     parallelism = max(len(uris) // desired_uris_per_task, 2)
-    metadata_fetch_bar = ProgressBar("Metadata Fetch Progress", total=parallelism)
+    metadata_fetch_bar = ProgressBar(
+        "Metadata Fetch Progress", total=parallelism, unit="task"
+    )
     fetch_tasks = []
     for uri_chunk in np.array_split(uris, parallelism):
         if len(uri_chunk) == 0:
@@ -409,7 +419,7 @@ def _fetch_metadata_parallel(
 
 
 def _get_file_infos(
-    path: str, filesystem: "pyarrow.fs.FileSystem", ignore_missing_path: bool = False
+    path: str, filesystem: "RetryingPyFileSystem", ignore_missing_path: bool = False
 ) -> List[Tuple[str, int]]:
     """Get the file info for all files at or under the provided path."""
     from pyarrow.fs import FileType
@@ -420,7 +430,7 @@ def _get_file_infos(
     except OSError as e:
         _handle_read_os_error(e, path)
     if file_info.type == FileType.Directory:
-        for (file_path, file_size) in _expand_directory(path, filesystem):
+        for file_path, file_size in _expand_directory(path, filesystem):
             file_infos.append((file_path, file_size))
     elif file_info.type == FileType.File:
         file_infos.append((path, file_info.size))
@@ -434,7 +444,7 @@ def _get_file_infos(
 
 def _expand_directory(
     path: str,
-    filesystem: "pyarrow.fs.FileSystem",
+    filesystem: "RetryingPyFileSystem",
     exclude_prefixes: Optional[List[str]] = None,
     ignore_missing_path: bool = False,
 ) -> List[Tuple[str, int]]:

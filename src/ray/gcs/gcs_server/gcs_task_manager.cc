@@ -14,23 +14,40 @@
 
 #include "ray/gcs/gcs_server/gcs_task_manager.h"
 
+#include <algorithm>
+#include <boost/range/adaptor/reversed.hpp>
+#include <cstddef>
+#include <memory>
+#include <stdexcept>
+#include <string>
+#include <utility>
+#include <vector>
+
 #include "absl/strings/match.h"
+#include "ray/common/asio/periodical_runner.h"
+#include "ray/common/id.h"
 #include "ray/common/ray_config.h"
 #include "ray/common/status.h"
 
 namespace ray {
 namespace gcs {
 
-void GcsTaskManager::Stop() {
-  io_service_.stop();
-  if (io_service_thread_->joinable()) {
-    io_service_thread_->join();
-  }
+GcsTaskManager::GcsTaskManager(instrumented_io_context &io_service)
+    : io_service_(io_service),
+      task_event_storage_(std::make_unique<GcsTaskManagerStorage>(
+          RayConfig::instance().task_events_max_num_task_in_gcs(),
+          stats_counter_,
+          std::make_unique<FinishedTaskActorTaskGcPolicy>())),
+      periodical_runner_(PeriodicalRunner::Create(io_service_)) {
+  periodical_runner_->RunFnPeriodically([this] { task_event_storage_->GcJobSummary(); },
+                                        5 * 1000,
+                                        "GcsTaskManager.GcJobSummary");
 }
 
 std::vector<rpc::TaskEvents> GcsTaskManager::GcsTaskManagerStorage::GetTaskEvents()
     const {
   std::vector<rpc::TaskEvents> ret;
+  ret.reserve(gc_policy_->MaxPriority());
   // From the higher priority to the lower priority list.
   for (int i = gc_policy_->MaxPriority() - 1; i >= 0; --i) {
     // Reverse iterate the list to get the latest task events.
@@ -70,6 +87,7 @@ std::vector<rpc::TaskEvents> GcsTaskManager::GcsTaskManagerStorage::GetTaskEvent
 std::vector<rpc::TaskEvents> GcsTaskManager::GcsTaskManagerStorage::GetTaskEvents(
     const absl::flat_hash_set<std::shared_ptr<TaskEventLocator>> &task_locators) const {
   std::vector<rpc::TaskEvents> result;
+  result.reserve(task_locators.size());
   for (const auto &task_attempt_loc : task_locators) {
     // Copy the task event to the output.
     result.push_back(task_attempt_loc->GetTaskEventsMutable());
@@ -96,13 +114,13 @@ void GcsTaskManager::GcsTaskManagerStorage::MarkTasksFailedOnWorkerDead(
 
   for (const auto &task_locator : task_attempts_itr->second) {
     MarkTaskAttemptFailedIfNeeded(
-        task_locator, worker_failure_data.end_time_ms() * 1000, error_info);
+        task_locator, worker_failure_data.end_time_ms() * 1000 * 1000, error_info);
   }
 }
 
 void GcsTaskManager::GcsTaskManagerStorage::MarkTaskAttemptFailedIfNeeded(
     const std::shared_ptr<TaskEventLocator> &locator,
-    int64_t failed_ts,
+    int64_t failed_ts_ns,
     const rpc::RayErrorInfo &error_info) {
   auto &task_events = locator->GetTaskEventsMutable();
   // We don't mark tasks as failed if they are already terminated.
@@ -113,7 +131,7 @@ void GcsTaskManager::GcsTaskManagerStorage::MarkTaskAttemptFailedIfNeeded(
   // We could mark the task as failed even if might not have state updates yet (i.e. only
   // profiling events are reported).
   auto state_updates = task_events.mutable_state_updates();
-  (*state_updates->mutable_state_ts())[ray::rpc::TaskStatus::FAILED] = failed_ts;
+  (*state_updates->mutable_state_ts_ns())[ray::rpc::TaskStatus::FAILED] = failed_ts_ns;
   state_updates->mutable_error_info()->CopyFrom(error_info);
 }
 
@@ -267,7 +285,7 @@ GcsTaskManager::GcsTaskManagerStorage::UpdateOrInitTaskEventLocator(
     rpc::TaskEvents &&events_by_task) {
   const TaskID task_id = TaskID::FromBinary(events_by_task.task_id());
   int32_t attempt_number = events_by_task.attempt_number();
-  TaskAttempt task_attempt = std::make_pair<>(task_id, attempt_number);
+  TaskAttempt task_attempt = std::make_pair(task_id, attempt_number);
 
   auto loc_itr = primary_index_.find(task_attempt);
   if (loc_itr != primary_index_.end()) {
@@ -362,30 +380,87 @@ void GcsTaskManager::GcsTaskManagerStorage::AddOrReplaceTaskEvent(
   }
 }
 
+namespace {
+
+template <typename T>
+bool apply_predicate(const T &lhs, rpc::FilterPredicate predicate, const T &rhs) {
+  switch (predicate) {
+  case rpc::FilterPredicate::EQUAL:
+    return lhs == rhs;
+  case rpc::FilterPredicate::NOT_EQUAL:
+    return lhs != rhs;
+  default:
+    RAY_LOG(ERROR) << "Unknown filter predicate: " << rpc::FilterPredicate_Name(predicate)
+                   << ". Supported predicates are '=' and '!='.";
+    throw std::invalid_argument("Unknown filter predicate: " +
+                                rpc::FilterPredicate_Name(predicate));
+  }
+}
+
+bool apply_predicate_ignore_case(std::string_view lhs,
+                                 rpc::FilterPredicate predicate,
+                                 std::string_view rhs) {
+  switch (predicate) {
+  case rpc::FilterPredicate::EQUAL:
+    return absl::EqualsIgnoreCase(lhs, rhs);
+  case rpc::FilterPredicate::NOT_EQUAL:
+    return !absl::EqualsIgnoreCase(lhs, rhs);
+  default:
+    RAY_LOG(ERROR) << "Unknown filter predicate: " << rpc::FilterPredicate_Name(predicate)
+                   << ". Supported predicates are '=' and '!='.";
+    throw std::invalid_argument("Unknown filter predicate: " +
+                                rpc::FilterPredicate_Name(predicate));
+  }
+}
+
+}  // namespace
+
 void GcsTaskManager::HandleGetTaskEvents(rpc::GetTaskEventsRequest request,
                                          rpc::GetTaskEventsReply *reply,
                                          rpc::SendReplyCallback send_reply_callback) {
   RAY_LOG(DEBUG) << "Getting task status:" << request.ShortDebugString();
 
+  // TODO(meyan): In the future, we could improve the query performance by leveraging
+  // the index on all the equal filters.
   // Select candidate events by indexing if possible.
-  std::vector<rpc::TaskEvents> task_events;
+  std::optional<std::vector<rpc::TaskEvents>> task_events;
   const auto &filters = request.filters();
-  if (filters.task_ids_size() > 0) {
+  if (filters.task_filters_size() > 0) {
     absl::flat_hash_set<TaskID> task_ids;
-    for (const auto &task_id_str : filters.task_ids()) {
-      task_ids.insert(TaskID::FromBinary(task_id_str));
+    for (const auto &task_filter_obj : filters.task_filters()) {
+      if (task_filter_obj.predicate() == rpc::FilterPredicate::EQUAL) {
+        task_ids.insert(TaskID::FromBinary(task_filter_obj.task_id()));
+      }
     }
-    task_events = task_event_storage_->GetTaskEvents(task_ids);
-  } else if (filters.has_job_id()) {
-    const auto job_id = JobID::FromBinary(filters.job_id());
-    task_events = task_event_storage_->GetTaskEvents(job_id);
-    // Populate per-job data loss.
-    if (task_event_storage_->HasJob(job_id)) {
-      const auto &job_summary = task_event_storage_->GetJobTaskSummary(job_id);
-      reply->set_num_profile_task_events_dropped(job_summary.NumProfileEventsDropped());
-      reply->set_num_status_task_events_dropped(job_summary.NumTaskAttemptsDropped());
+    if (task_ids.size() == 1) {
+      task_events = task_event_storage_->GetTaskEvents(task_ids);
+    } else if (task_ids.size() > 1) {
+      task_events = std::vector<rpc::TaskEvents>();
     }
-  } else {
+  } else if (filters.job_filters_size() > 0) {
+    absl::flat_hash_set<JobID> job_ids;
+    for (const auto &job_filter_obj : filters.job_filters()) {
+      if (job_filter_obj.predicate() == rpc::FilterPredicate::EQUAL) {
+        job_ids.insert(JobID::FromBinary(job_filter_obj.job_id()));
+      }
+    }
+
+    if (job_ids.size() == 1) {
+      JobID job_id = *job_ids.begin();
+      task_events = task_event_storage_->GetTaskEvents(job_id);
+
+      // Populate per-job data loss.
+      if (task_event_storage_->HasJob(job_id)) {
+        const auto &job_summary = task_event_storage_->GetJobTaskSummary(job_id);
+        reply->set_num_profile_task_events_dropped(job_summary.NumProfileEventsDropped());
+        reply->set_num_status_task_events_dropped(job_summary.NumTaskAttemptsDropped());
+      }
+    } else if (job_ids.size() > 1) {
+      task_events = std::vector<rpc::TaskEvents>();
+    }
+  }
+
+  if (!task_events.has_value()) {
     task_events = task_event_storage_->GetTaskEvents();
     // Populate all jobs data loss
     reply->set_num_profile_task_events_dropped(
@@ -403,7 +478,8 @@ void GcsTaskManager::HandleGetTaskEvents(rpc::GetTaskEventsRequest request,
   int64_t num_limit_truncated = 0;
 
   // A lambda filter fn, where it returns true for task events to be included in the
-  // result. Task ids and job ids are already filtered by the storage with indexing above.
+  // result. Task ids or job ids with equal predicate are already filtered by the
+  // storage with indexing above.
   auto filter_fn = [&filters](const rpc::TaskEvents &task_event) {
     if (!task_event.has_task_info()) {
       // Skip task events w/o task info.
@@ -414,18 +490,58 @@ void GcsTaskManager::HandleGetTaskEvents(rpc::GetTaskEventsRequest request,
       return false;
     }
 
-    if (filters.has_actor_id() && task_event.task_info().has_actor_id() &&
-        ActorID::FromBinary(task_event.task_info().actor_id()) !=
-            ActorID::FromBinary(filters.actor_id())) {
-      return false;
+    if (filters.task_filters_size() > 0) {
+      if (!std::all_of(filters.task_filters().begin(),
+                       filters.task_filters().end(),
+                       [&task_event](const auto &task_filter) {
+                         return apply_predicate(
+                             TaskID::FromBinary(task_event.task_id()),
+                             task_filter.predicate(),
+                             TaskID::FromBinary(task_filter.task_id()));
+                       })) {
+        return false;
+      }
     }
 
-    if (filters.has_name() &&
-        !absl::EqualsIgnoreCase(task_event.task_info().name(), filters.name())) {
-      return false;
+    if (filters.job_filters_size() > 0) {
+      if (!std::all_of(filters.job_filters().begin(),
+                       filters.job_filters().end(),
+                       [&task_event](const auto &job_filter) {
+                         return apply_predicate(
+                             JobID::FromBinary(task_event.task_info().job_id()),
+                             job_filter.predicate(),
+                             JobID::FromBinary(job_filter.job_id()));
+                       })) {
+        return false;
+      }
     }
 
-    if (filters.has_state()) {
+    if (filters.actor_filters_size() > 0) {
+      if (!std::all_of(filters.actor_filters().begin(),
+                       filters.actor_filters().end(),
+                       [&task_event](const auto &actor_filter) {
+                         return apply_predicate(
+                             ActorID::FromBinary(task_event.task_info().actor_id()),
+                             actor_filter.predicate(),
+                             ActorID::FromBinary(actor_filter.actor_id()));
+                       })) {
+        return false;
+      }
+    }
+
+    if (filters.task_name_filters_size() > 0) {
+      if (!std::all_of(filters.task_name_filters().begin(),
+                       filters.task_name_filters().end(),
+                       [&task_event](const auto &task_name_filter) {
+                         return apply_predicate_ignore_case(task_event.task_info().name(),
+                                                            task_name_filter.predicate(),
+                                                            task_name_filter.task_name());
+                       })) {
+        return false;
+      }
+    }
+
+    if (filters.state_filters_size() > 0) {
       const google::protobuf::EnumDescriptor *task_status_descriptor =
           ray::rpc::TaskStatus_descriptor();
 
@@ -433,7 +549,7 @@ void GcsTaskManager::HandleGetTaskEvents(rpc::GetTaskEventsRequest request,
       ray::rpc::TaskStatus state = ray::rpc::TaskStatus::NIL;
       if (task_event.has_state_updates()) {
         for (int i = task_status_descriptor->value_count() - 1; i >= 0; --i) {
-          if (task_event.state_updates().state_ts().contains(
+          if (task_event.state_updates().state_ts_ns().contains(
                   task_status_descriptor->value(i)->number())) {
             state = static_cast<ray::rpc::TaskStatus>(
                 task_status_descriptor->value(i)->number());
@@ -442,9 +558,14 @@ void GcsTaskManager::HandleGetTaskEvents(rpc::GetTaskEventsRequest request,
         }
       }
 
-      if (!absl::EqualsIgnoreCase(
-              filters.state(),
-              task_status_descriptor->FindValueByNumber(state)->name())) {
+      if (!std::all_of(filters.state_filters().begin(),
+                       filters.state_filters().end(),
+                       [&state, &task_status_descriptor](const auto &state_filter) {
+                         return apply_predicate_ignore_case(
+                             task_status_descriptor->FindValueByNumber(state)->name(),
+                             state_filter.predicate(),
+                             state_filter.state());
+                       })) {
         return false;
       }
     }
@@ -453,36 +574,42 @@ void GcsTaskManager::HandleGetTaskEvents(rpc::GetTaskEventsRequest request,
   };
 
   int64_t num_filtered = 0;
-  for (auto itr = task_events.rbegin(); itr != task_events.rend(); ++itr) {
-    auto &task_event = *itr;
-    if (!filter_fn(task_event)) {
-      num_filtered++;
-      continue;
+  Status status = Status::OK();
+  try {
+    for (auto &task_event : *task_events | boost::adaptors::reversed) {
+      if (!filter_fn(task_event)) {
+        num_filtered++;
+        continue;
+      }
+
+      if (limit < 0 || count++ < limit) {
+        auto events = reply->add_events_by_task();
+        events->Swap(&task_event);
+      } else {
+        num_profile_event_limit += task_event.has_profile_events()
+                                       ? task_event.profile_events().events_size()
+                                       : 0;
+        num_status_event_limit += task_event.has_state_updates() ? 1 : 0;
+        num_limit_truncated++;
+      }
     }
 
-    if (limit < 0 || count++ < limit) {
-      auto events = reply->add_events_by_task();
-      events->Swap(&task_event);
-    } else {
-      num_profile_event_limit +=
-          task_event.has_profile_events() ? task_event.profile_events().events_size() : 0;
-      num_status_event_limit += task_event.has_state_updates() ? 1 : 0;
-      num_limit_truncated++;
-    }
+    // Take into account truncation.
+    reply->set_num_profile_task_events_dropped(reply->num_profile_task_events_dropped() +
+                                               num_profile_event_limit);
+    reply->set_num_status_task_events_dropped(reply->num_status_task_events_dropped() +
+                                              num_status_event_limit);
+
+    reply->set_num_total_stored(task_events->size());
+    reply->set_num_truncated(num_limit_truncated);
+    reply->set_num_filtered_on_gcs(num_filtered);
+  } catch (std::invalid_argument &e) {
+    // When encounter invalid filter predicate
+    status = Status::InvalidArgument(e.what());
+    reply->Clear();
   }
 
-  // Take into account truncation.
-  reply->set_num_profile_task_events_dropped(reply->num_profile_task_events_dropped() +
-                                             num_profile_event_limit);
-  reply->set_num_status_task_events_dropped(reply->num_status_task_events_dropped() +
-                                            num_status_event_limit);
-
-  reply->set_num_total_stored(task_events.size());
-  reply->set_num_truncated(num_limit_truncated);
-  reply->set_num_filtered_on_gcs(num_filtered);
-
-  GCS_RPC_SEND_REPLY(send_reply_callback, reply, Status::OK());
-  return;
+  GCS_RPC_SEND_REPLY(send_reply_callback, reply, status);
 }
 
 void GcsTaskManager::GcsTaskManagerStorage::RecordDataLossFromWorker(
@@ -492,12 +619,12 @@ void GcsTaskManager::GcsTaskManagerStorage::RecordDataLossFromWorker(
     auto attempt_number = dropped_attempt.attempt_number();
     auto job_id = task_id.JobId();
     job_task_summary_[job_id].RecordTaskAttemptDropped(
-        std::make_pair<>(task_id, attempt_number));
+        std::make_pair(task_id, attempt_number));
     stats_counter_.Increment(kTotalNumTaskAttemptsDropped);
 
     // We will also remove any existing task events for this task attempt from the storage
     // since we want to make data loss at task attempt granularity.
-    const auto &loc_iter = primary_index_.find(std::make_pair<>(task_id, attempt_number));
+    const auto &loc_iter = primary_index_.find(std::make_pair(task_id, attempt_number));
     if (loc_iter != primary_index_.end()) {
       RemoveTaskAttempt(loc_iter->second);
     }
@@ -514,7 +641,7 @@ void GcsTaskManager::GcsTaskManagerStorage::RecordDataLossFromWorker(
 void GcsTaskManager::HandleAddTaskEventData(rpc::AddTaskEventDataRequest request,
                                             rpc::AddTaskEventDataReply *reply,
                                             rpc::SendReplyCallback send_reply_callback) {
-  auto data = std::move(request.data());
+  auto data = std::move(*request.mutable_data());
   task_event_storage_->RecordDataLossFromWorker(data);
 
   for (auto events_by_task : *data.mutable_events_by_task()) {
@@ -558,7 +685,7 @@ void GcsTaskManager::RecordMetrics() {
 
   {
     absl::MutexLock lock(&mutex_);
-    if (usage_stats_client_) {
+    if (usage_stats_client_ != nullptr) {
       usage_stats_client_->RecordExtraUsageCounter(
           usage::TagKey::NUM_ACTOR_CREATION_TASKS, counters[kTotalNumActorCreationTask]);
       usage_stats_client_->RecordExtraUsageCounter(usage::TagKey::NUM_ACTOR_TASKS,
@@ -580,11 +707,10 @@ void GcsTaskManager::OnWorkerDead(
     const WorkerID &worker_id, const std::shared_ptr<rpc::WorkerTableData> &worker_data) {
   RAY_LOG(DEBUG) << "Marking all running tasks of worker " << worker_id << " as failed.";
 
-  std::shared_ptr<boost::asio::deadline_timer> timer =
-      std::make_shared<boost::asio::deadline_timer>(
-          io_service_,
-          boost::posix_time::milliseconds(
-              RayConfig::instance().gcs_mark_task_failed_on_worker_dead_delay_ms()));
+  auto timer = std::make_shared<boost::asio::deadline_timer>(
+      io_service_,
+      boost::posix_time::milliseconds(
+          RayConfig::instance().gcs_mark_task_failed_on_worker_dead_delay_ms()));
 
   timer->async_wait(
       [this, timer, worker_id, worker_data](const boost::system::error_code &error) {
@@ -599,11 +725,10 @@ void GcsTaskManager::OnWorkerDead(
 }
 
 void GcsTaskManager::OnJobFinished(const JobID &job_id, int64_t job_finish_time_ms) {
-  std::shared_ptr<boost::asio::deadline_timer> timer =
-      std::make_shared<boost::asio::deadline_timer>(
-          io_service_,
-          boost::posix_time::milliseconds(
-              RayConfig::instance().gcs_mark_task_failed_on_job_done_delay_ms()));
+  auto timer = std::make_shared<boost::asio::deadline_timer>(
+      io_service_,
+      boost::posix_time::milliseconds(
+          RayConfig::instance().gcs_mark_task_failed_on_job_done_delay_ms()));
 
   timer->async_wait([this, timer, job_id, job_finish_time_ms](
                         const boost::system::error_code &error) {
