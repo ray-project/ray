@@ -364,7 +364,7 @@ class MeanStdFilter(Filter):
         """Syncs all fields together from other filter.
 
         .. testcode::
-             :skipif: True
+            :skipif: True
 
             a = MeanStdFilter(())
             a(1)
