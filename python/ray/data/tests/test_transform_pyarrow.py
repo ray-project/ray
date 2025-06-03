@@ -14,6 +14,7 @@ from ray.air.util.tensor_extensions.arrow import ArrowTensorTypeV2
 from ray.data import DataContext
 from ray.data._internal.arrow_ops.transform_pyarrow import (
     MIN_PYARROW_VERSION_TYPE_PROMOTION,
+    MIN_NUM_CHUNKS_TO_TRIGGER_COMBINE_CHUNKS,
     concat,
     hash_partition,
     shuffle,
@@ -47,6 +48,20 @@ def test_try_defragment_table():
 
     assert len(dt["id"].chunks) == 1
     assert dt == t
+
+
+def test_defragment_large_table():
+
+    big = pa.array(list(range(800_000_000)), type=pa.int32())  # ~2GiB
+    chunked = [big]
+    for _ in range(MIN_NUM_CHUNKS_TO_TRIGGER_COMBINE_CHUNKS):
+        chunked.append(pa.array([1, 2, 3], type=pa.int32()))  # a little tail chunk
+    chunked = pa.chunked_array(chunked)
+
+    table = pa.Table.from_arrays([chunked], names=["col"])
+
+    data = try_combine_chunked_columns(table)
+    assert len(data["col"].chunks) == 2
 
 
 def test_hash_partitioning():
