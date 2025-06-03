@@ -122,6 +122,8 @@ class PDProxyServer(LLMServer):
         }
         prefill_prompt.parameters["max_tokens"] = 1
 
+        import time
+        begin = time.perf_counter()
         prefill_response_gen: AsyncGenerator[
             LLMRawResponse, None
         ] = self.prefill_server.options(
@@ -140,16 +142,31 @@ class PDProxyServer(LLMServer):
             yield prefill_response
             return
 
+        prefill_end = time.perf_counter()
+        prefill_speed = None if prefill_response.num_input_tokens is None else prefill_response.num_input_tokens / (prefill_end - begin)
+
         kv_transfer_params = prefill_response.metadata[KV_TRANSFER_PARAMS_KEY]
         logger.debug(
             f"Prefill metadata[{KV_TRANSFER_PARAMS_KEY}]: {kv_transfer_params}"
         )
         prompt.parameters[KV_TRANSFER_PARAMS_KEY] = kv_transfer_params
 
+        decoded_tokens = 0
         async for chunk in self.decode_server.options(stream=True)._predict.remote(
             request_id=request_id, prompt=prompt, stream=stream
         ):
+            chunk: LLMRawResponse
+            if decoded_tokens is not None:
+                if chunk.num_generated_tokens is None:
+                    decoded_tokens = None
+                else:
+                    decoded_tokens += chunk.num_generated_tokens
             yield chunk
+
+        end = time.perf_counter()
+        decode_speed = None if decoded_tokens is None else decoded_tokens / (end - prefill_end)
+
+        logger.info(f"TTFT {prefill_end - begin:.2f}s, TPOT: {decode_speed:.2f} tokens/s, prefill speed: {prefill_speed:.2f} tokens/s, prefill took {prefill_end - begin:.2f}s, decode took {end - prefill_end:.2f}s")
 
     @classmethod
     def as_deployment(cls) -> serve.Deployment:
