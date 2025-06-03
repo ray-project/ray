@@ -3,8 +3,8 @@ from concurrent.futures.thread import ThreadPoolExecutor
 from functools import partial
 from typing import List, Optional
 
+import httpx
 import pytest
-import requests
 from starlette.responses import StreamingResponse
 
 from ray import serve
@@ -81,7 +81,7 @@ async def test_batch_generator_streaming_response_integration_test(serve_instanc
     prompt_prefix = "hola"
     url = f"http://localhost:8000/?prompt={prompt_prefix}"
     with ThreadPoolExecutor() as pool:
-        futs = [pool.submit(partial(requests.get, url + str(idx))) for idx in range(4)]
+        futs = [pool.submit(partial(httpx.get, url + str(idx))) for idx in range(4)]
         responses = [fut.result() for fut in futs]
 
     for idx, response in enumerate(responses):
@@ -111,11 +111,11 @@ def test_batching_client_dropped_unary(serve_instance):
 
     # Sending requests with clients that drops the connection.
     for _ in range(3):
-        with pytest.raises(requests.exceptions.ReadTimeout):
-            requests.get(url, timeout=0.005)
+        with pytest.raises(httpx.ReadTimeout):
+            httpx.get(url, timeout=0.005)
 
     # The following request should succeed.
-    resp = requests.get(url, timeout=1)
+    resp = httpx.get(url, timeout=1)
     assert resp.status_code == 200
     assert resp.text == "fake-response"
 
@@ -143,13 +143,11 @@ def test_batching_client_dropped_streaming(serve_instance):
 
     # Sending requests with clients that drops the connection.
     for _ in range(3):
-        with pytest.raises(
-            (requests.exceptions.ReadTimeout, requests.exceptions.ConnectionError)
-        ):
-            requests.get(url, timeout=0.005)
+        with pytest.raises((httpx.ReadTimeout, httpx.ConnectError)):
+            httpx.get(url, timeout=0.005)
 
     # The following request should succeed.
-    resp = requests.get(url, timeout=1)
+    resp = httpx.get(url, timeout=1)
     assert resp.status_code == 200
     assert resp.text == "0123456789"
 
@@ -188,7 +186,7 @@ def test_observability_helpers():
 
     assert handle._is_batching_task_alive.remote().result()
 
-    requests.get("http://localhost:8000/")
+    httpx.get("http://localhost:8000/")
 
     assert len(handle._get_handling_task_stack.remote().result()) is not None
     assert handle._is_batching_task_alive.remote().result()
@@ -196,7 +194,7 @@ def test_observability_helpers():
     curr_iteration_start_time = handle._get_curr_iteration_start_time.remote().result()
 
     for _ in range(5):
-        requests.get("http://localhost:8000/")
+        httpx.get("http://localhost:8000/")
 
     new_iteration_start_time = handle._get_curr_iteration_start_time.remote().result()
 

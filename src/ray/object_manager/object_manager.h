@@ -101,6 +101,7 @@ class ObjectManagerInterface {
       const TaskMetricsKey &task_key) const = 0;
   virtual int GetServerPort() const = 0;
   virtual void FreeObjects(const std::vector<ObjectID> &object_ids, bool local_only) = 0;
+  virtual void HandleNodeRemoved(const NodeID &node_id) = 0;
   virtual bool IsPlasmaObjectSpillable(const ObjectID &object_id) = 0;
   virtual int64_t GetUsedMemory() const = 0;
   virtual bool PullManagerHasPullsQueued() const = 0;
@@ -174,6 +175,7 @@ class ObjectManager : public ObjectManagerInterface,
       instrumented_io_context &main_service,
       const NodeID &self_node_id,
       const ObjectManagerConfig &config,
+      std::shared_ptr<gcs::GcsClient> gcs_client,
       IObjectDirectory *object_directory,
       RestoreSpilledObjectCallback restore_spilled_object,
       std::function<std::string(const ObjectID &)> get_spilled_object_url,
@@ -229,6 +231,12 @@ class ObjectManager : public ObjectManagerInterface,
   /// \param local_only Whether keep this request with local object store
   ///                   or send it to all the object stores.
   void FreeObjects(const std::vector<ObjectID> &object_ids, bool local_only) override;
+
+  /// Cancel all pushes that have not yet been sent to the removed node and erases the
+  /// associated client if it exists.
+  ///
+  /// \param node_id The ID of the node that was removed.
+  void HandleNodeRemoved(const NodeID &node_id) override;
 
   /// Returns debug string for class.
   ///
@@ -401,6 +409,10 @@ class ObjectManager : public ObjectManagerInterface,
 
   NodeID self_node_id_;
   const ObjectManagerConfig config_;
+
+  /// The GCS Client shared by everything on the raylet
+  std::shared_ptr<gcs::GcsClient> gcs_client_;
+
   /// The object directory interface to access object information.
   IObjectDirectory *object_directory_;
 

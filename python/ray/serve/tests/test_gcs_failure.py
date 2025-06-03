@@ -3,8 +3,8 @@ import os
 import sys
 from typing import Callable, Optional
 
+import httpx
 import pytest
-import requests
 
 import ray
 from ray import serve
@@ -76,7 +76,7 @@ def test_controller_gcs_failure(serve_ha, use_handle):  # noqa: F811
             handle = serve.get_app_handle(SERVE_DEFAULT_APP_NAME)
             ret = handle.remote().result()
         else:
-            ret = requests.get("http://localhost:8000/d").text
+            ret = httpx.get("http://localhost:8000/d").text
         return ret
 
     serve.run(d.bind())
@@ -203,9 +203,7 @@ def test_new_router_on_gcs_failure(serve_ha, use_proxy: bool):
     returned_pids = set()
     if use_proxy:
         for _ in range(10):
-            returned_pids.add(
-                int(requests.get("http://localhost:8000", timeout=3.0).text)
-            )
+            returned_pids.add(int(httpx.get("http://localhost:8000", timeout=3.0).text))
     else:
         for _ in range(10):
             returned_pids.add(int(h.remote().result(timeout_s=3.0)))
@@ -277,7 +275,7 @@ def test_proxy_router_updated_replicas_then_gcs_failure(serve_ha):
     client.deploy_apps(ServeDeploySchema(**{"applications": [config]}))
     wait_for_condition(check_apps_running, apps=["default"])
 
-    r = requests.post("http://localhost:8000")
+    r = httpx.post("http://localhost:8000")
     assert r.status_code == 200, r.text
     print(r.text)
 
@@ -300,7 +298,7 @@ def test_proxy_router_updated_replicas_then_gcs_failure(serve_ha):
 
     returned_pids = set()
     for _ in range(20):
-        r = requests.post("http://localhost:8000")
+        r = httpx.post("http://localhost:8000")
         assert r.status_code == 200
         returned_pids.add(int(r.text))
 

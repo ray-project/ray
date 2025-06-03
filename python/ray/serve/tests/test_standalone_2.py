@@ -3,8 +3,8 @@ import subprocess
 import sys
 from contextlib import contextmanager
 
+import httpx
 import pytest
-import requests
 
 import ray
 import ray._private.state
@@ -49,7 +49,7 @@ def start_and_shutdown_ray_cli_function():
 
 def _check_ray_stop():
     try:
-        requests.get("http://localhost:8265/api/ray/version")
+        httpx.get("http://localhost:8265/api/ray/version")
         return False
     except Exception:
         return True
@@ -112,7 +112,7 @@ def test_serve_namespace(shutdown_ray_and_serve, ray_namespace):
         for actor in actors:
             ray.get_actor(name=actor["name"], namespace=SERVE_NAMESPACE)
 
-        assert requests.get("http://localhost:8000/f").text == "got f"
+        assert httpx.get("http://localhost:8000/f").text == "got f"
 
 
 def test_update_num_replicas(shutdown_ray_and_serve):
@@ -230,7 +230,7 @@ def test_controller_deserialization_deployment_def(
     )
     ray.get(run_graph.remote())
     wait_for_condition(
-        lambda: requests.post("http://localhost:8000/", json=["ADD", 2]).text
+        lambda: httpx.post("http://localhost:8000/", json=["ADD", 2]).text
         == "4 pizzas please!"
     )
 
@@ -271,7 +271,7 @@ def test_controller_deserialization_args_and_kwargs(shutdown_ray_and_serve):
 
     serve.run(Echo.bind(PidBasedString("hello "), kwarg_str=PidBasedString("world!")))
 
-    assert requests.get("http://localhost:8000/Echo").text == "hello world!"
+    assert httpx.get("http://localhost:8000/Echo").text == "hello world!"
 
 
 def test_controller_recover_and_delete(shutdown_ray_and_serve):
