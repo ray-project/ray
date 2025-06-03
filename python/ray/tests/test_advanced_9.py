@@ -19,6 +19,7 @@ from ray._private.test_utils import (
 from ray._common.test_utils import Semaphore
 from ray.experimental.internal_kv import _internal_kv_list
 from ray.tests.conftest import call_ray_start
+from ray._raylet import GcsClient, GCS_PID_KEY
 
 
 @pytest.fixture
@@ -268,16 +269,29 @@ def test_gcs_connection_no_leak(ray_start_cluster):
         return num_connections
 
     @ray.remote
+    class GcsKVActor:
+        def __init__(self, address):
+            self.gcs_client = GcsClient(address=address)
+            self.gcs_client.internal_kv_get(
+                GCS_PID_KEY.encode(),
+            )
+
+        def ready(self):
+            return "WORLD"
+
+    @ray.remote
     class A:
         def ready(self):
             print("HELLO")
             return "WORLD"
 
+    gcs_kv_actor = None
+
     with ray.init(cluster.address):
         # Wait for workers  to be ready.
-        actors = [A.remote() for _ in range(2)]
-        _ = [ray.get(actor.ready.remote()) for actor in actors]
-        # Note: `fds_without_workers` need to be recorded *after* `ray.init`, because
+        gcs_kv_actor = GcsKVActor.remote(cluster.address)
+        _ = ray.get(gcs_kv_actor.ready.remote())
+        # Note: `fds_with_some_workers` need to be recorded *after* `ray.init`, because
         # a prestarted worker is started on the first driver init. This worker keeps 1
         # connection to the GCS, and it stays alive even after the driver exits. If
         # we move this line before `ray.init`, we will find 1 extra connection after
