@@ -772,7 +772,7 @@ bool LocalTaskManager::PinTaskArgsIfMemoryAvailable(const TaskSpecification &spe
     // No limit on pinned task arguments.
   } else if (task_arg_bytes > max_pinned_task_arguments_bytes_) {
     // Still try to pin with warning.
-    RAY_LOG(WARNING)
+    RAY_LOG(ERROR)
         << "Dispatched task " << spec.TaskId() << " has arguments of size "
         << task_arg_bytes
         << ", but the max memory allowed for arguments of executing tasks is only "
