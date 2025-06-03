@@ -33,7 +33,7 @@ def delete_default_temp_dir():
     wait_for_condition(delete_default_temp_dir_once)
 
 
-def test_tempdir(shutdown_only):
+def test_tempdir_created_successfully(shutdown_only):
     delete_default_temp_dir()
 
     temp_dir = os.path.join(ray._private.utils.get_user_temp_dir(), uuid.uuid4().hex)
@@ -151,7 +151,4 @@ def test_session_dir_uniqueness():
 
 
 if __name__ == "__main__":
-    # Make subprocess happy in bazel.
-    os.environ["LC_ALL"] = "en_US.UTF-8"
-    os.environ["LANG"] = "en_US.UTF-8"
     sys.exit(pytest.main(["-sv", __file__]))
