@@ -5,10 +5,11 @@ from ray.rllib.utils.spaces.repeated import Repeated
 
 
 class RepeatedObsEnv(gym.Env):
-    '''
-      An environment to test the handling of Repeated observation spaces. Multiple types of entity must be related to each other in varying quantities.
-      Each voter has a set of values, which determine their vote by some hidden linear function. Given a list of voters' values and the set of weights that map their values to their voting decision, predict whether a specific (non-voting) citizen will be happy with the outcome of a referendum.
-    '''
+    """
+    An environment to test the handling of Repeated observation spaces. Multiple types of entity must be related to each other in varying quantities.
+    Each voter has a set of values, which determine their vote by some hidden linear function. Given a list of voters' values and the set of weights that map their values to their voting decision, predict whether a specific (non-voting) citizen will be happy with the outcome of a referendum.
+    """
+
     def __init__(self, config):
         super().__init__()
         np.random.seed(config["random_seed"] if "random_seed" in config else 0)
