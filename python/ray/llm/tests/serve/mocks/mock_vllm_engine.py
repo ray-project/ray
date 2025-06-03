@@ -7,7 +7,7 @@ from typing import AsyncGenerator, Dict, Optional
 from PIL import Image
 from transformers import AutoTokenizer
 from vllm import CompletionOutput, PromptType, RequestOutput
-from vllm.config import KVTransferConfig, ModelConfig, VllmConfig
+from vllm.config import DeviceConfig, KVTransferConfig, ModelConfig, VllmConfig
 from vllm.engine.protocol import EngineClient
 from vllm.sampling_params import SamplingParams as VLLMInternalSamplingParams
 
@@ -576,6 +576,10 @@ class MockPDDisaggVLLMEngineClient(EngineClient):
         """Load a new LoRA adapter into the engine for future requests."""
         raise NotImplementedError("Not expected to be reached")
 
+    async def reset_mm_cache(self) -> None:
+        """Reset the multi-modal cache"""
+        raise NotImplementedError("Not expected to be reached")
+
 
 class MockPDDisaggVLLMEngine(VLLMEngine):
     async def _start_engine(self) -> EngineClient:
@@ -589,7 +593,10 @@ class MockPDDisaggVLLMEngine(VLLMEngine):
                     trust_remote_code=False,
                     dtype="auto",
                     seed=0,
-                )
+                ),
+                device_config=DeviceConfig(
+                    device="cpu",
+                ),
             )
         )
 
