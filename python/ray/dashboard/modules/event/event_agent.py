@@ -99,18 +99,6 @@ class EventAgent(dashboard_utils.DashboardAgentModule):
                 data_str[:limit] + (data_str[limit:] and "..."),
             )
 
-    async def get_internal_states(self):
-        if self.total_event_reported <= 0 or self.total_request_sent <= 0:
-            return
-
-        elapsed = time.monotonic() - self.module_started
-        return {
-            "total_events_reported": self.total_event_reported,
-            "Total_report_request": self.total_request_sent,
-            "queue_size": self._cached_events.qsize(),
-            "total_uptime": elapsed,
-        }
-
     async def run(self, server):
         # Start monitor task.
         self._monitor = monitor_events(
