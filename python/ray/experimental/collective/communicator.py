@@ -58,7 +58,7 @@ class CommunicatorHandle:
         return self._actors[:]
 
     @property
-    def name(self):
+    def name(self) -> str:
         return self._name
 
     @property
