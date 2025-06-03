@@ -62,11 +62,7 @@ class UniformRequestRouterApp:
 
 
 handle = serve.run(UniformRequestRouterApp.bind())
-response = handle.remote().result()
-print(f"Response from UniformRequestRouterApp: {response}")
-# Example output:
-#   Response from UniformRequestRouterApp:
-#   Replica(id='67vc4ts5', deployment='UniformRequestRouterApp', app='default')
+handle.remote()
 # __end_deploy_app_with_uniform_request_router__
 
 
@@ -199,9 +195,5 @@ class ThroughputAwareRequestRouterApp:
 
 
 handle = serve.run(ThroughputAwareRequestRouterApp.bind())
-response = handle.remote().result()
-print(f"Response from ThroughputAwareRequestRouterApp: {response}")
-# Example output:
-#   Response from ThroughputAwareRequestRouterApp:
-#   Replica(id='tkywafya', deployment='ThroughputAwareRequestRouterApp', app='default')
+handle.remote()
 # __end_deploy_app_with_throughput_aware_request_router__
