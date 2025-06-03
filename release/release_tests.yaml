@@ -4494,7 +4494,7 @@
       frequency: manual
       cluster:
         cluster_compute: ci/gce.yaml  # relative to working_dir
-        
+
 - name: object_detection  # do not use dashes (regex sensitive)
   frequency: weekly
   python: "3.11"
