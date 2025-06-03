@@ -54,6 +54,9 @@ def generate_random_shuffle_fn(
             # See https://github.com/ray-project/ray/issues/40518.
             map_transformer.set_target_max_block_size(float("inf"))
 
+            # ensure the map_transformer is initialized
+            map_transformer.init()
+
             def upstream_map_fn(blocks):
                 return map_transformer.apply_transform(blocks, ctx)
 

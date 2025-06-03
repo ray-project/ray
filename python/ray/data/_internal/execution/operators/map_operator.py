@@ -549,6 +549,7 @@ def _map_task(
     stats = BlockExecStats.builder()
     map_transformer.set_target_max_block_size(ctx.target_max_block_size)
     with MemoryProfiler(data_context.memory_usage_poll_interval_s) as profiler:
+        map_transformer.init()
         for b_out in map_transformer.apply_transform(iter(blocks), ctx):
             # TODO(Clark): Add input file propagation from input blocks.
             m_out = BlockAccessor.for_block(b_out).get_metadata()
