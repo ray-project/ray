@@ -1,4 +1,5 @@
 import asyncio
+import http
 import logging
 import os
 import time
@@ -169,6 +170,30 @@ class JobEventHead(
             message="",
             status_code=dashboard_utils.HTTPStatusCode.OK,
         )
+
+    @routes.delete("/delete_events")
+    async def delete_events(self, request):
+        job_id = request.query.get("job_id")
+
+        if not job_id:
+            logger.warning("Events delete request missing job id")
+            return dashboard_optional_utils.rest_response(
+                status_code=http.HTTPStatus.BAD_REQUEST,
+                message="Missing job_id",
+            )
+
+        job_events = self.events.pop(job_id, None)
+
+        if job_events is not None:
+            return dashboard_optional_utils.rest_response(
+                status_code=http.HTTPStatus.OK,
+                message="Events successfully deleted",
+            )
+        else:
+            return dashboard_optional_utils.rest_response(
+                status_code=http.HTTPStatus.NOT_FOUND,
+                message=f"Events for job '{job_id}' not found",
+            )
 
     async def _periodic_state_print(self):
         if self.total_events_received <= 0 or self.total_report_events_count <= 0:
