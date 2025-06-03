@@ -6,7 +6,7 @@ import sys
 import tempfile
 import time
 from pathlib import Path
-from typing import List
+from typing import List, Optional
 from unittest import mock
 
 import pytest
@@ -767,6 +767,87 @@ class TestGC:
                 "create_call_count": 3,
             }
         )
+
+
+URI_ZEOR_TEST_PLUGIN_NAME = "UriZeroTestPlugin"
+URI_ZERO_TEST_PLUGIN_CLASS_PATH = "ray.tests.test_runtime_env_plugin.UriZeroTestPlugin"
+URI_ZERO_TEST_DIR = Path(tempfile.gettempdir()) / "runtime_env_uri_zero_test"
+URI_ZERO_TEST_DIR.mkdir(parents=True, exist_ok=True)
+uri_zero_test_file_path = URI_ZERO_TEST_DIR / "test_uri_zero.json"
+uri_zero_test_file_path.write_text("{}")
+
+
+class UriZeroTestPlugin(RuntimeEnvPlugin):
+
+    name = URI_ZEOR_TEST_PLUGIN_NAME
+
+    def write_plugin_usage_data(self, uris: List[str]) -> None:
+        with open(uri_zero_test_file_path, "w", encoding="utf-8") as f:
+            data = {
+                "uris": uris,
+            }
+            f.write(json.dumps(data))
+
+    async def create(
+        self,
+        uri: Optional[str],
+        runtime_env,
+        context: RuntimeEnvContext,
+        logger: logging.Logger,
+    ) -> float:
+        return 0
+
+    def modify_context(
+        self,
+        uris: List[str],
+        runtime_env: "RuntimeEnv",  # noqa: F821
+        context: RuntimeEnvContext,
+        logger: logging.Logger,
+    ) -> None:
+        self.write_plugin_usage_data(uris)
+
+    def get_uris(self, runtime_env: "RuntimeEnv") -> List[str]:  # noqa: F811
+        return [runtime_env[self.name]["uri"]]
+
+    def delete_uri(self, uri: str, logger: logging.Logger) -> int:
+        return 0
+
+
+@pytest.mark.parametrize(
+    "set_runtime_env_plugins",
+    [
+        json.dumps([{"class": URI_ZERO_TEST_PLUGIN_CLASS_PATH}]),
+    ],
+    indirect=True,
+)
+def test_download_failed_from_uri(set_runtime_env_plugins, start_cluster):
+    def get_plugin_usage_data(filePath):
+        with open(filePath, "r", encoding="utf-8") as f:
+            data = json.loads(f.read())
+            return data
+
+    uri = "file:///tmp/test_download_failed_uri"
+
+    cluster, address = start_cluster
+    ray.init(address=address)
+
+    @ray.remote
+    def f():
+        return True
+
+    # Run a task to trigger runtime_env creation.
+    ref1 = f.options(
+        runtime_env={
+            URI_ZEOR_TEST_PLUGIN_NAME: {
+                "uri": uri,
+            }
+        }
+    ).remote()
+    ray.get(ref1)
+
+    wait_for_condition(
+        lambda: get_plugin_usage_data(uri_zero_test_file_path) == {"uris": []}
+    )
 
 
 if __name__ == "__main__":
