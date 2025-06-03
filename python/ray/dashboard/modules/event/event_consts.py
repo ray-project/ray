@@ -16,5 +16,15 @@ EVENT_AGENT_REPORT_INTERVAL_SECONDS = env_float(
 )
 EVENT_AGENT_RETRY_TIMES = 10
 EVENT_AGENT_CACHE_SIZE = 10240
+
 # Event sources
 EVENT_SOURCE_ALL = event_pb2.Event.SourceType.keys()
+
+# Target event source types to be watched by both
+#   - Job Event Head and
+#   - Job Event Agent
+TARGET_EVENT_SOURCE_TYPES = [
+    event_pb2.Event.SourceType.JOBS,
+    event_pb2.Event.SourceType.CLUSTER_LIFECYCLE,
+    event_pb2.Event.SourceType.AUTOSCALER
+]

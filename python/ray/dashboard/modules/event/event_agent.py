@@ -10,6 +10,7 @@ import ray.dashboard.consts as dashboard_consts
 import ray.dashboard.utils as dashboard_utils
 from ray.core.generated.event_pb2 import Event
 from ray.dashboard.modules.event import event_consts
+from ray.dashboard.modules.event.event_consts import TARGET_EVENT_SOURCE_TYPES
 from ray.dashboard.modules.event.event_utils import monitor_events
 from ray.dashboard.utils import async_loop_forever, create_task
 
@@ -106,7 +107,7 @@ class JobEventAgent(dashboard_utils.DashboardAgentModule):
             self._event_dir,
             lambda data: create_task(self._cached_events.put(data)),
             self._executor,
-            source_types=[Event.SourceType.JOBS],
+            source_types=TARGET_EVENT_SOURCE_TYPES,
         )
 
         await asyncio.gather(
