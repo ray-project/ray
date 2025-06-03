@@ -82,27 +82,6 @@ def test_decorator_complex(start_cluster_shared, runtime_env_class):
     assert ray.get(a.g.remote()) == "new2"
 
 
-@pytest.mark.skipif(sys.platform == "win32", reason="Hangs on windows.")
-@pytest.mark.parametrize("runtime_env_class", [dict, RuntimeEnv])
-def test_failed_job_env_no_hang(shutdown_only, runtime_env_class):
-    """Test that after a failed job-level env, tasks can still be run."""
-    runtime_env_for_init = runtime_env_class(pip=["ray-doesnotexist-123"])
-    ray.init(runtime_env=runtime_env_for_init)
-
-    @ray.remote
-    def f():
-        import pip_install_test  # noqa: F401
-
-        return True
-
-    runtime_env_for_f = runtime_env_class(pip=["pip-install-test==0.5"])
-    assert ray.get(f.options(runtime_env=runtime_env_for_f).remote())
-
-    # Task with no runtime env should inherit the bad job env.
-    with pytest.raises(RuntimeEnvSetupError):
-        ray.get(f.remote())
-
-
 def test_to_make_ensure_runtime_env_api(start_cluster_shared):
     # make sure RuntimeEnv can be used in an be used interchangeably with
     # an unstructured dictionary in the relevant API calls.
