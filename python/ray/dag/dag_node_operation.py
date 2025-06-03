@@ -242,9 +242,8 @@ def _push_candidate_node_if_ready(
     if node.is_nccl_write:
         for task_idx in node.out_edges:
             read_node = graph[task_idx]
-            read_node.in_edges.pop(node.task_idx)
             if read_node.is_nccl_read:
-                assert len(read_node.in_edges) == 0
+                assert len(read_node.in_edges) == 1
                 _update_pending_sync_idxs(graph, read_node)
     # For the NCCL operation node, update it as pending.
     if len(node.sync_idxs) != 0:
@@ -252,18 +251,27 @@ def _push_candidate_node_if_ready(
     # The NCCL operation is ready when all the nodes have zero in-degrees. When the last
     # node in the operation is updated as pending, push all the nodes to the candidates.
     if node.is_ready:
-        if len(node.sync_idxs) == 0:
+        if len(node.sync_idxs) == 0 or node.is_nccl_write:  # [TODO]
+            assert (
+                node not in actor_to_candidates[node.actor_handle._actor_id]
+            )  # [DEBUG]
             heapq.heappush(
                 actor_to_candidates[node.actor_handle._actor_id],
                 node,
             )
-        else:
+        elif node.is_nccl_compute:  # [TODO]
             for task_idx in node.sync_idxs:
                 sync_node = graph[task_idx]
+                assert (
+                    sync_node
+                    not in actor_to_candidates[sync_node.actor_handle._actor_id]
+                )  # [DEBUG]
                 heapq.heappush(
                     actor_to_candidates[sync_node.actor_handle._actor_id],
                     sync_node,
                 )
+        else:  # [TODO]
+            raise ValueError(f"Unexpected node: {node}")
 
 
 def _select_next_nodes(
@@ -322,12 +330,17 @@ def _select_next_nodes(
             node = graph[task_idx]
             if node != top_priority_node:
                 next_nodes.append(node)
+                if top_priority_node.is_nccl_write:
+                    assert (
+                        node not in actor_to_candidates[node.actor_handle._actor_id]
+                    )  # [DEBUG]
 
     # Remove the selected nodes from the candidates.
     for node in next_nodes:
         candidates = actor_to_candidates[node.actor_handle._actor_id]
-        candidates.remove(node)
-        heapq.heapify(candidates)
+        if node in candidates:  # [TODO]
+            candidates.remove(node)
+            heapq.heapify(candidates)
 
     return next_nodes
 
@@ -366,16 +379,15 @@ def _build_dag_node_operation_graph(
     graph: Dict[int, _DAGOperationGraphNode] = {}
     # Add control edges between tasks from the same actor.
     for op_nodes in actor_to_operation_nodes.values():
-        for i, node in enumerate(op_nodes):
+        prev_node = None
+        for i, node in enumerate(op_nodes):  # [TODO]
             assert node.task_idx not in graph
             graph[node.task_idx] = node
-            # Skip the control edge into a NCCL operation node.
-            if i > 0 and not node.is_nccl_op:
-                prev_node = op_nodes[i - 1]
-                # Skip the control dependency edge from/into the created NCCL P2P
-                # recv/send nodes, which have the same task index as the previous node.
-                if prev_node.task_idx != node.task_idx:
-                    _add_edge(prev_node, node, control_dependency=True)
+            if node.is_nccl_read or node.is_nccl_write:  # [TODO]
+                continue
+            if prev_node is not None:
+                _add_edge(prev_node, node, control_dependency=True)
+            prev_node = node
 
     # Add data edges from an upstream task to its downstream tasks.
     # Set synchronous nodes for NCCL P2P operations.
@@ -414,6 +426,7 @@ def _build_dag_node_operation_graph(
                             for node in [write_node, read_node]:
                                 node.sync_idxs.update(idxs)
                 continue
+            # else / reorder [TODO]
             read_node = graph[downstream_task_idx]
             _add_edge(
                 write_node,
@@ -656,13 +669,14 @@ def _generate_actor_to_execution_schedule(
         for node in nodes:
             for out_node_task_idx in node.out_edges:
                 out_node = graph[out_node_task_idx]
+                assert node.task_idx in out_node.in_edges  # [DEBUG]
+                out_node.in_edges.pop(node.task_idx)
                 if out_node in visited_nodes:
                     # If the downstream node is already visited, it has been added
                     # to the execution schedule. They are the NCCL read nodes in
                     # case 2.
                     continue
-                out_node.in_edges.pop(node.task_idx)
-                if out_node.in_degree == 0:
+                if out_node.in_degree == 0:  # [TODO]
                     _push_candidate_node_if_ready(actor_to_candidates, graph, out_node)
     assert len(visited_nodes) == len(graph), "Expected all nodes to be visited"
 

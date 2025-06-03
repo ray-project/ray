@@ -8,7 +8,6 @@ import weakref
 from collections import defaultdict
 from contextlib import nullcontext
 from dataclasses import asdict, dataclass
-from itertools import chain
 from typing import TYPE_CHECKING, Any, Dict, List, Optional, Set, Tuple, Union
 
 import ray.exceptions
@@ -1502,40 +1501,6 @@ class CompiledDAG:
         self.actor_to_node_id[actor_handle] = node_id
         return node_id
 
-    def _get_topological_order(
-        self, root: "ray.dag.DAGNode"
-    ) -> List["ray.dag.DAGNode"]:
-        """
-        Get the topological order of the DAG.
-        """
-        from ray.dag import DAGNode
-
-        visited: Set[DAGNode] = set()
-        queue: List[DAGNode] = [root]
-        while queue:
-            node = queue.pop(0)
-            if node not in visited:
-                visited.add(node)
-                for neighbor in chain.from_iterable(
-                    [node._downstream_nodes, node._upstream_nodes]
-                ):
-                    if neighbor not in visited:
-                        queue.append(neighbor)
-        queue.clear()
-        in_degrees: Dict[DAGNode, int] = {
-            node: len(node._upstream_nodes) for node in visited
-        }
-        frontier = [node for node in visited if in_degrees[node] == 0]
-        while frontier:
-            node = frontier.pop(0)
-            queue.append(node)
-            for neighbor in node._downstream_nodes:
-                in_degrees[neighbor] -= 1
-                if in_degrees[neighbor] == 0:
-                    frontier.append(neighbor)
-        assert len(queue) == len(visited)
-        return queue
-
     def _add_p2p_send_node(
         self,
         node: "ray.dag.DAGNode",
@@ -1648,7 +1613,7 @@ class CompiledDAG:
         from ray.dag import DAGNode
         from ray.dag.communication_node import P2PSendNode
 
-        queue = self._get_topological_order(root)
+        queue = root.get_topological_order()
         node_to_p2p_send_node: Dict[DAGNode, P2PSendNode] = {}
         for node in queue:
             # Create a P2P recv node for each upstream node that requires NCCL send.
@@ -2127,6 +2092,7 @@ class CompiledDAG:
         graph = _build_dag_node_operation_graph(
             self.idx_to_task, actor_to_operation_nodes
         )
+
         # Step 2: Generate an execution schedule for each actor using topological sort
         actor_to_execution_schedule = _generate_actor_to_execution_schedule(graph)
 
