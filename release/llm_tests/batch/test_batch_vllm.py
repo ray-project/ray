@@ -1,3 +1,4 @@
+import shutil
 import sys
 import os
 
@@ -5,10 +6,6 @@ import pytest
 
 import ray
 from ray.data.llm import build_llm_processor, vLLMEngineProcessorConfig
-
-# Add the parent directory to Python path for imports
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
-from test_utils import get_hf_token_env_var
 
 
 def test_chat_template_with_vllm():
@@ -167,19 +164,32 @@ def test_vllm_llama_lora():
     assert all("resp" in out for out in outs)
 
 
+@ray.remote(num_gpus=1)
+def delete_torch_compile_cache_on_worker():
+    """Delete torch compile cache on worker.
+    Avoids AssertionError due to torch compile cache corruption (https://github.com/vllm-project/vllm/issues/18851)
+    """
+    torch_compile_cache_path = os.path.expanduser("~/.cache/vllm/torch_compile_cache")
+    if os.path.exists(torch_compile_cache_path):
+        shutil.rmtree(torch_compile_cache_path)
+        print(f"Deleted torch compile cache at {torch_compile_cache_path}")
+
+
 @pytest.mark.parametrize(
     "model_source,tp_size,pp_size,concurrency,sample_size",
     [
         # LLaVA model with TP=1, PP=1, concurrency=1
         ("llava-hf/llava-1.5-7b-hf", 1, 1, 1, 60),
-        # Pixtral 12B model with TP=2, PP=1, concurrency=2
-        ("mistral-community/pixtral-12b", 2, 1, 2, 60),
+        # Qwen2.5 VL model with TP=2, PP=1, concurrency=2
+        ("Qwen/Qwen2.5-VL-3B-Instruct", 2, 1, 2, 60),
     ],
 )
 def test_vllm_vision_language_models(
     model_source, tp_size, pp_size, concurrency, sample_size
 ):
     """Test vLLM with vision language models using different configurations."""
+
+    ray.get(delete_torch_compile_cache_on_worker.remote())
 
     # vLLM v1 does not support decoupled tokenizer,
     # but since the tokenizer is in a separate process,
@@ -202,11 +212,6 @@ def test_vllm_vision_language_models(
         batch_size=16,
         concurrency=concurrency,
         has_image=True,
-        runtime_env=dict(
-            env_vars=dict(
-                HF_TOKEN=get_hf_token_env_var()["HF_TOKEN"],
-            )
-        ),
     )
 
     processor = build_llm_processor(
