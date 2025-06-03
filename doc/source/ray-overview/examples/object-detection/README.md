@@ -4,7 +4,7 @@
 This tutorial builds an end-to-end face mask detection pipeline that leverages distributed fine-tuning, large-scale batch inference, video analytics, and scalable serving:
 
 [1.object_detection_train.ipynb](1.object_detection_train.ipynb)  
-Fine-tune a pre-trained Faster R-CNN model on a Kaggle face mask dataset in Pascal Visual Object Classes (VOC) format using Ray Train. Parse XML annotations with Ray Data, retrieve images from S3, run a distributed training loop, checkpoint the model, and visualize inference results.  
+Fine-tune a pre-trained Faster R-CNN model on a face mask dataset in Pascal Visual Object Classes (VOC) format using Ray Train. Parse XML annotations with Ray Data, retrieve images from S3, run a distributed training loop, checkpoint the model, and visualize inference results.  
 <img
   src="https://face-masks-data.s3.us-east-2.amazonaws.com/tutorial-diagrams/train_object_detection.png"
   alt="Object Detection Training Pipeline"
