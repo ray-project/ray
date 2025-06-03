@@ -58,11 +58,14 @@ class OpenTelemetryMetricRecorder {
   // Registers a counter metric with the given name and description
   void RegisterCounterMetric(const std::string &name, const std::string &description);
 
+  // Registers a sum metric with the given name and description
+  void RegisterSumMetric(const std::string &name, const std::string &description);
+
   // Check if a metric with the given name is registered.
   bool IsMetricRegistered(const std::string &name);
 
   // Set the value of a metric given the tags and the metric value.
-  bool SetMetricValue(const std::string &name,
+  void SetMetricValue(const std::string &name,
                       absl::flat_hash_map<std::string, std::string> &&tags,
                       double value);
 
