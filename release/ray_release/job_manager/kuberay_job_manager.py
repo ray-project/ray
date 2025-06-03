@@ -196,41 +196,42 @@ class KuberayJobManager:
         return login_response.json()["token"]
 
     def fetch_results(self) -> Dict[str, Any]:
-        client = logging_v2.services.logging_service_v2.LoggingServiceV2Client()
-        # Filter logs for k8s containers with specific ray_submission_id
-        job_id = self._get_job_id()
-        filter_query = f'resource.type="k8s_container" AND jsonPayload.ray_submission_id="{self.job_id}"'
-        result = client.list_log_entries(
-            request={
-                "resource_names": [f"projects/{KUBERAY_PROJECT_ID}"],
-                "filter": filter_query,
-                "order_by": "timestamp desc",
-                "page_size": 100,
-            },
-            timeout=300,
-        )
-        for entry in result.entries:
-            log_message = entry.json_payload["log"]
-            print(log_message)
+        # client = logging_v2.services.logging_service_v2.LoggingServiceV2Client()
+        # # Filter logs for k8s containers with specific ray_submission_id
+        # job_id = self._get_job_id()
+        # filter_query = f'resource.type="k8s_container" AND jsonPayload.ray_submission_id="{self.job_id}"'
+        # result = client.list_log_entries(
+        #     request={
+        #         "resource_names": [f"projects/{KUBERAY_PROJECT_ID}"],
+        #         "filter": filter_query,
+        #         "order_by": "timestamp desc",
+        #         "page_size": 100,
+        #     },
+        #     timeout=300,
+        # )
+        # for entry in result.entries:
+        #     log_message = entry.json_payload["log"]
+        #     print(log_message)
         
-        now = time.time()
-        twelve_hours_ago = now - (12 * 60 * 60)
+        # now = time.time()
+        # twelve_hours_ago = now - (12 * 60 * 60)
         
-        now_str = time.strftime("%Y-%m-%dT%H:%M:%S.000Z", time.gmtime(now))
-        start_str = time.strftime("%Y-%m-%dT%H:%M:%S.000Z", time.gmtime(twelve_hours_ago))
+        # now_str = time.strftime("%Y-%m-%dT%H:%M:%S.000Z", time.gmtime(now))
+        # start_str = time.strftime("%Y-%m-%dT%H:%M:%S.000Z", time.gmtime(twelve_hours_ago))
         
-        logs_url = (
-            f"https://console.cloud.google.com/logs/query;"
-            f"query=resource.type%3D%22k8s_container%22%20AND%20"
-            f"jsonPayload.ray_submission_id%3D%22{self.job_id}%22;"
-            f"cursorTimestamp={now_str};"
-            f"startTime={start_str};"
-            f"endTime={now_str}?"
-            f"referrer=search&cloudshell=true&inv=1&invt=Abyi5w&"
-            f"project={KUBERAY_PROJECT_ID}"
-        )
+        # logs_url = (
+        #     f"https://console.cloud.google.com/logs/query;"
+        #     f"query=resource.type%3D%22k8s_container%22%20AND%20"
+        #     f"jsonPayload.ray_submission_id%3D%22{self.job_id}%22;"
+        #     f"cursorTimestamp={now_str};"
+        #     f"startTime={start_str};"
+        #     f"endTime={now_str}?"
+        #     f"referrer=search&cloudshell=true&inv=1&invt=Abyi5w&"
+        #     f"project={KUBERAY_PROJECT_ID}"
+        # )
         
-        return {"logs_url": logs_url}
+        # return {"logs_url": logs_url}
+        return {}
     
     def _terminate_job(self) -> None:
         # TODO: implement this
