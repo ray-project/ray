@@ -42,24 +42,29 @@ from ray.rllib.utils.metrics import (
 )
 
 # Handle command line args
-parser = add_rllib_example_script_args(
-    default_reward=0.8, default_iters=50
-)
+parser = add_rllib_example_script_args(default_reward=0.8, default_iters=50)
 parser.set_defaults(
     enable_new_api_stack=True,
 )
-parser.add_argument("--max-voter-pairs",type=int,default=5)
-parser.add_argument("--num-values",type=int,default=2)
-parser.add_argument("--attn-dim",type=int,default=128)
+parser.add_argument("--max-voter-pairs", type=int, default=5)
+parser.add_argument("--num-values", type=int, default=2)
+parser.add_argument("--attn-dim", type=int, default=128)
+
 
 # Define a PPO Catalog that tells Rllib to use our custom encoder
 class AttentionPPOCatalog(PPOCatalog):
-    '''
-      A special PPO catalog producing an encoder that handles dictionaries of (potentially Repeated) action spaces in the same manner as https://arxiv.org/abs/1909.07528.
-    '''
+    """
+    A special PPO catalog producing an encoder that handles dictionaries of (potentially Repeated) action spaces in the same manner as https://arxiv.org/abs/1909.07528.
+    """
+
     @classmethod
-    def _get_encoder_config(cls,observation_space: gym.Space,**kwargs,):
-      return AttentionEncoderConfig(observation_space, **kwargs)
+    def _get_encoder_config(
+        cls,
+        observation_space: gym.Space,
+        **kwargs,
+    ):
+        return AttentionEncoderConfig(observation_space, **kwargs)
+
 
 if __name__ == "__main__":
     args = parser.parse_args()
@@ -72,22 +77,23 @@ if __name__ == "__main__":
         .environment(
             env="env",
             env_config={
-                'max_voter_pairs': args.max_voter_pairs,
-                'num_values': args.num_values,
-                'random_seed': 0
+                "max_voter_pairs": args.max_voter_pairs,
+                "num_values": args.num_values,
+                "random_seed": 0,
             },
         )
         .framework("torch")
         .training(
             train_batch_size=256,
         )
-        .rl_module(rl_module_spec=RLModuleSpec(
-              catalog_class=AttentionPPOCatalog,
-              model_config={
-                  "attention_emb_dim": args.attn_dim,
-                  "head_fcnet_hiddens": (256,256),
-                  'vf_share_layers': False,
-              }
+        .rl_module(
+            rl_module_spec=RLModuleSpec(
+                catalog_class=AttentionPPOCatalog,
+                model_config={
+                    "attention_emb_dim": args.attn_dim,
+                    "head_fcnet_hiddens": (256, 256),
+                    "vf_share_layers": False,
+                },
             ),
         )
     )
@@ -100,7 +106,8 @@ if __name__ == "__main__":
     }
 
     # Run the experiment.
-    run_rllib_example_script_experiment(config,
+    run_rllib_example_script_experiment(
+        config,
         args,
         stop=stop,
         success_metric={
