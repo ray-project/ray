@@ -26,5 +26,5 @@ EVENT_SOURCE_ALL = event_pb2.Event.SourceType.keys()
 TARGET_EVENT_SOURCE_TYPES = [
     event_pb2.Event.SourceType.JOBS,
     event_pb2.Event.SourceType.CLUSTER_LIFECYCLE,
-    event_pb2.Event.SourceType.AUTOSCALER
+    event_pb2.Event.SourceType.AUTOSCALER,
 ]
