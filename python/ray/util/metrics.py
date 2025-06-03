@@ -138,8 +138,8 @@ class Metric:
             if tag_key not in final_tags:
                 missing_tags.append(tag_key)
 
-        # Allow metrics with tag_keys but no tags if no default tags were ever set
-        if missing_tags and final_tags:
+        # Strict validation: if any required tag_keys are missing, raise error
+        if missing_tags:
             raise ValueError(f"Missing value for tag key(s): {','.join(missing_tags)}.")
 
     @property

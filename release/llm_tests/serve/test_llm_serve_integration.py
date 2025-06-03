@@ -1,7 +1,7 @@
 import pytest
 import sys
 
-from vllm.v1.metrics.ray_wrappers import (
+from ray.llm._internal.serve.deployments.llm.vllm.vllm_loggers import (
     RayPrometheusStatLogger,
 )
 from vllm import AsyncEngineArgs
