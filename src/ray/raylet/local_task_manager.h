@@ -209,14 +209,6 @@ class LocalTaskManager : public ILocalTaskManager {
           rpc::RequestWorkerLeaseReply::SCHEDULING_CANCELLED_INTENDED,
       const std::string &scheduling_failure_message = "");
 
-  /// Cancels a waiting task. Does not remove it from from waiting_task_queue_ or
-  /// waiting_tasks_index_.
-  void CancelWaitingTask(
-      const std::shared_ptr<internal::Work> &work,
-      rpc::RequestWorkerLeaseReply::SchedulingFailureType failure_type =
-          rpc::RequestWorkerLeaseReply::SCHEDULING_CANCELLED_INTENDED,
-      const std::string &scheduling_failure_message = "");
-
   /// Attempts to dispatch all tasks which are ready to run. A task
   /// will be dispatched if it is on `tasks_to_dispatch_` and there are still
   /// available resources on the node.
