@@ -267,14 +267,14 @@ TEST(TestPushManager, TestPushMultipleObject) {
 TEST(TestPushManager, TestNodeRemoved) {
   PushManager pm(3);
 
-  // Two objects to Node 1.
+  // Start pushing two objects to node 1.
   auto node_id_1 = NodeID::FromRandom();
   auto obj_id_1 = ObjectID::FromRandom();
   auto obj_id_2 = ObjectID::FromRandom();
   pm.StartPush(node_id_1, obj_id_1, 4, [](int64_t) {});
   pm.StartPush(node_id_1, obj_id_2, 2, [](int64_t) {});
 
-  // One object to Node 2.
+  // Start pushing one object to node 2.
   auto node_id_2 = NodeID::FromRandom();
   auto obj_id_3 = ObjectID::FromRandom();
   pm.StartPush(node_id_2, obj_id_3, 3, [](int64_t) {});
@@ -285,7 +285,7 @@ TEST(TestPushManager, TestNodeRemoved) {
   ASSERT_EQ(pm.push_state_map_.size(), 2);
   ASSERT_EQ(pm.push_requests_with_chunks_to_send_.size(), 3);
 
-  // Remove Node 1.
+  // Remove Node 1. This should cause its associated push requests to be cleaned up.
   pm.HandleNodeRemoved(node_id_1);
   ASSERT_EQ(pm.NumPushRequestsWithChunksToSend(), 1);
   ASSERT_EQ(pm.NumChunksInFlight(), 3);

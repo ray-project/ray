@@ -75,9 +75,11 @@ void PushManager::ScheduleRemainingPushes() {
       if (push_state.num_chunks_to_send == 0) {
         auto push_state_map_iter = push_state_map_.find(push_state.node_id);
         RAY_CHECK(push_state_map_iter != push_state_map_.end());
+        
         auto &dest_map = push_state_map_iter->second;
         auto dest_map_iter = dest_map.find(push_state.object_id);
         RAY_CHECK(dest_map_iter != dest_map.end());
+        
         iter = push_requests_with_chunks_to_send_.erase(dest_map_iter->second);
         dest_map.erase(dest_map_iter);
         if (dest_map.empty()) {
