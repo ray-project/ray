@@ -1,5 +1,6 @@
 import copy
 import json
+import math
 import os
 from dataclasses import asdict
 from typing import List, Tuple
@@ -262,7 +263,7 @@ def _calculate_panel_heights(num_panels: int) -> int:
     Returns:
         Total height needed for the panels
     """
-    rows_needed = (num_panels + PANELS_PER_ROW - 1) // PANELS_PER_ROW
+    rows_needed = math.ceil(num_panels / PANELS_PER_ROW)
     return rows_needed * PANEL_HEIGHT
 
 
