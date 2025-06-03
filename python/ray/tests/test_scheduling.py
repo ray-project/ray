@@ -13,9 +13,8 @@ import ray.cluster_utils
 import ray.util.accelerators
 from ray._private.internal_api import memory_summary
 from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
+from ray._common.test_utils import SignalActor, Semaphore
 from ray._private.test_utils import (
-    Semaphore,
-    SignalActor,
     object_memory_usage,
     get_metric_check_condition,
     wait_for_condition,
@@ -750,10 +749,4 @@ def test_scheduling_class_depth(ray_start_regular):
 
 
 if __name__ == "__main__":
-    import os
-    import pytest
-
-    if os.environ.get("PARALLEL_CI"):
-        sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))
-    else:
-        sys.exit(pytest.main(["-sv", __file__]))
+    sys.exit(pytest.main(["-sv", __file__]))

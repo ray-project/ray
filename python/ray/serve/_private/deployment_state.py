@@ -253,6 +253,7 @@ class ActorReplicaWrapper:
         self._worker_id: str = None
         self._node_id: str = None
         self._node_ip: str = None
+        self._node_instance_id: str = None
         self._log_file_path: str = None
 
         # Populated in self.stop().
@@ -373,6 +374,11 @@ class ActorReplicaWrapper:
         return self._node_ip
 
     @property
+    def node_instance_id(self) -> Optional[str]:
+        """Returns the node instance id of the actor, None if not placed."""
+        return self._node_instance_id
+
+    @property
     def log_file_path(self) -> Optional[str]:
         """Returns the relative log file path of the actor, None if not placed."""
         return self._log_file_path
@@ -435,6 +441,7 @@ class ActorReplicaWrapper:
                 else cloudpickle.dumps({}),
                 deployment_info.deployment_config.to_proto_bytes(),
                 self._version,
+                deployment_info.ingress,
             )
         # TODO(simon): unify the constructor arguments across language
         elif (
@@ -653,6 +660,7 @@ class ActorReplicaWrapper:
                     self._worker_id,
                     self._node_id,
                     self._node_ip,
+                    self._node_instance_id,
                     self._log_file_path,
                 ) = ray.get(self._allocated_obj_ref)
             except RayTaskError as e:
@@ -1039,6 +1047,7 @@ class DeploymentReplica:
             pid=self._actor.pid,
             node_id=self._actor.node_id,
             node_ip=self._actor.node_ip,
+            node_instance_id=self._actor.node_instance_id,
             actor_id=self._actor.actor_id,
             worker_id=self._actor.worker_id,
             log_file_path=self._actor.log_file_path,

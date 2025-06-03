@@ -11,7 +11,7 @@ from typing import Optional
 from pydantic import BaseModel
 
 import ray
-from ray._private.test_utils import SignalActor
+from ray._common.test_utils import SignalActor
 
 RECONSTRUCTION_CONFIG = {
     "health_check_failure_threshold": 10,
@@ -299,7 +299,4 @@ def test_cancel(shutdown_only, use_asyncio):
 
 
 if __name__ == "__main__":
-    if os.environ.get("PARALLEL_CI"):
-        sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))
-    else:
-        sys.exit(pytest.main(["-sv", __file__]))
+    sys.exit(pytest.main(["-sv", __file__]))

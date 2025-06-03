@@ -12,8 +12,8 @@ import ray
 import ray._private.gcs_utils as gcs_utils
 import ray._private.ray_constants as ray_constants
 import ray._private.utils
+from ray._common.test_utils import SignalActor
 from ray._private.test_utils import (
-    SignalActor,
     convert_actor_state,
     get_error_message,
     init_error_pubsub,
@@ -800,9 +800,4 @@ def test_update_object_location_batch_failure(
 
 
 if __name__ == "__main__":
-    import pytest
-
-    if os.environ.get("PARALLEL_CI"):
-        sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))
-    else:
-        sys.exit(pytest.main(["-sv", __file__]))
+    sys.exit(pytest.main(["-sv", __file__]))

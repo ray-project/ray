@@ -72,7 +72,8 @@ struct CoreWorkerOptions {
       bool retry_exception,
       // The max number of unconsumed objects where a generator
       // can run without a pause.
-      int64_t generator_backpressure_num_objects)>;
+      int64_t generator_backpressure_num_objects,
+      const rpc::TensorTransport &tensor_transport)>;
 
   CoreWorkerOptions()
       : store_socket(""),
@@ -145,8 +146,6 @@ struct CoreWorkerOptions {
   std::string driver_name;
   /// Application-language worker callback to execute tasks.
   TaskExecutionCallback task_execution_callback;
-  /// The callback to be called when shutting down a `CoreWorker` instance.
-  std::function<void(const WorkerID &)> on_worker_shutdown;
   /// Application-language callback to check for signals that have been received
   /// since calling into C++. This will be called periodically (at least every
   /// 1s) during long-running operations. If the function returns anything but StatusOK,

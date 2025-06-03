@@ -56,11 +56,8 @@ steps:
       - bazel run //ci/ray_ci:test_in_docker -- //python/ray/tests/... //python/ray/_common/tests/... //python/ray/dag/... //python/ray/autoscaler/v2/... core
         --install-mask all-ray-libraries
         --workers "$${BUILDKITE_PARALLEL_JOB_COUNT}" --worker-id "$${BUILDKITE_PARALLEL_JOB}" --parallelism-per-worker 3
-        --except-tags debug_tests,asan_tests,post_wheel_build,ha_integration,mem_pressure,tmpfs,container,manual,use_all_core,multi_gpu,spark_on_ray,ray_client,compiled_graphs
+        --except-tags debug_tests,asan_tests,post_wheel_build,ha_integration,mem_pressure,tmpfs,container,manual,multi_gpu,spark_on_ray,ray_client,compiled_graphs,dask
         --install-mask all-ray-libraries
-      - bazel run //ci/ray_ci:test_in_docker -- //python/ray/tests/... //python/ray/dag/... //python/ray/autoscaler/v2/... core
-        --workers "$${BUILDKITE_PARALLEL_JOB_COUNT}" --worker-id "$${BUILDKITE_PARALLEL_JOB}"
-        --only-tags use_all_core --skip-ray-installation
 
   - label: ":ray: core: cgraph python tests"
     tags:
@@ -85,12 +82,7 @@ steps:
         --install-mask all-ray-libraries
         --workers 4 --worker-id "{{matrix.worker_id}}" --parallelism-per-worker 3
         --python-version {{matrix.python}}
-        --except-tags debug_tests,asan_tests,post_wheel_build,ha_integration,mem_pressure,tmpfs,container,manual,use_all_core,multi_gpu,spark_on_ray,ray_client
-      - bazel run //ci/ray_ci:test_in_docker -- //python/ray/tests/... //python/ray/dag/... //python/ray/autoscaler/v2/... core
-        --install-mask all-ray-libraries
-        --workers 4 --worker-id "{{matrix.worker_id}}" --parallelism-per-worker 3
-        --python-version {{matrix.python}}
-        --only-tags use_all_core --skip-ray-installation
+        --except-tags debug_tests,asan_tests,post_wheel_build,ha_integration,mem_pressure,tmpfs,container,manual,multi_gpu,spark_on_ray,ray_client,dask
     depends_on: corebuild-multipy
     matrix:
       setup:
@@ -119,10 +111,7 @@ steps:
         --install-mask all-ray-libraries
         --workers "$${BUILDKITE_PARALLEL_JOB_COUNT}" --worker-id "$${BUILDKITE_PARALLEL_JOB}" --parallelism-per-worker 3
         --test-env=TEST_EXTERNAL_REDIS=1
-        --except-tags debug_tests,asan_tests,post_wheel_build,ha_integration,mem_pressure,tmpfs,container,manual,use_all_core,multi_gpu,spark_on_ray,ray_client
-      - bazel run //ci/ray_ci:test_in_docker -- //python/ray/tests/... //python/ray/dag/... //python/ray/autoscaler/v2/... core
-        --workers "$${BUILDKITE_PARALLEL_JOB_COUNT}" --worker-id "$${BUILDKITE_PARALLEL_JOB}"
-        --only-tags use_all_core --skip-ray-installation
+        --except-tags debug_tests,asan_tests,post_wheel_build,ha_integration,mem_pressure,tmpfs,container,manual,multi_gpu,spark_on_ray,ray_client,dask
 
   - label: ":ray: core: memory pressure tests"
     tags:
@@ -199,7 +188,11 @@ steps:
         --skip-ray-installation
 
   - label: ":ray: core: dask & modin tests"
-    tags: python
+    tags:
+      # These tests are only triggered on premerge if there are changes under
+      # `ray/util/dask/`. This is not technically related to modin, but modin tests can
+      # run postmerge-only and are too small for their own build.
+      - dask
     instance_type: medium
     commands:
       - bazel run //ci/ray_ci:test_in_docker --
@@ -224,8 +217,10 @@ steps:
         "$${RAYCI_WORK_REPO}":"$${RAYCI_BUILD_ID}"-corebuild /bin/bash -iecuo pipefail
         "./python/ray/dashboard/tests/run_ui_tests.sh"
 
-  - label: ":ray: core: debug test"
-    tags: python
+  - label: ":ray: core: debug tests"
+    tags:
+      - python
+      - skip-on-premerge
     instance_type: medium
     commands:
       - bazel run //ci/ray_ci:test_in_docker -- //python/ray/tests/... core
@@ -238,6 +233,7 @@ steps:
   - label: ":ray: core: asan tests"
     tags:
       - python
+      - skip-on-premerge
     instance_type: large
     commands:
       - bazel run //ci/ray_ci:test_in_docker -- //python/ray/tests/... core
@@ -342,6 +338,7 @@ steps:
         --build-type asan-clang --cache-test-results --parallelism-per-worker 2
     depends_on:
       - block-core-cpp-sanitizer-tests
+      - corebuild
 
   - label: ":ray: core: cpp ubsan tests"
     tags: core_cpp
@@ -352,6 +349,7 @@ steps:
         --cache-test-results --parallelism-per-worker 2
     depends_on:
       - block-core-cpp-sanitizer-tests
+      - corebuild
 
   - label: ":ray: core: cpp tsan tests"
     tags: core_cpp
@@ -362,17 +360,21 @@ steps:
         --cache-test-results --parallelism-per-worker 2
     depends_on:
       - block-core-cpp-sanitizer-tests
+      - corebuild
 
   - label: ":ray: core: flaky cpp tests"
     key: core_flaky_cpp_tests
     tags:
       - python
+      - flaky
       - skip-on-premerge
     instance_type: large
     soft_fail: true
     commands:
       - bazel run //ci/ray_ci:test_in_docker -- //:all //src/... core
         --run-flaky-tests --build-type clang
+    depends_on:
+      - corebuild
 
   - label: ":ray: core: flaky tests"
     key: core_flaky_tests
@@ -387,6 +389,8 @@ steps:
         --install-mask all-ray-libraries
         --run-flaky-tests
         --except-tags multi_gpu
+    depends_on:
+      - corebuild
 
   - label: ":ray: core: flaky gpu tests"
     key: core_flaky_gpu_tests
@@ -463,6 +467,8 @@ steps:
         --parallelism-per-worker 3
         --only-tags spark_on_ray
         --except-tags kubernetes
+    depends_on:
+      - corebuild
 
   # block on premerge and microcheck
   - block: "run multi gpu tests"
