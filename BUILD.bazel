@@ -562,6 +562,7 @@ ray_cc_library(
     srcs = ["src/ray/raylet/wait_manager.cc"],
     hdrs = ["src/ray/raylet/wait_manager.h"],
     deps = [
+        "//src/ray/common:asio",
         "//src/ray/common:id",
         "//src/ray/util:container_util",
     ],
@@ -954,6 +955,8 @@ pyx_library(
         srcs = PYX_SRCS,
         # cython code is auto-generated, which is out of our control.
         copts = COPTS + PYX_COPTS,
+        # This is needed since Windows has long file path issues and command length limits
+        features = ["compiler_param_file"],
         # see https://github.com/tensorflow/tensorflow/blob/r2.1/tensorflow/lite/BUILD#L444
         linkopts = select({
             "@platforms//os:osx": [
@@ -965,8 +968,6 @@ pyx_library(
             ],
         }),
         linkstatic = 1,
-        # This is needed since Windows has long file path issues and command length limits
-        features = ["compiler_param_file"],
     ),
     deps = [
         "//:exported_internal",
@@ -1039,8 +1040,8 @@ filegroup(
         "//src/ray/protobuf:gcs_py_proto",
         "//src/ray/protobuf:gcs_service_py_proto",
         "//src/ray/protobuf:instance_manager_py_proto",
-        "//src/ray/protobuf:node_manager_py_proto",
         "//src/ray/protobuf:metrics_service_py_proto",
+        "//src/ray/protobuf:node_manager_py_proto",
         "//src/ray/protobuf:ray_client_py_proto",
         "//src/ray/protobuf:reporter_py_proto",
         "//src/ray/protobuf:runtime_env_agent_py_proto",

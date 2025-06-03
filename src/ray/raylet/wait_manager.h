@@ -17,8 +17,10 @@
 #include <string>
 #include <unordered_map>
 #include <unordered_set>
+#include <utility>
 #include <vector>
 
+#include "ray/common/asio/instrumented_io_context.h"
 #include "ray/common/id.h"
 
 namespace ray {
@@ -29,12 +31,9 @@ namespace raylet {
 /// the NodeManager.io_service_ thread.
 class WaitManager {
  public:
-  WaitManager(
-      const std::function<bool(const ray::ObjectID &)> is_object_local,
-      const std::function<void(std::function<void()>, int64_t delay_ms)> delay_executor)
-      : is_object_local_(is_object_local),
-        delay_executor_(delay_executor),
-        next_wait_id_(0) {}
+  WaitManager(std::function<bool(const ray::ObjectID &)> is_object_local,
+              instrumented_io_context &io_context)
+      : is_object_local_(std::move(is_object_local)), io_context_(io_context) {}
 
   using WaitCallback = std::function<void(const std::vector<ray::ObjectID> &ready,
                                           const std::vector<ray::ObjectID> &remaining)>;
@@ -63,21 +62,21 @@ class WaitManager {
  private:
   struct WaitRequest {
     WaitRequest(int64_t timeout_ms,
-                const WaitCallback &callback,
+                WaitCallback callback,
                 const std::vector<ObjectID> &object_ids,
                 uint64_t num_required_objects)
         : timeout_ms(timeout_ms),
-          callback(callback),
+          callback(std::move(callback)),
           object_ids(object_ids),
           num_required_objects(num_required_objects) {}
     /// The period of time to wait before invoking the callback.
-    const int64_t timeout_ms;
+    int64_t timeout_ms;
     /// The callback invoked when Wait is complete.
     WaitCallback callback;
     /// Ordered input object_ids.
-    const std::vector<ObjectID> object_ids;
+    std::vector<ObjectID> object_ids;
     /// The number of required objects.
-    const uint64_t num_required_objects;
+    uint64_t num_required_objects;
     /// The objects that have been locally available.
     std::unordered_set<ObjectID> ready;
   };
@@ -93,7 +92,8 @@ class WaitManager {
   /// locally available.
   const std::function<bool(const ObjectID &)> is_object_local_;
 
-  const std::function<void(std::function<void()>, int64_t delay_ms)> delay_executor_;
+  // NodeManager's io_context_
+  instrumented_io_context &io_context_;
 
   /// A set of active wait requests.
   std::unordered_map<uint64_t, WaitRequest> wait_requests_;
@@ -101,7 +101,7 @@ class WaitManager {
   /// Map from object to wait requests that are waiting for this object.
   std::unordered_map<ObjectID, std::unordered_set<uint64_t>> object_to_wait_requests_;
 
-  uint64_t next_wait_id_;
+  uint64_t next_wait_id_ = 0;
 
   friend class WaitManagerTest;
 };
