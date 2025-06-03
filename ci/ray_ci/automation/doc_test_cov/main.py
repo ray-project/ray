@@ -22,7 +22,7 @@ def main():
     parser.add_argument("--look-back-hours", default=6, type=int, help="look back hours for nightly builds (default: 6)")
     parser.add_argument("--offline", action="store_true", help="run offline mode")
     args = parser.parse_args()
-    
+
     test_results = TestResults()
     # Get all doctest jobs for the run
     bk_client = BuildKiteClient(BK_HOST, args.bk_api_token, BK_ORGANIZATION, BK_PIPELINE)
@@ -92,7 +92,12 @@ def main():
     print("done calculating test coverage")
     print(f"number of targets: {len(test_results.targets)}")
     print(f"number of tested files for first target: {len(test_results.targets[0].files)}")
-    print(f"number of file refs for first target: {len(test_results.targets[0].files[0].file_refs)}")
+    # print(f"number of file refs for first target: {len(test_results.targets[0].files[0].file_refs)}")
+    for target in test_results.targets:
+        if not target.tested:
+            print(f"target: {target.target_name}")
+            print(f"target files: {target.files}")
+            print(f"target file refs: {target.files[0].file_refs}")
     test_results.save_test_results()
     print("done saving test results")
 
