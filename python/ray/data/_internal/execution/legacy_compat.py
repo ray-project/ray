@@ -47,7 +47,7 @@ def execute_to_legacy_bundle_iterator(
         dag = dag_rewrite(dag)
 
     bundle_iter = executor.execute(dag, initial_stats=stats)
-    last_op = executor._output_node[0]
+    last_op: PhysicalOperator = executor._output_node[0]
 
     class CacheMetadataIterator(OutputIterator):
         """Wrapper for `bundle_iterator` above.
@@ -78,7 +78,7 @@ def execute_to_legacy_bundle_iterator(
                 # Once the iterator is completely exhausted, we are done
                 # collecting metadata. We can add this cached metadata to the plan.
                 plan._snapshot_metadata = self._collected_metadata
-                plan._schema = last_op._schema
+                plan._schema = last_op.get_schema()
                 raise
 
         def _collect_metadata(self, bundle: RefBundle) -> RefBundle:

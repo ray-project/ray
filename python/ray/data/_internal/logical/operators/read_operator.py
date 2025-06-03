@@ -33,9 +33,6 @@ class Read(AbstractMap, SourceOperatorMixin):
         self._concurrency = concurrency
         self._detected_parallelism = None
 
-    def guess_schema(self):
-        return self._datasource.get_schema()
-
     def output_data(self):
         return None
 
@@ -59,6 +56,9 @@ class Read(AbstractMap, SourceOperatorMixin):
         execution.
         """
         return self._cached_output_metadata
+
+    def guess_schema(self):
+        return self._datasource.get_schema()
 
     @functools.cached_property
     def _cached_output_metadata(self) -> BlockMetadata:

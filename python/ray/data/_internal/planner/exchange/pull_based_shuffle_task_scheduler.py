@@ -1,5 +1,5 @@
 import logging
-from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple
+from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple, Union
 
 from ray._private.ray_constants import CALLER_MEMORY_USAGE_PER_OBJECT_REF
 from ray.data._internal.execution.interfaces import RefBundle, TaskContext
@@ -21,6 +21,8 @@ from ray.data.block import (
 
 if TYPE_CHECKING:
     import pyarrow as pa
+
+    from ray.data.block import PandasBlockSchema
 
 logger = logging.getLogger(__name__)
 
@@ -46,7 +48,9 @@ class PullBasedShuffleTaskScheduler(ExchangeTaskScheduler):
         map_ray_remote_args: Optional[Dict[str, Any]] = None,
         reduce_ray_remote_args: Optional[Dict[str, Any]] = None,
         _debug_limit_execution_to_num_blocks: Optional[int] = None,
-    ) -> Tuple[List[RefBundle], StatsDict, "pa.lib.Schema"]:
+    ) -> Tuple[
+        List[RefBundle], StatsDict, Union[type, "PandasBlockSchema", "pa.lib.Schema"]
+    ]:
 
         # TODO: eagerly delete the input and map output block references in order to
         # eagerly release the blocks' memory.

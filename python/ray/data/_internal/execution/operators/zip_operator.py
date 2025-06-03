@@ -1,5 +1,5 @@
 import itertools
-from typing import TYPE_CHECKING, List, Optional, Tuple
+from typing import TYPE_CHECKING, List, Optional, Tuple, Union
 
 import ray
 from ray.data._internal.delegating_block_builder import DelegatingBlockBuilder
@@ -24,7 +24,7 @@ from ray.data.context import DataContext
 if TYPE_CHECKING:
     import pyarrow as pa
 
-    from ray.data.block import MetadataAndSchema
+    from ray.data.block import MetadataAndSchema, PandasBlockSchema
 
 
 class ZipOperator(InternalQueueOperatorMixin, PhysicalOperator):
@@ -92,9 +92,10 @@ class ZipOperator(InternalQueueOperatorMixin, PhysicalOperator):
             self._metrics.on_input_queued(refs)
 
     def all_inputs_done(self) -> None:
-        self._output_buffer, self._stats, self._schema = self._zip(
+        self._output_buffer, self._stats, schema = self._zip(
             self._left_buffer, self._right_buffer
         )
+        self.set_schema(schema)
 
         while self._left_buffer:
             refs = self._left_buffer.pop()
@@ -123,7 +124,9 @@ class ZipOperator(InternalQueueOperatorMixin, PhysicalOperator):
 
     def _zip(
         self, left_input: List[RefBundle], right_input: List[RefBundle]
-    ) -> Tuple[List[RefBundle], StatsDict, "pa.lib.Schema"]:
+    ) -> Tuple[
+        List[RefBundle], StatsDict, Union[type, "PandasBlockSchema", "pa.lib.Schema"]
+    ]:
         """Zip the RefBundles from `left_input` and `right_input` together.
 
         Zip is done in 2 steps: aligning blocks, and zipping blocks from

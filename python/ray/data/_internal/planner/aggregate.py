@@ -22,6 +22,8 @@ from ray.data.context import DataContext, ShuffleStrategy
 if TYPE_CHECKING:
     import pyarrow as pa
 
+    from ray.data.block import PandasBlockSchema
+
 
 def generate_aggregate_fn(
     key: Optional[Union[str, List[str]]],
@@ -43,7 +45,7 @@ def generate_aggregate_fn(
 
     def fn(
         refs: List[RefBundle],
-        schema: Optional["pa.lib.Schema"],
+        schema: Optional[Union[type, "PandasBlockSchema", "pa.lib.Schema"]],
         ctx: TaskContext,
     ) -> Tuple[List[RefBundle], StatsDict]:
         blocks = []

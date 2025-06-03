@@ -1,10 +1,10 @@
 from abc import ABC, abstractmethod
-from typing import TYPE_CHECKING, List, Optional
+from typing import TYPE_CHECKING, List, Optional, Union
 
 if TYPE_CHECKING:
     import pyarrow as pa
 
-    from ray.data.block import BlockMetadata
+    from ray.data.block import BlockMetadata, PandasBlockSchema
     from ray.data.dataset import RefBundle
 
 # TODO(jusitn): split this into 2, it's not always the case
@@ -15,7 +15,9 @@ class GuessMetadataMixin(ABC):
     """
 
     @abstractmethod
-    def guess_schema(self) -> Optional["pa.lib.Schema"]:
+    def guess_schema(
+        self,
+    ) -> Optional[Union[type, "PandasBlockSchema", "pa.lib.Schema"]]:
         """Return best guess of schema for dataset."""
         pass
 

@@ -550,8 +550,10 @@ def update_operator_states(topology: Topology) -> None:
 
     prev_op = None
     for op, op_state in list(topology.items()):
-        if op.execution_finished() and op._schema is None and prev_op is not None:
-            op._schema = prev_op._schema
+        if op.execution_finished() and op.get_schema() is None and prev_op is not None:
+            # If the operator has finished execution and is a GuessMetadataMixin,
+            # we can set its schema based on the previous operator's schema.
+            op.set_schema(prev_op.get_schema())
         prev_op = op
 
 

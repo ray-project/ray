@@ -1,10 +1,12 @@
-from typing import TYPE_CHECKING, Optional
+from typing import TYPE_CHECKING, Optional, Union
 
 from ray.data._internal.logical.interfaces import GuessMetadataMixin, LogicalOperator
 from ray.data.block import BlockMetadata
 
 if TYPE_CHECKING:
     import pyarrow as pa
+
+    from ray.data.block import PandasBlockSchema
 
 
 class AbstractOneToOne(LogicalOperator):
@@ -62,7 +64,9 @@ class Limit(AbstractOneToOne, GuessMetadataMixin):
             exec_stats=None,
         )
 
-    def guess_schema(self) -> Optional["pa.lib.Schema"]:
+    def guess_schema(
+        self,
+    ) -> Optional[Union[type, "PandasBlockSchema", "pa.lib.Schema"]]:
         assert len(self._input_dependencies) == 1, len(self._input_dependencies)
         inp = self.input_dependencies[0]
         if isinstance(inp, GuessMetadataMixin):

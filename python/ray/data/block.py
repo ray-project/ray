@@ -228,7 +228,7 @@ class BlockMetadata(BlockStats):
 @dataclass
 class MetadataAndSchema:
     metadata: BlockMetadata
-    schema: Optional[Union["PandasBlockSchema", "pyarrow.lib.Schema"]]
+    schema: Optional[Union[type, "PandasBlockSchema", "pa.lib.Schema"]]
 
 
 def _unzip_list_of_tuples(n: int, data: List[Tuple[Any, ...]]) -> Tuple[List[Any], ...]:
@@ -241,7 +241,7 @@ def _decompose_metadata_and_schema(
     iterable: Iterable["MetadataAndSchema"],
 ) -> Tuple[
     List["BlockMetadata"],
-    List[Optional[Union["PandasBlockSchema", "pa.lib.Schema"]]],
+    List[Optional[Union[type, "PandasBlockSchema", "pa.lib.Schema"]]],
 ]:
     metadatas = []
     schemas = []

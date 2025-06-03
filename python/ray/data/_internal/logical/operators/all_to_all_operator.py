@@ -1,4 +1,4 @@
-from typing import TYPE_CHECKING, Any, Dict, List, Optional
+from typing import TYPE_CHECKING, Any, Dict, List, Optional, Union
 
 from ray.data._internal.logical.interfaces import GuessMetadataMixin, LogicalOperator
 from ray.data._internal.planner.exchange.interfaces import ExchangeTaskSpec
@@ -9,6 +9,8 @@ from ray.data.block import BlockMetadata
 
 if TYPE_CHECKING:
     import pyarrow as pa
+
+    from ray.data.block import PandasBlockSchema
 
 
 class AbstractAllToAll(LogicalOperator):
@@ -40,7 +42,7 @@ class AbstractAllToAll(LogicalOperator):
         self._sub_progress_bar_names = sub_progress_bar_names
 
 
-class RandomizeBlocks(AbstractAllToAll, GuessMetadataMixin):
+class RandomizeBlocks(GuessMetadataMixin, AbstractAllToAll):
     """Logical operator for randomize_block_order."""
 
     def __init__(
@@ -54,14 +56,16 @@ class RandomizeBlocks(AbstractAllToAll, GuessMetadataMixin):
         )
         self._seed = seed
 
-    def guess_metadata(self) -> BlockMetadata:
+    def guess_metadata(self) -> "BlockMetadata":
         assert len(self._input_dependencies) == 1, len(self._input_dependencies)
         inp = self.input_dependencies[0]
         if isinstance(inp, GuessMetadataMixin):
             return inp.guess_metadata()
         return BlockMetadata(None, None, None, None)
 
-    def guess_schema(self) -> Optional["pa.lib.Schema"]:
+    def guess_schema(
+        self,
+    ) -> Optional[Union[type, "PandasBlockSchema", "pa.lib.Schema"]]:
         assert len(self._input_dependencies) == 1, len(self._input_dependencies)
         inp = self.input_dependencies[0]
         if isinstance(inp, GuessMetadataMixin):
@@ -90,14 +94,16 @@ class RandomShuffle(AbstractAllToAll, GuessMetadataMixin):
         )
         self._seed = seed
 
-    def guess_metadata(self) -> BlockMetadata:
+    def guess_metadata(self) -> "BlockMetadata":
         assert len(self._input_dependencies) == 1, len(self._input_dependencies)
         inp = self.input_dependencies[0]
         if isinstance(inp, GuessMetadataMixin):
             return inp.guess_metadata()
         return BlockMetadata(None, None, None, None)
 
-    def guess_schema(self) -> Optional["pa.lib.Schema"]:
+    def guess_schema(
+        self,
+    ) -> Optional[Union[type, "PandasBlockSchema", "pa.lib.Schema"]]:
         assert len(self._input_dependencies) == 1, len(self._input_dependencies)
         inp = self.input_dependencies[0]
         if isinstance(inp, GuessMetadataMixin):
@@ -105,7 +111,7 @@ class RandomShuffle(AbstractAllToAll, GuessMetadataMixin):
         return None
 
 
-class Repartition(AbstractAllToAll, GuessMetadataMixin):
+class Repartition(GuessMetadataMixin, AbstractAllToAll):
     """Logical operator for repartition."""
 
     def __init__(
@@ -135,14 +141,16 @@ class Repartition(AbstractAllToAll, GuessMetadataMixin):
         self._keys = keys
         self._sort = sort
 
-    def guess_metadata(self) -> BlockMetadata:
+    def guess_metadata(self) -> "BlockMetadata":
         assert len(self._input_dependencies) == 1, len(self._input_dependencies)
         inp = self.input_dependencies[0]
         if isinstance(inp, GuessMetadataMixin):
             return inp.guess_metadata()
         return BlockMetadata(None, None, None, None)
 
-    def guess_schema(self) -> Optional["pa.lib.Schema"]:
+    def guess_schema(
+        self,
+    ) -> Optional[Union[type, "PandasBlockSchema", "pa.lib.Schema"]]:
         assert len(self._input_dependencies) == 1, len(self._input_dependencies)
         inp = self.input_dependencies[0]
         if isinstance(inp, GuessMetadataMixin):
@@ -150,7 +158,7 @@ class Repartition(AbstractAllToAll, GuessMetadataMixin):
         return None
 
 
-class Sort(AbstractAllToAll, GuessMetadataMixin):
+class Sort(GuessMetadataMixin, AbstractAllToAll):
     """Logical operator for sort."""
 
     def __init__(
@@ -171,14 +179,16 @@ class Sort(AbstractAllToAll, GuessMetadataMixin):
         self._sort_key = sort_key
         self._batch_format = batch_format
 
-    def guess_metadata(self) -> BlockMetadata:
+    def guess_metadata(self) -> "BlockMetadata":
         assert len(self._input_dependencies) == 1, len(self._input_dependencies)
         inp = self.input_dependencies[0]
         if isinstance(inp, GuessMetadataMixin):
             return inp.guess_metadata()
         return BlockMetadata(None, None, None, None)
 
-    def guess_schema(self) -> Optional["pa.lib.Schema"]:
+    def guess_schema(
+        self,
+    ) -> Optional[Union[type, "PandasBlockSchema", "pa.lib.Schema"]]:
         assert len(self._input_dependencies) == 1, len(self._input_dependencies)
         inp = self.input_dependencies[0]
         if isinstance(inp, GuessMetadataMixin):

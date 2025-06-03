@@ -39,7 +39,7 @@ from ray.data._internal.execution.interfaces.physical_operator import (
     OpTask,
 )
 from ray.data._internal.table_block import TableBlockAccessor
-from ray.data._internal.util import GiB, MiB, unify_block_metadata_schema
+from ray.data._internal.util import GiB, MiB
 from ray.data.block import (
     Block,
     BlockAccessor,
@@ -50,7 +50,7 @@ from ray.data.block import (
 )
 
 if TYPE_CHECKING:
-    from ray.data.block import MetadataAndSchema
+    from ray.data.block import MetadataAndSchema, PandasBlockSchema
 
 logger = logging.getLogger(__name__)
 
@@ -596,10 +596,12 @@ class HashShufflingOperatorBase(PhysicalOperator):
             f"partition id is {self._last_finalized_partition_id})"
         )
 
-        def _on_bundle_ready(bundle: RefBundle, schema: "pa.lib.Schema"):
+        def _on_bundle_ready(
+            bundle: RefBundle, schema: Union[type, "PandasBlockSchema", "pa.lib.Schema"]
+        ):
             assert schema is not None
             # unify schemas
-            self._schema = unify_block_metadata_schema([self._schema, schema])
+            self.unify_schemas(schema)
             # Add finalized block to the output queue
             self._output_queue.append(bundle)
             self._metrics.on_output_queued(bundle)

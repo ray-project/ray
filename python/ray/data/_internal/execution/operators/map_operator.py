@@ -48,7 +48,7 @@ from ray.data._internal.execution.operators.map_transformer import (
 )
 from ray.data._internal.execution.util import memory_string
 from ray.data._internal.stats import StatsDict
-from ray.data._internal.util import MemoryProfiler, unify_block_metadata_schema
+from ray.data._internal.util import MemoryProfiler
 from ray.data.block import (
     Block,
     BlockAccessor,
@@ -62,6 +62,8 @@ from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
 
 if TYPE_CHECKING:
     import pyarrow as pa
+
+    from ray.data.block import PandasBlockSchema
 logger = logging.getLogger(__name__)
 
 
@@ -385,18 +387,16 @@ class MapOperator(OneToOneOperator, InternalQueueOperatorMixin, ABC):
         self._metrics.on_task_submitted(task_index, inputs)
 
         def _output_ready_callback(
-            task_index, output: RefBundle, schema: "pa.lib.Schema"
+            task_index,
+            output: RefBundle,
+            schema: Union[type, "PandasBlockSchema", "pa.lib.Schema"],
         ):
             # Since output is streamed, it should only contain one block.
             assert len(output) == 1
             assert schema is not None
             self._metrics.on_task_output_generated(task_index, output)
 
-            # unify schemas
-            if self._schema is None:
-                self._schema = schema
-            elif schema:
-                self._schema = unify_block_metadata_schema([self._schema, schema])
+            self.unify_schemas(schema)
 
             # Notify output queue that the task has produced an new output.
             self._output_queue.notify_task_output_ready(task_index, output)

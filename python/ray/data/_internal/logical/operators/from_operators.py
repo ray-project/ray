@@ -22,7 +22,7 @@ class AbstractFrom(LogicalOperator, SourceOperatorMixin, metaclass=abc.ABCMeta):
         self,
         input_blocks: List[ObjectRef[Block]],
         input_metadata: List[BlockMetadata],
-        schema: Optional[Union["PandasBlockSchema", "pa.lib.Schema"]],
+        schema: Optional[Union[type, "PandasBlockSchema", "pa.lib.Schema"]],
     ):
         super().__init__(self.__class__.__name__, [], len(input_blocks))
         assert len(input_blocks) == len(input_metadata), (
@@ -43,9 +43,6 @@ class AbstractFrom(LogicalOperator, SourceOperatorMixin, metaclass=abc.ABCMeta):
 
     def output_data(self) -> Optional[List[RefBundle]]:
         return self._input_data
-
-    def guess_metadata(self) -> BlockMetadata:
-        return self._cached_output_metadata
 
     @functools.cached_property
     def _cached_output_metadata(self) -> BlockMetadata:
@@ -68,6 +65,9 @@ class AbstractFrom(LogicalOperator, SourceOperatorMixin, metaclass=abc.ABCMeta):
             return sum(m.size_bytes for m in metadata)
         else:
             return None
+
+    def guess_metadata(self) -> BlockMetadata:
+        return self._cached_output_metadata
 
     def guess_schema(self):
         return self._schema

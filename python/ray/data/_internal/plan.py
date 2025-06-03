@@ -20,7 +20,10 @@ from ray.data.exceptions import omit_traceback_stdout
 from ray.util.debug import log_once
 
 if TYPE_CHECKING:
-    from ray.data._internal.execution.streaming_executor import StreamingExecutor
+    from ray.data._internal.execution.streaming_executor import (
+        PhysicalOperator,
+        StreamingExecutor,
+    )
     from ray.data.dataset import Dataset
 
 
@@ -374,14 +377,15 @@ class ExecutionPlan:
             # the plan is read-only even if `fetch_if_missing` is False.
 
             iter_ref_bundles, _, executor = self.execute_to_iterator()
+            output_node: PhysicalOperator = executor._output_node[0]
             with executor:
                 # Make sure executor is fully shutdown upon exiting
                 for _ in iter_ref_bundles:
-                    schema = executor._output_node[0]._schema or None
+                    schema = output_node.get_schema() or None
                     if schema is not None:
                         break
             if schema is None:
-                schema = executor._output_node[0]._schema or None
+                schema = output_node.get_schema() or None
         self.cache_schema(schema)
         return self._schema
 
@@ -518,7 +522,7 @@ class ExecutionPlan:
                         dataset_uuid=self._dataset_uuid,
                         preserve_order=preserve_order,
                     )
-                    schema = executor._output_node[0]._schema or None
+                    schema = executor._output_node[0].get_schema() or None
                     bundle = RefBundle(
                         tuple(blocks.iter_blocks_with_metadata()),
                         owns_blocks=blocks._owned_by_consumer,

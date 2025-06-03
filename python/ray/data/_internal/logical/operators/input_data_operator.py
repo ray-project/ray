@@ -1,5 +1,5 @@
 import functools
-from typing import TYPE_CHECKING, List, Optional
+from typing import TYPE_CHECKING, List, Optional, Union
 
 from ray.data._internal.execution.interfaces import RefBundle
 from ray.data._internal.logical.interfaces import LogicalOperator, SourceOperatorMixin
@@ -8,6 +8,8 @@ from ray.data.block import BlockMetadata
 if TYPE_CHECKING:
     import pyarrow as pa
 
+    from ray.data.block import PandasBlockSchema
+
 
 class InputData(LogicalOperator, SourceOperatorMixin):
     """Logical operator for input data.
@@ -15,7 +17,11 @@ class InputData(LogicalOperator, SourceOperatorMixin):
     This may hold cached blocks from a previous Dataset execution.
     """
 
-    def __init__(self, input_data: List[RefBundle], schema: Optional["pa.lib.Schema"]):
+    def __init__(
+        self,
+        input_data: List[RefBundle],
+        schema: Optional[Union[type, "PandasBlockSchema", "pa.lib.Schema"]],
+    ):
         super().__init__("InputData", [], len(input_data))
 
         self.input_data = input_data
