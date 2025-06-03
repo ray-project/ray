@@ -1,9 +1,4 @@
 # flake8: noqa
-import ray
-
-
-ray.init()
-
 
 # __begin_define_uniform_request_router__
 import random
@@ -66,6 +61,8 @@ response = handle.remote().result()
 print(f"Response from UniformRequestRouterApp: {response}")
 # __end_deploy_app_with_uniform_request_router__
 
+
+serve.shutdown()
 
 # __begin_define_throughput_aware_request_router__
 from ray.serve.request_router import (
