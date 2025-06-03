@@ -447,7 +447,7 @@ class PrefixAwareRequestRouter(LocalityMixin, MultiplexMixin, RequestRouter):
 
     async def choose_replicas(
         self,
-        replicas_ranks: List[List[RunningReplica]],
+        candidate_replicas: List[List[RunningReplica]],
         pending_request: Optional[PendingRequest] = None,
     ) -> List[List[RunningReplica]]:
         """One iteration of the power of two choices procedure that chooses
@@ -463,7 +463,7 @@ class PrefixAwareRequestRouter(LocalityMixin, MultiplexMixin, RequestRouter):
         # Get fallback replicas from PowerOfTwoChoicesRequestRouter
         fallback_replicas = await PowerOfTwoChoicesRequestRouter.choose_replicas(
             self,
-            replicas_ranks=replicas_ranks,
+            replicas_ranks=candidate_replicas,
             pending_request=pending_request,
         )
         if pending_request is None or not fallback_replicas:
@@ -487,7 +487,7 @@ class PrefixAwareRequestRouter(LocalityMixin, MultiplexMixin, RequestRouter):
 
         # Convert candidate replica IDs to RunningReplica objects.
         replica_id_to_replica_map = {
-            replica.replica_id: replica for replica in replicas_ranks[0]
+            replica.replica_id: replica for replica in candidate_replicas[0]
         }
         candidate_replicas = [
             replica_id_to_replica_map[candidate_replica_id]
