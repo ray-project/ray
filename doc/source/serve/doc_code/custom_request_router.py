@@ -62,13 +62,26 @@ class ThroughputAwareRequestRouter(
         candidate_replicas: List[RunningReplica],
         pending_request: Optional[PendingRequest] = None,
     ) -> List[List[RunningReplica]]:
+        """
+        This method chooses the best replica for the request based on
+        multiplexed, locality, and custom throughput stats. The algorithm
+        works as follows:
 
+        1. Populate top_ranked_replicas based on available replicas based on
+          multiplex_id
+        2. Populate and override top_ranked_replicas info based on locality
+         information of replicas (we want to prefer replicas that are in the
+          same vicinity to this deployment)
+        3. Select the replica with minimum throughput.
+        """
+
+        # Dictionary to hold the top-ranked replicas
         top_ranked_replicas: Dict[ReplicaID, RunningReplica] = {}
+        # Take the best set of replicas for the multiplexed model
         if (
             pending_request is not None
             and pending_request.metadata.multiplexed_model_id
         ):
-            # Take the best set of replicas for the multiplexed model
             ranked_replicas_multiplex: List[RunningReplica] = (
                 self.rank_replicas_via_multiplex(
                     replicas=candidate_replicas,
@@ -99,12 +112,12 @@ class ThroughputAwareRequestRouter(
 
         print("ThroughputAwareRequestRouter routing request")
 
-        # Sort the replicas by throughput.
-        throughput_ranked_replicas = sorted(
+        # Take the replica with minimum throughput.
+        min_throughput_replicas = min(
             [replica for replica in top_ranked_replicas.values()],
             key=lambda r: r.routing_stats.get("throughput", 0),
         )
-        return [[throughput_ranked_replicas[0]]]
+        return [[min_throughput_replicas]]
 
 
 # __end_define_throughput_aware_request_router__

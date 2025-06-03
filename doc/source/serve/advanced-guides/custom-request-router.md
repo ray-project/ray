@@ -1,9 +1,17 @@
 (custom-request-router-guide)=
 # Use Custom Algorithm for Request Routing
 
-This section helps you understand how to:
-- Define a simple uniform request router
+Different Ray serve applications demand different logics for load balancing. For
+example, in serving LLMs you might want to have a different policy than balancing
+number of requests across replicas: e.g. balancing ongoing input tokens, balancing
+kv-cache utilization, etc. RequestRouter is an abstraction in Ray Serve that
+allows extension and customization of load-balancing logic for each deployment.
+
+This guide shows how to use RequestRouter API to achieve custom load balancing across
+replicas of a given deployment. It will cover the following:
+- Define a simple uniform request router for load balancing
 - Deploy an app with the uniform request router
+- Utility Mixins for Multiplex and Locality aware request routing
 - Define a complex throughput-aware request router
 - Deploy an app with the throughput-aware request router
 
@@ -18,10 +26,13 @@ Create a file `custom_request_router.py` with the following code:
 :language: python
 ```
 This code defines a simple uniform request router that routes requests a random replica
-for distribute the load evenly regardless of the request queue length. The router is
-defined as a class that inherits from `ray.serve.request_router.RequestRouter`. It
-implements the `choose_replicas` method, which returns the random replica for all
-incoming requests.
+to distribute the load evenly regardless of the queue length of each replica or body of
+the request. The router is defined as a class that inherits from 
+`ray.serve.request_router.RequestRouter`. It implements the `choose_replicas`
+method, which returns the random replica for all incoming requests. The returned type
+is a list of lists of replicas, where each inner list represents a rank of replicas.
+The first rank is the most preferred and the last rank is the least preferred.
+
 
 :::{note}
 This request router also implements `on_request_routed` which can help you update the
@@ -31,8 +42,10 @@ state of the request router after a request is routed.
 (deploy-app-with-uniform-request-router)=
 ## Deploy an app with the uniform request router
 To use a custom request router, you need to pass the `request_router_class` argument to
-the `deplpyment` decorator. Let's deploy a simple app that uses the uniform request
-router like this:
+the (`deployment`)[https://docs.ray.io/en/master/serve/api/doc/ray.serve.deployment_decorator.html]
+decorator. Also note that the `request_router_class` can be passed as the already
+imported class or as the string of import path to the class. Let's deploy a simple app
+that uses the uniform request router like this:
 
 ```{literalinclude} ../doc_code/custom_request_router_app.py
 :start-after: __begin_deploy_app_with_uniform_request_router__
@@ -48,18 +61,23 @@ sending more requests and seeing the distribution of the replicas are roughly eq
 :::{note}
 Currently, the only way to configure the request router is to pass it as an argument to
 the deployment decorator. This means that you cannot change the request router for an
-existing deployment handle with running router. If you have a particular use case where
-you need to reconfigure a request router, please open an issue on the
-[Ray GitHub repository](https://github.com/ray-project/ray/issues)
+existing deployment handle with running router. If you have a particular usecase where
+you need to reconfigure a request router on the deployment handle, please open a feature
+request on the [Ray GitHub repository](https://github.com/ray-project/ray/issues)
 :::
+
+(multiplexed-locality-mixin)=
+## Utility Mixins for Multiplex and Locality aware request routing
+TODO
 
 (throughput-aware-request-router)=
 ## Define a complex throughput-aware request router
-A fully featured request router can be more complex and take into account the
-multiplexed model, locality, the request queue length, and using custom stats to decide
-which replica to route the request to. The following code defines a throughput-aware
-request router that routes requests to the replica with the factors. Add the following
-code into the `custom_request_router.py` file:
+A fully featured request router can be more complex and should take into account the
+multiplexed model, locality, the request queue length on each replica, and using custom
+statistics like throughput  to decide which replica to route the request to. The
+following class defines a throughput-aware request router that routes requests to the
+replica with these factors in mind. Add the following code into the
+`custom_request_router.py` file:
 
 ```{literalinclude} ../doc_code/custom_request_router.py
 :start-after: __begin_define_throughput_aware_request_router__
@@ -74,7 +92,7 @@ This request router inherits from `ray.serve.request_router.RequestRouter`, as w
 `choose_replicas` to take the highest ranked replicas from `rank_replicas_via_multiplex`
 and `rank_replicas_via_locality` and uses the `select_available_replicas` helper to
 filter out replicas that have reached their maximum request queue length. Finally, it
-sorts the replicas by their throughput and returns the top one.
+takes the replicas with the minimum throughput and returns the top one.
 
 (deploy-app-with-throughput-aware-request-router)=
 ## Deploy an app with the throughput-aware request router
@@ -87,10 +105,11 @@ To use the throughput-aware request router, you can deploy an app like this:
 ```
 
 Similar to the uniform request router, the custom request router can be defined in the
-`request_router_class` argument of the `deployment` decorator. The
-`request_routing_stats_period_s` and `request_routing_stats_timeout_s` arguments are
-also configured to enable the request routing stats collection at the specified period.
-During runtime, `record_routing_stats` method will be called by Serve controller to
-collect the routing stats from each replica. The custom request router can then get the
-updated routing stats by looking up the `routing_stats` attribute of the running
-replicas and use it in the routing policy.
+`request_router_class` argument of the `deployment` decorator. The Serve controller
+pulls statistics from the replica of each deployment by calling record_routing_stats.
+The `request_routing_stats_period_s` and `request_routing_stats_timeout_s` arguments
+control the frequency and timeout time of the serve controller pulling information
+from each replica in its background thread.  You can customize the emission of these
+statistics by overriding `record_routing_stats` in the definition of the deployment
+class. The custom request router can then get the updated routing stats by looking up
+the `routing_stats` attribute of the running replicas and use it in the routing policy.

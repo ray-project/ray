@@ -69,14 +69,16 @@ class ThroughputAwareRequestRouterApp:
         context = _get_internal_replica_context()
         self.replica_id: ReplicaID = context.replica_id
 
-    def __call__(self, reset: bool = False):
+    def __call__(self):
         self.update_throughput()
         return self.replica_id
 
     def update_throughput(self):
         current_timestamp_ms = _time_ms()
 
-        # Skip if the last throughput bucket is not expired
+        # Under high concurrency, requests can come in at different times. This
+        # early return helps to skip if the current_timestamp_ms is a second
+        # older than the last throughput bucket.
         if current_timestamp_ms < self.last_throughput_buckets - 1000:
             return
 
@@ -87,8 +89,13 @@ class ThroughputAwareRequestRouterApp:
     def record_routing_stats(self) -> Dict[str, Any]:
         current_timestamp_ms = _time_ms()
         throughput = 0
-        for t in range(current_timestamp_ms - 1000, current_timestamp_ms):
-            throughput += self.throughput_buckets[t]
+
+        for t, c in list(self.throughput_buckets.items()):
+            if t < current_timestamp_ms - 1000:
+                # Remove the bucket if it is older than 1 second
+                self.throughput_buckets.pop(t)
+            else:
+                throughput += c
 
         return {
             "throughput": throughput,
