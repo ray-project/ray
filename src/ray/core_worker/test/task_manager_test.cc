@@ -72,12 +72,14 @@ rpc::ReportGeneratorItemReturnsRequest GetIntermediateTaskReturn(
     const ObjectID &generator_id,
     const ObjectID &dynamic_return_id,
     std::shared_ptr<Buffer> data,
-    bool set_in_plasma) {
+    bool set_in_plasma,
+    uint64_t attempt_number = 0) {
   rpc::ReportGeneratorItemReturnsRequest request;
   rpc::Address addr;
   request.mutable_worker_addr()->CopyFrom(addr);
   request.set_item_index(idx);
   request.set_generator_id(generator_id.Binary());
+  request.set_attempt_number(attempt_number);
   auto dynamic_return_object = request.add_dynamic_return_objects();
   dynamic_return_object->set_object_id(dynamic_return_id.Binary());
   dynamic_return_object->set_data(data->Data(), data->Size());
@@ -137,10 +139,8 @@ class TaskManagerTest : public ::testing::Test {
             [this](const RayObject &object, const ObjectID &object_id) {
               stored_in_plasma.insert(object_id);
             },
-            [this](TaskSpecification &spec, bool object_recovery, uint32_t delay_ms) {
+            [this](TaskSpecification &spec) {
               num_retries_++;
-              last_delay_ms_ = delay_ms;
-              last_object_recovery_ = object_recovery;
               return Status::OK();
             },
             [](const JobID &job_id,
@@ -179,6 +179,17 @@ class TaskManagerTest : public ::testing::Test {
     manager_.CompletePendingTask(spec.TaskId(), reply, caller_address, false);
   }
 
+  void AddTaskToResubmitQueue(int64_t execution_time_ms, const TaskSpecification &spec) {
+    absl::MutexLock lock(&manager_.mu_);
+    TaskToRetry task_to_retry = {execution_time_ms, spec};
+    manager_.to_resubmit_.push(std::move(task_to_retry));
+  }
+
+  size_t GetResubmitQueueSize() const {
+    absl::MutexLock lock(&manager_.mu_);
+    return manager_.to_resubmit_.size();
+  }
+
   bool lineage_pinning_enabled_;
   rpc::Address addr_;
   std::shared_ptr<pubsub::MockPublisher> publisher_;
@@ -190,7 +201,6 @@ class TaskManagerTest : public ::testing::Test {
   bool all_nodes_alive_ = true;
   TaskManager manager_;
   int num_retries_ = 0;
-  uint32_t last_delay_ms_ = 0;
   bool last_object_recovery_ = false;
   std::unordered_set<ObjectID> stored_in_plasma;
 };
@@ -365,18 +375,17 @@ TEST_F(TaskManagerTest, TestTaskReconstruction) {
   WorkerContext ctx(WorkerType::WORKER, WorkerID::FromRandom(), JobID::FromInt(0));
   ASSERT_TRUE(reference_counter_->IsObjectPendingCreation(return_id));
 
+  bool will_retry = false;
   auto error = rpc::ErrorType::WORKER_DIED;
   for (int i = 0; i < num_retries; i++) {
     RAY_LOG(INFO) << "Retry " << i;
-    manager_.FailOrRetryPendingTask(spec.TaskId(), error);
+    will_retry = manager_.FailOrRetryPendingTask(spec.TaskId(), error);
+    ASSERT_TRUE(will_retry);
     ASSERT_TRUE(manager_.IsTaskPending(spec.TaskId()));
     ASSERT_TRUE(reference_counter_->IsObjectPendingCreation(return_id));
     ASSERT_EQ(reference_counter_->NumObjectIDsInScope(), 3);
     std::vector<std::shared_ptr<RayObject>> results;
     ASSERT_FALSE(store_->Get({return_id}, 1, 0, ctx, false, &results).ok());
-    ASSERT_EQ(num_retries_, i + 1);
-    ASSERT_EQ(last_delay_ms_, RayConfig::instance().task_retry_delay_ms());
-    ASSERT_EQ(last_object_recovery_, false);
   }
 
   manager_.FailOrRetryPendingTask(spec.TaskId(), error);
@@ -475,24 +484,20 @@ TEST_F(TaskManagerTest, TestTaskOomAndNonOomKillReturnsLastError) {
   manager_.AddPendingTask(caller_address, spec, "", num_retries);
   auto return_id = spec.ReturnId(0);
 
-  ASSERT_EQ(num_retries_, 0);
   ray::rpc::ErrorType error;
 
+  bool will_retry = false;
   error = rpc::ErrorType::OUT_OF_MEMORY;
-  manager_.FailOrRetryPendingTask(spec.TaskId(), error);
-  ASSERT_EQ(num_retries_, 1);
-  ASSERT_EQ(last_delay_ms_, RayConfig::instance().task_oom_retry_delay_base_ms());
-  ASSERT_EQ(last_object_recovery_, false);
+  will_retry = manager_.FailOrRetryPendingTask(spec.TaskId(), error);
+  ASSERT_TRUE(will_retry);
 
   error = rpc::ErrorType::WORKER_DIED;
-  manager_.FailOrRetryPendingTask(spec.TaskId(), error);
-  ASSERT_EQ(num_retries_, 2);
-  ASSERT_EQ(last_delay_ms_, RayConfig::instance().task_retry_delay_ms());
-  ASSERT_EQ(last_object_recovery_, false);
+  will_retry = manager_.FailOrRetryPendingTask(spec.TaskId(), error);
+  ASSERT_TRUE(will_retry);
 
   error = rpc::ErrorType::WORKER_DIED;
-  manager_.FailOrRetryPendingTask(spec.TaskId(), error);
-  ASSERT_EQ(num_retries_, 2);
+  will_retry = manager_.FailOrRetryPendingTask(spec.TaskId(), error);
+  ASSERT_FALSE(will_retry);
 
   std::vector<std::shared_ptr<RayObject>> results;
   WorkerContext ctx(WorkerType::WORKER, WorkerID::FromRandom(), JobID::FromInt(0));
@@ -511,9 +516,11 @@ TEST_F(TaskManagerTest, TestTaskOomInfiniteRetry) {
   int num_retries = 1;
   manager_.AddPendingTask(caller_address, spec, "", num_retries);
 
+  bool will_retry = false;
   for (int i = 0; i < 10000; i++) {
-    ASSERT_EQ(num_retries_, i);
-    manager_.FailOrRetryPendingTask(spec.TaskId(), rpc::ErrorType::OUT_OF_MEMORY);
+    will_retry =
+        manager_.FailOrRetryPendingTask(spec.TaskId(), rpc::ErrorType::OUT_OF_MEMORY);
+    ASSERT_TRUE(will_retry);
   }
 
   manager_.MarkTaskCanceled(spec.TaskId());
@@ -988,8 +995,6 @@ TEST_F(TaskManagerLineageTest, TestResubmitTask) {
   ASSERT_TRUE(manager_.ResubmitTask(spec.TaskId(), &resubmitted_task_deps));
   ASSERT_EQ(resubmitted_task_deps, spec.GetDependencyIds());
   ASSERT_EQ(num_retries_, 1);
-  ASSERT_EQ(last_delay_ms_, 0);
-  ASSERT_EQ(last_object_recovery_, true);
   resubmitted_task_deps.clear();
 
   // The return ID goes out of scope.
@@ -1051,8 +1056,6 @@ TEST_F(TaskManagerLineageTest, TestResubmittedTaskNondeterministicReturns) {
   std::vector<ObjectID> resubmitted_task_deps;
   ASSERT_TRUE(manager_.ResubmitTask(spec.TaskId(), &resubmitted_task_deps));
   ASSERT_EQ(num_retries_, 1);
-  ASSERT_EQ(last_delay_ms_, 0);
-  ASSERT_EQ(last_object_recovery_, true);
 
   // The re-executed task completes again. One of the return objects is now
   // returned directly.
@@ -1116,8 +1119,6 @@ TEST_F(TaskManagerLineageTest, TestResubmittedTaskFails) {
   std::vector<ObjectID> resubmitted_task_deps;
   ASSERT_TRUE(manager_.ResubmitTask(spec.TaskId(), &resubmitted_task_deps));
   ASSERT_EQ(num_retries_, 1);
-  ASSERT_EQ(last_delay_ms_, 0);
-  ASSERT_EQ(last_object_recovery_, true);
 
   // The re-executed task fails due to worker crashed.
   {
@@ -1237,8 +1238,6 @@ TEST_F(TaskManagerLineageTest, TestResubmittedDynamicReturnsTaskFails) {
   std::vector<ObjectID> resubmitted_task_deps;
   ASSERT_TRUE(manager_.ResubmitTask(spec.TaskId(), &resubmitted_task_deps));
   ASSERT_EQ(num_retries_, 1);
-  ASSERT_EQ(last_delay_ms_, 0);
-  ASSERT_EQ(last_object_recovery_, true);
 
   // Dereference the generator to a list of its internal ObjectRefs.
   for (const auto &dynamic_return_id : dynamic_return_ids) {
@@ -2417,13 +2416,17 @@ TEST_F(TaskManagerTest, TestBackpressureAfterReconstruction) {
   // it is already replied and the second one should be backpressured.
   /// 1 generate, 0 consumed, 2 threshold -> should signal immediately.
   dynamic_return_id = ObjectID::FromIndex(spec.TaskId(), 2);
+  // `FailOrRetryPendingTask` will retry the task and increase the attempt number
+  // of the task. Hence, the attempt number is set to 1 so that the object is not
+  // considered a stale object.
   req = GetIntermediateTaskReturn(
       /*idx*/ 0,
       /*finished*/ false,
       generator_id,
       /*dynamic_return_id*/ dynamic_return_id,
       /*data*/ data,
-      /*set_in_plasma*/ false);
+      /*set_in_plasma*/ false,
+      /*attempt_number*/ 1);
   bool retry_signal_called = false;
   ASSERT_FALSE(manager_.HandleReportGeneratorItemReturns(
       req,
@@ -2444,7 +2447,8 @@ TEST_F(TaskManagerTest, TestBackpressureAfterReconstruction) {
       generator_id,
       /*dynamic_return_id*/ dynamic_return_id,
       /*data*/ data,
-      /*set_in_plasma*/ false);
+      /*set_in_plasma*/ false,
+      /*attempt_number*/ 1);
   retry_signal_called = false;
   ASSERT_FALSE(manager_.HandleReportGeneratorItemReturns(
       req,
@@ -2463,6 +2467,20 @@ TEST_F(TaskManagerTest, TestBackpressureAfterReconstruction) {
   ASSERT_TRUE(signal_called);
   ASSERT_TRUE(retry_signal_called);
   CompletePendingStreamingTask(spec, caller_address, 2);
+}
+
+TEST_F(TaskManagerTest, TestPopTasksToRetry) {
+  auto spec1 = CreateTaskHelper(1, {});
+  AddTaskToResubmitQueue(current_time_ms() - 100, spec1);
+
+  auto spec2 = CreateTaskHelper(1, {});
+  AddTaskToResubmitQueue(current_time_ms() + 100, spec2);
+
+  auto tasks = manager_.PopTasksToRetry();
+  ASSERT_EQ(tasks.size(), 1);
+  ASSERT_EQ(tasks[0].TaskId(), spec1.TaskId());
+
+  ASSERT_EQ(GetResubmitQueueSize(), 1);
 }
 
 }  // namespace core
