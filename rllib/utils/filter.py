@@ -306,30 +306,30 @@ class MeanStdFilter(Filter):
     ) -> None:
         """Applies updates from the buffer of another filter.
 
-         Args:
-             other: Other filter to apply info from
-             with_buffer: Flag for specifying if the buffer should be
-                 copied from other.
+        Args:
+            other: Other filter to apply info from
+            with_buffer: Flag for specifying if the buffer should be
+                copied from other.
 
         .. testcode::
-             :skipif: True
+            :skipif: True
 
-             a = MeanStdFilter(())
-             a(1)
-             a(2)
-             print([a.running_stats.n, a.running_stats.mean, a.buffer.n])
+            a = MeanStdFilter(())
+            a(1)
+            a(2)
+            print([a.running_stats.n, a.running_stats.mean, a.buffer.n])
 
         .. testoutput::
 
-             [2, 1.5, 2]
+            [2, 1.5, 2]
 
         .. testcode::
-             :skipif: True
+            :skipif: True
 
-             b = MeanStdFilter(())
-             b(10)
-             a.apply_changes(b, with_buffer=False)
-             print([a.running_stats.n, a.running_stats.mean, a.buffer.n])
+            b = MeanStdFilter(())
+            b(10)
+            a.apply_changes(b, with_buffer=False)
+            print([a.running_stats.n, a.running_stats.mean, a.buffer.n])
 
         .. testoutput::
 
@@ -378,23 +378,23 @@ class MeanStdFilter(Filter):
         .. testcode::
              :skipif: True
 
-             b = MeanStdFilter(())
-             b(10)
-             print([b.running_stats.n, b.running_stats.mean, b.buffer.n])
+            b = MeanStdFilter(())
+            b(10)
+            print([b.running_stats.n, b.running_stats.mean, b.buffer.n])
 
         .. testoutput::
 
-             [1, array(10.0), 1]
+            [1, array(10.0), 1]
 
         .. testcode::
              :skipif: True
 
-             a.sync(b)
-             print([a.running_stats.n, a.running_stats.mean, a.buffer.n])
+            a.sync(b)
+            print([a.running_stats.n, a.running_stats.mean, a.buffer.n])
 
         .. testoutput::
 
-             [1, array(10.0), 1]
+            [1, array(10.0), 1]
         """
         self.demean = other.demean
         self.destd = other.destd
