@@ -51,7 +51,7 @@ parser.add_argument("--num-values", type=int, default=2)
 parser.add_argument("--attn-dim", type=int, default=128)
 
 
-# Define a PPO Catalog that tells Rllib to use our custom encoder
+# Define a PPO Catalog that tells RLlib to use our custom encoder
 class AttentionPPOCatalog(PPOCatalog):
     """
     A special PPO catalog producing an encoder that handles dictionaries of (potentially Repeated) action spaces in the same manner as https://arxiv.org/abs/1909.07528.
@@ -68,7 +68,7 @@ class AttentionPPOCatalog(PPOCatalog):
 
 if __name__ == "__main__":
     args = parser.parse_args()
-    # The wrapper allows Repeated observations to be batched successfully by Rllib.
+    # The wrapper allows Repeated observations to be batched successfully by RLlib.
     register_env("env", lambda cfg: ObsVectorizationWrapper(RepeatedObsEnv(cfg)))
 
     # Define our config
