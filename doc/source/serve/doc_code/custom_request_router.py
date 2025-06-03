@@ -21,8 +21,8 @@ class UniformRequestRouter(RequestRouter):
         pending_request: Optional[PendingRequest] = None,
     ) -> List[List[RunningReplica]]:
         print("UniformRequestRouter routing request")
-        random.shuffle(candidate_replicas)
-        return [[candidate_replicas[0]]]
+        index = random.randint(0, len(candidate_replicas) - 1)
+        return [[candidate_replicas[index]]]
 
     def on_request_routed(
         self,
