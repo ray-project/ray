@@ -313,9 +313,11 @@ First, create [Ray Data Datasets](https://docs.ray.io/en/latest/data/key-concept
 
 
 ```python
+import ray.data
+
 import numpy as np
 
-STORAGE_PATH = "s3://air-example-data/cifar-10/parquet/"
+STORAGE_PATH = "s3://ray-example-data/cifar10-parquet"
 train_dataset = ray.data.read_parquet(f'{STORAGE_PATH}/train')
 test_dataset = ray.data.read_parquet(f'{STORAGE_PATH}/test')
 train_dataset.schema()
