@@ -19,9 +19,6 @@ For logging to your WandB account, use:
 `--wandb-key=[your WandB API key] --wandb-project=[some project name]
 --wandb-run-name=[optional: WandB run name (within the defined project)]`
 """
-
-# __sphinx_doc_begin__
->>>>>>> Initial addition of changes. Will polish shortly.
 import gymnasium as gym
 import numpy as np
 
