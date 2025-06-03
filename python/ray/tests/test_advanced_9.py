@@ -275,7 +275,8 @@ def test_gcs_connection_no_leak(ray_start_cluster):
 
     with ray.init(cluster.address):
         # Wait for workers  to be ready.
-        _ = [ray.get(A.remote().ready.remote()) for _ in range(2)]
+        actors = [A.remote() for _ in range(2)]
+        _ = [ray.get(actor.ready.remote()) for actor in actors]
         # Note: `fds_without_workers` need to be recorded *after* `ray.init`, because
         # a prestarted worker is started on the first driver init. This worker keeps 1
         # connection to the GCS, and it stays alive even after the driver exits. If
