@@ -22,7 +22,6 @@ from ray.dashboard.consts import (
     RAY_STATE_SERVER_MAX_HTTP_REQUEST_ALLOWED,
     RAY_STATE_SERVER_MAX_HTTP_REQUEST_ENV_NAME,
 )
-from ray.dashboard.modules.event.event_consts import TARGET_EVENT_SOURCE_TYPES
 from ray.dashboard.modules.event.event_utils import monitor_events, parse_event_strings
 from ray.dashboard.state_api_utils import do_filter, handle_list_api
 from ray.dashboard.subprocesses.module import SubprocessModule
