@@ -10,13 +10,11 @@ except ImportError as exc:
         "Can't import ray.tune as some dependencies are missing. "
         'Run `pip install "ray[tune]"` to fix.'
     ) from exc
+# isort: on
 
 from ray.tune.trainable.trainable_fn_utils import Checkpoint, get_checkpoint, report
 from ray.tune.impl.config import CheckpointConfig, FailureConfig, RunConfig
 from ray.tune.syncer import SyncConfig
-
-# isort: on
-
 from ray.air.result import Result
 from ray.tune.analysis import ExperimentAnalysis
 from ray.tune.callback import Callback
