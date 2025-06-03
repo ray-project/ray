@@ -8,6 +8,7 @@ import numpy as np
 
 from ray.rllib.utils import force_list
 from ray.rllib.utils.framework import try_import_tf, try_import_torch
+from ray.rllib.utils.numpy import convert_to_numpy
 from ray.util.annotations import DeveloperAPI
 
 _, tf, _ = try_import_tf()
@@ -148,8 +149,8 @@ class Stats:
 
         self._has_returned_zero = False
 
-        # On each `.reduce()` call, we store the result of this call in reduce_history[0] and the
-        # previous `reduce()` result in reduce_history[1].
+        # On each `.reduce()` call, we store the result of this call in
+        # reduce_history[0] and the previous `reduce()` result in reduce_history[1].
         self._reduce_history: deque[List[Any]] = deque(
             [[np.nan], [np.nan], [np.nan]], maxlen=3
         )
@@ -183,29 +184,33 @@ class Stats:
         self.values: Union[List, deque.Deque] = None
         self._set_values(force_list(init_values))
 
+        self._could_be_tensor = False
+
         # Track if new values were pushed since last reduce
         if init_values is not None:
             self._has_new_values = True
         else:
             self._has_new_values = False
 
-    def check_value(self, value: Any) -> Any:
+    def check_value(self, value: Any) -> None:
         # If we have a reduce method, value should always be a scalar
         # If we don't reduce, we can keep track of value as it is
         if self._reduce_method is not None:
-            if (
-                (isinstance(value, np.ndarray) and value.shape == (1,))
-                or (type(value) in (list, tuple, deque) and len(value) == 1)
-                or (torch and isinstance(value, torch.Tensor) and value.shape == (1,))
-                or (
-                    tf
-                    and isinstance(value, tf.Tensor)
-                    and tuple(tf.shape(value).numpy()) == (1,)
-                )
+            if isinstance(value, np.ndarray) and value.shape == ():
+                return
+            elif (
+                (torch and torch.is_tensor(value))
+                or (tf and tf.is_tensor(value))
             ):
-                raise ValueError(
-                    f"Value {value} is required to be a scalar when using a reduce method"
-                )
+                self._could_be_tensor = True
+                if tuple(value.shape) == ():
+                    return
+            elif type(value) not in (list, tuple, deque):
+                return
+            raise ValueError(
+                f"Value ({value}) is required to be a scalar when using a reduce "
+                "method!"
+            )
 
     def push(self, value: Any) -> None:
         """Pushes a value into this Stats object.
@@ -291,7 +296,8 @@ class Stats:
         else:
             return_value = self.get_reduce_history()[-1].copy()
             if compile:
-                # We don't need to check for self._reduce_method here because we only store the reduced value if there is a reduce method
+                # We don't need to check for self._reduce_method here because we only
+                # store the reduced value if there is a reduce method.
                 return_value = return_value[0]
             return return_value
 
@@ -305,7 +311,8 @@ class Stats:
         Returns:
             A list containing the history of reduced values.
         """
-        # Turning the reduce history into a deque avoids mutating the original reduce history's elements
+        # Turning the reduce history into a deque avoids mutating the original reduce
+        # history's elements.
         return list(self._reduce_history)
 
     @property
@@ -341,7 +348,8 @@ class Stats:
         the constructor settings, such as `window`, `reduce`, etc..
 
         Args:
-            compile: If True, the result is compiled into a single value if possible. If it is not possible, the result is a list of values.
+            compile: If True, the result is compiled into a single value if possible.
+                If it is not possible, the result is a list of values.
                 If False, the result is a list of one or more values.
 
         Returns:
@@ -350,17 +358,20 @@ class Stats:
         """
         len_before_reduce = len(self)
         if self._has_new_values:
-            # Only calculate and update history if there were new values pushed since last reduce
+            # Only calculate and update history if there were new values pushed since'
+            # last reduce
             reduced, reduced_values = self._reduced_values()
             # `clear_on_reduce` -> Clear the values list.
             if self._clear_on_reduce:
                 self._set_values([])
-                # If we clear on reduce, following reduce calls should not return the old values.
+                # If we clear on reduce, following reduce calls should not return the
+                # old values.
                 self._has_new_values = True
             else:
                 self._has_new_values = False
                 if self._inf_window:
-                    # If we we use a window, we don't want to replace the internal values list because it will be replaced by the next reduce call.
+                    # If we we use a window, we don't want to replace the internal
+                    # values list because it will be replaced by the next reduce call.
                     self._set_values(reduced)
         else:
             reduced_values = None
@@ -370,11 +381,13 @@ class Stats:
 
         # Shift historic reduced valued by one in our reduce_history.
         if self._reduce_method is not None:
-            # It only makes sense to extend the history if we are reducing to a single value.
-            # We need to make a copy here because the new_values_list is a reference to the internal values list
+            # It only makes sense to extend the history if we are reducing to a single
+            # value. We need to make a copy here because the new_values_list is a
+            # reference to the internal values list
             self._reduce_history.append(force_list(reduced.copy()))
         else:
-            # If there is a window and no reduce method, we don't want to use the reduce history to return reduced values in other methods
+            # If there is a window and no reduce method, we don't want to use the reduce
+            # history to return reduced values in other methods
             self._has_new_values = True
 
         if compile and self._reduce_method is not None:
@@ -395,7 +408,8 @@ class Stats:
         else:
             if len_before_reduce == 0:
                 # return_values will be be 0 if we reduce a sum over zero elements
-                # But we don't want to create such a zero out of nothing for our new Stats object that we return here
+                # But we don't want to create such a zero out of nothing for our new
+                # Stats object that we return here
                 return Stats.similar_to(self)
 
             return Stats.similar_to(self, init_values=return_values)
@@ -435,7 +449,8 @@ class Stats:
         """
         win = self._window or float("inf")
 
-        # If any of the value lists have a length of 0 or if there is only one value and it is nan, we skip
+        # If any of the value lists have a length of 0 or if there is only one value and
+        # it is nan, we skip
         stats_to_merge = [
             s
             for s in [self, *others]
@@ -456,7 +471,8 @@ class Stats:
                 # If no incoming stats have values, return.
                 return
             else:
-                # If there is only one stat with values, and it's incoming, copy its values.
+                # If there is only one stat with values, and it's incoming, copy its
+                # values.
                 self.values = stats_to_merge[0].values
                 return
 
@@ -490,7 +506,8 @@ class Stats:
                 new_values.extend(tmp_values)
             elif self._reduce_method == "sum":
                 # We add [sum(tmp_values) / n_values] * n_values to the new values list
-                # Instead of tmp_values, because every incoming element should have the same weight
+                # Instead of tmp_values, because every incoming element should have the
+                # same weight
                 reduced_value = self._reduced_values(values=tmp_values)[0][0] / n_values
                 new_values.extend([reduced_value] * n_values)
             else:
@@ -541,7 +558,8 @@ class Stats:
     def __int__(self):
         if self._reduce_method is None:
             raise ValueError(
-                "Cannot convert Stats object with reduce method `None` to int because it can not be reduced to a single value."
+                "Cannot convert Stats object with reduce method `None` to int because "
+                "it can not be reduced to a single value."
             )
         else:
             return int(self.peek())
@@ -549,103 +567,103 @@ class Stats:
     def __float__(self):
         if self._reduce_method is None:
             raise ValueError(
-                "Cannot convert Stats object with reduce method `None` to float because it can not be reduced to a single value."
+                "Cannot convert Stats object with reduce method `None` to float "
+                "because it can not be reduced to a single value."
             )
         else:
             return float(self.peek())
 
     def __eq__(self, other):
         if self._reduce_method is None:
-            raise ValueError(
-                "Cannot compare Stats object with reduce method `None` to other because it can not be reduced to a single value."
-            )
+            self._comp_error("__eq__")
         else:
             return float(self) == float(other)
 
     def __le__(self, other):
         if self._reduce_method is None:
-            raise ValueError(
-                "Cannot compare Stats object with reduce method `None` to other because it can not be reduced to a single value."
-            )
+            self._comp_error("__le__")
         else:
             return float(self) <= float(other)
 
     def __ge__(self, other):
         if self._reduce_method is None:
-            raise ValueError(
-                "Cannot compare Stats object with reduce method `None` to other because it can not be reduced to a single value."
-            )
+            self._comp_error("__ge__")
         else:
             return float(self) >= float(other)
 
     def __lt__(self, other):
         if self._reduce_method is None:
-            raise ValueError(
-                "Cannot compare Stats object with reduce method `None` to other because it can not be reduced to a single value."
-            )
+            self._comp_error("__lt__")
         else:
             return float(self) < float(other)
 
     def __gt__(self, other):
         if self._reduce_method is None:
-            raise ValueError(
-                "Cannot compare Stats object with reduce method `None` to other because it can not be reduced to a single value."
-            )
+            self._comp_error("__gt__")
         else:
             return float(self) > float(other)
 
     def __add__(self, other):
         if self._reduce_method is None:
-            raise ValueError(
-                "Cannot add Stats object with reduce method `None` to other because it can not be reduced to a single value."
-            )
+            self._comp_error("__add__")
         else:
             return float(self) + float(other)
 
     def __sub__(self, other):
         if self._reduce_method is None:
-            raise ValueError(
-                "Cannot subtract Stats object with reduce method `None` from other because it can not be reduced to a single value."
-            )
+            self._comp_error("__sub__")
         else:
             return float(self) - float(other)
 
     def __mul__(self, other):
         if self._reduce_method is None:
-            raise ValueError(
-                "Cannot multiply Stats object with reduce method `None` with other because it can not be reduced to a single value."
-            )
+            self._comp_error("__mul__")
         else:
             return float(self) * float(other)
 
     def __format__(self, fmt):
         if self._reduce_method is None:
             raise ValueError(
-                "Cannot format Stats object with reduce method `None` because it can not be reduced to a single value."
+                "Cannot format Stats object with reduce method `None` because it can "
+                "not be reduced to a single value."
             )
         else:
             return f"{float(self):{fmt}}"
 
+    def _comp_error(self, comp):
+        raise ValueError(
+            f"Cannot {comp} Stats object with reduce method `None` to other "
+            "because it can not be reduced to a single value."
+        )
+
     def get_state(self) -> Dict[str, Any]:
         state = {
-            "values": self.values,
+            # Make sure we don't return any tensors here.
+            "values": convert_to_numpy(self.values),
             "reduce": self._reduce_method,
             "reduce_per_index_on_aggregate": self._reduce_per_index_on_aggregate,
             "window": self._window,
             "ema_coeff": self._ema_coeff,
             "clear_on_reduce": self._clear_on_reduce,
             "_hist": list(self.get_reduce_history()),
+            "_could_be_tensor": self._could_be_tensor,
         }
         if self._throughput_stats is not None:
             state["throughput_stats"] = self._throughput_stats.get_state()
         return state
 
     @staticmethod
-    def from_state(state: Dict[str, Any], throughputs=False) -> "Stats":
+    def from_state(state: Dict[str, Any]) -> "Stats":
+        # If `values` could contain tensors, don't reinstate them (b/c we don't know
+        # whether we are on a supported device).
+        values = state["values"]
+        if "_could_be_tensor" in state and state["_could_be_tensor"]:
+            values = []
+
         if "throughput_stats" in state:
             throughput_stats = Stats.from_state(state["throughput_stats"])
             stats = Stats(
-                state["values"],
+                values,
                 reduce=state["reduce"],
                 reduce_per_index_on_aggregate=state.get(
                     "reduce_per_index_on_aggregate", False
@@ -662,7 +680,7 @@ class Stats:
             # so we use a default of 0.05.
             # TODO(Artur): Remove this after a few Ray releases.
             stats = Stats(
-                state["values"],
+                values,
                 reduce=state["reduce"],
                 window=state["window"],
                 ema_coeff=state["ema_coeff"],
@@ -672,7 +690,7 @@ class Stats:
             )
         else:
             stats = Stats(
-                state["values"],
+                values,
                 reduce=state["reduce"],
                 window=state["window"],
                 ema_coeff=state["ema_coeff"],
@@ -680,7 +698,9 @@ class Stats:
                 throughput=False,
                 throughput_ema_coeff=None,
             )
-        # Compatibility to old checkpoints where a reduce sometimes resulted in a single values instead of a list such that the history would be a list of integers instead of a list of lists.
+        # Compatibility to old checkpoints where a reduce sometimes resulted in a single
+        # values instead of a list such that the history would be a list of integers
+        # instead of a list of lists.
         # TODO(Artur): Remove this after a few Ray releases.
         if not isinstance(state["_hist"][0], list):
             state["_hist"] = list(map(lambda x: [x], state["_hist"]))
@@ -779,6 +799,7 @@ class Stats:
         else:
             # Use the numpy/torch "nan"-prefix to ignore NaN's in our value lists.
             if torch and torch.is_tensor(values[0]):
+                self._could_be_tensor = True
                 # Only one item in the
                 if len(values[0].shape) == 0:
                     reduced = values[0]
