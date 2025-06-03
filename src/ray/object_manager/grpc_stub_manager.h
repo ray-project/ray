@@ -52,6 +52,8 @@ class GrpcStubManager {
   GrpcStubManager(GrpcStubManager &&) = default;
   GrpcStubManager &operator=(GrpcStubManager &&) = default;
 
+  ~GrpcStubManager() = default;
+
   // Get a grpc client in round-robin style.
   GrpcClient<T> *GetGrpcClient() {
     absl::MutexLock lock(&client_index_mutex_);
