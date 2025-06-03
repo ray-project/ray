@@ -164,6 +164,8 @@ cdef extern from "src/ray/protobuf/common.pb.h" nogil:
         pass
     cdef cppclass CTaskType "ray::TaskType":
         pass
+    cdef cppclass CTensorTransport "ray::rpc::TensorTransport":
+        pass
     cdef cppclass CPlacementStrategy "ray::core::PlacementStrategy":
         pass
     cdef cppclass CDefaultSchedulingStrategy "ray::rpc::DefaultSchedulingStrategy":  # noqa: E501
@@ -258,6 +260,9 @@ cdef extern from "src/ray/protobuf/common.pb.h" nogil:
     cdef CTaskType TASK_TYPE_ACTOR_TASK "ray::TaskType::ACTOR_TASK"
 
 cdef extern from "src/ray/protobuf/common.pb.h" nogil:
+    cdef CTensorTransport TENSOR_TRANSPORT_OBJECT_STORE "ray::rpc::TensorTransport::OBJECT_STORE"
+
+cdef extern from "src/ray/protobuf/common.pb.h" nogil:
     cdef CPlacementStrategy PLACEMENT_STRATEGY_PACK \
         "ray::core::PlacementStrategy::PACK"
     cdef CPlacementStrategy PLACEMENT_STRATEGY_SPREAD \
@@ -321,8 +326,11 @@ cdef extern from "ray/core_worker/common.h" nogil:
                      unordered_map[c_string, double] &resources,
                      c_string concurrency_group_name,
                      int64_t generator_backpressure_num_objects,
-                     c_string serialized_runtime_env, c_bool enable_task_events,
-                     const unordered_map[c_string, c_string] &labels)
+                     c_string serialized_runtime_env,
+                     c_bool enable_task_events,
+                     const unordered_map[c_string, c_string] &labels,
+                     const unordered_map[c_string, c_string] &label_selector,
+                     CTensorTransport tensor_transport)
 
     cdef cppclass CActorCreationOptions "ray::core::ActorCreationOptions":
         CActorCreationOptions()
@@ -341,7 +349,8 @@ cdef extern from "ray/core_worker/common.h" nogil:
             c_bool execute_out_of_order,
             int32_t max_pending_calls,
             c_bool enable_task_events,
-            const unordered_map[c_string, c_string] &labels)
+            const unordered_map[c_string, c_string] &labels,
+            const unordered_map[c_string, c_string] &label_selector)
 
     cdef cppclass CPlacementGroupCreationOptions \
             "ray::core::PlacementGroupCreationOptions":
@@ -353,6 +362,7 @@ cdef extern from "ray/core_worker/common.h" nogil:
             c_bool is_detached,
             double max_cpu_fraction_per_node,
             CNodeID soft_target_node_id,
+            const c_vector[unordered_map[c_string, c_string]] &bundle_label_selector,
         )
 
     cdef cppclass CObjectLocation "ray::core::ObjectLocation":
@@ -570,6 +580,23 @@ cdef extern from "ray/gcs/gcs_client/accessor.h" nogil:
             c_string &rejection_reason_message
         )
 
+    cdef cppclass CPublisherAccessor "ray::gcs::PublisherAccessor":
+        CRayStatus PublishError(
+            c_string key_id,
+            CErrorTableData data,
+            int64_t timeout_ms)
+
+        CRayStatus PublishLogs(
+            c_string key_id,
+            CLogBatch data,
+            int64_t timeout_ms)
+
+        CRayStatus AsyncPublishNodeResourceUsage(
+            c_string key_id,
+            c_string node_resource_usage,
+            const StatusPyCallback &callback
+        )
+
 
 cdef extern from "ray/gcs/gcs_client/gcs_client.h" nogil:
     cdef enum CGrpcStatusCode "grpc::StatusCode":
@@ -597,6 +624,7 @@ cdef extern from "ray/gcs/gcs_client/gcs_client.h" nogil:
         CNodeResourceInfoAccessor& NodeResources()
         CRuntimeEnvAccessor& RuntimeEnvs()
         CAutoscalerStateAccessor& Autoscaler()
+        CPublisherAccessor& Publisher()
 
     cdef CRayStatus ConnectOnSingletonIoContext(CGcsClient &gcs_client, int timeout_ms)
 
@@ -605,18 +633,6 @@ cdef extern from "ray/gcs/gcs_client/gcs_client.h" namespace "ray::gcs" nogil:
         const CGcsNodeInfo& node_info)
 
 cdef extern from "ray/gcs/pubsub/gcs_pub_sub.h" nogil:
-
-    cdef cppclass CPythonGcsPublisher "ray::gcs::PythonGcsPublisher":
-
-        CPythonGcsPublisher(const c_string& gcs_address)
-
-        CRayStatus Connect()
-
-        CRayStatus PublishError(
-            const c_string &key_id, const CErrorTableData &data, int64_t num_retries)
-
-        CRayStatus PublishLogs(const c_string &key_id, const CLogBatch &data)
-
     cdef cppclass CPythonGcsSubscriber "ray::gcs::PythonGcsSubscriber":
 
         CPythonGcsSubscriber(
@@ -748,3 +764,4 @@ cdef extern from "ray/common/constants.h" nogil:
     cdef const char[] kGcsAutoscalerStateNamespace
     cdef const char[] kGcsAutoscalerV2EnabledKey
     cdef const char[] kGcsAutoscalerClusterConfigKey
+    cdef const char[] kGcsPidKey

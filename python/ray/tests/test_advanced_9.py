@@ -1,24 +1,24 @@
 import os
+import psutil
+import subprocess
 import sys
-import time
 
 import pytest
 
 import ray
+import ray.util.state
 import ray._private.ray_constants as ray_constants
 from ray._private.test_utils import (
-    Semaphore,
-    enable_external_redis,
+    external_redis_test_enabled,
     client_test_enabled,
     run_string_as_driver,
     wait_for_condition,
     get_gcs_memory_used,
     run_string_as_driver_nonblocking,
 )
+from ray._common.test_utils import Semaphore
 from ray.experimental.internal_kv import _internal_kv_list
 from ray.tests.conftest import call_ray_start
-import subprocess
-import psutil
 
 
 @pytest.fixture
@@ -191,10 +191,9 @@ def test_node_liveness_after_restart(ray_start_cluster):
     wait_for_condition(lambda: len([n for n in ray.nodes() if n["Alive"]]) == 2)
 
     cluster.remove_node(worker)
+    wait_for_condition(lambda: len([n for n in ray.nodes() if n["Alive"]]) == 1)
     worker = cluster.add_node(node_manager_port=9037)
-    for _ in range(10):
-        wait_for_condition(lambda: len([n for n in ray.nodes() if n["Alive"]]) == 2)
-        time.sleep(1)
+    wait_for_condition(lambda: len([n for n in ray.nodes() if n["Alive"]]) == 2)
 
 
 @pytest.mark.skipif(
@@ -215,7 +214,7 @@ def test_worker_oom_score(shutdown_only):
 call_ray_start_2 = call_ray_start
 
 
-@pytest.mark.skipif(not enable_external_redis(), reason="Only valid in redis env")
+@pytest.mark.skipif(not external_redis_test_enabled(), reason="Only valid in redis env")
 @pytest.mark.parametrize(
     "call_ray_start,call_ray_start_2",
     [
@@ -264,8 +263,9 @@ def test_gcs_connection_no_leak(ray_start_cluster):
 
     def get_gcs_num_of_connections():
         p = psutil.Process(gcs_server_pid)
-        print(">>", len(p.connections()))
-        return len(p.connections())
+        num_connections = len(p.connections())
+        print(">>", num_connections)
+        return num_connections
 
     @ray.remote
     class A:
@@ -274,8 +274,8 @@ def test_gcs_connection_no_leak(ray_start_cluster):
             return "WORLD"
 
     with ray.init(cluster.address):
-        # Wait for everything to be ready.
-        time.sleep(10)
+        # Wait for workers  to be ready.
+        wait_for_condition(lambda: len(ray.util.state.list_workers()) == 2)
         # Note: `fds_without_workers` need to be recorded *after* `ray.init`, because
         # a prestarted worker is started on the first driver init. This worker keeps 1
         # connection to the GCS, and it stays alive even after the driver exits. If
@@ -292,7 +292,7 @@ def test_gcs_connection_no_leak(ray_start_cluster):
     # Make sure the # of fds opened by the GCS dropped.
     # This assumes worker processes are not created after the actor worker
     # processes die.
-    wait_for_condition(lambda: get_gcs_num_of_connections() <= fds_without_workers)
+    wait_for_condition(lambda: get_gcs_num_of_connections() < fds_without_workers)
     num_fds_after_workers_die = get_gcs_num_of_connections()
 
     n = cluster.add_node(wait=True)
@@ -303,7 +303,7 @@ def test_gcs_connection_no_leak(ray_start_cluster):
     cluster.remove_node(n)
 
     # Make sure the # of fds opened by the GCS dropped.
-    wait_for_condition(lambda: get_gcs_num_of_connections() <= fds_without_workers)
+    wait_for_condition(lambda: get_gcs_num_of_connections() < fds_without_workers)
 
 
 @pytest.mark.parametrize(
@@ -320,7 +320,7 @@ import os
 import time
 @ray.remote(num_cpus=3)
 def use_gpu():
-    time.sleep(1)
+    pass
 
 @ray.remote(num_gpus=10)
 class A:
@@ -348,7 +348,7 @@ print(ray.get([use_gpu.remote(), use_gpu.remote()]))
     wait_for_condition(lambda: check_demands(1))
 
 
-@pytest.mark.skipif(enable_external_redis(), reason="Only valid in non redis env")
+@pytest.mark.skipif(external_redis_test_enabled(), reason="Only valid in non redis env")
 def test_redis_not_available(monkeypatch, call_ray_stop_only):
     monkeypatch.setenv("RAY_redis_db_connect_retries", "5")
     monkeypatch.setenv("RAY_REDIS_ADDRESS", "localhost:12345")
@@ -363,7 +363,7 @@ def test_redis_not_available(monkeypatch, call_ray_stop_only):
     assert "redis storage is alive or not." in p.stderr.decode()
 
 
-@pytest.mark.skipif(not enable_external_redis(), reason="Only valid in redis env")
+@pytest.mark.skipif(not external_redis_test_enabled(), reason="Only valid in redis env")
 def test_redis_wrong_password(monkeypatch, external_redis, call_ray_stop_only):
     monkeypatch.setenv("RAY_redis_db_connect_retries", "5")
     p = subprocess.run(
@@ -375,7 +375,7 @@ def test_redis_wrong_password(monkeypatch, external_redis, call_ray_stop_only):
     assert "RedisError: ERR AUTH <password> called" in p.stderr.decode()
 
 
-@pytest.mark.skipif(not enable_external_redis(), reason="Only valid in redis env")
+@pytest.mark.skipif(not external_redis_test_enabled(), reason="Only valid in redis env")
 def test_redis_full(ray_start_cluster_head):
     import redis
 
@@ -510,9 +510,4 @@ def test_jemalloc_ray_start(monkeypatch, ray_start_cluster):
 
 
 if __name__ == "__main__":
-    import pytest
-
-    if os.environ.get("PARALLEL_CI"):
-        sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))
-    else:
-        sys.exit(pytest.main(["-sv", __file__]))
+    sys.exit(pytest.main(["-sv", __file__]))

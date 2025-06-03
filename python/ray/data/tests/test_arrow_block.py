@@ -21,6 +21,7 @@ from ray.data._internal.arrow_block import (
     ArrowBlockAccessor,
     ArrowBlockBuilder,
     ArrowBlockColumnAccessor,
+    _get_max_chunk_size,
 )
 from ray.data._internal.arrow_ops.transform_pyarrow import combine_chunked_array
 from ray.data._internal.util import GiB, MiB
@@ -558,6 +559,21 @@ def test_arrow_nan_element():
     ds = ds.filter(lambda v: np.isnan(v["item"]))
     result = ds.take_all()
     assert result[0]["count()"] == 2
+
+
+@pytest.mark.parametrize(
+    "table_data,max_chunk_size_bytes,expected",
+    [
+        ({"a": []}, 100, None),
+        ({"a": list(range(100))}, 10, 1),
+        ({"a": list(range(100))}, 25, 3),
+        ({"a": list(range(100))}, 50, 6),
+        ({"a": list(range(100))}, 100, 12),
+    ],
+)
+def test_arrow_block_max_chunk_size(table_data, max_chunk_size_bytes, expected):
+    table = pa.table(table_data)
+    assert _get_max_chunk_size(table, max_chunk_size_bytes) == expected
 
 
 if __name__ == "__main__":

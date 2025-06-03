@@ -47,8 +47,8 @@ class RayInternalKVStore(KVStoreBase):
         """Put the key-value pair into the store.
 
         Args:
-            key (str)
-            val (bytes)
+            key: The key to store.
+            val: The value to store.
         """
         if not isinstance(key, str):
             raise TypeError("key must be a string, got: {}.".format(type(key)))
@@ -70,10 +70,10 @@ class RayInternalKVStore(KVStoreBase):
         """Get the value associated with the given key from the store.
 
         Args:
-            key (str)
+            key: The key to retrieve.
 
         Returns:
-            The bytes value. If the key wasn't found, returns None.
+            Optional[bytes]: The bytes value. If the key wasn't found, returns None.
         """
         if not isinstance(key, str):
             raise TypeError("key must be a string, got: {}.".format(type(key)))
@@ -91,7 +91,7 @@ class RayInternalKVStore(KVStoreBase):
         """Delete the value associated with the given key from the store.
 
         Args:
-            key (str)
+            key: The key to delete.
         """
 
         if not isinstance(key, str):

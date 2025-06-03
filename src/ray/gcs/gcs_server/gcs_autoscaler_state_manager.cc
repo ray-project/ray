@@ -572,8 +572,16 @@ void GcsAutoscalerStateManager::CancelInfeasibleRequests() const {
       (*raylet_client)
           ->CancelTasksWithResourceShapes(
               infeasible_shapes,
-              [node_id](const Status, const rpc::CancelTasksWithResourceShapesReply) {
-                RAY_LOG(INFO) << "Infeasible tasks cancelled on node " << node_id;
+              [node_id](const Status &status,
+                        const rpc::CancelTasksWithResourceShapesReply &) {
+                if (status.ok()) {
+                  RAY_LOG(INFO) << "Infeasible tasks cancelled on node " << node_id;
+                } else {
+                  // Autoscaler will eventually retry the infeasible task cancellation
+                  RAY_LOG(WARNING)
+                      << "Failed to cancel infeasible requests on node " << node_id
+                      << ". RPC failed with status: " << status.ToString();
+                }
               });
     } else {
       RAY_LOG(WARNING) << "Failed to cancel infeasible requests on node " << node_id

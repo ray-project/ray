@@ -29,7 +29,7 @@ repos:
         exclude: |
           (?x)^(
             # Intentionally bad json schema
-            python/ray/tests/test_runtime_env_validation_bad_2_schema.json|
+            python/ray/tests/unit/test_runtime_env_validation_bad_schema.json|
             # json5 comments prevent parsing
             python/asv.conf.json|
             rllib/asv.conf.json
@@ -43,7 +43,29 @@ repos:
         args: [ --fix, --exit-non-zero-on-fix ]
       - id: ruff
         args: [ --select, "I", --fix, --exit-non-zero-on-fix ]
-        files: '^python/ray/serve/|^python/ray/train'
+        files: '^python/ray/serve/|^python/ray/train|^python/ray/data|^python/ray/_private/|^python/ray/llm/'
+
+  - repo: https://github.com/jsh9/pydoclint
+    rev: "0.6.6"
+    hooks:
+      - id: pydoclint
+        args: [
+          --style=google,
+          --baseline=ci/lint/pydoclint-baseline.txt,
+          --exclude=thirdparty|^python/ray/serve/tests/test_config_files/syntax_error\.py$,
+          # --generate-baseline=True, # Not generally needed, but documenting since this is how we generate the initial baseline
+          --auto-regenerate-baseline=True,
+          # Current settings (not because we think they're right, but because we
+          # don't want a baseline the size of the codebase)
+          --arg-type-hints-in-docstring=False,
+          --skip-checking-raises=True,
+          --check-return-types=False,
+          --allow-init-docstring=True,
+          --check-class-attributes=False,
+          # --check-style-mismatch=True, # Bring this back once things are a bit cleaner
+        ]
+        types: [python]
+        files: '^python/ray/'
 
   - repo: https://github.com/cpplint/cpplint
     rev: 2.0.0

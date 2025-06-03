@@ -19,9 +19,9 @@
 # - Renamed `monitor_loop_lag.enable()` to just `enable_monitor_loop_lag()`.
 # - Miscellaneous changes to make it work with Ray.
 
-from typing import Callable, Optional
 import asyncio
 import asyncio.events
+from typing import Callable, Optional
 
 
 def enable_monitor_loop_lag(

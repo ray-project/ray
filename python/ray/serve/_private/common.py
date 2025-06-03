@@ -218,14 +218,15 @@ class DeploymentStatusInfo:
         trigger: DeploymentStatusInternalTrigger,
         message: str = "",
     ) -> "DeploymentStatusInfo":
-        """Handles a transition from one state to next state.
+        """Handles a transition from the current state to the next state.
 
         Args:
-            trigger: A (internal) trigger that determines the state
+            trigger: An internal trigger that determines the state
                 transition.
             message: The message to set in status info.
 
-        Returns: New instance of DeploymentStatusInfo representing the
+        Returns:
+            New instance of DeploymentStatusInfo representing the
             next state to transition to.
         """
 
@@ -510,6 +511,7 @@ class RunningReplicaInfo:
     max_ongoing_requests: int
     is_cross_language: bool = False
     multiplexed_model_ids: List[str] = field(default_factory=list)
+    routing_stats: Dict[str, Any] = field(default_factory=dict)
     port: Optional[int] = None
 
     def __post_init__(self):
@@ -528,6 +530,7 @@ class RunningReplicaInfo:
                     str(self.max_ongoing_requests),
                     str(self.is_cross_language),
                     str(self.multiplexed_model_ids),
+                    str(self.routing_stats),
                 ]
             )
         )
@@ -563,9 +566,16 @@ class ServeComponentType(str, Enum):
 
 
 @dataclass
-class MultiplexedReplicaInfo:
+class RequestRoutingInfo:
+    """Information about the request routing.
+
+    It includes deployment name (from ReplicaID), replica tag (from ReplicaID),
+    multiplex model ids, and routing stats.
+    """
+
     replica_id: ReplicaID
-    model_ids: List[str]
+    multiplexed_model_ids: Optional[List[str]] = None
+    routing_stats: Optional[Dict[str, Any]] = None
 
 
 @dataclass

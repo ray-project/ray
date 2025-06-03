@@ -7,7 +7,8 @@ import numpy as np
 import pytest
 
 import ray.cluster_utils
-from ray._private.test_utils import SignalActor, client_test_enabled
+from ray._common.test_utils import SignalActor
+from ray._private.test_utils import client_test_enabled
 
 if client_test_enabled():
     from ray.util.client import ray
@@ -227,10 +228,4 @@ def test_worker_lease_reply_with_resources(ray_start_cluster_enabled):
 
 
 if __name__ == "__main__":
-    import os
-    import pytest
-
-    if os.environ.get("PARALLEL_CI"):
-        sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))
-    else:
-        sys.exit(pytest.main(["-sv", __file__]))
+    sys.exit(pytest.main(["-sv", __file__]))

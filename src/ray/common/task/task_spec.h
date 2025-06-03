@@ -26,6 +26,7 @@
 #include "ray/common/function_descriptor.h"
 #include "ray/common/grpc_util.h"
 #include "ray/common/id.h"
+#include "ray/common/scheduling/label_selector.h"
 #include "ray/common/scheduling/resource_set.h"
 #include "ray/common/task/task_common.h"
 
@@ -331,6 +332,7 @@ class TaskSpecification : public MessageWrapper<rpc::TaskSpec> {
 
   void SetNumStreamingGeneratorReturns(uint64_t num_streaming_generator_returns);
 
+  /// Return true if the argument is passed by reference.
   bool ArgByRef(size_t arg_index) const;
 
   ObjectID ArgId(size_t arg_index) const;
@@ -376,6 +378,12 @@ class TaskSpecification : public MessageWrapper<rpc::TaskSpec> {
   /// \return The resources that will be acquired during the execution of this
   /// task.
   const ResourceSet &GetRequiredResources() const;
+
+  /// Return the labels that are required for the node to execute
+  /// this task on.
+  ///
+  /// \return The labels that are required for the execution of this task on a node.
+  const LabelSelector &GetLabelSelector() const;
 
   const rpc::SchedulingStrategy &GetSchedulingStrategy() const;
 
@@ -444,6 +452,8 @@ class TaskSpecification : public MessageWrapper<rpc::TaskSpec> {
 
   std::vector<std::string> DynamicWorkerOptionsOrEmpty() const;
 
+  absl::flat_hash_map<std::string, std::string> GetLabels() const;
+
   // Methods specific to actor tasks.
 
   ActorID ActorId() const;
@@ -458,7 +468,7 @@ class TaskSpecification : public MessageWrapper<rpc::TaskSpec> {
 
   NodeID CallerNodeId() const;
 
-  uint64_t ActorCounter() const;
+  uint64_t SequenceNumber() const;
 
   ObjectID ActorCreationDummyObjectId() const;
 
@@ -506,6 +516,10 @@ class TaskSpecification : public MessageWrapper<rpc::TaskSpec> {
   /// \return true if task events from this task should be reported.
   bool EnableTaskEvents() const;
 
+  TaskAttempt GetTaskAttempt() const;
+
+  const rpc::TensorTransport TensorTransport() const;
+
  private:
   void ComputeResources();
 
@@ -519,6 +533,9 @@ class TaskSpecification : public MessageWrapper<rpc::TaskSpec> {
   SchedulingClass sched_cls_id_ = 0;
   int runtime_env_hash_ = 0;
 
+  // Field storing label selector for scheduling Task on a node. Initialized in constuctor
+  // in ComputeResources() call.
+  std::shared_ptr<LabelSelector> label_selector_;
   /// Below static fields could be mutated in `ComputeResources` concurrently due to
   /// multi-threading, we need a mutex to protect it.
   static absl::Mutex mutex_;

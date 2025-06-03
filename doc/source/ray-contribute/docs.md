@@ -418,7 +418,7 @@ Vale catches typos and grammatical errors. It also enforces stylistic rules like
 
 ### How do you run Vale?
 
-#### How to use the VSCode extension
+#### How to use the VS Code extension
 
 1. Install Vale. If you use macOS, use Homebrew.
 
@@ -434,10 +434,10 @@ Vale catches typos and grammatical errors. It also enforces stylistic rules like
 
     For more information on installation, see the [Vale documentation](https://vale.sh/docs/vale-cli/installation/).
 
-2. Install the Vale VSCode extension by following these
+2. Install the Vale VS Code extension by following these
 [installation instructions](https://marketplace.visualstudio.com/items?itemName=ChrisChinchilla.vale-vscode).
 
-3. VSCode should show warnings in your code editor and in the “Problems” panel.
+3. VS Code should show warnings in your code editor and in the “Problems” panel.
 
     ![Vale](../images/vale.png)
 
