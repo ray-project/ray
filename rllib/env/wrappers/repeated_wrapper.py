@@ -32,7 +32,7 @@ class ObsVectorizationWrapper(gym.ObservationWrapper):
     @classmethod
     def serialize_obs(cls, obs, obs_s):
         """Convert a Dict or Repeated space into a [0, 1] vector with all relevant information"""
-        if type(obs_s) == Repeated:
+        if type(obs_s) is Repeated:
             cs = obs_s.child_space
             csl = cls.obs_length(cs)
             ml = obs_s.max_len
@@ -42,15 +42,15 @@ class ObsVectorizationWrapper(gym.ObservationWrapper):
                 v[ix] = 1
                 v[sp + ml : sp + ml + csl] = cls.serialize_obs(o, cs)
             return v
-        elif type(obs_s) == Dict:
+        elif type(obs_s) is Dict:
             vl = []
             cs = obs_s.spaces
             for s in sorted(cs.keys()):
                 vl.append(cls.serialize_obs(obs[s], cs[s]))
             return np.concatenate(vl)
-        elif type(obs_s) == Box:
+        elif type(obs_s) is Box:
             return (obs - obs_s.low) / (obs_s.high - obs_s.low)
-        elif type(obs_s) == Discrete:
+        elif type(obs_s) is Discrete:
             x = np.zeros(obs_s.n, dtype=np.float32)
             x[obs] = 1
             return x
@@ -63,7 +63,7 @@ class ObsVectorizationWrapper(gym.ObservationWrapper):
             for v in vec:
                 batch_list.append(cls.restore_obs(v, obs_s))
             return batch_list
-        if type(obs_s) == Repeated:
+        if type(obs_s) is Repeated:
             rl = []
             cs = obs_s.child_space
             csl = cls.obs_length(cs)
@@ -75,7 +75,7 @@ class ObsVectorizationWrapper(gym.ObservationWrapper):
                 else:
                     break
             return rl
-        elif type(obs_s) == Dict:
+        elif type(obs_s) is Dict:
             d = {}
             cs = obs_s.spaces
             sp2 = 0
@@ -83,13 +83,13 @@ class ObsVectorizationWrapper(gym.ObservationWrapper):
                 d[s] = cls.restore_obs(vec[sp2:], cs[s])
                 sp2 += cls.obs_length(cs[s])
             return d
-        elif type(obs_s) == Box:
+        elif type(obs_s) is Box:
             vec = vec[: obs_s.shape[0]]
             h, l = obs_s.high, obs_s.low
-            if type(vec) == torch.Tensor:
+            if type(vec) is torch.Tensor:
                 h, l = torch.tensor(h).to(vec.device), torch.tensor(l).to(vec.device)
             return vec * (h - l) + l
-        elif type(obs_s) == Discrete:
+        elif type(obs_s) is Discrete:
             return vec[: obs_s.n].argmax()
 
     @classmethod
@@ -100,7 +100,7 @@ class ObsVectorizationWrapper(gym.ObservationWrapper):
         """
         if len(vec.shape) == 1:
             vec = np.expand_dims(vec, 0)
-        if type(obs_s) == Repeated:
+        if type(obs_s) is Repeated:
             rl = []
             cs = obs_s.child_space
             csl = cls.obs_length(cs)
@@ -110,7 +110,7 @@ class ObsVectorizationWrapper(gym.ObservationWrapper):
             for sp in range(ml, l, csl):
                 rl.append(cls.restore_obs_batch(vec[:, sp : sp + csl], cs))
             return (rl, mask)
-        elif type(obs_s) == Dict:
+        elif type(obs_s) is Dict:
             d = {}
             cs = obs_s.spaces
             sp2 = 0
@@ -118,27 +118,27 @@ class ObsVectorizationWrapper(gym.ObservationWrapper):
                 d[s] = cls.restore_obs_batch(vec[:, sp2:], cs[s])
                 sp2 += cls.obs_length(cs[s])
             return d
-        elif type(obs_s) == Box:
+        elif type(obs_s) is Box:
             vec = vec[:, : obs_s.shape[0]]
             h, l = obs_s.high, obs_s.low
-            if type(vec) == torch.Tensor:
+            if type(vec) is torch.Tensor:
                 h, l = torch.tensor(h).to(vec.device), torch.tensor(l).to(vec.device)
             return vec * (h - l) + l
-        elif type(obs_s) == Discrete:
+        elif type(obs_s) is Discrete:
             return vec[:, : obs_s.n].argmax(axis=1)
 
     @classmethod
     def obs_length(cls, obs_s):
         """Get the length of a Space's vector representation"""
-        if type(obs_s) == Repeated:
+        if type(obs_s) is Repeated:
             # +1 accounts for the indicator variable that tells you an item exists.
             return obs_s.max_len * (cls.obs_length(obs_s.child_space) + 1)
-        elif type(obs_s) == Dict:
+        elif type(obs_s) is Dict:
             l = 0
             for s in obs_s.spaces.values():
                 l += cls.obs_length(s)
             return l
-        elif type(obs_s) == Box:
+        elif type(obs_s) is Box:
             return obs_s.shape[0]
-        elif type(obs_s) == Discrete:
+        elif type(obs_s) is Discrete:
             return obs_s.n

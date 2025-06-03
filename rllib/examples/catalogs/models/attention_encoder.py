@@ -1,7 +1,5 @@
 """
 This file implements a self-attention Encoder (see https://arxiv.org/abs/1909.07528) for handling variable-length Repeated observation spaces. It expects a Dict observation space with Discrete, Box, or Repeated (of Discrete or Box) subspaces.
-
-This is an example of using custom encoders to efficiently process structured
 """
 from ray.rllib.core.models.torch.base import TorchModel
 from ray.rllib.core.models.base import Encoder, ENCODER_OUT
@@ -27,11 +25,11 @@ class AttentionEncoder(TorchModel, Encoder):
         # We expect a dict of Boxes, Discretes, or Repeateds composed of same.
         embs = {}
         for n, s in self.observation_space.spaces.items():
-          if (type(s)==Repeated):
+          if (type(s is Repeated):
             s = s.child_space # embed layer applies to child space
-          if (type(s)==Box):
+          if (type(s is Box):
             embs[n] = nn.Linear(s.shape[0], self.emb_dim)
-          elif (type(s)==Discrete):
+          elif (type(s) is Discrete):
             embs[n] = nn.Embedding(s.n, self.emb_dim)
           else:
             raise Exception("Unsupported observation subspace")
@@ -47,7 +45,7 @@ class AttentionEncoder(TorchModel, Encoder):
         masks = []
         for s in sorted(obs.keys()):
           v = obs[s]
-          if type(obs_s[s]) == Repeated:
+          if type(obs_s[s]) is Repeated:
             mask = v[1]
             v = torch.stack(v[0]).permute(1,0,2) # seq_len, batch_size, unit_size
           elif type(obs_s[s]) in [Box, Discrete]:
