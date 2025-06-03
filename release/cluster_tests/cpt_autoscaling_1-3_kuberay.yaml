@@ -19,7 +19,7 @@ worker_node_types:
           memory: "16Gi"
         requests:
           cpu: "4"
-          memory: "8Gi"
+          memory: "16Gi"
       min_workers: 0
       max_workers: 2
       use_spot: false
