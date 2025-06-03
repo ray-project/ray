@@ -84,7 +84,7 @@ def do_link(package, force=False, skip_list=None, allow_list=None, local_path=No
             generated_folder = os.path.join(package_home, "generated")
             if not os.path.exists(serve_temp_dir):
                 os.makedirs(serve_temp_dir)
-            subprocess.check_call(["mv", "-r", generated_folder, serve_temp_dir])
+            subprocess.check_call(["mv", generated_folder, serve_temp_dir])
 
         # Create backup of the old directory if it exists
         if os.path.exists(package_home):

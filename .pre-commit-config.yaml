@@ -29,7 +29,7 @@ repos:
         exclude: |
           (?x)^(
             # Intentionally bad json schema
-            python/ray/tests/test_runtime_env_validation_bad_2_schema.json|
+            python/ray/tests/unit/test_runtime_env_validation_bad_schema.json|
             # json5 comments prevent parsing
             python/asv.conf.json|
             rllib/asv.conf.json
