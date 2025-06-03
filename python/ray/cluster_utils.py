@@ -290,7 +290,7 @@ class Cluster:
             node: Worker node of which all associated processes
                 will be removed.
         """
-        global_node = ray._private.worker._global_node
+        global_node = ray._private.worker.global_worker.node
         if global_node is not None:
             if node._raylet_socket_name == global_node._raylet_socket_name:
                 ray.shutdown()
