@@ -57,9 +57,7 @@ class Info:
         self.backend = None
         self.gloo_timeout = 30000
 
-    def set_info(
-        self, ids, world_size, rank, backend, gloo_timeout
-    ):
+    def set_info(self, ids, world_size, rank, backend, gloo_timeout):
         """Store collective information."""
         self.ids = ids
         self.world_size = world_size

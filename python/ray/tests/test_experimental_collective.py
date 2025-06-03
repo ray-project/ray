@@ -87,9 +87,7 @@ def test_api_exceptions(ray_start_regular_shared):
             actors + [actors[0]], "torch_gloo"
         )
 
-    ray.experimental.collective.create_collective_group(
-        actors, backend="torch_gloo"
-    )
+    ray.experimental.collective.create_collective_group(actors, backend="torch_gloo")
 
     # Check that we cannot create another group using the same actors.
     with pytest.raises(RuntimeError, match="already in group"):

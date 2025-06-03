@@ -1,11 +1,8 @@
-from typing import TYPE_CHECKING, List
+from typing import List
 from dataclasses import dataclass
 
 import ray
 from ray.util.collective.types import Backend
-
-if TYPE_CHECKING:
-    pass
 
 
 @dataclass

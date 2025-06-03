@@ -9,6 +9,7 @@ import ray.experimental.internal_kv as internal_kv
 from ray.util.collective.types import Backend
 from ray.util.collective.util import get_master_address_metadata_key
 from ray.util.collective.util import Info
+from ray.util.annotations import PublicAPI
 
 
 _remote_communicator_manager: "Optional[RemoteCommunicatorManager]" = None
@@ -19,6 +20,7 @@ class RemoteCommunicatorManager:
     """Singleton class to store the mapping between actors and communicators
     that the actors are a part of.
     """
+
     def __init__(self):
         # Handles to communicators that we created. Key is a user-provided
         # name or UUID.
@@ -39,7 +41,9 @@ class RemoteCommunicatorManager:
         return self._remote_communicators.pop(name, None)
 
     def get_collective_groups(
-        self, actors: Optional[List[ray.actor.ActorHandle]] = None, backend: Optional[str] = None
+        self,
+        actors: Optional[List[ray.actor.ActorHandle]] = None,
+        backend: Optional[str] = None,
     ):
         """
         Get the collective groups that the given actors are a subset of. Filter by
@@ -80,6 +84,7 @@ def _do_destroy_collective_group(self, name):
     ray.util.collective.destroy_collective_group(name)
 
 
+@PublicAPI(stability="alpha")
 def get_collective_groups(
     actors: List[ray.actor.ActorHandle], backend: Optional[str] = None
 ) -> List[CommunicatorHandle]:
@@ -100,13 +105,13 @@ def get_collective_groups(
     return manager.get_collective_groups(actors, backend)
 
 
+@PublicAPI(stability="alpha")
 def create_collective_group(
     actors: List[ray.actor.ActorHandle],
     backend: str,
     name: Optional[str] = None,
 ) -> CommunicatorHandle:
-    """
-    Create a collective group on the given list of actors. If this function
+    """Create a collective group on the given list of actors. If this function
     returns successfully, then the collective group has been initialized on all
     actors, using the given order of actors as the ranks.
 
@@ -156,9 +161,7 @@ def create_collective_group(
         # Store the metadata on a named actor that all of the other
         # actors can access.
         metadata_key = get_master_address_metadata_key(name)
-        internal_kv._internal_kv_put(
-                metadata_key, f"{master_addr}:{master_port}"
-                )
+        internal_kv._internal_kv_put(metadata_key, f"{master_addr}:{master_port}")
 
     try:
         init_tasks = [
@@ -180,6 +183,7 @@ def create_collective_group(
     return comm
 
 
+@PublicAPI(stability="alpha")
 def destroy_collective_group(group_or_name: Union[CommunicatorHandle, str]):
     """
     Destroy a collective group. If this functions returns successfully, then
@@ -209,6 +213,7 @@ def destroy_collective_group(group_or_name: Union[CommunicatorHandle, str]):
         raise ValueError(f"No group with name {name} found.")
 
 
+@PublicAPI(stability="alpha")
 def destroy_all_collective_groups():
     """
     Destroy all collective groups. This will destroy all collective groups that

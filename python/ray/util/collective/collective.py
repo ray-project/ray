@@ -8,14 +8,12 @@ import numpy as np
 import ray
 from ray.util.collective import types
 
-_NCCL_AVAILABLE = True
-_GLOO_AVAILABLE = True
-_TORCH_DISTRIBUTED_AVAILABLE = True
-
 logger = logging.getLogger(__name__)
 
 try:
     from ray.util.collective.collective_group.nccl_collective_group import NCCLGroup
+
+    _NCCL_AVAILABLE = True
 except ImportError:
     _NCCL_AVAILABLE = False
     logger.warning(
@@ -26,6 +24,8 @@ except ImportError:
 
 try:
     from ray.util.collective.collective_group.gloo_collective_group import GLOOGroup
+
+    _GLOO_AVAILABLE = True
 except ImportError:
     _GLOO_AVAILABLE = False
 
@@ -34,6 +34,8 @@ try:
     from ray.util.collective.collective_group.torch_gloo_collective_group import (
         TorchGLOOGroup,
     )
+
+    _TORCH_DISTRIBUTED_AVAILABLE = True
 except ImportError:
     _TORCH_DISTRIBUTED_AVAILABLE = False
 
