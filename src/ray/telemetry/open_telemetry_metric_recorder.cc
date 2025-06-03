@@ -115,11 +115,9 @@ void OpenTelemetryMetricRecorder::SetMetricValue(
     double value) {
   std::lock_guard<std::mutex> lock(mutex_);
   auto it = observations_by_name_.find(name);
-  if (it == observations_by_name_.end()) {
-    RAY_CHECK(false) << "Metric " << name
-                     << " is not registered. Please register it before setting a value.";
-    return;  // Not registered
-  }
+  RAY_CHECK(it != observations_by_name_.end())
+      << "Metric " << name
+      << " is not registered. Please register it before setting a value.";
   it->second[std::move(tags)] = value;  // Set or update the value
 }
 
