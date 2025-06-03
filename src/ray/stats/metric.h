@@ -275,6 +275,10 @@ void RegisterView(const std::string &name,
   } else if (T == SUM &&
              ::RayConfig::instance().experimental_enable_open_telemetry_on_core()) {
     OpenTelemetryMetricRecorder::GetInstance().RegisterSumMetric(name, description);
+  } else if (T == HISTOGRAM &&
+             ::RayConfig::instance().experimental_enable_open_telemetry_on_core()) {
+    OpenTelemetryMetricRecorder::GetInstance().RegisterHistogramMetric(
+        name, description, buckets);
   } else {
     internal::RegisterAsView(view_descriptor, tag_keys);
   }

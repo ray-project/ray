@@ -91,37 +91,22 @@ class OpenTelemetryMetricRecorder:
             )
             self._registered_instruments[name] = instrument
 
-    def register_sum_metric(self, name: str, description: str) -> None:
+    def register_histogram_metric(
+        self, name: str, description: str, buckets: List[float]
+    ) -> None:
         """
         Register a sum metric with the given name and description.
         """
         with self._lock:
             if name in self._registered_instruments:
-                # Sum with the same name is already registered.
+                # Histogram with the same name is already registered.
                 return
 
-            instrument = self.meter.create_up_down_counter(
-                # The "_total" suffix is to be backward compatible with OpenCensus,
-                # which automatically adds "_total" suffix to sum names.
-                name=f"{NAMESPACE}_{name}_total",
-                description=description,
-                unit="1",
-            )
-            self._registered_instruments[name] = instrument
-
-    def register_sum_metric(self, name: str, description: str) -> None:
-        """
-        Register a sum metric with the given name and description.
-        """
-        with self._lock:
-            if name in self._registered_instruments:
-                # Sum with the same name is already registered.
-                return
-
-            instrument = self.meter.create_up_down_counter(
+            instrument = self.meter.create_histogram(
                 name=f"{NAMESPACE}_{name}",
                 description=description,
                 unit="1",
+                explicit_bucket_boundaries_advisory=buckets,
             )
             self._registered_instruments[name] = instrument
 
@@ -155,6 +140,8 @@ class OpenTelemetryMetricRecorder:
             instrument.add(value, attributes=tags)
         elif isinstance(instrument, metrics.UpDownCounter):
             instrument.add(value, attributes=tags)
+        elif isinstance(instrument, metrics.Histogram):
+            instrument.record(value, attributes=tags)
         else:
             logger.warning(
                 f"Unsupported synchronous instrument type for metric: {name}."

@@ -33,9 +33,8 @@ moto[s3,server]==4.2.12
 mypy==1.7.0
 numba==0.59.1
 openpyxl==3.0.10
-opentelemetry-api==1.26.0
-opentelemetry-sdk==1.26.0
-opentelemetry-exporter-otlp>=1.26.0
+opentelemetry-api
+opentelemetry-sdk
 opencensus-proto==0.1.0
 pexpect==4.8.0
 Pillow==10.3.0; platform_system != "Windows"

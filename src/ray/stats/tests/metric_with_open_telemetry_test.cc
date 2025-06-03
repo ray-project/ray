@@ -37,6 +37,13 @@ DEFINE_stats(metric_counter_test,
 DECLARE_stats(metric_sum_test);
 DEFINE_stats(metric_sum_test, "A test sum metric", ("Tag1", "Tag2"), (), ray::stats::SUM);
 
+DECLARE_stats(metric_histogram_test);
+DEFINE_stats(metric_histogram_test,
+             "A test histogram metric",
+             ("Tag1", "Tag2"),
+             ({1, 10, 100, 1000, 10000}),
+             ray::stats::HISTOGRAM);
+
 class MetricTest : public ::testing::Test {
  public:
   MetricTest() = default;
@@ -69,6 +76,12 @@ TEST_F(MetricTest, TestSumMetric) {
   ASSERT_TRUE(
       OpenTelemetryMetricRecorder::GetInstance().IsMetricRegistered("metric_sum_test"));
   STATS_metric_sum_test.Record(200.0, {{"Tag1", "Value1"}, {"Tag2", "Value2"}});
+}
+
+TEST_F(MetricTest, TestHistogramMetric) {
+  ASSERT_TRUE(OpenTelemetryMetricRecorder::GetInstance().IsMetricRegistered(
+      "metric_histogram_test"));
+  STATS_metric_histogram_test.Record(300.0, {{"Tag1", "Value1"}, {"Tag2", "Value2"}});
 }
 
 }  // namespace telemetry
