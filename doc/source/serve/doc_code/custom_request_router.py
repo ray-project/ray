@@ -52,7 +52,7 @@ from ray.serve.request_router import ReplicaID
 
 
 @serve.deployment(
-    request_router_class="custom_request_router:UniformRequestRouter",
+    # request_router_class="custom_request_router:UniformRequestRouter",
     num_replicas=10,
     ray_actor_options={"num_cpus": 0},
 )
@@ -163,7 +163,7 @@ def _time_ms() -> int:
 
 
 @serve.deployment(
-    request_router_class="custom_request_router:ThroughputAwareRequestRouter",
+    # request_router_class="custom_request_router:ThroughputAwareRequestRouter",
     num_replicas=3,
     request_routing_stats_period_s=1,
     request_routing_stats_timeout_s=1,
