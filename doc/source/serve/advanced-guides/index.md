@@ -14,7 +14,7 @@ grpc-guide
 managing-java-deployments
 deploy-vm
 multi-app-container
-custom-request-router
+custom-request-router-guide
 ```
 
 If you’re new to Ray Serve, start with the [Ray Serve Quickstart](serve-getting-started).
@@ -30,4 +30,4 @@ Use these advanced guides for more options and configurations:
 - [Ray Serve Dashboard](dash-serve-view)
 - [Experimental Java API](serve-java-api)
 - [Run Applications in Different Containers](serve-container-runtime-env-guide)
-- [Use Custom Algorithm for Request Routing](custom-request-router)
+- [Use Custom Algorithm for Request Routing](custom-request-router-guide)

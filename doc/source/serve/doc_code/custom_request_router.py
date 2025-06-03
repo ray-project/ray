@@ -38,6 +38,7 @@ class UniformRequestRouter(RequestRouter):
     ):
         print("on_request_routed callback is called!!")
 
+
 # __end_define_uniform_request_router__
 
 
@@ -64,7 +65,6 @@ handle = serve.run(UniformRequestRouterApp.bind())
 response = handle.remote().result()
 print(f"Response from UniformRequestRouterApp: {response}")
 # __end_deploy_app_with_uniform_request_router__
-
 
 
 # __begin_define_throughput_aware_request_router__
@@ -104,21 +104,26 @@ class ThroughputAwareRequestRouter(
                 self.rank_replicas_via_multiplex(
                     replicas=candidate_replicas,
                     multiplexed_model_id=pending_request.metadata.multiplexed_model_id,
-                ))[0]
+                )
+            )[0]
 
             # Filter out replicas that are not available (queue length exceed max ongoing request)
-            ranked_replicas_multiplex = self.select_available_replicas(candidates=ranked_replicas_multiplex)
+            ranked_replicas_multiplex = self.select_available_replicas(
+                candidates=ranked_replicas_multiplex
+            )
 
             for replica in ranked_replicas_multiplex:
                 top_ranked_replicas[replica.replica_id] = replica
 
         # Take the best set of replicas in terms of locality
-        ranked_replicas_locality: List[RunningReplica] = self.rank_replicas_via_locality(
-            replicas=candidate_replicas,
-        )[0]
+        ranked_replicas_locality: List[
+            RunningReplica
+        ] = self.rank_replicas_via_locality(replicas=candidate_replicas)[0]
 
         # Filter out replicas that are not available (queue length exceed max ongoing request)
-        ranked_replicas_locality = self.select_available_replicas(candidates=ranked_replicas_locality)
+        ranked_replicas_locality = self.select_available_replicas(
+            candidates=ranked_replicas_locality
+        )
 
         for replica in ranked_replicas_locality:
             top_ranked_replicas[replica.replica_id] = replica
@@ -132,6 +137,7 @@ class ThroughputAwareRequestRouter(
                 key=lambda r: r.routing_stats.get("throughput", 0),
             )
         ]
+
 
 # __end_define_throughput_aware_request_router__
 
@@ -176,7 +182,6 @@ class ThroughputAwareRequestRouterApp:
         self.throughput_buckets[current_timestamp_ms] += 1
         self.last_throughput_buckets = current_timestamp_ms
 
-
     def record_routing_stats(self) -> Dict[str, Any]:
         current_timestamp_ms = _time_ms()
         throughput = 0
@@ -186,6 +191,7 @@ class ThroughputAwareRequestRouterApp:
         return {
             "throughput": throughput,
         }
+
 
 handle = serve.run(ThroughputAwareRequestRouterApp.bind())
 response = handle.remote().result()
