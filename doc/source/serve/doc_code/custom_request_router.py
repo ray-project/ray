@@ -3,11 +3,11 @@
 # __begin_define_uniform_request_router__
 import random
 from ray.serve.request_router import (
-    RequestRouter,
-    RunningReplica,
     PendingRequest,
+    RequestRouter,
     ReplicaID,
     ReplicaResult,
+    RunningReplica,
 )
 from typing import (
     List,
@@ -59,6 +59,9 @@ class UniformRequestRouterApp:
 handle = serve.run(UniformRequestRouterApp.bind())
 response = handle.remote().result()
 print(f"Response from UniformRequestRouterApp: {response}")
+# Example output:
+#   Response from UniformRequestRouterApp:
+#   Replica(id='67vc4ts5', deployment='UniformRequestRouterApp', app='default')
 # __end_deploy_app_with_uniform_request_router__
 
 
@@ -132,7 +135,7 @@ class ThroughputAwareRequestRouter(
             sorted(
                 [replica for replica in top_ranked_replicas.values()],
                 key=lambda r: r.routing_stats.get("throughput", 0),
-            )
+            )[0]
         ]
 
 
@@ -193,4 +196,7 @@ class ThroughputAwareRequestRouterApp:
 handle = serve.run(ThroughputAwareRequestRouterApp.bind())
 response = handle.remote().result()
 print(f"Response from ThroughputAwareRequestRouterApp: {response}")
+# Example output:
+#   Response from ThroughputAwareRequestRouterApp:
+#   Replica(id='tkywafya', deployment='ThroughputAwareRequestRouterApp', app='default')
 # __end_deploy_app_with_throughput_aware_request_router__
