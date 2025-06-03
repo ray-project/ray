@@ -251,7 +251,6 @@ py_test_module_list(
         "RAY_CLIENT_MODE": "1",
     },
     files = [
-        "test_runtime_env_complicated.py",
         "test_runtime_env_conda_and_pip.py",
         "test_runtime_env_uv_run.py",
     ],
