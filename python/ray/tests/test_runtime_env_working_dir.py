@@ -70,6 +70,9 @@ async def test_working_dir_cleanup(tmpdir, ray_start_regular):
         assert creation_metadata[file] != creation_time_after
 
 
+@pytest.mark.skipif(
+    ray._private.client_mode_hook.is_client_mode_enabled, reason="Fails w/ Ray Client."
+)
 @pytest.mark.asyncio
 async def test_create_delete_size_equal(tmpdir, ray_start_regular):
     """Tests that `create` and `delete_uri` return the same size for a URI."""

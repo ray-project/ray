@@ -32,9 +32,7 @@ def fail_download():
 
 class TestRuntimeEnvFailure:
     @pytest.mark.parametrize("plugin", ["working_dir", "py_modules"])
-    def test_fail_upload(
-        self, tmpdir, monkeypatch, start_cluster, plugin
-    ):
+    def test_fail_upload(self, tmpdir, monkeypatch, start_cluster, plugin):
         """Simulate failing to upload the working_dir to the GCS.
 
         Test that we raise an exception and don't hang.
@@ -98,9 +96,7 @@ class TestRuntimeEnvFailure:
                 f"the default is {RAY_RUNTIME_ENV_URI_PIN_EXPIRATION_S_DEFAULT}"
             ) in str(e.value)
 
-    def test_eager_install_fail(
-        self, tmpdir, start_cluster
-    ):
+    def test_eager_install_fail(self, tmpdir, start_cluster):
         """Simulate failing to install a runtime_env in ray.init().
 
         By default eager_install is set to True.  We should make sure
