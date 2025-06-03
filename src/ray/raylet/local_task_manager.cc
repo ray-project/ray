@@ -403,15 +403,13 @@ void LocalTaskManager::DispatchScheduledTasksToWorkers() {
       info_by_sched_cls_.erase(scheduling_class);
     }
     if (is_infeasible) {
-      TaskSpecification front_task = dispatch_queue.front()->task.GetTaskSpecification();
+      const auto &front_task = dispatch_queue.front()->task.GetTaskSpecification();
       RAY_LOG(ERROR)
           << "A task got scheduled to a node even though it was infeasible. "
              "Please report an issue on GitHub.\nTask placement resource requirements: "
           << debug_string(front_task.GetRequiredPlacementResources().GetResourceMap())
           << "\n Scheduling strategy: "
           << front_task.GetSchedulingStrategy().scheduling_strategy_case();
-      // Have to copy because the queue will be erased from the map when empty by the
-      // erase_if in CancelTasks.
       auto dispatch_queue_iter = dispatch_queue.begin();
       while (dispatch_queue_iter != dispatch_queue.end()) {
         CancelTaskToDispatch(
@@ -420,11 +418,7 @@ void LocalTaskManager::DispatchScheduledTasksToWorkers() {
             "Scheduling failed due to the task becoming infeasible.");
         dispatch_queue_iter = dispatch_queue.erase(dispatch_queue_iter);
       }
-      if (dispatch_queue.empty()) {
-        tasks_to_dispatch_.erase(shapes_it++);
-      } else {
-        shapes_it++;
-      }
+      tasks_to_dispatch_.erase(shapes_it++);
     } else if (dispatch_queue.empty()) {
       tasks_to_dispatch_.erase(shapes_it++);
     } else {
