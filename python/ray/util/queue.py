@@ -102,6 +102,13 @@ class Queue(Generic[T]):
         There is no guarantee of order if multiple producers put to the same
         full queue.
 
+        Args:
+            item: The item to add to the queue.
+            block: If True, blocks until space is available in the queue.
+                If False, raises Full if the queue is full.
+            timeout: If block is True, how long to wait for space to become
+                available before raising Full. If None, waits indefinitely.
+
         Raises:
             Full: if the queue is full and blocking is False.
             Full: if the queue is full, blocking is True, and it timed out.
@@ -128,6 +135,13 @@ class Queue(Generic[T]):
 
         There is no guarantee of order if multiple producers put to the same
         full queue.
+
+        Args:
+            item: The item to add to the queue.
+            block: If True, blocks until space is available in the queue.
+                If False, raises Full if the queue is full.
+            timeout: If block is True, how long to wait for space to become
+                available before raising Full. If None, waits indefinitely.
 
         Raises:
             Full: if the queue is full and blocking is False.
@@ -200,6 +214,9 @@ class Queue(Generic[T]):
     def put_nowait(self, item: T) -> None:
         """Equivalent to put(item, block=False).
 
+        Args:
+            item: The item to add to the queue.
+
         Raises:
             Full: if the queue is full.
         """
@@ -207,6 +224,9 @@ class Queue(Generic[T]):
 
     def put_nowait_batch(self, items: Iterable[T]) -> None:
         """Takes in a list of items and puts them into the queue in order.
+
+        Args:
+            items: An iterable of items to add to the queue.
 
         Raises:
             Full: if the items will not fit in the queue

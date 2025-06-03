@@ -118,7 +118,8 @@ def int_queue():
     queue = Queue[int]()
     for i in items:
         queue.put(i)
-        item: int = queue.get()
+    item: int = queue.get()
+    return item
 
 
 def float_queue():
@@ -127,7 +128,8 @@ def float_queue():
     queue = Queue[float]()
     for i in items:
         queue.put(i)
-        item: float = queue.get()
+    item: float = queue.get()
+    return item
 
 
 def random_object_queue():
@@ -140,7 +142,8 @@ def random_object_queue():
     queue = Queue[RandomObject]()
     for i in items:
         queue.put(i)
-        item: RandomObject = queue.get()
+    item: RandomObject = queue.get()
+    return item
 
 
 async def async_queue():
@@ -148,4 +151,5 @@ async def async_queue():
     queue = Queue[str]()
     for i in items:
         await queue.put_async(i)
-        item: str = await queue.get_async()
+    item: str = await queue.get_async()
+    return item

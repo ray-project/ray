@@ -2860,18 +2860,10 @@ python/ray/util/placement_group.py
 --------------------
 python/ray/util/queue.py
     DOC111: Method `Queue.__init__`: The option `--arg-type-hints-in-docstring` is `False` but there are type hints in the docstring arg list
-    DOC101: Method `Queue.put`: Docstring contains fewer arguments than in function signature.
-    DOC103: Method `Queue.put`: Docstring arguments are different from function arguments. (Or could be other formatting issues: https://jsh9.github.io/pydoclint/violation_codes.html#notes-on-doc103 ). Arguments in the function signature but not in the docstring: [block: bool, item: Any, timeout: Optional[float]].
-    DOC101: Method `Queue.put_async`: Docstring contains fewer arguments than in function signature.
-    DOC103: Method `Queue.put_async`: Docstring arguments are different from function arguments. (Or could be other formatting issues: https://jsh9.github.io/pydoclint/violation_codes.html#notes-on-doc103 ). Arguments in the function signature but not in the docstring: [block: bool, item: Any, timeout: Optional[float]].
     DOC101: Method `Queue.get`: Docstring contains fewer arguments than in function signature.
     DOC103: Method `Queue.get`: Docstring arguments are different from function arguments. (Or could be other formatting issues: https://jsh9.github.io/pydoclint/violation_codes.html#notes-on-doc103 ). Arguments in the function signature but not in the docstring: [block: bool, timeout: Optional[float]].
     DOC101: Method `Queue.get_async`: Docstring contains fewer arguments than in function signature.
     DOC103: Method `Queue.get_async`: Docstring arguments are different from function arguments. (Or could be other formatting issues: https://jsh9.github.io/pydoclint/violation_codes.html#notes-on-doc103 ). Arguments in the function signature but not in the docstring: [block: bool, timeout: Optional[float]].
-    DOC101: Method `Queue.put_nowait`: Docstring contains fewer arguments than in function signature.
-    DOC103: Method `Queue.put_nowait`: Docstring arguments are different from function arguments. (Or could be other formatting issues: https://jsh9.github.io/pydoclint/violation_codes.html#notes-on-doc103 ). Arguments in the function signature but not in the docstring: [item: Any].
-    DOC101: Method `Queue.put_nowait_batch`: Docstring contains fewer arguments than in function signature.
-    DOC103: Method `Queue.put_nowait_batch`: Docstring arguments are different from function arguments. (Or could be other formatting issues: https://jsh9.github.io/pydoclint/violation_codes.html#notes-on-doc103 ). Arguments in the function signature but not in the docstring: [items: Iterable].
     DOC201: Method `Queue.get_nowait` does not have a return section in docstring
     DOC101: Method `Queue.get_nowait_batch`: Docstring contains fewer arguments than in function signature.
     DOC103: Method `Queue.get_nowait_batch`: Docstring arguments are different from function arguments. (Or could be other formatting issues: https://jsh9.github.io/pydoclint/violation_codes.html#notes-on-doc103 ). Arguments in the function signature but not in the docstring: [num_items: int].

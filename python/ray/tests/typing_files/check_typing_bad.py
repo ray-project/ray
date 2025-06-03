@@ -43,6 +43,7 @@ def put_float_in_int_queue():
 def get_str_from_float_queue():
     queue = Queue[float]()
     item: str = queue.get()  # Fail, str cannot be assigned to int
+    return item
 
 
 async def put_async():
@@ -53,3 +54,4 @@ async def put_async():
 async def get_async():
     queue = Queue[int]()
     item: str = await queue.get_async()  # Fail, str cannot be assigned to int
+    return item
