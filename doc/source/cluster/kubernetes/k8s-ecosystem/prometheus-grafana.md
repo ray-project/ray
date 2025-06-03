@@ -258,7 +258,7 @@ spec:
 ```
 * Same as PodMonitor, the **install.sh** script also creates the above YAML example, [serviceMonitor.yaml](https://github.com/ray-project/kuberay/blob/master/config/prometheus/serviceMonitor.yaml) so you don't need to create anything.
 * See the official [ServiceMonitor doc](https://github.com/prometheus-operator/prometheus-operator/blob/main/Documentation/api-reference/api.md#servicemonitor) for more details about configurations.
-* KubeRay Operator provides metrics for RayCluster, RayService, and RayJob, see the {ref}`kuberay-metrics-references` for more details.
+* KubeRay Operator provides metrics for RayCluster, RayService, and RayJob, see {ref}`kuberay-metrics-references` for more details.
 * Prometheus uses `namespaceSelector` and `selector` to select Kubernetes Service.
 ```sh
 kubectl get service -n default -l app.kubernetes.io/name=kuberay-operator 
