@@ -34,11 +34,7 @@ class RemoteCommunicatorManager:
         self._remote_communicators[comm_handle.name] = comm_handle
 
     def remove_remote_communicator(self, name: str):
-        try:
-            popped = self._remote_communicators.pop(name)
-        except KeyError:
-            popped = None
-        return popped
+        return self._remote_communicators.pop(name, None)
 
     def get_collective_groups(
         self, actors: Optional[List[ray.actor.ActorHandle]] = None, backend: Optional[str] = None
