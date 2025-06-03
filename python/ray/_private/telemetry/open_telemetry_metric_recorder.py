@@ -91,6 +91,24 @@ class OpenTelemetryMetricRecorder:
             )
             self._registered_instruments[name] = instrument
 
+    def register_sum_metric(self, name: str, description: str) -> None:
+        """
+        Register a sum metric with the given name and description.
+        """
+        with self._lock:
+            if name in self._registered_instruments:
+                # Sum with the same name is already registered.
+                return
+
+            instrument = self.meter.create_up_down_counter(
+                # The "_total" suffix is to be backward compatible with OpenCensus,
+                # which automatically adds "_total" suffix to sum names.
+                name=f"{NAMESPACE}_{name}_total",
+                description=description,
+                unit="1",
+            )
+            self._registered_instruments[name] = instrument
+
     def set_metric_value(self, name: str, tags: dict, value: float):
         """
         Set the value of a metric with the given name and tags. If the metric is not
