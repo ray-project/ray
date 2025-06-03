@@ -16,7 +16,6 @@ async def test_engine_metrics():
     Test that the stat logger can be created successfully.
     Keeping this test small to focus on instantiating the
     derived class correctly.
-    As of vLLM 0.9.0, the stat logger lives in vLLM
     """
 
     engine_args = AsyncEngineArgs(
