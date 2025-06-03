@@ -132,7 +132,7 @@ def router_populated_with_replicas(
     """
     if handle:
         router = handle._router._asyncio_router
-        replicas = router._replica_scheduler._replica_id_set
+        replicas = router._request_router._replica_id_set
     else:
         replicas = get_replicas_func()
 
@@ -144,7 +144,7 @@ def router_populated_with_replicas(
         return True
 
     router = handle._router._asyncio_router
-    cache = router._replica_scheduler.replica_queue_len_cache
+    cache = router._request_router.replica_queue_len_cache
     for replica_id in replicas:
         assert (
             cache.get(replica_id) is not None

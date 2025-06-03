@@ -26,13 +26,14 @@ from typing import (
 )
 
 import numpy as np
-import psutil
 import pyarrow
 from packaging.version import parse as parse_version
 
 import ray
 from ray._private.arrow_utils import get_pyarrow_version
 from ray.data.context import DEFAULT_READ_OP_MIN_NUM_BLOCKS, WARN_PREFIX, DataContext
+
+import psutil
 
 if TYPE_CHECKING:
     import pandas

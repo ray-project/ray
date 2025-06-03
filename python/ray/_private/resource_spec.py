@@ -6,7 +6,6 @@ from typing import Optional
 import ray
 import ray._private.ray_constants as ray_constants
 
-
 logger = logging.getLogger(__name__)
 
 # Prefix for the node id resource that is automatically added to each node.
