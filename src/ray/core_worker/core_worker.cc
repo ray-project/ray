@@ -1016,10 +1016,6 @@ void CoreWorker::Shutdown() {
     }
     task_execution_service_.stop();
   }
-  if (options_.on_worker_shutdown) {
-    // Running in a main thread.
-    options_.on_worker_shutdown(GetWorkerID());
-  }
 
   task_event_buffer_->FlushEvents(/*forced=*/true);
   task_event_buffer_->Stop();
@@ -2425,7 +2421,8 @@ void CoreWorker::BuildCommonTaskSpec(
     int64_t generator_backpressure_num_objects,
     bool enable_task_events,
     const std::unordered_map<std::string, std::string> &labels,
-    const std::unordered_map<std::string, std::string> &label_selector) {
+    const std::unordered_map<std::string, std::string> &label_selector,
+    const rpc::TensorTransport &tensor_transport) {
   // Build common task spec.
   auto override_runtime_env_info =
       OverrideTaskOrActorRuntimeEnvInfo(serialized_runtime_env_info);
@@ -2474,7 +2471,8 @@ void CoreWorker::BuildCommonTaskSpec(
       concurrency_group_name,
       enable_task_events,
       labels,
-      label_selector);
+      label_selector,
+      tensor_transport);
   // Set task arguments.
   for (const auto &arg : args) {
     builder.AddArg(*arg);
@@ -2782,7 +2780,8 @@ Status CoreWorker::CreatePlacementGroup(
       placement_group_creation_options.soft_target_node_id,
       worker_context_.GetCurrentJobID(),
       worker_context_.GetCurrentActorID(),
-      worker_context_.CurrentActorDetached());
+      worker_context_.CurrentActorDetached(),
+      placement_group_creation_options.bundle_label_selector);
   PlacementGroupSpecification placement_group_spec = builder.Build();
   *return_placement_group_id = placement_group_id;
   RAY_LOG(INFO).WithField(placement_group_id)
@@ -2904,7 +2903,10 @@ Status CoreWorker::SubmitActorTask(
                       /*include_job_config*/ false,
                       /*generator_backpressure_num_objects*/
                       task_options.generator_backpressure_num_objects,
-                      /*enable_task_events*/ task_options.enable_task_events);
+                      /*enable_task_events*/ task_options.enable_task_events,
+                      /*labels*/ {},
+                      /*label_selector*/ {},
+                      /*tensor_transport*/ task_options.tensor_transport);
   // NOTE: placement_group_capture_child_tasks and runtime_env will
   // be ignored in the actor because we should always follow the actor's option.
 
@@ -3380,6 +3382,7 @@ Status CoreWorker::ExecuteTask(
   } else if (task_spec.IsActorTask()) {
     name_of_concurrency_group_to_execute = task_spec.ConcurrencyGroupName();
   }
+
   status = options_.task_execution_callback(
       task_spec.CallerAddress(),
       task_type,
@@ -3402,7 +3405,8 @@ Status CoreWorker::ExecuteTask(
       /*is_streaming_generator=*/task_spec.IsStreamingGenerator(),
       /*retry_exception=*/task_spec.ShouldRetryExceptions(),
       /*generator_backpressure_num_objects=*/
-      task_spec.GeneratorBackpressureNumObjects());
+      task_spec.GeneratorBackpressureNumObjects(),
+      /*tensor_transport=*/task_spec.TensorTransport());
 
   // Get the reference counts for any IDs that we borrowed during this task,
   // remove the local reference for these IDs, and return the ref count info to
@@ -3804,7 +3808,7 @@ Status CoreWorker::GetAndPinArgsForExecutor(const TaskSpecification &task,
       args->push_back(std::make_shared<RayObject>(
           std::move(data), std::move(metadata), task.ArgInlinedRefs(i), copy_data));
       auto &arg_ref = arg_refs->emplace_back();
-      arg_ref.set_object_id(ObjectID::Nil().Binary());
+      arg_ref.set_object_id(task.ArgId(i).Binary());
       // The task borrows all ObjectIDs that were serialized in the inlined
       // arguments. The task will receive references to these IDs, so it is
       // possible for the task to continue borrowing these arguments by the

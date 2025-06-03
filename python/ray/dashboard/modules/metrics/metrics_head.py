@@ -16,8 +16,8 @@ from ray.dashboard.modules.metrics.grafana_dashboard_factory import (
     generate_data_grafana_dashboard,
     generate_default_grafana_dashboard,
     generate_serve_deployment_grafana_dashboard,
-    generate_serve_llm_grafana_dashboard,
     generate_serve_grafana_dashboard,
+    generate_serve_llm_grafana_dashboard,
     generate_train_grafana_dashboard,
 )
 from ray.dashboard.modules.metrics.templates import (
@@ -26,8 +26,8 @@ from ray.dashboard.modules.metrics.templates import (
     GRAFANA_INI_TEMPLATE,
     PROMETHEUS_YML_TEMPLATE,
 )
-from ray.dashboard.subprocesses.routes import SubprocessRouteTable as routes
 from ray.dashboard.subprocesses.module import SubprocessModule
+from ray.dashboard.subprocesses.routes import SubprocessRouteTable as routes
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)

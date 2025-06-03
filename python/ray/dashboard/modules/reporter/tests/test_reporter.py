@@ -13,9 +13,9 @@ import requests
 from google.protobuf import text_format
 
 import ray
+import ray._private.usage.usage_lib as ray_usage_lib
 from ray._private import ray_constants
 from ray._private.metrics_agent import fix_grpc_metric
-import ray._private.usage.usage_lib as ray_usage_lib
 from ray._private.test_utils import (
     fetch_prometheus,
     format_web_url,

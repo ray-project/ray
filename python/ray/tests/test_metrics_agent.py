@@ -18,8 +18,8 @@ from ray.util.state import list_nodes
 from ray._private.metrics_agent import PrometheusServiceDiscoveryWriter
 from ray._private.metrics_agent import Gauge as MetricsAgentGauge
 from ray._private.ray_constants import PROMETHEUS_SERVICE_DISCOVERY_FILE
+from ray._common.test_utils import SignalActor
 from ray._private.test_utils import (
-    SignalActor,
     fetch_prometheus,
     fetch_prometheus_metrics,
     get_log_batch,
@@ -73,7 +73,7 @@ _METRICS = [
     "ray_pull_manager_requests",
     "ray_pull_manager_active_bundles",
     "ray_pull_manager_retries_total",
-    "ray_push_manager_in_flight_pushes",
+    "ray_push_manager_num_pushes_remaining",
     "ray_push_manager_chunks",
     "ray_scheduler_failed_worker_startup_total",
     "ray_scheduler_tasks",
