@@ -51,7 +51,7 @@ class AttentionEncoder(TorchModel, Encoder):
             mask = v[1]
             v = torch.stack(v[0]).permute(1,0,2) # seq_len, batch_size, unit_size
           elif type(obs_s[s]) in [Box, Discrete]:
-            mask = torch.ones((N,1)) # Fixed elements are always there
+            mask = torch.ones((N,1)).to(v.device) # Fixed elements are always there
             v = v.unsqueeze(1)
           embedded = self.embs[s](v)
           embeddings.append(embedded)
@@ -82,4 +82,4 @@ class AttentionEncoderConfig(ModelConfig):
     def build(self, framework):
         return AttentionEncoder(self)
     def output_dims(self):
-      return self.output_dims
+        return self.output_dims

@@ -2,6 +2,7 @@ import gymnasium as gym
 from gymnasium.spaces import Discrete, Box, Dict
 from ray.rllib.utils.spaces.repeated import Repeated
 import numpy as np
+import torch
 
 from ray.rllib.utils.annotations import PublicAPI
 
@@ -66,7 +67,7 @@ class ObsVectorizationWrapper(gym.ObservationWrapper):
         csl = cls.obs_length(cs)
         ml = obs_s.max_len
         l =  ml * (csl+1)
-        for o, sp, ix in zip(obs, range(ml, l+ml, csl), range(0, ml)):
+        for sp, ix in zip(range(ml, l+ml, csl), range(0, ml)):
           if (vec[ix] == 1):
             rl.append(cls.restore_obs(vec[sp:sp+csl], cs))
           else:
@@ -82,7 +83,10 @@ class ObsVectorizationWrapper(gym.ObservationWrapper):
         return d
       elif type(obs_s) == Box:
         vec = vec[:obs_s.shape[0]]
-        return vec * (obs_s.high - obs_s.low) + obs_s.low
+        h, l = obs_s.high, obs_s.low
+        if (type(vec) == torch.Tensor):
+          h, l = torch.tensor(h).to(vec.device), torch.tensor(l).to(vec.device)
+        return vec * (h - l) + l
       elif type(obs_s) == Discrete:
         return vec[:obs_s.n].argmax()
 
@@ -114,7 +118,10 @@ class ObsVectorizationWrapper(gym.ObservationWrapper):
         return d
       elif type(obs_s) == Box:
         vec = vec[:, :obs_s.shape[0]]
-        return vec * (obs_s.high - obs_s.low) + obs_s.low
+        h, l = obs_s.high, obs_s.low
+        if (type(vec) == torch.Tensor):
+          h, l = torch.tensor(h).to(vec.device), torch.tensor(l).to(vec.device)
+        return vec * (h - l) + l
       elif type(obs_s) == Discrete:
         return vec[:, :obs_s.n].argmax(axis=1)
 
