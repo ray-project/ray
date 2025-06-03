@@ -19,9 +19,16 @@ logger = logging.getLogger(__name__)
 def _get_source_files(event_dir, source_types=None, event_file_filter=None):
     event_log_names = os.listdir(event_dir)
     source_files = {}
-    all_source_types = set(event_consts.EVENT_SOURCE_ALL)
-    for source_type in source_types or event_consts.EVENT_SOURCE_ALL:
-        assert source_type in all_source_types, f"Invalid source type: {source_type}"
+
+    if source_types is not None:
+        all_source_types = set(event_consts.EVENT_SOURCE_ALL)
+        assert all([source in all_source_types for source in source_types]), (
+            f"Only source types allowed are: {all_source_types}, got: {source_types}"
+        )
+    else:
+        source_types = event_consts.EVENT_SOURCE_ALL
+
+    for source_type in source_types:
         files = []
         for n in event_log_names:
             if fnmatch.fnmatch(n, f"*{source_type}*"):
