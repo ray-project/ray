@@ -72,7 +72,7 @@ std::shared_ptr<StatsHandle> EventTracker::RecordStart(
 
   if (RayConfig::instance().event_stats_metrics()) {
     ray::stats::STATS_operation_count.Record(cum_count, name);
-    ray::stats::STATS_operation_active_count.Record(curr_count, name);
+    ray::stats::STATS_operation_active_count.Record(curr_count, std::move(name));
   }
 
   return std::make_shared<StatsHandle>(
