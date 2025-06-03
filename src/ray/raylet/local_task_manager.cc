@@ -580,6 +580,12 @@ bool LocalTaskManager::PoppedWorkerHandler(
       tasks_to_dispatch_.erase(shapes_it);
     }
     RAY_CHECK(erased);
+
+    const auto &task = work->task;
+    if (!task.GetDependencies().empty()) {
+      task_dependency_manager_.RemoveTaskDependencies(
+          task.GetTaskSpecification().TaskId());
+    }
   };
 
   if (canceled) {
@@ -611,8 +617,11 @@ bool LocalTaskManager::PoppedWorkerHandler(
       // directly and raise a `RuntimeEnvSetupError` exception to user
       // eventually. The task will be removed from dispatch queue in
       // `CancelTask`.
-      CancelTaskToDispatch(
-          work,
+      CancelTasks(
+          [work](const auto &other_work) {
+            return work->task.GetTaskSpecification().TaskId() ==
+                   work->task.GetTaskSpecification().TaskId();
+          },
           rpc::RequestWorkerLeaseReply::SCHEDULING_CANCELLED_RUNTIME_ENV_SETUP_FAILED,
           /*scheduling_failure_message*/ runtime_env_setup_error_message);
       erase_from_dispatch_queue_fn(work, scheduling_class);
@@ -620,11 +629,6 @@ bool LocalTaskManager::PoppedWorkerHandler(
       // The task job finished.
       // Just remove the task from dispatch queue.
       RAY_LOG(DEBUG) << "Call back to a job finished task, task id = " << task_id;
-      const auto &task = work->task;
-      if (!task.GetDependencies().empty()) {
-        task_dependency_manager_.RemoveTaskDependencies(
-            task.GetTaskSpecification().TaskId());
-      }
       erase_from_dispatch_queue_fn(work, scheduling_class);
     } else {
       // In other cases, set the work status `WAITING` to make this task
@@ -648,11 +652,6 @@ bool LocalTaskManager::PoppedWorkerHandler(
                    << worker->WorkerId();
 
     Dispatch(worker, leased_workers_, work->allocated_instances, task, reply, callback);
-    const auto &task = work->task;
-    if (!task.GetDependencies().empty()) {
-      task_dependency_manager_.RemoveTaskDependencies(
-          task.GetTaskSpecification().TaskId());
-    }
     erase_from_dispatch_queue_fn(work, scheduling_class);
     dispatched = true;
   }
