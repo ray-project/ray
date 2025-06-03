@@ -202,17 +202,20 @@ class LocalTaskManager : public ILocalTaskManager {
                            const rpc::Address &owner_address,
                            const std::string &runtime_env_setup_error_message);
 
-  /// Attempt to cancel an already queued task.
-  ///
-  /// \param task_id: The id of the task to remove.
-  /// \param failure_type: The failure type.
-  ///
-  /// \return True if task was successfully removed. This function will return
-  /// false if the task is already running.
-  bool CancelTask(const TaskID &task_id,
-                  rpc::RequestWorkerLeaseReply::SchedulingFailureType failure_type =
-                      rpc::RequestWorkerLeaseReply::SCHEDULING_CANCELLED_INTENDED,
-                  const std::string &scheduling_failure_message = "");
+  /// Cancels a task in tasks_to_dispatch_. Does not remove it from tasks_to_dispatch_.
+  void CancelTaskToDispatch(
+      const std::shared_ptr<internal::Work> &work,
+      rpc::RequestWorkerLeaseReply::SchedulingFailureType failure_type =
+          rpc::RequestWorkerLeaseReply::SCHEDULING_CANCELLED_INTENDED,
+      const std::string &scheduling_failure_message = "");
+
+  /// Cancels a waiting task. Does not remove it from from waiting_task_queue_ or
+  /// waiting_tasks_index_.
+  void CancelWaitingTask(
+      const std::shared_ptr<internal::Work> &work,
+      rpc::RequestWorkerLeaseReply::SchedulingFailureType failure_type =
+          rpc::RequestWorkerLeaseReply::SCHEDULING_CANCELLED_INTENDED,
+      const std::string &scheduling_failure_message = "");
 
   /// Attempts to dispatch all tasks which are ready to run. A task
   /// will be dispatched if it is on `tasks_to_dispatch_` and there are still
