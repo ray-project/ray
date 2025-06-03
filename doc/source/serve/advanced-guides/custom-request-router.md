@@ -34,7 +34,7 @@ To use a custom request router, you need to pass the `request_router_class` argu
 the `deplpyment` decorator. Let's deploy a simple app that uses the uniform request
 router like this:
 
-```{literalinclude} ../doc_code/custom_request_router.py
+```{literalinclude} ../doc_code/custom_request_router_app.py
 :start-after: __begin_deploy_app_with_uniform_request_router__
 :end-before: __end_deploy_app_with_uniform_request_router__
 :language: python
@@ -80,7 +80,7 @@ sorts the replicas by their throughput and returns the top one.
 ## Deploy an app with the throughput-aware request router
 To use the throughput-aware request router, you can deploy an app like this:
 
-```{literalinclude} ../doc_code/custom_request_router.py
+```{literalinclude} ../doc_code/custom_request_router_app.py
 :start-after: __begin_deploy_app_with_throughput_aware_request_router__
 :end-before: __end_deploy_app_with_throughput_aware_request_router__
 :language: python
