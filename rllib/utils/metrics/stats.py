@@ -184,7 +184,7 @@ class Stats:
         self.values: Union[List, deque.Deque] = None
         self._set_values(force_list(init_values))
 
-        self._could_be_tensor = False
+        self._is_tensor = False
 
         # Track if new values were pushed since last reduce
         if init_values is not None:
@@ -198,11 +198,8 @@ class Stats:
         if self._reduce_method is not None:
             if isinstance(value, np.ndarray) and value.shape == ():
                 return
-            elif (
-                (torch and torch.is_tensor(value))
-                or (tf and tf.is_tensor(value))
-            ):
-                self._could_be_tensor = True
+            elif (torch and torch.is_tensor(value)) or (tf and tf.is_tensor(value)):
+                self._is_tensor = True
                 if tuple(value.shape) == ():
                     return
             elif type(value) not in (list, tuple, deque):
@@ -646,7 +643,7 @@ class Stats:
             "ema_coeff": self._ema_coeff,
             "clear_on_reduce": self._clear_on_reduce,
             "_hist": list(self.get_reduce_history()),
-            "_could_be_tensor": self._could_be_tensor,
+            "_is_tensor": self._is_tensor,
         }
         if self._throughput_stats is not None:
             state["throughput_stats"] = self._throughput_stats.get_state()
@@ -657,7 +654,7 @@ class Stats:
         # If `values` could contain tensors, don't reinstate them (b/c we don't know
         # whether we are on a supported device).
         values = state["values"]
-        if "_could_be_tensor" in state and state["_could_be_tensor"]:
+        if "_is_tensor" in state and state["_is_tensor"]:
             values = []
 
         if "throughput_stats" in state:
@@ -799,7 +796,7 @@ class Stats:
         else:
             # Use the numpy/torch "nan"-prefix to ignore NaN's in our value lists.
             if torch and torch.is_tensor(values[0]):
-                self._could_be_tensor = True
+                self._is_tensor = True
                 # Only one item in the
                 if len(values[0].shape) == 0:
                     reduced = values[0]
