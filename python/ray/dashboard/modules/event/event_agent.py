@@ -26,7 +26,7 @@ RAY_DASHBOARD_EVENT_AGENT_TPE_MAX_WORKERS = ray_constants.env_integer(
 )
 
 
-class JobEventAgent(dashboard_utils.DashboardAgentModule):
+class EventAgent(dashboard_utils.DashboardAgentModule):
     def __init__(self, dashboard_agent):
         super().__init__(dashboard_agent)
         self._event_dir = os.path.join(self._dashboard_agent.log_dir, "events")

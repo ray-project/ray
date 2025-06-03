@@ -31,8 +31,8 @@ from ray.util.state.common import ClusterEventState, ListApiOptions, ListApiResp
 
 logger = logging.getLogger(__name__)
 
-JobEvents = OrderedDict
-dashboard_utils._json_compatible_types.add(JobEvents)
+Events = OrderedDict
+dashboard_utils._json_compatible_types.add(Events)
 
 MAX_EVENTS_TO_CACHE = int(os.environ.get("RAY_DASHBOARD_MAX_EVENTS_TO_CACHE", 10000))
 
@@ -82,7 +82,7 @@ async def _list_cluster_events_impl(
     )
 
 
-class JobEventHead(
+class EventHead(
     SubprocessModule,
     dashboard_utils.RateLimitedModule,
 ):
@@ -102,7 +102,7 @@ class JobEventHead(
         self.total_events_received = 0
         self.module_started = time.monotonic()
         # {job_id hex(str): {event_id (str): event (dict)}}
-        self.events: Dict[str, JobEvents] = defaultdict(JobEvents)
+        self.events: Dict[str, Events] = defaultdict(Events)
 
         self._executor = ThreadPoolExecutor(
             max_workers=RAY_DASHBOARD_EVENT_HEAD_TPE_MAX_WORKERS,
@@ -128,7 +128,7 @@ class JobEventHead(
 
     def _update_events(self, event_list):
         # {job_id: {event_id: event}}
-        all_job_events = defaultdict(JobEvents)
+        all_job_events = defaultdict(Events)
         for event in event_list:
             event_id = event["event_id"]
             custom_fields = event.get("custom_fields", {})
