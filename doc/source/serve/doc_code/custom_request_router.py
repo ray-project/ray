@@ -27,7 +27,7 @@ class UniformRequestRouter(RequestRouter):
     ) -> List[List[RunningReplica]]:
         print("UniformRequestRouter routing request")
         random.shuffle(candidate_replicas)
-        return [candidate_replicas]
+        return [[candidate_replicas[0]]]
 
     def on_request_routed(
         self,
@@ -136,12 +136,11 @@ class ThroughputAwareRequestRouter(
         print("ThroughputAwareRequestRouter routing request")
 
         # Sort the replicas by throughput.
-        return [
-            sorted(
-                [replica for replica in top_ranked_replicas.values()],
-                key=lambda r: r.routing_stats.get("throughput", 0),
-            )[0]
-        ]
+        throughput_ranked_replicas = sorted(
+            [replica for replica in top_ranked_replicas.values()],
+            key=lambda r: r.routing_stats.get("throughput", 0),
+        )
+        return [[throughput_ranked_replicas[0]]]
 
 
 # __end_define_throughput_aware_request_router__
