@@ -398,7 +398,9 @@ class AsyncioRouter:
         # The request router will be lazy loaded to decouple form the initialization.
         self._request_router: Optional[RequestRouter] = request_router
 
-        if _request_router_initialized_event:
+        if not self._event_loop.is_running():
+            self._request_router_initialized = asyncio.Event()
+        elif _request_router_initialized_event:
             self._request_router_initialized = _request_router_initialized_event
         else:
             future = asyncio.run_coroutine_threadsafe(create_event(), self._event_loop)

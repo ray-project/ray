@@ -1,8 +1,12 @@
 # flake8: noqa
 from ray import serve
-
+import asyncio
 
 serve.shutdown()
+
+loop = asyncio.get_event_loop()
+print(f"is loop running? {loop.is_running()=}")
+
 
 # __begin_define_uniform_request_router__
 import random
@@ -62,7 +66,11 @@ class UniformRequestRouterApp:
 
 
 handle = serve.run(UniformRequestRouterApp.bind())
-handle.remote()
+response = handle.remote().result()
+print(f"Response from UniformRequestRouterApp: {response}")
+# Example output:
+#   Response from UniformRequestRouterApp:
+#   Replica(id='67vc4ts5', deployment='UniformRequestRouterApp', app='default')
 # __end_deploy_app_with_uniform_request_router__
 
 
@@ -195,5 +203,9 @@ class ThroughputAwareRequestRouterApp:
 
 
 handle = serve.run(ThroughputAwareRequestRouterApp.bind())
-handle.remote()
+response = handle.remote().result()
+print(f"Response from ThroughputAwareRequestRouterApp: {response}")
+# Example output:
+#   Response from ThroughputAwareRequestRouterApp:
+#   Replica(id='tkywafya', deployment='ThroughputAwareRequestRouterApp', app='default')
 # __end_deploy_app_with_throughput_aware_request_router__
