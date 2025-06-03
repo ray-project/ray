@@ -1,15 +1,4 @@
 # flake8: noqa
-# import asyncio
-# import ray
-# from ray import serve
-#
-#
-# ray.init()
-# serve.start()
-#
-# loop = asyncio.get_event_loop()
-# print(f"is loop running? {loop.is_running()=}")
-
 
 # __begin_deploy_app_with_uniform_request_router__
 from ray import serve
@@ -38,9 +27,6 @@ print(f"Response from UniformRequestRouterApp: {response}")
 #   Response from UniformRequestRouterApp:
 #   Replica(id='67vc4ts5', deployment='UniformRequestRouterApp', app='default')
 # __end_deploy_app_with_uniform_request_router__
-
-
-# serve.shutdown()
 
 
 # __begin_deploy_app_with_throughput_aware_request_router__
