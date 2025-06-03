@@ -25,17 +25,17 @@ def unix_socket_delete(unix_socket):
     return os.remove(unix_socket) if unix else None
 
 
+@pytest.fixture
 def delete_default_temp_dir():
     def delete_default_temp_dir_once():
         shutil.rmtree(ray._private.utils.get_ray_temp_dir(), ignore_errors=True)
         return not os.path.exists(ray._private.utils.get_ray_temp_dir())
 
     wait_for_condition(delete_default_temp_dir_once)
+    yield
 
 
-def test_tempdir_created_successfully(shutdown_only):
-    delete_default_temp_dir()
-
+def test_tempdir_created_successfully(delete_default_temp_dir, shutdown_only):
     temp_dir = os.path.join(ray._private.utils.get_user_temp_dir(), uuid.uuid4().hex)
     ray.init(_temp_dir=temp_dir)
     assert os.path.exists(temp_dir), "Specified temp dir not found."
@@ -45,9 +45,7 @@ def test_tempdir_created_successfully(shutdown_only):
     shutil.rmtree(temp_dir, ignore_errors=True)
 
 
-def test_tempdir_commandline():
-    delete_default_temp_dir()
-
+def test_tempdir_commandline(delete_default_temp_dir):
     temp_dir = os.path.join(ray._private.utils.get_user_temp_dir(), uuid.uuid4().hex)
     check_call_ray(
         [
