@@ -4,9 +4,10 @@ import platform
 import sys
 import time
 
-# Import ray before psutil will make sure we use psutil's bundled version
-from python.ray._common.utils import get_system_memory
 import ray  # noqa F401
+
+# Import ray before psutil will make sure we use psutil's bundled version
+from ray._common.utils import get_system_memory
 
 import psutil  # noqa E402
 

@@ -2,7 +2,7 @@ import json
 import logging
 import types
 
-from python.ray._common.utils import binary_to_hex, hex_to_binary
+from ray._common.utils import binary_to_hex, hex_to_binary
 from ray import cloudpickle as cloudpickle
 from ray.util.annotations import DeveloperAPI
 from ray.util.debug import log_once

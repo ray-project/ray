@@ -1,7 +1,6 @@
 import asyncio
 import binascii
 import errno
-import functools
 import importlib
 import inspect
 from inspect import signature
@@ -12,7 +11,6 @@ import string
 import sys
 import tempfile
 from typing import Any, Coroutine, Dict, Optional
-import warnings
 
 
 def import_attr(full_path: str, *, reload_module: bool = False):
@@ -199,72 +197,6 @@ def get_call_location(back: int = 1):
         return f"{frame.filename}:{frame.lineno}"
     except IndexError:
         return "UNKNOWN"
-
-
-# The following is inspired by
-# https://github.com/tensorflow/tensorflow/blob/dec8e0b11f4f87693b67e125e67dfbc68d26c205/tensorflow/python/util/deprecation.py#L274-L329
-def deprecated(
-    instructions: Optional[str] = None,
-    removal_release: Optional[str] = None,
-    removal_date: Optional[str] = None,
-    warn_once: bool = True,
-    stacklevel: int = 2,
-):
-    """
-    Creates a decorator for marking functions as deprecated. The decorator
-    will log a deprecation warning on the first (or all, see `warn_once` arg)
-    invocations, and will otherwise leave the wrapped function unchanged.
-
-    Args:
-        instructions: Instructions for the caller to update their code.
-        removal_release: The release in which this deprecated function
-            will be removed. Only one of removal_release and removal_date
-            should be specified. If neither is specfieid, we'll warning that
-            the function will be removed "in a future release".
-        removal_date: The date on which this deprecated function will be
-            removed. Only one of removal_release and removal_date should be
-            specified. If neither is specfieid, we'll warning that
-            the function will be removed "in a future release".
-        warn_once: If true, the deprecation warning will only be logged
-            on the first invocation. Otherwise, the deprecation warning will
-            be logged on every invocation. Defaults to True.
-        stacklevel: adjust the warnings stacklevel to trace the source call
-
-    Returns:
-        A decorator to be used for wrapping deprecated functions.
-    """
-    if removal_release is not None and removal_date is not None:
-        raise ValueError(
-            "Only one of removal_release and removal_date should be specified."
-        )
-
-    def deprecated_wrapper(func):
-        @functools.wraps(func)
-        def new_func(*args, **kwargs):
-            global _PRINTED_WARNING
-            if func not in _PRINTED_WARNING:
-                if warn_once:
-                    _PRINTED_WARNING.add(func)
-                msg = (
-                    "From {}: {} (from {}) is deprecated and will ".format(
-                        get_call_location(), func.__name__, func.__module__
-                    )
-                    + "be removed "
-                    + (
-                        f"in version {removal_release}."
-                        if removal_release is not None
-                        else f"after {removal_date}"
-                        if removal_date is not None
-                        else "in a future version"
-                    )
-                    + (f" {instructions}" if instructions is not None else "")
-                )
-                warnings.warn(msg, stacklevel=stacklevel)
-            return func(*args, **kwargs)
-
-        return new_func
-
-    return deprecated_wrapper
 
 
 def get_user_temp_dir():

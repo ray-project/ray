@@ -7,11 +7,11 @@ import sys
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
-from ray._private.runtime_env.context import RuntimeEnvContext
-from ray._private.runtime_env.plugin import RuntimeEnvPlugin
-from python.ray._common.utils import (
+from ray._common.utils import (
     try_to_create_directory,
 )
+from ray._private.runtime_env.context import RuntimeEnvContext
+from ray._private.runtime_env.plugin import RuntimeEnvPlugin
 from ray.exceptions import RuntimeEnvSetupError
 
 default_logger = logging.getLogger(__name__)

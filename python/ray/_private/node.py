@@ -19,10 +19,10 @@ from typing import IO, AnyStr, Dict, Optional, Tuple
 
 from filelock import FileLock
 
-from python.ray._common.utils import try_to_create_directory
 import ray
 import ray._private.ray_constants as ray_constants
 import ray._private.services
+from ray._common.utils import try_to_create_directory
 from ray._private import storage
 from ray._private.resource_isolation_config import ResourceIsolationConfig
 from ray._private.resource_spec import ResourceSpec

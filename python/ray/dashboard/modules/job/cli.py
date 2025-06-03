@@ -8,7 +8,7 @@ from typing import Any, Dict, Optional, Tuple, Union
 
 import click
 
-from python.ray._common.utils import load_class
+from ray._common.utils import load_class
 import ray._private.ray_constants as ray_constants
 from ray._common.utils import (
     get_or_create_event_loop,

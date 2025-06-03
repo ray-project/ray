@@ -14,7 +14,7 @@ from dataclasses import dataclass
 from enum import IntEnum
 from typing import TYPE_CHECKING, Any, Dict, List, Optional
 
-from python.ray._common.utils import binary_to_hex
+from ray._common.utils import binary_to_hex
 
 if TYPE_CHECKING:
     from ray.core.generated.node_manager_pb2 import GetNodeStatsReply

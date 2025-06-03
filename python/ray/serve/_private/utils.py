@@ -4,7 +4,6 @@ import copy
 import importlib
 import inspect
 import logging
-import os
 import random
 import re
 import time
@@ -338,20 +337,6 @@ def in_interactive_shell():
     import __main__ as main
 
     return not hasattr(main, "__file__")
-
-
-def guarded_deprecation_warning(*args, **kwargs):
-    """Wrapper for deprecation warnings, guarded by a flag."""
-    if os.environ.get("SERVE_WARN_V1_DEPRECATIONS", "0") == "1":
-        from python.ray._common.utils import deprecated
-
-        return deprecated(*args, **kwargs)
-    else:
-
-        def noop_decorator(func):
-            return func
-
-        return noop_decorator
 
 
 def snake_to_camel_case(snake_str: str) -> str:

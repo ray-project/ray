@@ -11,7 +11,7 @@ from unittest import mock
 
 import pytest
 
-from python.ray._common.utils import try_to_create_directory
+from ray._common.utils import try_to_create_directory
 import ray
 from ray.runtime_env import RuntimeEnv
 from ray._private.runtime_env.conda import (
