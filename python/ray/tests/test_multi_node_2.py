@@ -5,8 +5,8 @@ import time
 import pytest
 
 import ray
+from ray._common.test_utils import SignalActor
 from ray._private.test_utils import (
-    SignalActor,
     generate_system_config_map,
     wait_for_condition,
 )

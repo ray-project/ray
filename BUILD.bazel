@@ -965,6 +965,8 @@ pyx_library(
             ],
         }),
         linkstatic = 1,
+        # This is needed since Windows has long file path issues and command length limits
+        features = ["compiler_param_file"],
     ),
     deps = [
         "//:exported_internal",

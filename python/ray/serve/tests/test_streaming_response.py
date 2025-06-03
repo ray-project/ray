@@ -2,26 +2,26 @@ import asyncio
 import os
 from typing import AsyncGenerator
 
+import httpx
 import pytest
-import requests
 from fastapi import FastAPI
 from starlette.requests import Request
 from starlette.responses import StreamingResponse
 
 import ray
 from ray import serve
-from ray._private.test_utils import SignalActor
+from ray._common.test_utils import SignalActor
 from ray.serve.handle import DeploymentHandle
 
 
 @ray.remote
 class StreamingRequester:
     async def make_request(self) -> AsyncGenerator[str, None]:
-        r = requests.get("http://localhost:8000", stream=True)
-        r.raise_for_status()
-        for chunk in r.iter_content(chunk_size=None, decode_unicode=True):
-            yield chunk
-            await asyncio.sleep(0.001)
+        with httpx.stream("GET", "http://localhost:8000") as r:
+            r.raise_for_status()
+            for chunk in r.iter_text():
+                yield chunk
+                await asyncio.sleep(0.001)
 
 
 @pytest.mark.parametrize("use_fastapi", [False, True])
@@ -56,10 +56,10 @@ def test_basic(serve_instance, use_async: bool, use_fastapi: bool):
 
     serve.run(SimpleGenerator.bind())
 
-    r = requests.get("http://localhost:8000", stream=True)
-    r.raise_for_status()
-    for i, chunk in enumerate(r.iter_content(chunk_size=None, decode_unicode=True)):
-        assert chunk == f"hi_{i}"
+    with httpx.stream("GET", "http://localhost:8000") as r:
+        r.raise_for_status()
+        for i, chunk in enumerate(r.iter_text()):
+            assert chunk == f"hi_{i}"
 
 
 @pytest.mark.parametrize("use_fastapi", [False, True])
@@ -186,12 +186,12 @@ def test_metadata_preserved(serve_instance, use_fastapi: bool):
 
     serve.run(SimpleGenerator.bind())
 
-    r = requests.get("http://localhost:8000", stream=True)
-    assert r.status_code == 301
-    assert r.headers["hello"] == "world"
-    assert r.headers["content-type"] == "foo/bar"
-    for i, chunk in enumerate(r.iter_content(chunk_size=None)):
-        assert chunk == f"hi_{i}".encode("utf-8")
+    with httpx.stream("GET", "http://localhost:8000") as r:
+        assert r.status_code == 301
+        assert r.headers["hello"] == "world"
+        assert r.headers["content-type"] == "foo/bar"
+        for i, chunk in enumerate(r.iter_bytes()):
+            assert chunk == f"hi_{i}".encode("utf-8")
 
 
 @pytest.mark.parametrize("use_fastapi", [False, True])
@@ -226,12 +226,12 @@ def test_exception_in_generator(serve_instance, use_async: bool, use_fastapi: bo
 
     serve.run(SimpleGenerator.bind())
 
-    r = requests.get("http://localhost:8000", stream=True)
-    r.raise_for_status()
-    stream_iter = r.iter_content(chunk_size=None, decode_unicode=True)
-    assert next(stream_iter) == "first result"
-    with pytest.raises(requests.exceptions.ChunkedEncodingError):
-        next(stream_iter)
+    with httpx.stream("GET", "http://localhost:8000") as r:
+        r.raise_for_status()
+        stream_iter = r.iter_text()
+        assert next(stream_iter) == "first result"
+        with pytest.raises(httpx.HTTPError):
+            next(stream_iter)
 
 
 @pytest.mark.parametrize("use_fastapi", [False, True])
@@ -284,10 +284,10 @@ def test_proxy_from_streaming_handle(
 
     serve.run(SimpleGenerator.bind(Streamer.bind()))
 
-    r = requests.get("http://localhost:8000", stream=True)
-    r.raise_for_status()
-    for i, chunk in enumerate(r.iter_content(chunk_size=None, decode_unicode=True)):
-        assert chunk == f"hi_{i}"
+    with httpx.stream("GET", "http://localhost:8000") as r:
+        r.raise_for_status()
+        for i, chunk in enumerate(r.iter_text()):
+            assert chunk == f"hi_{i}"
 
 
 def test_http_disconnect(serve_instance):
@@ -309,9 +309,9 @@ def test_http_disconnect(serve_instance):
 
     serve.run(SimpleGenerator.bind())
 
-    with requests.get("http://localhost:8000", stream=True):
+    with httpx.stream("GET", "http://localhost:8000"):
         with pytest.raises(TimeoutError):
-            ray.get(signal_actor.wait.remote(), timeout=1)
+            _ = ray.get(signal_actor.wait.remote(), timeout=1)
 
     ray.get(signal_actor.wait.remote(), timeout=5)
 

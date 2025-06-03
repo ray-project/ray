@@ -1,12 +1,12 @@
 import asyncio
-from typing import Optional
-import pytest
 import sys
+from typing import Optional
 
-from ray.llm._internal.serve.configs.server_models import LLMRawResponse
+import pytest
+
 from ray.llm._internal.serve.configs.constants import MODEL_RESPONSE_BATCH_TIMEOUT_MS
+from ray.llm._internal.serve.configs.server_models import LLMRawResponse
 from ray.llm._internal.serve.deployments.utils.batcher import LLMRawResponseBatcher
-
 
 TEXT_VALUE = "foo"
 FINAL_TEXT_VALUE = "bar"

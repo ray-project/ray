@@ -1,20 +1,23 @@
+import sys
 from copy import deepcopy
 from typing import List
-import sys
 
 import pytest
 from fastapi import HTTPException
-from ray import serve
-from ray.serve.handle import DeploymentHandle
 
+from ray import serve
+from ray.llm._internal.serve.configs.server_models import (
+    LLMConfig,
+    LoraConfig,
+    ModelData,
+)
 from ray.llm._internal.serve.deployments.llm.llm_server import LLMDeployment
-from ray.llm._internal.serve.configs.server_models import LLMConfig, LoraConfig
 from ray.llm._internal.serve.deployments.routers.router import (
     LLMRouter,
 )
-from ray.llm._internal.serve.configs.server_models import ModelData
 from ray.llm.tests.serve.mocks.fake_image_retriever import FakeImageRetriever
 from ray.llm.tests.serve.mocks.mock_vllm_engine import MockEchoVLLMEngine
+from ray.serve.handle import DeploymentHandle
 
 VLLM_APP_DEF = """
 model_loading_config:

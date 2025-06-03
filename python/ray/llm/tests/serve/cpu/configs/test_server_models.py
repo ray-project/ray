@@ -1,8 +1,9 @@
-import pytest
 import sys
 
-from ray.llm._internal.serve.configs.server_models import SamplingParams
+import pytest
+
 from ray.llm._internal.serve.configs.prompt_formats import Prompt
+from ray.llm._internal.serve.configs.server_models import SamplingParams
 
 
 class TestSamplingParams:

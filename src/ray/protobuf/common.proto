@@ -610,6 +610,10 @@ message TaskInfoEntry {
   optional string call_site = 27;
 }
 
+message LabelSelector {
+  map<string, string> label_selector_dict = 1;
+}
+
 message TaskAttempt {
   // The task id of the task attempt.
   bytes task_id = 1;
@@ -626,6 +630,9 @@ message Bundle {
   map<string, double> unit_resources = 2;
   // The location of this bundle.
   bytes node_id = 3;
+  // Label selector associated with this bundle.
+  // Populated from bundle_label_selector if provided.
+  map<string, string> label_selector = 4;
 }
 
 message PlacementGroupSpec {

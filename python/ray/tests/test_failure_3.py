@@ -12,11 +12,11 @@ import pytest
 import psutil
 
 from ray._private.test_utils import (
-    SignalActor,
     wait_for_pid_to_exit,
     wait_for_condition,
     run_string_as_driver_nonblocking,
 )
+from ray._common.test_utils import SignalActor
 
 SIGKILL = signal.SIGKILL if sys.platform != "win32" else signal.SIGTERM
 

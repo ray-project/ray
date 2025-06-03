@@ -1,16 +1,16 @@
-import pytest
 import sys
 
+import pytest
+from pydantic import ValidationError
+
 from ray.llm._internal.serve.configs.prompt_formats import (
-    HuggingFacePromptFormat,
     Content,
+    HuggingFacePromptFormat,
     Image,
-    Text,
     Message,
     Prompt,
+    Text,
 )
-
-from pydantic import ValidationError
 
 
 @pytest.fixture

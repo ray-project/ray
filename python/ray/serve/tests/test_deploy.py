@@ -4,13 +4,14 @@ import time
 from collections import defaultdict
 from typing import Callable
 
+import httpx
 import pytest
-import requests
 
 import ray
 from ray import serve
+from ray._common.test_utils import SignalActor
 from ray._private.pydantic_compat import ValidationError
-from ray._private.test_utils import SignalActor, wait_for_condition
+from ray._private.test_utils import wait_for_condition
 from ray.serve._private.utils import get_random_string
 from ray.serve.exceptions import RayServeException
 
@@ -34,7 +35,7 @@ def test_deploy_basic(serve_instance, use_handle):
             handle = serve.get_deployment_handle("d", "default")
             return handle.remote().result()
         else:
-            return requests.get("http://localhost:8000/d").json()
+            return httpx.get("http://localhost:8000/d", timeout=None).json()
 
     serve.run(d.bind())
     resp, pid1 = call()
@@ -157,7 +158,7 @@ def test_redeploy_single_replica(serve_instance, use_handle):
             handle = serve.get_deployment_handle(name, "app")
             return handle.handler.remote().result()
         else:
-            return requests.get("http://localhost:8000/").json()
+            return httpx.get("http://localhost:8000/", timeout=None).json()
 
     signal_name = f"signal-{get_random_string()}"
     signal = SignalActor.options(name=signal_name).remote()
@@ -292,7 +293,7 @@ def test_reconfigure_multiple_replicas(serve_instance, use_handle):
             handle = serve.get_deployment_handle(name, "app")
             ret = handle.handler.remote().result()
         else:
-            ret = requests.get(f"http://localhost:8000/{name}").text
+            ret = httpx.get(f"http://localhost:8000/{name}").text
 
         return ret.split("|")[0], ret.split("|")[1]
 
@@ -433,7 +434,7 @@ def test_redeploy_scale_down(serve_instance, use_handle):
             handle = serve.get_app_handle("app")
             ret = handle.remote().result()
         else:
-            ret = requests.get(f"http://localhost:8000/{name}").text
+            ret = httpx.get(f"http://localhost:8000/{name}").text
 
         return ret.split("|")[0], ret.split("|")[1]
 
@@ -484,7 +485,7 @@ def test_redeploy_scale_up(serve_instance, use_handle):
             handle = serve.get_app_handle("app")
             ret = handle.remote().result()
         else:
-            ret = requests.get(f"http://localhost:8000/{name}").text
+            ret = httpx.get(f"http://localhost:8000/{name}").text
 
         return ret.split("|")[0], ret.split("|")[1]
 
@@ -710,8 +711,8 @@ def test_deploy_multiple_apps_batched(serve_instance):
     assert serve.get_app_handle("a").remote().result() == "a"
     assert serve.get_app_handle("b").remote().result() == "b"
 
-    assert requests.get("http://localhost:8000/a").text == "a"
-    assert requests.get("http://localhost:8000/b").text == "b"
+    assert httpx.get("http://localhost:8000/a").text == "a"
+    assert httpx.get("http://localhost:8000/b").text == "b"
 
 
 def test_redeploy_multiple_apps_batched(serve_instance):

@@ -11,10 +11,9 @@ from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
 
 # This package contains a subdirectory called `test_module`.
 # Calling `test_module.one()` should return `2`.
-HTTPS_PACKAGE_URI = "https://github.com/shrekris-anyscale/test_module/archive/HEAD.zip"
+HTTPS_PACKAGE_URI = "https://github.com/shrekris-anyscale/test_module/archive/a885b80879665a49d5cd4c3ebd33bb6f865644e5.zip"
 S3_PACKAGE_URI = "s3://runtime-env-test/test_runtime_env.zip"
 S3_WHL_PACKAGE_URI = "s3://runtime-env-test/test_module-0.0.1-py3-none-any.whl"
-REMOTE_URIS = [HTTPS_PACKAGE_URI, S3_PACKAGE_URI]
 
 
 @pytest.fixture(scope="module")
@@ -73,7 +72,11 @@ def test_failure_without_runtime_env(start_cluster_shared_two_nodes):
 
 @pytest.mark.skipif(sys.platform == "win32", reason="Flaky on Windows.")
 @pytest.mark.parametrize("option", ["working_dir", "py_modules"])
-@pytest.mark.parametrize("remote_uri", [*REMOTE_URIS, S3_WHL_PACKAGE_URI])
+@pytest.mark.parametrize(
+    "remote_uri",
+    [HTTPS_PACKAGE_URI, S3_PACKAGE_URI, S3_WHL_PACKAGE_URI],
+    ids=["https", "s3", "whl"],
+)
 @pytest.mark.parametrize("per_task_actor", [True, False])
 def test_remote_package_uri_multi_node(
     start_cluster_shared_two_nodes, option, remote_uri, per_task_actor

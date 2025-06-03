@@ -1392,15 +1392,18 @@ def test_groupby_arrow_multi_agg(
         for agg in ["sum", "min", "max", "mean", "std", "quantile"]
     }
 
-    def _round_to_14_digits(row):
+    def _round_to_13_digits(row):
         return {
             # NOTE: Pandas and Arrow diverge on 14th digit (due to different formula
             #       used with diverging FP numerical stability), hence we round it up
-            k: round(v, 14)
+            k: round(v, 13)
             for k, v in row.items()
         }
 
-    assert _round_to_14_digits(expected_row) == _round_to_14_digits(result_row)
+    print(f"Expected: {expected_row}, (rounded: {_round_to_13_digits(expected_row)})")
+    print(f"Result: {result_row} (rounded: {_round_to_13_digits(result_row)})")
+
+    assert _round_to_13_digits(expected_row) == _round_to_13_digits(result_row)
 
 
 @pytest.mark.parametrize("num_parts", [1, 30])

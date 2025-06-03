@@ -1,7 +1,7 @@
 import base64
 import io
-from unittest.mock import AsyncMock, patch
 import sys
+from unittest.mock import AsyncMock, patch
 
 import pytest
 from PIL import Image

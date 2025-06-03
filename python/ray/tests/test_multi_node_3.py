@@ -10,7 +10,6 @@ import pytest
 import ray
 import ray._private.ray_constants as ray_constants
 from ray._private.test_utils import (
-    Semaphore,
     check_call_ray,
     check_call_subprocess,
     kill_process_by_name,
@@ -20,6 +19,7 @@ from ray._private.test_utils import (
     wait_for_children_of_pid,
     wait_for_children_of_pid_to_exit,
 )
+from ray._common.test_utils import Semaphore
 from ray._private.utils import detect_fate_sharing_support
 
 
@@ -338,7 +338,7 @@ def test_multi_driver_logging(ray_start_regular):
     driver_script_template = """
 import ray
 import sys
-from ray._private.test_utils import Semaphore
+from ray._common.test_utils import Semaphore
 
 @ray.remote(num_cpus=0)
 def remote_print(s, file=None):

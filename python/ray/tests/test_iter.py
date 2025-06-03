@@ -13,7 +13,7 @@ from ray.util.iter import (
     ParallelIteratorWorker,
     LocalIterator,
 )
-from ray._private.test_utils import Semaphore
+from ray._common.test_utils import Semaphore
 
 
 def test_select_shards(ray_start_regular_shared):

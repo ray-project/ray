@@ -1,11 +1,12 @@
-import pytest
-import ray
-from typing import Set, List
+from typing import List, Set
 
+import pytest
+
+import ray
 from ray.llm._internal.serve.replica_scheduler.prefix_aware.prefix_tree import (
+    Node,
     PrefixTree,
     PrefixTreeActor,
-    Node,
 )
 
 

@@ -3,8 +3,8 @@ import logging
 import os
 import sys
 
+import httpx
 import pytest
-import requests
 import starlette
 from starlette.middleware import Middleware
 
@@ -135,7 +135,7 @@ def test_callback(ray_instance, capsys):
             return "Not found custom headers"
 
     serve.run(Model.bind())
-    resp = requests.get("http://localhost:8000/")
+    resp = httpx.get("http://localhost:8000/")
     assert resp.text == "custom_header_value"
 
     captured = capsys.readouterr()

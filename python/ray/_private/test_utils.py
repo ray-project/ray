@@ -12,6 +12,7 @@ import socket
 import subprocess
 import sys
 import tempfile
+import threading
 import time
 import timeit
 import traceback
@@ -30,6 +31,7 @@ import ray
 import ray._private.gcs_utils as gcs_utils
 import ray._private.memory_monitor as memory_monitor
 import ray._private.services
+import ray._private.services as services
 import ray._private.usage.usage_lib as ray_usage_lib
 import ray._private.utils
 from ray._common.utils import get_or_create_event_loop
@@ -820,42 +822,6 @@ class Collector:
         return self.items
 
 
-@ray.remote(num_cpus=0)
-class SignalActor:
-    def __init__(self):
-        self.ready_event = asyncio.Event()
-        self.num_waiters = 0
-
-    def send(self, clear=False):
-        self.ready_event.set()
-        if clear:
-            self.ready_event.clear()
-
-    async def wait(self, should_wait=True):
-        if should_wait:
-            self.num_waiters += 1
-            await self.ready_event.wait()
-            self.num_waiters -= 1
-
-    async def cur_num_waiters(self):
-        return self.num_waiters
-
-
-@ray.remote(num_cpus=0)
-class Semaphore:
-    def __init__(self, value=1):
-        self._sema = asyncio.Semaphore(value=value)
-
-    async def acquire(self):
-        await self._sema.acquire()
-
-    async def release(self):
-        self._sema.release()
-
-    async def locked(self):
-        return self._sema.locked()
-
-
 def dicts_equal(dict1, dict2, abs_tol=1e-4):
     """Compares to dicts whose values may be floating point numbers."""
 
@@ -1473,6 +1439,7 @@ class ResourceKillerActor:
             await asyncio.sleep(self.kill_interval_s - sleep_interval)
 
         self.done.set_result(True)
+        await self.stop_run()
 
     async def _find_resources_to_kill(self):
         raise NotImplementedError
@@ -1482,6 +1449,9 @@ class ResourceKillerActor:
 
     async def stop_run(self):
         was_running = self.is_running
+        if was_running:
+            self._cleanup()
+
         self.is_running = False
         return was_running
 
@@ -1489,6 +1459,13 @@ class ResourceKillerActor:
         """Get the total number of killed resources"""
         await self.done
         return self.killed
+
+    def _cleanup(self):
+        """Cleanup any resources created by the killer.
+
+        Overriding this method is optional.
+        """
+        pass
 
 
 class NodeKillerBase(ResourceKillerActor):
@@ -1562,30 +1539,76 @@ class EC2InstanceTerminator(NodeKillerBase):
     def _kill_resource(self, node_id, node_to_kill_ip, _):
         if node_to_kill_ip is not None:
             try:
-                self._terminate_ec2_instance(node_to_kill_ip)
+                _terminate_ec2_instance(node_to_kill_ip)
             except Exception:
                 pass
             logging.info(f"Terminated instance, {node_id=}, address={node_to_kill_ip}")
             self.killed.add(node_id)
 
-    def _terminate_ec2_instance(self, ip):
-        # This command uses IMDSv2 to get the host instance id and region.
-        # After that it terminates itself using aws cli.
-        multi_line_command = (
-            'TOKEN=$(curl -X PUT "http://169.254.169.254/latest/api/token" -H "X-aws-ec2-metadata-token-ttl-seconds: 21600");'  # noqa: E501
-            'instanceId=$(curl -H "X-aws-ec2-metadata-token: $TOKEN" http://169.254.169.254/latest/meta-data/instance-id/);'  # noqa: E501
-            'region=$(curl -H "X-aws-ec2-metadata-token: $TOKEN" http://169.254.169.254/latest/meta-data/placement/region);'  # noqa: E501
-            "aws ec2 terminate-instances --region $region --instance-ids $instanceId"  # noqa: E501
-        )
-        # This is a feature on Anyscale platform that enables
-        # easy ssh access to worker nodes.
-        ssh_command = f"ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -p 2222 ray@{ip} '{multi_line_command}'"  # noqa: E501
 
-        result = subprocess.run(
-            ssh_command, shell=True, capture_output=True, text=True, check=True
+@ray.remote(num_cpus=0)
+class EC2InstanceTerminatorWithGracePeriod(NodeKillerBase):
+    def __init__(self, *args, grace_period_s: int = 30, **kwargs):
+        super().__init__(*args, **kwargs)
+
+        self._grace_period_s = grace_period_s
+        self._kill_threads: Set[threading.Thread] = set()
+
+    def _kill_resource(self, node_id, node_to_kill_ip, _):
+        assert node_id not in self.killed
+
+        # Clean up any completed threads.
+        for thread in self._kill_threads.copy():
+            if not thread.is_alive():
+                thread.join()
+                self._kill_threads.remove(thread)
+
+        def _kill_node_with_grace_period(node_id, node_to_kill_ip):
+            self._drain_node(node_id)
+            time.sleep(self._grace_period_s)
+            _terminate_ec2_instance(node_to_kill_ip)
+
+        logger.info(f"Starting killing thread {node_id=}, {node_to_kill_ip=}")
+        thread = threading.Thread(
+            target=_kill_node_with_grace_period,
+            args=(node_id, node_to_kill_ip),
+            daemon=True,
         )
-        print(f"STDOUT:\n{result.stdout}\n")
-        print(f"STDERR:\n{result.stderr}\n")
+        thread.start()
+        self._kill_threads.add(thread)
+        self.killed.add(node_id)
+
+    def _drain_node(self, node_id: str) -> None:
+        # We need to lazily import this object. Otherwise, Ray can't serialize the
+        # class.
+        from ray.core.generated import autoscaler_pb2
+
+        assert ray.NodeID.from_hex(node_id) != ray.NodeID.nil()
+
+        logging.info(f"Draining node {node_id=}")
+        address = services.canonicalize_bootstrap_address_or_die(addr="auto")
+        gcs_client = ray._raylet.GcsClient(address=address)
+        deadline_timestamp_ms = (time.time_ns() // 1e6) + (self._grace_period_s * 1e3)
+
+        try:
+            is_accepted, _ = gcs_client.drain_node(
+                node_id,
+                autoscaler_pb2.DrainNodeReason.Value("DRAIN_NODE_REASON_PREEMPTION"),
+                "",
+                deadline_timestamp_ms,
+            )
+        except ray.exceptions.RayError as e:
+            logger.error(f"Failed to drain node {node_id=}")
+            raise e
+
+        assert is_accepted, "Drain node request was rejected"
+
+    def _cleanup(self):
+        for thread in self._kill_threads.copy():
+            thread.join()
+            self._kill_threads.remove(thread)
+
+        assert not self._kill_threads
 
 
 @ray.remote(num_cpus=0)
@@ -2178,3 +2201,26 @@ def check_library_usage_telemetry(
         assert all(
             [extra_usage_tags[k] == v for k, v in expected_extra_usage_tags.items()]
         ), extra_usage_tags
+
+
+def _terminate_ec2_instance(ip):
+    logging.info(f"Terminating instance, {ip=}")
+    # This command uses IMDSv2 to get the host instance id and region.
+    # After that it terminates itself using aws cli.
+    multi_line_command = (
+        'TOKEN=$(curl -X PUT "http://169.254.169.254/latest/api/token" -H "X-aws-ec2-metadata-token-ttl-seconds: 21600");'  # noqa: E501
+        'instanceId=$(curl -H "X-aws-ec2-metadata-token: $TOKEN" http://169.254.169.254/latest/meta-data/instance-id/);'  # noqa: E501
+        'region=$(curl -H "X-aws-ec2-metadata-token: $TOKEN" http://169.254.169.254/latest/meta-data/placement/region);'  # noqa: E501
+        "aws ec2 terminate-instances --region $region --instance-ids $instanceId"  # noqa: E501
+    )
+    # This is a feature on Anyscale platform that enables
+    # easy ssh access to worker nodes.
+    ssh_command = f"ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -p 2222 ray@{ip} '{multi_line_command}'"  # noqa: E501
+
+    try:
+        subprocess.run(
+            ssh_command, shell=True, capture_output=True, text=True, check=True
+        )
+    except subprocess.CalledProcessError as e:
+        print("Exit code:", e.returncode)
+        print("Stderr:", e.stderr)

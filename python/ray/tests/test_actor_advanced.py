@@ -12,8 +12,8 @@ import ray
 import ray._private.gcs_utils as gcs_utils
 from ray.util.state import list_actors
 import ray.cluster_utils
+from ray._common.test_utils import SignalActor
 from ray._private.test_utils import (
-    SignalActor,
     convert_actor_state,
     kill_actor_and_wait_for_failure,
     make_global_state_accessor,

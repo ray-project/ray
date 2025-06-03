@@ -3,12 +3,13 @@ import sys
 import time
 from collections import defaultdict
 
+import httpx
 import pytest
-import requests
 
 import ray
 from ray import serve
-from ray._private.test_utils import SignalActor, wait_for_condition
+from ray._common.test_utils import SignalActor
+from ray._private.test_utils import wait_for_condition
 from ray.cluster_utils import Cluster
 from ray.exceptions import RayActorError
 from ray.serve._private.common import DeploymentID, ReplicaState
@@ -381,7 +382,7 @@ def test_proxy_prefers_replicas_on_same_node(ray_cluster: Cluster, set_flag):
 
     # Since they're sent sequentially, all requests should be routed to
     # the replica on the head node
-    responses = [requests.post("http://localhost:8000").text for _ in range(10)]
+    responses = [httpx.post("http://localhost:8000").text for _ in range(10)]
     if set_flag:
         assert all(resp == head_node_id for resp in responses)
     else:
@@ -409,9 +410,9 @@ class TestHealthzAndRoutes:
         serve.run(Dummy.bind())
 
         # Head node proxy /-/healthz and /-/routes should return 200
-        r = requests.post("http://localhost:8000/-/healthz")
+        r = httpx.post("http://localhost:8000/-/healthz")
         assert r.status_code == 200
-        r = requests.post("http://localhost:8000/-/routes")
+        r = httpx.post("http://localhost:8000/-/routes")
         assert r.status_code == 200
 
     def test_head_and_worker_nodes_no_replicas(self, ray_cluster: Cluster):
@@ -464,7 +465,7 @@ class TestHealthzAndRoutes:
         # Ensure `/-/healthz` and `/-/routes` return 200 and expected responses
         # on both nodes.
         def check_request(url: str, expected_code: int, expected_text: str):
-            req = requests.get(url)
+            req = httpx.get(url)
             assert req.status_code == expected_code
             assert req.text == expected_text
             return True
@@ -475,16 +476,16 @@ class TestHealthzAndRoutes:
             expected_code=200,
             expected_text="success",
         )
-        assert requests.get("http://127.0.0.1:8000/-/routes").status_code == 200
-        assert requests.get("http://127.0.0.1:8000/-/routes").text == '{"/":"default"}'
+        assert httpx.get("http://127.0.0.1:8000/-/routes").status_code == 200
+        assert httpx.get("http://127.0.0.1:8000/-/routes").text == '{"/":"default"}'
         wait_for_condition(
             condition_predictor=check_request,
             url="http://127.0.0.1:8001/-/healthz",
             expected_code=200,
             expected_text="success",
         )
-        assert requests.get("http://127.0.0.1:8001/-/routes").status_code == 200
-        assert requests.get("http://127.0.0.1:8001/-/routes").text == '{"/":"default"}'
+        assert httpx.get("http://127.0.0.1:8001/-/routes").status_code == 200
+        assert httpx.get("http://127.0.0.1:8001/-/routes").text == '{"/":"default"}'
 
         # Delete the deployment should bring the active actors down to 3 and drop
         # replicas on all nodes.
@@ -516,17 +517,17 @@ class TestHealthzAndRoutes:
             expected_code=200,
             expected_text="success",
         )
-        assert requests.get("http://127.0.0.1:8000/-/routes").status_code == 200
-        assert requests.get("http://127.0.0.1:8000/-/routes").text == "{}"
+        assert httpx.get("http://127.0.0.1:8000/-/routes").status_code == 200
+        assert httpx.get("http://127.0.0.1:8000/-/routes").text == "{}"
         wait_for_condition(
             condition_predictor=check_request,
             url="http://127.0.0.1:8001/-/healthz",
             expected_code=503,
             expected_text="This node is being drained.",
         )
-        assert requests.get("http://127.0.0.1:8001/-/routes").status_code == 503
+        assert httpx.get("http://127.0.0.1:8001/-/routes").status_code == 503
         assert (
-            requests.get("http://127.0.0.1:8001/-/routes").text
+            httpx.get("http://127.0.0.1:8001/-/routes").text
             == "This node is being drained."
         )
 

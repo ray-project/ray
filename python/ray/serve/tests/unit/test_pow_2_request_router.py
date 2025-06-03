@@ -1913,5 +1913,45 @@ async def test_locality_aware_backoff_skips_sleeps(pow_2_router):
     assert set(chosen_replicas[2]) & {r1.replica_id, r2.replica_id, r3.replica_id}
 
 
+@pytest.mark.parametrize(
+    "pow_2_router",
+    [
+        {"use_replica_queue_len_cache": True},
+    ],
+    indirect=True,
+)
+@pytest.mark.asyncio
+async def test_select_available_replicas(pow_2_router: PowerOfTwoChoicesRequestRouter):
+    """Test that the available_replicas property returns the correct replicas."""
+    s = pow_2_router
+
+    unavailable_replica = FakeRunningReplica("r1")
+    available_replica_in_cache = FakeRunningReplica("r2")
+    available_replica_not_in_cache = FakeRunningReplica("r3")
+    all_replicas = [
+        unavailable_replica,
+        available_replica_in_cache,
+        available_replica_not_in_cache,
+    ]
+    s.update_replicas(all_replicas)
+    s.replica_queue_len_cache.update(
+        unavailable_replica.replica_id, DEFAULT_MAX_ONGOING_REQUESTS
+    )
+    s.replica_queue_len_cache.update(available_replica_in_cache.replica_id, 0)
+
+    # When no candidate replicas are provided, all replicas should be
+    # considered.
+    assert s.select_available_replicas() == [
+        available_replica_in_cache,
+        available_replica_not_in_cache,
+    ]
+
+    # When candidate replicas are provided, only those that are available
+    # should be returned.
+    assert s.select_available_replicas(
+        [unavailable_replica, available_replica_not_in_cache]
+    ) == [available_replica_not_in_cache]
+
+
 if __name__ == "__main__":
     sys.exit(pytest.main(["-v", "-s", __file__]))

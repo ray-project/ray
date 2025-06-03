@@ -1,21 +1,20 @@
-from unittest.mock import AsyncMock, MagicMock
-import pytest
 import sys
-
 from typing import Optional
+from unittest.mock import AsyncMock, MagicMock
 
+import openai
+import pytest
+
+from ray import serve
 from ray.llm._internal.serve.configs.server_models import (
     LLMConfig,
     ModelLoadingConfig,
 )
+from ray.llm._internal.serve.deployments.llm.llm_server import LLMServer
 from ray.llm._internal.serve.deployments.routers.router import (
     LLMRouter,
 )
-from ray.llm._internal.serve.deployments.llm.llm_server import LLMServer
-
 from ray.llm.tests.serve.mocks.mock_vllm_engine import MockVLLMEngine
-from ray import serve
-import openai
 
 
 @pytest.fixture(name="llm_config")

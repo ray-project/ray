@@ -9,8 +9,8 @@ from ray._private.test_utils import (
     wait_for_condition,
     get_metric_check_condition,
     MetricSamplePattern,
-    SignalActor,
 )
+from ray._common.test_utils import SignalActor
 from ray.autoscaler.node_launch_exception import NodeLaunchException
 
 

@@ -14,8 +14,8 @@ import ray
 import ray._private.ray_constants as ray_constants
 import ray.experimental.internal_kv as internal_kv
 from ray import NodeID
+from ray._common.test_utils import SignalActor
 from ray._private.test_utils import (
-    SignalActor,
     get_error_message,
     init_error_pubsub,
     run_string_as_driver,

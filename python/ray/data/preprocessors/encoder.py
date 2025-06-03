@@ -9,7 +9,6 @@ import pandas.api.types
 from ray.air.util.data_batch_conversion import BatchFormat
 from ray.data import Dataset
 from ray.data.preprocessor import Preprocessor, PreprocessorNotFittedException
-from ray.data.preprocessors.utils import ValueCounter
 from ray.util.annotations import PublicAPI
 
 
@@ -683,12 +682,42 @@ def _get_unique_value_indices(
                 f"{columns}."
             )
 
-    agg_fns = [ValueCounter(on=col, encode_lists=encode_lists) for col in columns]
-    aggregated_counts = dataset.aggregate(*agg_fns)
+    def get_pd_value_counts_per_column(col: pd.Series):
+        # special handling for lists
+        if _is_series_composed_of_lists(col):
+            if encode_lists:
+                counter = Counter()
 
-    final_counters = {
-        col: aggregated_counts[f"value_counter({col})"] for col in columns
-    }
+                def update_counter(element):
+                    counter.update(element)
+                    return element
+
+                col.map(update_counter)
+                return counter
+            else:
+                # convert to tuples to make lists hashable
+                col = col.map(lambda x: tuple(x))
+        return Counter(col.value_counts(dropna=False).to_dict())
+
+    def get_pd_value_counts(df: pd.DataFrame) -> List[Dict[str, Counter]]:
+        df_columns = df.columns.tolist()
+        result = {}
+        for col in columns:
+            if col in df_columns:
+                result[col] = [get_pd_value_counts_per_column(df[col])]
+            else:
+                raise ValueError(
+                    f"Column '{col}' does not exist in DataFrame, which has columns: {df_columns}"  # noqa: E501
+                )
+        return result
+
+    value_counts = dataset.map_batches(get_pd_value_counts, batch_format="pandas")
+    final_counters = {col: Counter() for col in columns}
+    for batch in value_counts.iter_batches(batch_size=None):
+        for col, counters in batch.items():
+            for counter in counters:
+                counter = {k: v for k, v in counter.items() if v is not None}
+                final_counters[col] += Counter(counter)
 
     # Inspect if there is any NA values.
     for col in columns:
@@ -707,17 +736,12 @@ def _get_unique_value_indices(
     unique_values_with_indices = OrderedDict()
     for column in columns:
         if column in max_categories:
-            # Output sorted by freq and also lexicographically by column value.
-            # This is to ensure that the order of the categories is consistent
-            # across different runs when there is a tie in frequency between
-            # two different values
-            most_common = sorted(
-                final_counters[column].most_common(max_categories[column]),
-                key=lambda x: (x[1], x[0]),
-                reverse=True,
-            )
+            # Output sorted by freq.
             unique_values_with_indices[key_format.format(column)] = {
-                k[0]: j for j, k in enumerate(most_common[: max_categories[column]])
+                k[0]: j
+                for j, k in enumerate(
+                    final_counters[column].most_common(max_categories[column])
+                )
             }
         else:
             # Output sorted by column name.

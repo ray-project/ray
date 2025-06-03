@@ -1,17 +1,17 @@
 """This test suite does not need sglang to be installed."""
 
 import asyncio
-import pytest
 import sys
-from unittest.mock import MagicMock, AsyncMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
+import pytest
 
 from ray.llm._internal.batch.stages.sglang_engine_stage import (
     SGLangEngineStage,
     SGLangEngineStageUDF,
     SGLangEngineWrapper,
+    SGLangTaskType,
 )
-from ray.llm._internal.batch.stages.sglang_engine_stage import SGLangTaskType
 
 
 @pytest.fixture

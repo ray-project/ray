@@ -32,8 +32,8 @@ from ray._private.test_utils import (
     wait_for_condition,
     async_wait_for_condition,
     find_free_port,
-    SignalActor,
 )
+from ray._common.test_utils import SignalActor
 from ray.cluster_utils import cluster_not_supported
 from ray._raylet import NodeID
 from ray.core.generated.common_pb2 import (

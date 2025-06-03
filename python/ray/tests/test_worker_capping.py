@@ -6,8 +6,7 @@ import tempfile
 import time
 
 import ray
-
-from ray._private.test_utils import Semaphore
+from ray._common.test_utils import Semaphore
 
 
 def test_nested_tasks(shutdown_only):
