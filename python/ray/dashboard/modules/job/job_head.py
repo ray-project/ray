@@ -33,6 +33,7 @@ from ray.dashboard.consts import (
     TRY_TO_GET_AGENT_INFO_INTERVAL_SECONDS,
     WAIT_AVAILABLE_AGENT_TIMEOUT,
 )
+from ray.dashboard.modules.event.event_utils import _fetch_dashboard_address
 from ray.dashboard.modules.job.common import (
     JobDeleteResponse,
     JobInfoStorageClient,
@@ -220,7 +221,9 @@ class JobHead(SubprocessModule):
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        self._job_info_client = None
+
+        self._job_info_client: Optional[JobInfoStorageClient] = None
+        self._dashboard_address: Optional[str] = None
 
         # To make sure that the internal KV is initialized by getting the lazy property
         assert self.gcs_client is not None
@@ -848,6 +851,18 @@ class JobHead(SubprocessModule):
                 reason=repr(e),
                 timestamp=datetime.now().timestamp(),
             )
+
+    async def _get_dashboard_http_address(self) -> str:
+        while True:
+            try:
+                if not self._dashboard_address:
+                    self._dashboard_address = await _fetch_dashboard_address(self.gcs_client)
+
+                return self._dashboard_address
+            except Exception:
+                logger.exception("Failed to fetch Dashboard address from GCS")
+
+            await asyncio.sleep(1)
 
     async def run(self):
         await super().run()

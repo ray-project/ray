@@ -10,7 +10,8 @@ import ray.dashboard.consts as dashboard_consts
 import ray.dashboard.utils as dashboard_utils
 from ray.dashboard.modules.event import event_consts
 from ray.dashboard.modules.event.event_consts import TARGET_EVENT_SOURCE_TYPES
-from ray.dashboard.modules.event.event_utils import monitor_events
+from ray.dashboard.modules.event.event_utils import monitor_events, \
+    _fetch_dashboard_address
 from ray.dashboard.utils import async_loop_forever, create_task
 
 logger = logging.getLogger(__name__)
@@ -54,20 +55,14 @@ class JobEventAgent(dashboard_utils.DashboardAgentModule):
         and retry forever.
         """
         while True:
-            if self._dashboard_http_address:
-                return self._dashboard_http_address
             try:
-                dashboard_http_address = await self._gcs_client.async_internal_kv_get(
-                    ray_constants.DASHBOARD_ADDRESS.encode(),
-                    namespace=ray_constants.KV_NAMESPACE_DASHBOARD,
-                    timeout=dashboard_consts.GCS_RPC_TIMEOUT_SECONDS,
-                )
-                if not dashboard_http_address:
-                    raise ValueError("Dashboard http address not found in InternalKV.")
-                self._dashboard_http_address = dashboard_http_address.decode()
+                if not self._dashboard_http_address:
+                    self._dashboard_http_address = await _fetch_dashboard_address(self._gcs_client)
+
                 return self._dashboard_http_address
             except Exception:
                 logger.exception("Get dashboard http address failed.")
+
             await asyncio.sleep(1)
 
     @async_loop_forever(event_consts.EVENT_AGENT_REPORT_INTERVAL_SECONDS)
