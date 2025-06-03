@@ -15,6 +15,7 @@ applications:
             min_replicas: 1
             max_replicas: 1024
             target_ongoing_requests: 8
+            downscale_delay_s: 10
           max_ongoing_requests: 16
       decode_config:
         model_loading_config:
@@ -31,6 +32,7 @@ applications:
             min_replicas: 1
             max_replicas: 1024
             target_ongoing_requests: 8
+            downscale_delay_s: 10
           max_ongoing_requests: 16
     import_path: ray.llm._internal.serve.deployments.prefill_decode_disagg.prefill_decode_disagg:build_app
     name: llm-endpoint
