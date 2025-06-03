@@ -82,7 +82,7 @@ async def _list_cluster_events_impl(
     )
 
 
-class EventHead(
+class JobEventHead(
     SubprocessModule,
     dashboard_utils.RateLimitedModule,
 ):
