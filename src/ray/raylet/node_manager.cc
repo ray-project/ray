@@ -163,12 +163,7 @@ NodeManager::NodeManager(
                     [this](const ObjectID &object_id) {
                       return dependency_manager_.CheckObjectLocal(object_id);
                     },
-                    /*delay_executor*/
-                    [this](std::function<void()> fn, int64_t delay_ms) {
-                      RAY_UNUSED(execute_after(io_service_,
-                                               std::move(fn),
-                                               std::chrono::milliseconds(delay_ms)));
-                    }),
+                    io_service_),
       node_manager_server_("NodeManager",
                            config.node_manager_port,
                            config.node_manager_address == "127.0.0.1"),

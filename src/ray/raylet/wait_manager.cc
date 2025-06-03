@@ -17,6 +17,7 @@
 #include <string>
 #include <vector>
 
+#include "ray/common/asio/asio_util.h"
 #include "ray/util/container_util.h"
 
 namespace ray {
@@ -56,7 +57,8 @@ void WaitManager::Wait(const std::vector<ObjectID> &object_ids,
     // If a timeout was provided, then set a timer. If there are no
     // enough locally available objects by the time the timer expires,
     // then we will return from the Wait.
-    delay_executor_(
+    RAY_UNUSED(execute_after(
+        io_context_,
         [this, wait_id]() {
           if (wait_requests_.find(wait_id) == wait_requests_.end()) {
             // The wait is already complete by the time the timer expires,
@@ -65,7 +67,7 @@ void WaitManager::Wait(const std::vector<ObjectID> &object_ids,
           }
           WaitComplete(wait_id);
         },
-        wait_request.timeout_ms);
+        std::chrono::milliseconds(wait_request.timeout_ms)));
   }
 }
 
