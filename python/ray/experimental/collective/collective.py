@@ -41,7 +41,7 @@ class RemoteCommunicatorManager:
         return popped
 
     def get_collective_groups(
-        self, actors: List[ray.actor.ActorHandle] = None, backend: Optional[str] = None
+        self, actors: Optional[List[ray.actor.ActorHandle]] = None, backend: Optional[str] = None
     ):
         """
         Get the collective groups that the given actors are a subset of. Filter by
