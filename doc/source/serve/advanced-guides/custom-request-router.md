@@ -118,7 +118,7 @@ for locality-aware request routing, and
 for multiplexed model support. It implements
 [`choose_replicas`](../api/doc/ray.serve.request_router.RequestRouter.choose_replicas.rst)
 to take the highest ranked replicas from [`rank_replicas_via_multiplex`](../api/doc/ray.serve.request_router.MultiplexMixin.rank_replicas_via_multiplex.rst)
-and [`rank_replicas_via_locality`](../api/doc/ray.serve.request_router.RequestRouter.rank_replicas_via_locality.rst)
+and [`rank_replicas_via_locality`](../api/doc/ray.serve.request_router.LocalityMixin.rank_replicas_via_locality.rst)
 and uses the [`select_available_replicas`](../api/doc/ray.serve.request_router.RequestRouter.select_available_replicas.rst)
 helper to filter out replicas that have reached their maximum request queue length.
 Finally, it takes the replicas with the minimum throughput and returns the top one.
