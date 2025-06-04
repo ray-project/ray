@@ -60,7 +60,7 @@ class AutoscalingActorPool(ABC):
         This includes task slots for pending actors.
         """
         return (
-            self.max_tasks_in_flight_per_actor() * self.current_size()
+            self.max_tasks_in_flight_per_actor() * self.num_running_actors()
             - self.current_in_flight_tasks()
         )
 
