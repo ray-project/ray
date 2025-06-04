@@ -624,7 +624,6 @@ bool LocalTaskManager::PoppedWorkerHandler(
           },
           rpc::RequestWorkerLeaseReply::SCHEDULING_CANCELLED_RUNTIME_ENV_SETUP_FAILED,
           /*scheduling_failure_message*/ runtime_env_setup_error_message);
-      erase_from_dispatch_queue_fn(work, scheduling_class);
     } else if (status == PopWorkerStatus::JobFinished) {
       // The task job finished.
       // Just remove the task from dispatch queue.
