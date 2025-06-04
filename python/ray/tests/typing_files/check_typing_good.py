@@ -1,6 +1,7 @@
 import ray
 from typing import Generator
 from ray import ObjectRef
+from ray.util.queue import Queue
 
 ray.init()
 
@@ -58,7 +59,6 @@ def generator_1() -> Generator[int, None, None]:
 
 gen = generator_1.remote()
 
-
 """
 TODO(sang): Enable it.
 Test generator
@@ -110,3 +110,46 @@ for more details.
 # gen4: ObjectRefGenerator[int] = async_generator_1.remote()
 # gen5: ObjectRefGenerator[int] = async_generator_2.remote()
 # gen6: ObjectRefGenerator[int] = async_generator_3.remote()
+
+
+def int_queue():
+    """Test the queue with int."""
+    items = [1, 2, 3]
+    queue = Queue[int]()
+    for i in items:
+        queue.put(i)
+    item: int = queue.get()
+    return item
+
+
+def float_queue():
+    """Test the queue with float."""
+    items = [1.0, 2.0, 3.0]
+    queue = Queue[float]()
+    for i in items:
+        queue.put(i)
+    item: float = queue.get()
+    return item
+
+
+def random_object_queue():
+    """Test the queue with random object."""
+
+    class RandomObject:
+        pass
+
+    items = [RandomObject(), RandomObject(), RandomObject()]
+    queue = Queue[RandomObject]()
+    for i in items:
+        queue.put(i)
+    item: RandomObject = queue.get()
+    return item
+
+
+async def async_queue():
+    items = ["1", "2", "3"]
+    queue = Queue[str]()
+    for i in items:
+        await queue.put_async(i)
+    item: str = await queue.get_async()
+    return item
