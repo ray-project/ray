@@ -14,9 +14,6 @@
 
 #pragma once
 
-#include <vector>
-
-#include "ray/gcs/gcs_server/gcs_kv_manager.h"
 #include "ray/gcs/gcs_server/gcs_table_storage.h"
 #include "ray/gcs/gcs_server/usage_stats_client.h"
 #include "ray/gcs/pubsub/gcs_pub_sub.h"
@@ -28,12 +25,15 @@ namespace gcs {
 /// This implementation class of `WorkerInfoHandler`.
 class GcsWorkerManager : public rpc::WorkerInfoHandler {
  public:
-  GcsWorkerManager(gcs::GcsTableStorage &gcs_table_storage,
-                   instrumented_io_context &io_context,
-                   GcsPublisher &gcs_publisher)
+  GcsWorkerManager(
+      gcs::GcsTableStorage &gcs_table_storage,
+      instrumented_io_context &io_context,
+      GcsPublisher &gcs_publisher,
+      std::function<void(std::shared_ptr<rpc::WorkerTableData>)> worker_dead_listener)
       : gcs_table_storage_(gcs_table_storage),
         io_context_(io_context),
-        gcs_publisher_(gcs_publisher) {}
+        gcs_publisher_(gcs_publisher),
+        worker_dead_listener_(std::move(worker_dead_listener)) {}
 
   void HandleReportWorkerFailure(rpc::ReportWorkerFailureRequest request,
                                  rpc::ReportWorkerFailureReply *reply,
@@ -61,9 +61,6 @@ class GcsWorkerManager : public rpc::WorkerInfoHandler {
       rpc::UpdateWorkerNumPausedThreadsReply *reply,
       rpc::SendReplyCallback send_reply_callback) override;
 
-  void AddWorkerDeadListener(
-      std::function<void(std::shared_ptr<rpc::WorkerTableData>)> listener);
-
   void SetUsageStatsClient(UsageStatsClient *usage_stats_client) {
     usage_stats_client_ = usage_stats_client;
   }
@@ -75,9 +72,8 @@ class GcsWorkerManager : public rpc::WorkerInfoHandler {
   gcs::GcsTableStorage &gcs_table_storage_;
   instrumented_io_context &io_context_;
   GcsPublisher &gcs_publisher_;
-  UsageStatsClient *usage_stats_client_;
-  std::vector<std::function<void(std::shared_ptr<rpc::WorkerTableData>)>>
-      worker_dead_listeners_;
+  UsageStatsClient *usage_stats_client_ = nullptr;
+  std::function<void(std::shared_ptr<rpc::WorkerTableData>)> worker_dead_listener_;
 
   /// Tracks the number of occurences of worker crash due to system error
   int32_t worker_crash_system_error_count_ = 0;

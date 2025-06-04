@@ -18,10 +18,10 @@
 #include <functional>
 #include <memory>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "absl/container/flat_hash_map.h"
-#include "absl/container/flat_hash_set.h"
 #include "ray/common/runtime_env_manager.h"
 #include "ray/gcs/gcs_server/gcs_function_manager.h"
 #include "ray/gcs/gcs_server/gcs_init_data.h"
@@ -57,16 +57,17 @@ class GcsJobManager : public rpc::JobInfoHandler {
                          GcsFunctionManager &function_manager,
                          InternalKVInterface &internal_kv,
                          instrumented_io_context &io_context,
+                         JobFinishListenerCallback job_finished_listener,
                          rpc::CoreWorkerClientFactoryFn client_factory = nullptr)
       : gcs_table_storage_(gcs_table_storage),
         gcs_publisher_(gcs_publisher),
+        job_finished_listener_(std::move(job_finished_listener)),
         runtime_env_manager_(runtime_env_manager),
         function_manager_(function_manager),
         internal_kv_(internal_kv),
         io_context_(io_context),
-        core_worker_clients_(client_factory) {
-    export_event_write_enabled_ = IsExportAPIEnabledDriverJob();
-  }
+        core_worker_clients_(std::move(client_factory)),
+        export_event_write_enabled_(IsExportAPIEnabledDriverJob()) {}
 
   void Initialize(const GcsInitData &gcs_init_data);
 
@@ -90,8 +91,6 @@ class GcsJobManager : public rpc::JobInfoHandler {
                           rpc::GetNextJobIDReply *reply,
                           rpc::SendReplyCallback send_reply_callback) override;
 
-  void AddJobFinishedListener(JobFinishListenerCallback listener) override;
-
   std::shared_ptr<rpc::JobConfig> GetJobConfig(const JobID &job_id) const;
 
   /// Handle a node death. This will marks all jobs associated with the
@@ -100,7 +99,7 @@ class GcsJobManager : public rpc::JobInfoHandler {
   /// \param node_id The specified node id.
   void OnNodeDead(const NodeID &node_id);
 
-  void WriteDriverJobExportEvent(rpc::JobTableData job_data) const;
+  void WriteDriverJobExportEvent(const rpc::JobTableData &job_data) const;
 
   // Verify if export events should be written for EXPORT_DRIVER_JOB source types
   bool IsExportAPIEnabledDriverJob() const {
@@ -116,7 +115,7 @@ class GcsJobManager : public rpc::JobInfoHandler {
   void RecordMetrics();
 
  private:
-  void ClearJobInfos(const rpc::JobTableData &job_data);
+  void ClearJobInfos(const rpc::JobTableData &job_data, JobID job_id);
 
   void MarkJobAsFinished(rpc::JobTableData job_table_data,
                          std::function<void(Status)> done_callback);
@@ -135,8 +134,8 @@ class GcsJobManager : public rpc::JobInfoHandler {
   GcsTableStorage &gcs_table_storage_;
   GcsPublisher &gcs_publisher_;
 
-  /// Listeners which monitors the finish of jobs.
-  std::vector<JobFinishListenerCallback> job_finished_listeners_;
+  /// Listener which monitors the finish of jobs.
+  JobFinishListenerCallback job_finished_listener_;
 
   /// A cached mapping from job id to job config.
   absl::flat_hash_map<JobID, std::shared_ptr<rpc::JobConfig>> cached_job_configs_;

@@ -110,15 +110,8 @@ class GcsServer {
   /// Retrieve cluster ID
   const ClusterID &GetClusterId() const { return rpc_server_.GetClusterId(); }
 
-  // TODO(vitsai): string <=> enum generator macro
-  enum class StorageType {
-    UNKNOWN = 0,
-    IN_MEMORY = 1,
-    REDIS_PERSIST = 2,
-  };
-
-  static constexpr char kInMemoryStorage[] = "memory";
-  static constexpr char kRedisStorage[] = "redis";
+  static constexpr std::string_view kInMemoryStorage = "memory";
+  static constexpr std::string_view kRedisStorage = "redis";
 
   void UpdateGcsResourceManagerInTest(
       const NodeID &node_id,
@@ -127,7 +120,7 @@ class GcsServer {
     gcs_resource_manager_->UpdateFromResourceView(node_id, resource_view_sync_message);
   }
 
- protected:
+ private:
   /// Generate the redis client options
   RedisClientOptions GetRedisClientOptions() const;
 
@@ -187,12 +180,11 @@ class GcsServer {
   // Init RuntimeENv manager
   void InitRuntimeEnvManager();
 
-  /// Install event listeners.
-  void InstallEventListeners();
+  /// Install event listeners for gcs actor scheduling.
+  void InstallActorSchedulingEventListeners();
 
- private:
   /// Gets the type of KV storage to use from config.
-  StorageType GetStorageType() const;
+  std::string_view GetStorageType() const;
 
   /// Print debug info periodically.
   std::string GetDebugState() const;
@@ -224,7 +216,7 @@ class GcsServer {
   /// Gcs server configuration.
   const GcsServerConfig config_;
   // Type of storage to use.
-  const StorageType storage_type_;
+  const std::string_view storage_type_;
   /// The grpc server
   rpc::GrpcServer rpc_server_;
   /// The `ClientCallManager` object that is shared by all `NodeManagerWorkerClient`s.

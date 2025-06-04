@@ -21,7 +21,7 @@
 #include <utility>
 #include <vector>
 
-#include "ray/gcs/pb_util.h"
+#include "absl/strings/match.h"
 #include "ray/stats/metric.h"
 
 namespace ray {
@@ -40,14 +40,14 @@ void GcsJobManager::Initialize(const GcsInitData &gcs_init_data) {
   }
 }
 
-void GcsJobManager::WriteDriverJobExportEvent(rpc::JobTableData job_data) const {
+void GcsJobManager::WriteDriverJobExportEvent(const rpc::JobTableData &job_data) const {
   /// Write job_data as a export driver job event if
   /// enable_export_api_write() is enabled and if this job is
   /// not in the _ray_internal_ namespace.
   if (!export_event_write_enabled_) {
     return;
   }
-  if (job_data.config().ray_namespace().find(kRayInternalNamespacePrefix) == 0) {
+  if (absl::StartsWith(job_data.config().ray_namespace(), kRayInternalNamespacePrefix)) {
     // Namespace of this job starts with _ray_internal_ so
     // don't write export event.
     return;
@@ -64,23 +64,6 @@ void GcsJobManager::WriteDriverJobExportEvent(rpc::JobTableData job_data) const 
       job_data.driver_address().ip_address());
   export_driver_job_data_ptr->mutable_config()->mutable_metadata()->insert(
       job_data.config().metadata().begin(), job_data.config().metadata().end());
-
-  auto export_runtime_env_info =
-      export_driver_job_data_ptr->mutable_config()->mutable_runtime_env_info();
-  export_runtime_env_info->set_serialized_runtime_env(
-      job_data.config().runtime_env_info().serialized_runtime_env());
-  auto export_runtime_env_uris = export_runtime_env_info->mutable_uris();
-  export_runtime_env_uris->set_working_dir_uri(
-      job_data.config().runtime_env_info().uris().working_dir_uri());
-  export_runtime_env_uris->mutable_py_modules_uris()->CopyFrom(
-      job_data.config().runtime_env_info().uris().py_modules_uris());
-  auto export_runtime_env_config = export_runtime_env_info->mutable_runtime_env_config();
-  export_runtime_env_config->set_setup_timeout_seconds(
-      job_data.config().runtime_env_info().runtime_env_config().setup_timeout_seconds());
-  export_runtime_env_config->set_eager_install(
-      job_data.config().runtime_env_info().runtime_env_config().eager_install());
-  export_runtime_env_config->mutable_log_files()->CopyFrom(
-      job_data.config().runtime_env_info().runtime_env_config().log_files());
 
   RayExportEvent(export_driver_job_data_ptr).SendEvent();
 }
@@ -152,7 +135,7 @@ void GcsJobManager::MarkJobAsFinished(rpc::JobTableData job_table_data,
     } else {
       RAY_CHECK_OK(gcs_publisher_.PublishJob(job_id, job_table_data, nullptr));
       runtime_env_manager_.RemoveURIReference(job_id.Hex());
-      ClearJobInfos(job_table_data);
+      ClearJobInfos(job_table_data, job_id);
       RAY_LOG(INFO) << "Finished marking job state, job id = " << job_id;
     }
     function_manager_.RemoveJobReference(job_id);
@@ -213,25 +196,9 @@ void GcsJobManager::HandleMarkJobFinished(rpc::MarkJobFinishedRequest request,
   }
 }
 
-void GcsJobManager::ClearJobInfos(const rpc::JobTableData &job_data) {
-  // Notify all listeners.
-  for (auto &listener : job_finished_listeners_) {
-    listener(job_data);
-  }
-  // Clear cache.
-  // TODO(qwang): This line will cause `test_actor_advanced.py::test_detached_actor`
-  // case fail under GCS HA mode. Because detached actor is still alive after
-  // job is finished. After `DRIVER_EXITED` state being introduced in issue
-  // https://github.com/ray-project/ray/issues/21128, this line should work.
-  // RAY_UNUSED(cached_job_configs_.erase(job_id));
-}
-
-/// Add listener to monitor the add action of nodes.
-///
-/// \param listener The handler which process the add of nodes.
-void GcsJobManager::AddJobFinishedListener(JobFinishListenerCallback listener) {
-  RAY_CHECK(listener);
-  job_finished_listeners_.emplace_back(std::move(listener));
+void GcsJobManager::ClearJobInfos(const rpc::JobTableData &job_data, JobID job_id) {
+  job_finished_listener_(job_data);
+  RAY_CHECK_EQ(cached_job_configs_.erase(job_id), 1);
 }
 
 void GcsJobManager::HandleGetAllJobInfo(rpc::GetAllJobInfoRequest request,
@@ -414,7 +381,7 @@ void GcsJobManager::HandleGetAllJobInfo(rpc::GetAllJobInfoRequest request,
            send_reply_callback,
            job_data_key_to_indices,
            num_finished_tasks,
-           try_send_reply](auto result) {
+           try_send_reply](const auto &result) {
             for (const auto &data : result) {
               const std::string &job_data_key = data.first;
               // The JobInfo stored by the Ray Job API.
