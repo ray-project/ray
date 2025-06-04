@@ -191,6 +191,7 @@ class Dataset_ETT_hour(Dataset):
         ]
 
         return encoder_input_sequence, target_sequence
+
     def __len__(self):
         # The number of samples this dataset can generate depends on the total length of the data,
         # the input sequence length, and the prediction horizon.
