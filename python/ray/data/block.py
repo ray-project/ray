@@ -51,6 +51,10 @@ AggType = TypeVar("AggType")
 # ``ArrowBlockAccessor``.
 Block = Union["pyarrow.Table", "pandas.DataFrame"]
 
+# Represents the schema of a block, which can be either a Python type or a
+# pyarrow schema. This is used to describe the structure of the data in a block.
+Schema = Union[type, "PandasBlockSchema", "pyarrow.lib.Schema"]
+
 # Represents a single column of the ``Block``
 BlockColumn = Union["pyarrow.ChunkedArray", "pyarrow.Array", "pandas.Series"]
 
@@ -228,21 +232,12 @@ class BlockMetadata(BlockStats):
 @dataclass
 class MetadataAndSchema:
     metadata: BlockMetadata
-    schema: Optional[Union[type, "PandasBlockSchema", "pa.lib.Schema"]]
-
-
-def _unzip_list_of_tuples(n: int, data: List[Tuple[Any, ...]]) -> Tuple[List[Any], ...]:
-    if not data:
-        return tuple([] for _ in range(n))
-    return tuple(map(list, zip(*data)))
+    schema: Optional["Schema"]
 
 
 def _decompose_metadata_and_schema(
     iterable: Iterable["MetadataAndSchema"],
-) -> Tuple[
-    List["BlockMetadata"],
-    List[Optional[Union[type, "PandasBlockSchema", "pa.lib.Schema"]]],
-]:
+) -> Tuple[List["BlockMetadata"], List[Optional["Schema"]]]:
     metadatas = []
     schemas = []
     for item in iterable:
@@ -658,7 +653,6 @@ class BlockColumnAccessor:
         _check_pyarrow_version()
 
         import pandas as pd
-        import pyarrow as pa
 
         if isinstance(col, pa.Array) or isinstance(col, pa.ChunkedArray):
             from ray.data._internal.arrow_block import ArrowBlockColumnAccessor

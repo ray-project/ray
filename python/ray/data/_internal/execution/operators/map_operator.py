@@ -61,9 +61,8 @@ from ray.data.context import DataContext
 from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
 
 if TYPE_CHECKING:
-    import pyarrow as pa
 
-    from ray.data.block import PandasBlockSchema
+    from ray.data.block import Schema
 logger = logging.getLogger(__name__)
 
 
@@ -389,7 +388,7 @@ class MapOperator(OneToOneOperator, InternalQueueOperatorMixin, ABC):
         def _output_ready_callback(
             task_index,
             output: RefBundle,
-            schema: Union[type, "PandasBlockSchema", "pa.lib.Schema"],
+            schema: "Schema",
         ):
             # Since output is streamed, it should only contain one block.
             assert len(output) == 1

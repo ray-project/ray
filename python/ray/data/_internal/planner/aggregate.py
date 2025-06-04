@@ -1,9 +1,12 @@
-from typing import TYPE_CHECKING, List, Optional, Tuple, Union
+from typing import TYPE_CHECKING, List, Optional, Union
 
 from ray.data._internal.execution.interfaces import (
     AllToAllTransformFn,
     RefBundle,
     TaskContext,
+)
+from ray.data._internal.execution.interfaces.transform_fn import (
+    AllToAllTransformFnResult,
 )
 from ray.data._internal.planner.exchange.aggregate_task_spec import (
     SortAggregateTaskSpec,
@@ -15,14 +18,12 @@ from ray.data._internal.planner.exchange.push_based_shuffle_task_scheduler impor
     PushBasedShuffleTaskScheduler,
 )
 from ray.data._internal.planner.exchange.sort_task_spec import SortKey, SortTaskSpec
-from ray.data._internal.stats import StatsDict
 from ray.data.aggregate import AggregateFn
 from ray.data.context import DataContext, ShuffleStrategy
 
 if TYPE_CHECKING:
-    import pyarrow as pa
 
-    from ray.data.block import PandasBlockSchema
+    from ray.data.block import Schema
 
 
 def generate_aggregate_fn(
@@ -45,16 +46,16 @@ def generate_aggregate_fn(
 
     def fn(
         refs: List[RefBundle],
-        schema: Optional[Union[type, "PandasBlockSchema", "pa.lib.Schema"]],
+        schema: Optional["Schema"],
         ctx: TaskContext,
-    ) -> Tuple[List[RefBundle], StatsDict]:
+    ) -> AllToAllTransformFnResult:
         blocks = []
         metadata = []
         for ref_bundle in refs:
             blocks.extend(ref_bundle.block_refs)
             metadata.extend(ref_bundle.metadata)
         if len(blocks) == 0:
-            return (blocks, {}, schema)
+            return (blocks, {}, None)
         for agg_fn in aggs:
             agg_fn._validate(schema)
 

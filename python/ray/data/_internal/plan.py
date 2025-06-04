@@ -8,10 +8,9 @@ import pyarrow
 import ray
 from ray._private.internal_api import get_memory_info_reply, get_state_from_address
 from ray.data._internal.execution.interfaces import RefBundle
-from ray.data._internal.logical.interfaces import SourceOperatorMixin
+from ray.data._internal.logical.interfaces import SourceOperator
 from ray.data._internal.logical.interfaces.logical_operator import LogicalOperator
 from ray.data._internal.logical.interfaces.logical_plan import LogicalPlan
-from ray.data._internal.logical.interfaces.source_operator import GuessMetadataMixin
 from ray.data._internal.logical.operators.read_operator import Read
 from ray.data._internal.stats import DatasetStats
 from ray.data.block import BlockMetadata
@@ -137,7 +136,7 @@ class ExecutionPlan:
             ):
                 """Traverse (DFS) the LogicalPlan DAG and
                 return a string representation of the operators."""
-                if isinstance(op, SourceOperatorMixin):
+                if isinstance(op, SourceOperator):
                     return curr_str, depth
 
                 curr_max_depth = depth
@@ -171,7 +170,7 @@ class ExecutionPlan:
                 has_n_ary_operator = False
                 dag = self._logical_plan.dag
 
-                while not isinstance(dag, SourceOperatorMixin):
+                while not isinstance(dag, SourceOperator):
                     if len(dag.input_dependencies) > 1:
                         has_n_ary_operator = True
                         break
@@ -183,7 +182,7 @@ class ExecutionPlan:
                     schema = None
                     count = None
                 else:
-                    assert isinstance(dag, SourceOperatorMixin), dag
+                    assert isinstance(dag, SourceOperator), dag
                     plan = ExecutionPlan(
                         DatasetStats(metadata={}, parent=None),
                         self._context,
@@ -369,9 +368,7 @@ class ExecutionPlan:
         if self._schema is not None:
             return self._schema
 
-        schema = None
-        if isinstance(self._logical_plan.dag, GuessMetadataMixin):
-            schema = self._logical_plan.dag.guess_schema()
+        schema = self._logical_plan.dag.infer_schema()
         if schema is None and fetch_if_missing:
             # For consistency with the previous implementation, we fetch the schema if
             # the plan is read-only even if `fetch_if_missing` is False.
@@ -394,9 +391,7 @@ class ExecutionPlan:
 
     def input_files(self) -> Optional[List[str]]:
         """Get the input files of the dataset, if available."""
-        if isinstance(self._logical_plan.dag, GuessMetadataMixin):
-            return self._logical_plan.dag.guess_metadata().input_files
-        return None
+        return self._logical_plan.dag.infer_metadata().input_files
 
     def meta_count(self) -> Optional[int]:
         """Get the number of rows after applying all plan optimizations, if possible.
@@ -409,11 +404,8 @@ class ExecutionPlan:
         dag = self._logical_plan.dag
         if self.has_computed_output():
             num_rows = sum(m.num_rows for m in self._snapshot_bundle.metadata)
-        elif (
-            isinstance(dag, GuessMetadataMixin)
-            and dag.guess_metadata().num_rows is not None
-        ):
-            num_rows = dag.guess_metadata().num_rows
+        elif dag.infer_metadata().num_rows is not None:
+            num_rows = dag.infer_metadata().num_rows
         else:
             num_rows = None
         return num_rows
@@ -491,7 +483,7 @@ class ExecutionPlan:
             )
 
             if (
-                isinstance(self._logical_plan.dag, SourceOperatorMixin)
+                isinstance(self._logical_plan.dag, SourceOperator)
                 and self._logical_plan.dag.output_data() is not None
             ):
                 # If the data is already materialized (e.g., `from_pandas`), we can
@@ -503,7 +495,7 @@ class ExecutionPlan:
                 # `List[RefBundle]` instead of `RefBundle`. Among other reasons, it'd
                 # allow us to remove the unwrapping logic below.
                 output_bundles = self._logical_plan.dag.output_data()
-                schema = self._logical_plan.dag.guess_schema()
+                schema = self._logical_plan.dag.infer_schema()
                 owns_blocks = all(bundle.owns_blocks for bundle in output_bundles)
                 bundle = RefBundle(
                     [

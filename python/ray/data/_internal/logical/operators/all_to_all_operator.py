@@ -1,6 +1,6 @@
-from typing import TYPE_CHECKING, Any, Dict, List, Optional, Union
+from typing import TYPE_CHECKING, Any, Dict, List, Optional
 
-from ray.data._internal.logical.interfaces import GuessMetadataMixin, LogicalOperator
+from ray.data._internal.logical.interfaces import LogicalOperator
 from ray.data._internal.planner.exchange.interfaces import ExchangeTaskSpec
 from ray.data._internal.planner.exchange.shuffle_task_spec import ShuffleTaskSpec
 from ray.data._internal.planner.exchange.sort_task_spec import SortKey, SortTaskSpec
@@ -8,9 +8,8 @@ from ray.data.aggregate import AggregateFn
 from ray.data.block import BlockMetadata
 
 if TYPE_CHECKING:
-    import pyarrow as pa
 
-    from ray.data.block import PandasBlockSchema
+    from ray.data.block import Schema
 
 
 class AbstractAllToAll(LogicalOperator):
@@ -42,7 +41,7 @@ class AbstractAllToAll(LogicalOperator):
         self._sub_progress_bar_names = sub_progress_bar_names
 
 
-class RandomizeBlocks(GuessMetadataMixin, AbstractAllToAll):
+class RandomizeBlocks(AbstractAllToAll):
     """Logical operator for randomize_block_order."""
 
     def __init__(
@@ -56,24 +55,20 @@ class RandomizeBlocks(GuessMetadataMixin, AbstractAllToAll):
         )
         self._seed = seed
 
-    def guess_metadata(self) -> "BlockMetadata":
+    def infer_metadata(self) -> "BlockMetadata":
         assert len(self._input_dependencies) == 1, len(self._input_dependencies)
-        inp = self.input_dependencies[0]
-        if isinstance(inp, GuessMetadataMixin):
-            return inp.guess_metadata()
-        return BlockMetadata(None, None, None, None)
+        assert isinstance(self._input_dependencies[0], LogicalOperator)
+        return self._input_dependencies[0].infer_metadata()
 
-    def guess_schema(
+    def infer_schema(
         self,
-    ) -> Optional[Union[type, "PandasBlockSchema", "pa.lib.Schema"]]:
+    ) -> Optional["Schema"]:
         assert len(self._input_dependencies) == 1, len(self._input_dependencies)
-        inp = self.input_dependencies[0]
-        if isinstance(inp, GuessMetadataMixin):
-            return inp.guess_schema()
-        return None
+        assert isinstance(self._input_dependencies[0], LogicalOperator)
+        return self._input_dependencies[0].infer_schema()
 
 
-class RandomShuffle(AbstractAllToAll, GuessMetadataMixin):
+class RandomShuffle(AbstractAllToAll):
     """Logical operator for random_shuffle."""
 
     def __init__(
@@ -94,24 +89,20 @@ class RandomShuffle(AbstractAllToAll, GuessMetadataMixin):
         )
         self._seed = seed
 
-    def guess_metadata(self) -> "BlockMetadata":
+    def infer_metadata(self) -> "BlockMetadata":
         assert len(self._input_dependencies) == 1, len(self._input_dependencies)
-        inp = self.input_dependencies[0]
-        if isinstance(inp, GuessMetadataMixin):
-            return inp.guess_metadata()
-        return BlockMetadata(None, None, None, None)
+        assert isinstance(self._input_dependencies[0], LogicalOperator)
+        return self._input_dependencies[0].infer_metadata()
 
-    def guess_schema(
+    def infer_schema(
         self,
-    ) -> Optional[Union[type, "PandasBlockSchema", "pa.lib.Schema"]]:
+    ) -> Optional["Schema"]:
         assert len(self._input_dependencies) == 1, len(self._input_dependencies)
-        inp = self.input_dependencies[0]
-        if isinstance(inp, GuessMetadataMixin):
-            return inp.guess_schema()
-        return None
+        assert isinstance(self._input_dependencies[0], LogicalOperator)
+        return self._input_dependencies[0].infer_schema()
 
 
-class Repartition(GuessMetadataMixin, AbstractAllToAll):
+class Repartition(AbstractAllToAll):
     """Logical operator for repartition."""
 
     def __init__(
@@ -141,24 +132,20 @@ class Repartition(GuessMetadataMixin, AbstractAllToAll):
         self._keys = keys
         self._sort = sort
 
-    def guess_metadata(self) -> "BlockMetadata":
+    def infer_metadata(self) -> "BlockMetadata":
         assert len(self._input_dependencies) == 1, len(self._input_dependencies)
-        inp = self.input_dependencies[0]
-        if isinstance(inp, GuessMetadataMixin):
-            return inp.guess_metadata()
-        return BlockMetadata(None, None, None, None)
+        assert isinstance(self._input_dependencies[0], LogicalOperator)
+        return self._input_dependencies[0].infer_metadata()
 
-    def guess_schema(
+    def infer_schema(
         self,
-    ) -> Optional[Union[type, "PandasBlockSchema", "pa.lib.Schema"]]:
+    ) -> Optional["Schema"]:
         assert len(self._input_dependencies) == 1, len(self._input_dependencies)
-        inp = self.input_dependencies[0]
-        if isinstance(inp, GuessMetadataMixin):
-            return inp.guess_schema()
-        return None
+        assert isinstance(self._input_dependencies[0], LogicalOperator)
+        return self._input_dependencies[0].infer_schema()
 
 
-class Sort(GuessMetadataMixin, AbstractAllToAll):
+class Sort(AbstractAllToAll):
     """Logical operator for sort."""
 
     def __init__(
@@ -179,21 +166,17 @@ class Sort(GuessMetadataMixin, AbstractAllToAll):
         self._sort_key = sort_key
         self._batch_format = batch_format
 
-    def guess_metadata(self) -> "BlockMetadata":
+    def infer_metadata(self) -> "BlockMetadata":
         assert len(self._input_dependencies) == 1, len(self._input_dependencies)
-        inp = self.input_dependencies[0]
-        if isinstance(inp, GuessMetadataMixin):
-            return inp.guess_metadata()
-        return BlockMetadata(None, None, None, None)
+        assert isinstance(self._input_dependencies[0], LogicalOperator)
+        return self._input_dependencies[0].infer_metadata()
 
-    def guess_schema(
+    def infer_schema(
         self,
-    ) -> Optional[Union[type, "PandasBlockSchema", "pa.lib.Schema"]]:
+    ) -> Optional["Schema"]:
         assert len(self._input_dependencies) == 1, len(self._input_dependencies)
-        inp = self.input_dependencies[0]
-        if isinstance(inp, GuessMetadataMixin):
-            return inp.guess_schema()
-        return None
+        assert isinstance(self._input_dependencies[0], LogicalOperator)
+        return self._input_dependencies[0].infer_schema()
 
 
 class Aggregate(AbstractAllToAll):

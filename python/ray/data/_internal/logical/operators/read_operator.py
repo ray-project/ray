@@ -1,13 +1,13 @@
 import functools
 from typing import Any, Dict, Optional, Union
 
-from ray.data._internal.logical.interfaces import SourceOperatorMixin
+from ray.data._internal.logical.interfaces import SourceOperator
 from ray.data._internal.logical.operators.map_operator import AbstractMap
 from ray.data.block import BlockMetadata
 from ray.data.datasource.datasource import Datasource, Reader
 
 
-class Read(AbstractMap, SourceOperatorMixin):
+class Read(AbstractMap, SourceOperator):
     """Logical operator for read."""
 
     def __init__(
@@ -49,7 +49,7 @@ class Read(AbstractMap, SourceOperatorMixin):
         """
         return self._detected_parallelism
 
-    def guess_metadata(self) -> BlockMetadata:
+    def infer_metadata(self) -> BlockMetadata:
         """A ``BlockMetadata`` that represents the aggregate metadata of the outputs.
 
         This method gets metadata from the read tasks. It doesn't trigger any actual
@@ -57,7 +57,7 @@ class Read(AbstractMap, SourceOperatorMixin):
         """
         return self._cached_output_metadata
 
-    def guess_schema(self):
+    def infer_schema(self):
         return self._datasource.get_schema()
 
     @functools.cached_property

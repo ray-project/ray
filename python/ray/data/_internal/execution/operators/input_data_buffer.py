@@ -1,4 +1,4 @@
-from typing import TYPE_CHECKING, Callable, List, Optional, Union
+from typing import TYPE_CHECKING, Callable, List, Optional
 
 from ray.data._internal.execution.interfaces import (
     ExecutionOptions,
@@ -9,9 +9,8 @@ from ray.data._internal.stats import StatsDict
 from ray.data.context import DataContext
 
 if TYPE_CHECKING:
-    import pyarrow as pa
 
-    from ray.data.block import PandasBlockSchema
+    from ray.data.block import Schema
 
 
 class InputDataBuffer(PhysicalOperator):
@@ -27,7 +26,7 @@ class InputDataBuffer(PhysicalOperator):
         input_data: Optional[List[RefBundle]] = None,
         input_data_factory: Optional[Callable[[int], List[RefBundle]]] = None,
         num_output_blocks: Optional[int] = None,
-        schema: Optional[Union[type, "PandasBlockSchema", "pa.lib.Schema"]] = None,
+        schema: Optional["Schema"] = None,
     ):
         """Create an InputDataBuffer.
 

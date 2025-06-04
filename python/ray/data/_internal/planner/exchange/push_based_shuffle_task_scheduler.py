@@ -13,6 +13,7 @@ from ray.data._internal.progress_bar import ProgressBar
 from ray.data._internal.remote_fn import cached_remote_fn
 from ray.data._internal.stats import StatsDict
 from ray.data._internal.util import (
+    _unzip_list_of_tuples,
     convert_bytes_to_human_readable_str,
     unify_block_metadata_schema,
 )
@@ -23,7 +24,6 @@ from ray.data.block import (
     BlockMetadata,
     MetadataAndSchema,
     _decompose_metadata_and_schema,
-    _unzip_list_of_tuples,
     to_stats,
 )
 from ray.data.context import DataContext
@@ -31,9 +31,8 @@ from ray.types import ObjectRef
 from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
 
 if TYPE_CHECKING:
-    import pyarrow as pa
 
-    from ray.data.block import MetadataAndSchema, PandasBlockSchema
+    from ray.data.block import MetadataAndSchema, Schema
 
 logger = logging.getLogger(__name__)
 
@@ -458,9 +457,7 @@ class PushBasedShuffleTaskScheduler(ExchangeTaskScheduler):
         reduce_ray_remote_args: Optional[Dict[str, Any]] = None,
         merge_factor: float = 2,
         _debug_limit_execution_to_num_blocks: int = None,
-    ) -> Tuple[
-        List[RefBundle], StatsDict, Union[type, "PandasBlockSchema", "pa.lib.Schema"]
-    ]:
+    ) -> Tuple[List[RefBundle], StatsDict, "Schema"]:
         logger.debug("Using experimental push-based shuffle.")
         # TODO: Preemptively clear the blocks list since we will incrementally delete
         # the last remaining references as we submit the dependent map tasks during the

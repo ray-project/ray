@@ -10,9 +10,8 @@ from ray.data.block import Block, BlockType
 from ray.data.context import DataContext
 
 if TYPE_CHECKING:
-    import pyarrow as pa
 
-    from ray.data.block import MetadataAndSchema, PandasBlockSchema
+    from ray.data.block import MetadataAndSchema, Schema
 
 logger = logging.getLogger(__name__)
 
@@ -112,9 +111,7 @@ class ExchangeTaskScheduler:
         map_ray_remote_args: Optional[Dict[str, Any]] = None,
         reduce_ray_remote_args: Optional[Dict[str, Any]] = None,
         warn_on_driver_memory_usage: Optional[int] = None,
-    ) -> Tuple[
-        List[RefBundle], StatsDict, Union[type, "PandasBlockSchema", "pa.lib.Schema"]
-    ]:
+    ) -> Tuple[List[RefBundle], StatsDict, "Schema"]:
         """
         Execute the exchange tasks on input `refs`.
         """

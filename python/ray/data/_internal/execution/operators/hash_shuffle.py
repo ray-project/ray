@@ -50,7 +50,7 @@ from ray.data.block import (
 )
 
 if TYPE_CHECKING:
-    from ray.data.block import MetadataAndSchema, PandasBlockSchema
+    from ray.data.block import MetadataAndSchema, Schema
 
 logger = logging.getLogger(__name__)
 
@@ -596,9 +596,7 @@ class HashShufflingOperatorBase(PhysicalOperator):
             f"partition id is {self._last_finalized_partition_id})"
         )
 
-        def _on_bundle_ready(
-            bundle: RefBundle, schema: Union[type, "PandasBlockSchema", "pa.lib.Schema"]
-        ):
+        def _on_bundle_ready(bundle: RefBundle, schema: "Schema"):
             assert schema is not None
             # unify schemas
             self.unify_schemas(schema)

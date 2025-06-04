@@ -43,6 +43,7 @@ if TYPE_CHECKING:
     from ray.data.block import (
         Block,
         MetadataAndSchema,
+        Schema,
         UserDefinedFunction,
     )
     from ray.data.datasource import Datasource, Reader
@@ -723,10 +724,17 @@ def get_table_block_metadata_schema(
 
 
 def unify_block_metadata_schema(
-    schemas_to_unify: List["pyarrow.lib.Schema"],
-) -> Optional[Union[type, "pyarrow.lib.Schema"]]:
+    schemas_to_unify: List["Schema"],
+) -> Optional[Union["Schema"]]:
     """For the input list of BlockMetadata, return a unified schema of the
     corresponding blocks. If the metadata have no valid schema, returns None.
+
+    Args:
+        schemas_to_unify: List of schemas to unify
+
+    Returns:
+        A unified schema of the input list of schemas, or None if no valid schemas
+        are provided.
     """
     # Some blocks could be empty, in which case we cannot get their schema.
     # TODO(ekl) validate schema is the same across different blocks.
@@ -734,10 +742,6 @@ def unify_block_metadata_schema(
 
     # First check if there are blocks with computed schemas, then unify
     # valid schemas from all such blocks.
-    # schemas_to_unify = []
-    # for schema in schemas:
-    #     if schema is not None and (m.num_rows is None or m.num_rows > 0):
-    #         schemas_to_unify.append(m.schema)
     if schemas_to_unify:
         # Check valid pyarrow installation before attempting schema unification
         try:
@@ -1661,3 +1665,16 @@ class MemoryProfiler:
     def _can_estimate_uss() -> bool:
         # MacOS and Windows don't have the 'shared' attribute of `memory_info()`.
         return platform.system() == "Linux"
+
+
+def _unzip_list_of_tuples(n: int, data: List[Tuple[Any, ...]]) -> Tuple[List[Any], ...]:
+    """Unzips a list of tuples into a tuple of lists safely by handling empty input.
+
+    Args:
+        n: The number of elements in each tuple. This is used to ensure the output
+            tuple has the correct number of lists when the input is empty.
+        data: A list of tuples to unzip.
+    """
+    if not data:
+        return tuple([] for _ in range(n))
+    return tuple(map(list, zip(*data)))

@@ -1,6 +1,6 @@
 import itertools
 import logging
-from typing import TYPE_CHECKING, List, Optional, Tuple, Union
+from typing import TYPE_CHECKING, List, Optional
 
 from ray.data._internal.compute import (
     ActorPoolStrategy,
@@ -11,6 +11,9 @@ from ray.data._internal.execution.interfaces import (
     PhysicalOperator,
     RefBundle,
     TaskContext,
+)
+from ray.data._internal.execution.interfaces.transform_fn import (
+    AllToAllTransformFnResult,
 )
 from ray.data._internal.execution.operators.actor_pool_map_operator import (
     ActorPoolMapOperator,
@@ -32,13 +35,11 @@ from ray.data._internal.logical.operators.map_operator import (
     AbstractMap,
     AbstractUDFMap,
 )
-from ray.data._internal.stats import StatsDict
 from ray.data.context import DataContext
 
 if TYPE_CHECKING:
-    import pyarrow as pa
 
-    from ray.data.block import PandasBlockSchema
+    from ray.data.block import Schema
 
 # Scheduling strategy can be inherited from upstream operator if not specified.
 INHERITABLE_REMOTE_ARGS = ["scheduling_strategy"]
@@ -419,9 +420,9 @@ class FuseOperators(Rule):
 
         def fused_all_to_all_transform_fn(
             blocks: List[RefBundle],
-            schema: Union[type, "PandasBlockSchema", "pa.lib.Schema"],
+            schema: "Schema",
             ctx: TaskContext,
-        ) -> Tuple[List[RefBundle], StatsDict]:
+        ) -> AllToAllTransformFnResult:
             """To fuse MapOperator->AllToAllOperator, we store the map function
             in the TaskContext so that it may be used by the downstream
             AllToAllOperator's transform function."""

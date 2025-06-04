@@ -77,7 +77,7 @@ def _register_default_plan_logical_op_fns():
         return InputDataBuffer(
             data_context,
             input_data=logical_op.input_data,
-            schema=logical_op.guess_schema(),
+            schema=logical_op.infer_schema(),
         )
 
     register_plan_logical_op_fn(InputData, plan_input_data_op)
@@ -89,7 +89,7 @@ def _register_default_plan_logical_op_fns():
         data_context: DataContext,
     ) -> PhysicalOperator:
         assert len(physical_children) == 0
-        return InputDataBuffer(data_context, op.input_data, schema=op.guess_schema())
+        return InputDataBuffer(data_context, op.input_data, schema=op.infer_schema())
 
     register_plan_logical_op_fn(AbstractFrom, plan_from_op)
     # Filter is also a AbstractUDFMap, so it needs to resolve

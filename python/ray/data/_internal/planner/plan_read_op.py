@@ -97,7 +97,7 @@ def plan_read_op(
         return ret
 
     inputs = InputDataBuffer(
-        data_context, input_data_factory=get_input_data, schema=op.guess_schema()
+        data_context, input_data_factory=get_input_data, schema=op.infer_schema()
     )
 
     def do_read(blocks: Iterable[ReadTask], _: TaskContext) -> Iterable[Block]:

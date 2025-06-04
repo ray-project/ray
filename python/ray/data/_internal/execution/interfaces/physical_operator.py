@@ -33,9 +33,8 @@ from ray.data._internal.util import unify_block_metadata_schema
 from ray.data.context import DataContext
 
 if TYPE_CHECKING:
-    import pyarrow as pa
 
-    from ray.data.block import MetadataAndSchema, PandasBlockSchema
+    from ray.data.block import MetadataAndSchema, Schema
 
 logger = logging.getLogger(__name__)
 
@@ -94,9 +93,7 @@ class DataOpTask(OpTask):
         self,
         task_index: int,
         streaming_gen: ObjectRefGenerator,
-        output_ready_callback: Callable[
-            [RefBundle, Union[type, "PandasBlockSchema", "pa.lib.Schema"]], None
-        ],
+        output_ready_callback: Callable[[RefBundle, "Schema"], None],
         task_done_callback: Callable[[Optional[Exception]], None],
         task_resource_bundle: Optional[ExecutionResources] = None,
     ):
@@ -248,7 +245,7 @@ class PhysicalOperator(Operator):
         input_dependencies: List["PhysicalOperator"],
         data_context: DataContext,
         target_max_block_size: Optional[int],
-        schema: Optional[Union[type, "PandasBlockSchema", "pa.lib.Schema"]] = None,
+        schema: Optional["Schema"] = None,
     ):
         super().__init__(name, input_dependencies)
 
@@ -271,20 +268,16 @@ class PhysicalOperator(Operator):
         self._id = str(uuid.uuid4())
         # Initialize metrics after data_context is set
         self._metrics = OpRuntimeMetrics(self)
-        self._schema: Optional[
-            Union[type, "PandasBlockSchema", "pa.lib.Schema"]
-        ] = schema
+        self._schema: Optional["Schema"] = schema
 
     def __reduce__(self):
         raise ValueError("Operator is not serializable.")
 
-    def get_schema(self) -> Optional[Union[type, "PandasBlockSchema", "pa.lib.Schema"]]:
+    def get_schema(self) -> Optional["Schema"]:
         """Return the schema of the output blocks produced by this operator."""
         return self._schema
 
-    def set_schema(
-        self, schema: Optional[Union[type, "PandasBlockSchema", "pa.lib.Schema"]]
-    ):
+    def set_schema(self, schema: Optional["Schema"]):
         """Set the schema of the output blocks produced by this operator."""
         self._schema = schema
 
@@ -316,13 +309,11 @@ class PhysicalOperator(Operator):
     ):
         self._logical_operators = list(logical_ops)
 
-    def unify_schemas(
-        self, schema: Union[type, "PandasBlockSchema", "pa.lib.Schema"]
-    ) -> None:
+    def unify_schemas(self, schema: "Schema") -> None:
         if self._schema is None:
             self.set_schema(schema)
         elif schema:
-            self.set_schema(unify_block_metadata_schema([self.get_schema(), schema]))
+            self.set_schema(unify_block_metadata_schema([self.get_schema(), "Schema"]))
 
     @property
     def target_max_block_size(self) -> Optional[int]:

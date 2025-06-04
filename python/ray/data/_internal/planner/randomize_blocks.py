@@ -1,17 +1,18 @@
-from typing import TYPE_CHECKING, List, Optional, Tuple, Union
+from typing import TYPE_CHECKING, List, Optional
 
 from ray.data._internal.execution.interfaces import (
     AllToAllTransformFn,
     RefBundle,
     TaskContext,
 )
+from ray.data._internal.execution.interfaces.transform_fn import (
+    AllToAllTransformFnResult,
+)
 from ray.data._internal.logical.operators.all_to_all_operator import RandomizeBlocks
-from ray.data._internal.stats import StatsDict
 
 if TYPE_CHECKING:
-    import pyarrow as pa
 
-    from ray.data.block import PandasBlockSchema
+    from ray.data.block import Schema
 
 
 def generate_randomize_blocks_fn(
@@ -21,9 +22,9 @@ def generate_randomize_blocks_fn(
 
     def fn(
         refs: List[RefBundle],
-        schema: Optional[Union[type, "PandasBlockSchema", "pa.lib.Schema"]],
+        schema: Optional["Schema"],
         context: TaskContext,
-    ) -> Tuple[List[RefBundle], StatsDict]:
+    ) -> AllToAllTransformFnResult:
         import random
 
         nonlocal op

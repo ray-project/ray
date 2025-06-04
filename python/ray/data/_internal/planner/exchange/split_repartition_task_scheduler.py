@@ -2,20 +2,21 @@ from typing import Any, Dict, List, Optional, Tuple
 
 import ray
 from ray.data._internal.execution.interfaces import RefBundle, TaskContext
+from ray.data._internal.execution.interfaces.transform_fn import (
+    AllToAllTransformFnResult,
+)
 from ray.data._internal.planner.exchange.interfaces import (
     ExchangeTaskScheduler,
 )
 from ray.data._internal.planner.exchange.shuffle_task_spec import ShuffleTaskSpec
 from ray.data._internal.remote_fn import cached_remote_fn
 from ray.data._internal.split import _split_at_indices
-from ray.data._internal.stats import StatsDict
-from ray.data._internal.util import unify_block_metadata_schema
+from ray.data._internal.util import _unzip_list_of_tuples, unify_block_metadata_schema
 from ray.data.block import (
     Block,
     BlockAccessor,
     BlockMetadata,
     _decompose_metadata_and_schema,
-    _unzip_list_of_tuples,
 )
 from ray.types import ObjectRef
 
@@ -36,7 +37,7 @@ class SplitRepartitionTaskScheduler(ExchangeTaskScheduler):
         ctx: TaskContext,
         map_ray_remote_args: Optional[Dict[str, Any]] = None,
         reduce_ray_remote_args: Optional[Dict[str, Any]] = None,
-    ) -> Tuple[List[RefBundle], StatsDict]:
+    ) -> AllToAllTransformFnResult:
         input_num_rows = 0
         input_owned_by_consumer = True
         for ref_bundle in refs:

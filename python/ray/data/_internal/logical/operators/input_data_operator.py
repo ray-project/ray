@@ -1,17 +1,16 @@
 import functools
-from typing import TYPE_CHECKING, List, Optional, Union
+from typing import TYPE_CHECKING, List, Optional
 
 from ray.data._internal.execution.interfaces import RefBundle
-from ray.data._internal.logical.interfaces import LogicalOperator, SourceOperatorMixin
+from ray.data._internal.logical.interfaces import LogicalOperator, SourceOperator
 from ray.data.block import BlockMetadata
 
 if TYPE_CHECKING:
-    import pyarrow as pa
 
-    from ray.data.block import PandasBlockSchema
+    from ray.data.block import Schema
 
 
-class InputData(LogicalOperator, SourceOperatorMixin):
+class InputData(LogicalOperator, SourceOperator):
     """Logical operator for input data.
 
     This may hold cached blocks from a previous Dataset execution.
@@ -20,7 +19,7 @@ class InputData(LogicalOperator, SourceOperatorMixin):
     def __init__(
         self,
         input_data: List[RefBundle],
-        schema: Optional[Union[type, "PandasBlockSchema", "pa.lib.Schema"]],
+        schema: Optional["Schema"],
     ):
         super().__init__("InputData", [], len(input_data))
 
@@ -30,7 +29,7 @@ class InputData(LogicalOperator, SourceOperatorMixin):
     def output_data(self) -> Optional[List[RefBundle]]:
         return self.input_data
 
-    def guess_metadata(self) -> BlockMetadata:
+    def infer_metadata(self) -> BlockMetadata:
         return self._cached_output_metadata
 
     @functools.cached_property
@@ -55,7 +54,7 @@ class InputData(LogicalOperator, SourceOperatorMixin):
         else:
             return None
 
-    def guess_schema(self):
+    def infer_schema(self):
         return self._schema
 
     def is_lineage_serializable(self) -> bool:

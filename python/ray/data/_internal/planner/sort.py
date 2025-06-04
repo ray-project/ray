@@ -1,5 +1,5 @@
 from functools import partial
-from typing import TYPE_CHECKING, List, Optional, Tuple, Union
+from typing import TYPE_CHECKING, List, Optional, Tuple
 
 from ray.data._internal.execution.interfaces import (
     AllToAllTransformFn,
@@ -17,9 +17,8 @@ from ray.data._internal.stats import StatsDict
 from ray.data.context import DataContext, ShuffleStrategy
 
 if TYPE_CHECKING:
-    import pyarrow as pa
 
-    from ray.data.block import PandasBlockSchema
+    from ray.data.block import Schema
 
 
 def generate_sort_fn(
@@ -33,13 +32,9 @@ def generate_sort_fn(
     def fn(
         sort_key: SortKey,
         refs: List[RefBundle],
-        schema: Optional[Union[type, "PandasBlockSchema", "pa.lib.Schema"]],
+        schema: Optional["Schema"],
         ctx: TaskContext,
-    ) -> Tuple[
-        List[RefBundle],
-        StatsDict,
-        Optional[Union[type, "PandasBlockSchema", "pa.lib.Schema"]],
-    ]:
+    ) -> Tuple[List[RefBundle], StatsDict, Optional["Schema"],]:
         blocks = []
         for ref_bundle in refs:
             blocks.extend(ref_bundle.block_refs)

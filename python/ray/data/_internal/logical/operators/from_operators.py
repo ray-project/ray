@@ -3,26 +3,26 @@ import functools
 from typing import TYPE_CHECKING, List, Optional, Union
 
 from ray.data._internal.execution.interfaces import RefBundle
-from ray.data._internal.logical.interfaces import LogicalOperator, SourceOperatorMixin
+from ray.data._internal.logical.interfaces import LogicalOperator, SourceOperator
 from ray.data.block import Block, BlockMetadata
 from ray.types import ObjectRef
 
 if TYPE_CHECKING:
     import pyarrow as pa
 
-    from ray.data.block import PandasBlockSchema
+    from ray.data.block import Schema
 
     ArrowTable = Union["pa.Table", bytes]
 
 
-class AbstractFrom(LogicalOperator, SourceOperatorMixin, metaclass=abc.ABCMeta):
+class AbstractFrom(LogicalOperator, SourceOperator, metaclass=abc.ABCMeta):
     """Abstract logical operator for `from_*`."""
 
     def __init__(
         self,
         input_blocks: List[ObjectRef[Block]],
         input_metadata: List[BlockMetadata],
-        schema: Optional[Union[type, "PandasBlockSchema", "pa.lib.Schema"]],
+        schema: Optional["Schema"],
     ):
         super().__init__(self.__class__.__name__, [], len(input_blocks))
         assert len(input_blocks) == len(input_metadata), (
@@ -66,10 +66,10 @@ class AbstractFrom(LogicalOperator, SourceOperatorMixin, metaclass=abc.ABCMeta):
         else:
             return None
 
-    def guess_metadata(self) -> BlockMetadata:
+    def infer_metadata(self) -> BlockMetadata:
         return self._cached_output_metadata
 
-    def guess_schema(self):
+    def infer_schema(self):
         return self._schema
 
     def is_lineage_serializable(self) -> bool:

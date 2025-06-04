@@ -647,7 +647,7 @@ class TestClickHouseDatasink:
                     arrays.append(pa.array([1, 2, 3], type=field.type))
                 else:
                     arrays.append(pa.array(["a", "b", "c"], type=field.type))
-            block_data = pa.Table.from_arrays(arrays, names=[f.name for f in schema])
+            block_data = pa.Table.from_arrays(arrays, names=[f.name for f in "Schema"])
             datasink.write([block_data], ctx=TaskContext(1, ""))
             create_sql = None
             for call_arg in mock_clickhouse_sink_client.command.call_args_list:
