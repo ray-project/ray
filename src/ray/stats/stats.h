@@ -30,6 +30,7 @@
 #include "ray/common/ray_config.h"
 #include "ray/stats/metric.h"
 #include "ray/stats/metric_exporter.h"
+#include "ray/telemetry/open_telemetry_metric_recorder.h"
 #include "ray/util/logging.h"
 
 namespace ray {
@@ -37,6 +38,8 @@ namespace ray {
 namespace stats {
 
 #include <boost/asio.hpp>
+
+using OpenTelemetryMetricRecorder = ray::telemetry::OpenTelemetryMetricRecorder;
 
 // TODO(sang) Put all states and logic into a singleton class Stats.
 static std::shared_ptr<IOServicePool> metrics_io_service_pool;
@@ -97,6 +100,16 @@ static inline void Init(
                                     metrics_report_batch_size,
                                     max_grpc_payload_size);
 
+  // Register the OpenTelemetry metric recorder.
+  if (RayConfig::instance().experimental_enable_open_telemetry_on_core()) {
+    OpenTelemetryMetricRecorder::GetInstance().RegisterGrpcExporter(
+        std::string("127.0.0.1:") + std::to_string(metrics_agent_port),
+        std::chrono::milliseconds(
+            absl::ToInt64Milliseconds(StatsConfig::instance().GetReportInterval())),
+        std::chrono::milliseconds(
+            absl::ToInt64Milliseconds(StatsConfig::instance().GetHarvestInterval())));
+  }
+
   StatsConfig::instance().SetGlobalTags(global_tags);
   for (auto &f : StatsConfig::instance().PopInitializers()) {
     f();
@@ -115,6 +128,9 @@ static inline void Shutdown() {
   metrics_io_service_pool->Stop();
   opencensus::stats::DeltaProducer::Get()->Shutdown();
   opencensus::stats::StatsExporter::Shutdown();
+  if (RayConfig::instance().experimental_enable_open_telemetry_on_core()) {
+    OpenTelemetryMetricRecorder::GetInstance().Shutdown();
+  }
   metrics_io_service_pool = nullptr;
   StatsConfig::instance().SetIsInitialized(false);
   RAY_LOG(INFO) << "Stats module has shutdown.";

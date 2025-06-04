@@ -24,15 +24,23 @@ class OpenTelemetryMetricRecorderTest : public ::testing::Test {
   OpenTelemetryMetricRecorderTest()
       : recorder_(OpenTelemetryMetricRecorder::GetInstance()) {}
 
+  static void SetUpTestSuite() {
+    // Initialize the OpenTelemetryMetricRecorder with a mock endpoint and intervals
+    OpenTelemetryMetricRecorder::GetInstance().RegisterGrpcExporter(
+        "localhost:1234",
+        std::chrono::milliseconds(10000),
+        std::chrono::milliseconds(5000));
+  }
+
  protected:
   OpenTelemetryMetricRecorder &recorder_;
 };
 
-TEST_F(OpenTelemetryMetricRecorderTest, TestRegister) {
-  // Check if the recorder is initialized correctly
-  ASSERT_NO_THROW(recorder_.RegisterGrpcExporter("somehost:1234",
-                                                 std::chrono::milliseconds(10000),
-                                                 std::chrono::milliseconds(5000)));
+TEST_F(OpenTelemetryMetricRecorderTest, TestGaugeMetric) {
+  recorder_.RegisterGaugeMetric("test_metric", "Test metric description");
+  recorder_.SetMetricValue("test_metric", {{"tag1", "value1"}}, 42.0);
+  ASSERT_EQ(recorder_.GetMetricValue("test_metric", {{"tag1", "value1"}}), 42.0);
+  ASSERT_EQ(recorder_.GetMetricValue("test_metric", {{"tag1", "value2"}}), std::nullopt);
 }
 
 }  // namespace telemetry
