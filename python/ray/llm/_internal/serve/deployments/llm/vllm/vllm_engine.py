@@ -1,72 +1,67 @@
 import asyncio
 import os
+import re
 import time
-from typing import AsyncGenerator, List, Optional, Tuple, TYPE_CHECKING
 import uuid
+from concurrent.futures.thread import ThreadPoolExecutor
+from typing import TYPE_CHECKING, AsyncGenerator, List, Optional, Tuple
 
 import ray
-import re
-from concurrent.futures.thread import ThreadPoolExecutor
-from ray.util import metrics
-from ray.util.placement_group import PlacementGroup
-from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
-
-from ray.llm._internal.serve.observability.logging import get_logger
-from ray.llm._internal.serve.observability.metrics.utils import (
-    LONG_RANGE_LATENCY_HISTOGRAM_BUCKETS_MS,
-    ClockUnit,
-    MsClock,
+from ray.llm._internal.serve.configs.constants import (
+    MAX_NUM_TOPLOGPROBS_ALLOWED,
+    MIN_NUM_TOPLOGPROBS_ALLOWED,
+    RAYLLM_ENABLE_REQUEST_PROMPT_LOGS,
+    RAYLLM_GUIDED_DECODING_BACKEND,
 )
 from ray.llm._internal.serve.configs.error_handling import (
     InputTooLong,
     ValidationError,
 )
+from ray.llm._internal.serve.configs.server_models import (
+    DiskMultiplexConfig,
+    FinishReason,
+    GenerationRequest,
+    LLMConfig,
+    LLMRawResponse,
+    LogProb,
+    LogProbs,
+    Prompt,
+)
+from ray.llm._internal.serve.deployments.llm.llm_engine import LLMEngine
 from ray.llm._internal.serve.deployments.llm.vllm.vllm_engine_stats import (
     ArgUsage,
     VLLMEngineStatTracker,
     usage_counters,
 )
 from ray.llm._internal.serve.deployments.llm.vllm.vllm_models import (
+    KV_TRANSFER_PARAMS_KEY,
+    VLLMEmbeddingRequest,
     VLLMEngineConfig,
     VLLMGenerationRequest,
-    VLLMEmbeddingRequest,
     VLLMSamplingParams,
-    KV_TRANSFER_PARAMS_KEY,
 )
-from ray.llm._internal.serve.deployments.utils.server_utils import floats_to_base64
 from ray.llm._internal.serve.deployments.utils.node_initialization_utils import (
     InitializeNodeOutput,
-)
-from ray.llm._internal.serve.deployments.utils.node_initialization_utils import (
     initialize_node as initialize_node_util,
 )
-from ray.llm._internal.serve.configs.server_models import (
-    Prompt,
-    GenerationRequest,
-    DiskMultiplexConfig,
-    LLMConfig,
-    LLMRawResponse,
-    LogProb,
-    LogProbs,
-    FinishReason,
-)
-
-from ray.llm._internal.serve.configs.constants import (
-    RAYLLM_ENABLE_REQUEST_PROMPT_LOGS,
-    RAYLLM_GUIDED_DECODING_BACKEND,
-    MIN_NUM_TOPLOGPROBS_ALLOWED,
-    MAX_NUM_TOPLOGPROBS_ALLOWED,
+from ray.llm._internal.serve.deployments.utils.server_utils import floats_to_base64
+from ray.llm._internal.serve.observability.logging import get_logger
+from ray.llm._internal.serve.observability.metrics.utils import (
+    LONG_RANGE_LATENCY_HISTOGRAM_BUCKETS_MS,
+    ClockUnit,
+    MsClock,
 )
 from ray.llm._internal.utils import try_import
-
-from ray.llm._internal.serve.deployments.llm.llm_engine import LLMEngine
+from ray.util import metrics
+from ray.util.placement_group import PlacementGroup
+from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
 
 if TYPE_CHECKING:
     from vllm import SamplingParams as VLLMInternalSamplingParams
     from vllm.config import ModelConfig, VllmConfig
     from vllm.engine.arg_utils import AsyncEngineArgs
     from vllm.engine.protocol import EngineClient
-    from vllm.outputs import RequestOutput, PoolingRequestOutput
+    from vllm.outputs import PoolingRequestOutput, RequestOutput
 
 vllm = try_import("vllm")
 logger = get_logger(__name__)
@@ -201,29 +196,39 @@ class VLLMEngine(LLMEngine):
             connector_type = getattr(kv_transfer_config, "kv_connector", "")
             if connector_type != "NixlConnector":
                 raise ValueError("Only NixlConnector is supported for kv transfer.")
-            if "VLLM_NIXL_SIDE_CHANNEL_PORT" not in vllm.envs.environment_variables:
+            if (
+                "VLLM_NIXL_SIDE_CHANNEL_PORT" not in vllm.envs.environment_variables
+                or "VLLM_NIXL_SIDE_CHANNEL_HOST" not in vllm.envs.environment_variables
+            ):
                 logger.warning(
                     "This vLLM version does not support VLLM_NIXL_SIDE_CHANNEL_PORT"
-                    "environment variable. It's likely that you are using an older"
-                    "version of vLLM."
+                    "or VLLM_NIXL_SIDE_CHANNEL_HOST environment variable. It's likely"
+                    "that you are using an older version of vLLM."
                 )
-            elif not vllm.envs.is_set("VLLM_NIXL_SIDE_CHANNEL_PORT"):
-                port: int = vllm.utils.get_open_port()
-                os.environ["VLLM_NIXL_SIDE_CHANNEL_PORT"] = str(port)
-
-            # We need to overwrite the engine_id to make it unique across replicas.
-            # "engine_id" is added in vllm 0.9.0, so do existance check.
-            if "engine_id" in kv_transfer_config.model_fields:
-                engine_id = getattr(kv_transfer_config, "engine_id", uuid.uuid4())
-                host = vllm.envs.NIXL_SIDE_CHANNEL_HOST
-                port = vllm.envs.NIXL_SIDE_CHANNEL_PORT
-                kv_transfer_config.engine_id = "-".join([engine_id, host, port])
             else:
-                # TODO(lk-chen): Raise error once vllm 0.9.0 is pinned to rayllm
-                logger.warning(
-                    "engine_id is not supported in vllm < 0.9.0, NIXL-backed kv transfer "
-                    "is not supported."
-                )
+                if not vllm.envs.is_set("VLLM_NIXL_SIDE_CHANNEL_PORT"):
+                    port: int = vllm.utils.get_open_port()
+                    os.environ["VLLM_NIXL_SIDE_CHANNEL_PORT"] = str(port)
+                if not vllm.envs.is_set("VLLM_NIXL_SIDE_CHANNEL_HOST"):
+                    os.environ["VLLM_NIXL_SIDE_CHANNEL_HOST"] = vllm.utils.get_ip()
+
+                # We need to overwrite the engine_id to make it unique across replicas.
+                # "engine_id" is added in vllm 0.9.0, so do existance check.
+                try:
+                    engine_id = getattr(
+                        kv_transfer_config, "engine_id", str(uuid.uuid4())
+                    )
+                    host = vllm.envs.VLLM_NIXL_SIDE_CHANNEL_HOST
+                    port = vllm.envs.VLLM_NIXL_SIDE_CHANNEL_PORT
+                    kv_transfer_config.engine_id = "-".join(
+                        [engine_id, host, str(port)]
+                    )
+                except ValueError:
+                    # TODO(lk-chen): Raise error once vllm 0.9.0 is pinned to rayllm
+                    logger.warning(
+                        "engine_id is not supported in vllm < 0.9.0, NIXL-backed kv transfer "
+                        "is not supported."
+                    )
 
         assert isinstance(
             llm_config, LLMConfig
@@ -542,8 +547,8 @@ class VLLMEngine(LLMEngine):
         disk_lora_model: Optional[DiskMultiplexConfig] = None,
     ) -> GenerationRequest:
         from vllm.entrypoints.chat_utils import (
-            parse_chat_messages_futures,
             apply_hf_chat_template as _apply_hf_chat_template,
+            parse_chat_messages_futures,
         )
 
         model_config = self.model_config
