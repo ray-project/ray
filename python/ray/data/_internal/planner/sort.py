@@ -34,7 +34,7 @@ def generate_sort_fn(
         refs: List[RefBundle],
         schema: Optional["Schema"],
         ctx: TaskContext,
-    ) -> Tuple[List[RefBundle], StatsDict, Optional["Schema"],]:
+    ) -> Tuple[List[RefBundle], StatsDict, Optional["Schema"]]:
         blocks = []
         for ref_bundle in refs:
             blocks.extend(ref_bundle.block_refs)

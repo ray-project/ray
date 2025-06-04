@@ -383,7 +383,6 @@ class ExecutionPlan:
                         break
             if schema is None:
                 schema = output_node.get_schema() or self._schema or None
-            assert schema is not None
         self.cache_schema(schema)
         return self._schema
 
@@ -521,7 +520,6 @@ class ExecutionPlan:
                         owns_blocks=blocks._owned_by_consumer,
                     )
                 schema = executor._output_node[0].get_schema() or self._schema or None
-                assert schema is not None
 
                 stats = executor.get_stats()
                 stats_summary_string = stats.to_summary().to_string(

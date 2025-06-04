@@ -4,7 +4,7 @@ from .operator import Operator
 from ray.data.block import BlockMetadata
 
 if TYPE_CHECKING:
-    from ray.data import Schema
+    from ray.data.block import Schema
 
 
 class LogicalOperator(Operator):

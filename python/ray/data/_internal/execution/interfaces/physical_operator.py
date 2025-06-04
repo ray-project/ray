@@ -313,7 +313,7 @@ class PhysicalOperator(Operator):
         if self._schema is None:
             self.set_schema(schema)
         elif schema:
-            self.set_schema(unify_block_metadata_schema([self.get_schema(), "Schema"]))
+            self.set_schema(unify_block_metadata_schema([self.get_schema(), schema]))
 
     @property
     def target_max_block_size(self) -> Optional[int]:
