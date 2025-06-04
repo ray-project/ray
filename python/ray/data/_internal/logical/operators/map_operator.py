@@ -5,6 +5,7 @@ from typing import TYPE_CHECKING, Any, Callable, Dict, Iterable, List, Optional
 
 from ray.data._internal.compute import ComputeStrategy, TaskPoolStrategy
 from ray.data._internal.logical.interfaces import LogicalOperator
+from ray.data._internal.logical.interfaces.operator import DatasetExportArgs
 from ray.data._internal.logical.operators.one_to_one_operator import AbstractOneToOne
 from ray.data.block import UserDefinedFunction
 from ray.data.preprocessor import Preprocessor
@@ -145,7 +146,7 @@ class AbstractUDFMap(AbstractMap):
             return "<unknown>"
 
 
-class MapBatches(AbstractUDFMap):
+class MapBatches(DatasetExportArgs, AbstractUDFMap):
     """Logical operator for map_batches."""
 
     def __init__(
@@ -181,11 +182,26 @@ class MapBatches(AbstractUDFMap):
         self._batch_format = batch_format
         self._zero_copy_batch = zero_copy_batch
 
+    def dataset_export_args(self) -> Dict[str, Any]:
+        """Export the arguments into dictionary format."""
+        return {
+            "batch_size": self._batch_size,
+            "batch_format": self._batch_format,
+            "zero_copy_batch": self._zero_copy_batch,
+            "fn_args": self._fn_args,
+            "fn_kwargs": self._fn_kwargs,
+            "fn_constructor_args": self._fn_constructor_args,
+            "fn_constructor_kwargs": self._fn_constructor_kwargs,
+            "min_rows_per_bundled_input": self._min_rows_per_bundled_input,
+            "compute": self._compute.dataset_export_args(),
+            "ray_remote_args": self._ray_remote_args,
+        }
+
     def can_modify_num_rows(self) -> bool:
         return False
 
 
-class MapRows(AbstractUDFMap):
+class MapRows(DatasetExportArgs, AbstractUDFMap):
     """Logical operator for map."""
 
     def __init__(
@@ -213,11 +229,22 @@ class MapRows(AbstractUDFMap):
             ray_remote_args=ray_remote_args,
         )
 
+    def dataset_export_args(self) -> Dict[str, Any]:
+        """Export the arguments into dictionary format."""
+        return {
+            "fn_args": self._fn_args,
+            "fn_kwargs": self._fn_kwargs,
+            "fn_constructor_args": self._fn_constructor_args,
+            "fn_constructor_kwargs": self._fn_constructor_kwargs,
+            "compute": self._compute.dataset_export_args(),
+            "ray_remote_args": self._ray_remote_args,
+        }
+
     def can_modify_num_rows(self) -> bool:
         return False
 
 
-class Filter(AbstractUDFMap):
+class Filter(DatasetExportArgs, AbstractUDFMap):
     """Logical operator for filter."""
 
     def __init__(
@@ -251,11 +278,23 @@ class Filter(AbstractUDFMap):
             ray_remote_args=ray_remote_args,
         )
 
+    def dataset_export_args(self) -> Dict[str, Any]:
+        """Export the arguments into dictionary format."""
+        return {
+            "fn_args": self._fn_args,
+            "fn_kwargs": self._fn_kwargs,
+            "fn_constructor_args": self._fn_constructor_args,
+            "fn_constructor_kwargs": self._fn_constructor_kwargs,
+            "filter_expr": self._filter_expr,
+            "compute": self._compute.dataset_export_args(),
+            "ray_remote_args": self._ray_remote_args,
+        }
+
     def can_modify_num_rows(self) -> bool:
         return True
 
 
-class Project(AbstractMap):
+class Project(DatasetExportArgs, AbstractMap):
     """Logical operator for select_columns."""
 
     def __init__(
@@ -278,6 +317,18 @@ class Project(AbstractMap):
         self._batch_format = "pyarrow"
         self._zero_copy_batch = True
 
+    def dataset_export_args(self) -> Dict[str, Any]:
+        """Export the arguments into dictionary format."""
+        return {
+            "cols": self._cols,
+            "cols_rename": self._cols_rename,
+            "batch_size": self._batch_size,
+            "batch_format": self._batch_format,
+            "zero_copy_batch": self._zero_copy_batch,
+            "compute": self._compute.dataset_export_args(),
+            "ray_remote_args": self._ray_remote_args,
+        }
+
     @property
     def cols(self) -> Optional[List[str]]:
         return self._cols
@@ -290,7 +341,7 @@ class Project(AbstractMap):
         return False
 
 
-class FlatMap(AbstractUDFMap):
+class FlatMap(DatasetExportArgs, AbstractUDFMap):
     """Logical operator for flat_map."""
 
     def __init__(
@@ -318,11 +369,22 @@ class FlatMap(AbstractUDFMap):
             ray_remote_args=ray_remote_args,
         )
 
+    def dataset_export_args(self) -> Dict[str, Any]:
+        """Export the arguments into dictionary format."""
+        return {
+            "fn_args": self._fn_args,
+            "fn_kwargs": self._fn_kwargs,
+            "fn_constructor_args": self._fn_constructor_args,
+            "fn_constructor_kwargs": self._fn_constructor_kwargs,
+            "compute": self._compute.dataset_export_args(),
+            "ray_remote_args": self._ray_remote_args,
+        }
+
     def can_modify_num_rows(self) -> bool:
         return True
 
 
-class StreamingRepartition(AbstractMap):
+class StreamingRepartition(DatasetExportArgs, AbstractMap):
     """Logical operator for streaming repartition operation.
     Args:
         target_num_rows_per_block: The target number of rows per block granularity for
@@ -336,6 +398,12 @@ class StreamingRepartition(AbstractMap):
     ):
         super().__init__("StreamingRepartition", input_op)
         self._target_num_rows_per_block = target_num_rows_per_block
+
+    def dataset_export_args(self) -> Dict[str, Any]:
+        """Export the arguments into dictionary format."""
+        return {
+            "target_num_rows_per_block": self._target_num_rows_per_block,
+        }
 
     @property
     def target_num_rows_per_block(self) -> int:

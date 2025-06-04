@@ -14,6 +14,7 @@ from ray._private.event.export_event_logger import (
 )
 
 if TYPE_CHECKING:
+    from ray.data import DataContext
     from ray.data._internal.execution.interfaces.physical_operator import (
         PhysicalOperator,
     )
@@ -54,8 +55,10 @@ class Operator:
     name: str
     id: str
     uuid: str
+    data_context: "DataContext"
     input_dependencies: List[str] = field(default_factory=list)
     sub_stages: List[SubStage] = field(default_factory=list)
+    args: Dict[str, Any] = field(default_factory=dict)
 
 
 @dataclass
@@ -95,6 +98,8 @@ class Topology:
                 input_dependencies=[
                     op_to_id[dep] for dep in op.input_dependencies if dep in op_to_id
                 ],
+                args=op._get_logical_args(),
+                data_context=op.data_context,
             )
 
             # Add sub-stages if they exist
@@ -128,6 +133,18 @@ class DatasetMetadata:
     start_time: float
 
 
+def sanitize_for_struct(obj):
+    if isinstance(obj, dict):
+        return {k: sanitize_for_struct(v) for k, v in obj.items()}
+    elif isinstance(obj, (str, int, float, bool)) or obj is None:
+        return obj
+    elif isinstance(obj, (list, tuple)):
+        return [sanitize_for_struct(v) for v in obj]
+    else:
+        # Convert unhandled types to string
+        return str(obj)
+
+
 def dataset_metadata_to_proto(dataset_metadata: DatasetMetadata) -> Any:
     """Convert the dataset metadata to a protobuf message.
 
@@ -138,6 +155,10 @@ def dataset_metadata_to_proto(dataset_metadata: DatasetMetadata) -> Any:
     Returns:
         The protobuf message representing the dataset metadata.
     """
+    from dataclasses import asdict
+
+    from google.protobuf.struct_pb2 import Struct
+
     from ray.core.generated.export_dataset_metadata_pb2 import (
         ExportDatasetMetadata as ProtoDatasetMetadata,
         Operator as ProtoOperator,
@@ -151,10 +172,17 @@ def dataset_metadata_to_proto(dataset_metadata: DatasetMetadata) -> Any:
 
     # Add operators to the DAG
     for op in dataset_metadata.topology.operators:
+        data_context = Struct()
+        data_context.update(sanitize_for_struct(asdict(op.data_context)))
+
+        args = Struct()
+        args.update(sanitize_for_struct(op.args))
         proto_operator = ProtoOperator(
             name=op.name,
             id=op.id,
             uuid=op.uuid,
+            data_context=data_context,
+            args=args,
         )
 
         # Add input dependencies

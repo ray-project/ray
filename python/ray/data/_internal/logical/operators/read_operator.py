@@ -1,13 +1,14 @@
 import functools
 from typing import Any, Dict, Optional, Union
 
+from ray.data._internal.logical.interfaces.operator import DatasetExportArgs
 from ray.data._internal.logical.operators.map_operator import AbstractMap
 from ray.data._internal.util import unify_block_metadata_schema
 from ray.data.block import BlockMetadata
 from ray.data.datasource.datasource import Datasource, Reader
 
 
-class Read(AbstractMap):
+class Read(DatasetExportArgs, AbstractMap):
     """Logical operator for read."""
 
     def __init__(
@@ -32,6 +33,16 @@ class Read(AbstractMap):
         self._mem_size = mem_size
         self._concurrency = concurrency
         self._detected_parallelism = None
+
+    def dataset_export_args(self) -> Dict[str, Any]:
+        """Export the arguments into dictionary format."""
+        return {
+            "datasource": self._datasource.get_name(),
+            "parallelism": self._parallelism,
+            "mem_size": self._mem_size,
+            "concurrency": self._concurrency,
+            "ray_remote_args": self._ray_remote_args,
+        }
 
     def set_detected_parallelism(self, parallelism: int):
         """

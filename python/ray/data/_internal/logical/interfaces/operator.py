@@ -1,4 +1,14 @@
-from typing import Callable, Iterator, List
+from abc import ABC, abstractmethod
+from typing import Any, Callable, Dict, Iterator, List
+
+
+class DatasetExportArgs(ABC):
+    """Abstract class for operators that can export their arguments."""
+
+    @abstractmethod
+    def dataset_export_args(self) -> Dict[str, Any]:
+        """Export the arguments into dictionary format."""
+        raise NotImplementedError
 
 
 class Operator:
