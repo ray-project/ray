@@ -1,20 +1,16 @@
-import base64
 from collections import defaultdict
-import gzip
-import json
-import pathlib
+import pickle
 import socket
-import tempfile
 import threading
 import time
 from typing import Collection, DefaultDict, List, Optional, Union
 
 import gymnasium as gym
-import numpy as np
-import onnxruntime
 
 from ray.rllib.core import (
     Columns,
+    COMPONENT_ENV_TO_MODULE_CONNECTOR,
+    COMPONENT_MODULE_TO_ENV_CONNECTOR,
     COMPONENT_RL_MODULE,
     DEFAULT_AGENT_ID,
     DEFAULT_MODULE_ID,
@@ -23,8 +19,12 @@ from ray.rllib.env import INPUT_ENV_SPACES
 from ray.rllib.env.env_runner import EnvRunner
 from ray.rllib.env.single_agent_env_runner import SingleAgentEnvRunner
 from ray.rllib.env.single_agent_episode import SingleAgentEpisode
-from ray.rllib.env.utils.external_env_protocol import RLlink as rllink
-from ray.rllib.utils.annotations import ExperimentalAPI, override
+from ray.rllib.env.external.rllink import (
+    get_rllink_message,
+    RLlink,
+    send_rllink_message,
+)
+from ray.rllib.utils.annotations import override
 from ray.rllib.utils.checkpoints import Checkpointable
 from ray.rllib.utils.framework import try_import_torch
 from ray.rllib.utils.metrics import (
@@ -40,25 +40,27 @@ from ray.rllib.utils.metrics import (
 from ray.rllib.utils.metrics.metrics_logger import MetricsLogger
 from ray.rllib.utils.numpy import softmax
 from ray.rllib.utils.typing import EpisodeID, StateDict
+from ray.util.annotations import DeveloperAPI
 
 torch, _ = try_import_torch()
 
 
-@ExperimentalAPI
+@DeveloperAPI
 class TcpClientInferenceEnvRunner(EnvRunner, Checkpointable):
     """An EnvRunner communicating with an external env through a TCP socket.
 
     This implementation assumes:
     - Only one external client ever connects to this env runner.
-    - The external client performs inference locally through an ONNX model. Thus,
-    samples are sent in bulk once a certain number of timesteps has been executed on the
-    client's side (no individual action requests).
-    - A copy of the RLModule is kept at all times on the env runner, but never used
-    for inference, only as a data (weights) container.
+    - The external client owns the connector pipelines (env-to-module and module-to-env)
+    as well as the RLModule and thus performs inference locally. Samples are sent in
+    bulk as lists of RLlib episodes once a certain number of timesteps has been executed
+    on the client's side.
+    - A copy of the RLModule is kept at all times on this EnvRunner, but is never used
+    for inference, only as a weights container.
     TODO (sven): The above might be inefficient as we have to store basically two
      models, one in this EnvRunner, one in the env (as ONNX).
-    - There is no environment and no connectors on this env runner. The external env
-    is responsible for generating all the data to create episodes.
+    - As a consequence, there are no environment and no connectors on this EnvRunner.
+    The external env is responsible for generating all the data to create episodes.
     """
 
     @override(EnvRunner)
@@ -206,7 +208,10 @@ class TcpClientInferenceEnvRunner(EnvRunner, Checkpointable):
         not_components: Optional[Union[str, Collection[str]]] = None,
         **kwargs,
     ) -> StateDict:
-        return {}
+        return {
+            COMPONENT_RL_MODULE: self.module.get_state(),
+            WEIGHTS_SEQ_NO: self._weights_seq_no,
+        }
 
     @override(Checkpointable)
     def set_state(self, state: StateDict) -> None:
@@ -252,26 +257,26 @@ class TcpClientInferenceEnvRunner(EnvRunner, Checkpointable):
 
             try:
                 # Blocking call to get next message.
-                msg_type, msg_body = _get_message(self.client_socket)
+                msg_type, msg_body = get_rllink_message(self.client_socket)
 
                 # Process the message received based on its type.
                 # Initial handshake.
-                if msg_type == rllink.PING:
+                if msg_type == RLlink.PING:
                     self._send_pong_message()
 
                 # Episode data from the client.
                 elif msg_type in [
-                    rllink.EPISODES,
-                    rllink.EPISODES_AND_GET_STATE,
+                    RLlink.EPISODES,
+                    RLlink.EPISODES_AND_GET_STATE,
                 ]:
                     self._process_episodes_message(msg_type, msg_body)
 
                 # Client requests the state (model weights).
-                elif msg_type == rllink.GET_STATE:
+                elif msg_type == RLlink.GET_STATE:
                     self._send_set_state_message()
 
                 # Clients requests some (relevant) config information.
-                elif msg_type == rllink.GET_CONFIG:
+                elif msg_type == RLlink.GET_CONFIG:
                     self._send_set_config_message()
 
             except ConnectionError as e:
@@ -304,33 +309,18 @@ class TcpClientInferenceEnvRunner(EnvRunner, Checkpointable):
             self.server_socket.close()
 
     def _send_pong_message(self):
-        _send_message(self.client_socket, {"type": rllink.PONG.name})
+        send_rllink_message(self.client_socket, {"type": RLlink.PONG.name})
 
     def _process_episodes_message(self, msg_type, msg_body):
         # On-policy training -> we have to block until we get a new `set_state` call
         # (b/c the learning step is done and we can sent new weights back to all
         # clients).
-        if msg_type == rllink.EPISODES_AND_GET_STATE:
+        if msg_type == RLlink.EPISODES_AND_GET_STATE:
             self._blocked_on_state = True
 
         episodes = []
-        for episode_data in msg_body["episodes"]:
-            episode = SingleAgentEpisode(
-                observation_space=self.config.observation_space,
-                observations=[np.array(o) for o in episode_data[Columns.OBS]],
-                action_space=self.config.action_space,
-                actions=episode_data[Columns.ACTIONS],
-                rewards=episode_data[Columns.REWARDS],
-                extra_model_outputs={
-                    Columns.ACTION_DIST_INPUTS: [
-                        np.array(a) for a in episode_data[Columns.ACTION_DIST_INPUTS]
-                    ],
-                    Columns.ACTION_LOGP: episode_data[Columns.ACTION_LOGP],
-                },
-                terminated=episode_data["is_terminated"],
-                truncated=episode_data["is_truncated"],
-                len_lookback_buffer=0,
-            )
+        for episode_state in msg_body["episodes"]:
+            episode = SingleAgentEpisode.from_state(episode_state)
             episodes.append(episode.to_numpy())
 
         # Push episodes into the to-be-returned list (for `sample()` requests).
@@ -341,39 +331,22 @@ class TcpClientInferenceEnvRunner(EnvRunner, Checkpointable):
                 self._episode_chunks_to_return = episodes
 
     def _send_set_state_message(self):
-        with tempfile.TemporaryDirectory() as dir:
-            onnx_file = pathlib.Path(dir) / "_temp_model.onnx"
-            torch.onnx.export(
-                self.module,
-                {
-                    "batch": {
-                        "obs": torch.randn(1, *self.config.observation_space.shape)
-                    }
-                },
-                onnx_file,
-                export_params=True,
-            )
-            with open(onnx_file, "rb") as f:
-                compressed = gzip.compress(f.read())
-                onnx_binary = base64.b64encode(compressed).decode("utf-8")
-        _send_message(
+        send_rllink_message(
             self.client_socket,
             {
-                "type": rllink.SET_STATE.name,
-                "onnx_file": onnx_binary,
-                WEIGHTS_SEQ_NO: self._weights_seq_no,
+                "type": RLlink.SET_STATE.name,
+                "state": self.get_state(inference_only=True),
             },
         )
 
     def _send_set_config_message(self):
-        _send_message(
+        send_rllink_message(
             self.client_socket,
             {
-                "type": rllink.SET_CONFIG.name,
-                "env_steps_per_sample": self.config.get_rollout_fragment_length(
-                    worker_index=self.worker_index
-                ),
-                "force_on_policy": True,
+                "type": RLlink.SET_CONFIG.name,
+                # TODO (sven): We need AlgorithmConfig to be a `Checkpointable` with a
+                #  msgpack'able state.
+                "config": pickle.dumps(self.config),
             },
         )
 
@@ -401,189 +374,6 @@ class TcpClientInferenceEnvRunner(EnvRunner, Checkpointable):
         self.metrics.log_value(EPISODE_RETURN_MAX, ret, reduce="max", window=win)
 
 
-def _send_message(sock_, message: dict):
-    """Sends a message to the client with a length header."""
-    body = json.dumps(message).encode("utf-8")
-    header = str(len(body)).zfill(8).encode("utf-8")
-    try:
-        sock_.sendall(header + body)
-    except Exception as e:
-        raise ConnectionError(
-            f"Error sending message {message} to server on socket {sock_}! "
-            f"Original error was: {e}"
-        )
-
-
-def _get_message(sock_):
-    """Receives a message from the client following the length-header protocol."""
-    try:
-        # Read the length header (8 bytes)
-        header = _get_num_bytes(sock_, 8)
-        msg_length = int(header.decode("utf-8"))
-        # Read the message body
-        body = _get_num_bytes(sock_, msg_length)
-        # Decode JSON.
-        message = json.loads(body.decode("utf-8"))
-        # Check for proper protocol.
-        if "type" not in message:
-            raise ConnectionError(
-                "Protocol Error! Message from peer does not contain `type` field."
-            )
-        return rllink(message.pop("type")), message
-    except Exception as e:
-        raise ConnectionError(
-            f"Error receiving message from peer on socket {sock_}! "
-            f"Original error was: {e}"
-        )
-
-
-def _get_num_bytes(sock_, num_bytes):
-    """Helper function to receive a specific number of bytes."""
-    data = b""
-    while len(data) < num_bytes:
-        packet = sock_.recv(num_bytes - len(data))
-        if not packet:
-            raise ConnectionError(f"No data received from socket {sock_}!")
-        data += packet
-    return data
-
-
-def _dummy_client(port: int = 5556):
-    """A dummy client that runs CartPole and acts as a testing external env."""
-
-    def _set_state(msg_body):
-        with tempfile.TemporaryDirectory():
-            with open("_temp_onnx", "wb") as f:
-                f.write(
-                    gzip.decompress(
-                        base64.b64decode(msg_body["onnx_file"].encode("utf-8"))
-                    )
-                )
-                onnx_session = onnxruntime.InferenceSession("_temp_onnx")
-                output_names = [o.name for o in onnx_session.get_outputs()]
-        return onnx_session, output_names
-
-    # Connect to server.
-    while True:
-        try:
-            print(f"Trying to connect to localhost:{port} ...")
-            sock_ = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-            sock_.connect(("localhost", port))
-            break
-        except ConnectionRefusedError:
-            time.sleep(5)
-
-    # Send ping-pong.
-    _send_message(sock_, {"type": rllink.PING.name})
-    msg_type, msg_body = _get_message(sock_)
-    assert msg_type == rllink.PONG
-
-    # Request config.
-    _send_message(sock_, {"type": rllink.GET_CONFIG.name})
-    msg_type, msg_body = _get_message(sock_)
-    assert msg_type == rllink.SET_CONFIG
-    env_steps_per_sample = msg_body["env_steps_per_sample"]
-    force_on_policy = msg_body["force_on_policy"]
-
-    # Request ONNX weights.
-    _send_message(sock_, {"type": rllink.GET_STATE.name})
-    msg_type, msg_body = _get_message(sock_)
-    assert msg_type == rllink.SET_STATE
-    onnx_session, output_names = _set_state(msg_body)
-
-    # Episode collection buckets.
-    episodes = []
-    observations = []
-    actions = []
-    action_dist_inputs = []
-    action_logps = []
-    rewards = []
-
-    timesteps = 0
-    episode_return = 0.0
-
-    # Start actual env loop.
-    env = gym.make("CartPole-v1")
-    obs, info = env.reset()
-    observations.append(obs.tolist())
-
-    while True:
-        timesteps += 1
-        # Perform action inference using the ONNX model.
-        logits = onnx_session.run(
-            output_names,
-            {"onnx::Gemm_0": np.array([obs], np.float32)},
-        )[0][
-            0
-        ]  # [0]=first return item, [0]=batch size 1
-
-        # Stochastic sample.
-        action_probs = softmax(logits)
-        action = int(np.random.choice(list(range(env.action_space.n)), p=action_probs))
-        logp = float(np.log(action_probs[action]))
-
-        # Perform the env step.
-        obs, reward, terminated, truncated, info = env.step(action)
-
-        # Collect step data.
-        observations.append(obs.tolist())
-        actions.append(action)
-        action_dist_inputs.append(logits.tolist())
-        action_logps.append(logp)
-        rewards.append(reward)
-        episode_return += reward
-
-        # We have to create a new episode record.
-        if timesteps == env_steps_per_sample or terminated or truncated:
-            episodes.append(
-                {
-                    Columns.OBS: observations,
-                    Columns.ACTIONS: actions,
-                    Columns.ACTION_DIST_INPUTS: action_dist_inputs,
-                    Columns.ACTION_LOGP: action_logps,
-                    Columns.REWARDS: rewards,
-                    "is_terminated": terminated,
-                    "is_truncated": truncated,
-                }
-            )
-            # We collected enough samples -> Send them to server.
-            if timesteps == env_steps_per_sample:
-                # Make sure the amount of data we collected is correct.
-                assert sum(len(e["actions"]) for e in episodes) == env_steps_per_sample
-
-                # Send the data to the server.
-                if force_on_policy:
-                    _send_message(
-                        sock_,
-                        {
-                            "type": rllink.EPISODES_AND_GET_STATE.name,
-                            "episodes": episodes,
-                            "timesteps": timesteps,
-                        },
-                    )
-                    # We are forced to sample on-policy. Have to wait for a response
-                    # with the state (weights) in it.
-                    msg_type, msg_body = _get_message(sock_)
-                    assert msg_type == rllink.SET_STATE
-                    onnx_session, output_names = _set_state(msg_body)
-
-                # Sampling doesn't have to be on-policy -> continue collecting
-                # samples.
-                else:
-                    raise NotImplementedError
-
-                episodes = []
-                timesteps = 0
-
-            # Set new buckets to empty lists (for next episode).
-            observations = [observations[-1]]
-            actions = []
-            action_dist_inputs = []
-            action_logps = []
-            rewards = []
-
-            # The episode is done -> Reset.
-            if terminated or truncated:
-                obs, _ = env.reset()
-                observations = [obs.tolist()]
-                episode_return = 0.0
+# Backward compatibility.
+_send_message = send_rllink_message
+_get_message = get_rllink_message

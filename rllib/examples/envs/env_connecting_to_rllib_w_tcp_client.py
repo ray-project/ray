@@ -60,17 +60,14 @@ From the dummy client (thread), you should see at the end:
 ConnectionError: Error receiving message from peer on socket ...
 ```
 """
-from functools import partial
 import threading
 
 import gymnasium as gym
 import numpy as np
 
 from ray.rllib.core.rl_module.default_model_config import DefaultModelConfig
-from ray.rllib.env.tcp_client_inference_env_runner import (
-    _dummy_client,
-    TcpClientInferenceEnvRunner,
-)
+from ray.rllib.env.external.rllib_gateway import RLlibGateway
+from ray.rllib.env.tcp_client_inference_env_runner import TcpClientInferenceEnvRunner
 from ray.rllib.utils.test_utils import (
     add_rllib_example_script_args,
     run_rllib_example_script_experiment,
@@ -96,15 +93,40 @@ parser.add_argument(
 if __name__ == "__main__":
     args = parser.parse_args()
 
-    # Start the dummy CartPole client in a thread (and do its thing in parallel).
-    client_thread = threading.Thread(
-        target=partial(
-            _dummy_client,
-            port=args.port
-            + (args.num_env_runners if args.num_env_runners is not None else 1),
+    rllib_gateway = RLlibGateway(
+        address="localhost",
+        port=(
+            args.port
+            + (args.num_env_runners if args.num_env_runners is not None else 1)
         ),
     )
-    client_thread.start()
+
+    def _run_simulation():
+        # Create env and reset it.
+        env = gym.make("CartPole-v1")
+        obs, infos = env.reset()
+        episode_return = 0.0
+        reward = 0.0
+        eps = 0
+
+        while True:
+            action = rllib_gateway.get_action(obs, reward, False, False)
+            obs, reward, terminated, truncated, infos = env.step(action)
+            episode_return += reward
+
+            # Send last observation and reward (with dummy-action request) to
+            # `get_action`.
+            if terminated or truncated:
+                print(f"Episode {eps} return: {episode_return}")
+                # Log terminated/truncated (episode end) and reset.
+                rllib_gateway.get_action(obs, reward, terminated, truncated)
+                episode_return = 0.0
+                reward = 0.0
+                eps += 1
+                env.reset()
+
+    simulation_thread = threading.Thread(target=_run_simulation)
+    simulation_thread.start()
 
     # Define the RLlib (server) config.
     base_config = (

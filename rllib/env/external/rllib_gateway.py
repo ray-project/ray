@@ -1,0 +1,205 @@
+import pickle
+import socket
+import threading
+import time
+
+import numpy as np
+
+from ray.rllib.core import Columns, COMPONENT_RL_MODULE
+from ray.rllib.env.external.rllink import (
+    get_rllink_message,
+    send_rllink_message,
+    RLlink,
+)
+from ray.rllib.env.single_agent_episode import SingleAgentEpisode
+from ray.rllib.utils.metrics import WEIGHTS_SEQ_NO
+from ray.util.annotations import DeveloperAPI
+
+
+@DeveloperAPI
+class RLlibGateway:
+    """TODO: add docstring"""
+
+    def __init__(self, address: str = "localhost", port: int = 5556):
+        # RLlib SingleAgentEpisode collection buckets.
+        self._episodes = []
+        # The open socket connection to an RLlib EnvRunner.
+        self._sock = None
+        # The timesteps sampled thus far.
+        self._timesteps = 0
+        # The RLlib config from the ray cluster.
+        self._config = None
+        # EnvToModule connector pipeline.
+        self._env_to_module = None
+        # ModuleToEnv connector pipeline.
+        self._module_to_env = None
+        # The RLModule for action computations.
+        self._rl_module = None
+        self._weights_seq_no = 0
+        # The client thread running in the background and communicating with an RLlib
+        # EnvRunner.
+        self._client_thread = None
+
+        self._prev_action = None
+        self._prev_extra_model_outputs = None
+
+        def _connecto_to_server_thread_func():
+            # Try connecting to server.
+            while True:
+                try:
+                    print(f"Trying to connect to {address}:{port} ...")
+                    self._sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+                    # self._sock.settimeout(120.0)
+                    self._sock.connect((address, port))
+                    break
+                except ConnectionRefusedError:
+                    time.sleep(5)
+
+            print(f"Connected to server at {address}:{port} ...")
+
+            # Send ping-pong.
+            send_rllink_message(self._sock, {"type": RLlink.PING.name})
+            msg_type, msg_body = get_rllink_message(self._sock)
+            assert msg_type == RLlink.PONG
+
+            print(f"\tPING/PONG ok ...")
+
+            # Request config.
+            send_rllink_message(self._sock, {"type": RLlink.GET_CONFIG.name})
+            msg_type, msg_body = get_rllink_message(self._sock)
+            assert msg_type == RLlink.SET_CONFIG
+            # TODO (sven): Make AlgorithmConfig msgpack'able by making it a
+            #  Checkpointable with a pickle-independent state.
+            self._config = pickle.loads(msg_body["config"])
+            self._components_from_config(self._config)
+
+            print(f"\tGET_CONFIG ok (built connectors and module) ...")
+
+            # Request EnvRunner state (incl. model weights).
+            send_rllink_message(self._sock, {"type": RLlink.GET_STATE.name})
+            msg_type, msg_body = get_rllink_message(self._sock)
+            assert msg_type == RLlink.SET_STATE
+            self._set_state(msg_body["state"])
+
+            print(f"\tSET_STATE ok ...")
+
+        self._connecto_to_server_thread = threading.Thread(
+            target=_connecto_to_server_thread_func
+        )
+        self._connecto_to_server_thread.start()
+
+    def get_action(self, observation, reward, terminated, truncated):
+        # TODO (sven): Block until we have created our model.
+        while self._module_to_env is None:
+            time.sleep(0.01)
+
+        # C++ may send observation tensors as std::vector<float> (which get translated
+        # into python lists).
+        if isinstance(observation, list):
+            observation = np.array(observation, np.float32)
+
+        # Episode logging.
+        if len(self._episodes) == 0 or self._episodes[-1].is_done:
+            self._episodes.append(SingleAgentEpisode())
+            self._episodes[-1].add_env_reset(observation=observation)
+        else:
+            # Log timestep to current episode.
+            self._episodes[-1].add_env_step(
+                observation=observation,
+                action=self._prev_action,
+                reward=reward,
+                terminated=terminated,
+                truncated=truncated,
+                extra_model_outputs=self._prev_extra_model_outputs,
+            )
+            self._timesteps += 1
+
+            # TODO (sven): If enough timesteps have been collected, send out episodes
+            #  through socket to RLlib server for training.
+            # We collected enough samples -> Send them to server.
+            if self._timesteps == self._config.get_rollout_fragment_length():
+                assert sum(map(len, self._episodes)) == (
+                    self._config.get_rollout_fragment_length()
+                )
+
+                # Send the data to the server.
+                # On-policy: Block until response received back from server. Note that
+                # this may halt the simulation calling this function (`get_action`) for
+                # a while.
+                if True:  # force_on_policy:
+                    send_rllink_message(
+                        self._sock,
+                        {
+                            "type": RLlink.EPISODES_AND_GET_STATE.name,
+                            "episodes": [e.get_state() for e in self._episodes],
+                            "timesteps": self._timesteps,
+                        },
+                    )
+                    # We are forced to sample on-policy. Have to wait for a response
+                    # with the state (weights) in it.
+                    msg_type, msg_body = get_rllink_message(self._sock)
+                    assert msg_type == RLlink.SET_STATE
+                    self._set_state(msg_body["state"])
+
+                # Sampling doesn't have to be on-policy -> continue collecting
+                # samples.
+                else:
+                    raise NotImplementedError
+
+                self._timesteps = 0
+                self._episodes = [
+                    eps.cut(len_lookback_buffer=1)
+                    for eps in self._episodes
+                    if not eps.is_done
+                ]
+
+        # Model forward pass.
+        shared_data = {}
+        to_module = self._env_to_module(
+            episodes=[self._episodes[-1]],
+            rl_module=self._rl_module,
+            explore=True,
+            shared_data=shared_data,
+        )
+        model_outs = self._rl_module.forward_inference(to_module)
+        # Add `module_outs` to `batch`.
+        to_module.update(model_outs)
+        to_env = self._module_to_env(
+            episodes=[self._episodes[-1]],
+            batch=to_module,
+            rl_module=self._rl_module,
+            explore=True,
+            shared_data=shared_data,
+        )
+        # Extract the action that should be applied in the env.
+        self._prev_action = to_env.pop(Columns.ACTIONS)
+        action_for_env = to_env.pop(Columns.ACTIONS_FOR_ENV, self._prev_action)[0]
+        self._prev_action = self._prev_action[0]
+
+        extra_model_output = {k: v[0] for k, v in to_env.items()}
+        extra_model_output[WEIGHTS_SEQ_NO] = self._weights_seq_no
+
+        # Store action for next timestep's logging into the episode.
+        self._prev_extra_model_outputs = extra_model_output
+
+        # And return the action.
+        return action_for_env
+
+    def _components_from_config(self, config, env=None, spaces=None):
+        # Create the RLModule and connector pipelines.
+        self._env_to_module = config.build_env_to_module_connector(
+            env=env, spaces=spaces
+        )
+        rl_module_spec = config.get_rl_module_spec(env=env, spaces=spaces)
+        self._rl_module = rl_module_spec.build()
+        self._module_to_env = config.build_module_to_env_connector(
+            env=env, spaces=spaces
+        )
+
+    def _set_state(self, msg_body):
+        # TODO (sven): Add once our EnvRunner publishes these (right now, it doesn't
+        #  even have its own connectors, for simplicity).
+        # self._env_to_module.set_state(msg_body[COMPONENT_ENV_TO_MODULE_CONNECTOR])
+        # self._module_to_env.set_state(msg_body[COMPONENT_MODULE_TO_ENV_CONNECTOR])
+        self._rl_module.set_state(msg_body[COMPONENT_RL_MODULE])
+        self._weights_seq_no = msg_body[WEIGHTS_SEQ_NO]
