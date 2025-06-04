@@ -1,9 +1,7 @@
-import time
-
-import atexit
-import signal
-import requests
 import asyncio
+import signal
+import time
+import requests
 import os
 import json
 import queue
@@ -28,7 +26,6 @@ from ray.core.generated import (
     events_event_aggregator_service_pb2,
     events_event_aggregator_service_pb2_grpc,
 )
-from ray.dashboard.utils import async_loop_forever
 
 logger = logging.getLogger(__name__)
 
@@ -37,8 +34,11 @@ env_var_prefix = "RAY_DASHBOARD_AGGREGATOR_AGENT"
 GRPC_TPE_MAX_WORKERS = ray_constants.env_integer(
     f"{env_var_prefix}_GRPC_TPE_MAX_WORKERS", 10
 )
-LOOP_TPE_MAX_WORKERS = ray_constants.env_integer(
-    f"{env_var_prefix}_LOOP_TPE_MAX_WORKERS", 1
+PUBLISH_EVENT_WORKERS = ray_constants.env_integer(
+    f"{env_var_prefix}_PUBLISH_EVENT_WORKERS", 1
+)
+CHECK_MAIN_THREAD_LIVENESS_INTERVAL_SECONDS = ray_constants.env_float(
+    f"{env_var_prefix}_CHECK_MAIN_THREAD_LIVENESS_INTERVAL_SECONDS", 0.1
 )
 MAX_EVENT_BUFFER_SIZE = ray_constants.env_integer(
     f"{env_var_prefix}_MAX_EVENT_BUFFER_SIZE", 1000000
@@ -99,19 +99,15 @@ class AggregatorAgent(
             max_workers=GRPC_TPE_MAX_WORKERS,
             thread_name_prefix="event_aggregator_agent_grpc_executor",
         )
-        self._loop_executor = ThreadPoolExecutor(
-            max_workers=LOOP_TPE_MAX_WORKERS,
-            thread_name_prefix="event_aggregator_agent_loop_executor",
-        )
 
         self._lock = threading.Lock()
+        self._stop_event = threading.Event()
+        self._publisher_threads = []
         self._events_received_since_last_metrics_update = 0
         self._events_dropped_at_core_worker_since_last_metrics_update = 0
         self._events_dropped_at_event_buffer_since_last_metrics_update = 0
         self._events_published_since_last_metrics_update = 0
-        self._event_batch = []  # list of event json objects
 
-        atexit.register(self._cleanup)
         self._orig_sigterm_handler = signal.signal(
             signal.SIGTERM, self._sigterm_handler
         )
@@ -173,42 +169,44 @@ class AggregatorAgent(
         )
         return events_event_aggregator_service_pb2.AddEventReply(status=status)
 
+    def _send_events_to_external_service(self, event_batch):
+        if not event_batch:
+            return
+        try:
+            response = requests.post(
+                f"{EVENT_SEND_ADDR}:{EVENT_SEND_PORT}", json=event_batch
+            )
+            response.raise_for_status()
+            with self._lock:
+                self._events_published_since_last_metrics_update += len(event_batch)
+            event_batch.clear()
+        except Exception as e:
+            logger.error("Failed to send events to external service. Error: %s", e)
+
     def _publish_events(self):
-        # self._event_batch is only used in this thread, so we don't need to
-        # acquire the lock when accessing it.
+        event_batch = []
 
         while True:
-            while len(self._event_batch) < MAX_EVENT_SEND_BATCH_SIZE:
+            while len(event_batch) < MAX_EVENT_SEND_BATCH_SIZE:
                 try:
                     event_proto = self._event_buffer.get(block=False)
-                    self._event_batch.append(json.loads(MessageToJson((event_proto))))
+                    event_batch.append(json.loads(MessageToJson((event_proto))))
                 except queue.Empty:
                     break
 
-            if self._event_batch:
-                # query external service to send the events
-                try:
-                    response = requests.post(
-                        f"{EVENT_SEND_ADDR}:{EVENT_SEND_PORT}", json=self._event_batch
-                    )
-                    response.raise_for_status()
-                    with self._lock:
-                        self._events_published_since_last_metrics_update += len(
-                            self._event_batch
-                        )
-                    self._event_batch.clear()
-                except Exception as e:
-                    logger.error(
-                        "Failed to send events to external service. Error: %s",
-                        e,
-                    )
-                    # If failed, self._event_batch will be reused in the next iteration.
-                    # Retry sending with other events in the next iteration.
+            if event_batch:
+                # Send the batch of events to the external service.
+                # If failed, event_batch will be reused in the next iteration.
+                # Retry sending with other events in the next iteration.
+                self._send_events_to_external_service(event_batch)
             else:
-                time.sleep(MAX_BUFFER_SEND_INTERVAL_SECONDS)
+                should_stop = self._stop_event.wait(MAX_BUFFER_SEND_INTERVAL_SECONDS)
+                if should_stop:
+                    # Send any remaining events before stopping.
+                    self._send_events_to_external_service(event_batch)
+                    return
 
-    @async_loop_forever(METRICS_UPDATE_INTERVAL_SECONDS)
-    async def _update_metrics(self):
+    def _update_metrics(self):
         if not prometheus_client:
             return
 
@@ -243,18 +241,35 @@ class AggregatorAgent(
         )
         events_published.labels(**labels).inc(_events_published)
 
+    def _check_main_thread_liveness(self):
+        while True:
+            if not threading.main_thread().is_alive():
+                self._stop_event.set()
+            if self._stop_event.is_set():
+                self._cleanup()
+                break
+            time.sleep(CHECK_MAIN_THREAD_LIVENESS_INTERVAL_SECONDS)
+
     def _cleanup(self):
-        event_batch = self._event_batch.copy()
+        # Send any remaining events in the buffer
+        event_batch = []
         while True:
             try:
                 event_proto = self._event_buffer.get(block=False)
                 event_batch.append(json.loads(MessageToJson((event_proto))))
             except:  # noqa: E722
                 break
-        if event_batch:
-            requests.post(f"{EVENT_SEND_ADDR}:{EVENT_SEND_PORT}", json=event_batch)
+
+        self._send_events_to_external_service(event_batch)
+
+        for thread in self._publisher_threads:
+            thread.join()
+
+        # Update metrics immediately
+        self._update_metrics()
 
     def _sigterm_handler(self, signum, frame):
+        self._stop_event.set()
         self._cleanup()
         self._orig_sigterm_handler(signum, frame)
 
@@ -264,12 +279,25 @@ class AggregatorAgent(
                 self, server
             )
 
-        loop = get_or_create_event_loop()
-
-        await asyncio.gather(
-            loop.run_in_executor(self._loop_executor, self._publish_events),
-            self._update_metrics(),
+        thread = threading.Thread(
+            target=self._check_main_thread_liveness,
+            name="event_aggregator_agent_check_main_thread_liveness",
+            daemon=False,
         )
+        thread.start()
+
+        for _ in range(PUBLISH_EVENT_WORKERS):
+            thread = threading.Thread(
+                target=self._publish_events,
+                name="event_aggregator_agent_publish_events",
+                daemon=False,
+            )
+            self._publisher_threads.append(thread)
+            thread.start()
+
+        while True:
+            self._update_metrics()
+            await asyncio.sleep(METRICS_UPDATE_INTERVAL_SECONDS)
 
     @staticmethod
     def is_minimal_module():
