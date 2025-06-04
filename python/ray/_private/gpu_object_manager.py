@@ -76,13 +76,12 @@ class GPUObjectManager:
     def _is_gpu_object_ref(self, obj_ref: ObjectRef) -> bool:
         return obj_ref in self.gpu_object_refs
 
-    def _send_gpu_object(self, src_actor: ActorHandle, obj_id: str, dst_rank: int):
+    def _send_gpu_object(self, communicator_name: str, src_actor: ActorHandle, obj_id: str, dst_rank: int):
         # Send tensors stored in the `src_actor`'s GPU object store to the
         # destination rank `dst_rank`.
-        def __ray_send__(self, obj_id: str, dst_rank: int):
-            import torch.distributed as dist
-
+        def __ray_send__(self, communicator_name: str, obj_id: str, dst_rank: int):
             from ray._private.worker import global_worker
+            import ray.util.collective as collective
 
             gpu_object_manager = global_worker.gpu_object_manager
             assert gpu_object_manager.has_gpu_object(
@@ -90,16 +89,17 @@ class GPUObjectManager:
             ), f"obj_id={obj_id} not found in GPU object store"
             tensors = gpu_object_manager.get_gpu_object(obj_id)
             for tensor in tensors:
-                dist.send(tensor, dst_rank)
+                collective.send(tensor, dst_rank, group_name=communicator_name)
             # TODO(kevin85421): The current garbage collection implementation for the
             # in-actor object store is naive. We garbage collect each object after it
             # is consumed once.
             gpu_object_manager.remove_gpu_object(obj_id)
 
-        src_actor.__ray_call__.remote(__ray_send__, obj_id, dst_rank)
+        src_actor.__ray_call__.remote(__ray_send__, communicator_name, obj_id, dst_rank)
 
     def _recv_gpu_object(
         self,
+        communicator_name: str,
         dst_actor: ActorHandle,
         obj_id: str,
         src_rank: int,
@@ -109,25 +109,27 @@ class GPUObjectManager:
         # `dst_actor`'s GPU object store.
         def __ray_recv__(
             self,
+            communicator_name: str,
             obj_id: str,
             src_rank: int,
             tensor_meta: List[Tuple["torch.Size", "torch.dtype"]],
         ):
             import torch
-            import torch.distributed as dist
 
             from ray._private.worker import global_worker
+            import ray.util.collective as collective
 
             gpu_object_manager = global_worker.gpu_object_manager
             tensors = []
             for meta in tensor_meta:
                 shape, dtype = meta
+                # TODO: allocate on correct device.
                 tensor = torch.zeros(shape, dtype=dtype)
-                dist.recv(tensor, src_rank)
+                collective.recv(tensor, src_rank, group_name=communicator_name)
                 tensors.append(tensor)
             gpu_object_manager.add_gpu_object(obj_id, tensors)
 
-        dst_actor.__ray_call__.remote(__ray_recv__, obj_id, src_rank, tensor_meta)
+        dst_actor.__ray_call__.remote(__ray_recv__, communicator_name, obj_id, src_rank, tensor_meta)
 
     def trigger_out_of_band_tensor_transfer(
         self, dst_actor: ActorHandle, task_args: Tuple[Any, ...]
@@ -151,10 +153,8 @@ class GPUObjectManager:
             task_args: List of arguments for the target actor task that may contain ObjectRefs.
         """
         from ray.experimental.channel import ChannelContext
+        from ray.experimental.collective import get_collective_groups
 
-        ctx = ChannelContext.get_current()
-
-        actor_id_to_rank = {}
         for arg in task_args:
             # If an ObjectRef exists in `gpu_object_refs`, it means the ObjectRef
             # is in-actor tensors. Therefore, this function will trigger a tensor
@@ -168,32 +168,38 @@ class GPUObjectManager:
 
             src_actor = gpu_object_meta.src_actor
             tensor_meta = gpu_object_meta.tensor_meta
-            if not actor_id_to_rank:
-                # TODO(kevin85421): Support multiple communicators.
-                if len(ctx.communicators) != 1:
-                    raise ValueError(
-                        f"There are {len(ctx.communicators)} communicators in the current context. "
-                        "Currently, GPU objects only support 1 communicator. Please make sure only "
-                        "one communicator exists."
-                    )
-                actor_id_to_rank = {
-                    a._ray_actor_id: i for i, a in enumerate(ctx.communicators[0])
-                }
-            if src_actor._ray_actor_id not in actor_id_to_rank:
+            # TODO: Specify backend.
+            communicators = get_collective_groups([src_actor, dst_actor])
+            # TODO(kevin85421): Support multiple communicators.
+            if len(communicators) == 0:
                 raise ValueError(
-                    f"Sender actor {src_actor._ray_actor_id} not found in communicator. "
+                    f"No communicators found for actors {src_actor} and {dst_actor}. "
+                    "Create a communicator with "
+                    "`ray.experimental.collective.create_collective_group` "
+                    "before calling actor tasks."
+                )
+            elif len(communicators) > 1:
+                raise ValueError(
+                    f"There are {len(communicators)} possible communicators that contain actors {src_actor} and {dst_actor}. "
+                    "Currently, GPU objects only support one communicator. Please make sure only "
+                    "one communicator exists."
+                )
+            communicator = communicators[0]
+            src_rank = communicator.get_rank(src_actor)
+            if src_rank == -1:
+                raise ValueError(
+                    f"Sender actor {src_actor} not found in communicator. "
                     "Please make sure the sender and receiver are in the same communicator."
                 )
-            if dst_actor._ray_actor_id not in actor_id_to_rank:
+            dst_rank = communicator.get_rank(dst_actor)
+            if dst_rank == -1:
                 raise ValueError(
-                    f"Receiver actor {dst_actor._ray_actor_id} not found in communicator. "
+                    f"Receiver actor {dst_actor} not found in communicator. "
                     "Please make sure the sender and receiver are in the same communicator."
                 )
-            src_rank = actor_id_to_rank[src_actor._ray_actor_id]
-            dst_rank = actor_id_to_rank[dst_actor._ray_actor_id]
             if src_rank == dst_rank:
                 raise ValueError(
                     f"src_rank: {src_rank} and dst_rank: {dst_rank} are the same. This may cause deadlock for transports like NCCL."
                 )
-            self._send_gpu_object(src_actor, arg.hex(), dst_rank)
-            self._recv_gpu_object(dst_actor, arg.hex(), src_rank, tensor_meta)
+            self._send_gpu_object(communicator.name, src_actor, arg.hex(), dst_rank)
+            self._recv_gpu_object(communicator.name, dst_actor, arg.hex(), src_rank, tensor_meta)

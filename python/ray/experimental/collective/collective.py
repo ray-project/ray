@@ -3,6 +3,7 @@ import threading
 import uuid
 
 import ray
+from ray.experimental.channel.torch_tensor_type import TorchTensorType
 from ray.experimental.collective.communicator import Communicator, CommunicatorHandle
 from ray.experimental.collective.util import get_address_and_port
 import ray.experimental.internal_kv as internal_kv
@@ -72,6 +73,7 @@ def _do_init_collective_group(
     """Helper method that runs as a task on a remote actor to create a
     collective group.
     """
+    TorchTensorType().register_custom_serializer()
     ray.util.collective.init_collective_group(
         world_size, rank, backend, group_name=name
     )

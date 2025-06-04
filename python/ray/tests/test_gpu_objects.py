@@ -6,19 +6,11 @@ import ray
 import torch.distributed as dist
 from ray.experimental.channel.torch_tensor_type import TorchTensorType
 from ray.experimental.channel import ChannelContext
+from ray.experimental.collective import create_collective_group
 
 
 @ray.remote
 class GPUTestActor:
-    def register_custom_serializer(self):
-        TorchTensorType().register_custom_serializer()
-
-    def setup(self, world_size, rank):
-        init_method = "tcp://localhost:8889"
-        dist.init_process_group(
-            backend="gloo", world_size=world_size, rank=rank, init_method=init_method
-        )
-
     @ray.method(tensor_transport="gloo")
     def echo(self, data):
         return data
@@ -37,21 +29,10 @@ class GPUTestActor:
         return None
 
 
-def init_process_group(actors):
-    world_size = len(actors)
-    ray.get([actor.setup.remote(world_size, i) for i, actor in enumerate(actors)])
-    # Set up communicator so that the driver knows the actor-to-rank mapping.
-    ctx = ChannelContext.get_current()
-    ctx.communicators[0] = actors
-    # Register custom serializer so that the serializer can retrieve tensors from
-    # return values of actor methods.
-    ray.get([actor.register_custom_serializer.remote() for actor in actors])
-
-
 def test_inter_actor_gpu_tensor_transfer(ray_start_regular):
     world_size = 2
     actors = [GPUTestActor.remote() for _ in range(world_size)]
-    init_process_group(actors)
+    create_collective_group(actors, backend="torch_gloo")
 
     small_tensor = torch.randn((1,))
     sender = actors[0]
@@ -70,7 +51,7 @@ def test_inter_actor_gpu_tensor_transfer(ray_start_regular):
 def test_mix_cpu_gpu_data(ray_start_regular):
     world_size = 2
     actors = [GPUTestActor.remote() for _ in range(world_size)]
-    init_process_group(actors)
+    create_collective_group(actors, backend="torch_gloo")
 
     tensor = torch.randn((1,))
     cpu_data = random.randint(0, 100)
@@ -88,7 +69,7 @@ def test_mix_cpu_gpu_data(ray_start_regular):
 def test_multiple_tensors(ray_start_regular):
     world_size = 2
     actors = [GPUTestActor.remote() for _ in range(world_size)]
-    init_process_group(actors)
+    create_collective_group(actors, backend="torch_gloo")
 
     tensor1 = torch.randn((1,))
     tensor2 = torch.randn((2,))
@@ -108,7 +89,7 @@ def test_multiple_tensors(ray_start_regular):
 def test_trigger_out_of_band_tensor_transfer(ray_start_regular):
     world_size = 2
     actors = [GPUTestActor.remote() for _ in range(world_size)]
-    init_process_group(actors)
+    create_collective_group(actors, backend="torch_gloo")
 
     src_actor, dst_actor = actors[0], actors[1]
 
