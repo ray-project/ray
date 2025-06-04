@@ -3,8 +3,8 @@ import copy
 import html
 import itertools
 import logging
-import re
 import math
+import re
 import time
 import warnings
 from typing import (
