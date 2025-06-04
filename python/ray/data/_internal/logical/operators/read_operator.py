@@ -64,13 +64,15 @@ class Read(AbstractMap, SourceOperator):
     def _cached_output_metadata(self) -> "MetadataAndSchema":
         # Legacy datasources might not implement `get_read_tasks`.
         if self._datasource.should_create_reader:
-            return BlockMetadata(None, None, None, None)
+            empty_meta = BlockMetadata(None, None, None, None)
+            return MetadataAndSchema(metadata=empty_meta, schema=None)
 
         # HACK: Try to get a single read task to get the metadata.
         read_tasks = self._datasource.get_read_tasks(1)
         if len(read_tasks) == 0:
             # If there are no read tasks, the dataset is probably empty.
-            return BlockMetadata(None, None, None, None)
+            empty_meta = BlockMetadata(None, None, None, None)
+            return MetadataAndSchema(metadata=empty_meta, schema=None)
 
         # `get_read_tasks` isn't guaranteed to return exactly one read task.
         metadata = [read_task.metadata for read_task in read_tasks]
