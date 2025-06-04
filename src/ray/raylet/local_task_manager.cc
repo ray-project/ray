@@ -619,7 +619,7 @@ bool LocalTaskManager::PoppedWorkerHandler(
       // `CancelTask`.
       CancelTasks(
           [work](const auto &other_work) {
-            return work->task.GetTaskSpecification().TaskId() ==
+            return other_work->task.GetTaskSpecification().TaskId() ==
                    work->task.GetTaskSpecification().TaskId();
           },
           rpc::RequestWorkerLeaseReply::SCHEDULING_CANCELLED_RUNTIME_ENV_SETUP_FAILED,
