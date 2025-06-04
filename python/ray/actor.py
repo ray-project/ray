@@ -492,7 +492,7 @@ class ActorMethod:
                 )
 
             gpu_object_manager = ray._private.worker.global_worker.gpu_object_manager
-            gpu_object_manager.add_gpu_object_ref(obj_ref, self._actor_ref())
+            gpu_object_manager.add_gpu_object_ref(obj_ref, self._actor)
 
         return obj_ref
 
