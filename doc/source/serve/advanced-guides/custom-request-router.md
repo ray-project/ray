@@ -75,23 +75,25 @@ Ray Serve provides utility mixins that can be used to extend the functionality o
 request router. These mixins can be used to implement common routing policies such as
 locality-aware routing, multiplexed model support, and FIFO request routing.
 
-- `ray.serve.request_router.FIFOMixin`: This mixin implements first in first out (FIFO)
+- [`FIFOMixin`](../api/doc/ray.serve.request_router.FIFOMixin.rst): This mixin implements first in first out (FIFO)
   request routing. The default behavior for the request router is to route requests to
   the exact replica got assigned by the request passed to the [`choose_replicas`](../api/doc/ray.serve.request_router.RequestRouter.choose_replicas.rst).
   This mixin is useful for routing algorithm that can work independently of the
   request content so the requests can be routed as soon as possible in the order they
   were received.
-- `ray.serve.request_router.LocalityMixin`: This mixin implements locality-aware
+- [`LocalityMixin`](../api/doc/ray.serve.request_router.LocalityMixin.rst): This mixin implements locality-aware
   request routing. It updates the internal states when between replica updates to track
   the location between replicas in the same node, same zone, and everything else. It
-  offers helpers `apply_locality_routing` and `rank_replicas_via_locality` to route and
+  offers helpers [`apply_locality_routing`](../api/doc/ray.serve.request_router.LocalityMixin.apply_locality_routing.rst)
+  and [`rank_replicas_via_locality`](../api/doc/ray.serve.request_router.LocalityMixin.rank_replicas_via_locality.rst) to route and
   ranks replicas based on their locality to the request, which can be useful for
   reducing latency and improving performance.
-- `ray.serve.request_router.MultiplexMixin`: When you use model-multiplexing
+- [`MultiplexMixin`](../api/doc/ray.serve.request_router.MultiplexMixin.rst): When you use model-multiplexing
   you need to route requests based on knowing which replica has already a hot version of
   the model. It updates the internal states when between replica updates to track the
   model loaded on each replica, and size of the model cache on each replica. It offers
-  helpers `apply_multiplex_routing` and `rank_replicas_via_multiplex` to route
+  helpers [`apply_multiplex_routing`](../api/doc/ray.serve.request_router.MultiplexMixin.apply_multiplex_routing.rst)
+- and [`rank_replicas_via_multiplex`](../api/doc/ray.serve.request_router.MultiplexMixin.rank_replicas_via_multiplex.rst) to route
   and ranks replicas based on their multiplexed model id of the request.
 
 
