@@ -126,6 +126,13 @@ def _clear_current_platform_cache():
     """
     from vllm.platforms import current_platform
 
+    # TODO: remove this once https://github.com/vllm-project/vllm/pull/18979 is merged
+    if (
+        "CUDA_VISIBLE_DEVICES" in os.environ
+        and os.environ["CUDA_VISIBLE_DEVICES"] == ""
+    ):
+        del os.environ["CUDA_VISIBLE_DEVICES"]
+
     # This check is just to future proof this implementation
     # in case vllm removes their lru_cache decorator
     if hasattr(current_platform.get_device_capability, "cache_clear"):
