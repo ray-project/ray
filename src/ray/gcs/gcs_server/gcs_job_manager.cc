@@ -198,7 +198,7 @@ void GcsJobManager::HandleMarkJobFinished(rpc::MarkJobFinishedRequest request,
 
 void GcsJobManager::ClearJobInfos(const rpc::JobTableData &job_data, JobID job_id) {
   job_finished_listener_(job_data);
-  RAY_CHECK_EQ(cached_job_configs_.erase(job_id), 1);
+  RAY_CHECK_EQ(cached_job_configs_.erase(job_id), 1ul);
 }
 
 void GcsJobManager::HandleGetAllJobInfo(rpc::GetAllJobInfoRequest request,
