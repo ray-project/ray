@@ -367,7 +367,7 @@ Send2Trash==1.8.3
 sentencepiece==0.1.96
 sentry-sdk==2.10.0
 serpent==1.41
-setproctitle==1.3.3
+setproctitle==1.3.6
 shellingham==1.5.4
 Shimmy==2.0.0
 shortuuid==1.0.1
