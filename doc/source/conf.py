@@ -113,6 +113,15 @@ myst_enable_extensions = [
 
 myst_heading_anchors = 3
 
+# Add these for attachment handling
+nb_render_key_pairs = {
+    "html": [
+        ("img", ["src", "alt"]),
+    ]
+}
+
+nb_output_folder = "_build/jupyter_execute"
+
 # Make broken internal references into build time errors.
 # See https://www.sphinx-doc.org/en/master/usage/configuration.html#confval-nitpicky
 # for more information. :py:class: references are ignored due to false positives

@@ -18,11 +18,11 @@ from ray import cloudpickle, tune
 from ray._private.test_utils import object_memory_usage
 from ray.tune import (
     Callback,
-    Trainable,
     Checkpoint,
     CheckpointConfig,
     FailureConfig,
     RunConfig,
+    Trainable,
 )
 from ray.tune.experiment import Trial
 from ray.tune.schedulers import PopulationBasedTraining

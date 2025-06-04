@@ -17,9 +17,9 @@ from ray.air.constants import TIME_THIS_ITER_S
 from ray.air.execution import PlacementGroupResourceManager, ResourceManager
 from ray.air.execution._internal import RayActorManager, TrackedActor
 from ray.exceptions import RayActorError, RayTaskError
-from ray.tune import CheckpointConfig
 from ray.train._internal.session import _FutureTrainingResult, _TrainingResult
 from ray.train._internal.storage import StorageContext
+from ray.tune import CheckpointConfig
 from ray.tune.callback import Callback, CallbackList
 from ray.tune.error import TuneError, _AbortTrialExecution, _TuneStopTrialError
 from ray.tune.execution.class_cache import _ActorClassCache

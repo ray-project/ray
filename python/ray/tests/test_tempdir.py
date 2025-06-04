@@ -2,6 +2,7 @@ import os
 import shutil
 import sys
 import time
+import uuid
 
 import pytest
 
@@ -24,52 +25,44 @@ def unix_socket_delete(unix_socket):
     return os.remove(unix_socket) if unix else None
 
 
-def test_tempdir(shutdown_only):
-    shutil.rmtree(ray._private.utils.get_ray_temp_dir(), ignore_errors=True)
-    if os.path.exists(ray._private.utils.get_ray_temp_dir()):
-        # sometimes even after delete, it's still there.
-        # delete it again to make sure it's cleaned up
+@pytest.fixture
+def delete_default_temp_dir():
+    def delete_default_temp_dir_once():
         shutil.rmtree(ray._private.utils.get_ray_temp_dir(), ignore_errors=True)
-        assert not os.path.exists(ray._private.utils.get_ray_temp_dir())
+        return not os.path.exists(ray._private.utils.get_ray_temp_dir())
 
-    ray.init(
-        _temp_dir=os.path.join(
-            ray._private.utils.get_user_temp_dir(), "i_am_a_temp_dir"
-        )
-    )
-    assert os.path.exists(
-        os.path.join(ray._private.utils.get_user_temp_dir(), "i_am_a_temp_dir")
-    ), "Specified temp dir not found."
+    wait_for_condition(delete_default_temp_dir_once)
+    yield
+
+
+def test_tempdir_created_successfully(delete_default_temp_dir, shutdown_only):
+    temp_dir = os.path.join(ray._private.utils.get_user_temp_dir(), uuid.uuid4().hex)
+    ray.init(_temp_dir=temp_dir)
+    assert os.path.exists(temp_dir), "Specified temp dir not found."
     assert not os.path.exists(
         ray._private.utils.get_ray_temp_dir()
     ), "Default temp dir should not exist."
-    shutil.rmtree(
-        os.path.join(ray._private.utils.get_user_temp_dir(), "i_am_a_temp_dir"),
-        ignore_errors=True,
-    )
+    shutil.rmtree(temp_dir, ignore_errors=True)
 
 
-def test_tempdir_commandline():
-    shutil.rmtree(ray._private.utils.get_ray_temp_dir(), ignore_errors=True)
+def test_tempdir_commandline(delete_default_temp_dir):
+    temp_dir = os.path.join(ray._private.utils.get_user_temp_dir(), uuid.uuid4().hex)
     check_call_ray(
         [
             "start",
             "--head",
-            "--temp-dir="
-            + os.path.join(ray._private.utils.get_user_temp_dir(), "i_am_a_temp_dir2"),
+            "--temp-dir=" + temp_dir,
             "--port",
             "0",
         ]
     )
-    assert os.path.exists(
-        os.path.join(ray._private.utils.get_user_temp_dir(), "i_am_a_temp_dir2")
-    ), "Specified temp dir not found."
+    assert os.path.exists(temp_dir), "Specified temp dir not found."
     assert not os.path.exists(
         ray._private.utils.get_ray_temp_dir()
     ), "Default temp dir should not exist."
     check_call_ray(["stop"])
     shutil.rmtree(
-        os.path.join(ray._private.utils.get_user_temp_dir(), "i_am_a_temp_dir2"),
+        temp_dir,
         ignore_errors=True,
     )
 
@@ -156,7 +149,4 @@ def test_session_dir_uniqueness():
 
 
 if __name__ == "__main__":
-    # Make subprocess happy in bazel.
-    os.environ["LC_ALL"] = "en_US.UTF-8"
-    os.environ["LANG"] = "en_US.UTF-8"
     sys.exit(pytest.main(["-sv", __file__]))
