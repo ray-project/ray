@@ -71,7 +71,11 @@ class RLlibGateway:
             # TODO (sven): Make AlgorithmConfig msgpack'able by making it a
             #  Checkpointable with a pickle-independent state.
             self._config = pickle.loads(msg_body["config"])
-            self._components_from_config(self._config)
+            # Create the RLModule and connector pipelines.
+            self._env_to_module = self._config.build_env_to_module_connector()
+            rl_module_spec = self._config.get_rl_module_spec()
+            self._rl_module = rl_module_spec.build()
+            self._module_to_env = self._config.build_module_to_env_connector()
 
             print(f"\tGET_CONFIG ok (built connectors and module) ...")
 
@@ -88,26 +92,46 @@ class RLlibGateway:
         )
         self._connecto_to_server_thread.start()
 
-    def get_action(self, observation, reward, terminated, truncated):
+    def get_action(self, prev_reward, next_observation, terminated, truncated):
+        """Computes and returns a new action, given an observation.
+
+        Args:
+            prev_reward: The reward received after the previously computed action
+                (returned from this method in the previous call).
+            next_observation: The current observation, from which the action should be
+                computed. Note that first, `observation`, the previously returned
+                action, `prev_reward`, and `terminated/truncated` are logged with the running
+                episdode through `Episode.add_env_step()`, then the env-to-module
+                connector creates the inference forward batch for the RLModule based on
+                this running episode.
+            terminated: Whether the episode is terminated. If True, `next_observation`
+                is the terminal observation of the episode and `prev_reward` is the last
+                reward that the agent receives in the episode.
+            truncated: Whether the episode is truncated (done). If True,
+                `next_observation` is the observation right before the truncation point
+                and `prev_reward` is the last reward that the agent receives in the
+                episode. A truncated episode's last observation should still be used to
+                compute value function estimates at the truncation point.
+        """
         # TODO (sven): Block until we have created our model.
         while self._module_to_env is None:
             time.sleep(0.01)
 
         # C++ may send observation tensors as std::vector<float> (which get translated
         # into python lists).
-        if isinstance(observation, list):
-            observation = np.array(observation, np.float32)
+        if isinstance(next_observation, list):
+            next_observation = np.array(next_observation, np.float32)
 
         # Episode logging.
         if len(self._episodes) == 0 or self._episodes[-1].is_done:
             self._episodes.append(SingleAgentEpisode())
-            self._episodes[-1].add_env_reset(observation=observation)
+            self._episodes[-1].add_env_reset(observation=next_observation)
         else:
             # Log timestep to current episode.
             self._episodes[-1].add_env_step(
-                observation=observation,
+                observation=next_observation,
                 action=self._prev_action,
-                reward=reward,
+                reward=prev_reward,
                 terminated=terminated,
                 truncated=truncated,
                 extra_model_outputs=self._prev_extra_model_outputs,
@@ -184,17 +208,6 @@ class RLlibGateway:
 
         # And return the action.
         return action_for_env
-
-    def _components_from_config(self, config, env=None, spaces=None):
-        # Create the RLModule and connector pipelines.
-        self._env_to_module = config.build_env_to_module_connector(
-            env=env, spaces=spaces
-        )
-        rl_module_spec = config.get_rl_module_spec(env=env, spaces=spaces)
-        self._rl_module = rl_module_spec.build()
-        self._module_to_env = config.build_module_to_env_connector(
-            env=env, spaces=spaces
-        )
 
     def _set_state(self, msg_body):
         # TODO (sven): Add once our EnvRunner publishes these (right now, it doesn't

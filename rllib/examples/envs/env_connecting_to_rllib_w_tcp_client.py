@@ -88,45 +88,54 @@ parser.add_argument(
     help="The port for RLlib's EnvRunner to listen to for incoming UE5 connections. "
     "You need to specify the same port inside your UE5 `RLlibClient` plugin.",
 )
+parser.add_argument(
+    "--no-gateway",
+    action="store_true",
+    help="If set, the script runs without the RLlibGateway and dummy external "
+    "simulator. This is usefule, if you want to connect on your own using "
+    "an RLlibGateway instance, for example from within your C++-based simulation.",
+)
 
 
 if __name__ == "__main__":
     args = parser.parse_args()
 
-    rllib_gateway = RLlibGateway(
-        address="localhost",
-        port=(
-            args.port
-            + (args.num_env_runners if args.num_env_runners is not None else 1)
-        ),
-    )
+    # Start the RLlibGateway and dummy (external) simulation.
+    if not args.no_gateway:
+        rllib_gateway = RLlibGateway(
+            address="localhost",
+            port=(
+                args.port
+                + (args.num_env_runners if args.num_env_runners is not None else 1)
+            ),
+        )
 
-    def _run_simulation():
-        # Create env and reset it.
-        env = gym.make("CartPole-v1")
-        obs, infos = env.reset()
-        episode_return = 0.0
-        reward = 0.0
-        eps = 0
+        def _run_simulation():
+            # Create env and reset it.
+            env = gym.make("CartPole-v1")
+            obs, infos = env.reset()
+            episode_return = 0.0
+            reward = 0.0
+            eps = 0
 
-        while True:
-            action = rllib_gateway.get_action(obs, reward, False, False)
-            obs, reward, terminated, truncated, infos = env.step(action)
-            episode_return += reward
+            while True:
+                action = rllib_gateway.get_action(obs, reward, False, False)
+                obs, reward, terminated, truncated, infos = env.step(action)
+                episode_return += reward
 
-            # Send last observation and reward (with dummy-action request) to
-            # `get_action`.
-            if terminated or truncated:
-                print(f"Episode {eps} return: {episode_return}")
-                # Log terminated/truncated (episode end) and reset.
-                rllib_gateway.get_action(obs, reward, terminated, truncated)
-                episode_return = 0.0
-                reward = 0.0
-                eps += 1
-                env.reset()
+                # Send last observation and reward (with dummy-action request) to
+                # `get_action`.
+                if terminated or truncated:
+                    print(f"Episode {eps} return: {episode_return}")
+                    # Log terminated/truncated (episode end) and reset.
+                    rllib_gateway.get_action(obs, reward, terminated, truncated)
+                    episode_return = 0.0
+                    reward = 0.0
+                    eps += 1
+                    env.reset()
 
-    simulation_thread = threading.Thread(target=_run_simulation)
-    simulation_thread.start()
+        simulation_thread = threading.Thread(target=_run_simulation)
+        simulation_thread.start()
 
     # Define the RLlib (server) config.
     base_config = (
