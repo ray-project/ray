@@ -4485,7 +4485,7 @@
 
   run:
     timeout: 3600
-    script: python ci/tests.py
+    script: python ci/test.py
 
   variations:
     - __suffix__: aws
