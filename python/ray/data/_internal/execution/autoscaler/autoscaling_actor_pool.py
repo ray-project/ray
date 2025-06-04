@@ -57,7 +57,7 @@ class AutoscalingActorPool(ABC):
     def num_free_task_slots(self) -> int:
         """Number of free slots to run tasks.
 
-        This includes task slots for pending actors.
+        This doesn't include task slots for pending actors.
         """
         return (
             self.max_tasks_in_flight_per_actor() * self.num_running_actors()
