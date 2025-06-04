@@ -18,6 +18,7 @@ import numpy as np
 from packaging.version import parse as parse_version
 
 from ray._private.arrow_utils import get_pyarrow_version
+from ray._private.ray_constants import env_integer
 from ray.air.constants import TENSOR_COLUMN_NAME
 from ray.air.util.tensor_extensions.arrow import (
     convert_to_pyarrow_array,
@@ -37,7 +38,7 @@ from ray.data.block import (
     BlockType,
     U,
 )
-from ray.data.context import DataContext
+from ray.data.context import DEFAULT_TARGET_MAX_BLOCK_SIZE, DataContext
 
 try:
     import pyarrow
@@ -56,6 +57,15 @@ logger = logging.getLogger(__name__)
 
 
 _MIN_PYARROW_VERSION_TO_NUMPY_ZERO_COPY_ONLY = parse_version("13.0.0")
+
+
+# Set the max chunk size in bytes for Arrow to Batches conversion in
+# ArrowBlockAccessor.iter_rows(). Default to 4MB, to optimize for image
+# datasets in parquet format.
+ARROW_MAX_CHUNK_SIZE_BYTES = env_integer(
+    "RAY_DATA_ARROW_MAX_CHUNK_SIZE_BYTES",
+    int(DEFAULT_TARGET_MAX_BLOCK_SIZE / 32),
+)
 
 
 # We offload some transformations to polars for performance.
@@ -157,6 +167,25 @@ class ArrowBlockBuilder(TableBlockBuilder):
 
     def block_type(self) -> BlockType:
         return BlockType.ARROW
+
+
+def _get_max_chunk_size(
+    table: "pyarrow.Table", max_chunk_size_bytes: int
+) -> Optional[int]:
+    """
+    Calculate the max chunk size in rows for Arrow to Batches conversion in
+    ArrowBlockAccessor.iter_rows().
+    Args:
+        table: The pyarrow table to calculate the max chunk size for.
+        max_chunk_size_bytes: The max chunk size in bytes.
+    Returns:
+        The max chunk size in rows, or None if the table is empty.
+    """
+    if table.nbytes == 0:
+        return None
+    else:
+        avg_row_size = int(table.nbytes / table.num_rows)
+        return max(1, int(max_chunk_size_bytes / avg_row_size))
 
 
 class ArrowBlockAccessor(TableBlockAccessor):
@@ -390,7 +419,13 @@ class ArrowBlockAccessor(TableBlockAccessor):
     ) -> Iterator[Union[Mapping, np.ndarray]]:
         table = self._table
         if public_row_format:
-            for batch in table.to_batches():
+            if not hasattr(self, "_max_chunk_size"):
+                # Calling _get_max_chunk_size in constructor makes it slow, so we
+                # are calling it here only when needed.
+                self._max_chunk_size = _get_max_chunk_size(
+                    self._table, ARROW_MAX_CHUNK_SIZE_BYTES
+                )
+            for batch in table.to_batches(max_chunksize=self._max_chunk_size):
                 yield from batch.to_pylist()
         else:
             for i in range(self.num_rows()):

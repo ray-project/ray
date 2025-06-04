@@ -1,10 +1,10 @@
+import sys
+from pathlib import Path
+
 import pydantic
 import pytest
-import sys
 
 from ray.llm._internal.serve.configs.server_models import LLMConfig, ModelLoadingConfig
-
-from pathlib import Path
 
 CONFIG_DIRS_PATH = str(Path(__file__).parent / "configs")
 

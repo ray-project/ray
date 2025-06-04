@@ -261,8 +261,8 @@ class RayActorOptionsSchema(BaseModel):
             return
 
         uris = v.get("py_modules", [])
-        if "working_dir" in v and v["working_dir"] not in uris:
-            uris.append(v["working_dir"])
+        if "working_dir" in v:
+            uris = [*uris, v["working_dir"]]
 
         for uri in uris:
             if uri is not None:
@@ -405,6 +405,26 @@ class DeploymentSchema(BaseModel, allow_population_by_field_name=True):
         default=DEFAULT.VALUE,
         description="Logging config for configuring serve deployment logs.",
     )
+    request_router_class: str = Field(
+        default=DEFAULT.VALUE,
+        description="The path pointing to the custom request router class to use for this deployment.",
+    )
+    request_routing_stats_period_s: float = Field(
+        default=DEFAULT.VALUE,
+        description=(
+            "Frequency at which the controller will record routing stats "
+            "replicas. Uses a default if null."
+        ),
+        gt=0,
+    )
+    request_routing_stats_timeout_s: float = Field(
+        default=DEFAULT.VALUE,
+        description=(
+            "Timeout that the controller will wait for a response "
+            "from the replica's record routing stats. Uses a default if null."
+        ),
+        gt=0,
+    )
 
     @root_validator
     def validate_num_replicas_and_autoscaling_config(cls, values):
@@ -483,6 +503,9 @@ def _deployment_info_to_schema(name: str, info: DeploymentInfo) -> DeploymentSch
         health_check_period_s=info.deployment_config.health_check_period_s,
         health_check_timeout_s=info.deployment_config.health_check_timeout_s,
         ray_actor_options=info.replica_config.ray_actor_options,
+        request_router_class=info.deployment_config.request_router_class,
+        request_routing_stats_period_s=info.deployment_config.request_routing_stats_period_s,
+        request_routing_stats_timeout_s=info.deployment_config.request_routing_stats_timeout_s,
     )
 
     if info.deployment_config.autoscaling_config is not None:
@@ -575,8 +598,8 @@ class ServeApplicationSchema(BaseModel):
             return
 
         uris = v.get("py_modules", [])
-        if "working_dir" in v and v["working_dir"] not in uris:
-            uris.append(v["working_dir"])
+        if "working_dir" in v:
+            uris = [*uris, v["working_dir"]]
 
         for uri in uris:
             if uri is not None:
@@ -1180,17 +1203,18 @@ class ServeInstanceDetails(BaseModel, extra=Extra.forbid):
         """Generates json serializable dictionary with user facing data."""
         values = super().dict(*args, **kwargs)
 
-        # `serialized_policy_def` is only used internally and should not be exposed to
-        # the REST api. This method iteratively removes it from each autoscaling config
-        # if exists.
+        # `serialized_policy_def` and `serialized_request_router_cls` are only used
+        # internally and should not be exposed to the REST api. This method iteratively
+        # removes them from each deployment and autoscaling config if exists.
         for app_name, application in values["applications"].items():
             for deployment_name, deployment in application["deployments"].items():
-                if (
-                    "deployment_config" in deployment
-                    and "autoscaling_config" in deployment["deployment_config"]
-                ):
-                    deployment["deployment_config"]["autoscaling_config"].pop(
-                        "_serialized_policy_def", None
+                if "deployment_config" in deployment:
+                    deployment["deployment_config"].pop(
+                        "serialized_request_router_cls", None
                     )
+                    if "autoscaling_config" in deployment["deployment_config"]:
+                        deployment["deployment_config"]["autoscaling_config"].pop(
+                            "_serialized_policy_def", None
+                        )
 
         return values

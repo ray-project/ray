@@ -136,7 +136,9 @@ if __name__ == "__main__":
             env_to_module_connector=(
                 None
                 if args.disable_mean_std_filter
-                else lambda env: MeanStdFilter(multi_agent=args.num_agents > 0)
+                else lambda env, spaces, device: (
+                    MeanStdFilter(multi_agent=args.num_agents > 0)
+                )
             ),
         )
         .training(

@@ -1,4 +1,4 @@
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from enum import Enum
 from typing import List, Optional
 
@@ -114,6 +114,7 @@ GRAPH_PANEL_TEMPLATE = {
     "datasource": r"${datasource}",
     "description": "<Description>",
     "fieldConfig": {"defaults": {}, "overrides": []},
+    # Setting height and width is important here to ensure the default panel has some size to it.
     "gridPos": {"h": 8, "w": 12, "x": 0, "y": 0},
     "fill": 10,
     "fillGradient": 0,
@@ -143,6 +144,31 @@ GRAPH_PANEL_TEMPLATE = {
     "pointradius": 2,
     "points": False,
     "renderer": "flot",
+    # These series overrides are necessary to make the "MAX" and "MAX + PENDING" dotted lines
+    # instead of stacked filled areas.
+    "seriesOverrides": [
+        {
+            "$$hashKey": "object:2987",
+            "alias": "MAX",
+            "dashes": True,
+            "color": "#1F60C4",
+            "fill": 0,
+            "stack": False,
+        },
+        {
+            "$$hashKey": "object:78",
+            "alias": "/FINISHED|FAILED|DEAD|REMOVED|Failed Nodes:/",
+            "hiddenSeries": True,
+        },
+        {
+            "$$hashKey": "object:2987",
+            "alias": "MAX + PENDING",
+            "dashes": True,
+            "color": "#777777",
+            "fill": 0,
+            "stack": False,
+        },
+    ],
     "spaceLength": 10,
     "stack": True,
     "steppedLine": False,
@@ -372,14 +398,37 @@ class Panel:
 
 
 @dataclass
+class Row:
+    """Defines a Grafana row that can contain multiple panels.
+
+    Attributes:
+        title: The title of the row
+        panels: List of panels contained in this row
+        collapsed: Whether the row should be collapsed by default
+    """
+
+    title: str
+    id: int
+    panels: List[Panel]
+    collapsed: bool = False
+
+
+@dataclass
 class DashboardConfig:
     # This dashboard name is an internal key used to determine which env vars
     # to check for customization
     name: str
     # The uid of the dashboard json if not overridden by a user
     default_uid: str
-    panels: List[Panel]
     # The global filters applied to all graphs in this dashboard. Users can
     # add additional global_filters on top of this.
     standard_global_filters: List[str]
     base_json_file_name: str
+    # Panels can be specified in `panels`, or nested within `rows`.
+    # If both are specified, panels will be rendered before rows.
+    panels: List[Panel] = field(default_factory=list)
+    rows: List[Row] = field(default_factory=list)
+
+    def __post_init__(self):
+        if not self.panels and not self.rows:
+            raise ValueError("At least one of panels or rows must be specified")

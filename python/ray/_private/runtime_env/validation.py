@@ -1,9 +1,9 @@
 import logging
-from pathlib import Path
 import sys
+from collections import OrderedDict
+from pathlib import Path
 from typing import Dict, List, Optional, Union
 
-from collections import OrderedDict
 import yaml
 
 from ray._private.path_utils import is_path
@@ -19,7 +19,7 @@ def validate_path(path: str) -> None:
 
 def validate_uri(uri: str):
     try:
-        from ray._private.runtime_env.packaging import parse_uri, Protocol
+        from ray._private.runtime_env.packaging import Protocol, parse_uri
 
         protocol, path = parse_uri(uri)
     except ValueError:
