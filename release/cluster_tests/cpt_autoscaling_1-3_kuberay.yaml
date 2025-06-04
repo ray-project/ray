@@ -20,7 +20,7 @@ worker_node_types:
         requests:
           cpu: "4"
           memory: "16Gi"
-      min_workers: 0
+      min_workers: 1
       max_workers: 2
       use_spot: false
 autoscalerVersion: v2
