@@ -397,6 +397,7 @@ This allows the weights to be loaded on each replica on-the-fly and be cached vi
                 ),
                 engine_kwargs=dict(
                     enable_lora=True,
+                    max_loras=16, 
                 ),
                 deployment_config=dict(
                     autoscaling_config=dict(
