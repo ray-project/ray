@@ -127,7 +127,7 @@ def method(*args, **kwargs):
     return annotate_method
 
 
-class ActorMethodMetadata:
+class _ActorMethodMetadata:
     """A container for the metadata required to invoke an actor method.
 
     This class intentionally does *not* hold a reference to the `ActorHandle`, as that causes
@@ -150,7 +150,7 @@ class ActorMethodMetadata:
         signature: Optional[List[inspect.Parameter]] = None,
         tensor_transport: Optional[TypeTensorTransportEnum] = None,
     ):
-        """Initialize an ActorMethodMetadata.
+        """Initialize an _ActorMethodMetadata.
 
         Args:
             method_name: The name of the actor method.
@@ -212,34 +212,6 @@ class ActorMethod:
 
     Note: This class should not be instantiated directly. Instead, it should
     only be used as a return value from the `@ray.method` decorator.
-
-    Attributes:
-        _actor: A handle to the actor.
-        _method_name: The name of the actor method.
-        _num_returns: The default number of return values that the method
-            invocation should return. If None is given, it uses
-            DEFAULT_ACTOR_METHOD_NUM_RETURN_VALS for a normal actor task
-            and "streaming" for a generator task (when `is_generator` is True).
-        _max_task_retries: Number of retries on method failure.
-        _retry_exceptions: Boolean of whether you want to retry all user-raised
-            exceptions, or a list of allowlist exceptions to retry.
-        _is_generator: True if a given method is a Python generator.
-        _generator_backpressure_num_objects: Generator-only config.
-            If a number of unconsumed objects reach this threshold,
-            a actor task stop pausing.
-        enable_task_events: True if task events is enabled, i.e., task events from
-            the actor should be reported. Defaults to True.
-        _signature: The signature of the actor method. It is None only when cross
-            language feature is used.
-        _decorator: An optional decorator that should be applied to the actor
-            method invocation (as opposed to the actor method execution) before
-            invoking the method. The decorator must return a function that
-            takes in two arguments ("args" and "kwargs"). In most cases, it
-            should call the function that was passed into the decorator and
-            return the resulting ObjectRefs. For an example, see
-            "test_decorated_method" in "python/ray/tests/test_actor.py".
-        _tensor_transport: The tensor transport protocol to use for the actor method.
-            The valid values are OBJECT_STORE (default), NCCL, or GLOO, and they are case-insensitive.
     """
 
     def __init__(
@@ -1581,12 +1553,12 @@ class ActorHandle:
                 )
                 self._ray_function_descriptor[method_name] = function_descriptor
 
-        # Build an ActorMethodMetadata per method to cache expensive parsing logic.
-        # The ActorMethodMetadata doesn't take a reference to this ActorHandle to avoid a circular reference.
-        # Instead, we will lazily bind this ActorHandle to the ActorMethodMetadata when a method is invoked.
+        # Build an _ActorMethodMetadata per method to cache expensive parsing logic.
+        # The _ActorMethodMetadata doesn't take a reference to this ActorHandle to avoid a circular reference.
+        # Instead, we will lazily bind this ActorHandle to the _ActorMethodMetadata when a method is invoked.
         self._method_shells = {}
         for method_name, method_signature in self._ray_method_signatures.items():
-            self._method_shells[method_name] = ActorMethodMetadata(
+            self._method_shells[method_name] = _ActorMethodMetadata(
                 method_name=method_name,
                 num_returns=self._ray_method_num_returns.get(method_name, None),
                 max_task_retries=self._ray_method_max_task_retries.get(
@@ -1757,7 +1729,7 @@ class ActorHandle:
         For Python actors (99% of cases):
         - We use strict validation: only methods in _method_shells are allowed
         - This prevents typos and provides clear error messages
-        - Returns a bound ActorMethod created from the cached ActorMethodShell
+        - Returns a bound ActorMethod created from the cached _ActorMethodMetadata
 
         For cross-language actors:
         - We can't validate method names client-side (the target language defines them)
