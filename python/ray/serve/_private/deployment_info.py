@@ -20,6 +20,9 @@ class DeploymentInfo:
         version: Optional[str] = None,
         end_time_ms: Optional[int] = None,
         route_prefix: str = None,
+        # TODO(Ziy1-Tan): docs_path is deprecated. It is updated
+        # when the FastAPI app is instantiated on the replica instead.
+        # Remove it in next major version.
         docs_path: str = None,
         ingress: bool = False,
         target_capacity: Optional[float] = None,
