@@ -4447,7 +4447,6 @@
 
 - name: distributing_pytorch  # do not use dashes (regex sensitive)
   frequency: weekly
-  python: "3.11"
   group: ray-examples
   team: ml
   working_dir: //doc/source/train/examples/pytorch/distributing-pytorch
