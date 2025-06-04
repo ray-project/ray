@@ -159,7 +159,7 @@ def test_custom_request_router_telemetry(manage_ray_with_telemetry):
     check_telemetry(ServeUsageTag.CUSTOM_REQUEST_ROUTER_USED, expected=None)
 
     @serve.deployment(
-        custom_request_router=CustomRequestRouter,
+        request_router_class=CustomRequestRouter,
     )
     class CustomRequestRouterApp:
         async def __call__(self) -> str:
