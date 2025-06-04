@@ -4,11 +4,13 @@
 Different Ray serve applications demand different logics for load balancing. For
 example, in serving LLMs you might want to have a different policy than balancing
 number of requests across replicas: e.g. balancing ongoing input tokens, balancing
-kv-cache utilization, etc. RequestRouter is an abstraction in Ray Serve that
-allows extension and customization of load-balancing logic for each deployment.
+kv-cache utilization, etc. [`RequestRouter`](../api/doc/ray.serve.request_router.RequestRouter.rst)
+is an abstraction in Ray Serve that allows extension and customization of
+load-balancing logic for each deployment.
 
-This guide shows how to use RequestRouter API to achieve custom load balancing across
-replicas of a given deployment. It will cover the following:
+This guide shows how to use [`RequestRouter`](../api/doc/ray.serve.request_router.RequestRouter.rst)
+API to achieve custom load balancing across replicas of a given deployment. It will
+cover the following:
 - Define a simple uniform request router for load balancing
 - Deploy an app with the uniform request router
 - Utility mixins for request routing
@@ -28,15 +30,16 @@ Create a file `custom_request_router.py` with the following code:
 This code defines a simple uniform request router that routes requests a random replica
 to distribute the load evenly regardless of the queue length of each replica or the body
 of the request. The router is defined as a class that inherits from
-`ray.serve.request_router.RequestRouter`. It implements the `choose_replicas`
+[`RequestRouter`](../api/doc/ray.serve.request_router.RequestRouter.rst). It
+implements the [`choose_replicas`](../api/doc/ray.serve.request_router.RequestRouter.choose_replicas.rst)
 method, which returns the random replica for all incoming requests. The returned type
 is a list of lists of replicas, where each inner list represents a rank of replicas.
 The first rank is the most preferred and the last rank is the least preferred.
 
 
 :::{note}
-This request router also implements `on_request_routed` which can help you update the
-state of the request router after a request is routed.
+This request router also implements [`on_request_routed`](../api/doc/ray.serve.request_router.RequestRouter.on_request_routed.rst)
+which can help you update the state of the request router after a request is routed.
 :::
 
 (deploy-app-with-uniform-request-router)=
@@ -74,7 +77,7 @@ locality-aware routing, multiplexed model support, and FIFO request routing.
 
 - `ray.serve.request_router.FIFOMixin`: This mixin implements first in first out (FIFO)
   request routing. The default behavior for the request router is to route requests to
-  the exact replica got assigned by the request passed to the `choose_replicas`. 
+  the exact replica got assigned by the request passed to the [`choose_replicas`](../api/doc/ray.serve.request_router.RequestRouter.choose_replicas.rst).
   This mixin is useful for routing algorithm that can work independently of the
   request content so the requests can be routed as soon as possible in the order they
   were received.
@@ -107,14 +110,18 @@ replica with these factors in mind. Add the following code into the
 :language: python
 ```
 
-This request router inherits from `ray.serve.request_router.RequestRouter`, as well as
-`ray.serve.request_router.FIFOMixin` for FIFO request routing,
-`request_router.LocalityMixin` for locality-aware request routing, and
-`request_router.MultiplexedModelMixin` for multiplexed model support. It implements
-`choose_replicas` to take the highest ranked replicas from `rank_replicas_via_multiplex`
-and `rank_replicas_via_locality` and uses the `select_available_replicas` helper to
-filter out replicas that have reached their maximum request queue length. Finally, it
-takes the replicas with the minimum throughput and returns the top one.
+This request router inherits from [`RequestRouter`](../api/doc/ray.serve.request_router.RequestRouter.rst),
+as well as [`FIFOMixin`](../api/doc/ray.serve.request_router.FIFOMixin.rst) for FIFO
+request routing, [`LocalityMixin`](../api/doc/ray.serve.request_router.LocalityMixin.rst)
+for locality-aware request routing, and
+[`MultiplexedModelMixin`](../api/doc/ray.serve.request_router.MultiplexedModelMixin.rst)
+for multiplexed model support. It implements
+[`choose_replicas`](../api/doc/ray.serve.request_router.RequestRouter.choose_replicas.rst)
+to take the highest ranked replicas from [`rank_replicas_via_multiplex`](../api/doc/ray.serve.request_router.MultiplexedModelMixin.rank_replicas_via_multiplex.rst)
+and [`rank_replicas_via_locality`](../api/doc/ray.serve.request_router.RequestRouter.rank_replicas_via_locality.rst)
+and uses the [`select_available_replicas`](../api/doc/ray.serve.request_router.RequestRouter.select_available_replicas.rst)
+helper to filter out replicas that have reached their maximum request queue length.
+Finally, it takes the replicas with the minimum throughput and returns the top one.
 
 (deploy-app-with-throughput-aware-request-router)=
 ## Deploy an app with the throughput-aware request router
@@ -127,11 +134,12 @@ To use the throughput-aware request router, you can deploy an app like this:
 ```
 
 Similar to the uniform request router, the custom request router can be defined in the
-`request_router_class` argument of the `deployment` decorator. The Serve controller
-pulls statistics from the replica of each deployment by calling record_routing_stats.
-The `request_routing_stats_period_s` and `request_routing_stats_timeout_s` arguments
-control the frequency and timeout time of the serve controller pulling information
-from each replica in its background thread.  You can customize the emission of these
-statistics by overriding `record_routing_stats` in the definition of the deployment
-class. The custom request router can then get the updated routing stats by looking up
-the `routing_stats` attribute of the running replicas and use it in the routing policy.
+`request_router_class` argument of the [`deployment`](../api/doc/ray.serve.deployment_decorator.rst)
+decorator. The Serve controller pulls statistics from the replica of each deployment by
+calling record_routing_stats. The `request_routing_stats_period_s` and
+`request_routing_stats_timeout_s` arguments control the frequency and timeout time of
+the serve controller pulling information from each replica in its background thread.
+You can customize the emission of these statistics by overriding `record_routing_stats`
+in the definition of the deployment class. The custom request router can then get the
+updated routing stats by looking up the `routing_stats` attribute of the running
+replicas and use it in the routing policy.

@@ -13,6 +13,8 @@ from ray.serve.exceptions import RequestCancelledError
 
 
 class ReplicaResult(ABC):
+    """Base class for results returned by a replica."""
+
     @abstractmethod
     def get(self, timeout_s: Optional[float]):
         raise NotImplementedError

@@ -35,6 +35,8 @@ class DeploymentID:
 
 @dataclass(frozen=True)
 class ReplicaID:
+    """A unique identifier for a replica."""
+
     unique_id: str
     deployment_id: DeploymentID
 

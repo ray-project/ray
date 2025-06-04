@@ -25,6 +25,8 @@ class RequestRoutingContext:
 
 @dataclass
 class PendingRequest:
+    """A request that is pending execution by a replica."""
+
     args: List[Any]
     kwargs: Dict[Any, Any]
     metadata: RequestMetadata
