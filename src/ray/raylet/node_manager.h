@@ -704,12 +704,6 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
   /// \return Whether the resource is returned successfully.
   bool ReturnBundleResources(const BundleSpecification &bundle_spec);
 
-  /// Publish the infeasible task error to GCS so that drivers can subscribe to it and
-  /// print.
-  ///
-  /// \param task RayTask that is infeasible
-  void PublishInfeasibleTaskError(const RayTask &task) const;
-
   /// Populate the relevant parts of the heartbeat table. This is intended for
   /// sending raylet <-> gcs heartbeats. In particular, this should fill in
   /// resource_load and resource_load_by_shape.
