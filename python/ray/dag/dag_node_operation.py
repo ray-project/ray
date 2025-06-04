@@ -248,29 +248,23 @@ def _push_candidate_node_if_ready(
     # For the NCCL operation node, update it as pending.
     if len(node.sync_idxs) != 0:
         _update_pending_sync_idxs(graph, node)
-    # The NCCL operation is ready when all the nodes have zero in-degrees. When the last
-    # node in the operation is updated as pending, push all the nodes to the candidates.
+    # The NCCL operation is ready when all the nodes have zero in-degrees.
     if node.is_ready:
-        if len(node.sync_idxs) == 0 or node.is_nccl_write:  # [TODO]
-            assert (
-                node not in actor_to_candidates[node.actor_handle._actor_id]
-            )  # [DEBUG]
-            heapq.heappush(
-                actor_to_candidates[node.actor_handle._actor_id],
-                node,
-            )
-        elif node.is_nccl_compute:  # [TODO]
+        if len(node.sync_idxs) == 0 or node.is_nccl_write:
+            # For the NCCL P2P operation, push only the write node to the candidates.
+            candidates = actor_to_candidates[node.actor_handle._actor_id]
+            assert node not in candidates
+            heapq.heappush(candidates, node)
+        elif node.is_nccl_compute:
+            # For the NCCL collective operation, push all the nodes to the candidates.
             for task_idx in node.sync_idxs:
                 sync_node = graph[task_idx]
-                assert (
-                    sync_node
-                    not in actor_to_candidates[sync_node.actor_handle._actor_id]
-                )  # [DEBUG]
-                heapq.heappush(
-                    actor_to_candidates[sync_node.actor_handle._actor_id],
-                    sync_node,
-                )
-        else:  # [TODO]
+                candidates = actor_to_candidates[sync_node.actor_handle._actor_id]
+                assert sync_node not in candidates
+                heapq.heappush(candidates, sync_node)
+        elif node.is_nccl_read:
+            raise ValueError(f"NCCL read node should be pushed by NCCL write node")
+        else:
             raise ValueError(f"Unexpected node: {node}")
 
 
@@ -330,15 +324,16 @@ def _select_next_nodes(
             node = graph[task_idx]
             if node != top_priority_node:
                 next_nodes.append(node)
+                # For the NCCL P2P operation, the write node is the only node that is
+                # pushed to the candidates.
                 if top_priority_node.is_nccl_write:
-                    assert (
-                        node not in actor_to_candidates[node.actor_handle._actor_id]
-                    )  # [DEBUG]
+                    assert node not in actor_to_candidates[node.actor_handle._actor_id]
 
     # Remove the selected nodes from the candidates.
     for node in next_nodes:
         candidates = actor_to_candidates[node.actor_handle._actor_id]
-        if node in candidates:  # [TODO]
+        # For the NCCL P2P operation, the read node is not pushed to the candidates.
+        if node in candidates:
             candidates.remove(node)
             heapq.heapify(candidates)
 
@@ -380,10 +375,12 @@ def _build_dag_node_operation_graph(
     # Add control edges between tasks from the same actor.
     for op_nodes in actor_to_operation_nodes.values():
         prev_node = None
-        for i, node in enumerate(op_nodes):  # [TODO]
+        for node in op_nodes:
             assert node.task_idx not in graph
             graph[node.task_idx] = node
-            if node.is_nccl_read or node.is_nccl_write:  # [TODO]
+            if node.is_nccl_read or node.is_nccl_write:
+                # Skip the control edge into a NCCL P2P node. Their data edges are
+                # added below.
                 continue
             if prev_node is not None:
                 _add_edge(prev_node, node, control_dependency=True)
@@ -425,18 +422,17 @@ def _build_dag_node_operation_graph(
                             idxs = {task_idx, consumer_idx}
                             for node in [write_node, read_node]:
                                 node.sync_idxs.update(idxs)
-                continue
-            # else / reorder [TODO]
-            read_node = graph[downstream_task_idx]
-            _add_edge(
-                write_node,
-                read_node,
-                "nccl" if write_node.is_nccl_write else "shm",
-            )
-            if write_node.is_nccl_write:
-                idxs = {task_idx, downstream_task_idx}
-                for node in [write_node, read_node]:
-                    node.sync_idxs.update(idxs)
+            else:
+                read_node = graph[downstream_task_idx]
+                _add_edge(
+                    write_node,
+                    read_node,
+                    "nccl" if write_node.is_nccl_write else "shm",
+                )
+                if write_node.is_nccl_write:
+                    idxs = {task_idx, downstream_task_idx}
+                    for node in [write_node, read_node]:
+                        node.sync_idxs.update(idxs)
 
     # Set synchronous nodes for NCCL collective operations.
     collective_op_to_idxs: Dict[_CollectiveOperation, Set[int]] = defaultdict(set)
@@ -640,7 +636,7 @@ def _generate_actor_to_execution_schedule(
     actor_to_candidates: Dict[
         "ray._raylet.ActorID", List[_DAGOperationGraphNode]
     ] = defaultdict(list)
-    for _, node in graph.items():
+    for node in graph.values():
         # A node with a zero in-degree edge means all of its dependencies
         # have been satisfied, including both data and control dependencies.
         # Therefore, it is a candidate for execution.
@@ -669,14 +665,11 @@ def _generate_actor_to_execution_schedule(
         for node in nodes:
             for out_node_task_idx in node.out_edges:
                 out_node = graph[out_node_task_idx]
-                assert node.task_idx in out_node.in_edges  # [DEBUG]
+                assert node.task_idx in out_node.in_edges
                 out_node.in_edges.pop(node.task_idx)
-                if out_node in visited_nodes:
-                    # If the downstream node is already visited, it has been added
-                    # to the execution schedule. They are the NCCL read nodes in
-                    # case 2.
-                    continue
-                if out_node.in_degree == 0:  # [TODO]
+                # If the downstream node is already visited, it has been added to the
+                # execution schedule. They are the NCCL read nodes in case 2.
+                if out_node.in_degree == 0 and out_node not in visited_nodes:
                     _push_candidate_node_if_ready(actor_to_candidates, graph, out_node)
     assert len(visited_nodes) == len(graph), "Expected all nodes to be visited"
 
