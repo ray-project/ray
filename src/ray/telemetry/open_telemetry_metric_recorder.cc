@@ -85,28 +85,36 @@ void OpenTelemetryMetricRecorder::CollectGaugeMetricValues(
     const std::string &name,
     const opentelemetry::nostd::shared_ptr<
         opentelemetry::metrics::ObserverResultT<double>> &observer) {
-  std::lock_guard<std::mutex> lock(mutex_);
-  auto it = observations_by_name_.find(name);
-  if (it == observations_by_name_.end()) {
-    return;  // Not registered
+  absl::flat_hash_map<absl::flat_hash_map<std::string, std::string>, double>
+      observation_snapshot;
+  {
+    std::lock_guard<std::mutex> lock(mutex_);
+    auto it = observations_by_name_.find(name);
+    if (it == observations_by_name_.end()) {
+      return;  // Not registered
+    }
+    observation_snapshot = it->second;
   }
-  for (const auto &observation : it->second) {
+  for (const auto &observation : observation_snapshot) {
     observer->Observe(observation.second, observation.first);
   }
 }
 
 void OpenTelemetryMetricRecorder::RegisterGaugeMetric(const std::string &name,
                                                       const std::string &description) {
-  std::lock_guard<std::mutex> lock(mutex_);
-  if (registered_instruments_.contains(name)) {
-    return;  // Already registered
-  }
+  std::string *name_ptr;
   auto instrument = GetMeter()->CreateDoubleObservableGauge(name, description, "");
-  gauge_callback_names_.push_back(name);
-  instrument->AddCallback(&_DoubleGaugeCallback,
-                          static_cast<void *>(&gauge_callback_names_.back()));
-  observations_by_name_[name] = {};
-  registered_instruments_[name] = instrument;
+  {
+    std::lock_guard<std::mutex> lock(mutex_);
+    if (registered_instruments_.contains(name)) {
+      return;  // Already registered
+    }
+    gauge_callback_names_.push_back(name);
+    name_ptr = &gauge_callback_names_.back();
+    observations_by_name_[name] = {};
+    registered_instruments_[name] = instrument;
+  }
+  instrument->AddCallback(&_DoubleGaugeCallback, static_cast<void *>(name_ptr));
 }
 
 void OpenTelemetryMetricRecorder::SetMetricValue(

@@ -362,6 +362,17 @@ steps:
       - block-core-cpp-sanitizer-tests
       - corebuild
 
+  - label: ":ray: core: open telemetry tsan tests"
+    tags: core_cpp
+    instance_type: medium
+    commands:
+      - bazel run //ci/ray_ci:test_in_docker -- //src/ray/telemetry/tests:open_telemetry_metric_recorder_test core
+        --run-flaky-tests --build-type tsan-clang --cache-test-results --parallelism-per-worker 2
+      - bazel run //ci/ray_ci:test_in_docker -- //src/ray/telemetry/tests:open_telemetry_metric_recorder_test core
+        --build-type tsan-clang --cache-test-results --parallelism-per-worker 2
+    depends_on:
+      - corebuild
+
   - label: ":ray: core: flaky cpp tests"
     key: core_flaky_cpp_tests
     tags:

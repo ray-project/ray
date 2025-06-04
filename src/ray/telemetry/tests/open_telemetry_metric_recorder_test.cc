@@ -32,11 +32,18 @@ class OpenTelemetryMetricRecorderTest : public ::testing::Test {
         std::chrono::milliseconds(5000));
   }
 
+  static void TearDownTestSuite() {
+    // Cleanup if necessary
+    OpenTelemetryMetricRecorder::GetInstance().Shutdown();
+  }
+
  protected:
   OpenTelemetryMetricRecorder &recorder_;
 };
 
 TEST_F(OpenTelemetryMetricRecorderTest, TestGaugeMetric) {
+  recorder_.RegisterGaugeMetric("test_metric", "Test metric description");
+  // Check that double registration does not cause issues
   recorder_.RegisterGaugeMetric("test_metric", "Test metric description");
   recorder_.SetMetricValue("test_metric", {{"tag1", "value1"}}, 42.0);
   ASSERT_EQ(recorder_.GetMetricValue("test_metric", {{"tag1", "value1"}}), 42.0);
