@@ -79,18 +79,25 @@ OpenTelemetryMetricRecorder::OpenTelemetryMetricRecorder() {
           meter_provider_));
 }
 
-void OpenTelemetryMetricRecorder::Shutdown() { meter_provider_->ForceFlush(); }
+void OpenTelemetryMetricRecorder::Shutdown() {
+  meter_provider_->ForceFlush();
+  meter_provider_->Shutdown();
+}
 
 void OpenTelemetryMetricRecorder::CollectGaugeMetricValues(
     const std::string &name,
     const opentelemetry::nostd::shared_ptr<
         opentelemetry::metrics::ObserverResultT<double>> &observer) {
-  std::lock_guard<std::mutex> lock(mutex_);
-  auto it = observations_by_name_.find(name);
-  if (it == observations_by_name_.end()) {
-    return;  // Not registered
+  absl::flat_hash_map<std::string, double> snapshot;
+  {
+    std::lock_guard<std::mutex> lock(mutex_);
+    auto it = observations_by_name_.find(name);
+    if (it == observations_by_name_.end()) {
+      return;  // Not registered
+    }
+    snapshot = it->second;
   }
-  for (const auto &observation : it->second) {
+  for (const auto &observation : snapshot) {
     observer->Observe(observation.second, observation.first);
   }
 }
