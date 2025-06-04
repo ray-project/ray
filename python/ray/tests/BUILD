@@ -290,7 +290,7 @@ py_test_module_list(
         "test_streaming_generator_4.py",
         "test_streaming_generator_backpressure.py",
         "test_task_metrics.py",
-        "test_tempfile.py",
+        "test_tempdir.py",
         "test_tls_auth.py",
         "test_traceback.py",
         "test_worker_capping.py",
