@@ -75,9 +75,9 @@ class KuberayJobManager:
             "namespace": DEFAULT_KUBERAY_NAMESPACE,
             "name": job_name,
             "entrypoint": cmd_to_run,
-            "rayImage": image,
-            "computeConfig": compute_config,
-            "runtimeEnv": {
+            "ray_image": image,
+            "compute_config": compute_config,
+            "runtime_env": {
                 "env_vars": self.get_full_command_env(env_vars),
                 "pip": pip or [],
                 "working_dir": working_dir
@@ -86,7 +86,7 @@ class KuberayJobManager:
         print("Compute config: ", compute_config)
         print("Compute config autoscalerVersion: ", compute_config.get("autoscalerVersion"))
         if compute_config.get("autoscalerVersion"):
-            request["autoscalerConfig"] = {
+            request["autoscaler_config"] = {
                 "version": compute_config["autoscalerVersion"]
             }
 
