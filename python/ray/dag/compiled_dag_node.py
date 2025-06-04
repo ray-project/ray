@@ -1540,10 +1540,9 @@ class CompiledDAG:
             method_args=(node,),
             other_args_to_resolve={
                 PARENT_CLASS_NODE_KEY: send_actor_handle,
-                BIND_INDEX_KEY: send_actor_handle._ray_dag_bind_index,
+                BIND_INDEX_KEY: None,
             },
         )
-        send_actor_handle._ray_dag_bind_index += 1
         send_node._type_hint = node.type_hint
         send_node._original_type_hint = node._original_type_hint
         node._type_hint = ChannelOutputType()
@@ -1592,10 +1591,9 @@ class CompiledDAG:
                 method_args=(send_node,),
                 other_args_to_resolve={
                     PARENT_CLASS_NODE_KEY: recv_actor_handle,
-                    BIND_INDEX_KEY: recv_actor_handle._ray_dag_bind_index,
+                    BIND_INDEX_KEY: None,
                 },
             )
-            recv_actor_handle._ray_dag_bind_index += 1
             new_args.append(recv_node)
             self._add_node(recv_node)
         node._bound_args = tuple(new_args)
@@ -1922,7 +1920,10 @@ class CompiledDAG:
                 executable_tasks.append(executable_task)
             # Sort executable tasks based on their bind index, i.e., submission order
             # so that they will be executed in that order.
-            executable_tasks.sort(key=lambda task: task.bind_index)
+            # For the newly created P2P operation nodes, their bind indices are None.
+            # Their orders in the executable tasks do not matter, since their execution
+            # orders are determined by the execution schedule.
+            executable_tasks.sort(key=lambda task: task.bind_index or -1)
             self.actor_to_executable_tasks[actor_handle] = executable_tasks
 
         from ray.dag.constants import RAY_CGRAPH_ENABLE_PROFILING
