@@ -999,7 +999,7 @@ class ReplicaActor:
             2. DeploymentVersion of the replica
             3. Initialization duration in seconds
             4. Port
-            5. Serve docs_path
+            5. FastAPI `docs_path`, if relevant (i.e. this is an ingress deployment integrated with FastAPI).
         """
         # Unused `_after` argument is for scheduling: passing an ObjectRef
         # allows delaying this call until after the `_after` call has returned.

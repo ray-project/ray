@@ -110,7 +110,6 @@ class Deployment:
         self._version = version
         self._deployment_config = deployment_config
         self._replica_config = replica_config
-        self._docs_path = None
 
     def _validate_name(self, name: str):
         if not isinstance(name, str):
