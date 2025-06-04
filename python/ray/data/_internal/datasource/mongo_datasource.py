@@ -118,7 +118,7 @@ class MongoDatasource(Datasource):
                 partition["_id"]["min"],
                 partition["_id"]["max"],
                 i == len(partitions_ids) - 1,
-                self.get_schema(),
+                self._schema,
                 self._mongo_args,
             )
             read_task = ReadTask(

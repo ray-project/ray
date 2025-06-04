@@ -1,10 +1,9 @@
 from typing import Callable, Iterable, List, Optional
 
 import numpy as np
-import pyarrow as pa
 
 from ray.data._internal.util import _check_pyarrow_version
-from ray.data.block import Block, BlockMetadata
+from ray.data.block import Block, BlockMetadata, Schema
 from ray.util.annotations import Deprecated, DeveloperAPI, PublicAPI
 
 
@@ -30,16 +29,6 @@ class Datasource:
         :meth:`~ray.data.Datasource.estimate_inmemory_data_size` instead.
         """
         raise NotImplementedError
-
-    def set_schema(self, schema: Optional[pa.lib.Schema]):
-        """Set the schema if known"""
-        self._schema = schema
-
-    def get_schema(self):
-        """Get the schema after `set_schema`. Defaults to `None`"""
-        if hasattr(self, "_schema"):
-            return self._schema
-        return None
 
     def get_name(self) -> str:
         """Return a human-readable name for this datasource.
@@ -156,13 +145,23 @@ class ReadTask(Callable[[], Iterable[Block]]):
     contents of the block itself.
     """
 
-    def __init__(self, read_fn: Callable[[], Iterable[Block]], metadata: BlockMetadata):
+    def __init__(
+        self,
+        read_fn: Callable[[], Iterable[Block]],
+        metadata: BlockMetadata,
+        schema: Optional["Schema"] = None,
+    ):
         self._metadata = metadata
         self._read_fn = read_fn
+        self._schema = schema
 
     @property
     def metadata(self) -> BlockMetadata:
         return self._metadata
+
+    @property
+    def schema(self) -> "Schema":
+        return self._schema
 
     @property
     def read_fn(self) -> Callable[[], Iterable[Block]]:
@@ -220,7 +219,7 @@ class RandomIntRowDatasource(Datasource):
                 names=[f"c_{i}" for i in range(num_columns)],
             )
 
-        self._schema = pyarrow.Table.from_pydict(
+        schema = pyarrow.Table.from_pydict(
             {f"c_{i}": [0] for i in range(num_columns)}
         ).schema
 
@@ -239,6 +238,7 @@ class RandomIntRowDatasource(Datasource):
                         make_block(count, num_columns)
                     ],
                     meta,
+                    schema=schema,
                 )
             )
             i += block_size

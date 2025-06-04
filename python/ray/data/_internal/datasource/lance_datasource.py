@@ -93,9 +93,9 @@ class LanceDatasource(Datasource):
                     retry_params,
                 ),
                 metadata,
+                schema=unify_block_metadata_schema(schemas),
             )
             read_tasks.append(read_task)
-        self.set_schema(unify_block_metadata_schema(schemas))
         return read_tasks
 
     def estimate_inmemory_data_size(self) -> Optional[int]:

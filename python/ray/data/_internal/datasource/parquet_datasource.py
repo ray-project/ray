@@ -300,6 +300,7 @@ class ParquetDatasource(Datasource):
         self._data_columns = data_columns
         self._partition_columns = partition_columns
         self._read_schema = read_schema
+        self._inferred_schema = inferred_schema
         self._file_metadata_shuffler = None
         self._include_paths = include_paths
         self._partitioning = partitioning
@@ -319,8 +320,6 @@ class ParquetDatasource(Datasource):
         self._default_read_batch_size_rows = estimate_default_read_batch_size_rows(
             sample_infos
         )
-
-        self.set_schema(inferred_schema)
 
         if file_extensions is None:
             for path in self._pq_paths:
@@ -418,6 +417,7 @@ class ParquetDatasource(Datasource):
                         partitioning,
                     ),
                     meta,
+                    schema=self._inferred_schema,
                 )
             )
 

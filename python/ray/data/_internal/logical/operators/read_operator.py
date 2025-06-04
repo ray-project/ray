@@ -3,7 +3,7 @@ from typing import Any, Dict, Optional, Union
 
 from ray.data._internal.logical.interfaces import SourceOperator
 from ray.data._internal.logical.operators.map_operator import AbstractMap
-from ray.data.block import BlockMetadata
+from ray.data.block import BlockMetadata, MetadataAndSchema
 from ray.data.datasource.datasource import Datasource, Reader
 
 
@@ -55,13 +55,13 @@ class Read(AbstractMap, SourceOperator):
         This method gets metadata from the read tasks. It doesn't trigger any actual
         execution.
         """
-        return self._cached_output_metadata
+        return self._cached_output_metadata.metadata
 
     def infer_schema(self):
-        return self._datasource.get_schema()
+        return self._cached_output_metadata.schema
 
     @functools.cached_property
-    def _cached_output_metadata(self) -> BlockMetadata:
+    def _cached_output_metadata(self) -> "MetadataAndSchema":
         # Legacy datasources might not implement `get_read_tasks`.
         if self._datasource.should_create_reader:
             return BlockMetadata(None, None, None, None)
@@ -90,12 +90,17 @@ class Read(AbstractMap, SourceOperator):
             if meta.input_files is not None:
                 input_files.extend(meta.input_files)
 
-        return BlockMetadata(
+        meta = BlockMetadata(
             num_rows=num_rows,
             size_bytes=size_bytes,
             input_files=input_files,
             exec_stats=None,
         )
+        schemas = [read_task.schema for read_task in read_tasks]
+        from ray.data.read_api import unify_block_metadata_schema
+
+        schema = unify_block_metadata_schema(schemas)
+        return MetadataAndSchema(metadata=meta, schema=schema)
 
     def can_modify_num_rows(self) -> bool:
         # NOTE: Returns true, since most of the readers expands its input

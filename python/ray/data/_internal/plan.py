@@ -383,6 +383,7 @@ class ExecutionPlan:
                         break
             if schema is None:
                 schema = output_node.get_schema() or self._schema or None
+            assert schema is not None
         self.cache_schema(schema)
         return self._schema
 

@@ -222,7 +222,6 @@ class IcebergDatasource(Datasource):
         projected_schema = data_scan.projection()
         # Get the arrow schema, to set in the metadata
         pya_schema = pyi_pa_io.schema_to_pyarrow(projected_schema)
-        self.set_schema(pya_schema)
 
         # Set the n_chunks to the min of the number of plan files and the actual
         # requested n_chunks, so that there are no empty tasks
@@ -284,6 +283,7 @@ class IcebergDatasource(Datasource):
                 ReadTask(
                     read_fn=lambda tasks=chunk_tasks: get_read_task(tasks),
                     metadata=metadata,
+                    schema=pya_schema,
                 )
             )
 

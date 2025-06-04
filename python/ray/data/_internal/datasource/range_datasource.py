@@ -104,6 +104,7 @@ class RangeDatasource(Datasource):
                         i, count, target_rows_per_block
                     ),
                     meta,
+                    schema=self._schema,
                 )
             )
             i += block_size
@@ -134,5 +135,4 @@ class RangeDatasource(Datasource):
             schema = int
         else:
             raise ValueError("Unsupported block type", self._block_format)
-        self.set_schema(schema)
         return schema
