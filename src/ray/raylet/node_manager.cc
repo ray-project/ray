@@ -1062,7 +1062,8 @@ void NodeManager::NodeRemoved(const NodeID &node_id) {
   for (const auto &[_, worker] : leased_workers_) {
     const auto owner_node_id = NodeID::FromBinary(worker->GetOwnerAddress().raylet_id());
     RAY_CHECK(!owner_node_id.IsNil());
-    if (worker->IsDetachedActor() || owner_node_id != node_id) {
+    if (worker->GetAssignedTask().GetTaskSpecification().IsDetachedActor() ||
+        owner_node_id != node_id) {
       continue;
     }
     // If the leased worker's owner was on the failed node, then kill the leased
@@ -1104,7 +1105,8 @@ void NodeManager::HandleUnexpectedWorkerFailure(const WorkerID &worker_id) {
     const auto owner_worker_id =
         WorkerID::FromBinary(worker->GetOwnerAddress().worker_id());
     RAY_CHECK(!owner_worker_id.IsNil());
-    if (worker->IsDetachedActor() || owner_worker_id != worker_id) {
+    if (worker->GetAssignedTask().GetTaskSpecification().IsDetachedActor() ||
+        owner_worker_id != worker_id) {
       continue;
     }
     // If the failed worker was a leased worker's owner, then kill the leased worker.
