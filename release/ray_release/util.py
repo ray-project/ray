@@ -241,6 +241,8 @@ def convert_cluster_compute_to_kuberay_compute_config(compute_config: dict) -> d
     }
     if head_node_resources:
         config["head_node"]["resources"] = head_node_resources
+    if compute_config.get("autoscalerVersion"):
+        config["autoscaler_version"] = compute_config.get("autoscalerVersion")
     return config
 
 def upload_working_dir(working_dir: str) -> str:
