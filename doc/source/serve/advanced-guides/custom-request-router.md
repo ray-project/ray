@@ -42,7 +42,7 @@ state of the request router after a request is routed.
 (deploy-app-with-uniform-request-router)=
 ## Deploy an app with the uniform request router
 To use a custom request router, you need to pass the `request_router_class` argument to
-the (`deployment`)[https://docs.ray.io/en/master/serve/api/doc/ray.serve.deployment_decorator.html]
+the [`deployment`](../api/doc/ray.serve.deployment_decorator.rst)
 decorator. Also note that the `request_router_class` can be passed as the already
 imported class or as the string of import path to the class. Let's deploy a simple app
 that uses the uniform request router like this:
