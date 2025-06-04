@@ -89,7 +89,7 @@ locality-aware routing, multiplexed model support, and FIFO request routing.
   the model. It updates the internal states when between replica updates to track the
   model loaded on each replica, and size of the model cache on each replica. It offers
   helpers `apply_multiplex_routing` and `rank_replicas_via_multiplex` to route
-  and ranks replicas based on their multiplexed model is of the request.
+  and ranks replicas based on their multiplexed model id of the request.
 
 
 (throughput-aware-request-router)=
