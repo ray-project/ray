@@ -160,6 +160,28 @@ class LocalityMixin:
             pending_request.routing_context.should_backoff = True
         return candidate_replica_ids
 
+    def rank_replicas_via_locality(
+        self,
+        replicas: List[RunningReplica],
+    ) -> List[List[RunningReplica]]:
+        """Rank the replicas based on the locality preference.
+        Rank 0 is the list of replicas that are on the same node.
+        Rank 1 is the list of replicas that are on the same availability zone.
+        Rank 2 is the list of all other replicas.
+        """
+        ranked_replicas = [[] for _ in range(3)]
+        for replica in replicas:
+            if replica.replica_id in self._colocated_replica_ids[LocalityScope.NODE]:
+                ranked_replicas[0].append(replica)
+            elif (
+                replica.replica_id
+                in self._colocated_replica_ids[LocalityScope.AVAILABILITY_ZONE]
+            ):
+                ranked_replicas[1].append(replica)
+            else:
+                ranked_replicas[2].append(replica)
+        return ranked_replicas
+
 
 class MultiplexMixin:
     """Mixin for multiplex routing.
@@ -310,6 +332,33 @@ class MultiplexMixin:
 
         pending_request.routing_context.should_backoff = True
         return candidate_replica_ids
+
+    def rank_replicas_via_multiplex(
+        self,
+        replicas: List[RunningReplica],
+        multiplexed_model_id: str,
+    ) -> List[List[RunningReplica]]:
+        """Rank the replicas based on the multiplexed model ID.
+        Rank 0 is the list of replicas that have the multiplexed model ID.
+        Rank 1 is the list of replicas that have the fewest multiplexed models.
+        Rank 2 is the list of all other replicas.
+        """
+        replica_ids_with_multiplexed_model = (
+            self._multiplexed_model_id_to_replica_ids.get(multiplexed_model_id, set())
+        )
+        replica_ids_with_fewest_multiplexed_models = (
+            self._get_replica_ids_with_fewest_multiplexed_models()
+        )
+
+        ranked_replicas = [[] for _ in range(3)]
+        for replica in replicas:
+            if replica.replica_id in replica_ids_with_multiplexed_model:
+                ranked_replicas[0].append(replica)
+            elif replica.replica_id in replica_ids_with_fewest_multiplexed_models:
+                ranked_replicas[1].append(replica)
+            else:
+                ranked_replicas[2].append(replica)
+        return ranked_replicas
 
 
 class FIFOMixin:

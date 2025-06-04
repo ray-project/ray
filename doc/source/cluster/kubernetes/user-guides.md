@@ -30,6 +30,7 @@ user-guides/static-ray-cluster-without-kuberay
 user-guides/kubectl-plugin
 user-guides/kuberay-auth
 user-guides/reduce-image-pull-latency
+user-guides/uv
 ```
 
 
@@ -63,3 +64,4 @@ at the {ref}`introductory guide <kuberay-quickstart>` first.
 * {ref}`kubectl-plugin`
 * {ref}`kuberay-auth`
 * {ref}`reduce-image-pull-latency`
+* {ref}`kuberay-uv`
