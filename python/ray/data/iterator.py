@@ -370,6 +370,8 @@ class DataIterator(abc.ABC):
             An iterable over Torch Tensor batches.
         """
 
+        import torch
+
         from ray.train.torch import get_device
 
         if collate_fn is not None and (dtypes is not None or device != "auto"):
@@ -385,10 +387,13 @@ class DataIterator(abc.ABC):
             device = get_device()
 
         from ray.air._internal.torch_utils import (
+            TensorCache,
             move_tensors_to_device,
         )
 
-        buffer_cache = {}  # Will persist across batches in this iterator
+        tensor_cache = TensorCache(
+            pinned=torch.cuda.is_available()
+        )  # Will persist across batches in this iterator
 
         # The default finalize_fn handles the host to device data transfer.
         # This is executed in a 1-thread pool separately from collate_fn
@@ -412,7 +417,7 @@ class DataIterator(abc.ABC):
             """
             if is_tensor_batch_type(batch):
                 return move_tensors_to_device(
-                    batch, device=device, buffer_cache=buffer_cache
+                    batch, device=device, tensor_cache=tensor_cache
                 )
             else:
                 return batch
