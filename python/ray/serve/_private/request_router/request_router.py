@@ -160,6 +160,28 @@ class LocalityMixin:
             pending_request.routing_context.should_backoff = True
         return candidate_replica_ids
 
+    def rank_replicas_via_locality(
+        self,
+        replicas: List[RunningReplica],
+    ) -> List[List[RunningReplica]]:
+        """Rank the replicas based on the locality preference.
+        Rank 0 is the list of replicas that are on the same node.
+        Rank 1 is the list of replicas that are on the same availability zone.
+        Rank 2 is the list of all other replicas.
+        """
+        ranked_replicas = [[] for _ in range(3)]
+        for replica in replicas:
+            if replica.replica_id in self._colocated_replica_ids[LocalityScope.NODE]:
+                ranked_replicas[0].append(replica)
+            elif (
+                replica.replica_id
+                in self._colocated_replica_ids[LocalityScope.AVAILABILITY_ZONE]
+            ):
+                ranked_replicas[1].append(replica)
+            else:
+                ranked_replicas[2].append(replica)
+        return ranked_replicas
+
 
 class MultiplexMixin:
     """Mixin for multiplex routing.
@@ -310,6 +332,33 @@ class MultiplexMixin:
 
         pending_request.routing_context.should_backoff = True
         return candidate_replica_ids
+
+    def rank_replicas_via_multiplex(
+        self,
+        replicas: List[RunningReplica],
+        multiplexed_model_id: str,
+    ) -> List[List[RunningReplica]]:
+        """Rank the replicas based on the multiplexed model ID.
+        Rank 0 is the list of replicas that have the multiplexed model ID.
+        Rank 1 is the list of replicas that have the fewest multiplexed models.
+        Rank 2 is the list of all other replicas.
+        """
+        replica_ids_with_multiplexed_model = (
+            self._multiplexed_model_id_to_replica_ids.get(multiplexed_model_id, set())
+        )
+        replica_ids_with_fewest_multiplexed_models = (
+            self._get_replica_ids_with_fewest_multiplexed_models()
+        )
+
+        ranked_replicas = [[] for _ in range(3)]
+        for replica in replicas:
+            if replica.replica_id in replica_ids_with_multiplexed_model:
+                ranked_replicas[0].append(replica)
+            elif replica.replica_id in replica_ids_with_fewest_multiplexed_models:
+                ranked_replicas[1].append(replica)
+            else:
+                ranked_replicas[2].append(replica)
+        return ranked_replicas
 
 
 class FIFOMixin:
@@ -837,11 +886,11 @@ class RequestRouter(ABC):
                         extra={"log_to_stderr": False},
                     )
 
-                replica_ranks = [list(self._replicas.values())]
+                replica_ranks = list(self._replicas.values())
                 chosen_replicas: List[
                     List[RunningReplica]
                 ] = await self.choose_replicas(
-                    replicas_ranks=replica_ranks,
+                    candidate_replicas=replica_ranks,
                     pending_request=pending_request,
                 )
                 for replicas in chosen_replicas:
@@ -1026,7 +1075,7 @@ class RequestRouter(ABC):
     @abstractmethod
     async def choose_replicas(
         self,
-        replicas_ranks: List[List[RunningReplica]],
+        candidate_replicas: List[RunningReplica],
         pending_request: Optional[PendingRequest] = None,
     ) -> List[List[RunningReplica]]:
         """Chooses a subset of candidate replicas from available replicas.
@@ -1036,9 +1085,8 @@ class RequestRouter(ABC):
         replica selection.
 
         Args:
-            replicas_ranks: A list of lists of replicas, where each inner list
-                represents a rank of replicas. The first rank is the most
-                preferred and the last rank is the least preferred.
+            candidate_replicas: A list of candidate replicas to be considered in the
+                policy.
             pending_request: The request to be routed. This is used to
                 determine which replicas are eligible for routing.
 

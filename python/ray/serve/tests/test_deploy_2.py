@@ -6,12 +6,13 @@ import time
 from concurrent.futures.thread import ThreadPoolExecutor
 from typing import Dict
 
+import httpx
 import pytest
-import requests
 
 import ray
 from ray import serve
-from ray._private.test_utils import SignalActor, wait_for_condition
+from ray._common.test_utils import SignalActor
+from ray._private.test_utils import wait_for_condition
 from ray.serve._private.common import DeploymentStatus
 from ray.serve._private.logging_utils import get_serve_logs_dir
 from ray.serve._private.test_utils import check_deployment_status, check_num_replicas_eq
@@ -112,9 +113,7 @@ def test_http_proxy_request_cancellation(serve_instance):
     url = "http://127.0.0.1:8000/A"
     with ThreadPoolExecutor() as pool:
         # Send the first request, it should block for the result
-        first_blocking_fut = pool.submit(
-            functools.partial(requests.get, url, timeout=100)
-        )
+        first_blocking_fut = pool.submit(functools.partial(httpx.get, url, timeout=100))
         time.sleep(1)
         assert not first_blocking_fut.done()
 
@@ -123,7 +122,7 @@ def test_http_proxy_request_cancellation(serve_instance):
         # They should all disconnect from http connection.
         # These requests should never reach the replica.
         rest_blocking_futs = [
-            pool.submit(functools.partial(requests.get, url, timeout=0.5))
+            pool.submit(functools.partial(httpx.get, url, timeout=0.5))
             for _ in range(3)
         ]
         time.sleep(1)
@@ -135,7 +134,7 @@ def test_http_proxy_request_cancellation(serve_instance):
 
     # Sending another request to verify that only one request has been
     # processed so far.
-    assert requests.get(url).text == "2"
+    assert httpx.get(url).text == "2"
 
 
 def test_nonserializable_deployment(serve_instance):
@@ -256,9 +255,9 @@ def test_deploy_same_deployment_name_different_app(serve_instance):
     serve.run(Model.bind("alice"), name="app1", route_prefix="/app1")
     serve.run(Model.bind("bob"), name="app2", route_prefix="/app2")
 
-    assert requests.get("http://localhost:8000/app1").text == "hello alice"
-    assert requests.get("http://localhost:8000/app2").text == "hello bob"
-    routes = requests.get("http://localhost:8000/-/routes").json()
+    assert httpx.get("http://localhost:8000/app1").text == "hello alice"
+    assert httpx.get("http://localhost:8000/app2").text == "hello bob"
+    routes = httpx.get("http://localhost:8000/-/routes").json()
     assert routes["/app1"] == "app1"
     assert routes["/app2"] == "app2"
 

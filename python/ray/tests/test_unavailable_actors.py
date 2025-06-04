@@ -7,7 +7,8 @@ from typing import Tuple
 
 import ray
 from ray.exceptions import ActorUnavailableError, ActorDiedError
-from ray._private.test_utils import SignalActor, wait_for_condition
+from ray._common.test_utils import SignalActor
+from ray._private.test_utils import wait_for_condition
 
 import psutil  # We must import psutil after ray because we bundle it with ray.
 
