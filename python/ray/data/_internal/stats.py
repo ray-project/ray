@@ -17,15 +17,16 @@ from ray.data._internal.block_list import BlockList
 from ray.data._internal.execution.interfaces.op_runtime_metrics import (
     NODE_UNKNOWN,
     MetricsGroup,
+    MetricsType,
     NodeMetrics,
     OpRuntimeMetrics,
 )
 from ray.data._internal.metadata_exporter import Topology, get_dataset_metadata_exporter
 from ray.data._internal.util import capfirst
-from ray.data.block import BlockMetadata, BlockStats
+from ray.data.block import BlockStats
 from ray.data.context import DataContext
 from ray.util.annotations import DeveloperAPI
-from ray.util.metrics import Gauge
+from ray.util.metrics import Counter, Gauge, Histogram, Metric
 from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
 
 logger = logging.getLogger(__name__)
@@ -326,18 +327,32 @@ class _StatsActor:
 
     def _create_prometheus_metrics_for_execution_metrics(
         self, metrics_group: MetricsGroup, tag_keys: Tuple[str, ...]
-    ) -> Dict[str, Gauge]:
+    ) -> Dict[str, Metric]:
         metrics = {}
         for metric in OpRuntimeMetrics.get_metrics():
             if not metric.metrics_group == metrics_group:
                 continue
             metric_name = f"data_{metric.name}"
             metric_description = metric.description
-            metrics[metric.name] = Gauge(
-                metric_name,
-                description=metric_description,
-                tag_keys=tag_keys,
-            )
+            if metric.metrics_type == MetricsType.Gauge:
+                metrics[metric.name] = Gauge(
+                    metric_name,
+                    description=metric_description,
+                    tag_keys=tag_keys,
+                )
+            elif metric.metrics_type == MetricsType.Histogram:
+                metrics[metric.name] = Histogram(
+                    metric_name,
+                    description=metric_description,
+                    tag_keys=tag_keys,
+                    **metric.metrics_args,
+                )
+            elif metric.metrics_type == MetricsType.Counter:
+                metrics[metric.name] = Counter(
+                    metric_name,
+                    description=metric_description,
+                    tag_keys=tag_keys,
+                )
         return metrics
 
     def _create_prometheus_metrics_for_per_node_metrics(self) -> Dict[str, Gauge]:
@@ -350,41 +365,6 @@ class _StatsActor:
                 tag_keys=("dataset", "node_ip"),
             )
         return metrics
-
-    def record_start(self, stats_uuid):
-        self.start_time[stats_uuid] = time.perf_counter()
-        self.fifo_queue.append(stats_uuid)
-        # Purge the oldest stats if the limit is exceeded.
-        if len(self.fifo_queue) > self.max_stats:
-            uuid = self.fifo_queue.pop(0)
-            if uuid in self.start_time:
-                del self.start_time[uuid]
-            if uuid in self.last_time:
-                del self.last_time[uuid]
-            if uuid in self.metadata:
-                del self.metadata[uuid]
-
-    def record_task(
-        self, stats_uuid: str, task_idx: int, blocks_metadata: List[BlockMetadata]
-    ):
-        # Null out the schema to keep the stats size small.
-        # TODO(chengsu): ideally schema should be null out on caller side.
-        for metadata in blocks_metadata:
-            metadata.schema = None
-        if stats_uuid in self.start_time:
-            self.metadata[stats_uuid][task_idx] = blocks_metadata
-            self.last_time[stats_uuid] = time.perf_counter()
-
-    def get(self, stats_uuid):
-        if stats_uuid not in self.metadata:
-            return {}, 0.0
-        return (
-            self.metadata[stats_uuid],
-            self.last_time[stats_uuid] - self.start_time[stats_uuid],
-        )
-
-    def _get_stats_dict_size(self):
-        return len(self.start_time), len(self.last_time), len(self.metadata)
 
     def get_dataset_id(self):
         dataset_id = str(self.next_dataset_id)
@@ -405,6 +385,16 @@ class _StatsActor:
         state: Dict[str, Any],
         per_node_metrics: Optional[Dict[str, Dict[str, Union[int, float]]]] = None,
     ):
+        def _record(
+            prom_metric: Metric, value: Union[int, float], tags: Dict[str, str] = None
+        ):
+            if isinstance(prom_metric, Gauge):
+                prom_metric.set(value, tags)
+            elif isinstance(prom_metric, Counter):
+                prom_metric.inc(value, tags)
+            elif isinstance(prom_metric, Histogram):
+                prom_metric.observe(value, tags)
+
         for stats, operator_tag in zip(op_metrics, operator_tags):
             tags = self._create_tags(dataset_tag, operator_tag)
 
@@ -415,27 +405,25 @@ class _StatsActor:
             self.output_rows.set(stats.get("row_outputs_taken", 0), tags)
             self.cpu_usage_cores.set(stats.get("cpu_usage", 0), tags)
             self.gpu_usage_cores.set(stats.get("gpu_usage", 0), tags)
-
             for field_name, prom_metric in self.execution_metrics_inputs.items():
-                prom_metric.set(stats.get(field_name, 0), tags)
-
+                _record(prom_metric, stats.get(field_name, 0), tags)
             for field_name, prom_metric in self.execution_metrics_outputs.items():
-                prom_metric.set(stats.get(field_name, 0), tags)
+                _record(prom_metric, stats.get(field_name, 0), tags)
 
             for field_name, prom_metric in self.execution_metrics_tasks.items():
-                prom_metric.set(stats.get(field_name, 0), tags)
+                _record(prom_metric, stats.get(field_name, 0), tags)
 
             for (
                 field_name,
                 prom_metric,
             ) in self.execution_metrics_obj_store_memory.items():
-                prom_metric.set(stats.get(field_name, 0), tags)
+                _record(prom_metric, stats.get(field_name, 0), tags)
 
             for field_name, prom_metric in self.execution_metrics_actors.items():
-                prom_metric.set(stats.get(field_name, 0), tags)
+                _record(prom_metric, stats.get(field_name, 0), tags)
 
             for field_name, prom_metric in self.execution_metrics_misc.items():
-                prom_metric.set(stats.get(field_name, 0), tags)
+                _record(prom_metric, stats.get(field_name, 0), tags)
 
         # Update per node metrics if they exist, the creation of these metrics is controlled
         # by the _data_context.enable_per_node_metrics flag in the streaming executor but
@@ -454,7 +442,7 @@ class _StatsActor:
                 tags = self._create_tags(dataset_tag=dataset_tag, node_ip_tag=node_ip)
                 for metric_name, metric_value in node_metrics.items():
                     prom_metric = self.per_node_metrics[metric_name]
-                    prom_metric.set(metric_value, tags)
+                    _record(prom_metric, metric_value, tags)
 
         # This update is called from a dataset's executor,
         # so all tags should contain the same dataset
@@ -846,8 +834,6 @@ class DatasetStats:
         *,
         metadata: StatsDict,
         parent: Union[Optional["DatasetStats"], List["DatasetStats"]],
-        needs_stats_actor: bool = False,
-        stats_uuid: str = None,
         base_name: str = None,
     ):
         """Create dataset stats.
@@ -857,11 +843,6 @@ class DatasetStats:
                 previous one. Typically one entry, e.g., {"map": [...]}.
             parent: Reference to parent Dataset's stats, or a list of parents
                 if there are multiple.
-            needs_stats_actor: Whether this Dataset's stats needs a stats actor for
-                stats collection. This is currently only used for Datasets using a
-                lazy datasource (i.e. a LazyBlockList).
-            stats_uuid: The uuid for the stats, used to fetch the right stats
-                from the stats actor.
             base_name: The name of the base operation for a multi-operator operation.
         """
 
@@ -877,8 +858,6 @@ class DatasetStats:
         # fully to streaming execution.
         self.dataset_uuid: str = "unknown_uuid"
         self.time_total_s: float = 0
-        self.needs_stats_actor = needs_stats_actor
-        self.stats_uuid = stats_uuid
 
         # Streaming executor stats
         self.streaming_exec_schedule_s: Timer = Timer()
@@ -927,17 +906,6 @@ class DatasetStats:
     def to_summary(self) -> "DatasetStatsSummary":
         """Generate a `DatasetStatsSummary` object from the given `DatasetStats`
         object, which can be used to generate a summary string."""
-        if self.needs_stats_actor:
-            ac = self.stats_actor
-            # TODO(chengsu): this is a super hack, clean it up.
-            stats_map, self.time_total_s = ray.get(ac.get.remote(self.stats_uuid))
-            # Only populate stats when stats from all read tasks are ready at
-            # stats actor.
-            if len(stats_map.items()) == len(self.metadata["Read"]):
-                self.metadata["Read"] = []
-                for _, blocks_metadata in sorted(stats_map.items()):
-                    self.metadata["Read"] += blocks_metadata
-
         operators_stats = []
         is_sub_operator = len(self.metadata) > 1
         for name, stats in self.metadata.items():
