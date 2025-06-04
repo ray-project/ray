@@ -1,7 +1,6 @@
 from typing import Any, Dict, List, Optional
 
 from ray.data._internal.logical.interfaces import LogicalOperator
-from ray.data._internal.logical.interfaces.operator import DatasetExportArgs
 from ray.data._internal.planner.exchange.interfaces import ExchangeTaskSpec
 from ray.data._internal.planner.exchange.shuffle_task_spec import ShuffleTaskSpec
 from ray.data._internal.planner.exchange.sort_task_spec import SortKey, SortTaskSpec
@@ -38,7 +37,7 @@ class AbstractAllToAll(LogicalOperator):
         self._sub_progress_bar_names = sub_progress_bar_names
 
 
-class RandomizeBlocks(DatasetExportArgs, AbstractAllToAll):
+class RandomizeBlocks(AbstractAllToAll):
     """Logical operator for randomize_block_order."""
 
     def __init__(
@@ -52,18 +51,12 @@ class RandomizeBlocks(DatasetExportArgs, AbstractAllToAll):
         )
         self._seed = seed
 
-    def dataset_export_args(self) -> Dict[str, Any]:
-        """Export the arguments into dictionary format."""
-        return {
-            "seed": self._seed,
-        }
-
     def aggregate_output_metadata(self) -> BlockMetadata:
         assert len(self._input_dependencies) == 1, len(self._input_dependencies)
         return self._input_dependencies[0].aggregate_output_metadata()
 
 
-class RandomShuffle(DatasetExportArgs, AbstractAllToAll):
+class RandomShuffle(AbstractAllToAll):
     """Logical operator for random_shuffle."""
 
     def __init__(
@@ -84,19 +77,12 @@ class RandomShuffle(DatasetExportArgs, AbstractAllToAll):
         )
         self._seed = seed
 
-    def dataset_export_args(self) -> Dict[str, Any]:
-        """Export the arguments into dictionary format."""
-        return {
-            "seed": self._seed,
-            "ray_remote_args": self._ray_remote_args,
-        }
-
     def aggregate_output_metadata(self) -> BlockMetadata:
         assert len(self._input_dependencies) == 1, len(self._input_dependencies)
         return self._input_dependencies[0].aggregate_output_metadata()
 
 
-class Repartition(DatasetExportArgs, AbstractAllToAll):
+class Repartition(AbstractAllToAll):
     """Logical operator for repartition."""
 
     def __init__(
@@ -126,21 +112,12 @@ class Repartition(DatasetExportArgs, AbstractAllToAll):
         self._keys = keys
         self._sort = sort
 
-    def dataset_export_args(self) -> Dict[str, Any]:
-        """Export the arguments into dictionary format."""
-        return {
-            "num_outputs": self._num_outputs,
-            "shuffle": self._shuffle,
-            "keys": self._keys,
-            "sort": self._sort,
-        }
-
     def aggregate_output_metadata(self) -> BlockMetadata:
         assert len(self._input_dependencies) == 1, len(self._input_dependencies)
         return self._input_dependencies[0].aggregate_output_metadata()
 
 
-class Sort(DatasetExportArgs, AbstractAllToAll):
+class Sort(AbstractAllToAll):
     """Logical operator for sort."""
 
     def __init__(
@@ -161,19 +138,12 @@ class Sort(DatasetExportArgs, AbstractAllToAll):
         self._sort_key = sort_key
         self._batch_format = batch_format
 
-    def dataset_export_args(self) -> Dict[str, Any]:
-        """Export the arguments into dictionary format."""
-        return {
-            "sort_key": self._sort_key,
-            "batch_format": self._batch_format,
-        }
-
     def aggregate_output_metadata(self) -> BlockMetadata:
         assert len(self._input_dependencies) == 1, len(self._input_dependencies)
         return self._input_dependencies[0].aggregate_output_metadata()
 
 
-class Aggregate(DatasetExportArgs, AbstractAllToAll):
+class Aggregate(AbstractAllToAll):
     """Logical operator for aggregate."""
 
     def __init__(
@@ -197,12 +167,3 @@ class Aggregate(DatasetExportArgs, AbstractAllToAll):
         self._aggs = aggs
         self._num_partitions = num_partitions
         self._batch_format = batch_format
-
-    def dataset_export_args(self) -> Dict[str, Any]:
-        """Export the arguments into dictionary format."""
-        return {
-            "key": self._key,
-            "aggs": self._aggs,
-            "num_partitions": self._num_partitions,
-            "batch_format": self._batch_format,
-        }
