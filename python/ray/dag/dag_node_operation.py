@@ -263,7 +263,7 @@ def _push_candidate_node_if_ready(
                 assert sync_node not in candidates
                 heapq.heappush(candidates, sync_node)
         elif node.is_nccl_read:
-            raise ValueError(f"NCCL read node should be pushed by NCCL write node")
+            raise ValueError("NCCL read node should be pushed by NCCL write node")
         else:
             raise ValueError(f"Unexpected node: {node}")
 
