@@ -973,7 +973,7 @@ class Dataset:
             keep ({'first', 'last', False}, default 'first'): Determines which duplicates (if any) to keep.
                 - 'first': Keep the first occurrence of each set of duplicates.
                 - 'last': Keep the last occurrence of each set of duplicates.
-                - False: Drop all duplicates (only unique rows by ``subset`` are kept).
+                - False: Drop all duplicates (only unique rows by ``keys`` are kept).
 
         Returns:
             Dataset: A new dataset with duplicate rows removed as specified.
