@@ -54,12 +54,11 @@ class AutoscalingActorPool(ABC):
         """Number of current in-flight tasks."""
         ...
 
-    def num_total_task_slots(self) -> int:
-        """Total number of task slots."""
-        return self.max_tasks_in_flight_per_actor() * self.current_size()
-
     def num_free_task_slots(self) -> int:
-        """Number of free slots to run tasks."""
+        """Number of free slots to run tasks.
+
+        This includes task slots for pending actors.
+        """
         return (
             self.max_tasks_in_flight_per_actor() * self.current_size()
             - self.current_in_flight_tasks()
