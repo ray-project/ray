@@ -227,27 +227,21 @@ def convert_cluster_compute_to_kuberay_compute_config(compute_config: dict) -> d
     kuberay_worker_nodes = []
     for worker_node_type in worker_node_types:
         worker_node_config = {
-            "groupName": worker_node_type.get("name"),
-            "instanceType": worker_node_type.get("instance_type"),
-            "minNodes": worker_node_type.get("min_workers"),
-            "maxNodes": worker_node_type.get("max_workers")
+            "group_name": worker_node_type.get("name"),
+            "min_nodes": worker_node_type.get("min_workers"),
+            "max_nodes": worker_node_type.get("max_workers")
         }
         if worker_node_type.get("resources", {}):
             worker_node_config["resources"] = worker_node_type.get("resources", {})
         kuberay_worker_nodes.append(worker_node_config)
 
     config = {
-        "headNode": {
-            "instanceType": head_node_instance_type,
-        },
-        "workerNodes": kuberay_worker_nodes,
+        "head_node": {},
+        "worker_nodes": kuberay_worker_nodes,
     }
-    if compute_config.get("autoscalerVersion"):
-        config["autoscalerVersion"] = compute_config.get("autoscalerVersion")
     if head_node_resources:
-        config["headNode"]["resources"] = head_node_resources
+        config["head_node"]["resources"] = head_node_resources
     return config
-
 
 def upload_working_dir(working_dir: str) -> str:
     """Upload working directory to GCS bucket.
