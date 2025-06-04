@@ -37,7 +37,7 @@ The first step is to import and initialize Ray:
 
 .. note::
 
-  If ``ray.init()`` isn't called explicitly, it will implicitly be called on the first use of a Ray remote API.
+  If ``ray.init()`` isn't called explicitly, it will implicitly be called with no arguments on the first use of a Ray remote API.
 
 Running a Task
 --------------
