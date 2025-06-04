@@ -1085,11 +1085,9 @@ class Dataset:
             import polars as pl
 
             def map_polars_sql(batch, query, batch_name="batch"):
-                if batch_name != "batch":
-                    locals()[batch_name] = batch
-
-                res = pl.sql(query).collect().to_arrow()
-                return res
+                df = pl.from_arrow(batch)
+                result = df.sql(query, table_name=batch_name)
+                return result.to_arrow()
 
             fnc = map_polars_sql
 
