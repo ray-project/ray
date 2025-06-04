@@ -967,16 +967,14 @@ class Dataset:
                 [{'a': 2, 'b': 'y'}, {'a': 4, 'b': 'w'}]
 
         Args:
-            keys (List[str], optional): List of columns to consider for identifying duplicates.
-                Only the values in these columns are checked for duplication. If None, all columns
-                are used. Defaults to None.
-            keep ({'first', 'last', False}, default 'first'): Determines which duplicates (if any) to keep.
+            keys: List of columns to consider for identifying duplicates. Only the values in these columns are checked for duplication. If None, all columns are used. Defaults to None.
+            keep: Determines which duplicates (if any) to keep.
                 - 'first': Keep the first occurrence of each set of duplicates.
                 - 'last': Keep the last occurrence of each set of duplicates.
-                - False: Drop all duplicates (only unique rows by ``subset`` are kept).
+                - False: Drop all duplicates (only unique rows by ``keys`` are kept). Defaults to 'first'.
 
         Returns:
-            Dataset: A new dataset with duplicate rows removed as specified.
+            A new dataset with duplicate rows removed as specified.
 
         .. note::
 
