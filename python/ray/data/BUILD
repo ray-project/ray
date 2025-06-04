@@ -1392,17 +1392,3 @@ py_test(
         "//:ray_lib",
     ],
 )
-
-py_test(
-    name = "test_compact",
-    size = "small",
-    srcs = ["tests/test_compact.py"],
-    tags = [
-        "exclusive",
-        "team:data",
-    ],
-    deps = [
-        ":conftest",
-        "//:ray_lib",
-    ],
-)
