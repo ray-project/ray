@@ -84,7 +84,6 @@ class KuberayJobManager:
             }
         }
         print("Compute config: ", compute_config)
-        print("Compute config autoscalerVersion: ", compute_config.get("autoscalerVersion"))
         if compute_config.get("autoscaler_version"):
             request["autoscaler_config"] = {
                 "version": compute_config["autoscaler_version"]
