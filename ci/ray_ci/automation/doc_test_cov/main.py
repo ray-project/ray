@@ -26,7 +26,7 @@ def main():
     test_results = TestResults()
     # Get all doctest jobs for the run
     bk_client = BuildKiteClient(BK_HOST, args.bk_api_token, BK_ORGANIZATION, BK_PIPELINE)
-    print("init bk client")
+    print("Init Buildkite client")
     # list all recent runs for postmerge ran by release-automation
     bk_jobs = bk_client.get_nightly_bk_builds_for_pipeline(args.look_back_hours)
     print(f"Found {len(bk_jobs)} builds for the last {args.look_back_hours} hours")
@@ -60,7 +60,6 @@ def main():
 
     # Get all available test targets
     print("Querying available test targets...")
-    print(args.ray_path)
     test_results.set_targets(Query.get_all_test_targets(args.ray_path))
 
     # # List and Get all bazel events from s3
@@ -69,7 +68,7 @@ def main():
     log_files = s3_source.download_all_bazel_events(f"{os.getcwd()}/bazel_events")
 
     # Parse log files for executed tests and store results in test_result
-    Query.parse_bazel_results_eff(log_files)
+    Query.parse_bazel_results(log_files)
     Query.read_test_results_from_file(test_results)
     print(f"Found {len(test_results.targets)} targets")
 
@@ -82,24 +81,20 @@ def main():
     print("done getting files for targets")
 
     # get all file refs for bazel target files
-    Query.get_file_references_for_active_targets(test_results, args.ray_path)
+    Query.get_file_references_for_untested_targets(test_results, args.ray_path)
     print("done getting file refs for targets")
 
-    #filter out targets that don't have a generated file in doc/_build
+    # #filter out targets that don't have a generated file in doc/_build
     Query.filter_out_targets_without_doc_builds(test_results)
     print("done filtering out targets that don't have a generated file in doc/_build")
     test_results.calculate_test_coverage()
     print("done calculating test coverage")
-    print(f"number of targets: {len(test_results.targets)}")
-    print(f"number of tested files for first target: {len(test_results.targets[0].files)}")
-    # print(f"number of file refs for first target: {len(test_results.targets[0].files[0].file_refs)}")
-    for target in test_results.targets:
-        if not target.tested:
-            print(f"target: {target.target_name}")
-            print(f"target files: {target.files}")
-            print(f"target file refs: {target.files[0].file_refs}")
     test_results.save_test_results()
     print("done saving test results")
+    test_results.output_untested_targets()
+    print("done outputting untested targets")
+    test_results.output_results_csv_format()
+    print("done outputting results in csv format")
 
 if __name__ == "__main__":
     main()

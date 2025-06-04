@@ -29,7 +29,7 @@ class Query:
         for target in test_results.targets:
             try:
                 #cmd = f"bazel query 'filter(\"\\.rst$|\\.md$|\\.ipynb$|\\.py$\", deps({target}, 1))'"
-                cmd = f"bazel query 'kind(\"source file\", filter(\"source/.*\", deps({target})))'"
+                cmd = f"bazel query 'kind(\"source file\", filter(\"source/.*\", deps({target.target_name})))'"
                 result = subprocess.run(
                     cmd,
                     cwd=ray_path,
@@ -116,48 +116,12 @@ class Query:
             if hasattr(target, "target_name") and target.target_name.endswith("0"):
                 gc.collect()
 
-    # @staticmethod
-    # def parse_bazel_results(log_files: str, test_result: TestResults):
-    #     """
-    #     Parse bazel test log file to find executed tests and their status.
-    #     """
-    #     executed_tests = {}
-    #     for log_file in log_files:
-    #         if "metadata" not in log_file:
-    #             print(f"\nParsing log file: {log_file}")
-    #             print(f"Found {len(executed_tests)} executed tests")
-    #             with open(log_file, "r") as f:
-    #                 # Convert the file content into a JSON array
-    #                 content = f.read()
-    #                 json_array = "[" + content.replace("}\n{", "},{") + "]"
-    #                 try:
-    #                     data_array = json.loads(json_array)
-    #                     print(f"\nSuccessfully parsed {len(data_array)} JSON objects")
-
-    #                     for data in data_array:
-    #                         if "testSummary" in data and "testSummary" in data["id"]:
-    #                             summary = data["testSummary"]
-    #                             label_summary = data["id"]["testSummary"]
-    #                             if "label" in label_summary and "overallStatus" in summary:
-    #                                 target = label_summary["label"]
-    #                                 status = summary["overallStatus"]
-    #                                 executed_tests[target] = status
-    #                 except json.JSONDecodeError as e:
-    #                     print(f"Failed to parse JSON array: {str(e)}")
-    #                     return {}
-    #                 with open("bazel_events/bazel_events.json", "w") as f:
-    #                     f.write(json.dumps(executed_tests))
-    #                 executed_tests.clear()
-
-
-    #     print(f"\nFound {len(executed_tests)} total test results:")
-
     @staticmethod
-    def read_test_results_from_file(test_result: TestResults):
+    def read_test_results_from_file(test_results: TestResults):
         with open("bazel_events/bazel_events.json", "r") as f:
             content = f.read()
             data = json.loads(content)
-            for target in test_result.targets:
+            for target in test_results.targets:
                 if target.target_name in data.keys():
                     target.status = data[target.target_name]
                     target.tested = True
@@ -172,7 +136,7 @@ class Query:
             json.dump(executed_tests, f, indent=4)
 
     @staticmethod
-    def parse_bazel_results_eff(log_files: str):
+    def parse_bazel_results(log_files: str):
         """
         Parse bazel test log files and create a single JSON object containing all results.
         """
@@ -223,109 +187,35 @@ class Query:
         all_executed_tests.clear()
 
     @staticmethod
-    def get_file_refs_for_targets_old(test_results: TestResults, ray_path: str):
-        """
-        Get file references in the doc/ directory.
-        """
-        for target in test_results.targets:
-            for file in target.files:
-                print(f"processing {len(target.files)} files for target: {target.target_name}")
-                file_name = file.file_name.lstrip("//").split(":")[-1].split("/")[-1]
-                # Use find to get all matching files and show matching lines with filename
-                cmd = f"find {ray_path}/doc -type f -name '*.rst' -o -name '*.md' -o -name '*.html' -o -name '*.txt' | xargs grep -H '{file_name}'"
-                result = subprocess.run(["bash", "-c", cmd],
-                    cwd=ray_path,
-                    capture_output=True,
-                    text=True)
-
-                stdout = result.stdout.strip()
-                file.file_refs = stdout.split("\n") if stdout else []
-
-    @staticmethod
     def filter_out_targets_without_doc_builds(test_results: TestResults) -> List[str]:
         """
-        Filter out targets that don't have a generated file in doc/_build.
+        Filter out targets that don't have a generated file in doc/_build and targets that have edit read me links
         """
         for target in test_results.targets:
             for file in target.files:
                 paths = file.file_refs
-                if any("doc/_build" in path for path in paths):
+                if any("doc/_build" in path for path in paths) and not any("https://github.com/ray-project/ray/edit" in path for path in paths):
                     target.active = True
                     break
 
     @staticmethod
-    def output_test_coverage(filtered_tests: Dict[str, str], executed_tests: Dict[str, str], targets: List[str], target_file_map: Dict[str, List[str]], bk_build_url: str, bk_job_names: List[str], bazel_file_locations_for_targets: Dict[str, str], ray_path: str):
-        """
-        Get test coverage for the executed tests that match the targets.
-        """
-        file_list = {}
-        # Write results to a file
-        with open("results/test_results.txt", "w") as f:
-            f.write("Test Results Summary\n")
-            f.write("===================\n\n")
-            f.write(f"BK Build URL: {bk_build_url}\n\n")
-            f.write("--------------------\n")
-            f.write(f"BK Job Names: {bk_job_names}\n\n")
-            f.write("\nTest Coverage Summary:\n")
-            f.write("--------------------\n")
-            f.write(f"ALL TARGETS: {len(target_file_map)}\n")
-            for target in targets:
-                f.write(f"{target}\n")
-            f.write("--------------------\n")
-            f.write("\nTESTED TARGETS:\n")
-            untested_targets = []
-            for target in targets:
-                if target in filtered_tests:
-                    f.write(f"{target}: TESTED : {filtered_tests[target]}\n")
-                    for file in target_file_map[target]:
-                        file_list[file] = "TESTED"
-                        f.write(f"  {file}\n")
-                else:
-                    untested_targets.append(target)
-            f.write("\nUNTESTED TARGETS:\n")
-            f.write("--------------------\n")
-            filtered_target_file_map = {k: v for k, v in target_file_map.items() if k in untested_targets}
-            file_ref_map = Query.get_file_references(filtered_target_file_map, ray_path)
-            target_to_file_map = Query.filter_out_targets_without_doc_builds(untested_targets, filtered_target_file_map, file_ref_map)
-            for target in untested_targets:
-                if target in target_to_file_map:
-                    f.write(f"{target} : NOT TESTED\n")
-                    f.write(f"bazel file location: {bazel_file_locations_for_targets[target]}\n")
-                    for file in filtered_target_file_map[target]:
-                        file_name = file.split(".")[0]
-                        if file_name not in executed_tests:
-                            file_list[file] = "NOT TESTED"
-                            f.write(f"      {file}\n")
-                            for ref in file_ref_map[file]:
-                                f.write(f"              {ref}\n")
-            f.write("--------------------\n")
-            f.write(f"Total Bazel targets: {len(targets)}\n")
-            f.write(f"Tested Bazel Targets: {len(filtered_tests)}\n")
-            f.write(f"Untested Bazel Targets: {len(filtered_target_file_map.keys())}\n")
-
-            f.write(f"Test coverage per target: {len(filtered_tests) / len(targets) * 100:.2f}%\n")
-            not_tested_count = sum(1 for status in file_list.values() if status == "NOT TESTED")
-            f.write(f"Total files: {len(file_list.keys())}\n")
-            f.write(f"Tested files: {len(file_list.keys()) - not_tested_count}\n")
-            f.write(f"Test coverage per file: {(len(file_list.keys()) - not_tested_count) / len(file_list.keys()) * 100:.2f}%\n")
-        print("\nResults have been written to test_results.txt")
-
-    @staticmethod
-    def get_file_references_for_active_targets(test_results: TestResults, ray_path: str):
+    def get_file_references_for_untested_targets(test_results: TestResults, ray_path: str):
         """
         Get file references in the doc/ directory.
         """
         for target in test_results.targets:
             if not target.tested:
                 for file in target.files:
-                    file_path = file.file_name.lstrip("//").split(":")[-1].split("/")[-1]    # Use find to get all matching files and show matching lines with filename
-                    cmd = f"find {ray_path}/doc -type f -name '*.rst' -o -name '*.md' -o -name '*.html' -o -name '*.txt' | xargs grep -H '{file_path}'"
-                    result = subprocess.run(["bash", "-c", cmd],
-                        cwd=ray_path,
-                        capture_output=True,
-                        text=True)
-                    stdout = result.stdout.strip()
-                    file.file_refs = stdout.split("\n") if stdout else []
+                    file_name = file.file_name
+                    if file_name:
+                        file_path = file_name.lstrip("//").split(":")[-1].split("/")[-1]    # Use find to get all matching files and show matching lines with filename
+                        cmd = f"find {ray_path}/doc -type f -name '*.rst' -o -name '*.md' -o -name '*.html' -o -name '*.txt' | xargs grep -H '{file_path}'"
+                        result = subprocess.run(["bash", "-c", cmd],
+                            cwd=ray_path,
+                            capture_output=True,
+                            text=True)
+                        stdout = result.stdout.strip()
+                        file.file_refs = stdout.split("\n") if stdout else []
 
     @staticmethod
     def get_file_refs_for_targets(test_results: TestResults, ray_path: str):

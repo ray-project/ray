@@ -1,5 +1,6 @@
 from typing import List, Dict
 import json
+import pandas as pd
 
 class TestResults:
     def __init__(self):
@@ -34,29 +35,36 @@ class TestResults:
     def save_test_results(self, filename: str = "results/test_results.json"):
         """Save test results to a JSON file"""
         print(f"saving test results to {filename}")
-        self.targets = [target for target in self.targets if not target.tested]
         with open(filename, "w") as f:
             json.dump(self.to_dict(), f, indent=4)
 
     def calculate_test_coverage(self):
         tested_targets, tested_files, untested_targets, untested_files = 0, 0, 0, 0
         for target in self.targets:
-            if target.active:
-                if target.tested:
-                    tested_targets += 1
-                    tested_files += len(target.files)
-                else:
-                    untested_targets += 1
-                    untested_files += len(target.files)
+            if target.active and target.tested:
+                tested_targets += 1
+                tested_files += len(target.files)
+            elif target.active and not target.tested:
+                untested_targets += 1
+                untested_files += len(target.files)
 
         self.stats = {
                 "tested_targets": tested_targets,
                 "tested_files": tested_files,
                 "untested_targets": untested_targets,
                 "untested_files": untested_files,
-                # "test_coverage_per_target": tested_targets / (tested_targets + untested_targets) * 100,
-                # "test_coverage_per_file": tested_files / (tested_files + untested_files) * 100
+                "test_coverage_per_target": tested_targets / (tested_targets + untested_targets) * 100,
+                "test_coverage_per_file": tested_files / (tested_files + untested_files) * 100
             }
+
+    def output_untested_targets(self, filename: str = "results/untested_targets.json"):
+        self.targets = [target for target in self.targets if not target.tested and target.active]
+        with open(filename, "w") as f:
+            json.dump(self.to_dict(), f, indent=4)
+
+    def output_results_csv_format(self, filename: str = "results/untested_targets.csv"):
+        df = pd.DataFrame([target.to_dict() for target in self.targets if not target.tested and target.active])
+        df.to_csv(filename, index=False)
 
 class BazelTarget:
     def __init__(self, target: str):
@@ -81,11 +89,12 @@ class BazelTarget:
         self.files = [BazelFile(file) for file in files]
 
 class BazelFile:
-    def __init__(self, file: str):
-        self.file_name = file
+    def __init__(self, file_name: str):
+        self.file_name = file_name
         self.file_refs = []
 
     def to_dict(self) -> Dict:
         return {
+            "file_name": self.file_name,
             "file_refs": self.file_refs
         }
