@@ -927,7 +927,7 @@ class Dataset:
                 import pyarrow as pa
 
                 ds = ray.data.from_arrow(pa.table({"a": [1,2,1,2,3], "b": ["x","y","x","y","z"]}))
-                ds.distinct().sort(key=["a","b"]).take_all()
+                print(ds.distinct().sort(key=["a","b"]).take_all())
 
             .. testoutput::
 
@@ -937,7 +937,7 @@ class Dataset:
 
             .. testcode::
 
-                ds.distinct(subset=["a"]).sort(key=["a"]).take_all()
+                print(ds.distinct(subset=["a"]).sort(key=["a"]).take_all())
 
             .. testoutput::
 
@@ -947,7 +947,7 @@ class Dataset:
 
             .. testcode::
 
-                ds.distinct(subset=["a"], keep="last").sort(key=["a"]).take_all()
+                print(ds.distinct(subset=["a"], keep="last").sort(key=["a"]).take_all())
 
             .. testoutput::
 
@@ -958,7 +958,7 @@ class Dataset:
             .. testcode::
 
                 ds2 = ray.data.from_arrow(pa.table({"a": [1,1,2,3,3,4], "b": ["x","x","y","z","z","w"]}))
-                ds2.distinct(subset=["a"], keep=False).sort(key=["a"]).take_all()
+                print(ds2.distinct(subset=["a"], keep=False).sort(key=["a"]).take_all())
 
             .. testoutput::
 
