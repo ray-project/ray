@@ -810,7 +810,7 @@ class Dataset:
 
             import ray
             ds = ray.data.range(1000)
-            print(ds.map_sql("SELECT * FROM batch WHERE id < 501").count())
+            print(ds.map_sql("SELECT * FROM batch WHERE id < 500").count())
 
         .. testoutput::
 
@@ -832,6 +832,11 @@ class Dataset:
             ``map_sql`` is currently experimental, and may result in issues. Please
             `report any issues <https://github.com/ray-project/ray/issues/new/choose>`_
             to the Ray team.
+
+        .. warning::
+            The Polars SQL API is somewhat limited in full SQL support, please visit the
+            the official Polars SQL documentation <https://docs.pola.rs/api/python/stable/reference/sql/index.html>`_
+            for full API support details.
 
         Args:
             query: The SQL query to execute on each batch of data.
