@@ -191,7 +191,7 @@ class KuberayJobManager:
             raise
         login_url = f"{KUBERAY_SERVER_URL}/api/v1/login"
         login_request = {
-            "secretKey": kuberay_service_secret_key
+            "secret_key": kuberay_service_secret_key
         }
         login_response = requests.post(login_url, json=login_request)
         login_response.raise_for_status()
