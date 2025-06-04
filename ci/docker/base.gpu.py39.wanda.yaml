@@ -13,7 +13,7 @@ srcs:
   - ci/env/install-dependencies.sh
   - ci/env/install-llvm-binaries.sh
   - ci/env/install-bazel.sh
-  - ci/env/install-miniconda.sh
+  - ci/env/install-miniforge.sh
   - ci/suppress_output
 build_args:
   - REMOTE_CACHE_URL=$BUILDKITE_BAZEL_CACHE_URL
