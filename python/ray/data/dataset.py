@@ -810,7 +810,7 @@ class Dataset:
 
             import ray
             ds = ray.data.range(1000)
-            print(ds.map_sql("SELECT * FROM batch WHERE id > 501").count())
+            print(ds.map_sql("SELECT * FROM batch WHERE id < 501").count())
 
         .. testoutput::
 
