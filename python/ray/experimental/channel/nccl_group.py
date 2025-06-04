@@ -93,9 +93,9 @@ class _NcclGroup(Communicator):
             # Driver does not have a rank.
             self._comm = None
 
-        self._cuda_stream: Optional["cp.cuda.ExternalStream"] = None
         self._send_stream: Optional["cp.cuda.ExternalStream"] = None
         self._recv_stream: Optional["cp.cuda.ExternalStream"] = None
+        self._coll_stream: Optional["cp.cuda.ExternalStream"] = None
         if cuda_stream is not None:
             assert rank is not None, "NCCL actor has no rank assigned"
 
@@ -103,9 +103,6 @@ class _NcclGroup(Communicator):
 
             # TODO(swang): Allow default device to be overridden.
             device = get_devices()[0]
-            self._cuda_stream = cp.cuda.ExternalStream(
-                cuda_stream, device_id=device.index
-            )
 
             if use_communication_streams:
                 import torch
@@ -116,9 +113,14 @@ class _NcclGroup(Communicator):
                 self._recv_stream = cp.cuda.ExternalStream(
                     torch.cuda.Stream().cuda_stream, device_id=device.index
                 )
+                self._coll_stream = cp.cuda.ExternalStream(
+                    torch.cuda.Stream().cuda_stream, device_id=device.index
+                )
             else:
-                self._send_stream = self._cuda_stream
-                self._recv_stream = self._cuda_stream
+                stream = cp.cuda.ExternalStream(cuda_stream, device_id=device.index)
+                self._send_stream = stream
+                self._recv_stream = stream
+                self._coll_stream = stream
 
         self._closed = False
 
@@ -163,7 +165,7 @@ class _NcclGroup(Communicator):
         not have completed. Therefore, the caller should ensure that there are
         no concurrent writes to the sent `buf` until the send has finished.
         That is, either all writes should be submitted on the current stream
-        (self._cuda_stream) or, if on a different stream, that stream should
+        (self._send_stream) or, if on a different stream, that stream should
         synchronize with the current stream.
 
         Args:
@@ -243,7 +245,7 @@ class _NcclGroup(Communicator):
             # need to synchronize here and check that the channel is still open to
             # ensure that the receive buffer is valid.
             # TODO(swang): Avoid CUDA synchronization.
-            self._cuda_stream.synchronize()
+            self._recv_stream.synchronize()
 
         if self._closed:
             raise RayChannelError("NCCL group has been destroyed.")
@@ -272,7 +274,7 @@ class _NcclGroup(Communicator):
         # ensure that the receive buffer is valid.
         # TODO(swang): Avoid CUDA synchronization.
         # TODO(wxdeng): This synchronize will be optional after merging the unify PR.
-        self._cuda_stream.synchronize()
+        self._coll_stream.synchronize()
         if self._closed:
             raise RayChannelError(
                 "NCCL group has been destroyed during allreduce operation. "
@@ -290,7 +292,7 @@ class _NcclGroup(Communicator):
             self.nccl_util.get_tensor_ptr(recv_buf),
             send_buf.numel(),
             self.nccl_util.get_nccl_tensor_dtype(send_buf),
-            self._cuda_stream.ptr,
+            self._coll_stream.ptr,
         ]
         self._exec_collective(
             send_buf,
@@ -311,7 +313,7 @@ class _NcclGroup(Communicator):
             send_buf.numel(),
             self.nccl_util.get_nccl_tensor_dtype(send_buf),
             op.value,
-            self._cuda_stream.ptr,
+            self._coll_stream.ptr,
         ]
         self._exec_collective(
             send_buf,
@@ -332,7 +334,7 @@ class _NcclGroup(Communicator):
             recv_buf.numel(),
             self.nccl_util.get_nccl_tensor_dtype(send_buf),
             op.value,
-            self._cuda_stream.ptr,
+            self._coll_stream.ptr,
         ]
         self._exec_collective(
             send_buf,
@@ -351,7 +353,7 @@ class _NcclGroup(Communicator):
 
     @property
     def coll_stream(self) -> Optional["cp.cuda.ExternalStream"]:
-        return self._cuda_stream
+        return self._coll_stream
 
     def destroy(self) -> None:
         """

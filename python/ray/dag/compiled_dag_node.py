@@ -8,10 +8,15 @@ import weakref
 from collections import defaultdict
 from contextlib import nullcontext
 from dataclasses import asdict, dataclass
-from itertools import chain
 from typing import TYPE_CHECKING, Any, Dict, List, Optional, Set, Tuple, Union
 
 import ray.exceptions
+from ray.dag.communication_operation import (
+    _CollectiveOperation,
+    _NcclOperation,
+    _P2PRecvOperation,
+    _P2PSendOperation,
+)
 from ray.dag.constants import (
     BIND_INDEX_KEY,
     PARENT_CLASS_NODE_KEY,
@@ -26,6 +31,7 @@ from ray.dag.dag_node_operation import (
     _extract_execution_schedule,
     _generate_actor_to_execution_schedule,
     _generate_overlapped_execution_schedule,
+    _NcclOperationType,
     _visualize_execution_schedule,
 )
 from ray.dag.dag_operation_future import DAGOperationFuture, GPUFuture
@@ -486,12 +492,6 @@ class ExecutableTask:
                 do not support binding kwargs to other DAG nodes, so the values
                 of the dictionary cannot be Channels.
         """
-        from ray.dag.communication_node import (
-            _NcclOperation,
-            _P2PRecvOperation,
-            _P2PSendOperation,
-        )
-
         self.method_name = task.dag_node.get_method_name()
         self.bind_index = task.dag_node._get_bind_index()
         self.output_channels = task.output_channels
@@ -570,12 +570,12 @@ class ExecutableTask:
         return self.nccl_op_type == _P2POp.RECV
 
     @property
-    def requires_nccl_write(self) -> bool:
-        return self.nccl_op_type == _P2POp.SEND
-
-    @property
     def requires_nccl_compute(self) -> bool:
         return isinstance(self.nccl_op_type, _CollectiveOp)
+
+    @property
+    def requires_nccl_write(self) -> bool:
+        return self.nccl_op_type == _P2POp.SEND
 
     def cancel(self):
         """
@@ -607,8 +607,6 @@ class ExecutableTask:
             overlap_gpu_communication: Whether to overlap GPU communication with
                 computation during DAG execution to improve performance
         """
-        from ray.dag.communication_node import _CollectiveOperation
-
         for typ_hint in self.input_type_hints:
             typ_hint.register_custom_serializer()
         self.output_type_hint.register_custom_serializer()
@@ -616,6 +614,8 @@ class ExecutableTask:
             self.input_reader.start()
         if self.output_writer is not None:
             self.output_writer.start()
+        if self.requires_nccl_write:
+            self.nccl_op.nccl_ch.ensure_registered_as_writer()
 
         self.stream: Union["cp.cuda.Stream", nullcontext] = nullcontext()
         if not overlap_gpu_communication:
@@ -916,7 +916,7 @@ class CompiledDAG:
         ] = set()
         # Set of collective operations using an unresolved communicator.
         self._collective_ops_with_unresolved_communicators: Set[
-            "ray.dag.communication_node._CollectiveOperation"
+            _CollectiveOperation
         ] = set()
 
         self._default_type_hint: ChannelOutputType = SharedMemoryType(
@@ -1499,40 +1499,6 @@ class CompiledDAG:
         self.actor_to_node_id[actor_handle] = node_id
         return node_id
 
-    def _get_topological_order(
-        self, root: "ray.dag.DAGNode"
-    ) -> List["ray.dag.DAGNode"]:
-        """
-        Get the topological order of the DAG.
-        """
-        from ray.dag import DAGNode
-
-        visited: Set[DAGNode] = set()
-        queue: List[DAGNode] = [root]
-        while queue:
-            node = queue.pop(0)
-            if node not in visited:
-                visited.add(node)
-                for neighbor in chain.from_iterable(
-                    [node._downstream_nodes, node._upstream_nodes]
-                ):
-                    if neighbor not in visited:
-                        queue.append(neighbor)
-        queue.clear()
-        in_degrees: Dict[DAGNode, int] = {
-            node: len(node._upstream_nodes) for node in visited
-        }
-        frontier = [node for node in visited if in_degrees[node] == 0]
-        while frontier:
-            node = frontier.pop(0)
-            queue.append(node)
-            for neighbor in node._downstream_nodes:
-                in_degrees[neighbor] -= 1
-                if in_degrees[neighbor] == 0:
-                    frontier.append(neighbor)
-        assert len(queue) == len(visited)
-        return queue
-
     def _add_p2p_send_node(
         self,
         node: "ray.dag.DAGNode",
@@ -1569,15 +1535,15 @@ class CompiledDAG:
             )
 
         send_actor_handle: "ray.actor.ActorHandle" = node._get_actor_handle()
-        assert send_actor_handle is not None, "Expected an actor handle"
+        assert send_actor_handle is not None
         send_node = P2PSendNode(
             method_args=(node,),
             other_args_to_resolve={
                 PARENT_CLASS_NODE_KEY: send_actor_handle,
-                # Use the same bind index as the original node.
-                BIND_INDEX_KEY: node._get_bind_index(),
+                BIND_INDEX_KEY: send_actor_handle._ray_dag_bind_index,
             },
         )
+        send_actor_handle._ray_dag_bind_index += 1
         send_node._type_hint = node.type_hint
         send_node._original_type_hint = node._original_type_hint
         node._type_hint = ChannelOutputType()
@@ -1621,15 +1587,15 @@ class CompiledDAG:
 
             send_node = node_to_p2p_send_node[arg]
             recv_actor_handle: "ray.actor.ActorHandle" = node._get_actor_handle()
-            assert recv_actor_handle is not None, "Expected an actor handle"
+            assert recv_actor_handle is not None
             recv_node = P2PRecvNode(
                 method_args=(send_node,),
                 other_args_to_resolve={
                     PARENT_CLASS_NODE_KEY: recv_actor_handle,
-                    # Use the same bind index as the original node.
-                    BIND_INDEX_KEY: node._get_bind_index(),
+                    BIND_INDEX_KEY: recv_actor_handle._ray_dag_bind_index,
                 },
             )
+            recv_actor_handle._ray_dag_bind_index += 1
             new_args.append(recv_node)
             self._add_node(recv_node)
         node._bound_args = tuple(new_args)
@@ -1642,11 +1608,8 @@ class CompiledDAG:
         collective operation, where the NCCL collective method is executed from the
         created `CollectiveOutputNode` during the DAG definition.
         """
-        from ray.dag import DAGNode
-        from ray.dag.communication_node import P2PSendNode
-
-        queue = self._get_topological_order(root)
-        node_to_p2p_send_node: Dict[DAGNode, P2PSendNode] = {}
+        queue = root.get_topological_order()
+        node_to_p2p_send_node: Dict["ray.dag.DAGNode", "ray.dag.P2PSendNode"] = {}
         for node in queue:
             # Create a P2P recv node for each upstream node that requires NCCL send.
             self._add_p2p_recv_nodes(node, node_to_p2p_send_node)
@@ -1959,18 +1922,7 @@ class CompiledDAG:
                 executable_tasks.append(executable_task)
             # Sort executable tasks based on their bind index, i.e., submission order
             # so that they will be executed in that order.
-            # If the bind index is the same, there are P2P send/recv tasks.
-            # The order is determined as follows:
-            # 1. P2P recv tasks (requires_nccl_read=True).
-            # 2. Non-P2P tasks (requires_nccl_read=False, requires_nccl_write=False).
-            # 3. P2P send tasks (requires_nccl_write=True).
-            executable_tasks.sort(
-                key=lambda task: (
-                    task.bind_index,
-                    not task.requires_nccl_read,
-                    task.requires_nccl_write,
-                )
-            )
+            executable_tasks.sort(key=lambda task: task.bind_index)
             self.actor_to_executable_tasks[actor_handle] = executable_tasks
 
         from ray.dag.constants import RAY_CGRAPH_ENABLE_PROFILING
@@ -2041,21 +1993,20 @@ class CompiledDAG:
         self,
     ) -> Dict["ray.actor.ActorHandle", List[_DAGOperationGraphNode]]:
         """
-        Generate READ, COMPUTE, and WRITE operations for each DAG node.
+        Generate a _DAGOperationGraphNode for each DAG node.
 
         Returns:
-            A dictionary that maps an actor handle to a list of lists of
+            A dictionary that maps an actor handle to a list of
             _DAGOperationGraphNode. For the same actor, the index of the
-            outer list corresponds to the index of the ExecutableTask in
+            list corresponds to the index of the ExecutableTask in
             the list of `executable_tasks` in `actor_to_executable_tasks`,
-            i.e. `exec_task_idx`. In the inner list, the order of operations
-            is READ, COMPUTE, and WRITE.
+            i.e. `exec_task_idx`.
 
             Example:
             {
                 actor1: [
-                    [READ COMPUTE WRITE] # exec_task_idx 0
-                    [READ COMPUTE WRITE] # exec_task_idx 1
+                    # exec_task_idx 0
+                    # exec_task_idx 1
                 ]
             }
         """
@@ -2072,7 +2023,13 @@ class CompiledDAG:
                 dag_node = self.idx_to_task[task_idx].dag_node
                 method_name = exec_task.method_name
                 actor_handle = dag_node._get_actor_handle()
-                nccl_op_type = dag_node.nccl_op_type
+                nccl_op_type = None
+                if exec_task.requires_nccl_read:
+                    nccl_op_type = _NcclOperationType.READ
+                elif exec_task.requires_nccl_compute:
+                    nccl_op_type = _NcclOperationType.COMPUTE
+                elif exec_task.requires_nccl_write:
+                    nccl_op_type = _NcclOperationType.WRITE
 
                 compute_node = _DAGOperationGraphNode(
                     _DAGNodeOperation(exec_task_idx, method_name),
@@ -2118,6 +2075,7 @@ class CompiledDAG:
         graph = _build_dag_node_operation_graph(
             self.idx_to_task, actor_to_operation_nodes
         )
+
         # Step 2: Generate an execution schedule for each actor using topological sort
         actor_to_execution_schedule = _generate_actor_to_execution_schedule(graph)
 
