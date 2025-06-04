@@ -106,7 +106,7 @@ def build_app(
         name=name,
         route_prefix=route_prefix,
         logging_config=logging_config,
-        ingress_deployment_name=app._bound_deployment.name,
+        ingress_deployment_name=deployment_names[app],
         deployments=deployments,
         deployment_handles={
             deployment_names[app]: handle for app, handle in handles.items()
