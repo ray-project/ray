@@ -1,8 +1,8 @@
 import asyncio
 import sys
 
+import httpx
 import pytest
-import requests
 from anyio import to_thread
 from fastapi import FastAPI
 from starlette.responses import PlainTextResponse
@@ -41,7 +41,7 @@ def test_not_running_in_asyncio_loop(serve_instance, use_fastapi: bool):
 
     serve.run(D.bind())
     # Would error if the check fails.
-    requests.get("http://localhost:8000/").raise_for_status()
+    httpx.get("http://localhost:8000/").raise_for_status()
 
 
 @pytest.mark.skipif(
@@ -98,7 +98,7 @@ def test_context_vars_propagated(serve_instance, use_fastapi: bool):
 
     serve.run(D.bind())
 
-    r = requests.get("http://localhost:8000/", headers={"X-Request-Id": "TEST-ID"})
+    r = httpx.get("http://localhost:8000/", headers={"X-Request-Id": "TEST-ID"})
     r.raise_for_status()
     # If context vars weren't propagated, the request ID would be empty.
     assert r.text == "TEST-ID"

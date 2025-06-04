@@ -4,8 +4,8 @@ import subprocess
 import tempfile
 from copy import deepcopy
 
+import httpx
 import pytest
-import requests
 
 import ray
 from ray import serve
@@ -141,7 +141,7 @@ def serve_instance_with_signal(serve_instance):
 
 def check_ray_stop():
     try:
-        requests.get("http://localhost:8265/api/ray/version")
+        httpx.get("http://localhost:8265/api/ray/version")
         return False
     except Exception:
         return True
@@ -156,8 +156,7 @@ def ray_start_stop():
     )
     subprocess.check_output(["ray", "start", "--head"])
     wait_for_condition(
-        lambda: requests.get("http://localhost:8265/api/ray/version").status_code
-        == 200,
+        lambda: httpx.get("http://localhost:8265/api/ray/version").status_code == 200,
         timeout=15,
     )
     yield
@@ -179,8 +178,7 @@ def ray_start_stop_in_specific_directory(request):
 
     subprocess.check_output(["ray", "start", "--head"])
     wait_for_condition(
-        lambda: requests.get("http://localhost:8265/api/ray/version").status_code
-        == 200,
+        lambda: httpx.get("http://localhost:8265/api/ray/version").status_code == 200,
         timeout=15,
     )
     try:

@@ -121,6 +121,7 @@ Raylet::Raylet(instrumented_io_context &main_service,
       main_service,
       self_node_id,
       object_manager_config,
+      gcs_client_,
       object_directory.get(),
       /*restore_spilled_object=*/
       [this](const ObjectID &object_id,

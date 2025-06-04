@@ -998,6 +998,7 @@ void NodeManager::NodeRemoved(const NodeID &node_id) {
   // Notify the object directory that the node has been removed so that it
   // can remove it from any cached locations.
   object_directory_->HandleNodeRemoved(node_id);
+  object_manager_->HandleNodeRemoved(node_id);
 }
 
 void NodeManager::HandleUnexpectedWorkerFailure(const WorkerID &worker_id) {

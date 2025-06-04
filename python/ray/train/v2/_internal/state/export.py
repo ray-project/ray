@@ -4,9 +4,8 @@ from ray.core.generated.export_train_state_pb2 import (
 )
 from ray.dashboard.modules.metrics.dashboards.common import Panel
 from ray.dashboard.modules.metrics.dashboards.train_dashboard_panels import (
-    CHECKPOINT_REPORT_TIME_PANEL,
-    CONTROLLER_OPERATION_TIME_PANEL,
-    CONTROLLER_STATE_PANEL,
+    TRAIN_RUN_PANELS,
+    TRAIN_WORKER_PANELS,
 )
 from ray.train.v2._internal.state.schema import (
     ActorStatus,
@@ -105,18 +104,9 @@ def _to_proto_dashboard_panel(panel: Panel) -> ProtoTrainRun.DashboardPanelMetad
 def train_run_to_proto(run: TrainRun) -> ProtoTrainRun:
     """Convert TrainRun to protobuf format."""
 
-    # Ordered list of panels to be displayed in the train run dashboard
-    train_run_panels = [
-        CONTROLLER_STATE_PANEL,
-        CHECKPOINT_REPORT_TIME_PANEL,
-        CONTROLLER_OPERATION_TIME_PANEL,
-    ]
-    # Ordered list of panels to be displayed in the train worker dashboard
-    train_worker_panels = [CHECKPOINT_REPORT_TIME_PANEL]
-
-    train_run_panels_proto = [_to_proto_dashboard_panel(p) for p in train_run_panels]
+    train_run_panels_proto = [_to_proto_dashboard_panel(p) for p in TRAIN_RUN_PANELS]
     train_worker_panels_proto = [
-        _to_proto_dashboard_panel(p) for p in train_worker_panels
+        _to_proto_dashboard_panel(p) for p in TRAIN_WORKER_PANELS
     ]
 
     proto_run = ProtoTrainRun(

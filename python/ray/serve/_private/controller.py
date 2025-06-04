@@ -15,9 +15,9 @@ from ray.serve._private.autoscaling_state import AutoscalingStateManager
 from ray.serve._private.common import (
     DeploymentHandleSource,
     DeploymentID,
-    MultiplexedReplicaInfo,
     NodeId,
     RequestProtocol,
+    RequestRoutingInfo,
     RunningReplicaInfo,
     TargetCapacityDirection,
 )
@@ -1091,13 +1091,14 @@ class ServeController:
 
         self.application_state_manager.save_checkpoint()
 
-    def record_multiplexed_replica_info(self, info: MultiplexedReplicaInfo):
-        """Record multiplexed model ids for a replica of deployment
+    def record_request_routing_info(self, info: RequestRoutingInfo):
+        """Record replica routing information for a replica.
+
         Args:
-            info: MultiplexedReplicaInfo including deployment name, replica tag and
-                model ids.
+            info: RequestRoutingInfo including deployment name, replica tag,
+                multiplex model ids, and routing stats.
         """
-        self.deployment_state_manager.record_multiplexed_replica_info(info)
+        self.deployment_state_manager.record_request_routing_info(info)
 
     async def graceful_shutdown(self, wait: bool = True):
         """Set the shutting down flag on controller to signal shutdown in
