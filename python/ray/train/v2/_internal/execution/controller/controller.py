@@ -1,5 +1,7 @@
 import logging
 import os
+import signal
+import sys
 import time
 import uuid
 from dataclasses import dataclass
@@ -62,6 +64,7 @@ from ray.train.v2._internal.execution.worker_group.worker_group import (
     WorkerGroupContext,
 )
 from ray.train.v2._internal.logging.logging import configure_controller_logger
+from ray.train.v2._internal.state.state_manager import TrainStateManager
 from ray.train.v2._internal.util import ObjectRefWrapper, time_monotonic
 from ray.train.v2.api.callback import RayTrainCallback
 from ray.train.v2.api.exceptions import TrainingFailedError
@@ -110,6 +113,7 @@ class TrainController:
         scaling_policy: ScalingPolicy,
         failure_policy: FailurePolicy,
         callbacks: Optional[List[RayTrainCallback]] = None,
+        train_state_manager: Optional[TrainStateManager] = None,
     ):
         self._train_run_context = train_run_context
         if ray_constants.env_bool(
@@ -122,6 +126,7 @@ class TrainController:
         self._failure_policy = failure_policy
         self._run_config = self._train_run_context.run_config
         self._callbacks = callbacks or []
+        self._train_state_manager = train_state_manager
         self._storage_context = StorageContext(
             storage_path=self._run_config.storage_path,
             experiment_dir_name=self._run_config.name,
@@ -162,6 +167,28 @@ class TrainController:
 
         # TODO: These can be attributes of a RunAttempt?
         self._latest_poll_time = float("-inf")
+
+        self._register_interrupt_handlers()
+
+    def _register_interrupt_handlers(self):
+        """Cleanup before exit when possible."""
+
+        def handle_signal(signum, frame):
+            if self._train_state_manager:
+                self._train_state_manager.update_train_run_aborted(
+                    self._train_run_context.run_id
+                )
+                if self._worker_group:
+                    worker_group_context = self._worker_group.get_worker_group_context()
+                    self._train_state_manager.update_train_run_attempt_aborted(
+                        self._train_run_context.run_id,
+                        worker_group_context.run_attempt_id,
+                    )
+            sys.exit(1)
+
+        signal.signal(signal.SIGINT, handle_signal)
+        if hasattr(signal, "SIGUSR1"):
+            signal.signal(signal.SIGUSR1, handle_signal)
 
     def _execute_resize_decision(
         self, decision: ResizeDecision

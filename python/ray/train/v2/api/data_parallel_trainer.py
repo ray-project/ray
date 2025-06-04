@@ -43,6 +43,7 @@ from ray.train.v2._internal.execution.context import TrainRunContext
 from ray.train.v2._internal.execution.controller import TrainController
 from ray.train.v2._internal.execution.failure_handling import create_failure_policy
 from ray.train.v2._internal.execution.scaling_policy import create_scaling_policy
+from ray.train.v2._internal.state.state_manager import TrainStateManager
 from ray.train.v2._internal.util import ObjectRefWrapper, construct_train_func
 from ray.train.v2.api.callback import UserCallback
 from ray.util.annotations import Deprecated, DeveloperAPI
@@ -112,12 +113,18 @@ class DataParallelTrainer:
         )
         train_fn_ref = ObjectRefWrapper(train_fn)
 
+        if env_bool(RAY_TRAIN_ENABLE_STATE_TRACKING, False):
+            train_state_manager = TrainStateManager()
+        else:
+            train_state_manager = None
+
         result = self._initialize_and_run_controller(
             train_fn_ref=train_fn_ref,
             scaling_policy=create_scaling_policy(self.scaling_config),
             failure_policy=create_failure_policy(self.run_config.failure_config),
             train_run_context=self.train_run_context,
-            callbacks=self._create_default_callbacks(),
+            callbacks=self._create_default_callbacks(train_state_manager),
+            train_state_manager=train_state_manager,
         )
 
         if result.error:
@@ -130,7 +137,9 @@ class DataParallelTrainer:
 
         return result
 
-    def _create_default_callbacks(self) -> List[RayTrainCallback]:
+    def _create_default_callbacks(
+        self, train_state_manager: Optional[TrainStateManager]
+    ) -> List[RayTrainCallback]:
         accelerator_setup_callback = AcceleratorSetupCallback(
             self.backend_config, self.scaling_config
         )
@@ -153,8 +162,10 @@ class DataParallelTrainer:
             callbacks.append(ControllerMetricsCallback(self.train_run_context))
             callbacks.append(WorkerMetricsCallback(self.train_run_context))
 
-        if env_bool(RAY_TRAIN_ENABLE_STATE_TRACKING, False):
-            callbacks.append(StateManagerCallback(self.train_run_context))
+        if train_state_manager:
+            callbacks.append(
+                StateManagerCallback(self.train_run_context, train_state_manager)
+            )
 
         # Add internal callback that invokes all user-defined callbacks.
         user_callbacks = [

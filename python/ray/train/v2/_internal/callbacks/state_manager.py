@@ -37,8 +37,9 @@ class StateManagerCallback(ControllerCallback, WorkerGroupCallback):
     def __init__(
         self,
         train_run_context: TrainRunContext,
+        train_state_manager: TrainStateManager,
     ):
-        self._state_manager = TrainStateManager()
+        self._state_manager = train_state_manager
         self._run_name = train_run_context.get_run_config().name
         self._run_id = train_run_context.run_id
 
