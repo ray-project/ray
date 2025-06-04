@@ -900,17 +900,19 @@ class Dataset:
 
     @PublicAPI(api_group=BT_API_GROUP)
     def distinct(
-        self, subset: Optional[List[str]] = None, keep: Union[str, bool] = "first"
+        self,
+        keys: Optional[List[str]] = None,
+        keep: Union[Literal["first", "last"], bool] = "first",
     ) -> "Dataset":
         """
         Remove duplicate rows from the dataset.
 
         This method is useful for preprocessing data by eliminating redundant entries. It can operate
-        on all columns (default) or only on a set of columns specified by ``subset``, supporting flexible
+        on all columns (default) or only on a set of columns specified by ``keys``, supporting flexible
         deduplication strategies similar to those in pandas.
 
         .. tip::
-            Setting ``subset`` allows you to find unique values based on one or more chosen columns,
+            Setting ``keys`` allows you to find unique values based on one or more chosen columns,
             while other columns retain their values from the row selected based on ``keep``.
 
         .. warning::
@@ -937,7 +939,7 @@ class Dataset:
 
             .. testcode::
 
-                print(ds.distinct(subset=["a"]).sort(key=["a"]).take_all())
+                print(ds.distinct(keys=["a"]).sort(key=["a"]).take_all())
 
             .. testoutput::
 
@@ -947,25 +949,25 @@ class Dataset:
 
             .. testcode::
 
-                print(ds.distinct(subset=["a"], keep="last").sort(key=["a"]).take_all())
+                print(ds.distinct(keys=["a"], keep="last").sort(key=["a"]).take_all())
 
             .. testoutput::
 
                 [{'a': 1, 'b': 'x'}, {'a': 2, 'b': 'y'}, {'a': 3, 'b': 'z'}]
 
-            Remove all rows that have duplicates (keep only values that appear exactly once in the subset):
+            Remove all rows that have duplicates (keep only values that appear exactly once in the keys):
 
             .. testcode::
 
                 ds2 = ray.data.from_arrow(pa.table({"a": [1,1,2,3,3,4], "b": ["x","x","y","z","z","w"]}))
-                print(ds2.distinct(subset=["a"], keep=False).sort(key=["a"]).take_all())
+                print(ds2.distinct(keys=["a"], keep=False).sort(key=["a"]).take_all())
 
             .. testoutput::
 
                 [{'a': 2, 'b': 'y'}, {'a': 4, 'b': 'w'}]
 
         Args:
-            subset (List[str], optional): List of columns to consider for identifying duplicates.
+            keys (List[str], optional): List of columns to consider for identifying duplicates.
                 Only the values in these columns are checked for duplication. If None, all columns
                 are used. Defaults to None.
             keep ({'first', 'last', False}, default 'first'): Determines which duplicates (if any) to keep.
@@ -978,7 +980,7 @@ class Dataset:
 
         .. note::
 
-            If you use ``subset``, only the specified columns are considered for uniqueness.
+            If you use ``keys``, only the specified columns are considered for uniqueness.
             Non-subset columns retain the value for whichever row is kept (first, last, etc.).
 
             For very large datasets, this operation will shuffle and regroup the full dataset,
@@ -991,7 +993,7 @@ class Dataset:
         if not all_cols:
             return self
 
-        subset_cols = subset if subset is not None else all_cols
+        subset_cols = keys if keys is not None else all_cols
 
         if keep not in ("first", "last", False):
             raise ValueError(f"keep must be 'first', 'last', or False, got {keep}")

@@ -45,7 +45,7 @@ def test_distinct_subset_first():
         pa.table({"a": [1, 1, 2, 3, 2, 4], "b": ["x", "y", "y", "z", "w", "foo"]})
     )
     # Default is keep="first"
-    out = ds.distinct(subset=["a"]).sort(key=["a"]).take_all()
+    out = ds.distinct(keys=["a"]).sort(key=["a"]).take_all()
     # Should keep first row for each "a": (1,"x"), (2,"y"), (3,"z"), (4,"foo")
     assert out == [
         {"a": 1, "b": "x"},
@@ -59,7 +59,7 @@ def test_distinct_subset_last():
     ds = ray.data.from_arrow(
         pa.table({"a": [1, 1, 2, 3, 2, 4], "b": ["x", "y", "y", "z", "w", "foo"]})
     )
-    out = ds.distinct(subset=["a"], keep="last").sort(key=["a"]).take_all()
+    out = ds.distinct(keys=["a"], keep="last").sort(key=["a"]).take_all()
     # Should keep last row for each "a": (1,"y"), (2,"w"), (3,"z"), (4,"foo")
     assert out == [
         {"a": 1, "b": "y"},
@@ -74,7 +74,7 @@ def test_distinct_subset_keep_false():
         pa.table({"a": [1, 1, 2, 3, 4, 4], "b": ["x", "y", "y", "z", "foo", "bar"]})
     )
     # Only a=2,3 appear once
-    out = ds.distinct(subset=["a"], keep=False).sort(key=["a"]).take_all()
+    out = ds.distinct(keys=["a"], keep=False).sort(key=["a"]).take_all()
     assert out == [{"a": 2, "b": "y"}, {"a": 3, "b": "z"}]
 
 
