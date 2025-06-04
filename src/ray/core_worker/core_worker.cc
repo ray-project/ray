@@ -1253,6 +1253,8 @@ void CoreWorker::ForceExit(const rpc::WorkerExitType exit_type,
   RAY_LOG(WARNING) << "Force exit the process. "
                    << " Details: " << detail;
 
+  core_worker_server_->Shutdown();
+
   KillChildProcs();
   // Disconnect should be put close to Exit
   // https://github.com/ray-project/ray/pull/34883
@@ -2082,6 +2084,11 @@ Status CoreWorker::Wait(const std::vector<ObjectID> &ids,
   int64_t start_time = current_time_ms();
   absl::flat_hash_set<ObjectID> ready, plasma_object_ids;
   ready.reserve(num_objects);
+  bool wait_for_all = (num_objects == static_cast<int>(ids.size()));
+  if (wait_for_all) {
+    RAY_LOG(INFO) << "Waiting for " << num_objects << " objects, timeout: " << timeout_ms
+                  << " ms. Worker ID: " << worker_context_.GetWorkerID().Hex();
+  }
   RAY_RETURN_NOT_OK(memory_store_->Wait(
       memory_object_ids,
       std::min(static_cast<int>(memory_object_ids.size()), num_objects),
@@ -2090,6 +2097,11 @@ Status CoreWorker::Wait(const std::vector<ObjectID> &ids,
       &ready,
       &plasma_object_ids));
   RAY_CHECK(static_cast<int>(ready.size()) <= num_objects);
+  if (wait_for_all) {
+    RAY_LOG(INFO) << "Successfully loaded " << ready.size()
+                  << " objects from memory store, timeout: " << timeout_ms
+                  << " ms. Worker ID: " << worker_context_.GetWorkerID().Hex();
+  }
   if (timeout_ms > 0) {
     timeout_ms =
         std::max(0, static_cast<int>(timeout_ms - (current_time_ms() - start_time)));
@@ -3931,20 +3943,25 @@ void CoreWorker::HandleActorCallArgWaitComplete(
     rpc::ActorCallArgWaitCompleteRequest request,
     rpc::ActorCallArgWaitCompleteReply *reply,
     rpc::SendReplyCallback send_reply_callback) {
+  RAY_LOG(INFO) << "Received HandleActorCallArgWaitComplete";
   if (HandleWrongRecipient(WorkerID::FromBinary(request.intended_worker_id()),
                            send_reply_callback)) {
+    RAY_LOG(INFO) << "Failed to handle ActorCallArgWaitComplete";
     return;
   }
 
+  RAY_LOG(INFO) << "Posting ActorCallArgWaitComplete for tag " << request.tag()
+                << " to task execution service";
   // Post on the task execution event loop since this may trigger the
   // execution of a task that is now ready to run.
   task_execution_service_.post(
       [this, request = std::move(request)] {
-        RAY_LOG(DEBUG) << "Arg wait complete for tag " << request.tag();
+        RAY_LOG(INFO) << "Arg wait complete for tag " << request.tag();
         task_argument_waiter_->OnWaitComplete(request.tag());
       },
       "CoreWorker.ArgWaitComplete");
 
+  RAY_LOG(INFO) << "Sending reply for ActorCallArgWaitComplete";
   send_reply_callback(Status::OK(), nullptr, nullptr);
 }
 

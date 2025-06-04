@@ -447,12 +447,14 @@ def process_completed_tasks(
     # Process completed Ray tasks and notify operators.
     num_errored_blocks = 0
     if active_tasks:
+        logger.info(f"Processing completed tasks: {len(active_tasks)} tasks")
         ready, _ = ray.wait(
             list(active_tasks.keys()),
             num_returns=len(active_tasks),
             fetch_local=False,
             timeout=0.1,
         )
+        logger.info("Done processing completed tasks.")
 
         # Organize tasks by the operator they belong to, and sort them by task index.
         # So that we'll process them in a deterministic order.

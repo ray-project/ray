@@ -66,6 +66,17 @@ steps:
         --except-tags data_integration,doctest,data_non_parallel
     depends_on: datalbuild
 
+  - label: ":database: data: e2e tests"
+    tags:
+      - python
+      - data
+    instance_type: medium
+    commands:
+      - bazel run //ci/ray_ci:test_in_docker -- //python/ray/data:test_all_to_all data
+        --build-name datalbuild
+        --except-tags data_integration,doctest,data_non_parallel
+    depends_on: datalbuild
+
   - label: ":database: data: arrow v19 tests (data_non_parallel)"
     tags:
       - python
