@@ -139,7 +139,7 @@ class PrefixTree:
         """
         with self.lock:
             if tenant not in self.tenant_to_char_count:
-                logger.warning(
+                logger.debug(
                     f"[_insert_node_into_linked_list] Tenant '{tenant}' does not exist. No action taken."
                 )
                 return
@@ -166,7 +166,7 @@ class PrefixTree:
         """
         with self.lock:
             if tenant not in self.tenant_to_char_count:
-                logger.warning(
+                logger.debug(
                     f"[_remove_node_from_linked_list] Tenant '{tenant}' does not exist. No action taken."
                 )
                 return
@@ -206,12 +206,12 @@ class PrefixTree:
         """
         with self.lock:
             if tenant not in self.tenant_to_char_count:
-                logger.warning(
+                logger.debug(
                     f"[_remove_tenant_single_node] Tenant '{tenant}' does not exist. No action taken."
                 )
                 return 0
             if tenant not in node.tenant_to_last_access_time:
-                logger.warning(
+                logger.debug(
                     f"[_remove_tenant_single_node] Tenant '{tenant}' does not have node '{node.text}'. No action taken."
                 )
                 return 0
@@ -244,7 +244,7 @@ class PrefixTree:
         with self.lock:
             for tenant in tenants:
                 if tenant in self.tenant_to_char_count:
-                    logger.warning(
+                    logger.debug(
                         f"[_add_tenants] Tenant '{tenant}' already exists. Skipping."
                     )
                     continue
@@ -282,7 +282,7 @@ class PrefixTree:
         """
         with self.lock:
             if tenant not in self.tenant_to_char_count:
-                logger.warning(
+                logger.debug(
                     f"[_insert] Tenant '{tenant}' does not exist. Use add_tenants() first."
                 )
                 return
@@ -468,7 +468,7 @@ class PrefixTree:
         with self.lock:
             for tenant in tenants:
                 if tenant not in self.tenant_to_char_count:
-                    logger.warning(
+                    logger.debug(
                         f"[_remove_tenants] Tenant '{tenant}' does not exist. Skipping."
                     )
                     chars_removed[tenant] = 0
@@ -512,13 +512,13 @@ class PrefixTree:
         """
         with self.lock:
             if tenant not in self.tenant_to_char_count:
-                logger.warning(
+                logger.debug(
                     f"[_evict_tenant_by_lru] Cannot evict tenant '{tenant}': tenant does not exist. No action taken."
                 )
                 return 0
 
             if self.tenant_to_char_count[tenant] < min_remove_size:
-                logger.warning(
+                logger.debug(
                     f"[_evict_tenant_by_lru] Cannot evict {min_remove_size} characters from tenant '{tenant}', which has only "
                     f"{self.tenant_to_char_count[tenant]} characters. Will remove all available characters."
                 )
@@ -591,7 +591,7 @@ class PrefixTree:
                 )
                 return True
             else:
-                logger.warning("[_start_eviction_loop] Eviction loop already running")
+                logger.debug("[_start_eviction_loop] Eviction loop already running")
                 return False
 
     async def _run_eviction_loop(
