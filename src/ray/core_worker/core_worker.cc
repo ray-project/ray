@@ -2082,6 +2082,8 @@ Status CoreWorker::Wait(const std::vector<ObjectID> &ids,
   int64_t start_time = current_time_ms();
   absl::flat_hash_set<ObjectID> ready, plasma_object_ids;
   ready.reserve(num_objects);
+  RAY_LOG(INFO) << "Waiting for " << num_objects << " objects, timeout: " << timeout_ms
+                << " ms";
   RAY_RETURN_NOT_OK(memory_store_->Wait(
       memory_object_ids,
       std::min(static_cast<int>(memory_object_ids.size()), num_objects),
@@ -2090,6 +2092,8 @@ Status CoreWorker::Wait(const std::vector<ObjectID> &ids,
       &ready,
       &plasma_object_ids));
   RAY_CHECK(static_cast<int>(ready.size()) <= num_objects);
+  RAY_LOG(INFO) << "Waited for " << ready.size()
+                << " objects, plasma object ids: " << plasma_object_ids.size();
   if (timeout_ms > 0) {
     timeout_ms =
         std::max(0, static_cast<int>(timeout_ms - (current_time_ms() - start_time)));
@@ -2099,6 +2103,8 @@ Status CoreWorker::Wait(const std::vector<ObjectID> &ids,
     // plasma stores. We make the request to the plasma store even if we have num_objects
     // ready since we want to at least make the request to start pulling these objects.
     if (!plasma_object_ids.empty()) {
+      RAY_LOG(INFO) << "Waiting for loading " << plasma_object_ids.size()
+                    << " plasma objects, timeout: " << timeout_ms << " ms";
       RAY_RETURN_NOT_OK(plasma_store_provider_->Wait(
           plasma_object_ids,
           std::min(static_cast<int>(plasma_object_ids.size()),
@@ -2106,6 +2112,8 @@ Status CoreWorker::Wait(const std::vector<ObjectID> &ids,
           timeout_ms,
           worker_context_,
           &ready));
+      RAY_LOG(INFO) << "Waited for loading " << ready.size()
+                    << " plasma objects, plasma object ids: " << plasma_object_ids.size();
     }
   } else {
     // When we don't need to fetch_local, we don't need to wait for the objects to be

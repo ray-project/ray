@@ -183,10 +183,14 @@ void Worker::ActorCallArgWaitComplete(int64_t tag) {
   rpc::ActorCallArgWaitCompleteRequest request;
   request.set_tag(tag);
   request.set_intended_worker_id(worker_id_.Binary());
+  const auto worker_id = worker_id_;
   rpc_client_->ActorCallArgWaitComplete(
-      request, [](Status status, const rpc::ActorCallArgWaitCompleteReply &reply) {
+      request,
+      [worker_id](Status status, const rpc::ActorCallArgWaitCompleteReply &reply) {
         if (!status.ok()) {
-          RAY_LOG(ERROR) << "Failed to send wait complete: " << status.ToString();
+          RAY_LOG(ERROR) << "Failed to send wait complete to worker, hex="
+                         << worker_id.Hex() << ", binary=" << worker_id.Binary()
+                         << ", status: " << status.ToString();
         }
       });
 }

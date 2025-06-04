@@ -451,7 +451,7 @@ def process_completed_tasks(
             list(active_tasks.keys()),
             num_returns=len(active_tasks),
             fetch_local=False,
-            timeout=0.1,
+            timeout=1,
         )
 
         # Organize tasks by the operator they belong to, and sort them by task index.
