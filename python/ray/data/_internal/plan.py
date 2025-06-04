@@ -378,11 +378,11 @@ class ExecutionPlan:
             with executor:
                 # Make sure executor is fully shutdown upon exiting
                 for _ in iter_ref_bundles:
-                    schema = output_node.get_schema() or None
+                    schema = output_node.get_schema() or self._schema or None
                     if schema is not None:
                         break
             if schema is None:
-                schema = output_node.get_schema() or None
+                schema = output_node.get_schema() or self._schema or None
         self.cache_schema(schema)
         return self._schema
 
@@ -391,6 +391,7 @@ class ExecutionPlan:
 
     def input_files(self) -> Optional[List[str]]:
         """Get the input files of the dataset, if available."""
+        # TODO(justin): Remove Input Files from metadata.
         return self._logical_plan.dag.infer_metadata().input_files
 
     def meta_count(self) -> Optional[int]:
@@ -514,11 +515,12 @@ class ExecutionPlan:
                         dataset_uuid=self._dataset_uuid,
                         preserve_order=preserve_order,
                     )
-                    schema = executor._output_node[0].get_schema() or None
                     bundle = RefBundle(
                         tuple(blocks.iter_blocks_with_metadata()),
                         owns_blocks=blocks._owned_by_consumer,
                     )
+                schema = executor._output_node[0].get_schema() or self._schema or None
+                assert schema is not None
 
                 stats = executor.get_stats()
                 stats_summary_string = stats.to_summary().to_string(

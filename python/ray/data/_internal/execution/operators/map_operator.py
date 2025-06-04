@@ -126,6 +126,9 @@ class MapOperator(OneToOneOperator, InternalQueueOperatorMixin, ABC):
         # for the map task.
         self._map_task_kwargs_fns: List[Callable[[], Dict[str, Any]]] = []
 
+    def should_inherit_schema_from_prev_op(self) -> bool:
+        return False
+
     def add_map_task_kwargs_fn(self, map_task_kwargs_fn: Callable[[], Dict[str, Any]]):
         """Add a callback function that generates additional kwargs for the map tasks.
         In the map tasks, the kwargs can be accessible via `TaskContext.kwargs`.

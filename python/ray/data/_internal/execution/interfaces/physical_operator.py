@@ -440,6 +440,16 @@ class PhysicalOperator(Operator):
         """
         self._started = True
 
+    def should_inherit_schema_from_prev_op(self) -> bool:
+        """Return whether this operator should inherit the schema from the previous
+        operator.
+
+        This is used to determine whether the schema of the output blocks should be
+        inherited from the input blocks. If this returns True, the operator promises
+        it will not set its own schema.
+        """
+        return True
+
     def should_add_input(self) -> bool:
         """Return whether it is desirable to add input to this operator right now.
 

@@ -57,6 +57,9 @@ class ZipOperator(InternalQueueOperatorMixin, PhysicalOperator):
             target_max_block_size=None,
         )
 
+    def should_inherit_schema_from_prev_op(self) -> bool:
+        return False
+
     def num_outputs_total(self) -> Optional[int]:
         left_num_outputs = self.input_dependencies[0].num_outputs_total()
         right_num_outputs = self.input_dependencies[1].num_outputs_total()

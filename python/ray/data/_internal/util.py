@@ -1674,6 +1674,10 @@ def _unzip_list_of_tuples(n: int, data: List[Tuple[Any, ...]]) -> Tuple[List[Any
         n: The number of elements in each tuple. This is used to ensure the output
             tuple has the correct number of lists when the input is empty.
         data: A list of tuples to unzip.
+
+    Returns:
+        A tuple of lists, where each list corresponds to one element of the tuples in
+        the input list. If the input list is empty, returns a tuple of empty lists.
     """
     if not data:
         return tuple([] for _ in range(n))

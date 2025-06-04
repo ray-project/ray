@@ -91,6 +91,9 @@ class AllToAllOperator(InternalQueueOperatorMixin, PhysicalOperator):
             else self.input_dependencies[0].num_outputs_total()
         )
 
+    def should_inherit_schema_from_prev_op(self) -> bool:
+        return False
+
     def num_output_rows_total(self) -> Optional[int]:
         return (
             self._output_rows

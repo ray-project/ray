@@ -548,13 +548,13 @@ def update_operator_states(topology: Topology) -> None:
         if dependents_completed:
             op.mark_execution_finished()
 
-    prev_op = None
+    prev_schema = None
     for op, op_state in list(topology.items()):
-        if op.execution_finished() and op.get_schema() is None and prev_op is not None:
-            # If the operator has finished execution and is a GuessMetadataMixin,
-            # we can set its schema based on the previous operator's schema.
-            op.set_schema(prev_op.get_schema())
-        prev_op = op
+        if op.execution_finished() and op.should_inherit_schema_from_prev_op():
+            # If the operator has finished execution, we can set its
+            # schema based on the previous operator's schema.
+            op.set_schema(prev_schema)
+        prev_schema = op.get_schema() or prev_schema
 
 
 def get_eligible_operators(

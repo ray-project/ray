@@ -454,6 +454,9 @@ class HashShufflingOperatorBase(PhysicalOperator):
 
         self._aggregator_pool.start()
 
+    def should_inherit_schema_from_prev_op(self) -> bool:
+        return False
+
     def _add_input_inner(self, input_bundle: RefBundle, input_index: int) -> None:
         # TODO move to base class
         self._metrics.on_input_queued(input_bundle)
