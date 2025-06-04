@@ -140,7 +140,9 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
               std::unique_ptr<pubsub::SubscriberInterface> core_worker_subscriber,
               std::unique_ptr<IObjectDirectory> object_directory,
               std::unique_ptr<ObjectManagerInterface> object_manager,
-              std::unique_ptr<plasma::PlasmaClientInterface> store_client,
+              plasma::PlasmaClientInterface &store_client,
+              std::unique_ptr<core::experimental::MutableObjectProviderInterface>
+                  mutable_object_provider,
               std::function<void(const rpc::NodeDeathInfo &)> shutdown_raylet_gracefully);
 
   /// Handle an unexpected error that occurred on a client connection.
@@ -254,10 +256,6 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
   /// \return Whether the request was successful.
   bool GetObjectsFromPlasma(const std::vector<ObjectID> &object_ids,
                             std::vector<std::unique_ptr<RayObject>> *results);
-
-  std::unique_ptr<core::experimental::MutableObjectProvider> &mutable_object_provider() {
-    return mutable_object_provider_;
-  }
 
   /// Get the local drain request.
   std::optional<rpc::DrainRayletRequest> GetLocalDrainRequest() const {
@@ -771,11 +769,6 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
   std::unique_ptr<AgentManager> CreateRuntimeEnvAgentManager(
       const NodeID &self_node_id, const NodeManagerConfig &config);
 
-  /// Creates a Raylet client. Used by `mutable_object_provider_` when a new writer
-  /// channel is registered.
-  std::shared_ptr<raylet::RayletClient> CreateRayletClient(
-      const NodeID &node_id, rpc::ClientCallManager &client_call_manager);
-
   /// ID of this node.
   NodeID self_node_id_;
   /// The user-given identifier or name of this node.
@@ -803,7 +796,10 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
   /// A Plasma object store client. This is used for creating new objects in
   /// the object store (e.g., for actor tasks that can't be run because the
   /// actor died) and to pin objects that are in scope in the cluster.
-  std::unique_ptr<plasma::PlasmaClientInterface> store_client_;
+  plasma::PlasmaClientInterface &store_client_;
+  /// Mutable object provider for compiled graphs.
+  std::unique_ptr<core::experimental::MutableObjectProviderInterface>
+      mutable_object_provider_;
   /// The runner to run function periodically.
   std::shared_ptr<PeriodicalRunner> periodical_runner_;
   /// The period used for the resources report timer.
@@ -834,9 +830,6 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
 
   /// The RPC server.
   rpc::GrpcServer node_manager_server_;
-
-  /// The node manager RPC service.
-  rpc::NodeManagerGrpcService node_manager_service_;
 
   /// Manages all local objects that are pinned (primary
   /// copies), freed, and/or spilled.
@@ -937,16 +930,11 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
   /// Ray syncer for synchronization
   syncer::RaySyncer ray_syncer_;
 
-  /// RaySyncerService for gRPC
-  syncer::RaySyncerService ray_syncer_service_;
-
   /// The Policy for selecting the worker to kill when the node runs out of memory.
   std::shared_ptr<WorkerKillingPolicy> worker_killing_policy_;
 
   /// Monitors and reports node memory usage and whether it is above threshold.
   std::unique_ptr<MemoryMonitor> memory_monitor_;
-
-  std::unique_ptr<core::experimental::MutableObjectProvider> mutable_object_provider_;
 };
 
 }  // namespace ray::raylet

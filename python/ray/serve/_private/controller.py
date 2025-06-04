@@ -15,12 +15,13 @@ from ray.serve._private.autoscaling_state import AutoscalingStateManager
 from ray.serve._private.common import (
     DeploymentHandleSource,
     DeploymentID,
-    MultiplexedReplicaInfo,
     NodeId,
     RequestProtocol,
+    RequestRoutingInfo,
     RunningReplicaInfo,
     TargetCapacityDirection,
 )
+from ray.serve._private.config import DeploymentConfig
 from ray.serve._private.constants import (
     CONTROL_LOOP_INTERVAL_S,
     RAY_SERVE_CONTROLLER_CALLBACK_IMPORT_PATH,
@@ -892,6 +893,23 @@ class ServeController:
             for id, info in self.deployment_state_manager.get_deployment_infos().items()
         }
 
+    def get_deployment_config(
+        self, deployment_id: DeploymentID
+    ) -> Optional[DeploymentConfig]:
+        """Get the deployment config for the given deployment id.
+
+        Args:
+            deployment_id: The deployment id to get the config for.
+
+        Returns:
+            A deployment config object if the deployment id exist,
+            None otherwise.
+        """
+        deployment_info = self.deployment_state_manager.get_deployment_infos().get(
+            deployment_id
+        )
+        return deployment_info.deployment_config if deployment_info else None
+
     def list_deployment_ids(self) -> List[DeploymentID]:
         """Gets the current list of all deployments' identifiers."""
         return self.deployment_state_manager._deployment_states.keys()
@@ -1073,13 +1091,14 @@ class ServeController:
 
         self.application_state_manager.save_checkpoint()
 
-    def record_multiplexed_replica_info(self, info: MultiplexedReplicaInfo):
-        """Record multiplexed model ids for a replica of deployment
+    def record_request_routing_info(self, info: RequestRoutingInfo):
+        """Record replica routing information for a replica.
+
         Args:
-            info: MultiplexedReplicaInfo including deployment name, replica tag and
-                model ids.
+            info: RequestRoutingInfo including deployment name, replica tag,
+                multiplex model ids, and routing stats.
         """
-        self.deployment_state_manager.record_multiplexed_replica_info(info)
+        self.deployment_state_manager.record_request_routing_info(info)
 
     async def graceful_shutdown(self, wait: bool = True):
         """Set the shutting down flag on controller to signal shutdown in
