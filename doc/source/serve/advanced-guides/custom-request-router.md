@@ -87,7 +87,7 @@ locality-aware routing, multiplexed model support, and FIFO request routing.
   offers helpers `apply_locality_routing` and `rank_replicas_via_locality` to route and
   ranks replicas based on their locality to the request, which can be useful for
   reducing latency and improving performance.
-- `ray.serve.request_router.MultiplexedModelMixin`: When you use model-multiplexing
+- `ray.serve.request_router.MultiplexMixin`: When you use model-multiplexing
   you need to route requests based on knowing which replica has already a hot version of
   the model. It updates the internal states when between replica updates to track the
   model loaded on each replica, and size of the model cache on each replica. It offers
@@ -114,10 +114,10 @@ This request router inherits from [`RequestRouter`](../api/doc/ray.serve.request
 as well as [`FIFOMixin`](../api/doc/ray.serve.request_router.FIFOMixin.rst) for FIFO
 request routing, [`LocalityMixin`](../api/doc/ray.serve.request_router.LocalityMixin.rst)
 for locality-aware request routing, and
-[`MultiplexedModelMixin`](../api/doc/ray.serve.request_router.MultiplexedModelMixin.rst)
+[`MultiplexMixin`](../api/doc/ray.serve.request_router.MultiplexMixin.rst)
 for multiplexed model support. It implements
 [`choose_replicas`](../api/doc/ray.serve.request_router.RequestRouter.choose_replicas.rst)
-to take the highest ranked replicas from [`rank_replicas_via_multiplex`](../api/doc/ray.serve.request_router.MultiplexedModelMixin.rank_replicas_via_multiplex.rst)
+to take the highest ranked replicas from [`rank_replicas_via_multiplex`](../api/doc/ray.serve.request_router.MultiplexMixin.rank_replicas_via_multiplex.rst)
 and [`rank_replicas_via_locality`](../api/doc/ray.serve.request_router.RequestRouter.rank_replicas_via_locality.rst)
 and uses the [`select_available_replicas`](../api/doc/ray.serve.request_router.RequestRouter.select_available_replicas.rst)
 helper to filter out replicas that have reached their maximum request queue length.
