@@ -13,17 +13,20 @@
 // limitations under the License.
 
 #include <limits>
+#include <memory>
+#include <string>
+#include <unordered_set>
+#include <vector>
 
 #include "absl/functional/bind_front.h"
 #include "absl/random/random.h"
 #include "absl/strings/str_format.h"
 #include "gmock/gmock.h"
 #include "gtest/gtest.h"
+#include "mock/ray/object_manager/plasma/client.h"
 #include "ray/core_worker/experimental_mutable_object_provider.h"
 #include "ray/object_manager/common.h"
 #include "ray/object_manager/plasma/client.h"
-
-using namespace testing;
 
 namespace ray {
 namespace core {
@@ -33,25 +36,8 @@ namespace experimental {
 
 namespace {
 
-class TestPlasma : public plasma::PlasmaClientInterface {
+class TestPlasma : public plasma::MockPlasmaClient {
  public:
-  virtual ~TestPlasma() {}
-
-  Status Release(const ObjectID &object_id) override { return Status::OK(); }
-
-  Status Disconnect() override { return Status::OK(); }
-
-  Status Get(const std::vector<ObjectID> &object_ids,
-             int64_t timeout_ms,
-             std::vector<plasma::ObjectBuffer> *object_buffers,
-             bool is_from_worker) override {
-    return Status::OK();
-  }
-
-  Status ExperimentalMutableObjectRegisterWriter(const ObjectID &object_id) override {
-    return Status::OK();
-  }
-
   Status GetExperimentalMutableObject(
       const ObjectID &object_id,
       std::unique_ptr<plasma::MutableObject> *mutable_object) override {
@@ -63,24 +49,6 @@ class TestPlasma : public plasma::PlasmaClientInterface {
     }
     return Status::OK();
   }
-
-  Status Seal(const ObjectID &object_id) override { return Status::OK(); }
-
-  Status Abort(const ObjectID &object_id) override { return Status::OK(); }
-
-  Status CreateAndSpillIfNeeded(const ObjectID &object_id,
-                                const ray::rpc::Address &owner_address,
-                                bool is_mutable,
-                                int64_t data_size,
-                                const uint8_t *metadata,
-                                int64_t metadata_size,
-                                std::shared_ptr<Buffer> *data,
-                                plasma::flatbuf::ObjectSource source,
-                                int device_num = 0) override {
-    return Status::OK();
-  }
-
-  Status Delete(const std::vector<ObjectID> &object_ids) override { return Status::OK(); }
 
  private:
   // Creates a new mutable object. It is the caller's responsibility to free the backing
@@ -120,6 +88,7 @@ class TestInterface : public MutableObjectReaderInterface {
       uint64_t data_size,
       uint64_t metadata_size,
       void *data,
+      void *metadata,
       const rpc::ClientCallback<rpc::PushMutableObjectReply> &callback) override {
     absl::MutexLock guard(&lock_);
     pushed_objects_.push_back(object_id);
@@ -147,12 +116,13 @@ std::shared_ptr<MutableObjectReaderInterface> GetTestInterface(
 TEST(MutableObjectProvider, RegisterWriterChannel) {
   ObjectID object_id = ObjectID::FromRandom();
   NodeID node_id = NodeID::FromRandom();
-  auto plasma = std::make_shared<TestPlasma>();
+  auto plasma = std::make_unique<TestPlasma>();
   auto interface = std::make_shared<TestInterface>();
 
   MutableObjectProvider provider(
-      plasma,
-      /*factory=*/absl::bind_front(GetTestInterface, interface));
+      *plasma,
+      /*factory=*/absl::bind_front(GetTestInterface, interface),
+      nullptr);
   provider.RegisterWriterChannel(object_id, {node_id});
 
   std::shared_ptr<Buffer> data;
@@ -176,9 +146,10 @@ TEST(MutableObjectProvider, RegisterWriterChannel) {
 
 TEST(MutableObjectProvider, MutableObjectBufferReadRelease) {
   ObjectID object_id = ObjectID::FromRandom();
-  auto plasma = std::make_shared<TestPlasma>();
-  MutableObjectProvider provider(plasma,
-                                 /*factory=*/nullptr);
+  auto plasma = std::make_unique<TestPlasma>();
+  MutableObjectProvider provider(*plasma,
+                                 /*factory=*/nullptr,
+                                 nullptr);
   provider.RegisterWriterChannel(object_id, {});
 
   std::shared_ptr<Buffer> data;
@@ -212,12 +183,13 @@ TEST(MutableObjectProvider, MutableObjectBufferReadRelease) {
 TEST(MutableObjectProvider, HandlePushMutableObject) {
   ObjectID object_id = ObjectID::FromRandom();
   ObjectID local_object_id = ObjectID::FromRandom();
-  auto plasma = std::make_shared<TestPlasma>();
+  auto plasma = std::make_unique<TestPlasma>();
   auto interface = std::make_shared<TestInterface>();
 
   MutableObjectProvider provider(
-      plasma,
-      /*factory=*/absl::bind_front(GetTestInterface, interface));
+      *plasma,
+      /*factory=*/absl::bind_front(GetTestInterface, interface),
+      nullptr);
   provider.HandleRegisterMutableObject(object_id, /*num_readers=*/1, local_object_id);
 
   ray::rpc::PushMutableObjectRequest request;
@@ -236,9 +208,10 @@ TEST(MutableObjectProvider, HandlePushMutableObject) {
 
 TEST(MutableObjectProvider, MutableObjectBufferSetError) {
   ObjectID object_id = ObjectID::FromRandom();
-  auto plasma = std::make_shared<TestPlasma>();
-  MutableObjectProvider provider(plasma,
-                                 /*factory=*/nullptr);
+  auto plasma = std::make_unique<TestPlasma>();
+  MutableObjectProvider provider(*plasma,
+                                 /*factory=*/nullptr,
+                                 nullptr);
   provider.RegisterWriterChannel(object_id, {});
 
   std::shared_ptr<Buffer> data;
@@ -291,9 +264,10 @@ TEST(MutableObjectProvider, MutableObjectBufferSetError) {
 
 TEST(MutableObjectProvider, MutableObjectBufferSetErrorBeforeWriteRelease) {
   ObjectID object_id = ObjectID::FromRandom();
-  auto plasma = std::make_shared<TestPlasma>();
-  MutableObjectProvider provider(plasma,
-                                 /*factory=*/nullptr);
+  auto plasma = std::make_unique<TestPlasma>();
+  MutableObjectProvider provider(*plasma,
+                                 /*factory=*/nullptr,
+                                 nullptr);
   provider.RegisterWriterChannel(object_id, {});
 
   std::shared_ptr<Buffer> data;
@@ -346,9 +320,10 @@ TEST(MutableObjectProvider, MutableObjectBufferSetErrorBeforeWriteRelease) {
 
 TEST(MutableObjectProvider, MutableObjectBufferSetErrorBeforeReadRelease) {
   ObjectID object_id = ObjectID::FromRandom();
-  auto plasma = std::make_shared<TestPlasma>();
-  MutableObjectProvider provider(plasma,
-                                 /*factory=*/nullptr);
+  auto plasma = std::make_unique<TestPlasma>();
+  MutableObjectProvider provider(*plasma,
+                                 /*factory=*/nullptr,
+                                 nullptr);
   provider.RegisterWriterChannel(object_id, {});
 
   std::shared_ptr<Buffer> data;

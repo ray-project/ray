@@ -16,16 +16,14 @@
 
 #include <boost/asio.hpp>
 #include <boost/asio/error.hpp>
+#include <memory>
+#include <string>
 
-// clang-format off
-#include "ray/raylet/node_manager.h"
-#include "ray/object_manager/object_manager.h"
 #include "ray/common/asio/instrumented_io_context.h"
-// clang-format on
+#include "ray/object_manager/object_manager.h"
+#include "ray/raylet/node_manager.h"
 
-namespace ray {
-
-namespace raylet {
+namespace ray::raylet {
 
 using rpc::GcsNodeInfo;
 using rpc::NodeSnapshot;
@@ -78,7 +76,7 @@ class Raylet {
 
   NodeID GetNodeId() const { return self_node_id_; }
 
-  NodeManager &node_manager() { return node_manager_; }
+  NodeManager &node_manager() { return *node_manager_; }
 
  private:
   /// Register GCS client.
@@ -99,7 +97,7 @@ class Raylet {
   /// A client connection to the GCS.
   std::shared_ptr<gcs::GcsClient> gcs_client_;
   /// Manages client requests for task submission and execution.
-  NodeManager node_manager_;
+  std::unique_ptr<NodeManager> node_manager_;
   /// The name of the socket this raylet listens on.
   std::string socket_name_;
 
@@ -107,8 +105,12 @@ class Raylet {
   boost::asio::basic_socket_acceptor<local_stream_protocol> acceptor_;
   /// The socket to listen on for new clients.
   local_stream_socket socket_;
+
+  rpc::ClientCallManager client_call_manager_;
+
+  rpc::CoreWorkerClientPool worker_rpc_pool_;
+
+  plasma::PlasmaClient plasma_client_;
 };
 
-}  // namespace raylet
-
-}  // namespace ray
+}  // namespace ray::raylet

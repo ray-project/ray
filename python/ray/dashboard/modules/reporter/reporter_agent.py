@@ -16,16 +16,31 @@ from prometheus_client.core import REGISTRY
 import ray
 import ray._private.prometheus_exporter as prometheus_exporter
 import ray._private.services
-import ray._private.utils
 import ray.dashboard.modules.reporter.reporter_consts as reporter_consts
 import ray.dashboard.utils as dashboard_utils
+from ray._common.utils import get_or_create_event_loop
 from ray._private import utils
 from ray._private.metrics_agent import Gauge, MetricsAgent, Record
-from ray._private.ray_constants import DEBUG_AUTOSCALING_STATUS, env_integer
-from ray._raylet import WorkerID
-from ray.core.generated import reporter_pb2, reporter_pb2_grpc
+from ray._private.ray_constants import (
+    DEBUG_AUTOSCALING_STATUS,
+    RAY_EXPERIMENTAL_ENABLE_OPEN_TELEMETRY_ON_AGENT,
+    RAY_EXPERIMENTAL_ENABLE_OPEN_TELEMETRY_ON_CORE,
+    env_integer,
+)
+from ray._private.telemetry.open_telemetry_metric_recorder import (
+    OpenTelemetryMetricRecorder,
+)
+from ray._raylet import GCS_PID_KEY, WorkerID
+from ray.core.generated import metrics_service_pb2_grpc, reporter_pb2, reporter_pb2_grpc
 from ray.dashboard import k8s_utils
-from ray.dashboard.consts import COMPONENT_METRICS_TAG_KEYS, GCS_RPC_TIMEOUT_SECONDS
+from ray.dashboard.consts import (
+    CLUSTER_TAG_KEYS,
+    COMPONENT_METRICS_TAG_KEYS,
+    GCS_RPC_TIMEOUT_SECONDS,
+    GPU_TAG_KEYS,
+    NODE_TAG_KEYS,
+)
+from ray.dashboard.modules.reporter.gpu_profile_manager import GpuProfilingManager
 from ray.dashboard.modules.reporter.profile_manager import (
     CpuProfilingManager,
     MemoryProfilingManager,
@@ -79,156 +94,163 @@ def jsonify_asdict(o) -> str:
 
 # A list of gauges to record and export metrics.
 METRICS_GAUGES = {
+    # CPU metrics
     "node_cpu_utilization": Gauge(
         "node_cpu_utilization",
         "Total CPU usage on a ray node",
         "percentage",
-        ["ip", "Version", "SessionName"],
+        NODE_TAG_KEYS,
     ),
     "node_cpu_count": Gauge(
         "node_cpu_count",
         "Total CPUs available on a ray node",
         "cores",
-        ["ip", "Version", "SessionName"],
+        NODE_TAG_KEYS,
     ),
+    # Memory metrics
     "node_mem_used": Gauge(
         "node_mem_used",
         "Memory usage on a ray node",
         "bytes",
-        ["ip", "Version", "SessionName"],
+        NODE_TAG_KEYS,
     ),
     "node_mem_available": Gauge(
         "node_mem_available",
         "Memory available on a ray node",
         "bytes",
-        ["ip", "Version", "SessionName"],
+        NODE_TAG_KEYS,
     ),
     "node_mem_total": Gauge(
         "node_mem_total",
         "Total memory on a ray node",
         "bytes",
-        ["ip", "Version", "SessionName"],
+        NODE_TAG_KEYS,
     ),
     "node_mem_shared_bytes": Gauge(
         "node_mem_shared_bytes",
         "Total shared memory usage on a ray node",
         "bytes",
-        ["ip", "Version", "SessionName"],
+        NODE_TAG_KEYS,
     ),
+    # GPU metrics
     "node_gpus_available": Gauge(
         "node_gpus_available",
         "Total GPUs available on a ray node",
         "percentage",
-        ["ip", "Version", "SessionName", "GpuDeviceName", "GpuIndex"],
+        GPU_TAG_KEYS,
     ),
     "node_gpus_utilization": Gauge(
         "node_gpus_utilization",
         "Total GPUs usage on a ray node",
         "percentage",
-        ["ip", "Version", "SessionName", "GpuDeviceName", "GpuIndex"],
+        GPU_TAG_KEYS,
     ),
     "node_gram_used": Gauge(
         "node_gram_used",
         "Total GPU RAM usage on a ray node",
         "bytes",
-        ["ip", "Version", "SessionName", "GpuDeviceName", "GpuIndex"],
+        GPU_TAG_KEYS,
     ),
     "node_gram_available": Gauge(
         "node_gram_available",
         "Total GPU RAM available on a ray node",
         "bytes",
-        ["ip", "Version", "SessionName", "GpuDeviceName", "GpuIndex"],
+        GPU_TAG_KEYS,
     ),
+    # Disk I/O metrics
     "node_disk_io_read": Gauge(
         "node_disk_io_read",
         "Total read from disk",
         "bytes",
-        ["ip", "Version", "SessionName"],
+        NODE_TAG_KEYS,
     ),
     "node_disk_io_write": Gauge(
         "node_disk_io_write",
         "Total written to disk",
         "bytes",
-        ["ip", "Version", "SessionName"],
+        NODE_TAG_KEYS,
     ),
     "node_disk_io_read_count": Gauge(
         "node_disk_io_read_count",
         "Total read ops from disk",
         "io",
-        ["ip", "Version", "SessionName"],
+        NODE_TAG_KEYS,
     ),
     "node_disk_io_write_count": Gauge(
         "node_disk_io_write_count",
         "Total write ops to disk",
         "io",
-        ["ip", "Version", "SessionName"],
+        NODE_TAG_KEYS,
     ),
     "node_disk_io_read_speed": Gauge(
         "node_disk_io_read_speed",
         "Disk read speed",
         "bytes/sec",
-        ["ip", "Version", "SessionName"],
+        NODE_TAG_KEYS,
     ),
     "node_disk_io_write_speed": Gauge(
         "node_disk_io_write_speed",
         "Disk write speed",
         "bytes/sec",
-        ["ip", "Version", "SessionName"],
+        NODE_TAG_KEYS,
     ),
     "node_disk_read_iops": Gauge(
         "node_disk_read_iops",
         "Disk read iops",
         "iops",
-        ["ip", "Version", "SessionName"],
+        NODE_TAG_KEYS,
     ),
     "node_disk_write_iops": Gauge(
         "node_disk_write_iops",
         "Disk write iops",
         "iops",
-        ["ip", "Version", "SessionName"],
+        NODE_TAG_KEYS,
     ),
+    # Disk usage metrics
     "node_disk_usage": Gauge(
         "node_disk_usage",
         "Total disk usage (bytes) on a ray node",
         "bytes",
-        ["ip", "Version", "SessionName"],
+        NODE_TAG_KEYS,
     ),
     "node_disk_free": Gauge(
         "node_disk_free",
         "Total disk free (bytes) on a ray node",
         "bytes",
-        ["ip", "Version", "SessionName"],
+        NODE_TAG_KEYS,
     ),
     "node_disk_utilization_percentage": Gauge(
         "node_disk_utilization_percentage",
         "Total disk utilization (percentage) on a ray node",
         "percentage",
-        ["ip", "Version", "SessionName"],
+        NODE_TAG_KEYS,
     ),
+    # Network metrics
     "node_network_sent": Gauge(
         "node_network_sent",
         "Total network sent",
         "bytes",
-        ["ip", "Version", "SessionName"],
+        NODE_TAG_KEYS,
     ),
     "node_network_received": Gauge(
         "node_network_received",
         "Total network received",
         "bytes",
-        ["ip", "Version", "SessionName"],
+        NODE_TAG_KEYS,
     ),
     "node_network_send_speed": Gauge(
         "node_network_send_speed",
         "Network send speed",
         "bytes/sec",
-        ["ip", "Version", "SessionName"],
+        NODE_TAG_KEYS,
     ),
     "node_network_receive_speed": Gauge(
         "node_network_receive_speed",
         "Network receive speed",
         "bytes/sec",
-        ["ip", "Version", "SessionName"],
+        NODE_TAG_KEYS,
     ),
+    # Component metrics
     "component_cpu_percentage": Gauge(
         "component_cpu_percentage",
         "Total CPU usage of the components on a node.",
@@ -260,23 +282,24 @@ METRICS_GAUGES = {
         "count",
         COMPONENT_METRICS_TAG_KEYS,
     ),
+    # Cluster metrics
     "cluster_active_nodes": Gauge(
         "cluster_active_nodes",
         "Active nodes on the cluster",
         "count",
-        ["node_type", "Version", "SessionName"],
+        CLUSTER_TAG_KEYS,
     ),
     "cluster_failed_nodes": Gauge(
         "cluster_failed_nodes",
         "Failed nodes on the cluster",
         "count",
-        ["node_type", "Version", "SessionName"],
+        CLUSTER_TAG_KEYS,
     ),
     "cluster_pending_nodes": Gauge(
         "cluster_pending_nodes",
         "Pending nodes on the cluster",
         "count",
-        ["node_type", "Version", "SessionName"],
+        CLUSTER_TAG_KEYS,
     ),
 }
 
@@ -320,7 +343,9 @@ class GpuUtilizationInfo(TypedDict):
 
 
 class ReporterAgent(
-    dashboard_utils.DashboardAgentModule, reporter_pb2_grpc.ReporterServiceServicer
+    dashboard_utils.DashboardAgentModule,
+    reporter_pb2_grpc.ReporterServiceServicer,
+    metrics_service_pb2_grpc.MetricsServiceServicer,
 ):
     """A monitor process for monitoring Ray nodes.
 
@@ -336,9 +361,7 @@ class ReporterAgent(
             # psutil does not give a meaningful logical cpu count when in a K8s pod, or
             # in a container in general.
             # Use ray._private.utils for this instead.
-            logical_cpu_count = ray._private.utils.get_num_cpus(
-                override_docker_cpu_warning=True
-            )
+            logical_cpu_count = utils.get_num_cpus(override_docker_cpu_warning=True)
             # (Override the docker warning to avoid dashboard log spam.)
 
             # The dashboard expects a physical CPU count as well.
@@ -349,7 +372,7 @@ class ReporterAgent(
             logical_cpu_count = psutil.cpu_count()
             physical_cpu_count = psutil.cpu_count(logical=False)
         self._cpu_counts = (logical_cpu_count, physical_cpu_count)
-        self._gcs_aio_client = dashboard_agent.gcs_aio_client
+        self._gcs_client = dashboard_agent.gcs_client
         self._ip = dashboard_agent.ip
         self._log_dir = dashboard_agent.log_dir
         self._is_head_node = self._ip == dashboard_agent.gcs_address.split(":")[0]
@@ -368,6 +391,7 @@ class ReporterAgent(
         ]  # time, (bytes read, bytes written, read ops, write ops)
         self._metrics_collection_disabled = dashboard_agent.metrics_collection_disabled
         self._metrics_agent = None
+        self._open_telemetry_metric_recorder = None
         self._session_name = dashboard_agent.session_name
         if not self._metrics_collection_disabled:
             try:
@@ -393,6 +417,7 @@ class ReporterAgent(
                 stats_module.stats.stats_recorder,
                 stats_exporter,
             )
+            self._open_telemetry_metric_recorder = OpenTelemetryMetricRecorder()
             if self._metrics_agent.proxy_exporter_collector:
                 # proxy_exporter_collector is None
                 # if Prometheus server is not started.
@@ -405,6 +430,10 @@ class ReporterAgent(
             max_workers=RAY_DASHBOARD_REPORTER_AGENT_TPE_MAX_WORKERS,
             thread_name_prefix="reporter_agent_executor",
         )
+        self._gcs_pid = None
+
+        self._gpu_profiling_manager = GpuProfilingManager(self._log_dir)
+        self._gpu_profiling_manager.start_monitoring_daemon()
 
     async def GetTraceback(self, request, context):
         pid = request.pid
@@ -423,6 +452,14 @@ class ReporterAgent(
             pid, format=format, duration=duration, native=native
         )
         return reporter_pb2.CpuProfilingReply(output=output, success=success)
+
+    async def GpuProfiling(self, request, context):
+        pid = request.pid
+        num_iterations = request.num_iterations
+        success, output = await self._gpu_profiling_manager.gpu_profile(
+            pid=pid, num_iterations=num_iterations
+        )
+        return reporter_pb2.GpuProfilingReply(success=success, output=output)
 
     async def MemoryProfiling(self, request, context):
         pid = request.pid
@@ -463,6 +500,19 @@ class ReporterAgent(
         except Exception:
             logger.error(traceback.format_exc())
         return reporter_pb2.ReportOCMetricsReply()
+
+    async def Export(self, request, context):
+        """
+        GRPC method that receives the open telemetry metrics exported from other Ray
+        components running in the same node (e.g., raylet, worker, etc.). This method
+        implements an interface of `metrics_service_pb2_grpc.MetricsServiceServicer`,
+        which is the default open-telemetry metrics service interface.
+        """
+        # This method suppposes to forward data to self._open_telemetry_metric_recorder
+        # to record them to Prometheus. Currently, that logic is not yet implemented.
+        # Unless RAY_EXPERIMENTAL_ENABLE_OPEN_TELEMETRY_ON_CORE is set to True,
+        # this is a no-op.
+        pass
 
     @staticmethod
     def _get_cpu_percent(in_k8s: bool):
@@ -523,9 +573,11 @@ class ReporterAgent(
                 processes_pids = [
                     ProcessGPUInfo(
                         pid=int(nv_process.pid),
-                        gpu_memory_usage=int(nv_process.usedGpuMemory) // MB
-                        if nv_process.usedGpuMemory
-                        else 0,
+                        gpu_memory_usage=(
+                            int(nv_process.usedGpuMemory) // MB
+                            if nv_process.usedGpuMemory
+                            else 0
+                        ),
                     )
                     for nv_process in (nv_comp_processes + nv_graphics_processes)
                 ]
@@ -566,8 +618,8 @@ class ReporterAgent(
 
     @staticmethod
     def _get_mem_usage():
-        total = ray._private.utils.get_system_memory()
-        used = ray._private.utils.get_used_memory()
+        total = utils.get_system_memory()
+        used = utils.get_used_memory()
         available = total - used
         percent = round(used / total, 3) * 100
         return total, available, percent, used
@@ -583,7 +635,7 @@ class ReporterAgent(
             root = psutil.disk_partitions()[0].mountpoint
         else:
             root = os.sep
-        tmp = ray._private.utils.get_user_temp_dir()
+        tmp = utils.get_user_temp_dir()
         return {
             "/": psutil.disk_usage(root),
             tmp: psutil.disk_usage(tmp),
@@ -656,11 +708,11 @@ class ReporterAgent(
                 try:
                     if w.status() == psutil.STATUS_ZOMBIE:
                         continue
+                    result.append(w.as_dict(attrs=PSUTIL_PROCESS_ATTRS))
                 except psutil.NoSuchProcess:
                     # the process may have terminated due to race condition.
                     continue
 
-                result.append(w.as_dict(attrs=PSUTIL_PROCESS_ATTRS))
             return result
 
     def _get_raylet_proc(self):
@@ -687,6 +739,13 @@ class ReporterAgent(
         except (psutil.AccessDenied, ProcessLookupError):
             pass
         return None
+
+    def _get_gcs(self):
+        if self._gcs_pid:
+            gcs_proc = psutil.Process(self._gcs_pid)
+            if gcs_proc:
+                return gcs_proc.as_dict(attrs=PSUTIL_PROCESS_ATTRS)
+        return {}
 
     def _get_raylet(self):
         raylet_proc = self._get_raylet_proc()
@@ -742,7 +801,7 @@ class ReporterAgent(
         self._disk_io_stats_hist.append((now, disk_stats))
         disk_speed_stats = self._compute_speed_from_hist(self._disk_io_stats_hist)
 
-        return {
+        stats = {
             "now": now,
             "hostname": self._hostname,
             "ip": self._ip,
@@ -765,6 +824,9 @@ class ReporterAgent(
             # Deprecated field, should be removed with frontend.
             "cmdline": self._get_raylet().get("cmdline", []),
         }
+        if self._is_head_node:
+            stats["gcs"] = self._get_gcs()
+        return stats
 
     def _generate_reseted_stats_record(self, component_name: str) -> List[Record]:
         """Return a list of Record that will reset
@@ -934,6 +996,10 @@ class ReporterAgent(
     def _to_records(self, stats, cluster_stats) -> List[Record]:
         records_reported = []
         ip = stats["ip"]
+        is_head_node = str(self._is_head_node).lower()
+
+        # Common tags for node-level metrics
+        node_tags = {"ip": ip, "IsHeadNode": is_head_node}
 
         # -- Instance count of cluster --
         # Only report cluster stats on head node
@@ -987,26 +1053,26 @@ class ReporterAgent(
         cpu_record = Record(
             gauge=METRICS_GAUGES["node_cpu_utilization"],
             value=cpu_usage,
-            tags={"ip": ip},
+            tags=node_tags,
         )
 
         cpu_count, _ = stats["cpus"]
         cpu_count_record = Record(
-            gauge=METRICS_GAUGES["node_cpu_count"], value=cpu_count, tags={"ip": ip}
+            gauge=METRICS_GAUGES["node_cpu_count"], value=cpu_count, tags=node_tags
         )
 
         # -- Mem per node --
         mem_total, mem_available, _, mem_used = stats["mem"]
         mem_used_record = Record(
-            gauge=METRICS_GAUGES["node_mem_used"], value=mem_used, tags={"ip": ip}
+            gauge=METRICS_GAUGES["node_mem_used"], value=mem_used, tags=node_tags
         )
         mem_available_record = Record(
             gauge=METRICS_GAUGES["node_mem_available"],
             value=mem_available,
-            tags={"ip": ip},
+            tags=node_tags,
         )
         mem_total_record = Record(
-            gauge=METRICS_GAUGES["node_mem_total"], value=mem_total, tags={"ip": ip}
+            gauge=METRICS_GAUGES["node_mem_total"], value=mem_total, tags=node_tags
         )
 
         shm_used = stats["shm"]
@@ -1014,7 +1080,7 @@ class ReporterAgent(
             node_mem_shared = Record(
                 gauge=METRICS_GAUGES["node_mem_shared_bytes"],
                 value=shm_used,
-                tags={"ip": ip},
+                tags=node_tags,
             )
             records_reported.append(node_mem_shared)
 
@@ -1032,7 +1098,6 @@ class ReporterAgent(
         gpus_available = len(gpus)
 
         if gpus_available:
-            gpu_tags = {"ip": ip}
             for gpu in gpus:
                 gpus_utilization, gram_used, gram_total = 0, 0, 0
                 # Consume GPU may not report its utilization.
@@ -1046,7 +1111,7 @@ class ReporterAgent(
                 gram_available = gram_total - gram_used
 
                 if gpu_index is not None:
-                    gpu_tags = {"ip": ip, "GpuIndex": str(gpu_index)}
+                    gpu_tags = {**node_tags, "GpuIndex": str(gpu_index)}
                     if gpu_name:
                         gpu_tags["GpuDeviceName"] = gpu_name
 
@@ -1085,57 +1150,57 @@ class ReporterAgent(
         disk_read_record = Record(
             gauge=METRICS_GAUGES["node_disk_io_read"],
             value=disk_io_stats[0],
-            tags={"ip": ip},
+            tags=node_tags,
         )
         disk_write_record = Record(
             gauge=METRICS_GAUGES["node_disk_io_write"],
             value=disk_io_stats[1],
-            tags={"ip": ip},
+            tags=node_tags,
         )
         disk_read_count_record = Record(
             gauge=METRICS_GAUGES["node_disk_io_read_count"],
             value=disk_io_stats[2],
-            tags={"ip": ip},
+            tags=node_tags,
         )
         disk_write_count_record = Record(
             gauge=METRICS_GAUGES["node_disk_io_write_count"],
             value=disk_io_stats[3],
-            tags={"ip": ip},
+            tags=node_tags,
         )
         disk_io_speed_stats = stats["disk_io_speed"]
         disk_read_speed_record = Record(
             gauge=METRICS_GAUGES["node_disk_io_read_speed"],
             value=disk_io_speed_stats[0],
-            tags={"ip": ip},
+            tags=node_tags,
         )
         disk_write_speed_record = Record(
             gauge=METRICS_GAUGES["node_disk_io_write_speed"],
             value=disk_io_speed_stats[1],
-            tags={"ip": ip},
+            tags=node_tags,
         )
         disk_read_iops_record = Record(
             gauge=METRICS_GAUGES["node_disk_read_iops"],
             value=disk_io_speed_stats[2],
-            tags={"ip": ip},
+            tags=node_tags,
         )
         disk_write_iops_record = Record(
             gauge=METRICS_GAUGES["node_disk_write_iops"],
             value=disk_io_speed_stats[3],
-            tags={"ip": ip},
+            tags=node_tags,
         )
         used = stats["disk"]["/"].used
         free = stats["disk"]["/"].free
         disk_utilization = float(used / (used + free)) * 100
         disk_usage_record = Record(
-            gauge=METRICS_GAUGES["node_disk_usage"], value=used, tags={"ip": ip}
+            gauge=METRICS_GAUGES["node_disk_usage"], value=used, tags=node_tags
         )
         disk_free_record = Record(
-            gauge=METRICS_GAUGES["node_disk_free"], value=free, tags={"ip": ip}
+            gauge=METRICS_GAUGES["node_disk_free"], value=free, tags=node_tags
         )
         disk_utilization_percentage_record = Record(
             gauge=METRICS_GAUGES["node_disk_utilization_percentage"],
             value=disk_utilization,
-            tags={"ip": ip},
+            tags=node_tags,
         )
 
         # -- Network speed (send/receive) stats per node --
@@ -1143,12 +1208,12 @@ class ReporterAgent(
         network_sent_record = Record(
             gauge=METRICS_GAUGES["node_network_sent"],
             value=network_stats[0],
-            tags={"ip": ip},
+            tags=node_tags,
         )
         network_received_record = Record(
             gauge=METRICS_GAUGES["node_network_received"],
             value=network_stats[1],
-            tags={"ip": ip},
+            tags=node_tags,
         )
 
         # -- Network speed (send/receive) per node --
@@ -1156,17 +1221,26 @@ class ReporterAgent(
         network_send_speed_record = Record(
             gauge=METRICS_GAUGES["node_network_send_speed"],
             value=network_speed_stats[0],
-            tags={"ip": ip},
+            tags=node_tags,
         )
         network_receive_speed_record = Record(
             gauge=METRICS_GAUGES["node_network_receive_speed"],
             value=network_speed_stats[1],
-            tags={"ip": ip},
+            tags=node_tags,
         )
 
         """
         Record system stats.
         """
+
+        if self._is_head_node:
+            gcs_stats = stats["gcs"]
+            if gcs_stats:
+                records_reported.extend(
+                    self._generate_system_stats_record(
+                        [gcs_stats], "gcs", pid=str(gcs_stats["pid"])
+                    )
+                )
 
         # Record component metrics.
         raylet_stats = stats["raylet"]
@@ -1188,7 +1262,6 @@ class ReporterAgent(
                 )
             )
 
-        # TODO(sang): Record GCS metrics.
         # NOTE: Dashboard metrics is recorded within the dashboard because
         # it can be deployed as a standalone instance. It shouldn't
         # depend on the agent.
@@ -1220,20 +1293,30 @@ class ReporterAgent(
 
         return records_reported
 
-    async def _run_loop(self, publisher):
+    async def _run_loop(self):
         """Get any changes to the log files and push updates to kv."""
-        loop = utils.get_or_create_event_loop()
+        loop = get_or_create_event_loop()
 
         while True:
             try:
                 # Fetch autoscaler debug status
-                autoscaler_status_json_bytes: Optional[
-                    bytes
-                ] = await self._gcs_aio_client.internal_kv_get(
-                    DEBUG_AUTOSCALING_STATUS.encode(),
-                    None,
-                    timeout=GCS_RPC_TIMEOUT_SECONDS,
-                )
+                autoscaler_status_json_bytes: Optional[bytes] = None
+                if self._is_head_node:
+                    autoscaler_status_json_bytes = (
+                        await self._gcs_client.async_internal_kv_get(
+                            DEBUG_AUTOSCALING_STATUS.encode(),
+                            None,
+                            timeout=GCS_RPC_TIMEOUT_SECONDS,
+                        )
+                    )
+                    self._gcs_pid = await self._gcs_client.async_internal_kv_get(
+                        GCS_PID_KEY.encode(),
+                        None,
+                        timeout=GCS_RPC_TIMEOUT_SECONDS,
+                    )
+                    self._gcs_pid = (
+                        int(self._gcs_pid.decode()) if self._gcs_pid else None
+                    )
 
                 # NOTE: Stats collection is executed inside the thread-pool
                 #       executor (TPE) to avoid blocking the Agent's event-loop
@@ -1243,7 +1326,9 @@ class ReporterAgent(
                     autoscaler_status_json_bytes,
                 )
 
-                await publisher.publish_resource_usage(self._key, json_payload)
+                await self._gcs_client.async_publish_node_resource_usage(
+                    self._key, json_payload
+                )
 
             except Exception:
                 logger.exception("Error publishing node physical stats.")
@@ -1265,13 +1350,22 @@ class ReporterAgent(
 
             records = self._to_records(stats, cluster_stats)
 
-            self._metrics_agent.record_and_export(
-                records,
-                global_tags={
-                    "Version": ray.__version__,
-                    "SessionName": self._session_name,
-                },
-            )
+            if RAY_EXPERIMENTAL_ENABLE_OPEN_TELEMETRY_ON_AGENT:
+                self._open_telemetry_metric_recorder.record_and_export(
+                    records,
+                    global_tags={
+                        "Version": ray.__version__,
+                        "SessionName": self._session_name,
+                    },
+                )
+            else:
+                self._metrics_agent.record_and_export(
+                    records,
+                    global_tags={
+                        "Version": ray.__version__,
+                        "SessionName": self._session_name,
+                    },
+                )
 
             self._metrics_agent.clean_all_dead_worker_metrics()
 
@@ -1280,8 +1374,12 @@ class ReporterAgent(
     async def run(self, server):
         if server:
             reporter_pb2_grpc.add_ReporterServiceServicer_to_server(self, server)
+            if RAY_EXPERIMENTAL_ENABLE_OPEN_TELEMETRY_ON_CORE:
+                metrics_service_pb2_grpc.add_MetricsServiceServicer_to_server(
+                    self, server
+                )
 
-        await self._run_loop(self._dashboard_agent.publisher)
+        await self._run_loop()
 
     @staticmethod
     def is_minimal_module():

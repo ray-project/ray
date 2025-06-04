@@ -2,6 +2,7 @@ import { get } from "../../service/requestHandlers";
 
 const GRAFANA_HEALTHCHECK_URL = "/api/grafana_health";
 const PROMETHEUS_HEALTHCHECK_URL = "/api/prometheus_health";
+const TIMEZONE_URL = "/timezone";
 
 export type DashboardUids = {
   default: string;
@@ -15,6 +16,7 @@ type GrafanaHealthcheckRsp = {
   msg: string;
   data: {
     grafanaHost: string;
+    grafanaOrgId: string;
     sessionName: string;
     dashboardUids: DashboardUids;
     dashboardDatasource: string;
@@ -24,6 +26,11 @@ type GrafanaHealthcheckRsp = {
 type PrometheusHealthcheckRsp = {
   result: boolean;
   msg: string;
+};
+
+type TimezoneRsp = {
+  offset: string;
+  value: string;
 };
 
 const fetchGrafanaHealthcheck = async () => {
@@ -36,6 +43,7 @@ const fetchPrometheusHealthcheck = async () => {
 
 type MetricsInfo = {
   grafanaHost?: string;
+  grafanaOrgId: string;
   sessionName?: string;
   prometheusHealth?: boolean;
   dashboardUids?: DashboardUids;
@@ -45,6 +53,7 @@ type MetricsInfo = {
 export const getMetricsInfo = async () => {
   const info: MetricsInfo = {
     grafanaHost: undefined,
+    grafanaOrgId: "1",
     sessionName: undefined,
     prometheusHealth: undefined,
     dashboardUids: undefined,
@@ -54,6 +63,7 @@ export const getMetricsInfo = async () => {
     const resp = await fetchGrafanaHealthcheck();
     if (resp.data.result) {
       info.grafanaHost = resp.data.data.grafanaHost;
+      info.grafanaOrgId = resp.data.data.grafanaOrgId;
       info.sessionName = resp.data.data.sessionName;
       info.dashboardUids = resp.data.data.dashboardUids;
       info.dashboardDatasource = resp.data.data.dashboardDatasource;
@@ -67,4 +77,22 @@ export const getMetricsInfo = async () => {
   } catch (e) {}
 
   return info;
+};
+
+export type TimezoneInfo = {
+  offset: string;
+  value: string;
+};
+
+export const getTimeZoneInfo = async () => {
+  try {
+    const resp = await get<TimezoneRsp>(TIMEZONE_URL);
+    if (resp.data) {
+      return {
+        offset: resp.data.offset,
+        value: resp.data.value,
+      };
+    }
+  } catch (e) {}
+  return null;
 };

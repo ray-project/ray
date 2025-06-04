@@ -7,11 +7,6 @@ import ray
 from ray.rllib.algorithms import sac
 from ray.rllib.connectors.env_to_module.flatten_observations import FlattenObservations
 from ray.rllib.examples.envs.classes.random_env import RandomEnv
-from ray.rllib.examples._old_api_stack.models.batch_norm_model import (
-    KerasBatchNormModel,
-    TorchBatchNormModel,
-)
-from ray.rllib.models.catalog import ModelCatalog
 from ray.rllib.utils.framework import try_import_tf, try_import_torch
 from ray.rllib.utils.spaces.simplex import Simplex
 from ray.rllib.utils.test_utils import check_train_results_new_api_stack
@@ -73,15 +68,14 @@ class TestSAC(unittest.TestCase):
                 train_batch_size=10,
             )
             .env_runners(
-                env_to_module_connector=lambda env: FlattenObservations(),
+                env_to_module_connector=(
+                    lambda env, spaces, device: FlattenObservations()
+                ),
                 num_env_runners=0,
                 rollout_fragment_length=10,
             )
         )
         num_iterations = 1
-
-        ModelCatalog.register_custom_model("batch_norm", KerasBatchNormModel)
-        ModelCatalog.register_custom_model("batch_norm_torch", TorchBatchNormModel)
 
         image_space = Box(-1.0, 1.0, shape=(84, 84, 3))
         simple_space = Box(-1.0, 1.0, shape=(3,))
@@ -138,9 +132,7 @@ class TestSAC(unittest.TestCase):
 
         # Dict space .sample() returns an ordered dict.
         # Make sure the keys in samples are ordered differently.
-        dict_samples = [
-            {k: v for k, v in reversed(dict_space.sample().items())} for _ in range(10)
-        ]
+        dict_samples = [dict(reversed(dict_space.sample().items())) for _ in range(10)]
 
         class NestedDictEnv(gym.Env):
             def __init__(self):
@@ -172,7 +164,9 @@ class TestSAC(unittest.TestCase):
             .env_runners(
                 num_env_runners=0,
                 rollout_fragment_length=5,
-                env_to_module_connector=lambda env: FlattenObservations(),
+                env_to_module_connector=(
+                    lambda env, spaces, device: FlattenObservations()
+                ),
             )
         )
         num_iterations = 1

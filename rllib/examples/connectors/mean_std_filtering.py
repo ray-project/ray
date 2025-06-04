@@ -74,6 +74,7 @@ import gymnasium as gym
 import numpy as np
 
 from ray.rllib.connectors.env_to_module.mean_std_filter import MeanStdFilter
+from ray.rllib.core.rl_module.default_model_config import DefaultModelConfig
 from ray.rllib.examples.envs.classes.multi_agent import MultiAgentPendulum
 from ray.rllib.utils.framework import try_import_torch
 from ray.rllib.utils.test_utils import (
@@ -94,6 +95,9 @@ parser.add_argument(
     action="store_true",
     help="Run w/o a mean/std env-to-module connector piece (filter).",
 )
+parser.set_defaults(
+    enable_new_api_stack=True,
+)
 
 
 class LopsidedObs(gym.ObservationWrapper):
@@ -109,10 +113,6 @@ class LopsidedObs(gym.ObservationWrapper):
 if __name__ == "__main__":
     args = parser.parse_args()
 
-    assert (
-        args.enable_new_api_stack
-    ), "Must set --enable-new-api-stack when running this script!"
-
     # Register our environment with tune.
     if args.num_agents > 0:
         register_env(
@@ -127,9 +127,6 @@ if __name__ == "__main__":
         .get_default_config()
         .environment("lopsided-pend")
         .env_runners(
-            # TODO (sven): MAEnvRunner does not support vectorized envs yet
-            #  due to gym's env checkers and non-compatability with RLlib's
-            #  MultiAgentEnv API.
             num_envs_per_env_runner=1 if args.num_agents > 0 else 20,
             # Define a single connector piece to be prepended to the env-to-module
             # connector pipeline.
@@ -139,23 +136,25 @@ if __name__ == "__main__":
             env_to_module_connector=(
                 None
                 if args.disable_mean_std_filter
-                else lambda env: MeanStdFilter(multi_agent=args.num_agents > 0)
+                else lambda env, spaces, device: (
+                    MeanStdFilter(multi_agent=args.num_agents > 0)
+                )
             ),
         )
         .training(
             train_batch_size_per_learner=512,
             gamma=0.95,
             # Linearly adjust learning rate based on number of GPUs.
-            lr=0.0003 * (args.num_gpus or 1),
+            lr=0.0003 * (args.num_learners or 1),
             vf_loss_coeff=0.01,
         )
         .rl_module(
-            model_config_dict={
-                "fcnet_activation": "relu",
-                "fcnet_weights_initializer": torch.nn.init.xavier_uniform_,
-                "fcnet_bias_initializer": torch.nn.init.constant_,
-                "fcnet_bias_initializer_config": {"val": 0.0},
-            }
+            model_config=DefaultModelConfig(
+                fcnet_activation="relu",
+                fcnet_kernel_initializer=torch.nn.init.xavier_uniform_,
+                fcnet_bias_initializer=torch.nn.init.constant_,
+                fcnet_bias_initializer_kwargs={"val": 0.0},
+            ),
         )
         # In case you would like to run with a evaluation EnvRunners, make sure your
         # `evaluation_config` key contains the `use_worker_filter_stats=False` setting

@@ -1,7 +1,7 @@
 import time
 
+import httpx
 import pytest
-import requests
 from fastapi import FastAPI, Request
 from starlette.responses import RedirectResponse
 
@@ -11,38 +11,45 @@ from ray.serve._private.constants import SERVE_DEFAULT_APP_NAME
 
 
 def test_path_validation(serve_instance):
+    @serve.deployment
+    class D:
+        pass
+
     # Path prefix must start with /.
     with pytest.raises(ValueError):
-
-        @serve.deployment(route_prefix="hello")
-        class D1:
-            pass
+        serve.run(D.bind(), route_prefix="hello")
 
     # Path prefix must not end with / unless it's the root.
     with pytest.raises(ValueError):
-
-        @serve.deployment(route_prefix="/hello/")
-        class D2:
-            pass
+        serve.run(D.bind(), route_prefix="/hello/")
 
     # Wildcards not allowed with new ingress support.
     with pytest.raises(ValueError):
-
-        @serve.deployment(route_prefix="/{hello}")
-        class D3:
-            pass
-
-    @serve.deployment(route_prefix="/duplicate")
-    class D4:
-        pass
-
-    serve.run(D4.bind())
+        serve.run(D.bind(), route_prefix="/{hello}")
 
 
 def test_routes_healthz(serve_instance):
-    resp = requests.get("http://localhost:8000/-/healthz")
+    # Should return 503 until there are any routes populated.
+    resp = httpx.get("http://localhost:8000/-/healthz")
+    assert resp.status_code == 503
+    assert resp.text == "Route table is not populated yet."
+
+    @serve.deployment
+    class D1:
+        def __call__(self, *args):
+            return "hi"
+
+    # D1 not exposed over HTTP so should still return 503.
+    serve.run(D1.bind(), route_prefix=None)
+    resp = httpx.get("http://localhost:8000/-/healthz")
+    assert resp.status_code == 503
+    assert resp.text == "Route table is not populated yet."
+
+    # D1 exposed over HTTP, should return 200 OK.
+    serve.run(D1.bind(), route_prefix="/")
+    resp = httpx.get("http://localhost:8000/-/healthz")
     assert resp.status_code == 200
-    assert resp.content == b"success"
+    assert resp.text == "success"
 
 
 def test_routes_endpoint(serve_instance):
@@ -59,30 +66,30 @@ def test_routes_endpoint(serve_instance):
     serve.run(D1.bind(), name="app1", route_prefix="/D1")
     serve.run(D2.bind(), name="app2", route_prefix="/hello/world")
 
-    routes = requests.get("http://localhost:8000/-/routes").json()
+    routes = httpx.get("http://localhost:8000/-/routes").json()
 
     assert len(routes) == 2, routes
 
-    assert requests.get("http://localhost:8000/D1").text == "D1"
-    assert requests.get("http://localhost:8000/D1").status_code == 200
-    assert requests.get("http://localhost:8000/hello/world").text == "D2"
-    assert requests.get("http://localhost:8000/hello/world").status_code == 200
-    assert requests.get("http://localhost:8000/not_exist").status_code == 404
-    assert requests.get("http://localhost:8000/").status_code == 404
+    assert httpx.get("http://localhost:8000/D1").text == "D1"
+    assert httpx.get("http://localhost:8000/D1").status_code == 200
+    assert httpx.get("http://localhost:8000/hello/world").text == "D2"
+    assert httpx.get("http://localhost:8000/hello/world").status_code == 200
+    assert httpx.get("http://localhost:8000/not_exist").status_code == 404
+    assert httpx.get("http://localhost:8000/").status_code == 404
 
 
 def test_deployment_without_route(serve_instance):
-    @serve.deployment(route_prefix=None)
+    @serve.deployment
     class D:
         def __call__(self, *args):
             return "1"
 
     serve.run(D.bind(), route_prefix=None)
-    routes = requests.get("http://localhost:8000/-/routes").json()
+    routes = httpx.get("http://localhost:8000/-/routes").json()
     assert len(routes) == 0
 
     # make sure the deployment is not exposed under the default route
-    r = requests.get("http://localhost:8000/")
+    r = httpx.get("http://localhost:8000/")
     assert r.status_code == 404
 
 
@@ -93,7 +100,7 @@ def test_deployment_options_default_route(serve_instance):
 
     serve.run(D1.bind())
 
-    routes = requests.get("http://localhost:8000/-/routes").json()
+    routes = httpx.get("http://localhost:8000/-/routes").json()
     assert len(routes) == 1
     assert "/" in routes, routes
     assert routes["/"] == SERVE_DEFAULT_APP_NAME
@@ -101,7 +108,7 @@ def test_deployment_options_default_route(serve_instance):
 
 def test_path_prefixing_1(serve_instance):
     def check_req(subpath, text=None, status=None):
-        r = requests.get(f"http://localhost:8000{subpath}")
+        r = httpx.get(f"http://localhost:8000{subpath}")
         if text is not None:
             assert r.text == text, f"{r.text} != {text}"
         if status is not None:
@@ -131,7 +138,7 @@ def test_path_prefixing_1(serve_instance):
     check_req("/", text="2")
     check_req("/a", text="2")
 
-    @serve.deployment(route_prefix="/hello/world")
+    @serve.deployment
     class D3:
         def __call__(self, *args):
             return "3"
@@ -194,12 +201,14 @@ def test_redirect(serve_instance, base_path):
     if route_prefix != "/":
         route_prefix += "/"
 
-    r = requests.get(f"http://localhost:8000{route_prefix}redirect")
+    r = httpx.get(f"http://localhost:8000{route_prefix}redirect", follow_redirects=True)
     assert r.status_code == 200
     assert len(r.history) == 1
     assert r.json() == "hello from /"
 
-    r = requests.get(f"http://localhost:8000{route_prefix}redirect2")
+    r = httpx.get(
+        f"http://localhost:8000{route_prefix}redirect2", follow_redirects=True
+    )
     assert r.status_code == 200
     assert len(r.history) == 2
     assert r.json() == "hello from /"
@@ -208,12 +217,12 @@ def test_redirect(serve_instance, base_path):
 def test_default_error_handling(serve_instance):
     @serve.deployment
     def f():
-        1 / 0
+        _ = 1 / 0
 
     serve.run(f.bind())
-    r = requests.get("http://localhost:8000/f")
+    r = httpx.get("http://localhost:8000/f")
     assert r.status_code == 500
-    assert "ZeroDivisionError" in r.text, r.text
+    assert r.text == "Internal Server Error"
 
     @ray.remote(num_cpus=0)
     def intentional_kill(actor_handle):
@@ -225,7 +234,7 @@ def test_default_error_handling(serve_instance):
         time.sleep(100)  # Don't return here to leave time for actor exit.
 
     serve.run(h.bind())
-    r = requests.get("http://localhost:8000/h")
+    r = httpx.get("http://localhost:8000/h")
     assert r.status_code == 500
 
 

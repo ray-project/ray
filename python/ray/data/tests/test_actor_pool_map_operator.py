@@ -1,14 +1,26 @@
+import asyncio
 import collections
+import datetime
+import threading
+import time
 import unittest
-from typing import Any, Optional, Tuple
+from typing import Any, Dict, Optional, Tuple
+from unittest.mock import MagicMock, patch
 
 import pytest
+from freezegun import freeze_time
 
 import ray
 from ray._private.test_utils import wait_for_condition
 from ray.actor import ActorHandle
 from ray.data._internal.compute import ActorPoolStrategy
-from ray.data._internal.execution.operators.actor_pool_map_operator import _ActorPool
+from ray.data._internal.execution.interfaces import ExecutionResources
+from ray.data._internal.execution.interfaces.physical_operator import _ActorPoolInfo
+from ray.data._internal.execution.operators.actor_pool_map_operator import (
+    ActorPoolMapOperator,
+    _ActorPool,
+)
+from ray.data._internal.execution.operators.input_data_buffer import InputDataBuffer
 from ray.data._internal.execution.util import make_ref_bundles
 from ray.tests.conftest import *  # noqa
 from ray.types import ObjectRef
@@ -22,6 +34,9 @@ class PoolWorker:
     def get_location(self) -> str:
         return self.node_id
 
+    def on_exit(self):
+        pass
+
 
 class TestActorPool(unittest.TestCase):
     def setup_class(self):
@@ -34,8 +49,10 @@ class TestActorPool(unittest.TestCase):
     def teardown_class(self):
         ray.shutdown()
 
-    def _create_actor_fn(self) -> Tuple[ActorHandle, ObjectRef[Any]]:
-        actor = PoolWorker.remote(self._actor_node_id)
+    def _create_actor_fn(
+        self, labels: Dict[str, Any]
+    ) -> Tuple[ActorHandle, ObjectRef[Any]]:
+        actor = PoolWorker.options(_labels=labels).remote(self._actor_node_id)
         ready_ref = actor.get_location.remote()
         self._last_created_actor_and_ready_ref = actor, ready_ref
         return actor, ready_ref
@@ -53,6 +70,7 @@ class TestActorPool(unittest.TestCase):
                 max_tasks_in_flight_per_actor=max_tasks_in_flight,
             ),
             create_actor_fn=self._create_actor_fn,
+            per_actor_resource_usage=ExecutionResources(cpu=1),
         )
         return pool
 
@@ -60,10 +78,14 @@ class TestActorPool(unittest.TestCase):
         self, pool: _ActorPool, node_id="node1"
     ) -> Tuple[ActorHandle, ObjectRef[Any]]:
         self._actor_node_id = node_id
-        assert pool.scale_up(1) == 1
+        num_actors = pool.scale_up(1)
+
+        assert num_actors == 1
         assert self._last_created_actor_and_ready_ref is not None
+
         actor, ready_ref = self._last_created_actor_and_ready_ref
         self._last_created_actor_and_ready_ref = None
+
         return actor, ready_ref
 
     def _wait_for_actor_ready(self, pool: _ActorPool, ready_ref):
@@ -93,6 +115,26 @@ class TestActorPool(unittest.TestCase):
         assert pool.max_size() == 4
         assert pool.current_size() == 0
         assert pool.max_tasks_in_flight_per_actor() == 4
+
+    def test_can_scale_down(self):
+        pool = self._create_actor_pool(min_size=1, max_size=4)
+
+        with freeze_time() as f:
+            # Scale up
+            pool.scale_up(1)
+            # Assert we can't scale down immediately after scale up
+            assert not pool.can_scale_down()
+            assert pool._last_scaling_up_ts == time.time()
+
+            # Advance clock
+            f.tick(
+                datetime.timedelta(
+                    seconds=_ActorPool._ACTOR_POOL_SCALE_DOWN_DEBOUNCE_PERIOD_S + 1
+                )
+            )
+
+            # Assert can scale down after debounce period
+            assert pool.can_scale_down()
 
     def test_add_pending(self):
         # Test that pending actor is added in the correct state.
@@ -125,6 +167,56 @@ class TestActorPool(unittest.TestCase):
         assert pool.num_active_actors() == 1
         assert pool.num_idle_actors() == 0
         assert pool.num_free_slots() == 3
+
+    def test_restarting_to_alive(self):
+        # Test that actor is correctly transitioned from restarting to alive.
+        pool = self._create_actor_pool(max_tasks_in_flight=1)
+        actor = self._add_ready_actor(pool)
+
+        # Mark the actor as restarting and test pick_actor fails
+        pool.update_running_actor_state(actor, True)
+        assert pool.pick_actor() is None
+        assert pool.current_size() == 1
+        assert pool.num_pending_actors() == 0
+        assert pool.num_running_actors() == 1
+        assert pool.num_restarting_actors() == 1
+        assert pool.num_alive_actors() == 0
+        assert pool.num_active_actors() == 0
+        assert pool.num_idle_actors() == 1
+        assert pool.num_free_slots() == 1
+        assert pool.get_actor_info() == _ActorPoolInfo(
+            running=0, pending=0, restarting=1
+        )
+
+        # Mark the actor as alive and test pick_actor succeeds
+        pool.update_running_actor_state(actor, False)
+        picked_actor = pool.pick_actor()
+        assert picked_actor == actor
+        assert pool.current_size() == 1
+        assert pool.num_pending_actors() == 0
+        assert pool.num_running_actors() == 1
+        assert pool.num_restarting_actors() == 0
+        assert pool.num_alive_actors() == 1
+        assert pool.num_active_actors() == 1
+        assert pool.num_idle_actors() == 0
+        assert pool.num_free_slots() == 0
+        assert pool.get_actor_info() == _ActorPoolInfo(
+            running=1, pending=0, restarting=0
+        )
+
+        # Return the actor
+        pool.return_actor(picked_actor)
+        assert pool.current_size() == 1
+        assert pool.num_pending_actors() == 0
+        assert pool.num_running_actors() == 1
+        assert pool.num_restarting_actors() == 0
+        assert pool.num_alive_actors() == 1
+        assert pool.num_active_actors() == 0
+        assert pool.num_idle_actors() == 1
+        assert pool.num_free_slots() == 1
+        assert pool.get_actor_info() == _ActorPoolInfo(
+            running=1, pending=0, restarting=0
+        )
 
     def test_repeated_picking(self):
         # Test that we can repeatedly pick the same actor.
@@ -229,7 +321,7 @@ class TestActorPool(unittest.TestCase):
         pool = self._create_actor_pool()
         actor, _ = self._add_pending_actor(pool)
         # Kill inactive actor.
-        killed = pool.kill_inactive_actor()
+        killed = pool._remove_inactive_actor()
         # Check that an actor was killed.
         assert killed
         # Check that actor is not in pool.
@@ -251,7 +343,7 @@ class TestActorPool(unittest.TestCase):
         pool = self._create_actor_pool()
         actor = self._add_ready_actor(pool)
         # Kill inactive actor.
-        killed = pool.kill_inactive_actor()
+        killed = pool._remove_inactive_actor()
         # Check that an actor was killed.
         assert killed
         # Check that actor is not in pool.
@@ -275,7 +367,7 @@ class TestActorPool(unittest.TestCase):
         # Pick actor (and double-check that the actor was picked).
         assert pool.pick_actor() == actor
         # Kill inactive actor.
-        killed = pool.kill_inactive_actor()
+        killed = pool._remove_inactive_actor()
         # Check that an actor was NOT killed.
         assert not killed
         # Check that the active actor is still in the pool.
@@ -290,7 +382,7 @@ class TestActorPool(unittest.TestCase):
         # Add idle worker.
         idle_actor = self._add_ready_actor(pool)
         # Kill inactive actor.
-        killed = pool.kill_inactive_actor()
+        killed = pool._remove_inactive_actor()
         # Check that an actor was killed.
         assert killed
         # Check that the idle actor is still in the pool.
@@ -310,137 +402,6 @@ class TestActorPool(unittest.TestCase):
         assert pool.num_idle_actors() == 1
         assert pool.num_free_slots() == 4
 
-    def test_kill_all_inactive_pending_actor_killed(self):
-        # Test that pending actors are killed on the kill_all_inactive_actors() call.
-        pool = self._create_actor_pool()
-        actor, ready_ref = self._add_pending_actor(pool)
-        # Kill inactive actors.
-        pool.kill_all_inactive_actors()
-        # Check that actor is not in pool.
-        assert pool.get_pending_actor_refs() == []
-        # Check that actor is no longer in the pool as pending, to protect against
-        # ready/killed races.
-        assert not pool.pending_to_running(ready_ref)
-        # Check that actor is dead.
-        actor_id = actor._actor_id.hex()
-        del actor
-        self._wait_for_actor_dead(actor_id)
-        # Check that the per-state pool sizes are as expected.
-        assert pool.current_size() == 0
-        assert pool.num_pending_actors() == 0
-        assert pool.num_running_actors() == 0
-        assert pool.num_active_actors() == 0
-        assert pool.num_idle_actors() == 0
-        assert pool.num_free_slots() == 0
-
-    def test_kill_all_inactive_idle_actor_killed(self):
-        # Test that idle actors are killed on the kill_all_inactive_actors() call.
-        pool = self._create_actor_pool()
-        actor = self._add_ready_actor(pool)
-        # Kill inactive actors.
-        pool.kill_all_inactive_actors()
-        # Check that actor is not in pool.
-        assert pool.pick_actor() is None
-        # Check that actor is dead.
-        actor_id = actor._actor_id.hex()
-        del actor
-        self._wait_for_actor_dead(actor_id)
-        # Check that the per-state pool sizes are as expected.
-        assert pool.current_size() == 0
-        assert pool.num_pending_actors() == 0
-        assert pool.num_running_actors() == 0
-        assert pool.num_active_actors() == 0
-        assert pool.num_idle_actors() == 0
-        assert pool.num_free_slots() == 0
-
-    def test_kill_all_inactive_active_actor_not_killed(self):
-        # Test that active actors are NOT killed on the kill_all_inactive_actors() call.
-        pool = self._create_actor_pool()
-        actor = self._add_ready_actor(pool)
-        # Pick actor (and double-check that the actor was picked).
-        assert pool.pick_actor() == actor
-        # Kill inactive actors.
-        pool.kill_all_inactive_actors()
-        # Check that the active actor is still in the pool.
-        assert pool.pick_actor() == actor
-
-    def test_kill_all_inactive_future_idle_actors_killed(self):
-        # Test that future idle actors are killed after the kill_all_inactive_actors()
-        # call.
-        pool = self._create_actor_pool()
-        actor = self._add_ready_actor(pool)
-        # Pick actor (and double-check that the actor was picked).
-        assert pool.pick_actor() == actor
-        # Kill inactive actors, of which there are currently none.
-        pool.kill_all_inactive_actors()
-        # Check that the active actor is still in the pool.
-        assert pool.pick_actor() == actor
-        # Return the actor to the pool twice, which should set it as idle and cause it
-        # to be killed.
-        for _ in range(2):
-            pool.return_actor(actor)
-        # Check that actor is not in pool.
-        assert pool.pick_actor() is None
-        # Check that actor is dead.
-        actor_id = actor._actor_id.hex()
-        del actor
-        self._wait_for_actor_dead(actor_id)
-        # Check that the per-state pool sizes are as expected.
-        assert pool.current_size() == 0
-        assert pool.num_pending_actors() == 0
-        assert pool.num_running_actors() == 0
-        assert pool.num_active_actors() == 0
-        assert pool.num_idle_actors() == 0
-        assert pool.num_free_slots() == 0
-
-    def test_kill_all_inactive_mixture(self):
-        # Test that in a mixture of pending, idle, and active actors, only the pending
-        # and idle actors are killed on the kill_all_inactive_actors() call.
-        pool = self._create_actor_pool()
-        # Add active actor.
-        actor1 = self._add_ready_actor(pool)
-        # Pick actor (and double-check that the actor was picked).
-        assert pool.pick_actor() == actor1
-        # Add idle actor.
-        self._add_ready_actor(pool)
-        # Add pending actor.
-        actor3, ready_ref = self._add_pending_actor(pool)
-        # Check that the per-state pool sizes are as expected.
-        assert pool.current_size() == 3
-        assert pool.num_pending_actors() == 1
-        assert pool.num_running_actors() == 2
-        assert pool.num_active_actors() == 1
-        assert pool.num_idle_actors() == 1
-        assert pool.num_free_slots() == 7
-        # Kill inactive actors.
-        pool.kill_all_inactive_actors()
-        # Check that the active actor is still in the pool.
-        assert pool.pick_actor() == actor1
-        # Check that adding a pending actor raises an error.
-        with pytest.raises(AssertionError):
-            pool.add_pending_actor(actor3, ready_ref)
-        # Check that kill_all_inactive_actors() is idempotent.
-        pool.kill_all_inactive_actors()
-        # Check that the active actor is still in the pool.
-        assert pool.pick_actor() == actor1
-        # Return the actor to the pool thrice, which should set it as idle and cause it
-        # to be killed.
-        for _ in range(3):
-            pool.return_actor(actor1)
-        # Check that actor is not in pool.
-        assert pool.pick_actor() is None
-        # Check that actor is dead.
-        actor_id = actor1._actor_id.hex()
-        del actor1
-        self._wait_for_actor_dead(actor_id)
-        # Check that the per-state pool sizes are as expected.
-        assert pool.current_size() == 0
-        assert pool.num_pending_actors() == 0
-        assert pool.num_running_actors() == 0
-        assert pool.num_active_actors() == 0
-        assert pool.num_idle_actors() == 0
-        assert pool.num_free_slots() == 0
-
     def test_all_actors_killed(self):
         # Test that all actors are killed after the kill_all_actors() call.
         pool = self._create_actor_pool()
@@ -449,7 +410,7 @@ class TestActorPool(unittest.TestCase):
         assert pool.pick_actor() == active_actor
         idle_actor = self._add_ready_actor(pool)
         # Kill all actors, including active actors.
-        pool.kill_all_actors()
+        pool.shutdown()
         # Check that the pool is empty.
         assert pool.pick_actor() is None
 
@@ -469,62 +430,124 @@ class TestActorPool(unittest.TestCase):
         assert pool.num_idle_actors() == 0
         assert pool.num_free_slots() == 0
 
-    def test_locality_manager_actor_ranking(self):
+    def test_locality_based_actor_ranking(self):
         pool = self._create_actor_pool(max_tasks_in_flight=2)
 
         # Setup bundle mocks.
-        bundles = make_ref_bundles([[0] for _ in range(10)])
-        fake_loc_map = {}
-        for i, b in enumerate(bundles):
-            fake_loc_map[b] = "node1"
-        pool._get_location = lambda b: fake_loc_map[b]
+        bundles = make_ref_bundles([[0] for _ in range(5)])
+
+        def _rank_actors(bundle):
+            actors = [actor1, actor2]
+            ranks = pool._rank_actors(actors, bundle)
+
+            assert len(ranks) == len(actors)
+
+            return list(zip(actors, ranks))
 
         # Setup an actor on each node.
         actor1 = self._add_ready_actor(pool, node_id="node1")
         actor2 = self._add_ready_actor(pool, node_id="node2")
 
-        # Actors on node1 should be preferred.
-        res1 = pool.pick_actor(bundles[0])
-        assert res1 == actor1
-        res2 = pool.pick_actor(bundles[1])
-        assert res2 == actor1
+        # Node1 is higher in priority
+        def _get_preferred_locs():
+            return {"node1": 1024, "node2": 512}
 
-        # Fallback to remote actors.
-        res3 = pool.pick_actor(bundles[2])
-        assert res3 == actor2
-        res4 = pool.pick_actor(bundles[3])
-        assert res4 == actor2
-        res5 = pool.pick_actor(bundles[4])
-        assert res5 is None
+        # Actors on node1 should be preferred
+        with patch.object(
+            bundles[0], "get_preferred_object_locations", _get_preferred_locs
+        ):
+            ranked_actors = _rank_actors(bundles[0])
+            assert ranked_actors == [(actor1, (-1024, 0)), (actor2, (-512, 0))]
 
-    def test_locality_manager_busyness_ranking(self):
+            res1 = pool.pick_actor(bundles[0])
+            assert res1 == actor1
+
+        # Actors on node1 should be preferred still
+        with patch.object(
+            bundles[1], "get_preferred_object_locations", _get_preferred_locs
+        ):
+            ranked_actors = _rank_actors(bundles[1])
+            assert ranked_actors == [(actor1, (-1024, 1)), (actor2, (-512, 0))]
+
+            res2 = pool.pick_actor(bundles[1])
+            assert res2 == actor1
+
+        # Fallback to remote actors
+        with patch.object(
+            bundles[2], "get_preferred_object_locations", _get_preferred_locs
+        ):
+            ranked_actors = _rank_actors(bundles[2])
+            # NOTE: Actor 1 is at max requests in-flight hence excluded
+            assert ranked_actors == [(actor1, (-1024, 2)), (actor2, (-512, 0))]
+
+            res3 = pool.pick_actor(bundles[2])
+            assert res3 == actor2
+
+        # NOTE: Actor 2 is selected (since Actor 1 is at capacity)
+        with patch.object(
+            bundles[3], "get_preferred_object_locations", _get_preferred_locs
+        ):
+            res4 = pool.pick_actor(bundles[3])
+            assert res4 == actor2
+
+        # NOTE: Actor 2 is at max requests in-flight, hence excluded
+        with patch.object(
+            bundles[4], "get_preferred_object_locations", _get_preferred_locs
+        ):
+            res5 = pool.pick_actor(bundles[4])
+            assert res5 is None
+
+    def test_locality_based_actor_ranking_no_locations(self):
         pool = self._create_actor_pool(max_tasks_in_flight=2)
 
         # Setup bundle mocks.
         bundles = make_ref_bundles([[0] for _ in range(10)])
-        fake_loc_map = {}
         # Also test unknown location handling.
-        for i, b in enumerate(bundles):
-            fake_loc_map[b] = None
-        pool._get_location = lambda b: fake_loc_map[b]
+        pool._get_preferred_locations = lambda b: []
 
         # Setup two actors on the same node.
         actor1 = self._add_ready_actor(pool, node_id="node1")
         actor2 = self._add_ready_actor(pool, node_id="node2")
 
         # Fake actor 2 as more busy.
-        pool._num_tasks_in_flight[actor2] = 1
+        pool._running_actors[actor2].num_tasks_in_flight = 1
         res1 = pool.pick_actor(bundles[0])
         assert res1 == actor1
 
         # Fake actor 2 as more busy again.
-        pool._num_tasks_in_flight[actor2] = 2
+        pool._running_actors[actor2].num_tasks_in_flight = 2
         res2 = pool.pick_actor(bundles[0])
         assert res2 == actor1
 
         # Nothing left
         res3 = pool.pick_actor(bundles[0])
         assert res3 is None
+
+
+def test_min_max_resource_requirements(restore_data_context):
+    data_context = ray.data.DataContext.get_current()
+    op = ActorPoolMapOperator(
+        map_transformer=MagicMock(),
+        input_op=InputDataBuffer(data_context, input_data=MagicMock()),
+        data_context=data_context,
+        target_max_block_size=None,
+        compute_strategy=ray.data.ActorPoolStrategy(
+            min_size=1,
+            max_size=2,
+        ),
+        ray_remote_args={"num_cpus": 1},
+    )
+    op._metrics = MagicMock(obj_store_mem_max_pending_output_per_task=3)
+
+    (
+        min_resource_usage_bound,
+        max_resource_usage_bound,
+    ) = op.min_max_resource_requirements()
+
+    assert (
+        min_resource_usage_bound == ExecutionResources(cpu=1, object_store_memory=3)
+        and max_resource_usage_bound == ExecutionResources.for_limits()
+    )
 
 
 def test_start_actor_timeout(ray_start_regular_shared, restore_data_context):
@@ -554,6 +577,116 @@ def test_start_actor_timeout(ray_start_regular_shared, restore_data_context):
             compute=ray.data.ActorPoolStrategy(size=5),
             num_gpus=100,
         ).take_all()
+
+
+def test_actor_pool_fault_tolerance_e2e(ray_start_cluster, restore_data_context):
+    """Test that a dataset with actor pools can finish, when
+    all nodes in the cluster are removed and added back."""
+    ray.shutdown()
+
+    cluster = ray_start_cluster
+    cluster.add_node(num_cpus=0)
+    ray.init()
+
+    # Ensure block size is small enough to pass resource limits
+    context = ray.data.DataContext.get_current()
+    context.target_max_block_size = 1
+
+    @ray.remote(num_cpus=0)
+    class Signal:
+        def __init__(self):
+            self._node_id = ray.get_runtime_context().get_node_id()
+            self._num_alive_actors = 0
+            self._all_nodes_removed = False
+            self._all_nodes_restarted = False
+
+        async def notify_actor_alive(self):
+            self._num_alive_actors += 1
+
+        async def wait_for_actors_alive(self, value):
+            while self._num_alive_actors != value:
+                await asyncio.sleep(0.01)
+
+        async def notify_nodes_removed(self):
+            self._all_nodes_removed = True
+
+        async def notify_nodes_restarted(self):
+            self._all_nodes_restarted = True
+
+        async def wait_for_nodes_removed(self):
+            while not self._all_nodes_removed:
+                await asyncio.sleep(0.01)
+
+        async def wait_for_nodes_restarted(self):
+            while not self._all_nodes_restarted:
+                await asyncio.sleep(0.01)
+
+    # Create the signal actor on the head node.
+    signal_actor = Signal.remote()
+
+    # Spin up nodes
+    num_nodes = 1
+    nodes = []
+    for _ in range(num_nodes):
+        nodes.append(cluster.add_node(num_cpus=10, num_gpus=1))
+    cluster.wait_for_nodes()
+
+    class MyUDF:
+        def __init__(self, signal_actor):
+            self._node_id = ray.get_runtime_context().get_node_id()
+            self._signal_actor = signal_actor
+            self._signal_sent = False
+
+        def __call__(self, batch):
+            if not self._signal_sent:
+                # Notify the Actor is alive
+                self._signal_actor.notify_actor_alive.remote()
+
+                # Wait for the driver to remove nodes. This makes sure all
+                # actors are running tasks when removing nodes.
+                ray.get(self._signal_actor.wait_for_nodes_removed.remote())
+
+                self._signal_sent = True
+
+            return batch
+
+    res = []
+    num_items = 100
+
+    def run_dataset():
+        nonlocal res
+
+        ds = ray.data.range(num_items, override_num_blocks=num_items)
+        ds = ds.map_batches(
+            MyUDF,
+            fn_constructor_args=[signal_actor],
+            concurrency=num_nodes,
+            batch_size=1,
+            num_gpus=1,
+        )
+        res = ds.take_all()
+
+    # Kick off Actors
+    thread = threading.Thread(target=run_dataset)
+    thread.start()
+
+    # Wait for all actors to start
+    ray.get(signal_actor.wait_for_actors_alive.remote(num_nodes))
+
+    # Remove all the nodes
+    for node in nodes:
+        cluster.remove_node(node)
+    nodes.clear()
+    ray.get(signal_actor.notify_nodes_removed.remote())
+
+    # Add back all the nodes
+    for _ in range(num_nodes):
+        nodes.append(cluster.add_node(num_cpus=10, num_gpus=1))
+    cluster.wait_for_nodes()
+    ray.get(signal_actor.notify_nodes_restarted.remote())
+
+    thread.join()
+    assert sorted(res, key=lambda x: x["id"]) == [{"id": i} for i in range(num_items)]
 
 
 if __name__ == "__main__":

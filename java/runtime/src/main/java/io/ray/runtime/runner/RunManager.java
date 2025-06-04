@@ -27,6 +27,8 @@ public class RunManager {
     command.add("ray");
     command.add("start");
     command.add("--head");
+    command.add("--redis-username");
+    command.add(rayConfig.redisUsername);
     command.add("--redis-password");
     command.add(rayConfig.redisPassword);
     command.addAll(rayConfig.headArgs);

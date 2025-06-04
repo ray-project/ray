@@ -14,12 +14,15 @@ import yaml
 from filelock import FileLock
 
 import ray
+from ray._common.utils import (
+    get_or_create_event_loop,
+)
 from ray._private.runtime_env.conda_utils import (
     create_conda_env_if_needed,
     delete_conda_env,
     get_conda_activate_commands,
-    get_conda_info_json,
     get_conda_envs,
+    get_conda_info_json,
 )
 from ray._private.runtime_env.context import RuntimeEnvContext
 from ray._private.runtime_env.packaging import Protocol, parse_uri
@@ -28,7 +31,6 @@ from ray._private.runtime_env.validation import parse_and_validate_conda
 from ray._private.utils import (
     get_directory_size_bytes,
     get_master_wheel_url,
-    get_or_create_event_loop,
     get_release_wheel_url,
     get_wheel_filename,
     try_to_create_directory,

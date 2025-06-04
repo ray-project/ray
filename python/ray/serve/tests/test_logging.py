@@ -11,16 +11,18 @@ from pathlib import Path
 from typing import List, Tuple
 from unittest.mock import patch
 
+import httpx
 import pytest
-import requests
 import starlette
+from fastapi import FastAPI
+from starlette.responses import PlainTextResponse
 
 import ray
 import ray.util.state as state_api
 from ray import serve
 from ray._private.ray_logging.formatters import JSONFormatter
 from ray._private.test_utils import wait_for_condition
-from ray.serve._private.common import ReplicaID, ServeComponentType
+from ray.serve._private.common import DeploymentID, ReplicaID, ServeComponentType
 from ray.serve._private.constants import SERVE_LOG_EXTRA_FIELDS, SERVE_LOGGER_NAME
 from ray.serve._private.logging_utils import (
     ServeComponentFilter,
@@ -97,6 +99,97 @@ def test_log_rotation_config(monkeypatch, ray_shutdown):
     assert rotation_config["backup_count"] == backup_count
 
 
+def test_http_access_log(serve_instance):
+    name = "deployment_name"
+
+    fastapi_app = FastAPI()
+
+    @serve.deployment(name=name)
+    @serve.ingress(fastapi_app)
+    class Handler:
+        def __init__(self):
+            self._replica_unique_id = serve.get_replica_context().replica_id.unique_id
+
+        @fastapi_app.get("/")
+        def get_root(self):
+            return PlainTextResponse(self._replica_unique_id)
+
+        @fastapi_app.post("/")
+        def post_root(self):
+            return PlainTextResponse(self._replica_unique_id)
+
+        @fastapi_app.get("/{status}")
+        def template(self, status: str):
+            return PlainTextResponse(self._replica_unique_id, status_code=int(status))
+
+        @fastapi_app.put("/fail")
+        def fail(self):
+            raise RuntimeError("OOPS!")
+
+    serve.run(Handler.bind())
+
+    f = io.StringIO()
+    with redirect_stderr(f):
+
+        def check_log(
+            replica_id: ReplicaID,
+            method: str,
+            route: str,
+            status_code: str,
+            fail: bool = False,
+        ):
+            s = f.getvalue()
+            return all(
+                [
+                    name in s,
+                    _get_expected_replica_log_content(replica_id) in s,
+                    f"-- {method} {route} {status_code}" in s,
+                    "ms" in s,
+                    ("OOPS!" in s and "RuntimeError" in s)
+                    if fail
+                    else True,  # Check for stacktrace.
+                ]
+            )
+
+        r = httpx.get("http://localhost:8000/")
+        assert r.status_code == 200
+        replica_id = ReplicaID(unique_id=r.text, deployment_id=DeploymentID(name=name))
+        wait_for_condition(
+            check_log, replica_id=replica_id, method="GET", route="/", status_code="200"
+        )
+
+        r = httpx.post("http://localhost:8000/")
+        assert r.status_code == 200
+        wait_for_condition(
+            check_log,
+            replica_id=replica_id,
+            method="POST",
+            route="/",
+            status_code="200",
+        )
+
+        r = httpx.get("http://localhost:8000/350")
+        assert r.status_code == 350
+        wait_for_condition(
+            check_log,
+            replica_id=replica_id,
+            method="GET",
+            route="/{status}",
+            status_code="350",
+        )
+
+        r = httpx.put("http://localhost:8000/fail")
+        assert r.status_code == 500
+        wait_for_condition(
+            check_log,
+            replica_id=replica_id,
+            method="PUT",
+            route="/fail",
+            status_code="500",
+            fail=True,
+        )
+
+
 def test_handle_access_log(serve_instance):
     name = "handler"
 
@@ -122,7 +215,7 @@ def test_handle_access_log(serve_instance):
                 [
                     name in s,
                     _get_expected_replica_log_content(replica_id) in s,
-                    method_name.upper() in s,
+                    method_name in s,
                     ("ERROR" if fail else "OK") in s,
                     "ms" in s,
                     ("blah blah blah" in s and "RuntimeError" in s)
@@ -228,7 +321,7 @@ def test_log_filenames_contain_only_posix_characters(serve_instance):
 
     serve.run(A.bind())
 
-    r = requests.get("http://localhost:8000/")
+    r = httpx.get("http://localhost:8000/")
     r.raise_for_status()
     assert r.text == "hi"
 
@@ -248,7 +341,7 @@ def test_context_information_in_logging(serve_and_ray_shutdown, json_log_format)
     )
     def fn(*args):
         logger.info("user func")
-        request_context = ray.serve.context._serve_request_context.get()
+        request_context = ray.serve.context._get_serve_request_context()
         return {
             "request_id": request_context.request_id,
             "route": request_context.route,
@@ -258,6 +351,9 @@ def test_context_information_in_logging(serve_and_ray_shutdown, json_log_format)
             "actor_id": ray.get_runtime_context().get_actor_id(),
             "worker_id": ray.get_runtime_context().get_worker_id(),
             "node_id": ray.get_runtime_context().get_node_id(),
+            "task_name": ray.get_runtime_context().get_task_name(),
+            "task_func_name": ray.get_runtime_context().get_task_function_name(),
+            "actor_name": ray.get_runtime_context().get_actor_name(),
         }
 
     @serve.deployment(
@@ -266,7 +362,7 @@ def test_context_information_in_logging(serve_and_ray_shutdown, json_log_format)
     class Model:
         def __call__(self, req: starlette.requests.Request):
             logger.info("user log message from class method")
-            request_context = ray.serve.context._serve_request_context.get()
+            request_context = ray.serve.context._get_serve_request_context()
             return {
                 "request_id": request_context.request_id,
                 "route": request_context.route,
@@ -276,6 +372,9 @@ def test_context_information_in_logging(serve_and_ray_shutdown, json_log_format)
                 "actor_id": ray.get_runtime_context().get_actor_id(),
                 "worker_id": ray.get_runtime_context().get_worker_id(),
                 "node_id": ray.get_runtime_context().get_node_id(),
+                "task_name": ray.get_runtime_context().get_task_name(),
+                "task_func_name": ray.get_runtime_context().get_task_function_name(),
+                "actor_name": ray.get_runtime_context().get_actor_name(),
             }
 
     serve.run(fn.bind(), name="app1", route_prefix="/fn")
@@ -283,20 +382,19 @@ def test_context_information_in_logging(serve_and_ray_shutdown, json_log_format)
 
     f = io.StringIO()
     with redirect_stderr(f):
-        resp = requests.get("http://127.0.0.1:8000/fn").json()
-        resp2 = requests.get("http://127.0.0.1:8000/class_method").json()
+        resp = httpx.get("http://127.0.0.1:8000/fn").json()
+        resp2 = httpx.get("http://127.0.0.1:8000/class_method").json()
 
         # Check the component log
         expected_log_infos = [
-            f"{resp['request_id']} {resp['route']} replica.py",
-            f"{resp2['request_id']} {resp2['route']} replica.py",
+            f"{resp['request_id']} -- ",
+            f"{resp2['request_id']} -- ",
         ]
 
         # Check User log
         user_log_regexes = [
-            f".*{resp['request_id']} {resp['route']}.* user func.*",
-            f".*{resp2['request_id']} {resp2['route']}.* user log "
-            "message from class method.*",
+            f".*{resp['request_id']} -- user func.*",
+            f".*{resp2['request_id']} -- user log.*message from class method.*",
         ]
 
         def check_log():
@@ -326,9 +424,13 @@ def test_context_information_in_logging(serve_and_ray_shutdown, json_log_format)
                 f'"worker_id": "{resp["worker_id"]}", '
                 f'"node_id": "{resp["node_id"]}", '
                 f'"actor_id": "{resp["actor_id"]}", '
+                f'"task_name": "{resp["task_name"]}", '
+                f'"task_func_name": "{resp["task_func_name"]}", '
+                f'"actor_name": "{resp["actor_name"]}", '
                 f'"deployment": "{resp["app_name"]}_fn", '
                 f'"replica": "{method_replica_id}", '
-                f'"component_name": "replica".*'
+                f'"component_name": "replica", '
+                rf'"timestamp_ns": \d+}}.*'
             )
             user_class_method_log_regex = (
                 '.*"message": "user log message from class method".*'
@@ -338,17 +440,18 @@ def test_context_information_in_logging(serve_and_ray_shutdown, json_log_format)
                 f'"worker_id": "{resp2["worker_id"]}", '
                 f'"node_id": "{resp2["node_id"]}", '
                 f'"actor_id": "{resp2["actor_id"]}", '
+                f'"task_name": "{resp2["task_name"]}", '
+                f'"task_func_name": "{resp2["task_func_name"]}", '
+                f'"actor_name": "{resp2["actor_name"]}", '
                 f'"deployment": "{resp2["app_name"]}_Model", '
                 f'"replica": "{class_method_replica_id}", '
-                f'"component_name": "replica".*'
+                f'"component_name": "replica", '
+                rf'"timestamp_ns": \d+}}.*'
             )
         else:
-            user_method_log_regex = (
-                f".*{resp['request_id']} {resp['route']}.* user func.*"
-            )
+            user_method_log_regex = f".*{resp['request_id']} -- user func.*"
             user_class_method_log_regex = (
-                f".*{resp2['request_id']} {resp2['route']}.* "
-                "user log message from class method.*"
+                f".*{resp2['request_id']} -- .*user log message from class method.*"
             )
 
         def check_log_file(log_file: str, expected_regex: list):
@@ -379,7 +482,7 @@ def test_extra_field(serve_and_ray_shutdown, raise_error):
         }
 
     serve.run(fn.bind(), name="app1", route_prefix="/fn")
-    resp = requests.get("http://127.0.0.1:8000/fn")
+    resp = httpx.get("http://127.0.0.1:8000/fn")
     if raise_error:
         resp.status_code == 500
     else:
@@ -441,7 +544,7 @@ class TestLoggingAPI:
                 }
 
         serve.run(Model.bind())
-        resp = requests.get("http://127.0.0.1:8000/").json()
+        resp = httpx.get("http://127.0.0.1:8000/").json()
 
         replica_id = resp["replica"].split("#")[-1]
         if encoding_type == "JSON":
@@ -463,7 +566,7 @@ class TestLoggingAPI:
                 }
 
         serve.run(Model.bind())
-        resp = requests.get("http://127.0.0.1:8000/").json()
+        resp = httpx.get("http://127.0.0.1:8000/").json()
         expected_log_regex = [".*model_info_level.*"]
         check_log_file(resp["log_file"], expected_log_regex)
 
@@ -472,7 +575,7 @@ class TestLoggingAPI:
             check_log_file(resp["log_file"], [".*model_debug_level.*"])
 
         serve.run(Model.options(logging_config={"log_level": "DEBUG"}).bind())
-        resp = requests.get("http://127.0.0.1:8000/").json()
+        resp = httpx.get("http://127.0.0.1:8000/").json()
         expected_log_regex = [".*model_info_level.*", ".*model_debug_level.*"]
         check_log_file(resp["log_file"], expected_log_regex)
 
@@ -488,17 +591,25 @@ class TestLoggingAPI:
                 }
 
         serve.run(Model.bind())
-        resp = requests.get("http://127.0.0.1:8000/").json()
+        resp = httpx.get("http://127.0.0.1:8000/").json()
 
         paths = resp["logs_path"].split("/")
         paths[-1] = "new_dir"
         new_log_dir = "/".join(paths)
 
-        serve.run(Model.options(logging_config={"logs_dir": new_log_dir}).bind())
-        resp = requests.get("http://127.0.0.1:8000/").json()
+        serve.run(
+            Model.options(
+                logging_config={
+                    "logs_dir": new_log_dir,
+                    "additional_log_standard_attrs": ["name"],
+                }
+            ).bind()
+        )
+        resp = httpx.get("http://127.0.0.1:8000/").json()
         assert "new_dir" in resp["logs_path"]
 
         check_log_file(resp["logs_path"], [".*model_info_level.*"])
+        check_log_file(resp["logs_path"], ["ray.serve"], check_contains=True)
 
     @pytest.mark.parametrize("enable_access_log", [True, False])
     @pytest.mark.parametrize("encoding_type", ["TEXT", "JSON"])
@@ -520,7 +631,7 @@ class TestLoggingAPI:
 
         serve.run(Model.bind())
 
-        resp = requests.get("http://127.0.0.1:8000/")
+        resp = httpx.get("http://127.0.0.1:8000/")
         assert resp.status_code == 200
         resp = resp.json()
         check_log_file(resp["logs_path"], [".*model_info_level.*"])
@@ -532,6 +643,35 @@ class TestLoggingAPI:
         else:
             with pytest.raises(AssertionError):
                 check_log_file(resp["logs_path"], [".*model_not_show.*"])
+
+    @pytest.mark.parametrize("encoding_type", ["TEXT", "JSON"])
+    def test_additional_log_standard_attrs(self, serve_and_ray_shutdown, encoding_type):
+        """Test additional log standard attrs"""
+        logger = logging.getLogger("ray.serve")
+        logging_config = {
+            "enable_access_log": True,
+            "encoding": encoding_type,
+            "additional_log_standard_attrs": ["name"],
+        }
+
+        @serve.deployment(logging_config=logging_config)
+        class Model:
+            def __call__(self, req: starlette.requests.Request):
+                logger.info("model_info_level")
+                logger.info("model_not_show", extra={"serve_access_log": True})
+                return {
+                    "logs_path": logger.handlers[1].baseFilename,
+                }
+
+        serve.run(Model.bind())
+
+        resp = httpx.get("http://127.0.0.1:8000/")
+        assert resp.status_code == 200
+        resp = resp.json()
+        if encoding_type == "JSON":
+            check_log_file(resp["logs_path"], ["name"], check_contains=True)
+        else:
+            check_log_file(resp["logs_path"], ["ray.serve"], check_contains=True)
 
     def test_application_logging_overwrite(self, serve_and_ray_shutdown):
         @serve.deployment
@@ -545,7 +685,7 @@ class TestLoggingAPI:
                 }
 
         serve.run(Model.bind(), logging_config={"log_level": "DEBUG"})
-        resp = requests.get("http://127.0.0.1:8000/").json()
+        resp = httpx.get("http://127.0.0.1:8000/").json()
         expected_log_regex = [".*model_info_level.*", ".*model_debug_level.*"]
         check_log_file(resp["log_file"], expected_log_regex)
 
@@ -568,7 +708,7 @@ class TestLoggingAPI:
             name="app2",
             route_prefix="/app2",
         )
-        resp = requests.get("http://127.0.0.1:8000/app2").json()
+        resp = httpx.get("http://127.0.0.1:8000/app2").json()
         check_log_file(resp["log_file"], [".*model_info_level.*"])
         # Make sure 'model_debug_level' log content does not exist.
         with pytest.raises(AssertionError):
@@ -661,7 +801,6 @@ def test_configure_component_logger_with_log_encoding_env_text(log_encoding):
     env_encoding, log_config_encoding, expected_encoding = log_encoding
 
     with patch("ray.serve.schema.RAY_SERVE_LOG_ENCODING", env_encoding):
-
         # Clean up logger handlers
         logger = logging.getLogger(SERVE_LOGGER_NAME)
         logger.handlers.clear()
@@ -724,7 +863,7 @@ def test_logging_disable_stdout(serve_and_ray_shutdown, ray_instance, tmp_dir):
 
     app = disable_stdout.bind()
     serve.run(app)
-    requests.get("http://127.0.0.1:8000")
+    httpx.get("http://localhost:8000/", timeout=None)
 
     # Check if each of the logs exist in Serve's log files.
     from_serve_logger_check = False
@@ -738,20 +877,21 @@ def test_logging_disable_stdout(serve_and_ray_shutdown, ray_instance, tmp_dir):
             with open(logs_dir / log_file) as f:
                 for line in f:
                     structured_log = json.loads(line)
-                    _message = structured_log["message"]
-                    if "from_serve_logger" in _message:
+                    message = structured_log["message"]
+                    exc_text = structured_log.get("exc_text", "")
+                    if "from_serve_logger" in message:
                         from_serve_logger_check = True
-                    elif "from_print" in _message:
+                    elif "from_print" in message:
                         from_print_check = True
 
                     # Error was logged from replica directly.
-                    elif "from_error" in _message:
+                    elif "from_error" in exc_text:
                         from_error_check = True
-                    elif "direct_from_stdout" in _message:
+                    elif "direct_from_stdout" in message:
                         direct_from_stdout = True
-                    elif "direct_from_stderr" in _message:
+                    elif "direct_from_stderr" in message:
                         direct_from_stderr = True
-                    elif "this\nis\nmultiline\nlog\n" in _message:
+                    elif "this\nis\nmultiline\nlog\n" in message:
                         multiline_log = True
     assert from_serve_logger_check
     assert from_print_check
@@ -773,7 +913,8 @@ def test_serve_logging_file_names(serve_and_ray_shutdown, ray_instance):
 
     app = app.bind()
     serve.run(app, logging_config=logging_config)
-    requests.get("http://127.0.0.1:8000")
+    r = httpx.get("http://127.0.0.1:8000/")
+    assert r.status_code == 200
 
     # Construct serve log file names.
     client = _get_global_client()
@@ -834,7 +975,7 @@ def test_stream_to_logger():
 
     # Calling non-existing attribute on the StreamToLogger should still raise error.
     with pytest.raises(AttributeError):
-        stream_to_logger.i_dont_exist
+        _ = stream_to_logger.i_dont_exist
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="Fail to create temp dir.")
@@ -870,7 +1011,8 @@ def test_json_logging_with_unpickleable_exc_info(
             return "foo"
 
     serve.run(App.bind())
-    requests.get("http://127.0.0.1:8000/")
+    r = httpx.get("http://127.0.0.1:8000/")
+    assert r.status_code == 200
     for log_file in os.listdir(logs_dir):
         with open(logs_dir / log_file) as f:
             assert "Logging error" not in f.read()

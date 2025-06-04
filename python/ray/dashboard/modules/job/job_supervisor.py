@@ -11,10 +11,12 @@ from typing import Any, Dict, List, Optional
 
 import ray
 import ray._private.ray_constants as ray_constants
-from ray._private.gcs_utils import GcsAioClient
+from ray._private.accelerators.nvidia_gpu import NOSET_CUDA_VISIBLE_DEVICES_ENV_VAR
 from ray._private.ray_logging.filters import CoreContextFilter
 from ray._private.ray_logging.formatters import JSONFormatter, TextFormatter
 from ray._private.runtime_env.constants import RAY_JOB_CONFIG_JSON_ENV_VAR
+from ray._private.utils import remove_ray_internal_flags_from_env
+from ray._raylet import GcsClient
 from ray.actor import ActorHandle
 from ray.dashboard.modules.job.common import (
     JOB_ID_METADATA_KEY,
@@ -74,8 +76,8 @@ class JobSupervisor:
         logs_dir: Optional[str] = None,
     ):
         self._job_id = job_id
-        gcs_aio_client = GcsAioClient(address=gcs_address, cluster_id=cluster_id_hex)
-        self._job_info_client = JobInfoStorageClient(gcs_aio_client, logs_dir)
+        gcs_client = GcsClient(address=gcs_address, cluster_id=cluster_id_hex)
+        self._job_info_client = JobInfoStorageClient(gcs_client, logs_dir)
         self._log_client = JobLogStorageClient()
         self._entrypoint = entrypoint
 
@@ -138,7 +140,7 @@ class JobSupervisor:
         # Allow CUDA_VISIBLE_DEVICES to be set normally for the driver's tasks
         # & actors.
         env_vars = curr_runtime_env.get("env_vars", {})
-        env_vars.pop(ray_constants.NOSET_CUDA_VISIBLE_DEVICES_ENV_VAR)
+        env_vars.pop(NOSET_CUDA_VISIBLE_DEVICES_ENV_VAR)
         env_vars.pop(ray_constants.RAY_WORKER_NICENESS)
         curr_runtime_env["env_vars"] = env_vars
         return curr_runtime_env
@@ -147,7 +149,7 @@ class JobSupervisor:
         """Used to check the health of the actor."""
         pass
 
-    def _exec_entrypoint(self, logs_path: str) -> subprocess.Popen:
+    def _exec_entrypoint(self, env: dict, logs_path: str) -> subprocess.Popen:
         """
         Runs the entrypoint command as a child process, streaming stderr &
         stdout to given log files.
@@ -176,6 +178,7 @@ class JobSupervisor:
                 start_new_session=True,
                 stdout=logs_file,
                 stderr=subprocess.STDOUT,
+                env=env,
                 # Ray intentionally blocks SIGINT in all processes, so if the user wants
                 # to stop job through SIGINT, we need to unblock it in the child process
                 preexec_fn=(
@@ -247,7 +250,7 @@ class JobSupervisor:
         if ray_constants.RAY_ADDRESS_ENVIRONMENT_VARIABLE in os.environ:
             os.environ[ray_constants.RAY_ADDRESS_ENVIRONMENT_VARIABLE] = "auto"
         ray_addr = ray._private.services.canonicalize_bootstrap_address_or_die(
-            "auto", ray.worker._global_node._ray_params.temp_dir
+            "auto", ray._private.worker._global_node._ray_params.temp_dir
         )
         assert ray_addr is not None
         return {
@@ -332,10 +335,9 @@ class JobSupervisor:
             # Block in PENDING state until start signal received.
             await _start_signal_actor.wait.remote()
 
+        node = ray._private.worker.global_worker.node
         driver_agent_http_address = (
-            "http://"
-            f"{ray.worker.global_worker.node.node_ip_address}:"
-            f"{ray.worker.global_worker.node.dashboard_agent_listen_port}"
+            f"http://{node.node_ip_address}:{node.dashboard_agent_listen_port}"
         )
         driver_node_id = ray.get_runtime_context().get_node_id()
 
@@ -349,16 +351,21 @@ class JobSupervisor:
         )
 
         try:
-            # Configure environment variables for the child process. These
-            # will *not* be set in the runtime_env, so they apply to the driver
+            # Configure environment variables for the child process.
+            env = os.environ.copy()
+            # Remove internal Ray flags. They present because JobSuperVisor itself is
+            # a Ray worker process but we don't want to pass them to the driver.
+            remove_ray_internal_flags_from_env(env)
+            # These will *not* be set in the runtime_env, so they apply to the driver
             # only, not its tasks & actors.
-            os.environ.update(self._get_driver_env_vars(resources_specified))
+            env.update(self._get_driver_env_vars(resources_specified))
+
             self._logger.info(
                 "Submitting job with RAY_ADDRESS = "
-                f"{os.environ[ray_constants.RAY_ADDRESS_ENVIRONMENT_VARIABLE]}"
+                f"{env[ray_constants.RAY_ADDRESS_ENVIRONMENT_VARIABLE]}"
             )
             log_path = self._log_client.get_log_file_path(self._job_id)
-            child_process = self._exec_entrypoint(log_path)
+            child_process = self._exec_entrypoint(env, log_path)
             child_pid = child_process.pid
 
             polling_task = create_task(self._polling(child_process))

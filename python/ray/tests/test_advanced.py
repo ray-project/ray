@@ -55,7 +55,6 @@ def test_internal_free(shutdown_only):
     big_id = sampler.sample_big.remote()
     ray.get(big_id)
     ray._private.internal_api.free(big_id)
-    time.sleep(1)  # wait for delete RPC to propagate
     with pytest.raises(ObjectFreedError):
         ray.get(big_id)
 
@@ -125,11 +124,11 @@ def test_internal_get_local_ongoing_lineage_reconstruction_tasks(
     ray_start_cluster_enabled,
 ):
     cluster = ray_start_cluster_enabled
-    cluster.add_node(resources={"head": 1})
+    cluster.add_node(resources={"head": 2})
     ray.init(address=cluster.address)
-    worker1 = cluster.add_node(resources={"worker": 1})
+    worker1 = cluster.add_node(resources={"worker": 2})
 
-    @ray.remote(resources={"head": 1})
+    @ray.remote(num_cpus=0, resources={"head": 1})
     class Counter:
         def __init__(self):
             self.count = 0
@@ -138,7 +137,9 @@ def test_internal_get_local_ongoing_lineage_reconstruction_tasks(
             self.count = self.count + 1
             return self.count
 
-    @ray.remote(max_retries=-1, num_cpus=0, resources={"worker": 1})
+    @ray.remote(
+        max_retries=-1, num_cpus=0, resources={"worker": 1}, _labels={"key1": "value1"}
+    )
     def task(counter):
         count = ray.get(counter.inc.remote())
         if count > 1:
@@ -146,10 +147,31 @@ def test_internal_get_local_ongoing_lineage_reconstruction_tasks(
             time.sleep(100000)
         return [1] * 1024 * 1024
 
-    counter = Counter.remote()
-    obj = task.remote(counter)
+    @ray.remote(
+        max_restarts=-1,
+        max_task_retries=-1,
+        num_cpus=0,
+        resources={"worker": 1},
+        _labels={"key2": "value2"},
+    )
+    class Actor:
+        def run(self, counter):
+            count = ray.get(counter.inc.remote())
+            if count > 1:
+                # lineage reconstruction
+                time.sleep(100000)
+            return [1] * 1024 * 1024
+
+    counter1 = Counter.remote()
+    obj1 = task.remote(counter1)
     # Wait for task to finish
-    ray.wait([obj], fetch_local=False)
+    ray.wait([obj1], fetch_local=False)
+
+    counter2 = Counter.remote()
+    actor = Actor.remote()
+    obj2 = actor.run.remote(counter2)
+    # Wait for actor task to finish
+    ray.wait([obj2], fetch_local=False)
 
     assert len(get_local_ongoing_lineage_reconstruction_tasks()) == 0
 
@@ -158,16 +180,27 @@ def test_internal_get_local_ongoing_lineage_reconstruction_tasks(
 
     def verify(expected_task_status):
         lineage_reconstruction_tasks = get_local_ongoing_lineage_reconstruction_tasks()
-        return (
-            len(lineage_reconstruction_tasks) == 1
-            and lineage_reconstruction_tasks[0][0].name == "task"
-            and lineage_reconstruction_tasks[0][0].resources == {"worker": 1.0}
+        lineage_reconstruction_tasks.sort(key=lambda task: task[0].name)
+        assert len(lineage_reconstruction_tasks) == 2
+        assert [
+            lineage_reconstruction_tasks[0][0].name,
+            lineage_reconstruction_tasks[1][0].name,
+        ] == ["Actor.run", "task"]
+        assert (
+            lineage_reconstruction_tasks[0][0].labels == {"key2": "value2"}
             and lineage_reconstruction_tasks[0][0].status == expected_task_status
             and lineage_reconstruction_tasks[0][1] == 1
         )
+        assert (
+            lineage_reconstruction_tasks[1][0].labels == {"key1": "value1"}
+            and lineage_reconstruction_tasks[1][0].status == expected_task_status
+            and lineage_reconstruction_tasks[1][1] == 1
+        )
+
+        return True
 
     wait_for_condition(lambda: verify(common_pb2.TaskStatus.PENDING_NODE_ASSIGNMENT))
-    cluster.add_node(resources={"worker": 1})
+    cluster.add_node(resources={"worker": 2})
     wait_for_condition(lambda: verify(common_pb2.TaskStatus.SUBMITTED_TO_WORKER))
 
 
@@ -177,8 +210,7 @@ def test_multiple_waits_and_gets(shutdown_only):
     ray.init(num_cpus=3)
 
     @ray.remote
-    def f(delay):
-        time.sleep(delay)
+    def f():
         return 1
 
     @ray.remote
@@ -193,12 +225,12 @@ def test_multiple_waits_and_gets(shutdown_only):
 
     # Make sure that multiple wait requests involving the same object ref
     # all return.
-    x = f.remote(1)
+    x = f.remote()
     ray.get([g.remote([x]), g.remote([x])])
 
     # Make sure that multiple get requests involving the same object ref all
     # return.
-    x = f.remote(1)
+    x = f.remote()
     ray.get([h.remote([x]), h.remote([x])])
 
 
@@ -295,17 +327,11 @@ def test_wait_cluster(ray_start_cluster_enabled):
     def f():
         return
 
-    # Make sure we have enough workers on the remote nodes to execute some
-    # tasks.
-    tasks = [f.remote() for _ in range(10)]
-    start = time.time()
-    ray.get(tasks)
-    end = time.time()
-
     # Submit some more tasks that can only be executed on the remote nodes.
     tasks = [f.remote() for _ in range(10)]
-    # Sleep for a bit to let the tasks finish.
-    time.sleep((end - start) * 2)
+    # Wait for all tasks to finish.
+    _, _ = ray.wait(tasks, num_returns=len(tasks), fetch_local=False)
+    # Make sure a wait with 0 timeout works.
     _, unready = ray.wait(tasks, num_returns=len(tasks), timeout=0)
     # All remote tasks should have finished.
     assert len(unready) == 0
@@ -443,9 +469,4 @@ def test_illegal_api_calls(ray_start_regular):
 
 
 if __name__ == "__main__":
-    import pytest
-
-    if os.environ.get("PARALLEL_CI"):
-        sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))
-    else:
-        sys.exit(pytest.main(["-sv", __file__]))
+    sys.exit(pytest.main(["-sv", __file__]))

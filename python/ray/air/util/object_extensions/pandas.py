@@ -5,7 +5,7 @@ import numpy as np
 import pandas as pd
 import pyarrow as pa
 from pandas._libs import lib
-from pandas._typing import ArrayLike, Dtype, PositionalIndexer, npt
+from pandas._typing import ArrayLike, Dtype, PositionalIndexer, TakeIndexer, npt
 
 import ray.air.util.object_extensions.arrow
 from ray.util.annotations import PublicAPI
@@ -79,6 +79,34 @@ class PythonObjectArray(pd.api.extensions.ExtensionArray):
         return ray.air.util.object_extensions.arrow.ArrowPythonObjectArray.from_objects(
             self.values
         )
+
+    def isna(self) -> np.ndarray:
+        return pd.isnull(self.values)
+
+    def take(
+        self,
+        indices: TakeIndexer,
+        *,
+        allow_fill: bool = False,
+        fill_value: typing.Any = None,
+    ) -> "PythonObjectArray":
+        if allow_fill and fill_value is None:
+            fill_value = self.dtype.na_value
+
+        result = pd.core.algorithms.take(
+            self.values, indices, allow_fill=allow_fill, fill_value=fill_value
+        )
+        return self._from_sequence(result, dtype=self.dtype)
+
+    def copy(self) -> "PythonObjectArray":
+        return PythonObjectArray(self.values)
+
+    @classmethod
+    def _concat_same_type(
+        cls, to_concat: collections.abc.Sequence["PythonObjectArray"]
+    ) -> "PythonObjectArray":
+        values_to_concat = [element.values for element in to_concat]
+        return cls(np.concatenate(values_to_concat))
 
 
 @PublicAPI(stability="alpha")

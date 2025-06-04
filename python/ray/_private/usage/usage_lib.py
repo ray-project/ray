@@ -4,7 +4,7 @@ NOTE: Ray's usage report is currently "on by default".
       One could opt-out, see details at https://docs.ray.io/en/master/cluster/usage-stats.html. # noqa
 
 Ray usage report follows the specification from
-https://docs.google.com/document/d/1ZT-l9YbGHh-iWRUC91jS-ssQ5Qe2UQ43Lsoc1edCalc/edit#heading=h.17dss3b9evbj. # noqa
+https://docs.ray.io/en/master/cluster/usage-stats.html#usage-stats-collection  # noqa
 
 # Module
 
@@ -43,10 +43,10 @@ folder (e.g., /tmp/ray/session_[id]/*).
 """
 import json
 import logging
-import threading
 import os
 import platform
 import sys
+import threading
 import time
 from dataclasses import asdict, dataclass
 from enum import Enum, auto
@@ -57,14 +57,14 @@ import requests
 import yaml
 
 import ray
-from ray._raylet import GcsClient
 import ray._private.ray_constants as ray_constants
 import ray._private.usage.usage_constants as usage_constant
+from ray._raylet import GcsClient
+from ray.core.generated import gcs_pb2, usage_pb2
 from ray.experimental.internal_kv import (
     _internal_kv_initialized,
     _internal_kv_put,
 )
-from ray.core.generated import usage_pb2, gcs_pb2
 
 logger = logging.getLogger(__name__)
 TagKey = usage_pb2.TagKey
@@ -522,7 +522,7 @@ def put_cluster_metadata(gcs_client, *, ray_init_cluster) -> None:
         ray_init_cluster: Whether the cluster is started by ray.init()
 
     Raises:
-        gRPC exceptions if PUT fails.
+        gRPC exceptions: If PUT fails.
     """
     metadata = _generate_cluster_metadata(ray_init_cluster=ray_init_cluster)
     gcs_client.internal_kv_put(
@@ -548,7 +548,7 @@ def get_total_num_running_jobs_to_report(gcs_client) -> Optional[int]:
                 total_num_running_jobs += 1
         return total_num_running_jobs
     except Exception as e:
-        logger.info(f"Faile to query number of running jobs in the cluster: {e}")
+        logger.info(f"Failed to query number of running jobs in the cluster: {e}")
         return None
 
 
@@ -562,7 +562,7 @@ def get_total_num_nodes_to_report(gcs_client, timeout=None) -> Optional[int]:
                 total_num_nodes += 1
         return total_num_nodes
     except Exception as e:
-        logger.info(f"Faile to query number of nodes in the cluster: {e}")
+        logger.info(f"Failed to query number of nodes in the cluster: {e}")
         return None
 
 
@@ -593,7 +593,7 @@ def get_extra_usage_tags_to_report(gcs_client) -> Dict[str, str]:
                 k, v = kv.split("=")
                 extra_usage_tags[k] = v
         except Exception as e:
-            logger.info(f"Failed to parse extra usage tags env var. Error: {e}")
+            logger.info(f"Failed to parse extra usage tags env var: {e}")
 
     valid_tag_keys = [tag_key.lower() for tag_key in TagKey.keys()]
     try:
@@ -601,16 +601,16 @@ def get_extra_usage_tags_to_report(gcs_client) -> Dict[str, str]:
             usage_constant.EXTRA_USAGE_TAG_PREFIX.encode(),
             namespace=usage_constant.USAGE_STATS_NAMESPACE.encode(),
         )
-        for key in keys:
-            value = gcs_client.internal_kv_get(
-                key, namespace=usage_constant.USAGE_STATS_NAMESPACE.encode()
-            )
+        kv = gcs_client.internal_kv_multi_get(
+            keys, namespace=usage_constant.USAGE_STATS_NAMESPACE.encode()
+        )
+        for key, value in kv.items():
             key = key.decode("utf-8")
             key = key[len(usage_constant.EXTRA_USAGE_TAG_PREFIX) :]
             assert key in valid_tag_keys
             extra_usage_tags[key] = value.decode("utf-8")
     except Exception as e:
-        logger.info(f"Failed to get extra usage tags from kv store {e}")
+        logger.info(f"Failed to get extra usage tags from kv store: {e}")
     return extra_usage_tags
 
 
@@ -634,8 +634,8 @@ def _get_cluster_status_to_report_v2(gcs_client) -> ClusterStatusToReport:
     try:
         cluster_status = get_cluster_status(gcs_client.address)
         total_resources = cluster_status.total_resources()
-        result.total_num_cpus = total_resources.get("CPU", 0)
-        result.total_num_gpus = total_resources.get("GPU", 0)
+        result.total_num_cpus = int(total_resources.get("CPU", 0))
+        result.total_num_gpus = int(total_resources.get("GPU", 0))
 
         to_GiB = 1 / 2**30
         result.total_memory_gb = total_resources.get("memory", 0) * to_GiB
@@ -798,7 +798,7 @@ def get_cluster_metadata(gcs_client) -> dict:
         The cluster metadata in a dictinoary.
 
     Raises:
-        RuntimeError if it fails to obtain cluster metadata from GCS.
+        RuntimeError: If it fails to obtain cluster metadata from GCS.
     """
     return json.loads(
         gcs_client.internal_kv_get(
@@ -854,9 +854,7 @@ def generate_report_data(
     """
     assert cluster_id
 
-    gcs_client = ray._raylet.GcsClient(
-        address=gcs_address, nums_reconnect_retry=20, cluster_id=cluster_id
-    )
+    gcs_client = ray._raylet.GcsClient(address=gcs_address, cluster_id=cluster_id)
 
     cluster_metadata = get_cluster_metadata(gcs_client)
     cluster_status_to_report = get_cluster_status_to_report(gcs_client)
@@ -951,7 +949,7 @@ class UsageReportClient:
             data: Data to report.
 
         Raises:
-            requests.HTTPError if requests fails.
+            requests.HTTPError: If requests fails.
         """
         r = requests.request(
             "POST",

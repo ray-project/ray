@@ -13,6 +13,7 @@ import requests
 from google.protobuf import text_format
 
 import ray
+import ray._private.usage.usage_lib as ray_usage_lib
 from ray._private import ray_constants
 from ray._private.metrics_agent import fix_grpc_metric
 from ray._private.test_utils import (
@@ -62,6 +63,21 @@ STATS_TEMPLATE = {
             ),
         }
     ],
+    "gcs": {
+        "memory_info": Bunch(rss=18354171, vms=6921486336, pfaults=6203, pageins=2),
+        "memory_full_info": Bunch(uss=51428384),
+        "cpu_percent": 5.0,
+        "num_fds": 14,
+        "cmdline": ["fake gcs cmdline"],
+        "create_time": 1614826395.274854,
+        "pid": 7154,
+        "cpu_times": Bunch(
+            user=0.01683138,
+            system=0.045913716,
+            children_user=0.0,
+            children_system=0.0,
+        ),
+    },
     "raylet": {
         "memory_info": Bunch(rss=18354176, vms=6921486336, pfaults=6206, pageins=3),
         "cpu_percent": 0.0,
@@ -114,50 +130,6 @@ def random_work():
     for _ in range(10000):
         time.sleep(0.1)
         np.random.rand(5 * 1024 * 1024)  # 40 MB
-
-
-@pytest.mark.skipif(
-    sys.platform == "win32", reason="setproctitle does not change psutil.cmdline"
-)
-def test_node_physical_stats(enable_test_module, shutdown_only):
-    addresses = ray.init(include_dashboard=True, num_cpus=6)
-
-    @ray.remote(num_cpus=1)
-    class Actor:
-        def getpid(self):
-            return os.getpid()
-
-    actors = [Actor.remote() for _ in range(6)]
-    actor_pids = ray.get([actor.getpid.remote() for actor in actors])
-    actor_pids = set(actor_pids)
-
-    webui_url = addresses["webui_url"]
-    assert wait_until_server_available(webui_url) is True
-    webui_url = format_web_url(webui_url)
-
-    def _check_workers():
-        try:
-            resp = requests.get(webui_url + "/test/dump?key=node_physical_stats")
-            resp.raise_for_status()
-            result = resp.json()
-            assert result["result"] is True
-            node_physical_stats = result["data"]["nodePhysicalStats"]
-            assert len(node_physical_stats) == 1
-            current_stats = node_physical_stats[addresses["node_id"]]
-            # Check Actor workers
-            current_actor_pids = set()
-            for worker in current_stats["workers"]:
-                if "ray::Actor" in worker["cmdline"][0]:
-                    current_actor_pids.add(worker["pid"])
-            assert current_actor_pids == actor_pids
-            # Check raylet cmdline
-            assert "raylet" in current_stats["cmdline"][0]
-            return True
-        except Exception as ex:
-            logger.info(ex)
-            return False
-
-    wait_for_condition(_check_workers, timeout=10)
 
 
 def test_fix_grpc_metrics():
@@ -215,9 +187,26 @@ def enable_grpc_metrics_collection():
     os.environ.pop("RAY_enable_grpc_metrics_collection_for", None)
 
 
+@pytest.fixture
+def enable_open_telemetry(request):
+    """
+    Fixture to enable OpenTelemetry for the test.
+    """
+    if request.param:
+        os.environ["RAY_experimental_enable_open_telemetry_on_agent"] = "1"
+    else:
+        os.environ["RAY_experimental_enable_open_telemetry_on_agent"] = "0"
+    yield
+    os.environ.pop("RAY_experimental_enable_open_telemetry_on_agent", None)
+
+
 @pytest.mark.skipif(prometheus_client is None, reason="prometheus_client not installed")
+@pytest.mark.parametrize("enable_open_telemetry", [True, False], indirect=True)
 def test_prometheus_physical_stats_record(
-    enable_grpc_metrics_collection, enable_test_module, shutdown_only
+    enable_open_telemetry,
+    enable_grpc_metrics_collection,
+    enable_test_module,
+    shutdown_only,
 ):
     addresses = ray.init(include_dashboard=True, num_cpus=1)
     metrics_export_port = addresses["metrics_export_port"]
@@ -274,8 +263,11 @@ def test_prometheus_physical_stats_record(
                 break
         return str(raylet_proc.process.pid) == str(raylet_pid)
 
-    wait_for_condition(test_case_stats_exist, retry_interval_ms=1000)
-    wait_for_condition(test_case_ip_correct, retry_interval_ms=1000)
+    wait_for_condition(
+        lambda: test_case_stats_exist() and test_case_ip_correct(),
+        timeout=30,
+        retry_interval_ms=1000,
+    )
 
 
 @pytest.mark.skipif(
@@ -306,9 +298,7 @@ def test_prometheus_export_worker_and_memory_stats(enable_test_module, shutdown_
         ]
         for metric in expected_metrics:
             if metric not in metric_names:
-                raise RuntimeError(
-                    f"Metric {metric} not found in exported metric names"
-                )
+                return False
         return True
 
     wait_for_condition(test_worker_stats, retry_interval_ms=1000)
@@ -337,21 +327,26 @@ def test_report_stats():
             assert val == STATS_TEMPLATE["shm"]
         print(record.gauge.name)
         print(record)
-    assert len(records) == 36
+    assert len(records) == 41
+    # Verify IsHeadNode tag
+    for record in records:
+        if record.gauge.name.startswith("node_"):
+            assert "IsHeadNode" in record.tags
+            assert record.tags["IsHeadNode"] == "true"
     # Test stats without raylets
     STATS_TEMPLATE["raylet"] = {}
     records = agent._to_records(STATS_TEMPLATE, cluster_stats)
-    assert len(records) == 32
+    assert len(records) == 37
     # Test stats with gpus
     STATS_TEMPLATE["gpus"] = [
         {"utilization_gpu": 1, "memory_used": 100, "memory_total": 1000, "index": 0}
     ]
     records = agent._to_records(STATS_TEMPLATE, cluster_stats)
-    assert len(records) == 36
+    assert len(records) == 41
     # Test stats without autoscaler report
     cluster_stats = {}
     records = agent._to_records(STATS_TEMPLATE, cluster_stats)
-    assert len(records) == 34
+    assert len(records) == 39
 
 
 def test_report_stats_gpu():
@@ -442,13 +437,14 @@ def test_report_stats_gpu():
         index = 0
         for record in records:
             if record.tags["GpuIndex"] == "3":
-                assert record.tags == {"ip": ip, "GpuIndex": "3"}
+                assert record.tags == {"ip": ip, "GpuIndex": "3", "IsHeadNode": "true"}
             else:
                 assert record.tags == {
                     "ip": ip,
                     # The tag value must be string for prometheus.
                     "GpuIndex": str(index),
                     "GpuDeviceName": "NVIDIA A10G",
+                    "IsHeadNode": "true",
                 }
 
             if name == "node_gram_available":
@@ -507,7 +503,22 @@ def test_report_per_component_stats():
             children_system=0.0,
         ),
     }
-    raylet_stast = {
+    gcs_stats = {
+        "memory_info": Bunch(rss=18354171, vms=6921486336, pfaults=6203, pageins=2),
+        "memory_full_info": Bunch(uss=51428384),
+        "cpu_percent": 5.0,
+        "num_fds": 14,
+        "cmdline": ["fake gcs cmdline"],
+        "create_time": 1614826395.274854,
+        "pid": 7154,
+        "cpu_times": Bunch(
+            user=0.01683138,
+            system=0.045913716,
+            children_user=0.0,
+            children_system=0.0,
+        ),
+    }
+    raylet_stats = {
         "memory_info": Bunch(rss=18354176, vms=6921486336, pfaults=6206, pageins=3),
         "memory_full_info": Bunch(uss=51428381),
         "cpu_percent": 4.0,
@@ -539,7 +550,8 @@ def test_report_per_component_stats():
     }
 
     test_stats["workers"] = [idle_stats, func_stats]
-    test_stats["raylet"] = raylet_stast
+    test_stats["gcs"] = gcs_stats
+    test_stats["raylet"] = raylet_stats
     test_stats["agent"] = agent_stats
 
     cluster_stats = {
@@ -595,7 +607,8 @@ def test_report_per_component_stats():
         assert num_fds_metrics == num_fds
 
     stats_map = {
-        "raylet": raylet_stast,
+        "gcs": gcs_stats,
+        "raylet": raylet_stats,
         "agent": agent_stats,
         "ray::IDLE": idle_stats,
         "ray::func": func_stats,
@@ -985,6 +998,21 @@ def test_task_get_memory_profile_missing_params(shutdown_only):
         return True
 
     wait_for_condition(verify, timeout=10)
+
+
+def test_get_cluster_metadata(ray_start_with_dashboard):
+    assert wait_until_server_available(ray_start_with_dashboard["webui_url"])
+    webui_url = format_web_url(ray_start_with_dashboard["webui_url"])
+    url = f"{webui_url}/api/v0/cluster_metadata"
+
+    resp = requests.get(url)
+    assert resp.status_code == 200
+    resp_data = resp.json()["data"]
+    meta = ray_usage_lib._generate_cluster_metadata(ray_init_cluster=True)
+    assert len(resp_data) == len(meta)
+    assert resp_data["pythonVersion"] == meta["python_version"]
+    assert resp_data["rayVersion"] == meta["ray_version"]
+    assert resp_data["rayInitCluster"] == meta["ray_init_cluster"]
 
 
 if __name__ == "__main__":

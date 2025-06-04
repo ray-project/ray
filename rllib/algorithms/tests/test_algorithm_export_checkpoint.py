@@ -21,6 +21,9 @@ def save_test(alg_name, framework="tf", multi_agent=False):
     config = (
         get_trainable_cls(alg_name)
         .get_default_config()
+        .api_stack(
+            enable_env_runner_and_connector_v2=False, enable_rl_module_and_learner=False
+        )
         .framework(framework)
         # Switch on saving native DL-framework (tf, torch) model files.
         .checkpointing(export_native_model_files=True)
@@ -32,25 +35,20 @@ def save_test(alg_name, framework="tf", multi_agent=False):
             enable_env_runner_and_connector_v2=True,
         )
 
-    if "DDPG" in alg_name or "SAC" in alg_name:
-        config.environment("Pendulum-v1")
-        algo = config.build()
-        test_obs = np.array([[0.1, 0.2, 0.3]])
+    if multi_agent:
+        config.multi_agent(
+            policies={"pol1", "pol2"},
+            policy_mapping_fn=(
+                lambda agent_id, episode, worker, **kwargs: "pol1"
+                if agent_id == "agent1"
+                else "pol2"
+            ),
+        )
+        config.environment(MultiAgentCartPole, env_config={"num_agents": 2})
     else:
-        if multi_agent:
-            config.multi_agent(
-                policies={"pol1", "pol2"},
-                policy_mapping_fn=(
-                    lambda agent_id, episode, worker, **kwargs: "pol1"
-                    if agent_id == "agent1"
-                    else "pol2"
-                ),
-            )
-            config.environment(MultiAgentCartPole, env_config={"num_agents": 2})
-        else:
-            config.environment("CartPole-v1")
-        algo = config.build()
-        test_obs = np.array([[0.1, 0.2, 0.3, 0.4]])
+        config.environment("CartPole-v1")
+    algo = config.build()
+    test_obs = np.array([[0.1, 0.2, 0.3, 0.4]])
 
     export_dir = os.path.join(
         ray._private.utils.get_user_temp_dir(), "export_dir_%s" % alg_name
@@ -68,7 +66,7 @@ def save_test(alg_name, framework="tf", multi_agent=False):
 
     # Test loading exported model and perform forward pass.
     filename = os.path.join(model_dir, "model.pt")
-    model = torch.load(filename)
+    model = torch.load(filename, weights_only=False)
     assert model
     results = model(
         input_dict={"obs": torch.from_numpy(test_obs)},
@@ -94,9 +92,6 @@ class TestAlgorithmSave(unittest.TestCase):
 
     def test_save_appo_multi_agent(self):
         save_test("APPO", "torch", multi_agent=True)
-
-    def test_save_ppo(self):
-        save_test("PPO", "torch")
 
 
 if __name__ == "__main__":

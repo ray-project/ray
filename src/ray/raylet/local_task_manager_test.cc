@@ -17,10 +17,16 @@
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 
+#include <list>
 #include <memory>
 #include <string>
+#include <unordered_map>
+#include <unordered_set>
+#include <utility>
+#include <vector>
 
 #include "mock/ray/gcs/gcs_client/gcs_client.h"
+#include "mock/ray/object_manager/object_manager.h"
 #include "ray/common/id.h"
 #include "ray/common/task/task.h"
 #include "ray/common/task/task_util.h"
@@ -28,8 +34,7 @@
 #include "ray/raylet/scheduling/cluster_resource_scheduler.h"
 #include "ray/raylet/test/util.h"
 
-namespace ray {
-namespace raylet {
+namespace ray::raylet {
 
 using ::testing::_;
 
@@ -37,20 +42,38 @@ class MockWorkerPool : public WorkerPoolInterface {
  public:
   MockWorkerPool() : num_pops(0) {}
 
-  void PopWorker(const TaskSpecification &task_spec, const PopWorkerCallback &callback) {
+  void PopWorker(const TaskSpecification &task_spec,
+                 const PopWorkerCallback &callback) override {
     num_pops++;
     const int runtime_env_hash = task_spec.GetRuntimeEnvHash();
     callbacks[runtime_env_hash].push_back(callback);
   }
 
-  void PushWorker(const std::shared_ptr<WorkerInterface> &worker) {
+  void PushWorker(const std::shared_ptr<WorkerInterface> &worker) override {
     workers.push_front(worker);
   }
 
-  const std::vector<std::shared_ptr<WorkerInterface>> GetAllRegisteredWorkers(
-      bool filter_dead_workers, bool filter_io_workers) const {
+  std::vector<std::shared_ptr<WorkerInterface>> GetAllRegisteredWorkers(
+      bool filter_dead_workers, bool filter_io_workers) const override {
     RAY_CHECK(false) << "Not used.";
     return {};
+  }
+
+  bool IsWorkerAvailableForScheduling() const override {
+    RAY_CHECK(false) << "Not used.";
+    return false;
+  }
+
+  std::shared_ptr<WorkerInterface> GetRegisteredWorker(
+      const WorkerID &worker_id) const override {
+    RAY_CHECK(false) << "Not used.";
+    return nullptr;
+  };
+
+  std::shared_ptr<WorkerInterface> GetRegisteredDriver(
+      const WorkerID &worker_id) const override {
+    RAY_CHECK(false) << "Not used.";
+    return nullptr;
   }
 
   void TriggerCallbacksWithNotOKStatus(
@@ -153,34 +176,17 @@ RayTask CreateTask(const std::unordered_map<std::string, double> &required_resou
       "",
       0,
       TaskID::Nil(),
+      "",
       nullptr);
 
   spec_builder.SetNormalTaskSpec(0, false, "", rpc::SchedulingStrategy(), ActorID::Nil());
 
-  return RayTask(spec_builder.Build());
+  return RayTask(std::move(spec_builder).ConsumeAndBuild());
 }
-
-class MockObjectManager : public ObjectManagerInterface {
- public:
-  MockObjectManager() {}
-  uint64_t Pull(const std::vector<rpc::ObjectReference> &object_refs,
-                BundlePriority priority,
-                const TaskMetricsKey &metrics_key) override {
-    return 0;
-  }
-  void CancelPull(uint64_t request_id) override {}
-  bool PullRequestActiveOrWaitingForMetadata(uint64_t request_id) const override {
-    return false;
-  }
-  int64_t PullManagerNumInactivePullsByTaskName(
-      const TaskMetricsKey &metrics_key) const override {
-    return 0;
-  }
-};
 
 class LocalTaskManagerTest : public ::testing::Test {
  public:
-  LocalTaskManagerTest(double num_cpus = 3.0)
+  explicit LocalTaskManagerTest(double num_cpus = 3.0)
       : gcs_client_(std::make_unique<gcs::MockGcsClient>()),
         id_(NodeID::FromRandom()),
         scheduler_(CreateSingleNodeScheduler(id_.Binary(), num_cpus, *gcs_client_)),
@@ -188,9 +194,8 @@ class LocalTaskManagerTest : public ::testing::Test {
         dependency_manager_(object_manager_),
         local_task_manager_(std::make_shared<LocalTaskManager>(
             id_,
-            scheduler_,
-            dependency_manager_, /* is_owner_alive= */
-            [](const WorkerID &worker_id, const NodeID &node_id) { return true; },
+            *scheduler_,
+            dependency_manager_,
             /* get_node_info= */
             [this](const NodeID &node_id) -> const rpc::GcsNodeInfo * {
               if (node_info_.count(node_id) != 0) {
@@ -335,5 +340,4 @@ int main(int argc, char **argv) {
   return RUN_ALL_TESTS();
 }
 
-}  // namespace raylet
-}  // namespace ray
+}  // namespace ray::raylet

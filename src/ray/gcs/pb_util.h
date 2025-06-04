@@ -15,13 +15,16 @@
 #pragma once
 
 #include <memory>
+#include <string>
+#include <utility>
 
+#include "absl/time/time.h"
 #include "ray/common/constants.h"
 #include "ray/common/id.h"
 #include "ray/common/ray_config.h"
 #include "ray/common/task/task_spec.h"
 #include "src/ray/protobuf/autoscaler.pb.h"
-#include "src/ray/protobuf/export_api/export_task_event.pb.h"
+#include "src/ray/protobuf/export_task_event.pb.h"
 #include "src/ray/protobuf/gcs.pb.h"
 
 namespace ray {
@@ -61,27 +64,11 @@ inline std::shared_ptr<ray::rpc::JobTableData> CreateJobTableData(
 }
 
 /// Helper function to produce error table data.
-inline std::shared_ptr<ray::rpc::ErrorTableData> CreateErrorTableData(
+std::shared_ptr<ray::rpc::ErrorTableData> CreateErrorTableData(
     const std::string &error_type,
     const std::string &error_msg,
-    double timestamp,
-    const JobID &job_id = JobID::Nil()) {
-  uint32_t max_error_msg_size_bytes = RayConfig::instance().max_error_msg_size_bytes();
-  auto error_info_ptr = std::make_shared<ray::rpc::ErrorTableData>();
-  error_info_ptr->set_type(error_type);
-  if (error_msg.length() > max_error_msg_size_bytes) {
-    std::ostringstream stream;
-    stream << "The message size exceeds " << std::to_string(max_error_msg_size_bytes)
-           << " bytes. Find the full log from the log files. Here is abstract: "
-           << error_msg.substr(0, max_error_msg_size_bytes);
-    error_info_ptr->set_error_message(stream.str());
-  } else {
-    error_info_ptr->set_error_message(error_msg);
-  }
-  error_info_ptr->set_timestamp(timestamp);
-  error_info_ptr->set_job_id(job_id.Binary());
-  return error_info_ptr;
-}
+    absl::Time timestamp,
+    const JobID &job_id = JobID::Nil());
 
 /// Helper function to produce worker failure data.
 inline std::shared_ptr<ray::rpc::WorkerTableData> CreateWorkerFailureData(
@@ -255,6 +242,9 @@ inline void FillTaskInfo(rpc::TaskInfoEntry *task_info,
   if (!pg_id.IsNil()) {
     task_info->set_placement_group_id(pg_id.Binary());
   }
+  if (task_spec.GetMessage().call_site().size() > 0) {
+    task_info->set_call_site(task_spec.GetMessage().call_site());
+  }
 }
 
 // Fill task_info for the export API with task specification from task_spec
@@ -287,6 +277,8 @@ inline void FillExportTaskInfo(rpc::ExportTaskEventData::TaskInfoEntry *task_inf
   const auto &resources_map = task_spec.GetRequiredResources().GetResourceMap();
   task_info->mutable_required_resources()->insert(resources_map.begin(),
                                                   resources_map.end());
+  task_info->mutable_labels()->insert(task_spec.GetLabels().begin(),
+                                      task_spec.GetLabels().end());
 
   auto export_runtime_env_info = task_info->mutable_runtime_env_info();
   export_runtime_env_info->set_serialized_runtime_env(
@@ -352,8 +344,8 @@ inline size_t NumProfileEvents(const rpc::TaskEvents &task_event) {
 }
 
 inline TaskAttempt GetTaskAttempt(const rpc::TaskEvents &task_event) {
-  return std::make_pair<>(TaskID::FromBinary(task_event.task_id()),
-                          task_event.attempt_number());
+  return std::make_pair(TaskID::FromBinary(task_event.task_id()),
+                        task_event.attempt_number());
 }
 
 inline bool IsActorTask(const rpc::TaskEvents &task_event) {
@@ -441,7 +433,7 @@ inline std::string FormatPlacementGroupDetails(
 /// \param strategy The placement strategy of placement group.
 /// \return The placement constraint for placement group if it's not a strict
 ///   strategy, else absl::nullopt.
-inline absl::optional<rpc::autoscaler::PlacementConstraint>
+inline std::optional<rpc::autoscaler::PlacementConstraint>
 GenPlacementConstraintForPlacementGroup(const std::string &pg_id,
                                         rpc::PlacementStrategy strategy) {
   rpc::autoscaler::PlacementConstraint pg_constraint;

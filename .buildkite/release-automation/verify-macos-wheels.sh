@@ -4,7 +4,7 @@ set -euo pipefail
 
 set -x
 
-PYTHON_VERSIONS=("3.9" "3.10" "3.11" "3.12")
+PYTHON_VERSIONS=("3.9" "3.10" "3.11" "3.12" "3.13")
 BAZELISK_VERSION="v1.16.0"
 
 # Check arguments

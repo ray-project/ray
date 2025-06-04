@@ -8,7 +8,7 @@ import pyarrow
 import pyarrow as pa
 import pytest
 from pyarrow.fs import FileType
-from pytest_lazyfixture import lazy_fixture
+from pytest_lazy_fixtures import lf as lazy_fixture
 
 import ray
 from ray.data.block import Block

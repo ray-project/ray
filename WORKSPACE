@@ -33,8 +33,6 @@ versions.check(
     minimum_bazel_version = "6.5.0",
 )
 
-# Tools to generate `compile_commands.json` to enable awesome tooling of the C language family.
-# Just run `bazel run @hedron_compile_commands//:refresh_all`
 load("@hedron_compile_commands//:workspace_setup.bzl", "hedron_compile_commands_setup")
 
 hedron_compile_commands_setup()
@@ -90,3 +88,29 @@ filegroup(
     sha256 = "daa629648e1d1d10fc8bde5e6ce4176cbc0cd48a32211b28c3fd806e0fa5f29b",
     urls = ["https://github.com/google/go-containerregistry/releases/download/v0.19.0/go-containerregistry_Linux_x86_64.tar.gz"],
 )
+
+http_archive(
+    name = "registry_x86_64",
+    build_file_content = """
+filegroup(
+    name = "file",
+    srcs = glob(["**"]),
+    visibility = ["//visibility:public"],
+)
+""",
+    sha256 = "61c9a2c0d5981a78482025b6b69728521fbc78506d68b223d4a2eb825de5ca3d",
+    urls = ["https://github.com/distribution/distribution/releases/download/v3.0.0/registry_3.0.0_linux_amd64.tar.gz"],
+)
+
+http_archive(
+    name = "com_github_storypku_bazel_iwyu",
+    sha256 = "aa78c331a2cb139f73f7d74eeb4d5ab29794af82023ef5d6d5194f76b7d37449",
+    strip_prefix = "bazel_iwyu-0.19.2",
+    urls = [
+        "https://github.com/storypku/bazel_iwyu/archive/0.19.2.tar.gz",
+    ],
+)
+
+load("@com_github_storypku_bazel_iwyu//bazel:dependencies.bzl", "bazel_iwyu_dependencies")
+
+bazel_iwyu_dependencies()
