@@ -10,7 +10,7 @@ import platform
 import docker
 import requests
 import runfiles
-
+import boto3
 from ci.ray_ci.utils import logger
 from ci.ray_ci.builder_container import DEFAULT_ARCHITECTURE, DEFAULT_PYTHON_VERSION
 from ci.ray_ci.docker_container import (
@@ -26,7 +26,7 @@ from ci.ray_ci.docker_container import (
 
 bazel_workspace_dir = os.environ.get("BUILD_WORKSPACE_DIRECTORY", "")
 SHA_LENGTH = 6
-
+DOCKERHUB_SSM_NAME = "docker_hub_password"
 
 def _check_python_version(python_version: str, ray_type: str) -> None:
     if ray_type == RayType.RAY and python_version not in PYTHON_VERSIONS_RAY:
@@ -652,8 +652,12 @@ def authorize_docker():
     """
     Authorize docker hub access to rayproject/ray
     """
+    docker_password = _get_ssm(DOCKERHUB_SSM_NAME)
     subprocess.check_call(
-        ["bazel", "run", ".buildkite:copy_files", "--", "--destination", "docker_login"],
-        stdout=sys.stdout,
-        stderr=sys.stderr,
+        ["docker", "login", "--username", "raytravisbot", "--password", docker_password]
     )
+
+def _get_ssm(token_name):
+    client = boto3.client("ssm")
+    resp = client.get_parameter(Name=token_name, WithDecryption=True)
+    return resp["Parameter"]["Value"]
