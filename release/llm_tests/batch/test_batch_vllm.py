@@ -1,11 +1,14 @@
 import shutil
 import sys
 import os
+import logging
 
 import pytest
 
 import ray
 from ray.data.llm import build_llm_processor, vLLMEngineProcessorConfig
+
+logger = logging.getLogger(__name__)
 
 
 def test_chat_template_with_vllm():
@@ -172,7 +175,7 @@ def delete_torch_compile_cache_on_worker():
     torch_compile_cache_path = os.path.expanduser("~/.cache/vllm/torch_compile_cache")
     if os.path.exists(torch_compile_cache_path):
         shutil.rmtree(torch_compile_cache_path)
-        print(f"Deleted torch compile cache at {torch_compile_cache_path}")
+        logger.warning(f"Deleted torch compile cache at {torch_compile_cache_path}")
 
 
 @pytest.mark.parametrize(
