@@ -55,7 +55,7 @@ class Dataset_ETT_hour(Dataset):
         self.scaler = StandardScaler()
         raw_df = pd.read_csv("s3://air-example-data/electricity-transformer/ETTh1.csv")
 
-        # Determine data split boundaries (train, validation, test)
+        # Determine data split boundaries (train, validation, test).
         if self.is_smoke_test:
             print("--- Using smoke test data subset with Train/Val/Test splits ---")
             smoke_total_samples = 1000
@@ -69,13 +69,13 @@ class Dataset_ETT_hour(Dataset):
             num_val = smoke_val_samples
             num_test = smoke_test_samples
 
-            # Define start indices for each split, ensuring no negative index due to encoder_seq_len
+            # Define start indices for each split, ensuring no negative index due to encoder_seq_len.
             split_start_indices = [
                 0,
                 max(0, num_train - self.encoder_seq_len),
                 max(0, num_train + num_val - self.encoder_seq_len),
             ]
-            # Define end indices for each split
+            # Define end indices for each split.
             split_end_indices = [
                 num_train,
                 num_train + num_val,
@@ -89,10 +89,10 @@ class Dataset_ETT_hour(Dataset):
                 0,
                 0,
                 0,
-            ]  # Or consider num_train, num_train for val/test starts
+            ]  # Or consider num_train, num_train for val/test starts.
             split_end_indices = [num_train, num_train, num_train]
         else:
-            # Standard ETTh1 dataset split ratios
+            # Standard ETTh1 dataset split ratios.
             num_train = 12 * 30 * 24
             num_val = 4 * 30 * 24
             num_test = 4 * 30 * 24
@@ -110,15 +110,15 @@ class Dataset_ETT_hour(Dataset):
         current_split_start_idx = split_start_indices[self.dataset_type]
         current_split_end_idx = split_end_indices[self.dataset_type]
 
-        # Select features based on the task type
+        # Select features based on the task type.
         if self.features_type == "M" or self.features_type == "MS":
-            feature_columns = raw_df.columns[1:]  # Skip date column
+            feature_columns = raw_df.columns[1:]  # Skip date column.
             data_subset_df = raw_df[feature_columns]
         elif self.features_type == "S":
             data_subset_df = raw_df[[self.target_column]]
 
         if self.enable_scaling:
-            # Fit the scaler ONLY on the training portion of the data
+            # Fit the scaler ONLY on the training portion of the data.
             train_data_for_scaler_start = split_start_indices[0]
             train_data_for_scaler_end = split_end_indices[0]
 
@@ -191,9 +191,8 @@ class Dataset_ETT_hour(Dataset):
         ]
 
         return encoder_input_sequence, target_sequence
-
     def __len__(self):
-        # The number of samples that can be generated depends on the total length of the data,
+        # The number of samples this dataset can generate depends on the total length of the data,
         # the input sequence length, and the prediction horizon.
         # The dataset requires enough data points for an input sequence of encoder_seq_len
         # followed by a target sequence of prediction_horizon.
