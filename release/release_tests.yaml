@@ -3463,13 +3463,28 @@
     wait_for_nodes:
       num_nodes: 50
 
-  variations:
-    - __suffix__: aws
-    - __suffix__: gce
-      env: gce
-      frequency: manual
-      cluster:
-        cluster_compute: object_store_gce.yaml
+- name: object_store_2_node_throughput_64CPU_128GMEM_12.5GNET
+  group: core-scalability-test
+  working_dir: benchmarks
+
+  frequency: nightly
+  team: core
+  env: aws_perf
+  cluster:
+    byod:
+      runtime_env:
+        - RAY_object_spilling_threshold=1
+        - RAY_DEFAULT_OBJECT_STORE_MEMORY_PROPORTION=0.75
+    cluster_compute: object_store/compute_configs/compute_config_2_node_medium.yaml
+
+  run:
+    timeout: 1800
+        - num-actors (comma-separated list)
+        - object-sizes (comma-separated list)
+        - batch-sizes (comma-separated list)
+    script: python object_store/test_object_store_fixed_size_throughput.py --object-sizes="1048576,67108864,536870912,1073741824" --num-actors="1,2,8" --batch-sizes="1,4,8"
+    wait_for_nodes:
+      num_nodes: 3
 
 - name: small_objects
   group: core-scalability-test
