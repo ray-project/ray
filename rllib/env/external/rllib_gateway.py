@@ -1,3 +1,4 @@
+import logging
 import pickle
 import socket
 import threading
@@ -15,12 +16,119 @@ from ray.rllib.env.single_agent_episode import SingleAgentEpisode
 from ray.rllib.utils.metrics import WEIGHTS_SEQ_NO
 from ray.util.annotations import DeveloperAPI
 
+logger = logging.getLogger("ray.rllib")
+
 
 @DeveloperAPI
 class RLlibGateway:
-    """TODO: add docstring"""
+    """Gateway class for external, for ex. non-python, simulators to connect to RLlib.
+
+    As long as there is a path to bind python code into your simulator's language, for
+    example C++, you should be able to use the simulator very easily in connection with
+    an RLlib experiment.
+
+    C++ example:
+    You should use the gateway as follows in your C++ code:
+
+    .. code-block:: c++
+
+        #include <pybind11/embed.h>
+        #include <pybind11/stl.h>
+
+        namespace py = pybind11;
+
+        int main(int argc, char** argv) {
+            // Proper interpreter init (RAII-safe)
+            py::scoped_interpreter guard{};
+
+            // Import `RLlibGateway` class.
+            py::object rllib_gateway_class = py::module_::import(
+                "ray.rllib.env.external.rllib_gateway"
+            ).attr("RLlibGateway");
+            py::object rllib = rllib_gateway_class();
+
+            // Assuming, you have a CartPole simulator class, create it and reset.
+            CartPole env;
+            env.reset();
+            float total_reward = 0.0;
+            int eps = 0;
+
+            // Endless loop through an infinite number of episodes.
+            while (true) {
+                // Send previous reward (result of the previous action taken) and
+                // current observation to `get_action`. If the episode has just been
+                // reset, the gateway won't log it (for example, set it to 0.0).
+                try {
+                    py::gil_scoped_acquire gil;
+                    py::object action = rllib.attr("get_action")(
+                        env.reward,  // 0.0 if episode just started with a reset-obs.
+                        env.observation,
+                        false,
+                        false
+                    );
+                    // Apply the locally computed action in the simulation.
+                    env.step(action.cast<int>());
+                }
+                catch (const py::error_already_set& e) {
+                    std::cerr << "[Python error in `get_action`]\n" << e.what() << std::endl;
+                    break;
+                }
+
+                // Send last reward and last observation (with dummy-action request) to
+                // `get_action`.
+                if (env.terminated || env.truncated) {
+                    try {
+                        py::gil_scoped_acquire gil;
+                        rllib.attr("get_action")(
+                            env.reward,
+                            env.observation,
+                            env.terminated,
+                            env.truncated
+                        );
+                    }
+                    catch (const py::error_already_set& e) {
+                        std::cerr << "[Python error in `get_action` (episode done)]\n" << e.what() << std::endl;
+                        break;
+                    }
+                    // Episode is done, reset it to start a new one.
+                    env.reset();
+                    // Report episode's total return.
+                    std::cout << "Episode " << eps << " return: " << total_reward << "\n";
+                    total_reward = 0.0f;
+                    eps += 1;
+                }
+                total_reward += env.reward;
+            }
+            return 0;
+        }
+
+    The gateway automatically tries to connect to the given address and port, where
+    an RLlib EnvRunner should be listening as a service.
+
+    Once connected to an RLlib EnvRunner, the gateway receives the RLlib algo config
+    and the current state of the EnvRunner (model weights and connector states).
+    It then constructs the local RLModule and connector pipelines (env-to-module
+    and module-to-env), through which it's enabled to compute actions locally.
+
+    As a user of the gateway, its `get_action` API is the only method you need to call
+    from within your simulator's code (for example C++), always passing it the
+    previously received reward, the current observation, and whether the episode is
+    terminated/truncated. Right after an episode reset, the reward passed in should be
+    0.0 and the observation passed in should be the first observation with which the
+    episode starts.
+
+    The gateway also takes care of frequently sending batches of recorded episodes
+    back to the connected EnvRunner for model updating purposes and then waits for
+    the latest model weights and connector states.
+    """
 
     def __init__(self, address: str = "localhost", port: int = 5556):
+        """Initializes a RLlibGateway instance.
+
+        Args:
+            address: The address under which to connect to the RLlib EnvRunner.
+            port: The post to connect to.
+        """
         # RLlib SingleAgentEpisode collection buckets.
         self._episodes = []
         # The open socket connection to an RLlib EnvRunner.
@@ -43,11 +151,11 @@ class RLlibGateway:
         self._prev_action = None
         self._prev_extra_model_outputs = None
 
-        def _connecto_to_server_thread_func():
+        def _connec_to_server_thread_func():
             # Try connecting to server.
             while True:
                 try:
-                    print(f"Trying to connect to {address}:{port} ...")
+                    logger.info(f"Trying to connect to {address}:{port} ...")
                     self._sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
                     # self._sock.settimeout(120.0)
                     self._sock.connect((address, port))
@@ -55,14 +163,14 @@ class RLlibGateway:
                 except ConnectionRefusedError:
                     time.sleep(5)
 
-            print(f"Connected to server at {address}:{port} ...")
+            logger.info(f"Connected to server at {address}:{port} ...")
 
             # Send ping-pong.
             send_rllink_message(self._sock, {"type": RLlink.PING.name})
             msg_type, msg_body = get_rllink_message(self._sock)
             assert msg_type == RLlink.PONG
 
-            print(f"\tPING/PONG ok ...")
+            logger.info("\tPING/PONG ok ...")
 
             # Request config.
             send_rllink_message(self._sock, {"type": RLlink.GET_CONFIG.name})
@@ -77,7 +185,7 @@ class RLlibGateway:
             self._rl_module = rl_module_spec.build()
             self._module_to_env = self._config.build_module_to_env_connector()
 
-            print(f"\tGET_CONFIG ok (built connectors and module) ...")
+            logger.info("\tGET_CONFIG ok (built connectors and module) ...")
 
             # Request EnvRunner state (incl. model weights).
             send_rllink_message(self._sock, {"type": RLlink.GET_STATE.name})
@@ -85,12 +193,12 @@ class RLlibGateway:
             assert msg_type == RLlink.SET_STATE
             self._set_state(msg_body["state"])
 
-            print(f"\tSET_STATE ok ...")
+            logger.info("\tSET_STATE ok ...")
 
-        self._connecto_to_server_thread = threading.Thread(
-            target=_connecto_to_server_thread_func
+        self._connec_to_server_thread = threading.Thread(
+            target=_connec_to_server_thread_func
         )
-        self._connecto_to_server_thread.start()
+        self._connec_to_server_thread.start()
 
     def get_action(self, prev_reward, next_observation, terminated, truncated):
         """Computes and returns a new action, given an observation.

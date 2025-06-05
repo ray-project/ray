@@ -119,7 +119,7 @@ if __name__ == "__main__":
             eps = 0
 
             while True:
-                action = rllib_gateway.get_action(obs, reward, False, False)
+                action = rllib_gateway.get_action(reward, obs, False, False)
                 obs, reward, terminated, truncated, infos = env.step(action)
                 episode_return += reward
 
@@ -128,7 +128,7 @@ if __name__ == "__main__":
                 if terminated or truncated:
                     print(f"Episode {eps} return: {episode_return}")
                     # Log terminated/truncated (episode end) and reset.
-                    rllib_gateway.get_action(obs, reward, terminated, truncated)
+                    rllib_gateway.get_action(reward, obs, terminated, truncated)
                     episode_return = 0.0
                     reward = 0.0
                     eps += 1
