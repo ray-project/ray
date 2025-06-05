@@ -159,9 +159,6 @@ def test_logical_op_args(ray_start_cluster_with_export_api_write, kwargs):
         def __call__(self, x):
             return x
 
-        def __call__(self, x):
-            return x
-
     ds = ray.data.range(1).map_batches(
         Udf,
         **kwargs,
