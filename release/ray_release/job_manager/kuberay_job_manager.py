@@ -217,22 +217,22 @@ class KuberayJobManager:
         # now = time.time()
         # twelve_hours_ago = now - (12 * 60 * 60)
         
-        # now_str = time.strftime("%Y-%m-%dT%H:%M:%S.000Z", time.gmtime(now))
-        # start_str = time.strftime("%Y-%m-%dT%H:%M:%S.000Z", time.gmtime(twelve_hours_ago))
+        now_str = time.strftime("%Y-%m-%dT%H:%M:%S.000Z", time.gmtime(now))
+        start_str = time.strftime("%Y-%m-%dT%H:%M:%S.000Z", time.gmtime(twelve_hours_ago))
         
-        # logs_url = (
-        #     f"https://console.cloud.google.com/logs/query;"
-        #     f"query=resource.type%3D%22k8s_container%22%20AND%20"
-        #     f"jsonPayload.ray_submission_id%3D%22{self.job_id}%22;"
-        #     f"cursorTimestamp={now_str};"
-        #     f"startTime={start_str};"
-        #     f"endTime={now_str}?"
-        #     f"referrer=search&cloudshell=true&inv=1&invt=Abyi5w&"
-        #     f"project={KUBERAY_PROJECT_ID}"
-        # )
+        logs_url = (
+            f"https://console.cloud.google.com/logs/query;"
+            f"query=resource.type%3D%22k8s_container%22%20AND%20"
+            f"jsonPayload.ray_submission_id%3D%22{self.job_id}%22;"
+            f"cursorTimestamp={now_str};"
+            f"startTime={start_str};"
+            f"endTime={now_str}?"
+            f"referrer=search&cloudshell=true&inv=1&invt=Abyi5w&"
+            f"project={KUBERAY_PROJECT_ID}"
+        )
+        print("Logs: ", logs_url)
         
-        # return {"logs_url": logs_url}
-        return {}
+        return {"logs_url": logs_url}
     
     def _terminate_job(self) -> None:
         # TODO: implement this
