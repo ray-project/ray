@@ -85,17 +85,12 @@ void OpenTelemetryMetricRecorder::CollectGaugeMetricValues(
     const std::string &name,
     const opentelemetry::nostd::shared_ptr<
         opentelemetry::metrics::ObserverResultT<double>> &observer) {
-  absl::flat_hash_map<absl::flat_hash_map<std::string, std::string>, double>
-      observation_snapshot;
-  {
-    std::lock_guard<std::mutex> lock(mutex_);
-    auto it = observations_by_name_.find(name);
-    if (it == observations_by_name_.end()) {
-      return;  // Not registered
-    }
-    observation_snapshot = it->second;
+  std::lock_guard<std::mutex> lock(mutex_);
+  auto it = observations_by_name_.find(name);
+  if (it == observations_by_name_.end()) {
+    return;  // Not registered
   }
-  for (const auto &observation : observation_snapshot) {
+  for (const auto &observation : it->second) {
     observer->Observe(observation.second, observation.first);
   }
 }
@@ -103,7 +98,8 @@ void OpenTelemetryMetricRecorder::CollectGaugeMetricValues(
 void OpenTelemetryMetricRecorder::RegisterGaugeMetric(const std::string &name,
                                                       const std::string &description) {
   std::string *name_ptr;
-  auto instrument = GetMeter()->CreateDoubleObservableGauge(name, description, "");
+  opentelemetry::nostd::shared_ptr<opentelemetry::metrics::ObservableInstrument>
+      instrument;
   {
     std::lock_guard<std::mutex> lock(mutex_);
     if (registered_instruments_.contains(name)) {
@@ -111,6 +107,7 @@ void OpenTelemetryMetricRecorder::RegisterGaugeMetric(const std::string &name,
     }
     gauge_callback_names_.push_back(name);
     name_ptr = &gauge_callback_names_.back();
+    instrument = GetMeter()->CreateDoubleObservableGauge(name, description, "");
     observations_by_name_[name] = {};
     registered_instruments_[name] = instrument;
   }
