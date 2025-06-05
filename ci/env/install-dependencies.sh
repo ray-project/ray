@@ -8,8 +8,8 @@ set -euxo pipefail
 SCRIPT_DIR=$(builtin cd "$(dirname "${BASH_SOURCE:-$0}")"; pwd)
 WORKSPACE_DIR="${SCRIPT_DIR}/../.."
 
-# importing install_miniconda function
-source "${SCRIPT_DIR}/install-miniconda.sh"
+# importing install_miniforge function
+source "${SCRIPT_DIR}/install-miniforge.sh"
 
 pkg_install_helper() {
   case "${OSTYPE}" in
@@ -419,7 +419,7 @@ install_thirdparty_packages() {
 
   mkdir -p "${WORKSPACE_DIR}/python/ray/_private/thirdparty"
   RAY_PRIVATE_THIRDPARTY_FILES="$(realpath "${WORKSPACE_DIR}/python/ray/_private/thirdparty")"
-  CC=gcc python -m pip install setproctitle==1.2.2 --target="${RAY_PRIVATE_THIRDPARTY_FILES}"
+  CC=gcc python -m pip install setproctitle==1.3.6 --target="${RAY_PRIVATE_THIRDPARTY_FILES}"
 }
 
 install_dependencies() {
@@ -432,7 +432,7 @@ install_dependencies() {
   fi
 
   if [[ -n "${PYTHON-}" || "${LINT-}" == 1 || "${MINIMAL_INSTALL-}" == "1" ]]; then
-    install_miniconda
+    install_miniforge
   fi
 
   install_upgrade_pip
