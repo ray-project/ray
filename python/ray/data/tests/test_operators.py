@@ -547,7 +547,11 @@ def test_map_operator_shutdown(shutdown_only, use_actors):
         run_op_tasks_sync(op)
     op.add_input(input_op.get_next(), 0)
     assert op.num_active_tasks() == 1
-    op.shutdown(timer=Timer())
+    # Regular Ray tasks can be interrupted/cancelled, so graceful shutdown works.
+    # Actors running time.sleep() cannot be interrupted gracefully and need ray.kill() to release resources.
+    # After proper shutdown, both should return the GPU to ray.available_resources().
+    force_shutdown = use_actors
+    op.shutdown(timer=Timer(), force=force_shutdown)
 
     # Tasks/actors should be cancelled/killed.
     wait_for_condition(lambda: (ray.available_resources().get("GPU", 0) == 1.0))
