@@ -23,6 +23,7 @@ TEAM_API_CONFIGS = {
         "head_doc_file": "doc/source/serve/api/index.md",
         "white_list_apis": {
             # private versions of request router APIs
+            "ray.serve._private.common.ReplicaID",
             "ray.serve._private.request_router.common.PendingRequest",
             "ray.serve._private.request_router.pow_2_router.PowerOfTwoChoicesRequestRouter",
             "ray.serve._private.request_router.request_router.RequestRouter",
