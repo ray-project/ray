@@ -789,7 +789,7 @@ def call_ray_start_context(request):
     command_args = parameter.split(" ")
 
     try:
-        out = ray._private.utils.decode(
+        out = ray._common.utils.decode(
             subprocess.check_output(command_args, stderr=subprocess.STDOUT, env=env)
         )
     except Exception as e:

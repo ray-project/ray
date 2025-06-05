@@ -94,8 +94,8 @@ ray.shutdown()
         err = p.stderr.read().decode("ascii")
         p.wait()
         # out, err = p.communicate()
-        # out = ray._private.utils.decode(out)
-        # err = ray._private.utils.decode(err)
+        # out = ray._common.utils.decode(out)
+        # err = ray._common.utils.decode(err)
         if p.returncode != 0:
             print(
                 "Driver with PID {} returned error code {}".format(p.pid, p.returncode)

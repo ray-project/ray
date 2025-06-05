@@ -479,7 +479,7 @@ def get_webui_url_from_internal_kv():
     webui_url = ray.experimental.internal_kv._internal_kv_get(
         "webui:url", namespace=ray_constants.KV_NAMESPACE_DASHBOARD
     )
-    return ray._private.utils.decode(webui_url) if webui_url is not None else None
+    return ray._common.utils.decode(webui_url) if webui_url is not None else None
 
 
 def get_storage_uri_from_internal_kv():
@@ -487,7 +487,7 @@ def get_storage_uri_from_internal_kv():
     storage_uri = ray.experimental.internal_kv._internal_kv_get(
         "storage", namespace=ray_constants.KV_NAMESPACE_SESSION
     )
-    return ray._private.utils.decode(storage_uri) if storage_uri is not None else None
+    return ray._common.utils.decode(storage_uri) if storage_uri is not None else None
 
 
 def remaining_processes_alive():

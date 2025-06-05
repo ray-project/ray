@@ -181,7 +181,7 @@ class Node:
                     )
                     self._session_name = f"session_{date_str}_{os.getpid()}"
                 else:
-                    self._session_name = ray._private.utils.decode(maybe_key)
+                    self._session_name = ray._common.utils.decode(maybe_key)
             else:
                 assert not self._default_worker
                 session_name = ray._private.utils.internal_kv_get_with_retry(
@@ -190,7 +190,7 @@ class Node:
                     ray_constants.KV_NAMESPACE_SESSION,
                     num_retries=ray_constants.NUM_REDIS_GET_RETRIES,
                 )
-                self._session_name = ray._private.utils.decode(session_name)
+                self._session_name = ray._common.utils.decode(session_name)
 
         # Initialize webui url
         if head:
@@ -490,7 +490,7 @@ class Node:
                     ray_constants.KV_NAMESPACE_SESSION,
                     num_retries=ray_constants.NUM_REDIS_GET_RETRIES,
                 )
-                self._temp_dir = ray._private.utils.decode(temp_dir)
+                self._temp_dir = ray._common.utils.decode(temp_dir)
             else:
                 self._temp_dir = self._ray_params.temp_dir
 
@@ -507,7 +507,7 @@ class Node:
                     ray_constants.KV_NAMESPACE_SESSION,
                     num_retries=ray_constants.NUM_REDIS_GET_RETRIES,
                 )
-                self._session_dir = ray._private.utils.decode(session_dir)
+                self._session_dir = ray._common.utils.decode(session_dir)
             else:
                 self._session_dir = os.path.join(self._temp_dir, self._session_name)
         session_symlink = os.path.join(self._temp_dir, ray_constants.SESSION_LATEST)
