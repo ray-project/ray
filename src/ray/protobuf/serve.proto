@@ -142,6 +142,12 @@ message DeploymentConfig {
   // concatenation of the request router module and the request router name
   // if user passed a callable.
   string request_router_class = 16;
+
+  // Frequency at which the controller records routing stats for a replica.
+  double request_routing_stats_period_s = 17;
+
+  // Timeout after which a replica started a record routing stats without a response.
+  double request_routing_stats_timeout_s = 18;
 }
 
 // Deployment language.
