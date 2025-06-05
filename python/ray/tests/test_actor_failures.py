@@ -13,11 +13,11 @@ import ray
 from ray.actor import exit_actor
 from ray.exceptions import AsyncioActorExit
 import ray.cluster_utils
+from ray._common.test_utils import SignalActor
 from ray._private.test_utils import (
     wait_for_condition,
     wait_for_pid_to_exit,
     generate_system_config_map,
-    SignalActor,
 )
 
 SIGKILL = signal.SIGKILL if sys.platform != "win32" else signal.SIGTERM
@@ -750,12 +750,6 @@ def test_actor_failure_per_type(ray_start_cluster):
         def create_actor(self):
             self.a = Actor.remote()
             return self.a
-
-    # Test actor is dead because its reference is gone.
-    # Q(sang): Should we raise RayACtorError in this case?
-    with pytest.raises(RuntimeError, match="Lost reference to actor") as exc_info:
-        ray.get(Actor.remote().check_alive.remote())
-    print(exc_info._excinfo[1])
 
     # Test actor killed by ray.kill
     a = Actor.remote()

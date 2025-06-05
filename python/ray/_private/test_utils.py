@@ -822,42 +822,6 @@ class Collector:
         return self.items
 
 
-@ray.remote(num_cpus=0)
-class SignalActor:
-    def __init__(self):
-        self.ready_event = asyncio.Event()
-        self.num_waiters = 0
-
-    def send(self, clear=False):
-        self.ready_event.set()
-        if clear:
-            self.ready_event.clear()
-
-    async def wait(self, should_wait=True):
-        if should_wait:
-            self.num_waiters += 1
-            await self.ready_event.wait()
-            self.num_waiters -= 1
-
-    async def cur_num_waiters(self):
-        return self.num_waiters
-
-
-@ray.remote(num_cpus=0)
-class Semaphore:
-    def __init__(self, value=1):
-        self._sema = asyncio.Semaphore(value=value)
-
-    async def acquire(self):
-        await self._sema.acquire()
-
-    async def release(self):
-        self._sema.release()
-
-    async def locked(self):
-        return self._sema.locked()
-
-
 def dicts_equal(dict1, dict2, abs_tol=1e-4):
     """Compares to dicts whose values may be floating point numbers."""
 
