@@ -1,6 +1,10 @@
 (custom-request-router-guide)=
 # Use Custom Algorithm for Request Routing
 
+:::{warning}
+This API is in alpha and may change before becoming stable.
+:::
+
 Different Ray serve applications demand different logics for load balancing. For
 example, in serving LLMs you might want to have a different policy than balancing
 number of requests across replicas: e.g. balancing ongoing input tokens, balancing

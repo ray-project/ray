@@ -371,7 +371,11 @@ class FIFOMixin:
     This mixin is used to route requests in FIFO order, optionally prioritizing
     requests with matching metadata. RequestRouter's default behavior is
     out-of-order routing and match exactly the internal request id of
-    the request.
+    the request. This mixin doesn't provide any helper methods. By including it
+    in your custom implementation of RequestRouter, it will override the
+    reqeust matching algorithm to match based on the request metadata
+    multiplexed model id, if available, and then fall back to the first pending
+    request in the queue.
     """
 
     def __init__(self, *args, **kwargs):
