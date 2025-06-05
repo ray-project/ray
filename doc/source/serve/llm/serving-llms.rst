@@ -371,7 +371,7 @@ For visualization, Ray ships with a Serve LLM-specific dashboard, which is autom
 
 Engine Metrics
 ---------------------
-All engine metrics, including vLLM, are available through the Ray metrics export endpoint and are queryable using Prometheus. See `vLLM metrics <https://docs.vllm.ai/en/v0.6.2/serving/metrics.html>`_ for a complete list. These are also visualized by the Serve LLM Grafana dashboard. Dashboard panels include: time per output token (TPOT), time to first token (TTFT), and GPU cache utilization.
+All engine metrics, including vLLM, are available through the Ray metrics export endpoint and are queryable using Prometheus. See `vLLM metrics <https://docs.vllm.ai/en/stable/usage/metrics.html >`_ for a complete list. These are also visualized by the Serve LLM Grafana dashboard. Dashboard panels include: time per output token (TPOT), time to first token (TTFT), and GPU cache utilization.
 
 Engine metric logging is off by default, and must be manually enabled. In addition, you must enable the vLLM V1 engine to use engine metrics. To enable engine-level metric logging, set `log_engine_metrics: True` when configuring the LLM deployment. For example:
 
