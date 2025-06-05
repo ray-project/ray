@@ -30,7 +30,10 @@ def fail_download():
         yield
 
 
-@pytest.mark.skipif(using_ray_client(), reason="Ray Client doesn't clean up global state properly on ray.init() failure.")
+@pytest.mark.skipif(
+    using_ray_client(),
+    reason="Ray Client doesn't clean up global state properly on ray.init() failure.",
+)
 @pytest.mark.parametrize("plugin", ["working_dir", "py_modules"])
 def test_fail_upload(tmpdir, monkeypatch, start_cluster, plugin):
     """Simulate failing to upload the working_dir to the GCS.
@@ -47,6 +50,7 @@ def test_fail_upload(tmpdir, monkeypatch, start_cluster, plugin):
     with pytest.raises(RuntimeEnvSetupError) as e:
         ray.init(address, runtime_env=runtime_env)
     assert "Failed to upload" in str(e.value)
+
 
 @pytest.mark.parametrize("plugin", ["working_dir", "py_modules"])
 def test_fail_download(
@@ -77,9 +81,10 @@ def test_fail_download(
     with pytest.raises(RuntimeEnvSetupError) as e:
         ray.get(f.remote())
     assert "Failed to download" in str(e.value)
-    assert (
-        f"the default is {RAY_RUNTIME_ENV_URI_PIN_EXPIRATION_S_DEFAULT}"
-    ) in str(e.value)
+    assert (f"the default is {RAY_RUNTIME_ENV_URI_PIN_EXPIRATION_S_DEFAULT}") in str(
+        e.value
+    )
+
 
 def test_eager_install_fail(tmpdir, start_cluster):
     """Simulate failing to install a runtime_env in ray.init().
@@ -99,9 +104,7 @@ def test_eager_install_fail(tmpdir, start_cluster):
         # Ray Client server.
         with pytest.raises(ConnectionAbortedError) as e:
             init_ray()
-        assert "No matching distribution found for ray-nonexistent-pkg" in str(
-            e.value
-        )
+        assert "No matching distribution found for ray-nonexistent-pkg" in str(e.value)
     else:
         init_ray()
 
@@ -114,9 +117,7 @@ def test_eager_install_fail(tmpdir, start_cluster):
 
         with pytest.raises(RuntimeEnvSetupError) as e:
             ray.get(f.remote())
-        assert "No matching distribution found for ray-nonexistent-pkg" in str(
-            e.value
-        )
+        assert "No matching distribution found for ray-nonexistent-pkg" in str(e.value)
 
 
 if __name__ == "__main__":
