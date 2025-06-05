@@ -4468,7 +4468,27 @@
       env: gce
       frequency: manual
       cluster:
-        cluster_compute: ci/gce.yaml  # relative to working_dir
+        cluster_compute: ci/gce.yaml  # Relative to working_dir.
+
+- name: e2e_timeseries
+  frequency: weekly
+  python: "3.11"
+  group: ray-examples
+  team: ml
+  working_dir: //doc/source/ray-overview/examples/e2e-timeseries  # Use // to access from repo's root.
+
+  cluster:
+    byod:
+      type: cu123
+      post_build_script: byod_e2e_timeseries.sh
+    cluster_compute: ci/aws.yaml
+
+  run:
+    timeout: 3600
+    script: python ci/tests.py
+
+  variations:
+    - __suffix__: aws
 
 - name: e2e_multimodal_ai_workloads  # do not use dashes (regex sensitive)
   frequency: weekly
