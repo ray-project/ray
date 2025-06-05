@@ -4485,7 +4485,7 @@
 
   run:
     timeout: 3600
-    script: python ci/tests.py
+    script: python ci/test.py --target-dir e2e_timeseries/
 
   variations:
     - __suffix__: aws
