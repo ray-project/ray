@@ -31,6 +31,9 @@ HTTPS_PACKAGE_URI = "https://github.com/shrekris-anyscale/test_module/archive/a8
 S3_PACKAGE_URI = "s3://runtime-env-test/test_runtime_env.zip"
 TEST_IMPORT_DIR = "test_import_dir"
 
+def using_ray_client():
+    return ray._private.client_mode_hook.is_client_mode_enabled
+
 
 # Set scope to "module" to force this to run before start_cluster, whose scope
 # is "function".  We need these env vars to be set before Ray is started.
@@ -349,6 +352,7 @@ def test_empty_working_dir(start_cluster):
         ray.init(address, runtime_env={"working_dir": working_dir})
 
 
+@pytest.mark.skipif(using_ray_client(), reason="Ray Client doesn't clean up global state properly on ray.init() failure.")
 @pytest.mark.parametrize("option", ["working_dir", "py_modules"])
 def test_input_validation(start_cluster, option: str):
     """Tests input validation for working_dir and py_modules."""
