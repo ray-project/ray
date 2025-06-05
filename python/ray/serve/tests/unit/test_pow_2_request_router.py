@@ -1913,5 +1913,115 @@ async def test_locality_aware_backoff_skips_sleeps(pow_2_router):
     assert set(chosen_replicas[2]) & {r1.replica_id, r2.replica_id, r3.replica_id}
 
 
+@pytest.mark.parametrize(
+    "pow_2_router",
+    [
+        {"use_replica_queue_len_cache": True},
+    ],
+    indirect=True,
+)
+@pytest.mark.asyncio
+async def test_select_available_replicas(pow_2_router: PowerOfTwoChoicesRequestRouter):
+    """Test that the available_replicas property returns the correct replicas."""
+    s = pow_2_router
+
+    unavailable_replica = FakeRunningReplica("r1")
+    available_replica_in_cache = FakeRunningReplica("r2")
+    available_replica_not_in_cache = FakeRunningReplica("r3")
+    all_replicas = [
+        unavailable_replica,
+        available_replica_in_cache,
+        available_replica_not_in_cache,
+    ]
+    s.update_replicas(all_replicas)
+    s.replica_queue_len_cache.update(
+        unavailable_replica.replica_id, DEFAULT_MAX_ONGOING_REQUESTS
+    )
+    s.replica_queue_len_cache.update(available_replica_in_cache.replica_id, 0)
+
+    # When no candidate replicas are provided, all replicas should be
+    # considered.
+    assert s.select_available_replicas() == [
+        available_replica_in_cache,
+        available_replica_not_in_cache,
+    ]
+
+    # When candidate replicas are provided, only those that are available
+    # should be returned.
+    assert s.select_available_replicas(
+        [unavailable_replica, available_replica_not_in_cache]
+    ) == [available_replica_not_in_cache]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "pow_2_router",
+    [
+        {
+            "az": ROUTER_AZ,
+        },
+    ],
+    indirect=True,
+)
+async def test_rank_replicas_via_locality(pow_2_router: PowerOfTwoChoicesRequestRouter):
+    """Test rank_replicas_via_locality returns the correct ranking."""
+    s = pow_2_router
+
+    same_node_same_zone_replica = FakeRunningReplica(
+        "r1", node_id=ROUTER_NODE_ID, availability_zone=ROUTER_AZ
+    )
+    diff_node_same_zone_replica = FakeRunningReplica(
+        "r2",
+        node_id="some_other_node_in_the_stratosphere",
+        availability_zone=ROUTER_AZ,
+    )
+    diff_node_diff_zone_replica = FakeRunningReplica(
+        "r3",
+        node_id="some_other_node_in_the_stratosphere",
+        availability_zone="some_other_az_in_the_solar_system",
+    )
+    all_replicas = [
+        diff_node_diff_zone_replica,
+        same_node_same_zone_replica,
+        diff_node_same_zone_replica,
+    ]
+    s.update_replicas(all_replicas)
+
+    assert s.rank_replicas_via_locality(all_replicas) == [
+        [same_node_same_zone_replica],  # same node, same zone ranked 0
+        [diff_node_same_zone_replica],  # different node, same zone ranked 1
+        [diff_node_diff_zone_replica],  # different node, different zone ranked 2
+    ]
+
+
+@pytest.mark.asyncio
+async def test_rank_replicas_via_multiplex(
+    pow_2_router: PowerOfTwoChoicesRequestRouter,
+):
+    """Test rank_replicas_via_multiplex returns the correct ranking."""
+    s = pow_2_router
+
+    replica_with_multiplexed_model = FakeRunningReplica("r1", model_ids={"m1", "m2"})
+    replica_with_other_models = FakeRunningReplica("r2", model_ids={"m2", "m3"})
+    replica_with_no_model = FakeRunningReplica(
+        "r3",
+        model_ids=set(),
+    )
+    all_replicas = [
+        replica_with_other_models,
+        replica_with_multiplexed_model,
+        replica_with_no_model,
+    ]
+    s.update_replicas(all_replicas)
+
+    assert s.rank_replicas_via_multiplex(
+        replicas=all_replicas, multiplexed_model_id="m1"
+    ) == [
+        [replica_with_multiplexed_model],  # replica with the exact model ranked 0
+        [replica_with_no_model],  # replica with fewer cached models ranked 1
+        [replica_with_other_models],  # replica with more cached models ranked 2
+    ]
+
+
 if __name__ == "__main__":
     sys.exit(pytest.main(["-v", "-s", __file__]))
