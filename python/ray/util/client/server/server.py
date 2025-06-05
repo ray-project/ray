@@ -841,7 +841,7 @@ def create_ray_handler(address, redis_password, redis_username=None):
 
 def try_create_gcs_client(address: Optional[str]) -> Optional[GcsClient]:
     """
-    Try to create a gcs client based on the the command line args or by
+    Try to create a gcs client based on the command line args or by
     autodetecting a running Ray cluster.
     """
     address = canonicalize_bootstrap_address_or_die(address)

@@ -20,20 +20,17 @@ from ray.tune.search.hyperopt import HyperOptSearch
 
 
 def f_unpack_dict(dct):
-    """
-    Unpacks all sub-dictionaries in given dictionary recursively.
+    """Unpacks all sub-dictionaries in given dictionary recursively.
     There should be no duplicated keys across all nested
     subdictionaries, or some instances will be lost without warning
 
     Source: https://www.kaggle.com/fanvacoolt/tutorial-on-hyperopt
 
-    Parameters:
-    ----------------
-    dct : dictionary to unpack
+    Args:
+        dct: dictionary to unpack
 
     Returns:
-    ----------------
-    : unpacked dictionary
+        dict: unpacked dictionary
     """
 
     res = {}

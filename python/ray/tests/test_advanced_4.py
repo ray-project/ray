@@ -5,11 +5,11 @@ import pytest
 
 import ray
 from ray._private.test_utils import (
-    Semaphore,
     client_test_enabled,
     wait_for_condition,
     get_gcs_memory_used,
 )
+from ray._common.test_utils import Semaphore
 from ray.experimental.internal_kv import _internal_kv_list
 
 
@@ -267,10 +267,4 @@ def test_function_table_gc_actor(call_ray_start):
 
 
 if __name__ == "__main__":
-    import os
-    import pytest
-
-    if os.environ.get("PARALLEL_CI"):
-        sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))
-    else:
-        sys.exit(pytest.main(["-sv", __file__]))
+    sys.exit(pytest.main(["-sv", __file__]))

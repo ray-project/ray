@@ -251,6 +251,4 @@ ServerBidiReactor *RaySyncerService::StartSync(grpc::CallbackServerContext *cont
   return reactor;
 }
 
-RaySyncerService::~RaySyncerService() = default;
-
 }  // namespace ray::syncer

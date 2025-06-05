@@ -374,6 +374,11 @@ class RLModule(Checkpointable, abc.ABC):
             False by default.
         model_config: A config dict to specify features of this RLModule.
 
+    Attributes:
+        action_dist_cls: An optional ray.rllib.models.distribution.Distribution subclass
+            to use for sampling actions, given parameters from a batch
+            (`Columns.ACTION_DIST_INPUTS`).
+
     Abstract Methods:
         ``~_forward_train``: Forward pass during training.
 
@@ -481,15 +486,15 @@ class RLModule(Checkpointable, abc.ABC):
         abstraction can be used to create any components (e.g. NN layers) that your
         RLModule needs.
         """
-        return None
+        pass
 
     @OverrideToImplementCustomLogic
-    def get_exploration_action_dist_cls(self) -> Type[Distribution]:
-        """Returns the action distribution class for this RLModule used for exploration.
+    def get_inference_action_dist_cls(self) -> Type[Distribution]:
+        """Returns the action distribution class for this RLModule used for inference.
 
-        This class is used to create action distributions from outputs of the
-        forward_exploration method. If the case that no action distribution class is
-        needed, this method can return None.
+        This class is used to create action distributions from outputs of the forward
+        inference method. If the case that no action distribution class is needed,
+        this method can return None.
 
         Note that RLlib's distribution classes all implement the `Distribution`
         interface. This requires two special methods: `Distribution.from_logits()` and
@@ -499,12 +504,12 @@ class RLModule(Checkpointable, abc.ABC):
         raise NotImplementedError
 
     @OverrideToImplementCustomLogic
-    def get_inference_action_dist_cls(self) -> Type[Distribution]:
-        """Returns the action distribution class for this RLModule used for inference.
+    def get_exploration_action_dist_cls(self) -> Type[Distribution]:
+        """Returns the action distribution class for this RLModule used for exploration.
 
-        This class is used to create action distributions from outputs of the forward
-        inference method. If the case that no action distribution class is needed,
-        this method can return None.
+        This class is used to create action distributions from outputs of the
+        forward_exploration method. If the case that no action distribution class is
+        needed, this method can return None.
 
         Note that RLlib's distribution classes all implement the `Distribution`
         interface. This requires two special methods: `Distribution.from_logits()` and

@@ -2,7 +2,7 @@ from typing import Optional
 
 import pytest
 
-from ray.llm._internal.serve.config_generator.utils.gpu import GPUType, ALL_GPU_TYPES
+from ray.llm._internal.serve.config_generator.utils.gpu import ALL_GPU_TYPES, GPUType
 from ray.llm._internal.serve.config_generator.utils.input_converter import (
     convert_inputs_to_text_completion_model,
 )

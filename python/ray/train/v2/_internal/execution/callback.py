@@ -10,7 +10,7 @@ if TYPE_CHECKING:
         TrainControllerState,
     )
     from ray.train.v2._internal.execution.failure_handling import FailureDecision
-    from ray.train.v2._internal.execution.scaling_policy import ScalingDecision
+    from ray.train.v2._internal.execution.scaling_policy import ResizeDecision
     from ray.train.v2._internal.execution.worker_group import (
         Worker,
         WorkerGroup,
@@ -92,11 +92,11 @@ class ControllerCallback(RayTrainCallback):
         """Called before the controller executes a failure decision."""
         pass
 
-    def before_controller_execute_scaling_decision(
+    def before_controller_execute_resize_decision(
         self,
-        scaling_decision: "ScalingDecision",
+        resize_decision: "ResizeDecision",
     ):
-        """Called before the controller executes a scaling decision."""
+        """Called before the controller executes a resize decision."""
         pass
 
 

@@ -111,9 +111,10 @@ class TestGrpcServerClientFixture : public ::testing::Test {
           handler_io_service_work_(handler_io_service_.get_executor());
       handler_io_service_.run();
     });
-    test_service_.reset(new TestGrpcService(handler_io_service_, test_service_handler_));
     grpc_server_.reset(new GrpcServer("test", 0, true));
-    grpc_server_->RegisterService(*test_service_, false);
+    grpc_server_->RegisterService(
+        std::make_unique<TestGrpcService>(handler_io_service_, test_service_handler_),
+        false);
     grpc_server_->Run();
 
     // Wait until server starts listening.
@@ -128,7 +129,7 @@ class TestGrpcServerClientFixture : public ::testing::Test {
           client_io_service_work_(client_io_service_.get_executor());
       client_io_service_.run();
     });
-    client_call_manager_.reset(new ClientCallManager(client_io_service_));
+    client_call_manager_.reset(new ClientCallManager(client_io_service_, false));
     grpc_client_.reset(new GrpcClient<TestService>(
         "127.0.0.1", grpc_server_->GetPort(), *client_call_manager_));
   }
@@ -166,7 +167,6 @@ class TestGrpcServerClientFixture : public ::testing::Test {
   TestServiceHandler test_service_handler_;
   instrumented_io_context handler_io_service_;
   std::unique_ptr<std::thread> handler_thread_;
-  std::unique_ptr<TestGrpcService> test_service_;
   std::unique_ptr<GrpcServer> grpc_server_;
   grpc::CompletionQueue cq_;
   std::shared_ptr<grpc::Channel> channel_;
@@ -217,6 +217,7 @@ TEST_F(TestGrpcServerClientFixture, TestClientCallManagerTimeout) {
   grpc_client_.reset();
   client_call_manager_.reset();
   client_call_manager_.reset(new ClientCallManager(client_io_service_,
+                                                   false,
                                                    ClusterID::Nil(),
                                                    /*num_thread=*/1,
                                                    /*call_timeout_ms=*/100));
@@ -251,6 +252,7 @@ TEST_F(TestGrpcServerClientFixture, TestClientDiedBeforeReply) {
   grpc_client_.reset();
   client_call_manager_.reset();
   client_call_manager_.reset(new ClientCallManager(client_io_service_,
+                                                   false,
                                                    ClusterID::Nil(),
                                                    /*num_thread=*/1,
                                                    /*call_timeout_ms=*/100));
@@ -282,7 +284,7 @@ TEST_F(TestGrpcServerClientFixture, TestClientDiedBeforeReply) {
   }
   // Reinit client with infinite timeout.
   client_call_manager_.reset(
-      new ClientCallManager(client_io_service_, ClusterID::FromRandom()));
+      new ClientCallManager(client_io_service_, false, ClusterID::FromRandom()));
   grpc_client_.reset(new GrpcClient<TestService>(
       "127.0.0.1", grpc_server_->GetPort(), *client_call_manager_));
   // Send again, this request should be replied. If any leaking happened, this call won't

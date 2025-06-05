@@ -1,11 +1,11 @@
 import inspect
 import logging
-import numpy as np
 import sys
 
-from ray.util.client.ray_client_helpers import ray_start_client_server
+import numpy as np
 
 from ray._private.ray_microbenchmark_helpers import timeit
+from ray.util.client.ray_client_helpers import ray_start_client_server
 
 
 def benchmark_get_calls(ray, results):

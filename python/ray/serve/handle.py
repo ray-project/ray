@@ -658,7 +658,7 @@ class DeploymentHandle(_DeploymentHandleBase):
                 self._downstream_handle = handle
 
             async def __call__(self, name: str) -> str:
-                response = self._handle.say_hi.remote(name)
+                response = self._downstream_handle.say_hi.remote(name)
                 return await response
 
         app = Ingress.bind(Downstream.bind())

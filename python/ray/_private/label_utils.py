@@ -1,10 +1,12 @@
 import json
 import re
-import yaml
 from typing import (
     Dict,
     Optional,
 )
+
+import yaml
+
 import ray._private.ray_constants as ray_constants
 
 # Regex patterns used to validate that labels conform to Kubernetes label syntax rules.
@@ -144,6 +146,22 @@ def validate_label_value(value: str):
             f"with an alphanumeric character ([a-z0-9A-Z]) with dashes (-), underscores (_),"
             f"dots (.), and alphanumerics between."
         )
+
+
+def validate_label_selector(label_selector: Optional[Dict[str, str]]) -> Optional[str]:
+    if label_selector is None:
+        return None
+
+    for key, value in label_selector.items():
+        possible_error_message = validate_label_key(key)
+        if possible_error_message:
+            return possible_error_message
+        if value is not None:
+            possible_error_message = validate_label_selector_value(value)
+            if possible_error_message:
+                return possible_error_message
+
+    return None
 
 
 def validate_label_selector_value(selector: str) -> Optional[str]:

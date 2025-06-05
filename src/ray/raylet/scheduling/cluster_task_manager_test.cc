@@ -48,28 +48,36 @@ class MockWorkerPool : public WorkerPoolInterface {
  public:
   MockWorkerPool() : num_pops(0) {}
 
-  void PopWorker(const TaskSpecification &task_spec, const PopWorkerCallback &callback) {
+  void PopWorker(const TaskSpecification &task_spec,
+                 const PopWorkerCallback &callback) override {
     num_pops++;
     const int runtime_env_hash = task_spec.GetRuntimeEnvHash();
     callbacks[runtime_env_hash].push_back(callback);
   }
 
-  void PushWorker(const std::shared_ptr<WorkerInterface> &worker) {
+  void PushWorker(const std::shared_ptr<WorkerInterface> &worker) override {
     workers.push_front(worker);
   }
 
-  const std::vector<std::shared_ptr<WorkerInterface>> GetAllRegisteredWorkers(
-      bool filter_dead_workers, bool filter_io_workers) const {
+  std::vector<std::shared_ptr<WorkerInterface>> GetAllRegisteredWorkers(
+      bool filter_dead_workers, bool filter_io_workers) const override {
     RAY_CHECK(false) << "Not used.";
     return {};
   }
 
-  std::shared_ptr<WorkerInterface> GetRegisteredWorker(const WorkerID &worker_id) const {
+  bool IsWorkerAvailableForScheduling() const override {
+    RAY_CHECK(false) << "Not used.";
+    return false;
+  }
+
+  std::shared_ptr<WorkerInterface> GetRegisteredWorker(
+      const WorkerID &worker_id) const override {
     RAY_CHECK(false) << "Not used.";
     return nullptr;
   };
 
-  std::shared_ptr<WorkerInterface> GetRegisteredDriver(const WorkerID &worker_id) const {
+  std::shared_ptr<WorkerInterface> GetRegisteredDriver(
+      const WorkerID &worker_id) const override {
     RAY_CHECK(false) << "Not used.";
     return nullptr;
   }
@@ -1747,12 +1755,13 @@ TEST_F(ClusterTaskManagerTest, TestAnyPendingTasksForResourceAcquisition) {
   ASSERT_EQ(pool_.workers.size(), 0);
 
   // task1: running. Progress is made, and there's no deadlock.
-  ray::RayTask exemplar;
-  bool any_pending = false;
   int pending_actor_creations = 0;
   int pending_tasks = 0;
-  ASSERT_FALSE(task_manager_.AnyPendingTasksForResourceAcquisition(
-      &exemplar, &any_pending, &pending_actor_creations, &pending_tasks));
+  ASSERT_EQ(task_manager_.AnyPendingTasksForResourceAcquisition(&pending_actor_creations,
+                                                                &pending_tasks),
+            nullptr);
+  ASSERT_EQ(pending_actor_creations, 0);
+  ASSERT_EQ(pending_tasks, 0);
 
   // task1: running, task2: queued.
   RayTask task2 = CreateTask({{ray::kCPU_ResourceLabel, 6}});
@@ -1765,8 +1774,12 @@ TEST_F(ClusterTaskManagerTest, TestAnyPendingTasksForResourceAcquisition) {
   task_manager_.QueueAndScheduleTask(task2, false, false, &reply2, callback2);
   pool_.TriggerCallbacks();
   ASSERT_FALSE(*callback_occurred2);
-  ASSERT_TRUE(task_manager_.AnyPendingTasksForResourceAcquisition(
-      &exemplar, &any_pending, &pending_actor_creations, &pending_tasks));
+  auto pending_task = task_manager_.AnyPendingTasksForResourceAcquisition(
+      &pending_actor_creations, &pending_tasks);
+  ASSERT_EQ(pending_task->GetTaskSpecification().TaskId(),
+            task2.GetTaskSpecification().TaskId());
+  ASSERT_EQ(pending_actor_creations, 0);
+  ASSERT_EQ(pending_tasks, 1);
 }
 
 TEST_F(ClusterTaskManagerTest, ArgumentEvicted) {

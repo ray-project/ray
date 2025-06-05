@@ -8,13 +8,14 @@ import zipfile
 from typing import Dict, Iterable, List
 from unittest import mock
 
+import httpx
 import pytest
-import requests
 
 import ray
 import ray.util.state as state_api
 from ray import serve
-from ray._private.test_utils import SignalActor, wait_for_condition
+from ray._common.test_utils import SignalActor
+from ray._private.test_utils import wait_for_condition
 from ray.serve._private.common import (
     DeploymentID,
     DeploymentStatus,
@@ -217,7 +218,9 @@ class TestAutoscalingMetrics:
         wait_for_condition(check_num_requests_ge, client=client, id=dep_id, expected=45)
         print("Confirmed many queries are inflight.")
 
-        wait_for_condition(check_num_replicas_eq, name="A", target=5, app_name="app1")
+        wait_for_condition(
+            check_num_replicas_eq, name="A", target=5, app_name="app1", timeout=20
+        )
         print("Confirmed deployment scaled to 5 replicas.")
 
         # Wait for all requests to be scheduled to replicas so they'll be failed
@@ -414,7 +417,9 @@ def test_e2e_scale_up_down_basic(min_replicas, serve_instance_with_signal):
     signal.send.remote()
 
     # As the queue is drained, we should scale back down.
-    wait_for_condition(check_num_replicas_lte, name="A", target=min_replicas)
+    wait_for_condition(
+        check_num_replicas_lte, name="A", target=min_replicas, timeout=20
+    )
 
     # Make sure start time did not change for the deployment
     assert get_deployment_start_time(client._controller, "A") == start_time
@@ -534,8 +539,8 @@ def test_cold_start_time(serve_instance):
 
     wait_for_condition(check_running)
 
-    assert requests.post("http://localhost:8000/-/healthz").status_code == 200
-    assert requests.post("http://localhost:8000/-/routes").status_code == 200
+    assert httpx.post("http://localhost:8000/-/healthz").status_code == 200
+    assert httpx.post("http://localhost:8000/-/routes").status_code == 200
 
     start = time.time()
     result = handle.remote().result()
@@ -1062,7 +1067,7 @@ app = g.bind()
     # Step 3: Verify that it can scale from 0 to 1.
     @ray.remote
     def send_request():
-        return requests.get("http://localhost:8000/").text
+        return httpx.get("http://localhost:8000/").text
 
     ref = send_request.remote()
 

@@ -46,9 +46,9 @@ class _ProxyResponseGeneratorBase(ABC):
         """Return the next message in the stream.
 
         Raises:
-            - TimeoutError on timeout.
-            - asyncio.CancelledError on disconnect.
-            - StopAsyncIteration when the stream is completed.
+            TimeoutError: On timeout.
+            asyncio.CancelledError: On disconnect.
+            StopAsyncIteration: When the stream is completed.
         """
         pass
 

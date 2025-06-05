@@ -1,11 +1,11 @@
 import logging
-from typing import TYPE_CHECKING, List, Union, Dict, Optional
+from typing import TYPE_CHECKING, Dict, List, Optional, Union
 
 import numpy as np
 from packaging.version import parse as parse_version
 
-from ray._private.ray_constants import env_integer
 from ray._private.arrow_utils import get_pyarrow_version
+from ray._private.ray_constants import env_integer
 from ray.air.util.tensor_extensions.arrow import (
     INT32_OVERFLOW_THRESHOLD,
     MIN_PYARROW_VERSION_CHUNKED_ARRAY_TO_NUMPY_ZERO_COPY_ONLY,
@@ -96,7 +96,7 @@ def hash_partition(
 
     # Convert to ndarray to compute hash partition indices
     # more efficiently
-    partitions_array = np.array(partitions)
+    partitions_array = np.asarray(partitions)
     # For every partition compile list of indices of rows falling
     # under that partition
     indices = [np.where(partitions_array == p)[0] for p in range(num_partitions)]
@@ -643,6 +643,32 @@ def concat_and_sort(
     return take_table(ret, indices)
 
 
+def table_to_numpy_dict_chunked(
+    table: "pyarrow.Table",
+) -> Dict[str, List[np.ndarray]]:
+    """Convert a PyArrow table to a dictionary of lists of numpy arrays.
+
+    Args:
+        table: The PyArrow table to convert.
+
+    Returns:
+        A dictionary mapping column names to lists of numpy arrays. For chunked columns,
+        the list will contain multiple arrays (one per chunk). For non-chunked columns,
+        the list will contain a single array.
+    """
+
+    numpy_batch = {}
+    for col_name in table.column_names:
+        col = table[col_name]
+        if isinstance(col, pyarrow.ChunkedArray):
+            numpy_batch[col_name] = [
+                to_numpy(chunk, zero_copy_only=False) for chunk in col.chunks
+            ]
+        else:
+            numpy_batch[col_name] = [to_numpy(col, zero_copy_only=False)]
+    return numpy_batch
+
+
 def to_numpy(
     array: Union["pyarrow.Array", "pyarrow.ChunkedArray"],
     *,
@@ -733,8 +759,8 @@ def combine_chunked_array(
 
     Args:
         array: The chunked array to be combined into a single contiguous array.
-        ensure_copy: Skip copying when ensure_copy is False and there is exactly
-        1 chunk.
+        ensure_copy: Skip copying when ensure_copy is False and there's exactly
+           1 chunk.
     """
 
     import pyarrow as pa

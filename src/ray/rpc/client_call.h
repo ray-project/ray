@@ -30,6 +30,7 @@
 #include "ray/common/grpc_util.h"
 #include "ray/common/id.h"
 #include "ray/common/status.h"
+#include "ray/stats/metric_defs.h"
 #include "ray/util/thread_utils.h"
 
 namespace ray {
@@ -76,9 +77,11 @@ class ClientCallImpl : public ClientCall {
   explicit ClientCallImpl(const ClientCallback<Reply> &callback,
                           const ClusterID &cluster_id,
                           std::shared_ptr<StatsHandle> stats_handle,
+                          bool record_stats,
                           int64_t timeout_ms = -1)
       : callback_(std::move(const_cast<ClientCallback<Reply> &>(callback))),
-        stats_handle_(std::move(stats_handle)) {
+        stats_handle_(std::move(stats_handle)),
+        record_stats_(record_stats) {
     if (timeout_ms != -1) {
       auto deadline =
           std::chrono::system_clock::now() + std::chrono::milliseconds(timeout_ms);
@@ -105,6 +108,9 @@ class ClientCallImpl : public ClientCall {
       absl::MutexLock lock(&mutex_);
       status = return_status_;
     }
+    if (record_stats_ && !status.ok()) {
+      stats::STATS_grpc_client_req_failed.Record(1.0, stats_handle_->event_name);
+    }
     if (callback_ != nullptr) {
       // This should be only called once.
       callback_(status, std::move(reply_));
@@ -122,6 +128,8 @@ class ClientCallImpl : public ClientCall {
 
   /// The stats handle tracking this RPC.
   std::shared_ptr<StatsHandle> stats_handle_;
+
+  bool record_stats_;
 
   /// The response reader.
   std::unique_ptr<grpc::ClientAsyncResponseReader<Reply>> response_reader_;
@@ -200,15 +208,17 @@ class ClientCallManager {
   /// posted.
   ///
   explicit ClientCallManager(instrumented_io_context &main_service,
+                             bool record_stats,
                              const ClusterID &cluster_id = ClusterID::Nil(),
                              int num_threads = 1,
                              int64_t call_timeout_ms = -1)
       : cluster_id_(cluster_id),
         main_service_(main_service),
         num_threads_(num_threads),
+        record_stats_(record_stats),
         shutdown_(false),
+        rr_index_(std::rand() % num_threads_),
         call_timeout_ms_(call_timeout_ms) {
-    rr_index_ = std::rand() % num_threads_;
     // Start the polling threads.
     cqs_.reserve(num_threads_);
     for (int i = 0; i < num_threads_; i++) {
@@ -217,6 +227,9 @@ class ClientCallManager {
           &ClientCallManager::PollEventsFromCompletionQueue, this, i);
     }
   }
+
+  ClientCallManager(const ClientCallManager &) = delete;
+  ClientCallManager &operator=(const ClientCallManager &) = delete;
 
   ~ClientCallManager() {
     shutdown_ = true;
@@ -253,13 +266,13 @@ class ClientCallManager {
       const ClientCallback<Reply> &callback,
       std::string call_name,
       int64_t method_timeout_ms = -1) {
-    auto stats_handle = main_service_.stats().RecordStart(call_name);
+    auto stats_handle = main_service_.stats().RecordStart(std::move(call_name));
     if (method_timeout_ms == -1) {
       method_timeout_ms = call_timeout_ms_;
     }
 
     auto call = std::make_shared<ClientCallImpl<Reply>>(
-        callback, cluster_id_, std::move(stats_handle), method_timeout_ms);
+        callback, cluster_id_, std::move(stats_handle), record_stats_, method_timeout_ms);
     // Send request.
     // Find the next completion queue to wait for response.
     call->response_reader_ = (stub.*prepare_async_function)(
@@ -346,6 +359,9 @@ class ClientCallManager {
 
   /// The number of polling threads.
   int num_threads_;
+
+  /// Whether to record stats for these client calls.
+  bool record_stats_;
 
   /// Whether the client has shutdown.
   std::atomic<bool> shutdown_;

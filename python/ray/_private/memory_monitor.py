@@ -6,6 +6,7 @@ import time
 
 # Import ray before psutil will make sure we use psutil's bundled version
 import ray  # noqa F401
+
 import psutil  # noqa E402
 
 logger = logging.getLogger(__name__)

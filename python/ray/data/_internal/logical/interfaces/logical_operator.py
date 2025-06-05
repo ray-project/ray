@@ -1,4 +1,4 @@
-from typing import TYPE_CHECKING, Iterator, List, Optional, Callable
+from typing import TYPE_CHECKING, Callable, Iterator, List, Optional
 
 from .operator import Operator
 from ray.data.block import BlockMetadata

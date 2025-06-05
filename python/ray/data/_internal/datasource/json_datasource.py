@@ -1,6 +1,6 @@
 import logging
 from io import BytesIO
-from typing import TYPE_CHECKING, Any, Dict, List, Optional, Union, Iterable
+from typing import TYPE_CHECKING, Any, Dict, Iterable, List, Optional, Union
 
 from ray.air.util.tensor_extensions.arrow import pyarrow_table_from_pydict
 from ray.data.block import DataBatch

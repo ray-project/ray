@@ -1,6 +1,7 @@
+import sys
+
 import openai
 import pytest
-import sys
 
 from ray.llm._internal.serve.configs.constants import (
     MAX_NUM_TOPLOGPROBS_ALLOWED,

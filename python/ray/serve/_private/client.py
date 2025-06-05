@@ -13,7 +13,7 @@ from ray.serve._private.common import (
     DeploymentID,
     DeploymentStatus,
     DeploymentStatusInfo,
-    MultiplexedReplicaInfo,
+    RequestRoutingInfo,
 )
 from ray.serve._private.constants import (
     CLIENT_CHECK_CREATION_POLLING_INTERVAL_S,
@@ -28,11 +28,12 @@ from ray.serve._private.deployment_info import DeploymentInfo
 from ray.serve._private.utils import get_random_string
 from ray.serve.config import HTTPOptions
 from ray.serve.exceptions import RayServeException
-from ray.serve.generated.serve_pb2 import DeploymentArgs, DeploymentRoute
 from ray.serve.generated.serve_pb2 import (
+    DeploymentArgs,
+    DeploymentRoute,
     DeploymentStatusInfo as DeploymentStatusInfoProto,
+    StatusOverview as StatusOverviewProto,
 )
-from ray.serve.generated.serve_pb2 import StatusOverview as StatusOverviewProto
 from ray.serve.handle import DeploymentHandle
 from ray.serve.schema import (
     ApplicationStatus,
@@ -479,14 +480,14 @@ class ServeControllerClient:
         return handle
 
     @_ensure_connected
-    def record_multiplexed_replica_info(self, info: MultiplexedReplicaInfo):
-        """Record multiplexed replica information for replica.
+    def record_request_routing_info(self, info: RequestRoutingInfo):
+        """Record replica routing information for a replica.
 
         Args:
-            info: MultiplexedReplicaInfo including deployment name, replica tag and
-                model ids.
+            info: RequestRoutingInfo including deployment name, replica tag,
+                multiplex model ids, and routing stats.
         """
-        self._controller.record_multiplexed_replica_info.remote(info)
+        self._controller.record_request_routing_info.remote(info)
 
     @_ensure_connected
     def update_global_logging_config(self, logging_config: LoggingConfig):

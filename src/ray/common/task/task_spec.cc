@@ -128,6 +128,10 @@ void TaskSpecification::ComputeResources() {
   }
 
   runtime_env_hash_ = CalculateRuntimeEnvHash(SerializedRuntimeEnv());
+
+  // Set LabelSelector required for scheduling if specified. Parses string map
+  // from proto to LabelSelector data type.
+  label_selector_ = std::make_shared<LabelSelector>(message_->label_selector());
 }
 
 // Task specification getter methods.
@@ -136,6 +140,10 @@ TaskID TaskSpecification::TaskId() const {
     return TaskID::Nil();
   }
   return TaskID::FromBinary(message_->task_id());
+}
+
+TaskAttempt TaskSpecification::GetTaskAttempt() const {
+  return std::make_pair(TaskId(), AttemptNumber());
 }
 
 const std::string TaskSpecification::GetSerializedActorHandle() const {
@@ -268,11 +276,18 @@ void TaskSpecification::AddDynamicReturnId(const ObjectID &dynamic_return_id) {
 }
 
 bool TaskSpecification::ArgByRef(size_t arg_index) const {
-  return message_->args(arg_index).has_object_ref();
+  // If `has_object_ref()` is true and `is_inlined()` is true, it means that the argument
+  // is an ObjectRef, but the object doesn't get pushed to the object store. Hence, it is
+  // inlined in the task spec.
+  return message_->args(arg_index).has_object_ref() &&
+         !message_->args(arg_index).is_inlined();
 }
 
 ObjectID TaskSpecification::ArgId(size_t arg_index) const {
-  return ObjectID::FromBinary(message_->args(arg_index).object_ref().object_id());
+  if (message_->args(arg_index).has_object_ref()) {
+    return ObjectID::FromBinary(message_->args(arg_index).object_ref().object_id());
+  }
+  return ObjectID::Nil();
 }
 
 const rpc::ObjectReference &TaskSpecification::ArgRef(size_t arg_index) const {
@@ -304,6 +319,10 @@ const std::vector<rpc::ObjectReference> TaskSpecification::ArgInlinedRefs(
 
 const ResourceSet &TaskSpecification::GetRequiredResources() const {
   return *required_resources_;
+}
+
+const LabelSelector &TaskSpecification::GetLabelSelector() const {
+  return *label_selector_;
 }
 
 const rpc::SchedulingStrategy &TaskSpecification::GetSchedulingStrategy() const {
@@ -415,6 +434,10 @@ std::vector<std::string> TaskSpecification::DynamicWorkerOptions() const {
       message_->actor_creation_task_spec().dynamic_worker_options());
 }
 
+absl::flat_hash_map<std::string, std::string> TaskSpecification::GetLabels() const {
+  return MapFromProtobuf(message_->labels());
+}
+
 TaskID TaskSpecification::CallerId() const {
   return TaskID::FromBinary(message_->caller_id());
 }
@@ -442,9 +465,9 @@ ActorID TaskSpecification::ActorId() const {
   return ActorID::FromBinary(message_->actor_task_spec().actor_id());
 }
 
-uint64_t TaskSpecification::ActorCounter() const {
+uint64_t TaskSpecification::SequenceNumber() const {
   RAY_CHECK(IsActorTask());
-  return message_->actor_task_spec().actor_counter();
+  return message_->actor_task_spec().sequence_number();
 }
 
 ObjectID TaskSpecification::ActorCreationDummyObjectId() const {
@@ -461,6 +484,13 @@ int TaskSpecification::MaxActorConcurrency() const {
 const std::string &TaskSpecification::ConcurrencyGroupName() const {
   RAY_CHECK(IsActorTask());
   return message_->concurrency_group_name();
+}
+
+const rpc::TensorTransport TaskSpecification::TensorTransport() const {
+  if (IsActorTask()) {
+    return message_->tensor_transport();
+  }
+  return rpc::TensorTransport::OBJECT_STORE;
 }
 
 bool TaskSpecification::ExecuteOutOfOrder() const {
@@ -512,7 +542,7 @@ std::string TaskSpecification::DebugString() const {
   } else if (IsActorTask()) {
     // Print actor task spec.
     stream << ", actor_task_spec={actor_id=" << ActorId()
-           << ", actor_caller_id=" << CallerId() << ", actor_counter=" << ActorCounter()
+           << ", actor_caller_id=" << CallerId() << ", seq_no=" << SequenceNumber()
            << ", retry_exceptions=" << ShouldRetryExceptions() << "}";
   }
 

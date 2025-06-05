@@ -16,7 +16,7 @@ from ray._private.client_mode_hook import (
 )
 from ray._private.ray_option_utils import _warn_if_using_deprecated_placement_group
 from ray._private.serialization import pickle_dumps
-from ray._private.utils import get_runtime_env_info, parse_runtime_env
+from ray._private.utils import get_runtime_env_info, parse_runtime_env_for_task_or_actor
 from ray._raylet import (
     STREAMING_GENERATOR_RETURN,
     ObjectRefGenerator,
@@ -118,7 +118,7 @@ class RemoteFunction:
         # similar for remote functions.
         for k, v in ray_option_utils.task_options.items():
             setattr(self, "_" + k, task_options.get(k, v.default_value))
-        self._runtime_env = parse_runtime_env(self._runtime_env)
+        self._runtime_env = parse_runtime_env_for_task_or_actor(self._runtime_env)
         if "runtime_env" in self._default_options:
             self._default_options["runtime_env"] = self._runtime_env
 
@@ -271,7 +271,7 @@ class RemoteFunction:
         # ".options()" specifies new runtime_env.
         serialized_runtime_env_info = self._serialized_base_runtime_env_info
         if "runtime_env" in task_options:
-            updated_options["runtime_env"] = parse_runtime_env(
+            updated_options["runtime_env"] = parse_runtime_env_for_task_or_actor(
                 updated_options["runtime_env"]
             )
             # Re-calculate runtime env info based on updated runtime env.
@@ -465,6 +465,7 @@ class RemoteFunction:
         # Override enable_task_events to default for actor if not specified (i.e. None)
         enable_task_events = task_options.get("enable_task_events")
         labels = task_options.get("_labels")
+        label_selector = task_options.get("label_selector")
 
         def invocation(args, kwargs):
             if self._is_cross_language:
@@ -496,6 +497,7 @@ class RemoteFunction:
                 generator_backpressure_num_objects,
                 enable_task_events,
                 labels,
+                label_selector,
             )
             # Reset worker's debug context from the last "remote" command
             # (which applies only to this .remote call).

@@ -24,7 +24,7 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     # Define env-to-module-connector pipeline for the new stack.
-    def _env_to_module_pipeline(env):
+    def _env_to_module_pipeline(env, spaces, device):
         return FlattenObservations(multi_agent=args.num_agents > 0)
 
     # Register our environment with tune.

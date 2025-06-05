@@ -27,8 +27,8 @@ from ray.serve._private.utils import get_random_string
 from ray.serve.exceptions import RayServeException
 from ray.serve.generated.serve_pb2 import (
     ApplicationStatusInfo as ApplicationStatusInfoProto,
+    StatusOverview as StatusOverviewProto,
 )
-from ray.serve.generated.serve_pb2 import StatusOverview as StatusOverviewProto
 from ray.serve.schema import (
     APIType,
     ApplicationStatus,

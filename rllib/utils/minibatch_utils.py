@@ -208,7 +208,7 @@ class MiniBatchRayDataIterator:
         self._kwargs = {k: v for k, v in kwargs.items() if k != "return_state"}
 
         # Holds a batched_iterable over the dataset.
-        self._batched_iterable = self._iterator.iter_batches(
+        self._batched_iterable = self._iterator._iter_batches(
             batch_size=minibatch_size,
             _collate_fn=self._collate_fn,
             _finalize_fn=self._finalize_fn,

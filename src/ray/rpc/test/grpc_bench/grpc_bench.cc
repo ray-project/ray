@@ -79,8 +79,7 @@ int main() {
     main_service.run();
   });
   GreeterServiceHandler handler;
-  GreeterGrpcService grpc_service(main_service, handler);
-  server.RegisterService(grpc_service);
+  server.RegisterService(std::make_unique<GreeterGrpcService>(main_service, handler));
   server.Run();
   t.join();
   return 0;

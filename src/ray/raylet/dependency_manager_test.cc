@@ -22,6 +22,7 @@
 
 #include "gmock/gmock.h"
 #include "gtest/gtest.h"
+#include "mock/ray/object_manager/object_manager.h"
 #include "ray/common/task/task_util.h"
 #include "ray/common/test_util.h"
 
@@ -33,11 +34,11 @@ using ::testing::_;
 using ::testing::InSequence;
 using ::testing::Return;
 
-class MockObjectManager : public ObjectManagerInterface {
+class CustomMockObjectManager : public MockObjectManager {
  public:
   uint64_t Pull(const std::vector<rpc::ObjectReference> &object_refs,
                 BundlePriority prio,
-                const TaskMetricsKey &task_key) {
+                const TaskMetricsKey &task_key) override {
     if (prio == BundlePriority::GET_REQUEST) {
       active_get_requests.insert(req_id);
     } else if (prio == BundlePriority::WAIT_REQUEST) {
@@ -48,20 +49,16 @@ class MockObjectManager : public ObjectManagerInterface {
     return req_id++;
   }
 
-  void CancelPull(uint64_t request_id) {
+  void CancelPull(uint64_t request_id) override {
     ASSERT_TRUE(active_get_requests.erase(request_id) ||
                 active_wait_requests.erase(request_id) ||
                 active_task_requests.erase(request_id));
   }
 
-  bool PullRequestActiveOrWaitingForMetadata(uint64_t request_id) const {
+  bool PullRequestActiveOrWaitingForMetadata(uint64_t request_id) const override {
     return active_get_requests.count(request_id) ||
            active_wait_requests.count(request_id) ||
            active_task_requests.count(request_id);
-  }
-
-  int64_t PullManagerNumInactivePullsByTaskName(const TaskMetricsKey &task_key) const {
-    return 0;
   }
 
   uint64_t req_id = 1;
@@ -93,7 +90,7 @@ class DependencyManagerTest : public ::testing::Test {
     ASSERT_TRUE(object_manager_mock_.active_wait_requests.empty());
   }
 
-  MockObjectManager object_manager_mock_;
+  CustomMockObjectManager object_manager_mock_;
   DependencyManager dependency_manager_;
 };
 

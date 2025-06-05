@@ -1,7 +1,9 @@
 import copy
-import pytest
+import sys
 import threading
 from unittest.mock import MagicMock, patch
+
+import pytest
 
 from ray.autoscaler.tags import (
     TAG_RAY_CLUSTER_NAME,
@@ -183,6 +185,4 @@ def test_terminate_nodes():
 
 
 if __name__ == "__main__":
-    import sys
-
     sys.exit(pytest.main(["-v", __file__]))

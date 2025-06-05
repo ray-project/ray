@@ -518,7 +518,7 @@ class WandbLoggerCallback(LoggerCallback):
     values.
 
     Please see here for all other valid configuration settings:
-    https://docs.wandb.ai/library/init
+    https://docs.wandb.ai/ref/python/init/
     """  # noqa: E501
 
     # Do not log these result keys

@@ -1,7 +1,7 @@
 import pytest
 import ray
 from filelock import FileLock
-from ray._private.test_utils import SignalActor
+from ray._common.test_utils import SignalActor
 from ray import workflow
 from ray.tests.conftest import *  # noqa
 from ray._private.test_utils import skip_flaky_core_test_premerge

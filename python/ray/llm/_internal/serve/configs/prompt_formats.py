@@ -1,11 +1,11 @@
 from typing import (
+    TYPE_CHECKING,
     Any,
     Dict,
     List,
     Literal,
     Optional,
     Union,
-    TYPE_CHECKING,
 )
 
 from pydantic import (
@@ -15,6 +15,7 @@ from pydantic import (
     field_validator,
     model_validator,
 )
+
 from ray.llm._internal.utils import try_import
 
 if TYPE_CHECKING:

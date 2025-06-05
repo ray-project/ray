@@ -71,6 +71,7 @@ def _stub_test_result(
         timestamp=0,
         pull_request="1",
         rayci_step_id=rayci_step_id,
+        duration_ms=5.0,
     )
 
 
@@ -227,19 +228,21 @@ def test_is_stable() -> None:
 def test_result_from_bazel_event() -> None:
     result = TestResult.from_bazel_event(
         {
-            "testResult": {"status": "PASSED"},
+            "testResult": {"status": "PASSED", "testAttemptDurationMillis": "5"},
         }
     )
     assert result.is_passing()
     assert result.branch == "food"
     assert result.pull_request == "1"
     assert result.rayci_step_id == "g4_s5"
+    assert result.duration_ms == 5
     result = TestResult.from_bazel_event(
         {
             "testResult": {"status": "FAILED"},
         }
     )
     assert result.is_failing()
+    assert result.duration_ms is None
 
 
 def test_from_bazel_event() -> None:

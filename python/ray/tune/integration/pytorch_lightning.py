@@ -55,9 +55,9 @@ class TuneCallback(Callback):
     """Base class for Tune's PyTorch Lightning callbacks.
 
     Args:
-        When to trigger checkpoint creations. Must be one of
-        the PyTorch Lightning event hooks (less the ``on_``), e.g.
-        "train_batch_start", or "train_end". Defaults to "validation_end"
+        on: When to trigger checkpoint creations. Must be one of
+            the PyTorch Lightning event hooks (less the ``on_``), e.g.
+            "train_batch_start", or "train_end". Defaults to "validation_end"
     """
 
     def __init__(self, on: Union[str, List[str]] = "validation_end"):

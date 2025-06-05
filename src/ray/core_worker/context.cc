@@ -385,9 +385,9 @@ TaskID WorkerContext::GetMainThreadOrActorCreationTaskID() const {
 bool WorkerContext::ShouldReleaseResourcesOnBlockingCalls() const {
   // Check if we need to release resources when we block:
   //  - Driver doesn't acquire resources and thus doesn't need to release.
-  //  - We only support lifetime resources for direct actors, which can be
+  //  - We only support lifetime resources for actors, which can be
   //    acquired when the actor is created, per call resources are not supported,
-  //    thus we don't need to release resources for direct actor call.
+  //    thus we don't need to release resources for actor calls.
   return worker_type_ != WorkerType::DRIVER && !CurrentActorIsDirectCall() &&
          CurrentThreadIsMain();
 }

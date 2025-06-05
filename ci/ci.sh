@@ -54,18 +54,6 @@ reload_env() {
   fi
 }
 
-_need_wheels() {
-  local result="false"
-  case "${OSTYPE}" in
-    linux*) if [[ "${LINUX_WHEELS-}" == "1" ]]; then result="true"; fi;;
-    darwin*) if [[ "${MAC_WHEELS-}" == "1" ]]; then result="true"; fi;;
-    msys*) if [[ "${WINDOWS_WHEELS-}" == "1" ]]; then result="true"; fi;;
-  esac
-  echo "${result}"
-}
-
-NEED_WHEELS="$(_need_wheels)"
-
 compile_pip_dependencies() {
   # Compile boundaries
   TARGET="${1-requirements_compiled.txt}"
@@ -153,10 +141,10 @@ test_cpp() {
   fi
 }
 
-test_wheels() {
+test_macos_wheels() {
   local TEST_WHEEL_RESULT=0
 
-  "${WORKSPACE_DIR}"/ci/build/test-wheels.sh || TEST_WHEEL_RESULT=$?
+  "${WORKSPACE_DIR}"/ci/build/test-macos-wheels.sh || TEST_WHEEL_RESULT=$?
 
   if [[ "${TEST_WHEEL_RESULT}" != 0 ]]; then
     cat -- /tmp/ray/session_latest/logs/* || true
@@ -224,23 +212,14 @@ check_sphinx_links() {
 }
 
 _bazel_build_before_install() {
-  local target
-  if [ "${OSTYPE}" = msys ]; then
-    target="//:ray_pkg"
-  else
-    # Just build Python on other platforms.
-    # This because pip install captures & suppresses the build output, which causes a timeout on CI.
-    target="//:ray_pkg"
-  fi
   # NOTE: Do not add build flags here. Use .bazelrc and --config instead.
 
-  if [ -z "${RAY_DEBUG_BUILD-}" ]; then
-    bazel build "${target}"
-  elif [ "${RAY_DEBUG_BUILD}" = "asan" ]; then
-    # bazel build --config asan "${target}"
-    echo "Not needed"
-  elif [ "${RAY_DEBUG_BUILD}" = "debug" ]; then
-    bazel build --config debug "${target}"
+  if [[ -z "${RAY_DEBUG_BUILD:-}" ]]; then
+    bazel build //:ray_pkg
+  elif [[ "${RAY_DEBUG_BUILD}" == "asan" ]]; then
+    echo "No need to build anything before install"
+  elif [[ "${RAY_DEBUG_BUILD}" == "debug" ]]; then
+    bazel build --config debug //:ray_pkg
   else
     echo "Invalid config given"
     exit 1
@@ -411,11 +390,6 @@ init() {
 }
 
 build() {
-  if [[ "${NEED_WHEELS}" == "true" ]]; then
-    build_wheels_and_jars
-    return
-  fi
-
   # Build and install ray into the system.
   # For building the wheel, see build_wheels_and_jars.
   _bazel_build_before_install

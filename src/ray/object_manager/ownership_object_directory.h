@@ -18,7 +18,6 @@
 #include <string>
 #include <unordered_set>
 #include <utility>
-#include <vector>
 
 #include "absl/container/flat_hash_map.h"
 #include "ray/common/asio/instrumented_io_context.h"
@@ -46,14 +45,7 @@ class OwnershipBasedObjectDirectory : public IObjectDirectory {
       std::shared_ptr<gcs::GcsClient> &gcs_client,
       pubsub::SubscriberInterface *object_location_subscriber,
       rpc::CoreWorkerClientPool *owner_client_pool,
-      int64_t max_object_report_batch_size,
       std::function<void(const ObjectID &, const rpc::ErrorType &)> mark_as_failed);
-
-  virtual ~OwnershipBasedObjectDirectory() {}
-
-  void LookupRemoteConnectionInfo(RemoteConnectionInfo &connection_info) const override;
-
-  std::vector<RemoteConnectionInfo> LookupAllRemoteConnections() const override;
 
   void HandleNodeRemoved(const NodeID &node_id) override;
 
@@ -97,7 +89,7 @@ class OwnershipBasedObjectDirectory : public IObjectDirectory {
     /// The current set of known locations of this object.
     std::unordered_set<NodeID> current_object_locations;
     /// The location where this object has been spilled, if any.
-    std::string spilled_url = "";
+    std::string spilled_url;
     // The node id that spills the object to the disk.
     // It will be Nil if it uses a distributed external storage.
     NodeID spilled_node_id = NodeID::Nil();
@@ -165,22 +157,22 @@ class OwnershipBasedObjectDirectory : public IObjectDirectory {
   /// Metrics
 
   /// Number of object locations added to this object directory.
-  uint64_t metrics_num_object_locations_added_;
-  double metrics_num_object_locations_added_per_second_;
+  uint64_t metrics_num_object_locations_added_ = 0;
+  double metrics_num_object_locations_added_per_second_ = 0;
 
-  /// Number of object locations removed from this object directory.
-  uint64_t metrics_num_object_locations_removed_;
-  double metrics_num_object_locations_removed_per_second_;
+  /// Number of object locations removed from this object directory. = 0;
+  uint64_t metrics_num_object_locations_removed_ = 0;
+  double metrics_num_object_locations_removed_per_second_ = 0;
 
-  /// Number of object location lookups.
-  uint64_t metrics_num_object_location_lookups_;
-  double metrics_num_object_location_lookups_per_second_;
+  /// Number of object location lookups. = 0;
+  uint64_t metrics_num_object_location_lookups_ = 0;
+  double metrics_num_object_location_lookups_per_second_ = 0;
 
   /// Number of object location updates.
-  uint64_t metrics_num_object_location_updates_;
-  double metrics_num_object_location_updates_per_second_;
+  uint64_t metrics_num_object_location_updates_ = 0;
+  double metrics_num_object_location_updates_per_second_ = 0;
 
-  uint64_t cum_metrics_num_object_location_updates_;
+  uint64_t cum_metrics_num_object_location_updates_ = 0;
 
   friend class OwnershipBasedObjectDirectoryTest;
 };

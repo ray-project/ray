@@ -46,7 +46,7 @@ When you start a single-node Ray cluster on your laptop, you can access the dash
 When you start a remote Ray cluster with the {ref}`VM cluster launcher <vm-cluster-quick-start>`, {ref}`KubeRay operator <kuberay-quickstart>`, or manual configuration, the Ray Dashboard launches on the head node but the dashboard port may not be publicly exposed. You need an additional setup to access the Ray Dashboard from outside the head node.
 
 :::{danger}
-For security purpose, do not expose Ray Dashboard publicly without proper authentication in place.
+For security purposes, do not expose Ray Dashboard publicly without proper authentication in place.
 :::
 
 ::::{tab-set}
@@ -204,6 +204,7 @@ To view embedded time-series visualizations in Ray Dashboard, the following must
 Configure these settings using the `RAY_GRAFANA_HOST`, `RAY_PROMETHEUS_HOST`, `RAY_PROMETHEUS_NAME`, and `RAY_GRAFANA_IFRAME_HOST` environment variables when you start the Ray Clusters.
 
 * Set `RAY_GRAFANA_HOST` to an address that the head node can use to access Grafana. Head node does health checks on Grafana on the backend.
+* Set `RAY_GRAFANA_ORG_ID` to the organization ID you use in Grafana. Default is "1".
 * Set `RAY_PROMETHEUS_HOST` to an address the head node can use to access Prometheus.
 * Set `RAY_PROMETHEUS_NAME` to select a different data source to use for the Grafana dashboard panels to use. Default is "Prometheus".
 * Set `RAY_GRAFANA_IFRAME_HOST` to an address that the user's browsers can use to access Grafana and embed visualizations. If `RAY_GRAFANA_IFRAME_HOST` is not set, Ray Dashboard uses the value of `RAY_GRAFANA_HOST`.

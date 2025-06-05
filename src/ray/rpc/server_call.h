@@ -299,8 +299,9 @@ class ServerCallImpl : public ServerCall {
       ray::stats::STATS_grpc_server_req_succeeded.Record(1.0, call_name_);
     }
     if (send_reply_success_callback_ && !io_service_.stopped()) {
-      auto callback = std::move(send_reply_success_callback_);
-      io_service_.post([callback]() { callback(); }, call_name_ + ".success_callback");
+      io_service_.post(
+          [callback = std::move(send_reply_success_callback_)]() { callback(); },
+          call_name_ + ".success_callback");
     }
     LogProcessTime();
   }
@@ -311,8 +312,9 @@ class ServerCallImpl : public ServerCall {
       ray::stats::STATS_grpc_server_req_failed.Record(1.0, call_name_);
     }
     if (send_reply_failure_callback_ && !io_service_.stopped()) {
-      auto callback = std::move(send_reply_failure_callback_);
-      io_service_.post([callback]() { callback(); }, call_name_ + ".failure_callback");
+      io_service_.post(
+          [callback = std::move(send_reply_failure_callback_)]() { callback(); },
+          call_name_ + ".failure_callback");
     }
     LogProcessTime();
   }

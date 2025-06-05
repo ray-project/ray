@@ -1,3 +1,10 @@
+"""Tests for Ray utility functions.
+
+This module contains pytest-based tests for utility functions in ray._common.utils.
+Test utility classes (SignalActor, Semaphore) are in ray._common.test_utils to
+ensure they're included in the Ray package distribution.
+"""
+
 import asyncio
 import warnings
 import sys
@@ -12,6 +19,8 @@ from ray._common.utils import (
 
 
 class TestGetOrCreateEventLoop:
+    """Tests for the get_or_create_event_loop utility function."""
+
     def test_existing_event_loop(self):
         # With running event loop
         expect_loop = asyncio.new_event_loop()
@@ -34,6 +43,7 @@ class TestGetOrCreateEventLoop:
 
 @pytest.mark.asyncio
 async def test_run_background_task():
+    """Test the run_background_task utility function."""
     result = {}
 
     async def co():

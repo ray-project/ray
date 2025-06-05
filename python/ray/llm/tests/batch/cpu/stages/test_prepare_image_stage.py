@@ -1,14 +1,14 @@
+import base64
+import io
 import sys
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
-from unittest.mock import patch, MagicMock, AsyncMock
 from PIL import Image
-import io
-import base64
 
 from ray.llm._internal.batch.stages.prepare_image_stage import (
-    PrepareImageUDF,
     ImageProcessor,
+    PrepareImageUDF,
 )
 
 

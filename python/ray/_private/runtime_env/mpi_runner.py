@@ -1,8 +1,8 @@
-import sys
 import argparse
 import importlib
-from mpi4py import MPI
+import sys
 
+from mpi4py import MPI
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Setup MPI worker")

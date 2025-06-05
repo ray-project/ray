@@ -3,6 +3,7 @@ import sys
 
 import pytest
 
+import ray
 from ray.llm._internal.batch.processor import ProcessorBuilder
 from ray.llm._internal.batch.processor.sglang_engine_proc import (
     SGLangEngineProcessorConfig,
@@ -27,6 +28,7 @@ def test_sglang_engine_processor(gpu_type, model_llama_3_2_216M):
         accelerator_type=gpu_type,
         concurrency=4,
         batch_size=64,
+        max_concurrent_batches=4,
         max_pending_requests=111,
         apply_chat_template=True,
         tokenize=True,
@@ -57,12 +59,14 @@ def test_sglang_engine_processor(gpu_type, model_llama_3_2_216M):
     runtime_env = stage.map_batches_kwargs.pop("runtime_env")
     assert "env_vars" in runtime_env
     assert runtime_env["env_vars"]["RANDOM_ENV_VAR"] == "12345"
+    compute = stage.map_batches_kwargs.pop("compute")
+    assert isinstance(compute, ray.data._internal.compute.ActorPoolStrategy)
     assert stage.map_batches_kwargs == {
         "zero_copy_batch": True,
-        "concurrency": 4,
         "max_concurrency": 4,
         "accelerator_type": gpu_type,
         "num_gpus": 4,  # Based on tp_size=2, dp_size=2 in engine_kwargs
+        "resources": None,
     }
 
 

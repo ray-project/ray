@@ -81,7 +81,7 @@ class WorkerInterface {
   virtual void SetOwnerAddress(const rpc::Address &address) = 0;
   virtual const rpc::Address &GetOwnerAddress() const = 0;
 
-  virtual void DirectActorCallArgWaitComplete(int64_t tag) = 0;
+  virtual void ActorCallArgWaitComplete(int64_t tag) = 0;
 
   virtual const BundleID &GetBundleId() const = 0;
   virtual void SetBundleId(const BundleID &bundle_id) = 0;
@@ -192,7 +192,7 @@ class Worker : public WorkerInterface {
   void SetOwnerAddress(const rpc::Address &address);
   const rpc::Address &GetOwnerAddress() const;
 
-  void DirectActorCallArgWaitComplete(int64_t tag);
+  void ActorCallArgWaitComplete(int64_t tag);
 
   const BundleID &GetBundleId() const;
   void SetBundleId(const BundleID &bundle_id);

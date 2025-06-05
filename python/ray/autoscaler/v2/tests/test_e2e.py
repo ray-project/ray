@@ -1,4 +1,5 @@
 import os
+import subprocess
 import sys
 import time
 from typing import Dict
@@ -318,6 +319,91 @@ def test_placement_group_removal_idle_node(autoscaler_v2):
             return True
 
         wait_for_condition(verify)
+    finally:
+        ray.shutdown()
+        cluster.shutdown()
+
+
+@pytest.mark.parametrize("autoscaler_v2", [False, True], ids=["v1", "v2"])
+def test_placement_group_reschedule_node_dead(autoscaler_v2):
+    # Test autoscaler reschedules placement group when node dies.
+    # Note that it should only provision nodes for the bundles that haven't been placed.
+
+    cluster = AutoscalingCluster(
+        head_resources={"CPU": 0},
+        worker_node_types={
+            "type-1": {
+                "resources": {"R1": 1},
+                "node_config": {},
+                "min_workers": 0,
+                "max_workers": 2,
+            },
+            "type-2": {
+                "resources": {"R2": 1},
+                "node_config": {},
+                "min_workers": 0,
+                "max_workers": 2,
+            },
+            "type-3": {
+                "resources": {"R3": 1},
+                "node_config": {},
+                "min_workers": 0,
+                "max_workers": 2,
+            },
+        },
+        autoscaler_v2=autoscaler_v2,
+    )
+
+    try:
+        cluster.start()
+        ray.init("auto")
+        gcs_address = ray.get_runtime_context().gcs_address
+
+        pg = placement_group([{"R1": 1}, {"R2": 1}, {"R3": 1}])
+
+        ray.get(pg.ready())
+
+        def verify_nodes(active, idle):
+            cluster_state = get_cluster_status(gcs_address)
+            assert len(cluster_state.active_nodes) == active
+            assert len(cluster_state.idle_nodes) == idle
+            return True
+
+        # 3 worker nodes, 1 head node (idle)
+        wait_for_condition(lambda: verify_nodes(3, 1))
+
+        def kill_node(node_id):
+            cmd = f"ps aux | grep {node_id} | grep -v grep | awk '{{print $2}}'"
+            pid = subprocess.check_output(cmd, shell=True).decode("utf-8").strip()
+            print(f"Killing pid {pid}")
+            # kill the pid
+            cmd = f"kill -9 {pid}"
+            subprocess.check_output(cmd, shell=True)
+
+        # Kill a worker node with 'R1' in resources
+        for n in ray.nodes():
+            if "R1" in n["Resources"]:
+                node = n
+                break
+
+        # TODO(mimi): kill_raylet won't trigger reschedule in autoscaler v1
+        kill_node(node["NodeID"])
+
+        # Wait for the node to be removed
+        wait_for_condition(lambda: verify_nodes(2, 1), 20)
+
+        # Only provision nodes for unplaced bundles;
+        # avoid rescheduling the whole placement group.
+        wait_for_condition(lambda: verify_nodes(3, 1))
+
+        # Verify that the R1 node is recreated and has a different NodeID.
+        assert any(
+            [
+                "R1" in n["Resources"] and node["NodeID"] != n["NodeID"]
+                for n in ray.nodes()
+            ]
+        ), "R1 node is not recreated."
+
     finally:
         ray.shutdown()
         cluster.shutdown()

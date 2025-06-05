@@ -1,3 +1,4 @@
+import warnings
 from typing import Any, Callable, Dict, Optional, Tuple
 
 from ray.data._internal.execution.interfaces import (
@@ -79,6 +80,7 @@ class TaskPoolMapOperator(MapOperator):
         # Submit the task as a normal Ray task.
         ctx = TaskContext(
             task_idx=self._next_data_task_idx,
+            op_name=self.name,
             target_max_block_size=self.actual_target_max_block_size,
         )
 
@@ -136,3 +138,20 @@ class TaskPoolMapOperator(MapOperator):
 
     def get_concurrency(self) -> Optional[int]:
         return self._concurrency
+
+    def all_inputs_done(self):
+        super().all_inputs_done()
+
+        if (
+            self._concurrency is not None
+            and self._metrics.num_inputs_received < self._concurrency
+        ):
+            warnings.warn(
+                f"The maximum number of concurrent tasks for '{self.name}' is set to "
+                f"{self._concurrency}, but the operator only received "
+                f"{self._metrics.num_inputs_received} input(s). This means that the "
+                f"operator can launch at most {self._metrics.num_inputs_received} "
+                "task(s), which is less than the concurrency limit. You might be able "
+                "to increase the number of concurrent tasks by configuring "
+                "`override_num_blocks` earlier in the pipeline."
+            )

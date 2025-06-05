@@ -1,18 +1,19 @@
-import ray
-from ray._private.usage.usage_lib import TagKey
-import pytest
 import sys
 
-from ray.llm._internal.serve.observability.usage_telemetry.usage import (
-    _get_or_create_telemetry_agent,
-    push_telemetry_report_for_all_models,
-    HardwareUsage,
-)
+import pytest
+
+import ray
+from ray._private.usage.usage_lib import TagKey
 from ray.llm._internal.serve.configs.server_models import (
     LLMConfig,
     LLMEngine,
     LoraConfig,
     ModelLoadingConfig,
+)
+from ray.llm._internal.serve.observability.usage_telemetry.usage import (
+    HardwareUsage,
+    _get_or_create_telemetry_agent,
+    push_telemetry_report_for_all_models,
 )
 
 

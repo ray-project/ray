@@ -59,7 +59,6 @@ from ray.rllib.utils.metrics import (
     NUM_MODULE_EPISODES_EVICTED_LIFETIME,
     NUM_MODULE_EPISODES_PER_SAMPLE,
     NUM_MODULE_RESAMPLES,
-    NUM_MODULE_STEPS_STORED,
     NUM_MODULE_STEPS_ADDED,
     NUM_MODULE_STEPS_ADDED_LIFETIME,
     NUM_MODULE_STEPS_EVICTED,
@@ -631,16 +630,6 @@ class EpisodeReplayBuffer(ReplayBufferInterface):
                 reduce="mean",
                 window=self._metrics_num_episodes_for_smoothing,
             )
-            # Number of module steps in the buffer.
-            module_steps_stored = self.metrics.peek(
-                (NUM_MODULE_STEPS_ADDED_LIFETIME, mid)
-            ) - self.metrics.peek((NUM_MODULE_EPISODES_EVICTED_LIFETIME, mid))
-            self.metrics.log_value(
-                (NUM_MODULE_STEPS_STORED, mid),
-                module_steps_stored,
-                reduce="mean",
-                window=self._metrics_num_episodes_for_smoothing,
-            )
 
     @override(ReplayBufferInterface)
     def sample(
@@ -1146,7 +1135,7 @@ class EpisodeReplayBuffer(ReplayBufferInterface):
         num_env_steps_sampled = batch_size_B
         num_episodes_per_sample = len(sampled_episode_idxs)
         num_env_steps_per_sample = len(sampled_env_step_idxs)
-        sampled_n_step = (sum(sampled_n_steps) / batch_size_B,)
+        sampled_n_step = sum(sampled_n_steps) / batch_size_B
         num_resamples = 0
         agent_to_num_steps_sampled = {DEFAULT_AGENT_ID: num_env_steps_sampled}
         agent_to_num_episodes_per_sample = {DEFAULT_AGENT_ID: num_episodes_per_sample}

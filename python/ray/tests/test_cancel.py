@@ -1,4 +1,3 @@
-import os
 import random
 import signal
 import sys
@@ -17,7 +16,8 @@ from ray.exceptions import (
     ObjectLostError,
 )
 from ray._private.utils import DeferSigint
-from ray._private.test_utils import SignalActor, wait_for_condition
+from ray._common.test_utils import SignalActor
+from ray._private.test_utils import wait_for_condition
 from ray.util.state import list_tasks
 
 
@@ -733,7 +733,4 @@ def test_recursive_cancel_error_messages(shutdown_only, capsys):
 
 
 if __name__ == "__main__":
-    if os.environ.get("PARALLEL_CI"):
-        sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))
-    else:
-        sys.exit(pytest.main(["-sv", __file__]))
+    sys.exit(pytest.main(["-sv", __file__]))

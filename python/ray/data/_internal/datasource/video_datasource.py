@@ -1,5 +1,5 @@
 import logging
-from typing import TYPE_CHECKING, List, Union, Optional, Dict, Any
+from typing import TYPE_CHECKING, Any, Dict, List, Optional, Union
 
 from ray.data._internal.delegating_block_builder import DelegatingBlockBuilder
 from ray.data._internal.util import _check_import

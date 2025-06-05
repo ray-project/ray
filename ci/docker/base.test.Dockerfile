@@ -44,11 +44,11 @@ ENV LC_ALL=en_US.utf8
 ENV LANG=en_US.utf8
 RUN echo "ulimit -c 0" >> /root/.bashrc
 
-# Install some dependencies (miniconda, pip dependencies, etc)
+# Install some dependencies (miniforge, pip dependencies, etc)
 RUN mkdir /ray
 WORKDIR /ray
 
 COPY . .
 
-RUN ./ci/env/install-miniconda.sh
+RUN ./ci/env/install-miniforge.sh
 RUN ./ci/env/install-bazel.sh

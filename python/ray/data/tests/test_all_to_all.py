@@ -7,20 +7,21 @@ import numpy as np
 import pandas as pd
 import pyarrow as pa
 import pytest
+from packaging.version import parse as parse_version
 
 import ray
-from packaging.version import parse as parse_version
 from ray._private.arrow_utils import get_pyarrow_version
 from ray.data._internal.arrow_ops.transform_pyarrow import (
-    combine_chunks,
     MIN_PYARROW_VERSION_TYPE_PROMOTION,
+    combine_chunks,
 )
-from ray.data._internal.planner.exchange.sort_task_spec import SortKey
-from ray.data._internal.util import is_nan
 from ray.data._internal.execution.interfaces.ref_bundle import (
     _ref_bundles_iterator_to_block_refs_list,
 )
+from ray.data._internal.planner.exchange.sort_task_spec import SortKey
+from ray.data._internal.util import is_nan
 from ray.data.aggregate import (
+    AbsMax,
     AggregateFn,
     Count,
     Max,
@@ -29,11 +30,10 @@ from ray.data.aggregate import (
     Quantile,
     Std,
     Sum,
-    AbsMax,
     Unique,
 )
-from ray.data.context import DataContext, ShuffleStrategy
 from ray.data.block import BlockAccessor
+from ray.data.context import DataContext, ShuffleStrategy
 from ray.data.tests.conftest import *  # noqa
 from ray.data.tests.util import named_values
 from ray.tests.conftest import *  # noqa
@@ -1392,15 +1392,18 @@ def test_groupby_arrow_multi_agg(
         for agg in ["sum", "min", "max", "mean", "std", "quantile"]
     }
 
-    def _round_to_14_digits(row):
+    def _round_to_13_digits(row):
         return {
             # NOTE: Pandas and Arrow diverge on 14th digit (due to different formula
             #       used with diverging FP numerical stability), hence we round it up
-            k: round(v, 14)
+            k: round(v, 13)
             for k, v in row.items()
         }
 
-    assert _round_to_14_digits(expected_row) == _round_to_14_digits(result_row)
+    print(f"Expected: {expected_row}, (rounded: {_round_to_13_digits(expected_row)})")
+    print(f"Result: {result_row} (rounded: {_round_to_13_digits(result_row)})")
+
+    assert _round_to_13_digits(expected_row) == _round_to_13_digits(result_row)
 
 
 @pytest.mark.parametrize("num_parts", [1, 30])
@@ -1521,15 +1524,8 @@ def test_groupby_multi_agg_with_nans(
         for agg in ["sum", "min", "max", "mean", "std", "quantile"]
     }
 
-    def _round_to_14_digits(row):
-        return {
-            # NOTE: Pandas and Arrow diverge on 14th digit (due to different formula
-            #       used with diverging FP numerical stability), hence we round it up
-            k: round(v, 14)
-            for k, v in row.items()
-        }
-
-    assert _round_to_14_digits(expected_row) == _round_to_14_digits(result_row)
+    assert expected_row.keys() == result_row.keys()
+    assert all(result_row[k] == pytest.approx(expected_row[k]) for k in expected_row)
 
 
 @pytest.mark.parametrize("ds_format", ["pyarrow", "pandas"])

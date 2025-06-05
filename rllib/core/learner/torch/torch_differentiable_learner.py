@@ -1,11 +1,12 @@
 import contextlib
 import logging
 
-from typing import Any, Dict, Tuple
+from typing import Any, Dict, Optional, Tuple
 
 from ray.rllib.algorithms.algorithm_config import (
     TorchCompileWhatToCompile,
 )
+from ray.rllib.core.columns import Columns
 from ray.rllib.core.learner.differentiable_learner import DifferentiableLearner
 from ray.rllib.core.rl_module.torch.torch_rl_module import (
     TorchCompileConfig,
@@ -13,8 +14,12 @@ from ray.rllib.core.rl_module.torch.torch_rl_module import (
 from ray.rllib.policy.sample_batch import MultiAgentBatch
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.framework import try_import_torch
+from ray.rllib.utils.metrics import (
+    DIFF_NUM_GRAD_UPDATES_VS_SAMPLER_POLICY,
+    WEIGHTS_SEQ_NO,
+)
 from ray.rllib.utils.torch_utils import convert_to_torch_tensor
-from ray.rllib.utils.typing import ModuleID, NamedParamDict, TensorType
+from ray.rllib.utils.typing import DeviceType, ModuleID, NamedParamDict, TensorType
 
 logger = logging.getLogger("__name__")
 
@@ -108,8 +113,7 @@ class TorchDifferentiableLearner(DifferentiableLearner):
         #    group.update(), so somehow, there is still a race condition
         #    possible (learner, which performs the reduce() and learner thread, which
         #    performs the logging of tensors into metrics logger).
-        # TODO (simon): Introduce if necessary.
-        # self._compute_off_policyness(batch)
+        self._compute_off_policyness(batch)
 
         # Make a functional forward pass with the provided parameters.
         fwd_out = self._make_functional_call(params, batch)
@@ -206,10 +210,16 @@ class TorchDifferentiableLearner(DifferentiableLearner):
         Returns:
             The updated parameters in the same (dict) format as `params`.
         """
+        policies_to_update = self.learner_config.policies_to_update or list(
+            gradients.keys()
+        )
         # Note, because this is a functional update we cannot apply in-place
         # modifications of parameters.
         updated_params = {}
         for module_id, module_grads in gradients.items():
+            if module_id not in policies_to_update:
+                updated_params[module_id] = params[module_id]
+                continue
             updated_params[module_id] = {}
             for name, grad in module_grads.items():
                 # If updates should not be skipped turn `nan` and `inf` gradients to zero.
@@ -227,13 +237,12 @@ class TorchDifferentiableLearner(DifferentiableLearner):
                             "the update be skipped entirely set `torch_skip_nan_gradients` "
                             "to `True`."
                         )
-                    # If necessary turn `nan` gradients to zero. Note this can corrupt the
+                    # If necessary turn `nan` gradients to zero. Note, this can corrupt the
                     # internal state of the optimizer, if many `nan` gradients occur.
                     grad = torch.nan_to_num(grad)
 
                 if self.config.torch_skip_nan_gradients or torch.isfinite(grad).all():
                     # Update each parameter, by a simple gradient descent step.
-                    # TODO (simon): Add a default learning rate `lr` to the `DifferentiableLearnerConfig`.
                     updated_params[module_id][name] = (
                         params[module_id][name] - self.learner_config.lr * grad
                     )
@@ -255,6 +264,28 @@ class TorchDifferentiableLearner(DifferentiableLearner):
             return_dict=True,
         )
 
+    @override(DifferentiableLearner)
+    def _get_tensor_variable(
+        self, value, dtype=None, trainable=False
+    ) -> "torch.Tensor":
+        tensor = torch.tensor(
+            value,
+            requires_grad=trainable,
+            # TODO (simon): Make GPU-trainable.
+            # device=self._device,
+            dtype=(
+                dtype
+                or (
+                    torch.float32
+                    if isinstance(value, float)
+                    else torch.int32
+                    if isinstance(value, int)
+                    else None
+                )
+            ),
+        )
+        return nn.Parameter(tensor) if trainable else tensor
+
     def _convert_batch_type(
         self,
         batch: MultiAgentBatch,
@@ -273,8 +304,27 @@ class TorchDifferentiableLearner(DifferentiableLearner):
         batch = MultiAgentBatch(batch, env_steps=length)
         return batch
 
+    def _compute_off_policyness(self, batch):
+        # Log off-policy'ness of this batch wrt the current weights.
+        off_policyness = {
+            (mid, DIFF_NUM_GRAD_UPDATES_VS_SAMPLER_POLICY): (
+                (self._weights_seq_no - module_batch[WEIGHTS_SEQ_NO]).float()
+            )
+            for mid, module_batch in batch.items()
+            if WEIGHTS_SEQ_NO in module_batch
+        }
+        for key in off_policyness.keys():
+            mid = key[0]
+            if Columns.LOSS_MASK not in batch[mid]:
+                off_policyness[key] = torch.mean(off_policyness[key])
+            else:
+                mask = batch[mid][Columns.LOSS_MASK]
+                num_valid = torch.sum(mask)
+                off_policyness[key] = torch.sum(off_policyness[key][mask]) / num_valid
+        self.metrics.log_dict(off_policyness, window=1)
+
     @override(DifferentiableLearner)
-    def build(self) -> None:
+    def build(self, device: Optional[DeviceType] = None) -> None:
         """Builds the TorchDifferentiableLearner.
 
         This method is specific to TorchDifferentiableLearner. Before running super() it will
@@ -288,7 +338,7 @@ class TorchDifferentiableLearner(DifferentiableLearner):
         # TODO (simon): Allow different `DifferentiableLearner` instances in a
         # `MetaLearner` to run on different GPUs.
 
-        super().build()
+        super().build(device=device)
 
         if self._torch_compile_complete_update:
             torch._dynamo.reset()

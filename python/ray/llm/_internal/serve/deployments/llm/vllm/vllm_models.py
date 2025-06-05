@@ -1,18 +1,15 @@
 import os
-from typing import Any, Dict, List, Optional, TYPE_CHECKING, Union
+from typing import TYPE_CHECKING, Any, Dict, List, Literal, Optional, Union
 
-from pydantic import ConfigDict, Field
-from ray.util.placement_group import (
-    PlacementGroup,
-    get_current_placement_group,
-    placement_group,
-    placement_group_table,
-)
-from ray.llm._internal.utils import try_import
+from pydantic import ConfigDict, Field, ValidationError, field_validator
 
-from ray.llm._internal.serve.observability.logging import get_logger
 from ray.llm._internal.common.base_pydantic import BaseModelExtended
 from ray.llm._internal.common.utils.cloud_utils import CloudMirrorConfig
+from ray.llm._internal.serve.configs.constants import (
+    ALLOW_NEW_PLACEMENT_GROUPS_IN_DEPLOYMENT,
+    ENV_VARS_TO_PROPAGATE,
+)
+from ray.llm._internal.serve.configs.prompt_formats import Prompt
 from ray.llm._internal.serve.configs.server_models import (
     DiskMultiplexConfig,
     GenerationRequest,
@@ -20,11 +17,17 @@ from ray.llm._internal.serve.configs.server_models import (
     LLMConfig,
     SamplingParams,
 )
-from ray.llm._internal.serve.configs.constants import (
-    ALLOW_NEW_PLACEMENT_GROUPS_IN_DEPLOYMENT,
-    ENV_VARS_TO_PROPAGATE,
+from ray.llm._internal.serve.observability.logging import get_logger
+from ray.llm._internal.utils import try_import
+from ray.util.placement_group import (
+    PlacementGroup,
+    get_current_placement_group,
+    placement_group,
+    placement_group_table,
 )
 
+# The key for the kv_transfer_params in the internal metadata.
+KV_TRANSFER_PARAMS_KEY = "kv_transfer_params"
 
 vllm = try_import("vllm")
 
@@ -206,30 +209,82 @@ class VLLMEngineConfig(BaseModelExtended):
 
 
 class VLLMSamplingParams(SamplingParams):
-    """
+    """Sampling parameters specific to vLLM engine.
+
     Args:
         top_k: The number of highest probability vocabulary tokens to keep for top-k-filtering.
         seed: Seed for deterministic sampling with temperature>0.
+        repetition_penalty: Float that penalizes new tokens based on whether they
+            appear in the prompt and the generated text so far. Values > 1 encourage
+            the model to use new tokens, while values < 1 encourage the model to repeat
+            tokens.
     """
 
     _ignored_fields = {"best_of", "n", "logit_bias"}
 
     top_k: Optional[int] = None
+    repetition_penalty: Optional[float] = None
     seed: Optional[int] = None
+    kv_transfer_params: Optional[Dict[str, Any]] = None
+
+    @field_validator("n", mode="before")
+    @classmethod
+    def validate_n(cls, values):
+        if values != 1:
+            raise ValidationError("n>1 is not supported yet in rayllm.")
+        return values
+
+    @classmethod
+    def _get_model_validate_kwargs(cls, prompt: Prompt) -> Dict[str, Any]:
+        """
+        Extend the base class's `_get_model_validate_kwargs` to include vllm-specific parameters.
+        """
+        generate_kwargs = super()._get_model_validate_kwargs(prompt)
+        if (
+            prompt.parameters is not None
+            and KV_TRANSFER_PARAMS_KEY in prompt.parameters
+        ):
+            generate_kwargs[KV_TRANSFER_PARAMS_KEY] = prompt.parameters[
+                KV_TRANSFER_PARAMS_KEY
+            ]
+        return generate_kwargs
 
 
 class VLLMGenerationRequest(GenerationRequest):
     model_config = ConfigDict(arbitrary_types_allowed=True)
 
+    # Intentionally override the base class's `sampling_params` field.
     sampling_params: Optional[
-        Union[VLLMSamplingParams, List[VLLMSamplingParams]]
+        Union[
+            VLLMSamplingParams,
+            List[VLLMSamplingParams],
+        ]
     ] = None
     multi_modal_data: Optional[Dict[str, Any]] = None
     disk_multiplex_config: Optional[DiskMultiplexConfig] = None
 
     @property
     def lora_request(self) -> "LoRARequest":
+        disk_vllm_config = self.disk_multiplex_config
+        if not disk_vllm_config:
+            return None
+        else:
+            return vllm.lora.request.LoRARequest(
+                lora_name=disk_vllm_config.model_id,
+                lora_int_id=disk_vllm_config.lora_assigned_int_id,
+                lora_local_path=disk_vllm_config.local_path,
+                long_lora_max_len=disk_vllm_config.max_total_tokens,
+            )
 
+
+class VLLMEmbeddingRequest(GenerationRequest):
+    model_config = ConfigDict(arbitrary_types_allowed=True)
+    encoding_format: Optional[Literal["float", "base64"]] = "float"
+    dimensions: Optional[int] = None
+    disk_multiplex_config: Optional[DiskMultiplexConfig] = None
+
+    @property
+    def lora_request(self) -> "LoRARequest":
         disk_vllm_config = self.disk_multiplex_config
         if not disk_vllm_config:
             return None

@@ -43,10 +43,10 @@ folder (e.g., /tmp/ray/session_[id]/*).
 """
 import json
 import logging
-import threading
 import os
 import platform
 import sys
+import threading
 import time
 from dataclasses import asdict, dataclass
 from enum import Enum, auto
@@ -57,14 +57,14 @@ import requests
 import yaml
 
 import ray
-from ray._raylet import GcsClient
 import ray._private.ray_constants as ray_constants
 import ray._private.usage.usage_constants as usage_constant
+from ray._raylet import GcsClient
+from ray.core.generated import gcs_pb2, usage_pb2
 from ray.experimental.internal_kv import (
     _internal_kv_initialized,
     _internal_kv_put,
 )
-from ray.core.generated import usage_pb2, gcs_pb2
 
 logger = logging.getLogger(__name__)
 TagKey = usage_pb2.TagKey
@@ -522,7 +522,7 @@ def put_cluster_metadata(gcs_client, *, ray_init_cluster) -> None:
         ray_init_cluster: Whether the cluster is started by ray.init()
 
     Raises:
-        gRPC exceptions if PUT fails.
+        gRPC exceptions: If PUT fails.
     """
     metadata = _generate_cluster_metadata(ray_init_cluster=ray_init_cluster)
     gcs_client.internal_kv_put(
@@ -798,7 +798,7 @@ def get_cluster_metadata(gcs_client) -> dict:
         The cluster metadata in a dictinoary.
 
     Raises:
-        RuntimeError if it fails to obtain cluster metadata from GCS.
+        RuntimeError: If it fails to obtain cluster metadata from GCS.
     """
     return json.loads(
         gcs_client.internal_kv_get(
@@ -949,7 +949,7 @@ class UsageReportClient:
             data: Data to report.
 
         Raises:
-            requests.HTTPError if requests fails.
+            requests.HTTPError: If requests fails.
         """
         r = requests.request(
             "POST",

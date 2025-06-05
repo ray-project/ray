@@ -1,16 +1,16 @@
 """Metadata exporter API for Ray Data datasets."""
 
-from abc import ABC, abstractmethod
 import logging
 import os
+from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
-from typing import Any, Dict, List, Optional, TYPE_CHECKING
+from typing import TYPE_CHECKING, Any, Dict, List, Optional
 
 import ray
 from ray._private.event.export_event_logger import (
     EventLogType,
-    get_export_event_logger,
     check_export_api_enabled,
+    get_export_event_logger,
 )
 
 if TYPE_CHECKING:
@@ -140,9 +140,9 @@ def dataset_metadata_to_proto(dataset_metadata: DatasetMetadata) -> Any:
     """
     from ray.core.generated.export_dataset_metadata_pb2 import (
         ExportDatasetMetadata as ProtoDatasetMetadata,
-        Topology as ProtoTopology,
         Operator as ProtoOperator,
         SubStage as ProtoSubStage,
+        Topology as ProtoTopology,
     )
 
     # Create the protobuf message

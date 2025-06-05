@@ -2,15 +2,14 @@ import base64
 import copy
 import logging
 import os
-import pytest
 import subprocess
 import sys
 import tempfile
 import unittest
-
 from typing import Any, Dict
-
 import yaml
+
+import pytest
 
 from ray.tests.kuberay.utils import (
     get_pod,
@@ -373,8 +372,6 @@ class KubeRayAutoscalingTest(unittest.TestCase):
 
 
 if __name__ == "__main__":
-    import pytest
-
     kubeconfig_base64 = os.environ.get("KUBECONFIG_BASE64")
     if kubeconfig_base64:
         kubeconfig_file = os.environ.get("KUBECONFIG")

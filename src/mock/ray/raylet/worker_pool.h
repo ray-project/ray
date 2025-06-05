@@ -28,10 +28,11 @@ class MockWorkerPool : public WorkerPoolInterface {
               PushWorker,
               (const std::shared_ptr<WorkerInterface> &worker),
               (override));
-  MOCK_METHOD((const std::vector<std::shared_ptr<WorkerInterface>>),
+  MOCK_METHOD((std::vector<std::shared_ptr<WorkerInterface>>),
               GetAllRegisteredWorkers,
               (bool filter_dead_workers, bool filter_io_workers),
               (const, override));
+  MOCK_METHOD(bool, IsWorkerAvailableForScheduling, (), (const, override));
   MOCK_METHOD(std::shared_ptr<WorkerInterface>,
               GetRegisteredWorker,
               (const WorkerID &worker_id),

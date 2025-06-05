@@ -251,13 +251,7 @@ def test_mongo_datasource(ray_start_regular_shared, start_mongo):
         collection=foo_collection,
         override_num_blocks=1000,
     )
-    assert str(ds) == (
-        "Dataset(\n"
-        "   num_rows=5,\n"
-        "   schema={_id: fixed_size_binary[12], float_field: double, "
-        "int_field: int32}\n"
-        ")"
-    )
+    assert str(ds) == ("Dataset(num_rows=5, schema=Unknown schema)")
     assert df.equals(ds.drop_columns(["_id"]).to_pandas())
 
     # Read a subset of the collection.

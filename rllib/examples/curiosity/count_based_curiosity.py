@@ -115,7 +115,7 @@ if __name__ == "__main__":
         .env_runners(
             num_envs_per_env_runner=5,
             # Flatten discrete observations (into one-hot vectors).
-            env_to_module_connector=lambda env: FlattenObservations(),
+            env_to_module_connector=lambda env, spaces, device: FlattenObservations(),
         )
         .training(
             # The main code in this example: We add the `CountBasedCuriosity` connector

@@ -429,7 +429,7 @@ DEFAULT_GRAFANA_PANELS = [
             ),
             # GPU
             Target(
-                expr='sum(ray_node_gpus_utilization{{instance=~"$Instance",{global_filters}}}) / on() (sum(autoscaler_cluster_resources{{resource="GPU",instance=~"$Instance",{global_filters}}}) or vector(0))',
+                expr='sum(ray_node_gpus_utilization{{instance=~"$Instance",{global_filters}}}) / on() (sum(ray_node_gpus_available{{instance=~"$Instance",{global_filters}}}) or vector(0))',
                 legend="GPU (physical)",
             ),
             # Memory

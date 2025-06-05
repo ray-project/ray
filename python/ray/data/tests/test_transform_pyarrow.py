@@ -7,18 +7,18 @@ import pandas as pd
 import pyarrow as pa
 import pytest
 from packaging.version import parse as parse_version
-from ray._private.arrow_utils import get_pyarrow_version
 
 import ray
+from ray._private.arrow_utils import get_pyarrow_version
 from ray.air.util.tensor_extensions.arrow import ArrowTensorTypeV2
 from ray.data import DataContext
 from ray.data._internal.arrow_ops.transform_pyarrow import (
+    MIN_PYARROW_VERSION_TYPE_PROMOTION,
     concat,
     hash_partition,
+    shuffle,
     try_combine_chunked_columns,
     unify_schemas,
-    MIN_PYARROW_VERSION_TYPE_PROMOTION,
-    shuffle,
 )
 from ray.data.block import BlockAccessor
 from ray.data.extensions import (

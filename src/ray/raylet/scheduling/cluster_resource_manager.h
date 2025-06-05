@@ -202,6 +202,7 @@ class ClusterResourceManager {
   FRIEND_TEST(ClusterTaskManagerTestWithGPUsAtHead, RleaseAndReturnWorkerCpuResources);
   FRIEND_TEST(ClusterResourceSchedulerTest, TestForceSpillback);
   FRIEND_TEST(ClusterResourceSchedulerTest, AffinityWithBundleScheduleTest);
+  FRIEND_TEST(ClusterResourceSchedulerTest, LabelSelectorIsSchedulableOnNodeTest);
 
   friend class raylet::SchedulingPolicyTest;
   friend class raylet_scheduling_policy::HybridSchedulingPolicyTest;

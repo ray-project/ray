@@ -32,8 +32,8 @@ from ray._private.test_utils import (
     wait_for_condition,
     async_wait_for_condition,
     find_free_port,
-    SignalActor,
 )
+from ray._common.test_utils import SignalActor
 from ray.cluster_utils import cluster_not_supported
 from ray._raylet import NodeID
 from ray.core.generated.common_pb2 import (
@@ -3732,7 +3732,4 @@ def test_hang_driver_has_no_is_running_task(monkeypatch, ray_start_cluster):
 
 
 if __name__ == "__main__":
-    if os.environ.get("PARALLEL_CI"):
-        sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))
-    else:
-        sys.exit(pytest.main(["-sv", __file__]))
+    sys.exit(pytest.main(["-sv", __file__]))

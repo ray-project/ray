@@ -167,7 +167,7 @@ def test_uv_run_runtime_env_hook(with_uv):
         )
         output = result.stdout.strip().decode()
         if result.returncode != 0:
-            assert expected_error
+            assert expected_error, result.stderr.decode()
             assert expected_error in result.stderr.decode()
         else:
             assert json.loads(output) == expected_output
@@ -269,6 +269,20 @@ def test_uv_run_runtime_env_hook(with_uv):
     subprocess.check_output(
         [sys.executable, ray._private.runtime_env.uv_runtime_env_hook.__file__, "{}"]
     ).strip().decode() == "{}"
+
+    # Check in the case that there is one more level of subprocess indirection between
+    # the "uv run" process and the process that checks the environment
+    check_uv_run(
+        cmd=[uv, "run", "--no-project"],
+        runtime_env={},
+        expected_output={
+            "py_executable": f"{uv} run --no-project",
+            "working_dir": os.getcwd(),
+        },
+        subprocess_kwargs={
+            "env": {**os.environ, "RAY_TEST_UV_ADD_SUBPROCESS_INDIRECTION": "1"}
+        },
+    )
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="Not ported to Windows yet.")
@@ -404,7 +418,4 @@ with open("{tmp_out_dir / "output.txt"}", "w") as out:
 
 
 if __name__ == "__main__":
-    if os.environ.get("PARALLEL_CI"):
-        sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))
-    else:
-        sys.exit(pytest.main(["-sv", __file__]))
+    sys.exit(pytest.main(["-sv", __file__]))
