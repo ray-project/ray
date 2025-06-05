@@ -1,7 +1,7 @@
+import os
 from typing import TYPE_CHECKING, List, Optional, Tuple
 
 import ray
-import os
 
 if TYPE_CHECKING:
     import torch

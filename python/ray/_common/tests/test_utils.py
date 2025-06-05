@@ -1,13 +1,13 @@
 import asyncio
-import warnings
 import sys
+import warnings
 
 import pytest
 
 from ray._common.utils import (
+    _BACKGROUND_TASKS,
     get_or_create_event_loop,
     run_background_task,
-    _BACKGROUND_TASKS,
 )
 
 

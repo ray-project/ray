@@ -1,20 +1,20 @@
 import warnings
-from typing import Any, Dict, List, Optional, Union, Sequence
+from typing import Any, Dict, List, Optional, Sequence, Union
 
 import numpy as np
 import pandas as pd
-import torch
 import pyarrow
+import torch
 
 from ray.air._internal.device_manager import get_torch_device_manager_by_context
 from ray.air.util.data_batch_conversion import _unwrap_ndarray_object_type_if_needed
 from ray.data.collate_fn import (
-    TensorBatchType,
     TensorBatchReturnType,
-    _is_tensor,
-    _is_tensor_sequence,
+    TensorBatchType,
     _is_nested_tensor_sequence,
+    _is_tensor,
     _is_tensor_mapping,
+    _is_tensor_sequence,
     _is_tensor_sequence_mapping,
 )
 
@@ -352,8 +352,8 @@ def arrow_batch_to_tensors(
         A dictionary of column name to list of tensors. For non-chunked columns,
         the list will contain a single tensor.
     """
-    from ray.data._internal.arrow_ops import transform_pyarrow
     from ray.data._internal.arrow_block import ArrowBlockAccessor
+    from ray.data._internal.arrow_ops import transform_pyarrow
 
     if combine_chunks:
         numpy_batch = ArrowBlockAccessor(batch).to_batch_format("numpy")

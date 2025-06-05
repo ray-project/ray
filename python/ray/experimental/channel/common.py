@@ -19,8 +19,8 @@ from typing import (
 import ray
 import ray.exceptions
 from ray.experimental.channel.communicator import Communicator
-from ray.experimental.channel.utils import get_devices
 from ray.experimental.channel.serialization_context import _SerializationContext
+from ray.experimental.channel.utils import get_devices
 from ray.util.annotations import DeveloperAPI, PublicAPI
 
 # The context singleton on this process.

@@ -36,12 +36,10 @@ from ray.core.generated.autoscaler_pb2 import (
     PendingInstance,
     PendingInstanceRequest,
 )
-from ray.core.generated.instance_manager_pb2 import GetInstanceManagerStateRequest
-from ray.core.generated.instance_manager_pb2 import Instance as IMInstance
 from ray.core.generated.instance_manager_pb2 import (
+    GetInstanceManagerStateRequest,
+    Instance as IMInstance,
     InstanceUpdateEvent as IMInstanceUpdateEvent,
-)
-from ray.core.generated.instance_manager_pb2 import (
     NodeKind,
     StatusCode,
     UpdateInstanceManagerStateRequest,

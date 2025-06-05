@@ -39,8 +39,6 @@ from ray.core.generated.autoscaler_pb2 import (
     NodeStatus,
     PlacementConstraint,
     ResourceRequest,
-)
-from ray.core.generated.autoscaler_pb2 import (
     ResourceRequestByCount as ResourceRequestByCountProto,
 )
 from ray.experimental.internal_kv import internal_kv_get_gcs_client
