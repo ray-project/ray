@@ -80,7 +80,7 @@
     timeout: 3600
     script: >
       python read_and_consume_benchmark.py
-      s3://anyscale-imagenet/ILSVRC/Data/CLS-LOC/ --format image --iter-bundles
+      gs://anyscale-imagenet/ILSVRC/Data/CLS-LOC/ --format image --iter-bundles
 
   variations:
     - __suffix__: kuberay
