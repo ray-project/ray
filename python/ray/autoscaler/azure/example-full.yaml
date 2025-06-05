@@ -87,6 +87,15 @@ available_node_types:
                 imageSku: 1804-gen2
                 imageVersion: latest
 
+                # OR use a custom image from Azure Compute Gallery
+                # note if you use a custom image, imagePublisher, 
+                # imageOffer, imageSku, and imageVersion are ignored
+                # imageId: /subscriptions/[subscription-id]/resourceGroups/[resource-group-id]/providers/Microsoft.Compute/galleries/[azure-compute-gallery-id]/images/[image-id]/versions/[image-version]
+                
+                # optionally set osDiskSize if you want to use a
+                # custom disk size
+                # osDiskSize: 128
+
     ray.worker.default:
         # The minimum number of worker nodes of this type to launch.
         # This number should be >= 0.
