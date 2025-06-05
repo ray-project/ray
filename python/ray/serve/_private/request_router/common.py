@@ -9,6 +9,7 @@ from ray.serve._private.constants import (
     RAY_SERVE_QUEUE_LENGTH_CACHE_TIMEOUT_S,
     SERVE_LOGGER_NAME,
 )
+from ray.util.annotations import PublicAPI
 
 logger = logging.getLogger(SERVE_LOGGER_NAME)
 
@@ -23,6 +24,7 @@ class RequestRoutingContext:
     should_backoff: bool = False
 
 
+@PublicAPI(stability="alpha")
 @dataclass
 class PendingRequest:
     """A request that is pending execution by a replica."""

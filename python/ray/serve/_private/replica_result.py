@@ -10,8 +10,10 @@ import ray
 from ray.serve._private.common import RequestMetadata
 from ray.serve._private.utils import calculate_remaining_timeout
 from ray.serve.exceptions import RequestCancelledError
+from ray.util.annotations import PublicAPI
 
 
+@PublicAPI(stability="alpha")
 class ReplicaResult(ABC):
     @abstractmethod
     def get(self, timeout_s: Optional[float]):

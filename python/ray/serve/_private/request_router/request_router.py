@@ -41,6 +41,7 @@ from ray.serve._private.request_router.common import (
 )
 from ray.serve._private.request_router.replica_wrapper import RunningReplica
 from ray.util import metrics
+from ray.util.annotations import PublicAPI
 
 logger = logging.getLogger(SERVE_LOGGER_NAME)
 
@@ -50,6 +51,7 @@ class LocalityScope(str, enum.Enum):
     AVAILABILITY_ZONE = "AVAILABILITY_ZONE"
 
 
+@PublicAPI(stability="alpha")
 class LocalityMixin:
     """Mixin for locality routing.
 
@@ -183,6 +185,7 @@ class LocalityMixin:
         return ranked_replicas
 
 
+@PublicAPI(stability="alpha")
 class MultiplexMixin:
     """Mixin for multiplex routing.
 
@@ -361,6 +364,7 @@ class MultiplexMixin:
         return ranked_replicas
 
 
+@PublicAPI(stability="alpha")
 class FIFOMixin:
     """Mixin for FIFO routing.
 
@@ -417,6 +421,7 @@ class FIFOMixin:
                 break
 
 
+@PublicAPI(stability="alpha")
 class RequestRouter(ABC):
     """Abstract interface for a request router (how the router calls it)."""
 

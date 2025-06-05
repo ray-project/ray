@@ -17,6 +17,7 @@ from ray.serve._private.replica_result import ActorReplicaResult, ReplicaResult
 from ray.serve._private.request_router.common import PendingRequest
 from ray.serve._private.utils import JavaActorHandleProxy
 from ray.serve.generated.serve_pb2 import RequestMetadata as RequestMetadataProto
+from ray.util.annotations import PublicAPI
 
 logger = logging.getLogger(SERVE_LOGGER_NAME)
 
@@ -116,6 +117,7 @@ class ActorReplicaWrapper(ReplicaWrapper):
             raise e from None
 
 
+@PublicAPI(stability="alpha")
 class RunningReplica:
     """Contains info on a running replica.
     Also defines the interface for a request router to talk to a replica.

@@ -14,6 +14,7 @@ from ray.serve.generated.serve_pb2 import (
     DeploymentStatusTrigger as DeploymentStatusTriggerProto,
 )
 from ray.serve.grpc_util import RayServegRPCContext
+from ray.util.annotations import PublicAPI
 
 REPLICA_ID_FULL_ID_STR_PREFIX = "SERVE_REPLICA::"
 
@@ -33,6 +34,7 @@ class DeploymentID:
         return str(self)
 
 
+@PublicAPI(stability="alpha")
 @dataclass(frozen=True)
 class ReplicaID:
     """A unique identifier for a replica."""
