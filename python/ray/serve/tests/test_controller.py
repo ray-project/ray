@@ -185,7 +185,9 @@ def test_get_serve_instance_details_json_serializable(serve_instance, policy):
                                 "ray_actor_options": {
                                     "num_cpus": 1.0,
                                 },
-                                "request_router_class": "ray.serve._private.replica_scheduler:PowerOfTwoChoicesReplicaScheduler",
+                                "request_router_class": "ray.serve._private.request_router:PowerOfTwoChoicesRequestRouter",
+                                "request_routing_stats_period_s": 10.0,
+                                "request_routing_stats_timeout_s": 30.0,
                             },
                             "target_num_replicas": 1,
                             "required_resources": {"CPU": 1},

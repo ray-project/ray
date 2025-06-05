@@ -570,6 +570,8 @@ message TaskSpec {
   optional string call_site = 42;
   // The key-value label constraints of the node to schedule this task or actor on.
   map<string, string> label_selector = 43;
+  // The tensor transport type for this task.
+  TensorTransport tensor_transport = 44;
 }
 
 message TaskInfoEntry {
@@ -608,6 +610,10 @@ message TaskInfoEntry {
   optional string call_site = 27;
 }
 
+message LabelSelector {
+  map<string, string> label_selector_dict = 1;
+}
+
 message TaskAttempt {
   // The task id of the task attempt.
   bytes task_id = 1;
@@ -624,6 +630,9 @@ message Bundle {
   map<string, double> unit_resources = 2;
   // The location of this bundle.
   bytes node_id = 3;
+  // Label selector associated with this bundle.
+  // Populated from bundle_label_selector if provided.
+  map<string, string> label_selector = 4;
 }
 
 message PlacementGroupSpec {
@@ -690,6 +699,15 @@ message ObjectReferenceCount {
   repeated bytes contains = 6;
 }
 
+enum TensorTransport {
+  // Use the default object store for tensor transport.
+  OBJECT_STORE = 0;
+  // Use NCCL for tensor transport.
+  NCCL = 1;
+  // Use GLOO for tensor transport.
+  GLOO = 2;
+}
+
 // Argument in the task.
 message TaskArg {
   // A pass-by-ref argument.
@@ -700,6 +718,9 @@ message TaskArg {
   bytes metadata = 3;
   // ObjectIDs that were nested in the inlined arguments of the data field.
   repeated ObjectReference nested_inlined_refs = 4;
+  // `is_inlined` is true if the argument is an ObjectRef, but it is small enough
+  // to be inlined in the task spec instead of being pushed to the object store.
+  bool is_inlined = 5;
 }
 
 message ReturnObject {

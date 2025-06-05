@@ -13,9 +13,9 @@ import requests
 from google.protobuf import text_format
 
 import ray
+import ray._private.usage.usage_lib as ray_usage_lib
 from ray._private import ray_constants
 from ray._private.metrics_agent import fix_grpc_metric
-import ray._private.usage.usage_lib as ray_usage_lib
 from ray._private.test_utils import (
     fetch_prometheus,
     format_web_url,
@@ -187,9 +187,26 @@ def enable_grpc_metrics_collection():
     os.environ.pop("RAY_enable_grpc_metrics_collection_for", None)
 
 
+@pytest.fixture
+def enable_open_telemetry(request):
+    """
+    Fixture to enable OpenTelemetry for the test.
+    """
+    if request.param:
+        os.environ["RAY_experimental_enable_open_telemetry_on_agent"] = "1"
+    else:
+        os.environ["RAY_experimental_enable_open_telemetry_on_agent"] = "0"
+    yield
+    os.environ.pop("RAY_experimental_enable_open_telemetry_on_agent", None)
+
+
 @pytest.mark.skipif(prometheus_client is None, reason="prometheus_client not installed")
+@pytest.mark.parametrize("enable_open_telemetry", [True, False], indirect=True)
 def test_prometheus_physical_stats_record(
-    enable_grpc_metrics_collection, enable_test_module, shutdown_only
+    enable_open_telemetry,
+    enable_grpc_metrics_collection,
+    enable_test_module,
+    shutdown_only,
 ):
     addresses = ray.init(include_dashboard=True, num_cpus=1)
     metrics_export_port = addresses["metrics_export_port"]
