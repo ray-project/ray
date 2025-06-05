@@ -211,10 +211,9 @@ Status TaskExecutor::ExecuteTask(
     if (status.IsIntentionalSystemExit()) {
       return status;
     } else {
-      RAY_EVENT(ERROR, EL_RAY_CPP_TASK_FAILED)
-              .WithField("task_type", TaskType_Name(task_type))
-              .WithField("function_name", func_name)
-          << "C++ task failed: " << status.ToString();
+      RAY_LOG(ERROR)
+        << "C++ task failed (type: " << TaskType_Name(task_type)
+        << ", name: " << func_name << "): " << status.ToString();
     }
 
     std::string meta_str = std::to_string(ray::rpc::ErrorType::TASK_EXECUTION_EXCEPTION);
