@@ -54,10 +54,6 @@ gce_gpu_cpu_to_concurrent_groups = [
     ),
 ]
 
-kuberay_concurrent_groups = [
-    Condition(min_cpu=-inf, max_cpu=inf, group="gke", limit=10),
-]
-
 
 # Obtained from https://cloud.google.com/compute/docs/accelerator-optimized-machines
 gcp_gpu_instances = {
