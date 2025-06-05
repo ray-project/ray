@@ -458,6 +458,12 @@ class Test(dict):
         """
         return self["cluster"]["byod"].get("pip", [])
 
+    def get_env(self) -> str:
+        """
+        Returns the environment of the test.
+        """
+        return self.get("env")
+
     def get_name(self) -> str:
         """
         Returns the name of the test.

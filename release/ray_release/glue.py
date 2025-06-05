@@ -105,12 +105,6 @@ def _load_test_configuration(
     # Workaround while Anyscale Jobs don't support leaving cluster alive
     # after the job has finished.
     # TODO: Remove once we have support in Anyscale
-    # if no_terminate and run_type == "anyscale_job":
-    #     logger.warning(
-    #         "anyscale_job run type does not support --no-terminate. "
-    #         "Switching to job (Ray Job) run type."
-    #     )
-    #     run_type = "job"
 
     command_runner_cls = type_str_to_command_runner.get(run_type)
     if not command_runner_cls:
@@ -387,8 +381,80 @@ def _fetching_results(
 
     return metrics, fetch_result_exception
 
-
 def run_release_test(
+    test: Test,
+    anyscale_project: str,
+    result: Result,
+    reporters: Optional[List[Reporter]] = None,
+    smoke_test: bool = False,
+    cluster_id: Optional[str] = None,
+    cluster_env_id: Optional[str] = None,
+    no_terminate: bool = False,
+    test_definition_root: Optional[str] = None,
+    log_streaming_limit: int = LAST_LOGS_LENGTH,
+) -> Result:
+    if test.get_env() == "kuberay":
+        return run_release_test_kuberay(
+            test=test,
+            result=result,
+            smoke_test=smoke_test,
+            test_definition_root=test_definition_root,
+        )
+    else:
+        return run_release_test_anyscale(
+            test=test,
+            anyscale_project=anyscale_project,
+            result=result,
+            reporters=reporters,
+            smoke_test=smoke_test,
+            cluster_id=cluster_id,
+            cluster_env_id=cluster_env_id,
+            no_terminate=no_terminate,
+            test_definition_root=test_definition_root,
+            log_streaming_limit=log_streaming_limit,
+        )
+
+def run_release_test_kuberay(
+    test: Test,
+    result: Result,
+    smoke_test: bool = False,
+    test_definition_root: Optional[str] = None,
+) -> Result:
+    result.stable = test.get("stable", True)
+    result.smoke_test = smoke_test
+    cluster_compute = load_test_cluster_compute(test, test_definition_root)
+    kuberay_compute_config = convert_cluster_compute_to_kuberay_compute_config(
+        cluster_compute
+    )
+    kuberay_autoscaler_version = cluster_compute.get("autoscaler_version", None)
+    if kuberay_autoscaler_version:
+        kuberay_autoscaler_config = {
+            "version": kuberay_autoscaler_version
+        }
+    else:
+        kuberay_autoscaler_config = None
+    working_dir_upload_path = upload_working_dir(get_working_dir(test))
+
+    command_timeout = int(test["run"].get("timeout", DEFAULT_COMMAND_TIMEOUT))
+
+    kuberay_job_manager = KuberayJobManager()
+    retcode, duration = kuberay_job_manager.run_and_wait(
+        job_name=test["name"].replace(".", "-").replace("_", "-"),
+        image=test.get_anyscale_byod_image(),
+        cmd_to_run=test["run"]["script"],
+        env_vars=test.get_byod_runtime_env(),
+        working_dir=working_dir_upload_path,
+        pip=test.get_byod_pips(),
+        compute_config=kuberay_compute_config,
+        autoscaler_config=kuberay_autoscaler_config,
+        timeout=command_timeout,
+    )
+    kuberay_job_manager.fetch_results()
+    result.return_code = retcode
+    result.runtime = duration
+    return result
+
+def run_release_test_anyscale(
     test: Test,
     anyscale_project: str,
     result: Result,
@@ -407,34 +473,6 @@ def run_release_test(
     pipeline_exception = None
     # non critical for some tests. So separate it from the general one.
     fetch_result_exception = None
-
-    if test.get_name().endswith(".kuberay"):
-        # Load test configuration
-        result.stable = test.get("stable", True)
-        result.smoke_test = smoke_test
-        cluster_compute = load_test_cluster_compute(test, test_definition_root)
-        kuberay_compute_config = convert_cluster_compute_to_kuberay_compute_config(
-            cluster_compute
-        )
-        working_dir_upload_path = upload_working_dir(get_working_dir(test))
-
-        command_timeout = int(test["run"].get("timeout", DEFAULT_COMMAND_TIMEOUT))
-
-        kuberay_job_manager = KuberayJobManager()
-        retcode, duration = kuberay_job_manager.run_and_wait(
-            job_name=test["name"].replace(".", "-").replace("_", "-"),
-            image=test.get_anyscale_byod_image(),
-            cmd_to_run=test["run"]["script"],
-            env_vars=test.get_byod_runtime_env(),
-            working_dir=working_dir_upload_path,
-            pip=test.get_byod_pips(),
-            compute_config=kuberay_compute_config,
-            timeout=command_timeout,
-        )
-        kuberay_job_manager.fetch_results()
-        result.return_code = retcode
-        result.runtime = duration
-        return result
 
     try:
         buildkite_group(":spiral_note_pad: Loading test configuration")
