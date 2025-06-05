@@ -381,6 +381,7 @@ def _fetching_results(
 
     return metrics, fetch_result_exception
 
+
 def run_release_test(
     test: Test,
     anyscale_project: str,
@@ -414,6 +415,7 @@ def run_release_test(
             log_streaming_limit=log_streaming_limit,
         )
 
+
 def run_release_test_kuberay(
     test: Test,
     result: Result,
@@ -428,9 +430,7 @@ def run_release_test_kuberay(
     )
     kuberay_autoscaler_version = cluster_compute.get("autoscaler_version", None)
     if kuberay_autoscaler_version:
-        kuberay_autoscaler_config = {
-            "version": kuberay_autoscaler_version
-        }
+        kuberay_autoscaler_config = {"version": kuberay_autoscaler_version}
     else:
         kuberay_autoscaler_config = None
     working_dir_upload_path = upload_working_dir(get_working_dir(test))
@@ -453,6 +453,7 @@ def run_release_test_kuberay(
     result.return_code = retcode
     result.runtime = duration
     return result
+
 
 def run_release_test_anyscale(
     test: Test,

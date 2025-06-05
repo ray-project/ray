@@ -14,7 +14,7 @@ KUBERAY_SERVICE_SECRET_KEY_SECRET_NAME = "kuberay_service_secret_key"
 KUBERAY_SERVER_URL = "https://kuberaytest.anyscale.dev"
 DEFAULT_KUBERAY_NAMESPACE = "kuberayportal-kevin"
 KUBERAY_PROJECT_ID = "dhyey-dev"
-JOB_STATUS_CHECK_INTERVAL = 10 # seconds
+JOB_STATUS_CHECK_INTERVAL = 10  # seconds
 
 job_status_to_return_code = {
     "SUCCEEDED": 0,
@@ -44,7 +44,14 @@ class KuberayJobManager:
     ) -> Tuple[int, float]:
         self.job_name = job_name
         self._run_job(
-            job_name, image, cmd_to_run, env_vars, working_dir, pip, compute_config, autoscaler_config
+            job_name,
+            image,
+            cmd_to_run,
+            env_vars,
+            working_dir,
+            pip,
+            compute_config,
+            autoscaler_config,
         )
         return self._wait_job(timeout)
 
@@ -190,7 +197,9 @@ class KuberayJobManager:
             )
             kuberay_service_secret_key = secret_response["SecretString"]
         except (boto3.exceptions.Boto3Error, botocore.exceptions.ClientError) as e:
-            logger.error(f"Failed to get KubeRay service token from AWS Secrets Manager: {e}")
+            logger.error(
+                f"Failed to get KubeRay service token from AWS Secrets Manager: {e}"
+            )
             return None
         except Exception as e:
             logger.error(f"Failed to get KubeRay service token: {e}")
