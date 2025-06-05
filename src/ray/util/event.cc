@@ -49,7 +49,7 @@ LogEventReporter::LogEventReporter(SourceTypeVariant source_type,
     log_dir_ += '/';
   }
 
-  // Generate file name, if the source type is RAYLET or GCS, the file name would like
+  // generate file name, if the soucrce type is RAYLET or GCS, the file name would like
   // event_GCS.log, event_RAYLET.log other condition would like
   // event_CORE_WOREKER_{pid}.log
   std::string source_type_name = "";
@@ -71,40 +71,26 @@ LogEventReporter::LogEventReporter(SourceTypeVariant source_type,
     RAY_LOG(FATAL) << "source_type argument of LogEventReporter is not of type"
                    << "rpc::Event_SourceType or rpc::ExportEvent_SourceType.";
   }
-
   file_name_ = "event_" + source_type_name +
                (add_pid_to_file ? "_" + std::to_string(getpid()) : "") + ".log";
 
+  std::string log_sink_key = GetReporterKey() + log_dir_ + file_name_;
+  log_sink_ = spdlog::get(log_sink_key);
+  // If the file size is over {rotate_max_file_size_} MB, this file would be renamed
+  // for example event_GCS.0.log, event_GCS.1.log, event_GCS.2.log ...
+  // We allow to rotate for {rotate_max_file_num_} times.
+  if (log_sink_ == nullptr) {
+    log_sink_ = spdlog::rotating_logger_mt(log_sink_key,
+                                           log_dir_ + file_name_,
+                                           1048576 * rotate_max_file_size_,
+                                           rotate_max_file_num_);
+  }
+  log_sink_->set_pattern("%v");
 }
 
 LogEventReporter::~LogEventReporter() { Flush(); }
 
-void LogEventReporter::Flush() {
-  // In case there's no log-sink initialized there's nothing to flush
-  if (log_sink_ != nullptr) {
-    log_sink_->flush();
-  }
-}
-
-std::shared_ptr<spdlog::logger> LogEventReporter::getLogSinkLazy() {
-  if (log_sink_ == nullptr) {
-    std::string log_sink_key = GetReporterKey() + log_dir_ + file_name_;
-    log_sink_ = spdlog::get(log_sink_key);
-    // If the file size is over {rotate_max_file_size_} MB, this file would be renamed
-    // for example event_GCS.0.log, event_GCS.1.log, event_GCS.2.log ...
-    // We allow to rotate for {rotate_max_file_num_} times.
-    if (log_sink_ == nullptr) {
-      log_sink_ = spdlog::rotating_logger_mt(log_sink_key,
-                                             log_dir_ + file_name_,
-                                             1048576 * rotate_max_file_size_,
-                                             rotate_max_file_num_);
-    }
-
-    log_sink_->set_pattern("%v");
-  }
-
-  return log_sink_;
-}
+void LogEventReporter::Flush() { log_sink_->flush(); }
 
 std::string LogEventReporter::replaceLineFeed(std::string message) {
   std::stringstream ss;
@@ -187,7 +173,7 @@ void LogEventReporter::Report(const rpc::Event &event, const json &custom_fields
   RAY_CHECK(Event_Severity_IsValid(event.severity()));
   std::string result = EventToString(event, custom_fields);
 
-  getLogSinkLazy()->info(result);
+  log_sink_->info(result);
   if (force_flush_) {
     Flush();
   }
@@ -197,7 +183,7 @@ void LogEventReporter::ReportExportEvent(const rpc::ExportEvent &export_event) {
   RAY_CHECK(ExportEvent_SourceType_IsValid(export_event.source_type()));
   std::string result = ExportEventToString(export_event);
 
-  getLogSinkLazy()->info(result);
+  log_sink_->info(result);
   if (force_flush_) {
     Flush();
   }
