@@ -292,6 +292,9 @@ class TaskSpecification : public MessageWrapper<rpc::TaskSpec> {
   // TODO(swang): Finalize and document these methods.
   TaskID TaskId() const;
 
+  // Get the task id in binary format.
+  std::string GetTaskIdBinary() const;
+
   JobID JobId() const;
 
   const rpc::JobConfig &JobConfig() const;
