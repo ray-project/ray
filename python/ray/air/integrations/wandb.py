@@ -422,7 +422,8 @@ class _WandbLoggingActor:
                 logger.warning("Failed to log result to w&b: {}".format(str(e)))
             except FileNotFoundError as e:
                 logger.error(
-                    "FileNotFoundError: Possible reason: relative instead of absolute path: %s",
+                    "FileNotFoundError: This result will not be logged to WandB. "
+                    "Possible reason: relative instead of absolute path for file %s",
                     e,
                 )
         self._wandb.finish()
