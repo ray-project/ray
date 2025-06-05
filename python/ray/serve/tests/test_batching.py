@@ -5,7 +5,6 @@ from typing import Dict, List, Optional
 
 import httpx
 import pytest
-import requests
 from starlette.responses import StreamingResponse
 
 from ray import serve
@@ -134,7 +133,7 @@ async def test_batch_generator_streaming_response_integration_test(serve_instanc
     prompt_prefix = "hola"
     url = f"http://localhost:8000/?prompt={prompt_prefix}"
     with ThreadPoolExecutor() as pool:
-        futs = [pool.submit(partial(requests.get, url + str(idx))) for idx in range(4)]
+        futs = [pool.submit(partial(httpx.get, url + str(idx))) for idx in range(4)]
         responses = [fut.result() for fut in futs]
 
     for idx, response in enumerate(responses):
@@ -164,11 +163,11 @@ def test_batching_client_dropped_unary(serve_instance):
 
     # Sending requests with clients that drops the connection.
     for _ in range(3):
-        with pytest.raises(requests.exceptions.ReadTimeout):
-            requests.get(url, timeout=0.005)
+        with pytest.raises(httpx.ReadTimeout):
+            httpx.get(url, timeout=0.005)
 
     # The following request should succeed.
-    resp = requests.get(url, timeout=1)
+    resp = httpx.get(url, timeout=1)
     assert resp.status_code == 200
     assert resp.text == "fake-response"
 
@@ -196,13 +195,11 @@ def test_batching_client_dropped_streaming(serve_instance):
 
     # Sending requests with clients that drops the connection.
     for _ in range(3):
-        with pytest.raises(
-            (requests.exceptions.ReadTimeout, requests.exceptions.ConnectionError)
-        ):
-            requests.get(url, timeout=0.005)
+        with pytest.raises((httpx.ReadTimeout, httpx.ConnectError)):
+            httpx.get(url, timeout=0.005)
 
     # The following request should succeed.
-    resp = requests.get(url, timeout=1)
+    resp = httpx.get(url, timeout=1)
     assert resp.status_code == 200
     assert resp.text == "0123456789"
 

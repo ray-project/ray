@@ -20,7 +20,7 @@ from ray.util.scheduling_strategies import (
     NodeAffinitySchedulingStrategy,
     PlacementGroupSchedulingStrategy,
 )
-from ray._private.test_utils import SignalActor
+from ray._common.test_utils import SignalActor
 
 
 @pytest.mark.skipif(

@@ -1238,7 +1238,8 @@ def override_deployment_info(
         deployment_name = options["name"]
         if deployment_name not in deployment_infos:
             raise ValueError(
-                f"Got config override for nonexistent deployment '{deployment_name}'"
+                f"Deployment '{deployment_name}' does not exist. "
+                f"Available: {list(deployment_infos.keys())}"
             )
 
         info = deployment_infos[deployment_name]

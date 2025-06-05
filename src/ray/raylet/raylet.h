@@ -109,6 +109,8 @@ class Raylet {
   rpc::ClientCallManager client_call_manager_;
 
   rpc::CoreWorkerClientPool worker_rpc_pool_;
+
+  plasma::PlasmaClient plasma_client_;
 };
 
 }  // namespace ray::raylet

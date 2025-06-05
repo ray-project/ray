@@ -129,6 +129,10 @@
 
 /release/ray_release @ray-project/ray-ci
 
+# Allow people to add BYOD post-installation shell scripts
+# on their own.
+/release/ray_release/*.sh
+
 /.github/ISSUE_TEMPLATE/ @aslonnie
 
 /.github/workflows/ @ray-project/ray-ci

@@ -6,9 +6,9 @@ from ray.llm._internal.serve.config_generator.generator import (
     get_serve_config,
 )
 from ray.llm._internal.serve.config_generator.utils.gpu import (
-    GPUType,
-    DEFAULT_MODEL_ID_TO_GPU,
     ALL_GPU_TYPES,
+    DEFAULT_MODEL_ID_TO_GPU,
+    GPUType,
 )
 from ray.llm._internal.serve.config_generator.utils.models import (
     TextCompletionLoraModelConfig,
