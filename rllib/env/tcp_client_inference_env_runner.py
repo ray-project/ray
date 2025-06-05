@@ -5,12 +5,7 @@ import threading
 import time
 from typing import Collection, DefaultDict, List, Optional, Union
 
-import gymnasium as gym
-
 from ray.rllib.core import (
-    Columns,
-    COMPONENT_ENV_TO_MODULE_CONNECTOR,
-    COMPONENT_MODULE_TO_ENV_CONNECTOR,
     COMPONENT_RL_MODULE,
     DEFAULT_AGENT_ID,
     DEFAULT_MODULE_ID,
@@ -38,7 +33,6 @@ from ray.rllib.utils.metrics import (
     WEIGHTS_SEQ_NO,
 )
 from ray.rllib.utils.metrics.metrics_logger import MetricsLogger
-from ray.rllib.utils.numpy import softmax
 from ray.rllib.utils.typing import EpisodeID, StateDict
 from ray.util.annotations import DeveloperAPI
 

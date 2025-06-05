@@ -1,6 +1,4 @@
 from enum import Enum
-
-import msgpack_numpy
 from packaging.version import Version
 
 import msgpack
