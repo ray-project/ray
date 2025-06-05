@@ -121,7 +121,6 @@ steps:
     commands:
       - bazel run //ci/ray_ci:test_in_docker -- //python/ray/tests:test_metrics_agent core
         --install-mask all-ray-libraries
-        --network=host
         --test-env=RAY_experimental_enable_open_telemetry_on_agent=1
         --test-env=RAY_experimental_enable_open_telemetry_on_core=1
 
