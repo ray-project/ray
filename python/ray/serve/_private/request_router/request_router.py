@@ -80,7 +80,7 @@ class LocalityMixin:
         ] = defaultdict(set)
         self._replica_id_set: Set[ReplicaID] = set()
 
-    def discard_colocated_replica_ids_on_replica_actor_died(
+    def _discard_colocated_replica_ids_on_replica_actor_died(
         self, replica_id: ReplicaID
     ):
         """Remove the replica ID from the colocated replica IDs.
@@ -222,7 +222,7 @@ class MultiplexMixin:
             ):
                 return pr
 
-    def update_multiplexed_model_ids_with_replicas(
+    def _update_multiplexed_model_ids_with_replicas(
         self, replicas: List[RunningReplica]
     ):
         """Update the multiplexed model IDs based on the replicas.
@@ -256,7 +256,7 @@ class MultiplexMixin:
         return candidates
 
     @property
-    def multiplexed_matching_timeout(self) -> float:
+    def _multiplexed_matching_timeout(self) -> float:
         return random.uniform(
             RAY_SERVE_MULTIPLEXED_MODEL_ID_MATCHING_TIMEOUT_S,
             RAY_SERVE_MULTIPLEXED_MODEL_ID_MATCHING_TIMEOUT_S * 2,
@@ -296,7 +296,7 @@ class MultiplexMixin:
         multiplexed_model_id = pending_request.metadata.multiplexed_model_id
         if (
             time.time() - multiplexed_start_matching_time
-            < self.multiplexed_matching_timeout
+            < self._multiplexed_matching_timeout
         ):
             candidate_replica_ids = self._multiplexed_model_id_to_replica_ids.get(
                 multiplexed_model_id, None
@@ -317,7 +317,7 @@ class MultiplexMixin:
                 self._multiplexed_model_id_fallback_match.discard(multiplexed_model_id)
             pending_request.routing_context.tried_first_multiplexed_models = True
         elif not pending_request.routing_context.tried_fewest_multiplexed_models:
-            # After the `multiplexed_matching_timeout` is up, first try
+            # After the `_multiplexed_matching_timeout` is up, first try
             # routing to replicas that have the fewest models loaded.
             # We only try this once to avoid deterministically retrying on
             # the same replicas repeatedly.
@@ -370,6 +370,9 @@ class FIFOMixin:
     the request.
     """
 
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+
     def _get_pending_request_matching_metadata(
         self,
         request_metadata: Optional[RequestMetadata] = None,
@@ -386,7 +389,7 @@ class FIFOMixin:
 
         return None
 
-    def fulfill_next_pending_request(
+    def _fulfill_next_pending_request(
         self,
         replica: RunningReplica,
         request_metadata: Optional[RequestMetadata] = None,
@@ -577,8 +580,8 @@ class RequestRouter(ABC):
         """Drop replica from replica set so it's not considered for future requests."""
         self._replicas.pop(replica_id, None)
         self._replica_id_set.discard(replica_id)
-        if hasattr(self, "discard_colocated_replica_ids_on_replica_actor_died"):
-            self.discard_colocated_replica_ids_on_replica_actor_died(replica_id)
+        if hasattr(self, "_discard_colocated_replica_ids_on_replica_actor_died"):
+            self._discard_colocated_replica_ids_on_replica_actor_died(replica_id)
 
     def on_replica_actor_unavailable(self, replica_id: ReplicaID):
         """Invalidate cache entry so active probing is required for the next request."""
@@ -603,8 +606,8 @@ class RequestRouter(ABC):
         new_replica_id_set = set()
         if hasattr(self, "update_colocated_replica_ids_with_replicas"):
             self.update_colocated_replica_ids_with_replicas(replicas)
-        if hasattr(self, "update_multiplexed_model_ids_with_replicas"):
-            self.update_multiplexed_model_ids_with_replicas(replicas)
+        if hasattr(self, "_update_multiplexed_model_ids_with_replicas"):
+            self._update_multiplexed_model_ids_with_replicas(replicas)
 
         for r in replicas:
             # If on the proxy, replica needs to call back into the proxy with
@@ -744,7 +747,7 @@ class RequestRouter(ABC):
         assert len(result) == len(replicas)
         return result
 
-    async def select_from_candidate_replicas(
+    async def _select_from_candidate_replicas(
         self,
         candidates: List[RunningReplica],
         backoff_index: int,
@@ -824,7 +827,7 @@ class RequestRouter(ABC):
 
         return None
 
-    def fulfill_next_pending_request(
+    def _fulfill_next_pending_request(
         self,
         replica: RunningReplica,
         request_metadata: Optional[RequestMetadata] = None,
@@ -854,7 +857,7 @@ class RequestRouter(ABC):
 
         return None
 
-    async def choose_replicas_with_backoff(
+    async def _choose_replicas_with_backoff(
         self,
         pending_request: Optional[PendingRequest] = None,
     ) -> AsyncGenerator[List[RunningReplica], None]:
@@ -922,7 +925,7 @@ class RequestRouter(ABC):
                     self.num_routing_tasks_in_backoff
                 )
 
-    async def fulfill_pending_requests(self):
+    async def _fulfill_pending_requests(self):
         """Repeatedly tries to fulfill a pending request with an available replica.
 
         This is expected to be run inside a task in self._routing_tasks.
@@ -937,7 +940,7 @@ class RequestRouter(ABC):
                 backoff_index = 0
                 pending_request = self._get_next_pending_request_to_route()
                 request_metadata = pending_request.metadata if pending_request else None
-                async for candidates in self.choose_replicas_with_backoff(
+                async for candidates in self._choose_replicas_with_backoff(
                     pending_request
                 ):
                     # Clear out pending requests at the front of the
@@ -952,11 +955,11 @@ class RequestRouter(ABC):
                     if len(self._routing_tasks) > self.target_num_routing_tasks:
                         break
 
-                    replica = await self.select_from_candidate_replicas(
+                    replica = await self._select_from_candidate_replicas(
                         candidates, backoff_index
                     )
                     if replica is not None:
-                        self.fulfill_next_pending_request(replica, request_metadata)
+                        self._fulfill_next_pending_request(replica, request_metadata)
                         break
 
                     backoff_index += 1
@@ -979,7 +982,7 @@ class RequestRouter(ABC):
                         logger.warning(warning_log)
 
         except Exception:
-            logger.exception("Unexpected error in fulfill_pending_requests.")
+            logger.exception("Unexpected error in _fulfill_pending_requests.")
         finally:
             self._routing_tasks.remove(asyncio.current_task(loop=self._event_loop))
             self.num_routing_tasks_gauge.set(self.curr_num_routing_tasks)
@@ -997,12 +1000,12 @@ class RequestRouter(ABC):
         tasks_to_start = self.target_num_routing_tasks - self.curr_num_routing_tasks
         for _ in range(tasks_to_start):
             self._routing_tasks.add(
-                self._event_loop.create_task(self.fulfill_pending_requests())
+                self._event_loop.create_task(self._fulfill_pending_requests())
             )
         if tasks_to_start > 0:
             self.num_routing_tasks_gauge.set(self.curr_num_routing_tasks)
 
-    async def choose_replica_for_request(
+    async def _choose_replica_for_request(
         self, pending_request: PendingRequest, *, is_retry: bool = False
     ) -> RunningReplica:
         """Chooses a replica to send the provided request to.
@@ -1043,7 +1046,7 @@ class RequestRouter(ABC):
 
         return replica
 
-    def update_running_replicas(self, running_replicas: List[RunningReplicaInfo]):
+    def _update_running_replicas(self, running_replicas: List[RunningReplicaInfo]):
         """Compatibility shim for RunningReplicaInfo datatype."""
         return self.update_replicas(
             [self.create_replica_wrapper(r) for r in running_replicas]

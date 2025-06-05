@@ -93,7 +93,7 @@ locality-aware routing, multiplexed model support, and FIFO request routing.
   the model. It updates the internal states when between replica updates to track the
   model loaded on each replica, and size of the model cache on each replica. It offers
   helpers [`apply_multiplex_routing`](../api/doc/ray.serve.request_router.MultiplexMixin.apply_multiplex_routing.rst)
-- and [`rank_replicas_via_multiplex`](../api/doc/ray.serve.request_router.MultiplexMixin.rank_replicas_via_multiplex.rst) to route
+  and [`rank_replicas_via_multiplex`](../api/doc/ray.serve.request_router.MultiplexMixin.rank_replicas_via_multiplex.rst) to route
   and ranks replicas based on their multiplexed model id of the request.
 
 
