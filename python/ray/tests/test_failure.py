@@ -538,7 +538,7 @@ def test_export_large_objects(ray_start_regular, error_pubsub):
     assert errors[0]["type"] == ray_constants.PICKLING_LARGE_OBJECT_PUSH_ERROR
 
 
-def test_warning_many_actor_tasks_queued(shutdown_only, sync: bool):
+def test_warning_many_actor_tasks_queued(shutdown_only):
     ray.init(num_cpus=1)
     p = init_error_pubsub()
 
@@ -555,7 +555,7 @@ def test_warning_many_actor_tasks_queued(shutdown_only, sync: bool):
     assert "Warning: More than 10000 tasks are pending submission to actor" in msgs[1]
 
 
-def test_no_warning_many_actor_tasks_queued_when_sequential(shutdown_only, sync: bool):
+def test_no_warning_many_actor_tasks_queued_when_sequential(shutdown_only):
     ray.init(num_cpus=1)
     p = init_error_pubsub()
 
