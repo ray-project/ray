@@ -30,7 +30,7 @@ class UniformRequestRouter(RequestRouter):
         replica_id: ReplicaID,
         result: ReplicaResult,
     ):
-        print("on_request_routed callback is called!!")
+        print("Called on_request_routed callback")
 
 
 # __end_define_uniform_request_router__
