@@ -267,7 +267,7 @@ def test_get_system_memory():
         memory_limit_file.write("100")
         memory_limit_file.flush()
         assert (
-            ray._private.utils.get_system_memory(
+            ray._common.utils.get_system_memory(
                 memory_limit_filename=memory_limit_file.name,
                 memory_limit_filename_v2="__does_not_exist__",
             )
@@ -280,7 +280,7 @@ def test_get_system_memory():
         memory_limit_file.flush()
         psutil_memory_in_bytes = psutil.virtual_memory().total
         assert (
-            ray._private.utils.get_system_memory(
+            ray._common.utils.get_system_memory(
                 memory_limit_filename=memory_limit_file.name,
                 memory_limit_filename_v2="__does_not_exist__",
             )
@@ -291,7 +291,7 @@ def test_get_system_memory():
         memory_max_file.write("100\n")
         memory_max_file.flush()
         assert (
-            ray._private.utils.get_system_memory(
+            ray._common.utils.get_system_memory(
                 memory_limit_filename="__does_not_exist__",
                 memory_limit_filename_v2=memory_max_file.name,
             )
@@ -304,7 +304,7 @@ def test_get_system_memory():
         memory_max_file.flush()
         psutil_memory_in_bytes = psutil.virtual_memory().total
         assert (
-            ray._private.utils.get_system_memory(
+            ray._common.utils.get_system_memory(
                 memory_limit_filename="__does_not_exist__",
                 memory_limit_filename_v2=memory_max_file.name,
             )

@@ -478,7 +478,7 @@ class Node:
 
         if self.head:
             self._ray_params.update_if_absent(
-                temp_dir=ray._private.utils.get_ray_temp_dir()
+                temp_dir=ray._common.utils.get_ray_temp_dir()
             )
             self._temp_dir = self._ray_params.temp_dir
         else:
@@ -529,7 +529,7 @@ class Node:
         )
         try_to_create_directory(self._runtime_env_dir)
         # Create a symlink to the libtpu tpu_logs directory if it exists.
-        user_temp_dir = ray._private.utils.get_user_temp_dir()
+        user_temp_dir = ray._common.utils.get_user_temp_dir()
         tpu_log_dir = f"{user_temp_dir}/tpu_logs"
         if os.path.isdir(tpu_log_dir):
             tpu_logs_symlink = os.path.join(self._logs_dir, "tpu_logs")
@@ -856,7 +856,7 @@ class Node:
                 "{directory_name}/{prefix}.{unique_index}{suffix}"
         """
         if directory_name is None:
-            directory_name = ray._private.utils.get_ray_temp_dir()
+            directory_name = ray._common.utils.get_ray_temp_dir()
         directory_name = os.path.expanduser(directory_name)
         index = self._incremental_dict[suffix, prefix, directory_name]
         # `tempfile.TMP_MAX` could be extremely large,

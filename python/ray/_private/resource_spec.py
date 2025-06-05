@@ -3,9 +3,9 @@ import sys
 from collections import namedtuple
 from typing import Optional
 
-from ray._common.utils import RESOURCE_CONSTRAINT_PREFIX
 import ray
 import ray._private.ray_constants as ray_constants
+from ray._common.utils import RESOURCE_CONSTRAINT_PREFIX
 
 logger = logging.getLogger(__name__)
 
@@ -218,7 +218,7 @@ class ResourceSpec(
                 if additional_resources:
                     resources.update(additional_resources)
         # Choose a default object store size.
-        system_memory = ray._private.utils.get_system_memory()
+        system_memory = ray._common.utils.get_system_memory()
         avail_memory = ray._private.utils.estimate_available_memory()
         object_store_memory = self.object_store_memory
         if object_store_memory is None:

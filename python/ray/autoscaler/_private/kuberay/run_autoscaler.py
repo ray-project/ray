@@ -21,7 +21,7 @@ BACKOFF_S = 5
 
 def _get_log_dir() -> str:
     return os.path.join(
-        ray._private.utils.get_ray_temp_dir(),
+        ray._common.utils.get_ray_temp_dir(),
         ray._private.ray_constants.SESSION_LATEST,
         "logs",
     )
