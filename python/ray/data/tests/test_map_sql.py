@@ -6,7 +6,7 @@ import ray
 def test_basic_sql_polars():
     ds = ray.data.read_parquet("s3://anonymous@ray-example-data/iris.parquet")
     sql_ds = ds.map_sql(
-        query="SELECT my_batch['variety'] as variety, my_batch['sepal.length'] as sepal_length FROM my_batch",
+        query="SELECT variety as variety, `sepal.length` as sepal_length FROM my_batch",
         view_name="my_batch",
         engine="polars",
     )
