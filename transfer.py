@@ -31,9 +31,9 @@ except ImportError:
 
 # Configuration
 S3_BUCKET = "anyscale-imagenet"
-S3_PREFIX = "ILSVRC/Data/CLS-LOC/test/"
+S3_PREFIX = "ILSVRC/Data/CLS-LOC/val/"
 GCS_BUCKET = "anyscale-imagenet"
-GCS_PREFIX = "ILSVRC/Data/CLS-LOC/test/"
+GCS_PREFIX = "ILSVRC/Data/CLS-LOC/val/"
 MAX_WORKERS = 10  # Number of concurrent transfers
 
 class S3ToGCSTransfer:
