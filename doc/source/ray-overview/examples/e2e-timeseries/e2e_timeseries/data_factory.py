@@ -1,5 +1,6 @@
 import numpy as np
 import ray
+
 from data_loader import Dataset_ETT_hour
 
 # Make Ray Data less verbose.
