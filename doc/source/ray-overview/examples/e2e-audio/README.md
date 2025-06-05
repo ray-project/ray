@@ -20,7 +20,7 @@ Ray Data is particularly powerful for this use case because it:
 - **Parallelizes work** across a cluster of machines automatically
 - **Handles heterogeneous compute resources** seamlessly
 - Uses **lazy execution** to optimize the execution plan
-- Stages begin to process as soon as the first data block is available. This **streaming exection model** minimizes the time-to-first-result, eliminates large intermediate data storage, and maximizes resource utilization
+- Stages begin to process as soon as the first data block is available. This **streaming execution model** minimizes the time-to-first-result, eliminates large intermediate data storage, and maximizes resource utilization
 - The same script scales can scale to larger GPU clusters with minimal code changes
 
 ## Prerequisites
@@ -31,7 +31,7 @@ Install the dependencies using:
 pip install -r requirements.txt
 ```
 
-This tutorial is designed to run on a cluster with five L4 GPU worker nodes.
+This tutorial runs on a cluster with five L4 GPU worker nodes.
 
 # Setup
 
