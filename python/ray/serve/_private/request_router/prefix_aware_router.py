@@ -1,17 +1,10 @@
 # These imports are used for metrics tracking, will remove for PR
-import asyncio
-import csv
-import json
 import logging
-import os
-import random
 import time
 from typing import (
     List,
     Optional,
 )
-
-import requests
 
 import ray
 from ray.llm._internal.serve.request_router.prefix_aware.prefix_tree import (
@@ -94,188 +87,6 @@ class PrefixAwareRequestRouter(LocalityMixin, MultiplexMixin, RequestRouter):
             else eviction_threshold_chars
         )
         self._eviction_interval_secs = eviction_interval_secs
-
-        # === Metrics tracking ===
-        # Just used for benchmarking, will remove for PR eventually
-        self._do_track_metrics = False
-        self._track_metrics_task = None
-        self._vllm_metrics_path = "/home/ray/default/work/ray/_benchmarking_scripts/custom_results/vllm_metrics"
-        self._char_count_over_time_path = "/home/ray/default/work/ray/_benchmarking_scripts/custom_results/char_count_over_time"
-        self._load_distribution_path = "/home/ray/default/work/ray/_benchmarking_scripts/custom_results/load_distribution"
-        self._prefix_match_rate_path = "/home/ray/default/work/ray/_benchmarking_scripts/custom_results/prefix_match_rate"
-        self._vllm_metrics_over_time = {}
-        self._char_count_over_time = {}
-        self._load_distribution_over_time = {}
-        self._prefix_match_rates = []  # List of (time, replica_id, match_rate) tuples
-        self._benchmark_start_time = 0.0
-        self._num_requests_seen = 0
-        self._zero_load_count = 0
-
-    async def _track_metrics(self):
-        # Remove this function for PR, currently only used for benchmarking
-        """Track metrics every 1s, save to JSON at end."""
-        try:
-            self._benchmark_start_time = time.time()
-            print(
-                f"Beginning to track metrics immediately at time {self._benchmark_start_time}"
-            )
-            session = requests.Session()
-            while True:
-                await asyncio.sleep(1)
-                current_time = time.time()
-                elapsed = round(current_time - self._benchmark_start_time, 2)
-                total_load = 0
-
-                # === vLLM metrics via curl ===
-                try:
-                    response = session.get("http://localhost:5001/metrics")
-                    # response = session.get("http://localhost:8085/metrics")
-                    output = response.text
-                    lines = output.strip().split("\n")
-                    current_vllm_metrics = {}
-
-                    for line in lines:
-                        if line.startswith("#") or "vllm" not in line:
-                            continue
-
-                        parts = line.split()
-                        if len(parts) != 2:
-                            continue
-
-                        metric_line, value = parts
-                        try:
-                            value = float(value)
-                        except ValueError:
-                            continue
-
-                        # Parse metric name and labels
-                        if "{" in metric_line:
-                            name, label_str = metric_line.split("{", 1)
-                            if name == "ray_vllm:num_requests_running":
-                                total_load += value
-                            label_str = label_str.rstrip("}")
-                            labels = dict(
-                                item.split("=") for item in label_str.split(",")
-                            )
-                            labels = {k: v.strip('"') for k, v in labels.items()}
-                        else:
-                            name = metric_line
-                            labels = {}
-
-                        # Extract WorkerId
-                        worker_id = labels.get("WorkerId", "unknown")
-
-                        # Keep only important label keys
-                        important_keys = {"le", "model_name"}
-                        filtered_labels = {
-                            k: v for k, v in labels.items() if k in important_keys
-                        }
-
-                        # Append important label suffix to metric name
-                        if filtered_labels:
-                            label_suffix = ",".join(
-                                f"{k}={v}" for k, v in sorted(filtered_labels.items())
-                            )
-                            metric_key = f"{name}{{{label_suffix}}}"
-                        else:
-                            metric_key = name
-
-                        if worker_id not in current_vllm_metrics:
-                            current_vllm_metrics[worker_id] = {}
-                        current_vllm_metrics[worker_id][metric_key] = value
-
-                    self._vllm_metrics_over_time[elapsed] = current_vllm_metrics
-
-                except Exception as e:
-                    print(f"[WARN] Failed to curl or parse /metrics: {e}")
-
-                # === Character count over time ===
-                tenant_char_count = ray.get(
-                    self._tree_actor.getattr.remote("tenant_to_char_count")
-                )
-                from collections import defaultdict
-
-                current_char_count = defaultdict(int)
-                if tenant_char_count is not None:
-                    for tenant, char_count in tenant_char_count.items():
-                        current_char_count[tenant] = char_count
-                self._char_count_over_time[elapsed] = current_char_count
-
-                # === Load distribution over time ===
-                current_load_distribution = {}
-                if self._replicas:
-                    # Get queue lengths from cache first
-                    for replica_id, replica in self._replicas.items():
-                        queue_len = self._replica_queue_len_cache.get(replica_id)
-                        if queue_len is None:
-                            # If not in cache, probe the queue length
-                            queue_lens = await self._probe_queue_lens([replica], 0)
-                            if queue_lens:
-                                queue_len = queue_lens[0][1]
-                        if queue_len is not None:
-                            current_load_distribution[
-                                replica_id.to_full_id_str()
-                            ] = queue_len
-                self._load_distribution_over_time[elapsed] = current_load_distribution
-
-                # === End condition ===
-                if self._num_requests_seen > 10 and total_load == 0:
-                    print(
-                        f"Total load is 0 at time {current_time} with num_requests_seen {self._num_requests_seen}"
-                    )
-                    self._zero_load_count += 1
-                    if self._zero_load_count >= 2:
-                        print(
-                            f"Benchmark ended, writing data to disk at time {current_time}"
-                        )
-                        # Dump vLLM metrics
-                        os.makedirs(self._vllm_metrics_path, exist_ok=True)
-                        os.makedirs(self._char_count_over_time_path, exist_ok=True)
-                        os.makedirs(self._load_distribution_path, exist_ok=True)
-                        os.makedirs(self._prefix_match_rate_path, exist_ok=True)
-
-                        with open(
-                            os.path.join(
-                                self._vllm_metrics_path,
-                                f"prefix_aware_{int(time.time())}_id_{random.randint(0, 1000000)}.json",
-                            ),
-                            "w",
-                        ) as f:
-                            json.dump(self._vllm_metrics_over_time, f, indent=2)
-                        with open(
-                            os.path.join(
-                                self._char_count_over_time_path,
-                                f"prefix_aware_{int(time.time())}_id_{random.randint(0, 1000000)}.json",
-                            ),
-                            "w",
-                        ) as f:
-                            json.dump(self._char_count_over_time, f, indent=2)
-                        with open(
-                            os.path.join(
-                                self._load_distribution_path,
-                                f"prefix_aware_{int(time.time())}_id_{random.randint(0, 1000000)}.json",
-                            ),
-                            "w",
-                        ) as f:
-                            json.dump(self._load_distribution_over_time, f, indent=2)
-
-                        # Write prefix match rates to CSV
-                        csv_path = os.path.join(
-                            self._prefix_match_rate_path,
-                            f"prefix_aware_{int(time.time())}_id_{random.randint(0, 1000000)}.csv",
-                        )
-                        with open(csv_path, "w") as f:
-                            writer = csv.writer(f)
-                            writer.writerow(["time", "replica_id", "match_rate"])
-                            writer.writerows(self._prefix_match_rates)
-
-                        break
-                else:
-                    self._zero_load_count = 0
-        except Exception as e:
-            print(f"Error in metrics tracking: {e}")
-        finally:
-            self._track_metrics_task = None
 
     def _extract_text_from_request(self, pending_request: PendingRequest) -> str:
         """Extracts the text content from a pending request for prefix matching.
@@ -440,11 +251,6 @@ class PrefixAwareRequestRouter(LocalityMixin, MultiplexMixin, RequestRouter):
             )
             self._eviction_loop_running = True
 
-        if self._do_track_metrics and self._track_metrics_task is None:
-            self._track_metrics_task = self._event_loop.create_task(
-                self._track_metrics()
-            )
-
     async def choose_replicas(
         self,
         candidate_replicas: List[RunningReplica],
@@ -458,8 +264,6 @@ class PrefixAwareRequestRouter(LocalityMixin, MultiplexMixin, RequestRouter):
         model ID are available after that timeout, it will fall back to the regular
         procedure.
         """
-        self._num_requests_seen += 1
-
         # Get fallback replicas from PowerOfTwoChoicesRequestRouter
         fallback_replicas = await PowerOfTwoChoicesRequestRouter.choose_replicas(
             self,
@@ -520,23 +324,6 @@ class PrefixAwareRequestRouter(LocalityMixin, MultiplexMixin, RequestRouter):
         ):
             input_text = self._extract_text_from_request(pending_request)
             if input_text is not None:
-                # Track prefix match rate
-                if self._do_track_metrics:
-                    current_time = time.time() - self._benchmark_start_time
-                    matched_text, _ = ray.get(
-                        self._tree_actor.prefix_match.remote(
-                            input_text, [replica_id.to_full_id_str()]
-                        )
-                    )
-                    match_rate = len(matched_text) / len(input_text)
-                    self._prefix_match_rates.append(
-                        (
-                            round(current_time, 2),
-                            replica_id.to_full_id_str(),
-                            match_rate,
-                        )
-                    )
-
                 # Insert into prefix tree
                 ray.get(
                     self._tree_actor.insert.remote(

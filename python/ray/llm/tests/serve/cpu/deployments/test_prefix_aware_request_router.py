@@ -31,13 +31,10 @@ DEFAULT_MAX_ONGOING_REQUESTS = 10
 
 
 @pytest.fixture
-async def tree_actor():
+def tree_actor():
     """Create a fresh PrefixTreeActor instance."""
-    # ray.init(ignore_reinit_error=True)
-    actor = PrefixTreeActor.options(name=None).remote()
+    actor = PrefixTreeActor.options(name="PrefixTreeActor").remote()
     yield actor
-    # await asyncio.sleep(0.1)
-    # ray.shutdown()
 
 
 @pytest.fixture
@@ -49,12 +46,6 @@ def prefix_request_router(tree_actor, request):
         request_router = PrefixAwareRequestRouter(
             deployment_id=DeploymentID(name="TEST_DEPLOYMENT"),
             handle_source=DeploymentHandleSource.REPLICA,
-            # prefer_local_node=params.get("prefer_local_node", False),
-            # prefer_local_az=params.get("prefer_local_az", False),
-            # self_node_id="node",
-            # self_actor_id="actor",
-            # self_actor_handle=None,
-            # self_availability_zone="az",
             use_replica_queue_len_cache=False,
             imbalanced_threshold=params.get("imbalanced_threshold", 10),
             match_rate_threshold=params.get("match_rate_threshold", 0.1),
