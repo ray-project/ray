@@ -1,4 +1,4 @@
-autoscalerVersion: v2
+autoscaler_version: v2
 head_node_type:
     name: head_node
     instance_type: m5.2xlarge
