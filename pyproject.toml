@@ -36,8 +36,6 @@ ignore = [
     "B027",
     "B904",
     "C419",
-    # Below are auto-fixable rules
-    "I001",
 ]
 
 [tool.ruff.lint.flake8-quotes]

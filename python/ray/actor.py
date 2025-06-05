@@ -1,6 +1,6 @@
 import inspect
 import logging
-from typing import Any, Dict, List, Literal, Optional, Tuple, Union, TYPE_CHECKING
+from typing import TYPE_CHECKING, Any, Dict, List, Literal, Optional, Tuple, Union
 
 import ray._private.ray_constants as ray_constants
 import ray._private.signature as signature
@@ -13,6 +13,11 @@ from ray._private.client_mode_hook import (
     client_mode_convert_actor,
     client_mode_hook,
     client_mode_should_convert,
+)
+from ray._private.custom_types import (
+    TENSOR_TRANSPORT,
+    TypeTensorTransport,
+    TypeTensorTransportEnum,
 )
 from ray._private.inspect_util import (
     is_class_method,
@@ -27,6 +32,7 @@ from ray._raylet import (
     PythonFunctionDescriptor,
     raise_sys_exit_with_custom_error_message,
 )
+from ray.core.generated.common_pb2 import OBJECT_STORE, TensorTransport
 from ray.exceptions import AsyncioActorExit
 from ray.util.annotations import DeveloperAPI, PublicAPI
 from ray.util.placement_group import _configure_placement_group_based_on_context
@@ -39,12 +45,6 @@ from ray.util.tracing.tracing_helper import (
     _tracing_actor_creation,
     _tracing_actor_method_invocation,
 )
-from ray._private.custom_types import (
-    TENSOR_TRANSPORT,
-    TypeTensorTransport,
-    TypeTensorTransportEnum,
-)
-from ray.core.generated.common_pb2 import TensorTransport, OBJECT_STORE
 
 if TYPE_CHECKING:
     pass

@@ -15,8 +15,7 @@ from ray._private.ray_constants import (
     RAY_RUNTIME_ENV_ENVIRONMENT_VARIABLE,
 )
 from ray._private.utils import check_ray_client_dependencies_installed, split_address
-from ray._private.worker import BaseContext
-from ray._private.worker import init as ray_driver_init
+from ray._private.worker import BaseContext, init as ray_driver_init
 from ray.job_config import JobConfig
 from ray.util.annotations import Deprecated, PublicAPI
 

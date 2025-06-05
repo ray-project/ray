@@ -6,8 +6,8 @@ locally in LocalNodeProvider. To start the webserver the user runs:
 import argparse
 import json
 import logging
-import threading
 import socket
+import threading
 from http.server import HTTPServer, SimpleHTTPRequestHandler
 
 from ray.autoscaler._private.local.node_provider import LocalNodeProvider

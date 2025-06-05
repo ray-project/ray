@@ -10,9 +10,9 @@ from ray.dag.constants import (
 )
 from ray.experimental.channel.torch_tensor_type import Communicator, TorchTensorType
 from ray.experimental.util.types import (
-    ReduceOp,
     AllGatherOp,
     AllReduceOp,
+    ReduceOp,
     ReduceScatterOp,
     _CollectiveOp,
 )
