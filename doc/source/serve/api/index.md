@@ -109,7 +109,6 @@ See the [model composition guide](serve-model-composition) for how to update cod
    :toctree: doc/
 
    serve.request_router.ReplicaID
-   serve.request_router.ReplicaResult
    serve.request_router.PendingRequest
    serve.request_router.RunningReplica
    serve.request_router.FIFOMixin

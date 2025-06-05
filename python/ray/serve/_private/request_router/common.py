@@ -28,13 +28,24 @@ class PendingRequest:
     """A request that is pending execution by a replica."""
 
     args: List[Any]
+    """Positional arguments for the request."""
+
     kwargs: Dict[Any, Any]
+    """Keyword arguments for the request."""
+
     metadata: RequestMetadata
+    """Metadata for the request, including request ID and whether it's streaming."""
+
     created_at: float = field(default_factory=time.time)
+    """Timestamp when the request was created."""
+
     future: asyncio.Future = field(default_factory=lambda: asyncio.Future())
+    """An asyncio Future that will be set when the request is routed."""
+
     routing_context: RequestRoutingContext = field(
         default_factory=RequestRoutingContext
     )
+    """Context for request routing, used to track routing attempts and backoff."""
 
     def reset_future(self):
         """Reset the `asyncio.Future`, must be called if this request is re-used."""

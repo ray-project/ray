@@ -38,7 +38,10 @@ class ReplicaID:
     """A unique identifier for a replica."""
 
     unique_id: str
+    """A unique identifier for the replica within the deployment."""
+
     deployment_id: DeploymentID
+    """The deployment this replica belongs to."""
 
     def to_full_id_str(self) -> str:
         s = f"{self.deployment_id.name}#{self.unique_id}"

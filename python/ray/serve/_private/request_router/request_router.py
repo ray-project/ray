@@ -420,21 +420,28 @@ class FIFOMixin:
 class RequestRouter(ABC):
     """Abstract interface for a request router (how the router calls it)."""
 
-    # The sequence of backoff timeouts to use when all replicas' queues are full.
-    # The last item in the list is the max timeout and will be used repeatedly.
     backoff_sequence_s = [0, 0.05, 0.1, 0.15, 0.2, 0.5, 1.0]
+    """
+    The sequence of backoff timeouts to use when all replicas' queues are full.
+    The last item in the list is the max timeout and will be used repeatedly.
+    """
 
     # Deadline for replicas to respond with their queue length. If the response isn't
     # received within this deadline, the replica will not be considered.
     # If this deadline is repeatedly missed, it will be exponentially increased up to
     # the maximum configured here.
     queue_len_response_deadline_s = RAY_SERVE_QUEUE_LENGTH_RESPONSE_DEADLINE_S
-    max_queue_len_response_deadline_s = RAY_SERVE_MAX_QUEUE_LENGTH_RESPONSE_DEADLINE_S
+    """Deadline for receiving queue length info from replicas."""
 
-    # Hard limit on the maximum number of routing tasks to run. Having too many of
-    # these tasks can cause stability issue due to too much load on the local process
-    # and many too requests in flight to fetch replicas' queue lengths.
+    max_queue_len_response_deadline_s = RAY_SERVE_MAX_QUEUE_LENGTH_RESPONSE_DEADLINE_S
+    """Maximum deadline for receiving queue length info from replicas."""
+
     max_num_routing_tasks_cap = 50
+    """
+    Hard limit on the maximum number of routing tasks to run. Having too many of
+    these tasks can cause stability issue due to too much load on the local process
+    and many too requests in flight to fetch replicas' queue lengths.
+    """
 
     def __init__(
         self,
@@ -561,14 +568,17 @@ class RequestRouter(ABC):
 
     @property
     def curr_replicas(self) -> Dict[ReplicaID, RunningReplica]:
+        """Current replicas available to be routed."""
         return self._replicas
 
     @property
     def app_name(self) -> str:
+        """Name of the app this router is serving."""
         return self._deployment_id.app_name
 
     @property
     def replica_queue_len_cache(self) -> ReplicaQueueLengthCache:
+        """Get the replica queue length cache."""
         return self._replica_queue_len_cache
 
     def create_replica_wrapper(
