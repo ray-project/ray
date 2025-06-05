@@ -343,7 +343,7 @@ py_test_module_list(
         "test_streaming_generator_4.py",
         "test_streaming_generator_backpressure.py",
         "test_task_metrics.py",
-        "test_tempfile.py",
+        "test_tempdir.py",
         "test_tls_auth.py",
         "test_traceback.py",
         "test_worker_capping.py",
@@ -994,6 +994,7 @@ py_test_module_list(
 py_test_module_list(
     size = "large",
     files = [
+        "test_runtime_env_complicated.py",
         "test_runtime_env_conda_and_pip.py",
         "test_runtime_env_conda_and_pip_2.py",
         "test_runtime_env_conda_and_pip_3.py",
@@ -1002,22 +1003,6 @@ py_test_module_list(
         "test_runtime_env_uv.py",
         "test_runtime_env_uv_run.py",
     ],
-    tags = [
-        "exclusive",
-        "post_wheel_build",
-        "team:core",
-    ],
-    deps = [
-        ":conftest",
-        "//:ray_lib",
-    ],
-)
-
-py_test(
-    name = "test_runtime_env_complicated",
-    size = "large",
-    srcs = ["test_runtime_env_complicated.py"],
-    data = ["//python/ray/experimental/packaging/example_pkg"],
     tags = [
         "exclusive",
         "post_wheel_build",
