@@ -75,9 +75,9 @@
         },
 	"osDiskSize": {
 	    "type": "int",
-	    "defaultValue": 128,
+	    "defaultValue": 0,
 	    "metadata": {
-		"description": "Size of the OS disk in GB. Default is 128GB."
+		"description": "Size of the OS disk in GB"
 	    }
 	},
         "provisionPublicIp": {
@@ -245,7 +245,7 @@
                 "storageProfile": {
                     "osDisk": {
                         "createOption": "fromImage",
-			"diskSizeGB": "[parameters('osDiskSize')]",
+			"diskSizeGB": "[if(equals(parameters('osDiskSize'), 0), json('null'), parameters('osDiskSize'))]",
                         "managedDisk": {
                             "storageAccountType": "[variables('osDiskType')]"
                         }
