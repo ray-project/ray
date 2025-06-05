@@ -1,6 +1,7 @@
-from typing import Optional
+from typing import Any, Dict, Optional
 
 from ray.data._internal.logical.interfaces import LogicalOperator
+from ray.data._internal.logical.interfaces.operator import DatasetExportArgs
 from ray.data.block import BlockMetadata
 
 
@@ -34,7 +35,7 @@ class AbstractOneToOne(LogicalOperator):
         ...
 
 
-class Limit(AbstractOneToOne):
+class Limit(DatasetExportArgs, AbstractOneToOne):
     """Logical operator for limit."""
 
     def __init__(
@@ -47,6 +48,12 @@ class Limit(AbstractOneToOne):
             input_op,
         )
         self._limit = limit
+
+    def dataset_export_args(self) -> Dict[str, Any]:
+        """Export the arguments into dictionary format."""
+        return {
+            "limit": self._limit,
+        }
 
     def can_modify_num_rows(self) -> bool:
         return True

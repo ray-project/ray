@@ -6,6 +6,7 @@ import pytest
 
 import ray
 from ray.data import DataContext
+from ray.data._internal.logical.interfaces.operator import DatasetExportArgs
 from ray.data._internal.metadata_exporter import Operator, Topology, sanitize_for_struct
 from ray.data._internal.stats import _get_or_create_stats_actor
 from ray.tests.conftest import _ray_start
@@ -158,16 +159,23 @@ def test_logical_op_args(ray_start_cluster_with_export_api_write, kwargs):
         def __call__(self, x):
             return x
 
+        def __call__(self, x):
+            return x
+
     ds = ray.data.range(1).map_batches(
         Udf,
         **kwargs,
     )
     dag = ds._plan._logical_plan.dag
-    args = dag._get_args()
+    assert isinstance(
+        dag, DatasetExportArgs
+    ), f"DAG should be a DatasetExportArgs instance, found {type(dag)}"
+    args = dag.dataset_export_args()
     assert len(args) > 0, "Export args should not be empty"
     for k, v in kwargs.items():
-        k = f"_{k}"
         assert k in args, f"Export args should contain key '{k}'"
+        while isinstance(v, DatasetExportArgs):
+            v = v.dataset_export_args()
         assert (
             args[k] == v
         ), f"Export args for key '{k}' should match expected value {v}, found {args[k]}"

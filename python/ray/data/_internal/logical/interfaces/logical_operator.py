@@ -1,4 +1,4 @@
-from typing import TYPE_CHECKING, Any, Callable, Dict, Iterator, List, Optional
+from typing import TYPE_CHECKING, Callable, Iterator, List, Optional
 
 from .operator import Operator
 from ray.data.block import BlockMetadata
@@ -60,13 +60,6 @@ class LogicalOperator(Operator):
         self, transform: Callable[["LogicalOperator"], "LogicalOperator"]
     ) -> "LogicalOperator":
         return super()._apply_transform(transform)  # type: ignore
-
-    def _get_args(self) -> Dict[str, Any]:
-        return {
-            k: v
-            for k, v in vars(self).items()
-            if not callable(v) and not k.startswith("__")
-        }
 
     def output_data(self) -> Optional[List["RefBundle"]]:
         """The output data of this operator, or ``None`` if not known."""

@@ -50,7 +50,7 @@ message Operator {
   repeated SubStage sub_stages = 5;
 
   // A dict mapping from PhysicalOp -> LogicalOp -> Input Args. The Input Args
-  // can be found in `_get_logical_args`, and is used to help understand how a
+  // can be found in `_get_logical_args`, and is used to help understand how a 
   // user's arguments lead to a dataset's state execution
   google.protobuf.Struct args = 6;
 
