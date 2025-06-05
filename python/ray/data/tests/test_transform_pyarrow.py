@@ -13,8 +13,8 @@ from ray._private.arrow_utils import get_pyarrow_version
 from ray.air.util.tensor_extensions.arrow import ArrowTensorTypeV2
 from ray.data import DataContext
 from ray.data._internal.arrow_ops.transform_pyarrow import (
-    MIN_PYARROW_VERSION_TYPE_PROMOTION,
     MIN_NUM_CHUNKS_TO_TRIGGER_COMBINE_CHUNKS,
+    MIN_PYARROW_VERSION_TYPE_PROMOTION,
     concat,
     hash_partition,
     shuffle,
