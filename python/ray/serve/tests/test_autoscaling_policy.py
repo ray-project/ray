@@ -8,13 +8,14 @@ import zipfile
 from typing import Dict, Iterable, List
 from unittest import mock
 
+import httpx
 import pytest
-import requests
 
 import ray
 import ray.util.state as state_api
 from ray import serve
-from ray._private.test_utils import SignalActor, wait_for_condition
+from ray._common.test_utils import SignalActor
+from ray._private.test_utils import wait_for_condition
 from ray.serve._private.common import (
     DeploymentID,
     DeploymentStatus,
@@ -538,8 +539,8 @@ def test_cold_start_time(serve_instance):
 
     wait_for_condition(check_running)
 
-    assert requests.post("http://localhost:8000/-/healthz").status_code == 200
-    assert requests.post("http://localhost:8000/-/routes").status_code == 200
+    assert httpx.post("http://localhost:8000/-/healthz").status_code == 200
+    assert httpx.post("http://localhost:8000/-/routes").status_code == 200
 
     start = time.time()
     result = handle.remote().result()
@@ -1066,7 +1067,7 @@ app = g.bind()
     # Step 3: Verify that it can scale from 0 to 1.
     @ray.remote
     def send_request():
-        return requests.get("http://localhost:8000/").text
+        return httpx.get("http://localhost:8000/").text
 
     ref = send_request.remote()
 
