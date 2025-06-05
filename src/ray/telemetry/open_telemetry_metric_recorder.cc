@@ -15,6 +15,7 @@
 
 #include <opentelemetry/context/context.h>
 #include <opentelemetry/exporters/otlp/otlp_grpc_metric_exporter.h>
+#include <opentelemetry/exporters/otlp/otlp_preferred_temporality.h>
 #include <opentelemetry/metrics/provider.h>
 #include <opentelemetry/nostd/variant.h>
 #include <opentelemetry/sdk/metrics/aggregation/histogram_aggregation.h>
@@ -64,6 +65,8 @@ void OpenTelemetryMetricRecorder::RegisterGrpcExporter(
   // Create an OTLP exporter
   opentelemetry::exporter::otlp::OtlpGrpcMetricExporterOptions exporter_options;
   exporter_options.endpoint = endpoint;
+  exporter_options.aggregation_temporality =
+      opentelemetry::exporter::otlp::PreferredAggregationTemporality::kDelta;
   auto exporter = std::make_unique<opentelemetry::exporter::otlp::OtlpGrpcMetricExporter>(
       exporter_options);
 
