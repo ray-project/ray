@@ -1,7 +1,6 @@
 import os
 import re
 import signal
-import subprocess
 import sys
 import tempfile
 import time
@@ -351,7 +350,7 @@ while True:
 
 @pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
 def test_fail_importing_actor():
-    script = f"""
+    script = """
 import os
 import sys
 import tempfile
@@ -392,7 +391,7 @@ ray.get(Foo.remote().ready.remote())
 
 
 def test_fail_importing_task():
-    script = f"""
+    script = """
 import os
 import sys
 import tempfile
@@ -448,7 +447,7 @@ ray._private.utils.push_error_to_driver(
 
 def test_task_stdout_stderr():
     """Test that task stdout and stderr is streamed to the driver correctly."""
-    script = f"""
+    script = """
 import ray
 import sys
 
@@ -485,7 +484,7 @@ ray.get([foo.remote(), bar.remote(), baz.remote()])
 
 def test_actor_stdout_stderr():
     """Test that actor stdout and stderr is streamed to the driver correctly."""
-    script = f"""
+    script = """
 import ray
 import sys
 
