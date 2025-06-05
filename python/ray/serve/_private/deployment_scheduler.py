@@ -760,9 +760,9 @@ class DefaultDeploymentScheduler(DeploymentScheduler):
         ):
             if node_id not in node_to_running_replicas_of_target_deployment:
                 continue
-            for running_replica in node_to_running_replicas_of_target_deployment[
-                node_id
-            ]:
+            for running_replica in reversed(
+                list(node_to_running_replicas_of_target_deployment[node_id])
+            ):
                 if len(replicas_to_stop) == max_num_to_stop:
                     return replicas_to_stop
                 else:
