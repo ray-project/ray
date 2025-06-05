@@ -138,8 +138,6 @@ class LogEventReporter : public BaseEventReporter {
   std::string file_name_;
 
   std::shared_ptr<spdlog::logger> log_sink_;
-
-  absl::Mutex log_sink_init_lock_;
 };
 
 // store the reporters, add reporters and clean reporters

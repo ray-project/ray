@@ -74,6 +74,7 @@ LogEventReporter::LogEventReporter(SourceTypeVariant source_type,
 
   file_name_ = "event_" + source_type_name +
                (add_pid_to_file ? "_" + std::to_string(getpid()) : "") + ".log";
+
 }
 
 LogEventReporter::~LogEventReporter() { Flush(); }
@@ -87,23 +88,19 @@ void LogEventReporter::Flush() {
 
 std::shared_ptr<spdlog::logger> LogEventReporter::getLogSinkLazy() {
   if (log_sink_ == nullptr) {
-    absl::MutexLock guard(&log_sink_init_lock_);
-    // Confirm lock isn't initialized still
+    std::string log_sink_key = GetReporterKey() + log_dir_ + file_name_;
+    log_sink_ = spdlog::get(log_sink_key);
+    // If the file size is over {rotate_max_file_size_} MB, this file would be renamed
+    // for example event_GCS.0.log, event_GCS.1.log, event_GCS.2.log ...
+    // We allow to rotate for {rotate_max_file_num_} times.
     if (log_sink_ == nullptr) {
-      std::string log_sink_key = GetReporterKey() + log_dir_ + file_name_;
-      log_sink_ = spdlog::get(log_sink_key);
-      // If the file size is over {rotate_max_file_size_} MB, this file would be renamed
-      // for example event_GCS.0.log, event_GCS.1.log, event_GCS.2.log ...
-      // We allow to rotate for {rotate_max_file_num_} times.
-      if (log_sink_ == nullptr) {
-        log_sink_ = spdlog::rotating_logger_mt(log_sink_key,
-                                               log_dir_ + file_name_,
-                                               1048576 * rotate_max_file_size_,
-                                               rotate_max_file_num_);
-      }
-
-      log_sink_->set_pattern("%v");
+      log_sink_ = spdlog::rotating_logger_mt(log_sink_key,
+                                             log_dir_ + file_name_,
+                                             1048576 * rotate_max_file_size_,
+                                             rotate_max_file_num_);
     }
+
+    log_sink_->set_pattern("%v");
   }
 
   return log_sink_;
