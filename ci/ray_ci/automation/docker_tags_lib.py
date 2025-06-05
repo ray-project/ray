@@ -28,6 +28,7 @@ bazel_workspace_dir = os.environ.get("BUILD_WORKSPACE_DIRECTORY", "")
 SHA_LENGTH = 6
 DOCKERHUB_SSM_NAME = "docker_hub_password"
 
+
 def _check_python_version(python_version: str, ray_type: str) -> None:
     if ray_type == RayType.RAY and python_version not in PYTHON_VERSIONS_RAY:
         raise ValueError(
@@ -626,10 +627,10 @@ def _write_to_file(file_path: str, content: List[str]) -> None:
 
 
 def generate_index(index_name: str, tags: List[str]) -> bool:
+    print(f"Generating index {index_name} with tags {tags}")
     authorize_docker()
     # Make sure tag is an image and not an index
     for tag in tags:
-        print(f"Checking manifest for {tag}")
         return_code, output = _call_crane_manifest(tag)
         if return_code:
             logger.info(f"Failed to get manifest for {tag}")
@@ -657,7 +658,8 @@ def authorize_docker():
         ["docker", "login", "--username", "raytravisbot", "--password", docker_password]
     )
 
+
 def _get_ssm(token_name):
-    client = boto3.client("ssm")
+    client = boto3.client("ssm", region_name="us-west-2")
     resp = client.get_parameter(Name=token_name, WithDecryption=True)
     return resp["Parameter"]["Value"]
