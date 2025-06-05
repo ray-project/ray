@@ -2396,20 +2396,21 @@ def test_schedule_node_with_matching_labels():
 
 def test_scale_up_node_to_satisfy_labels():
     """
-    Test that a node with mismatched labels is not used for scheduling and a new node is launched.
+    Test that a resource request with a label selector scales up a new node with
+    labels to satisfy the constraint.
     """
     scheduler = ResourceDemandScheduler(event_logger)
 
     node_type_configs = {
-        "labelled_node_1": NodeTypeConfig(
-            name="labelled_node_1",
+        "tpu_node": NodeTypeConfig(
+            name="tpu_node",
             resources={"CPU": 1},
             labels={"accelerator": "TPU"},
             min_worker_nodes=0,
             max_worker_nodes=10,
         ),
-        "labelled_node_2": NodeTypeConfig(
-            name="labelled_node_2",
+        "gpu_node": NodeTypeConfig(
+            name="gpu_node",
             resources={"CPU": 1},
             labels={"accelerator": "A100"},
             min_worker_nodes=0,
@@ -2431,7 +2432,7 @@ def test_scale_up_node_to_satisfy_labels():
     reply = scheduler.schedule(request)
     to_launch, _ = _launch_and_terminate(reply)
 
-    assert to_launch == {"labelled_node_2": 1}
+    assert to_launch == {"gpu_node": 1}
 
 
 if __name__ == "__main__":
