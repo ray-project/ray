@@ -21,8 +21,7 @@ from ray.dashboard.subprocesses.utils import (
     get_socket_path,
     module_logging_filename,
 )
-
-import setproctitle
+from ray._private.thirdparty import setproctitle
 
 logger = logging.getLogger(__name__)
 

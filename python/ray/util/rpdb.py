@@ -17,12 +17,11 @@ import uuid
 from pdb import Pdb
 from typing import Callable
 
-import setproctitle
-
 import ray
 from ray._private import ray_constants
 from ray.experimental.internal_kv import _internal_kv_del, _internal_kv_put
 from ray.util.annotations import DeveloperAPI
+from ray._private.thirdparty import setproctitle
 
 log = logging.getLogger(__name__)
 
