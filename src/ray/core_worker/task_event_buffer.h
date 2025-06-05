@@ -382,10 +382,11 @@ class TaskEventBufferImpl : public TaskEventBuffer {
 
   // Verify if export events should be written for EXPORT_TASK source types
   bool IsExportAPIEnabledTask() const {
-    return IsExportAPIEnabledSourceType(
-        "EXPORT_TASK",
-        ::RayConfig::instance().enable_export_api_write(),
-        ::RayConfig::instance().enable_export_api_write_config());
+    return true;
+    // return IsExportAPIEnabledSourceType(
+    //     "EXPORT_TASK",
+    //     ::RayConfig::instance().enable_export_api_write(),
+    //     ::RayConfig::instance().enable_export_api_write_config());
   }
 
   /// Reset the counters during flushing data to GCS.
@@ -480,7 +481,7 @@ class TaskEventBufferImpl : public TaskEventBuffer {
   std::atomic<bool> grpc_in_progress_ = false;
 
   /// If true, task events are exported for Export API
-  bool export_event_write_enabled_ = false;
+  bool export_event_write_enabled_ = true;
 
   FRIEND_TEST(TaskEventBufferTestManualStart, TestGcsClientFail);
   FRIEND_TEST(TaskEventBufferTestBatchSend, TestBatchedSend);
