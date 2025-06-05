@@ -15,7 +15,7 @@ from ray.serve._private.common import (
 )
 from ray.serve._private.request_router.common import PendingRequest
 from ray.serve._private.request_router.prefix_aware_router import (
-    PrefixAwareRequestRouter,
+    PrefixAwarePow2ReplicaScheduler,
 )
 from ray.serve._private.test_utils import MockTimer
 from ray.serve._private.utils import generate_request_id
@@ -40,11 +40,11 @@ def tree_actor():
 
 @pytest.fixture
 def prefix_request_router(tree_actor, request):
-    """Create a fresh PrefixAwareRequestRouter with connected tree_actor."""
+    """Create a fresh PrefixAwarePow2ReplicaScheduler with connected tree_actor."""
     params = getattr(request, "param", {})
 
     async def construct_request_router(loop: asyncio.AbstractEventLoop):
-        request_router = PrefixAwareRequestRouter(
+        request_router = PrefixAwarePow2ReplicaScheduler(
             deployment_id=DeploymentID(name="TEST_DEPLOYMENT"),
             handle_source=DeploymentHandleSource.REPLICA,
             use_replica_queue_len_cache=False,
