@@ -16,6 +16,7 @@
 
 #include <opentelemetry/metrics/meter.h>
 #include <opentelemetry/metrics/observer_result.h>
+#include <opentelemetry/nostd/shared_ptr.h>
 #include <opentelemetry/sdk/metrics/meter_provider.h>
 
 #include <cassert>
@@ -60,15 +61,15 @@ class OpenTelemetryMetricRecorder {
 
   // Get the value of a metric given the tags.
   std::optional<double> GetMetricValue(
-      const std::string &name,
-      const absl::flat_hash_map<std::string, std::string> &tags) const;
+      const std::string &name, const absl::flat_hash_map<std::string, std::string> &tags);
 
   // Helper function to collect gauge metric values. This function is called only once
   // per interval for each metric. It collects the values from the observations_by_name_
   // map and passes them to the observer.
   void CollectGaugeMetricValues(
       const std::string &name,
-      const std::shared_ptr<opentelemetry::metrics::ObserverResultT<double>> &observer);
+      const opentelemetry::nostd::shared_ptr<
+          opentelemetry::metrics::ObserverResultT<double>> &observer);
 
   // Delete copy constructors and assignment operators. Skip generation of the move
   // constructors and assignment operators.
@@ -89,15 +90,16 @@ class OpenTelemetryMetricRecorder {
       observations_by_name_;
   // Map of metric names to their instrument pointers. This is used to ensure that
   // each metric is only registered once.
-  absl::flat_hash_map<std::string,
-                      std::shared_ptr<opentelemetry::metrics::ObservableInstrument>>
+  absl::flat_hash_map<
+      std::string,
+      opentelemetry::nostd::shared_ptr<opentelemetry::metrics::ObservableInstrument>>
       registered_instruments_;
   // List of gauge callback names. This is used as data for the gauge callbacks.
   std::list<std::string> gauge_callback_names_;
   // Lock for thread safety when modifying state.
   std::mutex mutex_;
 
-  std::shared_ptr<opentelemetry::metrics::Meter> GetMeter() {
+  opentelemetry::nostd::shared_ptr<opentelemetry::metrics::Meter> GetMeter() {
     return meter_provider_->GetMeter("ray");
   }
 };
