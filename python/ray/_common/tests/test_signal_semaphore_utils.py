@@ -1,3 +1,10 @@
+"""Tests for Ray test utility classes.
+
+This module contains pytest-based tests for SignalActor and Semaphore classes
+from ray._common.test_utils. These test utility classes are used for coordination
+and synchronization in Ray tests.
+"""
+
 import pytest
 import sys
 import ray
@@ -8,12 +15,14 @@ import time
 
 @pytest.fixture(scope="module")
 def ray_init():
+    """Initialize Ray for the test module."""
     ray.init(num_cpus=4)
     yield
     ray.shutdown()
 
 
 def test_signal_actor_basic(ray_init):
+    """Test basic SignalActor functionality - send and wait operations."""
     signal = SignalActor.remote()
 
     # Test initial state
@@ -26,6 +35,7 @@ def test_signal_actor_basic(ray_init):
 
 
 def test_signal_actor_multiple_waiters(ray_init):
+    """Test SignalActor with multiple waiters and signal clearing."""
     signal = SignalActor.remote()
 
     # Create multiple waiters
@@ -56,6 +66,7 @@ def test_signal_actor_multiple_waiters(ray_init):
 
 
 def test_semaphore_basic(ray_init):
+    """Test basic Semaphore functionality - acquire, release, and lock status."""
     sema = Semaphore.remote(value=2)
 
     # Test initial state
@@ -72,6 +83,7 @@ def test_semaphore_basic(ray_init):
 
 
 def test_semaphore_concurrent(ray_init):
+    """Test Semaphore with concurrent workers to verify resource limiting."""
     sema = Semaphore.remote(value=2)
 
     def worker():
