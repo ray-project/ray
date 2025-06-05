@@ -214,8 +214,8 @@ class KuberayJobManager:
         #     log_message = entry.json_payload["log"]
         #     print(log_message)
         
-        # now = time.time()
-        # twelve_hours_ago = now - (12 * 60 * 60)
+        now = time.time()
+        twelve_hours_ago = now - (12 * 60 * 60)
         
         now_str = time.strftime("%Y-%m-%dT%H:%M:%S.000Z", time.gmtime(now))
         start_str = time.strftime("%Y-%m-%dT%H:%M:%S.000Z", time.gmtime(twelve_hours_ago))

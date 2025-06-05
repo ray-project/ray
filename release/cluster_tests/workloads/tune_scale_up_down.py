@@ -74,6 +74,9 @@ def main():
 
     node_counts = Counter(node_counter.node_counts)
     assert node_counts[3] > 0, "Cluster never scaled to 3 nodes"
+    print("Node counts: ", node_counts)
+    print()
+    print("Node counter count: ", node_counter.node_counts)
     assert node_counter.node_counts[-1] == 1, "Cluster didn't scale down to 1 node."
 
 
