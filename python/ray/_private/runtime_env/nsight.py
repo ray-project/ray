@@ -71,7 +71,8 @@ class NsightPlugin(RuntimeEnvPlugin):
         nsight_config_copy["o"] = str(Path(self._nsight_dir) / "empty")
         nsight_cmd = parse_nsight_config(nsight_config_copy)
         try:
-            nsight_cmd = nsight_cmd + ["python", "-c", '""']
+            python_executable = sys.executable or "python"
+            nsight_cmd = nsight_cmd + [python_executable, "-c", '""']
             process = await asyncio.create_subprocess_exec(
                 *nsight_cmd,
                 stdout=subprocess.PIPE,
