@@ -54,6 +54,10 @@ gce_gpu_cpu_to_concurrent_groups = [
     ),
 ]
 
+kuberay_concurrent_groups = [
+    Condition(min_cpu=-inf, max_cpu=inf, group="gke", limit=10),
+]
+
 
 # Obtained from https://cloud.google.com/compute/docs/accelerator-optimized-machines
 gcp_gpu_instances = {
@@ -103,6 +107,8 @@ def parse_condition(cond: int, limit: float = float("inf")) -> float:
 def get_concurrency_group(test: Test) -> Tuple[str, int]:
     if test.get("env", None) == "gce":
         concurrent_group = gce_gpu_cpu_to_concurrent_groups
+    elif test.get("env", None) == "kuberay":
+        return "gke", 10
     else:
         concurrent_group = aws_gpu_cpu_to_concurrency_groups
     default_concurrent = concurrent_group[-1]
