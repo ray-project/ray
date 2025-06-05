@@ -6,6 +6,7 @@
 :hidden:
 
 Deploy Ray Serve Apps <user-guides/rayservice>
+user-guides/rayservice-no-ray-serve-replica
 user-guides/rayservice-high-availability
 user-guides/observability
 user-guides/upgrade-guide
@@ -29,6 +30,7 @@ user-guides/static-ray-cluster-without-kuberay
 user-guides/kubectl-plugin
 user-guides/kuberay-auth
 user-guides/reduce-image-pull-latency
+user-guides/uv
 ```
 
 
@@ -38,6 +40,7 @@ at the {ref}`introductory guide <kuberay-quickstart>` first.
 :::
 
 * {ref}`kuberay-rayservice`
+* {ref}`kuberay-rayservice-no-ray-serve-replica`
 * {ref}`kuberay-rayservice-ha`
 * {ref}`kuberay-observability`
 * {ref}`kuberay-upgrade-guide`
@@ -61,3 +64,4 @@ at the {ref}`introductory guide <kuberay-quickstart>` first.
 * {ref}`kubectl-plugin`
 * {ref}`kuberay-auth`
 * {ref}`reduce-image-pull-latency`
+* {ref}`kuberay-uv`

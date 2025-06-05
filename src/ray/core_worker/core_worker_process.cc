@@ -12,9 +12,14 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+#include "ray/core_worker/core_worker_process.h"
+
+#include <memory>
+#include <string>
+#include <vector>
+
 #include "ray/core_worker/core_worker.h"
 #include "ray/stats/stats.h"
-#include "ray/util/compat.h"
 #include "ray/util/env.h"
 #include "ray/util/event.h"
 #include "ray/util/process.h"
@@ -260,8 +265,9 @@ void CoreWorkerProcessImpl::InitializeSystemConfig() {
   std::promise<std::string> promise;
   std::thread thread([&] {
     instrumented_io_context io_service;
-    boost::asio::io_service::work work(io_service);
-    rpc::ClientCallManager client_call_manager(io_service);
+    boost::asio::executor_work_guard<boost::asio::io_context::executor_type> work(
+        io_service.get_executor());
+    rpc::ClientCallManager client_call_manager(io_service, /*record_stats=*/false);
     auto grpc_client = rpc::NodeManagerWorkerClient::make(
         options_.raylet_ip_address, options_.node_manager_port, client_call_manager);
     raylet::RayletClient raylet_client(grpc_client);
@@ -318,8 +324,8 @@ void CoreWorkerProcessImpl::InitializeSystemConfig() {
   thread.join();
 
   RayConfig::instance().initialize(promise.get_future().get());
-  ray::asio::testing::init();
-  ray::rpc::testing::init();
+  ray::asio::testing::Init();
+  ray::rpc::testing::Init();
 }
 
 void CoreWorkerProcessImpl::RunWorkerTaskExecutionLoop() {
@@ -358,7 +364,7 @@ std::shared_ptr<CoreWorker> CoreWorkerProcessImpl::GetCoreWorker() const {
   if (!read_locked.Get()) {
     // This could only happen when the worker has already been shutdown.
     // In this case, we should exit without crashing.
-    // TODO (scv119): A better solution could be returning error code
+    // TODO(scv119): A better solution could be returning error code
     // and handling it at language frontend.
     if (options_.worker_type == WorkerType::DRIVER) {
       RAY_LOG(ERROR) << "The core worker has already been shutdown. This happens when "

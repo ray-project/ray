@@ -18,6 +18,7 @@
 #include <memory>
 #include <string>
 #include <utility>
+#include <vector>
 
 #include "absl/base/thread_annotations.h"
 #include "absl/synchronization/mutex.h"
@@ -30,7 +31,7 @@
 #include "ray/gcs/pb_util.h"
 #include "ray/util/counter_map.h"
 #include "ray/util/event.h"
-#include "src/ray/protobuf/export_api/export_task_event.pb.h"
+#include "src/ray/protobuf/export_task_event.pb.h"
 #include "src/ray/protobuf/gcs.pb.h"
 
 namespace ray {
@@ -244,8 +245,7 @@ class TaskEventBuffer {
       const TaskSpecification &spec,
       rpc::TaskStatus status,
       bool include_task_info = false,
-      absl::optional<const TaskStatusEvent::TaskStateUpdate> state_update =
-          absl::nullopt);
+      std::optional<const TaskStatusEvent::TaskStateUpdate> state_update = absl::nullopt);
 
   /// Add a task event to be reported.
   ///

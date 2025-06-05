@@ -107,3 +107,6 @@ constexpr char kLabelKeyNodeID[] = RAY_LABEL_KEY_PREFIX "node_id";
 /// can be shared but protobuf doesn't support defining string constants.
 /// https://docs.google.com/document/d/151T4VnknX_5EtPy6E-LbpL-r1T4ZSO0UBvSgWdSjx4Q/edit#heading=h.2ews5m5fmz
 constexpr char kImplicitResourcePrefix[] = "node:__internal_implicit_resource_";
+
+/// PID of GCS process to record metrics.
+constexpr char kGcsPidKey[] = "gcs_pid";

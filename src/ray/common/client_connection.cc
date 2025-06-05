@@ -30,6 +30,7 @@
 
 #include "ray/common/event_stats.h"
 #include "ray/common/ray_config.h"
+#include "ray/util/process.h"
 #include "ray/util/util.h"
 
 #if defined(_WIN32)
@@ -42,48 +43,16 @@
 
 namespace ray {
 
-namespace {
-
-#if defined(_WIN32)
-// Don't care what exact type is in windows... Looks like to be an asio specific type.
-template <typename NativeHandleType>
-void SetFdCloseOnExec(const NativeHandleType &handle) {
-  // In Windows we don't need to do anything, because in CreateProcess we pass
-  // bInheritHandles = false which means we don't inherit handles or sockets.
-  // https://github.com/ray-project/ray/blob/928183b3acab3c4ad73ef3001203a7aaf009bc87/src/ray/util/process.cc#L148
-  // https://learn.microsoft.com/en-us/windows/win32/sysinfo/handle-inheritance
-  return;
-}
-#else
-
-// Sets the flag FD_CLOEXEC to a file descriptor.
-// This means when the process is forked, this fd would be closed in the child process
-// side. Raylet forks to create core workers and we don't want the Unix Socket FDs to be
-// inherited by the core workers. Leaking these FDs would have performance implications.
-//
-// Idempotent. Calling twice == calling once.
-// Not thread safe.
-// See https://github.com/ray-project/ray/issues/40813
-void SetFdCloseOnExec(int fd) {
-  if (fd < 0) {
-    return;
-  }
-  int flags = fcntl(fd, F_GETFD, 0);
-  RAY_CHECK_NE(flags, -1) << "fcntl error: errno = " << errno << ", fd = " << fd;
-  const int ret = fcntl(fd, F_SETFD, flags | FD_CLOEXEC);
-  RAY_CHECK_NE(ret, -1) << "fcntl error: errno = " << errno << ", fd = " << fd;
-  RAY_LOG(DEBUG) << "set FD_CLOEXEC to fd " << fd;
-}
-#endif
-
-}  // namespace
-
 void SetCloseOnExec(local_stream_socket &socket) {
+#if !defined(_WIN32)
   SetFdCloseOnExec(socket.native_handle());
+#endif
 }
 
 void SetCloseOnExec(boost::asio::basic_socket_acceptor<local_stream_protocol> &acceptor) {
+#if !defined(_WIN32)
   SetFdCloseOnExec(acceptor.native_handle());
+#endif
 }
 
 Status ConnectSocketRetry(local_stream_socket &socket,

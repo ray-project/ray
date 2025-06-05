@@ -1,12 +1,12 @@
 import asyncio
 import logging
 import os
-import sys
 import signal
+import sys
 from typing import AsyncIterator
 
+from ray.dashboard import optional_utils
 from ray.dashboard.optional_deps import aiohttp
-
 from ray.dashboard.subprocesses.module import SubprocessModule
 from ray.dashboard.subprocesses.routes import SubprocessRouteTable as routes
 from ray.dashboard.subprocesses.utils import ResponseType
@@ -16,11 +16,11 @@ logger = logging.getLogger(__name__)
 
 class BaseTestModule(SubprocessModule):
     @property
-    def gcs_aio_client(self):
+    def gcs_client(self):
         return None
 
     @property
-    def gcs_client(self):
+    def aiogrpc_gcs_channel(self):
         return None
 
 
@@ -28,6 +28,8 @@ class TestModule(BaseTestModule):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.run_finished = False
+        self.not_cached_count = 0
+        self.cached_count = 0
 
     async def run(self):
         await super().run()
@@ -48,6 +50,21 @@ class TestModule(BaseTestModule):
         await asyncio.sleep(0.1)
         body = await req.text()
         return aiohttp.web.Response(text="Hello, World from POST /echo from " + body)
+
+    @routes.get("/not_cached")
+    async def not_cached(self, req: aiohttp.web.Request) -> aiohttp.web.Response:
+        self.not_cached_count += 1
+        return aiohttp.web.Response(
+            text=f"Hello, World from GET /not_cached, count: {self.not_cached_count}"
+        )
+
+    @routes.get("/cached")
+    @optional_utils.aiohttp_cache
+    async def cached(self, req: aiohttp.web.Request) -> aiohttp.web.Response:
+        self.cached_count += 1
+        return aiohttp.web.Response(
+            text=f"Hello, World from GET /cached, count: {self.cached_count}"
+        )
 
     @routes.put("/error")
     async def make_error(self, req: aiohttp.web.Request) -> aiohttp.web.Response:
@@ -147,3 +164,16 @@ class TestModule1(BaseTestModule):
     @routes.get("/test1")
     async def test(self, req: aiohttp.web.Request) -> aiohttp.web.Response:
         return aiohttp.web.Response(text="Hello from TestModule1")
+
+    @routes.get("/redirect_between_modules")
+    async def redirect_between_modules(
+        self, req: aiohttp.web.Request
+    ) -> aiohttp.web.Response:
+        # Redirect to the /test route in TestModule
+        raise aiohttp.web.HTTPFound(location="/test")
+
+    @routes.get("/redirect_within_module")
+    async def redirect_within_module(
+        self, req: aiohttp.web.Request
+    ) -> aiohttp.web.Response:
+        raise aiohttp.web.HTTPFound(location="/test1")

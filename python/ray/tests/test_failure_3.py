@@ -1,6 +1,7 @@
 import os
 import sys
 import signal
+import time
 import threading
 import json
 from pathlib import Path
@@ -9,14 +10,13 @@ import ray
 import numpy as np
 import pytest
 import psutil
-import time
 
 from ray._private.test_utils import (
-    SignalActor,
     wait_for_pid_to_exit,
     wait_for_condition,
     run_string_as_driver_nonblocking,
 )
+from ray._common.test_utils import SignalActor
 
 SIGKILL = signal.SIGKILL if sys.platform != "win32" else signal.SIGTERM
 
@@ -564,9 +564,4 @@ while True:
 
 
 if __name__ == "__main__":
-    import pytest
-
-    if os.environ.get("PARALLEL_CI"):
-        sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))
-    else:
-        sys.exit(pytest.main(["-sv", __file__]))
+    sys.exit(pytest.main(["-sv", __file__]))

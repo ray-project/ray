@@ -3,12 +3,14 @@ from ray.rllib.core import ALL_MODULES  # noqa
 
 # Algorithm ResultDict keys.
 AGGREGATOR_ACTOR_RESULTS = "aggregator_actors"
+DIFFERENTIABLE_LEARNER_RESULTS = "differentiable_learners"
 EVALUATION_RESULTS = "evaluation"
 ENV_RUNNER_RESULTS = "env_runners"
-REPLAY_BUFFER_RESULTS = "replay_buffer"
+OFFLINE_EVAL_RUNNER_RESULTS = "offline_eval_runners"
+FAULT_TOLERANCE_STATS = "fault_tolerance"
 LEARNER_GROUP = "learner_group"
 LEARNER_RESULTS = "learners"
-FAULT_TOLERANCE_STATS = "fault_tolerance"
+REPLAY_BUFFER_RESULTS = "replay_buffer"
 TIMERS = "timers"
 
 # RLModule metrics.
@@ -26,7 +28,7 @@ NUM_AGENT_STEPS_SAMPLED_LIFETIME = "num_agent_steps_sampled_lifetime"
 NUM_AGENT_STEPS_SAMPLED_THIS_ITER = "num_agent_steps_sampled_this_iter"  # @OldAPIStack
 NUM_ENV_STEPS_SAMPLED = "num_env_steps_sampled"
 NUM_ENV_STEPS_SAMPLED_LIFETIME = "num_env_steps_sampled_lifetime"
-NUM_ENV_STEPS_SAMPLED_PER_SECOND = "num_env_steps_sampled_per_second"
+NUM_ENV_STEPS_SAMPLED_PER_SECOND = "num_env_steps_sampled_per_second"  # Deprecated
 NUM_ENV_STEPS_SAMPLED_THIS_ITER = "num_env_steps_sampled_this_iter"  # @OldAPIStack
 NUM_ENV_STEPS_SAMPLED_FOR_EVALUATION_THIS_ITER = (
     "num_env_steps_sampled_for_evaluation_this_iter"
@@ -99,6 +101,8 @@ TIME_BETWEEN_SAMPLING = "time_between_sampling"
 
 DATASET_NUM_ITERS_TRAINED = "dataset_num_iters_trained"
 DATASET_NUM_ITERS_TRAINED_LIFETIME = "dataset_num_iters_trained_lifetime"
+DATASET_NUM_ITERS_EVALUATED = "dataset_num_iters_evaluated"
+DATASET_NUM_ITERS_EVALUATED_LIFETIME = "dataset_num_iters_evaluated_lifetime"
 MEAN_NUM_LEARNER_GROUP_UPDATE_CALLED = "mean_num_learner_group_update_called"
 MEAN_NUM_LEARNER_RESULTS_RECEIVED = "mean_num_learner_results_received"
 NUM_AGENT_STEPS_TRAINED = "num_agent_steps_trained"
@@ -109,6 +113,7 @@ NUM_ENV_STEPS_TRAINED_LIFETIME = "num_env_steps_trained_lifetime"
 NUM_ENV_STEPS_TRAINED_THIS_ITER = "num_env_steps_trained_this_iter"  # @OldAPIStack
 NUM_MODULE_STEPS_TRAINED = "num_module_steps_trained"
 NUM_MODULE_STEPS_TRAINED_LIFETIME = "num_module_steps_trained_lifetime"
+MODULE_SAMPLE_BATCH_SIZE_MEAN = "module_sample_batch_size_mean"
 MODULE_TRAIN_BATCH_SIZE_MEAN = "module_train_batch_size_mean"
 LEARNER_CONNECTOR_SUM_EPISODES_LENGTH_IN = "learner_connector_sum_episodes_length_in"
 LEARNER_CONNECTOR_SUM_EPISODES_LENGTH_OUT = "learner_connector_sum_episodes_length_out"
@@ -147,6 +152,7 @@ NUM_TARGET_UPDATES = "num_target_updates"
 TRAINING_ITERATION_TIMER = "training_iteration"
 # Duration of a `Algorithm.evaluate()` call.
 EVALUATION_ITERATION_TIMER = "evaluation_iteration"
+OFFLINE_EVALUATION_ITERATION_TIMER = "offline_evaluation_iteration_timer"
 # Duration of a single `training_step()` call.
 TRAINING_STEP_TIMER = "training_step"
 APPLY_GRADS_TIMER = "apply_grad"
@@ -154,6 +160,7 @@ COMPUTE_GRADS_TIMER = "compute_grads"
 GARBAGE_COLLECTION_TIMER = "garbage_collection"
 RESTORE_ENV_RUNNERS_TIMER = "restore_env_runners"
 RESTORE_EVAL_ENV_RUNNERS_TIMER = "restore_eval_env_runners"
+RESTORE_OFFLINE_EVAL_RUNNERS_TIMER = "restore_offline_eval_runners"
 SYNCH_WORKER_WEIGHTS_TIMER = "synch_weights"
 SYNCH_ENV_CONNECTOR_STATES_TIMER = "synch_env_connectors"
 SYNCH_EVAL_ENV_CONNECTOR_STATES_TIMER = "synch_eval_env_connectors"

@@ -223,6 +223,13 @@ def ray_deps_setup():
         sha256 = "8ef0a63f4959d5dfc3d8190d62229ef018ce41eef36e1f3198312d47ab2de05a",
     )
 
+    auto_http_archive(
+        name = "com_github_opentelemetry_proto",
+        urls = ["https://github.com/open-telemetry/opentelemetry-proto/archive/refs/tags/v1.2.0.zip"],
+        strip_prefix = "opentelemetry-proto-1.2.0",
+        build_file = "@io_opentelemetry_cpp//bazel:opentelemetry_proto.BUILD",
+    )
+
     # OpenCensus depends on Abseil so we have to explicitly pull it in.
     # This is how diamond dependencies are prevented.
     #
@@ -246,6 +253,7 @@ def ray_deps_setup():
             # https://github.com/jupp0r/prometheus-cpp/pull/225
             "@com_github_ray_project_ray//thirdparty/patches:prometheus-windows-zlib.patch",
             "@com_github_ray_project_ray//thirdparty/patches:prometheus-windows-pollfd.patch",
+            "@com_github_ray_project_ray//thirdparty/patches:prometheus-zlib-fdopen.patch",
         ],
     )
 
@@ -256,6 +264,7 @@ def ray_deps_setup():
         sha256 = "0762f809b9de845e6a7c809cabccad6aa4143479fd43b396611fe5a086c0aeeb",
         patches = [
             "@com_github_ray_project_ray//thirdparty/patches:grpc-cython-copts.patch",
+            "@com_github_ray_project_ray//thirdparty/patches:grpc-zlib-fdopen.patch",
         ],
     )
 

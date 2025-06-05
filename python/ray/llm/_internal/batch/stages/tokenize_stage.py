@@ -1,14 +1,15 @@
 """Tokenize and detokenize stage"""
 
-from typing import Any, Dict, AsyncIterator, List, Type
+from typing import Any, AsyncIterator, Dict, List, Type
 
 from ray.llm._internal.batch.stages.base import (
     StatefulStage,
     StatefulStageUDF,
 )
-from ray.llm._internal.batch.utils import (
-    get_cached_tokenizer,
-    download_hf_model,
+from ray.llm._internal.batch.utils import get_cached_tokenizer
+from ray.llm._internal.common.utils.download_utils import (
+    NodeModelDownloadable,
+    download_model_files,
 )
 
 
@@ -30,7 +31,12 @@ class TokenizeUDF(StatefulStageUDF):
         from transformers import AutoTokenizer
 
         super().__init__(data_column, expected_input_keys)
-        model_path = download_hf_model(model, tokenizer_only=True)
+        model_path = download_model_files(
+            model_id=model,
+            mirror_config=None,
+            download_model=NodeModelDownloadable.TOKENIZER_ONLY,
+            download_extra_files=False,
+        )
         self.tokenizer = get_cached_tokenizer(
             AutoTokenizer.from_pretrained(
                 model_path,
@@ -88,7 +94,12 @@ class DetokenizeUDF(StatefulStageUDF):
         from transformers import AutoTokenizer
 
         super().__init__(data_column, expected_input_keys)
-        model_path = download_hf_model(model, tokenizer_only=True)
+        model_path = download_model_files(
+            model_id=model,
+            mirror_config=None,
+            download_model=NodeModelDownloadable.TOKENIZER_ONLY,
+            download_extra_files=False,
+        )
         self.tokenizer = get_cached_tokenizer(
             AutoTokenizer.from_pretrained(
                 model_path,

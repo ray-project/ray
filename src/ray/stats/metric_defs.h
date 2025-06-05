@@ -51,6 +51,7 @@ DECLARE_stats(actors);
 /// Job stats.
 DECLARE_stats(running_jobs);
 DECLARE_stats(finished_jobs);
+DECLARE_stats(job_duration_s);
 
 /// Placement group stats, broken down by state.
 DECLARE_stats(placement_groups);
@@ -69,6 +70,11 @@ DECLARE_stats(grpc_server_req_process_time_ms);
 DECLARE_stats(grpc_server_req_new);
 DECLARE_stats(grpc_server_req_handling);
 DECLARE_stats(grpc_server_req_finished);
+DECLARE_stats(grpc_server_req_succeeded);
+DECLARE_stats(grpc_server_req_failed);
+
+/// GRPC Client Failures
+DECLARE_stats(grpc_client_req_failed);
 
 /// Object Manager.
 DECLARE_stats(object_manager_bytes);
@@ -86,7 +92,7 @@ DECLARE_stats(pull_manager_num_object_pins);
 DECLARE_stats(pull_manager_object_request_time_ms);
 
 /// Push Manager
-DECLARE_stats(push_manager_in_flight_pushes);
+DECLARE_stats(push_manager_num_pushes_remaining);
 DECLARE_stats(push_manager_chunks);
 
 /// Scheduler

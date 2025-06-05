@@ -20,7 +20,6 @@
 #include "gmock/gmock.h"
 #include "gtest/gtest.h"
 #include "ray/common/status.h"
-#include "ray/util/filesystem.h"
 
 namespace plasma {
 
@@ -41,16 +40,16 @@ class MockClient : public ClientInterface {
     ASSERT_FALSE(queue.GetRequestResult(req_id, &result, &status)); \
   }
 
-#define ASSERT_REQUEST_FINISHED(queue, req_id, expected_status)    \
-  {                                                                \
-    PlasmaObject result = {};                                      \
-    PlasmaError status;                                            \
-                                                                   \
-    ASSERT_TRUE(queue.GetRequestResult(req_id, &result, &status)); \
-    if (expected_status == PlasmaError::OK) {                      \
-      ASSERT_EQ(result.data_size, 1234);                           \
-    }                                                              \
-    ASSERT_EQ(status, expected_status);                            \
+#define ASSERT_REQUEST_FINISHED(queue, req_id, expected_status)        \
+  {                                                                    \
+    PlasmaObject __result = {};                                        \
+    PlasmaError __status;                                              \
+                                                                       \
+    ASSERT_TRUE(queue.GetRequestResult(req_id, &__result, &__status)); \
+    if (expected_status == PlasmaError::OK) {                          \
+      ASSERT_EQ(__result.data_size, 1234);                             \
+    }                                                                  \
+    ASSERT_EQ(__status, expected_status);                              \
   }
 
 class CreateRequestQueueTest : public ::testing::Test {

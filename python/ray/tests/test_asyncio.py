@@ -9,8 +9,8 @@ import pytest
 
 import ray
 from ray._private.client_mode_hook import client_mode_should_convert
+from ray._common.test_utils import SignalActor
 from ray._private.test_utils import (
-    SignalActor,
     kill_actor_and_wait_for_failure,
     wait_for_condition,
     wait_for_pid_to_exit,
@@ -106,7 +106,7 @@ def test_asyncio_actor_high_concurrency(ray_start_regular_shared):
                 await self.event.wait()
             return sorted(self.batch)
 
-    batch_size = sys.getrecursionlimit() * 4
+    batch_size = sys.getrecursionlimit()
     actor = AsyncConcurrencyBatcher.options(max_concurrency=batch_size * 2).remote(
         batch_size
     )
@@ -429,9 +429,4 @@ def test_asyncio_actor_argument_collision(ray_start_regular_shared):
 
 
 if __name__ == "__main__":
-    import pytest
-
-    if os.environ.get("PARALLEL_CI"):
-        sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))
-    else:
-        sys.exit(pytest.main(["-sv", __file__]))
+    sys.exit(pytest.main(["-sv", __file__]))
