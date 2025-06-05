@@ -25,6 +25,7 @@ from ray.autoscaler.v2.utils import ResourceRequestUtil
 from ray.core.generated.autoscaler_pb2 import (
     ClusterResourceConstraint,
     GangResourceRequest,
+    LabelOperator,
     NodeState,
     NodeStatus,
     ResourceRequest,
@@ -1930,64 +1931,67 @@ def test_node_schedule_score(source):
         infeasible, score = node.try_schedule(requests, source)
         return ResourceRequestUtil.to_resource_maps(infeasible), score
 
-    assert try_schedule({"CPU": 1}, [{"CPU": 1}]) == ([], (True, 1, 1.0, 1.0))
+    assert try_schedule({"CPU": 1}, [{"CPU": 1}]) == ([], (True, 1, 1.0, 1.0, 0))
 
-    assert try_schedule({"GPU": 4}, [{"GPU": 2}]) == ([], (True, 1, 0.5, 0.5))
+    assert try_schedule({"GPU": 4}, [{"GPU": 2}]) == ([], (True, 1, 0.5, 0.5, 0))
     assert try_schedule({"GPU": 4}, [{"GPU": 1}, {"GPU": 1}]) == (
         [],
-        (True, 1, 0.5, 0.5),
+        (True, 1, 0.5, 0.5, 0),
     )
-    assert try_schedule({"GPU": 2}, [{"GPU": 2}]) == ([], (True, 1, 2, 2))
-    assert try_schedule({"GPU": 2}, [{"GPU": 1}, {"GPU": 1}]) == ([], (True, 1, 2, 2))
+    assert try_schedule({"GPU": 2}, [{"GPU": 2}]) == ([], (True, 1, 2, 2, 0))
+    assert try_schedule({"GPU": 2}, [{"GPU": 1}, {"GPU": 1}]) == (
+        [],
+        (True, 1, 2, 2, 0),
+    )
     assert try_schedule({"GPU": 1}, [{"GPU": 1, "CPU": 1}, {"GPU": 1}]) == (
         [{"GPU": 1, "CPU": 1}],
-        (True, 1, 1, 1),
+        (True, 1, 1, 1, 0),
     )
     assert try_schedule({"GPU": 1, "CPU": 1}, [{"GPU": 1, "CPU": 1}, {"GPU": 1}]) == (
         [{"GPU": 1}],
-        (True, 2, 1, 1),
+        (True, 2, 1, 1, 0),
     )
-    assert try_schedule({"GPU": 2, "TPU": 1}, [{"GPU": 2}]) == ([], (True, 1, 0, 1))
-    assert try_schedule({"CPU": 64}, [{"CPU": 64}]) == ([], (True, 1, 64, 64))
-    assert try_schedule({"CPU": 64}, [{"CPU": 32}]) == ([], (True, 1, 8, 8))
+    assert try_schedule({"GPU": 2, "TPU": 1}, [{"GPU": 2}]) == ([], (True, 1, 0, 1, 0))
+    assert try_schedule({"CPU": 64}, [{"CPU": 64}]) == ([], (True, 1, 64, 64, 0))
+    assert try_schedule({"CPU": 64}, [{"CPU": 32}]) == ([], (True, 1, 8, 8, 0))
     assert try_schedule({"CPU": 64}, [{"CPU": 16}, {"CPU": 16}]) == (
         [],
-        (True, 1, 8, 8),
+        (True, 1, 8, 8, 0),
     )
 
     # GPU Scores
     assert try_schedule({"GPU": 1, "CPU": 1}, [{"CPU": 1}]) == (
         [],
-        (False, 1, 0.0, 0.5),
+        (False, 1, 0.0, 0.5, 0),
     )
     assert try_schedule({"GPU": 1, "CPU": 1}, [{"CPU": 1, "GPU": 1}]) == (
         [],
-        (True, 2, 1.0, 1.0),
+        (True, 2, 1.0, 1.0, 0),
     )
     assert try_schedule({"GPU": 1, "CPU": 1}, [{"GPU": 1}]) == (
         [],
-        (True, 1, 0.0, 0.5),
+        (True, 1, 0.0, 0.5, 0),
     )
 
     # Zero resources
     assert try_schedule({"CPU": 0, "custom": 1}, [{"custom": 1}]) == (
         [],
-        (True, 1, 1, 1),
+        (True, 1, 1, 1, 0),
     )
     assert try_schedule({"CPU": 0, "custom": 1}, [{"CPU": 1}]) == (
         [{"CPU": 1}],
-        (True, 0, 0.0, 0.0),
+        (True, 0, 0.0, 0.0, 0),
     )
 
     # Implicit resources
     implicit_resource = ray._raylet.IMPLICIT_RESOURCE_PREFIX + "a"
     assert try_schedule({"CPU": 1}, [{implicit_resource: 1}]) == (
         [],
-        (True, 0, 0.0, 0.0),
+        (True, 0, 0.0, 0.0, 0),
     )
     assert try_schedule({"CPU": 1}, [{implicit_resource: 1}] * 2) == (
         [{implicit_resource: 1}],
-        (True, 0, 0.0, 0.0),
+        (True, 0, 0.0, 0.0, 0),
     )
 
 
@@ -2339,6 +2343,95 @@ def test_gang_scheduling_complex():
             ([{"GPU": 4}, {"GPU": 4}], AFFINITY),
         ]
     ) == ({"p2.8xlarge": 1}, [])
+
+
+def test_schedule_node_with_matching_labels():
+    """
+    Test that a node with matching labels is considered schedulable and used to satisfy a request
+    with a label_selector.
+    """
+    scheduler = ResourceDemandScheduler(event_logger)
+    node_type_configs = {
+        "labelled_node": NodeTypeConfig(
+            name="labelled_node",
+            resources={"CPU": 1},
+            min_worker_nodes=0,
+            max_worker_nodes=10,
+            labels={"accelerator": "A100"},
+        )
+    }
+
+    # The existing instance has matching dynamic label.
+    instance = make_autoscaler_instance(
+        ray_node=NodeState(
+            ray_node_type_name="labelled_node",
+            available_resources={"CPU": 1},
+            total_resources={"CPU": 1},
+            node_id=b"r1",
+            dynamic_labels={"accelerator": "A100"},
+        ),
+        im_instance=Instance(
+            instance_type="labelled_node",
+            status=Instance.RAY_RUNNING,
+            instance_id="1",
+            node_id="r1",
+        ),
+    )
+
+    # No new nodes should be launched if the existing node satisfies the request.
+    resource_request = ResourceRequestUtil.make(
+        {"CPU": 1},
+        label_selectors=[[("accelerator", LabelOperator.LABEL_OPERATOR_IN, ["A100"])]],
+    )
+
+    request = sched_request(
+        node_type_configs=node_type_configs,
+        resource_requests=[resource_request],
+        instances=[instance],
+    )
+    reply = scheduler.schedule(request)
+    to_launch, _ = _launch_and_terminate(reply)
+    assert to_launch == {}
+
+
+def test_scale_up_node_to_satisfy_labels():
+    """
+    Test that a node with mismatched labels is not used for scheduling and a new node is launched.
+    """
+    scheduler = ResourceDemandScheduler(event_logger)
+
+    node_type_configs = {
+        "labelled_node_1": NodeTypeConfig(
+            name="labelled_node_1",
+            resources={"CPU": 1},
+            labels={"accelerator": "TPU"},
+            min_worker_nodes=0,
+            max_worker_nodes=10,
+        ),
+        "labelled_node_2": NodeTypeConfig(
+            name="labelled_node_2",
+            resources={"CPU": 1},
+            labels={"accelerator": "A100"},
+            min_worker_nodes=0,
+            max_worker_nodes=10,
+        ),
+    }
+
+    # Request: want a node with label "accelerator: A100"
+    resource_request = ResourceRequestUtil.make(
+        {"CPU": 1},
+        label_selectors=[[("accelerator", LabelOperator.LABEL_OPERATOR_IN, ["A100"])]],
+    )
+
+    request = sched_request(
+        node_type_configs=node_type_configs,
+        resource_requests=[resource_request],
+    )
+
+    reply = scheduler.schedule(request)
+    to_launch, _ = _launch_and_terminate(reply)
+
+    assert to_launch == {"labelled_node_2": 1}
 
 
 if __name__ == "__main__":

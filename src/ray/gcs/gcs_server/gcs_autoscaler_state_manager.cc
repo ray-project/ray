@@ -390,6 +390,10 @@ void GcsAutoscalerStateManager::GetNodeStates(
       node_state_proto->mutable_dynamic_labels()->insert(
           {FormatPlacementGroupLabelName(pg_id.Hex()), ""});
     }
+    // Add Ray node labels to dynamic labels
+    const auto &node_labels = gcs_node_info.labels();
+    node_state_proto->mutable_dynamic_labels()->insert(node_labels.begin(),
+                                                       node_labels.end());
   };
 
   const auto &alive_nodes = gcs_node_manager_.GetAllAliveNodes();
