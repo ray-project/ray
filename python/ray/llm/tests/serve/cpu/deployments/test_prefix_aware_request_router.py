@@ -35,6 +35,7 @@ def tree_actor():
     """Create a fresh PrefixTreeActor instance."""
     actor = PrefixTreeActor.options(name="PrefixTreeActor").remote()
     yield actor
+    ray.kill(actor)
 
 
 @pytest.fixture

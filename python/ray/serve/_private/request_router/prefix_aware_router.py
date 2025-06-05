@@ -330,3 +330,9 @@ class PrefixAwareRequestRouter(LocalityMixin, MultiplexMixin, RequestRouter):
                         input_text, replica_id.to_full_id_str(), time.time()
                     )
                 )
+
+    @property
+    def _replicas_updated_event(self):
+        """Called when the set of available replicas changes."""
+        logger.warning("Autoscaling not supported for prefix aware request router")
+        return super()._replicas_updated_event
