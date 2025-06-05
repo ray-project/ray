@@ -20,8 +20,8 @@ Ray Data is particularly powerful for this use case because it:
 - **Parallelizes work** across a cluster of machines automatically
 - **Handles heterogeneous compute resources** seamlessly
 - Uses **lazy execution** to optimize the execution plan
-- Stages begin to process as soon as the first data block is available. This **streaming execution model** minimizes the time-to-first-result, eliminates large intermediate data storage, and maximizes resource utilization
-- The same script scales can scale to larger GPU clusters with minimal code changes
+- Processes data through each stage as soon as the first data block is available. This **streaming execution model** minimizes the time-to-first-result, eliminates large intermediate data storage, and maximizes resource utilization
+- The same script scales to larger GPU clusters with minimal code changes
 
 ## Prerequisites
 
@@ -33,7 +33,7 @@ pip install -r requirements.txt
 
 This tutorial runs on a cluster with five L4 GPU worker nodes.
 
-# Setup
+## Setup
 
 First, import the necessary modules:
 
@@ -195,8 +195,7 @@ ds = ds.map_batches(Decoder, batch_size=16, concurrency=5, batch_format="pandas"
 
 A Llama-3 model serves as a *machine judge* that scores each transcription
 from 1 👎 to 5 👍 on its educational value. The **LLM Processor** API wraps the heavy
-lifting of batching, prompt formatting, and vLLM engine interaction to maintain 
-this section declarative.
+lifting of batching, prompt formatting, and vLLM engine interaction using a declarative API style.
 
 Ray Data provides a high-level API for integrating LLMs into data pipelines. The preprocessing and postprocessing functions handle data preparation and result parsing.
 
