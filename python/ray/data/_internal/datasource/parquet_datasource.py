@@ -726,7 +726,10 @@ def _add_partition_fields_to_schema(
             field_type = pa.from_numpy_dtype(partitioning.field_types[field_name])
         else:
             field_type = pa.string()
-        schema = schema.append(pa.field(field_name, field_type))
+        if field_name not in schema.names:
+            # Without this check, we would add the same partition field multiple times,
+            # which silently fails when asking for `pa.field()`.
+            schema = schema.append(pa.field(field_name, field_type))
 
     return schema
 
