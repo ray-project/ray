@@ -3,41 +3,41 @@ import json
 import random
 from random import randint
 from typing import AsyncGenerator, Dict, Optional
-from transformers import AutoTokenizer
 
 from PIL import Image
+from transformers import AutoTokenizer
 from vllm import CompletionOutput, PromptType, RequestOutput
+from vllm.config import KVTransferConfig, ModelConfig, VllmConfig
 from vllm.engine.protocol import EngineClient
 from vllm.sampling_params import SamplingParams as VLLMInternalSamplingParams
-from vllm.config import KVTransferConfig, VllmConfig, ModelConfig
 
 from ray.llm._internal.serve.configs.error_handling import ValidationError
 from ray.llm._internal.serve.configs.openai_api_models_patch import (
     ResponseFormatJsonObject,
 )
 from ray.llm._internal.serve.configs.server_models import (
-    FinishReason,
-    LogProb,
-    LogProbs,
     DiskMultiplexConfig,
+    FinishReason,
     LLMConfig,
     LLMRawResponse,
+    LogProb,
+    LogProbs,
     Prompt,
 )
+from ray.llm._internal.serve.deployments.llm.llm_engine import LLMEngine
+from ray.llm._internal.serve.deployments.llm.vllm.vllm_engine import VLLMEngine
 from ray.llm._internal.serve.deployments.llm.vllm.vllm_engine_stats import (
     VLLMEngineStats,
     VLLMEngineStatTracker,
 )
 from ray.llm._internal.serve.deployments.llm.vllm.vllm_models import (
+    KV_TRANSFER_PARAMS_KEY,
     VLLMGenerationRequest,
     VLLMSamplingParams,
-    KV_TRANSFER_PARAMS_KEY,
 )
 from ray.llm._internal.serve.deployments.utils.node_initialization_utils import (
     InitializeNodeOutput,
 )
-from ray.llm._internal.serve.deployments.llm.llm_engine import LLMEngine
-from ray.llm._internal.serve.deployments.llm.vllm.vllm_engine import VLLMEngine
 
 
 class MockVLLMEngine(LLMEngine):

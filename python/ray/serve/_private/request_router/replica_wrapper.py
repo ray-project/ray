@@ -2,7 +2,7 @@ import asyncio
 import logging
 import pickle
 from abc import ABC, abstractmethod
-from typing import Optional, Set, Tuple, Union
+from typing import Any, Dict, Optional, Set, Tuple, Union
 
 import ray
 from ray import ObjectRef, ObjectRefGenerator
@@ -152,6 +152,11 @@ class RunningReplica:
     def multiplexed_model_ids(self) -> Set[str]:
         """Set of model IDs on this replica."""
         return self._multiplexed_model_ids
+
+    @property
+    def routing_stats(self) -> Dict[str, Any]:
+        """Dictionary of routing stats."""
+        return self._replica_info.routing_stats
 
     @property
     def max_ongoing_requests(self) -> int:

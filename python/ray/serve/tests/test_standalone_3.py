@@ -4,14 +4,15 @@ import subprocess
 import sys
 from contextlib import contextmanager
 
+import httpx
 import pytest
-import requests
 
 import ray
 import ray._private.state
 import ray.actor
 from ray import serve
-from ray._private.test_utils import SignalActor, wait_for_condition
+from ray._common.test_utils import SignalActor
+from ray._private.test_utils import wait_for_condition
 from ray.cluster_utils import AutoscalingCluster, Cluster
 from ray.exceptions import RayActorError
 from ray.serve._private.constants import SERVE_DEFAULT_APP_NAME, SERVE_LOGGER_NAME
@@ -94,7 +95,7 @@ def test_long_poll_timeout_with_max_ongoing_requests(ray_instance):
 
     @ray.remote
     def do_req():
-        return requests.get("http://localhost:8000").text
+        return httpx.get("http://localhost:8000").text
 
     # The request should be hanging waiting on the `SignalActor`.
     first_ref = do_req.remote()
@@ -139,7 +140,7 @@ def test_replica_health_metric(ray_instance):
     serve.run(f.bind())
 
     def count_live_replica_metrics():
-        resp = requests.get("http://127.0.0.1:9999").text
+        resp = httpx.get("http://127.0.0.1:9999").text
         resp = resp.split("\n")
         count = 0
         for metrics in resp:
@@ -203,10 +204,10 @@ def test_shutdown_remote(start_and_shutdown_ray_cli_function, tmp_path):
     # Ensure Serve can be restarted and shutdown with for loop
     for _ in range(2):
         subprocess.check_output([sys.executable, str(deploy_file)])
-        assert requests.get("http://localhost:8000/f").text == "got f"
+        assert httpx.get("http://localhost:8000/f").text == "got f"
         subprocess.check_output([sys.executable, str(shutdown_file)])
-        with pytest.raises(requests.exceptions.ConnectionError):
-            requests.get("http://localhost:8000/f")
+        with pytest.raises(httpx.ConnectError):
+            httpx.get("http://localhost:8000/f")
 
 
 def test_handle_early_detect_failure(shutdown_ray):
