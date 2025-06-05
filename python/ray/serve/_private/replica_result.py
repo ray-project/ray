@@ -15,6 +15,13 @@ from ray.serve.exceptions import RequestCancelledError
 class ReplicaResult(ABC):
     """Base class for results returned by a replica."""
 
+    def __init__(
+        self,
+        obj_ref_or_gen: Union[ray.ObjectRef, ray.ObjectRefGenerator],
+        metadata: RequestMetadata,
+    ):
+        pass
+
     @abstractmethod
     def get(self, timeout_s: Optional[float]):
         raise NotImplementedError

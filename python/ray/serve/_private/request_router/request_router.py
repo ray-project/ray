@@ -89,7 +89,7 @@ class LocalityMixin:
         for id_set in self._colocated_replica_ids.values():
             id_set.discard(replica_id)
 
-    def update_colocated_replica_ids_with_replicas(
+    def _update_colocated_replica_ids_with_replicas(
         self, replicas: List[RunningReplica]
     ):
         """Update the colocated replica IDs based on the replicas.
@@ -604,8 +604,8 @@ class RequestRouter(ABC):
         """
         new_replicas = {}
         new_replica_id_set = set()
-        if hasattr(self, "update_colocated_replica_ids_with_replicas"):
-            self.update_colocated_replica_ids_with_replicas(replicas)
+        if hasattr(self, "_update_colocated_replica_ids_with_replicas"):
+            self._update_colocated_replica_ids_with_replicas(replicas)
         if hasattr(self, "_update_multiplexed_model_ids_with_replicas"):
             self._update_multiplexed_model_ids_with_replicas(replicas)
 
