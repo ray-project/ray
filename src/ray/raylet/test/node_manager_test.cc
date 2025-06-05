@@ -175,4 +175,58 @@ TEST(NodeManagerTest, TestHandleReportWorkerBacklog) {
   }
 }
 
+TEST(NodeManagerTest, TestHandleUnexpectedWorkerFailure) {
+  {
+    WorkerID owner_id = WorkerID::FromRandom();
+    absl::flat_hash_map<WorkerID, std::shared_ptr<WorkerInterface>> leased_workers;
+    absl::flat_hash_map<WorkerID, std::shared_ptr<WorkerInterface>> killed_workers;
+
+    rpc::Address owner_address;
+    owner_address.set_worker_id(owner_id.Binary());
+
+    WorkerID worker_id_1 = WorkerID::FromRandom();
+    WorkerID worker_id_2 = WorkerID::FromRandom();
+    auto worker_1 = std::make_shared<MockWorker>(worker_id_1, 10);
+    auto worker_2 = std::make_shared<MockWorker>(worker_id_2, 10);
+    worker_1->SetOwnerAddress(owner_address);
+    worker_2->SetOwnerAddress(owner_address);
+
+    TaskSpecBuilder builder_1;
+    worker_1->SetAssignedTask(RayTask(std::move(builder_1).ConsumeAndBuild()));
+
+    ActorID actor_id =
+        ActorID::Of(JobID::FromInt(1), TaskID::FromRandom(JobID::FromInt(1)), 0);
+    TaskSpecBuilder builder_2;
+    builder_2.SetActorCreationTaskSpec(actor_id,
+                                       /*serialized_actor_handle=*/"",
+                                       rpc::SchedulingStrategy(),
+                                       /*max_restarts=*/0,
+                                       /*max_task_retries=*/0,
+                                       /*dynamic_worker_options=*/{},
+                                       /*max_concurrency=*/1,
+                                       /*is_detached=*/true,
+                                       /*name=*/"",
+                                       /*ray_namespace=*/"",
+                                       /*is_asyncio=*/false,
+                                       /*concurrency_groups=*/{},
+                                       /*extension_data=*/"",
+                                       /*execute_out_of_order=*/false,
+                                       /*root_detached_actor_id=*/actor_id);
+    worker_2->SetAssignedTask(RayTask(std::move(builder_2).ConsumeAndBuild()));
+
+    leased_workers.insert({worker_id_1, worker_1});
+    leased_workers.insert({worker_id_2, worker_2});
+
+    NodeManager::HandleUnexpectedWorkerFailure(
+        leased_workers,
+        [&killed_workers](const std::shared_ptr<WorkerInterface> &worker) {
+          killed_workers.insert({worker->WorkerId(), worker});
+        },
+        owner_id);
+
+    ASSERT_EQ(killed_workers.count(worker_id_1), 1);
+    ASSERT_EQ(killed_workers.count(worker_id_2), 0);
+  }
+}
+
 }  // namespace ray::raylet

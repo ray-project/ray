@@ -235,6 +235,7 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
 
  private:
   FRIEND_TEST(NodeManagerTest, TestHandleReportWorkerBacklog);
+  FRIEND_TEST(NodeManagerTest, TestHandleUnexpectedWorkerFailure);
 
   // Removes the worker from node_manager's leased_workers_ map.
   // Warning: this does NOT release the worker's resources, or put the leased worker
@@ -263,6 +264,15 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
   ///
   /// \param data The data of the worker that died.
   void HandleUnexpectedWorkerFailure(const WorkerID &worker_id);
+
+  /// This is created for unit test purpose so that we don't need to create
+  /// a node manager in order to test HandleUnexpectedWorkerFailure.
+  static void HandleUnexpectedWorkerFailure(
+      const absl::flat_hash_map<WorkerID, std::shared_ptr<WorkerInterface>>
+          &leased_workers,
+      const std::function<void(const std::shared_ptr<WorkerInterface> &)>
+          &kill_leased_worker,
+      const WorkerID &failed_worker_id);
 
   /// Handler for the addition of a new node.
   ///

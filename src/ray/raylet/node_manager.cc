@@ -1101,19 +1101,30 @@ void NodeManager::HandleUnexpectedWorkerFailure(const WorkerID &worker_id) {
 
   cluster_task_manager_->CancelAllTasksOwnedBy(worker_id);
 
-  for (const auto &[_, worker] : leased_workers_) {
+  HandleUnexpectedWorkerFailure(
+      leased_workers_,
+      [this](const std::shared_ptr<WorkerInterface> &worker) { KillWorker(worker); },
+      worker_id);
+}
+
+void NodeManager::HandleUnexpectedWorkerFailure(
+    const absl::flat_hash_map<WorkerID, std::shared_ptr<WorkerInterface>> &leased_workers,
+    const std::function<void(const std::shared_ptr<WorkerInterface> &)>
+        &kill_leased_worker,
+    const WorkerID &failed_worker_id) {
+  for (const auto &[_, worker] : leased_workers) {
     const auto owner_worker_id =
         WorkerID::FromBinary(worker->GetOwnerAddress().worker_id());
     RAY_CHECK(!owner_worker_id.IsNil());
     if (worker->GetAssignedTask().GetTaskSpecification().IsDetachedActor() ||
-        owner_worker_id != worker_id) {
+        owner_worker_id != failed_worker_id) {
       continue;
     }
     // If the failed worker was a leased worker's owner, then kill the leased worker.
     RAY_LOG(INFO) << "The leased worker " << worker->WorkerId()
                   << " is killed because the owner process " << owner_worker_id
                   << " died.";
-    KillWorker(worker);
+    kill_leased_worker(worker);
   }
 }
 

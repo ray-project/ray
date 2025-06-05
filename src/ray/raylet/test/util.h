@@ -125,10 +125,7 @@ class MockWorker : public WorkerInterface {
     RAY_CHECK(false) << "Method unused";
     return nullptr;
   }
-  const rpc::Address &GetOwnerAddress() const override {
-    RAY_CHECK(false) << "Method unused";
-    return address_;
-  }
+  const rpc::Address &GetOwnerAddress() const override { return address_; }
 
   void DirectActorCallArgWaitComplete(int64_t tag) override {
     RAY_CHECK(false) << "Method unused";
