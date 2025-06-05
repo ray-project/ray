@@ -209,9 +209,7 @@ def test_ray_labels_environment_variables(shutdown_only):
     [ray.util.accelerators.NVIDIA_TESLA_V100, ray.util.accelerators.AWS_NEURON_CORE],
 )
 def test_accelerator_type_api(accelerator_type, shutdown_only):
-    resource_name = (
-        f"{RESOURCE_CONSTRAINT_PREFIX}{accelerator_type}"
-    )
+    resource_name = f"{RESOURCE_CONSTRAINT_PREFIX}{accelerator_type}"
     ray.init(num_cpus=4, resources={resource_name: 1})
 
     quantity = 1

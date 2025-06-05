@@ -207,9 +207,7 @@ class ResourceSpec(
                     accelerator_manager.get_current_node_accelerator_type()
                 )
                 if accelerator_type:
-                    resources[
-                        f"{RESOURCE_CONSTRAINT_PREFIX}{accelerator_type}"
-                    ] = 1
+                    resources[f"{RESOURCE_CONSTRAINT_PREFIX}{accelerator_type}"] = 1
 
                     from ray._private.usage import usage_lib
 

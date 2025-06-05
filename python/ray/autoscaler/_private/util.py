@@ -701,8 +701,7 @@ def format_resource_demand_summary(
         # the demand report.
         if (
             using_placement_group
-            and PLACEMENT_GROUP_BUNDLE_RESOURCE_NAME
-            in pg_filtered_bundle.keys()
+            and PLACEMENT_GROUP_BUNDLE_RESOURCE_NAME in pg_filtered_bundle.keys()
         ):
             del pg_filtered_bundle[PLACEMENT_GROUP_BUNDLE_RESOURCE_NAME]
 

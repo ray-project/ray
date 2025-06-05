@@ -821,8 +821,7 @@ class StandardAutoscaler:
         infeasible = []
         for bundle in unfulfilled:
             placement_group = any(
-                "_group_" in k
-                or k == PLACEMENT_GROUP_BUNDLE_RESOURCE_NAME
+                "_group_" in k or k == PLACEMENT_GROUP_BUNDLE_RESOURCE_NAME
                 for k in bundle
             )
             if placement_group:

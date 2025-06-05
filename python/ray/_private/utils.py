@@ -30,7 +30,11 @@ from typing import (
 
 from google.protobuf import json_format
 
-from ray._common.utils import get_ray_address_file, get_system_memory, PLACEMENT_GROUP_BUNDLE_RESOURCE_NAME
+from ray._common.utils import (
+    get_ray_address_file,
+    get_system_memory,
+    PLACEMENT_GROUP_BUNDLE_RESOURCE_NAME,
+)
 import ray
 import ray._private.ray_constants as ray_constants
 from ray.core.generated.runtime_env_common_pb2 import (
@@ -1531,10 +1535,7 @@ def parse_pg_formatted_resources_to_original(
             # it is an implementation detail.
             # This resource is automatically added to the resource
             # request for all tasks that require placement groups.
-            if (
-                result.group(1)
-                == PLACEMENT_GROUP_BUNDLE_RESOURCE_NAME
-            ):
+            if result.group(1) == PLACEMENT_GROUP_BUNDLE_RESOURCE_NAME:
                 continue
 
             original_resources[result.group(1)] = value
