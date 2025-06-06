@@ -290,6 +290,13 @@ ObjectID TaskSpecification::ArgId(size_t arg_index) const {
   return ObjectID::Nil();
 }
 
+std::string TaskSpecification::GetArgRawObjectId(size_t arg_index) const {
+  if (message_->args(arg_index).has_object_ref()) {
+    return message_->args(arg_index).object_ref().object_id();
+  }
+  return ObjectID::Nil().Binary();
+}
+
 const rpc::ObjectReference &TaskSpecification::ArgRef(size_t arg_index) const {
   RAY_CHECK(ArgByRef(arg_index));
   return message_->args(arg_index).object_ref();
