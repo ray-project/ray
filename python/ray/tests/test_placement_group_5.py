@@ -438,14 +438,15 @@ def test_placement_group_parallel_submission(ray_start_cluster):
             finally:
                 ray.util.remove_placement_group(pg)
 
-    # For each strategy, submit 5 placement groups in parallel and check that they will
-    # all eventually be placed and their tasks executed.
-    submitters = [Submitter.remote() for _ in range(5)]
+    # For each strategy, submit multiple placement groups in parallel and check that they
+    # will all eventually be placed and their tasks executed.
+    NUM_PARALLEL_PGS = 5
+    submitters = [Submitter.remote() for _ in range(NUM_PARALLEL_PGS)]
     for strategy in ["SPREAD", "STRICT_SPREAD", "PACK", "STRICT_PACK"]:
         print("Testing strategy:", strategy)
         assert (
             ray.get([s.submit.remote(strategy) for s in submitters], timeout=30)
-            == ["OK"] * 5
+            == ["OK"] * NUM_PARALLEL_PGS
         )
 
 
