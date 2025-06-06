@@ -195,7 +195,7 @@ class DataParallelTrainer:
 
             def sigint_handler(signum, frame):
                 ray.get(controller.abort.remote())
-                sys.exit(1)
+                sys.exit(0)
 
             signal.signal(signal.SIGINT, sigint_handler)
 
