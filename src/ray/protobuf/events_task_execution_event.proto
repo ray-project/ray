@@ -19,7 +19,8 @@ import "src/ray/protobuf/common.proto";
 
 package ray.rpc.events;
 
-// Message containing the execution information of a task.
+// Message containing the execution information of a task (can apply to both normal
+// tasks and actor tasks).
 message TaskExecutionEvent {
   // task_id and task_attempt form the unique identifier of a task.
   bytes task_id = 1;
@@ -38,6 +39,4 @@ message TaskExecutionEvent {
   bytes node_id = 6;
   bytes worker_id = 7;
   int32 worker_pid = 8;
-  bytes parent_task_id = 9;
-  bytes placement_group_id = 10;
 }
