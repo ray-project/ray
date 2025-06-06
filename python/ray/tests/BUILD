@@ -843,7 +843,7 @@ py_test_module_list(
         "test_placement_group_5.py",
         "test_reconstruction.py",
         "test_reconstruction_2.py",
-        "test_runtime_env_working_dir_remote_uri.py",
+        "test_runtime_env_working_dir_uri.py",
         "test_state_api.py",
         "test_task_events_2.py",
     ],
