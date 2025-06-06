@@ -260,8 +260,6 @@ def test_placement_group_bin_packing_priority(ray_start_cluster, scheduling_stra
     )
 
 
-
-
 def test_placement_group_parallel_submission(ray_start_cluster):
     NUM_PARALLEL_PGS = 5
     cluster = ray_start_cluster
