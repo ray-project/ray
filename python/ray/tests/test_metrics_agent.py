@@ -176,6 +176,14 @@ def _setup_cluster_for_test(request, ray_start_cluster):
             "event_stats_print_interval_ms": 500,
             "event_stats": True,
             "enable_metrics_collection": enable_metrics_collection,
+            "experimental_enable_open_telemetry_on_agent": os.getenv(
+                "RAY_experimental_enable_open_telemetry_on_agent"
+            )
+            == "1",
+            "experimental_enable_open_telemetry_on_core": os.getenv(
+                "RAY_experimental_enable_open_telemetry_on_core"
+            )
+            == "1",
         }
     )
     # Add worker nodes.

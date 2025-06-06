@@ -12,7 +12,7 @@ import pyarrow.fs
 
 import ray
 from ray import logger
-from ray._private.utils import load_class
+from ray._common.utils import load_class
 from ray.air._internal import usage as air_usage
 from ray.air.constants import TRAINING_ITERATION
 from ray.air.util.node import _force_on_current_node
