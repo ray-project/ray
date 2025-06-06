@@ -3,6 +3,7 @@ import datetime
 import json
 import logging
 import os
+import requests
 import socket
 import sys
 import traceback
@@ -12,6 +13,7 @@ from typing import List, Optional, Tuple, TypedDict, Union
 
 from opencensus.stats import stats as stats_module
 from prometheus_client.core import REGISTRY
+from prometheus_client.parser import text_string_to_metric_families
 
 import ray
 import ray._private.prometheus_exporter as prometheus_exporter
@@ -38,6 +40,7 @@ from ray.dashboard.consts import (
     COMPONENT_METRICS_TAG_KEYS,
     GCS_RPC_TIMEOUT_SECONDS,
     GPU_TAG_KEYS,
+    TPU_TAG_KEYS,
     NODE_TAG_KEYS,
 )
 from ray.dashboard.modules.reporter.gpu_profile_manager import GpuProfilingManager
@@ -51,6 +54,8 @@ import psutil
 logger = logging.getLogger(__name__)
 
 enable_gpu_usage_check = True
+
+enable_tpu_usage_check = True
 
 # Are we in a K8s pod?
 IN_KUBERNETES_POD = "KUBERNETES_SERVICE_HOST" in os.environ
@@ -69,6 +74,10 @@ IN_CONTAINER = os.path.exists("/sys/fs/cgroup")
 RAY_DASHBOARD_REPORTER_AGENT_TPE_MAX_WORKERS = env_integer(
     "RAY_DASHBOARD_REPORTER_AGENT_TPE_MAX_WORKERS", 1
 )
+
+TPU_DEVICE_PLUGIN_ADDR = os.environ.get("TPU_DEVICE_PLUGIN_ADDR", None)
+
+TPU_DEVICE_PLUGIN_PORT = os.environ.get("TPU_DEVICE_PLUGIN_PORT", "2112")
 
 
 def recursive_asdict(o):
@@ -156,6 +165,19 @@ METRICS_GAUGES = {
         "Total GPU RAM available on a ray node",
         "bytes",
         GPU_TAG_KEYS,
+    ),
+    # TPU metrics
+    "tpu_tensorcore_utilization": Gauge(
+        "tpu_tensorcore_utilization",
+        "Total TPU tensorcore utilization on a ray node",
+        "percentage",
+        TPU_TAG_KEYS,
+    ),
+    "tpu_memory_bandwidth_utilization": Gauge(
+        "tpu_memory_bandwidth_utilization",
+        "Total TPU memory bandwidth usage on a ray node",
+        "percentage",
+        TPU_TAG_KEYS,
     ),
     # Disk I/O metrics
     "node_disk_io_read": Gauge(
@@ -340,6 +362,16 @@ class GpuUtilizationInfo(TypedDict):
     memory_used: Megabytes
     memory_total: Megabytes
     processes_pids: Optional[List[ProcessGPUInfo]]
+
+
+# tpu utilization for google tpu
+class TpuUtilizationInfo(TypedDict):
+    index: int
+    name: str
+    tpu_type: str
+    tpu_topology: str
+    tensorcore_utilization: Optional[Percentage]
+    hbm_utilization: Optional[Percentage]
 
 
 class ReporterAgent(
@@ -599,6 +631,75 @@ class ReporterAgent(
         return gpu_utilizations
 
     @staticmethod
+    def _get_tpu_usage():
+
+        global enable_tpu_usage_check
+        if not enable_tpu_usage_check:
+            return []
+        tpu_utilizations = []
+
+        if not TPU_DEVICE_PLUGIN_ADDR:
+            enable_tpu_usage_check = False
+            return tpu_utilizations
+
+        endpoint = f'http://{TPU_DEVICE_PLUGIN_ADDR}:{TPU_DEVICE_PLUGIN_PORT}/metrics'
+        metrics = requests.get(endpoint).content
+        metrics = metrics.decode('utf-8')
+
+        for family in text_string_to_metric_families(metrics):
+            for sample in family.samples:
+                print("Name: {0} Labels: {1} Value: {2}".format(*sample))
+                if sample.name == 'memory_bandwidth_utilization':
+                    labels = sample.labels
+                    accelerator_id = labels['accelerator_id']
+                    index = accelerator_id.split('_')[1]
+                    info = TpuUtilizationInfo(
+                        index=index,
+                        name=accelerator_id,
+                        tpu_type=labels['model'],
+                        tpu_topology=labels['tpu_topology'],
+                        hbm_utilization=sample.value,
+                    )
+                    tpu_utilizations.append(info)
+
+                if sample.name == 'tensorcore_utilization':
+                    labels = sample.labels
+                    accelerator_id = labels['accelerator_id']
+                    index = accelerator_id.split('_')[1]
+                    info = TpuUtilizationInfo(
+                        index=index,
+                        name=accelerator_id,
+                        tpu_type=labels['model'],
+                        tpu_topology=labels['tpu_topology'],
+                        tensorcore_utilization=sample.value,
+                    )
+                    tpu_utilization.append(info)
+
+        # Merge metrics
+        merged_tpu_utilizations = []
+        num_tpus = len(tpu_utilizations) / 2
+
+        for index in range(num_tpus):
+            merged_info = TpuUtilizationInfo(
+                index=0,
+                name="",
+                tpu_type="",
+                tpu_topology="")
+
+            for info in tpu_utilizations:
+                if info.index == index:
+                    merged_info.index = info.index
+                    merged_info.name = info.name
+                    merged_info.tpu_type = info.tpu_type
+                    merged_info.tpu_topology = info.tpu_topology
+                    merged_info.tensorcore_utilization += info.tensorcore_utilization
+                    merged_info.hbm_utilization += info.hbm_utilization
+            merged_tpu_utilizations.append(merged_info)
+
+        return merged_tpu_utilizations
+
+
+    @staticmethod
     def _get_boot_time():
         if IN_KUBERNETES_POD:
             # Return start time of container entrypoint
@@ -819,6 +920,7 @@ class ReporterAgent(
             "disk_io": disk_stats,
             "disk_io_speed": disk_speed_stats,
             "gpus": self._get_gpu_usage(),
+            "tpus": self._get_tpu_usage(),
             "network": network_stats,
             "network_speed": network_speed_stats,
             # Deprecated field, should be removed with frontend.
@@ -1144,6 +1246,43 @@ class ReporterAgent(
                             gram_available_record,
                         ]
                     )
+
+        # -- TPU per node --
+        tpus = stats["tpus"]
+        tpus_available = len(tpus)
+
+        if tpus_available:
+            for tpu in tpus:
+                tpu_index = tpu.get("index")
+                tpu_name = tpu.get("name")
+                tpu_type = tpu.get("tpu_type")
+                tpu_topology = tpu.get("tpu_topology")
+                tensorcore_utilization = tpu.get("tensorcore_utilization")
+                hbm_utilization = tpu.get("hbm_utilization")
+
+                tpu_tags = {
+                    **node_tags,
+                    "TpuIndex": str(tpu_index),
+                    "TpuDeviceName": tpu_name,
+                    "TpuType": tpu_type,
+                    "TpuTopology": tpu_topology,
+                }
+                tensorcore_utilization_record = Record(
+                    gauge=METRICS_GAUGES["tpu_tensorcore_utilization"],
+                    value=tensorcore_utilization,
+                    tags=tpu_tags,
+                )
+                hbm_utilization_record = Record(
+                    gauge=METRICS_GAUGES["tpu_memory_bandwidth_utilization"],
+                    value=hbm_utilization,
+                    tags=tpu_tags,
+                )
+                records_reported.extend(
+                    [
+                        tensorcore_utilization_record,
+                        hbm_utilization_record,
+                    ]
+                )
 
         # -- Disk per node --
         disk_io_stats = stats["disk_io"]
