@@ -45,11 +45,15 @@ class Operator:
         id: The unique identifier of the operator within the DAG structure, typically
             incorporating a position or index (e.g., "ReadParquet_0"). This is used for
             referencing operators within the DAG topology.
+        data_context: The DataContext associated with this operator, which contains
+            configuration and execution context information for the operator.
         uuid: The system-generated UUID of the physical operator instance. This is the
             internal unique identifier created when the operator instance is initialized
             and remains consistent throughout its lifetime.
         input_dependencies: List of operator IDs that this operator depends on for input.
         sub_stages: List of sub-stages contained within this operator.
+        args: Additional arguments or parameters associated with the operator, which may
+            include configuration settings, options, or other relevant data for the operator.
     """
 
     name: str
