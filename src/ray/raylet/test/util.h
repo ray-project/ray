@@ -29,7 +29,6 @@ class MockWorker : public WorkerInterface {
   MockWorker(WorkerID worker_id, int port, int runtime_env_hash = 0)
       : worker_id_(worker_id),
         port_(port),
-        is_detached_actor_(false),
         runtime_env_hash_(runtime_env_hash),
         job_id_(JobID::FromInt(859)) {}
 
@@ -119,8 +118,6 @@ class MockWorker : public WorkerInterface {
     RAY_CHECK(false) << "Method unused";
     return "";
   }
-  void MarkDetachedActor() override { is_detached_actor_ = true; }
-  bool IsDetachedActor() const override { return is_detached_actor_; }
   const std::shared_ptr<ClientConnection> Connection() const override {
     RAY_CHECK(false) << "Method unused";
     return nullptr;
@@ -181,7 +178,6 @@ class MockWorker : public WorkerInterface {
   std::vector<double> borrowed_cpu_instances_;
   std::optional<bool> is_gpu_;
   std::optional<bool> is_actor_worker_;
-  bool is_detached_actor_;
   BundleID bundle_id_;
   bool blocked_ = false;
   RayTask task_;
