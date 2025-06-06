@@ -359,14 +359,14 @@ import tempfile
 import ray
 
 f = tempfile.NamedTemporaryFile("w+", suffix=".py", prefix="_", delete=False)
-f.write('''
+try:
+    f.write('''
 def temporary_helper_function():
    return 1
 ''')
-f.flush()
-f.close()
+    f.flush()
+    f.close()
 
-try:
     # Get the module name and strip ".py" from the end.
     directory = os.path.dirname(f.name)
     module_name = os.path.basename(f.name)[:-3]
@@ -404,9 +404,9 @@ import ray
 f = tempfile.NamedTemporaryFile("w+", suffix=".py", prefix="_", delete=False)
 try:
     f.write('''
-    def temporary_helper_function():
-       return 1
-    ''')
+def temporary_helper_function():
+   return 1
+''')
     f.flush()
     f.close()
 
