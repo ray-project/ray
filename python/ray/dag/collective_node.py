@@ -16,6 +16,7 @@ from ray.experimental.util.types import (
     AllGatherOp,
     AllReduceOp,
     ReduceScatterOp,
+    BroadcastOp,
 )
 from ray.util.annotations import DeveloperAPI
 
@@ -42,8 +43,20 @@ class _CollectiveOperation:
         self,
         inputs: List[List[DAGNode]],
         op: _CollectiveOp,
+        root_node: Optional[DAGNode] = None,
         transport: Optional[Union[str, Communicator]] = None,
     ):
+        if len(input_nodes) == 0:
+            raise ValueError("Expected input nodes for a collective operation")
+        if len(set(input_nodes)) != len(input_nodes):
+            raise ValueError("Expected unique input nodes for a collective operation")
+
+        self._root_actor_handle = (
+            root_node._get_actor_handle() if root_node is not None else None
+        )
+        if root_node is not None and root_node not in input_nodes:
+            raise ValueError("Expected the root node to be an input node")
+
         self._actor_handles: List["ray.actor.ActorHandle"] = []
         for i, input_nodes in enumerate(inputs):
             # Check non-empty input list
@@ -245,6 +258,12 @@ class _CollectiveOperation:
                 device=t.device,
             )
             communicator.reducescatter(t, recv_buf, self._op.reduceOp)
+        elif isinstance(self._op, BroadcastOp):
+            recv_buf = torch.empty_like(send_buf)
+            root_rank = communicator.get_rank(self._root_actor_handle)
+            communicator.broadcast(send_buf, recv_buf, root_rank)
+        else:
+            raise ValueError("Expected a collective operation")
         return recv_buf
 
 

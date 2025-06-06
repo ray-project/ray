@@ -35,6 +35,12 @@ class ReduceScatterOp(_CollectiveOp):
     reduceOp: ReduceOp = ReduceOp.SUM
 
 
+@PublicAPI
+@dataclass
+class BroadcastOp(_CollectiveOp):
+    pass
+
+
 @PublicAPI(stability="alpha")
 class Device(Enum):
     DEFAULT = "default"
