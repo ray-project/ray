@@ -67,6 +67,7 @@ py_test_module_list(
         "test_reference_counting_2.py",
         "test_reference_counting_standalone.py",
         "test_runtime_env_agent.py",
+        "test_task_events_3.py",
     ],
     tags = [
         "exclusive",
@@ -86,6 +87,7 @@ py_test_module_list(
         "test_job.py",
         "test_kill_subprocesses.py",
         "test_memstat.py",
+        "test_storage.py",
     ],
     tags = [
         "exclusive",
@@ -213,6 +215,58 @@ py_test_module_list(
     ],
 )
 
+# Ray Client runtime_env tests that *don't* require being part of the post-wheel build.
+py_test_module_list(
+    size = "large",
+    data = ["pip_install_test-0.5-py3-none-any.whl"],
+    env = {
+        "RAY_CLIENT_MODE": "1",
+    },
+    files = [
+        "test_runtime_env.py",
+        "test_runtime_env_env_vars.py",
+        "test_runtime_env_failure.py",
+        "test_runtime_env_working_dir.py",
+        "test_runtime_env_working_dir_uri.py",
+    ],
+    name_suffix = "_client_mode",
+    tags = [
+        "exclusive",
+        "ray_client",
+        "team:core",
+    ],
+    deps = [
+        ":conftest",
+        "//:ray_lib",
+    ],
+)
+
+# Ray Client runtime_env tests that *do* require being part of the post-wheel build.
+py_test_module_list(
+    size = "large",
+    data = [
+        "pip_install_test-0.5-py3-none-any.whl",
+    ],
+    env = {
+        "RAY_CLIENT_MODE": "1",
+    },
+    files = [
+        "test_runtime_env_conda_and_pip.py",
+        "test_runtime_env_uv_run.py",
+    ],
+    name_suffix = "_client_mode",
+    tags = [
+        "exclusive",
+        "post_wheel_build",
+        "ray_client",
+        "team:core",
+    ],
+    deps = [
+        ":conftest",
+        "//:ray_lib",
+    ],
+)
+
 ##### End Ray Client tests #####
 
 # Issue #33491
@@ -289,7 +343,7 @@ py_test_module_list(
         "test_streaming_generator_4.py",
         "test_streaming_generator_backpressure.py",
         "test_task_metrics.py",
-        "test_tempfile.py",
+        "test_tempdir.py",
         "test_tls_auth.py",
         "test_traceback.py",
         "test_worker_capping.py",
@@ -387,6 +441,7 @@ py_test_module_list(
 py_test_module_list(
     size = "medium",
     files = [
+        "test_bundle_label_selector.py",
         "test_label_scheduling.py",
         "test_minimal_install.py",
         "test_path_utils.py",
@@ -468,12 +523,14 @@ py_test_module_list(
         "test_node_death.py",
         "test_numba.py",
         "test_object_spilling_no_asan.py",
+        "test_open_telemetry_metric_recorder.py",
         "test_placement_group_metrics.py",
         "test_protobuf_compatibility.py",
         "test_queue.py",
         "test_raylet_output.py",
         "test_reconstruction_stress.py",
         "test_reconstruction_stress_spill.py",
+        "test_runtime_env_get_wheel_names.py",
         "test_state_api_summary.py",
         "test_streaming_generator_regression.py",
         "test_system_metrics.py",
@@ -483,6 +540,7 @@ py_test_module_list(
         "test_unhandled_error.py",
         "test_wait.py",
         "test_widgets.py",
+        "test_worker_graceful_shutdown.py",
     ],
     tags = [
         "exclusive",
@@ -501,7 +559,7 @@ py_test_module_list(
         "test_channel_serialization.py",
     ],
     tags = [
-        "accelerated_dag",
+        "compiled_graphs",
         "exclusive",
         "no_windows",
         "team:core",
@@ -521,6 +579,23 @@ py_test_module_list(
     tags = [
         "compiled_graphs",
         "exclusive",
+        "no_windows",
+        "team:core",
+    ],
+    deps = [
+        ":conftest",
+        "//:ray_lib",
+    ],
+)
+
+py_test_module_list(
+    size = "medium",
+    files = [
+        "test_gpu_objects.py",
+    ],
+    tags = [
+        "exclusive",
+        "gpu_objects",
         "no_windows",
         "team:core",
     ],
@@ -740,7 +815,6 @@ py_test_module_list(
         "test_placement_group.py",
         "test_scheduling_performance.py",
         "test_state_api_2.py",
-        "test_storage.py",
         "test_task_events.py",
         "test_unavailable_actors.py",
     ],
@@ -770,10 +844,9 @@ py_test_module_list(
         "test_placement_group_5.py",
         "test_reconstruction.py",
         "test_reconstruction_2.py",
-        "test_runtime_env_working_dir_remote_uri.py",
+        "test_runtime_env_working_dir_uri.py",
         "test_state_api.py",
         "test_task_events_2.py",
-        "test_task_events_3.py",
     ],
     tags = [
         "exclusive",
@@ -901,7 +974,7 @@ py_test_module_list(
     data = ["pip_install_test-0.5-py3-none-any.whl"],
     files = [
         "test_runtime_env.py",
-        "test_runtime_env_2.py",
+        "test_runtime_env_standalone.py",
         "test_runtime_env_working_dir.py",
         "test_runtime_env_working_dir_2.py",
         "test_runtime_env_working_dir_3.py",
@@ -921,6 +994,7 @@ py_test_module_list(
 py_test_module_list(
     size = "large",
     files = [
+        "test_runtime_env_complicated.py",
         "test_runtime_env_conda_and_pip.py",
         "test_runtime_env_conda_and_pip_2.py",
         "test_runtime_env_conda_and_pip_3.py",
@@ -929,22 +1003,6 @@ py_test_module_list(
         "test_runtime_env_uv.py",
         "test_runtime_env_uv_run.py",
     ],
-    tags = [
-        "exclusive",
-        "post_wheel_build",
-        "team:core",
-    ],
-    deps = [
-        ":conftest",
-        "//:ray_lib",
-    ],
-)
-
-py_test(
-    name = "test_runtime_env_complicated",
-    size = "large",
-    srcs = ["test_runtime_env_complicated.py"],
-    data = ["//python/ray/experimental/packaging/example_pkg"],
     tags = [
         "exclusive",
         "post_wheel_build",
@@ -1145,25 +1203,6 @@ py_test(
     name = "test_collections_utils",
     size = "small",
     srcs = ["test_collections_utils.py"],
-    tags = [
-        "exclusive",
-        "small_size_python_tests",
-        "team:core",
-    ],
-    deps = [
-        ":conftest",
-        "//:ray_lib",
-    ],
-)
-
-py_test(
-    name = "test_runtime_env_validation",
-    size = "small",
-    srcs = ["test_runtime_env_validation.py"],
-    data = [
-        "test_runtime_env_validation_1_schema.json",
-        "test_runtime_env_validation_2_schema.json",
-    ],
     tags = [
         "exclusive",
         "small_size_python_tests",

@@ -1,10 +1,10 @@
 from enum import Enum
-from typing import Callable, Dict, List, Union, Tuple
-import ray
+from typing import Callable, Dict, List, Tuple, Union
 
+import ray
 from ray._private.usage.usage_lib import record_extra_usage_tag
-from ray.llm._internal.common.base_pydantic import BaseModelExtended
 from ray.llm._internal.batch.observability.logging import get_logger
+from ray.llm._internal.common.base_pydantic import BaseModelExtended
 
 LLM_BATCH_TELEMETRY_NAMESPACE = "llm_batch_telemetry"
 LLM_BATCH_TELEMETRY_ACTOR_NAME = "llm_batch_telemetry"

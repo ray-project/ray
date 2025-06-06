@@ -2,8 +2,8 @@
 """
 import asyncio
 import logging
-from typing import AsyncGenerator, Union
 import uuid
+from typing import AsyncGenerator, Union
 
 from pydantic import BaseModel
 from vllm.config import KVTransferConfig
@@ -141,9 +141,11 @@ class PDProxyServer(LLMServer):
             yield prefill_response
             return
 
-        prompt.parameters[KV_TRANSFER_PARAMS_KEY] = prefill_response.metadata[
-            KV_TRANSFER_PARAMS_KEY
-        ]
+        kv_transfer_params = prefill_response.metadata[KV_TRANSFER_PARAMS_KEY]
+        logger.debug(
+            f"Prefill metadata[{KV_TRANSFER_PARAMS_KEY}]: {kv_transfer_params}"
+        )
+        prompt.parameters[KV_TRANSFER_PARAMS_KEY] = kv_transfer_params
 
         async for chunk in self.decode_server.options(stream=True)._predict.remote(
             request_id=request_id, prompt=prompt, stream=stream
@@ -183,10 +185,12 @@ def build_app(pd_serving_args: dict) -> Application:
                 }
             )
 
-    # TODO(lk-chen): here we should update build_llm_deployment to allow `name_prefix` argument
-    # so that we can better distinguish P/D deployments.
-    prefill_deployment = build_llm_deployment(pd_config.prefill_config)
-    decode_deployment = build_llm_deployment(pd_config.decode_config)
+    prefill_deployment = build_llm_deployment(
+        pd_config.prefill_config, name_prefix="Prefill:"
+    )
+    decode_deployment = build_llm_deployment(
+        pd_config.decode_config, name_prefix="Decode:"
+    )
 
     proxy_server_deployment = PDProxyServer.as_deployment().bind(
         llm_config=LLMConfig(

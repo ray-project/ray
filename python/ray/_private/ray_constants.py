@@ -1,9 +1,9 @@
 """Ray constants used in the Python code."""
 
+import json
 import logging
 import os
 import sys
-import json
 
 logger = logging.getLogger(__name__)
 
@@ -222,9 +222,6 @@ DASHBOARD_DIED_ERROR = "dashboard_died"
 RAYLET_DIED_ERROR = "raylet_died"
 DETACHED_ACTOR_ANONYMOUS_NAMESPACE_ERROR = "detached_actor_anonymous_namespace"
 EXCESS_QUEUEING_WARNING = "excess_queueing_warning"
-
-# Used in gpu detection
-RESOURCE_CONSTRAINT_PREFIX = "accelerator_type:"
 
 # Used by autoscaler to set the node custom resources and labels
 # from cluster.yaml.
@@ -534,8 +531,6 @@ RAY_TPU_MAX_CONCURRENT_CONNECTIONS_ENV_VAR = "RAY_TPU_MAX_CONCURRENT_ACTIVE_CONN
 
 RAY_NODE_IP_FILENAME = "node_ip_address.json"
 
-PLACEMENT_GROUP_BUNDLE_RESOURCE_NAME = "bundle"
-
 RAY_LOGGING_CONFIG_ENCODING = os.environ.get("RAY_LOGGING_CONFIG_ENCODING")
 
 RAY_BACKEND_LOG_JSON_ENV_VAR = "RAY_BACKEND_LOG_JSON"
@@ -584,3 +579,18 @@ RAY_ENABLE_UV_RUN_RUNTIME_ENV = env_bool("RAY_ENABLE_UV_RUN_RUNTIME_ENV", True)
 # Recommended: report only the node level metrics to prometheus. This means that the
 #   WorkerId will be removed from all metrics.
 RAY_METRIC_CARDINALITY_LEVEL = os.environ.get("RAY_metric_cardinality_level", "legacy")
+
+# Whether enable OpenTelemetry as the metrics collection backend on the driver
+# component. This flag is only used during the migration of the  metric collection
+# backend from OpenCensus to OpenTelemetry. It will be removed in the future.
+RAY_EXPERIMENTAL_ENABLE_OPEN_TELEMETRY_ON_AGENT = env_bool(
+    "RAY_experimental_enable_open_telemetry_on_agent", False
+)
+
+# Whether enable OpenTelemetry as the metrics collection backend on the core
+# components (core workers, gcs server, raylet, etc.). This flag is only used during
+# the migration of the  metric collection backend from OpenCensus to OpenTelemetry.
+# It will be removed in the future.
+RAY_EXPERIMENTAL_ENABLE_OPEN_TELEMETRY_ON_CORE = env_bool(
+    "RAY_experimental_enable_open_telemetry_on_core", False
+)
