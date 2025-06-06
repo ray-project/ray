@@ -1089,7 +1089,7 @@ TEST_F(GcsActorManagerTest, TestOwnerWorkerDieBeforeActorDependenciesResolved) {
   ASSERT_FALSE(registered_actors.count(registered_actor->GetActorID()));
   SyncPostAndWait(
       io_service_, "TestOwnerWorkerDieBeforeActorDependenciesResolved", [&]() {
-        const auto &callbacks = gcs_actor_manager_->GetActorRegisterCallbacks();
+        const auto &callbacks = gcs_actor_manager_->actor_to_register_callbacks_;
         ASSERT_FALSE(callbacks.count(registered_actor->GetActorID()));
       });
 }
@@ -1117,7 +1117,7 @@ TEST_F(GcsActorManagerTest, TestOwnerWorkerDieBeforeDetachedActorDependenciesRes
   ASSERT_FALSE(registered_actors.count(registered_actor->GetActorID()));
   SyncPostAndWait(
       io_service_, "TestOwnerWorkerDieBeforeDetachedActorDependenciesResolved", [&]() {
-        const auto &callbacks = gcs_actor_manager_->GetActorRegisterCallbacks();
+        const auto &callbacks = gcs_actor_manager_->actor_to_register_callbacks_;
         ASSERT_FALSE(callbacks.count(registered_actor->GetActorID()));
       });
 }
@@ -1141,7 +1141,7 @@ TEST_F(GcsActorManagerTest, TestOwnerNodeDieBeforeActorDependenciesResolved) {
   const auto &registered_actors = gcs_actor_manager_->GetRegisteredActors();
   ASSERT_FALSE(registered_actors.count(registered_actor->GetActorID()));
   SyncPostAndWait(io_service_, "TestOwnerNodeDieBeforeActorDependenciesResolved", [&]() {
-    const auto &callbacks = gcs_actor_manager_->GetActorRegisterCallbacks();
+    const auto &callbacks = gcs_actor_manager_->actor_to_register_callbacks_;
     ASSERT_FALSE(callbacks.count(registered_actor->GetActorID()));
   });
 }
@@ -1166,7 +1166,7 @@ TEST_F(GcsActorManagerTest, TestOwnerNodeDieBeforeDetachedActorDependenciesResol
   ASSERT_FALSE(registered_actors.count(registered_actor->GetActorID()));
   SyncPostAndWait(
       io_service_, "TestOwnerNodeDieBeforeDetachedActorDependenciesResolved", [&]() {
-        const auto &callbacks = gcs_actor_manager_->GetActorRegisterCallbacks();
+        const auto &callbacks = gcs_actor_manager_->actor_to_register_callbacks_;
         ASSERT_FALSE(callbacks.count(registered_actor->GetActorID()));
       });
 }
