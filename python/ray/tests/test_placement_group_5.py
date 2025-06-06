@@ -427,10 +427,14 @@ def test_placement_group_parallel_submission(ray_start_cluster):
             )
             try:
                 ray.get(pg.ready())
-                pg_strategy = ray.util.scheduling_strategies.PlacementGroupSchedulingStrategy(
-                    placement_group=pg
+                pg_strategy = (
+                    ray.util.scheduling_strategies.PlacementGroupSchedulingStrategy(
+                        placement_group=pg
+                    )
                 )
-                return ray.get(task.options(scheduling_strategy=pg_strategy).remote(input))
+                return ray.get(
+                    task.options(scheduling_strategy=pg_strategy).remote(input)
+                )
             finally:
                 ray.util.remove_placement_group(pg)
 
@@ -439,7 +443,10 @@ def test_placement_group_parallel_submission(ray_start_cluster):
     submitters = [Submitter.remote() for _ in range(5)]
     for strategy in ["SPREAD", "STRICT_SPREAD", "PACK", "STRICT_PACK"]:
         print("Testing strategy:", strategy)
-        assert ray.get([s.submit.remote(strategy) for s in submitters], timeout=30) == ["OK"] * 5
+        assert (
+            ray.get([s.submit.remote(strategy) for s in submitters], timeout=30)
+            == ["OK"] * 5
+        )
 
 
 MyPlugin = "MyPlugin"
