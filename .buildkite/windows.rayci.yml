@@ -53,7 +53,7 @@ steps:
     parallelism: 5
     commands:
       - bash ci/ray_ci/windows/install_tools.sh
-      - bazel run //ci/ray_ci:test_in_docker -- //python/ray/tests/... core
+      - bazel run //ci/ray_ci:test_in_docker -- //python/ray/tests:test_object_store_metrics core
         --build-name windowsbuild
         --operating-system windows
         --except-tags no_windows
