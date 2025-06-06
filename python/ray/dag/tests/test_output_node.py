@@ -197,6 +197,48 @@ def test_bind_survives_handle_deletion(shared_ray_instance):
     assert result == 1
 
 
+def test_executes_in_bind_order(shared_ray_instance):
+    """Verify that multiple tasks submitted to the
+    same actor will execute in the order they were
+    bound in
+    """
+
+    @ray.remote
+    class Actor:
+        def __init__(self):
+            self.state = []
+
+        def foo(self, input_data):
+            output_data = input_data * 2
+            self.state.append(output_data)
+            return output_data
+
+        def bar(self, input_data):
+            output_data = int(input_data / 2)
+            self.state.append(output_data)
+            return output_data
+
+        def baz(self, *inputs):
+            output_data = sum(inputs)
+            self.state.append(output_data)
+            return output_data
+
+        def get_state(self):
+            return "actor internal state: " + str(self.state)
+
+    a = Actor.remote()
+
+    with InputNode() as inp:
+        w = a.foo.bind(inp)
+        x = a.bar.bind(inp)
+        y = a.baz.bind(1, 2, 3, w, x, inp)
+        z = a.get_state.bind()
+
+        dag = MultiOutputNode([x, w, y, z])
+
+    assert ray.get(dag.execute(4)) == [2, 8, 20, "actor internal state: [8, 2, 20]"]
+
+
 if __name__ == "__main__":
     import sys
 
