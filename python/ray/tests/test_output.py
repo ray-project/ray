@@ -334,11 +334,11 @@ while True:
                 out_str += l
 
             # Check that *all* expected messages are present.
-            assert all([msg in out_str for msg in expected_msg.split(",")])
+            assert all([msg in out_str for msg in expected_msg.split(",")]), out_str
 
             # Check that *no* unexpected messages are present.
             if unexpected_msg:
-                assert all([msg not in out_str for msg in unexpected_msg.split(",")])
+                assert all([msg not in out_str for msg in unexpected_msg.split(",")]), out_str
 
             return True
 
@@ -356,15 +356,15 @@ import sys
 import tempfile
 import ray
 
-temporary_python_file = '''
+f = tempfile.NamedTemporaryFile("w+", suffix=".py", prefix="_", delete=False)
+f.write('''
 def temporary_helper_function():
    return 1
-'''
+''')
+f.flush()
+f.close()
 
-with tempfile.NamedTemporaryFile("w+", suffix=".py", prefix="_", delete=True) as f:
-    f.write(temporary_python_file)
-    f.flush()
-
+try:
     # Get the module name and strip ".py" from the end.
     directory = os.path.dirname(f.name)
     module_name = os.path.basename(f.name)[:-3]
@@ -380,6 +380,8 @@ with tempfile.NamedTemporaryFile("w+", suffix=".py", prefix="_", delete=True) as
 
         def ready(self):
             pass
+finally:
+    os.unlink(f.name)
 
 ray.get(Foo.remote().ready.remote())
 """
@@ -397,14 +399,14 @@ import sys
 import tempfile
 import ray
 
-temporary_python_file = '''
-def temporary_helper_function():
-   return 1
-'''
-
-with tempfile.NamedTemporaryFile("w+", suffix=".py", prefix="_", delete=True) as f:
-    f.write(temporary_python_file)
+f = tempfile.NamedTemporaryFile("w+", suffix=".py", prefix="_", delete=False):
+try:
+    f.write('''
+    def temporary_helper_function():
+       return 1
+    ''')
     f.flush()
+    f.close()
 
     # Get the module name and strip ".py" from the end.
     directory = os.path.dirname(f.name)
@@ -417,6 +419,8 @@ with tempfile.NamedTemporaryFile("w+", suffix=".py", prefix="_", delete=True) as
     @ray.remote
     def foo():
         return module.temporary_python_file()
+finally:
+    os.unlink(f.name)
 
 ray.get(foo.remote())
 """
