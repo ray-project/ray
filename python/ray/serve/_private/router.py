@@ -900,7 +900,7 @@ class SharedRouterLongPollClient:
         # which are also being iterated over by the key listener callbacks.
         # If those happened concurrently in different threads,
         # we could get a `RuntimeError: Set changed size during iteration`.
-        # See https://github.com/ray-project/ray/pull/52793 for more details.
+        # See https://github.com/ray-project/ray/pull/53613 for more details.
         self.event_loop.call_soon_threadsafe(self._register, router)
 
     def _register(self, router: AsyncioRouter) -> None:
