@@ -648,7 +648,6 @@ class ReporterAgent(
 
         for family in text_string_to_metric_families(metrics):
             for sample in family.samples:
-                print("Name: {0} Labels: {1} Value: {2}".format(*sample))
                 if sample.name == 'memory_bandwidth_utilization':
                     labels = sample.labels
                     accelerator_id = labels['accelerator_id']
