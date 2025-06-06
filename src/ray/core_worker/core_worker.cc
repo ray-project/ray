@@ -789,6 +789,10 @@ CoreWorker::CoreWorker(CoreWorkerOptions options, const WorkerID &worker_id)
                                                                *memory_store_,
                                                                *task_manager_,
                                                                *actor_creator_,
+                                                               /*tensor_transport_getter=*/
+                                                               [this](const ObjectID &object_id) {
+                                                                 return reference_counter_->GetTensorTransport(object_id);
+                                                               },
                                                                on_excess_queueing,
                                                                io_service_,
                                                                reference_counter_);
