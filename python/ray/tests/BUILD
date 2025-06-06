@@ -245,7 +245,6 @@ py_test_module_list(
     size = "large",
     data = [
         "pip_install_test-0.5-py3-none-any.whl",
-        "//python/ray/experimental/packaging/example_pkg",
     ],
     env = {
         "RAY_CLIENT_MODE": "1",
