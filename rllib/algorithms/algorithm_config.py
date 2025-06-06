@@ -4349,10 +4349,10 @@ class AlgorithmConfig(_Config):
     def get_rl_module_spec(
         self,
         env: Optional[EnvType] = None,
-        spaces: Optional[Dict[str, gym.Space]] = None,
+        spaces: Optional[Dict[str, Tuple[gym.Space, gym.Space]]] = None,
         inference_only: Optional[bool] = None,
     ) -> RLModuleSpec:
-        """Returns the RLModuleSpec based on the given env/spaces.
+        """Returns the RLModuleSpec based on the given env/spaces and this config.
 
         Args:
             env: An optional environment instance, from which to infer the observation-
@@ -4363,10 +4363,10 @@ class AlgorithmConfig(_Config):
             spaces: Optional dict mapping ModuleIDs to 2-tuples of observation- and
                 action space that should be used for the respective RLModule.
                 These spaces are usually provided by an already instantiated remote
-                EnvRunner (call `EnvRunner.get_spaces()`). If not provided, tries
-                to infer from `env`, otherwise from `self.observation_space` and
-                `self.action_space`. Raises an error, if no information on spaces can be
-                inferred.
+                EnvRunner (call `EnvRunner.get_spaces()` to receive this dict). If not
+                provided, RLlib tries to infer this from `env`, if provided, otherwise
+                from `self.observation_space` and `self.action_space`. Raises an error,
+                if no information on spaces can be inferred.
             inference_only: If `True`, the returned module spec is used in an
                 inference-only setting (sampling) and the RLModule can thus be built in
                 its light version (if available). For example, the `inference_only`

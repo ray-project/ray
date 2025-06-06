@@ -18,7 +18,7 @@ class TestDQN(unittest.TestCase):
         """Test whether DQN can be built and trained."""
         num_iterations = 2
         config = (
-            dqn.dqn.DQNConfig()
+            dqn.DQNConfig()
             .environment("CartPole-v1")
             .env_runners(num_env_runners=2)
             .training(num_steps_sampled_before_learning_starts=0)
