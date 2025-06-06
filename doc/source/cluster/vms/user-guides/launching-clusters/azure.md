@@ -30,7 +30,7 @@ Next, install the Azure CLI (`pip install -U azure-cli azure-identity`) and logi
 
 ```bash
 # Install azure cli.
-pip install azure-cli azure-identity
+pip install azure-cli azure-identity azure-mgmt-network
 
 # Login to azure. This will redirect you to your web browser.
 az login
