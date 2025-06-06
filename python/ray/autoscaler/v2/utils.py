@@ -35,6 +35,8 @@ from ray.core.generated.autoscaler_pb2 import (
     AutoscalingState,
     ClusterResourceState,
     GetClusterStatusReply,
+    LabelConstraint,
+    LabelSelector,
     NodeState,
     NodeStatus,
     PlacementConstraint,
@@ -188,11 +190,15 @@ class ResourceRequestUtil(ProtobufUtil):
     def make(
         resources_map: Dict[str, float],
         constraints: Optional[List[Tuple[PlacementConstraintType, str, str]]] = None,
+        label_selectors: Optional[List[List[Tuple[str, int, List[str]]]]] = None,
     ) -> ResourceRequest:
         """
         Make a resource request from the given resources map.
         Args:
             resources_map: the resources map
+            constraints: optional list of placement constraints (affinity/anti-affinity)
+            label_selectors: optional list of label selectors.
+                             Each selector is a list of (label_key, operator, label_values)
         Returns:
             request: the resource request
         """
@@ -200,29 +206,46 @@ class ResourceRequestUtil(ProtobufUtil):
         for resource_name, quantity in resources_map.items():
             request.resources_bundle[resource_name] = quantity
 
-        if constraints is None:
-            return request
-
-        for constraint_type, label, value in constraints:
-            if constraint_type == ResourceRequestUtil.PlacementConstraintType.AFFINITY:
-                request.placement_constraints.append(
-                    PlacementConstraint(
-                        affinity=AffinityConstraint(label_name=label, label_value=value)
-                    )
-                )
-            elif (
-                constraint_type
-                == ResourceRequestUtil.PlacementConstraintType.ANTI_AFFINITY
-            ):
-                request.placement_constraints.append(
-                    PlacementConstraint(
-                        anti_affinity=AntiAffinityConstraint(
-                            label_name=label, label_value=value
+        if constraints is not None:
+            for constraint_type, label, value in constraints:
+                if (
+                    constraint_type
+                    == ResourceRequestUtil.PlacementConstraintType.AFFINITY
+                ):
+                    request.placement_constraints.append(
+                        PlacementConstraint(
+                            affinity=AffinityConstraint(
+                                label_name=label, label_value=value
+                            )
                         )
                     )
-                )
-            else:
-                raise ValueError(f"Unknown constraint type: {constraint_type}")
+                elif (
+                    constraint_type
+                    == ResourceRequestUtil.PlacementConstraintType.ANTI_AFFINITY
+                ):
+                    request.placement_constraints.append(
+                        PlacementConstraint(
+                            anti_affinity=AntiAffinityConstraint(
+                                label_name=label, label_value=value
+                            )
+                        )
+                    )
+                else:
+                    raise ValueError(f"Unknown constraint type: {constraint_type}")
+
+        if label_selectors is not None:
+            for selector in label_selectors:
+                selector_proto = LabelSelector()
+                for label_key, operator_enum, label_values in selector:
+                    selector_proto.label_constraints.append(
+                        LabelConstraint(
+                            label_key=label_key,
+                            operator=operator_enum,
+                            label_values=label_values,
+                        )
+                    )
+                print(f"Adding selector: {selector_proto}")
+                request.label_selectors.append(selector_proto)
 
         return request
 
