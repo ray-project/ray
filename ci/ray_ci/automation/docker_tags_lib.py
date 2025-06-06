@@ -628,7 +628,6 @@ def _write_to_file(file_path: str, content: List[str]) -> None:
 
 def generate_index(index_name: str, tags: List[str]) -> bool:
     print(f"Generating index {index_name} with tags {tags}")
-    authorize_docker()
     # Make sure tag is an image and not an index
     for tag in tags:
         return_code, output = _call_crane_manifest(tag)
@@ -647,19 +646,3 @@ def generate_index(index_name: str, tags: List[str]) -> bool:
         return False
     logger.info(f"Generated index {index_name} successfully")
     return True
-
-
-def authorize_docker():
-    """
-    Authorize docker hub access to rayproject/ray
-    """
-    docker_password = _get_ssm(DOCKERHUB_SSM_NAME)
-    subprocess.check_call(
-        ["docker", "login", "--username", "raytravisbot", "--password", docker_password]
-    )
-
-
-def _get_ssm(token_name):
-    client = boto3.client("ssm", region_name="us-west-2")
-    resp = client.get_parameter(Name=token_name, WithDecryption=True)
-    return resp["Parameter"]["Value"]
