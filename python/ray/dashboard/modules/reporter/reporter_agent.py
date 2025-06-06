@@ -18,10 +18,13 @@ from grpc.aio import ServicerContext
 
 import ray
 import ray._private.prometheus_exporter as prometheus_exporter
-import ray._private.services
 import ray.dashboard.modules.reporter.reporter_consts as reporter_consts
 import ray.dashboard.utils as dashboard_utils
-from ray._common.utils import get_or_create_event_loop
+from ray._common.utils import (
+    get_or_create_event_loop,
+    get_system_memory,
+    get_user_temp_dir,
+)
 from ray._private import utils
 from ray._private.metrics_agent import Gauge, MetricsAgent, Record
 from ray._private.ray_constants import (
@@ -631,7 +634,7 @@ class ReporterAgent(
 
     @staticmethod
     def _get_mem_usage():
-        total = utils.get_system_memory()
+        total = get_system_memory()
         used = utils.get_used_memory()
         available = total - used
         percent = round(used / total, 3) * 100
@@ -648,7 +651,7 @@ class ReporterAgent(
             root = psutil.disk_partitions()[0].mountpoint
         else:
             root = os.sep
-        tmp = utils.get_user_temp_dir()
+        tmp = get_user_temp_dir()
         return {
             "/": psutil.disk_usage(root),
             tmp: psutil.disk_usage(tmp),
