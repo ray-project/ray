@@ -75,7 +75,6 @@ message ExportDatasetMetadata {
   // The timestamp when execution started (in seconds since epoch)
   double start_time = 4;
 
-  // The data context attached to the dataset. These are globally set
-  // to change dataset execution
+  // The data context attached to the dataset.
   google.protobuf.Struct data_context = 5;
 }

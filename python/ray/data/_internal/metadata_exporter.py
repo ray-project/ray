@@ -5,7 +5,7 @@ import logging
 import os
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, Any, Dict, List, Optional
+from typing import TYPE_CHECKING, Any, Dict, List, Mapping, Optional, Sequence
 
 import ray
 from ray._private.event.export_event_logger import (
@@ -54,7 +54,7 @@ class Operator:
             and remains consistent throughout its lifetime.
         input_dependencies: List of operator IDs that this operator depends on for input.
         sub_stages: List of sub-stages contained within this operator.
-        args: Additional arguments or parameters associated with the operator, which may
+        args: User-specified arguments associated with the operator, which may
             include configuration settings, options, or other relevant data for the operator.
     """
 
@@ -139,11 +139,11 @@ class DatasetMetadata:
 
 
 def sanitize_for_struct(obj):
-    if isinstance(obj, dict):
+    if isinstance(obj, Mapping):
         return {k: sanitize_for_struct(v) for k, v in obj.items()}
     elif isinstance(obj, (str, int, float, bool)) or obj is None:
         return obj
-    elif isinstance(obj, (list, tuple)):
+    elif isinstance(obj, Sequence):
         return [sanitize_for_struct(v) for v in obj]
     else:
         # Convert unhandled types to string

@@ -138,7 +138,7 @@ def test_export_dataset_metadata(
 
 
 @pytest.mark.parametrize(
-    "kwargs",
+    "expected_logical_op_args",
     [
         {
             "fn_args": [1],
@@ -149,7 +149,9 @@ def test_export_dataset_metadata(
         },
     ],
 )
-def test_logical_op_args(ray_start_cluster_with_export_api_write, kwargs):
+def test_logical_op_args(
+    ray_start_cluster_with_export_api_write, expected_logical_op_args
+):
     class Udf:
         def __init__(self, a, b):
             self.a = a
@@ -160,12 +162,12 @@ def test_logical_op_args(ray_start_cluster_with_export_api_write, kwargs):
 
     ds = ray.data.range(1).map_batches(
         Udf,
-        **kwargs,
+        **expected_logical_op_args,
     )
     dag = ds._plan._logical_plan.dag
     args = dag._get_args()
     assert len(args) > 0, "Export args should not be empty"
-    for k, v in kwargs.items():
+    for k, v in expected_logical_op_args.items():
         k = f"_{k}"
         assert k in args, f"Export args should contain key '{k}'"
         assert args[k] == sanitize_for_struct(
