@@ -404,12 +404,9 @@ void LocalTaskManager::DispatchScheduledTasksToWorkers() {
     }
     if (is_infeasible) {
       const auto &front_task = dispatch_queue.front()->task.GetTaskSpecification();
-      RAY_LOG(ERROR)
-          << "A task got scheduled to a node even though it was infeasible. "
-             "Please report an issue on GitHub.\nTask placement resource requirements: "
-          << debug_string(front_task.GetRequiredPlacementResources().GetResourceMap())
-          << "\n Scheduling strategy: "
-          << front_task.GetSchedulingStrategy().scheduling_strategy_case();
+      RAY_LOG(ERROR) << "A task got scheduled to a node even though it was infeasible. "
+                        "Please report an issue on GitHub.\nTask: "
+                     << front_task.DebugString();
       auto dispatch_queue_iter = dispatch_queue.begin();
       while (dispatch_queue_iter != dispatch_queue.end()) {
         CancelTaskToDispatch(
@@ -617,10 +614,10 @@ bool LocalTaskManager::PoppedWorkerHandler(
       // directly and raise a `RuntimeEnvSetupError` exception to user
       // eventually. The task will be removed from dispatch queue in
       // `CancelTask`.
+      const auto &task_id = work->task.GetTaskSpecification().TaskId();
       CancelTasks(
-          [work](const auto &other_work) {
-            return other_work->task.GetTaskSpecification().TaskId() ==
-                   work->task.GetTaskSpecification().TaskId();
+          [task_id](const auto &work) {
+            return task_id == work->task.GetTaskSpecification().TaskId();
           },
           rpc::RequestWorkerLeaseReply::SCHEDULING_CANCELLED_RUNTIME_ENV_SETUP_FAILED,
           /*scheduling_failure_message*/ runtime_env_setup_error_message);
