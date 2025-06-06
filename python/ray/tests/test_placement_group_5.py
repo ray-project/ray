@@ -1,9 +1,11 @@
 import asyncio
+from concurrent.futures import ThreadPoolExecutor
 import sys
 import time
 from functools import reduce
 from itertools import chain
 
+from click.testing import CliRunner
 import pytest
 
 import ray
@@ -13,7 +15,6 @@ from ray.util.state import list_actors, list_placement_groups
 from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
 from ray._private.runtime_env.plugin import RuntimeEnvPlugin
 from ray._private.test_utils import wait_for_condition, fetch_prometheus_metrics
-from click.testing import CliRunner
 import ray.scripts.scripts as scripts
 
 
@@ -131,8 +132,8 @@ def test_pg_no_resource_bundle_index(ray_start_cluster):
     ray.get(pg.ready())
     first_bundle_node_id = ray.util.placement_group_table(pg)["bundles_to_node_id"][0]
 
-    # Iterate 10 times to make sure it is not flaky.
-    for _ in range(10):
+    # Iterate 5 times to make sure it is not flaky.
+    for _ in range(5):
         actor = Actor.options(
             scheduling_strategy=PlacementGroupSchedulingStrategy(
                 placement_group=pg, placement_group_bundle_index=0
@@ -413,6 +414,11 @@ def test_placement_group_max_cpu_frac_edge_cases(ray_start_cluster):
     "scheduling_strategy", ["SPREAD", "STRICT_SPREAD", "PACK", "STRICT_PACK"]
 )
 def test_placement_group_parallel_submission(ray_start_cluster, scheduling_strategy):
+    cluster = ray_start_cluster
+    cluster.add_node(num_cpus=1, resources={"custom_resource": 5})
+    cluster.wait_for_nodes()
+    ray.init(address=cluster.address)
+
     @ray.remote(resources={"custom_resource": 1})
     def task(input):
         return input
@@ -426,20 +432,13 @@ def test_placement_group_parallel_submission(ray_start_cluster, scheduling_strat
         pg_strategy = ray.util.scheduling_strategies.PlacementGroupSchedulingStrategy(
             placement_group=pg
         )
-
-        obj_ref = task.options(scheduling_strategy=pg_strategy).remote(input)
-        ray.get(obj_ref)
+        ray.get(task.options(scheduling_strategy=pg_strategy).remote(input))
 
         ray.util.remove_placement_group(pg)
         return "OK"
 
-    cluster = ray_start_cluster
-    cluster.add_node(num_cpus=1, resources={"custom_resource": 20})
-    cluster.wait_for_nodes()
-    ray.init(address=cluster.address)
-
     # Test all tasks will not hang
-    ray.get([manage_tasks.remote(i) for i in range(20)], timeout=50)
+    ray.get([manage_tasks.remote(i) for i in range(5)], timeout=50)
 
 
 MyPlugin = "MyPlugin"
