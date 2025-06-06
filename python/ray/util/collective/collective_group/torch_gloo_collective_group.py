@@ -2,7 +2,6 @@ from typing import TYPE_CHECKING, List, Optional
 import os
 import torch
 import torch.distributed as dist
-import ray
 
 import ray.experimental.internal_kv as internal_kv
 from ray.util.collective.util import get_master_address_metadata_key
@@ -40,12 +39,13 @@ class TorchGLOOGroup(BaseGroup):
         group_name: str,
     ):
         metadata_key = get_master_address_metadata_key(group_name)
-        info_actor_name = "info_" + group_name
         try:
             metadata = internal_kv._internal_kv_get(metadata_key)
         except ValueError:
             raise RuntimeError(
-                f"TorchGLOOGroup expected metadata in internal_kv with name `{metadata_key}`. TorchGLOOGroup should not be instantiated directly. Use ray.experimental.collective.create_collective_group to create the group."
+                f"TorchGLOOGroup expected metadata in internal_kv with name `{metadata_key}`. "
+                "TorchGLOOGroup should not be instantiated directly. "
+                "Use ray.experimental.collective.create_collective_group to create the group."
             )
 
         metadata = metadata.decode()
