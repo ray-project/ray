@@ -53,10 +53,6 @@ message Operator {
   // can be found in `_get_logical_args`, and is used to help understand how a
   // user's arguments lead to a dataset's state execution
   google.protobuf.Struct args = 6;
-
-  // The data context attached to the dataset. These are globally set
-  // to change dataset execution
-  google.protobuf.Struct data_context = 7;
 }
 
 // Represents the complete structure of the operator DAG
@@ -78,4 +74,8 @@ message ExportDatasetMetadata {
 
   // The timestamp when execution started (in seconds since epoch)
   double start_time = 4;
+
+  // The data context attached to the dataset. These are globally set
+  // to change dataset execution
+  google.protobuf.Struct data_context = 5;
 }

@@ -1,5 +1,6 @@
 """Metadata exporter API for Ray Data datasets."""
 
+import json
 import logging
 import os
 from abc import ABC, abstractmethod
@@ -12,12 +13,15 @@ from ray._private.event.export_event_logger import (
     check_export_api_enabled,
     get_export_event_logger,
 )
+from ray.data.context import DataContext
 
 if TYPE_CHECKING:
     from ray.data import DataContext
     from ray.data._internal.execution.interfaces.physical_operator import (
         PhysicalOperator,
     )
+
+logger = logging.getLogger(__name__)
 
 UNKNOWN = "unknown"
 
@@ -45,8 +49,6 @@ class Operator:
         id: The unique identifier of the operator within the DAG structure, typically
             incorporating a position or index (e.g., "ReadParquet_0"). This is used for
             referencing operators within the DAG topology.
-        data_context: The DataContext associated with this operator, which contains
-            configuration and execution context information for the operator.
         uuid: The system-generated UUID of the physical operator instance. This is the
             internal unique identifier created when the operator instance is initialized
             and remains consistent throughout its lifetime.
@@ -59,7 +61,6 @@ class Operator:
     name: str
     id: str
     uuid: str
-    data_context: "DataContext"
     input_dependencies: List[str] = field(default_factory=list)
     sub_stages: List[SubStage] = field(default_factory=list)
     args: Dict[str, Any] = field(default_factory=dict)
@@ -103,7 +104,6 @@ class Topology:
                     op_to_id[dep] for dep in op.input_dependencies if dep in op_to_id
                 ],
                 args=op._get_logical_args(),
-                data_context=op.data_context,
             )
 
             # Add sub-stages if they exist
@@ -113,7 +113,6 @@ class Topology:
                     operator.sub_stages.append(SubStage(name=sub_name, id=sub_stage_id))
 
             result.operators.append(operator)
-
         return result
 
 
@@ -129,12 +128,14 @@ class DatasetMetadata:
         topology: The structure of the dataset's operator DAG.
         dataset_id: The unique ID of the dataset.
         start_time: The timestamp when the dataset execution started.
+        data_context: The DataContext attached to the dataset.
     """
 
     job_id: str
     topology: Topology
     dataset_id: str
     start_time: float
+    data_context: DataContext
 
 
 def sanitize_for_struct(obj):
@@ -146,7 +147,13 @@ def sanitize_for_struct(obj):
         return [sanitize_for_struct(v) for v in obj]
     else:
         # Convert unhandled types to string
-        return str(obj)
+        try:
+            return json.dumps(obj)
+        except (TypeError, OverflowError):
+            try:
+                return str(obj)
+            except Exception:
+                return UNKNOWN
 
 
 def dataset_metadata_to_proto(dataset_metadata: DatasetMetadata) -> Any:
@@ -176,16 +183,12 @@ def dataset_metadata_to_proto(dataset_metadata: DatasetMetadata) -> Any:
 
     # Add operators to the DAG
     for op in dataset_metadata.topology.operators:
-        data_context = Struct()
-        data_context.update(sanitize_for_struct(asdict(op.data_context)))
-
         args = Struct()
-        args.update(sanitize_for_struct(op.args))
+        args.update(op.args)
         proto_operator = ProtoOperator(
             name=op.name,
             id=op.id,
             uuid=op.uuid,
-            data_context=data_context,
             args=args,
         )
 
@@ -205,10 +208,13 @@ def dataset_metadata_to_proto(dataset_metadata: DatasetMetadata) -> Any:
         proto_topology.operators.append(proto_operator)
 
     # Populate the data metadata proto
+    data_context = Struct()
+    data_context.update(sanitize_for_struct(asdict(dataset_metadata.data_context)))
     proto_dataset_metadata = ProtoDatasetMetadata(
         dataset_id=dataset_metadata.dataset_id,
         job_id=dataset_metadata.job_id,
         start_time=dataset_metadata.start_time,
+        data_context=data_context,
     )
     proto_dataset_metadata.topology.CopyFrom(proto_topology)
 

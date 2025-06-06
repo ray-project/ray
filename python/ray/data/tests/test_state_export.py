@@ -68,7 +68,6 @@ def dummy_dataset_topology():
                 uuid="uuid_0",
                 input_dependencies=[],
                 sub_stages=[],
-                data_context=DataContext.get_current(),
             ),
             Operator(
                 name="ReadRange->Map(<lambda>)->Filter(<lambda>)",
@@ -76,7 +75,6 @@ def dummy_dataset_topology():
                 uuid="uuid_1",
                 input_dependencies=["Input_0"],
                 sub_stages=[],
-                data_context=DataContext.get_current(),
             ),
         ],
     )
@@ -94,6 +92,7 @@ def test_export_disabled(ray_start_regular, dummy_dataset_topology):
             operator_tags=["ReadRange->Map(<lambda>)->Filter(<lambda>)"],
             topology=dummy_dataset_topology,
             job_id=STUB_JOB_ID,
+            data_context=DataContext.get_current(),
         )
     )
 
@@ -112,6 +111,7 @@ def _test_dataset_metadata_export(topology):
             operator_tags=["ReadRange->Map(<lambda>)->Filter(<lambda>)"],
             topology=topology,
             job_id=STUB_JOB_ID,
+            data_context=DataContext.get_current(),
         )
     )
 
@@ -168,8 +168,8 @@ def test_logical_op_args(ray_start_cluster_with_export_api_write, kwargs):
     for k, v in kwargs.items():
         k = f"_{k}"
         assert k in args, f"Export args should contain key '{k}'"
-        assert (
-            args[k] == v
+        assert args[k] == sanitize_for_struct(
+            v
         ), f"Export args for key '{k}' should match expected value {v}, found {args[k]}"
 
 
@@ -188,7 +188,6 @@ def test_export_multiple_datasets(
                 uuid="second_uuid_0",
                 input_dependencies=[],
                 sub_stages=[],
-                data_context=DataContext.get_current(),
             ),
             Operator(
                 name="ReadRange->Map(<lambda>)",
@@ -196,7 +195,6 @@ def test_export_multiple_datasets(
                 uuid="second_uuid_1",
                 input_dependencies=["Input_0"],
                 sub_stages=[],
-                data_context=DataContext.get_current(),
             ),
         ],
     )
@@ -212,6 +210,7 @@ def test_export_multiple_datasets(
             operator_tags=["ReadRange->Map(<lambda>)->Filter(<lambda>)"],
             topology=dummy_dataset_topology,
             job_id=STUB_JOB_ID,
+            data_context=DataContext.get_current(),
         )
     )
 
@@ -222,6 +221,7 @@ def test_export_multiple_datasets(
             operator_tags=["ReadRange->Map(<lambda>)"],
             topology=second_topology,
             job_id=STUB_JOB_ID,
+            data_context=DataContext.get_current(),
         )
     )
 
