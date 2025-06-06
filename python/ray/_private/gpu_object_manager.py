@@ -1,6 +1,7 @@
 from collections import namedtuple
 from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple
 from typing import NamedTuple
+import torch
 
 from ray._raylet import ObjectRef
 from ray.actor import ActorHandle
@@ -15,6 +16,10 @@ TENSOR_TRANSPORT_TO_COLLECTIVE_BACKEND = {
     TensorTransportEnum.GLOO: Backend.TORCH_GLOO,
 }
 
+COLLECTIVE_BACKEND_TO_TORCH_DEVICE = {
+    Backend.NCCL: torch.device("cuda"),
+    Backend.TORCH_GLOO: torch.device("cpu"),
+}
 
 # GPUObjectMeta is a named tuple containing the source actor, tensor transport
 # backend, and tensor metadata.
@@ -118,7 +123,15 @@ class GPUObjectManager:
                 obj_id
             ), f"obj_id={obj_id} not found in GPU object store"
             tensors = gpu_object_manager.get_gpu_object(obj_id)
+
+            backend = collective.get_group_handle(communicator_name).backend()
+            device = COLLECTIVE_BACKEND_TO_TORCH_DEVICE[backend]
+
             for tensor in tensors:
+                if tensor.device.type != device.type:
+                    # TODO(swang): Right now there is no way to catch this error
+                    # and the receiving Ray task will hang.
+                    raise ValueError(f"tensor device {tensor.device} does not match device {device}")
                 collective.send(tensor, dst_rank, group_name=communicator_name)
             # TODO(kevin85421): The current garbage collection implementation for the
             # in-actor object store is naive. We garbage collect each object after it
@@ -149,12 +162,14 @@ class GPUObjectManager:
             from ray._private.worker import global_worker
             import ray.util.collective as collective
 
+            backend = collective.get_group_handle(communicator_name).backend()
+            device = COLLECTIVE_BACKEND_TO_TORCH_DEVICE[backend]
+
             gpu_object_manager = global_worker.gpu_object_manager
             tensors = []
             for meta in tensor_meta:
                 shape, dtype = meta
-                # TODO: allocate on correct device.
-                tensor = torch.zeros(shape, dtype=dtype)
+                tensor = torch.zeros(shape, dtype=dtype, device=device)
                 collective.recv(tensor, src_rank, group_name=communicator_name)
                 tensors.append(tensor)
             gpu_object_manager.add_gpu_object(obj_id, tensors)

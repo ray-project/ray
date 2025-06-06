@@ -58,7 +58,6 @@ from ray import ActorID, JobID, Language, ObjectRef
 from ray._private import ray_option_utils
 from ray._private.client_mode_hook import client_mode_hook
 from ray._private.function_manager import FunctionActorManager
-from ray._private.gpu_object_manager import GPUObjectManager
 from ray._private.inspect_util import is_cython
 from ray._private.ray_logging import (
     global_worker_stdstream_dispatcher,
@@ -450,7 +449,7 @@ class Worker:
         self.actors = {}
         # GPU object manager to manage GPU object lifecycles, including coordinating out-of-band
         # tensor transfers between actors, storing and retrieving GPU objects, and garbage collection.
-        self._gpu_object_manager = GPUObjectManager()
+        self._gpu_object_manager = None
         # When the worker is constructed. Record the original value of the
         # (CUDA_VISIBLE_DEVICES, ONEAPI_DEVICE_SELECTOR, HIP_VISIBLE_DEVICES,
         # NEURON_RT_VISIBLE_CORES, TPU_VISIBLE_CHIPS, ..) environment variables.
@@ -501,7 +500,10 @@ class Worker:
         self._is_connected: bool = False
 
     @property
-    def gpu_object_manager(self) -> GPUObjectManager:
+    def gpu_object_manager(self) -> "ray._private.gpu_object_manager.GPUObjectManager":
+        if self._gpu_object_manager is None:
+            from ray._private.gpu_object_manager import GPUObjectManager
+            self._gpu_object_manager = GPUObjectManager()
         return self._gpu_object_manager
 
     @property
