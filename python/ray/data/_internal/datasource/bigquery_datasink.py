@@ -3,7 +3,7 @@ import os
 import tempfile
 import time
 import uuid
-from typing import Iterable, Optional
+from typing import TYPE_CHECKING, Iterable, Optional
 
 import pyarrow.parquet as pq
 
@@ -14,6 +14,9 @@ from ray.data._internal.remote_fn import cached_remote_fn
 from ray.data._internal.util import _check_import
 from ray.data.block import Block, BlockAccessor
 from ray.data.datasource.datasink import Datasink
+
+if TYPE_CHECKING:
+    from google.cloud import bigquery
 
 logger = logging.getLogger(__name__)
 
@@ -28,7 +31,7 @@ class BigQueryDatasink(Datasink[None]):
         dataset: str,
         max_retry_cnt: int = DEFAULT_MAX_RETRY_CNT,
         overwrite_table: Optional[bool] = True,
-        enable_list_inference: Optional[bool] = False,
+        parquet_options: Optional["bigquery.ParquetOptions"] = None,
     ) -> None:
         _check_import(self, module="google.cloud", package="bigquery")
         _check_import(self, module="google.cloud", package="bigquery_storage")
@@ -38,7 +41,7 @@ class BigQueryDatasink(Datasink[None]):
         self.dataset = dataset
         self.max_retry_cnt = max_retry_cnt
         self.overwrite_table = overwrite_table
-        self.enable_list_inference = enable_list_inference
+        self.parquet_options = parquet_options
 
     def on_write_start(self) -> None:
         from google.api_core import exceptions
@@ -83,9 +86,7 @@ class BigQueryDatasink(Datasink[None]):
             job_config = bigquery.LoadJobConfig(autodetect=True)
             job_config.source_format = bigquery.SourceFormat.PARQUET
             job_config.write_disposition = bigquery.WriteDisposition.WRITE_APPEND
-            parquet_options = bigquery.ParquetOptions()
-            parquet_options.enable_list_inference = self.enable_list_inference
-            job_config.parquet_options = parquet_options
+            job_config.parquet_options = self.parquet_options
 
             with tempfile.TemporaryDirectory() as temp_dir:
                 fp = os.path.join(temp_dir, f"block_{uuid.uuid4()}.parquet")

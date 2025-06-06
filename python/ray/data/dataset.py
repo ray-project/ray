@@ -129,6 +129,7 @@ if TYPE_CHECKING:
     import tensorflow as tf
     import torch
     import torch.utils.data
+    from google.cloud import bigquery
     from tensorflow_metadata.proto.v0 import schema_pb2
 
     from ray.data._internal.execution.interfaces import Executor, NodeIdStr
@@ -4288,7 +4289,7 @@ class Dataset:
         dataset: str,
         max_retry_cnt: int = 10,
         overwrite_table: Optional[bool] = True,
-        enable_list_inference: Optional[bool] = False,
+        parquet_options: Optional["bigquery.ParquetOptions"] = None,
         ray_remote_args: Dict[str, Any] = None,
         concurrency: Optional[int] = None,
     ) -> None:
@@ -4325,9 +4326,9 @@ class Dataset:
             overwrite_table: Whether the write will overwrite the table if it already
                 exists. The default behavior is to overwrite the table.
                 ``overwrite_table=False`` will append to the table if it exists.
-            enable_list_inference: Whether to enable list inference for the BigQuery.
-                Disabled by default. See details in
-                `List logical type <https://cloud.google.com/bigquery/docs/loading-data-cloud-storage-parquet#list_logical_type>`_.
+            parquet_options: Allow to control the Parquet ENUM logical type and LIST logical type inference from schema.
+                None by default. See details in
+                `ParquetOptions <https://cloud.google.com/bigquery/docs/reference/rest/v2/tables#parquetoptions>`_.
             ray_remote_args: Kwargs passed to :func:`ray.remote` in the write tasks.
             concurrency: The maximum number of Ray tasks to run concurrently. Set this
                 to control number of tasks to run concurrently. This doesn't change the
@@ -4352,7 +4353,7 @@ class Dataset:
             dataset=dataset,
             max_retry_cnt=max_retry_cnt,
             overwrite_table=overwrite_table,
-            enable_list_inference=enable_list_inference,
+            parquet_options=parquet_options,
         )
         self.write_datasink(
             datasink,
