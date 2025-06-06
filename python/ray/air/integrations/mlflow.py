@@ -311,7 +311,7 @@ class MLflowLoggerCallback(LoggerCallback):
 
         # Log the config parameters.
         config = trial.config
-        if self.log_params_on_trial_end:
+        if not self.log_params_on_trial_end:
             self.mlflow_util.log_params(run_id=run_id, params_to_log=config)
 
     def log_trial_result(self, iteration: int, trial: "Trial", result: Dict):
@@ -331,7 +331,7 @@ class MLflowLoggerCallback(LoggerCallback):
 
         # Log the config parameters.
         config = trial.config
-        if not self.log_params_on_trial_end:
+        if self.log_params_on_trial_end:
             self.mlflow_util.log_params(run_id=run_id, params_to_log=config)
 
         self.mlflow_util.end_run(run_id=run_id, status=status)
