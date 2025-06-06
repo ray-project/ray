@@ -4,6 +4,7 @@ from pathlib import Path
 import pydantic
 import pytest
 
+from ray.serve.llm import LLMConfig as PublicLLMConfig
 from ray.llm._internal.serve.configs.server_models import LLMConfig, ModelLoadingConfig
 
 CONFIG_DIRS_PATH = str(Path(__file__).parent / "configs")
@@ -273,6 +274,65 @@ class TestModelConfig:
                 ),
                 experimental_configs={123: "value1"},
             )
+
+
+class TestPublicLLMConfig:
+    """Test the public ray.serve.llm.LLMConfig class."""
+
+    def test_parse_from_single_yaml(self):
+        """Test that LLMConfig can be parsed from a yaml file."""
+        llm_configs = PublicLLMConfig.parse_from(
+            f"{CONFIG_DIRS_PATH}/matching_configs/hf_prompt_format.yaml"
+        )
+        assert len(llm_configs) == 1
+        assert llm_configs[0].model_id == "mistral-community/pixtral-12b"
+
+    def test_parse_from_list_of_dicts(self):
+        """Test that LLMConfig can be parsed from a list of dicts."""
+        llm_configs = PublicLLMConfig.parse_from(
+            [
+                dict(
+                    model_loading_config=dict(
+                        model_id="mistral-community/pixtral-12b",
+                    )
+                ),
+                dict(
+                    model_loading_config=dict(
+                        model_id="my_pixtral",
+                        model_source="s3://my-bucket/my-pixtral",
+                    ),
+                    runtime_env=dict(
+                        env_vars=dict(
+                            FOO="bar",
+                        ),
+                    ),
+                ),
+            ]
+        )
+        assert len(llm_configs) == 2
+
+    def test_parse_failed_with_invalid_dict(self):
+        with pytest.raises(pydantic.ValidationError):
+            PublicLLMConfig.parse_from(
+                dict(
+                    invalid_arg=dict(
+                        model_id="mistral-community/pixtral-12b",
+                    )
+                )
+            )
+
+    def test_extend_config(self):
+        """Test that public users can define their own config that uses LLMConfig."""
+
+        class MyLLMConfig(pydantic.BaseModel):
+            llm_config: PublicLLMConfig
+
+        my_llm_config = MyLLMConfig(
+            llm_config=PublicLLMConfig.parse_from(
+                f"{CONFIG_DIRS_PATH}/matching_configs/hf_prompt_format.yaml"
+            )[0]
+        )
+        assert my_llm_config.llm_config.model_id == "mistral-community/pixtral-12b"
 
 
 if __name__ == "__main__":
