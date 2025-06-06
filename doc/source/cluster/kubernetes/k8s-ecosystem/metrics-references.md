@@ -24,7 +24,7 @@ kubectl port-forward service/kuberay-operator 8080
 # View the metrics
 curl localhost:8080/metrics
 
-# something like this should appear if you have existed RayCluster 
+# You should see metric like this if a RayCluster already exists,  
 # kuberay_cluster_info{name="raycluster-kuberay",namespace="default",owner_kind="None"} 1
 ```
 
