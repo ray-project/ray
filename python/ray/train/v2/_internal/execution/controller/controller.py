@@ -9,7 +9,6 @@ from typing import Callable, List, Optional
 import pandas as pd
 
 import ray._private.ray_constants as ray_constants
-from ray._private.auto_init_hook import wrap_auto_init
 from ray.train.v2._internal.constants import (
     DEFAULT_ENABLE_CONTROLLER_LOGGING,
     DEFAULT_HEALTH_CHECK_INTERVAL_S,
@@ -468,7 +467,6 @@ class TrainController:
 
         self._set_state(result.next_state)
 
-    @wrap_auto_init
     async def run(self):
         """Run the main control loop. Exits when training is finished or errored."""
         while not self.get_state().is_terminal():
