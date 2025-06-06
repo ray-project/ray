@@ -32,6 +32,10 @@ S3_PACKAGE_URI = "s3://runtime-env-test/test_runtime_env.zip"
 TEST_IMPORT_DIR = "test_import_dir"
 
 
+def using_ray_client():
+    return ray._private.client_mode_hook.is_client_mode_enabled
+
+
 # Set scope to "module" to force this to run before start_cluster, whose scope
 # is "function".  We need these env vars to be set before Ray is started.
 @pytest.fixture(scope="module")
@@ -70,6 +74,9 @@ async def test_working_dir_cleanup(tmpdir, ray_start_regular):
         assert creation_metadata[file] != creation_time_after
 
 
+@pytest.mark.skipif(
+    ray._private.client_mode_hook.is_client_mode_enabled, reason="Fails w/ Ray Client."
+)
 @pytest.mark.asyncio
 async def test_create_delete_size_equal(tmpdir, ray_start_regular):
     """Tests that `create` and `delete_uri` return the same size for a URI."""
@@ -346,6 +353,10 @@ def test_empty_working_dir(start_cluster):
         ray.init(address, runtime_env={"working_dir": working_dir})
 
 
+@pytest.mark.skipif(
+    using_ray_client(),
+    reason="Ray Client doesn't clean up global state properly on ray.init() failure.",
+)
 @pytest.mark.parametrize("option", ["working_dir", "py_modules"])
 def test_input_validation(start_cluster, option: str):
     """Tests input validation for working_dir and py_modules."""

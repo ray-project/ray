@@ -214,6 +214,58 @@ py_test_module_list(
     ],
 )
 
+# Ray Client runtime_env tests that *don't* require being part of the post-wheel build.
+py_test_module_list(
+    size = "large",
+    data = ["pip_install_test-0.5-py3-none-any.whl"],
+    env = {
+        "RAY_CLIENT_MODE": "1",
+    },
+    files = [
+        "test_runtime_env.py",
+        "test_runtime_env_env_vars.py",
+        "test_runtime_env_failure.py",
+        "test_runtime_env_working_dir.py",
+        "test_runtime_env_working_dir_remote_uri.py",
+    ],
+    name_suffix = "_client_mode",
+    tags = [
+        "exclusive",
+        "ray_client",
+        "team:core",
+    ],
+    deps = [
+        ":conftest",
+        "//:ray_lib",
+    ],
+)
+
+# Ray Client runtime_env tests that *do* require being part of the post-wheel build.
+py_test_module_list(
+    size = "large",
+    data = [
+        "pip_install_test-0.5-py3-none-any.whl",
+    ],
+    env = {
+        "RAY_CLIENT_MODE": "1",
+    },
+    files = [
+        "test_runtime_env_conda_and_pip.py",
+        "test_runtime_env_uv_run.py",
+    ],
+    name_suffix = "_client_mode",
+    tags = [
+        "exclusive",
+        "post_wheel_build",
+        "ray_client",
+        "team:core",
+    ],
+    deps = [
+        ":conftest",
+        "//:ray_lib",
+    ],
+)
+
 ##### End Ray Client tests #####
 
 # Issue #33491
