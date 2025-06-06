@@ -33,7 +33,7 @@ from ray.serve._private.request_router.request_router import (
 logger = logging.getLogger(SERVE_LOGGER_NAME)
 
 
-class PrefixAwarePow2ReplicaScheduler(LocalityMixin, MultiplexMixin, RequestRouter):
+class PrefixAwarePow2ReplicaRouter(LocalityMixin, MultiplexMixin, RequestRouter):
     """Extends the PowerOfTwoChoicesRequestRouter with prefix-matching capabilities.
 
     This request router optimizes replica selection by considering input text prefixes:
