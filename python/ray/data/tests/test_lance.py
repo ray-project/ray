@@ -87,7 +87,7 @@ def test_lance_read_basic(fs, data_path, batch_size):
     ds = ray.data.read_lance(path, columns=["one"])
     values = [s["one"] for s in ds.take_all()]
     assert sorted(values) == [1, 2, 3, 4, 5, 6]
-    assert ds.schema().names == ["one", "two", "three", "four"]
+    assert ds.schema().names == ["one"]
 
 
 @pytest.mark.parametrize("data_path", [lazy_fixture("local_path")])

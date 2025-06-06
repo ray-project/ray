@@ -45,6 +45,9 @@ class LanceDatasource(Datasource):
             self.scanner_options["filter"] = filter
         self.storage_options = storage_options
         self.lance_ds = lance.dataset(uri=uri, storage_options=storage_options)
+        self.projected_schema = self.lance_ds.scanner(
+            **self.scanner_options
+        ).projected_schema
 
         match = []
         match.extend(self.READ_FRAGMENTS_ERRORS_TO_RETRY)
@@ -68,10 +71,9 @@ class LanceDatasource(Datasource):
                 data_file.path() for f in fragments for data_file in f.data_files()
             ]
 
-            # TODO(chengsu): Take column projection into consideration for schema.
             metadata = BlockMetadata(
                 num_rows=num_rows,
-                schema=fragments[0].schema,
+                schema=self.projected_schema,
                 input_files=input_files,
                 size_bytes=None,
                 exec_stats=None,
