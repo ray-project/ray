@@ -547,6 +547,15 @@ def test_torch_tensor_custom_comm(ray_start_regular):
             self._inner.reducescatter(send_buf, recv_buf, op)
             recv_buf += 1
 
+        def broadcast(
+            self,
+            send_buf: "torch.Tensor",
+            recv_buf: "torch.Tensor",
+            root_rank: int,
+        ) -> None:
+            self._inner.broadcast(send_buf, recv_buf, root_rank)
+            recv_buf += 1
+
         @property
         def recv_stream(self):
             return self._inner.recv_stream
@@ -684,6 +693,14 @@ def test_torch_tensor_custom_comm_inited(ray_start_regular):
             send_buf: "torch.Tensor",
             recv_buf: "torch.Tensor",
             op: ReduceOp = ReduceOp.SUM,
+        ) -> None:
+            raise NotImplementedError
+
+        def broadcast(
+            self,
+            send_buf: "torch.Tensor",
+            recv_buf: "torch.Tensor",
+            root_rank: int,
         ) -> None:
             raise NotImplementedError
 
@@ -828,6 +845,14 @@ def test_torch_tensor_default_comm(ray_start_regular, transports):
             send_buf: "torch.Tensor",
             recv_buf: "torch.Tensor",
             op: ReduceOp = ReduceOp.SUM,
+        ) -> None:
+            raise NotImplementedError
+
+        def broadcast(
+            self,
+            send_buf: "torch.Tensor",
+            recv_buf: "torch.Tensor",
+            root_rank: int,
         ) -> None:
             raise NotImplementedError
 
@@ -985,6 +1010,14 @@ def test_torch_tensor_invalid_custom_comm(ray_start_regular):
             send_buf: "torch.Tensor",
             recv_buf: "torch.Tensor",
             op: ReduceOp = ReduceOp.SUM,
+        ) -> None:
+            raise NotImplementedError
+
+        def broadcast(
+            self,
+            send_buf: "torch.Tensor",
+            recv_buf: "torch.Tensor",
+            root_rank: int,
         ) -> None:
             raise NotImplementedError
 
@@ -1348,6 +1381,7 @@ def test_torch_tensor_explicit_communicator(ray_start_regular):
         (collective.reducescatter, ReduceOp.PRODUCT),
         (collective.reducescatter, ReduceOp.MIN),
         (collective.reducescatter, ReduceOp.MAX),
+        (collective.broadcast, None),
     ],
 )
 def test_torch_tensor_nccl_collective_ops(ray_start_regular, operation, reduce_op):
@@ -1368,6 +1402,8 @@ def test_torch_tensor_nccl_collective_ops(ray_start_regular, operation, reduce_o
         ]
         if operation == collective.allgather:
             collectives = operation.bind(computes)
+        elif operation == collective.broadcast:
+            collectives = operation.bind(computes[0], computes)
         else:
             collectives = operation.bind(computes, op=reduce_op)
         recvs = [
@@ -1440,6 +1476,8 @@ def test_torch_tensor_nccl_collective_ops(ray_start_regular, operation, reduce_o
                 )
             else:
                 raise ValueError(f"Unknown reduce_op: {reduce_op}")
+        elif operation == collective.broadcast:
+            expected_tensors = [input_tensors[0] for _ in range(num_workers)]
         else:
             raise ValueError(f"Unknown operation: {operation}")
 
@@ -1486,6 +1524,52 @@ def test_torch_tensor_nccl_all_reduce_get_partial(ray_start_regular):
         assert metadata == (reduced_val, shape, dtype)
         tensor = tensor.to("cpu")
         expected_tensor_val = torch.ones(shape, dtype=dtype) * reduced_val
+        assert torch.equal(tensor, expected_tensor_val)
+
+
+@pytest.mark.skipif(not USE_GPU, reason="Skipping GPU Test")
+@pytest.mark.parametrize("ray_start_regular", [{"num_cpus": 4}], indirect=True)
+def test_torch_tensor_nccl_broadcast_get_partial(ray_start_regular):
+    """
+    Test getting partial results from a broadcast does not hang.
+    """
+    assert (
+        sum(node["Resources"].get("GPU", 0) for node in ray.nodes()) > 1
+    ), "This test requires at least 2 GPUs"
+
+    actor_cls = TorchTensorWorker.options(num_cpus=0, num_gpus=1)
+
+    num_workers = 2
+    workers = [actor_cls.remote() for _ in range(num_workers)]
+
+    shape = (10,)
+    dtype = torch.float16
+
+    with InputNode() as inp:
+        computes = [
+            worker.compute_with_tuple_args.bind(inp, i)
+            for i, worker in enumerate(workers)
+        ]
+
+        collectives = collective.broadcast.bind(computes[0], computes)
+        recv_root = workers[0].recv.bind(collectives[0])
+        recv = workers[1].recv.bind(collectives[1])
+        tensor = workers[1].recv_tensor.bind(collectives[1])
+        dag = MultiOutputNode([recv_root, recv, tensor])
+
+    compiled_dag = dag.experimental_compile()
+
+    for i in range(3):
+        ref = compiled_dag.execute(
+            [(shape, dtype, i + idx + 1) for idx in range(num_workers)]
+        )
+        result = ray.get(ref)
+        _, metadata, tensor = result
+
+        root_val = i + 1
+        assert metadata == (root_val, shape, dtype)
+        tensor = tensor.to("cpu")
+        expected_tensor_val = torch.ones(shape, dtype=dtype) * root_val
         assert torch.equal(tensor, expected_tensor_val)
 
 
@@ -1633,6 +1717,15 @@ def test_torch_tensor_nccl_all_reduce_custom_comm(ray_start_regular):
             op: ReduceOp = ReduceOp.SUM,
         ) -> None:
             self._inner.reducescatter(send_buf, recv_buf, op)
+            recv_buf += 1
+
+        def broadcast(
+            self,
+            send_buf: "torch.Tensor",
+            recv_buf: "torch.Tensor",
+            root_rank: int,
+        ) -> None:
+            self._inner.broadcast(send_buf, recv_buf, root_rank)
             recv_buf += 1
 
         @property
@@ -1894,6 +1987,48 @@ def test_torch_nccl_channel_with_all_local_readers(ray_start_regular):
         ),
     ):
         dag.experimental_compile()
+
+
+@pytest.mark.parametrize("ray_start_regular", [{"num_gpus": 4}], indirect=True)
+def test_torch_tensor_nccl_broadcast_wrong_root_node(ray_start_regular):
+    actor_cls = TorchTensorWorker.options(num_cpus=0, num_gpus=1)
+
+    num_workers = 2
+    root_worker = actor_cls.remote()
+    workers = [actor_cls.remote() for _ in range(num_workers)]
+
+    with pytest.raises(
+        ValueError,
+        match="Expected the root node to be an input node",
+    ):
+        with InputNode() as inp:
+            root_compute = root_worker.compute_with_tuple_args.bind(inp, 0)
+            computes = [
+                worker.compute_with_tuple_args.bind(inp, i)
+                for i, worker in enumerate(workers)
+            ]
+
+            collectives = collective.broadcast.bind(root_compute, computes)
+
+
+@pytest.mark.parametrize("ray_start_regular", [{"num_gpus": 4}], indirect=True)
+def test_torch_tensor_nccl_broadcast_no_root_node(ray_start_regular):
+    actor_cls = TorchTensorWorker.options(num_cpus=0, num_gpus=1)
+
+    num_workers = 2
+    workers = [actor_cls.remote() for _ in range(num_workers)]
+
+    with pytest.raises(
+        TypeError,
+        match="BroadcastWrapper.bind\\(\\) missing 1 required positional argument",
+    ):
+        with InputNode() as inp:
+            computes = [
+                worker.compute_with_tuple_args.bind(inp, i)
+                for i, worker in enumerate(workers)
+            ]
+
+            collectives = collective.broadcast.bind(computes)
 
 
 if __name__ == "__main__":
