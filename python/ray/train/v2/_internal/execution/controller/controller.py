@@ -1,6 +1,7 @@
+import asyncio
 import logging
 import os
-import time
+import sys
 import uuid
 from dataclasses import dataclass
 from typing import Callable, List, Optional
@@ -163,6 +164,8 @@ class TrainController:
         # TODO: These can be attributes of a RunAttempt?
         self._latest_poll_time = float("-inf")
 
+        self._start()
+
     def _execute_resize_decision(
         self, decision: ResizeDecision
     ) -> TrainControllerLoopIterationResult:
@@ -246,14 +249,14 @@ class TrainController:
         else:
             raise ValueError(f"Unexpected failure decision: {failure_decision}")
 
-    def _poll_workers(self) -> WorkerGroupPollStatus:
+    async def _poll_workers(self) -> WorkerGroupPollStatus:
         # Ensure that the time between polls is at least HEALTH_CHECK_INTERVAL_S.
         time_since_last_poll = time_monotonic() - self._latest_poll_time
         if time_since_last_poll < self._health_check_interval_s:
             remaining_time = max(
                 self._health_check_interval_s - time_since_last_poll, 0
             )
-            time.sleep(remaining_time)
+            await asyncio.sleep(remaining_time)
 
         status = self._worker_group.poll_status(timeout=self._health_check_interval_s)
         self._latest_poll_time = time_monotonic()
@@ -372,7 +375,7 @@ class TrainController:
             next_state=next_state,
         )
 
-    def _step(self) -> TrainControllerLoopIterationResult:
+    async def _step(self) -> TrainControllerLoopIterationResult:
         """Run a single iteration of the control loop.
 
         Returns:
@@ -390,7 +393,7 @@ class TrainController:
             assert isinstance(controller_state.scaling_decision, ResizeDecision)
             return self._execute_resize_decision(controller_state.scaling_decision)
         elif isinstance(controller_state, RunningState):
-            worker_group_status = self._poll_workers()
+            worker_group_status = await self._poll_workers()
 
             if worker_group_status.finished and not worker_group_status.errors:
                 return TrainControllerLoopIterationResult(
@@ -443,7 +446,7 @@ class TrainController:
     def _get_run_attempt_id(self):
         return self._run_attempt_id
 
-    def _run_control_loop_iteration(self):
+    async def _run_control_loop_iteration(self):
         """Run a single iteration of the control loop.
 
         Steps:
@@ -461,19 +464,27 @@ class TrainController:
         if controller_state.needs_new_run_attempt():
             self._generate_run_attempt_id()
 
-        result = self._step()
+        result = await self._step()
 
         self._set_state(result.next_state)
 
     @wrap_auto_init
-    def run(self):
+    async def run(self):
         """Run the main control loop. Exits when training is finished or errored."""
-        self._start()
-
         while not self.get_state().is_terminal():
-            self._run_control_loop_iteration()
+            await self._run_control_loop_iteration()
 
         self._shutdown()
+
+    async def abort(self):
+        """Abort by marking the training run and current attempt aborted and exiting."""
+        if self._worker_group:
+            worker_group_context = self._worker_group.get_worker_group_context()
+        else:
+            worker_group_context = None
+        for callback in self._controller_callbacks:
+            callback.before_controller_abort(worker_group_context)
+        sys.exit(0)
 
     def _build_result(self) -> Result:
         storage = self._checkpoint_manager._storage_context

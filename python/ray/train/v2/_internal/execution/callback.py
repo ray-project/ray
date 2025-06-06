@@ -99,6 +99,12 @@ class ControllerCallback(RayTrainCallback):
         """Called before the controller executes a resize decision."""
         pass
 
+    def before_controller_abort(
+        self, worker_group_context: Optional["WorkerGroupContext"]
+    ):
+        """Called before the controller is aborted."""
+        pass
+
 
 @DeveloperAPI
 class ReportCallback(RayTrainCallback):

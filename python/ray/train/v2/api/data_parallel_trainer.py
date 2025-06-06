@@ -1,4 +1,8 @@
+import asyncio
+import functools
 import logging
+import signal
+import sys
 from typing import Any, Callable, Dict, List, Optional, Union
 
 import ray
@@ -188,12 +192,30 @@ class DataParallelTrainer:
             )(TrainController)
 
             controller = controller_actor_cls.remote(**controller_init_kwargs)
+
+            def sigint_handler(signum, frame):
+                ray.get(controller.abort.remote())
+                sys.exit(1)
+
+            signal.signal(signal.SIGINT, sigint_handler)
+
             ray.get(controller.run.remote())
             return ray.get(controller.get_result.remote())
         else:
-            controller = TrainController(**controller_init_kwargs)
-            controller.run()
-            return controller.get_result()
+
+            def sigint_handler(loop, controller):
+                asyncio.run_coroutine_threadsafe(controller.abort(), loop)
+
+            async def run_controller():
+                controller = TrainController(**controller_init_kwargs)
+                loop = asyncio.get_running_loop()
+                loop.add_signal_handler(
+                    signal.SIGINT, functools.partial(sigint_handler, loop, controller)
+                )
+                await controller.run()
+                return controller.get_result()
+
+            return asyncio.run(run_controller())
 
     @classmethod
     @Deprecated
