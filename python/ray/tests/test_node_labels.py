@@ -162,16 +162,37 @@ def test_ray_start_set_node_labels_from_file(shutdown_only):
         os.remove(test_file_path)
 
 
-def test_add_default_ray_node_labels(shutdown_only):
-    # Set environment variables for test
+@pytest.fixture
+def ray_node_labels_env():
+    # Ray default node label keys and TPU accelerator env key
+    keys = [
+        "RAY_NODE_MARKET_TYPE",
+        "RAY_NODE_TYPE_NAME",
+        "RAY_NODE_REGION",
+        "RAY_NODE_ZONE",
+        "TPU_ACCELERATOR_TYPE",
+    ]
+
+    # Save original vals for env vars under test
+    original_env = {k: os.environ.get(k) for k in keys}
+
+    # Set env var values for test
     os.environ["RAY_NODE_MARKET_TYPE"] = "spot"
     os.environ["RAY_NODE_TYPE_NAME"] = "worker-group-1"
     os.environ["RAY_NODE_REGION"] = "us-central2"
     os.environ["RAY_NODE_ZONE"] = "us-central2-b"
-
-    # set env var for AcceleratorManager to detect
     os.environ["TPU_ACCELERATOR_TYPE"] = "v4-16"
 
+    yield
+    # Restore original values
+    for k in keys:
+        if original_env[k] is None:
+            os.environ.pop(k, None)
+        else:
+            os.environ[k] = original_env[k]
+
+
+def test_add_default_ray_node_labels(shutdown_only, ray_node_labels_env):
     ray.init(resources={"TPU": 4})
     node_info = ray.nodes()[0]
     labels = node_info["Labels"]
@@ -181,16 +202,6 @@ def test_add_default_ray_node_labels(shutdown_only):
     assert labels.get("ray.io/availability-region") == "us-central2"
     assert labels.get("ray.io/availability-zone") == "us-central2-b"
     assert labels.get("ray.io/accelerator-type") == "TPU-V4"
-
-    # Unset env vars
-    for k in [
-        "RAY_NODE_MARKET_TYPE",
-        "RAY_NODE_TYPE_NAME",
-        "RAY_NODE_ZONE",
-        "RAY_NODE_REGION",
-        "TPU_ACCELERATOR_TYPE",
-    ]:
-        del os.environ[k]
 
 
 if __name__ == "__main__":
