@@ -394,7 +394,7 @@ proto_library(
     srcs = ["export_dataset_metadata.proto"],
     deps = [
         "@com_google_protobuf//:struct_proto",
-    ],
+    ]
 )
 
 cc_proto_library(
