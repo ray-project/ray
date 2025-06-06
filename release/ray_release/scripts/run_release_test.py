@@ -133,10 +133,10 @@ def main(
     env_dict = load_environment(env_to_use)
     populate_os_env(env_dict)
     anyscale_project = os.environ.get("ANYSCALE_PROJECT", None)
-    if not anyscale_project:
-        raise ReleaseTestCLIError(
-            "You have to set the ANYSCALE_PROJECT environment variable!"
-        )
+    # if not anyscale_project:
+    #     raise ReleaseTestCLIError(
+    #         "You have to set the ANYSCALE_PROJECT environment variable!"
+    #     )
 
     maybe_fetch_api_token()
 
@@ -157,7 +157,7 @@ def main(
 
     try:
         result = run_release_test(
-            test,
+            test=test,
             anyscale_project=anyscale_project,
             result=result,
             reporters=reporters,
