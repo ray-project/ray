@@ -1920,20 +1920,20 @@ class Node:
         node_labels = self._get_node_labels()
 
         # Get environment variables populated from K8s Pod Spec
-        market_type = os.environ.get("RAY_NODE_MARKET_TYPE", "")
-        node_group = os.environ.get("RAY_NODE_TYPE_NAME", "")
-        availability_zone = os.environ.get("RAY_NODE_ZONE", "")
-        availability_region = os.environ.get("RAY_NODE_REGION", "")
+        node_group = os.environ.get(ray._raylet.NODE_TYPE_NAME_ENV, "")
+        market_type = os.environ.get(ray._raylet.NODE_MARKET_TYPE_ENV, "")
+        availability_region = os.environ.get(ray._raylet.NODE_REGION_ENV, "")
+        availability_zone = os.environ.get(ray._raylet.NODE_ZONE_ENV, "")
 
         # Map environment variables to default ray node labels
         if market_type:
-            node_labels["ray.io/market-type"] = market_type
+            node_labels[ray._raylet.RAY_NODE_MARKET_TYPE_KEY] = market_type
         if node_group:
-            node_labels["ray.io/node-group"] = node_group
+            node_labels[ray._raylet.RAY_NODE_GROUP_KEY] = node_group
         if availability_zone:
-            node_labels["ray.io/availability-zone"] = availability_zone
+            node_labels[ray._raylet.RAY_NODE_ZONE_KEY] = availability_zone
         if availability_region:
-            node_labels["ray.io/availability-region"] = availability_region
+            node_labels[ray._raylet.RAY_NODE_REGION_KEY] = availability_region
 
         # Get accelerator type from ResourceSpec
         accelerator_type = None
@@ -1945,6 +1945,6 @@ class Node:
                     )[1]
                     break  # Only add one value for ray.io/accelerator-type
         if accelerator_type:
-            node_labels["ray.io/accelerator-type"] = accelerator_type
+            node_labels[ray._raylet.RAY_NODE_ACCELERATOR_TYPE_KEY] = accelerator_type
 
         return node_labels
