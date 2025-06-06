@@ -54,6 +54,11 @@ def mock_train_run_context():
 
 
 @pytest.fixture
+def mock_train_state_manager():
+    return TrainStateManager()
+
+
+@pytest.fixture
 def mock_worker_group_context():
     context = MagicMock(spec=WorkerGroupContext)
     context.run_attempt_id = "attempt_1"
@@ -102,7 +107,7 @@ def mock_worker_group(mock_worker_group_context, mock_worker):
 
 
 @pytest.fixture
-def callback(mock_train_run_context, monkeypatch):
+def callback(mock_train_run_context, mock_train_state_manager, monkeypatch):
     # Mock the runtime context to return a fixed actor ID
     mock_runtime_context = MagicMock()
     mock_runtime_context.get_job_id.return_value = "test_job_id"
@@ -121,7 +126,8 @@ def callback(mock_train_run_context, monkeypatch):
         lambda: expected_controller_log_path,
     )
 
-    callback = StateManagerCallback(mock_train_run_context)
+    callback = StateManagerCallback(mock_train_run_context, mock_train_state_manager)
+    # modoru trainstatemanage
     callback.after_controller_start()
     return callback
 
@@ -470,7 +476,8 @@ def test_callback_log_file_paths(
 
     # Create the callback
     train_run_context = TrainRunContext(RunConfig(name="test_run"))
-    callback = StateManagerCallback(train_run_context)
+    manager = TrainStateManager()
+    callback = StateManagerCallback(train_run_context, manager)
 
     # Initialize the callback
     callback.after_controller_start()

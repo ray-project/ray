@@ -1,8 +1,12 @@
+import os
+import time
 from unittest.mock import MagicMock
 
 import pytest
 
 import ray
+import ray.remote_function
+from ray.train.v2._internal.callbacks.state_manager import StateManagerCallback
 from ray.train.v2._internal.constants import HEALTH_CHECK_INTERVAL_S_ENV_VAR
 from ray.train.v2._internal.exceptions import (
     WorkerGroupStartupFailedError,
@@ -26,6 +30,8 @@ from ray.train.v2._internal.execution.scaling_policy import (
     NoopDecision,
     ResizeDecision,
 )
+from ray.train.v2._internal.state.state_actor import get_state_actor
+from ray.train.v2._internal.state.state_manager import TrainStateManager
 from ray.train.v2.api.config import RunConfig, ScalingConfig
 from ray.train.v2.tests.util import (
     DummyObjectRefWrapper,
@@ -165,6 +171,97 @@ def test_failure_handling():
     failure_policy.queue_decision(FailureDecision.RAISE)
     controller._run_control_loop_iteration()
     assert isinstance(controller.get_state(), ErroredState)
+
+
+def make_controller_and_sleep(controller_initialized_event):
+    # Used in test_interrupt_handling
+    # Defined outside test_interrupt_handling because internal functions are
+    # not picklable
+    # ray.init(address="auto")
+
+    # Mock runtime context to return controller actor ID
+    # mock_runtime_context = create_autospec(RuntimeContext, instance=True)
+    # mock_runtime_context.get_actor_id.return_value = "test_controller_id"
+    # ray.runtime_context, "get_runtime_context", lambda: mock_runtime_context
+
+    train_run_context = TrainRunContext(run_config=RunConfig())
+    train_state_manager = TrainStateManager()
+    train_controller = TrainController(
+        train_fn_ref=DummyObjectRefWrapper(lambda: None),
+        train_run_context=train_run_context,
+        scaling_policy=MockScalingPolicy(scaling_config=ScalingConfig()),
+        failure_policy=MockFailurePolicy(failure_config=None),
+        train_state_manager=train_state_manager,
+        callbacks=[StateManagerCallback(train_run_context, train_state_manager)],
+    )
+    train_controller._start()
+    controller_initialized_event.set()
+    time.sleep(60)  # Should kill long before this happens
+
+
+def test_interrupt_handling():
+
+    # train_state_manager = create_autospec(TrainStateManager, instance=True)
+    # controller_initialized_event = Event()
+    # p = Process(target=make_controller_and_sleep, args=(controller_initialized_event,))
+    # p.start()
+    # controller_initialized_event.wait()
+    # os.kill(p.pid, signal.SIGINT)
+    # p.join()  # Wait for kill to actually happen
+    # assert p.exitcode == 1
+
+    class TrainControllerForTesting(TrainController):
+        def __init__(self, *args, **kwargs):
+            super().__init__(*args, **kwargs)
+
+        def get_pid(self):
+            return os.getpid()
+
+    controller_actor_cls = ray.remote(TrainControllerForTesting)
+    train_run_context = TrainRunContext(run_config=RunConfig())
+    train_state_manager = TrainStateManager()
+    controller_actor = controller_actor_cls.remote(
+        train_fn_ref=DummyObjectRefWrapper(lambda: None),
+        train_run_context=train_run_context,
+        scaling_policy=MockScalingPolicy(scaling_config=ScalingConfig()),
+        failure_policy=MockFailurePolicy(failure_config=None),
+        train_state_manager=train_state_manager,
+        callbacks=[StateManagerCallback(train_run_context, train_state_manager)],
+    )
+    ray.get(controller_actor._start.remote())
+    ray.get(controller_actor.handle_signal.remote())
+
+    # ray.kill does not call signal handlers
+    # instead, wait for controller actor to gracefully exit
+    # with pytest.raises(ray.exceptions.RayActorError):
+    # ray.get(controller_actor.__ray_terminate__.remote())
+    # ray.kill(controller_actor)
+    """
+    pid = ray.get(controller_actor.get_pid.remote())
+    os.kill(pid, signal.SIGUSR1)
+    start_time = time.time()
+    while time.time() - start_time < 5:
+        try:
+            ray.get(controller_actor.get_pid.remote(), timeout=5)
+        except ray.exceptions.RayActorError:
+            print("✅ Actor has died.")
+            break
+    """
+
+    state_actor = get_state_actor()
+    runs = ray.get(state_actor.get_train_runs.remote())
+    import pdb
+
+    pdb.set_trace()
+    assert len(runs) == 1
+    # assert "test_run" in runs
+    # stored_run = runs["test_run"]
+    # assert stored_run == run
+    attempts = ray.get(state_actor.get_train_run_attempts.remote())
+    assert len(attempts) == 1
+    import pdb
+
+    pdb.set_trace()
 
 
 @pytest.mark.parametrize(

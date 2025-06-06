@@ -31,6 +31,7 @@ class TrainStateActor:
 
     def create_or_update_train_run(self, run: TrainRun) -> None:
         self._runs[run.id] = run
+        print(f"create_or_update_train_run: {self._runs}")
         self._maybe_export_train_run(run)
 
     def create_or_update_train_run_attempt(self, run_attempt: TrainRunAttempt):
@@ -38,6 +39,7 @@ class TrainStateActor:
         self._maybe_export_train_run_attempt(run_attempt)
 
     def get_train_runs(self) -> Dict[str, TrainRun]:
+        print(f"get_train_runs: {self._runs}")
         return self._runs
 
     def get_train_run_attempts(self) -> Dict[str, Dict[str, TrainRunAttempt]]:

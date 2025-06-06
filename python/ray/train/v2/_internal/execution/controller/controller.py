@@ -11,6 +11,7 @@ import pandas as pd
 
 import ray._private.ray_constants as ray_constants
 from ray._private.auto_init_hook import wrap_auto_init
+from ray.train.v2._internal.callbacks.state_manager import StateManagerCallback
 from ray.train.v2._internal.constants import (
     DEFAULT_ENABLE_CONTROLLER_LOGGING,
     DEFAULT_HEALTH_CHECK_INTERVAL_S,
@@ -126,7 +127,17 @@ class TrainController:
         self._failure_policy = failure_policy
         self._run_config = self._train_run_context.run_config
         self._callbacks = callbacks or []
-        self._train_state_manager = train_state_manager
+
+        # modoru: try
+        # self._train_state_manager = train_state_manager
+        state_manager_callbacks = [
+            c for c in self._callbacks if isinstance(c, StateManagerCallback)
+        ]
+        if state_manager_callbacks:
+            self._train_state_manager = state_manager_callbacks[
+                0
+            ].get_train_state_manager()
+
         self._storage_context = StorageContext(
             storage_path=self._run_config.storage_path,
             experiment_dir_name=self._run_config.name,
@@ -168,17 +179,37 @@ class TrainController:
         # TODO: These can be attributes of a RunAttempt?
         self._latest_poll_time = float("-inf")
 
-        self._register_interrupt_handlers()
+    def handle_signal(self):
+        # modoru: remove
+        # TODO(tseah): consider calling _shutdown and adding
+        # before_controller_interrupt methods.
+        if self._train_state_manager:
+            print("updating train run aborted")
+            self._train_state_manager.update_train_run_aborted(
+                self._train_run_context.run_id
+            )
+            if self._worker_group:
+                print("updating train run attempt aborted")
+                worker_group_context = self._worker_group.get_worker_group_context()
+                self._train_state_manager.update_train_run_attempt_aborted(
+                    self._train_run_context.run_id,
+                    worker_group_context.run_attempt_id,
+                )
+        sys.exit(1)
 
     def _register_interrupt_handlers(self):
         """Cleanup before exit when possible."""
 
         def handle_signal(signum, frame):
+            # TODO(tseah): consider calling _shutdown and adding
+            # before_controller_interrupt methods.
             if self._train_state_manager:
+                print("updating train run aborted")
                 self._train_state_manager.update_train_run_aborted(
                     self._train_run_context.run_id
                 )
                 if self._worker_group:
+                    print("updating train run attempt aborted")
                     worker_group_context = self._worker_group.get_worker_group_context()
                     self._train_state_manager.update_train_run_attempt_aborted(
                         self._train_run_context.run_id,
@@ -189,6 +220,7 @@ class TrainController:
         signal.signal(signal.SIGINT, handle_signal)
         if hasattr(signal, "SIGUSR1"):
             signal.signal(signal.SIGUSR1, handle_signal)
+        print("registered interrupt handlers")
 
     def _execute_resize_decision(
         self, decision: ResizeDecision
@@ -336,6 +368,9 @@ class TrainController:
     def _start(self):
         for callback in self._controller_callbacks:
             callback.after_controller_start()
+
+        # Must happen after state manager callback creates train run.
+        self._register_interrupt_handlers()
 
     def _shutdown(self):
         if self._worker_group:

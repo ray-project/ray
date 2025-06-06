@@ -3,6 +3,7 @@ import time
 from collections import defaultdict
 from typing import Dict, List, Optional
 
+import ray
 from ray.actor import ActorHandle
 from ray.train.v2._internal.execution.context import DistributedContext
 from ray.train.v2._internal.execution.scaling_policy.scaling_policy import (
@@ -53,6 +54,7 @@ class TrainStateManager:
             controller_log_file_path=controller_log_file_path,
         )
         self._runs[run.id] = run
+        print(f"create_train_run: {self._runs}")
         self._create_or_update_train_run(run)
 
     def update_train_run_scheduling(
@@ -120,16 +122,23 @@ class TrainStateManager:
         run.end_time_ns = _current_time_ns()
         self._create_or_update_train_run(run)
 
-    # TODO: This may be handled in the StateManager.
     def update_train_run_aborted(
         self,
         run_id: str,
     ):
+        # import time; time.sleep(1)
+        print(f"update_train_run_aborted: {self._runs}")
         run = self._runs[run_id]
         run.status = RunStatus.ABORTED
+        # modoru: status detail
         run.status_detail = None  # TODO: Add status detail.
         run.end_time_ns = _current_time_ns()
+        # not called?
+        print(f"inside updating train run aborted which now has {self._runs}")
         self._create_or_update_train_run(run)
+        # modoru: remove
+        runs = ray.get(self._state_actor.get_train_runs.remote())
+        print(runs)
 
     def create_train_run_attempt(
         self,
