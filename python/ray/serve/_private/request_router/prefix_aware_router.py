@@ -66,8 +66,9 @@ class PrefixAwarePow2ReplicaScheduler(LocalityMixin, MultiplexMixin, RequestRout
     ):
         super().__init__(*args, **kwargs)
         if tree_actor is None:
+            # Use a detached actor to avoid issues with actor lifetime since this is shared between routers
             self._tree_actor = PrefixTreeActor.options(
-                name="PrefixTreeActor", get_if_exists=True
+                name="LlmPrefixTreeActor", get_if_exists=True, lifetime="detached"
             ).remote()
         else:
             self._tree_actor = tree_actor
