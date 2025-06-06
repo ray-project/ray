@@ -3,33 +3,32 @@
 # KubeRay Metrics References
 
 ## Controller Runtime Metrics
-KubeRay uses Controller Runtime to build controllers, and Controller Runtime provides some metrics by default that are aggregated in KubeRay metrics.
-Controller runtime provides these metrics natively:
-- Total number of reconciliations (success, error, requeue, etc.)
-- Length of reconcile queue
+KubeRay is built with Controller Runtime, which natively exposes metrics that are included in KubeRay’s metrics. These include:
+- Reconciliation counts (success, error, requeue)
+- Length of the reconcile queue
 - Reconciliation latency
-- Total CPU spent time, resident, virtual memory size, file descriptor usage
-- Go runtime metrics such as number of Goroutines, GC duration
+- CPU, memory, and file descriptor usage
+- Go runtime stats (Goroutines, GC duration)
 
 For more information, refer to [metrics-reference](https://book.kubebuilder.io/reference/metrics-reference).
 
 ## KubeRay Custom Metrics
 
-Starting from KubeRay 1.4.0, KubeRay introduces new metrics for KubeRay's three Custom Resources, RayCluster, RayService, and RayJob.
+Starting with KubeRay 1.4.0, new metrics have been added for KubeRay's three custom resources: RayCluster, RayService, and RayJob
 
-You can check them by following the instruction:
+You can view these metrics by following the instructions below:
 ```sh
-# forward the metrics port(8080) from KubeRay operator
+# Forward a local port to the KubeRay operator service.
 kubectl port-forward service/kuberay-operator 8080
 
-# check the metrics
+# View the metrics
 curl localhost:8080/metrics
 
 # something like this should appear if you have existed RayCluster 
 # kuberay_cluster_info{name="raycluster-kuberay",namespace="default",owner_kind="None"} 1
 ```
 
-### Ray Cluster CR
+### Ray Cluster
 
 
 | Metric Name                                      | Type  | Description                                                                                                                | Labels                                                               |
@@ -38,7 +37,7 @@ curl localhost:8080/metrics
 | `kuberay_cluster_condition_provisioned`          | Gauge | Describes whether all ray pods are ready for the first time, refer to [RayClusterProvisioned](https://github.com/ray-project/kuberay/blob/7c6aedff5b4106281f50e87a7e9e177bf1237ec7/ray-operator/apis/ray/v1/raycluster_types.go#L214) for more information                                      | `namespace`: &lt;RayCluster-namespace&gt;<br/> `name`: &lt;RayCluster-name&gt;<br/> `condition`: &lt;true\|false&gt;               |
 | `kuberay_cluster_provisioned_duration_seconds`   | Gauge | The time, in seconds, when a RayCluster's `RayClusterProvisioned` status transitions from false (or unset) to true         | `namespace`: &lt;RayCluster-namespace&gt;<br/> `name`: &lt;RayCluster-name&gt;                                              |
 
-### Ray Service CR
+### Ray Service
 
 | Metric Name                                       | Type  | Description                                                | Labels                                                               |
 |--------------------------------------------------|-------|------------------------------------------------------------|--------------------------------------------------------------------|
