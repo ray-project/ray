@@ -34,11 +34,15 @@ Create a file `custom_request_router.py` with the following code:
 This code defines a simple uniform request router that routes requests a random replica
 to distribute the load evenly regardless of the queue length of each replica or the body
 of the request. The router is defined as a class that inherits from
-[`RequestRouter`](../api/doc/ray.serve.request_router.RequestRouter.rst). It
-implements the [`choose_replicas`](../api/doc/ray.serve.request_router.RequestRouter.choose_replicas.rst)
+[`RequestRouter`](../api/doc/ray.serve.request_router.RequestRouter.rst). It implements the [`choose_replicas`](../api/doc/ray.serve.request_router.RequestRouter.choose_replicas.rst)
 method, which returns the random replica for all incoming requests. The returned type
 is a list of lists of replicas, where each inner list represents a rank of replicas.
-The first rank is the most preferred and the last rank is the least preferred.
+The first rank is the most preferred and the last rank is the least preferred. The
+request will be attempted to be routed to the replica with the shortest request queue in
+each set of the rank in order until a replica is able to process the request. If none of
+the replicas are able to process the request, [`choose_replicas`](../api/doc/ray.serve.request_router.RequestRouter.choose_replicas.rst)
+will be called again with a backoff delay until a replica is able to process the
+request.
 
 
 :::{note}
@@ -80,11 +84,14 @@ request router. These mixins can be used to implement common routing policies su
 locality-aware routing, multiplexed model support, and FIFO request routing.
 
 - [`FIFOMixin`](../api/doc/ray.serve.request_router.FIFOMixin.rst): This mixin implements first in first out (FIFO)
-  request routing. The default behavior for the request router is to route requests to
-  the exact replica got assigned by the request passed to the [`choose_replicas`](../api/doc/ray.serve.request_router.RequestRouter.choose_replicas.rst).
-  This mixin is useful for routing algorithm that can work independently of the
-  request content so the requests can be routed as soon as possible in the order they
-  were received.
+  request routing. The default behavior for the request router is OOO (out of order)
+  which routes requests to the exact replica which got assigned by the request passed to
+  [`choose_replicas`](../api/doc/ray.serve.request_router.RequestRouter.choose_replicas.rst).
+  This mixin is useful for the routing algorithm that can work independently of the
+  request content, so the requests can be routed as soon as possible in the order they
+  were received. By including this mixin, in your custom request router, the request
+  matching algorithm will be updated to route requests FIFO. There are no additional
+  flags needs to be configured and no additional helper methods provided by this mixin.
 - [`LocalityMixin`](../api/doc/ray.serve.request_router.LocalityMixin.rst): This mixin implements locality-aware
   request routing. It updates the internal states when between replica updates to track
   the location between replicas in the same node, same zone, and everything else. It
