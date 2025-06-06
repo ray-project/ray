@@ -401,7 +401,7 @@ import sys
 import tempfile
 import ray
 
-f = tempfile.NamedTemporaryFile("w+", suffix=".py", prefix="_", delete=False):
+f = tempfile.NamedTemporaryFile("w+", suffix=".py", prefix="_", delete=False)
 try:
     f.write('''
     def temporary_helper_function():
