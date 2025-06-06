@@ -409,10 +409,7 @@ def test_placement_group_max_cpu_frac_edge_cases(ray_start_cluster):
     ray.get(pg2.ready())
 
 
-@pytest.mark.parametrize(
-    "scheduling_strategy", ["SPREAD", "STRICT_SPREAD", "PACK", "STRICT_PACK"]
-)
-def test_placement_group_parallel_submission(ray_start_cluster, scheduling_strategy):
+def test_placement_group_parallel_submission(ray_start_cluster):
     cluster = ray_start_cluster
     cluster.add_node(num_cpus=1, resources={"custom_resource": 5})
     cluster.wait_for_nodes()
@@ -420,24 +417,29 @@ def test_placement_group_parallel_submission(ray_start_cluster, scheduling_strat
 
     @ray.remote(resources={"custom_resource": 1})
     def task(input):
-        return input
+        return "ok"
 
     @ray.remote(num_cpus=0)
-    def manage_tasks(input):
-        pg = ray.util.placement_group(
-            [{"custom_resource": 1, "CPU": 1}], strategy=scheduling_strategy
-        )
-        ray.get(pg.ready())
-        pg_strategy = ray.util.scheduling_strategies.PlacementGroupSchedulingStrategy(
-            placement_group=pg
-        )
-        ray.get(task.options(scheduling_strategy=pg_strategy).remote(input))
+    class Submitter:
+        def submit(self, strategy: str):
+            pg = ray.util.placement_group(
+                [{"custom_resource": 1, "CPU": 1}], strategy=strategy
+            )
+            try:
+                ray.get(pg.ready())
+                pg_strategy = ray.util.scheduling_strategies.PlacementGroupSchedulingStrategy(
+                    placement_group=pg
+                )
+                return ray.get(task.options(scheduling_strategy=pg_strategy).remote(input))
+            finally:
+                ray.util.remove_placement_group(pg)
 
-        ray.util.remove_placement_group(pg)
-        return "OK"
-
-    # Test all tasks will not hang
-    ray.get([manage_tasks.remote(i) for i in range(5)], timeout=50)
+    # For each strategy, submit 5 placement groups in parallel and check that they will
+    # all eventually be placed and their tasks executed.
+    submitters = [Submitter.remote() for _ in range(5)]
+    for strategy in ["SPREAD", "STRICT_SPREAD", "PACK", "STRICT_PACK"]:
+        print("Testing strategy:", strategy)
+        assert ray.get([s.submit.remote(strategy) for s in submitters], timeout=30) == ["OK"] * 5
 
 
 MyPlugin = "MyPlugin"
