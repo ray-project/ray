@@ -181,11 +181,11 @@ class GcsRpcClient {
     runtime_env_grpc_client_ =
         std::make_shared<GrpcClient<RuntimeEnvGcsService>>(channel_, client_call_manager);
 
-    retryable_grpc_client_ = RetryableGrpcClient::Create(
+    retryable_grpc_client_ = std::make_shared<RetryableGrpcClient>(
         channel_,
         client_call_manager.GetMainService(),
         /*max_pending_requests_bytes=*/
-        ::RayConfig::instance().gcs_grpc_max_request_queued_max_bytes(),
+        ::RayConfig::instance().grpc_max_request_queued_max_bytes(),
         /*check_channel_status_interval_milliseconds=*/
         ::RayConfig::instance()
             .grpc_client_check_connection_status_interval_milliseconds(),
