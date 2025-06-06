@@ -2,8 +2,9 @@
 """
 import asyncio
 import logging
+import time
 import uuid
-from typing import Any, AsyncGenerator, Dict, Union
+from typing import TYPE_CHECKING, Any, AsyncGenerator, Dict, Union
 
 from pydantic import BaseModel, Field
 from vllm.config import KVTransferConfig
@@ -131,6 +132,7 @@ class PDProxyServer(LLMServer):
         }
         prefill_prompt.parameters["max_tokens"] = 1
 
+        begin = time.perf_counter()
         prefill_response_gen: AsyncGenerator[
             LLMRawResponse, None
         ] = self.prefill_server.options(
@@ -149,16 +151,47 @@ class PDProxyServer(LLMServer):
             yield prefill_response
             return
 
+        prefill_end = time.perf_counter()
+        prefill_speed = (
+            "N/A"
+            if prefill_response.num_input_tokens is None
+            else f"{prefill_response.num_input_tokens / (prefill_end - begin):.2f}"
+        )
+
         kv_transfer_params = prefill_response.metadata[KV_TRANSFER_PARAMS_KEY]
         logger.debug(
             f"Prefill metadata[{KV_TRANSFER_PARAMS_KEY}]: {kv_transfer_params}"
         )
         prompt.parameters[KV_TRANSFER_PARAMS_KEY] = kv_transfer_params
 
+        decoded_tokens: Union[int, None] = 0
+        time_to_first_token: Union[float, None] = None
         async for chunk in self.decode_server.options(stream=True)._predict.remote(
             request_id=request_id, prompt=prompt, stream=stream
         ):
+            if TYPE_CHECKING:
+                chunk: LLMRawResponse
+            if decoded_tokens is not None:
+                if not isinstance(chunk.num_generated_tokens, int):
+                    decoded_tokens = None
+                else:
+                    decoded_tokens += chunk.num_generated_tokens
+            if time_to_first_token is None:
+                time_to_first_token = time.perf_counter() - begin
             yield chunk
+
+        end = time.perf_counter()
+        decode_speed = (
+            "N/A"
+            if not decoded_tokens
+            else f"{((end - prefill_end) * 1000 / decoded_tokens):.2f}"
+        )
+
+        logger.info(
+            f"{request_id=} TTFT {time_to_first_token:.2f}s, TPOT: {decode_speed} ms/token, "
+            f"prefill speed: {prefill_speed} tokens/s, prefill took {prefill_end - begin:.2f}s, "
+            f"decode took {end - prefill_end:.2f}s."
+        )
 
     async def check_health(self) -> None:
         """Check the health of the llm engine."""
