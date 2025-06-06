@@ -1,18 +1,10 @@
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Optional
 
 from ray.llm._internal.serve.configs.server_models import (
     CloudMirrorConfig as _CloudMirrorConfig,
-)
-from ray.llm._internal.serve.configs.server_models import (
     LLMConfig as _LLMConfig,
-)
-from ray.llm._internal.serve.configs.server_models import (
     LLMServingArgs as _LLMServingArgs,
-)
-from ray.llm._internal.serve.configs.server_models import (
     LoraConfig as _LoraConfig,
-)
-from ray.llm._internal.serve.configs.server_models import (
     ModelLoadingConfig as _ModelLoadingConfig,
 )
 from ray.llm._internal.serve.deployments.llm.llm_server import (
@@ -73,7 +65,9 @@ class LoraConfig(_LoraConfig):
 
 
 @PublicAPI(stability="alpha")
-def build_llm_deployment(llm_config: "LLMConfig") -> "Application":
+def build_llm_deployment(
+    llm_config: "LLMConfig", *, name_prefix: Optional[str] = None
+) -> "Application":
     """Helper to build a single vllm deployment from the given llm config.
 
     Examples:
@@ -128,13 +122,14 @@ def build_llm_deployment(llm_config: "LLMConfig") -> "Application":
 
     Args:
         llm_config: The llm config to build vllm deployment.
+        name_prefix: Optional prefix to be used for the deployment name.
 
     Returns:
         The configured Ray Serve Application for vllm deployment.
     """
     from ray.llm._internal.serve.builders import build_llm_deployment
 
-    return build_llm_deployment(llm_config=llm_config)
+    return build_llm_deployment(llm_config=llm_config, name_prefix=name_prefix)
 
 
 @PublicAPI(stability="alpha")

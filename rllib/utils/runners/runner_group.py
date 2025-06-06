@@ -489,7 +489,7 @@ class RunnerGroup(metaclass=abc.ABCMeta):
         # `RunnerGroup`'s local worker.
         if self.local_runner is not None:
             if from_worker_or_learner_group is not None:
-                self.local_env_runner.set_state(rl_module_state)
+                self.local_runner.set_state(rl_module_state)
 
     def reset(self, new_remote_runners: List[ActorHandle]) -> None:
         """Hard overrides the remote `Runner`s in this set with the provided ones.

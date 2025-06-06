@@ -311,6 +311,21 @@ py_test(
 )
 
 py_test(
+    name = "test_join",
+    size = "medium",
+    srcs = ["tests/test_join.py"],
+    tags = [
+        "data_non_parallel",
+        "exclusive",
+        "team:data",
+    ],
+    deps = [
+        ":conftest",
+        "//:ray_lib",
+    ],
+)
+
+py_test(
     name = "test_binary",
     size = "small",
     srcs = ["tests/test_binary.py"],
@@ -1018,6 +1033,20 @@ py_test(
     name = "test_streaming_executor",
     size = "medium",
     srcs = ["tests/test_streaming_executor.py"],
+    tags = [
+        "exclusive",
+        "team:data",
+    ],
+    deps = [
+        ":conftest",
+        "//:ray_lib",
+    ],
+)
+
+py_test(
+    name = "test_ref_bundle",
+    size = "small",
+    srcs = ["tests/test_ref_bundle.py"],
     tags = [
         "exclusive",
         "team:data",

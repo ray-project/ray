@@ -290,10 +290,14 @@ py_library(
         ["ray_release/**/*.py"],
         exclude = ["ray_release/tests/*.py"],
     ),
-    data = glob(["ray_release/environments/*.env"]) + [
+    data = glob([
+        "ray_release/environments/*.env",
+        "ray_release/configs/*.yaml",
+    ]) + [
         "ray_release/buildkite/aws_instance_types.csv",
         "ray_release/schema.json",
-    ] + glob(["ray_release/configs/*.yaml"]),
+        "//doc:example_configs",
+    ],
     imports = ["."],
     visibility = ["//visibility:public"],
     deps = [

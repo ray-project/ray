@@ -74,7 +74,9 @@ if __name__ == "__main__":
         .get_default_config()
         .environment("grouped_twostep")
         .env_runners(
-            env_to_module_connector=lambda env: FlattenObservations(multi_agent=True),
+            env_to_module_connector=lambda env, spaces, device: FlattenObservations(
+                multi_agent=True
+            ),
         )
         .multi_agent(
             policies={"p0"},

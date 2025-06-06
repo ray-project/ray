@@ -1,5 +1,6 @@
 import copy
 import json
+import math
 import os
 from dataclasses import asdict
 from typing import List, Tuple
@@ -18,6 +19,9 @@ from ray.dashboard.modules.metrics.dashboards.serve_dashboard_panels import (
 from ray.dashboard.modules.metrics.dashboards.serve_deployment_dashboard_panels import (
     serve_deployment_dashboard_config,
 )
+from ray.dashboard.modules.metrics.dashboards.serve_llm_dashboard_panels import (
+    serve_llm_dashboard_config,
+)
 from ray.dashboard.modules.metrics.dashboards.train_dashboard_panels import (
     train_dashboard_config,
 )
@@ -27,116 +31,13 @@ GRAFANA_DASHBOARD_GLOBAL_FILTERS_OVERRIDE_ENV_VAR_TEMPLATE = (
     "RAY_GRAFANA_{name}_DASHBOARD_GLOBAL_FILTERS"
 )
 
-TARGET_TEMPLATE = {
-    "exemplar": True,
-    "expr": "0",
-    "interval": "",
-    "legendFormat": "",
-    "queryType": "randomWalk",
-    "refId": "A",
-}
-
-
-PANEL_TEMPLATE = {
-    "aliasColors": {},
-    "bars": False,
-    "dashLength": 10,
-    "dashes": False,
-    "datasource": r"${datasource}",
-    "description": "<Description>",
-    "fieldConfig": {"defaults": {}, "overrides": []},
-    "fill": 10,
-    "fillGradient": 0,
-    "gridPos": {"h": 8, "w": 12, "x": 0, "y": 0},
-    "hiddenSeries": False,
-    "id": 26,
-    "legend": {
-        "alignAsTable": True,
-        "avg": False,
-        "current": True,
-        "hideEmpty": False,
-        "hideZero": True,
-        "max": False,
-        "min": False,
-        "rightSide": False,
-        "show": True,
-        "sort": "current",
-        "sortDesc": True,
-        "total": False,
-        "values": True,
-    },
-    "lines": True,
-    "linewidth": 1,
-    "nullPointMode": "null",
-    "options": {"alertThreshold": True},
-    "percentage": False,
-    "pluginVersion": "7.5.17",
-    "pointradius": 2,
-    "points": False,
-    "renderer": "flot",
-    "seriesOverrides": [
-        {
-            "$$hashKey": "object:2987",
-            "alias": "MAX",
-            "dashes": True,
-            "color": "#1F60C4",
-            "fill": 0,
-            "stack": False,
-        },
-        {
-            "$$hashKey": "object:78",
-            "alias": "/FINISHED|FAILED|DEAD|REMOVED|Failed Nodes:/",
-            "hiddenSeries": True,
-        },
-        {
-            "$$hashKey": "object:2987",
-            "alias": "MAX + PENDING",
-            "dashes": True,
-            "color": "#777777",
-            "fill": 0,
-            "stack": False,
-        },
-    ],
-    "spaceLength": 10,
-    "stack": True,
-    "steppedLine": False,
-    "targets": [],
-    "thresholds": [],
-    "timeFrom": None,
-    "timeRegions": [],
-    "timeShift": None,
-    "title": "<Title>",
-    "tooltip": {"shared": True, "sort": 0, "value_type": "individual"},
-    "type": "graph",
-    "xaxis": {
-        "buckets": None,
-        "mode": "time",
-        "name": None,
-        "show": True,
-        "values": [],
-    },
-    "yaxes": [
-        {
-            "$$hashKey": "object:628",
-            "format": "units",
-            "label": "",
-            "logBase": 1,
-            "max": None,
-            "min": "0",
-            "show": True,
-        },
-        {
-            "$$hashKey": "object:629",
-            "format": "short",
-            "label": None,
-            "logBase": 1,
-            "max": None,
-            "min": None,
-            "show": True,
-        },
-    ],
-    "yaxis": {"align": False, "alignLevel": None},
-}
+# Grafana dashboard layout constants
+# Dashboard uses a 24-column grid with 2-column panels
+ROW_WIDTH = 24  # Full dashboard width
+PANELS_PER_ROW = 2
+PANEL_WIDTH = ROW_WIDTH // PANELS_PER_ROW  # Width of each panel
+PANEL_HEIGHT = 8  # Height of each panel
+ROW_HEIGHT = 1  # Height of row container
 
 
 def _read_configs_for_dashboard(
@@ -203,6 +104,17 @@ def generate_serve_deployment_grafana_dashboard() -> Tuple[str, str]:
     return _generate_grafana_dashboard(serve_deployment_dashboard_config)
 
 
+def generate_serve_llm_grafana_dashboard() -> Tuple[str, str]:
+    """
+    Generates the dashboard output for the serve dashboard and returns
+    both the content and the uid.
+
+    Returns:
+      Tuple with format content, uid
+    """
+    return _generate_grafana_dashboard(serve_llm_dashboard_config)
+
+
 def generate_data_grafana_dashboard() -> Tuple[str, str]:
     """
     Generates the dashboard output for the data dashboard and returns
@@ -262,36 +174,159 @@ def _generate_grafana_dashboard(dashboard_config: DashboardConfig) -> str:
     return json.dumps(base_json, indent=4), uid
 
 
+def _generate_panel_template(
+    panel: Panel,
+    panel_global_filters: List[str],
+    panel_index: int,
+    base_y_position: int,
+) -> dict:
+    """
+    Helper method to generate a panel template with common configuration.
+
+    Args:
+        panel: The panel configuration
+        panel_global_filters: List of global filters to apply
+        panel_index: The index of the panel within its row (0-based)
+        base_y_position: The base y-coordinate for the row in the dashboard grid
+
+    Returns:
+        dict: The configured panel template
+    """
+    # Create base template from panel configuration
+    template = copy.deepcopy(panel.template.value)
+    template.update(
+        {
+            "title": panel.title,
+            "description": panel.description,
+            "id": panel.id,
+            "targets": _generate_targets(panel, panel_global_filters),
+        }
+    )
+
+    # Set panel position and dimensions
+    if panel.grid_pos:
+        template["gridPos"] = asdict(panel.grid_pos)
+    else:
+        # Calculate panel position in 2-column grid layout
+        # x: 0 or 12 (left or right column)
+        # y: base position + (row number * panel height)
+        row_number = panel_index // PANELS_PER_ROW
+        template["gridPos"] = {
+            "h": PANEL_HEIGHT,
+            "w": PANEL_WIDTH,
+            "x": PANEL_WIDTH * (panel_index % PANELS_PER_ROW),
+            "y": base_y_position + (row_number * PANEL_HEIGHT),
+        }
+
+    # Configure panel visualization settings
+    template["yaxes"][0]["format"] = panel.unit
+    template["fill"] = panel.fill
+    template["stack"] = panel.stack
+    template["linewidth"] = panel.linewidth
+
+    # Handle stacking visualization
+    if panel.stack is True:
+        template["nullPointMode"] = "connected"
+
+    return template
+
+
+def _create_row_panel(row: Panel, y_position: int) -> dict:
+    """
+    Creates a Grafana row panel that spans the full dashboard width.
+    Row panels can be collapsed to hide their contained panels.
+
+    Args:
+        row: Row config with title, id, and collapse state
+        y_position: Vertical position in dashboard grid
+
+    Returns:
+        Grafana row panel configuration
+    """
+    return {
+        "collapsed": row.collapsed,
+        "gridPos": {"h": ROW_HEIGHT, "w": ROW_WIDTH, "x": 0, "y": y_position},
+        "id": row.id,
+        "title": row.title,
+        "type": "row",
+        "panels": [],
+    }
+
+
+def _calculate_panel_heights(num_panels: int) -> int:
+    """
+    Calculate the total height needed for a set of panels.
+
+    Args:
+        num_panels: Number of panels to position
+
+    Returns:
+        Total height needed for the panels
+    """
+    rows_needed = math.ceil(num_panels / PANELS_PER_ROW)
+    return rows_needed * PANEL_HEIGHT
+
+
 def _generate_grafana_panels(
     config: DashboardConfig, global_filters: List[str]
 ) -> List[dict]:
-    out = []
+    """
+    Generates Grafana panel configurations for a dashboard.
+
+    The dashboard layout follows these rules:
+    - Panels are arranged in 2 columns (12 units wide each)
+    - Each panel is 8 units high
+    - Rows are 1 unit high and can be collapsed
+    - Panels within rows follow the same 2-column layout
+    - Panel positions can be overridden via panel.grid_pos or auto-calculated
+
+    Args:
+        config: Dashboard configuration containing panels and rows
+        global_filters: List of filters to apply to all panels
+
+    Returns:
+        List of Grafana panel configurations for the dashboard
+    """
+    panels = []
     panel_global_filters = [*config.standard_global_filters, *global_filters]
-    for i, panel in enumerate(config.panels):
-        template = copy.deepcopy(PANEL_TEMPLATE)
-        template.update(
-            {
-                "title": panel.title,
-                "description": panel.description,
-                "id": panel.id,
-                "targets": _generate_targets(panel, panel_global_filters),
-            }
+    current_y_position = 0
+
+    # Add top-level panels in 2-column grid
+    for panel_index, panel in enumerate(config.panels):
+        panel_template = _generate_panel_template(
+            panel, panel_global_filters, panel_index, current_y_position
         )
-        if panel.grid_pos:
-            template["gridPos"] = asdict(panel.grid_pos)
-        else:
-            template["gridPos"]["y"] = i // 2
-            template["gridPos"]["x"] = 12 * (i % 2)
-        template["yaxes"][0]["format"] = panel.unit
-        template["fill"] = panel.fill
-        template["stack"] = panel.stack
-        if panel.stack is True:
-            # If connected is not true, any nulls will cause the stacking visualization to break
-            # making the total appear much smaller than it actually is.
-            template["nullPointMode"] = "connected"
-        template["linewidth"] = panel.linewidth
-        out.append(template)
-    return out
+        panels.append(panel_template)
+
+    # Calculate space needed for top-level panels
+    current_y_position += _calculate_panel_heights(len(config.panels))
+
+    # Add rows and their panels
+    if not config.rows:
+        return panels
+
+    for row in config.rows:
+        # Create and add row panel
+        row_panel = _create_row_panel(row, current_y_position)
+        panels.append(row_panel)
+        current_y_position += ROW_HEIGHT
+
+        # Add panels within row using 2-column grid
+        for panel_index, panel in enumerate(row.panels):
+            panel_template = _generate_panel_template(
+                panel, panel_global_filters, panel_index, current_y_position
+            )
+
+            # Add panel to row if collapsed, otherwise to main dashboard
+            if row.collapsed:
+                row_panel["panels"].append(panel_template)
+            else:
+                panels.append(panel_template)
+
+        # Update y position for next row
+        current_y_position += _calculate_panel_heights(len(row.panels))
+
+    return panels
 
 
 def gen_incrementing_alphabets(length):
@@ -305,7 +340,7 @@ def _generate_targets(panel: Panel, panel_global_filters: List[str]) -> List[dic
     for target, ref_id in zip(
         panel.targets, gen_incrementing_alphabets(len(panel.targets))
     ):
-        template = copy.deepcopy(TARGET_TEMPLATE)
+        template = copy.deepcopy(target.template.value)
         template.update(
             {
                 "expr": target.expr.format(

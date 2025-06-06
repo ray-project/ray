@@ -17,6 +17,7 @@ from collections.abc import Mapping
 from contextlib import contextmanager
 from dataclasses import dataclass
 from typing import (
+    TYPE_CHECKING,
     Any,
     AnyStr,
     Callable,
@@ -24,7 +25,9 @@ from typing import (
     Generic,
     Iterator,
     List,
+    Literal,
     Optional,
+    Protocol,
     Sequence,
     Tuple,
     TypeVar,
@@ -34,12 +37,8 @@ from typing import (
 from urllib.parse import urlparse
 
 import colorama
-import setproctitle
-
-from typing import Literal, Protocol
 
 import ray
-import ray._private.worker
 import ray._private.node
 import ray._private.parameter
 import ray._private.profiling as profiling
@@ -48,8 +47,7 @@ import ray._private.serialization as serialization
 import ray._private.services as services
 import ray._private.state
 import ray._private.storage as storage
-
-from ray._private.ray_logging.logging_config import LoggingConfig
+import ray._private.worker
 
 # Ray modules
 import ray.actor
@@ -57,44 +55,53 @@ import ray.cloudpickle as pickle  # noqa
 import ray.job_config
 import ray.remote_function
 from ray import ActorID, JobID, Language, ObjectRef
-from ray._raylet import raise_sys_exit_with_custom_error_message
-from ray._raylet import ObjectRefGenerator, TaskID
-from ray.runtime_env.runtime_env import _merge_runtime_env
 from ray._private import ray_option_utils
 from ray._private.client_mode_hook import client_mode_hook
 from ray._private.function_manager import FunctionActorManager
-
+from ray._private.gpu_object_manager import GPUObjectManager
 from ray._private.inspect_util import is_cython
 from ray._private.ray_logging import (
     global_worker_stdstream_dispatcher,
-    stdout_deduplicator,
-    stderr_deduplicator,
     setup_logger,
+    stderr_deduplicator,
+    stdout_deduplicator,
 )
+from ray._private.ray_logging.logging_config import LoggingConfig
+from ray._private.resource_isolation_config import ResourceIsolationConfig
 from ray._private.runtime_env.constants import RAY_JOB_CONFIG_JSON_ENV_VAR
 from ray._private.runtime_env.py_modules import upload_py_modules_if_needed
-from ray._private.runtime_env.working_dir import upload_working_dir_if_needed
 from ray._private.runtime_env.setup_hook import (
     upload_worker_process_setup_hook_if_needed,
 )
+from ray._private.runtime_env.working_dir import upload_working_dir_if_needed
 from ray._private.utils import get_ray_doc_version, load_class
+from ray._raylet import (
+    ObjectRefGenerator,
+    TaskID,
+    raise_sys_exit_with_custom_error_message,
+)
 from ray.exceptions import ObjectStoreFullError, RayError, RaySystemError, RayTaskError
+from ray.experimental import tqdm_ray
+from ray.experimental.compiled_dag_ref import CompiledDAGRef
 from ray.experimental.internal_kv import (
     _initialize_internal_kv,
     _internal_kv_get,
     _internal_kv_initialized,
     _internal_kv_reset,
 )
-from ray.experimental import tqdm_ray
-from ray.experimental.compiled_dag_ref import CompiledDAGRef
 from ray.experimental.tqdm_ray import RAY_TQDM_MAGIC
+from ray.runtime_env.runtime_env import _merge_runtime_env
 from ray.util.annotations import Deprecated, DeveloperAPI, PublicAPI
 from ray.util.debug import log_once
 from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
 from ray.util.tracing.tracing_helper import _import_from_string
 from ray.widgets import Template
 from ray.widgets.util import repr_with_fallback
-from ray._private.resource_isolation_config import ResourceIsolationConfig
+
+import setproctitle
+
+if TYPE_CHECKING:
+    pass
 
 SCRIPT_MODE = 0
 WORKER_MODE = 1
@@ -441,6 +448,9 @@ class Worker:
         self.node = None
         self.mode = None
         self.actors = {}
+        # GPU object manager to manage GPU object lifecycles, including coordinating out-of-band
+        # tensor transfers between actors, storing and retrieving GPU objects, and garbage collection.
+        self._gpu_object_manager = GPUObjectManager()
         # When the worker is constructed. Record the original value of the
         # (CUDA_VISIBLE_DEVICES, ONEAPI_DEVICE_SELECTOR, HIP_VISIBLE_DEVICES,
         # NEURON_RT_VISIBLE_CORES, TPU_VISIBLE_CHIPS, ..) environment variables.
@@ -489,6 +499,10 @@ class Worker:
         # Indicates whether the worker is connected to the Ray cluster.
         # It should be set to True in `connect` and False in `disconnect`.
         self._is_connected: bool = False
+
+    @property
+    def gpu_object_manager(self) -> GPUObjectManager:
+        return self._gpu_object_manager
 
     @property
     def connected(self):
@@ -592,6 +606,11 @@ class Worker:
             return None
         logging_config = pickle.loads(job_config.serialized_py_logging_config)
         return logging_config
+
+    @property
+    def current_node_labels(self):
+        # Return the node labels of this worker's current node.
+        return self.node.node_labels
 
     def set_debugger_port(self, port):
         worker_id = self.core_worker.get_worker_id()
@@ -1281,6 +1300,33 @@ _global_node = None
 """ray._private.node.Node: The global node object that is created by ray.init()."""
 
 
+def _maybe_modify_runtime_env(
+    runtime_env: Optional[Dict[str, Any]], _skip_env_hook: bool
+) -> Dict[str, Any]:
+    """
+    If you set RAY_ENABLE_UV_RUN_RUNTIME_ENV, which is the default, and run the driver with `uv run`,
+    this function sets up a runtime environment that replicates the driver's environment to the
+    workers. Otherwise, if a runtime environment hook is present it will modify the runtime environment.
+    """
+
+    if ray_constants.RAY_ENABLE_UV_RUN_RUNTIME_ENV:
+        from ray._private.runtime_env.uv_runtime_env_hook import (
+            _get_uv_run_cmdline,
+            hook,
+        )
+
+        cmdline = _get_uv_run_cmdline()
+        if cmdline:
+            # This means the current driver is running in `uv run`, in which case we want
+            # to propagate the uv environment to the workers.
+            return hook(runtime_env)
+
+    if ray_constants.RAY_RUNTIME_ENV_HOOK in os.environ and not _skip_env_hook:
+        return load_class(os.environ[ray_constants.RAY_RUNTIME_ENV_HOOK])(runtime_env)
+
+    return runtime_env
+
+
 @PublicAPI
 @client_mode_hook
 def init(
@@ -1661,10 +1707,8 @@ def init(
                 "a conflict."
             )
 
-        if ray_constants.RAY_RUNTIME_ENV_HOOK in os.environ and not _skip_env_hook:
-            runtime_env = load_class(os.environ[ray_constants.RAY_RUNTIME_ENV_HOOK])(
-                runtime_env
-            )
+        runtime_env = _maybe_modify_runtime_env(runtime_env, _skip_env_hook)
+
         job_config.set_runtime_env(runtime_env)
         # Similarly, we prefer metadata provided via job submission API
         for key, value in injected_job_config.metadata.items():
@@ -1673,10 +1717,7 @@ def init(
     # RAY_JOB_CONFIG_JSON_ENV_VAR is only set at ray job manager level and has
     # higher priority in case user also provided runtime_env for ray.init()
     else:
-        if ray_constants.RAY_RUNTIME_ENV_HOOK in os.environ and not _skip_env_hook:
-            runtime_env = load_class(os.environ[ray_constants.RAY_RUNTIME_ENV_HOOK])(
-                runtime_env
-            )
+        runtime_env = _maybe_modify_runtime_env(runtime_env, _skip_env_hook)
 
         if runtime_env:
             # Set runtime_env in job_config if passed in as part of ray.init()
@@ -2069,7 +2110,7 @@ def filter_autoscaler_events(lines: List[str]) -> Iterator[str]:
     from ray.autoscaler.v2.utils import is_autoscaler_v2
 
     if is_autoscaler_v2():
-        from ray._private.event.event_logger import parse_event, filter_event_by_level
+        from ray._private.event.event_logger import filter_event_by_level, parse_event
 
         for event_line in lines:
             if autoscaler_log_fyi_needed():
@@ -2376,7 +2417,6 @@ def connect(
             fetch_cluster_id_if_nil=False,
         )
     )
-    worker.gcs_publisher = ray._raylet.GcsPublisher(address=worker.gcs_client.address)
     # Initialize some fields.
     if mode in (WORKER_MODE, RESTORE_WORKER_MODE, SPILL_WORKER_MODE):
         # We should not specify the job_id if it's `WORKER_MODE`.
@@ -2415,8 +2455,7 @@ def connect(
             ray._private.utils.publish_error_to_driver(
                 ray_constants.VERSION_MISMATCH_PUSH_ERROR,
                 traceback_str,
-                gcs_publisher=worker.gcs_publisher,
-                num_retries=1,
+                gcs_client=worker.gcs_client,
             )
 
     driver_name = ""
@@ -2477,7 +2516,7 @@ def connect(
         )
         # Remove excludes, it isn't relevant after the upload step.
         runtime_env.pop("excludes", None)
-        job_config.set_runtime_env(runtime_env)
+        job_config.set_runtime_env(runtime_env, validate=True)
 
     if mode == SCRIPT_MODE:
         # Add the directory containing the script that is running to the Python
@@ -3539,7 +3578,7 @@ def remote(
             (This means, by default, actors cannot get scheduled on a zero-cpu node,
             but an infinite number of them can run on any non-zero cpu node.
             The default value for actors was chosen for historical reasons.
-            It’s recommended to always explicitly set num_cpus for actors
+            It's recommended to always explicitly set num_cpus for actors
             to avoid any surprises.
             If resources are specified explicitly,
             they are required for both scheduling and running.)

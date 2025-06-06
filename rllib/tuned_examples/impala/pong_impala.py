@@ -34,7 +34,7 @@ parser.add_argument(
 args = parser.parse_args()
 
 
-def _make_env_to_module_connector(env):
+def _make_env_to_module_connector(env, spaces, device):
     return FrameStackingEnvToModule(num_frames=4)
 
 

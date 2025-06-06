@@ -42,10 +42,9 @@ python/_raylet.pyx:
     - lint ml tune train data
     - python dashboard linux_wheels macos_wheels java
 python/ray/dag/dag.py:
-    - lint python accelerated_dag
+    - lint python compiled_graphs
 
 .buildkite/core.rayci.yml: lint python core_cpp
-.buildkite/serverless.rayci.yml: lint python
 java/ray.java: lint java
 .buildkite/others.rayci.yml: lint java
 cpp/ray.cc: lint cpp
@@ -58,7 +57,8 @@ doc/tutorial.rst: lint doc
 doc/source/cluster/kubernetes/doc_sanitize.cfg: lint k8s_doc
 ci/k8s/run-kuberay-doc-tests.sh: lint k8s_doc
 ci/docker/doctest.build.Dockerfile: lint
-release/requirements_buildkite.txt: lint release_tests
+release/requirements.txt: lint release_tests
+release/requirements_buildkite.txt: lint tools
 ci/lint/lint.sh: lint tools
 .buildkite/lint.rayci.yml: lint tools
 .buildkite/macos.rayci.yml: lint macos_wheels
@@ -68,7 +68,7 @@ ci/ci.sh: lint tools
 
 src/ray.cpp:
     - lint core_cpp cpp java python
-    - linux_wheels macos_wheels dashboard release_tests accelerated_dag
+    - linux_wheels macos_wheels dashboard release_tests
 
 .github/CODEOWNERS: lint
 README.rst: lint

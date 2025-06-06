@@ -3,20 +3,20 @@ import logging
 import multiprocessing
 import os
 from typing import Optional, Union
+
 import multidict
 
 import ray.dashboard.consts as dashboard_consts
 from ray.dashboard.optional_deps import aiohttp
-
 from ray.dashboard.subprocesses.module import (
     SubprocessModule,
     SubprocessModuleConfig,
     run_module,
 )
 from ray.dashboard.subprocesses.utils import (
-    module_logging_filename,
     ResponseType,
     get_http_session_to_module,
+    module_logging_filename,
 )
 
 """
@@ -28,7 +28,7 @@ logger = logging.getLogger(__name__)
 
 
 def filter_hop_by_hop_headers(
-    headers: Union[dict[str, str], multidict.CIMultiDictProxy[str]]
+    headers: Union[dict[str, str], multidict.CIMultiDictProxy[str]],
 ) -> dict[str, str]:
     """
     Filter out hop-by-hop headers from the headers dict.
@@ -266,6 +266,7 @@ class SubprocessModuleHandle:
             url,
             data=body,
             headers=filter_hop_by_hop_headers(request.headers),
+            allow_redirects=False,
         ) as backend_resp:
             resp_body = await backend_resp.read()
             return aiohttp.web.Response(
@@ -289,7 +290,10 @@ class SubprocessModuleHandle:
             data=body,
             headers=filter_hop_by_hop_headers(request.headers),
         ) as backend_resp:
-            proxy_resp = aiohttp.web.StreamResponse(status=backend_resp.status)
+            proxy_resp = aiohttp.web.StreamResponse(
+                status=backend_resp.status,
+                headers=filter_hop_by_hop_headers(backend_resp.headers),
+            )
             await proxy_resp.prepare(request)
 
             async for chunk, _ in backend_resp.content.iter_chunks():

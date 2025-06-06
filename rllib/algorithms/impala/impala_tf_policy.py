@@ -139,7 +139,7 @@ def _make_time_major(policy, seq_lens, tensor):
         policy: Policy reference
         seq_lens: Sequence lengths if recurrent or None
         tensor: A tensor or list of tensors to reshape.
-        trajectory item.
+            trajectory item.
 
     Returns:
         res: A tensor with swapped axes or a list of tensors with
@@ -258,6 +258,7 @@ def get_impala_tf_policy(name: str, base: TFPolicyV2Type) -> TFPolicyV2Type:
     Returns:
         A TF Policy to be used with Impala.
     """
+
     # VTrace mixins are placed in front of more general mixins to make sure
     # their functions like optimizer() overrides all the other implementations
     # (e.g., LearningRateSchedule.optimizer())

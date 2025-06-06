@@ -1,10 +1,10 @@
+import sys
+from pathlib import Path
+
 import pydantic
 import pytest
-import sys
 
 from ray.llm._internal.serve.configs.server_models import LLMConfig, ModelLoadingConfig
-
-from pathlib import Path
 
 CONFIG_DIRS_PATH = str(Path(__file__).parent / "configs")
 
@@ -247,6 +247,32 @@ class TestModelConfig:
         old_engine_config.hf_model_id = "fake_hf_model_id"
         new_engine_config = llm_config.get_engine_config()
         assert new_engine_config is old_engine_config
+
+    def test_experimental_configs(self):
+        """Test that `experimental_configs` can be used."""
+        # Test with a valid dictionary can be used.
+        experimental_configs = {
+            "experimental_feature1": "value1",
+            "experimental_feature2": "value2",
+        }
+        llm_config = LLMConfig(
+            model_loading_config=ModelLoadingConfig(
+                model_id="llm_model_id",
+            ),
+            experimental_configs=experimental_configs,
+        )
+        assert llm_config.experimental_configs == experimental_configs
+
+        # test with invalid dictionary will raise a validation error.
+        with pytest.raises(
+            pydantic.ValidationError,
+        ):
+            LLMConfig(
+                model_loading_config=ModelLoadingConfig(
+                    model_id="llm_model_id",
+                ),
+                experimental_configs={123: "value1"},
+            )
 
 
 if __name__ == "__main__":

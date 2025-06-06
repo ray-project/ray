@@ -10,6 +10,7 @@ from typing import TYPE_CHECKING, Any, Dict, List, Optional, Union
 import ray
 from ray._private.ray_constants import env_bool, env_integer
 from ray._private.worker import WORKER_MODE
+from ray.data._internal.logging import update_dataset_logger_for_worker
 from ray.util.annotations import DeveloperAPI
 from ray.util.debug import log_once
 from ray.util.scheduling_strategies import SchedulingStrategyT
@@ -92,7 +93,7 @@ DEFAULT_LARGE_ARGS_THRESHOLD = 50 * 1024 * 1024
 
 DEFAULT_USE_POLARS = False
 
-DEFAULT_EAGER_FREE = bool(int(os.environ.get("RAY_DATA_EAGER_FREE", "1")))
+DEFAULT_EAGER_FREE = bool(int(os.environ.get("RAY_DATA_EAGER_FREE", "0")))
 
 DEFAULT_DECODING_SIZE_ESTIMATION_ENABLED = True
 
@@ -191,7 +192,7 @@ DEFAULT_MAX_NUM_BLOCKS_IN_STREAMING_GEN_BUFFER = 2
 DEFAULT_S3_TRY_CREATE_DIR = False
 
 DEFAULT_WAIT_FOR_MIN_ACTORS_S = env_integer(
-    "RAY_DATA_DEFAULT_WAIT_FOR_MIN_ACTORS_S", 60 * 10
+    "RAY_DATA_DEFAULT_WAIT_FOR_MIN_ACTORS_S", -1
 )
 
 # Enable per node metrics reporting for Ray Data, disabled by default.
@@ -423,6 +424,12 @@ class DataContext:
     raise_original_map_exception: bool = DEFAULT_RAY_DATA_RAISE_ORIGINAL_MAP_EXCEPTION
     print_on_execution_start: bool = True
     s3_try_create_dir: bool = DEFAULT_S3_TRY_CREATE_DIR
+    # Timeout threshold (in seconds) for how long it should take for actors in the
+    # Actor Pool to start up. Exceeding this threshold will lead to execution being
+    # terminated with exception due to inability to secure min required capacity.
+    #
+    # Setting non-positive value here (ie <= 0) disables this functionality
+    # (defaults to -1).
     wait_for_min_actors_s: int = DEFAULT_WAIT_FOR_MIN_ACTORS_S
     retried_io_errors: List[str] = field(
         default_factory=lambda: list(DEFAULT_RETRIED_IO_ERRORS)
@@ -430,6 +437,13 @@ class DataContext:
     enable_per_node_metrics: bool = DEFAULT_ENABLE_PER_NODE_METRICS
     override_object_store_memory_limit_fraction: float = None
     memory_usage_poll_interval_s: Optional[float] = 1
+    dataset_logger_id: Optional[str] = None
+    # This is a temporary workaround to allow actors to perform cleanup
+    # until https://github.com/ray-project/ray/issues/53169 is fixed.
+    # This hook is known to have a race condition bug in fault tolerance.
+    # I.E., after the hook is triggered and the UDF is deleted, another
+    # retry task may still be scheduled to this actor and it will fail.
+    _enable_actor_pool_on_exit_hook: bool = False
 
     def __post_init__(self):
         # The additonal ray remote args that should be added to
@@ -532,6 +546,11 @@ class DataContext:
         remote workers used for parallelization.
         """
         global _default_context
+        if (
+            not _default_context
+            or _default_context.dataset_logger_id != context.dataset_logger_id
+        ):
+            update_dataset_logger_for_worker(context.dataset_logger_id)
         _default_context = context
 
     @property
@@ -580,6 +599,14 @@ class DataContext:
     def copy(self) -> "DataContext":
         """Create a copy of the current DataContext."""
         return copy.deepcopy(self)
+
+    def set_dataset_logger_id(self, dataset_id: str) -> None:
+        """Set the current dataset logger id.
+
+        This is used internally to propagate the current dataset logger id to remote
+        workers.
+        """
+        self.dataset_logger_id = dataset_id
 
 
 # Backwards compatibility alias.

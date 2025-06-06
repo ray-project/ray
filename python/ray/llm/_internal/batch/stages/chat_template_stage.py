@@ -1,14 +1,14 @@
 """Apply chat template stage"""
 
-from typing import Any, Dict, AsyncIterator, List, Optional, Type
+from typing import Any, AsyncIterator, Dict, List, Optional, Type
 
 from ray.llm._internal.batch.stages.base import (
     StatefulStage,
     StatefulStageUDF,
 )
 from ray.llm._internal.common.utils.download_utils import (
-    download_model_files,
     NodeModelDownloadable,
+    download_model_files,
 )
 
 
@@ -28,8 +28,8 @@ class ChatTemplateUDF(StatefulStageUDF):
             expected_input_keys: The expected input keys of the stage.
             model: The model to use for the chat template.
             chat_template: The chat template in Jinja template format. This is
-            usually not needed if the model checkpoint already contains the
-            chat template.
+                           usually not needed if the model checkpoint already contains the
+                           chat template.
         """
         from transformers import AutoProcessor
 

@@ -8,8 +8,8 @@ set -euxo pipefail
 SCRIPT_DIR=$(builtin cd "$(dirname "${BASH_SOURCE:-$0}")"; pwd)
 WORKSPACE_DIR="${SCRIPT_DIR}/../.."
 
-# importing install_miniconda function
-source "${SCRIPT_DIR}/install-miniconda.sh"
+# importing install_miniforge function
+source "${SCRIPT_DIR}/install-miniforge.sh"
 
 pkg_install_helper() {
   case "${OSTYPE}" in
@@ -428,7 +428,7 @@ install_dependencies() {
   fi
 
   if [[ -n "${PYTHON-}" || "${LINT-}" == 1 || "${MINIMAL_INSTALL-}" == "1" ]]; then
-    install_miniconda
+    install_miniforge
   fi
 
   install_upgrade_pip

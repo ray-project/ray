@@ -125,17 +125,14 @@ class LocalTaskManager : public ILocalTaskManager {
                    rpc::RequestWorkerLeaseReply::SchedulingFailureType failure_type,
                    const std::string &scheduling_failure_message) override;
 
-  /// Return if any tasks are pending resource acquisition.
+  /// Return with an exemplar if any tasks are pending resource acquisition.
   ///
-  /// \param[out] example: An example task that is deadlocking.
-  /// \param[in,out] any_pending: True if there's any pending example.
   /// \param[in,out] num_pending_actor_creation: Number of pending actor creation tasks.
   /// \param[in,out] num_pending_tasks: Number of pending tasks.
-  /// \return True if any progress is any tasks are pending.
-  bool AnyPendingTasksForResourceAcquisition(RayTask *example,
-                                             bool *any_pending,
-                                             int *num_pending_actor_creation,
-                                             int *num_pending_tasks) const override;
+  /// \return An example task that is deadlocking if any tasks are pending resource
+  /// acquisition.
+  const RayTask *AnyPendingTasksForResourceAcquisition(
+      int *num_pending_actor_creation, int *num_pending_tasks) const override;
 
   /// Call once a task finishes (i.e. a worker is returned).
   ///

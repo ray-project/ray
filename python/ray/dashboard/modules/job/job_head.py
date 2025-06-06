@@ -1,11 +1,12 @@
 import asyncio
 import dataclasses
-from datetime import datetime
 import enum
 import json
 import logging
-import traceback
 import os
+import time
+import traceback
+from datetime import datetime
 from random import choice
 from typing import AsyncIterator, Dict, List, Optional, Tuple
 
@@ -14,22 +15,23 @@ from aiohttp.client import ClientResponse
 from aiohttp.web import Request, Response, StreamResponse
 
 import ray
-from ray import NodeID
-from ray._private.pydantic_compat import BaseModel, Extra, Field, validator
-from ray._private.utils import load_class
 import ray.dashboard.consts as dashboard_consts
-from ray.dashboard.consts import (
-    GCS_RPC_TIMEOUT_SECONDS,
-    DASHBOARD_AGENT_ADDR_NODE_ID_PREFIX,
-    TRY_TO_GET_AGENT_INFO_INTERVAL_SECONDS,
-    WAIT_AVAILABLE_AGENT_TIMEOUT,
-)
+from ray import NodeID
 from ray._common.utils import get_or_create_event_loop
-from ray._private.ray_constants import env_bool, KV_NAMESPACE_DASHBOARD
+from ray._private.pydantic_compat import BaseModel, Extra, Field, validator
+from ray._private.ray_constants import KV_NAMESPACE_DASHBOARD, env_bool
 from ray._private.runtime_env.packaging import (
     package_exists,
     pin_runtime_env_uri,
     upload_package_to_gcs,
+)
+from ray._private.utils import load_class
+from ray.dashboard.consts import (
+    DASHBOARD_AGENT_ADDR_NODE_ID_PREFIX,
+    GCS_RPC_TIMEOUT_SECONDS,
+    RAY_CLUSTER_ACTIVITY_HOOK,
+    TRY_TO_GET_AGENT_INFO_INTERVAL_SECONDS,
+    WAIT_AVAILABLE_AGENT_TIMEOUT,
 )
 from ray.dashboard.modules.job.common import (
     JobDeleteResponse,
@@ -48,11 +50,9 @@ from ray.dashboard.modules.job.utils import (
     parse_and_validate_request,
 )
 from ray.dashboard.modules.version import CURRENT_VERSION, VersionResponse
-from ray.dashboard.subprocesses.routes import SubprocessRouteTable as routes
 from ray.dashboard.subprocesses.module import SubprocessModule
+from ray.dashboard.subprocesses.routes import SubprocessRouteTable as routes
 from ray.dashboard.subprocesses.utils import ResponseType
-from ray.dashboard.consts import RAY_CLUSTER_ACTIVITY_HOOK
-import time
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
@@ -331,7 +331,7 @@ class JobHead(SubprocessModule):
             return self._agents[node_id]
 
     async def _get_head_node_agent_once(self) -> JobAgentSubmissionClient:
-        head_node_id_hex = await get_head_node_id(self.gcs_aio_client)
+        head_node_id_hex = await get_head_node_id(self.gcs_client)
 
         if not head_node_id_hex:
             raise Exception("Head node id has not yet been persisted in GCS")
@@ -381,7 +381,7 @@ class JobHead(SubprocessModule):
         May raise exception if there's no agent available at all or there's network error.
         Returns: List[NodeID]
         """
-        keys = await self.gcs_aio_client.internal_kv_keys(
+        keys = await self.gcs_client.async_internal_kv_keys(
             f"{DASHBOARD_AGENT_ADDR_NODE_ID_PREFIX}".encode(),
             namespace=KV_NAMESPACE_DASHBOARD,
             timeout=GCS_RPC_TIMEOUT_SECONDS,
@@ -402,7 +402,7 @@ class JobHead(SubprocessModule):
         Returns: (ip, http_port, grpc_port)
         """
         key = f"{DASHBOARD_AGENT_ADDR_NODE_ID_PREFIX}{target_node_id.hex()}"
-        value = await self.gcs_aio_client.internal_kv_get(
+        value = await self.gcs_client.async_internal_kv_get(
             key,
             namespace=KV_NAMESPACE_DASHBOARD,
             timeout=GCS_RPC_TIMEOUT_SECONDS,
@@ -517,7 +517,7 @@ class JobHead(SubprocessModule):
     async def stop_job(self, req: Request) -> Response:
         job_or_submission_id = req.match_info["job_or_submission_id"]
         job = await find_job_by_ids(
-            self.gcs_aio_client,
+            self.gcs_client,
             self._job_info_client,
             job_or_submission_id,
         )
@@ -549,7 +549,7 @@ class JobHead(SubprocessModule):
     async def delete_job(self, req: Request) -> Response:
         job_or_submission_id = req.match_info["job_or_submission_id"]
         job = await find_job_by_ids(
-            self.gcs_aio_client,
+            self.gcs_client,
             self._job_info_client,
             job_or_submission_id,
         )
@@ -581,7 +581,7 @@ class JobHead(SubprocessModule):
     async def get_job_info(self, req: Request) -> Response:
         job_or_submission_id = req.match_info["job_or_submission_id"]
         job = await find_job_by_ids(
-            self.gcs_aio_client,
+            self.gcs_client,
             self._job_info_client,
             job_or_submission_id,
         )
@@ -602,7 +602,7 @@ class JobHead(SubprocessModule):
     @routes.get("/api/jobs/")
     async def list_jobs(self, req: Request) -> Response:
         (driver_jobs, submission_job_drivers), submission_jobs = await asyncio.gather(
-            get_driver_jobs(self.gcs_aio_client), self._job_info_client.get_all_jobs()
+            get_driver_jobs(self.gcs_client), self._job_info_client.get_all_jobs()
         )
 
         submission_jobs = [
@@ -631,7 +631,7 @@ class JobHead(SubprocessModule):
     async def get_job_logs(self, req: Request) -> Response:
         job_or_submission_id = req.match_info["job_or_submission_id"]
         job = await find_job_by_ids(
-            self.gcs_aio_client,
+            self.gcs_client,
             self._job_info_client,
             job_or_submission_id,
         )
@@ -670,7 +670,7 @@ class JobHead(SubprocessModule):
     async def tail_job_logs(self, req: Request) -> StreamResponse:
         job_or_submission_id = req.match_info["job_or_submission_id"]
         job = await find_job_by_ids(
-            self.gcs_aio_client,
+            self.gcs_client,
             self._job_info_client,
             job_or_submission_id,
         )
@@ -692,7 +692,7 @@ class JobHead(SubprocessModule):
         driver_agent_http_address = None
         while driver_agent_http_address is None:
             job = await find_job_by_ids(
-                self.gcs_aio_client,
+                self.gcs_client,
                 self._job_info_client,
                 job_or_submission_id,
             )
@@ -794,7 +794,7 @@ class JobHead(SubprocessModule):
         # This includes the _ray_internal_dashboard job that gets automatically
         # created with every cluster
         try:
-            reply = await self.gcs_aio_client.get_all_job_info(
+            reply = await self.gcs_client.async_get_all_job_info(
                 skip_submission_job_info_field=True,
                 skip_is_running_tasks_field=True,
                 timeout=timeout,
@@ -852,4 +852,4 @@ class JobHead(SubprocessModule):
     async def run(self):
         await super().run()
         if not self._job_info_client:
-            self._job_info_client = JobInfoStorageClient(self.gcs_aio_client)
+            self._job_info_client = JobInfoStorageClient(self.gcs_client)
