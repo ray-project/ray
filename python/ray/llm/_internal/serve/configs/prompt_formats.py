@@ -10,7 +10,6 @@ from typing import (
 
 from pydantic import (
     BaseModel,
-    ConfigDict,
     PrivateAttr,
     field_validator,
     model_validator,
