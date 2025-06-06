@@ -125,14 +125,6 @@ class EngineInput(BaseModel):
     image: Optional[List[ImageInput]] = None
 
 
-# TODO (Kourosh): We can delete this abstraction.
-class AbstractPromptFormat(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-
-    def generate_prompt(self, messages: Union[Prompt, List[Message]]) -> EngineInput:
-        raise NotImplementedError()
-
-
 class HuggingFacePromptFormat(AbstractPromptFormat):
     _processor: "AutoProcessor" = PrivateAttr()
 
