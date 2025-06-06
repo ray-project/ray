@@ -535,23 +535,6 @@ py_test_module_list(
 )
 
 py_test_module_list(
-    size = "medium",
-    files = [
-        "test_gpu_objects.py",
-    ],
-    tags = [
-        "exclusive",
-        "gpu_objects",
-        "no_windows",
-        "team:core",
-    ],
-    deps = [
-        ":conftest",
-        "//:ray_lib",
-    ],
-)
-
-py_test_module_list(
     size = "small",
     data = glob(["tls/*"]),
     files = [

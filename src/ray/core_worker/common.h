@@ -65,17 +65,15 @@ class RayFunction {
 /// Options for all tasks (actor and non-actor) except for actor creation.
 struct TaskOptions {
   TaskOptions() = default;
-  TaskOptions(
-      std::string name_p,
-      int num_returns_p,
-      std::unordered_map<std::string, double> &resources_p,
-      std::string concurrency_group_name_p = "",
-      int64_t generator_backpressure_num_objects_p = -1,
-      std::string serialized_runtime_env_info_p = "{}",
-      bool enable_task_events_p = kDefaultTaskEventEnabled,
-      std::unordered_map<std::string, std::string> labels_p = {},
-      std::unordered_map<std::string, std::string> label_selector_p = {},
-      rpc::TensorTransport tensor_transport_p = rpc::TensorTransport::OBJECT_STORE)
+  TaskOptions(std::string name_p,
+              int num_returns_p,
+              std::unordered_map<std::string, double> &resources_p,
+              std::string concurrency_group_name_p = "",
+              int64_t generator_backpressure_num_objects_p = -1,
+              std::string serialized_runtime_env_info_p = "{}",
+              bool enable_task_events_p = kDefaultTaskEventEnabled,
+              std::unordered_map<std::string, std::string> labels_p = {},
+              std::unordered_map<std::string, std::string> label_selector_p = {})
       : name(std::move(name_p)),
         num_returns(num_returns_p),
         resources(resources_p),
@@ -84,8 +82,7 @@ struct TaskOptions {
         generator_backpressure_num_objects(generator_backpressure_num_objects_p),
         enable_task_events(enable_task_events_p),
         labels(std::move(labels_p)),
-        label_selector(std::move(label_selector_p)),
-        tensor_transport(tensor_transport_p) {}
+        label_selector(std::move(label_selector_p)) {}
 
   /// The name of this task.
   std::string name;
@@ -109,8 +106,6 @@ struct TaskOptions {
   std::unordered_map<std::string, std::string> labels;
   // The label constraints of the node to schedule this task.
   std::unordered_map<std::string, std::string> label_selector;
-  // The tensor transport (e.g., NCCL, GLOO, etc.) to use for this task.
-  rpc::TensorTransport tensor_transport;
 };
 
 /// Options for actor creation tasks.
