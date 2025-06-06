@@ -42,19 +42,6 @@ BundleSchedulingPolicy::SelectCandidateNodes(const SchedulingContext *context) c
   return result;
 }
 
-/// Return the map of node id -> available cpus before the current bundle scheduling.
-/// It is used to calculate how many CPUs have been allocated for the current bundles.
-const absl::flat_hash_map<scheduling::NodeID, double>
-BundleSchedulingPolicy::GetAvailableCpusBeforeBundleScheduling() const {
-  absl::flat_hash_map<scheduling::NodeID, double> result;
-  for (const auto &entry : cluster_resource_manager_.GetResourceView()) {
-    result.emplace(
-        entry.first,
-        entry.second.GetLocalView().available.Get(ray::ResourceID::CPU()).Double());
-  }
-  return result;
-}
-
 std::pair<std::vector<int>, std::vector<const ResourceRequest *>>
 BundleSchedulingPolicy::SortRequiredResources(
     const std::vector<const ResourceRequest *> &resource_request_list) {
@@ -128,9 +115,7 @@ BundleSchedulingPolicy::SortRequiredResources(
 std::pair<scheduling::NodeID, const Node *> BundleSchedulingPolicy::GetBestNode(
     const ResourceRequest &required_resources,
     const absl::flat_hash_map<scheduling::NodeID, const Node *> &candidate_nodes,
-    const SchedulingOptions &options,
-    const absl::flat_hash_map<scheduling::NodeID, double>
-        &available_cpus_before_bundle_scheduling) const {
+    const SchedulingOptions &options) const {
   double best_node_score = -1;
   auto best_node_id = scheduling::NodeID::Nil();
   const Node *best_node = nullptr;
@@ -163,9 +148,6 @@ SchedulingResult BundlePackSchedulingPolicy::Schedule(
     return SchedulingResult::Infeasible();
   }
 
-  const auto available_cpus_before_bundle_scheduling =
-      GetAvailableCpusBeforeBundleScheduling();
-
   // First schedule scarce resources (such as GPU) and large capacity resources to improve
   // the scheduling success rate.
   auto sorted_result = SortRequiredResources(resource_request_list);
@@ -185,8 +167,7 @@ SchedulingResult BundlePackSchedulingPolicy::Schedule(
     const auto &required_resources = required_resources_list_copy.front().second;
     auto best_node = GetBestNode(*required_resources,
                                  candidate_nodes,
-                                 options,
-                                 available_cpus_before_bundle_scheduling);
+                                 options);
     if (best_node.first.IsNil()) {
       // There is no node to meet the scheduling requirements.
       break;
@@ -246,9 +227,6 @@ SchedulingResult BundleSpreadSchedulingPolicy::Schedule(
     return SchedulingResult::Infeasible();
   }
 
-  const auto available_cpus_before_bundle_scheduling =
-      GetAvailableCpusBeforeBundleScheduling();
-
   // First schedule scarce resources (such as GPU) and large capacity resources to improve
   // the scheduling success rate.
   auto sorted_result = SortRequiredResources(resource_request_list);
@@ -261,8 +239,7 @@ SchedulingResult BundleSpreadSchedulingPolicy::Schedule(
     // Score and sort nodes.
     auto best_node = GetBestNode(*resource_request,
                                  candidate_nodes,
-                                 options,
-                                 available_cpus_before_bundle_scheduling);
+                                 options);
 
     // There are nodes to meet the scheduling requirements.
     if (!best_node.first.IsNil()) {
@@ -275,8 +252,7 @@ SchedulingResult BundleSpreadSchedulingPolicy::Schedule(
       // Scheduling from selected nodes.
       best_node = GetBestNode(*resource_request,
                               selected_nodes,
-                              options,
-                              available_cpus_before_bundle_scheduling);
+                              options);
       if (!best_node.first.IsNil()) {
         result_nodes.emplace_back(best_node.first);
         RAY_CHECK(cluster_resource_manager_.SubtractNodeAvailableResources(
@@ -316,9 +292,6 @@ SchedulingResult BundleStrictPackSchedulingPolicy::Schedule(
     return SchedulingResult::Infeasible();
   }
 
-  const auto available_cpus_before_bundle_scheduling =
-      GetAvailableCpusBeforeBundleScheduling();
-
   // Aggregate required resources.
   ResourceRequest aggregated_resource_request;
   for (const auto &resource_request : resource_request_list) {
@@ -332,7 +305,7 @@ SchedulingResult BundleStrictPackSchedulingPolicy::Schedule(
   const auto &right_node_it = std::find_if(
       candidate_nodes.begin(),
       candidate_nodes.end(),
-      [&aggregated_resource_request, &options, &available_cpus_before_bundle_scheduling](
+      [&aggregated_resource_request, &options](
           const auto &entry) {
         const auto &node_resources = entry.second->GetLocalView();
         return node_resources.IsFeasible(aggregated_resource_request);
@@ -353,16 +326,14 @@ SchedulingResult BundleStrictPackSchedulingPolicy::Schedule(
           absl::flat_hash_map<scheduling::NodeID, const ray::Node *>{
               {options.bundle_strict_pack_soft_target_node_id,
                candidate_nodes[options.bundle_strict_pack_soft_target_node_id]}},
-          options,
-          available_cpus_before_bundle_scheduling);
+          options);
     }
   }
 
   if (best_node.first.IsNil()) {
     best_node = GetBestNode(aggregated_resource_request,
                             candidate_nodes,
-                            options,
-                            available_cpus_before_bundle_scheduling);
+                            options);
   }
 
   // Select the node with the highest score.
@@ -393,9 +364,6 @@ SchedulingResult BundleStrictSpreadSchedulingPolicy::Schedule(
     return SchedulingResult::Infeasible();
   }
 
-  const auto available_cpus_before_bundle_scheduling =
-      GetAvailableCpusBeforeBundleScheduling();
-
   if (resource_request_list.size() > candidate_nodes.size()) {
     RAY_LOG(DEBUG) << "The number of required resources " << resource_request_list.size()
                    << " is greater than the number of candidate nodes "
@@ -414,8 +382,7 @@ SchedulingResult BundleStrictSpreadSchedulingPolicy::Schedule(
     // Score and sort nodes.
     auto best_node = GetBestNode(*resource_request,
                                  candidate_nodes,
-                                 options,
-                                 available_cpus_before_bundle_scheduling);
+                                 options);
 
     // There are nodes to meet the scheduling requirements.
     if (!best_node.first.IsNil()) {
