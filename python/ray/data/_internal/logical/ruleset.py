@@ -40,6 +40,18 @@ class Ruleset:
 
         self._rules.remove(rule)
 
+    def get_active_rules(self) -> List[Rule]:
+        return [rule for rule in self._rules if rule.enabled]
+
+    def get_rule_by_name(self, name: str) -> Optional[Rule]:
+        for rule_type in self._rules:
+            class_name = rule_type.__name__
+            full_class_path = f"{rule_type.__module__}.{class_name}"
+
+            if name in (class_name, full_class_path):
+                return rule_type
+        return None
+
     def __iter__(self) -> Iterator[Type[Rule]]:
         """Iterate over the rules in this ruleset.
 
