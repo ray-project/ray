@@ -125,7 +125,7 @@ class EngineInput(BaseModel):
     image: Optional[List[ImageInput]] = None
 
 
-class HuggingFacePromptFormat(AbstractPromptFormat):
+class HuggingFacePromptFormat(BaseModel):
     _processor: "AutoProcessor" = PrivateAttr()
 
     def set_processor(self, model_id_or_path: str, trust_remote_code: bool = False):
