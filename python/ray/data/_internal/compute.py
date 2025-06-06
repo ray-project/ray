@@ -1,8 +1,7 @@
 import logging
-from typing import Any, Callable, Dict, Iterable, Optional, TypeVar, Union
+from typing import Any, Callable, Iterable, Optional, TypeVar, Union
 
 from ray.data._internal.execution.interfaces import TaskContext
-from ray.data._internal.logical.interfaces.operator import DatasetExportArgs
 from ray.data.block import Block, UserDefinedFunction
 from ray.util.annotations import DeveloperAPI
 
@@ -30,7 +29,7 @@ class ComputeStrategy:
 
 
 @DeveloperAPI
-class TaskPoolStrategy(DatasetExportArgs, ComputeStrategy):
+class TaskPoolStrategy(ComputeStrategy):
     def __init__(
         self,
         size: Optional[int] = None,
@@ -45,17 +44,13 @@ class TaskPoolStrategy(DatasetExportArgs, ComputeStrategy):
             raise ValueError("`size` must be >= 1", size)
         self.size = size
 
-    def dataset_export_args(self) -> Dict[str, Any]:
-        """Export the arguments into dictionary format."""
-        return {"size": self.size}
-
     def __eq__(self, other: Any) -> bool:
         return (isinstance(other, TaskPoolStrategy) and self.size == other.size) or (
             other == "tasks" and self.size is None
         )
 
 
-class ActorPoolStrategy(DatasetExportArgs, ComputeStrategy):
+class ActorPoolStrategy(ComputeStrategy):
     """Specify the compute strategy for a Dataset transform.
 
     ActorPoolStrategy specifies that an autoscaling pool of actors should be used
@@ -122,14 +117,6 @@ class ActorPoolStrategy(DatasetExportArgs, ComputeStrategy):
         self.max_tasks_in_flight_per_actor = max_tasks_in_flight_per_actor
         self.num_workers = 0
         self.ready_to_total_workers_ratio = 0.8
-
-    def dataset_export_args(self) -> Dict[str, Any]:
-        """Export the arguments into dictionary format."""
-        return {
-            "min_size": self.min_size,
-            "max_size": self.max_size,
-            "max_tasks_in_flight_per_actor": self.max_tasks_in_flight_per_actor,
-        }
 
     def __eq__(self, other: Any) -> bool:
         return isinstance(other, ActorPoolStrategy) and (

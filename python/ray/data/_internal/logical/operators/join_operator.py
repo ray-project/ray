@@ -2,7 +2,6 @@ from enum import Enum
 from typing import TYPE_CHECKING, Any, Dict, Optional, Sequence, Tuple
 
 from ray.data._internal.logical.interfaces import LogicalOperator
-from ray.data._internal.logical.interfaces.operator import DatasetExportArgs
 from ray.data._internal.logical.operators.n_ary_operator import NAry
 
 if TYPE_CHECKING:
@@ -16,7 +15,7 @@ class JoinType(Enum):
     FULL_OUTER = "full_outer"
 
 
-class Join(DatasetExportArgs, NAry):
+class Join(NAry):
     """Logical operator for join."""
 
     def __init__(
@@ -68,18 +67,6 @@ class Join(DatasetExportArgs, NAry):
 
         self._partition_size_hint = partition_size_hint
         self._aggregator_ray_remote_args = aggregator_ray_remote_args
-
-    def dataset_export_args(self) -> Dict[str, Any]:
-        """Export the arguments into dictionary format."""
-        return {
-            "left_key_columns": self._left_key_columns,
-            "right_key_columns": self._right_key_columns,
-            "join_type": self._join_type.value,
-            "left_columns_suffix": self._left_columns_suffix,
-            "right_columns_suffix": self._right_columns_suffix,
-            "partition_size_hint": self._partition_size_hint,
-            "aggregator_ray_remote_args": self._aggregator_ray_remote_args,
-        }
 
     @staticmethod
     def _validate_schemas(
