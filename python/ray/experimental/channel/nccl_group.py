@@ -341,6 +341,28 @@ class _NcclGroup(Communicator):
             *operation_args,
         )
 
+    # https://docs.cupy.dev/en/stable/reference/generated/cupy.cuda.nccl.NcclCommunicator.html#cupy.cuda.nccl.NcclCommunicator.broadcast
+    def broadcast(
+        self,
+        send_buf: "torch.Tensor",
+        recv_buf: "torch.Tensor",
+        root: int,
+    ):
+        operation_args = [
+            self.nccl_util.get_tensor_ptr(send_buf),
+            self.nccl_util.get_tensor_ptr(recv_buf),
+            send_buf.numel(),
+            self.nccl_util.get_nccl_tensor_dtype(send_buf),
+            root,
+            self._cuda_stream.ptr,
+        ]
+        self._exec_collective(
+            send_buf,
+            recv_buf,
+            self._comm.broadcast,
+            *operation_args,
+        )
+
     @property
     def recv_stream(self) -> Optional["cp.cuda.ExternalStream"]:
         return self._recv_stream
