@@ -13,13 +13,16 @@
 // limitations under the License.
 
 #include <chrono>
+#include <list>
 #include <memory>
+#include <string>
 #include <thread>
+#include <utility>
+#include <vector>
 
 // clang-format off
 #include "gtest/gtest.h"
 #include "ray/common/asio/instrumented_io_context.h"
-#include "ray/common/test_util.h"
 #include "ray/gcs/gcs_server/test/gcs_server_test_util.h"
 #include "ray/gcs/test/gcs_test_util.h"
 #include "ray/gcs/gcs_server/gcs_kv_manager.h"
@@ -37,7 +40,7 @@ using json = nlohmann::json;
 
 class MockActorScheduler : public gcs::GcsActorSchedulerInterface {
  public:
-  MockActorScheduler() {}
+  MockActorScheduler() = default;
 
   void Schedule(std::shared_ptr<gcs::GcsActor> actor) { actors.push_back(actor); }
   void Reschedule(std::shared_ptr<gcs::GcsActor> actor) {}
@@ -74,7 +77,8 @@ class MockActorScheduler : public gcs::GcsActorSchedulerInterface {
 
 class MockWorkerClient : public rpc::CoreWorkerClientInterface {
  public:
-  MockWorkerClient(instrumented_io_context &io_service) : io_service_(io_service) {}
+  explicit MockWorkerClient(instrumented_io_context &io_service)
+      : io_service_(io_service) {}
 
   void WaitForActorRefDeleted(
       const rpc::WaitForActorRefDeletedRequest &request,
@@ -117,8 +121,7 @@ class MockWorkerClient : public rpc::CoreWorkerClientInterface {
 
 class GcsActorManagerTest : public ::testing::Test {
  public:
-  GcsActorManagerTest()
-      : mock_actor_scheduler_(new MockActorScheduler()), periodical_runner_(io_service_) {
+  GcsActorManagerTest() : periodical_runner_(PeriodicalRunner::Create(io_service_)) {
     RayConfig::instance().initialize(
         R"(
 {
@@ -128,8 +131,8 @@ class GcsActorManagerTest : public ::testing::Test {
   )");
     std::promise<bool> promise;
     thread_io_service_.reset(new std::thread([this, &promise] {
-      std::unique_ptr<boost::asio::io_service::work> work(
-          new boost::asio::io_service::work(io_service_));
+      boost::asio::executor_work_guard<boost::asio::io_context::executor_type> work(
+          io_service_.get_executor());
       promise.set_value(true);
       io_service_.run();
     }));
@@ -142,20 +145,22 @@ class GcsActorManagerTest : public ::testing::Test {
         std::vector<rpc::ChannelType>{
             rpc::ChannelType::GCS_ACTOR_CHANNEL,
         },
-        /*periodic_runner=*/&periodical_runner_,
+        /*periodical_runner=*/*periodical_runner_,
         /*get_time_ms=*/[]() -> double { return absl::ToUnixMicros(absl::Now()); },
         /*subscriber_timeout_ms=*/absl::ToInt64Microseconds(absl::Seconds(30)),
         /*batch_size=*/100);
 
-    gcs_publisher_ = std::make_shared<gcs::GcsPublisher>(std::move(publisher));
-    store_client_ = std::make_shared<gcs::InMemoryStoreClient>(io_service_);
-    gcs_table_storage_ = std::make_shared<gcs::InMemoryGcsTableStorage>(io_service_);
+    gcs_publisher_ = std::make_unique<gcs::GcsPublisher>(std::move(publisher));
+    gcs_table_storage_ = std::make_unique<gcs::InMemoryGcsTableStorage>();
     kv_ = std::make_unique<gcs::MockInternalKVInterface>();
-    function_manager_ = std::make_unique<gcs::GcsFunctionManager>(*kv_);
+    function_manager_ = std::make_unique<gcs::GcsFunctionManager>(*kv_, io_service_);
+    auto actor_scheduler = std::make_unique<MockActorScheduler>();
+    mock_actor_scheduler_ = actor_scheduler.get();
     gcs_actor_manager_ = std::make_unique<gcs::GcsActorManager>(
-        mock_actor_scheduler_,
-        gcs_table_storage_,
-        gcs_publisher_,
+        std::move(actor_scheduler),
+        gcs_table_storage_.get(),
+        io_service_,
+        gcs_publisher_.get(),
         *runtime_env_mgr_,
         *function_manager_,
         [](const ActorID &actor_id) {},
@@ -238,9 +243,9 @@ class GcsActorManagerTest : public ::testing::Test {
 
   instrumented_io_context io_service_;
   std::unique_ptr<std::thread> thread_io_service_;
-  std::shared_ptr<gcs::StoreClient> store_client_;
   std::shared_ptr<gcs::GcsTableStorage> gcs_table_storage_;
-  std::shared_ptr<MockActorScheduler> mock_actor_scheduler_;
+  // Actor scheduler's ownership lies in actor manager.
+  MockActorScheduler *mock_actor_scheduler_ = nullptr;
   std::shared_ptr<MockWorkerClient> worker_client_;
   absl::flat_hash_map<JobID, std::string> job_namespace_table_;
   std::unique_ptr<gcs::GcsActorManager> gcs_actor_manager_;
@@ -250,7 +255,7 @@ class GcsActorManagerTest : public ::testing::Test {
   absl::Mutex mutex_;
   std::unique_ptr<gcs::GcsFunctionManager> function_manager_;
   std::unique_ptr<gcs::MockInternalKVInterface> kv_;
-  PeriodicalRunner periodical_runner_;
+  std::shared_ptr<PeriodicalRunner> periodical_runner_;
   std::string log_dir_;
 };
 
@@ -263,6 +268,7 @@ TEST_F(GcsActorManagerTest, TestBasic) {
   rpc::CreateActorRequest create_actor_request;
   create_actor_request.mutable_task_spec()->CopyFrom(
       registered_actor->GetCreationTaskSpecification().GetMessage());
+  create_actor_request.mutable_task_spec()->mutable_labels()->insert({"w00t", "hi"});
   RAY_CHECK_EQ(
       gcs_actor_manager_->CountFor(rpc::ActorTableData::DEPENDENCIES_UNREADY, ""), 1);
 
@@ -301,7 +307,7 @@ TEST_F(GcsActorManagerTest, TestBasic) {
   std::vector<std::string> vc;
   for (int i = 0; i < num_retry; i++) {
     Mocker::ReadContentFromFile(vc, log_dir_ + "/export_events/event_EXPORT_ACTOR.log");
-    if ((int)vc.size() == num_export_events) {
+    if (static_cast<int>(vc.size()) == num_export_events) {
       for (int event_idx = 0; event_idx < num_export_events; event_idx++) {
         json export_event_as_json = json::parse(vc[event_idx]);
         json event_data = export_event_as_json["event_data"].get<json>();
@@ -312,6 +318,9 @@ TEST_F(GcsActorManagerTest, TestBasic) {
               event_data["death_cause"]["actor_died_error_context"]["error_message"],
               "The actor is dead because all references to the actor were removed "
               "including lineage ref count.");
+        }
+        if (expected_states[event_idx] == "ALIVE") {
+          ASSERT_EQ(event_data["labels"]["w00t"], "hi");
         }
       }
       return;
@@ -326,8 +335,8 @@ TEST_F(GcsActorManagerTest, TestBasic) {
   for (auto line : vc) {
     lines << line << "\n";
   }
-  ASSERT_TRUE(false) << "Export API wrote " << (int)vc.size() << " lines, but expecting "
-                     << num_export_events << ".\nLines:\n"
+  ASSERT_TRUE(false) << "Export API wrote " << static_cast<int>(vc.size())
+                     << " lines, but expecting " << num_export_events << ".\nLines:\n"
                      << lines.str();
 }
 

@@ -24,7 +24,7 @@ RAY_CONFIG(uint64_t, debug_dump_period_milliseconds, 10000)
 /// Whether to enable Ray event stats collection.
 RAY_CONFIG(bool, event_stats, true)
 
-/// Whether to enbale Ray event stats metrics export.
+/// Whether to enable Ray event stats metrics export.
 /// Note that enabling this adds high overhead to
 /// Ray metrics agent.
 RAY_CONFIG(bool, event_stats_metrics, false)
@@ -78,7 +78,7 @@ RAY_CONFIG(uint64_t, memory_monitor_refresh_ms, 250)
 RAY_CONFIG(int64_t, min_memory_free_bytes, (int64_t)-1)
 
 /// The TTL for when the task failure entry is considered
-/// eligble for garbage colletion.
+/// eligible for garbage collection.
 RAY_CONFIG(uint64_t, task_failure_entry_ttl_ms, 15 * 60 * 1000)
 
 /// The number of retries for the task or actor when
@@ -111,6 +111,10 @@ RAY_CONFIG(bool, report_actor_placement_resources, true)
 /// creating object references (e.g. 5~10 microsec per call in Python).
 /// TODO: maybe group this under RAY_DEBUG.
 RAY_CONFIG(bool, record_ref_creation_sites, false)
+
+/// Collects the stacktrace of the task invocation, or actor creation. The stacktrace is
+/// serialized into the TaskSpec and is viewable from the Dashboard. Default is disabled.
+RAY_CONFIG(bool, record_task_actor_creation_sites, false)
 
 /// Objects that have been unpinned are
 /// added to a local cache. When the cache is flushed, all objects in the cache
@@ -156,12 +160,12 @@ RAY_CONFIG(int64_t, max_lineage_bytes, 1024 * 1024 * 1024)
 /// See also: https://github.com/ray-project/ray/issues/14182
 RAY_CONFIG(bool, preallocate_plasma_memory, false)
 
-// If true, we place a soft cap on the numer of scheduling classes, see
+// If true, we place a soft cap on the number of scheduling classes, see
 // `worker_cap_initial_backoff_delay_ms`.
 RAY_CONFIG(bool, worker_cap_enabled, true)
 
 /// We place a soft cap on the number of tasks of a given scheduling class that
-/// can run at once to limit the total nubmer of worker processes. After the
+/// can run at once to limit the total number of worker processes. After the
 /// specified interval, the new task above that cap is allowed to run. The time
 /// before the next tasks (above the cap) are allowed to run increases
 /// exponentially. The soft cap is needed to prevent deadlock in the case where
@@ -201,7 +205,7 @@ RAY_CONFIG(int64_t, max_direct_call_object_size, 100 * 1024)
 // The max gRPC message size (the gRPC internal default is 4MB). We use a higher
 // limit in Ray to avoid crashing with many small inlined task arguments.
 // Keep in sync with GCS_STORAGE_MAX_SIZE in packaging.py.
-RAY_CONFIG(int64_t, max_grpc_message_size, 512 * 1024 * 1024)
+RAY_CONFIG(size_t, max_grpc_message_size, 512 * 1024 * 1024)
 
 // The max gRPC message size (the gRPC internal default is 4MB) in communication with the
 // Agent.
@@ -241,11 +245,11 @@ RAY_CONFIG(int64_t, worker_lease_timeout_milliseconds, 500)
 /// When this happens, they will kill themselves.
 RAY_CONFIG(uint64_t, raylet_death_check_interval_milliseconds, 1000)
 
-/// These are used by the worker to set timeouts and to batch requests when
-/// getting objects.
-RAY_CONFIG(int64_t, get_timeout_milliseconds, 1000)
-RAY_CONFIG(int64_t, worker_get_request_size, 10000)
+/// These are used by the worker to set the interval for checking signals and
+/// batching requests when getting objects.
+RAY_CONFIG(int64_t, get_check_signal_interval_milliseconds, 1000)
 RAY_CONFIG(int64_t, worker_fetch_request_size, 10000)
+
 /// How long to wait for a fetch to complete during ray.get before warning the
 /// user.
 RAY_CONFIG(int64_t, fetch_warn_timeout_milliseconds, 60000)
@@ -258,10 +262,6 @@ RAY_CONFIG(int64_t, fetch_fail_timeout_milliseconds, 600000)
 
 /// Temporary workaround for https://github.com/ray-project/ray/pull/16402.
 RAY_CONFIG(bool, yield_plasma_lock_workaround, true)
-
-// Whether to inline object status in serialized references.
-// See https://github.com/ray-project/ray/issues/16025 for more details.
-RAY_CONFIG(bool, inline_object_status_in_refs, true)
 
 /// Number of times raylet client tries connecting to a raylet.
 RAY_CONFIG(int64_t, raylet_client_num_connect_attempts, 10)
@@ -416,9 +416,6 @@ RAY_CONFIG(uint32_t, task_oom_retry_delay_base_ms, 1000)
 /// Duration to wait between retrying to kill a task.
 RAY_CONFIG(uint32_t, cancellation_retry_ms, 2000)
 
-/// DEPRECATED. No longer used anywhere.
-RAY_CONFIG(bool, start_python_importer_thread, true)
-
 /// Determines if forking in Ray actors / tasks are supported.
 /// Note that this only enables forking in workers, but not drivers.
 RAY_CONFIG(bool, support_fork, false)
@@ -447,7 +444,7 @@ RAY_CONFIG(int32_t, gcs_grpc_initial_reconnect_backoff_ms, 100)
 RAY_CONFIG(uint64_t, gcs_grpc_max_request_queued_max_bytes, 1024UL * 1024 * 1024 * 5)
 
 /// The duration between two checks for grpc status.
-RAY_CONFIG(int32_t, gcs_client_check_connection_status_interval_milliseconds, 1000)
+RAY_CONFIG(int32_t, grpc_client_check_connection_status_interval_milliseconds, 1000)
 
 /// Due to the protocol drawback, raylet needs to refresh the message if
 /// no message is received for a while.
@@ -537,6 +534,22 @@ RAY_CONFIG(uint64_t, gcs_mark_task_failed_on_worker_dead_delay_ms, /*  1 secs */
 
 /// Whether or not we enable metrics collection.
 RAY_CONFIG(bool, enable_metrics_collection, true)
+
+/// Determine if the high cardinality labels such as WorkerId, task and actor Name
+/// should be used in the metrics. For the complete definition, see
+/// RAY_METRIC_CARDINALITY_LEVEL in ray_constants.py
+RAY_CONFIG(std::string, metric_cardinality_level, "legacy")
+
+/// Whether enable OpenTelemetry as the metrics collection backend on the driver
+/// component. This flag is only used during the migration of the  metric collection
+/// backend from OpenCensus to OpenTelemetry. It will be removed in the future.
+RAY_CONFIG(bool, experimental_enable_open_telemetry_on_agent, false)
+
+/// Whether enable OpenTelemetry as the metrics collection backend on the core
+/// components (core workers, gcs server, raylet, etc.). This flag is only used during
+/// the migration of the  metric collection backend from OpenCensus to OpenTelemetry.
+/// It will be removed in the future.
+RAY_CONFIG(bool, experimental_enable_open_telemetry_on_core, false)
 
 /// Comma separated list of components we enable grpc metrics collection for.
 /// Only effective if `enable_metrics_collection` is also true. Will have some performance
@@ -629,6 +642,13 @@ RAY_CONFIG(int64_t, max_placement_group_load_report_size, 1000)
 /// external storage.
 RAY_CONFIG(std::string, object_spilling_config, "")
 
+/// The path to spill objects to. The same path will be used as the object store
+/// fallback directory as well. When both object_spilling_config and
+/// object_spilling_directory are set, object_spilling_directory will take
+/// precedence. When object_spilling_directory is set ray.init() or ray start as well,
+/// the directory set with ray.init() or ray start will take precedence.
+RAY_CONFIG(std::string, object_spilling_directory, "")
+
 /// Log an ERROR-level message about spilling every time this amount of bytes has been
 /// spilled, with exponential increase in interval. This can be set to zero to disable.
 RAY_CONFIG(int64_t, verbose_spill_logs, 2L * 1024 * 1024 * 1024)
@@ -643,7 +663,7 @@ RAY_CONFIG(int, max_io_workers, 4)
 
 /// Ray's object spilling fuses small objects into a single file before flushing them
 /// to optimize the performance.
-/// The minimum object size that can be spilled by each spill operation. 100 MB by
+/// Ray will try to spill at least this size or up to max_fused_object_count. 100 MB by
 /// default. This value is not recommended to set beyond --object-store-memory.
 RAY_CONFIG(int64_t, min_spilling_size, 100 * 1024 * 1024)
 
@@ -692,6 +712,9 @@ RAY_CONFIG(int64_t, timeout_ms_task_wait_for_death_info, 1000)
 /// The core worker heartbeat interval. During heartbeat, it'll
 /// report the loads to raylet.
 RAY_CONFIG(int64_t, core_worker_internal_heartbeat_ms, 1000)
+
+/// Timeout for core worker grpc server reconnection in seconds.
+RAY_CONFIG(int32_t, core_worker_rpc_server_reconnect_timeout_s, 60)
 
 /// Maximum amount of memory that will be used by running tasks' args.
 RAY_CONFIG(float, max_task_args_memory_fraction, 0.7)
@@ -752,7 +775,7 @@ RAY_CONFIG(std::string, custom_unit_instance_resources, "neuron_cores,TPU,NPU,HP
 
 /// The name of the system-created concurrency group for actors. This group is
 /// created with 1 thread, and is created lazily. The intended usage is for
-/// Ray-internal auxiliary tasks (e.g., accelerated dag workers).
+/// Ray-internal auxiliary tasks (e.g., compiled graph workers).
 RAY_CONFIG(std::string, system_concurrency_group_name, "_ray_system")
 
 // Maximum size of the batches when broadcasting resources to raylet.
@@ -847,7 +870,7 @@ RAY_CONFIG(std::string, testing_asio_delay_us, "")
 
 ///  To use this, simply do
 ///      export
-///      RAY_testing_rpc_failure="method1=max_num_failures,method2=max_num_failures"
+///      RAY_testing_rpc_failure="method1=max_num_failures:req_failure_prob:resp_failure_prob,method2=max_num_failures:req_failure_prob:resp_failure_prob"
 RAY_CONFIG(std::string, testing_rpc_failure, "")
 
 /// The following are configs for the health check. They are borrowed
@@ -878,7 +901,7 @@ RAY_CONFIG(bool, raylet_core_dump_exclude_plasma_store, true)
 RAY_CONFIG(std::vector<std::string>, preload_python_modules, {})
 
 // By default, raylet send a self liveness check to GCS every 60s
-RAY_CONFIG(int64_t, raylet_liveness_self_check_interval_ms, 5000)
+RAY_CONFIG(int64_t, raylet_liveness_self_check_interval_ms, 60000)
 
 // Instruct the CoreWorker to kill its child processes while
 // it exits. This prevents certain classes of resource leaks
@@ -909,10 +932,8 @@ RAY_CONFIG(int64_t, py_gcs_connect_timeout_s, 30)
 // Costs an extra RPC.
 // TODO(vitsai): Remove this flag
 RAY_CONFIG(bool, enable_reap_actor_death, true)
-// The number of sockets between object manager.
-// The higher the number the higher throughput of the data
-// trasfer it'll be, but it'll also user more sockets and
-// more CPU resources.
+
+// The number of grpc clients between object managers.
 RAY_CONFIG(int, object_manager_client_connection_num, 4)
 
 // The number of object manager thread. By default, it's
@@ -920,5 +941,34 @@ RAY_CONFIG(int, object_manager_client_connection_num, 4)
 // Update this to overwrite it.
 RAY_CONFIG(int, object_manager_rpc_threads_num, 0)
 
-// Write export API events to file if enabled
+// Write export API event of all resource types to file if enabled.
+// RAY_enable_export_api_write_config will not be considered if
+// this is enabled.
 RAY_CONFIG(bool, enable_export_api_write, false)
+
+// Comma separated string containing individual resource
+// types to write export API events for. This configuration is only used if
+// RAY_enable_export_api_write is not enabled. Full list of valid
+// resource types in ExportEvent.SourceType enum in
+// src/ray/protobuf/export_event.proto
+// Example config: `export RAY_enable_export_api_write_config='EXPORT_ACTOR,EXPORT_TASK'`
+RAY_CONFIG(std::vector<std::string>, enable_export_api_write_config, {})
+
+// Configuration for pipe logger buffer size.
+RAY_CONFIG(uint64_t, pipe_logger_read_buf_size, 1024)
+
+// Configuration to enable or disable the infeasible task early termination feature. If
+// set to true, whenever the autoscaler detects that a task is infeasible, the task will
+// be cancelled with SCHEDULING_CANCELLED_UNSCHEDULABLE state. If set to false, the task
+// will be waiting for the required resources to become available achieved mainly by
+// updating the cluster config to add new nodes.
+RAY_CONFIG(bool, enable_infeasible_task_early_exit, false);
+
+// Frequency at which to check all local worker & driver sockets for unexpected
+// disconnects.
+RAY_CONFIG(int64_t, raylet_check_for_unexpected_worker_disconnect_interval_ms, 1000)
+
+/// The maximum time in seconds that an actor task can wait in the scheduling queue
+/// for tasks with smaller sequence numbers to show up. If timed out, the task will
+/// be cancelled.
+RAY_CONFIG(int64_t, actor_scheduling_queue_max_reorder_wait_seconds, 30)

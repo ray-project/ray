@@ -1,3 +1,4 @@
+import copy
 import gymnasium as gym
 import logging
 from typing import Callable, Dict, List, Tuple, Optional, Union, Set, Type
@@ -6,11 +7,7 @@ import numpy as np
 
 from ray.rllib.env.base_env import BaseEnv
 from ray.rllib.env.env_context import EnvContext
-from ray.rllib.utils.annotations import (
-    OldAPIStack,
-    override,
-    PublicAPI,
-)
+from ray.rllib.utils.annotations import OldAPIStack, override
 from ray.rllib.utils.deprecation import Deprecated
 from ray.rllib.utils.typing import (
     AgentID,
@@ -21,6 +18,7 @@ from ray.rllib.utils.typing import (
     MultiEnvDict,
 )
 from ray.util import log_once
+from ray.util.annotations import DeveloperAPI, PublicAPI
 
 # If the obs space is Dict type, look for the global state under this key.
 ENV_STATE = "state"
@@ -28,7 +26,7 @@ ENV_STATE = "state"
 logger = logging.getLogger(__name__)
 
 
-@PublicAPI
+@PublicAPI(stability="beta")
 class MultiAgentEnv(gym.Env):
     """An environment that hosts multiple independent agents.
 
@@ -51,7 +49,7 @@ class MultiAgentEnv(gym.Env):
     # This attribute should not be changed during the lifetime of this env.
     possible_agents: List[AgentID] = []
 
-    # @OldAPIStack
+    # @OldAPIStack, use `observation_spaces` and `action_spaces`, instead.
     observation_space: Optional[gym.Space] = None
     action_space: Optional[gym.Space] = None
 
@@ -166,11 +164,15 @@ class MultiAgentEnv(gym.Env):
             return self.observation_spaces[agent_id]
 
         # @OldAPIStack behavior.
+        # `self.observation_space` is a `gym.spaces.Dict` AND contains `agent_id`.
         if (
             isinstance(self.observation_space, gym.spaces.Dict)
             and agent_id in self.observation_space.spaces
         ):
             return self.observation_space[agent_id]
+        # `self.observation_space` is not a `gym.spaces.Dict` OR doesn't contain
+        # `agent_id` -> The defined space is most likely meant to be the space
+        # for all agents.
         else:
             return self.observation_space
 
@@ -179,11 +181,15 @@ class MultiAgentEnv(gym.Env):
             return self.action_spaces[agent_id]
 
         # @OldAPIStack behavior.
+        # `self.action_space` is a `gym.spaces.Dict` AND contains `agent_id`.
         if (
             isinstance(self.action_space, gym.spaces.Dict)
             and agent_id in self.action_space.spaces
         ):
             return self.action_space[agent_id]
+        # `self.action_space` is not a `gym.spaces.Dict` OR doesn't contain
+        # `agent_id` -> The defined space is most likely meant to be the space
+        # for all agents.
         else:
             return self.action_space
 
@@ -321,7 +327,7 @@ class MultiAgentEnv(gym.Env):
         return env
 
 
-@PublicAPI
+@DeveloperAPI
 def make_multi_agent(
     env_name_or_creator: Union[str, EnvCreator],
 ) -> Type["MultiAgentEnv"]:
@@ -384,6 +390,12 @@ def make_multi_agent(
             #  with data fields.
             if config is None:
                 config = {}
+            else:
+                # Note the deepcopy is needed b/c (a) we need to remove the
+                # `num_agents` keyword and (b) with `num_envs > 0` in the
+                # `VectorMultiAgentEnv` all following environment creations
+                # need the same config again.
+                config = copy.deepcopy(config)
             num = config.pop("num_agents", 1)
             if isinstance(env_name_or_creator, str):
                 self.envs = [gym.make(env_name_or_creator) for _ in range(num)]
@@ -405,6 +417,8 @@ def make_multi_agent(
             obs, infos = {}, {}
             for i, env in enumerate(self.envs):
                 obs[i], infos[i] = env.reset(seed=seed, options=options)
+                if not self.observation_spaces[i].contains(obs[i]):
+                    print("===> MultiEnv does not contain obs.")
 
             return obs, infos
 

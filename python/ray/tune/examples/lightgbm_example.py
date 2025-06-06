@@ -27,7 +27,6 @@ def train_breast_cancer(config: dict):
         train_set,
         valid_sets=[test_set],
         valid_names=["eval"],
-        verbose_eval=False,
         callbacks=[
             TuneReportCheckpointCallback(
                 {
@@ -52,7 +51,6 @@ def train_breast_cancer_cv(config: dict):
     lgb.cv(
         config,
         train_set,
-        verbose_eval=False,
         stratified=True,
         # Checkpointing is not supported for CV
         # LightGBM aggregates metrics over folds automatically
@@ -61,10 +59,10 @@ def train_breast_cancer_cv(config: dict):
         callbacks=[
             TuneReportCheckpointCallback(
                 {
-                    "binary_error": "cv_agg-binary_error-mean",
-                    "binary_logloss": "cv_agg-binary_logloss-mean",
-                    "binary_error_stdv": "cv_agg-binary_error-stdv",
-                    "binary_logloss_stdv": "cv_agg-binary_logloss-stdv",
+                    "binary_error": "valid-binary_error-mean",
+                    "binary_logloss": "valid-binary_logloss-mean",
+                    "binary_error_stdv": "valid-binary_error-stdv",
+                    "binary_logloss_stdv": "valid-binary_logloss-stdv",
                 },
                 frequency=0,
             )

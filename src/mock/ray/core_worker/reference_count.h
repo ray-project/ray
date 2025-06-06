@@ -39,9 +39,9 @@ class MockReferenceCounter : public ReferenceCounterInterface {
                     const int64_t object_size,
                     bool is_reconstructable,
                     bool add_local_ref,
-                    const absl::optional<NodeID> &pinned_at_raylet_id));
+                    const std::optional<NodeID> &pinned_at_raylet_id));
 
-  MOCK_METHOD2(AddObjectPrimaryCopyDeleteCallback,
+  MOCK_METHOD2(AddObjectOutOfScopeOrFreedCallback,
                bool(const ObjectID &object_id,
                     const std::function<void(const ObjectID &)> callback));
 

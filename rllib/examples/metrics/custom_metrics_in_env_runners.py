@@ -11,7 +11,7 @@ custom `Algorithm.training_step()` methods, custom loss functions, custom callba
 and custom EnvRunners.
 
 This example:
-    - demonstrates how to write a custom Callbacks subclass, which overrides some
+    - demonstrates how to write a custom RLlibCallback subclass, which overrides some
     EnvRunner-bound methods, such as `on_episode_start`, `on_episode_step`, and
     `on_episode_end`.
     - shows how to temporarily store per-timestep data inside the currently running
@@ -24,7 +24,7 @@ This example:
     window of 200 episodes), a maximum per-episode metric (over a sliding window of 100
     episodes), and an EMA-smoothed metric.
 
-In this script, we define a custom `DefaultCallbacks` class and then override some of
+In this script, we define a custom `RLlibCallback` class and then override some of
 its methods in order to define custom behavior during episode sampling. In particular,
 we add custom metrics to the Algorithm's published result dict (once per
 iteration) before it is sent back to Ray Tune (and possibly a WandB logger).
@@ -82,7 +82,7 @@ import matplotlib.pyplot as plt
 from matplotlib.colors import Normalize
 import numpy as np
 
-from ray.rllib.algorithms.callbacks import DefaultCallbacks
+from ray.rllib.callbacks.callbacks import RLlibCallback
 from ray.rllib.env.wrappers.atari_wrappers import wrap_atari_for_new_api_stack
 from ray.rllib.utils.images import resize
 from ray.rllib.utils.test_utils import (
@@ -92,7 +92,7 @@ from ray.rllib.utils.test_utils import (
 from ray.tune.registry import get_trainable_cls, register_env
 
 
-class MsPacmanHeatmapCallback(DefaultCallbacks):
+class MsPacmanHeatmapCallback(RLlibCallback):
     """A custom callback to extract information from MsPacman and log these.
 
     This callback logs:
@@ -147,6 +147,10 @@ class MsPacmanHeatmapCallback(DefaultCallbacks):
         yx_pos = self._get_pacman_yx_pos(env)
         self._episode_start_position[episode.id_] = yx_pos
 
+        # Create two lists holding custom per-timestep data.
+        episode.custom_data["pacman_yx_pos"] = []
+        episode.custom_data["pacman_dist_travelled"] = []
+
     def on_episode_step(
         self,
         *,
@@ -168,7 +172,7 @@ class MsPacmanHeatmapCallback(DefaultCallbacks):
             return
 
         yx_pos = self._get_pacman_yx_pos(env)
-        episode.add_temporary_timestep_data("pacman_yx_pos", yx_pos)
+        episode.custom_data["pacman_yx_pos"].append(yx_pos)
 
         # Compute distance to start position.
         dist_travelled = np.sqrt(
@@ -179,7 +183,7 @@ class MsPacmanHeatmapCallback(DefaultCallbacks):
                 )
             )
         )
-        episode.add_temporary_timestep_data("pacman_dist_travelled", dist_travelled)
+        episode.custom_data["pacman_dist_travelled"].append(dist_travelled)
 
     def on_episode_end(
         self,
@@ -203,7 +207,7 @@ class MsPacmanHeatmapCallback(DefaultCallbacks):
         del self._episode_start_position[episode.id_]
 
         # Get all pacman y/x-positions from the episode.
-        yx_positions = episode.get_temporary_timestep_data("pacman_yx_pos")
+        yx_positions = episode.custom_data["pacman_yx_pos"]
         # h x w
         heatmap = np.zeros((80, 100), dtype=np.int32)
         for yx_pos in yx_positions:
@@ -228,9 +232,7 @@ class MsPacmanHeatmapCallback(DefaultCallbacks):
         )
 
         # Get the max distance travelled for this episode.
-        dist_travelled = np.max(
-            episode.get_temporary_timestep_data("pacman_dist_travelled")
-        )
+        dist_travelled = np.max(episode.custom_data["pacman_dist_travelled"])
 
         # Log the max. dist travelled in this episode (window=100).
         metrics_logger.log_value(

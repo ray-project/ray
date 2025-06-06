@@ -307,4 +307,3 @@ More about Ray Tasks
     :maxdepth: 1
 
     tasks/nested-tasks.rst
-    tasks/generators.rst

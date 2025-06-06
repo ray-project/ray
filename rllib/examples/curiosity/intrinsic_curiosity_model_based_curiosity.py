@@ -77,7 +77,7 @@ import numpy as np
 
 from ray import tune
 from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
-from ray.rllib.algorithms.callbacks import DefaultCallbacks
+from ray.rllib.callbacks.callbacks import RLlibCallback
 from ray.rllib.connectors.env_to_module import FlattenObservations
 from ray.rllib.examples.learners.classes.intrinsic_curiosity_learners import (
     DQNTorchLearnerWithCuriosity,
@@ -110,7 +110,7 @@ parser = add_rllib_example_script_args(
 parser.set_defaults(enable_new_api_stack=True)
 
 
-class MeasureMaxDistanceToStart(DefaultCallbacks):
+class MeasureMaxDistanceToStart(RLlibCallback):
     """Callback measuring the dist of the agent to its start position in FrozenLake-v1.
 
     Makes the naive assumption that the start position ("S") is in the upper left
@@ -219,7 +219,7 @@ if __name__ == "__main__":
         .callbacks(MeasureMaxDistanceToStart)
         .env_runners(
             num_envs_per_env_runner=5 if args.algo == "PPO" else 1,
-            env_to_module_connector=lambda env: FlattenObservations(),
+            env_to_module_connector=lambda env, spaces, device: FlattenObservations(),
         )
         .training(
             learner_config_dict={

@@ -53,7 +53,14 @@ class DynamicHandleOptionsBase(ABC):
     multiplexed_model_id: str = ""
     stream: bool = False
 
+    @abstractmethod
     def copy_and_update(self, **kwargs) -> "DynamicHandleOptionsBase":
+        pass
+
+
+@dataclass(frozen=True)
+class DynamicHandleOptions(DynamicHandleOptionsBase):
+    def copy_and_update(self, **kwargs) -> "DynamicHandleOptions":
         new_kwargs = {}
 
         for f in fields(self):
@@ -63,8 +70,3 @@ class DynamicHandleOptionsBase(ABC):
                 new_kwargs[f.name] = kwargs[f.name]
 
         return DynamicHandleOptions(**new_kwargs)
-
-
-@dataclass(frozen=True)
-class DynamicHandleOptions(DynamicHandleOptionsBase):
-    pass

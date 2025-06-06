@@ -294,7 +294,7 @@ def test_optimize_lazy_reuse_base_data(
 
 
 def test_require_preserve_order(ray_start_regular_shared):
-    ds = ray.data.range(100).map_batches(lambda x: x).sort()
+    ds = ray.data.range(100).map_batches(lambda x: x).sort("id")
     assert ds._plan.require_preserve_order()
     ds2 = ray.data.range(100).map_batches(lambda x: x).zip(ds)
     assert ds2._plan.require_preserve_order()

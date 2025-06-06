@@ -14,10 +14,17 @@
 
 #pragma once
 
+#include <list>
+#include <memory>
+#include <string>
+#include <utility>
+
 #include "absl/base/thread_annotations.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/synchronization/mutex.h"
 #include "ray/common/id.h"
+#include "ray/gcs/gcs_client/gcs_client.h"
+#include "ray/raylet_client/raylet_client.h"
 #include "ray/rpc/worker/core_worker_client.h"
 
 namespace ray {
@@ -27,13 +34,18 @@ class CoreWorkerClientPool {
  public:
   CoreWorkerClientPool() = delete;
 
-  /// Creates a CoreWorkerClientPool based on the low-level ClientCallManager.
-  CoreWorkerClientPool(rpc::ClientCallManager &ccm)
-      : client_factory_(defaultClientFactory(ccm)){};
-
   /// Creates a CoreWorkerClientPool by a given connection function.
-  CoreWorkerClientPool(CoreWorkerClientFactoryFn client_factory)
-      : client_factory_(client_factory){};
+  explicit CoreWorkerClientPool(CoreWorkerClientFactoryFn client_factory)
+      : core_worker_client_factory_(std::move(client_factory)){};
+
+  /// Default unavailable_timeout_callback for retryable rpc's used by client factories on
+  /// core worker and node manager.
+  static std::function<void()> GetDefaultUnavailableTimeoutCallback(
+      gcs::GcsClient *gcs_client,
+      rpc::CoreWorkerClientPool *worker_client_pool,
+      std::function<std::shared_ptr<RayletClientInterface>(std::string, int32_t)>
+          raylet_client_factory,
+      const rpc::Address &addr);
 
   /// Returns an open CoreWorkerClientInterface if one exists, and connect to one
   /// if it does not. The returned pointer is borrowed, and expected to be used
@@ -53,15 +65,6 @@ class CoreWorkerClientPool {
   }
 
  private:
-  /// Provides the default client factory function. Providing this function to the
-  /// construtor aids migration but is ultimately a thing that should be
-  /// deprecated and brought internal to the pool, so this is our bridge.
-  CoreWorkerClientFactoryFn defaultClientFactory(rpc::ClientCallManager &ccm) const {
-    return [&](const rpc::Address &addr) {
-      return std::shared_ptr<rpc::CoreWorkerClient>(new rpc::CoreWorkerClient(addr, ccm));
-    };
-  };
-
   /// Try to remove some idle clients to free memory.
   /// It doesn't go through the entire list and remove all idle clients.
   /// Instead, it tries to remove idle clients from the end of the list
@@ -73,16 +76,17 @@ class CoreWorkerClientPool {
   /// This factory function does the connection to CoreWorkerClient, and is
   /// provided by the constructor (either the default implementation, above, or a
   /// provided one)
-  CoreWorkerClientFactoryFn client_factory_;
+  CoreWorkerClientFactoryFn core_worker_client_factory_;
 
   absl::Mutex mu_;
 
   struct CoreWorkerClientEntry {
    public:
-    CoreWorkerClientEntry() {}
+    CoreWorkerClientEntry() = default;
     CoreWorkerClientEntry(ray::WorkerID worker_id,
                           std::shared_ptr<CoreWorkerClientInterface> core_worker_client)
-        : worker_id(worker_id), core_worker_client(core_worker_client) {}
+        : worker_id(std::move(worker_id)),
+          core_worker_client(std::move(core_worker_client)) {}
 
     ray::WorkerID worker_id;
     std::shared_ptr<CoreWorkerClientInterface> core_worker_client;

@@ -57,7 +57,7 @@ class TestOfflineEnvRunner(unittest.TestCase):
             output_write_episodes=True,
         )
 
-        offline_env_runner = OfflineSingleAgentEnvRunner(config, worker_index=1)
+        offline_env_runner = OfflineSingleAgentEnvRunner(config=config, worker_index=1)
         # Sample 100 episodes.
         _ = offline_env_runner.sample(
             num_episodes=100,
@@ -109,7 +109,7 @@ class TestOfflineEnvRunner(unittest.TestCase):
             output_compress_columns=[],
         )
 
-        offline_env_runner = OfflineSingleAgentEnvRunner(config, worker_index=1)
+        offline_env_runner = OfflineSingleAgentEnvRunner(config=config, worker_index=1)
 
         _ = offline_env_runner.sample(
             num_timesteps=100,
@@ -165,7 +165,7 @@ class TestOfflineEnvRunner(unittest.TestCase):
             # }
         )
 
-        offline_env_runner = OfflineSingleAgentEnvRunner(config, worker_index=1)
+        offline_env_runner = OfflineSingleAgentEnvRunner(config=config, worker_index=1)
 
         _ = offline_env_runner.sample(
             num_timesteps=100,

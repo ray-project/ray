@@ -1,4 +1,5 @@
 import os
+from typing import List
 
 #: Logger used by serve components
 SERVE_LOGGER_NAME = "ray.serve"
@@ -45,7 +46,19 @@ HTTP_PROXY_TIMEOUT = 60
 #: If no replicas at target version is running by the time we're at
 #: max construtor retry count, deploy() is considered failed.
 #: By default we set threshold as min(num_replicas * 3, this value)
-MAX_DEPLOYMENT_CONSTRUCTOR_RETRY_COUNT = 100
+MAX_DEPLOYMENT_CONSTRUCTOR_RETRY_COUNT = int(
+    os.environ.get("MAX_DEPLOYMENT_CONSTRUCTOR_RETRY_COUNT", "20")
+)
+
+# Max retry on deployment constructor is
+# min(num_replicas * MAX_PER_REPLICA_RETRY_COUNT, MAX_DEPLOYMENT_CONSTRUCTOR_RETRY_COUNT)
+MAX_PER_REPLICA_RETRY_COUNT = int(os.environ.get("MAX_PER_REPLICA_RETRY_COUNT", "3"))
+
+
+# If you are wondering why we are using histogram buckets, please refer to
+# https://prometheus.io/docs/practices/histograms/
+# short answer is that its cheaper to calculate percentiles on the histogram
+# than to calculate them on raw data, both in terms of time and space.
 
 #: Default histogram buckets for latency tracker.
 DEFAULT_LATENCY_BUCKET_MS = [
@@ -75,6 +88,39 @@ DEFAULT_LATENCY_BUCKET_MS = [
     # 10 min
     600000,
 ]
+
+
+def parse_latency_buckets(bucket_str: str, default_buckets: list) -> list:
+    if bucket_str.strip() == "":
+        return default_buckets
+    try:
+        # Convert string to list of floats
+        buckets = [float(x.strip()) for x in bucket_str.split(",")]
+        if not buckets:
+            raise ValueError("Empty bucket list")
+        if any(x <= 0 for x in buckets):
+            raise ValueError("Bucket values must be positive")
+        if sorted(set(buckets)) != buckets:
+            raise ValueError("Bucket values must be in strictly ascending order")
+        return buckets
+    except Exception as e:
+        raise ValueError(
+            f"Invalid format for {bucket_str}. "
+            f"Expected comma-separated positive numbers in ascending order. Error: {str(e)}"
+        )
+
+
+# Example usage:
+# RAY_SERVE_REQUEST_LATENCY_BUCKET_MS="1,2,3,4"
+# RAY_SERVE_MODEL_LOAD_LATENCY_BUCKET_MS="1,2,3,4"
+#: Histogram buckets for request latency.
+REQUEST_LATENCY_BUCKETS_MS = parse_latency_buckets(
+    os.getenv("REQUEST_LATENCY_BUCKETS_MS", ""), DEFAULT_LATENCY_BUCKET_MS
+)
+#: Histogram buckets for model load/unload latency.
+MODEL_LOAD_LATENCY_BUCKETS_MS = parse_latency_buckets(
+    os.getenv("MODEL_LOAD_LATENCY_BUCKETS_MS", ""), DEFAULT_LATENCY_BUCKET_MS
+)
 
 #: Name of deployment health check method implemented by user.
 HEALTH_CHECK_METHOD = "check_health"
@@ -194,9 +240,8 @@ SERVE_LOG_TIME = "asctime"
 # Logging format with record key to format string dict
 SERVE_LOG_RECORD_FORMAT = {
     SERVE_LOG_REQUEST_ID: "%(request_id)s",
-    SERVE_LOG_ROUTE: "%(route)s",
     SERVE_LOG_APPLICATION: "%(application)s",
-    SERVE_LOG_MESSAGE: "%(filename)s:%(lineno)d - %(message)s",
+    SERVE_LOG_MESSAGE: "-- %(message)s",
     SERVE_LOG_LEVEL_NAME: "%(levelname)s",
     SERVE_LOG_TIME: "%(asctime)s",
 }
@@ -284,20 +329,7 @@ RAY_SERVE_MAX_QUEUE_LENGTH_RESPONSE_DEADLINE_S = float(
     os.environ.get("RAY_SERVE_MAX_QUEUE_LENGTH_RESPONSE_DEADLINE_S", 1.0)
 )
 
-# Feature flag for caching queue lengths for faster routing in each handle.
-RAY_SERVE_ENABLE_QUEUE_LENGTH_CACHE = (
-    os.environ.get("RAY_SERVE_ENABLE_QUEUE_LENGTH_CACHE", "1") == "1"
-)
-
-# Feature flag for strictly enforcing max_ongoing_requests (replicas will reject
-# requests).
-RAY_SERVE_ENABLE_STRICT_MAX_ONGOING_REQUESTS = (
-    os.environ.get("RAY_SERVE_ENABLE_STRICT_MAX_ONGOING_REQUESTS", "0") == "1"
-    # Strict enforcement path must be enabled for the queue length cache.
-    or RAY_SERVE_ENABLE_QUEUE_LENGTH_CACHE
-)
-
-# Length of time to respect entries in the queue length cache when scheduling requests.
+# Length of time to respect entries in the queue length cache when routing requests.
 RAY_SERVE_QUEUE_LENGTH_CACHE_TIMEOUT_S = float(
     os.environ.get("RAY_SERVE_QUEUE_LENGTH_CACHE_TIMEOUT_S", 10.0)
 )
@@ -326,17 +358,11 @@ RAY_SERVE_GRPC_MAX_MESSAGE_SIZE = int(
     os.environ.get("RAY_SERVE_GRPC_MAX_MESSAGE_SIZE", (2 * 1024 * 1024 * 1024) - 1)
 )
 
-# Serve's gRPC server options.
-SERVE_GRPC_OPTIONS = [
+# Default options passed when constructing gRPC servers.
+DEFAULT_GRPC_SERVER_OPTIONS = [
     ("grpc.max_send_message_length", RAY_SERVE_GRPC_MAX_MESSAGE_SIZE),
     ("grpc.max_receive_message_length", RAY_SERVE_GRPC_MAX_MESSAGE_SIZE),
 ]
-
-# Feature flag to eagerly start replacement replicas. This means new
-# replicas will start before waiting for old replicas to fully stop.
-RAY_SERVE_EAGERLY_START_REPLACEMENT_REPLICAS = (
-    os.environ.get("RAY_SERVE_EAGERLY_START_REPLACEMENT_REPLICAS", "1") == "1"
-)
 
 # Timeout for gracefully shutting down metrics pusher, e.g. in routers or replicas
 METRICS_PUSHER_GRACEFUL_SHUTDOWN_TIMEOUT_S = 10
@@ -351,8 +377,68 @@ RAY_SERVE_USE_COMPACT_SCHEDULING_STRATEGY = (
     os.environ.get("RAY_SERVE_USE_COMPACT_SCHEDULING_STRATEGY", "0") == "1"
 )
 
+
+def str_to_list(s: str) -> List[str]:
+    """Return a list from a comma-separated string.
+
+    Trims whitespace and skips empty entries.
+    """
+    return [r.strip() for r in s.split(",") if r.strip()]
+
+
+# Comma-separated list of custom resources prioritized in scheduling. Sorted from highest to lowest priority.
+# Example: "customx,customy"
+RAY_SERVE_HIGH_PRIORITY_CUSTOM_RESOURCES: List[str] = str_to_list(
+    os.environ.get("RAY_SERVE_HIGH_PRIORITY_CUSTOM_RESOURCES", "")
+)
+
 # Feature flag to always override local_testing_mode to True in serve.run.
 # This is used for internal testing to avoid passing the flag to every invocation.
 RAY_SERVE_FORCE_LOCAL_TESTING_MODE = (
     os.environ.get("RAY_SERVE_FORCE_LOCAL_TESTING_MODE", "0") == "1"
 )
+
+# Run sync methods defined in the replica in a thread pool by default.
+RAY_SERVE_RUN_SYNC_IN_THREADPOOL = (
+    os.environ.get("RAY_SERVE_RUN_SYNC_IN_THREADPOOL", "0") == "1"
+)
+
+RAY_SERVE_RUN_SYNC_IN_THREADPOOL_WARNING = (
+    "Calling sync method '{method_name}' directly on the "
+    "asyncio loop. In a future version, sync methods will be run in a "
+    "threadpool by default. Ensure your sync methods are thread safe "
+    "or keep the existing behavior by making them `async def`. Opt "
+    "into the new behavior by setting "
+    "RAY_SERVE_RUN_SYNC_IN_THREADPOOL=1."
+)
+
+# Feature flag to turn off GC optimizations in the proxy (in case there is a
+# memory leak or negative performance impact).
+RAY_SERVE_ENABLE_PROXY_GC_OPTIMIZATIONS = (
+    os.environ.get("RAY_SERVE_ENABLE_PROXY_GC_OPTIMIZATIONS", "1") == "1"
+)
+
+# Used for gc.set_threshold() when proxy GC optimizations are enabled.
+RAY_SERVE_PROXY_GC_THRESHOLD = int(
+    os.environ.get("RAY_SERVE_PROXY_GC_THRESHOLD", "10000")
+)
+
+# Interval at which cached metrics will be exported using the Ray metric API.
+# Set to `0` to disable caching entirely.
+RAY_SERVE_METRICS_EXPORT_INTERVAL_MS = int(
+    os.environ.get("RAY_SERVE_METRICS_EXPORT_INTERVAL_MS", "100")
+)
+
+# The default request router class to use if none is specified.
+DEFAULT_REQUEST_ROUTER_PATH = (
+    "ray.serve._private.request_router:PowerOfTwoChoicesRequestRouter"
+)
+
+# The default request routing period to use if none is specified.
+DEFAULT_REQUEST_ROUTING_STATS_PERIOD_S = 10
+
+# The default request routing timeout to use if none is specified.
+DEFAULT_REQUEST_ROUTING_STATS_TIMEOUT_S = 30
+
+# Name of deployment request routing stats method implemented by user.
+REQUEST_ROUTING_STATS_METHOD = "record_routing_stats"

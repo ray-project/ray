@@ -135,13 +135,10 @@ class TestRayActorOptionsSchema:
 
         ray_actor_options_schema = self.get_valid_ray_actor_options_schema()
         ray_actor_options_schema["runtime_env"] = env
+        original_runtime_env = copy.deepcopy(env)
         schema = RayActorOptionsSchema.parse_obj(ray_actor_options_schema)
-
-        original_runtime_env = copy.deepcopy(schema.runtime_env)
-        # Make sure "working_dir" is only added once.
-        for _ in range(5):
-            schema = RayActorOptionsSchema.parse_obj(schema)
-            assert schema.runtime_env == original_runtime_env
+        # Make sure runtime environment is unchanged by the validation
+        assert schema.runtime_env == original_runtime_env
 
     @pytest.mark.parametrize("env", get_invalid_runtime_envs())
     def test_ray_actor_options_invalid_runtime_env(self, env):
@@ -445,13 +442,10 @@ class TestServeApplicationSchema:
 
         serve_application_schema = self.get_valid_serve_application_schema()
         serve_application_schema["runtime_env"] = env
+        original_runtime_env = copy.deepcopy(env)
         schema = ServeApplicationSchema.parse_obj(serve_application_schema)
-
-        original_runtime_env = copy.deepcopy(schema.runtime_env)
-        # Make sure "working_dir" is only added once.
-        for _ in range(5):
-            schema = ServeApplicationSchema.parse_obj(schema)
-            assert schema.runtime_env == original_runtime_env
+        # Make sure runtime environment is unchanged by the validation
+        assert schema.runtime_env == original_runtime_env
 
     @pytest.mark.parametrize("env", get_invalid_runtime_envs())
     def test_serve_application_invalid_runtime_env(self, env):
@@ -688,6 +682,7 @@ class TestLoggingConfig:
         assert schema.encoding == "JSON"
         assert schema.logs_dir == "/my_dir"
         assert schema.enable_access_log
+        assert schema.additional_log_standard_attrs == []
 
         # Test string values for log_level.
         schema = LoggingConfig.parse_obj(
@@ -714,6 +709,22 @@ class TestLoggingConfig:
         assert schema.encoding == "TEXT"
         assert schema.logs_dir is None
         assert schema.enable_access_log
+        assert schema.additional_log_standard_attrs == []
+
+    def test_additional_log_standard_attrs_type(self):
+        schema = LoggingConfig.parse_obj({"additional_log_standard_attrs": ["name"]})
+        assert isinstance(schema.additional_log_standard_attrs, list)
+        assert schema.additional_log_standard_attrs == ["name"]
+
+    def test_additional_log_standard_attrs_type_error(self):
+        with pytest.raises(ValidationError):
+            LoggingConfig.parse_obj({"additional_log_standard_attrs": "name"})
+
+    def test_additional_log_standard_attrs_deduplicate(self):
+        schema = LoggingConfig.parse_obj(
+            {"additional_log_standard_attrs": ["name", "name"]}
+        )
+        assert schema.additional_log_standard_attrs == ["name"]
 
 
 # This function is defined globally to be accessible via import path
@@ -750,7 +761,6 @@ def test_deployment_to_schema_to_deployment():
     )
     assert deployment.ray_actor_options["runtime_env"]["py_modules"] == [
         TEST_DEPLOY_GROUP_PINNED_URI,
-        TEST_MODULE_PINNED_URI,
     ]
 
 
@@ -808,6 +818,7 @@ def test_serve_instance_details_is_json_serializable():
                             },
                         },
                         "target_num_replicas": 0,
+                        "required_resources": {"CPU": 1},
                         "replicas": [],
                     }
                 },
@@ -841,6 +852,7 @@ def test_serve_instance_details_is_json_serializable():
                                 "autoscaling_config": {},
                             },
                             "target_num_replicas": 0,
+                            "required_resources": {"CPU": 1},
                             "replicas": [],
                         }
                     },

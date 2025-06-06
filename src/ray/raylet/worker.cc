@@ -15,10 +15,11 @@
 #include "ray/raylet/worker.h"
 
 #include <boost/bind/bind.hpp>
+#include <memory>
+#include <string>
 #include <utility>
 
 #include "ray/raylet/format/node_manager_generated.h"
-#include "ray/raylet/raylet.h"
 #include "src/ray/protobuf/core_worker.grpc.pb.h"
 #include "src/ray/protobuf/core_worker.pb.h"
 
@@ -117,7 +118,9 @@ void Worker::Connect(int port) {
   rpc::Address addr;
   addr.set_ip_address(ip_address_);
   addr.set_port(port_);
-  rpc_client_ = std::make_unique<rpc::CoreWorkerClient>(addr, client_call_manager_);
+  rpc_client_ = std::make_unique<rpc::CoreWorkerClient>(addr, client_call_manager_, []() {
+    RAY_LOG(FATAL) << "Raylet doesn't call any retryable core worker grpc methods.";
+  });
   Connect(rpc_client_);
 }
 
@@ -175,13 +178,13 @@ const std::shared_ptr<ClientConnection> Worker::Connection() const { return conn
 void Worker::SetOwnerAddress(const rpc::Address &address) { owner_address_ = address; }
 const rpc::Address &Worker::GetOwnerAddress() const { return owner_address_; }
 
-void Worker::DirectActorCallArgWaitComplete(int64_t tag) {
+void Worker::ActorCallArgWaitComplete(int64_t tag) {
   RAY_CHECK(port_ > 0);
-  rpc::DirectActorCallArgWaitCompleteRequest request;
+  rpc::ActorCallArgWaitCompleteRequest request;
   request.set_tag(tag);
   request.set_intended_worker_id(worker_id_.Binary());
-  rpc_client_->DirectActorCallArgWaitComplete(
-      request, [](Status status, const rpc::DirectActorCallArgWaitCompleteReply &reply) {
+  rpc_client_->ActorCallArgWaitComplete(
+      request, [](Status status, const rpc::ActorCallArgWaitCompleteReply &reply) {
         if (!status.ok()) {
           RAY_LOG(ERROR) << "Failed to send wait complete: " << status.ToString();
         }

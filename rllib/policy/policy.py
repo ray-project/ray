@@ -24,7 +24,6 @@ from packaging import version
 import ray
 import ray.cloudpickle as pickle
 from ray.actor import ActorHandle
-from ray.train import Checkpoint
 from ray.rllib.models.action_dist import ActionDistribution
 from ray.rllib.models.catalog import ModelCatalog
 from ray.rllib.models.modelv2 import ModelV2
@@ -72,6 +71,7 @@ from ray.rllib.utils.typing import (
     TensorStructType,
     TensorType,
 )
+from ray.tune import Checkpoint
 
 tf1, tf, tfv = try_import_tf()
 torch, _ = try_import_torch()
@@ -232,20 +232,20 @@ class Policy(metaclass=ABCMeta):
         self.framework = self.config.get("framework")
 
         # Create the callbacks object to use for handling custom callbacks.
-        from ray.rllib.algorithms.callbacks import DefaultCallbacks
+        from ray.rllib.callbacks.callbacks import RLlibCallback
 
         callbacks = self.config.get("callbacks")
-        if isinstance(callbacks, DefaultCallbacks):
+        if isinstance(callbacks, RLlibCallback):
             self.callbacks = callbacks()
         elif isinstance(callbacks, (str, type)):
             try:
-                self.callbacks: "DefaultCallbacks" = deserialize_type(
+                self.callbacks: "RLlibCallback" = deserialize_type(
                     self.config.get("callbacks")
                 )()
             except Exception:
                 pass  # TEST
         else:
-            self.callbacks: "DefaultCallbacks" = DefaultCallbacks()
+            self.callbacks: "RLlibCallback" = RLlibCallback()
 
         # The global timestep, broadcast down from time to time from the
         # local worker to all remote workers.
@@ -1327,9 +1327,9 @@ class Policy(metaclass=ABCMeta):
             auto_remove_unneeded_view_reqs: Whether to automatically
                 remove those ViewRequirements records from
                 self.view_requirements that are not needed.
-            stats_fn (Optional[Callable[[Policy, SampleBatch], Dict[str,
-                TensorType]]]): An optional stats function to be called after
-                the loss.
+                stats_fn (Optional[Callable[[Policy, SampleBatch], Dict[str,
+                    TensorType]]]): An optional stats function to be called after
+                    the loss.
         """
 
         if self.config.get("_disable_initialize_loss_from_dummy_batch", False):

@@ -3,6 +3,7 @@ from ray.data._internal.delegating_block_builder import DelegatingBlockBuilder
 from ray.data._internal.execution.interfaces import PhysicalOperator, RefBundle
 from ray.data._internal.stats import StatsDict
 from ray.data.block import BlockAccessor
+from ray.data.context import DataContext
 
 
 class AggregateNumRows(PhysicalOperator):
@@ -12,15 +13,25 @@ class AggregateNumRows(PhysicalOperator):
     block metadata. It outputs a single row with the specified column name.
     """
 
-    def __init__(self, input_dependencies, column_name: str):
+    def __init__(
+        self,
+        input_dependencies,
+        data_context: DataContext,
+        column_name: str,
+    ):
         super().__init__(
-            "AggregateNumRows", input_dependencies, target_max_block_size=None
+            "AggregateNumRows",
+            input_dependencies,
+            data_context,
+            target_max_block_size=None,
         )
 
         self._column_name = column_name
 
         self._num_rows = 0
         self._has_outputted = False
+        self._estimated_num_output_bundles = 1
+        self._estimated_output_num_rows = 1
 
     def has_next(self) -> bool:
         return self._inputs_complete and not self._has_outputted
