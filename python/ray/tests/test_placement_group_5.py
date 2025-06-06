@@ -410,8 +410,9 @@ def test_placement_group_max_cpu_frac_edge_cases(ray_start_cluster):
 
 
 def test_placement_group_parallel_submission(ray_start_cluster):
+    NUM_PARALLEL_PGS = 5
     cluster = ray_start_cluster
-    cluster.add_node(num_cpus=1, resources={"custom_resource": 5})
+    cluster.add_node(num_cpus=1, resources={"custom_resource": NUM_PARALLEL_PGS})
     cluster.wait_for_nodes()
     ray.init(address=cluster.address)
 
@@ -440,7 +441,6 @@ def test_placement_group_parallel_submission(ray_start_cluster):
 
     # For each strategy, submit multiple placement groups in parallel and check that they
     # will all eventually be placed and their tasks executed.
-    NUM_PARALLEL_PGS = 5
     submitters = [Submitter.remote() for _ in range(NUM_PARALLEL_PGS)]
     for strategy in ["SPREAD", "STRICT_SPREAD", "PACK", "STRICT_PACK"]:
         print("Testing strategy:", strategy)
