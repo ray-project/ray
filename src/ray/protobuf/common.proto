@@ -608,6 +608,8 @@ message TaskInfoEntry {
   // Human readable stacktrace of the task invocation, or actor creation. The exact data
   // format depends on the language. Only populated if the flag is enabled.
   optional string call_site = 27;
+  // The key-value label constraints of the node to schedule this task or actor on.
+  map<string, string> label_selector = 28;
 }
 
 message LabelSelector {
