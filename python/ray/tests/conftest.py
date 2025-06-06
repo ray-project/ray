@@ -282,7 +282,7 @@ def _find_available_ports(start: int, end: int, *, num: int = 1) -> List[int]:
 
 
 def start_redis_with_sentinel(db_dir):
-    temp_dir = ray._private.utils.get_ray_temp_dir()
+    temp_dir = ray._common.utils.get_ray_temp_dir()
 
     redis_ports = _find_available_ports(49159, 55535, num=redis_sentinel_replicas() + 1)
     sentinel_port = redis_ports[0]
@@ -319,7 +319,7 @@ def start_redis(db_dir):
         leader_id = None
         redis_ports = []
         while len(redis_ports) != redis_replicas():
-            temp_dir = ray._private.utils.get_ray_temp_dir()
+            temp_dir = ray._common.utils.get_ray_temp_dir()
             port, free_port = _find_available_ports(49159, 55535, num=2)
             try:
                 node_id = None
@@ -507,7 +507,7 @@ def shutdown_only(maybe_setup_external_redis):
     # The code after the yield will run as teardown code.
     ray.shutdown()
     # Delete the cluster address just in case.
-    ray._private.utils.reset_ray_address()
+    ray._common.utils.reset_ray_address()
 
 
 @pytest.fixture
@@ -528,7 +528,7 @@ def class_ray_instance():
     yield ray.init()
     ray.shutdown()
     # Delete the cluster address just in case.
-    ray._private.utils.reset_ray_address()
+    ray._common.utils.reset_ray_address()
 
 
 @contextmanager
@@ -542,7 +542,7 @@ def _ray_start(**kwargs):
     # The code after the yield will run as teardown code.
     ray.shutdown()
     # Delete the cluster address just in case.
-    ray._private.utils.reset_ray_address()
+    ray._common.utils.reset_ray_address()
 
 
 @pytest.fixture
@@ -789,7 +789,7 @@ def call_ray_start_context(request):
     command_args = parameter.split(" ")
 
     try:
-        out = ray._private.utils.decode(
+        out = ray._common.utils.decode(
             subprocess.check_output(command_args, stderr=subprocess.STDOUT, env=env)
         )
     except Exception as e:
@@ -813,7 +813,7 @@ def call_ray_start_context(request):
     # Kill the Ray cluster.
     subprocess.check_call(["ray", "stop"], env=env)
     # Delete the cluster address just in case.
-    ray._private.utils.reset_ray_address()
+    ray._common.utils.reset_ray_address()
 
 
 @pytest.fixture
@@ -821,7 +821,7 @@ def call_ray_start_with_external_redis(request):
     ports = getattr(request, "param", "6379")
     port_list = ports.split(",")
     for port in port_list:
-        temp_dir = ray._private.utils.get_ray_temp_dir()
+        temp_dir = ray._common.utils.get_ray_temp_dir()
         start_redis_instance(temp_dir, int(port), password="123")
     address_str = ",".join(map(lambda x: "localhost:" + x, port_list))
     cmd = f"ray start --head --address={address_str} --redis-password=123"
@@ -834,7 +834,7 @@ def call_ray_start_with_external_redis(request):
     # Kill the Ray cluster.
     subprocess.check_call(["ray", "stop"])
     # Delete the cluster address just in case.
-    ray._private.utils.reset_ray_address()
+    ray._common.utils.reset_ray_address()
 
 
 @pytest.fixture
@@ -852,7 +852,7 @@ def call_ray_stop_only():
     yield
     subprocess.check_call(["ray", "stop"])
     # Delete the cluster address just in case.
-    ray._private.utils.reset_ray_address()
+    ray._common.utils.reset_ray_address()
 
 
 def _start_cluster(cluster, request):

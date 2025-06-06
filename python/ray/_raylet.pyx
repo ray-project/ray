@@ -225,7 +225,8 @@ from ray._private.client_mode_hook import disable_client_hook
 import ray.core.generated.common_pb2 as common_pb2
 import ray._private.memory_monitor as memory_monitor
 import ray._private.profiling as profiling
-from ray._private.utils import decode, DeferSigint
+from ray._common.utils import decode
+from ray._private.utils import DeferSigint
 from ray._private.object_ref_generator import DynamicObjectRefGenerator
 from ray.util.annotations import PublicAPI
 

@@ -412,4 +412,4 @@ class Cluster:
         # need to reset internal kv since gcs is down
         ray.experimental.internal_kv._internal_kv_reset()
         # Delete the cluster address.
-        ray._private.utils.reset_ray_address()
+        ray._common.utils.reset_ray_address()
