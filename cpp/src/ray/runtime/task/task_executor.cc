@@ -139,8 +139,7 @@ Status TaskExecutor::ExecuteTask(
     bool is_reattempt,
     bool is_streaming_generator,
     bool retry_exception,
-    int64_t generator_backpressure_num_objects,
-    const rpc::TensorTransport &tensor_transport) {
+    int64_t generator_backpressure_num_objects) {
   RAY_LOG(DEBUG) << "Execute task type: " << TaskType_Name(task_type)
                  << " name:" << task_name;
   RAY_CHECK(ray_function.GetLanguage() == ray::Language::CPP);

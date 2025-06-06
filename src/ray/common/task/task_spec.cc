@@ -276,18 +276,11 @@ void TaskSpecification::AddDynamicReturnId(const ObjectID &dynamic_return_id) {
 }
 
 bool TaskSpecification::ArgByRef(size_t arg_index) const {
-  // If `has_object_ref()` is true and `is_inlined()` is true, it means that the argument
-  // is an ObjectRef, but the object doesn't get pushed to the object store. Hence, it is
-  // inlined in the task spec.
-  return message_->args(arg_index).has_object_ref() &&
-         !message_->args(arg_index).is_inlined();
+  return message_->args(arg_index).has_object_ref();
 }
 
 ObjectID TaskSpecification::ArgId(size_t arg_index) const {
-  if (message_->args(arg_index).has_object_ref()) {
-    return ObjectID::FromBinary(message_->args(arg_index).object_ref().object_id());
-  }
-  return ObjectID::Nil();
+  return ObjectID::FromBinary(message_->args(arg_index).object_ref().object_id());
 }
 
 const rpc::ObjectReference &TaskSpecification::ArgRef(size_t arg_index) const {
@@ -484,13 +477,6 @@ int TaskSpecification::MaxActorConcurrency() const {
 const std::string &TaskSpecification::ConcurrencyGroupName() const {
   RAY_CHECK(IsActorTask());
   return message_->concurrency_group_name();
-}
-
-const rpc::TensorTransport TaskSpecification::TensorTransport() const {
-  if (IsActorTask()) {
-    return message_->tensor_transport();
-  }
-  return rpc::TensorTransport::OBJECT_STORE;
 }
 
 bool TaskSpecification::ExecuteOutOfOrder() const {
