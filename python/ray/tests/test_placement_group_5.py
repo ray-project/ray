@@ -446,7 +446,7 @@ def test_placement_group_parallel_submission(ray_start_cluster):
         print("Testing strategy:", strategy)
         assert (
             ray.get([s.submit.remote(strategy) for s in submitters], timeout=30)
-            == ["OK"] * NUM_PARALLEL_PGS
+            == ["ok"] * NUM_PARALLEL_PGS
         )
 
 
