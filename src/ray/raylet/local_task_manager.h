@@ -271,12 +271,10 @@ class LocalTaskManager : public ILocalTaskManager {
   // tasks' arguments.
   bool PinTaskArgsIfMemoryAvailable(const TaskSpecification &spec, bool *args_missing);
 
-  // Helper functions to pin and release an executing task's args.
-  void PinTaskArgs(const TaskSpecification &spec,
-                   std::vector<std::unique_ptr<RayObject>> args);
+ private:
+  // Helper function to release an executing task's args.
   void ReleaseTaskArgs(const TaskID &task_id);
 
- private:
   const NodeID &self_node_id_;
   const scheduling::NodeID self_scheduling_node_id_;
   /// Responsible for resource tracking/view of the cluster.
