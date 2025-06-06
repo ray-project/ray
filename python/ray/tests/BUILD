@@ -226,7 +226,7 @@ py_test_module_list(
         "test_runtime_env_env_vars.py",
         "test_runtime_env_failure.py",
         "test_runtime_env_working_dir.py",
-        "test_runtime_env_working_dir_remote_uri.py",
+        "test_runtime_env_working_dir_uri.py",
     ],
     name_suffix = "_client_mode",
     tags = [
