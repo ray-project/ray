@@ -31,23 +31,9 @@
 #include "ray/gcs/gcs_server/gcs_worker_manager.h"
 #include "ray/gcs/gcs_server/store_client_kv.h"
 #include "ray/pubsub/publisher.h"
-#include "ray/util/util.h"
 
 namespace ray {
 namespace gcs {
-
-inline std::ostream &operator<<(std::ostream &str, GcsServer::StorageType val) {
-  switch (val) {
-  case GcsServer::StorageType::IN_MEMORY:
-    return str << "StorageType::IN_MEMORY";
-  case GcsServer::StorageType::REDIS_PERSIST:
-    return str << "StorageType::REDIS_PERSIST";
-  case GcsServer::StorageType::UNKNOWN:
-    return str << "StorageType::UNKNOWN";
-  default:
-    UNREACHABLE;
-  }
-}
 
 GcsServer::GcsServer(const ray::gcs::GcsServerConfig &config,
                      instrumented_io_context &main_service)
@@ -76,11 +62,9 @@ GcsServer::GcsServer(const ray::gcs::GcsServerConfig &config,
   // GcsInternalKVManager, to avoid congestion on the latter.
   RAY_LOG(INFO) << "GCS storage type is " << storage_type_;
   auto &io_context = io_context_provider_.GetDefaultIOContext();
-  switch (storage_type_) {
-  case StorageType::IN_MEMORY:
+  if (storage_type_ == kInMemoryStorage) {
     gcs_table_storage_ = std::make_unique<InMemoryGcsTableStorage>();
-    break;
-  case StorageType::REDIS_PERSIST: {
+  } else if (storage_type_ == kRedisStorage) {
     auto redis_client = CreateRedisClient(io_context);
     gcs_table_storage_ = std::make_unique<gcs::RedisGcsTableStorage>(redis_client);
     // Init redis failure detector.
@@ -89,9 +73,7 @@ GcsServer::GcsServer(const ray::gcs::GcsServerConfig &config,
           RAY_LOG(FATAL) << "Redis connection failed. Shutdown GCS.";
         });
     gcs_redis_failure_detector_->Start();
-    break;
-  }
-  default:
+  } else {
     RAY_LOG(FATAL) << "Unexpected storage type: " << storage_type_;
   }
 
@@ -230,7 +212,9 @@ void GcsServer::DoStart(const GcsInitData &gcs_init_data) {
   InitGcsTaskManager();
 
   // Install event listeners.
-  InstallEventListeners();
+  if (RayConfig::instance().gcs_actor_scheduling_enabled()) {
+    InstallActorSchedulingEventListeners();
+  }
 
   // Init autoscaling manager
   InitGcsAutoscalerStateManager(gcs_init_data);
@@ -291,12 +275,52 @@ void GcsServer::Stop() {
 
 void GcsServer::InitGcsNodeManager(const GcsInitData &gcs_init_data) {
   RAY_CHECK(gcs_table_storage_ && gcs_publisher_);
+
+  auto node_added_listener = [this](const std::shared_ptr<rpc::GcsNodeInfo> &node) {
+    // Because a new node has been added, we need to try to schedule the pending
+    // placement groups and the pending actors.
+    auto node_id = NodeID::FromBinary(node->node_id());
+    gcs_resource_manager_->OnNodeAdd(*node);
+    gcs_placement_group_manager_->OnNodeAdd(node_id);
+    gcs_actor_manager_->SchedulePendingActors();
+    gcs_autoscaler_state_manager_->OnNodeAdd(*node);
+    rpc::Address address;
+    address.set_raylet_id(node->node_id());
+    address.set_ip_address(node->node_manager_address());
+    address.set_port(node->node_manager_port());
+
+    auto raylet_client = raylet_client_pool_->GetOrConnectByAddress(address);
+    RAY_CHECK(raylet_client != nullptr);
+    auto channel = raylet_client->GetChannel();
+    RAY_CHECK(channel != nullptr);
+    gcs_healthcheck_manager_->AddNode(node_id, channel);
+
+    cluster_task_manager_->ScheduleAndDispatchTasks();
+  };
+
+  auto node_removed_listener = [this](const std::shared_ptr<rpc::GcsNodeInfo> &node) {
+    auto node_id = NodeID::FromBinary(node->node_id());
+    const auto node_ip_address = node->node_manager_address();
+    // All of the related placement groups and actors should be reconstructed when a
+    // node is removed from the GCS.
+    gcs_resource_manager_->OnNodeDead(node_id);
+    gcs_placement_group_manager_->OnNodeDead(node_id);
+    gcs_actor_manager_->OnNodeDead(node, node_ip_address);
+    gcs_job_manager_->OnNodeDead(node_id);
+    raylet_client_pool_->Disconnect(node_id);
+    gcs_healthcheck_manager_->RemoveNode(node_id);
+    pubsub_handler_->RemoveSubscriberFrom(node_id.Binary());
+    gcs_autoscaler_state_manager_->OnNodeDead(node_id);
+  };
+
   gcs_node_manager_ =
       std::make_unique<GcsNodeManager>(gcs_publisher_.get(),
                                        gcs_table_storage_.get(),
                                        io_context_provider_.GetDefaultIOContext(),
                                        raylet_client_pool_.get(),
-                                       rpc_server_.GetClusterId());
+                                       rpc_server_.GetClusterId(),
+                                       std::move(node_added_listener),
+                                       std::move(node_removed_listener));
   // Initialize by gcs tables data.
   gcs_node_manager_->Initialize(gcs_init_data);
   rpc_server_.RegisterService(std::make_unique<rpc::NodeInfoGrpcService>(
@@ -410,12 +434,18 @@ void GcsServer::InitClusterTaskManager() {
 }
 
 void GcsServer::InitGcsJobManager(const GcsInitData &gcs_init_data) {
+  RAY_CHECK(gcs_table_storage_ && gcs_publisher_);
+
   auto client_factory = [this](const rpc::Address &address) {
     return std::make_shared<rpc::CoreWorkerClient>(address, client_call_manager_, []() {
       RAY_LOG(FATAL) << "GCS doesn't call any retryable core worker grpc methods.";
     });
   };
-  RAY_CHECK(gcs_table_storage_ && gcs_publisher_);
+  auto job_finished_listener = [this](const rpc::JobTableData &job_data) {
+    const auto job_id = JobID::FromBinary(job_data.job_id());
+    gcs_task_manager_->OnJobFinished(job_id, job_data.end_time());
+    gcs_placement_group_manager_->CleanPlacementGroupIfNeededWhenJobDead(job_id);
+  };
   gcs_job_manager_ =
       std::make_unique<GcsJobManager>(*gcs_table_storage_,
                                       *gcs_publisher_,
@@ -423,7 +453,8 @@ void GcsServer::InitGcsJobManager(const GcsInitData &gcs_init_data) {
                                       *function_manager_,
                                       kv_manager_->GetInstance(),
                                       io_context_provider_.GetDefaultIOContext(),
-                                      client_factory);
+                                      std::move(job_finished_listener),
+                                      std::move(client_factory));
   gcs_job_manager_->Initialize(gcs_init_data);
 
   rpc_server_.RegisterService(std::make_unique<rpc::JobInfoGrpcService>(
@@ -520,22 +551,13 @@ void GcsServer::InitGcsPlacementGroupManager(const GcsInitData &gcs_init_data) {
       io_context_provider_.GetDefaultIOContext(), *gcs_placement_group_manager_));
 }
 
-GcsServer::StorageType GcsServer::GetStorageType() const {
-  if (RayConfig::instance().gcs_storage() == kInMemoryStorage) {
-    if (!config_.redis_address.empty()) {
-      RAY_LOG(INFO) << "Using external Redis for KV storage: " << config_.redis_address
-                    << ":" << config_.redis_port;
-      return StorageType::REDIS_PERSIST;
-    }
-    return StorageType::IN_MEMORY;
+std::string_view GcsServer::GetStorageType() const {
+  if (!config_.redis_address.empty()) {
+    RAY_LOG(INFO) << "Using external Redis for KV storage: " << config_.redis_address
+                  << ":" << config_.redis_port;
+    return kRedisStorage;
   }
-  if (RayConfig::instance().gcs_storage() == kRedisStorage) {
-    RAY_CHECK(!config_.redis_address.empty());
-    return StorageType::REDIS_PERSIST;
-  }
-  RAY_LOG(FATAL) << "Unsupported GCS storage type: "
-                 << RayConfig::instance().gcs_storage();
-  return StorageType::UNKNOWN;
+  return kInMemoryStorage;
 }
 
 void GcsServer::InitRaySyncer(const GcsInitData &gcs_init_data) {
@@ -571,16 +593,13 @@ void GcsServer::InitKVManager() {
   // TODO(yic): Use a factory with configs
   std::unique_ptr<InternalKVInterface> instance;
   auto &io_context = io_context_provider_.GetIOContext<GcsInternalKVManager>();
-  switch (storage_type_) {
-  case (StorageType::REDIS_PERSIST):
+  if (storage_type_ == kRedisStorage) {
     instance = std::make_unique<StoreClientInternalKV>(
         std::make_unique<RedisStoreClient>(CreateRedisClient(io_context)));
-    break;
-  case (StorageType::IN_MEMORY):
+  } else if (storage_type_ == kInMemoryStorage) {
     instance = std::make_unique<StoreClientInternalKV>(
         std::make_unique<ObservableStoreClient>(std::make_unique<InMemoryStoreClient>()));
-    break;
-  default:
+  } else {
     RAY_LOG(FATAL) << "Unexpected storage type! " << storage_type_;
   }
 
@@ -661,7 +680,28 @@ void GcsServer::InitRuntimeEnvManager() {
 
 void GcsServer::InitGcsWorkerManager() {
   gcs_worker_manager_ = std::make_unique<GcsWorkerManager>(
-      *gcs_table_storage_, io_context_provider_.GetDefaultIOContext(), *gcs_publisher_);
+      *gcs_table_storage_,
+      io_context_provider_.GetDefaultIOContext(),
+      *gcs_publisher_,
+      [this](const std::shared_ptr<rpc::WorkerTableData> &worker_failure_data) {
+        auto &worker_address = worker_failure_data->worker_address();
+        auto worker_id = WorkerID::FromBinary(worker_address.worker_id());
+        auto node_id = NodeID::FromBinary(worker_address.raylet_id());
+        auto worker_ip = worker_address.ip_address();
+        const rpc::RayException *creation_task_exception = nullptr;
+        if (worker_failure_data->has_creation_task_exception()) {
+          creation_task_exception = &worker_failure_data->creation_task_exception();
+        }
+        gcs_actor_manager_->OnWorkerDead(node_id,
+                                         worker_id,
+                                         worker_ip,
+                                         worker_failure_data->exit_type(),
+                                         worker_failure_data->exit_detail(),
+                                         creation_task_exception);
+        gcs_placement_group_scheduler_->HandleWaitingRemovedBundles();
+        pubsub_handler_->RemoveSubscriberFrom(worker_id.Binary());
+        gcs_task_manager_->OnWorkerDead(worker_id, worker_failure_data);
+      });
   rpc_server_.RegisterService(std::make_unique<rpc::WorkerInfoGrpcService>(
       io_context_provider_.GetDefaultIOContext(), *gcs_worker_manager_));
 }
@@ -722,101 +762,28 @@ void GcsServer::InitGcsTaskManager() {
       std::make_unique<rpc::TaskInfoGrpcService>(io_context, *gcs_task_manager_));
 }
 
-void GcsServer::InstallEventListeners() {
-  // Install node event listeners.
-  gcs_node_manager_->AddNodeAddedListener(
-      [this](const std::shared_ptr<rpc::GcsNodeInfo> &node) {
-        // Because a new node has been added, we need to try to schedule the pending
-        // placement groups and the pending actors.
-        auto node_id = NodeID::FromBinary(node->node_id());
-        gcs_resource_manager_->OnNodeAdd(*node);
-        gcs_placement_group_manager_->OnNodeAdd(node_id);
-        gcs_actor_manager_->SchedulePendingActors();
-        gcs_autoscaler_state_manager_->OnNodeAdd(*node);
-        rpc::Address address;
-        address.set_raylet_id(node->node_id());
-        address.set_ip_address(node->node_manager_address());
-        address.set_port(node->node_manager_port());
-
-        auto raylet_client = raylet_client_pool_->GetOrConnectByAddress(address);
-
-        if (gcs_healthcheck_manager_) {
-          RAY_CHECK(raylet_client != nullptr);
-          auto channel = raylet_client->GetChannel();
-          RAY_CHECK(channel != nullptr);
-          gcs_healthcheck_manager_->AddNode(node_id, channel);
-        }
-        cluster_task_manager_->ScheduleAndDispatchTasks();
-      });
-  gcs_node_manager_->AddNodeRemovedListener(
-      [this](const std::shared_ptr<rpc::GcsNodeInfo> &node) {
-        auto node_id = NodeID::FromBinary(node->node_id());
-        const auto node_ip_address = node->node_manager_address();
-        // All of the related placement groups and actors should be reconstructed when a
-        // node is removed from the GCS.
-        gcs_resource_manager_->OnNodeDead(node_id);
-        gcs_placement_group_manager_->OnNodeDead(node_id);
-        gcs_actor_manager_->OnNodeDead(node, node_ip_address);
-        gcs_job_manager_->OnNodeDead(node_id);
-        raylet_client_pool_->Disconnect(node_id);
-        gcs_healthcheck_manager_->RemoveNode(node_id);
-        pubsub_handler_->RemoveSubscriberFrom(node_id.Binary());
-        gcs_autoscaler_state_manager_->OnNodeDead(node_id);
-      });
-
-  // Install worker event listener.
-  gcs_worker_manager_->AddWorkerDeadListener(
-      [this](const std::shared_ptr<rpc::WorkerTableData> &worker_failure_data) {
-        auto &worker_address = worker_failure_data->worker_address();
-        auto worker_id = WorkerID::FromBinary(worker_address.worker_id());
-        auto node_id = NodeID::FromBinary(worker_address.raylet_id());
-        auto worker_ip = worker_address.ip_address();
-        const rpc::RayException *creation_task_exception = nullptr;
-        if (worker_failure_data->has_creation_task_exception()) {
-          creation_task_exception = &worker_failure_data->creation_task_exception();
-        }
-        gcs_actor_manager_->OnWorkerDead(node_id,
-                                         worker_id,
-                                         worker_ip,
-                                         worker_failure_data->exit_type(),
-                                         worker_failure_data->exit_detail(),
-                                         creation_task_exception);
-        gcs_placement_group_scheduler_->HandleWaitingRemovedBundles();
-        pubsub_handler_->RemoveSubscriberFrom(worker_id.Binary());
-        gcs_task_manager_->OnWorkerDead(worker_id, worker_failure_data);
-      });
-
-  // Install job event listeners.
-  gcs_job_manager_->AddJobFinishedListener([this](const rpc::JobTableData &job_data) {
-    const auto job_id = JobID::FromBinary(job_data.job_id());
-    gcs_task_manager_->OnJobFinished(job_id, job_data.end_time());
-    gcs_placement_group_manager_->CleanPlacementGroupIfNeededWhenJobDead(job_id);
+void GcsServer::InstallActorSchedulingEventListeners() {
+  gcs_resource_manager_->AddResourcesChangedListener([this] {
+    io_context_provider_.GetDefaultIOContext().post(
+        [this] {
+          // Because resources have been changed, we need to try to schedule the
+          // pending placement groups and actors.
+          gcs_placement_group_manager_->SchedulePendingPlacementGroups();
+          cluster_task_manager_->ScheduleAndDispatchTasks();
+        },
+        "GcsServer.SchedulePendingActors");
   });
 
-  // Install scheduling event listeners.
-  if (RayConfig::instance().gcs_actor_scheduling_enabled()) {
-    gcs_resource_manager_->AddResourcesChangedListener([this] {
-      io_context_provider_.GetDefaultIOContext().post(
-          [this] {
-            // Because resources have been changed, we need to try to schedule the
-            // pending placement groups and actors.
-            gcs_placement_group_manager_->SchedulePendingPlacementGroups();
-            cluster_task_manager_->ScheduleAndDispatchTasks();
-          },
-          "GcsServer.SchedulePendingActors");
-    });
-
-    gcs_placement_group_scheduler_->AddResourcesChangedListener([this] {
-      io_context_provider_.GetDefaultIOContext().post(
-          [this] {
-            // Because some placement group resources have been committed or deleted, we
-            // need to try to schedule the pending placement groups and actors.
-            gcs_placement_group_manager_->SchedulePendingPlacementGroups();
-            cluster_task_manager_->ScheduleAndDispatchTasks();
-          },
-          "GcsServer.SchedulePendingPGActors");
-    });
-  }
+  gcs_placement_group_scheduler_->AddResourcesChangedListener([this] {
+    io_context_provider_.GetDefaultIOContext().post(
+        [this] {
+          // Because some placement group resources have been committed or deleted, we
+          // need to try to schedule the pending placement groups and actors.
+          gcs_placement_group_manager_->SchedulePendingPlacementGroups();
+          cluster_task_manager_->ScheduleAndDispatchTasks();
+        },
+        "GcsServer.SchedulePendingPGActors");
+  });
 }
 
 void GcsServer::RecordMetrics() const {

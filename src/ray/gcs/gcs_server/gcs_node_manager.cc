@@ -33,20 +33,8 @@ namespace ray {
 namespace gcs {
 
 //////////////////////////////////////////////////////////////////////////////////////////
-GcsNodeManager::GcsNodeManager(GcsPublisher *gcs_publisher,
-                               gcs::GcsTableStorage *gcs_table_storage,
-                               instrumented_io_context &io_context,
-                               rpc::NodeManagerClientPool *raylet_client_pool,
-                               const ClusterID &cluster_id)
-    : gcs_publisher_(gcs_publisher),
-      gcs_table_storage_(gcs_table_storage),
-      io_context_(io_context),
-      raylet_client_pool_(raylet_client_pool),
-      cluster_id_(cluster_id) {
-  export_event_write_enabled_ = IsExportAPIEnabledNode();
-}
 
-void GcsNodeManager::WriteNodeExportEvent(rpc::GcsNodeInfo node_info) const {
+void GcsNodeManager::WriteNodeExportEvent(const rpc::GcsNodeInfo &node_info) const {
   /// Write node_info as a export node event if
   /// enable_export_api_write() is enabled.
   if (!export_event_write_enabled_) {
@@ -117,21 +105,23 @@ void GcsNodeManager::HandleRegisterNode(rpc::RegisterNodeRequest request,
       }
     }
 
-    assert(head_nodes.size() <= 1);
+    RAY_CHECK_LE(head_nodes.size(), 1);
     if (head_nodes.size() == 1) {
-      OnNodeFailure(head_nodes[0],
-                    [this, request, on_done, node_id](const Status &status) {
-                      RAY_CHECK_OK(status);
-                      RAY_CHECK_OK(gcs_table_storage_->NodeTable().Put(
-                          node_id, request.node_info(), {on_done, io_context_}));
-                    });
+      OnNodeFailure(
+          head_nodes[0],
+          [this, request = std::move(request), on_done = std::move(on_done), node_id](
+              const Status &status) {
+            RAY_CHECK_OK(status);
+            RAY_CHECK_OK(gcs_table_storage_->NodeTable().Put(
+                node_id, request.node_info(), {std::move(on_done), io_context_}));
+          });
     } else {
       RAY_CHECK_OK(gcs_table_storage_->NodeTable().Put(
-          node_id, request.node_info(), {on_done, io_context_}));
+          node_id, request.node_info(), {std::move(on_done), io_context_}));
     }
   } else {
     RAY_CHECK_OK(gcs_table_storage_->NodeTable().Put(
-        node_id, request.node_info(), {on_done, io_context_}));
+        node_id, request.node_info(), {std::move(on_done), io_context_}));
   }
   ++counts_[CountType::REGISTER_NODE_REQUEST];
 }
@@ -164,18 +154,21 @@ void GcsNodeManager::HandleUnregisterNode(rpc::UnregisterNodeRequest request,
 
   AddDeadNodeToCache(node);
 
-  auto node_info_delta = std::make_shared<rpc::GcsNodeInfo>();
-  node_info_delta->set_node_id(node->node_id());
-  node_info_delta->mutable_death_info()->CopyFrom(request.node_death_info());
-  node_info_delta->set_state(node->state());
-  node_info_delta->set_end_time_ms(node->end_time_ms());
+  rpc::GcsNodeInfo node_info_delta;
+  node_info_delta.set_node_id(node->node_id());
+  *node_info_delta.mutable_death_info() = std::move(*request.mutable_node_death_info());
+  node_info_delta.set_state(node->state());
+  node_info_delta.set_end_time_ms(node->end_time_ms());
 
-  auto on_put_done = [=](const Status &status) {
-    RAY_CHECK_OK(gcs_publisher_->PublishNodeInfo(node_id, *node_info_delta, nullptr));
+  auto on_put_done = [this,
+                      node_id,
+                      node_info_delta = std::move(node_info_delta),
+                      node = std::move(node)](const Status &status) {
+    RAY_CHECK_OK(gcs_publisher_->PublishNodeInfo(node_id, node_info_delta, nullptr));
     WriteNodeExportEvent(*node);
   };
-  RAY_CHECK_OK(
-      gcs_table_storage_->NodeTable().Put(node_id, *node, {on_put_done, io_context_}));
+  RAY_CHECK_OK(gcs_table_storage_->NodeTable().Put(
+      node_id, *node, {std::move(on_put_done), io_context_}));
   GCS_RPC_SEND_REPLY(send_reply_callback, reply, Status::OK());
 }
 
@@ -202,7 +195,7 @@ void GcsNodeManager::DrainNode(const NodeID &node_id) {
     RAY_LOG(WARNING).WithField(node_id) << "Skip draining node which is already removed";
     return;
   }
-  auto node = maybe_node.value();
+  const auto &node = maybe_node.value();
 
   // Set the address.
   rpc::Address remote_address;
@@ -343,9 +336,7 @@ void GcsNodeManager::AddNode(std::shared_ptr<rpc::GcsNodeInfo> node) {
     node_map_.insert(NodeIDAddrBiMap::value_type(node_id, node_addr));
     alive_nodes_.emplace(node_id, node);
     // Notify all listeners.
-    for (auto &listener : node_added_listeners_) {
-      listener(node);
-    }
+    node_added_listener_(std::move(node));
   }
 }
 
@@ -417,50 +408,53 @@ std::shared_ptr<rpc::GcsNodeInfo> GcsNodeManager::RemoveNode(
           type, error_message.str(), absl::FromUnixMillis(current_time_ms()));
       RAY_CHECK_OK(gcs_publisher_->PublishError(node_id.Hex(), *error_data_ptr, nullptr));
     }
-
-    // Notify all listeners.
-    for (auto &listener : node_removed_listeners_) {
-      listener(removed_node);
-    }
+    node_removed_listener_(removed_node);
   }
   return removed_node;
 }
 
 void GcsNodeManager::OnNodeFailure(const NodeID &node_id,
-                                   const StatusCallback &node_table_updated_callback) {
+                                   StatusCallback node_table_updated_callback) {
   auto maybe_node = GetAliveNode(node_id);
-  if (maybe_node.has_value()) {
-    rpc::NodeDeathInfo death_info = InferDeathInfo(node_id);
-    auto node = RemoveNode(node_id, death_info);
-    node->set_state(rpc::GcsNodeInfo::DEAD);
-    node->set_end_time_ms(current_sys_time_ms());
-
-    AddDeadNodeToCache(node);
-    auto node_info_delta = std::make_shared<rpc::GcsNodeInfo>();
-    node_info_delta->set_node_id(node->node_id());
-    node_info_delta->set_state(node->state());
-    node_info_delta->set_end_time_ms(node->end_time_ms());
-    node_info_delta->mutable_death_info()->CopyFrom(node->death_info());
-
-    auto on_done = [this, node_id, node_table_updated_callback, node_info_delta, node](
-                       const Status &status) {
-      WriteNodeExportEvent(*node);
-      if (node_table_updated_callback != nullptr) {
-        node_table_updated_callback(Status::OK());
-      }
-      RAY_CHECK_OK(gcs_publisher_->PublishNodeInfo(node_id, *node_info_delta, nullptr));
-    };
-    RAY_CHECK_OK(
-        gcs_table_storage_->NodeTable().Put(node_id, *node, {on_done, io_context_}));
-  } else if (node_table_updated_callback != nullptr) {
+  if (!maybe_node.has_value() && node_table_updated_callback != nullptr) {
     node_table_updated_callback(Status::OK());
   }
+
+  rpc::NodeDeathInfo death_info = InferDeathInfo(node_id);
+  auto node = RemoveNode(node_id, death_info);
+  node->set_state(rpc::GcsNodeInfo::DEAD);
+  node->set_end_time_ms(current_sys_time_ms());
+
+  AddDeadNodeToCache(node);
+  rpc::GcsNodeInfo node_info_delta;
+  node_info_delta.set_node_id(node->node_id());
+  node_info_delta.set_state(node->state());
+  node_info_delta.set_end_time_ms(node->end_time_ms());
+  node_info_delta.mutable_death_info()->CopyFrom(node->death_info());
+
+  auto on_done = [this,
+                  node_id,
+                  node_table_updated_callback = std::move(node_table_updated_callback),
+                  node_info_delta = std::move(node_info_delta),
+                  node](const Status &status) {
+    WriteNodeExportEvent(*node);
+    if (node_table_updated_callback != nullptr) {
+      node_table_updated_callback(Status::OK());
+    }
+    RAY_CHECK_OK(gcs_publisher_->PublishNodeInfo(node_id, node_info_delta, nullptr));
+  };
+  RAY_CHECK_OK(gcs_table_storage_->NodeTable().Put(
+      node_id, *node, {std::move(on_done), io_context_}));
 }
 
 void GcsNodeManager::Initialize(const GcsInitData &gcs_init_data) {
   for (const auto &[node_id, node_info] : gcs_init_data.Nodes()) {
     if (node_info.state() == rpc::GcsNodeInfo::ALIVE) {
-      AddNode(std::make_shared<rpc::GcsNodeInfo>(node_info));
+      auto node = std::make_shared<rpc::GcsNodeInfo>(node_info);
+      auto node_addr =
+          node->node_manager_address() + ":" + std::to_string(node->node_manager_port());
+      node_map_.insert(NodeIDAddrBiMap::value_type(node_id, node_addr));
+      RAY_CHECK(alive_nodes_.emplace(node_id, std::move(node)).second);
 
       // Ask the raylet to do initialization in case of GCS restart.
       // The protocol is correct because when a new node joined, Raylet will do:

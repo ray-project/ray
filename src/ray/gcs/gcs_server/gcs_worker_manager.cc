@@ -35,17 +35,13 @@ void GcsWorkerManager::HandleReportWorkerFailure(
     rpc::ReportWorkerFailureRequest request,
     rpc::ReportWorkerFailureReply *reply,
     rpc::SendReplyCallback send_reply_callback) {
-  const rpc::Address worker_address = request.worker_failure().worker_address();
+  rpc::Address worker_address = request.worker_failure().worker_address();
   const auto worker_id = WorkerID::FromBinary(worker_address.worker_id());
   GetWorkerInfo(
       worker_id,
-      {[this,
-        reply,
-        send_reply_callback,
-        worker_id = std::move(worker_id),
-        request = std::move(request),
-        worker_address = std::move(worker_address)](
-           const std::optional<rpc::WorkerTableData> &result) {
+      {[this, reply, send_reply_callback, worker_id, request = std::move(request)](
+           std::optional<rpc::WorkerTableData> result) {
+         const auto &worker_address = request.worker_failure().worker_address();
          const auto node_id = NodeID::FromBinary(worker_address.raylet_id());
          std::string message =
              absl::StrCat("Reporting worker exit, worker id = ",
@@ -69,14 +65,12 @@ void GcsWorkerManager::HandleReportWorkerFailure(
          }
          auto worker_failure_data = std::make_shared<rpc::WorkerTableData>();
          if (result) {
-           worker_failure_data->CopyFrom(*result);
+           *worker_failure_data = std::move(*result);
          }
          worker_failure_data->MergeFrom(request.worker_failure());
          worker_failure_data->set_is_alive(false);
 
-         for (auto &listener : worker_dead_listeners_) {
-           listener(worker_failure_data);
-         }
+         worker_dead_listener_(worker_failure_data);
 
          auto on_done = [this,
                          worker_address,
@@ -338,12 +332,6 @@ void GcsWorkerManager::HandleUpdateWorkerNumPausedThreads(
   if (!status.ok()) {
     GCS_RPC_SEND_REPLY(send_reply_callback, reply, status);
   }
-}
-
-void GcsWorkerManager::AddWorkerDeadListener(
-    std::function<void(std::shared_ptr<rpc::WorkerTableData>)> listener) {
-  RAY_CHECK(listener != nullptr);
-  worker_dead_listeners_.emplace_back(std::move(listener));
 }
 
 void GcsWorkerManager::GetWorkerInfo(

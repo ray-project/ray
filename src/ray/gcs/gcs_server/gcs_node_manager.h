@@ -26,15 +26,12 @@
 #include <vector>
 
 #include "absl/container/flat_hash_map.h"
-#include "absl/container/flat_hash_set.h"
 #include "ray/common/id.h"
 #include "ray/gcs/gcs_server/gcs_init_data.h"
 #include "ray/gcs/gcs_server/gcs_resource_manager.h"
 #include "ray/gcs/gcs_server/gcs_table_storage.h"
 #include "ray/gcs/pubsub/gcs_pub_sub.h"
-#include "ray/rpc/client_call.h"
 #include "ray/rpc/gcs_server/gcs_rpc_server.h"
-#include "ray/rpc/node_manager/node_manager_client.h"
 #include "ray/rpc/node_manager/node_manager_client_pool.h"
 #include "ray/util/event.h"
 #include "src/ray/protobuf/gcs.pb.h"
@@ -49,14 +46,23 @@ class GcsStateTest;
 class GcsNodeManager : public rpc::NodeInfoHandler {
  public:
   /// Create a GcsNodeManager.
-  ///
-  /// \param gcs_publisher GCS message publisher.
-  /// \param gcs_table_storage GCS table external storage accessor.
-  GcsNodeManager(GcsPublisher *gcs_publisher,
-                 gcs::GcsTableStorage *gcs_table_storage,
-                 instrumented_io_context &io_context,
-                 rpc::NodeManagerClientPool *raylet_client_pool,
-                 const ClusterID &cluster_id);
+
+  GcsNodeManager(
+      GcsPublisher *gcs_publisher,
+      gcs::GcsTableStorage *gcs_table_storage,
+      instrumented_io_context &io_context,
+      rpc::NodeManagerClientPool *raylet_client_pool,
+      const ClusterID &cluster_id,
+      std::function<void(std::shared_ptr<rpc::GcsNodeInfo>)> node_added_listener,
+      std::function<void(std::shared_ptr<rpc::GcsNodeInfo>)> node_removed_listener)
+      : node_added_listener_(std::move(node_added_listener)),
+        node_removed_listener_(std::move(node_removed_listener)),
+        gcs_publisher_(gcs_publisher),
+        gcs_table_storage_(gcs_table_storage),
+        io_context_(io_context),
+        raylet_client_pool_(raylet_client_pool),
+        cluster_id_(cluster_id),
+        export_event_write_enabled_(IsExportAPIEnabledNode()) {}
 
   /// Handle register rpc request come from raylet.
   void HandleGetClusterId(rpc::GetClusterIdRequest request,
@@ -94,8 +100,7 @@ class GcsNodeManager : public rpc::NodeInfoHandler {
   /// \param node_id The ID of the failed node.
   /// \param node_table_updated_callback The status callback function after
   /// faled node info is updated to gcs node table.
-  void OnNodeFailure(const NodeID &node_id,
-                     const StatusCallback &node_table_updated_callback);
+  void OnNodeFailure(const NodeID &node_id, StatusCallback node_table_updated_callback);
 
   /// Add an alive node.
   ///
@@ -140,24 +145,6 @@ class GcsNodeManager : public rpc::NodeInfoHandler {
     return dead_nodes_;
   }
 
-  /// Add listener to monitor the remove action of nodes.
-  ///
-  /// \param listener The handler which process the remove of nodes.
-  void AddNodeRemovedListener(
-      std::function<void(std::shared_ptr<rpc::GcsNodeInfo>)> listener) {
-    RAY_CHECK(listener);
-    node_removed_listeners_.emplace_back(std::move(listener));
-  }
-
-  /// Add listener to monitor the add action of nodes.
-  ///
-  /// \param listener The handler which process the add of nodes.
-  void AddNodeAddedListener(
-      std::function<void(std::shared_ptr<rpc::GcsNodeInfo>)> listener) {
-    RAY_CHECK(listener);
-    node_added_listeners_.emplace_back(std::move(listener));
-  }
-
   /// Initialize with the gcs tables data synchronously.
   /// This should be called when GCS server restarts after a failure.
   ///
@@ -185,7 +172,7 @@ class GcsNodeManager : public rpc::NodeInfoHandler {
   /// \return The inferred death info of the node.
   rpc::NodeDeathInfo InferDeathInfo(const NodeID &node_id);
 
-  void WriteNodeExportEvent(rpc::GcsNodeInfo node_info) const;
+  void WriteNodeExportEvent(const rpc::GcsNodeInfo &node_info) const;
 
   // Verify if export events should be written for EXPORT_NODE source types
   bool IsExportAPIEnabledNode() const {
@@ -250,12 +237,10 @@ class GcsNodeManager : public rpc::NodeInfoHandler {
   /// The nodes are sorted according to the timestamp, and the oldest is at the head of
   /// the deque.
   std::deque<std::pair<NodeID, int64_t>> sorted_dead_node_list_;
-  /// Listeners which monitors the addition of nodes.
-  std::vector<std::function<void(std::shared_ptr<rpc::GcsNodeInfo>)>>
-      node_added_listeners_;
-  /// Listeners which monitors the removal of nodes.
-  std::vector<std::function<void(std::shared_ptr<rpc::GcsNodeInfo>)>>
-      node_removed_listeners_;
+  /// Listener which monitors the addition of nodes.
+  std::function<void(std::shared_ptr<rpc::GcsNodeInfo>)> node_added_listener_;
+  /// Listener which monitors the removal of nodes.
+  std::function<void(std::shared_ptr<rpc::GcsNodeInfo>)> node_removed_listener_;
   /// A publisher for publishing gcs messages.
   GcsPublisher *gcs_publisher_;
   /// Storage for GCS tables.
