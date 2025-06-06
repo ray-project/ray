@@ -277,7 +277,7 @@ ray.get([a.__ray_ready__.remote(), b.__ray_ready__.remote()])
     wait_for_condition(_check_for_deadlock_msg, timeout=30)
 
 
-@pytest.mark.skipif(sys.platform == "win32", reason="Flaky on Windows.")
+@pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
 def test_autoscaler_v2_stream_events_with_filter(shutdown_only):
     """Test that autoscaler v2 events are streamed to the driver."""
     address = ray.init(_system_config={"enable_autoscaler_v2": True})["address"]
