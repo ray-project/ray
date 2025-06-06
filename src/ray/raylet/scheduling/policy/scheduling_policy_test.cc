@@ -523,8 +523,7 @@ TEST_F(SchedulingPolicyTest, StrictPackBundleSchedulingTest) {
   req_list.push_back(&req);
 
   // No target node.
-  auto strict_pack_op = SchedulingOptions::BundleStrictPack(
-      scheduling::NodeID::Nil());
+  auto strict_pack_op = SchedulingOptions::BundleStrictPack(scheduling::NodeID::Nil());
   auto to_schedule = raylet_scheduling_policy::BundleStrictPackSchedulingPolicy(
                          *cluster_resource_manager, [](auto) { return true; })
                          .Schedule(req_list, strict_pack_op);
@@ -532,8 +531,7 @@ TEST_F(SchedulingPolicyTest, StrictPackBundleSchedulingTest) {
   ASSERT_EQ(to_schedule.selected_nodes[0], local_node);
 
   // Target node has enough available resources.
-  strict_pack_op = SchedulingOptions::BundleStrictPack(
-                                                       remote_node_2);
+  strict_pack_op = SchedulingOptions::BundleStrictPack(remote_node_2);
   to_schedule = raylet_scheduling_policy::BundleStrictPackSchedulingPolicy(
                     *cluster_resource_manager, [](auto) { return true; })
                     .Schedule(req_list, strict_pack_op);
@@ -541,8 +539,7 @@ TEST_F(SchedulingPolicyTest, StrictPackBundleSchedulingTest) {
   ASSERT_EQ(to_schedule.selected_nodes[0], remote_node_2);
 
   // Target node doesn't have enough available resources.
-  strict_pack_op =
-      SchedulingOptions::BundleStrictPack(remote_node);
+  strict_pack_op = SchedulingOptions::BundleStrictPack(remote_node);
   to_schedule = raylet_scheduling_policy::BundleStrictPackSchedulingPolicy(
                     *cluster_resource_manager, [](auto) { return true; })
                     .Schedule(req_list, strict_pack_op);
@@ -550,8 +547,7 @@ TEST_F(SchedulingPolicyTest, StrictPackBundleSchedulingTest) {
   ASSERT_EQ(to_schedule.selected_nodes[0], local_node);
 
   // Target node doesn't exist.
-  strict_pack_op = SchedulingOptions::BundleStrictPack(
-                                                       scheduling::NodeID(888));
+  strict_pack_op = SchedulingOptions::BundleStrictPack(scheduling::NodeID(888));
   to_schedule = raylet_scheduling_policy::BundleStrictPackSchedulingPolicy(
                     *cluster_resource_manager, [](auto) { return true; })
                     .Schedule(req_list, strict_pack_op);

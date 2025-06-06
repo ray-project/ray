@@ -2770,17 +2770,16 @@ Status CoreWorker::CreatePlacementGroup(
   }
   const PlacementGroupID placement_group_id = PlacementGroupID::Of(GetCurrentJobId());
   PlacementGroupSpecBuilder builder;
-  builder.SetPlacementGroupSpec(
-      placement_group_id,
-      placement_group_creation_options.name,
-      placement_group_creation_options.bundles,
-      placement_group_creation_options.strategy,
-      placement_group_creation_options.is_detached,
-      placement_group_creation_options.soft_target_node_id,
-      worker_context_.GetCurrentJobID(),
-      worker_context_.GetCurrentActorID(),
-      worker_context_.CurrentActorDetached(),
-      placement_group_creation_options.bundle_label_selector);
+  builder.SetPlacementGroupSpec(placement_group_id,
+                                placement_group_creation_options.name,
+                                placement_group_creation_options.bundles,
+                                placement_group_creation_options.strategy,
+                                placement_group_creation_options.is_detached,
+                                placement_group_creation_options.soft_target_node_id,
+                                worker_context_.GetCurrentJobID(),
+                                worker_context_.GetCurrentActorID(),
+                                worker_context_.CurrentActorDetached(),
+                                placement_group_creation_options.bundle_label_selector);
   PlacementGroupSpecification placement_group_spec = builder.Build();
   *return_placement_group_id = placement_group_id;
   RAY_LOG(INFO).WithField(placement_group_id)
