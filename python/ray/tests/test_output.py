@@ -338,7 +338,9 @@ while True:
 
             # Check that *no* unexpected messages are present.
             if unexpected_msg:
-                assert all([msg not in out_str for msg in unexpected_msg.split(",")]), out_str
+                assert all(
+                    [msg not in out_str for msg in unexpected_msg.split(",")]
+                ), out_str
 
             return True
 
