@@ -2,7 +2,7 @@ import json
 import os
 from pathlib import Path
 import platform
-import state
+import stat
 import subprocess
 import sys
 import tarfile
