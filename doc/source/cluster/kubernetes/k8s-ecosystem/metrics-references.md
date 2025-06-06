@@ -50,7 +50,7 @@ curl localhost:8080/metrics
 | Metric Name                                       | Type  | Description                                                | Labels                                                                   |
 |--------------------------------------------------|-------|------------------------------------------------------------|---------------------------------------------------------------------------|
 | `kuberay_job_info`                               | Gauge | Metadata information about RayJob custom resources         | `namespace`: &lt;RayJob-namespace&gt;<br/> `name`: &lt;RayJob-name&gt;                                                   |
-| `kuberay_job_deployment_status`                  | Gauge | The RayJobs current deployment status                      | `namespace`: &lt;RayJob-namespace&gt;<br/> `name`: &lt;RayJob-name&gt;<br/> `deployment_status`: &lt;New\|Initializing\|Running\|Complete\|Failed\|Suspending\|Suspended\|Retrying\|Waiting&gt;                          |
+| `kuberay_job_deployment_status`                  | Gauge | The RayJob's current deployment status                      | `namespace`: &lt;RayJob-namespace&gt;<br/> `name`: &lt;RayJob-name&gt;<br/> `deployment_status`: &lt;New\|Initializing\|Running\|Complete\|Failed\|Suspending\|Suspended\|Retrying\|Waiting&gt;                          |
 | `kuberay_job_execution_duration_seconds`         | Gauge | Duration from RayJob CR initialization to terminal state   | `namespace`: &lt;RayJob-namespace&gt;<br/> `name`: &lt;RayJob-name&gt;<br/> `result`: &lt;Complete\|Failed&gt;<br/> `retry_count`: &lt;count&gt; |
 
 
