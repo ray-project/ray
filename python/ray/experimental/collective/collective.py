@@ -8,7 +8,7 @@ from ray.experimental.collective.communicator import Communicator, CommunicatorH
 from ray.experimental.collective.util import get_address_and_port
 import ray.experimental.internal_kv as internal_kv
 from ray.util.collective.types import Backend
-from ray.util.collective.util import get_master_address_metadata_key
+from ray.util.collective.collective_group.torch_gloo_collective_group import get_master_address_metadata_key
 from ray.util.collective.util import Info
 from ray.util.annotations import PublicAPI
 

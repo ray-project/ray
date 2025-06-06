@@ -7,6 +7,7 @@ import torch.distributed as dist
 from ray.experimental.channel.torch_tensor_type import TorchTensorType
 from ray.experimental.channel import ChannelContext
 from ray.experimental.collective import create_collective_group
+from ray._private.custom_types import TensorTransportEnum
 
 
 @ray.remote
@@ -103,7 +104,7 @@ def test_trigger_out_of_band_tensor_transfer(ray_start_regular):
     assert torch.equal(ret_val_src[0], tensor)
 
     gpu_object_manager = ray._private.worker.global_worker.gpu_object_manager
-    gpu_object_manager.add_gpu_object_ref(gpu_ref, src_actor)
+    gpu_object_manager.add_gpu_object_ref(gpu_ref, src_actor, TensorTransportEnum.GLOO)
 
     # Trigger out-of-band tensor transfer from src_actor to dst_actor.
     # The GPU object will be removed from src_actor's GPU object store
