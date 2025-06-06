@@ -1,13 +1,10 @@
 import functools
-from typing import TYPE_CHECKING, List, Optional
+from typing import List, Optional
 
 from ray.data._internal.execution.interfaces import RefBundle
 from ray.data._internal.logical.interfaces import LogicalOperator, SourceOperator
+from ray.data._internal.util import unify_ref_bundles_schema
 from ray.data.block import BlockMetadata
-
-if TYPE_CHECKING:
-
-    from ray.data.block import Schema
 
 
 class InputData(LogicalOperator, SourceOperator):
@@ -19,12 +16,9 @@ class InputData(LogicalOperator, SourceOperator):
     def __init__(
         self,
         input_data: List[RefBundle],
-        schema: Optional["Schema"],
     ):
         super().__init__("InputData", [], len(input_data))
-
         self.input_data = input_data
-        self._schema = schema
 
     def output_data(self) -> Optional[List[RefBundle]]:
         return self.input_data
@@ -55,7 +49,7 @@ class InputData(LogicalOperator, SourceOperator):
             return None
 
     def infer_schema(self):
-        return self._schema
+        return unify_ref_bundles_schema(self.input_data)
 
     def is_lineage_serializable(self) -> bool:
         # This operator isn't serializable because it contains ObjectRefs.

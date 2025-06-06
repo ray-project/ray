@@ -13,14 +13,14 @@ from ray.data._internal.logical.interfaces.logical_operator import LogicalOperat
 from ray.data._internal.logical.interfaces.logical_plan import LogicalPlan
 from ray.data._internal.logical.operators.read_operator import Read
 from ray.data._internal.stats import DatasetStats
-from ray.data.block import BlockMetadata
+from ray.data._internal.util import unify_ref_bundles_schema
+from ray.data.block import MetadataAndSchema
 from ray.data.context import DataContext
 from ray.data.exceptions import omit_traceback_stdout
 from ray.util.debug import log_once
 
 if TYPE_CHECKING:
     from ray.data._internal.execution.streaming_executor import (
-        PhysicalOperator,
         StreamingExecutor,
     )
     from ray.data.dataset import Dataset
@@ -72,7 +72,7 @@ class ExecutionPlan:
         # to also store the metadata in `_snapshot_metadata` instead of
         # `_snapshot_bundle`. For example, we could store the blocks in
         # `self._snapshot_blocks` and the metadata in `self._snapshot_metadata`.
-        self._snapshot_metadata: Optional[BlockMetadata] = None
+        self._snapshot_metadata_schema: Optional["MetadataAndSchema"] = None
 
         # Cached schema.
         self._schema = None
@@ -159,12 +159,13 @@ class ExecutionPlan:
                 self._logical_plan.dag
             )
 
-            schema = self._schema
             if self._snapshot_bundle is not None:
                 # This plan has executed some but not all operators.
+                schema = self._snapshot_bundle.schema
                 count = self._snapshot_bundle.num_rows()
-            elif self._snapshot_metadata is not None:
-                count = self._snapshot_metadata.num_rows
+            elif self._snapshot_metadata_schema is not None:
+                schema = self._snapshot_metadata_schema.schema
+                count = self._snapshot_metadata_schema.metadata.num_rows
             else:
                 # This plan hasn't executed any operators.
                 has_n_ary_operator = False
@@ -320,7 +321,6 @@ class ExecutionPlan:
             # Copy over the existing snapshot.
             plan_copy._snapshot_bundle = self._snapshot_bundle
             plan_copy._snapshot_operator = self._snapshot_operator
-            plan_copy._schema = self._schema
             plan_copy._snapshot_stats = self._snapshot_stats
         plan_copy._dataset_name = self._dataset_name
         return plan_copy
@@ -340,7 +340,6 @@ class ExecutionPlan:
         if self._snapshot_bundle:
             # Copy over the existing snapshot.
             plan_copy._snapshot_bundle = copy.copy(self._snapshot_bundle)
-            plan_copy._schema = copy.copy(self._schema)
             plan_copy._snapshot_operator = copy.copy(self._snapshot_operator)
             plan_copy._snapshot_stats = copy.copy(self._snapshot_stats)
         plan_copy._dataset_name = self._dataset_name
@@ -367,23 +366,23 @@ class ExecutionPlan:
         """
         if self._schema is not None:
             return self._schema
+        schema = None
+        if self.has_computed_output():
+            schema = self._snapshot_bundle.schema
+        else:
+            schema = self._logical_plan.dag.infer_schema()
+            if schema is None and fetch_if_missing:
+                # For consistency with the previous implementation, we fetch the schema if
+                # the plan is read-only even if `fetch_if_missing` is False.
 
-        schema = self._logical_plan.dag.infer_schema()
-        if schema is None and fetch_if_missing:
-            # For consistency with the previous implementation, we fetch the schema if
-            # the plan is read-only even if `fetch_if_missing` is False.
-
-            iter_ref_bundles, _, executor = self.execute_to_iterator()
-            output_node: PhysicalOperator = executor._output_node[0]
-            with executor:
-                # Make sure executor is fully shutdown upon exiting
-                for _ in iter_ref_bundles:
-                    schema = output_node.get_schema() or self._schema or None
-                    if schema is not None:
-                        break
-            if schema is None:
-                schema = output_node.get_schema() or self._schema or None
-        self.cache_schema(schema)
+                iter_ref_bundles, _, executor = self.execute_to_iterator()
+                with executor:
+                    # Make sure executor is fully shutdown upon exiting
+                    for bundle in iter_ref_bundles:
+                        if bundle.schema is not None:
+                            schema = bundle.schema
+                            break
+        self.cache_schema(schema or None)
         return self._schema
 
     def cache_schema(self, schema: Union[type, "pyarrow.lib.Schema"]):
@@ -466,7 +465,6 @@ class ExecutionPlan:
 
         # Always used the saved context for execution.
         context = self._context
-
         if not ray.available_resources().get("CPU"):
             if log_once("cpu_warning"):
                 logger.warning(
@@ -498,6 +496,7 @@ class ExecutionPlan:
                 output_bundles = self._logical_plan.dag.output_data()
                 schema = self._logical_plan.dag.infer_schema()
                 owns_blocks = all(bundle.owns_blocks for bundle in output_bundles)
+                schema = unify_ref_bundles_schema(output_bundles)
                 bundle = RefBundle(
                     [
                         (block, metadata)
@@ -505,6 +504,7 @@ class ExecutionPlan:
                         for block, metadata in bundle.blocks
                     ],
                     owns_blocks=owns_blocks,
+                    schema=schema,
                 )
             else:
                 # Make sure executor is properly shutdown
@@ -518,8 +518,8 @@ class ExecutionPlan:
                     bundle = RefBundle(
                         tuple(blocks.iter_blocks_with_metadata()),
                         owns_blocks=blocks._owned_by_consumer,
+                        schema=blocks.get_schema(),
                     )
-                schema = executor._output_node[0].get_schema() or self._schema or None
 
                 stats = executor.get_stats()
                 stats_summary_string = stats.to_summary().to_string(
@@ -562,7 +562,6 @@ class ExecutionPlan:
             self._snapshot_bundle = bundle
             self._snapshot_operator = self._logical_plan.dag
             self._snapshot_stats = stats
-            self._schema = schema
             self._snapshot_stats.dataset_uuid = self._dataset_uuid
 
         return self._snapshot_bundle
@@ -597,7 +596,6 @@ class ExecutionPlan:
         """
         return (
             self._snapshot_bundle is not None
-            and self._schema is not None
             and self._snapshot_operator == self._logical_plan.dag
         )
 

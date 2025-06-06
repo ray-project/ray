@@ -171,7 +171,7 @@ def test_count_after_caching_after_execution(ray_start_regular):
     list(ds.iter_internal_ref_bundles())
     assert f"num_rows={DS_ROW_COUNT}" in str(ds)
     assert ds.count() == DS_ROW_COUNT
-    assert ds._plan._snapshot_metadata.num_rows == DS_ROW_COUNT
+    assert ds._plan._snapshot_metadata_schema.metadata.num_rows == DS_ROW_COUNT
 
 
 def test_limit_execution(ray_start_regular):
@@ -589,6 +589,7 @@ def test_limit_no_redundant_read(
                         input_files=None,
                         exec_stats=None,
                     ),
+                    schema=pa.lib.Schema.from_pandas(pd.DataFrame({"id": []})),
                 )
                 for i in range(parallelism)
             ]
@@ -632,6 +633,7 @@ def test_limit_no_num_row_info(ray_start_regular_shared):
                         input_files=None,
                         exec_stats=None,
                     ),
+                    schema=pa.lib.Schema.from_pandas(pd.DataFrame({"id": []})),
                 )
             ]
 

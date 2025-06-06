@@ -108,10 +108,10 @@ def test_input_data_buffer(ray_start_regular_shared):
 
 
 def test_all_to_all_operator():
-    def dummy_all_transform(bundles: List[RefBundle], schema, ctx):
+    def dummy_all_transform(bundles: List[RefBundle], ctx):
         assert len(ctx.sub_progress_bar_dict) == 2
         assert list(ctx.sub_progress_bar_dict.keys()) == ["Test1", "Test2"]
-        return make_ref_bundles([[1, 2], [3, 4]]), {"FooStats": []}, schema
+        return make_ref_bundles([[1, 2], [3, 4]]), {"FooStats": []}
 
     input_op = InputDataBuffer(
         DataContext.get_current(), make_ref_bundles([[i] for i in range(100)])
@@ -766,7 +766,7 @@ def _make_ref_bundles(raw_bundles: List[List[List[Any]]]) -> List[RefBundle]:
     rbs = []
     for raw_bundle in raw_bundles:
         blocks = []
-
+        schema = None
         for raw_block in raw_bundle:
             print(f">>> {raw_block=}")
 
@@ -774,8 +774,9 @@ def _make_ref_bundles(raw_bundles: List[List[List[Any]]]) -> List[RefBundle]:
             blocks.append(
                 (ray.put(block), BlockAccessor.for_block(block).get_metadata())
             )
+            schema = BlockAccessor.for_block(block).schema()
 
-        rb = RefBundle(blocks=blocks, owns_blocks=True)
+        rb = RefBundle(blocks=blocks, owns_blocks=True, schema=schema)
 
         rbs.append(rb)
 
@@ -1150,8 +1151,8 @@ def test_all_to_all_estimated_num_output_bundles():
         DataContext.get_current(), make_ref_bundles([[i] for i in range(100)])
     )
 
-    def all_transform(bundles: List[RefBundle], schema, ctx):
-        return bundles, {}, schema
+    def all_transform(bundles: List[RefBundle], ctx):
+        return bundles, {}
 
     estimated_output_blocks = 500
     op1 = AllToAllOperator(
@@ -1188,9 +1189,12 @@ def test_input_data_buffer_does_not_free_inputs():
     block = pd.DataFrame({"id": [0]})
     block_ref = ray.put(block)
     metadata = BlockAccessor.for_block(block).get_metadata()
+    schema = BlockAccessor.for_block(block).schema()
     op = InputDataBuffer(
         DataContext.get_current(),
-        input_data=[RefBundle([(block_ref, metadata)], owns_blocks=False)],
+        input_data=[
+            RefBundle([(block_ref, metadata)], owns_blocks=False, schema=schema)
+        ],
     )
 
     op.get_next()

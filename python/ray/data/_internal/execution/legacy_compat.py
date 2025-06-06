@@ -2,7 +2,7 @@
 
 It should be deleted once we fully move to the new executor backend.
 """
-
+import logging
 from typing import Iterator, Optional, Tuple
 
 from ray.data._internal.block_list import BlockList
@@ -15,10 +15,16 @@ from ray.data._internal.execution.interfaces.executor import OutputIterator
 from ray.data._internal.logical.util import record_operators_usage
 from ray.data._internal.plan import ExecutionPlan
 from ray.data._internal.stats import DatasetStats
-from ray.data.block import BlockMetadata
+from ray.data._internal.util import (
+    dedupe_schemas_with_validation,
+    unify_block_metadata_schema,
+)
+from ray.data.block import BlockMetadata, MetadataAndSchema
 
 # Warn about tasks larger than this.
 TASK_SIZE_WARN_THRESHOLD_BYTES = 100000
+
+logger = logging.getLogger(__name__)
 
 
 def execute_to_legacy_bundle_iterator(
@@ -47,7 +53,6 @@ def execute_to_legacy_bundle_iterator(
         dag = dag_rewrite(dag)
 
     bundle_iter = executor.execute(dag, initial_stats=stats)
-    last_op: PhysicalOperator = executor._output_node[0]
 
     class CacheMetadataIterator(OutputIterator):
         """Wrapper for `bundle_iterator` above.
@@ -68,6 +73,7 @@ def execute_to_legacy_bundle_iterator(
                 input_files=None,
                 exec_stats=None,
             )
+            self._schema = None
 
         def get_next(self, output_split_idx: Optional[int] = None) -> RefBundle:
             try:
@@ -77,8 +83,11 @@ def execute_to_legacy_bundle_iterator(
             except StopIteration:
                 # Once the iterator is completely exhausted, we are done
                 # collecting metadata. We can add this cached metadata to the plan.
-                plan._snapshot_metadata = self._collected_metadata
-                plan._schema = last_op.get_schema()
+                meta_schema = MetadataAndSchema(
+                    metadata=self._collected_metadata,
+                    schema=self._schema,
+                )
+                plan._snapshot_metadata_schema = meta_schema
                 raise
 
         def _collect_metadata(self, bundle: RefBundle) -> RefBundle:
@@ -87,6 +96,7 @@ def execute_to_legacy_bundle_iterator(
             row count, schema, etc., after iteration completes."""
             self._collected_metadata.num_rows += bundle.num_rows()
             self._collected_metadata.size_bytes += bundle.size_bytes()
+            self._schema = dedupe_schemas_with_validation(self._schema, bundle)
             return bundle
 
     return CacheMetadataIterator(bundle_iter)
@@ -163,12 +173,18 @@ def _get_initial_stats_from_plan(plan: ExecutionPlan) -> DatasetStats:
 def _bundles_to_block_list(bundles: Iterator[RefBundle]) -> BlockList:
     blocks, metadata = [], []
     owns_blocks = True
+    schemas = []
+
     for ref_bundle in bundles:
         if not ref_bundle.owns_blocks:
             owns_blocks = False
         blocks.extend(ref_bundle.block_refs)
         metadata.extend(ref_bundle.metadata)
-    return BlockList(blocks, metadata, owned_by_consumer=owns_blocks)
+        schemas.append(ref_bundle.schema)
+    unified_schema = unify_block_metadata_schema(schemas)
+    return BlockList(
+        blocks, metadata, owned_by_consumer=owns_blocks, schema=unified_schema
+    )
 
 
 def _set_stats_uuid_recursive(stats: DatasetStats, dataset_uuid: str) -> None:

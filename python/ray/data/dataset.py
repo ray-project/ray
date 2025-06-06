@@ -1896,7 +1896,7 @@ class Dataset:
                 f"doesn't equal the number of splits {n}."
             )
 
-        bundle = self._plan.execute()
+        bundle: RefBundle = self._plan.execute()
         # We should not free blocks since we will materialize the Datasets.
         owned_by_consumer = False
         stats = self._plan.stats()
@@ -1911,11 +1911,13 @@ class Dataset:
                 block_refs_splits, metadata_splits
             ):
                 ref_bundles = [
-                    RefBundle([(b, m)], owns_blocks=owned_by_consumer)
+                    RefBundle(
+                        [(b, m)], owns_blocks=owned_by_consumer, schema=bundle.schema
+                    )
                     for b, m in zip(block_refs_split, metadata_split)
                 ]
                 logical_plan = LogicalPlan(
-                    InputData(input_data=ref_bundles, schema=self._plan.schema()),
+                    InputData(input_data=ref_bundles),
                     self.context,
                 )
                 split_datasets.append(
@@ -2025,7 +2027,9 @@ class Dataset:
             blocks = allocation_per_actor[actor]
             metadata = [metadata_mapping[b] for b in blocks]
             bundle = RefBundle(
-                tuple(zip(blocks, metadata)), owns_blocks=owned_by_consumer
+                tuple(zip(blocks, metadata)),
+                owns_blocks=owned_by_consumer,
+                schema=bundle.schema,
             )
             per_split_bundles.append(bundle)
 
@@ -2035,9 +2039,7 @@ class Dataset:
 
         split_datasets = []
         for bundle in per_split_bundles:
-            logical_plan = LogicalPlan(
-                InputData(input_data=[bundle], schema=self._plan.schema()), self.context
-            )
+            logical_plan = LogicalPlan(InputData(input_data=[bundle]), self.context)
             split_datasets.append(
                 MaterializedDataset(
                     ExecutionPlan(stats, self.context.copy()),
@@ -2095,7 +2097,7 @@ class Dataset:
         if indices[0] < 0:
             raise ValueError("indices must be positive")
         start_time = time.perf_counter()
-        bundle = self._plan.execute()
+        bundle: RefBundle = self._plan.execute()
         blocks, metadata = _split_at_indices(
             bundle.blocks,
             indices,
@@ -2109,10 +2111,11 @@ class Dataset:
             stats = DatasetStats(metadata={"Split": ms}, parent=parent_stats)
             stats.time_total_s = split_duration
             ref_bundles = [
-                RefBundle([(b, m)], owns_blocks=False) for b, m in zip(bs, ms)
+                RefBundle([(b, m)], owns_blocks=False, schema=bundle.schema)
+                for b, m in zip(bs, ms)
             ]
             logical_plan = LogicalPlan(
-                InputData(input_data=ref_bundles, schema=self._plan.schema()),
+                InputData(input_data=ref_bundles),
                 self.context,
             )
 
@@ -5638,7 +5641,7 @@ class Dataset:
         """
         copy = Dataset.copy(self, _deep_copy=True, _as=MaterializedDataset)
 
-        bundle = copy._plan.execute()
+        bundle: RefBundle = copy._plan.execute()
         blocks_with_metadata = bundle.blocks
 
         # TODO(hchen): Here we generate the same number of blocks as
@@ -5650,12 +5653,11 @@ class Dataset:
             RefBundle(
                 blocks=[block_with_metadata],
                 owns_blocks=False,
+                schema=bundle.schema,
             )
             for block_with_metadata in blocks_with_metadata
         ]
-        logical_plan = LogicalPlan(
-            InputData(input_data=ref_bundles, schema=copy._plan.schema()), self.context
-        )
+        logical_plan = LogicalPlan(InputData(input_data=ref_bundles), self.context)
         output = MaterializedDataset(
             ExecutionPlan(copy._plan.stats(), data_context=copy.context),
             logical_plan,

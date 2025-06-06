@@ -11,7 +11,7 @@ from ray.data._internal.planner.exchange.interfaces import (
 from ray.data._internal.planner.exchange.shuffle_task_spec import ShuffleTaskSpec
 from ray.data._internal.remote_fn import cached_remote_fn
 from ray.data._internal.split import _split_at_indices
-from ray.data._internal.util import _unzip_list_of_tuples, unify_block_metadata_schema
+from ray.data._internal.util import _unzip_list_of_tuples
 from ray.data.block import (
     Block,
     BlockAccessor,
@@ -137,18 +137,30 @@ class SplitRepartitionTaskScheduler(ExchangeTaskScheduler):
             empty_block_refs, empty_metadata = zip(
                 *[(ray.put(empty_block), empty_meta) for _ in range(num_empty_blocks)]
             )
+            reduce_schema.extend(None for _ in range(len(empty_metadata)))
             reduce_block_refs.extend(empty_block_refs)
             reduce_metadata.extend(empty_metadata)
 
         output = []
-        for block, meta in zip(reduce_block_refs, reduce_metadata):
+        assert len(reduce_block_refs) == len(reduce_metadata), (
+            len(reduce_block_refs),
+            len(reduce_metadata),
+        )
+        assert len(reduce_schema) == len(reduce_metadata), (
+            len(reduce_schema),
+            len(reduce_metadata),
+        )
+        for block, meta, schema in zip(
+            reduce_block_refs, reduce_metadata, reduce_schema
+        ):
             output.append(
-                RefBundle([(block, meta)], owns_blocks=input_owned_by_consumer)
+                RefBundle(
+                    [(block, meta)], owns_blocks=input_owned_by_consumer, schema=schema
+                )
             )
         stats = {
             "split": split_metadata,
             "reduce": reduce_metadata,
         }
 
-        schema = unify_block_metadata_schema(reduce_schema)
-        return (output, stats, schema)
+        return (output, stats)

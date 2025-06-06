@@ -91,9 +91,6 @@ class AllToAllOperator(InternalQueueOperatorMixin, PhysicalOperator):
             else self.input_dependencies[0].num_outputs_total()
         )
 
-    def should_inherit_schema_from_prev_op(self) -> bool:
-        return False
-
     def num_output_rows_total(self) -> Optional[int]:
         return (
             self._output_rows
@@ -119,10 +116,7 @@ class AllToAllOperator(InternalQueueOperatorMixin, PhysicalOperator):
         )
         # NOTE: We don't account object store memory use from intermediate `bulk_fn`
         # outputs (e.g., map outputs for map-reduce).
-        self._output_buffer, self._stats, schema = self._bulk_fn(
-            self._input_buffer, self._input_dependencies[0]._schema, ctx
-        )
-        self.set_schema(schema)
+        self._output_buffer, self._stats = self._bulk_fn(self._input_buffer, ctx)
 
         while self._input_buffer:
             refs = self._input_buffer.pop()

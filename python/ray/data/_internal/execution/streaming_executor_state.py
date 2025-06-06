@@ -8,7 +8,7 @@ import threading
 import time
 from collections import defaultdict
 from dataclasses import dataclass
-from typing import Dict, List, Optional, Tuple
+from typing import TYPE_CHECKING, Dict, List, Optional, Tuple
 
 import ray
 from ray.data._internal.execution.backpressure_policy import BackpressurePolicy
@@ -32,7 +32,11 @@ from ray.data._internal.execution.operators.base_physical_operator import (
 from ray.data._internal.execution.operators.input_data_buffer import InputDataBuffer
 from ray.data._internal.execution.resource_manager import ResourceManager
 from ray.data._internal.progress_bar import ProgressBar
+from ray.data._internal.util import dedupe_schemas_with_validation
 from ray.data.context import DataContext
+
+if TYPE_CHECKING:
+    from ray.data.block import Schema
 
 logger = logging.getLogger(__name__)
 
@@ -194,6 +198,7 @@ class OpState:
         self._finished: bool = False
         self._exception: Optional[Exception] = None
         self._scheduling_status = OpSchedulingStatus()
+        self._schema: Optional["Schema"] = None
 
     def __repr__(self):
         return f"OpState({self.op.name})"
@@ -253,6 +258,9 @@ class OpState:
 
     def add_output(self, ref: RefBundle) -> None:
         """Move a bundle produced by the operator to its outqueue."""
+
+        self._schema = dedupe_schemas_with_validation(self._schema, ref)
+
         self.output_queue.append(ref)
         self.num_completed_tasks += 1
 
@@ -547,14 +555,6 @@ def update_operator_states(topology: Topology) -> None:
         )
         if dependents_completed:
             op.mark_execution_finished()
-
-    prev_schema = None
-    for op, op_state in list(topology.items()):
-        if op.execution_finished() and op.should_inherit_schema_from_prev_op():
-            # If the operator has finished execution, we can set its
-            # schema based on the previous operator's schema.
-            op.set_schema(prev_schema)
-        prev_schema = op.get_schema() or prev_schema
 
 
 def get_eligible_operators(

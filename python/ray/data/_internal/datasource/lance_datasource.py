@@ -6,7 +6,6 @@ import numpy as np
 from ray.data._internal.util import (
     _check_import,
     call_with_retry,
-    unify_block_metadata_schema,
 )
 from ray.data.block import BlockMetadata
 from ray.data.context import DataContext
@@ -62,11 +61,9 @@ class LanceDatasource(Datasource):
 
     def get_read_tasks(self, parallelism: int) -> List[ReadTask]:
         read_tasks = []
-        schemas = []
         for fragments in np.array_split(self.lance_ds.get_fragments(), parallelism):
             if len(fragments) <= 0:
                 continue
-            schemas.append(fragments[0].schema)
 
             fragment_ids = [f.metadata.id for f in fragments]
             num_rows = sum(f.count_rows() for f in fragments)
@@ -93,7 +90,7 @@ class LanceDatasource(Datasource):
                     retry_params,
                 ),
                 metadata,
-                schema=unify_block_metadata_schema(schemas),
+                schema=fragments[0].schema,
             )
             read_tasks.append(read_task)
         return read_tasks

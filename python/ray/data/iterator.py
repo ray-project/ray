@@ -974,7 +974,7 @@ class DataIterator(abc.ABC):
         ref_bundles = list(ref_bundles_iter)
         execution_plan = ExecutionPlan(stats, self.get_context())
         logical_plan = LogicalPlan(
-            InputData(input_data=ref_bundles, schema=self.schema()),
+            InputData(input_data=ref_bundles),
             execution_plan._context,
         )
         return MaterializedDataset(

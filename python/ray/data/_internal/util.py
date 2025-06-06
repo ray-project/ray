@@ -39,6 +39,7 @@ if TYPE_CHECKING:
     import pandas
 
     from ray.data._internal.compute import ComputeStrategy
+    from ray.data._internal.execution.interfaces import RefBundle
     from ray.data._internal.planner.exchange.sort_task_spec import SortKey
     from ray.data.block import (
         Block,
@@ -724,13 +725,13 @@ def get_table_block_metadata_schema(
 
 
 def unify_block_metadata_schema(
-    schemas_to_unify: List["Schema"],
+    schemas: List[Optional["Schema"]],
 ) -> Optional[Union["Schema"]]:
     """For the input list of BlockMetadata, return a unified schema of the
     corresponding blocks. If the metadata have no valid schema, returns None.
 
     Args:
-        schemas_to_unify: List of schemas to unify
+        schemas: List of schemas to unify
 
     Returns:
         A unified schema of the input list of schemas, or None if no valid schemas
@@ -742,6 +743,8 @@ def unify_block_metadata_schema(
 
     # First check if there are blocks with computed schemas, then unify
     # valid schemas from all such blocks.
+
+    schemas_to_unify = [schema for schema in schemas if schema is not None]
     if schemas_to_unify:
         # Check valid pyarrow installation before attempting schema unification
         try:
@@ -755,6 +758,47 @@ def unify_block_metadata_schema(
         # return the first schema.
         return schemas_to_unify[0]
     return None
+
+
+def unify_ref_bundles_schema(
+    ref_bundles: List[Optional["RefBundle"]],
+) -> Optional[Union["Schema"]]:
+    non_empty_schemas = [
+        ref_bundle.schema for ref_bundle in ref_bundles if ref_bundle is not None
+    ]
+    return unify_block_metadata_schema(non_empty_schemas)
+
+
+def dedupe_schemas_with_validation(
+    old_schema: Optional["Schema"], bundle: "RefBundle", allow_divergent: bool = False
+) -> "Schema":
+    """Unify/Dedupe two schemas, warning if warn=True
+
+    Args:
+        old_schema: The old schema to unify. This can be `None`, in which case
+            the new schema will be used as the old schema.
+        bundle: The new `RefBundle` to unify with the old schema.
+        allow_divergent: If `True`, allow the schemas to diverge and return unified schema.
+            If `False`, Raise a warning if the schemas diverge, but keep the old schema.
+
+    Returns:
+        A unified schema of the two input schemas.
+    """
+    if old_schema is None:
+        old_schema = bundle.schema
+    elif old_schema == bundle.schema:
+        bundle.schema = old_schema
+    else:
+        logger.warning(
+            f"Operator produced a RefBundle with a different schema "
+            f"than the previous one. Previous schema: {old_schema}, "
+            f"new schema: {bundle.schema}. This may lead to unexpected behavior."
+        )
+        if allow_divergent:
+            # Note: we don't change bundle.schema
+            old_schema = unify_block_metadata_schema([old_schema, bundle.schema])
+
+    return old_schema
 
 
 def find_partition_index(

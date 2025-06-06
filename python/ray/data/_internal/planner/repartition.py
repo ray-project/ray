@@ -1,4 +1,4 @@
-from typing import TYPE_CHECKING, List, Optional, Tuple
+from typing import List, Optional, Tuple
 
 from ray.data._internal.execution.interfaces import (
     AllToAllTransformFn,
@@ -22,10 +22,6 @@ from ray.data._internal.planner.exchange.split_repartition_task_scheduler import
 from ray.data._internal.stats import StatsDict
 from ray.data.context import DataContext, ShuffleStrategy
 
-if TYPE_CHECKING:
-
-    from ray.data.block import Schema
-
 
 def generate_repartition_fn(
     num_outputs: int,
@@ -37,9 +33,8 @@ def generate_repartition_fn(
 
     def shuffle_repartition_fn(
         refs: List[RefBundle],
-        schema: Optional["Schema"],
         ctx: TaskContext,
-    ) -> Tuple[List[RefBundle], StatsDict, "Schema"]:
+    ) -> Tuple[List[RefBundle], StatsDict]:
         # If map_transformer is specified (e.g. from fusing
         # MapOperator->AllToAllOperator), we pass a map function which
         # is applied to each block before shuffling.
@@ -80,7 +75,6 @@ def generate_repartition_fn(
 
     def split_repartition_fn(
         refs: List[RefBundle],
-        schema: Optional["Schema"],
         ctx: TaskContext,
     ) -> AllToAllTransformFnResult:
         shuffle_spec = ShuffleTaskSpec(ctx.target_max_block_size, random_shuffle=False)

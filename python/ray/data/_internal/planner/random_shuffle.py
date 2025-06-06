@@ -1,5 +1,5 @@
 import time
-from typing import TYPE_CHECKING, Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional
 
 from ray.data._internal.execution.interfaces import (
     AllToAllTransformFn,
@@ -20,10 +20,6 @@ from ray.data._internal.planner.exchange.shuffle_task_spec import ShuffleTaskSpe
 from ray.data.context import DataContext, ShuffleStrategy
 from ray.util.common import INT32_MAX
 
-if TYPE_CHECKING:
-
-    from ray.data.block import Schema
-
 
 def generate_random_shuffle_fn(
     data_context: DataContext,
@@ -40,7 +36,6 @@ def generate_random_shuffle_fn(
 
     def fn(
         refs: List[RefBundle],
-        schema: Optional["Schema"],
         ctx: TaskContext,
     ) -> AllToAllTransformFnResult:
         num_input_blocks = sum(len(r.blocks) for r in refs)

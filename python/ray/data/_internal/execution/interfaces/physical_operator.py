@@ -29,12 +29,11 @@ from ray.data._internal.execution.interfaces.op_runtime_metrics import OpRuntime
 from ray.data._internal.logical.interfaces import LogicalOperator, Operator
 from ray.data._internal.output_buffer import OutputBlockSizeOption
 from ray.data._internal.stats import StatsDict, Timer
-from ray.data._internal.util import unify_block_metadata_schema
 from ray.data.context import DataContext
 
 if TYPE_CHECKING:
 
-    from ray.data.block import MetadataAndSchema, Schema
+    from ray.data.block import MetadataAndSchema
 
 logger = logging.getLogger(__name__)
 
@@ -93,7 +92,7 @@ class DataOpTask(OpTask):
         self,
         task_index: int,
         streaming_gen: ObjectRefGenerator,
-        output_ready_callback: Callable[[RefBundle, "Schema"], None],
+        output_ready_callback: Callable[[RefBundle], None],
         task_done_callback: Callable[[Optional[Exception]], None],
         task_resource_bundle: Optional[ExecutionResources] = None,
     ):
@@ -155,10 +154,14 @@ class DataOpTask(OpTask):
                     raise ex from None
 
             self._output_ready_callback(
-                RefBundle([(block_ref, meta_schema.metadata)], owns_blocks=True),
-                meta_schema.schema,
+                RefBundle(
+                    [(block_ref, meta_schema.metadata)],
+                    owns_blocks=True,
+                    schema=meta_schema.schema,
+                ),
             )
             bytes_read += meta_schema.metadata.size_bytes
+
         return bytes_read
 
 
@@ -245,7 +248,6 @@ class PhysicalOperator(Operator):
         input_dependencies: List["PhysicalOperator"],
         data_context: DataContext,
         target_max_block_size: Optional[int],
-        schema: Optional["Schema"] = None,
     ):
         super().__init__(name, input_dependencies)
 
@@ -268,18 +270,9 @@ class PhysicalOperator(Operator):
         self._id = str(uuid.uuid4())
         # Initialize metrics after data_context is set
         self._metrics = OpRuntimeMetrics(self)
-        self._schema: Optional["Schema"] = schema
 
     def __reduce__(self):
         raise ValueError("Operator is not serializable.")
-
-    def get_schema(self) -> Optional["Schema"]:
-        """Return the schema of the output blocks produced by this operator."""
-        return self._schema
-
-    def set_schema(self, schema: Optional["Schema"]):
-        """Set the schema of the output blocks produced by this operator."""
-        self._schema = schema
 
     @property
     def id(self) -> str:
@@ -308,12 +301,6 @@ class PhysicalOperator(Operator):
         *logical_ops: LogicalOperator,
     ):
         self._logical_operators = list(logical_ops)
-
-    def unify_schemas(self, schema: "Schema") -> None:
-        if self._schema is None:
-            self.set_schema(schema)
-        elif schema:
-            self.set_schema(unify_block_metadata_schema([self.get_schema(), schema]))
 
     @property
     def target_max_block_size(self) -> Optional[int]:
@@ -439,16 +426,6 @@ class PhysicalOperator(Operator):
             options: The global options used for the overall execution.
         """
         self._started = True
-
-    def should_inherit_schema_from_prev_op(self) -> bool:
-        """Return whether this operator should inherit the schema from the previous
-        operator.
-
-        This is used to determine whether the schema of the output blocks should be
-        inherited from the input blocks. If this returns True, the operator promises
-        it will not set its own schema.
-        """
-        return True
 
     def should_add_input(self) -> bool:
         """Return whether it is desirable to add input to this operator right now.

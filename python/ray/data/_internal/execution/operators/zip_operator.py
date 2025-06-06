@@ -10,7 +10,6 @@ from ray.data._internal.execution.operators.base_physical_operator import (
 from ray.data._internal.remote_fn import cached_remote_fn
 from ray.data._internal.split import _split_at_indices
 from ray.data._internal.stats import StatsDict
-from ray.data._internal.util import unify_block_metadata_schema
 from ray.data.block import (
     Block,
     BlockAccessor,
@@ -23,7 +22,7 @@ from ray.data.context import DataContext
 
 if TYPE_CHECKING:
 
-    from ray.data.block import MetadataAndSchema, Schema
+    from ray.data.block import MetadataAndSchema
 
 
 class ZipOperator(InternalQueueOperatorMixin, PhysicalOperator):
@@ -56,9 +55,6 @@ class ZipOperator(InternalQueueOperatorMixin, PhysicalOperator):
             data_context,
             target_max_block_size=None,
         )
-
-    def should_inherit_schema_from_prev_op(self) -> bool:
-        return False
 
     def num_outputs_total(self) -> Optional[int]:
         left_num_outputs = self.input_dependencies[0].num_outputs_total()
@@ -94,10 +90,9 @@ class ZipOperator(InternalQueueOperatorMixin, PhysicalOperator):
             self._metrics.on_input_queued(refs)
 
     def all_inputs_done(self) -> None:
-        self._output_buffer, self._stats, schema = self._zip(
+        self._output_buffer, self._stats = self._zip(
             self._left_buffer, self._right_buffer
         )
-        self.set_schema(schema)
 
         while self._left_buffer:
             refs = self._left_buffer.pop()
@@ -126,7 +121,7 @@ class ZipOperator(InternalQueueOperatorMixin, PhysicalOperator):
 
     def _zip(
         self, left_input: List[RefBundle], right_input: List[RefBundle]
-    ) -> Tuple[List[RefBundle], StatsDict, "Schema"]:
+    ) -> Tuple[List[RefBundle], StatsDict]:
         """Zip the RefBundles from `left_input` and `right_input` together.
 
         Zip is done in 2 steps: aligning blocks, and zipping blocks from
@@ -222,11 +217,13 @@ class ZipOperator(InternalQueueOperatorMixin, PhysicalOperator):
 
         # TODO(ekl) it might be nice to have a progress bar here.
         output_metadata_schema = ray.get(output_metadata_schema)
-        output_metadata, schema = _decompose_metadata_and_schema(output_metadata_schema)
+        output_metadata, output_schema = _decompose_metadata_and_schema(
+            output_metadata_schema
+        )
 
         output_refs = []
         input_owned = all(b.owns_blocks for b in left_input)
-        for block, meta in zip(output_blocks, output_metadata):
+        for block, meta, schema in zip(output_blocks, output_metadata, output_schema):
             output_refs.append(
                 RefBundle(
                     [
@@ -236,6 +233,7 @@ class ZipOperator(InternalQueueOperatorMixin, PhysicalOperator):
                         )
                     ],
                     owns_blocks=input_owned,
+                    schema=schema,
                 )
             )
         stats = {self._name: to_stats(output_metadata)}
@@ -246,8 +244,7 @@ class ZipOperator(InternalQueueOperatorMixin, PhysicalOperator):
         for ref in right_input:
             ref.destroy_if_owned()
 
-        schema = unify_block_metadata_schema(schema)
-        return output_refs, stats, schema
+        return output_refs, stats
 
     def _calculate_blocks_rows_and_bytes(
         self,

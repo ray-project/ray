@@ -1,5 +1,5 @@
 import logging
-from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
 from ray._private.ray_constants import CALLER_MEMORY_USAGE_PER_OBJECT_REF
 from ray.data._internal.execution.interfaces import RefBundle, TaskContext
@@ -18,10 +18,6 @@ from ray.data.block import (
     _decompose_metadata_and_schema,
     to_stats,
 )
-
-if TYPE_CHECKING:
-
-    from ray.data.block import Schema
 
 logger = logging.getLogger(__name__)
 
@@ -47,7 +43,7 @@ class PullBasedShuffleTaskScheduler(ExchangeTaskScheduler):
         map_ray_remote_args: Optional[Dict[str, Any]] = None,
         reduce_ray_remote_args: Optional[Dict[str, Any]] = None,
         _debug_limit_execution_to_num_blocks: Optional[int] = None,
-    ) -> Tuple[List[RefBundle], StatsDict, "Schema"]:
+    ) -> Tuple[List[RefBundle], StatsDict]:
 
         # TODO: eagerly delete the input and map output block references in order to
         # eagerly release the blocks' memory.
@@ -144,7 +140,7 @@ class PullBasedShuffleTaskScheduler(ExchangeTaskScheduler):
         new_metadata, new_schema = _decompose_metadata_and_schema(new_metadata_schema)
 
         output = []
-        for block, meta in zip(new_blocks, new_metadata):
+        for block, meta, schema in zip(new_blocks, new_metadata, new_schema):
             output.append(
                 RefBundle(
                     [
@@ -154,6 +150,7 @@ class PullBasedShuffleTaskScheduler(ExchangeTaskScheduler):
                         )
                     ],
                     owns_blocks=input_owned,
+                    schema=schema,
                 )
             )
 
@@ -167,4 +164,4 @@ class PullBasedShuffleTaskScheduler(ExchangeTaskScheduler):
         }
 
         schema = unify_block_metadata_schema(new_schema)
-        return (output, stats, schema)
+        return (output, stats)

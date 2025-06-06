@@ -1,4 +1,4 @@
-from typing import TYPE_CHECKING, List, Optional, Union
+from typing import List, Optional, Union
 
 from ray.data._internal.execution.interfaces import (
     AllToAllTransformFn,
@@ -18,12 +18,9 @@ from ray.data._internal.planner.exchange.push_based_shuffle_task_scheduler impor
     PushBasedShuffleTaskScheduler,
 )
 from ray.data._internal.planner.exchange.sort_task_spec import SortKey, SortTaskSpec
+from ray.data._internal.util import unify_ref_bundles_schema
 from ray.data.aggregate import AggregateFn
 from ray.data.context import DataContext, ShuffleStrategy
-
-if TYPE_CHECKING:
-
-    from ray.data.block import Schema
 
 
 def generate_aggregate_fn(
@@ -46,7 +43,6 @@ def generate_aggregate_fn(
 
     def fn(
         refs: List[RefBundle],
-        schema: Optional["Schema"],
         ctx: TaskContext,
     ) -> AllToAllTransformFnResult:
         blocks = []
@@ -55,9 +51,10 @@ def generate_aggregate_fn(
             blocks.extend(ref_bundle.block_refs)
             metadata.extend(ref_bundle.metadata)
         if len(blocks) == 0:
-            return (blocks, {}, None)
+            return (blocks, {})
+        unified_schema = unify_ref_bundles_schema(refs)
         for agg_fn in aggs:
-            agg_fn._validate(schema)
+            agg_fn._validate(unified_schema)
 
         num_mappers = len(blocks)
 

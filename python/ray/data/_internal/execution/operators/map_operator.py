@@ -5,7 +5,6 @@ import logging
 from abc import ABC, abstractmethod
 from collections import defaultdict, deque
 from typing import (
-    TYPE_CHECKING,
     Any,
     Callable,
     Deque,
@@ -48,7 +47,7 @@ from ray.data._internal.execution.operators.map_transformer import (
 )
 from ray.data._internal.execution.util import memory_string
 from ray.data._internal.stats import StatsDict
-from ray.data._internal.util import MemoryProfiler
+from ray.data._internal.util import MemoryProfiler, unify_block_metadata_schema
 from ray.data.block import (
     Block,
     BlockAccessor,
@@ -60,9 +59,6 @@ from ray.data.block import (
 from ray.data.context import DataContext
 from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
 
-if TYPE_CHECKING:
-
-    from ray.data.block import Schema
 logger = logging.getLogger(__name__)
 
 
@@ -125,9 +121,6 @@ class MapOperator(OneToOneOperator, InternalQueueOperatorMixin, ABC):
         # Callback functions that generate additional task kwargs
         # for the map task.
         self._map_task_kwargs_fns: List[Callable[[], Dict[str, Any]]] = []
-
-    def should_inherit_schema_from_prev_op(self) -> bool:
-        return False
 
     def add_map_task_kwargs_fn(self, map_task_kwargs_fn: Callable[[], Dict[str, Any]]):
         """Add a callback function that generates additional kwargs for the map tasks.
@@ -391,14 +384,10 @@ class MapOperator(OneToOneOperator, InternalQueueOperatorMixin, ABC):
         def _output_ready_callback(
             task_index,
             output: RefBundle,
-            schema: "Schema",
         ):
             # Since output is streamed, it should only contain one block.
             assert len(output) == 1
-            assert schema is not None
             self._metrics.on_task_output_generated(task_index, output)
-
-            self.unify_schemas(schema)
 
             # Notify output queue that the task has produced an new output.
             self._output_queue.notify_task_output_ready(task_index, output)
@@ -436,7 +425,7 @@ class MapOperator(OneToOneOperator, InternalQueueOperatorMixin, ABC):
         self._data_tasks[task_index] = DataOpTask(
             task_index,
             gen,
-            lambda output, schema: _output_ready_callback(task_index, output, schema),
+            lambda output: _output_ready_callback(task_index, output),
             functools.partial(_task_done_callback, task_index),
         )
 
@@ -680,7 +669,8 @@ def _merge_ref_bundles(*bundles: RefBundle) -> RefBundle:
         )
     )
     owns_blocks = all(bundle.owns_blocks for bundle in bundles if bundle is not None)
-    return RefBundle(blocks, owns_blocks)
+    schema = unify_block_metadata_schema(bundles)
+    return RefBundle(blocks, owns_blocks=owns_blocks, schema=schema)
 
 
 class _OutputQueue(ABC):

@@ -1,6 +1,6 @@
 import itertools
 import logging
-from typing import TYPE_CHECKING, List, Optional
+from typing import List, Optional
 
 from ray.data._internal.compute import (
     ActorPoolStrategy,
@@ -36,10 +36,6 @@ from ray.data._internal.logical.operators.map_operator import (
     AbstractUDFMap,
 )
 from ray.data.context import DataContext
-
-if TYPE_CHECKING:
-
-    from ray.data.block import Schema
 
 # Scheduling strategy can be inherited from upstream operator if not specified.
 INHERITABLE_REMOTE_ARGS = ["scheduling_strategy"]
@@ -420,7 +416,6 @@ class FuseOperators(Rule):
 
         def fused_all_to_all_transform_fn(
             blocks: List[RefBundle],
-            schema: "Schema",
             ctx: TaskContext,
         ) -> AllToAllTransformFnResult:
             """To fuse MapOperator->AllToAllOperator, we store the map function
@@ -428,7 +423,7 @@ class FuseOperators(Rule):
             AllToAllOperator's transform function."""
             ctx.upstream_map_transformer = up_map_transformer
             ctx.upstream_map_ray_remote_args = ray_remote_args
-            return down_transform_fn(blocks, schema, ctx)
+            return down_transform_fn(blocks, ctx)
 
         # Make the upstream operator's inputs the new, fused operator's inputs.
         input_deps = up_op.input_dependencies

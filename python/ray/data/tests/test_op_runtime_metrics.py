@@ -25,7 +25,7 @@ def test_average_max_uss_per_task():
             input_files=None,
             exec_stats=stats,
         )
-        return RefBundle([(block, metadata)], owns_blocks=False)
+        return RefBundle([(block, metadata)], owns_blocks=False, schema=None)
 
     # Submit two tasks.
     bundle = create_bundle(uss_bytes=0)

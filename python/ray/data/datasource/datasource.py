@@ -160,7 +160,7 @@ class ReadTask(Callable[[], Iterable[Block]]):
         return self._metadata
 
     @property
-    def schema(self) -> "Schema":
+    def schema(self) -> Optional["Schema"]:
         return self._schema
 
     @property

@@ -31,7 +31,9 @@ class AbstractFrom(LogicalOperator, SourceOperator, metaclass=abc.ABCMeta):
         )
         # `owns_blocks` is False because this op may be shared by multiple Datasets.
         self._input_data = [
-            RefBundle([(input_blocks[i], input_metadata[i])], owns_blocks=False)
+            RefBundle(
+                [(input_blocks[i], input_metadata[i])], owns_blocks=False, schema=schema
+            )
             for i in range(len(input_blocks))
         ]
 

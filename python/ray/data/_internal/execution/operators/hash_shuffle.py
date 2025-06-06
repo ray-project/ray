@@ -50,7 +50,7 @@ from ray.data.block import (
 )
 
 if TYPE_CHECKING:
-    from ray.data.block import MetadataAndSchema, Schema
+    from ray.data.block import MetadataAndSchema
 
 logger = logging.getLogger(__name__)
 
@@ -454,9 +454,6 @@ class HashShufflingOperatorBase(PhysicalOperator):
 
         self._aggregator_pool.start()
 
-    def should_inherit_schema_from_prev_op(self) -> bool:
-        return False
-
     def _add_input_inner(self, input_bundle: RefBundle, input_index: int) -> None:
         # TODO move to base class
         self._metrics.on_input_queued(input_bundle)
@@ -599,10 +596,7 @@ class HashShufflingOperatorBase(PhysicalOperator):
             f"partition id is {self._last_finalized_partition_id})"
         )
 
-        def _on_bundle_ready(bundle: RefBundle, schema: "Schema"):
-            assert schema is not None
-            # unify schemas
-            self.unify_schemas(schema)
+        def _on_bundle_ready(bundle: RefBundle):
             # Add finalized block to the output queue
             self._output_queue.append(bundle)
             self._metrics.on_output_queued(bundle)

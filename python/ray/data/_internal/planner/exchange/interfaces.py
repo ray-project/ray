@@ -11,7 +11,7 @@ from ray.data.context import DataContext
 
 if TYPE_CHECKING:
 
-    from ray.data.block import MetadataAndSchema, Schema
+    from ray.data.block import MetadataAndSchema
 
 logger = logging.getLogger(__name__)
 
@@ -111,7 +111,7 @@ class ExchangeTaskScheduler:
         map_ray_remote_args: Optional[Dict[str, Any]] = None,
         reduce_ray_remote_args: Optional[Dict[str, Any]] = None,
         warn_on_driver_memory_usage: Optional[int] = None,
-    ) -> Tuple[List[RefBundle], StatsDict, "Schema"]:
+    ) -> Tuple[List[RefBundle], StatsDict]:
         """
         Execute the exchange tasks on input `refs`.
         """

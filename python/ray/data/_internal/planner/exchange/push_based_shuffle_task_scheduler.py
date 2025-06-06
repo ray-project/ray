@@ -32,7 +32,7 @@ from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
 
 if TYPE_CHECKING:
 
-    from ray.data.block import MetadataAndSchema, Schema
+    from ray.data.block import MetadataAndSchema
 
 logger = logging.getLogger(__name__)
 
@@ -457,7 +457,7 @@ class PushBasedShuffleTaskScheduler(ExchangeTaskScheduler):
         reduce_ray_remote_args: Optional[Dict[str, Any]] = None,
         merge_factor: float = 2,
         _debug_limit_execution_to_num_blocks: int = None,
-    ) -> Tuple[List[RefBundle], StatsDict, "Schema"]:
+    ) -> Tuple[List[RefBundle], StatsDict]:
         logger.debug("Using experimental push-based shuffle.")
         # TODO: Preemptively clear the blocks list since we will incrementally delete
         # the last remaining references as we submit the dependent map tasks during the
@@ -650,7 +650,9 @@ class PushBasedShuffleTaskScheduler(ExchangeTaskScheduler):
         reduce_stage_metadata, reduce_stage_schema = _decompose_metadata_and_schema(
             reduce_stage_metadata_schema
         )
-        for block, meta in zip(new_blocks, reduce_stage_metadata):
+        for block, meta, schema in zip(
+            new_blocks, reduce_stage_metadata, reduce_stage_schema
+        ):
             output.append(
                 RefBundle(
                     [
@@ -660,6 +662,7 @@ class PushBasedShuffleTaskScheduler(ExchangeTaskScheduler):
                         )
                     ],
                     owns_blocks=input_owned,
+                    schema=schema,
                 )
             )
 
@@ -677,7 +680,7 @@ class PushBasedShuffleTaskScheduler(ExchangeTaskScheduler):
         }
 
         schema = unify_block_metadata_schema(reduce_stage_schema)
-        return (output, stats, schema)
+        return (output, stats)
 
     @staticmethod
     def _map_partition(

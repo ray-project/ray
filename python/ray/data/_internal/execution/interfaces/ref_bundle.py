@@ -5,7 +5,7 @@ from typing import Dict, Iterator, List, Optional, Tuple
 import ray
 from .common import NodeIdStr
 from ray.data._internal.memory_tracing import trace_deallocation
-from ray.data.block import Block, BlockMetadata
+from ray.data.block import Block, BlockMetadata, Schema
 from ray.data.context import DataContext
 from ray.types import ObjectRef
 
@@ -30,6 +30,10 @@ class RefBundle:
 
     # The size_bytes must be known in the metadata, num_rows is optional.
     blocks: Tuple[Tuple[ObjectRef[Block], BlockMetadata], ...]
+
+    # The schema of the blocks in this bundle. This is optional, and may be None
+    # if blocks are empty.
+    schema: Optional["Schema"]
 
     # Whether we own the blocks (can safely destroy them).
     owns_blocks: bool
@@ -58,6 +62,7 @@ class RefBundle:
                 raise ValueError(
                     "The size in bytes of the block must be known: {}".format(b)
                 )
+        self.schema = self.schema or None
 
     def __setattr__(self, key, value):
         if hasattr(self, key) and key in ["blocks", "owns_blocks"]:
