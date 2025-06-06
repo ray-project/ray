@@ -11,6 +11,33 @@ from ray._private.metrics_agent import Record, Gauge
 
 @patch("opentelemetry.metrics.set_meter_provider")
 @patch("opentelemetry.metrics.get_meter")
+def test_register_gauge_metric(mock_get_meter, mock_set_meter_provider):
+    """
+    Test the register_gauge_metric method of OpenTelemetryMetricRecorder.
+    - Test that it registers a gauge metric with the correct name and description.
+    - Test that a value can be recorded for the gauge metric successfully.
+    """
+    mock_get_meter.return_value = MagicMock()
+    recorder = OpenTelemetryMetricRecorder()
+    recorder.register_gauge_metric(name="test_gauge", description="Test Gauge")
+
+    # Record a value for the gauge
+    recorder.set_metric_value(
+        name="test_gauge",
+        tags={"label_key": "label_value"},
+        value=42.0,
+    )
+    assert (
+        recorder._get_metric_value(
+            name="test_gauge",
+            tags={"label_key": "label_value"},
+        )
+        == 42.0
+    )
+
+
+@patch("opentelemetry.metrics.set_meter_provider")
+@patch("opentelemetry.metrics.get_meter")
 def test_record_and_export(mock_get_meter, mock_set_meter_provider):
     """
     Test the record_and_export method of OpenTelemetryMetricRecorder. Test that
@@ -67,7 +94,7 @@ def test_record_and_export(mock_get_meter, mock_set_meter_provider):
         ],
         global_tags={"global_label_key": "global_label_value"},
     )
-    assert recorder._observations_by_gauge_name == {
+    assert recorder._observations_by_name == {
         "hi": {
             frozenset(
                 {

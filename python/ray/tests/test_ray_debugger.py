@@ -245,7 +245,7 @@ def test_ray_debugger_public(shutdown_only, call_ray_stop_only, ray_debugger_ext
     cmd = ["ray", "start", "--head", "--num-cpus=1"]
     if ray_debugger_external:
         cmd.append("--ray-debugger-external")
-    out = ray._private.utils.decode(
+    out = ray._common.utils.decode(
         subprocess.check_output(cmd, stderr=subprocess.STDOUT)
     )
     # Get the redis address from the output.

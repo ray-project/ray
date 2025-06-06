@@ -13,7 +13,7 @@ from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
 
 if (
     multiprocessing.cpu_count() < 40
-    or ray._private.utils.get_system_memory() < 50 * 10**9
+    or ray._common.utils.get_system_memory() < 50 * 10**9
 ):
     warnings.warn("This test must be run on large machines.")
 

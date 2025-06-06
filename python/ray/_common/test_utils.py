@@ -1,3 +1,10 @@
+"""Test utilities for Ray.
+
+This module contains test utility classes that are distributed with the Ray package
+and can be used by external libraries and tests. These utilities must remain in
+_common/ (not in tests/) to be accessible in the Ray package distribution.
+"""
+
 import asyncio
 
 import ray
@@ -5,6 +12,12 @@ import ray
 
 @ray.remote(num_cpus=0)
 class SignalActor:
+    """A Ray actor for coordinating test execution through signals.
+
+    Useful for testing async coordination, waiting for specific states,
+    and synchronizing multiple actors or tasks in tests.
+    """
+
     def __init__(self):
         self.ready_event = asyncio.Event()
         self.num_waiters = 0
@@ -26,6 +39,12 @@ class SignalActor:
 
 @ray.remote(num_cpus=0)
 class Semaphore:
+    """A Ray actor implementing a semaphore for test coordination.
+
+    Useful for testing resource limiting, concurrency control,
+    and coordination between multiple actors or tasks.
+    """
+
     def __init__(self, value: int = 1):
         self._sema = asyncio.Semaphore(value=value)
 
@@ -37,3 +56,6 @@ class Semaphore:
 
     async def locked(self) -> bool:
         return self._sema.locked()
+
+
+__all__ = ["SignalActor", "Semaphore"]

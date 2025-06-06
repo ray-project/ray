@@ -27,7 +27,7 @@ from ray.includes.unique_ids cimport (
 
 
 import ray
-from ray._private.utils import decode
+from ray._common.utils import decode
 
 logger = logging.getLogger(__name__)
 

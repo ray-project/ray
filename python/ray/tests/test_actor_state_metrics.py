@@ -7,7 +7,7 @@ from typing import Dict
 import pytest
 
 import ray
-from ray._private.utils import hex_to_binary
+from ray._common.utils import hex_to_binary
 
 from ray.util.state import list_actors
 from ray._private.test_utils import (

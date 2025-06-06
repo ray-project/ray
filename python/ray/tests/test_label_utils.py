@@ -305,6 +305,4 @@ def test_validate_node_labels():
 
 
 if __name__ == "__main__":
-
-    # Skip test_basic_2_client_mode for now- the test suite is breaking.
     sys.exit(pytest.main(["-sv", __file__]))

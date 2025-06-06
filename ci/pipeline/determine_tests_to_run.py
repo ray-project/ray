@@ -15,7 +15,7 @@ _ALL_TAGS = set(
     lint python cpp core_cpp java workflow compiled_graphs dashboard ray_client
     data serve ml tune train llm rllib rllib_gpu rllib_directly
     linux_wheels macos_wheels docker doc python_dependencies tools
-    release_tests compiled_python k8s_doc
+    release_tests compiled_python k8s_doc spark_on_ray
     """.split()
 )
 

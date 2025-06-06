@@ -369,5 +369,25 @@ class TestNoUserInfoInLogs:
         )
 
 
+@pytest.mark.skipif(sys.platform == "win32", reason="Hangs on windows.")
+def test_failed_job_env_no_hang(shutdown_only):
+    """Test that after a failed job-level env, tasks can still be run."""
+    runtime_env_for_init = RuntimeEnv(pip=["ray-doesnotexist-123"])
+    ray.init(runtime_env=runtime_env_for_init)
+
+    @ray.remote
+    def f():
+        import pip_install_test  # noqa: F401
+
+        return True
+
+    runtime_env_for_f = RuntimeEnv(pip=["pip-install-test==0.5"])
+    assert ray.get(f.options(runtime_env=runtime_env_for_f).remote())
+
+    # Task with no runtime env should inherit the bad job env.
+    with pytest.raises(RuntimeEnvSetupError):
+        ray.get(f.remote())
+
+
 if __name__ == "__main__":
     sys.exit(pytest.main(["-sv", __file__]))

@@ -12,13 +12,19 @@ from typing import List, Optional, Tuple, TypedDict, Union
 
 from opencensus.stats import stats as stats_module
 from prometheus_client.core import REGISTRY
+from opentelemetry.proto.collector.metrics.v1 import metrics_service_pb2
+from grpc.aio import ServicerContext
+
 
 import ray
 import ray._private.prometheus_exporter as prometheus_exporter
-import ray._private.services
 import ray.dashboard.modules.reporter.reporter_consts as reporter_consts
 import ray.dashboard.utils as dashboard_utils
-from ray._common.utils import get_or_create_event_loop
+from ray._common.utils import (
+    get_or_create_event_loop,
+    get_system_memory,
+    get_user_temp_dir,
+)
 from ray._private import utils
 from ray._private.metrics_agent import Gauge, MetricsAgent, Record
 from ray._private.ray_constants import (
@@ -501,18 +507,28 @@ class ReporterAgent(
             logger.error(traceback.format_exc())
         return reporter_pb2.ReportOCMetricsReply()
 
-    async def Export(self, request, context):
-        """
-        GRPC method that receives the open telemetry metrics exported from other Ray
-        components running in the same node (e.g., raylet, worker, etc.). This method
-        implements an interface of `metrics_service_pb2_grpc.MetricsServiceServicer`,
-        which is the default open-telemetry metrics service interface.
-        """
-        # This method suppposes to forward data to self._open_telemetry_metric_recorder
-        # to record them to Prometheus. Currently, that logic is not yet implemented.
-        # Unless RAY_EXPERIMENTAL_ENABLE_OPEN_TELEMETRY_ON_CORE is set to True,
-        # this is a no-op.
-        pass
+    async def Export(
+        self,
+        request: metrics_service_pb2.ExportMetricsServiceRequest,
+        context: ServicerContext,
+    ) -> metrics_service_pb2.ExportMetricsServiceResponse:
+        for resource_metrics in request.resource_metrics:
+            for scope_metrics in resource_metrics.scope_metrics:
+                for metric in scope_metrics.metrics:
+                    self._open_telemetry_metric_recorder.register_gauge_metric(
+                        metric.name, metric.description or ""
+                    )
+                    for data_point in metric.gauge.data_points:
+                        self._open_telemetry_metric_recorder.set_metric_value(
+                            metric.name,
+                            {
+                                tag.key: tag.value.string_value
+                                for tag in data_point.attributes
+                            },
+                            data_point.as_double,
+                        )
+
+        return metrics_service_pb2.ExportMetricsServiceResponse()
 
     @staticmethod
     def _get_cpu_percent(in_k8s: bool):
@@ -618,7 +634,7 @@ class ReporterAgent(
 
     @staticmethod
     def _get_mem_usage():
-        total = utils.get_system_memory()
+        total = get_system_memory()
         used = utils.get_used_memory()
         available = total - used
         percent = round(used / total, 3) * 100
@@ -635,7 +651,7 @@ class ReporterAgent(
             root = psutil.disk_partitions()[0].mountpoint
         else:
             root = os.sep
-        tmp = utils.get_user_temp_dir()
+        tmp = get_user_temp_dir()
         return {
             "/": psutil.disk_usage(root),
             tmp: psutil.disk_usage(tmp),

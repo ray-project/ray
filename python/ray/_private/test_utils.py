@@ -464,12 +464,12 @@ def run_string_as_driver(driver_script: str, env: Dict = None, encode: str = "ut
     with proc:
         output = proc.communicate(driver_script.encode(encoding=encode))[0]
         if proc.returncode:
-            print(ray._private.utils.decode(output, encode_type=encode))
+            print(ray._common.utils.decode(output, encode_type=encode))
             logger.error(proc.stderr)
             raise subprocess.CalledProcessError(
                 proc.returncode, proc.args, output, proc.stderr
             )
-        out = ray._private.utils.decode(output, encode_type=encode)
+        out = ray._common.utils.decode(output, encode_type=encode)
     return out
 
 
@@ -495,7 +495,7 @@ def run_string_as_driver_stdout_stderr(
     with proc:
         outputs_bytes = proc.communicate(driver_script.encode(encoding=encode))
         out_str, err_str = [
-            ray._private.utils.decode(output, encode_type=encode)
+            ray._common.utils.decode(output, encode_type=encode)
             for output in outputs_bytes
         ]
         if proc.returncode:

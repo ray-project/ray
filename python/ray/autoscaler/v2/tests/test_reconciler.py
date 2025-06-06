@@ -9,7 +9,7 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from ray._private.utils import binary_to_hex
+from ray._common.utils import binary_to_hex
 from ray.autoscaler.v2.instance_manager.config import InstanceReconcileConfig, Provider
 from ray.autoscaler.v2.instance_manager.instance_manager import InstanceManager
 from ray.autoscaler.v2.instance_manager.instance_storage import InstanceStorage

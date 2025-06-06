@@ -76,7 +76,7 @@ def test_dying_driver_get(ray_start_regular):
     driver = """
 import ray
 ray.init("{}")
-ray.get(ray.ObjectRef(ray._private.utils.hex_to_binary("{}")))
+ray.get(ray.ObjectRef(ray._common.utils.hex_to_binary("{}")))
 """.format(
         address_info["address"], x_id.hex()
     )
@@ -157,7 +157,7 @@ def test_dying_driver_wait(ray_start_regular):
     driver = """
 import ray
 ray.init("{}")
-ray.wait([ray.ObjectRef(ray._private.utils.hex_to_binary("{}"))])
+ray.wait([ray.ObjectRef(ray._common.utils.hex_to_binary("{}"))])
 """.format(
         address_info["address"], x_id.hex()
     )
