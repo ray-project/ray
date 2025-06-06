@@ -3,7 +3,6 @@
 
 import asyncio
 import hashlib
-from ray._common.utils import try_to_create_directory
 import json
 import logging
 import os
@@ -12,6 +11,7 @@ import sys
 from asyncio import create_task, get_running_loop
 from typing import Dict, List, Optional
 
+from ray._common.utils import try_to_create_directory
 from ray._private.runtime_env import dependency_utils, virtualenv_utils
 from ray._private.runtime_env.packaging import Protocol, parse_uri
 from ray._private.runtime_env.plugin import RuntimeEnvPlugin

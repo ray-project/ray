@@ -1,4 +1,3 @@
-from collections import defaultdict
 import contextlib
 import importlib
 import json
@@ -6,14 +5,13 @@ import logging
 import multiprocessing
 import os
 import platform
-import random
 import re
 import signal
-import string
 import subprocess
 import sys
 import threading
 import time
+from collections import defaultdict
 from pathlib import Path
 from subprocess import list2cmdline
 from typing import (
@@ -30,13 +28,13 @@ from typing import (
 
 from google.protobuf import json_format
 
-from ray._common.utils import (
-    get_ray_address_file,
-    get_system_memory,
-    PLACEMENT_GROUP_BUNDLE_RESOURCE_NAME,
-)
 import ray
 import ray._private.ray_constants as ray_constants
+from ray._common.utils import (
+    PLACEMENT_GROUP_BUNDLE_RESOURCE_NAME,
+    get_ray_address_file,
+    get_system_memory,
+)
 from ray.core.generated.runtime_env_common_pb2 import (
     RuntimeEnvInfo as ProtoRuntimeEnvInfo,
 )

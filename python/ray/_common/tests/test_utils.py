@@ -10,7 +10,6 @@ import warnings
 import sys
 import os
 import tempfile
-import errno
 
 import pytest
 
