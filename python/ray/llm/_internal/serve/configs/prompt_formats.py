@@ -10,7 +10,6 @@ from typing import (
 
 from pydantic import (
     BaseModel,
-    ConfigDict,
     PrivateAttr,
     field_validator,
     model_validator,
@@ -125,15 +124,7 @@ class EngineInput(BaseModel):
     image: Optional[List[ImageInput]] = None
 
 
-# TODO (Kourosh): We can delete this abstraction.
-class AbstractPromptFormat(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-
-    def generate_prompt(self, messages: Union[Prompt, List[Message]]) -> EngineInput:
-        raise NotImplementedError()
-
-
-class HuggingFacePromptFormat(AbstractPromptFormat):
+class HuggingFacePromptFormat(BaseModel):
     _processor: "AutoProcessor" = PrivateAttr()
 
     def set_processor(self, model_id_or_path: str, trust_remote_code: bool = False):
