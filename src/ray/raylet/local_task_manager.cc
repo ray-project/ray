@@ -295,16 +295,40 @@ void LocalTaskManager::DispatchScheduledTasksToWorkers() {
         }
       }
 
+      // Check if the node is still schedulable. It may not be if dependency resolution
+      // took a long time.
+      auto allocated_instances = std::make_shared<TaskResourceInstances>();
+      bool schedulable =
+          !cluster_resource_scheduler_.GetLocalResourceManager().IsLocalNodeDraining() &&
+          cluster_resource_scheduler_.GetLocalResourceManager()
+              .AllocateLocalTaskResources(spec.GetRequiredResources().GetResourceMap(),
+                                          allocated_instances);
+      if (!schedulable) {
+        // The local node currently does not have the resources to run the task, so we
+        // should try spilling to another node.
+        bool did_spill = TrySpillback(work, is_infeasible);
+        if (!did_spill) {
+          // There must not be any other available nodes in the cluster, so the task
+          // should stay on this node. We can skip the rest of the shape because the
+          // scheduler will make the same decision.
+          work->SetStateWaiting(
+              internal::UnscheduledWorkCause::WAITING_FOR_RESOURCES_AVAILABLE);
+          break;
+        }
+        work_it = dispatch_queue.erase(work_it);
+        continue;
+      }
+
+      // Check if the task arguments can be pinned in memory and update state if it can.
       bool args_missing = false;
       bool success = PinTaskArgsIfMemoryAvailable(spec, &args_missing);
-      // An argument was evicted since this task was added to the dispatch
-      // queue. Move it back to the waiting queue. The caller is responsible
-      // for notifying us when the task is unblocked again.
       if (!success) {
         if (args_missing) {
+          // An argument was evicted since this task was added to the dispatch
+          // queue. Move it back to the waiting queue. The caller is responsible
+          // for notifying us when the task is unblocked again.
           // Insert the task at the head of the waiting queue because we
           // prioritize spilling from the end of the queue.
-          // TODO(scv119): where does pulling happen?
           auto it = waiting_task_queue_.insert(waiting_task_queue_.begin(),
                                                std::move(*work_it));
           RAY_CHECK(waiting_tasks_index_.emplace(task_id, it).second);
@@ -329,70 +353,36 @@ void LocalTaskManager::DispatchScheduledTasksToWorkers() {
         continue;
       }
 
-      // Check if the node is still schedulable. It may not be if dependency resolution
-      // took a long time.
-      auto allocated_instances = std::make_shared<TaskResourceInstances>();
-      bool schedulable =
-          !cluster_resource_scheduler_.GetLocalResourceManager().IsLocalNodeDraining() &&
-          cluster_resource_scheduler_.GetLocalResourceManager()
-              .AllocateLocalTaskResources(spec.GetRequiredResources().GetResourceMap(),
-                                          allocated_instances);
-      if (!schedulable) {
-        ReleaseTaskArgs(task_id);
-        // The local node currently does not have the resources to run the task, so we
-        // should try spilling to another node.
-        bool did_spill = TrySpillback(work, is_infeasible);
-        if (!did_spill) {
-          // There must not be any other available nodes in the cluster, so the task
-          // should stay on this node. We can skip the rest of the shape because the
-          // scheduler will make the same decision.
-          work->SetStateWaiting(
-              internal::UnscheduledWorkCause::WAITING_FOR_RESOURCES_AVAILABLE);
-          break;
-        }
-        work_it = dispatch_queue.erase(work_it);
-      } else {
-        // Force us to recalculate the next update time the next time a task
-        // comes through this queue. We should only do this when we're
-        // confident we're ready to dispatch the task after all checks have
-        // passed.
-        sched_cls_info.next_update_time = std::numeric_limits<int64_t>::max();
-        sched_cls_info.running_tasks.insert(spec.TaskId());
-        // The local node has the available resources to run the task, so we should run
-        // it.
-        work->allocated_instances = allocated_instances;
-        work->SetStateWaitingForWorker();
-        bool is_detached_actor = spec.IsDetachedActor();
-        auto &owner_address = spec.CallerAddress();
-        /// TODO(scv119): if a worker is not started, the resources is leaked and
-        // task might be hanging.
-        worker_pool_.PopWorker(
-            spec,
-            [this, task_id, scheduling_class, work, is_detached_actor, owner_address](
-                const std::shared_ptr<WorkerInterface> worker,
-                PopWorkerStatus status,
-                const std::string &runtime_env_setup_error_message) -> bool {
-              // TODO(hjiang): After getting the ready-to-use worker and task id, we're
-              // able to get physical execution context.
-              //
-              // ownership chain: raylet has-a node manager, node manager has-a local task
-              // manager.
-              //
-              // - PID: could get from available worker
-              // - Attempt id: could pass a global attempt id generator from raylet
-              // - Cgroup application folder: could pass from raylet
-
-              return PoppedWorkerHandler(worker,
-                                         status,
-                                         task_id,
-                                         scheduling_class,
-                                         work,
-                                         is_detached_actor,
-                                         owner_address,
-                                         runtime_env_setup_error_message);
-            });
-        work_it++;
-      }
+      // Force us to recalculate the next update time the next time a task
+      // comes through this queue. We should only do this when we're
+      // confident we're ready to dispatch the task after all checks have
+      // passed.
+      sched_cls_info.next_update_time = std::numeric_limits<int64_t>::max();
+      sched_cls_info.running_tasks.insert(spec.TaskId());
+      // The local node has the available resources to run the task, so we should run
+      // it.
+      work->allocated_instances = allocated_instances;
+      work->SetStateWaitingForWorker();
+      bool is_detached_actor = spec.IsDetachedActor();
+      auto &owner_address = spec.CallerAddress();
+      /// TODO(scv119): if a worker is not started, the resources is leaked and
+      // task might be hanging.
+      worker_pool_.PopWorker(
+          spec,
+          [this, task_id, scheduling_class, work, is_detached_actor, owner_address](
+              const std::shared_ptr<WorkerInterface> &worker,
+              PopWorkerStatus status,
+              const std::string &runtime_env_setup_error_message) -> bool {
+            return PoppedWorkerHandler(worker,
+                                       status,
+                                       task_id,
+                                       scheduling_class,
+                                       work,
+                                       is_detached_actor,
+                                       owner_address,
+                                       runtime_env_setup_error_message);
+          });
+      work_it++;
     }
     // In the beginning of the loop, we add scheduling_class
     // to the `info_by_sched_cls_` map.
@@ -726,8 +716,9 @@ void LocalTaskManager::TaskFinished(std::shared_ptr<WorkerInterface> worker,
 // TODO(scv119): task args related logic probaly belongs task dependency manager.
 bool LocalTaskManager::PinTaskArgsIfMemoryAvailable(const TaskSpecification &spec,
                                                     bool *args_missing) {
+  // Checking if arguments are missing
   std::vector<std::unique_ptr<RayObject>> args;
-  const auto &deps = spec.GetDependencyIds();
+  auto deps = spec.GetDependencyIds();
   if (!deps.empty()) {
     // This gets refs to the arguments stored in plasma. The refs should be
     // deleted once we no longer need to pin the arguments.
@@ -750,22 +741,38 @@ bool LocalTaskManager::PinTaskArgsIfMemoryAvailable(const TaskSpecification &spe
       }
     }
   }
-
   *args_missing = false;
+
+  // Update fields tracking pinned task arguments.
   size_t task_arg_bytes = 0;
-  for (auto &arg : args) {
-    task_arg_bytes += arg->GetSize();
-  }
-  RAY_LOG(DEBUG) << "RayTask " << spec.TaskId() << " has args of size " << task_arg_bytes;
-  PinTaskArgs(spec, std::move(args));
-  RAY_LOG(DEBUG) << "Size of pinned task args is now " << pinned_task_arguments_bytes_;
-  if (max_pinned_task_arguments_bytes_ == 0) {
-    // Max threshold for pinned args is not set.
+  if (executing_task_args_.contains(spec.TaskId())) {
+    // TODO(swang): This should really be an assertion, but we can sometimes
+    // receive a duplicate task request if there is a failure and the original
+    // version of the task has not yet been canceled.
+    RAY_LOG(DEBUG) << "Scheduler received duplicate task " << spec.TaskId()
+                   << ", most likely because the first execution failed";
     return true;
   }
+  for (size_t i = 0; i < deps.size(); i++) {
+    auto [it, pinned_task_arg_inserted] =
+        pinned_task_arguments_.emplace(deps[i], std::make_pair(std::move(args[i]), 0));
+    auto &[arg, num_dependent_tasks] = it->second;
+    if (pinned_task_arg_inserted) {
+      // This is the first task that needed this argument.
+      pinned_task_arguments_bytes_ += arg->GetSize();
+    }
+    task_arg_bytes += arg->GetSize();
+    num_dependent_tasks++;
+  }
+  executing_task_args_.emplace(spec.TaskId(), std::move(deps));
 
-  if (task_arg_bytes > max_pinned_task_arguments_bytes_) {
-    RAY_LOG(WARNING)
+  // Checking if the arguments can be pinned.
+  RAY_LOG(DEBUG) << "RayTask " << spec.TaskId() << " has args of size " << task_arg_bytes;
+  if (max_pinned_task_arguments_bytes_ == 0) {
+    // No limit on pinned task arguments.
+  } else if (task_arg_bytes > max_pinned_task_arguments_bytes_) {
+    // Still try to pin with warning.
+    RAY_LOG(ERROR)
         << "Dispatched task " << spec.TaskId() << " has arguments of size "
         << task_arg_bytes
         << ", but the max memory allowed for arguments of executing tasks is only "
@@ -778,30 +785,8 @@ bool LocalTaskManager::PinTaskArgsIfMemoryAvailable(const TaskSpecification &spe
     return false;
   }
 
+  RAY_LOG(DEBUG) << "Size of pinned task args is now " << pinned_task_arguments_bytes_;
   return true;
-}
-
-void LocalTaskManager::PinTaskArgs(const TaskSpecification &spec,
-                                   std::vector<std::unique_ptr<RayObject>> args) {
-  const auto &deps = spec.GetDependencyIds();
-  // TODO(swang): This should really be an assertion, but we can sometimes
-  // receive a duplicate task request if there is a failure and the original
-  // version of the task has not yet been canceled.
-  auto executed_task_inserted = executing_task_args_.emplace(spec.TaskId(), deps).second;
-  if (executed_task_inserted) {
-    for (size_t i = 0; i < deps.size(); i++) {
-      auto [it, pinned_task_inserted] =
-          pinned_task_arguments_.emplace(deps[i], std::make_pair(std::move(args[i]), 0));
-      if (pinned_task_inserted) {
-        // This is the first task that needed this argument.
-        pinned_task_arguments_bytes_ += it->second.first->GetSize();
-      }
-      it->second.second++;
-    }
-  } else {
-    RAY_LOG(DEBUG) << "Scheduler received duplicate task " << spec.TaskId()
-                   << ", most likely because the first execution failed";
-  }
 }
 
 void LocalTaskManager::ReleaseTaskArgs(const TaskID &task_id) {

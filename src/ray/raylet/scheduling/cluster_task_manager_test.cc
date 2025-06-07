@@ -2132,19 +2132,17 @@ TEST_F(ClusterTaskManagerTest, PinnedArgsMemoryTest) {
     Total memory required by executing tasks' args stays under the specified
     threshold.
   */
-  std::shared_ptr<MockWorker> worker =
-      std::make_shared<MockWorker>(WorkerID::FromRandom(), 1234);
-  std::shared_ptr<MockWorker> worker2 =
-      std::make_shared<MockWorker>(WorkerID::FromRandom(), 12345);
-  pool_.PushWorker(std::static_pointer_cast<WorkerInterface>(worker2));
+  auto worker = std::make_shared<MockWorker>(WorkerID::FromRandom(), 1234);
+  auto worker2 = std::make_shared<MockWorker>(WorkerID::FromRandom(), 12345);
+  auto worker3 = std::make_shared<MockWorker>(WorkerID::FromRandom(), 123456);
   pool_.PushWorker(std::static_pointer_cast<WorkerInterface>(worker));
+  pool_.PushWorker(std::static_pointer_cast<WorkerInterface>(worker2));
+  pool_.PushWorker(std::static_pointer_cast<WorkerInterface>(worker3));
 
   rpc::RequestWorkerLeaseReply reply;
   int num_callbacks = 0;
-  int *num_callbacks_ptr = &num_callbacks;
-  auto callback = [num_callbacks_ptr](
-                      Status, std::function<void()>, std::function<void()>) {
-    (*num_callbacks_ptr) = *num_callbacks_ptr + 1;
+  auto callback = [&num_callbacks](Status, std::function<void()>, std::function<void()>) {
+    ++num_callbacks;
   };
 
   // This task can run.
@@ -2154,7 +2152,7 @@ TEST_F(ClusterTaskManagerTest, PinnedArgsMemoryTest) {
   pool_.TriggerCallbacks();
   ASSERT_EQ(num_callbacks, 1);
   ASSERT_EQ(leased_workers_.size(), 1);
-  ASSERT_EQ(pool_.workers.size(), 1);
+  ASSERT_EQ(pool_.workers.size(), 2);
   AssertPinnedTaskArgumentsPresent(task);
 
   // This task cannot run because it would put us over the memory threshold.
@@ -2163,17 +2161,28 @@ TEST_F(ClusterTaskManagerTest, PinnedArgsMemoryTest) {
   pool_.TriggerCallbacks();
   ASSERT_EQ(num_callbacks, 1);
   ASSERT_EQ(leased_workers_.size(), 1);
+  ASSERT_EQ(pool_.workers.size(), 2);
+
+  // Schedule the task if size of args (1200) > max_pinned_task_arguments_bytes (1000)
+  auto task3 = CreateTask({{ray::kCPU_ResourceLabel, 1}}, 2);
+  task_manager_.QueueAndScheduleTask(task3, false, false, &reply, callback);
+  pool_.TriggerCallbacks();
+  ASSERT_EQ(num_callbacks, 2);
+  ASSERT_EQ(leased_workers_.size(), 2);
   ASSERT_EQ(pool_.workers.size(), 1);
 
-  /* First task finishes, freeing memory for the second task */
+  /* Task 1 and 3 finish, freeing memory for task 2 */
   RayTask finished_task;
+  local_task_manager_->TaskFinished(leased_workers_.begin()->second, &finished_task);
+  leased_workers_.erase(leased_workers_.begin());
+  finished_task = RayTask();
   local_task_manager_->TaskFinished(leased_workers_.begin()->second, &finished_task);
   leased_workers_.clear();
 
   task_manager_.ScheduleAndDispatchTasks();
   pool_.TriggerCallbacks();
   AssertPinnedTaskArgumentsPresent(task2);
-  ASSERT_EQ(num_callbacks, 2);
+  ASSERT_EQ(num_callbacks, 3);
   ASSERT_EQ(leased_workers_.size(), 1);
   ASSERT_EQ(pool_.workers.size(), 0);
 
