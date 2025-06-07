@@ -8,13 +8,12 @@ import numpy as np
 import ray
 from ray.util.collective import types
 
-_NCCL_AVAILABLE = True
-_GLOO_AVAILABLE = True
-
 logger = logging.getLogger(__name__)
 
 try:
     from ray.util.collective.collective_group.nccl_collective_group import NCCLGroup
+
+    _NCCL_AVAILABLE = True
 except ImportError:
     _NCCL_AVAILABLE = False
     logger.warning(
@@ -25,8 +24,20 @@ except ImportError:
 
 try:
     from ray.util.collective.collective_group.gloo_collective_group import GLOOGroup
+
+    _GLOO_AVAILABLE = True
 except ImportError:
     _GLOO_AVAILABLE = False
+
+
+try:
+    from ray.util.collective.collective_group.torch_gloo_collective_group import (
+        TorchGLOOGroup,
+    )
+
+    _TORCH_DISTRIBUTED_AVAILABLE = True
+except ImportError:
+    _TORCH_DISTRIBUTED_AVAILABLE = False
 
 
 def nccl_available():
@@ -35,6 +46,10 @@ def nccl_available():
 
 def gloo_available():
     return _GLOO_AVAILABLE
+
+
+def torch_distributed_available():
+    return _TORCH_DISTRIBUTED_AVAILABLE
 
 
 class GroupManager(object):
@@ -70,13 +85,20 @@ class GroupManager(object):
                 device_type="tcp",
                 gloo_timeout=gloo_timeout,
             )
-            self._name_group_map[group_name] = g
-            self._group_name_map[g] = group_name
         elif backend == types.Backend.NCCL:
             logger.debug("Creating NCCL group: '{}'...".format(group_name))
             g = NCCLGroup(world_size, rank, group_name)
-            self._name_group_map[group_name] = g
-            self._group_name_map[g] = group_name
+        elif backend == types.Backend.TORCH_GLOO:
+            logger.debug(
+                "Creating torch.distributed GLOO group: '{}'...".format(group_name)
+            )
+            g = TorchGLOOGroup(world_size, rank, group_name)
+        else:
+            raise RuntimeError(f"Unexpected backend: {backend}")
+
+        self._name_group_map[group_name] = g
+        self._group_name_map[g] = group_name
+
         return self._name_group_map[group_name]
 
     def is_group_exist(self, group_name):
@@ -751,6 +773,9 @@ def _check_backend_availability(backend: types.Backend):
     elif backend == types.Backend.NCCL:
         if not nccl_available():
             raise RuntimeError("NCCL is not available.")
+    elif backend == types.Backend.TORCH_GLOO:
+        if not torch_distributed_available():
+            raise RuntimeError("torch.distributed is not available.")
 
 
 def _check_inside_actor():

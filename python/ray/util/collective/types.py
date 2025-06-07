@@ -32,6 +32,8 @@ class Backend(object):
     NCCL = "nccl"
     MPI = "mpi"
     GLOO = "gloo"
+    # Use gloo through torch.distributed.
+    TORCH_GLOO = "torch_gloo"
     UNRECOGNIZED = "unrecognized"
 
     def __new__(cls, name: str):
