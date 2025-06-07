@@ -602,21 +602,6 @@ def build(build_python, build_java, build_cpp):
             ]
             + runtime_env_agent_pip_packages
         )
-    # Vendor setproctitle which is a C extension by
-    # copying the so file to the ray/private/thirdparty/ folder.
-    subprocess.check_call(
-        [
-            sys.executable,
-            "-m",
-            "pip",
-            "install",
-            "-q",
-            "--no-deps",
-            "--target=" + os.path.join(ROOT_DIR, PRIVATE_THIRDPARTY_SUBDIR),
-            "setproctitle==1.2.2",
-        ],
-        env=dict(os.environ, CC="gcc"),
-    )
 
     bazel_flags = ["--verbose_failures"]
     if BAZEL_ARGS:

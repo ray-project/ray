@@ -229,7 +229,7 @@ ray_cc_library(
         ":logging",
         ":macros",
         ":process",
-        "//:sha256",
+        "//src/ray/thirdparty:sha256",
         "@boost//:asio",
         "@com_google_absl//absl/container:flat_hash_map",
     ],
@@ -385,5 +385,14 @@ ray_cc_library(
     deps = [
         ":mutex_protected",
         "@com_google_absl//absl/container:flat_hash_map",
+    ],
+)
+
+ray_cc_library(
+    name = "setproctitle",
+    srcs = ["setproctitle.cc"],
+    hdrs = ["setproctitle.h"],
+    deps = [
+        "//src/ray/thirdparty:setproctitle",
     ],
 )
