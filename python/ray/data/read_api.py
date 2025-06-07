@@ -2618,7 +2618,7 @@ def read_hudi(
 
 @PublicAPI
 def from_daft(df: "daft.DataFrame") -> Dataset:
-    """Create a :class:`~ray.data.Dataset` from a `Daft DataFrame <https://www.getdaft.io/projects/docs/en/stable/api_docs/dataframe.html>`_.
+    """Create a :class:`~ray.data.Dataset` from a `Daft DataFrame <https://docs.getdaft.io/en/stable/api/dataframe/>`_.
 
     .. warning::
 

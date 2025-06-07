@@ -73,7 +73,7 @@ _METRICS = [
     "ray_pull_manager_requests",
     "ray_pull_manager_active_bundles",
     "ray_pull_manager_retries_total",
-    "ray_push_manager_in_flight_pushes",
+    "ray_push_manager_num_pushes_remaining",
     "ray_push_manager_chunks",
     "ray_scheduler_failed_worker_startup_total",
     "ray_scheduler_tasks",
@@ -176,6 +176,14 @@ def _setup_cluster_for_test(request, ray_start_cluster):
             "event_stats_print_interval_ms": 500,
             "event_stats": True,
             "enable_metrics_collection": enable_metrics_collection,
+            "experimental_enable_open_telemetry_on_agent": os.getenv(
+                "RAY_experimental_enable_open_telemetry_on_agent"
+            )
+            == "1",
+            "experimental_enable_open_telemetry_on_core": os.getenv(
+                "RAY_experimental_enable_open_telemetry_on_core"
+            )
+            == "1",
         }
     )
     # Add worker nodes.
