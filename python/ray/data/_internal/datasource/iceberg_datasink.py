@@ -143,8 +143,9 @@ class IcebergDatasink(Datasink[List["DataFile"]]):
             if pa_table.shape[0] <= 0:
                 continue
 
+            task_uuid = uuid.uuid4()
             data_files = _dataframe_to_data_files(
-                self._table_metadata, pa_table, self._io, self._uuid
+                self._table_metadata, pa_table, self._io, task_uuid
             )
             data_files_list.extend(data_files)
 
