@@ -76,7 +76,11 @@ constexpr char kGcsAutoscalerClusterConfigKey[] = "__autoscaler_cluster_config";
 /// Name for cloud instance id env
 constexpr char kNodeCloudInstanceIdEnv[] = "RAY_CLOUD_INSTANCE_ID";
 
+// ENV keys for Ray node labels
 constexpr char kNodeTypeNameEnv[] = "RAY_NODE_TYPE_NAME";
+constexpr char kNodeMarketTypeEnv[] = "RAY_NODE_MARKET_TYPE";
+constexpr char kNodeRegionEnv[] = "RAY_NODE_REGION";
+constexpr char kNodeZoneEnv[] = "RAY_NODE_ZONE";
 
 constexpr char kNodeCloudInstanceTypeNameEnv[] = "RAY_CLOUD_INSTANCE_TYPE_NAME";
 
@@ -97,8 +101,13 @@ constexpr char kLibraryPathEnvName[] = "LD_LIBRARY_PATH";
 #endif
 
 #define RAY_LABEL_KEY_PREFIX "ray.io/"
-/// Default node label key: node_id
+/// Default node label keys populated by the Raylet
 constexpr char kLabelKeyNodeID[] = RAY_LABEL_KEY_PREFIX "node_id";
+constexpr char kLabelKeyNodeAcceleratorType[] = RAY_LABEL_KEY_PREFIX "accelerator-type";
+constexpr char kLabelKeyNodeMarketType[] = RAY_LABEL_KEY_PREFIX "market-type";
+constexpr char kLabelKeyNodeRegion[] = RAY_LABEL_KEY_PREFIX "availability-region";
+constexpr char kLabelKeyNodeZone[] = RAY_LABEL_KEY_PREFIX "availability-zone";
+constexpr char kLabelKeyNodeGroup[] = RAY_LABEL_KEY_PREFIX "node-group";
 #undef RAY_LABEL_KEY_PREFIX
 
 /// All nodes implicitly have resources with this prefix and the quantity is 1.
