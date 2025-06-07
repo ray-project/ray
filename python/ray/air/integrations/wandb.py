@@ -423,6 +423,13 @@ class _WandbLoggingActor:
                 # Ignore HTTPError. Missing a few data points is not a
                 # big issue, as long as things eventually recover.
                 logger.warning("Failed to log result to w&b: {}".format(str(e)))
+            except FileNotFoundError as e:
+                logger.error(
+                    "FileNotFoundError: Did not log result to Weights & Biases. "
+                    "Possible cause: relative file path used instead of absolute path. "
+                    "Error: %s",
+                    e,
+                )
         self._wandb.finish()
 
     def _handle_checkpoint(self, checkpoint_path: str):
