@@ -642,40 +642,42 @@ class ReporterAgent(
             enable_tpu_usage_check = False
             return []
 
-        endpoint = f'http://{TPU_DEVICE_PLUGIN_ADDR}:{TPU_DEVICE_PLUGIN_PORT}/metrics'
+        endpoint = f"http://{TPU_DEVICE_PLUGIN_ADDR}:{TPU_DEVICE_PLUGIN_PORT}/metrics"
         try:
             metrics = requests.get(endpoint).content
-            metrics = metrics.decode('utf-8')
+            metrics = metrics.decode("utf-8")
         except Exception as e:
-            logger.debug(f"Failed to retrieve TPU information from device plugin: {endpoint} {e}")
+            logger.debug(
+                f"Failed to retrieve TPU information from device plugin: {endpoint} {e}"
+            )
             enable_tpu_usage_check = False
             return []
 
         for family in text_string_to_metric_families(metrics):
             for sample in family.samples:
-                if sample.name == 'memory_bandwidth_utilization':
+                if sample.name == "memory_bandwidth_utilization":
                     labels = sample.labels
-                    accelerator_id = labels['accelerator_id']
-                    index = accelerator_id.split('-')[1]
+                    accelerator_id = labels["accelerator_id"]
+                    index = accelerator_id.split("-")[1]
                     info = TpuUtilizationInfo(
                         index=index,
                         name=accelerator_id,
-                        tpu_type=labels['model'],
-                        tpu_topology=labels['tpu_topology'],
+                        tpu_type=labels["model"],
+                        tpu_topology=labels["tpu_topology"],
                         tensorcore_utilization=0.0,
                         hbm_utilization=sample.value,
                     )
                     tpu_utilizations.append(info)
 
-                if sample.name == 'tensorcore_utilization':
+                if sample.name == "tensorcore_utilization":
                     labels = sample.labels
-                    accelerator_id = labels['accelerator_id']
-                    index = accelerator_id.split('-')[1]
+                    accelerator_id = labels["accelerator_id"]
+                    index = accelerator_id.split("-")[1]
                     info = TpuUtilizationInfo(
                         index=index,
                         name=accelerator_id,
-                        tpu_type=labels['model'],
-                        tpu_topology=labels['tpu_topology'],
+                        tpu_type=labels["model"],
+                        tpu_topology=labels["tpu_topology"],
                         tensorcore_utilization=sample.value,
                         hbm_utilization=0.0,
                     )
@@ -688,7 +690,9 @@ class ReporterAgent(
             index = int(info.get("index"))
             if len(merged_tpu_utilizations) > index:
                 merged_info = merged_tpu_utilizations[index]
-                merged_info["tensorcore_utilization"] += info.get("tensorcore_utilization")
+                merged_info["tensorcore_utilization"] += info.get(
+                    "tensorcore_utilization"
+                )
                 merged_info["hbm_utilization"] += info.get("hbm_utilization")
             else:
                 merged_info = TpuUtilizationInfo(
@@ -702,7 +706,6 @@ class ReporterAgent(
                 merged_tpu_utilizations.append(merged_info)
 
         return merged_tpu_utilizations
-
 
     @staticmethod
     def _get_boot_time():
