@@ -13,7 +13,6 @@
 # well with a lot of libraries including openai, boto3, ray
 # ruff: noqa: I001
 from benchmark.bm import run_bm
-
 import os
 from pathlib import Path  # noqa: E402
 from typing import Optional
@@ -22,6 +21,7 @@ import click
 import pytest
 import logging
 import anyscale
+
 from benchmark.common import read_from_s3, get_llm_config
 from benchmark.firehose_utils import FirehoseRecord, RecordName
 from test_utils import (
