@@ -224,8 +224,8 @@ class PullManager {
   /// A helper structure for tracking information about each ongoing bundle pull request.
   struct BundlePullRequest {
     BundlePullRequest(std::vector<ObjectID> requested_objects,
-                      const TaskMetricsKey &task_key)
-        : objects(std::move(requested_objects)), task_key(task_key) {}
+                      const TaskMetricsKey &_task_key)
+        : objects(std::move(requested_objects)), task_key(_task_key) {}
     // All the objects that this bundle is trying to pull.
     const std::vector<ObjectID> objects;
     // All the objects that are pullable.

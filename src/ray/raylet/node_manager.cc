@@ -646,7 +646,8 @@ void NodeManager::HandleReleaseUnusedBundles(rpc::ReleaseUnusedBundlesRequest re
   // so that pg bundle can be returned.
   local_task_manager_->CancelTasks(
       [&](const std::shared_ptr<internal::Work> &work) {
-        const auto bundle_id = work->task.GetTaskSpecification().PlacementGroupBundleId();
+        const auto bundle_id =
+            work->task_.GetTaskSpecification().PlacementGroupBundleId();
         return !bundle_id.first.IsNil() && (0 == in_use_bundles.count(bundle_id)) &&
                (work->GetState() == internal::WorkStatus::WAITING_FOR_WORKER);
       },
@@ -1267,14 +1268,14 @@ Status NodeManager::ProcessRegisterClientRequestMessageImpl(
           static_cast<int64_t>(protocol::MessageType::RegisterClientReply),
           fbb.GetSize(),
           fbb.GetBufferPointer(),
-          [this, client](const ray::Status &status) {
-            if (!status.ok()) {
+          [this, client](const ray::Status &_status) {
+            if (!_status.ok()) {
               DisconnectClient(client,
                                /*graceful=*/false,
                                rpc::WorkerExitType::SYSTEM_ERROR,
                                "Worker is failed because the raylet couldn't reply the "
                                "registration request: " +
-                                   status.ToString());
+                                   _status.ToString());
             }
           });
     };
@@ -1399,13 +1400,13 @@ void NodeManager::SendPortAnnouncementResponse(
       static_cast<int64_t>(protocol::MessageType::AnnounceWorkerPortReply),
       fbb.GetSize(),
       fbb.GetBufferPointer(),
-      [this, client](const ray::Status &status) {
-        if (!status.ok()) {
+      [this, client](const ray::Status &_status) {
+        if (!_status.ok()) {
           DisconnectClient(
               client,
               /*graceful=*/false,
               rpc::WorkerExitType::SYSTEM_ERROR,
-              "Failed to send AnnounceWorkerPortReply to client: " + status.ToString());
+              "Failed to send AnnounceWorkerPortReply to client: " + _status.ToString());
         }
       });
 }
@@ -1440,13 +1441,13 @@ void NodeManager::SendRegisterClientAndAnnouncePortResponse(
       static_cast<int64_t>(protocol::MessageType::RegisterWorkerWithPortReply),
       fbb.GetSize(),
       fbb.GetBufferPointer(),
-      [this, client](const ray::Status &status) {
-        if (!status.ok()) {
+      [this, client](const ray::Status &_status) {
+        if (!_status.ok()) {
           DisconnectClient(client,
                            /*graceful=*/false,
                            rpc::WorkerExitType::SYSTEM_ERROR,
                            "Failed to send RegisterWorkerWithPortReply to client: " +
-                               status.ToString());
+                               _status.ToString());
         }
       });
 }
@@ -2034,7 +2035,8 @@ void NodeManager::HandleCancelResourceReserve(
   // In the case of placement group removal, we should cancel all the lease requests.
   local_task_manager_->CancelTasks(
       [&](const std::shared_ptr<internal::Work> &work) {
-        const auto bundle_id = work->task.GetTaskSpecification().PlacementGroupBundleId();
+        const auto bundle_id =
+            work->task_.GetTaskSpecification().PlacementGroupBundleId();
         return bundle_id.first == bundle_spec.PlacementGroupId();
       },
       rpc::RequestWorkerLeaseReply::SCHEDULING_CANCELLED_PLACEMENT_GROUP_REMOVED,
@@ -2813,8 +2815,8 @@ void NodeManager::HandleFormatGlobalMemoryInfo(
 
   auto store_reply =
       [replies, reply, num_nodes, send_reply_callback, include_memory_info](
-          const rpc::GetNodeStatsReply &local_reply) {
-        replies->push_back(local_reply);
+          const rpc::GetNodeStatsReply &_local_reply) {
+        replies->push_back(_local_reply);
         if (replies->size() >= num_nodes) {
           if (include_memory_info) {
             reply->set_memory_summary(FormatMemoryInfo(*replies));

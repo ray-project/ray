@@ -204,25 +204,25 @@ struct SchedulingOptions {
  private:
   SchedulingOptions(
       SchedulingType type,
-      float spread_threshold,
-      bool avoid_local_node,
-      bool require_node_available,
-      bool avoid_gpu_nodes,
-      double max_cpu_fraction_per_node = 1.0,
-      std::shared_ptr<SchedulingContext> scheduling_context = nullptr,
-      const std::string &preferred_node_id = std::string(),
-      int32_t schedule_top_k_absolute = RayConfig::instance().scheduler_top_k_absolute(),
-      float scheduler_top_k_fraction = RayConfig::instance().scheduler_top_k_fraction())
+      float _spread_threshold,
+      bool _avoid_local_node,
+      bool _require_node_available,
+      bool _avoid_gpu_nodes,
+      double _max_cpu_fraction_per_node = 1.0,
+      std::shared_ptr<SchedulingContext> _scheduling_context = nullptr,
+      const std::string &_preferred_node_id = std::string(),
+      int32_t _schedule_top_k_absolute = RayConfig::instance().scheduler_top_k_absolute(),
+      float _scheduler_top_k_fraction = RayConfig::instance().scheduler_top_k_fraction())
       : scheduling_type(type),
-        spread_threshold(spread_threshold),
-        avoid_local_node(avoid_local_node),
-        require_node_available(require_node_available),
-        avoid_gpu_nodes(avoid_gpu_nodes),
-        max_cpu_fraction_per_node(max_cpu_fraction_per_node),
-        scheduling_context(std::move(scheduling_context)),
-        preferred_node_id(preferred_node_id),
-        schedule_top_k_absolute(schedule_top_k_absolute),
-        scheduler_top_k_fraction(scheduler_top_k_fraction) {}
+        spread_threshold(_spread_threshold),
+        avoid_local_node(_avoid_local_node),
+        require_node_available(_require_node_available),
+        avoid_gpu_nodes(_avoid_gpu_nodes),
+        max_cpu_fraction_per_node(_max_cpu_fraction_per_node),
+        scheduling_context(std::move(_scheduling_context)),
+        preferred_node_id(_preferred_node_id),
+        schedule_top_k_absolute(_schedule_top_k_absolute),
+        scheduler_top_k_fraction(_scheduler_top_k_fraction) {}
 
   friend class ::ray::raylet::SchedulingPolicyTest;
   friend class HybridSchedulingPolicyTest;
