@@ -434,10 +434,15 @@ ray::Status NodeManager::RegisterGcs() {
         [this] { local_object_manager_.FlushFreeObjects(); },
         RayConfig::instance().free_objects_period_milliseconds(),
         "NodeManager.deadline_timer.flush_free_objects");
-    periodical_runner_->RunFnPeriodically(
-        [this] { SpillIfOverPrimaryObjectsThreshold(); },
-        RayConfig::instance().free_objects_period_milliseconds(),
-        "NodeManager.deadline_timer.spill_objects_when_over_threshold");
+    if (RayConfig::instance().object_spilling_config().empty()) {
+      RAY_LOG(INFO) << "Object spilling is disabled because spilling config is "
+                    << "unspecified";
+    } else {
+      periodical_runner_->RunFnPeriodically(
+          [this] { SpillIfOverPrimaryObjectsThreshold(); },
+          RayConfig::instance().free_objects_period_milliseconds(),
+          "NodeManager.deadline_timer.spill_objects_when_over_threshold");
+    }
   }
   /// If periodic asio stats print is enabled, it will print it.
   const auto event_stats_print_interval_ms =
@@ -2384,6 +2389,10 @@ void NodeManager::FinishAssignedActorCreationTask(WorkerInterface &worker,
 }
 
 void NodeManager::SpillIfOverPrimaryObjectsThreshold() {
+  if (RayConfig::instance().object_spilling_config().empty()) {
+    RAY_LOG(INFO) << "Object spilling is disabled because spilling config is unspecified";
+    return;
+  }
   // Trigger object spilling if current usage is above the specified threshold.
   const float allocated_percentage =
       static_cast<float>(local_object_manager_.GetPrimaryBytes()) /
