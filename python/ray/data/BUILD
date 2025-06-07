@@ -1392,3 +1392,17 @@ py_test(
         "//:ray_lib",
     ],
 )
+
+py_test(
+    name = "test_hive_catalog",
+    size = "small",
+    srcs = ["tests/test_hive_catalog.py"],
+    tags = [
+        "exclusive",
+        "team:data",
+    ],
+    deps = [
+        ":conftest",
+        "//:ray_lib",
+    ],
+)
