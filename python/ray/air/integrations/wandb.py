@@ -422,8 +422,9 @@ class _WandbLoggingActor:
                 logger.warning("Failed to log result to w&b: {}".format(str(e)))
             except FileNotFoundError as e:
                 logger.error(
-                    "FileNotFoundError: This result will not be logged to WandB. "
-                    "Possible reason: relative instead of absolute path for file %s",
+                    "FileNotFoundError: Did not log result to Weights & Biases. "
+                    "Possible cause: relative file path used instead of absolute path. "
+                    "Error: %s",
                     e,
                 )
         self._wandb.finish()
