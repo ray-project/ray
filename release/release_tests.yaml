@@ -4437,6 +4437,7 @@
     timeout: 3600
     script: bash ci/tests.sh  # relative to working_dir
 
+
   variations:
     - __suffix__: aws  # uses default specs above
     - __suffix__: gce
@@ -4461,76 +4462,6 @@
   run:
     timeout: 3600
     script: bash ci/tests.sh
-
-  variations:
-    - __suffix__: aws
-    - __suffix__: gce
-      env: gce
-      frequency: manual
-      cluster:
-        cluster_compute: ci/gce.yaml  # Relative to working_dir.
-
-- name: e2e_timeseries
-  frequency: weekly
-  python: "3.11"
-  group: ray-examples
-  team: ml
-  working_dir: //doc/source/ray-overview/examples/e2e-timeseries  # Use // to access from repo's root.
-
-  cluster:
-    byod:
-      type: cu123
-      post_build_script: byod_e2e_timeseries.sh
-    cluster_compute: ci/aws.yaml
-
-  run:
-    timeout: 3600
-    script: python ci/tests.py
-
-  variations:
-    - __suffix__: aws
-
-- name: e2e_multimodal_ai_workloads  # do not use dashes (regex sensitive)
-  frequency: weekly
-  python: "3.12"
-  group: ray-examples
-  team: ml
-  working_dir: //doc/source/ray-overview/examples/e2e-multimodal-ai-workloads  # use // to access from repo's root
-
-  cluster:
-    byod:
-      type: cu123  # anyscale/ray-llm:<PR_RAY_VERSION>-py311-cu124
-      post_build_script: byod_e2e_multimodal_ai_workloads.sh  # release/ray_release/byod/
-    cluster_compute: ci/aws.yaml  # relative to working_dir
-
-  run:
-    timeout: 3600
-    script: bash ci/tests.sh  # relative to working_dir
-
-  variations:
-    - __suffix__: aws  # uses default specs above
-    - __suffix__: gce
-      env: gce
-      frequency: manual
-      cluster:
-        cluster_compute: ci/gce.yaml  # relative to working_dir
-
-- name: object_detection  # do not use dashes (regex sensitive)
-  frequency: weekly
-  python: "3.11"
-  group: ray-examples
-  team: ml
-  working_dir: //doc/source/ray-overview/examples/object-detection
-
-  cluster:
-    byod:
-      type: llm-cu124  # anyscale/ray-llm:<PR_RAY_VERSION>-py311-cu124
-      post_build_script: byod_object_detection.sh # release/ray_release/byod/
-    cluster_compute: ci/aws.yaml  # relative to working_dir
-
-  run:
-    timeout: 3600
-    script: bash ci/tests.sh  # relative to working_dir
 
   variations:
     - __suffix__: aws

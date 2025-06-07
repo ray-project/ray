@@ -38,15 +38,41 @@ class AutoscalingConfig(BaseModel):
 
     # Publicly exposed options
     min_replicas: NonNegativeInt = 1
+    """Minimum number of replicas. Default to 1."""
     initial_replicas: Optional[NonNegativeInt] = None
+    """Initial number of replicas. Default to None.
+    If specified, Serve will start with this many replicas, and the deployment
+    will not scale below `min_replicas` subject to `target_capacity`."""
     max_replicas: PositiveInt = 1
+    """Maximum number of replicas. Default to 1."""
 
     target_ongoing_requests: PositiveFloat = DEFAULT_TARGET_ONGOING_REQUESTS
+    """Target number of ongoing requests per replica. This is used by the
+    `replica_queue_length_autoscaling_policy`. Default to 
+    `ray.serve._private.constants.DEFAULT_TARGET_ONGOING_REQUESTS` (2.0)."""
 
     # How often to scrape for metrics
     metrics_interval_s: PositiveFloat = 10.0
+    """Time interval for scraping metrics. Default to 10.0s."""
     # Time window to average over for metrics.
     look_back_period_s: PositiveFloat = 30.0
+    """Time window to average metrics over. Default to 30.0s."""
+
+    # Policy settings
+    policy: str = "replica_queue_length_autoscaling_policy"
+    """Identifier for the autoscaling policy to use. Defaults to
+    "replica_queue_length_autoscaling_policy".
+    If "qps_based_autoscaling_policy" is chosen, `target_qps_per_replica`
+    must be set.
+    """
+    target_qps_per_replica: Optional[PositiveFloat] = None
+    """Target queries per second (QPS) per replica. This is used by the
+    `qps_based_autoscaling_policy`. Default to None. Must be positive if set.
+    """
+    qps_autoscaling_window_s: PositiveFloat = 10.0
+    """The time window (in seconds) over which QPS is averaged for the
+    `qps_based_autoscaling_policy`. Default to 10.0s. Must be positive.
+    """
 
     # DEPRECATED
     smoothing_factor: PositiveFloat = 1.0
@@ -75,7 +101,10 @@ class AutoscalingConfig(BaseModel):
     _serialized_policy_def: bytes = PrivateAttr(default=b"")
 
     # Custom autoscaling config. Defaults to the request-based autoscaler.
-    _policy: Union[str, Callable] = PrivateAttr(default=DEFAULT_AUTOSCALING_POLICY)
+    # This might be superseded or need to align with the new `policy: str` field.
+    _policy_internal: Union[str, Callable] = PrivateAttr(
+        default=DEFAULT_AUTOSCALING_POLICY
+    )
 
     @validator("max_replicas", always=True)
     def replicas_settings_valid(cls, max_replicas, values):
@@ -103,39 +132,84 @@ class AutoscalingConfig(BaseModel):
 
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
+        # The `_policy_internal` attribute stores the actual callable or import path.
+        # The new `policy` field (string name) will be the user-facing config.
+        # We need to ensure they are consistent or decide which one takes precedence.
+        # For now, `serialize_policy` uses `_policy_internal`.
+        # If `kwargs` contains `policy` (the string name), we might want to
+        # initialize `_policy_internal` based on that, or have `get_policy` use it.
+        # This part might need further refinement based on how policies are loaded.
         self.serialize_policy()
+
+    @validator("qps_autoscaling_window_s")
+    def qps_window_positive(cls, v):
+        if v <= 0:
+            raise ValueError(f"qps_autoscaling_window_s ({v}) must be positive.")
+        return v
+
+    @validator("target_qps_per_replica", always=True)
+    def target_qps_valid_if_policy_is_qps(cls, v, values):
+        policy_name = values.get("policy")
+        if policy_name == "qps_based_autoscaling_policy":
+            if v is None:
+                raise ValueError(
+                    "target_qps_per_replica must be set when "
+                    "policy is 'qps_based_autoscaling_policy'."
+                )
+            if v <= 0:
+                raise ValueError(
+                    f"target_qps_per_replica ({v}) must be positive when "
+                    "policy is 'qps_based_autoscaling_policy'."
+                )
+        return v
 
     def serialize_policy(self) -> None:
         """Serialize policy with cloudpickle.
 
         Import the policy if it's passed in as a string import path. Then cloudpickle
         the policy and set `serialized_policy_def` if it's empty.
+        This currently uses `_policy_internal`. We may need to update this
+        to use the new `policy: str` field to look up the policy function from
+        a registry (like ALL_AUTOSCALING_POLICIES proposed for autoscaling_policy.py)
         """
-        values = self.dict()
-        policy = values.get("_policy")
-        if isinstance(policy, Callable):
-            policy = f"{policy.__module__}.{policy.__name__}"
+        values = self.dict()  # This will include the new 'policy' field
 
-        if not policy:
-            policy = DEFAULT_AUTOSCALING_POLICY
+        # TODO(Mergify): Revisit policy serialization.
+        # For now, keep existing behavior with _policy_internal.
+        # The new `policy: str` field will be used by the caller to select the policy.
+        policy_ref = values.get("_policy_internal")
+        if isinstance(policy_ref, Callable):
+            # This path is taken if _policy_internal was set to a callable directly
+            policy_path = f"{policy_ref.__module__}.{policy_ref.__name__}"
+            policy_callable = policy_ref
+        else:  # Assumed to be an import string or default
+            policy_path = policy_ref if policy_ref else DEFAULT_AUTOSCALING_POLICY
+            policy_callable = import_attr(policy_path)
 
-        policy_path = policy
-        policy = import_attr(policy)
+        if not values.get("_serialized_policy_def"):  # Check if already serialized
+            self._serialized_policy_def = cloudpickle.dumps(policy_callable)
 
-        if not values.get("_serialized_policy_def"):
-            self._serialized_policy_def = cloudpickle.dumps(policy)
-        self._policy = policy_path
+        # Ensure _policy_internal stores the path for consistency if it was a callable
+        self._policy_internal = policy_path
 
     @classmethod
     def default(cls):
-        return cls(
+        return cls(  # Default still uses replica_queue_length_autoscaling_policy implicitly
             target_ongoing_requests=DEFAULT_TARGET_ONGOING_REQUESTS,
             min_replicas=1,
             max_replicas=100,
+            # policy field will take its default "replica_queue_length_autoscaling_policy"
         )
 
     def get_policy(self) -> Callable:
-        """Deserialize policy from cloudpickled bytes."""
+        """Deserialize policy from cloudpickled bytes.
+
+        This method currently relies on `_serialized_policy_def` which is
+        populated based on `_policy_internal`.
+        To use the new `policy: str` field, the caller (e.g., DeploymentStateManager)
+        should use `ALL_AUTOSCALING_POLICIES[self.policy]` instead of this method.
+        This method might become obsolete or needs to be re-wired.
+        """
         return cloudpickle.loads(self._serialized_policy_def)
 
     def get_upscaling_factor(self) -> PositiveFloat:
