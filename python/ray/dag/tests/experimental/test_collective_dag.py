@@ -113,15 +113,6 @@ def test_all_reduce_duplicate_actors(ray_start_regular):
         ):
             collective.allreduce.bind(computes)
 
-    with InputNode() as inp:
-        compute = worker.return_tensor.bind(inp)
-        computes = [compute for _ in range(2)]
-        with pytest.raises(
-            ValueError,
-            match="Expected unique input nodes for a collective operation",
-        ):
-            collective.allreduce.bind(computes)
-
 
 @pytest.mark.parametrize("ray_start_regular", [{"num_cpus": 4}], indirect=True)
 def test_all_reduce_custom_comm_wrong_actors(ray_start_regular):
@@ -142,6 +133,76 @@ def test_all_reduce_custom_comm_wrong_actors(ray_start_regular):
             match="Expected actor handles to match the custom NCCL group",
         ):
             collective.allreduce.bind(computes, transport=nccl_group)
+
+
+@pytest.mark.parametrize("ray_start_regular", [{"num_cpus": 4}], indirect=True)
+def test_all_reduce_bind_list_of_nodes_duplicate_nodes(ray_start_regular):
+    """
+    Test an error is thrown when an all-reduce binds to lists of nodes
+    that are duplicated.
+    """
+    actor_cls = CPUTorchTensorWorker.options()
+
+    num_workers = 2
+    workers = [actor_cls.remote() for _ in range(num_workers)]
+
+    nccl_group = AbstractNcclGroup([workers[0]])
+    with InputNode() as inp:
+        computes = [worker.return_tensor.bind(inp) for worker in workers]
+        with pytest.raises(
+            ValueError,
+            match="Expected unique input nodes for a collective operation",
+        ):
+            collective.allreduce.bind(
+                [[computes[0], computes[0]], [computes[1], computes[1]]],
+                transport=nccl_group,
+            )
+
+
+@pytest.mark.parametrize("ray_start_regular", [{"num_cpus": 4}], indirect=True)
+def test_all_reduce_bind_list_of_nodes_unequal_number_of_nodes(ray_start_regular):
+    """
+    Test an error is thrown when an all-reduce binds to lists of nodes
+    of different number of nodes across actors.
+    """
+    actor_cls = CPUTorchTensorWorker.options()
+
+    num_workers = 2
+    workers = [actor_cls.remote() for _ in range(num_workers)]
+
+    nccl_group = AbstractNcclGroup([workers[0]])
+    with InputNode() as inp:
+        computes_0 = [worker.return_tensor.bind(inp) for worker in workers]
+        computes_1 = [worker.return_tensor.bind(inp) for worker in workers]
+        with pytest.raises(
+            ValueError,
+            match="Expected equal number of nodes bound from all actors",
+        ):
+            collective.allreduce.bind(
+                [[computes_0[0], computes_1[0]], computes_0[1]], transport=nccl_group
+            )
+
+
+@pytest.mark.parametrize("ray_start_regular", [{"num_cpus": 4}], indirect=True)
+def test_all_reduce_bind_list_of_nodes_different_actors(ray_start_regular):
+    """
+    Test an error is thrown when an all-reduce binds to a list of nodes
+    from different actors.
+    """
+    actor_cls = CPUTorchTensorWorker.options()
+
+    num_workers = 2
+    workers = [actor_cls.remote() for _ in range(num_workers)]
+
+    nccl_group = AbstractNcclGroup([workers[0]])
+    with InputNode() as inp:
+        computes_0 = [worker.return_tensor.bind(inp) for worker in workers]
+        computes_1 = [worker.return_tensor.bind(inp) for worker in workers]
+        with pytest.raises(
+            ValueError,
+            match="Expected list of input nodes from the same actor",
+        ):
+            collective.allreduce.bind([computes_0, computes_1], transport=nccl_group)
 
 
 @pytest.mark.parametrize(
