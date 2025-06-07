@@ -27,7 +27,8 @@ void InlineDependencies(
     const absl::flat_hash_map<ObjectID, std::shared_ptr<RayObject>> &dependencies,
     TaskSpecification &task,
     std::vector<ObjectID> *inlined_dependency_ids,
-    std::vector<ObjectID> *contained_ids) {
+    std::vector<ObjectID> *contained_ids,
+    TensorTransportGetter &tensor_transport_getter) {
   auto &msg = task.GetMutableMessage();
   size_t found = 0;
   for (size_t i = 0; i < task.NumArgs(); i++) {
@@ -40,6 +41,9 @@ void InlineDependencies(
         if (!it->second->IsInPlasmaError()) {
           // The object has not been promoted to plasma. Inline the object by
           // clearing the reference and replacing it with the raw value.
+          if (tensor_transport_getter(id) == rpc::TensorTransport::OBJECT_STORE) {
+            mutable_arg->clear_object_ref();
+          }
           mutable_arg->set_is_inlined(true);
           if (it->second->HasData()) {
             const auto &data = it->second->GetData();
@@ -128,7 +132,8 @@ void LocalDependencyResolver::ResolveDependencies(
               InlineDependencies(state->local_dependencies,
                                  state->task,
                                  &inlined_dependency_ids,
-                                 &contained_ids);
+                                 &contained_ids,
+                                 tensor_transport_getter_);
               if (state->actor_dependencies_remaining == 0) {
                 resolved_task_state = std::move(state);
                 pending_tasks_.erase(it);
