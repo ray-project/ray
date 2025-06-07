@@ -94,8 +94,8 @@ def plan_write_op(
     collect_stats_fn = generate_collect_write_stats_fn()
     # Create a MapTransformer for a write operator
     transform_fns = [
-        BlockMapTransformFn(write_fn),
-        BlockMapTransformFn(collect_stats_fn),
+        BlockMapTransformFn(write_fn, None, None),
+        BlockMapTransformFn(collect_stats_fn, None, None),
     ]
     map_transformer = MapTransformer(transform_fns)
     return MapOperator.create(
