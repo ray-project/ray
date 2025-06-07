@@ -274,8 +274,6 @@ class GcsActor {
   bool export_event_write_enabled_ = false;
 };
 
-using RegisterActorCallback =
-    std::function<void(std::shared_ptr<GcsActor>, const Status &status)>;
 using RestartActorForLineageReconstructionCallback =
     std::function<void(std::shared_ptr<GcsActor>)>;
 using CreateActorCallback = std::function<void(
@@ -392,7 +390,7 @@ class GcsActorManager : public rpc::ActorInfoHandler {
   /// actor with the specified name already exists. The callback will not be called in
   /// this case.
   Status RegisterActor(const rpc::RegisterActorRequest &request,
-                       RegisterActorCallback success_callback);
+                       std::function<void(Status)> success_callback);
 
   /// Set actors on the node as preempted and publish the actor information.
   /// If the node is already dead, this method is a no-op.
@@ -500,9 +498,6 @@ class GcsActorManager : public rpc::ActorInfoHandler {
 
   const absl::flat_hash_map<ActorID, std::shared_ptr<GcsActor>> &GetRegisteredActors()
       const;
-
-  const absl::flat_hash_map<ActorID, std::vector<RegisterActorCallback>>
-      &GetActorRegisterCallbacks() const;
 
   std::string DebugString() const;
 
@@ -667,7 +662,7 @@ class GcsActorManager : public rpc::ActorInfoHandler {
   /// Callbacks of pending `RegisterActor` requests.
   /// Maps actor ID to actor registration callbacks, which is used to filter duplicated
   /// messages from a driver/worker caused by some network problems.
-  absl::flat_hash_map<ActorID, std::vector<RegisterActorCallback>>
+  absl::flat_hash_map<ActorID, std::vector<std::function<void(Status)>>>
       actor_to_register_callbacks_;
   /// Callbacks of pending `RestartActorForLineageReconstruction` requests.
   /// Maps actor ID to actor restart callbacks, which is used to filter duplicated
@@ -757,6 +752,12 @@ class GcsActorManager : public rpc::ActorInfoHandler {
   uint64_t counts_[CountType::CountType_MAX] = {0};
 
   FRIEND_TEST(GcsActorManagerTest, TestKillActorWhenActorIsCreating);
+  FRIEND_TEST(GcsActorManagerTest, TestOwnerWorkerDieBeforeActorDependenciesResolved);
+  FRIEND_TEST(GcsActorManagerTest,
+              TestOwnerWorkerDieBeforeDetachedActorDependenciesResolved);
+  FRIEND_TEST(GcsActorManagerTest, TestOwnerNodeDieBeforeActorDependenciesResolved);
+  FRIEND_TEST(GcsActorManagerTest,
+              TestOwnerNodeDieBeforeDetachedActorDependenciesResolved);
 };
 
 }  // namespace gcs

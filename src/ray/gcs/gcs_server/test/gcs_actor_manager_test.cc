@@ -150,7 +150,6 @@ class GcsActorManagerTest : public ::testing::Test {
         /*batch_size=*/100);
 
     gcs_publisher_ = std::make_unique<gcs::GcsPublisher>(std::move(publisher));
-    store_client_ = std::make_shared<gcs::InMemoryStoreClient>();
     gcs_table_storage_ = std::make_unique<gcs::InMemoryGcsTableStorage>();
     kv_ = std::make_unique<gcs::MockInternalKVInterface>();
     function_manager_ = std::make_unique<gcs::GcsFunctionManager>(*kv_, io_service_);
@@ -327,7 +326,6 @@ class GcsActorManagerTest : public ::testing::Test {
 
   instrumented_io_context io_service_;
   std::unique_ptr<std::thread> thread_io_service_;
-  std::shared_ptr<gcs::StoreClient> store_client_;
   std::shared_ptr<gcs::GcsTableStorage> gcs_table_storage_;
   // Actor scheduler's ownership lies in actor manager.
   MockActorScheduler *mock_actor_scheduler_ = nullptr;
@@ -1089,7 +1087,7 @@ TEST_F(GcsActorManagerTest, TestOwnerWorkerDieBeforeActorDependenciesResolved) {
   ASSERT_FALSE(registered_actors.count(registered_actor->GetActorID()));
   SyncPostAndWait(
       io_service_, "TestOwnerWorkerDieBeforeActorDependenciesResolved", [&]() {
-        const auto &callbacks = gcs_actor_manager_->GetActorRegisterCallbacks();
+        const auto &callbacks = gcs_actor_manager_->actor_to_register_callbacks_;
         ASSERT_FALSE(callbacks.count(registered_actor->GetActorID()));
       });
 }
@@ -1117,7 +1115,7 @@ TEST_F(GcsActorManagerTest, TestOwnerWorkerDieBeforeDetachedActorDependenciesRes
   ASSERT_FALSE(registered_actors.count(registered_actor->GetActorID()));
   SyncPostAndWait(
       io_service_, "TestOwnerWorkerDieBeforeDetachedActorDependenciesResolved", [&]() {
-        const auto &callbacks = gcs_actor_manager_->GetActorRegisterCallbacks();
+        const auto &callbacks = gcs_actor_manager_->actor_to_register_callbacks_;
         ASSERT_FALSE(callbacks.count(registered_actor->GetActorID()));
       });
 }
@@ -1141,7 +1139,7 @@ TEST_F(GcsActorManagerTest, TestOwnerNodeDieBeforeActorDependenciesResolved) {
   const auto &registered_actors = gcs_actor_manager_->GetRegisteredActors();
   ASSERT_FALSE(registered_actors.count(registered_actor->GetActorID()));
   SyncPostAndWait(io_service_, "TestOwnerNodeDieBeforeActorDependenciesResolved", [&]() {
-    const auto &callbacks = gcs_actor_manager_->GetActorRegisterCallbacks();
+    const auto &callbacks = gcs_actor_manager_->actor_to_register_callbacks_;
     ASSERT_FALSE(callbacks.count(registered_actor->GetActorID()));
   });
 }
@@ -1166,7 +1164,7 @@ TEST_F(GcsActorManagerTest, TestOwnerNodeDieBeforeDetachedActorDependenciesResol
   ASSERT_FALSE(registered_actors.count(registered_actor->GetActorID()));
   SyncPostAndWait(
       io_service_, "TestOwnerNodeDieBeforeDetachedActorDependenciesResolved", [&]() {
-        const auto &callbacks = gcs_actor_manager_->GetActorRegisterCallbacks();
+        const auto &callbacks = gcs_actor_manager_->actor_to_register_callbacks_;
         ASSERT_FALSE(callbacks.count(registered_actor->GetActorID()));
       });
 }
