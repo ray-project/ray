@@ -1,7 +1,6 @@
 from typing import TYPE_CHECKING, Any, Callable, Dict, Iterator, List, Optional
 
 from .operator import Operator
-from ray.data._internal.metadata_exporter import sanitize_for_struct
 from ray.data.block import BlockMetadata
 
 if TYPE_CHECKING:
@@ -64,7 +63,7 @@ class LogicalOperator(Operator):
 
     def _get_args(self) -> Dict[str, Any]:
         """This Dict must be serializable"""
-        return {k: v for k, v in vars(self).items()}
+        return vars(self)
 
     def output_data(self) -> Optional[List["RefBundle"]]:
         """The output data of this operator, or ``None`` if not known."""
