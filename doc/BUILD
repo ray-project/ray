@@ -447,8 +447,6 @@ doctest(
             "source/train/**/*.rst",
             "source/tune/**/*.md",
             "source/tune/**/*.rst",
-            "source/workflows/**/*.md",
-            "source/workflows/**/*.rst",
         ],
     ),
     tags = ["team:none"],
@@ -591,17 +589,6 @@ doctest(
         "source/tune/**/*.rst",
     ],
     tags = ["team:ml"],
-)
-
-doctest(
-    name = "doctest[workflow]",
-    files = glob(
-        include = [
-            "source/workflows/**/*.md",
-            "source/workflows/**/*.rst",
-        ],
-    ),
-    tags = ["team:core"],
 )
 
 filegroup(
