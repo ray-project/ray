@@ -23,6 +23,7 @@ from typing import (
 )
 
 import numpy as np
+import pyarrow as pa
 
 import ray
 import ray.cloudpickle as pickle
@@ -896,6 +897,150 @@ class Dataset:
             zero_copy_batch=False,
             **ray_remote_args,
         )
+
+    @PublicAPI(api_group=BT_API_GROUP)
+    def distinct(
+        self,
+        keys: Optional[List[str]] = None,
+        keep: Union[Literal["first", "last"], bool] = "first",
+    ) -> "Dataset":
+        """
+        Remove duplicate rows from the dataset.
+
+        This method is useful for preprocessing data by eliminating redundant entries. It can operate
+        on all columns (default) or only on a set of columns specified by ``keys``, supporting flexible
+        deduplication strategies similar to those in pandas.
+
+        .. tip::
+            Setting ``keys`` allows you to find unique values based on one or more chosen columns,
+            while other columns retain their values from the row selected based on ``keep``.
+
+        .. warning::
+            ``distinct`` is an expensive operation that requires shuffling data across the cluster.
+            Large datasets may incur significant computation and memory cost.
+
+        Examples:
+
+            Remove duplicate rows across all columns:
+
+            .. testcode::
+
+                import ray
+                import pyarrow as pa
+
+                ds = ray.data.from_arrow(pa.table({"a": [1,2,1,2,3], "b": ["x","y","x","y","z"]}))
+                print(ds.distinct().sort(key=["a","b"]).take_all())
+
+            .. testoutput::
+
+                [{'a': 1, 'b': 'x'}, {'a': 2, 'b': 'y'}, {'a': 3, 'b': 'z'}]
+
+            Remove duplicates based on a subset of columns:
+
+            .. testcode::
+
+                print(ds.distinct(keys=["a"]).sort(key=["a"]).take_all())
+
+            .. testoutput::
+
+                [{'a': 1, 'b': 'x'}, {'a': 2, 'b': 'y'}, {'a': 3, 'b': 'z'}]
+
+            Remove duplicates using the 'last' occurrence for each group:
+
+            .. testcode::
+
+                print(ds.distinct(keys=["a"], keep="last").sort(key=["a"]).take_all())
+
+            .. testoutput::
+
+                [{'a': 1, 'b': 'x'}, {'a': 2, 'b': 'y'}, {'a': 3, 'b': 'z'}]
+
+            Remove all rows that have duplicates (keep only values that appear exactly once in the keys):
+
+            .. testcode::
+
+                ds2 = ray.data.from_arrow(pa.table({"a": [1,1,2,3,3,4], "b": ["x","x","y","z","z","w"]}))
+                print(ds2.distinct(keys=["a"], keep=False).sort(key=["a"]).take_all())
+
+            .. testoutput::
+
+                [{'a': 2, 'b': 'y'}, {'a': 4, 'b': 'w'}]
+
+        Args:
+            keys: List of columns to consider for identifying duplicates. Only the values in these columns are checked for duplication. If None, all columns are used. Defaults to None.
+            keep: Determines which duplicates (if any) to keep.
+                - 'first': Keep the first occurrence of each set of duplicates.
+                - 'last': Keep the last occurrence of each set of duplicates.
+                - False: Drop all duplicates (only unique rows by ``subset`` are kept).
+
+        Returns:
+            A new dataset with duplicate rows removed as specified.
+
+        .. note::
+
+            If you use ``keys``, only the specified columns are considered for uniqueness.
+            Non-subset columns retain the value for whichever row is kept (first, last, etc.).
+
+            For very large datasets, this operation will shuffle and regroup the full dataset,
+            which may result in memory pressure or dramatically increased execution time.
+
+        """
+        import pandas as pd
+
+        all_cols = self.columns()
+        if not all_cols:
+            return self
+
+        subset_cols = keys if keys is not None else all_cols
+
+        if keep not in ("first", "last", False):
+            raise ValueError(f"keep must be 'first', 'last', or False, got {keep}")
+
+        if keep is False:
+
+            def only_uniques(batch: pd.DataFrame) -> pd.DataFrame:
+                dupe_mask = batch.duplicated(subset=subset_cols, keep=False)
+                return batch[~dupe_mask]
+
+            self = self.map_batches(
+                only_uniques,
+                batch_format="pandas",
+                zero_copy_batch=False,
+            )
+
+            def keep_one_per_group(batch: pa.Table) -> pa.Table:
+                if batch.num_rows == 1:
+                    return batch
+                return batch.slice(0, 0)  # drop group
+
+            return self.groupby(subset_cols).map_groups(
+                keep_one_per_group, batch_format="pyarrow"
+            )
+
+        else:
+
+            def drop_pandas_dups(batch: pd.DataFrame) -> pd.DataFrame:
+                return batch.drop_duplicates(subset=subset_cols, keep=keep)
+
+            self = self.map_batches(
+                drop_pandas_dups,
+                batch_format="pandas",
+                zero_copy_batch=False,
+            )
+            if keep == "first":
+
+                def take_first(batch: pa.Table) -> pa.Table:
+                    return batch.slice(0, 1)
+
+                reducer = take_first
+            else:
+
+                def take_last(batch: pa.Table) -> pa.Table:
+                    return batch.slice(batch.num_rows - 1, 1)
+
+                reducer = take_last
+
+            return self.groupby(subset_cols).map_groups(reducer, batch_format="pyarrow")
 
     @PublicAPI(api_group=BT_API_GROUP)
     def drop_columns(
