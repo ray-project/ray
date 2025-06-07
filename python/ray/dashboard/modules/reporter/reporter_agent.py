@@ -370,8 +370,8 @@ class TpuUtilizationInfo(TypedDict):
     name: str
     tpu_type: str
     tpu_topology: str
-    tensorcore_utilization: Optional[Percentage]
-    hbm_utilization: Optional[Percentage]
+    tensorcore_utilization: Percentage
+    hbm_utilization: Percentage
 
 
 class ReporterAgent(
@@ -651,12 +651,13 @@ class ReporterAgent(
                 if sample.name == 'memory_bandwidth_utilization':
                     labels = sample.labels
                     accelerator_id = labels['accelerator_id']
-                    index = accelerator_id.split('_')[1]
+                    index = accelerator_id.split('-')[1]
                     info = TpuUtilizationInfo(
                         index=index,
                         name=accelerator_id,
                         tpu_type=labels['model'],
                         tpu_topology=labels['tpu_topology'],
+                        tensorcore_utilization=0.0,
                         hbm_utilization=sample.value,
                     )
                     tpu_utilizations.append(info)
@@ -664,36 +665,36 @@ class ReporterAgent(
                 if sample.name == 'tensorcore_utilization':
                     labels = sample.labels
                     accelerator_id = labels['accelerator_id']
-                    index = accelerator_id.split('_')[1]
+                    index = accelerator_id.split('-')[1]
                     info = TpuUtilizationInfo(
                         index=index,
                         name=accelerator_id,
                         tpu_type=labels['model'],
                         tpu_topology=labels['tpu_topology'],
                         tensorcore_utilization=sample.value,
+                        hbm_utilization=0.0,
                     )
-                    tpu_utilization.append(info)
+                    tpu_utilizations.append(info)
 
         # Merge metrics
         merged_tpu_utilizations = []
-        num_tpus = len(tpu_utilizations) / 2
 
-        for index in range(num_tpus):
-            merged_info = TpuUtilizationInfo(
-                index=0,
-                name="",
-                tpu_type="",
-                tpu_topology="")
-
-            for info in tpu_utilizations:
-                if info.index == index:
-                    merged_info.index = info.index
-                    merged_info.name = info.name
-                    merged_info.tpu_type = info.tpu_type
-                    merged_info.tpu_topology = info.tpu_topology
-                    merged_info.tensorcore_utilization += info.tensorcore_utilization
-                    merged_info.hbm_utilization += info.hbm_utilization
-            merged_tpu_utilizations.append(merged_info)
+        for info in tpu_utilizations:
+            index = int(info.get("index"))
+            if len(merged_tpu_utilizations) > index:
+                merged_info = merged_tpu_utilizations[index]
+                merged_info["tensorcore_utilization"] += info.get("tensorcore_utilization")
+                merged_info["hbm_utilization"] += info.get("hbm_utilization")
+            else:
+                merged_info = TpuUtilizationInfo(
+                    index=info.get("index"),
+                    name=info.get("name"),
+                    tpu_type=info.get("tpu_type"),
+                    tpu_topology=info.get("tpu_topology"),
+                    tensorcore_utilization=info.get("tensorcore_utilization"),
+                    hbm_utilization=info.get("hbm_utilization"),
+                )
+                merged_tpu_utilizations.append(merged_info)
 
         return merged_tpu_utilizations
 
