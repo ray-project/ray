@@ -113,6 +113,22 @@ void Metric::Record(double value, TagsType tags) {
     return;
   }
 
+  if (OpenTelemetryMetricRecorder::GetInstance().IsMetricRegistered(name_)) {
+    absl::flat_hash_map<std::string, std::string> open_telemetry_tags;
+    // Collect tags from both the metric-specific tags and the global tags.
+    std::vector<const TagsType *> tag_sources = {
+        &tags, &StatsConfig::instance().GetGlobalTags()};
+    for (const auto *tags_source : tag_sources) {
+      for (const auto &[tag_key, tag_val] : *tags_source) {
+        open_telemetry_tags[tag_key.name()] = tag_val;
+      }
+    }
+
+    OpenTelemetryMetricRecorder::GetInstance().SetMetricValue(
+        name_, std::move(open_telemetry_tags), value);
+    return;
+  }
+
   absl::MutexLock lock(&registration_mutex_);
   if (measure_ == nullptr) {
     // Measure could be registered before, so we try to get it first.

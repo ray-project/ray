@@ -162,7 +162,11 @@ class Gauge : public Metric {
         const std::string &description,
         const std::string &unit,
         const std::vector<std::string> &tag_keys = {})
-      : Metric(name, description, unit, tag_keys) {}
+      : Metric(name, description, unit, tag_keys) {
+    if (::RayConfig::instance().experimental_enable_open_telemetry_on_core()) {
+      OpenTelemetryMetricRecorder::GetInstance().RegisterGaugeMetric(name, description);
+    }
+  }
 
  private:
   void RegisterView() override;
@@ -176,7 +180,12 @@ class Histogram : public Metric {
             const std::string &unit,
             const std::vector<double> &boundaries,
             const std::vector<std::string> &tag_keys = {})
-      : Metric(name, description, unit, tag_keys), boundaries_(boundaries) {}
+      : Metric(name, description, unit, tag_keys), boundaries_(boundaries) {
+    if (::RayConfig::instance().experimental_enable_open_telemetry_on_core()) {
+      OpenTelemetryMetricRecorder::GetInstance().RegisterHistogramMetric(
+          name, description, boundaries);
+    }
+  }
 
  private:
   void RegisterView() override;
@@ -192,7 +201,11 @@ class Count : public Metric {
         const std::string &description,
         const std::string &unit,
         const std::vector<std::string> &tag_keys = {})
-      : Metric(name, description, unit, tag_keys) {}
+      : Metric(name, description, unit, tag_keys) {
+    if (::RayConfig::instance().experimental_enable_open_telemetry_on_core()) {
+      OpenTelemetryMetricRecorder::GetInstance().RegisterCounterMetric(name, description);
+    }
+  }
 
  private:
   void RegisterView() override;
@@ -205,7 +218,11 @@ class Sum : public Metric {
       const std::string &description,
       const std::string &unit,
       const std::vector<std::string> &tag_keys = {})
-      : Metric(name, description, unit, tag_keys) {}
+      : Metric(name, description, unit, tag_keys) {
+    if (::RayConfig::instance().experimental_enable_open_telemetry_on_core()) {
+      OpenTelemetryMetricRecorder::GetInstance().RegisterSumMetric(name, description);
+    }
+  }
 
  private:
   void RegisterView() override;
@@ -260,27 +277,30 @@ void RegisterView(const std::string &name,
                   const std::string &description,
                   const std::vector<opencensus::tags::TagKey> &tag_keys,
                   const std::vector<double> &buckets) {
-  using I = StatsTypeMap<T>;
-  auto view_descriptor = opencensus::stats::ViewDescriptor()
-                             .set_name(name + I::val)
-                             .set_description(description)
-                             .set_measure(name)
-                             .set_aggregation(I::Aggregation(buckets));
-  if (T == GAUGE &&
-      ::RayConfig::instance().experimental_enable_open_telemetry_on_core()) {
+  if (!::RayConfig::instance().experimental_enable_open_telemetry_on_core()) {
+    // Register the metric via OpenCensus.
+    using I = StatsTypeMap<T>;
+    auto view_descriptor = opencensus::stats::ViewDescriptor()
+                               .set_name(name + I::val)
+                               .set_description(description)
+                               .set_measure(name)
+                               .set_aggregation(I::Aggregation(buckets));
+    internal::RegisterAsView(view_descriptor, tag_keys);
+    return;
+  }
+
+  // Register the metric via OpenTelemetry.
+  if (T == GAUGE) {
     OpenTelemetryMetricRecorder::GetInstance().RegisterGaugeMetric(name, description);
-  } else if (T == COUNT &&
-             ::RayConfig::instance().experimental_enable_open_telemetry_on_core()) {
+  } else if (T == COUNT) {
     OpenTelemetryMetricRecorder::GetInstance().RegisterCounterMetric(name, description);
-  } else if (T == SUM &&
-             ::RayConfig::instance().experimental_enable_open_telemetry_on_core()) {
+  } else if (T == SUM) {
     OpenTelemetryMetricRecorder::GetInstance().RegisterSumMetric(name, description);
-  } else if (T == HISTOGRAM &&
-             ::RayConfig::instance().experimental_enable_open_telemetry_on_core()) {
+  } else if (T == HISTOGRAM) {
     OpenTelemetryMetricRecorder::GetInstance().RegisterHistogramMetric(
         name, description, buckets);
   } else {
-    internal::RegisterAsView(view_descriptor, tag_keys);
+    RAY_CHECK(false) << "Unknown stats type: " << static_cast<int>(T);
   }
 }
 
