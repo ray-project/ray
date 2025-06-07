@@ -69,8 +69,10 @@ class TBXLogger(Logger):
             ):
                 valid_result[full_attr] = value
 
+                isimage = lambda val: isinstance(val, np.ndarray) and val.ndim == 3
+                
                 # Must be a single image.
-                if isinstance(value, np.ndarray) and value.ndim == 3:
+                if isimage(value):
                     self._file_writer.add_image(
                         full_attr,
                         value,
@@ -78,6 +80,16 @@ class TBXLogger(Logger):
                     )
                     continue
 
+                # Must be a list of images.
+                if isinstance(value, list) and all([isimage(val) for val in value]):
+                    self._file_writer.add_images(
+                        full_attr,
+                        value,
+                        global_step=step,
+                        dataformats='CHW' #required here due to limitations in tensorboardx itself
+                    )
+                    continue
+                
                 # Must be a batch of images.
                 if isinstance(value, np.ndarray) and value.ndim == 4:
                     self._file_writer.add_images(
