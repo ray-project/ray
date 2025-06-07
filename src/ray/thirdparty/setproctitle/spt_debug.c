@@ -3,7 +3,7 @@
  * spt_python.c
  *    A simple function for the module debugging.
  *
- * Copyright (c) 2009-2020 Daniele Varrazzo <daniele.varrazzo@gmail.com>
+ * Copyright (c) 2009-2021 Daniele Varrazzo <daniele.varrazzo@gmail.com>
  *
  * Debug logging is enabled if the environment variable SPT_DEBUG is set to a
  * non-empty value at runtime.

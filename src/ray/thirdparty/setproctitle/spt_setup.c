@@ -3,7 +3,7 @@
  * spt_setup.c
  *    Initalization code for the spt_status.c module functions.
  *
- * Copyright (c) 2009-2020 Daniele Varrazzo <daniele.varrazzo@gmail.com>
+ * Copyright (c) 2009-2021 Daniele Varrazzo <daniele.varrazzo@gmail.com>
  *
  *-------------------------------------------------------------------------
  */
@@ -24,12 +24,6 @@ extern char **environ;
 #endif
 
 #ifndef WIN32
-
-/* I don't expect it to be defined: should include limits.h. But then it's
- * another of those ./configure can of worms to find where it is... */
-#ifndef ARG_MAX
-#define ARG_MAX (96 * 1024)
-#endif
 
 /* Return a concatenated version of a strings vector.
  *
@@ -69,8 +63,14 @@ join_argv(int argc, char **argv)
     return buf;
 }
 
+#ifndef __darwin__
 
-#ifdef IS_PY3K
+/* I don't expect it to be defined: should include limits.h. But then it's
+ * another of those ./configure can of worms to find where it is... */
+#ifndef ARG_MAX
+#define ARG_MAX (96 * 1024)
+#endif
+
 
 /* Return a copy of argv[0] encoded in the default encoding.
  *
@@ -108,40 +108,6 @@ exit:
 
     return rv;
 }
-
-#else  /* !IS_PY3K */
-
-/* Return a copy of argv referring to the original arg area.
- *
- * python -m messes up with arg (issue #8): ensure to have a vector to the
- * original args or save_ps_display_args() will stop processing too soon.
- *
- * Return a buffer allocated with malloc: should be cleaned up with free().
- *
- * Return NULL in case of error. If the error shouldn't be ignored, also set
- * a Python exception.
- */
-static char **
-fix_argv(int argc, char **argv)
-{
-    char **buf = NULL;
-    int i;
-    char *ptr = argv[0];
-
-    if (!(buf = (char **)malloc(argc * sizeof(char *)))) {
-        PyErr_NoMemory();
-        return NULL;
-    }
-
-    for (i = 0; i < argc; ++i) {
-        buf[i] = ptr;
-        ptr += strlen(ptr) + 1;
-    }
-
-    return buf;
-}
-
-#endif  /* IS_PY3K */
 
 
 /* Find the original arg buffer starting from the env position.
@@ -209,11 +175,11 @@ find_argv_from_env(int argc, char *arg0)
     spt_debug("argv[0] should be at %p", ptr);
 
     if (ptr <= limit) {
-        spt_debug("failed to found argv[0] start");
+        spt_debug("failed to find argv[0] start");
         goto exit;
     }
     if (strcmp(ptr, arg0)) {
-        spt_debug("argv[0] doesn't match '%s'", arg0);
+        spt_debug("argv[0] '%s' doesn't match '%s'", ptr, arg0);
         goto exit;
     }
 
@@ -229,8 +195,6 @@ exit:
     return rv;
 }
 
-
-#ifdef IS_PY3K
 
 /* Come on, why is this missing?! this is just cruel!
  * I guess you club seal pups for hobby. */
@@ -251,8 +215,6 @@ exit:
     Py_XDECREF(io);
     return rv;
 }
-
-#endif  /* IS_PY3K */
 
 /* Read the number of arguments and the first argument from /proc/pid/cmdline
  *
@@ -290,7 +252,7 @@ get_args_from_proc(int *argc_o, char **arg0_o)
         PyErr_Clear();
         goto exit;
     }
-    if (-1 == (pid = PyInt_AsLong(pid_py))) {
+    if (-1 == (pid = PyLong_AsLong(pid_py))) {
         spt_debug("os.getpid() returned crap?");
         /* Don't bother to check PyErr_Occurred as pid can't just be -1. */
         goto exit;
@@ -327,7 +289,7 @@ get_args_from_proc(int *argc_o, char **arg0_o)
         char *ccl;
         Py_ssize_t i;
 
-        if (!(ccl = Bytes_AsString(cl))) {
+        if (!(ccl = PyBytes_AsString(cl))) {
             spt_debug("failed to get cmdline string");
             goto exit;
         }
@@ -339,7 +301,7 @@ get_args_from_proc(int *argc_o, char **arg0_o)
         spt_debug("got argv[0] = '%s' from /proc", *arg0_o);
 
         *argc_o = 0;
-        for (i = Bytes_Size(cl) - 1; i >= 0; --i) {
+        for (i = PyBytes_Size(cl) - 1; i >= 0; --i) {
             if (ccl[i] == '\0') { (*argc_o)++; }
         }
         spt_debug("got argc = %d from /proc", *argc_o);
@@ -376,7 +338,7 @@ static int
 get_argc_argv(int *argc_o, char ***argv_o)
 {
     int argc = 0;
-    argv_t **argv_py = NULL;
+    wchar_t **argv_py = NULL;
     char **argv = NULL;
     char *arg0 = NULL;
     int rv = -1;
@@ -389,19 +351,12 @@ get_argc_argv(int *argc_o, char ***argv_o)
     if (argc > 0) {
         spt_debug("found %d arguments", argc);
 
-#ifdef IS_PY3K
         if (!(arg0 = get_encoded_arg0(argv_py[0]))) {
             spt_debug("couldn't get a copy of argv[0]");
             goto exit;
         }
-#else
-        if (!(argv = fix_argv(argc, (char **)argv_py))) {
-            spt_debug("failed to fix argv");
-            goto exit;
-        }
-#endif
-        /* we got argv: on py2 it points to the right place in memory; on py3
-         * we only got a copy of argv[0]: we will use it to look from environ
+        /* we got argv: on py2 it used to pointsto the right place in memory; on
+         * py3 we only got a copy of argv[0]: we will use it to look from env
          */
     }
     else {
@@ -437,6 +392,38 @@ exit:
     return rv;
 }
 
+#else /* __darwin__ */
+
+static int
+get_argc_argv(int *argc_o, char ***argv_o)
+{
+    int * pargc = _NSGetArgc();
+    if (!pargc) {
+        spt_debug("_NSGetArgc returned NULL");
+        return -1;
+    }
+    int argc = *pargc;
+    char *** pargv = _NSGetArgv();
+    if (!pargv) {
+        spt_debug("_NSGetArgv returned NULL");
+        return -1;
+    }
+    char ** buf = malloc((argc + 1) * sizeof(char *));
+    if (!buf) {
+        spt_debug("can't malloc %d args!", argc);
+        PyErr_NoMemory();
+        return -1;
+    }
+    memcpy(buf, *pargv, argc * sizeof(char *));
+    buf[argc] = NULL;
+    *argc_o = argc;
+    *argv_o = buf;
+
+    return 0;
+}
+
+#endif /* __darwin__ */
+
 #endif  /* !WIN32 */
 
 
@@ -460,6 +447,7 @@ spt_setup(void)
 
     /* Make sure setup happens just once, either successful or failed */
     if (rv != not_happened) {
+        spt_debug("setup was called more than once!");
         return rv;
     }
 

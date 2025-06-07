@@ -3,7 +3,7 @@
  * spt.h
  *    Definitions useful throughout all the extension.
  *
- * Copyright (c) 2010-2020 Daniele Varrazzo <daniele.varrazzo@gmail.com>
+ * Copyright (c) 2010-2021 Daniele Varrazzo <daniele.varrazzo@gmail.com>
  *
  *-------------------------------------------------------------------------
  */
