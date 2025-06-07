@@ -10,7 +10,7 @@ import time
 import traceback
 from collections import Counter
 from dataclasses import asdict
-from typing import Any, Callable, Dict, Optional, Union
+from typing import Any, Callable, Dict, Optional, Union, List
 
 import ray
 import ray._private.ray_constants as ray_constants
@@ -29,7 +29,7 @@ from ray.autoscaler._private.constants import (
 from ray.autoscaler._private.event_summarizer import EventSummarizer
 from ray.autoscaler._private.load_metrics import LoadMetrics
 from ray.autoscaler._private.prom_metrics import AutoscalerPrometheusMetrics
-from ray.autoscaler._private.util import format_readonly_node_type
+from ray.autoscaler._private.util import ResourceDemandCounts, format_readonly_node_type
 from ray.autoscaler.v2.sdk import get_cluster_resource_state
 from ray.core.generated import gcs_pb2
 from ray.core.generated.event_pb2 import Event as RayEvent
@@ -92,6 +92,53 @@ def parse_resource_demands(resource_load_by_shape):
         logger.exception("Failed to parse resource demands.")
 
     return waiting_bundles, infeasible_bundles
+
+
+def count_resource_demands(resource_demands: List[gcs_pb2.ResourceDemand]):
+    """Calculate the total counts of various resource demand types.
+
+    Args:
+        resource_demands: List of ResourceDemand protobuf messages containing information about
+            resource demands including ready requests, infeasible requests, and backlog size.
+
+    Returns:
+        ResourceDemandCounts: An object containing the aggregated counts of:
+            - num_ready_requests_queued: Number of ready requests queued.
+            - num_infeasible_requests_queued: Number of infeasible requests queued.
+            - backlog_size: Total size of the backlog.
+
+    Example:
+        >>> resource_demands = [
+        ...     ResourceDemand(
+        ...         num_ready_requests_queued=2,
+        ...         num_infeasible_requests_queued=1,
+        ...         backlog_size=3
+        ...     ),
+        ...     ResourceDemand(
+        ...         num_ready_requests_queued=1,
+        ...         num_infeasible_requests_queued=0,
+        ...         backlog_size=2
+        ...     )
+        ... ]
+        >>> count_resource_demands(resource_demands)
+        ResourceDemandCounts(
+            num_ready_requests_queued=3,
+            num_infeasible_requests_queued=1,
+            backlog_size=5
+        )
+    """
+    counts = ResourceDemandCounts(
+        num_ready_requests_queued=0,
+        num_infeasible_requests_queued=0,
+        backlog_size=0,
+    )
+    for resource_demand_pb in resource_demands:
+        counts.num_ready_requests_queued += resource_demand_pb.num_ready_requests_queued
+        counts.num_infeasible_requests_queued += (
+            resource_demand_pb.num_infeasible_requests_queued
+        )
+        counts.backlog_size += resource_demand_pb.backlog_size
+    return counts
 
 
 # Readonly provider config (e.g., for laptop mode, manually setup clusters).
@@ -299,6 +346,10 @@ class Monitor:
                 resources_batch_data.resource_load_by_shape
             )
 
+            resource_demand_counts = count_resource_demands(
+                list(resources_batch_data.resource_load_by_shape.resource_demands)
+            )
+
             pending_placement_groups = list(
                 resources_batch_data.placement_group_load.placement_group_data
             )
@@ -339,6 +390,7 @@ class Monitor:
                 infeasible_bundles,
                 pending_placement_groups,
                 cluster_full,
+                resource_demand_counts,
             )
         if self.readonly_config:
             self.readonly_config["available_node_types"].update(mirror_node_types)

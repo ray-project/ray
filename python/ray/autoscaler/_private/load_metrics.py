@@ -1,8 +1,9 @@
+from dataclasses import asdict
 import logging
 import time
 from collections import Counter
 from functools import reduce
-from typing import Dict, List
+from typing import Dict, List, Optional
 
 from ray._private.gcs_utils import PlacementGroupTableData
 from ray.autoscaler._private.constants import (
@@ -13,6 +14,7 @@ from ray.autoscaler._private.util import (
     DictCount,
     LoadMetricsSummary,
     NodeIP,
+    ResourceDemandCounts,
     ResourceDict,
 )
 from ray.core.generated.common_pb2 import PlacementStrategy
@@ -77,6 +79,7 @@ class LoadMetrics:
         self.waiting_bundles = []
         self.infeasible_bundles = []
         self.pending_placement_groups = []
+        self.resource_demand_counts = None
         self.resource_requests = []
         self.cluster_full_of_actors_detected = False
         self.ray_nodes_last_used_time_by_ip = {}
@@ -98,6 +101,7 @@ class LoadMetrics:
         infeasible_bundles: List[Dict[str, float]] = None,
         pending_placement_groups: List[PlacementGroupTableData] = None,
         cluster_full_of_actors_detected: bool = False,
+        resource_demand_counts: Optional[ResourceDemandCounts] = None,
     ):
         self.static_resources_by_ip[ip] = static_resources
         self.raylet_id_by_ip[ip] = raylet_id
@@ -125,6 +129,7 @@ class LoadMetrics:
         self.last_heartbeat_time_by_ip[ip] = now
         self.waiting_bundles = waiting_bundles
         self.infeasible_bundles = infeasible_bundles
+        self.resource_demand_counts = resource_demand_counts
         self.pending_placement_groups = pending_placement_groups
 
     def mark_active(self, ip):
@@ -309,9 +314,14 @@ class LoadMetrics:
                         total,
                     )
 
+        resource_demand_counts_dict = None
+        if self.resource_demand_counts is not None:
+            resource_demand_counts_dict = asdict(self.resource_demand_counts)
+
         return LoadMetricsSummary(
             usage=usage_dict,
             resource_demand=summarized_demand_vector,
+            resource_demand_counts=resource_demand_counts_dict,
             pg_demand=summarized_placement_groups,
             request_demand=summarized_resource_requests,
             node_types=nodes_summary,
