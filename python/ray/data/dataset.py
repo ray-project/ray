@@ -23,6 +23,7 @@ from typing import (
 )
 
 import numpy as np
+import pyarrow as pa
 
 import ray
 import ray.cloudpickle as pickle
@@ -1164,6 +1165,104 @@ class Dataset:
         )
         logical_plan = LogicalPlan(select_op, self.context)
         return Dataset(plan, logical_plan)
+
+    @PublicAPI(api_group=BT_API_GROUP)
+    def fillna(
+        self: "Dataset",
+        value: Union[Any, Dict[str, Any]],
+        subset: Optional[Union[str, List[str], tuple]] = None,
+        enforce_schema: bool = False,
+        *,
+        concurrency: Optional[int] = None,
+        **ray_remote_args,
+    ) -> "Dataset":
+        """
+        This function replaces null values in each column of the Dataset.
+
+        If ``value`` is a scalar, nulls in compatible columns (optionally limited via `subset`)
+        are replaced with that value. If `value` is a dict, nulls in the listed columns
+        are replaced by the corresponding dict values. Incompatible column/value pairs
+        and missing columns are ignored if ``enforce_schema=False``,
+        or raise an exception (and halt) if ``enforce_schema=True``.
+
+        .. testcode::
+
+            import pyarrow as pa
+            import ray
+
+            ds = ray.data.from_arrow(pa.table({"a": [None, 1], "b": [None, "z"]}))
+            ds = ds.fillna(0)
+            ds.take_all()
+
+        .. testoutput::
+
+            [{'a': 0, 'b': None}, {'a': 1, 'b': 'z'}]
+
+        Args:
+            value: Scalar or dict mapping column name to fill value.
+            subset: str, list, or tuple of columns (optional).
+            enforce_schema: If ``True``, raise an error if a fill value is not compatible with a column type.
+                            If ``False`` (default), silently skip incompatible columns.
+            concurrency: Maximum Ray workers.
+            ray_remote_args: Ray remote resources.
+
+        Returns:
+            Dataset: Dataset with filled columns.
+        """
+
+        def fillna_batch(batch: pa.Table) -> pa.Table:
+            if batch.num_rows == 0:
+                return batch
+
+            columns = batch.column_names
+            new_arrays = []
+            if isinstance(value, dict):
+                # Dict: match columns in value
+                for col in columns:
+                    arr = batch[col]
+                    if col in value:
+                        try:
+                            # Try fill; skip incompatible
+                            scalar = pa.scalar(value[col], type=arr.type)
+                            filled = pa.compute.fill_null(arr, scalar)
+                            new_arrays.append(filled)
+                        except (pa.ArrowInvalid, pa.ArrowTypeError):
+                            if enforce_schema:
+                                raise
+                            new_arrays.append(arr)
+                    else:
+                        new_arrays.append(arr)
+            else:
+                # Scalar: fill for all columns in `subset` (or all)
+                if subset is None:
+                    subcols = set(columns)
+                else:
+                    if isinstance(subset, str):
+                        subcols = {subset}
+                    else:
+                        subcols = set(subset)
+                for col in columns:
+                    arr = batch[col]
+                    if col in subcols:
+                        try:
+                            scalar = pa.scalar(value, type=arr.type)
+                            filled = pa.compute.fill_null(arr, scalar)
+                            new_arrays.append(filled)
+                        except (pa.ArrowInvalid, pa.ArrowTypeError):
+                            if enforce_schema:
+                                raise
+                            new_arrays.append(arr)
+                    else:
+                        new_arrays.append(arr)
+            return pa.table(new_arrays, names=columns)
+
+        return self.map_batches(
+            fillna_batch,
+            batch_format="pyarrow",
+            concurrency=concurrency,
+            zero_copy_batch=False,
+            **ray_remote_args,
+        )
 
     @PublicAPI(api_group=BT_API_GROUP)
     def flat_map(
