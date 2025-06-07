@@ -54,7 +54,7 @@ def deploy_args_to_deployment_info(
     deployment_config_proto_bytes: bytes,
     replica_config_proto_bytes: bytes,
     deployer_job_id: Union[str, bytes],
-    docs_path: Optional[str],
+    docs_path: Optional[str] = None,
     app_name: Optional[str] = None,
     ingress: bool = False,
     route_prefix: Optional[str] = None,
