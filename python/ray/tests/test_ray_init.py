@@ -134,7 +134,7 @@ def test_ray_init_existing_instance_crashed(address):
         with pytest.raises(ConnectionError):
             ray.init(address=address)
     finally:
-        ray._private.utils.reset_ray_address()
+        ray._common.utils.reset_ray_address()
 
 
 class Credentials(grpc.ChannelCredentials):
