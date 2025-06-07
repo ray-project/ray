@@ -548,7 +548,7 @@ bool LocalTaskManager::PoppedWorkerHandler(
     }
   }
 
-  // Erases the work from task_to_dispatch_ queue.
+  // Erases the work from task_to_dispatch_ queue, also removes the task dependencies.
   //
   // IDEA(ryw): Make an RAII class to wrap the a shared_ptr<internal::Work> and
   // requests task dependency upon ctor, and remove task dependency upon dtor.
