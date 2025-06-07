@@ -7,8 +7,12 @@ import logging.handlers
 import mmap
 import os
 import time
+import ray.dashboard.consts as dashboard_consts
 from concurrent.futures import ThreadPoolExecutor
 
+from ray._raylet import InnerGcsClient
+
+from ray import ray_constants
 from ray._common.utils import get_or_create_event_loop, run_background_task
 from ray.dashboard.modules.event import event_consts
 from ray.dashboard.utils import async_loop_forever
@@ -19,9 +23,16 @@ logger = logging.getLogger(__name__)
 def _get_source_files(event_dir, source_types=None, event_file_filter=None):
     event_log_names = os.listdir(event_dir)
     source_files = {}
-    all_source_types = set(event_consts.EVENT_SOURCE_ALL)
-    for source_type in source_types or event_consts.EVENT_SOURCE_ALL:
-        assert source_type in all_source_types, f"Invalid source type: {source_type}"
+
+    if source_types is not None:
+        all_source_types = set(event_consts.ALL_EVENT_SOURCE_TYPES)
+        assert all(
+            [source in all_source_types for source in source_types]
+        ), f"Only source types allowed are: {all_source_types}, got: {source_types}"
+    else:
+        source_types = event_consts.ALL_EVENT_SOURCE_TYPES
+
+    for source_type in source_types:
         files = []
         for n in event_log_names:
             if fnmatch.fnmatch(n, f"*{source_type}*"):
@@ -206,3 +217,16 @@ def monitor_events(
         )
 
     return run_background_task(_scan_event_log_files())
+
+
+async def _fetch_dashboard_address(gcs_client: InnerGcsClient) -> str:
+    dashboard_address: bytes = await gcs_client.async_internal_kv_get(
+        ray_constants.DASHBOARD_ADDRESS.encode(),
+        namespace=ray_constants.KV_NAMESPACE_DASHBOARD,
+        timeout=dashboard_consts.GCS_RPC_TIMEOUT_SECONDS,
+    )
+
+    if not dashboard_address:
+        raise ValueError("Dashboard address not found in GCS")
+
+    return dashboard_address.decode()

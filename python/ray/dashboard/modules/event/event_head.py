@@ -1,4 +1,5 @@
 import asyncio
+import http
 import logging
 import os
 import time
@@ -29,8 +30,8 @@ from ray.util.state.common import ClusterEventState, ListApiOptions, ListApiResp
 
 logger = logging.getLogger(__name__)
 
-JobEvents = OrderedDict
-dashboard_utils._json_compatible_types.add(JobEvents)
+Events = OrderedDict
+dashboard_utils._json_compatible_types.add(Events)
 
 MAX_EVENTS_TO_CACHE = int(os.environ.get("RAY_DASHBOARD_MAX_EVENTS_TO_CACHE", 10000))
 
@@ -100,7 +101,7 @@ class EventHead(
         self.total_events_received = 0
         self.module_started = time.monotonic()
         # {job_id hex(str): {event_id (str): event (dict)}}
-        self.events: Dict[str, JobEvents] = defaultdict(JobEvents)
+        self.events: Dict[str, Events] = defaultdict(Events)
 
         self._executor = ThreadPoolExecutor(
             max_workers=RAY_DASHBOARD_EVENT_HEAD_TPE_MAX_WORKERS,
@@ -126,17 +127,13 @@ class EventHead(
 
     def _update_events(self, event_list):
         # {job_id: {event_id: event}}
-        all_job_events = defaultdict(JobEvents)
+        all_job_events = defaultdict(Events)
         for event in event_list:
             event_id = event["event_id"]
-            custom_fields = event.get("custom_fields")
-            system_event = False
-            if custom_fields:
-                job_id = custom_fields.get("job_id", "global") or "global"
-            else:
-                job_id = "global"
-            if system_event is False:
-                all_job_events[job_id][event_id] = event
+            custom_fields = event.get("custom_fields", {})
+            job_id = custom_fields.get("job_id") or "global"
+
+            all_job_events[job_id][event_id] = event
 
         for job_id, new_job_events in all_job_events.items():
             job_events = self.events[job_id]
@@ -172,6 +169,30 @@ class EventHead(
             message="",
             status_code=dashboard_utils.HTTPStatusCode.OK,
         )
+
+    @routes.delete("/delete_events")
+    async def delete_events(self, request):
+        job_id = request.query.get("job_id")
+
+        if not job_id:
+            logger.warning("Events delete request missing job id")
+            return dashboard_optional_utils.rest_response(
+                status_code=http.HTTPStatus.BAD_REQUEST,
+                message="Missing job_id",
+            )
+
+        job_events = self.events.pop(job_id, None)
+
+        if job_events is not None:
+            return dashboard_optional_utils.rest_response(
+                status_code=http.HTTPStatus.OK,
+                message="Events successfully deleted",
+            )
+        else:
+            return dashboard_optional_utils.rest_response(
+                status_code=http.HTTPStatus.NOT_FOUND,
+                message=f"Events for job '{job_id}' not found",
+            )
 
     async def _periodic_state_print(self):
         if self.total_events_received <= 0 or self.total_report_events_count <= 0:
@@ -227,4 +248,6 @@ class EventHead(
             self._event_dir,
             lambda data: self._update_events(parse_event_strings(data)),
             self._executor,
+            # NOTE: Make watcher track all event-types
+            source_types=None,
         )
