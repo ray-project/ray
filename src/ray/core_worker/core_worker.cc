@@ -2711,45 +2711,45 @@ Status CoreWorker::CreateActor(const RayFunction &function,
       local_mode_named_actor_registry_.emplace(actor_name, actor_id);
     }
     ExecuteTaskLocalMode(task_spec);
-  } else {
-    task_manager_->AddPendingTask(
-        rpc_address_,
-        task_spec,
-        CurrentCallSite(),
-        // Actor creation task retry happens on GCS not on core worker.
-        /*max_retries*/ 0);
+    return Status::OK();
+  }
 
-    if (actor_name.empty()) {
-      io_service_.post(
-          [this, task_spec = std::move(task_spec)]() {
-            RAY_UNUSED(actor_creator_->AsyncRegisterActor(
-                task_spec, [this, task_spec](Status status) {
-                  if (!status.ok()) {
-                    RAY_LOG(ERROR).WithField(task_spec.ActorCreationId())
-                        << "Failed to register actor. Error message: " << status;
-                    task_manager_->FailPendingTask(task_spec.TaskId(),
-                                                   rpc::ErrorType::ACTOR_CREATION_FAILED,
-                                                   &status);
-                  } else {
-                    RAY_UNUSED(actor_task_submitter_->SubmitActorCreationTask(task_spec));
-                  }
-                }));
-          },
-          "ActorCreator.AsyncRegisterActor");
-    } else {
-      // For named actor, we still go through the sync way because for
-      // functions like list actors these actors need to be there, especially
-      // for local driver. But the current code all go through the gcs right now.
-      auto status = actor_creator_->RegisterActor(task_spec);
-      if (!status.ok()) {
-        return status;
-      }
-      io_service_.post(
-          [this, task_spec = std::move(task_spec)]() {
-            RAY_UNUSED(actor_task_submitter_->SubmitActorCreationTask(task_spec));
-          },
-          "CoreWorker.SubmitTask");
+  task_manager_->AddPendingTask(
+      rpc_address_,
+      task_spec,
+      CurrentCallSite(),
+      // Actor creation task retry happens on GCS not on core worker.
+      /*max_retries*/ 0);
+
+  if (actor_name.empty()) {
+    io_service_.post(
+        [this, task_spec = std::move(task_spec)]() {
+          RAY_UNUSED(actor_creator_->AsyncRegisterActor(
+              task_spec, [this, task_spec](Status status) {
+                if (!status.ok()) {
+                  RAY_LOG(ERROR).WithField(task_spec.ActorCreationId())
+                      << "Failed to register actor. Error message: " << status;
+                  task_manager_->FailPendingTask(
+                      task_spec.TaskId(), rpc::ErrorType::ACTOR_CREATION_FAILED, &status);
+                } else {
+                  RAY_UNUSED(actor_task_submitter_->SubmitActorCreationTask(task_spec));
+                }
+              }));
+        },
+        "ActorCreator.AsyncRegisterActor");
+  } else {
+    // For named actor, we still go through the sync way because for
+    // functions like list actors these actors need to be there, especially
+    // for local driver. But the current code all go through the gcs right now.
+    auto status = actor_creator_->RegisterActor(task_spec);
+    if (!status.ok()) {
+      return status;
     }
+    io_service_.post(
+        [this, task_spec = std::move(task_spec)]() {
+          RAY_UNUSED(actor_task_submitter_->SubmitActorCreationTask(task_spec));
+        },
+        "CoreWorker.SubmitTask");
   }
   return Status::OK();
 }
