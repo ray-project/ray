@@ -752,12 +752,7 @@ class GcsActorManager : public rpc::ActorInfoHandler {
   uint64_t counts_[CountType::CountType_MAX] = {0};
 
   FRIEND_TEST(GcsActorManagerTest, TestKillActorWhenActorIsCreating);
-  FRIEND_TEST(GcsActorManagerTest, TestOwnerWorkerDieBeforeActorDependenciesResolved);
-  FRIEND_TEST(GcsActorManagerTest,
-              TestOwnerWorkerDieBeforeDetachedActorDependenciesResolved);
-  FRIEND_TEST(GcsActorManagerTest, TestOwnerNodeDieBeforeActorDependenciesResolved);
-  FRIEND_TEST(GcsActorManagerTest,
-              TestOwnerNodeDieBeforeDetachedActorDependenciesResolved);
+  friend class GcsActorManagerTest;
 };
 
 }  // namespace gcs

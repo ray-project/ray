@@ -31,6 +31,8 @@
 
 namespace ray {
 
+namespace gcs {
+
 using ::testing::_;
 using ::testing::Return;
 
@@ -226,9 +228,14 @@ class GcsActorManagerTest : public ::testing::Test {
     io_service_.post(
         [this, request, &promise]() {
           auto status = gcs_actor_manager_->RegisterActor(
-              request,
-              [&promise](std::shared_ptr<gcs::GcsActor> actor, const Status &status) {
-                promise.set_value(std::move(actor));
+              request, [this, &promise, request](const Status &status) {
+                auto actor_id = ActorID::FromBinary(
+                    request.task_spec().actor_creation_task_spec().actor_id());
+                if (gcs_actor_manager_->registered_actors_.contains(actor_id)) {
+                  promise.set_value(gcs_actor_manager_->registered_actors_[actor_id]);
+                } else {
+                  promise.set_value(nullptr);
+                }
               });
           if (!status.ok()) {
             promise.set_value(nullptr);
@@ -322,6 +329,11 @@ class GcsActorManagerTest : public ::testing::Test {
     RAY_CHECK_EQ(gcs_actor_manager_->CountFor(rpc::ActorTableData::ALIVE, ""), 1);
     RAY_CHECK_EQ(actor->GetState(), rpc::ActorTableData::ALIVE);
     return actor;
+  }
+
+  const absl::flat_hash_map<ActorID, std::vector<std::function<void(Status)>>>
+      &GetActorRegisterCallbacks() const {
+    return gcs_actor_manager_->actor_to_register_callbacks_;
   }
 
   instrumented_io_context io_service_;
@@ -701,8 +713,7 @@ TEST_F(GcsActorManagerTest, TestActorWithEmptyName) {
                                                   /*name=*/"");
 
   Status status = SyncPostAndWait(io_service_, "TestActorWithEmptyName", [&]() {
-    return gcs_actor_manager_->RegisterActor(
-        request1, [](std::shared_ptr<gcs::GcsActor> actor, const Status &status) {});
+    return gcs_actor_manager_->RegisterActor(request1, [](const Status &status) {});
   });
 
   // Ensure successful registration.
@@ -717,8 +728,7 @@ TEST_F(GcsActorManagerTest, TestActorWithEmptyName) {
                                                   /*detached=*/true,
                                                   /*name=*/"");
   status = SyncPostAndWait(io_service_, "TestActorWithEmptyName", [&]() {
-    return gcs_actor_manager_->RegisterActor(
-        request2, [](std::shared_ptr<gcs::GcsActor> actor, const Status &status) {});
+    return gcs_actor_manager_->RegisterActor(request2, [](const Status &status) {});
   });
   // Ensure successful registration.
   ASSERT_TRUE(status.ok());
@@ -734,8 +744,7 @@ TEST_F(GcsActorManagerTest, TestNamedActors) {
                                                   /*name=*/"actor1",
                                                   /*ray_namesapce=*/"test_named_actor");
   Status status = SyncPostAndWait(io_service_, "TestNamedActors", [&]() {
-    return gcs_actor_manager_->RegisterActor(
-        request1, [](std::shared_ptr<gcs::GcsActor> actor, const Status &status) {});
+    return gcs_actor_manager_->RegisterActor(request1, [](const Status &status) {});
   });
   ASSERT_TRUE(status.ok());
   ASSERT_EQ(gcs_actor_manager_->GetActorIDByName("actor1", "test_named_actor").Binary(),
@@ -747,8 +756,7 @@ TEST_F(GcsActorManagerTest, TestNamedActors) {
                                                   /*name=*/"actor2",
                                                   /*ray_namesapce=*/"test_named_actor");
   status = SyncPostAndWait(io_service_, "TestNamedActors", [&]() {
-    return gcs_actor_manager_->RegisterActor(
-        request2, [](std::shared_ptr<gcs::GcsActor> actor, const Status &status) {});
+    return gcs_actor_manager_->RegisterActor(request2, [](const Status &status) {});
   });
   ASSERT_TRUE(status.ok());
   ASSERT_EQ(gcs_actor_manager_->GetActorIDByName("actor2", "test_named_actor").Binary(),
@@ -765,8 +773,7 @@ TEST_F(GcsActorManagerTest, TestNamedActors) {
                                                   /*name=*/"actor2",
                                                   /*ray_namesapce=*/"test_named_actor");
   status = SyncPostAndWait(io_service_, "TestNamedActors", [&]() {
-    return gcs_actor_manager_->RegisterActor(
-        request3, [](std::shared_ptr<gcs::GcsActor> actor, const Status &status) {});
+    return gcs_actor_manager_->RegisterActor(request3, [](const Status &status) {});
   });
   ASSERT_TRUE(status.IsAlreadyExists());
   ASSERT_EQ(gcs_actor_manager_->GetActorIDByName("actor2", "test_named_actor").Binary(),
@@ -779,8 +786,7 @@ TEST_F(GcsActorManagerTest, TestNamedActors) {
                                                   /*name=*/"actor2",
                                                   /*ray_namesapce=*/"test_named_actor");
   status = SyncPostAndWait(io_service_, "TestNamedActors", [&]() {
-    return gcs_actor_manager_->RegisterActor(
-        request4, [](std::shared_ptr<gcs::GcsActor> actor, const Status &status) {});
+    return gcs_actor_manager_->RegisterActor(request4, [](const Status &status) {});
   });
   ASSERT_TRUE(status.IsAlreadyExists());
   ASSERT_EQ(gcs_actor_manager_->GetActorIDByName("actor2", "test_named_actor").Binary(),
@@ -948,8 +954,7 @@ TEST_F(GcsActorManagerTest, TestNamedActorDeletionNotHappendWhenReconstructed) {
                                                   /*detached=*/true,
                                                   /*name=*/"actor");
   status = SyncPostAndWait(io_service_, "TestNamedActors", [&]() {
-    return gcs_actor_manager_->RegisterActor(
-        request2, [](std::shared_ptr<gcs::GcsActor> actor, const Status &status) {});
+    return gcs_actor_manager_->RegisterActor(request2, [](const Status &status) {});
   });
   ASSERT_TRUE(status.IsAlreadyExists());
   ASSERT_EQ(gcs_actor_manager_->GetActorIDByName("actor", "test").Binary(),
@@ -1087,7 +1092,7 @@ TEST_F(GcsActorManagerTest, TestOwnerWorkerDieBeforeActorDependenciesResolved) {
   ASSERT_FALSE(registered_actors.count(registered_actor->GetActorID()));
   SyncPostAndWait(
       io_service_, "TestOwnerWorkerDieBeforeActorDependenciesResolved", [&]() {
-        const auto &callbacks = gcs_actor_manager_->actor_to_register_callbacks_;
+        const auto &callbacks = GetActorRegisterCallbacks();
         ASSERT_FALSE(callbacks.count(registered_actor->GetActorID()));
       });
 }
@@ -1115,7 +1120,7 @@ TEST_F(GcsActorManagerTest, TestOwnerWorkerDieBeforeDetachedActorDependenciesRes
   ASSERT_FALSE(registered_actors.count(registered_actor->GetActorID()));
   SyncPostAndWait(
       io_service_, "TestOwnerWorkerDieBeforeDetachedActorDependenciesResolved", [&]() {
-        const auto &callbacks = gcs_actor_manager_->actor_to_register_callbacks_;
+        const auto &callbacks = GetActorRegisterCallbacks();
         ASSERT_FALSE(callbacks.count(registered_actor->GetActorID()));
       });
 }
@@ -1139,7 +1144,7 @@ TEST_F(GcsActorManagerTest, TestOwnerNodeDieBeforeActorDependenciesResolved) {
   const auto &registered_actors = gcs_actor_manager_->GetRegisteredActors();
   ASSERT_FALSE(registered_actors.count(registered_actor->GetActorID()));
   SyncPostAndWait(io_service_, "TestOwnerNodeDieBeforeActorDependenciesResolved", [&]() {
-    const auto &callbacks = gcs_actor_manager_->actor_to_register_callbacks_;
+    const auto &callbacks = GetActorRegisterCallbacks();
     ASSERT_FALSE(callbacks.count(registered_actor->GetActorID()));
   });
 }
@@ -1164,7 +1169,7 @@ TEST_F(GcsActorManagerTest, TestOwnerNodeDieBeforeDetachedActorDependenciesResol
   ASSERT_FALSE(registered_actors.count(registered_actor->GetActorID()));
   SyncPostAndWait(
       io_service_, "TestOwnerNodeDieBeforeDetachedActorDependenciesResolved", [&]() {
-        const auto &callbacks = gcs_actor_manager_->actor_to_register_callbacks_;
+        const auto &callbacks = GetActorRegisterCallbacks();
         ASSERT_FALSE(callbacks.count(registered_actor->GetActorID()));
       });
 }
@@ -1220,8 +1225,8 @@ TEST_F(GcsActorManagerTest, TestRayNamespace) {
                                                   /*detached=*/true,
                                                   /*name=*/"actor");
   SyncPostAndWait(io_service_, "TestRayNamespace", [&]() {
-    Status status = gcs_actor_manager_->RegisterActor(
-        request1, [](std::shared_ptr<gcs::GcsActor> actor, const Status &status) {});
+    Status status =
+        gcs_actor_manager_->RegisterActor(request1, [](const Status &status) {});
     ASSERT_TRUE(status.ok());
     ASSERT_EQ(gcs_actor_manager_->GetActorIDByName("actor", "test").Binary(),
               request1.task_spec().actor_creation_task_spec().actor_id());
@@ -1235,8 +1240,8 @@ TEST_F(GcsActorManagerTest, TestRayNamespace) {
   SyncPostAndWait(io_service_, "TestRayNamespace", [&]() {
     // Create a second actor of the same name. Its job id belongs to a different
     // namespace though.
-    Status status = gcs_actor_manager_->RegisterActor(
-        request2, [](std::shared_ptr<gcs::GcsActor> actor, const Status &status) {});
+    Status status =
+        gcs_actor_manager_->RegisterActor(request2, [](const Status &status) {});
     ASSERT_TRUE(status.ok());
     ASSERT_EQ(gcs_actor_manager_->GetActorIDByName("actor", second_namespace).Binary(),
               request2.task_spec().actor_creation_task_spec().actor_id());
@@ -1251,8 +1256,8 @@ TEST_F(GcsActorManagerTest, TestRayNamespace) {
                                                   /*name=*/"actor",
                                                   /*ray_namespace=*/"test");
   SyncPostAndWait(io_service_, "TestRayNamespace", [&]() {
-    Status status = gcs_actor_manager_->RegisterActor(
-        request3, [](std::shared_ptr<gcs::GcsActor> actor, const Status &status) {});
+    Status status =
+        gcs_actor_manager_->RegisterActor(request3, [](const Status &status) {});
     ASSERT_TRUE(status.IsAlreadyExists());
     ASSERT_EQ(gcs_actor_manager_->GetActorIDByName("actor", "test").Binary(),
               request1.task_spec().actor_creation_task_spec().actor_id());
@@ -1269,9 +1274,8 @@ TEST_F(GcsActorManagerTest, TestReuseActorNameInNamespace) {
   auto actor_id_1 =
       ActorID::FromBinary(request_1.task_spec().actor_creation_task_spec().actor_id());
   SyncPostAndWait(io_service_, "TestReuseActorNameInNamespace", [&]() {
-    Status status = gcs_actor_manager_->RegisterActor(
-        request_1,
-        [](const std::shared_ptr<gcs::GcsActor> &actor, const Status &status) {});
+    Status status =
+        gcs_actor_manager_->RegisterActor(request_1, [](const Status &status) {});
     ASSERT_TRUE(status.ok());
     ASSERT_EQ(gcs_actor_manager_->GetActorIDByName(actor_name, ray_namespace).Binary(),
               actor_id_1.Binary());
@@ -1292,9 +1296,8 @@ TEST_F(GcsActorManagerTest, TestReuseActorNameInNamespace) {
         Mocker::GenRegisterActorRequest(job_id_2, 0, true, actor_name, ray_namespace);
     auto actor_id_2 =
         ActorID::FromBinary(request_2.task_spec().actor_creation_task_spec().actor_id());
-    auto status = gcs_actor_manager_->RegisterActor(
-        request_2,
-        [](const std::shared_ptr<gcs::GcsActor> &actor, const Status &status) {});
+    auto status =
+        gcs_actor_manager_->RegisterActor(request_2, [](const Status &status) {});
     ASSERT_TRUE(status.ok());
     ASSERT_EQ(gcs_actor_manager_->GetActorIDByName(actor_name, ray_namespace).Binary(),
               actor_id_2.Binary());
@@ -1315,8 +1318,8 @@ TEST_F(GcsActorManagerTest, TestGetAllActorInfoFilters) {
                                                     /*max_restarts=*/0,
                                                     /*detached=*/false);
     SyncPostAndWait(io_service_, "TestGetAllActorInfoFilters", [&]() {
-      Status status = gcs_actor_manager_->RegisterActor(
-          request1, [](std::shared_ptr<gcs::GcsActor> actor, const Status &status) {});
+      Status status =
+          gcs_actor_manager_->RegisterActor(request1, [](const Status &status) {});
       ASSERT_TRUE(status.ok());
     });
   }
@@ -1394,8 +1397,8 @@ TEST_F(GcsActorManagerTest, TestGetAllActorInfoLimit) {
                                                     /*max_restarts=*/0,
                                                     /*detached=*/false);
     SyncPostAndWait(io_service_, "TestGetAllActorInfoLimit", [&]() {
-      Status status = gcs_actor_manager_->RegisterActor(
-          request1, [](std::shared_ptr<gcs::GcsActor> actor, const Status &status) {});
+      Status status =
+          gcs_actor_manager_->RegisterActor(request1, [](const Status &status) {});
       ASSERT_TRUE(status.ok());
     });
   }
@@ -1419,7 +1422,6 @@ TEST_F(GcsActorManagerTest, TestGetAllActorInfoLimit) {
   }
 }
 
-namespace gcs {
 TEST_F(GcsActorManagerTest, TestKillActorWhenActorIsCreating) {
   auto job_id = JobID::FromInt(1);
   auto registered_actor = RegisterActor(job_id, /*max_restarts*/ -1);
