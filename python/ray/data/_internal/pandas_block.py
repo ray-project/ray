@@ -381,7 +381,7 @@ class PandasBlockAccessor(TableBlockAccessor):
         for idx, col_name in enumerate(self._table.columns):
             col = self._table[col_name]
             # Check if there is any non-null value in the original Pandas column
-            if not col.notna().any():
+            if col.isna().all() and len(col) > 0:
                 # If there are only null-values, coerce column to Arrow's `NullType`
                 null_coerced_columns[(idx, col_name)] = pa.nulls(
                     len(col), type=pa.null()

@@ -254,7 +254,6 @@ class ActorPoolMapOperator(MapOperator):
             # Submit the map task.
             bundle = self._bundle_queue.pop()
             self._metrics.on_input_dequeued(bundle)
-            input_blocks = [block for block, _ in bundle.blocks]
             ctx = TaskContext(
                 task_idx=self._next_data_task_idx,
                 op_name=self.name,
@@ -267,7 +266,7 @@ class ActorPoolMapOperator(MapOperator):
             ).remote(
                 self.data_context,
                 ctx,
-                *input_blocks,
+                *bundle.block_refs,
                 **self.get_map_task_kwargs(),
             )
 
