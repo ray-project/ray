@@ -6,6 +6,7 @@
 :hidden:
 
 k8s-ecosystem/ingress
+k8s-ecosystem/metrics-references
 k8s-ecosystem/prometheus-grafana
 k8s-ecosystem/pyspy
 k8s-ecosystem/volcano
@@ -15,6 +16,7 @@ k8s-ecosystem/istio
 ```
 
 * {ref}`kuberay-ingress`
+* {ref}`kuberay-metrics-references`
 * {ref}`kuberay-prometheus-grafana`
 * {ref}`kuberay-pyspy-integration`
 * {ref}`kuberay-volcano`
