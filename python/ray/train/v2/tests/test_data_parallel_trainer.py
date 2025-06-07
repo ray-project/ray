@@ -1,16 +1,23 @@
 import os
+import signal
 import tempfile
+import time
+from multiprocessing import Process
 from pathlib import Path
 
 import pyarrow.fs
 import pytest
 
 import ray
+from ray.tests.client_test_utils import create_remote_signal_actor
 from ray.train import BackendConfig, Checkpoint, RunConfig, ScalingConfig, UserCallback
 from ray.train.backend import Backend
 from ray.train.constants import RAY_CHDIR_TO_TRIAL_DIR, _get_ray_train_session_dir
 from ray.train.tests.util import create_dict_checkpoint
-from ray.train.v2._internal.constants import is_v2_enabled
+from ray.train.v2._internal.constants import (
+    RUN_CONTROLLER_AS_ACTOR_ENV_VAR,
+    is_v2_enabled,
+)
 from ray.train.v2.api.data_parallel_trainer import DataParallelTrainer
 from ray.train.v2.api.exceptions import TrainingFailedError
 from ray.train.v2.api.result import Result
@@ -208,6 +215,46 @@ def test_user_callback(tmp_path):
     # The error should NOT be an assertion error from the user callback.
     with pytest.raises(TrainingFailedError):
         trainer.fit()
+
+
+def run_process_for_sigint_abort():
+    # Lives outside test_sigint_abort because cannot pickle nested functions.
+    ray.init("auto")
+
+    def train_fn():
+        signal_actor = ray.get_actor("signal_actor", namespace="test_sigint_abort")
+        ray.get(signal_actor.send.remote())
+        time.sleep(1000)  # SIGINT will shut this down
+
+    trainer = DataParallelTrainer(
+        train_fn,
+        scaling_config=ScalingConfig(num_workers=2),
+    )
+    trainer.fit()
+
+
+@pytest.mark.parametrize(
+    "run_controller_as_actor,expected_exit_code",
+    [("1", 1), ("0", 0)],
+)
+def test_sigint_abort(
+    tmp_path, monkeypatch, run_controller_as_actor, expected_exit_code
+):
+    monkeypatch.setenv(RUN_CONTROLLER_AS_ACTOR_ENV_VAR, run_controller_as_actor)
+
+    SignalActor = create_remote_signal_actor(ray)
+    signal_actor = SignalActor.options(
+        name="signal_actor", namespace="test_sigint_abort"
+    ).remote()
+
+    process = Process(target=run_process_for_sigint_abort)
+    process.start()
+
+    ray.get(signal_actor.wait.remote())
+
+    os.kill(process.pid, signal.SIGINT)
+    process.join()
+    assert process.exitcode == expected_exit_code
 
 
 if __name__ == "__main__":
