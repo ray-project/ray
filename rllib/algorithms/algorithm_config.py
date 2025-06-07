@@ -2339,7 +2339,10 @@ class AlgorithmConfig(_Config):
         optimizer: Optional[dict] = NotProvided,
         learner_class: Optional[Type["Learner"]] = NotProvided,
         learner_connector: Optional[
-            Callable[["RLModule"], Union["ConnectorV2", List["ConnectorV2"]]]
+            Callable[
+                ["Optional[gym.Space]", Optional[gym.Space]],
+                Union["ConnectorV2", List["ConnectorV2"]],
+            ]
         ] = NotProvided,
         add_default_connectors_to_learner_pipeline: Optional[bool] = NotProvided,
         learner_config_dict: Optional[Dict[str, Any]] = NotProvided,
