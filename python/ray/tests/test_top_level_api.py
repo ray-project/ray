@@ -61,12 +61,6 @@ def test_dynamic_subpackage_import():
 import sys
 import ray
 
-# ray.workflow
-assert "ray.workflow" not in sys.modules
-ray.workflow
-# Check that the package is cached.
-assert "ray.workflow" in sys.modules
-
 # ray.autoscaler
 assert "ray.autoscaler" not in sys.modules
 ray.autoscaler
@@ -123,9 +117,5 @@ def test_for_strings():
 
 
 if __name__ == "__main__":
-    import os
 
-    if os.environ.get("PARALLEL_CI"):
-        sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))
-    else:
-        sys.exit(pytest.main(["-sv", __file__]))
+    sys.exit(pytest.main(["-sv", __file__]))

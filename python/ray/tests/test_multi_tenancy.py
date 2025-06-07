@@ -94,8 +94,8 @@ ray.shutdown()
         err = p.stderr.read().decode("ascii")
         p.wait()
         # out, err = p.communicate()
-        # out = ray._private.utils.decode(out)
-        # err = ray._private.utils.decode(err)
+        # out = ray._common.utils.decode(out)
+        # err = ray._common.utils.decode(err)
         if p.returncode != 0:
             print(
                 "Driver with PID {} returned error code {}".format(p.pid, p.returncode)
@@ -326,7 +326,4 @@ def test_kill_idle_workers_that_are_behind_owned_workers(shutdown_only):
 
 
 if __name__ == "__main__":
-    if os.environ.get("PARALLEL_CI"):
-        sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))
-    else:
-        sys.exit(pytest.main(["-sv", __file__]))
+    sys.exit(pytest.main(["-sv", __file__]))

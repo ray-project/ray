@@ -5,7 +5,7 @@ import uuid
 from collections import defaultdict
 from typing import Dict, List, Optional, Set, Tuple
 
-from ray._private.utils import binary_to_hex
+from ray._common.utils import binary_to_hex
 from ray.autoscaler.v2.instance_manager.common import InstanceUtil
 from ray.autoscaler.v2.instance_manager.config import (
     AutoscalingConfig,
@@ -1143,9 +1143,14 @@ class Reconciler:
         # Add terminating instances.
         for terminate_request in to_terminate:
             instance_id = terminate_request.instance_id
+            new_instance_status = IMInstance.RAY_STOP_REQUESTED
+            if terminate_request.instance_status == IMInstance.ALLOCATED:
+                # The instance is not yet running, so we can't request to stop/drain Ray.
+                # Therefore, we can skip the RAY_STOP_REQUESTED state and directly terminate the node.
+                new_instance_status = IMInstance.TERMINATING
             updates[terminate_request.instance_id] = IMInstanceUpdateEvent(
                 instance_id=instance_id,
-                new_instance_status=IMInstance.RAY_STOP_REQUESTED,
+                new_instance_status=new_instance_status,
                 termination_request=terminate_request,
                 details=f"draining ray: {terminate_request.details}",
             )

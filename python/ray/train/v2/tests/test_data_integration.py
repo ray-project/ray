@@ -1,5 +1,6 @@
-import pytest
 from unittest.mock import MagicMock
+
+import pytest
 
 import ray.data
 import ray.train
@@ -12,7 +13,7 @@ from ray.train.v2._internal.execution.worker_group.worker_group import (
     WorkerGroupContext,
 )
 from ray.train.v2.api.data_parallel_trainer import DataParallelTrainer
-from ray.train.v2.tests.test_controller import DummyWorkerGroup
+from ray.train.v2.tests.util import DummyObjectRefWrapper, DummyWorkerGroup
 
 # TODO(justinvyu): Bring over more tests from ray/air/tests/test_new_dataset_config.py
 
@@ -35,7 +36,7 @@ def test_e2e_single_dataset(ray_start_4_cpus, restore_data_context):  # noqa: F8
         assert data_context.get_config("foo") == "bar"
 
         try:
-            ray.train.get_context().get_dataset_shard("val")
+            ray.train.get_dataset_shard("val")
             assert False, "Should raise an error if the dataset is not found"
         except KeyError:
             pass
@@ -71,7 +72,7 @@ def test_dataset_setup_callback(ray_start_4_cpus):
 
     worker_group_context = WorkerGroupContext(
         run_attempt_id="attempt_1",
-        train_fn=lambda: None,
+        train_fn_ref=DummyObjectRefWrapper(lambda: None),
         num_workers=scaling_config.num_workers,
         resources_per_worker=scaling_config.resources_per_worker,
     )

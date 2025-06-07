@@ -1,13 +1,15 @@
 import asyncio
+import concurrent.futures
 import copy
 import importlib
 import inspect
 import logging
-import os
 import random
+import re
 import time
 import uuid
 from abc import ABC, abstractmethod
+from asyncio import coroutines, ensure_future, futures
 from decimal import ROUND_HALF_UP, Decimal
 from enum import Enum
 from functools import wraps
@@ -17,13 +19,14 @@ import requests
 
 import ray
 import ray.util.serialization_addons
+from ray._common.utils import get_random_alphanumeric_string, import_attr
 from ray._private.resource_spec import HEAD_NODE_RESOURCE_NAME
-from ray._private.utils import get_random_alphanumeric_string, import_attr
 from ray._private.worker import LOCAL_MODE, SCRIPT_MODE
 from ray._raylet import MessagePackSerializer
 from ray.actor import ActorHandle
 from ray.serve._private.common import RequestMetadata, ServeComponentType
 from ray.serve._private.constants import HTTP_PROXY_TIMEOUT, SERVE_LOGGER_NAME
+from ray.serve.config import gRPCOptions
 from ray.types import ObjectRef
 from ray.util.serialization import StandaloneSerializationContext
 
@@ -36,6 +39,8 @@ try:
     import numpy as np
 except ImportError:
     np = None
+
+FILE_NAME_REGEX = r"[^\x20-\x7E]|[<>:\"/\\|?*]"
 
 MESSAGE_PACK_OFFSET = 9
 GENERATOR_COMPOSITION_NOT_SUPPORTED_ERROR = RuntimeError(
@@ -334,20 +339,6 @@ def in_interactive_shell():
     return not hasattr(main, "__file__")
 
 
-def guarded_deprecation_warning(*args, **kwargs):
-    """Wrapper for deprecation warnings, guarded by a flag."""
-    if os.environ.get("SERVE_WARN_V1_DEPRECATIONS", "0") == "1":
-        from ray._private.utils import deprecated
-
-        return deprecated(*args, **kwargs)
-    else:
-
-        def noop_decorator(func):
-            return func
-
-        return noop_decorator
-
-
 def snake_to_camel_case(snake_str: str) -> str:
     """Convert a snake case string to camel case."""
 
@@ -554,7 +545,8 @@ def get_component_file_name(
     component_type: Optional[ServeComponentType],
     suffix: str = "",
 ) -> str:
-    """Get the component's file name."""
+    """Get the component's file name. Replaces special characters with underscores."""
+    component_name = re.sub(FILE_NAME_REGEX, "_", component_name)
 
     # For DEPLOYMENT component type, we want to log the deployment name
     # instead of adding the component type to the component name.
@@ -589,7 +581,7 @@ def validate_route_prefix(route_prefix: Union[DEFAULT, None, str]):
 
     if "{" in route_prefix or "}" in route_prefix:
         raise ValueError(
-            f"Invalid route_prefix '{route_prefix}', " "may not contain wildcards."
+            f"Invalid route_prefix '{route_prefix}', may not contain wildcards."
         )
 
 
@@ -605,3 +597,50 @@ async def resolve_deployment_response(obj: Any, request_metadata: RequestMetadat
     elif isinstance(obj, DeploymentResponse):
         # Launch async task to convert DeploymentResponse to an object ref
         return asyncio.create_task(obj._to_object_ref())
+
+
+def wait_for_interrupt() -> None:
+    try:
+        while True:
+            # Block, letting Ray print logs to the terminal.
+            time.sleep(10)
+    except KeyboardInterrupt:
+        logger.warning("Got KeyboardInterrupt, exiting...")
+        # We need to re-raise KeyboardInterrupt, so serve components can be shutdown
+        # from the main script.
+        raise
+
+
+def is_grpc_enabled(grpc_config: gRPCOptions) -> bool:
+    return grpc_config.port > 0 and len(grpc_config.grpc_servicer_functions) > 0
+
+
+def run_coroutine_or_future_threadsafe(coro_or_future, loop):
+    """Submit a coroutine object or future to a given event loop.
+
+    Ref: https://github.com/python/cpython/blob/eef49c359505eaf109d519d39e53dfd3c78d066a/Lib/asyncio/tasks.py#L991
+
+    Return a concurrent.futures.Future to access the result.
+    """
+    if not coroutines.iscoroutine(coro_or_future) and not futures.isfuture(
+        coro_or_future
+    ):
+        raise TypeError("A coroutine object or future is required")
+
+    if futures.isfuture(coro_or_future):
+        assert loop == coro_or_future.get_loop()
+
+    future = concurrent.futures.Future()
+
+    def callback():
+        try:
+            futures._chain_future(ensure_future(coro_or_future, loop=loop), future)
+        except (SystemExit, KeyboardInterrupt):
+            raise
+        except BaseException as exc:
+            if future.set_running_or_notify_cancel():
+                future.set_exception(exc)
+            raise
+
+    loop.call_soon_threadsafe(callback)
+    return future

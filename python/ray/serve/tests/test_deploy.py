@@ -4,14 +4,14 @@ import time
 from collections import defaultdict
 from typing import Callable
 
+import httpx
 import pytest
-import requests
 
 import ray
 from ray import serve
+from ray._common.test_utils import SignalActor
 from ray._private.pydantic_compat import ValidationError
-from ray._private.test_utils import SignalActor, wait_for_condition
-from ray.serve._private.constants import RAY_SERVE_EAGERLY_START_REPLACEMENT_REPLICAS
+from ray._private.test_utils import wait_for_condition
 from ray.serve._private.utils import get_random_string
 from ray.serve.exceptions import RayServeException
 
@@ -35,7 +35,7 @@ def test_deploy_basic(serve_instance, use_handle):
             handle = serve.get_deployment_handle("d", "default")
             return handle.remote().result()
         else:
-            return requests.get("http://localhost:8000/d").json()
+            return httpx.get("http://localhost:8000/d", timeout=None).json()
 
     serve.run(d.bind())
     resp, pid1 = call()
@@ -56,6 +56,52 @@ def test_deploy_basic(serve_instance, use_handle):
     resp, pid3 = call()
     assert resp == "code version 2"
     assert pid3 != pid2
+
+
+@pytest.mark.parametrize(
+    "component_name_with_special_character",
+    [
+        "test@component",
+        "test#123",
+        "component/name",
+        "component.name",
+        "component!name",
+        "component$name",
+        "component%name",
+        "component^name",
+        "component&name",
+        "component*name",
+        "component_name",
+    ],
+)
+def test_deploy_with_any_characters(
+    serve_instance, component_name_with_special_character
+):
+    """The function should not fail when the deployment name contains special characters."""
+
+    # V1 blocks on signal
+    @serve.deployment
+    class V1:
+        async def handler(self):
+            return True
+
+        async def __call__(self):
+            return await self.handler()
+
+    # Check that deployment succeeds with special characters
+    deployment = V1.options(name=component_name_with_special_character).bind()
+    serve.run(deployment, name="app")
+
+    status = serve.status()
+
+    handle_name = serve.get_deployment_handle(
+        component_name_with_special_character, "app"
+    ).deployment_name
+
+    assert handle_name == component_name_with_special_character
+
+    app = status.applications["app"]
+    assert app.status == "RUNNING"
 
 
 def test_empty_decorator(serve_instance):
@@ -112,7 +158,7 @@ def test_redeploy_single_replica(serve_instance, use_handle):
             handle = serve.get_deployment_handle(name, "app")
             return handle.handler.remote().result()
         else:
-            return requests.get("http://localhost:8000/").json()
+            return httpx.get("http://localhost:8000/", timeout=None).json()
 
     signal_name = f"signal-{get_random_string()}"
     signal = SignalActor.options(name=signal_name).remote()
@@ -154,25 +200,15 @@ def test_redeploy_single_replica(serve_instance, use_handle):
     start = time.time()
     while time.time() - start < 30:
         ready, _ = ray.wait([call.remote()], timeout=2)
-        if RAY_SERVE_EAGERLY_START_REPLACEMENT_REPLICAS:
-            # If the request doesn't block, it must be V2 which doesn't wait
-            # for signal. Otherwise, it must have been sent to V1 which
-            # waits on signal The request might have been sent to V1 if the
-            # long poll broadcast was delayed
-            if len(ready) == 1:
-                val, pid = ray.get(ready[0])
-                assert val == 2
-                assert pid != pid1
-                break
-        else:
-            # Any requests that go through during this time should have
-            # been sent to replicas of the old version
-            if len(ready) == 1:
-                val, pid = ray.get(ready[0])
-                assert val == 1
-                assert pid == pid1
-            else:
-                break
+        # If the request doesn't block, it must be V2 which doesn't wait
+        # for signal. Otherwise, it must have been sent to V1 which
+        # waits on signal The request might have been sent to V1 if the
+        # long poll broadcast was delayed
+        if len(ready) == 1:
+            val, pid = ray.get(ready[0])
+            assert val == 2
+            assert pid != pid1
+            break
     else:
         assert False, "Timed out waiting for new version to be called."
 
@@ -185,6 +221,12 @@ def test_redeploy_single_replica(serve_instance, use_handle):
 
 @pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
 def test_redeploy_multiple_replicas(serve_instance):
+    """
+    This test demonstrates zero downtime when redeploying a deployment with
+    multiple replicas. The inflight requests to the old version are allowed to
+    complete, it also shows that the old version stops accepting new requests.
+    The new requests are routed to the new version.
+    """
     client = serve_instance
     name = "test"
     signal = SignalActor.remote()
@@ -214,18 +256,13 @@ def test_redeploy_multiple_replicas(serve_instance):
 
     # Redeploy new version.
     serve._run(V2.bind(), _blocking=False, name="app")
-    with pytest.raises(TimeoutError):
-        client._wait_for_application_running("app", timeout_s=2)
 
-    if RAY_SERVE_EAGERLY_START_REPLACEMENT_REPLICAS:
-        # Two new replicas should be started.
+    while True:
+        # Wait for the new version to be started and ready to handle requests.
         vals2, pids2 = zip(*[h.remote(block=False).result() for _ in range(10)])
-        assert set(vals2) == {"v2"}
-    else:
-        vals2, pids2 = zip(*[h.remote(block=False).result() for _ in range(10)])
-        # Since there is one replica blocking, only one new
-        # replica should be started up.
-        assert "v1" in vals2
+        if set(vals2) == {"v2"}:
+            break
+        time.sleep(1)
 
     # Signal the original call to exit.
     ray.get(signal.send.remote())
@@ -235,7 +272,7 @@ def test_redeploy_multiple_replicas(serve_instance):
 
     # Now the goal and requests to the new version should complete.
     # We should have two running replicas of the new version.
-    client._wait_for_application_running("app", timeout_s=10)
+    client._wait_for_application_running("app")
     vals3, pids3 = zip(*[h.remote(block=False).result() for _ in range(10)])
     assert set(vals3) == {"v2"}
     assert len(set(pids3)) == 2
@@ -256,7 +293,7 @@ def test_reconfigure_multiple_replicas(serve_instance, use_handle):
             handle = serve.get_deployment_handle(name, "app")
             ret = handle.handler.remote().result()
         else:
-            ret = requests.get(f"http://localhost:8000/{name}").text
+            ret = httpx.get(f"http://localhost:8000/{name}").text
 
         return ret.split("|")[0], ret.split("|")[1]
 
@@ -397,7 +434,7 @@ def test_redeploy_scale_down(serve_instance, use_handle):
             handle = serve.get_app_handle("app")
             ret = handle.remote().result()
         else:
-            ret = requests.get(f"http://localhost:8000/{name}").text
+            ret = httpx.get(f"http://localhost:8000/{name}").text
 
         return ret.split("|")[0], ret.split("|")[1]
 
@@ -448,7 +485,7 @@ def test_redeploy_scale_up(serve_instance, use_handle):
             handle = serve.get_app_handle("app")
             ret = handle.remote().result()
         else:
-            ret = requests.get(f"http://localhost:8000/{name}").text
+            ret = httpx.get(f"http://localhost:8000/{name}").text
 
         return ret.split("|")[0], ret.split("|")[1]
 
@@ -651,6 +688,80 @@ def test_deployment_properties():
         version=None,
     )(DClass)
     assert D.version is None
+
+
+def test_deploy_multiple_apps_batched(serve_instance):
+    @serve.deployment
+    class A:
+        def __call__(self):
+            return "a"
+
+    @serve.deployment
+    class B:
+        def __call__(self):
+            return "b"
+
+    serve.run_many(
+        [
+            serve.RunTarget(A.bind(), name="a", route_prefix="/a"),
+            serve.RunTarget(B.bind(), name="b", route_prefix="/b"),
+        ]
+    )
+
+    assert serve.get_app_handle("a").remote().result() == "a"
+    assert serve.get_app_handle("b").remote().result() == "b"
+
+    assert httpx.get("http://localhost:8000/a").text == "a"
+    assert httpx.get("http://localhost:8000/b").text == "b"
+
+
+def test_redeploy_multiple_apps_batched(serve_instance):
+    @serve.deployment
+    class A:
+        def __call__(self):
+            return "a", os.getpid()
+
+    @serve.deployment
+    class V1:
+        def __call__(self):
+            return "version 1", os.getpid()
+
+    @serve.deployment
+    class V2:
+        def __call__(self):
+            return "version 2", os.getpid()
+
+    serve.run_many(
+        [
+            serve.RunTarget(A.bind(), name="a", route_prefix="/a"),
+            serve.RunTarget(V1.bind(), name="v", route_prefix="/v"),
+        ]
+    )
+
+    a1, pida1 = serve.get_app_handle("a").remote().result()
+
+    assert a1 == "a"
+
+    v1, pid1 = serve.get_app_handle("v").remote().result()
+
+    assert v1 == "version 1"
+
+    serve.run_many(
+        [
+            serve.RunTarget(V2.bind(), name="v", route_prefix="/v"),
+        ]
+    )
+
+    v2, pid2 = serve.get_app_handle("v").remote().result()
+
+    assert v2 == "version 2"
+    assert pid1 != pid2
+
+    # Redeploying "v" should not have affected "a"
+    a2, pida2 = serve.get_app_handle("a").remote().result()
+
+    assert a1 == a2
+    assert pida1 == pida2
 
 
 if __name__ == "__main__":

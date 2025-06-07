@@ -6,8 +6,8 @@ from copy import deepcopy
 from tempfile import NamedTemporaryFile
 from typing import Dict, List, Optional
 
+import httpx
 import pytest
-import requests
 import yaml
 
 import ray
@@ -16,7 +16,6 @@ from ray._private.test_utils import wait_for_condition
 from ray.serve._private.common import DeploymentID
 from ray.serve._private.constants import SERVE_DEFAULT_APP_NAME, SERVE_NAMESPACE
 from ray.serve.scripts import remove_ansi_escape_sequences
-from ray.tests.conftest import tmp_working_dir  # noqa: F401, E501
 from ray.util.state import list_actors
 
 
@@ -33,11 +32,46 @@ def assert_deployments_live(ids: List[DeploymentID]):
 
 def test_start_shutdown(ray_start_stop):
     subprocess.check_output(["serve", "start"])
-    subprocess.check_output(["serve", "shutdown", "-y"])
+    # deploy a simple app
+    import_path = "ray.serve.tests.test_config_files.arg_builders.build_echo_app"
+
+    deploy_response = subprocess.check_output(["serve", "deploy", import_path])
+    assert b"Sent deploy request successfully." in deploy_response
+
+    wait_for_condition(
+        check_http_response,
+        expected_text="DEFAULT",
+        timeout=15,
+    )
+
+    ret = subprocess.check_output(["serve", "shutdown", "-y"])
+    assert b"Sent shutdown request; applications will be deleted asynchronously" in ret
+
+    def check_no_apps():
+        status = subprocess.check_output(["serve", "status"])
+        return b"applications: {}" in status
+
+    wait_for_condition(check_no_apps, timeout=15)
+
+    # Test shutdown when no Serve instance is running
+    ret = subprocess.check_output(["serve", "shutdown", "-y"], stderr=subprocess.STDOUT)
+    assert b"No Serve instance found running" in ret
+
+
+def test_start_shutdown_without_serve_running(ray_start_stop):
+    # Test shutdown when no Serve instance is running
+    ret = subprocess.check_output(["serve", "shutdown", "-y"], stderr=subprocess.STDOUT)
+    assert b"No Serve instance found running" in ret
+
+
+def test_start_shutdown_without_ray_running():
+    # Test shutdown when Ray is not running
+    ret = subprocess.check_output(["serve", "shutdown", "-y"], stderr=subprocess.STDOUT)
+    assert b"Unable to shutdown Serve on the cluster" in ret
 
 
 def check_http_response(expected_text: str, json: Optional[Dict] = None):
-    resp = requests.post("http://localhost:8000/", json=json)
+    resp = httpx.post("http://localhost:8000/", json=json)
     assert resp.text == expected_text
     return True
 
@@ -91,7 +125,7 @@ def test_deploy_basic(ray_start_stop):
 
         print("Deploying arithmetic config.")
         deploy_response = subprocess.check_output(
-            ["serve", "deploy", arithmetic_file_name, "-a", "http://localhost:52365/"]
+            ["serve", "deploy", arithmetic_file_name, "-a", "http://localhost:8265/"]
         )
         assert success_message_fragment in deploy_response
         print("Deploy request sent successfully.")
@@ -137,7 +171,8 @@ def test_deploy_with_http_options(ray_start_stop):
     assert success_message_fragment in deploy_response
 
     wait_for_condition(
-        lambda: requests.post("http://localhost:8005/").text == "wonderful world",
+        lambda: httpx.post("http://localhost:8005/", json=None).text
+        == "wonderful world",
         timeout=15,
     )
 
@@ -177,23 +212,23 @@ def test_deploy_multi_app_basic(ray_start_stop):
 
         # Test add and mul for each of the two apps
         wait_for_condition(
-            lambda: requests.post("http://localhost:8000/app1", json=["ADD", 2]).text
+            lambda: httpx.post("http://localhost:8000/app1", json=["ADD", 2]).text
             == "3 pizzas please!",
             timeout=15,
         )
         wait_for_condition(
-            lambda: requests.post("http://localhost:8000/app1", json=["MUL", 2]).text
+            lambda: httpx.post("http://localhost:8000/app1", json=["MUL", 2]).text
             == "2 pizzas please!",
             timeout=15,
         )
         print('Application "app1" is reachable over HTTP.')
         wait_for_condition(
-            lambda: requests.post("http://localhost:8000/app2", json=["ADD", 2]).text
+            lambda: httpx.post("http://localhost:8000/app2", json=["ADD", 2]).text
             == "5 pizzas please!",
             timeout=15,
         )
         wait_for_condition(
-            lambda: requests.post("http://localhost:8000/app2", json=["MUL", 2]).text
+            lambda: httpx.post("http://localhost:8000/app2", json=["MUL", 2]).text
             == "4 pizzas please!",
             timeout=15,
         )
@@ -217,18 +252,17 @@ def test_deploy_multi_app_basic(ray_start_stop):
 
         # Test app1 (simple wonderful world) and app2 (add + mul)
         wait_for_condition(
-            lambda: requests.post("http://localhost:8000/app1").text
-            == "wonderful world",
+            lambda: httpx.post("http://localhost:8000/app1").text == "wonderful world",
             timeout=15,
         )
         print('Application "app1" is reachable over HTTP.')
         wait_for_condition(
-            lambda: requests.post("http://localhost:8000/app2", json=["ADD", 2]).text
+            lambda: httpx.post("http://localhost:8000/app2", json=["ADD", 2]).text
             == "12 pizzas please!",
             timeout=15,
         )
         wait_for_condition(
-            lambda: requests.post("http://localhost:8000/app2", json=["MUL", 2]).text
+            lambda: httpx.post("http://localhost:8000/app2", json=["MUL", 2]).text
             == "20 pizzas please!",
             timeout=15,
         )
@@ -312,23 +346,22 @@ def test_deploy_multi_app_builder_with_args(ray_start_stop):
     subprocess.check_output(["serve", "deploy", apps_with_args])
 
     wait_for_condition(
-        lambda: requests.post("http://localhost:8000/untyped_default").text
-        == "DEFAULT",
+        lambda: httpx.post("http://localhost:8000/untyped_default").text == "DEFAULT",
         timeout=10,
     )
 
     wait_for_condition(
-        lambda: requests.post("http://localhost:8000/untyped_hello").text == "hello",
+        lambda: httpx.post("http://localhost:8000/untyped_hello").text == "hello",
         timeout=10,
     )
 
     wait_for_condition(
-        lambda: requests.post("http://localhost:8000/typed_default").text == "DEFAULT",
+        lambda: httpx.post("http://localhost:8000/typed_default").text == "DEFAULT",
         timeout=10,
     )
 
     wait_for_condition(
-        lambda: requests.post("http://localhost:8000/typed_hello").text == "hello",
+        lambda: httpx.post("http://localhost:8000/typed_hello").text == "hello",
         timeout=10,
     )
 
@@ -469,7 +502,7 @@ def test_status_basic(ray_start_stop):
         lambda: num_live_deployments(SERVE_DEFAULT_APP_NAME) == 3, timeout=15
     )
     status_response = subprocess.check_output(
-        ["serve", "status", "-a", "http://localhost:52365/"]
+        ["serve", "status", "-a", "http://localhost:8265/"]
     )
     serve_status = yaml.safe_load(status_response)
     default_app = serve_status["applications"][SERVE_DEFAULT_APP_NAME]
@@ -495,7 +528,7 @@ def test_status_basic(ray_start_stop):
 
     def proxy_healthy():
         status_response = subprocess.check_output(
-            ["serve", "status", "-a", "http://localhost:52365/"]
+            ["serve", "status", "-a", "http://localhost:8265/"]
         )
         proxy_status = yaml.safe_load(status_response)["proxies"]
         return len(proxy_status) and all(p == "HEALTHY" for p in proxy_status.values())
@@ -515,7 +548,7 @@ def test_status_error_msg_format(ray_start_stop):
 
     def check_for_failed_deployment():
         cli_output = subprocess.check_output(
-            ["serve", "status", "-a", "http://localhost:52365/"]
+            ["serve", "status", "-a", "http://localhost:8265/"]
         )
         cli_status = yaml.safe_load(cli_output)["applications"][SERVE_DEFAULT_APP_NAME]
         api_status = serve.status().applications[SERVE_DEFAULT_APP_NAME]
@@ -545,7 +578,7 @@ def test_status_invalid_runtime_env(ray_start_stop):
 
     def check_for_failed_deployment():
         cli_output = subprocess.check_output(
-            ["serve", "status", "-a", "http://localhost:52365/"]
+            ["serve", "status", "-a", "http://localhost:8265/"]
         )
         cli_status = yaml.safe_load(cli_output)["applications"][SERVE_DEFAULT_APP_NAME]
         assert cli_status["status"] == "DEPLOY_FAILED"
@@ -567,7 +600,7 @@ def test_status_syntax_error(ray_start_stop):
 
     def check_for_failed_deployment():
         cli_output = subprocess.check_output(
-            ["serve", "status", "-a", "http://localhost:52365/"]
+            ["serve", "status", "-a", "http://localhost:8265/"]
         )
         status = yaml.safe_load(cli_output)["applications"][SERVE_DEFAULT_APP_NAME]
         assert status["status"] == "DEPLOY_FAILED"
@@ -592,7 +625,7 @@ def test_status_constructor_error(ray_start_stop):
 
     def check_for_failed_deployment():
         cli_output = subprocess.check_output(
-            ["serve", "status", "-a", "http://localhost:52365/"]
+            ["serve", "status", "-a", "http://localhost:8265/"]
         )
         status = yaml.safe_load(cli_output)["applications"][SERVE_DEFAULT_APP_NAME]
         assert status["status"] == "DEPLOY_FAILED"
@@ -620,7 +653,7 @@ def test_status_constructor_retry_error(ray_start_stop):
 
     def check_for_failed_deployment():
         cli_output = subprocess.check_output(
-            ["serve", "status", "-a", "http://localhost:52365/"]
+            ["serve", "status", "-a", "http://localhost:8265/"]
         )
         status = yaml.safe_load(cli_output)["applications"][SERVE_DEFAULT_APP_NAME]
         assert status["status"] == "DEPLOYING"
@@ -648,7 +681,7 @@ def test_status_package_unavailable_in_controller(ray_start_stop):
 
     def check_for_failed_deployment():
         cli_output = subprocess.check_output(
-            ["serve", "status", "-a", "http://localhost:52365/"]
+            ["serve", "status", "-a", "http://localhost:8265/"]
         )
         status = yaml.safe_load(cli_output)["applications"][SERVE_DEFAULT_APP_NAME]
         assert status["status"] == "DEPLOY_FAILED"
@@ -670,7 +703,7 @@ def test_max_replicas_per_node(ray_start_stop):
 
     def check_application_status():
         cli_output = subprocess.check_output(
-            ["serve", "status", "-a", "http://localhost:52365/"]
+            ["serve", "status", "-a", "http://localhost:8265/"]
         )
         status = yaml.safe_load(cli_output)["applications"]
         assert (
@@ -694,7 +727,7 @@ def test_replica_placement_group_options(ray_start_stop):
 
     def check_application_status():
         cli_output = subprocess.check_output(
-            ["serve", "status", "-a", "http://localhost:52365/"]
+            ["serve", "status", "-a", "http://localhost:8265/"]
         )
         status = yaml.safe_load(cli_output)["applications"]
         assert (

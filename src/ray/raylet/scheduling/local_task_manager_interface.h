@@ -14,8 +14,11 @@
 
 #pragma once
 
+#include <deque>
+#include <memory>
+#include <string>
+
 #include "absl/container/flat_hash_map.h"
-#include "absl/container/flat_hash_set.h"
 #include "ray/common/ray_object.h"
 #include "ray/common/task/task.h"
 #include "ray/common/task/task_common.h"
@@ -62,10 +65,8 @@ class ILocalTaskManager {
 
   virtual void ClearWorkerBacklog(const WorkerID &worker_id) = 0;
 
-  virtual bool AnyPendingTasksForResourceAcquisition(RayTask *example,
-                                                     bool *any_pending,
-                                                     int *num_pending_actor_creation,
-                                                     int *num_pending_tasks) const = 0;
+  virtual const RayTask *AnyPendingTasksForResourceAcquisition(
+      int *num_pending_actor_creation, int *num_pending_tasks) const = 0;
 
   virtual void RecordMetrics() const = 0;
 
@@ -120,11 +121,9 @@ class NoopLocalTaskManager : public ILocalTaskManager {
 
   void ClearWorkerBacklog(const WorkerID &worker_id) override {}
 
-  bool AnyPendingTasksForResourceAcquisition(RayTask *example,
-                                             bool *any_pending,
-                                             int *num_pending_actor_creation,
-                                             int *num_pending_tasks) const override {
-    return false;
+  const RayTask *AnyPendingTasksForResourceAcquisition(
+      int *num_pending_actor_creation, int *num_pending_tasks) const override {
+    return nullptr;
   }
 
   void RecordMetrics() const override{};

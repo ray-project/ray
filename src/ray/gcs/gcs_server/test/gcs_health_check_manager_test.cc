@@ -19,11 +19,14 @@
 #include <boost/date_time/posix_time/posix_time.hpp>
 #include <boost/thread.hpp>
 #include <cstdlib>
+#include <memory>
 #include <unordered_map>
+#include <unordered_set>
+#include <vector>
 
-using namespace boost;
-using namespace boost::asio;
-using namespace boost::asio::ip;
+using namespace boost;            // NOLINT
+using namespace boost::asio;      // NOLINT
+using namespace boost::asio::ip;  // NOLINT
 
 #include <ray/rpc/grpc_server.h>
 
@@ -34,7 +37,7 @@ using namespace boost::asio::ip;
 #include "ray/gcs/gcs_server/gcs_health_check_manager.h"
 
 int GetFreePort() {
-  io_service io_service;
+  io_context io_service;
   tcp::acceptor acceptor(io_service);
   tcp::endpoint endpoint;
 
@@ -47,8 +50,8 @@ int GetFreePort() {
   return port;
 }
 
-using namespace ray;
-using namespace std::literals::chrono_literals;
+using namespace ray;                             // NOLINT
+using namespace std::literals::chrono_literals;  // NOLINT
 
 class GcsHealthCheckManagerTest : public ::testing::Test {
  protected:
@@ -262,7 +265,8 @@ TEST_F(GcsHealthCheckManagerTest, StressTest) {
 #ifdef _RAY_TSAN_BUILD
   GTEST_SKIP() << "Disabled in tsan because of performance";
 #endif
-  boost::asio::io_service::work work(io_service);
+  boost::asio::executor_work_guard<boost::asio::io_context::executor_type> work(
+      io_service.get_executor());
   std::srand(std::time(nullptr));
   auto t = std::make_unique<std::thread>([this]() { this->io_service.run(); });
 

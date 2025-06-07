@@ -1,14 +1,14 @@
 .. _cross_language:
 
-Cross-Language Programming
+Cross-language programming
 ==========================
 
-This page will show you how to use Ray's cross-language programming feature.
+This page shows you how to use Ray's cross-language programming feature.
 
 Setup the driver
 -----------------
 
-We need to set :ref:`code_search_path` in your driver.
+You need to set :ref:`code_search_path` in your driver.
 
 .. tab-set::
 
@@ -28,7 +28,7 @@ We need to set :ref:`code_search_path` in your driver.
                 -Dray.job.code-search-path=/path/to/code/ \
                 <classname> <args>
 
-You may want to include multiple directories to load both Python and Java code for workers, if they are placed in different directories.
+You may want to include multiple directories to load both Python and Java code for workers, if you place them in different directories.
 
 .. tab-set::
 
@@ -51,7 +51,7 @@ You may want to include multiple directories to load both Python and Java code f
 Python calling Java
 -------------------
 
-Suppose we have a Java static method and a Java class as follows:
+Suppose you have a Java static method and a Java class as follows:
 
 .. code-block:: java
 
@@ -79,8 +79,8 @@ Suppose we have a Java static method and a Java class as follows:
     }
   }
 
-Then, in Python, we can call the above Java remote function, or create an actor
-from the above Java class.
+Then, in Python, you can call the preceding Java remote function, or create an actor
+from the preceding Java class.
 
 .. literalinclude:: ./doc_code/cross_language.py
   :language: python
@@ -90,7 +90,7 @@ from the above Java class.
 Java calling Python
 -------------------
 
-Suppose we have a Python module as follows:
+Suppose you have a Python module as follows:
 
 .. literalinclude:: ./doc_code/cross_language.py
   :language: python
@@ -99,10 +99,10 @@ Suppose we have a Python module as follows:
 
 .. note::
 
-  * The function or class should be decorated by `@ray.remote`.
+  * You should decorate the function or class with `@ray.remote`.
 
-Then, in Java, we can call the above Python remote function, or create an actor
-from the above Python class.
+Then, in Java, you can call the preceding Python remote function, or create an actor
+from the preceding Python class.
 
 .. code-block:: java
 
@@ -148,8 +148,8 @@ from the above Python class.
 Cross-language data serialization
 ---------------------------------
 
-The arguments and return values of ray call can be serialized & deserialized
-automatically if their types are the following:
+Ray automatically serializes and deserializes the arguments and return values of ray call
+if their types are the following:
 
   - Primitive data types
       ===========   =======  =======
@@ -177,10 +177,10 @@ automatically if their types are the following:
 
   * Be aware of float / double precision between Python and Java. If Java is using a
     float type to receive the input argument, the double precision Python data
-    will be reduced to float precision in Java.
-  * BigInteger can support a max value of 2^64-1, please refer to:
+    reduces to float precision in Java.
+  * BigInteger can support a max value of 2^64-1. See:
     https://github.com/msgpack/msgpack/blob/master/spec.md#int-format-family.
-    If the value is larger than 2^64-1, then sending the value to Python will raise an exception.
+    If the value is larger than 2^64-1, then sending the value to Python raises an exception.
 
 The following example shows how to pass these types as parameters and how to
 return these types.
@@ -235,7 +235,7 @@ to Java:
 Cross-language exception stacks
 -------------------------------
 
-Suppose we have a Java package as follows:
+Suppose you have a Java package as follows:
 
 .. code-block:: java
 

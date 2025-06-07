@@ -101,6 +101,22 @@ See the [model composition guide](serve-model-composition) for how to update cod
    serve.schema.EncodingType
 ```
 
+### Request Router
+
+```{eval-rst}
+.. autosummary::
+   :nosignatures:
+   :toctree: doc/
+
+   serve.request_router.ReplicaID
+   serve.request_router.PendingRequest
+   serve.request_router.RunningReplica
+   serve.request_router.FIFOMixin
+   serve.request_router.LocalityMixin
+   serve.request_router.MultiplexMixin
+   serve.request_router.RequestRouter
+```
+
 #### Advanced APIs
 
 ```{eval-rst}
@@ -120,36 +136,6 @@ See the [model composition guide](serve-model-composition) for how to update cod
    serve.exceptions.DeploymentUnavailableError
 ```
 
-#### Large Language Model (LLM) Serving APIs
-
-##### Configs
-```{eval-rst}
-.. autosummary::
-   :nosignatures:
-   :toctree: doc/
-
-   serve.llm.LLMConfig
-```
-
-##### Deployments
-```{eval-rst}
-.. autosummary::
-   :nosignatures:
-   :toctree: doc/
-
-   serve.llm.VLLMDeployment
-   serve.llm.LLMModelRouterDeployment
-```
-
-##### Builders
-```{eval-rst}
-.. autosummary::
-   :nosignatures:
-   :toctree: doc/
-
-   serve.llm.build_vllm_deployment
-   serve.llm.build_openai_app
-```
 
 (serve-cli)=
 
@@ -242,7 +228,8 @@ Content-Type: application/json
     },
     "grpc_options": {
         "port": 9000,
-        "grpc_servicer_functions": []
+        "grpc_servicer_functions": [],
+        "request_timeout_s": null
     },
     "proxies": {
         "cef533a072b0f03bf92a6b98cb4eb9153b7b7c7b7f15954feb2f38ec": {
@@ -412,6 +399,8 @@ Content-Type: application/json
    schema.DeploymentDetails
    schema.ReplicaDetails
    schema.ProxyStatus
+   schema.TargetGroup
+   schema.Target
 ```
 
 ## Observability
@@ -425,4 +414,74 @@ Content-Type: application/json
    metrics.Histogram
    metrics.Gauge
    schema.LoggingConfig
+```
+
+(serve-llm-api)=
+
+## LLM API
+
+```{eval-rst}
+.. currentmodule:: ray
+``` 
+
+
+### Builders
+
+```{eval-rst}
+
+.. autosummary::
+   :nosignatures:
+   :toctree: doc/
+
+   serve.llm.build_llm_deployment
+   serve.llm.build_openai_app
+```
+
+### Configs
+
+```{eval-rst}
+
+.. autosummary::
+   :nosignatures:
+   :toctree: doc/
+   :template: autosummary/autopydantic.rst
+
+   serve.llm.LLMConfig
+   serve.llm.LLMServingArgs
+   serve.llm.ModelLoadingConfig
+   serve.llm.CloudMirrorConfig
+   serve.llm.LoraConfig
+```
+
+
+### Deployments
+
+```{eval-rst}
+
+.. autosummary::
+   :nosignatures:
+   :toctree: doc/
+
+   serve.llm.LLMServer
+   serve.llm.LLMRouter
+```
+
+### OpenAI API Models
+
+```{eval-rst}
+
+.. autosummary::
+   :nosignatures:
+   :toctree: doc/
+   :template: autosummary/autopydantic_show_json.rst
+
+   serve.llm.openai_api_models.ChatCompletionRequest
+   serve.llm.openai_api_models.CompletionRequest
+   serve.llm.openai_api_models.EmbeddingRequest
+   serve.llm.openai_api_models.ChatCompletionStreamResponse
+   serve.llm.openai_api_models.ChatCompletionResponse
+   serve.llm.openai_api_models.CompletionStreamResponse
+   serve.llm.openai_api_models.CompletionResponse
+   serve.llm.openai_api_models.EmbeddingResponse
+   serve.llm.openai_api_models.ErrorResponse
 ```

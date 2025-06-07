@@ -125,7 +125,7 @@ def main(checkpoint_dir):
                     f"{NUM_ENV_STEPS_SAMPLED_LIFETIME}": "ts",
                     f"{ENV_RUNNER_RESULTS}/{NUM_EPISODES}": "train_episodes",
                     (
-                        f"{ENV_RUNNER_RESULTS}/module_episode_returns_mean/" "main"
+                        f"{ENV_RUNNER_RESULTS}/module_episode_returns_mean/main"
                     ): "reward_main",
                 },
                 sort_by_metric=True,

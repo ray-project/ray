@@ -16,7 +16,10 @@
 
 #include <google/protobuf/map.h>
 
-#include <boost/range/join.hpp>
+#include <deque>
+#include <memory>
+#include <string>
+#include <utility>
 
 #include "ray/stats/metric_defs.h"
 #include "ray/util/logging.h"
@@ -124,7 +127,63 @@ bool ClusterTaskManager::CancelTasks(
   return tasks_cancelled;
 }
 
-bool ClusterTaskManager::CancelAllTaskOwnedBy(
+bool ClusterTaskManager::CancelTasksWithResourceShapes(
+    const std::vector<ResourceSet> target_resource_shapes) {
+  auto predicate = [target_resource_shapes,
+                    this](const std::shared_ptr<internal::Work> &work) {
+    return this->IsWorkWithResourceShape(work, target_resource_shapes);
+  };
+
+  const std::string resource_shapes_str =
+      ray::VectorToString(target_resource_shapes, &ResourceSet::DebugString);
+  RAY_LOG(WARNING) << "Cancelling infeasible tasks with resource shapes "
+                   << resource_shapes_str;
+
+  bool task_cancelled = CancelTasks(
+      predicate,
+      rpc::RequestWorkerLeaseReply::SCHEDULING_CANCELLED_UNSCHEDULABLE,
+      absl::StrCat(
+          "Tasks or actors with resource shapes ",
+          resource_shapes_str,
+          " failed to schedule because there are not enough resources for the tasks "
+          "or actors on the whole cluster."));
+
+  RAY_LOG(INFO) << "Infeasible tasks cancellation complete with result=" << task_cancelled
+                << ",resource shapes=" << resource_shapes_str;
+
+  return task_cancelled;
+}
+
+bool ClusterTaskManager::IsWorkWithResourceShape(
+    const std::shared_ptr<internal::Work> &work,
+    const std::vector<ResourceSet> &target_resource_shapes) {
+  SchedulingClass scheduling_class =
+      work->task.GetTaskSpecification().GetSchedulingClass();
+  ResourceSet resource_set =
+      TaskSpecification::GetSchedulingClassDescriptor(scheduling_class).resource_set;
+  for (const auto &target_resource_shape : target_resource_shapes) {
+    if (resource_set == target_resource_shape) {
+      return true;
+    }
+  }
+  return false;
+}
+
+bool ClusterTaskManager::CancelAllTasksOwnedBy(
+    const NodeID &node_id,
+    rpc::RequestWorkerLeaseReply::SchedulingFailureType failure_type,
+    const std::string &scheduling_failure_message) {
+  // Only tasks and regular actors are canceled because their lifetime is
+  // the same as the owner.
+  auto predicate = [node_id](const std::shared_ptr<internal::Work> &work) {
+    return !work->task.GetTaskSpecification().IsDetachedActor() &&
+           work->task.GetTaskSpecification().CallerNodeId() == node_id;
+  };
+
+  return CancelTasks(predicate, failure_type, scheduling_failure_message);
+}
+
+bool ClusterTaskManager::CancelAllTasksOwnedBy(
     const WorkerID &worker_id,
     rpc::RequestWorkerLeaseReply::SchedulingFailureType failure_type,
     const std::string &scheduling_failure_message) {
@@ -207,8 +266,8 @@ void ClusterTaskManager::ScheduleAndDispatchTasks() {
     if (is_infeasible) {
       RAY_CHECK(!work_queue.empty());
       // Only announce the first item as infeasible.
-      auto &work_queue = shapes_it->second;
-      const auto &work = work_queue[0];
+      auto &cur_work_queue = shapes_it->second;
+      const auto &work = cur_work_queue[0];
       const RayTask task = work->task;
       if (announce_infeasible_task_) {
         announce_infeasible_task_(task);
@@ -294,9 +353,9 @@ void ClusterTaskManager::FillResourceUsage(rpc::ResourcesData &data) {
   cluster_resource_scheduler_.GetLocalResourceManager().PopulateResourceViewSyncMessage(
       resource_view_sync_message);
   (*data.mutable_resources_total()) =
-      std::move(resource_view_sync_message.resources_total());
+      std::move(*resource_view_sync_message.mutable_resources_total());
   (*data.mutable_resources_available()) =
-      std::move(resource_view_sync_message.resources_available());
+      std::move(*resource_view_sync_message.mutable_resources_available());
   data.set_object_pulls_queued(resource_view_sync_message.object_pulls_queued());
   data.set_idle_duration_ms(resource_view_sync_message.idle_duration_ms());
   data.set_is_draining(resource_view_sync_message.is_draining());
@@ -304,11 +363,9 @@ void ClusterTaskManager::FillResourceUsage(rpc::ResourcesData &data) {
       resource_view_sync_message.draining_deadline_timestamp_ms());
 }
 
-bool ClusterTaskManager::AnyPendingTasksForResourceAcquisition(
-    RayTask *exemplar,
-    bool *any_pending,
-    int *num_pending_actor_creation,
-    int *num_pending_tasks) const {
+const RayTask *ClusterTaskManager::AnyPendingTasksForResourceAcquisition(
+    int *num_pending_actor_creation, int *num_pending_tasks) const {
+  const RayTask *exemplar = nullptr;
   // We are guaranteed that these tasks are blocked waiting for resources after a
   // call to ScheduleAndDispatchTasks(). They may be waiting for workers as well, but
   // this should be a transient condition only.
@@ -341,18 +398,16 @@ bool ClusterTaskManager::AnyPendingTasksForResourceAcquisition(
         *num_pending_tasks += 1;
       }
 
-      if (!*any_pending) {
-        *exemplar = task;
-        *any_pending = true;
+      if (exemplar == nullptr) {
+        exemplar = &task;
       }
     }
   }
 
-  local_task_manager_.AnyPendingTasksForResourceAcquisition(
-      exemplar, any_pending, num_pending_actor_creation, num_pending_tasks);
-
-  // If there's any pending task, at this point, there's no progress being made.
-  return *any_pending;
+  auto local_task_exemplar = local_task_manager_.AnyPendingTasksForResourceAcquisition(
+      num_pending_actor_creation, num_pending_tasks);
+  // Prefer returning the cluster task manager exemplar if it exists.
+  return exemplar == nullptr ? local_task_exemplar : exemplar;
 }
 
 void ClusterTaskManager::RecordMetrics() const {

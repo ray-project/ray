@@ -492,6 +492,7 @@ class Framework(ExampleEnum):
     XGBOOST = "XGBoost"
     HUGGINGFACE = "Hugging Face"
     DATAJUICER = "Data-Juicer"
+    VLLM = "vLLM"
     ANY = "Any"
 
     @classmethod
@@ -505,6 +506,7 @@ class Framework(ExampleEnum):
 
 class RelatedTechnology(ExampleEnum):
     ML_APPLICATIONS = "ML Applications"
+    LLM_APPLICATIONS = "LLM Applications"
     INTEGRATIONS = "Integrations"
     AI_ACCELERATORS = "AI Accelerators"
 
@@ -562,7 +564,7 @@ class Library(ExampleEnum):
 
 
 class Example:
-    """Class containing metadata about an example to be shown in the exmaple gallery."""
+    """Class containing metadata about an example to be shown in the example gallery."""
 
     def __init__(
         self, config: Dict[str, str], library: Library, config_dir: pathlib.Path

@@ -4,6 +4,7 @@
 
 from libc.stdint cimport int64_t, uint64_t
 from libcpp cimport bool as c_bool
+from libcpp.functional cimport function
 from libcpp.memory cimport shared_ptr, unique_ptr
 from libcpp.pair cimport pair as c_pair
 from libcpp.string cimport string as c_string
@@ -46,6 +47,7 @@ from ray.includes.common cimport (
     CSchedulingStrategy,
     CWorkerExitType,
     CLineageReconstructionTask,
+    CTensorTransport,
 )
 from ray.includes.function_descriptor cimport (
     CFunctionDescriptor,
@@ -70,7 +72,6 @@ ctypedef void (*plasma_callback_function) \
 # This is a bug of cython: https://github.com/cython/cython/issues/3967.
 ctypedef shared_ptr[const CActorHandle] ActorHandleSharedPtr
 
-
 cdef extern from "ray/core_worker/profile_event.h" nogil:
     cdef cppclass CProfileEvent "ray::core::worker::ProfileEvent":
         void SetExtraData(const c_string &extra_data)
@@ -92,9 +93,11 @@ cdef extern from "ray/core_worker/experimental_mutable_object_manager.h" nogil:
 cdef extern from "ray/core_worker/context.h" nogil:
     cdef cppclass CWorkerContext "ray::core::WorkerContext":
         c_bool CurrentActorIsAsync()
+        void SetCurrentActorShouldExit()
+        c_bool GetCurrentActorShouldExit()
         const c_string &GetCurrentSerializedRuntimeEnv()
         int CurrentActorMaxConcurrency()
-        const CActorID &GetRootDetachedActorID()
+        CActorID GetRootDetachedActorID()
 
 cdef extern from "ray/core_worker/generator_waiter.h" nogil:
     cdef cppclass CGeneratorBackpressureWaiter "ray::core::GeneratorBackpressureWaiter": # noqa
@@ -203,15 +206,14 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
         CNodeID GetCurrentNodeId()
         int64_t GetTaskDepth()
         c_bool GetCurrentTaskRetryExceptions()
-        CPlacementGroupID GetCurrentPlacementGroupId()
+        CPlacementGroupID GetCurrentPlacementGroupId() const
         CWorkerID GetWorkerID()
         c_bool ShouldCaptureChildTasksInPlacementGroup()
-        const CActorID &GetActorId()
+        CActorID GetActorId() const
         const c_string GetActorName()
         void SetActorTitle(const c_string &title)
         void SetActorReprName(const c_string &repr_name)
         void SetWebuiDisplay(const c_string &key, const c_string &message)
-        CTaskID GetCallerId()
         const ResourceMappingType &GetResourceIDs() const
         void RemoveActorHandleReference(const CActorID &actor_id)
         optional[int] GetLocalActorState(const CActorID &actor_id) const
@@ -401,9 +403,10 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
             c_bool is_reattempt,
             c_bool is_streaming_generator,
             c_bool should_retry_exceptions,
-            int64_t generator_backpressure_num_objects
+            int64_t generator_backpressure_num_objects,
+            CTensorTransport tensor_transport
         ) nogil) task_execution_callback
-        (void(const CWorkerID &) nogil) on_worker_shutdown
+        (function[void()]() nogil) initialize_thread_callback
         (CRayStatus() nogil) check_signals
         (void(c_bool) nogil) gc_collect
         (c_vector[c_string](
@@ -418,11 +421,7 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
             const c_string&,
             const c_vector[c_string]&) nogil) run_on_util_worker_handler
         (void(const CRayObject&) nogil) unhandled_exception_handler
-        (void(
-            const CTaskID &c_task_id,
-            const CRayFunction &ray_function,
-            const c_string c_name_of_concurrency_group_to_execute
-        ) nogil) cancel_async_task
+        (c_bool(const CTaskID &c_task_id) nogil) cancel_async_actor_task
         (void(c_string *stack_out) nogil) get_lang_stack
         c_bool is_local_mode
         int num_workers
@@ -439,6 +438,7 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
         int64_t worker_launch_time_ms
         int64_t worker_launched_time_ms
         c_string debug_source
+        c_bool enable_resource_isolation
 
     cdef cppclass CCoreWorkerProcess "ray::core::CoreWorkerProcess":
         @staticmethod

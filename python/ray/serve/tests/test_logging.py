@@ -11,8 +11,8 @@ from pathlib import Path
 from typing import List, Tuple
 from unittest.mock import patch
 
+import httpx
 import pytest
-import requests
 import starlette
 from fastapi import FastAPI
 from starlette.responses import PlainTextResponse
@@ -151,14 +151,14 @@ def test_http_access_log(serve_instance):
                 ]
             )
 
-        r = requests.get("http://localhost:8000/")
+        r = httpx.get("http://localhost:8000/")
         assert r.status_code == 200
         replica_id = ReplicaID(unique_id=r.text, deployment_id=DeploymentID(name=name))
         wait_for_condition(
             check_log, replica_id=replica_id, method="GET", route="/", status_code="200"
         )
 
-        r = requests.post("http://localhost:8000/")
+        r = httpx.post("http://localhost:8000/")
         assert r.status_code == 200
         wait_for_condition(
             check_log,
@@ -168,7 +168,7 @@ def test_http_access_log(serve_instance):
             status_code="200",
         )
 
-        r = requests.get("http://localhost:8000/350")
+        r = httpx.get("http://localhost:8000/350")
         assert r.status_code == 350
         wait_for_condition(
             check_log,
@@ -178,7 +178,7 @@ def test_http_access_log(serve_instance):
             status_code="350",
         )
 
-        r = requests.put("http://localhost:8000/fail")
+        r = httpx.put("http://localhost:8000/fail")
         assert r.status_code == 500
         wait_for_condition(
             check_log,
@@ -321,7 +321,7 @@ def test_log_filenames_contain_only_posix_characters(serve_instance):
 
     serve.run(A.bind())
 
-    r = requests.get("http://localhost:8000/")
+    r = httpx.get("http://localhost:8000/")
     r.raise_for_status()
     assert r.text == "hi"
 
@@ -382,8 +382,8 @@ def test_context_information_in_logging(serve_and_ray_shutdown, json_log_format)
 
     f = io.StringIO()
     with redirect_stderr(f):
-        resp = requests.get("http://127.0.0.1:8000/fn").json()
-        resp2 = requests.get("http://127.0.0.1:8000/class_method").json()
+        resp = httpx.get("http://127.0.0.1:8000/fn").json()
+        resp2 = httpx.get("http://127.0.0.1:8000/class_method").json()
 
         # Check the component log
         expected_log_infos = [
@@ -394,7 +394,7 @@ def test_context_information_in_logging(serve_and_ray_shutdown, json_log_format)
         # Check User log
         user_log_regexes = [
             f".*{resp['request_id']} -- user func.*",
-            f".*{resp2['request_id']} -- user log.*" "message from class method.*",
+            f".*{resp2['request_id']} -- user log.*message from class method.*",
         ]
 
         def check_log():
@@ -451,7 +451,7 @@ def test_context_information_in_logging(serve_and_ray_shutdown, json_log_format)
         else:
             user_method_log_regex = f".*{resp['request_id']} -- user func.*"
             user_class_method_log_regex = (
-                f".*{resp2['request_id']} -- .*" "user log message from class method.*"
+                f".*{resp2['request_id']} -- .*user log message from class method.*"
             )
 
         def check_log_file(log_file: str, expected_regex: list):
@@ -482,7 +482,7 @@ def test_extra_field(serve_and_ray_shutdown, raise_error):
         }
 
     serve.run(fn.bind(), name="app1", route_prefix="/fn")
-    resp = requests.get("http://127.0.0.1:8000/fn")
+    resp = httpx.get("http://127.0.0.1:8000/fn")
     if raise_error:
         resp.status_code == 500
     else:
@@ -544,7 +544,7 @@ class TestLoggingAPI:
                 }
 
         serve.run(Model.bind())
-        resp = requests.get("http://127.0.0.1:8000/").json()
+        resp = httpx.get("http://127.0.0.1:8000/").json()
 
         replica_id = resp["replica"].split("#")[-1]
         if encoding_type == "JSON":
@@ -566,7 +566,7 @@ class TestLoggingAPI:
                 }
 
         serve.run(Model.bind())
-        resp = requests.get("http://127.0.0.1:8000/").json()
+        resp = httpx.get("http://127.0.0.1:8000/").json()
         expected_log_regex = [".*model_info_level.*"]
         check_log_file(resp["log_file"], expected_log_regex)
 
@@ -575,7 +575,7 @@ class TestLoggingAPI:
             check_log_file(resp["log_file"], [".*model_debug_level.*"])
 
         serve.run(Model.options(logging_config={"log_level": "DEBUG"}).bind())
-        resp = requests.get("http://127.0.0.1:8000/").json()
+        resp = httpx.get("http://127.0.0.1:8000/").json()
         expected_log_regex = [".*model_info_level.*", ".*model_debug_level.*"]
         check_log_file(resp["log_file"], expected_log_regex)
 
@@ -591,17 +591,25 @@ class TestLoggingAPI:
                 }
 
         serve.run(Model.bind())
-        resp = requests.get("http://127.0.0.1:8000/").json()
+        resp = httpx.get("http://127.0.0.1:8000/").json()
 
         paths = resp["logs_path"].split("/")
         paths[-1] = "new_dir"
         new_log_dir = "/".join(paths)
 
-        serve.run(Model.options(logging_config={"logs_dir": new_log_dir}).bind())
-        resp = requests.get("http://127.0.0.1:8000/").json()
+        serve.run(
+            Model.options(
+                logging_config={
+                    "logs_dir": new_log_dir,
+                    "additional_log_standard_attrs": ["name"],
+                }
+            ).bind()
+        )
+        resp = httpx.get("http://127.0.0.1:8000/").json()
         assert "new_dir" in resp["logs_path"]
 
         check_log_file(resp["logs_path"], [".*model_info_level.*"])
+        check_log_file(resp["logs_path"], ["ray.serve"], check_contains=True)
 
     @pytest.mark.parametrize("enable_access_log", [True, False])
     @pytest.mark.parametrize("encoding_type", ["TEXT", "JSON"])
@@ -623,7 +631,7 @@ class TestLoggingAPI:
 
         serve.run(Model.bind())
 
-        resp = requests.get("http://127.0.0.1:8000/")
+        resp = httpx.get("http://127.0.0.1:8000/")
         assert resp.status_code == 200
         resp = resp.json()
         check_log_file(resp["logs_path"], [".*model_info_level.*"])
@@ -635,6 +643,35 @@ class TestLoggingAPI:
         else:
             with pytest.raises(AssertionError):
                 check_log_file(resp["logs_path"], [".*model_not_show.*"])
+
+    @pytest.mark.parametrize("encoding_type", ["TEXT", "JSON"])
+    def test_additional_log_standard_attrs(self, serve_and_ray_shutdown, encoding_type):
+        """Test additional log standard attrs"""
+        logger = logging.getLogger("ray.serve")
+        logging_config = {
+            "enable_access_log": True,
+            "encoding": encoding_type,
+            "additional_log_standard_attrs": ["name"],
+        }
+
+        @serve.deployment(logging_config=logging_config)
+        class Model:
+            def __call__(self, req: starlette.requests.Request):
+                logger.info("model_info_level")
+                logger.info("model_not_show", extra={"serve_access_log": True})
+                return {
+                    "logs_path": logger.handlers[1].baseFilename,
+                }
+
+        serve.run(Model.bind())
+
+        resp = httpx.get("http://127.0.0.1:8000/")
+        assert resp.status_code == 200
+        resp = resp.json()
+        if encoding_type == "JSON":
+            check_log_file(resp["logs_path"], ["name"], check_contains=True)
+        else:
+            check_log_file(resp["logs_path"], ["ray.serve"], check_contains=True)
 
     def test_application_logging_overwrite(self, serve_and_ray_shutdown):
         @serve.deployment
@@ -648,7 +685,7 @@ class TestLoggingAPI:
                 }
 
         serve.run(Model.bind(), logging_config={"log_level": "DEBUG"})
-        resp = requests.get("http://127.0.0.1:8000/").json()
+        resp = httpx.get("http://127.0.0.1:8000/").json()
         expected_log_regex = [".*model_info_level.*", ".*model_debug_level.*"]
         check_log_file(resp["log_file"], expected_log_regex)
 
@@ -671,7 +708,7 @@ class TestLoggingAPI:
             name="app2",
             route_prefix="/app2",
         )
-        resp = requests.get("http://127.0.0.1:8000/app2").json()
+        resp = httpx.get("http://127.0.0.1:8000/app2").json()
         check_log_file(resp["log_file"], [".*model_info_level.*"])
         # Make sure 'model_debug_level' log content does not exist.
         with pytest.raises(AssertionError):
@@ -826,7 +863,7 @@ def test_logging_disable_stdout(serve_and_ray_shutdown, ray_instance, tmp_dir):
 
     app = disable_stdout.bind()
     serve.run(app)
-    requests.get("http://127.0.0.1:8000")
+    httpx.get("http://localhost:8000/", timeout=None)
 
     # Check if each of the logs exist in Serve's log files.
     from_serve_logger_check = False
@@ -876,7 +913,8 @@ def test_serve_logging_file_names(serve_and_ray_shutdown, ray_instance):
 
     app = app.bind()
     serve.run(app, logging_config=logging_config)
-    requests.get("http://127.0.0.1:8000")
+    r = httpx.get("http://127.0.0.1:8000/")
+    assert r.status_code == 200
 
     # Construct serve log file names.
     client = _get_global_client()
@@ -973,7 +1011,8 @@ def test_json_logging_with_unpickleable_exc_info(
             return "foo"
 
     serve.run(App.bind())
-    requests.get("http://127.0.0.1:8000/")
+    r = httpx.get("http://127.0.0.1:8000/")
+    assert r.status_code == 200
     for log_file in os.listdir(logs_dir):
         with open(logs_dir / log_file) as f:
             assert "Logging error" not in f.read()

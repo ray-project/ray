@@ -39,7 +39,8 @@
 						"multi",
 						"nightly",
 						"nightly-3x",
-						"weekly"
+						"weekly",
+						"monthly"
 					]
 				},
 				"team": {
@@ -82,6 +83,9 @@
 				"cloud_id": {
 					"type": "string"
 				},
+				"project_id": {
+					"type": "string"
+				},
 				"cloud_name": {
 					"type": "string"
 				},
@@ -99,10 +103,10 @@
 			"type": "object",
 			"additionalProperties": false,
 			"properties": {
-				"type":{
+				"type": {
 					"type": "string"
 				},
-				"post_build_script":{
+				"post_build_script": {
 					"type": "string"
 				},
 				"pip": {
@@ -112,8 +116,7 @@
 					"type": "array"
 				}
 			},
-			"required": [
-			],
+			"required": [],
 			"title": "Byod"
 		},
 		"Run": {
@@ -201,7 +204,8 @@
 						"multi",
 						"nightly",
 						"nightly-3x",
-						"weekly"
+						"weekly",
+						"monthly"
 					]
 				}
 			},

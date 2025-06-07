@@ -1,19 +1,22 @@
+from typing import Literal
+
 from ray.core.generated.common_pb2 import (
-    TaskStatus,
-    TaskType,
-    WorkerExitType,
-    WorkerType,
+    GLOO,
+    NCCL,
+    OBJECT_STORE,
     ErrorType,
     Language,
+    TaskStatus,
+    TaskType,
+    TensorTransport,
+    WorkerExitType,
+    WorkerType,
 )
 from ray.core.generated.gcs_pb2 import (
     ActorTableData,
     GcsNodeInfo,
     PlacementGroupTableData,
 )
-
-from typing import Literal
-
 
 ACTOR_STATUS = [
     "DEPENDENCIES_UNREADY",
@@ -118,17 +121,26 @@ ERROR_TYPE = [
 # and any modifications must be backward compatible.
 LANGUAGE = ["PYTHON", "JAVA", "CPP"]
 
+# See `common.proto` for more details.
+TENSOR_TRANSPORT = [
+    "OBJECT_STORE",
+    "NCCL",
+    "GLOO",
+]
+TypeTensorTransport = Literal[tuple(TENSOR_TRANSPORT)]
+TypeTensorTransportEnum = Literal[OBJECT_STORE, NCCL, GLOO]
+
 
 def validate_protobuf_enum(grpc_enum, custom_enum):
     """Validate the literal contains the correct enum values from protobuf"""
-    enum_vals = set(grpc_enum.DESCRIPTOR.values_by_name)
+    enum_vals = set(grpc_enum.DESCRIPTOR.values_by_name.keys())
     # Sometimes, the grpc enum is mocked, and it
     # doesn't include any values in that case.
     if len(enum_vals) > 0:
         assert enum_vals == set(
             custom_enum
-        ), """Literals and protos out of sync,\
-consider building //:install_py_proto with bazel?"""
+        ), """Literals in `custom_types.py` and `.proto` files are out of sync. \
+Consider building //:install_py_proto with Bazel or updating `custom_types.py`."""
 
 
 # Do the enum validation here.
@@ -145,3 +157,4 @@ validate_protobuf_enum(WorkerExitType, WORKER_EXIT_TYPE)
 validate_protobuf_enum(TaskType, TASK_TYPE)
 validate_protobuf_enum(ErrorType, ERROR_TYPE)
 validate_protobuf_enum(Language, LANGUAGE)
+validate_protobuf_enum(TensorTransport, TENSOR_TRANSPORT)

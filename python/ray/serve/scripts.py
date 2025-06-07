@@ -14,7 +14,7 @@ import yaml
 
 import ray
 from ray import serve
-from ray._private.utils import import_attr
+from ray._common.utils import import_attr
 from ray.autoscaler._private.cli_logger import cli_logger
 from ray.dashboard.modules.dashboard_sdk import parse_runtime_env_args
 from ray.dashboard.modules.serve.sdk import ServeSubmissionClient
@@ -242,8 +242,14 @@ def _generate_config_from_file_or_import_path(
                 "Application arguments cannot be specified for a config file."
             )
 
-        # TODO(edoakes): runtime_env is silently ignored -- should we enable overriding?
+        # TODO(edoakes): should we enable overriding?
         with open(config_path, "r") as config_file:
+            if runtime_env and len(runtime_env) > 0:
+                cli_logger.warning(
+                    "Passed in runtime_env is ignored when using config file"
+                )
+            if name is not None:
+                cli_logger.warning("Passed in name is ignored when using config file")
             config_dict = yaml.safe_load(config_file)
             config = ServeDeploySchema.parse_obj(config_dict)
     else:
@@ -282,14 +288,20 @@ def _generate_config_from_file_or_import_path(
     type=str,
     default=None,
     required=False,
-    help="Path to a local YAML file containing a runtime_env definition.",
+    help=(
+        "Path to a local YAML file containing a runtime_env definition. Ignored "
+        "when deploying from a config file."
+    ),
 )
 @click.option(
     "--runtime-env-json",
     type=str,
     default=None,
     required=False,
-    help="JSON-serialized runtime_env dictionary.",
+    help=(
+        "JSON-serialized runtime_env dictionary. Ignored when deploying from a "
+        "config file."
+    ),
 )
 @click.option(
     "--working-dir",
@@ -299,7 +311,8 @@ def _generate_config_from_file_or_import_path(
     help=(
         "Directory containing files that your application(s) will run in. This must "
         "be a remote URI to a .zip file (e.g., S3 bucket). This overrides the "
-        "working_dir in --runtime-env if both are specified."
+        "working_dir in --runtime-env if both are specified. Ignored when deploying "
+        "from a config file."
     ),
 )
 @click.option(
@@ -728,6 +741,23 @@ def status(address: str, name: Optional[str]):
 @click.option("--yes", "-y", is_flag=True, help="Bypass confirmation prompt.")
 def shutdown(address: str, yes: bool):
     warn_if_agent_address_set()
+
+    # check if the address is a valid Ray address
+    try:
+        # see what applications are deployed on the cluster
+        serve_details = ServeInstanceDetails(
+            **ServeSubmissionClient(address).get_serve_details()
+        )
+        if serve_details.controller_info.node_id is None:
+            cli_logger.warning(
+                f"No Serve instance found running on the cluster at {address}."
+            )
+            return
+    except Exception as e:
+        cli_logger.error(
+            f"Unable to shutdown Serve on the cluster at address {address}: {e}"
+        )
+        return
 
     if not yes:
         click.confirm(

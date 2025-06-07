@@ -1,23 +1,25 @@
-# End-to-end tests for using "uv run"
-
 import json
 import os
 from pathlib import Path
-import pytest
+import platform
+import stat
 import subprocess
 import sys
+import tarfile
 import tempfile
+from urllib import request
+
+import pytest
 
 import ray
+from ray._private.test_utils import (
+    format_web_url,
+    wait_until_server_available,
+)
 
 
 @pytest.fixture(scope="function")
 def with_uv():
-    import platform
-    import stat
-    import tarfile
-    from urllib import request
-
     arch = "aarch64" if platform.machine() in ["aarch64", "arm64"] else "i686"
     system = "unknown-linux-gnu" if platform.system() == "Linux" else "apple-darwin"
     name = f"uv-{arch}-{system}"
@@ -163,7 +165,7 @@ def test_uv_run_runtime_env_hook(with_uv):
         )
         output = result.stdout.strip().decode()
         if result.returncode != 0:
-            assert expected_error
+            assert expected_error, result.stderr.decode()
             assert expected_error in result.stderr.decode()
         else:
             assert json.loads(output) == expected_output
@@ -251,10 +253,34 @@ def test_uv_run_runtime_env_hook(with_uv):
             expected_error="Make sure the requirements file is in the working directory.",
         )
 
+    # Make sure the runtime environment hook gives the appropriate error message
+    # when combined with the 'pip' or 'uv' environment.
+    for runtime_env in [{"uv": ["emoji"]}, {"pip": ["emoji"]}]:
+        check_uv_run(
+            cmd=[uv, "run", "--no-project"],
+            runtime_env=runtime_env,
+            expected_output=None,
+            expected_error="You are using the 'pip' or 'uv' runtime environments together with 'uv run'.",
+        )
+
     # Check without uv run
     subprocess.check_output(
         [sys.executable, ray._private.runtime_env.uv_runtime_env_hook.__file__, "{}"]
     ).strip().decode() == "{}"
+
+    # Check in the case that there is one more level of subprocess indirection between
+    # the "uv run" process and the process that checks the environment
+    check_uv_run(
+        cmd=[uv, "run", "--no-project"],
+        runtime_env={},
+        expected_output={
+            "py_executable": f"{uv} run --no-project",
+            "working_dir": os.getcwd(),
+        },
+        subprocess_kwargs={
+            "env": {**os.environ, "RAY_TEST_UV_ADD_SUBPROCESS_INDIRECTION": "1"}
+        },
+    )
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="Not ported to Windows yet.")
@@ -308,8 +334,86 @@ with open("{tmp_out_dir / "output.txt"}", "w") as out:
             }
 
 
+@pytest.mark.skipif(sys.platform == "win32", reason="Not ported to Windows yet.")
+@pytest.mark.parametrize(
+    "ray_start_cluster_head_with_env_vars",
+    [
+        {
+            "env_vars": {
+                "RAY_RUNTIME_ENV_HOOK": "ray._private.runtime_env.uv_runtime_env_hook.hook"
+            },
+            "include_dashboard": True,
+        }
+    ],
+    indirect=True,
+)
+def test_uv_run_runtime_env_hook_e2e_job(
+    ray_start_cluster_head_with_env_vars, with_uv, temp_dir
+):
+    cluster = ray_start_cluster_head_with_env_vars
+    assert wait_until_server_available(cluster.webui_url) is True
+    webui_url = format_web_url(cluster.webui_url)
+
+    uv = with_uv
+    tmp_out_dir = Path(temp_dir)
+
+    script = f"""
+import json
+import ray
+import os
+
+@ray.remote
+def f():
+    import emoji
+    return {{"working_dir_files": os.listdir(os.getcwd())}}
+
+with open("{tmp_out_dir / "output.txt"}", "w") as out:
+    json.dump(ray.get(f.remote()), out)
+"""
+
+    with tempfile.NamedTemporaryFile(
+        "w", suffix=".py", delete=False
+    ) as f, tempfile.NamedTemporaryFile("w", delete=False) as requirements:
+        f.write(script)
+        f.close()
+        requirements.write("emoji\n")
+        requirements.close()
+        # Test job submission
+        runtime_env_json = (
+            '{"env_vars": {"PYTHONPATH": "'
+            + ":".join(sys.path)
+            + '"}, "working_dir": "."}'
+        )
+        subprocess.run(
+            [
+                "ray",
+                "job",
+                "submit",
+                "--runtime-env-json",
+                runtime_env_json,
+                "--",
+                uv,
+                "run",
+                "--with-requirements",
+                requirements.name,
+                "--no-project",
+                f.name,
+            ],
+            stdin=subprocess.PIPE,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            env={
+                "PATH": os.environ["PATH"],
+                "RAY_ADDRESS": webui_url,
+            },
+            cwd=os.path.dirname(uv),
+            check=True,
+        )
+        with open(tmp_out_dir / "output.txt") as f:
+            assert json.load(f) == {
+                "working_dir_files": os.listdir(os.path.dirname(uv))
+            }
+
+
 if __name__ == "__main__":
-    if os.environ.get("PARALLEL_CI"):
-        sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))
-    else:
-        sys.exit(pytest.main(["-sv", __file__]))
+    sys.exit(pytest.main(["-sv", __file__]))

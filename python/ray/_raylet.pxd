@@ -31,6 +31,7 @@ from ray.includes.common cimport (
     CConcurrencyGroup,
     CSchedulingStrategy,
     CLabelMatchExpressions,
+    CTensorTransport,
 )
 from ray.includes.libcoreworker cimport (
     ActorHandleSharedPtr,
@@ -75,6 +76,16 @@ cdef extern from "Python.h":
     # From Include/ceveal.h#67
     int Py_GetRecursionLimit()
     void Py_SetRecursionLimit(int)
+
+# Note that `functional.pxd` in the Cython repository supports only a limited subset of
+# <functional>. Therefore, `from libcpp.functional cimport function` is not enough, and we
+# still need to expose some functions here.
+cdef extern from "<functional>" namespace "std" nogil:
+    T bind[T, Args](T callable, Args args)
+    # Reference: https://github.com/scipy/scipy/blob/6b56162fa6880b0182faea44af88d6a1587f35a8/scipy/stats/_qmc_cy.pyx#L31-L34
+    cdef cppclass reference_wrapper[T]:
+        pass
+    cdef reference_wrapper[T] ref[T](T&)
 
 cdef class Buffer:
     cdef:
@@ -151,6 +162,7 @@ cdef class CoreWorker:
             const CAddress &caller_address,
             c_vector[c_pair[CObjectID, shared_ptr[CRayObject]]] *returns,
             ref_generator_id=*, # CObjectID
+            CTensorTransport c_tensor_transport=*,
         )
     cdef make_actor_handle(self, ActorHandleSharedPtr c_actor_handle,
                            c_bool weak_ref)

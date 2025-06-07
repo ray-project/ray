@@ -1,15 +1,16 @@
 from abc import abstractmethod
-from typing import List
+from typing import List, Type
 
 from ray.data._internal.execution.operators.map_operator import MapOperator
 from ray.data._internal.execution.operators.map_transformer import (
     BuildOutputBlocksMapTransformFn,
     MapTransformFn,
-    MapTransformFnDataType,
     MapTransformFnCategory,
+    MapTransformFnDataType,
 )
 from ray.data._internal.logical.interfaces.optimizer import Rule
 from ray.data._internal.logical.interfaces.physical_plan import PhysicalPlan
+from ray.data._internal.logical.rules.operator_fusion import FuseOperators
 
 
 class ZeroCopyMapFusionRule(Rule):
@@ -23,6 +24,10 @@ class ZeroCopyMapFusionRule(Rule):
     should implement the `_optimize` method for the concrete optimization
     strategy.
     """
+
+    @classmethod
+    def dependencies(cls) -> List[Type[Rule]]:
+        return [FuseOperators]
 
     def apply(self, plan: PhysicalPlan) -> PhysicalPlan:
         self._traverse(plan.dag)

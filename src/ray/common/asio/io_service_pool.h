@@ -17,6 +17,7 @@
 #include <atomic>
 #include <boost/asio.hpp>
 #include <thread>
+#include <vector>
 
 #include "ray/common/asio/instrumented_io_context.h"
 
@@ -28,7 +29,7 @@ namespace ray {
 /// Before exit, `Stop()` must be called.
 class IOServicePool {
  public:
-  IOServicePool(size_t io_service_num);
+  explicit IOServicePool(size_t io_service_num);
 
   ~IOServicePool();
 

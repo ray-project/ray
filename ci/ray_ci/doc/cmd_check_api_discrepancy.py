@@ -21,7 +21,17 @@ TEAM_API_CONFIGS = {
     "serve": {
         "head_modules": {"ray.serve"},
         "head_doc_file": "doc/source/serve/api/index.md",
-        "white_list_apis": {},
+        "white_list_apis": {
+            # private versions of request router APIs
+            "ray.serve._private.common.ReplicaID",
+            "ray.serve._private.request_router.common.PendingRequest",
+            "ray.serve._private.request_router.pow_2_router.PowerOfTwoChoicesRequestRouter",
+            "ray.serve._private.request_router.request_router.RequestRouter",
+            "ray.serve._private.request_router.replica_wrapper.RunningReplica",
+            "ray.serve._private.request_router.request_router.FIFOMixin",
+            "ray.serve._private.request_router.request_router.LocalityMixin",
+            "ray.serve._private.request_router.request_router.MultiplexMixin",
+        },
     },
     "core": {
         "head_modules": {"ray"},
@@ -45,7 +55,13 @@ TEAM_API_CONFIGS = {
     "train": {
         "head_modules": {"ray.train"},
         "head_doc_file": "doc/source/train/api/api.rst",
-        "white_list_apis": {},
+        "white_list_apis": {
+            # NOTE: These APIs are documented in a separate file (deprecated.rst).
+            # These are deprecated APIs, so just white-listing them here for CI.
+            "ray.train.error.SessionMisuseError",
+            "ray.train.base_trainer.TrainingFailedError",
+            "ray.train.context.TrainContext",
+        },
     },
     "tune": {
         "head_modules": {"ray.tune"},
@@ -122,7 +138,7 @@ def main(ray_checkout_dir: str, team: str) -> None:
 
     all_pass = True
     # Needs to do core first, otherwise, the APIs in other teams may be covered by core.
-    # This is due to the side effect ofo "importlib" and walking through the modules.
+    # This is due to the side effect of "importlib" and walking through the modules.
     if not _check_team(ray_checkout_dir, "core"):
         all_pass = False
     for team in TEAM_API_CONFIGS:
