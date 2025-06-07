@@ -13,4 +13,4 @@ pip3 install --no-cache-dir \
     "huggingface_hub[hf_xet]" \
     xgrammar \
     pydantic \
-    flashinfer-python
+    "flashinfer-python==0.2.5"
