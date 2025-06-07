@@ -186,6 +186,77 @@ TEST(NodeManagerStaticTest, TestHandleReportWorkerBacklog) {
   }
 }
 
+TEST(NodeManagerStaticTest, TestKillWorkersOwnedBy) {
+  {
+    const auto node_id = NodeID::FromRandom();
+    const auto worker_id = WorkerID::FromRandom();
+    absl::flat_hash_map<WorkerID, std::shared_ptr<WorkerInterface>> leased_workers;
+    absl::flat_hash_map<WorkerID, std::shared_ptr<WorkerInterface>> killed_by_node_id;
+    absl::flat_hash_map<WorkerID, std::shared_ptr<WorkerInterface>> killed_by_worker_id;
+
+    rpc::Address owner_address;
+    owner_address.set_worker_id(worker_id.Binary());
+    owner_address.set_raylet_id(node_id.Binary());
+
+    const auto worker_id_1 = WorkerID::FromRandom();
+    const auto worker_id_2 = WorkerID::FromRandom();
+    const auto worker_1 = std::make_shared<MockWorker>(worker_id_1, 10);
+    const auto worker_2 = std::make_shared<MockWorker>(worker_id_2, 10);
+    worker_1->SetOwnerAddress(owner_address);
+    worker_2->SetOwnerAddress(owner_address);
+
+    // assign a normal task to worker_1.
+    TaskSpecBuilder builder_1;
+    worker_1->SetAssignedTask(RayTask(std::move(builder_1).ConsumeAndBuild()));
+
+    // assign a detached actor creation task to worker_2.
+    // worker_2 should not be killed by KillWorkersOwnedByWorkerID and
+    // KillWorkersOwnedByNodeID.
+    const auto actor_id =
+        ActorID::Of(JobID::FromInt(1), TaskID::FromRandom(JobID::FromInt(1)), 0);
+    TaskSpecBuilder builder_2;
+    builder_2.SetActorCreationTaskSpec(actor_id,
+                                       /*serialized_actor_handle=*/"",
+                                       rpc::SchedulingStrategy(),
+                                       /*max_restarts=*/0,
+                                       /*max_task_retries=*/0,
+                                       /*dynamic_worker_options=*/{},
+                                       /*max_concurrency=*/1,
+                                       /*is_detached=*/true,
+                                       /*name=*/"",
+                                       /*ray_namespace=*/"",
+                                       /*is_asyncio=*/false,
+                                       /*concurrency_groups=*/{},
+                                       /*extension_data=*/"",
+                                       /*execute_out_of_order=*/false,
+                                       /*root_detached_actor_id=*/actor_id);
+    worker_2->SetAssignedTask(RayTask(std::move(builder_2).ConsumeAndBuild()));
+
+    leased_workers.insert({worker_id_1, worker_1});
+    leased_workers.insert({worker_id_2, worker_2});
+
+    NodeManager::KillWorkersOwnedByWorkerID(
+        leased_workers,
+        [&killed_by_worker_id](const std::shared_ptr<WorkerInterface> &worker) {
+          killed_by_worker_id.insert({worker->WorkerId(), worker});
+        },
+        worker_id);
+
+    ASSERT_EQ(killed_by_worker_id.count(worker_id_1), 1);
+    ASSERT_EQ(killed_by_worker_id.count(worker_id_2), 0);
+
+    NodeManager::KillWorkersOwnedByNodeID(
+        leased_workers,
+        [&killed_by_node_id](const std::shared_ptr<WorkerInterface> &worker) {
+          killed_by_node_id.insert({worker->WorkerId(), worker});
+        },
+        node_id);
+
+    ASSERT_EQ(killed_by_node_id.count(worker_id_1), 1);
+    ASSERT_EQ(killed_by_node_id.count(worker_id_2), 0);
+  }
+}
+
 class NodeManagerTest : public ::testing::Test {
  public:
   NodeManagerTest()

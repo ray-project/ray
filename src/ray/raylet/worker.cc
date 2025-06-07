@@ -50,8 +50,7 @@ Worker::Worker(const JobID &job_id,
       bundle_id_(std::make_pair(PlacementGroupID::Nil(), -1)),
       dead_(false),
       blocked_(false),
-      client_call_manager_(client_call_manager),
-      is_detached_actor_(false) {}
+      client_call_manager_(client_call_manager) {}
 
 rpc::WorkerType Worker::GetWorkerType() const { return worker_type_; }
 
@@ -168,10 +167,6 @@ const std::string Worker::GetTaskOrActorIdAsDebugString() const {
   }
   return id_ss.str();
 }
-
-void Worker::MarkDetachedActor() { is_detached_actor_ = true; }
-
-bool Worker::IsDetachedActor() const { return is_detached_actor_; }
 
 const std::shared_ptr<ClientConnection> Worker::Connection() const { return connection_; }
 

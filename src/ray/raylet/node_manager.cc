@@ -966,18 +966,10 @@ void NodeManager::NodeRemoved(const NodeID &node_id) {
 
   // Clean up workers that were owned by processes that were on the failed
   // node.
-  for (const auto &[_, worker] : leased_workers_) {
-    const auto owner_node_id = NodeID::FromBinary(worker->GetOwnerAddress().raylet_id());
-    RAY_CHECK(!owner_node_id.IsNil());
-    if (worker->IsDetachedActor() || owner_node_id != node_id) {
-      continue;
-    }
-    // If the leased worker's owner was on the failed node, then kill the leased
-    // worker.
-    RAY_LOG(INFO).WithField(worker->WorkerId()).WithField(owner_node_id)
-        << "The leased worker is killed because the owner node died.";
-    KillWorker(worker);
-  }
+  KillWorkersOwnedByNodeID(
+      leased_workers_,
+      [this](const std::shared_ptr<WorkerInterface> &worker) { KillWorker(worker); },
+      node_id);
 
   // Below, when we remove node_id from all of these data structures, we could
   // check that it is actually removed, or log a warning otherwise, but that may
@@ -1001,6 +993,25 @@ void NodeManager::NodeRemoved(const NodeID &node_id) {
   object_manager_->HandleNodeRemoved(node_id);
 }
 
+void NodeManager::KillWorkersOwnedByNodeID(
+    const absl::flat_hash_map<WorkerID, std::shared_ptr<WorkerInterface>> &leased_workers,
+    const std::function<void(const std::shared_ptr<WorkerInterface> &)> &kill_worker,
+    const NodeID &node_id) {
+  for (const auto &[_, worker] : leased_workers) {
+    const auto owner_node_id = NodeID::FromBinary(worker->GetOwnerAddress().raylet_id());
+    RAY_CHECK(!owner_node_id.IsNil());
+    if (worker->GetAssignedTask().GetTaskSpecification().IsDetachedActor() ||
+        owner_node_id != node_id) {
+      continue;
+    }
+    // If the leased worker's owner was on the failed node, then kill the leased
+    // worker.
+    RAY_LOG(INFO).WithField(worker->WorkerId()).WithField(owner_node_id)
+        << "The leased worker is killed because the owner node died.";
+    kill_worker(worker);
+  }
+}
+
 void NodeManager::HandleUnexpectedWorkerFailure(const WorkerID &worker_id) {
   RAY_CHECK(!worker_id.IsNil());
   RAY_LOG(DEBUG).WithField(worker_id) << "Worker failed";
@@ -1008,18 +1019,29 @@ void NodeManager::HandleUnexpectedWorkerFailure(const WorkerID &worker_id) {
 
   cluster_task_manager_->CancelAllTasksOwnedBy(worker_id);
 
-  for (const auto &[_, worker] : leased_workers_) {
+  KillWorkersOwnedByWorkerID(
+      leased_workers_,
+      [this](const std::shared_ptr<WorkerInterface> &worker) { KillWorker(worker); },
+      worker_id);
+}
+
+void NodeManager::KillWorkersOwnedByWorkerID(
+    const absl::flat_hash_map<WorkerID, std::shared_ptr<WorkerInterface>> &leased_workers,
+    const std::function<void(const std::shared_ptr<WorkerInterface> &)> &kill_worker,
+    const WorkerID &worker_id) {
+  for (const auto &[_, worker] : leased_workers) {
     const auto owner_worker_id =
         WorkerID::FromBinary(worker->GetOwnerAddress().worker_id());
     RAY_CHECK(!owner_worker_id.IsNil());
-    if (worker->IsDetachedActor() || owner_worker_id != worker_id) {
+    if (worker->GetAssignedTask().GetTaskSpecification().IsDetachedActor() ||
+        owner_worker_id != worker_id) {
       continue;
     }
     // If the failed worker was a leased worker's owner, then kill the leased worker.
     RAY_LOG(INFO) << "The leased worker " << worker->WorkerId()
                   << " is killed because the owner process " << owner_worker_id
                   << " died.";
-    KillWorker(worker);
+    kill_worker(worker);
   }
 }
 
@@ -2376,7 +2398,6 @@ void NodeManager::FinishAssignedActorCreationTask(WorkerInterface &worker,
   worker.AssignActorId(actor_id);
 
   if (task_spec.IsDetachedActor()) {
-    worker.MarkDetachedActor();
     auto job_id = task.GetTaskSpecification().JobId();
     auto job_config = worker_pool_.GetJobConfig(job_id);
     RAY_CHECK(job_config);

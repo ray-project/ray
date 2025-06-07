@@ -264,6 +264,7 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
 
  private:
   FRIEND_TEST(NodeManagerStaticTest, TestHandleReportWorkerBacklog);
+  FRIEND_TEST(NodeManagerStaticTest, TestKillWorkersOwnedBy);
 
   // Removes the worker from node_manager's leased_workers_ map.
   // Warning: this does NOT release the worker's resources, or put the leased worker
@@ -293,6 +294,14 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
   /// \param data The data of the worker that died.
   void HandleUnexpectedWorkerFailure(const WorkerID &worker_id);
 
+  /// This is created for unit test purpose so that we don't need to create
+  /// a node manager in order to test KillWorkersOwnedByWorkerID.
+  static void KillWorkersOwnedByWorkerID(
+      const absl::flat_hash_map<WorkerID, std::shared_ptr<WorkerInterface>>
+          &leased_workers,
+      const std::function<void(const std::shared_ptr<WorkerInterface> &)> &kill_worker,
+      const WorkerID &worker_id);
+
   /// Handler for the addition of a new node.
   ///
   /// \param data Data associated with the new node.
@@ -303,6 +312,14 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
   /// \param node_id Id of the removed node.
   /// \return Void.
   void NodeRemoved(const NodeID &node_id);
+
+  /// This is created for unit test purpose so that we don't need to create
+  /// a node manager in order to test KillWorkersOwnedByNodeID.
+  static void KillWorkersOwnedByNodeID(
+      const absl::flat_hash_map<WorkerID, std::shared_ptr<WorkerInterface>>
+          &leased_workers,
+      const std::function<void(const std::shared_ptr<WorkerInterface> &)> &kill_worker,
+      const NodeID &node_id);
 
   /// Handler for the addition or updation of a resource in the GCS
   /// \param node_id ID of the node that created or updated resources.
