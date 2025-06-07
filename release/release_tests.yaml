@@ -4484,8 +4484,10 @@
     cluster_compute: ci/aws.yaml
 
   run:
+    prepare: pip install -e .
+    prepare_timeout: 300
+    script: python ci/test.py --target-dir e2e_timeseries/
     timeout: 3600
-    script: pip install -e . && python ci/test.py --target-dir e2e_timeseries/
 
   variations:
     - __suffix__: aws
