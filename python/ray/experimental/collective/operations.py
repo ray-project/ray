@@ -1,22 +1,29 @@
 import logging
 from typing import List, Optional, Union
 
-import ray
-from ray.dag.collective_node import CollectiveOutputNode, _CollectiveOperation
+from ray.dag.communication_node import (
+    CollectiveOutputNode,
+    _CollectiveOperation,
+)
 from ray.dag.constants import (
     BIND_INDEX_KEY,
     COLLECTIVE_OPERATION_KEY,
     PARENT_CLASS_NODE_KEY,
 )
-from ray.experimental.channel.torch_tensor_type import Communicator, TorchTensorType
+from ray.experimental.channel.torch_tensor_type import (
+    Communicator,
+    TorchTensorType,
+)
 from ray.experimental.util.types import (
-    ReduceOp,
     AllGatherOp,
     AllReduceOp,
+    ReduceOp,
     ReduceScatterOp,
     _CollectiveOp,
 )
 from ray.util.collective.types import ReduceOp as RayReduceOp
+
+import ray
 
 logger = logging.getLogger(__name__)
 
@@ -58,12 +65,12 @@ def _bind(
     actor_handle: Optional["ray.actor.ActorHandle"] = input_nodes[0]._get_actor_handle()
     if actor_handle is None:
         raise ValueError("Expected an actor handle from the input node")
-    if isinstance(op, AllReduceOp):
+    if isinstance(op, AllGatherOp):
+        method_name = "allgather"
+    elif isinstance(op, AllReduceOp):
         method_name = f"allreduce.{op.reduceOp}"
     elif isinstance(op, ReduceScatterOp):
         method_name = f"reducescatter.{op.reduceOp}"
-    elif isinstance(op, AllGatherOp):
-        method_name = "allgather"
     else:
         raise ValueError(f"Expected a collective operation, but found {op}")
 

@@ -1,87 +1,82 @@
-import weakref
 import asyncio
-from collections import defaultdict
-from contextlib import nullcontext
-from dataclasses import dataclass, asdict
-from typing import (
-    TYPE_CHECKING,
-    Any,
-    Dict,
-    List,
-    Tuple,
-    Union,
-    Optional,
-    Set,
-)
 import logging
 import threading
 import time
-import uuid
 import traceback
+import uuid
+import weakref
+from collections import defaultdict
+from contextlib import nullcontext
+from dataclasses import asdict, dataclass
+from typing import TYPE_CHECKING, Any, Dict, List, Optional, Set, Tuple, Union
 
-from ray.experimental.channel.auto_transport_type import (
-    AutoTransportType,
-    TypeHintResolver,
-)
 import ray.exceptions
-from ray.dag.dag_operation_future import GPUFuture, DAGOperationFuture, ResolvedFuture
-from ray.experimental.channel.cached_channel import CachedChannel
-from ray.experimental.channel.communicator import Communicator
+from ray.dag.communication_operation import (
+    _CollectiveOperation,
+    _NcclOperation,
+    _P2PRecvOperation,
+    _P2PSendOperation,
+)
 from ray.dag.constants import (
+    BIND_INDEX_KEY,
+    PARENT_CLASS_NODE_KEY,
     RAY_CGRAPH_ENABLE_NVTX_PROFILING,
     RAY_CGRAPH_ENABLE_TORCH_PROFILING,
     RAY_CGRAPH_VISUALIZE_SCHEDULE,
 )
-import ray
-from ray.exceptions import (
-    RayCgraphCapacityExceeded,
-    RayTaskError,
-    RayChannelError,
-    RayChannelTimeoutError,
-)
-from ray.experimental.compiled_dag_ref import (
-    CompiledDAGRef,
-    CompiledDAGFuture,
-    _process_return_vals,
-)
-from ray.experimental.channel import (
-    ChannelContext,
-    ChannelInterface,
-    ChannelOutputType,
-    ReaderInterface,
-    SynchronousReader,
-    WriterInterface,
-    SynchronousWriter,
-    AwaitableBackgroundReader,
-    AwaitableBackgroundWriter,
-    CompiledDAGArgs,
-    CompositeChannel,
-    IntraProcessChannel,
-)
-from ray.util.annotations import DeveloperAPI
-
-from ray.experimental.channel.shared_memory_channel import (
-    SharedMemoryType,
-)
-from ray.experimental.channel.torch_tensor_type import TorchTensorType
-
-from ray.experimental.channel.torch_tensor_nccl_channel import (
-    _init_communicator,
-    _destroy_communicator,
-)
-
 from ray.dag.dag_node_operation import (
-    _DAGNodeOperation,
-    _DAGNodeOperationType,
-    _DAGOperationGraphNode,
     _build_dag_node_operation_graph,
+    _DAGNodeOperation,
+    _DAGOperationGraphNode,
     _extract_execution_schedule,
     _generate_actor_to_execution_schedule,
     _generate_overlapped_execution_schedule,
+    _NcclOperationType,
     _visualize_execution_schedule,
 )
-
+from ray.dag.dag_operation_future import DAGOperationFuture, GPUFuture
+from ray.exceptions import (
+    RayCgraphCapacityExceeded,
+    RayChannelError,
+    RayChannelTimeoutError,
+    RayTaskError,
+)
+from ray.experimental.channel import (
+    AwaitableBackgroundReader,
+    AwaitableBackgroundWriter,
+    ChannelContext,
+    ChannelInterface,
+    ChannelOutputType,
+    CompiledDAGArgs,
+    CompositeChannel,
+    IntraProcessChannel,
+    ReaderInterface,
+    SynchronousReader,
+    SynchronousWriter,
+    WriterInterface,
+)
+from ray.experimental.channel.auto_transport_type import (
+    AutoTransportType,
+    TypeHintResolver,
+)
+from ray.experimental.channel.cached_channel import CachedChannel
+from ray.experimental.channel.communicator import Communicator
+from ray.experimental.channel.shared_memory_channel import SharedMemoryType
+from ray.experimental.channel.torch_tensor_nccl_channel import (
+    _destroy_communicator,
+    _init_communicator,
+)
+from ray.experimental.channel.torch_tensor_type import TorchTensorType
+from ray.experimental.compiled_dag_ref import (
+    CompiledDAGFuture,
+    CompiledDAGRef,
+    _process_return_vals,
+)
+from ray.experimental.util.types import _CollectiveOp, _NcclOpType, _P2POp
+from ray.util.annotations import DeveloperAPI
 from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
+
+import ray
 
 if TYPE_CHECKING:
     import cupy as cp
@@ -251,7 +246,7 @@ def do_exec_tasks(
                 break
             for operation in schedule:
                 done = tasks[operation.exec_task_idx].exec_operation(
-                    self, operation.type, overlap_gpu_communication
+                    self, overlap_gpu_communication
                 )
                 if done:
                     break
@@ -296,9 +291,7 @@ def do_profile_tasks(
             for operation in schedule:
                 start_t = time.perf_counter()
                 task = tasks[operation.exec_task_idx]
-                done = task.exec_operation(
-                    self, operation.type, overlap_gpu_communication
-                )
+                done = task.exec_operation(self, overlap_gpu_communication)
                 end_t = time.perf_counter()
 
                 self.__ray_cgraph_events.append(
@@ -308,7 +301,6 @@ def do_profile_tasks(
                         actor_id=ray.get_runtime_context().get_actor_id(),
                         method_name=task.method_name,
                         bind_index=task.bind_index,
-                        operation=operation.type.value,
                         start_t=start_t,
                         end_t=end_t,
                     )
@@ -500,8 +492,6 @@ class ExecutableTask:
                 do not support binding kwargs to other DAG nodes, so the values
                 of the dictionary cannot be Channels.
         """
-        from ray.dag import CollectiveOutputNode
-
         self.method_name = task.dag_node.get_method_name()
         self.bind_index = task.dag_node._get_bind_index()
         self.output_channels = task.output_channels
@@ -509,10 +499,9 @@ class ExecutableTask:
         self.input_type_hints: List[ChannelOutputType] = task.arg_type_hints
         self.output_type_hint: ChannelOutputType = task.dag_node.type_hint
 
-        # The NCCL collective operation.
-        self.collective_op: Optional["ray.dag.CollectiveOperation"] = None
-        if isinstance(task.dag_node, CollectiveOutputNode):
-            self.collective_op = task.dag_node.collective_op
+        # The NCCL operation (type) of the task.
+        self.nccl_op_type: Optional[_NcclOpType] = task.dag_node.nccl_op_type
+        self.nccl_op: Optional[_NcclOperation] = task.dag_node.nccl_op
 
         self.input_channels: List[ChannelInterface] = []
         self.task_inputs: List[_ExecutableTaskInput] = []
@@ -546,11 +535,29 @@ class ExecutableTask:
         for val in self.resolved_kwargs.values():
             assert not isinstance(val, ChannelInterface)
 
+        # Set the NCCL channel for the P2P send/recv operation.
+        if self.requires_nccl_read:
+            assert len(self.input_channels) == 1
+            assert isinstance(self.nccl_op, _P2PRecvOperation)
+            self.nccl_op.nccl_ch = self.input_channels[0]
+            # NCCL P2P recv will not have an input reader.
+            self.input_channels = []
+        elif self.requires_nccl_write:
+            assert len(self.output_channels) == 1
+            assert isinstance(self.nccl_op, _P2PSendOperation)
+            self.nccl_op.nccl_ch = self.output_channels[0]
+            # NCCL P2P send will not have an output writer.
+            self.output_channels = []
+
         # Input reader to read input data from upstream DAG nodes.
-        self.input_reader: ReaderInterface = SynchronousReader(self.input_channels)
+        self.input_reader: Optional[ReaderInterface] = (
+            SynchronousReader(self.input_channels) if self.input_channels else None
+        )
         # Output writer to write output data to downstream DAG nodes.
-        self.output_writer: WriterInterface = SynchronousWriter(
-            self.output_channels, self.output_idxs
+        self.output_writer: Optional[WriterInterface] = (
+            SynchronousWriter(self.output_channels, self.output_idxs)
+            if self.output_channels
+            else None
         )
         # The intermediate future for a READ or COMPUTE operation,
         # and `wait()` must be called to get the actual result of the operation.
@@ -558,14 +565,30 @@ class ExecutableTask:
         # and the result of a COMPUTE operation will be used by a WRITE operation.
         self._intermediate_future: Optional[DAGOperationFuture] = None
 
+    @property
+    def requires_nccl_read(self) -> bool:
+        return self.nccl_op_type == _P2POp.RECV
+
+    @property
+    def requires_nccl_compute(self) -> bool:
+        return isinstance(self.nccl_op_type, _CollectiveOp)
+
+    @property
+    def requires_nccl_write(self) -> bool:
+        return self.nccl_op_type == _P2POp.SEND
+
     def cancel(self):
         """
         Close all the input channels and the output channel. The exact behavior
         depends on the type of channel. Typically, it will release the resources
         used by the channels.
         """
-        self.input_reader.close()
-        self.output_writer.close()
+        if self.input_reader is not None:
+            self.input_reader.close()
+        if self.output_writer is not None:
+            self.output_writer.close()
+        if self.requires_nccl_read or self.requires_nccl_write:
+            self.nccl_op.nccl_ch.close()
 
     def destroy_cuda_event(self):
         """
@@ -587,11 +610,14 @@ class ExecutableTask:
         for typ_hint in self.input_type_hints:
             typ_hint.register_custom_serializer()
         self.output_type_hint.register_custom_serializer()
-        self.input_reader.start()
-        self.output_writer.start()
+        if self.input_reader is not None:
+            self.input_reader.start()
+        if self.output_writer is not None:
+            self.output_writer.start()
+        if self.requires_nccl_write:
+            self.nccl_op.nccl_ch.ensure_registered_as_writer()
 
-        self._send_stream: Union["cp.cuda.Stream", nullcontext] = nullcontext()
-        self._recv_stream: Union["cp.cuda.Stream", nullcontext] = nullcontext()
+        self.stream: Union["cp.cuda.Stream", nullcontext] = nullcontext()
         if not overlap_gpu_communication:
             return
 
@@ -601,7 +627,7 @@ class ExecutableTask:
             nccl_group_id = _get_nccl_group_id(self.output_type_hint)
             nccl_group = ChannelContext.get_current().communicators.get(nccl_group_id)
             assert nccl_group is not None
-            self._send_stream = nccl_group.send_stream
+            self.stream = nccl_group.send_stream
         if self.input_type_hints:
             for type_hint in self.input_type_hints:
                 if type_hint.requires_nccl():
@@ -610,154 +636,19 @@ class ExecutableTask:
                         nccl_group_id
                     )
                     assert nccl_group is not None
-                    if not isinstance(self._recv_stream, nullcontext):
-                        assert self._recv_stream == nccl_group.recv_stream, (
+                    if not isinstance(self.stream, nullcontext):
+                        assert self.stream == nccl_group.recv_stream, (
                             "Currently all torch tensor input channels of a "
                             "Compiled Graph task should use the same recv cuda stream."
                         )
-                    self._recv_stream = nccl_group.recv_stream
-
-    def wrap_and_set_intermediate_future(
-        self, val: Any, wrap_in_gpu_future: bool
-    ) -> None:
-        """
-        Wrap the value in a `DAGOperationFuture` and store to the intermediate future.
-        The value corresponds to result of a READ or COMPUTE operation.
-
-        If wrap_in_gpu_future is True, the value will be wrapped in a GPUFuture,
-        Otherwise, the future will be a ResolvedFuture.
-
-        Args:
-            val: The value to wrap in a future.
-            wrap_in_gpu_future: Whether to wrap the value in a GPUFuture.
-        """
-        assert self._intermediate_future is None
-
-        if wrap_in_gpu_future:
-            future = GPUFuture(val, self.task_idx)
-        else:
-            future = ResolvedFuture(val)
-        self._intermediate_future = future
-
-    def reset_and_wait_intermediate_future(self) -> Any:
-        """
-        Reset the intermediate future and wait for the result.
-
-        The wait does not block the CPU because:
-        - If the future is a ResolvedFuture, the result is immediately returned.
-        - If the future is a GPUFuture, the result is only waited by the current
-            CUDA stream, and the CPU is not blocked.
-
-        Returns:
-            The result of a READ or COMPUTE operation from the intermediate future.
-        """
-        future = self._intermediate_future
-        self._intermediate_future = None
-        return future.wait()
-
-    def _read(self, overlap_gpu_communication: bool) -> bool:
-        """
-        Read input data from upstream DAG nodes and cache the intermediate result.
-
-        Args:
-            overlap_gpu_communication: Whether to overlap GPU communication with
-                computation during DAG execution to improve performance.
-
-        Returns:
-            True if system error occurs and exit the loop; otherwise, False.
-        """
-        assert self._intermediate_future is None
-        exit = False
-        try:
-            input_data = self.input_reader.read()
-            # When overlap_gpu_communication is enabled, wrap the result in
-            # a GPUFuture so that this read operation (communication) can
-            # be overlapped with computation.
-            self.wrap_and_set_intermediate_future(
-                input_data, wrap_in_gpu_future=overlap_gpu_communication
-            )
-        except RayChannelError:
-            # Channel closed. Exit the loop.
-            exit = True
-        return exit
-
-    def _compute(
-        self,
-        overlap_gpu_communication: bool,
-        class_handle,
-    ) -> bool:
-        """
-        Retrieve the intermediate result from the READ operation and perform the
-        computation. Then, cache the new intermediate result. The caller must ensure
-        that the last operation executed is READ so that the function retrieves the
-        correct intermediate result.
-
-        Args:
-            overlap_gpu_communication: Whether to overlap GPU communication with
-                computation during DAG execution to improve performance.
-            class_handle: An instance of the class to which the actor belongs. For
-                example, the type of `class_handle` is <class 'xxxx.Worker'> if the
-                actor belongs to the `class Worker` class.
-        Returns:
-            True if system error occurs and exit the loop; otherwise, False.
-        """
-        input_data = self.reset_and_wait_intermediate_future()
-        try:
-            _process_return_vals(input_data, return_single_output=False)
-        except Exception as exc:
-            # Previous task raised an application-level exception.
-            # Propagate it and skip the actual task. We don't need to wrap the
-            # exception in a RayTaskError here because it has already been wrapped
-            # by the previous task.
-            self.wrap_and_set_intermediate_future(
-                exc, wrap_in_gpu_future=overlap_gpu_communication
-            )
-            return False
-
-        resolved_inputs = []
-        for task_input in self.task_inputs:
-            resolved_inputs.append(task_input.resolve(input_data))
-
-        if self.collective_op is not None:
-            # Run a NCCL collective operation.
-            method = self.collective_op.execute
-        else:
-            # Run an actor method.
-            method = getattr(class_handle, self.method_name)
-        try:
-            output_val = method(*resolved_inputs, **self.resolved_kwargs)
-        except Exception as exc:
-            output_val = _wrap_exception(exc)
-
-        # When overlap_gpu_communication is enabled, wrap the result in a GPUFuture
-        # so that this compute operation can be overlapped with communication.
-        self.wrap_and_set_intermediate_future(
-            output_val, wrap_in_gpu_future=overlap_gpu_communication
-        )
-        return False
-
-    def _write(self) -> bool:
-        """
-        Retrieve the intermediate result from the COMPUTE operation and write to its
-        downstream DAG nodes. The caller must ensure that the last operation executed
-        is COMPUTE so that the function retrieves the correct intermediate result.
-
-        Returns:
-            True if system error occurs and exit the loop; otherwise, False.
-        """
-        output_val = self.reset_and_wait_intermediate_future()
-        exit = False
-        try:
-            self.output_writer.write(output_val)
-        except RayChannelError:
-            # Channel closed. Exit the loop.
-            exit = True
-        return exit
+                    self.stream = nccl_group.recv_stream
+        if self.requires_nccl_compute:
+            assert isinstance(self.nccl_op, _CollectiveOperation)
+            self.stream = self.nccl_op.get_communicator().coll_stream
 
     def exec_operation(
         self,
         class_handle,
-        op_type: _DAGNodeOperationType,
         overlap_gpu_communication: bool = False,
     ) -> bool:
         """
@@ -765,25 +656,98 @@ class ExecutableTask:
         operations: READ, COMPUTE, and WRITE, which should be executed in
         order to ensure that each operation can read the correct intermediate
         result.
+
         Args:
             class_handle: The handle of the class to which the actor belongs.
             op_type: The type of the operation. Possible types are READ,
                 COMPUTE, and WRITE.
             overlap_gpu_communication: Whether to overlap GPU communication with
                 computation during DAG execution to improve performance.
+
         Returns:
-            True if the next operation should not be executed; otherwise, False.
+            True if system error occurs and exit the loop; otherwise, False.
         """
-        if op_type == _DAGNodeOperationType.READ:
-            with _device_context_manager():
-                with self._recv_stream:
-                    return self._read(overlap_gpu_communication)
-        elif op_type == _DAGNodeOperationType.COMPUTE:
-            return self._compute(overlap_gpu_communication, class_handle)
-        elif op_type == _DAGNodeOperationType.WRITE:
-            with _device_context_manager():
-                with self._send_stream:
-                    return self._write()
+        with _device_context_manager():
+            with self.stream:
+                return self.exec_operation_inner(
+                    class_handle, overlap_gpu_communication
+                )
+
+    def exec_operation_inner(
+        self,
+        class_handle,
+        overlap_gpu_communication: bool = False,
+    ) -> bool:
+        input_values: List[Union[Any, Exception]] = []
+        input_exc: Optional[Exception] = None
+        output_val: Union[Any, RayTaskError, GPUFuture] = None
+
+        # Resolve input values and handle exceptions. There could be exceptions from
+        # upstream tasks.
+        if self.input_reader is not None:
+            try:
+                input_data = self.input_reader.read()
+            except RayChannelError:
+                return True
+
+            try:
+                _process_return_vals(input_data, return_single_output=False)
+                input_data_ready = []
+                for val in input_data:
+                    # Wait on a GPU future.
+                    if isinstance(val, GPUFuture):
+                        val = val.wait()
+                        if isinstance(val, RayTaskError):
+                            raise val.as_instanceof_cause()
+                    input_data_ready.append(val)
+                for task_input in self.task_inputs:
+                    input_values.append(task_input.resolve(input_data_ready))
+            except Exception as exc:
+                input_exc = exc
+
+            # A NCCL P2P send operation writes the exception to the downstream task
+            # when executing the task.
+            if input_exc is not None and self.requires_nccl_write:
+                input_values = [input_exc]
+                input_exc = None
+
+        # Write the exception to the downstream task and return.
+        if input_exc is not None:
+            try:
+                assert self.output_writer is not None
+                self.output_writer.write(input_exc)
+                return False
+            except RayChannelError:
+                return True
+
+        # Execute the task when there is no input exception.
+        if self.nccl_op is not None:
+            method = self.nccl_op.execute
+        else:
+            method = getattr(class_handle, self.method_name)
+
+        try:
+            output_val = method(*input_values, **self.resolved_kwargs)
+        except RayChannelError:
+            return True
+        except Exception as exc:
+            if self.nccl_op is not None:
+                raise exc
+            else:
+                output_val = _wrap_exception(exc)
+
+        # Write the output to the downstream task. Wrap the output in a GPU future
+        # if overlapping GPU communication.
+        if self.output_writer is not None:
+            if overlap_gpu_communication and self.nccl_op is not None:
+                output_val = GPUFuture(output_val, self.task_idx)
+
+            try:
+                self.output_writer.write(output_val)
+            except RayChannelError:
+                return True
+
+        return False
 
 
 @dataclass
@@ -793,7 +757,6 @@ class _ExecutableTaskRecord:
     actor_id: str
     method_name: str
     bind_index: int
-    operation: str
     start_t: float
     end_t: float
 
@@ -953,7 +916,7 @@ class CompiledDAG:
         ] = set()
         # Set of collective operations using an unresolved communicator.
         self._collective_ops_with_unresolved_communicators: Set[
-            "ray.dag.collective_node._CollectiveOperation"
+            _CollectiveOperation
         ] = set()
 
         self._default_type_hint: ChannelOutputType = SharedMemoryType(
@@ -1087,9 +1050,9 @@ class CompiledDAG:
         This function is idempotent.
         """
         from ray.dag import (
-            DAGNode,
             ClassMethodNode,
             CollectiveOutputNode,
+            DAGNode,
             FunctionNode,
             InputAttributeNode,
             InputNode,
@@ -1478,10 +1441,7 @@ class CompiledDAG:
         """
         Check if there are leaf nodes in the DAG and raise an error if there are.
         """
-        from ray.dag import (
-            DAGNode,
-            ClassMethodNode,
-        )
+        from ray.dag import ClassMethodNode, DAGNode
 
         leaf_nodes: List[DAGNode] = []
         for _, task in self.idx_to_task.items():
@@ -1539,6 +1499,122 @@ class CompiledDAG:
         self.actor_to_node_id[actor_handle] = node_id
         return node_id
 
+    def _add_p2p_send_node(
+        self,
+        node: "ray.dag.DAGNode",
+        node_to_p2p_send_node: Dict["ray.dag.DAGNode", "ray.dag.P2PSendNode"],
+    ) -> None:
+        """
+        Add a NCCL P2P send node to the DAG if the node requires NCCL send.
+
+        Args:
+            node: A DAG node.
+            p2p_send_dag_nodes: The set of DAG nodes that require NCCL send.
+            node_to_p2p_send_node: A dictionary mapping DAG nodes to their
+                corresponding NCCL P2P send nodes.
+        """
+        from ray.dag import ClassMethodNode, InputAttributeNode, InputNode
+        from ray.dag.communication_node import P2PSendNode
+
+        if not node.type_hint.requires_nccl():
+            return
+
+        if isinstance(node, InputNode) or isinstance(node, InputAttributeNode):
+            raise ValueError(
+                "DAG inputs cannot be transferred via NCCL because the driver "
+                "cannot participate in the NCCL group"
+            )
+        elif node.is_cgraph_output_node:
+            raise ValueError(
+                "Outputs cannot be transferred via NCCL because the driver "
+                "cannot participate in the NCCL group"
+            )
+        elif not isinstance(node, ClassMethodNode):
+            raise ValueError(
+                "NCCL P2P operation is only supported with ClassMethodNode"
+            )
+
+        send_actor_handle: "ray.actor.ActorHandle" = node._get_actor_handle()
+        assert send_actor_handle is not None
+        send_node = P2PSendNode(
+            method_args=(node,),
+            other_args_to_resolve={
+                PARENT_CLASS_NODE_KEY: send_actor_handle,
+                BIND_INDEX_KEY: None,
+            },
+        )
+        send_node._type_hint = node.type_hint
+        send_node._original_type_hint = node._original_type_hint
+        node._type_hint = ChannelOutputType()
+        node._original_type_hint = None
+        node_to_p2p_send_node[node] = send_node
+        self._add_node(send_node)
+
+    def _add_p2p_recv_nodes(
+        self,
+        node: "ray.dag.DAGNode",
+        node_to_p2p_send_node: Dict["ray.dag.DAGNode", "ray.dag.P2PSendNode"],
+    ) -> None:
+        """
+        Add a NCCL P2P recv node to the DAG for each upstream node that requires
+        NCCL send.
+
+        Args:
+            node: A DAG node.
+            p2p_send_dag_nodes: The set of DAG nodes that require NCCL send.
+            node_to_p2p_send_node: A dictionary mapping DAG nodes to their
+                corresponding NCCL P2P send nodes.
+        """
+        from ray.dag import ClassMethodNode, DAGNode, MultiOutputNode
+        from ray.dag.communication_node import P2PRecvNode
+
+        new_args = []
+        for arg in node.get_args():
+            if not isinstance(arg, DAGNode) or arg not in node_to_p2p_send_node:
+                new_args.append(arg)
+                continue
+
+            if isinstance(node, MultiOutputNode):
+                raise ValueError(
+                    "Outputs cannot be transferred via NCCL because the driver "
+                    "cannot participate in the NCCL group"
+                )
+            elif not isinstance(node, ClassMethodNode):
+                raise ValueError(
+                    "NCCL P2P operation is only supported with ClassMethodNode"
+                )
+
+            send_node = node_to_p2p_send_node[arg]
+            recv_actor_handle: "ray.actor.ActorHandle" = node._get_actor_handle()
+            assert recv_actor_handle is not None
+            recv_node = P2PRecvNode(
+                method_args=(send_node,),
+                other_args_to_resolve={
+                    PARENT_CLASS_NODE_KEY: recv_actor_handle,
+                    BIND_INDEX_KEY: None,
+                },
+            )
+            new_args.append(recv_node)
+            self._add_node(recv_node)
+        node._bound_args = tuple(new_args)
+
+    def _build_from_ray_dag(self, root: "ray.dag.DAGNode") -> None:
+        """
+        Build the compiled DAG from a Ray DAG. Create a `P2PSendNode`/`P2PRecvNode` for
+        each NCCL P2P send/recv operation, where the NCCL P2P method is executed from
+        the newly created node. This is consistent with the behavior of a NCCL
+        collective operation, where the NCCL collective method is executed from the
+        created `CollectiveOutputNode` during the DAG definition.
+        """
+        queue = root.get_topological_order()
+        node_to_p2p_send_node: Dict["ray.dag.DAGNode", "ray.dag.P2PSendNode"] = {}
+        for node in queue:
+            # Create a P2P recv node for each upstream node that requires NCCL send.
+            self._add_p2p_recv_nodes(node, node_to_p2p_send_node)
+            self._add_node(node)
+            # Create a P2P send node for the node that requires NCCL send.
+            self._add_p2p_send_node(node, node_to_p2p_send_node)
+
     def _get_or_compile(
         self,
     ) -> None:
@@ -1553,11 +1629,11 @@ class CompiledDAG:
         outputs for the DAG.
         """
         from ray.dag import (
-            DAGNode,
-            InputNode,
-            InputAttributeNode,
-            MultiOutputNode,
             ClassMethodNode,
+            DAGNode,
+            InputAttributeNode,
+            InputNode,
+            MultiOutputNode,
         )
 
         if self.input_task_idx is None:
@@ -1821,7 +1897,7 @@ class CompiledDAG:
                     self._channel_dict[arg_channel] = arg_channel
 
             # Step 3: create executable tasks for the actor
-            executable_tasks = []
+            executable_tasks: List[ExecutableTask] = []
             for task in tasks:
                 resolved_args: List[Any] = []
                 for arg in task.args:
@@ -1844,7 +1920,10 @@ class CompiledDAG:
                 executable_tasks.append(executable_task)
             # Sort executable tasks based on their bind index, i.e., submission order
             # so that they will be executed in that order.
-            executable_tasks.sort(key=lambda task: task.bind_index)
+            # For the newly created P2P operation nodes, their bind indices are None.
+            # Their orders in the executable tasks do not matter, since their execution
+            # orders are determined by the execution schedule.
+            executable_tasks.sort(key=lambda task: task.bind_index or -1)
             self.actor_to_executable_tasks[actor_handle] = executable_tasks
 
         from ray.dag.constants import RAY_CGRAPH_ENABLE_PROFILING
@@ -1913,79 +1992,53 @@ class CompiledDAG:
 
     def _generate_dag_operation_graph_node(
         self,
-    ) -> Dict["ray.actor.ActorHandle", List[List[_DAGOperationGraphNode]]]:
+    ) -> Dict["ray.actor.ActorHandle", List[_DAGOperationGraphNode]]:
         """
-        Generate READ, COMPUTE, and WRITE operations for each DAG node.
+        Generate a _DAGOperationGraphNode for each DAG node.
 
         Returns:
-            A dictionary that maps an actor handle to a list of lists of
+            A dictionary that maps an actor handle to a list of
             _DAGOperationGraphNode. For the same actor, the index of the
-            outer list corresponds to the index of the ExecutableTask in
+            list corresponds to the index of the ExecutableTask in
             the list of `executable_tasks` in `actor_to_executable_tasks`,
-            i.e. `exec_task_idx`. In the inner list, the order of operations
-            is READ, COMPUTE, and WRITE.
+            i.e. `exec_task_idx`.
 
             Example:
             {
                 actor1: [
-                    [READ COMPUTE WRITE] # exec_task_idx 0
-                    [READ COMPUTE WRITE] # exec_task_idx 1
+                    # exec_task_idx 0
+                    # exec_task_idx 1
                 ]
             }
         """
-        from ray.dag.collective_node import CollectiveOutputNode
-
         assert self.idx_to_task
         assert self.actor_to_executable_tasks
 
         actor_to_operation_nodes: Dict[
-            "ray.actor.ActorHandle", List[List[_DAGOperationGraphNode]]
+            "ray.actor.ActorHandle", List[_DAGOperationGraphNode]
         ] = defaultdict(list)
 
         for actor_handle, executable_tasks in self.actor_to_executable_tasks.items():
             for exec_task_idx, exec_task in enumerate(executable_tasks):
-                # Divide a DAG node into three _DAGOperationGraphNodes: READ, COMPUTE,
-                # and WRITE. Each _DAGOperationGraphNode has a _DAGNodeOperation.
                 task_idx = exec_task.task_idx
                 dag_node = self.idx_to_task[task_idx].dag_node
                 method_name = exec_task.method_name
                 actor_handle = dag_node._get_actor_handle()
-                requires_nccl_read = False
-                for upstream_node in dag_node._upstream_nodes:
-                    if upstream_node.type_hint.requires_nccl():
-                        requires_nccl_read = True
-                        break
-                requires_nccl_compute = isinstance(dag_node, CollectiveOutputNode)
-                requires_nccl_write = dag_node.type_hint.requires_nccl()
+                nccl_op_type = None
+                if exec_task.requires_nccl_read:
+                    nccl_op_type = _NcclOperationType.READ
+                elif exec_task.requires_nccl_compute:
+                    nccl_op_type = _NcclOperationType.COMPUTE
+                elif exec_task.requires_nccl_write:
+                    nccl_op_type = _NcclOperationType.WRITE
 
-                read_node = _DAGOperationGraphNode(
-                    _DAGNodeOperation(
-                        exec_task_idx, _DAGNodeOperationType.READ, method_name
-                    ),
-                    task_idx,
-                    actor_handle,
-                    requires_nccl_read,
-                )
                 compute_node = _DAGOperationGraphNode(
-                    _DAGNodeOperation(
-                        exec_task_idx, _DAGNodeOperationType.COMPUTE, method_name
-                    ),
+                    _DAGNodeOperation(exec_task_idx, method_name),
                     task_idx,
                     actor_handle,
-                    requires_nccl_compute,
+                    nccl_op_type,
                 )
-                write_node = _DAGOperationGraphNode(
-                    _DAGNodeOperation(
-                        exec_task_idx, _DAGNodeOperationType.WRITE, method_name
-                    ),
-                    task_idx,
-                    actor_handle,
-                    requires_nccl_write,
-                )
-
-                actor_to_operation_nodes[actor_handle].append(
-                    [read_node, compute_node, write_node]
-                )
+                actor_to_operation_nodes[actor_handle].append(compute_node)
 
         return actor_to_operation_nodes
 
@@ -2023,6 +2076,7 @@ class CompiledDAG:
         graph = _build_dag_node_operation_graph(
             self.idx_to_task, actor_to_operation_nodes
         )
+
         # Step 2: Generate an execution schedule for each actor using topological sort
         actor_to_execution_schedule = _generate_actor_to_execution_schedule(graph)
 
@@ -2775,11 +2829,11 @@ class CompiledDAG:
         """
 
         from ray.dag import (
+            ClassMethodNode,
+            DAGNode,
             InputAttributeNode,
             InputNode,
             MultiOutputNode,
-            ClassMethodNode,
-            DAGNode,
         )
 
         # Check that the DAG has been compiled
@@ -3083,11 +3137,11 @@ class CompiledDAG:
                 "You can install it by running `pip install graphviz`."
             )
         from ray.dag import (
+            ClassMethodNode,
+            DAGNode,
             InputAttributeNode,
             InputNode,
             MultiOutputNode,
-            ClassMethodNode,
-            DAGNode,
         )
 
         # Check that the DAG has been compiled
@@ -3295,7 +3349,7 @@ def build_compiled_dag_from_ray_dag(
         return node
 
     root = dag._find_root()
-    root.traverse_and_apply(_build_compiled_dag)
+    compiled_dag._build_from_ray_dag(root)
     compiled_dag._get_or_compile()
     global _compiled_dags
     _compiled_dags[compiled_dag.get_id()] = compiled_dag

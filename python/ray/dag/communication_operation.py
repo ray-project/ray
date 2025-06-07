@@ -1,26 +1,91 @@
-from typing import Any, Dict, List, Union, Tuple, Optional, TYPE_CHECKING
+from abc import ABC, abstractmethod
+from typing import TYPE_CHECKING, Any, List, Optional, Union
+
+from ray.experimental.channel import ChannelContext, ChannelInterface
+from ray.experimental.channel.torch_tensor_type import (
+    Communicator,
+    TorchTensorType,
+)
+from ray.experimental.util.types import (
+    AllGatherOp,
+    AllReduceOp,
+    ReduceScatterOp,
+    _CollectiveOp,
+)
+
+import ray
 
 if TYPE_CHECKING:
     import torch
 
-import ray
-from ray.dag import (
-    DAGNode,
-    ClassMethodNode,
-)
-from ray.dag.constants import COLLECTIVE_OPERATION_KEY
-from ray.experimental.channel import ChannelContext
-from ray.experimental.channel.torch_tensor_type import Communicator, TorchTensorType
-from ray.experimental.util.types import (
-    _CollectiveOp,
-    AllGatherOp,
-    AllReduceOp,
-    ReduceScatterOp,
-)
-from ray.util.annotations import DeveloperAPI
+
+class _NcclOperation(ABC):
+    """
+    Represent metadata for a NCCL operation.
+    """
+
+    @abstractmethod
+    def execute(self, *args, **kwargs) -> Any:
+        """
+        Execute the NCCL operation in `ExecutableTask`.
+        """
+        raise NotImplementedError
 
 
-class _CollectiveOperation:
+class _P2POperation(_NcclOperation):
+    """
+    Represent an executable NCCL P2P operation.
+    """
+
+    def __init__(self):
+        self._nccl_ch: Optional[ChannelInterface] = None
+
+    @property
+    def nccl_ch(self) -> Optional[ChannelInterface]:
+        return self._nccl_ch
+
+    @nccl_ch.setter
+    def nccl_ch(self, nccl_ch: ChannelInterface) -> None:
+        self._nccl_ch = nccl_ch
+
+
+class _P2PSendOperation(_P2POperation):
+    """
+    Represent an executable NCCL P2P send operation.
+    """
+
+    def __init__(self):
+        super().__init__()
+
+    def execute(self, data: Any) -> None:
+        """
+        Execute the NCCL P2P send operation. Write the data via the NCCL channel.
+
+        Args:
+            data: The data to send.
+        """
+        self.nccl_ch.write(data)
+
+
+class _P2PRecvOperation(_P2POperation):
+    """
+    Represent an executable NCCL P2P recv operation.
+    """
+
+    def __init__(self):
+        super().__init__()
+
+    def execute(self) -> Any:
+        """
+        Execute the NCCL P2P recv operation. Read the data from the NCCL channel.
+
+        Return:
+            Data read from the NCCL channel.
+        """
+        return self.nccl_ch.read()
+
+
+class _CollectiveOperation(_NcclOperation):
     """
     Represent metadata for a NCCL collective operation.
 
@@ -37,7 +102,7 @@ class _CollectiveOperation:
 
     def __init__(
         self,
-        input_nodes: List[DAGNode],
+        input_nodes: List["ray.dag.DAGNode"],
         op: _CollectiveOp,
         transport: Optional[Union[str, Communicator]] = None,
     ):
@@ -90,6 +155,10 @@ class _CollectiveOperation:
     def type_hint(self) -> TorchTensorType:
         return self._type_hint
 
+    @property
+    def nccl_op_type(self) -> _CollectiveOp:
+        return self._op
+
     def get_communicator(self) -> Communicator:
         if self._type_hint.communicator_id is not None:
             ctx = ChannelContext.get_current()
@@ -138,65 +207,3 @@ class _CollectiveOperation:
         else:
             raise ValueError("Expected a collective operation")
         return recv_buf
-
-
-@DeveloperAPI
-class CollectiveOutputNode(ClassMethodNode):
-    """Represent an output node from a NCCL collective operation in a Ray DAG."""
-
-    def __init__(
-        self,
-        method_name: str,
-        method_args: Tuple[
-            DAGNode,
-        ],
-        method_kwargs: Dict[str, Any],
-        method_options: Dict[str, Any],
-        other_args_to_resolve: Dict[str, Any],
-    ):
-        # Parse the input node.
-        if not (
-            isinstance(method_args, tuple)
-            and len(method_args) == 1
-            and isinstance(method_args[0], DAGNode)
-        ):
-            raise ValueError("Expected a single input node")
-        self._input_node = method_args[0]
-        # Parse the collective operation.
-        self._collective_op: _CollectiveOperation = other_args_to_resolve.get(
-            COLLECTIVE_OPERATION_KEY, None
-        )
-        if self._collective_op is None:
-            raise ValueError("Expected a collective operation")
-
-        super().__init__(
-            method_name,
-            method_args,
-            method_kwargs,
-            method_options,
-            other_args_to_resolve,
-        )
-
-    def _copy_impl(
-        self,
-        new_args: List[Any],
-        new_kwargs: Dict[str, Any],
-        new_options: Dict[str, Any],
-        new_other_args_to_resolve: Dict[str, Any],
-    ):
-        return CollectiveOutputNode(
-            self._method_name,
-            new_args,
-            new_kwargs,
-            new_options,
-            other_args_to_resolve=new_other_args_to_resolve,
-        )
-
-    def _execute_impl(self, *args, **kwargs):
-        raise NotImplementedError(
-            "CollectiveOutputNode is only supported with dag.experimental_compile()"
-        )
-
-    @property
-    def collective_op(self) -> _CollectiveOperation:
-        return self._collective_op
