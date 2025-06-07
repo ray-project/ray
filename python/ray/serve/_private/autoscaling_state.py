@@ -9,6 +9,7 @@ from ray.serve._private.common import (
     ReplicaID,
     TargetCapacityDirection,
 )
+from ray.serve._private.metric_monitor import InMemoryMetricsStore
 from ray.serve._private.constants import (
     RAY_SERVE_MIN_HANDLE_METRICS_TIMEOUT_S,
     SERVE_LOGGER_NAME,
@@ -319,6 +320,7 @@ class AutoscalingStateManager:
 
     def __init__(self):
         self._autoscaling_states: Dict[DeploymentID, AutoscalingState] = {}
+        self.qps_store = InMemoryMetricsStore()
 
     def register_deployment(
         self,
@@ -419,3 +421,36 @@ class AutoscalingStateManager:
 
         for autoscaling_state in self._autoscaling_states.values():
             autoscaling_state.drop_stale_handle_metrics(alive_serve_actor_ids)
+
+    def record_qps_metric(
+        self, deployment_id: DeploymentID, qps_value: float, timestamp: float
+    ):
+        """Records a QPS metric point for the given deployment."""
+        self.qps_store.add_metrics_point({deployment_id: qps_value}, timestamp)
+
+    def get_average_qps(
+        self, deployment_id: DeploymentID, window_start_timestamp_s: float
+    ) -> Optional[float]:
+        """Calculates the average QPS for a deployment over a window.
+
+        Returns None if the deployment_id is not found or if no data
+        exists for it in the window.
+        """
+        try:
+            return self.qps_store.window_average(
+                deployment_id, window_start_timestamp_s, time.time()
+            )
+        except KeyError:
+            # Deployment ID not found in the qps_store
+            logger.debug(
+                f"Deployment '{deployment_id}' not found in QPS store. "
+                "Cannot calculate average QPS."
+            )
+            return None
+        except ValueError as e:
+            # No data points in the window
+            logger.debug(
+                f"No QPS data for deployment '{deployment_id}' in window "
+                f"[{window_start_timestamp_s}, {time.time()}]: {e}"
+            )
+            return None

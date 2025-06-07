@@ -76,6 +76,7 @@ from ray.serve.config import HTTPOptions, gRPCOptions
 from ray.serve.exceptions import BackPressureError, DeploymentUnavailableError
 from ray.serve.generated.serve_pb2 import HealthzResponse, ListApplicationsResponse
 from ray.serve.handle import DeploymentHandle
+from ray.serve._private.metrics_utils import MetricsPusher
 from ray.serve.schema import LoggingConfig
 from ray.util import metrics
 
@@ -1246,6 +1247,104 @@ class ProxyActor:
         self._running_grpc_server_task: Optional[asyncio.Task] = None
 
         _configure_gc_options()
+
+        # For QPS metrics
+        self._metrics_pusher = MetricsPusher()
+        self._last_request_counts: Dict[frozenset, float] = {}
+        self._last_qps_push_time = time.time()
+        self._qps_interval_s = 5.0  # TODO(Mergify): Make this configurable if needed
+        self._metrics_pusher.register_or_update_task(
+            "push_qps", self._push_qps_metrics, self._qps_interval_s
+        )
+        self._metrics_pusher.start()
+
+    async def _push_qps_metrics(self):
+        """Calculates and pushes QPS metrics to the controller."""
+        try:
+            controller_handle = ray.get_actor(
+                SERVE_CONTROLLER_NAME, namespace=SERVE_NAMESPACE
+            )
+        except ValueError:
+            # Controller actor may not be available during startup or shutdown.
+            logger.debug("Controller actor not found. Skipping QPS push.")
+            return
+
+        current_time = time.time()
+        time_delta = current_time - self._last_qps_push_time
+
+        if time_delta <= 0:
+            # Avoid division by zero or negative time delta if clock moved backward
+            self._last_qps_push_time = current_time
+            return
+
+        # HTTP Proxy Metrics
+        # NOTE: Accessing internal attribute _metric._points of ray.util.metrics.Counter
+        if hasattr(self.http_proxy, "request_counter") and hasattr(
+            self.http_proxy.request_counter, "_metric"
+        ):
+            for (
+                tag_frozenset,
+                current_total_count_obj,
+            ) in self.http_proxy.request_counter._metric._points.items():
+                current_total_count = float(current_total_count_obj.value)
+                tags = dict(tag_frozenset)
+                application_name = tags.get("application")
+
+                previous_count = self._last_request_counts.get(tag_frozenset, 0.0)
+                num_requests_delta = current_total_count - previous_count
+                qps = num_requests_delta / time_delta
+
+                if application_name and qps >= 0:
+                    try:
+                        await controller_handle.record_application_qps.remote(
+                            application_name, qps, current_time
+                        )
+                    except RayActorError:
+                        logger.debug(
+                            "Controller actor died. Skipping QPS push for "
+                            f"application {application_name}."
+                        )
+                        # No need to retry here, next push will send fresh data.
+                        return  # Exit if controller is gone
+
+                self._last_request_counts[tag_frozenset] = current_total_count
+
+        # gRPC Proxy Metrics (if exists and has same structure)
+        if (
+            self.grpc_proxy
+            and hasattr(self.grpc_proxy, "request_counter")
+            and hasattr(self.grpc_proxy.request_counter, "_metric")
+        ):
+            # NOTE: Accessing internal attribute _metric._points of ray.util.metrics.Counter
+            for (
+                tag_frozenset,
+                current_total_count_obj,
+            ) in self.grpc_proxy.request_counter._metric._points.items():
+                current_total_count = float(current_total_count_obj.value)
+                tags = dict(tag_frozenset)
+                # For gRPC, the application is often part of the route/service name
+                # We assume the 'application' tag is correctly populated by the gRPC metric setup
+                application_name = tags.get("application")
+
+                previous_count = self._last_request_counts.get(tag_frozenset, 0.0)
+                num_requests_delta = current_total_count - previous_count
+                qps = num_requests_delta / time_delta
+
+                if application_name and qps >= 0:
+                    try:
+                        await controller_handle.record_application_qps.remote(
+                            application_name, qps, current_time
+                        )
+                    except RayActorError:
+                        logger.debug(
+                            "Controller actor died. Skipping QPS push for "
+                            f"application {application_name} (gRPC)."
+                        )
+                        return  # Exit if controller is gone
+
+                self._last_request_counts[tag_frozenset] = current_total_count
+
+        self._last_qps_push_time = current_time
 
     def _update_routes_in_proxies(self, endpoints: Dict[DeploymentID, EndpointInfo]):
         self.proxy_router.update_routes(endpoints)

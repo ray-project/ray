@@ -56,7 +56,6 @@ steps:
       - skip-on-premerge
 
   - label: ":tapioca: build: ray py{{matrix}} docker (x86_64)"
-    key: ray_images
     tags:
       - python_dependencies
       - docker
@@ -129,15 +128,9 @@ steps:
     depends_on:
       - forge
 
-  - label: ":tapioca: generate nightly indexes"
+  - label: ":tapioca: Generate indexes"
     instance_type: small
-    tags:
-      - docker
-      - oss
-      - skip-on-premerge
     commands:
       - bazel run //ci/ray_ci/automation:generate_index -- --prefix nightly
     depends_on:
-      - ray_images
-      - ray_images_aarch64
       - forge
