@@ -231,11 +231,10 @@ class GcsActorManagerTest : public ::testing::Test {
               request, [this, &promise, request](const Status &status) {
                 auto actor_id = ActorID::FromBinary(
                     request.task_spec().actor_creation_task_spec().actor_id());
-                if (gcs_actor_manager_->registered_actors_.contains(actor_id)) {
-                  promise.set_value(gcs_actor_manager_->registered_actors_[actor_id]);
-                } else {
-                  promise.set_value(nullptr);
-                }
+                promise.set_value(
+                    gcs_actor_manager_->registered_actors_.contains(actor_id)
+                        ? gcs_actor_manager_->registered_actors_[actor_id]
+                        : nullptr);
               });
           if (!status.ok()) {
             promise.set_value(nullptr);
