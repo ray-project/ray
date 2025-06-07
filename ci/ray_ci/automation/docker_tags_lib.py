@@ -10,7 +10,7 @@ import platform
 import docker
 import requests
 import runfiles
-
+import boto3
 from ci.ray_ci.utils import logger
 from ci.ray_ci.builder_container import DEFAULT_ARCHITECTURE, DEFAULT_PYTHON_VERSION
 from ci.ray_ci.docker_container import (
@@ -26,6 +26,7 @@ from ci.ray_ci.docker_container import (
 
 bazel_workspace_dir = os.environ.get("BUILD_WORKSPACE_DIRECTORY", "")
 SHA_LENGTH = 6
+DOCKERHUB_SSM_NAME = "docker_hub_password"
 
 
 def _check_python_version(python_version: str, ray_type: str) -> None:
@@ -626,6 +627,7 @@ def _write_to_file(file_path: str, content: List[str]) -> None:
 
 
 def generate_index(index_name: str, tags: List[str]) -> bool:
+    print(f"Generating index {index_name} with tags {tags}")
     # Make sure tag is an image and not an index
     for tag in tags:
         return_code, output = _call_crane_manifest(tag)
