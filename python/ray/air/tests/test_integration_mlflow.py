@@ -163,7 +163,7 @@ class MLflowTest(unittest.TestCase):
             {"hello": "world", "trial_name": "trial1", "mlflow.runName": "trial1"},
         )
         self.assertEqual(logger._trial_runs[trial], run.info.run_id)
-        # Params should be logged.
+        # Params should be logged at the start by default.
         self.assertDictEqual(run.data.params, trial_config)
 
         # When same trial is started again, new run should not be created.
@@ -192,6 +192,42 @@ class MLflowTest(unittest.TestCase):
             logger.mlflow_util.artifact_info,
             {"dir": "artifact", "run_id": run.info.run_id},
         )
+
+        # Now check if params are logged at the end.
+        run = logger.mlflow_util._mlflow.get_run(run_id=run.info.run_id)
+        self.assertDictEqual(run.data.params, trial_config)
+
+    @patch("ray.air.integrations.mlflow._MLflowLoggerUtil", Mock_MLflowLoggerUtil)
+    def testMlFlowLoggerLogging_logAtEnd(self):
+        clear_env_vars()
+        trial_config = {"par1": "a", "par2": "b"}
+        trial = MockTrial(trial_config, "trial1", 0, "artifact")
+
+        logger = MLflowLoggerCallback(
+            tracking_uri=self.tracking_uri,
+            registry_uri=self.registry_uri,
+            experiment_name="test_log_at_end",
+            tags={"hello": "world"},
+            log_params_on_trial_end=True,
+        )
+        logger.setup()
+        exp_id = logger.mlflow_util.experiment_id
+
+        # Check if run is created with proper tags.
+        logger.on_trial_start(iteration=0, trials=[], trial=trial)
+        all_runs = logger.mlflow_util._mlflow.search_runs(experiment_ids=[exp_id])
+        self.assertEqual(len(all_runs), 1)
+        # all_runs is a pandas dataframe.
+        all_runs = all_runs.to_dict(orient="records")
+        run = logger.mlflow_util._mlflow.get_run(all_runs[0]["run_id"])
+
+        # Params should NOT be logged at start.
+        self.assertDictEqual(run.data.params, {})
+
+        # Check that params are logged at the end.
+        logger.on_trial_complete(0, [], trial)
+        run = logger.mlflow_util._mlflow.get_run(run_id=run.info.run_id)
+        self.assertDictEqual(run.data.params, trial_config)
 
     def testMlFlowSetupExplicit(self):
         clear_env_vars()
