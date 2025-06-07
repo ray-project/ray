@@ -16,6 +16,14 @@ These tutorials implement an end-to-end time-series application including:
 
 - **Production deployment**: Create production batch Jobs for offline workloads including data prep, training, batch prediction, and potentially online Services.
 
+## Setup
+
+Run the following:
+
+```bash
+pip install -r requirements.txt && pip install -e .
+```
+
 ## Acknowledgements
 
 This repository is based on the official `DLinear` implementations:
