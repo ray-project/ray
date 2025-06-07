@@ -2,7 +2,8 @@ from collections import defaultdict, deque
 import time
 import copy
 import threading
-from typing import Any, Dict, List, Tuple, Union, Optional
+import heapq
+from typing import Any, Dict, List, Union, Optional, Tuple
 
 import numpy as np
 
@@ -42,6 +43,7 @@ class Stats:
         self,
         init_values: Optional[Any] = None,
         reduce: Optional[str] = "mean",
+        percentiles: Union[List[int], bool] = False,
         reduce_per_index_on_aggregate: bool = False,
         window: Optional[Union[int, float]] = None,
         ema_coeff: Optional[float] = None,
@@ -60,6 +62,13 @@ class Stats:
                 `window`). Note that if both `reduce` and `window` are None, the user of
                 this Stats object needs to apply some caution over the values list not
                 growing infinitely.
+            percentiles: If reduce is `None`, we can compute the percentiles of the
+                values list given by `percentiles`. Defaults to [0, 0.5, 0.75, 0.9, 0.95,
+                0.99, 1] if set to True. When using percentiles, a window must be provided.
+                This window should be chosen carfully. RLlib computes exact percentiles and
+                the computational complexity is O(m*n*log(n/m)) where n is the window size
+                and m is the number of parallel metrics loggers invovled (for example,
+                m EnvRunners).
             window: An optional window size to reduce over.
                 If `window` is not None, then the reduction operation is only applied to
                 the most recent `windows` items, and - after reduction - the values list
@@ -99,8 +108,10 @@ class Stats:
                 Only used if throughput=True.
         """
         # Thus far, we only support mean, max, min, and sum.
-        if reduce not in [None, "mean", "min", "max", "sum"]:
-            raise ValueError("`reduce` must be one of `mean|min|max|sum` or None!")
+        if reduce not in [None, "mean", "min", "max", "sum", "percentiles"]:
+            raise ValueError(
+                "`reduce` must be one of `mean|min|max|sum|percentiles` or None!"
+            )
         # One or both window and ema_coeff must be None.
         if window is not None and ema_coeff is not None:
             raise ValueError("Only one of `window` or `ema_coeff` can be specified!")
@@ -110,6 +121,31 @@ class Stats:
                 "`ema_coeff` arg only allowed (not None) when `reduce=mean`!"
             )
 
+        if reduce is None and percentiles is not False:
+            if window in (None, float("inf")):
+                raise ValueError(
+                    "A window must be specified when reduce is 'percentiles'!"
+                )
+            if percentiles is True:
+                percentiles = [0, 0.5, 0.75, 0.9, 0.95, 0.99, 1]
+            else:
+                if type(percentiles) not in (bool, list):
+                    raise ValueError("`percentiles` must be a list or bool!")
+                if isinstance(percentiles, list):
+                    if not all(isinstance(p, (int, float)) for p in percentiles):
+                        raise ValueError(
+                            "`percentiles` must contain only ints or floats!"
+                        )
+                    if not all(0 <= p <= 100 for p in percentiles):
+                        raise ValueError(
+                            "`percentiles` must contain only values between 0 and 100!"
+                        )
+        elif percentiles is not False:
+            raise ValueError("`percentiles` must be False when `reduce` is not `None`!")
+
+        self._percentiles = percentiles
+
+        # If `window` is explicitly set to inf, `clear_on_reduce` must be True.
         self._inf_window = window in [None, float("inf")]
 
         # If `window` is set to inf, `clear_on_reduce` must be True.
@@ -351,7 +387,7 @@ class Stats:
         len_before_reduce = len(self)
         if self._has_new_values:
             # Only calculate and update history if there were new values pushed since last reduce
-            reduced, reduced_values = self._reduced_values()
+            reduced, reduced_internal_values_list = self._reduced_values()
             # `clear_on_reduce` -> Clear the values list.
             if self._clear_on_reduce:
                 self._set_values([])
@@ -359,11 +395,10 @@ class Stats:
                 self._has_new_values = True
             else:
                 self._has_new_values = False
-                if self._inf_window:
-                    # If we we use a window, we don't want to replace the internal values list because it will be replaced by the next reduce call.
-                    self._set_values(reduced)
+                # If we we use a window, we don't want to replace the internal values list because it will be replaced by the next reduce call.
+                self._set_values(reduced_internal_values_list)
         else:
-            reduced_values = None
+            reduced_internal_values_list = None
             reduced = self.get_reduce_history()[-1]
 
         reduced = self._numpy_if_necessary(reduced)
@@ -384,9 +419,11 @@ class Stats:
             reduced = reduced[0]
 
         if not compile and not self._inf_window:
-            if reduced_values is None:
-                _, reduced_values = self._reduced_values()
-            return_values = self._numpy_if_necessary(reduced_values).copy()
+            if reduced_internal_values_list is None:
+                _, reduced_internal_values_list = self._reduced_values()
+            return_values = self._numpy_if_necessary(
+                reduced_internal_values_list
+            ).copy()
         else:
             return_values = reduced
 
@@ -467,41 +504,51 @@ class Stats:
         tmp_values = []
         # Loop from index=-1 backward to index=start until our new_values list has
         # at least a len of `win`.
+        if self._percentiles is not False:
+            # Use heapq to sort values (assumes that the values are already sorted)
+            # and then pick the correct percentiles
+            lists_to_merge = [list(self.values), *[list(o.values) for o in others]]
+            merged = list(heapq.merge(*lists_to_merge))
+            self._set_values(merged)
+        else:
+            for i in range(1, max(map(len, stats_to_merge)) + 1):
+                # Per index, loop through all involved stats, including `self` and add
+                # to `tmp_values`.
+                for stats in stats_to_merge:
+                    if len(stats) < i:
+                        continue
+                    tmp_values.append(stats.values[-i])
 
-        for i in range(1, max(map(len, stats_to_merge)) + 1):
-            # Per index, loop through all involved stats, including `self` and add
-            # to `tmp_values`.
-            for stats in stats_to_merge:
-                if len(stats) < i:
-                    continue
-                tmp_values.append(stats.values[-i])
+                # Now reduce across `tmp_values` based on the reduce-settings of this Stats.
+                # TODO (sven) : explain why all this
 
-            # Now reduce across `tmp_values` based on the reduce-settings of this Stats.
-            # TODO (sven) : explain why all this
+                if self._reduce_per_index_on_aggregate:
+                    n_values = 1
+                else:
+                    n_values = len(tmp_values)
 
-            if self._reduce_per_index_on_aggregate:
-                n_values = 1
-            else:
-                n_values = len(tmp_values)
+                if self._ema_coeff is not None:
+                    new_values.extend([np.nanmean(tmp_values)] * n_values)
+                elif self._reduce_method is None:
+                    new_values.extend(tmp_values)
+                elif self._reduce_method == "sum":
+                    # We add [sum(tmp_values) / n_values] * n_values to the new values list
+                    # Instead of tmp_values, because every incoming element should have the same weight
+                    reduced_value = (
+                        self._reduced_values(values=tmp_values)[0][0] / n_values
+                    )
+                    new_values.extend([reduced_value] * n_values)
+                else:
+                    new_values.extend(
+                        self._reduced_values(values=tmp_values)[0] * n_values
+                    )
 
-            if self._ema_coeff is not None:
-                new_values.extend([np.nanmean(tmp_values)] * n_values)
-            elif self._reduce_method is None:
-                new_values.extend(tmp_values)
-            elif self._reduce_method == "sum":
-                # We add [sum(tmp_values) / n_values] * n_values to the new values list
-                # Instead of tmp_values, because every incoming element should have the same weight
-                reduced_value = self._reduced_values(values=tmp_values)[0][0] / n_values
-                new_values.extend([reduced_value] * n_values)
-            else:
-                new_values.extend(self._reduced_values(values=tmp_values)[0] * n_values)
+                tmp_values.clear()
+                if len(new_values) >= win:
+                    new_values = new_values[:win]
+                    break
 
-            tmp_values.clear()
-            if len(new_values) >= win:
-                new_values = new_values[:win]
-                break
-
-        self._set_values(list(reversed(new_values)))
+            self._set_values(list(reversed(new_values)))
 
         # Adopt `other`'s current throughput estimate (it's the newer one).
         if self.has_throughput:
@@ -630,6 +677,7 @@ class Stats:
         state = {
             "values": self.values,
             "reduce": self._reduce_method,
+            "percentiles": self._percentiles,
             "reduce_per_index_on_aggregate": self._reduce_per_index_on_aggregate,
             "window": self._window,
             "ema_coeff": self._ema_coeff,
@@ -647,6 +695,7 @@ class Stats:
             stats = Stats(
                 state["values"],
                 reduce=state["reduce"],
+                percentiles=state.get("percentiles", False),
                 reduce_per_index_on_aggregate=state.get(
                     "reduce_per_index_on_aggregate", False
                 ),
@@ -664,6 +713,7 @@ class Stats:
             stats = Stats(
                 state["values"],
                 reduce=state["reduce"],
+                percentiles=state.get("percentiles", False),
                 window=state["window"],
                 ema_coeff=state["ema_coeff"],
                 clear_on_reduce=state["clear_on_reduce"],
@@ -674,6 +724,7 @@ class Stats:
             stats = Stats(
                 state["values"],
                 reduce=state["reduce"],
+                percentiles=state.get("percentiles", False),
                 window=state["window"],
                 ema_coeff=state["ema_coeff"],
                 clear_on_reduce=state["clear_on_reduce"],
@@ -712,6 +763,7 @@ class Stats:
         stats = Stats(
             init_values=init_values,
             reduce=other._reduce_method,
+            percentiles=other._percentiles,
             reduce_per_index_on_aggregate=other._reduce_per_index_on_aggregate,
             window=other._window,
             ema_coeff=other._ema_coeff,
@@ -753,10 +805,13 @@ class Stats:
 
         # No reduction method. Return list as-is OR reduce list to len=window.
         if self._reduce_method is None:
+            if self._percentiles is not False:
+                # Sort values
+                values = list(values)
+                values.sort()
             return values, values
 
-        # Special case: Internal values list is empty -> return NaN
-        # This makes sure that all metrics are allways logged.
+        # Special case: Internal values list is empty -> return NaN or 0.0 for sum.
         elif len(values) == 0:
             if self._reduce_method in ["min", "max", "mean"] or self._has_returned_zero:
                 # We also return np.nan if we have returned zero before.
