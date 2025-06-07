@@ -170,8 +170,8 @@ def test_logical_op_args(
     for k, v in expected_logical_op_args.items():
         k = f"_{k}"
         assert k in args, f"Export args should contain key '{k}'"
-        assert args[k] == sanitize_for_struct(
-            v
+        assert (
+            args[k] == v
         ), f"Export args for key '{k}' should match expected value {v}, found {args[k]}"
 
 

@@ -64,7 +64,7 @@ class LogicalOperator(Operator):
 
     def _get_args(self) -> Dict[str, Any]:
         """This Dict must be serializable"""
-        return {k: sanitize_for_struct(v) for k, v in vars(self).items()}
+        return {k: v for k, v in vars(self).items()}
 
     def output_data(self) -> Optional[List["RefBundle"]]:
         """The output data of this operator, or ``None`` if not known."""

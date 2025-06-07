@@ -103,7 +103,7 @@ class Topology:
                 input_dependencies=[
                     op_to_id[dep] for dep in op.input_dependencies if dep in op_to_id
                 ],
-                args=op._get_logical_args(),
+                args=sanitize_for_struct(op._get_logical_args()),
             )
 
             # Add sub-stages if they exist
