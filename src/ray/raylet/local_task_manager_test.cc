@@ -153,7 +153,8 @@ std::shared_ptr<ClusterResourceScheduler> CreateSingleNodeScheduler(
 }
 
 RayTask CreateTask(const std::unordered_map<std::string, double> &required_resources,
-                   const std::string &task_name = "default") {
+                   const std::string &task_name = "default",
+                   const std::vector<std::unique_ptr<TaskArg>> &args = {}) {
   TaskSpecBuilder spec_builder;
   TaskID id = RandomTaskId();
   JobID job_id = RandomJobId();
@@ -182,6 +183,10 @@ RayTask CreateTask(const std::unordered_map<std::string, double> &required_resou
       nullptr);
 
   spec_builder.SetNormalTaskSpec(0, false, "", rpc::SchedulingStrategy(), ActorID::Nil());
+
+  for (const auto &arg : args) {
+    spec_builder.AddArg(*arg);
+  }
 
   return RayTask(std::move(spec_builder).ConsumeAndBuild());
 }
@@ -302,30 +307,44 @@ TEST_F(LocalTaskManagerTest, TestTaskDispatchingOrder) {
 }
 
 TEST_F(LocalTaskManagerTest, TestNoLeakOnImpossibleInfeasibleTask) {
-  // Note that ideally it ideally shouldn't be possible for an infeasible task to
-  // make it to the local task manager.
+  // Note that ideally it shouldn't be possible for an infeasible task to
+  // be in the local task manager when ScheduleAndDispatchTasks happens.
 
-  // 2 CPU's available.
   std::shared_ptr<MockWorker> worker1 =
       std::make_shared<MockWorker>(WorkerID::FromRandom(), 0);
   std::shared_ptr<MockWorker> worker2 =
       std::make_shared<MockWorker>(WorkerID::FromRandom(), 0);
   pool_.PushWorker(std::static_pointer_cast<WorkerInterface>(worker1));
 
-  // Create 2 tasks that requires 3 CPU's each.
-  auto task1 = CreateTask({{"infeasible_resource", 3}}, "f");
-  auto task2 = CreateTask({{"infeasible_resource", 3}}, "f2");
+  // Create 2 tasks that requires 3 CPU's each and are waiting on an arg.
+  auto arg_id = ObjectID::FromRandom();
+  std::vector<std::unique_ptr<TaskArg>> args;
+  args.push_back(
+      std::make_unique<TaskArgByReference>(arg_id, rpc::Address{}, "call_site"));
+  auto task1 = CreateTask({{kCPU_ResourceLabel, 3}}, "f", args);
+  auto task2 = CreateTask({{kCPU_ResourceLabel, 3}}, "f2", args);
+
+  EXPECT_CALL(object_manager_, Pull(_, _, _))
+      .WillOnce(::testing::Return(1))
+      .WillOnce(::testing::Return(2));
 
   // Submit the tasks to the local task manager.
   int num_callbacks_called = 0;
   auto callback = [&num_callbacks_called]() { ++num_callbacks_called; };
   rpc::RequestWorkerLeaseReply reply1;
-  local_task_manager_->WaitForTaskArgsRequests(std::make_shared<internal::Work>(
+  local_task_manager_->QueueAndScheduleTask(std::make_shared<internal::Work>(
       task1, false, false, &reply1, callback, internal::WorkStatus::WAITING));
   rpc::RequestWorkerLeaseReply reply2;
-  local_task_manager_->WaitForTaskArgsRequests(std::make_shared<internal::Work>(
+  local_task_manager_->QueueAndScheduleTask(std::make_shared<internal::Work>(
       task2, false, false, &reply2, callback, internal::WorkStatus::WAITING));
-  local_task_manager_->ScheduleAndDispatchTasks();
+
+  // Node no longer has cpu.
+  scheduler_->GetLocalResourceManager().DeleteLocalResource(
+      scheduling::ResourceID::CPU());
+
+  // Simulate arg becoming local.
+  local_task_manager_->TasksUnblocked(
+      {task1.GetTaskSpecification().TaskId(), task2.GetTaskSpecification().TaskId()});
 
   // Assert that the the correct rpc replies were sent back and the dispatch map is empty.
   ASSERT_EQ(reply1.failure_type(),

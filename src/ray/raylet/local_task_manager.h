@@ -244,12 +244,6 @@ class LocalTaskManager : public ILocalTaskManager {
   /// data structure.
   void RecomputeDebugStats() const;
 
-  /// Determine whether a task should be immediately dispatched,
-  /// or placed on a wait queue.
-  ///
-  /// \return True if the work can be immediately dispatched.
-  bool WaitForTaskArgsRequests(std::shared_ptr<internal::Work> work);
-
   void Dispatch(
       std::shared_ptr<WorkerInterface> worker,
       absl::flat_hash_map<WorkerID, std::shared_ptr<WorkerInterface>> &leased_workers_,
@@ -272,6 +266,10 @@ class LocalTaskManager : public ILocalTaskManager {
   void ReleaseTaskArgs(const TaskID &task_id);
 
  private:
+  /// Determine whether a task should be immediately dispatched,
+  /// or placed on a wait queue.
+  void WaitForTaskArgsRequests(std::shared_ptr<internal::Work> work);
+
   const NodeID &self_node_id_;
   const scheduling::NodeID self_scheduling_node_id_;
   /// Responsible for resource tracking/view of the cluster.
@@ -393,7 +391,6 @@ class LocalTaskManager : public ILocalTaskManager {
   friend class LocalTaskManagerTest;
   FRIEND_TEST(ClusterTaskManagerTest, FeasibleToNonFeasible);
   FRIEND_TEST(LocalTaskManagerTest, TestTaskDispatchingOrder);
-  FRIEND_TEST(LocalTaskManagerTest, TestNoLeakOnImpossibleInfeasibleTask);
 };
 }  // namespace raylet
 }  // namespace ray

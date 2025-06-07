@@ -80,12 +80,11 @@ void LocalTaskManager::QueueAndScheduleTask(std::shared_ptr<internal::Work> work
   ScheduleAndDispatchTasks();
 }
 
-bool LocalTaskManager::WaitForTaskArgsRequests(std::shared_ptr<internal::Work> work) {
+void LocalTaskManager::WaitForTaskArgsRequests(std::shared_ptr<internal::Work> work) {
   const auto &task = work->task;
   const auto &task_id = task.GetTaskSpecification().TaskId();
   const auto &scheduling_key = task.GetTaskSpecification().GetSchedulingClass();
   auto object_ids = task.GetTaskSpecification().GetDependencies();
-  bool can_dispatch = true;
   if (!object_ids.empty()) {
     bool args_ready = task_dependency_manager_.RequestTaskDependencies(
         task_id,
@@ -97,7 +96,6 @@ bool LocalTaskManager::WaitForTaskArgsRequests(std::shared_ptr<internal::Work> w
     } else {
       RAY_LOG(DEBUG) << "Waiting for args for task: "
                      << task.GetTaskSpecification().TaskId();
-      can_dispatch = false;
       auto it = waiting_task_queue_.insert(waiting_task_queue_.end(), std::move(work));
       RAY_CHECK(waiting_tasks_index_.emplace(task_id, it).second);
     }
@@ -106,7 +104,6 @@ bool LocalTaskManager::WaitForTaskArgsRequests(std::shared_ptr<internal::Work> w
                    << task.GetTaskSpecification().TaskId();
     tasks_to_dispatch_[scheduling_key].emplace_back(std::move(work));
   }
-  return can_dispatch;
 }
 
 void LocalTaskManager::ScheduleAndDispatchTasks() {
