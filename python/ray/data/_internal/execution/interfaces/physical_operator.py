@@ -364,6 +364,15 @@ class PhysicalOperator(Operator):
         that are specific to them."""
         return {}
 
+    def _get_logical_args(self) -> Dict[str, Dict[str, Any]]:
+        """Return the logical arguments that were translated to create this
+        PhysicalOperator."""
+        res = {}
+        for i, logical_op in enumerate(self._logical_operators):
+            logical_op_id = f"{logical_op}_{i}"
+            res[logical_op_id] = logical_op._get_args()
+        return res
+
     def progress_str(self) -> str:
         """Return any extra status to be displayed in the operator progress bar.
 
