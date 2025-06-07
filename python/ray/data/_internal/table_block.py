@@ -31,9 +31,9 @@ from ray.data.block import (
     BlockAccessor,
     BlockColumnAccessor,
     BlockExecStats,
-    BlockMetadata,
     BlockType,
     KeyType,
+    MetadataAndSchema,
     U,
 )
 from ray.data.context import DEFAULT_TARGET_MAX_BLOCK_SIZE
@@ -392,7 +392,7 @@ class TableBlockAccessor(BlockAccessor):
         sort_key: "SortKey",
         aggs: Tuple["AggregateFn"],
         finalize: bool = True,
-    ) -> Tuple[Block, BlockMetadata]:
+    ) -> Tuple[Block, "MetadataAndSchema"]:
         """Combine previously aggregated blocks.
 
         This assumes blocks are already sorted by key in ascending order,
@@ -506,7 +506,12 @@ class TableBlockAccessor(BlockAccessor):
                 break
 
         ret = builder.build()
-        return ret, BlockAccessor.for_block(ret).get_metadata(exec_stats=stats.build())
+        accessor = BlockAccessor.for_block(ret)
+
+        return ret, MetadataAndSchema(
+            metadata=accessor.get_metadata(exec_stats=stats.build()),
+            schema=accessor.schema(),
+        )
 
     def _find_partitions_sorted(
         self,

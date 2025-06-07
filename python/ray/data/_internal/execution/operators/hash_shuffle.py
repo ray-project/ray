@@ -7,6 +7,7 @@ import threading
 from collections import defaultdict, deque
 from dataclasses import dataclass
 from typing import (
+    TYPE_CHECKING,
     Any,
     AsyncGenerator,
     Callable,
@@ -47,6 +48,9 @@ from ray.data.block import (
     BlockType,
     to_stats,
 )
+
+if TYPE_CHECKING:
+    from ray.data.block import MetadataAndSchema
 
 logger = logging.getLogger(__name__)
 
@@ -1095,7 +1099,7 @@ class HashShuffleAggregator:
 
     def finalize(
         self, partition_id: int
-    ) -> AsyncGenerator[Union[Block, BlockMetadata], None]:
+    ) -> AsyncGenerator[Union[Block, "MetadataAndSchema"], None]:
         with self._lock:
             # Finalize given partition id
             result = self._agg.finalize(partition_id)
@@ -1103,5 +1107,12 @@ class HashShuffleAggregator:
             self._agg.clear(partition_id)
 
         # TODO break down blocks to target size
+        accessor = BlockAccessor.for_block(result)
+        from ray.data.block import MetadataAndSchema
+
+        meta_schema = MetadataAndSchema(
+            metadata=accessor.get_metadata(),
+            schema=accessor.schema(),
+        )
         yield result
-        yield BlockAccessor.for_block(result).get_metadata()
+        yield meta_schema

@@ -9,8 +9,15 @@ from ray.data._internal.planner.exchange.interfaces import (
 )
 from ray.data._internal.remote_fn import cached_remote_fn
 from ray.data._internal.stats import StatsDict
-from ray.data._internal.util import convert_bytes_to_human_readable_str
-from ray.data.block import to_stats
+from ray.data._internal.util import (
+    _unzip_list_of_tuples,
+    convert_bytes_to_human_readable_str,
+    unify_block_metadata_schema,
+)
+from ray.data.block import (
+    _decompose_metadata_and_schema,
+    to_stats,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -81,6 +88,7 @@ class PullBasedShuffleTaskScheduler(ExchangeTaskScheduler):
         if _debug_limit_execution_to_num_blocks is not None:
             input_blocks_list = input_blocks_list[:_debug_limit_execution_to_num_blocks]
             logger.debug(f"Limiting execution to {len(input_blocks_list)} map tasks")
+
         shuffle_map_out = [
             shuffle_map.options(
                 **map_ray_remote_args,
@@ -90,9 +98,9 @@ class PullBasedShuffleTaskScheduler(ExchangeTaskScheduler):
         ]
 
         # The first item returned is the BlockMetadata.
-        shuffle_map_metadata = []
+        shuffle_map_metadata_schema = []
         for i, refs in enumerate(shuffle_map_out):
-            shuffle_map_metadata.append(refs[-1])
+            shuffle_map_metadata_schema.append(refs[-1])
             shuffle_map_out[i] = refs[:-1]
 
         if _debug_limit_execution_to_num_blocks is not None:
@@ -100,7 +108,9 @@ class PullBasedShuffleTaskScheduler(ExchangeTaskScheduler):
                 # Repeat the first map task's results.
                 shuffle_map_out.append(shuffle_map_out[0][:])
 
-        shuffle_map_metadata = map_bar.fetch_until_complete(shuffle_map_metadata)
+        shuffle_map_metadata_schema = map_bar.fetch_until_complete(
+            shuffle_map_metadata_schema
+        )
 
         self.warn_on_high_local_memory_store_usage()
 
@@ -122,15 +132,15 @@ class PullBasedShuffleTaskScheduler(ExchangeTaskScheduler):
         # Release map task outputs from the Ray object store.
         del shuffle_map_out
 
-        new_blocks, new_metadata = [], []
-        if shuffle_reduce_out:
-            new_blocks, new_metadata = zip(*shuffle_reduce_out)
-        new_metadata = reduce_bar.fetch_until_complete(list(new_metadata))
+        new_blocks, new_metadata_schema = _unzip_list_of_tuples(2, shuffle_reduce_out)
+        new_metadata_schema = reduce_bar.fetch_until_complete(list(new_metadata_schema))
 
         self.warn_on_high_local_memory_store_usage()
 
+        new_metadata, new_schema = _decompose_metadata_and_schema(new_metadata_schema)
+
         output = []
-        for block, meta in zip(new_blocks, new_metadata):
+        for block, meta, schema in zip(new_blocks, new_metadata, new_schema):
             output.append(
                 RefBundle(
                     [
@@ -140,11 +150,18 @@ class PullBasedShuffleTaskScheduler(ExchangeTaskScheduler):
                         )
                     ],
                     owns_blocks=input_owned,
+                    schema=schema,
                 )
             )
+
+        shuffle_map_metadata, shuffle_map_schema = _decompose_metadata_and_schema(
+            shuffle_map_metadata_schema
+        )
+
         stats = {
             "map": to_stats(shuffle_map_metadata),
             "reduce": to_stats(new_metadata),
         }
 
+        schema = unify_block_metadata_schema(new_schema)
         return (output, stats)
