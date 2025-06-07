@@ -27,7 +27,7 @@ class RunStatus(str, Enum):
     # ===== Terminal States ======
     # The Train run completed successfully.
     FINISHED = "FINISHED"
-    # The Train run failed due to an error in the training function.
+    # The Train run failed due to an error in the training workers.
     ERRORED = "ERRORED"
     # The Train run was terminated due to system or controller errors.
     ABORTED = "ABORTED"
@@ -46,7 +46,7 @@ class RunAttemptStatus(str, Enum):
     # ===== Terminal States =====
     # The run attempt completed successfully.
     FINISHED = "FINISHED"
-    # The run attempt failed due to an error in the training function.
+    # The run attempt failed due to an error in the training workers.
     ERRORED = "ERRORED"
     # The run attempt was terminated due to system or controller errors.
     ABORTED = "ABORTED"
@@ -211,7 +211,7 @@ class TrainRun(BaseModel):
     id: str = Field(description="Unique identifier for the Train run.")
     name: str = Field(description="Human-readable name assigned to the Train run.")
     job_id: str = Field(description="The Ray Job ID associated with this Train run.")
-    controller_actor_id: str = Field(
+    controller_actor_id: Optional[str] = Field(
         description="Unique ID of the actor managing the Train run."
     )
     status: RunStatus = Field(

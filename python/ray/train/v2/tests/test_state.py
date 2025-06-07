@@ -373,6 +373,28 @@ def test_callback_error_state_transition(ray_start_regular, callback):
     assert run.end_time_ns is not None
 
 
+def test_callback_aborted_no_worker_group_context(ray_start_regular, callback):
+    callback.before_controller_abort(None)
+    state_actor = get_state_actor()
+    runs = ray.get(state_actor.get_train_runs.remote())
+    run = list(runs.values())[0]
+    assert run.status == RunStatus.ABORTED
+
+
+def test_callback_aborted_with_worker_group_context(
+    ray_start_regular, callback, mock_worker_group_context
+):
+    callback.before_worker_group_start(mock_worker_group_context)
+    callback.before_controller_abort(mock_worker_group_context)
+    state_actor = get_state_actor()
+    runs = ray.get(state_actor.get_train_runs.remote())
+    run = list(runs.values())[0]
+    assert run.status == RunStatus.ABORTED
+    attempts = ray.get(state_actor.get_train_run_attempts.remote())
+    attempt = list(attempts.values())[0]["attempt_1"]
+    assert attempt.status == RunAttemptStatus.ABORTED
+
+
 def test_callback_worker_group_lifecycle(
     ray_start_regular, callback, mock_worker_group, mock_worker_group_context
 ):
