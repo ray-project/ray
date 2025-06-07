@@ -61,6 +61,11 @@ class OpenTelemetryMetricRecorder {
   // Registers a sum metric with the given name and description
   void RegisterSumMetric(const std::string &name, const std::string &description);
 
+  // Registers a histogram metric with the given name, description, and buckets
+  void RegisterHistogramMetric(const std::string &name,
+                               const std::string &description,
+                               const std::vector<double> &buckets);
+
   // Check if a metric with the given name is registered.
   bool IsMetricRegistered(const std::string &name);
 
@@ -114,6 +119,8 @@ class OpenTelemetryMetricRecorder {
   // Flag to indicate if the recorder is shutting down. This is used to make sure that
   // the recorder will only shutdown once.
   std::atomic<bool> is_shutdown_{false};
+  // The name of the meter used for this recorder.
+  const std::string meter_name_ = "ray";
 
   void SetObservableMetricValue(const std::string &name,
                                 absl::flat_hash_map<std::string, std::string> &&tags,
@@ -128,7 +135,7 @@ class OpenTelemetryMetricRecorder {
   }
 
   opentelemetry::nostd::shared_ptr<opentelemetry::metrics::Meter> GetMeter() {
-    return meter_provider_->GetMeter("ray");
+    return meter_provider_->GetMeter(meter_name_);
   }
 };
 }  // namespace telemetry

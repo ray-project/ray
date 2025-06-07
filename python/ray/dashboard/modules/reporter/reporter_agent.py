@@ -13,6 +13,7 @@ from typing import List, Optional, Tuple, TypedDict, Union
 from opencensus.stats import stats as stats_module
 from prometheus_client.core import REGISTRY
 from opentelemetry.proto.collector.metrics.v1 import metrics_service_pb2
+from opentelemetry.proto.metrics.v1.metrics_pb2 import Metric
 from grpc.aio import ServicerContext
 
 
@@ -504,6 +505,62 @@ class ReporterAgent(
             logger.error(traceback.format_exc())
         return reporter_pb2.ReportOCMetricsReply()
 
+    def _export_histogram_data(
+        self,
+        metric: Metric,
+    ) -> None:
+        """
+        Export histogram data points to OpenTelemetry Metric Recorder.
+
+        For performance reason, we use the average value as an approximation data point
+        per collection interval. This approach should be sufficient for most use cases
+        where the histogram spans over many collection intervals.
+        """
+        data_points = metric.histogram.data_points
+        if not data_points:
+            return
+        self._open_telemetry_metric_recorder.register_histogram_metric(
+            metric.name,
+            metric.description,
+            data_points[0].explicit_bounds,
+        )
+        for data_point in data_points:
+            self._open_telemetry_metric_recorder.set_metric_value(
+                metric.name,
+                {tag.key: tag.value.string_value for tag in data_point.attributes},
+                data_point.sum / data_point.count if data_point.count > 0 else 0.0,
+            )
+
+    def _export_number_data(
+        self,
+        metric: Metric,
+    ) -> None:
+        data_points = []
+        if metric.WhichOneof("data") == "gauge":
+            self._open_telemetry_metric_recorder.register_gauge_metric(
+                metric.name,
+                metric.description,
+            )
+            data_points = metric.gauge.data_points
+        if metric.WhichOneof("data") == "sum":
+            if metric.sum.is_monotonic:
+                self._open_telemetry_metric_recorder.register_counter_metric(
+                    metric.name,
+                    metric.description,
+                )
+            else:
+                self._open_telemetry_metric_recorder.register_sum_metric(
+                    metric.name,
+                    metric.description,
+                )
+            data_points = metric.sum.data_points
+        for data_point in data_points:
+            self._open_telemetry_metric_recorder.set_metric_value(
+                metric.name,
+                {tag.key: tag.value.string_value for tag in data_point.attributes},
+                data_point.as_double,
+            )
+
     async def Export(
         self,
         request: metrics_service_pb2.ExportMetricsServiceRequest,
@@ -512,37 +569,10 @@ class ReporterAgent(
         for resource_metrics in request.resource_metrics:
             for scope_metrics in resource_metrics.scope_metrics:
                 for metric in scope_metrics.metrics:
-                    data_points = []
-                    # gauge metrics
-                    if metric.WhichOneof("data") == "gauge":
-                        self._open_telemetry_metric_recorder.register_gauge_metric(
-                            metric.name, metric.description or ""
-                        )
-                        data_points = metric.gauge.data_points
-                    # counter metrics
-                    if metric.WhichOneof("data") == "sum" and metric.sum.is_monotonic:
-                        self._open_telemetry_metric_recorder.register_counter_metric(
-                            metric.name, metric.description or ""
-                        )
-                        data_points = metric.sum.data_points
-                    # sum metrics
-                    if (
-                        metric.WhichOneof("data") == "sum"
-                        and not metric.sum.is_monotonic
-                    ):
-                        self._open_telemetry_metric_recorder.register_sum_metric(
-                            metric.name, metric.description or ""
-                        )
-                        data_points = metric.sum.data_points
-                    for data_point in data_points:
-                        self._open_telemetry_metric_recorder.set_metric_value(
-                            metric.name,
-                            {
-                                tag.key: tag.value.string_value
-                                for tag in data_point.attributes
-                            },
-                            data_point.as_double,
-                        )
+                    if metric.WhichOneof("data") == "histogram":
+                        self._export_histogram_data(metric)
+                    else:
+                        self._export_number_data(metric)
 
         return metrics_service_pb2.ExportMetricsServiceResponse()
 
