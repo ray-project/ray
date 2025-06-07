@@ -212,26 +212,30 @@ def _is_allowed_type(obj):
     return isinstance(obj, (Number, WBValue))
 
 
-def _clean_log(obj: Any):
+def _clean_log(obj: Any, *, video_fps=4):
     # Fixes https://github.com/ray-project/ray/issues/10631
     if isinstance(obj, dict):
-        return {k: _clean_log(v) for k, v in obj.items()}
+        return {k: _clean_log(v, video_fps=video_fps) for k, v in obj.items()}
     elif isinstance(obj, (list, set)):
-        return [_clean_log(v) for v in obj]
+        return [_clean_log(v, video_fps=video_fps) for v in obj]
     elif isinstance(obj, tuple):
-        return tuple(_clean_log(v) for v in obj)
+        return tuple(_clean_log(v, video_fps=video_fps) for v in obj)
     elif isinstance(obj, np.ndarray) and obj.ndim == 3:
         # Must be single image (H, W, C).
         return Image(obj)
     elif isinstance(obj, np.ndarray) and obj.ndim == 4:
         # Must be batch of images (N >= 1, H, W, C).
         return (
-            _clean_log([Image(v) for v in obj]) if obj.shape[0] > 1 else Image(obj[0])
+            _clean_log([Image(v) for v in obj], video_fps=video_fps)
+            if obj.shape[0] > 1
+            else Image(obj[0])
         )
     elif isinstance(obj, np.ndarray) and obj.ndim == 5:
         # Must be batch of videos (N >= 1, T, C, W, H).
         return (
-            _clean_log([Video(v) for v in obj]) if obj.shape[0] > 1 else Video(obj[0])
+            _clean_log([Video(v, fps=video_fps) for v in obj], video_fps=video_fps)
+            if obj.shape[0] > 1
+            else Video(obj[0], fps=video_fps)
         )
     elif _is_allowed_type(obj):
         return obj
@@ -511,7 +515,10 @@ class WandbLoggerCallback(LoggerCallback):
             PopulationBasedTraining. Defaults to False.
         upload_checkpoints: If ``True``, model checkpoints will be uploaded to
             Wandb as artifacts. Defaults to ``False``.
-        **kwargs: The keyword arguments will be pased to ``wandb.init()``.
+        video_fps: Frames per second to use when logging videos to Wandb.
+            Videos have to be logged as 4D numpy arrays to be affected by this parameter.
+            Defaults to 4.
+        **kwargs: The keyword arguments will be passed to ``wandb.init()``.
 
     Wandb's ``group``, ``run_id`` and ``run_name`` are automatically selected
     by Tune, but can be overwritten by filling out the respective configuration
@@ -548,6 +555,7 @@ class WandbLoggerCallback(LoggerCallback):
         upload_checkpoints: bool = False,
         save_checkpoints: bool = False,
         upload_timeout: int = DEFAULT_SYNC_TIMEOUT,
+        video_fps: int = 4,
         **kwargs,
     ):
         if not wandb:
@@ -570,6 +578,7 @@ class WandbLoggerCallback(LoggerCallback):
         self.log_config = log_config
         self.upload_checkpoints = upload_checkpoints
         self._upload_timeout = upload_timeout
+        self.video_fps = video_fps
         self.kwargs = kwargs
 
         self._remote_logger_class = None
@@ -687,7 +696,7 @@ class WandbLoggerCallback(LoggerCallback):
         if trial not in self._trial_logging_actors:
             self.log_trial_start(trial)
 
-        result = _clean_log(result)
+        result = _clean_log(result, video_fps=self.video_fps)
         self._trial_queues[trial].put((_QueueItem.RESULT, result))
 
     def log_trial_save(self, trial: "Trial"):
