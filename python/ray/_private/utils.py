@@ -305,7 +305,7 @@ class Unbuffered(object):
         return getattr(self.stream, attr)
 
 
-def open_log(path, unbuffered=False, **kwargs):
+def open_log(path_or_fd, unbuffered=False, **kwargs):
     """
     Opens the log file at `path`, with the provided kwargs being given to
     `open`.
@@ -314,11 +314,10 @@ def open_log(path, unbuffered=False, **kwargs):
     kwargs.setdefault("buffering", 1)
     kwargs.setdefault("mode", "a")
     kwargs.setdefault("encoding", "utf-8")
-    stream = open(path, **kwargs)
-    if unbuffered:
-        return Unbuffered(stream)
-    else:
-        return stream
+    closefd = kwargs.pop("closefd", True)
+    stream = open(path_or_fd, closefd=closefd, **kwargs)
+
+    return Unbuffered(stream) if unbuffered else stream
 
 
 def _get_docker_cpus(
