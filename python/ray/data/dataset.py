@@ -3,6 +3,8 @@ import copy
 import html
 import itertools
 import logging
+import math
+import re
 import time
 import warnings
 from typing import (
@@ -1455,76 +1457,49 @@ class Dataset:
         self,
         num_blocks: Optional[int] = None,
         target_num_rows_per_block: Optional[int] = None,
+        target_bytes_per_block: Optional[Union[int, str]] = None,
         *,
         shuffle: bool = False,
         keys: Optional[List[str]] = None,
         sort: bool = False,
     ) -> "Dataset":
-        """Repartition the :class:`Dataset` into exactly this number of
-        :ref:`blocks <dataset_concept>`.
+        """
+        Repartition the :class:`Dataset` based on the number of blocks, target number of rows per block, or target byte size per block.
 
-        This method can be useful to tune the performance of your pipeline. To learn
-        more, see :ref:`Advanced: Performance Tips and Tuning <data_performance_tips>`.
-
-        If you're writing data to files, you can also use this method to change the
-        number of output files. To learn more, see
-        :ref:`Changing the number of output files <changing-number-output-files>`.
-
-        .. note::
-
-            Repartition has two modes. If ``shuffle=False``, Ray Data performs the
-            minimal data movement needed to equalize block sizes. Otherwise, Ray Data
-            performs a full distributed shuffle.
-
-            .. image:: /data/images/dataset-shuffle.svg
-                :align: center
-
-            ..
-                https://docs.google.com/drawings/d/132jhE3KXZsf29ho1yUdPrCHB9uheHBWHJhDQMXqIVPA/edit
-
-        Examples:
-            >>> import ray
-            >>> ds = ray.data.range(100).repartition(10).materialize()
-            >>> ds.num_blocks()
-            10
-
-        Time complexity: O(dataset size / parallelism)
+        Only one of `num_blocks`, `target_num_rows_per_block`, or `target_bytes_per_block` can be set.
 
         Args:
             num_blocks: Number of blocks after repartitioning.
-            target_num_rows_per_block: [Experimental] The target number of rows per block to
-                repartition. Note that either `num_blocks` or
-                `target_num_rows_per_block` must be set, but not both. When
-                `target_num_rows_per_block` is set, it only repartitions
-                :class:`Dataset` :ref:`blocks <dataset_concept>` that are larger than
-                `target_num_rows_per_block`. Note that the system will internally
-                figure out the number of rows per :ref:`blocks <dataset_concept>` for
-                optimal execution, based on the `target_num_rows_per_block`. This is
-                the current behavior because of the implementation and may change in
-                the future.
-            shuffle: Whether to perform a distributed shuffle during the
-                repartition. When shuffle is enabled, each output block
-                contains a subset of data rows from each input block, which
-                requires all-to-all data movement. When shuffle is disabled,
-                output blocks are created from adjacent input blocks,
-                minimizing data movement.
-            keys: List of key columns repartitioning will use to determine which
-                partition will row belong to after repartitioning (by applying
-                hash-partitioning algorithm to the whole dataset). Note that, this
-                config is only relevant when `DataContext.use_hash_based_shuffle`
-                is set to True.
-            sort: Whether the blocks should be sorted after repartitioning. Note,
-                that by default blocks will be sorted in the ascending order.
-
-        Note that you must set either `num_blocks` or `target_num_rows_per_block`
-        but not both.
-        Additionally note that this operation materializes the entire dataset in memory
-        when you set shuffle to True.
+            target_num_rows_per_block: [Experimental] Target number of rows per block.
+            target_bytes_per_block: Target size in bytes for each block ("128MiB", 100_000_000, etc).
+            shuffle: Whether to perform a distributed shuffle (for `num_blocks` partitioning).
+            keys: Partition keys for shuffle repartitioning (ignored otherwise).
+            sort: Whether the blocks should be sorted after repartitioning.
 
         Returns:
             The repartitioned :class:`Dataset`.
-        """  # noqa: E501
+        """
+        # Validate only one is set
+        set_args = [
+            num_blocks is not None,
+            target_num_rows_per_block is not None,
+            target_bytes_per_block is not None,
+        ]
+        if sum(set_args) != 1:
+            raise ValueError(
+                "Exactly one of `num_blocks`, `target_num_rows_per_block`, or "
+                "`target_bytes_per_block` must be set."
+            )
 
+        if (target_num_rows_per_block is not None) and (
+            target_bytes_per_block is not None
+        ):
+            raise ValueError(
+                "target_num_rows_per_block and target_bytes_per_block cannot"
+                "both be specified, please use just one for specifiying the repartition"
+            )
+
+        # If target_num_rows_per_block: warn, validate, and do streaming repartition
         if target_num_rows_per_block is not None:
             if keys is not None:
                 warnings.warn(
@@ -1539,37 +1514,93 @@ class Dataset:
                     "`shuffle` is ignored when `target_num_rows_per_block` is set."
                 )
 
-        if (num_blocks is None) and (target_num_rows_per_block is None):
-            raise ValueError(
-                "Either `num_blocks` or `target_num_rows_per_block` must be set"
-            )
-
-        if (num_blocks is not None) and (target_num_rows_per_block is not None):
-            raise ValueError(
-                "Only one of `num_blocks` or `target_num_rows_per_block` must be set, "
-                "but not both."
-            )
-
-        if target_num_rows_per_block is not None and shuffle:
-            raise ValueError(
-                "`shuffle` must be False when `target_num_rows_per_block` is set."
-            )
-
-        plan = self._plan.copy()
-        if target_num_rows_per_block is not None:
+            plan = self._plan.copy()
             op = StreamingRepartition(
                 self._logical_plan.dag,
                 target_num_rows_per_block=target_num_rows_per_block,
             )
-        else:
-            op = Repartition(
-                self._logical_plan.dag,
-                num_outputs=num_blocks,
-                shuffle=shuffle,
-                keys=keys,
-                sort=sort,
-            )
+            logical_plan = LogicalPlan(op, self.context)
+            return Dataset(plan, logical_plan)
 
+        # If target_bytes_per_block: parse, estimate block count, and do non-shuffle repartition
+        if target_bytes_per_block is not None:
+            SIZE_UNITS = {
+                "B": 1,
+                "KIB": 1024,
+                "MIB": 1024**2,
+                "GIB": 1024**3,
+                "TIB": 1024**4,
+                "KB": 1024,
+                "MB": 1024**2,
+                "GB": 1024**3,
+                "TB": 1024**4,
+            }
+
+            def parse_size(size):
+                if isinstance(size, int):
+                    if size < 1:
+                        raise ValueError(
+                            "target_bytes_per_block must be a positive integer or valid size string."
+                        )
+                    return size
+                elif isinstance(size, str):
+                    size = size.strip().upper().replace(" ", "")
+                    if size.isdigit():
+                        return int(size)
+                    match = re.match(r"^(\d+(?:\.\d+)?)([KMGT]I?B)$", size)
+                    if not match:
+                        raise ValueError(
+                            f"Invalid size string: '{size}'. Use formats like '128MiB', '4GiB', etc."
+                        )
+                    value, unit = match.groups()
+                    value = float(value)
+                    if unit not in SIZE_UNITS:
+                        raise ValueError(
+                            f"Unknown unit '{unit}'. Known: {list(SIZE_UNITS.keys())}"
+                        )
+                    return int(value * SIZE_UNITS[unit])
+                else:
+                    raise TypeError("target_bytes_per_block must be int or str")
+
+            block_size_bytes = parse_size(target_bytes_per_block)
+            if block_size_bytes < SIZE_UNITS["MIB"]:
+                raise ValueError("Block size should be at least 1MiB.")
+
+            total_bytes = 0
+            num_blocks = 0
+            for ref_bundle in self.iter_internal_ref_bundles():
+                for _, block_md in ref_bundle.blocks:
+                    if block_md.size_bytes is not None:
+                        total_bytes += block_md.size_bytes
+                    num_blocks += 1
+
+            if total_bytes == 0:
+                return self
+
+            ideal_blocks = max(1, math.ceil(total_bytes / block_size_bytes))
+
+            if ideal_blocks != num_blocks:
+                op = Repartition(
+                    self._logical_plan.dag,
+                    num_outputs=ideal_blocks,
+                    shuffle=False,
+                    keys=None,
+                    sort=False,
+                )
+                plan = self._plan.copy()
+                logical_plan = LogicalPlan(op, self.context)
+                return Dataset(plan, logical_plan)
+            else:
+                return self
+
+        op = Repartition(
+            self._logical_plan.dag,
+            num_outputs=num_blocks,
+            shuffle=shuffle,
+            keys=keys,
+            sort=sort,
+        )
+        plan = self._plan.copy()
         logical_plan = LogicalPlan(op, self.context)
         return Dataset(plan, logical_plan)
 
