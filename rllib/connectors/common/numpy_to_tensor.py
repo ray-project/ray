@@ -2,8 +2,7 @@ from typing import Any, Dict, List, Optional
 
 import gymnasium as gym
 
-from ray.rllib.connectors.connector_v2 import ConnectorV2
-from ray.rllib.core import DEFAULT_MODULE_ID
+from ray.rllib.connectors.connector_v2 import ConnectorV2, ConnectorV2BatchFormats
 from ray.rllib.core.columns import Columns
 from ray.rllib.core.rl_module.multi_rl_module import MultiRLModule
 from ray.rllib.core.rl_module.rl_module import RLModule
@@ -32,6 +31,7 @@ class NumpyToTensor(ConnectorV2):
         AddObservationsFromEpisodesToBatch,
         AddTimeDimToBatchAndZeroPad,
         AddStatesFromEpisodesToBatch,
+        RemapModuleToColumns,  # only in single-agent setups!
         AgentToModuleMapping,  # only in multi-agent setups!
         BatchIndividualItems,
         NumpyToTensor,
@@ -43,15 +43,31 @@ class NumpyToTensor(ConnectorV2):
         AddColumnsFromEpisodesToTrainBatch,
         AddTimeDimToBatchAndZeroPad,
         AddStatesFromEpisodesToBatch,
+        RemapModuleToColumns,  # only in single-agent setups!
         AgentToModuleMapping,  # only in multi-agent setups!
         BatchIndividualItems,
         NumpyToTensor,
     ]
 
     This ConnectorV2:
-    - Loops through the input `data` and converts all found numpy arrays into
+    - Loops through the input `batch` and converts all found numpy arrays into
     framework-specific tensors (possibly on a GPU).
     """
+
+    # Incoming batches have the format:
+    # [moduleID] -> [column name] -> [tensors]
+    # For more details on the various possible batch formats, see the
+    # `ray.rllib.connectors.connector_v2.ConnectorV2BatchFormats` Enum.
+    INPUT_BATCH_FORMAT = (
+        ConnectorV2BatchFormats.BATCH_FORMAT_MODULE_TO_COLUMN_TO_BATCHED
+    )
+    # Returned batches have the format:
+    # [moduleID] -> [column name] -> [tensors]
+    # For more details on the various possible batch formats, see the
+    # `ray.rllib.connectors.connector_v2.ConnectorV2BatchFormats` Enum.
+    OUTPUT_BATCH_FORMAT = (
+        ConnectorV2BatchFormats.BATCH_FORMAT_MODULE_TO_COLUMN_TO_BATCHED
+    )
 
     def __init__(
         self,
@@ -97,10 +113,9 @@ class NumpyToTensor(ConnectorV2):
     ) -> Any:
         is_single_agent = False
         is_multi_rl_module = isinstance(rl_module, MultiRLModule)
-        # `data` already a ModuleID to batch mapping format.
+        # `batch` already a ModuleID to batch mapping format.
         if not (is_multi_rl_module and all(c in rl_module._rl_modules for c in batch)):
             is_single_agent = True
-            batch = {DEFAULT_MODULE_ID: batch}
 
         for module_id, module_data in batch.copy().items():
             infos = module_data.pop(Columns.INFOS, None)
@@ -114,7 +129,7 @@ class NumpyToTensor(ConnectorV2):
                 )
             if infos is not None:
                 module_data[Columns.INFOS] = infos
-            # Early out with data under(!) `DEFAULT_MODULE_ID`, b/c we are in plain
+            # Early out with data under `DEFAULT_MODULE_ID`, because we are in
             # single-agent mode.
             if is_single_agent:
                 return module_data
