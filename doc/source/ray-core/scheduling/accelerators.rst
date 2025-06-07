@@ -4,7 +4,7 @@
 Accelerator Support
 ===================
 
-Accelerators (e.g. GPUs) are critical for many machine learning applications.
+Accelerators like GPUs are critical for many machine learning apps.
 Ray Core natively supports many accelerators as pre-defined :ref:`resource <core-resources>` types and allows tasks and actors to specify their accelerator :ref:`resource requirements <resource-requirements>`.
 
 The accelerators natively supported by Ray Core are:
@@ -15,7 +15,7 @@ The accelerators natively supported by Ray Core are:
    * - Accelerator
      - Ray Resource Name
      - Support Level
-   * - Nvidia GPU
+   * - NVIDIA GPU
      - GPU
      - Fully tested, supported by the Ray team
    * - AMD GPU
@@ -37,7 +37,7 @@ The accelerators natively supported by Ray Core are:
      - NPU
      - Experimental, supported by the community
 
-Starting Ray Nodes with Accelerators
+Starting Ray nodes with accelerators
 ------------------------------------
 
 By default, Ray sets the quantity of accelerator resources of a node to the physical quantities of accelerators auto detected by Ray.
@@ -45,13 +45,13 @@ If you need to, you can :ref:`override <specify-node-resources>` this.
 
 .. tab-set::
 
-    .. tab-item:: Nvidia GPU
-        :sync: Nvidia GPU
+    .. tab-item:: NVIDIA GPU
+        :sync: NVIDIA GPU
 
         .. tip::
 
             You can set the ``CUDA_VISIBLE_DEVICES`` environment variable before starting a Ray node
-            to limit the Nvidia GPUs that are visible to Ray.
+            to limit the NVIDIA GPUs that are visible to Ray.
             For example, ``CUDA_VISIBLE_DEVICES=1,3 ray start --head --num-gpus=2``
             lets Ray only see devices 1 and 3.
 
@@ -119,8 +119,8 @@ If you need to, you can :ref:`override <specify-node-resources>` this.
 
 .. note::
 
-  There is nothing preventing you from specifying a larger number of
-  accelerator resources (e.g. ``num_gpus``) than the true number of accelerators on the machine given Ray resources are :ref:`logical <logical-resources>`.
+  There's nothing preventing you from specifying a larger number of
+  accelerator resources (e.g., ``num_gpus``) than the true number of accelerators on the machine given Ray resources are :ref:`logical <logical-resources>`.
   In this case, Ray acts as if the machine has the number of accelerators you specified
   for the purposes of scheduling tasks and actors that require accelerators.
   Trouble only occurs if those tasks and actors
@@ -135,8 +135,8 @@ and assign accelerators to the task or actor by setting the corresponding enviro
 
 .. tab-set::
 
-    .. tab-item:: Nvidia GPU
-        :sync: Nvidia GPU
+    .. tab-item:: NVIDIA GPU
+        :sync: NVIDIA GPU
 
         .. testcode::
 
@@ -446,8 +446,8 @@ so multiple tasks and actors can share the same accelerator.
 
 .. tab-set::
 
-    .. tab-item:: Nvidia GPU
-        :sync: Nvidia GPU
+    .. tab-item:: NVIDIA GPU
+        :sync: NVIDIA GPU
 
         .. testcode::
             :hide:
@@ -622,9 +622,8 @@ This also lets the multi-node-type autoscaler know that there is demand for that
 
     ray.shutdown()
     import ray.util.accelerators
-    import ray._private.ray_constants as ray_constants
 
-    v100_resource_name = f"{ray_constants.RESOURCE_CONSTRAINT_PREFIX}{ray.util.accelerators.NVIDIA_TESLA_V100}"
+    v100_resource_name = f"accelerator_type:{ray.util.accelerators.NVIDIA_TESLA_V100}"
     ray.init(num_gpus=4, resources={v100_resource_name: 1})
 
 .. testcode::
@@ -637,4 +636,4 @@ This also lets the multi-node-type autoscaler know that there is demand for that
 
     ray.get(train.remote(1))
 
-See ``ray.util.accelerators`` for available accelerator types.
+See :ref:`ray.util.accelerators <accelerator_types>` for available accelerator types.

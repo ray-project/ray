@@ -3,6 +3,7 @@ import subprocess
 import pytest
 import ray
 
+from ray._common.utils import decode
 from ray.tests.conftest import get_default_fixture_ray_kwargs
 from ray._private.test_utils import simulate_storage
 from ray.cluster_utils import Cluster
@@ -87,9 +88,7 @@ def workflow_start_regular_shared_serve(storage_type, use_ray_client: str, reque
 
 def _start_cluster_and_get_address(parameter: str) -> str:
     command_args = parameter.split(" ")
-    out = ray._private.utils.decode(
-        subprocess.check_output(command_args, stderr=subprocess.STDOUT)
-    )
+    out = decode(subprocess.check_output(command_args, stderr=subprocess.STDOUT))
     # Get the redis address from the output.
     address_prefix = "--address='"
     address_location = out.find(address_prefix) + len(address_prefix)

@@ -13,15 +13,17 @@
 // limitations under the License.
 
 #include <limits>
+#include <memory>
+#include <string>
+#include <utility>
+#include <vector>
 
-#include "absl/random/random.h"
-#include "absl/strings/str_format.h"
 #include "gmock/gmock.h"
 #include "gtest/gtest.h"
 #include "ray/core_worker/experimental_mutable_object_manager.h"
 #include "ray/object_manager/common.h"
 
-using namespace testing;
+using testing::Test;
 
 namespace ray {
 namespace experimental {
@@ -79,7 +81,10 @@ void Read(PlasmaObjectHeader *header,
   int64_t version_to_read = 1;
   for (size_t i = 0; i < num_reads; i++) {
     int64_t version_read = 0;
-    if (!header->ReadAcquire(sem, version_to_read, version_read).ok()) {
+    if (!header
+             ->ReadAcquire(
+                 ObjectID::FromRandom(), sem, version_to_read, version_read, nullptr)
+             .ok()) {
       data_results.push_back("error");
       metadata_results.push_back("error");
       return;

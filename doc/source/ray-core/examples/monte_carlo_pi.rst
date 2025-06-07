@@ -3,6 +3,13 @@
 Monte Carlo Estimation of π
 ===========================
 
+.. raw:: html
+
+    <a id="try-anyscale-quickstart-monte_carlo_pi" target="_blank" href="https://console.anyscale.com/register/ha?render_flow=ray&utm_source=ray_docs&utm_medium=docs&utm_campaign=monte_carlo_pi">
+      <img src="../../_static/img/run-on-anyscale.svg" alt="Run on Anyscale" />
+      <br/><br/>
+    </a>
+
 This tutorial shows you how to estimate the value of π using a `Monte Carlo method <https://en.wikipedia.org/wiki/Monte_Carlo_method>`_
 that works by randomly sampling points within a 2x2 square.
 We can use the proportion of the points that are contained within the unit circle centered at the origin
@@ -26,9 +33,6 @@ First, let's include all modules needed for this tutorial and start a local Ray 
     :start-after: __starting_ray_start__
     :end-before: __starting_ray_end__
 
-.. note::
-
-  In recent versions of Ray (>=1.5), ``ray.init()`` is automatically called on the first use of a Ray remote API.
 
 
 Defining the Progress Actor

@@ -9,7 +9,6 @@ from ray.rllib.env.base_env import ASYNC_RESET_RETURN, BaseEnv
 from ray.rllib.env.external_env import ExternalEnvWrapper
 from ray.rllib.env.wrappers.atari_wrappers import MonitorEnv, get_wrapper_by_cls
 from ray.rllib.evaluation.collectors.simple_list_collector import _PolicyCollectorGroup
-from ray.rllib.policy.rnn_sequencing import pad_batch_to_sequences_of_same_size
 from ray.rllib.evaluation.episode_v2 import EpisodeV2
 from ray.rllib.evaluation.metrics import RolloutMetrics
 from ray.rllib.models.preprocessors import Preprocessor
@@ -40,7 +39,7 @@ from ray.util.debug import log_once
 if TYPE_CHECKING:
     from gymnasium.envs.classic_control.rendering import SimpleImageViewer
 
-    from ray.rllib.algorithms.callbacks import DefaultCallbacks
+    from ray.rllib.callbacks.callbacks import RLlibCallback
     from ray.rllib.evaluation.rollout_worker import RolloutWorker
 
 
@@ -179,24 +178,6 @@ def _build_multi_agent_batch(
 
         batch = collector.build()
 
-        policy = collector.policy
-
-        if policy.config.get("enable_rl_module_and_learner", False):
-            # Before we send the collected batch back for training, we may need
-            # to add a time dimension for the RLModule.
-            seq_lens = batch.get(SampleBatch.SEQ_LENS)
-            pad_batch_to_sequences_of_same_size(
-                batch=batch,
-                max_seq_len=policy.config["model"]["max_seq_len"],
-                shuffle=False,
-                batch_divisibility_req=getattr(policy, "batch_divisibility_req", 1),
-                view_requirements=getattr(policy, "view_requirements", None),
-                _enable_new_api_stack=True,
-            )
-            batch = policy.maybe_add_time_dimension(
-                batch, seq_lens=seq_lens, framework="np"
-            )
-
         ma_batch[pid] = batch
 
     # Create the multi agent batch.
@@ -229,7 +210,7 @@ class EnvRunnerV2:
         worker: "RolloutWorker",
         base_env: BaseEnv,
         multiple_episodes_in_batch: bool,
-        callbacks: "DefaultCallbacks",
+        callbacks: "RLlibCallback",
         perf_stats: _PerfStats,
         rollout_fragment_length: int = 200,
         count_steps_by: str = "env_steps",
@@ -1072,16 +1053,9 @@ class EnvRunnerV2:
                 # changed (mapping fn not staying constant within one episode).
                 policy: Policy = _try_find_policy_again(eval_data)
 
-            if policy.config.get("enable_rl_module_and_learner", False):
-                # _batch_inference_sample_batches does nothing but concatenating AND
-                # setting SEQ_LENS to ones in the recurrent case. We do not need this
-                # because RLModules do not care about SEQ_LENS anymore. They have an
-                # expected input shape convention of [B, T, ...]
-                input_dict = concat_samples([d.data.sample_batch for d in eval_data])
-            else:
-                input_dict = _batch_inference_sample_batches(
-                    [d.data.sample_batch for d in eval_data]
-                )
+            input_dict = _batch_inference_sample_batches(
+                [d.data.sample_batch for d in eval_data]
+            )
 
             eval_results[policy_id] = policy.compute_actions_from_input_dict(
                 input_dict,

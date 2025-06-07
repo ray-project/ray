@@ -1,6 +1,8 @@
 import itertools
 import unittest
 
+import numpy as np
+
 from ray.rllib.core.columns import Columns
 from ray.rllib.core.models.base import ENCODER_OUT
 from ray.rllib.core.models.configs import RecurrentEncoderConfig
@@ -54,7 +56,9 @@ class TestRecurrentEncoders(unittest.TestCase):
             model_checker = ModelChecker(config)
 
             # Add this framework version of the model to our checker.
-            outputs = model_checker.add(framework="torch")
+            outputs = model_checker.add(
+                framework="torch", state={"h": np.array([num_layers, hidden_dim])}
+            )
             # Output shape: [1=B, 1=T, [output_dim]]
             self.assertEqual(
                 outputs[ENCODER_OUT].shape,
@@ -111,7 +115,13 @@ class TestRecurrentEncoders(unittest.TestCase):
             model_checker = ModelChecker(config)
 
             # Add this framework version of the model to our checker.
-            outputs = model_checker.add(framework="torch")
+            outputs = model_checker.add(
+                framework="torch",
+                state={
+                    "h": np.array([num_layers, hidden_dim]),
+                    "c": np.array([num_layers, hidden_dim]),
+                },
+            )
             # Output shape: [1=B, 1=T, [output_dim]]
             self.assertEqual(
                 outputs[ENCODER_OUT].shape,

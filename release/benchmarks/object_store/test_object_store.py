@@ -73,5 +73,4 @@ if "TEST_OUTPUT_JSON" in os.environ:
                 "perf_metric_type": "LATENCY",
             }
         ]
-        print(f"jjyao {results} {out_file}")
         json.dump(results, out_file)

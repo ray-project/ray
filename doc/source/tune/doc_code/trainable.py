@@ -8,14 +8,14 @@ def objective(x, a, b):
 # fmt: on
 
 # __function_api_report_intermediate_metrics_start__
-from ray import train, tune
+from ray import tune
 
 
 def trainable(config: dict):
     intermediate_score = 0
     for x in range(20):
         intermediate_score = objective(x, config["a"], config["b"])
-        train.report({"score": intermediate_score})  # This sends the score to Tune.
+        tune.report({"score": intermediate_score})  # This sends the score to Tune.
 
 
 tuner = tune.Tuner(trainable, param_space={"a": 2, "b": 4})
@@ -23,7 +23,7 @@ results = tuner.fit()
 # __function_api_report_intermediate_metrics_end__
 
 # __function_api_report_final_metrics_start__
-from ray import train, tune
+from ray import tune
 
 
 def trainable(config: dict):
@@ -31,7 +31,7 @@ def trainable(config: dict):
     for x in range(20):
         final_score = objective(x, config["a"], config["b"])
 
-    train.report({"score": final_score})  # This sends the score to Tune.
+    tune.report({"score": final_score})  # This sends the score to Tune.
 
 
 tuner = tune.Tuner(trainable, param_space={"a": 2, "b": 4})
@@ -50,7 +50,7 @@ def trainable(config: dict):
 # fmt: on
 
 # __class_api_example_start__
-from ray import train, tune
+from ray import tune
 
 
 class Trainable(tune.Trainable):
@@ -68,10 +68,10 @@ class Trainable(tune.Trainable):
 
 tuner = tune.Tuner(
     Trainable,
-    run_config=train.RunConfig(
+    run_config=tune.RunConfig(
         # Train for 20 steps
         stop={"training_iteration": 20},
-        checkpoint_config=train.CheckpointConfig(
+        checkpoint_config=tune.CheckpointConfig(
             # We haven't implemented checkpointing yet. See below!
             checkpoint_at_end=False
         ),

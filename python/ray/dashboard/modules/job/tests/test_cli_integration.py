@@ -19,7 +19,7 @@ def shutdown_only():
     # The code after the yield will run as teardown code.
     ray.shutdown()
     # Delete the cluster address just in case.
-    ray._private.utils.reset_ray_address()
+    ray._common.utils.reset_ray_address()
 
 
 @contextmanager
@@ -268,6 +268,23 @@ class TestJobDelete:
         # Job should be able to be deleted because it is finished.
         stdout, _ = _run_cmd(f"ray job delete {job_id}")
         assert f"Job '{job_id}' deleted successfully" in stdout
+
+
+class TestJobStatus:
+    # `ray job status` should exit with 0 if the job exists and non-zero if it doesn't.
+    # This is the contract between Ray and KubRay v1.3.0.
+    def test_status_job_exists(self, ray_start_stop):
+        cmd = "echo hello"
+        job_id = "test_job_id"
+        _run_cmd(
+            f"ray job submit --submission-id={job_id} -- bash -c '{cmd}'",
+            should_fail=False,
+        )
+        _run_cmd(f"ray job status {job_id}", should_fail=False)
+
+    def test_status_job_does_not_exist(self, ray_start_stop):
+        job_id = "test_job_id"
+        _run_cmd(f"ray job status {job_id}", should_fail=True)
 
 
 def test_quote_escaping(ray_start_stop):

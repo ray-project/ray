@@ -10,6 +10,7 @@
     :class: inline-figure
     :width: 16
 
+.. _learner-guide:
 
 Learner (Alpha)
 ===============
@@ -56,7 +57,6 @@ arguments in the :py:class:`~ray.rllib.algorithms.algorithm_config.AlgorithmConf
 
     config = (
         PPOConfig()
-        .api_stack(enable_rl_module_and_learner=True)
         .learners(
             num_learners=0,  # Set this to greater than 1 to allow for DDP style updates.
             num_gpus_per_learner=0,  # Set this to 1 to enable GPU training.
@@ -74,7 +74,7 @@ arguments in the :py:class:`~ray.rllib.algorithms.algorithm_config.AlgorithmConf
 .. note::
 
     This features is in alpha. If you migrate to this algorithm, enable the feature by
-    via `AlgorithmConfig.api_stack(enable_rl_module_and_learner=True)`.
+    via `AlgorithmConfig.api_stack(enable_rl_module_and_learner=True, enable_env_runner_and_connector_v2=True)`.
 
     The following algorithms support :py:class:`~ray.rllib.core.learner.learner.Learner` out of the box. Implement
     an algorithm with a custom :py:class:`~ray.rllib.core.learner.learner.Learner` to leverage this API for other algorithms.
@@ -87,7 +87,7 @@ arguments in the :py:class:`~ray.rllib.algorithms.algorithm_config.AlgorithmConf
          - Supported Framework
        * - **PPO**
          - |pytorch| |tensorflow|
-       * - **Impala**
+       * - **IMPALA**
          - |pytorch| |tensorflow|
        * - **APPO**
          - |pytorch| |tensorflow|
@@ -102,7 +102,7 @@ Construction
 ------------
 
 If you enable the :ref:`RLModule <rlmodule-guide>`
-and :py:class:`~ray.rllib.core.learner.learner.Learner` APIs via the :py:class:`~ray.rllib.algorithms.algorithm_config.AlgorithmConfig`, then calling :py:meth:`~ray.rllib.algorithms.algorithm_config.AlgorithmConfig.build` constructs a :py:class:`~ray.rllib.core.learner.learner_group.LearnerGroup` for you, but if you’re using these APIs standalone, you can construct the :py:class:`~ray.rllib.core.learner.learner_group.LearnerGroup` as follows.
+and :py:class:`~ray.rllib.core.learner.learner.Learner` APIs via the :py:class:`~ray.rllib.algorithms.algorithm_config.AlgorithmConfig`, then calling :py:meth:`~ray.rllib.algorithms.algorithm_config.AlgorithmConfig.build_algo` constructs a :py:class:`~ray.rllib.core.learner.learner_group.LearnerGroup` for you, but if you’re using these APIs standalone, you can construct the :py:class:`~ray.rllib.core.learner.learner_group.LearnerGroup` as follows.
 
 .. testcode::
     :hide:
@@ -119,7 +119,7 @@ and :py:class:`~ray.rllib.core.learner.learner.Learner` APIs via the :py:class:`
 
 .. tab-set::
 
-    .. tab-item:: Contstructing a LearnerGroup
+    .. tab-item:: Constructing a LearnerGroup
 
 
         .. testcode::
@@ -173,6 +173,9 @@ and :py:class:`~ray.rllib.core.learner.learner.Learner` APIs via the :py:class:`
             # Construct a new Learner using our config object.
             learner = config.build_learner(env=env)
 
+            # Needs to be called on the learner before calling any functions.
+            learner.build()
+
 
 Updates
 -------
@@ -213,8 +216,8 @@ Updates
     }
     default_batch = SampleBatch(DUMMY_BATCH)
     DUMMY_BATCH = default_batch.as_multi_agent()
-
-    learner.build() # needs to be called on the learner before calling any functions
+    # Make sure, we convert the batch to the correct framework (here: torch).
+    DUMMY_BATCH = learner._convert_batch_type(DUMMY_BATCH)
 
 
 .. tab-set::
@@ -226,23 +229,22 @@ Updates
             TIMESTEPS = {"num_env_steps_sampled_lifetime": 250}
 
             # This is a blocking update.
-            results = learner_group.update_from_batch(batch=DUMMY_BATCH, timesteps=TIMESTEPS)
+            results = learner_group.update(batch=DUMMY_BATCH, timesteps=TIMESTEPS)
 
             # This is a non-blocking update. The results are returned in a future
-            # call to `update_from_batch(..., async_update=True)`
-            _ = learner_group.update_from_batch(batch=DUMMY_BATCH, async_update=True, timesteps=TIMESTEPS)
+            # call to `update(..., async_update=True)`
+            _ = learner_group.update(batch=DUMMY_BATCH, async_update=True, timesteps=TIMESTEPS)
 
             # Artificially wait for async request to be done to get the results
             # in the next call to
-            # `LearnerGroup.update_from_batch(..., async_update=True)`.
+            # `LearnerGroup.update(..., async_update=True)`.
             time.sleep(5)
-            results = learner_group.update_from_batch(
+            results = learner_group.update(
                 batch=DUMMY_BATCH, async_update=True, timesteps=TIMESTEPS
             )
-            # `results` is an already reduced dict, which is the result of
-            # reducing over the individual async `update_from_batch(..., async_update=True)`
-            # calls.
-            assert isinstance(results, dict), results
+            # `results` is a list of n result dicts from various Learner actors.
+            assert isinstance(results, list), results
+            assert isinstance(results[0], dict), results
 
         When updating a :py:class:`~ray.rllib.core.learner.learner_group.LearnerGroup` you can perform blocking or async updates on batches of data.
         Async updates are necessary for implementing async algorithms such as APPO/IMPALA.
@@ -252,7 +254,7 @@ Updates
         .. testcode::
 
             # This is a blocking update (given a training batch).
-            result = learner.update_from_batch(batch=DUMMY_BATCH, timesteps=TIMESTEPS)
+            result = learner.update(batch=DUMMY_BATCH, timesteps=TIMESTEPS)
 
         When updating a :py:class:`~ray.rllib.core.learner.learner.Learner` you can only perform blocking updates on batches of data.
         You can perform non-gradient based updates before or after the gradient-based ones by overriding
@@ -319,12 +321,12 @@ Getting and setting state
 
 
 .. testcode::
-	:hide:
+    :hide:
 
-	import tempfile
+    import tempfile
 
-	LEARNER_CKPT_DIR = str(tempfile.TemporaryDirectory())
-	LEARNER_GROUP_CKPT_DIR = str(tempfile.TemporaryDirectory())
+    LEARNER_CKPT_DIR = tempfile.mkdtemp()
+    LEARNER_GROUP_CKPT_DIR = tempfile.mkdtemp()
 
 
 Checkpointing

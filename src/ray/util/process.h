@@ -20,6 +20,7 @@
 #include <unistd.h>
 #endif
 
+#include <cstdint>
 #include <functional>
 #include <map>
 #include <memory>
@@ -29,6 +30,8 @@
 #include <utility>
 #include <vector>
 
+#include "ray/util/compat.h"
+
 #ifndef PID_MAX_LIMIT
 // This is defined by Linux to be the maximum allowable number of processes
 // There's no guarantee for other OSes, but it's useful for testing purposes.
@@ -36,6 +39,17 @@ enum { PID_MAX_LIMIT = 1 << 22 };
 #endif
 
 namespace ray {
+
+#if !defined(_WIN32)
+/// Sets the FD_CLOEXEC flag on a file descriptor.
+/// This means when the process is forked, this fd would be closed in the child process
+/// side.
+///
+/// Idempotent.
+/// Not thread safe.
+/// See https://github.com/ray-project/ray/issues/40813
+void SetFdCloseOnExec(int fd);
+#endif
 
 class EnvironmentVariableLess {
  public:
@@ -45,10 +59,6 @@ class EnvironmentVariableLess {
 };
 
 typedef std::map<std::string, std::string, EnvironmentVariableLess> ProcessEnvironment;
-
-#ifdef _WIN32
-typedef int pid_t;
-#endif
 
 using StartupToken = int64_t;
 

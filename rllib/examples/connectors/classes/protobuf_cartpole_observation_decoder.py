@@ -18,7 +18,9 @@ class ProtobufCartPoleObservationDecoder(ConnectorV2):
     Add this connector piece to your env-to-module pipeline, through your algo config:
     ```
     config.env_runners(
-        env_to_module_connector=lambda env: ProtobufCartPoleObservationDecoder()
+        env_to_module_connector=(
+            lambda env, spaces, device: ProtobufCartPoleObservationDecoder()
+        )
     )
     ```
 
@@ -46,7 +48,7 @@ class ProtobufCartPoleObservationDecoder(ConnectorV2):
         self,
         *,
         rl_module: RLModule,
-        data: Any,
+        batch: Any,
         episodes: List[EpisodeType],
         explore: Optional[bool] = None,
         shared_data: Optional[dict] = None,
@@ -77,4 +79,4 @@ class ProtobufCartPoleObservationDecoder(ConnectorV2):
             sa_episode.set_observations(new_data=new_obs, at_indices=-1)
 
         # Return `data` as-is.
-        return data
+        return batch

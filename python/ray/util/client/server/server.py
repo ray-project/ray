@@ -262,8 +262,8 @@ class RayletServicer(ray_client_pb2_grpc.RayletDriverServicer):
             ctx = ray_client_pb2.ClusterInfoResponse.RuntimeContext()
             with disable_client_hook():
                 rtc = ray.get_runtime_context()
-                ctx.job_id = ray._private.utils.hex_to_binary(rtc.get_job_id())
-                ctx.node_id = ray._private.utils.hex_to_binary(rtc.get_node_id())
+                ctx.job_id = ray._common.utils.hex_to_binary(rtc.get_job_id())
+                ctx.node_id = ray._common.utils.hex_to_binary(rtc.get_node_id())
                 ctx.namespace = rtc.namespace
                 ctx.capture_client_tasks = (
                     rtc.should_capture_child_tasks_in_placement_group
@@ -820,12 +820,13 @@ def shutdown_with_server(server, _exiting_interpreter=False):
         ray.shutdown(_exiting_interpreter)
 
 
-def create_ray_handler(address, redis_password):
+def create_ray_handler(address, redis_password, redis_username=None):
     def ray_connect_handler(job_config: JobConfig = None, **ray_init_kwargs):
         if address:
             if redis_password:
                 ray.init(
                     address=address,
+                    _redis_username=redis_username,
                     _redis_password=redis_password,
                     job_config=job_config,
                     **ray_init_kwargs,
@@ -840,7 +841,7 @@ def create_ray_handler(address, redis_password):
 
 def try_create_gcs_client(address: Optional[str]) -> Optional[GcsClient]:
     """
-    Try to create a gcs client based on the the command line args or by
+    Try to create a gcs client based on the command line args or by
     autodetecting a running Ray cluster.
     """
     address = canonicalize_bootstrap_address_or_die(address)
@@ -865,6 +866,12 @@ def main():
         "--address", required=False, type=str, help="Address to use to connect to Ray"
     )
     parser.add_argument(
+        "--redis-username",
+        required=False,
+        type=str,
+        help="username for connecting to Redis",
+    )
+    parser.add_argument(
         "--redis-password",
         required=False,
         type=str,
@@ -880,14 +887,20 @@ def main():
     args, _ = parser.parse_known_args()
     setup_logger(ray_constants.LOGGER_LEVEL, ray_constants.LOGGER_FORMAT)
 
-    ray_connect_handler = create_ray_handler(args.address, args.redis_password)
+    ray_connect_handler = create_ray_handler(
+        args.address, args.redis_password, args.redis_username
+    )
 
     hostport = "%s:%d" % (args.host, args.port)
-    logger.info(f"Starting Ray Client server on {hostport}, args {args}")
+    args_str = str(args)
+    if args.redis_password:
+        args_str = args_str.replace(args.redis_password, "****")
+    logger.info(f"Starting Ray Client server on {hostport}, args {args_str}")
     if args.mode == "proxy":
         server = serve_proxier(
             hostport,
             args.address,
+            redis_username=args.redis_username,
             redis_password=args.redis_password,
             runtime_env_agent_address=args.runtime_env_agent_address,
         )

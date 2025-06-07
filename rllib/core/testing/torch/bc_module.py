@@ -1,9 +1,9 @@
 from typing import Any, Dict
 
 from ray.rllib.core.columns import Columns
-from ray.rllib.core.rl_module.rl_module import RLModule, RLModuleConfig
+from ray.rllib.core.rl_module.rl_module import RLModule
 from ray.rllib.models.torch.torch_distributions import TorchCategorical
-from ray.rllib.core.rl_module.multi_rl_module import MultiRLModule, MultiRLModuleConfig
+from ray.rllib.core.rl_module.multi_rl_module import MultiRLModule
 from ray.rllib.core.rl_module.torch.torch_rl_module import TorchRLModule
 from ray.rllib.core.models.specs.typing import SpecType
 from ray.rllib.utils.annotations import override
@@ -13,13 +13,10 @@ torch, nn = try_import_torch()
 
 
 class DiscreteBCTorchModule(TorchRLModule):
-    def __init__(self, config: RLModuleConfig) -> None:
-        super().__init__(config)
-
     def setup(self):
-        input_dim = self.config.observation_space.shape[0]
-        hidden_dim = self.config.model_config_dict["fcnet_hiddens"][0]
-        output_dim = self.config.action_space.n
+        input_dim = self.observation_space.shape[0]
+        hidden_dim = self.model_config["fcnet_hiddens"][0]
+        output_dim = self.action_space.n
 
         self.policy = nn.Sequential(
             nn.Linear(input_dim, hidden_dim),
@@ -80,9 +77,14 @@ class BCTorchRLModuleWithSharedGlobalEncoder(TorchRLModule):
     """
 
     def __init__(
-        self, encoder: nn.Module, local_dim: int, hidden_dim: int, action_dim: int
+        self,
+        encoder: nn.Module,
+        local_dim: int,
+        hidden_dim: int,
+        action_dim: int,
+        config=None,
     ) -> None:
-        super().__init__(config=None)
+        super().__init__(config=config)
 
         self.encoder = encoder
         self.policy_head = nn.Sequential(
@@ -128,9 +130,6 @@ class BCTorchRLModuleWithSharedGlobalEncoder(TorchRLModule):
 
 
 class BCTorchMultiAgentModuleWithSharedEncoder(MultiRLModule):
-    def __init__(self, config: MultiRLModuleConfig) -> None:
-        super().__init__(config)
-
     def setup(self):
         module_specs = self.config.modules
         module_spec = next(iter(module_specs.values()))
@@ -145,6 +144,7 @@ class BCTorchMultiAgentModuleWithSharedEncoder(MultiRLModule):
         rl_modules = {}
         for module_id, module_spec in module_specs.items():
             rl_modules[module_id] = module_spec.module_class(
+                config=self.config.modules[module_id].get_rl_module_config(),
                 encoder=shared_encoder,
                 local_dim=module_spec.observation_space["local"].shape[0],
                 hidden_dim=hidden_dim,

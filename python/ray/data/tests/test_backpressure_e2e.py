@@ -9,11 +9,11 @@ import ray
 from ray._private.internal_api import memory_summary
 from ray.data.block import BlockMetadata
 from ray.data.datasource import Datasource, ReadTask
-from ray.data.tests.conftest import restore_data_context  # noqa: F401
 from ray.data.tests.conftest import (
     CoreExecutionMetrics,
     assert_core_execution_metrics_equals,
     get_initial_core_execution_metrics_snapshot,
+    restore_data_context,  # noqa: F401
 )
 from ray.tests.conftest import shutdown_only  # noqa: F401
 
@@ -287,9 +287,15 @@ def test_input_backpressure_e2e(restore_data_context, shutdown_only):  # noqa: F
     assert launched <= 10, launched
 
 
-def test_streaming_backpressure_e2e(restore_data_context):  # noqa: F811
+def test_streaming_backpressure_e2e(
+    shutdown_only, monkeypatch, restore_data_context  # noqa: F811
+):
     # This test case is particularly challenging since there is a large input->output
     # increase in data size: https://github.com/ray-project/ray/issues/34041
+
+    # Increase the Ray Core spilling threshold to 100% to avoid flakiness.
+    monkeypatch.setenv("RAY_object_spilling_threshold", "1")
+
     class TestSlow:
         def __call__(self, df: np.ndarray):
             time.sleep(2)

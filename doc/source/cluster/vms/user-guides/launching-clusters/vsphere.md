@@ -99,4 +99,4 @@ Starting in Ray 2.7, Ray AI Libraries (Train and Tune) will require users to pro
 2. Create a vSAN file share with NFS as the protocol.
 3. View the file share information to get NFS export path.
 
-Once a file share is created, you can mount it into the head and worker node and use the mount path as the `storage_path` for the `RunConfig` parameter in Ray Train and Tune. Please refer to [this example YAML](https://raw.githubusercontent.com/ray-project/ray/master/python/ray/autoscaler/vsphere/example-vsan-file-service.yaml) as a template on how to mount and configure the path. You will need to modify the NFS export path in the `initialization_commands` list and bind the mounted path within the Ray container. In this example, you will need to put `/mnt/shared_storage/experiment_results` as the `storage_path` for `RunConfig`.
+Once a file share is created, you can mount it into the head and worker node and use the mount path as the `storage_path` for the `RunConfig` parameter in Ray Train and Tune.

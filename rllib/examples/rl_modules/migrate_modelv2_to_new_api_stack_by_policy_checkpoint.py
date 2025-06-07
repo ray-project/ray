@@ -5,7 +5,7 @@ import numpy as np
 import torch
 
 from ray.rllib.algorithms.ppo import PPOConfig
-from ray.rllib.core.rl_module.rl_module import RLModuleConfig, RLModuleSpec
+from ray.rllib.core.rl_module.rl_module import RLModuleSpec
 from ray.rllib.examples.rl_modules.classes.modelv2_to_rlm import ModelV2ToRLModule
 from ray.rllib.utils.metrics import (
     ENV_RUNNER_RESULTS,
@@ -26,7 +26,7 @@ if __name__ == "__main__":
         .environment("CartPole-v1")
         .training(
             lr=0.0003,
-            num_sgd_iter=6,
+            num_epochs=6,
             vf_loss_coeff=0.01,
         )
     )
@@ -56,11 +56,9 @@ if __name__ == "__main__":
     # Run a simple CartPole inference experiment.
     env = gym.make("CartPole-v1", render_mode="human")
     rl_module = ModelV2ToRLModule(
-        config=RLModuleConfig(
-            observation_space=env.observation_space,
-            action_space=env.action_space,
-            model_config_dict={"policy_checkpoint_dir": policy_path},
-        ),
+        observation_space=env.observation_space,
+        action_space=env.action_space,
+        model_config={"policy_checkpoint_dir": policy_path},
     )
 
     obs, _ = env.reset()
@@ -87,7 +85,7 @@ if __name__ == "__main__":
     ).rl_module(
         rl_module_spec=RLModuleSpec(
             module_class=ModelV2ToRLModule,
-            model_config_dict={"policy_checkpoint_dir": policy_path},
+            model_config={"policy_checkpoint_dir": policy_path},
         ),
     )
 

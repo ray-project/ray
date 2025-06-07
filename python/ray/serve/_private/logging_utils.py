@@ -8,7 +8,7 @@ from typing import Any, Optional, Tuple
 import ray
 from ray._private.ray_constants import LOGGING_ROTATE_BACKUP_COUNT, LOGGING_ROTATE_BYTES
 from ray._private.ray_logging.filters import CoreContextFilter
-from ray._private.ray_logging.formatters import JSONFormatter
+from ray._private.ray_logging.formatters import JSONFormatter, TextFormatter
 from ray.serve._private.common import ServeComponentType
 from ray.serve._private.constants import (
     RAY_SERVE_ENABLE_CPU_PROFILING,
@@ -69,7 +69,7 @@ class ServeComponentFilter(logging.Filter):
             setattr(record, SERVE_LOG_COMPONENT, self.component_type)
         else:
             setattr(record, SERVE_LOG_COMPONENT, self.component_name)
-            setattr(record, SERVE_LOG_REPLICA, self.component_id)
+            setattr(record, SERVE_LOG_COMPONENT_ID, self.component_id)
 
         return True
 
@@ -84,7 +84,7 @@ class ServeContextFilter(logging.Filter):
     """
 
     def filter(self, record):
-        request_context = ray.serve.context._serve_request_context.get()
+        request_context = ray.serve.context._get_serve_request_context()
         if request_context.route:
             setattr(record, SERVE_LOG_ROUTE, request_context.route)
         if request_context.request_id:
@@ -111,7 +111,7 @@ class ServeLogAttributeRemovalFilter(logging.Filter):
         return True
 
 
-class ServeFormatter(logging.Formatter):
+class ServeFormatter(TextFormatter):
     """Serve Logging Formatter
 
     The formatter will generate the log format on the fly based on the field of record.
@@ -123,7 +123,12 @@ class ServeFormatter(logging.Formatter):
         self,
         component_name: str,
         component_id: str,
+        fmt: Optional[str] = None,
+        datefmt: Optional[str] = None,
+        style: str = "%",
+        validate: bool = True,
     ):
+        super().__init__(fmt, datefmt, style, validate)
         self.component_log_fmt = ServeFormatter.COMPONENT_LOG_FMT.format(
             component_name=component_name, component_id=component_id
         )
@@ -133,7 +138,6 @@ class ServeFormatter(logging.Formatter):
 
         Args:
             record: The log record to be formatted.
-
             Returns:
                 The formatted log record in string format.
         """
@@ -141,11 +145,11 @@ class ServeFormatter(logging.Formatter):
         record_formats_attrs = []
         if SERVE_LOG_REQUEST_ID in record.__dict__:
             record_formats_attrs.append(SERVE_LOG_RECORD_FORMAT[SERVE_LOG_REQUEST_ID])
-        if SERVE_LOG_ROUTE in record.__dict__:
-            record_formats_attrs.append(SERVE_LOG_RECORD_FORMAT[SERVE_LOG_ROUTE])
+        record_formats_attrs.extend(
+            [f"%({k})s" for k in self.additional_log_standard_attrs]
+        )
         record_formats_attrs.append(SERVE_LOG_RECORD_FORMAT[SERVE_LOG_MESSAGE])
         record_format += " ".join(record_formats_attrs)
-
         # create a formatter using the format string
         formatter = logging.Formatter(record_format)
 
@@ -153,9 +157,9 @@ class ServeFormatter(logging.Formatter):
         return formatter.format(record)
 
 
-def access_log_msg(*, method: str, status: str, latency_ms: float):
+def access_log_msg(*, method: str, route: str, status: str, latency_ms: float):
     """Returns a formatted message for an HTTP or ServeHandle access log."""
-    return f"{method.upper()} {status.upper()} {latency_ms:.1f}ms"
+    return f"{method} {route} {status} {latency_ms:.1f}ms"
 
 
 def log_to_stderr_filter(record: logging.LogRecord) -> bool:
@@ -279,6 +283,7 @@ def configure_component_logger(
     component_type: Optional[ServeComponentType] = None,
     max_bytes: Optional[int] = None,
     backup_count: Optional[int] = None,
+    stream_handler_only: bool = False,
 ):
     """Configure a logger to be used by a Serve component.
 
@@ -292,13 +297,31 @@ def configure_component_logger(
     logger.setLevel(logging_config.log_level)
     logger.handlers.clear()
 
-    # Only add stream handler if RAY_SERVE_LOG_TO_STDERR is True.
-    if RAY_SERVE_LOG_TO_STDERR:
+    serve_formatter = ServeFormatter(component_name, component_id)
+    json_formatter = JSONFormatter()
+    if logging_config.additional_log_standard_attrs:
+        json_formatter.set_additional_log_standard_attrs(
+            logging_config.additional_log_standard_attrs
+        )
+        serve_formatter.set_additional_log_standard_attrs(
+            logging_config.additional_log_standard_attrs
+        )
+
+    # Only add stream handler if RAY_SERVE_LOG_TO_STDERR is True or if
+    # `stream_handler_only` is set to True.
+    if RAY_SERVE_LOG_TO_STDERR or stream_handler_only:
         stream_handler = logging.StreamHandler()
-        stream_handler.setFormatter(ServeFormatter(component_name, component_id))
+        stream_handler.setFormatter(serve_formatter)
         stream_handler.addFilter(log_to_stderr_filter)
         stream_handler.addFilter(ServeContextFilter())
         logger.addHandler(stream_handler)
+
+    # Skip setting up file handler and stdout/stderr redirect if `stream_handler_only`
+    # is set to True. Logger such as default serve logger can be configured outside the
+    # context of a Serve component, we don't want those logs to redirect into serve's
+    # logger and log files.
+    if stream_handler_only:
+        return
 
     if logging_config.logs_dir:
         logs_dir = logging_config.logs_dir
@@ -334,9 +357,9 @@ def configure_component_logger(
         file_handler.addFilter(
             ServeComponentFilter(component_name, component_id, component_type)
         )
-        file_handler.setFormatter(JSONFormatter())
+        file_handler.setFormatter(json_formatter)
     else:
-        file_handler.setFormatter(ServeFormatter(component_name, component_id))
+        file_handler.setFormatter(serve_formatter)
 
     if logging_config.enable_access_log is False:
         file_handler.addFilter(log_access_log_filter)
@@ -344,8 +367,8 @@ def configure_component_logger(
     # Remove unwanted attributes from the log record.
     file_handler.addFilter(ServeLogAttributeRemovalFilter())
 
-    # Redirect print, stdout, and stderr to Serve logger.
-    if not RAY_SERVE_LOG_TO_STDERR:
+    # Redirect print, stdout, and stderr to Serve logger, only when it's on the replica.
+    if not RAY_SERVE_LOG_TO_STDERR and component_type == ServeComponentType.REPLICA:
         builtins.print = redirected_print
         sys.stdout = StreamToLogger(logger, logging.INFO, sys.stdout)
         sys.stderr = StreamToLogger(logger, logging.INFO, sys.stderr)
@@ -362,6 +385,7 @@ def configure_default_serve_logger():
         logging_config=LoggingConfig(),
         max_bytes=LOGGING_ROTATE_BYTES,
         backup_count=LOGGING_ROTATE_BACKUP_COUNT,
+        stream_handler_only=True,
     )
 
 

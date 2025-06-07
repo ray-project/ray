@@ -6,6 +6,7 @@ import numpy as np
 import os
 import ray
 
+import ray._common
 from ray.rllib.policy.policy import Policy
 from ray.rllib.utils.framework import try_import_tf
 from ray.tune.registry import get_trainable_cls
@@ -18,6 +19,10 @@ ray.init()
 def train_and_export_policy_and_model(algo_name, num_steps, model_dir, ckpt_dir):
     cls = get_trainable_cls(algo_name)
     config = cls.get_default_config()
+    config.api_stack(
+        enable_rl_module_and_learner=False,
+        enable_env_runner_and_connector_v2=False,
+    )
     # This Example is only for tf.
     config.framework("tf")
     # Set exporting native (DL-framework) model files to True.
@@ -65,8 +70,8 @@ def restore_policy_from_checkpoint(export_dir):
 
 if __name__ == "__main__":
     algo = "PPO"
-    model_dir = os.path.join(ray._private.utils.get_user_temp_dir(), "model_export_dir")
-    ckpt_dir = os.path.join(ray._private.utils.get_user_temp_dir(), "ckpt_export_dir")
+    model_dir = os.path.join(ray._common.utils.get_user_temp_dir(), "model_export_dir")
+    ckpt_dir = os.path.join(ray._common.utils.get_user_temp_dir(), "ckpt_export_dir")
     num_steps = 1
     train_and_export_policy_and_model(algo, num_steps, model_dir, ckpt_dir)
     restore_saved_model(model_dir)

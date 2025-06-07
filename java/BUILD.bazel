@@ -259,7 +259,7 @@ filegroup(
     ],
 )
 
-native_java_library("runtime", "core_worker_library_java", "//:libcore_worker_library_java.so")
+native_java_library("runtime", "core_worker_library_java", "//src/ray/core_worker/lib/java:libcore_worker_library_java.so")
 
 filegroup(
     name = "java_native_deps",
@@ -281,14 +281,16 @@ genrule(
         WORK_DIR="$$(pwd)"
         # Copy protobuf-generated files.
         rm -rf "$$WORK_DIR/java/runtime/src/main/java/io/ray/runtime/generated"
+        echo "# cp_java_generated" > $@
         for f in $(locations //java:all_java_proto); do
             unzip "$$f" -x META-INF/MANIFEST.MF -d "$$WORK_DIR/java/runtime/src/main/java"
+            if [[ "$$OSTYPE" =~ ^darwin ]]; then shasum "$$f" >> $@ ; else sha1sum "$$f" >> $@ ; fi
         done
         rm -rf "$$WORK_DIR/java/serve/src/main/java/io/ray/serve/generated"
         for f in $(locations //java:serve_java_proto); do
             unzip "$$f" -x META-INF/MANIFEST.MF -d "$$WORK_DIR/java/serve/src/main/java"
+            if [[ "$$OSTYPE" =~ ^darwin ]]; then shasum "$$f" >> $@ ; else sha1sum "$$f" >> $@ ; fi
         done
-        date > $@
     """,
     local = 1,
     tags = ["no-cache"],
@@ -314,11 +316,12 @@ genrule(
         NATIVE_DEPS_DIR="$$WORK_DIR/java/runtime/native_dependencies/native/$$OS_NAME"
         rm -rf "$$NATIVE_DEPS_DIR"
         mkdir -p "$$NATIVE_DEPS_DIR"
+        echo "# gen_maven_deps" > $@
         for f in $(locations //java:java_native_deps); do
             chmod +w "$$f"
             cp "$$f" "$$NATIVE_DEPS_DIR"
+            if [[ "$$OSTYPE" =~ ^darwin ]]; then shasum "$$f" >> $@ ; else sha1sum "$$f" >> $@ ; fi
         done
-        date > $@
     """,
     local = 1,
     tags = ["no-cache"],
@@ -338,7 +341,16 @@ genrule(
         cp -f $(location //java:io_ray_ray_test_pom) "$$WORK_DIR/java/test/pom.xml"
         cp -f $(location //java:io_ray_ray_performance_test_pom) "$$WORK_DIR/java/performance_test/pom.xml"
         cp -f $(location //java:io_ray_ray_serve_pom) "$$WORK_DIR/java/serve/pom.xml"
-        date > $@
+
+        FILES=(
+            $(location //java:io_ray_ray_api_pom)
+            $(location //java:io_ray_ray_runtime_pom)
+            $(location //java:io_ray_ray_test_pom)
+            $(location //java:io_ray_ray_performance_test_pom)
+            $(location //java:io_ray_ray_serve_pom)
+        )
+        echo "# copy_pom_file" > $@
+        if [[ "$$OSTYPE" =~ ^darwin ]]; then shasum "$${FILES[@]}" > $@ ; else sha1sum "$${FILES[@]}" >> $@ ; fi
     """,
     local = 1,
     tags = ["no-cache"],
@@ -380,7 +392,9 @@ genrule(
         WORK_DIR="$$(pwd)"
         rm -rf "$$WORK_DIR/python/ray/jars" && mkdir -p "$$WORK_DIR/python/ray/jars"
         cp -f $(location //java:ray_dist_shaded.jar) "$$WORK_DIR/python/ray/jars/ray_dist.jar"
-        date > $@
+        echo "# ray_java_pkg" > $@
+        OUTPUT_JAR="$(location //java:ray_dist_shaded.jar)"
+        if [[ "$$OSTYPE" =~ ^darwin ]]; then shasum "$$OUTPUT_JAR" >> $@ ; else sha1sum "$$OUTPUT_JAR" >> $@ ; fi
     """,
     local = 1,
     tags = ["no-cache"],

@@ -13,7 +13,6 @@
 // limitations under the License.
 
 syntax = "proto3";
-option cc_enable_arenas = true;
 
 package ray.serve;
 
@@ -87,6 +86,7 @@ message LoggingConfig {
   string log_level = 2;
   string logs_dir = 3;
   bool enable_access_log = 4;
+  repeated string additional_log_standard_attrs = 5;
 }
 
 //[End] Logging Config
@@ -134,6 +134,20 @@ message DeploymentConfig {
   repeated string user_configured_option_names = 13;
 
   LoggingConfig logging_config = 14;
+
+  // Cloudpickled request router definition.
+  bytes serialized_request_router_cls = 15;
+
+  // The import path of the request router if user passed a string. Will be the
+  // concatenation of the request router module and the request router name
+  // if user passed a callable.
+  string request_router_class = 16;
+
+  // Frequency at which the controller records routing stats for a replica.
+  double request_routing_stats_period_s = 17;
+
+  // Timeout after which a replica started a record routing stats without a response.
+  double request_routing_stats_timeout_s = 18;
 }
 
 // Deployment language.
@@ -145,7 +159,7 @@ enum DeploymentLanguage {
 message RequestMetadata {
   string request_id = 1;
 
-  string endpoint = 2;
+  string internal_request_id = 2;
 
   string call_method = 3;
 
@@ -154,8 +168,6 @@ message RequestMetadata {
   string multiplexed_model_id = 5;
 
   string route = 6;
-
-  string internal_request_id = 7;
 }
 
 message RequestWrapper {
@@ -191,6 +203,11 @@ message EndpointSet {
 // be replaced.
 message ActorNameList {
   repeated string names = 1;
+}
+
+message DeploymentTargetInfo {
+  repeated string replica_names = 1;
+  bool is_available = 2;
 }
 
 message DeploymentVersion {
@@ -248,8 +265,9 @@ enum DeploymentStatus {
   DEPLOYMENT_STATUS_UPDATING = 0;
   DEPLOYMENT_STATUS_HEALTHY = 1;
   DEPLOYMENT_STATUS_UNHEALTHY = 2;
-  DEPLOYMENT_STATUS_UPSCALING = 3;
-  DEPLOYMENT_STATUS_DOWNSCALING = 4;
+  DEPLOYMENT_STATUS_DEPLOY_FAILED = 3;
+  DEPLOYMENT_STATUS_UPSCALING = 4;
+  DEPLOYMENT_STATUS_DOWNSCALING = 5;
 }
 
 enum DeploymentStatusTrigger {

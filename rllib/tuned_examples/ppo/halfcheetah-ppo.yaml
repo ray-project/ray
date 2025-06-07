@@ -11,11 +11,11 @@ halfcheetah-ppo:
         gamma: 0.99
         lambda: 0.95
         kl_coeff: 1.0
-        num_sgd_iter: 32
+        num_epochs: 32
         lr: .0003
         vf_loss_coeff: 0.5
         clip_param: 0.2
-        sgd_minibatch_size: 4096
+        minibatch_size: 4096
         train_batch_size: 65536
         num_env_runners: 16
         num_gpus: 1

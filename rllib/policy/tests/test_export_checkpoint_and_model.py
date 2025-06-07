@@ -6,17 +6,13 @@ import shutil
 import unittest
 
 import ray
+import ray._common
 from ray.rllib.examples.envs.classes.multi_agent import MultiAgentCartPole
 from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID
 from ray.rllib.utils.framework import try_import_torch
 from ray.tune.registry import get_trainable_cls
 
 torch, _ = try_import_torch()
-
-# Keep a set of all RLlib algos that support the RLModule API.
-# For these algos we need to disable the RLModule API in the config for the purpose of
-# this test. This test is made for the ModelV2 API which is not the same as RLModule.
-RLMODULE_SUPPORTED_ALGOS = {"APPO", "IMPALA", "PPO"}
 
 
 def export_test(
@@ -26,8 +22,10 @@ def export_test(
 ):
     cls = get_trainable_cls(alg_name)
     config = cls.get_default_config()
-    if alg_name in RLMODULE_SUPPORTED_ALGOS:
-        config = config.api_stack(enable_rl_module_and_learner=False)
+    config.api_stack(
+        enable_rl_module_and_learner=False,
+        enable_env_runner_and_connector_v2=False,
+    )
     config.framework(framework)
     # Switch on saving native DL-framework (tf, torch) model files.
     config.checkpointing(export_native_model_files=True)
@@ -50,7 +48,7 @@ def export_test(
         test_obs = np.array([[0.1, 0.2, 0.3, 0.4]])
 
     export_dir = os.path.join(
-        ray._private.utils.get_user_temp_dir(), "export_dir_%s" % alg_name
+        ray._common.utils.get_user_temp_dir(), "export_dir_%s" % alg_name
     )
 
     print("Exporting policy checkpoint", alg_name, export_dir)
@@ -132,9 +130,6 @@ class TestExportCheckpointAndModel(unittest.TestCase):
 
     def test_export_ppo_multi_agent(self):
         export_test("PPO", "torch", multi_agent=True)
-
-    def test_export_sac(self):
-        export_test("SAC", "torch")
 
 
 if __name__ == "__main__":

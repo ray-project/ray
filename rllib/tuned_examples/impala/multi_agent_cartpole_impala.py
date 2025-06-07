@@ -1,4 +1,5 @@
 from ray.rllib.algorithms.impala import IMPALAConfig
+from ray.rllib.core.rl_module.default_model_config import DefaultModelConfig
 from ray.rllib.examples.envs.classes.multi_agent import MultiAgentCartPole
 from ray.rllib.utils.metrics import (
     ENV_RUNNER_RESULTS,
@@ -15,7 +16,7 @@ parser.set_defaults(
     num_env_runners=4,
 )
 # Use `parser` to add your own custom command line options to this script
-# and (if needed) use their values toset up `config` below.
+# and (if needed) use their values to set up `config` below.
 args = parser.parse_args()
 
 register_env("multi_cart", lambda cfg: MultiAgentCartPole(config=cfg))
@@ -23,10 +24,6 @@ register_env("multi_cart", lambda cfg: MultiAgentCartPole(config=cfg))
 
 config = (
     IMPALAConfig()
-    .api_stack(
-        enable_rl_module_and_learner=True,
-        enable_env_runner_and_connector_v2=True,
-    )
     .environment("multi_cart", env_config={"num_agents": args.num_agents})
     .training(
         train_batch_size_per_learner=1000,
@@ -37,10 +34,9 @@ config = (
         entropy_coeff=0.0,
     )
     .rl_module(
-        model_config_dict={
-            "vf_share_layers": True,
-            "uses_new_env_runners": True,
-        },
+        model_config=DefaultModelConfig(
+            vf_share_layers=True,
+        ),
     )
     .multi_agent(
         policy_mapping_fn=(lambda agent_id, episode, **kwargs: f"p{agent_id}"),
