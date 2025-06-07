@@ -215,8 +215,8 @@ def _is_allowed_type(obj):
 def _clean_log(
     obj: Any,
     *,
-    video_kwargs: Optional[dict] = None,
-    image_kwargs: Optional[dict] = None,
+    video_kwargs: Optional[Dict[str, Any]] = None,
+    image_kwargs: Optional[Dict[str, Any]] = None,
 ):
     # Fixes https://github.com/ray-project/ray/issues/10631
     if video_kwargs is None:
