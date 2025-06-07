@@ -43,7 +43,7 @@ TEST_F(MetricTest, TestGaugeMetric) {
   ASSERT_TRUE(
       OpenTelemetryMetricRecorder::GetInstance().IsMetricRegistered("metric_test"));
   STATS_metric_test.Record(42.0, {{"Tag1", "Value1"}, {"Tag2", "Value2"}});
-  ASSERT_EQ(OpenTelemetryMetricRecorder::GetInstance().GetMetricValue(
+  ASSERT_EQ(OpenTelemetryMetricRecorder::GetInstance().GetObservableMetricValue(
                 "metric_test", {{"Tag1", "Value1"}, {"Tag2", "Value2"}}),
             42.0);
 }
