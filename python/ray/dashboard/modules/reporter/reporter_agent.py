@@ -640,11 +640,16 @@ class ReporterAgent(
 
         if not TPU_DEVICE_PLUGIN_ADDR:
             enable_tpu_usage_check = False
-            return tpu_utilizations
+            return []
 
         endpoint = f'http://{TPU_DEVICE_PLUGIN_ADDR}:{TPU_DEVICE_PLUGIN_PORT}/metrics'
-        metrics = requests.get(endpoint).content
-        metrics = metrics.decode('utf-8')
+        try:
+            metrics = requests.get(endpoint).content
+            metrics = metrics.decode('utf-8')
+        except Exception as e:
+            logger.debug(f"Failed to retrieve TPU information from device plugin: {endpoint} {e}")
+            enable_tpu_usage_check = False
+            return []
 
         for family in text_string_to_metric_families(metrics):
             for sample in family.samples:
