@@ -748,8 +748,8 @@ class ApplicationState:
         if num_ingress_deployments > 1:
             raise RayServeException(
                 f'Found multiple FastAPI deployments in application "{self._name}".'
-                "Please only include one deployment with @serve.ingress"
-                "in your application to avoid this issue."
+                "Please only include one deployment with @serve.ingress in your "
+                "application to avoid this issue."
             )
 
         return route_prefix, docs_path
