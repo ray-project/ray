@@ -134,6 +134,8 @@ class SACCatalog(Catalog):
         if isinstance(self.action_space, gym.spaces.Box):
             required_action_dim = self.action_space.shape[0]
         elif isinstance(self.action_space, gym.spaces.Discrete):
+            # for discrete action spaces, we don't need to encode the action
+            # because the Q-function will output a value for each action
             required_action_dim = 0
         else:
             self._raise_unsupported_action_space_error()
