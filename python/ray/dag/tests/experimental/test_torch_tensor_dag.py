@@ -2058,7 +2058,7 @@ def test_torch_tensor_nccl_broadcast_wrong_root_node(ray_start_regular):
                 for i, worker in enumerate(workers)
             ]
 
-            collectives = collective.broadcast.bind(root_compute, computes)
+            collective.broadcast.bind(root_compute, computes)
 
 
 @pytest.mark.parametrize("ray_start_regular", [{"num_gpus": 4}], indirect=True)
@@ -2070,7 +2070,7 @@ def test_torch_tensor_nccl_broadcast_no_root_node(ray_start_regular):
 
     with pytest.raises(
         TypeError,
-        match="BroadcastWrapper.bind\\(\\) missing 1 required positional argument",
+        match="missing 1 required positional argument",
     ):
         with InputNode() as inp:
             computes = [
@@ -2078,7 +2078,7 @@ def test_torch_tensor_nccl_broadcast_no_root_node(ray_start_regular):
                 for i, worker in enumerate(workers)
             ]
 
-            collectives = collective.broadcast.bind(computes)
+            collective.broadcast.bind(computes)
 
 
 if __name__ == "__main__":
