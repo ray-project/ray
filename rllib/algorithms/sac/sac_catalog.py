@@ -75,6 +75,8 @@ class SACCatalog(Catalog):
             action_space=action_space,
             model_config_dict=model_config_dict,
         )
+        if not isinstance(self.action_space, (gym.spaces.Box, gym.spaces.Discrete)):
+            self._raise_unsupported_action_space_error()
 
         # Define the heads.
         self.pi_and_qf_head_hiddens = self._model_config_dict["head_fcnet_hiddens"]
@@ -118,7 +120,12 @@ class SACCatalog(Catalog):
         """
 
         # Compute the required dimension for the action space.
-        required_action_dim = self.action_space.shape[0]
+        if isinstance(self.action_space, gym.spaces.Box):
+            required_action_dim = self.action_space.shape[0]
+        elif isinstance(self.action_space, gym.spaces.Discrete):
+            required_action_dim = self.action_space.n
+        else:
+            self._raise_unsupported_action_space_error()
 
         # Encoder input for the Q-network contains state and action. We
         # need to infer the shape for the input from the state and action
@@ -209,6 +216,9 @@ class SACCatalog(Catalog):
     def get_action_dist_cls(
         self, framework: str
     ) -> "TorchSquashedGaussian" | "TorchCategorical":
+        """Returns the action distribution class to use for the given framework. TorchSquashedGaussian
+        for continuous action spaces and TorchCategorical for discrete action spaces."""
+
         assert framework == "torch"
         if isinstance(self.action_space, gym.spaces.Box):
             # For continuous action spaces, we use a Squashed Gaussian.
@@ -217,7 +227,11 @@ class SACCatalog(Catalog):
             # For discrete action spaces, we use a Categorical distribution.
             return TorchCategorical
         else:
-            raise ValueError(
-                f"Unsupported action space type: {type(self.action_space)}. "
-                "Only Box and Discrete action spaces are supported."
-            )
+            self._raise_unsupported_action_space_error()
+
+    def _raise_unsupported_action_space_error(self):
+        """Raises an error if the action space is not supported."""
+        raise ValueError(
+            f"SAC only supports Box and Discrete action spaces. "
+            f"Got: {type(self.action_space)}"
+        )
