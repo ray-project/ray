@@ -16,12 +16,12 @@ These tutorials implement an end-to-end time-series application including:
 
 - **Production deployment**: Create production batch Jobs for offline workloads including data prep, training, batch prediction, and potentially online Services.
 
-## Dependencies
+## Setup
 
-Install the required dependencies for this tutorial using:
+Run the following:
 
-```python
-pip install -r requirements.txt
+```bash
+pip install -r requirements.txt && pip install -e .
 ```
 
 ## Acknowledgements
