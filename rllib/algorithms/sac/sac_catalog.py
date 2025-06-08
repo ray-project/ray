@@ -11,7 +11,10 @@ from ray.rllib.core.models.configs import (
     MLPHeadConfig,
 )
 from ray.rllib.core.models.base import Encoder, Model
-from ray.rllib.models.torch.torch_distributions import TorchSquashedGaussian
+from ray.rllib.models.torch.torch_distributions import (
+    TorchSquashedGaussian,
+    TorchCategorical,
+)
 from ray.rllib.utils.annotations import override, OverrideToImplementCustomLogic
 
 
@@ -203,6 +206,18 @@ class SACCatalog(Catalog):
         return self.qf_head_config.build(framework=framework)
 
     @override(Catalog)
-    def get_action_dist_cls(self, framework: str) -> "TorchSquashedGaussian":
+    def get_action_dist_cls(
+        self, framework: str
+    ) -> "TorchSquashedGaussian" | "TorchCategorical":
         assert framework == "torch"
-        return TorchSquashedGaussian
+        if isinstance(self.action_space, gym.spaces.Box):
+            # For continuous action spaces, we use a Squashed Gaussian.
+            return TorchSquashedGaussian
+        elif isinstance(self.action_space, gym.spaces.Discrete):
+            # For discrete action spaces, we use a Categorical distribution.
+            return TorchCategorical
+        else:
+            raise ValueError(
+                f"Unsupported action space type: {type(self.action_space)}. "
+                "Only Box and Discrete action spaces are supported."
+            )
