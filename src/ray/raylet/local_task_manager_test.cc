@@ -309,6 +309,7 @@ TEST_F(LocalTaskManagerTest, TestTaskDispatchingOrder) {
 TEST_F(LocalTaskManagerTest, TestNoLeakOnImpossibleInfeasibleTask) {
   // Note that ideally it shouldn't be possible for an infeasible task to
   // be in the local task manager when ScheduleAndDispatchTasks happens.
+  // See https://github.com/ray-project/ray/pull/52295 for reasons why added this.
 
   std::shared_ptr<MockWorker> worker1 =
       std::make_shared<MockWorker>(WorkerID::FromRandom(), 0);

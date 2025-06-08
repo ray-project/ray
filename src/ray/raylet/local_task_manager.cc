@@ -611,7 +611,6 @@ bool LocalTaskManager::PoppedWorkerHandler(
       // directly and raise a `RuntimeEnvSetupError` exception to user
       // eventually. The task will be removed from dispatch queue in
       // `CancelTask`.
-      const auto &task_id = work->task.GetTaskSpecification().TaskId();
       CancelTasks(
           [task_id](const auto &work) {
             return task_id == work->task.GetTaskSpecification().TaskId();
