@@ -265,9 +265,9 @@ You can also use the included script to install Bazel:
 
 2. Add the following Miniforge subdirectories to PATH. If Miniforge was installed for all users, the following paths are correct. If Miniforge is installed for a single user, adjust the paths accordingly.
 
-   - ``C:\ProgramData\Miniforge3``
-   - ``C:\ProgramData\Miniforge3\Scripts``
-   - ``C:\ProgramData\Miniforge3\Library\bin``
+   - ``C:\ProgramData\miniforge3``
+   - ``C:\ProgramData\miniforge3\Scripts``
+   - ``C:\ProgramData\miniforge3\Library\bin``
 
 3. Define an environment variable ``BAZEL_SH`` to point to ``bash.exe``. If git for Windows was installed for all users, bash's path should be ``C:\Program Files\Git\bin\bash.exe``. If git was installed for a single user, adjust the path accordingly.
 
