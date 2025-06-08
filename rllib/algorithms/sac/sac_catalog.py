@@ -242,7 +242,7 @@ class SACCatalog(Catalog):
     def _build_pi_head_discrete(
         self, framework: str, action_distribution_cls: Distribution
     ) -> Model:
-        """Builds the policy head for discrete action spaces."""
+        """Builds the policy head for discrete action spaces. The paper uses softmax to calculate probabilities"""
         required_output_dim = action_distribution_cls.required_input_dim(
             space=self.action_space, model_config=self._model_config_dict
         )
@@ -251,7 +251,7 @@ class SACCatalog(Catalog):
             hidden_layer_dims=self.pi_and_qf_head_hiddens,
             hidden_layer_activation=self.pi_and_qf_head_activation,
             output_layer_dim=required_output_dim,
-            output_layer_activation="linear",
+            output_layer_activation="softmax",
         )
         return self.pi_head_config.build(framework=framework)
 
