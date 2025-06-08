@@ -468,7 +468,11 @@ int main(int argc, char *argv[]) {
         ray::NodeID raylet_node_id = ray::NodeID::FromHex(node_id);
         RAY_LOG(INFO).WithField(raylet_node_id) << "Setting node ID";
 
-        node_manager_config.AddDefaultLabels(raylet_node_id.Hex());
+        RAY_CHECK(!node_manager_config.labels.contains(kLabelKeyNodeID))
+            << "The label key name " << kLabelKeyNodeID
+            << " should never be set by the user.";
+        node_manager_config.labels[kLabelKeyNodeID] = raylet_node_id.Hex();
+
         // Initialize the node manager.
         raylet = std::make_unique<ray::raylet::Raylet>(main_service,
                                                        raylet_node_id,
