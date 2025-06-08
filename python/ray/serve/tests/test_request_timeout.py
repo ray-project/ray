@@ -11,8 +11,7 @@ from starlette.responses import StreamingResponse
 
 import ray
 from ray import serve
-from ray._common.test_utils import SignalActor
-from ray._private.test_utils import wait_for_condition
+from ray._common.test_utils import SignalActor, wait_for_condition
 from ray.dashboard.modules.serve.sdk import ServeSubmissionClient
 from ray.serve._private.test_utils import send_signal_on_cancellation
 from ray.serve.schema import ApplicationStatus, ServeInstanceDetails

@@ -6,12 +6,12 @@ import pytest
 
 import ray
 from ray import workflow, serve
+from ray._common.test_utils import wait_for_condition
 from ray.workflow.http_event_provider import HTTPListener, WorkflowEventHandleError
 from ray.tests.conftest import *  # noqa
 from ray.workflow.tests import utils
 from ray.workflow.common import WorkflowStatus
 from ray.workflow import common, workflow_context
-from ray._private.test_utils import wait_for_condition
 
 import requests
 

@@ -7,10 +7,10 @@ import pytest
 import numpy as np
 
 import ray
+from ray._common.test_utils import wait_for_condition
 from ray.core.generated import common_pb2
 from ray.core.generated import node_manager_pb2, node_manager_pb2_grpc
 from ray._private.test_utils import (
-    wait_for_condition,
     run_string_as_driver,
     run_string_as_driver_nonblocking,
 )

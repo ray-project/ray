@@ -3,11 +3,11 @@ import pytest
 
 import ray
 from ray import workflow
+from ray._common.test_utils import wait_for_condition
 from ray.workflow.http_event_provider import HTTPListener
 from ray.tests.conftest import *  # noqa
 from ray import serve
 from ray.workflow import common
-from ray._private.test_utils import wait_for_condition
 
 import requests
 
