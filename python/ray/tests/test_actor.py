@@ -6,6 +6,7 @@ import tempfile
 
 import numpy as np
 import pytest
+import psutil
 
 import ray
 from ray import cloudpickle as pickle
@@ -22,7 +23,6 @@ from ray.core.generated import gcs_pb2
 from ray._private.utils import hex_to_binary
 from ray._private.state_api_test_utils import invoke_state_api, invoke_state_api_n
 from ray.util.state import list_actors
-from ray._private.thirdparty import setproctitle
 
 
 @pytest.mark.parametrize("set_enable_auto_connect", [True, False], indirect=True)
@@ -852,7 +852,7 @@ def test_options_name(ray_start_regular_shared):
     @ray.remote
     class Foo:
         def method(self, name):
-            assert setproctitle.getproctitle() == f"ray::{name}"
+            assert psutil.Process().cmdline[0] == f"ray::{name}"
 
     f = Foo.remote()
 

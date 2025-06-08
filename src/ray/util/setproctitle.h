@@ -18,4 +18,4 @@
 
 namespace ray {
 void setproctitle(const std::string &title);
-} // namespace ray
+}  // namespace ray

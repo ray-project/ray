@@ -5,6 +5,11 @@ ray_cc_library(
     srcs = glob(["setproctitle/**/*.c"]),
     hdrs = glob(["setproctitle/**/*.h"]),
     deps = ["@local_config_python//:python_headers"],
+    local_defines = select({
+        "@platforms//os:linux": ["HAVE_SYS_PRCTL_H"],
+        "@platforms//os:macos": ["__darwin__"],
+        "//conditions:default": [],
+    }),
 )
 
 ray_cc_library(

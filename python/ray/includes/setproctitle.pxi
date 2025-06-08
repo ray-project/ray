@@ -1,8 +1,20 @@
+import sys
+import psutil
+import subprocess
+
 from libcpp.string cimport string as c_string
+from ray.includes.setproctitle cimport setproctitle as c_setproctitle
 
-cdef extern from "ray/util/setproctitle.h" namespace "ray":
-    void setproctitle(const c_string &title)
+current_proctitle = None
 
-cpdef python_setproctitle(title: str):
+def setproctitle(title: str):
+    global current_proctitle
+    current_proctitle = title
     cdef c_string c_title = title.encode("utf-8")
-    setproctitle(c_title)
+    c_setproctitle(c_title)
+
+def getproctitle() -> str:
+    global current_proctitle
+    if current_proctitle is None:
+        current_proctitle = subprocess.list2cmdline(psutil.Process().cmdline())
+    return current_proctitle

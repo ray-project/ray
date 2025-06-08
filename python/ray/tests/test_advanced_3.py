@@ -9,12 +9,12 @@ import importlib
 
 import numpy as np
 import pytest
+import psutil
 
 import ray
 import ray._private.ray_constants
 import ray._private.utils
 from ray._private.test_utils import check_call_ray, wait_for_num_actors
-from ray._private.thirdparty import setproctitle
 
 logger = logging.getLogger(__name__)
 
@@ -178,14 +178,14 @@ def test_ray_setproctitle(ray_start_2_cpus):
     @ray.remote
     class UniqueName:
         def __init__(self):
-            assert setproctitle.getproctitle() == "ray::UniqueName.__init__"
+            assert psutil.Process().cmdline[0] == "ray::UniqueName.__init__"
 
         def f(self):
-            assert setproctitle.getproctitle() == "ray::UniqueName.f"
+            assert psutil.Process().cmdline[0] == "ray::UniqueName.f"
 
     @ray.remote
     def unique_1():
-        assert "unique_1" in setproctitle.getproctitle()
+        assert psutil.Process().cmdline[0] == "ray::unique_1"
 
     actor = UniqueName.remote()
     ray.get(actor.f.remote())
@@ -198,16 +198,16 @@ def test_ray_task_name_setproctitle(ray_start_2_cpus):
     @ray.remote
     class UniqueName:
         def __init__(self):
-            assert setproctitle.getproctitle() == "ray::UniqueName.__init__"
+            assert psutil.Process().cmdline[0] == "ray::UniqueName.__init__"
 
         def f(self):
-            assert setproctitle.getproctitle() == f"ray::{method_task_name}"
+            assert psutil.Process().cmdline[0] == f"ray::{method_task_name}"
 
     task_name = "bar"
 
     @ray.remote
     def unique_1():
-        assert task_name in setproctitle.getproctitle()
+        assert psutil.Process().cmdline[0] == f"ray::{task_name}"
 
     actor = UniqueName.remote()
     ray.get(actor.f.options(name=method_task_name).remote())
@@ -218,7 +218,7 @@ def test_ray_task_generator_setproctitle(ray_start_2_cpus):
     @ray.remote
     def generator_task():
         for i in range(4):
-            assert setproctitle.getproctitle() == "ray::generator_task"
+            assert psutil.Process().cmdline[0] == "ray::generator_task"
             yield i
 
     ray.get(generator_task.options(num_returns=2).remote()[0])
@@ -231,7 +231,7 @@ def test_ray_task_generator_setproctitle(ray_start_2_cpus):
     class UniqueName:
         def f(self):
             for i in range(4):
-                assert setproctitle.getproctitle() == "ray::UniqueName.f"
+                assert psutil.Process().cmdline[0] == "ray::UniqueName.f"
                 yield i
 
     actor = UniqueName.remote()
