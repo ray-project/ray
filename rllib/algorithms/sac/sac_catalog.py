@@ -1,5 +1,6 @@
 import gymnasium as gym
 import numpy as np
+from typing import Callable
 
 # TODO (simon): Store this function somewhere more central as many
 # algorithms will use it.
@@ -16,6 +17,7 @@ from ray.rllib.models.torch.torch_distributions import (
     TorchCategorical,
 )
 from ray.rllib.utils.annotations import override, OverrideToImplementCustomLogic
+from ray.rllib.models.distributions import Distribution
 
 
 # TODO (simon): Check, if we can directly derive from DQNCatalog.
@@ -172,6 +174,26 @@ class SACCatalog(Catalog):
         """
         # Get action_distribution_cls to find out about the output dimension for pi_head
         action_distribution_cls = self.get_action_dist_cls(framework=framework)
+        BUILD_MAP: dict[
+            type[gym.spaces.Space], Callable[[str, Distribution], Model]
+        ] = {
+            gym.spaces.Discrete: self._build_pi_head_discrete,
+            gym.spaces.Box: self._build_pi_head_continuous,
+        }
+        try:
+            # Try to get the build function for the action space type.
+            return BUILD_MAP[type(self.action_space)](
+                framework, action_distribution_cls
+            )
+        except KeyError:
+            # If the action space type is not supported, raise an error.
+            self._raise_unsupported_action_space_error()
+
+    def _build_pi_head_continuous(
+        self, framework: str, action_distribution_cls: Distribution
+    ) -> Model:
+        """Builds the policy head for continuous action spaces."""
+        # Get action_distribution_cls to find out about the output dimension for pi_head
         # TODO (simon): CHeck, if this holds also for Squashed Gaussian.
         if self._model_config_dict["free_log_std"]:
             _check_if_diag_gaussian(
@@ -206,6 +228,22 @@ class SACCatalog(Catalog):
 
         return self.pi_head_config.build(framework=framework)
 
+    def _build_pi_head_discrete(
+        self, framework: str, action_distribution_cls: Distribution
+    ) -> Model:
+        """Builds the policy head for discrete action spaces."""
+        required_output_dim = action_distribution_cls.required_input_dim(
+            space=self.action_space, model_config=self._model_config_dict
+        )
+        self.pi_head_config = MLPHeadConfig(
+            input_dims=self.latent_dims,
+            hidden_layer_dims=self.pi_and_qf_head_hiddens,
+            hidden_layer_activation=self.pi_and_qf_head_activation,
+            output_layer_dim=required_output_dim,
+            output_layer_activation="linear",
+        )
+        return self.pi_head_config.build(framework=framework)
+
     @OverrideToImplementCustomLogic
     def build_qf_head(self, framework: str) -> Model:
         """Build the Q function head."""
@@ -213,13 +251,12 @@ class SACCatalog(Catalog):
         return self.qf_head_config.build(framework=framework)
 
     @override(Catalog)
-    def get_action_dist_cls(
-        self, framework: str
-    ) -> "TorchSquashedGaussian" | "TorchCategorical":
+    def get_action_dist_cls(self, framework: str) -> Distribution:
         """Returns the action distribution class to use for the given framework. TorchSquashedGaussian
         for continuous action spaces and TorchCategorical for discrete action spaces."""
-
+        # TODO (KIY): Catalog.get_action_dist_cls should return a type[Distribution] instead of a Distribution instance.
         assert framework == "torch"
+
         if isinstance(self.action_space, gym.spaces.Box):
             # For continuous action spaces, we use a Squashed Gaussian.
             return TorchSquashedGaussian
