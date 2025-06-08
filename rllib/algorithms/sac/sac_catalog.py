@@ -91,17 +91,26 @@ class SACCatalog(Catalog):
         # -> Build pi config only in the `self.build_pi_head` method.
         self.pi_head_config = None
 
+        # SAC-Discrete: The Q-function outputs q-values for each action
+        # SAC-Continuous: The Q-function outputs a single value (the Q-value for the
+        # action taken).
+        required_qf_output_dim = (
+            self.action_space.n
+            if isinstance(self.action_space, gym.spaces.Discrete)
+            else 1
+        )
+
         # TODO (simon): Implement in a later step a q network with
         #  different `head_fcnet_hiddens` than pi.
+        # TODO (simon): These latent_dims could be different for the
+        # q function, value function, and pi head.
+        # Here we consider the simple case of identical encoders.
         self.qf_head_config = MLPHeadConfig(
-            # TODO (simon): These latent_dims could be different for the
-            # q function, value function, and pi head.
-            # Here we consider the simple case of identical encoders.
             input_dims=self.latent_dims,
             hidden_layer_dims=self.pi_and_qf_head_hiddens,
             hidden_layer_activation=self.pi_and_qf_head_activation,
             output_layer_activation="linear",
-            output_layer_dim=1,
+            output_layer_dim=required_qf_output_dim,
         )
 
     @OverrideToImplementCustomLogic
@@ -125,7 +134,7 @@ class SACCatalog(Catalog):
         if isinstance(self.action_space, gym.spaces.Box):
             required_action_dim = self.action_space.shape[0]
         elif isinstance(self.action_space, gym.spaces.Discrete):
-            required_action_dim = self.action_space.n
+            required_action_dim = 0
         else:
             self._raise_unsupported_action_space_error()
 
