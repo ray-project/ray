@@ -203,13 +203,8 @@ def build_vllm_engine_processor(
         trust_remote_code=config.engine_kwargs.get("trust_remote_code", False),
     )
 
-    try:
-        architecture = getattr(
-            hf_config, "architectures", [DEFAULT_MODEL_ARCHITECTURE]
-        )[0]
-    except TypeError:
-        # May have architecture attribute that is None
-        architecture = DEFAULT_MODEL_ARCHITECTURE
+    architectures = getattr(hf_config, "architectures", [])
+    architecture = architectures[0] if architectures else DEFAULT_MODEL_ARCHITECTURE
 
     telemetry_agent = get_or_create_telemetry_agent()
     telemetry_agent.push_telemetry_report(

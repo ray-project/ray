@@ -427,6 +427,8 @@ class RayMetrics(Metrics):
         pass
 
 
+# TODO(seiji): remove this whole file once we bump to vLLM that includes
+# https://github.com/vllm-project/vllm/pull/19113
 class PrometheusStatLogger(StatLoggerBase):
     _metrics_cls = Metrics
 

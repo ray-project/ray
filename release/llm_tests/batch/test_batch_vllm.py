@@ -170,7 +170,8 @@ def test_vllm_llama_lora():
 @ray.remote(num_gpus=1)
 def delete_torch_compile_cache_on_worker():
     """Delete torch compile cache on worker.
-    Avoids AssertionError due to torch compile cache corruption (https://github.com/vllm-project/vllm/issues/18851)
+    Avoids AssertionError due to torch compile cache corruption
+    TODO(seiji): check if this is still needed after https://github.com/vllm-project/vllm/issues/18851 is fixed
     """
     torch_compile_cache_path = os.path.expanduser("~/.cache/vllm/torch_compile_cache")
     if os.path.exists(torch_compile_cache_path):
