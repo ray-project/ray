@@ -123,18 +123,18 @@ class SACCatalog(Catalog):
         # Encoder input for the Q-network contains state and action. We
         # need to infer the shape for the input from the state and action
         # spaces
-        if (
+        if not (
             isinstance(self.observation_space, gym.spaces.Box)
             and len(self.observation_space.shape) == 1
         ):
-            input_space = gym.spaces.Box(
-                -np.inf,
-                np.inf,
-                (self.observation_space.shape[0] + required_action_dim,),
-                dtype=np.float32,
-            )
-        else:
             raise ValueError("The observation space is not supported by RLlib's SAC.")
+
+        input_space = gym.spaces.Box(
+            -np.inf,
+            np.inf,
+            (self.observation_space.shape[0] + required_action_dim,),
+            dtype=np.float32,
+        )
 
         self.qf_encoder_hiddens = self._model_config_dict["fcnet_hiddens"][:-1]
         self.qf_encoder_activation = self._model_config_dict["fcnet_activation"]
