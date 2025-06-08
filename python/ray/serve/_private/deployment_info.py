@@ -1,3 +1,4 @@
+import warnings
 from typing import Any, Dict, Optional
 
 import ray
@@ -20,9 +21,9 @@ class DeploymentInfo:
         version: Optional[str] = None,
         end_time_ms: Optional[int] = None,
         route_prefix: str = None,
-        # TODO(Ziy1-Tan): docs_path is deprecated. It is updated
-        # when the FastAPI app is instantiated on the replica instead.
-        # Remove it in next major version.
+        # TODO(Ziy1-Tan): Passing `docs_path` to DeploymentInfo is deprecated
+        # and will be removed in next major version. It is updated when the
+        # FastAPI app is instantiated on the replica instead.
         docs_path: str = None,
         ingress: bool = False,
         target_capacity: Optional[float] = None,
@@ -42,6 +43,13 @@ class DeploymentInfo:
         self._cached_actor_def = None
 
         self.route_prefix = route_prefix
+        if docs_path:
+            warnings.warn(
+                "Passing `docs_path` to DeploymentInfo is deprecated and"
+                "will be removed in next major version. It is updated when"
+                "the FastAPI app is instantiated on the replica instead.",
+                DeprecationWarning,
+            )
         self.docs_path = docs_path
         self.ingress = ingress
 
