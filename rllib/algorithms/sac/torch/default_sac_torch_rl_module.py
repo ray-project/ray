@@ -53,6 +53,44 @@ class DefaultSACTorchRLModule(TorchRLModule, DefaultSACRLModule):
                 "Trying to train a module that is not a learner module. Set the "
                 "flag `inference_only=False` when building the module."
             )
+        if isinstance(self.action_space, gym.spaces.Discrete):
+            return self._forward_train_discrete(batch)
+        elif isinstance(self.action_space, gym.spaces.Box):
+            return self._forward_train_continuous(batch)
+        else:
+            raise ValueError(
+                f"Unsupported action space type: {type(self.action_space)}. "
+                "Only discrete and continuous action spaces are supported."
+            )
+
+    def _forward_train_discrete(self, batch: Dict[str, Any]) -> Dict[str, Any]:
+        output = {}
+
+        # SAC needs also Q function values and action logits for next observations.
+        batch_curr = {Columns.OBS: batch[Columns.OBS]}
+        batch_next = {Columns.OBS: batch[Columns.NEXT_OBS]}
+
+        ## calculate the target Q values ##
+        # Also encode the next observations (and next actions for the Q net).
+        pi_encoder_next_outs = self.pi_encoder(batch_next)
+        action_probs_next = self.pi(pi_encoder_next_outs[ENCODER_OUT])
+        log_probs_next = action_probs_next.log()
+        # (B, action_dim)
+        next_qs = self.forward_target(batch_next)
+
+        # TODO: we should calculate values here, target calculation and etc should be done in
+        # the SAC learner, not in the RLModule.
+
+        # Encoder forward passes.
+        pi_encoder_outs = self.pi_encoder(batch_curr)
+
+        output["a"] = log_probs_next
+        output["b"] = next_qs
+        output["c"] = pi_encoder_outs
+
+        raise NotImplementedError
+
+    def _forward_train_continuous(self, batch: Dict[str, Any]) -> Dict[str, Any]:
         output = {}
 
         # SAC needs also Q function values and action logits for next observations.
@@ -175,7 +213,7 @@ class DefaultSACTorchRLModule(TorchRLModule, DefaultSACRLModule):
 
     @override(DefaultSACRLModule)
     def _qf_forward_train_helper(
-        self, batch: Dict[str, Any], encoder: Encoder, head: Model
+        self, batch: Dict[str, Any], encoder: Encoder, head: Model, squeeze: bool = True
     ) -> Dict[str, Any]:
         """Executes the forward pass for Q networks.
 
@@ -184,9 +222,11 @@ class DefaultSACTorchRLModule(TorchRLModule, DefaultSACRLModule):
                 and actions under the key `Columns.OBS`.
             encoder: An `Encoder` model for the Q state-action encoder.
             head: A `Model` for the Q head.
+            squeeze: If True, squeezes the last dimension of the output if it is 1. Used during continuous action space
 
         Returns:
-            The estimated (single) Q-value.
+            The estimated Q-value for continuous action space, or Q-values for discrete action space.
+            Each with shape (B, 1) or (B, action_dim) respectively.
         """
         # Construct batch. Note, we need to feed observations and actions.
         if isinstance(self.action_space, gym.spaces.Box):
@@ -203,7 +243,9 @@ class DefaultSACTorchRLModule(TorchRLModule, DefaultSACRLModule):
         qf_encoder_outs = encoder(qf_batch)
 
         # Q head forward pass.
+        # (B,latent_size) -> (B, 1|action_dim)
         qf_out = head(qf_encoder_outs[ENCODER_OUT])
-
-        # Squeeze out the last dimension (Q function node).
-        return qf_out.squeeze(dim=-1)
+        if squeeze:
+            # Squeeze the last dimension if it is 1.
+            qf_out = qf_out.squeeze(-1)
+        return qf_out
