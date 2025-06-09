@@ -69,17 +69,18 @@ GcsServer::GcsServer(const ray::gcs::GcsServerConfig &config,
       worker_client_pool_([this](const rpc::Address &addr) {
         return std::make_shared<rpc::CoreWorkerClient>(
             addr,
-            client_call_manager_,
+            this->client_call_manager_,
             /*core_worker_unavailable_timeout_callback*/ [this, addr]() {
               const NodeID node_id = NodeID::FromBinary(addr.raylet_id());
               const WorkerID worker_id = WorkerID::FromBinary(addr.worker_id());
-              auto alive_node = gcs_node_manager_->GetAliveNode(node_id);
+              auto alive_node = this->gcs_node_manager_->GetAliveNode(node_id);
               if (!alive_node.has_value()) {
-                worker_client_pool_.Disconnect(worker_id);
+                this->worker_client_pool_.Disconnect(worker_id);
                 return;
               }
-              auto raylet_client = raylet_client_pool_->GetOrConnectByID(node_id);
+              auto raylet_client = this->raylet_client_pool_->GetOrConnectByID(node_id);
               RAY_CHECK(raylet_client.has_value());
+              // Worker could still be dead even if node is alive.
               (*raylet_client)
                   ->IsLocalWorkerDead(
                       worker_id,
@@ -93,7 +94,7 @@ GcsServer::GcsServer(const ray::gcs::GcsServerConfig &config,
                         if (reply.is_dead()) {
                           RAY_LOG(INFO).WithField(worker_id)
                               << "Disconnect core worker client since it is dead";
-                          worker_client_pool_.Disconnect(worker_id);
+                          this->worker_client_pool_.Disconnect(worker_id);
                         }
                       });
             });

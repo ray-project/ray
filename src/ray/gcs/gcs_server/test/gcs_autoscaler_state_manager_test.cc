@@ -32,6 +32,8 @@
 #include "mock/ray/gcs/gcs_server/gcs_node_manager.h"
 #include "mock/ray/gcs/gcs_server/gcs_actor_manager.h"
 #include "mock/ray/gcs/store_client/store_client.h"
+#include "mock/ray/pubsub/subscriber.h"
+#include "mock/ray/rpc/worker/core_worker_client.h"
 
 #include "ray/gcs/gcs_server/gcs_autoscaler_state_manager.h"
 // clang-format on
@@ -64,6 +66,7 @@ class GcsAutoscalerStateManagerTest : public ::testing::Test {
   std::unique_ptr<GcsFunctionManager> function_manager_;
   std::unique_ptr<RuntimeEnvManager> runtime_env_manager_;
   std::unique_ptr<GcsInternalKVManager> kv_manager_;
+  std::unique_ptr<rpc::CoreWorkerClientPool> worker_client_pool_;
 
   void SetUp() override {
     raylet_client_ = std::make_shared<GcsServerMocker::MockRayletClient>();
@@ -79,8 +82,12 @@ class GcsAutoscalerStateManagerTest : public ::testing::Test {
         std::make_unique<GcsFunctionManager>(kv_manager_->GetInstance(), io_service_);
     runtime_env_manager_ = std::make_unique<RuntimeEnvManager>(
         [](const std::string &, std::function<void(bool)>) {});
-    gcs_actor_manager_ =
-        std::make_unique<MockGcsActorManager>(*runtime_env_manager_, *function_manager_);
+    worker_client_pool_ =
+        std::make_unique<rpc::CoreWorkerClientPool>([](const rpc::Address &) {
+          return std::make_shared<rpc::MockCoreWorkerClientInterface>();
+        });
+    gcs_actor_manager_ = std::make_unique<MockGcsActorManager>(
+        *runtime_env_manager_, *function_manager_, *worker_client_pool_);
     gcs_resource_manager_ =
         std::make_shared<GcsResourceManager>(io_service_,
                                              *cluster_resource_manager_,
