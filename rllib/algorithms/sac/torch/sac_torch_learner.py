@@ -162,7 +162,7 @@ class SACTorchLearner(DQNTorchLearner, SACLearner):
         next_v = (
             (action_probs_next * (next_q - alpha.detach() * action_log_probs_next))
             .sum(-1)
-            .unsqueeze(-1)
+            .squeeze(-1)
         )
         next_v_masked = (1.0 - batch[Columns.TERMINATEDS].float()) * next_v
         target_q = (
@@ -170,12 +170,11 @@ class SACTorchLearner(DQNTorchLearner, SACLearner):
         ).detach()
 
         # Get Q-values for the actually selected actions during rollout.
-        qf_pred = fwd_out[QF_PREDS].gather(
-            dim=-1, index=batch[Columns.ACTIONS].unsqueeze(-1)
-        )
+        actions = batch[Columns.ACTIONS].to(dtype=torch.int64).unsqueeze(-1)
+        qf_pred = fwd_out[QF_PREDS].gather(dim=-1, index=actions).squeeze(-1)
         if config.twin_q:
-            qf_twin_pred = fwd_out[QF_TWIN_PREDS].gather(
-                dim=-1, index=batch[Columns.ACTIONS].unsqueeze(-1)
+            qf_twin_pred = (
+                fwd_out[QF_TWIN_PREDS].gather(dim=-1, index=actions).squeeze(-1)
             )
 
         # Calculate the TD-error. Note, this is needed for the priority weights in
@@ -242,10 +241,10 @@ class SACTorchLearner(DQNTorchLearner, SACLearner):
                 "alpha_value": alpha[0],
                 "log_alpha_value": torch.log(alpha)[0],
                 "target_entropy": self.target_entropy[module_id],
-                LOGPS_KEY: torch.mean(fwd_out["logp_resampled"]),
-                QF_MEAN_KEY: torch.mean(fwd_out["q_curr"]),
-                QF_MAX_KEY: torch.max(fwd_out["q_curr"]),
-                QF_MIN_KEY: torch.min(fwd_out["q_curr"]),
+                LOGPS_KEY: torch.mean(fwd_out[ACTION_LOG_PROBS]),
+                QF_MEAN_KEY: torch.mean(fwd_out[QF_PREDS]),
+                QF_MAX_KEY: torch.max(fwd_out[QF_PREDS]),
+                QF_MIN_KEY: torch.min(fwd_out[QF_PREDS]),
                 TD_ERROR_MEAN_KEY: torch.mean(td_error),
             },
             key=module_id,
