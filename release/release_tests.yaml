@@ -3463,6 +3463,14 @@
     wait_for_nodes:
       num_nodes: 50
 
+  variations:
+    - __suffix__: aws
+    - __suffix__: gce
+      env: gce
+      frequency: manual
+      cluster:
+        cluster_compute: object_store_gce.yaml
+
 - name: object_store_2_node_throughput_64CPU_128GMEM_12.5GNET
   group: core-scalability-test
   working_dir: benchmarks
