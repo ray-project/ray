@@ -10,7 +10,6 @@ import platform
 import docker
 import requests
 import runfiles
-import boto3
 
 from ci.ray_ci.builder_container import DEFAULT_ARCHITECTURE, DEFAULT_PYTHON_VERSION
 from ci.ray_ci.docker_container import (
