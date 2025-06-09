@@ -672,12 +672,12 @@ TEST_P(ActorTaskSubmitterTest, TestActorRestartFailInflightTasks) {
   // Submit retries for task2 and task3.
   auto task2_second_attempt = CreateActorTaskHelper(actor_id, caller_worker_id, 3);
   task2_second_attempt.GetMutableMessage().set_task_id(
-      task2_first_attempt.TaskId().Binary());
+      task2_first_attempt.TaskIdBinary());
   task2_second_attempt.GetMutableMessage().set_attempt_number(
       task2_first_attempt.AttemptNumber() + 1);
   auto task3_second_attempt = CreateActorTaskHelper(actor_id, caller_worker_id, 4);
   task3_second_attempt.GetMutableMessage().set_task_id(
-      task3_first_attempt.TaskId().Binary());
+      task3_first_attempt.TaskIdBinary());
   task3_second_attempt.GetMutableMessage().set_attempt_number(
       task3_first_attempt.AttemptNumber() + 1);
   ASSERT_TRUE(submitter_.SubmitTask(task2_second_attempt).ok());
