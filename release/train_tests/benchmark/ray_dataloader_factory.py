@@ -28,10 +28,10 @@ class RayDataLoaderFactory(BaseDataLoaderFactory):
         data_context.retried_io_errors.append("AWS Error ACCESS_DENIED")
 
         data_context.execution_options.locality_with_output = (
-            benchmark_config.locality_with_output
+            dataloader_config.locality_with_output
         )
         data_context.execution_options.actor_locality_enabled = (
-            benchmark_config.actor_locality_enabled
+            dataloader_config.actor_locality_enabled
         )
 
     @abstractmethod
@@ -46,8 +46,7 @@ class RayDataLoaderFactory(BaseDataLoaderFactory):
     def get_ray_data_config(self) -> ray.train.DataConfig:
         """Get Ray data config."""
         return ray.train.DataConfig(
-            datasets_to_split="all",
-            enable_shard_locality=self.benchmark_config.enable_shard_locality,
+            enable_shard_locality=self.get_dataloader_config().enable_shard_locality,
         )
 
     def get_train_dataloader(self):

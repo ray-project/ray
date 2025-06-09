@@ -21,6 +21,9 @@ class RayDataConfig(DataLoaderConfig):
     enable_operator_progress_bars: bool = False
     ray_data_prefetch_batches: int = 4
     ray_data_override_num_blocks: int = -1
+    locality_with_output: bool = False
+    actor_locality_enabled: bool = False
+    enable_shard_locality: bool = True
 
 
 class TorchConfig(DataLoaderConfig):
@@ -42,9 +45,6 @@ class BenchmarkConfig(BaseModel):
     max_failures: int = 0
 
     task: str = "image_classification"
-    locality_with_output: bool = False
-    actor_locality_enabled: bool = False
-    enable_shard_locality: bool = True
 
     # Data
     dataloader_type: DataloaderType = DataloaderType.RAY_DATA
