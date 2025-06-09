@@ -1,5 +1,5 @@
 [Rr]aylet(s)?
-stderr
+[Ss]tderr
 [Ss]tdout
 job_id
 Autoscaler

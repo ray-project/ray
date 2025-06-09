@@ -1,17 +1,21 @@
 import asyncio
 import collections
+import datetime
 import threading
+import time
 import unittest
-from typing import Any, Optional, Tuple
+from typing import Any, Dict, Optional, Tuple
 from unittest.mock import MagicMock, patch
 
 import pytest
+from freezegun import freeze_time
 
 import ray
 from ray._private.test_utils import wait_for_condition
 from ray.actor import ActorHandle
 from ray.data._internal.compute import ActorPoolStrategy
 from ray.data._internal.execution.interfaces import ExecutionResources
+from ray.data._internal.execution.interfaces.physical_operator import _ActorPoolInfo
 from ray.data._internal.execution.operators.actor_pool_map_operator import (
     ActorPoolMapOperator,
     _ActorPool,
@@ -45,8 +49,10 @@ class TestActorPool(unittest.TestCase):
     def teardown_class(self):
         ray.shutdown()
 
-    def _create_actor_fn(self) -> Tuple[ActorHandle, ObjectRef[Any]]:
-        actor = PoolWorker.remote(self._actor_node_id)
+    def _create_actor_fn(
+        self, labels: Dict[str, Any]
+    ) -> Tuple[ActorHandle, ObjectRef[Any]]:
+        actor = PoolWorker.options(_labels=labels).remote(self._actor_node_id)
         ready_ref = actor.get_location.remote()
         self._last_created_actor_and_ready_ref = actor, ready_ref
         return actor, ready_ref
@@ -72,10 +78,14 @@ class TestActorPool(unittest.TestCase):
         self, pool: _ActorPool, node_id="node1"
     ) -> Tuple[ActorHandle, ObjectRef[Any]]:
         self._actor_node_id = node_id
-        assert pool.scale_up(1) == 1
+        num_actors = pool.scale_up(1)
+
+        assert num_actors == 1
         assert self._last_created_actor_and_ready_ref is not None
+
         actor, ready_ref = self._last_created_actor_and_ready_ref
         self._last_created_actor_and_ready_ref = None
+
         return actor, ready_ref
 
     def _wait_for_actor_ready(self, pool: _ActorPool, ready_ref):
@@ -106,6 +116,26 @@ class TestActorPool(unittest.TestCase):
         assert pool.current_size() == 0
         assert pool.max_tasks_in_flight_per_actor() == 4
 
+    def test_can_scale_down(self):
+        pool = self._create_actor_pool(min_size=1, max_size=4)
+
+        with freeze_time() as f:
+            # Scale up
+            pool.scale_up(1)
+            # Assert we can't scale down immediately after scale up
+            assert not pool.can_scale_down()
+            assert pool._last_scaling_up_ts == time.time()
+
+            # Advance clock
+            f.tick(
+                datetime.timedelta(
+                    seconds=_ActorPool._ACTOR_POOL_SCALE_DOWN_DEBOUNCE_PERIOD_S + 1
+                )
+            )
+
+            # Assert can scale down after debounce period
+            assert pool.can_scale_down()
+
     def test_add_pending(self):
         # Test that pending actor is added in the correct state.
         pool = self._create_actor_pool()
@@ -119,7 +149,7 @@ class TestActorPool(unittest.TestCase):
         assert pool.num_running_actors() == 0
         assert pool.num_active_actors() == 0
         assert pool.num_idle_actors() == 0
-        assert pool.num_free_slots() == 0
+        assert pool.num_free_task_slots() == 0
         # Check that ready future is returned.
         assert pool.get_pending_actor_refs() == [ready_ref]
 
@@ -136,7 +166,7 @@ class TestActorPool(unittest.TestCase):
         assert pool.num_running_actors() == 1
         assert pool.num_active_actors() == 1
         assert pool.num_idle_actors() == 0
-        assert pool.num_free_slots() == 3
+        assert pool.num_free_task_slots() == 3
 
     def test_restarting_to_alive(self):
         # Test that actor is correctly transitioned from restarting to alive.
@@ -153,10 +183,9 @@ class TestActorPool(unittest.TestCase):
         assert pool.num_alive_actors() == 0
         assert pool.num_active_actors() == 0
         assert pool.num_idle_actors() == 1
-        assert pool.num_free_slots() == 1
-        assert (
-            pool.actor_info_progress_str()
-            == "; Actors: 1 (alive 0, restarting 1, pending 0)"
+        assert pool.num_free_task_slots() == 1
+        assert pool.get_actor_info() == _ActorPoolInfo(
+            running=0, pending=0, restarting=1
         )
 
         # Mark the actor as alive and test pick_actor succeeds
@@ -170,8 +199,10 @@ class TestActorPool(unittest.TestCase):
         assert pool.num_alive_actors() == 1
         assert pool.num_active_actors() == 1
         assert pool.num_idle_actors() == 0
-        assert pool.num_free_slots() == 0
-        assert pool.actor_info_progress_str() == "; Actors: 1"
+        assert pool.num_free_task_slots() == 0
+        assert pool.get_actor_info() == _ActorPoolInfo(
+            running=1, pending=0, restarting=0
+        )
 
         # Return the actor
         pool.return_actor(picked_actor)
@@ -182,8 +213,10 @@ class TestActorPool(unittest.TestCase):
         assert pool.num_alive_actors() == 1
         assert pool.num_active_actors() == 0
         assert pool.num_idle_actors() == 1
-        assert pool.num_free_slots() == 1
-        assert pool.actor_info_progress_str() == "; Actors: 1"
+        assert pool.num_free_task_slots() == 1
+        assert pool.get_actor_info() == _ActorPoolInfo(
+            running=1, pending=0, restarting=0
+        )
 
     def test_repeated_picking(self):
         # Test that we can repeatedly pick the same actor.
@@ -212,17 +245,17 @@ class TestActorPool(unittest.TestCase):
         assert pool.num_running_actors() == 1
         assert pool.num_active_actors() == 0
         assert pool.num_idle_actors() == 1  # Actor should now be idle.
-        assert pool.num_free_slots() == 999
+        assert pool.num_free_task_slots() == 999
 
     def test_pick_max_tasks_in_flight(self):
         # Test that we can't pick an actor beyond the max_tasks_in_flight cap.
         pool = self._create_actor_pool(max_tasks_in_flight=2)
         actor = self._add_ready_actor(pool)
-        assert pool.num_free_slots() == 2
+        assert pool.num_free_task_slots() == 2
         assert pool.pick_actor() == actor
-        assert pool.num_free_slots() == 1
+        assert pool.num_free_task_slots() == 1
         assert pool.pick_actor() == actor
-        assert pool.num_free_slots() == 0
+        assert pool.num_free_task_slots() == 0
         # Check that the 3rd pick doesn't return the actor.
         assert pool.pick_actor() is None
 
@@ -288,7 +321,7 @@ class TestActorPool(unittest.TestCase):
         pool = self._create_actor_pool()
         actor, _ = self._add_pending_actor(pool)
         # Kill inactive actor.
-        killed = pool._kill_inactive_actor()
+        killed = pool._remove_inactive_actor()
         # Check that an actor was killed.
         assert killed
         # Check that actor is not in pool.
@@ -303,14 +336,14 @@ class TestActorPool(unittest.TestCase):
         assert pool.num_running_actors() == 0
         assert pool.num_active_actors() == 0
         assert pool.num_idle_actors() == 0
-        assert pool.num_free_slots() == 0
+        assert pool.num_free_task_slots() == 0
 
     def test_kill_inactive_idle_actor(self):
         # Test that a idle actor is killed on the kill_inactive_actor() call.
         pool = self._create_actor_pool()
         actor = self._add_ready_actor(pool)
         # Kill inactive actor.
-        killed = pool._kill_inactive_actor()
+        killed = pool._remove_inactive_actor()
         # Check that an actor was killed.
         assert killed
         # Check that actor is not in pool.
@@ -325,7 +358,7 @@ class TestActorPool(unittest.TestCase):
         assert pool.num_running_actors() == 0
         assert pool.num_active_actors() == 0
         assert pool.num_idle_actors() == 0
-        assert pool.num_free_slots() == 0
+        assert pool.num_free_task_slots() == 0
 
     def test_kill_inactive_active_actor_not_killed(self):
         # Test that active actors are NOT killed on the kill_inactive_actor() call.
@@ -334,7 +367,7 @@ class TestActorPool(unittest.TestCase):
         # Pick actor (and double-check that the actor was picked).
         assert pool.pick_actor() == actor
         # Kill inactive actor.
-        killed = pool._kill_inactive_actor()
+        killed = pool._remove_inactive_actor()
         # Check that an actor was NOT killed.
         assert not killed
         # Check that the active actor is still in the pool.
@@ -349,7 +382,7 @@ class TestActorPool(unittest.TestCase):
         # Add idle worker.
         idle_actor = self._add_ready_actor(pool)
         # Kill inactive actor.
-        killed = pool._kill_inactive_actor()
+        killed = pool._remove_inactive_actor()
         # Check that an actor was killed.
         assert killed
         # Check that the idle actor is still in the pool.
@@ -367,7 +400,7 @@ class TestActorPool(unittest.TestCase):
         assert pool.num_running_actors() == 1
         assert pool.num_active_actors() == 0
         assert pool.num_idle_actors() == 1
-        assert pool.num_free_slots() == 4
+        assert pool.num_free_task_slots() == 4
 
     def test_all_actors_killed(self):
         # Test that all actors are killed after the kill_all_actors() call.
@@ -395,7 +428,7 @@ class TestActorPool(unittest.TestCase):
         assert pool.num_running_actors() == 0
         assert pool.num_active_actors() == 0
         assert pool.num_idle_actors() == 0
-        assert pool.num_free_slots() == 0
+        assert pool.num_free_task_slots() == 0
 
     def test_locality_based_actor_ranking(self):
         pool = self._create_actor_pool(max_tasks_in_flight=2)

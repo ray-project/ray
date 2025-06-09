@@ -1,13 +1,19 @@
+import shutil
 import sys
+import os
+import logging
 
 import pytest
 
 import ray
 from ray.data.llm import build_llm_processor, vLLMEngineProcessorConfig
 
+logger = logging.getLogger(__name__)
+
 
 def test_chat_template_with_vllm():
     """Test vLLM with explicit chat template."""
+
     processor_config = vLLMEngineProcessorConfig(
         model_source="unsloth/Llama-3.2-1B-Instruct",
         engine_kwargs=dict(
@@ -49,29 +55,20 @@ def test_chat_template_with_vllm():
 
 
 @pytest.mark.parametrize(
-    "tp_size,pp_size,concurrency,vllm_use_v1",
+    "tp_size,pp_size,concurrency",
     [
-        (2, 1, 2, True),  # TP=2, concurrency=2, vLLM v1
-        (1, 2, 2, False),  # PP=2, concurrency=2, vLLM v0
+        (2, 1, 2),  # TP=2, concurrency=2
+        (1, 2, 2),  # PP=2, concurrency=2
     ],
 )
-def test_vllm_llama_parallel(tp_size, pp_size, concurrency, vllm_use_v1):
+def test_vllm_llama_parallel(tp_size, pp_size, concurrency):
     """Test vLLM with Llama model using different parallelism configurations."""
-    if vllm_use_v1:
-        runtime_env = dict(
-            env_vars=dict(
-                VLLM_USE_V1="1",
-            ),
-        )
-        # vLLM v1 does not support decoupled tokenizer,
-        # but since the tokenizer is in a separate process,
-        # the overhead should be moderated.
-        tokenize = False
-        detokenize = False
-    else:
-        runtime_env = {}
-        tokenize = True
-        detokenize = True
+
+    # vLLM v1 does not support decoupled tokenizer,
+    # but since the tokenizer is in a separate process,
+    # the overhead should be moderated.
+    tokenize = False
+    detokenize = False
 
     processor_config = vLLMEngineProcessorConfig(
         model_source="unsloth/Llama-3.2-1B-Instruct",
@@ -82,7 +79,6 @@ def test_vllm_llama_parallel(tp_size, pp_size, concurrency, vllm_use_v1):
             enable_chunked_prefill=True,
             max_num_batched_tokens=2048,
         ),
-        runtime_env=runtime_env,
         tokenize=tokenize,
         detokenize=detokenize,
         batch_size=16,
@@ -121,6 +117,7 @@ def test_vllm_llama_parallel(tp_size, pp_size, concurrency, vllm_use_v1):
 
 def test_vllm_llama_lora():
     """Test vLLM with Llama model and LoRA adapter support."""
+
     model_source = "s3://air-example-data/llama-3.2-216M-dummy/"
     lora_path = "s3://air-example-data/"
     lora_name = "llama-3.2-216M-lora-dummy"
@@ -139,11 +136,6 @@ def test_vllm_llama_lora():
         detokenize=True,
         batch_size=16,
         concurrency=1,
-        runtime_env={
-            "env_vars": {
-                "VLLM_USE_V1": "0",
-            }
-        },
     )
 
     processor = build_llm_processor(
@@ -175,6 +167,18 @@ def test_vllm_llama_lora():
     assert all("resp" in out for out in outs)
 
 
+@ray.remote(num_gpus=1)
+def delete_torch_compile_cache_on_worker():
+    """Delete torch compile cache on worker.
+    Avoids AssertionError due to torch compile cache corruption
+    TODO(seiji): check if this is still needed after https://github.com/vllm-project/vllm/issues/18851 is fixed
+    """
+    torch_compile_cache_path = os.path.expanduser("~/.cache/vllm/torch_compile_cache")
+    if os.path.exists(torch_compile_cache_path):
+        shutil.rmtree(torch_compile_cache_path)
+        logger.warning(f"Deleted torch compile cache at {torch_compile_cache_path}")
+
+
 @pytest.mark.parametrize(
     "model_source,tp_size,pp_size,concurrency,sample_size",
     [
@@ -184,27 +188,18 @@ def test_vllm_llama_lora():
         ("Qwen/Qwen2.5-VL-3B-Instruct", 2, 1, 2, 60),
     ],
 )
-@pytest.mark.parametrize("vllm_use_v1", [True, False])
 def test_vllm_vision_language_models(
-    model_source, tp_size, pp_size, concurrency, sample_size, vllm_use_v1
+    model_source, tp_size, pp_size, concurrency, sample_size
 ):
     """Test vLLM with vision language models using different configurations."""
 
-    if vllm_use_v1:
-        runtime_env = dict(
-            env_vars=dict(
-                VLLM_USE_V1="1",
-            ),
-        )
-        # vLLM v1 does not support decoupled tokenizer,
-        # but since the tokenizer is in a separate process,
-        # the overhead should be moderated.
-        tokenize = False
-        detokenize = False
-    else:
-        runtime_env = {}
-        tokenize = True
-        detokenize = True
+    ray.get(delete_torch_compile_cache_on_worker.remote())
+
+    # vLLM v1 does not support decoupled tokenizer,
+    # but since the tokenizer is in a separate process,
+    # the overhead should be moderated.
+    tokenize = False
+    detokenize = False
 
     processor_config = vLLMEngineProcessorConfig(
         model_source=model_source,
@@ -216,7 +211,6 @@ def test_vllm_vision_language_models(
             enable_chunked_prefill=True,
         ),
         apply_chat_template=True,
-        runtime_env=runtime_env,
         tokenize=tokenize,
         detokenize=detokenize,
         batch_size=16,

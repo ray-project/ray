@@ -145,6 +145,8 @@ class TaskReceiverTest : public ::testing::Test {
                                   std::placeholders::_4,
                                   std::placeholders::_5,
                                   std::placeholders::_6);
+    RayConfig::instance().initialize(
+        R"({"actor_scheduling_queue_max_reorder_wait_seconds": 1})");
     receiver_ = std::make_unique<MockTaskReceiver>(
         task_execution_service_,
         task_event_buffer_,

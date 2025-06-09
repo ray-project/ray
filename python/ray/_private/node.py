@@ -15,25 +15,25 @@ import threading
 import time
 import traceback
 from collections import defaultdict
-from typing import Dict, Optional, Tuple, IO, AnyStr
+from typing import IO, AnyStr, Dict, Optional, Tuple
 
 from filelock import FileLock
 
 import ray
 import ray._private.ray_constants as ray_constants
 import ray._private.services
+from ray._common.utils import try_to_create_directory
 from ray._private import storage
-from ray._raylet import GcsClient, get_session_key_from_storage
-from ray._private.resource_spec import ResourceSpec
-from ray._private.services import serialize_config, get_address
 from ray._private.resource_isolation_config import ResourceIsolationConfig
+from ray._private.resource_spec import ResourceSpec
+from ray._private.services import get_address, serialize_config
 from ray._private.utils import (
+    is_in_test,
     open_log,
-    try_to_create_directory,
     try_to_symlink,
     validate_socket_filepath,
 )
-from ray._private.utils import is_in_test
+from ray._raylet import GcsClient, get_session_key_from_storage
 
 # Logger for this module. It should be configured at the entry point
 # into the program using Ray. Ray configures it by default automatically
@@ -181,7 +181,7 @@ class Node:
                     )
                     self._session_name = f"session_{date_str}_{os.getpid()}"
                 else:
-                    self._session_name = ray._private.utils.decode(maybe_key)
+                    self._session_name = ray._common.utils.decode(maybe_key)
             else:
                 assert not self._default_worker
                 session_name = ray._private.utils.internal_kv_get_with_retry(
@@ -190,7 +190,7 @@ class Node:
                     ray_constants.KV_NAMESPACE_SESSION,
                     num_retries=ray_constants.NUM_REDIS_GET_RETRIES,
                 )
-                self._session_name = ray._private.utils.decode(session_name)
+                self._session_name = ray._common.utils.decode(session_name)
 
         # Initialize webui url
         if head:
@@ -300,6 +300,8 @@ class Node:
             self._raylet_socket_name = self._prepare_socket_file(
                 self._ray_params.raylet_socket_name, default_prefix="raylet"
             )
+            # Set node labels from RayParams or environment override variables.
+            self._node_labels = self._get_node_labels()
             if (
                 self._ray_params.env_vars is not None
                 and "RAY_OVERRIDE_NODE_ID_FOR_TESTING" in self._ray_params.env_vars
@@ -375,12 +377,17 @@ class Node:
                     "could happen because some of the Ray processes "
                     "failed to startup."
                 ) from te
-            node_info = ray._private.services.get_node(
-                self.gcs_address,
-                self._node_id,
-            )
-            if self._ray_params.node_manager_port == 0:
-                self._ray_params.node_manager_port = node_info["node_manager_port"]
+
+        # Fetch node info to update port or get labels.
+        node_info = ray._private.services.get_node(
+            self.gcs_address,
+            self._node_id,
+        )
+        if not connect_only and self._ray_params.node_manager_port == 0:
+            self._ray_params.node_manager_port = node_info["node_manager_port"]
+        elif connect_only:
+            # Set node labels from GCS if provided at node init.
+            self._node_labels = node_info.get("labels", {})
 
         # Makes sure the Node object has valid addresses after setup.
         self.validate_ip_port(self.address)
@@ -471,7 +478,7 @@ class Node:
 
         if self.head:
             self._ray_params.update_if_absent(
-                temp_dir=ray._private.utils.get_ray_temp_dir()
+                temp_dir=ray._common.utils.get_ray_temp_dir()
             )
             self._temp_dir = self._ray_params.temp_dir
         else:
@@ -483,7 +490,7 @@ class Node:
                     ray_constants.KV_NAMESPACE_SESSION,
                     num_retries=ray_constants.NUM_REDIS_GET_RETRIES,
                 )
-                self._temp_dir = ray._private.utils.decode(temp_dir)
+                self._temp_dir = ray._common.utils.decode(temp_dir)
             else:
                 self._temp_dir = self._ray_params.temp_dir
 
@@ -500,7 +507,7 @@ class Node:
                     ray_constants.KV_NAMESPACE_SESSION,
                     num_retries=ray_constants.NUM_REDIS_GET_RETRIES,
                 )
-                self._session_dir = ray._private.utils.decode(session_dir)
+                self._session_dir = ray._common.utils.decode(session_dir)
             else:
                 self._session_dir = os.path.join(self._temp_dir, self._session_name)
         session_symlink = os.path.join(self._temp_dir, ray_constants.SESSION_LATEST)
@@ -522,7 +529,7 @@ class Node:
         )
         try_to_create_directory(self._runtime_env_dir)
         # Create a symlink to the libtpu tpu_logs directory if it exists.
-        user_temp_dir = ray._private.utils.get_user_temp_dir()
+        user_temp_dir = ray._common.utils.get_user_temp_dir()
         tpu_log_dir = f"{user_temp_dir}/tpu_logs"
         if os.path.isdir(tpu_log_dir):
             tpu_logs_symlink = os.path.join(self._logs_dir, "tpu_logs")
@@ -741,6 +748,11 @@ class Node:
             "dashboard_agent_listen_port": self.dashboard_agent_listen_port,
         }
 
+    @property
+    def node_labels(self):
+        """Get the node labels."""
+        return self._node_labels
+
     def is_head(self):
         return self.head
 
@@ -844,7 +856,7 @@ class Node:
                 "{directory_name}/{prefix}.{unique_index}{suffix}"
         """
         if directory_name is None:
-            directory_name = ray._private.utils.get_ray_temp_dir()
+            directory_name = ray._common.utils.get_ray_temp_dir()
         directory_name = os.path.expanduser(directory_name)
         index = self._incremental_dict[suffix, prefix, directory_name]
         # `tempfile.TMP_MAX` could be extremely large,
@@ -1323,7 +1335,7 @@ class Node:
             env_updates=self._ray_params.env_vars,
             node_name=self._ray_params.node_name,
             webui=self._webui_url,
-            labels=self._get_node_labels(),
+            labels=self.node_labels,
             resource_isolation_config=self.resource_isolation_config,
         )
         assert ray_constants.PROCESS_TYPE_RAYLET not in self.all_processes
@@ -1649,17 +1661,6 @@ class Node:
         """
         self._kill_process_type(
             ray_constants.PROCESS_TYPE_LOG_MONITOR, check_alive=check_alive
-        )
-
-    def kill_reporter(self, check_alive: bool = True):
-        """Kill the reporter.
-
-        Args:
-            check_alive: Raise an exception if the process was already
-                dead.
-        """
-        self._kill_process_type(
-            ray_constants.PROCESS_TYPE_REPORTER, check_alive=check_alive
         )
 
     def kill_dashboard(self, check_alive: bool = True):

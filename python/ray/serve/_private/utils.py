@@ -4,8 +4,8 @@ import copy
 import importlib
 import inspect
 import logging
-import os
 import random
+import re
 import time
 import uuid
 from abc import ABC, abstractmethod
@@ -19,9 +19,8 @@ import requests
 
 import ray
 import ray.util.serialization_addons
-from ray._common.utils import import_attr
+from ray._common.utils import get_random_alphanumeric_string, import_attr
 from ray._private.resource_spec import HEAD_NODE_RESOURCE_NAME
-from ray._private.utils import get_random_alphanumeric_string
 from ray._private.worker import LOCAL_MODE, SCRIPT_MODE
 from ray._raylet import MessagePackSerializer
 from ray.actor import ActorHandle
@@ -40,6 +39,8 @@ try:
     import numpy as np
 except ImportError:
     np = None
+
+FILE_NAME_REGEX = r"[^\x20-\x7E]|[<>:\"/\\|?*]"
 
 MESSAGE_PACK_OFFSET = 9
 GENERATOR_COMPOSITION_NOT_SUPPORTED_ERROR = RuntimeError(
@@ -338,20 +339,6 @@ def in_interactive_shell():
     return not hasattr(main, "__file__")
 
 
-def guarded_deprecation_warning(*args, **kwargs):
-    """Wrapper for deprecation warnings, guarded by a flag."""
-    if os.environ.get("SERVE_WARN_V1_DEPRECATIONS", "0") == "1":
-        from ray._private.utils import deprecated
-
-        return deprecated(*args, **kwargs)
-    else:
-
-        def noop_decorator(func):
-            return func
-
-        return noop_decorator
-
-
 def snake_to_camel_case(snake_str: str) -> str:
     """Convert a snake case string to camel case."""
 
@@ -558,7 +545,8 @@ def get_component_file_name(
     component_type: Optional[ServeComponentType],
     suffix: str = "",
 ) -> str:
-    """Get the component's file name."""
+    """Get the component's file name. Replaces special characters with underscores."""
+    component_name = re.sub(FILE_NAME_REGEX, "_", component_name)
 
     # For DEPLOYMENT component type, we want to log the deployment name
     # instead of adding the component type to the component name.

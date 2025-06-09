@@ -6,7 +6,6 @@ from typing import (
     Dict,
     Iterator,
     List,
-    Mapping,
     Optional,
     Sequence,
     Tuple,
@@ -16,13 +15,13 @@ from typing import (
 
 import numpy as np
 
+from ray._private.ray_constants import env_integer
 from ray.air.constants import TENSOR_COLUMN_NAME
 from ray.data._internal.block_builder import BlockBuilder
 from ray.data._internal.row import TableRow
 from ray.data._internal.size_estimator import SizeEstimator
 from ray.data._internal.util import (
     NULL_SENTINEL,
-    MiB,
     find_partition_index,
     is_nan,
     keys_equal,
@@ -37,6 +36,7 @@ from ray.data.block import (
     KeyType,
     U,
 )
+from ray.data.context import DEFAULT_TARGET_MAX_BLOCK_SIZE
 
 if TYPE_CHECKING:
     from ray.data._internal.planner.exchange.sort_task_spec import SortKey
@@ -46,7 +46,9 @@ T = TypeVar("T")
 
 # The max size of Python tuples to buffer before compacting them into a
 # table in the BlockBuilder.
-MAX_UNCOMPACTED_SIZE_BYTES = 50 * MiB
+MAX_UNCOMPACTED_SIZE_BYTES = env_integer(
+    "RAY_DATA_MAX_UNCOMPACTED_SIZE_BYTES", DEFAULT_TARGET_MAX_BLOCK_SIZE
+)
 
 
 class TableBlockBuilder(BlockBuilder):
@@ -206,30 +208,6 @@ class TableBlockAccessor(BlockAccessor):
 
     def to_block(self) -> Block:
         return self._table
-
-    def iter_rows(
-        self, public_row_format: bool
-    ) -> Iterator[Union[Mapping, np.ndarray]]:
-        outer = self
-
-        class Iter:
-            def __init__(self):
-                self._cur = -1
-
-            def __iter__(self):
-                return self
-
-            def __next__(self):
-                self._cur += 1
-                if self._cur < outer.num_rows():
-                    row = outer._get_row(self._cur)
-                    if public_row_format and isinstance(row, TableRow):
-                        return row.as_pydict()
-                    else:
-                        return row
-                raise StopIteration
-
-        return Iter()
 
     def _zip(self, acc: BlockAccessor) -> "Block":
         raise NotImplementedError

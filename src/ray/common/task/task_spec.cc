@@ -276,11 +276,25 @@ void TaskSpecification::AddDynamicReturnId(const ObjectID &dynamic_return_id) {
 }
 
 bool TaskSpecification::ArgByRef(size_t arg_index) const {
-  return message_->args(arg_index).has_object_ref();
+  // If `has_object_ref()` is true and `is_inlined()` is true, it means that the argument
+  // is an ObjectRef, but the object doesn't get pushed to the object store. Hence, it is
+  // inlined in the task spec.
+  return message_->args(arg_index).has_object_ref() &&
+         !message_->args(arg_index).is_inlined();
 }
 
-ObjectID TaskSpecification::ArgId(size_t arg_index) const {
-  return ObjectID::FromBinary(message_->args(arg_index).object_ref().object_id());
+ObjectID TaskSpecification::GetArgObjectId(size_t arg_index) const {
+  if (message_->args(arg_index).has_object_ref()) {
+    return ObjectID::FromBinary(message_->args(arg_index).object_ref().object_id());
+  }
+  return ObjectID::Nil();
+}
+
+std::string TaskSpecification::GetArgObjectIdBinary(size_t arg_index) const {
+  if (message_->args(arg_index).has_object_ref()) {
+    return message_->args(arg_index).object_ref().object_id();
+  }
+  return ObjectID::Nil().Binary();
 }
 
 const rpc::ObjectReference &TaskSpecification::ArgRef(size_t arg_index) const {
@@ -342,7 +356,7 @@ std::vector<ObjectID> TaskSpecification::GetDependencyIds() const {
   std::vector<ObjectID> dependencies;
   for (size_t i = 0; i < NumArgs(); ++i) {
     if (ArgByRef(i)) {
-      dependencies.push_back(ArgId(i));
+      dependencies.push_back(GetArgObjectId(i));
     }
   }
   return dependencies;
@@ -477,6 +491,13 @@ int TaskSpecification::MaxActorConcurrency() const {
 const std::string &TaskSpecification::ConcurrencyGroupName() const {
   RAY_CHECK(IsActorTask());
   return message_->concurrency_group_name();
+}
+
+const rpc::TensorTransport TaskSpecification::TensorTransport() const {
+  if (IsActorTask()) {
+    return message_->tensor_transport();
+  }
+  return rpc::TensorTransport::OBJECT_STORE;
 }
 
 bool TaskSpecification::ExecuteOutOfOrder() const {

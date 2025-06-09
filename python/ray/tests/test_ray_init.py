@@ -134,7 +134,7 @@ def test_ray_init_existing_instance_crashed(address):
         with pytest.raises(ConnectionError):
             ray.init(address=address)
     finally:
-        ray._private.utils.reset_ray_address()
+        ray._common.utils.reset_ray_address()
 
 
 class Credentials(grpc.ChannelCredentials):
@@ -360,8 +360,10 @@ def runtime_env_working_dir():
 
 @pytest.fixture
 def py_module_whl():
-    with tempfile.NamedTemporaryFile(suffix=".whl") as tmp_file:
-        yield tmp_file.name
+    f = tempfile.NamedTemporaryFile(suffix=".whl", delete=False)
+    f.close()
+    yield f.name
+    os.unlink(f.name)
 
 
 def test_ray_init_with_runtime_env_as_dict(

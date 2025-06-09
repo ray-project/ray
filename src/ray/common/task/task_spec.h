@@ -332,10 +332,25 @@ class TaskSpecification : public MessageWrapper<rpc::TaskSpec> {
 
   void SetNumStreamingGeneratorReturns(uint64_t num_streaming_generator_returns);
 
+  /// Return true if the argument is passed by reference.
   bool ArgByRef(size_t arg_index) const;
 
-  ObjectID ArgId(size_t arg_index) const;
+  /// Get the ID of the argument at the given index.
+  ///
+  /// \param arg_index The index of the argument.
+  /// \return The ID of the argument.
+  ObjectID GetArgObjectId(size_t arg_index) const;
 
+  /// Get the raw object ID of the argument at the given index.
+  ///
+  /// \param arg_index The index of the argument.
+  /// \return The raw object ID string of the argument.
+  std::string GetArgObjectIdBinary(size_t arg_index) const;
+
+  /// Get the reference of the argument at the given index.
+  ///
+  /// \param arg_index The index of the argument.
+  /// \return The reference of the argument.
   const rpc::ObjectReference &ArgRef(size_t arg_index) const;
 
   ObjectID ReturnId(size_t return_index) const;
@@ -516,6 +531,8 @@ class TaskSpecification : public MessageWrapper<rpc::TaskSpec> {
   bool EnableTaskEvents() const;
 
   TaskAttempt GetTaskAttempt() const;
+
+  const rpc::TensorTransport TensorTransport() const;
 
  private:
   void ComputeResources();

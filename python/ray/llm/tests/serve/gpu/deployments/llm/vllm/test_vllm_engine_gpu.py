@@ -1,12 +1,13 @@
 import sys
+
 import pytest
 
+from ray.llm._internal.serve.configs.server_models import (
+    LLMConfig,
+)
 from ray.llm._internal.serve.deployments.llm.vllm.vllm_engine import (
     VLLMEngine,
     _get_vllm_engine_config,
-)
-from ray.llm._internal.serve.configs.server_models import (
-    LLMConfig,
 )
 
 
@@ -52,7 +53,11 @@ class TestVLLMEngine:
         ],
     )
     async def test_get_prompt_limit(
-        self, llm_config: LLMConfig, engine_kwargs: dict, expected_prompt_limit: int
+        # llm_config is a fixture defined in serve.tests.conftest.py
+        self,
+        llm_config: LLMConfig,
+        engine_kwargs: dict,
+        expected_prompt_limit: int,
     ):
         llm_config = llm_config.model_copy(deep=True)
         vllm_engine = VLLMEngine(llm_config)

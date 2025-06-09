@@ -405,8 +405,10 @@ class ActorTaskSubmitter : public ActorTaskSubmitterInterface {
       const absl::flat_hash_map<TaskAttempt, rpc::ClientCallback<rpc::PushTaskReply>>
           &inflight_task_callbacks) ABSL_LOCKS_EXCLUDED(mu_);
 
-  /// Restart the actor from DEAD by sending a RestartActor rpc to GCS.
-  void RestartActor(const ActorID &actor_id) ABSL_EXCLUSIVE_LOCKS_REQUIRED(mu_);
+  /// Restart the actor from DEAD by sending a RestartActorForLineageReconstruction rpc to
+  /// GCS.
+  void RestartActorForLineageReconstruction(const ActorID &actor_id)
+      ABSL_EXCLUSIVE_LOCKS_REQUIRED(mu_);
 
   void NotifyGCSWhenActorOutOfScope(const ActorID &actor_id,
                                     uint64_t num_restarts_due_to_lineage_reconstructions);

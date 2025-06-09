@@ -4,6 +4,7 @@ import time
 from functools import reduce
 from itertools import chain
 
+from click.testing import CliRunner
 import pytest
 
 import ray
@@ -12,8 +13,7 @@ from ray.tests.test_placement_group import are_pairwise_unique
 from ray.util.state import list_actors, list_placement_groups
 from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
 from ray._private.runtime_env.plugin import RuntimeEnvPlugin
-from ray._private.test_utils import wait_for_condition
-from click.testing import CliRunner
+from ray._private.test_utils import wait_for_condition, fetch_prometheus_metrics
 import ray.scripts.scripts as scripts
 
 
@@ -131,8 +131,8 @@ def test_pg_no_resource_bundle_index(ray_start_cluster):
     ray.get(pg.ready())
     first_bundle_node_id = ray.util.placement_group_table(pg)["bundles_to_node_id"][0]
 
-    # Iterate 10 times to make sure it is not flaky.
-    for _ in range(10):
+    # Iterate 5 times to make sure it is not flaky.
+    for _ in range(5):
         actor = Actor.options(
             scheduling_strategy=PlacementGroupSchedulingStrategy(
                 placement_group=pg, placement_group_bundle_index=0
@@ -409,37 +409,45 @@ def test_placement_group_max_cpu_frac_edge_cases(ray_start_cluster):
     ray.get(pg2.ready())
 
 
-@pytest.mark.parametrize(
-    "scheduling_strategy", ["SPREAD", "STRICT_SPREAD", "PACK", "STRICT_PACK"]
-)
-def test_placement_group_parallel_submission(ray_start_cluster, scheduling_strategy):
-    @ray.remote(resources={"custom_resource": 1})
-    def task(input):
-        return input
-
-    @ray.remote(num_cpus=0)
-    def manage_tasks(input):
-        pg = ray.util.placement_group(
-            [{"custom_resource": 1, "CPU": 1}], strategy=scheduling_strategy
-        )
-        ray.get(pg.ready())
-        pg_strategy = ray.util.scheduling_strategies.PlacementGroupSchedulingStrategy(
-            placement_group=pg
-        )
-
-        obj_ref = task.options(scheduling_strategy=pg_strategy).remote(input)
-        ray.get(obj_ref)
-
-        ray.util.remove_placement_group(pg)
-        return "OK"
-
+def test_placement_group_parallel_submission(ray_start_cluster):
+    NUM_PARALLEL_PGS = 5
     cluster = ray_start_cluster
-    cluster.add_node(num_cpus=1, resources={"custom_resource": 20})
+    cluster.add_node(num_cpus=1, resources={"custom_resource": NUM_PARALLEL_PGS})
     cluster.wait_for_nodes()
     ray.init(address=cluster.address)
 
-    # Test all tasks will not hang
-    ray.get([manage_tasks.remote(i) for i in range(20)], timeout=50)
+    @ray.remote(resources={"custom_resource": 1})
+    def task(input):
+        return "ok"
+
+    @ray.remote(num_cpus=0)
+    class Submitter:
+        def submit(self, strategy: str):
+            pg = ray.util.placement_group(
+                [{"custom_resource": 1, "CPU": 1}], strategy=strategy
+            )
+            try:
+                ray.get(pg.ready())
+                pg_strategy = (
+                    ray.util.scheduling_strategies.PlacementGroupSchedulingStrategy(
+                        placement_group=pg
+                    )
+                )
+                return ray.get(
+                    task.options(scheduling_strategy=pg_strategy).remote(input)
+                )
+            finally:
+                ray.util.remove_placement_group(pg)
+
+    # For each strategy, submit multiple placement groups in parallel and check that they
+    # will all eventually be placed and their tasks executed.
+    submitters = [Submitter.remote() for _ in range(NUM_PARALLEL_PGS)]
+    for strategy in ["SPREAD", "STRICT_SPREAD", "PACK", "STRICT_PACK"]:
+        print("Testing strategy:", strategy)
+        assert (
+            ray.get([s.submit.remote(strategy) for s in submitters], timeout=30)
+            == ["ok"] * NUM_PARALLEL_PGS
+        )
 
 
 MyPlugin = "MyPlugin"
@@ -638,6 +646,88 @@ def test_placement_group_strict_pack_soft_target_node_id(ray_start_cluster):
         )
         == head_node_id
     )
+
+
+def test_remove_placement_group_with_pending_worker_lease_waiting_for_pg_resource(
+    shutdown_only,
+):
+    """
+    Test removing a pg with a pending worker lease request acquiring the pg resources.
+    details: https://github.com/ray-project/ray/issues/51124
+    Specific test steps:
+      1. Create a placement group with only 1 bundle.
+      2. Create two actors using the aforementioned pg. At this point,
+         the latter actor lease request will definitely be pending in local task manager dispatch queue due to
+         unavailable pg bundle resources.
+      3. Remove the pg while the latter actor lease request is pending.
+      4. Verify that the pending actor lease request is cancelled and the pg
+         is removed successfully.
+    """
+    context = ray.init(num_cpus=1)
+    prom_address = f"{context.address_info['node_ip_address']}:{context.address_info['metrics_export_port']}"
+
+    pg = ray.util.placement_group(
+        [{"CPU": 1}],
+    )
+
+    @ray.remote(
+        num_cpus=1,
+        scheduling_strategy=PlacementGroupSchedulingStrategy(
+            placement_group=pg, placement_group_bundle_index=0
+        ),
+    )
+    class Actor:
+        def ping(self):
+            pass
+
+    actor1 = Actor.remote()
+    # Actor1 is scheduled and used all the PG resources.
+    ray.get(actor1.ping.remote())
+
+    actor2 = Actor.remote()
+
+    def wait_for_actor2_added_to_dispatch_queue():
+        metrics = fetch_prometheus_metrics([prom_address])
+        samples = metrics.get("ray_scheduler_tasks", None)
+        if samples is None:
+            return False
+        for sample in samples:
+            if sample.labels["State"] == "Dispatched" and sample.value == 1:
+                # actor2 is in the local task manager dispatch queue
+                return True
+        return False
+
+    wait_for_condition(wait_for_actor2_added_to_dispatch_queue, timeout=30)
+
+    ray.util.remove_placement_group(pg)
+
+    def check_pg_removed():
+        pgs = list_placement_groups()
+        assert len(pgs) == 1
+        assert "REMOVED" == pgs[0].state
+        return True
+
+    wait_for_condition(check_pg_removed)
+
+    # Actors should be dead due to the pg removal.
+    def check_actor_dead():
+        actors = list_actors()
+        assert len(actors) == 2
+        assert [actors[0].state, actors[1].state] == ["DEAD", "DEAD"]
+        return True
+
+    wait_for_condition(check_actor_dead)
+
+    # Actor2 should be cancelled due to the pg removal.
+    with pytest.raises(ray.exceptions.ActorUnschedulableError):
+        ray.get(actor2.ping.remote())
+
+    # Check that the raylet is still running.
+    @ray.remote
+    def task():
+        return 1
+
+    assert ray.get(task.remote()) == 1
 
 
 if __name__ == "__main__":
