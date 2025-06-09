@@ -4,7 +4,6 @@
 /python/ray/core
 /python/ray/thirdparty_files/
 /python/ray/_private/runtime_env/agent/thirdparty_files/
-/python/ray/_private/thirdparty/setproctitle*
 /python/ray/pyarrow_files/
 /python/ray/jars/
 /python/ray/cpp/
