@@ -283,14 +283,14 @@ bool TaskSpecification::ArgByRef(size_t arg_index) const {
          !message_->args(arg_index).is_inlined();
 }
 
-ObjectID TaskSpecification::ArgId(size_t arg_index) const {
+ObjectID TaskSpecification::GetArgObjectId(size_t arg_index) const {
   if (message_->args(arg_index).has_object_ref()) {
     return ObjectID::FromBinary(message_->args(arg_index).object_ref().object_id());
   }
   return ObjectID::Nil();
 }
 
-std::string TaskSpecification::GetArgRawObjectId(size_t arg_index) const {
+std::string TaskSpecification::GetArgObjectIdBinary(size_t arg_index) const {
   if (message_->args(arg_index).has_object_ref()) {
     return message_->args(arg_index).object_ref().object_id();
   }
@@ -356,7 +356,7 @@ std::vector<ObjectID> TaskSpecification::GetDependencyIds() const {
   std::vector<ObjectID> dependencies;
   for (size_t i = 0; i < NumArgs(); ++i) {
     if (ArgByRef(i)) {
-      dependencies.push_back(ArgId(i));
+      dependencies.push_back(GetArgObjectId(i));
     }
   }
   return dependencies;

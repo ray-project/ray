@@ -339,13 +339,13 @@ class TaskSpecification : public MessageWrapper<rpc::TaskSpec> {
   ///
   /// \param arg_index The index of the argument.
   /// \return The ID of the argument.
-  ObjectID ArgId(size_t arg_index) const;
+  ObjectID GetArgObjectId(size_t arg_index) const;
 
   /// Get the raw object ID of the argument at the given index.
   ///
   /// \param arg_index The index of the argument.
   /// \return The raw object ID string of the argument.
-  std::string GetArgRawObjectId(size_t arg_index) const;
+  std::string GetArgObjectIdBinary(size_t arg_index) const;
 
   /// Get the reference of the argument at the given index.
   ///
