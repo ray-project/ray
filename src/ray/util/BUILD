@@ -387,12 +387,3 @@ ray_cc_library(
         "@com_google_absl//absl/container:flat_hash_map",
     ],
 )
-
-ray_cc_library(
-    name = "setproctitle",
-    srcs = ["setproctitle.cc"],
-    hdrs = ["setproctitle.h"],
-    deps = [
-        "//src/ray/thirdparty:setproctitle",
-    ],
-)

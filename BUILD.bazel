@@ -958,7 +958,7 @@ pyx_library(
         "//src/ray/util:memory",
         "//src/ray/util:stream_redirection",
         "//src/ray/util:stream_redirection_options",
-        "//src/ray/util:setproctitle",
+        "//src/ray/thirdparty:setproctitle",
     ],
 )
 
