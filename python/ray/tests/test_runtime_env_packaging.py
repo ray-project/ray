@@ -14,7 +14,6 @@ import ray
 
 import pytest
 
-from ray._private.gcs_utils import GcsAioClient
 from ray._private.ray_constants import (
     KV_NAMESPACE_PACKAGE,
     RAY_RUNTIME_ENV_IGNORE_GITIGNORE,
@@ -55,10 +54,9 @@ ARCHIVE_NAME = "archive.zip"
 # This package contains a subdirectory called `test_module`.
 # Calling `test_module.one()` should return `2`.
 # If you find that confusing, take it up with @jiaodong...
-HTTPS_PACKAGE_URI = "https://github.com/shrekris-anyscale/test_module/archive/HEAD.zip"
+HTTPS_PACKAGE_URI = "https://github.com/shrekris-anyscale/test_module/archive/a885b80879665a49d5cd4c3ebd33bb6f865644e5.zip"
 S3_PACKAGE_URI = "s3://runtime-env-test/test_runtime_env.zip"
 S3_WHL_PACKAGE_URI = "s3://runtime-env-test/test_module-0.0.1-py3-none-any.whl"
-GS_PACKAGE_URI = "gs://public-runtime-env-test/test_module.zip"
 
 
 def random_string(size: int = 10):
@@ -630,15 +628,13 @@ class TestDownloadAndUnpackPackage:
                 await download_and_unpack_package(
                     pkg_uri=pkg_uri,
                     base_directory=temp_dir,
-                    gcs_aio_client=None,
+                    gcs_client=None,
                 )
 
     async def test_download_and_unpack_package_with_gcs_uri(self, ray_start_regular):
         # Test downloading and unpacking a GCS package with a GCS client.
 
-        gcs_aio_client = GcsAioClient(
-            address=ray._private.worker.global_worker.gcs_client.address
-        )
+        gcs_client = ray._private.worker.global_worker.gcs_client
 
         with tempfile.TemporaryDirectory() as temp_dir:
             zipfile_path = Path(temp_dir) / "test-zip-file.zip"
@@ -654,7 +650,7 @@ class TestDownloadAndUnpackPackage:
             local_dir = await download_and_unpack_package(
                 pkg_uri=pkg_uri,
                 base_directory=temp_dir,
-                gcs_aio_client=gcs_aio_client,
+                gcs_client=gcs_client,
             )
 
             # Check that the file was extracted to the destination directory
@@ -853,7 +849,4 @@ def test_get_local_dir_from_uri():
 
 
 if __name__ == "__main__":
-    if os.environ.get("PARALLEL_CI"):
-        sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))
-    else:
-        sys.exit(pytest.main(["-sv", __file__]))
+    sys.exit(pytest.main(["-sv", __file__]))

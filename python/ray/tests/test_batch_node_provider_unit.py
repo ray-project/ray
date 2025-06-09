@@ -3,7 +3,6 @@ Validates BatchingNodeProvider's book-keeping logic.
 """
 from copy import copy
 from uuid import uuid4
-import os
 import random
 import sys
 from typing import Any, Dict
@@ -481,7 +480,4 @@ def test_terminate_node_in_multihost_replica():
 
 if __name__ == "__main__":
 
-    if os.environ.get("PARALLEL_CI"):
-        sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))
-    else:
-        sys.exit(pytest.main(["-sv", __file__]))
+    sys.exit(pytest.main(["-sv", __file__]))

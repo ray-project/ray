@@ -38,6 +38,7 @@ scipy
 colorful
 rich
 opentelemetry-sdk
+opentelemetry-exporter-prometheus
 fastapi
 gymnasium==1.0.0
 virtualenv!=20.21.1,>=20.0.24

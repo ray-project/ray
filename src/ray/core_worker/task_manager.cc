@@ -224,8 +224,8 @@ std::vector<rpc::ObjectReference> TaskManager::AddPendingTask(
   std::vector<ObjectID> task_deps;
   for (size_t i = 0; i < spec.NumArgs(); i++) {
     if (spec.ArgByRef(i)) {
-      task_deps.push_back(spec.ArgId(i));
-      RAY_LOG(DEBUG) << "Adding arg ID " << spec.ArgId(i);
+      task_deps.push_back(spec.ArgObjectId(i));
+      RAY_LOG(DEBUG) << "Adding arg ID " << spec.ArgObjectId(i);
     } else {
       const auto &inlined_refs = spec.ArgInlinedRefs(i);
       for (const auto &inlined_ref : inlined_refs) {
@@ -351,7 +351,7 @@ bool TaskManager::ResubmitTask(const TaskID &task_id, std::vector<ObjectID> *tas
   task_deps->reserve(spec.NumArgs());
   for (size_t i = 0; i < spec.NumArgs(); i++) {
     if (spec.ArgByRef(i)) {
-      task_deps->emplace_back(spec.ArgId(i));
+      task_deps->emplace_back(spec.ArgObjectId(i));
     } else {
       const auto &inlined_refs = spec.ArgInlinedRefs(i);
       for (const auto &inlined_ref : inlined_refs) {
@@ -998,6 +998,10 @@ bool TaskManager::RetryTaskIfPossible(const TaskID &task_id,
         RAY_CHECK(num_retries_left == 0);
       }
     }
+    // Keep `num_retries_left` and `num_oom_retries_left` up to date
+    num_retries_left = it->second.num_retries_left;
+    num_oom_retries_left = it->second.num_oom_retries_left;
+
     if (will_retry) {
       MarkTaskRetryOnFailed(it->second, error_info);
     }
@@ -1005,7 +1009,6 @@ bool TaskManager::RetryTaskIfPossible(const TaskID &task_id,
 
   // We should not hold the lock during these calls because they may trigger
   // callbacks in this or other classes.
-  std::ostringstream stream;
   std::string num_retries_left_str =
       num_retries_left == -1 ? "infinite" : std::to_string(num_retries_left);
   RAY_LOG(INFO) << "task " << spec.TaskId() << " retries left: " << num_retries_left_str
@@ -1014,8 +1017,6 @@ bool TaskManager::RetryTaskIfPossible(const TaskID &task_id,
   if (will_retry) {
     RAY_LOG(INFO) << "Attempting to resubmit task " << spec.TaskId()
                   << " for attempt number: " << spec.AttemptNumber();
-    // TODO(clarng): clean up and remove task_retry_delay_ms that is relied
-    // on by some tests.
     int32_t delay_ms = task_failed_due_to_oom
                            ? ExponentialBackoff::GetBackoffMs(
                                  spec.AttemptNumber(),
@@ -1172,7 +1173,7 @@ void TaskManager::RemoveFinishedTaskReferences(
   std::vector<ObjectID> plasma_dependencies;
   for (size_t i = 0; i < spec.NumArgs(); i++) {
     if (spec.ArgByRef(i)) {
-      plasma_dependencies.push_back(spec.ArgId(i));
+      plasma_dependencies.push_back(spec.ArgObjectId(i));
     } else {
       const auto &inlined_refs = spec.ArgInlinedRefs(i);
       for (const auto &inlined_ref : inlined_refs) {
@@ -1240,7 +1241,7 @@ int64_t TaskManager::RemoveLineageReference(const ObjectID &object_id,
     // for each of the task's args.
     for (size_t i = 0; i < it->second.spec.NumArgs(); i++) {
       if (it->second.spec.ArgByRef(i)) {
-        released_objects->push_back(it->second.spec.ArgId(i));
+        released_objects->push_back(it->second.spec.ArgObjectId(i));
       } else {
         const auto &inlined_refs = it->second.spec.ArgInlinedRefs(i);
         for (const auto &inlined_ref : inlined_refs) {
@@ -1435,7 +1436,7 @@ void TaskManager::MarkTaskRetryOnResubmit(TaskEntry &task_entry) {
   //
   // NOTE(rickyx): We only increment the AttemptNumber on the task spec when
   // `retry_task_callback_` is invoked. In order to record the correct status change for
-  // the new task attempt, we pass the the attempt number explicitly.
+  // the new task attempt, we pass the attempt number explicitly.
   SetTaskStatus(task_entry,
                 rpc::TaskStatus::PENDING_ARGS_AVAIL,
                 /* state_update */ std::nullopt,
@@ -1559,7 +1560,7 @@ void TaskManager::FillTaskInfo(rpc::GetCoreWorkerStatsReply *reply,
     if (!node_id.IsNil()) {
       entry->set_node_id(node_id.Binary());
     }
-    entry->set_task_id(task_spec.TaskId().Binary());
+    entry->set_task_id(task_spec.TaskIdBinary());
     entry->set_parent_task_id(task_spec.ParentTaskId().Binary());
     const auto &resources_map = task_spec.GetRequiredResources().GetResourceMap();
     entry->mutable_required_resources()->insert(resources_map.begin(),

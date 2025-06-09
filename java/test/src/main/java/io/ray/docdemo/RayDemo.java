@@ -34,7 +34,7 @@ public class RayDemo {
   }
 
   public static void main(String[] args) {
-    // Intialize Ray runtime.
+    // Initialize Ray runtime.
     Ray.init();
     {
       List<ObjectRef<Integer>> objectRefList = new ArrayList<>();

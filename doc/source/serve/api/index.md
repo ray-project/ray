@@ -101,6 +101,22 @@ See the [model composition guide](serve-model-composition) for how to update cod
    serve.schema.EncodingType
 ```
 
+### Request Router
+
+```{eval-rst}
+.. autosummary::
+   :nosignatures:
+   :toctree: doc/
+
+   serve.request_router.ReplicaID
+   serve.request_router.PendingRequest
+   serve.request_router.RunningReplica
+   serve.request_router.FIFOMixin
+   serve.request_router.LocalityMixin
+   serve.request_router.MultiplexMixin
+   serve.request_router.RequestRouter
+```
+
 #### Advanced APIs
 
 ```{eval-rst}
@@ -461,9 +477,11 @@ Content-Type: application/json
 
    serve.llm.openai_api_models.ChatCompletionRequest
    serve.llm.openai_api_models.CompletionRequest
+   serve.llm.openai_api_models.EmbeddingRequest
    serve.llm.openai_api_models.ChatCompletionStreamResponse
    serve.llm.openai_api_models.ChatCompletionResponse
    serve.llm.openai_api_models.CompletionStreamResponse
    serve.llm.openai_api_models.CompletionResponse
+   serve.llm.openai_api_models.EmbeddingResponse
    serve.llm.openai_api_models.ErrorResponse
 ```

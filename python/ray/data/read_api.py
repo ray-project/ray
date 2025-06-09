@@ -16,8 +16,10 @@ from typing import (
 )
 
 import numpy as np
+from packaging.version import parse as parse_version
 
 import ray
+from ray._private.arrow_utils import get_pyarrow_version
 from ray._private.auto_init_hook import wrap_auto_init
 from ray.air.util.tensor_extensions.utils import _create_possibly_ragged_ndarray
 from ray.data._internal.datasource.audio_datasource import AudioDatasource
@@ -49,6 +51,7 @@ from ray.data._internal.datasource.torch_datasource import TorchDatasource
 from ray.data._internal.datasource.video_datasource import VideoDatasource
 from ray.data._internal.datasource.webdataset_datasource import WebDatasetDatasource
 from ray.data._internal.delegating_block_builder import DelegatingBlockBuilder
+from ray.data._internal.logical.interfaces import LogicalPlan
 from ray.data._internal.logical.operators.from_operators import (
     FromArrow,
     FromBlocks,
@@ -57,7 +60,6 @@ from ray.data._internal.logical.operators.from_operators import (
     FromPandas,
 )
 from ray.data._internal.logical.operators.read_operator import Read
-from ray.data._internal.logical.interfaces import LogicalPlan
 from ray.data._internal.plan import ExecutionPlan
 from ray.data._internal.remote_fn import cached_remote_fn
 from ray.data._internal.stats import DatasetStats
@@ -150,7 +152,8 @@ def from_items(
 ) -> MaterializedDataset:
     """Create a :class:`~ray.data.Dataset` from a list of local Python objects.
 
-    Use this method to create small datasets from data that fits in memory.
+    Use this method to create small datasets from data that fits in memory. The column
+    name defaults to "item".
 
     Examples:
 
@@ -236,7 +239,7 @@ def range(
     """Creates a :class:`~ray.data.Dataset` from a range of integers [0..n).
 
     This function allows for easy creation of synthetic datasets for testing or
-    benchmarking :ref:`Ray Data <data>`.
+    benchmarking :ref:`Ray Data <data>`. The column name defaults to "id".
 
     Examples:
 
@@ -290,7 +293,7 @@ def range_tensor(
     [0...n].
 
     This function allows for easy creation of synthetic tensor datasets for testing or
-    benchmarking :ref:`Ray Data <data>`.
+    benchmarking :ref:`Ray Data <data>`. The column name defaults to "data".
 
     Examples:
 
@@ -402,13 +405,9 @@ def read_datasource(
     # removing LazyBlockList code path.
     read_tasks = datasource_or_legacy_reader.get_read_tasks(requested_parallelism)
 
-    import uuid
-
     stats = DatasetStats(
         metadata={"Read": [read_task.metadata for read_task in read_tasks]},
         parent=None,
-        needs_stats_actor=True,
-        stats_uuid=uuid.uuid4(),
     )
     read_op = Read(
         datasource,
@@ -447,6 +446,8 @@ def read_audio(
     ray_remote_args: Optional[Dict[str, Any]] = None,
 ):
     """Creates a :class:`~ray.data.Dataset` from audio files.
+
+    The column names default to "amplitude" and "sample_rate".
 
     Examples:
         >>> import ray
@@ -536,7 +537,8 @@ def read_videos(
 ):
     """Creates a :class:`~ray.data.Dataset` from video files.
 
-    Each row in the resulting dataset represents a video frame.
+    Each row in the resulting dataset represents a video frame. The column names default
+    to "frame", "frame_index" and "frame_timestamp".
 
     Examples:
         >>> import ray
@@ -980,6 +982,8 @@ def read_images(
     override_num_blocks: Optional[int] = None,
 ) -> Dataset:
     """Creates a :class:`~ray.data.Dataset` from image files.
+
+    The column name defaults to "image".
 
     Examples:
         >>> import ray
@@ -1499,7 +1503,7 @@ def read_csv(
 
         >>> ray.data.read_csv("s3://anonymous@ray-example-data/different-extensions/",
         ...     file_extensions=["csv"])
-        Dataset(num_rows=?, schema={a: int64, b: int64})
+        Dataset(num_rows=?, schema=...)
 
     Args:
         paths: A single file or directory, or a list of file or directory paths.
@@ -1602,6 +1606,8 @@ def read_text(
     override_num_blocks: Optional[int] = None,
 ) -> Dataset:
     """Create a :class:`~ray.data.Dataset` from lines stored in text files.
+
+    The column name default to "text".
 
     Examples:
         Read a file in remote storage.
@@ -1825,6 +1831,8 @@ def read_numpy(
 ) -> Dataset:
     """Create an Arrow dataset from numpy files.
 
+    The column name defaults to "data".
+
     Examples:
         Read a directory of files in remote storage.
 
@@ -1944,10 +1952,7 @@ def read_tfrecords(
     Examples:
         >>> import ray
         >>> ray.data.read_tfrecords("s3://anonymous@ray-example-data/iris.tfrecords")
-        Dataset(
-           num_rows=?,
-           schema={...}
-        )
+        Dataset(num_rows=?, schema=...)
 
         We can also read compressed TFRecord files, which use one of the
         `compression types supported by Arrow <https://arrow.apache.org/docs/python/\
@@ -1957,10 +1962,7 @@ def read_tfrecords(
         ...     "s3://anonymous@ray-example-data/iris.tfrecords.gz",
         ...     arrow_open_stream_args={"compression": "gzip"},
         ... )
-        Dataset(
-           num_rows=?,
-           schema={...}
-        )
+        Dataset(num_rows=?, schema=...)
 
     Args:
         paths: A single file or directory, or a list of file or directory paths.
@@ -2487,7 +2489,6 @@ def read_databricks_tables(
     from ray.data._internal.datasource.databricks_uc_datasource import (
         DatabricksUCDatasource,
     )
-    from ray.util.spark.utils import get_spark_session, is_in_databricks_runtime
 
     def get_dbutils():
         no_dbutils_error = RuntimeError("No dbutils module found.")
@@ -2513,6 +2514,8 @@ def read_databricks_tables(
 
     host = os.environ.get("DATABRICKS_HOST")
     if not host:
+        from ray.util.spark.utils import is_in_databricks_runtime
+
         if is_in_databricks_runtime():
             ctx = (
                 get_dbutils().notebook.entry_point.getDbutils().notebook().getContext()
@@ -2526,9 +2529,13 @@ def read_databricks_tables(
             )
 
     if not catalog:
+        from ray.util.spark.utils import get_spark_session
+
         catalog = get_spark_session().sql("SELECT CURRENT_CATALOG()").collect()[0][0]
 
     if not schema:
+        from ray.util.spark.utils import get_spark_session
+
         schema = get_spark_session().sql("SELECT CURRENT_DATABASE()").collect()[0][0]
 
     if query is not None and table is not None:
@@ -2611,7 +2618,12 @@ def read_hudi(
 
 @PublicAPI
 def from_daft(df: "daft.DataFrame") -> Dataset:
-    """Create a :class:`~ray.data.Dataset` from a `Daft DataFrame <https://www.getdaft.io/projects/docs/en/stable/api_docs/dataframe.html>`_.
+    """Create a :class:`~ray.data.Dataset` from a `Daft DataFrame <https://docs.getdaft.io/en/stable/api/dataframe/>`_.
+
+    .. warning::
+
+        This function only works with PyArrow 13 or lower. For more details, see
+        https://github.com/ray-project/ray/issues/53278.
 
     Args:
         df: A Daft DataFrame
@@ -2619,9 +2631,19 @@ def from_daft(df: "daft.DataFrame") -> Dataset:
     Returns:
         A :class:`~ray.data.Dataset` holding rows read from the DataFrame.
     """
-    # NOTE: Today this returns a MaterializedDataset. We should also integrate Daft such that we can stream object references into a Ray
-    # dataset. Unfortunately this is very tricky today because of the way Ray Datasources are implemented with a fully-materialized `list`
-    # of ReadTasks, rather than an iterator which can lazily return these tasks.
+    pyarrow_version = get_pyarrow_version()
+    assert pyarrow_version is not None
+    if pyarrow_version >= parse_version("14.0.0"):
+        raise RuntimeError(
+            "`from_daft` only works with PyArrow 13 or lower. For more details, see "
+            "https://github.com/ray-project/ray/issues/53278."
+        )
+
+    # NOTE: Today this returns a MaterializedDataset. We should also integrate Daft such
+    # that we can stream object references into a Ray dataset. Unfortunately this is
+    # very tricky today because of the way Ray Datasources are implemented with a fully-
+    # materialized `list` of ReadTasks, rather than an iterator which can lazily return
+    # these tasks.
     return df.to_ray_dataset()
 
 
@@ -2824,6 +2846,8 @@ def from_pandas_refs(
 def from_numpy(ndarrays: Union[np.ndarray, List[np.ndarray]]) -> MaterializedDataset:
     """Creates a :class:`~ray.data.Dataset` from a list of NumPy ndarrays.
 
+    The column name defaults to "data".
+
     Examples:
         >>> import numpy as np
         >>> import ray
@@ -2854,6 +2878,8 @@ def from_numpy_refs(
 ) -> MaterializedDataset:
     """Creates a :class:`~ray.data.Dataset` from a list of Ray object references to
     NumPy ndarrays.
+
+    The column name defaults to "data".
 
     Examples:
         >>> import numpy as np
@@ -3311,6 +3337,8 @@ def from_torch(
 ) -> Dataset:
     """Create a :class:`~ray.data.Dataset` from a
     `Torch Dataset <https://pytorch.org/docs/stable/data.html#torch.utils.data.Dataset/>`_.
+
+    The column name defaults to "data".
 
     .. note::
         The input dataset can either be map-style or iterable-style, and can have arbitrarily large amount of data.

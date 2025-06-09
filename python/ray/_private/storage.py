@@ -4,10 +4,10 @@ import urllib
 from pathlib import Path
 from typing import TYPE_CHECKING, List, Optional
 
+from ray._common.utils import load_class
+from ray._private.arrow_utils import add_creatable_buckets_param_if_s3_uri
 from ray._private.auto_init_hook import wrap_auto_init
 from ray._private.client_mode_hook import client_mode_hook
-from ray._private.arrow_utils import add_creatable_buckets_param_if_s3_uri
-from ray._private.utils import load_class
 
 if TYPE_CHECKING:
     import pyarrow.fs
@@ -57,7 +57,7 @@ def get_filesystem() -> ("pyarrow.fs.FileSystem", str):
         be created for this cluster.
 
     Raises:
-        RuntimeError if storage has not been configured or init failed.
+        RuntimeError: If storage has not been configured or init failed.
     """
     return _get_filesystem_internal()
 
@@ -334,8 +334,8 @@ class KVClient:
             List of file-info objects for the directory contents.
 
         Raises:
-            FileNotFoundError if the given path is not found.
-            NotADirectoryError if the given path isn't a valid directory.
+            FileNotFoundError: If the given path is not found.
+            NotADirectoryError: If the given path isn't a valid directory.
         """
         from pyarrow.fs import FileSelector, FileType, LocalFileSystem
 

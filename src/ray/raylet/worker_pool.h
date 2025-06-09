@@ -160,8 +160,11 @@ class WorkerPoolInterface {
   /// non-retriable workers that are still registered.
   ///
   /// \return A list containing all the workers.
-  virtual const std::vector<std::shared_ptr<WorkerInterface>> GetAllRegisteredWorkers(
+  virtual std::vector<std::shared_ptr<WorkerInterface>> GetAllRegisteredWorkers(
       bool filter_dead_workers = false, bool filter_io_workers = false) const = 0;
+
+  /// Checks if any registered worker is available for scheduling.
+  virtual bool IsWorkerAvailableForScheduling() const = 0;
 
   /// Get registered worker process by id or nullptr if not found.
   virtual std::shared_ptr<WorkerInterface> GetRegisteredWorker(
@@ -444,7 +447,7 @@ class WorkerPool : public WorkerPoolInterface, public IOWorkerPoolInterface {
   ///
   /// \param task_spec The returned worker must be able to execute this task.
   /// \param backlog_size The number of tasks in the client backlog of this shape.
-  /// We aim to prestart 1 worker per CPU, up to the the backlog size.
+  /// We aim to prestart 1 worker per CPU, up to the backlog size.
   void PrestartWorkers(const TaskSpecification &task_spec, int64_t backlog_size);
 
   void PrestartWorkersInternal(const TaskSpecification &task_spec, int64_t num_needed);
@@ -463,8 +466,10 @@ class WorkerPool : public WorkerPoolInterface, public IOWorkerPoolInterface {
   /// non-retriable workers that are still registered.
   ///
   /// \return A list containing all the workers.
-  const std::vector<std::shared_ptr<WorkerInterface>> GetAllRegisteredWorkers(
+  std::vector<std::shared_ptr<WorkerInterface>> GetAllRegisteredWorkers(
       bool filter_dead_workers = false, bool filter_io_workers = false) const override;
+
+  bool IsWorkerAvailableForScheduling() const override;
 
   /// Get all the registered drivers.
   ///
@@ -472,7 +477,7 @@ class WorkerPool : public WorkerPoolInterface, public IOWorkerPoolInterface {
   /// that are still registered.
   ///
   /// \return A list containing all the drivers.
-  const std::vector<std::shared_ptr<WorkerInterface>> GetAllRegisteredDrivers(
+  std::vector<std::shared_ptr<WorkerInterface>> GetAllRegisteredDrivers(
       bool filter_dead_drivers = false) const;
 
   /// Returns debug string for class.
@@ -794,7 +799,12 @@ class WorkerPool : public WorkerPoolInterface, public IOWorkerPoolInterface {
 
   void ExecuteOnPrestartWorkersStarted(std::function<void()> callback);
 
-  // If this worker can serve the task.
+  /// Returns if the worker can be used to satisfy the request.
+  ///
+  /// \param[in] worker The worker.
+  /// \param[in] pop_worker_request The pop worker request.
+  /// \return WorkerUnfitForTaskReason::NONE if the worker can be used, else a
+  ///         status indicating why it cannot.
   WorkerUnfitForTaskReason WorkerFitsForTask(
       const WorkerInterface &worker, const PopWorkerRequest &pop_worker_request) const;
 

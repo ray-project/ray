@@ -1,7 +1,9 @@
+import abc
 import logging
-from abc import ABC, abstractmethod
-from typing import Any, Callable, Dict, Iterator, List, Optional, Tuple, Union
 import uuid
+from abc import ABC, abstractmethod
+from dataclasses import dataclass
+from typing import Any, Callable, Dict, Iterator, List, Optional, Tuple, Union
 
 import ray
 from .ref_bundle import RefBundle
@@ -15,10 +17,9 @@ from ray.data._internal.execution.interfaces.execution_options import (
 )
 from ray.data._internal.execution.interfaces.op_runtime_metrics import OpRuntimeMetrics
 from ray.data._internal.logical.interfaces import LogicalOperator, Operator
+from ray.data._internal.output_buffer import OutputBlockSizeOption
 from ray.data._internal.stats import StatsDict, Timer
 from ray.data.context import DataContext
-from ray.data._internal.output_buffer import OutputBlockSizeOption
-
 
 logger = logging.getLogger(__name__)
 
@@ -169,6 +170,21 @@ class MetadataOpTask(OpTask):
         self._task_done_callback()
 
 
+@dataclass
+class _ActorPoolInfo:
+    """Breakdown of the state of the actors used by the ``PhysicalOperator``"""
+
+    running: int
+    pending: int
+    restarting: int
+
+    def __str__(self):
+        return (
+            f"running={self.running}, restarting={self.restarting}, "
+            f"pending={self.pending}"
+        )
+
+
 class PhysicalOperator(Operator):
     """Abstract class for physical operators.
 
@@ -305,17 +321,32 @@ class PhysicalOperator(Operator):
         return self._execution_finished
 
     def completed(self) -> bool:
-        """Return True when this operator is completed.
+        """Returns whether this operator has been fully completed.
 
-        An operator is completed when all these conditions hold true:
-        * The operator has finished execution (i.e., `execution_finished()` is True).
-        * All outputs have been taken (i.e., `has_next()` is False).
+        An operator is completed iff:
+            * The operator has finished execution (i.e., `execution_finished()` is True).
+            * All outputs have been taken (i.e., `has_next()` is False) from it.
         """
+        from ..operators.base_physical_operator import InternalQueueOperatorMixin
+
+        internal_queue_size = (
+            self.internal_queue_size()
+            if isinstance(self, InternalQueueOperatorMixin)
+            else 0
+        )
+
         if not self._execution_finished:
-            if self._inputs_complete and self.num_active_tasks() == 0:
-                # If all inputs are complete and there are no active tasks,
-                # then the operator has completed execution.
+            if (
+                self._inputs_complete
+                and internal_queue_size == 0
+                and self.num_active_tasks() == 0
+            ):
+                # NOTE: Operator is considered completed iff
+                #   - All input blocks have been ingested
+                #   - Internal queue is empty
+                #   - There are no active or pending tasks
                 self._execution_finished = True
+
         return self._execution_finished and not self.has_next()
 
     def get_stats(self) -> StatsDict:
@@ -332,6 +363,15 @@ class PhysicalOperator(Operator):
         """Subclasses should override this method to report extra metrics
         that are specific to them."""
         return {}
+
+    def _get_logical_args(self) -> Dict[str, Dict[str, Any]]:
+        """Return the logical arguments that were translated to create this
+        PhysicalOperator."""
+        res = {}
+        for i, logical_op in enumerate(self._logical_operators):
+            logical_op_id = f"{logical_op}_{i}"
+            res[logical_op_id] = logical_op._get_args()
+        return res
 
     def progress_str(self) -> str:
         """Return any extra status to be displayed in the operator progress bar.
@@ -479,13 +519,6 @@ class PhysicalOperator(Operator):
         """
         return False
 
-    def internal_queue_size(self) -> int:
-        """If the operator has an internal input queue, return its size.
-
-        This is used to report tasks pending submission to actor pools.
-        """
-        return 0
-
     def shutdown(self, timer: Timer, force: bool = False) -> None:
         """Abort execution and release all resources used by this operator.
 
@@ -542,13 +575,18 @@ class PhysicalOperator(Operator):
         """
         return ExecutionResources(0, 0, 0)
 
-    def base_resource_usage(self) -> ExecutionResources:
-        """Returns the minimum amount of resources required for execution.
+    def min_max_resource_requirements(
+        self,
+    ) -> Tuple[ExecutionResources, ExecutionResources]:
+        """Returns the min and max resources to start the operator and make progress.
 
         For example, an operator that creates an actor pool requiring 8 GPUs could
-        return ExecutionResources(gpu=8) as its base usage.
+        return ExecutionResources(gpu=8) as its minimum usage.
+
+        This method is used by the resource manager to reserve minimum resources and to
+        ensure that it doesn't over-provision resources.
         """
-        return ExecutionResources()
+        return ExecutionResources.zero(), ExecutionResources.inf()
 
     def incremental_resource_usage(self) -> ExecutionResources:
         """Returns the incremental resources required for processing another input.
@@ -602,23 +640,9 @@ class PhysicalOperator(Operator):
         """
         pass
 
-    def actor_info_progress_str(self) -> str:
-        """Returns Actor progress strings for Alive, Restarting and Pending Actors.
-
-        This method will be called in summary_str API in OpState. Subclasses can
-        override it to return Actor progress strings for Alive, Restarting and Pending
-        Actors.
-        """
-        return ""
-
-    def actor_info_counts(self) -> Tuple[int, int, int]:
-        """Returns Actor counts for Alive, Restarting and Pending Actors.
-
-        This method will be called in add_output API in OpState. Subclasses can
-        override it to return counts for Alive, Restarting and Pending
-        Actors.
-        """
-        return 0, 0, 0
+    def get_actor_info(self) -> _ActorPoolInfo:
+        """Returns the current status of actors being used by the operator"""
+        return _ActorPoolInfo(running=0, pending=0, restarting=0)
 
     def _cancel_active_tasks(self, force: bool):
         tasks: List[OpTask] = self.get_active_tasks()
@@ -639,3 +663,10 @@ class PhysicalOperator(Operator):
                     # failed with a different error, or cancellation failed.
                     # In all cases, we swallow the exception.
                     pass
+
+
+class ReportsExtraResourceUsage(abc.ABC):
+    @abc.abstractmethod
+    def extra_resource_usage(self: PhysicalOperator) -> ExecutionResources:
+        """Returns resources used by this operator beyond standard accounting."""
+        ...

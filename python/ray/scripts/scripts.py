@@ -13,6 +13,7 @@ import warnings
 import shutil
 from datetime import datetime
 from typing import Optional, Set, List, Tuple
+from ray._common.utils import load_class
 from ray.dashboard.modules.metrics import install_and_start_prometheus
 from ray.util.check_open_ports import check_open_ports
 import requests
@@ -32,7 +33,6 @@ from ray._private.label_utils import (
 )
 from ray._private.utils import (
     check_ray_client_dependencies_installed,
-    load_class,
     parse_resources_json,
 )
 from ray._private.internal_api import memory_summary
@@ -529,7 +529,7 @@ Windows powershell users need additional escaping:
     "--runtime-env-agent-port",
     type=int,
     default=None,
-    help="The port for the runtime enviroment agents to listen for http on.",
+    help="The port for the runtime environment agents to listen for http on.",
 )
 @click.option(
     "--block",
@@ -1410,7 +1410,7 @@ def stop(force: bool, grace_period: int):
     # NOTE(swang): This will not reset the cluster address for a user-defined
     # temp_dir. This is fine since it will get overwritten the next time we
     # call `ray start`.
-    ray._private.utils.reset_ray_address()
+    ray._common.utils.reset_ray_address()
 
 
 @cli.command()
@@ -2089,7 +2089,7 @@ def timeline(address):
     ray.init(address=address)
     time = datetime.today().strftime("%Y-%m-%d_%H-%M-%S")
     filename = os.path.join(
-        ray._private.utils.get_user_temp_dir(), f"ray-timeline-{time}.json"
+        ray._common.utils.get_user_temp_dir(), f"ray-timeline-{time}.json"
     )
     ray.timeline(filename=filename)
     size = os.path.getsize(filename)

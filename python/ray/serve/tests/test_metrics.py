@@ -2,26 +2,24 @@ import http
 import os
 import random
 import sys
+import threading
 from typing import DefaultDict, Dict, List, Optional
 
 import grpc
+import httpx
 import pytest
-import requests
 from fastapi import FastAPI, WebSocket
 from starlette.requests import Request
 from starlette.responses import PlainTextResponse
 from websockets.exceptions import ConnectionClosed
 from websockets.sync.client import connect
 
-from ray.serve.generated import serve_pb2_grpc
-from ray.serve.generated import serve_pb2
-import threading
-
 import ray
 import ray.util.state as state_api
 from ray import serve
+from ray._common.test_utils import SignalActor
+from ray._common.utils import reset_ray_address
 from ray._private.test_utils import (
-    SignalActor,
     fetch_prometheus_metrics,
     wait_for_condition,
 )
@@ -34,6 +32,7 @@ from ray.serve._private.test_utils import (
 )
 from ray.serve._private.utils import block_until_http_ready
 from ray.serve.config import HTTPOptions, gRPCOptions
+from ray.serve.generated import serve_pb2, serve_pb2_grpc
 from ray.serve.handle import DeploymentHandle
 from ray.serve.metrics import Counter, Gauge, Histogram
 from ray.serve.tests.test_config_files.grpc_deployment import g, g2
@@ -70,7 +69,7 @@ def serve_start_shutdown(request):
     )
     serve.shutdown()
     ray.shutdown()
-    ray._private.utils.reset_ray_address()
+    reset_ray_address()
 
 
 def extract_tags(line: str) -> Dict[str, str]:
@@ -116,7 +115,7 @@ def get_metric_float(
     Returns -1 if the metric isn't available.
     """
 
-    metrics = requests.get("http://127.0.0.1:9999").text
+    metrics = httpx.get("http://127.0.0.1:9999").text
     metric_value = -1
     for line in metrics.split("\n"):
         if metric in line and contains_tags(line, expected_tags):
@@ -189,12 +188,12 @@ def get_metric_dictionaries(name: str, timeout: float = 20) -> List[Dict]:
     """
 
     def metric_available() -> bool:
-        metrics = requests.get("http://127.0.0.1:9999").text
+        metrics = httpx.get("http://127.0.0.1:9999").text
         return name in metrics
 
     wait_for_condition(metric_available, retry_interval_ms=1000, timeout=timeout)
 
-    metrics = requests.get("http://127.0.0.1:9999").text
+    metrics = httpx.get("http://127.0.0.1:9999").text
     print("metrics", metrics)
 
     metric_dicts = []
@@ -229,9 +228,9 @@ def test_serve_metrics_for_successful_connection(serve_start_shutdown):
 
     def verify_metrics(do_assert=False):
         try:
-            resp = requests.get("http://127.0.0.1:9999").text
+            resp = httpx.get("http://127.0.0.1:9999").text
         # Requests will fail if we are crashing the controller
-        except requests.ConnectionError:
+        except httpx.HTTPError:
             return False
 
         # NOTE: These metrics should be documented at
@@ -294,7 +293,7 @@ def test_http_replica_gauge_metrics(serve_start_shutdown):
     print("serve_replica_processing_queries exists.")
 
     def ensure_request_processing():
-        resp = requests.get("http://127.0.0.1:9999").text
+        resp = httpx.get("http://127.0.0.1:9999").text
         resp = resp.split("\n")
         for metrics in resp:
             if "# HELP" in metrics or "# TYPE" in metrics:
@@ -323,9 +322,9 @@ def test_proxy_metrics_not_found(serve_start_shutdown):
 
     def verify_metrics(_expected_metrics, do_assert=False):
         try:
-            resp = requests.get("http://127.0.0.1:9999").text
+            resp = httpx.get("http://127.0.0.1:9999").text
         # Requests will fail if we are crashing the controller
-        except requests.ConnectionError:
+        except httpx.HTTPError:
             return False
         for metric in _expected_metrics:
             if do_assert:
@@ -335,8 +334,8 @@ def test_proxy_metrics_not_found(serve_start_shutdown):
         return True
 
     # Trigger HTTP 404 error
-    requests.get("http://127.0.0.1:8000/B/")
-    requests.get("http://127.0.0.1:8000/B/")
+    httpx.get("http://127.0.0.1:8000/B/")
+    httpx.get("http://127.0.0.1:8000/B/")
 
     # Ping gPRC proxy
     channel = grpc.insecure_channel("localhost:9000")
@@ -354,7 +353,7 @@ def test_proxy_metrics_not_found(serve_start_shutdown):
         verify_metrics(expected_metrics, True)
 
     def verify_error_count(do_assert=False):
-        resp = requests.get("http://127.0.0.1:9999").text
+        resp = httpx.get("http://127.0.0.1:9999").text
         resp = resp.split("\n")
         for metrics in resp:
             if "# HELP" in metrics or "# TYPE" in metrics:
@@ -415,9 +414,9 @@ def test_proxy_metrics_internal_error(serve_start_shutdown):
 
     def verify_metrics(_expected_metrics, do_assert=False):
         try:
-            resp = requests.get("http://127.0.0.1:9999").text
+            resp = httpx.get("http://127.0.0.1:9999", timeout=None).text
         # Requests will fail if we are crashing the controller
-        except requests.ConnectionError:
+        except httpx.HTTPError:
             return False
         for metric in _expected_metrics:
             if do_assert:
@@ -437,8 +436,8 @@ def test_proxy_metrics_internal_error(serve_start_shutdown):
 
     app_name = "app"
     serve.run(A.bind(), name=app_name)
-    requests.get("http://127.0.0.1:8000/A/")
-    requests.get("http://127.0.0.1:8000/A/")
+    httpx.get("http://127.0.0.1:8000/A/", timeout=None)
+    httpx.get("http://127.0.0.1:8000/A/", timeout=None)
     channel = grpc.insecure_channel("localhost:9000")
     with pytest.raises(grpc.RpcError):
         ping_grpc_call_method(channel=channel, app_name=app_name)
@@ -455,7 +454,7 @@ def test_proxy_metrics_internal_error(serve_start_shutdown):
         verify_metrics(expected_metrics, True)
 
     def verify_error_count(do_assert=False):
-        resp = requests.get("http://127.0.0.1:9999").text
+        resp = httpx.get("http://127.0.0.1:9999", timeout=None).text
         resp = resp.split("\n")
         for metrics in resp:
             if "# HELP" in metrics or "# TYPE" in metrics:
@@ -498,7 +497,7 @@ def test_proxy_metrics_fields_not_found(serve_start_shutdown):
 
     # Should generate 404 responses
     broken_url = "http://127.0.0.1:8000/fake_route"
-    _ = requests.get(broken_url).text
+    _ = httpx.get(broken_url).text
     print("Sent requests to broken URL.")
 
     # Ping gRPC proxy for not existing application.
@@ -559,7 +558,7 @@ def test_proxy_timeout_metrics(serve_start_shutdown):
         name="status_code_timeout",
     )
 
-    r = requests.get("http://127.0.0.1:8000/status_code_timeout")
+    r = httpx.get("http://127.0.0.1:8000/status_code_timeout")
     assert r.status_code == 408
     ray.get(signal.send.remote(clear=True))
 
@@ -664,7 +663,7 @@ def test_proxy_metrics_fields_internal_error(serve_start_shutdown):
 
     # Deployment should generate divide-by-zero errors
     correct_url = "http://127.0.0.1:8000/real_route"
-    _ = requests.get(correct_url).text
+    _ = httpx.get(correct_url).text
     print("Sent requests to correct URL.")
 
     # Ping gPRC proxy for broken app
@@ -719,7 +718,7 @@ def test_proxy_metrics_http_status_code_is_error(serve_start_shutdown):
         expected_error_count: int,
         expected_success_count: int,
     ):
-        resp = requests.get("http://127.0.0.1:9999").text
+        resp = httpx.get("http://127.0.0.1:9999").text
         error_count = 0
         success_count = 0
         for line in resp.split("\n"):
@@ -740,7 +739,7 @@ def test_proxy_metrics_http_status_code_is_error(serve_start_shutdown):
     serve.run(return_status_code.bind())
 
     # 200 is not an error.
-    r = requests.get("http://127.0.0.1:8000/", data=b"200")
+    r = httpx.request("GET", "http://127.0.0.1:8000/", content=b"200")
     assert r.status_code == 200
     wait_for_condition(
         check_request_count_metrics,
@@ -749,7 +748,7 @@ def test_proxy_metrics_http_status_code_is_error(serve_start_shutdown):
     )
 
     # 2xx is not an error.
-    r = requests.get("http://127.0.0.1:8000/", data=b"250")
+    r = httpx.request("GET", "http://127.0.0.1:8000/", content=b"250")
     assert r.status_code == 250
     wait_for_condition(
         check_request_count_metrics,
@@ -758,7 +757,7 @@ def test_proxy_metrics_http_status_code_is_error(serve_start_shutdown):
     )
 
     # 3xx is not an error.
-    r = requests.get("http://127.0.0.1:8000/", data=b"300")
+    r = httpx.request("GET", "http://127.0.0.1:8000/", content=b"300")
     assert r.status_code == 300
     wait_for_condition(
         check_request_count_metrics,
@@ -767,7 +766,7 @@ def test_proxy_metrics_http_status_code_is_error(serve_start_shutdown):
     )
 
     # 4xx is an error.
-    r = requests.get("http://127.0.0.1:8000/", data=b"400")
+    r = httpx.request("GET", "http://127.0.0.1:8000/", content=b"400")
     assert r.status_code == 400
     wait_for_condition(
         check_request_count_metrics,
@@ -776,7 +775,7 @@ def test_proxy_metrics_http_status_code_is_error(serve_start_shutdown):
     )
 
     # 5xx is an error.
-    r = requests.get("http://127.0.0.1:8000/", data=b"500")
+    r = httpx.request("GET", "http://127.0.0.1:8000/", content=b"500")
     assert r.status_code == 500
     wait_for_condition(
         check_request_count_metrics,
@@ -792,7 +791,7 @@ def test_proxy_metrics_websocket_status_code_is_error(serve_start_shutdown):
         expected_error_count: int,
         expected_success_count: int,
     ):
-        resp = requests.get("http://127.0.0.1:9999").text
+        resp = httpx.get("http://127.0.0.1:9999").text
         error_count = 0
         success_count = 0
         for line in resp.split("\n"):
@@ -883,8 +882,8 @@ def test_replica_metrics_fields(serve_start_shutdown):
     url_f = "http://127.0.0.1:8000/f"
     url_g = "http://127.0.0.1:8000/g"
 
-    assert "hello" == requests.get(url_f).text
-    assert "world" == requests.get(url_g).text
+    assert "hello" == httpx.get(url_f).text
+    assert "world" == httpx.get(url_g).text
 
     wait_for_condition(
         lambda: len(get_metric_dictionaries("serve_deployment_request_counter_total"))
@@ -951,7 +950,7 @@ def test_replica_metrics_fields(serve_start_shutdown):
         return 1 / 0
 
     serve.run(h.bind(), name="app3", route_prefix="/h")
-    assert 500 == requests.get("http://127.0.0.1:8000/h").status_code
+    assert 500 == httpx.get("http://127.0.0.1:8000/h").status_code
     wait_for_condition(
         lambda: len(get_metric_dictionaries("serve_deployment_error_counter_total"))
         == 1,
@@ -981,14 +980,14 @@ def test_replica_metrics_fields(serve_start_shutdown):
 
 class TestRequestContextMetrics:
     def _generate_metrics_summary(self, metrics):
-        """Generate "route", "application" information from metrics.
+        """Generate "route" and "application" information from metrics.
         Args:
-            metrics: list of metrics, each item is a dictionary generated from
-                get_metric_dictionaries func.
-        Return: return a Tuple[dictionary, dictionary]
-            First dictionary: key is deployment name, value is a set
-            including all routes. string is to indicate the applicationn name.
-            Second dictionary: key is the deployment name, value is application name.
+            metrics: List of metric dictionaries, each generated by the
+                get_metric_dictionaries function.
+        Returns:
+            Tuple[dict, dict]:
+                - The first dictionary maps deployment names to a set of routes.
+                - The second dictionary maps deployment names to application names.
         """
         metrics_summary_route = DefaultDict(set)
         metrics_summary_app = DefaultDict(str)
@@ -1025,13 +1024,13 @@ class TestRequestContextMetrics:
         serve.run(g.bind(), name="app2", route_prefix="/app2")
         serve.run(h.bind(), name="app3", route_prefix="/app3")
 
-        resp = requests.get("http://127.0.0.1:8000/app1")
+        resp = httpx.get("http://127.0.0.1:8000/app1")
         assert resp.status_code == 200
         assert resp.text == "hello"
-        resp = requests.get("http://127.0.0.1:8000/app2")
+        resp = httpx.get("http://127.0.0.1:8000/app2")
         assert resp.status_code == 200
         assert resp.text == "world"
-        resp = requests.get("http://127.0.0.1:8000/app3")
+        resp = httpx.get("http://127.0.0.1:8000/app3")
         assert resp.status_code == 500
 
         wait_for_condition(
@@ -1225,9 +1224,9 @@ class TestRequestContextMetrics:
                 return await self.handle2.remote()
 
         serve.run(G.bind(g1.bind(), g2.bind()), name="app")
-        resp = requests.get("http://127.0.0.1:8000/api")
+        resp = httpx.get("http://127.0.0.1:8000/api")
         assert resp.text == '"ok1"'
-        resp = requests.get("http://127.0.0.1:8000/api2")
+        resp = httpx.get("http://127.0.0.1:8000/api2")
         assert resp.text == '"ok2"'
 
         # G deployment metrics:
@@ -1275,9 +1274,9 @@ class TestRequestContextMetrics:
             serve.run(A.bind())
 
         base_url = "http://127.0.0.1:8000" + route_prefix
-        resp = requests.get(base_url + "/api")
+        resp = httpx.get(base_url + "/api")
         assert resp.text == '"ok1"'
-        resp = requests.get(base_url + "/api2/abc123")
+        resp = httpx.get(base_url + "/api2/abc123")
         assert resp.text == '"ok2"'
 
         wait_for_condition(
@@ -1344,7 +1343,7 @@ class TestRequestContextMetrics:
                 ]
 
         serve.run(Model.bind(), name="app", route_prefix="/app")
-        resp = requests.get("http://127.0.0.1:8000/app")
+        resp = httpx.get("http://127.0.0.1:8000/app")
         deployment_name, replica_id = resp.json()
         wait_for_condition(
             lambda: len(get_metric_dictionaries("my_gauge")) == 1,
@@ -1480,7 +1479,7 @@ class TestRequestContextMetrics:
                     return await fn.remote()
 
         serve.run(Model.bind(), name="app", route_prefix="/app")
-        resp = requests.get("http://127.0.0.1:8000/app")
+        resp = httpx.get("http://127.0.0.1:8000/app")
         assert resp.text == "hello"
         wait_for_condition(
             lambda: len(get_metric_dictionaries("my_gauge")) == 1,
@@ -1541,9 +1540,9 @@ def test_multiplexed_metrics(serve_start_shutdown):
 
     def verify_metrics():
         try:
-            resp = requests.get("http://127.0.0.1:9999").text
+            resp = httpx.get("http://127.0.0.1:9999").text
         # Requests will fail if we are crashing the controller
-        except requests.ConnectionError:
+        except httpx.HTTPError:
             return False
         for metric in expected_metrics:
             assert metric in resp
@@ -1703,7 +1702,7 @@ class TestHandleMetrics:
 
         @ray.remote(num_cpus=0)
         def do_request():
-            r = requests.get("http://localhost:8000/")
+            r = httpx.get("http://localhost:8000/")
             r.raise_for_status()
             return r
 

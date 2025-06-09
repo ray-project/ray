@@ -128,57 +128,19 @@ def test_execution_resources(ray_start_10_cpus_shared):
     assert not r5.satisfies_limit(r4)
 
 
-def test_resource_canonicalization(ray_start_10_cpus_shared):
+def test_resource_canonicalization_with_no_ray_remote_args():
     input_op = InputDataBuffer(
-        DataContext.get_current(), make_ref_bundles([[i] for i in range(100)])
+        DataContext.get_current(), make_ref_bundles([[i] for i in range(1)])
     )
-    op = MapOperator.create(
-        _mul2_map_data_prcessor,
-        input_op=input_op,
-        data_context=DataContext.get_current(),
-        name="TestMapper",
-        compute_strategy=TaskPoolStrategy(),
-    )
-    assert op.base_resource_usage() == ExecutionResources()
-    data_context = ray.data.DataContext.get_current()
-    inc_obj_store_mem = (
-        data_context._max_num_blocks_in_streaming_gen_buffer
-        * data_context.target_max_block_size
-    )
-    assert op.incremental_resource_usage() == ExecutionResources(
-        cpu=1,
-        gpu=0,
-        object_store_memory=inc_obj_store_mem,
-    )
-    assert op._ray_remote_args == {"num_cpus": 1}
 
     op = MapOperator.create(
         _mul2_map_data_prcessor,
         input_op=input_op,
         data_context=DataContext.get_current(),
-        name="TestMapper",
-        compute_strategy=TaskPoolStrategy(),
-        ray_remote_args={"num_gpus": 2},
+        ray_remote_args=None,
     )
-    assert op.base_resource_usage() == ExecutionResources()
-    assert op.incremental_resource_usage() == ExecutionResources(
-        cpu=0, gpu=2, object_store_memory=inc_obj_store_mem
-    )
-    assert op._ray_remote_args == {"num_gpus": 2}
 
-    op = MapOperator.create(
-        _mul2_map_data_prcessor,
-        input_op=input_op,
-        data_context=DataContext.get_current(),
-        name="TestMapper",
-        compute_strategy=TaskPoolStrategy(),
-        ray_remote_args={"num_gpus": 2, "num_cpus": 1},
-    )
-    assert op.base_resource_usage() == ExecutionResources()
-    assert op.incremental_resource_usage() == ExecutionResources(
-        cpu=1, gpu=2, object_store_memory=inc_obj_store_mem
-    )
-    assert op._ray_remote_args == {"num_gpus": 2, "num_cpus": 1}
+    assert op.incremental_resource_usage().cpu == 1
 
 
 def test_execution_options_resource_limit():
@@ -328,6 +290,9 @@ def test_task_pool_resource_reporting_with_bundling(ray_start_10_cpus_shared):
 def test_actor_pool_resource_reporting(ray_start_10_cpus_shared, restore_data_context):
     ctx = ray.data.DataContext.get_current()
     ctx._max_num_blocks_in_streaming_gen_buffer = 1
+    # Block AP until all actors have fully started up
+    ctx.wait_for_min_actors_s = 60
+
     input_op = InputDataBuffer(
         DataContext.get_current(), make_ref_bundles([[SMALL_STR] for i in range(100)])
     )
@@ -347,7 +312,10 @@ def test_actor_pool_resource_reporting(ray_start_10_cpus_shared, restore_data_co
         data_context._max_num_blocks_in_streaming_gen_buffer
         * data_context.target_max_block_size
     )
-    assert op.base_resource_usage() == ExecutionResources(cpu=2, gpu=0)
+    min_resource_usage, _ = op.min_max_resource_requirements()
+    assert min_resource_usage == ExecutionResources(
+        cpu=2, gpu=0, object_store_memory=2 * inc_obj_store_mem
+    )
     # `incremental_resource_usage` should always report 0 CPU and GPU, as
     # it doesn't consider scaling-up.
     assert op.incremental_resource_usage() == ExecutionResources(
@@ -442,7 +410,10 @@ def test_actor_pool_resource_reporting_with_bundling(ray_start_10_cpus_shared):
         data_context._max_num_blocks_in_streaming_gen_buffer
         * data_context.target_max_block_size
     )
-    assert op.base_resource_usage() == ExecutionResources(cpu=2, gpu=0)
+    min_resource_usage, _ = op.min_max_resource_requirements()
+    assert min_resource_usage == ExecutionResources(
+        cpu=2, gpu=0, object_store_memory=2 * inc_obj_store_mem
+    )
     # `incremental_resource_usage` should always report 0 CPU and GPU, as
     # it doesn't consider scaling-up.
     assert op.incremental_resource_usage() == ExecutionResources(

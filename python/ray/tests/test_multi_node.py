@@ -394,7 +394,7 @@ print("success")
         # Wait until the process prints "success" and then return.
         start_time = time.time()
         while time.time() - start_time < timeout:
-            output_line = ray._private.utils.decode(
+            output_line = ray._common.utils.decode(
                 process_handle.stdout.readline()
             ).strip()
             print(output_line)
@@ -417,12 +417,7 @@ print("success")
 
 
 if __name__ == "__main__":
-    import pytest
-
     # Make subprocess happy in bazel.
     os.environ["LC_ALL"] = "en_US.UTF-8"
     os.environ["LANG"] = "en_US.UTF-8"
-    if os.environ.get("PARALLEL_CI"):
-        sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))
-    else:
-        sys.exit(pytest.main(["-sv", __file__]))
+    sys.exit(pytest.main(["-sv", __file__]))

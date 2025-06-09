@@ -262,8 +262,8 @@ class RayletServicer(ray_client_pb2_grpc.RayletDriverServicer):
             ctx = ray_client_pb2.ClusterInfoResponse.RuntimeContext()
             with disable_client_hook():
                 rtc = ray.get_runtime_context()
-                ctx.job_id = ray._private.utils.hex_to_binary(rtc.get_job_id())
-                ctx.node_id = ray._private.utils.hex_to_binary(rtc.get_node_id())
+                ctx.job_id = ray._common.utils.hex_to_binary(rtc.get_job_id())
+                ctx.node_id = ray._common.utils.hex_to_binary(rtc.get_node_id())
                 ctx.namespace = rtc.namespace
                 ctx.capture_client_tasks = (
                     rtc.should_capture_child_tasks_in_placement_group
@@ -841,7 +841,7 @@ def create_ray_handler(address, redis_password, redis_username=None):
 
 def try_create_gcs_client(address: Optional[str]) -> Optional[GcsClient]:
     """
-    Try to create a gcs client based on the the command line args or by
+    Try to create a gcs client based on the command line args or by
     autodetecting a running Ray cluster.
     """
     address = canonicalize_bootstrap_address_or_die(address)

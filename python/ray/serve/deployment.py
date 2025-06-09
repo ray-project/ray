@@ -1,8 +1,8 @@
 import inspect
 import logging
+import warnings
 from copy import deepcopy
 from typing import Any, Callable, Dict, List, Optional, Tuple, Union
-import warnings
 
 from ray.serve._private.config import (
     DeploymentConfig,
@@ -10,6 +10,7 @@ from ray.serve._private.config import (
     handle_num_replicas_auto,
 )
 from ray.serve._private.constants import SERVE_LOGGER_NAME
+from ray.serve._private.request_router.request_router import RequestRouter
 from ray.serve._private.usage import ServeUsageTag
 from ray.serve._private.utils import DEFAULT, Default
 from ray.serve.config import AutoscalingConfig
@@ -236,6 +237,9 @@ class Deployment:
         health_check_period_s: Default[float] = DEFAULT.VALUE,
         health_check_timeout_s: Default[float] = DEFAULT.VALUE,
         logging_config: Default[Union[Dict, LoggingConfig, None]] = DEFAULT.VALUE,
+        request_router_class: Default[Union[str, RequestRouter, None]] = DEFAULT.VALUE,
+        request_routing_stats_period_s: Default[float] = DEFAULT.VALUE,
+        request_routing_stats_timeout_s: Default[float] = DEFAULT.VALUE,
         _init_args: Default[Tuple[Any]] = DEFAULT.VALUE,
         _init_kwargs: Default[Dict[Any, Any]] = DEFAULT.VALUE,
         _internal: bool = False,
@@ -368,6 +372,19 @@ class Deployment:
                 logging_config = logging_config.dict()
             new_deployment_config.logging_config = logging_config
 
+        if request_router_class is not DEFAULT.VALUE:
+            new_deployment_config.request_router_class = request_router_class
+
+        if request_routing_stats_period_s is not DEFAULT.VALUE:
+            new_deployment_config.request_routing_stats_period_s = (
+                request_routing_stats_period_s
+            )
+
+        if request_routing_stats_timeout_s is not DEFAULT.VALUE:
+            new_deployment_config.request_routing_stats_timeout_s = (
+                request_routing_stats_timeout_s
+            )
+
         new_replica_config = ReplicaConfig.create(
             func_or_class,
             init_args=_init_args,
@@ -436,6 +453,8 @@ def deployment_to_schema(d: Deployment) -> DeploymentSchema:
         "placement_group_bundles": d._replica_config.placement_group_bundles,
         "max_replicas_per_node": d._replica_config.max_replicas_per_node,
         "logging_config": d._deployment_config.logging_config,
+        "request_routing_stats_period_s": d._deployment_config.request_routing_stats_period_s,
+        "request_routing_stats_timeout_s": d._deployment_config.request_routing_stats_timeout_s,
     }
 
     # Let non-user-configured options be set to defaults. If the schema
@@ -496,6 +515,8 @@ def schema_to_deployment(s: DeploymentSchema) -> Deployment:
         health_check_period_s=s.health_check_period_s,
         health_check_timeout_s=s.health_check_timeout_s,
         logging_config=s.logging_config,
+        request_routing_stats_period_s=s.request_routing_stats_period_s,
+        request_routing_stats_timeout_s=s.request_routing_stats_timeout_s,
     )
     deployment_config.user_configured_option_names = (
         s._get_user_configured_option_names()

@@ -72,7 +72,8 @@ void MutableObjectProvider::RegisterWriterChannel(
 
   // Find remote readers.
   for (const auto &node_id : remote_reader_node_ids) {
-    client_call_managers_.push_back(std::make_unique<rpc::ClientCallManager>(io_context));
+    client_call_managers_.push_back(
+        std::make_unique<rpc::ClientCallManager>(io_context, /*record_stats=*/false));
     std::shared_ptr<MutableObjectReaderInterface> reader =
         raylet_client_factory_(node_id, *client_call_managers_.back());
     RAY_CHECK(reader);
@@ -131,7 +132,6 @@ void MutableObjectProvider::HandlePushMutableObject(
   }
   size_t total_data_size = request.total_data_size();
   size_t total_metadata_size = request.total_metadata_size();
-  size_t total_size = total_data_size + total_metadata_size;
 
   uint64_t offset = request.offset();
   uint64_t chunk_size = request.chunk_size();
@@ -142,7 +142,7 @@ void MutableObjectProvider::HandlePushMutableObject(
 
     tmp_written_so_far = written_so_far_[writer_object_id];
     written_so_far_[writer_object_id] += chunk_size;
-    if (written_so_far_[writer_object_id] == total_size) {
+    if (written_so_far_[writer_object_id] == total_data_size) {
       written_so_far_.erase(written_so_far_.find(writer_object_id));
     }
   }
@@ -150,9 +150,7 @@ void MutableObjectProvider::HandlePushMutableObject(
   std::shared_ptr<Buffer> object_backing_store;
   if (tmp_written_so_far == 0u) {
     // We set `metadata` to nullptr since the metadata is at the end of the object, which
-    // we will not have until the last chunk is received (or until the two last chunks are
-    // received, if the metadata happens to span both). The metadata will end up being
-    // written along with the data as the chunks are written.
+    // we will not have until the last chunk is received.
     RAY_CHECK_OK(object_manager_->WriteAcquire(info.local_object_id,
                                                total_data_size,
                                                /*metadata=*/nullptr,
@@ -167,14 +165,14 @@ void MutableObjectProvider::HandlePushMutableObject(
   }
   RAY_CHECK(object_backing_store);
 
-  // The buffer has the data immediately followed by the metadata. `WriteAcquire()`
-  // above checks that the buffer size is large enough to hold both the data and the
-  // metadata.
-  memcpy(object_backing_store->Data() + offset, request.payload().data(), chunk_size);
-
+  memcpy(object_backing_store->Data() + offset, request.data().data(), chunk_size);
   size_t total_written = tmp_written_so_far + chunk_size;
-  RAY_CHECK_LE(total_written, total_size);
-  if (total_written == total_size) {
+  RAY_CHECK_LE(total_written, total_data_size);
+  if (total_written == total_data_size) {
+    // Copy the metadata to the end of the object.
+    memcpy(object_backing_store->Data() + total_data_size,
+           request.metadata().data(),
+           total_metadata_size);
     // The entire object has been written, so call `WriteRelease()`.
     RAY_CHECK_OK(object_manager_->WriteRelease(info.local_object_id));
     reply->set_done(true);
@@ -245,6 +243,7 @@ void MutableObjectProvider::PollWriterClosure(
         object->GetData()->Size(),
         object->GetMetadata()->Size(),
         object->GetData()->Data(),
+        object->GetMetadata()->Data(),
         [this, &io_context, writer_object_id, remote_readers, num_replied](
             const Status &status, const rpc::PushMutableObjectReply &reply) {
           *num_replied += 1;

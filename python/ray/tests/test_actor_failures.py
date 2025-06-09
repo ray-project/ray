@@ -1,22 +1,23 @@
 import atexit
 import asyncio
 import collections
-import numpy as np
 import os
-import pytest
 import signal
 import sys
 import time
+
+import pytest
+import numpy as np
 
 import ray
 from ray.actor import exit_actor
 from ray.exceptions import AsyncioActorExit
 import ray.cluster_utils
+from ray._common.test_utils import SignalActor
 from ray._private.test_utils import (
     wait_for_condition,
     wait_for_pid_to_exit,
     generate_system_config_map,
-    SignalActor,
 )
 
 SIGKILL = signal.SIGKILL if sys.platform != "win32" else signal.SIGTERM
@@ -750,12 +751,6 @@ def test_actor_failure_per_type(ray_start_cluster):
             self.a = Actor.remote()
             return self.a
 
-    # Test actor is dead because its reference is gone.
-    # Q(sang): Should we raise RayACtorError in this case?
-    with pytest.raises(RuntimeError, match="Lost reference to actor") as exc_info:
-        ray.get(Actor.remote().check_alive.remote())
-    print(exc_info._excinfo[1])
-
     # Test actor killed by ray.kill
     a = Actor.remote()
     ray.kill(a)
@@ -1244,9 +1239,4 @@ def test_actor_restart_and_partial_task_not_completed(shutdown_only):
 
 
 if __name__ == "__main__":
-    import pytest
-
-    if os.environ.get("PARALLEL_CI"):
-        sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))
-    else:
-        sys.exit(pytest.main(["-sv", __file__]))
+    sys.exit(pytest.main(["-sv", __file__]))

@@ -1,4 +1,3 @@
-import os
 import pytest
 import sys
 import threading
@@ -159,7 +158,4 @@ def test_worker_paused_async_actor(shutdown_only, actor_concurrency):
 
 
 if __name__ == "__main__":
-    if os.environ.get("PARALLEL_CI"):
-        sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))
-    else:
-        sys.exit(pytest.main(["-sv", __file__]))
+    sys.exit(pytest.main(["-sv", __file__]))

@@ -1,6 +1,6 @@
 import asyncio
-import inspect
 import fnmatch
+import inspect
 import io
 import json
 import logging
@@ -12,46 +12,45 @@ import socket
 import subprocess
 import sys
 import tempfile
-import uuid
+import threading
 import time
 import timeit
 import traceback
+import uuid
 from collections import defaultdict
 from contextlib import contextmanager, redirect_stderr, redirect_stdout
+from dataclasses import dataclass
 from datetime import datetime
 from enum import Enum
-
 from typing import Any, Callable, Dict, List, Optional, Set, Tuple
-from dataclasses import dataclass
 
 import requests
-from ray._raylet import Config
-
-import psutil  # We must import psutil after ray because we bundle it with ray.
-from ray._private import (
-    ray_constants,
-)
-from ray._private.worker import RayContext
 import yaml
 
 import ray
 import ray._private.gcs_utils as gcs_utils
 import ray._private.memory_monitor as memory_monitor
 import ray._private.services
+import ray._private.services as services
 import ray._private.usage.usage_lib as ray_usage_lib
 import ray._private.utils
 from ray._common.utils import get_or_create_event_loop
+from ray._private import (
+    ray_constants,
+)
 from ray._private.internal_api import memory_summary
 from ray._private.tls_utils import generate_self_signed_tls_certs
-from ray._raylet import GcsClientOptions, GlobalStateAccessor
+from ray._private.worker import RayContext
+from ray._raylet import Config, GcsClientOptions, GlobalStateAccessor
 from ray.core.generated import (
     gcs_pb2,
-    node_manager_pb2,
     gcs_service_pb2,
+    node_manager_pb2,
 )
 from ray.util.queue import Empty, Queue, _QueueActor
 from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
 
+import psutil  # We must import psutil after ray because we bundle it with ray.
 
 logger = logging.getLogger(__name__)
 
@@ -62,7 +61,7 @@ REDIS_EXECUTABLE = os.path.join(
 )
 
 try:
-    from prometheus_client.parser import text_string_to_metric_families, Sample
+    from prometheus_client.parser import Sample, text_string_to_metric_families
 except (ImportError, ModuleNotFoundError):
 
     Sample = None
@@ -83,21 +82,15 @@ def make_global_state_accessor(ray_context):
     return global_state_accessor
 
 
-def enable_external_redis():
-    import os
-
+def external_redis_test_enabled():
     return os.environ.get("TEST_EXTERNAL_REDIS") == "1"
 
 
 def redis_replicas():
-    import os
-
     return int(os.environ.get("TEST_EXTERNAL_REDIS_REPLICAS", "1"))
 
 
 def redis_sentinel_replicas():
-    import os
-
     return int(os.environ.get("TEST_EXTERNAL_REDIS_SENTINEL_REPLICAS", "2"))
 
 
@@ -471,12 +464,12 @@ def run_string_as_driver(driver_script: str, env: Dict = None, encode: str = "ut
     with proc:
         output = proc.communicate(driver_script.encode(encoding=encode))[0]
         if proc.returncode:
-            print(ray._private.utils.decode(output, encode_type=encode))
+            print(ray._common.utils.decode(output, encode_type=encode))
             logger.error(proc.stderr)
             raise subprocess.CalledProcessError(
                 proc.returncode, proc.args, output, proc.stderr
             )
-        out = ray._private.utils.decode(output, encode_type=encode)
+        out = ray._common.utils.decode(output, encode_type=encode)
     return out
 
 
@@ -502,7 +495,7 @@ def run_string_as_driver_stdout_stderr(
     with proc:
         outputs_bytes = proc.communicate(driver_script.encode(encoding=encode))
         out_str, err_str = [
-            ray._private.utils.decode(output, encode_type=encode)
+            ray._common.utils.decode(output, encode_type=encode)
             for output in outputs_bytes
         ]
         if proc.returncode:
@@ -600,6 +593,7 @@ def wait_for_condition(
         retry_interval_ms: Retry interval in milliseconds.
         raise_exceptions: If true, exceptions that occur while executing
             condition_predictor won't be caught and instead will be raised.
+        **kwargs: Arguments to pass to the condition_predictor.
 
     Raises:
         RuntimeError: If the condition is not met before the timeout expires.
@@ -619,6 +613,46 @@ def wait_for_condition(
     if last_ex is not None:
         message += f" Last exception: {last_ex}"
     raise RuntimeError(message)
+
+
+def wait_for_assertion(
+    assertion_predictor: Callable,
+    timeout: int = 10,
+    retry_interval_ms: int = 100,
+    raise_exceptions: bool = False,
+    **kwargs: Any,
+):
+    """Wait until an assertion is met or time out with an exception.
+
+    Args:
+        assertion_predictor: A function that predicts the assertion.
+        timeout: Maximum timeout in seconds.
+        retry_interval_ms: Retry interval in milliseconds.
+        raise_exceptions: If true, exceptions that occur while executing
+            assertion_predictor won't be caught and instead will be raised.
+        **kwargs: Arguments to pass to the condition_predictor.
+
+    Raises:
+        RuntimeError: If the assertion is not met before the timeout expires.
+    """
+
+    def _assertion_to_condition():
+        try:
+            assertion_predictor(**kwargs)
+            return True
+        except AssertionError:
+            return False
+
+    try:
+        wait_for_condition(
+            _assertion_to_condition,
+            timeout=timeout,
+            retry_interval_ms=retry_interval_ms,
+            raise_exceptions=raise_exceptions,
+            **kwargs,
+        )
+    except RuntimeError:
+        assertion_predictor(**kwargs)  # Should fail assert
 
 
 async def async_wait_for_condition(
@@ -680,16 +714,17 @@ def get_metric_check_condition(
     metrics_to_check: List[MetricSamplePattern], export_addr: Optional[str] = None
 ) -> Callable[[], bool]:
     """A condition to check if a prometheus metrics reach a certain value.
+
     This is a blocking check that can be passed into a `wait_for_condition`
     style function.
 
     Args:
-      metrics_to_check: A list of MetricSamplePattern. The fields that
-      aren't `None` will be matched.
+        metrics_to_check: A list of MetricSamplePattern. The fields that
+            aren't `None` will be matched.
+        export_addr: Optional address to export metrics to.
 
     Returns:
-      A function that returns True if all the metrics are emitted.
-
+        A function that returns True if all the metrics are emitted.
     """
     node_info = ray.nodes()[0]
     metrics_export_port = node_info["MetricsExportPort"]
@@ -785,42 +820,6 @@ class Collector:
 
     def get(self):
         return self.items
-
-
-@ray.remote(num_cpus=0)
-class SignalActor:
-    def __init__(self):
-        self.ready_event = asyncio.Event()
-        self.num_waiters = 0
-
-    def send(self, clear=False):
-        self.ready_event.set()
-        if clear:
-            self.ready_event.clear()
-
-    async def wait(self, should_wait=True):
-        if should_wait:
-            self.num_waiters += 1
-            await self.ready_event.wait()
-            self.num_waiters -= 1
-
-    async def cur_num_waiters(self):
-        return self.num_waiters
-
-
-@ray.remote(num_cpus=0)
-class Semaphore:
-    def __init__(self, value=1):
-        self._sema = asyncio.Semaphore(value=value)
-
-    async def acquire(self):
-        await self._sema.acquire()
-
-    async def release(self):
-        self._sema.release()
-
-    async def locked(self):
-        return self._sema.locked()
 
 
 def dicts_equal(dict1, dict2, abs_tol=1e-4):
@@ -1440,6 +1439,7 @@ class ResourceKillerActor:
             await asyncio.sleep(self.kill_interval_s - sleep_interval)
 
         self.done.set_result(True)
+        await self.stop_run()
 
     async def _find_resources_to_kill(self):
         raise NotImplementedError
@@ -1449,6 +1449,9 @@ class ResourceKillerActor:
 
     async def stop_run(self):
         was_running = self.is_running
+        if was_running:
+            self._cleanup()
+
         self.is_running = False
         return was_running
 
@@ -1456,6 +1459,13 @@ class ResourceKillerActor:
         """Get the total number of killed resources"""
         await self.done
         return self.killed
+
+    def _cleanup(self):
+        """Cleanup any resources created by the killer.
+
+        Overriding this method is optional.
+        """
+        pass
 
 
 class NodeKillerBase(ResourceKillerActor):
@@ -1510,6 +1520,7 @@ class RayletKiller(NodeKillerBase):
     def _kill_raylet(self, ip, port, graceful=False):
         import grpc
         from grpc._channel import _InactiveRpcError
+
         from ray.core.generated import node_manager_pb2_grpc
 
         raylet_address = f"{ip}:{port}"
@@ -1528,30 +1539,76 @@ class EC2InstanceTerminator(NodeKillerBase):
     def _kill_resource(self, node_id, node_to_kill_ip, _):
         if node_to_kill_ip is not None:
             try:
-                self._terminate_ec2_instance(node_to_kill_ip)
+                _terminate_ec2_instance(node_to_kill_ip)
             except Exception:
                 pass
             logging.info(f"Terminated instance, {node_id=}, address={node_to_kill_ip}")
             self.killed.add(node_id)
 
-    def _terminate_ec2_instance(self, ip):
-        # This command uses IMDSv2 to get the host instance id and region.
-        # After that it terminates itself using aws cli.
-        multi_line_command = (
-            'TOKEN=$(curl -X PUT "http://169.254.169.254/latest/api/token" -H "X-aws-ec2-metadata-token-ttl-seconds: 21600");'  # noqa: E501
-            'instanceId=$(curl -H "X-aws-ec2-metadata-token: $TOKEN" http://169.254.169.254/latest/meta-data/instance-id/);'  # noqa: E501
-            'region=$(curl -H "X-aws-ec2-metadata-token: $TOKEN" http://169.254.169.254/latest/meta-data/placement/region);'  # noqa: E501
-            "aws ec2 terminate-instances --region $region --instance-ids $instanceId"  # noqa: E501
-        )
-        # This is a feature on Anyscale platform that enables
-        # easy ssh access to worker nodes.
-        ssh_command = f"ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -p 2222 ray@{ip} '{multi_line_command}'"  # noqa: E501
 
-        result = subprocess.run(
-            ssh_command, shell=True, capture_output=True, text=True, check=True
+@ray.remote(num_cpus=0)
+class EC2InstanceTerminatorWithGracePeriod(NodeKillerBase):
+    def __init__(self, *args, grace_period_s: int = 30, **kwargs):
+        super().__init__(*args, **kwargs)
+
+        self._grace_period_s = grace_period_s
+        self._kill_threads: Set[threading.Thread] = set()
+
+    def _kill_resource(self, node_id, node_to_kill_ip, _):
+        assert node_id not in self.killed
+
+        # Clean up any completed threads.
+        for thread in self._kill_threads.copy():
+            if not thread.is_alive():
+                thread.join()
+                self._kill_threads.remove(thread)
+
+        def _kill_node_with_grace_period(node_id, node_to_kill_ip):
+            self._drain_node(node_id)
+            time.sleep(self._grace_period_s)
+            _terminate_ec2_instance(node_to_kill_ip)
+
+        logger.info(f"Starting killing thread {node_id=}, {node_to_kill_ip=}")
+        thread = threading.Thread(
+            target=_kill_node_with_grace_period,
+            args=(node_id, node_to_kill_ip),
+            daemon=True,
         )
-        print(f"STDOUT:\n{result.stdout}\n")
-        print(f"STDERR:\n{result.stderr}\n")
+        thread.start()
+        self._kill_threads.add(thread)
+        self.killed.add(node_id)
+
+    def _drain_node(self, node_id: str) -> None:
+        # We need to lazily import this object. Otherwise, Ray can't serialize the
+        # class.
+        from ray.core.generated import autoscaler_pb2
+
+        assert ray.NodeID.from_hex(node_id) != ray.NodeID.nil()
+
+        logging.info(f"Draining node {node_id=}")
+        address = services.canonicalize_bootstrap_address_or_die(addr="auto")
+        gcs_client = ray._raylet.GcsClient(address=address)
+        deadline_timestamp_ms = (time.time_ns() // 1e6) + (self._grace_period_s * 1e3)
+
+        try:
+            is_accepted, _ = gcs_client.drain_node(
+                node_id,
+                autoscaler_pb2.DrainNodeReason.Value("DRAIN_NODE_REASON_PREEMPTION"),
+                "",
+                deadline_timestamp_ms,
+            )
+        except ray.exceptions.RayError as e:
+            logger.error(f"Failed to drain node {node_id=}")
+            raise e
+
+        assert is_accepted, "Drain node request was rejected"
+
+    def _cleanup(self):
+        for thread in self._kill_threads.copy():
+            thread.join()
+            self._kill_threads.remove(thread)
+
+        assert not self._kill_threads
 
 
 @ray.remote(num_cpus=0)
@@ -1563,8 +1620,8 @@ class WorkerKillerActor(ResourceKillerActor):
         # not finish successfully on its own.
         self.kill_immediately_after_found = True
 
-        from ray.util.state.common import ListApiOptions
         from ray.util.state.api import StateApiClient
+        from ray.util.state.common import ListApiOptions
 
         self.client = StateApiClient()
         self.task_options = ListApiOptions(
@@ -1700,7 +1757,7 @@ def test_get_directory_size_bytes():
         assert ray._private.utils.get_directory_size_bytes(tmp_dir) == 152
 
 
-def check_local_files_gced(cluster, whitelist=None):
+def check_local_files_gced(cluster):
     for node in cluster.list_all_nodes():
         for subdir in ["conda", "pip", "working_dir_files", "py_modules_files"]:
             all_files = os.listdir(
@@ -1711,8 +1768,6 @@ def check_local_files_gced(cluster, whitelist=None):
             # Note: On Windows the top folder is not deleted as it is in use.
             # TODO(architkulkarni): these files should get cleaned up too!
             items = list(filter(lambda f: not f.endswith((".lock", ".txt")), all_files))
-            if whitelist and set(items).issubset(whitelist):
-                continue
             if len(items) > 0:
                 print(f"runtime_env files not GC'd from subdir '{subdir}': {items}")
                 return False
@@ -1858,6 +1913,7 @@ def wandb_setup_api_key_hook():
 # Get node stats from node manager.
 def get_node_stats(raylet, num_retry=5, timeout=2):
     import grpc
+
     from ray.core.generated import node_manager_pb2_grpc
 
     raylet_address = f'{raylet["NodeManagerAddress"]}:{raylet["NodeManagerPort"]}'
@@ -1909,6 +1965,7 @@ def get_load_metrics_report(webui_url):
 def kill_raylet(raylet, graceful=False):
     import grpc
     from grpc._channel import _InactiveRpcError
+
     from ray.core.generated import node_manager_pb2_grpc
 
     raylet_address = f'{raylet["NodeManagerAddress"]}:{raylet["NodeManagerPort"]}'
@@ -2144,3 +2201,26 @@ def check_library_usage_telemetry(
         assert all(
             [extra_usage_tags[k] == v for k, v in expected_extra_usage_tags.items()]
         ), extra_usage_tags
+
+
+def _terminate_ec2_instance(ip):
+    logging.info(f"Terminating instance, {ip=}")
+    # This command uses IMDSv2 to get the host instance id and region.
+    # After that it terminates itself using aws cli.
+    multi_line_command = (
+        'TOKEN=$(curl -X PUT "http://169.254.169.254/latest/api/token" -H "X-aws-ec2-metadata-token-ttl-seconds: 21600");'  # noqa: E501
+        'instanceId=$(curl -H "X-aws-ec2-metadata-token: $TOKEN" http://169.254.169.254/latest/meta-data/instance-id/);'  # noqa: E501
+        'region=$(curl -H "X-aws-ec2-metadata-token: $TOKEN" http://169.254.169.254/latest/meta-data/placement/region);'  # noqa: E501
+        "aws ec2 terminate-instances --region $region --instance-ids $instanceId"  # noqa: E501
+    )
+    # This is a feature on Anyscale platform that enables
+    # easy ssh access to worker nodes.
+    ssh_command = f"ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -p 2222 ray@{ip} '{multi_line_command}'"  # noqa: E501
+
+    try:
+        subprocess.run(
+            ssh_command, shell=True, capture_output=True, text=True, check=True
+        )
+    except subprocess.CalledProcessError as e:
+        print("Exit code:", e.returncode)
+        print("Stderr:", e.stderr)

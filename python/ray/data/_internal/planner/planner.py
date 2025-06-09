@@ -1,11 +1,13 @@
 from typing import Callable, Dict, List, Tuple, Type, TypeVar
 
 from ray.data._internal.execution.interfaces import PhysicalOperator
+from ray.data._internal.execution.operators.join import JoinOperator
 from ray.data._internal.logical.interfaces import (
     LogicalOperator,
     LogicalPlan,
     PhysicalPlan,
 )
+from ray.data._internal.logical.operators.join_operator import Join
 from ray.data.context import DataContext
 from ray.util.annotations import DeveloperAPI
 
@@ -122,6 +124,30 @@ def _register_default_plan_logical_op_fns():
     register_plan_logical_op_fn(Project, plan_project_op)
 
     register_plan_logical_op_fn(StreamingRepartition, plan_streaming_repartition_op)
+
+    def plan_join_op(
+        logical_op: Join,
+        physical_children: List[PhysicalOperator],
+        data_context: DataContext,
+    ) -> PhysicalOperator:
+        assert len(physical_children) == 2
+        assert logical_op._num_outputs is not None
+
+        return JoinOperator(
+            data_context=data_context,
+            left_input_op=physical_children[0],
+            right_input_op=physical_children[1],
+            join_type=logical_op._join_type,
+            left_key_columns=logical_op._left_key_columns,
+            right_key_columns=logical_op._right_key_columns,
+            left_columns_suffix=logical_op._left_columns_suffix,
+            right_columns_suffix=logical_op._right_columns_suffix,
+            num_partitions=logical_op._num_outputs,
+            partition_size_hint=logical_op._partition_size_hint,
+            aggregator_ray_remote_args_override=logical_op._aggregator_ray_remote_args,
+        )
+
+    register_plan_logical_op_fn(Join, plan_join_op)
 
 
 _register_default_plan_logical_op_fns()

@@ -8,6 +8,7 @@ from typing import (
     ContextManager,
     Dict,
     Generator,
+    Generic,
     List,
     Optional,
     TypeVar,
@@ -42,7 +43,7 @@ def construct_train_func(
     train_func: Union[Callable[[], T], Callable[[Dict[str, Any]], T]],
     config: Optional[Dict[str, Any]],
     train_func_context: ContextManager,
-    fn_arg_name: Optional[str] = "train_func",
+    fn_arg_name: Optional[str] = "train_loop_per_worker",
 ) -> Callable[[], T]:
     """Validates and constructs the training function to execute.
     Args:
@@ -84,6 +85,16 @@ def construct_train_func(
                 return train_func()
 
     return train_fn
+
+
+class ObjectRefWrapper(Generic[T]):
+    """Thin wrapper around ray.put to manually control dereferencing."""
+
+    def __init__(self, obj: T):
+        self._ref = ray.put(obj)
+
+    def get(self) -> T:
+        return ray.get(self._ref)
 
 
 def date_str(include_ms: bool = False):
