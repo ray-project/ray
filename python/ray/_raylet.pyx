@@ -3801,6 +3801,7 @@ cdef class CoreWorker:
                      c_bool enable_task_events,
                      labels,
                      label_selector,
+                     c_bool execute_out_of_order = False,
                      ):
         cdef:
             CRayFunction ray_function
@@ -3853,9 +3854,8 @@ cdef class CoreWorker:
                         c_scheduling_strategy,
                         serialized_runtime_env_info,
                         c_concurrency_groups,
-                        # execute_out_of_order for
-                        # async or threaded actors.
-                        is_asyncio or max_concurrency > 1,
+                        # execute_out_of_order
+                        execute_out_of_order,
                         max_pending_calls,
                         enable_task_events,
                         c_labels,

@@ -1715,7 +1715,7 @@ class ActorClass(Generic[T]):
                     str(len(args) + len(kwargs)),
                 )
             )
-
+        execute_out_of_order = actor_options.get("execute_out_of_order") or (is_asyncio or max_concurrency > 1)
         actor_id = worker.core_worker.create_actor(
             meta.language,
             meta.actor_creation_function_descriptor,
@@ -1738,6 +1738,7 @@ class ActorClass(Generic[T]):
             enable_task_events=enable_task_events,
             labels=actor_options.get("_labels"),
             label_selector=actor_options.get("label_selector"),
+            execute_out_of_order = execute_out_of_order,
         )
 
         if _actor_launch_hook:
