@@ -4,7 +4,7 @@ from ray.dag.class_node import (
     ClassNode,
     ClassMethodNode,
 )
-from ray.dag.collective_node import CollectiveOutputNode
+from ray.dag.communication_node import CollectiveOutputNode, P2PSendNode, P2PRecvNode
 from ray.dag.input_node import (
     InputNode,
     InputAttributeNode,
@@ -27,6 +27,8 @@ __all__ = [
     "ClassNode",
     "ClassMethodNode",
     "CollectiveOutputNode",
+    "P2PSendNode",
+    "P2PRecvNode",
     "DAGNode",
     "DAGOperationFuture",
     "FunctionNode",

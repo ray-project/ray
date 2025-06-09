@@ -122,6 +122,14 @@ class Communicator(ABC):
         """
         raise NotImplementedError
 
+    @property
+    @abstractmethod
+    def coll_stream(self) -> Optional["cp.cuda.ExternalStream"]:
+        """
+        Return the cuda stream used for collective operations.
+        """
+        raise NotImplementedError
+
     @abstractmethod
     def allgather(
         self,
