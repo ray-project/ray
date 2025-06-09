@@ -85,8 +85,6 @@ from ray.util import metrics
 
 logger = logging.getLogger(SERVE_LOGGER_NAME)
 
-TIMEOUT_ERROR_CODE = "408"
-DISCONNECT_ERROR_CODE = "499"
 SOCKET_REUSE_PORT_ENABLED = (
     os.environ.get("SERVE_SOCKET_REUSE_PORT_ENABLED", "1") == "1"
 )
