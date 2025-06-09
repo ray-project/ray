@@ -1,6 +1,8 @@
+from abc import abstractmethod
 from typing import Any, Dict, Optional
 
 import ray.train
+from ray.data import Dataset
 from ray.data.collate_fn import CollateFn
 
 from constants import DatasetKey
@@ -32,9 +34,21 @@ class RayDataLoaderFactory(BaseDataLoaderFactory):
             benchmark_config.actor_locality_enabled
         )
 
+    @abstractmethod
+    def get_ray_datasets(self) -> Dict[str, Dataset]:
+        """Get Ray datasets."""
+        raise NotImplementedError
+
     def _get_collate_fn(self) -> Optional[CollateFn]:
         """Return the collate function for the dataloader."""
         return None
+
+    def get_ray_data_config(self) -> ray.train.DataConfig:
+        """Get Ray data config."""
+        return ray.train.DataConfig(
+            datasets_to_split="all",
+            enable_shard_locality=self.benchmark_config.enable_shard_locality,
+        )
 
     def get_train_dataloader(self):
         """Get the training dataloader.

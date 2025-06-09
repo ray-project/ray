@@ -11,6 +11,7 @@ from ray.train.v2._internal.util import date_str
 
 from config import BenchmarkConfig, cli_to_config
 from factory import BenchmarkFactory
+from ray_dataloader_factory import RayDataLoaderFactory
 
 
 logger = logging.getLogger(__name__)
@@ -80,6 +81,14 @@ def main():
 
     factory.set_dataset_creation_time(time.perf_counter() - start_time)
 
+    dataloader_factory = factory.get_dataloader_factory()
+    if isinstance(dataloader_factory, RayDataLoaderFactory):
+        datasets = dataloader_factory.get_ray_datasets()
+        data_config = dataloader_factory.get_ray_data_config()
+    else:
+        datasets = {}
+        data_config = None
+
     trainer = TorchTrainer(
         train_loop_per_worker=train_fn_per_worker,
         train_loop_config={"factory": factory},
@@ -95,7 +104,8 @@ def main():
                 max_failures=benchmark_config.max_failures
             ),
         ),
-        datasets=factory.get_ray_datasets(),
+        datasets=datasets,
+        dataset_config=data_config,
     )
 
     trainer.fit()
