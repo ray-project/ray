@@ -25,6 +25,13 @@ class RayDataLoaderFactory(BaseDataLoaderFactory):
         # due to throttling during read operations.
         data_context.retried_io_errors.append("AWS Error ACCESS_DENIED")
 
+        data_context.execution_options.locality_with_output = (
+            benchmark_config.locality_with_output
+        )
+        data_context.execution_options.actor_locality_enabled = (
+            benchmark_config.actor_locality_enabled
+        )
+
     def _get_collate_fn(self) -> Optional[CollateFn]:
         """Return the collate function for the dataloader."""
         return None
