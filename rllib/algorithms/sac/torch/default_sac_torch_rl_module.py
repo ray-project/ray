@@ -43,13 +43,30 @@ class DefaultSACTorchRLModule(TorchRLModule, DefaultSACRLModule):
         pi_encoder_outs = self.pi_encoder(batch)
 
         # Pi head.
-        output[Columns.ACTION_DIST_INPUTS] = self.pi(pi_encoder_outs[ENCODER_OUT])
+        if isinstance(self.action_space, gym.spaces.Discrete):
+            # For discrete action spaces, we return the logits for each action.
+            output[Columns.ACTIONS] = self.pi(pi_encoder_outs[ENCODER_OUT])
+        elif isinstance(self.action_space, gym.spaces.Box):
+            output[Columns.ACTION_DIST_INPUTS] = self.pi(pi_encoder_outs[ENCODER_OUT])
+        else:
+            raise ValueError(
+                f"Unsupported action space type: {type(self.action_space)}. "
+                "Only discrete and continuous action spaces are supported."
+            )
 
         return output
 
     @override(RLModule)
     def _forward_exploration(self, batch: Dict, **kwargs) -> Dict[str, Any]:
-        return self._forward_inference(batch)
+        output = self._forward_inference(batch)
+        if isinstance(self.action_space, gym.spaces.Discrete):
+            # For discrete action spaces, we return the logits for each action.
+            action_probs = output[Columns.ACTIONS]
+            distribution = torch.distributions.Categorical(probs=action_probs)
+            action_sample = distribution.sample()
+            output[Columns.ACTIONS] = action_sample
+
+        return output
 
     @override(RLModule)
     def _forward_train(self, batch: Dict) -> Dict[str, Any]:
