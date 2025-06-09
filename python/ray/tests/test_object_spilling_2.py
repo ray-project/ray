@@ -165,7 +165,7 @@ def test_delete_objects_on_worker_failure(object_spilling_config, shutdown_only)
 
 @pytest.mark.skipif(platform.system() in ["Windows"], reason="Failing on Windows.")
 def test_delete_file_non_exists(shutdown_only, tmp_path):
-    ray_context = ray.init(storage=str(tmp_path))
+    ray_context = ray.init()
 
     def create_spilled_files(num_files):
         spilled_files = []
