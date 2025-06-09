@@ -59,6 +59,7 @@ class DefaultSACTorchRLModule(TorchRLModule, DefaultSACRLModule):
     @override(RLModule)
     def _forward_exploration(self, batch: Dict, **kwargs) -> Dict[str, Any]:
         output = self._forward_inference(batch)
+        # TODO (KIY): This is bad. This should get the action_dist from the catalog.
         if isinstance(self.action_space, gym.spaces.Discrete):
             # For discrete action spaces, we return the logits for each action.
             action_probs = output[Columns.ACTIONS]
