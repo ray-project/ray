@@ -75,7 +75,7 @@ class DefaultSACTorchRLModule(TorchRLModule, DefaultSACRLModule):
         batch_curr = {Columns.OBS: batch[Columns.OBS]}
         batch_next = {Columns.OBS: batch[Columns.NEXT_OBS]}
 
-        ## calculate values for the target ##
+        ## calculate values for the Q target ##
         # Also encode the next observations (and next actions for the Q net).
         pi_encoder_next_outs = self.pi_encoder(batch_next)
         action_probs_next = self.pi(pi_encoder_next_outs[ENCODER_OUT])
@@ -86,15 +86,22 @@ class DefaultSACTorchRLModule(TorchRLModule, DefaultSACRLModule):
         qf_target_next = self.forward_target(batch_next, squeeze=False)
         output[QF_TARGET_NEXT] = qf_target_next
 
+        qf_preds = self._qf_forward_train_helper(
+            batch_curr, self.qf_encoder, self.qf, squeeze=False
+        )
+        # we don't need straight-through gradient here
+        output[QF_PREDS] = qf_preds
+        if self.twin_q:
+            qf_twin_preds = self._qf_forward_train_helper(
+                batch_curr, self.qf_twin_encoder, self.qf_twin, squeeze=False
+            )
+            output[QF_TWIN_PREDS] = qf_twin_preds
+
         ## calculate values for gradient ##
         pi_encoder_outs = self.pi_encoder(batch_curr)
         action_probs = self.pi(pi_encoder_outs[ENCODER_OUT])
         output[ACTION_PROBS] = action_probs
         output[ACTION_LOG_PROBS] = action_probs.log()
-
-        qf_preds = self.compute_q_values(batch_curr, squeeze=False)
-        # we don't need straight-through gradient here
-        output[QF_PREDS] = qf_preds
 
         return output
 
