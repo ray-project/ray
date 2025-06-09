@@ -1,6 +1,7 @@
 import sys
 import psutil
 import subprocess
+import threading
 
 from libcpp.string cimport string as c_string
 from ray.includes.setproctitle cimport (
@@ -8,17 +9,25 @@ from ray.includes.setproctitle cimport (
     set_ps_display
 )
 
-current_proctitle = None
+_current_proctitle = None
+_current_proctitle_lock = threading.Lock()
 
 def setproctitle(title: str):
-    global current_proctitle
-    current_proctitle = title
-    cdef c_string c_title = title.encode("utf-8")
-    spt_setup()
-    set_ps_display(c_title.c_str(), True)
+    global _current_proctitle
+
+    with _current_proctitle_lock:
+        cdef c_string c_title = title.encode("utf-8")
+        spt_setup()
+        set_ps_display(c_title.c_str(), True)
+
+        _current_proctitle = title
 
 def getproctitle() -> str:
-    global current_proctitle
-    if current_proctitle is None:
-        current_proctitle = subprocess.list2cmdline(psutil.Process().cmdline())
-    return current_proctitle
+    global _current_proctitle
+
+    with _current_proctitle_lock:
+        if _current_proctitle is None:
+            # The process title is not change so getting the process cmdline as the
+            # initial title.
+            _current_proctitle = subprocess.list2cmdline(psutil.Process().cmdline())
+        return _current_proctitle

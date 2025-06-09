@@ -174,6 +174,9 @@ def test_wait_reconstruction(shutdown_only):
     assert len(ready_ids) == 1
 
 
+@pytest.mark.skipif(
+    sys.platform == "win32", reason="Windows doesn't support changing process title."
+)
 def test_ray_setproctitle(ray_start_2_cpus):
     @ray.remote
     class UniqueName:
@@ -192,6 +195,9 @@ def test_ray_setproctitle(ray_start_2_cpus):
     ray.get(unique_1.remote())
 
 
+@pytest.mark.skipif(
+    sys.platform == "win32", reason="Windows doesn't support changing process title."
+)
 def test_ray_task_name_setproctitle(ray_start_2_cpus):
     method_task_name = "foo"
 
@@ -214,6 +220,9 @@ def test_ray_task_name_setproctitle(ray_start_2_cpus):
     ray.get(unique_1.options(name=task_name).remote())
 
 
+@pytest.mark.skipif(
+    sys.platform == "win32", reason="Windows doesn't support changing process title."
+)
 def test_ray_task_generator_setproctitle(ray_start_2_cpus):
     @ray.remote
     def generator_task():

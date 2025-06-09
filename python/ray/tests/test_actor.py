@@ -848,6 +848,9 @@ def test_options_num_returns(ray_start_regular_shared):
     assert ray.get([obj1, obj2]) == [1, 2]
 
 
+@pytest.mark.skipif(
+    sys.platform == "win32", reason="Windows doesn't support changing process title."
+)
 def test_options_name(ray_start_regular_shared):
     @ray.remote
     class Foo:
