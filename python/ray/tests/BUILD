@@ -62,11 +62,9 @@ py_test_module_list(
         "test_multiprocessing_standalone.py",
         "test_node_label_scheduling_strategy.py",
         "test_object_spilling_2.py",
-        "test_reference_counting.py",
         "test_reference_counting_2.py",
         "test_reference_counting_standalone.py",
         "test_runtime_env_agent.py",
-        "test_task_events_3.py",
     ],
     tags = [
         "exclusive",
@@ -305,11 +303,9 @@ py_test_module_list(
         "test_logging.py",
         "test_logging_2.py",
         "test_metrics.py",
-        "test_mpi.py",
         "test_multi_node_2.py",
         "test_multi_tenancy.py",
         "test_multinode_failures.py",
-        "test_multinode_failures_2.py",
         "test_namespace.py",
         "test_nested_task.py",
         "test_node_labels.py",
@@ -326,10 +322,8 @@ py_test_module_list(
         "test_resource_metrics.py",
         "test_runtime_context.py",
         "test_runtime_env_env_vars.py",
-        "test_runtime_env_fork_process.py",
         "test_runtime_env_packaging.py",
         "test_runtime_env_plugin.py",
-        "test_runtime_env_py_executable.py",
         "test_runtime_env_setup_func.py",
         "test_runtime_env_strong_type.py",
         "test_scheduling.py",
@@ -519,6 +513,8 @@ py_test_module_list(
         "test_metrics_agent_2.py",
         "test_microbenchmarks.py",
         "test_mini.py",
+        "test_mpi.py",
+        "test_multinode_failures_2.py",
         "test_node_death.py",
         "test_numba.py",
         "test_object_spilling_no_asan.py",
@@ -529,10 +525,14 @@ py_test_module_list(
         "test_raylet_output.py",
         "test_reconstruction_stress.py",
         "test_reconstruction_stress_spill.py",
+        "test_reference_counting.py",
+        "test_runtime_env_fork_process.py",
         "test_runtime_env_get_wheel_names.py",
+        "test_runtime_env_py_executable.py",
         "test_state_api_summary.py",
         "test_streaming_generator_regression.py",
         "test_system_metrics.py",
+        "test_task_events_3.py",
         "test_task_metrics_reconstruction.py",
         "test_top_level_api.py",
         "test_tqdm.py",
@@ -969,14 +969,30 @@ py_test_module_list(
 )
 
 py_test_module_list(
-    size = "large",
+    size = "medium",
     data = ["pip_install_test-0.5-py3-none-any.whl"],
     files = [
         "test_runtime_env.py",
-        "test_runtime_env_standalone.py",
-        "test_runtime_env_working_dir.py",
         "test_runtime_env_working_dir_2.py",
         "test_runtime_env_working_dir_3.py",
+    ],
+    tags = [
+        "exclusive",
+        "medium_size_python_tests_a_to_j",
+        "team:core",
+    ],
+    deps = [
+        ":conftest",
+        "//:ray_lib",
+    ],
+)
+
+py_test_module_list(
+    size = "large",
+    data = ["pip_install_test-0.5-py3-none-any.whl"],
+    files = [
+        "test_runtime_env_standalone.py",
+        "test_runtime_env_working_dir.py",
         "test_runtime_env_working_dir_4.py",
     ],
     tags = [
