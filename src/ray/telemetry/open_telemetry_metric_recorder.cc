@@ -79,7 +79,15 @@ OpenTelemetryMetricRecorder::OpenTelemetryMetricRecorder() {
           meter_provider_));
 }
 
-void OpenTelemetryMetricRecorder::Shutdown() { meter_provider_->ForceFlush(); }
+void OpenTelemetryMetricRecorder::Shutdown() {
+  bool expected = false;
+  if (!is_shutdown_.compare_exchange_strong(expected, true)) {
+    // Already shut down, skip
+    return;
+  }
+  meter_provider_->ForceFlush();
+  meter_provider_->Shutdown();
+}
 
 void OpenTelemetryMetricRecorder::CollectGaugeMetricValues(
     const std::string &name,
@@ -97,16 +105,38 @@ void OpenTelemetryMetricRecorder::CollectGaugeMetricValues(
 
 void OpenTelemetryMetricRecorder::RegisterGaugeMetric(const std::string &name,
                                                       const std::string &description) {
-  std::lock_guard<std::mutex> lock(mutex_);
-  if (registered_instruments_.contains(name)) {
-    return;  // Already registered
+  std::string *name_ptr;
+  opentelemetry::nostd::shared_ptr<opentelemetry::metrics::ObservableInstrument>
+      instrument;
+  {
+    std::lock_guard<std::mutex> lock(mutex_);
+    if (registered_instruments_.contains(name)) {
+      return;  // Already registered
+    }
+    gauge_callback_names_.push_back(name);
+    name_ptr = &gauge_callback_names_.back();
+    instrument = GetMeter()->CreateDoubleObservableGauge(name, description, "");
+    observations_by_name_[name] = {};
+    registered_instruments_[name] = instrument;
   }
-  auto instrument = GetMeter()->CreateDoubleObservableGauge(name, description, "");
-  gauge_callback_names_.push_back(name);
-  instrument->AddCallback(&_DoubleGaugeCallback,
-                          static_cast<void *>(&gauge_callback_names_.back()));
-  observations_by_name_[name] = {};
-  registered_instruments_[name] = instrument;
+  // Important: Do not hold mutex_ (mutex A) when registering the callback.
+  //
+  // The callback function will be invoked later by the OpenTelemetry SDK,
+  // and it will attempt to acquire mutex_ (A) again. Meanwhile, both this function
+  // and the callback may also acquire an internal mutex (mutex B) owned by the
+  // instrument object.
+  //
+  // If we hold mutex A while registering the callback—and the callback later tries
+  // to acquire A while holding B—a lock-order inversion may occur, leading to
+  // a potential deadlock.
+  //
+  // To avoid this, ensure the callback is registered *after* releasing mutex_ (A).
+  instrument->AddCallback(&_DoubleGaugeCallback, static_cast<void *>(name_ptr));
+}
+
+bool OpenTelemetryMetricRecorder::IsMetricRegistered(const std::string &name) {
+  std::lock_guard<std::mutex> lock(mutex_);
+  return registered_instruments_.contains(name);
 }
 
 void OpenTelemetryMetricRecorder::SetMetricValue(

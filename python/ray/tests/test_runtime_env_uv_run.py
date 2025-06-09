@@ -1,12 +1,15 @@
-# End-to-end tests for using "uv run"
-
 import json
 import os
 from pathlib import Path
-import pytest
+import platform
+import stat
 import subprocess
 import sys
+import tarfile
 import tempfile
+from urllib import request
+
+import pytest
 
 import ray
 from ray._private.test_utils import (
@@ -17,11 +20,6 @@ from ray._private.test_utils import (
 
 @pytest.fixture(scope="function")
 def with_uv():
-    import platform
-    import stat
-    import tarfile
-    from urllib import request
-
     arch = "aarch64" if platform.machine() in ["aarch64", "arm64"] else "i686"
     system = "unknown-linux-gnu" if platform.system() == "Linux" else "apple-darwin"
     name = f"uv-{arch}-{system}"
