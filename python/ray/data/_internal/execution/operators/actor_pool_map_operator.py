@@ -460,6 +460,11 @@ class ActorPoolMapOperator(MapOperator):
             and ray_remote_args.get("max_restarts") != 0
         ):
             ray_remote_args["max_task_retries"] = -1
+
+        if "execute_out_of_order" not in ray_remote_args:
+            ray_remote_args[
+                "execute_out_of_order"
+            ] = not data_context.execution_options.preserve_order
         return ray_remote_args
 
     def get_autoscaling_actor_pools(self) -> List[AutoscalingActorPool]:

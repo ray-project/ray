@@ -1716,6 +1716,22 @@ class ActorClass(Generic[T]):
                     str(len(args) + len(kwargs)),
                 )
             )
+        execute_out_of_order = actor_options.get("execute_out_of_order")
+        if execute_out_of_order is None:
+            execute_out_of_order = is_asyncio or max_concurrency > 1
+        elif not execute_out_of_order and (is_asyncio or max_concurrency > 1):
+            reasons = []
+            if is_asyncio:
+                reasons.append("actor uses asyncio methods")
+            if max_concurrency > 1:
+                reasons.append(f"max_concurrency is set to {max_concurrency}")
+            reason_text = " and ".join(reasons)
+            raise ValueError(
+                f"Cannot set execute_out_of_order to False because {reason_text}. "
+                f"Actors with {reason_text} require out-of-order execution to function properly. "
+                f"Either set execute_out_of_order=True or remove the execute_out_of_order parameter "
+                f"to use the default behavior."
+            )
 
         actor_id = worker.core_worker.create_actor(
             meta.language,
@@ -1739,6 +1755,7 @@ class ActorClass(Generic[T]):
             enable_task_events=enable_task_events,
             labels=actor_options.get("_labels"),
             label_selector=actor_options.get("label_selector"),
+            execute_out_of_order=execute_out_of_order,
         )
 
         if _actor_launch_hook:
@@ -1764,6 +1781,7 @@ class ActorClass(Generic[T]):
             meta.actor_creation_function_descriptor,
             worker.current_cluster_and_job,
             original_handle=True,
+            execute_out_of_order=execute_out_of_order,
         )
 
         return actor_handle
@@ -1833,6 +1851,7 @@ class ActorHandle(Generic[T]):
         _ray_is_cross_language: Whether this actor is cross language.
         _ray_actor_creation_function_descriptor: The function descriptor
             of the actor creation task.
+        _ray_execute_out_of_order: Whether the actor supports out-of-order execution.
     """
 
     def __init__(
@@ -1855,6 +1874,7 @@ class ActorHandle(Generic[T]):
         cluster_and_job,
         original_handle=False,
         weak_ref: bool = False,
+        execute_out_of_order: bool = False,
     ):
         """Initialize an ActorHandle.
 
@@ -1877,6 +1897,7 @@ class ActorHandle(Generic[T]):
             cluster_and_job: The cluster and job information.
             original_handle: Whether this is the original actor handle.
             weak_ref: Whether this is a weak reference to the actor.
+            execute_out_of_order: Whether the actor supports out-of-order execution.
         """
         self._ray_actor_language = language
         self._ray_actor_id = actor_id
@@ -1884,6 +1905,7 @@ class ActorHandle(Generic[T]):
         self._ray_original_handle = original_handle
         self._ray_weak_ref = weak_ref
         self._ray_enable_task_events = enable_task_events
+        self._ray_execute_out_of_order = execute_out_of_order
 
         self._ray_method_is_generator = method_is_generator
         self._ray_method_decorators = method_decorators
