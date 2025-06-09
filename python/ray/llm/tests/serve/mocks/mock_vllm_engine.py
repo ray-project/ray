@@ -52,13 +52,7 @@ class MockVLLMEngine(LLMEngine):
         ), f"Got invalid config {llm_config} of type {type(llm_config)}"
         self.llm_config = llm_config
 
-        # Try to set up prompt_format when applied.
-        try:
-            self.llm_config.prompt_format.set_processor(
-                self.llm_config.model_loading_config.model_source
-            )
-        except OSError:
-            pass
+        # Note (Nikhil): prompt_format functionality has been removed
 
         self._stats = VLLMEngineStatTracker()
 
