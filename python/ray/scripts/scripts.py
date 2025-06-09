@@ -550,16 +550,6 @@ Windows powershell users need additional escaping:
     help="do not redirect non-worker stdout and stderr to files",
 )
 @click.option(
-    "--plasma-store-socket-name",
-    default=None,
-    help="manually specify the socket name of the plasma store",
-)
-@click.option(
-    "--raylet-socket-name",
-    default=None,
-    help="manually specify the socket path of the raylet process",
-)
-@click.option(
     "--temp-dir",
     default=None,
     help="manually specify the root temporary dir of the Ray process, only "
