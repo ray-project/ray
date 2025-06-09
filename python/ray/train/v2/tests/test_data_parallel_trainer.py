@@ -15,12 +15,12 @@ from ray.train.backend import Backend
 from ray.train.constants import RAY_CHDIR_TO_TRIAL_DIR, _get_ray_train_session_dir
 from ray.train.tests.util import create_dict_checkpoint
 from ray.train.v2._internal.constants import (
-    RUN_CONTROLLER_AS_ACTOR_ENV_VAR,
     is_v2_enabled,
 )
 from ray.train.v2.api.data_parallel_trainer import DataParallelTrainer
 from ray.train.v2.api.exceptions import TrainingFailedError
 from ray.train.v2.api.result import Result
+from ray.util.state import list_actors
 
 assert is_v2_enabled()
 
@@ -233,15 +233,7 @@ def run_process_for_sigint_abort():
     trainer.fit()
 
 
-@pytest.mark.parametrize(
-    "run_controller_as_actor,expected_exit_code",
-    [("1", 1), ("0", 0)],
-)
-def test_sigint_abort(
-    tmp_path, monkeypatch, run_controller_as_actor, expected_exit_code
-):
-    monkeypatch.setenv(RUN_CONTROLLER_AS_ACTOR_ENV_VAR, run_controller_as_actor)
-
+def test_sigint_abort():
     SignalActor = create_remote_signal_actor(ray)
     signal_actor = SignalActor.options(
         name="signal_actor", namespace="test_sigint_abort"
@@ -254,7 +246,8 @@ def test_sigint_abort(
 
     os.kill(process.pid, signal.SIGINT)
     process.join()
-    assert process.exitcode == expected_exit_code
+    # Only the signal actor shoudld be alive.
+    assert len(list_actors(filters=[("state", "=", "ALIVE")])) == 1
 
 
 if __name__ == "__main__":
