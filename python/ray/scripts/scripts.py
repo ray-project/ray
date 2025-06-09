@@ -578,14 +578,6 @@ Windows powershell users need additional escaping:
     "works when --head is specified",
 )
 @click.option(
-    "--storage",
-    default=None,
-    help=(
-        "[DEPRECATED] Cluster-wide storage is deprecated and will be removed in a "
-        "future version of Ray."
-    ),
-)
-@click.option(
     "--system-config",
     default=None,
     hidden=True,
@@ -739,7 +731,6 @@ def start(
     plasma_store_socket_name,
     raylet_socket_name,
     temp_dir,
-    storage,
     system_config,
     enable_object_reconstruction,
     metrics_export_port,
@@ -848,11 +839,6 @@ def start(
     if has_ray_client and ray_client_server_port is None:
         ray_client_server_port = 10001
 
-    if storage is not None:
-        warnings.warn(
-            "--storage is deprecated and will be removed in a future version of Ray.",
-        )
-
     if dashboard_grpc_port is not None:
         warnings.warn(
             "--dashboard-grpc-port is deprecated and will be removed in a future version of Ray.",
@@ -882,7 +868,6 @@ def start(
         plasma_store_socket_name=plasma_store_socket_name,
         raylet_socket_name=raylet_socket_name,
         temp_dir=temp_dir,
-        storage=storage,
         include_dashboard=include_dashboard,
         dashboard_host=dashboard_host,
         dashboard_port=dashboard_port,
