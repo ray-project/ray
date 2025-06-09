@@ -1,7 +1,7 @@
 import sys
 import pytest
 
-from ray_release.util import convert_cluster_compute_to_kuberay_compute_config
+from ray_release.kuberay_util import convert_cluster_compute_to_kuberay_compute_config
 
 def test_convert_cluster_compute_to_kuberay_compute_config():
     compute_config = {

@@ -574,9 +574,9 @@ py_test(
 )
 
 py_test(
-    name = "test_util",
+    name = "test_kuberay_util",
     size = "small",
-    srcs = ["ray_release/tests/test_util.py"],
+    srcs = ["ray_release/tests/test_kuberay_util.py"],
     exec_compatible_with = ["//:hermetic_python"],
     tags = [
         "release_unit",
