@@ -28,6 +28,7 @@ namespace ray::rpc {
 // Managers multiple gRPC clients. It's reponsible for initializing
 // gRPC clients with arguments, distributing requests between clients,
 // and destroying the clients.
+template <typename ServiceType>
 class GrpcClientManager {
  public:
   GrpcClientManager() = default;
@@ -40,7 +41,7 @@ class GrpcClientManager {
   virtual GrpcClient<ServiceType> *GetGrpcClient() = 0;
 };
 
-template <class ServiceType>
+template <typename ServiceType>
 class GrpcClientManagerImpl final : public GrpcClientManager<ServiceType> {
  public:
   GrpcClientManagerImpl(const std::string &address,
