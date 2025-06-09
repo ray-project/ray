@@ -43,7 +43,7 @@ repos:
         args: [ --fix, --exit-non-zero-on-fix ]
       - id: ruff
         args: [ --select, "I", --fix, --exit-non-zero-on-fix ]
-        files: '^python/ray/serve/|^python/ray/train|^python/ray/data|^python/ray/_private/|^python/ray/llm/'
+        files: '^python/ray/serve/|^python/ray/train|^python/ray/data|^python/ray/_private/|^python/ray/llm/|^python/ray/tune/'
 
   - repo: https://github.com/jsh9/pydoclint
     rev: "0.6.6"
@@ -173,6 +173,12 @@ repos:
         entry: ci/lint/check-docstyle.sh
         language: system
         types: [python]
+
+  - repo: https://github.com/errata-ai/vale
+    rev: v3.4.1
+    hooks:
+      - id: vale
+        files: ^doc/source/data/.*\.(md|rst)$
 
   - repo: local
     hooks:
