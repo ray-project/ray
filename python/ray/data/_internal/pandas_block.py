@@ -566,11 +566,9 @@ class PandasBlockAccessor(TableBlockAccessor):
             ret = pd.concat(blocks, ignore_index=True)
             columns, ascending = sort_key.to_pandas_sort_args()
             ret = ret.sort_values(by=columns, ascending=ascending)
-        meta = PandasBlockAccessor(ret).get_metadata(exec_stats=stats.build())
-        schema = PandasBlockAccessor(ret).schema()
         from ray.data.block import MetadataAndSchema
 
-        return ret, MetadataAndSchema(metadata=meta, schema=schema)
+        return ret, MetadataAndSchema.from_block(ret, stats=stats.build())
 
     def block_type(self) -> BlockType:
         return BlockType.PANDAS

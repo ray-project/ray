@@ -1,16 +1,20 @@
 import logging
 import math
-from typing import TYPE_CHECKING, Callable, Iterable, List, Optional, Tuple, Union
+from typing import Callable, Iterable, List, Optional, Tuple, Union
 
 import numpy as np
 
 from ray.data._internal.delegating_block_builder import DelegatingBlockBuilder
 from ray.data._internal.planner.exchange.interfaces import ExchangeTaskSpec
-from ray.data.block import Block, BlockAccessor, BlockExecStats, BlockMetadata
+from ray.data.block import (
+    Block,
+    BlockAccessor,
+    BlockExecStats,
+    BlockMetadata,
+    MetadataAndSchema,
+)
 from ray.data.context import MAX_SAFE_BLOCK_SIZE_FACTOR
 
-if TYPE_CHECKING:
-    from ray.data.block import MetadataAndSchema
 logger = logging.getLogger(__name__)
 
 
@@ -102,11 +106,11 @@ class ShuffleTaskSpec(ExchangeTaskSpec):
 
         num_rows = sum(BlockAccessor.for_block(s).num_rows() for s in slices)
         assert num_rows == block.num_rows(), (num_rows, block.num_rows())
-        metadata = block.get_metadata(input_files=None, exec_stats=stats.build())
-        schema = block.schema()
         from ray.data.block import MetadataAndSchema
 
-        meta_schema = MetadataAndSchema(metadata=metadata, schema=schema)
+        meta = block.get_metadata()
+        schema = block.schema()
+        meta_schema = MetadataAndSchema(metadata=meta, schema=schema)
         return slices + [meta_schema]
 
     @staticmethod

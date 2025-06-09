@@ -137,11 +137,9 @@ class SortTaskSpec(ExchangeTaskSpec):
         stats = BlockExecStats.builder()
         accessor = BlockAccessor.for_block(block)
         out = accessor.sort_and_partition(boundaries, sort_key)
-        meta = accessor.get_metadata(exec_stats=stats.build())
-        schema = accessor.schema()
         from ray.data.block import MetadataAndSchema
 
-        meta_schema = MetadataAndSchema(metadata=meta, schema=schema)
+        meta_schema = MetadataAndSchema.from_block(block, stats=stats.build())
         return out + [meta_schema]
 
     @staticmethod

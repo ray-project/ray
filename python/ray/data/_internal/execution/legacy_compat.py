@@ -12,11 +12,11 @@ from ray.data._internal.execution.interfaces import (
     RefBundle,
 )
 from ray.data._internal.execution.interfaces.executor import OutputIterator
+from ray.data._internal.execution.streaming_executor_state import Topology
 from ray.data._internal.logical.util import record_operators_usage
 from ray.data._internal.plan import ExecutionPlan
 from ray.data._internal.stats import DatasetStats
 from ray.data._internal.util import (
-    dedupe_schemas_with_validation,
     unify_block_metadata_schema,
 )
 from ray.data.block import BlockMetadata, MetadataAndSchema
@@ -54,6 +54,8 @@ def execute_to_legacy_bundle_iterator(
 
     bundle_iter = executor.execute(dag, initial_stats=stats)
 
+    topology: "Topology" = executor._topology
+
     class CacheMetadataIterator(OutputIterator):
         """Wrapper for `bundle_iterator` above.
 
@@ -73,7 +75,6 @@ def execute_to_legacy_bundle_iterator(
                 input_files=None,
                 exec_stats=None,
             )
-            self._schema = None
 
         def get_next(self, output_split_idx: Optional[int] = None) -> RefBundle:
             try:
@@ -83,9 +84,17 @@ def execute_to_legacy_bundle_iterator(
             except StopIteration:
                 # Once the iterator is completely exhausted, we are done
                 # collecting metadata. We can add this cached metadata to the plan.
+
+                # Traverse the topology backwards and find the first available schema
+                schema = None
+                for _, op_state in reversed(topology.items()):
+                    if op_state._schema is not None:
+                        schema = op_state._schema
+                        break
+
                 meta_schema = MetadataAndSchema(
                     metadata=self._collected_metadata,
-                    schema=self._schema,
+                    schema=schema,
                 )
                 plan._snapshot_metadata_schema = meta_schema
                 raise
@@ -96,7 +105,6 @@ def execute_to_legacy_bundle_iterator(
             row count, schema, etc., after iteration completes."""
             self._collected_metadata.num_rows += bundle.num_rows()
             self._collected_metadata.size_bytes += bundle.size_bytes()
-            self._schema = dedupe_schemas_with_validation(self._schema, bundle)
             return bundle
 
     return CacheMetadataIterator(bundle_iter)

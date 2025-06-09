@@ -1,13 +1,16 @@
-from typing import TYPE_CHECKING, List, Tuple, Union
+from typing import List, Tuple, Union
 
 from ray.data._internal.planner.exchange.interfaces import ExchangeTaskSpec
 from ray.data._internal.planner.exchange.sort_task_spec import SortKey
 from ray.data._internal.table_block import TableBlockAccessor
 from ray.data.aggregate import AggregateFn, AggregateFnV2, Count
-from ray.data.block import Block, BlockAccessor, BlockExecStats, KeyType
-
-if TYPE_CHECKING:
-    from ray.data.block import MetadataAndSchema
+from ray.data.block import (
+    Block,
+    BlockAccessor,
+    BlockExecStats,
+    KeyType,
+    MetadataAndSchema,
+)
 
 
 class SortAggregateTaskSpec(ExchangeTaskSpec):
@@ -60,12 +63,9 @@ class SortAggregateTaskSpec(ExchangeTaskSpec):
         parts = [
             BlockAccessor.for_block(p)._aggregate(sort_key, aggs) for p in partitions
         ]
-        accessor = BlockAccessor.for_block(block)
-        meta = accessor.get_metadata(exec_stats=stats.build())
-        schema = accessor.schema()
         from ray.data.block import MetadataAndSchema
 
-        meta_schema = MetadataAndSchema(metadata=meta, schema=schema)
+        meta_schema = MetadataAndSchema.from_block(block, stats=stats.build())
         return parts + [meta_schema]
 
     @staticmethod

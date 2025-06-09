@@ -92,7 +92,7 @@ def plan_read_op(
                 # DAG. We shouldn't eagerly free them. Otherwise, the DAG cannot
                 # be reconstructed.
                 owns_blocks=False,
-                schema=read_task.schema,
+                schema=None,
             )
             ret.append(ref_bundle)
         return ret

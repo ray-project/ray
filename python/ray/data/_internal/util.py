@@ -689,11 +689,7 @@ def pandas_df_to_arrow_block(
 
     block = BlockAccessor.for_block(df).to_arrow()
     stats = BlockExecStats.builder()
-    accessor = BlockAccessor.for_block(block)
-    meta = accessor.get_metadata(exec_stats=stats.build())
-    schema = accessor.schema()
-    meta_schema = MetadataAndSchema(metadata=meta, schema=schema)
-    return block, meta_schema
+    return block, MetadataAndSchema.from_block(block, stats=stats.build())
 
 
 def ndarray_to_block(
@@ -705,23 +701,16 @@ def ndarray_to_block(
 
     stats = BlockExecStats.builder()
     block = BlockAccessor.batch_to_block({"data": ndarray})
-    metadata = BlockAccessor.for_block(block).get_metadata(exec_stats=stats.build())
-    schema = BlockAccessor.for_block(block).schema()
-    meta_schema = MetadataAndSchema(metadata=metadata, schema=schema)
-    return block, meta_schema
+    return block, MetadataAndSchema.from_block(block, stats=stats.build())
 
 
 def get_table_block_metadata_schema(
     table: Union["pyarrow.Table", "pandas.DataFrame"],
 ) -> "MetadataAndSchema":
-    from ray.data.block import BlockAccessor, BlockExecStats, MetadataAndSchema
+    from ray.data.block import BlockExecStats, MetadataAndSchema
 
     stats = BlockExecStats.builder()
-    accessor = BlockAccessor.for_block(table)
-    metadata = accessor.get_metadata(exec_stats=stats.build())
-    schema = accessor.schema()
-    meta_schema = MetadataAndSchema(metadata=metadata, schema=schema)
-    return meta_schema
+    return MetadataAndSchema.from_block(table, stats=stats.build())
 
 
 def unify_block_metadata_schema(
@@ -767,38 +756,6 @@ def unify_ref_bundles_schema(
         ref_bundle.schema for ref_bundle in ref_bundles if ref_bundle is not None
     ]
     return unify_block_metadata_schema(non_empty_schemas)
-
-
-def dedupe_schemas_with_validation(
-    old_schema: Optional["Schema"], bundle: "RefBundle", allow_divergent: bool = False
-) -> "Schema":
-    """Unify/Dedupe two schemas, warning if warn=True
-
-    Args:
-        old_schema: The old schema to unify. This can be `None`, in which case
-            the new schema will be used as the old schema.
-        bundle: The new `RefBundle` to unify with the old schema.
-        allow_divergent: If `True`, allow the schemas to diverge and return unified schema.
-            If `False`, Raise a warning if the schemas diverge, but keep the old schema.
-
-    Returns:
-        A unified schema of the two input schemas.
-    """
-    if old_schema is None:
-        old_schema = bundle.schema
-    elif old_schema == bundle.schema:
-        bundle.schema = old_schema
-    else:
-        logger.warning(
-            f"Operator produced a RefBundle with a different schema "
-            f"than the previous one. Previous schema: {old_schema}, "
-            f"new schema: {bundle.schema}. This may lead to unexpected behavior."
-        )
-        if allow_divergent:
-            # Note: we don't change bundle.schema
-            old_schema = unify_block_metadata_schema([old_schema, bundle.schema])
-
-    return old_schema
 
 
 def find_partition_index(

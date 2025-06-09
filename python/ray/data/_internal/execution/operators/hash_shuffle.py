@@ -7,7 +7,6 @@ import threading
 from collections import defaultdict, deque
 from dataclasses import dataclass
 from typing import (
-    TYPE_CHECKING,
     Any,
     AsyncGenerator,
     Callable,
@@ -46,11 +45,9 @@ from ray.data.block import (
     BlockMetadata,
     BlockStats,
     BlockType,
+    MetadataAndSchema,
     to_stats,
 )
-
-if TYPE_CHECKING:
-    from ray.data.block import MetadataAndSchema
 
 logger = logging.getLogger(__name__)
 
@@ -1107,12 +1104,7 @@ class HashShuffleAggregator:
             self._agg.clear(partition_id)
 
         # TODO break down blocks to target size
-        accessor = BlockAccessor.for_block(result)
         from ray.data.block import MetadataAndSchema
 
-        meta_schema = MetadataAndSchema(
-            metadata=accessor.get_metadata(),
-            schema=accessor.schema(),
-        )
         yield result
-        yield meta_schema
+        yield MetadataAndSchema.from_block(result)

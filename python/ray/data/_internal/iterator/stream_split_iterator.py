@@ -9,7 +9,7 @@ from ray.data._internal.execution.interfaces import NodeIdStr, RefBundle
 from ray.data._internal.execution.legacy_compat import execute_to_legacy_bundle_iterator
 from ray.data._internal.execution.operators.output_splitter import OutputSplitter
 from ray.data._internal.stats import DatasetStats
-from ray.data.block import Block, BlockMetadata, Schema
+from ray.data.block import Block
 from ray.data.context import DataContext
 from ray.data.iterator import DataIterator
 from ray.types import ObjectRef
@@ -84,9 +84,7 @@ class StreamSplitDataIterator(DataIterator):
                 Optional[ObjectRef[Block]]
             ] = self._coord_actor.get.remote(cur_epoch, self._output_split_idx)
             while True:
-                block_ref_and_md: Optional[
-                    Tuple[Tuple[ObjectRef[Block], BlockMetadata], "Schema"]
-                ] = ray.get(future)
+                block_ref_and_md: Optional[RefBundle] = ray.get(future)
                 if not block_ref_and_md:
                     break
                 else:
@@ -213,9 +211,7 @@ class SplitCoordinator:
         epoch_id = self._barrier(split_idx)
         return epoch_id
 
-    def get(
-        self, epoch_id: int, output_split_idx: int
-    ) -> Optional[Tuple[Tuple[ObjectRef[Block], BlockMetadata], "Schema"]]:
+    def get(self, epoch_id: int, output_split_idx: int) -> Optional[RefBundle]:
         """Blocking get operation.
 
         This is intended to be called concurrently from multiple clients.
@@ -249,7 +245,9 @@ class SplitCoordinator:
                 if not next_bundle.blocks:
                     del self._next_bundle[output_split_idx]
 
-            return block, schema
+            return RefBundle(
+                [block], schema=schema, owns_blocks=next_bundle.owns_blocks
+            )
         except StopIteration:
             return None
         finally:

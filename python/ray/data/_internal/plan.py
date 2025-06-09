@@ -376,8 +376,8 @@ class ExecutionPlan:
                 # the plan is read-only even if `fetch_if_missing` is False.
 
                 iter_ref_bundles, _, executor = self.execute_to_iterator()
+                # Make sure executor is fully shutdown upon exiting
                 with executor:
-                    # Make sure executor is fully shutdown upon exiting
                     for bundle in iter_ref_bundles:
                         if bundle.schema is not None:
                             schema = bundle.schema

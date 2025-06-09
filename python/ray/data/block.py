@@ -232,12 +232,20 @@ class BlockMetadata(BlockStats):
 @dataclass
 class MetadataAndSchema:
     metadata: BlockMetadata
-    schema: Optional["Schema"]
+    schema: Optional[Schema]
+
+    def from_block(
+        block: Block, stats: Optional["BlockExecStats"] = None
+    ) -> "MetadataAndSchema":
+        accessor = BlockAccessor.for_block(block)
+        meta = accessor.get_metadata(exec_stats=stats)
+        schema = accessor.schema()
+        return MetadataAndSchema(metadata=meta, schema=schema)
 
 
 def _decompose_metadata_and_schema(
-    iterable: Iterable["MetadataAndSchema"],
-) -> Tuple[List["BlockMetadata"], List[Optional["Schema"]]]:
+    iterable: Iterable[MetadataAndSchema],
+) -> Tuple[List[BlockMetadata], List[Optional[Schema]]]:
     metadatas = []
     schemas = []
     for item in iterable:

@@ -409,10 +409,7 @@ class ArrowBlockAccessor(TableBlockAccessor):
             blocks = TableBlockAccessor.normalize_block_types(blocks, BlockType.ARROW)
             concat_and_sort = get_concat_and_sort_transform(DataContext.get_current())
             ret = concat_and_sort(blocks, sort_key, promote_types=True)
-        accessor = ArrowBlockAccessor(ret)
-        meta = accessor.get_metadata(exec_stats=stats.build())
-        schema = accessor.schema()
-        return ret, MetadataAndSchema(metadata=meta, schema=schema)
+        return ret, MetadataAndSchema.from_block(ret, stats=stats.build())
 
     def block_type(self) -> BlockType:
         return BlockType.ARROW
