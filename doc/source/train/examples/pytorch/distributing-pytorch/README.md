@@ -1,4 +1,4 @@
-# Distributing your PyTorch Training Code with Ray Train and Ray Data on Anyscale
+# Distributing your PyTorch Training Code with Ray Train and Ray Data
 
 **⏱️ Time to complete**: 10 min
 
@@ -13,7 +13,7 @@ In this tutorial, you:
 
 In this step you train a PyTorch VisionTransformer model to recognize objects using the open CIFAR-10 dataset. It's a minimal example that trains on a single machine. Note that the code has multiple functions to highlight the changes needed to run things with Ray.
 
-First, some imports.
+First, import the required Python modules.
 
 
 ```python
@@ -35,11 +35,11 @@ Next, define a function that returns PyTorch DataLoaders for train and test data
 
 ```python
 def get_dataloaders(batch_size):
-    # Transform to normalize the input images
+    # Transform to normalize the input images.
     transform = transforms.Compose([ToTensor(), Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5))])
 
     with FileLock(os.path.expanduser("~/data.lock")):
-        # Download training data from open datasets
+        # Download training data from open datasets.
         training_data = datasets.CIFAR10(
             root="~/data",
             train=True,
@@ -47,6 +47,7 @@ def get_dataloaders(batch_size):
             transform=transform,
         )
 
+        # Download test data from open datasets.
         testing_data = datasets.CIFAR10(
             root="~/data",
             train=False,
@@ -54,7 +55,7 @@ def get_dataloaders(batch_size):
             transform=transform,
         )
 
-    # Create data loaders
+    # Create data loaders.
     train_dataloader = DataLoader(training_data, batch_size=batch_size, shuffle=True)
     test_dataloader = DataLoader(testing_data, batch_size=batch_size)
 
@@ -70,7 +71,7 @@ def train_func():
     epochs = 1
     batch_size = 512
 
-    # Get dataloaders inside the worker training function
+    # Get data loaders inside the worker training function.
     train_dataloader, valid_dataloader = get_dataloaders(batch_size=batch_size)
 
     model = VisionTransformer(
@@ -88,7 +89,7 @@ def train_func():
     loss_fn = nn.CrossEntropyLoss()
     optimizer = torch.optim.AdamW(model.parameters(), lr=lr, weight_decay=1e-2)
 
-    # Model training loop
+    # Model training loop.
     for epoch in range(epochs):
         model.train()
         for X, y in tqdm(train_dataloader, desc=f"Train Epoch {epoch}"):
@@ -125,24 +126,24 @@ Finally, run training.
 train_func()
 ```
 
-If everything works as expected, the training should take around 2 minutes 10 seconds with an accuracy of around 0.35.  
+The training should take about 2 minutes and 10 seconds with an accuracy of about 0.35.  
 
 ## Step 2: Distribute training to multiple machines with Ray Train
 
-Let’s modify this example to run with Ray Train on multiple machines with distributed data parallel (DDP) training. In DDP training, each process trains a copy of the model on a subset of the data and synchronizes gradients across all processes after each backward pass to keep models consistent. Essentially, Ray Train allows you to wrap your PyTorch training code in a function and run that function on each of the workers in your Ray Cluster. With just a few modifications, you get all the fault tolerance and auto-scaling of a [Ray Cluster](https://docs.ray.io/en/latest/cluster/getting-started.html), as well as the observability and ease-of-use of [Ray Train](https://docs.ray.io/en/latest/train/train.html).
+Next, modify this example to run with Ray Train on multiple machines with distributed data parallel (DDP) training. In DDP training, each process trains a copy of the model on a subset of the data and synchronizes gradients across all processes after each backward pass to keep models consistent. Essentially, Ray Train allows you to wrap PyTorch training code in a function and run the function on each worker in your Ray Cluster. With a few modifications, you get the fault tolerance and auto-scaling of a [Ray Cluster](https://docs.ray.io/en/latest/cluster/getting-started.html), as well as the observability and ease-of-use of [Ray Train](https://docs.ray.io/en/latest/train/train.html).
 
 First, set some environment variables and import some modules.
 
 
 ```bash
 %%bash
-# This will be removed once Ray Train v2 is part of latest Ray version
+# Remove when Ray Train v2 is the default in an upcoming release.
 echo "RAY_TRAIN_V2_ENABLED=1" > /home/ray/default/.env
 ```
 
 
 ```python
-# Load env vars in notebooks
+# Load env vars in notebooks.
 from dotenv import load_dotenv
 load_dotenv()
 ```
@@ -166,13 +167,13 @@ def train_func_per_worker(config: Dict):
     epochs = config["epochs"]
     batch_size = config["batch_size_per_worker"]
 
-    # Get dataloaders inside the worker training function
+    # Get data loaders inside the worker training function.
     train_dataloader, valid_dataloader = get_dataloaders(batch_size=batch_size)
 
-    # [1] Prepare Dataloader for distributed training
+    # [1] Prepare data loader for distributed training.
     # The prepare_data_loader method assigns unique rows of data to each worker so that
     # the model sees each row once per epoch.
-    # NOTE: This only works for map-style datasets. For a general distributed 
+    # NOTE: This approach only works for map-style datasets. For a general distributed
     # preprocessing and sharding solution, see the next part using Ray Data for data 
     # ingestion.
     # =================================================================================
@@ -189,15 +190,15 @@ def train_func_per_worker(config: Dict):
         num_classes=10   # CIFAR-10 has 10 classes
     )
 
-    # [2] Prepare and wrap your model with DistributedDataParallel
-    # The prepare_model method moves the model to the correct GPU/CPU device
-    # ======================================================================
+    # [2] Prepare and wrap your model with DistributedDataParallel.
+    # The prepare_model method moves the model to the correct GPU/CPU device.
+    # =======================================================================
     model = ray.train.torch.prepare_model(model)
 
     loss_fn = nn.CrossEntropyLoss()
     optimizer = torch.optim.AdamW(model.parameters(), lr=lr, weight_decay=1e-2)
 
-    # Model training loop
+    # Model training loop.
     for epoch in range(epochs):
         if ray.train.get_context().get_world_size() > 1:
             # Required for the distributed sampler to shuffle properly across epochs.
@@ -226,7 +227,7 @@ def train_func_per_worker(config: Dict):
         valid_loss /= len(train_dataloader)
         accuracy = num_correct / num_total
 
-        # [3] (Optional) Report checkpoints and attached metrics to Ray Train
+        # [3] (Optional) Report checkpoints and attached metrics to Ray Train.
         # ====================================================================
         with tempfile.TemporaryDirectory() as temp_checkpoint_dir:
             torch.save(
@@ -246,7 +247,7 @@ Finally, run the training function on the Ray Cluster with a TorchTrainer using 
 The `TorchTrainer` takes the following arguments:
 * `train_loop_per_worker`: the training function you defined earlier. Each Ray Train worker runs this function. Note that you can call special Ray Train functions from within this function.
 * `train_loop_config`: a hyperparameter dictionary. Each Ray Train worker calls its `train_loop_per_worker` function with this dictionary.
-* `scaling_config`: a configuration object that specifies the number of workers and compute resources (for example, CPUs or GPUs) your training run needs.
+* `scaling_config`: a configuration object that specifies the number of workers and compute resources, for example, CPUs or GPUs, that your training run needs.
 * `run_config`: a configuration object that specifies various fields used at runtime, including the path to save checkpoints.
 
 `trainer.fit` spawns a controller process to orchestrate the training run and worker processes to actually execute the PyTorch training code.
@@ -262,12 +263,14 @@ def train_cifar_10(num_workers, use_gpu):
         "batch_size_per_worker": global_batch_size // num_workers,
     }
 
-    # [1] Start distributed training
-    # Define computation resources for workers
-    # Run `train_func_per_worker` on those workers
-    # ============================================
+    # [1] Start distributed training.
+    # Define computation resources for workers.
+    # Run `train_func_per_worker` on those workers.
+    # =============================================
     scaling_config = ScalingConfig(num_workers=num_workers, use_gpu=use_gpu)
     run_config = RunConfig(
+        # /mnt/cluster_storage is an Anyscale-specific storage path.
+        # OSS users should set up this path themselves.
         storage_path="/mnt/cluster_storage", 
         name=f"train_run-{uuid.uuid4().hex}",
     )
@@ -284,32 +287,32 @@ if __name__ == "__main__":
     train_cifar_10(num_workers=8, use_gpu=True)
 ```
 
-Because you ran training in a data parallel fashion this time, it should have taken under 1 minute while maintaining similar accuracy.
+Because you're running training in a data parallel fashion this time, it should take under 1 minute while maintaining similar accuracy.
 
-Head over to the Ray Train dashboard to analyze your distributed training job. You can do so by clicking on "Ray Workloads" and then "Ray Train," which should show you a list of all the training runs you have kicked off.
+Go to the Ray Train dashboard to analyze your distributed training job. Click **Ray Workloads** and then **Ray Train**, which shows a list of all the training runs you have kicked off.
 
 ![Train Runs](images/train_runs.png)
 
-Clicking into the run brings you to an overview page that shows logs from the controller, which is the process that coordinates your entire Ray Train job, as well as information about your 8 training workers.
+Clicking the run displays an overview page that shows logs from the controller, which is the process that coordinates your entire Ray Train job, as well as information about the 8 training workers.
 
 ![Train Run](images/train_run.png)
 
-Clicking into an individual worker brings you to a more detailed worker page. 
+Click an individual worker for a more detailed worker page.
 
 ![Train Worker](images/train_worker.png)
 
-If your worker is still alive, you can click the "CPU flame graph," "stack trace," or "memory profiling" links in the overall run page or the individual worker page. Clicking the "CPU flame graph" link profiles your run with py-spy for 5 seconds and show you a CPU flame graph. Clicking the "stack trace" link shows you the current stack trace of your job - this is useful for debugging hanging jobs. Finally, clicking "memory profiling" profiles your run with memray for 5 seconds and show you a memory flame graph.
+If your worker is still alive, you can click **CPU Flame Graph**, **Stack Trace**, or **Memory Profiling** links in the overall run page or the individual worker page. Clicking **CPU Flame Graph** profiles your run with py-spy for 5 seconds and shows a CPU flame graph. Clicking **Stack Trace** shows the current stack trace of your job, which is useful for debugging hanging jobs. Finally, clicking **Memory Profiling** profiles your run with memray for 5 seconds and shows a memory flame graph.
 
-You can also click the "Metrics" tab on the navigation bar to view useful stats about your cluster, such as GPU utilization and metrics about ray [actors](https://docs.ray.io/en/latest/ray-core/actors.html) and [tasks](https://docs.ray.io/en/latest/ray-core/tasks.html).
+You can also click the **Metrics** tab on the navigation bar to view useful stats about the cluster, such as GPU utilization and metrics about Ray [actors](https://docs.ray.io/en/latest/ray-core/actors.html) and [tasks](https://docs.ray.io/en/latest/ray-core/tasks.html).
 
 ![Metrics Dashboard](images/metrics_dashboard.png)
 
 ## Step 3: Scale data ingest separately from training with Ray Data
 
 
-Let’s modify this example to load data with Ray Data instead of the native PyTorch DataLoader. With just a few modifications, you can scale data preprocessing and training separately; for example, you can do the former with a pool of CPU workers and the latter with a pool of GPU workers. See [here](https://docs.ray.io/en/latest/data/comparisons.html#how-does-ray-data-compare-to-other-solutions-for-ml-training-ingest) for a comparison between Ray Data and PyTorch data loading.
+Modify this example to load data with Ray Data instead of the native PyTorch DataLoader. With a few modifications, you can scale data preprocessing and training separately. For example, you can do the former with a pool of CPU workers and the latter with a pool of GPU workers. See [How does Ray Data compare to other solutions for offline inference?](https://docs.ray.io/en/latest/data/comparisons.html#how-does-ray-data-compare-to-other-solutions-for-ml-training-ingest) for a comparison between Ray Data and PyTorch data loading.
 
-First, create [Ray Data Datasets](https://docs.ray.io/en/latest/data/key-concepts.html#datasets-and-blocks) from some S3 data and inspect their schemas.
+First, create [Ray Data Datasets](https://docs.ray.io/en/latest/data/key-concepts.html#datasets-and-blocks) from S3 data and inspect their schemas.
 
 
 ```python
@@ -348,11 +351,11 @@ def train_func_per_worker(config: Dict):
     batch_size = config["batch_size_per_worker"]
 
 
-    # [1] Prepare Dataloader for distributed training
-    # The get_dataset_shard method gets the associated dataset shard passed to the 
-    # TorchTrainer constructor in the next code block
-    # The iter_torch_batches method lazily shards the dataset among workers
-    # ============================================================================
+    # [1] Prepare `Dataloader` for distributed training.
+    # The get_dataset_shard method gets the associated dataset shard to pass to the 
+    # TorchTrainer constructor in the next code block.
+    # The iter_torch_batches method lazily shards the dataset among workers.
+    # =============================================================================
     train_data_shard = ray.train.get_dataset_shard("train")
     valid_data_shard = ray.train.get_dataset_shard("valid")
     train_dataloader = train_data_shard.iter_torch_batches(batch_size=batch_size)
@@ -373,7 +376,7 @@ def train_func_per_worker(config: Dict):
     loss_fn = nn.CrossEntropyLoss()
     optimizer = torch.optim.AdamW(model.parameters(), lr=lr, weight_decay=1e-2)
 
-    # Model training loop
+    # Model training loop.
     for epoch in range(epochs):
         model.train()
         for batch in tqdm(train_dataloader, desc=f"Train Epoch {epoch}"):
@@ -430,14 +433,14 @@ def train_cifar_10(num_workers, use_gpu):
         "batch_size_per_worker": global_batch_size // num_workers,
     }
 
-    # Configure computation resources
+    # Configure computation resources.
     scaling_config = ScalingConfig(num_workers=num_workers, use_gpu=use_gpu)
     run_config = RunConfig(
         storage_path="/mnt/cluster_storage", 
         name=f"train_data_run-{uuid.uuid4().hex}",
     )
 
-    # Initialize a Ray TorchTrainer
+    # Initialize a Ray TorchTrainer.
     trainer = TorchTrainer(
         train_loop_per_worker=train_func_per_worker,
         # [1] With Ray Data you pass the Dataset directly to the Trainer.
@@ -455,15 +458,15 @@ if __name__ == "__main__":
     train_cifar_10(num_workers=8, use_gpu=True)
 ```
 
-Once again your training run should have taken around 1 minute with similar accuracy. There aren't big performance wins with Ray Data on this example due to the small size of the dataset; for more interesting benchmarking information check out [this blog post](https://www.anyscale.com/blog/fast-flexible-scalable-data-loading-for-ml-training-with-ray-data). The main advantage of Ray Data is that it allows you to stream data across heterogeneous compute, maximizing GPU utilization while minimizing RAM usage.
+Once again your training run should take around 1 minute with similar accuracy. There aren't big performance wins with Ray Data on this example due to the small size of the dataset; for more interesting benchmarking information see [this blog post](https://www.anyscale.com/blog/fast-flexible-scalable-data-loading-for-ml-training-with-ray-data). The main advantage of Ray Data is that it allows you to stream data across heterogeneous compute, maximizing GPU utilization while minimizing RAM usage.
 
-In addition to the Ray Train and Metrics dashboards you saw in the previous section, you can also view the Ray Data dashboard by clicking "Ray Workloads" and then "Data." There, you can view the throughput and status of each [Ray Data operator](https://docs.ray.io/en/latest/data/key-concepts.html#operators-and-plans).
+In addition to the Ray Train and Metrics dashboards you saw in the previous section, you can also view the Ray Data dashboard by clicking **Ray Workloads** and then **Data** where you can view the throughput and status of each [Ray Data operator](https://docs.ray.io/en/latest/data/key-concepts.html#operators-and-plans).
 
 ![Data Dashboard](images/data_dashboard.png)
 
 ## Summary
 
-Congrats, in this notebook, you've:
+In this notebook, you:
 * Trained a PyTorch VisionTransformer model on a Ray Cluster with multiple GPU workers with Ray Train and Ray Data
 * Verified that speed improved without affecting accuracy
 * Gained insight into your distributed training and data preprocessing workloads with various dashboards

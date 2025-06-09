@@ -3,7 +3,7 @@ head_node_type:
   name: head
   instance_type: g4dn.12xlarge
 
-# Worker node
+# Worker nodes
 worker_node_types:
   - name: gpu-worker
     instance_type: g4dn.12xlarge  # 4x T4 GPUs
