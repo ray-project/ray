@@ -29,7 +29,7 @@ repos:
         exclude: |
           (?x)^(
             # Intentionally bad json schema
-            python/ray/tests/test_runtime_env_validation_bad_2_schema.json|
+            python/ray/tests/unit/test_runtime_env_validation_bad_schema.json|
             # json5 comments prevent parsing
             python/asv.conf.json|
             rllib/asv.conf.json
@@ -43,7 +43,7 @@ repos:
         args: [ --fix, --exit-non-zero-on-fix ]
       - id: ruff
         args: [ --select, "I", --fix, --exit-non-zero-on-fix ]
-        files: '^python/ray/serve/|^python/ray/train|^python/ray/data|^python/ray/_private/'
+        files: '^python/ray/serve/|^python/ray/train|^python/ray/data|^python/ray/_private/|^python/ray/llm/|^python/ray/tune/'
 
   - repo: https://github.com/jsh9/pydoclint
     rev: "0.6.6"

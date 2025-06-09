@@ -31,4 +31,4 @@ mkdir -p "$BAZEL_LOG_DIR"
 
 ./ci/build/get_build_info.py > "$BAZEL_LOG_DIR"/metadata.json
 
- bazel run .buildkite:copy_files -- --destination logs --path "$BAZEL_LOG_DIR"
+bazel run .buildkite:copy_files -- --destination logs --path "$BAZEL_LOG_DIR"

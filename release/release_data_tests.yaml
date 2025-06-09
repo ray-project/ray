@@ -282,7 +282,7 @@
     timeout: 1800
     script: python map_benchmark.py --api flat_map --sf 10
 
-- name: "map_batches_{{scaling}}_{{compute}}_{{format}}"
+- name: "map_batches_{{scaling}}_{{compute}}_{{format}}_{{back_to_back}}"
 
   matrix:
     setup:
@@ -290,22 +290,26 @@
       format: [numpy, pandas, pyarrow]
       compute: [tasks]
       scaling: [fixed_size]
+      back_to_back: [True, False]
     adjustments:
       # Fixed-size actor test.
       - with:
           format: numpy
           compute: actors
           scaling: fixed_size
+          back_to_back: False
       # Autoscaling task test
       - with:
           format: numpy
           compute: tasks
           scaling: autoscaling
+          back_to_back: False
       # Autoscaling actor test
       - with:
           format: numpy
           compute: actors
           scaling: autoscaling
+          back_to_back: False
 
   cluster:
     cluster_compute: "{{scaling}}_cpu_compute.yaml"
@@ -314,7 +318,7 @@
     timeout: 10800
     script: >
       python map_benchmark.py --api map_batches --batch-format {{format}}
-      --compute {{compute}} --sf 1000
+      --compute {{compute}} --sf 1000 --back-to-back {{back_to_back}}
 
 
 ########################
@@ -488,7 +492,7 @@
   working_dir: nightly_tests
 
   cluster:
-    cluster_compute: dataset/autoscalling_100_gpu_compute.yaml
+    cluster_compute: dataset/autoscaling_100_cpu_compute.yaml
 
   run:
     timeout: 3600
@@ -499,14 +503,16 @@
     - __suffix__: regular
     - __suffix__: chaos
       run:
-        prepare: python setup_chaos.py --chaos TerminateEC2Instance --batch-size-to-kill 10 --max-to-kill 100 --kill-delay 120
+        prepare: >
+          python setup_chaos.py --chaos TerminateEC2InstanceWithGracePeriod
+          --batch-size-to-kill 10 --max-to-kill 100 --kill-delay 120
 
 - name: batch_inference_mock_image_pipeline_fixed
   frequency: manual
   working_dir: nightly_tests
 
   cluster:
-    cluster_compute: dataset/fixed_size_100_gpu_compute.yaml
+    cluster_compute: dataset/fixed_size_100_cpu_compute.yaml
 
   run:
     timeout: 3600
@@ -517,7 +523,9 @@
     - __suffix__: regular
     - __suffix__: chaos
       run:
-        prepare: python setup_chaos.py --chaos TerminateEC2Instance --batch-size-to-kill 10 --max-to-kill 100 --kill-delay 120
+        prepare: >
+          python setup_chaos.py --chaos TerminateEC2InstanceWithGracePeriod
+          --batch-size-to-kill 10 --max-to-kill 100 --kill-delay 120
 
 ##############
 # TPCH Queries

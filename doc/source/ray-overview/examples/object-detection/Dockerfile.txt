@@ -1,0 +1,24 @@
+# Use base image.
+FROM anyscale/ray:2.41.0-slim-py312-cu123
+# For open source-ray, use: rayproject/ray:2.41.0-py312-cu123.
+
+# Install system dependencies.
+RUN sudo apt update && sudo apt install -y \
+    libgl1-mesa-glx \
+    ffmpeg \
+    && sudo rm -rf /var/lib/apt/lists/*
+
+# Install Python dependencies.
+RUN pip install --no-cache-dir \
+    boto3==1.26.76 \
+    imageio-ffmpeg==0.6.0 \
+    opencv-python-headless==4.11.0.86 \
+    pillow==11.1.0 \
+    pycocotools==2.0.8 \
+    requests==2.31.0 \
+    smart-open==6.2.0 \
+    torch==2.6.0 \
+    torchvision==0.21.0 \
+    xmltodict==0.14.2 \
+    torchmetrics==1.6.1 \
+    decord==0.6.0

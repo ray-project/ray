@@ -14,6 +14,7 @@
 [Pp]erformant
 [Pp]rofiler
 [Ss]ubclassing
+admin
 Alibaba
 Alpaca
 Anyscale
@@ -43,6 +44,8 @@ deserialize
 dev
 dev to prod
 DPO
+EKS
+eval
 Flink
 GGUF
 GKE
@@ -52,11 +55,13 @@ hostfile
 HTTP
 KServe
 KTO
+Kubernetes
 Kueue
 LMs
 LSH
 Megatron
 MLflow
+MLOps
 namespace
 NER
 Nsight
@@ -71,8 +76,10 @@ QPS
 retrigger
 RISECamp
 rollouts
+serverless
 SFT
 ShareGPT
+Softmax
 teardown
 deserialization
 VPC(s)?
@@ -81,6 +88,7 @@ CRD(s)?
 VM(s)?
 uncaptured
 URI(s)?
+uv
 [Vv]ision LMs
 [Rr]esample
 [Rr]esampling
@@ -88,3 +96,5 @@ URI(s)?
 [Dd]etokenizer?s?
 [Dd]etokenization
 VS Code
+ETDataset
+DLinear

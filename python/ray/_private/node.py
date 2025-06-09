@@ -22,6 +22,7 @@ from filelock import FileLock
 import ray
 import ray._private.ray_constants as ray_constants
 import ray._private.services
+from ray._common.utils import try_to_create_directory
 from ray._private import storage
 from ray._private.resource_isolation_config import ResourceIsolationConfig
 from ray._private.resource_spec import ResourceSpec
@@ -29,7 +30,6 @@ from ray._private.services import get_address, serialize_config
 from ray._private.utils import (
     is_in_test,
     open_log,
-    try_to_create_directory,
     try_to_symlink,
     validate_socket_filepath,
 )
@@ -188,7 +188,7 @@ class Node:
                     )
                     self._session_name = f"session_{date_str}_{os.getpid()}"
                 else:
-                    self._session_name = ray._private.utils.decode(maybe_key)
+                    self._session_name = ray._common.utils.decode(maybe_key)
             else:
                 assert not self._default_worker
                 session_name = ray._private.utils.internal_kv_get_with_retry(
@@ -197,7 +197,7 @@ class Node:
                     ray_constants.KV_NAMESPACE_SESSION,
                     num_retries=ray_constants.NUM_REDIS_GET_RETRIES,
                 )
-                self._session_name = ray._private.utils.decode(session_name)
+                self._session_name = ray._common.utils.decode(session_name)
 
         # Initialize webui url
         if head:
@@ -482,7 +482,7 @@ class Node:
 
         if self.head:
             self._ray_params.update_if_absent(
-                temp_dir=ray._private.utils.get_ray_temp_dir()
+                temp_dir=ray._common.utils.get_ray_temp_dir()
             )
             self._temp_dir = self._ray_params.temp_dir
         else:
@@ -496,7 +496,7 @@ class Node:
                     ray_constants.KV_NAMESPACE_SESSION,
                     num_retries=ray_constants.NUM_REDIS_GET_RETRIES,
                 )
-                self._temp_dir = ray._private.utils.decode(temp_dir)
+                self._temp_dir = ray._common.utils.decode(temp_dir)
             else:
                 self._ray_params.update_if_absent(
                     temp_dir=ray._private.utils.get_ray_temp_dir()
@@ -518,7 +518,7 @@ class Node:
                     num_retries=ray_constants.NUM_REDIS_GET_RETRIES,
                 )
                 if sys.platform == self._head_os:
-                    self._session_dir = ray._private.utils.decode(session_dir)
+                    self._session_dir = ray._common.utils.decode(session_dir)
                 else:
                     self._session_dir = os.path.join(
                         self._temp_dir, os.path.basename(session_dir)
@@ -544,7 +544,7 @@ class Node:
         )
         try_to_create_directory(self._runtime_env_dir)
         # Create a symlink to the libtpu tpu_logs directory if it exists.
-        user_temp_dir = ray._private.utils.get_user_temp_dir()
+        user_temp_dir = ray._common.utils.get_user_temp_dir()
         tpu_log_dir = f"{user_temp_dir}/tpu_logs"
         if os.path.isdir(tpu_log_dir):
             tpu_logs_symlink = os.path.join(self._logs_dir, "tpu_logs")
@@ -871,7 +871,7 @@ class Node:
                 "{directory_name}/{prefix}.{unique_index}{suffix}"
         """
         if directory_name is None:
-            directory_name = ray._private.utils.get_ray_temp_dir()
+            directory_name = ray._common.utils.get_ray_temp_dir()
         directory_name = os.path.expanduser(directory_name)
         index = self._incremental_dict[suffix, prefix, directory_name]
         # `tempfile.TMP_MAX` could be extremely large,
