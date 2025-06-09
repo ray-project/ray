@@ -691,7 +691,7 @@ def _start_local_registry():
         raise TimeoutError("Registry failed to start within 10 seconds")
 
 
-def test_generate_index(mock_authorize_docker):
+def test_generate_index():
     registry_proc, registry_thread, temp_dir, port = _start_local_registry()
     try:
         test_image1 = f"localhost:{port}/test-image:test-tag-amd64"
