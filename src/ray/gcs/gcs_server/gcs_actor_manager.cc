@@ -748,9 +748,6 @@ void GcsActorManager::HandleKillActorViaGcs(rpc::KillActorViaGcsRequest request,
 Status GcsActorManager::RegisterActor(const ray::rpc::RegisterActorRequest &request,
                                       std::function<void(Status)> register_callback) {
   RAY_CHECK(thread_checker_.IsOnSameThread());
-  // NOTE: After the abnormal recovery of the network between GCS client and GCS server or
-  // the GCS server is restarted, it is required to continue to register actor
-  // successfully.
   RAY_CHECK(register_callback);
   const auto &actor_creation_task_spec = request.task_spec().actor_creation_task_spec();
   auto actor_id = ActorID::FromBinary(actor_creation_task_spec.actor_id());
@@ -853,7 +850,8 @@ Status GcsActorManager::RegisterActor(const ray::rpc::RegisterActorRequest &requ
                   // to call the default Redis backend. If ordering is not guaranteed, we
                   // should overwrite the actor state to DEAD to avoid race condition.
                   RAY_LOG(INFO).WithField(actor->GetActorID())
-                      << "Actor is killed before dependency is prepared.";
+                      << "Actor was killed before it was persisted in GCS Table Storage. "
+                         "Owning worker should not try to create this actor";
 
                   for (auto &callback : callback_iter->second) {
                     callback(Status::SchedulingCancelled("Actor creation cancelled."));
