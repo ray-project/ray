@@ -211,7 +211,7 @@ class TrainRun(BaseModel):
     id: str = Field(description="Unique identifier for the Train run.")
     name: str = Field(description="Human-readable name assigned to the Train run.")
     job_id: str = Field(description="The Ray Job ID associated with this Train run.")
-    controller_actor_id: Optional[str] = Field(
+    controller_actor_id: str = Field(
         description="Unique ID of the actor managing the Train run."
     )
     status: RunStatus = Field(
