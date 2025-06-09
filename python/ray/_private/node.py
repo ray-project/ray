@@ -499,7 +499,7 @@ class Node:
                 self._temp_dir = ray._common.utils.decode(temp_dir)
             else:
                 self._ray_params.update_if_absent(
-                    temp_dir=ray._private.utils.get_ray_temp_dir()
+                    temp_dir=ray._common.utils.get_ray_temp_dir()
                 )
                 self._temp_dir = self._ray_params.temp_dir
 
