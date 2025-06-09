@@ -9,14 +9,11 @@ import pytest
 import numpy as np
 
 import ray
-from ray.core.generated import common_pb2
-from ray.core.generated import node_manager_pb2, node_manager_pb2_grpc
 from ray._private.test_utils import (
     wait_for_condition,
     run_string_as_driver,
     run_string_as_driver_nonblocking,
 )
-from ray._private.utils import init_grpc_channel
 from ray.util.state import list_workers
 from ray.util.state.common import WorkerState
 
@@ -298,9 +295,10 @@ def test_not_killing_workers_that_own_objects(shutdown_only):
         inner_ref = ray.get(outer_ref)
 
     # Sleep for 10x the idle worker kill interval and verify that those workers
-    # aren't killed.
+    # aren't killed because they own objects that are in scope.
     time.sleep((10 * idle_worker_kill_interval_ms) / 1000.0)
     assert len(get_workers()) == expected_num_workers
+    del inner_ref
 
 
 def test_kill_idle_workers_that_are_behind_owned_workers(shutdown_only):
