@@ -700,7 +700,7 @@ class ReporterAgent(
                         )
                         tpu_utilizations.append(info)
         except Exception as e:
-            logger.debug(f"Failed to parse metrics from device plugin: {metric} {e}")
+            logger.debug(f"Failed to parse metrics from device plugin: {metrics} {e}")
             return []
 
         # Merge metrics
