@@ -65,7 +65,7 @@ CoreWorkerPlasmaStoreProvider::CoreWorkerPlasmaStoreProvider(
     bool warmup,
     std::function<std::string()> get_current_call_site)
     : raylet_client_(raylet_client),
-      store_client_(std::make_shared<plasma::PlasmaClient>()),
+      store_client_(std::make_shared<plasma::PlasmaClient>(/*is_in_core_worker*/ true)),
       reference_counter_(reference_counter),
       check_signals_(std::move(check_signals)) {
   if (get_current_call_site != nullptr) {

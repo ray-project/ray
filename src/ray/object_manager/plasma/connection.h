@@ -164,10 +164,24 @@ class StoreConn : public ray::ServerConnection {
  public:
   explicit StoreConn(ray::local_stream_socket &&socket);
 
+  explicit StoreConn(ray::local_stream_socket &&socket, bool is_in_core_worker);
+
   /// Receive a file descriptor for the store.
   ///
   /// \return A file descriptor.
   ray::Status RecvFd(MEMFD_TYPE_NON_UNIQUE *fd);
+
+  ray::Status WriteBuffer(const std::vector<boost::asio::const_buffer> &buffer);
+
+  ray::Status ReadBuffer(const std::vector<boost::asio::mutable_buffer> &buffer);
+
+ private:
+  // Whether the client is in a core worker.
+  bool is_in_core_worker_;
+
+  // Shutdown the current process if the plasma client is in a core worker and the
+  // local raylet is dead.
+  void ShutdownWorkerIfLocalRayletDisconnected(const ray::Status &status);
 };
 
 std::ostream &operator<<(std::ostream &os, const std::shared_ptr<StoreConn> &store_conn);

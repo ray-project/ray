@@ -170,7 +170,10 @@ Status Client::SendFd(MEMFD_TYPE fd) {
 }
 
 StoreConn::StoreConn(ray::local_stream_socket &&socket)
-    : ray::ServerConnection(std::move(socket)) {}
+    : ray::ServerConnection(std::move(socket)), is_in_core_worker_(false) {}
+
+StoreConn::StoreConn(ray::local_stream_socket &&socket, bool is_in_core_worker)
+    : ray::ServerConnection(std::move(socket)), is_in_core_worker_(is_in_core_worker) {}
 
 Status StoreConn::RecvFd(MEMFD_TYPE_NON_UNIQUE *fd) {
 #ifdef _WIN32
@@ -192,4 +195,27 @@ Status StoreConn::RecvFd(MEMFD_TYPE_NON_UNIQUE *fd) {
   return Status::OK();
 }
 
+ray::Status StoreConn::WriteBuffer(const std::vector<boost::asio::const_buffer> &buffer) {
+  auto status = ray::ServerConnection::WriteBuffer(buffer);
+  ShutdownWorkerIfLocalRayletDisconnected(status);
+  return status;
+}
+
+ray::Status StoreConn::ReadBuffer(
+    const std::vector<boost::asio::mutable_buffer> &buffer) {
+  auto status = ray::ServerConnection::ReadBuffer(buffer);
+  ShutdownWorkerIfLocalRayletDisconnected(status);
+  return status;
+}
+
+void StoreConn::ShutdownWorkerIfLocalRayletDisconnected(const ray::Status &status) {
+  if (is_in_core_worker_ && !status.ok() &&
+      ray::IsRayletFailed(RayConfig::instance().RAYLET_PID())) {
+    RAY_LOG(WARNING) << "The connection to the plasma store is failed because the "
+                        "local raylet is dead. Terminate the process. Status: "
+                     << status;
+    ray::QuickExit();
+    RAY_LOG(FATAL) << "Unreachable.";
+  }
+}
 }  // namespace plasma

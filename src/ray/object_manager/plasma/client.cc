@@ -97,6 +97,7 @@ struct ObjectInUseEntry {
 class PlasmaClient::Impl : public std::enable_shared_from_this<PlasmaClient::Impl> {
  public:
   Impl();
+  explicit Impl(bool is_in_core_worker);
   ~Impl();
 
   // PlasmaClient method implementations
@@ -235,11 +236,16 @@ class PlasmaClient::Impl : public std::enable_shared_from_this<PlasmaClient::Imp
   std::unordered_set<ObjectID> deletion_cache_;
   /// A mutex which protects this class.
   std::recursive_mutex client_mutex_;
+  /// Whether the client is in a core worker.
+  bool is_in_core_worker_;
 };
 
 PlasmaBuffer::~PlasmaBuffer() { RAY_UNUSED(client_->Release(object_id_)); }
 
-PlasmaClient::Impl::Impl() : store_capacity_(0) {}
+PlasmaClient::Impl::Impl() : store_capacity_(0), is_in_core_worker_(false) {}
+
+PlasmaClient::Impl::Impl(bool is_in_core_worker)
+    : store_capacity_(0), is_in_core_worker_(is_in_core_worker) {}
 
 PlasmaClient::Impl::~Impl() {}
 
@@ -868,7 +874,7 @@ Status PlasmaClient::Impl::Connect(const std::string &store_socket_name,
   /// The local stream socket that connects to store.
   ray::local_stream_socket socket(main_service_);
   RAY_RETURN_NOT_OK(ray::ConnectSocketRetry(socket, store_socket_name));
-  store_conn_.reset(new StoreConn(std::move(socket)));
+  store_conn_.reset(new StoreConn(std::move(socket), is_in_core_worker_));
   // Send a ConnectRequest to the store to get its memory capacity.
   RAY_RETURN_NOT_OK(SendConnectRequest(store_conn_));
   std::vector<uint8_t> buffer;
@@ -911,6 +917,9 @@ std::string PlasmaClient::Impl::DebugString() {
 // PlasmaClient
 
 PlasmaClient::PlasmaClient() : impl_(std::make_shared<PlasmaClient::Impl>()) {}
+
+PlasmaClient::PlasmaClient(bool is_in_core_worker)
+    : impl_(std::make_shared<PlasmaClient::Impl>(is_in_core_worker)) {}
 
 Status PlasmaClient::Connect(const std::string &store_socket_name,
                              const std::string &manager_socket_name,
