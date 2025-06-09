@@ -13,15 +13,15 @@ In this example, model weights are downloaded from the [Qwen/Qwen2.5-7B-Instruct
 
 ## Step 1: Create a Kubernetes cluster with GPUs
 
-Follow aws-eks-gpu-cluster.md or gcp-gke-gpu-cluster.md to create a Kubernetes cluster.
+Follow [aws-eks-gpu-cluster.md](kuberay-eks-gpu-cluster-setup) or [gcp-gke-gpu-cluster.md](kuberay-gke-gpu-cluster-setup) to create a Kubernetes cluster.
 
 ## Step 2: Install the KubeRay Operator
 
-Install the most recent stable KubeRay operator from the Helm repository by following [Deploy a KubeRay operator](../getting-started/kuberay-operator-installation.md). The KubeRay operator Pod must be on the CPU node if you set up the taint for the GPU node pool correctly.
+Install the most recent stable KubeRay operator from the Helm repository by following [Deploy a KubeRay operator](../getting-started/kuberay-operator-installation.md). The KubeRay operator pod should run on a CPU node if the taint for the GPU node pool is configured correctly.
 
 ## Step 3: Create a Kubernetes Secret containing your Hugging Face access token
 
-Additionally, instead of passing the HF Access Token directly as an environment variable, you can also create a Kubernetes Secret containing your Hugging Face access token. Download the config yaml from [here](../../../serve/llm/serving-llms.rst), update the value for `hf_token` to your private access token in the Secret and then apply the config to your K8s cluster: 
+For additional security, instead of passing the HF Access Token directly as an environment variable, we recommend creating a Kubernetes Secret containing your Hugging Face access token. Download the Ray Serve LLM service config yaml [here](https://github.com/ray-project/kuberay/blob/master/ray-operator/config/samples/ray-service.llm-serve.yaml), update the value for `hf_token` to your private access token in the `Secret`, and apply the config to your K8s cluster.
 
 ```yaml
 apiVersion: v1
@@ -41,7 +41,7 @@ Create a RayService Custom Resource:
 kubectl apply -f https://raw.githubusercontent.com/ray-project/kuberay/master/ray-operator/config/samples/ray-service.llm-serve.yaml
 ```
 
-In this step, a custom Ray Serve Application is setup to serve the `Qwen/Qwen2.5-7B-Instruct` Model, creating an OpenAI-Compatible Server. You can look up the complete configuration for this example on our [GitHub Repository](https://github.com/ray-project/kuberay/blob/master/ray-operator/config/samples/ray-service.llm-serve.yaml). You can inspect and modify the Serve Config to learn more about the Serve deployment:
+In this step, a custom Ray Serve Application is setup to serve the `Qwen/Qwen2.5-7B-Instruct` Model, creating an OpenAI-Compatible Server. The source for this example is on [GitHub](https://github.com/ray-project/kuberay/blob/master/ray-operator/config/samples/ray-service.llm-serve.yaml). You can inspect and modify the Serve Config to learn more about the Serve deployment:
 ```yaml
 serveConfigV2: |
   applications:
@@ -71,7 +71,7 @@ Wait for the RayService resource to become healthy. You can check its status by 
 kubectl get rayservice ray-serve-llm -o yaml
 ```
 
-The result should be something like this:
+After a few minutes, the result should be something like this:
 ```
 status:
   activeServiceStatus:
@@ -89,7 +89,7 @@ status:
 
 To send requests to the Ray Serve Deployment, port-forward 8000 port from the Serve application Service:
 ```sh
-kubectl port-forward svc/ray-commotion-llm-serve-svc 8000
+kubectl port-forward ray-serve-llm-head-svc 8000
 ```
 
 Additionally, you can also port-forward 8000 port from the Head application Service to send requests to the serve application.
@@ -145,13 +145,13 @@ The output should be in the following format:
 }
 ```
 
-## Step 6: Checking Out Ray-Dashboard
+## Step 6: View the Ray Dashboard
 
-Ray Services also serves a built-in Ray Dashboard, a web interface that provides metrics, charts, and other features that help Ray users to understand and debug Ray applications.
+Ray Serve automatically starts Ray Dashboard, a web interface that provides metrics, charts, and other features that help Ray users to understand and debug Ray applications.
 
-To access the Ray Dashboard, port-forward 8625 port from the Head application Service using the following command:
+To access the Ray Dashboard, port-forward port 8625 from the Head application Service using the following command:
 ```sh
-kubectl port-forward svc/ray-commotion-llm-head-svc 8625
+kubectl port-forward svc/ray-serve-llm-head-svc 8625
 ```
 
 Once forwarded, navigate to the Serve tab on the Dashboard to review application status, deployments, routers, logs, and other relevant features.
