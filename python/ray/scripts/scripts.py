@@ -862,6 +862,7 @@ def start(
 
         # Set bootstrap port.
         assert ray_params.redis_port is None
+        assert ray_params.gcs_server_port is None
         ray_params.gcs_server_port = port
 
         if os.environ.get("RAY_FAKE_CLUSTER"):
