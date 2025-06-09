@@ -341,7 +341,7 @@ class GcsActorManager : public rpc::ActorInfoHandler {
       RuntimeEnvManager &runtime_env_manager,
       GcsFunctionManager &function_manager,
       std::function<void(const ActorID &)> destroy_owned_placement_group_if_needed,
-      const rpc::CoreWorkerClientFactoryFn &worker_client_factory = nullptr);
+      rpc::CoreWorkerClientPool &worker_client_pool);
 
   ~GcsActorManager() override = default;
 
@@ -714,9 +714,8 @@ class GcsActorManager : public rpc::ActorInfoHandler {
   instrumented_io_context &io_context_;
   /// A publisher for publishing gcs messages.
   GcsPublisher *gcs_publisher_;
-  /// Factory to produce clients to workers. This is used to communicate with
-  /// actors and their owners.
-  rpc::CoreWorkerClientFactoryFn worker_client_factory_;
+  /// This is used to communicate with actors and their owners.
+  rpc::CoreWorkerClientPool &worker_client_pool_;
   /// A callback that is used to destroy placemenet group owned by the actor.
   /// This method MUST BE IDEMPOTENT because it can be called multiple times during
   /// actor destroy process.

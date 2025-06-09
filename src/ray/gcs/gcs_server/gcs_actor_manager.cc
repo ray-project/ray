@@ -337,18 +337,17 @@ GcsActorManager::GcsActorManager(
     RuntimeEnvManager &runtime_env_manager,
     GcsFunctionManager &function_manager,
     std::function<void(const ActorID &)> destroy_owned_placement_group_if_needed,
-    const rpc::CoreWorkerClientFactoryFn &worker_client_factory)
+    rpc::CoreWorkerClientPool &worker_client_pool)
     : gcs_actor_scheduler_(std::move(scheduler)),
       gcs_table_storage_(gcs_table_storage),
       io_context_(io_context),
       gcs_publisher_(gcs_publisher),
-      worker_client_factory_(worker_client_factory),
+      worker_client_pool_(worker_client_pool),
       destroy_owned_placement_group_if_needed_(
           std::move(destroy_owned_placement_group_if_needed)),
       runtime_env_manager_(runtime_env_manager),
       function_manager_(function_manager),
       actor_gc_delay_(RayConfig::instance().gcs_actor_table_min_duration_ms()) {
-  RAY_CHECK(worker_client_factory_);
   RAY_CHECK(destroy_owned_placement_group_if_needed_);
   actor_state_counter_ = std::make_shared<
       CounterMap<std::pair<rpc::ActorTableData::ActorState, std::string>>>();
@@ -1030,8 +1029,7 @@ void GcsActorManager::PollOwnerForActorRefDeleted(
   if (it == workers.end()) {
     RAY_LOG(DEBUG) << "Adding owner " << owner_id << " of actor " << actor_id
                    << ", job id = " << actor_id.JobId();
-    std::shared_ptr<rpc::CoreWorkerClientInterface> client =
-        worker_client_factory_(actor->GetOwnerAddress());
+    auto client = worker_client_pool_.GetOrConnect(actor->GetOwnerAddress());
     it = workers.emplace(owner_id, Owner(std::move(client))).first;
   }
   it->second.children_actor_ids.insert(actor_id);
@@ -1774,7 +1772,7 @@ void GcsActorManager::NotifyCoreWorkerToKillActor(const std::shared_ptr<GcsActor
   request.set_intended_actor_id(actor->GetActorID().Binary());
   request.mutable_death_cause()->CopyFrom(death_cause);
   request.set_force_kill(force_kill);
-  auto actor_client = worker_client_factory_(actor->GetAddress());
+  auto actor_client = worker_client_pool_.GetOrConnect(actor->GetAddress());
   RAY_LOG(DEBUG)
           .WithField(actor->GetActorID())
           .WithField(actor->GetWorkerID())

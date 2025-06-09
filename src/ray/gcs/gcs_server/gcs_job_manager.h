@@ -57,16 +57,15 @@ class GcsJobManager : public rpc::JobInfoHandler {
                          GcsFunctionManager &function_manager,
                          InternalKVInterface &internal_kv,
                          instrumented_io_context &io_context,
-                         rpc::CoreWorkerClientFactoryFn client_factory = nullptr)
+                         rpc::CoreWorkerClientPool &worker_client_pool)
       : gcs_table_storage_(gcs_table_storage),
         gcs_publisher_(gcs_publisher),
         runtime_env_manager_(runtime_env_manager),
         function_manager_(function_manager),
         internal_kv_(internal_kv),
         io_context_(io_context),
-        core_worker_clients_(client_factory) {
-    export_event_write_enabled_ = IsExportAPIEnabledDriverJob();
-  }
+        worker_client_pool_(worker_client_pool),
+        export_event_write_enabled_(IsExportAPIEnabledDriverJob()) {}
 
   void Initialize(const GcsInitData &gcs_init_data);
 
@@ -145,8 +144,7 @@ class GcsJobManager : public rpc::JobInfoHandler {
   GcsFunctionManager &function_manager_;
   InternalKVInterface &internal_kv_;
   instrumented_io_context &io_context_;
-  /// The cached core worker clients which are used to communicate with workers.
-  rpc::CoreWorkerClientPool core_worker_clients_;
+  rpc::CoreWorkerClientPool &worker_client_pool_;
 
   /// If true, driver job events are exported for Export API
   bool export_event_write_enabled_ = false;
