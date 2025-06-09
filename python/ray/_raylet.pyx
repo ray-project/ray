@@ -225,7 +225,8 @@ from ray._private.client_mode_hook import disable_client_hook
 import ray.core.generated.common_pb2 as common_pb2
 import ray._private.memory_monitor as memory_monitor
 import ray._private.profiling as profiling
-from ray._private.utils import decode, DeferSigint
+from ray._common.utils import decode
+from ray._private.utils import DeferSigint
 from ray._private.object_ref_generator import DynamicObjectRefGenerator
 from ray.util.annotations import PublicAPI
 
@@ -3863,7 +3864,8 @@ cdef class CoreWorker:
                             c_string strategy,
                             c_bool is_detached,
                             double max_cpu_fraction_per_node,
-                            soft_target_node_id):
+                            soft_target_node_id,
+                            c_vector[unordered_map[c_string, c_string]] bundle_label_selector):
         cdef:
             CPlacementGroupID c_placement_group_id
             CPlacementStrategy c_strategy
@@ -3894,7 +3896,8 @@ cdef class CoreWorker:
                                 bundles,
                                 is_detached,
                                 max_cpu_fraction_per_node,
-                                c_soft_target_node_id),
+                                c_soft_target_node_id,
+                                bundle_label_selector),
                             &c_placement_group_id))
 
         return PlacementGroupID(c_placement_group_id.Binary())

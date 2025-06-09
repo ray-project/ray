@@ -15,7 +15,7 @@ from typing import Any, Callable, Dict, FrozenSet, List, Optional, Set, Tuple, U
 import yaml
 
 import ray
-import ray._private.ray_constants as ray_constants
+from ray._common.utils import PLACEMENT_GROUP_BUNDLE_RESOURCE_NAME
 from ray.autoscaler._private.constants import (
     AUTOSCALER_HEARTBEAT_TIMEOUT_S,
     AUTOSCALER_MAX_CONCURRENT_LAUNCHES,
@@ -821,8 +821,7 @@ class StandardAutoscaler:
         infeasible = []
         for bundle in unfulfilled:
             placement_group = any(
-                "_group_" in k
-                or k == ray_constants.PLACEMENT_GROUP_BUNDLE_RESOURCE_NAME
+                "_group_" in k or k == PLACEMENT_GROUP_BUNDLE_RESOURCE_NAME
                 for k in bundle
             )
             if placement_group:

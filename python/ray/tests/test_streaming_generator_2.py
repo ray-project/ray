@@ -8,9 +8,9 @@ import gc
 import ray
 import ray.exceptions
 from ray.experimental.state.api import list_actors
+from ray._common.test_utils import SignalActor
 from ray._private.test_utils import (
     wait_for_condition,
-    SignalActor,
 )
 
 RECONSTRUCTION_CONFIG = {
