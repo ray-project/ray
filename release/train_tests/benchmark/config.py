@@ -1,5 +1,6 @@
 import argparse
 import enum
+from typing import ClassVar
 
 from pydantic import BaseModel, Field
 
@@ -16,6 +17,25 @@ class DataLoaderConfig(BaseModel):
 
     validation_batch_size: int = 256
     limit_validation_rows: int = 50000
+
+
+class TaskConfig(BaseModel):
+    TASK_NAME: ClassVar[str] = "base"
+
+
+class ImageClassificationConfig(TaskConfig):
+    TASK_NAME: ClassVar[str] = "image_classification"
+
+    class ImageFormat(enum.Enum):
+        JPEG = "jpeg"
+        PARQUET = "parquet"
+
+    image_classification_local_dataset: bool = False
+    image_classification_data_format: ImageFormat = ImageFormat.PARQUET
+
+
+class RecsysConfig(TaskConfig):
+    TASK_NAME: ClassVar[str] = "recsys"
 
 
 class RayDataConfig(DataLoaderConfig):
@@ -47,6 +67,9 @@ class BenchmarkConfig(BaseModel):
     max_failures: int = 0
 
     task: str = "image_classification"
+    task_config: TaskConfig = Field(
+        default_factory=lambda: TaskConfig(),
+    )
 
     # Data
     dataloader_type: DataloaderType = DataloaderType.RAY_DATA
@@ -109,6 +132,12 @@ def cli_to_config() -> BenchmarkConfig:
                 config_cls = RayDataConfig
             elif top_level_args.dataloader_type == DataloaderType.TORCH:
                 config_cls = TorchConfig
+
+        if config_cls == TaskConfig:
+            if top_level_args.task == ImageClassificationConfig.TASK_NAME:
+                config_cls = ImageClassificationConfig
+            elif top_level_args.task == RecsysConfig.TASK_NAME:
+                config_cls = RecsysConfig
 
         for field, field_info in config_cls.model_fields.items():
             _add_field_to_parser(nested_parser, field, field_info)
