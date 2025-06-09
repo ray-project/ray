@@ -186,7 +186,7 @@ class KuberayJobManager:
 
     def _get_kuberay_server_token(self) -> Optional[str]:
         # Use cached token if available
-        if hasattr(self, "_kuberay_service_token"):
+        if self._kuberay_service_token:
             return self._kuberay_service_token
 
         session = boto3.session.Session()
