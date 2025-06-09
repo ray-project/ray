@@ -49,30 +49,20 @@ def main():
         "\nBenchmark config:\n" + pprint.pformat(benchmark_config.__dict__, indent=2)
     )
 
-    if benchmark_config.task == "image_classification_parquet":
-        from image_classification.image_classification_parquet.factory import (
-            ImageClassificationParquetFactory,
-        )
+    if benchmark_config.task == "image_classification":
+        from image_classification.factory import ImageClassificationFactory
 
-        factory = ImageClassificationParquetFactory(benchmark_config)
-    elif benchmark_config.task == "image_classification_jpeg":
-        from image_classification.image_classification_jpeg.factory import (
-            ImageClassificationJpegFactory,
-        )
-
-        factory = ImageClassificationJpegFactory(benchmark_config)
-    elif benchmark_config.task == "localfs_image_classification_jpeg":
-        from image_classification.localfs_image_classification_jpeg.factory import (
-            LocalFSImageClassificationFactory,
-        )
-
-        factory = LocalFSImageClassificationFactory(benchmark_config)
+        factory = ImageClassificationFactory(benchmark_config)
     elif benchmark_config.task == "recsys":
         from recsys.recsys_factory import RecsysFactory
 
         factory = RecsysFactory(benchmark_config)
     else:
         raise ValueError(f"Unknown task: {benchmark_config.task}")
+
+    import ipdb
+
+    ipdb.set_trace()
 
     factory.set_dataset_creation_time(time.perf_counter() - start_time)
 

@@ -5,6 +5,7 @@ from typing import Dict, Tuple, Iterator, Generator, Optional, Union
 
 # Third-party imports
 import torch
+import torchvision
 import pyarrow
 import ray
 import ray.data
@@ -12,7 +13,8 @@ import ray.train
 from ray.data.collate_fn import ArrowBatchCollateFn, CollateFn
 
 # Local imports
-from config import BenchmarkConfig
+from config import BenchmarkConfig, DataloaderType
+from factory import BenchmarkFactory
 from dataloader_factory import BaseDataLoaderFactory
 from torch_dataloader_factory import TorchDataLoaderFactory
 from ray_dataloader_factory import RayDataLoaderFactory
@@ -249,3 +251,25 @@ class ImageClassificationMockDataLoaderFactory(BaseDataLoaderFactory):
         return mock_dataloader(
             num_batches=512, batch_size=dataloader_config.validation_batch_size
         )
+
+
+class ImageClassificationFactory(BenchmarkFactory):
+    def get_dataloader_factory(self) -> BaseDataLoaderFactory:
+        dataloader_type = self.benchmark_config.dataloader_type
+
+        if dataloader_type == DataloaderType.MOCK:
+            return ImageClassificationMockDataLoaderFactory(self.benchmark_config)
+        elif dataloader_type == DataloaderType.RAY_DATA:
+            raise NotImplementedError("Ray DataLoader is not implemented yet")
+        elif dataloader_type == DataloaderType.TORCH:
+            raise NotImplementedError("Torch DataLoader is not implemented yet")
+
+        raise ValueError(
+            f"Unknown dataloader type: {self.benchmark_config.dataloader_type}"
+        )
+
+    def get_model(self) -> torch.nn.Module:
+        return torchvision.models.resnet50(weights=None)
+
+    def get_loss_fn(self) -> torch.nn.Module:
+        return torch.nn.CrossEntropyLoss()

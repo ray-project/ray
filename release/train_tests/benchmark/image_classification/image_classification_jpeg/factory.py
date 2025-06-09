@@ -43,6 +43,10 @@ class ImageClassificationJpegRayDataLoaderFactory(
     4. Image preprocessing with optional random transforms
     """
 
+    def __init__(self, benchmark_config: BenchmarkConfig, dataset_dirs: Dict[str, str]):
+        super().__init__(benchmark_config)
+        self._dataset_dirs = dataset_dirs
+
     def get_s3fs_with_boto_creds(
         self, connection_timeout: int = 60, request_timeout: int = 60
     ) -> pyarrow.fs.S3FileSystem:
@@ -83,38 +87,38 @@ class ImageClassificationJpegRayDataLoaderFactory(
                 - "train": Training dataset with random transforms
                 - "val": Validation dataset without transforms
         """
-        # Configure S3 filesystem connection
-        s3fs = self.get_s3fs_with_boto_creds()
+        train_dir = self._dataset_dirs[DatasetKey.TRAIN]
+        val_dir = self._dataset_dirs[DatasetKey.VALID]
+
+        filesystem = (
+            self.get_s3fs_with_boto_creds() if train_dir.startswith("s3://") else None
+        )
 
         # Create training dataset with class-based partitioning
-        train_pattern = IMAGENET_JPEG_SPLIT_S3_DIRS[DatasetKey.TRAIN]
         train_partitioning = Partitioning(
-            "dir", base_dir=train_pattern, field_names=["class"]
+            "dir", base_dir=train_dir, field_names=["class"]
         )
         train_ds = (
             ray.data.read_images(
-                train_pattern,
+                train_dir,
                 mode="RGB",
                 include_paths=False,
                 partitioning=train_partitioning,
-                filesystem=s3fs,
+                filesystem=filesystem,
             )
             .limit(self.get_dataloader_config().limit_training_rows)
             .map(get_preprocess_map_fn(random_transforms=True))
         )
 
         # Create validation dataset with same partitioning
-        val_pattern = IMAGENET_JPEG_SPLIT_S3_DIRS[DatasetKey.TRAIN]
-        val_partitioning = Partitioning(
-            "dir", base_dir=val_pattern, field_names=["class"]
-        )
+        val_partitioning = Partitioning("dir", base_dir=val_dir, field_names=["class"])
         val_ds = (
             ray.data.read_images(
-                val_pattern,
+                val_dir,
                 mode="RGB",
                 include_paths=False,
                 partitioning=val_partitioning,
-                filesystem=s3fs,
+                filesystem=filesystem,
             )
             .limit(self.get_dataloader_config().limit_validation_rows)
             .map(get_preprocess_map_fn(random_transforms=False))
