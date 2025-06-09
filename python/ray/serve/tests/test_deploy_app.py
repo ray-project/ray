@@ -8,21 +8,17 @@ from copy import copy
 from functools import partial
 from typing import Dict, List, Union
 
+import httpx
 import pytest
-import requests
 
 import ray
 import ray._private.state
 import ray.actor
 from ray import serve
-from ray._private.test_utils import SignalActor, wait_for_condition
+from ray._common.test_utils import SignalActor
+from ray._private.test_utils import wait_for_condition
 from ray.serve._private.client import ServeControllerClient
-from ray.serve._private.common import (
-    ApplicationStatus,
-    DeploymentID,
-    DeploymentStatus,
-    ReplicaID,
-)
+from ray.serve._private.common import DeploymentID, DeploymentStatus, ReplicaID
 from ray.serve._private.constants import SERVE_DEFAULT_APP_NAME, SERVE_NAMESPACE
 from ray.serve._private.test_utils import (
     check_num_replicas_eq,
@@ -31,6 +27,7 @@ from ray.serve._private.test_utils import (
 )
 from ray.serve.context import _get_global_client
 from ray.serve.schema import (
+    ApplicationStatus,
     ServeApplicationSchema,
     ServeDeploySchema,
     ServeInstanceDetails,
@@ -74,7 +71,7 @@ def start_and_shutdown_ray_cli_module():
 
 def _check_ray_stop():
     try:
-        requests.get("http://localhost:52365/api/ray/version")
+        httpx.get("http://localhost:8265/api/ray/version")
         return False
     except Exception:
         return True
@@ -83,8 +80,7 @@ def _check_ray_stop():
 @pytest.fixture(scope="function")
 def client(start_and_shutdown_ray_cli_module, shutdown_ray_and_serve):
     wait_for_condition(
-        lambda: requests.get("http://localhost:52365/api/ray/version").status_code
-        == 200,
+        lambda: httpx.get("http://localhost:8265/api/ray/version").status_code == 200,
         timeout=15,
     )
     ray.init(address="auto", namespace=SERVE_NAMESPACE)
@@ -101,7 +97,7 @@ def check_running():
 
 
 def check_endpoint(endpoint: str, json: Union[List, Dict], expected: str):
-    resp = requests.post(f"http://localhost:8000/{endpoint}", json=json)
+    resp = httpx.post(f"http://localhost:8000/{endpoint}", json=json)
     assert resp.text == expected
     return True
 
@@ -213,11 +209,11 @@ def test_deploy_multi_app_update_config(client: ServeControllerClient):
 
     client.deploy_apps(ServeDeploySchema.parse_obj(config))
     wait_for_condition(
-        lambda: requests.post("http://localhost:8000/app1", json=["ADD", 2]).text
+        lambda: httpx.post("http://localhost:8000/app1", json=["ADD", 2]).text
         == "1 pizzas please!"
     )
     wait_for_condition(
-        lambda: requests.post("http://localhost:8000/app2", json=["ADD", 2]).text
+        lambda: httpx.post("http://localhost:8000/app2", json=["ADD", 2]).text
         == "12 pizzas please!"
     )
 
@@ -271,11 +267,11 @@ def test_deploy_multi_app_update_num_replicas(client: ServeControllerClient):
 
     client.deploy_apps(ServeDeploySchema.parse_obj(config))
     wait_for_condition(
-        lambda: requests.post("http://localhost:8000/app1", json=["ADD", 2]).text
+        lambda: httpx.post("http://localhost:8000/app1", json=["ADD", 2]).text
         == "2 pizzas please!"
     )
     wait_for_condition(
-        lambda: requests.post("http://localhost:8000/app2", json=["ADD", 2]).text
+        lambda: httpx.post("http://localhost:8000/app2", json=["ADD", 2]).text
         == "102 pizzas please!"
     )
 
@@ -335,7 +331,7 @@ def test_deploy_multi_app_update_timestamp(client: ServeControllerClient):
         ApplicationStatus.RUNNING,
     }
     wait_for_condition(
-        lambda: requests.post("http://localhost:8000/app1", json=["ADD", 2]).text
+        lambda: httpx.post("http://localhost:8000/app1", json=["ADD", 2]).text
         == "4 pizzas please!"
     )
 
@@ -364,10 +360,10 @@ def test_deploy_multi_app_overwrite_apps(client: ServeControllerClient):
     client.deploy_apps(test_config)
 
     wait_for_condition(
-        lambda: requests.get("http://localhost:8000/app1").text == "wonderful world"
+        lambda: httpx.get("http://localhost:8000/app1").text == "wonderful world"
     )
     wait_for_condition(
-        lambda: requests.post("http://localhost:8000/app2", json=["ADD", 2]).text
+        lambda: httpx.post("http://localhost:8000/app2", json=["ADD", 2]).text
         == "4 pizzas please!"
     )
 
@@ -377,11 +373,11 @@ def test_deploy_multi_app_overwrite_apps(client: ServeControllerClient):
     client.deploy_apps(test_config)
 
     wait_for_condition(
-        lambda: requests.post("http://localhost:8000/app1", json=["ADD", 2]).text
+        lambda: httpx.post("http://localhost:8000/app1", json=["ADD", 2]).text
         == "4 pizzas please!"
     )
     wait_for_condition(
-        lambda: requests.get("http://localhost:8000/app2").text == "wonderful world"
+        lambda: httpx.get("http://localhost:8000/app2").text == "wonderful world"
     )
 
 
@@ -410,10 +406,10 @@ def test_deploy_multi_app_overwrite_apps2(client: ServeControllerClient):
     client.deploy_apps(test_config)
 
     wait_for_condition(
-        lambda: requests.get("http://localhost:8000/app1").text == "wonderful world"
+        lambda: httpx.get("http://localhost:8000/app1").text == "wonderful world"
     )
     wait_for_condition(
-        lambda: requests.post("http://localhost:8000/app2", json=["ADD", 2]).text
+        lambda: httpx.post("http://localhost:8000/app2", json=["ADD", 2]).text
         == "4 pizzas please!"
     )
 
@@ -454,14 +450,12 @@ def test_deploy_multi_app_overwrite_apps2(client: ServeControllerClient):
     wait_for_condition(check_dead)
 
     # App1 and App2 should be gone
-    assert requests.get("http://localhost:8000/app1").status_code != 200
-    assert (
-        requests.post("http://localhost:8000/app2", json=["ADD", 2]).status_code != 200
-    )
+    assert httpx.get("http://localhost:8000/app1").status_code != 200
+    assert httpx.post("http://localhost:8000/app2", json=["ADD", 2]).status_code != 200
 
     # App3 should be up and running
     wait_for_condition(
-        lambda: requests.post("http://localhost:8000/app3", json=["ADD", 2]).text
+        lambda: httpx.post("http://localhost:8000/app3", json=["ADD", 2]).text
         == "5 pizzas please!"
     )
 
@@ -511,7 +505,7 @@ def test_deploy_multi_app_deployments_removed(client: ServeControllerClient):
 
     wait_for_condition(check_app, deployments=pizza_deployments)
     wait_for_condition(
-        lambda: requests.post("http://localhost:8000/app1", json=["ADD", 2]).text
+        lambda: httpx.post("http://localhost:8000/app1", json=["ADD", 2]).text
         == "4 pizzas please!"
     )
 
@@ -521,7 +515,7 @@ def test_deploy_multi_app_deployments_removed(client: ServeControllerClient):
 
     wait_for_condition(check_app, deployments=world_deployments)
     wait_for_condition(
-        lambda: requests.get("http://localhost:8000/app1").text == "wonderful world"
+        lambda: httpx.get("http://localhost:8000/app1").text == "wonderful world"
     )
 
 
@@ -550,7 +544,7 @@ def test_controller_recover_and_deploy(client: ServeControllerClient):
 
     # When controller restarts, it should redeploy config automatically
     wait_for_condition(
-        lambda: requests.post("http://localhost:8000/").text == "hello world"
+        lambda: httpx.get("http://localhost:8000/").text == "hello world"
     )
 
     serve.shutdown()
@@ -588,7 +582,7 @@ def test_deploy_config_update_heavyweight(
 
     client.deploy_apps(ServeDeploySchema.parse_obj(config_template))
     wait_for_condition(check_running, timeout=15)
-    pid1, _ = requests.get("http://localhost:8000/f").json()
+    pid1, _ = httpx.get("http://localhost:8000/f").json()
 
     if field_to_update == "import_path":
         config_template["applications"][0][
@@ -608,7 +602,7 @@ def test_deploy_config_update_heavyweight(
 
     pids = []
     for _ in range(4):
-        pids.append(requests.get("http://localhost:8000/f").json()[0])
+        pids.append(httpx.get("http://localhost:8000/f").json()[0])
     assert pid1 not in pids
 
 
@@ -625,7 +619,7 @@ def test_update_config_user_config(client: ServeControllerClient):
     wait_for_condition(check_running, timeout=15)
 
     # Query
-    pid1, res = requests.get("http://localhost:8000/f").json()
+    pid1, res = httpx.get("http://localhost:8000/f").json()
     assert res == "alice"
 
     # Redeploy with updated option
@@ -636,7 +630,7 @@ def test_update_config_user_config(client: ServeControllerClient):
     def check():
         pids = []
         for _ in range(4):
-            pid, res = requests.get("http://localhost:8000/f").json()
+            pid, res = httpx.get("http://localhost:8000/f").json()
             assert res == "bob"
             pids.append(pid)
         assert pid1 in pids
@@ -681,26 +675,18 @@ def test_update_config_graceful_shutdown_timeout(client: ServeControllerClient):
     wait_for_condition(partial(check_deployments_dead, [DeploymentID(name="f")]))
 
 
-@pytest.mark.parametrize("use_max_concurrent_queries", [True, False])
-def test_update_config_max_ongoing_requests(
-    client: ServeControllerClient, use_max_concurrent_queries
-):
+def test_update_config_max_ongoing_requests(client: ServeControllerClient):
     """Check that replicas stay alive when max_ongoing_requests is updated."""
 
     signal = SignalActor.options(name="signal123").remote()
 
-    max_ongoing_requests_field_name = (
-        "max_concurrent_queries"
-        if use_max_concurrent_queries
-        else "max_ongoing_requests"
-    )
     config_template = {
         "import_path": "ray.serve.tests.test_config_files.get_signal.app",
         "deployments": [{"name": "A"}],
     }
-    config_template["deployments"][0][max_ongoing_requests_field_name] = 1000
+    config_template["deployments"][0]["max_ongoing_requests"] = 1000
 
-    # Deploy first time, max_concurent_queries set to 1000.
+    # Deploy first time, max_ongoing_requests set to 1000.
     client.deploy_apps(ServeDeploySchema.parse_obj({"applications": [config_template]}))
     wait_for_condition(check_running, timeout=15)
     handle = serve.get_app_handle(SERVE_DEFAULT_APP_NAME)
@@ -720,7 +706,7 @@ def test_update_config_max_ongoing_requests(
     # Reset for redeployment
     signal.send.remote(clear=True)
     # Redeploy with max concurrent queries set to 5
-    config_template["deployments"][0][max_ongoing_requests_field_name] = 5
+    config_template["deployments"][0]["max_ongoing_requests"] = 5
     client.deploy_apps(ServeDeploySchema.parse_obj({"applications": [config_template]}))
     wait_for_condition(check_running, timeout=2)
 
@@ -905,7 +891,7 @@ def test_deploy_separate_runtime_envs(client: ServeControllerClient):
     )
 
     wait_for_condition(
-        lambda: requests.post("http://localhost:8000/app2").text == "Hello world!"
+        lambda: httpx.post("http://localhost:8000/app2").text == "Hello world!"
     )
 
 
@@ -932,7 +918,7 @@ def test_deploy_one_app_failed(client: ServeControllerClient):
     client.deploy_apps(ServeDeploySchema(**config_template))
 
     wait_for_condition(
-        lambda: requests.post("http://localhost:8000/app1").text == "wonderful world"
+        lambda: httpx.post("http://localhost:8000/app1").text == "wonderful world"
     )
 
     wait_for_condition(
@@ -940,6 +926,12 @@ def test_deploy_one_app_failed(client: ServeControllerClient):
         and serve.status().applications["app2"].status
         == ApplicationStatus.DEPLOY_FAILED
     )
+
+    # Ensure the request doesn't hang and actually returns a 503 error.
+    # The timeout is there to prevent the test from hanging and blocking
+    # the test suite if it does fail.
+    r = httpx.post("http://localhost:8000/app2", timeout=10)
+    assert r.status_code == 503 and "unavailable" in r.text
 
 
 def test_deploy_with_route_prefix_conflict(client: ServeControllerClient):
@@ -963,10 +955,10 @@ def test_deploy_with_route_prefix_conflict(client: ServeControllerClient):
     client.deploy_apps(ServeDeploySchema(**test_config))
 
     wait_for_condition(
-        lambda: requests.get("http://localhost:8000/app1").text == "wonderful world"
+        lambda: httpx.get("http://localhost:8000/app1").text == "wonderful world"
     )
     wait_for_condition(
-        lambda: requests.post("http://localhost:8000/app2", json=["ADD", 2]).text
+        lambda: httpx.post("http://localhost:8000/app2", json=["ADD", 2]).text
         == "4 pizzas please!"
     )
 
@@ -1000,10 +992,10 @@ def test_deploy_with_route_prefix_conflict(client: ServeControllerClient):
 
     # app1 and app3 should be up and running
     wait_for_condition(
-        lambda: requests.get("http://localhost:8000/app1").text == "wonderful world"
+        lambda: httpx.get("http://localhost:8000/app1").text == "wonderful world"
     )
     wait_for_condition(
-        lambda: requests.get("http://localhost:8000/app2").text == "wonderful world"
+        lambda: httpx.get("http://localhost:8000/app2").text == "wonderful world"
     )
 
 
@@ -1062,10 +1054,12 @@ def test_deploy_nonexistent_deployment(client: ServeControllerClient):
     def check_app_message():
         details = ray.get(client._controller.get_serve_instance_details.remote())
         # The error message should be descriptive
-        # e.g. no deployment "x" in application "y"
+        # e.g. no deployment "x" in application "y", available deployments: "z"
+        message = details["applications"]["random1"]["message"]
         return (
-            "application" in details["applications"]["random1"]["message"]
-            and "deployment" in details["applications"]["random1"]["message"]
+            "Deployment" in message
+            and "Available" in message
+            and "application" in message
         )
 
     wait_for_condition(check_app_message)
@@ -1103,7 +1097,7 @@ def test_deployments_not_listed_in_config(client: ServeControllerClient):
     }
     client.deploy_apps(ServeDeploySchema(**config))
     wait_for_condition(check_running, timeout=15)
-    pid1, _ = requests.get("http://localhost:8000/").json()
+    pid1, _ = httpx.get("http://localhost:8000/").json()
 
     # Redeploy the same config (with no deployments listed)
     client.deploy_apps(ServeDeploySchema(**config))
@@ -1112,7 +1106,7 @@ def test_deployments_not_listed_in_config(client: ServeControllerClient):
     # It should be the same replica actor
     pids = []
     for _ in range(4):
-        pids.append(requests.get("http://localhost:8000/").json()[0])
+        pids.append(httpx.get("http://localhost:8000/").json()[0])
     assert all(pid == pid1 for pid in pids)
 
 
@@ -1125,53 +1119,6 @@ def test_get_app_handle(client: ServeControllerClient):
     handle_2 = serve.get_app_handle("app2")
     assert handle_1.route.remote("ADD", 2).result() == "4 pizzas please!"
     assert handle_2.route.remote("ADD", 2).result() == "5 pizzas please!"
-
-
-@pytest.mark.parametrize("heavyweight", [True, False])
-def test_deploy_lightweight_multiple_route_prefix(
-    client: ServeControllerClient, heavyweight: bool
-):
-    """If user deploys a config that sets route prefix for a non-ingress deployment,
-    the deploy should fail.
-    """
-
-    config = {
-        "applications": [
-            {
-                "name": "default",
-                "import_path": "ray.serve.tests.test_config_files.world.DagNode",
-            }
-        ]
-    }
-    client.deploy_apps(ServeDeploySchema(**config))
-
-    def check():
-        assert requests.post("http://localhost:8000/").text == "wonderful world"
-        return True
-
-    wait_for_condition(check)
-
-    # Add route prefix for non-ingress deployment
-    config["applications"][0]["deployments"] = [{"name": "f", "route_prefix": "/"}]
-    if heavyweight:
-        # Trigger re-build of the application
-        config["applications"][0]["runtime_env"] = {"env_vars": {"test": "3"}}
-    client.deploy_apps(ServeDeploySchema(**config))
-
-    def check_failed():
-        s = serve.status().applications["default"]
-        assert s.status == ApplicationStatus.DEPLOY_FAILED
-        assert "Found multiple route prefixes" in s.message
-        return True
-
-    wait_for_condition(check_failed)
-
-    # Check 10 more times to make sure the status doesn't oscillate
-    for _ in range(10):
-        s = serve.status().applications["default"]
-        assert s.status == ApplicationStatus.DEPLOY_FAILED
-        assert "Found multiple route prefixes" in s.message
-        time.sleep(0.1)
 
 
 @pytest.mark.parametrize("rebuild", [True, False])
@@ -1195,7 +1142,7 @@ def test_redeploy_old_config_after_failed_deployment(
     def check_application_running():
         status = serve.status().applications["default"]
         assert status.status == "RUNNING"
-        assert requests.post("http://localhost:8000/").text == "wonderful world"
+        assert httpx.post("http://localhost:8000/").text == "wonderful world"
         return True
 
     wait_for_condition(check_application_running)
@@ -1209,9 +1156,9 @@ def test_redeploy_old_config_after_failed_deployment(
         ] = "ray.serve.tests.test_config_files.import_error.app"
         err_msg = "ZeroDivisionError"
     else:
-        # Trying to add a route prefix for non-ingress deployment will fail
-        new_app_config["deployments"] = [{"name": "f", "route_prefix": "/"}]
-        err_msg = "Found multiple route prefixes"
+        # Set config for a nonexistent deployment
+        new_app_config["deployments"] = [{"name": "nonexistent", "num_replicas": 1}]
+        err_msg = "Deployment 'nonexistent' does not exist."
     client.deploy_apps(ServeDeploySchema(**{"applications": [new_app_config]}))
 
     def check_deploy_failed(message):
@@ -1253,7 +1200,7 @@ def test_deploy_does_not_affect_dynamic_apps(client: ServeControllerClient):
     ):
         status = serve.status().applications[name]
         assert status.status == "RUNNING"
-        assert requests.post(f"http://localhost:8000{route_prefix}/").text == msg
+        assert httpx.post(f"http://localhost:8000{route_prefix}/").text == msg
         return True
 
     wait_for_condition(
@@ -1399,7 +1346,7 @@ def test_change_route_prefix(client: ServeControllerClient):
     client.deploy_apps(ServeDeploySchema(**{"applications": [app_config]}))
 
     wait_for_condition(check_running)
-    pid1 = requests.get("http://localhost:8000/old").json()[0]
+    pid1 = httpx.get("http://localhost:8000/old").json()[0]
 
     # Redeploy application with route prefix /new.
     app_config["route_prefix"] = "/new"
@@ -1409,11 +1356,11 @@ def test_change_route_prefix(client: ServeControllerClient):
     # has the same PID (replica wasn't restarted).
     def check_switched():
         # Old route should be gone
-        resp = requests.get("http://localhost:8000/old")
+        resp = httpx.get("http://localhost:8000/old")
         assert "Path '/old' not found." in resp.text
 
         # Response from new route should be same PID
-        pid2 = requests.get("http://localhost:8000/new").json()[0]
+        pid2 = httpx.get("http://localhost:8000/new").json()[0]
         assert pid2 == pid1
         return True
 
@@ -1440,7 +1387,6 @@ def test_num_replicas_auto_api(client: ServeControllerClient):
     assert deployment_config["autoscaling_config"] == {
         # Set by `num_replicas="auto"`
         "target_ongoing_requests": 2.0,
-        "target_num_ongoing_requests_per_replica": 2.0,
         "min_replicas": 1,
         "max_replicas": 100,
         # Untouched defaults
@@ -1492,7 +1438,6 @@ def test_num_replicas_auto_basic(client: ServeControllerClient):
     assert deployment_config["autoscaling_config"] == {
         # Set by `num_replicas="auto"`
         "target_ongoing_requests": 2.0,
-        "target_num_ongoing_requests_per_replica": 2.0,
         "min_replicas": 1,
         "max_replicas": 100,
         # Overrided by `autoscaling_config`
@@ -1563,10 +1508,10 @@ class TestDeploywithLoggingConfig:
         config = ServeDeploySchema.parse_obj(config_dict)
         client.deploy_apps(config)
         wait_for_condition(
-            lambda: requests.post("http://localhost:8000/app1").status_code == 200
+            lambda: httpx.post("http://localhost:8000/app1").status_code == 200
         )
 
-        resp = requests.post("http://localhost:8000/app1").json()
+        resp = httpx.post("http://localhost:8000/app1").json()
 
         replica_id = resp["replica"].split("#")[-1]
         if encoding_type == "JSON":
@@ -1593,10 +1538,10 @@ class TestDeploywithLoggingConfig:
         config = ServeDeploySchema.parse_obj(config_dict)
         client.deploy_apps(config)
         wait_for_condition(
-            lambda: requests.post("http://localhost:8000/app1").status_code == 200
+            lambda: httpx.post("http://localhost:8000/app1").status_code == 200
         )
 
-        resp = requests.post("http://localhost:8000/app1").json()
+        resp = httpx.post("http://localhost:8000/app1").json()
 
         replica_id = resp["replica"].split("#")[-1]
         if encoding_type == "JSON":
@@ -1614,9 +1559,9 @@ class TestDeploywithLoggingConfig:
         config = ServeDeploySchema.parse_obj(config_dict)
         client.deploy_apps(config)
         wait_for_condition(
-            lambda: requests.post("http://localhost:8000/app1").status_code == 200
+            lambda: httpx.post("http://localhost:8000/app1").status_code == 200
         )
-        resp = requests.post("http://localhost:8000/app1").json()
+        resp = httpx.post("http://localhost:8000/app1").json()
         check_log_file(resp["log_file"], [".*this_is_debug_info.*"])
 
     def test_overwritting_logging_config(self, client: ServeControllerClient):
@@ -1626,7 +1571,7 @@ class TestDeploywithLoggingConfig:
         client.deploy_apps(config)
 
         wait_for_condition(
-            lambda: requests.post("http://localhost:8000/app1").status_code == 200
+            lambda: httpx.post("http://localhost:8000/app1").status_code == 200
         )
 
         def get_replica_info_format(replica_id: ReplicaID) -> str:
@@ -1635,7 +1580,7 @@ class TestDeploywithLoggingConfig:
             return f"{app_name}_{deployment_name} {replica_id.unique_id}"
 
         # By default, log level is "INFO"
-        r = requests.post("http://localhost:8000/app1")
+        r = httpx.post("http://localhost:8000/app1")
         r.raise_for_status()
         request_id = r.headers["X-Request-Id"]
         replica_id = ReplicaID.from_full_id_str(r.json()["replica"])
@@ -1658,11 +1603,11 @@ class TestDeploywithLoggingConfig:
         client.deploy_apps(config)
 
         wait_for_condition(
-            lambda: requests.post("http://localhost:8000/app1").status_code == 200
-            and requests.post("http://localhost:8000/app1").json()["log_level"]
+            lambda: httpx.post("http://localhost:8000/app1").status_code == 200
+            and httpx.post("http://localhost:8000/app1").json()["log_level"]
             == logging.DEBUG,
         )
-        r = requests.post("http://localhost:8000/app1")
+        r = httpx.post("http://localhost:8000/app1")
         r.raise_for_status()
         request_id = r.headers["X-Request-Id"]
         replica_id = ReplicaID.from_full_id_str(r.json()["replica"])
@@ -1698,9 +1643,9 @@ class TestDeploywithLoggingConfig:
         config = ServeDeploySchema.parse_obj(config_dict)
         client.deploy_apps(config)
         wait_for_condition(
-            lambda: requests.post("http://localhost:8000/app1").status_code == 200
+            lambda: httpx.post("http://localhost:8000/app1").status_code == 200
         )
-        resp = requests.post("http://localhost:8000/app1").json()
+        resp = httpx.post("http://localhost:8000/app1").json()
         check_log_file(resp["log_file"], [".*this_is_debug_info.*"])
 
     def test_not_overwritting_logging_config_in_code(
@@ -1717,9 +1662,9 @@ class TestDeploywithLoggingConfig:
         config = ServeDeploySchema.parse_obj(config_dict)
         client.deploy_apps(config)
         wait_for_condition(
-            lambda: requests.post("http://localhost:8000/app1").status_code == 200
+            lambda: httpx.post("http://localhost:8000/app1").status_code == 200
         )
-        resp = requests.post("http://localhost:8000/app1").json()
+        resp = httpx.post("http://localhost:8000/app1").json()
         check_log_file(resp["log_file"], [".*this_is_debug_info.*"])
 
     def test_logs_dir(self, client: ServeControllerClient):
@@ -1731,9 +1676,9 @@ class TestDeploywithLoggingConfig:
         config = ServeDeploySchema.parse_obj(config_dict)
         client.deploy_apps(config)
         wait_for_condition(
-            lambda: requests.post("http://localhost:8000/app1").status_code == 200
+            lambda: httpx.post("http://localhost:8000/app1").status_code == 200
         )
-        resp = requests.get("http://127.0.0.1:8000/app1").json()
+        resp = httpx.get("http://127.0.0.1:8000/app1").json()
 
         # Construct a new path
         # "/tmp/ray/session_xxx/logs/serve/new_dir"
@@ -1748,11 +1693,10 @@ class TestDeploywithLoggingConfig:
         config = ServeDeploySchema.parse_obj(config_dict)
         client.deploy_apps(config)
         wait_for_condition(
-            lambda: requests.post("http://localhost:8000/app1").status_code == 200
-            and "new_dir"
-            in requests.get("http://127.0.0.1:8000/app1").json()["log_file"]
+            lambda: httpx.post("http://localhost:8000/app1").status_code == 200
+            and "new_dir" in httpx.get("http://127.0.0.1:8000/app1").json()["log_file"]
         )
-        resp = requests.get("http://127.0.0.1:8000/app1").json()
+        resp = httpx.get("http://127.0.0.1:8000/app1").json()
         # log content should be redirected to new file
         check_log_file(resp["log_file"], [".*this_is_debug_info.*"])
 
@@ -1766,9 +1710,9 @@ class TestDeploywithLoggingConfig:
         config = ServeDeploySchema.parse_obj(config_dict)
         client.deploy_apps(config)
         wait_for_condition(
-            lambda: requests.post("http://localhost:8000/app1").status_code == 200
+            lambda: httpx.post("http://localhost:8000/app1").status_code == 200
         )
-        resp = requests.get("http://127.0.0.1:8000/app1")
+        resp = httpx.get("http://127.0.0.1:8000/app1")
         assert resp.status_code == 200
         resp = resp.json()
         if enable_access_log:

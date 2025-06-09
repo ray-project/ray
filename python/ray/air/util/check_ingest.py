@@ -8,15 +8,10 @@ import numpy as np
 
 import ray
 from ray import train
-from ray.air.config import DatasetConfig, ScalingConfig
-from ray.data import DataIterator, Dataset, Preprocessor
+from ray.air.config import ScalingConfig
 from ray.train import DataConfig
 from ray.train.data_parallel_trainer import DataParallelTrainer
-from ray.util.annotations import Deprecated, DeveloperAPI
-
-MAKE_LOCAL_DATA_ITERATOR_DEPRECATION_MSG = """
-make_local_dataset_iterator is deprecated. Call ``iterator()`` directly on your dataset instead to create a local DataIterator.
-"""  # noqa: E501
+from ray.util.annotations import DeveloperAPI
 
 
 @DeveloperAPI
@@ -127,27 +122,6 @@ class DummyTrainer(DataParallelTrainer):
                 print("Ingest stats from rank=0:\n\n{}".format(data_shard.stats()))
 
         return train_loop_per_worker
-
-
-@Deprecated(MAKE_LOCAL_DATA_ITERATOR_DEPRECATION_MSG)
-def make_local_dataset_iterator(
-    dataset: Dataset,
-    preprocessor: Preprocessor,
-    dataset_config: DatasetConfig,
-) -> DataIterator:
-    """A helper function to create a local
-    :py:class:`DataIterator <ray.data.DataIterator>`,
-    like the one returned by :meth:`~ray.train.get_dataset_shard`.
-
-    This function should only be used for development and debugging. It will
-    raise an exception if called by a worker instead of the driver.
-
-    Args:
-        dataset: The input Dataset.
-        preprocessor: The preprocessor that will be applied to the input dataset.
-        dataset_config: The dataset config normally passed to the trainer.
-    """
-    raise DeprecationWarning(MAKE_LOCAL_DATA_ITERATOR_DEPRECATION_MSG)
 
 
 if __name__ == "__main__":

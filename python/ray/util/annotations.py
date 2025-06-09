@@ -46,16 +46,14 @@ def PublicAPI(*args, **kwargs):
         ...     return y
     """
     if len(args) == 1 and len(kwargs) == 0 and callable(args[0]):
-        return PublicAPI(stability="stable", api_group="others")(args[0])
+        return PublicAPI(stability="stable", api_group="Others")(args[0])
 
     if "stability" in kwargs:
         stability = kwargs["stability"]
         assert stability in ["stable", "beta", "alpha"], stability
-    elif kwargs:
-        raise ValueError("Unknown kwargs: {}".format(kwargs.keys()))
     else:
         stability = "stable"
-    api_group = kwargs.get("api_group", "others")
+    api_group = kwargs.get("api_group", "Others")
 
     def wrap(obj):
         if stability in ["alpha", "beta"]:
@@ -249,7 +247,7 @@ def _get_indent(docstring: str) -> int:
 
 
 def _mark_annotated(
-    obj, type: AnnotationType = AnnotationType.UNKNOWN, api_group="others"
+    obj, type: AnnotationType = AnnotationType.UNKNOWN, api_group="Others"
 ) -> None:
     # Set magic token for check_api_annotations linter.
     if hasattr(obj, "__name__"):

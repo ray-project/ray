@@ -1,5 +1,5 @@
 import os
-from typing import Any, Iterable, List
+import sys
 
 import pandas as pd
 import pyarrow as pa
@@ -10,10 +10,7 @@ from fsspec.implementations.http import HTTPFileSystem
 from fsspec.implementations.local import LocalFileSystem
 
 import ray
-from ray._private.test_utils import wait_for_condition
-from ray.data._internal.execution.interfaces import TaskContext
-from ray.data.block import Block, BlockAccessor
-from ray.data.datasource import Datasink, DummyOutputDatasink
+from ray.data.block import BlockAccessor
 from ray.data.datasource.file_meta_provider import _handle_read_os_error
 from ray.data.tests.conftest import *  # noqa
 from ray.data.tests.mock_http_server import *  # noqa
@@ -132,11 +129,9 @@ def test_fsspec_filesystem(ray_start_regular_shared, tmp_path):
     ds._set_uuid("data")
     ds.write_parquet(out_path)
 
-    ds_df1 = pd.read_parquet(os.path.join(out_path, "data_000000_000000.parquet"))
-    ds_df2 = pd.read_parquet(os.path.join(out_path, "data_000001_000000.parquet"))
-    ds_df = pd.concat([ds_df1, ds_df2])
-    df = pd.concat([df1, df2])
-    assert ds_df.equals(df)
+    actual_data = set(pd.read_parquet(out_path).itertuples(index=False))
+    expected_data = set(pd.concat([df1, df2]).itertuples(index=False))
+    assert actual_data == expected_data, (actual_data, expected_data)
 
 
 def test_fsspec_http_file_system(ray_start_regular_shared, http_server, http_file):
@@ -161,23 +156,10 @@ def test_read_example_data(ray_start_regular_shared, tmp_path):
     ]
 
 
-def test_write_datasink(ray_start_regular_shared):
-    output = DummyOutputDatasink()
-    ds = ray.data.range(10, override_num_blocks=2)
-    ds.write_datasink(output)
-    assert output.num_ok == 1
-    assert output.num_failed == 0
-    assert ray.get(output.data_sink.get_rows_written.remote()) == 10
-
-    output.enabled = False
-    ds = ray.data.range(10, override_num_blocks=2)
-    with pytest.raises(ValueError):
-        ds.write_datasink(output, ray_remote_args={"max_retries": 0})
-    assert output.num_ok == 1
-    assert output.num_failed == 1
-    assert ray.get(output.data_sink.get_rows_written.remote()) == 10
-
-
+@pytest.mark.skipif(
+    sys.version_info >= (3, 12),
+    reason="Skip due to incompatibility tensorflow with Python 3.12+",
+)
 def test_from_tf(ray_start_regular_shared):
     import tensorflow as tf
     import tensorflow_datasets as tfds
@@ -199,7 +181,7 @@ def test_from_tf(ray_start_regular_shared):
 
 @pytest.mark.parametrize("local_read", [True, False])
 def test_from_torch(shutdown_only, local_read, tmp_path):
-    torch_dataset = torchvision.datasets.MNIST(tmp_path, download=True)
+    torch_dataset = torchvision.datasets.FashionMNIST(tmp_path, download=True)
     expected_data = list(torch_dataset)
 
     ray_dataset = ray.data.from_torch(torch_dataset, local_read=local_read)
@@ -209,98 +191,65 @@ def test_from_torch(shutdown_only, local_read, tmp_path):
 
     import torch
 
-    class IterMNIST(torch.utils.data.IterableDataset):
+    class IterFashionMNIST(torch.utils.data.IterableDataset):
         def __len__(self):
             return len(torch_dataset)
 
         def __iter__(self):
             return iter(torch_dataset)
 
-    iter_torch_dataset = IterMNIST()
+    iter_torch_dataset = IterFashionMNIST()
     ray_dataset = ray.data.from_torch(iter_torch_dataset)
 
     actual_data = extract_values("item", list(ray_dataset.take_all()))
     assert actual_data == expected_data
 
 
-class NodeLoggerOutputDatasink(Datasink):
-    """A writable datasource that logs node IDs of write tasks, for testing."""
+@pytest.mark.parametrize("local_read", [True, False])
+def test_from_torch_boundary_conditions(shutdown_only, local_read):
+    """
+    Tests that from_torch respects __len__ for map-style datasets
+    """
+    from torch.utils.data import Dataset
 
-    def __init__(self):
-        @ray.remote
-        class DataSink:
-            def __init__(self):
-                self.rows_written = 0
-                self.node_ids = set()
+    class BoundaryTestMapDataset(Dataset):
+        """A map-style dataset where __len__ is less than the underlying data size."""
 
-            def write(self, node_id: str, block: Block) -> str:
-                block = BlockAccessor.for_block(block)
-                self.rows_written += block.num_rows()
-                self.node_ids.add(node_id)
-                return "ok"
+        def __init__(self, data, length):
+            super().__init__()
+            self._data = data
+            self._length = length
+            assert self._length <= len(
+                self._data
+            ), "Length must be <= data size to properly test boundary conditions"
 
-            def get_rows_written(self):
-                return self.rows_written
+        def __len__(self):
+            return self._length
 
-            def get_node_ids(self):
-                return self.node_ids
+        def __getitem__(self, index):
+            if not (0 <= index < self._length):
+                # Note: don't use IndexError because we want to fail clearly if
+                # Ray Data tries to access beyond __len__ - 1
+                raise RuntimeError(
+                    f"Index {index} out of bounds for dataset with length {self._length}"
+                )
+            return self._data[index]
 
-        self.data_sink = DataSink.remote()
-        self.num_ok = 0
-        self.num_failed = 0
+    source_data = list(range(10))
+    dataset_len = 8  # Intentionally less than len(source_data)
 
-    def write(
-        self,
-        blocks: Iterable[Block],
-        ctx: TaskContext,
-    ) -> Any:
-        data_sink = self.data_sink
+    # --- Test MapDataset ---
+    map_ds = BoundaryTestMapDataset(source_data, dataset_len)
+    # Expected data only includes elements up to dataset_len - 1
+    expected_items = source_data[:dataset_len]
 
-        def write(b):
-            node_id = ray.get_runtime_context().get_node_id()
-            return data_sink.write.remote(node_id, b)
+    ray_ds_map = ray.data.from_torch(map_ds, local_read=local_read)
+    actual_items_map = extract_values("item", list(ray_ds_map.take_all()))
 
-        tasks = []
-        for b in blocks:
-            tasks.append(write(b))
-        ray.get(tasks)
-        return "ok"
-
-    def on_write_complete(self, write_results: List[Any]) -> None:
-        assert all(w == "ok" for w in write_results), write_results
-        self.num_ok += 1
-
-    def on_write_failed(self, error: Exception) -> None:
-        self.num_failed += 1
-
-
-def test_write_datasink_ray_remote_args(ray_start_cluster):
-    ray.shutdown()
-    cluster = ray_start_cluster
-    cluster.add_node(
-        resources={"foo": 100},
-        num_cpus=1,
-    )
-    cluster.add_node(resources={"bar": 100}, num_cpus=1)
-
-    ray.init(cluster.address)
-
-    @ray.remote
-    def get_node_id():
-        return ray.get_runtime_context().get_node_id()
-
-    bar_node_id = ray.get(get_node_id.options(resources={"bar": 1}).remote())
-
-    output = NodeLoggerOutputDatasink()
-    ds = ray.data.range(100, override_num_blocks=10)
-    # Pin write tasks to node with "bar" resource.
-    ds.write_datasink(output, ray_remote_args={"resources": {"bar": 1}})
-    assert output.num_ok == 1
-    assert output.num_failed == 0
-    assert ray.get(output.data_sink.get_rows_written.remote()) == 100
-
-    node_ids = ray.get(output.data_sink.get_node_ids.remote())
-    assert node_ids == {bar_node_id}
+    # This assertion verifies that ray_ds_map didn't try to access index 8 or 9,
+    # which would have raised an IndexError in BoundaryTestMapDataset.__getitem__
+    assert actual_items_map == expected_items
+    assert len(actual_items_map) == dataset_len
 
 
 def test_read_s3_file_error(shutdown_only, s3_path):
@@ -324,32 +273,6 @@ def test_read_s3_file_error(shutdown_only, s3_path):
 
 # NOTE: All tests above share a Ray cluster, while the tests below do not. These
 # tests should only be carefully reordered to retain this invariant!
-
-
-def test_get_reader(shutdown_only):
-    # Note: if you get TimeoutErrors here, try installing required dependencies
-    # with `pip install -U "ray[default]"`.
-    ray.init()
-
-    head_node_id = ray.get_runtime_context().get_node_id()
-
-    # Issue read so `_get_datasource_or_legacy_reader` being executed.
-    ray.data.range(10).materialize()
-
-    # Verify `_get_datasource_or_legacy_reader` being executed on same node (head node).
-    def verify_get_reader():
-        from ray.util.state import list_tasks
-
-        task_states = list_tasks(
-            filters=[("name", "=", "_get_datasource_or_legacy_reader")]
-        )
-        # Verify only one task being executed on same node.
-        assert len(task_states) == 1
-        assert task_states[0]["name"] == "_get_datasource_or_legacy_reader"
-        assert task_states[0]["node_id"] == head_node_id
-        return True
-
-    wait_for_condition(verify_get_reader, timeout=20)
 
 
 if __name__ == "__main__":

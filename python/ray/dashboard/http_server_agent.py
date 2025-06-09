@@ -3,7 +3,7 @@ import logging
 from packaging.version import Version
 
 import ray.dashboard.optional_utils as dashboard_optional_utils
-from ray._private.utils import get_or_create_event_loop
+from ray._common.utils import get_or_create_event_loop
 from ray.dashboard.optional_deps import aiohttp, aiohttp_cors, hdrs
 
 logger = logging.getLogger(__name__)
@@ -19,6 +19,7 @@ class HttpServerAgent:
         self.http_session = None
         self.runner = None
 
+    async def start(self, modules):
         # Create a http session for all modules.
         # aiohttp<4.0.0 uses a 'loop' variable, aiohttp>=4.0.0 doesn't anymore
         if Version(aiohttp.__version__) < Version("4.0.0"):
@@ -26,7 +27,6 @@ class HttpServerAgent:
         else:
             self.http_session = aiohttp.ClientSession()
 
-    async def start(self, modules):
         # Bind routes for every module so that each module
         # can use decorator-style routes.
         for c in modules:

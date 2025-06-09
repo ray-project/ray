@@ -5,12 +5,13 @@ import sys
 
 from typing import List, Tuple, Optional
 
+
 _CUDA_COPYRIGHT = """
 ==========
 == CUDA ==
 ==========
 
-CUDA Version 11.8.0
+CUDA Version 12.1.1
 
 Container image Copyright (c) 2016-2023, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 
@@ -86,10 +87,13 @@ class Container(abc.ABC):
         return f"{_DOCKER_ECR_REPO}:{_RAYCI_BUILD_ID}-{self.docker_tag}"
 
     @abc.abstractmethod
-    def install_ray(self, build_type: Optional[str] = None) -> None:
+    def install_ray(
+        self, build_type: Optional[str] = None, mask: Optional[str] = None
+    ) -> None:
         """
         Build and install ray in container
         :param build_type: opt, asan, tsan, etc.
+        :param mask: a string that sends into the build to mask components.
         """
         pass
 

@@ -79,22 +79,6 @@ def test_persist_test_results(
         assert mock_move_test_state.called
 
 
-def test_enough_gpus() -> None:
-    # not enough gpus
-    try:
-        LinuxTesterContainer("team", shard_count=2, gpus=1, skip_ray_installation=True)
-    except AssertionError:
-        pass
-    else:
-        assert False, "Should raise an AssertionError"
-
-    # not enough gpus
-    try:
-        LinuxTesterContainer("team", shard_count=1, gpus=1, skip_ray_installation=True)
-    except AssertionError:
-        assert False, "Should not raise an AssertionError"
-
-
 def test_run_tests_in_docker() -> None:
     inputs = []
 
@@ -106,7 +90,10 @@ def test_run_tests_in_docker() -> None:
         return_value=None,
     ):
         LinuxTesterContainer(
-            "team", network="host", build_type="debug", test_envs=["ENV_01", "ENV_02"]
+            "team",
+            network="host",
+            build_type="debug",
+            test_envs=["ENV_01", "ENV_02"],
         )._run_tests_in_docker(["t1", "t2"], [0, 1], "/tmp", ["v=k"], "flag")
         input_str = inputs[-1]
         assert "--env ENV_01 --env ENV_02 --env BUILDKITE" in input_str
@@ -117,7 +104,8 @@ def test_run_tests_in_docker() -> None:
             "bazel test --jobs=1 --config=ci $(./ci/run/bazel_export_options) "
             "--config=ci-debug --test_env v=k --test_arg flag t1 t2" in input_str
         )
-        assert f"--runs_per_test {RUN_PER_FLAKY_TEST} " not in input_str
+        if RUN_PER_FLAKY_TEST > 1:
+            assert f"--runs_per_test {RUN_PER_FLAKY_TEST} " not in input_str
 
         LinuxTesterContainer("team")._run_tests_in_docker(
             ["t1", "t2"], [], "/tmp", ["v=k"], run_flaky_tests=True
@@ -125,7 +113,15 @@ def test_run_tests_in_docker() -> None:
         input_str = inputs[-1]
         assert "--env BUILDKITE_BUILD_URL" in input_str
         assert "--gpus" not in input_str
-        assert f"--runs_per_test {RUN_PER_FLAKY_TEST} " in input_str
+
+        if RUN_PER_FLAKY_TEST > 1:
+            assert f"--runs_per_test {RUN_PER_FLAKY_TEST} " in input_str
+
+        LinuxTesterContainer("team")._run_tests_in_docker(
+            ["t1", "t2"], [], "/tmp", ["v=k"], cache_test_results=True
+        )
+        input_str = inputs[-1]
+        assert "--cache_test_results=auto" in input_str.split()
 
 
 def test_run_script_in_docker() -> None:
@@ -147,7 +143,7 @@ def test_run_script_in_docker() -> None:
 def test_skip_ray_installation() -> None:
     install_ray_called = []
 
-    def _mock_install_ray(build_type: Optional[str]) -> None:
+    def _mock_install_ray(build_type: Optional[str], mask: Optional[str]) -> None:
         install_ray_called.append(True)
 
     with mock.patch(
@@ -175,14 +171,14 @@ def test_ray_installation() -> None:
             "build",
             "--pull",
             "--progress=plain",
+            "-t",
+            docker_image,
             "--build-arg",
             f"BASE_IMAGE={docker_image}",
             "--build-arg",
             "BUILD_TYPE=debug",
             "--build-arg",
             "BUILDKITE_CACHE_READONLY=",
-            "-t",
-            docker_image,
             "-f",
             "/ray/ci/ray_ci/tests.env.Dockerfile",
             "/ray",
@@ -197,6 +193,7 @@ def test_run_tests() -> None:
         test_envs: List[str],
         test_arg: Optional[str] = None,
         run_flaky_tests: Optional[bool] = False,
+        cache_test_results: Optional[bool] = False,
     ) -> MockPopen:
         return MockPopen(test_targets)
 

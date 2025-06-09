@@ -13,7 +13,10 @@
 // limitations under the License.
 
 #pragma once
+
 #include <memory>
+#include <utility>
+#include <vector>
 
 #include "ray/common/ray_config.h"
 #include "ray/gcs/gcs_client/gcs_client.h"
@@ -37,6 +40,16 @@ class ActorCreatorInterface {
   /// \return Status
   virtual Status AsyncRegisterActor(const TaskSpecification &task_spec,
                                     gcs::StatusCallback callback) = 0;
+
+  virtual Status AsyncRestartActorForLineageReconstruction(
+      const ActorID &actor_id,
+      uint64_t num_restarts_due_to_lineage_reconstructions,
+      gcs::StatusCallback callback) = 0;
+
+  virtual Status AsyncReportActorOutOfScope(
+      const ActorID &actor_id,
+      uint64_t num_restarts_due_to_lineage_reconstructions,
+      gcs::StatusCallback callback) = 0;
 
   /// Asynchronously request GCS to create the actor.
   ///
@@ -80,25 +93,35 @@ class DefaultActorCreator : public ActorCreatorInterface {
 
   Status AsyncRegisterActor(const TaskSpecification &task_spec,
                             gcs::StatusCallback callback) override {
-    if (::RayConfig::instance().actor_register_async()) {
-      auto actor_id = task_spec.ActorCreationId();
-      (*registering_actors_)[actor_id] = {};
-      if (callback != nullptr) {
-        (*registering_actors_)[actor_id].emplace_back(std::move(callback));
-      }
-      return gcs_client_->Actors().AsyncRegisterActor(
-          task_spec, [actor_id, this](Status status) {
-            std::vector<ray::gcs::StatusCallback> cbs;
-            cbs = std::move((*registering_actors_)[actor_id]);
-            registering_actors_->erase(actor_id);
-            for (auto &cb : cbs) {
-              cb(status);
-            }
-          });
-    } else {
-      callback(RegisterActor(task_spec));
-      return Status::OK();
+    auto actor_id = task_spec.ActorCreationId();
+    (*registering_actors_)[actor_id] = {};
+    if (callback != nullptr) {
+      (*registering_actors_)[actor_id].emplace_back(std::move(callback));
     }
+    return gcs_client_->Actors().AsyncRegisterActor(
+        task_spec, [actor_id, this](Status status) {
+          std::vector<ray::gcs::StatusCallback> cbs;
+          cbs = std::move((*registering_actors_)[actor_id]);
+          registering_actors_->erase(actor_id);
+          for (auto &cb : cbs) {
+            cb(status);
+          }
+        });
+  }
+
+  Status AsyncRestartActorForLineageReconstruction(
+      const ActorID &actor_id,
+      uint64_t num_restarts_due_to_lineage_reconstructions,
+      gcs::StatusCallback callback) override {
+    return gcs_client_->Actors().AsyncRestartActorForLineageReconstruction(
+        actor_id, num_restarts_due_to_lineage_reconstructions, callback);
+  }
+
+  Status AsyncReportActorOutOfScope(const ActorID &actor_id,
+                                    uint64_t num_restarts_due_to_lineage_reconstruction,
+                                    gcs::StatusCallback callback) override {
+    return gcs_client_->Actors().AsyncReportActorOutOfScope(
+        actor_id, num_restarts_due_to_lineage_reconstruction, callback);
   }
 
   bool IsActorInRegistering(const ActorID &actor_id) const override {

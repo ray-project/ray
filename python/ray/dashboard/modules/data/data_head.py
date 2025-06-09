@@ -8,12 +8,16 @@ import aiohttp
 from aiohttp.web import Request, Response
 
 import ray.dashboard.optional_utils as optional_utils
-import ray.dashboard.utils as dashboard_utils
 from ray.dashboard.modules.metrics.metrics_head import (
+    DEFAULT_PROMETHEUS_HEADERS,
     DEFAULT_PROMETHEUS_HOST,
+    PROMETHEUS_HEADERS_ENV_VAR,
     PROMETHEUS_HOST_ENV_VAR,
     PrometheusQueryError,
+    parse_prom_headers,
 )
+from ray.dashboard.subprocesses.module import SubprocessModule
+from ray.dashboard.subprocesses.routes import SubprocessRouteTable as routes
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
@@ -45,16 +49,20 @@ DATASET_METRICS = {
 }
 
 
-class DataHead(dashboard_utils.DashboardHeadModule):
-    def __init__(self, dashboard_head):
-        super().__init__(dashboard_head)
-        self.http_session = aiohttp.ClientSession()
-        self._session_name = dashboard_head.session_name
+class DataHead(SubprocessModule):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
         self.prometheus_host = os.environ.get(
             PROMETHEUS_HOST_ENV_VAR, DEFAULT_PROMETHEUS_HOST
         )
+        self.prometheus_headers = parse_prom_headers(
+            os.environ.get(
+                PROMETHEUS_HEADERS_ENV_VAR,
+                DEFAULT_PROMETHEUS_HEADERS,
+            )
+        )
 
-    @optional_utils.DashboardHeadRouteTable.get("/api/data/datasets/{job_id}")
+    @routes.get("/api/data/datasets/{job_id}")
     @optional_utils.init_ray_and_catch_exceptions()
     async def get_datasets(self, req: Request) -> Response:
         job_id = req.match_info["job_id"]
@@ -80,7 +88,7 @@ class DataHead(dashboard_utils.DashboardHeadModule):
                         query_name, prom_query = query.value
                         # Dataset level
                         dataset_result = await self._query_prometheus(
-                            prom_query.format(metric, self._session_name, "dataset")
+                            prom_query.format(metric, self.session_name, "dataset")
                         )
                         for res in dataset_result["data"]["result"]:
                             dataset, value = res["metric"]["dataset"], res["value"][1]
@@ -90,7 +98,7 @@ class DataHead(dashboard_utils.DashboardHeadModule):
                         # Operator level
                         operator_result = await self._query_prometheus(
                             prom_query.format(
-                                metric, self._session_name, "dataset, operator"
+                                metric, self.session_name, "dataset, operator"
                             )
                         )
                         for res in operator_result["data"]["result"]:
@@ -134,22 +142,16 @@ class DataHead(dashboard_utils.DashboardHeadModule):
                 content_type="application/json",
             )
         except Exception as e:
-            logging.exception("Exception occured while getting datasets.")
+            logging.exception("Exception occurred while getting datasets.")
             return Response(
                 status=503,
                 text=str(e),
             )
 
-    async def run(self, server):
-        pass
-
-    @staticmethod
-    def is_minimal_module():
-        return False
-
     async def _query_prometheus(self, query):
         async with self.http_session.get(
-            f"{self.prometheus_host}/api/v1/query?query={quote(query)}"
+            f"{self.prometheus_host}/api/v1/query?query={quote(query)}",
+            headers=self.prometheus_headers,
         ) as resp:
             if resp.status == 200:
                 prom_data = await resp.json()

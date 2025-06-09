@@ -1,18 +1,20 @@
-from typing import Set, Dict, Any
-from datetime import datetime
-from importlib import import_module
+import logging
 import os
+import pathlib
 import sys
-from jinja2.filters import FILTERS
+from datetime import datetime
+from dataclasses import is_dataclass
+from importlib import import_module
+from typing import Any, Dict
+
 import sphinx
+from docutils import nodes
+from jinja2.filters import FILTERS
 from sphinx.ext import autodoc
 from sphinx.ext.autosummary import generate
 from sphinx.util.inspect import safe_getattr
-from docutils import nodes
-import pathlib
-import logging
 
-DEFAULT_API_GROUP = "others"
+DEFAULT_API_GROUP = "Others"
 
 logger = logging.getLogger(__name__)
 
@@ -24,11 +26,16 @@ from custom_directives import (  # noqa
     parse_navbar_config,
     setup_context,
     pregenerate_example_rsts,
+    generate_versions_json,
 )
 
 # If extensions (or modules to document with autodoc) are in another directory,
 # add these directories to sys.path here. If the directory is relative to the
 # documentation root, use os.path.abspath to make it absolute, like shown here.
+assert not os.path.exists("../../python/ray/_raylet.so"), (
+    "_raylet.so should not be imported for the purpose for doc build, "
+    "please rename the file to _raylet.so.bak and try again."
+)
 sys.path.insert(0, os.path.abspath("../../python/"))
 
 # -- General configuration ------------------------------------------------
@@ -64,7 +71,15 @@ extensions = [
     "sphinx_remove_toctrees",
     "sphinx_design",
     "sphinx.ext.intersphinx",
+    "sphinx_docsearch",
 ]
+
+# Configuration for algolia
+# Note: This API key grants read access to our indexes and is intended to be public.
+# See https://www.algolia.com/doc/guides/security/api-keys/ for more information.
+docsearch_app_id = "LBHF0PABBL"
+docsearch_api_key = "6c42f30d9669d8e42f6fc92f44028596"
+docsearch_index_name = "docs-ray"
 
 remove_from_toctrees = [
     "cluster/running-applications/job-submission/doc/*",
@@ -98,13 +113,26 @@ myst_enable_extensions = [
 
 myst_heading_anchors = 3
 
+# Add these for attachment handling
+nb_render_key_pairs = {
+    "html": [
+        ("img", ["src", "alt"]),
+    ]
+}
+
+nb_output_folder = "_build/jupyter_execute"
+
 # Make broken internal references into build time errors.
 # See https://www.sphinx-doc.org/en/master/usage/configuration.html#confval-nitpicky
 # for more information. :py:class: references are ignored due to false positives
 # arising from type annotations. See https://github.com/ray-project/ray/pull/46103
 # for additional context.
 nitpicky = True
-nitpick_ignore_regex = [("py:class", ".*")]
+nitpick_ignore_regex = [
+    ("py:class", ".*"),
+    # Workaround for https://github.com/sphinx-doc/sphinx/issues/10974
+    ("py:obj", "ray\\.data\\.datasource\\.datasink\\.WriteReturnType"),
+]
 
 # Cache notebook outputs in _build/.jupyter_cache
 # To prevent notebook execution, set this to "off". To force re-execution, set this to
@@ -197,6 +225,7 @@ exclude_patterns = [
     "templates/*",
     "cluster/running-applications/doc/ray.*",
     "data/api/ray.data.*.rst",
+    "ray-overview/examples/**/README.md",  # Exclude .md files in examples subfolders
 ] + autogen_files
 
 # If "DOC_LIB" is found, only build that top-level navigation item.
@@ -212,6 +241,7 @@ all_toc_libs += [
     "train",
     "rllib",
     "serve",
+    "llm",
     "workflows",
 ]
 if build_one_lib and build_one_lib in all_toc_libs:
@@ -234,7 +264,6 @@ if os.environ.get("LINKCHECK_ALL"):
         "https://mvnrepository.com/artifact/*",  # working but somehow not with linkcheck
         # This should be fixed -- is temporal the successor of cadence? Do the examples need to be updated?
         "https://github.com/serverlessworkflow/specification/blob/main/comparisons/comparison-cadence.md",
-        # TODO(richardliaw): The following probably needs to be fixed in the tune_sklearn package
         "https://www.oracle.com/java/technologies/javase-jdk15-downloads.html",  # forbidden for client
         "https://speakerdeck.com/*",  # forbidden for bots
         r"https://huggingface.co/*",  # seems to be flaky
@@ -287,24 +316,21 @@ html_theme = "pydata_sphinx_theme"
 # documentation.
 html_theme_options = {
     "use_edit_page_button": True,
-    "announcement": """<b><a target="_blank" href="https://raysummit.anyscale.com/flow/anyscale/raysummit2024/landing/page/eventsite?utm_source=regDocs6_5g">Register</a></b> for Ray Summit 2024 now. Get your early bird pass by June 27th to save $100.""",
+    "announcement": """Try Ray with $100 credit — <a target="_blank" href="https://console.anyscale.com/register/ha?render_flow=ray&utm_source=ray_docs&utm_medium=docs&utm_campaign=banner">Start now</a><button type="button" id="close-banner" aria-label="Close banner">&times;</button>""",
     "logo": {
         "svg": render_svg_logo("_static/img/ray_logo.svg"),
     },
     "navbar_start": ["navbar-ray-logo"],
     "navbar_end": [
+        "theme-switcher",
+        "version-switcher",
         "navbar-icon-links",
-        "navbar-anyscale",
     ],
     "navbar_center": ["navbar-links"],
     "navbar_align": "left",
-    "navbar_persistent": [
-        "search-button-field",
-        "theme-switcher",
-    ],
     "secondary_sidebar_items": [
         "page-toc",
-        "edit-this-page",
+        "edit-on-github",
     ],
     "content_footer_items": [
         "csat",
@@ -312,6 +338,10 @@ html_theme_options = {
     "navigation_depth": 4,
     "pygment_light_style": "stata-dark",
     "pygment_dark_style": "stata-dark",
+    "switcher": {
+        "json_url": "https://docs.ray.io/en/master/_static/versions.json",
+        "version_match": os.getenv("READTHEDOCS_VERSION", "master"),
+    },
 }
 
 html_context = {
@@ -322,7 +352,13 @@ html_context = {
 }
 
 html_sidebars = {
-    "**": ["main-sidebar"],
+    "**": [
+        (
+            "main-sidebar-readthedocs"
+            if os.getenv("READTHEDOCS") == "True"
+            else "main-sidebar"
+        )
+    ],
     "ray-overview/examples": [],
 }
 
@@ -396,12 +432,20 @@ def filter_out_undoc_class_members(member_name, class_name, module_name):
         return ""
 
 
+def has_public_constructor(class_name, module_name):
+    cls = getattr(import_module(module_name), class_name)
+    return _is_public_api(cls)
+
+
 def get_api_groups(method_names, class_name, module_name):
     api_groups = set()
     cls = getattr(import_module(module_name), class_name)
     for method_name in method_names:
         method = getattr(cls, method_name)
-        api_groups.add(safe_getattr(method, "_annotated_api_group", DEFAULT_API_GROUP))
+        if _is_public_api(method):
+            api_groups.add(
+                safe_getattr(method, "_annotated_api_group", DEFAULT_API_GROUP)
+            )
 
     return sorted(api_groups)
 
@@ -430,6 +474,7 @@ def _is_api_group(obj, group):
 FILTERS["filter_out_undoc_class_members"] = filter_out_undoc_class_members
 FILTERS["get_api_groups"] = get_api_groups
 FILTERS["select_api_group"] = select_api_group
+FILTERS["has_public_constructor"] = has_public_constructor
 
 
 def add_custom_assets(
@@ -479,7 +524,18 @@ def _autogen_apis(app: sphinx.application.Sphinx):
     )
 
 
+def process_signature(app, what, name, obj, options, signature, return_annotation):
+    # Sphinx is unable to render dataclass with factory/`field`
+    # https://github.com/sphinx-doc/sphinx/issues/10893
+    if what == "class" and is_dataclass(obj):
+        return signature.replace("<factory>", "..."), return_annotation
+
+
 def setup(app):
+    # Only generate versions JSON during RTD build
+    if os.getenv("READTHEDOCS") == "True":
+        generate_versions_json()
+
     pregenerate_example_rsts(app)
 
     # NOTE: 'MOCK' is a custom option we introduced to illustrate mock outputs. Since
@@ -508,6 +564,9 @@ def setup(app):
     app.add_js_file("js/assistant.js", defer="defer")
     app.add_css_file("css/assistant.css")
 
+    app.add_js_file("js/dismissable-banner.js", defer="defer")
+    app.add_css_file("css/dismissable-banner.css")
+
     base_path = pathlib.Path(__file__).parent
     github_docs = DownloadAndPreprocessEcosystemDocs(base_path)
     # Download docs from ecosystem library repos
@@ -522,6 +581,21 @@ def setup(app):
 
     # Hook into the auto generation of public apis
     app.connect("builder-inited", _autogen_apis)
+
+    app.connect("autodoc-process-signature", process_signature)
+
+    class DuplicateObjectFilter(logging.Filter):
+        def filter(self, record):
+            # Intentionally allow duplicate object description of ray.actor.ActorMethod.bind:
+            # once in Ray Core API and once in Compiled Graph API
+            if (
+                "duplicate object description of ray.actor.ActorMethod.bind"
+                in record.getMessage()
+            ):
+                return False  # Don't log this specific warning
+            return True  # Log all other warnings
+
+    logging.getLogger("sphinx").addFilter(DuplicateObjectFilter())
 
 
 redoc = [
@@ -541,21 +615,25 @@ autosummary_filename_map = {
 }
 
 # Mock out external dependencies here.
+
 autodoc_mock_imports = [
     "aiohttp",
-    "aiosignal",
+    "async_timeout",
+    "backoff",
+    "cachetools",
     "composer",
+    "cupy",
     "dask",
     "datasets",
     "fastapi",
     "filelock",
-    "frozenlist",
     "fsspec",
     "google",
     "grpc",
     "gymnasium",
     "horovod",
     "huggingface",
+    "httpx",
     "joblib",
     "lightgbm",
     "lightgbm_ray",
@@ -578,11 +656,13 @@ autodoc_mock_imports = [
     "uvicorn",
     "wandb",
     "watchfiles",
+    "openai",
     "xgboost",
     "xgboost_ray",
     "psutil",
     "colorama",
     "grpc",
+    "vllm",
     # Internal compiled modules
     "ray._raylet",
     "ray.core.generated",
@@ -650,3 +730,5 @@ intersphinx_mapping = {
 assert (
     "ray" not in sys.modules
 ), "If ray is already imported, we will not render documentation correctly!"
+
+os.environ["RAY_TRAIN_V2_ENABLED"] = "1"

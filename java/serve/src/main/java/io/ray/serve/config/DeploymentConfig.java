@@ -23,12 +23,6 @@ public class DeploymentConfig implements Serializable {
   private Integer numReplicas = 1;
 
   /**
-   * [DEPRECATED] The maximum number of queries that can be sent to a replica of this deployment
-   * without receiving a response. Defaults to 100.
-   */
-  private Integer maxConcurrentQueries = 100;
-
-  /**
    * The maximum number of requests that can be sent to a replica of this deployment without
    * receiving a response. Defaults to 100.
    */
@@ -58,6 +52,15 @@ public class DeploymentConfig implements Serializable {
    */
   private Double healthCheckTimeoutS = Constants.DEFAULT_HEALTH_CHECK_TIMEOUT_S;
 
+  /** Frequency at which the controller will record request routing stats. */
+  private Double requestRoutingStatsPeriodS = Constants.DEFAULT_REQUEST_ROUTING_STATS_PERIOD_S;
+
+  /**
+   * Timeout that the controller will wait for a response from the replica's request routing stats
+   * before retrying.
+   */
+  private Double requestRoutingStatsTimeoutS = Constants.DEFAULT_REQUEST_ROUTING_STATS_TIMEOUT_S;
+
   private AutoscalingConfig autoscalingConfig;
 
   /** This flag is used to let replica know they are deplyed from a different language. */
@@ -81,20 +84,8 @@ public class DeploymentConfig implements Serializable {
     return this;
   }
 
-  public Integer getMaxConcurrentQueries() {
-    return maxConcurrentQueries;
-  }
-
   public Integer getMaxOngoingRequests() {
     return maxOngoingRequests;
-  }
-
-  public DeploymentConfig setMaxConcurrentQueries(Integer maxConcurrentQueries) {
-    if (maxConcurrentQueries != null) {
-      Preconditions.checkArgument(maxConcurrentQueries > 0, "max_concurrent_queries must be > 0");
-      this.maxConcurrentQueries = maxConcurrentQueries;
-    }
-    return this;
   }
 
   public DeploymentConfig setMaxOngoingRequests(Integer maxOngoingRequests) {
@@ -158,6 +149,28 @@ public class DeploymentConfig implements Serializable {
     return this;
   }
 
+  public Double getRequestRoutingStatsPeriodS() {
+    return requestRoutingStatsPeriodS;
+  }
+
+  public DeploymentConfig setRequestRoutingStatsPeriodS(Double requestRoutingStatsPeriodS) {
+    if (requestRoutingStatsPeriodS != null) {
+      this.requestRoutingStatsPeriodS = requestRoutingStatsPeriodS;
+    }
+    return this;
+  }
+
+  public Double getRequestRoutingStatsTimeoutS() {
+    return requestRoutingStatsTimeoutS;
+  }
+
+  public DeploymentConfig setRequestRoutingStatsTimeoutS(Double requestRoutingStatsTimeoutS) {
+    if (requestRoutingStatsTimeoutS != null) {
+      this.requestRoutingStatsTimeoutS = requestRoutingStatsTimeoutS;
+    }
+    return this;
+  }
+
   public AutoscalingConfig getAutoscalingConfig() {
     return autoscalingConfig;
   }
@@ -208,12 +221,6 @@ public class DeploymentConfig implements Serializable {
   }
 
   public byte[] toProtoBytes() {
-    Integer maxOngoingRequests;
-    if (this.maxOngoingRequests == null) {
-      maxOngoingRequests = this.maxConcurrentQueries;
-    } else {
-      maxOngoingRequests = this.maxOngoingRequests;
-    }
     io.ray.serve.generated.DeploymentConfig.Builder builder =
         io.ray.serve.generated.DeploymentConfig.newBuilder()
             .setNumReplicas(numReplicas)
@@ -223,6 +230,8 @@ public class DeploymentConfig implements Serializable {
             .setGracefulShutdownTimeoutS(gracefulShutdownTimeoutS)
             .setHealthCheckPeriodS(healthCheckPeriodS)
             .setHealthCheckTimeoutS(healthCheckTimeoutS)
+            .setRequestRoutingStatsPeriodS(requestRoutingStatsPeriodS)
+            .setRequestRoutingStatsTimeoutS(requestRoutingStatsTimeoutS)
             .setIsCrossLanguage(isCrossLanguage)
             .setDeploymentLanguage(deploymentLanguage)
             .setVersion(version);
@@ -244,6 +253,8 @@ public class DeploymentConfig implements Serializable {
             .setGracefulShutdownTimeoutS(gracefulShutdownTimeoutS)
             .setHealthCheckPeriodS(healthCheckPeriodS)
             .setHealthCheckTimeoutS(healthCheckTimeoutS)
+            .setRequestRoutingStatsPeriodS(requestRoutingStatsPeriodS)
+            .setRequestRoutingStatsTimeoutS(requestRoutingStatsTimeoutS)
             .setIsCrossLanguage(isCrossLanguage)
             .setDeploymentLanguage(deploymentLanguage);
     if (null != userConfig) {
@@ -262,7 +273,6 @@ public class DeploymentConfig implements Serializable {
       return deploymentConfig;
     }
     deploymentConfig.setNumReplicas(proto.getNumReplicas());
-    deploymentConfig.setMaxConcurrentQueries(proto.getMaxOngoingRequests());
     deploymentConfig.setMaxOngoingRequests(proto.getMaxOngoingRequests());
     deploymentConfig.setGracefulShutdownWaitLoopS(proto.getGracefulShutdownWaitLoopS());
     deploymentConfig.setGracefulShutdownTimeoutS(proto.getGracefulShutdownTimeoutS());

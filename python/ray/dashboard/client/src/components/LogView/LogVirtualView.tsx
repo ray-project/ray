@@ -94,8 +94,8 @@ export type LogVirtualViewProps = {
 };
 
 type LogLineDetailDialogProps = {
-  formattedLogLine: string;
-  message?: string;
+  formattedLogLine: string | null;
+  message: string;
   onClose: () => void;
 };
 
@@ -119,39 +119,43 @@ const LogLineDetailDialog = ({
             width: "100%",
           }}
         >
+          {formattedLogLine !== null && (
+            <React.Fragment>
+              <Typography
+                variant="h5"
+                sx={{
+                  marginBottom: 2,
+                }}
+              >
+                Raw log line
+              </Typography>
+              <Box
+                sx={(theme) => ({
+                  padding: 1,
+                  bgcolor: "#EEEEEE",
+                  borderRadius: 1,
+                  border: `1px solid ${theme.palette.divider}`,
+                  marginBottom: 2,
+                })}
+              >
+                <Typography
+                  component="pre"
+                  variant="body2"
+                  sx={{
+                    whiteSpace: "pre",
+                    overflow: "auto",
+                    height: "300px",
+                  }}
+                  data-testid="raw-log-line"
+                >
+                  {formattedLogLine}
+                </Typography>
+              </Box>
+            </React.Fragment>
+          )}
           <Typography
             variant="h5"
             sx={{
-              marginBottom: 2,
-            }}
-          >
-            Raw log line
-          </Typography>
-          <Box
-            sx={(theme) => ({
-              padding: 1,
-              bgcolor: "#EEEEEE",
-              borderRadius: 1,
-              border: `1px solid ${theme.palette.divider}`,
-            })}
-          >
-            <Typography
-              component="pre"
-              variant="body2"
-              sx={{
-                whiteSpace: "pre",
-                overflow: "auto",
-                height: "300px",
-              }}
-              data-testid="raw-log-line"
-            >
-              {formattedLogLine}
-            </Typography>
-          </Box>
-          <Typography
-            variant="h5"
-            sx={{
-              marginTop: 2,
               marginBottom: 2,
             }}
           >
@@ -209,9 +213,9 @@ const LogVirtualView: React.FC<LogVirtualViewProps> = ({
     listRef.current = outter.current;
   }
   const [selectedLogLine, setSelectedLogLine] =
-    useState<[string, string | undefined]>();
+    useState<[string | null, string]>();
   const handleLogLineClick = useCallback(
-    (logLine: string, message?: string) => {
+    (logLine: string | null, message: string) => {
       setSelectedLogLine([logLine, message]);
     },
     [],
@@ -221,7 +225,7 @@ const LogVirtualView: React.FC<LogVirtualViewProps> = ({
     const { i, origin } = logs[revert ? logs.length - 1 - index : index];
 
     let message = origin;
-    let formattedLogLine = origin;
+    let formattedLogLine: string | null = null;
     try {
       const parsedOrigin = JSON.parse(origin);
       // Iff the parsed origin has a message field, use it as the message.
@@ -238,7 +242,9 @@ const LogVirtualView: React.FC<LogVirtualViewProps> = ({
       }
       formattedLogLine = JSON.stringify(parsedOrigin, null, 2);
     } catch (e) {
-      // Keep the `origin` as message and formattedLogLine, if json parsing failed.
+      // Keep the `origin` as message, if json parsing failed.
+      // If formattedLogLine is null, then the log line is not JSON and we will
+      // not show the raw json dialog pop up.
     }
 
     return (

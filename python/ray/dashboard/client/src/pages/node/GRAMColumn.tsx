@@ -39,7 +39,7 @@ export const WorkerGRAM = ({
 }) => {
   const workerGRAMEntries = (gpus ?? [])
     .map((gpu, i) => {
-      const process = gpu.processes?.find(
+      const process = gpu.processesPids?.find(
         (process) => workerPID && process.pid === workerPID,
       );
       if (!process) {
@@ -73,7 +73,7 @@ export const getSumGRAMUsage = (
   // aggregate of WorkerGRAM and follows the same logic.
   const workerGRAMEntries = (gpus ?? [])
     .map((gpu, i) => {
-      const process = gpu.processes?.find(
+      const process = gpu.processesPids?.find(
         (process) => workerPID && process.pid === workerPID,
       );
       if (!process) {

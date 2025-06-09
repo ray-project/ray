@@ -26,8 +26,9 @@
 namespace ray {
 namespace internal {
 LocalModeObjectStore::LocalModeObjectStore(LocalModeRayRuntime &local_mode_ray_tuntime)
-    : local_mode_ray_tuntime_(local_mode_ray_tuntime) {
-  memory_store_ = std::make_unique<CoreWorkerMemoryStore>();
+    : io_context_("LocalModeObjectStore"),
+      local_mode_ray_tuntime_(local_mode_ray_tuntime) {
+  memory_store_ = std::make_unique<CoreWorkerMemoryStore>(io_context_.GetIoService());
 }
 
 void LocalModeObjectStore::PutRaw(std::shared_ptr<msgpack::sbuffer> data,
@@ -88,12 +89,14 @@ std::vector<bool> LocalModeObjectStore::Wait(const std::vector<ObjectID> &ids,
   for (const auto &object_id : ids) {
     memory_object_ids.insert(object_id);
   }
-  absl::flat_hash_set<ObjectID> ready;
+  absl::flat_hash_set<ObjectID> ready, plasma_object_ids;
+
   ::ray::Status status = memory_store_->Wait(memory_object_ids,
                                              num_objects,
                                              timeout_ms,
                                              local_mode_ray_tuntime_.GetWorkerContext(),
-                                             &ready);
+                                             &ready,
+                                             &plasma_object_ids);
   if (!status.ok()) {
     throw RayException("Wait object error: " + status.ToString());
   }

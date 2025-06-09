@@ -4,6 +4,7 @@ from enum import Enum
 from typing import Any, Callable, List, Optional, Union
 
 from ray import cloudpickle
+from ray._common.utils import import_attr
 from ray._private.pydantic_compat import (
     BaseModel,
     Field,
@@ -14,7 +15,6 @@ from ray._private.pydantic_compat import (
     PrivateAttr,
     validator,
 )
-from ray._private.utils import import_attr
 from ray.serve._private.constants import (
     DEFAULT_AUTOSCALING_POLICY,
     DEFAULT_GRPC_PORT,
@@ -41,13 +41,7 @@ class AutoscalingConfig(BaseModel):
     initial_replicas: Optional[NonNegativeInt] = None
     max_replicas: PositiveInt = 1
 
-    # DEPRECATED: replaced by target_ongoing_requests
-    target_num_ongoing_requests_per_replica: PositiveFloat = Field(
-        default=DEFAULT_TARGET_ONGOING_REQUESTS,
-        description="[DEPRECATED] Please use `target_ongoing_requests` instead.",
-    )
-    # Will default to 1.0 in the future.
-    target_ongoing_requests: Optional[PositiveFloat] = None
+    target_ongoing_requests: PositiveFloat = DEFAULT_TARGET_ONGOING_REQUESTS
 
     # How often to scrape for metrics
     metrics_interval_s: PositiveFloat = 10.0
@@ -135,7 +129,6 @@ class AutoscalingConfig(BaseModel):
     @classmethod
     def default(cls):
         return cls(
-            target_num_ongoing_requests_per_replica=DEFAULT_TARGET_ONGOING_REQUESTS,
             target_ongoing_requests=DEFAULT_TARGET_ONGOING_REQUESTS,
             min_replicas=1,
             max_replicas=100,
@@ -158,9 +151,7 @@ class AutoscalingConfig(BaseModel):
         return self.downscale_smoothing_factor or self.smoothing_factor
 
     def get_target_ongoing_requests(self) -> PositiveFloat:
-        return (
-            self.target_ongoing_requests or self.target_num_ongoing_requests_per_replica
-        )
+        return self.target_ongoing_requests
 
 
 # Keep in sync with ServeDeploymentMode in dashboard/client/src/type/serve.ts
@@ -313,10 +304,12 @@ class gRPCOptions(BaseModel):
             Serve's gRPC proxy. Default to empty list, which means no gRPC methods will
             be added and no gRPC server will be started. The servicer functions need to
             be importable from the context of where Serve is running.
+        request_timeout_s: End-to-end timeout for gRPC requests.
     """
 
     port: int = DEFAULT_GRPC_PORT
     grpc_servicer_functions: List[str] = []
+    request_timeout_s: Optional[float] = None
 
     @property
     def grpc_servicer_func_callable(self) -> List[Callable]:

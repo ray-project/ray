@@ -1,9 +1,4 @@
-import os
-
-import pytest
-
 import ray
-
 import time
 
 
@@ -13,10 +8,6 @@ def main():
     Also, validates runtime env data submitted with the Ray Job that executes
     this script.
     """
-    # The next two lines validate the runtime env in which this code runs.
-    # (See the function ray_job_submit() in tests/kuberay/utils.py)
-    assert pytest.__version__ == "6.0.0"
-    assert os.getenv("key_foo") == "value_bar"
 
     # Workers and head are annotated as having 5 "Custom2" capacity each,
     # so this should trigger upscaling of two workers.

@@ -54,7 +54,7 @@ export const WorkerGpuRow = ({
 }) => {
   const workerGPUEntries = (gpus ?? [])
     .map((gpu, i) => {
-      const process = gpu.processes?.find(
+      const process = gpu.processesPids?.find(
         (process) => process.pid === workerPID,
       );
       if (!process) {
@@ -81,7 +81,7 @@ export const getSumGpuUtilization = (
   // aggregate of the WorkerGpuRow and follows the same logic.
   const workerGPUUtilizationEntries = (gpus ?? [])
     .map((gpu, i) => {
-      const process = gpu.processes?.find(
+      const process = gpu.processesPids?.find(
         (process) => process.pid === workerPID,
       );
       if (!process) {

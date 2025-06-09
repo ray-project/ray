@@ -1,3 +1,4 @@
+load("@rules_python//python:defs.bzl", "py_library")
 load("//bazel:python.bzl", "doctest")
 
 doctest(
@@ -6,6 +7,8 @@ doctest(
         ["**/*.py"],
         exclude = [
             "tests/**",
+            # FIXME: Add the llm tests back with a diff tag.
+            "llm/**",
             # FIXME: Failing on Windows
             "gradio_integrations.py",
             "_private/benchmarks/**",

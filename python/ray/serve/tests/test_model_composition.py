@@ -4,12 +4,11 @@ import os
 import sys
 from typing import Dict, Union
 
+import httpx
 import pytest
-import requests
 import starlette.requests
 
 from ray import serve
-from ray.serve._private.deployment_graph_build import build as pipeline_build
 from ray.serve.handle import DeploymentHandle
 
 NESTED_HANDLE_KEY = "nested_handle"
@@ -124,7 +123,7 @@ def test_single_func_no_input(serve_instance):
 
     handle = serve.run(serve_dag)
     assert handle.remote().result() == "hello"
-    assert requests.get("http://127.0.0.1:8000/").text == "hello"
+    assert httpx.get("http://127.0.0.1:8000/").text == "hello"
 
 
 async def json_resolver(request: starlette.requests.Request):
@@ -138,7 +137,7 @@ def test_multi_instantiation_class_deployment_in_init_args(serve_instance):
 
     handle = serve.run(serve_dag)
     assert handle.predict.remote(1).result() == 5
-    assert requests.post("http://127.0.0.1:8000/", json=1).json() == 5
+    assert httpx.post("http://127.0.0.1:8000/", json=1).json() == 5
 
 
 def test_shared_deployment_handle(serve_instance):
@@ -147,7 +146,7 @@ def test_shared_deployment_handle(serve_instance):
 
     handle = serve.run(serve_dag)
     assert handle.predict.remote(1).result() == 4
-    assert requests.post("http://127.0.0.1:8000/", json=1).json() == 4
+    assert httpx.post("http://127.0.0.1:8000/", json=1).json() == 4
 
 
 def test_multi_instantiation_class_nested_deployment_arg_dag(serve_instance):
@@ -157,7 +156,7 @@ def test_multi_instantiation_class_nested_deployment_arg_dag(serve_instance):
 
     handle = serve.run(serve_dag)
     assert handle.predict.remote(1).result() == 5
-    assert requests.post("http://127.0.0.1:8000/", json=1).json() == 5
+    assert httpx.post("http://127.0.0.1:8000/", json=1).json() == 5
 
 
 def test_class_factory(serve_instance):
@@ -165,7 +164,7 @@ def test_class_factory(serve_instance):
 
     handle = serve.run(serve_dag)
     assert handle.get.remote().result() == 3
-    assert requests.get("http://127.0.0.1:8000/").text == "3"
+    assert httpx.get("http://127.0.0.1:8000/").text == "3"
 
 
 @serve.deployment
@@ -181,20 +180,6 @@ def test_single_node_deploy_success(serve_instance):
     m1 = Adder.bind(1)
     handle = serve.run(m1)
     assert handle.remote(41).result() == 42
-
-
-def test_options_and_names(serve_instance):
-    m1 = Adder.bind(1)
-    m1_built = pipeline_build(m1)[-1]
-    assert m1_built.name == "Adder"
-
-    m1 = Adder.options(name="Adder2").bind(1)
-    m1_built = pipeline_build(m1)[-1]
-    assert m1_built.name == "Adder2"
-
-    m1 = Adder.options(num_replicas=2).bind(1)
-    m1_built = pipeline_build(m1)[-1]
-    assert m1_built.num_replicas == 2
 
 
 @serve.deployment
@@ -215,7 +200,7 @@ def test_passing_handle(serve_instance):
     parent = TakeHandle.bind(child)
     handle = serve.run(parent)
     assert handle.predict.remote(1).result() == 2
-    assert requests.post("http://127.0.0.1:8000/", json=1).json() == 2
+    assert httpx.post("http://127.0.0.1:8000/", json=1).json() == 2
 
 
 @serve.deployment
@@ -309,27 +294,7 @@ def test_single_functional_node_base_case(serve_instance):
     # Base case should work
     handle = serve.run(func.bind())
     assert handle.remote().result() == 1
-    assert requests.get("http://127.0.0.1:8000/").text == "1"
-
-
-def test_unsupported_bind():
-    @serve.deployment
-    class Actor:
-        def ping(self):
-            return "hello"
-
-    with pytest.raises(AttributeError, match=r"\.bind\(\) cannot be used again on"):
-        _ = Actor.bind().bind()
-
-    with pytest.raises(AttributeError, match=r"\.bind\(\) cannot be used again on"):
-        _ = Actor.bind().ping.bind().bind()
-
-    with pytest.raises(
-        AttributeError,
-        match=r"\.remote\(\) cannot be used on ClassMethodNodes",
-    ):
-        actor = Actor.bind()
-        _ = actor.ping.remote()
+    assert httpx.get("http://127.0.0.1:8000/").text == "1"
 
 
 def test_unsupported_remote():
@@ -338,14 +303,18 @@ def test_unsupported_remote():
         def ping(self):
             return "hello"
 
-    with pytest.raises(AttributeError, match=r"\'Actor\' has no attribute \'remote\'"):
+    with pytest.raises(
+        AttributeError, match=r"\'Application\' object has no attribute \'remote\'"
+    ):
         _ = Actor.bind().remote()
 
     @serve.deployment
     def func():
         return 1
 
-    with pytest.raises(AttributeError, match=r"\.remote\(\) cannot be used on"):
+    with pytest.raises(
+        AttributeError, match=r"\'Application\' object has no attribute \'remote\'"
+    ):
         _ = func.bind().remote()
 
 

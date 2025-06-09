@@ -10,7 +10,7 @@ from ray.rllib.utils.metrics import (
     NUM_ENV_STEPS_SAMPLED_LIFETIME,
 )
 from ray.tune import Stopper
-from ray import train, tune
+from ray import tune
 
 # Might need `gymnasium[atari, other]` to be installed.
 
@@ -247,16 +247,12 @@ for env in benchmark_envs.keys():
     )
 
 
-def _make_env_to_module_connector(env):
-    return FrameStackingEnvToModule(
-        num_frames=4,
-    )
+def _make_env_to_module_connector(env, spaces, device):
+    return FrameStackingEnvToModule(num_frames=4)
 
 
 def _make_learner_connector(input_observation_space, input_action_space):
-    return FrameStackingLearner(
-        num_frames=4,
-    )
+    return FrameStackingLearner(num_frames=4)
 
 
 # Define a `tune.Stopper` that stops the training if the benchmark is reached
@@ -302,11 +298,6 @@ config = (
         },
         clip_rewards=True,
     )
-    # Enable new API stack and use EnvRunner.
-    .api_stack(
-        enable_rl_module_and_learner=True,
-        enable_env_runner_and_connector_v2=True,
-    )
     .env_runners(
         # Every 4 agent steps a training update is performed.
         rollout_fragment_length=4,
@@ -318,7 +309,6 @@ config = (
         # Note, the paper uses also an Adam epsilon of 0.00015.
         lr=0.0000625,
         n_step=3,
-        gamma=0.99,
         tau=1.0,
         train_batch_size=32,
         target_network_update_freq=32000,
@@ -365,7 +355,7 @@ config = (
 tuner = tune.Tuner(
     "DQN",
     param_space=config,
-    run_config=train.RunConfig(
+    run_config=tune.RunConfig(
         stop=BenchmarkStopper(benchmark_envs=benchmark_envs),
         name="benchmark_dqn_atari",
     ),

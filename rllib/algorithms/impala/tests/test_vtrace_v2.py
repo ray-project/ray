@@ -3,28 +3,26 @@ import numpy as np
 
 from gymnasium.spaces import Box, Discrete
 
-from ray.rllib.algorithms.impala.tf.vtrace_tf_v2 import (
-    vtrace_tf2,
+from ray.rllib.algorithms.impala.torch.vtrace_torch_v2 import (
+    vtrace_torch,
     make_time_major,
 )
-from ray.rllib.algorithms.impala.torch.vtrace_torch_v2 import vtrace_torch
-from ray.rllib.algorithms.impala.tests.test_vtrace import (
+from ray.rllib.algorithms.impala.tests.test_vtrace_old_api_stack import (
     _ground_truth_vtrace_calculation,
 )
 from ray.rllib.utils.torch_utils import convert_to_torch_tensor
-from ray.rllib.models.tf.tf_action_dist import Categorical
-from ray.rllib.utils.framework import try_import_tf
+from ray.rllib.models.torch.torch_distributions import TorchCategorical
+from ray.rllib.utils.framework import try_import_torch
 from ray.rllib.utils.test_utils import check
 
-tf1, tf, _ = try_import_tf()
-tf1.enable_eager_execution()
+torch, _ = try_import_torch()
 
 
 def flatten_batch_and_time_dim(t):
-    if not isinstance(t, tf.Tensor):
-        t = tf.convert_to_tensor(t, dtype=tf.float32)
-    new_shape = [-1] + t.shape[2:].as_list()
-    return tf.reshape(t, new_shape)
+    if not torch.is_tensor(t):
+        t = torch.from_numpy(t)
+    new_shape = [-1] + list(t.shape[2:])
+    return torch.reshape(t, new_shape)
 
 
 class TestVtraceRLModule(unittest.TestCase):
@@ -50,32 +48,38 @@ class TestVtraceRLModule(unittest.TestCase):
 
         action_space = Discrete(10)
         action_logit_space = Box(-1.0, 1.0, (action_space.n,), np.float32)
-        behavior_action_logits = tf.convert_to_tensor(
-            np.array([action_logit_space.sample()]), dtype=tf.float32
+        behavior_action_logits = torch.from_numpy(
+            np.array([action_logit_space.sample()], dtype=np.float32)
         )
-        target_action_logits = tf.convert_to_tensor(
-            np.array([action_logit_space.sample()]), dtype=tf.float32
+        target_action_logits = torch.from_numpy(
+            np.array([action_logit_space.sample()], dtype=np.float32)
         )
-        behavior_dist = Categorical(inputs=behavior_action_logits)
-        target_dist = Categorical(inputs=target_action_logits)
+        behavior_dist = TorchCategorical(logits=behavior_action_logits)
+        target_dist = TorchCategorical(logits=target_action_logits)
         dummy_action_batch = [
-            [
-                tf.convert_to_tensor([action_space.sample()], dtype=tf.int8)
-                for _ in range(trajectory_len)
-            ]
+            [action_space.sample() for _ in range(trajectory_len)]
             for _ in range(batch_size)
         ]
 
-        behavior_log_probs = tf.stack(
-            tf.nest.map_structure(
-                lambda v: tf.squeeze(behavior_dist.logp(v)), dummy_action_batch
-            )
+        behavior_log_probs = torch.stack(
+            [
+                torch.squeeze(
+                    behavior_dist.logp(torch.from_numpy(np.array(v, np.uint8)))
+                )
+                for v in dummy_action_batch
+            ]
         )
-        target_log_probs = tf.stack(
-            tf.nest.map_structure(
-                lambda v: tf.squeeze(target_dist.logp(v)), dummy_action_batch
-            )
+        target_log_probs = torch.stack(
+            [
+                torch.squeeze(target_dist.logp(torch.from_numpy(np.array(v, np.uint8))))
+                for v in dummy_action_batch
+            ]
         )
+        # target_log_probs = torch.stack(
+        #    tree.map_structure(
+        #        lambda v: torch.squeeze(target_dist.logp(v)), dummy_action_batch
+        #    )
+        # )
 
         value_fn_space_w_time = Box(-1.0, 1.0, (batch_size, trajectory_len), np.float32)
         value_fn_space = Box(-1.0, 1.0, (batch_size,), np.float32)
@@ -87,7 +91,9 @@ class TestVtraceRLModule(unittest.TestCase):
         cls.bootstrap_values = np.array(value_fn_space.sample() + 1.0)
 
         # discount factor used at all of the timesteps
-        discounts = [0.9 for _ in range(trajectory_len * batch_size)]
+        discounts = torch.from_numpy(
+            np.array([0.9 for _ in range(trajectory_len * batch_size)])
+        )
         rewards = value_fn_space_w_time.sample()
         cls.clip_rho_threshold = 3.7
         cls.clip_pg_rho_threshold = 2.2
@@ -121,23 +127,6 @@ class TestVtraceRLModule(unittest.TestCase):
             clip_rho_threshold=cls.clip_rho_threshold,
             clip_pg_rho_threshold=cls.clip_pg_rho_threshold,
         )
-
-    def test_vtrace_tf2(self):
-        output_tf2_vtrace = vtrace_tf2(
-            behaviour_action_log_probs=tf.convert_to_tensor(
-                self.behavior_log_probs_time_major
-            ),
-            target_action_log_probs=tf.convert_to_tensor(
-                self.target_log_probs_time_major
-            ),
-            discounts=tf.convert_to_tensor(self.discounts_time_major),
-            rewards=tf.convert_to_tensor(self.rewards_time_major),
-            values=tf.convert_to_tensor(self.values_time_major),
-            bootstrap_values=tf.convert_to_tensor(self.bootstrap_values),
-            clip_rho_threshold=self.clip_rho_threshold,
-            clip_pg_rho_threshold=self.clip_pg_rho_threshold,
-        )
-        check(output_tf2_vtrace, self.ground_truth_v)
 
     def test_vtrace_torch(self):
         output_torch_vtrace = vtrace_torch(

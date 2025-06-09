@@ -10,7 +10,7 @@ import io.ray.api.call.PyActorTaskCaller;
 import io.ray.api.function.PyActorMethod;
 import io.ray.serve.common.Constants;
 import io.ray.serve.exception.RayServeException;
-import io.ray.serve.generated.ActorNameList;
+import io.ray.serve.generated.DeploymentTargetInfo;
 import io.ray.serve.replica.RayServeWrappedReplica;
 import io.ray.serve.util.CollectionUtil;
 import java.util.*;
@@ -40,9 +40,10 @@ public class ReplicaSet { // TODO ReplicaScheduler
     this.allActorHandles = new ConcurrentHashMap<>();
   }
 
-  public synchronized void updateWorkerReplicas(Object actorSet) {
-    if (null != actorSet) {
-      Set<String> actorNameSet = new HashSet<>(((ActorNameList) actorSet).getNamesList());
+  public synchronized void updateWorkerReplicas(Object deploymentTargetInfo) {
+    if (null != deploymentTargetInfo) {
+      Set<String> actorNameSet =
+          new HashSet<>(((DeploymentTargetInfo) deploymentTargetInfo).getReplicaNamesList());
       Set<String> added = new HashSet<>(Sets.difference(actorNameSet, inFlightQueries.keySet()));
       Set<String> removed = new HashSet<>(Sets.difference(inFlightQueries.keySet(), actorNameSet));
       added.forEach(
@@ -102,7 +103,7 @@ public class ReplicaSet { // TODO ReplicaScheduler
     }
     int randomIndex = RandomUtils.nextInt(0, handles.size());
     BaseActorHandle replica =
-        handles.get(randomIndex); // TODO controll concurrency using maxConcurrentQueries
+        handles.get(randomIndex); // TODO controll concurrency using maxOngoingRequests
     LOGGER.debug("Assigned query {} to replica {}.", query.getMetadata().getRequestId(), replica);
     if (replica instanceof PyActorHandle) {
       Object[] args =

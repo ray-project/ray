@@ -2,7 +2,16 @@ import { getStateApiDownloadLogUrl, MAX_LINES_FOR_LOGS } from "./log";
 
 describe("getStateApiDownloadLogUrl", () => {
   it("only uses parameters provided but doesn't fetch when parameters are null", () => {
-    expect.assertions(8);
+    expect.assertions(9);
+
+    expect(
+      getStateApiDownloadLogUrl({
+        nodeId: "node-id",
+        filename: "file.log",
+      }),
+    ).toStrictEqual(
+      `api/v0/logs/file?node_id=node-id&filename=file.log&lines=${MAX_LINES_FOR_LOGS}`,
+    );
 
     expect(
       getStateApiDownloadLogUrl({

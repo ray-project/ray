@@ -36,7 +36,7 @@ def check_memory_leaks(
         A defaultdict(list) with keys being the `to_check` strings and values being
         lists of Suspect instances that were found.
     """
-    local_worker = algorithm.workers.local_worker()
+    local_worker = algorithm.env_runner
 
     # Which components should we test?
     to_check = to_check or {"env", "model", "policy", "rollout_worker"}
@@ -47,7 +47,7 @@ def check_memory_leaks(
     if "env" in to_check:
         assert local_worker.async_env is not None, (
             "ERROR: Cannot test 'env' since given Algorithm does not have one "
-            "in its local worker. Try setting `create_env_on_driver=True`."
+            "in its local worker. Try setting `create_local_env_runner=True`."
         )
 
         # Isolate the first sub-env in the vectorized setup and test it.
