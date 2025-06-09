@@ -23,7 +23,10 @@ from image_classification.factory import (
     ImageClassificationMockDataLoaderFactory,
 )
 from s3_reader import AWS_REGION
-from .imagenet import get_preprocess_map_fn, IMAGENET_JPEG_SPLIT_S3_DIRS
+from .imagenet import (
+    get_preprocess_map_batch_fn,
+    IMAGENET_JPEG_SPLIT_S3_DIRS,
+)
 from .torch_jpeg_image_iterable_dataset import S3JpegImageIterableDataset
 from s3_jpeg_reader import S3JpegReader
 from logger_utils import ContextLoggerAdapter
@@ -100,7 +103,10 @@ class ImageClassificationJpegRayDataLoaderFactory(
                 filesystem=s3fs,
             )
             .limit(self.benchmark_config.limit_training_rows)
-            .map(get_preprocess_map_fn(random_transforms=True))
+            .map_batches(
+                get_preprocess_map_batch_fn(random_transforms=True),
+                batch_size=self.get_dataloader_config().train_batch_size,
+            )
         )
 
         # Create validation dataset with same partitioning
@@ -117,7 +123,10 @@ class ImageClassificationJpegRayDataLoaderFactory(
                 filesystem=s3fs,
             )
             .limit(self.benchmark_config.limit_validation_rows)
-            .map(get_preprocess_map_fn(random_transforms=False))
+            .map_batches(
+                get_preprocess_map_batch_fn(random_transforms=False),
+                batch_size=self.get_dataloader_config().train_batch_size,
+            )
         )
 
         return {

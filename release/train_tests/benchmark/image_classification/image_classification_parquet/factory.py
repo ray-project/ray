@@ -20,7 +20,10 @@ from image_classification.factory import (
     ImageClassificationTorchDataLoaderFactory,
     ImageClassificationMockDataLoaderFactory,
 )
-from .imagenet import IMAGENET_PARQUET_SPLIT_S3_DIRS, get_preprocess_map_fn
+from .imagenet import (
+    IMAGENET_PARQUET_SPLIT_S3_DIRS,
+    get_preprocess_map_batch_fn,
+)
 from .torch_parquet_image_iterable_dataset import S3ParquetImageIterableDataset
 from s3_parquet_reader import S3ParquetReader
 
@@ -54,7 +57,10 @@ class ImageClassificationParquetRayDataLoaderFactory(
                 columns=["image", "label"],
             )
             .limit(self.benchmark_config.limit_training_rows)
-            .map(get_preprocess_map_fn(decode_image=True, random_transforms=True))
+            .map_batches(
+                get_preprocess_map_batch_fn(decode_image=True, random_transforms=True),
+                batch_size=self.get_dataloader_config().train_batch_size,
+            )
         )
 
         # Create validation dataset without random transforms
@@ -64,7 +70,10 @@ class ImageClassificationParquetRayDataLoaderFactory(
                 columns=["image", "label"],
             )
             .limit(self.benchmark_config.limit_validation_rows)
-            .map(get_preprocess_map_fn(decode_image=True, random_transforms=False))
+            .map_batches(
+                get_preprocess_map_batch_fn(decode_image=True, random_transforms=False),
+                batch_size=self.get_dataloader_config().train_batch_size,
+            )
         )
 
         return {

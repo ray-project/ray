@@ -19,7 +19,6 @@ from image_classification.factory import (
 from image_classification.imagenet import get_transform
 from logger_utils import ContextLoggerAdapter
 from image_classification.image_classification_jpeg.imagenet import (
-    get_preprocess_map_fn,
     get_preprocess_map_batch_fn,
 )
 
@@ -63,7 +62,8 @@ class LocalFSImageClassificationRayDataLoaderFactory(
                 else {}
             ),
         ).map_batches(
-            get_preprocess_map_batch_fn(random_transforms=True), batch_size=32
+            get_preprocess_map_batch_fn(random_transforms=True),
+            batch_size=dataloader_config.train_batch_size,
         )
 
         # Create validation dataset
@@ -82,7 +82,8 @@ class LocalFSImageClassificationRayDataLoaderFactory(
                 else {}
             ),
         ).map_batches(
-            get_preprocess_map_batch_fn(random_transforms=False), batch_size=32
+            get_preprocess_map_batch_fn(random_transforms=False),
+            batch_size=dataloader_config.train_batch_size,
         )
 
         return {
