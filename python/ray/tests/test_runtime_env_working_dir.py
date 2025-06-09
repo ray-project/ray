@@ -28,8 +28,11 @@ from ray._private.utils import get_directory_size_bytes
 # Calling `test_module.one()` should return `2`.
 # If you find that confusing, take it up with @jiaodong...
 HTTPS_PACKAGE_URI = "https://github.com/shrekris-anyscale/test_module/archive/a885b80879665a49d5cd4c3ebd33bb6f865644e5.zip"
-S3_PACKAGE_URI = "s3://runtime-env-test/test_runtime_env.zip"
 TEST_IMPORT_DIR = "test_import_dir"
+
+
+def using_ray_client():
+    return ray._private.client_mode_hook.is_client_mode_enabled
 
 
 # Set scope to "module" to force this to run before start_cluster, whose scope
@@ -70,6 +73,9 @@ async def test_working_dir_cleanup(tmpdir, ray_start_regular):
         assert creation_metadata[file] != creation_time_after
 
 
+@pytest.mark.skipif(
+    ray._private.client_mode_hook.is_client_mode_enabled, reason="Fails w/ Ray Client."
+)
 @pytest.mark.asyncio
 async def test_create_delete_size_equal(tmpdir, ray_start_regular):
     """Tests that `create` and `delete_uri` return the same size for a URI."""
@@ -346,6 +352,10 @@ def test_empty_working_dir(start_cluster):
         ray.init(address, runtime_env={"working_dir": working_dir})
 
 
+@pytest.mark.skipif(
+    using_ray_client(),
+    reason="Ray Client doesn't clean up global state properly on ray.init() failure.",
+)
 @pytest.mark.parametrize("option", ["working_dir", "py_modules"])
 def test_input_validation(start_cluster, option: str):
     """Tests input validation for working_dir and py_modules."""
