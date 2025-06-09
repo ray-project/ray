@@ -13,40 +13,29 @@ from ray.util import scheduling_strategies
 _RELEASE_TEST_OUTPUT_ENV_VARIABLE_NAME = "TEST_OUTPUT_JSON"
 
 """
-    For a given instance type, this test will try to maximize object transfer throughput
-    for fixed-sized objects on two nodes.
+    For a cluster with two identical worker nodes, this test will try to measure the maximum, continuous,
+    bidirectional object transfer throughput for fixed-sized objects.
 
     The following environment need to be setup for this test to run properly:
         - RAY_object_spilling_threshold=1
-        - RAY_experimental_object_manager_enable_multiple_connections=true
+        - RAY_DEFAULT_OBJECT_STORE_MEMORY_PROPORTION=0.75
 
-    The test takes the following parameters:
-        - num-connections (for reporting)
-        - node-num-cpus
-        - node-memory-bytes
-        - network-bandwidth-bytes
-        - num-actors (comma-separated list)
-        - object-sizes (comma-separated list)
-        - batch-sizes (comma-separated list)
-
-    The test has the following parameters in the code:
-        - num_actors = the number of actors created on each node [2, log_2(node-num-cpus)]
-        - object_sizes = the different object sizes the test is run on [1M, 64M, 512M, 1024M]
-        - batch_size = the number of concurrent objects each actor requests = [2, 4, 8]
+    The test has the following parameters:
+        - num_actors = the number of actors created on each node.
+        - object_sizes = the different object sizes the test is run on.
+        - batch_size = the number of concurrent objects each actor requests.
 
     The test has the following stages
-        - for each object_size, prepopulate the object store with all fixed size objects
-        - for each num_actors, create the actors and assign them disjoint sections of objects to pull from the remote node
-        - warm up the actors, run the test with different batch sizes
+        - for each object_size, prepopulate the object store with all fixed size objects.
+        - for each num_actors, create the actors and assign them disjoint sections of objects to pull from the remote node.
+        - warm up the nodes with the new objects.
+        - run the test with different batch sizes.
 
     The test avoids spilling by carefully sizing the object store, the prefill buffer for pushes, and the buffer used for transfers
     for each possible instance type:
 
-    There are a few tricky edge cases for this test which are worth documenting. How do we avoid spilling and how to do ensure that
-    objects are transferred from a remote node and not read from plasma?
-
     This test is configured for the following instance types with the object store being partitioned into a prefill
-    and transfer sections
+    and transfer sections:
 
         +----------------+--------+-------------+-------------------+-------------------------+------------------------------+
         |   Instance     | # vCPUs| Memory (GB) | Object Store (GB) | Object Store Prefill (GB)| Object Store Transfer (GB)  |
@@ -138,9 +127,7 @@ def wait_for_empty_object_store():
     core_worker = ray._private.worker.global_worker.core_worker
 
     def check_empty():
-        # object_store_size = core_worker.get_memory_store_size()
         ref_counts = core_worker.get_all_reference_counts()
-        # pprint(ref_counts)
         print(f"{len(ref_counts)}")
         return len(ref_counts) == 0
 
@@ -324,28 +311,12 @@ def main():
     WARMUP_BATCH_SIZE = 2
 
     TEST_DURATION_MS = 180 * 1000
-    # TEST_NUM_ITERS = 1
     TEST_COOLDOWN_MS = 3 * 1000
 
     parser = argparse.ArgumentParser(
         description="Parse system configuration arguments."
     )
 
-    parser.add_argument(
-        "--num-connections", type=int, required=True, help="Number of connections."
-    )
-    parser.add_argument(
-        "--node-num-cpus", type=int, required=True, help="Number of CPUs per node."
-    )
-    parser.add_argument(
-        "--node-memory-bytes", type=int, required=True, help="Memory per node in bytes."
-    )
-    parser.add_argument(
-        "--node-network-bandwidth-bytes",
-        type=int,
-        required=True,
-        help="Network bandwidth in bytes.",
-    )
     parser.add_argument(
         "--num-actors",
         type=str,
@@ -362,15 +333,10 @@ def main():
         "--batch-sizes",
         type=str,
         required=True,
-        help="Comma-separated list of batch sizes.",
+        help="Comma-separated list of batch sizes where each batch size is how many objects an actor pulls concurrently.",
     )
 
     args = parser.parse_args()
-
-    test_num_connections = args.num_connections
-    test_node_num_cpus = args.node_num_cpus
-    test_node_memory_bytes = args.node_memory_bytes
-    test_node_network_bandwidth_bytes = args.node_network_bandwidth_bytes
 
     # Parse comma-separated lists into lists of integers
     num_actors = [int(x) for x in args.num_actors.split(",") if x]
@@ -418,10 +384,6 @@ def main():
                 # throughput_gigabytes_s = throughput_bytes_s / (1024**3)
                 results.append(
                     TestResult(
-                        num_connections=test_num_connections,
-                        node_num_cpus=test_node_num_cpus,
-                        node_memory_bytes=test_node_memory_bytes,
-                        node_network_bytes=test_node_network_bandwidth_bytes,
                         object_size=object_size,
                         num_actors=num_actor,
                         batch_size=batch_size,
@@ -462,6 +424,7 @@ def get_release_test_metric_name(result: TestResult):
 
 
 def create_release_test_output_file(results: list[TestResult]):
+    """Creates a metric for each test results and writes them to a json file."""
     with open(os.environ[_RELEASE_TEST_OUTPUT_ENV_VARIABLE_NAME], "w") as out_file:
         perf_metrics = []
         for result in results:
@@ -476,17 +439,4 @@ def create_release_test_output_file(results: list[TestResult]):
 
 
 if __name__ == "__main__":
-    # import sys
-    # print(__file__)
-    # sys.argv = [
-    #     __file__,
-    #     "--num-connections", "1",
-    #     "--node-num-cpus", "64",
-    #     "--node-memory-bytes", f"{128 * (1024**3)}",
-    #     "--node-network-bandwidth-bytes", f"{int(12.5 * (1024**3)) // 8}",
-    #     "--num-actors", "1,2,4",
-    #     "--object-sizes", f"{1024**2},{64 * (1024**2)},{512 * (1024**2)},{1024 * (1024**2)}",
-    #     # "--object-sizes", f"{64 * (1024**2)}",
-    #     "--batch-sizes", "2,4,8"
-    # ]
     main()
