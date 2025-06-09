@@ -7,6 +7,11 @@ from ray.rllib.algorithms.sac.sac_learner import (
     ACTION_DIST_INPUTS_NEXT,
     QF_PREDS,
     QF_TWIN_PREDS,
+    QF_TARGET_NEXT,
+    ACTION_LOG_PROBS_NEXT,
+    ACTION_PROBS_NEXT,
+    ACTION_PROBS,
+    ACTION_LOG_PROBS,
 )
 from ray.rllib.core.columns import Columns
 from ray.rllib.core.models.base import ENCODER_OUT, Encoder, Model
@@ -70,25 +75,28 @@ class DefaultSACTorchRLModule(TorchRLModule, DefaultSACRLModule):
         batch_curr = {Columns.OBS: batch[Columns.OBS]}
         batch_next = {Columns.OBS: batch[Columns.NEXT_OBS]}
 
-        ## calculate the target Q values ##
+        ## calculate values for the target ##
         # Also encode the next observations (and next actions for the Q net).
         pi_encoder_next_outs = self.pi_encoder(batch_next)
         action_probs_next = self.pi(pi_encoder_next_outs[ENCODER_OUT])
-        log_probs_next = action_probs_next.log()
+        output[ACTION_PROBS_NEXT] = action_probs_next
+        output[ACTION_LOG_PROBS_NEXT] = action_probs_next.log()
+
         # (B, action_dim)
-        next_qs = self.forward_target(batch_next)
+        qf_target_next = self.forward_target(batch_next, squeeze=False)
+        output[QF_TARGET_NEXT] = qf_target_next
 
-        # TODO: we should calculate values here, target calculation and etc should be done in
-        # the SAC learner, not in the RLModule.
-
-        # Encoder forward passes.
+        ## calculate values for gradient ##
         pi_encoder_outs = self.pi_encoder(batch_curr)
+        action_probs = self.pi(pi_encoder_outs[ENCODER_OUT])
+        output[ACTION_PROBS] = action_probs
+        output[ACTION_LOG_PROBS] = action_probs.log()
 
-        output["a"] = log_probs_next
-        output["b"] = next_qs
-        output["c"] = pi_encoder_outs
+        qf_preds = self.compute_q_values(batch_curr, squeeze=False)
+        # we don't need straight-through gradient here
+        output[QF_PREDS] = qf_preds
 
-        raise NotImplementedError
+        return output
 
     def _forward_train_continuous(self, batch: Dict[str, Any]) -> Dict[str, Any]:
         output = {}
@@ -180,9 +188,11 @@ class DefaultSACTorchRLModule(TorchRLModule, DefaultSACRLModule):
         return output
 
     @override(TargetNetworkAPI)
-    def forward_target(self, batch: Dict[str, Any]) -> Dict[str, Any]:
+    def forward_target(
+        self, batch: Dict[str, Any], squeeze: bool = True
+    ) -> Dict[str, Any]:
         target_qvs = self._qf_forward_train_helper(
-            batch, self.target_qf_encoder, self.target_qf
+            batch, self.target_qf_encoder, self.target_qf, squeeze=squeeze
         )
 
         # If a twin Q network should be used, calculate twin Q-values and use the
@@ -191,22 +201,29 @@ class DefaultSACTorchRLModule(TorchRLModule, DefaultSACRLModule):
             target_qvs = torch.min(
                 target_qvs,
                 self._qf_forward_train_helper(
-                    batch, self.target_qf_twin_encoder, self.target_qf_twin
+                    batch,
+                    self.target_qf_twin_encoder,
+                    self.target_qf_twin,
+                    squeeze=squeeze,
                 ),
             )
 
         return target_qvs
 
     @override(QNetAPI)
-    def compute_q_values(self, batch: Dict[str, Any]) -> Dict[str, Any]:
-        qvs = self._qf_forward_train_helper(batch, self.qf_encoder, self.qf)
+    def compute_q_values(
+        self, batch: Dict[str, Any], squeeze: bool = True
+    ) -> Dict[str, Any]:
+        qvs = self._qf_forward_train_helper(
+            batch, self.qf_encoder, self.qf, squeeze=squeeze
+        )
         # If a twin Q network should be used, calculate twin Q-values and use the
         # minimum.
         if self.twin_q:
             qvs = torch.min(
                 qvs,
                 self._qf_forward_train_helper(
-                    batch, self.qf_twin_encoder, self.qf_twin
+                    batch, self.qf_twin_encoder, self.qf_twin, squeeze=squeeze
                 ),
             )
         return qvs
