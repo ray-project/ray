@@ -6,8 +6,8 @@ This template shows you how to distribute your PyTorch training code with Ray Tr
 
 In this tutorial, you:
 1. Start with a basic single machine PyTorch example.
-2. Distribute it to multiple GPUs on multiple machines with [Ray Train](https://docs.ray.io/en/latest/train/train.html) and inspect results with the Ray Train dashboard.
-3. Scale data ingest separately from training with [Ray Data](https://docs.ray.io/en/latest/data/data.html) and inspect results with the Ray Data dashboard. 
+2. Distribute it to multiple GPUs on multiple machines with [Ray Train](https://docs.ray.io/en/latest/train/train.html) and, if you are using an Anyscale Workspace, inspect results with the Ray Train dashboard.
+3. Scale data ingest separately from training with [Ray Data](https://docs.ray.io/en/latest/data/data.html) and, if you are using an Anyscale Workspace, inspect results with the Ray Data dashboard. 
 
 ## Step 1: Start with a basic single machine PyTorch example
 
@@ -289,7 +289,8 @@ if __name__ == "__main__":
 
 Because you're running training in a data parallel fashion this time, it should take under 1 minute while maintaining similar accuracy.
 
-Go to the Ray Train dashboard to analyze your distributed training job. Click **Ray Workloads** and then **Ray Train**, which shows a list of all the training runs you have kicked off.
+
+If you are using an Anyscale Workspace, go to the Ray Train dashboard to analyze your distributed training job. Click **Ray Workloads** and then **Ray Train**, which shows a list of all the training runs you have kicked off.
 
 ![Train Runs](images/train_runs.png)
 
@@ -460,7 +461,8 @@ if __name__ == "__main__":
 
 Once again your training run should take around 1 minute with similar accuracy. There aren't big performance wins with Ray Data on this example due to the small size of the dataset; for more interesting benchmarking information see [this blog post](https://www.anyscale.com/blog/fast-flexible-scalable-data-loading-for-ml-training-with-ray-data). The main advantage of Ray Data is that it allows you to stream data across heterogeneous compute, maximizing GPU utilization while minimizing RAM usage.
 
-In addition to the Ray Train and Metrics dashboards you saw in the previous section, you can also view the Ray Data dashboard by clicking **Ray Workloads** and then **Data** where you can view the throughput and status of each [Ray Data operator](https://docs.ray.io/en/latest/data/key-concepts.html#operators-and-plans).
+
+If you are using an Anyscale Workspace, in addition to the Ray Train and Metrics dashboards you saw in the previous section, you can also view the Ray Data dashboard by clicking **Ray Workloads** and then **Data** where you can view the throughput and status of each [Ray Data operator](https://docs.ray.io/en/latest/data/key-concepts.html#operators-and-plans).
 
 ![Data Dashboard](images/data_dashboard.png)
 
