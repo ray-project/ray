@@ -129,6 +129,11 @@ class MockCoreWorkerClientInterface : public ray::pubsub::MockSubscriberClientIn
               (const AssignObjectOwnerRequest &request,
                const ClientCallback<AssignObjectOwnerReply> &callback),
               (override));
+  MOCK_METHOD(void,
+              OwnedActorDead,
+              (const OwnedActorDeadRequest &request,
+               const ClientCallback<OwnedActorDeadReply> &callback),
+              (override));
 };
 
 class MockCoreWorkerClientConfigurableRunningTasks

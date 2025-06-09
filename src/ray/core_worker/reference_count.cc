@@ -585,6 +585,26 @@ void ReferenceCounter::RemoveSubmittedTaskReferences(
   }
 }
 
+std::vector<ObjectID> ReferenceCounter::DecrementLineageRefCount(
+    const std::vector<ObjectID> &object_ids) {
+  absl::MutexLock lock(&mutex_);
+  std::vector<ObjectID> deleted;
+  for (const auto &object_id : object_ids) {
+    auto it = object_id_refs_.find(object_id);
+    if (it == object_id_refs_.end()) {
+      RAY_LOG(DEBUG).WithField(object_id)
+          << "Evicted before lineage ref count decremented.";
+      continue;
+    }
+    RAY_CHECK(it->second.lineage_ref_count > 0);
+    it->second.lineage_ref_count--;
+    if (it->second.RefCount() == 0) {
+      DeleteReferenceInternal(it, &deleted);
+    }
+  }
+  return deleted;
+}
+
 bool ReferenceCounter::HasOwner(const ObjectID &object_id) const {
   absl::MutexLock lock(&mutex_);
   return object_id_refs_.find(object_id) != object_id_refs_.end();

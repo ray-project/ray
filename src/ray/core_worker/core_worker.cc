@@ -2711,45 +2711,54 @@ Status CoreWorker::CreateActor(const RayFunction &function,
       local_mode_named_actor_registry_.emplace(actor_name, actor_id);
     }
     ExecuteTaskLocalMode(task_spec);
-  } else {
-    task_manager_->AddPendingTask(
-        rpc_address_,
-        task_spec,
-        CurrentCallSite(),
-        // Actor creation task retry happens on GCS not on core worker.
-        /*max_retries*/ 0);
+    return Status::OK();
+  }
 
-    if (actor_name.empty()) {
-      io_service_.post(
-          [this, task_spec = std::move(task_spec)]() {
-            RAY_UNUSED(actor_creator_->AsyncRegisterActor(
-                task_spec, [this, task_spec](Status status) {
-                  if (!status.ok()) {
-                    RAY_LOG(ERROR).WithField(task_spec.ActorCreationId())
-                        << "Failed to register actor. Error message: " << status;
-                    task_manager_->FailPendingTask(task_spec.TaskId(),
-                                                   rpc::ErrorType::ACTOR_CREATION_FAILED,
-                                                   &status);
-                  } else {
-                    RAY_UNUSED(actor_task_submitter_->SubmitActorCreationTask(task_spec));
-                  }
-                }));
-          },
-          "ActorCreator.AsyncRegisterActor");
-    } else {
-      // For named actor, we still go through the sync way because for
-      // functions like list actors these actors need to be there, especially
-      // for local driver. But the current code all go through the gcs right now.
-      auto status = actor_creator_->RegisterActor(task_spec);
-      if (!status.ok()) {
-        return status;
-      }
-      io_service_.post(
-          [this, task_spec = std::move(task_spec)]() {
-            RAY_UNUSED(actor_task_submitter_->SubmitActorCreationTask(task_spec));
-          },
-          "CoreWorker.SubmitTask");
+  task_manager_->AddPendingTask(
+      rpc_address_,
+      task_spec,
+      CurrentCallSite(),
+      // Actor creation task retry happens through the gcs, so the task manager only
+      // needs to know whether to increment lineage_ref_count for args or not.
+      // lineage_ref_count will be decremented by FailPendingTask if registration fails,
+      // and by OwnedActorDead otherwise.
+      /*max_retries*/ task_spec.MaxActorRestarts() != 0 && !task_spec.IsDetachedActor()
+          ? 1
+          : 0);
+
+  if (actor_name.empty()) {
+    io_service_.post(
+        [this, task_spec = std::move(task_spec)]() {
+          RAY_UNUSED(actor_creator_->AsyncRegisterActor(
+              task_spec, [this, task_spec](Status status) {
+                if (!status.ok()) {
+                  RAY_LOG(ERROR).WithField(task_spec.ActorCreationId())
+                      << "Failed to register actor. Error message: " << status;
+                  task_manager_->FailPendingTask(
+                      task_spec.TaskId(), rpc::ErrorType::ACTOR_CREATION_FAILED, &status);
+                } else {
+                  RAY_UNUSED(actor_task_submitter_->SubmitActorCreationTask(task_spec));
+                  owned_actor_ids_.insert(task_spec.ActorCreationId());
+                }
+              }));
+        },
+        "ActorCreator.AsyncRegisterActor");
+  } else {
+    // For named actor, we still go through the sync way because for
+    // functions like list actors these actors need to be there, especially
+    // for local driver. But the current code all go through the gcs right now.
+    auto status = actor_creator_->RegisterActor(task_spec);
+    if (!status.ok()) {
+      task_manager_->FailPendingTask(
+          task_spec.TaskId(), rpc::ErrorType::ACTOR_CREATION_FAILED, &status);
+      return status;
     }
+    io_service_.post(
+        [this, task_spec = std::move(task_spec)]() {
+          RAY_UNUSED(actor_task_submitter_->SubmitActorCreationTask(task_spec));
+          owned_actor_ids_.insert(task_spec.ActorCreationId());
+        },
+        "CoreWorker.SubmitTask");
   }
   return Status::OK();
 }
@@ -4812,6 +4821,25 @@ void CoreWorker::HandleAssignObjectOwner(rpc::AssignObjectOwnerRequest request,
       /*pinned_at_raylet_id=*/NodeID::FromBinary(borrower_address.raylet_id()));
   reference_counter_->AddBorrowerAddress(object_id, borrower_address);
   RAY_CHECK(memory_store_->Put(RayObject(rpc::ErrorType::OBJECT_IN_PLASMA), object_id));
+  send_reply_callback(Status::OK(), nullptr, nullptr);
+}
+
+void CoreWorker::HandleOwnedActorDead(rpc::OwnedActorDeadRequest request,
+                                      rpc::OwnedActorDeadReply *reply,
+                                      rpc::SendReplyCallback send_reply_callback) {
+  const auto &actor_id = ActorID::FromBinary(request.actor_id());
+  if (owned_actor_ids_.erase(actor_id) == 0) {
+    // Already handled this request, got a retry.
+    send_reply_callback(Status::OK(), nullptr, nullptr);
+    return;
+  }
+  std::vector<ObjectID> object_ids;
+  object_ids.reserve(request.plasma_dependency_ids_size());
+  for (const auto &id_binary : request.plasma_dependency_ids()) {
+    object_ids.push_back(ObjectID::FromBinary(id_binary));
+  }
+  auto deleted = reference_counter_->DecrementLineageRefCount(object_ids);
+  memory_store_->Delete(deleted);
   send_reply_callback(Status::OK(), nullptr, nullptr);
 }
 

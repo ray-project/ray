@@ -901,9 +901,8 @@ void TaskManager::CompletePendingTask(const TaskID &task_id,
     // A finished task can only be re-executed if it has some number of
     // retries left and returned at least one object that is still in use and
     // stored in plasma.
-    bool task_retryable = it->second.num_retries_left != 0 &&
-                          !it->second.reconstructable_return_ids.empty();
-    if (task_retryable) {
+    if (it->second.num_retries_left != 0 &&
+        !it->second.reconstructable_return_ids.empty()) {
       // Pin the task spec if it may be retried again.
       release_lineage = false;
       it->second.lineage_footprint_bytes = it->second.spec.GetMessage().ByteSizeLong();
@@ -915,6 +914,13 @@ void TaskManager::CompletePendingTask(const TaskID &task_id,
         min_lineage_bytes_to_evict =
             total_lineage_footprint_bytes_ - (max_lineage_bytes_ / 2);
       }
+    } else if (it->second.num_retries_left != 0 && spec.IsActorCreationTask()) {
+      // Actor creation tasks are retried from the GCS, so we don't need to save the task
+      // spec here and also don't need to count this against
+      // total_lineage_footprint_bytes_. GCS will directly release lineage for the
+      // associated args.
+      release_lineage = false;
+      submissible_tasks_.erase(it);
     } else {
       submissible_tasks_.erase(it);
     }

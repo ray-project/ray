@@ -189,6 +189,9 @@ class CoreWorkerClientInterface : public pubsub::SubscriberClientInterface {
       const RayletNotifyGCSRestartRequest &request,
       const ClientCallback<RayletNotifyGCSRestartReply> &callback) {}
 
+  virtual void OwnedActorDead(const OwnedActorDeadRequest &request,
+                              const ClientCallback<OwnedActorDeadReply> &callback) {}
+
   virtual ~CoreWorkerClientInterface() = default;
 };
 
@@ -341,6 +344,13 @@ class CoreWorkerClient : public std::enable_shared_from_this<CoreWorkerClient>,
                          grpc_client_,
                          /*method_timeout_ms*/ -1,
                          override)
+
+  VOID_RETRYABLE_RPC_CLIENT_METHOD(retryable_grpc_client_,
+                                   CoreWorkerService,
+                                   OwnedActorDead,
+                                   grpc_client_,
+                                   /*method_timeout_ms*/ -1,
+                                   override)
 
   void PushActorTask(std::unique_ptr<PushTaskRequest> request,
                      bool skip_queue,

@@ -235,8 +235,6 @@ std::string GcsActor::GetRayNamespace() const {
 }
 
 TaskSpecification GcsActor::GetCreationTaskSpecification() const {
-  // The task spec is not available when the actor is dead.
-  RAY_CHECK(actor_table_data_.state() != rpc::ActorTableData::DEAD);
   return TaskSpecification(*task_spec_);
 }
 
@@ -1752,6 +1750,25 @@ void GcsActorManager::RemoveActorFromOwner(const std::shared_ptr<GcsActor> &acto
   const auto &owner_id = actor->GetOwnerID();
   RAY_LOG(DEBUG).WithField(actor_id).WithField(owner_id).WithField(actor_id.JobId())
       << "Erasing actor owned by worker";
+
+  if (actor->GetActorTableData().max_restarts() != 0 && !actor->IsDetached()) {
+    auto client = worker_client_factory_(actor->GetOwnerAddress());
+    rpc::OwnedActorDeadRequest request;
+    request.set_actor_id(actor_id.Binary());
+    const auto &spec = actor->GetCreationTaskSpecification();
+    for (size_t i = 0; i < spec.NumArgs(); i++) {
+      if (spec.ArgByRef(i)) {
+        request.add_plasma_dependency_ids(spec.ArgId(i).Binary());
+      } else {
+        const auto &inlined_refs = spec.ArgInlinedRefs(i);
+        for (const auto &inlined_ref : inlined_refs) {
+          request.add_plasma_dependency_ids(inlined_ref.object_id());
+        }
+      }
+    }
+    client->OwnedActorDead(request,
+                           [](const Status &, const rpc::OwnedActorDeadReply &) {});
+  }
 
   const auto &owner_node_id = actor->GetOwnerNodeID();
   auto &node = owners_[owner_node_id];

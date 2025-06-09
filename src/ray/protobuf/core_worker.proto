@@ -454,6 +454,15 @@ message RegisterMutableObjectReaderReply {
   // Empty for now.
 }
 
+message OwnedActorDeadRequest {
+  bytes actor_id = 1;
+  repeated bytes plasma_dependency_ids = 2;
+}
+
+message OwnedActorDeadReply {
+  // Empty
+}
+
 service CoreWorkerService {
   // Raylet notifies its workers that the GCS has restarted.
   // Failure: Always from local raylet, should not fail.
@@ -576,4 +585,8 @@ service CoreWorkerService {
   // Failure: TODO: Needs failure behavior.
   rpc RegisterMutableObjectReader(RegisterMutableObjectReaderRequest)
       returns (RegisterMutableObjectReaderReply);
+
+  // Reports that an actor is dead.
+  // Failure: Retries and is idempotent.
+  rpc OwnedActorDead(OwnedActorDeadRequest) returns (OwnedActorDeadReply);
 }

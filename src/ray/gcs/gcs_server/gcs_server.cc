@@ -471,25 +471,23 @@ void GcsServer::InitGcsActorManager(const GcsInitData &gcs_init_data) {
           [this](const NodeID &node_id, const rpc::ResourcesData &resources) {
             gcs_resource_manager_->UpdateNodeNormalTaskResources(node_id, resources);
           });
-  gcs_actor_manager_ =
-      std::make_unique<GcsActorManager>(
-          std::move(scheduler),
-          gcs_table_storage_.get(),
-          io_context_provider_.GetDefaultIOContext(),
-          gcs_publisher_.get(),
-          *runtime_env_manager_,
-          *function_manager_,
-          [this](const ActorID &actor_id) {
-            gcs_placement_group_manager_->CleanPlacementGroupIfNeededWhenActorDead(
-                actor_id);
-          },
-          [this](const rpc::Address &address) {
-            return std::make_shared<rpc::CoreWorkerClient>(
-                address, client_call_manager_, []() {
-                  RAY_LOG(FATAL)
-                      << "GCS doesn't call any retryable core worker grpc methods.";
-                });
-          });
+  gcs_actor_manager_ = std::make_unique<GcsActorManager>(
+      std::move(scheduler),
+      gcs_table_storage_.get(),
+      io_context_provider_.GetDefaultIOContext(),
+      gcs_publisher_.get(),
+      *runtime_env_manager_,
+      *function_manager_,
+      [this](const ActorID &actor_id) {
+        gcs_placement_group_manager_->CleanPlacementGroupIfNeededWhenActorDead(actor_id);
+      },
+      [this](const rpc::Address &address) {
+        return std::make_shared<rpc::CoreWorkerClient>(
+            address, client_call_manager_, []() {
+              // TODO: Give the GCS a worker client pool and give it a default unavailable
+              // callback here.
+            });
+      });
 
   // Initialize by gcs tables data.
   gcs_actor_manager_->Initialize(gcs_init_data);

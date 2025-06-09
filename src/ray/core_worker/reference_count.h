@@ -166,6 +166,12 @@ class ReferenceCounter : public ReferenceCounterInterface,
                                     std::vector<ObjectID> *deleted)
       ABSL_LOCKS_EXCLUDED(mutex_);
 
+  /// Decrements the lineage ref count for the object ID's and deletes the reference if
+  /// they can be deleted.
+  /// \param[in] object_ids The object IDs to decrement the lineage ref count for.
+  /// \returns: The object ID's that can be deleted.
+  std::vector<ObjectID> DecrementLineageRefCount(const std::vector<ObjectID> &object_ids);
+
   /// Add an object that we own. The object may depend on other objects.
   /// Dependencies for each ObjectID must be set at most once. The local
   /// reference count for the ObjectID is set to zero, which assumes that an

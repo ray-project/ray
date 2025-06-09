@@ -1268,6 +1268,11 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   void HandleNumPendingTasks(rpc::NumPendingTasksRequest request,
                              rpc::NumPendingTasksReply *reply,
                              rpc::SendReplyCallback send_reply_callback) override;
+
+  void HandleOwnedActorDead(rpc::OwnedActorDeadRequest request,
+                            rpc::OwnedActorDeadReply *reply,
+                            rpc::SendReplyCallback send_reply_callback) override;
+
   ///
   /// Public methods related to async actor call. This should only be used when
   /// the actor is (1) direct actor and (2) using async mode.
@@ -1955,6 +1960,9 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// Maps serialized runtime env info to **immutable** deserialized protobuf.
   mutable utils::container::ThreadSafeSharedLruCache<std::string, rpc::RuntimeEnvInfo>
       runtime_env_json_serialization_cache_;
+
+  // Reconstructable actors owned by this worker.
+  absl::flat_hash_set<ActorID> owned_actor_ids_;
 };
 
 // Lease request rate-limiter based on cluster node size.

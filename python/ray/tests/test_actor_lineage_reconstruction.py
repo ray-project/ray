@@ -5,7 +5,6 @@ import signal
 
 import pytest
 import numpy as np
-import time
 
 import ray
 from ray._private.test_utils import wait_for_condition
@@ -125,9 +124,9 @@ def test_actor_reconstruction_relies_on_plasma_object(ray_start_cluster):
     cluster = ray_start_cluster
     cluster.add_node(num_cpus=0)  # head
     ray.init(address=cluster.address)
-    worker1 = cluster.add_node(num_cpus=2)
+    worker1 = cluster.add_node(num_cpus=1)
 
-    @ray.remote(num_cpus=1, max_restarts=1)
+    @ray.remote(num_cpus=1, max_restarts=2)
     class Actor:
         def __init__(self, config):
             self.config = config
@@ -141,11 +140,22 @@ def test_actor_reconstruction_relies_on_plasma_object(ray_start_cluster):
     del ref
     ray.get(actor.ping.remote())
 
-    cluster.add_node(num_cpus=2)  # new worker
+    worker2 = cluster.add_node(num_cpus=1)
     cluster.remove_node(worker1, allow_graceful=True)
-    time.sleep(1)
 
-    assert ray.get(actor.ping.remote()) == numpy_arr
+    # Need wait_for_condition to catch ActorUnavailableError
+    wait_for_condition(lambda: ray.get(actor.ping.remote()).size == numpy_arr.size)
+
+    worker3 = cluster.add_node(num_cpus=1)
+    cluster.remove_node(worker2, allow_graceful=True)
+
+    wait_for_condition(lambda: ray.get(actor.ping.remote()).size == numpy_arr.size)
+
+    cluster.add_node(num_cpus=1)
+    cluster.remove_node(worker3, allow_graceful=True)
+
+    with pytest.raises(ray.exceptions.ActorDiedError):
+        ray.get(actor.ping.remote())
 
 
 if __name__ == "__main__":
