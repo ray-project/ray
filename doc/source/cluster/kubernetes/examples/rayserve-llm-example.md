@@ -96,6 +96,7 @@ Additionally, you can also port-forward 8000 port from the Head application Serv
 
 Keep in mind this Kubernetes Service comes up only after Ray Serve applications are running and ready. This process takes a few minutes after all the pods in the Ray Cluster are up and running.
 
+Test the service with the following command:
 ```sh
 curl --location 'http://localhost:8000/v1/chat/completions' --header 'Content-Type: application/json' 
   --data '{
@@ -113,37 +114,6 @@ curl --location 'http://localhost:8000/v1/chat/completions' --header 'Content-Ty
   }'
 ```
 
-The output should be in the following format:
-
-```
-{
-  "id": "qwen2.5-7b-instruct-550d3fd491890a7e7bca74e544d3479e",
-  "object": "chat.completion",
-  "created": 1746595284,
-  "model": "qwen2.5-7b-instruct",
-  "choices": [
-      {
-          "index": 0,
-          "message": {
-              "role": "assistant",
-              "reasoning_content": null,
-              "content": "Sure! Ray Serve is a library built on top of Ray that makes it easy to deploy machine learning models as a service across a cluster. Here are the steps to serve an LLM (Language Model) using Ray Serve:\n\n### Step 1: Install Required Libraries\n\nFirst, ensure that you have the necessary libraries installed. You can install Ray and Ray Serve using pip.\n\n```bash\npip install ray[serve]\n```\n\n### Step 2: Define the Model Endpoint\n\nCreate a Python file that defines the model endpoint. This file will include the function that Ray Serve will use to handle predictions.\n\n#### Example: `llm_model.py`\n\n```python\nimport json\nimport os\nimport io\nimport torch\nfrom transformers import AutoModelForCausalLM, AutoTokenizer\n\n# Load the model and tokenizer\nMODEL_NAME = \"your-model-name\"  # Replace with your model name\ntokenizer = AutoTokenizer.from_pretrained(MODEL_NAME)\nmodel = AutoModelForCausalLM.from_pretrained(MODEL_NAME)\n\ndef predict(request: str) -> str:\n    inputs = tokenizer(request, return_tensors=\"pt\")\n    outputs = model.generate(**inputs, max_length=50)\n    return tokenizer.decode(outputs[0], skip_special_tokens=True)\n```\n\n### Step 3: Create a Ray Serve Application\n\nCreate a Python file that uses the Ray Serve library to set up the application.\n\n#### Example: `ray_serve_app.py`\n\n```python\nimport ray\nfrom ray import serve\n\n# Initialize Ray if it's not running already\nray.init Ray Serve using the imported functions\nserve.init()\n\n# Define the model endpoint using the predict function\n@serve.deployment(route_prefix=\"/llm/predict\")\n@serve.deploy\nclass LLMModel:\n    async def __call__(self, request: str) -> str:\n        input_str = request.path_params[\"request\"]\n        return predict(input_str)\n\n# Deploy the model endpoint\nllm_model = LLMModel.deploy()\n```\n\n### Step 4: Start the Ray Cluster\n\nStart a Ray cluster if you're not using a local cluster. You can do this by running:\n\n```bash\nray start --head --ray-init-address=\"<your-ray-address>\" --block\n```\n\nFor local development, you can also start a local Ray cluster using:\n\n```bash\nray start -- num-cpus=4 --num-gpus=1\n```\n\n### Step 5: Run the Ray Serve Application\n\nRun your Ray Serve application to start the server.\n\n```bash\npython ray_serve_app.py\n```\n\n### Step 6: Send Predictions to the LLM\n\nNow you can send requests to the LLM endpoint. For example, you can use `httpx` or any other HTTP client to send requests.\n\n#### Example: Sending a Request\n\n```python\nimport httpx\n\nasync def send_request():\n    async with httpx.AsyncClient() as client:\n        response = await client.post(\"http://127.0.0.1:8000/llm/predict\", json={\"request\": \"Hello, how are you?\"})\n        print(response.json())\n\nimport asyncio\nasyncio.run(send_request())\n```\n\nThis will print the response from the LLM.\n\n### Summary\n\n1. **Install Required Libraries** - Install Ray and Ray Serve.\n2. **Define the Model Endpoint** - Write the function that acts as the endpoint.\n3. **Create a Ray Serve Application** - Define the deployment and set up the endpoint.\n4. **Start the Ray Cluster** - Start the Ray cluster.\n5. **Run the Ray Serve Application** - Run the script to deploy the model.\n6. **Send Predictions** - Send requests to the deployed endpoint.\n\nThat's it! You now have a Ray Serve deployment that can serve predictions from your LLM.",
-              "tool_calls": []
-          },
-          "logprobs": null,
-          "finish_reason": "stop",
-          "stop_reason": null
-      }
-  ],
-  "usage": {
-      "prompt_tokens": 30,
-      "total_tokens": 818,
-      "completion_tokens": 788,
-      "prompt_tokens_details": null
-  },
-  "prompt_logprobs": null
-}
-```
 
 ## Step 6: View the Ray Dashboard
 
