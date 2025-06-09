@@ -14,48 +14,49 @@
 
 #pragma once
 
-#include <atomic>
 #include <memory>
 #include <string>
-#include <utility>
 #include <vector>
 
 #include "absl/synchronization/mutex.h"
 #include "ray/common/ray_config.h"
+#include "ray/rpc/client_call.h"
 #include "ray/rpc/grpc_client.h"
 
 namespace ray::rpc {
 
-// A util class is a wrapper class which manages a number of grpcs stubs, with each grpc
-// stub has its own grpc connection (owns TCP connection underlying). Meanwhile, it
-// provides a centralized place to configure grpc channel arguments for advanced usage.
-//
-// grpc stubs are turned in a round-robin style to prevent overload one TCP connection.
-//
-// The number of connections and grpc clients cannot be resized after initialization.
-template <typename T>
-class GrpcStubManager {
+// Managers multiple gRPC clients. It's reponsible for initializing
+// gRPC clients with arguments, distributing requests between clients,
+// and destroying the clients.
+class GrpcClientManager {
  public:
-  GrpcStubManager(const std::string &address,
-                  int port,
-                  ClientCallManager &client_call_manager) {
+  GrpcClientManager() = default;
+  GrpcClientManager(const GrpcClientManager &) = delete;
+  GrpcClientManager &operator=(const GrpcClientManager &) = delete;
+  GrpcClientManager(GrpcClientManager &&) = delete;
+  GrpcClientManager &operator=(GrpcClientManager &&) = delete;
+
+  virtual ~GrpcClientManager() = default;
+  virtual GrpcClient<ServiceType> *GetGrpcClient() = 0;
+};
+
+template <class ServiceType>
+class GrpcClientManagerImpl final : public GrpcClientManager<ServiceType> {
+ public:
+  GrpcClientManagerImpl(const std::string &address,
+                        int port,
+                        ClientCallManager &client_call_manager) {
     const int conn_num = ::RayConfig::instance().object_manager_client_connection_num();
     grpc_clients_.reserve(conn_num);
     for (int idx = 0; idx < conn_num; ++idx) {
       grpc_clients_.emplace_back(
-          std::make_unique<GrpcClient<T>>(address, port, client_call_manager));
+          std::make_unique<GrpcClient<ServiceType>>(address, port, client_call_manager));
     }
   }
 
-  GrpcStubManager(const GrpcStubManager &) = delete;
-  GrpcStubManager &operator=(const GrpcStubManager &) = delete;
-  GrpcStubManager(GrpcStubManager &&) = default;
-  GrpcStubManager &operator=(GrpcStubManager &&) = default;
-
-  ~GrpcStubManager() = default;
-
-  // Get a grpc client in round-robin style.
-  GrpcClient<T> *GetGrpcClient() {
+  // Keeps track of gRPC clients and returns the next client
+  // based on round-robin.
+  GrpcClient<ServiceType> *GetGrpcClient() override {
     absl::MutexLock lock(&client_index_mutex_);
     client_index_ = (client_index_ + 1) % grpc_clients_.size();
     return grpc_clients_[client_index_].get();
@@ -64,7 +65,7 @@ class GrpcStubManager {
  private:
   absl::Mutex client_index_mutex_;
   size_t client_index_ ABSL_GUARDED_BY(client_index_mutex_) = 0;
-  std::vector<std::unique_ptr<GrpcClient<T>>> grpc_clients_;
+  std::vector<std::unique_ptr<GrpcClient<ServiceType>>> grpc_clients_;
 };
 
 }  // namespace ray::rpc
