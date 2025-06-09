@@ -3,6 +3,7 @@ import numpy as np
 import time
 import json
 import os
+from collections import defaultdict
 
 from tabulate import tabulate
 
@@ -170,12 +171,10 @@ class BenchmarkActor:
             except ray.exceptions.GetTimeoutError:
                 # TODO(irabbani): I can make this more accurate by checking which objects have been fetched successfully.
                 # It might make a noticeable difference for large object sizes and batch sizes with small benchmark durations.
-                print(f"HELLO: {type(num_transferred)}")
                 return num_transferred
             curr_index = (curr_index + batch_size) % total_objs
             num_transferred += batch_size
             curr_ns = time.monotonic_ns()
-        print(f"HELLO: {type(num_transferred)}")
         return num_transferred
 
     def delete_remote_object_refs(self):
@@ -248,29 +247,21 @@ def run_benchmark(node_id_to_actor_refs, duration_ms, batch_size):
                     actor.transfer_objects_benchmark.remote(duration_ms, batch_size),
                 )
             )
-    node_id_to_total_objects_transferred = {}
+    node_id_to_total_objects_transferred = defaultdict(int)
     # TODO(irabbani): this could be faster with ray.wait + ray.get or by returning the node_id from the remote call.
     for node_id, future in benchmark_futures_and_node_ids:
-        node_id_to_total_objects_transferred[node_id] = ray.get(future)
+        node_id_to_total_objects_transferred[node_id] += ray.get(future)
     return node_id_to_total_objects_transferred
 
 
 class TestResult:
     def __init__(
         self,
-        num_connections: int,
-        node_num_cpus: int,
-        node_memory_bytes: int,
-        node_network_bytes: int,
         num_actors: int,
         object_size: int,
         batch_size: int,
-        throughput_bytes_s: int,
+        throughput_bytes_s: float,
     ):
-        self.num_connections = num_connections
-        self.node_num_cpus = node_num_cpus
-        self.node_memory_bytes = node_memory_bytes
-        self.node_network_bytes = node_network_bytes
         self.num_actors = num_actors
         self.object_size = object_size
         self.batch_size = batch_size
@@ -279,12 +270,8 @@ class TestResult:
     def get_canonical_tuple(self):
         """Returns the values in canonical order to print as a table."""
         return (
-            self.num_connections,
-            self.node_num_cpus,
-            self.node_memory_bytes,
-            self.node_network_bytes,
-            self.num_actors,
             self.object_size,
+            self.num_actors,
             self.batch_size,
             self.throughput_bytes_s,
         )
@@ -292,10 +279,6 @@ class TestResult:
     @staticmethod
     def get_canonical_headers():
         return [
-            "num_connections",
-            "node_num_cpus",
-            "node_memory_bytes",
-            "node_network_bandwidth_bytes_s",
             "object_size",
             "num_actors",
             "batch_size",
@@ -381,7 +364,6 @@ def main():
                 throughput_bytes_s = (
                     (total_objects_transferred / num_nodes) * object_size
                 ) / (TEST_DURATION_MS / 1000)
-                # throughput_gigabytes_s = throughput_bytes_s / (1024**3)
                 results.append(
                     TestResult(
                         object_size=object_size,
