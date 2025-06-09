@@ -98,3 +98,17 @@ class BazelFile:
             "file_name": self.file_name,
             "file_refs": self.file_refs
         }
+
+class CodeSnippet:
+    def __init__(self, file_path: str, file_type: str, ref_to_file: str, snippet =None):
+        self.file_path = file_path
+        self.file_type = file_type
+        self.ref_to_file = ref_to_file
+        self.snippet = snippet if snippet else ""
+
+    def to_dict(self) -> Dict:
+        return {
+            "file_path": self.file_path,
+            "file_type": self.file_type,
+            "ref_to_file": self.ref_to_file,
+        }
