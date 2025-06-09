@@ -469,7 +469,7 @@ class ApplicationState:
         Raises: RayServeException if there is more than one route prefix
             or docs path.
         """
-
+        self._check_ingress_deployments(deployment_infos)
         # Check routes are unique in deployment infos
         self._route_prefix, self._docs_path = self._check_routes(deployment_infos)
 
@@ -509,6 +509,7 @@ class ApplicationState:
                     self._target_state.deployment_infos,
                     config,
                 )
+                self._check_ingress_deployments(overrided_infos)
                 self._check_routes(overrided_infos)
                 self._set_target_state(
                     # Code version doesn't change.
@@ -693,6 +694,7 @@ class ApplicationState:
             overrided_infos = override_deployment_info(
                 deployment_infos, self._build_app_task_info.config
             )
+            self._check_ingress_deployments(overrided_infos)
             self._route_prefix, self._docs_path = self._check_routes(overrided_infos)
             return overrided_infos, BuildAppStatus.SUCCEEDED, ""
         except (TypeError, ValueError, RayServeException):
@@ -704,10 +706,32 @@ class ApplicationState:
             )
             return None, BuildAppStatus.FAILED, error_msg
 
+    def _check_ingress_deployments(
+        self, deployment_infos: Dict[str, DeploymentInfo]
+    ) -> None:
+        """Check @serve.ingress of deployments in app.
+
+        Raises: RayServeException if more than one @serve.ingress
+            is found among deployments.
+        """
+        num_ingress_deployments = 0
+        for info in deployment_infos.values():
+            if inspect.isclass(info.replica_config.deployment_def) and issubclass(
+                info.replica_config.deployment_def, ASGIAppReplicaWrapper
+            ):
+                num_ingress_deployments += 1
+
+        if num_ingress_deployments > 1:
+            raise RayServeException(
+                f'Found multiple FastAPI deployments in application "{self._name}".'
+                "Please only include one deployment with @serve.ingress"
+                "in your application to avoid this issue."
+            )
+
     def _check_routes(
         self, deployment_infos: Dict[str, DeploymentInfo]
     ) -> Tuple[str, str]:
-        """Check route prefixes and @serve.ingress of deployments in app.
+        """Check route prefixes and docs paths of deployments in app.
 
         There should only be one non-null route prefix. If there is one,
         set it as the application route prefix. This function must be
@@ -715,11 +739,11 @@ class ApplicationState:
         be updated without kicking off a new task.
 
         Returns: tuple of route prefix, docs path.
-        Raises: RayServeException if more than one route prefix or
-            @serve.ingress is found among deployments.
+        Raises: RayServeException if more than one route prefix or docs
+            path is found among deployments.
         """
         num_route_prefixes = 0
-        num_ingress_deployments = 0
+        num_docs_paths = 0
         route_prefix = None
         # TODO(Ziy1-Tan): `docs_path` will be removed when
         # https://github.com/ray-project/ray/issues/53023 is resolved.
@@ -733,11 +757,7 @@ class ApplicationState:
                 num_route_prefixes += 1
             if info.docs_path is not None:
                 docs_path = info.docs_path
-
-            if inspect.isclass(info.replica_config.deployment_def) and issubclass(
-                info.replica_config.deployment_def, ASGIAppReplicaWrapper
-            ):
-                num_ingress_deployments += 1
+                num_docs_paths += 1
 
         if num_route_prefixes > 1:
             raise RayServeException(
@@ -745,11 +765,14 @@ class ApplicationState:
                 " Please specify only one route prefix for the application "
                 "to avoid this issue."
             )
-        if num_ingress_deployments > 1:
+        # NOTE(zcin) This will not catch multiple FastAPI deployments in the application
+        # if user sets the docs path to None in their FastAPI app.
+        if num_docs_paths > 1:
             raise RayServeException(
-                f'Found multiple FastAPI deployments in application "{self._name}".'
-                "Please only include one deployment with @serve.ingress in your "
-                "application to avoid this issue."
+                f'Found multiple deployments in application "{self._name}" that have '
+                "a docs path. This may be due to using multiple FastAPI deployments "
+                "in your application. Please only include one deployment with a docs "
+                "path in your application to avoid this issue."
             )
 
         return route_prefix, docs_path
