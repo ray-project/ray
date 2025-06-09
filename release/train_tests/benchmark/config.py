@@ -12,7 +12,10 @@ class DataloaderType(enum.Enum):
 
 class DataLoaderConfig(BaseModel):
     train_batch_size: int = 32
+    limit_training_rows: int = 1000000
+
     validation_batch_size: int = 256
+    limit_validation_rows: int = 50000
 
 
 class RayDataConfig(DataLoaderConfig):
@@ -37,7 +40,6 @@ class TorchConfig(DataLoaderConfig):
 class BenchmarkConfig(BaseModel):
     # ScalingConfig
     num_workers: int = 1
-
     # Run CPU training where train workers request a `MOCK_GPU` resource instead.
     mock_gpu: bool = False
 
@@ -55,13 +57,11 @@ class BenchmarkConfig(BaseModel):
     # Training
     num_epochs: int = 1
     skip_train_step: bool = False
-    limit_training_rows: int = 1000000
 
     # Validation
     validate_every_n_steps: int = -1
     skip_validation_step: bool = False
     skip_validation_at_epoch_end: bool = False
-    limit_validation_rows: int = 50000
 
     # Logging
     log_metrics_every_n_steps: int = 512

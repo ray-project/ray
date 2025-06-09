@@ -99,7 +99,7 @@ class ImageClassificationJpegRayDataLoaderFactory(
                 partitioning=train_partitioning,
                 filesystem=s3fs,
             )
-            .limit(self.benchmark_config.limit_training_rows)
+            .limit(self.get_dataloader_config().limit_training_rows)
             .map(get_preprocess_map_fn(random_transforms=True))
         )
 
@@ -116,7 +116,7 @@ class ImageClassificationJpegRayDataLoaderFactory(
                 partitioning=val_partitioning,
                 filesystem=s3fs,
             )
-            .limit(self.benchmark_config.limit_validation_rows)
+            .limit(self.get_dataloader_config().limit_validation_rows)
             .map(get_preprocess_map_fn(random_transforms=False))
         )
 
@@ -160,7 +160,6 @@ class ImageClassificationJpegTorchDataLoaderFactory(
             limit_training_rows_per_worker,
             limit_validation_rows_per_worker,
         ) = self._get_worker_row_limits()
-        total_training_rows, total_validation_rows = self._get_total_row_limits()
 
         # Get file URLs for training and validation
         train_file_urls = val_file_urls = self._get_file_urls(self.train_url)

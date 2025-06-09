@@ -53,7 +53,7 @@ class ImageClassificationParquetRayDataLoaderFactory(
                 IMAGENET_PARQUET_SPLIT_S3_DIRS[DatasetKey.TRAIN],
                 columns=["image", "label"],
             )
-            .limit(self.benchmark_config.limit_training_rows)
+            .limit(self.get_dataloader_config().limit_training_rows)
             .map(get_preprocess_map_fn(decode_image=True, random_transforms=True))
         )
 
@@ -63,7 +63,7 @@ class ImageClassificationParquetRayDataLoaderFactory(
                 IMAGENET_PARQUET_SPLIT_S3_DIRS[DatasetKey.TRAIN],
                 columns=["image", "label"],
             )
-            .limit(self.benchmark_config.limit_validation_rows)
+            .limit(self.get_dataloader_config().limit_validation_rows)
             .map(get_preprocess_map_fn(decode_image=True, random_transforms=False))
         )
 
@@ -114,7 +114,6 @@ class ImageClassificationParquetTorchDataLoaderFactory(
             limit_training_rows_per_worker,
             limit_validation_rows_per_worker,
         ) = self._get_worker_row_limits()
-        total_training_rows, total_validation_rows = self._get_total_row_limits()
 
         # Create training dataset
         train_file_urls = self._get_file_urls(self.train_url)

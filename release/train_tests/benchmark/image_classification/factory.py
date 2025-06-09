@@ -86,33 +86,14 @@ class ImageClassificationTorchDataLoaderFactory(TorchDataLoaderFactory):
         total_workers = self.benchmark_config.num_workers * num_workers
 
         limit_training_rows_per_worker = self._calculate_rows_per_worker(
-            self.benchmark_config.limit_training_rows, total_workers
+            self.get_dataloader_config().limit_training_rows, total_workers
         )
 
         limit_validation_rows_per_worker = self._calculate_rows_per_worker(
-            self.benchmark_config.limit_validation_rows, total_workers
+            self.get_dataloader_config().limit_validation_rows, total_workers
         )
 
         return limit_training_rows_per_worker, limit_validation_rows_per_worker
-
-    def _get_total_row_limits(self) -> Tuple[Optional[int], Optional[int]]:
-        """Get total row limits for training and validation.
-
-        Returns:
-            Tuple of (total_training_rows, total_validation_rows)
-        """
-        total_training_rows = (
-            self.benchmark_config.limit_training_rows
-            if self.benchmark_config.limit_training_rows is not None
-            else None
-        )
-        total_validation_rows = (
-            self.benchmark_config.limit_validation_rows
-            if self.benchmark_config.limit_validation_rows is not None
-            else None
-        )
-
-        return total_training_rows, total_validation_rows
 
     def create_batch_iterator(
         self, dataloader: torch.utils.data.DataLoader, device: torch.device
