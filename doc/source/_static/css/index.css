@@ -290,3 +290,8 @@ h4 {
   font-size: 18px;
   font-weight: 600;
 }
+
+/* Restore Bootstrap alert text color inheritance that is overridden by the PyData Sphinx theme */
+.alert p {
+  color: inherit;
+}
