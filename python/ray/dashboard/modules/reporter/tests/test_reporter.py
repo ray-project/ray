@@ -119,6 +119,7 @@ STATS_TEMPLATE = {
         ),
     },
     "gpus": [],
+    "tpus": [],
     "network": (13621160960, 11914936320),
     "network_speed": (8.435062128545095, 7.378462703142336),
 }
@@ -340,6 +341,17 @@ def test_report_stats():
     # Test stats with gpus
     STATS_TEMPLATE["gpus"] = [
         {"utilization_gpu": 1, "memory_used": 100, "memory_total": 1000, "index": 0}
+    ]
+    # Test stats with tpus
+    STATS_TEMPLATE["tpus"] = [
+        {
+            "index": 0,
+            "name": "foo",
+            "tpu_type": "v6e",
+            "tpu_topology": "2x2",
+            "tensorcore_utilization": 0.25,
+            "hbm_utilization": 0.50,
+        }
     ]
     records = agent._to_records(STATS_TEMPLATE, cluster_stats)
     assert len(records) == 41
