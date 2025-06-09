@@ -264,7 +264,7 @@ def test_ray_stack(ray_start_2_cpus):
     start_time = time.time()
     while time.time() - start_time < 30:
         # Attempt to parse the "ray stack" call.
-        output = ray._private.utils.decode(
+        output = ray._common.utils.decode(
             check_call_ray(["stack"], capture_stdout=True)
         )
         if (

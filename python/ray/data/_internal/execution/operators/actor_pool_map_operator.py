@@ -188,7 +188,7 @@ class ActorPoolMapOperator(MapOperator):
                 )
 
     def should_add_input(self) -> bool:
-        return self._actor_pool.num_free_slots() > 0
+        return self._actor_pool.num_free_task_slots() > 0
 
     def _start_actor(self, labels: Dict[str, str]) -> Tuple[ActorHandle, ObjectRef]:
         """Start a new actor and add it to the actor pool as a pending actor.
@@ -839,15 +839,6 @@ class _ActorPool(AutoscalingActorPool):
         """Return the number of idle actors in the pool."""
         return sum(
             1 if running_actor.num_tasks_in_flight == 0 else 0
-            for running_actor in self._running_actors.values()
-        )
-
-    def num_free_slots(self) -> int:
-        """Return the number of free slots for task execution."""
-        if not self._running_actors:
-            return 0
-        return sum(
-            max(0, self._max_tasks_in_flight - running_actor.num_tasks_in_flight)
             for running_actor in self._running_actors.values()
         )
 

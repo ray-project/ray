@@ -55,6 +55,7 @@ import ray.cloudpickle as pickle  # noqa
 import ray.job_config
 import ray.remote_function
 from ray import ActorID, JobID, Language, ObjectRef
+from ray._common.utils import load_class
 from ray._private import ray_option_utils
 from ray._private.client_mode_hook import client_mode_hook
 from ray._private.function_manager import FunctionActorManager
@@ -74,7 +75,7 @@ from ray._private.runtime_env.setup_hook import (
     upload_worker_process_setup_hook_if_needed,
 )
 from ray._private.runtime_env.working_dir import upload_working_dir_if_needed
-from ray._private.utils import get_ray_doc_version, load_class
+from ray._private.utils import get_ray_doc_version
 from ray._raylet import (
     ObjectRefGenerator,
     TaskID,

@@ -17,6 +17,7 @@ from ray.serve._private.replica_result import ActorReplicaResult, ReplicaResult
 from ray.serve._private.request_router.common import PendingRequest
 from ray.serve._private.utils import JavaActorHandleProxy
 from ray.serve.generated.serve_pb2 import RequestMetadata as RequestMetadataProto
+from ray.util.annotations import PublicAPI
 
 logger = logging.getLogger(SERVE_LOGGER_NAME)
 
@@ -116,6 +117,7 @@ class ActorReplicaWrapper(ReplicaWrapper):
             raise e from None
 
 
+@PublicAPI(stability="alpha")
 class RunningReplica:
     """Contains info on a running replica.
     Also defines the interface for a request router to talk to a replica.
@@ -142,10 +144,12 @@ class RunningReplica:
 
     @property
     def node_id(self) -> str:
+        """Node ID of the node this replica is running on."""
         return self._replica_info.node_id
 
     @property
     def availability_zone(self) -> Optional[str]:
+        """Availability zone of the node this replica is running on."""
         return self._replica_info.availability_zone
 
     @property
@@ -165,6 +169,7 @@ class RunningReplica:
 
     @property
     def is_cross_language(self) -> bool:
+        """Whether this replica is cross-language (Java)."""
         return self._replica_info.is_cross_language
 
     def _get_replica_wrapper(self, pr: PendingRequest) -> ReplicaWrapper:
