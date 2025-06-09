@@ -14,9 +14,9 @@ _current_proctitle_lock = threading.Lock()
 
 def setproctitle(title: str):
     global _current_proctitle
+    cdef c_string c_title = title.encode("utf-8")
 
     with _current_proctitle_lock:
-        cdef c_string c_title = title.encode("utf-8")
         spt_setup()
         set_ps_display(c_title.c_str(), True)
 
