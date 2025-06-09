@@ -113,6 +113,23 @@ void Metric::Record(double value, TagsType tags) {
     return;
   }
 
+  if (::RayConfig::instance().experimental_enable_open_telemetry_on_core()) {
+    RegisterView();
+    absl::flat_hash_map<std::string, std::string> open_telemetry_tags;
+    // Collect tags from both the metric-specific tags and the global tags.
+    std::vector<const TagsType *> tag_sources = {
+        &tags, &StatsConfig::instance().GetGlobalTags()};
+    for (const auto *tags_source : tag_sources) {
+      for (const auto &[tag_key, tag_val] : *tags_source) {
+        open_telemetry_tags[tag_key.name()] = tag_val;
+      }
+    }
+
+    OpenTelemetryMetricRecorder::GetInstance().SetMetricValue(
+        name_, std::move(open_telemetry_tags), value);
+    return;
+  }
+
   absl::MutexLock lock(&registration_mutex_);
   if (measure_ == nullptr) {
     // Measure could be registered before, so we try to get it first.
@@ -160,47 +177,64 @@ void Metric::Record(double value, std::unordered_map<std::string, std::string> t
 Metric::~Metric() { opencensus::stats::StatsExporter::RemoveView(name_); }
 
 void Gauge::RegisterView() {
-  opencensus::stats::ViewDescriptor view_descriptor =
-      opencensus::stats::ViewDescriptor()
-          .set_name(name_)
-          .set_description(description_)
-          .set_measure(name_)
-          .set_aggregation(opencensus::stats::Aggregation::LastValue());
-  internal::RegisterAsView(view_descriptor, tag_keys_);
+  if (::RayConfig::instance().experimental_enable_open_telemetry_on_core()) {
+    OpenTelemetryMetricRecorder::GetInstance().RegisterGaugeMetric(name_, description_);
+  } else {
+    opencensus::stats::ViewDescriptor view_descriptor =
+        opencensus::stats::ViewDescriptor()
+            .set_name(name_)
+            .set_description(description_)
+            .set_measure(name_)
+            .set_aggregation(opencensus::stats::Aggregation::LastValue());
+    internal::RegisterAsView(view_descriptor, tag_keys_);
+  }
 }
 
 void Histogram::RegisterView() {
-  opencensus::stats::ViewDescriptor view_descriptor =
-      opencensus::stats::ViewDescriptor()
-          .set_name(name_)
-          .set_description(description_)
-          .set_measure(name_)
-          .set_aggregation(opencensus::stats::Aggregation::Distribution(
-              opencensus::stats::BucketBoundaries::Explicit(boundaries_)));
+  if (::RayConfig::instance().experimental_enable_open_telemetry_on_core()) {
+    OpenTelemetryMetricRecorder::GetInstance().RegisterHistogramMetric(
+        name_, description_, boundaries_);
+  } else {
+    opencensus::stats::ViewDescriptor view_descriptor =
+        opencensus::stats::ViewDescriptor()
+            .set_name(name_)
+            .set_description(description_)
+            .set_measure(name_)
+            .set_aggregation(opencensus::stats::Aggregation::Distribution(
+                opencensus::stats::BucketBoundaries::Explicit(boundaries_)));
 
-  internal::RegisterAsView(view_descriptor, tag_keys_);
+    internal::RegisterAsView(view_descriptor, tag_keys_);
+  }
 }
 
 void Count::RegisterView() {
-  opencensus::stats::ViewDescriptor view_descriptor =
-      opencensus::stats::ViewDescriptor()
-          .set_name(name_)
-          .set_description(description_)
-          .set_measure(name_)
-          .set_aggregation(opencensus::stats::Aggregation::Count());
+  if (::RayConfig::instance().experimental_enable_open_telemetry_on_core()) {
+    OpenTelemetryMetricRecorder::GetInstance().RegisterCounterMetric(name_, description_);
+  } else {
+    opencensus::stats::ViewDescriptor view_descriptor =
+        opencensus::stats::ViewDescriptor()
+            .set_name(name_)
+            .set_description(description_)
+            .set_measure(name_)
+            .set_aggregation(opencensus::stats::Aggregation::Count());
 
-  internal::RegisterAsView(view_descriptor, tag_keys_);
+    internal::RegisterAsView(view_descriptor, tag_keys_);
+  }
 }
 
 void Sum::RegisterView() {
-  opencensus::stats::ViewDescriptor view_descriptor =
-      opencensus::stats::ViewDescriptor()
-          .set_name(name_)
-          .set_description(description_)
-          .set_measure(name_)
-          .set_aggregation(opencensus::stats::Aggregation::Sum());
+  if (::RayConfig::instance().experimental_enable_open_telemetry_on_core()) {
+    OpenTelemetryMetricRecorder::GetInstance().RegisterSumMetric(name_, description_);
+  } else {
+    opencensus::stats::ViewDescriptor view_descriptor =
+        opencensus::stats::ViewDescriptor()
+            .set_name(name_)
+            .set_description(description_)
+            .set_measure(name_)
+            .set_aggregation(opencensus::stats::Aggregation::Sum());
 
-  internal::RegisterAsView(view_descriptor, tag_keys_);
+    internal::RegisterAsView(view_descriptor, tag_keys_);
+  }
 }
 
 }  // namespace stats

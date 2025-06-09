@@ -1079,4 +1079,4 @@ def test_invalid_system_metric_names(caplog):
 
 
 if __name__ == "__main__":
-    sys.exit(pytest.main(["-sv", __file__]))
+    sys.exit(pytest.main(["-svv", __file__]))
