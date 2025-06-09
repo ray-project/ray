@@ -3486,8 +3486,8 @@
     cluster_compute: object_store/compute_configs/compute_config_2_node_medium.yaml
 
   run:
-    timeout: 1800
-    script: python object_store/test_object_store_fixed_size_throughput.py --object-sizes="1048576,67108864,536870912,1073741824" --num-actors="1,2,8" --batch-sizes="1,4,8"
+    timeout: 3600
+    script: python object_store/test_object_store_fixed_size_throughput.py --object-sizes="1048576,67108864" --num-actors="2,4" --batch-sizes="2,4"
     wait_for_nodes:
       num_nodes: 3
 

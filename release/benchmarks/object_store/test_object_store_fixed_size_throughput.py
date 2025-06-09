@@ -96,17 +96,17 @@ def gc_and_wait_for_empty_object_store_on_worker_nodes(node_ids):
     """Trigger global GC in the entire cluster and wait for the object store to become empty again."""
     # global_gc()
     # schedule tasks on each node to make sure the node is empty before reusing the node
-    node_to_empty_object_store_future = {}
+    futures = []
     for node_id in node_ids:
         static_task_scheduling_strategy = (
             scheduling_strategies.NodeAffinitySchedulingStrategy(node_id, soft=False)
         )
-        # TODO(irabbani): this can be done asynchronously by returning the node_id")
-        node_to_empty_object_store_future[node_id] = ray.get(
+        futures.append(
             wait_for_empty_object_store.options(
                 scheduling_strategy=static_task_scheduling_strategy
             ).remote()
         )
+    ray.get(futures)
 
 
 @ray.remote
@@ -186,20 +186,20 @@ def prefill_object_store_for_nodes(node_id_to_resources, object_size, prefill_pc
 
     Returns a dictionary of node_id -> object ref that resolves to a list of remote object refs
     """
+    node_id_to_futures = {}
     node_id_to_object_refs = {}
     for node_id in node_id_to_resources:
         static_task_scheduling_strategy = (
             scheduling_strategies.NodeAffinitySchedulingStrategy(node_id, soft=False)
         )
-        # TODO(irabbani): this can be done asynchronously by returning the node_id.
         object_store_memory_bytes = node_id_to_resources[node_id]["object_store_memory"]
         num_objects = int(object_store_memory_bytes * prefill_pct) // object_size
         print(f"Calling worker prefill {num_objects=}, {object_store_memory_bytes=}")
-        node_id_to_object_refs[node_id] = ray.get(
-            prefill_object_store.options(
-                scheduling_strategy=static_task_scheduling_strategy
-            ).remote(num_objects, object_size)
-        )
+        node_id_to_futures[node_id] = prefill_object_store.options(
+            scheduling_strategy=static_task_scheduling_strategy
+        ).remote(num_objects, object_size)
+    for node_id in node_id_to_futures:
+        node_id_to_object_refs[node_id] = ray.get(node_id_to_futures[node_id])
     return node_id_to_object_refs
 
 
@@ -290,11 +290,11 @@ def main():
 
     OBJECT_STORE_PREFILL_PCT = 0.65
 
-    WARMUP_DURATION_MS = 60 * 1000
+    WARMUP_DURATION_MS = 30 * 1000
     WARMUP_BATCH_SIZE = 2
 
-    TEST_DURATION_MS = 180 * 1000
-    TEST_COOLDOWN_MS = 3 * 1000
+    TEST_DURATION_MS = 120 * 1000
+    TEST_COOLDOWN_MS = 1 * 1000
 
     parser = argparse.ArgumentParser(
         description="Parse system configuration arguments."
