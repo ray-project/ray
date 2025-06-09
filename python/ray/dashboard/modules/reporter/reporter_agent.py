@@ -653,35 +653,39 @@ class ReporterAgent(
             enable_tpu_usage_check = False
             return []
 
-        for family in text_string_to_metric_families(metrics):
-            for sample in family.samples:
-                if sample.name == "memory_bandwidth_utilization":
-                    labels = sample.labels
-                    accelerator_id = labels["accelerator_id"]
-                    index = accelerator_id.split("-")[1]
-                    info = TpuUtilizationInfo(
-                        index=index,
-                        name=accelerator_id,
-                        tpu_type=labels["model"],
-                        tpu_topology=labels["tpu_topology"],
-                        tensorcore_utilization=0.0,
-                        hbm_utilization=sample.value,
-                    )
-                    tpu_utilizations.append(info)
+        try:
+            for family in text_string_to_metric_families(metrics):
+                for sample in family.samples:
+                    if sample.name == "memory_bandwidth_utilization":
+                        labels = sample.labels
+                        accelerator_id = labels["accelerator_id"]
+                        index = accelerator_id.split("-")[1]
+                        info = TpuUtilizationInfo(
+                            index=index,
+                            name=accelerator_id,
+                            tpu_type=labels["model"],
+                            tpu_topology=labels["tpu_topology"],
+                            tensorcore_utilization=0.0,
+                            hbm_utilization=sample.value,
+                        )
+                        tpu_utilizations.append(info)
 
-                if sample.name == "tensorcore_utilization":
-                    labels = sample.labels
-                    accelerator_id = labels["accelerator_id"]
-                    index = accelerator_id.split("-")[1]
-                    info = TpuUtilizationInfo(
-                        index=index,
-                        name=accelerator_id,
-                        tpu_type=labels["model"],
-                        tpu_topology=labels["tpu_topology"],
-                        tensorcore_utilization=sample.value,
-                        hbm_utilization=0.0,
-                    )
-                    tpu_utilizations.append(info)
+                    if sample.name == "tensorcore_utilization":
+                        labels = sample.labels
+                        accelerator_id = labels["accelerator_id"]
+                        index = accelerator_id.split("-")[1]
+                        info = TpuUtilizationInfo(
+                            index=index,
+                            name=accelerator_id,
+                            tpu_type=labels["model"],
+                            tpu_topology=labels["tpu_topology"],
+                            tensorcore_utilization=sample.value,
+                            hbm_utilization=0.0,
+                        )
+                        tpu_utilizations.append(info)
+        except Exception as e:
+            logger.debug(f"Failed to parse metrics from device plugin: {metric} {e}")
+            return []
 
         # Merge metrics
         merged_tpu_utilizations = []
