@@ -61,9 +61,12 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument(
         "--back-to-back",
-        type=bool,
-        default=False,
-        help="Whether to run the benchmark in back-to-back mode.",
+        choices=["once", "repeat"],
+        default="once",
+        help="Whether to run the benchmark in back-to-back mode. If 'once', the "
+        "benchmark will run once. If 'repeat', the benchmark will run twice, with the "
+        "second run using the output of the first run as input. This argument is "
+        "ignored for 'map' and 'flat_map'.",
     )
     return parser.parse_args()
 
@@ -109,7 +112,7 @@ def main(args: argparse.Namespace) -> None:
         elif args.api == "map_batches":
             use_actors = args.compute == "actors"
             ds = apply_map_batches(ds, use_actors)
-            if args.back_to_back:
+            if args.back_to_back == "repeat":
                 ds = apply_map_batches(ds, use_actors)
         elif args.api == "flat_map":
             ds = ds.flat_map(flat_increment_row)

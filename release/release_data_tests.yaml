@@ -290,26 +290,26 @@
       format: [numpy, pandas, pyarrow]
       compute: [tasks]
       scaling: [fixed_size]
-      back_to_back: [True, False]
+      back_to_back: [once, repeat]
     adjustments:
       # Fixed-size actor test.
       - with:
           format: numpy
           compute: actors
           scaling: fixed_size
-          back_to_back: False
+          back_to_back: once
       # Autoscaling task test
       - with:
           format: numpy
           compute: tasks
           scaling: autoscaling
-          back_to_back: False
+          back_to_back: once
       # Autoscaling actor test
       - with:
           format: numpy
           compute: actors
           scaling: autoscaling
-          back_to_back: False
+          back_to_back: once
 
   cluster:
     cluster_compute: "{{scaling}}_cpu_compute.yaml"
