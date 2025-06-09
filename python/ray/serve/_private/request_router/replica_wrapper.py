@@ -7,6 +7,7 @@ from typing import Any, Dict, Optional, Set, Tuple, Union
 import ray
 from ray import ObjectRef, ObjectRefGenerator
 from ray.actor import ActorHandle
+from ray.exceptions import TaskCancelledError
 from ray.serve._private.common import (
     ReplicaID,
     ReplicaQueueLengthInfo,
@@ -115,6 +116,9 @@ class ActorReplicaWrapper(ReplicaWrapper):
             )
             ray.cancel(obj_ref_gen)
             raise e from None
+        except TaskCancelledError:
+            logger.info("Request already cancelled.")
+            raise asyncio.CancelledError()
 
 
 @PublicAPI(stability="alpha")
