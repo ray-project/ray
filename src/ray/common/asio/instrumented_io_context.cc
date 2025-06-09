@@ -75,9 +75,8 @@ void ScheduleLagProbe(instrumented_io_context &io_context) {
 
 instrumented_io_context::instrumented_io_context(bool enable_lag_probe,
                                                  bool running_on_single_thread)
-    : boost::asio::io_context(running_on_single_thread
-                                  ? BOOST_ASIO_CONCURRENCY_HINT_SAFE
-                                  : BOOST_ASIO_CONCURRENCY_HINT_DEFAULT),
+    : boost::asio::io_context(
+          running_on_single_thread ? 1 : BOOST_ASIO_CONCURRENCY_HINT_DEFAULT),
       event_stats_(std::make_shared<EventTracker>()) {
   if (enable_lag_probe) {
     ScheduleLagProbe(*this);
