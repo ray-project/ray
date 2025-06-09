@@ -67,9 +67,6 @@ from ray.llm._internal.serve.observability.logging import get_logger
 from ray.llm._internal.serve.observability.usage_telemetry.usage import (
     push_telemetry_report_for_all_models,
 )
-from ray.serve._private.request_router import (
-    PowerOfTwoChoicesRequestRouter,
-)
 
 logger = get_logger(__name__)
 
@@ -697,7 +694,6 @@ class LLMServer(_LLMServerBase):
 
 
 @serve.deployment(
-    request_router_class=PowerOfTwoChoicesRequestRouter,
     autoscaling_config={
         "min_replicas": 1,
         "initial_replicas": 1,
