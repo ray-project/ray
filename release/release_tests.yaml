@@ -3487,9 +3487,6 @@
 
   run:
     timeout: 1800
-        - num-actors (comma-separated list)
-        - object-sizes (comma-separated list)
-        - batch-sizes (comma-separated list)
     script: python object_store/test_object_store_fixed_size_throughput.py --object-sizes="1048576,67108864,536870912,1073741824" --num-actors="1,2,8" --batch-sizes="1,4,8"
     wait_for_nodes:
       num_nodes: 3
