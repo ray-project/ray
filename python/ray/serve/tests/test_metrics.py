@@ -18,6 +18,7 @@ import ray
 import ray.util.state as state_api
 from ray import serve
 from ray._common.test_utils import SignalActor
+from ray._common.utils import reset_ray_address
 from ray._private.test_utils import (
     fetch_prometheus_metrics,
     wait_for_condition,
@@ -68,7 +69,7 @@ def serve_start_shutdown(request):
     )
     serve.shutdown()
     ray.shutdown()
-    ray._private.utils.reset_ray_address()
+    reset_ray_address()
 
 
 def extract_tags(line: str) -> Dict[str, str]:

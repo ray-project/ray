@@ -202,17 +202,12 @@ class LocalTaskManager : public ILocalTaskManager {
                            const rpc::Address &owner_address,
                            const std::string &runtime_env_setup_error_message);
 
-  /// Attempt to cancel an already queued task.
-  ///
-  /// \param task_id: The id of the task to remove.
-  /// \param failure_type: The failure type.
-  ///
-  /// \return True if task was successfully removed. This function will return
-  /// false if the task is already running.
-  bool CancelTask(const TaskID &task_id,
-                  rpc::RequestWorkerLeaseReply::SchedulingFailureType failure_type =
-                      rpc::RequestWorkerLeaseReply::SCHEDULING_CANCELLED_INTENDED,
-                  const std::string &scheduling_failure_message = "");
+  /// Cancels a task in tasks_to_dispatch_. Does not remove it from tasks_to_dispatch_.
+  void CancelTaskToDispatch(
+      const std::shared_ptr<internal::Work> &work,
+      rpc::RequestWorkerLeaseReply::SchedulingFailureType failure_type =
+          rpc::RequestWorkerLeaseReply::SCHEDULING_CANCELLED_INTENDED,
+      const std::string &scheduling_failure_message = "");
 
   /// Attempts to dispatch all tasks which are ready to run. A task
   /// will be dispatched if it is on `tasks_to_dispatch_` and there are still
@@ -249,12 +244,6 @@ class LocalTaskManager : public ILocalTaskManager {
   /// data structure.
   void RecomputeDebugStats() const;
 
-  /// Determine whether a task should be immediately dispatched,
-  /// or placed on a wait queue.
-  ///
-  /// \return True if the work can be immediately dispatched.
-  bool WaitForTaskArgsRequests(std::shared_ptr<internal::Work> work);
-
   void Dispatch(
       std::shared_ptr<WorkerInterface> worker,
       absl::flat_hash_map<WorkerID, std::shared_ptr<WorkerInterface>> &leased_workers_,
@@ -277,6 +266,10 @@ class LocalTaskManager : public ILocalTaskManager {
   void ReleaseTaskArgs(const TaskID &task_id);
 
  private:
+  /// Determine whether a task should be immediately dispatched,
+  /// or placed on a wait queue.
+  void WaitForTaskArgsRequests(std::shared_ptr<internal::Work> work);
+
   const NodeID &self_node_id_;
   const scheduling::NodeID self_scheduling_node_id_;
   /// Responsible for resource tracking/view of the cluster.
@@ -293,15 +286,13 @@ class LocalTaskManager : public ILocalTaskManager {
   /// running tasks per scheduling class.
   struct SchedulingClassInfo {
     explicit SchedulingClassInfo(int64_t cap)
-        : running_tasks(),
-          capacity(cap),
-          next_update_time(std::numeric_limits<int64_t>::max()) {}
+        : capacity(cap), next_update_time(std::numeric_limits<int64_t>::max()) {}
     /// Track the running task ids in this scheduling class.
     ///
     /// TODO(hjiang): Store cgroup manager along with task id as the value for map.
     absl::flat_hash_set<TaskID> running_tasks;
     /// The total number of tasks that can run from this scheduling class.
-    const uint64_t capacity;
+    uint64_t capacity;
     /// The next time that a new task of this scheduling class may be dispatched.
     int64_t next_update_time;
   };

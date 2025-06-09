@@ -138,6 +138,7 @@ class Metric:
             if tag_key not in final_tags:
                 missing_tags.append(tag_key)
 
+        # Strict validation: if any required tag_keys are missing, raise error
         if missing_tags:
             raise ValueError(f"Missing value for tag key(s): {','.join(missing_tags)}.")
 

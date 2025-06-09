@@ -1063,7 +1063,6 @@ def test_ray_does_not_break_makeRecord():
         ("ray.serve", logging.INFO),
         ("ray.train", logging.INFO),
         ("ray.tune", logging.INFO),
-        ("ray.workflow", logging.INFO),
     ),
 )
 @pytest.mark.parametrize(

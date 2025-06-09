@@ -1233,7 +1233,7 @@ class ActorClass:
             )
             meta.last_export_cluster_and_job = worker.current_cluster_and_job
 
-        resources = ray._private.utils.resources_from_ray_options(actor_options)
+        resources = ray._common.utils.resources_from_ray_options(actor_options)
         # Set the actor's default resources if not already set. First three
         # conditions are to check that no resources were specified in the
         # decorator. Last three conditions are to check that no resources were
