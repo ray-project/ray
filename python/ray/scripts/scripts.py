@@ -705,7 +705,6 @@ def start(
     dashboard_host,
     dashboard_port,
     dashboard_agent_listen_port,
-    dashboard_grpc_port,
     dashboard_agent_grpc_port,
     runtime_env_agent_port,
     block,
