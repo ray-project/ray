@@ -1,8 +1,7 @@
-"""Tests for wait_for_condition and async_wait_for_condition utilities."""
-
 import asyncio
-import pytest
 import time
+import sys
+import pytest
 
 from ray._common.test_utils import wait_for_condition, async_wait_for_condition
 
@@ -314,3 +313,7 @@ class TestEdgeCases:
         # Should complete quickly due to small retry interval
         assert elapsed < 0.5
         assert counter["value"] >= 5
+
+
+if __name__ == "__main__":
+    sys.exit(pytest.main(["-sv", __file__]))
