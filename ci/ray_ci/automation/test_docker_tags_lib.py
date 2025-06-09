@@ -691,7 +691,6 @@ def _start_local_registry():
         raise TimeoutError("Registry failed to start within 10 seconds")
 
 
-@mock.patch("ci.ray_ci.automation.docker_tags_lib.authorize_docker")
 def test_generate_index(mock_authorize_docker):
     registry_proc, registry_thread, temp_dir, port = _start_local_registry()
     try:

@@ -134,6 +134,7 @@ steps:
     tags:
       - docker
       - oss
+      - skip-on-premerge
     commands:
       - bazel run .buildkite:copy_files -- --destination docker_login
       - bazel run //ci/ray_ci/automation:generate_index -- --prefix nightly

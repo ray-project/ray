@@ -11,7 +11,7 @@ import docker
 import requests
 import runfiles
 import boto3
-from ci.ray_ci.utils import logger
+
 from ci.ray_ci.builder_container import DEFAULT_ARCHITECTURE, DEFAULT_PYTHON_VERSION
 from ci.ray_ci.docker_container import (
     GPU_PLATFORM,
@@ -23,10 +23,10 @@ from ci.ray_ci.docker_container import (
     ARCHITECTURES_RAY_ML,
     RayType,
 )
+from ci.ray_ci.utils import logger
 
 bazel_workspace_dir = os.environ.get("BUILD_WORKSPACE_DIRECTORY", "")
 SHA_LENGTH = 6
-DOCKERHUB_SSM_NAME = "docker_hub_password"
 
 
 def _check_python_version(python_version: str, ray_type: str) -> None:
