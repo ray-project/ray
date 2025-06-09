@@ -10,7 +10,7 @@ from ray.exceptions import RayActorError, RayTaskError
 from ray.serve._private.constants import DEFAULT_GRPC_SERVER_OPTIONS, SERVE_LOGGER_NAME
 from ray.serve._private.proxy_request_response import ResponseStatus
 from ray.serve.config import gRPCOptions
-from ray.serve.exceptions import BackPressureError
+from ray.serve.exceptions import BackPressureError, DeploymentUnavailableError
 from ray.serve.generated.serve_pb2_grpc import add_RayServeAPIServiceServicer_to_server
 
 logger = logging.getLogger(SERVE_LOGGER_NAME)
@@ -122,7 +122,9 @@ def get_grpc_response_status(
             is_error=True,
             message=message,
         )
-    elif isinstance(exc, BackPressureError):
+    elif isinstance(exc, (BackPressureError, DeploymentUnavailableError)):
+        if isinstance(exc, RayTaskError):
+            logger.warning(f"Request failed: {exc}", extra={"log_to_stderr": False})
         return ResponseStatus(
             code=grpc.StatusCode.UNAVAILABLE,
             is_error=True,
