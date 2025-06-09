@@ -1994,9 +1994,25 @@ def shutdown(_exiting_interpreter: bool = False):
     _shutdown_all_compiled_dags()
 
     if _exiting_interpreter and global_worker.mode == SCRIPT_MODE:
-        # This is a duration to sleep before shutting down everything in order
-        # to make sure that log messages finish printing.
-        time.sleep(0.5)
+        # Checks whether all log messages for this job have been forwarded to stdout
+        # by the `ray_print_logs` thread. If not, waits for 0.5 seconds and retries
+        # the check up to 10 times, ensuring that excessive logs have time to be
+        # printed before shutting down.
+        if hasattr(global_worker, "gcs_log_subscriber"):
+            wait_times = 10
+            wait_interval = 0.5
+            total_wait_time = wait_times * wait_interval
+            for _ in range(wait_times):
+                time.sleep(wait_interval)
+                if global_worker.gcs_log_subscriber.is_empty:
+                    break
+            if not global_worker.gcs_log_subscriber.is_empty:
+                logger.warning(
+                    "Some logs were truncated before the driver exited "
+                    f"because we printed for {total_wait_time} seconds "
+                    "but still couldn't process all the logs. This might "
+                    " be due to long-running tasks or actors."
+                )
     disconnect(_exiting_interpreter)
 
     # disconnect internal kv
