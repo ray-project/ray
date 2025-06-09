@@ -852,7 +852,7 @@ def test_options_name(ray_start_regular_shared):
     @ray.remote
     class Foo:
         def method(self, name):
-            assert psutil.Process().cmdline[0] == f"ray::{name}"
+            assert psutil.Process().cmdline()[0] == f"ray::{name}"
 
     f = Foo.remote()
 
