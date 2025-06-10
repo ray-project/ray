@@ -2,6 +2,7 @@ import numpy as np
 import scipy.signal
 from typing import Dict, Optional
 
+from ray.rllib.core import Columns
 from ray.rllib.policy.policy import Policy
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.annotations import DeveloperAPI, OldAPIStack
@@ -10,12 +11,10 @@ from ray.rllib.utils.typing import AgentID
 from ray.rllib.utils.typing import TensorType
 
 
-@DeveloperAPI
+@OldAPIStack
 class Postprocessing:
-    """Constant definitions for postprocessing."""
-
-    ADVANTAGES = "advantages"
-    VALUE_TARGETS = "value_targets"
+    ADVANTAGES = Columns.ADVANTAGES
+    VALUE_TARGETS = Columns.VALUE_TARGETS
 
 
 @OldAPIStack

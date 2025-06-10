@@ -70,9 +70,10 @@ class PPOTorchLearner(PPOLearner, TorchLearner):
         prev_action_dist = action_dist_class_exploration.from_logits(
             batch[Columns.ACTION_DIST_INPUTS]
         )
+        prev_action_logp = prev_action_dist.logp(batch[Columns.ACTIONS])
 
         logp_ratio = torch.exp(
-            curr_action_dist.logp(batch[Columns.ACTIONS]) - batch[Columns.ACTION_LOGP]
+            curr_action_dist.logp(batch[Columns.ACTIONS]) - prev_action_logp
         )
 
         # Only calculate kl loss if necessary (kl-coeff > 0.0).
@@ -86,8 +87,8 @@ class PPOTorchLearner(PPOLearner, TorchLearner):
         mean_entropy = possibly_masked_mean(curr_entropy)
 
         surrogate_loss = torch.min(
-            batch[Postprocessing.ADVANTAGES] * logp_ratio,
-            batch[Postprocessing.ADVANTAGES]
+            batch[Columns.ADVANTAGES] * logp_ratio,
+            batch[Columns.ADVANTAGES]
             * torch.clamp(logp_ratio, 1 - config.clip_param, 1 + config.clip_param),
         )
 
@@ -96,7 +97,7 @@ class PPOTorchLearner(PPOLearner, TorchLearner):
             value_fn_out = module.compute_values(
                 batch, embeddings=fwd_out.get(Columns.EMBEDDINGS)
             )
-            vf_loss = torch.pow(value_fn_out - batch[Postprocessing.VALUE_TARGETS], 2.0)
+            vf_loss = torch.pow(value_fn_out - batch[Columns.VALUE_TARGETS], 2.0)
             vf_loss_clipped = torch.clamp(vf_loss, 0, config.vf_clip_param)
             mean_vf_loss = possibly_masked_mean(vf_loss_clipped)
             mean_vf_unclipped_loss = possibly_masked_mean(vf_loss)
@@ -126,7 +127,7 @@ class PPOTorchLearner(PPOLearner, TorchLearner):
                 VF_LOSS_KEY: mean_vf_loss,
                 LEARNER_RESULTS_VF_LOSS_UNCLIPPED_KEY: mean_vf_unclipped_loss,
                 LEARNER_RESULTS_VF_EXPLAINED_VAR_KEY: explained_variance(
-                    batch[Postprocessing.VALUE_TARGETS], value_fn_out
+                    batch[Columns.VALUE_TARGETS], value_fn_out
                 ),
                 ENTROPY_KEY: mean_entropy,
                 LEARNER_RESULTS_KL_KEY: mean_kl_loss,

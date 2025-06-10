@@ -30,7 +30,7 @@ class Columns:
     # training, such as off-policy/DQN algos.
     NEXT_OBS = "new_obs"
 
-    # Uniquely identifies an episode
+    # Uniquely identifies an episode.
     EPS_ID = "eps_id"
     AGENT_ID = "agent_id"
     MODULE_ID = "module_id"
@@ -57,15 +57,15 @@ class Columns:
     # These are usually calculated via the value function network using the final
     # observation (and in case of an RNN: the last returned internal state).
     VALUES_BOOTSTRAPPED = "values_bootstrapped"
-
-    # Postprocessing columns.
-    ADVANTAGES = "advantages"
     VALUE_TARGETS = "value_targets"
 
     # Intrinsic rewards (learning with curiosity).
     INTRINSIC_REWARDS = "intrinsic_rewards"
     # Discounted sum of rewards till the end of the episode (or chunk).
     RETURNS_TO_GO = "returns_to_go"
+    # Advantages, for example computed from rewards and value function
+    # predictions (GAE).
+    ADVANTAGES = "advantages"
 
     # Loss mask. If provided in a train batch, a Learner's compute_loss_for_module
     # method should respect the False-set value in here and mask out the respective

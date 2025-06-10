@@ -7,7 +7,6 @@ from ray.rllib.connectors.common.numpy_to_tensor import NumpyToTensor
 from ray.rllib.core.columns import Columns
 from ray.rllib.core.rl_module.apis.value_function_api import ValueFunctionAPI
 from ray.rllib.core.rl_module.multi_rl_module import MultiRLModule
-from ray.rllib.evaluation.postprocessing import Postprocessing
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.numpy import convert_to_numpy
 from ray.rllib.utils.postprocessing.value_predictions import compute_value_targets
@@ -37,7 +36,7 @@ class GeneralAdvantageEstimation(ConnectorV2):
     `batch` as forward batch for the value function, extracting the bootstrap values
     (at the artificially added time steos) and all other value predictions (all other
     timesteps), performing GAE, and adding the results back into `batch` (under
-    Postprocessing.ADVANTAGES and Postprocessing.VALUE_TARGETS.
+    Columns.ADVANTAGES and Columns.VALUE_TARGETS.
     """
 
     def __init__(
@@ -167,8 +166,8 @@ class GeneralAdvantageEstimation(ConnectorV2):
                     ),
                     axis=0,
                 )
-            batch[module_id][Postprocessing.ADVANTAGES] = module_advantages
-            batch[module_id][Postprocessing.VALUE_TARGETS] = module_value_targets
+            batch[module_id][Columns.ADVANTAGES] = module_advantages
+            batch[module_id][Columns.VALUE_TARGETS] = module_value_targets
 
         # Convert all GAE results to tensors.
         if self._numpy_to_tensor_connector is None:
@@ -179,9 +178,9 @@ class GeneralAdvantageEstimation(ConnectorV2):
             rl_module=rl_module,
             batch={
                 mid: {
-                    Postprocessing.ADVANTAGES: module_batch[Postprocessing.ADVANTAGES],
-                    Postprocessing.VALUE_TARGETS: (
-                        module_batch[Postprocessing.VALUE_TARGETS]
+                    Columns.ADVANTAGES: module_batch[Columns.ADVANTAGES],
+                    Columns.VALUE_TARGETS: (
+                        module_batch[Columns.VALUE_TARGETS]
                     ),
                 }
                 for mid, module_batch in batch.items()

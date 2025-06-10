@@ -10,6 +10,7 @@ from ray.rllib.models.torch.torch_distributions import (
     TorchCategorical,
     TorchDiagGaussian,
     TorchDistribution,
+    TorchMultiCategorical,
 )
 from ray.rllib.utils.annotations import override, OverrideToImplementCustomLogic
 from ray.rllib.utils.framework import try_import_torch
@@ -141,6 +142,11 @@ class TorchRLModule(nn.Module, RLModule):
             return TorchCategorical
         elif isinstance(self.action_space, gym.spaces.Box):
             return TorchDiagGaussian
+        elif isinstance(self.action_space, gym.spaces.MultiDiscrete):
+            return TorchMultiCategorical.get_partial_dist_cls(
+                space=self.action_space,
+                input_lens=list(self.action_space.nvec),
+            )
         else:
             raise ValueError(
                 f"Default action distribution for action space "
