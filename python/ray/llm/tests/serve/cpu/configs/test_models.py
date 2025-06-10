@@ -10,8 +10,6 @@ CONFIG_DIRS_PATH = str(Path(__file__).parent / "configs")
 
 
 class TestModelConfig:
-
-
     def test_construction(self):
         """Test construct an LLMConfig doesn't error out and has correct attributes."""
         llm_config = LLMConfig(

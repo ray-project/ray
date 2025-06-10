@@ -4,7 +4,6 @@ import pytest
 from pydantic import ValidationError
 
 from ray.llm._internal.serve.configs.prompt_formats import (
-    Content,
     Image,
     Message,
     Prompt,
@@ -66,12 +65,14 @@ def test_validation_message():
 def test_prompt_validation():
     # Test valid prompt creation
     Prompt(prompt="This is a test message.")
-    
-    Prompt(prompt=[
-        Message(role="system", content="You are a helpful assistant."),
-        Message(role="user", content="Hello!")
-    ])
-    
+
+    Prompt(
+        prompt=[
+            Message(role="system", content="You are a helpful assistant."),
+            Message(role="user", content="Hello!"),
+        ]
+    )
+
     # Test invalid prompt creation
     with pytest.raises(ValidationError):
         # Empty list should raise error
