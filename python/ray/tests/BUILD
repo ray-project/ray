@@ -51,6 +51,7 @@ py_test_module_list(
         "test_component_failures_3.py",
         "test_dashboard_profiler.py",
         "test_exit_observability.py",
+        "test_experimental_collective.py",
         "test_failure_3.py",
         "test_gcs_utils.py",
         "test_get_locations.py",
