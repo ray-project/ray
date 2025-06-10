@@ -20,7 +20,6 @@ from ray.train.v2._internal.constants import (
 from ray.train.v2.api.data_parallel_trainer import DataParallelTrainer
 from ray.train.v2.api.exceptions import TrainingFailedError
 from ray.train.v2.api.result import Result
-from ray.util.state import list_actors
 
 assert is_v2_enabled()
 
@@ -246,8 +245,8 @@ def test_sigint_abort():
 
     os.kill(process.pid, signal.SIGINT)
     process.join()
-    # Only the signal actor shoudld be alive.
-    assert len(list_actors(filters=[("state", "=", "ALIVE")])) == 1
+    # Ideally would like to assert that controller actor is dead.
+    # However, list_actors() gets actors from other tests.
 
 
 if __name__ == "__main__":

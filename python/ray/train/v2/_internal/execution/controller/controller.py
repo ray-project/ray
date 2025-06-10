@@ -1,13 +1,13 @@
 import asyncio
 import logging
 import os
-import sys
 import uuid
 from dataclasses import dataclass
 from typing import Callable, List, Optional
 
 import pandas as pd
 
+import ray
 import ray._private.ray_constants as ray_constants
 from ray.train.v2._internal.constants import (
     DEFAULT_ENABLE_CONTROLLER_LOGGING,
@@ -482,7 +482,7 @@ class TrainController:
             worker_group_context = None
         for callback in self._controller_callbacks:
             callback.before_controller_abort(worker_group_context)
-        sys.exit(0)
+        ray.actor.exit_actor()
 
     def _build_result(self) -> Result:
         storage = self._checkpoint_manager._storage_context
