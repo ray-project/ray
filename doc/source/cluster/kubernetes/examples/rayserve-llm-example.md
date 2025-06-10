@@ -2,12 +2,12 @@
 
 # Serve a Large Language Model using Ray Serve LLM on Kubernetes
 
-This guide provides a step-by-step walkthrough for deploying a Large Language Model (LLM) using Ray Serve LLM on Kubernetes. Leveraging KubeRay, Ray Serve, and vLLM, this guide deploys the  `Qwen/Qwen2.5-7B-Instruct` model from Hugging Face, enabling scalable, efficient, and OpenAI-compatible LLM serving within a Kubernetes environment. See [Serving LLMs](serving_llms) for information on Ray Serve LLM.
+This guide provides a step-by-step guide for deploying a Large Language Model (LLM) using Ray Serve LLM on Kubernetes. Leveraging KubeRay, Ray Serve, and vLLM, this guide deploys the  `Qwen/Qwen2.5-7B-Instruct` model from Hugging Face, enabling scalable, efficient, and OpenAI-compatible LLM serving within a Kubernetes environment. See [Serving LLMs](serving_llms) for information on Ray Serve LLM.
 
 ## Prerequisites
 
 This example downloads model weights from the [Qwen/Qwen2.5-7B-Instruct](https://huggingface.co/Qwen/Qwen2.5-7B-Instruct) Hugging Face repository. To completely finish this guide, you must fulfill the following requirements:
-* A [Hugging Face account](https://huggingface.co/) and a Hugging Face [access token](https://huggingface.co/settings/tokens) with read access to gated repos.
+* A [Hugging Face account](https://huggingface.co/) and a Hugging Face [access token](https://huggingface.co/settings/tokens) with read access to gated repositories.
 * In your RayService custom resource, set the `HUGGING_FACE_HUB_TOKEN` environment variable to the Hugging Face token to enable model downloads.
 * Any supported GPU. You can refer [here](../user-guides/k8s-cluster-setup.md) for more information
 
@@ -21,7 +21,7 @@ Install the most recent stable KubeRay operator from the Helm repository by foll
 
 ## Step 3: Create a Kubernetes Secret containing your Hugging Face access token
 
-For additional security, instead of passing the HF Access Token directly as an environment variable, we recommend creating a Kubernetes Secret containing your Hugging Face access token. Download the Ray Serve LLM service config yaml [here](https://github.com/ray-project/kuberay/blob/master/ray-operator/config/samples/ray-service.llm-serve.yaml), update the value for `hf_token` to your private access token in the `Secret`, and apply the config to your Kubernetes cluster.
+For additional security, instead of passing the HF Access Token directly as an environment variable, create a Kubernetes Secret containing your Hugging Face access token. Download the Ray Serve LLM service config .yaml file [here](https://github.com/ray-project/kuberay/blob/master/ray-operator/config/samples/ray-service.llm-serve.yaml), update the value for `hf_token` to your private access token in the `Secret`, and apply the config to your Kubernetes cluster.
 
 ```yaml
 apiVersion: v1
@@ -125,7 +125,7 @@ Once forwarded, navigate to the Serve tab on the Dashboard to review application
 ![LLM Serve Application](../images/ray_dashboard_llm_application.png)
 
 
-For monitoring application and cluster-level metrics, set up Prometheus and Grafana for dashboarding by referring to the official documentation:
+For monitoring application and cluster-level metrics, set up Prometheus and Grafana by referring to the official documentation:
 * [Prometheus and Grafana with KubeRay](../k8s-ecosystem/prometheus-grafana.md)
 * [Collecting and Monitoring Metrics in Ray](../../metrics.md)
 * [Configuring and Managing Dashboards](../../configure-manage-dashboard.md)
