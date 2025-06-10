@@ -1,5 +1,6 @@
 # coding: utf-8
 import os
+import subprocess
 import sys
 import tempfile
 import time
@@ -253,7 +254,11 @@ os._exit(0)
 
     # Run a driver that spawns many tasks and blocks until the first result is ready,
     # so at least one worker should have registered.
-    run_string_as_driver(driver_code)
+    try:
+        run_string_as_driver(driver_code)
+    except subprocess.CalledProcessError:
+        # The driver exits with non-zero status Windows due to ungraceful os._exit.
+        pass
 
     # Verify that the workers spawned by the old driver go away.
     wait_for_condition(lambda: len(get_workers()) <= 2)
