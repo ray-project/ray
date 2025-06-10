@@ -219,13 +219,13 @@ def create_cluster_env_from_image(
     test_name: str,
     runtime_env: Dict[str, Any],
     sdk: Optional["AnyscaleSDK"] = None,
+    cluster_env_id: Optional[str] = None,
 ) -> str:
     anyscale_sdk = sdk or get_anyscale_sdk()
     cluster_env_name = get_custom_cluster_env_name(image, test_name)
 
     # Find whether there is identical cluster env
     paging_token = None
-    cluster_env_id = None
     while not cluster_env_id:
         result = anyscale_sdk.search_cluster_environments(
             dict(
