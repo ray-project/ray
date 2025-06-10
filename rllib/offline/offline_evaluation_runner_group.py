@@ -7,7 +7,9 @@ from ray.rllib.core.rl_module.multi_rl_module import MultiRLModuleSpec
 from ray.rllib.env import INPUT_ENV_SPACES
 from ray.rllib.offline.offline_data import OfflineData
 from ray.rllib.offline.offline_evaluation_runner import OfflineEvaluationRunner
-from ray.rllib.offline.offline_policy_evaluation_runner import OfflinePolicyEvaluationRunner
+from ray.rllib.offline.offline_policy_evaluation_runner import (
+    OfflinePolicyEvaluationRunner,
+)
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.runners.runner_group import RunnerGroup
 
@@ -60,7 +62,8 @@ class OfflineEvaluationRunnerGroup(RunnerGroup):
 
         # Define the offline evaluation runner class.
         self._runner_cls = config.offline_eval_runner_cls or (
-            OfflineEvaluationRunner if config.offline_evaluation_type == "eval_loss"
+            OfflineEvaluationRunner
+            if config.offline_evaluation_type == "eval_loss"
             else OfflinePolicyEvaluationRunner
         )
 

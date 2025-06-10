@@ -5287,13 +5287,20 @@ class AlgorithmConfig(_Config):
             )
 
         # Offline evaluation.
-        from ray.rllib.offline.offline_policy_evaluation_runner import OfflinePolicyEvaluationTypes
-        if self.offline_evaluation_type and self.offline_evaluation_type != "eval_loss" and self.offline_evaluation_type not in OfflinePolicyEvaluationTypes:
+        from ray.rllib.offline.offline_policy_evaluation_runner import (
+            OfflinePolicyEvaluationTypes,
+        )
+
+        offline_eval_types = list(OfflinePolicyEvaluationTypes)
+        if (
+            self.offline_evaluation_type
+            and self.offline_evaluation_type != "eval_loss"
+            and self.offline_evaluation_type not in OfflinePolicyEvaluationTypes
+        ):
             self._value_error(
-                f"Unknown offline evaluation type: {self.config.offline_evaluation_type}."
+                f"Unknown offline evaluation type: {self.offline_evaluation_type}."
                 "Available types of offline evaluation are either `'eval_loss' to evaluate "
-                "the training loss on a validation dataset or "
-                f"{[t for t in in OfflinePolicyEvaluationTypes]}."
+                f"the training loss on a validation dataset or {offline_eval_types}."
             )
 
     @property
