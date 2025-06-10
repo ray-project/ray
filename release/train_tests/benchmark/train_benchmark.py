@@ -60,12 +60,6 @@ def main():
     else:
         raise ValueError(f"Unknown task: {benchmark_config.task}")
 
-    import ipdb
-
-    ipdb.set_trace()
-
-    factory.set_dataset_creation_time(time.perf_counter() - start_time)
-
     dataloader_factory = factory.get_dataloader_factory()
     if isinstance(dataloader_factory, RayDataLoaderFactory):
         datasets = dataloader_factory.get_ray_datasets()

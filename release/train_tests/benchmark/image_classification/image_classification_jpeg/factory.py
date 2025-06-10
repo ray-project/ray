@@ -70,7 +70,7 @@ class ImageClassificationJpegRayDataLoaderFactory(
         )
         return s3fs
 
-    def get_ray_datasets(self) -> Dict[str, ray.data.Dataset]:
+    def _get_ray_datasets(self) -> Dict[str, ray.data.Dataset]:
         """Get Ray datasets for training and validation.
 
         Creates training and validation datasets with:
