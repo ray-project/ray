@@ -2715,19 +2715,22 @@ Status CoreWorker::CreateActor(const RayFunction &function,
   }
 
   if (task_spec.MaxActorRestarts() != 0) {
-    bool log_message = false;
+    bool actor_restart_warning = false;
     for (size_t i = 0; i < task_spec.NumArgs(); i++) {
       if (task_spec.ArgByRef(i) || !task_spec.ArgInlinedRefs(i).empty()) {
-        log_message = true;
+        actor_restart_warning = true;
         break;
       }
     }
-    if (log_message) {
+    if (actor_restart_warning) {
       RAY_LOG(ERROR)
-          << "Actor " << task_spec.ActorCreationId()
+          << "Actor " << (actor_name.empty() ? "" : (actor_name + " "))
+          << "with class name: " << function.GetFunctionDescriptor()->ClassName()
+          << " and ID: " << task_spec.ActorCreationId()
           << " has arguments in the object store and max_restarts is not equal to 0. If "
              "the arguments in the object store go out of scope or are lost, the "
-             "actor restart will fail.";
+             "actor restart will fail. See "
+             "https://github.com/ray-project/ray/issues/53727 for more details.";
     }
   }
 
