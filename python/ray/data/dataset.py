@@ -901,7 +901,7 @@ class Dataset:
     def distinct(
         self,
         keys: Optional[List[str]] = None,
-        keep: Union[Literal["first", "last"], bool] = "first",
+        keep: Optional[Union[str, bool]] = "first",
     ) -> "Dataset":
         """
         Remove duplicate rows from the dataset.
