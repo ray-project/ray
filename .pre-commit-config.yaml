@@ -10,6 +10,7 @@ exclude: |
     release/release_logs/|
     rllib/tests/data|
     thirdparty/patches/|
+    src/ray/thirdparty/|
     doc/external/|
     doc/source/
   )

@@ -448,4 +448,4 @@ Then you should run the following commands:
 .. code-block:: bash
 
   rm -rf python/ray/thirdparty_files/
-  python3 -m pip install setproctitle
+  python3 -m pip install psutil

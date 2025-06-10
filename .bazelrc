@@ -57,6 +57,7 @@ build:clang-cl --per_file_copt="-\\.(asm|S)$@-Werror"
 build:msvc-cl     --per_file_copt="-\\.(asm|S)$@-WX"
 # Ignore warnings for protobuf generated files and external projects.
 build --per_file_copt="\\.pb\\.cc$@-w"
+build --per_file_copt="src/ray/thirdparty/.*$@-w"
 build:linux --per_file_copt="-\\.(asm|S)$,external/.*@-w,-Wno-error=implicit-function-declaration,-Wno-error=unused-function"
 build:macos --per_file_copt="-\\.(asm|S)$,external/.*@-w,-Wno-error=implicit-function-declaration,-Wno-error=unused-function,-Wno-missing-template-arg-list-after-template-kw"
 # Ignore warnings for host tools, which we generally can't control.
