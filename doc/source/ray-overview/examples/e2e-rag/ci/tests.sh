@@ -5,8 +5,8 @@
 # aren't being consumed/hidden
 
 ordered_notebook_names=(
-  "01_(Optional)_Regular_Document_Processing_Pipeline"
-  "02_Scalable_RAG_Data_Ingestion_with_Ray_Data"
+  #"01_(Optional)_Regular_Document_Processing_Pipeline"
+  #"02_Scalable_RAG_Data_Ingestion_with_Ray_Data"
   "03_Deploy_LLM_with_Ray_Serve"
   # "04_Build_Basic_RAG_Chatbot"                         # skipped - requires bespoke Anyscale service
   # "05_Improve_RAG_with_Prompt_Engineering"             # skipped - requires bespoke Anyscale service
