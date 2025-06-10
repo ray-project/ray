@@ -2726,7 +2726,7 @@ Status CoreWorker::CreateActor(const RayFunction &function,
       RAY_LOG(ERROR)
           << "Actor " << task_spec.ActorCreationId()
           << " has arguments in the object store and max_restarts is not equal to 0. If "
-             "the arguments in the object store go out of scope locally or are lost, the "
+             "the arguments in the object store go out of scope or are lost, the "
              "actor restart will fail.";
     }
   }
