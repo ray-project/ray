@@ -1060,7 +1060,6 @@ class Dataset:
             return self.groupby(subset_cols).map_groups(
                 reducer,
                 batch_format="pyarrow",
-                fn_kwargs={"subset": subset_cols},
             )
 
     @PublicAPI(api_group=BT_API_GROUP)
