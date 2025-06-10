@@ -1,7 +1,8 @@
 import os
 import tempfile
-import requests
 from typing import Any, Callable, Dict, Optional
+
+import requests
 
 import ray
 
@@ -80,7 +81,9 @@ class UnityCatalogConnector:
             env_vars["AZURE_STORAGE_SAS_TOKEN"] = creds["azuresasuri"]
         elif "gcp_service_account" in creds:
             gcp_json = creds["gcp_service_account"]
-            with tempfile.NamedTemporaryFile(prefix="gcp_sa_", suffix=".json", delete=True) as temp_file:
+            with tempfile.NamedTemporaryFile(
+                prefix="gcp_sa_", suffix=".json", delete=True
+            ) as temp_file:
                 temp_file.write(gcp_json.encode())
                 temp_file.flush()
                 env_vars["GOOGLE_APPLICATION_CREDENTIALS"] = temp_file.name
