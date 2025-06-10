@@ -14,7 +14,6 @@ from ray._private.test_utils import run_string_as_driver
 from ray.tests.test_object_spilling import assert_no_thrashing, is_dir_empty
 from ray._private.external_storage import (
     FileSystemStorage,
-    ExternalStorageRayStorageImpl,
 )
 
 
@@ -180,7 +179,6 @@ def test_delete_file_non_exists(shutdown_only, tmp_path):
         return spilled_files, uris
 
     for storage in [
-        ExternalStorageRayStorageImpl(ray_context["node_id"], "session"),
         FileSystemStorage(ray_context["node_id"], "/tmp"),
     ]:
         spilled_files, uris = create_spilled_files(3)
