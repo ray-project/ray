@@ -19,7 +19,7 @@ from starlette.types import ASGIApp, Message, Receive, Scope, Send
 from uvicorn.config import Config
 from uvicorn.lifespan.on import LifespanOn
 
-from ray._private.pydantic_compat import IS_PYDANTIC_2
+from ray._common.pydantic_compat import IS_PYDANTIC_2
 from ray.exceptions import RayActorError, RayTaskError
 from ray.serve._private.common import RequestMetadata
 from ray.serve._private.constants import SERVE_HTTP_REQUEST_ID_HEADER, SERVE_LOGGER_NAME
