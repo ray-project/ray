@@ -556,14 +556,6 @@ Windows powershell users need additional escaping:
     "works when --head is specified",
 )
 @click.option(
-    "--storage",
-    default=None,
-    help=(
-        "[DEPRECATED] Cluster-wide storage is deprecated and will be removed in a "
-        "future version of Ray."
-    ),
-)
-@click.option(
     "--system-config",
     default=None,
     hidden=True,
@@ -713,7 +705,6 @@ def start(
     autoscaling_config,
     no_redirect_output,
     temp_dir,
-    storage,
     system_config,
     enable_object_reconstruction,
     metrics_export_port,
@@ -800,11 +791,6 @@ def start(
     if has_ray_client and ray_client_server_port is None:
         ray_client_server_port = 10001
 
-    if storage is not None:
-        warnings.warn(
-            "--storage is deprecated and will be removed in a future version of Ray.",
-        )
-
     ray_params = ray._private.parameter.RayParams(
         node_ip_address=node_ip_address,
         node_name=node_name if node_name else node_ip_address,
@@ -828,7 +814,6 @@ def start(
         object_spilling_directory=object_spilling_directory,
         huge_pages=False,
         temp_dir=temp_dir,
-        storage=storage,
         include_dashboard=include_dashboard,
         dashboard_host=dashboard_host,
         dashboard_port=dashboard_port,
