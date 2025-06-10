@@ -5,7 +5,7 @@ import pytest
 
 import ray
 from ray.experimental import tqdm_ray
-from ray._private.test_utils import wait_for_condition
+from ray._common.test_utils import wait_for_condition
 
 
 def test_distributed_tqdm_remote():
