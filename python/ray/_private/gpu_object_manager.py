@@ -1,11 +1,10 @@
-from collections import namedtuple
-from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple
-from typing import NamedTuple
+from typing import TYPE_CHECKING, Any, Dict, List, NamedTuple, Optional, Tuple
+
 import torch
 
+from ray._private.custom_types import TensorTransportEnum
 from ray._raylet import ObjectRef
 from ray.actor import ActorHandle
-from ray._private.custom_types import TensorTransportEnum
 from ray.util.collective.types import Backend
 
 if TYPE_CHECKING:
@@ -115,8 +114,8 @@ class GPUObjectManager:
         # Send tensors stored in the `src_actor`'s GPU object store to the
         # destination rank `dst_rank`.
         def __ray_send__(self, communicator_name: str, obj_id: str, dst_rank: int):
-            from ray._private.worker import global_worker
             import ray.util.collective as collective
+            from ray._private.worker import global_worker
 
             gpu_object_manager = global_worker.gpu_object_manager
             assert gpu_object_manager.has_gpu_object(
@@ -159,8 +158,8 @@ class GPUObjectManager:
         ):
             import torch
 
-            from ray._private.worker import global_worker
             import ray.util.collective as collective
+            from ray._private.worker import global_worker
 
             backend = collective.get_group_handle(communicator_name).backend()
             device = COLLECTIVE_BACKEND_TO_TORCH_DEVICE[backend]
@@ -197,7 +196,6 @@ class GPUObjectManager:
             dst_actor: The target actor to receive tensors
             task_args: List of arguments for the target actor task that may contain ObjectRefs.
         """
-        from ray.experimental.channel import ChannelContext
         from ray.experimental.collective import get_collective_groups
 
         for arg in task_args:

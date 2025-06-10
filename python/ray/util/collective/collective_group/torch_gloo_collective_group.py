@@ -2,7 +2,6 @@ from typing import TYPE_CHECKING, List, Optional
 import os
 import torch
 import torch.distributed as dist
-import ray
 
 import ray.experimental.internal_kv as internal_kv
 from ray.util.collective.collective_group.base_collective_group import BaseGroup
