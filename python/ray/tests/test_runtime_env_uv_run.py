@@ -6,6 +6,7 @@ import sys
 import tempfile
 
 import pytest
+from uv import find_uv_bin
 
 import ray
 from ray._private.test_utils import (
@@ -40,7 +41,7 @@ def tmp_working_dir():
 
 @pytest.mark.skipif(sys.platform == "win32", reason="Not ported to Windows yet.")
 def test_uv_run_simple(shutdown_only):
-    uv = "uv"
+    uv = find_uv_bin()
 
     runtime_env = {
         "py_executable": f"{uv} run --with emoji --no-project",
@@ -80,7 +81,7 @@ def test_uv_run_pyproject(shutdown_only, tmp_working_dir):
 
 @pytest.mark.skipif(sys.platform == "win32", reason="Not ported to Windows yet.")
 def test_uv_run_editable(shutdown_only, tmp_working_dir):
-    uv = "uv"
+    uv = find_uv_bin()
     tmp_dir = tmp_working_dir
 
     subprocess.run(
@@ -132,7 +133,7 @@ def test_uv_run_runtime_env_hook():
 
     import ray._private.runtime_env.uv_runtime_env_hook
 
-    uv = "uv"
+    uv = find_uv_bin()
 
     def check_uv_run(
         cmd, runtime_env, expected_output, subprocess_kwargs=None, expected_error=None
@@ -267,7 +268,7 @@ def test_uv_run_runtime_env_hook():
 @pytest.mark.skipif(sys.platform == "win32", reason="Not ported to Windows yet.")
 def test_uv_run_runtime_env_hook_e2e(shutdown_only, temp_dir):
 
-    uv = "uv"
+    uv = find_uv_bin()
     tmp_out_dir = Path(temp_dir)
 
     script = f"""
@@ -335,7 +336,7 @@ def test_uv_run_runtime_env_hook_e2e_job(
     assert wait_until_server_available(cluster.webui_url) is True
     webui_url = format_web_url(cluster.webui_url)
 
-    uv = "uv"
+    uv = find_uv_bin()
     tmp_out_dir = Path(temp_dir)
 
     script = f"""
