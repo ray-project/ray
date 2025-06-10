@@ -18,7 +18,7 @@ import ray
 import ray.dashboard.consts as dashboard_consts
 from ray import NodeID
 from ray._common.utils import get_or_create_event_loop, load_class
-from ray._private.pydantic_compat import BaseModel, Extra, Field, validator
+from ray._common.pydantic_compat import BaseModel, Extra, Field, validator
 from ray._private.ray_constants import KV_NAMESPACE_DASHBOARD, env_bool
 from ray._private.runtime_env.packaging import (
     package_exists,
