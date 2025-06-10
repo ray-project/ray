@@ -42,7 +42,7 @@ class RecsysMockDataLoaderFactory(BaseDataLoaderFactory):
 
 
 class RecsysRayDataLoaderFactory(RayDataLoaderFactory):
-    def _get_ray_datasets(self) -> Dict[str, ray.data.Dataset]:
+    def get_ray_datasets(self) -> Dict[str, ray.data.Dataset]:
         # TODO: Use the train dataset for validation as well.
         ds = get_ray_dataset(DatasetKey.VALID)
         return {

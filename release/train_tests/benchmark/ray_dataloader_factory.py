@@ -1,5 +1,4 @@
 from abc import abstractmethod
-import time
 from typing import Any, Dict, Optional
 
 import ray.train
@@ -35,24 +34,10 @@ class RayDataLoaderFactory(BaseDataLoaderFactory):
             dataloader_config.actor_locality_enabled
         )
 
-        self._ray_dataset_init_time = None
-
     @abstractmethod
-    def _get_ray_datasets(self) -> Dict[str, Dataset]:
-        """Implement this method to create the Ray datasets."""
-        raise NotImplementedError
-
     def get_ray_datasets(self) -> Dict[str, Dataset]:
-        """Wraps the dataset creation in a timer to get the time
-        it takes to create the datasets.
-
-        This is usually fast, but certain operations such as
-        metadata fetching at dataset creation time can be slow.
-        """
-        start_time = time.perf_counter()
-        datasets = self._get_ray_datasets()
-        self._ray_dataset_init_time = time.perf_counter() - start_time
-        return datasets
+        """Get Ray datasets."""
+        raise NotImplementedError
 
     def _get_collate_fn(self) -> Optional[CollateFn]:
         """Return the collate function for the dataloader."""
