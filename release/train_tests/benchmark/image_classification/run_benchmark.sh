@@ -43,7 +43,7 @@ for i in $(seq 1 "$NUM_RUNS"); do
     echo "Run $i/$NUM_RUNS"
 
     START_TIME_NS=$(date +%s%N)
-    "${ARGS[@]}" > "run_${i}.log" 2>&1
+    "${ARGS[@]}" 2>&1 | tee "run_${i}.log"
     EXIT_CODE=$?
     END_TIME_NS=$(date +%s%N)
 
