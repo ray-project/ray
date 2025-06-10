@@ -409,7 +409,7 @@ defusedxml==0.7.1
     #   semgrep
 delta-sharing==1.0.5
     # via -r python/requirements/ml/data-test-requirements.txt
-deltalake==0.18.2
+deltalake==0.9.0
     # via -r python/requirements/ml/data-test-requirements.txt
 deprecated==1.2.18
     # via
