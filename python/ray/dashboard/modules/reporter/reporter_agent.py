@@ -174,14 +174,32 @@ METRICS_GAUGES = {
     # TPU metrics
     "tpu_tensorcore_utilization": Gauge(
         "tpu_tensorcore_utilization",
-        "Percentage TPU tensorcore utilization on a ray node, value should be between 0 and 1",
+        "Percentage TPU tensorcore utilization on a ray node, value should be between 0 and 100",
         "percentage",
         TPU_TAG_KEYS,
     ),
     "tpu_memory_bandwidth_utilization": Gauge(
         "tpu_memory_bandwidth_utilization",
-        "Percentage TPU memory bandwidth utilization on a ray node, value should be between 0 and 1",
+        "Percentage TPU memory bandwidth utilization on a ray node, value should be between 0 and 100",
         "percentage",
+        TPU_TAG_KEYS,
+    ),
+    "tpu_duty_cycle": Gauge(
+        "tpu_duty_cycle",
+        "Percentage of time during which the TPU was actively processing, value should be between 0 and 100",
+        "percentage",
+        TPU_TAG_KEYS,
+    ),
+    "tpu_memory_used": Gauge(
+        "tpu_memory_used",
+        "Total memory used by the accelerator in bytes",
+        "bytes",
+        TPU_TAG_KEYS,
+    ),
+    "tpu_memory_total": Gauge(
+        "tpu_memory_total",
+        "Total memory allocatable by the accelerator in bytes",
+        "bytes",
         TPU_TAG_KEYS,
     ),
     # Disk I/O metrics
@@ -350,6 +368,7 @@ MB = 1024 * 1024
 # Types
 Percentage = int
 Megabytes = int
+Bytes = int
 
 
 # gpu utilization for nvidia gpu from a single process
@@ -377,6 +396,9 @@ class TpuUtilizationInfo(TypedDict):
     tpu_topology: str
     tensorcore_utilization: Percentage
     hbm_utilization: Percentage
+    duty_cycle: Percentage
+    memory_used: Bytes
+    memory_total: Bytes
 
 
 class ReporterAgent(
@@ -682,6 +704,9 @@ class ReporterAgent(
                             tpu_topology=labels["tpu_topology"],
                             tensorcore_utilization=0.0,
                             hbm_utilization=sample.value,
+                            duty_cycle=0.0,
+                            memory_used=0,
+                            memory_total=0,
                         )
                         tpu_utilizations.append(info)
 
@@ -696,6 +721,60 @@ class ReporterAgent(
                             tpu_topology=labels["tpu_topology"],
                             tensorcore_utilization=sample.value,
                             hbm_utilization=0.0,
+                            duty_cycle=0.0,
+                            memory_used=0,
+                            memory_total=0,
+                        )
+                        tpu_utilizations.append(info)
+
+                    if sample.name == "duty_cycle":
+                        labels = sample.labels
+                        accelerator_id = labels["accelerator_id"]
+                        index = accelerator_id.split("-")[1]
+                        info = TpuUtilizationInfo(
+                            index=index,
+                            name=accelerator_id,
+                            tpu_type=labels["model"],
+                            tpu_topology=labels["tpu_topology"],
+                            tensorcore_utilization=0.0,
+                            hbm_utilization=0.0,
+                            duty_cycle=sample.value,
+                            memory_used=0,
+                            memory_total=0,
+                        )
+                        tpu_utilizations.append(info)
+
+                    if sample.name == "memory_used":
+                        labels = sample.labels
+                        accelerator_id = labels["accelerator_id"]
+                        index = accelerator_id.split("-")[1]
+                        info = TpuUtilizationInfo(
+                            index=index,
+                            name=accelerator_id,
+                            tpu_type=labels["model"],
+                            tpu_topology=labels["tpu_topology"],
+                            tensorcore_utilization=0.0,
+                            hbm_utilization=0.0,
+                            duty_cycle=0.0,
+                            memory_used=sample.value,
+                            memory_total=0,
+                        )
+                        tpu_utilizations.append(info)
+
+                    if sample.name == "memory_total":
+                        labels = sample.labels
+                        accelerator_id = labels["accelerator_id"]
+                        index = accelerator_id.split("-")[1]
+                        info = TpuUtilizationInfo(
+                            index=index,
+                            name=accelerator_id,
+                            tpu_type=labels["model"],
+                            tpu_topology=labels["tpu_topology"],
+                            tensorcore_utilization=0.0,
+                            hbm_utilization=0.0,
+                            duty_cycle=0.0,
+                            memory_used=0,
+                            memory_total=sample.value,
                         )
                         tpu_utilizations.append(info)
         except Exception as e:
@@ -713,6 +792,9 @@ class ReporterAgent(
                     "tensorcore_utilization"
                 )
                 merged_info["hbm_utilization"] += info.get("hbm_utilization")
+                merged_info["duty_cycle"] += info.get("duty_cycle")
+                merged_info["memory_used"] += info.get("memory_used")
+                merged_info["memory_total"] += info.get("memory_total")
             else:
                 merged_info = TpuUtilizationInfo(
                     index=info.get("index"),
@@ -721,6 +803,9 @@ class ReporterAgent(
                     tpu_topology=info.get("tpu_topology"),
                     tensorcore_utilization=info.get("tensorcore_utilization"),
                     hbm_utilization=info.get("hbm_utilization"),
+                    duty_cycle=info.get("duty_cycle"),
+                    memory_used=info.get("memory_used"),
+                    memory_total=info.get("memory_total"),
                 )
                 merged_tpu_utilizations.append(merged_info)
 
@@ -1286,6 +1371,9 @@ class ReporterAgent(
                 tpu_topology = tpu.get("tpu_topology")
                 tensorcore_utilization = tpu.get("tensorcore_utilization")
                 hbm_utilization = tpu.get("hbm_utilization")
+                duty_cycle = tpu.get("duty_cycle")
+                memory_used = tpu.get("memory_used")
+                memory_total = tpu.get("memory_total")
 
                 tpu_tags = {
                     **node_tags,
@@ -1304,10 +1392,28 @@ class ReporterAgent(
                     value=hbm_utilization,
                     tags=tpu_tags,
                 )
+                duty_cycle_record = Record(
+                    gauge=METRICS_GAUGES["tpu_duty_cycle"],
+                    value=duty_cycle,
+                    tags=tpu_tags,
+                )
+                memory_used_record = Record(
+                    gauge=METRICS_GAUGES["tpu_memory_used"],
+                    value=memory_used,
+                    tags=tpu_tags,
+                )
+                memory_total_record = Record(
+                    gauge=METRICS_GAUGES["tpu_memory_total"],
+                    value=memory_total,
+                    tags=tpu_tags,
+                )
                 records_reported.extend(
                     [
                         tensorcore_utilization_record,
                         hbm_utilization_record,
+                        duty_cycle_record,
+                        memory_used_record,
+                        memory_total_record,
                     ]
                 )
 

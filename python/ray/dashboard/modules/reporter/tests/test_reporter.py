@@ -349,16 +349,19 @@ def test_report_stats():
             "name": "foo",
             "tpu_type": "v6e",
             "tpu_topology": "2x2",
-            "tensorcore_utilization": 0.25,
-            "hbm_utilization": 0.50,
+            "tensorcore_utilization": 25.0,
+            "hbm_utilization": 50.0,
+            "duty_cycle": 10.0,
+            "memory_used": 1000,
+            "memory_total": 2000,
         }
     ]
     records = agent._to_records(STATS_TEMPLATE, cluster_stats)
-    assert len(records) == 43
+    assert len(records) == 46
     # Test stats without autoscaler report
     cluster_stats = {}
     records = agent._to_records(STATS_TEMPLATE, cluster_stats)
-    assert len(records) == 41
+    assert len(records) == 44
 
 
 def test_report_stats_gpu():
@@ -485,37 +488,52 @@ def test_report_stats_tpu():
             "name": "tpu-0",
             "tpu_type": "v6e",
             "tpu_topology": "2x2",
-            "tensorcore_utilization": 0.1,
-            "hbm_utilization": 0.1,
+            "tensorcore_utilization": 10.0,
+            "hbm_utilization": 10.0,
+            "duty_cycle": 1.0,
+            "memory_used": 500,
+            "memory_total": 2000,
         },
         {
             "index": 1,
             "name": "tpu-1",
             "tpu_type": "v6e",
             "tpu_topology": "2x2",
-            "tensorcore_utilization": 0.2,
-            "hbm_utilization": 0.1,
+            "tensorcore_utilization": 20.0,
+            "hbm_utilization": 10.0,
+            "duty_cycle": 2.0,
+            "memory_used": 400,
+            "memory_total": 2000,
         },
         {
             "index": 2,
             "name": "tpu-2",
             "tpu_type": "v6e",
             "tpu_topology": "2x2",
-            "tensorcore_utilization": 0.3,
-            "hbm_utilization": 0.1,
+            "tensorcore_utilization": 30.0,
+            "hbm_utilization": 10.0,
+            "duty_cycle": 3.0,
+            "memory_used": 300,
+            "memory_total": 2000,
         },
         {
             "index": 3,
             "name": "tpu-3",
             "tpu_type": "v6e",
             "tpu_topology": "2x2",
-            "tensorcore_utilization": 0.4,
-            "hbm_utilization": 0.1,
+            "tensorcore_utilization": 40.0,
+            "hbm_utilization": 10.0,
+            "duty_cycle": 4.0,
+            "memory_used": 200,
+            "memory_total": 2000,
         },
     ]
     tpu_metrics_aggregated = {
         "tpu_tensorcore_utilization": 0.0,
         "tpu_memory_bandwidth_utilization": 0.0,
+        "tpu_duty_cycle": 0.0,
+        "tpu_memory_used": 0,
+        "tpu_memory_total": 0,
     }
     records = agent._to_records(STATS_TEMPLATE, {})
     num_tpu_records = 0
@@ -524,9 +542,12 @@ def test_report_stats_tpu():
             num_tpu_records += 1
             tpu_metrics_aggregated[record.gauge.name] += record.value
 
-    assert num_tpu_records == 8
-    assert tpu_metrics_aggregated["tpu_tensorcore_utilization"] == 1.0
-    assert tpu_metrics_aggregated["tpu_memory_bandwidth_utilization"] == 0.4
+    assert num_tpu_records == 20
+    assert tpu_metrics_aggregated["tpu_tensorcore_utilization"] == 100
+    assert tpu_metrics_aggregated["tpu_memory_bandwidth_utilization"] == 40
+    assert tpu_metrics_aggregated["tpu_duty_cycle"] == 10
+    assert tpu_metrics_aggregated["tpu_memory_used"] == 1400
+    assert tpu_metrics_aggregated["tpu_memory_total"] == 8000
 
 
 def test_report_per_component_stats():
