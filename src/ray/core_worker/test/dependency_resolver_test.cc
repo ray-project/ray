@@ -183,7 +183,10 @@ TEST(LocalDependencyResolverTest, TestNoDependencies) {
   auto store = DefaultCoreWorkerMemoryStoreWithThread::Create();
   auto task_finisher = std::make_shared<MockTaskFinisher>();
   MockActorCreator actor_creator;
-  LocalDependencyResolver resolver(*store, *task_finisher, actor_creator);
+  LocalDependencyResolver resolver(
+      *store, *task_finisher, actor_creator, [](const ObjectID &object_id) {
+        return rpc::TensorTransport::OBJECT_STORE;
+      });
   TaskSpecification task;
   bool ok = false;
   resolver.ResolveDependencies(task, [&ok](Status) { ok = true; });
@@ -196,7 +199,10 @@ TEST(LocalDependencyResolverTest, TestActorAndObjectDependencies1) {
   auto store = DefaultCoreWorkerMemoryStoreWithThread::Create();
   auto task_finisher = std::make_shared<MockTaskFinisher>();
   MockActorCreator actor_creator;
-  LocalDependencyResolver resolver(*store, *task_finisher, actor_creator);
+  LocalDependencyResolver resolver(
+      *store, *task_finisher, actor_creator, [](const ObjectID &object_id) {
+        return rpc::TensorTransport::OBJECT_STORE;
+      });
   TaskSpecification task;
   ObjectID obj = ObjectID::FromRandom();
   task.GetMutableMessage().add_args()->mutable_object_ref()->set_object_id(obj.Binary());
@@ -238,7 +244,10 @@ TEST(LocalDependencyResolverTest, TestActorAndObjectDependencies2) {
   auto store = DefaultCoreWorkerMemoryStoreWithThread::Create();
   auto task_finisher = std::make_shared<MockTaskFinisher>();
   MockActorCreator actor_creator;
-  LocalDependencyResolver resolver(*store, *task_finisher, actor_creator);
+  LocalDependencyResolver resolver(
+      *store, *task_finisher, actor_creator, [](const ObjectID &object_id) {
+        return rpc::TensorTransport::OBJECT_STORE;
+      });
   TaskSpecification task;
   ObjectID obj = ObjectID::FromRandom();
   task.GetMutableMessage().add_args()->mutable_object_ref()->set_object_id(obj.Binary());
@@ -279,7 +288,10 @@ TEST(LocalDependencyResolverTest, TestHandlePlasmaPromotion) {
   auto store = DefaultCoreWorkerMemoryStoreWithThread::Create();
   auto task_finisher = std::make_shared<MockTaskFinisher>();
   MockActorCreator actor_creator;
-  LocalDependencyResolver resolver(*store, *task_finisher, actor_creator);
+  LocalDependencyResolver resolver(
+      *store, *task_finisher, actor_creator, [](const ObjectID &object_id) {
+        return rpc::TensorTransport::OBJECT_STORE;
+      });
   ObjectID obj1 = ObjectID::FromRandom();
   std::string meta = std::to_string(static_cast<int>(rpc::ErrorType::OBJECT_IN_PLASMA));
   auto metadata = const_cast<uint8_t *>(reinterpret_cast<const uint8_t *>(meta.data()));
@@ -306,7 +318,10 @@ TEST(LocalDependencyResolverTest, TestInlineLocalDependencies) {
   auto store = DefaultCoreWorkerMemoryStoreWithThread::Create();
   auto task_finisher = std::make_shared<MockTaskFinisher>();
   MockActorCreator actor_creator;
-  LocalDependencyResolver resolver(*store, *task_finisher, actor_creator);
+  LocalDependencyResolver resolver(
+      *store, *task_finisher, actor_creator, [](const ObjectID &object_id) {
+        return rpc::TensorTransport::OBJECT_STORE;
+      });
   ObjectID obj1 = ObjectID::FromRandom();
   ObjectID obj2 = ObjectID::FromRandom();
   auto data = GenerateRandomObject();
@@ -337,7 +352,10 @@ TEST(LocalDependencyResolverTest, TestInlinePendingDependencies) {
   auto store = DefaultCoreWorkerMemoryStoreWithThread::Create();
   auto task_finisher = std::make_shared<MockTaskFinisher>();
   MockActorCreator actor_creator;
-  LocalDependencyResolver resolver(*store, *task_finisher, actor_creator);
+  LocalDependencyResolver resolver(
+      *store, *task_finisher, actor_creator, [](const ObjectID &object_id) {
+        return rpc::TensorTransport::OBJECT_STORE;
+      });
   ObjectID obj1 = ObjectID::FromRandom();
   ObjectID obj2 = ObjectID::FromRandom();
   auto data = GenerateRandomObject();
@@ -372,7 +390,10 @@ TEST(LocalDependencyResolverTest, TestInlinedObjectIds) {
   auto store = DefaultCoreWorkerMemoryStoreWithThread::Create();
   auto task_finisher = std::make_shared<MockTaskFinisher>();
   MockActorCreator actor_creator;
-  LocalDependencyResolver resolver(*store, *task_finisher, actor_creator);
+  LocalDependencyResolver resolver(
+      *store, *task_finisher, actor_creator, [](const ObjectID &object_id) {
+        return rpc::TensorTransport::OBJECT_STORE;
+      });
   ObjectID obj1 = ObjectID::FromRandom();
   ObjectID obj2 = ObjectID::FromRandom();
   ObjectID obj3 = ObjectID::FromRandom();
@@ -409,7 +430,10 @@ TEST(LocalDependencyResolverTest, TestCancelDependencyResolution) {
   auto store = std::make_shared<CoreWorkerMemoryStore>(io_context.GetIoService());
   auto task_finisher = std::make_shared<MockTaskFinisher>();
   MockActorCreator actor_creator;
-  LocalDependencyResolver resolver(*store, *task_finisher, actor_creator);
+  LocalDependencyResolver resolver(
+      *store, *task_finisher, actor_creator, [](const ObjectID &object_id) {
+        return rpc::TensorTransport::OBJECT_STORE;
+      });
   ObjectID obj1 = ObjectID::FromRandom();
   ObjectID obj2 = ObjectID::FromRandom();
   auto data = GenerateRandomObject();
@@ -441,7 +465,10 @@ TEST(LocalDependencyResolverTest, TestDependenciesAlreadyLocal) {
   auto store = DefaultCoreWorkerMemoryStoreWithThread::Create();
   auto task_finisher = std::make_shared<MockTaskFinisher>();
   MockActorCreator actor_creator;
-  LocalDependencyResolver resolver(*store, *task_finisher, actor_creator);
+  LocalDependencyResolver resolver(
+      *store, *task_finisher, actor_creator, [](const ObjectID &object_id) {
+        return rpc::TensorTransport::OBJECT_STORE;
+      });
 
   ObjectID obj = ObjectID::FromRandom();
   auto data = GenerateRandomObject();
