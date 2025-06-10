@@ -10,7 +10,6 @@ from ray.serve._private.common import (
     TargetCapacityDirection,
 )
 from ray.serve._private.constants import (
-    RAY_SERVE_COLLECT_AUTOSCALING_METRICS_ON_HANDLE,
     RAY_SERVE_MIN_HANDLE_METRICS_TIMEOUT_S,
     SERVE_LOGGER_NAME,
 )
@@ -293,28 +292,21 @@ class AutoscalingState:
         If there are 0 running replicas, then returns the total number
         of requests queued at handles
 
-        If the flag RAY_SERVE_COLLECT_AUTOSCALING_METRICS_ON_HANDLE is
-        set to 1, the returned average includes both queued and ongoing
-        requests. Otherwise, the returned average includes only ongoing
-        requests.
+        This code assumes that the metrics are either emmited on handles
+        or on replicas, but not both. Its the responsibility of the writer
+        to ensure enclusivity of the metrics.
         """
 
         total_requests = 0
 
-        if (
-            RAY_SERVE_COLLECT_AUTOSCALING_METRICS_ON_HANDLE
-            or len(self._running_replicas) == 0
-        ):
-            for handle_metric in self._handle_requests.values():
-                total_requests += handle_metric.queued_requests
-                for id in self._running_replicas:
-                    if id in handle_metric.running_requests:
-                        total_requests += handle_metric.running_requests[id]
-        else:
+        for handle_metric in self._handle_requests.values():
+            total_requests += handle_metric.queued_requests
             for id in self._running_replicas:
-                if id in self._replica_requests:
-                    total_requests += self._replica_requests[id].running_requests
-
+                if id in handle_metric.running_requests:
+                    total_requests += handle_metric.running_requests[id]
+        for id in self._running_replicas:
+            if id in self._replica_requests:
+                total_requests += self._replica_requests[id].running_requests
         return total_requests
 
 

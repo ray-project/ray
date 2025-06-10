@@ -142,7 +142,6 @@ RAY_RUNTIME_ENV_URI_PIN_EXPIRATION_S_DEFAULT = 10 * 60
 # If set to 1, then `.gitignore` files will not be parsed and loaded into "excludes"
 # when using a local working_dir or py_modules.
 RAY_RUNTIME_ENV_IGNORE_GITIGNORE = "RAY_RUNTIME_ENV_IGNORE_GITIGNORE"
-RAY_STORAGE_ENVIRONMENT_VARIABLE = "RAY_STORAGE"
 # Hook for running a user-specified runtime-env hook. This hook will be called
 # unconditionally given the runtime_env dict passed for ray.init. It must return
 # a rewritten runtime_env dict. Example: "your.module.runtime_env_hook".
@@ -222,9 +221,6 @@ DASHBOARD_DIED_ERROR = "dashboard_died"
 RAYLET_DIED_ERROR = "raylet_died"
 DETACHED_ACTOR_ANONYMOUS_NAMESPACE_ERROR = "detached_actor_anonymous_namespace"
 EXCESS_QUEUEING_WARNING = "excess_queueing_warning"
-
-# Used in gpu detection
-RESOURCE_CONSTRAINT_PREFIX = "accelerator_type:"
 
 # Used by autoscaler to set the node custom resources and labels
 # from cluster.yaml.
@@ -533,8 +529,6 @@ RAY_DEFAULT_LABEL_KEYS_PREFIX = "ray.io/"
 RAY_TPU_MAX_CONCURRENT_CONNECTIONS_ENV_VAR = "RAY_TPU_MAX_CONCURRENT_ACTIVE_CONNECTIONS"
 
 RAY_NODE_IP_FILENAME = "node_ip_address.json"
-
-PLACEMENT_GROUP_BUNDLE_RESOURCE_NAME = "bundle"
 
 RAY_LOGGING_CONFIG_ENCODING = os.environ.get("RAY_LOGGING_CONFIG_ENCODING")
 

@@ -26,7 +26,7 @@ class NCCLUniqueIDStore:
         Initialize the NCCL unique ID for this store.
 
         Args:
-            uid: the unique ID generated via the NCCL get_unique_id API.
+            uid: the unique ID generated via the NCCL generate_communicator_id API.
 
         Returns:
             None

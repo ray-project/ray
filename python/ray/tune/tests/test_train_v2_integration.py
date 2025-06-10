@@ -8,8 +8,7 @@ from ray.cluster_utils import Cluster
 from ray.train.tests.util import create_dict_checkpoint
 from ray.train.v2._internal.constants import HEALTH_CHECK_INTERVAL_S_ENV_VAR
 from ray.train.v2.api.data_parallel_trainer import DataParallelTrainer
-from ray.tune.integration.ray_train import TuneReportCallback, CHECKPOINT_PATH_KEY
-
+from ray.tune.integration.ray_train import CHECKPOINT_PATH_KEY, TuneReportCallback
 
 TRAIN_DRIVER_RESOURCE_NAME = "train_driver_resource"
 NUM_GPUS_IN_CLUSTER = 4

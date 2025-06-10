@@ -76,6 +76,7 @@ steps:
     job_env: forge-aarch64
 
   - label: ":tapioca: build: ray py{{matrix}} docker (aarch64)"
+    key: ray_images_aarch64
     tags:
       - python_dependencies
       - docker

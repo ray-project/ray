@@ -1016,10 +1016,6 @@ void CoreWorker::Shutdown() {
     }
     task_execution_service_.stop();
   }
-  if (options_.on_worker_shutdown) {
-    // Running in a main thread.
-    options_.on_worker_shutdown(GetWorkerID());
-  }
 
   task_event_buffer_->FlushEvents(/*forced=*/true);
   task_event_buffer_->Stop();
@@ -2784,7 +2780,8 @@ Status CoreWorker::CreatePlacementGroup(
       placement_group_creation_options.soft_target_node_id,
       worker_context_.GetCurrentJobID(),
       worker_context_.GetCurrentActorID(),
-      worker_context_.CurrentActorDetached());
+      worker_context_.CurrentActorDetached(),
+      placement_group_creation_options.bundle_label_selector);
   PlacementGroupSpecification placement_group_spec = builder.Build();
   *return_placement_group_id = placement_group_id;
   RAY_LOG(INFO).WithField(placement_group_id)
@@ -3790,7 +3787,7 @@ Status CoreWorker::GetAndPinArgsForExecutor(const TaskSpecification &task,
       // otherwise, the put is a no-op.
       if (!options_.is_local_mode) {
         RAY_UNUSED(memory_store_->Put(RayObject(rpc::ErrorType::OBJECT_IN_PLASMA),
-                                      task.ArgId(i)));
+                                      task.ArgObjectId(i)));
       }
     } else {
       // A pass-by-value argument.
@@ -3811,7 +3808,7 @@ Status CoreWorker::GetAndPinArgsForExecutor(const TaskSpecification &task,
       args->push_back(std::make_shared<RayObject>(
           std::move(data), std::move(metadata), task.ArgInlinedRefs(i), copy_data));
       auto &arg_ref = arg_refs->emplace_back();
-      arg_ref.set_object_id(task.ArgId(i).Binary());
+      arg_ref.set_object_id(task.ArgObjectIdBinary(i));
       // The task borrows all ObjectIDs that were serialized in the inlined
       // arguments. The task will receive references to these IDs, so it is
       // possible for the task to continue borrowing these arguments by the
@@ -4629,7 +4626,7 @@ void CoreWorker::HandleGetCoreWorkerStats(rpc::GetCoreWorkerStatsRequest request
   if (request.include_task_info()) {
     task_manager_->FillTaskInfo(reply, limit);
     for (const auto &current_running_task : running_tasks_) {
-      reply->add_running_task_ids(current_running_task.second.TaskId().Binary());
+      reply->add_running_task_ids(current_running_task.second.TaskIdBinary());
     }
   }
 
