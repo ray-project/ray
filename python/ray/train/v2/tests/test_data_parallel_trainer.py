@@ -218,7 +218,7 @@ def test_user_callback(tmp_path):
 
 def run_process_for_sigint_abort():
     # Lives outside test_sigint_abort because cannot pickle nested functions.
-    ray.init("auto")
+    ray.init(address="auto", ignore_reinit_error=True)
 
     def train_fn():
         signal_actor = ray.get_actor("signal_actor", namespace="test_sigint_abort")
