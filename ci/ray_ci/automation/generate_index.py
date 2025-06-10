@@ -18,7 +18,7 @@ def main(prefix):
     tags = [f"rayproject/ray:{tag}" for tag in tags]
     indexes_to_publish = []
     for tag in tags:
-        if "-aarch64" not in tag and tag + "-aarch64" in tags:
+        if not tag.endswith("-aarch64") and tag + "-aarch64" in tags:
             indexes_to_publish.append((tag, tag + "-aarch64"))
 
     for tags in indexes_to_publish:
