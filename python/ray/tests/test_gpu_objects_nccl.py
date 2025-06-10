@@ -21,6 +21,7 @@ class GPUTestActor:
 
 
 def test_p2p(ray_start_regular):
+    # TODO(swang): Add tests for mocked NCCL that can run on CPU-only machines.
     world_size = 2
     actors = [GPUTestActor.remote() for _ in range(world_size)]
     create_collective_group(actors, backend="nccl")
