@@ -4,6 +4,7 @@ import itertools
 import logging
 import math
 import threading
+import time
 from collections import defaultdict, deque
 from dataclasses import dataclass
 from typing import (
@@ -445,12 +446,143 @@ class HashShufflingOperatorBase(PhysicalOperator):
             int, Dict[int, _PartitionStats]
         ] = defaultdict(dict)
 
+        # Resource monitoring state
+        self._aggregator_startup_time: Optional[float] = None
+        self._aggregator_monitoring_warned: bool = False
+
     def start(self, options: ExecutionOptions) -> None:
         super().start(options)
 
+        # Check cluster resources before starting aggregators
+        self._check_cluster_resources()
+
+        # Record start time for monitoring
+        self._aggregator_startup_time = time.time()
+
         self._aggregator_pool.start()
 
+    def _check_cluster_resources(self) -> None:
+        """Check if cluster has enough resources to schedule all aggregators.
+
+        Raises:
+            ValueError: If cluster doesn't have sufficient resources.
+        """
+        try:
+            cluster_resources = ray.cluster_resources()
+            available_resources = ray.available_resources()
+        except Exception as e:
+            logger.warning(f"Failed to get cluster resources: {e}")
+            return
+
+        # Calculate required resources for all aggregators
+        aggregator_args = self._aggregator_pool._aggregator_ray_remote_args
+        required_cpus = (
+            aggregator_args.get("num_cpus", 1) * self._aggregator_pool.num_aggregators
+        )
+        required_memory = (
+            aggregator_args.get("memory", 0) * self._aggregator_pool.num_aggregators
+        )
+
+        # Check CPU resources
+        total_cpus = cluster_resources.get("CPU", 0)
+        available_cpus = available_resources.get("CPU", 0)
+
+        if required_cpus > total_cpus:
+            raise ValueError(
+                f"Insufficient CPU resources in cluster for hash shuffle operation. "
+                f"Required: {required_cpus} CPUs for {self._aggregator_pool.num_aggregators} aggregators, "
+                f"but cluster only has {total_cpus} total CPUs. "
+                f"Consider reducing the number of partitions or increasing cluster size."
+            )
+
+        if required_cpus > available_cpus:
+            logger.warning(
+                f"Limited available CPU resources for hash shuffle operation. "
+                f"Required: {required_cpus} CPUs, available: {available_cpus} CPUs. "
+                f"Aggregators may take longer to start due to resource contention."
+            )
+
+        # Check memory resources if specified
+        if required_memory > 0:
+            total_memory = cluster_resources.get("memory", 0)
+            available_memory = available_resources.get("memory", 0)
+
+            if required_memory > total_memory:
+                raise ValueError(
+                    f"Insufficient memory resources in cluster for hash shuffle operation. "
+                    f"Required: {required_memory / GiB:.2f} GiB for {self._aggregator_pool.num_aggregators} aggregators, "
+                    f"but cluster only has {total_memory / GiB:.2f} GiB total memory. "
+                    f"Consider reducing the number of partitions or increasing cluster size."
+                )
+
+            if required_memory > available_memory:
+                logger.warning(
+                    f"Limited available memory resources for hash shuffle operation. "
+                    f"Required: {required_memory / GiB:.2f} GiB, available: {available_memory / GiB:.2f} GiB. "
+                    f"Aggregators may take longer to start due to resource contention."
+                )
+
+        logger.debug(
+            f"Resource check passed for hash shuffle operation: "
+            f"required CPUs={required_cpus}, available CPUs={available_cpus}, "
+            f"required memory={required_memory / GiB:.2f} GiB, available memory={available_memory / GiB:.2f} GiB"
+        )
+
+    def _check_aggregator_health(self, timeout_seconds: float = 30.0) -> None:
+        """Check if all aggregators are up and running after a timeout period.
+
+        Args:
+            timeout_seconds: Time to wait before checking aggregator health.
+        """
+        if (
+            self._aggregator_startup_time is None
+            or self._aggregator_monitoring_warned
+            or time.time() - self._aggregator_startup_time < timeout_seconds
+        ):
+            return
+
+        try:
+            # Check if all aggregators are responsive
+            unresponsive_aggregators = []
+
+            for i, aggregator in enumerate(self._aggregator_pool._aggregators):
+                try:
+                    # Try to get a simple health check from the actor
+                    # We use a very short timeout to avoid blocking
+                    ray.get(aggregator.__ray_ready__.remote(), timeout=1.0)
+                except Exception as e:
+                    unresponsive_aggregators.append((i, str(e)))
+
+            if unresponsive_aggregators:
+                aggregator_details = ", ".join(
+                    [
+                        f"aggregator-{i} ({error})"
+                        for i, error in unresponsive_aggregators
+                    ]
+                )
+                logger.warning(
+                    f"Hash shuffle aggregator health check failed after {timeout_seconds}s. "
+                    f"{len(unresponsive_aggregators)}/{self._aggregator_pool.num_aggregators} "
+                    f"aggregators are unresponsive: {aggregator_details}. "
+                    f"This may indicate resource constraints or cluster issues. "
+                    f"The operation may proceed slowly or fail."
+                )
+            else:
+                logger.debug(
+                    f"All {self._aggregator_pool.num_aggregators} hash shuffle aggregators "
+                    f"are healthy after {timeout_seconds}s"
+                )
+
+        except Exception as e:
+            logger.warning(f"Failed to check aggregator health: {e}")
+
+        # Mark as warned to avoid repeated warnings
+        self._aggregator_monitoring_warned = True
+
     def _add_input_inner(self, input_bundle: RefBundle, input_index: int) -> None:
+        # Check aggregator health after T secs
+        self._check_aggregator_health()
+
         # TODO move to base class
         self._metrics.on_input_queued(input_bundle)
         try:
