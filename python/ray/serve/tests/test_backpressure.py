@@ -1,5 +1,6 @@
 import sys
 from concurrent.futures import FIRST_COMPLETED, ThreadPoolExecutor, wait
+import time
 from typing import Tuple
 
 import grpc
@@ -67,8 +68,10 @@ def test_http_backpressure(serve_instance):
 
     @ray.remote(num_cpus=0)
     def do_request(msg: str) -> Tuple[int, str]:
-        r = httpx.request("GET", "http://localhost:8000/", json={"msg": msg}, timeout=None)
-        return r.status_code, r.text
+        start_time = time.time()
+        r = httpx.request("GET", "http://localhost:8000/", json={"msg": msg}, timeout=30.0)
+        end_time = time.time()
+        return r.status_code, r.text, end_time - start_time
 
     # First response should block. Until the signal is sent, all subsequent requests
     # will be queued in the handle.
@@ -81,15 +84,16 @@ def test_http_backpressure(serve_instance):
     second_ref = do_request.remote("hi-2")
     _, pending = ray.wait([second_ref], timeout=0.1)
     for _ in range(10):
-        status_code, text = ray.get(do_request.remote(("hi-err")))
+        status_code, text, time_taken = ray.get(do_request.remote(("hi-err")))
+        print(f"Time taken: {time_taken} seconds")
         assert status_code == 503
         assert text.startswith("Request dropped due to backpressure")
 
     # Send the signal; the first request will be unblocked and the second should
     # subsequently get scheduled and executed.
     ray.get(signal_actor.send.remote())
-    assert ray.get(first_ref) == (200, "hi-1")
-    assert ray.get(second_ref) == (200, "hi-2")
+    assert ray.get(first_ref)[:2] == (200, "hi-1")
+    assert ray.get(second_ref)[:2] == (200, "hi-2")
 
     ray.get(signal_actor.send.remote(clear=True))
     wait_for_condition(lambda: ray.get(signal_actor.cur_num_waiters.remote()) == 0)
