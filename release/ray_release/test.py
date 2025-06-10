@@ -384,7 +384,7 @@ class Test(dict):
 
     def is_kuberay(self) -> bool:
         """
-        Returns whether this test is running on Kuberay.
+        Returns whether this test is running on KubeRay.
         """
         return self.get("env") == "kuberay"
 

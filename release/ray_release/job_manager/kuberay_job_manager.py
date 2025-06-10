@@ -24,7 +24,7 @@ job_status_to_return_code = {
 }
 
 
-class KuberayJobManager:
+class KubeRayJobManager:
     def __init__(self):
         self.cluster_startup_timeout = 600
         self.job_id = None
@@ -84,7 +84,7 @@ class KuberayJobManager:
         url = f"{KUBERAY_SERVER_URL}/api/v1/jobs"
         token = self._get_kuberay_server_token()
         if not token:
-            raise Exception(f"Failed to get KubeRay service token")
+            raise Exception("Failed to get KubeRay service token")
         headers = {
             "Authorization": "Bearer " + token,
             "Content-Type": "application/json",
@@ -141,7 +141,7 @@ class KuberayJobManager:
             status = self._get_job_status()
             logger.info(f"Current job status: {status}")
             if not job_running and status in ["RUNNING", "ERRORED"]:
-                logger.info(f"Job started")
+                logger.info("Job started")
                 job_running = True
                 deadline_timestamp = now + timeout_sec
             if status in ["SUCCEEDED", "FAILED", "ERRORED", "CANCELLED"]:
@@ -159,7 +159,7 @@ class KuberayJobManager:
         url = f"{KUBERAY_SERVER_URL}/api/v1/jobs?namespace={DEFAULT_KUBERAY_NAMESPACE}&names={self.job_name}"
         token = self._get_kuberay_server_token()
         if not token:
-            raise Exception(f"Failed to get KubeRay service token")
+            raise Exception("Failed to get KubeRay service token")
         headers = {
             "Authorization": "Bearer " + token,
         }

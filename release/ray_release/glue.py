@@ -12,7 +12,7 @@ from ray_release.cluster_manager.minimal import MinimalClusterManager
 from ray_release.command_runner.job_runner import JobRunner
 from ray_release.command_runner.command_runner import CommandRunner
 from ray_release.command_runner.anyscale_job_runner import AnyscaleJobRunner
-from ray_release.job_manager.kuberay_job_manager import KuberayJobManager
+from ray_release.job_manager.kuberay_job_manager import KubeRayJobManager
 from ray_release.test import Test
 from ray_release.config import (
     DEFAULT_BUILD_TIMEOUT,
@@ -437,7 +437,7 @@ def run_release_test_kuberay(
 
     command_timeout = int(test["run"].get("timeout", DEFAULT_COMMAND_TIMEOUT))
 
-    kuberay_job_manager = KuberayJobManager()
+    kuberay_job_manager = KubeRayJobManager()
     retcode, duration = kuberay_job_manager.run_and_wait(
         job_name=test["name"].replace(".", "-").replace("_", "-"),
         image=test.get_anyscale_byod_image(),
