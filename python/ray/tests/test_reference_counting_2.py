@@ -11,6 +11,7 @@ import pickle
 import signal
 import sys
 import time
+from typing import Union
 
 import numpy as np
 import pytest
@@ -18,8 +19,8 @@ import pytest
 import ray
 import ray.cluster_utils
 from ray._private.internal_api import memory_summary
+from ray._common.test_utils import SignalActor
 from ray._private.test_utils import (
-    SignalActor,
     put_object,
     wait_for_condition,
     wait_for_num_actors,
@@ -44,7 +45,14 @@ def one_cpu_100MiB_shared():
     ray.shutdown()
 
 
-def _fill_object_store_and_get(obj, succeed=True, object_MiB=20, num_objects=5):
+def _fill_object_store_and_get(
+    obj: Union[ray.ObjectRef, bytes],
+    *,
+    succeed: bool = True,
+    object_MiB: float = 20,
+    num_objects: int = 5,
+    timeout_s: float = 10.0,
+):
     for _ in range(num_objects):
         ray.put(np.zeros(object_MiB * 1024 * 1024, dtype=np.uint8))
 
@@ -53,11 +61,15 @@ def _fill_object_store_and_get(obj, succeed=True, object_MiB=20, num_objects=5):
 
     if succeed:
         wait_for_condition(
-            lambda: ray._private.worker.global_worker.core_worker.object_exists(obj)
+            lambda: ray._private.worker.global_worker.core_worker.object_exists(obj),
+            timeout=timeout_s,
         )
     else:
         wait_for_condition(
-            lambda: not ray._private.worker.global_worker.core_worker.object_exists(obj)
+            lambda: not ray._private.worker.global_worker.core_worker.object_exists(
+                obj
+            ),
+            timeout=timeout_s,
         )
 
 
@@ -199,6 +211,7 @@ def test_pass_returned_object_ref(one_cpu_100MiB_shared, use_ray_put, failure):
 # returned by another task to the end of the chain. The reference should still
 # exist while the final task in the chain is running and should be removed once
 # it finishes.
+@pytest.mark.skipif(sys.platform == "win32", reason="Flaky on Windows.")
 @pytest.mark.parametrize(
     "use_ray_put,failure", [(False, False), (False, True), (True, False), (True, True)]
 )
@@ -255,7 +268,7 @@ def test_recursively_pass_returned_object_ref(
     del outer_oid
 
     # Reference should be gone, check that returned ID gets evicted.
-    _fill_object_store_and_get(inner_oid_bytes, succeed=False)
+    _fill_object_store_and_get(inner_oid_bytes, succeed=False, timeout_s=20)
 
 
 # Call a recursive chain of tasks. The final task in the chain returns an

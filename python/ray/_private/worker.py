@@ -17,6 +17,7 @@ from collections.abc import Mapping
 from contextlib import contextmanager
 from dataclasses import dataclass
 from typing import (
+    TYPE_CHECKING,
     Any,
     AnyStr,
     Callable,
@@ -54,9 +55,11 @@ import ray.cloudpickle as pickle  # noqa
 import ray.job_config
 import ray.remote_function
 from ray import ActorID, JobID, Language, ObjectRef
+from ray._common.utils import load_class
 from ray._private import ray_option_utils
 from ray._private.client_mode_hook import client_mode_hook
 from ray._private.function_manager import FunctionActorManager
+from ray._private.gpu_object_manager import GPUObjectManager
 from ray._private.inspect_util import is_cython
 from ray._private.ray_logging import (
     global_worker_stdstream_dispatcher,
@@ -72,7 +75,7 @@ from ray._private.runtime_env.setup_hook import (
     upload_worker_process_setup_hook_if_needed,
 )
 from ray._private.runtime_env.working_dir import upload_working_dir_if_needed
-from ray._private.utils import get_ray_doc_version, load_class
+from ray._private.utils import get_ray_doc_version
 from ray._raylet import (
     ObjectRefGenerator,
     TaskID,
@@ -96,7 +99,8 @@ from ray.util.tracing.tracing_helper import _import_from_string
 from ray.widgets import Template
 from ray.widgets.util import repr_with_fallback
 
-import setproctitle
+if TYPE_CHECKING:
+    pass
 
 SCRIPT_MODE = 0
 WORKER_MODE = 1
@@ -443,6 +447,9 @@ class Worker:
         self.node = None
         self.mode = None
         self.actors = {}
+        # GPU object manager to manage GPU object lifecycles, including coordinating out-of-band
+        # tensor transfers between actors, storing and retrieving GPU objects, and garbage collection.
+        self._gpu_object_manager = GPUObjectManager()
         # When the worker is constructed. Record the original value of the
         # (CUDA_VISIBLE_DEVICES, ONEAPI_DEVICE_SELECTOR, HIP_VISIBLE_DEVICES,
         # NEURON_RT_VISIBLE_CORES, TPU_VISIBLE_CHIPS, ..) environment variables.
@@ -491,6 +498,10 @@ class Worker:
         # Indicates whether the worker is connected to the Ray cluster.
         # It should be set to True in `connect` and False in `disconnect`.
         self._is_connected: bool = False
+
+    @property
+    def gpu_object_manager(self) -> GPUObjectManager:
+        return self._gpu_object_manager
 
     @property
     def connected(self):
@@ -2415,13 +2426,13 @@ def connect(
         if job_id is None:
             job_id = ray._private.state.next_job_id()
 
-    if mode is not SCRIPT_MODE and mode is not LOCAL_MODE and setproctitle:
+    if mode is not SCRIPT_MODE and mode is not LOCAL_MODE:
         process_name = ray_constants.WORKER_PROCESS_TYPE_IDLE_WORKER
         if mode is SPILL_WORKER_MODE:
             process_name = ray_constants.WORKER_PROCESS_TYPE_SPILL_WORKER_IDLE
         elif mode is RESTORE_WORKER_MODE:
             process_name = ray_constants.WORKER_PROCESS_TYPE_RESTORE_WORKER_IDLE
-        setproctitle.setproctitle(process_name)
+        ray._raylet.setproctitle(process_name)
 
     if not isinstance(job_id, JobID):
         raise TypeError("The type of given job id must be JobID.")
@@ -2669,12 +2680,12 @@ def disconnect(exiting_interpreter=False):
 @contextmanager
 def _changeproctitle(title, next_title):
     if _mode() is not LOCAL_MODE:
-        setproctitle.setproctitle(title)
+        ray._raylet.setproctitle(title)
     try:
         yield
     finally:
         if _mode() is not LOCAL_MODE:
-            setproctitle.setproctitle(next_title)
+            ray._raylet.setproctitle(next_title)
 
 
 @DeveloperAPI
@@ -3566,7 +3577,7 @@ def remote(
             (This means, by default, actors cannot get scheduled on a zero-cpu node,
             but an infinite number of them can run on any non-zero cpu node.
             The default value for actors was chosen for historical reasons.
-            It’s recommended to always explicitly set num_cpus for actors
+            It's recommended to always explicitly set num_cpus for actors
             to avoid any surprises.
             If resources are specified explicitly,
             they are required for both scheduling and running.)
