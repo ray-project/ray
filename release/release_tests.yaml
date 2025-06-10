@@ -2126,7 +2126,7 @@
     - __suffix__: skip_training.parquet
       run:
         timeout: 1200
-        script: bash image_classification/run_benchmark.sh --num-runs=5 -- RAY_TRAIN_V2_ENABLED=1 python train_benchmark.py --task=image_classification_parquet --dataloader_type=ray_data --num_workers=16 --skip_train_step --skip_validation_at_epoch_end
+        script: bash image_classification/run_benchmark.sh --num-runs 5 -- RAY_TRAIN_V2_ENABLED=1 python train_benchmark.py --task=image_classification_parquet --dataloader_type=ray_data --num_workers=16 --skip_train_step --skip_validation_at_epoch_end
 
     - __suffix__: skip_training.parquet.torch_dataloader
       run:
@@ -2154,7 +2154,7 @@
     - __suffix__: skip_training.jpeg
       run:
         timeout: 1200
-        script: bash image_classification/run_benchmark.sh --num-runs=5 -- RAY_TRAIN_V2_ENABLED=1 python train_benchmark.py --task=image_classification_jpeg --dataloader_type=ray_data --num_workers=16 --skip_train_step --skip_validation_at_epoch_end
+        script: bash image_classification/run_benchmark.sh --num-runs 5 -- RAY_TRAIN_V2_ENABLED=1 python train_benchmark.py --task=image_classification_jpeg --dataloader_type=ray_data --num_workers=16 --skip_train_step --skip_validation_at_epoch_end
 
     - __suffix__: skip_training.jpeg.torch_dataloader
       run:
