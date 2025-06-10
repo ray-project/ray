@@ -9,7 +9,8 @@ import numpy as np
 import pytest
 
 import ray
-from ray._private.test_utils import run_string_as_driver, wait_for_condition
+from ray._common.test_utils import wait_for_condition
+from ray._private.test_utils import run_string_as_driver
 from ray.tests.test_object_spilling import assert_no_thrashing, is_dir_empty
 from ray._private.external_storage import (
     FileSystemStorage,
