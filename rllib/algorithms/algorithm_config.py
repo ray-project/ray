@@ -533,6 +533,8 @@ class AlgorithmConfig(_Config):
         # Offline evaluation.
         self.offline_evaluation_interval = None
         self.num_offline_eval_runners = 0
+        self.offline_evaluation_type: str = None
+        self.offline_eval_runner_cls = None
         # TODO (simon): Only `_offline_evaluate_with_fixed_duration` works. Also,
         # decide, if we use `offline_evaluation_duration` or
         # `dataset_num_iters_per_offline_eval_runner`. Should the user decide here?
@@ -2705,6 +2707,8 @@ class AlgorithmConfig(_Config):
         # Offline evaluation.
         offline_evaluation_interval: Optional[int] = NotProvided,
         num_offline_eval_runners: Optional[int] = NotProvided,
+        offline_eval_runner_cls: Optional[Callable] = NotProvided,
+        offline_evaluation_type: Optional[Callable] = NotProvided,
         offline_loss_for_module_fn: Optional[Callable] = NotProvided,
         offline_eval_batch_size_per_runner: Optional[int] = NotProvided,
         dataset_num_iters_per_offline_eval_runner: Optional[int] = NotProvided,
@@ -2975,6 +2979,10 @@ class AlgorithmConfig(_Config):
             self.offline_evaluation_interval = offline_evaluation_interval
         if num_offline_eval_runners is not NotProvided:
             self.num_offline_eval_runners = num_offline_eval_runners
+        if offline_evaluation_type is not NotProvided:
+            self.offline_evaluation_type = offline_evaluation_type
+        if offline_eval_runner_cls is not NotProvided:
+            self.offline_eval_runner_cls = offline_eval_runner_cls
         if offline_loss_for_module_fn is not NotProvided:
             self.offline_loss_for_module_fn = offline_loss_for_module_fn
         if offline_eval_batch_size_per_runner is not NotProvided:
@@ -5276,6 +5284,16 @@ class AlgorithmConfig(_Config):
                 "When recording episodes only complete episodes should be "
                 "recorded (i.e. `batch_mode=='complete_episodes'`). Otherwise "
                 "recorded episodes cannot be read in for training."
+            )
+
+        # Offline evaluation.
+        from ray.rllib.offline.offline_policy_evaluation_runner import OfflinePolicyEvaluationTypes
+        if self.offline_evaluation_type and self.offline_evaluation_type != "eval_loss" and self.offline_evaluation_type not in OfflinePolicyEvaluationTypes:
+            self._value_error(
+                f"Unknown offline evaluation type: {self.config.offline_evaluation_type}."
+                "Available types of offline evaluation are either `'eval_loss' to evaluate "
+                "the training loss on a validation dataset or "
+                f"{[t for t in in OfflinePolicyEvaluationTypes]}."
             )
 
     @property

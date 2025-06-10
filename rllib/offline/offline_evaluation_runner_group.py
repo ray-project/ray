@@ -7,6 +7,7 @@ from ray.rllib.core.rl_module.multi_rl_module import MultiRLModuleSpec
 from ray.rllib.env import INPUT_ENV_SPACES
 from ray.rllib.offline.offline_data import OfflineData
 from ray.rllib.offline.offline_evaluation_runner import OfflineEvaluationRunner
+from ray.rllib.offline.offline_policy_evaluation_runner import OfflinePolicyEvaluationRunner
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.runners.runner_group import RunnerGroup
 
@@ -57,6 +58,12 @@ class OfflineEvaluationRunnerGroup(RunnerGroup):
         **kwargs: Dict[str, Any],
     ) -> None:
 
+        # Define the offline evaluation runner class.
+        self._runner_cls = config.offline_eval_runner_cls or (
+            OfflineEvaluationRunner if config.offline_evaluation_type == "eval_loss"
+            else OfflinePolicyEvaluationRunner
+        )
+
         # We can either run on a local runner or on remote runners only b/c
         # streaming split needs remote runners.
         if num_runners > 0 and local_runner:
@@ -73,6 +80,8 @@ class OfflineEvaluationRunnerGroup(RunnerGroup):
             # Do not validate until the `DataIterators` are distributed.
             validate=False,
             module_spec=module_spec,
+            module_state=module_state,
+            spaces=spaces,
         )
 
         # Setup the evaluation offline dataset and return an iterator.
@@ -124,7 +133,7 @@ class OfflineEvaluationRunnerGroup(RunnerGroup):
     @property
     def runner_cls(self) -> Callable:
         """Class for each runner."""
-        return OfflineEvaluationRunner
+        return self._runner_cls
 
     @property
     def num_runners(self) -> int:
