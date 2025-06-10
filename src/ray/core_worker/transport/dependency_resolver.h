@@ -36,7 +36,7 @@ class LocalDependencyResolver {
   LocalDependencyResolver(CoreWorkerMemoryStore &store,
                           TaskFinisherInterface &task_finisher,
                           ActorCreatorInterface &actor_creator,
-                          TensorTransportGetter &tensor_transport_getter)
+                          const TensorTransportGetter &tensor_transport_getter)
       : in_memory_store_(store),
         task_finisher_(task_finisher),
         actor_creator_(actor_creator),
@@ -114,7 +114,7 @@ class LocalDependencyResolver {
   /// different communication backend directly between actors. Thus, for these
   /// objects, we will not clear the ObjectRef metadata, even if the task
   /// executor has inlined the object value.
-  TensorTransportGetter tensor_transport_getter_;
+  const TensorTransportGetter tensor_transport_getter_;
 
   absl::flat_hash_map<TaskID, std::unique_ptr<TaskState>> pending_tasks_
       ABSL_GUARDED_BY(mu_);

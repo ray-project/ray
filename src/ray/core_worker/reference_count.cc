@@ -1708,7 +1708,8 @@ void ReferenceCounter::Reference::ToProto(rpc::ObjectReferenceCount *ref,
   }
 }
 
-std::optional<rpc::TensorTransport> ReferenceCounter::GetTensorTransport(const ObjectID &object_id) const {
+std::optional<rpc::TensorTransport> ReferenceCounter::GetTensorTransport(
+    const ObjectID &object_id) const {
   absl::MutexLock lock(&mutex_);
   auto it = object_id_refs_.find(object_id);
   if (it == object_id_refs_.end()) {

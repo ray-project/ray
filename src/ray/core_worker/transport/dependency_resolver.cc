@@ -28,7 +28,7 @@ void InlineDependencies(
     TaskSpecification &task,
     std::vector<ObjectID> *inlined_dependency_ids,
     std::vector<ObjectID> *contained_ids,
-    TensorTransportGetter &tensor_transport_getter) {
+    const TensorTransportGetter &tensor_transport_getter) {
   auto &msg = task.GetMutableMessage();
   size_t found = 0;
   for (size_t i = 0; i < task.NumArgs(); i++) {

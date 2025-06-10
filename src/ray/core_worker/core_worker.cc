@@ -785,17 +785,18 @@ CoreWorker::CoreWorker(CoreWorkerOptions options, const WorkerID &worker_id)
 
   actor_creator_ = std::make_shared<DefaultActorCreator>(gcs_client_);
 
-  actor_task_submitter_ = std::make_unique<ActorTaskSubmitter>(*core_worker_client_pool_,
-                                                               *memory_store_,
-                                                               *task_manager_,
-                                                               *actor_creator_,
-                                                               /*tensor_transport_getter=*/
-                                                               [this](const ObjectID &object_id) {
-                                                                 return reference_counter_->GetTensorTransport(object_id);
-                                                               },
-                                                               on_excess_queueing,
-                                                               io_service_,
-                                                               reference_counter_);
+  actor_task_submitter_ = std::make_unique<ActorTaskSubmitter>(
+      *core_worker_client_pool_,
+      *memory_store_,
+      *task_manager_,
+      *actor_creator_,
+      /*tensor_transport_getter=*/
+      [this](const ObjectID &object_id) {
+        return reference_counter_->GetTensorTransport(object_id);
+      },
+      on_excess_queueing,
+      io_service_,
+      reference_counter_);
 
   auto node_addr_factory = [this](const NodeID &node_id) {
     std::optional<rpc::Address> addr;
@@ -829,6 +830,12 @@ CoreWorker::CoreWorker(CoreWorkerOptions options, const WorkerID &worker_id)
       actor_creator_,
       worker_context_.GetCurrentJobID(),
       lease_request_rate_limiter_,
+      [](const ObjectID &object_id) {
+        // Currently, out-of-band tensor transport (i.e., GPU objects) is only
+        // supported for actor tasks. Therefore, normal tasks should always use
+        // OBJECT_STORE.
+        return rpc::TensorTransport::OBJECT_STORE;
+      },
       boost::asio::steady_timer(io_service_));
   auto report_locality_data_callback = [this](
                                            const ObjectID &object_id,

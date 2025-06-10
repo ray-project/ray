@@ -191,16 +191,17 @@ class ReferenceCounter : public ReferenceCounterInterface,
   /// \param[in] pinned_at_raylet_id The primary location for the object, if it
   /// is already known. This is only used for ray.put calls.
   /// \param[in] tensor_transport The transport used for the object.
-  void AddOwnedObject(const ObjectID &object_id,
-                      const std::vector<ObjectID> &contained_ids,
-                      const rpc::Address &owner_address,
-                      const std::string &call_site,
-                      const int64_t object_size,
-                      bool is_reconstructable,
-                      bool add_local_ref,
-                      const std::optional<NodeID> &pinned_at_raylet_id =
-                          std::optional<NodeID>(),
-                      rpc::TensorTransport tensor_transport = rpc::TensorTransport::OBJECT_STORE) override ABSL_LOCKS_EXCLUDED(mutex_);
+  void AddOwnedObject(
+      const ObjectID &object_id,
+      const std::vector<ObjectID> &contained_ids,
+      const rpc::Address &owner_address,
+      const std::string &call_site,
+      const int64_t object_size,
+      bool is_reconstructable,
+      bool add_local_ref,
+      const std::optional<NodeID> &pinned_at_raylet_id = std::optional<NodeID>(),
+      rpc::TensorTransport tensor_transport = rpc::TensorTransport::OBJECT_STORE) override
+      ABSL_LOCKS_EXCLUDED(mutex_);
 
   /// Add an owned object that was dynamically created. These are objects that
   /// were created by a task that we called, but that we own.
@@ -848,15 +849,16 @@ class ReferenceCounter : public ReferenceCounterInterface,
   using ReferenceTable = absl::flat_hash_map<ObjectID, Reference>;
   using ReferenceProtoTable = absl::flat_hash_map<ObjectID, rpc::ObjectReferenceCount>;
 
-  bool AddOwnedObjectInternal(const ObjectID &object_id,
-                              const std::vector<ObjectID> &contained_ids,
-                              const rpc::Address &owner_address,
-                              const std::string &call_site,
-                              const int64_t object_size,
-                              bool is_reconstructable,
-                              bool add_local_ref,
-                              const std::optional<NodeID> &pinned_at_raylet_id,
-                              rpc::TensorTransport tensor_transport = rpc::TensorTransport::OBJECT_STORE)
+  bool AddOwnedObjectInternal(
+      const ObjectID &object_id,
+      const std::vector<ObjectID> &contained_ids,
+      const rpc::Address &owner_address,
+      const std::string &call_site,
+      const int64_t object_size,
+      bool is_reconstructable,
+      bool add_local_ref,
+      const std::optional<NodeID> &pinned_at_raylet_id,
+      rpc::TensorTransport tensor_transport = rpc::TensorTransport::OBJECT_STORE)
       ABSL_EXCLUSIVE_LOCKS_REQUIRED(mutex_);
 
   void SetNestedRefInUseRecursive(ReferenceTable::iterator inner_ref_it)

@@ -78,7 +78,7 @@ class ActorTaskSubmitter : public ActorTaskSubmitterInterface {
                      CoreWorkerMemoryStore &store,
                      TaskFinisherInterface &task_finisher,
                      ActorCreatorInterface &actor_creator,
-                     TensorTransportGetter &tensor_transport_getter,
+                     const TensorTransportGetter &tensor_transport_getter,
                      std::function<void(const ActorID &, int64_t)> warn_excess_queueing,
                      instrumented_io_context &io_service,
                      std::shared_ptr<ReferenceCounterInterface> reference_counter)
