@@ -398,12 +398,6 @@ def debug(address: str, verbose: bool):
     help="the port to use for starting the node manager",
 )
 @click.option(
-    "--gcs-server-port",
-    required=False,
-    type=int,
-    help="Port number for the GCS server.",
-)
-@click.option(
     "--min-worker-port",
     required=False,
     type=int,
@@ -520,12 +514,6 @@ Windows powershell users need additional escaping:
     help="the port for dashboard agents to listen for grpc on.",
 )
 @click.option(
-    "--dashboard-grpc-port",
-    type=int,
-    default=None,
-    help="(Deprecated) No longer used and will be removed in a future version of Ray.",
-)
-@click.option(
     "--runtime-env-agent-port",
     type=int,
     default=None,
@@ -560,16 +548,6 @@ Windows powershell users need additional escaping:
     is_flag=True,
     default=False,
     help="do not redirect non-worker stdout and stderr to files",
-)
-@click.option(
-    "--plasma-store-socket-name",
-    default=None,
-    help="manually specify the socket name of the plasma store",
-)
-@click.option(
-    "--raylet-socket-name",
-    default=None,
-    help="manually specify the socket path of the raylet process",
 )
 @click.option(
     "--temp-dir",
@@ -713,7 +691,6 @@ def start(
     redis_shard_ports,
     object_manager_port,
     node_manager_port,
-    gcs_server_port,
     min_worker_port,
     max_worker_port,
     worker_port_list,
@@ -728,7 +705,6 @@ def start(
     dashboard_host,
     dashboard_port,
     dashboard_agent_listen_port,
-    dashboard_grpc_port,
     dashboard_agent_grpc_port,
     runtime_env_agent_port,
     block,
@@ -736,8 +712,6 @@ def start(
     object_spilling_directory,
     autoscaling_config,
     no_redirect_output,
-    plasma_store_socket_name,
-    raylet_socket_name,
     temp_dir,
     storage,
     system_config,
@@ -757,13 +731,6 @@ def start(
 ):
     """Start Ray processes manually on the local machine."""
 
-    if gcs_server_port is not None:
-        cli_logger.error(
-            "`{}` is deprecated and ignored. Use {} to specify "
-            "GCS server port on head node.",
-            cf.bold("--gcs-server-port"),
-            cf.bold("--port"),
-        )
     # Whether the original arguments include node_ip_address.
     include_node_ip_address = False
     if node_ip_address is not None:
@@ -807,21 +774,6 @@ def start(
                 cf.bold('--labels="key1=val1,key2=val2"'),
             )
     labels_dict = {**labels_from_file, **labels_from_string}
-
-    if plasma_store_socket_name is not None:
-        warnings.warn(
-            "plasma_store_socket_name is deprecated and will be removed. You are not "
-            "supposed to specify this parameter as it's internal.",
-            DeprecationWarning,
-            stacklevel=2,
-        )
-    if raylet_socket_name is not None:
-        warnings.warn(
-            "raylet_socket_name is deprecated and will be removed. You are not "
-            "supposed to specify this parameter as it's internal.",
-            DeprecationWarning,
-            stacklevel=2,
-        )
     if temp_dir and not head:
         cli_logger.warning(
             f"`--temp-dir={temp_dir}` option will be ignored. "
@@ -853,10 +805,6 @@ def start(
             "--storage is deprecated and will be removed in a future version of Ray.",
         )
 
-    if dashboard_grpc_port is not None:
-        warnings.warn(
-            "--dashboard-grpc-port is deprecated and will be removed in a future version of Ray.",
-        )
     ray_params = ray._private.parameter.RayParams(
         node_ip_address=node_ip_address,
         node_name=node_name if node_name else node_ip_address,
@@ -879,8 +827,6 @@ def start(
         plasma_directory=plasma_directory,
         object_spilling_directory=object_spilling_directory,
         huge_pages=False,
-        plasma_store_socket_name=plasma_store_socket_name,
-        raylet_socket_name=raylet_socket_name,
         temp_dir=temp_dir,
         storage=storage,
         include_dashboard=include_dashboard,
