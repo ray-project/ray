@@ -71,7 +71,29 @@ def method(*args, **kwargs):
 
     Args:
         num_returns: The number of object refs that should be returned by
-            invocations of this actor method.
+            invocations of this actor method. The default value is 1 for a
+            normal actor task and "streaming" for an actor generator task (a
+            function that yields objects instead of returning them).
+        max_task_retries: How many times to retry an actor task if the task
+            fails due to a runtime error, e.g., the actor has died. The
+            default value is 0. If set to -1, the system will retry the
+            failed task until the task succeeds, or the actor has reached
+            its max_restarts limit. If set to `n > 0`, the system will retry
+            the failed task up to n times, after which the task will throw a
+            `RayActorError` exception upon :obj:`ray.get`.  Note that Python
+            exceptions may trigger retries
+            *only if* `retry_exceptions` is set for the method, in that case
+            when `max_task_retries` runs out the task will rethrow the
+            exception from the task. You can override this number with the
+            method's `max_task_retries` option in `@ray.method` decorator or
+            in `.option()`.
+        retry_exceptions: Boolean of whether to retry all Python
+            exceptions, or a list of allowlist exceptions to retry. The default
+            value is False (only retry tasks upon system failures and if
+            max_task_retries is set)
+        tensor_transport: The tensor transport protocol to use for the actor
+            method. This parameter is *experimental* and the API may change in
+            the future. Use with caution.
     """
     valid_kwargs = [
         "num_returns",
@@ -478,7 +500,7 @@ class ActorMethod:
         obj_ref = invocation(args, kwargs)
         if tensor_transport != TensorTransportEnum.OBJECT_STORE:
             gpu_object_manager = ray._private.worker.global_worker.gpu_object_manager
-            gpu_object_manager.add_gpu_object_ref(obj_ref, self._actor_ref(), tensor_transport)
+            gpu_object_manager.add_gpu_object_ref(obj_ref, self._actor_ref())
 
         return obj_ref
 
@@ -910,18 +932,19 @@ class ActorClass:
                 which indicates that the actor doesn't need to be restarted.
                 A value of -1 indicates that an actor should be restarted
                 indefinitely.
-            max_task_retries: How many times to
-                retry an actor task if the task fails due to a runtime error,
-                e.g., the actor has died. If set to -1, the system will
-                retry the failed task until the task succeeds, or the actor
-                has reached its max_restarts limit. If set to `n > 0`, the
-                system will retry the failed task up to n times, after which the
-                task will throw a `RayActorError` exception upon :obj:`ray.get`.
-                Note that Python exceptions may trigger retries *only if*
-                `retry_exceptions` is set for the method, in that case when
-                `max_task_retries` runs out the task will rethrow the exception from
-                the task. You can override this number with the method's
-                `max_task_retries` option in `@ray.method` decorator or in `.option()`.
+            max_task_retries: How many times to retry an actor task if the task
+                fails due to a runtime error, e.g., the actor has died. The
+                default value is 0. If set to -1, the system will retry the
+                failed task until the task succeeds, or the actor has reached
+                its max_restarts limit. If set to `n > 0`, the system will retry
+                the failed task up to n times, after which the task will throw a
+                `RayActorError` exception upon :obj:`ray.get`.  Note that Python
+                exceptions may trigger retries
+                *only if* `retry_exceptions` is set for the method, in that case
+                when `max_task_retries` runs out the task will rethrow the
+                exception from the task. You can override this number with the
+                method's `max_task_retries` option in `@ray.method` decorator or
+                in `.option()`.
             max_pending_calls: Set the max number of pending calls
                 allowed on the actor handle. When this value is exceeded,
                 PendingCallsLimitExceeded will be raised for further tasks.
