@@ -80,11 +80,10 @@ class UnityCatalogConnector:
             env_vars["AZURE_STORAGE_SAS_TOKEN"] = creds["azuresasuri"]
         elif "gcp_service_account" in creds:
             gcp_json = creds["gcp_service_account"]
-            fd, path = tempfile.mkstemp(prefix="gcp_sa_", suffix=".json")
-            os.close(fd)
-            with open(path, "w") as f:
-                f.write(gcp_json)
-            env_vars["GOOGLE_APPLICATION_CREDENTIALS"] = path
+            with tempfile.NamedTemporaryFile(prefix="gcp_sa_", suffix=".json", delete=True) as temp_file:
+                temp_file.write(gcp_json.encode())
+                temp_file.flush()
+                env_vars["GOOGLE_APPLICATION_CREDENTIALS"] = temp_file.name
         else:
             raise ValueError(
                 "No known credential type found in Databricks UC response."
