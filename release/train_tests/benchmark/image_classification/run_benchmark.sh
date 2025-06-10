@@ -39,7 +39,7 @@ echo "Number of runs: $NUM_RUNS"
 
 TOTAL_NANO=0
 
-for i in $(seq 1 $NUM_RUNS); do
+for i in $(seq 1 "$NUM_RUNS"); do
     echo "Run $i/$NUM_RUNS"
 
     START_TIME_NS=$(date +%s%N)
