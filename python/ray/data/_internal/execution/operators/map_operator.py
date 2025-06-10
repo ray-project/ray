@@ -47,13 +47,13 @@ from ray.data._internal.execution.operators.map_transformer import (
 )
 from ray.data._internal.execution.util import memory_string
 from ray.data._internal.stats import StatsDict
-from ray.data._internal.util import MemoryProfiler, unify_block_metadata_schema
+from ray.data._internal.util import MemoryProfiler, unify_ref_bundles_schema
 from ray.data.block import (
     Block,
     BlockAccessor,
     BlockExecStats,
+    BlockMetadataWithSchema,
     BlockStats,
-    MetadataAndSchema,
     to_stats,
 )
 from ray.data.context import DataContext
@@ -529,7 +529,7 @@ def _map_task(
     ctx: TaskContext,
     *blocks: Block,
     **kwargs: Dict[str, Any],
-) -> Iterator[Union[Block, "MetadataAndSchema"]]:
+) -> Iterator[Union[Block, "BlockMetadataWithSchema"]]:
     """Remote function for a single operator task.
 
     Args:
@@ -541,7 +541,7 @@ def _map_task(
         A generator of blocks, followed by the list of BlockMetadata for the blocks
         as the last generator return.
     """
-    from ray.data.block import MetadataAndSchema
+    from ray.data.block import BlockMetadataWithSchema
 
     logger.debug(
         "Executing map task of operator %s with task index %d",
@@ -562,7 +562,7 @@ def _map_task(
             m_out.exec_stats.udf_time_s = map_transformer.udf_time()
             m_out.exec_stats.task_idx = ctx.task_idx
             m_out.exec_stats.max_uss_bytes = profiler.estimate_max_uss()
-            meta_schema = MetadataAndSchema(metadata=m_out, schema=s_out)
+            meta_schema = BlockMetadataWithSchema(metadata=m_out, schema=s_out)
             yield b_out
             yield meta_schema
             stats = BlockExecStats.builder()
@@ -669,7 +669,7 @@ def _merge_ref_bundles(*bundles: RefBundle) -> RefBundle:
         )
     )
     owns_blocks = all(bundle.owns_blocks for bundle in bundles if bundle is not None)
-    schema = unify_block_metadata_schema(bundles)
+    schema = unify_ref_bundles_schema(bundles)
     return RefBundle(blocks, owns_blocks=owns_blocks, schema=schema)
 
 

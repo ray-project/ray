@@ -43,9 +43,9 @@ from ray.data.block import (
     Block,
     BlockAccessor,
     BlockMetadata,
+    BlockMetadataWithSchema,
     BlockStats,
     BlockType,
-    MetadataAndSchema,
     to_stats,
 )
 
@@ -1096,7 +1096,7 @@ class HashShuffleAggregator:
 
     def finalize(
         self, partition_id: int
-    ) -> AsyncGenerator[Union[Block, "MetadataAndSchema"], None]:
+    ) -> AsyncGenerator[Union[Block, "BlockMetadataWithSchema"], None]:
         with self._lock:
             # Finalize given partition id
             result = self._agg.finalize(partition_id)
@@ -1104,7 +1104,7 @@ class HashShuffleAggregator:
             self._agg.clear(partition_id)
 
         # TODO break down blocks to target size
-        from ray.data.block import MetadataAndSchema
+        from ray.data.block import BlockMetadataWithSchema
 
         yield result
-        yield MetadataAndSchema.from_block(result)
+        yield BlockMetadataWithSchema.from_block(result)

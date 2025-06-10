@@ -33,7 +33,7 @@ from ray.data.context import DataContext
 
 if TYPE_CHECKING:
 
-    from ray.data.block import MetadataAndSchema
+    from ray.data.block import BlockMetadataWithSchema
 
 logger = logging.getLogger(__name__)
 
@@ -138,7 +138,9 @@ class DataOpTask(OpTask):
                 break
 
             try:
-                meta_schema: "MetadataAndSchema" = ray.get(next(self._streaming_gen))
+                meta_schema: "BlockMetadataWithSchema" = ray.get(
+                    next(self._streaming_gen)
+                )
             except StopIteration:
                 # The generator should always yield 2 values (block and metadata)
                 # each time. If we get a StopIteration here, it means an error
@@ -153,14 +155,15 @@ class DataOpTask(OpTask):
                     self._task_done_callback(ex)
                     raise ex from None
 
+            meta = meta_schema.metadata
             self._output_ready_callback(
                 RefBundle(
-                    [(block_ref, meta_schema.metadata)],
+                    [(block_ref, meta)],
                     owns_blocks=True,
                     schema=meta_schema.schema,
                 ),
             )
-            bytes_read += meta_schema.metadata.size_bytes
+            bytes_read += meta.size_bytes
 
         return bytes_read
 

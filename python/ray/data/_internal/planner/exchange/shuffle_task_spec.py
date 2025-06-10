@@ -11,7 +11,7 @@ from ray.data.block import (
     BlockAccessor,
     BlockExecStats,
     BlockMetadata,
-    MetadataAndSchema,
+    BlockMetadataWithSchema,
 )
 from ray.data.context import MAX_SAFE_BLOCK_SIZE_FACTOR
 
@@ -53,7 +53,7 @@ class ShuffleTaskSpec(ExchangeTaskSpec):
         upstream_map_fn: Optional[Callable[[Iterable[Block]], Iterable[Block]]],
         random_shuffle: bool,
         random_seed: Optional[int],
-    ) -> List[Union[Block, "MetadataAndSchema"]]:
+    ) -> List[Union[Block, "BlockMetadataWithSchema"]]:
         stats = BlockExecStats.builder()
         if upstream_map_fn:
             # TODO: Support dynamic block splitting in
@@ -106,11 +106,11 @@ class ShuffleTaskSpec(ExchangeTaskSpec):
 
         num_rows = sum(BlockAccessor.for_block(s).num_rows() for s in slices)
         assert num_rows == block.num_rows(), (num_rows, block.num_rows())
-        from ray.data.block import MetadataAndSchema
+        from ray.data.block import BlockMetadataWithSchema
 
-        meta = block.get_metadata()
+        meta = block.get_metadata(exec_stats=stats.build())
         schema = block.schema()
-        meta_schema = MetadataAndSchema(metadata=meta, schema=schema)
+        meta_schema = BlockMetadataWithSchema(metadata=meta, schema=schema)
         return slices + [meta_schema]
 
     @staticmethod
@@ -119,7 +119,7 @@ class ShuffleTaskSpec(ExchangeTaskSpec):
         random_seed: Optional[int],
         *mapper_outputs: List[Block],
         partial_reduce: bool = False,
-    ) -> Tuple[Block, "MetadataAndSchema"]:
+    ) -> Tuple[Block, "BlockMetadataWithSchema"]:
         # TODO: Support fusion with other downstream operators.
         stats = BlockExecStats.builder()
         builder = DelegatingBlockBuilder()
@@ -138,7 +138,9 @@ class ShuffleTaskSpec(ExchangeTaskSpec):
             input_files=None,
             exec_stats=stats.build(),
         )
-        from ray.data.block import MetadataAndSchema
+        from ray.data.block import BlockMetadataWithSchema
 
-        meta_schema = MetadataAndSchema(metadata=new_metadata, schema=accessor.schema())
+        meta_schema = BlockMetadataWithSchema(
+            metadata=new_metadata, schema=accessor.schema()
+        )
         return new_block, meta_schema

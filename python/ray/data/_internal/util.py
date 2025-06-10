@@ -43,7 +43,7 @@ if TYPE_CHECKING:
     from ray.data._internal.planner.exchange.sort_task_spec import SortKey
     from ray.data.block import (
         Block,
-        MetadataAndSchema,
+        BlockMetadataWithSchema,
         Schema,
         UserDefinedFunction,
     )
@@ -684,43 +684,43 @@ def capitalize(s: str):
 
 def pandas_df_to_arrow_block(
     df: "pandas.DataFrame",
-) -> Tuple["Block", "MetadataAndSchema"]:
-    from ray.data.block import BlockAccessor, BlockExecStats, MetadataAndSchema
+) -> Tuple["Block", "BlockMetadataWithSchema"]:
+    from ray.data.block import BlockAccessor, BlockExecStats, BlockMetadataWithSchema
 
     block = BlockAccessor.for_block(df).to_arrow()
     stats = BlockExecStats.builder()
-    return block, MetadataAndSchema.from_block(block, stats=stats.build())
+    return block, BlockMetadataWithSchema.from_block(block, stats=stats.build())
 
 
 def ndarray_to_block(
     ndarray: np.ndarray, ctx: DataContext
-) -> Tuple["Block", "MetadataAndSchema"]:
-    from ray.data.block import BlockAccessor, BlockExecStats, MetadataAndSchema
+) -> Tuple["Block", "BlockMetadataWithSchema"]:
+    from ray.data.block import BlockAccessor, BlockExecStats, BlockMetadataWithSchema
 
     DataContext._set_current(ctx)
 
     stats = BlockExecStats.builder()
     block = BlockAccessor.batch_to_block({"data": ndarray})
-    return block, MetadataAndSchema.from_block(block, stats=stats.build())
+    return block, BlockMetadataWithSchema.from_block(block, stats=stats.build())
 
 
 def get_table_block_metadata_schema(
     table: Union["pyarrow.Table", "pandas.DataFrame"],
-) -> "MetadataAndSchema":
-    from ray.data.block import BlockExecStats, MetadataAndSchema
+) -> "BlockMetadataWithSchema":
+    from ray.data.block import BlockExecStats, BlockMetadataWithSchema
 
     stats = BlockExecStats.builder()
-    return MetadataAndSchema.from_block(table, stats=stats.build())
+    return BlockMetadataWithSchema.from_block(table, stats=stats.build())
 
 
 def unify_block_metadata_schema(
-    schemas: List[Optional["Schema"]],
-) -> Optional[Union["Schema"]]:
+    block_metadata_with_schemas: List["BlockMetadataWithSchema"],
+) -> Optional["Schema"]:
     """For the input list of BlockMetadata, return a unified schema of the
     corresponding blocks. If the metadata have no valid schema, returns None.
 
     Args:
-        schemas: List of schemas to unify
+        block_metadata_with_schemas: List of BlockMetadata to unify
 
     Returns:
         A unified schema of the input list of schemas, or None if no valid schemas
@@ -728,13 +728,23 @@ def unify_block_metadata_schema(
     """
     # Some blocks could be empty, in which case we cannot get their schema.
     # TODO(ekl) validate schema is the same across different blocks.
-    from ray.data._internal.arrow_ops.transform_pyarrow import unify_schemas
 
     # First check if there are blocks with computed schemas, then unify
     # valid schemas from all such blocks.
 
-    schemas_to_unify = [schema for schema in schemas if schema is not None]
+    schemas_to_unify = []
+    for m in block_metadata_with_schemas:
+        if m.schema is not None and (m.num_rows is None or m.num_rows > 0):
+            schemas_to_unify.append(m.schema)
+    return unify_schemas_with_validation(schemas_to_unify)
+
+
+def unify_schemas_with_validation(
+    schemas_to_unify: Iterable["Schema"],
+) -> Optional["Schema"]:
     if schemas_to_unify:
+        from ray.data._internal.arrow_ops.transform_pyarrow import unify_schemas
+
         # Check valid pyarrow installation before attempting schema unification
         try:
             import pyarrow as pa
@@ -750,12 +760,15 @@ def unify_block_metadata_schema(
 
 
 def unify_ref_bundles_schema(
-    ref_bundles: List[Optional["RefBundle"]],
-) -> Optional[Union["Schema"]]:
-    non_empty_schemas = [
-        ref_bundle.schema for ref_bundle in ref_bundles if ref_bundle is not None
-    ]
-    return unify_block_metadata_schema(non_empty_schemas)
+    ref_bundles: List["RefBundle"],
+) -> Optional["Schema"]:
+    schemas_to_unify = []
+    for bundle in ref_bundles:
+        if bundle.schema is not None and (
+            bundle.num_rows() is None or bundle.num_rows() > 0
+        ):
+            schemas_to_unify.append(bundle.schema)
+    return unify_schemas_with_validation(schemas_to_unify)
 
 
 def find_partition_index(
@@ -1668,18 +1681,14 @@ class MemoryProfiler:
         return platform.system() == "Linux"
 
 
-def _unzip_list_of_tuples(n: int, data: List[Tuple[Any, ...]]) -> Tuple[List[Any], ...]:
-    """Unzips a list of tuples into a tuple of lists safely by handling empty input.
+def unzip(data: List[Tuple[Any, ...]]) -> Tuple[List[Any], ...]:
+    """Unzips a list of tuples into a tuple of lists
 
     Args:
-        n: The number of elements in each tuple. This is used to ensure the output
-            tuple has the correct number of lists when the input is empty.
         data: A list of tuples to unzip.
 
     Returns:
         A tuple of lists, where each list corresponds to one element of the tuples in
-        the input list. If the input list is empty, returns a tuple of empty lists.
+        the input list.
     """
-    if not data:
-        return tuple([] for _ in range(n))
     return tuple(map(list, zip(*data)))

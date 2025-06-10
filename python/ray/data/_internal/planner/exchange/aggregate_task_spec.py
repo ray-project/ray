@@ -8,8 +8,8 @@ from ray.data.block import (
     Block,
     BlockAccessor,
     BlockExecStats,
+    BlockMetadataWithSchema,
     KeyType,
-    MetadataAndSchema,
 )
 
 
@@ -49,7 +49,7 @@ class SortAggregateTaskSpec(ExchangeTaskSpec):
         boundaries: List[KeyType],
         sort_key: SortKey,
         aggs: List[AggregateFn],
-    ) -> List[Union[Block, "MetadataAndSchema"]]:
+    ) -> List[Union[Block, "BlockMetadataWithSchema"]]:
         stats = BlockExecStats.builder()
 
         block = SortAggregateTaskSpec._prune_unused_columns(block, sort_key, aggs)
@@ -63,9 +63,9 @@ class SortAggregateTaskSpec(ExchangeTaskSpec):
         parts = [
             BlockAccessor.for_block(p)._aggregate(sort_key, aggs) for p in partitions
         ]
-        from ray.data.block import MetadataAndSchema
+        from ray.data.block import BlockMetadataWithSchema
 
-        meta_schema = MetadataAndSchema.from_block(block, stats=stats.build())
+        meta_schema = BlockMetadataWithSchema.from_block(block, stats=stats.build())
         return parts + [meta_schema]
 
     @staticmethod
@@ -75,7 +75,7 @@ class SortAggregateTaskSpec(ExchangeTaskSpec):
         batch_format: str,
         *mapper_outputs: List[Block],
         partial_reduce: bool = False,
-    ) -> Tuple[Block, "MetadataAndSchema"]:
+    ) -> Tuple[Block, "BlockMetadataWithSchema"]:
         normalized_blocks = TableBlockAccessor.normalize_block_types(
             mapper_outputs,
             target_block_type=ExchangeTaskSpec._derive_target_block_type(batch_format),

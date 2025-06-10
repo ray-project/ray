@@ -92,9 +92,9 @@ class StreamSplitDataIterator(DataIterator):
                         cur_epoch, self._output_split_idx
                     )
                     yield RefBundle(
-                        blocks=(block_ref_and_md[0],),
+                        blocks=block_ref_and_md.blocks,
                         owns_blocks=False,
-                        schema=block_ref_and_md[1],
+                        schema=block_ref_and_md.schema,
                     )
 
         return gen_blocks(), self._iter_stats, False

@@ -14,7 +14,7 @@ from ray.data._internal.logical.interfaces.logical_plan import LogicalPlan
 from ray.data._internal.logical.operators.read_operator import Read
 from ray.data._internal.stats import DatasetStats
 from ray.data._internal.util import unify_ref_bundles_schema
-from ray.data.block import MetadataAndSchema
+from ray.data.block import BlockMetadataWithSchema
 from ray.data.context import DataContext
 from ray.data.exceptions import omit_traceback_stdout
 from ray.util.debug import log_once
@@ -72,7 +72,7 @@ class ExecutionPlan:
         # to also store the metadata in `_snapshot_metadata` instead of
         # `_snapshot_bundle`. For example, we could store the blocks in
         # `self._snapshot_blocks` and the metadata in `self._snapshot_metadata`.
-        self._snapshot_metadata_schema: Optional["MetadataAndSchema"] = None
+        self._snapshot_metadata_schema: Optional["BlockMetadataWithSchema"] = None
 
         # Cached schema.
         self._schema = None

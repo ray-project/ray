@@ -159,6 +159,7 @@ class ReadTask(Callable[[], Iterable[Block]]):
     def metadata(self) -> BlockMetadata:
         return self._metadata
 
+    # TODO(justin): We want to remove schema from `ReadTask` later on
     @property
     def schema(self) -> Optional["Schema"]:
         return self._schema

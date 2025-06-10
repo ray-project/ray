@@ -17,9 +17,9 @@ from ray.data._internal.logical.util import record_operators_usage
 from ray.data._internal.plan import ExecutionPlan
 from ray.data._internal.stats import DatasetStats
 from ray.data._internal.util import (
-    unify_block_metadata_schema,
+    unify_schemas_with_validation,
 )
-from ray.data.block import BlockMetadata, MetadataAndSchema
+from ray.data.block import BlockMetadata, BlockMetadataWithSchema
 
 # Warn about tasks larger than this.
 TASK_SIZE_WARN_THRESHOLD_BYTES = 100000
@@ -92,7 +92,7 @@ def execute_to_legacy_bundle_iterator(
                         schema = op_state._schema
                         break
 
-                meta_schema = MetadataAndSchema(
+                meta_schema = BlockMetadataWithSchema(
                     metadata=self._collected_metadata,
                     schema=schema,
                 )
@@ -189,7 +189,7 @@ def _bundles_to_block_list(bundles: Iterator[RefBundle]) -> BlockList:
         blocks.extend(ref_bundle.block_refs)
         metadata.extend(ref_bundle.metadata)
         schemas.append(ref_bundle.schema)
-    unified_schema = unify_block_metadata_schema(schemas)
+    unified_schema = unify_schemas_with_validation(schemas)
     return BlockList(
         blocks, metadata, owned_by_consumer=owns_blocks, schema=unified_schema
     )

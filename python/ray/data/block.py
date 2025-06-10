@@ -8,7 +8,6 @@ from typing import (
     Any,
     Callable,
     Dict,
-    Iterable,
     Iterator,
     List,
     Optional,
@@ -230,28 +229,34 @@ class BlockMetadata(BlockStats):
 
 @DeveloperAPI
 @dataclass
-class MetadataAndSchema:
-    metadata: BlockMetadata
-    schema: Optional[Schema]
+class BlockMetadataWithSchema(BlockMetadata):
+    schema: Optional[Schema] = None
+
+    def __init__(self, metadata: BlockMetadata, schema: Optional["Schema"] = None):
+        super().__init__(
+            input_files=metadata.input_files,
+            size_bytes=metadata.size_bytes,
+            num_rows=metadata.num_rows,
+            exec_stats=metadata.exec_stats,
+        )
+        self.schema = schema
 
     def from_block(
         block: Block, stats: Optional["BlockExecStats"] = None
-    ) -> "MetadataAndSchema":
+    ) -> "BlockMetadataWithSchema":
         accessor = BlockAccessor.for_block(block)
         meta = accessor.get_metadata(exec_stats=stats)
         schema = accessor.schema()
-        return MetadataAndSchema(metadata=meta, schema=schema)
+        return BlockMetadataWithSchema(metadata=meta, schema=schema)
 
-
-def _decompose_metadata_and_schema(
-    iterable: Iterable[MetadataAndSchema],
-) -> Tuple[List[BlockMetadata], List[Optional[Schema]]]:
-    metadatas = []
-    schemas = []
-    for item in iterable:
-        metadatas.append(item.metadata)
-        schemas.append(item.schema)
-    return metadatas, schemas
+    @property
+    def metadata(self) -> BlockMetadata:
+        return BlockMetadata(
+            num_rows=self.num_rows,
+            size_bytes=self.size_bytes,
+            exec_stats=self.exec_stats,
+            input_files=self.input_files,
+        )
 
 
 @DeveloperAPI
@@ -523,7 +528,7 @@ class BlockAccessor:
     @staticmethod
     def merge_sorted_blocks(
         blocks: List["Block"], sort_key: "SortKey"
-    ) -> Tuple[Block, MetadataAndSchema]:
+    ) -> Tuple[Block, BlockMetadataWithSchema]:
         """Return a sorted block by merging a list of sorted blocks."""
         raise NotImplementedError
 
@@ -533,7 +538,7 @@ class BlockAccessor:
         sort_key: "SortKey",
         aggs: Tuple["AggregateFn"],
         finalize: bool = True,
-    ) -> Tuple[Block, MetadataAndSchema]:
+    ) -> Tuple[Block, BlockMetadataWithSchema]:
         """Aggregate partially combined and sorted blocks."""
         raise NotImplementedError
 

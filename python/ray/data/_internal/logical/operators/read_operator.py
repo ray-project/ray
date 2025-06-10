@@ -3,7 +3,7 @@ from typing import Any, Dict, Optional, Union
 
 from ray.data._internal.logical.interfaces import SourceOperator
 from ray.data._internal.logical.operators.map_operator import AbstractMap
-from ray.data.block import BlockMetadata, MetadataAndSchema
+from ray.data.block import BlockMetadata, BlockMetadataWithSchema
 from ray.data.datasource.datasource import Datasource, Reader
 
 
@@ -61,18 +61,18 @@ class Read(AbstractMap, SourceOperator):
         return self._cached_output_metadata.schema
 
     @functools.cached_property
-    def _cached_output_metadata(self) -> "MetadataAndSchema":
+    def _cached_output_metadata(self) -> "BlockMetadataWithSchema":
         # Legacy datasources might not implement `get_read_tasks`.
         if self._datasource.should_create_reader:
             empty_meta = BlockMetadata(None, None, None, None)
-            return MetadataAndSchema(metadata=empty_meta, schema=None)
+            return BlockMetadataWithSchema(metadata=empty_meta, schema=None)
 
         # HACK: Try to get a single read task to get the metadata.
         read_tasks = self._datasource.get_read_tasks(1)
         if len(read_tasks) == 0:
             # If there are no read tasks, the dataset is probably empty.
             empty_meta = BlockMetadata(None, None, None, None)
-            return MetadataAndSchema(metadata=empty_meta, schema=None)
+            return BlockMetadataWithSchema(metadata=empty_meta, schema=None)
 
         # `get_read_tasks` isn't guaranteed to return exactly one read task.
         metadata = [read_task.metadata for read_task in read_tasks]
@@ -98,11 +98,15 @@ class Read(AbstractMap, SourceOperator):
             input_files=input_files,
             exec_stats=None,
         )
-        schemas = [read_task.schema for read_task in read_tasks]
-        from ray.data.read_api import unify_block_metadata_schema
+        schemas = [
+            read_task.schema for read_task in read_tasks if read_task.schema is not None
+        ]
+        from ray.data._internal.util import unify_schemas_with_validation
 
-        schema = unify_block_metadata_schema(schemas)
-        return MetadataAndSchema(metadata=meta, schema=schema)
+        schema = None
+        if schemas:
+            schema = unify_schemas_with_validation(schemas)
+        return BlockMetadataWithSchema(metadata=meta, schema=schema)
 
     def can_modify_num_rows(self) -> bool:
         # NOTE: Returns true, since most of the readers expands its input

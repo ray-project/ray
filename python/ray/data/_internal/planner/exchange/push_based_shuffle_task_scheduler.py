@@ -13,17 +13,16 @@ from ray.data._internal.progress_bar import ProgressBar
 from ray.data._internal.remote_fn import cached_remote_fn
 from ray.data._internal.stats import StatsDict
 from ray.data._internal.util import (
-    _unzip_list_of_tuples,
     convert_bytes_to_human_readable_str,
-    unify_block_metadata_schema,
+    unify_schemas_with_validation,
+    unzip,
 )
 from ray.data.block import (
     Block,
     BlockAccessor,
     BlockExecStats,
     BlockMetadata,
-    MetadataAndSchema,
-    _decompose_metadata_and_schema,
+    BlockMetadataWithSchema,
     to_stats,
 )
 from ray.data.context import DataContext
@@ -32,7 +31,7 @@ from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
 
 if TYPE_CHECKING:
 
-    from ray.data.block import MetadataAndSchema
+    from ray.data.block import BlockMetadataWithSchema
 
 logger = logging.getLogger(__name__)
 
@@ -207,7 +206,7 @@ class _PipelinedStageExecutor:
     def __iter__(self):
         return self
 
-    def __next__(self) -> List["MetadataAndSchema"]:
+    def __next__(self) -> List["BlockMetadataWithSchema"]:
         """
         Submit one round of tasks. If we already have the max concurrent rounds
         in flight, first wait for the oldest round of tasks to finish.
@@ -632,9 +631,12 @@ class PushBasedShuffleTaskScheduler(ExchangeTaskScheduler):
         ]
         sorted_blocks.sort(key=lambda x: x[0])
 
-        _, new_blocks, reduce_stage_metadata_schema = _unzip_list_of_tuples(
-            3, sorted_blocks
-        )
+        new_blocks, reduce_stage_metadata_schema = [], []
+        if sorted_blocks:
+            res: Tuple[
+                List[Any], List[ObjectRef[Block]], List[BlockMetadataWithSchema]
+            ] = unzip(sorted_blocks)
+            _, new_blocks, reduce_stage_metadata_schema = res
         del sorted_blocks
 
         if _debug_limit_execution_to_num_blocks is not None:
@@ -647,39 +649,26 @@ class PushBasedShuffleTaskScheduler(ExchangeTaskScheduler):
         ), f"Expected {output_num_blocks} outputs, produced {len(new_blocks)}"
 
         output = []
-        reduce_stage_metadata, reduce_stage_schema = _decompose_metadata_and_schema(
-            reduce_stage_metadata_schema
-        )
-        for block, meta, schema in zip(
-            new_blocks, reduce_stage_metadata, reduce_stage_schema
-        ):
+        for block, meta_schema in zip(new_blocks, reduce_stage_metadata_schema):
             output.append(
                 RefBundle(
                     [
                         (
                             block,
-                            meta,
+                            meta_schema.metadata,
                         )
                     ],
                     owns_blocks=input_owned,
-                    schema=schema,
+                    schema=meta_schema.schema,
                 )
             )
 
-        map_stage_metadata, map_stage_schema = _decompose_metadata_and_schema(
-            map_stage_metadata_schema
-        )
-        merge_stage_metadata, merge_stage_schema = _decompose_metadata_and_schema(
-            merge_stage_metadata_schema
-        )
-
         stats = {
-            "map": to_stats(map_stage_metadata),
-            "merge": to_stats(merge_stage_metadata),
-            "reduce": to_stats(reduce_stage_metadata),
+            "map": to_stats(map_stage_metadata_schema),
+            "merge": to_stats(merge_stage_metadata_schema),
+            "reduce": to_stats(reduce_stage_metadata_schema),
         }
 
-        schema = unify_block_metadata_schema(reduce_stage_schema)
         return (output, stats)
 
     @staticmethod
@@ -690,7 +679,7 @@ class PushBasedShuffleTaskScheduler(ExchangeTaskScheduler):
         output_num_blocks: int,
         schedule: _MergeTaskSchedule,
         *map_args: List[Any],
-    ) -> List[Union[Block, "MetadataAndSchema"]]:
+    ) -> List[Union[Block, "BlockMetadataWithSchema"]]:
         mapper_outputs = map_fn(idx, block, output_num_blocks, *map_args)
 
         # A merge task may produce results for multiple downstream reducer
@@ -712,9 +701,9 @@ class PushBasedShuffleTaskScheduler(ExchangeTaskScheduler):
         assert not partition
         assert len(mapper_outputs) == 1, (
             mapper_outputs,
-            "The last output should be a MetadataAndSchema",
+            "The last output should be a BlockMetadataWithSchema",
         )
-        assert isinstance(mapper_outputs[0], MetadataAndSchema)
+        assert isinstance(mapper_outputs[0], BlockMetadataWithSchema)
         yield mapper_outputs[0]
 
         assert merge_idx == schedule.num_merge_tasks_per_round, (
@@ -727,7 +716,7 @@ class PushBasedShuffleTaskScheduler(ExchangeTaskScheduler):
         reduce_fn,
         *all_mapper_outputs: List[List[Block]],
         reduce_args: Optional[List[Any]] = None,
-    ) -> List[Union["MetadataAndSchema", Block]]:
+    ) -> List[Union["BlockMetadataWithSchema", Block]]:
         """
         Returns list of [BlockMetadata, O1, O2, O3, ...output_num_blocks].
         """
@@ -742,7 +731,7 @@ class PushBasedShuffleTaskScheduler(ExchangeTaskScheduler):
         size_bytes = 0
         schemas = []
         for i, mapper_outputs in enumerate(zip(*all_mapper_outputs)):
-            block_meta_schema: Tuple[Block, "MetadataAndSchema"] = reduce_fn(
+            block_meta_schema: Tuple[Block, "BlockMetadataWithSchema"] = reduce_fn(
                 *reduce_args, *mapper_outputs, partial_reduce=True
             )
             block, meta_schema = block_meta_schema
@@ -760,8 +749,8 @@ class PushBasedShuffleTaskScheduler(ExchangeTaskScheduler):
             input_files=None,
             exec_stats=stats.build(),
         )
-        schema = unify_block_metadata_schema(schemas)
-        meta_schema = MetadataAndSchema(metadata=meta, schema=schema)
+        schema = unify_schemas_with_validation(schemas)
+        meta_schema = BlockMetadataWithSchema(metadata=meta, schema=schema)
         yield meta_schema
 
     @staticmethod

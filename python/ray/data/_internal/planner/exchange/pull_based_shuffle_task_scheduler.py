@@ -10,14 +10,10 @@ from ray.data._internal.planner.exchange.interfaces import (
 from ray.data._internal.remote_fn import cached_remote_fn
 from ray.data._internal.stats import StatsDict
 from ray.data._internal.util import (
-    _unzip_list_of_tuples,
     convert_bytes_to_human_readable_str,
-    unify_block_metadata_schema,
+    unzip,
 )
-from ray.data.block import (
-    _decompose_metadata_and_schema,
-    to_stats,
-)
+from ray.data.block import BlockMetadataWithSchema, to_stats
 
 logger = logging.getLogger(__name__)
 
@@ -132,36 +128,33 @@ class PullBasedShuffleTaskScheduler(ExchangeTaskScheduler):
         # Release map task outputs from the Ray object store.
         del shuffle_map_out
 
-        new_blocks, new_metadata_schema = _unzip_list_of_tuples(2, shuffle_reduce_out)
-        new_metadata_schema = reduce_bar.fetch_until_complete(list(new_metadata_schema))
+        new_blocks, new_metadata_schema = [], []
+        if shuffle_reduce_out:
+            new_blocks, new_metadata_schema = unzip(shuffle_reduce_out)
+        new_metadata_schema: List[
+            "BlockMetadataWithSchema"
+        ] = reduce_bar.fetch_until_complete(list(new_metadata_schema))
 
         self.warn_on_high_local_memory_store_usage()
 
-        new_metadata, new_schema = _decompose_metadata_and_schema(new_metadata_schema)
-
         output = []
-        for block, meta, schema in zip(new_blocks, new_metadata, new_schema):
+        for block, meta_schema in zip(new_blocks, new_metadata_schema):
             output.append(
                 RefBundle(
                     [
                         (
                             block,
-                            meta,
+                            meta_schema.metadata,
                         )
                     ],
                     owns_blocks=input_owned,
-                    schema=schema,
+                    schema=meta_schema.schema,
                 )
             )
 
-        shuffle_map_metadata, shuffle_map_schema = _decompose_metadata_and_schema(
-            shuffle_map_metadata_schema
-        )
-
         stats = {
-            "map": to_stats(shuffle_map_metadata),
-            "reduce": to_stats(new_metadata),
+            "map": to_stats(shuffle_map_metadata_schema),
+            "reduce": to_stats(new_metadata_schema),
         }
 
-        schema = unify_block_metadata_schema(new_schema)
         return (output, stats)

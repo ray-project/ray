@@ -61,6 +61,10 @@ class LogicalOperator(Operator):
     ) -> "LogicalOperator":
         return super()._apply_transform(transform)  # type: ignore
 
+    def _get_args(self) -> Dict[str, Any]:
+        """This Dict must be serializable"""
+        return vars(self)
+
     def infer_schema(self) -> Optional["Schema"]:
         """Returns the inferred schema of the output blocks."""
         return None

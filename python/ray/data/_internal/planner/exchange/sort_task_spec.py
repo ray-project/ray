@@ -16,7 +16,7 @@ T = TypeVar("T")
 if TYPE_CHECKING:
     import pyarrow
 
-    from ray.data.block import MetadataAndSchema
+    from ray.data.block import BlockMetadataWithSchema
 
 
 class SortKey:
@@ -133,13 +133,13 @@ class SortTaskSpec(ExchangeTaskSpec):
         output_num_blocks: int,
         boundaries: List[T],
         sort_key: SortKey,
-    ) -> List[Union[Block, "MetadataAndSchema"]]:
+    ) -> List[Union[Block, "BlockMetadataWithSchema"]]:
         stats = BlockExecStats.builder()
         accessor = BlockAccessor.for_block(block)
         out = accessor.sort_and_partition(boundaries, sort_key)
-        from ray.data.block import MetadataAndSchema
+        from ray.data.block import BlockMetadataWithSchema
 
-        meta_schema = MetadataAndSchema.from_block(block, stats=stats.build())
+        meta_schema = BlockMetadataWithSchema.from_block(block, stats=stats.build())
         return out + [meta_schema]
 
     @staticmethod
@@ -148,7 +148,7 @@ class SortTaskSpec(ExchangeTaskSpec):
         batch_format: str,
         *mapper_outputs: List[Block],
         partial_reduce: bool = False,
-    ) -> Tuple[Block, "MetadataAndSchema"]:
+    ) -> Tuple[Block, "BlockMetadataWithSchema"]:
         normalized_blocks = TableBlockAccessor.normalize_block_types(
             mapper_outputs,
             target_block_type=ExchangeTaskSpec._derive_target_block_type(batch_format),

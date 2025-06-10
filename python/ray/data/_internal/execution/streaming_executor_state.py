@@ -32,7 +32,9 @@ from ray.data._internal.execution.operators.base_physical_operator import (
 from ray.data._internal.execution.operators.input_data_buffer import InputDataBuffer
 from ray.data._internal.execution.resource_manager import ResourceManager
 from ray.data._internal.progress_bar import ProgressBar
-from ray.data._internal.util import unify_block_metadata_schema
+from ray.data._internal.util import (
+    unify_schemas_with_validation,
+)
 from ray.data.context import DataContext
 
 if TYPE_CHECKING:
@@ -199,7 +201,7 @@ class OpState:
         self._exception: Optional[Exception] = None
         self._scheduling_status = OpSchedulingStatus()
         self._schema: Optional["Schema"] = None
-        self._diverged: bool = False
+        self._already_warned_on_divergence: bool = False
 
     def __repr__(self):
         return f"OpState({self.op.name})"
@@ -260,8 +262,12 @@ class OpState:
     def add_output(self, ref: RefBundle) -> None:
         """Move a bundle produced by the operator to its outqueue."""
 
-        self._schema, self._diverged = dedupe_schemas_with_validation(
-            self._schema, ref, warn=not self._diverged
+        ref, diverged = dedupe_schemas_with_validation(
+            self._schema, ref, warn=not self._already_warned_on_divergence
+        )
+        self._schema = ref.schema
+        self._already_warned_on_divergence = (
+            self._already_warned_on_divergence or diverged
         )
 
         self.output_queue.append(ref)
@@ -729,21 +735,12 @@ def _actor_info_summary_str(info: _ActorPoolInfo) -> str:
         return f"{base} ({info})"
 
 
-def unify_ref_bundles_schema(
-    ref_bundles: List[Optional["RefBundle"]],
-) -> Optional["Schema"]:
-    non_empty_schemas = [
-        ref_bundle.schema for ref_bundle in ref_bundles if ref_bundle is not None
-    ]
-    return unify_block_metadata_schema(non_empty_schemas)
-
-
 def dedupe_schemas_with_validation(
     old_schema: Optional["Schema"],
     bundle: "RefBundle",
     warn: bool = True,
     allow_divergent: bool = False,
-) -> Tuple["Schema", bool]:
+) -> Tuple["RefBundle", bool]:
     """Unify/Dedupe two schemas, warning if warn=True
 
     Args:
@@ -755,26 +752,33 @@ def dedupe_schemas_with_validation(
             If `False`, but keep the old schema.
 
     Returns:
-        A unified schema of the two input schemas.
+        A ref bundle with the unified schema of the two input schemas.
     """
 
     # Note, often times the refbundles correspond to only one schema. We can reduce the
     # memory footprint of multiple schemas by keeping only one copy.
     diverged = False
     if old_schema is None:
-        old_schema = bundle.schema
-    elif old_schema == bundle.schema:
-        bundle.schema = old_schema
-    else:
-        diverged = True
-        if warn:
-            logger.warning(
-                f"Operator produced a RefBundle with a different schema "
-                f"than the previous one. Previous schema: {old_schema}, "
-                f"new schema: {bundle.schema}. This may lead to unexpected behavior."
-            )
-        if allow_divergent:
-            # Note: we don't change bundle.schema
-            old_schema = unify_block_metadata_schema([old_schema, bundle.schema])
+        return bundle, diverged
 
-    return old_schema, diverged
+    # This check is fast assuming pyarrow schemas
+    if old_schema == bundle.schema:
+        return (
+            RefBundle(bundle.blocks, schema=old_schema, owns_blocks=bundle.owns_blocks),
+            diverged,
+        )
+
+    diverged = True
+    if warn:
+        logger.warning(
+            f"Operator produced a RefBundle with a different schema "
+            f"than the previous one. Previous schema: {old_schema}, "
+            f"new schema: {bundle.schema}. This may lead to unexpected behavior."
+        )
+    if allow_divergent:
+        old_schema = unify_schemas_with_validation([old_schema, bundle.schema])
+
+    return (
+        RefBundle(bundle.blocks, schema=old_schema, owns_blocks=bundle.owns_blocks),
+        diverged,
+    )

@@ -56,8 +56,8 @@ class RefBundle:
         for b in self.blocks:
             assert isinstance(b, tuple), b
             assert len(b) == 2, b
-            assert isinstance(b[0], ray.ObjectRef), b
-            assert isinstance(b[1], BlockMetadata), b
+            assert isinstance(b[0], ray.ObjectRef), b[0]
+            assert isinstance(b[1], BlockMetadata), b[1]
             if b[1].size_bytes is None:
                 raise ValueError(
                     "The size in bytes of the block must be known: {}".format(b)

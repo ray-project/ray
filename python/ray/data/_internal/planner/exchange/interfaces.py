@@ -11,7 +11,7 @@ from ray.data.context import DataContext
 
 if TYPE_CHECKING:
 
-    from ray.data.block import MetadataAndSchema
+    from ray.data.block import BlockMetadataWithSchema
 
 logger = logging.getLogger(__name__)
 
@@ -48,7 +48,7 @@ class ExchangeTaskSpec:
         idx: int,
         block: Block,
         output_num_blocks: int,
-    ) -> List[Union[Block, "MetadataAndSchema"]]:
+    ) -> List[Union[Block, "BlockMetadataWithSchema"]]:
         """
         Map function to be run on each input block.
 
@@ -60,7 +60,7 @@ class ExchangeTaskSpec:
     def reduce(
         *mapper_outputs: List[Block],
         partial_reduce: bool = False,
-    ) -> Tuple[Block, "MetadataAndSchema"]:
+    ) -> Tuple[Block, "BlockMetadataWithSchema"]:
         """
         Reduce function to be run for each output block.
 

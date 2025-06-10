@@ -34,8 +34,8 @@ from ray.data.block import (
     BlockColumn,
     BlockColumnAccessor,
     BlockExecStats,
+    BlockMetadataWithSchema,
     BlockType,
-    MetadataAndSchema,
     U,
 )
 from ray.data.context import DEFAULT_TARGET_MAX_BLOCK_SIZE, DataContext
@@ -399,7 +399,7 @@ class ArrowBlockAccessor(TableBlockAccessor):
     @staticmethod
     def merge_sorted_blocks(
         blocks: List[Block], sort_key: "SortKey"
-    ) -> Tuple[Block, MetadataAndSchema]:
+    ) -> Tuple[Block, BlockMetadataWithSchema]:
         stats = BlockExecStats.builder()
         blocks = [b for b in blocks if b.num_rows > 0]
         if len(blocks) == 0:
@@ -409,7 +409,7 @@ class ArrowBlockAccessor(TableBlockAccessor):
             blocks = TableBlockAccessor.normalize_block_types(blocks, BlockType.ARROW)
             concat_and_sort = get_concat_and_sort_transform(DataContext.get_current())
             ret = concat_and_sort(blocks, sort_key, promote_types=True)
-        return ret, MetadataAndSchema.from_block(ret, stats=stats.build())
+        return ret, BlockMetadataWithSchema.from_block(ret, stats=stats.build())
 
     def block_type(self) -> BlockType:
         return BlockType.ARROW
