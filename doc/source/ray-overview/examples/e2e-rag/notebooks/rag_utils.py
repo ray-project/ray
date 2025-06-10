@@ -7,7 +7,9 @@ import chromadb
 
 
 class LLMClient:
-    def __init__(self, base_url: str, api_key: Optional[str] = None, model_id: str = None):
+    def __init__(
+        self, base_url: str, api_key: Optional[str] = None, model_id: str = None
+    ):
         # Ensure the base_url ends with a slash and does not include '/routes'
         if not base_url.endswith("/"):
             base_url += "/"
@@ -19,8 +21,6 @@ class LLMClient:
             base_url=base_url + "v1",
             api_key=api_key or "NOT A REAL KEY",
         )
-
-
 
     def get_response_streaming(
         self,
@@ -35,7 +35,7 @@ class LLMClient:
             model=self.model_id,
             messages=[{"role": "user", "content": prompt}],
             temperature=temperature,
-            stream=True
+            stream=True,
         )
 
         for chat in chat_completions:
@@ -55,10 +55,9 @@ class LLMClient:
             model=self.model_id,
             messages=[{"role": "user", "content": prompt}],
             temperature=temperature,
-            stream=False
+            stream=False,
         )
         return chat_response.choices[0].message.content
-    
 
     def get_response_in_json(
         self,
@@ -76,40 +75,37 @@ class LLMClient:
             temperature=temperature,
             stream=False,
             response_format={"type": "json_object"},
-            extra_body=extra_body
+            extra_body=extra_body,
         )
         return chat_response.choices[0].message.content
-
 
 
 class Embedder:
     def __init__(self, model_name: str = "intfloat/multilingual-e5-large-instruct"):
         self.model_name = model_name
         self.model = SentenceTransformer(
-            self.model_name,
-            device="cuda" if torch.cuda.is_available() else "cpu"
+            self.model_name, device="cuda" if torch.cuda.is_available() else "cpu"
         )
-    
+
     def embed_single(self, text: str) -> np.ndarray:
         """Generate an embedding for a single text string."""
         return self.model.encode(text, convert_to_numpy=True)
-    
+
     def embed_batch(self, texts: List[str]) -> np.ndarray:
         """Generate embeddings for a batch (list) of text strings."""
         return self.model.encode(texts, convert_to_numpy=True)
-
-
 
 
 class ChromaQuerier:
     """
     A class to query a Chroma database collection and return formatted search results.
     """
+
     def __init__(
-        self, 
-        chroma_path: str, 
+        self,
+        chroma_path: str,
         chroma_collection_name: str,
-        score_threshold: float = 0.8  # Define a default threshold value if needed.
+        score_threshold: float = 0.8,  # Define a default threshold value if needed.
     ):
         """
         Initialize the ChromaQuerier with the specified Chroma DB settings and score threshold.
@@ -126,7 +122,9 @@ class ChromaQuerier:
         Initialize or reinitialize the Chroma client and collection.
         """
         self.chroma_client = chromadb.PersistentClient(path=self.chroma_path)
-        self.collection = self.chroma_client.get_or_create_collection(name=self.chroma_collection_name)
+        self.collection = self.chroma_client.get_or_create_collection(
+            name=self.chroma_collection_name
+        )
 
     def __getstate__(self):
         """
@@ -152,9 +150,11 @@ class ChromaQuerier:
         metadatas = chroma_results.get("metadatas", [])
         documents = chroma_results.get("documents", [])
         distances = chroma_results.get("distances", [])
-        
+
         chunk_index = 1
-        for meta_group, doc_group, distance_group in zip(metadatas, documents, distances):
+        for meta_group, doc_group, distance_group in zip(
+            metadatas, documents, distances
+        ):
             for meta, text, distance in zip(meta_group, doc_group, distance_group):
                 entry = {
                     "chunk_index": chunk_index,
@@ -164,11 +164,11 @@ class ChromaQuerier:
                     "source": meta.get("source"),
                     "text": text,
                     "distance": distance,
-                    "score": 1 - distance
+                    "score": 1 - distance,
                 }
                 reformatted.append(entry)
                 chunk_index += 1
-        
+
         return reformatted
 
     def _reformat_batch(self, chroma_results: dict) -> list:
@@ -180,8 +180,10 @@ class ChromaQuerier:
         metadatas = chroma_results.get("metadatas", [])
         documents = chroma_results.get("documents", [])
         distances = chroma_results.get("distances", [])
-        
-        for meta_group, doc_group, distance_group in zip(metadatas, documents, distances):
+
+        for meta_group, doc_group, distance_group in zip(
+            metadatas, documents, distances
+        ):
             formatted_results = []
             chunk_index = 1  # Reset index for each query result.
             for meta, text, distance in zip(meta_group, doc_group, distance_group):
@@ -193,12 +195,12 @@ class ChromaQuerier:
                     "source": meta.get("source"),
                     "text": text,
                     "distance": distance,
-                    "score": 1 - distance
+                    "score": 1 - distance,
                 }
                 formatted_results.append(entry)
                 chunk_index += 1
             batch_results.append(formatted_results)
-        
+
         return batch_results
 
     def _filter_by_score(self, results: list) -> list:
@@ -226,9 +228,9 @@ class ChromaQuerier:
         results = self.collection.query(
             query_embeddings=query_embedding,
             n_results=n_results,
-            include=["documents", "metadatas", "distances"]
+            include=["documents", "metadatas", "distances"],
         )
-        
+
         formatted_results = self._reformat(results)
         filtered_results = self._filter_by_score(formatted_results)
         return filtered_results
@@ -243,7 +245,7 @@ class ChromaQuerier:
             n_results (int): Number of top similar results to return for each query embedding.
 
         Returns:
-            list: A list where each element is a list of formatted and filtered search result dictionaries 
+            list: A list where each element is a list of formatted and filtered search result dictionaries
                   for the corresponding query embedding.
         """
         # Process each embedding: if any is a numpy array, convert it to list.
@@ -251,23 +253,21 @@ class ChromaQuerier:
             emb.tolist() if isinstance(emb, np.ndarray) else emb
             for emb in query_embeddings
         ]
-        
+
         # Query the collection with the batch of embeddings.
         results = self.collection.query(
             query_embeddings=processed_embeddings,
             n_results=n_results,
-            include=["documents", "metadatas", "distances"]
+            include=["documents", "metadatas", "distances"],
         )
-        
+
         # Reformat the results into batches.
         batch_results = self._reformat_batch(results)
-        
+
         # Filter each query's results based on the score threshold.
         filtered_batch = [self._filter_by_score(results) for results in batch_results]
-        
+
         return filtered_batch
-
-
 
 
 def render_rag_prompt(company, user_request, context, chat_history):
@@ -296,6 +296,3 @@ def render_rag_prompt(company, user_request, context, chat_history):
     ## Your response ##
     """
     return prompt.strip()
-
-
-

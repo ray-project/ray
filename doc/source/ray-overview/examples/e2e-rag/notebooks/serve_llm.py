@@ -3,23 +3,21 @@ from ray.serve.llm import build_openai_app
 
 # Define the configuration as provided
 llm_config = LLMConfig(
-    model_loading_config={
-        'model_id': 'Qwen/Qwen2.5-32B-Instruct'
-    },
+    model_loading_config={"model_id": "Qwen/Qwen2.5-32B-Instruct"},
     engine_kwargs={
-        'max_num_batched_tokens': 8192,
-        'max_model_len': 8192,
-        'max_num_seqs': 64,
-        'tensor_parallel_size': 4,
-        'trust_remote_code': True,
+        "max_num_batched_tokens": 8192,
+        "max_model_len": 8192,
+        "max_num_seqs": 64,
+        "tensor_parallel_size": 4,
+        "trust_remote_code": True,
     },
-    accelerator_type='A10G',
+    accelerator_type="A10G",
     deployment_config={
-        'autoscaling_config': {
-            'target_ongoing_requests': 32,
-            'target_num_ongoing_requests_per_replica': 32,
+        "autoscaling_config": {
+            "target_ongoing_requests": 32,
+            "target_num_ongoing_requests_per_replica": 32,
         },
-        'max_ongoing_requests': 64,
+        "max_ongoing_requests": 64,
     },
 )
 
