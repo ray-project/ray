@@ -8,7 +8,7 @@ import pytest
 
 import ray
 from ray import serve
-from ray._private.test_utils import wait_for_condition
+from ray._common.test_utils import wait_for_condition
 from ray.serve._private.constants import SERVE_DEFAULT_APP_NAME
 from ray.serve._private.storage.kv_store import KVStoreError, RayInternalKVStore
 from ray.serve._private.test_utils import check_apps_running

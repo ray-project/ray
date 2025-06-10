@@ -55,6 +55,7 @@ import ray.cloudpickle as pickle  # noqa
 import ray.job_config
 import ray.remote_function
 from ray import ActorID, JobID, Language, ObjectRef
+from ray._common.utils import load_class
 from ray._private import ray_option_utils
 from ray._private.client_mode_hook import client_mode_hook
 from ray._private.function_manager import FunctionActorManager
@@ -74,7 +75,7 @@ from ray._private.runtime_env.setup_hook import (
     upload_worker_process_setup_hook_if_needed,
 )
 from ray._private.runtime_env.working_dir import upload_working_dir_if_needed
-from ray._private.utils import get_ray_doc_version, load_class
+from ray._private.utils import get_ray_doc_version
 from ray._raylet import (
     ObjectRefGenerator,
     TaskID,
@@ -97,8 +98,6 @@ from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
 from ray.util.tracing.tracing_helper import _import_from_string
 from ray.widgets import Template
 from ray.widgets.util import repr_with_fallback
-
-import setproctitle
 
 if TYPE_CHECKING:
     pass
@@ -1785,7 +1784,6 @@ def init(
         # Use a random port by not specifying Redis port / GCS server port.
         ray_params = ray._private.parameter.RayParams(
             node_ip_address=_node_ip_address,
-            object_ref_seed=None,
             driver_mode=driver_mode,
             redirect_output=None,
             num_cpus=num_cpus,
@@ -1875,7 +1873,6 @@ def init(
             redis_address=redis_address,
             redis_username=_redis_username,
             redis_password=_redis_password,
-            object_ref_seed=None,
             temp_dir=_temp_dir,
             _system_config=_system_config,
             enable_object_reconstruction=_enable_object_reconstruction,
@@ -2427,13 +2424,13 @@ def connect(
         if job_id is None:
             job_id = ray._private.state.next_job_id()
 
-    if mode is not SCRIPT_MODE and mode is not LOCAL_MODE and setproctitle:
+    if mode is not SCRIPT_MODE and mode is not LOCAL_MODE:
         process_name = ray_constants.WORKER_PROCESS_TYPE_IDLE_WORKER
         if mode is SPILL_WORKER_MODE:
             process_name = ray_constants.WORKER_PROCESS_TYPE_SPILL_WORKER_IDLE
         elif mode is RESTORE_WORKER_MODE:
             process_name = ray_constants.WORKER_PROCESS_TYPE_RESTORE_WORKER_IDLE
-        setproctitle.setproctitle(process_name)
+        ray._raylet.setproctitle(process_name)
 
     if not isinstance(job_id, JobID):
         raise TypeError("The type of given job id must be JobID.")
@@ -2681,12 +2678,12 @@ def disconnect(exiting_interpreter=False):
 @contextmanager
 def _changeproctitle(title, next_title):
     if _mode() is not LOCAL_MODE:
-        setproctitle.setproctitle(title)
+        ray._raylet.setproctitle(title)
     try:
         yield
     finally:
         if _mode() is not LOCAL_MODE:
-            setproctitle.setproctitle(next_title)
+            ray._raylet.setproctitle(next_title)
 
 
 @DeveloperAPI

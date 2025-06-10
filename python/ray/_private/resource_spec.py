@@ -5,6 +5,7 @@ from typing import Optional
 
 import ray
 import ray._private.ray_constants as ray_constants
+from ray._common.utils import RESOURCE_CONSTRAINT_PREFIX
 
 logger = logging.getLogger(__name__)
 
@@ -206,9 +207,7 @@ class ResourceSpec(
                     accelerator_manager.get_current_node_accelerator_type()
                 )
                 if accelerator_type:
-                    resources[
-                        f"{ray_constants.RESOURCE_CONSTRAINT_PREFIX}{accelerator_type}"
-                    ] = 1
+                    resources[f"{RESOURCE_CONSTRAINT_PREFIX}{accelerator_type}"] = 1
 
                     from ray._private.usage import usage_lib
 
@@ -219,7 +218,7 @@ class ResourceSpec(
                 if additional_resources:
                     resources.update(additional_resources)
         # Choose a default object store size.
-        system_memory = ray._private.utils.get_system_memory()
+        system_memory = ray._common.utils.get_system_memory()
         avail_memory = ray._private.utils.estimate_available_memory()
         object_store_memory = self.object_store_memory
         if object_store_memory is None:

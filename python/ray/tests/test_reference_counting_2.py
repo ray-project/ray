@@ -19,10 +19,9 @@ import pytest
 import ray
 import ray.cluster_utils
 from ray._private.internal_api import memory_summary
-from ray._common.test_utils import SignalActor
+from ray._common.test_utils import SignalActor, wait_for_condition
 from ray._private.test_utils import (
     put_object,
-    wait_for_condition,
     wait_for_num_actors,
 )
 import ray._private.gcs_utils as gcs_utils
