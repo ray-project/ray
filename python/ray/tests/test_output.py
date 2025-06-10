@@ -8,11 +8,11 @@ import time
 import pytest
 
 import ray
+from ray._common.test_utils import wait_for_condition
 from ray._private.test_utils import (
     run_string_as_driver,
     run_string_as_driver_nonblocking,
     run_string_as_driver_stdout_stderr,
-    wait_for_condition,
 )
 from ray.autoscaler.v2.utils import is_autoscaler_v2
 

@@ -13,7 +13,8 @@ from unittest.mock import MagicMock
 import pytest  # noqa
 
 import ray
-from ray._private.test_utils import get_test_config_path, wait_for_condition
+from ray._common.test_utils import wait_for_condition
+from ray._private.test_utils import get_test_config_path
 from ray.autoscaler._private.constants import (
     AUTOSCALER_MAX_CONCURRENT_LAUNCHES,
     AUTOSCALER_MAX_LAUNCH_BATCH,

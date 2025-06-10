@@ -276,12 +276,6 @@ python/ray/_private/test_utils.py
     DOC101: Function `run_string_as_driver_nonblocking`: Docstring contains fewer arguments than in function signature.
     DOC107: Function `run_string_as_driver_nonblocking`: The option `--arg-type-hints-in-signature` is `True` but not all args in the signature have type hints
     DOC103: Function `run_string_as_driver_nonblocking`: Docstring arguments are different from function arguments. (Or could be other formatting issues: https://jsh9.github.io/pydoclint/violation_codes.html#notes-on-doc103 ). Arguments in the function signature but not in the docstring: [env: Dict].
-    DOC107: Function `wait_for_condition`: The option `--arg-type-hints-in-signature` is `True` but not all args in the signature have type hints
-    DOC201: Function `wait_for_condition` does not have a return section in docstring
-    DOC101: Function `async_wait_for_condition`: Docstring contains fewer arguments than in function signature.
-    DOC107: Function `async_wait_for_condition`: The option `--arg-type-hints-in-signature` is `True` but not all args in the signature have type hints
-    DOC103: Function `async_wait_for_condition`: Docstring arguments are different from function arguments. (Or could be other formatting issues: https://jsh9.github.io/pydoclint/violation_codes.html#notes-on-doc103 ). Arguments in the function signature but not in the docstring: [**kwargs: Any].
-    DOC201: Function `async_wait_for_condition` does not have a return section in docstring
     DOC106: Function `wait_until_succeeded_without_exception`: The option `--arg-type-hints-in-signature` is `True` but there are no argument type hints in the signature
     DOC107: Function `wait_until_succeeded_without_exception`: The option `--arg-type-hints-in-signature` is `True` but not all args in the signature have type hints
     DOC103: Function `wait_until_succeeded_without_exception`: Docstring arguments are different from function arguments. (Or could be other formatting issues: https://jsh9.github.io/pydoclint/violation_codes.html#notes-on-doc103 ). Arguments in the function signature but not in the docstring: [*args: ]. Arguments in the docstring but not in the function signature: [args: ].
