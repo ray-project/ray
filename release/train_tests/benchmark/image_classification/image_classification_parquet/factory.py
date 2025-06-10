@@ -20,7 +20,7 @@ from image_classification.factory import (
     ImageClassificationTorchDataLoaderFactory,
     ImageClassificationMockDataLoaderFactory,
 )
-from .imagenet import IMAGENET_PARQUET_SPLIT_S3_DIRS, get_preprocess_map_fn
+from .imagenet import get_preprocess_map_fn
 from .torch_parquet_image_iterable_dataset import S3ParquetImageIterableDataset
 from s3_parquet_reader import S3ParquetReader
 
@@ -39,6 +39,12 @@ class ImageClassificationParquetRayDataLoaderFactory(
     - Row limits based on benchmark configuration
     """
 
+    def __init__(
+        self, benchmark_config: BenchmarkConfig, data_dirs: Dict[str, str]
+    ) -> None:
+        super().__init__(benchmark_config)
+        self._data_dirs = data_dirs
+
     def get_ray_datasets(self) -> Dict[str, ray.data.Dataset]:
         """Get Ray datasets for training and validation.
 
@@ -50,7 +56,7 @@ class ImageClassificationParquetRayDataLoaderFactory(
         # Create training dataset with image decoding and transforms
         train_ds = (
             ray.data.read_parquet(
-                IMAGENET_PARQUET_SPLIT_S3_DIRS[DatasetKey.TRAIN],
+                self._data_dirs[DatasetKey.TRAIN],
                 columns=["image", "label"],
             )
             .limit(self.get_dataloader_config().limit_training_rows)
@@ -60,7 +66,7 @@ class ImageClassificationParquetRayDataLoaderFactory(
         # Create validation dataset without random transforms
         val_ds = (
             ray.data.read_parquet(
-                IMAGENET_PARQUET_SPLIT_S3_DIRS[DatasetKey.TRAIN],
+                self._data_dirs[DatasetKey.TRAIN],
                 columns=["image", "label"],
             )
             .limit(self.get_dataloader_config().limit_validation_rows)
@@ -85,7 +91,9 @@ class ImageClassificationParquetTorchDataLoaderFactory(
     - Dataset instance caching for efficiency
     """
 
-    def __init__(self, benchmark_config: BenchmarkConfig) -> None:
+    def __init__(
+        self, benchmark_config: BenchmarkConfig, data_dirs: Dict[str, str]
+    ) -> None:
         """Initialize factory with benchmark configuration.
 
         Args:
@@ -95,7 +103,7 @@ class ImageClassificationParquetTorchDataLoaderFactory(
         S3ParquetReader.__init__(
             self
         )  # Initialize S3ParquetReader to set up _s3_client
-        self.train_url = IMAGENET_PARQUET_SPLIT_S3_DIRS[DatasetKey.TRAIN]
+        self.train_url = data_dirs[DatasetKey.TRAIN]
         self._cached_datasets: Optional[Dict[str, IterableDataset]] = None
 
     def get_iterable_datasets(self) -> Dict[str, IterableDataset]:

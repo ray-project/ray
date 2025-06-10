@@ -13,7 +13,7 @@ import ray.train
 from ray.data.collate_fn import ArrowBatchCollateFn, CollateFn
 
 # Local imports
-from config import BenchmarkConfig, DataloaderType
+from config import BenchmarkConfig, DataloaderType, ImageClassificationConfig
 from factory import BenchmarkFactory
 from dataloader_factory import BaseDataLoaderFactory
 from torch_dataloader_factory import TorchDataLoaderFactory
@@ -253,14 +253,60 @@ class ImageClassificationMockDataLoaderFactory(BaseDataLoaderFactory):
         )
 
 
+def get_imagenet_data_dirs(task_config: ImageClassificationConfig) -> Dict[str, str]:
+    from image_classification.imagenet import IMAGENET_LOCALFS_SPLIT_DIRS
+    from image_classification.image_classification_jpeg.imagenet import (
+        IMAGENET_JPEG_SPLIT_DIRS,
+    )
+    from image_classification.image_classification_parquet.imagenet import (
+        IMAGENET_PARQUET_SPLIT_DIRS,
+    )
+
+    data_format = task_config.image_classification_data_format
+
+    if task_config.image_classification_local_dataset:
+        return IMAGENET_LOCALFS_SPLIT_DIRS
+
+    if data_format == ImageClassificationConfig.ImageFormat.JPEG:
+        return IMAGENET_JPEG_SPLIT_DIRS
+    elif data_format == ImageClassificationConfig.ImageFormat.PARQUET:
+        return IMAGENET_PARQUET_SPLIT_DIRS
+    else:
+        raise ValueError(f"Unknown data format: {data_format}")
+
+
 class ImageClassificationFactory(BenchmarkFactory):
     def get_dataloader_factory(self) -> BaseDataLoaderFactory:
         dataloader_type = self.benchmark_config.dataloader_type
+        task_config = self.benchmark_config.task_config
+        assert isinstance(task_config, ImageClassificationConfig)
+
+        data_dirs = get_imagenet_data_dirs(task_config)
+
+        data_format = task_config.image_classification_data_format
 
         if dataloader_type == DataloaderType.MOCK:
             return ImageClassificationMockDataLoaderFactory(self.benchmark_config)
         elif dataloader_type == DataloaderType.RAY_DATA:
-            raise NotImplementedError("Ray DataLoader is not implemented yet")
+            if data_format == ImageClassificationConfig.ImageFormat.JPEG:
+                from image_classification.image_classification_jpeg.factory import (
+                    ImageClassificationJpegRayDataLoaderFactory,
+                )
+
+                return ImageClassificationJpegRayDataLoaderFactory(
+                    self.benchmark_config, data_dirs
+                )
+            elif data_format == ImageClassificationConfig.ImageFormat.PARQUET:
+                from image_classification.image_classification_parquet.factory import (
+                    ImageClassificationParquetRayDataLoaderFactory,
+                )
+
+                return ImageClassificationParquetRayDataLoaderFactory(
+                    self.benchmark_config, data_dirs
+                )
+            else:
+                raise ValueError(f"Unknown data format: {data_format}")
+
         elif dataloader_type == DataloaderType.TORCH:
             raise NotImplementedError("Torch DataLoader is not implemented yet")
 

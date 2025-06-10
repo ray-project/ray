@@ -23,7 +23,7 @@ from image_classification.factory import (
     ImageClassificationMockDataLoaderFactory,
 )
 from s3_reader import AWS_REGION
-from .imagenet import get_preprocess_map_fn, IMAGENET_JPEG_SPLIT_S3_DIRS
+from .imagenet import get_preprocess_map_fn
 from .torch_jpeg_image_iterable_dataset import S3JpegImageIterableDataset
 from s3_jpeg_reader import S3JpegReader
 from logger_utils import ContextLoggerAdapter
@@ -142,10 +142,10 @@ class ImageClassificationJpegTorchDataLoaderFactory(
     - Dataset caching for efficiency
     """
 
-    def __init__(self, benchmark_config: BenchmarkConfig):
+    def __init__(self, benchmark_config: BenchmarkConfig, data_dirs: Dict[str, str]):
         super().__init__(benchmark_config)
         S3JpegReader.__init__(self)  # Initialize S3JpegReader to set up _s3_client
-        self.train_url = IMAGENET_JPEG_SPLIT_S3_DIRS[DatasetKey.TRAIN]
+        self.train_url = data_dirs[DatasetKey.TRAIN]
         self._cached_datasets = None
 
     def get_iterable_datasets(self) -> Dict[str, IterableDataset]:
