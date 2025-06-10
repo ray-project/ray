@@ -13,8 +13,8 @@ import ray.train
 from ray.data.collate_fn import ArrowBatchCollateFn, CollateFn
 
 # Local imports
+from benchmark_factory import BenchmarkFactory
 from config import BenchmarkConfig, DataloaderType, ImageClassificationConfig
-from factory import BenchmarkFactory
 from dataloader_factory import BaseDataLoaderFactory
 from torch_dataloader_factory import TorchDataLoaderFactory
 from ray_dataloader_factory import RayDataLoaderFactory
