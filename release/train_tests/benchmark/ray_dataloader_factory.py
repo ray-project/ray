@@ -44,7 +44,6 @@ class RayDataLoaderFactory(BaseDataLoaderFactory):
         return None
 
     def get_ray_data_config(self) -> ray.train.DataConfig:
-        """Get Ray data config."""
         return ray.train.DataConfig(
             enable_shard_locality=self.get_dataloader_config().enable_shard_locality,
         )
