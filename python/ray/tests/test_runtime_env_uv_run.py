@@ -1,13 +1,9 @@
 import json
 import os
 from pathlib import Path
-import platform
-import stat
 import subprocess
 import sys
-import tarfile
 import tempfile
-from urllib import request
 
 import pytest
 
