@@ -59,7 +59,7 @@ def test_uv_run_simple(shutdown_only):
 
 @pytest.mark.skipif(sys.platform == "win32", reason="Not ported to Windows yet.")
 def test_uv_run_pyproject(shutdown_only, tmp_working_dir):
-    uv = "uv"
+    uv = find_uv_bin()
     tmp_dir = tmp_working_dir
 
     ray.init(
@@ -329,7 +329,7 @@ with open("{tmp_out_dir / "output.txt"}", "w") as out:
     ],
     indirect=True,
 )
-def test_uv_run_runtime_env_hook_e2e_job(
+def test_uv_run_e2e_job(
     ray_start_cluster_head_with_env_vars, temp_dir
 ):
     cluster = ray_start_cluster_head_with_env_vars
