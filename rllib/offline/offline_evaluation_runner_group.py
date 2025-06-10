@@ -68,7 +68,7 @@ class OfflineEvaluationRunnerGroup(RunnerGroup):
             if config.offline_evaluation_type == "eval_loss"
             else OfflinePolicyEvaluationRunner
         )
-        # Defone
+        # Define
         self._pre_learner_or_evaluator_cls = self.config.prelearner_class or (
             OfflinePreLearner
             if config.offline_evaluation_type == "eval_loss"
