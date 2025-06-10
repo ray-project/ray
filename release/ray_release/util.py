@@ -220,9 +220,11 @@ def create_cluster_env_from_image(
     runtime_env: Dict[str, Any],
     sdk: Optional["AnyscaleSDK"] = None,
     cluster_env_id: Optional[str] = None,
+    cluster_env_name: Optional[str] = None,
 ) -> str:
     anyscale_sdk = sdk or get_anyscale_sdk()
-    cluster_env_name = get_custom_cluster_env_name(image, test_name)
+    if not cluster_env_name:
+        cluster_env_name = get_custom_cluster_env_name(image, test_name)
 
     # Find whether there is identical cluster env
     paging_token = None

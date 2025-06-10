@@ -46,6 +46,7 @@ class MinimalClusterManager(ClusterManager):
             runtime_env=self.test.get_byod_runtime_env(),
             sdk=self.sdk,
             cluster_env_id=self.cluster_env_id,
+            cluster_env_name=self.cluster_env_name,
         )
 
     def build_cluster_env(self, timeout: float = 600.0):
