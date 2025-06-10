@@ -354,11 +354,11 @@ def test_report_stats():
         }
     ]
     records = agent._to_records(STATS_TEMPLATE, cluster_stats)
-    assert len(records) == 41
+    assert len(records) == 43
     # Test stats without autoscaler report
     cluster_stats = {}
     records = agent._to_records(STATS_TEMPLATE, cluster_stats)
-    assert len(records) == 39
+    assert len(records) == 41
 
 
 def test_report_stats_gpu():
@@ -473,6 +473,60 @@ def test_report_stats_gpu():
     assert gpu_metrics_aggregatd["node_gpus_utilization"] == 6
     assert gpu_metrics_aggregatd["node_gram_used"] == 6
     assert gpu_metrics_aggregatd["node_gram_available"] == GPU_MEMORY * 4 - 6
+
+
+def test_report_stats_tpu():
+    dashboard_agent = MagicMock()
+    agent = ReporterAgent(dashboard_agent)
+
+    STATS_TEMPLATE["tpus"] = [
+        {
+            "index": 0,
+            "name": "tpu-0",
+            "tpu_type": "v6e",
+            "tpu_topology": "2x2",
+            "tensorcore_utilization": 0.1,
+            "hbm_utilization": 0.1,
+        },
+        {
+            "index": 1,
+            "name": "tpu-1",
+            "tpu_type": "v6e",
+            "tpu_topology": "2x2",
+            "tensorcore_utilization": 0.2,
+            "hbm_utilization": 0.1,
+        },
+        {
+            "index": 2,
+            "name": "tpu-2",
+            "tpu_type": "v6e",
+            "tpu_topology": "2x2",
+            "tensorcore_utilization": 0.3,
+            "hbm_utilization": 0.1,
+        },
+        {
+            "index": 3,
+            "name": "tpu-3",
+            "tpu_type": "v6e",
+            "tpu_topology": "2x2",
+            "tensorcore_utilization": 0.4,
+            "hbm_utilization": 0.1,
+        },
+    ]
+    tpu_metrics_aggregated = {
+        "tpu_tensorcore_utilization": 0.0,
+        "tpu_memory_bandwidth_utilization": 0.0,
+    }
+    records = agent._to_records(STATS_TEMPLATE, {})
+    num_tpu_records = 0
+    for record in records:
+        if record.gauge.name in tpu_metrics_aggregated:
+            num_tpu_records += 1
+            tpu_metrics_aggregated[record.gauge.name] += record.value
+
+    assert num_tpu_records == 8
+    assert tpu_metrics_aggregated["tpu_tensorcore_utilization"] == 1.0
+    assert tpu_metrics_aggregated["tpu_memory_bandwidth_utilization"] == 0.4
 
 
 def test_report_per_component_stats():
