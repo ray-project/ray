@@ -506,7 +506,18 @@ class LLMServer(_LLMServerBase):
         3. Forward request to VLLMEngine.generate()
         """
 
-        logger.info(f"Received streaming request {request_id}")
+        # Log streaming request if streaming details logging is enabled
+        from ray.llm._internal.serve.observability.logging.config import (
+            conditional_log,
+            should_log_streaming_details,
+        )
+
+        conditional_log(
+            logger,
+            "info",
+            f"Received streaming request {request_id}",
+            should_log_streaming_details,
+        )
         multiplexed_model_id = serve.get_multiplexed_model_id()
 
         if multiplexed_model_id:

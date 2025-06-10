@@ -12,6 +12,11 @@ from ray.llm._internal.serve.deployments.routers.middleware import (
     get_user_id,
 )
 from ray.llm._internal.serve.observability.logging import get_logger
+from ray.llm._internal.serve.observability.logging.config import (
+    conditional_log,
+    should_log_request_failures,
+    should_log_request_lifecycle,
+)
 from ray.llm._internal.serve.observability.metrics.fastapi_utils import (
     FASTAPI_API_SERVER_TAG_KEY,
     FASTAPI_HTTP_HANDLER_TAG_KEY,
@@ -61,7 +66,13 @@ class MeasureHTTPRequestMetricsMiddleware:
         req_id = get_request_id(request)
         now = time.monotonic()
         try:
-            logger.info(f"Starting handling of the request {req_id}")
+            # Only log request start if request lifecycle logging is enabled
+            conditional_log(
+                logger,
+                "info",
+                f"Starting handling of the request {req_id}",
+                should_log_request_lifecycle,
+            )
             await self.app(scope, receive, send_wrapper)
 
         except CancelledError as ce:
@@ -96,20 +107,30 @@ class MeasureHTTPRequestMetricsMiddleware:
             }
 
             if status_code >= 400:
-                log = logger.error if status_code >= 500 else logger.warning
-                log(
-                    f"Handling of the request {req_id} failed",
-                    exc_info=exception_info,
-                    extra={"ray_serve_extra_fields": extra_context},
-                )
+                # Log failures if request failures logging is enabled
+                if should_log_request_failures():
+                    log = logger.error if status_code >= 500 else logger.warning
+                    log(
+                        f"Handling of the request {req_id} failed",
+                        exc_info=exception_info,
+                        extra={"ray_serve_extra_fields": extra_context},
+                    )
             elif status_code == -1:
-                logger.info(
+                # Log cancellations if request lifecycle logging is enabled
+                conditional_log(
+                    logger,
+                    "info",
                     f"Handling of the request {req_id} have been cancelled",
+                    should_log_request_lifecycle,
                     extra={"ray_serve_extra_fields": extra_context},
                 )
             else:
-                logger.info(
+                # Log successful completion if request lifecycle logging is enabled
+                conditional_log(
+                    logger,
+                    "info",
                     f"Handling of the request {req_id} successfully completed",
+                    should_log_request_lifecycle,
                     extra={"ray_serve_extra_fields": extra_context},
                 )
 

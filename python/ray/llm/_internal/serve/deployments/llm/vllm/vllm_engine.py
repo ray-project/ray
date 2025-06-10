@@ -274,7 +274,17 @@ class VLLMEngine(LLMEngine):
 
         if self.running:
             # The engine is already running!
-            logger.info("Skipping engine restart because the engine is already running")
+            from ray.llm._internal.serve.observability.logging.config import (
+                conditional_log,
+                should_log_engine_operations,
+            )
+
+            conditional_log(
+                logger,
+                "info",
+                "Skipping engine restart because the engine is already running",
+                should_log_engine_operations,
+            )
             return
 
         self.engine = await self._start_engine()
@@ -307,7 +317,14 @@ class VLLMEngine(LLMEngine):
             tokenizer=self._tokenizer,
         )
 
-        logger.info("Started vLLM engine.")
+        from ray.llm._internal.serve.observability.logging.config import (
+            conditional_log,
+            should_log_engine_operations,
+        )
+
+        conditional_log(
+            logger, "info", "Started vLLM engine.", should_log_engine_operations
+        )
 
     async def _start_engine(self) -> "EngineClient":
         from vllm import envs
@@ -466,7 +483,17 @@ class VLLMEngine(LLMEngine):
             engine_pid=os.getpid(),
         )
 
-        logger.info("[STATUS] Getting the server ready ...")
+        from ray.llm._internal.serve.observability.logging.config import (
+            conditional_log,
+            should_log_engine_operations,
+        )
+
+        conditional_log(
+            logger,
+            "info",
+            "[STATUS] Getting the server ready ...",
+            should_log_engine_operations,
+        )
         while True:
             try:
                 await engine_client.setup()
@@ -482,7 +509,12 @@ class VLLMEngine(LLMEngine):
                 # 3. Something in the .start() has caused the engine to fail: In this
                 # case the exception is caught and get_error will return the error
                 # which should be re-raised.
-                logger.info("[STATUS] Waiting for engine process ...")
+                conditional_log(
+                    logger,
+                    "info",
+                    "[STATUS] Waiting for engine process ...",
+                    should_log_engine_operations,
+                )
                 try:
                     # Wait 1 second to get any potential error raised in the engine loop
                     err = ray.get(process_ref.get_error.remote(), timeout=1)
@@ -495,7 +527,9 @@ class VLLMEngine(LLMEngine):
                     logger.error("[ERROR] Actor died.")
                     raise RuntimeError("Background Engine loop is dead.") from e
 
-        logger.info("[STATUS] Server is ready.")
+        conditional_log(
+            logger, "info", "[STATUS] Server is ready.", should_log_engine_operations
+        )
 
         return engine_client
 
@@ -617,9 +651,15 @@ class VLLMEngine(LLMEngine):
 
         This should also handle the case where the caller is cancelled (raises asyncio.CancelledError)
         """
+        # Log request prompts if enabled
+        from ray.llm._internal.serve.observability.logging.config import conditional_log
+
         if RAYLLM_ENABLE_REQUEST_PROMPT_LOGS:
-            logger.info(
-                f"Request {request.request_id} started. " f"Prompt: {request.prompt}"
+            conditional_log(
+                logger,
+                "info",
+                f"Request {request.request_id} started. Prompt: {request.prompt}",
+                lambda: True,  # Always log if RAYLLM_ENABLE_REQUEST_PROMPT_LOGS is True
             )
 
         if request.prompt_token_ids is not None:
@@ -714,7 +754,14 @@ class VLLMEngine(LLMEngine):
                     ) / generation_time
                     generated_tokens_s = all_tokens_collected / generation_time
 
-                logger.info(
+                # Log request completion if request lifecycle logging is enabled
+                from ray.llm._internal.serve.observability.logging.config import (
+                    should_log_request_lifecycle,
+                )
+
+                conditional_log(
+                    logger,
+                    "info",
                     f"Request {request.request_id} finished ({finish_reason}). "
                     f"Total time: {total_request_time}s, "
                     f"Queue time: {queue_time}, "
@@ -722,7 +769,8 @@ class VLLMEngine(LLMEngine):
                     f"Input tokens: {num_input_tokens}, "
                     f"Generated tokens: {all_tokens_collected}, "
                     f"tokens/s: {tokens_s}, "
-                    f"generated tokens/s: {generated_tokens_s}."
+                    f"generated tokens/s: {generated_tokens_s}.",
+                    should_log_request_lifecycle,
                 )
             else:
                 logger.warning(
@@ -785,10 +833,16 @@ class VLLMEngine(LLMEngine):
         """Return (embeddings, num_prompt_tokens)"""
 
         num_prompts = len(vllm_embedding_request.prompt)
+        # Log embedding request if enabled
+        from ray.llm._internal.serve.observability.logging.config import conditional_log
+
         if RAYLLM_ENABLE_REQUEST_PROMPT_LOGS:
-            logger.info(
+            conditional_log(
+                logger,
+                "info",
                 f"Encoding request {vllm_embedding_request.request_id} started. "
-                f"Num prompts: {num_prompts}"
+                f"Num prompts: {num_prompts}",
+                lambda: True,  # Always log if RAYLLM_ENABLE_REQUEST_PROMPT_LOGS is True
             )
 
         generators: List[AsyncGenerator["PoolingRequestOutput", None]] = []
