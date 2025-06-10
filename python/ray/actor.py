@@ -70,11 +70,11 @@ def method(*args, **kwargs):
         _, _ = f.bar.remote()
 
     Args:
-        num_returns: The number of object refs that should be returned by
+        num_returns (int): The number of object refs that should be returned by
             invocations of this actor method. The default value is 1 for a
             normal actor task and "streaming" for an actor generator task (a
             function that yields objects instead of returning them).
-        max_task_retries: How many times to retry an actor task if the task
+        max_task_retries (int): How many times to retry an actor task if the task
             fails due to a runtime error, e.g., the actor has died. The
             default value is 0. If set to -1, the system will retry the
             failed task until the task succeeds, or the actor has reached
@@ -87,13 +87,20 @@ def method(*args, **kwargs):
             exception from the task. You can override this number with the
             method's `max_task_retries` option in `@ray.method` decorator or
             in `.option()`.
-        retry_exceptions: Boolean of whether to retry all Python
+        retry_exceptions (bool): Boolean of whether to retry all Python
             exceptions, or a list of allowlist exceptions to retry. The default
             value is False (only retry tasks upon system failures and if
             max_task_retries is set)
-        tensor_transport: The tensor transport protocol to use for the actor
-            method. This parameter is *experimental* and the API may change in
-            the future. Use with caution.
+        concurrency_group (str): The name of the concurrency group
+            to use for the actor method. By default, the actor is single-threaded and runs all actor tasks on the same thread.
+            See :ref:`Defining Concurrency Groups <defining-concurrency-groups>`.
+        tensor_transport (str): [Experimental] The tensor transport protocol to
+            use for the actor method. The valid values are "OBJECT_STORE"
+            (default), "NCCL", or "GLOO" (case-insensitive). torch.Tensors
+            returned by this task will be sent to other tasks using the
+            specified transport. NCCL and GLOO transports require first creating
+            a collective with the involved actors using
+            `ray.experimental.collective.create_collective_group`.
     """
     valid_kwargs = [
         "num_returns",
