@@ -663,11 +663,6 @@ class Node:
         return self._ray_params.redis_password
 
     @property
-    def object_ref_seed(self):
-        """Get the seed for deterministic generation of object refs"""
-        return self._ray_params.object_ref_seed
-
-    @property
     def plasma_store_socket_name(self):
         """Get the node's plasma store socket name."""
         return self._plasma_store_socket_name
