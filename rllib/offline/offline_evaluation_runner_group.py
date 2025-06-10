@@ -9,7 +9,9 @@ from ray.rllib.offline.offline_data import OfflineData
 from ray.rllib.offline.offline_evaluation_runner import OfflineEvaluationRunner
 from ray.rllib.offline.offline_policy_evaluation_runner import (
     OfflinePolicyEvaluationRunner,
+    OfflinePolicyPreEvaluator,
 )
+from ray.rllib.offline.offline_prelearner import OfflinePreLearner
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.runners.runner_group import RunnerGroup
 
@@ -61,11 +63,20 @@ class OfflineEvaluationRunnerGroup(RunnerGroup):
     ) -> None:
 
         # Define the offline evaluation runner class.
-        self._runner_cls = config.offline_eval_runner_cls or (
+        self._runner_cls = config.offline_eval_runner_class or (
             OfflineEvaluationRunner
             if config.offline_evaluation_type == "eval_loss"
             else OfflinePolicyEvaluationRunner
         )
+        # Defone
+        self._pre_learner_or_evaluator_cls = self.config.prelearner_class or (
+            OfflinePreLearner
+            if config.offline_evaluation_type == "eval_loss"
+            else OfflinePolicyPreEvaluator
+        )
+        self.config._is_frozen = False
+        self.config.prelearner_class = self._pre_learner_or_evaluator_cls
+        self.config._is_frozen = True
 
         # We can either run on a local runner or on remote runners only b/c
         # streaming split needs remote runners.
