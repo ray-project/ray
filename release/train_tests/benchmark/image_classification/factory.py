@@ -254,6 +254,8 @@ class ImageClassificationMockDataLoaderFactory(BaseDataLoaderFactory):
 
 
 def get_imagenet_data_dirs(task_config: ImageClassificationConfig) -> Dict[str, str]:
+    """Returns a dict with the root imagenet dataset directories for train/val/test,
+    corresponding to the data format and local/s3 dataset location."""
     from image_classification.imagenet import IMAGENET_LOCALFS_SPLIT_DIRS
     from image_classification.image_classification_jpeg.imagenet import (
         IMAGENET_JPEG_SPLIT_S3_DIRS,
