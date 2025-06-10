@@ -963,7 +963,7 @@ class Dataset:
 
             .. testoutput::
 
-                [{'a': 2, 'b': 'y'}, {'a': 4, 'b': 'w'}]
+                [{'a': 1, 'b': 'x'}, {'a': 2, 'b': 'y'}, {'a': 3, 'b': 'z'}, {'a': 4, 'b': 'w'}]
 
         Args:
             keys: List of columns to consider for identifying duplicates. Only the values in these columns are checked for duplication. If None, all columns are used. Defaults to None.
