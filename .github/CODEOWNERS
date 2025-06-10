@@ -131,7 +131,7 @@
 
 # Allow people to add BYOD post-installation shell scripts
 # on their own.
-/release/ray_release/*.sh
+/release/ray_release/byod/*.sh
 
 /.github/ISSUE_TEMPLATE/ @aslonnie
 
