@@ -13,6 +13,11 @@ from ray.llm._internal.serve.configs.constants import (
     DEFAULT_HEALTH_CHECK_TIMEOUT_S,
     ENGINE_START_TIMEOUT_S,
     MODEL_RESPONSE_BATCH_TIMEOUT_MS,
+    RAYLLM_LLM_INITIAL_REPLICAS,
+    RAYLLM_LLM_MAX_ONGOING_REQUESTS,
+    RAYLLM_LLM_MAX_REPLICAS,
+    RAYLLM_LLM_MIN_REPLICAS,
+    RAYLLM_LLM_TARGET_ONGOING_REQUESTS,
     RAYLLM_VLLM_ENGINE_CLS_ENV,
 )
 from ray.llm._internal.serve.configs.openai_api_models import (
@@ -695,19 +700,12 @@ class LLMServer(_LLMServerBase):
 
 @serve.deployment(
     autoscaling_config={
-        "min_replicas": 1,
-        "initial_replicas": 1,
-        "max_replicas": 10,
-        "target_ongoing_requests": int(
-            os.environ.get(
-                "RAYLLM_ROUTER_TARGET_ONGOING_REQUESTS",
-                os.environ.get(
-                    "RAYLLM_ROUTER_TARGET_NUM_ONGOING_REQUESTS_PER_REPLICA", 10
-                ),
-            )
-        ),
+        "min_replicas": RAYLLM_LLM_MIN_REPLICAS,  # Default: 1
+        "initial_replicas": RAYLLM_LLM_INITIAL_REPLICAS,  # Default: 1
+        "max_replicas": RAYLLM_LLM_MAX_REPLICAS,  # Default: 10
+        "target_ongoing_requests": RAYLLM_LLM_TARGET_ONGOING_REQUESTS,  # Default: 10
     },
-    max_ongoing_requests=20,  # Maximum backlog for a single replica
+    max_ongoing_requests=RAYLLM_LLM_MAX_ONGOING_REQUESTS,  # Default: 20 - Maximum backlog for a single replica
     health_check_period_s=DEFAULT_HEALTH_CHECK_PERIOD_S,
     health_check_timeout_s=DEFAULT_HEALTH_CHECK_TIMEOUT_S,
 )

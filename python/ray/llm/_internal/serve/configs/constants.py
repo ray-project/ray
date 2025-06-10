@@ -85,6 +85,20 @@ RAYLLM_ROUTER_TARGET_ONGOING_REQUESTS = int(
     )
 )
 
+# LLM Deployment autoscaling configuration
+RAYLLM_LLM_MIN_REPLICAS = int(os.environ.get("RAYLLM_LLM_MIN_REPLICAS", 1))
+RAYLLM_LLM_INITIAL_REPLICAS = int(os.environ.get("RAYLLM_LLM_INITIAL_REPLICAS", 1))
+RAYLLM_LLM_MAX_REPLICAS = int(os.environ.get("RAYLLM_LLM_MAX_REPLICAS", 10))
+RAYLLM_LLM_TARGET_ONGOING_REQUESTS = int(
+    os.environ.get(
+        "RAYLLM_LLM_TARGET_ONGOING_REQUESTS",
+        os.environ.get("RAYLLM_ROUTER_TARGET_NUM_ONGOING_REQUESTS_PER_REPLICA", 10),
+    )
+)
+RAYLLM_LLM_MAX_ONGOING_REQUESTS = int(
+    os.environ.get("RAYLLM_LLM_MAX_ONGOING_REQUESTS", 20)
+)
+
 
 # HOME DIR
 RAYLLM_HOME_DIR = os.environ.get("RAYLLM_HOME_DIR", os.path.expanduser("~/.ray/llm"))
