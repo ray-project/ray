@@ -2,13 +2,13 @@
 
 # Serve a Large Language Model using Ray Serve LLM on Kubernetes
 
-This guide provides a step-by-step walkthrough for deploying a Large Language Model (LLM) using Ray Serve LLM on Kubernetes. Leveraging KubeRay, Ray Serve, and vLLM, this guide deploys the  `Qwen/Qwen2.5-7B-Instruct` model from HuggingFace, enabling scalable, efficient, and OpenAI-compatible LLM serving within a Kubernetes environment. For more information on Ray-Serve LLM, visit [here](../../../serve/llm/serving-llms.rst).
+This guide provides a step-by-step walkthrough for deploying a Large Language Model (LLM) using Ray Serve LLM on Kubernetes. Leveraging KubeRay, Ray Serve, and vLLM, this guide deploys the  `Qwen/Qwen2.5-7B-Instruct` model from Hugging Face, enabling scalable, efficient, and OpenAI-compatible LLM serving within a Kubernetes environment. See [Serving LLMs](serving_llms) for information on Ray Serve LLM.
 
 ## Prerequisites
 
-In this example, model weights are downloaded from the [Qwen/Qwen2.5-7B-Instruct](https://huggingface.co/Qwen/Qwen2.5-7B-Instruct) Hugging Face repository. In order to properly finish this guide, you must fulfill the following requirements:
-* A [Hugging Face Account](https://huggingface.co/) and a Hugging Face [Access Token](https://huggingface.co/settings/tokens) with read access to gated repos.
-* In your Ray Serve configuration, set the `HUGGING_FACE_HUB_TOKEN` environment variable to this token to enable model downloads.
+This example downloads model weights from the [Qwen/Qwen2.5-7B-Instruct](https://huggingface.co/Qwen/Qwen2.5-7B-Instruct) Hugging Face repository. To completely finish this guide, you must fulfill the following requirements:
+* A [Hugging Face account](https://huggingface.co/) and a Hugging Face [access token](https://huggingface.co/settings/tokens) with read access to gated repos.
+* In your RayService custom resource, set the `HUGGING_FACE_HUB_TOKEN` environment variable to the Hugging Face token to enable model downloads.
 * Any supported GPU. You can refer [here](../user-guides/k8s-cluster-setup.md) for more information
 
 ## Step 1: Create a Kubernetes cluster with GPUs
@@ -21,7 +21,7 @@ Install the most recent stable KubeRay operator from the Helm repository by foll
 
 ## Step 3: Create a Kubernetes Secret containing your Hugging Face access token
 
-For additional security, instead of passing the HF Access Token directly as an environment variable, we recommend creating a Kubernetes Secret containing your Hugging Face access token. Download the Ray Serve LLM service config yaml [here](https://github.com/ray-project/kuberay/blob/master/ray-operator/config/samples/ray-service.llm-serve.yaml), update the value for `hf_token` to your private access token in the `Secret`, and apply the config to your K8s cluster.
+For additional security, instead of passing the HF Access Token directly as an environment variable, we recommend creating a Kubernetes Secret containing your Hugging Face access token. Download the Ray Serve LLM service config yaml [here](https://github.com/ray-project/kuberay/blob/master/ray-operator/config/samples/ray-service.llm-serve.yaml), update the value for `hf_token` to your private access token in the `Secret`, and apply the config to your Kubernetes cluster.
 
 ```yaml
 apiVersion: v1
@@ -35,13 +35,13 @@ stringData:
 
 ## Step 4: Deploy a RayService
 
-Create a RayService Custom Resource:
+Create a RayService custom resource:
 
 ```sh
 kubectl apply -f https://raw.githubusercontent.com/ray-project/kuberay/master/ray-operator/config/samples/ray-service.llm-serve.yaml
 ```
 
-In this step, a custom Ray Serve Application is setup to serve the `Qwen/Qwen2.5-7B-Instruct` Model, creating an OpenAI-Compatible Server. The source for this example is on [GitHub](https://github.com/ray-project/kuberay/blob/master/ray-operator/config/samples/ray-service.llm-serve.yaml). You can inspect and modify the Serve Config to learn more about the Serve deployment:
+In this step, a custom Ray Serve application is setup to serve the `Qwen/Qwen2.5-7B-Instruct` Model, creating an OpenAI-Compatible Server. You can inspect and modify the `serveConfigV2` section in the YAML file to learn more about the Serve application:
 ```yaml
 serveConfigV2: |
   applications:
@@ -89,12 +89,11 @@ status:
 
 To send requests to the Ray Serve Deployment, port-forward 8000 port from the Serve application Service:
 ```sh
-kubectl port-forward ray-serve-llm-head-svc 8000
+kubectl port-forward ray-serve-llm-serve-svc 8000
 ```
 
-Additionally, you can also port-forward 8000 port from the Head application Service to send requests to the serve application.
 
-Keep in mind this Kubernetes Service comes up only after Ray Serve applications are running and ready. This process takes a few minutes after all the pods in the Ray Cluster are up and running.
+Keep in mind this Kubernetes Service comes up only after Ray Serve applications are running and ready.
 
 Test the service with the following command:
 ```sh
@@ -117,18 +116,14 @@ curl --location 'http://localhost:8000/v1/chat/completions' --header 'Content-Ty
 
 ## Step 6: View the Ray Dashboard
 
-Ray Serve automatically starts Ray Dashboard, a web interface that provides metrics, charts, and other features that help Ray users to understand and debug Ray applications.
 
-To access the Ray Dashboard, port-forward port 8625 from the Head application Service using the following command:
 ```sh
-kubectl port-forward svc/ray-serve-llm-head-svc 8625
+kubectl port-forward svc/ray-serve-llm-head-svc 8265
 ```
 
 Once forwarded, navigate to the Serve tab on the Dashboard to review application status, deployments, routers, logs, and other relevant features.
 ![LLM Serve Application](../images/ray_dashboard_llm_application.png)
 
-The Cluster tab provides detailed information about the Ray cluster components, including head and worker pods.
-![Ray Cluster](../images/ray_dashboard_llm_cluster.png)
 
 For monitoring application and cluster-level metrics, set up Prometheus and Grafana for dashboarding by referring to the official documentation:
 * [Prometheus and Grafana with KubeRay](../k8s-ecosystem/prometheus-grafana.md)
