@@ -624,7 +624,7 @@ class OfflinePolicyEvaluationRunner(Runner, Checkpointable):
     @property
     def _env_to_module(self) -> EnvToModulePipeline:
         """Returns the env-to-module pipeline of this `Runner`."""
-        self.__env_to_module
+        return self.__env_to_module
 
     @property
     def _offline_evaluation_type(self) -> Enum:
