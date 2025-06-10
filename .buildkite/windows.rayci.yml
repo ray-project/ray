@@ -71,6 +71,7 @@ steps:
     # parallelism: 2
     commands:
       - bash ci/ray_ci/windows/install_tools.sh
+      - export RAYCI_DISABLE_TEST_DB=1
       - bazel run //ci/ray_ci:test_in_docker -- //python/ray/serve/tests:test_backpressure serve
         --build-name windowsbuild
         --operating-system windows
