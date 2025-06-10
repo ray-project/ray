@@ -215,7 +215,10 @@ def get_custom_cluster_env_name(image: str, test_name: str) -> str:
 
 
 def create_cluster_env_from_image(
-    image: str, test_name: str, runtime_env: Dict[str, Any], sdk: Optional["AnyscaleSDK"] = None
+    image: str,
+    test_name: str,
+    runtime_env: Dict[str, Any],
+    sdk: Optional["AnyscaleSDK"] = None,
 ) -> str:
     anyscale_sdk = sdk or get_anyscale_sdk()
     cluster_env_name = get_custom_cluster_env_name(image, test_name)

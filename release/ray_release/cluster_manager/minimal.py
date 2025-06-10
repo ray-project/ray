@@ -8,7 +8,11 @@ from ray_release.exception import (
 )
 from ray_release.logger import logger
 from ray_release.cluster_manager.cluster_manager import ClusterManager
-from ray_release.util import format_link, anyscale_cluster_env_build_url, create_cluster_env_from_image
+from ray_release.util import (
+    format_link,
+    anyscale_cluster_env_build_url,
+    create_cluster_env_from_image,
+)
 from ray_release.retry import retry
 
 REPORT_S = 30.0
@@ -40,7 +44,7 @@ class MinimalClusterManager(ClusterManager):
             image=self.test.get_anyscale_byod_image(),
             test_name=self.cluster_env_name,
             runtime_env=self.test.get_byod_runtime_env(),
-            sdk=self.sdk
+            sdk=self.sdk,
         )
 
     def build_cluster_env(self, timeout: float = 600.0):
