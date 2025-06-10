@@ -1,3 +1,4 @@
+import asyncio
 import logging
 import signal
 import sys
@@ -205,7 +206,7 @@ class DataParallelTrainer:
             return ray.get(controller.get_result.remote())
         else:
             controller = TrainController(**controller_init_kwargs)
-            controller.run()
+            asyncio.run(controller.run())
             return controller.get_result()
 
     @classmethod
