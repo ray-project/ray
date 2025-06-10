@@ -43,8 +43,8 @@ void InlineDependencies(
           // replacing it with the raw value.
           if (tensor_transport_getter(id) == rpc::TensorTransport::OBJECT_STORE) {
             // Clear the object reference if the object is transferred via the object
-            // store. If we don't clear the object reference, it will have performance
-            // degradation in some edge cases.
+            // store. If we don't clear the object reference, tasks with a large number of arguments will experience performance
+            // degradation due to higher serialization overhead.
             //
             // However, if the tensor transport is not OBJECT_STORE (e.g., NCCL),
             // we must keep the object reference so that the receiver can retrieve
