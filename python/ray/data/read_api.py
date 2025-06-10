@@ -3619,6 +3619,7 @@ def read_clickhouse(
     )
 
 
+@PublicAPI(stability="alpha")
 def read_unity_catalog(
     table: str,
     url: str,
@@ -3703,6 +3704,7 @@ def read_unity_catalog(
     return reader.read()
 
 
+@PublicAPI(stability="alpha")
 def read_delta(
     path: Union[str, List[str]],
     *,
