@@ -25,10 +25,41 @@ def main():
     args = parser.parse_args()
 
     parser = Parser(args.ray_path)
-    li_snippets, list_of_files = parser.find_literal_include_snippets()
-    parser.save_code_snippets_to_file(li_snippets, "results/literal_snippets.json")
-    parser.save_snippets_to_file(list_of_files, "results/list_of_files.txt")
-    print(f"Found {len(li_snippets)} literal include snippets")
+    # literal include snippets
+    literalinclude_doc_files = parser.find_code_snippets(search_string_rst=".. literalinclude::", search_string_md="```{literalinclude}")
+    parser.save_doc_file_snippets(literalinclude_doc_files, "results/literal_include_doc_files.json")
+    print(f"Found {len(literalinclude_doc_files)} literal include snippets")
+
+    # test code snippets
+    testcode_doc_files = parser.find_code_snippets(search_string_rst=".. testcode::", search_string_md="```{testcode}")
+    parser.save_doc_file_snippets(testcode_doc_files, "results/test_code_doc_files.json")
+    print(f"Found {len(testcode_doc_files)} test code snippets")
+
+    # code block snippets
+    codeblock_doc_files = parser.find_code_snippets(search_string_rst=".. code-block::", search_string_md="")
+    parser.save_doc_file_snippets(codeblock_doc_files, "results/code_block_doc_files.json")
+    print(f"Found {len(codeblock_doc_files)} code block snippets")
+
+    python_doc_files = parser.find_code_snippets(search_string_rst="", search_string_md="```python")
+    parser.save_doc_file_snippets(python_doc_files, "results/python_doc_files.json")
+    print(f"Found {len(python_doc_files)} python snippets")
+
+    doctest_doc_files = parser.find_code_snippets(search_string_rst=".. doctest::", search_string_md="")
+    parser.save_doc_file_snippets(doctest_doc_files, "results/doctest_doc_files.json")
+    print(f"Found {len(doctest_doc_files)} doctest snippets")
+
+    java_doc_files = parser.find_code_snippets(search_string_rst="", search_string_md="```java")
+    parser.save_doc_file_snippets(java_doc_files, "results/java_doc_files.json")
+    print(f"Found {len(java_doc_files)} java snippets")
+
+    shell_doc_files = parser.find_code_snippets(search_string_rst="", search_string_md="```shell")
+    parser.save_doc_file_snippets(shell_doc_files, "results/shell_doc_files.json")
+    print(f"Found {len(shell_doc_files)} shell snippets")
+
+    bash_doc_files = parser.find_code_snippets(search_string_rst="", search_string_md="```bash")
+    parser.save_doc_file_snippets(bash_doc_files, "results/bash_doc_files.json")
+    print(f"Found {len(bash_doc_files)} bash snippets")
+
     # test_results = TestResults()
     # # Get all doctest jobs for the run
     # bk_client = BuildKiteClient(BK_HOST, args.bk_api_token, BK_ORGANIZATION, BK_PIPELINE)

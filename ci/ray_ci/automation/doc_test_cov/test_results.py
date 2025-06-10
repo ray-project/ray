@@ -100,15 +100,24 @@ class BazelFile:
         }
 
 class CodeSnippet:
-    def __init__(self, file_path: str, file_type: str, ref_to_file: str, snippet =None):
-        self.file_path = file_path
-        self.file_type = file_type
+    def __init__(self, snippet_type: str, ref_to_file: str, snippet=None):
+        self.snippet_type = snippet_type
         self.ref_to_file = ref_to_file
         self.snippet = snippet if snippet else ""
 
     def to_dict(self) -> Dict:
         return {
-            "file_path": self.file_path,
-            "file_type": self.file_type,
+            "snippet_type": self.snippet_type,
             "ref_to_file": self.ref_to_file,
+        }
+
+class DocFile:
+    def __init__(self, file_path: str, snippets: List[CodeSnippet]):
+        self.file_path = file_path
+        self.code_snippets = snippets
+
+    def to_dict(self) -> Dict:
+        return {
+            "file_path": self.file_path,
+            "code_snippets": [snippet.to_dict() for snippet in self.code_snippets],
         }
