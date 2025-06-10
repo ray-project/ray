@@ -10,7 +10,7 @@ from ray.train.torch import TorchTrainer
 from ray.train.v2._internal.util import date_str
 
 from config import BenchmarkConfig, cli_to_config
-from factory import BenchmarkFactory
+from benchmark_factory import BenchmarkFactory
 from ray_dataloader_factory import RayDataLoaderFactory
 
 

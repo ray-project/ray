@@ -12,7 +12,7 @@ from ray.data._internal.stats import Timer
 import torch
 from logger_utils import ContextLoggerAdapter
 
-from factory import BenchmarkFactory
+from benchmark_factory import BenchmarkFactory
 
 logger = ContextLoggerAdapter(logging.getLogger(__name__))
 
