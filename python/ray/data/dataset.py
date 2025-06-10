@@ -135,7 +135,6 @@ if TYPE_CHECKING:
     from ray.data._internal.execution.interfaces import Executor, NodeIdStr
     from ray.data.grouped_data import GroupedData
 
-
 logger = logging.getLogger(__name__)
 
 TensorflowFeatureTypeSpec = Union[
@@ -985,27 +984,48 @@ class Dataset:
             which may result in memory pressure or dramatically increased execution time.
 
         """
-        import pandas as pd
-
         all_cols = self.columns()
         if not all_cols:
             return self
 
+        def remove_duplicates_arrow(table: pa.Table, subset=None):
+            """
+            Remove duplicate rows from a PyArrow Table using only PyArrow and Numpy.
+            Returns unique rows in the order of their first appearance.
+            subset: list of columns to deduplicate on; default is all columns.
+            """
+            if subset is None:
+                subset = table.column_names
+            arrays = [
+                table[col].combine_chunks().to_numpy(zero_copy_only=False)
+                for col in subset
+            ]
+            # All to string, regardless of type
+            str_arrays = [np.array(arr, dtype=str) for arr in arrays]
+            sep = "\x1e"
+            # Build rowkey (concatenate strings with separator)
+            rowkey_np = np.char.add(str_arrays[0], "")
+            for arr in str_arrays[1:]:
+                rowkey_np = np.char.add(rowkey_np, sep)
+                rowkey_np = np.char.add(rowkey_np, arr)
+            # Unique rowkeys, get first index of each unique row
+            _, unique_indices = np.unique(rowkey_np, return_index=True)
+            unique_indices = np.sort(unique_indices)
+            return table.take(pa.array(unique_indices))
+
+        # If keys is None, we use all columns for deduplication.
         subset_cols = keys if keys is not None else all_cols
 
+        # Validate subset_cols
         if keep not in ("first", "last", False):
             raise ValueError(f"keep must be 'first', 'last', or False, got {keep}")
 
         if keep is False:
-
-            def only_uniques(batch: pd.DataFrame) -> pd.DataFrame:
-                dupe_mask = batch.duplicated(subset=subset_cols, keep=False)
-                return batch[~dupe_mask]
-
             self = self.map_batches(
-                only_uniques,
-                batch_format="pandas",
+                remove_duplicates_arrow,
+                batch_format="pyarrow",
                 zero_copy_batch=False,
+                fn_kwargs={"subset": subset_cols},
             )
 
             def keep_one_per_group(batch: pa.Table) -> pa.Table:
@@ -1018,29 +1038,30 @@ class Dataset:
             )
 
         else:
-
-            def drop_pandas_dups(batch: pd.DataFrame) -> pd.DataFrame:
-                return batch.drop_duplicates(subset=subset_cols, keep=keep)
-
             self = self.map_batches(
-                drop_pandas_dups,
-                batch_format="pandas",
+                remove_duplicates_arrow,
+                batch_format="pyarrow",
                 zero_copy_batch=False,
+                fn_kwargs={"subset": subset_cols},
             )
             if keep == "first":
-
+                # If keep is "first", we can just take the first row of each group
                 def take_first(batch: pa.Table) -> pa.Table:
                     return batch.slice(0, 1)
 
                 reducer = take_first
             else:
-
+                # If keep is "last", we can just take the last row of each group
                 def take_last(batch: pa.Table) -> pa.Table:
                     return batch.slice(batch.num_rows - 1, 1)
 
                 reducer = take_last
 
-            return self.groupby(subset_cols).map_groups(reducer, batch_format="pyarrow")
+            return self.groupby(subset_cols).map_groups(
+                reducer,
+                batch_format="pyarrow",
+                fn_kwargs={"subset": subset_cols},
+            )
 
     @PublicAPI(api_group=BT_API_GROUP)
     def drop_columns(
