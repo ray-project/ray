@@ -81,9 +81,8 @@ RAY_DASHBOARD_REPORTER_AGENT_TPE_MAX_WORKERS = env_integer(
     "RAY_DASHBOARD_REPORTER_AGENT_TPE_MAX_WORKERS", 1
 )
 
+# TPU device plugin metric address should be in the format "{HOST_IP}:2112"
 TPU_DEVICE_PLUGIN_ADDR = os.environ.get("TPU_DEVICE_PLUGIN_ADDR", None)
-
-TPU_DEVICE_PLUGIN_PORT = os.environ.get("TPU_DEVICE_PLUGIN_PORT", "2112")
 
 
 def recursive_asdict(o):
@@ -175,13 +174,13 @@ METRICS_GAUGES = {
     # TPU metrics
     "tpu_tensorcore_utilization": Gauge(
         "tpu_tensorcore_utilization",
-        "Total TPU tensorcore utilization on a ray node",
+        "Percentage TPU tensorcore utilization on a ray node, value should be between 0 and 1",
         "percentage",
         TPU_TAG_KEYS,
     ),
     "tpu_memory_bandwidth_utilization": Gauge(
         "tpu_memory_bandwidth_utilization",
-        "Total TPU memory bandwidth usage on a ray node",
+        "Percentage TPU memory bandwidth utilization on a ray node, value should be between 0 and 1",
         "percentage",
         TPU_TAG_KEYS,
     ),
@@ -658,7 +657,7 @@ class ReporterAgent(
             enable_tpu_usage_check = False
             return []
 
-        endpoint = f"http://{TPU_DEVICE_PLUGIN_ADDR}:{TPU_DEVICE_PLUGIN_PORT}/metrics"
+        endpoint = f"http://{TPU_DEVICE_PLUGIN_ADDR}/metrics"
         try:
             metrics = requests.get(endpoint).content
             metrics = metrics.decode("utf-8")
