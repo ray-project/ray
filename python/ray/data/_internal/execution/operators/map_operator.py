@@ -562,9 +562,9 @@ def _map_task(
             m_out.exec_stats.udf_time_s = map_transformer.udf_time()
             m_out.exec_stats.task_idx = ctx.task_idx
             m_out.exec_stats.max_uss_bytes = profiler.estimate_max_uss()
-            meta_schema = BlockMetadataWithSchema(metadata=m_out, schema=s_out)
+            meta_with_schema = BlockMetadataWithSchema(metadata=m_out, schema=s_out)
             yield b_out
-            yield meta_schema
+            yield meta_with_schema
             stats = BlockExecStats.builder()
             profiler.reset()
 

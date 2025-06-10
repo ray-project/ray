@@ -127,12 +127,12 @@ class SplitRepartitionTaskScheduler(ExchangeTaskScheduler):
             elif isinstance(first_block_schema, PandasBlockSchema):
                 builder = PandasBlockBuilder()
             empty_block = builder.build()
-            empty_meta_schema = BlockMetadataWithSchema.from_block(
+            empty_meta_with_schema = BlockMetadataWithSchema.from_block(
                 empty_block
             )  # No stats for empty block.
             empty_block_refs, empty_metadata = zip(
                 *[
-                    (ray.put(empty_block), empty_meta_schema)
+                    (ray.put(empty_block), empty_meta_with_schema)
                     for _ in range(num_empty_blocks)
                 ]
             )
@@ -144,12 +144,12 @@ class SplitRepartitionTaskScheduler(ExchangeTaskScheduler):
             len(reduce_block_refs),
             len(reduce_metadata_schema),
         )
-        for block, meta_schema in zip(reduce_block_refs, reduce_metadata_schema):
+        for block, meta_with_schema in zip(reduce_block_refs, reduce_metadata_schema):
             output.append(
                 RefBundle(
-                    [(block, meta_schema.metadata)],
+                    [(block, meta_with_schema.metadata)],
                     owns_blocks=input_owned_by_consumer,
-                    schema=meta_schema.schema,
+                    schema=meta_with_schema.schema,
                 )
             )
         stats = {

@@ -32,7 +32,7 @@ class BlockList:
         # since each read task may produce multiple output blocks after splitting.
         self._estimated_num_blocks = None
         # The schema of the blocks in this block list. This is optional, and may be None.
-        self._schema = schema or None
+        self._schema = schema
 
     def __repr__(self):
         return f"BlockList(owned_by_consumer={self._owned_by_consumer})"

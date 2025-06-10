@@ -134,11 +134,11 @@ def from_blocks(blocks: List[Block]):
         A :class:`~ray.data.Dataset` holding the blocks.
     """
     block_refs = [ray.put(block) for block in blocks]
-    meta_schema = [BlockMetadataWithSchema.from_block(block) for block in blocks]
+    meta_with_schema = [BlockMetadataWithSchema.from_block(block) for block in blocks]
 
-    from_blocks_op = FromBlocks(block_refs, meta_schema)
+    from_blocks_op = FromBlocks(block_refs, meta_with_schema)
     execution_plan = ExecutionPlan(
-        DatasetStats(metadata={"FromBlocks": meta_schema}, parent=None),
+        DatasetStats(metadata={"FromBlocks": meta_with_schema}, parent=None),
         DataContext.get_current().copy(),
     )
     logical_plan = LogicalPlan(from_blocks_op, execution_plan._context)
@@ -203,7 +203,7 @@ def from_items(
     # NOTE: We need to explicitly use the builtins range since we override range below,
     # with the definition of ray.data.range.
     blocks: List[ObjectRef[Block]] = []
-    meta_schema: List[BlockMetadataWithSchema] = []
+    meta_with_schema: List[BlockMetadataWithSchema] = []
     for i in builtins.range(detected_parallelism):
         stats = BlockExecStats.builder()
         builder = DelegatingBlockBuilder()
@@ -217,13 +217,13 @@ def from_items(
             builder.add(item)
         block = builder.build()
         blocks.append(ray.put(block))
-        meta_schema.append(
+        meta_with_schema.append(
             BlockMetadataWithSchema.from_block(block, stats=stats.build())
         )
 
-    from_items_op = FromItems(blocks, meta_schema)
+    from_items_op = FromItems(blocks, meta_with_schema)
     execution_plan = ExecutionPlan(
-        DatasetStats(metadata={"FromItems": meta_schema}, parent=None),
+        DatasetStats(metadata={"FromItems": meta_with_schema}, parent=None),
         DataContext.get_current().copy(),
     )
     logical_plan = LogicalPlan(from_items_op, execution_plan._context)

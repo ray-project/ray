@@ -382,7 +382,7 @@ class ExecutionPlan:
                         if bundle.schema is not None:
                             schema = bundle.schema
                             break
-        self.cache_schema(schema or None)
+        self.cache_schema(schema)
         return self._schema
 
     def cache_schema(self, schema: Union[type, "pyarrow.lib.Schema"]):

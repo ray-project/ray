@@ -65,8 +65,10 @@ class SortAggregateTaskSpec(ExchangeTaskSpec):
         ]
         from ray.data.block import BlockMetadataWithSchema
 
-        meta_schema = BlockMetadataWithSchema.from_block(block, stats=stats.build())
-        return parts + [meta_schema]
+        meta_with_schema = BlockMetadataWithSchema.from_block(
+            block, stats=stats.build()
+        )
+        return parts + [meta_with_schema]
 
     @staticmethod
     def reduce(
@@ -80,12 +82,12 @@ class SortAggregateTaskSpec(ExchangeTaskSpec):
             mapper_outputs,
             target_block_type=ExchangeTaskSpec._derive_target_block_type(batch_format),
         )
-        blocks, meta_schema = BlockAccessor.for_block(
+        blocks, meta_with_schema = BlockAccessor.for_block(
             normalized_blocks[0]
         )._combine_aggregated_blocks(
             list(normalized_blocks), key, aggs, finalize=not partial_reduce
         )
-        return blocks, meta_schema
+        return blocks, meta_with_schema
 
     @staticmethod
     def _prune_unused_columns(

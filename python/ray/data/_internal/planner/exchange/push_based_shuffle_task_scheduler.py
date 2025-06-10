@@ -398,13 +398,13 @@ class _ReduceStageIterator:
         # outputs produced by the corresponding merge task.
         # We also add the merge task arguments so that the reduce task
         # is colocated with its inputs.
-        block, meta_schema = self._shuffle_reduce.options(
+        block, meta_with_schema = self._shuffle_reduce.options(
             **self._ray_remote_args,
             **self._stage.get_merge_task_options(merge_idx),
             num_returns=2,
         ).remote(*self._reduce_args, *reduce_arg_blocks, partial_reduce=False)
         self._reduce_results.append((reduce_idx, block))
-        return meta_schema
+        return meta_with_schema
 
     def pop_reduce_results(self):
         reduce_results = self._reduce_results
@@ -649,17 +649,17 @@ class PushBasedShuffleTaskScheduler(ExchangeTaskScheduler):
         ), f"Expected {output_num_blocks} outputs, produced {len(new_blocks)}"
 
         output = []
-        for block, meta_schema in zip(new_blocks, reduce_stage_metadata_schema):
+        for block, meta_with_schema in zip(new_blocks, reduce_stage_metadata_schema):
             output.append(
                 RefBundle(
                     [
                         (
                             block,
-                            meta_schema.metadata,
+                            meta_with_schema.metadata,
                         )
                     ],
                     owns_blocks=input_owned,
-                    schema=meta_schema.schema,
+                    schema=meta_with_schema.schema,
                 )
             )
 
@@ -731,17 +731,17 @@ class PushBasedShuffleTaskScheduler(ExchangeTaskScheduler):
         size_bytes = 0
         schemas = []
         for i, mapper_outputs in enumerate(zip(*all_mapper_outputs)):
-            block_meta_schema: Tuple[Block, "BlockMetadataWithSchema"] = reduce_fn(
+            block_meta_with_schema: Tuple[Block, "BlockMetadataWithSchema"] = reduce_fn(
                 *reduce_args, *mapper_outputs, partial_reduce=True
             )
-            block, meta_schema = block_meta_schema
+            block, meta_with_schema = block_meta_with_schema
             yield block
 
             block = BlockAccessor.for_block(block)
             num_rows += block.num_rows()
             size_bytes += block.size_bytes()
             del block
-            schemas.append(meta_schema.schema)
+            schemas.append(meta_with_schema.schema)
 
         meta = BlockMetadata(
             num_rows=num_rows,
@@ -750,8 +750,8 @@ class PushBasedShuffleTaskScheduler(ExchangeTaskScheduler):
             exec_stats=stats.build(),
         )
         schema = unify_schemas_with_validation(schemas)
-        meta_schema = BlockMetadataWithSchema(metadata=meta, schema=schema)
-        yield meta_schema
+        meta_with_schema = BlockMetadataWithSchema(metadata=meta, schema=schema)
+        yield meta_with_schema
 
     @staticmethod
     def _compute_shuffle_schedule(

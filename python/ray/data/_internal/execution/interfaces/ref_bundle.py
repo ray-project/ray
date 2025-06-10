@@ -62,7 +62,6 @@ class RefBundle:
                 raise ValueError(
                     "The size in bytes of the block must be known: {}".format(b)
                 )
-        self.schema = self.schema or None
 
     def __setattr__(self, key, value):
         if hasattr(self, key) and key in ["blocks", "owns_blocks"]:

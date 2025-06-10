@@ -227,7 +227,7 @@ class BlockMetadata(BlockStats):
             self.input_files = []
 
 
-@DeveloperAPI
+@DeveloperAPI(stability="alpha")
 @dataclass
 class BlockMetadataWithSchema(BlockMetadata):
     schema: Optional[Schema] = None

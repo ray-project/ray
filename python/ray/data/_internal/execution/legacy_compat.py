@@ -86,17 +86,13 @@ def execute_to_legacy_bundle_iterator(
                 # collecting metadata. We can add this cached metadata to the plan.
 
                 # Traverse the topology backwards and find the first available schema
-                schema = None
-                for _, op_state in reversed(topology.items()):
-                    if op_state._schema is not None:
-                        schema = op_state._schema
-                        break
+                schema = next(reversed(topology.values()))._schema
 
-                meta_schema = BlockMetadataWithSchema(
+                meta_with_schema = BlockMetadataWithSchema(
                     metadata=self._collected_metadata,
                     schema=schema,
                 )
-                plan._snapshot_metadata_schema = meta_schema
+                plan._snapshot_metadata_schema = meta_with_schema
                 raise
 
         def _collect_metadata(self, bundle: RefBundle) -> RefBundle:

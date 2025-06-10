@@ -201,7 +201,7 @@ class OpState:
         self._exception: Optional[Exception] = None
         self._scheduling_status = OpSchedulingStatus()
         self._schema: Optional["Schema"] = None
-        self._already_warned_on_divergence: bool = False
+        self._warned_on_schema_divergence: bool = False
 
     def __repr__(self):
         return f"OpState({self.op.name})"
@@ -263,12 +263,10 @@ class OpState:
         """Move a bundle produced by the operator to its outqueue."""
 
         ref, diverged = dedupe_schemas_with_validation(
-            self._schema, ref, warn=not self._already_warned_on_divergence
+            self._schema, ref, warn=not self._warned_on_schema_divergence
         )
         self._schema = ref.schema
-        self._already_warned_on_divergence = (
-            self._already_warned_on_divergence or diverged
-        )
+        self._warned_on_schema_divergence |= diverged
 
         self.output_queue.append(ref)
         self.num_completed_tasks += 1
@@ -764,7 +762,7 @@ def dedupe_schemas_with_validation(
     # This check is fast assuming pyarrow schemas
     if old_schema == bundle.schema:
         return (
-            RefBundle(bundle.blocks, schema=old_schema, owns_blocks=bundle.owns_blocks),
+            bundle,
             diverged,
         )
 
@@ -779,6 +777,13 @@ def dedupe_schemas_with_validation(
         old_schema = unify_schemas_with_validation([old_schema, bundle.schema])
 
     return (
-        RefBundle(bundle.blocks, schema=old_schema, owns_blocks=bundle.owns_blocks),
+        RefBundle(
+            bundle.blocks,
+            schema=old_schema,
+            owns_blocks=bundle.owns_blocks,
+            output_split_idx=bundle.output_split_idx,
+            _cached_object_meta=bundle._cached_object_meta,
+            _cached_preferred_locations=bundle._cached_preferred_locations,
+        ),
         diverged,
     )

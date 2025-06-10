@@ -139,8 +139,10 @@ class SortTaskSpec(ExchangeTaskSpec):
         out = accessor.sort_and_partition(boundaries, sort_key)
         from ray.data.block import BlockMetadataWithSchema
 
-        meta_schema = BlockMetadataWithSchema.from_block(block, stats=stats.build())
-        return out + [meta_schema]
+        meta_with_schema = BlockMetadataWithSchema.from_block(
+            block, stats=stats.build()
+        )
+        return out + [meta_with_schema]
 
     @staticmethod
     def reduce(
@@ -153,10 +155,10 @@ class SortTaskSpec(ExchangeTaskSpec):
             mapper_outputs,
             target_block_type=ExchangeTaskSpec._derive_target_block_type(batch_format),
         )
-        blocks, meta_schema = BlockAccessor.for_block(
+        blocks, meta_with_schema = BlockAccessor.for_block(
             normalized_blocks[0]
         ).merge_sorted_blocks(normalized_blocks, sort_key)
-        return blocks, meta_schema
+        return blocks, meta_with_schema
 
     @staticmethod
     def sample_boundaries(

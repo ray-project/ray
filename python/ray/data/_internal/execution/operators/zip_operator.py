@@ -205,11 +205,11 @@ class ZipOperator(InternalQueueOperatorMixin, PhysicalOperator):
             # For each block from left side, zip it together with 1 or more blocks from
             # right side. We're guaranteed to have that left_block has the same number
             # of rows as right_blocks has cumulatively.
-            res, meta_schema = zip_one_block.remote(
+            res, meta_with_schema = zip_one_block.remote(
                 left_block, *right_blocks, inverted=input_side_inverted
             )
             output_blocks.append(res)
-            output_metadata_schema.append(meta_schema)
+            output_metadata_schema.append(meta_with_schema)
 
         # Early release memory.
         del left_blocks, right_blocks_list
@@ -221,7 +221,7 @@ class ZipOperator(InternalQueueOperatorMixin, PhysicalOperator):
 
         output_refs = []
         input_owned = all(b.owns_blocks for b in left_input)
-        for block, meta_schema in zip(output_blocks, output_metadata_schema):
+        for block, meta_with_schema in zip(output_blocks, output_metadata_schema):
             output_refs.append(
                 RefBundle(
                     [
@@ -231,7 +231,7 @@ class ZipOperator(InternalQueueOperatorMixin, PhysicalOperator):
                         )
                     ],
                     owns_blocks=input_owned,
-                    schema=meta_schema.schema,
+                    schema=meta_with_schema.schema,
                 )
             )
         stats = {self._name: to_stats(output_metadata_schema)}

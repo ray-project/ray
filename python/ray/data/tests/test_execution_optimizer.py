@@ -157,7 +157,7 @@ def test_from_operators(ray_start_regular_shared_2_cpus):
     ]
     for op_cls in op_classes:
         planner = Planner()
-        op = op_cls([], [], schema=None)
+        op = op_cls([], [])
         plan = LogicalPlan(op, ctx)
         physical_op = planner.plan(plan).dag
 

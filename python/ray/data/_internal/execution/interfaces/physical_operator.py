@@ -138,7 +138,7 @@ class DataOpTask(OpTask):
                 break
 
             try:
-                meta_schema: "BlockMetadataWithSchema" = ray.get(
+                meta_with_schema: "BlockMetadataWithSchema" = ray.get(
                     next(self._streaming_gen)
                 )
             except StopIteration:
@@ -155,12 +155,12 @@ class DataOpTask(OpTask):
                     self._task_done_callback(ex)
                     raise ex from None
 
-            meta = meta_schema.metadata
+            meta = meta_with_schema.metadata
             self._output_ready_callback(
                 RefBundle(
                     [(block_ref, meta)],
                     owns_blocks=True,
-                    schema=meta_schema.schema,
+                    schema=meta_with_schema.schema,
                 ),
             )
             bytes_read += meta.size_bytes

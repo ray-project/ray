@@ -138,17 +138,17 @@ class PullBasedShuffleTaskScheduler(ExchangeTaskScheduler):
         self.warn_on_high_local_memory_store_usage()
 
         output = []
-        for block, meta_schema in zip(new_blocks, new_metadata_schema):
+        for block, meta_with_schema in zip(new_blocks, new_metadata_schema):
             output.append(
                 RefBundle(
                     [
                         (
                             block,
-                            meta_schema.metadata,
+                            meta_with_schema.metadata,
                         )
                     ],
                     owns_blocks=input_owned,
-                    schema=meta_schema.schema,
+                    schema=meta_with_schema.schema,
                 )
             )
 
