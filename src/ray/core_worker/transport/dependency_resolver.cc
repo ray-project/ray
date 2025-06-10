@@ -40,8 +40,16 @@ void InlineDependencies(
         auto *mutable_arg = msg.mutable_args(i);
         if (!it->second->IsInPlasmaError()) {
           // The object has not been promoted to plasma. Inline the object by
-          // clearing the reference and replacing it with the raw value.
+          // replacing it with the raw value.
           if (tensor_transport_getter(id) == rpc::TensorTransport::OBJECT_STORE) {
+            // Clear the object reference if the object is transferred via the object
+            // store. If we don't clear the object reference, it will have performance
+            // degradation in some edge cases.
+            //
+            // However, if the tensor transport is not OBJECT_STORE (e.g., NCCL),
+            // we must keep the object reference so that the receiver can retrieve
+            // the GPU object from the in-actor GPU object store using the object ID as
+            // the key.
             mutable_arg->clear_object_ref();
           }
           mutable_arg->set_is_inlined(true);

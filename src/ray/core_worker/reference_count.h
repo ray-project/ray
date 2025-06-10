@@ -592,6 +592,7 @@ class ReferenceCounter : public ReferenceCounterInterface,
   /// Release all local references which registered on this local.
   void ReleaseAllLocalReferences();
 
+  /// Get the tensor transport for the given object.
   std::optional<rpc::TensorTransport> GetTensorTransport(const ObjectID &object_id) const;
 
  private:

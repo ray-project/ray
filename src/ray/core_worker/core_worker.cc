@@ -830,6 +830,7 @@ CoreWorker::CoreWorker(CoreWorkerOptions options, const WorkerID &worker_id)
       actor_creator_,
       worker_context_.GetCurrentJobID(),
       lease_request_rate_limiter_,
+      /*tensor_transport_getter=*/
       [](const ObjectID &object_id) {
         // Currently, out-of-band tensor transport (i.e., GPU objects) is only
         // supported for actor tasks. Therefore, normal tasks should always use
