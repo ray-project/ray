@@ -45,8 +45,6 @@ from ray_release.signal_handling import (
 from ray_release.util import (
     convert_cluster_compute_to_kuberay_compute_config,
     upload_working_dir,
-    KUBERAY_SERVER_URL,
-    DEFAULT_KUBERAY_NAMESPACE,
 )
 
 type_str_to_command_runner = {

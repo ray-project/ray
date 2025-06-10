@@ -6,7 +6,6 @@ import random
 import string
 import subprocess
 import time
-import tempfile
 from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple
 
 import requests
