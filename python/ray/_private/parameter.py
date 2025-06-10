@@ -48,10 +48,6 @@ class RayParams:
         ray_client_server_port: The port number the ray client server
             will bind on. If not set, the ray client server will not
             be started.
-        object_ref_seed: Used to seed the deterministic generation of
-            object refs. The same value can be used across multiple runs of the
-            same job in order to generate the object refs in a consistent
-            manner. However, the same ID should not be used for different jobs.
         redirect_output: True if stdout and stderr for non-worker
             processes should be redirected to files and false otherwise.
         external_addresses: The address of external Redis server to
@@ -150,7 +146,6 @@ class RayParams:
         max_worker_port: Optional[int] = None,
         worker_port_list: Optional[List[int]] = None,
         ray_client_server_port: Optional[int] = None,
-        object_ref_seed: Optional[int] = None,
         driver_mode=None,
         redirect_output: Optional[bool] = None,
         external_addresses: Optional[List[str]] = None,
@@ -242,7 +237,6 @@ class RayParams:
         self.metrics_export_port = metrics_export_port
         self.tracing_startup_hook = tracing_startup_hook
         self.no_monitor = no_monitor
-        self.object_ref_seed = object_ref_seed
         self.ray_debugger_external = ray_debugger_external
         self.env_vars = env_vars
         self.session_name = session_name
