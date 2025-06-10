@@ -1,17 +1,10 @@
-from unittest.mock import patch
+from unittest.mock import patch, MagicMock
 
 import ray
-
-from dist_xgboost.train import main as train_main
-
-from unittest.mock import MagicMock
-
 import numpy as np
 
-
 from dist_xgboost.serve import main as serve_main
-
-
+from dist_xgboost.train import main as train_main
 from dist_xgboost.infer import main as inference_main
 
 

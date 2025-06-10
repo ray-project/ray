@@ -76,6 +76,7 @@ QPS
 retrigger
 RISECamp
 rollouts
+SageMaker
 serverless
 SFT
 ShareGPT
@@ -96,3 +97,5 @@ uv
 [Dd]etokenizer?s?
 [Dd]etokenization
 VS Code
+ETDataset
+DLinear

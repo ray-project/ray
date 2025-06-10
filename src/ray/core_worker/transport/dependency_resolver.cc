@@ -32,7 +32,7 @@ void InlineDependencies(
   size_t found = 0;
   for (size_t i = 0; i < task.NumArgs(); i++) {
     if (task.ArgByRef(i)) {
-      const auto &id = task.ArgId(i);
+      const auto &id = task.ArgObjectId(i);
       const auto &it = dependencies.find(id);
       if (it != dependencies.end()) {
         RAY_CHECK(it->second);
@@ -76,7 +76,7 @@ void LocalDependencyResolver::ResolveDependencies(
   absl::flat_hash_set<ActorID> actor_dependency_ids;
   for (size_t i = 0; i < task.NumArgs(); i++) {
     if (task.ArgByRef(i)) {
-      local_dependency_ids.insert(task.ArgId(i));
+      local_dependency_ids.insert(task.ArgObjectId(i));
     }
     for (const auto &in : task.ArgInlinedRefs(i)) {
       auto object_id = ObjectID::FromBinary(in.object_id());

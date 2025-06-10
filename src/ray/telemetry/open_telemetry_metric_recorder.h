@@ -54,6 +54,9 @@ class OpenTelemetryMetricRecorder {
   // Registers a gauge metric with the given name and description
   void RegisterGaugeMetric(const std::string &name, const std::string &description);
 
+  // Check if a metric with the given name is registered.
+  bool IsMetricRegistered(const std::string &name);
+
   // Set the value of a metric given the tags and the metric value.
   void SetMetricValue(const std::string &name,
                       absl::flat_hash_map<std::string, std::string> &&tags,
@@ -98,6 +101,9 @@ class OpenTelemetryMetricRecorder {
   std::list<std::string> gauge_callback_names_;
   // Lock for thread safety when modifying state.
   std::mutex mutex_;
+  // Flag to indicate if the recorder is shutting down. This is used to make sure that
+  // the recorder will only shutdown once.
+  std::atomic<bool> is_shutdown_{false};
 
   opentelemetry::nostd::shared_ptr<opentelemetry::metrics::Meter> GetMeter() {
     return meter_provider_->GetMeter("ray");

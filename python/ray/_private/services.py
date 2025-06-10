@@ -227,7 +227,10 @@ def propagate_jemalloc_env_var(
     if not jemalloc_path:
         return {}
 
-    env_vars = {"LD_PRELOAD": jemalloc_path, "RAY_LD_PRELOAD": "1"}
+    env_vars = {
+        "LD_PRELOAD": jemalloc_path,
+        "RAY_LD_PRELOAD_ON_WORKERS": os.environ.get("RAY_LD_PRELOAD_ON_WORKERS", "0"),
+    }
     if process_type in jemalloc_comps and jemalloc_conf:
         env_vars.update({"MALLOC_CONF": jemalloc_conf})
     return env_vars
@@ -479,7 +482,7 @@ def get_webui_url_from_internal_kv():
     webui_url = ray.experimental.internal_kv._internal_kv_get(
         "webui:url", namespace=ray_constants.KV_NAMESPACE_DASHBOARD
     )
-    return ray._private.utils.decode(webui_url) if webui_url is not None else None
+    return ray._common.utils.decode(webui_url) if webui_url is not None else None
 
 
 def get_storage_uri_from_internal_kv():
@@ -487,7 +490,7 @@ def get_storage_uri_from_internal_kv():
     storage_uri = ray.experimental.internal_kv._internal_kv_get(
         "storage", namespace=ray_constants.KV_NAMESPACE_SESSION
     )
-    return ray._private.utils.decode(storage_uri) if storage_uri is not None else None
+    return ray._common.utils.decode(storage_uri) if storage_uri is not None else None
 
 
 def remaining_processes_alive():
@@ -940,7 +943,7 @@ def start_ray_process(
 
         # TODO(suquark): Any better temp file creation here?
         gdb_init_path = os.path.join(
-            ray._private.utils.get_ray_temp_dir(),
+            ray._common.utils.get_ray_temp_dir(),
             f"gdb_init_{process_type}_{time.time()}",
         )
         ray_process_path = command[0]
@@ -2121,7 +2124,7 @@ def determine_plasma_store_config(
     if huge_pages and not (sys.platform == "linux" or sys.platform == "linux2"):
         raise ValueError("The huge_pages argument is only supported on Linux.")
 
-    system_memory = ray._private.utils.get_system_memory()
+    system_memory = ray._common.utils.get_system_memory()
 
     # Determine which directory to use. By default, use /tmp on MacOS and
     # /dev/shm on Linux, unless the shared-memory file system is too small,
@@ -2148,7 +2151,7 @@ def determine_plasma_store_config(
                     )
                 )
             else:
-                plasma_directory = ray._private.utils.get_user_temp_dir()
+                plasma_directory = ray._common.utils.get_user_temp_dir()
                 logger.warning(
                     "WARNING: The object store is using {} instead of "
                     "/dev/shm because /dev/shm has only {} bytes available. "
@@ -2158,13 +2161,13 @@ def determine_plasma_store_config(
                     "passing '--shm-size={:.2f}gb' to 'docker run' (or add it "
                     "to the run_options list in a Ray cluster config). Make "
                     "sure to set this to more than 30% of available RAM.".format(
-                        ray._private.utils.get_user_temp_dir(),
+                        ray._common.utils.get_user_temp_dir(),
                         shm_avail,
                         object_store_memory * (1.1) / (2**30),
                     )
                 )
         else:
-            plasma_directory = ray._private.utils.get_user_temp_dir()
+            plasma_directory = ray._common.utils.get_user_temp_dir()
 
         # Do some sanity checks.
         if object_store_memory > system_memory:

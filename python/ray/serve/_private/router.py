@@ -170,7 +170,7 @@ class RouterMetricsManager:
             # is correctly decremented in this case.
             self.dec_num_queued_requests()
 
-    def update_running_replicas(self, running_replicas: List[RunningReplicaInfo]):
+    def _update_running_replicas(self, running_replicas: List[RunningReplicaInfo]):
         """Prune list of replica ids in self.num_queries_sent_to_replicas.
 
         We want to avoid self.num_queries_sent_to_replicas from growing
@@ -506,7 +506,7 @@ class AsyncioRouter:
 
             # Populate the running replicas if they are already available.
             if self._running_replicas is not None:
-                request_router.update_running_replicas(self._running_replicas)
+                request_router._update_running_replicas(self._running_replicas)
 
             self._request_router = request_router
             self._request_router_initialized.set()
@@ -525,13 +525,13 @@ class AsyncioRouter:
 
         running_replicas = deployment_target_info.running_replicas
         if self.request_router:
-            self.request_router.update_running_replicas(running_replicas)
+            self.request_router._update_running_replicas(running_replicas)
         else:
             # In this case, the request router hasn't been initialized yet.
             # Store the running replicas so that we can update the request
             # router once it is initialized.
             self._running_replicas = running_replicas
-        self._metrics_manager.update_running_replicas(running_replicas)
+        self._metrics_manager._update_running_replicas(running_replicas)
 
         if running_replicas:
             self._running_replicas_populated = True
@@ -624,7 +624,7 @@ class AsyncioRouter:
         # Wait for the router to be initialized before sending the request.
         await self._request_router_initialized.wait()
 
-        r = await self.request_router.choose_replica_for_request(pr)
+        r = await self.request_router._choose_replica_for_request(pr)
 
         # If the queue len cache is disabled or we're sending a request to Java,
         # then directly send the query and hand the response back. The replica will
@@ -671,7 +671,7 @@ class AsyncioRouter:
             # request will be placed on the front of the queue to avoid tail latencies.
             # TODO(edoakes): this retry procedure is not perfect because it'll reset the
             # process of choosing candidates replicas (i.e., for locality-awareness).
-            r = await self.request_router.choose_replica_for_request(pr, is_retry=True)
+            r = await self.request_router._choose_replica_for_request(pr, is_retry=True)
 
     async def assign_request(
         self,

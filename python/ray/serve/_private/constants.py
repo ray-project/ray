@@ -259,6 +259,9 @@ SERVE_LOG_EXTRA_FIELDS = "ray_serve_extra_fields"
 # Serve HTTP request header key for routing requests.
 SERVE_MULTIPLEXED_MODEL_ID = "serve_multiplexed_model_id"
 
+# HTTP request ID
+SERVE_HTTP_REQUEST_ID_HEADER = "x-request-id"
+
 # Feature flag to turn on node locality routing for proxies. On by default.
 RAY_SERVE_PROXY_PREFER_LOCAL_NODE_ROUTING = (
     os.environ.get("RAY_SERVE_PROXY_PREFER_LOCAL_NODE_ROUTING", "1") == "1"
