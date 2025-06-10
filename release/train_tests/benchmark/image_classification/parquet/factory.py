@@ -16,7 +16,7 @@ from image_classification.factory import (
     ImageClassificationTorchDataLoaderFactory,
 )
 from .imagenet import get_preprocess_map_fn
-from .torch_parquet_image_iterable_dataset import S3ParquetImageIterableDataset
+from .parquet_iterable_dataset import S3ParquetImageIterableDataset
 from s3_parquet_reader import S3ParquetReader
 
 logger = logging.getLogger(__name__)

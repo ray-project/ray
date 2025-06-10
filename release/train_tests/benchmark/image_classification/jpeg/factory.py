@@ -21,7 +21,7 @@ from image_classification.factory import (
 from image_classification.imagenet import get_transform
 from s3_reader import AWS_REGION
 from .imagenet import get_preprocess_map_fn
-from .torch_jpeg_image_iterable_dataset import S3JpegImageIterableDataset
+from .jpeg_iterable_dataset import S3JpegImageIterableDataset
 from s3_jpeg_reader import S3JpegReader
 from logger_utils import ContextLoggerAdapter
 

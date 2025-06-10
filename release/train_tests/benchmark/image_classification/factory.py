@@ -257,10 +257,10 @@ def get_imagenet_data_dirs(task_config: ImageClassificationConfig) -> Dict[str, 
     """Returns a dict with the root imagenet dataset directories for train/val/test,
     corresponding to the data format and local/s3 dataset location."""
     from image_classification.imagenet import IMAGENET_LOCALFS_SPLIT_DIRS
-    from image_classification.image_classification_jpeg.imagenet import (
+    from image_classification.jpeg.imagenet import (
         IMAGENET_JPEG_SPLIT_S3_DIRS,
     )
-    from image_classification.image_classification_parquet.imagenet import (
+    from image_classification.parquet.imagenet import (
         IMAGENET_PARQUET_SPLIT_S3_DIRS,
     )
 
@@ -292,7 +292,7 @@ class ImageClassificationFactory(BenchmarkFactory):
 
         elif dataloader_type == DataloaderType.RAY_DATA:
             if data_format == ImageClassificationConfig.ImageFormat.JPEG:
-                from image_classification.image_classification_jpeg.factory import (
+                from image_classification.jpeg.factory import (
                     ImageClassificationJpegRayDataLoaderFactory,
                 )
 
@@ -300,7 +300,7 @@ class ImageClassificationFactory(BenchmarkFactory):
                     self.benchmark_config, data_dirs
                 )
             elif data_format == ImageClassificationConfig.ImageFormat.PARQUET:
-                from image_classification.image_classification_parquet.factory import (
+                from image_classification.parquet.factory import (
                     ImageClassificationParquetRayDataLoaderFactory,
                 )
 
@@ -310,7 +310,7 @@ class ImageClassificationFactory(BenchmarkFactory):
 
         elif dataloader_type == DataloaderType.TORCH:
             if data_format == ImageClassificationConfig.ImageFormat.JPEG:
-                from image_classification.image_classification_jpeg.factory import (
+                from image_classification.jpeg.factory import (
                     ImageClassificationJpegTorchDataLoaderFactory,
                 )
 
@@ -318,7 +318,7 @@ class ImageClassificationFactory(BenchmarkFactory):
                     self.benchmark_config, data_dirs
                 )
             elif data_format == ImageClassificationConfig.ImageFormat.PARQUET:
-                from image_classification.image_classification_parquet.factory import (
+                from image_classification.parquet.factory import (
                     ImageClassificationParquetTorchDataLoaderFactory,
                 )
 
