@@ -88,11 +88,12 @@ Ray supports environment variables that override `LD_PRELOAD` on core components
 You can find the component name from `ray_constants.py`. For example, if you'd like to profile gcs_server, 
 search `PROCESS_TYPE_GCS_SERVER` in `ray_constants.py`. You can see the value is `gcs_server`.
 
-Users are supposed to provide 3 env vars for memory profiling.
+Users are supposed to provide 4 env vars for memory profiling.
 
 * `RAY_JEMALLOC_LIB_PATH`: The path to the jemalloc shared library `libjemalloc.so`
 * `RAY_JEMALLOC_CONF`: The MALLOC_CONF configuration for jemalloc, using comma-separated values. Read `jemalloc docs <http://jemalloc.net/jemalloc.3.html>`_ for more details.
 * `RAY_JEMALLOC_PROFILE`: Comma separated Ray components to run Jemalloc `.so`. e.g., ("raylet,gcs_server"). Note that the components should match the process type in `ray_constants.py`. (It means "RAYLET,GCS_SERVER" won't work).
+* `RAY_LD_PRELOAD_ON_WORKERS`: Default value is `0`, which means Ray doesn't preload Jemalloc for workers if a library is incompatible with Jemalloc. Set to `1` to instruct Ray to preload Jemalloc for a worker using values configured by `RAY_JEMALLOC_LIB_PATH` and `RAY_JEMALLOC_PROFILE`.
 
 .. code-block:: bash
 

@@ -282,7 +282,7 @@
     timeout: 1800
     script: python map_benchmark.py --api flat_map --sf 10
 
-- name: "map_batches_{{scaling}}_{{compute}}_{{format}}"
+- name: "map_batches_{{scaling}}_{{compute}}_{{format}}_{{repeat_map_batches}}"
 
   matrix:
     setup:
@@ -290,22 +290,26 @@
       format: [numpy, pandas, pyarrow]
       compute: [tasks]
       scaling: [fixed_size]
+      repeat_map_batches: [once, repeat]
     adjustments:
       # Fixed-size actor test.
       - with:
           format: numpy
           compute: actors
           scaling: fixed_size
+          repeat_map_batches: once
       # Autoscaling task test
       - with:
           format: numpy
           compute: tasks
           scaling: autoscaling
+          repeat_map_batches: once
       # Autoscaling actor test
       - with:
           format: numpy
           compute: actors
           scaling: autoscaling
+          repeat_map_batches: once
 
   cluster:
     cluster_compute: "{{scaling}}_cpu_compute.yaml"
@@ -314,7 +318,7 @@
     timeout: 10800
     script: >
       python map_benchmark.py --api map_batches --batch-format {{format}}
-      --compute {{compute}} --sf 1000
+      --compute {{compute}} --sf 1000 --repeat-map-batches {{repeat_map_batches}}
 
 
 ########################
