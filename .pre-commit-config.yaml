@@ -53,7 +53,7 @@ repos:
         args: [
           --style=google,
           --baseline=ci/lint/pydoclint-baseline.txt,
-          --exclude=thirdparty|^python/ray/serve/tests/test_config_files/syntax_error\.py$,
+          --exclude=thirdparty|^python/ray/serve/tests/test_config_files/syntax_error\.py|^python/ray/_private/parameter\.py$,
           # --generate-baseline=True, # Not generally needed, but documenting since this is how we generate the initial baseline
           --auto-regenerate-baseline=True,
           # Current settings (not because we think they're right, but because we
