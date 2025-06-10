@@ -1,7 +1,7 @@
 head_node_type:
     name: head_node
     resources:
-      limits: 
+      limits:
         cpu: "16"
         memory: "64Gi"
       requests:
