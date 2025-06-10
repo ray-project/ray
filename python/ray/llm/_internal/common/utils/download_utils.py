@@ -1,7 +1,10 @@
+import asyncio
 import enum
 import os
+import time
+from functools import wraps
 from pathlib import Path
-from typing import List, Optional
+from typing import Dict, List, Optional
 
 from filelock import FileLock
 
@@ -10,8 +13,10 @@ from ray.llm._internal.common.utils.cloud_utils import (
     CloudFileSystem,
     CloudMirrorConfig,
     CloudModelAccessor,
+    LoraMirrorConfig,
     is_remote_path,
 )
+from ray.llm._internal.serve.configs.server_models import DiskMultiplexConfig
 from ray.llm._internal.utils import try_import
 
 torch = try_import("torch")
@@ -294,17 +299,22 @@ def download_model_files(
 def download_lora_adapter(
     lora_name: str,
     remote_path: Optional[str] = None,
+    lora_root: Optional[str] = None,
+    download_timeout_s: Optional[float] = None,
+    max_tries: int = 1,
 ) -> str:
-    """If remote_path is specified, pull the lora to the local
-    directory and return the local path.
+    """Download a LoRA adapter from remote storage to local directory.
 
-    TODO: Refactor lora_model_loader in llm/_intenral/serve/deployments/llm/multiplex
-    and move them here to unify with this function.
+    This function supports both simple downloading (for backward compatibility)
+    and advanced downloading with caching and retry functionality.
 
     Args:
         lora_name: The lora name.
         remote_path: The remote path to the lora. If specified, the remote_path will be
             used as the base path to load the lora.
+        lora_root: Path to directory where LoRA weights will be cached (for advanced mode).
+        download_timeout_s: Download timeout in seconds (for advanced mode).
+        max_tries: Number of retry attempts (for advanced mode).
 
     Returns:
         The local path to the lora if remote_path is specified, otherwise the lora name.
@@ -316,7 +326,329 @@ def download_lora_adapter(
     if remote_path is None:
         return lora_name
 
+    # Use the new unified LoRA downloading functionality
     lora_path = os.path.join(remote_path, lora_name)
+
+    # If advanced parameters are provided, use the new LoraModelLoader
+    if lora_root is not None or download_timeout_s is not None or max_tries != 1:
+        loader = LoraModelLoader(
+            lora_root=lora_root,
+            download_timeout_s=download_timeout_s,
+            max_tries=max_tries,
+        )
+
+        # Create a simple LoraMirrorConfig for the loader
+        lora_mirror_config = LoraMirrorConfig(
+            lora_model_id=lora_name,
+            bucket_uri=lora_path,
+            max_total_tokens=None,
+        )
+
+        # Use the sync version directly
+        disk_config = loader._load_model_sync(lora_mirror_config)
+        return disk_config.local_path
+
+    # Fallback to original simple implementation for backward compatibility
     mirror_config = CloudMirrorConfig(bucket_uri=lora_path)
     downloader = CloudModelDownloader(lora_name, mirror_config)
     return downloader.get_model(tokenizer_only=False)
+
+
+# Utility functions moved from multiplex/utils.py
+def get_base_model_id(model_id: str) -> str:
+    """Get base model id for a given model id.
+
+    A LoRA fine-tuned model_id is expected to be in the format of
+        base_model_id:lora_id
+        e.g. meta-llama/Llama-2-7b-chat-hf:my_suffix:aBc1234
+
+    The returned base model id is in the format of
+        base_model_id
+        e.g. meta-llama/Llama-2-7b-chat-hf
+
+    This function can safely take any string.
+    """
+    return model_id.split(":")[0]
+
+
+def get_lora_id(lora_model_id: str) -> str:
+    """Get lora id for a given lora model id.
+
+    A LoRA fine-tuned model_id is expected to be in the format of
+        base_model_id:lora_id
+        e.g. meta-llama/Llama-2-7b-chat-hf:my_suffix:aBc1234
+
+    The returned lora id is in the format of
+        lora_id
+        e.g. my_suffix:aBc1234
+
+    This function can safely take any string.
+    """
+    return ":".join(lora_model_id.split(":")[1:])
+
+
+def clean_model_id(model_id: str):
+    return model_id.replace("/", "--")
+
+
+def clear_directory(dir: str):
+    import subprocess
+
+    try:
+        subprocess.run(f"rm -r {dir}", shell=True, check=False)
+    except FileNotFoundError:
+        pass
+
+
+def retry_with_exponential_backoff(
+    max_tries: int,
+    exception_to_check: type[Exception],
+    base_delay: float = 1,
+    max_delay: float = 32,
+    exponential_base: float = 2,
+):
+    """Retry decorator with exponential backoff.
+
+    Args:
+        max_tries: Maximum number of retry attempts
+        exception_to_check: Exception type to catch and retry on
+        base_delay: Initial delay between retries in seconds
+        max_delay: Maximum delay between retries in seconds
+        exponential_base: Base for exponential calculation
+
+    Returns:
+        A decorator function that applies retry logic with exponential backoff
+    """
+
+    def decorator(func):
+        @wraps(func)
+        def wrapper(*args, **kwargs):
+            delay = base_delay
+            last_exception = None
+
+            for attempt in range(max_tries):
+                try:
+                    return func(*args, **kwargs)
+                except exception_to_check as e:
+                    last_exception = e
+                    if attempt == max_tries - 1:  # Last attempt
+                        raise last_exception
+
+                    # Log the failure and retry
+                    logger.warning(
+                        f"Attempt {attempt + 1}/{max_tries} failed: {str(e)}. "
+                        f"Retrying in {delay} seconds..."
+                    )
+                    time.sleep(delay)
+                    # Calculate next delay with exponential backoff
+                    delay = min(delay * exponential_base, max_delay)
+
+            # This should never be reached due to the raise in the loop
+            raise last_exception if last_exception else RuntimeError(
+                "Unexpected error in retry logic"
+            )
+
+        return wrapper
+
+    return decorator
+
+
+class GlobalCounter:
+    """Manage a global counter
+
+    This counter should be a singleton global to the process.
+    """
+
+    def __init__(self):
+        # Initialize to 0, but we never return 0
+        self.global_id = 0
+
+    def next(self):
+        # The id starts at 1
+        self.global_id += 1
+        return self.global_id
+
+
+global_id_manager = GlobalCounter()
+
+
+def make_async(func):
+    """Take a blocking function, and run it on in an executor thread.
+
+    This function prevents the blocking function from blocking the asyncio event loop.
+    The code in this function needs to be thread safe.
+    """
+    from functools import partial
+
+    def _async_wrapper(*args, **kwargs):
+        loop = asyncio.get_event_loop()
+        func_partial = partial(func, *args, **kwargs)
+        return loop.run_in_executor(executor=None, func=func_partial)
+
+    return _async_wrapper
+
+
+class LoraModelLoader:
+    """Download Lora weights from remote, and manage a CPU memory cache.
+
+    This entire downloader is sync.
+
+    Args:
+        lora_root: Path to directory where LoRA weights will be cached.
+        download_timeout_s: How much time the download subprocess has to download
+            a single LoRA before a timeout. None means no timeout.
+        max_tries: Number of times to try downloading a LoRA model if
+            the download subprocess fails.
+    """
+
+    def __init__(
+        self,
+        lora_root: Optional[str] = None,
+        download_timeout_s: Optional[float] = None,
+        max_tries: int = 1,
+    ):
+        self.lora_root = lora_root or "/tmp/ray/llm/lora/cache"
+        self.disk_cache: Dict[str, DiskMultiplexConfig] = {}
+        self.active_syncing_tasks: Dict[str, asyncio.Task[DiskMultiplexConfig]] = {}
+        if download_timeout_s is not None and download_timeout_s <= 0:
+            raise ValueError(
+                f"download_timeout_s must be None or >0, got {download_timeout_s}"
+            )
+        self.download_timeout_s = download_timeout_s
+        if max_tries < 1:
+            raise ValueError(f"max_tries must be >=1, got {max_tries}")
+        self.max_tries = max_tries
+
+    async def load_model(
+        self, lora_model_id: str, lora_mirror_config: "LoraMirrorConfig"
+    ) -> DiskMultiplexConfig:
+        """Load a model.
+
+        This function will load a Lora model from s3 and cache it on disk and in memory.
+        This function runs in a separate thread because it does synchronous disk operations.
+        """
+        if lora_model_id in self.disk_cache:
+            return self.disk_cache[lora_model_id]
+
+        if lora_model_id not in self.active_syncing_tasks:
+            # Cannot use _load_model directly in create_task
+            # due to TypeError: a coroutine was expected, got <Future...
+            task = asyncio.create_task(self._load_model_async(lora_mirror_config))
+            task.add_done_callback(
+                lambda result: self.active_syncing_tasks.pop(lora_model_id, None)
+            )
+            self.active_syncing_tasks[lora_model_id] = task
+        else:
+            task = self.active_syncing_tasks[lora_model_id]
+
+        # Ensure that cancellation of the current request doesn't
+        # affect other requests
+        disk_config = await asyncio.shield(task)
+
+        # If we are successful, add the result to the disk cache
+        # This will not be reached if the task raises an exception
+        self.disk_cache[lora_model_id] = disk_config
+
+        return disk_config
+
+    async def _load_model_async(
+        self, lora_mirror_config: "LoraMirrorConfig"
+    ) -> DiskMultiplexConfig:
+        return await self._load_model(lora_mirror_config)
+
+    @make_async
+    def _load_model(
+        self, lora_mirror_config: "LoraMirrorConfig"
+    ) -> DiskMultiplexConfig:
+        return self._load_model_sync(lora_mirror_config)
+
+    @make_async
+    def clear_cache(self):
+        """Clear the disk cache
+
+        Note: clear_disk_cache currently blindly clears the disk cache and is not
+         thread / process safe because another process
+         may be reading the cache as it is being cleared.
+
+         TODO(tchordia): come up with a way to clear the Lora Disk cache.
+        """
+        clear_directory(self.lora_root)
+
+    def _model_dir_path(self, model_id: str) -> str:
+        """Construct the path for the lora weight.
+
+        Given a lora model id is expected to be in the format of
+            base_model_id:lora_id
+        This function will return the path to the directory where the lora weights
+            lora_root/lora_id
+        """
+        lora_id = get_lora_id(clean_model_id(model_id))
+        path = os.path.join(self.lora_root, lora_id)
+        os.makedirs(path, exist_ok=True)
+        return path
+
+    def _download_lora(self, lora_mirror_config: "LoraMirrorConfig") -> str:
+        # Note (genesu): `model_local_path` affects where the lora weights are stored
+        # on local disk.
+        model_local_path = self._model_dir_path(lora_mirror_config.lora_model_id)
+        self._sync_model(
+            lora_mirror_config.bucket_uri,
+            model_local_path,
+            timeout=self.download_timeout_s,
+            sync_args=lora_mirror_config.sync_args,
+        )
+        return model_local_path
+
+    def _sync_model(
+        self,
+        bucket_uri: str,
+        local_path: str,
+        timeout: Optional[float] = None,
+        sync_args: Optional[List[str]] = None,
+    ):
+        """Sync from bucket_uri to local_path.
+
+        This method isn't re-entrant and will block (up to timeout) if already syncing
+        at a given path.
+        """
+
+        logger.info("Downloading %s to %s", bucket_uri, local_path)
+
+        with FileLock(local_path + ".lock", timeout=timeout or -1):
+            try:
+                # Use CloudFileSystem.download_files for the sync operation
+                CloudFileSystem.download_files(
+                    path=local_path,
+                    bucket_uri=bucket_uri,
+                )
+            except Exception as e:
+                logger.error(
+                    "Failed to sync model (%s) from %s to %s",
+                    str(e),
+                    bucket_uri,
+                    local_path,
+                )
+                raise
+
+    def _load_model_sync(
+        self, lora_mirror_config: "LoraMirrorConfig"
+    ) -> DiskMultiplexConfig:
+        """Load a model from the given mirror configuration."""
+
+        # Apply retry decorator to _download_lora at runtime with instance parameters
+        download_with_retries = retry_with_exponential_backoff(
+            max_tries=self.max_tries,
+            exception_to_check=Exception,  # Catch any exception from CloudFileSystem
+        )(lambda config: self._download_lora(config))
+
+        local_path = download_with_retries(lora_mirror_config)
+        # the lora_assigned_id is consistent for the lifetime of the disk cache entry
+        # If the disk cache is cleared, a new id will be generated.
+        return DiskMultiplexConfig.model_validate(
+            {
+                "model_id": lora_mirror_config.lora_model_id,
+                "max_total_tokens": lora_mirror_config.max_total_tokens,
+                "local_path": local_path,
+                "lora_assigned_int_id": global_id_manager.next(),
+            }
+        )
