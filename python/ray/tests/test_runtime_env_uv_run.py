@@ -329,9 +329,7 @@ with open("{tmp_out_dir / "output.txt"}", "w") as out:
     ],
     indirect=True,
 )
-def test_uv_run_e2e_job(
-    ray_start_cluster_head_with_env_vars, temp_dir
-):
+def test_uv_run_e2e_job(ray_start_cluster_head_with_env_vars, temp_dir):
     cluster = ray_start_cluster_head_with_env_vars
     assert wait_until_server_available(cluster.webui_url) is True
     webui_url = format_web_url(cluster.webui_url)
