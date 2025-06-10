@@ -3,6 +3,7 @@ import pytest
 
 from ray_release.kuberay_util import convert_cluster_compute_to_kuberay_compute_config
 
+
 def test_convert_cluster_compute_to_kuberay_compute_config():
     compute_config = {
         "head_node_type": {
@@ -30,9 +31,11 @@ def test_convert_cluster_compute_to_kuberay_compute_config():
                 "max_workers": 2,
                 "use_spot": False,
             }
-        ]
+        ],
     }
-    kuberay_compute_config = convert_cluster_compute_to_kuberay_compute_config(compute_config)
+    kuberay_compute_config = convert_cluster_compute_to_kuberay_compute_config(
+        compute_config
+    )
     assert kuberay_compute_config == {
         "head_node": {
             "resources": {
@@ -58,8 +61,9 @@ def test_convert_cluster_compute_to_kuberay_compute_config():
                     },
                 },
             }
-        ]
+        ],
     }
+
 
 if __name__ == "__main__":
     sys.exit(pytest.main(["-v", __file__]))
