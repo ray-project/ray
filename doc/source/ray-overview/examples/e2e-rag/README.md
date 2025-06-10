@@ -1,6 +1,6 @@
 # End-to-end RAG Deep Dive
 
-In this tutorial, we walk through end-to-end Retrieval-Augmented Generation (RAG) pipelines using [Ray](https://docs.ray.io/), from data ingestion and LLM deployment to prompt engineering, evaluation and scaling out all workloads in the application.
+This tutorial covers end-to-end Retrieval-Augmented Generation (RAG) pipelines using [Ray](https://docs.ray.io/), from data ingestion and LLM deployment to prompt engineering, evaluation and scaling out all workloads in the application.
 
 <div align="center">
   <img src="https://images.ctfassets.net/xjan103pcp94/4PX0l1ruKqfH17YvUiMFPw/c60a7a665125cb8056bebcc146c23b76/image8.png" width=600>
@@ -24,7 +24,7 @@ In this tutorial, we walk through end-to-end Retrieval-Augmented Generation (RAG
    Explores prompt-engineering techniques to boost relevance and accuracy in RAG responses.
 
 6. [06_(Optional)_Evaluate_RAG_with_Online_Inference](https://github.com/ray-project/ray/blob/master/doc/source/ray-overview/examples/e2e-rag/notebooks/06_(Optional)_Evaluate_RAG_with_Online_Inference.ipynb)  
-   Provides methods to assess RAG quality in real time via live queries and metrics tracking.
+   Provides methods to assess RAG quality in real time through live queries and metrics tracking.
 
 7. [07_Evaluate_RAG_with_Ray_Data_LLM_Batch_inference](https://github.com/ray-project/ray/blob/master/doc/source/ray-overview/examples/e2e-rag/notebooks/07_Evaluate_RAG_with_Ray_Data_LLM_Batch_inference.ipynb)  
    Implements large-scale batch evaluation of RAG outputs using Ray Data + LLM batch inference.
