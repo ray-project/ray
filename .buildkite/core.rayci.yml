@@ -113,6 +113,17 @@ steps:
         --test-env=TEST_EXTERNAL_REDIS=1
         --except-tags debug_tests,asan_tests,post_wheel_build,ha_integration,mem_pressure,tmpfs,container,manual,multi_gpu,spark_on_ray,ray_client,dask
 
+  - label: ":ray: core: open telemetry tests"
+    tags:
+      - python
+      - dashboard
+    instance_type: medium
+    commands:
+      - bazel run //ci/ray_ci:test_in_docker -- //python/ray/tests:test_metrics_agent core
+        --install-mask all-ray-libraries
+        --test-env=RAY_experimental_enable_open_telemetry_on_agent=1
+        --test-env=RAY_experimental_enable_open_telemetry_on_core=1
+
   - label: ":ray: core: memory pressure tests"
     tags:
       - python
@@ -146,24 +157,6 @@ steps:
       - bazel run //ci/ray_ci:test_in_docker -- //python/ray/tests/... core
         --test-env=TEST_EXTERNAL_REDIS=1
         --only-tags=tmpfs --tmp-filesystem=tmpfs
-
-  - label: ":ray: core: workflow tests"
-    tags:
-      - python
-      - workflow
-      - oss
-      - skip-on-premerge
-    instance_type: medium
-    parallelism: 2
-    commands:
-      - bazel run //ci/ray_ci:test_in_docker -- //python/ray/workflow/... core
-        --workers "$${BUILDKITE_PARALLEL_JOB_COUNT}" --worker-id "$${BUILDKITE_PARALLEL_JOB}"
-        --except-tags use_all_core
-        --parallelism-per-worker 2
-      - bazel run //ci/ray_ci:test_in_docker -- //python/ray/workflow/... core
-        --workers "$${BUILDKITE_PARALLEL_JOB_COUNT}" --worker-id "$${BUILDKITE_PARALLEL_JOB}"
-        --skip-ray-installation
-        --only-tags use_all_core
 
   - label: ":ray: core: doc tests"
     tags:
