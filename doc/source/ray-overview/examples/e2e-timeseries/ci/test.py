@@ -103,7 +103,7 @@ def main() -> None:
         description="Convert Jupyter notebooks to Python scripts and execute them in order."
     )
     parser.add_argument(
-        "target_dir",
+        "--target-dir",
         help="Directory containing the .ipynb files to convert and execute",
     )
     parser.add_argument(
