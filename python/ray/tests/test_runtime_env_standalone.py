@@ -14,12 +14,12 @@ from typing import List
 import pytest
 
 import ray
+from ray._common.test_utils import wait_for_condition
 from ray._private.runtime_env.context import RuntimeEnvContext
 from ray._private.runtime_env.plugin import RuntimeEnvPlugin
 from ray._private.test_utils import (
     get_error_message,
     get_log_sources,
-    wait_for_condition,
 )
 from ray.exceptions import RuntimeEnvSetupError
 from ray.runtime_env import RuntimeEnv

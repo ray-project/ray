@@ -10,10 +10,10 @@ import psutil
 import pytest
 
 import ray
+from ray._common.test_utils import wait_for_condition
 from ray._private.test_utils import (
     check_spilled_mb,
     fetch_prometheus,
-    wait_for_condition,
 )
 
 MB = 1024 * 1024

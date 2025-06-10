@@ -4,6 +4,7 @@ import subprocess
 import sys
 import tempfile
 import time
+from ray._common.test_utils import wait_for_condition
 import yaml
 from pathlib import Path
 from typing import List
@@ -29,7 +30,6 @@ from ray._private.runtime_env.conda_utils import (
 from ray._private.test_utils import (
     run_string_as_driver,
     run_string_as_driver_nonblocking,
-    wait_for_condition,
     chdir,
 )
 from ray._private.utils import (

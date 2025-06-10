@@ -9,6 +9,7 @@ from unittest.mock import MagicMock, patch
 
 import numpy as np
 import pytest
+from ray._common.test_utils import wait_for_condition
 import requests
 from google.protobuf import text_format
 
@@ -19,7 +20,6 @@ from ray._private.metrics_agent import fix_grpc_metric
 from ray._private.test_utils import (
     fetch_prometheus,
     format_web_url,
-    wait_for_condition,
     wait_until_server_available,
 )
 from ray.core.generated.metrics_pb2 import Metric
