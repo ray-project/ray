@@ -28,7 +28,6 @@ from ray._private.runtime_env.plugin import (
 )
 from ray._private.runtime_env.py_executable import PyExecutablePlugin
 from ray._private.runtime_env.py_modules import PyModulesPlugin
-from ray._private.runtime_env.uv import UvPlugin
 from ray._private.runtime_env.working_dir import WorkingDirPlugin
 from ray._raylet import GcsClient
 from ray.core.generated import runtime_env_agent_pb2
@@ -203,7 +202,6 @@ class RuntimeEnvAgent:
         self._gcs_client = gcs_client
 
         self._pip_plugin = PipPlugin(self._runtime_env_dir)
-        self._uv_plugin = UvPlugin(self._runtime_env_dir)
         self._conda_plugin = CondaPlugin(self._runtime_env_dir)
         self._py_modules_plugin = PyModulesPlugin(
             self._runtime_env_dir, self._gcs_client
@@ -225,7 +223,6 @@ class RuntimeEnvAgent:
         # self._xxx_plugin, we should just iterate through self._plugins.
         self._base_plugins: List[RuntimeEnvPlugin] = [
             self._working_dir_plugin,
-            self._uv_plugin,
             self._pip_plugin,
             self._conda_plugin,
             self._py_modules_plugin,

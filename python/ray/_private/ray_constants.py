@@ -572,6 +572,10 @@ RAY_EXPORT_EVENT_MAX_BACKUP_COUNT = env_bool("RAY_EXPORT_EVENT_MAX_BACKUP_COUNT"
 # manually set the py_executable in your runtime environment hook.
 RAY_ENABLE_UV_RUN_RUNTIME_ENV = env_bool("RAY_ENABLE_UV_RUN_RUNTIME_ENV", True)
 
+# If set, pip runtime environments install packages using `uv pip` instead of
+# `pip`.
+RAY_RUNTIME_ENV_PIP_USE_UV = env_bool("RAY_RUNTIME_ENV_PIP_USE_UV", False)
+
 # Prometheus metric cardinality level setting, either "legacy" or "recommended".
 #
 # Legacy: report all metrics to prometheus with the set of labels that are reported by

@@ -14,6 +14,7 @@ from ray._private.runtime_env.packaging import Protocol, parse_uri
 from ray._private.runtime_env.plugin import RuntimeEnvPlugin
 from ray._private.runtime_env.utils import check_output_cmd
 from ray._private.utils import get_directory_size_bytes
+from ray._private import ray_constants
 
 default_logger = logging.getLogger(__name__)
 
@@ -65,6 +66,21 @@ class PipProcessor:
         self._pip_config = self._runtime_env.pip_config()
         self._pip_env = os.environ.copy()
         self._pip_env.update(self._runtime_env.env_vars())
+        self._use_uv = ray_constants.RAY_RUNTIME_ENV_PIP_USE_UV
+
+    async def _ensure_uv(self, path: str, cwd: str, pip_env: Dict, logger: logging.Logger):
+        if not self._use_uv:
+            return
+        python = virtualenv_utils.get_virtualenv_python(path)
+        try:
+            await check_output_cmd([python, "-m", "uv", "version"], logger=logger, cwd=cwd, env=pip_env)
+        except Exception:
+            await check_output_cmd(
+                [python, "-m", "pip", "install", "--disable-pip-version-check", "uv"],
+                logger=logger,
+                cwd=cwd,
+                env=pip_env,
+            )
 
     @classmethod
     async def _ensure_pip_version(
@@ -109,18 +125,17 @@ class PipProcessor:
             return
         python = virtualenv_utils.get_virtualenv_python(path)
 
-        await check_output_cmd(
-            [python, "-m", "pip", "check", "--disable-pip-version-check"],
-            logger=logger,
-            cwd=cwd,
-            env=pip_env,
-        )
+        cmd = [python, "-m"]
+        if self._use_uv:
+            cmd += ["uv", "pip", "check"]
+        else:
+            cmd += ["pip", "check", "--disable-pip-version-check"]
+        await check_output_cmd(cmd, logger=logger, cwd=cwd, env=pip_env)
 
         logger.info("Pip check on %s successfully.", path)
 
-    @classmethod
     async def _install_pip_packages(
-        cls,
+        self,
         path: str,
         pip_packages: List[str],
         cwd: str,
@@ -152,16 +167,29 @@ class PipProcessor:
         # --no-cache-dir
         #   Disable the cache, the pip runtime env is a one-time installation,
         #   and we don't need to handle the pip cache broken.
-        pip_install_cmd = [
-            python,
-            "-m",
-            "pip",
-            "install",
-            "--disable-pip-version-check",
-            "--no-cache-dir",
-            "-r",
-            pip_requirements_file,
-        ]
+        if self._use_uv:
+            await self._ensure_uv(path, cwd, pip_env, logger)
+            pip_install_cmd = [
+                python,
+                "-m",
+                "uv",
+                "pip",
+                "install",
+                "-r",
+                pip_requirements_file,
+                "--no-cache",
+            ]
+        else:
+            pip_install_cmd = [
+                python,
+                "-m",
+                "pip",
+                "install",
+                "--disable-pip-version-check",
+                "--no-cache-dir",
+                "-r",
+                pip_requirements_file,
+            ]
         logger.info("Installing python requirements to %s", virtualenv_path)
 
         await check_output_cmd(pip_install_cmd, logger=logger, cwd=cwd, env=pip_env)
