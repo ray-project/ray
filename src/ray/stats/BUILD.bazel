@@ -1,15 +1,6 @@
 load("//bazel:ray.bzl", "ray_cc_library", "ray_cc_test")
 
 ray_cc_library(
-    name = "stats_opentelemetry",
-    srcs = ["opentelemetry_metrics.cc"],
-    deps = [
-        "@io_opentelemetry_cpp//sdk/src/logs",
-        "@io_opentelemetry_cpp//sdk/src/trace",
-    ],
-)
-
-ray_cc_library(
     name = "stats_metric",
     srcs = [
         "metric.cc",
