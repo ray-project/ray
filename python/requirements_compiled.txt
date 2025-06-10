@@ -1611,7 +1611,6 @@ pyarrow==14.0.2
 pyarrow-hotfix==0.7
     # via
     #   datasets
-    #   deltalake
     #   hudi
 pyasn1==0.5.1
     # via
