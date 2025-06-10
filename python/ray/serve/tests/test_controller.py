@@ -5,7 +5,7 @@ import pytest
 
 import ray
 from ray import serve
-from ray._private.test_utils import wait_for_condition
+from ray._common.test_utils import wait_for_condition
 from ray.serve._private.common import DeploymentID
 from ray.serve._private.config import DeploymentConfig
 from ray.serve._private.constants import (
@@ -125,10 +125,11 @@ def test_get_serve_instance_details_json_serializable(serve_instance, policy):
                 "log_file_path": controller_details.log_file_path,
             },
             "proxy_location": "HeadOnly",
-            "http_options": {"host": "0.0.0.0"},
+            "http_options": {"host": "0.0.0.0", "request_timeout_s": 10.0},
             "grpc_options": {
                 "port": 9000,
                 "grpc_servicer_functions": TEST_GRPC_SERVICER_FUNCTIONS,
+                "request_timeout_s": 10.0,
             },
             "proxies": {
                 node_id: {

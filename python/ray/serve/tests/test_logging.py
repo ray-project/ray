@@ -20,8 +20,8 @@ from starlette.responses import PlainTextResponse
 import ray
 import ray.util.state as state_api
 from ray import serve
+from ray._common.test_utils import wait_for_condition
 from ray._private.ray_logging.formatters import JSONFormatter
-from ray._private.test_utils import wait_for_condition
 from ray.serve._private.common import DeploymentID, ReplicaID, ServeComponentType
 from ray.serve._private.constants import SERVE_LOG_EXTRA_FIELDS, SERVE_LOGGER_NAME
 from ray.serve._private.logging_utils import (

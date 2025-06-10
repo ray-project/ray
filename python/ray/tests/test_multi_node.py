@@ -6,6 +6,7 @@ import psutil
 import pytest
 
 import ray
+from ray._common.test_utils import wait_for_condition
 from ray._private import ray_constants
 from ray._private.test_utils import (
     get_error_message,
@@ -13,7 +14,6 @@ from ray._private.test_utils import (
     object_memory_usage,
     run_string_as_driver,
     run_string_as_driver_nonblocking,
-    wait_for_condition,
 )
 
 

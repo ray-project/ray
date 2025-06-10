@@ -176,6 +176,13 @@ TaskID TaskSpecification::ParentTaskId() const {
   return TaskID::FromBinary(message_->parent_task_id());
 }
 
+std::string TaskSpecification::ParentTaskIdBinary() const {
+  if (message_->parent_task_id().empty()) {
+    return TaskID::Nil().Binary();
+  }
+  return message_->parent_task_id();
+}
+
 ActorID TaskSpecification::RootDetachedActorId() const {
   if (message_->root_detached_actor_id().empty() /* e.g., empty proto default */) {
     return ActorID::Nil();
