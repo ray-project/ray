@@ -209,8 +209,7 @@ ray::Status StoreConn::ReadBuffer(
 }
 
 void StoreConn::ShutdownWorkerIfLocalRayletDisconnected(const ray::Status &status) {
-  if (is_in_core_worker_ && !status.ok() &&
-      ray::IsRayletFailed(RayConfig::instance().RAYLET_PID())) {
+  if (is_in_core_worker_ && !status.ok()) {
     RAY_LOG(WARNING) << "The connection to the plasma store is failed because the "
                         "local raylet is dead. Terminate the process. Status: "
                      << status;

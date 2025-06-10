@@ -171,9 +171,9 @@ class StoreConn : public ray::ServerConnection {
   /// \return A file descriptor.
   ray::Status RecvFd(MEMFD_TYPE_NON_UNIQUE *fd);
 
-  ray::Status WriteBuffer(const std::vector<boost::asio::const_buffer> &buffer);
+  ray::Status WriteBuffer(const std::vector<boost::asio::const_buffer> &buffer) override;
 
-  ray::Status ReadBuffer(const std::vector<boost::asio::mutable_buffer> &buffer);
+  ray::Status ReadBuffer(const std::vector<boost::asio::mutable_buffer> &buffer) override;
 
  private:
   // Whether the client is in a core worker.
