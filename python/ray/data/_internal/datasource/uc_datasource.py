@@ -1,7 +1,7 @@
 import os
 import tempfile
 import requests
-from typing import Dict, Optional, Callable, Any
+from typing import Any, Callable, Dict, Optional
 
 import ray
 
