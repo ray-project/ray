@@ -117,7 +117,6 @@ class ActorReplicaWrapper(ReplicaWrapper):
             ray.cancel(obj_ref_gen)
             raise e from None
         except TaskCancelledError:
-            logger.info("Request already cancelled.")
             raise asyncio.CancelledError()
 
 
