@@ -46,7 +46,6 @@ import ray._private.ray_constants as ray_constants
 import ray._private.serialization as serialization
 import ray._private.services as services
 import ray._private.state
-import ray._private.storage as storage
 import ray._private.worker
 
 # Ray modules
@@ -1349,7 +1348,6 @@ def init(
     log_to_driver: Optional[bool] = None,
     namespace: Optional[str] = None,
     runtime_env: Optional[Union[Dict[str, Any], "RuntimeEnv"]] = None,  # noqa: F821
-    storage: Optional[str] = None,
     enable_resource_isolation: bool = False,
     system_reserved_cpu: Optional[float] = None,
     system_reserved_memory: Optional[int] = None,
@@ -1460,8 +1458,6 @@ def init(
             for this job (see :ref:`runtime-environments` for details).
         object_spilling_directory: The path to spill objects to. The same path will
             be used as the object store fallback directory as well.
-        storage: [DEPRECATED] Cluster-wide storage configuration is deprecated and will
-            be removed in a future version of Ray.
         enable_resource_isolation: Enable resource isolation through cgroupv2 by reserving
             memory and cpu resources for ray system processes. To use, only cgroupv2 (not cgroupv1)
             must be enabled with read and write permissions for the raylet. Cgroup memory and
@@ -1643,6 +1639,12 @@ def init(
             "Do not pass the `allow_multiple` to `ray.init` to fix the issue."
         )
 
+    if kwargs.get("storage"):
+        raise RuntimeError(
+            "Cluster-wide storage configuration has been removed. "
+            "The last Ray version supporting the `storage` argument is `ray==2.47`."
+        )
+
     if kwargs:
         # User passed in extra keyword arguments but isn't connecting through
         # ray client. Raise an error, since most likely a typo in keyword
@@ -1745,12 +1747,6 @@ def init(
     else:
         driver_mode = SCRIPT_MODE
 
-    if storage is not None:
-        warnings.warn(
-            "Cluster-wide storage configuration is deprecated and will be removed in a "
-            "future version of Ray."
-        )
-
     global _global_node
 
     if global_worker.connected:
@@ -1804,7 +1800,6 @@ def init(
             object_store_memory=object_store_memory,
             plasma_store_socket_name=None,
             temp_dir=_temp_dir,
-            storage=storage,
             _system_config=_system_config,
             enable_object_reconstruction=_enable_object_reconstruction,
             metrics_export_port=_metrics_export_port,
@@ -1844,11 +1839,6 @@ def init(
             raise ValueError(
                 "When connecting to an existing cluster, "
                 "object_store_memory must not be provided."
-            )
-        if storage is not None:
-            raise ValueError(
-                "When connecting to an existing cluster, "
-                "storage must not be provided."
             )
         if _system_config is not None and len(_system_config) != 0:
             raise ValueError(
@@ -2019,7 +2009,6 @@ def shutdown(_exiting_interpreter: bool = False):
             _global_node.destroy_external_storage()
         _global_node.kill_all_processes(check_alive=False, allow_graceful=True)
         _global_node = None
-    storage._reset()
 
     # TODO(rkn): Instead of manually resetting some of the worker fields, we
     # should simply set "global_worker" to equal "None" or something like that.

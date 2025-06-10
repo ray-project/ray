@@ -84,7 +84,6 @@ py_test_module_list(
         "test_job.py",
         "test_kill_subprocesses.py",
         "test_memstat.py",
-        "test_storage.py",
     ],
     tags = [
         "exclusive",
