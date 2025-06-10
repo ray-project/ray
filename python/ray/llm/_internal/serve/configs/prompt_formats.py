@@ -1,5 +1,4 @@
 from typing import (
-    TYPE_CHECKING,
     Any,
     Dict,
     List,
@@ -15,9 +14,6 @@ from pydantic import (
 )
 
 from ray.llm._internal.utils import try_import
-
-if TYPE_CHECKING:
-    pass
 
 transformers = try_import("transformers")
 

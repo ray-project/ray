@@ -52,8 +52,6 @@ class MockVLLMEngine(LLMEngine):
         ), f"Got invalid config {llm_config} of type {type(llm_config)}"
         self.llm_config = llm_config
 
-        # Note (Nikhil): prompt_format functionality has been removed
-
         self._stats = VLLMEngineStatTracker()
 
     @staticmethod
