@@ -2,6 +2,7 @@ import gymnasium as gym
 import numpy as np
 
 from ray.rllib.core import Columns
+from ray.rllib.connectors.connector_v2 import ConnectorV2
 from ray.rllib.env.multi_agent_env import MultiAgentEnv
 
 
@@ -66,3 +67,29 @@ class TwoAgentCartPoleWithGlobalObservations(MultiAgentEnv):
                 },
             },
         )
+
+
+class RewardsFromInfosConnector(ConnectorV2):
+    def __call__(
+        self,
+        *,
+        rl_module,
+        batch,
+        episodes,
+        explore=None,
+        shared_data=None,
+        metrics=None,
+        **kwargs,
+    ):
+        for sa_episode in self.single_agent_episode_iterator(episodes):
+            infos = sa_episode.get_infos()[1:]
+            for agent in [0, 1]:
+                col = Columns.REWARDS + f"_agent{agent}"
+                self.add_n_batch_items(
+                    batch=batch,
+                    column=col,
+                    items_to_add=[info[col] for info in infos],
+                    num_items=len(sa_episode),
+                    single_agent_episode=sa_episode,
+                )
+        return batch

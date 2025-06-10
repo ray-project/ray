@@ -1,10 +1,8 @@
-"""TODO:
+"""
 
 """
 
 from ray.rllib.algorithms.ppo import PPOConfig
-from ray.rllib.connectors.connector_v2 import ConnectorV2
-from ray.rllib.core import Columns
 from ray.rllib.core.rl_module.rl_module import RLModuleSpec
 from ray.rllib.examples.envs.classes.multi_agent import (
     two_agent_cartpole_with_global_observations as global_obs_cartpole
@@ -19,32 +17,6 @@ from ray.rllib.utils.test_utils import (
     add_rllib_example_script_args,
     run_rllib_example_script_experiment,
 )
-
-
-class RewardsFromInfosConnector(ConnectorV2):
-    def __call__(
-        self,
-        *,
-        rl_module,
-        batch,
-        episodes,
-        explore=None,
-        shared_data=None,
-        metrics=None,
-        **kwargs,
-    ):
-        for sa_episode in self.single_agent_episode_iterator(episodes):
-            infos = sa_episode.get_infos()[1:]
-            for agent in [0, 1]:
-                col = Columns.REWARDS + f"_agent{agent}"
-                self.add_n_batch_items(
-                    batch=batch,
-                    column=col,
-                    items_to_add=[info[col] for info in infos],
-                    num_items=len(sa_episode),
-                    single_agent_episode=sa_episode,
-                )
-        return batch
 
 
 parser = add_rllib_example_script_args(
@@ -65,9 +37,13 @@ if __name__ == "__main__":
         .environment(env=global_obs_cartpole.TwoAgentCartPoleWithGlobalObservations)
         .training(
             learner_class=PPOGlobalObservationsManyVF,
-            learner_connector=lambda obs_space, act_space: RewardsFromInfosConnector(),
+            learner_connector=(
+                lambda obs_space, act_space: (
+                    global_obs_cartpole.RewardsFromInfosConnector()
+                )
+            ),
             train_batch_size_per_learner=2000,
-            lr=0.0001,
+            lr=0.0003,
             num_epochs=6,
             vf_loss_coeff=1.0,
         )
@@ -86,7 +62,7 @@ if __name__ == "__main__":
                 module_class=GlobalObsManyVFHeadsRLModule,
                 model_config={
                     "hidden_dims": [256, 256],
-                }
+                },
             )
         )
     )
