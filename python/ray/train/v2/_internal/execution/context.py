@@ -1,4 +1,5 @@
 import logging
+import sys
 import threading
 import uuid
 from dataclasses import dataclass, field
@@ -221,6 +222,17 @@ class TrainContext(TrainRunContext):
         related information and not the worker related actions. This refactor
         would also require the `TrainContextCallback` to be updated as well.
         """
+        if "torch" in sys.modules:
+            from ray.air._internal.torch_utils import contains_tensor
+
+            if contains_tensor(metrics):
+                raise ValueError(
+                    "Passing objects containg Torch tensors as metrics "
+                    "is not supported as it will throw an exception on "
+                    "deserialization. You can either convert the tensors "
+                    "to Python objects or report a `train.Checkpoint` "
+                    "with `ray.train.report` to store your Torch objects."
+                )
 
         with invoke_context_managers(
             [
