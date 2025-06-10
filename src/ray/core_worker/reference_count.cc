@@ -193,7 +193,8 @@ void ReferenceCounter::AddOwnedObject(const ObjectID &object_id,
                                       const int64_t object_size,
                                       bool is_reconstructable,
                                       bool add_local_ref,
-                                      const std::optional<NodeID> &pinned_at_raylet_id) {
+                                      const std::optional<NodeID> &pinned_at_raylet_id,
+                                      rpc::TensorTransport tensor_transport) {
   absl::MutexLock lock(&mutex_);
   RAY_CHECK(AddOwnedObjectInternal(object_id,
                                    inner_ids,
@@ -202,7 +203,8 @@ void ReferenceCounter::AddOwnedObject(const ObjectID &object_id,
                                    object_size,
                                    is_reconstructable,
                                    add_local_ref,
-                                   pinned_at_raylet_id))
+                                   pinned_at_raylet_id,
+                                   tensor_transport))
       << "Tried to create an owned object that already exists: " << object_id;
 }
 
@@ -315,7 +317,8 @@ bool ReferenceCounter::AddOwnedObjectInternal(
     const int64_t object_size,
     bool is_reconstructable,
     bool add_local_ref,
-    const std::optional<NodeID> &pinned_at_raylet_id) {
+    const std::optional<NodeID> &pinned_at_raylet_id,
+    rpc::TensorTransport tensor_transport) {
   if (object_id_refs_.count(object_id) != 0) {
     return false;
   }
@@ -336,7 +339,8 @@ bool ReferenceCounter::AddOwnedObjectInternal(
                                    call_site,
                                    object_size,
                                    is_reconstructable,
-                                   pinned_at_raylet_id))
+                                   pinned_at_raylet_id,
+                                   tensor_transport))
                 .first;
   if (!inner_ids.empty()) {
     // Mark that this object ID contains other inner IDs. Then, we will not GC
@@ -1702,6 +1706,16 @@ void ReferenceCounter::Reference::ToProto(rpc::ObjectReferenceCount *ref,
   for (const auto &contains_id : nested().contains) {
     ref->add_contains(contains_id.Binary());
   }
+}
+
+std::optional<rpc::TensorTransport> ReferenceCounter::GetTensorTransport(
+    const ObjectID &object_id) const {
+  absl::MutexLock lock(&mutex_);
+  auto it = object_id_refs_.find(object_id);
+  if (it == object_id_refs_.end()) {
+    return absl::nullopt;
+  }
+  return it->second.tensor_transport;
 }
 
 }  // namespace core
