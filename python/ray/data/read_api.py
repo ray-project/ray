@@ -48,6 +48,7 @@ from ray.data._internal.datasource.sql_datasource import SQLDatasource
 from ray.data._internal.datasource.text_datasource import TextDatasource
 from ray.data._internal.datasource.tfrecords_datasource import TFRecordDatasource
 from ray.data._internal.datasource.torch_datasource import TorchDatasource
+from ray.data._internal.datasource.uc_datasource import UnityCatalogConnector
 from ray.data._internal.datasource.video_datasource import VideoDatasource
 from ray.data._internal.datasource.webdataset_datasource import WebDatasetDatasource
 from ray.data._internal.delegating_block_builder import DelegatingBlockBuilder
@@ -3615,6 +3616,203 @@ def read_clickhouse(
         ray_remote_args=ray_remote_args,
         concurrency=concurrency,
         override_num_blocks=override_num_blocks,
+    )
+
+
+def read_unity_catalog(
+    table: str,
+    url: str,
+    token: str,
+    *,
+    data_format=None,
+    region=None,
+    **reader_kwargs,
+) -> Dataset:
+    """
+    Loads a Unity Catalog table or files into a Ray Dataset using Databricks Unity Catalog credential vending,
+    with automatic short-lived cloud credential handoff for secure, parallel, distributed access from external engines.
+
+    This function works by leveraging Unity Catalog's credential vending feature, which grants temporary, least-privilege
+    credentials for the cloud storage location backing the requested table or data files. It authenticates via the Unity Catalog
+    REST API (`Unity Catalog credential vending for external system access`, [Databricks Docs](https://docs.databricks.com/en/data-governance/unity-catalog/credential-vending.html)),
+    ensuring that permissions are enforced at the Databricks principal (user, group, or service principal) making the request.
+    The function supports reading data directly from AWS S3, Azure Data Lake, or GCP GCS in standard formats including Delta and Parquet.
+
+    .. note::
+
+       This ``read_unity_catalog`` function is currently experimental and under active development
+
+    .. warning::
+
+        The Databricks Unity Catalog credential vending feature is currently in Public Preview and there are important requirements and limitations.
+        You must read these docs carefully and ensure your workspace and principal are properly configured.
+
+    Features:
+        - **Secure Access**: Only principals with `EXTERNAL USE SCHEMA` on the containing schema, and after explicit metastore enablement, can obtain short-lived credentials.
+        - **Format Support**: Supports reading `delta`, `parquet`, `iceberg` formats via supported Ray Dataset readers.
+        - **Cloud Support**: AWS, Azure, and GCP supported, with automatic environment setup for the vended credentials per session.
+        - **Auto-Infer**: Data format is auto-inferred from table metadata, but can be explicitly specified.
+
+    Examples:
+        Read a Unity Catalog managed Delta table with credential vending:
+
+            >>> import ray
+            >>> ds = read_unity_catalog(
+            ...     table="main.sales.transactions",
+            ...     url="https://dbc-XXXXXXX-XXXX.cloud.databricks.com",
+            ...     token="XXXXXXXXXXX"
+            ... )
+            >>> ds.show(3)
+
+        Explicitly specify the format, and pass reader options:
+
+            >>> ds = read_unity_catalog(
+            ...     table="main.catalog.images",
+            ...     url="https://dbc-XXXXXXX-XXXX.cloud.databricks.com",
+            ...     token="XXXXXXXXXXX",
+            ...     data_format="delta",
+            ...     region="us-west-2",
+            ...     # Reader kwargs come from the associated reader (ray.data.read_delta in this example)
+            ...     reader_kwargs={"override_num_blocks": 1000}
+            ... )
+
+    Args:
+        table: Unity Catalog table name as `<catalog>.<schema>.<table>`. Must be a managed or external table supporting credential vending.
+        url: Databricks workspace URL, e.g. `"https://dbc-XXXXXXX-XXXX.cloud.databricks.com"`
+        token: Databricks PAT (Personal Access Token) with `EXTERNAL USE SCHEMA` on the schema containing the table, and with access to the workspace API.
+        data_format: (Optional) Data format override. If not specified, inferred from Unity Catalog metadata and file extension. Supported: `"delta"`, `"parquet"`
+        region: (Optional) For S3: AWS region for cloud credential environment setup.
+        **reader_kwargs: Additional arguments forwarded to the underlying Ray Dataset reader (e.g., override_num_blocks, etc.).
+
+    Returns:
+        A :class:`ray.data.Dataset` containing the data from the external Unity Catalog table.
+
+    References:
+        - Databricks Credential Vending: https://docs.databricks.com/en/data-governance/unity-catalog/credential-vending.html
+        - API Reference for temporary credentials: https://docs.databricks.com/api/workspace/unity-catalog/temporary-table-credentials
+
+    """
+    reader = UnityCatalogConnector(
+        base_url=url,
+        token=token,
+        table_full_name=table,
+        data_format=data_format,
+        region=region,
+        reader_kwargs=reader_kwargs,
+    )
+    return reader.read()
+
+
+def read_delta(
+    path: Union[str, List[str]],
+    *,
+    filesystem: Optional["pyarrow.fs.FileSystem"] = None,
+    columns: Optional[List[str]] = None,
+    parallelism: int = -1,
+    ray_remote_args: Dict[str, Any] = None,
+    meta_provider: Optional[ParquetMetadataProvider] = None,
+    partition_filter: Optional[PathPartitionFilter] = None,
+    partitioning: Optional[Partitioning] = Partitioning("hive"),
+    shuffle: Union[Literal["files"], None] = None,
+    include_paths: bool = False,
+    concurrency: Optional[int] = None,
+    override_num_blocks: Optional[int] = None,
+    **arrow_parquet_args,
+):
+    """Creates a :class:`~ray.data.Dataset` from Delta Lake files.
+
+    Examples:
+
+        >>> import ray
+        >>> ds = ray.data.read_delta("s3://bucket@path/to/delta-table/")
+
+    Args:
+        path: A single file path for a Delta Lake table. Multiple tables are not yet
+            supported.
+        filters: A filter predicate to apply to the data. Only rows that match the
+            filter predicate are read during the file scan.
+        filesystem: The PyArrow filesystem
+            implementation to read from. These filesystems are specified in the
+            `pyarrow docs <https://arrow.apache.org/docs/python/api/\
+            filesystems.html#filesystem-implementations>`_. Specify this parameter if
+            you need to provide specific configurations to the filesystem. By default,
+            the filesystem is automatically selected based on the scheme of the paths.
+            For example, if the path begins with ``s3://``, the ``S3FileSystem`` is
+            used. If ``None``, this function uses a system-chosen implementation.
+        columns: A list of column names to read. Only the specified columns are
+            read during the file scan.
+        parallelism: This argument is deprecated. Use ``override_num_blocks`` argument.
+        ray_remote_args: kwargs passed to :meth:`~ray.remote` in the read tasks.
+        meta_provider: A :ref:`file metadata provider <metadata_provider>`. Custom
+            metadata providers may be able to resolve file metadata more quickly and/or
+            accurately. In most cases you do not need to set this parameter.
+        partition_filter: A
+            :class:`~ray.data.datasource.partitioning.PathPartitionFilter`. Use
+            with a custom callback to read only selected partitions of a dataset.
+        partitioning: A :class:`~ray.data.datasource.partitioning.Partitioning` object
+            that describes how paths are organized. Defaults to HIVE partitioning.
+        shuffle: If setting to "files", randomly shuffle input files order before read.
+            Defaults to not shuffle with ``None``.
+        include_paths: If ``True``, include the path to each file. File paths are
+            stored in the ``'path'`` column.
+        concurrency: The maximum number of Ray tasks to run concurrently. Set this
+            to control number of tasks to run concurrently. This doesn't change the
+            total number of tasks run or the total number of output blocks. By default,
+            concurrency is dynamically decided based on the available resources.
+        override_num_blocks: Override the number of output blocks from all read tasks.
+            By default, the number of output blocks is dynamically decided based on
+            input data size and available resources. You shouldn't manually set this
+            value in most cases.
+        arrow_parquet_args: Other parquet read options to pass to PyArrow. For the full
+            set of arguments, see the `PyArrow API <https://arrow.apache.org/docs/\
+                python/generated/pyarrow.dataset.Scanner.html\
+                    #pyarrow.dataset.Scanner.from_fragment>`_
+
+    Returns:
+        :class:`~ray.data.Dataset` producing records read from the specified parquet
+        files.
+
+    """
+    # Modified from ray.data._internal.util._check_import, which is meant for objects,
+    # not functions. Move to _check_import if moved to a DataSource object.
+    import importlib
+
+    package = "deltalake"
+    try:
+        importlib.import_module(package)
+    except ImportError:
+        raise ImportError(
+            f"`ray.data.read_delta` depends on '{package}', but '{package}' "
+            f"couldn't be imported. You can install '{package}' by running `pip "
+            f"install {package}`."
+        )
+
+    from deltalake import DeltaTable
+
+    # This seems reasonable to keep it at one table, even Spark doesn't really support
+    # multi-table reads, it's usually up to the developer to keep it in one table.
+    if not isinstance(path, str):
+        raise ValueError("Only a single Delta Lake table path is supported.")
+
+    # Get the parquet file paths from the DeltaTable
+    paths = DeltaTable(path).file_uris()
+    file_extensions = ["parquet"]
+
+    return read_parquet(
+        paths,
+        filesystem=filesystem,
+        columns=columns,
+        parallelism=parallelism,
+        ray_remote_args=ray_remote_args,
+        meta_provider=meta_provider,
+        partition_filter=partition_filter,
+        partitioning=partitioning,
+        shuffle=shuffle,
+        include_paths=include_paths,
+        file_extensions=file_extensions,
+        concurrency=concurrency,
+        override_num_blocks=override_num_blocks,
+        **arrow_parquet_args,
     )
 
 

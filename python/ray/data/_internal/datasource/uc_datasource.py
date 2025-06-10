@@ -1,15 +1,15 @@
 import os
-import json
 import tempfile
 import requests
-import ray
-
 from typing import Dict, Optional, Callable, Any
+
+import ray
 
 _FILE_FORMAT_TO_RAY_READER = {
     "delta": "read_delta",
     "parquet": "read_parquet",
 }
+
 
 class UnityCatalogConnector:
     """
@@ -20,6 +20,7 @@ class UnityCatalogConnector:
     Supported formats: delta, parquet.
     Supports AWS, Azure, and GCP with automatic credential handoff.
     """
+
     def __init__(
         self,
         *,
@@ -53,7 +54,10 @@ class UnityCatalogConnector:
 
     def _get_creds(self):
         url = f"{self.base_url}/api/2.1/unity-catalog/temporary-table-credentials"
-        headers = {"Content-Type": "application/json", "Authorization": f"Bearer {self.token}"}
+        headers = {
+            "Content-Type": "application/json",
+            "Authorization": f"Bearer {self.token}",
+        }
         payload = {"table_id": self._table_id, "operation": self.operation}
         resp = requests.post(url, json=payload, headers=headers)
         resp.raise_for_status()
@@ -82,7 +86,9 @@ class UnityCatalogConnector:
                 f.write(gcp_json)
             env_vars["GOOGLE_APPLICATION_CREDENTIALS"] = path
         else:
-            raise ValueError("No known credential type found in Databricks UC response.")
+            raise ValueError(
+                "No known credential type found in Databricks UC response."
+            )
 
         for k, v in env_vars.items():
             os.environ[k] = v
