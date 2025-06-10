@@ -22,6 +22,7 @@ from image_classification.factory import (
     ImageClassificationTorchDataLoaderFactory,
     ImageClassificationMockDataLoaderFactory,
 )
+from image_classification.imagenet import get_transform
 from s3_reader import AWS_REGION
 from .imagenet import get_preprocess_map_fn
 from .torch_jpeg_image_iterable_dataset import S3JpegImageIterableDataset
@@ -145,7 +146,7 @@ class ImageClassificationJpegTorchDataLoaderFactory(
     def __init__(self, benchmark_config: BenchmarkConfig, data_dirs: Dict[str, str]):
         super().__init__(benchmark_config)
         S3JpegReader.__init__(self)  # Initialize S3JpegReader to set up _s3_client
-        self.train_url = data_dirs[DatasetKey.TRAIN]
+        self._data_dirs = data_dirs
         self._cached_datasets = None
 
     def get_iterable_datasets(self) -> Dict[str, IterableDataset]:
@@ -159,6 +160,36 @@ class ImageClassificationJpegTorchDataLoaderFactory(
         if self._cached_datasets is not None:
             return self._cached_datasets
 
+        if self._data_dirs[DatasetKey.TRAIN].startswith("s3://"):
+            return self._get_iterable_datasets_s3()
+        else:
+            return self._get_iterable_datasets_local()
+
+    def _get_iterable_datasets_local(self) -> Dict[str, IterableDataset]:
+        """Get train and validation datasets from local filesystem."""
+        train_dir = self._data_dirs[DatasetKey.TRAIN]
+        val_dir = self._data_dirs[DatasetKey.VALID]
+
+        train_dataset = torchvision.datasets.ImageFolder(
+            root=train_dir,
+            transform=get_transform(to_torch_tensor=True, random_transforms=True),
+        )
+
+        val_dataset = torchvision.datasets.ImageFolder(
+            root=val_dir,
+            transform=get_transform(to_torch_tensor=True, random_transforms=False),
+        )
+
+        return {
+            DatasetKey.TRAIN: train_dataset,
+            DatasetKey.VALID: val_dataset,
+        }
+
+    def _get_iterable_datasets_s3(self) -> Dict[str, IterableDataset]:
+        """Get train and validation datasets from S3."""
+
+        train_dir = self._data_dirs[DatasetKey.TRAIN]
+
         # Get row limits for workers and total processing
         (
             limit_training_rows_per_worker,
@@ -166,7 +197,7 @@ class ImageClassificationJpegTorchDataLoaderFactory(
         ) = self._get_worker_row_limits()
 
         # Get file URLs for training and validation
-        train_file_urls = val_file_urls = self._get_file_urls(self.train_url)
+        train_file_urls = val_file_urls = self._get_file_urls(train_dir)
         train_ds = S3JpegImageIterableDataset(
             file_urls=train_file_urls,
             random_transforms=True,
