@@ -1,6 +1,7 @@
 import logging
 import time
 import uuid
+import warnings
 from dataclasses import dataclass
 from typing import Any, Callable, Dict, Iterator, List, Optional, Tuple, Union
 
@@ -187,7 +188,7 @@ class ActorPoolMapOperator(MapOperator):
                 )
 
     def should_add_input(self) -> bool:
-        return self._actor_pool.num_free_slots() > 0
+        return self._actor_pool.num_free_task_slots() > 0
 
     def _start_actor(self, labels: Dict[str, str]) -> Tuple[ActorHandle, ObjectRef]:
         """Start a new actor and add it to the actor pool as a pending actor.
@@ -309,24 +310,22 @@ class ActorPoolMapOperator(MapOperator):
         # once the bundle queue is exhausted.
         self._inputs_done = True
 
+        if self._metrics.num_inputs_received < self._actor_pool.min_size():
+            warnings.warn(
+                f"The minimum number of concurrent actors for '{self.name}' is set to "
+                f"{self._actor_pool.min_size()}, but the operator only received "
+                f"{self._metrics.num_inputs_received} input(s). This means that the "
+                f"operator can launch at most {self._metrics.num_inputs_received} "
+                f"task(s), and won't fully utilize the available concurrency. "
+                "You might be able to increase the number of concurrent tasks by "
+                "configuring `override_num_blocks` earlier in the pipeline."
+            )
+
     def _do_shutdown(self, force: bool = False):
         self._actor_pool.shutdown(force=force)
         # NOTE: It's critical for Actor Pool to release actors before calling into
         #       the base method that will attempt to cancel and join pending.
         super()._do_shutdown(force)
-
-        # Warn if the user specified a batch or block size that prevents full
-        # parallelization across the actor pool. We only know this information after
-        # execution has completed.
-        min_workers = self._actor_pool.min_size()
-        if len(self._output_blocks_stats) < min_workers:
-            # The user created a stream that has too few blocks to begin with.
-            logger.warning(
-                "To ensure full parallelization across an actor pool of size "
-                f"{min_workers}, the Dataset should consist of at least "
-                f"{min_workers} distinct blocks. Consider increasing "
-                "the parallelism when creating the Dataset."
-            )
 
     def progress_str(self) -> str:
         if self._actor_locality_enabled:
@@ -423,8 +422,9 @@ class ActorPoolMapOperator(MapOperator):
         """Updates resources usage."""
         for actor in self._actor_pool.get_running_actor_refs():
             actor_state = actor._get_local_state()
-            if actor_state is None:
+            if actor_state in (None, gcs_pb2.ActorTableData.ActorState.DEAD):
                 # actor._get_local_state can return None if the state is Unknown
+                # If actor_state is None or dead, there is nothing to do.
                 continue
             elif actor_state != gcs_pb2.ActorTableData.ActorState.ALIVE:
                 # The actors can be either ALIVE or RESTARTING here because they will
@@ -839,15 +839,6 @@ class _ActorPool(AutoscalingActorPool):
         """Return the number of idle actors in the pool."""
         return sum(
             1 if running_actor.num_tasks_in_flight == 0 else 0
-            for running_actor in self._running_actors.values()
-        )
-
-    def num_free_slots(self) -> int:
-        """Return the number of free slots for task execution."""
-        if not self._running_actors:
-            return 0
-        return sum(
-            max(0, self._max_tasks_in_flight - running_actor.num_tasks_in_flight)
             for running_actor in self._running_actors.values()
         )
 

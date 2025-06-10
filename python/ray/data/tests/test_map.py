@@ -5,7 +5,7 @@ import math
 import os
 import threading
 import time
-from typing import Iterator
+from typing import Iterator, Literal
 
 import numpy as np
 import pandas as pd
@@ -15,8 +15,12 @@ import pyarrow.parquet as pq
 import pytest
 
 import ray
+from ray._private.arrow_utils import get_pyarrow_version
 from ray._private.test_utils import run_string_as_driver, wait_for_condition
 from ray.data import Dataset
+from ray.data._internal.arrow_ops.transform_pyarrow import (
+    MIN_PYARROW_VERSION_TYPE_PROMOTION,
+)
 from ray.data._internal.execution.interfaces.ref_bundle import (
     _ref_bundles_iterator_to_block_refs_list,
 )
@@ -107,6 +111,9 @@ def test_basic_actors(shutdown_only):
         assert len(actors) > 0
         return all(actor_info["State"] == "DEAD" for actor_info in actors.values())
 
+    import gc
+
+    gc.collect()
     wait_for_condition(_all_actors_dead)
 
 
@@ -1875,6 +1882,29 @@ def test_map_batches_async_generator_fast_yield(shutdown_only):
     assert len(output) == len(expected_output), (len(output), len(expected_output))
 
 
+@pytest.mark.parametrize("fn_type", ["func", "class"])
+def test_map_operator_warns_on_few_inputs(
+    fn_type: Literal["func", "class"], shutdown_only
+):
+    if fn_type == "func":
+
+        def fn(row):
+            return row
+
+    else:
+
+        class fn:
+            def __call__(self, row):
+                return row
+
+    with pytest.warns(UserWarning, match="can launch at most 1 task"):
+        # The user specified `concurrency=2` for the map operator, but the pipeline
+        # can only launch one task because there's only one input block. So, Ray Data
+        # should emit a warning instructing the user to increase the number of input
+        # blocks.
+        ray.data.range(2, override_num_blocks=1).map(fn, concurrency=2).materialize()
+
+
 def test_map_op_backpressure_configured_properly():
     """This test asserts that configuration of the MapOperator generator's back-pressure is
     propagated appropriately to the Ray Core
@@ -1926,6 +1956,51 @@ def test_map_op_backpressure_configured_properly():
     )
 
     assert list(range(5))[:-1] == vals
+
+
+@pytest.mark.skipif(
+    get_pyarrow_version() < MIN_PYARROW_VERSION_TYPE_PROMOTION,
+    reason="Requires pyarrow>=14 for unify_schemas in OneHotEncoder",
+)
+def test_map_names():
+    """To test different UDF format such that the operator
+    has the correct representation.
+
+    The actual name is handled by
+    AbstractUDFMap._get_operator_name()
+    """
+
+    ds = ray.data.range(5)
+
+    r = ds.map(lambda x: {"id": str(x["id"])}).__repr__()
+    assert r.startswith("Map(<lambda>)"), r
+
+    class C:
+        def __call__(self, x):
+            return x
+
+    r = ds.map(C, concurrency=4).__repr__()
+    assert r.startswith("Map(C)"), r
+
+    # Simple and partial functions
+    def func(x, y):
+        return x
+
+    r = ds.map(func, fn_args=[0]).__repr__()
+    assert r.startswith("Map(func)")
+
+    from functools import partial
+
+    r = ds.map(partial(func, y=1)).__repr__()
+    assert r.startswith("Map(func)"), r
+
+    # Preprocessor
+    from ray.data.preprocessors import OneHotEncoder
+
+    ds = ray.data.from_items(["a", "b", "c", "a", "b", "c"])
+    enc = OneHotEncoder(columns=["item"])
+    r = enc.fit_transform(ds).__repr__()
+    assert r.startswith("OneHotEncoder"), r
 
 
 if __name__ == "__main__":

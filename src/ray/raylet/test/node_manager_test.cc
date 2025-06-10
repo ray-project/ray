@@ -20,6 +20,7 @@
 #include <utility>
 
 #include "gmock/gmock.h"
+#include "mock/ray/core_worker/experimental_mutable_object_provider.h"
 #include "mock/ray/gcs/gcs_client/gcs_client.h"
 #include "mock/ray/object_manager/object_directory.h"
 #include "mock/ray/object_manager/object_manager.h"
@@ -205,8 +206,9 @@ class NodeManagerTest : public ::testing::Test {
     mock_object_directory_ = object_directory.get();
     auto object_manager = std::make_unique<MockObjectManager>();
     mock_object_manager_ = object_manager.get();
-    auto mock_store_client = std::make_unique<plasma::MockPlasmaClient>();
-    mock_store_client_ = mock_store_client.get();
+    auto mutable_object_provider =
+        std::make_unique<core::experimental::MockMutableObjectProvider>();
+    mock_mutable_object_provider_ = mutable_object_provider.get();
     node_manager_ = std::make_unique<NodeManager>(io_service_,
                                                   NodeID::FromRandom(),
                                                   "test_node_name",
@@ -217,7 +219,9 @@ class NodeManagerTest : public ::testing::Test {
                                                   std::move(core_worker_subscriber),
                                                   std::move(object_directory),
                                                   std::move(object_manager),
-                                                  std::move(mock_store_client),
+                                                  mock_store_client_,
+                                                  std::move(mutable_object_provider),
+                                                  /*shutdown_raylet_gracefully=*/
                                                   [](const auto &) {});
   }
 
@@ -229,7 +233,8 @@ class NodeManagerTest : public ::testing::Test {
       std::make_shared<gcs::MockGcsClient>();
   MockObjectDirectory *mock_object_directory_;
   MockObjectManager *mock_object_manager_;
-  plasma::MockPlasmaClient *mock_store_client_;
+  core::experimental::MockMutableObjectProvider *mock_mutable_object_provider_;
+  plasma::MockPlasmaClient mock_store_client_;
 
   std::unique_ptr<NodeManager> node_manager_;
 };

@@ -385,9 +385,10 @@ class MockActorCreator : public ActorCreatorInterface {
     return Status::OK();
   }
 
-  Status AsyncRestartActor(const ActorID &actor_id,
-                           uint64_t num_restarts,
-                           gcs::StatusCallback callback) override {
+  Status AsyncRestartActorForLineageReconstruction(
+      const ActorID &actor_id,
+      uint64_t num_restarts_due_to_lineage_reconstructions,
+      gcs::StatusCallback callback) override {
     return Status::OK();
   }
 
@@ -2058,8 +2059,7 @@ TEST(NormalTaskSubmitterTest, TestKillExecutingTask) {
 
   // Try force kill, exiting the worker
   ASSERT_TRUE(submitter.CancelTask(task, true, false).ok());
-  ASSERT_EQ(worker_client->kill_requests.front().intended_task_id(),
-            task.TaskId().Binary());
+  ASSERT_EQ(worker_client->kill_requests.front().intended_task_id(), task.TaskIdBinary());
   ASSERT_TRUE(worker_client->ReplyPushTask(Status::IOError("workerdying"), true));
   ASSERT_EQ(worker_client->callbacks.size(), 0);
   ASSERT_EQ(raylet_client->num_workers_returned, 0);
@@ -2076,8 +2076,7 @@ TEST(NormalTaskSubmitterTest, TestKillExecutingTask) {
   // Try non-force kill, worker returns normally
   ASSERT_TRUE(submitter.CancelTask(task, false, false).ok());
   ASSERT_TRUE(worker_client->ReplyPushTask());
-  ASSERT_EQ(worker_client->kill_requests.front().intended_task_id(),
-            task.TaskId().Binary());
+  ASSERT_EQ(worker_client->kill_requests.front().intended_task_id(), task.TaskIdBinary());
   ASSERT_EQ(worker_client->callbacks.size(), 0);
   ASSERT_EQ(raylet_client->num_workers_returned, 1);
   ASSERT_EQ(raylet_client->num_workers_returned_exiting, 0);
