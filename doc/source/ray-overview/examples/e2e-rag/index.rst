@@ -3,7 +3,7 @@
 End-to-end RAG Deep Dive
 ==================================
 
-This tutorial covers end-to-end Retrieval-Augmented Generation (RAG) pipelines using [Ray](https://docs.ray.io/), from data ingestion and LLM deployment to prompt engineering, evaluation and scaling out all workloads in the application.
+This tutorial covers end-to-end Retrieval-Augmented Generation (RAG) pipelines using Ray, from data ingestion and LLM deployment to prompt engineering, evaluation and scaling out all workloads in the application.
 
 .. toctree::
    :maxdepth: 2
