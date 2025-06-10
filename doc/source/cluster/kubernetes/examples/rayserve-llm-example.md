@@ -9,7 +9,7 @@ This guide provides a step-by-step guide for deploying a Large Language Model (L
 This example downloads model weights from the [Qwen/Qwen2.5-7B-Instruct](https://huggingface.co/Qwen/Qwen2.5-7B-Instruct) Hugging Face repository. To completely finish this guide, you must fulfill the following requirements:
 * A [Hugging Face account](https://huggingface.co/) and a Hugging Face [access token](https://huggingface.co/settings/tokens) with read access to gated repositories.
 * In your RayService custom resource, set the `HUGGING_FACE_HUB_TOKEN` environment variable to the Hugging Face token to enable model downloads.
-* Any supported GPU. You can refer [here](../user-guides/k8s-cluster-setup.md) for more information
+* A cluster including GPU nodes. You can refer [here](../user-guides/k8s-cluster-setup.md) for more information
 
 ## Step 1: Create a Kubernetes cluster with GPUs
 
@@ -21,7 +21,13 @@ Install the most recent stable KubeRay operator from the Helm repository by foll
 
 ## Step 3: Create a Kubernetes Secret containing your Hugging Face access token
 
-For additional security, instead of passing the HF Access Token directly as an environment variable, create a Kubernetes Secret containing your Hugging Face access token. Download the Ray Serve LLM service config .yaml file [here](https://github.com/ray-project/kuberay/blob/master/ray-operator/config/samples/ray-service.llm-serve.yaml), update the value for `hf_token` to your private access token in the `Secret`, and apply the config to your Kubernetes cluster.
+For additional security, instead of passing the HF Access Token directly as an environment variable, create a Kubernetes Secret containing your Hugging Face access token. Download the Ray Serve LLM service config .yaml file using the following command:
+
+```sh
+curl -o ray-service.llm-serve.yaml https://raw.githubusercontent.com/ray-project/kuberay/master/ray-operator/config/samples/ray-service.llm-serve.yamlat
+```
+
+After downloading, update the value for `hf_token` to your private access token in the `Secret`, and apply the config to your Kubernetes cluster.
 
 ```yaml
 apiVersion: v1
@@ -35,10 +41,10 @@ stringData:
 
 ## Step 4: Deploy a RayService
 
-Create a RayService custom resource:
+After adding the Hugging Face access token, create a RayService custom resource using the config file:
 
 ```sh
-kubectl apply -f https://raw.githubusercontent.com/ray-project/kuberay/master/ray-operator/config/samples/ray-service.llm-serve.yaml
+kubectl apply -f ray-service.llm-serve.yaml
 ```
 
 In this step, a custom Ray Serve application is setup to serve the `Qwen/Qwen2.5-7B-Instruct` Model, creating an OpenAI-Compatible Server. You can inspect and modify the `serveConfigV2` section in the YAML file to learn more about the Serve application:
@@ -66,6 +72,8 @@ serveConfigV2: |
           max_ongoing_requests: 128
 ```
 
+In particular, this configuration loads the model from `Qwen/Qwen2.5-7B-Instruct` and sets its `model_id` to "Qwen/Qwen2.5-7B-Instruct". The `engine_kwargs` section is passed through to the underlying LLM engine. The `deployment_config` section sets the desired number of engine replicas. See [Serving LLMs](serving_llms) for more information.
+
 Wait for the RayService resource to become healthy. You can check its status by running the following command:
 ```sh
 kubectl get rayservice ray-serve-llm -o yaml
@@ -87,7 +95,7 @@ status:
 
 ## Step 5: Sending a Request
 
-To send requests to the Ray Serve Deployment, port-forward 8000 port from the Serve application Service:
+To send requests to the Ray Serve Deployment, port-forward port 8000 from the Serve application Service:
 ```sh
 kubectl port-forward ray-serve-llm-serve-svc 8000
 ```
@@ -113,6 +121,38 @@ curl --location 'http://localhost:8000/v1/chat/completions' --header 'Content-Ty
   }'
 ```
 
+The output should be in the following format:
+
+```
+{
+  "id": "qwen2.5-7b-instruct-550d3fd491890a7e7bca74e544d3479e",
+  "object": "chat.completion",
+  "created": 1746595284,
+  "model": "qwen2.5-7b-instruct",
+  "choices": [
+      {
+          "index": 0,
+          "message": {
+              "role": "assistant",
+              "reasoning_content": null,
+              "content": "Sure! Ray Serve is a library built on top of Ray...",
+              "tool_calls": []
+          },
+          "logprobs": null,
+          "finish_reason": "stop",
+          "stop_reason": null
+      }
+  ],
+  "usage": {
+      "prompt_tokens": 30,
+      "total_tokens": 818,
+      "completion_tokens": 788,
+      "prompt_tokens_details": null
+  },
+  "prompt_logprobs": null
+}
+```
+
 
 ## Step 6: View the Ray Dashboard
 
@@ -123,9 +163,3 @@ kubectl port-forward svc/ray-serve-llm-head-svc 8265
 
 Once forwarded, navigate to the Serve tab on the Dashboard to review application status, deployments, routers, logs, and other relevant features.
 ![LLM Serve Application](../images/ray_dashboard_llm_application.png)
-
-
-For monitoring application and cluster-level metrics, set up Prometheus and Grafana by referring to the official documentation:
-* [Prometheus and Grafana with KubeRay](../k8s-ecosystem/prometheus-grafana.md)
-* [Collecting and Monitoring Metrics in Ray](../../metrics.md)
-* [Configuring and Managing Dashboards](../../configure-manage-dashboard.md)
