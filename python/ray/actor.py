@@ -92,7 +92,8 @@ def method(*args, **kwargs):
             value is False (only retry tasks upon system failures and if
             max_task_retries is set)
         concurrency_group (str): The name of the concurrency group
-            to use for the actor method. By default, the actor is single-threaded and runs all actor tasks on the same thread.
+            to use for the actor method. By default, the actor is
+            single-threaded and runs all actor tasks on the same thread.
             See :ref:`Defining Concurrency Groups <defining-concurrency-groups>`.
         tensor_transport (str): [Experimental] The tensor transport protocol to
             use for the actor method. The valid values are "OBJECT_STORE"
