@@ -232,6 +232,14 @@ def run_process_for_sigint_abort():
     trainer.fit()
 
 
+@pytest.mark.skip(
+    reason=(
+        "TODO(tseah): signal_actor.wait hangs in the CI. "
+        "Test works locally but if you run it enough times most test cases in this "
+        "file fail because `The raylet exited immediately because one Ray agent "
+        "failed, agent_name = dashboard_agent.`"
+    )
+)
 def test_sigint_abort():
     SignalActor = create_remote_signal_actor(ray)
     signal_actor = SignalActor.options(
