@@ -30,7 +30,7 @@ from ray.dashboard.modules.job.pydantic_models import JobDetails
 # In pydantic 2, dataclass no longer needs the `init=True` kwarg to
 # generate an __init__ method. Additionally, it will raise an error if
 # it detects `init=True` to be set.
-from ray._private.pydantic_compat import IS_PYDANTIC_2
+from ray._common.pydantic_compat import IS_PYDANTIC_2
 
 try:
     from pydantic.dataclasses import dataclass
