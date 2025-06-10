@@ -187,7 +187,7 @@ Databricks
    read_databricks_tables
 
 Unity Catalog
-----------
+-------------
 
 .. autosummary::
    :nosignatures:
@@ -224,7 +224,7 @@ Iceberg
    Dataset.write_iceberg
 
 Delta Lake
-----
+----------
 
 .. autosummary::
    :nosignatures:
