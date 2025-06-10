@@ -7,7 +7,7 @@ from anyscale import service
 from anyscale.service.models import ServiceState
 from anyscale.compute_config.models import ComputeConfig
 import ray
-from ray._private.test_utils import wait_for_condition
+from ray._common.test_utils import wait_for_condition
 from ray.serve._private.utils import get_random_string
 
 

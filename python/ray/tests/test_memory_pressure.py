@@ -5,10 +5,11 @@ import time
 import pytest
 
 import ray
+from ray._common.test_utils import wait_for_condition
 from ray._private import (
     ray_constants,
 )
-from ray._private.test_utils import wait_for_condition, raw_metrics
+from ray._private.test_utils import raw_metrics
 
 import numpy as np
 from ray._common.utils import get_system_memory

@@ -6,11 +6,12 @@ import time
 
 import psutil
 import pytest
+from ray._common.test_utils import wait_for_condition
 import requests
 
 import ray
 from ray._private import ray_constants
-from ray._private.test_utils import run_string_as_driver, wait_for_condition
+from ray._private.test_utils import run_string_as_driver
 
 
 def search_agents(cluster):

@@ -12,13 +12,12 @@ import ray
 import ray._private.gcs_utils as gcs_utils
 from ray.util.state import list_actors
 import ray.cluster_utils
-from ray._common.test_utils import SignalActor
+from ray._common.test_utils import SignalActor, wait_for_condition
 from ray._private.test_utils import (
     convert_actor_state,
     kill_actor_and_wait_for_failure,
     make_global_state_accessor,
     run_string_as_driver,
-    wait_for_condition,
     wait_for_pid_to_exit,
 )
 from ray._private.ray_constants import gcs_actor_scheduling_enabled

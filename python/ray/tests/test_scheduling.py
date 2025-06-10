@@ -13,11 +13,10 @@ import ray.cluster_utils
 import ray.util.accelerators
 from ray._private.internal_api import memory_summary
 from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
-from ray._common.test_utils import SignalActor, Semaphore
+from ray._common.test_utils import SignalActor, Semaphore, wait_for_condition
 from ray._private.test_utils import (
     object_memory_usage,
     get_metric_check_condition,
-    wait_for_condition,
     MetricSamplePattern,
 )
 

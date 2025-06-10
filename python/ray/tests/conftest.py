@@ -21,6 +21,7 @@ import pytest
 import copy
 
 import ray
+from ray._common.test_utils import wait_for_condition
 import ray._private.ray_constants as ray_constants
 from ray._private.conftest_utils import set_override_dashboard_url  # noqa: F401
 from ray._private.runtime_env import virtualenv_utils
@@ -37,7 +38,6 @@ from ray._private.test_utils import (
     start_redis_instance,
     start_redis_sentinel_instance,
     redis_sentinel_replicas,
-    wait_for_condition,
     find_free_port,
     reset_autoscaler_v2_enabled_cache,
     RayletKiller,
