@@ -9,11 +9,11 @@ This guide provides a step-by-step guide for deploying a Large Language Model (L
 This example downloads model weights from the [Qwen/Qwen2.5-7B-Instruct](https://huggingface.co/Qwen/Qwen2.5-7B-Instruct) Hugging Face repository. To completely finish this guide, you must fulfill the following requirements:
 * A [Hugging Face account](https://huggingface.co/) and a Hugging Face [access token](https://huggingface.co/settings/tokens) with read access to gated repositories.
 * In your RayService custom resource, set the `HUGGING_FACE_HUB_TOKEN` environment variable to the Hugging Face token to enable model downloads.
-* A cluster including GPU nodes. You can refer [here](../user-guides/k8s-cluster-setup.md) for more information
+* A Kubernetes cluster with GPUs. 
 
 ## Step 1: Create a Kubernetes cluster with GPUs
 
-Follow [aws-eks-gpu-cluster.md](kuberay-eks-gpu-cluster-setup) or [gcp-gke-gpu-cluster.md](kuberay-gke-gpu-cluster-setup) to create a Kubernetes cluster.
+Refer to the Kubernetes cluster setup [instructions](../user-guides/k8s-cluster-setup.md) for guides on creating a Kubernetes cluster.
 
 ## Step 2: Install the KubeRay Operator
 
@@ -24,10 +24,10 @@ Install the most recent stable KubeRay operator from the Helm repository by foll
 For additional security, instead of passing the HF Access Token directly as an environment variable, create a Kubernetes Secret containing your Hugging Face access token. Download the Ray Serve LLM service config .yaml file using the following command:
 
 ```sh
-curl -o ray-service.llm-serve.yaml https://raw.githubusercontent.com/ray-project/kuberay/master/ray-operator/config/samples/ray-service.llm-serve.yamlat
+curl -o ray-service.llm-serve.yaml https://raw.githubusercontent.com/ray-project/kuberay/master/ray-operator/config/samples/ray-service.llm-serve.yaml
 ```
 
-After downloading, update the value for `hf_token` to your private access token in the `Secret`, and apply the config to your Kubernetes cluster.
+After downloading, update the value for `hf_token` to your private access token in the `Secret`.
 
 ```yaml
 apiVersion: v1
@@ -72,7 +72,7 @@ serveConfigV2: |
           max_ongoing_requests: 128
 ```
 
-In particular, this configuration loads the model from `Qwen/Qwen2.5-7B-Instruct` and sets its `model_id` to "Qwen/Qwen2.5-7B-Instruct". The `engine_kwargs` section is passed through to the underlying LLM engine. The `deployment_config` section sets the desired number of engine replicas. See [Serving LLMs](serving_llms) for more information.
+In particular, this configuration loads the model from `Qwen/Qwen2.5-7B-Instruct` and sets its `model_id` to "qwen2.5-7b-instruct." The `engine_kwargs` section is passed through to the underlying LLM engine. The `deployment_config` section sets the desired number of engine replicas. By default, each replica will require one GPU. See [Serving LLMs](serving_llms) and the [Serve Config Documentation](serve-in-production-config-file) for more information.
 
 Wait for the RayService resource to become healthy. You can check its status by running the following command:
 ```sh
