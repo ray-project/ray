@@ -3,7 +3,6 @@ import logging
 from typing import Dict
 
 # Third-party imports
-import torch
 import torchvision
 from torch.utils.data import IterableDataset
 import pyarrow.fs
@@ -14,13 +13,10 @@ from ray.data.datasource.partitioning import Partitioning
 
 # Local imports
 from constants import DatasetKey
-from config import DataloaderType, BenchmarkConfig
-from factory import BenchmarkFactory
-from dataloader_factory import BaseDataLoaderFactory
+from config import BenchmarkConfig
 from image_classification.factory import (
     ImageClassificationRayDataLoaderFactory,
     ImageClassificationTorchDataLoaderFactory,
-    ImageClassificationMockDataLoaderFactory,
 )
 from image_classification.imagenet import get_transform
 from s3_reader import AWS_REGION
@@ -217,20 +213,3 @@ class ImageClassificationJpegTorchDataLoaderFactory(
             DatasetKey.VALID: val_ds,
         }
         return self._cached_datasets
-
-
-class ImageClassificationJpegFactory(BenchmarkFactory):
-    def get_dataloader_factory(self) -> BaseDataLoaderFactory:
-        data_factory_cls = {
-            DataloaderType.MOCK: ImageClassificationMockDataLoaderFactory,
-            DataloaderType.RAY_DATA: ImageClassificationJpegRayDataLoaderFactory,
-            DataloaderType.TORCH: ImageClassificationJpegTorchDataLoaderFactory,
-        }[self.benchmark_config.dataloader_type]
-
-        return data_factory_cls(self.benchmark_config)
-
-    def get_model(self) -> torch.nn.Module:
-        return torchvision.models.resnet50(weights=None)
-
-    def get_loss_fn(self) -> torch.nn.Module:
-        return torch.nn.CrossEntropyLoss()
