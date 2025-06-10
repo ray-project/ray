@@ -213,13 +213,6 @@ class ChromaQuerier:
         """
         Query the Chroma collection for the top similar documents based on the provided embedding.
         The results are filtered based on the score threshold.
-
-        Parameters:
-            query_embedding (list or np.ndarray): The input embedding vector.
-            n_results (int): Number of top similar results to return.
-
-        Returns:
-            list: A list of formatted and filtered search result dictionaries.
         """
         # Convert numpy array to list if necessary.
         if isinstance(query_embedding, np.ndarray):
@@ -239,14 +232,6 @@ class ChromaQuerier:
         """
         Query the Chroma collection for the top similar documents for a batch of embeddings.
         Each query embedding in the input list returns its own set of results, filtered based on the score threshold.
-
-        Parameters:
-            query_embeddings (list): A list of embeddings (each as a list or np.ndarray).
-            n_results (int): Number of top similar results to return for each query embedding.
-
-        Returns:
-            list: A list where each element is a list of formatted and filtered search result dictionaries
-                  for the corresponding query embedding.
         """
         # Process each embedding: if any is a numpy array, convert it to list.
         processed_embeddings = [
