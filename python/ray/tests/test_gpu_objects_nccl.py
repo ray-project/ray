@@ -1,13 +1,8 @@
 import sys
-import random
 import torch
 import pytest
 import ray
-import torch.distributed as dist
-from ray.experimental.channel.torch_tensor_type import TorchTensorType
-from ray.experimental.channel import ChannelContext
 from ray.experimental.collective import create_collective_group
-from ray._private.custom_types import TensorTransportEnum
 
 
 @ray.remote

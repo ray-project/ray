@@ -168,7 +168,7 @@ class _ActorMethodMetadata:
         enable_task_events: bool,
         decorator: Optional[Any] = None,
         signature: Optional[List[inspect.Parameter]] = None,
-        tensor_transport: Optional[TypeTensorTransportEnum] = None,
+        tensor_transport: Optional[TensorTransportEnum] = None,
     ):
         """Initialize an _ActorMethodMetadata.
 
@@ -508,7 +508,7 @@ class ActorMethod:
         obj_ref = invocation(args, kwargs)
         if tensor_transport != TensorTransportEnum.OBJECT_STORE:
             gpu_object_manager = ray._private.worker.global_worker.gpu_object_manager
-            gpu_object_manager.add_gpu_object_ref(obj_ref, self._actor_ref())
+            gpu_object_manager.add_gpu_object_ref(obj_ref, self._actor, tensor_transport)
 
         return obj_ref
 
