@@ -43,9 +43,9 @@ from ray_release.signal_handling import (
     register_handler,
 )
 from ray_release.util import (
-    convert_cluster_compute_to_kuberay_compute_config,
     upload_working_dir,
 )
+from ray_release.kuberay_util import convert_cluster_compute_to_kuberay_compute_config
 
 type_str_to_command_runner = {
     "job": JobRunner,
@@ -382,8 +382,8 @@ def _fetching_results(
 
 def run_release_test(
     test: Test,
-    anyscale_project: str,
     result: Result,
+    anyscale_project: Optional[str] = None,
     reporters: Optional[List[Reporter]] = None,
     smoke_test: bool = False,
     cluster_id: Optional[str] = None,
