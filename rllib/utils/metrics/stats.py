@@ -15,6 +15,42 @@ _, tf, _ = try_import_tf()
 torch, _ = try_import_torch()
 
 
+def compute_percentiles(sorted_list, percentiles):
+    """Compute percentiles from an already sorted list.
+
+    Note that this will not raise an error if the list is not sorted to avoid overhead.
+
+    Args:
+        sorted_list: A list of numbers sorted in ascending order
+        percentiles: A list of percentile values (0-100)
+
+    Returns:
+        A dictionary mapping percentile values to their corresponding data values
+    """
+    n = len(sorted_list)
+
+    if n == 0:
+        return {p: None for p in percentiles}
+
+    results = {}
+
+    for p in percentiles:
+        index = (p / 100) * (n - 1)
+
+        if index.is_integer():
+            results[p] = sorted_list[int(index)]
+        else:
+            lower_index = int(index)
+            upper_index = lower_index + 1
+            weight = index - lower_index
+            results[p] = (
+                sorted_list[lower_index] * (1 - weight)
+                + sorted_list[upper_index] * weight
+            )
+
+    return results
+
+
 @DeveloperAPI
 class Stats:
     """A container class holding a number of values and executing reductions over them.
@@ -55,7 +91,8 @@ class Stats:
 
         Args:
             init_values: Optional initial values to be placed into `self.values`. If None,
-                `self.values` will start empty.
+                `self.values` will start empty. If percentiles is True, values must be ordered
+                if provided.
             reduce: The name of the reduce method to be used. Allowed are "mean", "min",
                 "max", and "sum". Use None to apply no reduction method (leave
                 `self.values` as-is when reducing, except for shortening it to
@@ -63,8 +100,8 @@ class Stats:
                 this Stats object needs to apply some caution over the values list not
                 growing infinitely.
             percentiles: If reduce is `None`, we can compute the percentiles of the
-                values list given by `percentiles`. Defaults to [0, 0.5, 0.75, 0.9, 0.95,
-                0.99, 1] if set to True. When using percentiles, a window must be provided.
+                values list given by `percentiles`. Defaults to [0, 50, 75, 90, 95,
+                99, 100] if set to True. When using percentiles, a window must be provided.
                 This window should be chosen carfully. RLlib computes exact percentiles and
                 the computational complexity is O(m*n*log(n/m)) where n is the window size
                 and m is the number of parallel metrics loggers invovled (for example,
@@ -138,7 +175,7 @@ class Stats:
                 )
 
             if percentiles is True:
-                percentiles = [0, 0.5, 0.75, 0.9, 0.95, 0.99, 1]
+                percentiles = [0, 50, 75, 90, 95, 99, 100]
             else:
                 if type(percentiles) not in (bool, list):
                     raise ValueError("`percentiles` must be a list or bool!")
@@ -332,11 +369,13 @@ class Stats:
                 return reduced_values
             if compile and self._reduce_method:
                 return reduced_value[0]
+            if compile and self._percentiles is not False:
+                return compute_percentiles(reduced_values, self._percentiles)
             return reduced_value
         else:
             return_value = self.get_reduce_history()[-1].copy()
             if compile:
-                # We don't need to check for self._reduce_method here because we only store the reduced value if there is a reduce method
+                # We don't need to check for self._reduce_method or percentiles here because we only store the reduced value if there is a reduce method
                 return_value = return_value[0]
             return return_value
 
@@ -433,6 +472,12 @@ class Stats:
             return_values = self._numpy_if_necessary(
                 reduced_internal_values_list
             ).copy()
+        elif compile and self._percentiles is not False:
+            if reduced_internal_values_list is None:
+                _, reduced_internal_values_list = self._reduced_values()
+            return_values = compute_percentiles(
+                reduced_internal_values_list, self._percentiles
+            )
         else:
             return_values = reduced
 

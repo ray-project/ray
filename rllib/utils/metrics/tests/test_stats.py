@@ -1100,47 +1100,65 @@ def test_percentiles():
     with `reduce_per_index_on_parallel_merge` only used for reduce=None.
     """
     # Test basic functionality with single stats
-    stats = Stats(reduce=None, percentiles=True, window=5)
-    stats.push(5)
-    stats.push(2)
-    stats.push(8)
-    stats.push(1)
-    stats.push(9)
+    # Use values 0-9 to make percentile calculations easy to verify
+    stats = Stats(reduce=None, percentiles=True, window=10)
+    for i in range(10):
+        stats.push(i)
 
     # Values should be sorted when peeking
-    check(stats.peek(), [1, 2, 5, 8, 9])
+    check(stats.peek(compile=False), list(range(10)))
 
-    # Test with window constraint
-    stats.push(3)
+    # Test with window constraint - push one more value
+    stats.push(10)
 
-    # Window is 5, so the oldest value (5) should be dropped
-    check(stats.peek(), [1, 2, 3, 8, 9])
+    # Window is 10, so the oldest value (0) should be dropped
+    check(stats.peek(compile=False), list(range(1, 11)))
 
     # Test reduce
-    reduced_values = stats.reduce()
-    check(reduced_values, [1, 2, 3, 8, 9])
+    check(stats.reduce(compile=False).values, list(range(1, 11)))
 
-    # Test merge_in_parallel
-    stats1 = Stats(reduce=None, percentiles=True, window=10)
-    stats1.push(10)
-    stats1.push(30)
-    stats1.push(20)
-    check(stats1.reduce(), [10, 20, 30])
-    check(stats1.values, [10, 20, 30])
+    # Check with explicit percentiles
+    del stats
+    stats = Stats(reduce=None, percentiles=[0, 50], window=10)
+    for i in range(10)[::-1]:
+        stats.push(i)
 
-    stats2 = Stats(reduce=None, percentiles=True, window=10)
-    stats2.push(15)
-    stats2.push(5)
-    stats2.push(25)
-    check(stats2.reduce(), [5, 15, 25])
-    check(stats2.values, [5, 15, 25])
+    check(stats.peek(compile=False), list(range(10)))
+    check(stats.peek(compile=True), {0: 0, 50: 4.5})
 
-    merged_stats = Stats(reduce=None, percentiles=True, window=10)
+    # Test merge_in_parallel with easy-to-calculate values
+    stats1 = Stats(reduce=None, percentiles=True, window=20)
+    # Push values 0, 2, 4, 6, 8 (even numbers 0-8)
+    for i in range(0, 10, 2):
+        stats1.push(i)
+    check(stats1.reduce(compile=False).values, [0, 2, 4, 6, 8])
+
+    stats2 = Stats(reduce=None, percentiles=True, window=20)
+    # Push values 1, 3, 5, 7, 9 (odd numbers 1-9)
+    for i in range(1, 10, 2):
+        stats2.push(i)
+    check(stats2.reduce(compile=False).values, [1, 3, 5, 7, 9])
+
+    merged_stats = Stats(reduce=None, percentiles=True, window=20)
     merged_stats.merge_in_parallel(stats1, stats2)
     # Should merge and sort values from both stats
-    # Merged values should be sorted, as incoming values are sorted
-    check(merged_stats.values, [5, 10, 15, 20, 25, 30])
-    check(merged_stats.peek(), [5, 10, 15, 20, 25, 30])
+    # Merged values should be sorted: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9]
+    expected_merged = list(range(10))
+    check(merged_stats.values, expected_merged)
+    check(merged_stats.peek(compile=False), expected_merged)
+
+    # Test compiled percentiles with numpy as reference
+    expected_percentiles = np.percentile(expected_merged, [0, 50, 75, 90, 95, 99, 100])
+    compiled_percentiles = merged_stats.peek(compile=True)
+
+    # Check that our percentiles match numpy's calculations
+    check(compiled_percentiles[0], expected_percentiles[0])  # 0th percentile
+    check(compiled_percentiles[50], expected_percentiles[1])  # 50th percentile
+    check(compiled_percentiles[75], expected_percentiles[2])  # 75th percentile
+    check(compiled_percentiles[90], expected_percentiles[3])  # 90th percentile
+    check(compiled_percentiles[95], expected_percentiles[4])  # 95th percentile
+    check(compiled_percentiles[99], expected_percentiles[5])  # 99th percentile
+    check(compiled_percentiles[100], expected_percentiles[6])  # 100th percentile
 
     # Test validation - window required
     with pytest.raises(ValueError, match="A window must be specified"):

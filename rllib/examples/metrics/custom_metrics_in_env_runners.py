@@ -246,8 +246,9 @@ class MsPacmanHeatmapCallback(RLlibCallback):
             # numbers again, the reported `pacman_max_dist_travelled` might also
             # decrease again (meaning `window=100` makes this not a "lifetime max").
             window=100,
-            # Percentiles to compute
-            percentiles=True,
+            # Some percentiles to compute
+            percentiles=[75, 95, 99],
+            clear_on_reduce=True,
         )
 
         # Log the average dist travelled per episode (window=200).
@@ -265,6 +266,12 @@ class MsPacmanHeatmapCallback(RLlibCallback):
             episode.get_infos(-1)["lives"],
             reduce="mean",  # <- default (must be "mean" for EMA smothing)
             ema_coeff=0.01,  # <- default EMA coefficient (`window` must be None)
+        )
+
+    def on_train_result(self, *, result: dict, **kwargs) -> None:
+        print(
+            "Max distance travelled per episode (percentiles) for this training iteration: ",
+            result["env_runners"]["pacman_max_dist_travelled"],
         )
 
     def _get_pacman_yx_pos(self, env):
