@@ -82,6 +82,9 @@ class DepSet:
             "dependencies": [dep.to_dict() for dep in self.dependencies]
         }
 
+    def to_txt(self) -> str:
+        return "\n".join([str(dep) for dep in self.dependencies])
+
     @classmethod
     def from_dict(cls, data: Dict) -> 'DepSet':
         depset = cls(data["requirements_fp"])

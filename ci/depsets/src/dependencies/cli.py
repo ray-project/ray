@@ -63,11 +63,34 @@ class DependencySetManager:
 
     def subset_depset(self, source: str, packages: List[str], name: str):
         source_depset = self.depsets[source]
-        new_depset = DepSet(name)
+        req_name = f"{name}.txt"
+        new_depset = DepSet(req_name)
         for dep in source_depset.dependencies:
             if dep.name in packages:
                 new_depset.dependencies.append(dep)
-        self.depsets[name] = new_depset
+
+        with open(req_name, "w") as f:
+            f.write(new_depset.to_txt())
+        self.create_depset(name, req_name)
+
+    def expand_depset(self, source: str, constraints: List[str], name: str):
+        source_depset = self.depsets[source]
+        req_name = f"{name}.txt"
+        new_depset = DepSet(req_name)
+
+        for dep in source_depset.dependencies:
+            found_constraint = False
+            for constraint in constraints:
+                if dep.name in constraint:
+                    new_depset.dependencies.append(Dep.from_requirement(constraint))
+                    found_constraint = True
+                    break
+            if not found_constraint:
+                new_depset.dependencies.append(dep)
+
+        with open(req_name, "w") as f:
+            f.write(new_depset.to_txt())
+        self.create_depset(name, req_name)
 
     def exec_uv__cmd(self, cmd: str, args: List[str]) -> str:
         cmd = f"uv pip {cmd} {' '.join(args)}"
@@ -163,6 +186,20 @@ def subset(source: str, packages: str, name: str):
     except ValueError as e:
         click.echo(f"Error: {str(e)}", err=True)
 
+@cli.command()
+@click.option("--source", type=str, help="name of source depset")
+@click.option("--constraints", type=str, help="filename for constraints file")
+@click.argument("name")
+def expand(source: str, constraints: str, name: str):
+    """Subset a dependency set."""
+    try:
+        manager = DependencySetManager()
+        with open(constraints, "r") as f:
+            constraints = f.read().splitlines()
+        manager.expand_depset(source, constraints, name)
+        click.echo(f"Created subset {name} from {source} with {len(constraints)} constraints")
+    except ValueError as e:
+        click.echo(f"Error: {str(e)}", err=True)
 
 if __name__ == "__main__":
     cli()
