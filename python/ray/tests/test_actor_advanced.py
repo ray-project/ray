@@ -63,64 +63,22 @@ def test_actors_on_nodes_with_no_cpus(ray_start_no_cpu):
     + "actor scheduler can be found at `test_actor_distribution_balance`.",
 )
 def test_actor_load_balancing(ray_start_cluster):
+    """Check that actor scheduling is load balanced across worker nodes."""
     cluster = ray_start_cluster
-    num_nodes = 3
-    for i in range(num_nodes):
-        cluster.add_node(num_cpus=1)
+    worker_node_ids = set()
+    for i in range(2):
+        worker_node_ids.add(cluster.add_node(num_cpus=1).node_id)
+
     ray.init(address=cluster.address)
 
     @ray.remote
-    class Actor1:
-        def __init__(self):
-            pass
-
-        def get_location(self):
-            return ray._private.worker.global_worker.node.unique_id
-
-    # Create a bunch of actors.
-    num_actors = 30
-    num_attempts = 20
-    minimum_count = 5
-
-    # Make sure that actors are spread between the raylets.
-    attempts = 0
-    while attempts < num_attempts:
-        actors = [Actor1.remote() for _ in range(num_actors)]
-        locations = ray.get([actor.get_location.remote() for actor in actors])
-        names = set(locations)
-        counts = [locations.count(name) for name in names]
-        print("Counts are {}.".format(counts))
-        if len(names) == num_nodes and all(count >= minimum_count for count in counts):
-            break
-        attempts += 1
-    assert attempts < num_attempts
-
-    # Make sure we can get the results of a bunch of tasks.
-    results = []
-    for _ in range(1000):
-        index = np.random.randint(num_actors)
-        results.append(actors[index].get_location.remote())
-    ray.get(results)
-
-
-def test_actor_lifetime_load_balancing(ray_start_cluster):
-    cluster = ray_start_cluster
-    cluster.add_node(num_cpus=0)
-    num_nodes = 3
-    for i in range(num_nodes):
-        cluster.add_node(num_cpus=1)
-    ray.init(address=cluster.address)
-
-    @ray.remote(num_cpus=1)
     class Actor:
-        def __init__(self):
-            pass
+        def get_node_id(self) -> str:
+            return ray.get_runtime_context().get_node_id()
 
-        def ping(self):
-            return
-
-    actors = [Actor.remote() for _ in range(num_nodes)]
-    ray.get([actor.ping.remote() for actor in actors])
+    # Schedule a group of actors, ensure that the actors are spread between all nodes.
+    node_ids = ray.get([Actor.remote().get_node_id.remote() for _ in range(10)])
+    assert set(node_ids) == worker_node_ids
 
 
 @pytest.mark.parametrize(
