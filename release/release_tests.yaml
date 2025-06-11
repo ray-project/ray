@@ -783,7 +783,7 @@
     byod:
       runtime_env:
         - TRAIN_PLACEMENT_GROUP_TIMEOUT_S=2000
-      type: cu128
+      type: cu123
     cluster_compute: train/compute_tpl_aws.yaml
 
   run:
@@ -4402,7 +4402,7 @@
 
   cluster:
     byod:
-      type: cu128  # anyscale/ray:<PR_RAY_VERSION>-py311-cu128
+      type: cu123  # anyscale/ray:<PR_RAY_VERSION>-py311-cu123
       post_build_script: byod_e2e_xgboost.sh  # release/ray_release/byod/
     cluster_compute: ci/aws.yaml  # relative to working_dir
 
@@ -4502,7 +4502,7 @@
 
   cluster:
     byod:
-      type: cu128
+      type: cu123
       post_build_script: byod_e2e_timeseries.sh
     cluster_compute: ci/aws.yaml
 
@@ -4524,7 +4524,7 @@
 
   cluster:
     byod:
-      type: cu128  # anyscale/ray-llm:<PR_RAY_VERSION>-py311-cu128
+      type: cu123  # anyscale/ray-llm:<PR_RAY_VERSION>-py311-cu123
       post_build_script: byod_e2e_multimodal_ai_workloads.sh  # release/ray_release/byod/
     cluster_compute: ci/aws.yaml  # relative to working_dir
 
