@@ -179,9 +179,7 @@ class GeneralAdvantageEstimation(ConnectorV2):
             batch={
                 mid: {
                     Columns.ADVANTAGES: module_batch[Columns.ADVANTAGES],
-                    Columns.VALUE_TARGETS: (
-                        module_batch[Columns.VALUE_TARGETS]
-                    ),
+                    Columns.VALUE_TARGETS: module_batch[Columns.VALUE_TARGETS],
                 }
                 for mid, module_batch in batch.items()
                 if vf_preds[mid] is not None

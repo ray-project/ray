@@ -4,7 +4,6 @@ from typing import Any, Dict, List
 from ray.rllib.algorithms.ppo import PPOConfig
 from ray.rllib.algorithms.ppo.ppo import (
     LEARNER_RESULTS_KL_KEY,
-    LEARNER_RESULTS_CURR_KL_COEFF_KEY,
     LEARNER_RESULTS_VF_EXPLAINED_VAR_KEY,
     LEARNER_RESULTS_VF_LOSS_UNCLIPPED_KEY,
 )
@@ -26,25 +25,29 @@ from ray.rllib.utils.typing import EpisodeType, ModuleID, TensorType
 torch, _ = try_import_torch()
 
 
-class PPOGlobalObservationsManyVF(PPOTorchLearner):
-    """A custom PPO torch learner with global policy and many vf-heads.
+class SharedPolicySeparateVFHeadsPPOTorchLearner(PPOTorchLearner):
+    """A custom PPO torch learner for a global policy and many vf-heads.
 
     The global policy takes a global observation as input and outputs all agents'
-    actions at once, for example as parameters for a MultiDiscrete distribution in case
-    of n agents, where each has a Discrete action distribution.
+    actions at once, for example as parameters for a `MultiDiscrete` distribution in
+    case the n agents each have a Discrete action space.
 
     The n value function heads are trained through individual reward streams and thus
     individual GAE computations, meaning one advantage stream and loss term per agent.
     """
+
     def build(self):
         super().build()
 
-        # Remove GAE connector and inject our own per-agent GAE connector.
+        # Remove PPO's default GAE connector and inject our own per-agent GAE
+        # connector.
         self._learner_connector.remove("GeneralAdvantageEstimation")
-        self._learner_connector.append(GAEForModuleWithMultipleVFHeads(
-            gamma=self.config.gamma,
-            lambda_=self.config.lambda_,
-        ))
+        self._learner_connector.append(
+            _GAEForModuleWithMultipleVFHeads(
+                gamma=self.config.gamma,
+                lambda_=self.config.lambda_,
+            )
+        )
 
     @override(PPOTorchLearner)
     def compute_loss_for_module(
@@ -76,11 +79,14 @@ class PPOGlobalObservationsManyVF(PPOTorchLearner):
 
         # Split actions into n individual agents' actions.
         action_batches = [
-            b.squeeze(-1)
-            for b in torch.split(batch[Columns.ACTIONS], 1, dim=-1)
+            b.squeeze(-1) for b in torch.split(batch[Columns.ACTIONS], 1, dim=-1)
         ]
-        action_dist_inputs_fwd = torch.split(fwd_out[Columns.ACTION_DIST_INPUTS], 2, dim=-1)
-        action_dist_inputs_batch = torch.split(batch[Columns.ACTION_DIST_INPUTS], 2, dim=-1)
+        action_dist_inputs_fwd = torch.split(
+            fwd_out[Columns.ACTION_DIST_INPUTS], 2, dim=-1
+        )
+        action_dist_inputs_batch = torch.split(
+            batch[Columns.ACTION_DIST_INPUTS], 2, dim=-1
+        )
         action_dist_class = TorchCategorical
 
         value_fn_out = None
@@ -126,20 +132,26 @@ class PPOGlobalObservationsManyVF(PPOTorchLearner):
 
             # Compute a value function loss.
             if config.use_critic:
-                vf_loss = torch.pow(value_fn_out[:, agent] - batch[Columns.VALUE_TARGETS + key], 2.0)
+                vf_loss = torch.pow(
+                    value_fn_out[:, agent] - batch[Columns.VALUE_TARGETS + key], 2.0
+                )
                 vf_loss_clipped = torch.clamp(vf_loss, 0, config.vf_clip_param)
                 mean_vf_loss = possibly_masked_mean(vf_loss_clipped)
                 mean_vf_unclipped_loss = possibly_masked_mean(vf_loss)
             # Ignore the value function -> Set all to 0.0.
             else:
                 z = torch.tensor(0.0, device=surrogate_loss.device)
-                value_fn_out = mean_vf_unclipped_loss = vf_loss_clipped = mean_vf_loss = z
+                value_fn_out = (
+                    mean_vf_unclipped_loss
+                ) = vf_loss_clipped = mean_vf_loss = z
 
             total_loss += possibly_masked_mean(
                 -surrogate_loss
                 + config.vf_loss_coeff * vf_loss_clipped
                 - (
-                    self.entropy_coeff_schedulers_per_module[module_id].get_current_value()
+                    self.entropy_coeff_schedulers_per_module[
+                        module_id
+                    ].get_current_value()
                     * curr_entropy
                 )
             )
@@ -168,8 +180,18 @@ class PPOGlobalObservationsManyVF(PPOTorchLearner):
         return total_loss
 
 
+class _GAEForModuleWithMultipleVFHeads(ConnectorV2):
+    """Custom LearnerConnector replacing PPO's default GAE one.
 
-class GAEForModuleWithMultipleVFHeads(ConnectorV2):
+    Used by the above custom Learner class' loss function, namely in the case where
+    the policy network is shared across all agents outputting a composite action, for
+    example multi-discrete, and there are n separate value functions or heads, each of
+    which requires its separate GAE computation from the agents' individual rewards.
+
+    Note that individual rewards must be present in the train batch under the columns
+    "rewards_agent[idx]", where `idx` is an integer starting with 0.
+    """
+
     def __init__(
         self,
         input_observation_space=None,
@@ -248,12 +270,12 @@ class GAEForModuleWithMultipleVFHeads(ConnectorV2):
                 agent_advantages = (agent_advantages - agent_advantages.mean()) / max(
                     1e-4, agent_advantages.std()
                 )
-                batch[module_id][Columns.ADVANTAGES + f"_agent{agent_idx}"] = (
-                    agent_advantages
-                )
-                batch[module_id][Columns.VALUE_TARGETS + f"_agent{agent_idx}"] = (
-                    agent_value_targets
-                )
+                batch[module_id][
+                    Columns.ADVANTAGES + f"_agent{agent_idx}"
+                ] = agent_advantages
+                batch[module_id][
+                    Columns.VALUE_TARGETS + f"_agent{agent_idx}"
+                ] = agent_value_targets
 
         # Convert all GAE results to tensors.
         if self._numpy_to_tensor_connector is None:
@@ -264,18 +286,14 @@ class GAEForModuleWithMultipleVFHeads(ConnectorV2):
             rl_module=rl_module,
             batch={
                 mid: {
-                    Columns.ADVANTAGES + "_agent0": (
-                        module_batch[Columns.ADVANTAGES + "_agent0"]
-                    ),
-                    Columns.ADVANTAGES + "_agent1": (
-                        module_batch[Columns.ADVANTAGES + "_agent1"]
-                    ),
-                    Columns.VALUE_TARGETS + "_agent0": (
-                        module_batch[Columns.VALUE_TARGETS + "_agent0"]
-                    ),
-                    Columns.VALUE_TARGETS + "_agent1": (
-                            module_batch[Columns.VALUE_TARGETS + "_agent1"]
-                    ),
+                    Columns.ADVANTAGES
+                    + "_agent0": (module_batch[Columns.ADVANTAGES + "_agent0"]),
+                    Columns.ADVANTAGES
+                    + "_agent1": (module_batch[Columns.ADVANTAGES + "_agent1"]),
+                    Columns.VALUE_TARGETS
+                    + "_agent0": (module_batch[Columns.VALUE_TARGETS + "_agent0"]),
+                    Columns.VALUE_TARGETS
+                    + "_agent1": (module_batch[Columns.VALUE_TARGETS + "_agent1"]),
                 }
                 for mid, module_batch in batch.items()
                 if vf_preds[mid] is not None

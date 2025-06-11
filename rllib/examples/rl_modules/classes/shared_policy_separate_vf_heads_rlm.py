@@ -5,15 +5,17 @@ import torch
 from ray.rllib.core.columns import Columns
 from ray.rllib.core.rl_module.apis import InferenceOnlyAPI, ValueFunctionAPI
 from ray.rllib.core.rl_module.torch import TorchRLModule
-from ray.rllib.models.torch.torch_distributions import TorchMultiCategorical
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.typing import TensorType
 
 
-class GlobalObsManyVFHeadsRLModule(TorchRLModule, InferenceOnlyAPI, ValueFunctionAPI):
-    """Model taking global obs for multiple agents and with many value heads.
+class SharedPolicySeparateVFHeadsRLModule(
+    TorchRLModule, InferenceOnlyAPI, ValueFunctionAPI
+):
+    """Multi-agent model demonstrating "shared-policy, but separate-vf branches" setup.
 
-    The input is the global observation, valid for all agents. The output is:
+    The input is the global observation, valid for all agents.
+    The output is:
     - Parameters for a single, merged action distribution, for example a MultiDiscrete.
     - n value heads for the individual value functions of the n agents.
     """
@@ -41,7 +43,9 @@ class GlobalObsManyVFHeadsRLModule(TorchRLModule, InferenceOnlyAPI, ValueFunctio
         # Note that the env needs to publish its `action_space` to be already the merger
         # of the individual agents' action spaces, for example a MultiDiscrete([...]) in
         # case of n individual Discrete action spaces.
-        output_dim = self.get_inference_action_dist_cls().required_input_dim(self.action_space)
+        output_dim = self.get_inference_action_dist_cls().required_input_dim(
+            self.action_space
+        )
 
         layers = []
         current_in = input_dim
@@ -60,7 +64,8 @@ class GlobalObsManyVFHeadsRLModule(TorchRLModule, InferenceOnlyAPI, ValueFunctio
                 torch.nn.Linear(current_in, 256),
                 torch.nn.ReLU(),
                 torch.nn.Linear(256, 1),
-            ) for _ in range(num_agents)
+            )
+            for _ in range(num_agents)
         ]
 
     def _forward(self, batch, **kwargs):
@@ -93,6 +98,16 @@ class GlobalObsManyVFHeadsRLModule(TorchRLModule, InferenceOnlyAPI, ValueFunctio
         batch: Dict[str, Any],
         embeddings: Optional[Any] = None,
     ) -> TensorType:
+        """Computes all values for all agents.
+
+        Note that the output shape is [B, N], where N is the number of agents. This
+        usually requires a custom loss function to handle the fact that not just 1 value
+        is computed (output shape [B,]).
+
+        See here for an example of a custom PPO-style loss function that goes together
+        with this type of multiple value heads:
+
+        """
         # Compute embeddings, if not provided by user.
         if embeddings is None:
             embeddings = self._encoder(batch[Columns.OBS])

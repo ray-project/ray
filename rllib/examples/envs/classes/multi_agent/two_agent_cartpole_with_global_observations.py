@@ -7,7 +7,42 @@ from ray.rllib.env.multi_agent_env import MultiAgentEnv
 
 
 class TwoAgentCartPoleWithGlobalObservations(MultiAgentEnv):
-    """TODO (sven): """
+    """2-agent version of CartPole, where each agent contributes to the overall action.
+
+    The only agentID active in this `MultiAgentEnv` is "global", however, under the
+    hood, this Env is a true multi-agent one (with hidden "agent0" and "agent1"
+    players). In particular:
+
+    - The observation space is the same as for CartPole-v1, `Box(shape=(4,), float)` and
+    the individual values in an observation have the same meaning.
+    - The action space is a `MultiDiscrete([2, 2])`, where each agent controls one slot
+    in that `MultiDiscrete` (`agent0` the first 2 discrete actions, 0 or 1, and
+    `agent1` the second 2 discrete actions, also 0 or 1).
+    - The actual actions applied to the underlying CartPole mechanism are as follows:
+    If `agent0` picks 1 and `player1` picks 0, then cartpole action=0 (move left).
+    If `agent0` picks 0 and `agent1` picks 1, then cartpole action=1 (move right).
+    In all other cases (both agents pick the same value), a random underlying cartpole
+    action is applied.
+    - The reward for the "global" agent is a dummy value that should NOT be used for
+    training. Instead, the indivudal rewards for each of the two agents are published
+    in the `infos` dicts, for example: infos={"global": {"agent0": 0.2, "agent1": 0.6}}.
+    Note that the `infos` dict returned from `reset()` doesn't contain any reward
+    information. Both agents receive 0.5 reward per step and an additional 0.1 bonus
+    if they chose 1 and the other agent choses 0.
+
+    The env should be used with a single-policy network, where the input is the global
+    observation and the output are parameters for the `MultiDiscrete` action
+    distribution, from which all agents' actions can be sampled at once.
+    Additionally, if value-function based training is used, the model should have 2
+    value heads for the different reward streams (one for each agent).
+
+    See here for an example RLModule:
+    `rllib/examples/rl_modules/classes/shared_policy_separate_vf_heads_rlm.py`
+
+    See here for an example custom Learner with custom loss function that can use the
+    above module and learn in this env:
+    `rllib/examples/learners/classes/shared_policy_separate_vf_heads_ppo_torch_learner.py`  # noqa
+    """
 
     def __init__(self, config=None):
         super().__init__()
@@ -46,8 +81,8 @@ class TwoAgentCartPoleWithGlobalObservations(MultiAgentEnv):
         else:
             # Act randomly in these cases.
             action = np.random.randint(0, 2)
-            #reward_agent_right += -0.1
-            #reward_agent_left += -0.1
+            reward_agent_left -= 0.1
+            reward_agent_right -= 0.1
 
         obs, _, terminated, truncated, _ = self._env.step(action)
 
@@ -70,6 +105,8 @@ class TwoAgentCartPoleWithGlobalObservations(MultiAgentEnv):
 
 
 class RewardsFromInfosConnector(ConnectorV2):
+    """Connector copying individual rewards from `infos` to specific batch columns."""
+
     def __call__(
         self,
         *,
@@ -82,6 +119,9 @@ class RewardsFromInfosConnector(ConnectorV2):
         **kwargs,
     ):
         for sa_episode in self.single_agent_episode_iterator(episodes):
+            # Skip 1st `info` dict, b/c it's irrelevant for the reward. For example,
+            # the episode starts with a `reset()` call and a first observation, but
+            # the corresponding `infos` dict doesn't have reward information in it.
             infos = sa_episode.get_infos()[1:]
             for agent in [0, 1]:
                 col = Columns.REWARDS + f"_agent{agent}"
