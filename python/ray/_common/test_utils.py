@@ -12,6 +12,7 @@ import tempfile
 import time
 import traceback
 from typing import Any, Callable
+import uuid
 
 import ray
 import ray._private.utils
