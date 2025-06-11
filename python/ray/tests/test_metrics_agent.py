@@ -317,7 +317,7 @@ def test_metrics_export_end_to_end(_setup_cluster_for_test):
 
         # Make sure the numeric values are correct
         test_counter_sample = [m for m in metric_samples if "test_counter" in m.name][0]
-        assert test_counter_sample.value == 4.0
+        assert test_counter_sample.value == 5.0
 
         test_driver_counter_sample = [
             m for m in metric_samples if "test_driver_counter" in m.name
