@@ -209,10 +209,10 @@ ray::Status StoreConn::ReadBuffer(
 }
 
 void StoreConn::ShutdownWorkerIfLocalRayletDisconnected(const ray::Status &status) {
-  // Here we don't explicitly check if the local raylet is dead, for the reasons that:
+  // We don't explicitly check if the local raylet is dead because:
   // 1. If the connection is from a core worker, the local raylet should be on the other
   // side of the connection.
-  // 2. On the raylet side, we never proactivately close the plasma store connection
+  // 2. On the raylet side, we never proactively close the plasma store connection
   // even during shutdown. So any error from the raylet side should be a sign of raylet
   // death.
   if (is_in_core_worker_ && !status.ok()) {
