@@ -1,6 +1,7 @@
 import os
 import sys
 import time
+from typing import Optional
 from concurrent.futures import ThreadPoolExecutor
 
 import pytest
@@ -138,39 +139,57 @@ def test_exception_raised_when_actor_node_dies(ray_start_cluster_head):
                 ray.get(x_id)
 
 
-def test_actor_init_fails(ray_start_cluster_head):
+def test_actor_fail_during_constructor_restart(ray_start_cluster_head):
     cluster = ray_start_cluster_head
-    worker_node = cluster.add_node()
+    worker_nodes = {
+        node.node_id: node for node in [cluster.add_node() for _ in range(2)]
+    }
 
     @ray.remote
-    class Counter:
+    class ReportNodeIDActor:
         def __init__(self):
-            self._count = 0
+            self._reported_node_id = None
 
-        def inc(self):
-            self._count += 1
+        def report(self, node_id: str):
+            self._reported_node_id = node_id
 
-        def get(self) -> int:
-            return self._count
+        def get(self) -> Optional[str]:
+            return self._reported_node_id
 
-    counter = Counter.remote()
-    assert ray.get(counter.get.remote()) == 0
+    # Pin these actors to the head node so they don't crash.
+    # Occupy the 1 CPU on the head node so the actor below is forced to a worker node.
+    pin_head_resources = {"node:__internal_head__": 0.1}
+    report_node_id_actor = ReportNodeIDActor.options(
+        num_cpus=0.5, resources=pin_head_resources
+    ).remote()
+    signal = SignalActor.options(
+        num_cpus=0.5,
+        resources=pin_head_resources,
+    ).remote()
 
     @ray.remote(max_restarts=1, max_task_retries=-1)
     class Actor:
         def __init__(self):
-            ray.get(counter.inc.remote())
+            ray.get(
+                report_node_id_actor.report.remote(
+                    ray.get_runtime_context().get_node_id()
+                )
+            )
+            ray.get(signal.wait.remote())
 
-    # Create many actors and wait for one of them to start initializing.
-    # At least a few should still be initializing.
-    actors = [Actor.remote() for _ in range(10)]
-    wait_for_condition(lambda: ray.get(counter.get.remote()) > 0)
+    # Create the actor and wait for it to start initializing.
+    actor = Actor.remote()
+    wait_for_condition(lambda: ray.get(signal.cur_num_waiters.remote()) == 1)
+    actor_node_id = ray.get(report_node_id_actor.get.remote())
+    assert actor_node_id is not None
 
     # Kill the worker node.
-    cluster.remove_node(worker_node)
+    cluster.remove_node(worker_nodes[actor_node_id])
 
-    # Verify that all the actors were able to be restarted on the new node.
-    ray.get([actor.__ray_ready__.remote() for actor in actors])
+    # Verify that the actor was restarted on the other node.
+    ray.get(signal.send.remote())
+    ray.get(actor.__ray_ready__.remote())
+    assert ray.get(report_node_id_actor.get.remote()) != actor_node_id
 
 
 def test_reconstruction_suppression(ray_start_cluster_head):
@@ -1064,7 +1083,7 @@ def test_get_actor_after_killed(shutdown_only):
     assert ray.get(ray.get_actor("actor_2", namespace="namespace").ready.remote())
 
 
-def test_get_actor_race_condition(shutdown_only):
+def test_get_actor_from_concurrent_tasks(shutdown_only):
     @ray.remote
     class Actor:
         def get_actor_id(self) -> str:
@@ -1075,12 +1094,16 @@ def test_get_actor_race_condition(shutdown_only):
     @ray.remote(num_cpus=0)
     def get_or_create_actor():
         try:
+            # The first task will try to get the actor but fail (doesn't exist).
             try:
                 actor = ray.get_actor(actor_name)
             except Exception:
                 print("Get failed, trying to create")
                 actor = Actor.options(name=actor_name, lifetime="detached").remote()
         except Exception:
+            # Multiple tasks may have reached the creation block above.
+            # Only one will succeed and the others will get an error, in which case
+            # they fall here and should be able to get the actor handle.
             print("Someone else created it, trying to get")
             actor = ray.get_actor(actor_name)
 
@@ -1088,10 +1111,10 @@ def test_get_actor_race_condition(shutdown_only):
 
     # Run 10 concurrent tasks to get or create the same actor.
     # Only one task should succeed at creating it, and all the others should get it.
-    assert len(set(ray.get([get_or_create_actor.remote() for _ in range(10)])))
+    assert len(set(ray.get([get_or_create_actor.remote() for _ in range(10)]))) == 1
 
 
-def test_create_actor_race_condition(shutdown_only):
+def test_get_or_create_actor_from_multiple_threads(shutdown_only):
     """Make sure we can create actors in multiple threads without
     race conditions.
 
