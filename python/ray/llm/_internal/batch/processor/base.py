@@ -1,20 +1,19 @@
 import logging
 from collections import OrderedDict
-from typing import Optional, List, Type, Callable, Dict, Union, Tuple, Any
+from typing import Any, Callable, Dict, List, Optional, Tuple, Type, Union
 
 from pydantic import Field
 
-from ray.data.block import UserDefinedFunction
+import ray
 from ray.data import Dataset
-from ray.util.annotations import PublicAPI, DeveloperAPI
-
+from ray.data.block import UserDefinedFunction
 from ray.llm._internal.batch.stages import (
     StatefulStage,
-    wrap_preprocess,
     wrap_postprocess,
+    wrap_preprocess,
 )
 from ray.llm._internal.common.base_pydantic import BaseModelExtended
-
+from ray.util.annotations import DeveloperAPI, PublicAPI
 
 logger = logging.getLogger(__name__)
 
@@ -132,6 +131,14 @@ class Processor:
         self.preprocess = None
         self.postprocess = None
         self.stages: OrderedDict[str, StatefulStage] = OrderedDict()
+
+        # FIXES: https://github.com/ray-project/ray/issues/53124
+        # TODO (Kourosh): Remove this once the issue is fixed
+        data_context = ray.data.DataContext.get_current()
+        data_context.wait_for_min_actors_s = 600
+        # TODO: Remove this when https://github.com/ray-project/ray/issues/53169
+        # is fixed.
+        data_context._enable_actor_pool_on_exit_hook = True
 
         # NOTE (Kourosh): If pre/postprocess is not provided, use the identity function.
         # Wrapping is required even if they are identity functions, b/c data_column

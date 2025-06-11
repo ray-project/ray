@@ -78,12 +78,13 @@ class ActorTaskSubmitter : public ActorTaskSubmitterInterface {
                      CoreWorkerMemoryStore &store,
                      TaskFinisherInterface &task_finisher,
                      ActorCreatorInterface &actor_creator,
+                     const TensorTransportGetter &tensor_transport_getter,
                      std::function<void(const ActorID &, int64_t)> warn_excess_queueing,
                      instrumented_io_context &io_service,
                      std::shared_ptr<ReferenceCounterInterface> reference_counter)
       : core_worker_client_pool_(core_worker_client_pool),
         actor_creator_(actor_creator),
-        resolver_(store, task_finisher, actor_creator),
+        resolver_(store, task_finisher, actor_creator, tensor_transport_getter),
         task_finisher_(task_finisher),
         warn_excess_queueing_(warn_excess_queueing),
         io_service_(io_service),
@@ -405,8 +406,10 @@ class ActorTaskSubmitter : public ActorTaskSubmitterInterface {
       const absl::flat_hash_map<TaskAttempt, rpc::ClientCallback<rpc::PushTaskReply>>
           &inflight_task_callbacks) ABSL_LOCKS_EXCLUDED(mu_);
 
-  /// Restart the actor from DEAD by sending a RestartActor rpc to GCS.
-  void RestartActor(const ActorID &actor_id) ABSL_EXCLUSIVE_LOCKS_REQUIRED(mu_);
+  /// Restart the actor from DEAD by sending a RestartActorForLineageReconstruction rpc to
+  /// GCS.
+  void RestartActorForLineageReconstruction(const ActorID &actor_id)
+      ABSL_EXCLUSIVE_LOCKS_REQUIRED(mu_);
 
   void NotifyGCSWhenActorOutOfScope(const ActorID &actor_id,
                                     uint64_t num_restarts_due_to_lineage_reconstructions);

@@ -1,9 +1,11 @@
+import random
 import sys
 import time
 from unittest.mock import patch
 
 import pytest
 
+from ray._common.test_utils import wait_for_condition
 import ray._private.prometheus_exporter as prometheus_exporter
 
 from typing import List
@@ -16,7 +18,12 @@ from prometheus_client.core import REGISTRY
 
 
 from ray._private.metrics_agent import Gauge, MetricsAgent, Record, RAY_WORKER_TIMEOUT_S
-from opencensus.stats.aggregation_data import LastValueAggregationData
+from opencensus.stats.aggregation_data import (
+    LastValueAggregationData,
+    SumAggregationData,
+    CountAggregationData,
+    DistributionAggregationData,
+)
 from opencensus.metrics.export.value import ValueDouble
 from ray._private.metrics_agent import (
     MetricCardinalityLevel,
@@ -24,7 +31,6 @@ from ray._private.metrics_agent import (
     OpencensusProxyMetric,
     WORKER_ID_TAG_KEY,
 )
-from ray._private.services import new_port
 from ray.core.generated.metrics_pb2 import (
     Metric,
     MetricDescriptor,
@@ -37,7 +43,6 @@ from ray._raylet import WorkerID
 from ray._private.test_utils import (
     fetch_prometheus_metrics,
     fetch_raw_prometheus,
-    wait_for_condition,
 )
 
 
@@ -101,7 +106,7 @@ def get_agent(request, monkeypatch):
             delay = 0
 
         m.setenv(RAY_WORKER_TIMEOUT_S, delay)
-        agent_port = new_port()
+        agent_port = random.randint(10000, 65535)
         stats_recorder = StatsRecorder()
         view_manager = ViewManager()
         stats_exporter = prometheus_exporter.new_stats_exporter(
@@ -548,6 +553,39 @@ def _stub_worker_level_metric(label: str, value: float) -> OpencensusProxyMetric
         LastValueAggregationData(ValueDouble, value),
     )
     return metric
+
+
+def test_aggregate_metric_data():
+    collector = OpenCensusProxyCollector("")
+    collector._aggregate_metric_data(
+        [
+            LastValueAggregationData(ValueDouble, 1.0),
+            LastValueAggregationData(ValueDouble, 2.0),
+            LastValueAggregationData(ValueDouble, 3.0),
+        ]
+    ).value == 6.0
+    collector._aggregate_metric_data(
+        [
+            SumAggregationData(ValueDouble, 1.0),
+            SumAggregationData(ValueDouble, 4.0),
+        ]
+    ).sum_data == 5.0
+    collector._aggregate_metric_data(
+        [
+            CountAggregationData(1),
+            CountAggregationData(1),
+        ]
+    ).count_data == 2
+    with pytest.raises(ValueError, match="Unsupported aggregation type"):
+        collector._aggregate_metric_data(
+            [
+                DistributionAggregationData(
+                    mean_data=1.0,
+                    count_data=1,
+                    sum_of_sqd_deviations=1.0,
+                )
+            ]
+        )
 
 
 def test_collect_worker_metrics_with_recommended_cardinality():

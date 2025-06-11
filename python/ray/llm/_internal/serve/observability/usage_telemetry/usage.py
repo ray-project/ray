@@ -1,21 +1,19 @@
 from enum import Enum
-from typing import Callable, Dict, List, Optional, Sequence, TYPE_CHECKING
-
-import ray
+from typing import TYPE_CHECKING, Callable, Dict, List, Optional, Sequence
 
 # TODO (genesu): remove dependency on botocore
 from botocore.exceptions import ClientError
+
+import ray
 from ray import serve
-
 from ray._private.usage.usage_lib import (
-    record_extra_usage_tag,
     get_hardware_usages_to_report,
+    record_extra_usage_tag,
 )
-
-from ray.llm._internal.serve.observability.logging import get_logger
-from ray.llm._internal.serve.deployments.llm.multiplex.utils import get_lora_model_ids
 from ray.llm._internal.common.base_pydantic import BaseModelExtended
 from ray.llm._internal.common.observability.telemetry_utils import DEFAULT_GPU_TYPE
+from ray.llm._internal.serve.deployments.llm.multiplex.utils import get_lora_model_ids
+from ray.llm._internal.serve.observability.logging import get_logger
 
 if TYPE_CHECKING:
     from ray.llm._internal.serve.configs.server_models import LLMConfig

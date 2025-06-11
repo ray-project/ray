@@ -9,7 +9,7 @@ import pytest
 import ray
 from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
 from ray.util.state import list_tasks
-from ray._private.test_utils import wait_for_condition
+from ray._common.test_utils import wait_for_condition
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="Fails on windows")
@@ -414,6 +414,44 @@ def test_async_actor_task_id(shutdown_only):
         return True
 
     wait_for_condition(verify)
+
+
+def test_get_node_labels(ray_start_cluster_head):
+    cluster = ray_start_cluster_head
+    cluster.add_node(
+        resources={"worker1": 1},
+        num_cpus=1,
+        labels={
+            "accelerator-type": "A100",
+            "region": "us-west4",
+            "market-type": "spot",
+        },
+    )
+    # ray.init(address=cluster.address)
+
+    @ray.remote
+    class Actor:
+        def get_node_id(self):
+            return ray.get_runtime_context().get_node_id()
+
+        def get_node_labels(self):
+            return ray.get_runtime_context().get_node_labels()
+
+    expected_node_labels = {
+        "accelerator-type": "A100",
+        "region": "us-west4",
+        "market-type": "spot",
+    }
+
+    # Check node labels from Actor runtime context
+    a = Actor.options(label_selector={"accelerator-type": "A100"}).remote()
+    node_labels = ray.get(a.get_node_labels.remote())
+    expected_node_labels["ray.io/node_id"] = ray.get(a.get_node_id.remote())
+    assert expected_node_labels == node_labels
+
+    # Check node labels from driver runtime context (none are set except default)
+    driver_labels = ray.get_runtime_context().get_node_labels()
+    assert {"ray.io/node_id": ray.get_runtime_context().get_node_id()} == driver_labels
 
 
 if __name__ == "__main__":

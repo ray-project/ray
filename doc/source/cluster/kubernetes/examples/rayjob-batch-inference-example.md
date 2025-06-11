@@ -14,7 +14,7 @@ You must have a Kubernetes cluster running,`kubectl` configured to use it, and G
 If you already have a Kubernetes cluster with GPUs, you can skip this step.
 
 
-Otherwise, follow [this tutorial](kuberay-gke-gpu-cluster-setup), but substitute the following GPU node pool creation command to create a Kubernetes cluster on GKE with four Nvidia T4 GPUs:
+Otherwise, follow [this tutorial](kuberay-gke-gpu-cluster-setup), but substitute the following GPU node pool creation command to create a Kubernetes cluster on GKE with four NVIDIA T4 GPUs:
 
 ```sh
 gcloud container node-pools create gpu-node-pool \
@@ -28,7 +28,7 @@ gcloud container node-pools create gpu-node-pool \
   --machine-type n1-standard-64
 ```
 
-This example uses four [Nvidia T4](https://cloud.google.com/compute/docs/gpus#nvidia_t4_gpus) GPUs. The machine type is `n1-standard-64`, which has [64 vCPUs and 240 GB RAM](https://cloud.google.com/compute/docs/general-purpose-machines#n1_machine_types).
+This example uses four [NVIDIA T4](https://cloud.google.com/compute/docs/gpus#nvidia_t4_gpus) GPUs. The machine type is `n1-standard-64`, which has [64 vCPUs and 240 GB RAM](https://cloud.google.com/compute/docs/general-purpose-machines#n1_machine_types).
 
 ## Step 1: Install the KubeRay Operator
 

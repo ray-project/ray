@@ -5,7 +5,7 @@ import threading
 
 import pytest
 
-from ray._private.test_utils import wait_for_condition
+from ray._common.test_utils import wait_for_condition
 from ray.serve._private.utils import run_coroutine_or_future_threadsafe
 
 
