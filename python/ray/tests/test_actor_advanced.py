@@ -1067,7 +1067,7 @@ def test_get_actor_after_killed(shutdown_only):
         def ready(self):
             return True
 
-    actor = A.options(name="actor", namespace="namespace", lifetime="detached").remote()
+    actor = A.options(name="actor", namespace="namespace").remote()
     ray.kill(actor)
     with pytest.raises(ValueError):
         ray.get_actor("actor", namespace="namespace")
@@ -1075,7 +1075,6 @@ def test_get_actor_after_killed(shutdown_only):
     actor = A.options(
         name="actor_2",
         namespace="namespace",
-        lifetime="detached",
         max_restarts=1,
         max_task_retries=-1,
     ).remote()
@@ -1099,7 +1098,7 @@ def test_get_actor_from_concurrent_tasks(shutdown_only):
                 actor = ray.get_actor(actor_name)
             except Exception:
                 print("Get failed, trying to create")
-                actor = Actor.options(name=actor_name, lifetime="detached").remote()
+                actor = Actor.options(name=actor_name).remote()
         except Exception:
             # Multiple tasks may have reached the creation block above.
             # Only one will succeed and the others will get an error, in which case
@@ -1145,9 +1144,7 @@ def test_get_or_create_actor_from_multiple_threads(shutdown_only):
     def _create_or_get_actor(*args):
         a = Actor.options(
             name="test_actor",
-            namespace="test_namespace",
             get_if_exists=True,
-            lifetime="detached",
         ).remote()
 
         return ray.get(a.get_actor_id.remote())
