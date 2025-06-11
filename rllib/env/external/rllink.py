@@ -2,13 +2,13 @@ from enum import Enum
 from packaging.version import Version
 
 from ray.rllib.utils.checkpoints import try_import_msgpack
-from ray.util.annotations import PublicAPI
+from ray.util.annotations import DeveloperAPI
 
 
 msgpack = try_import_msgpack()
 
 
-@PublicAPI(stability="alpha")
+@DeveloperAPI
 class RLlink(Enum):
     PROTOCOL_VERSION = Version("0.0.1")
 
@@ -52,6 +52,7 @@ class RLlink(Enum):
         return self.name
 
 
+@DeveloperAPI
 def send_rllink_message(sock_, message: dict):
     """Sends a message to the client with a length header."""
     body = msgpack.packb(message, use_bin_type=True)  # .encode("utf-8")
@@ -65,6 +66,7 @@ def send_rllink_message(sock_, message: dict):
         )
 
 
+@DeveloperAPI
 def get_rllink_message(sock_):
     """Receives a message from the client following the length-header protocol."""
     try:
