@@ -392,26 +392,25 @@ def run_release_test(
     test_definition_root: Optional[str] = None,
     log_streaming_limit: int = LAST_LOGS_LENGTH,
 ) -> Result:
-    if test.get_env() == "kuberay":
+    if test.is_kuberay():
         return run_release_test_kuberay(
             test=test,
             result=result,
             smoke_test=smoke_test,
             test_definition_root=test_definition_root,
         )
-    else:
-        return run_release_test_anyscale(
-            test=test,
-            anyscale_project=anyscale_project,
-            result=result,
-            reporters=reporters,
-            smoke_test=smoke_test,
-            cluster_id=cluster_id,
-            cluster_env_id=cluster_env_id,
-            no_terminate=no_terminate,
-            test_definition_root=test_definition_root,
-            log_streaming_limit=log_streaming_limit,
-        )
+    return run_release_test_anyscale(
+        test=test,
+        anyscale_project=anyscale_project,
+        result=result,
+        reporters=reporters,
+        smoke_test=smoke_test,
+        cluster_id=cluster_id,
+        cluster_env_id=cluster_env_id,
+        no_terminate=no_terminate,
+        test_definition_root=test_definition_root,
+        log_streaming_limit=log_streaming_limit,
+    )
 
 
 def run_release_test_kuberay(
@@ -472,7 +471,6 @@ def run_release_test_anyscale(
     pipeline_exception = None
     # non critical for some tests. So separate it from the general one.
     fetch_result_exception = None
-
     try:
         buildkite_group(":spiral_note_pad: Loading test configuration")
         cluster_manager, command_runner, artifact_path = _load_test_configuration(

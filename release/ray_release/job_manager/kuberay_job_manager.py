@@ -91,14 +91,8 @@ class KubeRayJobManager:
         }
 
         logger.info(f"Submitting KubeRay job request: {request}")
-        try:
-            response = requests.post(url, json=request, headers=headers)
-            print(f"Response: {response}")
-            response.raise_for_status()
-        except Exception as e:
-            raise JobStartupFailed(
-                "Error starting job with name " f"{self.job_name}: " f"{e}"
-            ) from e
+        response = requests.post(url, json=request, headers=headers)
+        response.raise_for_status()
 
     def _wait_job(self, timeout_sec: int = 7200) -> Tuple[int, float]:
         """
