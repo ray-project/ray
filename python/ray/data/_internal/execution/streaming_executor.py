@@ -1,3 +1,4 @@
+import logging
 import threading
 import time
 from typing import Dict, List, Optional, Tuple
@@ -33,8 +34,9 @@ from ray.data._internal.logging import (
 from ray.data._internal.metadata_exporter import Topology as TopologyMetadata
 from ray.data._internal.progress_bar import ProgressBar
 from ray.data._internal.stats import DatasetState, DatasetStats, StatsManager, Timer
-from ray.data._internal.util import logger
 from ray.data.context import OK_PREFIX, WARN_PREFIX, DataContext
+
+logger = logging.getLogger(__name__)
 
 # Force a progress bar update after this many events processed . This avoids the
 # progress bar seeming to stall for very large scale workloads.
