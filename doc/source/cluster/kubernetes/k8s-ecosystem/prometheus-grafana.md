@@ -428,7 +428,30 @@ For example, in the following figures, one selects the metrics from the RayClust
 
 ![Grafana Ray Dashboard2](../images/grafana_ray_dashboard2.png)
 
-## Step 14: Embed Grafana panels in Ray Dashboard (optional)
+## Step 14: View KubeRay Operator dashboard
+
+Once the KubeRay Operator dashboard is imported into Grafana, you can monitor metrics from the KubeRay operator. The dashboard provides a dropdown menu to filter and view specific controller runtime metrics for different Ray CRs (`raycluster`, `rayjob`, `rayservice`).
+
+- Controller Runtime Panel
+![Grafana KubeRay Operator Controller Runtime dashboard](../images/kuberay-dashboard-controller-runtime.png)
+
+- RayCluster Panel
+![Grafana KubeRay Operator RayCluster dashboard](../images/kuberay-dashboard-raycluster.png)
+
+- RayService Panel
+![Grafana KubeRay Operator RayService dashboard](../images/kuberay-dashboard-rayservice.png)
+
+- RayJob Panel
+![Grafana KubeRay Operator RayJob dashboard](../images/kuberay-dashboard-rayjob.png)
+
+
+
+
+
+
+
+
+## Step 15: Embed Grafana panels in Ray Dashboard (optional)
 
 ```sh
 kubectl port-forward service/raycluster-embed-grafana-head-svc dashboard
