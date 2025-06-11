@@ -444,13 +444,6 @@ Once the KubeRay Operator dashboard is imported into Grafana, you can monitor me
 - RayJob Panel
 ![Grafana KubeRay Operator RayJob dashboard](../images/kuberay-dashboard-rayjob.png)
 
-
-
-
-
-
-
-
 ## Step 15: Embed Grafana panels in Ray Dashboard (optional)
 
 ```sh
