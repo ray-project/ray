@@ -213,7 +213,6 @@ class MLflowTest(unittest.TestCase):
         logger.setup()
         exp_id = logger.mlflow_util.experiment_id
 
-        # Check if run is created with proper tags.
         logger.on_trial_start(iteration=0, trials=[], trial=trial)
         all_runs = logger.mlflow_util._mlflow.search_runs(experiment_ids=[exp_id])
         self.assertEqual(len(all_runs), 1)
