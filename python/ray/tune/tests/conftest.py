@@ -3,7 +3,7 @@ import logging
 import boto3
 import pytest
 
-from ray._common.test_utils import simulate_storage
+from ray._common.test_utils import simulate_s3_bucket
 from ray.air._internal.uri_utils import URI
 
 # Trigger pytest hook to automatically zip test cluster logs to archive dir on failure
@@ -17,7 +17,7 @@ from ray.tests.conftest import (
 def mock_s3_bucket_uri():
     port = 5002
     region = "us-west-2"
-    with simulate_storage("s3", port=port, region=region) as s3_uri:
+    with simulate_s3_bucket(port=port, region=region) as s3_uri:
         s3 = boto3.client(
             "s3", region_name=region, endpoint_url=f"http://localhost:{port}"
         )
