@@ -15,6 +15,7 @@ _, tf, _ = try_import_tf()
 torch, _ = try_import_torch()
 
 
+@DeveloperAPI
 def compute_percentiles(sorted_list, percentiles):
     """Compute percentiles from an already sorted list.
 
