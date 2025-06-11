@@ -4,6 +4,7 @@ import sys
 import threading
 import time
 import traceback
+from concurrent.futures import ThreadPoolExecutor
 
 import numpy as np
 import pytest
@@ -1180,52 +1181,41 @@ def test_create_actor_race_condition(shutdown_only):
     """
 
     @ray.remote
+    class Counter:
+        def __init__(self):
+            self._count = 0
+
+        def inc(self):
+            self._count += 1
+
+        def get(self) -> int:
+            return self._count
+
+    counter = Counter.remote()
+
+    @ray.remote
     class Actor:
-        pass
+        def __init__(self):
+            ray.get(counter.inc.remote())
 
-    def create(name, namespace, results, i):
-        time.sleep(random.random())
-        try:
-            Actor.options(
-                name=name,
-                namespace=namespace,
-                get_if_exists=True,
-                lifetime="detached",
-            ).remote()
-            results[i] = "ok"
-        except Exception:
-            e = traceback.format_exc()
-            results[i] = e
+        def get_actor_id(self) -> str:
+            return ray.get_runtime_context().get_actor_id()
 
-    CONCURRENCY = 1000
-    ACTOR_NAME = "TestActor"
-    ACTOR_NAMESPACE = "TestNamespace"
+    def _create_or_get_actor(*args):
+        a = Actor.options(
+            name="test_actor",
+            namespace="test_namespace",
+            get_if_exists=True,
+            lifetime="detached",
+        ).remote()
 
-    def run_and_check():
-        results = [None] * CONCURRENCY
-        threads = [None] * CONCURRENCY
-        for i in range(CONCURRENCY):
-            threads[i] = threading.Thread(
-                target=create, args=(ACTOR_NAME, ACTOR_NAMESPACE, results, i)
-            )
+        return ray.get(a.get_actor_id.remote())
 
-        for thread in threads:
-            thread.start()
-
-        for thread in threads:
-            thread.join()
-
-        for result in results:
-            assert result == "ok"
-
-        actor = ray.get_actor(
-            ACTOR_NAME, namespace=ACTOR_NAMESPACE
-        )  # Creation and get should be successful
-        ray.kill(actor)  # Cleanup
-
-    ray.init()
-    for _ in range(50):
-        run_and_check()
+    # Concurrently submit 100 calls to create or get the actor from 10 threads.
+    # Ensure that exactly one call actually creates the actor and the other 99 get it.
+    with ThreadPoolExecutor(max_workers=10) as tp:
+        assert len(set(tp.map(_create_or_get_actor, range(100)))) == 1
+        assert ray.get(counter.get.remote()) == 1
 
 
 def test_get_actor_in_remote_workers(ray_start_cluster):
