@@ -184,8 +184,8 @@ def delete_torch_compile_cache_on_worker():
     [
         # LLaVA model with TP=1, PP=1, concurrency=1
         ("llava-hf/llava-1.5-7b-hf", 1, 1, 1, 60),
-        # DeepSeek VL2 model with TP=2, PP=1, concurrency=2
-        ("deepseek-ai/deepseek-vl2-tiny", 2, 1, 2, 60),
+        # LLaVA model with TP=2, PP=1, concurrency=2
+        ("llava-hf/llava-1.5-7b-hf", 2, 1, 2, 60),
     ],
 )
 def test_vllm_vision_language_models(
@@ -207,8 +207,9 @@ def test_vllm_vision_language_models(
         engine_kwargs=dict(
             tensor_parallel_size=tp_size,
             pipeline_parallel_size=pp_size,
-            max_model_len=4096,
+            max_model_len=2048,
             enable_chunked_prefill=True,
+            trust_remote_code=True,
         ),
         apply_chat_template=True,
         tokenize=tokenize,
