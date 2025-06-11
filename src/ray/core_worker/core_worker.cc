@@ -785,13 +785,18 @@ CoreWorker::CoreWorker(CoreWorkerOptions options, const WorkerID &worker_id)
 
   actor_creator_ = std::make_shared<DefaultActorCreator>(gcs_client_);
 
-  actor_task_submitter_ = std::make_unique<ActorTaskSubmitter>(*core_worker_client_pool_,
-                                                               *memory_store_,
-                                                               *task_manager_,
-                                                               *actor_creator_,
-                                                               on_excess_queueing,
-                                                               io_service_,
-                                                               reference_counter_);
+  actor_task_submitter_ = std::make_unique<ActorTaskSubmitter>(
+      *core_worker_client_pool_,
+      *memory_store_,
+      *task_manager_,
+      *actor_creator_,
+      /*tensor_transport_getter=*/
+      [this](const ObjectID &object_id) {
+        return reference_counter_->GetTensorTransport(object_id);
+      },
+      on_excess_queueing,
+      io_service_,
+      reference_counter_);
 
   auto node_addr_factory = [this](const NodeID &node_id) {
     std::optional<rpc::Address> addr;
@@ -825,6 +830,13 @@ CoreWorker::CoreWorker(CoreWorkerOptions options, const WorkerID &worker_id)
       actor_creator_,
       worker_context_.GetCurrentJobID(),
       lease_request_rate_limiter_,
+      /*tensor_transport_getter=*/
+      [](const ObjectID &object_id) {
+        // Currently, out-of-band tensor transport (i.e., GPU objects) is only
+        // supported for actor tasks. Therefore, normal tasks should always use
+        // OBJECT_STORE.
+        return rpc::TensorTransport::OBJECT_STORE;
+      },
       boost::asio::steady_timer(io_service_));
   auto report_locality_data_callback = [this](
                                            const ObjectID &object_id,
@@ -3787,7 +3799,7 @@ Status CoreWorker::GetAndPinArgsForExecutor(const TaskSpecification &task,
       // otherwise, the put is a no-op.
       if (!options_.is_local_mode) {
         RAY_UNUSED(memory_store_->Put(RayObject(rpc::ErrorType::OBJECT_IN_PLASMA),
-                                      task.ArgId(i)));
+                                      task.ArgObjectId(i)));
       }
     } else {
       // A pass-by-value argument.
@@ -3808,7 +3820,7 @@ Status CoreWorker::GetAndPinArgsForExecutor(const TaskSpecification &task,
       args->push_back(std::make_shared<RayObject>(
           std::move(data), std::move(metadata), task.ArgInlinedRefs(i), copy_data));
       auto &arg_ref = arg_refs->emplace_back();
-      arg_ref.set_object_id(task.ArgId(i).Binary());
+      arg_ref.set_object_id(task.ArgObjectIdBinary(i));
       // The task borrows all ObjectIDs that were serialized in the inlined
       // arguments. The task will receive references to these IDs, so it is
       // possible for the task to continue borrowing these arguments by the
@@ -4626,7 +4638,7 @@ void CoreWorker::HandleGetCoreWorkerStats(rpc::GetCoreWorkerStatsRequest request
   if (request.include_task_info()) {
     task_manager_->FillTaskInfo(reply, limit);
     for (const auto &current_running_task : running_tasks_) {
-      reply->add_running_task_ids(current_running_task.second.TaskId().Binary());
+      reply->add_running_task_ids(current_running_task.second.TaskIdBinary());
     }
   }
 

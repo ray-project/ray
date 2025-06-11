@@ -32,6 +32,11 @@ class OpenTelemetryMetricRecorderTest : public ::testing::Test {
         std::chrono::milliseconds(5000));
   }
 
+  static void TearDownTestSuite() {
+    // Cleanup if necessary
+    OpenTelemetryMetricRecorder::GetInstance().Shutdown();
+  }
+
  protected:
   OpenTelemetryMetricRecorder &recorder_;
 };

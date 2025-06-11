@@ -29,11 +29,13 @@ import ray._private.ray_constants as ray_constants
 from ray._raylet import GcsClient, ActorID, JobID, TaskID
 from ray._private.test_utils import (
     run_string_as_driver,
-    wait_for_condition,
-    async_wait_for_condition,
     find_free_port,
 )
-from ray._common.test_utils import SignalActor
+from ray._common.test_utils import (
+    SignalActor,
+    async_wait_for_condition,
+    wait_for_condition,
+)
 from ray.cluster_utils import cluster_not_supported
 from ray._raylet import NodeID
 from ray.core.generated.common_pb2 import (
@@ -2546,6 +2548,71 @@ def test_list_actor_tasks_call_site(shutdown_only):
 
     wait_for_condition(verify)
     print(list_tasks())
+
+
+def test_list_get_tasks_label_selector(ray_start_cluster):
+    """
+    Call chain: Driver -> caller -> callee.
+    Verify that the call site is captured in callee, and it contains string
+    "caller".
+    """
+    cluster = ray_start_cluster
+    cluster.add_node(
+        num_cpus=2, labels={"ray.io/accelerator-type": "A100", "region": "us-west4"}
+    )
+    ray.init(address=cluster.address)
+    cluster.wait_for_nodes()
+
+    @ray.remote(label_selector={"region": "us-west4"})
+    def foo():
+        import time
+
+        time.sleep(5)
+
+    call_ref = foo.remote()
+
+    ray.get(call_ref)
+
+    def verify():
+        task = get_task(call_ref)
+        assert task["label_selector"] == {"region": "us-west4"}
+        return True
+
+    wait_for_condition(verify)
+    print(list_tasks())
+
+
+def test_list_actor_tasks_label_selector(ray_start_cluster):
+    """
+    Call chain: Driver -> create_actor -> (Actor, Actor.method).
+
+    Verify that the call sites are captured in both Actor and Actor.method,
+    and they contain string "create_actor".
+    """
+    cluster = ray_start_cluster
+    cluster.add_node(num_cpus=2, labels={"region": "us-west4"})
+    ray.init(address=cluster.address)
+    cluster.wait_for_nodes()
+
+    @ray.remote(label_selector={"region": "us-west4"})
+    class Actor:
+        def method(self):
+            import time
+
+            time.sleep(5)
+
+    actor = Actor.remote()
+    ray.get(actor.method.remote())
+
+    def verify():
+        actors = list_actors(detail=True)
+        assert len(actors) == 1
+        actor = actors[0]
+        assert actor["label_selector"] == {"region": "us-west4"}
+        return True
+
+    wait_for_condition(verify)
+    print(list_actors(detail=True))
 
 
 def test_pg_worker_id_tasks(shutdown_only):
