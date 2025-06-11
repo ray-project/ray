@@ -4358,6 +4358,7 @@
 
   cluster:
     byod:
+      # Change to cu128
       type: llm-cu124
     cluster_compute: llm_4xl4.yaml
     # NOTE: Important for getting the correct secrets

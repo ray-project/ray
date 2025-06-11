@@ -17,6 +17,7 @@ steps:
       - oss-ci-base_gpu-multipy
     env:
       IMAGE_TO: "llmgpubuild"
+      # Probably want a new base that has cuda 12.8 SDK
       IMAGE_FROM: "cr.ray.io/rayproject/oss-ci-base_gpu-py3.11"
       RAY_CUDA_CODE: "cu121"
 
