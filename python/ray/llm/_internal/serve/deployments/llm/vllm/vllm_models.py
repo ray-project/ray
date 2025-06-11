@@ -142,6 +142,12 @@ class VLLMEngineConfig(BaseModelExtended):
 
     @property
     def placement_bundles(self) -> List[Dict[str, float]]:
+        import os
+
+        # Check if we're in a test environment that wants to disable placement groups
+        if os.environ.get("RAYLLM_TEST_DISABLE_PLACEMENT_GROUPS") == "1":
+            return []
+
         if self.resources_per_bundle:
             bundle = self.resources_per_bundle
         else:

@@ -28,13 +28,23 @@ def patch_placement_bundles_for_tests():
 
     This prevents tests from requiring actual GPU hardware when configs specify
     accelerator types, eliminating the need for mock_resource hacks in production code.
+
+    Also sets an environment variable so subprocesses (like 'serve run') get the same behavior.
     """
+    import os
+
+    # Set environment variable for subprocesses
+    os.environ["RAYLLM_TEST_DISABLE_PLACEMENT_GROUPS"] = "1"
+
     with patch.object(
         VLLMEngineConfig,
         "placement_bundles",
         new_callable=lambda: property(lambda self: []),
     ):
         yield
+
+    # Clean up environment variable
+    os.environ.pop("RAYLLM_TEST_DISABLE_PLACEMENT_GROUPS", None)
 
 
 @pytest.fixture
