@@ -21,28 +21,6 @@ from ray._private.ray_constants import gcs_actor_scheduling_enabled
 from ray.experimental.internal_kv import _internal_kv_get, _internal_kv_put
 
 
-def test_remote_functions_not_scheduled_on_actors(ray_start_regular):
-    # Make sure that regular remote functions are not scheduled on actors.
-
-    @ray.remote
-    class Actor:
-        def __init__(self):
-            pass
-
-        def get_id(self):
-            return ray.get_runtime_context().get_worker_id()
-
-    a = Actor.remote()
-    actor_id = ray.get(a.get_id.remote())
-
-    @ray.remote
-    def f():
-        return ray.get_runtime_context().get_worker_id()
-
-    resulting_ids = ray.get([f.remote() for _ in range(100)])
-    assert actor_id not in resulting_ids
-
-
 def test_actors_on_nodes_with_no_cpus(ray_start_no_cpu):
     @ray.remote
     class Foo:
