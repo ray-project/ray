@@ -502,6 +502,8 @@ class ActorState(StateSchema):
     )
     #: The call site of the actor creation.
     call_site: Optional[str] = state_column(detail=True, filterable=False)
+    #: The label selector for the actor.
+    label_selector: Optional[dict] = state_column(detail=True, filterable=False)
 
 
 @dataclass(init=not IS_PYDANTIC_2)
@@ -797,6 +799,8 @@ class TaskState(StateSchema):
     is_debugger_paused: Optional[bool] = state_column(detail=True, filterable=True)
     #: The call site of the task.
     call_site: Optional[str] = state_column(detail=True, filterable=False)
+    #: The label selector for the task.
+    label_selector: Optional[dict] = state_column(detail=True, filterable=False)
 
 
 @dataclass(init=not IS_PYDANTIC_2)
@@ -1617,6 +1621,7 @@ def protobuf_to_task_state_dict(message: TaskEvents) -> dict:
                 "parent_task_id",
                 "placement_group_id",
                 "call_site",
+                "label_selector",
             ],
         ),
         (task_attempt, ["task_id", "attempt_number", "job_id"]),
