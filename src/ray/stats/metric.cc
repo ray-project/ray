@@ -220,6 +220,9 @@ void Histogram::RegisterOpenTelemetryMetric() {
 }
 
 void Histogram::RegisterView() {
+  if (measure_ == nullptr) {
+    return;
+  }
   opencensus::stats::ViewDescriptor view_descriptor =
       opencensus::stats::ViewDescriptor()
           .set_name(name_)
