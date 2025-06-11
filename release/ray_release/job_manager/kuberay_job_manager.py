@@ -7,7 +7,6 @@ import time
 from ray_release.exception import (
     CommandTimeout,
     JobStartupTimeout,
-    JobStartupFailed,
 )
 
 KUBERAY_SERVICE_SECRET_KEY_SECRET_NAME = "kuberay_service_secret_key"
