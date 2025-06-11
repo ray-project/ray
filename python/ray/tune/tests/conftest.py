@@ -3,7 +3,7 @@ import logging
 import boto3
 import pytest
 
-from ray._private.test_utils import simulate_storage
+from ray._common.test_utils import simulate_storage
 from ray.air._internal.uri_utils import URI
 
 # Trigger pytest hook to automatically zip test cluster logs to archive dir on failure

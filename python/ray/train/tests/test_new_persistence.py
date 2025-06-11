@@ -14,7 +14,7 @@ import pytest
 
 import ray
 from ray import train, tune
-from ray._private.test_utils import simulate_storage
+from ray._common.test_utils import simulate_storage
 from ray.air._internal.uri_utils import URI
 from ray.air.constants import EXPR_RESULT_FILE
 from ray.train._checkpoint import Checkpoint
