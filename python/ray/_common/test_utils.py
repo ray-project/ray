@@ -164,7 +164,7 @@ def simulate_storage(
         region: The s3 region (s3 only)
 
     Yields:
-        URI for the simulated storage.
+        str: URI for the simulated storage.
     """
     if storage_type == "fs":
         if root is None:
