@@ -227,7 +227,7 @@ class ZipOperator(InternalQueueOperatorMixin, PhysicalOperator):
                     [
                         (
                             block,
-                            meta,
+                            meta_with_schema.metadata,
                         )
                     ],
                     owns_blocks=input_owned,
