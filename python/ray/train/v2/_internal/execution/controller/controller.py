@@ -475,7 +475,7 @@ class TrainController:
         self._shutdown()
 
     async def abort(self):
-        """Abort by marking the training run and current attempt aborted and exiting."""
+        """Trigger callback abort hooks and terminate the controller process."""
         if self._worker_group:
             worker_group_context = self._worker_group.get_worker_group_context()
         else:
