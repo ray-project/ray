@@ -162,6 +162,9 @@ def simulate_storage(
         root: Root directory of the URI to return (e.g., s3 bucket name)
         port: The port of the localhost endpoint where s3 is being served (s3 only)
         region: The s3 region (s3 only)
+
+    Yields:
+        URI for the simulated storage.
     """
     if storage_type == "fs":
         if root is None:
