@@ -3658,19 +3658,19 @@ def read_unity_catalog(
         Read a Unity Catalog managed Delta table with credential vending:
 
             >>> import ray
-            >>> ds = read_unity_catalog(
+            >>> ds = read_unity_catalog( # doctest: +SKIP
             ...     table="main.sales.transactions",
-            ...     url="https://dbc-XXXXXXX-XXXX.cloud.databricks.com",
-            ...     token="XXXXXXXXXXX"
+            ...     url="https://dbc-XXXXXXX-XXXX.cloud.databricks.com", # noqa: E501
+            ...     token="XXXXXXXXXXX" # noqa: E501
             ... )
-            >>> ds.show(3)
+            >>> ds.show(3) # doctest: +SKIP
 
         Explicitly specify the format, and pass reader options:
 
-            >>> ds = read_unity_catalog(
+            >>> ds = read_unity_catalog( # doctest: +SKIP
             ...     table="main.catalog.images",
-            ...     url="https://dbc-XXXXXXX-XXXX.cloud.databricks.com",
-            ...     token="XXXXXXXXXXX",
+            ...     url="https://dbc-XXXXXXX-XXXX.cloud.databricks.com", # noqa: E501
+            ...     token="XXXXXXXXXXX", # noqa: E501
             ...     data_format="delta",
             ...     region="us-west-2",
             ...     # Reader kwargs come from the associated reader (ray.data.read_delta in this example)
@@ -3726,7 +3726,7 @@ def read_delta(
     Examples:
 
         >>> import ray
-        >>> ds = ray.data.read_delta("s3://bucket@path/to/delta-table/")
+        >>> ds = ray.data.read_delta("s3://bucket@path/to/delta-table/") # doctest: +SKIP
 
     Args:
         path: A single file path for a Delta Lake table. Multiple tables are not yet
