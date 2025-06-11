@@ -4314,8 +4314,6 @@
   cluster:
     byod:
       type: llm-cu124
-      # TODO(lk-chen): remove once we bump vllm to 0.9.0
-      post_build_script: byod_llm_pd_disagg_test.sh
     cluster_compute: llm_auto_select_worker.yaml
     # NOTE: Important for getting the correct secrets
     cloud_id: cld_wy5a6nhazplvu32526ams61d98
@@ -4336,8 +4334,6 @@
   cluster:
     byod:
       type: llm-cu124
-      # TODO(lk-chen): remove once we bump vllm to 0.9.0
-      post_build_script: byod_llm_pd_disagg_test.sh
     cluster_compute: llm_auto_select_worker.yaml
     # NOTE: Important for getting the correct secrets
     cloud_id: cld_wy5a6nhazplvu32526ams61d98
@@ -4364,6 +4360,9 @@
     byod:
       type: llm-cu124
     cluster_compute: llm_4xl4.yaml
+    # NOTE: Important for getting the correct secrets
+    cloud_id: cld_wy5a6nhazplvu32526ams61d98
+    project_id: prj_lhlrf1u5yv8qz9qg3xzw8fkiiq
 
   run:
     timeout: 3600
@@ -4445,6 +4444,30 @@
       cluster:
         cluster_compute: ci/gce.yaml  # relative to working_dir
 
+- name: distributing_pytorch  # do not use dashes (regex sensitive)
+  frequency: weekly
+  group: ray-examples
+  team: ml
+  working_dir: //doc/source/train/examples/pytorch/distributing-pytorch
+
+  cluster:
+    byod:
+      type: gpu
+      post_build_script: byod_pytorch_train_data.sh  # release/ray_release/byod/
+    cluster_compute: ci/aws.yaml  # relative to working_dir
+
+  run:
+    timeout: 3600
+    script: bash ci/tests.sh  # relative to working_dir
+
+  variations:
+    - __suffix__: aws
+    - __suffix__: gce
+      env: gce
+      frequency: manual
+      cluster:
+        cluster_compute: ci/gce.yaml  # relative to working_dir
+
 - name: e2e_audio
   frequency: weekly
   python: "3.11"
@@ -4484,8 +4507,10 @@
     cluster_compute: ci/aws.yaml
 
   run:
+    prepare: pip install -e .
+    prepare_timeout: 300
+    script: python ci/test.py --target-dir e2e_timeseries/
     timeout: 3600
-    script: python ci/tests.py
 
   variations:
     - __suffix__: aws
@@ -4534,6 +4559,31 @@
 
   variations:
     - __suffix__: aws
+    - __suffix__: gce
+      env: gce
+      frequency: manual
+      cluster:
+        cluster_compute: ci/gce.yaml  # relative to working_dir
+
+- name: e2e_rag  # do not use dashes (regex sensitive)
+  frequency: weekly
+  python: "3.11"
+  group: ray-examples
+  team: ml
+  working_dir: //doc/source/ray-overview/examples/e2e-rag  # use // to access from repo's root
+
+  cluster:
+    byod:
+      type: llm-cu124  # anyscale/ray-llm:<PR_RAY_VERSION>-py311-cu124
+      post_build_script: byod_e2e_rag.sh  # release/ray_release/byod/
+    cluster_compute: ci/aws.yaml  # relative to working_dir
+
+  run:
+    timeout: 3600
+    script: bash ci/tests.sh  # relative to working_dir
+
+  variations:
+    - __suffix__: aws  # uses default specs above
     - __suffix__: gce
       env: gce
       frequency: manual
