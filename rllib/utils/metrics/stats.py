@@ -105,7 +105,8 @@ class Stats:
                 This window should be chosen carfully. RLlib computes exact percentiles and
                 the computational complexity is O(m*n*log(n/m)) where n is the window size
                 and m is the number of parallel metrics loggers invovled (for example,
-                m EnvRunners).
+                m EnvRunners). To be safe, choose a window < 1M and less than 1000 Stats
+                objects to aggregate. See #52963 for more details.
             window: An optional window size to reduce over.
                 If `window` is not None, then the reduction operation is only applied to
                 the most recent `windows` items, and - after reduction - the values list
@@ -863,6 +864,8 @@ class Stats:
             if self._percentiles is not False:
                 # Sort values
                 values = list(values)
+                # (Artur): Numpy can sort faster than Python's built-in sort for large lists. Howoever, if we convert to an array here
+                # and then sort, this only slightly (<2x) improved the runtime of this method, even for an internal values list of 1M values.
                 values.sort()
             return values, values
 
