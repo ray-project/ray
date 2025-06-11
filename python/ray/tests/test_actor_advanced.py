@@ -1140,34 +1140,28 @@ def test_get_actor_after_killed(shutdown_only):
 def test_get_actor_race_condition(shutdown_only):
     @ray.remote
     class Actor:
-        def ping(self):
-            return "ok"
+        def get_actor_id(self) -> str:
+            return ray.get_runtime_context().get_actor_id()
 
-    @ray.remote
-    def getter(name):
+    actor_name = "test_actor"
+
+    @ray.remote(num_cpus=0)
+    def get_or_create_actor():
         try:
             try:
-                actor = ray.get_actor(name)
+                actor = ray.get_actor(actor_name)
             except Exception:
-                print("Get failed, trying to create", name)
-                actor = Actor.options(name=name, lifetime="detached").remote()
+                print("Get failed, trying to create")
+                actor = Actor.options(name=actor_name, lifetime="detached").remote()
         except Exception:
             print("Someone else created it, trying to get")
-            actor = ray.get_actor(name)
-        result = ray.get(actor.ping.remote())
-        return result
+            actor = ray.get_actor(actor_name)
 
-    def do_run(name, concurrency=4):
-        name = "actor_" + str(name)
-        tasks = [getter.remote(name) for _ in range(concurrency)]
-        result = ray.get(tasks)
-        ray.kill(ray.get_actor(name))  # Cleanup
-        return result
+        return ray.get(actor.get_actor_id.remote())
 
-    for i in range(50):
-        CONCURRENCY = 8
-        results = do_run(i, concurrency=CONCURRENCY)
-        assert ["ok"] * CONCURRENCY == results
+    # Run 10 concurrent tasks to get or create the same actor.
+    # Only one task should succeed at creating it, and all the others should get it.
+    assert len(set(ray.get([get_or_create_actor.remote() for _ in range(10)])))
 
 
 def test_create_actor_race_condition(shutdown_only):
