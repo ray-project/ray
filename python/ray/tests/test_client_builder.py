@@ -7,12 +7,12 @@ from unittest.mock import Mock, patch
 import pytest
 
 import ray
+from ray._common.test_utils import wait_for_condition
 import ray.client_builder as client_builder
 import ray.util.client.server.server as ray_client_server
 from ray._private.test_utils import (
     run_string_as_driver,
     run_string_as_driver_nonblocking,
-    wait_for_condition,
     skip_flaky_core_test_premerge,
 )
 from ray.util.state import list_workers
@@ -448,7 +448,4 @@ def test_task_use_prestarted_worker(call_ray_start):
 
 
 if __name__ == "__main__":
-    if os.environ.get("PARALLEL_CI"):
-        sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))
-    else:
-        sys.exit(pytest.main(["-sv", __file__]))
+    sys.exit(pytest.main(["-sv", __file__]))

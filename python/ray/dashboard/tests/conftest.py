@@ -13,10 +13,10 @@ def enable_test_module():
     import ray.dashboard.tests
 
     p = pathlib.Path(ray.dashboard.modules.__path__[0]) / "tests" / "__init__.py"
-    p.touch(exist_ok=False)
+    p.touch()
     yield
     os.environ.pop("RAY_DASHBOARD_MODULE_TEST", None)
-    p.unlink(missing_ok=False)
+    p.unlink()
 
 
 @pytest.fixture

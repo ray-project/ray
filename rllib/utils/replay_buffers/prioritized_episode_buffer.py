@@ -1,4 +1,5 @@
 import copy
+import hashlib
 import numpy as np
 import scipy
 
@@ -6,11 +7,14 @@ from collections import deque
 from numpy.typing import NDArray
 from typing import Any, Dict, List, Optional, Tuple, Union
 
+from ray.rllib.core import DEFAULT_AGENT_ID, DEFAULT_MODULE_ID
 from ray.rllib.env.single_agent_episode import SingleAgentEpisode
 from ray.rllib.execution.segment_tree import MinSegmentTree, SumSegmentTree
 from ray.rllib.utils import force_list
+from ray.rllib.utils.annotations import (
+    override,
+)
 from ray.rllib.utils.replay_buffers.episode_replay_buffer import EpisodeReplayBuffer
-from ray.rllib.utils.annotations import override
 from ray.rllib.utils.typing import ModuleID, SampleBatchType
 
 
@@ -118,6 +122,7 @@ class PrioritizedEpisodeReplayBuffer(EpisodeReplayBuffer):
         batch_size_B: int = 16,
         batch_length_T: int = 1,
         alpha: float = 1.0,
+        metrics_num_episodes_for_smoothing: int = 100,
         **kwargs,
     ):
         """Initializes a `PrioritizedEpisodeReplayBuffer` object
@@ -132,7 +137,10 @@ class PrioritizedEpisodeReplayBuffer(EpisodeReplayBuffer):
                 prioritization, `alpha=0.0` means no prioritization.
         """
         super().__init__(
-            capacity=capacity, batch_size_B=batch_size_B, batch_length_T=batch_length_T
+            capacity=capacity,
+            batch_size_B=batch_size_B,
+            batch_length_T=batch_length_T,
+            metrics_num_episodes_for_smoothing=metrics_num_episodes_for_smoothing,
         )
 
         # `alpha` should be non-negative.
@@ -196,6 +204,20 @@ class PrioritizedEpisodeReplayBuffer(EpisodeReplayBuffer):
 
         episodes = force_list(episodes)
 
+        # Set up some counters for metrics.
+        num_env_steps_added = 0
+        agent_to_num_steps_added = {DEFAULT_AGENT_ID: 0}
+        module_to_num_steps_added = {DEFAULT_MODULE_ID: 0}
+        num_episodes_added = 0
+        agent_to_num_episodes_added = {DEFAULT_AGENT_ID: 0}
+        module_to_num_episodes_added = {DEFAULT_MODULE_ID: 0}
+        num_episodes_evicted = 0
+        agent_to_num_episodes_evicted = {DEFAULT_AGENT_ID: 0}
+        module_to_num_episodes_evicted = {DEFAULT_MODULE_ID: 0}
+        num_env_steps_evicted = 0
+        agent_to_num_steps_evicted = {DEFAULT_AGENT_ID: 0}
+        module_to_num_steps_evicted = {DEFAULT_MODULE_ID: 0}
+
         # Add first the timesteps of new episodes to have info about how many
         # episodes should be evicted to stay below capacity.
         new_episode_ids = []
@@ -215,6 +237,16 @@ class PrioritizedEpisodeReplayBuffer(EpisodeReplayBuffer):
             eps_evicted.append(self.episodes.popleft())
             eps_evicted_ids.append(eps_evicted[-1].id_)
             eps_evicted_idxs.append(self.episode_id_to_index.pop(eps_evicted_ids[-1]))
+            num_episodes_evicted += 1
+            num_env_steps_evicted += len(eps_evicted[-1])
+            agent_to_num_episodes_evicted[DEFAULT_AGENT_ID] += 1
+            agent_to_num_steps_evicted[DEFAULT_AGENT_ID] += eps_evicted[
+                -1
+            ].agent_steps()
+            module_to_num_episodes_evicted[DEFAULT_MODULE_ID] += 1
+            module_to_num_steps_evicted[DEFAULT_MODULE_ID] += eps_evicted[
+                -1
+            ].agent_steps()
             # If this episode has a new chunk in the new episodes added,
             # we subtract it again.
             # TODO (sven, simon): Should we just treat such an episode chunk
@@ -282,6 +314,9 @@ class PrioritizedEpisodeReplayBuffer(EpisodeReplayBuffer):
                     existing_eps.concat_episode(eps)
                 # Otherwise, create a new entry.
                 else:
+                    num_episodes_added += 1
+                    agent_to_num_episodes_added[DEFAULT_AGENT_ID] += 1
+                    module_to_num_episodes_added[DEFAULT_MODULE_ID] += 1
                     self.episodes.append(eps)
                     eps_idx = len(self.episodes) - 1 + self._num_episodes_evicted
                     self.episode_id_to_index[eps.id_] = eps_idx
@@ -295,8 +330,27 @@ class PrioritizedEpisodeReplayBuffer(EpisodeReplayBuffer):
                             for i in range(len(eps))
                         ]
                     )
+                num_env_steps_added += len(eps)
+                agent_to_num_steps_added[DEFAULT_AGENT_ID] += eps.agent_steps()
+                module_to_num_steps_added[DEFAULT_MODULE_ID] += eps.agent_steps()
                 # Increase index to the new length of `self._indices`.
                 j = len(self._indices)
+
+        # Increase metrics.
+        self._update_add_metrics(
+            num_episodes_added=num_episodes_added,
+            num_env_steps_added=num_env_steps_added,
+            num_episodes_evicted=num_episodes_evicted,
+            num_env_steps_evicted=num_env_steps_evicted,
+            agent_to_num_episodes_added=agent_to_num_episodes_added,
+            agent_to_num_steps_added=agent_to_num_steps_added,
+            agent_to_num_episodes_evicted=agent_to_num_episodes_evicted,
+            agent_to_num_steps_evicted=agent_to_num_steps_evicted,
+            module_to_num_episodes_added=module_to_num_steps_added,
+            module_to_num_steps_added=module_to_num_episodes_added,
+            module_to_num_episodes_evicted=module_to_num_episodes_evicted,
+            module_to_num_steps_evicted=module_to_num_steps_evicted,
+        )
 
     @override(EpisodeReplayBuffer)
     def sample(
@@ -391,6 +445,14 @@ class PrioritizedEpisodeReplayBuffer(EpisodeReplayBuffer):
         self._last_sampled_indices = []
 
         sampled_episodes = []
+        # Record all the env step buffer indices that are contained in the sample.
+        sampled_env_step_idxs = set()
+        # Record all the episode buffer indices that are contained in the sample.
+        sampled_episode_idxs = set()
+        # Record all n-steps that have been used.
+        sampled_n_steps = []
+        # Record the number of times it needs to be resampled.
+        num_resamples = 0
 
         # Sample proportionally from replay buffer's segments using the weights.
         total_segment_sum = self._sum_segment.sum()
@@ -429,6 +491,7 @@ class PrioritizedEpisodeReplayBuffer(EpisodeReplayBuffer):
             # Skip, if we are too far to the end and `episode_ts` + n_step would go
             # beyond the episode's end.
             if episode_ts + actual_n_step > len(episode):
+                num_resamples += 1
                 continue
 
             # Note, this will be the reward after executing action
@@ -492,9 +555,19 @@ class PrioritizedEpisodeReplayBuffer(EpisodeReplayBuffer):
                 len_lookback_buffer=0,
                 t_started=episode_ts,
             )
+            # Record here the episode time step via a hash code.
+            sampled_env_step_idxs.add(
+                hashlib.sha256(f"{episode.id_}-{episode_ts}".encode()).hexdigest()
+            )
+            # Convert to numpy arrays, if required.
             if to_numpy:
                 sampled_episode.to_numpy()
             sampled_episodes.append(sampled_episode)
+
+            # Add the episode buffer index to the sampled indices.
+            sampled_episode_idxs.add(episode_idx)
+            # Record the actual n-step for this sample.
+            sampled_n_steps.append(actual_n_step)
 
             # Increment counter.
             B += 1
@@ -502,7 +575,41 @@ class PrioritizedEpisodeReplayBuffer(EpisodeReplayBuffer):
             # Keep track of sampled indices for updating priorities later.
             self._last_sampled_indices.append(idx)
 
+        # Add to the sampled timesteps counter of the buffer.
         self.sampled_timesteps += batch_size_B
+
+        # Update the sample metrics.
+        num_env_steps_sampled = batch_size_B
+        num_episodes_per_sample = len(sampled_episode_idxs)
+        num_env_steps_per_sample = len(sampled_env_step_idxs)
+        sampled_n_step = sum(sampled_n_steps) / batch_size_B
+        agent_to_num_steps_sampled = {DEFAULT_AGENT_ID: num_env_steps_sampled}
+        agent_to_num_episodes_per_sample = {DEFAULT_AGENT_ID: num_episodes_per_sample}
+        agent_to_num_steps_per_sample = {DEFAULT_AGENT_ID: num_env_steps_per_sample}
+        agent_to_sampled_n_step = {DEFAULT_AGENT_ID: sampled_n_step}
+        agent_to_num_resamples = {DEFAULT_AGENT_ID: num_resamples}
+        module_to_num_steps_sampled = {DEFAULT_MODULE_ID: num_env_steps_sampled}
+        module_to_num_episodes_per_sample = {DEFAULT_MODULE_ID: num_episodes_per_sample}
+        module_to_num_steps_per_sample = {DEFAULT_MODULE_ID: num_env_steps_per_sample}
+        module_to_sampled_n_step = {DEFAULT_MODULE_ID: sampled_n_step}
+        module_to_num_resamples = {DEFAULT_MODULE_ID: num_resamples}
+        self._update_sample_metrics(
+            num_env_steps_sampled=num_env_steps_sampled,
+            num_episodes_per_sample=num_episodes_per_sample,
+            num_env_steps_per_sample=num_env_steps_per_sample,
+            sampled_n_step=sampled_n_step,
+            num_resamples=num_resamples,
+            agent_to_num_steps_sampled=agent_to_num_steps_sampled,
+            agent_to_num_episodes_per_sample=agent_to_num_episodes_per_sample,
+            agent_to_num_steps_per_sample=agent_to_num_steps_per_sample,
+            agent_to_sampled_n_step=agent_to_sampled_n_step,
+            agent_to_num_resamples=agent_to_num_resamples,
+            module_to_num_steps_sampled=module_to_num_steps_sampled,
+            module_to_num_episodes_per_sample=module_to_num_episodes_per_sample,
+            module_to_num_steps_per_sample=module_to_num_steps_per_sample,
+            module_to_sampled_n_step=module_to_sampled_n_step,
+            module_to_num_resamples=module_to_num_resamples,
+        )
 
         return sampled_episodes
 

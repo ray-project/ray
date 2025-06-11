@@ -26,7 +26,7 @@ class NCCLUniqueIDStore:
         Initialize the NCCL unique ID for this store.
 
         Args:
-            uid: the unique ID generated via the NCCL get_unique_id API.
+            uid: the unique ID generated via the NCCL generate_communicator_id API.
 
         Returns:
             None
@@ -55,14 +55,26 @@ class Info:
         self.world_size = -1
         self.rank = -1
         self.backend = None
+        self.gloo_timeout = 30000
 
-    def set_info(self, ids, world_size, rank, backend):
+    def set_info(self, ids, world_size, rank, backend, gloo_timeout):
         """Store collective information."""
         self.ids = ids
         self.world_size = world_size
         self.rank = rank
         self.backend = backend
+        self.gloo_timeout = gloo_timeout
 
     def get_info(self):
         """Get previously stored collective information."""
-        return self.ids, self.world_size, self.rank, self.backend
+        return (
+            self.ids,
+            self.world_size,
+            self.rank,
+            self.backend,
+            self.gloo_timeout,
+        )
+
+
+def get_master_address_metadata_key(group_name: str):
+    return f"collective_group_master_address_{group_name}"

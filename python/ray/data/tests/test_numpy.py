@@ -4,7 +4,7 @@ import numpy as np
 import pandas as pd
 import pyarrow as pa
 import pytest
-from pytest_lazyfixture import lazy_fixture
+from pytest_lazy_fixtures import lf as lazy_fixture
 
 import ray
 from ray.air.util.tensor_extensions.arrow import ArrowTensorTypeV2
@@ -292,15 +292,15 @@ def test_numpy_write(ray_start_regular_shared, fs, data_path, endpoint_url):
     np.testing.assert_equal(extract_values("data", ds.take(1)), [np.array([0])])
 
 
-@pytest.mark.parametrize("num_rows_per_file", [5, 10, 50])
-def test_write_num_rows_per_file(tmp_path, ray_start_regular_shared, num_rows_per_file):
+@pytest.mark.parametrize("min_rows_per_file", [5, 10, 50])
+def test_write_min_rows_per_file(tmp_path, ray_start_regular_shared, min_rows_per_file):
     ray.data.range(100, override_num_blocks=20).write_numpy(
-        tmp_path, column="id", num_rows_per_file=num_rows_per_file
+        tmp_path, column="id", min_rows_per_file=min_rows_per_file
     )
 
     for filename in os.listdir(tmp_path):
         array = np.load(os.path.join(tmp_path, filename))
-        assert len(array) == num_rows_per_file
+        assert len(array) == min_rows_per_file
 
 
 if __name__ == "__main__":

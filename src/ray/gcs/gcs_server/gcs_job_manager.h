@@ -37,9 +37,10 @@ namespace ray {
 namespace gcs {
 
 // Please keep this in sync with the definition in ray_constants.py.
-const std::string kRayInternalNamespacePrefix = "_ray_internal_";
+const std::string kRayInternalNamespacePrefix = "_ray_internal_";  // NOLINT
 
 // Please keep these in sync with the definition in dashboard/modules/job/common.py.
+// NOLINTNEXTLINE
 const std::string kJobDataKeyPrefix = kRayInternalNamespacePrefix + "job_info_";
 inline std::string JobDataKey(const std::string &submission_id) {
   return kJobDataKeyPrefix + submission_id;
@@ -63,7 +64,9 @@ class GcsJobManager : public rpc::JobInfoHandler {
         function_manager_(function_manager),
         internal_kv_(internal_kv),
         io_context_(io_context),
-        core_worker_clients_(client_factory) {}
+        core_worker_clients_(client_factory) {
+    export_event_write_enabled_ = IsExportAPIEnabledDriverJob();
+  }
 
   void Initialize(const GcsInitData &gcs_init_data);
 
@@ -99,6 +102,14 @@ class GcsJobManager : public rpc::JobInfoHandler {
 
   void WriteDriverJobExportEvent(rpc::JobTableData job_data) const;
 
+  // Verify if export events should be written for EXPORT_DRIVER_JOB source types
+  bool IsExportAPIEnabledDriverJob() const {
+    return IsExportAPIEnabledSourceType(
+        "EXPORT_DRIVER_JOB",
+        RayConfig::instance().enable_export_api_write(),
+        RayConfig::instance().enable_export_api_write_config());
+  }
+
   /// Record metrics.
   /// For job manager, (1) running jobs count gauge and (2) new finished jobs (whether
   /// succeed or fail) will be reported periodically.
@@ -114,8 +125,9 @@ class GcsJobManager : public rpc::JobInfoHandler {
   // the same thread.
   ThreadChecker thread_checker_;
 
-  // Running Job IDs, used to report metrics.
-  absl::flat_hash_set<JobID> running_job_ids_;
+  // Running Job Start Times, used to report metrics.
+  // Maps JobID to job start time in milliseconds since epoch.
+  absl::flat_hash_map<JobID, int64_t> running_job_start_times_;
 
   // Number of finished jobs since start of this GCS Server, used to report metrics.
   int64_t finished_jobs_count_ = 0;
@@ -135,6 +147,9 @@ class GcsJobManager : public rpc::JobInfoHandler {
   instrumented_io_context &io_context_;
   /// The cached core worker clients which are used to communicate with workers.
   rpc::CoreWorkerClientPool core_worker_clients_;
+
+  /// If true, driver job events are exported for Export API
+  bool export_event_write_enabled_ = false;
 };
 
 }  // namespace gcs

@@ -1,12 +1,11 @@
-
 .. include:: /_includes/rllib/we_are_hiring.rst
-
-.. include:: /_includes/rllib/new_api_stack.rst
 
 .. _env-runner-reference-docs:
 
 EnvRunner API
 =============
+
+.. include:: /_includes/rllib/new_api_stack.rst
 
 rllib.env.env_runner.EnvRunner
 ------------------------------

@@ -198,7 +198,7 @@ Note that the current set of collective communication API are imperative, and ex
 * All the collective APIs are synchronous blocking calls
 * Since each API only specifies a part of the collective communication, the API is expected to be called by each participating process of the (pre-declared) collective group.
   Upon all the processes have made the call and rendezvous with each other, the collective communication happens and proceeds.
-* The APIs are imperative and the communication happends out-of-band --- they need to be used inside the collective process (actor/task) code.
+* The APIs are imperative and the communication happens out-of-band --- they need to be used inside the collective process (actor/task) code.
 
 An example of using ``ray.util.collective.allreduce`` is below:
 
@@ -278,7 +278,7 @@ Single-GPU and Multi-GPU Collective Primitives
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
 In many cluster setups, a machine usually has more than 1 GPU;
-effectively leveraging the GPU-GPU bandwidth, such as `NVLINK <https://www.nvidia.com/en-us/design-visualization/nvlink-bridges/>`_\ ,
+effectively leveraging the GPU-GPU bandwidth, such as `NVLINK <https://www.nvidia.com/en-us/data-center/nvlink/>`_\ ,
 can significantly improve communication performance.
 
 ``ray.util.collective`` supports multi-GPU collective calls, in which case, a process (actor/tasks) manages more than 1 GPU (e.g., via ``ray.remote(num_gpus=4)``\ ).

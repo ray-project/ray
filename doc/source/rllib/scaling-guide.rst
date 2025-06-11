@@ -1,11 +1,11 @@
 .. include:: /_includes/rllib/we_are_hiring.rst
 
-.. include:: /_includes/rllib/new_api_stack.rst
-
 .. _rllib-scaling-guide:
 
 RLlib scaling guide
 ===================
+
+.. include:: /_includes/rllib/new_api_stack.rst
 
 RLlib is a distributed and scalable RL library, based on `Ray <https://www.ray.io/>`__. An RLlib :py:class:`~ray.rllib.algorithms.algorithm.Algorithm`
 uses `Ray actors <https://docs.ray.io/en/latest/ray-core/actors.html>`__ wherever parallelization of
@@ -158,7 +158,7 @@ Make sure to set the number of GPUs per :py:class:`~ray.rllib.core.learner.learn
 The number of GPUs may be fractional quantities, for example 0.5, to allocate only a fraction of a GPU per
 :py:class:`~ray.rllib.env.env_runner.EnvRunner`. For example, you can pack five :py:class:`~ray.rllib.algorithms.algorithm.Algorithm`
 instances onto one GPU by setting ``num_learners=1, num_gpus_per_learner=0.2``.
-See this `fractional GPU example <https://github.com/ray-project/ray/blob/master/rllib/examples/gpus/fractional_gpus.py>`__
+See this `fractional GPU example <https://github.com/ray-project/ray/blob/master/rllib/examples/gpus/fractional_gpus_per_learner.py>`__
 for details.
 
 .. note::

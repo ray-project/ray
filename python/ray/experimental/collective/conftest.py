@@ -1,6 +1,5 @@
-import copy
 import uuid
-from typing import Dict, FrozenSet, List, Optional, Set, Tuple
+from typing import Dict, FrozenSet, List, Optional, Set, Tuple, Type
 
 import torch
 
@@ -17,8 +16,6 @@ class AbstractNcclGroup(Communicator):
     """
     A dummy NCCL group for testing.
     """
-
-    import cupy as cp
 
     def __init__(self, actor_handles: List[ray.actor.ActorHandle]):
         self._actor_handles = actor_handles
@@ -51,6 +48,13 @@ class AbstractNcclGroup(Communicator):
     ) -> "torch.Tensor":
         raise NotImplementedError
 
+    def allgather(
+        self,
+        send_buf: "torch.Tensor",
+        recv_buf: "torch.Tensor",
+    ) -> None:
+        raise NotImplementedError
+
     def allreduce(
         self,
         send_buf: "torch.Tensor",
@@ -59,12 +63,20 @@ class AbstractNcclGroup(Communicator):
     ) -> None:
         raise NotImplementedError
 
+    def reducescatter(
+        self,
+        send_buf: "torch.Tensor",
+        recv_buf: "torch.Tensor",
+        op: ReduceOp = ReduceOp.SUM,
+    ) -> None:
+        raise NotImplementedError
+
     @property
-    def recv_stream(self) -> Optional["cp.cuda.ExternalStream"]:
+    def recv_stream(self):
         return None
 
     @property
-    def send_stream(self) -> Optional["cp.cuda.ExternalStream"]:
+    def send_stream(self):
         return None
 
     def destroy(self) -> None:
@@ -72,6 +84,10 @@ class AbstractNcclGroup(Communicator):
 
     def get_transport_name(self) -> str:
         return "nccl"
+
+    @classmethod
+    def generate_communicator_id(cls) -> str:
+        pass
 
 
 class MockNcclGroupSet:
@@ -87,6 +103,8 @@ class MockNcclGroupSet:
         actors: List["ray.actor.ActorHandle"],
         custom_nccl_group: Optional[Communicator] = None,
         use_communication_streams: bool = False,
+        accelerator_module_name: Optional[str] = None,
+        accelerator_communicator_cls: Optional[Type[Communicator]] = None,
     ) -> str:
         group_id = str(uuid.uuid4())
         self.ids_to_actors_and_custom_comms[group_id] = (
@@ -137,31 +155,6 @@ class MockNcclGroupSet:
             del self.ids_to_actors_and_custom_comms[group_id]
         ctx.communicators[group_id].destroy()
         del ctx.communicators[group_id]
-
-    def check_init(
-        self,
-        compiled_dag: "ray.dag.CompiledDAG",
-        actors_and_custom_comms: Set[
-            Tuple[FrozenSet["ray.actor.ActorHandle"], Optional[Communicator]]
-        ],
-        p2p_actors_and_custom_comm: Optional[
-            Tuple[FrozenSet["ray.actor.ActorHandle"], Optional[Communicator]]
-        ],
-    ) -> None:
-        assert len(self.ids_to_actors_and_custom_comms) == len(actors_and_custom_comms)
-        assert (
-            set(self.ids_to_actors_and_custom_comms.values()) == actors_and_custom_comms
-        )
-
-        nccl_group_id_p2p = compiled_dag.communicator_id_p2p
-        if p2p_actors_and_custom_comm is None:
-            assert nccl_group_id_p2p is None
-        else:
-            assert nccl_group_id_p2p
-            assert (
-                self.ids_to_actors_and_custom_comms[nccl_group_id_p2p]
-                == p2p_actors_and_custom_comm
-            )
 
     def check_teardown(self, nccl_group_ids: List[str]) -> None:
         ctx = ChannelContext.get_current()
@@ -214,25 +207,17 @@ def check_nccl_group_init(
     actors_and_custom_comms: Set[
         Tuple[FrozenSet["ray.actor.ActorHandle"], Optional[Communicator]]
     ],
-    p2p_actors_and_custom_comm: Optional[
-        Tuple[FrozenSet["ray.actor.ActorHandle"], Optional[Communicator]]
-    ] = None,
 ) -> "ray.dag.CompiledDAG":
     mock_nccl_group_set = MockNcclGroupSet()
     monkeypatch.setattr(
         "ray.dag.compiled_dag_node._init_communicator",
         mock_nccl_group_set,
     )
-    monkeypatch.setattr(
-        "ray.dag.collective_node._init_communicator",
-        mock_nccl_group_set,
-    )
 
     compiled_dag = dag.experimental_compile()
-    mock_nccl_group_set.check_init(
-        compiled_dag,
-        actors_and_custom_comms,
-        p2p_actors_and_custom_comm,
+    assert (
+        set(mock_nccl_group_set.ids_to_actors_and_custom_comms.values())
+        == actors_and_custom_comms
     )
 
     return compiled_dag, mock_nccl_group_set
@@ -248,6 +233,6 @@ def check_nccl_group_teardown(
         mock_nccl_group_set.mock_destroy_nccl_group,
     )
 
-    nccl_group_ids = copy.deepcopy(compiled_dag.communicator_ids)
+    created_communicator_ids = compiled_dag._actors_to_created_communicator_id.values()
     compiled_dag.teardown()
-    mock_nccl_group_set.check_teardown(nccl_group_ids)
+    mock_nccl_group_set.check_teardown(created_communicator_ids)

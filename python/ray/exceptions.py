@@ -19,7 +19,6 @@ from ray.core.generated.common_pb2 import (
 )
 from ray.util.annotations import DeveloperAPI, PublicAPI
 
-import setproctitle
 
 logger = logging.getLogger(__name__)
 
@@ -121,7 +120,7 @@ class RayTaskError(RayError):
         if proctitle:
             self.proctitle = proctitle
         else:
-            self.proctitle = setproctitle.getproctitle()
+            self.proctitle = ray._raylet.getproctitle()
         self.pid = pid or os.getpid()
         self.ip = ip or ray.util.get_node_ip_address()
         self.function_name = function_name
@@ -373,9 +372,9 @@ class ActorDiedError(RayActorError):
         cause: The cause of the actor error. `RayTaskError` type means
             the actor has died because of an exception within `__init__`.
             `ActorDiedErrorContext` means the actor has died because of
-            unexepected system error. None means the cause is not known.
-            Theoretically, this should not happen,
-            but it is there as a safety check.
+            an unexpected system error. None means the cause isn't known.
+            Theoretically, this shouldn't happen,
+            but it's there as a safety check.
     """
 
     BASE_ERROR_MSG = "The actor died unexpectedly before finishing this task."

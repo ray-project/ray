@@ -78,7 +78,6 @@ class PPOConfig(AlgorithmConfig):
     .. testcode::
 
         from ray.rllib.algorithms.ppo import PPOConfig
-        from ray import air
         from ray import tune
 
         config = (
@@ -93,7 +92,7 @@ class PPOConfig(AlgorithmConfig):
 
         tune.Tuner(
             "PPO",
-            run_config=air.RunConfig(stop={"training_iteration": 1}),
+            run_config=tune.RunConfig(stop={"training_iteration": 1}),
             param_space=config,
         ).fit()
 
@@ -419,13 +418,11 @@ class PPO(Algorithm):
                 return
 
             # Reduce EnvRunner metrics over the n EnvRunners.
-            self.metrics.merge_and_log_n_dicts(
-                env_runner_results, key=ENV_RUNNER_RESULTS
-            )
+            self.metrics.aggregate(env_runner_results, key=ENV_RUNNER_RESULTS)
 
         # Perform a learner update step on the collected episodes.
         with self.metrics.log_time((TIMERS, LEARNER_UPDATE_TIMER)):
-            learner_results = self.learner_group.update_from_episodes(
+            learner_results = self.learner_group.update(
                 episodes=episodes,
                 timesteps={
                     NUM_ENV_STEPS_SAMPLED_LIFETIME: (
@@ -438,7 +435,7 @@ class PPO(Algorithm):
                 minibatch_size=self.config.minibatch_size,
                 shuffle_batch_per_epoch=self.config.shuffle_batch_per_epoch,
             )
-            self.metrics.merge_and_log_n_dicts(learner_results, key=LEARNER_RESULTS)
+            self.metrics.aggregate(learner_results, key=LEARNER_RESULTS)
 
         # Update weights - after learning on the local worker - on all remote
         # workers.

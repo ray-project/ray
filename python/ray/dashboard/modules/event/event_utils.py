@@ -9,7 +9,7 @@ import os
 import time
 from concurrent.futures import ThreadPoolExecutor
 
-from ray._private.utils import get_or_create_event_loop, run_background_task
+from ray._common.utils import get_or_create_event_loop, run_background_task
 from ray.dashboard.modules.event import event_consts
 from ray.dashboard.utils import async_loop_forever
 
@@ -128,7 +128,7 @@ def monitor_events(
         monitor_files = {}
 
     logger.info(
-        "Monitor events logs modified after %s on %s, " "the source types are %s.",
+        "Monitor events logs modified after %s on %s, the source types are %s.",
         start_mtime,
         event_dir,
         "all" if source_types is None else source_types,
@@ -160,7 +160,7 @@ def monitor_events(
                     and monitor_file.mtime == stat.st_mtime
                 ):
                     logger.debug(
-                        "Skip reading the file because " "there is no change: %s", file
+                        "Skip reading the file because there is no change: %s", file
                     )
                     return []
                 position = monitor_file.position

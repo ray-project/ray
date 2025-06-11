@@ -1,0 +1,13 @@
+#!/bin/bash
+
+set -exo pipefail
+
+# Install Python dependencies
+pip3 install --no-cache-dir \
+    accelerate==0.28.0 \
+    datasets[audio]==3.6.0 \
+    flashinfer-python==0.2.5 \
+    huggingface-hub[hf_xet]==0.30.0 \
+    pydantic==2.9.2 \
+    transformers==4.51.3 \
+    xgrammar==0.1.13

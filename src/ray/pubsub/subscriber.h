@@ -17,8 +17,11 @@
 #include <grpcpp/grpcpp.h>
 #include <gtest/gtest_prod.h>
 
-#include <boost/any.hpp>
+#include <memory>
 #include <queue>
+#include <string>
+#include <utility>
+#include <vector>
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
@@ -151,7 +154,7 @@ class SubscriberChannel {
 
   /// Returns a subscription callback; Returns a nullopt if the object id is not
   /// subscribed.
-  absl::optional<SubscriptionItemCallback> GetSubscriptionItemCallback(
+  std::optional<SubscriptionItemCallback> GetSubscriptionItemCallback(
       const rpc::Address &publisher_address, const std::string &key_id) const {
     const auto publisher_id = PublisherID::FromBinary(publisher_address.worker_id());
     auto subscription_it = subscription_map_.find(publisher_id);
@@ -170,7 +173,7 @@ class SubscriberChannel {
 
   /// Returns a publisher failure callback; Returns a nullopt if the object id is not
   /// subscribed.
-  absl::optional<SubscriptionFailureCallback> GetFailureCallback(
+  std::optional<SubscriptionFailureCallback> GetFailureCallback(
       const rpc::Address &publisher_address, const std::string &key_id) const {
     const auto publisher_id = PublisherID::FromBinary(publisher_address.worker_id());
     auto subscription_it = subscription_map_.find(publisher_id);

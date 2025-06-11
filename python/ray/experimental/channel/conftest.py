@@ -8,7 +8,9 @@ import torch
 import ray
 import ray.dag
 import ray.experimental.channel as ray_channel
+from ray.experimental.channel import nccl_group
 from ray.experimental.channel.communicator import TorchTensorAllocator
+from ray.experimental.util.types import Device
 
 
 @ray.remote(num_cpus=0)
@@ -26,6 +28,14 @@ class Barrier:
         self.data = {}
         # Buffer for the number of actors seen, each entry is one p2p op.
         self.num_actors_seen = defaultdict(int)
+
+        # Add a new mock for the TorchTensorType.device property
+        device_property_patcher = mock.patch(
+            "ray.experimental.channel.torch_tensor_type.TorchTensorType.device",
+            new_callable=mock.PropertyMock,
+            return_value=Device.CPU,
+        )
+        device_property_patcher.start()
 
     async def wait(self, idx: int, data=None):
         """
@@ -57,8 +67,11 @@ class MockCudaStream:
     def __init__(self):
         self.cuda_stream = 0
 
+    def synchronize(self):
+        pass
 
-class MockNcclGroup(ray_channel.nccl_group._NcclGroup):
+
+class MockNcclGroup(nccl_group._NcclGroup):
     """
     Mock the internal _NcclGroup to use a barrier actor instead of a NCCL group
     for communication.
@@ -124,7 +137,7 @@ def start_nccl_mock():
     cp_patcher.start()
 
     # Mock send/recv ops to use an actor instead of NCCL.
-    ray.experimental.channel.torch_tensor_nccl_channel._NcclGroup = MockNcclGroup
+    ray.experimental.channel.nccl_group._NcclGroup = MockNcclGroup
 
     # PyTorch mocks.
     stream_patcher = mock.patch(
@@ -144,6 +157,14 @@ def start_nccl_mock():
         lambda shape, dtype: torch.zeros(shape, dtype=dtype),
     )
     tensor_allocator_patcher.start()
+
+    # Add a new mock for the TorchTensorType.device property
+    device_property_patcher = mock.patch(
+        "ray.experimental.channel.torch_tensor_type.TorchTensorType.device",
+        new_callable=mock.PropertyMock,
+        return_value=Device.CPU,
+    )
+    device_property_patcher.start()
 
     ctx = ray_channel.ChannelContext.get_current()
     ctx.set_torch_device(torch.device("cuda"))

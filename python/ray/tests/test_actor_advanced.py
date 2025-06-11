@@ -12,13 +12,12 @@ import ray
 import ray._private.gcs_utils as gcs_utils
 from ray.util.state import list_actors
 import ray.cluster_utils
+from ray._common.test_utils import SignalActor, wait_for_condition
 from ray._private.test_utils import (
-    SignalActor,
     convert_actor_state,
     kill_actor_and_wait_for_failure,
     make_global_state_accessor,
     run_string_as_driver,
-    wait_for_condition,
     wait_for_pid_to_exit,
 )
 from ray._private.ray_constants import gcs_actor_scheduling_enabled
@@ -1371,10 +1370,4 @@ assert alive_actors == 10
 
 
 if __name__ == "__main__":
-    import pytest
-
-    # Test suite is timing out. Disable on windows for now.
-    if os.environ.get("PARALLEL_CI"):
-        sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))
-    else:
-        sys.exit(pytest.main(["-sv", __file__]))
+    sys.exit(pytest.main(["-sv", __file__]))

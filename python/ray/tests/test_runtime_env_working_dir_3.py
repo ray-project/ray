@@ -6,16 +6,15 @@ from pathlib import Path
 from unittest import mock
 
 import pytest
-from pytest_lazyfixture import lazy_fixture
 
 import ray
+from ray._common.test_utils import wait_for_condition
 import ray.experimental.internal_kv as kv
 from ray._private.ray_constants import RAY_RUNTIME_ENV_URI_PIN_EXPIRATION_S_ENV_VAR
 from ray._private.utils import get_directory_size_bytes
 from ray._private.test_utils import (
     chdir,
     check_local_files_gced,
-    wait_for_condition,
     find_free_port,
 )
 
@@ -78,85 +77,45 @@ def check_internal_kv_gced():
     return len(kv._internal_kv_list("gcs://")) == 0
 
 
-def get_local_file_whitelist(cluster, option):
-    # On Windows the runtime directory itself is sometimes not deleted due
-    # to it being in use therefore whitelist it for the tests.
-    if sys.platform == "win32" and option != "py_modules":
-        runtime_dir = (
-            Path(cluster.list_all_nodes()[0].get_runtime_env_dir_path())
-            / "working_dir_files"
-        )
-        pkg_dirs = list(Path(runtime_dir).iterdir())
-        if pkg_dirs:
-            return {pkg_dirs[0].name}
-    return {}
-
-
+@pytest.mark.skipif(sys.platform == "win32", reason="Flaky on Windows.")
 class TestGC:
-    @pytest.mark.skipif(sys.platform == "win32", reason="Flaky on Windows.")
-    @pytest.mark.parametrize("option", ["working_dir", "py_modules"])
-    @pytest.mark.parametrize(
-        "source", [S3_PACKAGE_URI, lazy_fixture("tmp_working_dir")]
-    )
     def test_job_level_gc(
         self,
         start_cluster,
         working_dir_and_pymodules_disable_URI_cache,
         disable_temporary_uri_pinning,
-        option: str,
-        source: str,
+        tmp_working_dir,
     ):
         """Tests that job-level working_dir is GC'd when the job exits."""
-        NUM_NODES = 3
         cluster, address = start_cluster
-        for i in range(NUM_NODES - 1):  # Head node already added.
-            cluster.add_node(
-                num_cpus=1,
-                runtime_env_dir_name=f"node_{i}_runtime_resources",
-                dashboard_agent_listen_port=find_free_port(),
-            )
-            print(f'Added node with runtime_env_dir_name "node_{i}_runtime_resources".')
+        cluster.add_node(
+            num_cpus=1,
+            runtime_env_dir_name="worker_node_runtime_resources",
+            dashboard_agent_listen_port=find_free_port(),
+        )
 
-        print(f"Added all {NUM_NODES} nodes.")
-
-        if option == "working_dir":
-            ray.init(address, runtime_env={"working_dir": source})
-            print("Initialized ray with working_dir runtime_env.")
-        elif option == "py_modules":
-            if source != S3_PACKAGE_URI:
-                source = str(Path(source) / "test_module")
-            ray.init(
-                address,
-                runtime_env={
-                    "py_modules": [
-                        source,
+        ray.init(
+            address,
+            runtime_env={
+                "working_dir": tmp_working_dir,
+                "py_modules": [
+                    S3_PACKAGE_URI,
+                    str(
                         Path(os.path.dirname(__file__))
-                        / "pip_install_test-0.5-py3-none-any.whl",
-                    ]
-                },
-            )
-            print("Initialized ray with py_modules runtime_env.")
-
-        # For a local directory, the package should be in the GCS.
-        # For an S3 URI, there should be nothing in the GCS because
-        # it will be downloaded from S3 directly on each node.
-        # In the "py_modules" case, we have specified a local wheel
-        # file to be uploaded to the GCS, so we do not expect the
-        # internal KV to be empty.
-        if source == S3_PACKAGE_URI and option != "py_modules":
-            assert check_internal_kv_gced()
-        else:
-            assert not check_internal_kv_gced()
-
-        print(f'kv check 1 passed with source "{source}" and option "{option}".')
+                        / "pip_install_test-0.5-py3-none-any.whl"
+                    ),
+                ],
+            },
+        )
+        assert not check_internal_kv_gced()
+        print("kv check 1 passed.")
 
         @ray.remote(num_cpus=1)
         class A:
             def test_import(self):
                 import test_module
+                import pip_install_test  # noqa: F401
 
-                if option == "py_modules":
-                    import pip_install_test  # noqa: F401
                 test_module.one()
 
         num_cpus = int(ray.available_resources()["CPU"])
@@ -168,11 +127,8 @@ class TestGC:
         ray.get([a.test_import.remote() for a in actors])
         print("Got responses from all actors.")
 
-        if source == S3_PACKAGE_URI and option != "py_modules":
-            assert check_internal_kv_gced()
-        else:
-            assert not check_internal_kv_gced()
-        print(f'kv check 2 passed with source "{source}" and option "{option}".')
+        assert not check_internal_kv_gced()
+        print("kv check 2 passed.")
 
         assert not check_local_files_gced(cluster)
         print("check_local_files_gced() check passed.")
@@ -187,31 +143,29 @@ class TestGC:
         wait_for_condition(check_internal_kv_gced)
         print("check_internal_kv_gced passed wait_for_condition block.")
 
-        whitelist = get_local_file_whitelist(cluster, option)
-        wait_for_condition(lambda: check_local_files_gced(cluster, whitelist=whitelist))
+        wait_for_condition(lambda: check_local_files_gced(cluster))
         print("check_local_files_gced passed wait_for_condition block.")
 
+    # NOTE(edoakes): I tried removing the parametrization here and setting working_dir
+    # and py_modules to the same thing, but the test fails. This appears to be due to a
+    # bug in the reference counting logic: we key the reference table on URI only, not
+    # (option, URI), so there is a collision when both options have the same value.
+    # See: https://github.com/ray-project/ray/issues/52578.
     @pytest.mark.parametrize("option", ["working_dir", "py_modules"])
     def test_actor_level_gc(
         self,
         start_cluster,
         working_dir_and_pymodules_disable_URI_cache,
-        disable_temporary_uri_pinning,
         option: str,
     ):
         """Tests that actor-level working_dir is GC'd when the actor exits."""
-        NUM_NODES = 5
         cluster, address = start_cluster
-        for i in range(NUM_NODES - 1):  # Head node already added.
-            cluster.add_node(
-                num_cpus=1, runtime_env_dir_name=f"node_{i}_runtime_resources"
-            )
-            print(f'Added node with runtime_env_dir_name "node_{i}_runtime_resources".')
-
-        print(f"Added all {NUM_NODES} nodes.")
-
+        cluster.add_node(
+            num_cpus=1,
+            runtime_env_dir_name="worker_node_runtime_resources",
+            dashboard_agent_listen_port=find_free_port(),
+        )
         ray.init(address)
-        print(f'Initialized Ray at address "{address}".')
 
         @ray.remote(num_cpus=1)
         class A:
@@ -220,17 +174,17 @@ class TestGC:
 
                 test_module.one()
 
-        if option == "working_dir":
-            A = A.options(runtime_env={"working_dir": S3_PACKAGE_URI})
-        else:
-            A = A.options(
-                runtime_env={
-                    "py_modules": [
-                        S3_PACKAGE_URI,
-                    ]
-                }
-            )
-        print(f'Created deployment A with option "{option}".')
+        A = A.options(
+            runtime_env={
+                "working_dir": S3_PACKAGE_URI,
+            }
+            if option == "working_dir"
+            else {
+                "py_modules": [
+                    S3_PACKAGE_URI,
+                ],
+            }
+        )
 
         num_cpus = int(ray.available_resources()["CPU"])
         print(f"{num_cpus} cpus available.")
@@ -248,21 +202,15 @@ class TestGC:
             ray.kill(actors[i])
             print(f"Issued ray.kill for actor {i}.")
 
-        whitelist = get_local_file_whitelist(cluster, option)
-        wait_for_condition(lambda: check_local_files_gced(cluster, whitelist))
+        wait_for_condition(lambda: check_local_files_gced(cluster))
         print("check_local_files_gced passed wait_for_condition block.")
 
-    @pytest.mark.parametrize("option", ["working_dir", "py_modules"])
-    @pytest.mark.parametrize(
-        "source", [S3_PACKAGE_URI, lazy_fixture("tmp_working_dir")]
-    )
     def test_detached_actor_gc(
         self,
         start_cluster,
         working_dir_and_pymodules_disable_URI_cache,
         disable_temporary_uri_pinning,
-        option: str,
-        source: str,
+        tmp_working_dir,
     ):
         """Tests that URIs for detached actors are GC'd only when they exit."""
         cluster, address = start_cluster
@@ -271,41 +219,29 @@ class TestGC:
         # sent before agent is ready, it fails. We will fix this issue soon.
         time.sleep(2)
 
-        if option == "working_dir":
-            ray.init(address, namespace="test", runtime_env={"working_dir": source})
-        elif option == "py_modules":
-            if source != S3_PACKAGE_URI:
-                source = str(Path(source) / "test_module")
-            ray.init(
-                address,
-                namespace="test",
-                runtime_env={
-                    "py_modules": [
-                        source,
+        ray.init(
+            address,
+            namespace="test",
+            runtime_env={
+                "working_dir": tmp_working_dir,
+                "py_modules": [
+                    S3_PACKAGE_URI,
+                    str(
                         Path(os.path.dirname(__file__))
-                        / "pip_install_test-0.5-py3-none-any.whl",
-                    ]
-                },
-            )
-        print(f'Initialized Ray with option "{option}".')
+                        / "pip_install_test-0.5-py3-none-any.whl"
+                    ),
+                ],
+            },
+        )
 
-        # For a local directory, the package should be in the GCS.
-        # For an S3 URI, there should be nothing in the GCS because
-        # it will be downloaded from S3 directly on each node.
-        # In the "py_modules" case, a local wheel file will be in the GCS.
-        if source == S3_PACKAGE_URI and option != "py_modules":
-            assert check_internal_kv_gced()
-        else:
-            assert not check_internal_kv_gced()
-        print(f'kv check 1 passed with source "{source}" and option "{option}".')
+        assert not check_internal_kv_gced()
 
         @ray.remote
         class A:
             def test_import(self):
                 import test_module
+                import pip_install_test  # noqa: F401
 
-                if option == "py_modules":
-                    import pip_install_test  # noqa: F401
                 test_module.one()
 
         a = A.options(name="test", lifetime="detached").remote()
@@ -314,11 +250,8 @@ class TestGC:
         ray.get(a.test_import.remote())
         print('Got response from "test" actor.')
 
-        if source == S3_PACKAGE_URI and option != "py_modules":
-            assert check_internal_kv_gced()
-        else:
-            assert not check_internal_kv_gced()
-        print(f'kv check 2 passed with source "{source}" and option "{option}".')
+        assert not check_internal_kv_gced()
+        print("kv check 2 passed.")
 
         assert not check_local_files_gced(cluster)
         print("check_local_files_gced() check passed.")
@@ -329,11 +262,8 @@ class TestGC:
         ray.init(address, namespace="test")
         print(f'Reconnected to Ray at address "{address}" and namespace "test".')
 
-        if source == S3_PACKAGE_URI and option != "py_modules":
-            assert check_internal_kv_gced()
-        else:
-            assert not check_internal_kv_gced()
-        print(f'kv check 3 passed with source "{source}" and option "{option}".')
+        assert not check_internal_kv_gced()
+        print("kv check 3 passed.")
 
         assert not check_local_files_gced(cluster)
         print("check_local_files_gced() check passed.")
@@ -350,23 +280,17 @@ class TestGC:
         wait_for_condition(check_internal_kv_gced)
         print("check_internal_kv_gced passed wait_for_condition block.")
 
-        whitelist = get_local_file_whitelist(cluster, option)
-        wait_for_condition(lambda: check_local_files_gced(cluster, whitelist=whitelist))
+        wait_for_condition(lambda: check_local_files_gced(cluster))
         print("check_local_files_gced passed wait_for_condition block.")
 
     def test_hit_cache_size_limit(
         self, start_cluster, URI_cache_10_MB, disable_temporary_uri_pinning
     ):
         """Test eviction happens when we exceed a nonzero (10MB) cache size."""
-        NUM_NODES = 3
         cluster, address = start_cluster
-        for i in range(NUM_NODES - 1):  # Head node already added.
-            cluster.add_node(
-                num_cpus=1, runtime_env_dir_name=f"node_{i}_runtime_resources"
-            )
-            print(f'Added node with runtime_env_dir_name "node_{i}_runtime_resources".')
-
-        print(f"Added all {NUM_NODES} nodes.")
+        cluster.add_node(
+            num_cpus=1, runtime_env_dir_name="worker_node_runtime_resources"
+        )
 
         with tempfile.TemporaryDirectory() as tmp_dir, chdir(tmp_dir):
             print("Entered tempfile context manager.")
@@ -416,60 +340,15 @@ class TestGC:
                 print(f"get_directory_size_bytes assertion {idx} passed.")
 
 
-# Set scope to "class" to force this to run before start_cluster, whose scope
-# is "function".  We need these env vars to be set before Ray is started.
-@pytest.fixture(scope="class")
-def skip_local_gc():
-    with mock.patch.dict(
-        os.environ,
-        {
-            "RAY_RUNTIME_ENV_SKIP_LOCAL_GC": "1",
-        },
-    ):
-        print("RAY_RUNTIME_ENV_SKIP_LOCAL_GC enabled.")
-        yield
-
-
-@pytest.mark.skip("#23617 must be resolved for skip_local_gc to work.")
-class TestSkipLocalGC:
-    @pytest.mark.parametrize("source", [lazy_fixture("tmp_working_dir")])
-    def test_skip_local_gc_env_var(
-        self,
-        skip_local_gc,
-        start_cluster,
-        working_dir_and_pymodules_disable_URI_cache,
-        disable_temporary_uri_pinning,
-        source,
-    ):
-        cluster, address = start_cluster
-        ray.init(address, namespace="test", runtime_env={"working_dir": source})
-
-        @ray.remote
-        class A:
-            def test_import(self):
-                import test_module
-
-                test_module.one()
-
-        a = A.remote()
-        ray.get(a.test_import.remote())  # Check working_dir was downloaded
-
-        ray.shutdown()
-
-        time.sleep(1)  # Give time for GC to potentially happen
-        assert not check_local_files_gced(cluster)
-
-
 @pytest.mark.parametrize("expiration_s", [0, TEMP_URI_EXPIRATION_S])
-@pytest.mark.parametrize("source", [lazy_fixture("tmp_working_dir")])
-def test_pin_runtime_env_uri(start_cluster, source, expiration_s, monkeypatch):
+def test_pin_runtime_env_uri(start_cluster, tmp_working_dir, expiration_s, monkeypatch):
     """Test that temporary GCS URI references are deleted after expiration_s."""
     monkeypatch.setenv(RAY_RUNTIME_ENV_URI_PIN_EXPIRATION_S_ENV_VAR, str(expiration_s))
 
     cluster, address = start_cluster
 
     start = time.time()
-    ray.init(address, namespace="test", runtime_env={"working_dir": source})
+    ray.init(address, namespace="test", runtime_env={"working_dir": tmp_working_dir})
 
     @ray.remote
     def f():
@@ -500,7 +379,4 @@ def test_pin_runtime_env_uri(start_cluster, source, expiration_s, monkeypatch):
 
 
 if __name__ == "__main__":
-    if os.environ.get("PARALLEL_CI"):
-        sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))
-    else:
-        sys.exit(pytest.main(["-sv", __file__]))
+    sys.exit(pytest.main(["-sv", __file__]))

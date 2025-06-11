@@ -14,8 +14,11 @@
 
 #pragma once
 
+#include <deque>
+#include <memory>
+#include <string>
+
 #include "absl/container/flat_hash_map.h"
-#include "absl/container/flat_hash_set.h"
 #include "ray/common/ray_object.h"
 #include "ray/common/task/task.h"
 #include "ray/common/task/task_common.h"
@@ -25,7 +28,6 @@
 #include "ray/raylet/scheduling/local_task_manager_interface.h"
 #include "ray/raylet/scheduling/scheduler_resource_reporter.h"
 #include "ray/raylet/scheduling/scheduler_stats.h"
-#include "ray/util/container_util.h"
 
 namespace ray {
 namespace raylet {
@@ -56,10 +58,10 @@ class ClusterTaskManager : public ClusterTaskManagerInterface {
       std::function<void(const RayTask &)> announce_infeasible_task,
       ILocalTaskManager &local_task_manager,
       std::function<int64_t(void)> get_time_ms = []() {
-        return (int64_t)(absl::GetCurrentTimeNanos() / 1e6);
+        return static_cast<int64_t>(absl::GetCurrentTimeNanos() / 1e6);
       });
 
-  /// Queue task and schedule. This hanppens when processing the worker lease request.
+  /// Queue task and schedule. This happens when processing the worker lease request.
   ///
   /// \param task: The incoming task to be queued and scheduled.
   /// \param grant_or_reject: True if we we should either grant or reject the request
@@ -86,12 +88,30 @@ class ClusterTaskManager : public ClusterTaskManagerInterface {
                       rpc::RequestWorkerLeaseReply::SCHEDULING_CANCELLED_INTENDED,
                   const std::string &scheduling_failure_message = "") override;
 
-  /// Cancel all tasks owned by a specific worker.
-  bool CancelAllTaskOwnedBy(
+  bool CancelAllTasksOwnedBy(
       const WorkerID &worker_id,
       rpc::RequestWorkerLeaseReply::SchedulingFailureType failure_type =
           rpc::RequestWorkerLeaseReply::SCHEDULING_CANCELLED_INTENDED,
       const std::string &scheduling_failure_message = "") override;
+
+  bool CancelAllTasksOwnedBy(
+      const NodeID &node_id,
+      rpc::RequestWorkerLeaseReply::SchedulingFailureType failure_type =
+          rpc::RequestWorkerLeaseReply::SCHEDULING_CANCELLED_INTENDED,
+      const std::string &scheduling_failure_message = "") override;
+
+  /// Cancel all tasks that requires certain resource shape.
+  /// This function is intended to be used to cancel the infeasible tasks. To make it a
+  /// more general function, please modify the signature by adding parameters including
+  /// the failure type and the failure message.
+  ///
+  /// \param target_resource_shapes: The resource shapes to cancel.
+  ///
+  /// \return True if any task was successfully cancelled. This function will return
+  /// false if the task is already running. This shouldn't happen in noremal cases
+  /// because the infeasible tasks shouldn't be able to run due to resource constraints.
+  bool CancelTasksWithResourceShapes(
+      const std::vector<ResourceSet> target_resource_shapes) override;
 
   /// Attempt to cancel all queued tasks that match the predicate.
   ///
@@ -111,17 +131,14 @@ class ClusterTaskManager : public ClusterTaskManagerInterface {
   /// the only fields used.
   void FillResourceUsage(rpc::ResourcesData &data) override;
 
-  /// Return if any tasks are pending resource acquisition.
+  /// Return with an exemplar if any tasks are pending resource acquisition.
   ///
-  /// \param[out] example: An example task that is deadlocking.
-  /// \param[in,out] any_pending: True if there's any pending example.
   /// \param[in,out] num_pending_actor_creation: Number of pending actor creation tasks.
   /// \param[in,out] num_pending_tasks: Number of pending tasks.
-  /// \return True if any progress is any tasks are pending.
-  bool AnyPendingTasksForResourceAcquisition(RayTask *example,
-                                             bool *any_pending,
-                                             int *num_pending_actor_creation,
-                                             int *num_pending_tasks) const override;
+  /// \return An example task that is deadlocking if any tasks are pending resource
+  /// acquisition.
+  const RayTask *AnyPendingTasksForResourceAcquisition(
+      int *num_pending_actor_creation, int *num_pending_tasks) const override;
 
   // Schedule and dispatch tasks.
   void ScheduleAndDispatchTasks() override;
@@ -158,6 +175,18 @@ class ClusterTaskManager : public ClusterTaskManagerInterface {
   /// TODO(sang): Update the internal states value dynamically instead of iterating the
   /// data structure.
   void RecomputeDebugStats() const;
+
+  /// Whether the given Work matches the provided resource shape. The function checks
+  /// the scheduling class of the work and compares it with each of the target resource
+  /// shapes. If any of the resource shapes matches the resources of the scheduling
+  /// class, the function returns true.
+  ///
+  /// \param work: The work to check.
+  /// \param target_resource_shapes: The list of resource shapes to check against.
+  ///
+  /// \return True if the work matches any of the target resource shapes.
+  bool IsWorkWithResourceShape(const std::shared_ptr<internal::Work> &work,
+                               const std::vector<ResourceSet> &target_resource_shapes);
 
   const NodeID &self_node_id_;
   /// Responsible for resource tracking/view of the cluster.

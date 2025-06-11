@@ -37,7 +37,10 @@ class DatabricksUCDatasource(Datasource):
         self.schema = schema
         self.query = query
 
-        url_base = f"https://{self.host}/api/2.0/sql/statements/"
+        if not host.startswith(("http://", "https://")):
+            self.host = f"https://{host}"
+
+        url_base = f"{self.host}/api/2.0/sql/statements/"
 
         payload = json.dumps(
             {
@@ -91,12 +94,14 @@ class DatabricksUCDatasource(Datasource):
             raise
 
         if state != "SUCCEEDED":
-            raise RuntimeError(f"Query {self.query!r} execution failed.")
+            raise RuntimeError(
+                f"Query {self.query!r} execution failed.\n{response.json()}"
+            )
 
         manifest = response.json()["manifest"]
-        is_truncated = manifest["truncated"]
+        self.is_truncated = manifest["truncated"]
 
-        if is_truncated:
+        if self.is_truncated:
             logger.warning(
                 f"The resulting size of the dataset of '{query!r}' exceeds "
                 "100GiB and it is truncated."

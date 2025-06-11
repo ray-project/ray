@@ -1,11 +1,11 @@
 .. include:: /_includes/rllib/we_are_hiring.rst
 
-.. include:: /_includes/rllib/new_api_stack.rst
-
 .. _single-agent-episode-reference-docs:
 
 SingleAgentEpisode API
 ======================
+
+.. include:: /_includes/rllib/new_api_stack.rst
 
 rllib.env.single_agent_episode.SingleAgentEpisode
 -------------------------------------------------
@@ -47,7 +47,6 @@ Getting environment data
     ~SingleAgentEpisode.get_actions
     ~SingleAgentEpisode.get_rewards
     ~SingleAgentEpisode.get_extra_model_outputs
-    ~SingleAgentEpisode.get_temporary_timestep_data
 
 Adding data
 ~~~~~~~~~~~
@@ -57,7 +56,6 @@ Adding data
 
     ~SingleAgentEpisode.add_env_reset
     ~SingleAgentEpisode.add_env_step
-    ~SingleAgentEpisode.add_temporary_timestep_data
 
 Creating and handling episode chunks
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~

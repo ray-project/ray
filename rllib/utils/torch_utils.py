@@ -38,7 +38,7 @@ if torch:
     TORCH_COMPILE_REQUIRED_VERSION = version.parse("2.0.0")
 else:
     TORCH_COMPILE_REQUIRED_VERSION = ValueError(
-        "torch is not installed. " "TORCH_COMPILE_REQUIRED_VERSION is " "not defined."
+        "torch is not installed. TORCH_COMPILE_REQUIRED_VERSION is not defined."
     )
 
 
@@ -118,16 +118,21 @@ def clip_gradients(
     if grad_clip is None:
         return
 
+    if grad_clip_by not in ["value", "norm", "global_norm"]:
+        raise ValueError(
+            f"`grad_clip_by` ({grad_clip_by}) must be one of [value|norm|global_norm]!"
+        )
+
     # Clip by value (each gradient individually).
     if grad_clip_by == "value":
-        for k, v in gradients_dict.copy().items():
+        for k, v in gradients_dict.items():
             gradients_dict[k] = (
                 None if v is None else torch.clip(v, -grad_clip, grad_clip)
             )
 
     # Clip by L2-norm (per gradient tensor).
     elif grad_clip_by == "norm":
-        for k, v in gradients_dict.copy().items():
+        for k, v in gradients_dict.items():
             if v is not None:
                 # Compute the L2-norm of the gradient tensor.
                 norm = v.norm(2).nan_to_num(neginf=-10e8, posinf=10e8)
@@ -137,9 +142,6 @@ def clip_gradients(
 
     # Clip by global L2-norm (across all gradient tensors).
     else:
-        assert (
-            grad_clip_by == "global_norm"
-        ), f"`grad_clip_by` ({grad_clip_by}) must be one of [value|norm|global_norm]!"
         gradients_list = list(gradients_dict.values())
         total_norm = compute_global_norm(gradients_list)
         if len(gradients_list) == 0:
@@ -147,17 +149,15 @@ def clip_gradients(
         # We do want the coefficient to be in between 0.0 and 1.0, therefore
         # if the global_norm is smaller than the clip value, we use the clip value
         # as normalization constant.
-        device = gradients_list[0].device
-        clip_coef = grad_clip / torch.maximum(
-            torch.tensor(grad_clip).to(device), total_norm + 1e-6
-        )
-        # Note: multiplying by the clamped coef is redundant when the coef is clamped to
-        # 1, but doing so avoids a `if clip_coef < 1:` conditional which can require a
-        # CPU <=> device synchronization when the gradients do not reside in CPU memory.
-        clip_coef_clamped = torch.clamp(clip_coef, max=1.0)
+        clip_coeff = grad_clip / torch.clamp(total_norm + 1e-6, min=grad_clip)
+        # Note: multiplying by the clamped coefficient is redundant when the coefficient
+        # is clamped to 1, but doing so avoids a `if clip_coeff < 1:` conditional which
+        # can require a CPU <=> device synchronization when the gradients reside in GPU
+        # memory.
+        clip_coeff_clamped = torch.clamp(clip_coeff, max=1.0)
         for g in gradients_list:
             if g is not None:
-                g.detach().mul_(clip_coef_clamped.to(g.device))
+                g.detach().mul_(clip_coeff_clamped.to(g.device))
         return total_norm
 
 
@@ -176,7 +176,6 @@ def compute_global_norm(gradients_list: "ParamList") -> TensorType:
     # If we have no grads, return zero.
     if len(gradients_list) == 0:
         return torch.tensor(0.0)
-    device = gradients_list[0].device
 
     # Compute the global norm.
     total_norm = torch.norm(
@@ -186,18 +185,14 @@ def compute_global_norm(gradients_list: "ParamList") -> TensorType:
                 # Note, we want to avoid overflow in the norm computation, this does
                 # not affect the gradients themselves as we clamp by multiplying and
                 # not by overriding tensor values.
-                .nan_to_num(neginf=-10e8, posinf=10e8).to(device)
+                .nan_to_num(neginf=-10e8, posinf=10e8)
                 for g in gradients_list
                 if g is not None
             ]
         ),
         norm_type,
     ).nan_to_num(neginf=-10e8, posinf=10e8)
-    if torch.logical_or(total_norm.isnan(), total_norm.isinf()):
-        raise RuntimeError(
-            f"The total norm of order {norm_type} for gradients from "
-            "`parameters` is non-finite, so it cannot be clipped. "
-        )
+
     # Return the global norm.
     return total_norm
 
@@ -233,66 +228,97 @@ def concat_multi_gpu_td_errors(
 
 @PublicAPI
 def convert_to_torch_tensor(
-    x: TensorStructType,
+    x,
     device: Optional[str] = None,
     pin_memory: bool = False,
+    use_stream: bool = False,
+    stream: Optional[Union["torch.cuda.Stream", "torch.cuda.classes.Stream"]] = None,
 ):
-    """Converts any struct to torch.Tensors.
+    """
+    Converts any (possibly nested) structure to torch.Tensors.
 
     Args:
-        x: Any (possibly nested) struct, the values in which will be
-            converted and returned as a new struct with all leaves converted
-            to torch tensors.
-        device: The device to create the tensor on.
-        pin_memory: If True, will call the `pin_memory()` method on the created tensors.
+        x: The input structure whose leaves will be converted.
+        device: The device to create the tensor on (e.g. "cuda:0" or "cpu").
+        pin_memory: If True, calls `pin_memory()` on the created tensors.
+        use_stream: If True, uses a separate CUDA stream for `Tensor.to()`.
+        stream: An optional CUDA stream for the host-to-device copy in `Tensor.to()`.
 
     Returns:
-        Any: A new struct with the same structure as `x`, but with all
-        values converted to torch Tensor types. This does not convert possibly
-        nested elements that are None because torch has no representation for that.
+        A new structure with the same layout as `x` but with all leaves converted
+        to torch.Tensors. Leaves that are None are left unchanged.
     """
 
+    # Convert the provided device (if any) to a torch.device; default to CPU.
+    device = torch.device(device) if device is not None else torch.device("cpu")
+    is_cuda = (device.type == "cuda") and torch.cuda.is_available()
+
+    # Determine the appropriate stream.
+    if is_cuda:
+        if use_stream:
+            if stream is not None:
+                # Ensure the provided stream is of an acceptable type.
+                assert isinstance(
+                    stream, (torch.cuda.Stream, torch.cuda.classes.Stream)
+                ), f"`stream` must be a torch.cuda.Stream but got {type(stream)}."
+            else:
+                stream = torch.cuda.Stream()
+        else:
+            stream = torch.cuda.default_stream(device=device)
+    else:
+        stream = None
+
     def mapping(item):
+        # Pass through None values.
         if item is None:
-            # Torch has no representation for `None`, so we return None
             return item
 
-        # Special handling of "Repeated" values.
+        # Special handling for "RepeatedValues" types.
         if isinstance(item, RepeatedValues):
             return RepeatedValues(
-                tree.map_structure(mapping, item.values), item.lengths, item.max_len
+                tree.map_structure(mapping, item.values),
+                item.lengths,
+                item.max_len,
             )
 
-        # Already torch tensor -> make sure it's on right device.
+        # Convert to a tensor if not already one.
         if torch.is_tensor(item):
             tensor = item
-        # Numpy arrays.
         elif isinstance(item, np.ndarray):
-            # Object type (e.g. info dicts in train batch): leave as-is.
-            # str type (e.g. agent_id in train batch): leave as-is.
+            # Leave object or string arrays as is.
             if item.dtype == object or item.dtype.type is np.str_:
                 return item
-            # Non-writable numpy-arrays will cause PyTorch warning.
-            elif item.flags.writeable is False:
+            # If the numpy array is not writable, suppress warnings.
+            if not item.flags.writeable:
                 with warnings.catch_warnings():
                     warnings.simplefilter("ignore")
                     tensor = torch.from_numpy(item)
-            # Already numpy: Wrap as torch tensor.
             else:
                 tensor = torch.from_numpy(item)
-        # Everything else: Convert to numpy, then wrap as torch tensor.
         else:
             tensor = torch.from_numpy(np.asarray(item))
 
-        # Floatify all float64 tensors (but leave float16 as-is).
-        if tensor.is_floating_point() and str(tensor.dtype) != "torch.float16":
+        # Convert floating-point tensors from float64 to float32 (unless they are float16).
+        if tensor.is_floating_point() and tensor.dtype != torch.float16:
             tensor = tensor.float()
 
-        # Pin the tensor's memory (for faster transfer to GPU later).
-        if pin_memory and torch.cuda.is_available():
-            tensor.pin_memory()
+        # Optionally pin memory for faster host-to-GPU copies.
+        if pin_memory and is_cuda:
+            tensor = tensor.pin_memory()
 
-        return tensor if device is None else tensor.to(device)
+        # Move the tensor to the desired device.
+        # For CUDA devices, use the provided stream context if available.
+        if is_cuda:
+            if stream is not None:
+                with torch.cuda.stream(stream):
+                    tensor = tensor.to(device, non_blocking=True)
+            else:
+                tensor = tensor.to(device, non_blocking=True)
+        else:
+            # For CPU (or non-CUDA), this is a no-op if already on the target device.
+            tensor = tensor.to(device)
+
+        return tensor
 
     return tree.map_structure(mapping, x)
 

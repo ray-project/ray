@@ -128,6 +128,7 @@ if __name__ == "__main__":
     base_config = (
         PPOConfig()
         .environment("CartPole-v1" if args.num_agents == 0 else "ma_cart")
+        .env_runners(create_env_on_local_worker=True)
         .training(lr=0.0001)
         # TODO (sven): Tune throws a weird error inside the "log json" callback
         #  when running with this option. The `perf` key in the result dict contains

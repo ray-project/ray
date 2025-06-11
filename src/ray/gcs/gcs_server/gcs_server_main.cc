@@ -15,6 +15,8 @@
 #include <cstdlib>
 #include <iostream>
 #include <limits>
+#include <string>
+#include <vector>
 
 #include "gflags/gflags.h"
 #include "ray/common/ray_config.h"
@@ -22,6 +24,8 @@
 #include "ray/gcs/store_client/redis_store_client.h"
 #include "ray/stats/stats.h"
 #include "ray/util/event.h"
+#include "ray/util/stream_redirection.h"
+#include "ray/util/stream_redirection_options.h"
 #include "ray/util/util.h"
 #include "src/ray/protobuf/gcs_service.pb.h"
 
@@ -29,9 +33,8 @@ DEFINE_string(redis_address, "", "The ip address of redis.");
 DEFINE_bool(redis_enable_ssl, false, "Use tls/ssl in redis connection.");
 DEFINE_int32(redis_port, -1, "The port of redis.");
 DEFINE_string(log_dir, "", "The path of the dir where log files are created.");
-DEFINE_string(ray_log_filepath,
-              "",
-              "The log filepath to dump gcs server log, which is written via `RAY_LOG`.");
+DEFINE_string(stdout_filepath, "", "The filepath to dump gcs server stdout.");
+DEFINE_string(stderr_filepath, "", "The filepath to dump gcs server stderr.");
 DEFINE_int32(gcs_server_port, 0, "The port of gcs server.");
 DEFINE_int32(metrics_agent_port, -1, "The port of metrics agent.");
 DEFINE_string(config_list, "", "The config list of raylet.");
@@ -47,11 +50,26 @@ DEFINE_string(ray_commit, "", "The commit hash of Ray.");
 int main(int argc, char *argv[]) {
   gflags::ParseCommandLineFlags(&argc, &argv, true);
 
-  // TODO(hjiang): For the current implementation, we assume all logging are managed by
-  // spdlog, the caveat is there could be there's writing to stdout/stderr as well. The
-  // final solution is implement self-customized sink for spdlog, and redirect
-  // stderr/stdout to the file descritor. Hold until it's confirmed necessary.
-  //
+  if (!FLAGS_stdout_filepath.empty()) {
+    ray::StreamRedirectionOption stdout_redirection_options;
+    stdout_redirection_options.file_path = FLAGS_stdout_filepath;
+    stdout_redirection_options.rotation_max_size =
+        ray::RayLog::GetRayLogRotationMaxBytesOrDefault();
+    stdout_redirection_options.rotation_max_file_count =
+        ray::RayLog::GetRayLogRotationBackupCountOrDefault();
+    ray::RedirectStdoutOncePerProcess(stdout_redirection_options);
+  }
+
+  if (!FLAGS_stderr_filepath.empty()) {
+    ray::StreamRedirectionOption stderr_redirection_options;
+    stderr_redirection_options.file_path = FLAGS_stderr_filepath;
+    stderr_redirection_options.rotation_max_size =
+        ray::RayLog::GetRayLogRotationMaxBytesOrDefault();
+    stderr_redirection_options.rotation_max_file_count =
+        ray::RayLog::GetRayLogRotationBackupCountOrDefault();
+    ray::RedirectStderrOncePerProcess(stderr_redirection_options);
+  }
+
   // Backward compatibility notes:
   // By default, GCS server flushes all logging and stdout/stderr to a single file called
   // `gcs_server.out`, without log rotations. To keep backward compatibility at best
@@ -59,14 +77,14 @@ int main(int argc, char *argv[]) {
 
   // For compatibility, by default GCS server dumps logging into a single file with no
   // rotation.
-  InitShutdownRAII ray_log_shutdown_raii(
-      ray::RayLog::StartRayLog,
-      ray::RayLog::ShutDownRayLog,
-      argv[0],
-      ray::RayLogLevel::INFO,
-      /*log_filepath=*/FLAGS_ray_log_filepath,
-      ray::RayLog::GetRayLogRotationMaxBytesOrDefault(),
-      ray::RayLog::GetRayLogRotationBackupCountOrDefault());
+  InitShutdownRAII ray_log_shutdown_raii(ray::RayLog::StartRayLog,
+                                         ray::RayLog::ShutDownRayLog,
+                                         argv[0],
+                                         ray::RayLogLevel::INFO,
+                                         /*log_filepath=*/"",
+                                         /*err_log_filepath=*/"",
+                                         /*log_rotation_max_size=*/0,
+                                         /*log_rotation_file_num=*/1);
   ray::RayLog::InstallFailureSignalHandler(argv[0]);
   ray::RayLog::InstallTerminateHandler();
 
@@ -91,15 +109,16 @@ int main(int argc, char *argv[]) {
   gflags::ShutDownCommandLineFlags();
 
   RayConfig::instance().initialize(config_list);
-  ray::asio::testing::init();
-  ray::rpc::testing::init();
+  ray::asio::testing::Init();
+  ray::rpc::testing::Init();
 
   // IO Service for main loop.
   SetThreadName("gcs_server");
   instrumented_io_context main_service(/*enable_lag_probe=*/true);
   // Ensure that the IO service keeps running. Without this, the main_service will exit
   // as soon as there is no more work to be processed.
-  boost::asio::io_service::work work(main_service);
+  boost::asio::executor_work_guard<boost::asio::io_context::executor_type> work(
+      main_service.get_executor());
 
   ray::stats::enable_grpc_metrics_collection_if_needed("gcs");
 

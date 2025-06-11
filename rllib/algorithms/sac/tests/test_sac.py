@@ -68,7 +68,9 @@ class TestSAC(unittest.TestCase):
                 train_batch_size=10,
             )
             .env_runners(
-                env_to_module_connector=lambda env: FlattenObservations(),
+                env_to_module_connector=(
+                    lambda env, spaces, device: FlattenObservations()
+                ),
                 num_env_runners=0,
                 rollout_fragment_length=10,
             )
@@ -130,9 +132,7 @@ class TestSAC(unittest.TestCase):
 
         # Dict space .sample() returns an ordered dict.
         # Make sure the keys in samples are ordered differently.
-        dict_samples = [
-            {k: v for k, v in reversed(dict_space.sample().items())} for _ in range(10)
-        ]
+        dict_samples = [dict(reversed(dict_space.sample().items())) for _ in range(10)]
 
         class NestedDictEnv(gym.Env):
             def __init__(self):
@@ -164,7 +164,9 @@ class TestSAC(unittest.TestCase):
             .env_runners(
                 num_env_runners=0,
                 rollout_fragment_length=5,
-                env_to_module_connector=lambda env: FlattenObservations(),
+                env_to_module_connector=(
+                    lambda env, spaces, device: FlattenObservations()
+                ),
             )
         )
         num_iterations = 1

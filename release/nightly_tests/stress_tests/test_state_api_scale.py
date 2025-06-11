@@ -1,12 +1,14 @@
 import click
 import json
 import ray
+from ray._common.test_utils import wait_for_condition
 from ray._private.ray_constants import LOG_PREFIX_ACTOR_NAME, LOG_PREFIX_JOB_ID
 from ray._private.state_api_test_utils import (
     STATE_LIST_LIMIT,
     StateAPIMetric,
     aggregate_perf_results,
     invoke_state_api,
+    invoke_state_api_n,
     GLOBAL_STATE_STATS,
 )
 
@@ -36,16 +38,6 @@ logger = logging.getLogger(__file__)
 
 GiB = 1024 * 1024 * 1024
 MiB = 1024 * 1024
-
-
-def invoke_state_api_n(*args, **kwargs):
-    def verify():
-        NUM_API_CALL_SAMPLES = 10
-        for _ in range(NUM_API_CALL_SAMPLES):
-            invoke_state_api(*args, **kwargs)
-        return True
-
-    test_utils.wait_for_condition(verify, retry_interval_ms=2000, timeout=30)
 
 
 def test_many_tasks(num_tasks: int):
@@ -385,7 +377,7 @@ def test(
         num_tasks, num_actors, num_objects, log_file_size_byte
     )
 
-    test_utils.wait_for_condition(no_resource_leaks)
+    wait_for_condition(no_resource_leaks)
     monitor_actor = test_utils.monitor_memory_usage()
     start_time = time.perf_counter()
     # Run some long-running tasks

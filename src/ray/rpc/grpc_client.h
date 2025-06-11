@@ -17,6 +17,9 @@
 #include <grpcpp/grpcpp.h>
 
 #include <boost/asio.hpp>
+#include <memory>
+#include <string>
+#include <utility>
 
 #include "ray/common/grpc_util.h"
 #include "ray/common/ray_config.h"
@@ -95,19 +98,20 @@ class GrpcClient {
   GrpcClient(std::shared_ptr<grpc::Channel> channel,
              ClientCallManager &call_manager,
              bool use_tls = false)
-      : client_call_manager_(call_manager), use_tls_(use_tls) {
-    channel_ = std::move(channel);
-    stub_ = GrpcService::NewStub(channel_);
-  }
+      : client_call_manager_(call_manager),
+        channel_(std::move(channel)),
+        stub_(GrpcService::NewStub(channel_)),
+        use_tls_(use_tls) {}
 
   GrpcClient(const std::string &address,
              const int port,
              ClientCallManager &call_manager,
-             bool use_tls = false)
-      : client_call_manager_(call_manager), use_tls_(use_tls) {
-    channel_ = BuildChannel(address, port, CreateDefaultChannelArguments());
-    stub_ = GrpcService::NewStub(channel_);
-  }
+             bool use_tls = false,
+             grpc::ChannelArguments channel_arguments = CreateDefaultChannelArguments())
+      : client_call_manager_(call_manager),
+        channel_(BuildChannel(address, port, std::move(channel_arguments))),
+        stub_(GrpcService::NewStub(channel_)),
+        use_tls_(use_tls) {}
 
   /// Create a new `ClientCall` and send request.
   ///
@@ -130,7 +134,7 @@ class GrpcClient {
       const ClientCallback<Reply> &callback,
       std::string call_name = "UNKNOWN_RPC",
       int64_t method_timeout_ms = -1) {
-    testing::RpcFailure failure = testing::get_rpc_failure(call_name);
+    testing::RpcFailure failure = testing::GetRpcFailure(call_name);
     if (failure == testing::RpcFailure::Request) {
       // Simulate the case where the PRC fails before server receives
       // the request.
@@ -149,7 +153,7 @@ class GrpcClient {
           *stub_,
           prepare_async_function,
           request,
-          [callback](const Status &status, Reply &&reply) {
+          [callback](const Status &status, const Reply &) {
             callback(Status::RpcError("Unavailable", grpc::StatusCode::UNAVAILABLE),
                      Reply());
           },
@@ -183,14 +187,14 @@ class GrpcClient {
 
  private:
   ClientCallManager &client_call_manager_;
-  /// The gRPC-generated stub.
-  std::unique_ptr<typename GrpcService::Stub> stub_;
-  /// Whether to use TLS.
-  bool use_tls_;
   /// The channel of the stub.
   std::shared_ptr<grpc::Channel> channel_;
+  /// The gRPC-generated stub.
+  std::unique_ptr<typename GrpcService::Stub> stub_;
   /// Whether CallMethod is invoked.
   std::atomic<bool> call_method_invoked_ = false;
+  /// Whether to use TLS.
+  bool use_tls_;
 };
 
 }  // namespace rpc

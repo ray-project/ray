@@ -49,10 +49,10 @@ class AutoscalingConfigProducer:
     """
 
     def __init__(self, ray_cluster_name, ray_cluster_namespace):
-        self._headers, self._verify = node_provider.load_k8s_secrets()
-        self._ray_cr_url = node_provider.url_from_resource(
-            namespace=ray_cluster_namespace, path=f"rayclusters/{ray_cluster_name}"
+        self.kubernetes_api_client = node_provider.KubernetesHttpApiClient(
+            namespace=ray_cluster_namespace
         )
+        self._ray_cr_path = f"rayclusters/{ray_cluster_name}"
 
     def __call__(self):
         ray_cr = self._fetch_ray_cr_from_k8s_with_retries()
@@ -67,7 +67,7 @@ class AutoscalingConfigProducer:
         """
         for i in range(1, MAX_RAYCLUSTER_FETCH_TRIES + 1):
             try:
-                return self._fetch_ray_cr_from_k8s()
+                return self.kubernetes_api_client.get(self._ray_cr_path)
             except requests.HTTPError as e:
                 if i < MAX_RAYCLUSTER_FETCH_TRIES:
                     logger.exception(
@@ -79,18 +79,6 @@ class AutoscalingConfigProducer:
 
         # This branch is inaccessible. Raise to satisfy mypy.
         raise AssertionError
-
-    def _fetch_ray_cr_from_k8s(self) -> Dict[str, Any]:
-        result = requests.get(
-            self._ray_cr_url,
-            headers=self._headers,
-            timeout=node_provider.KUBERAY_REQUEST_TIMEOUT_S,
-            verify=self._verify,
-        )
-        if not result.status_code == 200:
-            result.raise_for_status()
-        ray_cr = result.json()
-        return ray_cr
 
 
 def _derive_autoscaling_config_from_ray_cr(ray_cr: Dict[str, Any]) -> Dict[str, Any]:
@@ -179,7 +167,7 @@ def _generate_legacy_autoscaling_config_fields() -> Dict[str, Any]:
 
 
 def _generate_available_node_types_from_ray_cr_spec(
-    ray_cr_spec: Dict[str, Any]
+    ray_cr_spec: Dict[str, Any],
 ) -> Dict[str, Any]:
     """Formats autoscaler "available_node_types" field based on the Ray CR's group
     specs.
@@ -204,9 +192,10 @@ def _node_type_from_group_spec(
         # The head node type has no workers because the head is not a worker.
         min_workers = max_workers = 0
     else:
-        # `minReplicas` and `maxReplicas` are required fields for each workerGroupSpec
-        min_workers = group_spec["minReplicas"]
-        max_workers = group_spec["maxReplicas"]
+        # `minReplicas` and `maxReplicas` are required fields for each workerGroupSpec.
+        # numOfHosts specifies the number of workers per replica in KubeRay v1.1+.
+        min_workers = group_spec["minReplicas"] * group_spec.get("numOfHosts", 1)
+        max_workers = group_spec["maxReplicas"] * group_spec.get("numOfHosts", 1)
 
     resources = _get_ray_resources_from_group_spec(group_spec, is_head)
 
@@ -236,7 +225,7 @@ def _get_ray_resources_from_group_spec(
     TODO: Expose a better interface in the RayCluster CRD for Ray resource annotations.
     For now, we take the rayStartParams as the primary source of truth.
     """
-    ray_start_params = group_spec["rayStartParams"]
+    ray_start_params = group_spec.get("rayStartParams", {})
     # In KubeRay, Ray container is always the first application container of a Ray Pod.
     k8s_resources = group_spec["template"]["spec"]["containers"][0].get("resources", {})
     group_name = _HEAD_GROUP_NAME if is_head else group_spec["groupName"]
@@ -365,14 +354,14 @@ def _get_num_gpus(
 
 
 def _get_num_tpus(
-    custom_resource_dict: Dict[str, str],
+    custom_resource_dict: Dict[str, int],
     k8s_resources: Dict[str, Dict[str, str]],
 ) -> Optional[int]:
     """Get TPU custom resource annotation from custom_resource_dict in ray_start_params,
     or k8s_resources, with priority for custom_resource_dict.
     """
     if "TPU" in custom_resource_dict:
-        return int(custom_resource_dict["TPU"])
+        return custom_resource_dict["TPU"]
     else:
         for typ in ["limits", "requests"]:
             tpu_resource_quantity = k8s_resources.get(typ, {}).get("google.com/tpu")

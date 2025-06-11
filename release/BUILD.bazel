@@ -290,10 +290,15 @@ py_library(
         ["ray_release/**/*.py"],
         exclude = ["ray_release/tests/*.py"],
     ),
-    data = glob(["ray_release/environments/*.env"]) + [
+    data = glob([
+        "ray_release/environments/*.env",
+        "ray_release/configs/*.yaml",
+    ]) + [
         "ray_release/buildkite/aws_instance_types.csv",
         "ray_release/schema.json",
-    ] + glob(["ray_release/configs/*.yaml"]),
+        "//doc:example_configs",
+        "//doc/source/train/examples/pytorch/distributing-pytorch/ci:ci_yamls",
+    ],
     imports = ["."],
     visibility = ["//visibility:public"],
     deps = [
@@ -570,6 +575,21 @@ py_test(
 )
 
 py_test(
+    name = "test_kuberay_util",
+    size = "small",
+    srcs = ["ray_release/tests/test_kuberay_util.py"],
+    exec_compatible_with = ["//:hermetic_python"],
+    tags = [
+        "release_unit",
+        "team:ci"
+    ],
+    deps = [
+        ":ray_release",
+        bk_require("pytest"),
+    ],
+)
+
+py_test(
     name = "test_test",
     size = "small",
     srcs = ["ray_release/tests/test_test.py"],
@@ -619,7 +639,6 @@ py_test(
     ],
     deps = [
         ":ray_release",
-        bk_require("freezegun"),
         bk_require("pytest"),
     ],
 )
@@ -637,4 +656,19 @@ py_test(
         ":ray_release",
         bk_require("pytest"),
     ],
+)
+
+py_binary(
+    name = "build_pipeline",
+    srcs = ["ray_release/scripts/build_pipeline.py"],
+    exec_compatible_with = ["//:hermetic_python"],
+    deps = [
+        ":ray_release",
+    ],
+    data = glob(["**/*.yaml"]) + [
+        "//python/ray/autoscaler/aws:test_configs",
+        "//python/ray/autoscaler/gcp:test_configs",
+        "ray_release/byod/byod.custom.Dockerfile",
+        "ray_release/byod/byod.Dockerfile",
+    ]
 )

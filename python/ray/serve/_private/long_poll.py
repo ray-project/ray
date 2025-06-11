@@ -11,12 +11,16 @@ from enum import Enum, auto
 from typing import Any, Callable, DefaultDict, Dict, Optional, Set, Tuple, Union
 
 import ray
-from ray._private.utils import get_or_create_event_loop
+from ray._common.utils import get_or_create_event_loop
 from ray.serve._private.constants import SERVE_LOGGER_NAME
-from ray.serve.generated.serve_pb2 import DeploymentTargetInfo
-from ray.serve.generated.serve_pb2 import EndpointInfo as EndpointInfoProto
-from ray.serve.generated.serve_pb2 import EndpointSet, LongPollRequest, LongPollResult
-from ray.serve.generated.serve_pb2 import UpdatedObject as UpdatedObjectProto
+from ray.serve.generated.serve_pb2 import (
+    DeploymentTargetInfo,
+    EndpointInfo as EndpointInfoProto,
+    EndpointSet,
+    LongPollRequest,
+    LongPollResult,
+    UpdatedObject as UpdatedObjectProto,
+)
 from ray.util import metrics
 
 logger = logging.getLogger(SERVE_LOGGER_NAME)
@@ -113,6 +117,20 @@ class LongPollClient:
         If a key is already in the client, the new listener will replace the old one,
         but the snapshot ID will be preserved, so the new listener will only be called
         on the *next* update to that key.
+        """
+        # We need to run the underlying method in the same event loop that runs
+        # the long poll loop, because we need to mutate the mapping of snapshot IDs,
+        # which also needs to be serialized by the long poll's RPC to the
+        # Serve Controller. If those happened concurrently in different threads,
+        # we could get a `RuntimeError: dictionary changed size during iteration`.
+        # See https://github.com/ray-project/ray/pull/52793 for more details.
+        self.event_loop.call_soon_threadsafe(self._add_key_listeners, key_listeners)
+
+    def _add_key_listeners(
+        self, key_listeners: Dict[KeyType, UpdateStateCallable]
+    ) -> None:
+        """Inner method that actually adds the key listeners, to be called
+        via call_soon_threadsafe for thread safety.
         """
         # Only initialize snapshot ids for *new* keys.
         self.snapshot_ids.update(

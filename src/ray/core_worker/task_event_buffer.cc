@@ -14,8 +14,11 @@
 
 #include "ray/core_worker/task_event_buffer.h"
 
-#include "ray/gcs/pb_util.h"
-#include "ray/util/event.h"
+#include <algorithm>
+#include <memory>
+#include <string>
+#include <utility>
+#include <vector>
 
 namespace ray {
 namespace core {
@@ -32,7 +35,7 @@ TaskStatusEvent::TaskStatusEvent(
     const rpc::TaskStatus &task_status,
     int64_t timestamp,
     const std::shared_ptr<const TaskSpecification> &task_spec,
-    absl::optional<const TaskStatusEvent::TaskStateUpdate> state_update)
+    std::optional<const TaskStatusEvent::TaskStateUpdate> state_update)
     : TaskEvent(task_id, job_id, attempt_number),
       task_status_(task_status),
       timestamp_(timestamp),
@@ -209,7 +212,7 @@ bool TaskEventBuffer::RecordTaskStatusEventIfNeeded(
     const TaskSpecification &spec,
     rpc::TaskStatus status,
     bool include_task_info,
-    absl::optional<const TaskStatusEvent::TaskStateUpdate> state_update) {
+    std::optional<const TaskStatusEvent::TaskStateUpdate> state_update) {
   if (!Enabled()) {
     return false;
   }
@@ -239,7 +242,7 @@ TaskEventBufferImpl::~TaskEventBufferImpl() { Stop(); }
 
 Status TaskEventBufferImpl::Start(bool auto_flush) {
   absl::MutexLock lock(&mutex_);
-  export_event_write_enabled_ = RayConfig::instance().enable_export_api_write();
+  export_event_write_enabled_ = TaskEventBufferImpl::IsExportAPIEnabledTask();
   auto report_interval_ms = RayConfig::instance().task_events_report_interval_ms();
   RAY_CHECK(report_interval_ms > 0)
       << "RAY_task_events_report_interval_ms should be > 0 to use TaskEventBuffer.";
@@ -267,7 +270,7 @@ Status TaskEventBufferImpl::Start(bool auto_flush) {
   auto status = gcs_client_->Connect(io_service_);
   if (!status.ok()) {
     RAY_LOG(ERROR) << "Failed to connect to GCS, TaskEventBuffer will stop now. [status="
-                   << status.ToString() << "].";
+                   << status << "].";
 
     enabled_ = false;
     io_service_.stop();
@@ -554,7 +557,7 @@ void TaskEventBufferImpl::FlushEvents(bool forced) {
                        << " tasks attempts, and report "
                        << num_dropped_task_attempts_to_send
                        << " task attempts lost on worker to GCS."
-                       << "[status=" << status.ToString() << "]";
+                       << "[status=" << status << "]";
 
       stats_counter_.Increment(TaskEventBufferCounter::kTotalNumFailedToReport);
     } else {
