@@ -2725,9 +2725,9 @@ Status CoreWorker::CreateActor(const RayFunction &function,
     if (actor_restart_warning) {
       RAY_LOG(ERROR)
           << "Actor " << (actor_name.empty() ? "" : (actor_name + " "))
-          << "with class name: " << function.GetFunctionDescriptor()->ClassName()
-          << " and ID: " << task_spec.ActorCreationId()
-          << " has arguments in the object store and max_restarts is not equal to 0. If "
+          << "with class name: '" << function.GetFunctionDescriptor()->ClassName()
+          << "' and ID: '" << task_spec.ActorCreationId()
+          << "' has constructor arguments in the object store and max_restarts > 0. If "
              "the arguments in the object store go out of scope or are lost, the "
              "actor restart will fail. See "
              "https://github.com/ray-project/ray/issues/53727 for more details.";
