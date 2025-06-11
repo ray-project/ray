@@ -13,3 +13,4 @@ Examples
    ./e2e-xgboost/index.rst
    ./e2e-timeseries/index.rst
    ./object-detection/index.rst
+   ./e2e-rag/index.rst
