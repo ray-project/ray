@@ -37,7 +37,6 @@ from ray.rllib.core.rl_module.multi_rl_module import (
     MultiRLModuleSpec,
 )
 from ray.rllib.core.rl_module.rl_module import RLModule, RLModuleSpec
-from ray.rllib.utils import unflatten_dict
 from ray.rllib.policy.policy import PolicySpec
 from ray.rllib.policy.sample_batch import MultiAgentBatch, SampleBatch
 from ray.rllib.utils.annotations import (
