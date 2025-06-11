@@ -46,7 +46,6 @@ import ray._private.ray_constants as ray_constants
 import ray._private.serialization as serialization
 import ray._private.services as services
 import ray._private.state
-import ray._private.storage as storage
 import ray._private.worker
 
 # Ray modules
@@ -55,6 +54,7 @@ import ray.cloudpickle as pickle  # noqa
 import ray.job_config
 import ray.remote_function
 from ray import ActorID, JobID, Language, ObjectRef
+from ray._common.utils import load_class
 from ray._private import ray_option_utils
 from ray._private.client_mode_hook import client_mode_hook
 from ray._private.function_manager import FunctionActorManager
@@ -74,7 +74,7 @@ from ray._private.runtime_env.setup_hook import (
     upload_worker_process_setup_hook_if_needed,
 )
 from ray._private.runtime_env.working_dir import upload_working_dir_if_needed
-from ray._private.utils import get_ray_doc_version, load_class
+from ray._private.utils import get_ray_doc_version
 from ray._raylet import (
     ObjectRefGenerator,
     TaskID,
@@ -97,8 +97,6 @@ from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
 from ray.util.tracing.tracing_helper import _import_from_string
 from ray.widgets import Template
 from ray.widgets.util import repr_with_fallback
-
-import setproctitle
 
 if TYPE_CHECKING:
     pass
@@ -1350,7 +1348,6 @@ def init(
     log_to_driver: Optional[bool] = None,
     namespace: Optional[str] = None,
     runtime_env: Optional[Union[Dict[str, Any], "RuntimeEnv"]] = None,  # noqa: F821
-    storage: Optional[str] = None,
     enable_resource_isolation: bool = False,
     system_reserved_cpu: Optional[float] = None,
     system_reserved_memory: Optional[int] = None,
@@ -1461,8 +1458,6 @@ def init(
             for this job (see :ref:`runtime-environments` for details).
         object_spilling_directory: The path to spill objects to. The same path will
             be used as the object store fallback directory as well.
-        storage: [DEPRECATED] Cluster-wide storage configuration is deprecated and will
-            be removed in a future version of Ray.
         enable_resource_isolation: Enable resource isolation through cgroupv2 by reserving
             memory and cpu resources for ray system processes. To use, only cgroupv2 (not cgroupv1)
             must be enabled with read and write permissions for the raylet. Cgroup memory and
@@ -1644,6 +1639,12 @@ def init(
             "Do not pass the `allow_multiple` to `ray.init` to fix the issue."
         )
 
+    if kwargs.get("storage"):
+        raise RuntimeError(
+            "Cluster-wide storage configuration has been removed. "
+            "The last Ray version supporting the `storage` argument is `ray==2.47`."
+        )
+
     if kwargs:
         # User passed in extra keyword arguments but isn't connecting through
         # ray client. Raise an error, since most likely a typo in keyword
@@ -1746,12 +1747,6 @@ def init(
     else:
         driver_mode = SCRIPT_MODE
 
-    if storage is not None:
-        warnings.warn(
-            "Cluster-wide storage configuration is deprecated and will be removed in a "
-            "future version of Ray."
-        )
-
     global _global_node
 
     if global_worker.connected:
@@ -1785,7 +1780,6 @@ def init(
         # Use a random port by not specifying Redis port / GCS server port.
         ray_params = ray._private.parameter.RayParams(
             node_ip_address=_node_ip_address,
-            object_ref_seed=None,
             driver_mode=driver_mode,
             redirect_output=None,
             num_cpus=num_cpus,
@@ -1806,7 +1800,6 @@ def init(
             object_store_memory=object_store_memory,
             plasma_store_socket_name=None,
             temp_dir=_temp_dir,
-            storage=storage,
             _system_config=_system_config,
             enable_object_reconstruction=_enable_object_reconstruction,
             metrics_export_port=_metrics_export_port,
@@ -1847,11 +1840,6 @@ def init(
                 "When connecting to an existing cluster, "
                 "object_store_memory must not be provided."
             )
-        if storage is not None:
-            raise ValueError(
-                "When connecting to an existing cluster, "
-                "storage must not be provided."
-            )
         if _system_config is not None and len(_system_config) != 0:
             raise ValueError(
                 "When connecting to an existing cluster, "
@@ -1875,7 +1863,6 @@ def init(
             redis_address=redis_address,
             redis_username=_redis_username,
             redis_password=_redis_password,
-            object_ref_seed=None,
             temp_dir=_temp_dir,
             _system_config=_system_config,
             enable_object_reconstruction=_enable_object_reconstruction,
@@ -2022,7 +2009,6 @@ def shutdown(_exiting_interpreter: bool = False):
             _global_node.destroy_external_storage()
         _global_node.kill_all_processes(check_alive=False, allow_graceful=True)
         _global_node = None
-    storage._reset()
 
     # TODO(rkn): Instead of manually resetting some of the worker fields, we
     # should simply set "global_worker" to equal "None" or something like that.
@@ -2427,13 +2413,13 @@ def connect(
         if job_id is None:
             job_id = ray._private.state.next_job_id()
 
-    if mode is not SCRIPT_MODE and mode is not LOCAL_MODE and setproctitle:
+    if mode is not SCRIPT_MODE and mode is not LOCAL_MODE:
         process_name = ray_constants.WORKER_PROCESS_TYPE_IDLE_WORKER
         if mode is SPILL_WORKER_MODE:
             process_name = ray_constants.WORKER_PROCESS_TYPE_SPILL_WORKER_IDLE
         elif mode is RESTORE_WORKER_MODE:
             process_name = ray_constants.WORKER_PROCESS_TYPE_RESTORE_WORKER_IDLE
-        setproctitle.setproctitle(process_name)
+        ray._raylet.setproctitle(process_name)
 
     if not isinstance(job_id, JobID):
         raise TypeError("The type of given job id must be JobID.")
@@ -2681,12 +2667,12 @@ def disconnect(exiting_interpreter=False):
 @contextmanager
 def _changeproctitle(title, next_title):
     if _mode() is not LOCAL_MODE:
-        setproctitle.setproctitle(title)
+        ray._raylet.setproctitle(title)
     try:
         yield
     finally:
         if _mode() is not LOCAL_MODE:
-            setproctitle.setproctitle(next_title)
+            ray._raylet.setproctitle(next_title)
 
 
 @DeveloperAPI

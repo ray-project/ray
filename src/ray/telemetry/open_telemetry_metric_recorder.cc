@@ -79,7 +79,15 @@ OpenTelemetryMetricRecorder::OpenTelemetryMetricRecorder() {
           meter_provider_));
 }
 
-void OpenTelemetryMetricRecorder::Shutdown() { meter_provider_->ForceFlush(); }
+void OpenTelemetryMetricRecorder::Shutdown() {
+  bool expected = false;
+  if (!is_shutdown_.compare_exchange_strong(expected, true)) {
+    // Already shut down, skip
+    return;
+  }
+  meter_provider_->ForceFlush();
+  meter_provider_->Shutdown();
+}
 
 void OpenTelemetryMetricRecorder::CollectGaugeMetricValues(
     const std::string &name,
@@ -124,6 +132,11 @@ void OpenTelemetryMetricRecorder::RegisterGaugeMetric(const std::string &name,
   //
   // To avoid this, ensure the callback is registered *after* releasing mutex_ (A).
   instrument->AddCallback(&_DoubleGaugeCallback, static_cast<void *>(name_ptr));
+}
+
+bool OpenTelemetryMetricRecorder::IsMetricRegistered(const std::string &name) {
+  std::lock_guard<std::mutex> lock(mutex_);
+  return registered_instruments_.contains(name);
 }
 
 void OpenTelemetryMetricRecorder::SetMetricValue(

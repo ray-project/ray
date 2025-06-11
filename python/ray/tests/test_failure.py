@@ -12,12 +12,11 @@ import ray
 import ray._private.gcs_utils as gcs_utils
 import ray._private.ray_constants as ray_constants
 import ray._private.utils
-from ray._common.test_utils import SignalActor
+from ray._common.test_utils import SignalActor, wait_for_condition
 from ray._private.test_utils import (
     convert_actor_state,
     get_error_message,
     init_error_pubsub,
-    wait_for_condition,
 )
 from ray.exceptions import GetTimeoutError, RayActorError, RayTaskError, ActorDiedError
 from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy

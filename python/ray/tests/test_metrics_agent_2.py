@@ -5,6 +5,7 @@ from unittest.mock import patch
 
 import pytest
 
+from ray._common.test_utils import wait_for_condition
 import ray._private.prometheus_exporter as prometheus_exporter
 
 from typing import List
@@ -42,7 +43,6 @@ from ray._raylet import WorkerID
 from ray._private.test_utils import (
     fetch_prometheus_metrics,
     fetch_raw_prometheus,
-    wait_for_condition,
 )
 
 
