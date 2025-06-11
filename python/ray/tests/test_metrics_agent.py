@@ -205,7 +205,7 @@ def _setup_cluster_for_test(request, ray_start_cluster):
     @ray.remote
     def f():
         counter = Counter("test_counter", description="desc")
-        counter.inc()
+        counter.inc(tags=extra_tags)
         counter = ray.get(ray.put(counter))  # Test serialization.
         counter.inc(tags=extra_tags)
         counter.inc(2, tags=extra_tags)
@@ -264,11 +264,21 @@ def test_metrics_export_end_to_end(_setup_cluster_for_test):
         dashboard_export_addr,
     ) = _setup_cluster_for_test
 
+    metric_names = set()
+    autoscaler_metric_names = set()
+    dashboard_metric_names = set()
+    metric_samples = []
+    autoscaler_samples = []
+
     def test_cases():
-        components_dict, metric_descriptors, metric_samples = fetch_prometheus(
-            prom_addresses
-        )
-        metric_names = metric_descriptors.keys()
+        nonlocal metric_names, metric_samples, autoscaler_metric_names, autoscaler_samples, dashboard_metric_names
+        (
+            components_dict,
+            metric_descriptors,
+            metric_samples_per_interval,
+        ) = fetch_prometheus(prom_addresses)
+        metric_names.update(metric_descriptors.keys())
+        metric_samples += metric_samples_per_interval
         session_name = ray._private.worker.global_worker.node.session_name
 
         # Raylet should be on every node
@@ -285,14 +295,27 @@ def test_metrics_export_end_to_end(_setup_cluster_for_test):
         )
 
         # Make sure our user defined metrics exist and have the correct types
-        for metric_name in [
-            "test_counter",
-            "test_counter_total",
-            "test_histogram_bucket",
-            "test_driver_counter",
-            "test_driver_counter_total",
-            "test_gauge",
-        ]:
+        custom_metrics = (
+            [
+                "test_counter",
+                "test_counter_total",
+                "test_histogram_bucket",
+                "test_driver_counter",
+                "test_driver_counter_total",
+                "test_gauge",
+            ]
+            if os.environ.get("RAY_experimental_enable_open_telemetry_on_core") != "1"
+            else [
+                # OpenTelemetry does not support Counter as gauge, so there are only
+                # total counters.
+                "test_counter_total",
+                "test_histogram_bucket",
+                "test_driver_counter_total",
+                "test_gauge",
+            ]
+        )
+
+        for metric_name in custom_metrics:
             metric_name = f"ray_{metric_name}"
             assert metric_name in metric_names
             if metric_name.endswith("_total"):
@@ -316,13 +339,15 @@ def test_metrics_export_end_to_end(_setup_cluster_for_test):
                 assert sample.labels["SessionName"] == session_name, sample
 
         # Make sure the numeric values are correct
-        test_counter_sample = [m for m in metric_samples if "test_counter" in m.name][0]
-        assert test_counter_sample.value == 4.0
+        test_counter_value = max(
+            [m.value for m in metric_samples if "test_counter" in m.name]
+        )
+        assert test_counter_value == 4.0
 
-        test_driver_counter_sample = [
-            m for m in metric_samples if "test_driver_counter" in m.name
-        ][0]
-        assert test_driver_counter_sample.value == 1.0
+        test_driver_counter_value = max(
+            [m.value for m in metric_samples if "test_driver_counter" in m.name]
+        )
+        assert test_driver_counter_value == 1.0
 
         test_histogram_samples = [
             m for m in metric_samples if "test_histogram" in m.name
@@ -357,10 +382,15 @@ def test_metrics_export_end_to_end(_setup_cluster_for_test):
                 assert grpc_sample.labels["Component"] != "core_worker"
 
         # Autoscaler metrics
-        (_, autoscaler_metric_descriptors, autoscaler_samples,) = fetch_prometheus(
+        (
+            _,
+            autoscaler_metric_descriptors,
+            autoscaler_samples_per_interval,
+        ) = fetch_prometheus(
             [autoscaler_export_addr]
         )  # noqa
-        autoscaler_metric_names = autoscaler_metric_descriptors.keys()
+        autoscaler_metric_names.update(autoscaler_metric_descriptors.keys())
+        autoscaler_samples += autoscaler_samples_per_interval
         for metric in _AUTOSCALER_METRICS:
             # Metric name should appear with some suffix (_count, _total,
             # etc...) in the list of all names
@@ -372,7 +402,7 @@ def test_metrics_export_end_to_end(_setup_cluster_for_test):
 
         # Dashboard metrics
         _, dashboard_metric_descriptors, _ = fetch_prometheus([dashboard_export_addr])
-        dashboard_metric_names = dashboard_metric_descriptors.keys()
+        dashboard_metric_names.update(dashboard_metric_descriptors.keys())
         for metric in _DASHBOARD_METRICS:
             # Metric name should appear with some suffix (_count, _total,
             # etc...) in the list of all names
@@ -406,6 +436,7 @@ def test_metrics_export_node_metrics(shutdown_only):
     dashboard_export_addr = "{}:{}".format(
         addr["raylet_ip_address"], DASHBOARD_METRIC_PORT
     )
+    dashboard_avail_metrics = {}
 
     def verify_node_metrics():
         avail_metrics = raw_metrics(addr)
@@ -426,7 +457,13 @@ def test_metrics_export_node_metrics(shutdown_only):
         return True
 
     def verify_dashboard_metrics():
+        nonlocal dashboard_avail_metrics
         avail_metrics = fetch_prometheus_metrics([dashboard_export_addr])
+        for metric, samples in avail_metrics.items():
+            if metric not in dashboard_avail_metrics:
+                dashboard_avail_metrics[metric] = samples
+            else:
+                dashboard_avail_metrics[metric].extend(samples)
         # Run list nodes to trigger dashboard API.
         list_nodes()
 
@@ -434,9 +471,9 @@ def test_metrics_export_node_metrics(shutdown_only):
         for metric in _DASHBOARD_METRICS:
             # Metric name should appear with some suffix (_count, _total,
             # etc...) in the list of all names
-            assert len(avail_metrics[metric]) > 0
+            assert len(dashboard_avail_metrics[metric]) > 0
 
-            samples = avail_metrics[metric]
+            samples = dashboard_avail_metrics[metric]
             for sample in samples:
                 assert sample.labels["Component"].startswith("dashboard")
 
@@ -579,7 +616,11 @@ def test_operation_stats(monkeypatch, shutdown_only):
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="Not working in Windows.")
-def test_counter(shutdown_only):
+@pytest.mark.skipif(
+    os.environ.get("RAY_experimental_enable_open_telemetry_on_core") == "1",
+    reason="OpenTelemetry does not support Counter as gauge.",
+)
+def test_counter_exported_as_gauge(shutdown_only):
     # Test to make sure Counter emits the right Prometheus metrics
     context = ray.init()
 
@@ -630,7 +671,7 @@ def test_counter(shutdown_only):
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="Not working in Windows.")
-def test_counter_without_export_counter_as_gauge(monkeypatch, shutdown_only):
+def test_counter(monkeypatch, shutdown_only):
     # Test to make sure we don't export counter as gauge
     # if RAY_EXPORT_COUNTER_AS_GAUGE is 0
     monkeypatch.setenv("RAY_EXPORT_COUNTER_AS_GAUGE", "0")
