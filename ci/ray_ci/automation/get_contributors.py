@@ -1,10 +1,11 @@
-from github import Github
-from subprocess import check_output
-import shlex
-from tqdm import tqdm
-import click
-from collections import defaultdict
+import os
 import sys
+from subprocess import check_output
+from collections import defaultdict
+
+import click
+from github import Github
+from tqdm import tqdm
 
 
 def _find_pr_number(line: str) -> str:
@@ -38,34 +39,52 @@ Create them at https://github.com/settings/tokens/new
     help="Last commit SHA of the current release.",
 )
 def run(access_token, prev_release_commit, curr_release_commit):
+    repo_dir = os.environ.get("BUILD_WORKSPACE_DIRECTORY", "")
+    if not repo_dir:
+        raise ValueError(
+            "BUILD_WORKSPACE_DIRECTORY not set; please run with bazel run."
+        )
+
     print("Writing commit descriptions to 'commits.txt'...")
     commits = check_output(
         [
             "git",
             "log",
             f"{prev_release_commit}..{curr_release_commit}",
-            "--pretty=format:'%s'",
+            "--pretty=format:%s",
         ],
+        cwd=repo_dir,
         stderr=sys.stderr,
     ).decode()
-    with open("commits.txt", "w") as file:
-        file.write(commits)
-
-    # Generate command
-    cmd = []
-    cmd.append(
-        (
-            f"git log {prev_release_commit}..{curr_release_commit} "
-            f'--pretty=format:"%s" '
-            rf' | grep -Eo "#(\d+)"'
-        )
-    )
-    joined = " && ".join(cmd)
-    cmd = f"bash -c '{joined}'"
-    cmd = shlex.split(cmd)
-    print("Executing", cmd)
 
     lines = commits.split("\n")
+
+    # Organize commits
+    NO_CATEGORY = "[NO_CATEGORY]"
+
+    def get_category(line):
+        if line[0] == "[":
+            return (line.split("]")[0].strip(" ") + "]").upper()
+        return NO_CATEGORY
+
+    commits_by_team = defaultdict(list)
+
+    for line in lines:
+        line = line.strip()
+        if not line:
+            continue
+        commits_by_team[get_category(line)].append(line)
+
+    team_output_file = "/tmp/commits.txt"
+    print(f"Writing team's commits in '{team_output_file}'...")
+
+    with open(team_output_file, "w") as file:
+        for category, commit_msgs in commits_by_team.items():
+            file.write("\n{}\n".format(category))
+            for commit_msg in commit_msgs:
+                file.write("{}\n".format(commit_msg))
+
+    # Query Github API to get the list of contributors
     pr_numbers = []
     for line in lines:
         pr_number = _find_pr_number(line)
@@ -92,27 +111,6 @@ def run(access_token, prev_release_commit, curr_release_commit):
     print("@" + ", @".join(logins))
     print()
     print("=" * 10)
-
-    # Organize commits
-    NO_CATEGORY = "[NO_CATEGORY]"
-
-    def get_category(line):
-        if line[0] == "[":
-            return (line.split("]")[0].strip(" ") + "]").upper()
-        else:
-            return NO_CATEGORY
-
-    commits = defaultdict(list)
-
-    with open("commits.txt") as file:
-        for line in file.readlines():
-            commits[get_category(line)].append(line.strip())
-
-    with open("commits.txt", "a") as file:
-        for category, commit_msgs in commits.items():
-            file.write("\n{}\n".format(category))
-            for commit_msg in commit_msgs:
-                file.write("{}\n".format(commit_msg))
 
 
 if __name__ == "__main__":
