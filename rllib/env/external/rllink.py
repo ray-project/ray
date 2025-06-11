@@ -1,13 +1,11 @@
 from enum import Enum
 from packaging.version import Version
 
-import msgpack
-import msgpack_numpy
-
+from ray.rllib.utils.checkpoints import try_import_msgpack
 from ray.util.annotations import PublicAPI
 
 
-msgpack_numpy.patch()
+msgpack = try_import_msgpack()
 
 
 @PublicAPI(stability="alpha")
