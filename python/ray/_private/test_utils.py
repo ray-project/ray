@@ -1774,50 +1774,6 @@ def no_resource_leaks_excluding_node_resources():
     return cluster_resources == available_resources
 
 
-@contextmanager
-def simulate_storage(
-    storage_type: str,
-    root: Optional[str] = None,
-    port: int = 5002,
-    region: str = "us-west-2",
-):
-    """Context that simulates a given storage type and yields the URI.
-
-    Args:
-        storage_type: The storage type to simiulate ("fs" or "s3")
-        root: Root directory of the URI to return (e.g., s3 bucket name)
-        port: The port of the localhost endpoint where s3 is being served (s3 only)
-        region: The s3 region (s3 only)
-    """
-    if storage_type == "fs":
-        if root is None:
-            with tempfile.TemporaryDirectory() as d:
-                yield "file://" + d
-        else:
-            yield "file://" + root
-    elif storage_type == "s3":
-        from moto.server import ThreadedMotoServer
-
-        old_env = os.environ
-        os.environ["AWS_ACCESS_KEY_ID"] = "testing"
-        os.environ["AWS_SECRET_ACCESS_KEY"] = "testing"
-        os.environ["AWS_SECURITY_TOKEN"] = "testing"
-        os.environ["AWS_SESSION_TOKEN"] = "testing"
-
-        root = root or uuid.uuid4().hex
-        s3_server = f"http://localhost:{port}"
-        server = ThreadedMotoServer(port=port)
-        server.start()
-        url = f"s3://{root}?region={region}&endpoint_override={s3_server}"
-        yield url
-        server.stop()
-
-        os.environ = old_env
-
-    else:
-        raise NotImplementedError(f"Unknown storage type: {storage_type}")
-
-
 def job_hook(**kwargs):
     """Function called by reflection by test_cli_integration."""
     cmd = " ".join(kwargs["entrypoint"])
