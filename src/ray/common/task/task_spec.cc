@@ -142,6 +142,13 @@ TaskID TaskSpecification::TaskId() const {
   return TaskID::FromBinary(message_->task_id());
 }
 
+std::string TaskSpecification::TaskIdBinary() const {
+  if (message_->task_id().empty()) {
+    return TaskID::Nil().Binary();
+  }
+  return message_->task_id();
+}
+
 TaskAttempt TaskSpecification::GetTaskAttempt() const {
   return std::make_pair(TaskId(), AttemptNumber());
 }
@@ -167,6 +174,13 @@ TaskID TaskSpecification::ParentTaskId() const {
     return TaskID::Nil();
   }
   return TaskID::FromBinary(message_->parent_task_id());
+}
+
+std::string TaskSpecification::ParentTaskIdBinary() const {
+  if (message_->parent_task_id().empty()) {
+    return TaskID::Nil().Binary();
+  }
+  return message_->parent_task_id();
 }
 
 ActorID TaskSpecification::RootDetachedActorId() const {
@@ -283,14 +297,14 @@ bool TaskSpecification::ArgByRef(size_t arg_index) const {
          !message_->args(arg_index).is_inlined();
 }
 
-ObjectID TaskSpecification::GetArgObjectId(size_t arg_index) const {
+ObjectID TaskSpecification::ArgObjectId(size_t arg_index) const {
   if (message_->args(arg_index).has_object_ref()) {
     return ObjectID::FromBinary(message_->args(arg_index).object_ref().object_id());
   }
   return ObjectID::Nil();
 }
 
-std::string TaskSpecification::GetArgObjectIdBinary(size_t arg_index) const {
+std::string TaskSpecification::ArgObjectIdBinary(size_t arg_index) const {
   if (message_->args(arg_index).has_object_ref()) {
     return message_->args(arg_index).object_ref().object_id();
   }
@@ -356,7 +370,7 @@ std::vector<ObjectID> TaskSpecification::GetDependencyIds() const {
   std::vector<ObjectID> dependencies;
   for (size_t i = 0; i < NumArgs(); ++i) {
     if (ArgByRef(i)) {
-      dependencies.push_back(GetArgObjectId(i));
+      dependencies.push_back(ArgObjectId(i));
     }
   }
   return dependencies;

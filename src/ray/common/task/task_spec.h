@@ -292,11 +292,17 @@ class TaskSpecification : public MessageWrapper<rpc::TaskSpec> {
   // TODO(swang): Finalize and document these methods.
   TaskID TaskId() const;
 
+  // Get the task id in binary format.
+  std::string TaskIdBinary() const;
+
   JobID JobId() const;
 
   const rpc::JobConfig &JobConfig() const;
 
   TaskID ParentTaskId() const;
+
+  // Get the parent task id in binary format.
+  std::string ParentTaskIdBinary() const;
 
   ActorID RootDetachedActorId() const;
 
@@ -339,13 +345,13 @@ class TaskSpecification : public MessageWrapper<rpc::TaskSpec> {
   ///
   /// \param arg_index The index of the argument.
   /// \return The ID of the argument.
-  ObjectID GetArgObjectId(size_t arg_index) const;
+  ObjectID ArgObjectId(size_t arg_index) const;
 
   /// Get the raw object ID of the argument at the given index.
   ///
   /// \param arg_index The index of the argument.
   /// \return The raw object ID string of the argument.
-  std::string GetArgObjectIdBinary(size_t arg_index) const;
+  std::string ArgObjectIdBinary(size_t arg_index) const;
 
   /// Get the reference of the argument at the given index.
   ///

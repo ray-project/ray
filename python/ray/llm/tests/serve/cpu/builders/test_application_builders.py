@@ -9,7 +9,7 @@ import pytest
 import yaml
 
 from ray import serve
-from ray._private.test_utils import wait_for_condition
+from ray._common.test_utils import wait_for_condition
 from ray.llm._internal.serve.builders.application_builders import (
     build_llm_deployment,
     build_openai_app,

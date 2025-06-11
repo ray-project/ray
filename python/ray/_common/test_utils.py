@@ -6,8 +6,13 @@ _common/ (not in tests/) to be accessible in the Ray package distribution.
 """
 
 import asyncio
+import inspect
+import time
+import traceback
+from typing import Any, Callable
 
 import ray
+import ray._private.utils
 
 
 @ray.remote(num_cpus=0)
@@ -59,3 +64,82 @@ class Semaphore:
 
 
 __all__ = ["SignalActor", "Semaphore"]
+
+
+def wait_for_condition(
+    condition_predictor: Callable[..., bool],
+    timeout: float = 10,
+    retry_interval_ms: float = 100,
+    raise_exceptions: bool = False,
+    **kwargs: Any,
+):
+    """Wait until a condition is met or time out with an exception.
+
+    Args:
+        condition_predictor: A function that predicts the condition.
+        timeout: Maximum timeout in seconds.
+        retry_interval_ms: Retry interval in milliseconds.
+        raise_exceptions: If true, exceptions that occur while executing
+            condition_predictor won't be caught and instead will be raised.
+        **kwargs: Arguments to pass to the condition_predictor.
+
+    Returns:
+        None: Returns when the condition is met.
+
+    Raises:
+        RuntimeError: If the condition is not met before the timeout expires.
+    """
+    start = time.time()
+    last_ex = None
+    while time.time() - start <= timeout:
+        try:
+            if condition_predictor(**kwargs):
+                return
+        except Exception:
+            if raise_exceptions:
+                raise
+            last_ex = ray._private.utils.format_error_message(traceback.format_exc())
+        time.sleep(retry_interval_ms / 1000.0)
+    message = "The condition wasn't met before the timeout expired."
+    if last_ex is not None:
+        message += f" Last exception: {last_ex}"
+    raise RuntimeError(message)
+
+
+async def async_wait_for_condition(
+    condition_predictor: Callable[..., bool],
+    timeout: float = 10,
+    retry_interval_ms: float = 100,
+    **kwargs: Any,
+):
+    """Wait until a condition is met or time out with an exception.
+
+    Args:
+        condition_predictor: A function that predicts the condition.
+        timeout: Maximum timeout in seconds.
+        retry_interval_ms: Retry interval in milliseconds.
+        **kwargs: Arguments to pass to the condition_predictor.
+
+    Returns:
+        None: Returns when the condition is met.
+
+    Raises:
+        RuntimeError: If the condition is not met before the timeout expires.
+    """
+    start = time.time()
+    last_ex = None
+    while time.time() - start <= timeout:
+        try:
+            if inspect.iscoroutinefunction(condition_predictor):
+                if await condition_predictor(**kwargs):
+                    return
+            else:
+                if condition_predictor(**kwargs):
+                    return
+        except Exception as ex:
+            last_ex = ex
+        await asyncio.sleep(retry_interval_ms / 1000.0)
+    message = "The condition wasn't met before the timeout expired."
+    if last_ex is not None:
+        message += f" Last exception: {last_ex}"
+    raise RuntimeError(message)
