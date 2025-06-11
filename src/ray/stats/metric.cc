@@ -117,9 +117,9 @@ void Metric::Record(double value, TagsType tags) {
     // Register the metric if it hasn't been registered yet; otherwise, this is a no-op.
     // We defer metric registration until the first time it's recorded, rather than during
     // construction, to avoid issues with static initialization order. Specifically, our
-    // internal Metric objects (see metric_defs.h) are declared as static, and
-    // constructing another static object within their constructor can lead to crashes at
-    // program exit due to unpredictable destruction order.
+    // internal Metric objects (see metric_defs.h) are declared as static, and constructing
+    // another static object within their constructor can lead to crashes at program exit
+    // due to unpredictable destruction order.
     //
     // Once these internal Metric objects are migrated to use DEFINE_stats, we can
     // safely move the registration logic to the constructor. See
