@@ -87,9 +87,8 @@ steps:
       - oss
     instance_type: medium
     commands:
-     # Need to update to cu12.8 here
       - bazel run //ci/ray_ci:build_in_docker -- docker --python-version {{matrix}}
-        --platform cu12.4.1-cudnn --image-type ray-llm --upload
+        --platform cu12.8.1-cudnn --image-type ray-llm --upload
     depends_on:
       - manylinux
       - forge

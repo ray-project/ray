@@ -23,7 +23,6 @@ for CUDA_CODE in cpu cu121 cu128; do
 		--unsafe-package setuptools
 		--index-url "https://pypi.org/simple"
 		--extra-index-url "https://download.pytorch.org/whl/${CUDA_CODE}"
-		--find-links "https://data.pyg.org/whl/torch-2.5.1+${CUDA_CODE}.html"
 		--index-strategy unsafe-best-match
 		--no-strip-markers
 		--emit-index-url
