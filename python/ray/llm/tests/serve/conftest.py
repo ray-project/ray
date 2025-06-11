@@ -3,6 +3,7 @@ import pathlib
 import tempfile
 import time
 from typing import Dict
+from unittest.mock import patch
 
 import openai
 import pytest
@@ -16,7 +17,24 @@ from ray.llm._internal.serve.configs.server_models import (
     LLMServingArgs,
     ModelLoadingConfig,
 )
+from ray.llm._internal.serve.deployments.llm.vllm.vllm_models import VLLMEngineConfig
 from ray.serve.llm import LLMServer
+
+
+@pytest.fixture(autouse=True)
+def patch_placement_bundles_for_tests():
+    """
+    Automatically patch placement_bundles to return empty bundles in tests.
+
+    This prevents tests from requiring actual GPU hardware when configs specify
+    accelerator types, eliminating the need for mock_resource hacks in production code.
+    """
+    with patch.object(
+        VLLMEngineConfig,
+        "placement_bundles",
+        new_callable=lambda: property(lambda self: []),
+    ):
+        yield
 
 
 @pytest.fixture
@@ -37,9 +55,6 @@ def llm_config(model_pixtral_12b):
             model_id=model_pixtral_12b,
         ),
         accelerator_type="L4",
-        deployment_config=dict(
-            ray_actor_options={"resources": {"mock_resource": 0}},
-        ),
     )
 
 
