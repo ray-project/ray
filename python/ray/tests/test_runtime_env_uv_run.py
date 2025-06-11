@@ -1,36 +1,18 @@
 import json
 import os
 from pathlib import Path
-import platform
-import stat
 import subprocess
 import sys
-import tarfile
 import tempfile
-from urllib import request
 
 import pytest
+from uv import find_uv_bin
 
 import ray
 from ray._private.test_utils import (
     format_web_url,
     wait_until_server_available,
 )
-
-
-@pytest.fixture(scope="function")
-def with_uv():
-    arch = "aarch64" if platform.machine() in ["aarch64", "arm64"] else "i686"
-    system = "unknown-linux-gnu" if platform.system() == "Linux" else "apple-darwin"
-    name = f"uv-{arch}-{system}"
-    url = f"https://github.com/astral-sh/uv/releases/download/0.5.27/{name}.tar.gz"
-    with tempfile.TemporaryDirectory() as tmp_dir:
-        with request.urlopen(request.Request(url), timeout=15.0) as response:
-            with tarfile.open(fileobj=response, mode="r|*") as tar:
-                tar.extractall(tmp_dir)
-        uv = Path(tmp_dir) / name / "uv"
-        uv.chmod(uv.stat().st_mode | stat.S_IEXEC)
-        yield uv
 
 
 PYPROJECT_TOML = """
@@ -58,8 +40,8 @@ def tmp_working_dir():
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="Not ported to Windows yet.")
-def test_uv_run_simple(shutdown_only, with_uv):
-    uv = with_uv
+def test_uv_run_simple(shutdown_only):
+    uv = find_uv_bin()
 
     runtime_env = {
         "py_executable": f"{uv} run --with emoji --no-project",
@@ -76,8 +58,8 @@ def test_uv_run_simple(shutdown_only, with_uv):
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="Not ported to Windows yet.")
-def test_uv_run_pyproject(shutdown_only, with_uv, tmp_working_dir):
-    uv = with_uv
+def test_uv_run_pyproject(shutdown_only, tmp_working_dir):
+    uv = find_uv_bin()
     tmp_dir = tmp_working_dir
 
     ray.init(
@@ -98,8 +80,8 @@ def test_uv_run_pyproject(shutdown_only, with_uv, tmp_working_dir):
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="Not ported to Windows yet.")
-def test_uv_run_editable(shutdown_only, with_uv, tmp_working_dir):
-    uv = with_uv
+def test_uv_run_editable(shutdown_only, tmp_working_dir):
+    uv = find_uv_bin()
     tmp_dir = tmp_working_dir
 
     subprocess.run(
@@ -147,11 +129,11 @@ def test_uv_run_editable(shutdown_only, with_uv, tmp_working_dir):
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="Not ported to Windows yet.")
-def test_uv_run_runtime_env_hook(with_uv):
+def test_uv_run_runtime_env_hook():
 
     import ray._private.runtime_env.uv_runtime_env_hook
 
-    uv = with_uv
+    uv = find_uv_bin()
 
     def check_uv_run(
         cmd, runtime_env, expected_output, subprocess_kwargs=None, expected_error=None
@@ -284,9 +266,9 @@ def test_uv_run_runtime_env_hook(with_uv):
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="Not ported to Windows yet.")
-def test_uv_run_runtime_env_hook_e2e(shutdown_only, with_uv, temp_dir):
+def test_uv_run_runtime_env_hook_e2e(shutdown_only, temp_dir):
 
-    uv = with_uv
+    uv = find_uv_bin()
     tmp_out_dir = Path(temp_dir)
 
     script = f"""
@@ -347,14 +329,12 @@ with open("{tmp_out_dir / "output.txt"}", "w") as out:
     ],
     indirect=True,
 )
-def test_uv_run_runtime_env_hook_e2e_job(
-    ray_start_cluster_head_with_env_vars, with_uv, temp_dir
-):
+def test_uv_run_e2e_job(ray_start_cluster_head_with_env_vars, temp_dir):
     cluster = ray_start_cluster_head_with_env_vars
     assert wait_until_server_available(cluster.webui_url) is True
     webui_url = format_web_url(cluster.webui_url)
 
-    uv = with_uv
+    uv = find_uv_bin()
     tmp_out_dir = Path(temp_dir)
 
     script = f"""
