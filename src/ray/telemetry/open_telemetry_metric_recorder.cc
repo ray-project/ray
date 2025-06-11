@@ -159,19 +159,8 @@ void OpenTelemetryMetricRecorder::RegisterCounterMetric(const std::string &name,
 void OpenTelemetryMetricRecorder::RegisterSumMetric(const std::string &name,
                                                     const std::string &description) {
   std::lock_guard<std::mutex> lock(mutex_);
-  if (registered_instruments_.contains(name)) {
-    return;  // Already registered
-  }
-  auto instrument = GetMeter()->CreateDoubleUpDownCounter(name, description, "");
-  registered_instruments_[name] = std::move(instrument);
-}
-
-void OpenTelemetryMetricRecorder::RegisterSumMetric(const std::string &name,
-                                                    const std::string &description) {
-  std::lock_guard<std::mutex> lock(mutex_);
-  if (registered_instruments_.contains(name)) {
-    return;  // Already registered
-  }
+  RAY_CHECK(!registered_instruments_.contains(name))
+      << "Metric " << name << " is already registered";
   auto instrument = GetMeter()->CreateDoubleUpDownCounter(name, description, "");
   registered_instruments_[name] = std::move(instrument);
 }

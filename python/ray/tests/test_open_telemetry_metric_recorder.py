@@ -93,31 +93,6 @@ def test_register_sum_metric(
     mock_logger_warning.assert_not_called()
 
 
-@patch("ray._private.telemetry.open_telemetry_metric_recorder.logger.warning")
-@patch("opentelemetry.metrics.set_meter_provider")
-@patch("opentelemetry.metrics.get_meter")
-def test_register_sum_metric(
-    mock_get_meter, mock_set_meter_provider, mock_logger_warning
-):
-    """
-    Test the register_sum_metric method of OpenTelemetryMetricRecorder.
-    - Test that it registers a sum metric with the correct name and description.
-    - Test that a value can be set for the sum metric successfully without warnings.
-    """
-    mock_meter = MagicMock()
-    mock_meter.create_up_down_counter.return_value = NoOpUpDownCounter(name="test_sum")
-    mock_get_meter.return_value = mock_meter
-    recorder = OpenTelemetryMetricRecorder()
-    recorder.register_sum_metric(name="test_sum", description="Test Sum")
-    assert "test_sum" in recorder._registered_instruments
-    recorder.set_metric_value(
-        name="test_sum",
-        tags={"label_key": "label_value"},
-        value=10.0,
-    )
-    mock_logger_warning.assert_not_called()
-
-
 @patch("opentelemetry.metrics.set_meter_provider")
 @patch("opentelemetry.metrics.get_meter")
 def test_record_and_export(mock_get_meter, mock_set_meter_provider):
