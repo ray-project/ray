@@ -53,6 +53,7 @@ kubectl get all -n prometheus-system
 ## Step 3: Install a KubeRay operator
 
 * Follow [this document](kuberay-operator-deploy) to install the latest stable KubeRay operator via Helm repository.
+* You can enable the ServiceMonitor when installing the KubeRay operator with helm, refer to [Step 7](#step-7-collect-kuberay-metrics-with-servicemonitor) for more details.
 
 ## Step 4: Install a RayCluster
 
@@ -257,6 +258,11 @@ spec:
 
 ```
 * Same as PodMonitor, the **install.sh** script also creates the [serviceMonitor.yaml](https://github.com/ray-project/kuberay/blob/master/config/prometheus/serviceMonitor.yaml) shown above,  so there's no need to create it manually.
+* For production, you can enable the ServiceMonitor when installing the KubeRay operator by setting `metrics.serviceMonitor.enabled=true`.
+  ```sh
+  helm install kuberay-operator kuberay/kuberay-operator --version 1.4.0 \
+    --set metrics.serviceMonitor.enabled=true
+  ```
 * See the official [ServiceMonitor doc](https://github.com/prometheus-operator/prometheus-operator/blob/main/Documentation/api-reference/api.md#servicemonitor) for more details about configurations.
 * KubeRay Operator provides metrics for RayCluster, RayService, and RayJob, see {ref}`kuberay-metrics-references` for more details.
 * Prometheus uses `namespaceSelector` and `selector` to select Kubernetes Service.
