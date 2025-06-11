@@ -230,8 +230,8 @@ class TrainContext(TrainRunContext):
                     "Passing objects containg Torch tensors as metrics "
                     "is not supported as it will throw an exception on "
                     "deserialization. You can either convert the tensors "
-                    "to Python objects or report a `train.Checkpoint` "
-                    "with `ray.train.report` to store your Torch objects."
+                    "to Python objects (ex: `.numpy()`, `.item()`, etc.) "
+                    "or save tensors as part of the checkpoint files instead."
                 )
 
         with invoke_context_managers(
