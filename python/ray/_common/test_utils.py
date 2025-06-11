@@ -9,10 +9,9 @@ import asyncio
 from contextlib import contextmanager
 import inspect
 import os
-import tempfile
 import time
 import traceback
-from typing import Any, Callable, Iterator, Optional
+from typing import Any, Callable, Iterator
 import uuid
 
 import ray
@@ -171,11 +170,10 @@ def simulate_s3_bucket(
     os.environ["AWS_SECURITY_TOKEN"] = "testing"
     os.environ["AWS_SESSION_TOKEN"] = "testing"
 
-    root = root or uuid.uuid4().hex
     s3_server = f"http://localhost:{port}"
     server = ThreadedMotoServer(port=port)
     server.start()
-    url = f"s3://{root}?region={region}&endpoint_override={s3_server}"
+    url = f"s3://{uuid.uuid4().hex}?region={region}&endpoint_override={s3_server}"
     yield url
     server.stop()
     os.environ = old_env
