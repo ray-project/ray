@@ -36,8 +36,8 @@ ray_cc_library(
     deps = [
         ":id",
         ":status",
-        "//:aligned_alloc",
         "//src/ray/protobuf:gcs_cc_proto",
+        "//src/ray/thirdparty:aligned_alloc",
         "//src/ray/util",
         "@com_google_absl//absl/time",
         "@com_google_absl//absl/types:optional",

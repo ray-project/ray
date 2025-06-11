@@ -276,12 +276,6 @@ python/ray/_private/test_utils.py
     DOC101: Function `run_string_as_driver_nonblocking`: Docstring contains fewer arguments than in function signature.
     DOC107: Function `run_string_as_driver_nonblocking`: The option `--arg-type-hints-in-signature` is `True` but not all args in the signature have type hints
     DOC103: Function `run_string_as_driver_nonblocking`: Docstring arguments are different from function arguments. (Or could be other formatting issues: https://jsh9.github.io/pydoclint/violation_codes.html#notes-on-doc103 ). Arguments in the function signature but not in the docstring: [env: Dict].
-    DOC107: Function `wait_for_condition`: The option `--arg-type-hints-in-signature` is `True` but not all args in the signature have type hints
-    DOC201: Function `wait_for_condition` does not have a return section in docstring
-    DOC101: Function `async_wait_for_condition`: Docstring contains fewer arguments than in function signature.
-    DOC107: Function `async_wait_for_condition`: The option `--arg-type-hints-in-signature` is `True` but not all args in the signature have type hints
-    DOC103: Function `async_wait_for_condition`: Docstring arguments are different from function arguments. (Or could be other formatting issues: https://jsh9.github.io/pydoclint/violation_codes.html#notes-on-doc103 ). Arguments in the function signature but not in the docstring: [**kwargs: Any].
-    DOC201: Function `async_wait_for_condition` does not have a return section in docstring
     DOC106: Function `wait_until_succeeded_without_exception`: The option `--arg-type-hints-in-signature` is `True` but there are no argument type hints in the signature
     DOC107: Function `wait_until_succeeded_without_exception`: The option `--arg-type-hints-in-signature` is `True` but not all args in the signature have type hints
     DOC103: Function `wait_until_succeeded_without_exception`: Docstring arguments are different from function arguments. (Or could be other formatting issues: https://jsh9.github.io/pydoclint/violation_codes.html#notes-on-doc103 ). Arguments in the function signature but not in the docstring: [*args: ]. Arguments in the docstring but not in the function signature: [args: ].
@@ -315,22 +309,12 @@ python/ray/_private/utils.py
     DOC103: Function `format_error_message`: Docstring arguments are different from function arguments. (Or could be other formatting issues: https://jsh9.github.io/pydoclint/violation_codes.html#notes-on-doc103 ). Arguments in the function signature but not in the docstring: [task_exception: bool].
     DOC107: Function `push_error_to_driver`: The option `--arg-type-hints-in-signature` is `True` but not all args in the signature have type hints
     DOC107: Function `publish_error_to_driver`: The option `--arg-type-hints-in-signature` is `True` but not all args in the signature have type hints
-    DOC101: Function `decode`: Docstring contains fewer arguments than in function signature.
-    DOC103: Function `decode`: Docstring arguments are different from function arguments. (Or could be other formatting issues: https://jsh9.github.io/pydoclint/violation_codes.html#notes-on-doc103 ). Arguments in the function signature but not in the docstring: [encode_type: str].
-    DOC101: Function `get_system_memory`: Docstring contains fewer arguments than in function signature.
-    DOC106: Function `get_system_memory`: The option `--arg-type-hints-in-signature` is `True` but there are no argument type hints in the signature
-    DOC107: Function `get_system_memory`: The option `--arg-type-hints-in-signature` is `True` but not all args in the signature have type hints
-    DOC103: Function `get_system_memory`: Docstring arguments are different from function arguments. (Or could be other formatting issues: https://jsh9.github.io/pydoclint/violation_codes.html#notes-on-doc103 ). Arguments in the function signature but not in the docstring: [memory_limit_filename: , memory_limit_filename_v2: ].
     DOC201: Function `get_num_cpus` does not have a return section in docstring
     DOC106: Function `set_kill_child_on_death_win32`: The option `--arg-type-hints-in-signature` is `True` but there are no argument type hints in the signature
     DOC107: Function `set_kill_child_on_death_win32`: The option `--arg-type-hints-in-signature` is `True` but not all args in the signature have type hints
-    DOC106: Function `try_to_create_directory`: The option `--arg-type-hints-in-signature` is `True` but there are no argument type hints in the signature
-    DOC107: Function `try_to_create_directory`: The option `--arg-type-hints-in-signature` is `True` but not all args in the signature have type hints
     DOC106: Function `try_to_symlink`: The option `--arg-type-hints-in-signature` is `True` but there are no argument type hints in the signature
     DOC107: Function `try_to_symlink`: The option `--arg-type-hints-in-signature` is `True` but not all args in the signature have type hints
     DOC201: Function `try_to_symlink` does not have a return section in docstring
-    DOC201: Function `get_call_location` does not have a return section in docstring
-    DOC107: Function `deprecated`: The option `--arg-type-hints-in-signature` is `True` but not all args in the signature have type hints
     DOC106: Function `check_version_info`: The option `--arg-type-hints-in-signature` is `True` but there are no argument type hints in the signature
     DOC107: Function `check_version_info`: The option `--arg-type-hints-in-signature` is `True` but not all args in the signature have type hints
 --------------------
@@ -1561,9 +1545,6 @@ python/ray/experimental/locations.py
     DOC103: Function `get_object_locations`: Docstring arguments are different from function arguments. (Or could be other formatting issues: https://jsh9.github.io/pydoclint/violation_codes.html#notes-on-doc103 ). Arguments in the function signature but not in the docstring: [obj_refs: List[ObjectRef]]. Arguments in the docstring but not in the function signature: [object_refs: List[ObjectRef]].
     DOC111: Function `get_local_object_locations`: The option `--arg-type-hints-in-docstring` is `False` but there are type hints in the docstring arg list
     DOC103: Function `get_local_object_locations`: Docstring arguments are different from function arguments. (Or could be other formatting issues: https://jsh9.github.io/pydoclint/violation_codes.html#notes-on-doc103 ). Arguments in the function signature but not in the docstring: [obj_refs: List[ObjectRef]]. Arguments in the docstring but not in the function signature: [object_refs: List[ObjectRef]].
---------------------
-python/ray/experimental/packaging/load_package.py
-    DOC201: Function `load_package` does not have a return section in docstring
 --------------------
 python/ray/experimental/shuffle.py
     DOC404: Function `round_robin_partitioner` yield type(s) in docstring not consistent with the return annotation. The yield type (the 0th arg in Generator[...]/Iterator[...]): Tuple[PartitionID, InType]; docstring "yields" section types:

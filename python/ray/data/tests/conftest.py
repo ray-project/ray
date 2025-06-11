@@ -11,6 +11,7 @@ import pytest
 
 import ray
 import ray.util.state
+from ray._common.test_utils import wait_for_condition
 from ray._private.arrow_utils import get_pyarrow_version
 from ray._private.internal_api import get_memory_info_reply, get_state_from_address
 from ray.air.constants import TENSOR_COLUMN_NAME
@@ -22,11 +23,7 @@ from ray.data.tests.mock_server import *  # noqa
 
 # Trigger pytest hook to automatically zip test cluster logs to archive dir on failure
 from ray.tests.conftest import *  # noqa
-from ray.tests.conftest import (
-    _ray_start,
-    pytest_runtest_makereport,  # noqa
-    wait_for_condition,
-)
+from ray.tests.conftest import _ray_start  # noqa,
 from ray.util.debug import reset_log_once
 
 
