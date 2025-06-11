@@ -181,7 +181,6 @@ def test_actor_init_fails(ray_start_cluster_head):
     @ray.remote(max_restarts=1, max_task_retries=-1)
     class Actor:
         def __init__(self):
-            print("inc!")
             ray.get(counter.inc.remote())
 
     # Create many actors and wait for one of them to start initializing.
