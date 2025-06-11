@@ -130,12 +130,18 @@ TEST_F(MetricTest, TestCounterMetric) {
   ASSERT_TRUE(OpenTelemetryMetricRecorder::GetInstance().IsMetricRegistered(
       "metric_counter_test"));
   STATS_metric_counter_test.Record(100.0, {{"Tag1", "Value1"}, {"Tag2", "Value2"}});
+  LegacyMetricCounterTest.Record(100.0, {{"Tag1"sv, "Value1"}, {"Tag2"sv, "Value2"}});
+  ASSERT_TRUE(OpenTelemetryMetricRecorder::GetInstance().IsMetricRegistered(
+      "legacy_metric_counter_test"));
 }
 
 TEST_F(MetricTest, TestSumMetric) {
   ASSERT_TRUE(
       OpenTelemetryMetricRecorder::GetInstance().IsMetricRegistered("metric_sum_test"));
   STATS_metric_sum_test.Record(200.0, {{"Tag1", "Value1"}, {"Tag2", "Value2"}});
+  LegacyMetricSumTest.Record(200.0, {{"Tag1"sv, "Value1"}, {"Tag2"sv, "Value2"}});
+  ASSERT_TRUE(OpenTelemetryMetricRecorder::GetInstance().IsMetricRegistered(
+      "legacy_metric_sum_test"));
 }
 
 }  // namespace telemetry
