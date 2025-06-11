@@ -11,7 +11,7 @@ import os
 import tempfile
 import time
 import traceback
-from typing import Any, Callable
+from typing import Any, Callable, ContextManager
 import uuid
 
 import ray
@@ -154,7 +154,7 @@ def simulate_storage(
     root: Optional[str] = None,
     port: int = 5002,
     region: str = "us-west-2",
-):
+) -> ContextManager[str]:
     """Context that simulates a given storage type and yields the URI.
 
     Args:
