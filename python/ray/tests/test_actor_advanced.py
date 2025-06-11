@@ -3,7 +3,6 @@ import sys
 import time
 from concurrent.futures import ThreadPoolExecutor
 
-import numpy as np
 import pytest
 
 import ray
@@ -368,24 +367,6 @@ def test_nested_fork(setup_queue_actor):
     for i in range(num_forks):
         filtered_items = [item[1] for item in items if item[0] == i]
         assert filtered_items == list(range(num_items_per_fork))
-
-
-@pytest.mark.skip("Garbage collection for distributed actor handles not implemented.")
-def test_garbage_collection(setup_queue_actor):
-    queue = setup_queue_actor
-
-    @ray.remote
-    def fork(queue):
-        for i in range(10):
-            x = queue.enqueue.remote(0, i)
-            time.sleep(0.1)
-        return ray.get(x)
-
-    x = fork.remote(queue)
-    ray.get(queue.read.remote())
-    del queue
-
-    print(ray.get(x))
 
 
 def test_calling_put_on_actor_handle(ray_start_regular):
