@@ -164,7 +164,7 @@ class StoreConn : public ray::ServerConnection {
  public:
   explicit StoreConn(ray::local_stream_socket &&socket);
 
-  explicit StoreConn(ray::local_stream_socket &&socket, bool is_in_core_worker);
+  explicit StoreConn(ray::local_stream_socket &&socket, bool exit_on_connection_failure);
 
   /// Receive a file descriptor for the store.
   ///
@@ -176,12 +176,18 @@ class StoreConn : public ray::ServerConnection {
   ray::Status ReadBuffer(const std::vector<boost::asio::mutable_buffer> &buffer) override;
 
  private:
-  // Whether the client is in a core worker.
-  bool is_in_core_worker_;
+  // Whether the current process should exit when WriteBuffer or ReadBuffer fails.
+  // Currently it is only turned on when the plasma client is in a core worker.
+  // TODO(myan): For better error handling, we should: (1) In the mid-term, evaluate if
+  // we should turn it on for the plasma client in other processes. (2) In the
+  // long-term, consolidate the shutdown path between core worker and raylet to make the
+  // shutdown procedure cleaner.
+  bool exit_on_connection_failure_ = false;
 
-  // Shutdown the current process if the plasma client is in a core worker and the
-  // local raylet is dead.
-  void ShutdownWorkerIfLocalRayletDisconnected(const ray::Status &status);
+  // Shutdown the current process if the passed in status is not OK and the client is
+  // configured to exit on failure.
+  // @param status: The status to check.
+  void ShutdownWorkerIfErrorStatus(const ray::Status &status);
 };
 
 std::ostream &operator<<(std::ostream &os, const std::shared_ptr<StoreConn> &store_conn);

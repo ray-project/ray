@@ -242,7 +242,7 @@ class PlasmaClient : public PlasmaClientInterface {
  public:
   PlasmaClient();
 
-  explicit PlasmaClient(bool is_in_core_worker);
+  explicit PlasmaClient(bool exit_on_connection_failure);
 
   Status Connect(const std::string &store_socket_name,
                  const std::string &manager_socket_name = "",

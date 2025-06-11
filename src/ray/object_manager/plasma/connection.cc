@@ -170,10 +170,11 @@ Status Client::SendFd(MEMFD_TYPE fd) {
 }
 
 StoreConn::StoreConn(ray::local_stream_socket &&socket)
-    : ray::ServerConnection(std::move(socket)), is_in_core_worker_(false) {}
+    : ray::ServerConnection(std::move(socket)), exit_on_connection_failure_(false) {}
 
-StoreConn::StoreConn(ray::local_stream_socket &&socket, bool is_in_core_worker)
-    : ray::ServerConnection(std::move(socket)), is_in_core_worker_(is_in_core_worker) {}
+StoreConn::StoreConn(ray::local_stream_socket &&socket, bool exit_on_connection_failure)
+    : ray::ServerConnection(std::move(socket)),
+      exit_on_connection_failure_(exit_on_connection_failure) {}
 
 Status StoreConn::RecvFd(MEMFD_TYPE_NON_UNIQUE *fd) {
 #ifdef _WIN32
@@ -197,30 +198,24 @@ Status StoreConn::RecvFd(MEMFD_TYPE_NON_UNIQUE *fd) {
 
 ray::Status StoreConn::WriteBuffer(const std::vector<boost::asio::const_buffer> &buffer) {
   auto status = ray::ServerConnection::WriteBuffer(buffer);
-  ShutdownWorkerIfLocalRayletDisconnected(status);
+  ShutdownWorkerIfErrorStatus(status);
   return status;
 }
 
 ray::Status StoreConn::ReadBuffer(
     const std::vector<boost::asio::mutable_buffer> &buffer) {
   auto status = ray::ServerConnection::ReadBuffer(buffer);
-  ShutdownWorkerIfLocalRayletDisconnected(status);
+  ShutdownWorkerIfErrorStatus(status);
   return status;
 }
 
-void StoreConn::ShutdownWorkerIfLocalRayletDisconnected(const ray::Status &status) {
-  // We don't explicitly check if the local raylet is dead because:
-  // 1. If the connection is from a core worker, the local raylet should be on the other
-  // side of the connection.
-  // 2. On the raylet side, we never proactively close the plasma store connection
-  // even during shutdown. So any error from the raylet side should be a sign of raylet
-  // death.
-  if (is_in_core_worker_ && !status.ok()) {
-    RAY_LOG(WARNING) << "The connection to the plasma store is failed because the "
-                        "local raylet is dead. Terminate the process. Status: "
-                     << status;
+void StoreConn::ShutdownWorkerIfErrorStatus(const ray::Status &status) {
+  if (!status.ok() && exit_on_connection_failure_) {
+    RAY_LOG(WARNING) << "The connection to the plasma store is failed. Terminate the "
+                     << "process. Status: " << status;
     ray::QuickExit();
-    RAY_LOG(FATAL) << "Unreachable.";
+    RAY_LOG(FATAL) << "Accessing unreachable code. This line should never be reached "
+                   << "after quick process exit due to plasma store connection failure.";
   }
 }
 }  // namespace plasma
