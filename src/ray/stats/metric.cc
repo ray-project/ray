@@ -128,29 +128,27 @@ void Metric::Record(double value, TagsType tags) {
     //
     // This function is thread-safe.
     RegisterOpenTelemetryMetric();
-    if (OpenTelemetryMetricRecorder::GetInstance().IsMetricRegistered(name_)) {
-      // Collect tags from both the metric-specific tags and the global tags.
-      absl::flat_hash_map<std::string, std::string> open_telemetry_tags;
-      std::unordered_set<std::string> tag_keys_set;
-      for (const auto &tag_key : tag_keys_) {
-        tag_keys_set.insert(tag_key.name());
-      }
-      // Insert metric-specific tags that match the expected keys.
-      for (const auto &tag : tags) {
-        const std::string &key = tag.first.name();
-        if (tag_keys_set.count(key)) {
-          open_telemetry_tags[key] = tag.second;
-        }
-      }
-      // Add global tags, overwriting any existing tag keys.
-      for (const auto &tag : StatsConfig::instance().GetGlobalTags()) {
-        open_telemetry_tags[tag.first.name()] = tag.second;
-      }
-      OpenTelemetryMetricRecorder::GetInstance().SetMetricValue(
-          name_, std::move(open_telemetry_tags), value);
-
-      return;
+    // Collect tags from both the metric-specific tags and the global tags.
+    absl::flat_hash_map<std::string, std::string> open_telemetry_tags;
+    std::unordered_set<std::string> tag_keys_set;
+    for (const auto &tag_key : tag_keys_) {
+      tag_keys_set.insert(tag_key.name());
     }
+    // Insert metric-specific tags that match the expected keys.
+    for (const auto &tag : tags) {
+      const std::string &key = tag.first.name();
+      if (tag_keys_set.count(key)) {
+        open_telemetry_tags[key] = tag.second;
+      }
+    }
+    // Add global tags, overwriting any existing tag keys.
+    for (const auto &tag : StatsConfig::instance().GetGlobalTags()) {
+      open_telemetry_tags[tag.first.name()] = tag.second;
+    }
+    OpenTelemetryMetricRecorder::GetInstance().SetMetricValue(
+        name_, std::move(open_telemetry_tags), value);
+
+    return;
   }
 
   absl::MutexLock lock(&registration_mutex_);
@@ -205,11 +203,6 @@ void Gauge::RegisterOpenTelemetryMetric() {
 }
 
 void Gauge::RegisterView() {
-  if (::RayConfig::instance().experimental_enable_open_telemetry_on_core()) {
-    // Register the metric in OpenTelemetry.
-    OpenTelemetryMetricRecorder::GetInstance().RegisterGaugeMetric(name_, description_);
-    return;
-  }
   opencensus::stats::ViewDescriptor view_descriptor =
       opencensus::stats::ViewDescriptor()
           .set_name(name_)
@@ -220,14 +213,11 @@ void Gauge::RegisterView() {
 }
 
 void Histogram::RegisterOpenTelemetryMetric() {
-  // Histogram is not supported in OpenTelemetry.
-  return;
+  OpenTelemetryMetricRecorder::GetInstance().RegisterHistogramMetric(
+      name_, description_, boundaries_);
 }
 
 void Histogram::RegisterView() {
-  if (measure_ == nullptr) {
-    return;
-  }
   opencensus::stats::ViewDescriptor view_descriptor =
       opencensus::stats::ViewDescriptor()
           .set_name(name_)
@@ -244,11 +234,6 @@ void Count::RegisterOpenTelemetryMetric() {
 }
 
 void Count::RegisterView() {
-  if (::RayConfig::instance().experimental_enable_open_telemetry_on_core()) {
-    // Register the metric in OpenTelemetry.
-    OpenTelemetryMetricRecorder::GetInstance().RegisterCounterMetric(name_, description_);
-    return;
-  }
   opencensus::stats::ViewDescriptor view_descriptor =
       opencensus::stats::ViewDescriptor()
           .set_name(name_)
@@ -264,11 +249,6 @@ void Sum::RegisterOpenTelemetryMetric() {
 }
 
 void Sum::RegisterView() {
-  if (::RayConfig::instance().experimental_enable_open_telemetry_on_core()) {
-    // Register the metric in OpenTelemetry.
-    OpenTelemetryMetricRecorder::GetInstance().RegisterSumMetric(name_, description_);
-    return;
-  }
   opencensus::stats::ViewDescriptor view_descriptor =
       opencensus::stats::ViewDescriptor()
           .set_name(name_)
