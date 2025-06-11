@@ -30,7 +30,6 @@ from ray.rllib.core import (
     COMPONENT_RL_MODULE,
     DEFAULT_MODULE_ID,
 )
-from ray.rllib.core.columns import Columns
 from ray.rllib.core.learner.training_data import TrainingData
 from ray.rllib.core.rl_module.apis import SelfSupervisedLossAPI
 from ray.rllib.core.rl_module import validate_module_id
