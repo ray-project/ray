@@ -984,9 +984,17 @@ class Dataset:
             which may result in memory pressure or dramatically increased execution time.
 
         """
+        import pyarrow as pa
+        import numpy as np
+
         all_cols = self.columns()
         if not all_cols:
             return self
+
+        subset_cols = keys if keys is not None else all_cols
+
+        if keep not in ("first", "last", False):
+            raise ValueError(f"keep must be 'first', 'last', or False, got {keep}")
 
         def remove_duplicates_arrow(table: pa.Table, subset=None):
             """
@@ -1000,67 +1008,49 @@ class Dataset:
                 table[col].combine_chunks().to_numpy(zero_copy_only=False)
                 for col in subset
             ]
-            # All to string, regardless of type
             str_arrays = [np.array(arr, dtype=str) for arr in arrays]
             sep = "\x1e"
-            # Build rowkey (concatenate strings with separator)
             rowkey_np = np.char.add(str_arrays[0], "")
             for arr in str_arrays[1:]:
                 rowkey_np = np.char.add(rowkey_np, sep)
                 rowkey_np = np.char.add(rowkey_np, arr)
-            # Unique rowkeys, get first index of each unique row
             _, unique_indices = np.unique(rowkey_np, return_index=True)
             unique_indices = np.sort(unique_indices)
             return table.take(pa.array(unique_indices))
 
-        # If keys is None, we use all columns for deduplication.
-        subset_cols = keys if keys is not None else all_cols
-
-        # Validate subset_cols
-        if keep not in ("first", "last", False):
-            raise ValueError(f"keep must be 'first', 'last', or False, got {keep}")
-
-        if keep is False:
-            self = self.map_batches(
+        # Only for dedupe on *all columns* and keep="first", we can do in-batch dedup to save shuffle.
+        if keys is None and keep == "first":
+            return self.map_batches(
                 remove_duplicates_arrow,
                 batch_format="pyarrow",
                 zero_copy_batch=False,
-                fn_kwargs={"subset": subset_cols},
+                fn_kwargs={"subset": all_cols},
             )
 
-            def keep_one_per_group(batch: pa.Table) -> pa.Table:
-                if batch.num_rows == 1:
-                    return batch
-                return batch.slice(0, 0)  # drop group
+        # Otherwise, use groupby with per-group logic.
+        def reducer_first(batch: pa.Table) -> pa.Table:
+            return batch.slice(0, 1)
 
-            return self.groupby(subset_cols).map_groups(
-                keep_one_per_group, batch_format="pyarrow"
-            )
+        def reducer_last(batch: pa.Table) -> pa.Table:
+            return batch.slice(batch.num_rows - 1, 1)
 
-        else:
-            self = self.map_batches(
-                remove_duplicates_arrow,
-                batch_format="pyarrow",
-                zero_copy_batch=False,
-                fn_kwargs={"subset": subset_cols},
-            )
-            if keep == "first":
-                # If keep is "first", we can just take the first row of each group
-                def take_first(batch: pa.Table) -> pa.Table:
-                    return batch.slice(0, 1)
+        def reducer_unique(batch: pa.Table) -> pa.Table:
+            # Only keep if group size == 1
+            if batch.num_rows == 1:
+                return batch
+            return batch.slice(0, 0)
 
-                reducer = take_first
-            else:
-                # If keep is "last", we can just take the last row of each group
-                def take_last(batch: pa.Table) -> pa.Table:
-                    return batch.slice(batch.num_rows - 1, 1)
+        if keep == "first":
+            reducer = reducer_first
+        elif keep == "last":
+            reducer = reducer_last
+        elif keep is False:
+            reducer = reducer_unique
 
-                reducer = take_last
-
-            return self.groupby(subset_cols).map_groups(
-                reducer,
-                batch_format="pyarrow",
-            )
+        return self.groupby(subset_cols).map_groups(
+            reducer,
+            batch_format="pyarrow",
+        )
 
     @PublicAPI(api_group=BT_API_GROUP)
     def drop_columns(
