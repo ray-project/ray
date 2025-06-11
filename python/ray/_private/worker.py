@@ -500,6 +500,8 @@ class Worker:
     @property
     def gpu_object_manager(self) -> "ray._private.gpu_object_manager.GPUObjectManager":
         if self._gpu_object_manager is None:
+            # GPUObjectManager requires some dependencies like torch that are
+            # not included in the default ray installation.
             from ray._private.gpu_object_manager import GPUObjectManager
             self._gpu_object_manager = GPUObjectManager()
         return self._gpu_object_manager

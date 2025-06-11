@@ -1,14 +1,13 @@
-from typing import TYPE_CHECKING, Any, Dict, List, NamedTuple, Optional, Tuple
+from typing import Any, Dict, List, NamedTuple, Optional, Tuple
 
 import torch
 
+import ray.util.collective as collective
 from ray._private.custom_types import TensorTransportEnum
 from ray._raylet import ObjectRef
 from ray.actor import ActorHandle
+from ray.experimental.collective import get_collective_groups
 from ray.util.collective.types import Backend
-
-if TYPE_CHECKING:
-    import torch
 
 TENSOR_TRANSPORT_TO_COLLECTIVE_BACKEND = {
     TensorTransportEnum.NCCL: Backend.NCCL,
@@ -114,7 +113,6 @@ class GPUObjectManager:
         # Send tensors stored in the `src_actor`'s GPU object store to the
         # destination rank `dst_rank`.
         def __ray_send__(self, communicator_name: str, obj_id: str, dst_rank: int):
-            import ray.util.collective as collective
             from ray._private.worker import global_worker
 
             gpu_object_manager = global_worker.gpu_object_manager
@@ -156,9 +154,6 @@ class GPUObjectManager:
             src_rank: int,
             tensor_meta: List[Tuple["torch.Size", "torch.dtype"]],
         ):
-            import torch
-
-            import ray.util.collective as collective
             from ray._private.worker import global_worker
 
             backend = collective.get_group_handle(communicator_name).backend()
@@ -196,8 +191,6 @@ class GPUObjectManager:
             dst_actor: The target actor to receive tensors
             task_args: List of arguments for the target actor task that may contain ObjectRefs.
         """
-        from ray.experimental.collective import get_collective_groups
-
         for arg in task_args:
             # If an ObjectRef exists in `gpu_object_refs`, it means the ObjectRef
             # is in-actor tensors. Therefore, this function will trigger a tensor
