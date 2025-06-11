@@ -74,47 +74,59 @@ In the following, the three pipeline types, :ref:`env-to-module <env-to-module-p
 Env-to-module Pipeline
 ++++++++++++++++++++++
 
-One env-to-module pipeline is located on each :py:class:`~ray.rllib.env.env_runner.EnvRunner` (see figure below) and is responsible
+A single env-to-module pipeline is located on each :py:class:`~ray.rllib.env.env_runner.EnvRunner` (see figure below) and responsible
 for connecting the `gymnasium.Env <https://gymnasium.farama.org/api/env/>`__ with
 the EnvRunner's :py:class:`~ray.rllib.core.rl_module.rl_module.RLModule`.
+
+.. note::
+
+    The ConnectorV2 pipelines are used across all agents and modules in your setup. Unlike on the old API stack,
+    there isn't an individual pipeline anymore per Module/Policy.
+
 When calling the env-to-module pipeline, a translation from a list of ongoing :ref:`Episode objects <single-agent-episode-docs>` to an
-RLModule-readable tensor batch takes place and the output of the pipeline is directly sent into the RLModule's
+RLModule-readable tensor batch takes place and the output of the pipeline directly goes into the
 :py:meth:`~ray.rllib.core.rl_module.rl_module.RLModule.forward_inference` or :py:meth:`~ray.rllib.core.rl_module.rl_module.RLModule.forward_exploration`
-method (depending on the user's exploration settings).
+methods of the :py:class:`~ray.rllib.core.rl_module.rl_module.RLModule`, depending on the user's exploration settings.
 
 .. hint::
 
-    Set `config.exploration(explore=True)` in your :py:class:`~ray.rllib.algorithms.algorithm_config.AlgorithmConfig` to make sure your RLModule's
+    Set `config.exploration(explore=True)` in your :py:class:`~ray.rllib.algorithms.algorithm_config.AlgorithmConfig` to make sure the
     :py:meth:`~ray.rllib.core.rl_module.rl_module.RLModule.forward_exploration` method is called with the connector's output.
-    Otherwise, the EnvRunner calls :py:meth:`~ray.rllib.core.rl_module.rl_module.RLModule.forward_inference`.
+    Otherwise, the :py:class:`~ray.rllib.env.env_runner.EnvRunner` calls :py:meth:`~ray.rllib.core.rl_module.rl_module.RLModule.forward_inference`.
     Note also that usually these two methods only differ in that actions are sampled when `explore=True` and
-    greedily picked when `explore=False`. However, the exact behavior in each case depends on
-    your :ref:`RLModule's implementation <rlmodule-guide>`.
+    greedily picked when `explore=False`. However, the exact behavior in each case depends on your :ref:`RLModule's implementation <rlmodule-guide>`.
 
 
 .. figure:: images/connector_v2/env_runner_connector_pipelines.svg
     :width: 1000
     :align: left
 
-    **EnvRunner ConnectorV2 Pipelines**: Both env-to-module and module-to-env pipelines are located on the EnvRunner workers.
-    The env-to-module pipeline sits between the RL environment (gymnasium.Env) and the :py:class:`~ray.rllib.core.rl_module.rl_module.RLModule`,
-    translating ongoing episodes into RLModule-readable batches (for the model's `forward_...()` methods).
-    The module-to-env pipeline serves the other direction, converting the RLModule's outputs (action logits,
-    action distribution parameters, etc..) to actual actions understandable by the `gymnasium.Env` and used in the next `step()` call.
+    **EnvRunner ConnectorV2 Pipelines**: Both env-to-module and module-to-env pipelines are located on the :py:class:`~ray.rllib.env.env_runner.EnvRunner`
+    workers. The env-to-module pipeline sits between the RL environment (`gymnasium.Env <https://gymnasium.farama.org/api/env/>`__) and the
+    :py:class:`~ray.rllib.core.rl_module.rl_module.RLModule`, translating ongoing episodes into batches for the model's `forward_...()` methods.
+    The module-to-env pipeline serves the other direction, converting the output of the :py:class:`~ray.rllib.core.rl_module.rl_module.RLModule`
+    (action logits, action distribution parameters, etc..) to actual actions understandable by the `gymnasium.Env <https://gymnasium.farama.org/api/env/>`__
+    and used in its next `step()` call.
 
 
 .. _default-env-to-module-pipeline:
 
-**Default Env-to-Module Behavior:** By default (if the user doesn't configure anything else), an env-to-module pipeline is populated with the following
-built-in connector pieces, which perform the following tasks:
+**Default Env-to-Module Behavior:** By default, if you don't specifically say otherwise in your config, an env-to-module pipeline is populated with these
+built-in connector pieces performing the following tasks:
 
-* :py:class:`~ray.rllib.connectors.common.add_observations_from_episodes_to_batch.AddObservationsFromEpisodesToBatch`: Places the most recent observation from each ongoing episode into the batch. Note that if you have a vector of `N` environments per `EnvRunner`, your batch size (number of observations) will also be `N`.
-* *For stateful models only:* :py:class:`~ray.rllib.connectors.common.add_states_from_episodes_to_batch.AddStatesFromEpisodesToBatch`: Places the most recent state outputs of your module (as new state inputs) into the batch and adds a 1 timestep second axis (axis=1) to all data to make it sequential.
+* :py:class:`~ray.rllib.connectors.common.add_observations_from_episodes_to_batch.AddObservationsFromEpisodesToBatch`: Places the most recent observation from each ongoing episode into the batch. Note that if you have a vector of `N` environments per `EnvRunner`, your batch size is also `N`.
+* *Relevant for stateful models only:* :py:class:`~ray.rllib.connectors.common.add_time_dim_to_batch_and_zero_pad.AddTimeDimToBatchAndZeroPad`: If the :py:class:`~ray.rllib.core.rl_module.rl_module.RLModule` is a stateful one, adds a single timestep, second axis to all data to make it sequential.
+* *Relevant for stateful models only:* :py:class:`~ray.rllib.connectors.common.add_states_from_episodes_to_batch.AddStatesFromEpisodesToBatch`: If the :py:class:`~ray.rllib.core.rl_module.rl_module.RLModule` is a stateful one, places the most recent state outputs of the module as new state inputs into the batch.
 * *For multi-agent only:* :py:class:`~ray.rllib.connectors.common.agent_to_module_mapping.AgentToModuleMapping`: Maps per-agent data to the respective per-module data depending on the user defined agent-to-module mapping function.
-* :py:class:`~ray.rllib.connectors.common.batch_individual_items.BatchIndividualItems`: Now that all data has been placed in the batch, convert the individual batch items into batched data structures (lists of individual items are converted to numpy arrays).
-* :py:class:`~ray.rllib.connectors.common.numpy_to_tensor.NumpyToTensor`: Converts all numpy arrays in the batch into actual framework specific tensors and moves these to the GPU, if required.
+* :py:class:`~ray.rllib.connectors.common.batch_individual_items.BatchIndividualItems`: Converts all data in the batch, which thus far are lists of individual items, into batched structures meaning numpy arrays, whose 0th axis is the batch axis.
+* :py:class:`~ray.rllib.connectors.common.numpy_to_tensor.NumpyToTensor`: Converts all numpy arrays in the batch into framework specific tensors and moves these to the GPU, if required.
 
 It's discussed further below :ref:`how users can customize the behavior of the env-to-module pipeline <customizing-connector-v2-pipelines>` by adding any number of `ConnectorV2` pieces to it.
+
+.. hint::
+
+    You can disable the default connector pieces by setting `config.env_runners(add_default_connectors_to_env_to_module_pipeline=False)`
+    in your :ref:`algorithm config <rllib-algo-configuration-docs>`.
 
 
 .. _module-to-env-pipeline:
@@ -122,28 +134,33 @@ It's discussed further below :ref:`how users can customize the behavior of the e
 Module-to-env Pipeline
 ++++++++++++++++++++++
 
-One module-to-env pipeline is located on each :py:class:`~ray.rllib.env.env_runner.EnvRunner` (see preceding figure) and is responsible for connecting the
-EnvRunner's :py:class:`~ray.rllib.core.rl_module.rl_module.RLModule` with the `gymnasium.Env`.
-When calling the module-to-env pipeline, a translation takes place from a model output dict - possibly containing action logits or distribution parameters -
-to actual env-readable actions. Note that a model-to-env connector has access to the same list of ongoing :ref:`Episode objects <single-agent-episode-docs>`
+A single module-to-env pipeline is located on each :py:class:`~ray.rllib.env.env_runner.EnvRunner` (see preceding figure) and responsible for connecting the
+EnvRunner's :py:class:`~ray.rllib.core.rl_module.rl_module.RLModule` with the `gymnasium.Env <https://gymnasium.farama.org/api/env/>`__.
+When calling the module-to-env pipeline, a translation takes place from the model's output, possibly containing action logits or distribution parameters,
+to actions readable by the environment. Note that a model-to-env connector has access to the same list of ongoing :ref:`Episode objects <single-agent-episode-docs>`
 that the env-to-module connector already saw, however, there is usually no need to access them (or write to them) in this pipeline.
 
-The output of the module-to-env pipeline is directly sent to the RL environment (`gymnasium.Env`) for its next `step()` call.
+The output of the module-to-env pipeline is directly sent to the RL environment (`gymnasium.Env <https://gymnasium.farama.org/api/env/>`__) for its next `step()` call.
 
 .. _default-module-to-env-pipeline:
 
-**Default Module-to-Env Behavior:** By default (if the user doesn't configure anything else), an module-to-env pipeline is populated with the following
-built-in connector pieces, which perform the following tasks:
+**Default Module-to-Env Behavior:** By default, if you don't specifically say otherwise in your config, a module-to-env pipeline is populated with these
+built-in connector pieces performing the following tasks:
 
-* :py:class:`~ray.rllib.connectors.module_to_env.get_actions.GetActions`: Checks, whether the "actions" key is already part of the RLModule's output and if not, tries to sample actions using the obligatory "action_dist_inputs" key in the RLModule's output.
+* :py:class:`~ray.rllib.connectors.module_to_env.get_actions.GetActions`: Checks, whether the "actions" key is already part of the RLModule's output and if not, samples actions using the obligatory "action_dist_inputs" key.
 * :py:class:`~ray.rllib.connectors.common.tensor_to_numpy.TensorToNumpy`: Converts all framework specific tensors in the batch to numpy arrays.
 * :py:class:`~ray.rllib.connectors.module_to_env.unbatch_to_individual_items.UnBatchToIndividualItems`: Un-batches all data, meaning converts from NumPy arrays with a batch axis=0 to lists of individual batch items w/o such batch axis.
 * *For multi-agent only:* :py:class:`~ray.rllib.connectors.common.module_to_agent_unmapping.ModuleToAgentUnmapping`: Maps per-module data back to the respective per-agent data depending on the previously performed agent-to-module mapping.
-* *For stateful models only:* :py:class:`~ray.rllib.connectors.module_to_env.remove_single_ts_time_rank_from_batch.RemoveSingleTsTimeRankFromBatch`: Removes a previously added 1-timestep second axis (axis=1) from all data (meaning, undoes the transformation by the `AddStatesFromEpisodesToBatch` piece in the env-to-module pipeline).
-* :py:class:`~ray.rllib.connectors.module_to_env.normalize_and_clip_actions.NormalizeAndClipActions`: Translates the computed/sampled actions from their neural-network form (assumed to be somewhat within a small range) to the `gymnasium.Env`'s action space or - alternatively - clips the computed/sampled actions to the env's action ranges. Note that this step is only relevant for non-Discrete action spaces.
-* :py:class:`~ray.rllib.connectors.module_to_env.listify_data_for_vector_env.NormalizeAndClipActions`: Converts data from the connector pipeline specific format into plain lists, matching the `gymnasium.Env` vector in size.
+* *For stateful models only:* :py:class:`~ray.rllib.connectors.module_to_env.remove_single_ts_time_rank_from_batch.RemoveSingleTsTimeRankFromBatch`: Removes a previously added 1-timestep second axis (axis=1) from all data. This means it reverts the transformation by the :py:class:`~ray.rllib.connectors.common.add_states_from_episodes_to_batch.AddStatesFromEpisodesToBatch` piece in the env-to-module pipeline.
+* :py:class:`~ray.rllib.connectors.module_to_env.normalize_and_clip_actions.NormalizeAndClipActions`: Translates the computed/sampled actions from their neural-network form (assumed to be somewhat within a small range) to the `gymnasium.Env <https://gymnasium.farama.org/api/env/>`__'s action space or - alternatively - clips the computed/sampled actions to the env's action ranges. Note that this step is only relevant for non-Discrete action spaces.
+* :py:class:`~ray.rllib.connectors.module_to_env.listify_data_for_vector_env.ListifyDataForVectorEnv`: Converts data from the connector pipeline specific format into plain lists, matching the `gymnasium.Env <https://gymnasium.farama.org/api/env/>`__ vector in size.
 
 It's discussed further below :ref:`how users can customize the behavior of the module-to-env pipeline <customizing-connector-v2-pipelines>` by adding any number of `ConnectorV2` pieces to it.
+
+.. hint::
+
+    You can disable the default connector pieces by setting `config.env_runners(add_default_connectors_to_module_to_env_pipeline=False)`
+    in your :ref:`algorithm config <rllib-algo-configuration-docs>`.
 
 
 .. _learner-pipeline:
