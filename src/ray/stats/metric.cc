@@ -196,6 +196,11 @@ void Gauge::RegisterOpenTelemetryMetric() {
 }
 
 void Gauge::RegisterView() {
+  if (::RayConfig::instance().experimental_enable_open_telemetry_on_core()) {
+    // Register the metric in OpenTelemetry.
+    OpenTelemetryMetricRecorder::GetInstance().RegisterGaugeMetric(name_, description_);
+    return;
+  }
   opencensus::stats::ViewDescriptor view_descriptor =
       opencensus::stats::ViewDescriptor()
           .set_name(name_)
@@ -230,6 +235,11 @@ void Count::RegisterOpenTelemetryMetric() {
 }
 
 void Count::RegisterView() {
+  if (::RayConfig::instance().experimental_enable_open_telemetry_on_core()) {
+    // Register the metric in OpenTelemetry.
+    OpenTelemetryMetricRecorder::GetInstance().RegisterCounterMetric(name_, description_);
+    return;
+  }
   opencensus::stats::ViewDescriptor view_descriptor =
       opencensus::stats::ViewDescriptor()
           .set_name(name_)
@@ -245,6 +255,11 @@ void Sum::RegisterOpenTelemetryMetric() {
 }
 
 void Sum::RegisterView() {
+  if (::RayConfig::instance().experimental_enable_open_telemetry_on_core()) {
+    // Register the metric in OpenTelemetry.
+    OpenTelemetryMetricRecorder::GetInstance().RegisterSumMetric(name_, description_);
+    return;
+  }
   opencensus::stats::ViewDescriptor view_descriptor =
       opencensus::stats::ViewDescriptor()
           .set_name(name_)
