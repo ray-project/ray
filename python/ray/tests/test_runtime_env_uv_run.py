@@ -20,7 +20,7 @@ from ray._private.test_utils import (
 
 @pytest.fixture(scope="function")
 def with_uv():
-    arch = "aarch64" if platform.machine() in ["aarch64", "arm64"] else "i686"
+    arch = "aarch64" if platform.machine() in ["aarch64", "arm64"] else "x86_64"
     system = "unknown-linux-gnu" if platform.system() == "Linux" else "apple-darwin"
     name = f"uv-{arch}-{system}"
     url = f"https://github.com/astral-sh/uv/releases/download/0.5.27/{name}.tar.gz"
