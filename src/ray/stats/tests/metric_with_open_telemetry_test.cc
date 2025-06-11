@@ -121,6 +121,9 @@ TEST_F(MetricTest, TestSumMetric) {
   // because open telemetry does not provide a way to retrieve the value of a counter.
   // Checking value is performed via e2e tests instead (e.g., in test_metrics_agent.py).
   STATS_metric_sum_test.Record(200.0, {{"Tag1", "Value1"}, {"Tag2", "Value2"}});
+  LegacyMetricSumTest.Record(200.0, {{"Tag1"sv, "Value1"}, {"Tag2"sv, "Value2"}});
+  ASSERT_TRUE(OpenTelemetryMetricRecorder::GetInstance().IsMetricRegistered(
+      "legacy_metric_sum_test"));
 }
 
 }  // namespace telemetry
