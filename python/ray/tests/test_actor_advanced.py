@@ -205,27 +205,38 @@ def test_exception_raised_when_actor_node_dies(ray_start_cluster_head):
 
 def test_actor_init_fails(ray_start_cluster_head):
     cluster = ray_start_cluster_head
-    remote_node = cluster.add_node()
+    worker_node = cluster.add_node()
 
-    @ray.remote(max_restarts=1, max_task_retries=-1)
+    @ray.remote
     class Counter:
         def __init__(self):
-            self.x = 0
+            self._count = 0
 
         def inc(self):
-            self.x += 1
-            return self.x
+            self._count += 1
 
-    # Create many actors. It should take a while to finish initializing them.
-    actors = [Counter.remote() for _ in range(15)]
-    # Allow some time to forward the actor creation tasks to the other node.
-    time.sleep(0.1)
-    # Kill the second node.
-    cluster.remove_node(remote_node)
+        def get(self) -> int:
+            return self._count
 
-    # Get all of the results.
-    results = ray.get([actor.inc.remote() for actor in actors])
-    assert results == [1 for actor in actors]
+    counter = Counter.remote()
+    assert ray.get(counter.get.remote()) == 0
+
+    @ray.remote(max_restarts=1, max_task_retries=-1)
+    class Actor:
+        def __init__(self):
+            print("inc!")
+            ray.get(counter.inc.remote())
+
+    # Create many actors and wait for one of them to start initializing.
+    # At least a few should still be initializing.
+    actors = [Actor.remote() for _ in range(10)]
+    wait_for_condition(lambda: ray.get(counter.get.remote()) > 0)
+
+    # Kill the worker node.
+    cluster.remove_node(worker_node)
+
+    # Verify that all the actors were able to be restarted on the new node.
+    ray.get([actor.__ray_ready__.remote() for actor in actors])
 
 
 def test_reconstruction_suppression(ray_start_cluster_head):
