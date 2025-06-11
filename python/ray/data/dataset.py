@@ -984,9 +984,6 @@ class Dataset:
             which may result in memory pressure or dramatically increased execution time.
 
         """
-        import pyarrow as pa
-        import numpy as np
-
         all_cols = self.columns()
         if not all_cols:
             return self
