@@ -3,7 +3,7 @@ import pytest
 import sys
 
 import ray
-from ray._private.test_utils import wait_for_condition
+from ray._common.test_utils import wait_for_condition
 
 
 def test_list_named_actors_restarting_actor(ray_start_regular):
