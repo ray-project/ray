@@ -106,7 +106,6 @@ class ZipOperator(InternalQueueOperatorMixin, PhysicalOperator):
 
     def _get_next_inner(self) -> RefBundle:
         refs = self._output_buffer.pop(0)
-        self._metrics.on_output_dequeued(refs)
         return refs
 
     def get_stats(self) -> StatsDict:

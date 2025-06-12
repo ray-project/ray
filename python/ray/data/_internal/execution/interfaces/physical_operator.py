@@ -18,6 +18,7 @@ from ray.data._internal.execution.interfaces.execution_options import (
 from ray.data._internal.execution.interfaces.op_runtime_metrics import OpRuntimeMetrics
 from ray.data._internal.logical.interfaces import LogicalOperator, Operator
 from ray.data._internal.output_buffer import OutputBlockSizeOption
+from ray.data._internal.progress_bar import ProgressBar
 from ray.data._internal.stats import StatsDict, Timer
 from ray.data.context import DataContext
 
@@ -664,9 +665,160 @@ class PhysicalOperator(Operator):
                     # In all cases, we swallow the exception.
                     pass
 
+    def upstream_num_outputs(self):
+        upstream_num_outputs = sum(
+            op.num_outputs_total() or 0 for op in self.input_dependencies
+        )
+        return upstream_num_outputs
+
 
 class ReportsExtraResourceUsage(abc.ABC):
     @abc.abstractmethod
     def extra_resource_usage(self: PhysicalOperator) -> ExecutionResources:
         """Returns resources used by this operator beyond standard accounting."""
         ...
+
+
+class ContainsSubProgressBars(PhysicalOperator):
+    def __init__(self, *args, sub_progress_bar_names: Optional[List[str]], **kwargs):
+        """Initialize the sub progress bar mixin."""
+        super().__init__(*args, **kwargs)
+        self._sub_progress_bar_names: Optional[List[str]] = sub_progress_bar_names
+        self._sub_progress_bar_dict: Optional[Dict[str, ProgressBar]] = None
+        self._metric_dict: Dict[str, OpRuntimeMetrics] = {}
+        if sub_progress_bar_names is not None:
+            for name in self._sub_progress_bar_names:
+                self._metric_dict[name] = OpRuntimeMetrics(self)
+
+    def _key(self, key: Union[str, int]) -> str:
+        """Convert the key to a string."""
+        if isinstance(key, int):
+            return self._sub_progress_bar_names[key]
+        return key
+
+    def sub_progress_bar(self, key: Union[str, int]) -> Optional[ProgressBar]:
+        """Return the sub progress bar with the given name, or None if not found."""
+        if self._sub_progress_bar_dict is not None:
+            key = self._key(key)
+            return self._sub_progress_bar_dict.get(key)
+        return None
+
+    def get_metrics(self, key: Union[str, int]) -> Optional[OpRuntimeMetrics]:
+        key = self._key(key)
+        return self._metric_dict.get(key)
+
+    def initialize_sub_progress_bars(self, position: int) -> int:
+        """Initialize all internal sub progress bars, and return the number of bars."""
+        if self._sub_progress_bar_names is not None:
+            self._sub_progress_bar_dict = {}
+            for name in self._sub_progress_bar_names:
+                progress_bar = ProgressBar(
+                    name,
+                    self.num_output_rows_total() or 1,
+                    unit="row",
+                    position=position,
+                )
+                # NOTE: call `set_description` to trigger the initial print of progress
+                # bar on console.
+                progress_bar.set_description(f"  *- {name}")
+                self._sub_progress_bar_dict[name] = progress_bar
+                position += 1
+            return len(self._sub_progress_bar_dict)
+        else:
+            return 0
+
+    def close_sub_progress_bars(self):
+        """Close all internal sub progress bars."""
+        if self._sub_progress_bar_dict is not None:
+            for sub_bar in self._sub_progress_bar_dict.values():
+                sub_bar.close()
+
+    def _on_pre_task(
+        self,
+        key: Union[str, int],
+        ref: RefBundle,
+        task_idx: int,
+        estimate_total: bool = True,
+    ):
+        metrics = self.get_metrics(key)
+        metrics.on_task_submitted(task_idx, ref)
+
+        pb_bar = self.sub_progress_bar(key)
+        if estimate_total:
+            pb_bar.update(total=self.num_output_rows_total())
+        else:
+            pb_bar.update(total=self._metrics.num_row_inputs_received)
+
+    def _on_post_task(
+        self,
+        key: Union[str, int],
+        task_idx,
+        ref: RefBundle,
+        estimate_total: bool = True,
+        num_tasks: Optional[int] = None,
+    ):
+        metrics = self.get_metrics(key)
+        metrics.on_task_output_generated(task_idx, ref)
+        metrics.on_task_finished(task_idx, None)
+
+        pb_bar = self.sub_progress_bar(key)
+
+        # for some tasks, we do not know the output length,
+        # so we must estimate it with `update_task_output_stats`
+        if estimate_total:
+            (
+                _,
+                self._estimated_num_output_bundles,
+                self._estimated_output_num_rows,
+            ) = update_task_output_stats(
+                task_idx + 1,
+                self.upstream_num_outputs(),
+                metrics,
+                total_num_tasks=num_tasks,
+            )
+            pb_bar.update(i=ref.num_rows(), total=self.num_output_rows_total())
+        else:
+            pb_bar.update(i=ref.num_rows(), total=self._metrics.num_row_inputs_received)
+
+
+def update_task_output_stats(
+    num_tasks_submitted: int,
+    upstream_op_num_outputs: int,
+    metrics: OpRuntimeMetrics,
+    total_num_tasks: Optional[int] = None,
+) -> Tuple[int, int, int]:
+    """This method is trying to estimate total number of blocks/rows based on
+    - How many outputs produced by the input deps
+    - How many blocks/rows produced by tasks of this operator
+    """
+
+    if (
+        upstream_op_num_outputs > 0
+        and metrics.num_inputs_received > 0
+        and metrics.num_tasks_finished > 0
+    ):
+        estimated_num_tasks = total_num_tasks
+        if estimated_num_tasks is None:
+            estimated_num_tasks = (
+                upstream_op_num_outputs
+                / metrics.num_inputs_received
+                * num_tasks_submitted
+            )
+
+        estimated_num_output_bundles = round(
+            estimated_num_tasks
+            * metrics.num_outputs_of_finished_tasks
+            / metrics.num_tasks_finished
+        )
+        estimated_output_num_rows = round(
+            estimated_num_tasks
+            * metrics.rows_task_outputs_generated
+            / metrics.num_tasks_finished
+        )
+        return (
+            estimated_num_tasks,
+            estimated_num_output_bundles,
+            estimated_output_num_rows,
+        )
+
+    return (0, 0, 0)

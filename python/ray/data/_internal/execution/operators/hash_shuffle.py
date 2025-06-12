@@ -31,8 +31,12 @@ from ray.data._internal.arrow_ops.transform_pyarrow import (
     _create_empty_table,
     hash_partition,
 )
-from ray.data._internal.execution.interfaces import PhysicalOperator, RefBundle
+from ray.data._internal.execution.interfaces import (
+    PhysicalOperator,
+    RefBundle,
+)
 from ray.data._internal.execution.interfaces.physical_operator import (
+    ContainsSubProgressBars,
     DataOpTask,
     MetadataOpTask,
     OpTask,
@@ -42,6 +46,7 @@ from ray.data._internal.util import GiB, MiB
 from ray.data.block import (
     Block,
     BlockAccessor,
+    BlockExecStats,
     BlockMetadata,
     BlockStats,
     BlockType,
@@ -196,7 +201,7 @@ def _shuffle_block(
             - Map of partition ids to partition shard stats produced from the
             shuffled block
     """
-
+    exec_stats_builder = BlockExecStats.builder()
     assert (len(key_columns) > 0) ^ (override_partition_id is not None), (
         f"Either list of key columns to hash-partition by (got {key_columns} or "
         f"target partition id override (got {override_partition_id}) must be provided!"
@@ -212,7 +217,12 @@ def _shuffle_block(
     )
 
     if block.num_rows == 0:
-        return BlockAccessor.for_block(block).get_metadata(), {}
+        return (
+            BlockAccessor.for_block(block).get_metadata(
+                exec_stats=exec_stats_builder.build()
+            ),
+            {},
+        )
 
     num_partitions = pool.num_partitions
 
@@ -283,7 +293,9 @@ def _shuffle_block(
         pending_submissions = unready
         i += 1
 
-    original_block_metadata = BlockAccessor.for_block(block).get_metadata()
+    original_block_metadata = BlockAccessor.for_block(block).get_metadata(
+        exec_stats=exec_stats_builder.build()
+    )
 
     if logger.isEnabledFor(logging.DEBUG):
         num_rows_series, byte_sizes_series = zip(
@@ -334,7 +346,7 @@ class _PartitionStats:
         )
 
 
-class HashShufflingOperatorBase(PhysicalOperator):
+class HashShufflingOperatorBase(ContainsSubProgressBars, PhysicalOperator):
     """Physical operator base-class for any operators requiring hash-based
     shuffling.
 
@@ -366,12 +378,24 @@ class HashShufflingOperatorBase(PhysicalOperator):
         partition_size_hint: Optional[int] = None,
         input_block_transformer: Optional[BlockTransformer] = None,
         aggregator_ray_remote_args_override: Optional[Dict[str, Any]] = None,
+        shuffle_progress_bar_name: Optional[str] = None,
+        finalize_progress_bar_name: Optional[str] = None,
     ):
+
+        if shuffle_progress_bar_name is None:
+            shuffle_progress_bar_name = "Hash Shuffle Map"
+        if finalize_progress_bar_name is None:
+            finalize_progress_bar_name = "Hash Shuffle Reduce"
+
         super().__init__(
             name=name,
             input_dependencies=input_ops,
             data_context=data_context,
             target_max_block_size=None,
+            sub_progress_bar_names=[
+                shuffle_progress_bar_name,
+                finalize_progress_bar_name,
+            ],
         )
 
         assert len(key_columns) == len(input_ops), (
@@ -452,11 +476,12 @@ class HashShufflingOperatorBase(PhysicalOperator):
 
     def _add_input_inner(self, input_bundle: RefBundle, input_index: int) -> None:
         # TODO move to base class
-        self._metrics.on_input_queued(input_bundle)
+        shuffle_metrics = self.get_metrics(0)
+        shuffle_metrics.on_input_queued(input_bundle)
         try:
             self._do_add_input_inner(input_bundle, input_index)
         finally:
-            self._metrics.on_input_dequeued(input_bundle)
+            shuffle_metrics.on_input_dequeued(input_bundle)
 
     def _do_add_input_inner(self, input_bundle: RefBundle, input_index: int):
         input_blocks_refs: List[ObjectRef[Block]] = input_bundle.block_refs
@@ -525,15 +550,25 @@ class HashShufflingOperatorBase(PhysicalOperator):
                     input_index, input_block_metadata, partition_shards_stats
                 )
 
-            # TODO update metrics
-            self._shuffling_tasks[input_index][cur_shuffle_task_idx] = MetadataOpTask(
-                task_index=cur_shuffle_task_idx,
-                object_ref=input_block_partition_shards_metadata_tuple_ref,
-                task_done_callback=_on_partitioning_done,
-                task_resource_bundle=(
-                    ExecutionResources.from_resource_dict(shuffle_task_resource_bundle)
-                ),
-            )
+                # For metrics purposes, creating a ref bundle
+                blocks = [(task.get_waitable(), input_block_metadata)]
+                out_bundle = RefBundle(blocks, owns_blocks=False)
+
+                self._on_post_task(
+                    0, cur_shuffle_task_idx, out_bundle, estimate_total=False
+                )
+
+        ref = RefBundle([(block_ref, block_metadata)], owns_blocks=False)
+        self._on_pre_task(0, ref, cur_shuffle_task_idx, estimate_total=False)
+
+        self._shuffling_tasks[input_index][cur_shuffle_task_idx] = MetadataOpTask(
+            task_index=cur_shuffle_task_idx,
+            object_ref=input_block_partition_shards_metadata_tuple_ref,
+            task_done_callback=_on_partitioning_done,
+            task_resource_bundle=(
+                ExecutionResources.from_resource_dict(shuffle_task_resource_bundle)
+            ),
+        )
 
     def has_next(self) -> bool:
         self._try_finalize()
@@ -543,7 +578,8 @@ class HashShufflingOperatorBase(PhysicalOperator):
         bundle: RefBundle = self._output_queue.popleft()
 
         # TODO move to base class
-        self._metrics.on_output_dequeued(bundle)
+        finalize_metrics = self.get_metrics(1)
+        finalize_metrics.on_output_dequeued(bundle)
 
         self._output_blocks_stats.extend(to_stats(bundle.metadata))
 
@@ -592,10 +628,11 @@ class HashShufflingOperatorBase(PhysicalOperator):
             f"partition id is {self._last_finalized_partition_id})"
         )
 
-        def _on_bundle_ready(bundle: RefBundle):
+        def _on_bundle_ready(task_index: int, bundle: RefBundle):
             # Add finalized block to the output queue
             self._output_queue.append(bundle)
-            self._metrics.on_output_queued(bundle)
+            finalize_metrics.on_output_queued(bundle)
+            self._on_post_task(1, task_index, bundle, num_tasks=self._num_partitions)
 
         def _on_aggregation_done(partition_id: int, exc: Optional[Exception]):
             if partition_id in self._finalizing_tasks:
@@ -672,10 +709,14 @@ class HashShufflingOperatorBase(PhysicalOperator):
                 **finalize_task_resource_bundle
             ).remote(partition_id)
 
+            # Update metrics/pb finalizing tasks
+            self._on_pre_task(1, RefBundle([], owns_blocks=False), partition_id)
+            finalize_metrics = self.get_metrics(1)
+
             self._finalizing_tasks[partition_id] = DataOpTask(
                 task_index=partition_id,
                 streaming_gen=block_gen,
-                output_ready_callback=_on_bundle_ready,
+                output_ready_callback=functools.partial(_on_bundle_ready, partition_id),
                 # TODO fix to pass in task_id into the callback
                 task_done_callback=functools.partial(
                     _on_aggregation_done, partition_id
@@ -697,10 +738,24 @@ class HashShufflingOperatorBase(PhysicalOperator):
         self._shuffling_tasks.clear()
         self._finalizing_tasks.clear()
 
-    def get_stats(self):
+    def _extra_metrics(self):
+        shuffle_name = f"{self._name}_shuffle"
+        finalize_name = f"{self._name}_finalize"
+
+        shuffle_metrics = self.get_metrics(0)
+        finalize_metrics = self.get_metrics(1)
+
         return {
-            # TODO factor in output blocks metadata
-            self._name: self._shuffled_blocks_stats,
+            shuffle_name: shuffle_metrics.as_dict(),
+            finalize_name: finalize_metrics.as_dict(),
+        }
+
+    def get_stats(self):
+        shuffle_name = f"{self._name}_shuffle"
+        reduce_name = f"{self._name}_finalize"
+        return {
+            shuffle_name: self._shuffled_blocks_stats,
+            reduce_name: self._output_blocks_stats,
         }
 
     def current_processor_usage(self) -> ExecutionResources:
@@ -894,6 +949,7 @@ class HashShuffleOperator(HashShufflingOperatorBase):
                     key_columns=key_columns,
                 )
             ),
+            shuffle_progress_bar_name="Shufle",
         )
 
     def _get_default_num_cpus_per_partition(self) -> int:
@@ -1098,10 +1154,12 @@ class HashShuffleAggregator:
     ) -> AsyncGenerator[Union[Block, BlockMetadata], None]:
         with self._lock:
             # Finalize given partition id
-            result = self._agg.finalize(partition_id)
+            exec_stats_builder = BlockExecStats.builder()
+            block = self._agg.finalize(partition_id)
+            exec_stats = exec_stats_builder.build()
             # Clear any remaining state (to release resources)
             self._agg.clear(partition_id)
 
         # TODO break down blocks to target size
-        yield result
-        yield BlockAccessor.for_block(result).get_metadata()
+        yield block
+        yield BlockAccessor.for_block(block).get_metadata(exec_stats=exec_stats)
