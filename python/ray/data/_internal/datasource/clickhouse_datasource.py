@@ -323,10 +323,10 @@ class ClickHouseDatasource(Datasource):
                 BlockMetadata(
                     num_rows=block_rows,
                     size_bytes=estimated_size_bytes_per_row * block_rows,
-                    schema=sample_block_schema,
                     input_files=None,
                     exec_stats=None,
                 ),
+                schema=sample_block_schema,
             )
 
         if parallelism == 1:

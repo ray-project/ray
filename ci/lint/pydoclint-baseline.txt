@@ -1130,10 +1130,6 @@ python/ray/data/_internal/execution/interfaces/executor.py
     DOC201: Method `Executor.execute` does not have a return section in docstring
 --------------------
 python/ray/data/_internal/execution/interfaces/physical_operator.py
-    DOC001: Method `__init__` Potential formatting errors in docstring. Error message: No specification for "Args": ""
-    DOC001: Function/method `__init__`: Potential formatting errors in docstring. Error message: No specification for "Args": "" (Note: DOC001 could trigger other unrelated violations under this function/method too. Please fix the docstring formatting first.)
-    DOC101: Method `DataOpTask.__init__`: Docstring contains fewer arguments than in function signature.
-    DOC103: Method `DataOpTask.__init__`: Docstring arguments are different from function arguments. (Or could be other formatting issues: https://jsh9.github.io/pydoclint/violation_codes.html#notes-on-doc103 ). Arguments in the function signature but not in the docstring: [output_ready_callback: Callable[[RefBundle], None], streaming_gen: ObjectRefGenerator, task_done_callback: Callable[[Optional[Exception]], None], task_index: int, task_resource_bundle: Optional[ExecutionResources]].
     DOC201: Method `DataOpTask.on_data_ready` does not have a return section in docstring
     DOC001: Method `__init__` Potential formatting errors in docstring. Error message: No specification for "Args": ""
     DOC001: Function/method `__init__`: Potential formatting errors in docstring. Error message: No specification for "Args": "" (Note: DOC001 could trigger other unrelated violations under this function/method too. Please fix the docstring formatting first.)
@@ -1161,10 +1157,6 @@ python/ray/data/_internal/execution/operators/base_physical_operator.py
 python/ray/data/_internal/execution/operators/hash_shuffle.py
     DOC104: Function `_shuffle_block`: Arguments are the same in the docstring and the function signature, but are in a different order.
     DOC105: Function `_shuffle_block`: Argument names match, but type hints in these args do not match: block, input_index, key_columns, pool, block_transformer, send_empty_blocks, override_partition_id
---------------------
-python/ray/data/_internal/execution/operators/input_data_buffer.py
-    DOC101: Method `InputDataBuffer.__init__`: Docstring contains fewer arguments than in function signature.
-    DOC103: Method `InputDataBuffer.__init__`: Docstring arguments are different from function arguments. (Or could be other formatting issues: https://jsh9.github.io/pydoclint/violation_codes.html#notes-on-doc103 ). Arguments in the function signature but not in the docstring: [data_context: DataContext].
 --------------------
 python/ray/data/_internal/execution/operators/map_operator.py
     DOC103: Method `MapOperator.create`: Docstring arguments are different from function arguments. (Or could be other formatting issues: https://jsh9.github.io/pydoclint/violation_codes.html#notes-on-doc103 ). Arguments in the function signature but not in the docstring: [data_context: DataContext, map_transformer: MapTransformer]. Arguments in the docstring but not in the function signature: [init_fn: , transform_fn: ].
@@ -1384,8 +1376,6 @@ python/ray/data/datasource/file_datasink.py
     DOC103: Method `BlockBasedFileDatasink.__init__`: Docstring arguments are different from function arguments. (Or could be other formatting issues: https://jsh9.github.io/pydoclint/violation_codes.html#notes-on-doc103 ). Arguments in the function signature but not in the docstring: [**file_datasink_kwargs: , min_rows_per_file: Optional[int], path: ].
 --------------------
 python/ray/data/datasource/file_meta_provider.py
-    DOC101: Method `FileMetadataProvider._get_block_metadata`: Docstring contains fewer arguments than in function signature.
-    DOC103: Method `FileMetadataProvider._get_block_metadata`: Docstring arguments are different from function arguments. (Or could be other formatting issues: https://jsh9.github.io/pydoclint/violation_codes.html#notes-on-doc103 ). Arguments in the function signature but not in the docstring: [**kwargs: ].
     DOC101: Method `BaseFileMetadataProvider.expand_paths`: Docstring contains fewer arguments than in function signature.
     DOC103: Method `BaseFileMetadataProvider.expand_paths`: Docstring arguments are different from function arguments. (Or could be other formatting issues: https://jsh9.github.io/pydoclint/violation_codes.html#notes-on-doc103 ). Arguments in the function signature but not in the docstring: [partitioning: Optional[Partitioning]].
     DOC101: Function `_expand_directory`: Docstring contains fewer arguments than in function signature.
