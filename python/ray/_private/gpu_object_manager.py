@@ -75,7 +75,12 @@ class GPUObjectManager:
 
         return src_actor.__ray_call__.remote(__ray_get_tensor_meta__, obj_id)
 
-    def add_gpu_object_ref(self, obj_ref: ObjectRef, src_actor: ActorHandle, tensor_transport: TensorTransportEnum):
+    def add_gpu_object_ref(
+        self,
+        obj_ref: ObjectRef,
+        src_actor: ActorHandle,
+        tensor_transport: TensorTransportEnum,
+    ):
         """Add a GPU object reference to the GPU object manager. This should be
         called whenever the current process calls a task that is annotated with
         `@ray.method(tensor_transport=...)`.
@@ -86,7 +91,9 @@ class GPUObjectManager:
             tensor_transport: The tensor transport protocol to use for the GPU object.
         """
         try:
-            tensor_transport_backend = TENSOR_TRANSPORT_TO_COLLECTIVE_BACKEND[tensor_transport]
+            tensor_transport_backend = TENSOR_TRANSPORT_TO_COLLECTIVE_BACKEND[
+                tensor_transport
+            ]
         except KeyError:
             raise ValueError(
                 f"Invalid tensor transport {tensor_transport.name}, must be one of {list(TENSOR_TRANSPORT_TO_COLLECTIVE_BACKEND.keys())}."
@@ -95,7 +102,7 @@ class GPUObjectManager:
         self.gpu_object_refs[obj_ref] = GPUObjectMeta(
             src_actor=src_actor,
             tensor_transport_backend=tensor_transport_backend,
-            tensor_meta=tensor_meta
+            tensor_meta=tensor_meta,
         )
 
     # TODO(kevin85421): Call this function to remove the `obj_ref` from the `gpu_object_refs` dictionary
@@ -109,7 +116,9 @@ class GPUObjectManager:
     def _is_gpu_object_ref(self, obj_ref: ObjectRef) -> bool:
         return obj_ref in self.gpu_object_refs
 
-    def _send_gpu_object(self, communicator_name: str, src_actor: ActorHandle, obj_id: str, dst_rank: int):
+    def _send_gpu_object(
+        self, communicator_name: str, src_actor: ActorHandle, obj_id: str, dst_rank: int
+    ):
         # Send tensors stored in the `src_actor`'s GPU object store to the
         # destination rank `dst_rank`.
         def __ray_send__(self, communicator_name: str, obj_id: str, dst_rank: int):
@@ -128,7 +137,9 @@ class GPUObjectManager:
                 if tensor.device.type != device.type:
                     # TODO(swang): Right now there is no way to catch this error
                     # and the receiving Ray task will hang.
-                    raise ValueError(f"tensor device {tensor.device} does not match device {device}")
+                    raise ValueError(
+                        f"tensor device {tensor.device} does not match device {device}"
+                    )
                 collective.send(tensor, dst_rank, group_name=communicator_name)
             # TODO(kevin85421): The current garbage collection implementation for the
             # in-actor object store is naive. We garbage collect each object after it
@@ -168,7 +179,9 @@ class GPUObjectManager:
                 tensors.append(tensor)
             gpu_object_manager.add_gpu_object(obj_id, tensors)
 
-        dst_actor.__ray_call__.remote(__ray_recv__, communicator_name, obj_id, src_rank, tensor_meta)
+        dst_actor.__ray_call__.remote(
+            __ray_recv__, communicator_name, obj_id, src_rank, tensor_meta
+        )
 
     def trigger_out_of_band_tensor_transfer(
         self, dst_actor: ActorHandle, task_args: Tuple[Any, ...]
@@ -204,7 +217,9 @@ class GPUObjectManager:
 
             src_actor = gpu_object_meta.src_actor
             tensor_meta = gpu_object_meta.tensor_meta
-            communicators = get_collective_groups([src_actor, dst_actor], backend=gpu_object_meta.tensor_transport_backend)
+            communicators = get_collective_groups(
+                [src_actor, dst_actor], backend=gpu_object_meta.tensor_transport_backend
+            )
             # TODO(kevin85421): Support multiple communicators.
             if len(communicators) == 0:
                 raise ValueError(
@@ -237,4 +252,6 @@ class GPUObjectManager:
                     f"src_rank: {src_rank} and dst_rank: {dst_rank} are the same. This may cause deadlock for transports like NCCL."
                 )
             self._send_gpu_object(communicator.name, src_actor, arg.hex(), dst_rank)
-            self._recv_gpu_object(communicator.name, dst_actor, arg.hex(), src_rank, tensor_meta)
+            self._recv_gpu_object(
+                communicator.name, dst_actor, arg.hex(), src_rank, tensor_meta
+            )

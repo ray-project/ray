@@ -141,7 +141,9 @@ def method(*args, **kwargs):
         if "enable_task_events" in kwargs and kwargs["enable_task_events"] is not None:
             method.__ray_enable_task_events__ = kwargs["enable_task_events"]
         if "tensor_transport" in kwargs:
-            method.__ray_tensor_transport__ = TensorTransportEnum.from_str(kwargs["tensor_transport"])
+            method.__ray_tensor_transport__ = TensorTransportEnum.from_str(
+                kwargs["tensor_transport"]
+            )
         return method
 
     return annotate_method
@@ -470,7 +472,6 @@ class ActorMethod:
                 "Please make sure the actor method is decorated with `@ray.method(num_returns=1)` (the default)."
             )
 
-
         args = args or []
         kwargs = kwargs or {}
 
@@ -508,7 +509,9 @@ class ActorMethod:
         obj_ref = invocation(args, kwargs)
         if tensor_transport != TensorTransportEnum.OBJECT_STORE:
             gpu_object_manager = ray._private.worker.global_worker.gpu_object_manager
-            gpu_object_manager.add_gpu_object_ref(obj_ref, self._actor, tensor_transport)
+            gpu_object_manager.add_gpu_object_ref(
+                obj_ref, self._actor, tensor_transport
+            )
 
         return obj_ref
 
