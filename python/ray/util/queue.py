@@ -1,6 +1,6 @@
 import asyncio
 import queue
-from typing import Optional, Any, List, Dict
+from typing import Optional, List, Dict, Generic, TypeVar
 from collections.abc import Iterable
 
 import ray
@@ -17,18 +17,23 @@ class Full(queue.Full):
     pass
 
 
+T = TypeVar("T")
+
+
 @PublicAPI(stability="beta")
-class Queue:
+class Queue(Generic[T]):
     """A first-in, first-out queue implementation on Ray.
 
     The behavior and use cases are similar to those of the asyncio.Queue class.
 
-    Features both sync and async put and get methods.  Provides the option to
+    Features both sync and async put and get methods. Provides the option to
     block until space is available when calling put on a full queue,
     or to block until items are available when calling get on an empty queue.
 
     Optionally supports batched put and get operations to minimize
     serialization overhead.
+
+    Supports generic typing for specifying the type of items in the queue.
 
     Args:
         maxsize (optional, int): maximum size of the queue. If zero, size is
@@ -48,6 +53,12 @@ class Queue:
                 q.put(item)
             for item in items:
                 assert item == q.get()
+
+            # Create a generic Queue for strings
+            q = Queue[str]()
+            q.put("hello")
+            assert q.get() == "hello"
+
             # Create Queue with the underlying actor reserving 1 CPU.
             q = Queue(actor_options={"num_cpus": 1})
     """
@@ -82,9 +93,7 @@ class Queue:
         """Whether the queue is full."""
         return ray.get(self.actor.full.remote())
 
-    def put(
-        self, item: Any, block: bool = True, timeout: Optional[float] = None
-    ) -> None:
+    def put(self, item: T, block: bool = True, timeout: Optional[float] = None) -> None:
         """Adds an item to the queue.
 
         If block is True and the queue is full, blocks until the queue is no
@@ -92,6 +101,13 @@ class Queue:
 
         There is no guarantee of order if multiple producers put to the same
         full queue.
+
+        Args:
+            item: The item to add to the queue.
+            block: If True, blocks until space is available in the queue.
+                If False, raises Full if the queue is full.
+            timeout: If block is True, how long to wait for space to become
+                available before raising Full. If None, waits indefinitely.
 
         Raises:
             Full: if the queue is full and blocking is False.
@@ -110,7 +126,7 @@ class Queue:
                 ray.get(self.actor.put.remote(item, timeout))
 
     async def put_async(
-        self, item: Any, block: bool = True, timeout: Optional[float] = None
+        self, item: T, block: bool = True, timeout: Optional[float] = None
     ) -> None:
         """Adds an item to the queue.
 
@@ -119,6 +135,13 @@ class Queue:
 
         There is no guarantee of order if multiple producers put to the same
         full queue.
+
+        Args:
+            item: The item to add to the queue.
+            block: If True, blocks until space is available in the queue.
+                If False, raises Full if the queue is full.
+            timeout: If block is True, how long to wait for space to become
+                available before raising Full. If None, waits indefinitely.
 
         Raises:
             Full: if the queue is full and blocking is False.
@@ -136,7 +159,7 @@ class Queue:
             else:
                 await self.actor.put.remote(item, timeout)
 
-    def get(self, block: bool = True, timeout: Optional[float] = None) -> Any:
+    def get(self, block: bool = True, timeout: Optional[float] = None) -> T:
         """Gets an item from the queue.
 
         If block is True and the queue is empty, blocks until the queue is no
@@ -164,9 +187,7 @@ class Queue:
             else:
                 return ray.get(self.actor.get.remote(timeout))
 
-    async def get_async(
-        self, block: bool = True, timeout: Optional[float] = None
-    ) -> Any:
+    async def get_async(self, block: bool = True, timeout: Optional[float] = None) -> T:
         """Gets an item from the queue.
 
         There is no guarantee of order if multiple consumers get from the
@@ -190,16 +211,22 @@ class Queue:
             else:
                 return await self.actor.get.remote(timeout)
 
-    def put_nowait(self, item: Any) -> None:
+    def put_nowait(self, item: T) -> None:
         """Equivalent to put(item, block=False).
+
+        Args:
+            item: The item to add to the queue.
 
         Raises:
             Full: if the queue is full.
         """
         return self.put(item, block=False)
 
-    def put_nowait_batch(self, items: Iterable) -> None:
+    def put_nowait_batch(self, items: Iterable[T]) -> None:
         """Takes in a list of items and puts them into the queue in order.
+
+        Args:
+            items: An iterable of items to add to the queue.
 
         Raises:
             Full: if the items will not fit in the queue
@@ -209,7 +236,7 @@ class Queue:
 
         ray.get(self.actor.put_nowait_batch.remote(items))
 
-    def get_nowait(self) -> Any:
+    def get_nowait(self) -> T:
         """Equivalent to get(block=False).
 
         Raises:
@@ -217,7 +244,7 @@ class Queue:
         """
         return self.get(block=False)
 
-    def get_nowait_batch(self, num_items: int) -> List[Any]:
+    def get_nowait_batch(self, num_items: int) -> List[T]:
         """Gets items from the queue and returns them in a
         list in order.
 
