@@ -178,16 +178,14 @@ class StoreConn : public ray::ServerConnection {
  private:
   // Whether the current process should exit when WriteBuffer or ReadBuffer fails.
   // Currently it is only turned on when the plasma client is in a core worker.
-  // TODO(myan): For better error handling, we should: (1) In the mid-term, evaluate if
-  // we should turn it on for the plasma client in other processes. (2) In the
-  // long-term, consolidate the shutdown path between core worker and raylet to make the
-  // shutdown procedure cleaner.
+  // TODO(myan): The better way is to handle the failure outside of the plasma client
+  // and inside the core worker's logic and propogate the correct exception to the user.
   bool exit_on_connection_failure_ = false;
 
   // Shutdown the current process if the passed in status is not OK and the client is
   // configured to exit on failure.
   // @param status: The status to check.
-  void ShutdownWorkerIfErrorStatus(const ray::Status &status);
+  void ExitIfErrorStatus(const ray::Status &status);
 };
 
 std::ostream &operator<<(std::ostream &os, const std::shared_ptr<StoreConn> &store_conn);

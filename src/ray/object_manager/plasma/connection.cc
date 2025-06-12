@@ -198,24 +198,26 @@ Status StoreConn::RecvFd(MEMFD_TYPE_NON_UNIQUE *fd) {
 
 ray::Status StoreConn::WriteBuffer(const std::vector<boost::asio::const_buffer> &buffer) {
   auto status = ray::ServerConnection::WriteBuffer(buffer);
-  ShutdownWorkerIfErrorStatus(status);
+  ExitIfErrorStatus(status);
   return status;
 }
 
 ray::Status StoreConn::ReadBuffer(
     const std::vector<boost::asio::mutable_buffer> &buffer) {
   auto status = ray::ServerConnection::ReadBuffer(buffer);
-  ShutdownWorkerIfErrorStatus(status);
+  ExitIfErrorStatus(status);
   return status;
 }
 
-void StoreConn::ShutdownWorkerIfErrorStatus(const ray::Status &status) {
+void StoreConn::ExitIfErrorStatus(const ray::Status &status) {
   if (!status.ok() && exit_on_connection_failure_) {
     RAY_LOG(WARNING) << "The connection to the plasma store is failed. Terminate the "
                      << "process. Status: " << status;
     ray::QuickExit();
-    RAY_LOG(FATAL) << "Accessing unreachable code. This line should never be reached "
-                   << "after quick process exit due to plasma store connection failure. Please create a github issue at https://github.com/ray-project/ray.";
+    RAY_LOG(FATAL)
+        << "Accessing unreachable code. This line should never be reached "
+        << "after quick process exit due to plasma store connection failure. Please "
+           "create a github issue at https://github.com/ray-project/ray.";
   }
 }
 }  // namespace plasma

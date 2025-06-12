@@ -63,12 +63,13 @@ def test_plasma_store_operation_after_raylet_dies(ray_start_cluster):
     def get_after_raylet_dies():
         raylet_pid = int(os.environ["RAY_RAYLET_PID"])
         os.kill(raylet_pid, SIGKILL)
+        wait_for_pid_to_exit(raylet_pid)
         ray.put([0] * 100000)
 
     try:
         ray.get(get_after_raylet_dies.remote(), timeout=10)
     except Exception as e:
-        assert isinstance(e, ray.exceptions.RayletDiedError)
+        assert isinstance(e, ray.exceptions.LocalRayletDiedError)
 
 
 @pytest.mark.parametrize(
