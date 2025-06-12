@@ -17,7 +17,7 @@ Refer to the Kubernetes cluster setup [instructions](../user-guides/k8s-cluster-
 
 ## Step 2: Install the KubeRay Operator
 
-Install the most recent stable KubeRay operator from the Helm repository by following [Deploy a KubeRay operator](../getting-started/kuberay-operator-installation.md). The KubeRay operator pod should run on a CPU node if the taint for the GPU node pool is configured correctly.
+Install the most recent stable KubeRay operator from the Helm repository by following [Deploy a KubeRay operator](../getting-started/kuberay-operator-installation.md). The Kubernetes `NoSchedule` taint in the example config prevents the KubeRay operator pod from running on a GPU node.
 
 ## Step 3: Create a Kubernetes Secret containing your Hugging Face access token
 
@@ -72,7 +72,7 @@ serveConfigV2: |
           max_ongoing_requests: 128
 ```
 
-In particular, this configuration loads the model from `Qwen/Qwen2.5-7B-Instruct` and sets its `model_id` to "qwen2.5-7b-instruct." The `engine_kwargs` section is passed through to the underlying LLM engine. The `deployment_config` section sets the desired number of engine replicas. By default, each replica will require one GPU. See [Serving LLMs](serving_llms) and the [Serve Config Documentation](serve-in-production-config-file) for more information.
+In particular, this configuration loads the model from `Qwen/Qwen2.5-7B-Instruct` and sets its `model_id` to "qwen2.5-7b-instruct." The `LLMDeployment` initializes the underlying LLM engine using the `engine_kwargs` field. The `deployment_config` section sets the desired number of engine replicas. By default, each replica requires one GPU. See [Serving LLMs](serving_llms) and the [Ray Serve config documentation](serve-in-production-config-file) for more information.
 
 Wait for the RayService resource to become healthy. You can check its status by running the following command:
 ```sh
