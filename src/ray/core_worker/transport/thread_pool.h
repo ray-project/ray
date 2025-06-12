@@ -33,11 +33,13 @@ namespace core {
 class BoundedExecutor {
  public:
   static bool NeedDefaultExecutor(int32_t max_concurrency_in_default_group,
-                                  bool has_other_concurrency_groups) {
+                                  bool has_other_concurrency_groups,
+                                  bool disable_default_executor_initial) {
     if (max_concurrency_in_default_group == 0) {
       return false;
     }
-    return max_concurrency_in_default_group > 1 || has_other_concurrency_groups;
+    return max_concurrency_in_default_group > 1 ||
+    has_other_concurrency_groups && !disable_default_executor_initial
   }
 
   /// Create a thread pool with `max_concurrency` threads, and execute

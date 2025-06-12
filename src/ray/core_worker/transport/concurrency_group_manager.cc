@@ -44,12 +44,20 @@ ConcurrencyGroupManager<ExecutorType>::ConcurrencyGroupManager(
     name_to_executor_index_[name] = executor;
   }
 
+  /// If you explicitly specify that the creation of a default concurrency group
+  /// is prohibited, you need to set it to true.
+  bool disable_default_executor_initial =
+  RayConfig::instance().disable_default_executor_initial();
+
   // If max concurrency of default group is 1 and there is no other concurrency group of
   // this actor, the tasks of default group will be performed in main thread instead of
   // any executor pool, otherwise tasks in any concurrency group should be performed in
   // the thread pools instead of main thread.
+  // However, if you need to set disable_default_executor_initial to true, the default
+  // concurrency group executor will be disable to be initialized.
   if (ExecutorType::NeedDefaultExecutor(max_concurrency_for_default_concurrency_group,
-                                        !concurrency_groups.empty())) {
+                                        !concurrency_groups.empty(),
+                                        disable_default_executor_initial)) {
     default_executor_ = std::make_shared<ExecutorType>(
         max_concurrency_for_default_concurrency_group, initialize_thread_callback_);
   }
