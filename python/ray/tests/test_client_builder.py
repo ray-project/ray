@@ -123,16 +123,19 @@ print("NODE_ID:", ray.get_runtime_context().get_node_id())
 while True:
     time.sleep(1)
 """
+
     def _get_node_id(p: subprocess.Popen) -> str:
         l = p.stdout.readline().decode("ascii").strip()
         assert "NODE_ID" in l
-        return l[len("NODE_ID: "):]
+        return l[len("NODE_ID: ") :]
 
     p1, p2, p3 = None, None, None
     unbuffered = {"PYTHONUNBUFFERED": "1"}
     try:
         # ray.client() should start a cluster if none is running.
-        p1 = run_string_as_driver_nonblocking(driver_template.format(address=""), env=unbuffered)
+        p1 = run_string_as_driver_nonblocking(
+            driver_template.format(address=""), env=unbuffered
+        )
         p1_node_id = _get_node_id(p1)
 
         # ray.client("local") should always start a cluster.
@@ -178,10 +181,11 @@ import ray
 info = ray.client({address}).connect()
 print("NODE_ID:", ray.get_runtime_context().get_node_id())
 """
+
     def _get_node_id(p: subprocess.Popen) -> str:
         l = p.stdout.readline().decode("ascii").strip()
         assert "NODE_ID" in l
-        return l[len("NODE_ID: "):]
+        return l[len("NODE_ID: ") :]
 
     existing_node_id = ray.get_runtime_context().get_node_id()
 
@@ -189,7 +193,9 @@ print("NODE_ID:", ray.get_runtime_context().get_node_id())
     unbuffered = {"PYTHONUNBUFFERED": "1"}
     try:
         # ray.client() should connect to the running cluster.
-        p1 = run_string_as_driver_nonblocking(driver_template.format(address=""), env=unbuffered)
+        p1 = run_string_as_driver_nonblocking(
+            driver_template.format(address=""), env=unbuffered
+        )
         assert _get_node_id(p1) == existing_node_id
 
         # ray.client("local") should always start a cluster.
@@ -221,6 +227,8 @@ def test_non_existent_modules():
 
 
 def test_module_lacks_client_builder():
+    mock_importlib = Mock()
+
     def mock_import_module(module_string):
         if module_string == "ray":
             return ray
