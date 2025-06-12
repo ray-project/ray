@@ -179,6 +179,7 @@ def test_custom_request_router_telemetry(manage_ray_with_telemetry):
 @pytest.mark.skipif(IS_PYDANTIC_2, reason="Pydantic 2 is not supported")
 def test_pydantic_v1_telemetry(manage_ray_with_telemetry):
     """Check that the pydantic v1 telemetry is recorded."""
+
     @serve.deployment
     class PydanticV1TestDeployment:
         def __call__(self) -> str:
@@ -196,6 +197,7 @@ def test_pydantic_v1_telemetry(manage_ray_with_telemetry):
 @pytest.mark.skipif(not IS_PYDANTIC_2, reason="Pydantic 2 is supported")
 def test_pydantic_v2_telemetry(manage_ray_with_telemetry):
     """Check that the pydantic v2 telemetry is recorded."""
+
     @serve.deployment
     class PydanticV2TestDeployment:
         def __call__(self) -> str:
