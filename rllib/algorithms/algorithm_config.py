@@ -1056,11 +1056,11 @@ class AlgorithmConfig(_Config):
 
         if env is not None:
             obs_space = getattr(env, "single_observation_space", env.observation_space)
-        elif self.observation_space is not None:
-            obs_space = self.observation_space
-        else:
-            assert spaces is not None
+        elif spaces is not None and INPUT_ENV_SINGLE_SPACES in spaces:
             obs_space = spaces[INPUT_ENV_SINGLE_SPACES][0]
+        else:
+            assert self.observation_space is not None
+            obs_space = self.observation_space
         if obs_space is None and self.is_multi_agent:
             obs_space = gym.spaces.Dict(
                 {
@@ -1070,11 +1070,11 @@ class AlgorithmConfig(_Config):
             )
         if env is not None:
             act_space = getattr(env, "single_action_space", env.action_space)
-        elif self.action_space is not None:
-            act_space = self.action_space
-        else:
-            assert spaces is not None
+        elif spaces is not None and INPUT_ENV_SINGLE_SPACES in spaces:
             act_space = spaces[INPUT_ENV_SINGLE_SPACES][1]
+        else:
+            assert self.action_space is not None
+            act_space = self.action_space
         if act_space is None and self.is_multi_agent:
             act_space = gym.spaces.Dict(
                 {
@@ -1164,11 +1164,11 @@ class AlgorithmConfig(_Config):
 
         if env is not None:
             obs_space = getattr(env, "single_observation_space", env.observation_space)
-        elif self.observation_space is not None:
-            obs_space = self.observation_space
-        else:
-            assert spaces is not None
+        elif spaces is not None and INPUT_ENV_SINGLE_SPACES in spaces:
             obs_space = spaces[INPUT_ENV_SINGLE_SPACES][0]
+        else:
+            assert self.observation_space is not None
+            obs_space = self.observation_space
         if obs_space is None and self.is_multi_agent:
             obs_space = gym.spaces.Dict(
                 {
@@ -1178,11 +1178,11 @@ class AlgorithmConfig(_Config):
             )
         if env is not None:
             act_space = getattr(env, "single_action_space", env.action_space)
-        elif self.action_space is not None:
-            act_space = self.action_space
-        else:
-            assert spaces is not None
+        elif spaces is not None and INPUT_ENV_SINGLE_SPACES in spaces:
             act_space = spaces[INPUT_ENV_SINGLE_SPACES][1]
+        else:
+            assert self.action_space is not None
+            act_space = self.action_space
         if act_space is None and self.is_multi_agent:
             act_space = gym.spaces.Dict(
                 {
