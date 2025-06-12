@@ -141,6 +141,10 @@ class TaskStatusEvent : public TaskEvent {
   void ToRpcTaskExportEvents(
       std::shared_ptr<rpc::ExportTaskEventData> rpc_task_export_event_data) override;
 
+  // NOLINTNEXTLINE(readability/todo)
+  // TODO: Add a new method that converts Task events to the new generic event schema.
+  // void ToRpcRayTaskEvents(std::shared_ptr<rpc::RayTaskEvent> rpc_ray_task_events) override;
+
   bool IsProfileEvent() const override { return false; }
 
  private:
@@ -170,6 +174,8 @@ class TaskProfileEvent : public TaskEvent {
 
   void ToRpcTaskExportEvents(
       std::shared_ptr<rpc::ExportTaskEventData> rpc_task_export_event_data) override;
+
+  // Don't need to support this for now.
 
   bool IsProfileEvent() const override { return true; }
 
