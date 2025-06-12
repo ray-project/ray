@@ -39,7 +39,7 @@ class BoundedExecutor {
       return false;
     }
     return max_concurrency_in_default_group > 1 ||
-    has_other_concurrency_groups && !disable_default_executor_initial
+           has_other_concurrency_groups && !disable_default_executor_initial
   }
 
   /// Create a thread pool with `max_concurrency` threads, and execute

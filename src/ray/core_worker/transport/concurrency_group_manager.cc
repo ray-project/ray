@@ -47,7 +47,7 @@ ConcurrencyGroupManager<ExecutorType>::ConcurrencyGroupManager(
   /// If you explicitly specify that the creation of a default concurrency group
   /// is prohibited, you need to set it to true.
   bool disable_default_executor_initial =
-  RayConfig::instance().disable_default_executor_initial();
+      RayConfig::instance().disable_default_executor_initial();
 
   // If max concurrency of default group is 1 and there is no other concurrency group of
   // this actor, the tasks of default group will be performed in main thread instead of
