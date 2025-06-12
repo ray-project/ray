@@ -87,7 +87,6 @@ class DeltaSharingDatasource(Datasource):
             files = files.tolist()
             metadata = BlockMetadata(
                 num_rows=None,
-                schema=None,
                 input_files=files,
                 size_bytes=None,
                 exec_stats=None,
