@@ -36,6 +36,7 @@ from ray.serve._private.utils import DEFAULT
 from ray.serve.config import ProxyLocation
 from ray.util.annotations import PublicAPI
 
+print("HERE")
 # Shared amongst multiple schemas.
 TARGET_CAPACITY_FIELD = Field(
     default=None,
