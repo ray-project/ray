@@ -1354,6 +1354,12 @@ void TaskManager::MarkTaskReturnObjectsFailed(
     for (size_t i = 0; i < num_streaming_generator_returns; i++) {
       const auto generator_return_id = spec.StreamingGeneratorReturnId(i);
       if (store_in_plasma_ids.contains(generator_return_id)) {
+        bool owned_by_us;
+        NodeID pinned_at;
+        bool spilled;
+        if (reference_counter_.IsPlasmaObjectPinnedOrSpilled(
+                generator_return_id, &owned_by_us, &pinned_at, &spilled))
+          continue;
         put_in_local_plasma_callback_(error, generator_return_id);
       } else {
         in_memory_store_.Put(error, generator_return_id);
