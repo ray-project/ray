@@ -199,6 +199,19 @@ class Query:
                     break
 
     @staticmethod
+    def filter_out_read_me_links(test_results: TestResults) -> List[str]:
+        """
+        Filter out targets that don't have a generated file in doc/_build and targets that have edit read me links
+        """
+        for target in test_results.targets:
+            for file in target.files:
+                paths = file.file_refs
+                if not any("https://github.com/ray-project/ray/edit" in path for path in paths):
+                    target.active = True
+                    break
+
+
+    @staticmethod
     def get_file_references_for_untested_targets(test_results: TestResults, ray_path: str):
         """
         Get file references in the doc/ directory.

@@ -1,13 +1,15 @@
 from typing import List
 import subprocess
 import json
-from test_results import CodeSnippet, DocFile
+from test_results import CodeSnippet, DocFile, BazelTarget
+import pandas as pd
+from pandas import json_normalize
 
-class Parser:
+class DocParser:
     def __init__(self, ray_path: str):
         self.ray_path = ray_path
 
-    def find_code_snippets(self, search_string_rst: str, search_string_md: str) -> List[DocFile]:
+    def find_code_snippets(self, search_string_rst: str, search_string_md: str, strict: bool = False) -> List[DocFile]:
         """
         Get literal include snippets in the doc/ directory.
         Searches for both RST style (.. <string>::) and Markdown style (```{<string>})
@@ -16,7 +18,8 @@ class Parser:
 
         if search_string_rst:
             # Search for RST style literalinclude
-            rst_cmd = f"find {self.ray_path}/doc -type d -path '*/venv/*' -prune -o \\( -type f -name '*.rst' -o -name '*.txt' \\) -print | xargs grep -H '^[[:space:]]*{search_string_rst}'"
+            end_anchor = "$" if strict else ""
+            rst_cmd = f"find {self.ray_path}/doc -type d -path '*/venv/*' -prune -o \\( -type f -name '*.rst' -o -name '*.txt' \\) -print | xargs grep -H '^[[:space:]]*{search_string_rst}{end_anchor}'"
             rst_result = subprocess.run(["bash", "-c", rst_cmd],
                                 cwd=self.ray_path,
                                 capture_output=True,
@@ -24,7 +27,8 @@ class Parser:
 
         if search_string_md:
             # Search for Markdown style literalinclude
-            md_cmd = f"find {self.ray_path}/doc -type d -path '*/venv/*' -prune -o \\( -type f -name '*.md' -o -name '*.txt' \\) -print | xargs grep -H '^[[:space:]]*{search_string_md}'"
+            end_anchor = "$" if strict else ""
+            md_cmd = f"find {self.ray_path}/doc -type d -path '*/venv/*' -prune -o \\( -type f -name '*.md' -o -name '*.txt' \\) -print | xargs grep -H '^[[:space:]]*{search_string_md}{end_anchor}'"
             md_result = subprocess.run(["bash", "-c", md_cmd],
                                 cwd=self.ray_path,
                                 capture_output=True,
@@ -37,7 +41,7 @@ class Parser:
         # Combine and deduplicate files
         rst_files = rst_stdout.split("\n") if rst_stdout else []
         md_files = md_stdout.split("\n") if md_stdout else []
-        
+    
         print(f"len of rst_result: {len(rst_files)}")
         print(f"len of md_result: {len(md_files)}")
 
@@ -89,5 +93,28 @@ class Parser:
             strings: List of strings to save
             output_path: Path to the output file
         """
-        with open(output_path, 'w') as f:
+        with open(output_path, "w") as f:
             json.dump([s.to_dict() for s in file_paths], f, indent=4)
+
+    def assign_testing_info_to_code_snippets(self, doc_files: List[DocFile], targets: List[BazelTarget]) -> None:
+        """
+        Assign testing info to code snippets.
+        """
+        for doc_file in doc_files:
+            for snippet in doc_file.code_snippets:
+                for target in targets:
+                    for file in target.files:
+                        file_name = file.file_name.lstrip("//").split(":")[-1].split("/")[-1]
+                        snippet_file_name = snippet.ref_to_file.lstrip("//").split(":")[-1].split("/")[-1]
+                        if snippet_file_name == file_name:
+                            snippet.testing_info.append(target)
+
+    def save_doc_files_to_csv(self, docfiles: List[DocFile], filename: str = "results/csv/final_test_results.csv"):
+        df = pd.DataFrame([docfile.to_dict() for docfile in docfiles])
+        df.to_csv(filename, index=False)
+        #df.to_csv("results/csv/final_test_results_2.csv", index=False, columns=["file_path", "snippet_type", "ref_to_file", "testing_info"])
+        new_df = pd.concat([pd.DataFrame(doc.to_dict() for doc in docfiles),
+                json_normalize(doc.to_dict()["code_snippets"] for doc in docfiles),
+                json_normalize(doc.to_dict()["code_snippets"]["testing_info"] for doc in docfiles if doc.to_dict()["code_snippets"]["testing_info"])],
+                axis=1)
+        new_df.to_csv("results/csv/final_test_results_3_new.csv", index=False)
