@@ -25,14 +25,24 @@ def test_execution_resources(ray_start_10_cpus_shared):
     r5 = ExecutionResources(
         cpu=1, gpu=1, object_store_memory=1024 * 1024 * 1024, memory=64 * 1024 * 1024
     )
+    r6 = ExecutionResources(
+        cpu=1,
+        gpu=1,
+        object_store_memory=1024 * 1024 * 1024,
+        memory=64 * 1024 * 1024,
+        resources={"cpu_worker_node": 0.0001},
+    )
     unlimited = ExecutionResources.for_limits()
 
     # Test __eq__.
-    assert r1 == ExecutionResources(0, 0, 0, 0)
-    assert r2 == ExecutionResources(1, 0, 0, 0)
-    assert r3 == ExecutionResources(0, 1, 0, 0)
-    assert r4 == ExecutionResources(1, 1, 100 * 1024 * 1024, 0)
-    assert r5 == ExecutionResources(1, 1, 1024 * 1024 * 1024, 64 * 1024 * 1024)
+    assert r1 == ExecutionResources(0, 0, 0, 0, {})
+    assert r2 == ExecutionResources(1, 0, 0, 0, {})
+    assert r3 == ExecutionResources(0, 1, 0, 0, {})
+    assert r4 == ExecutionResources(1, 1, 100 * 1024 * 1024, 0, {})
+    assert r5 == ExecutionResources(1, 1, 1024 * 1024 * 1024, 64 * 1024 * 1024, {})
+    assert r6 == ExecutionResources(
+        1, 1, 1024 * 1024 * 1024, 64 * 1024 * 1024, {"cpu_worker_node": 0.0001}
+    )
     assert unlimited == ExecutionResources(
         float("inf"), float("inf"), float("inf"), float("inf")
     )
@@ -40,27 +50,31 @@ def test_execution_resources(ray_start_10_cpus_shared):
     # Test __repr__.
     assert (
         repr(r1)
-        == "ExecutionResources(cpu=0.0, gpu=0.0, object_store_memory=0.0B, memory=0.0B)"
+        == "ExecutionResources(cpu=0.0, gpu=0.0, object_store_memory=0.0B, memory=0.0B, resources={})"
     )
     assert (
         repr(r2)
-        == "ExecutionResources(cpu=1.0, gpu=0.0, object_store_memory=0.0B, memory=0.0B)"
+        == "ExecutionResources(cpu=1.0, gpu=0.0, object_store_memory=0.0B, memory=0.0B, resources={})"
     )
     assert (
         repr(r3)
-        == "ExecutionResources(cpu=0.0, gpu=1.0, object_store_memory=0.0B, memory=0.0B)"
+        == "ExecutionResources(cpu=0.0, gpu=1.0, object_store_memory=0.0B, memory=0.0B, resources={})"
     )
     assert (
         repr(r4)
-        == "ExecutionResources(cpu=1.0, gpu=1.0, object_store_memory=100.0MB, memory=0.0B)"
+        == "ExecutionResources(cpu=1.0, gpu=1.0, object_store_memory=100.0MB, memory=0.0B, resources={})"
     )
     assert (
         repr(r5)
-        == "ExecutionResources(cpu=1.0, gpu=1.0, object_store_memory=1.0GB, memory=64.0MB)"
+        == "ExecutionResources(cpu=1.0, gpu=1.0, object_store_memory=1.0GB, memory=64.0MB, resources={})"
+    )
+    assert (
+        repr(r6)
+        == "ExecutionResources(cpu=1.0, gpu=1.0, object_store_memory=1.0GB, memory=64.0MB, resources={'cpu_worker_node': 0.0001})"
     )
     assert (
         repr(unlimited)
-        == "ExecutionResources(cpu=inf, gpu=inf, object_store_memory=inf, memory=inf)"
+        == "ExecutionResources(cpu=inf, gpu=inf, object_store_memory=inf, memory=inf, resources={})"
     )
 
     # Test object_store_memory_str.
@@ -83,6 +97,13 @@ def test_execution_resources(ray_start_10_cpus_shared):
         object_store_memory=2 * 1024 * 1024 * 1024,
         memory=128 * 1024 * 1024,
     )
+    assert r6.add(r6) == ExecutionResources(
+        cpu=2,
+        gpu=2,
+        object_store_memory=2 * 1024 * 1024 * 1024,
+        memory=128 * 1024 * 1024,
+        resources={"cpu_worker_node": 0.0002},
+    )
 
     # Test subtract.
     assert r2.subtract(r1) == r2
@@ -97,6 +118,9 @@ def test_execution_resources(ray_start_10_cpus_shared):
         object_store_memory=-924 * 1024 * 1024, memory=-64 * 1024 * 1024
     )
     assert r5.subtract(r5) == r1
+    assert r6.subtract(r5) == ExecutionResources(
+        resources={"cpu_worker_node": 0.0001},
+    )
 
     # Test scale.
     assert r1.scale(2) == r1
@@ -112,6 +136,13 @@ def test_execution_resources(ray_start_10_cpus_shared):
         memory=32 * 1024 * 1024,
     )
     assert r5.scale(0) == r1
+    assert r6.scale(2) == ExecutionResources(
+        cpu=2,
+        gpu=2,
+        object_store_memory=2048 * 1024 * 1024,
+        memory=128 * 1024 * 1024,
+        resources={"cpu_worker_node": 0.0002},
+    )
     assert unlimited.scale(0) == r1
 
     # Test limit.
@@ -126,6 +157,12 @@ def test_execution_resources(ray_start_10_cpus_shared):
     )
     assert r5.satisfies_limit(ExecutionResources.for_limits(memory=64 * 1024 * 1024))
     assert not r5.satisfies_limit(r4)
+    assert r6.satisfies_limit(
+        ExecutionResources.for_limits(resources={"cpu_worker_node": 1})
+    )
+    assert not r6.satisfies_limit(
+        ExecutionResources.for_limits(resources={"cpu_worker_node": 0})
+    )
 
 
 def test_resource_canonicalization_with_no_ray_remote_args():
