@@ -313,7 +313,6 @@ class _BatchQueue:
             self.tasks.add(task)
             self.curr_iteration_start_times[task] = time.time()
             task.add_done_callback(self._handle_completed_task)
-            await self._poll_tasks()
 
     async def _process_batch(self, func: Callable, batch: List[_SingleRequest]) -> None:
         """Processes queued request batch."""
@@ -359,19 +358,18 @@ class _BatchQueue:
                 for future in futures:
                     _set_exception_if_not_done(future, e)
 
-    async def _poll_tasks(self) -> None:
-        for task in self.tasks:
-            if task.done():
-                try:
-                    await task
-                except Exception:
-                    logger.exception(
-                        "_process_batches asyncio task ran into an unexpected exception."
-                    )
-
     def _handle_completed_task(self, task: asyncio.Task) -> None:
         self.tasks.remove(task)
         del self.curr_iteration_start_times[task]
+        self._log_if_exception(task.exception())
+
+    @staticmethod
+    def _log_if_exception(exception_maybe: Optional[BaseException]) -> None:
+        if exception_maybe is not None:
+            if isinstance(exception_maybe, asyncio.CancelledError):
+                logger.debug("Task was cancelled")
+            else:
+                logger.exception("Task failed unexpectedly")
 
     def __del__(self):
         if (
