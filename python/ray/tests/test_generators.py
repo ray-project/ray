@@ -11,7 +11,7 @@ from ray.util.client.ray_client_helpers import (
 )
 from ray._private.client_mode_hook import enable_client_mode
 from ray.tests.conftest import call_ray_start_context
-from ray._private.test_utils import (
+from ray._common.test_utils import (
     wait_for_condition,
 )
 

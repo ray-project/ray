@@ -14,6 +14,8 @@ from dataclasses import dataclass
 from enum import IntEnum
 from typing import TYPE_CHECKING, Any, Dict, List, Optional
 
+from ray._common.utils import binary_to_hex
+
 if TYPE_CHECKING:
     from ray.core.generated.node_manager_pb2 import GetNodeStatsReply
 
@@ -27,7 +29,6 @@ import ray.experimental.internal_kv as internal_kv
 from ray._common.utils import get_or_create_event_loop
 from ray._private.gcs_utils import GcsChannel
 from ray._private.utils import (
-    binary_to_hex,
     check_dashboard_dependencies_installed,
     split_address,
 )

@@ -9,8 +9,7 @@ import pytest
 
 import ray
 from ray import serve
-from ray._common.test_utils import SignalActor
-from ray._private.test_utils import wait_for_condition
+from ray._common.test_utils import SignalActor, wait_for_condition
 from ray._private.usage import usage_lib
 from ray.cluster_utils import AutoscalingCluster, Cluster
 from ray.serve._private.test_utils import (
@@ -110,10 +109,11 @@ def _shared_serve_instance():
         _system_config={"metrics_report_interval_ms": 1000, "task_retry_delay_ms": 50},
     )
     serve.start(
-        http_options={"host": "0.0.0.0"},
+        http_options={"host": "0.0.0.0", "request_timeout_s": 10},
         grpc_options={
             "port": 9000,
             "grpc_servicer_functions": TEST_GRPC_SERVICER_FUNCTIONS,
+            "request_timeout_s": 10,
         },
     )
     yield _get_global_client()
