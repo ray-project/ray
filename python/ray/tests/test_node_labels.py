@@ -192,7 +192,7 @@ def ray_node_labels_env():
             os.environ[k] = original_env[k]
 
 
-def test_add_default_ray_node_labels(shutdown_only, ray_node_labels_env):
+def test_get_default_ray_node_labels(shutdown_only, ray_node_labels_env):
     ray.init(resources={"TPU": 4})
     node_info = ray.nodes()[0]
     labels = node_info["Labels"]
