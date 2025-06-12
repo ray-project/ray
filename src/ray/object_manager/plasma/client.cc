@@ -237,7 +237,7 @@ class PlasmaClient::Impl : public std::enable_shared_from_this<PlasmaClient::Imp
   /// A mutex which protects this class.
   std::recursive_mutex client_mutex_;
   /// Whether the current process should exit when read or write to the connection fails.
-  /// Currently it is only turned on when the plasma client is in a core worker.
+  /// It should only be turned on when the plasma client is in a core worker.
   bool exit_on_connection_failure_;
 };
 
