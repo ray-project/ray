@@ -1098,7 +1098,9 @@ def test_get_actor_from_concurrent_tasks(shutdown_only):
                 actor = ray.get_actor(actor_name)
             except Exception:
                 print("Get failed, trying to create")
-                actor = Actor.options(name=actor_name).remote()
+                # Actor must be detached so it outlives this task and other tasks can
+                # get a handle to it.
+                actor = Actor.options(name=actor_name, lifetime="detached").remote()
         except Exception:
             # Multiple tasks may have reached the creation block above.
             # Only one will succeed and the others will get an error, in which case
@@ -1145,6 +1147,9 @@ def test_get_or_create_actor_from_multiple_threads(shutdown_only):
         a = Actor.options(
             name="test_actor",
             get_if_exists=True,
+            # Actor must be detached so it outlives this function and other threads
+            # can get a handle to it.
+            lifetime="detached",
         ).remote()
 
         return ray.get(a.get_actor_id.remote())
