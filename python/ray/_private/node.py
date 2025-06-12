@@ -1267,8 +1267,11 @@ class Node:
             create_out=True,
             create_err=True,
         )
-        resource_spec = self.get_resource_spec()
-        node_labels = self._add_default_ray_node_labels(resource_spec)
+        # Add default labels to Ray node labels, with labels passed in
+        # from `--labels` taking precedence.
+        default_labels = self._get_default_ray_node_labels()
+        node_labels = {**default_labels, **self._get_node_labels()}
+
         process_info = ray._private.services.start_raylet(
             self.redis_address,
             self.gcs_address,
@@ -1284,7 +1287,7 @@ class Node:
             self._session_dir,
             self._runtime_env_dir,
             self._logs_dir,
-            resource_spec,
+            self.get_resource_spec(),
             plasma_directory,
             fallback_directory,
             object_store_memory,
@@ -1916,8 +1919,11 @@ class Node:
             # to avoid any issues.
             record_hardware_usage(cpu_model_name[:50])
 
-    def _add_default_ray_node_labels(self, resource_spec):
-        node_labels = self._get_node_labels()
+    # _get_default_ray_node_labels is a helper function to return a dictionary with
+    # default ray.io/ labels set for this node.
+    def _get_default_ray_node_labels(self):
+        default_labels = {}
+        resource_spec = self.get_resource_spec()
 
         # Get environment variables populated from K8s Pod Spec
         node_group = os.environ.get(ray._raylet.NODE_TYPE_NAME_ENV, "")
@@ -1927,24 +1933,36 @@ class Node:
 
         # Map environment variables to default ray node labels
         if market_type:
-            node_labels[ray._raylet.RAY_NODE_MARKET_TYPE_KEY] = market_type
+            default_labels[ray._raylet.RAY_NODE_MARKET_TYPE_KEY] = market_type
         if node_group:
-            node_labels[ray._raylet.RAY_NODE_GROUP_KEY] = node_group
+            default_labels[ray._raylet.RAY_NODE_GROUP_KEY] = node_group
         if availability_zone:
-            node_labels[ray._raylet.RAY_NODE_ZONE_KEY] = availability_zone
+            default_labels[ray._raylet.RAY_NODE_ZONE_KEY] = availability_zone
         if availability_region:
-            node_labels[ray._raylet.RAY_NODE_REGION_KEY] = availability_region
+            default_labels[ray._raylet.RAY_NODE_REGION_KEY] = availability_region
 
-        # Get accelerator type from ResourceSpec
-        accelerator_type = None
+        # Get accelerator type from AcceleratorManager
         if resource_spec.resolved():
-            for key in resource_spec.resources:
-                if key.startswith(ray_constants.RESOURCE_CONSTRAINT_PREFIX):
-                    accelerator_type = key.split(
-                        ray_constants.RESOURCE_CONSTRAINT_PREFIX
-                    )[1]
+            # Check first that the resource configuration passed to the Raylet has been set.
+            # Only check for accelerator-type if resource_spec.resources is not None.
+            for (
+                accelerator_resource_name
+            ) in ray._private.accelerators.get_all_accelerator_resource_names():
+                accelerator_manager = (
+                    ray._private.accelerators.get_accelerator_manager_for_resource(
+                        accelerator_resource_name
+                    )
+                )
+                accelerator_type = (
+                    accelerator_manager.get_current_node_accelerator_type()
+                )
+                num_accelerators = resource_spec.resources.get(
+                    accelerator_resource_name, None
+                )
+                if accelerator_type and num_accelerators:
+                    default_labels[
+                        ray._raylet.RAY_NODE_ACCELERATOR_TYPE_KEY
+                    ] = accelerator_type
                     break  # Only add one value for ray.io/accelerator-type
-        if accelerator_type:
-            node_labels[ray._raylet.RAY_NODE_ACCELERATOR_TYPE_KEY] = accelerator_type
 
-        return node_labels
+        return default_labels
