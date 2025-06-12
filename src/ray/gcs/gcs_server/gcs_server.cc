@@ -760,7 +760,11 @@ void GcsServer::InstallEventListeners() {
         gcs_job_manager_->OnNodeDead(node_id);
         raylet_client_pool_->Disconnect(node_id);
         gcs_healthcheck_manager_->RemoveNode(node_id);
-        pubsub_handler_->RemoveSubscriberFrom(node_id.Binary());
+        io_context_provider_.GetIOContext<GcsPublisher>().post(
+            [this, node_id]() {
+              pubsub_handler_->RemoveSubscriberFrom(node_id.Binary());
+            },
+            "GcsServer.RemoveSubscriberFrom");
         gcs_autoscaler_state_manager_->OnNodeDead(node_id);
       });
 
@@ -782,7 +786,11 @@ void GcsServer::InstallEventListeners() {
                                          worker_failure_data->exit_detail(),
                                          creation_task_exception);
         gcs_placement_group_scheduler_->HandleWaitingRemovedBundles();
-        pubsub_handler_->RemoveSubscriberFrom(worker_id.Binary());
+        io_context_provider_.GetIOContext<GcsPublisher>().post(
+            [this, worker_id]() {
+              pubsub_handler_->RemoveSubscriberFrom(worker_id.Binary());
+            },
+            "GcsServer.RemoveSubscriberFrom");
         gcs_task_manager_->OnWorkerDead(worker_id, worker_failure_data);
       });
 

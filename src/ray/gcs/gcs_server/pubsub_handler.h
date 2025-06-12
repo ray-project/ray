@@ -28,6 +28,8 @@ namespace gcs {
 /// This is the implementation class of `InternalPubsubHandler`.
 /// It supports subscribing updates from GCS with long poll, and registering /
 /// de-registering subscribers.
+/// Note: The pubsub handler should only ever be called from the GCSPublisher IOContext,
+/// it is not thread safe.
 class InternalPubSubHandler : public rpc::InternalPubSubHandler {
  public:
   InternalPubSubHandler(instrumented_io_context &io_service,
