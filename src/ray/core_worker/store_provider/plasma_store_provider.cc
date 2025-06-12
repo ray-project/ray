@@ -65,7 +65,13 @@ CoreWorkerPlasmaStoreProvider::CoreWorkerPlasmaStoreProvider(
     bool warmup,
     std::function<std::string()> get_current_call_site)
     : raylet_client_(raylet_client),
-      store_client_(std::make_shared<plasma::PlasmaClient>()),
+      // We can turn on exit_on_connection_failure on for the core worker plasma
+      // client to early exit core worker after the raylet's death because on the
+      // raylet side, we never proactively close the plasma store connection even
+      // during shutdown. So any error from the raylet side should be a sign of raylet
+      // death.
+      store_client_(
+          std::make_shared<plasma::PlasmaClient>(/*exit_on_connection_failure*/ true)),
       reference_counter_(reference_counter),
       check_signals_(std::move(check_signals)) {
   if (get_current_call_site != nullptr) {
