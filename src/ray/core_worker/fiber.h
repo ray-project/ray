@@ -94,9 +94,13 @@ using FiberChannel = boost::fibers::unbuffered_channel<std::function<void()>>;
 class FiberState {
  public:
   static bool NeedDefaultExecutor(int32_t max_concurrency_in_default_group,
-                                  bool has_other_concurrency_groups) {
+                                  bool has_other_concurrency_groups,
+                                  bool disable_default_executor_initial) {
     RAY_UNUSED(max_concurrency_in_default_group);
     RAY_UNUSED(has_other_concurrency_groups);
+    /// If you explicitly specify that the creation of a default concurrency group
+    /// is prohibited, you need to set it to true.
+    RAY_UNUSED(disable_default_executor_initial);
     /// asyncio mode always need a default executor.
     return true;
   }

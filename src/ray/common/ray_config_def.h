@@ -972,3 +972,6 @@ RAY_CONFIG(int64_t, raylet_check_for_unexpected_worker_disconnect_interval_ms, 1
 /// for tasks with smaller sequence numbers to show up. If timed out, the task will
 /// be cancelled.
 RAY_CONFIG(int64_t, actor_scheduling_queue_max_reorder_wait_seconds, 30)
+
+/// Whether to disable the default concurrency group executor to be initialized.
+RAY_CONFIG(bool, disable_default_executor_initial, false)
