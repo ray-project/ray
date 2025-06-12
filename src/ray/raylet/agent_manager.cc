@@ -94,13 +94,15 @@ void AgentManager::StartAgent() {
                "- The agent failed to start because of unexpected error or port "
                "conflict. Read the log `cat "
                "/tmp/ray/session_latest/logs/{dashboard_agent|runtime_env_agent}.log`. "
-               "\n"
+               "You can find the log file structure here "
+               "https://docs.ray.io/en/master/ray-observability/user-guides/"
+               "configure-logging.html#logging-directory-structure.\n"
                "- The agent is killed by the OS (e.g., out of memory).";
         rpc::NodeDeathInfo node_death_info;
         node_death_info.set_reason(rpc::NodeDeathInfo::UNEXPECTED_TERMINATION);
         node_death_info.set_reason_message(
             options_.agent_name +
-            " unexpectedly exited with exit code 0 and raylet fate-shares with it.");
+            " failed and raylet fate-shares with it.");
         shutdown_raylet_gracefully_(node_death_info);
         // If the process is not terminated within 10 seconds, forcefully kill raylet
         // itself.
