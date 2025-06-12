@@ -121,12 +121,28 @@ built-in connector pieces performing the following tasks:
 * :py:class:`~ray.rllib.connectors.common.batch_individual_items.BatchIndividualItems`: Converts all data in the batch, which thus far are lists of individual items, into batched structures meaning numpy arrays, whose 0th axis is the batch axis.
 * :py:class:`~ray.rllib.connectors.common.numpy_to_tensor.NumpyToTensor`: Converts all numpy arrays in the batch into framework specific tensors and moves these to the GPU, if required.
 
-It's discussed further below :ref:`how users can customize the behavior of the env-to-module pipeline <customizing-connector-v2-pipelines>` by adding any number of `ConnectorV2` pieces to it.
-
 .. hint::
 
     You can disable the default connector pieces by setting `config.env_runners(add_default_connectors_to_env_to_module_pipeline=False)`
     in your :ref:`algorithm config <rllib-algo-configuration-docs>`.
+
+
+Configuring custom env-to-module pieces
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+You can customize the default env-to-module pipeline RLlib creates through providing a function to your
+:py:class:`~ray.rllib.algorithms.algorithm_config.AlgorithmConfig`, which takes an optional RL environment object (`env`) and an optional `spaces`
+dictionary as input arguments and returns a single :py:class:`~ray.rllib.connectors.connector_v2.ConnectorV2` piece or a list thereof.
+RLlib attaches the provided :py:class:`~ray.rllib.connectors.connector_v2.ConnectorV2` instances to the
+:ref:`default env-to-module pipeline <default-env-to-module-pipeline>` in the order returned,
+unless you set `add_default_connectors_to_env_to_module_pipeline=False` in your config, in which case RLlib exclusively uses the provided
+:py:class:`~ray.rllib.connectors.connector_v2.ConnectorV2` pieces as env-to-module pipeline without any automatically added default behavior.
+
+
+
+
+
+
 
 
 .. _module-to-env-pipeline:
@@ -176,12 +192,14 @@ compiling the train batch for the :py:class:`~ray.rllib.core.rl_module.rl_module
     :width: 1000
     :align: left
 
-    **Learner ConnectorV2 Pipelines**: A learner connector pipeline sits between the input training data into the Learner worker and its RLModule.
-    It translates the input data (episodes) into a train batch (tensor data), readable by the RLModule (`forward_train()` method).
+    **Learner ConnectorV2 Pipelines**: A learner connector pipeline sits between the input training data into the
+    :py:class:`~ray.rllib.core.learner.learner.Learner` worker and its :py:class:`~ray.rllib.core.rl_module.rl_module.RLModule`.
+    It translates the input data, lists of episodes, into a train batch, tensor data, readable by the RLModule's
+    :py:meth:`~ray.rllib.core.rl_module.rl_module.RLModule.forward_train` method.
 
 When calling the Learner connector pipeline, a translation from a list of :ref:`Episode objects <single-agent-episode-docs>` to an
-RLModule-readable tensor batch (the "train batch") takes place and the output of the pipeline is directly sent into the RLModule's
-`forward_train` method.
+RLModule-readable tensor batch (the "train batch") takes place and the output of the pipeline is directly sent into the
+:py:meth:`~ray.rllib.core.rl_module.rl_module.RLModule.forward_train` method of the :py:class:`~ray.rllib.core.rl_module.rl_module.RLModule`.
 
 .. _default-learner-pipeline:
 
@@ -203,14 +221,6 @@ It's discussed further below :ref:`how users can customize the behavior of the L
 Customizing ConnectorV2 Pipelines
 ---------------------------------
 
-
-Configuring custom ConnectorV2 pieces in the AlgorithmConfig
-++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
-
-Any of the three pipeline types (:ref:`env-to-module <env-to-module-pipeline>`,
-:ref:`module-to-env <module-to-env-pipeline>`, and :ref:`learner <learner-pipeline>`) can be customized by users through providing a
-connector builder function through their :py:class:`~ray.rllib.algorithms.algorithm_config.AlgorithmConfig`. That function should return a single
-ConnectorV2 piece or a list of ConnectorV2 pieces.
 
 
 Adding custom env-to-module connectors
