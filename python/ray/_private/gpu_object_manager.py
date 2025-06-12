@@ -1,6 +1,11 @@
-from typing import Any, Dict, List, NamedTuple, Optional, Tuple
+from typing import Any, Dict, List, NamedTuple, Optional, Tuple, TYPE_CHECKING
 
-import torch
+try:
+    import torch
+    _TORCH_AVAILABLE = True
+except ImportError:
+    _TORCH_AVAILABLE = False
+    torch = None
 
 import ray.util.collective as collective
 from ray._private.custom_types import TensorTransportEnum
@@ -9,15 +14,33 @@ from ray.actor import ActorHandle
 from ray.experimental.collective import get_collective_groups
 from ray.util.collective.types import Backend
 
-TENSOR_TRANSPORT_TO_COLLECTIVE_BACKEND = {
-    TensorTransportEnum.NCCL: Backend.NCCL,
-    TensorTransportEnum.GLOO: Backend.TORCH_GLOO,
-}
 
-COLLECTIVE_BACKEND_TO_TORCH_DEVICE = {
-    Backend.NCCL: torch.device("cuda"),
-    Backend.TORCH_GLOO: torch.device("cpu"),
-}
+if TYPE_CHECKING:
+    import torch
+
+# Only define these mappings if torch is available
+if _TORCH_AVAILABLE:
+    TENSOR_TRANSPORT_TO_COLLECTIVE_BACKEND = {
+        TensorTransportEnum.NCCL: Backend.NCCL,
+        TensorTransportEnum.GLOO: Backend.TORCH_GLOO,
+    }
+
+    COLLECTIVE_BACKEND_TO_TORCH_DEVICE = {
+        Backend.NCCL: torch.device("cuda"),
+        Backend.TORCH_GLOO: torch.device("cpu"),
+    }
+else:
+    TENSOR_TRANSPORT_TO_COLLECTIVE_BACKEND = {}
+    COLLECTIVE_BACKEND_TO_TORCH_DEVICE = {}
+
+
+def _raise_torch_not_available_exception():
+    if not _TORCH_AVAILABLE:
+        raise ImportError(
+            "`tensor_transport` requires PyTorch. "
+            "Please install torch with 'pip install torch' to use this feature."
+        )
+
 
 # GPUObjectMeta is a named tuple containing the source actor, tensor transport
 # backend, and tensor metadata.
@@ -90,6 +113,8 @@ class GPUObjectManager:
             src_actor: The actor that executes the task and that creates the GPU object.
             tensor_transport: The tensor transport protocol to use for the GPU object.
         """
+        _raise_torch_not_available_exception()
+
         try:
             tensor_transport_backend = TENSOR_TRANSPORT_TO_COLLECTIVE_BACKEND[
                 tensor_transport
@@ -123,6 +148,8 @@ class GPUObjectManager:
         # destination rank `dst_rank`.
         def __ray_send__(self, communicator_name: str, obj_id: str, dst_rank: int):
             from ray._private.worker import global_worker
+
+            _raise_torch_not_available_exception()
 
             gpu_object_manager = global_worker.gpu_object_manager
             assert gpu_object_manager.has_gpu_object(
@@ -166,6 +193,8 @@ class GPUObjectManager:
             tensor_meta: List[Tuple["torch.Size", "torch.dtype"]],
         ):
             from ray._private.worker import global_worker
+
+            _raise_torch_not_available_exception()
 
             backend = collective.get_group_handle(communicator_name).backend()
             device = COLLECTIVE_BACKEND_TO_TORCH_DEVICE[backend]
