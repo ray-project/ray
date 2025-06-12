@@ -1,28 +1,28 @@
-import pytest
-from ray import serve
+import os
+import re
+import signal
+import subprocess
+import sys
+import tempfile
 
-from ray.llm._internal.serve.configs.server_models import (
-    LLMServingArgs,
-    LLMConfig,
-    ModelLoadingConfig,
-)
+import pytest
+import yaml
+
+from ray import serve
+from ray._common.test_utils import wait_for_condition
 from ray.llm._internal.serve.builders.application_builders import (
-    build_openai_app,
     build_llm_deployment,
+    build_openai_app,
 )
 from ray.llm._internal.serve.configs.constants import (
     RAYLLM_ROUTER_TARGET_ONGOING_REQUESTS,
 )
+from ray.llm._internal.serve.configs.server_models import (
+    LLMConfig,
+    LLMServingArgs,
+    ModelLoadingConfig,
+)
 from ray.serve.config import AutoscalingConfig
-import subprocess
-import yaml
-import os
-import tempfile
-import signal
-import sys
-import re
-
-from ray._private.test_utils import wait_for_condition
 
 
 @pytest.fixture
@@ -183,7 +183,39 @@ class TestBuildVllmDeployment:
 
         app = build_llm_deployment(llm_config_with_mock_engine)
         assert isinstance(app, serve.Application)
-        serve.run(app)
+        handle = serve.run(app)
+        assert handle.deployment_name.startswith("LLMDeployment")
+
+    def test_build_llm_deployment_with_name_prefix(
+        self,
+        llm_config_with_mock_engine,
+        shutdown_ray_and_serve,
+    ):
+        """Test `build_llm_deployment` can build a vLLM deployment with name prefix."""
+
+        _name_prefix_for_test = "test_name_prefix"
+        app = build_llm_deployment(
+            llm_config_with_mock_engine, name_prefix=_name_prefix_for_test
+        )
+        assert isinstance(app, serve.Application)
+        handle = serve.run(app)
+        assert handle.deployment_name.startswith(_name_prefix_for_test)
+
+    def test_build_llm_deployment_name_prefix_along_with_deployment_config(
+        self,
+        llm_config_with_mock_engine,
+        shutdown_ray_and_serve,
+    ):
+        """Test `build_llm_deployment` can build a vLLM deployment with name prefix and deployment config."""
+
+        config_with_name: LLMConfig = llm_config_with_mock_engine.model_copy(deep=True)
+        _deployment_name = "deployment_name_from_config"
+        _name_prefix_for_test = "test_name_prefix"
+        config_with_name.deployment_config["name"] = _deployment_name
+        app = build_llm_deployment(config_with_name, name_prefix=_name_prefix_for_test)
+        assert isinstance(app, serve.Application)
+        handle = serve.run(app)
+        assert handle.deployment_name == _name_prefix_for_test + _deployment_name
 
 
 def extract_applications_from_output(output: bytes) -> dict:

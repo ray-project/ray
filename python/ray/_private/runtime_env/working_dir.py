@@ -1,10 +1,11 @@
 import logging
 import os
-from pathlib import Path
-from typing import Any, Dict, List, Optional
 from contextlib import contextmanager
+from pathlib import Path
+from typing import Any, Callable, Dict, List, Optional
 
 import ray._private.ray_constants as ray_constants
+from ray._common.utils import try_to_create_directory
 from ray._private.runtime_env.context import RuntimeEnvContext
 from ray._private.runtime_env.packaging import (
     Protocol,
@@ -18,9 +19,9 @@ from ray._private.runtime_env.packaging import (
     upload_package_to_gcs,
 )
 from ray._private.runtime_env.plugin import RuntimeEnvPlugin
-from ray._private.utils import get_directory_size_bytes, try_to_create_directory
-from ray.exceptions import RuntimeEnvSetupError
+from ray._private.utils import get_directory_size_bytes
 from ray._raylet import GcsClient
+from ray.exceptions import RuntimeEnvSetupError
 
 default_logger = logging.getLogger(__name__)
 
@@ -31,7 +32,7 @@ def upload_working_dir_if_needed(
     runtime_env: Dict[str, Any],
     scratch_dir: Optional[str] = os.getcwd(),
     logger: Optional[logging.Logger] = default_logger,
-    upload_fn=None,
+    upload_fn: Optional[Callable[[str, Optional[List[str]]], None]] = None,
 ) -> Dict[str, Any]:
     """Uploads the working_dir and replaces it with a URI.
 

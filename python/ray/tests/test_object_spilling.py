@@ -19,7 +19,7 @@ from ray._private.external_storage import (
     ExternalStorageSmartOpenImpl,
 )
 from ray._private.internal_api import memory_summary
-from ray._private.test_utils import wait_for_condition
+from ray._common.test_utils import wait_for_condition
 from ray._raylet import GcsClientOptions
 import ray.remote_function
 from ray.tests.conftest import (
@@ -795,7 +795,4 @@ def test_spill_worker_failure(ray_start_regular):
 
 
 if __name__ == "__main__":
-    if os.environ.get("PARALLEL_CI"):
-        sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))
-    else:
-        sys.exit(pytest.main(["-sv", __file__]))
+    sys.exit(pytest.main(["-sv", __file__]))

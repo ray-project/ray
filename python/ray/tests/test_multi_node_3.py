@@ -10,7 +10,6 @@ import pytest
 import ray
 import ray._private.ray_constants as ray_constants
 from ray._private.test_utils import (
-    Semaphore,
     check_call_ray,
     check_call_subprocess,
     kill_process_by_name,
@@ -20,6 +19,7 @@ from ray._private.test_utils import (
     wait_for_children_of_pid,
     wait_for_children_of_pid_to_exit,
 )
+from ray._common.test_utils import Semaphore
 from ray._private.utils import detect_fate_sharing_support
 
 
@@ -128,7 +128,7 @@ def test_calling_start_ray_head(call_ray_stop_only):
     )
     check_call_ray(["stop"])
 
-    temp_dir = ray._private.utils.get_ray_temp_dir()
+    temp_dir = ray._common.utils.get_ray_temp_dir()
 
     # Test starting Ray with RAY_REDIS_ADDRESS env.
     _, proc = start_redis_instance(
@@ -338,7 +338,7 @@ def test_multi_driver_logging(ray_start_regular):
     driver_script_template = """
 import ray
 import sys
-from ray._private.test_utils import Semaphore
+from ray._common.test_utils import Semaphore
 
 @ray.remote(num_cpus=0)
 def remote_print(s, file=None):
@@ -450,12 +450,7 @@ def test_ray_stop_kill_workers():
 
 
 if __name__ == "__main__":
-    import pytest
-
     # Make subprocess happy in bazel.
     os.environ["LC_ALL"] = "en_US.UTF-8"
     os.environ["LANG"] = "en_US.UTF-8"
-    if os.environ.get("PARALLEL_CI"):
-        sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))
-    else:
-        sys.exit(pytest.main(["-sv", __file__]))
+    sys.exit(pytest.main(["-sv", __file__]))

@@ -97,13 +97,13 @@ struct ObjectInUseEntry {
 class PlasmaClient::Impl : public std::enable_shared_from_this<PlasmaClient::Impl> {
  public:
   Impl();
+  explicit Impl(bool exit_on_connection_failure);
   ~Impl();
 
   // PlasmaClient method implementations
 
   Status Connect(const std::string &store_socket_name,
                  const std::string &manager_socket_name,
-                 int release_delay = 0,
                  int num_retries = -1);
 
   Status SetClientOptions(const std::string &client_name, int64_t output_memory_quota);
@@ -159,8 +159,6 @@ class PlasmaClient::Impl : public std::enable_shared_from_this<PlasmaClient::Imp
   Status Seal(const ObjectID &object_id);
 
   Status Delete(const std::vector<ObjectID> &object_ids);
-
-  Status Evict(int64_t num_bytes, int64_t &num_bytes_evicted);
 
   Status Disconnect();
 
@@ -238,11 +236,17 @@ class PlasmaClient::Impl : public std::enable_shared_from_this<PlasmaClient::Imp
   std::unordered_set<ObjectID> deletion_cache_;
   /// A mutex which protects this class.
   std::recursive_mutex client_mutex_;
+  /// Whether the current process should exit when read or write to the connection fails.
+  /// It should only be turned on when the plasma client is in a core worker.
+  bool exit_on_connection_failure_;
 };
 
 PlasmaBuffer::~PlasmaBuffer() { RAY_UNUSED(client_->Release(object_id_)); }
 
-PlasmaClient::Impl::Impl() : store_capacity_(0) {}
+PlasmaClient::Impl::Impl() : store_capacity_(0), exit_on_connection_failure_(false) {}
+
+PlasmaClient::Impl::Impl(bool exit_on_connection_failure)
+    : store_capacity_(0), exit_on_connection_failure_(exit_on_connection_failure) {}
 
 PlasmaClient::Impl::~Impl() {}
 
@@ -863,27 +867,15 @@ Status PlasmaClient::Impl::Delete(const std::vector<ObjectID> &object_ids) {
   return Status::OK();
 }
 
-Status PlasmaClient::Impl::Evict(int64_t num_bytes, int64_t &num_bytes_evicted) {
-  std::lock_guard<std::recursive_mutex> guard(client_mutex_);
-
-  // Send a request to the store to evict objects.
-  RAY_RETURN_NOT_OK(SendEvictRequest(store_conn_, num_bytes));
-  // Wait for a response with the number of bytes actually evicted.
-  std::vector<uint8_t> buffer;
-  RAY_RETURN_NOT_OK(PlasmaReceive(store_conn_, MessageType::PlasmaEvictReply, &buffer));
-  return ReadEvictReply(buffer.data(), buffer.size(), num_bytes_evicted);
-}
-
 Status PlasmaClient::Impl::Connect(const std::string &store_socket_name,
                                    const std::string &manager_socket_name,
-                                   int release_delay,
                                    int num_retries) {
   std::lock_guard<std::recursive_mutex> guard(client_mutex_);
 
   /// The local stream socket that connects to store.
   ray::local_stream_socket socket(main_service_);
   RAY_RETURN_NOT_OK(ray::ConnectSocketRetry(socket, store_socket_name));
-  store_conn_.reset(new StoreConn(std::move(socket)));
+  store_conn_.reset(new StoreConn(std::move(socket), exit_on_connection_failure_));
   // Send a ConnectRequest to the store to get its memory capacity.
   RAY_RETURN_NOT_OK(SendConnectRequest(store_conn_));
   std::vector<uint8_t> buffer;
@@ -927,14 +919,13 @@ std::string PlasmaClient::Impl::DebugString() {
 
 PlasmaClient::PlasmaClient() : impl_(std::make_shared<PlasmaClient::Impl>()) {}
 
-PlasmaClient::~PlasmaClient() {}
+PlasmaClient::PlasmaClient(bool exit_on_connection_failure)
+    : impl_(std::make_shared<PlasmaClient::Impl>(exit_on_connection_failure)) {}
 
 Status PlasmaClient::Connect(const std::string &store_socket_name,
                              const std::string &manager_socket_name,
-                             int release_delay,
                              int num_retries) {
-  return impl_->Connect(
-      store_socket_name, manager_socket_name, release_delay, num_retries);
+  return impl_->Connect(store_socket_name, manager_socket_name, num_retries);
 }
 
 Status PlasmaClient::CreateAndSpillIfNeeded(const ObjectID &object_id,
@@ -1016,16 +1007,8 @@ Status PlasmaClient::Abort(const ObjectID &object_id) { return impl_->Abort(obje
 
 Status PlasmaClient::Seal(const ObjectID &object_id) { return impl_->Seal(object_id); }
 
-Status PlasmaClient::Delete(const ObjectID &object_id) {
-  return impl_->Delete(std::vector<ObjectID>{object_id});
-}
-
 Status PlasmaClient::Delete(const std::vector<ObjectID> &object_ids) {
   return impl_->Delete(object_ids);
-}
-
-Status PlasmaClient::Evict(int64_t num_bytes, int64_t &num_bytes_evicted) {
-  return impl_->Evict(num_bytes, num_bytes_evicted);
 }
 
 Status PlasmaClient::Disconnect() { return impl_->Disconnect(); }

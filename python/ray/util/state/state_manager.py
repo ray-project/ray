@@ -13,7 +13,7 @@ import ray
 import ray.dashboard.modules.log.log_consts as log_consts
 import ray.dashboard.consts as dashboard_consts
 from ray._private import ray_constants
-from ray._private.utils import hex_to_binary
+from ray._common.utils import hex_to_binary
 from ray._raylet import GcsClient, ActorID, JobID, TaskID, NodeID
 from ray.core.generated import gcs_service_pb2_grpc
 from ray.core.generated.gcs_pb2 import ActorTableData, GcsNodeInfo
@@ -80,10 +80,13 @@ def handle_grpc_network_errors(func):
         Returns:
             If RPC succeeds, it returns what the original function returns.
             If RPC fails, it raises exceptions.
-        Exceptions:
+
+        Raises:
             DataSourceUnavailable: if the source is unavailable because it is down
                 or there's a slow network issue causing timeout.
-            Otherwise, the raw network exceptions (e.g., gRPC) will be raised.
+
+            Exception: Otherwise, the raw network exceptions (e.g., gRPC) will be
+                raised.
         """
         try:
             return await func(*args, **kwargs)
@@ -95,7 +98,7 @@ def handle_grpc_network_errors(func):
                 raise DataSourceUnavailable(
                     "Failed to query the data source. "
                     "It is either there's a network issue, or the source is down."
-                )
+                ) from e
             else:
                 logger.exception(e)
                 raise e

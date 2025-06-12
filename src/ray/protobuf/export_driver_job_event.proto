@@ -1,0 +1,48 @@
+// Copyright 2024 The Ray Authors.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//  http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
+syntax = "proto3";
+
+package ray.rpc;
+
+import "src/ray/protobuf/export_runtime_env.proto";
+
+// ExportDriverJobEventData defines the event_data stored by the export API
+// for EXPORT_DRIVER_JOB type events. This schema is public and any changes must
+// be backward compatible.
+message ExportDriverJobEventData {
+  message JobConfig {
+    // Runtime environment to run the code
+    ExportRuntimeEnvInfo runtime_env_info = 1;
+    // An opaque kv store for job related metadata.
+    map<string, string> metadata = 2;
+  }
+
+  // The job ID.
+  bytes job_id = 1;
+  // Whether it's dead.
+  bool is_dead = 2;
+  // Process ID of the driver running this job.
+  int64 driver_pid = 3;
+  // The config of this job.
+  JobConfig config = 4;
+  // The timestamp the job was started at.
+  uint64 start_time = 5;
+  // The timestamp the job was ended at.
+  uint64 end_time = 6;
+  // The entrypoint of the job.
+  string entrypoint = 7;
+  // Address of the driver that started this job.
+  string driver_ip_address = 8;
+}

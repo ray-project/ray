@@ -9,7 +9,7 @@ import gc
 from unittest.mock import patch, Mock
 
 import ray
-from ray._private.test_utils import wait_for_condition
+from ray._common.test_utils import wait_for_condition
 from ray.experimental.state.api import list_objects
 from ray._raylet import ObjectRefGenerator, ObjectRefStreamEndOfStreamError
 from ray.cloudpickle import dumps
@@ -577,9 +577,5 @@ def test_streaming_generator_exception(shutdown_only):
 
 
 if __name__ == "__main__":
-    import os
 
-    if os.environ.get("PARALLEL_CI"):
-        sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))
-    else:
-        sys.exit(pytest.main(["-sv", __file__]))
+    sys.exit(pytest.main(["-sv", __file__]))

@@ -43,9 +43,10 @@ from ray.data.block import (
     Block,
     BlockAccessor,
     BlockMetadata,
+    BlockMetadataWithSchema,
     BlockStats,
-    to_stats,
     BlockType,
+    to_stats,
 )
 
 logger = logging.getLogger(__name__)
@@ -745,7 +746,7 @@ class HashShufflingOperatorBase(PhysicalOperator):
         )
 
     def completed(self) -> bool:
-        # TODO remove impl from base class
+        # TODO separate marking as completed from the check
         return self._is_finalized() and super().completed()
 
     def implements_accurate_memory_accounting(self) -> bool:
@@ -1095,7 +1096,7 @@ class HashShuffleAggregator:
 
     def finalize(
         self, partition_id: int
-    ) -> AsyncGenerator[Union[Block, BlockMetadata], None]:
+    ) -> AsyncGenerator[Union[Block, "BlockMetadataWithSchema"], None]:
         with self._lock:
             # Finalize given partition id
             result = self._agg.finalize(partition_id)
@@ -1103,5 +1104,7 @@ class HashShuffleAggregator:
             self._agg.clear(partition_id)
 
         # TODO break down blocks to target size
+        from ray.data.block import BlockMetadataWithSchema
+
         yield result
-        yield BlockAccessor.for_block(result).get_metadata()
+        yield BlockMetadataWithSchema.from_block(result)

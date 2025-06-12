@@ -4,7 +4,7 @@ import json
 from time import sleep
 import pytest
 import threading
-from ray._private.test_utils import wait_for_condition
+from ray._common.test_utils import wait_for_condition
 from ray.tests.conftest_docker import *  # noqa
 from ray.tests.conftest_docker import gen_head_node, gen_worker_node
 
@@ -159,7 +159,7 @@ def test_transient_network_error(head2, worker2, gcs_network):
 
     check_two_nodes = """
 import ray
-from ray._private.test_utils import wait_for_condition
+from ray._common.test_utils import wait_for_condition
 
 ray.init()
 wait_for_condition(lambda: len(ray.nodes()) == 2)
@@ -179,7 +179,7 @@ wait_for_condition(lambda: len(ray.nodes()) == 2)
     # an actor.
     check_actor_scheduling = """
 import ray
-from ray._private.test_utils import wait_for_condition
+from ray._common.test_utils import wait_for_condition
 
 ray.init()
 
@@ -281,7 +281,7 @@ assert ray.get(async_actor.run.remote()) == "second"
 
     check_async_actor_run_is_called = """
 import ray
-from ray._private.test_utils import wait_for_condition
+from ray._common.test_utils import wait_for_condition
 ray.init(namespace="test")
 
 wait_for_condition(lambda: ray.get_actor("counter") is not None)
@@ -315,9 +315,5 @@ wait_for_condition(lambda: ray.get(counter.get.remote()) == 1)
 
 
 if __name__ == "__main__":
-    import os
 
-    if os.environ.get("PARALLEL_CI"):
-        sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))
-    else:
-        sys.exit(pytest.main(["-sv", __file__]))
+    sys.exit(pytest.main(["-sv", __file__]))

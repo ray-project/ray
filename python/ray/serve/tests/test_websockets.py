@@ -1,8 +1,8 @@
 import asyncio
 import sys
 
+import httpx
 import pytest
-import requests
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from starlette.responses import StreamingResponse
 from websockets.exceptions import ConnectionClosed
@@ -119,12 +119,12 @@ def test_unary_streaming_websocket_same_deployment(serve_instance):
 
     serve.run(RenaissanceMan.bind())
 
-    assert requests.get("http://localhost:8000/").json() == "hi"
+    assert httpx.get("http://localhost:8000/").json() == "hi"
 
-    r = requests.get("http://localhost:8000/stream", stream=True)
-    r.raise_for_status()
-    for chunk in r.iter_content(chunk_size=None, decode_unicode=True):
-        assert chunk == "hi"
+    with httpx.stream("GET", "http://localhost:8000/stream") as r:
+        r.raise_for_status()
+        for chunk in r.iter_text():
+            assert chunk == "hi"
 
     with connect("ws://localhost:8000/ws") as ws:
         ws.send("hi")

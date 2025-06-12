@@ -2,13 +2,14 @@ import os
 import sys
 import time
 
-import numpy as np
 import pytest
+import numpy as np
 
 import ray
 import ray._private.ray_constants as ray_constants
 from ray._private.internal_api import memory_summary
-from ray._private.test_utils import Semaphore, SignalActor, wait_for_condition
+from ray._common.test_utils import Semaphore, SignalActor
+from ray._common.test_utils import wait_for_condition
 import ray.exceptions
 from ray.util.state import list_tasks
 
@@ -605,9 +606,4 @@ def test_object_reconstruction_pending_creation(config, ray_start_cluster):
 
 
 if __name__ == "__main__":
-    import pytest
-
-    if os.environ.get("PARALLEL_CI"):
-        sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))
-    else:
-        sys.exit(pytest.main(["-sv", __file__]))
+    sys.exit(pytest.main(["-sv", __file__]))

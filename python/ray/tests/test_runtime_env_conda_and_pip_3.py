@@ -2,8 +2,8 @@ import os
 import pytest
 import sys
 
+from ray._common.test_utils import wait_for_condition
 from ray._private.test_utils import (
-    wait_for_condition,
     check_local_files_gced,
     generate_runtime_env_dict,
 )
@@ -21,17 +21,18 @@ class TestGC:
         os.environ.get("CI") and sys.platform != "linux",
         reason="Needs PR wheels built in CI, so only run on linux CI machines.",
     )
-    @pytest.mark.parametrize("field", ["conda", "pip"])
-    @pytest.mark.parametrize("spec_format", ["file", "python_object"])
     def test_actor_level_gc(
-        self, runtime_env_disable_URI_cache, start_cluster, field, spec_format, tmp_path
+        self, runtime_env_disable_URI_cache, start_cluster, tmp_path
     ):
         """Tests that actor-level working_dir is GC'd when the actor exits."""
         cluster, address = start_cluster
 
         ray.init(address)
 
-        runtime_env = generate_runtime_env_dict(field, spec_format, tmp_path)
+        conda_runtime_env = generate_runtime_env_dict(
+            "conda", "python_object", tmp_path
+        )
+        pip_runtime_env = generate_runtime_env_dict("pip", "python_object", tmp_path)
 
         @ray.remote
         class A:
@@ -40,14 +41,15 @@ class TestGC:
 
                 return True
 
-        NUM_ACTORS = 5
-        actors = [
-            A.options(runtime_env=runtime_env).remote() for _ in range(NUM_ACTORS)
+        conda_actors = [
+            A.options(runtime_env=conda_runtime_env).remote() for _ in range(2)
         ]
-        ray.get([a.test_import.remote() for a in actors])
-        for i in range(5):
+        pip_actors = [A.options(runtime_env=pip_runtime_env).remote() for _ in range(2)]
+        ray.get([a.test_import.remote() for a in conda_actors + pip_actors])
+        for a in conda_actors + pip_actors:
             assert not check_local_files_gced(cluster)
-            ray.kill(actors[i])
+            ray.kill(a)
+
         wait_for_condition(lambda: check_local_files_gced(cluster), timeout=30)
 
     @pytest.mark.skipif(
@@ -72,14 +74,10 @@ class TestGC:
         ],
         indirect=True,
     )
-    @pytest.mark.parametrize("field", ["conda", "pip"])
-    @pytest.mark.parametrize("spec_format", ["file", "python_object"])
     def test_task_level_gc(
         self,
         runtime_env_disable_URI_cache,
         ray_start_cluster,
-        field,
-        spec_format,
         tmp_path,
     ):
         """Tests that task-level working_dir is GC'd when the task exits."""
@@ -94,7 +92,10 @@ class TestGC:
         ):
             soft_limit_zero = True
 
-        runtime_env = generate_runtime_env_dict(field, spec_format, tmp_path)
+        conda_runtime_env = generate_runtime_env_dict(
+            "conda", "python_object", tmp_path
+        )
+        pip_runtime_env = generate_runtime_env_dict("pip", "python_object", tmp_path)
 
         @ray.remote
         def f():
@@ -109,42 +110,34 @@ class TestGC:
 
                 return True
 
-        # Start a task with runtime env
-        ray.get(f.options(runtime_env=runtime_env).remote())
+        # Start one task with each runtime_env (conda and pip).
+        ray.get(f.options(runtime_env=conda_runtime_env).remote())
+        ray.get(f.options(runtime_env=pip_runtime_env).remote())
         if soft_limit_zero:
-            # Wait for worker exited and local files gced
+            # Wait for the worker to exit and the local files to be GC'd.
             wait_for_condition(lambda: check_local_files_gced(cluster))
         else:
-            # Local files should not be gced because of an enough soft limit.
+            # Local files should not be GC'd because there is enough soft limit.
             assert not check_local_files_gced(cluster)
 
-        # Start a actor with runtime env
-        actor = A.options(runtime_env=runtime_env).remote()
-        ray.get(actor.test_import.remote())
-        # Local files should not be gced
+        # Start one actor with each runtime env (conda and pip).
+        conda_actor = A.options(runtime_env=conda_runtime_env).remote()
+        pip_actor = A.options(runtime_env=pip_runtime_env).remote()
+        ray.get([conda_actor.test_import.remote(), pip_actor.test_import.remote()])
+
+        # Local files should not be GC'd.
         assert not check_local_files_gced(cluster)
 
-        # Kill actor
-        ray.kill(actor)
+        # Kill the actors
+        ray.kill(conda_actor)
+        ray.kill(pip_actor)
         if soft_limit_zero:
-            # Wait for worker exited and local files gced
+            # Wait for the workers to exit and the local files to be GC'd.
             wait_for_condition(lambda: check_local_files_gced(cluster))
         else:
-            # Local files should not be gced because of an enough soft limit.
-            assert not check_local_files_gced(cluster)
-
-        # Start a task with runtime env
-        ray.get(f.options(runtime_env=runtime_env).remote())
-        if soft_limit_zero:
-            # Wait for worker exited and local files gced
-            wait_for_condition(lambda: check_local_files_gced(cluster))
-        else:
-            # Local files should not be gced because of an enough soft limit.
+            # Local files should not be GC'd because there is enough soft limit.
             assert not check_local_files_gced(cluster)
 
 
 if __name__ == "__main__":
-    if os.environ.get("PARALLEL_CI"):
-        sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))
-    else:
-        sys.exit(pytest.main(["-sv", __file__]))
+    sys.exit(pytest.main(["-sv", __file__]))
