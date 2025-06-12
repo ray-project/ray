@@ -7,8 +7,8 @@ import numpy as np
 import pytest
 
 import ray
+from ray._common.test_utils import wait_for_condition
 from ray._private.test_utils import (
-    wait_for_condition,
     wait_for_pid_to_exit,
 )
 

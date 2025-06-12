@@ -1,4 +1,3 @@
-from fastapi import status
 import json
 from typing import (
     Any,
@@ -6,6 +5,8 @@ from typing import (
     Optional,
     Union,
 )
+
+from fastapi import status
 
 from ray.llm._internal.serve.configs.openai_api_models import OpenAIHTTPException
 from ray.llm._internal.utils import try_import

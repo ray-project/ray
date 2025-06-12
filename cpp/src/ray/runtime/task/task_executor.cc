@@ -139,7 +139,8 @@ Status TaskExecutor::ExecuteTask(
     bool is_reattempt,
     bool is_streaming_generator,
     bool retry_exception,
-    int64_t generator_backpressure_num_objects) {
+    int64_t generator_backpressure_num_objects,
+    const rpc::TensorTransport &tensor_transport) {
   RAY_LOG(DEBUG) << "Execute task type: " << TaskType_Name(task_type)
                  << " name:" << task_name;
   RAY_CHECK(ray_function.GetLanguage() == ray::Language::CPP);
@@ -299,7 +300,7 @@ void TaskExecutor::Invoke(
   ArgsBufferList args_buffer;
   for (size_t i = 0; i < task_spec.NumArgs(); i++) {
     if (task_spec.ArgByRef(i)) {
-      const auto &id = task_spec.ArgId(i).Binary();
+      const auto &id = task_spec.ArgObjectIdBinary(i);
       msgpack::sbuffer sbuf;
       sbuf.write(id.data(), id.size());
       args_buffer.push_back(std::move(sbuf));

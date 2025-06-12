@@ -2,10 +2,10 @@ import asyncio
 import json
 import logging
 import time
-from collections import deque, defaultdict
+from collections import defaultdict, deque
 from concurrent.futures import ThreadPoolExecutor
 from itertools import chain
-from typing import AsyncGenerator, Iterable, List, Dict, Any, Optional, Set
+from typing import Any, AsyncGenerator, Dict, Iterable, List, Optional, Set
 
 import aiohttp.web
 import grpc
@@ -13,17 +13,19 @@ import grpc
 import ray._private.utils
 import ray.dashboard.optional_utils as dashboard_optional_utils
 import ray.dashboard.utils as dashboard_utils
-from ray._private import ray_constants
 from ray._common.utils import get_or_create_event_loop
-from ray._private.gcs_pubsub import GcsAioActorSubscriber
+from ray._private import ray_constants
 from ray._private.collections_utils import split
-from ray._private.gcs_pubsub import GcsAioNodeInfoSubscriber
+from ray._private.gcs_pubsub import (
+    GcsAioActorSubscriber,
+    GcsAioNodeInfoSubscriber,
+    GcsAioResourceUsageSubscriber,
+)
 from ray._private.ray_constants import (
     DEBUG_AUTOSCALING_ERROR,
     DEBUG_AUTOSCALING_STATUS,
     env_integer,
 )
-from ray._private.gcs_pubsub import GcsAioResourceUsageSubscriber
 from ray.autoscaler._private.util import (
     LoadMetricsSummary,
     get_per_node_breakdown_as_dict,
@@ -31,16 +33,15 @@ from ray.autoscaler._private.util import (
 )
 from ray.core.generated import gcs_pb2, node_manager_pb2, node_manager_pb2_grpc
 from ray.dashboard.consts import (
-    GCS_RPC_TIMEOUT_SECONDS,
-    DASHBOARD_AGENT_ADDR_NODE_ID_PREFIX,
     DASHBOARD_AGENT_ADDR_IP_PREFIX,
+    DASHBOARD_AGENT_ADDR_NODE_ID_PREFIX,
+    GCS_RPC_TIMEOUT_SECONDS,
 )
+from ray.dashboard.modules.node import actor_consts, node_consts
 from ray.dashboard.modules.node.datacenter import DataOrganizer, DataSource
-from ray.dashboard.modules.node import node_consts
-from ray.dashboard.modules.node import actor_consts
-from ray.dashboard.utils import async_loop_forever
-from ray.dashboard.subprocesses.routes import SubprocessRouteTable as routes
 from ray.dashboard.subprocesses.module import SubprocessModule
+from ray.dashboard.subprocesses.routes import SubprocessRouteTable as routes
+from ray.dashboard.utils import async_loop_forever
 
 logger = logging.getLogger(__name__)
 
@@ -114,6 +115,7 @@ def _actor_table_data_to_dict(message):
         "reprName",
         "placementGroupId",
         "callSite",
+        "labelSelector",
     }
     light_message = {k: v for (k, v) in orig_message.items() if k in fields}
     light_message["actorClass"] = orig_message["className"]
@@ -134,7 +136,7 @@ def _actor_table_data_to_dict(message):
     light_message["startTime"] = int(light_message["startTime"])
     light_message["endTime"] = int(light_message["endTime"])
     light_message["requiredResources"] = dict(message.required_resources)
-
+    light_message["labelSelector"] = dict(message.label_selector)
     return light_message
 
 
@@ -309,8 +311,8 @@ class NodeHead(SubprocessModule):
         from ray.autoscaler.v2.utils import is_autoscaler_v2
 
         if is_autoscaler_v2():
-            from ray.autoscaler.v2.sdk import ClusterStatusParser
             from ray.autoscaler.v2.schema import Stats
+            from ray.autoscaler.v2.sdk import ClusterStatusParser
 
             try:
                 # here we have a sync request

@@ -7,8 +7,9 @@ from typing import Dict
 import pytest
 
 import ray
+from ray._common.test_utils import wait_for_condition
 from ray._private.resource_spec import HEAD_NODE_RESOURCE_NAME
-from ray._private.test_utils import run_string_as_driver_nonblocking, wait_for_condition
+from ray._private.test_utils import run_string_as_driver_nonblocking
 from ray._private.usage.usage_lib import get_extra_usage_tags_to_report
 from ray._raylet import GcsClient
 from ray.autoscaler.v2.sdk import get_cluster_status

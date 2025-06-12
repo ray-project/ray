@@ -84,6 +84,12 @@ def create_replica_impl(**kwargs):
     return Replica(**kwargs)
 
 
+def create_replica_metrics_manager(**kwargs):
+    from ray.serve._private.replica import ReplicaMetricsManager
+
+    return ReplicaMetricsManager(**kwargs)
+
+
 def create_dynamic_handle_options(**kwargs):
     return DynamicHandleOptions(**kwargs)
 
