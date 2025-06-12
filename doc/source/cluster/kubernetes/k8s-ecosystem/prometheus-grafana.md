@@ -257,8 +257,8 @@ spec:
       honorLabels: true
 
 ```
-* Same as PodMonitor, the **install.sh** script also creates the [serviceMonitor.yaml](https://github.com/ray-project/kuberay/blob/master/config/prometheus/serviceMonitor.yaml) shown above,  so there's no need to create it manually.
-* For production, you can enable the ServiceMonitor when installing the KubeRay operator by setting `metrics.serviceMonitor.enabled=true`.
+* Same as PodMonitor, the **install.sh** script also creates the [serviceMonitor.yaml](https://github.com/ray-project/kuberay/blob/master/config/prometheus/serviceMonitor.yaml) shown above, so there's no need to create it manually.
+* For production, you can enable the ServiceMonitor when installing the KubeRay operator by setting `metrics.serviceMonitor.enabled=true`. See [values.yaml](https://github.com/ray-project/kuberay/blob/master/helm-chart/kuberay-operator/values.yaml) for more details.
   ```sh
   helm install kuberay-operator kuberay/kuberay-operator --version 1.4.0 \
     --set metrics.serviceMonitor.enabled=true
