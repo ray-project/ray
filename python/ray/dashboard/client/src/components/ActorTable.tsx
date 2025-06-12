@@ -20,6 +20,7 @@ import Pagination from "@mui/material/Pagination";
 import _ from "lodash";
 import React, { useMemo, useState } from "react";
 import { Link as RouterLink } from "react-router-dom";
+import { CodeDialogButtonWithPreview } from "../common/CodeDialogButton";
 import { DurationText, getDurationVal } from "../common/DurationText";
 import { ActorLink, generateNodeLink } from "../common/links";
 import {
@@ -320,6 +321,10 @@ const ActorTable = ({
       ),
     },
     {
+      label: "Label selector",
+      helpInfo: <Typography>The label selector of the actor.</Typography>,
+    },
+    {
       label: "Exit detail",
       helpInfo: (
         <Typography>
@@ -550,6 +555,7 @@ const ActorTable = ({
                 gpus,
                 processStats,
                 mem,
+                labelSelector,
               }) => (
                 <ExpandableTableRow
                   length={
@@ -702,23 +708,26 @@ const ActorTable = ({
                     </Tooltip>
                   </TableCell>
                   <TableCell align="center">
-                    <Tooltip
-                      title={Object.entries(requiredResources || {}).map(
-                        ([key, val]) => (
-                          <div style={{ margin: 4 }}>
-                            {key}: {val}
-                          </div>
-                        ),
-                      )}
-                      arrow
-                    >
-                      <OverflowCollapsibleCell
-                        text={Object.entries(requiredResources || {})
-                          .map(([key, val]) => `${key}: ${val}`)
-                          .join(", ")}
-                        wordBreak="break-all"
+                    {Object.entries(requiredResources || {}).length > 0 ? (
+                      <CodeDialogButtonWithPreview
+                        sx={{ maxWidth: 200 }}
+                        title="Required resources"
+                        code={JSON.stringify(requiredResources, undefined, 2)}
                       />
-                    </Tooltip>
+                    ) : (
+                      "{}"
+                    )}
+                  </TableCell>
+                  <TableCell align="center">
+                    {Object.entries(labelSelector || {}).length > 0 ? (
+                      <CodeDialogButtonWithPreview
+                        sx={{ maxWidth: 200 }}
+                        title="Label selector"
+                        code={JSON.stringify(labelSelector, undefined, 2)}
+                      />
+                    ) : (
+                      "{}"
+                    )}
                   </TableCell>
                   <TableCell align="center">
                     <OverflowCollapsibleCell text={exitDetail} />
