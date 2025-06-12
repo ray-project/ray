@@ -3361,6 +3361,21 @@ py_test(
 )
 
 py_test(
+    name = "examples/actions/custom_action_distribution",
+    size = "large",
+    srcs = ["examples/actions/custom_action_distribution.py"],
+    args = [
+        "--enable-new-api-stack",
+        "--temperature=0.75",
+    ],
+    main = "examples/actions/custom_action_distribution.py",
+    tags = [
+        "examples",
+        "team:rllib",
+    ],
+)
+
+py_test(
     name = "examples/actions/nested_action_spaces_ppo",
     size = "large",
     srcs = ["examples/actions/nested_action_spaces.py"],

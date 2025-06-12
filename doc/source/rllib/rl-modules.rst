@@ -688,8 +688,16 @@ The preceding examples rely on :py:class:`~ray.rllib.core.rl_module.rl_module.RL
 the action space, which is :py:class:`~ray.rllib.models.torch.torch_distributions.TorchCategorical` for ``Discrete`` action spaces
 and :py:class:`~ray.rllib.models.torch.torch_distributions.TorchDiagGaussian` for ``Box`` action spaces.
 
-To use a different distribution class and return parameters for its constructor from your forward methods,
-override the following methods in the :py:class:`~ray.rllib.core.rl_module.rl_module.RLModule` implementation:
+To use a different distribution class and return parameters for this distribution's constructor from your
+:py:class:`~ray.rllib.core.rl_module.rl_module.RLModule` forward methods, you can set the
+:py:attr:`~ray.rllib.core.rl_module.rl_module.RLModule.action_dist_cls` attribute inside the
+:py:meth:`~ray.rllib.core.rl_module.rl_module.RLModule.setup` method of your :py:class:`~ray.rllib.core.rl_module.rl_module.RLModule`.
+
+See here for an `example script introducing a temperature parameter on top of a Categorical distribution <https://github.com/ray-project/ray/blob/master/rllib/examples/rl_modules/classes/custom_action_distribution_rlm.py>`__.
+
+If you need more granularity and specify different distribution classes for the different forward methods of your
+:py:class:`~ray.rllib.core.rl_module.rl_module.RLModule`, override the following methods
+in your :py:class:`~ray.rllib.core.rl_module.rl_module.RLModule` implementation and return different distribution classes from these:
 
 - :py:meth:`~ray.rllib.core.rl_module.rl_module.RLModule.get_inference_action_dist_cls`
 - :py:meth:`~ray.rllib.core.rl_module.rl_module.RLModule.get_exploration_action_dist_cls`

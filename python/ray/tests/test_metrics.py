@@ -4,11 +4,11 @@ import sys
 
 import psutil
 import pytest
+from ray._common.test_utils import wait_for_condition
 import requests
 
 import ray
 from ray._private.test_utils import (
-    wait_for_condition,
     wait_until_succeeded_without_exception,
     get_node_stats,
 )
@@ -350,9 +350,7 @@ def test_opentelemetry_conflict(shutdown_only):
     # Otherwise, it raises an error saying
     # opencensus/proto/resource/v1/resource.proto:
     # A file with this name is already in the pool.
-    from opentelemetry.exporter.opencensus.trace_exporter import (  # noqa
-        OpenCensusSpanExporter,
-    )
+    from opencensus.proto.trace.v1 import trace_pb2  # noqa
 
     # Make sure the similar resource protobuf also doesn't raise an exception.
     from opentelemetry.proto.resource.v1 import resource_pb2  # noqa

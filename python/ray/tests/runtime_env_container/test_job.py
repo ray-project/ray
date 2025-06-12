@@ -2,7 +2,7 @@ import argparse
 
 import ray
 from ray.job_submission import JobStatus, JobSubmissionClient
-from ray._private.test_utils import wait_for_condition
+from ray._common.test_utils import wait_for_condition
 
 parser = argparse.ArgumentParser()
 parser.add_argument("--image", type=str, help="The docker image to use for Ray worker")

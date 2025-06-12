@@ -7,7 +7,8 @@ import numpy as np
 import pytest
 
 import ray
-from ray._private.test_utils import SignalActor, run_string_as_driver_nonblocking
+from ray._common.test_utils import SignalActor
+from ray._private.test_utils import run_string_as_driver_nonblocking
 
 SIGKILL = signal.SIGKILL if sys.platform != "win32" else signal.SIGTERM
 
@@ -75,7 +76,7 @@ def test_dying_driver_get(ray_start_regular):
     driver = """
 import ray
 ray.init("{}")
-ray.get(ray.ObjectRef(ray._private.utils.hex_to_binary("{}")))
+ray.get(ray.ObjectRef(ray._common.utils.hex_to_binary("{}")))
 """.format(
         address_info["address"], x_id.hex()
     )
@@ -156,7 +157,7 @@ def test_dying_driver_wait(ray_start_regular):
     driver = """
 import ray
 ray.init("{}")
-ray.wait([ray.ObjectRef(ray._private.utils.hex_to_binary("{}"))])
+ray.wait([ray.ObjectRef(ray._common.utils.hex_to_binary("{}"))])
 """.format(
         address_info["address"], x_id.hex()
     )

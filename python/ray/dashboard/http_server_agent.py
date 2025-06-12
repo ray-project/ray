@@ -3,8 +3,8 @@ import logging
 from packaging.version import Version
 
 import ray.dashboard.optional_utils as dashboard_optional_utils
-from ray.dashboard.optional_deps import aiohttp, aiohttp_cors, hdrs
 from ray._common.utils import get_or_create_event_loop
+from ray.dashboard.optional_deps import aiohttp, aiohttp_cors, hdrs
 
 logger = logging.getLogger(__name__)
 routes = dashboard_optional_utils.DashboardAgentRouteTable

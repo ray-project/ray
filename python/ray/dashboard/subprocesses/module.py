@@ -1,26 +1,26 @@
 import abc
 import asyncio
-import aiohttp
 import inspect
 import logging
-import sys
-import os
-from dataclasses import dataclass
-import setproctitle
 import multiprocessing
 import multiprocessing.connection
+import os
+import sys
+from dataclasses import dataclass
+
+import aiohttp
 
 import ray
 from ray import ray_constants
-from ray._raylet import GcsClient
-from ray._private.gcs_utils import GcsChannel
-from ray.dashboard.subprocesses.utils import (
-    module_logging_filename,
-    get_socket_path,
-    get_named_pipe_path,
-)
-from ray._private.ray_logging import setup_component_logger
 from ray._private import logging_utils
+from ray._private.gcs_utils import GcsChannel
+from ray._private.ray_logging import setup_component_logger
+from ray._raylet import GcsClient
+from ray.dashboard.subprocesses.utils import (
+    get_named_pipe_path,
+    get_socket_path,
+    module_logging_filename,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -238,8 +238,8 @@ def run_module(
     Entrypoint for a subprocess module.
     """
     module_name = cls.__name__
-    current_proctitle = setproctitle.getproctitle()
-    setproctitle.setproctitle(
+    current_proctitle = ray._raylet.getproctitle()
+    ray._raylet.setproctitle(
         f"ray-dashboard-{module_name}-{incarnation} ({current_proctitle})"
     )
     logging_filename = module_logging_filename(module_name, config.logging_filename)

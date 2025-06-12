@@ -178,8 +178,8 @@ int main(int argc, char *argv[]) {
 
 #ifdef __linux__
   // Reset LD_PRELOAD if it's loaded with ray jemalloc
-  auto ray_ld_preload = std::getenv("RAY_LD_PRELOAD");
-  if (ray_ld_preload != nullptr && std::string(ray_ld_preload) == "1") {
+  auto ray_ld_preload = std::getenv("RAY_LD_PRELOAD_ON_WORKERS");
+  if (ray_ld_preload != nullptr && std::string(ray_ld_preload) == "0") {
     unsetenv("LD_PRELOAD");
   }
 #endif
@@ -237,7 +237,8 @@ int main(int argc, char *argv[]) {
 
   SetThreadName("raylet");
   // IO Service for node manager.
-  instrumented_io_context main_service;
+  instrumented_io_context main_service{/*enable_lag_probe=*/false,
+                                       /*running_on_single_thread=*/true};
 
   // Ensure that the IO service keeps running. Without this, the service will exit as soon
   // as there is no more work to be processed.

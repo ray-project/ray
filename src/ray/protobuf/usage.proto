@@ -98,6 +98,8 @@ enum TagKey {
   SERVE_NUM_NODE_COMPACTIONS = 30;
   // Whether the num_replicas="auto" API was used ("1" if used)
   SERVE_AUTO_NUM_REPLICAS_USED = 31;
+  // Whether custom request router was used ("1" if used)
+  SERVE_CUSTOM_REQUEST_ROUTER_USED = 32;
 
   // Ray Core State API
   // NOTE(rickyxx): Currently only setting "1" for tracking existence of

@@ -1,6 +1,6 @@
 import os
 
-from ray._private.ray_constants import env_bool, env_integer, env_float
+from ray._private.ray_constants import env_bool, env_float, env_integer
 
 DASHBOARD_LOG_FILENAME = "dashboard.log"
 DASHBOARD_AGENT_ADDR_NODE_ID_PREFIX = "DASHBOARD_AGENT_ADDR_NODE_ID_PREFIX:"

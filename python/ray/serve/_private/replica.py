@@ -57,11 +57,15 @@ from ray.serve._private.constants import (
     RAY_SERVE_RUN_SYNC_IN_THREADPOOL_WARNING,
     RECONFIGURE_METHOD,
     REQUEST_LATENCY_BUCKETS_MS,
+    REQUEST_ROUTING_STATS_METHOD,
     SERVE_CONTROLLER_NAME,
     SERVE_LOGGER_NAME,
     SERVE_NAMESPACE,
 )
-from ray.serve._private.default_impl import create_replica_impl
+from ray.serve._private.default_impl import (
+    create_replica_impl,
+    create_replica_metrics_manager,
+)
 from ray.serve._private.http_util import (
     ASGIAppReplicaWrapper,
     ASGIArgs,
@@ -134,11 +138,13 @@ class ReplicaMetricsManager:
         replica_id: ReplicaID,
         event_loop: asyncio.BaseEventLoop,
         autoscaling_config: Optional[AutoscalingConfig],
+        ingress: bool,
     ):
         self._replica_id = replica_id
         self._metrics_pusher = MetricsPusher()
         self._metrics_store = InMemoryMetricsStore()
         self._autoscaling_config = autoscaling_config
+        self._ingress = ingress
         self._controller_handle = ray.get_actor(
             SERVE_CONTROLLER_NAME, namespace=SERVE_NAMESPACE
         )
@@ -239,15 +245,18 @@ class ReplicaMetricsManager:
 
         await self._metrics_pusher.graceful_shutdown()
 
+    def should_collect_metrics(self) -> bool:
+        return (
+            not RAY_SERVE_COLLECT_AUTOSCALING_METRICS_ON_HANDLE
+            and self._autoscaling_config
+        )
+
     def set_autoscaling_config(self, autoscaling_config: Optional[AutoscalingConfig]):
         """Dynamically update autoscaling config."""
 
         self._autoscaling_config = autoscaling_config
 
-        if (
-            not RAY_SERVE_COLLECT_AUTOSCALING_METRICS_ON_HANDLE
-            and self._autoscaling_config
-        ):
+        if self.should_collect_metrics():
             self._metrics_pusher.start()
 
             # Push autoscaling metrics to the controller periodically.
@@ -326,11 +335,13 @@ class ReplicaBase(ABC):
         init_kwargs: Dict,
         deployment_config: DeploymentConfig,
         version: DeploymentVersion,
+        ingress: bool,
     ):
         self._version = version
         self._replica_id = replica_id
         self._deployment_id = replica_id.deployment_id
         self._deployment_config = deployment_config
+        self._ingress = ingress
         self._component_name = f"{self._deployment_id.name}"
         if self._deployment_id.app_name:
             self._component_name = (
@@ -369,10 +380,11 @@ class ReplicaBase(ABC):
         # servable_object will be populated in `initialize_and_get_metadata`.
         self._set_internal_replica_context(servable_object=None)
 
-        self._metrics_manager = ReplicaMetricsManager(
-            replica_id,
-            self._event_loop,
-            self._deployment_config.autoscaling_config,
+        self._metrics_manager = create_replica_metrics_manager(
+            replica_id=replica_id,
+            event_loop=self._event_loop,
+            autoscaling_config=self._deployment_config.autoscaling_config,
+            ingress=ingress,
         )
 
         self._port: Optional[int] = None
@@ -853,6 +865,17 @@ class ReplicaBase(ABC):
             self._healthy = False
             raise e from None
 
+    async def record_routing_stats(self) -> Dict[str, Any]:
+        try:
+            f = self._user_callable_wrapper.call_user_record_routing_stats()
+            if f is not None:
+                routing_stats = await asyncio.wrap_future(f)
+                return routing_stats
+            return {}
+        except Exception as e:
+            logger.warning("Replica record routing stats failed.")
+            raise e from None
+
 
 class Replica(ReplicaBase):
     async def _on_initialized(self):
@@ -929,6 +952,7 @@ class ReplicaActor:
         serialized_init_kwargs: bytes,
         deployment_config_proto_bytes: bytes,
         version: DeploymentVersion,
+        ingress: bool,
     ):
         deployment_config = DeploymentConfig.from_proto_bytes(
             deployment_config_proto_bytes
@@ -944,6 +968,7 @@ class ReplicaActor:
             init_kwargs=cloudpickle.loads(serialized_init_kwargs),
             deployment_config=deployment_config,
             version=version,
+            ingress=ingress,
         )
 
     def push_proxy_handle(self, handle: ActorHandle):
@@ -999,6 +1024,9 @@ class ReplicaActor:
 
     async def check_health(self):
         await self._replica_impl.check_health()
+
+    async def record_routing_stats(self) -> Dict[str, Any]:
+        return await self._replica_impl.record_routing_stats()
 
     async def reconfigure(
         self, deployment_config
@@ -1423,6 +1451,9 @@ class UserCallableWrapper:
                 await self._initialize_asgi_callable()
 
         self._user_health_check = getattr(self._callable, HEALTH_CHECK_METHOD, None)
+        self._user_record_routing_stats = getattr(
+            self._callable, REQUEST_ROUTING_STATS_METHOD, None
+        )
 
         logger.info(
             "Finished initializing replica.",
@@ -1454,9 +1485,22 @@ class UserCallableWrapper:
 
         return None
 
+    def call_user_record_routing_stats(self) -> Optional[concurrent.futures.Future]:
+        self._raise_if_not_initialized("call_user_record_routing_stats")
+
+        if self._user_record_routing_stats is not None:
+            return self._call_user_record_routing_stats()
+
+        return None
+
     @_run_on_user_code_event_loop
     async def _call_user_health_check(self):
         await self._call_func_or_gen(self._user_health_check)
+
+    @_run_on_user_code_event_loop
+    async def _call_user_record_routing_stats(self) -> Dict[str, Any]:
+        result, _ = await self._call_func_or_gen(self._user_record_routing_stats)
+        return result
 
     @_run_on_user_code_event_loop
     async def call_reconfigure(self, user_config: Any):

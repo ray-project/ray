@@ -51,7 +51,7 @@ class PowerOfTwoChoicesRequestRouter(
 
     async def choose_replicas(
         self,
-        replicas_ranks: List[List[RunningReplica]],
+        candidate_replicas: List[RunningReplica],
         pending_request: Optional[PendingRequest] = None,
     ) -> List[List[RunningReplica]]:
         """One iteration of the power of two choices procedure that chooses
@@ -84,6 +84,6 @@ class PowerOfTwoChoicesRequestRouter(
             k=min(2, len(candidate_replica_ids)),
         )
         replica_id_to_replica_map = {
-            replica.replica_id: replica for replica in replicas_ranks[0]
+            replica.replica_id: replica for replica in candidate_replicas
         }
         return [[replica_id_to_replica_map[chosen_id] for chosen_id in chosen_ids]]

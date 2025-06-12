@@ -1,7 +1,7 @@
-from .base import ProcessorConfig, ProcessorBuilder, Processor
+from .base import Processor, ProcessorBuilder, ProcessorConfig
 from .http_request_proc import HttpRequestProcessorConfig
-from .vllm_engine_proc import vLLMEngineProcessorConfig
 from .sglang_engine_proc import SGLangEngineProcessorConfig
+from .vllm_engine_proc import vLLMEngineProcessorConfig
 
 __all__ = [
     "ProcessorConfig",

@@ -13,7 +13,7 @@ from ray.util.state import (
     summarize_actors,
     summarize_objects,
 )
-from ray._private.test_utils import wait_for_condition
+from ray._common.test_utils import wait_for_condition
 from ray._raylet import ActorID, TaskID, ObjectID
 
 from ray.core.generated.common_pb2 import TaskStatus, TaskType, WorkerType

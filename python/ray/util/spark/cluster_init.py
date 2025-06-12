@@ -19,7 +19,7 @@ import ray
 import ray._private.services
 from ray.autoscaler._private.spark.node_provider import HEAD_NODE_ID
 from ray.util.annotations import DeveloperAPI, PublicAPI
-from ray._private.utils import load_class
+from ray._common.utils import load_class
 
 from .utils import (
     exec_cmd,

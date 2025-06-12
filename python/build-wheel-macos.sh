@@ -20,7 +20,7 @@ if [[ -n "${SKIP_DEP_RES}" ]]; then
   if [ "$(uname -m)" = "arm64" ]; then
     curl -o- https://github.com/conda-forge/miniforge/releases/latest/download/Miniforge3-MacOSX-arm64.sh | bash
   else
-    curl -o- https://repo.anaconda.com/miniconda/Miniconda3-latest-MacOSX-x86_64.sh | bash
+    curl -sSL -o- https://github.com/conda-forge/miniforge/releases/latest/download/Miniforge3-MacOSX-x86_64.sh | bash
   fi
 
   conda init bash

@@ -114,10 +114,13 @@ ray_cc_library(
 )
 
 ray_cc_library(
-    name = "object_manager_grpc_stub_manager",
-    hdrs = ["grpc_stub_manager.h"],
+    name = "object_manager_grpc_client_manager",
+    hdrs = ["grpc_client_manager.h"],
     deps = [
         "//:grpc_client",
+        "//:rpc_client_call",
+        "//src/ray/common:ray_config",
+        "@com_google_absl//absl/synchronization",
         "@com_github_grpc_grpc//:grpc++",
     ],
 )

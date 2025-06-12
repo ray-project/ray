@@ -1,12 +1,13 @@
 import sys
+
 import pytest
 from vllm.config import KVTransferConfig
 
-from ray.llm._internal.serve.deployments.llm.vllm.vllm_engine import (
-    VLLMEngine,
-)
 from ray.llm._internal.serve.configs.server_models import (
     LLMConfig,
+)
+from ray.llm._internal.serve.deployments.llm.vllm.vllm_engine import (
+    VLLMEngine,
 )
 
 

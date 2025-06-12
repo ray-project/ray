@@ -757,7 +757,7 @@ Status NormalTaskSubmitter::CancelTask(TaskSpecification task_spec,
 
   RAY_CHECK(client != nullptr);
   auto request = rpc::CancelTaskRequest();
-  request.set_intended_task_id(task_spec.TaskId().Binary());
+  request.set_intended_task_id(task_spec.TaskIdBinary());
   request.set_force_kill(force_kill);
   request.set_recursive(recursive);
   request.set_caller_worker_id(task_spec.CallerWorkerId().Binary());

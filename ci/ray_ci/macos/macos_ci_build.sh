@@ -45,11 +45,11 @@ build_x86_64() {
   # We don't want to push on PRs, in fact, the copy_files will fail because unauthenticated.
   if [[ "$BUILDKITE_PULL_REQUEST" != "false" ]]; then exit 0; fi
   # Upload to branch directory.
-  bazel run .buildkite:copy_files -- --destination branch_wheels --path ./.whl
-  bazel run .buildkite:copy_files -- --destination branch_jars --path ./.jar/darwin
+  bazel run .buildkite:copy_files -- --destination branch_wheels --path "${PWD}/.whl"
+  bazel run .buildkite:copy_files -- --destination branch_jars --path "${PWD}/.jar/darwin"
   # Upload to latest directory.
-  if [[ "$BUILDKITE_BRANCH" = "master" ]]; then bazel run .buildkite:copy_files -- --destination wheels --path ./.whl; fi
-  if [[ "$BUILDKITE_BRANCH" = "master" ]]; then bazel run .buildkite:copy_files -- --destination jars --path ./.jar/darwin; fi
+  if [[ "$BUILDKITE_BRANCH" = "master" ]]; then bazel run .buildkite:copy_files -- --destination wheels --path "${PWD}/.whl" ; fi
+  if [[ "$BUILDKITE_BRANCH" = "master" ]]; then bazel run .buildkite:copy_files -- --destination jars --path "${PWD}/.jar/darwin" ; fi
 }
 
 build_aarch64() {
@@ -85,11 +85,11 @@ build_aarch64() {
   # We don't want to push on PRs, in fact, the copy_files will fail because unauthenticated.
   if [[ "$BUILDKITE_PULL_REQUEST" != "false" ]]; then exit 0; fi
   # Upload to branch directory.
-  bazel run .buildkite:copy_files -- --destination branch_wheels --path ./.whl
-  bazel run .buildkite:copy_files -- --destination branch_jars --path ./.jar/darwin
+  bazel run .buildkite:copy_files -- --destination branch_wheels --path "${PWD}/.whl"
+  bazel run .buildkite:copy_files -- --destination branch_jars --path "${PWD}/.jar/darwin"
   # Upload to latest directory.
-  if [[ "$BUILDKITE_BRANCH" = "master" ]]; then bazel run .buildkite:copy_files -- --destination wheels --path ./.whl; fi
-  if [[ "$BUILDKITE_BRANCH" = "master" ]]; then bazel run .buildkite:copy_files -- --destination jars --path ./.jar/darwin; fi
+  if [[ "$BUILDKITE_BRANCH" = "master" ]]; then bazel run .buildkite:copy_files -- --destination wheels --path "${PWD}/.whl" ; fi
+  if [[ "$BUILDKITE_BRANCH" = "master" ]]; then bazel run .buildkite:copy_files -- --destination jars --path "${PWD}/.jar/darwin" ; fi
 }
 
 "$@"

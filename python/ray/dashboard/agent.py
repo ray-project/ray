@@ -10,10 +10,10 @@ import ray._private.ray_constants as ray_constants
 import ray.dashboard.consts as dashboard_consts
 import ray.dashboard.utils as dashboard_utils
 from ray._common.utils import get_or_create_event_loop
+from ray._private import logging_utils
 from ray._private.process_watcher import create_check_raylet_task
 from ray._private.ray_constants import AGENT_GRPC_MAX_MESSAGE_LENGTH
 from ray._private.ray_logging import setup_component_logger
-from ray._private import logging_utils
 from ray._raylet import GcsClient
 
 logger = logging.getLogger(__name__)
@@ -77,9 +77,10 @@ class DashboardAgent:
             self._init_non_minimal()
 
     def _init_non_minimal(self):
-        from ray.dashboard.http_server_agent import HttpServerAgent
         from grpc import aio as aiogrpc
+
         from ray._private.tls_utils import add_port_to_grpc_server
+        from ray.dashboard.http_server_agent import HttpServerAgent
 
         # We would want to suppress deprecating warnings from aiogrpc library
         # with the usage of asyncio.get_event_loop() in python version >=3.10

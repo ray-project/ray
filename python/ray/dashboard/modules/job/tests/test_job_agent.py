@@ -9,6 +9,7 @@ from pathlib import Path
 
 import pytest
 import pytest_asyncio
+from ray._common.test_utils import async_wait_for_condition, wait_for_condition
 import requests
 import yaml
 
@@ -18,12 +19,10 @@ from ray._private.ray_constants import DEFAULT_DASHBOARD_AGENT_LISTEN_PORT
 from ray._private.runtime_env.py_modules import upload_py_modules_if_needed
 from ray._private.runtime_env.working_dir import upload_working_dir_if_needed
 from ray._private.test_utils import (
-    async_wait_for_condition,
     chdir,
     format_web_url,
     get_current_unused_port,
     run_string_as_driver_nonblocking,
-    wait_for_condition,
     wait_until_server_available,
 )
 from ray.dashboard.modules.job.common import (
@@ -566,7 +565,7 @@ def test_agent_logs_not_streamed_to_drivers():
 import ray
 from ray.job_submission import JobSubmissionClient, JobStatus
 from ray._private.test_utils import format_web_url
-from ray._private.test_utils import wait_for_condition
+from ray._common.test_utils import wait_for_condition
 
 ray.init()
 address = ray._private.worker._global_node.webui_url

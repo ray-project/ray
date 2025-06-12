@@ -1,20 +1,19 @@
 import asyncio
-from unittest.mock import AsyncMock, Mock, patch
 import sys
+from unittest.mock import AsyncMock, Mock, patch
 
 import pytest
 
-
-from ray.llm._internal.serve.deployments.llm.multiplex.lora_model_loader import (
-    LoraModelLoader,
-)
+from ray.llm._internal.common.utils.cloud_utils import LoraMirrorConfig
 from ray.llm._internal.serve.configs.server_models import (
     LLMConfig,
     LLMEngine,
     LoraConfig,
     ModelLoadingConfig,
 )
-from ray.llm._internal.common.utils.cloud_utils import LoraMirrorConfig
+from ray.llm._internal.serve.deployments.llm.multiplex.lora_model_loader import (
+    LoraModelLoader,
+)
 
 
 class TestLoRAModelLoader:

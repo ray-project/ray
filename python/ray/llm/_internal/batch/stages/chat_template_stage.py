@@ -1,14 +1,14 @@
 """Apply chat template stage"""
 
-from typing import Any, Dict, AsyncIterator, List, Optional, Type
+from typing import Any, AsyncIterator, Dict, List, Optional, Type
 
 from ray.llm._internal.batch.stages.base import (
     StatefulStage,
     StatefulStageUDF,
 )
 from ray.llm._internal.common.utils.download_utils import (
-    download_model_files,
     NodeModelDownloadable,
+    download_model_files,
 )
 
 

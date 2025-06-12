@@ -1,10 +1,11 @@
 """Metadata exporter API for Ray Data datasets."""
 
+import json
 import logging
 import os
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, Any, Dict, List, Optional
+from typing import TYPE_CHECKING, Any, Dict, List, Mapping, Optional, Sequence
 
 import ray
 from ray._private.event.export_event_logger import (
@@ -12,11 +13,15 @@ from ray._private.event.export_event_logger import (
     check_export_api_enabled,
     get_export_event_logger,
 )
+from ray.data.context import DataContext
 
 if TYPE_CHECKING:
+    from ray.data import DataContext
     from ray.data._internal.execution.interfaces.physical_operator import (
         PhysicalOperator,
     )
+
+logger = logging.getLogger(__name__)
 
 UNKNOWN = "unknown"
 
@@ -49,6 +54,8 @@ class Operator:
             and remains consistent throughout its lifetime.
         input_dependencies: List of operator IDs that this operator depends on for input.
         sub_stages: List of sub-stages contained within this operator.
+        args: User-specified arguments associated with the operator, which may
+            include configuration settings, options, or other relevant data for the operator.
     """
 
     name: str
@@ -56,6 +63,7 @@ class Operator:
     uuid: str
     input_dependencies: List[str] = field(default_factory=list)
     sub_stages: List[SubStage] = field(default_factory=list)
+    args: Dict[str, Any] = field(default_factory=dict)
 
 
 @dataclass
@@ -95,6 +103,7 @@ class Topology:
                 input_dependencies=[
                     op_to_id[dep] for dep in op.input_dependencies if dep in op_to_id
                 ],
+                args=sanitize_for_struct(op._get_logical_args()),
             )
 
             # Add sub-stages if they exist
@@ -104,7 +113,6 @@ class Topology:
                     operator.sub_stages.append(SubStage(name=sub_name, id=sub_stage_id))
 
             result.operators.append(operator)
-
         return result
 
 
@@ -120,12 +128,32 @@ class DatasetMetadata:
         topology: The structure of the dataset's operator DAG.
         dataset_id: The unique ID of the dataset.
         start_time: The timestamp when the dataset execution started.
+        data_context: The DataContext attached to the dataset.
     """
 
     job_id: str
     topology: Topology
     dataset_id: str
     start_time: float
+    data_context: DataContext
+
+
+def sanitize_for_struct(obj):
+    if isinstance(obj, Mapping):
+        return {k: sanitize_for_struct(v) for k, v in obj.items()}
+    elif isinstance(obj, (str, int, float, bool)) or obj is None:
+        return obj
+    elif isinstance(obj, Sequence):
+        return [sanitize_for_struct(v) for v in obj]
+    else:
+        # Convert unhandled types to string
+        try:
+            return json.dumps(obj)
+        except (TypeError, OverflowError):
+            try:
+                return str(obj)
+            except Exception:
+                return UNKNOWN
 
 
 def dataset_metadata_to_proto(dataset_metadata: DatasetMetadata) -> Any:
@@ -138,6 +166,10 @@ def dataset_metadata_to_proto(dataset_metadata: DatasetMetadata) -> Any:
     Returns:
         The protobuf message representing the dataset metadata.
     """
+    from dataclasses import asdict
+
+    from google.protobuf.struct_pb2 import Struct
+
     from ray.core.generated.export_dataset_metadata_pb2 import (
         ExportDatasetMetadata as ProtoDatasetMetadata,
         Operator as ProtoOperator,
@@ -151,10 +183,13 @@ def dataset_metadata_to_proto(dataset_metadata: DatasetMetadata) -> Any:
 
     # Add operators to the DAG
     for op in dataset_metadata.topology.operators:
+        args = Struct()
+        args.update(op.args)
         proto_operator = ProtoOperator(
             name=op.name,
             id=op.id,
             uuid=op.uuid,
+            args=args,
         )
 
         # Add input dependencies
@@ -173,10 +208,13 @@ def dataset_metadata_to_proto(dataset_metadata: DatasetMetadata) -> Any:
         proto_topology.operators.append(proto_operator)
 
     # Populate the data metadata proto
+    data_context = Struct()
+    data_context.update(sanitize_for_struct(asdict(dataset_metadata.data_context)))
     proto_dataset_metadata = ProtoDatasetMetadata(
         dataset_id=dataset_metadata.dataset_id,
         job_id=dataset_metadata.job_id,
         start_time=dataset_metadata.start_time,
+        data_context=data_context,
     )
     proto_dataset_metadata.topology.CopyFrom(proto_topology)
 

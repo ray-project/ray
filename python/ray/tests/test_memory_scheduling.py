@@ -5,7 +5,7 @@ import pytest
 import numpy as np
 
 import ray
-from ray._private.test_utils import wait_for_condition
+from ray._common.test_utils import wait_for_condition
 
 MB = 1024 * 1024
 

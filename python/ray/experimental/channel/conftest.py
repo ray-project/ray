@@ -8,6 +8,7 @@ import torch
 import ray
 import ray.dag
 import ray.experimental.channel as ray_channel
+from ray.experimental.channel import nccl_group
 from ray.experimental.channel.communicator import TorchTensorAllocator
 from ray.experimental.util.types import Device
 
@@ -66,8 +67,11 @@ class MockCudaStream:
     def __init__(self):
         self.cuda_stream = 0
 
+    def synchronize(self):
+        pass
 
-class MockNcclGroup(ray_channel.nccl_group._NcclGroup):
+
+class MockNcclGroup(nccl_group._NcclGroup):
     """
     Mock the internal _NcclGroup to use a barrier actor instead of a NCCL group
     for communication.
@@ -133,7 +137,7 @@ def start_nccl_mock():
     cp_patcher.start()
 
     # Mock send/recv ops to use an actor instead of NCCL.
-    ray.experimental.channel.torch_tensor_nccl_channel._NcclGroup = MockNcclGroup
+    ray.experimental.channel.nccl_group._NcclGroup = MockNcclGroup
 
     # PyTorch mocks.
     stream_patcher = mock.patch(

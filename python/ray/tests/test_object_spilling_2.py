@@ -9,11 +9,11 @@ import numpy as np
 import pytest
 
 import ray
-from ray._private.test_utils import run_string_as_driver, wait_for_condition
+from ray._common.test_utils import wait_for_condition
+from ray._private.test_utils import run_string_as_driver
 from ray.tests.test_object_spilling import assert_no_thrashing, is_dir_empty
 from ray._private.external_storage import (
     FileSystemStorage,
-    ExternalStorageRayStorageImpl,
 )
 
 
@@ -165,7 +165,7 @@ def test_delete_objects_on_worker_failure(object_spilling_config, shutdown_only)
 
 @pytest.mark.skipif(platform.system() in ["Windows"], reason="Failing on Windows.")
 def test_delete_file_non_exists(shutdown_only, tmp_path):
-    ray_context = ray.init(storage=str(tmp_path))
+    ray_context = ray.init()
 
     def create_spilled_files(num_files):
         spilled_files = []
@@ -179,7 +179,6 @@ def test_delete_file_non_exists(shutdown_only, tmp_path):
         return spilled_files, uris
 
     for storage in [
-        ExternalStorageRayStorageImpl(ray_context["node_id"], "session"),
         FileSystemStorage(ray_context["node_id"], "/tmp"),
     ]:
         spilled_files, uris = create_spilled_files(3)

@@ -12,6 +12,7 @@ from filelock import FileLock
 import pytest
 
 import ray
+from ray._common.test_utils import wait_for_condition
 from ray.autoscaler.v2.sdk import get_cluster_status
 from ray.util.placement_group import placement_group
 from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
@@ -21,7 +22,6 @@ from ray._private.test_utils import (
     convert_actor_state,
     external_redis_test_enabled,
     generate_system_config_map,
-    wait_for_condition,
     wait_for_pid_to_exit,
     run_string_as_driver,
     redis_sentinel_replicas,

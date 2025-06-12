@@ -2,8 +2,8 @@ import os
 import pytest
 import sys
 import platform
+from ray._common.test_utils import wait_for_condition
 from ray._private.test_utils import (
-    wait_for_condition,
     chdir,
     check_local_files_gced,
     generate_runtime_env_dict,
@@ -335,6 +335,10 @@ def test_working_dir_applies_for_pip_creation_files(start_cluster, tmp_working_d
     assert ray.get(test_import.remote()) == "pip_install_test"
 
 
+@pytest.mark.skipif(
+    os.environ.get("CI") and sys.platform != "linux",
+    reason="Requires PR wheels built in CI, so only run on linux CI machines.",
+)
 def test_working_dir_applies_for_conda_creation(start_cluster, tmp_working_dir):
     cluster, address = start_cluster
 

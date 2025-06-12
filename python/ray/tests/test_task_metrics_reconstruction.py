@@ -6,7 +6,7 @@ import pytest
 import ray
 
 from ray.tests.test_task_metrics import tasks_by_all, METRIC_CONFIG
-from ray._private.test_utils import (
+from ray._common.test_utils import (
     wait_for_condition,
 )
 

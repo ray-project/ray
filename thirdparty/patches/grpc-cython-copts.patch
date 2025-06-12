@@ -20,7 +20,7 @@ diff --git bazel/cython_library.bzl bazel/cython_library.bzl
          name: Name for the rule.
          deps: C/C++ dependencies of the Cython (e.g. Numpy headers).
 +        cc_kwargs: cc_binary extra arguments such as copts, linkstatic, linkopts, features
-@@ -57,7 +59,8 @@ def pyx_library(name, deps = [], py_deps = [], srcs = [], **kwargs):
+@@ -57,7 +59,9 @@ def pyx_library(name, deps = [], py_deps = [], srcs = [], **kwargs):
 -        shared_object_name = stem + ".so"
 +        shared_object_name = stem + ".so"
          native.cc_binary(
@@ -32,6 +32,7 @@ diff --git bazel/cython_library.bzl bazel/cython_library.bzl
 +            deps = deps + ["@local_config_python//:python_headers"] + cc_kwargs.pop("deps", []),
 -            defines = defines,
 +            defines = defines,
++            features = cc_kwargs.pop("features", []),
 -            linkshared = 1,
 +            linkshared = cc_kwargs.pop("linkshared", 1),
 +            **cc_kwargs

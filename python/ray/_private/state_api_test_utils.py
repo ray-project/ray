@@ -14,7 +14,7 @@ from typing import Callable, Dict, List, Optional, Tuple, Union
 import numpy as np
 
 import ray
-import ray._private.test_utils as test_utils
+import ray._common.test_utils as test_utils
 from ray._private.gcs_utils import GcsChannel
 from ray._raylet import GcsClient
 from ray.actor import ActorHandle

@@ -1,5 +1,5 @@
 import ray
-from ray._private import test_utils
+from ray._common import test_utils
 
 
 def main():

@@ -8,7 +8,7 @@ from time import perf_counter
 import ray
 
 from ray.util.placement_group import placement_group, remove_placement_group
-from ray._private.test_utils import wait_for_condition
+from ray._common.test_utils import wait_for_condition
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)

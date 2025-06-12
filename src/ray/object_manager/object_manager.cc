@@ -63,6 +63,7 @@ ObjectManager::ObjectManager(
     instrumented_io_context &main_service,
     const NodeID &self_node_id,
     const ObjectManagerConfig &config,
+    std::shared_ptr<gcs::GcsClient> gcs_client,
     IObjectDirectory *object_directory,
     RestoreSpilledObjectCallback restore_spilled_object,
     std::function<std::string(const ObjectID &)> get_spilled_object_url,
@@ -75,6 +76,7 @@ ObjectManager::ObjectManager(
     : main_service_(&main_service),
       self_node_id_(self_node_id),
       config_(config),
+      gcs_client_(std::move(gcs_client)),
       object_directory_(object_directory),
       object_store_internal_(std::make_unique<ObjectStoreRunner>(
           config,
@@ -506,11 +508,8 @@ void ObjectManager::PushObjectInternal(const ObjectID &object_id,
                   [=](const Status &status) {
                     // Post back to the main event loop because the
                     // PushManager is not thread-safe.
-                    main_service_->post(
-                        [this, node_id, object_id]() {
-                          push_manager_->OnChunkComplete(node_id, object_id);
-                        },
-                        "ObjectManager.Push");
+                    main_service_->post([this]() { push_manager_->OnChunkComplete(); },
+                                        "ObjectManager.Push");
                   },
                   chunk_reader,
                   from_disk);
@@ -674,16 +673,19 @@ void ObjectManager::FreeObjects(const std::vector<ObjectID> &object_ids,
                                 bool local_only) {
   buffer_pool_.FreeObjects(object_ids);
   if (!local_only) {
-    const auto remote_connections = object_directory_->LookupAllRemoteConnections();
     std::vector<std::shared_ptr<rpc::ObjectManagerClient>> rpc_clients;
-    for (const auto &connection_info : remote_connections) {
-      auto rpc_client = GetRpcClient(connection_info.node_id);
+    const auto &node_info_map = gcs_client_->Nodes().GetAll();
+    for (const auto &[node_id, node_info] : node_info_map) {
+      if (node_id == self_node_id_) {
+        continue;
+      }
+      auto rpc_client = GetRpcClient(node_id);
       if (rpc_client != nullptr) {
-        rpc_clients.push_back(rpc_client);
+        rpc_clients.push_back(std::move(rpc_client));
       }
     }
     rpc_service_.post(
-        [this, object_ids, rpc_clients]() {
+        [this, object_ids, rpc_clients = std::move(rpc_clients)]() {
           SpreadFreeObjectsRequest(object_ids, rpc_clients);
         },
         "ObjectManager.FreeObjects");
@@ -714,23 +716,30 @@ void ObjectManager::SpreadFreeObjectsRequest(
 std::shared_ptr<rpc::ObjectManagerClient> ObjectManager::GetRpcClient(
     const NodeID &node_id) {
   auto it = remote_object_manager_clients_.find(node_id);
-  if (it == remote_object_manager_clients_.end()) {
-    RemoteConnectionInfo connection_info(node_id);
-    object_directory_->LookupRemoteConnectionInfo(connection_info);
-    if (!connection_info.Connected()) {
-      return nullptr;
-    }
-    auto object_manager_client = std::make_shared<rpc::ObjectManagerClient>(
-        connection_info.ip, connection_info.port, client_call_manager_);
-
-    RAY_LOG(DEBUG) << "Get rpc client, address: " << connection_info.ip
-                   << ", port: " << connection_info.port
-                   << ", local port: " << GetServerPort();
-
-    it = remote_object_manager_clients_.emplace(node_id, std::move(object_manager_client))
-             .first;
+  if (it != remote_object_manager_clients_.end()) {
+    return it->second;
   }
+  auto *node_info = gcs_client_->Nodes().Get(node_id, /*filter_dead_nodes=*/true);
+  if (node_info == nullptr) {
+    return nullptr;
+  }
+  auto object_manager_client =
+      std::make_shared<rpc::ObjectManagerClient>(node_info->node_manager_address(),
+                                                 node_info->object_manager_port(),
+                                                 client_call_manager_);
+
+  RAY_LOG(DEBUG) << "Get rpc client, address: " << node_info->node_manager_address()
+                 << ", port: " << node_info->object_manager_port()
+                 << ", local port: " << GetServerPort();
+
+  it = remote_object_manager_clients_.emplace(node_id, std::move(object_manager_client))
+           .first;
   return it->second;
+}
+
+void ObjectManager::HandleNodeRemoved(const NodeID &node_id) {
+  push_manager_->HandleNodeRemoved(node_id);
+  remote_object_manager_clients_.erase(node_id);
 }
 
 std::string ObjectManager::DebugString() const {

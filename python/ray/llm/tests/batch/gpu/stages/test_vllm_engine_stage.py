@@ -1,18 +1,18 @@
 import asyncio
 import json
-import pytest
 import math
 import sys
-from unittest.mock import MagicMock, AsyncMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
+import pytest
 from pydantic import BaseModel
 
 from ray.llm._internal.batch.stages.vllm_engine_stage import (
     vLLMEngineStage,
     vLLMEngineStageUDF,
     vLLMEngineWrapper,
+    vLLMTaskType,
 )
-from ray.llm._internal.batch.stages.vllm_engine_stage import vLLMTaskType
 from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
 
 
@@ -162,7 +162,7 @@ async def test_vllm_engine_udf_basic(mock_vllm_wrapper, model_llama_3_2_216M):
 
 @pytest.mark.asyncio
 async def test_vllm_wrapper_semaphore(model_llama_3_2_216M):
-    from vllm.outputs import RequestOutput, CompletionOutput
+    from vllm.outputs import CompletionOutput, RequestOutput
 
     max_pending_requests = 2
 

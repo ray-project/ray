@@ -4,6 +4,7 @@ import time
 import pytest
 
 import ray
+from ray._common.test_utils import wait_for_condition
 import ray._private.gcs_utils as gcs_utils
 import ray.cluster_utils
 from ray._private.test_utils import (
@@ -13,7 +14,6 @@ from ray._private.test_utils import (
     kill_actor_and_wait_for_failure,
     placement_group_assert_no_leak,
     run_string_as_driver,
-    wait_for_condition,
 )
 from ray.util.placement_group import get_current_placement_group
 from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy

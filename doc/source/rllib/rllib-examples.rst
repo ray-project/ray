@@ -62,6 +62,12 @@ Actions
    Configures an RL module that generates actions in an autoregressive manner, where the second component of an action depends on
    the previously sampled first component of the same action.
 
+- `Custom action distribution class <https://github.com/ray-project/ray/blob/master/rllib/examples/actions/custom_action_distribution.py>`__:
+   Demonstrates how to write a custom action distribution class, taking an additional temperature parameter on top of a Categorical
+   distribution, and how to configure this class inside your :py:class:`~ray.rllib.core.rl_module.rl_module.RLModule` implementation.
+   Further explains how to define different such classes for the different forward methods of your :py:class:`~ray.rllib.core.rl_module.rl_module.RLModule`
+   in case you need more granularity.
+
 - `Nested Action Spaces <https://github.com/ray-project/ray/blob/master/rllib/examples/actions/nested_action_spaces.py>`__:
    Sets up an environment with nested action spaces using custom single- or multi-agent
    configurations. This example demonstrates how RLlib manages complex action structures,

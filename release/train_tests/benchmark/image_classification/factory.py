@@ -1,7 +1,7 @@
 # Standard library imports
 import logging
 import time
-from typing import Dict, Tuple, Iterator, Generator, Optional, Union, Type
+from typing import Dict, Tuple, Iterator, Generator, Optional, Union
 
 # Third-party imports
 import torch
@@ -9,7 +9,7 @@ import pyarrow
 import ray
 import ray.data
 import ray.train
-from ray.data.iterator import ArrowBatchCollateFn
+from ray.data.collate_fn import ArrowBatchCollateFn, CollateFn
 
 # Local imports
 from config import BenchmarkConfig
@@ -232,8 +232,8 @@ class ImageClassificationRayDataLoaderFactory(RayDataLoaderFactory):
     def __init__(self, benchmark_config: BenchmarkConfig):
         super().__init__(benchmark_config)
 
-    def _get_collate_fn_cls(self) -> Type[ArrowBatchCollateFn]:
-        return CustomArrowCollateFn
+    def _get_collate_fn(self) -> Optional[CollateFn]:
+        return CustomArrowCollateFn(device=ray.train.torch.get_device())
 
 
 class ImageClassificationMockDataLoaderFactory(BaseDataLoaderFactory):

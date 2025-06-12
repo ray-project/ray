@@ -12,6 +12,9 @@ spec:
   # Ray Autoscaler integration is Beta with KubeRay >= 0.3.0 and Ray >= 2.0.0.
   enableInTreeAutoscaling: true
   autoscalerOptions:
+    # Use version: v2 instead of env var RAY_enable_autoscaler_v2 and restartPolicy: Never below if
+    # you're using KubeRay >= 1.4.0.
+    # version: v2
     upscalingMode: Default
     idleTimeoutSeconds: 60
     imagePullPolicy: IfNotPresent

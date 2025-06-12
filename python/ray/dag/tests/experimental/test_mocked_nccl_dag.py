@@ -1,6 +1,8 @@
 # coding: utf-8
 import os
 import sys
+
+from ray._common.test_utils import wait_for_condition
 import torch
 
 import pytest
@@ -13,7 +15,6 @@ from ray.experimental.channel.conftest import (
     start_nccl_mock,
 )
 from ray.tests.conftest import *  # noqa
-from ray.tests.conftest import wait_for_condition
 from ray.dag import InputNode
 
 

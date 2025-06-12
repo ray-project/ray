@@ -14,8 +14,9 @@
 
 syntax = "proto3";
 
-option cc_enable_arenas = true;
+import "google/protobuf/struct.proto";
 
+option cc_enable_arenas = true;
 package ray.rpc;
 
 // Represents a sub-stage within an operator
@@ -47,6 +48,11 @@ message Operator {
 
   // List of sub-stages contained within this operator
   repeated SubStage sub_stages = 5;
+
+  // A dict mapping from PhysicalOp -> LogicalOp -> Input Args. The Input Args
+  // can be found in `_get_logical_args`, and is used to help understand how a
+  // user's arguments lead to a dataset's state execution
+  google.protobuf.Struct args = 6;
 }
 
 // Represents the complete structure of the operator DAG
@@ -68,4 +74,7 @@ message ExportDatasetMetadata {
 
   // The timestamp when execution started (in seconds since epoch)
   double start_time = 4;
+
+  // The data context attached to the dataset.
+  google.protobuf.Struct data_context = 5;
 }

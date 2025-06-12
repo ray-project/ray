@@ -1,8 +1,7 @@
-from abc import abstractmethod
-from typing import Any, Dict, Type
+from typing import Any, Dict, Optional
 
 import ray.train
-from ray.data.iterator import ArrowBatchCollateFn
+from ray.data.collate_fn import CollateFn
 
 from constants import DatasetKey
 from config import BenchmarkConfig, RayDataConfig
@@ -26,10 +25,9 @@ class RayDataLoaderFactory(BaseDataLoaderFactory):
         # due to throttling during read operations.
         data_context.retried_io_errors.append("AWS Error ACCESS_DENIED")
 
-    @abstractmethod
-    def _get_collate_fn_cls(self) -> Type[ArrowBatchCollateFn]:
-        """Return the collate function class. Must be implemented by subclass."""
-        pass
+    def _get_collate_fn(self) -> Optional[CollateFn]:
+        """Return the collate function for the dataloader."""
+        return None
 
     def get_train_dataloader(self):
         """Get the training dataloader.
@@ -49,9 +47,7 @@ class RayDataLoaderFactory(BaseDataLoaderFactory):
                     if dataloader_config.local_buffer_shuffle_size > 0
                     else None
                 ),
-                collate_fn=self._get_collate_fn_cls()(
-                    device=ray.train.torch.get_device()
-                ),
+                collate_fn=self._get_collate_fn(),
                 prefetch_batches=dataloader_config.ray_data_prefetch_batches,
                 drop_last=True,
             )
@@ -70,9 +66,7 @@ class RayDataLoaderFactory(BaseDataLoaderFactory):
         return iter(
             ds_iterator.iter_torch_batches(
                 batch_size=dataloader_config.validation_batch_size,
-                collate_fn=self._get_collate_fn_cls()(
-                    device=ray.train.torch.get_device()
-                ),
+                collate_fn=self._get_collate_fn(),
                 prefetch_batches=dataloader_config.ray_data_prefetch_batches,
                 drop_last=True,
             )

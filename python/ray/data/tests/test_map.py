@@ -15,8 +15,9 @@ import pyarrow.parquet as pq
 import pytest
 
 import ray
+from ray._common.test_utils import wait_for_condition
 from ray._private.arrow_utils import get_pyarrow_version
-from ray._private.test_utils import run_string_as_driver, wait_for_condition
+from ray._private.test_utils import run_string_as_driver
 from ray.data import Dataset
 from ray.data._internal.arrow_ops.transform_pyarrow import (
     MIN_PYARROW_VERSION_TYPE_PROMOTION,
@@ -111,6 +112,9 @@ def test_basic_actors(shutdown_only):
         assert len(actors) > 0
         return all(actor_info["State"] == "DEAD" for actor_info in actors.values())
 
+    import gc
+
+    gc.collect()
     wait_for_condition(_all_actors_dead)
 
 

@@ -6,7 +6,7 @@ import pytest
 
 import ray
 from ray import train, tune
-from ray._private.ray_constants import RESOURCE_CONSTRAINT_PREFIX
+from ray._common.utils import RESOURCE_CONSTRAINT_PREFIX
 from ray.cluster_utils import Cluster
 from ray.train import RunConfig, ScalingConfig
 from ray.train._internal.backend_executor import BackendExecutor

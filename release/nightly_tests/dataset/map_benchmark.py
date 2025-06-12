@@ -59,6 +59,16 @@ def parse_args() -> argparse.Namespace:
             "job run longer."
         ),
     )
+    parser.add_argument(
+        "--repeat-map-batches",
+        choices=["once", "repeat"],
+        default="once",
+        help=(
+            "Whether to repeat map_batches. If 'once', the map_batches will run once. "
+            "If 'repeat', the map_batches will run twice, with the second run using the "
+            "output of the first run as input."
+        ),
+    )
     return parser.parse_args()
 
 
@@ -70,6 +80,29 @@ def main(args: argparse.Namespace) -> None:
     path = f"s3://ray-benchmark-data/tpch/parquet/sf{args.sf}/lineitem"
     path = [path] * args.repeat_inputs
 
+    def apply_map_batches(ds, use_actors=False):
+        if not use_actors:
+            return ds.map_batches(
+                functools.partial(
+                    increment_batch,
+                    map_batches_sleep_ms=args.map_batches_sleep_ms,
+                ),
+                batch_format=args.batch_format,
+                batch_size=args.batch_size,
+            )
+        else:
+            # Simulate the use case where a model is passed to the
+            # actors as an object ref.
+            dummy_model = numpy.zeros(MODEL_SIZE, dtype=numpy.int8)
+            model_ref = ray.put(dummy_model)
+            return ds.map_batches(
+                IncrementBatch,
+                fn_constructor_args=[model_ref, args.map_batches_sleep_ms],
+                batch_format=args.batch_format,
+                batch_size=args.batch_size,
+                concurrency=(1, 1024),
+            )
+
     def benchmark_fn():
         # Load the dataset.
         ds = ray.data.read_parquet(path)
@@ -78,30 +111,10 @@ def main(args: argparse.Namespace) -> None:
         if args.api == "map":
             ds = ds.map(increment_row)
         elif args.api == "map_batches":
-            if not args.compute or args.compute == "tasks":
-                ds = ds.map_batches(
-                    functools.partial(
-                        increment_batch,
-                        map_batches_sleep_ms=args.map_batches_sleep_ms,
-                    ),
-                    batch_format=args.batch_format,
-                    batch_size=args.batch_size,
-                )
-            else:
-                assert args.compute == "actors"
-
-                # Simulate the use case where a model is passed to the
-                # actors as an object ref.
-                dummy_model = numpy.zeros(MODEL_SIZE, dtype=numpy.int8)
-                model_ref = ray.put(dummy_model)
-
-                ds = ds.map_batches(
-                    IncrementBatch,
-                    fn_constructor_args=[model_ref, args.map_batches_sleep_ms],
-                    batch_format=args.batch_format,
-                    batch_size=args.batch_size,
-                    concurrency=(1, 1024),
-                )
+            use_actors = args.compute == "actors"
+            ds = apply_map_batches(ds, use_actors)
+            if args.repeat_map_batches == "repeat":
+                ds = apply_map_batches(ds, use_actors)
         elif args.api == "flat_map":
             ds = ds.flat_map(flat_increment_row)
 

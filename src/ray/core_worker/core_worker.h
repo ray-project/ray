@@ -1411,7 +1411,8 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
       int64_t generator_backpressure_num_objects = -1,
       bool enable_task_events = true,
       const std::unordered_map<std::string, std::string> &labels = {},
-      const std::unordered_map<std::string, std::string> &label_selector = {});
+      const std::unordered_map<std::string, std::string> &label_selector = {},
+      const rpc::TensorTransport &tensor_transport = rpc::TensorTransport::OBJECT_STORE);
   void SetCurrentTaskId(const TaskID &task_id,
                         uint64_t attempt_number,
                         const std::string &task_name);
@@ -1744,7 +1745,8 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   bool initialized_ ABSL_GUARDED_BY(initialize_mutex_) = false;
 
   /// Event loop where the IO events are handled. e.g. async GCS operations.
-  instrumented_io_context io_service_;
+  instrumented_io_context io_service_{/*enable_lag_probe=*/false,
+                                      /*running_on_single_thread=*/true};
 
   /// Keeps the io_service_ alive.
   boost::asio::executor_work_guard<boost::asio::io_context::executor_type> io_work_;

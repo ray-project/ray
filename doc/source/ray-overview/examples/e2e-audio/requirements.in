@@ -1,0 +1,8 @@
+transformers
+torchaudio
+datasets[audio]
+accelerate
+huggingface_hub[hf_xet]
+xgrammar
+pydantic
+flashinfer-python==0.2.5

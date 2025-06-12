@@ -8,8 +8,6 @@ import aiohttp
 from aiohttp.web import Request, Response
 
 import ray.dashboard.optional_utils as optional_utils
-from ray.dashboard.subprocesses.routes import SubprocessRouteTable as routes
-from ray.dashboard.subprocesses.module import SubprocessModule
 from ray.dashboard.modules.metrics.metrics_head import (
     DEFAULT_PROMETHEUS_HEADERS,
     DEFAULT_PROMETHEUS_HOST,
@@ -18,6 +16,8 @@ from ray.dashboard.modules.metrics.metrics_head import (
     PrometheusQueryError,
     parse_prom_headers,
 )
+from ray.dashboard.subprocesses.module import SubprocessModule
+from ray.dashboard.subprocesses.routes import SubprocessRouteTable as routes
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)

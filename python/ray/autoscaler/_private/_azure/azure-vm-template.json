@@ -24,26 +24,37 @@
             "type": "string",
             "metadata": {
                 "description": "The publisher of the VM image"
-            }
+            },
+	    "defaultValue": ""
         },
         "imageOffer": {
             "type": "string",
             "metadata": {
                 "description": "The offer of the VM image"
-            }
+            },
+	    "defaultValue": ""
         },
         "imageSku": {
             "type": "string",
             "metadata": {
                 "description": "The sku of the VM image"
-            }
+            },
+	    "defaultValue": ""
         },
         "imageVersion": {
             "type": "string",
             "metadata": {
                 "description": "The version of the VM image"
-            }
+            },
+	    "defaultValue": ""
         },
+	"imageId": {
+	    "type": "string",
+	    "metadata": {
+		"description": "The resource id of the VM image. If provided, it will override the imagePublisher, imageOffer, imageSku and imageVersion parameters."
+	    },
+	    "defaultValue": ""
+	},
         "vmSize": {
             "type": "string",
             "metadata": {
@@ -62,6 +73,13 @@
                 "description": "Number of VMs to deploy"
             }
         },
+	"osDiskSize": {
+	    "type": "int",
+	    "defaultValue": 0,
+	    "metadata": {
+		"description": "Size of the OS disk in GB"
+	    }
+	},
         "provisionPublicIp": {
             "type": "bool",
             "defaultValue": true,
@@ -227,16 +245,12 @@
                 "storageProfile": {
                     "osDisk": {
                         "createOption": "fromImage",
+			"diskSizeGB": "[if(equals(parameters('osDiskSize'), 0), json('null'), parameters('osDiskSize'))]",
                         "managedDisk": {
                             "storageAccountType": "[variables('osDiskType')]"
                         }
                     },
-                    "imageReference": {
-                        "publisher": "[parameters('imagePublisher')]",
-                        "offer": "[parameters('imageOffer')]",
-                        "sku": "[parameters('imageSku')]",
-                        "version": "[parameters('imageVersion')]"
-                    }
+                    "imageReference": "[if(equals(parameters('imageId'), ''), json(concat('{\"publisher\":\"', parameters('imagePublisher'), '\",\"offer\":\"', parameters('imageOffer'), '\",\"sku\":\"', parameters('imageSku'), '\",\"version\":\"', parameters('imageVersion'), '\"}')), json(concat('{\"id\":\"', parameters('imageId'), '\"}')))]"
                 },
                 "networkProfile": {
                     "networkInterfaces": [

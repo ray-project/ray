@@ -61,7 +61,7 @@ class InstrumentedIOContextWithThread {
    */
   explicit InstrumentedIOContextWithThread(const std::string &thread_name,
                                            bool enable_lag_probe = false)
-      : io_service_(enable_lag_probe),
+      : io_service_(enable_lag_probe, /*running_on_single_thread=*/true),
         work_(io_service_.get_executor()),
         thread_name_(thread_name) {
     io_thread_ = std::thread([this] {
@@ -91,7 +91,8 @@ class InstrumentedIOContextWithThread {
   }
 
  private:
-  instrumented_io_context io_service_;
+  instrumented_io_context io_service_{/*enable_lag_probe=*/false,
+                                      /*running_on_single_thread=*/true};
   boost::asio::executor_work_guard<boost::asio::io_context::executor_type>
       work_;  // to keep io_service_ running
   std::thread io_thread_;

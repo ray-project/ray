@@ -17,7 +17,7 @@ import pytest
 
 
 import ray
-from ray._private.test_utils import SignalActor
+from ray._common.test_utils import SignalActor
 from ray.util.multiprocessing import Pool, TimeoutError, JoinableQueue
 
 

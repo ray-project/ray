@@ -2,8 +2,8 @@ import os
 import pytest
 import sys
 
+from ray._common.test_utils import wait_for_condition
 from ray._private.test_utils import (
-    wait_for_condition,
     check_local_files_gced,
     generate_runtime_env_dict,
 )
