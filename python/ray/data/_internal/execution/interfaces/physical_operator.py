@@ -19,7 +19,9 @@ from ray.data._internal.execution.interfaces.op_runtime_metrics import OpRuntime
 from ray.data._internal.logical.interfaces import LogicalOperator, Operator
 from ray.data._internal.output_buffer import OutputBlockSizeOption
 from ray.data._internal.stats import StatsDict, Timer
+from ray.data.block import Block, BlockMetadata
 from ray.data.context import DataContext
+from ray.types import ObjectRef
 
 logger = logging.getLogger(__name__)
 
@@ -112,7 +114,7 @@ class DataOpTask(OpTask):
         bytes_read = 0
         while max_bytes_to_read is None or bytes_read < max_bytes_to_read:
             try:
-                block_ref = self._streaming_gen._next_sync(0)
+                block_ref: ObjectRef[Block] = self._streaming_gen._next_sync(0)
                 if block_ref.is_nil():
                     # The generator currently doesn't have new output.
                     # And it's not stopped yet.
@@ -122,7 +124,7 @@ class DataOpTask(OpTask):
                 break
 
             try:
-                meta = ray.get(next(self._streaming_gen))
+                meta: BlockMetadata = ray.get(next(self._streaming_gen))
             except StopIteration:
                 # The generator should always yield 2 values (block and metadata)
                 # each time. If we get a StopIteration here, it means an error
