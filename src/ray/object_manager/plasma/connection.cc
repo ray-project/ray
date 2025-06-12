@@ -215,7 +215,7 @@ void StoreConn::ShutdownWorkerIfErrorStatus(const ray::Status &status) {
                      << "process. Status: " << status;
     ray::QuickExit();
     RAY_LOG(FATAL) << "Accessing unreachable code. This line should never be reached "
-                   << "after quick process exit due to plasma store connection failure.";
+                   << "after quick process exit due to plasma store connection failure. Please create a github issue at https://github.com/ray-project/ray.";
   }
 }
 }  // namespace plasma
