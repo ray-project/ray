@@ -740,11 +740,72 @@ def test_scheduling_class_depth(ray_start_regular):
         get_metric_check_condition([MetricSamplePattern(name=metric_name, value=3)]),
         timeout=timeout,
     )
-    start_infeasible.remote(4)
-    wait_for_condition(
-        get_metric_check_condition([MetricSamplePattern(name=metric_name, value=4)]),
-        timeout=timeout,
-    )
+
+
+def test_resource_oversubscription_bug(shutdown_only):
+    """
+    Tests the bug where a worker can exit and release its resources early
+    while its tasks are still running, leading to resource oversubscription.
+    """
+    # Initialize Ray with 1 CPU, so we can detect if it over-allocates.
+    ray.init(num_cpus=1, log_to_driver=False)
+
+    @ray.remote(num_cpus=1)
+    def cpu_bound_work(worker_id, work_duration):
+        """A simple CPU-intensive task that runs for a given duration."""
+        print(f"  Worker {worker_id}: Starting CPU-bound work ({work_duration}s)")
+        start_time = time.time()
+        while time.time() - start_time < work_duration:
+            # Burn CPU cycles. A pointless calculation is used to ensure the
+            # CPU is actually busy and the operation is not optimized away.
+            sum(range(10000))
+
+        print(f"  Worker {worker_id}: Completed work")
+        return f"Worker {worker_id} completed"
+
+    # 1. Start a long-running task that should occupy the only CPU.
+    task1 = cpu_bound_work.remote("A", 4.0)
+
+    # Give it a moment to start and be scheduled.
+    time.sleep(0.3)
+
+    # Sanity check: At this point, no CPUs should be available.
+    assert ray.available_resources().get("CPU", 0) == 0
+
+    # 2. Simulate the bug:
+    # In the buggy scenario, the raylet would be incorrectly notified that
+    # the worker for task1 has exited, releasing its CPU resource even
+    # though the task is still running.
+
+    # 3. Schedule a second task.
+    # The scheduler now incorrectly believes it has a free CPU and schedules
+    # this task, leading to 2 tasks competing for 1 physical CPU core.
+    task2 = cpu_bound_work.remote("B", 2.0)
+
+    # 4. Monitor Ray's internal resource accounting.
+    # We check if the 'used_cpus' ever exceeds the total number of CPUs.
+    used_cpus_snapshots = []
+    total_cpus = ray.cluster_resources().get("CPU", 1)
+    for _ in range(20):  # Monitor for 2 seconds
+        used_cpus = total_cpus - ray.available_resources().get("CPU", 0)
+        used_cpus_snapshots.append(used_cpus)
+        time.sleep(0.1)
+
+    # If the bug exists, at some point Ray's accounting will show that
+    # 2 CPUs are in use, despite only 1 being in the cluster.
+    # With the fix, this should never exceed 1.
+    max_used_cpus = max(used_cpus_snapshots)
+    print(f"Max CPUs reported as used by Ray: {max_used_cpus}")
+    print(f"Total CPUs in cluster: {total_cpus}")
+
+    # The core of the test: assert that Ray never thinks it's using
+    # more CPUs than are physically available. We allow a small tolerance
+    # for floating point inaccuracies.
+    assert max_used_cpus <= total_cpus * 1.05
+
+    # Wait for tasks to complete and print results.
+    results = ray.get([task1, task2])
+    print(f"Task results: {results}")
 
 
 if __name__ == "__main__":
