@@ -60,7 +60,7 @@ class ServeHead(SubprocessModule):
         assert self.gcs_client is not None
         assert ray.experimental.internal_kv._internal_kv_initialized()
 
-        # Record telemetry for pydantic version < 2 usage.
+        # Record telemetry for pydantic version < 2 usage
         if not IS_PYDANTIC_2:
             ServeUsageTag.SERVE_PYDANTIC_V2_UNUSED.record("1")
 
