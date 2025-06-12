@@ -265,7 +265,9 @@ std::vector<rpc::ObjectReference> TaskManager::AddPendingTask(
                                         call_site,
                                         -1,
                                         is_reconstructable,
-                                        /*add_local_ref=*/true);
+                                        /*add_local_ref=*/true,
+                                        /*pinned_at_raylet_id=*/std::optional<NodeID>(),
+                                        /*tensor_transport=*/spec.TensorTransport());
     }
 
     return_ids.push_back(return_id);
