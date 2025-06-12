@@ -2,13 +2,14 @@ import logging
 
 from ray._private.ray_logging.filters import CoreContextFilter
 from ray._private.ray_logging.formatters import JSONFormatter
+from ray.llm._internal.serve.observability.logging.config import configure_logger_level
 from ray.serve._private.logging_utils import ServeContextFilter
 
 
 def _configure_stdlib_logging():
     """Configures stdlib root logger to make sure stdlib loggers (created as
     `logging.getLogger(...)`) are using Ray's `JSONFormatter` with Core and Serve
-     context filters.
+     context filters. Log level is controlled by RAYLLM_LOG_LEVEL environment variable.
     """
 
     handler = logging.StreamHandler()
@@ -21,7 +22,9 @@ def _configure_stdlib_logging():
     #       to make sure that logs aren't emitted twice
     root_logger.handlers = []
     root_logger.addHandler(handler)
-    root_logger.setLevel(logging.INFO)
+
+    # Apply the configured log level instead of hardcoded INFO
+    configure_logger_level(root_logger)
 
 
 def setup_logging():

@@ -12,6 +12,10 @@ from ray.llm._internal.common.utils.cloud_utils import (
     CloudModelAccessor,
     is_remote_path,
 )
+from ray.llm._internal.serve.observability.logging.config import (
+    conditional_log,
+    should_log_model_operations,
+)
 from ray.llm._internal.utils import try_import
 
 torch = try_import("torch")
@@ -140,11 +144,16 @@ class CloudModelDownloader(CloudModelAccessor):
                         bucket_uri=bucket_uri,
                         tokenizer_only=tokenizer_only,
                     )
-                    logger.info(
-                        "Finished downloading %s for %s from %s storage",
-                        "tokenizer" if tokenizer_only else "model and tokenizer",
-                        self.model_id,
-                        storage_type.upper() if storage_type else "cloud",
+                    conditional_log(
+                        logger,
+                        "info",
+                        "Finished downloading %s for %s from %s storage"
+                        % (
+                            "tokenizer" if tokenizer_only else "model and tokenizer",
+                            self.model_id,
+                            storage_type.upper() if storage_type else "cloud",
+                        ),
+                        should_log_model_operations,
                     )
                 except RuntimeError:
                     logger.exception(
@@ -172,8 +181,11 @@ class CloudModelDownloader(CloudModelAccessor):
         lock_path = self._get_lock_path(suffix="-extra_files")
         storage_type = self.mirror_config.storage_type
 
-        logger.info(
-            f"Downloading extra files for {self.model_id} from {storage_type} storage"
+        conditional_log(
+            logger,
+            "info",
+            f"Downloading extra files for {self.model_id} from {storage_type} storage",
+            should_log_model_operations,
         )
         try:
             # Timeout 0 means there will be only one attempt to acquire
@@ -202,19 +214,49 @@ def _log_download_info(
 ):
     if download_model == NodeModelDownloadable.NONE:
         if download_extra_files:
-            logger.info("Downloading extra files from %s", source)
+            conditional_log(
+                logger,
+                "info",
+                "Downloading extra files from %s" % source,
+                should_log_model_operations,
+            )
         else:
-            logger.info("Not downloading anything from %s", source)
+            conditional_log(
+                logger,
+                "info",
+                "Not downloading anything from %s" % source,
+                should_log_model_operations,
+            )
     elif download_model == NodeModelDownloadable.TOKENIZER_ONLY:
         if download_extra_files:
-            logger.info("Downloading tokenizer and extra files from %s", source)
+            conditional_log(
+                logger,
+                "info",
+                "Downloading tokenizer and extra files from %s" % source,
+                should_log_model_operations,
+            )
         else:
-            logger.info("Downloading tokenizer from %s", source)
+            conditional_log(
+                logger,
+                "info",
+                "Downloading tokenizer from %s" % source,
+                should_log_model_operations,
+            )
     elif download_model == NodeModelDownloadable.MODEL_AND_TOKENIZER:
         if download_extra_files:
-            logger.info("Downloading model, tokenizer, and extra files from %s", source)
+            conditional_log(
+                logger,
+                "info",
+                "Downloading model, tokenizer, and extra files from %s" % source,
+                should_log_model_operations,
+            )
         else:
-            logger.info("Downloading model and tokenizer from %s", source)
+            conditional_log(
+                logger,
+                "info",
+                "Downloading model and tokenizer from %s" % source,
+                should_log_model_operations,
+            )
 
 
 def download_model_files(
@@ -259,12 +301,20 @@ def download_model_files(
 
     if mirror_config is None:
         if is_remote_path(model_id):
-            logger.info(
-                "Creating a CloudMirrorConfig from remote model path %s", model_id
+            conditional_log(
+                logger,
+                "info",
+                "Creating a CloudMirrorConfig from remote model path %s" % model_id,
+                should_log_model_operations,
             )
             mirror_config = CloudMirrorConfig(bucket_uri=model_id)
         else:
-            logger.info("No cloud storage mirror configured")
+            conditional_log(
+                logger,
+                "info",
+                "No cloud storage mirror configured",
+                should_log_model_operations,
+            )
             return model_id
 
     storage_type = mirror_config.storage_type

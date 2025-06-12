@@ -11,6 +11,10 @@ from ray.llm._internal.serve.configs.server_models import LLMConfig
 from ray.llm._internal.serve.deployments.llm.vllm.vllm_models import VLLMEngineConfig
 from ray.llm._internal.serve.deployments.utils.server_utils import make_async
 from ray.llm._internal.serve.observability.logging import get_logger
+from ray.llm._internal.serve.observability.logging.config import (
+    conditional_log,
+    should_log_model_operations,
+)
 from ray.llm._internal.utils import try_import
 from ray.util.placement_group import PlacementGroup
 
@@ -55,7 +59,12 @@ async def initialize_worker_nodes(
             )
         )
 
-    logger.info("Running tasks to download model files on worker nodes")
+    conditional_log(
+        logger,
+        "info",
+        "Running tasks to download model files on worker nodes",
+        should_log_model_operations,
+    )
     await asyncio.gather(
         *[
             download_task.remote(
@@ -146,7 +155,12 @@ def _initialize_local_node(
 
     # Download the tokenizer if it isn't a local file path
     if not isinstance(local_path, str) or not os.path.exists(local_path):
-        logger.info(f"Downloading the tokenizer for {engine_config.actual_hf_model_id}")
+        conditional_log(
+            logger,
+            "info",
+            f"Downloading the tokenizer for {engine_config.actual_hf_model_id}",
+            should_log_model_operations,
+        )
 
     _ = transformers.AutoTokenizer.from_pretrained(
         engine_config.actual_hf_model_id,

@@ -65,6 +65,42 @@ RAYLLM_ROUTER_HTTP_TIMEOUT = float(os.environ.get("RAYLLM_ROUTER_HTTP_TIMEOUT", 
 
 ENABLE_VERBOSE_TELEMETRY = bool(int(os.getenv("RAYLLM_ENABLE_VERBOSE_TELEMETRY", "0")))
 
+# ============================================================================
+# LOGGING CONFIGURATION
+# ============================================================================
+
+# Global log level control for Ray LLM components
+# Valid values: DEBUG, INFO, WARNING, ERROR, CRITICAL
+RAYLLM_LOG_LEVEL = os.environ.get("RAYLLM_LOG_LEVEL", "INFO").upper()
+
+# Control request lifecycle logging (start/completion messages)
+# When False, reduces noise from request handling logs
+RAYLLM_LOG_REQUEST_LIFECYCLE = bool(int(os.getenv("RAYLLM_LOG_REQUEST_LIFECYCLE", "1")))
+
+# Control request failure logging (still logs errors/warnings if enabled)
+RAYLLM_LOG_REQUEST_FAILURES = bool(int(os.getenv("RAYLLM_LOG_REQUEST_FAILURES", "1")))
+
+# Control engine operation logging (startup, shutdown, status changes)
+RAYLLM_LOG_ENGINE_OPERATIONS = bool(int(os.getenv("RAYLLM_LOG_ENGINE_OPERATIONS", "1")))
+
+# Control model downloading/uploading progress logs
+RAYLLM_LOG_MODEL_OPERATIONS = bool(int(os.getenv("RAYLLM_LOG_MODEL_OPERATIONS", "1")))
+
+# Control streaming request logging (individual stream events)
+RAYLLM_LOG_STREAMING_DETAILS = bool(int(os.getenv("RAYLLM_LOG_STREAMING_DETAILS", "0")))
+
+# Control debug-level prefix tree operations (very verbose)
+RAYLLM_LOG_PREFIX_TREE_DEBUG = bool(int(os.getenv("RAYLLM_LOG_PREFIX_TREE_DEBUG", "0")))
+
+# Backwards compatibility: if RAYLLM_QUIET_MODE is set, reduce default verbosity
+if os.environ.get("RAYLLM_QUIET_MODE", "0") == "1":
+    RAYLLM_LOG_REQUEST_LIFECYCLE = False
+    RAYLLM_LOG_ENGINE_OPERATIONS = False
+    RAYLLM_LOG_MODEL_OPERATIONS = False
+    RAYLLM_LOG_STREAMING_DETAILS = False
+
+# ============================================================================
+
 RAYLLM_VLLM_ENGINE_CLS_ENV = "RAYLLM_VLLM_ENGINE_CLS"
 
 # The ratio of number of router replicas to number of model replicas. Default to 2
