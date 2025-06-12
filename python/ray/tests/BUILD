@@ -606,10 +606,10 @@ py_test_module_list(
 
 py_test_module_list(
     size = "medium",
+    env = {"RAY_PYTEST_USE_GPU": "1"},
     files = [
         "test_gpu_objects_nccl.py",
     ],
-    env = {"RAY_PYTEST_USE_GPU": "1"},
     tags = [
         "exclusive",
         "gpu_objects",
