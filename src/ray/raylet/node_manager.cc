@@ -2270,7 +2270,6 @@ void NodeManager::FinishAssignedActorCreationTask(WorkerInterface &worker,
   worker.AssignActorId(actor_id);
 
   if (task_spec.IsDetachedActor()) {
-    worker.MarkDetachedActor();
     auto job_id = task.GetTaskSpecification().JobId();
     auto job_config = worker_pool_.GetJobConfig(job_id);
     RAY_CHECK(job_config);

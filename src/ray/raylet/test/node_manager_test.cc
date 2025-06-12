@@ -195,7 +195,8 @@ class NodeManagerTest : public ::testing::Test {
           return std::make_shared<rpc::MockCoreWorkerClientInterface>();
         }) {
     RayConfig::instance().initialize(R"({
-      "raylet_liveness_self_check_interval_ms": 100
+      "raylet_liveness_self_check_interval_ms": 100,
+      "kill_worker_timeout_milliseconds": 10
     })");
 
     NodeManagerConfig node_manager_config{};
@@ -389,6 +390,146 @@ TEST_F(NodeManagerTest, TestRegisterGcsAndCheckSelfAlive) {
   EXPECT_EQ(future.wait_for(std::chrono::seconds(1)), std::future_status::ready);
   io_service_.stop();
   thread.join();
+}
+
+TEST_F(NodeManagerTest, TestDetachedWorkerNotToBeKilledByFailedWorker) {
+  EXPECT_CALL(*mock_gcs_client_->mock_node_accessor, AsyncSubscribeToNodeChange(_, _))
+      .WillOnce(Return(Status::OK()));
+  EXPECT_CALL(*mock_gcs_client_->mock_job_accessor, AsyncSubscribeAll(_, _))
+      .WillOnce(Return(Status::OK()));
+  EXPECT_CALL(*mock_gcs_client_->mock_node_accessor, AsyncCheckSelfAlive(_, _))
+      .WillRepeatedly(Return(Status::OK()));
+  EXPECT_CALL(mock_worker_pool_, GetAllRegisteredWorkers(_, _))
+      .WillRepeatedly(Return(std::vector<std::shared_ptr<WorkerInterface>>{}));
+  EXPECT_CALL(mock_worker_pool_, GetAllRegisteredDrivers(_))
+      .WillRepeatedly(Return(std::vector<std::shared_ptr<WorkerInterface>>{}));
+  EXPECT_CALL(mock_worker_pool_, IsWorkerAvailableForScheduling())
+      .WillRepeatedly(Return(false));
+  EXPECT_CALL(mock_worker_pool_, PrestartWorkers(_, _)).Times(1);
+
+  std::promise<void> pop_worker_callback_promise;
+  PopWorkerCallback pop_worker_callback;
+  gcs::ItemCallback<rpc::WorkerDeltaData> publish_worker_failure_callback;
+
+  // Save the publish_worker_failure_callback for publishing a worker failure event later.
+  EXPECT_CALL(*mock_gcs_client_->mock_worker_accessor,
+              AsyncSubscribeToWorkerFailures(_, _))
+      .WillOnce([&](const gcs::ItemCallback<rpc::WorkerDeltaData> &subscribe,
+                    const gcs::StatusCallback &done) {
+        publish_worker_failure_callback = subscribe;
+        return Status::OK();
+      });
+
+  // Save the pop_worker_callback for providing a mock worker later.
+  EXPECT_CALL(mock_worker_pool_, PopWorker(_, _))
+      .WillOnce(
+          [&](const TaskSpecification &task_spec, const PopWorkerCallback &callback) {
+            pop_worker_callback = callback;
+            pop_worker_callback_promise.set_value();
+          });
+
+  // Invoke RegisterGcs and io_service_.run() so that the above EXPECT_CALLs can be
+  // triggered.
+  RAY_CHECK_OK(node_manager_->RegisterGcs());
+  std::thread io_thread{[&] {
+    // Run the io_service in a separate thread to avoid blocking the main thread.
+    auto work_guard = boost::asio::make_work_guard(io_service_);
+    io_service_.run();
+  }};
+
+  std::thread grpc_client_thread{[&] {
+    // Run the grpc client in a separate thread to avoid blocking the main thread.
+
+    // Preparing a detached actor creation task spec for the later RequestWorkerLease rpc.
+    const auto owner_worker_id = WorkerID::FromRandom();
+    rpc::Address owner_address;
+    owner_address.set_worker_id(owner_worker_id.Binary());
+    const auto actor_id =
+        ActorID::Of(JobID::FromInt(1), TaskID::FromRandom(JobID::FromInt(1)), 0);
+    rpc::JobConfig config;
+    FunctionDescriptor function_descriptor =
+        FunctionDescriptorBuilder::BuildPython("x", "", "", "");
+    TaskSpecBuilder task_spec_builder;
+    task_spec_builder.SetCommonTaskSpec(TaskID::FromRandom(JobID::Nil()),
+                                        "dummy_task",
+                                        Language::PYTHON,
+                                        function_descriptor,
+                                        JobID::Nil(),
+                                        config,
+                                        TaskID::Nil(),
+                                        0,
+                                        TaskID::Nil(),
+                                        owner_address,
+                                        1,
+                                        false,
+                                        false,
+                                        -1,
+                                        {{"CPU", 0}},
+                                        {{"CPU", 0}},
+                                        "",
+                                        0,
+                                        TaskID::Nil(),
+                                        "");
+    task_spec_builder.SetActorCreationTaskSpec(actor_id,
+                                               /*serialized_actor_handle=*/"",
+                                               rpc::SchedulingStrategy(),
+                                               /*max_restarts=*/0,
+                                               /*max_task_retries=*/0,
+                                               /*dynamic_worker_options=*/{},
+                                               /*max_concurrency=*/1,
+                                               /*is_detached=*/true,
+                                               /*name=*/"",
+                                               /*ray_namespace=*/"",
+                                               /*is_asyncio=*/false,
+                                               /*concurrency_groups=*/{},
+                                               /*extension_data=*/"",
+                                               /*execute_out_of_order=*/false,
+                                               /*root_detached_actor_id=*/actor_id);
+
+    // Invoke RequestWorkerLease to request a leased worker for the task in the
+    // NodeManager.
+    grpc::ClientContext context;
+    rpc::RequestWorkerLeaseReply reply;
+    rpc::RequestWorkerLeaseRequest request;
+    request.mutable_resource_spec()->CopyFrom(task_spec_builder.GetMessage());
+    auto channel =
+        grpc::CreateChannel("localhost:" + std::to_string(node_manager_->GetServerPort()),
+                            grpc::InsecureChannelCredentials());
+    auto stub = rpc::NodeManagerService::NewStub(channel);
+    auto status = stub->RequestWorkerLease(&context, request, &reply);
+    EXPECT_TRUE(status.ok());
+
+    // After RequestWorkerLease, a leased worker is ready in the NodeManager.
+    // Then use publish_worker_failure_callback to say owner_worker_id is dead.
+    // The leased worker should not be killed by this because it is a detached actor.
+    rpc::WorkerDeltaData delta_data;
+    delta_data.set_worker_id(owner_worker_id.Binary());
+    publish_worker_failure_callback(std::move(delta_data));
+  }};
+
+  // Prepare a mock worker with a real process so that we can check if the process is
+  // alive later.
+  const auto worker = std::make_shared<MockWorker>(WorkerID::FromRandom(), 10);
+  auto [proc, spawn_error] =
+      Process::Spawn(std::vector<std::string>{"sleep", "1000"}, true);
+  EXPECT_FALSE(spawn_error);
+  worker->SetProcess(proc);
+  // Complete the RequestWorkerLease rpc with the mock worker.
+  pop_worker_callback_promise.get_future().wait();
+  pop_worker_callback(worker, PopWorkerStatus::OK, "");
+
+  // Wait for the client thead to complete. This waits for the RequestWorkerLease call
+  // and publish_worker_failure_callback to finish.
+  grpc_client_thread.join();
+  // Wait for more than kill_worker_timeout_milliseconds.
+  std::this_thread::sleep_for(std::chrono::seconds(1));
+  // The process should still be alive because it should not be killed by
+  // publish_worker_failure_callback.
+  EXPECT_TRUE(proc.IsAlive());
+  // clean up.
+  proc.Kill();
+  io_service_.stop();
+  io_thread.join();
 }
 
 }  // namespace ray::raylet
