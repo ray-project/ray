@@ -16,7 +16,7 @@ class UnityCatalogConnector:
     """
     Load a Unity Catalog table or files into a Ray Dataset, handling cloud credentials automatically.
 
-    Currently only support Databricks-managed Unity Catalog
+    Currently only supports Databricks-managed Unity Catalog
 
     Supported formats: delta, parquet.
     Supports AWS, Azure, and GCP with automatic credential handoff.
