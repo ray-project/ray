@@ -39,8 +39,14 @@ if TYPE_CHECKING:
     import pandas
 
     from ray.data._internal.compute import ComputeStrategy
+    from ray.data._internal.execution.interfaces import RefBundle
     from ray.data._internal.planner.exchange.sort_task_spec import SortKey
-    from ray.data.block import Block, BlockMetadata, UserDefinedFunction
+    from ray.data.block import (
+        Block,
+        BlockMetadataWithSchema,
+        Schema,
+        UserDefinedFunction,
+    )
     from ray.data.datasource import Datasource, Reader
     from ray.util.placement_group import PlacementGroup
 
@@ -676,54 +682,69 @@ def capitalize(s: str):
     return "".join(capfirst(x) for x in s.split("_"))
 
 
-def pandas_df_to_arrow_block(df: "pandas.DataFrame") -> "Block":
-    from ray.data.block import BlockAccessor, BlockExecStats
+def pandas_df_to_arrow_block(
+    df: "pandas.DataFrame",
+) -> Tuple["Block", "BlockMetadataWithSchema"]:
+    from ray.data.block import BlockAccessor, BlockExecStats, BlockMetadataWithSchema
 
     block = BlockAccessor.for_block(df).to_arrow()
     stats = BlockExecStats.builder()
-    return (
-        block,
-        BlockAccessor.for_block(block).get_metadata(exec_stats=stats.build()),
-    )
+    return block, BlockMetadataWithSchema.from_block(block, stats=stats.build())
 
 
-def ndarray_to_block(ndarray: np.ndarray, ctx: DataContext) -> "Block":
-    from ray.data.block import BlockAccessor, BlockExecStats
+def ndarray_to_block(
+    ndarray: np.ndarray, ctx: DataContext
+) -> Tuple["Block", "BlockMetadataWithSchema"]:
+    from ray.data.block import BlockAccessor, BlockExecStats, BlockMetadataWithSchema
 
     DataContext._set_current(ctx)
 
     stats = BlockExecStats.builder()
     block = BlockAccessor.batch_to_block({"data": ndarray})
-    metadata = BlockAccessor.for_block(block).get_metadata(exec_stats=stats.build())
-    return block, metadata
+    return block, BlockMetadataWithSchema.from_block(block, stats=stats.build())
 
 
-def get_table_block_metadata(
+def get_table_block_metadata_schema(
     table: Union["pyarrow.Table", "pandas.DataFrame"],
-) -> "BlockMetadata":
-    from ray.data.block import BlockAccessor, BlockExecStats
+) -> "BlockMetadataWithSchema":
+    from ray.data.block import BlockExecStats, BlockMetadataWithSchema
 
     stats = BlockExecStats.builder()
-    return BlockAccessor.for_block(table).get_metadata(exec_stats=stats.build())
+    return BlockMetadataWithSchema.from_block(table, stats=stats.build())
 
 
 def unify_block_metadata_schema(
-    metadata: List["BlockMetadata"],
-) -> Optional[Union[type, "pyarrow.lib.Schema"]]:
+    block_metadata_with_schemas: List["BlockMetadataWithSchema"],
+) -> Optional["Schema"]:
     """For the input list of BlockMetadata, return a unified schema of the
     corresponding blocks. If the metadata have no valid schema, returns None.
+
+    Args:
+        block_metadata_with_schemas: List of BlockMetadata to unify
+
+    Returns:
+        A unified schema of the input list of schemas, or None if no valid schemas
+        are provided.
     """
     # Some blocks could be empty, in which case we cannot get their schema.
     # TODO(ekl) validate schema is the same across different blocks.
-    from ray.data._internal.arrow_ops.transform_pyarrow import unify_schemas
 
     # First check if there are blocks with computed schemas, then unify
     # valid schemas from all such blocks.
+
     schemas_to_unify = []
-    for m in metadata:
+    for m in block_metadata_with_schemas:
         if m.schema is not None and (m.num_rows is None or m.num_rows > 0):
             schemas_to_unify.append(m.schema)
+    return unify_schemas_with_validation(schemas_to_unify)
+
+
+def unify_schemas_with_validation(
+    schemas_to_unify: Iterable["Schema"],
+) -> Optional["Schema"]:
     if schemas_to_unify:
+        from ray.data._internal.arrow_ops.transform_pyarrow import unify_schemas
+
         # Check valid pyarrow installation before attempting schema unification
         try:
             import pyarrow as pa
@@ -736,6 +757,18 @@ def unify_block_metadata_schema(
         # return the first schema.
         return schemas_to_unify[0]
     return None
+
+
+def unify_ref_bundles_schema(
+    ref_bundles: List["RefBundle"],
+) -> Optional["Schema"]:
+    schemas_to_unify = []
+    for bundle in ref_bundles:
+        if bundle.schema is not None and (
+            bundle.num_rows() is None or bundle.num_rows() > 0
+        ):
+            schemas_to_unify.append(bundle.schema)
+    return unify_schemas_with_validation(schemas_to_unify)
 
 
 def find_partition_index(
@@ -1646,3 +1679,16 @@ class MemoryProfiler:
     def _can_estimate_uss() -> bool:
         # MacOS and Windows don't have the 'shared' attribute of `memory_info()`.
         return platform.system() == "Linux"
+
+
+def unzip(data: List[Tuple[Any, ...]]) -> Tuple[List[Any], ...]:
+    """Unzips a list of tuples into a tuple of lists
+
+    Args:
+        data: A list of tuples to unzip.
+
+    Returns:
+        A tuple of lists, where each list corresponds to one element of the tuples in
+        the input list.
+    """
+    return tuple(map(list, zip(*data)))
