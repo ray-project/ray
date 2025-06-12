@@ -18,12 +18,11 @@ from ray.util.state import list_nodes
 from ray._private.metrics_agent import PrometheusServiceDiscoveryWriter
 from ray._private.metrics_agent import Gauge as MetricsAgentGauge
 from ray._private.ray_constants import PROMETHEUS_SERVICE_DISCOVERY_FILE
-from ray._common.test_utils import SignalActor
+from ray._common.test_utils import SignalActor, wait_for_condition
 from ray._private.test_utils import (
     fetch_prometheus,
     fetch_prometheus_metrics,
     get_log_batch,
-    wait_for_condition,
     raw_metrics,
 )
 from ray.autoscaler._private.constants import AUTOSCALER_METRIC_PORT
