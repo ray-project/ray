@@ -9,7 +9,8 @@ from aiohttp.web import Request, Response
 
 import ray
 import ray.dashboard.optional_utils as dashboard_optional_utils
-from ray._common.pydantic_compat import ValidationError
+from ray._common.pydantic_compat import ValidationError, IS_PYDANTIC_2
+from ray.serve._private.usage import ServeUsageTag
 from ray.dashboard.modules.version import CURRENT_VERSION, VersionResponse
 from ray.dashboard.subprocesses.module import SubprocessModule
 from ray.dashboard.subprocesses.routes import SubprocessRouteTable as routes
@@ -58,6 +59,10 @@ class ServeHead(SubprocessModule):
         # To init gcs_client in internal_kv for record_extra_usage_tag.
         assert self.gcs_client is not None
         assert ray.experimental.internal_kv._internal_kv_initialized()
+
+        # Record telemetry for pydantic version < 2 usage.
+        if not IS_PYDANTIC_2:
+            ServeUsageTag.SERVE_PYDANTIC_V2_UNUSED.record("1")
 
     # TODO: It's better to use `/api/version`.
     # It requires a refactor of ClassMethodRouteTable to differentiate the server.

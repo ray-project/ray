@@ -5,6 +5,7 @@ from typing import List, Optional
 import pytest
 
 from ray import serve
+from ray._common.pydantic_compat import IS_PYDANTIC_2
 from ray._common.test_utils import wait_for_condition
 from ray.serve._private.request_router.common import (
     PendingRequest,
@@ -172,6 +173,40 @@ def test_custom_request_router_telemetry(manage_ray_with_telemetry):
 
     wait_for_condition(
         check_telemetry, tag=ServeUsageTag.CUSTOM_REQUEST_ROUTER_USED, expected="1"
+    )
+
+
+@pytest.mark.skipif(IS_PYDANTIC_2, reason="Pydantic 2 is not supported")
+def test_pydantic_v1_telemetry(manage_ray_with_telemetry):
+    """Check that the pydantic v1 telemetry is recorded."""
+    @serve.deployment
+    class PydanticV1TestDeployment:
+        def __call__(self) -> str:
+            return "ok"
+
+    serve.run(PydanticV1TestDeployment.bind(), route_prefix="/")
+
+    wait_for_condition(
+        check_telemetry,
+        tag=ServeUsageTag.SERVE_PYDANTIC_V2_UNUSED,
+        expected=None,
+    )
+
+
+@pytest.mark.skipif(not IS_PYDANTIC_2, reason="Pydantic 2 is supported")
+def test_pydantic_v2_telemetry(manage_ray_with_telemetry):
+    """Check that the pydantic v2 telemetry is recorded."""
+    @serve.deployment
+    class PydanticV2TestDeployment:
+        def __call__(self) -> str:
+            return "ok"
+
+    serve.run(PydanticV2TestDeployment.bind(), route_prefix="/")
+
+    wait_for_condition(
+        check_telemetry,
+        tag=ServeUsageTag.SERVE_PYDANTIC_V2_UNUSED,
+        expected="1",
     )
 
 
