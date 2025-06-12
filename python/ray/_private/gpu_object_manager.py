@@ -1,7 +1,8 @@
-from typing import Any, Dict, List, NamedTuple, Optional, Tuple, TYPE_CHECKING
+from typing import TYPE_CHECKING, Any, Dict, List, NamedTuple, Optional, Tuple
 
 try:
     import torch
+
     _TORCH_AVAILABLE = True
 except ImportError:
     _TORCH_AVAILABLE = False
@@ -13,7 +14,6 @@ from ray._raylet import ObjectRef
 from ray.actor import ActorHandle
 from ray.experimental.collective import get_collective_groups
 from ray.util.collective.types import Backend
-
 
 if TYPE_CHECKING:
     import torch
