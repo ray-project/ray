@@ -472,6 +472,7 @@ class TrainController:
         while not self.get_state().is_terminal():
             await self._run_control_loop_iteration()
 
+        # TODO: move to __del__ after https://github.com/ray-project/ray/issues/53169
         self._shutdown()
 
     async def abort(self):
