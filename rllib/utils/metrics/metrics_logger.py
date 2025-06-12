@@ -361,9 +361,9 @@ class MetricsLogger:
             percentiles: If reduce is `None`, we can compute the percentiles of the
                 values list given by `percentiles`. Defaults to [0, 0.5, 0.75, 0.9, 0.95,
                 0.99, 1] if set to True. When using percentiles, a window must be provided.
-                This window should be chosen carfully. RLlib computes exact percentiles and
+                This window should be chosen carefully. RLlib computes exact percentiles and
                 the computational complexity is O(m*n*log(n/m)) where n is the window size
-                and m is the number of parallel metrics loggers invovled (for example,
+                and m is the number of parallel metrics loggers involved (for example,
                 m EnvRunners).
             clear_on_reduce: If True, all values under `key` will be emptied after
                 `self.reduce()` is called. Setting this to True is useful for cases,
@@ -571,9 +571,9 @@ class MetricsLogger:
             percentiles: If reduce is `None`, we can compute the percentiles of the
                 values list given by `percentiles`. Defaults to [0, 0.5, 0.75, 0.9, 0.95,
                 0.99, 1] if set to True. When using percentiles, a window must be provided.
-                This window should be chosen carfully. RLlib computes exact percentiles and
+                This window should be chosen carefully. RLlib computes exact percentiles and
                 the computational complexity is O(m*n*log(n/m)) where n is the window size
-                and m is the number of parallel metrics loggers invovled (for example,
+                and m is the number of parallel metrics loggers involved (for example,
                 m EnvRunners).
             clear_on_reduce: If True, all values under `key` will be emptied after
                 `self.reduce()` is called. Setting this to True is useful for cases,
@@ -886,9 +886,9 @@ class MetricsLogger:
             percentiles: If reduce is `None`, we can compute the percentiles of the
                 values list given by `percentiles`. Defaults to [0, 0.5, 0.75, 0.9, 0.95,
                 0.99, 1] if set to True. When using percentiles, a window must be provided.
-                This window should be chosen carfully. RLlib computes exact percentiles and
+                This window should be chosen carefully. RLlib computes exact percentiles and
                 the computational complexity is O(m*n*log(n/m)) where n is the window size
-                and m is the number of parallel metrics loggers invovled (for example,
+                and m is the number of parallel metrics loggers involved (for example,
                 m EnvRunners).
             clear_on_reduce: If True, all values under `key` will be emptied after
                 `self.reduce()` is called. Setting this to True is useful for cases,
@@ -1076,9 +1076,9 @@ class MetricsLogger:
             percentiles: If reduce is `None`, we can compute the percentiles of the
                 values list given by `percentiles`. Defaults to [0, 0.5, 0.75, 0.9, 0.95,
                 0.99, 1] if set to True. When using percentiles, a window must be provided.
-                This window should be chosen carfully. RLlib computes exact percentiles and
+                This window should be chosen carefully. RLlib computes exact percentiles and
                 the computational complexity is O(m*n*log(n/m)) where n is the window size
-                and m is the number of parallel metrics loggers invovled (for example,
+                and m is the number of parallel metrics loggers involved (for example,
                 m EnvRunners).
             clear_on_reduce: If True, all values under `key` will be emptied after
                 `self.reduce()` is called. Setting this to True is useful for cases,
