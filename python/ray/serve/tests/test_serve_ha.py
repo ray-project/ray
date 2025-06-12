@@ -4,8 +4,8 @@ from time import sleep
 
 import pytest
 
+from ray._common.test_utils import wait_for_condition
 from ray._private.resource_spec import HEAD_NODE_RESOURCE_NAME
-from ray._private.test_utils import wait_for_condition
 from ray.tests.conftest_docker import *  # noqa
 
 scripts = """

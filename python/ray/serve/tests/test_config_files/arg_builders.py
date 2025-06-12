@@ -1,5 +1,5 @@
 from ray import serve
-from ray._private.pydantic_compat import BaseModel
+from ray._common.pydantic_compat import BaseModel
 
 
 class TypedArgs(BaseModel):
