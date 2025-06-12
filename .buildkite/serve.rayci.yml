@@ -6,6 +6,7 @@ steps:
   # builds
   - name: servebuild
     wanda: ci/docker/serve.build.py39.wanda.yaml
+    tags: cibase
 
   - name: servebuild-multipy
     label: "wanda: servebuild-py{{matrix}}"
@@ -14,9 +15,11 @@ steps:
     env:
       PYTHON: "{{matrix}}"
     depends_on: oss-ci-base_build-multipy
+    tags: cibase
 
   - name: servepydantic1build
     wanda: ci/docker/servepydantic1.build.wanda.yaml
+    tags: cibase
 
   - name: minbuild-serve
     label: "wanda: minbuild-{{matrix}}-py39"
@@ -27,6 +30,7 @@ steps:
     env:
       PYTHON_VERSION: "3.9"
       EXTRA_DEPENDENCY: "{{matrix}}"
+    tags: cibase
 
   # tests
   - label: ":ray-serve: serve: tests"
