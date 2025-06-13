@@ -12,7 +12,7 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from ray.dashboard.modules.reporter.gpu_profile_manager import GpuProfilingManager
+from ray.dashboard.modules.reporter.gpu_profiling_manager import GpuProfilingManager
 
 
 @pytest.fixture
