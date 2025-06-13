@@ -269,6 +269,9 @@ void RegisterView(const std::string &name,
   if (T == GAUGE &&
       ::RayConfig::instance().experimental_enable_open_telemetry_on_core()) {
     OpenTelemetryMetricRecorder::GetInstance().RegisterGaugeMetric(name, description);
+  } else if (T == COUNT &&
+             ::RayConfig::instance().experimental_enable_open_telemetry_on_core()) {
+    OpenTelemetryMetricRecorder::GetInstance().RegisterCounterMetric(name, description);
   } else {
     internal::RegisterAsView(view_descriptor, tag_keys);
   }

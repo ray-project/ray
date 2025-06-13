@@ -2,6 +2,7 @@ import sys
 from unittest.mock import MagicMock, patch
 
 import pytest
+from opentelemetry.metrics import NoOpCounter
 
 from ray._private.telemetry.open_telemetry_metric_recorder import (
     OpenTelemetryMetricRecorder,
@@ -20,6 +21,7 @@ def test_register_gauge_metric(mock_get_meter, mock_set_meter_provider):
     mock_get_meter.return_value = MagicMock()
     recorder = OpenTelemetryMetricRecorder()
     recorder.register_gauge_metric(name="test_gauge", description="Test Gauge")
+    assert recorder._is_observable_metric("test_gauge")
 
     # Record a value for the gauge
     recorder.set_metric_value(
@@ -28,12 +30,37 @@ def test_register_gauge_metric(mock_get_meter, mock_set_meter_provider):
         value=42.0,
     )
     assert (
-        recorder._get_metric_value(
+        recorder._get_observable_metric_value(
             name="test_gauge",
             tags={"label_key": "label_value"},
         )
         == 42.0
     )
+
+
+@patch("ray._private.telemetry.open_telemetry_metric_recorder.logger.warning")
+@patch("opentelemetry.metrics.set_meter_provider")
+@patch("opentelemetry.metrics.get_meter")
+def test_register_counter_metric(
+    mock_get_meter, mock_set_meter_provider, mock_logger_warning
+):
+    """
+    Test the register_counter_metric method of OpenTelemetryMetricRecorder.
+    - Test that it registers a counter metric with the correct name and description.
+    - Test that a value can be set for the counter metric successfully without warnings.
+    """
+    mock_meter = MagicMock()
+    mock_meter.create_counter.return_value = NoOpCounter(name="test_counter")
+    mock_get_meter.return_value = mock_meter
+    recorder = OpenTelemetryMetricRecorder()
+    recorder.register_counter_metric(name="test_counter", description="Test Counter")
+    assert "test_counter" in recorder._registered_instruments
+    recorder.set_metric_value(
+        name="test_counter",
+        tags={"label_key": "label_value"},
+        value=10.0,
+    )
+    mock_logger_warning.assert_not_called()
 
 
 @patch("opentelemetry.metrics.set_meter_provider")
