@@ -205,6 +205,7 @@ ray_cc_library(
     srcs = ["task_event_buffer.cc"],
     hdrs = ["task_event_buffer.h"],
     deps = [
+        ":event_aggregator_exporter",
         "//src/ray/gcs/gcs_client:gcs_client_lib",
         "//src/ray/gcs:gcs_pb_util",
         "//src/ray/common:asio",
@@ -219,6 +220,17 @@ ray_cc_library(
         "@com_google_absl//absl/synchronization",
         "@com_google_absl//absl/types:optional",
     ],
+)
+
+ray_cc_library(
+    name = "event_aggregator_exporter",
+    srcs = ["event_aggregator_exporter.cc"],
+    hdrs = ["event_aggregator_exporter.h"],
+    deps = [
+        "//:event_aggregator_client",
+        "//:event_aggregator_rpc",
+        "//src/ray/common:status",
+    ]
 )
 
 ray_cc_library(
