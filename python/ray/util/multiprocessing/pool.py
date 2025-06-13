@@ -256,8 +256,8 @@ class ResultThread(threading.Thread):
                     # queue.Empty means no result was retrieved if block=False.
                     pass
 
-                # Check if any of the available IDs are done. We need a timeout here
-                # because we need to check for new IDs from self._new_object_refs
+                # Check if any of the available IDs are done. The timeout is required
+                # here to periodically check for new IDs from self._new_object_refs.
                 ready, unready = ray.wait(unready, num_returns=1, timeout=0.1)
                 if len(ready) > 0:
                     ready_id = ready[0]
