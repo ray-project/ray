@@ -4,7 +4,7 @@ import ray
 from ray.dag.input_node import InputNode
 from ray.dag.output_node import MultiOutputNode
 from ray.util.state import list_tasks
-from ray._private.test_utils import wait_for_condition
+from ray._common.test_utils import wait_for_condition
 
 
 def test_output_node(shared_ray_instance):
