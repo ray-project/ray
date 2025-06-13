@@ -1,17 +1,34 @@
 import logging
 import os
 import threading
+import time
 from collections import defaultdict
 from typing import Dict, Optional
 
 import ray
+from ray._private.custom_types import TypeActorStatus
 from ray._private.event.export_event_logger import (
     EventLogType,
     check_export_api_enabled,
     get_export_event_logger,
 )
 from ray.actor import ActorHandle
-from ray.train.v2._internal.state.schema import TrainRun, TrainRunAttempt
+from ray.train.v2._internal.constants import (
+    DEFAULT_STATE_ACTOR_POLL_INTERVAL_S,
+    STATE_ACTOR_POLL_INTERVAL_S_ENV_VAR,
+    get_env_vars_to_propagate,
+)
+from ray.train.v2._internal.state.schema import (
+    TrainRun,
+    TrainRunAttempt,
+    is_terminal_run_status,
+)
+from ray.train.v2._internal.state.util import (
+    update_train_run_aborted,
+    update_train_run_attempt_aborted,
+)
+from ray.train.v2._internal.util import time_monotonic
+from ray.util.state import get_actor
 
 logger = logging.getLogger(__name__)
 
@@ -20,6 +37,7 @@ class TrainStateActor:
     def __init__(self):
         # NOTE: All runs and attempts are stored in memory.
         # This may be a memory issue for large runs.
+        # TODO: consider cleaning up runs over time.
         self._runs: Dict[str, TrainRun] = {}
         # {run_id: {attempt_id: TrainRunAttempt}}
         self._run_attempts: Dict[str, Dict[str, TrainRunAttempt]] = defaultdict(dict)
@@ -28,12 +46,47 @@ class TrainStateActor:
             self._is_train_run_export_api_enabled,
             self._is_train_run_attempt_export_api_enabled,
         ) = self._init_export_logger()
+        self._poll_interval_s = float(
+            os.getenv(
+                STATE_ACTOR_POLL_INTERVAL_S_ENV_VAR, DEFAULT_STATE_ACTOR_POLL_INTERVAL_S
+            )
+        )
+        self._latest_poll_time = float("-inf")
+        self._start_controller_polling_thread()
+
+    def _start_controller_polling_thread(self) -> None:
+        def _poll_controller():
+            while True:
+                # Wait for the poll interval to elapse.
+                time_since_last_poll = time_monotonic() - self._latest_poll_time
+                if time_since_last_poll < self._poll_interval_s:
+                    remaining_time = max(
+                        self._poll_interval_s - time_since_last_poll, 0
+                    )
+                    time.sleep(remaining_time)
+
+                # Abort live runs/attempts whose controllers are dead.
+                for run_id, run in self._runs.items():
+                    if is_terminal_run_status(run.status):
+                        continue
+                    actor_state = get_actor(run.controller_actor_id)
+                    if not actor_state or actor_state.state == TypeActorStatus.DEAD:
+                        update_train_run_aborted(run)
+                        self.create_or_update_train_run(run)
+                        for run_attempt in self._run_attempts.get(run_id, {}).values():
+                            update_train_run_attempt_aborted(run_attempt)
+                            self.create_or_update_train_run_attempt(run_attempt)
+
+                self._latest_poll_time = time_monotonic()
+
+        thread = threading.Thread(target=_poll_controller)
+        thread.start()
 
     def create_or_update_train_run(self, run: TrainRun) -> None:
         self._runs[run.id] = run
         self._maybe_export_train_run(run)
 
-    def create_or_update_train_run_attempt(self, run_attempt: TrainRunAttempt):
+    def create_or_update_train_run_attempt(self, run_attempt: TrainRunAttempt) -> None:
         self._run_attempts[run_attempt.run_id][run_attempt.attempt_id] = run_attempt
         self._maybe_export_train_run_attempt(run_attempt)
 
@@ -146,6 +199,7 @@ def get_or_create_state_actor() -> ActorHandle:
                 scheduling_strategy="DEFAULT",
                 max_restarts=-1,
                 max_task_retries=-1,
+                runtime_env={"env_vars": get_env_vars_to_propagate()},
             )
             .remote()
         )
