@@ -99,7 +99,7 @@ class ServerConnection : public std::enable_shared_from_this<ServerConnection> {
   ///
   /// \param buffer The buffer.
   /// \return Status.
-  Status WriteBuffer(const std::vector<boost::asio::const_buffer> &buffer);
+  virtual Status WriteBuffer(const std::vector<boost::asio::const_buffer> &buffer);
 
   /// Write a buffer to this connection asynchronously.
   ///
@@ -113,7 +113,7 @@ class ServerConnection : public std::enable_shared_from_this<ServerConnection> {
   ///
   /// \param buffer The buffer.
   /// \return Status.
-  Status ReadBuffer(const std::vector<boost::asio::mutable_buffer> &buffer);
+  virtual Status ReadBuffer(const std::vector<boost::asio::mutable_buffer> &buffer);
 
   /// Read a buffer from this connection asynchronously.
   ///

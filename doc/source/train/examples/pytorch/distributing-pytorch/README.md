@@ -292,21 +292,21 @@ Because you're running training in a data parallel fashion this time, it should 
 
 If you are using an Anyscale Workspace, go to the Ray Train dashboard to analyze your distributed training job. Click **Ray Workloads** and then **Ray Train**, which shows a list of all the training runs you have kicked off.
 
-![Train Runs](images/train_runs.png)
+![Train Runs](https://raw.githubusercontent.com/ray-project/ray/master/doc/source/train/examples/pytorch/distributing-pytorch/images/train_runs.png)
 
 Clicking the run displays an overview page that shows logs from the controller, which is the process that coordinates your entire Ray Train job, as well as information about the 8 training workers.
 
-![Train Run](images/train_run.png)
+![Train Run](https://raw.githubusercontent.com/ray-project/ray/master/doc/source/train/examples/pytorch/distributing-pytorch/images/train_run.png)
 
 Click an individual worker for a more detailed worker page.
 
-![Train Worker](images/train_worker.png)
+![Train Worker](https://raw.githubusercontent.com/ray-project/ray/master/doc/source/train/examples/pytorch/distributing-pytorch/images/train_worker.png)
 
 If your worker is still alive, you can click **CPU Flame Graph**, **Stack Trace**, or **Memory Profiling** links in the overall run page or the individual worker page. Clicking **CPU Flame Graph** profiles your run with py-spy for 5 seconds and shows a CPU flame graph. Clicking **Stack Trace** shows the current stack trace of your job, which is useful for debugging hanging jobs. Finally, clicking **Memory Profiling** profiles your run with memray for 5 seconds and shows a memory flame graph.
 
 You can also click the **Metrics** tab on the navigation bar to view useful stats about the cluster, such as GPU utilization and metrics about Ray [actors](https://docs.ray.io/en/latest/ray-core/actors.html) and [tasks](https://docs.ray.io/en/latest/ray-core/tasks.html).
 
-![Metrics Dashboard](images/metrics_dashboard.png)
+![Metrics Dashboard](https://raw.githubusercontent.com/ray-project/ray/master/doc/source/train/examples/pytorch/distributing-pytorch/images/metrics_dashboard.png)
 
 ## Step 3: Scale data ingest separately from training with Ray Data
 
@@ -464,7 +464,7 @@ Once again your training run should take around 1 minute with similar accuracy. 
 
 If you are using an Anyscale Workspace, in addition to the Ray Train and Metrics dashboards you saw in the previous section, you can also view the Ray Data dashboard by clicking **Ray Workloads** and then **Data** where you can view the throughput and status of each [Ray Data operator](https://docs.ray.io/en/latest/data/key-concepts.html#operators-and-plans).
 
-![Data Dashboard](images/data_dashboard.png)
+![Data Dashboard](https://raw.githubusercontent.com/ray-project/ray/master/doc/source/train/examples/pytorch/distributing-pytorch/images/data_dashboard.png)
 
 ## Summary
 
