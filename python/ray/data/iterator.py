@@ -366,7 +366,7 @@ class DataIterator(abc.ABC):
                 therefore ``batch_size`` must also be specified when using local
                 shuffling.
             local_shuffle_seed: The seed to use for the local random shuffle.
-            pin_memory: [Alpha] Whether to pin the memory of the tensors. Defaults to False.
+            pin_memory: [Alpha] If True, will copy Tensors into device pinned memory.
 
         Returns:
             An iterable over Torch Tensor batches.

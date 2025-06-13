@@ -429,10 +429,8 @@ def concat_tensors_to_device(
     row_start = 0
     for t in tensor_sequence:
         row_end = row_start + t.shape[0]
-        if pin_memory:
-            result[row_start:row_end].copy_(t, non_blocking=True)
-        else:
-            result[row_start:row_end].copy_(t, non_blocking=non_blocking)
+        # If pin_memory is True, enable non-blocking transfer.
+        result[row_start:row_end].copy_(t, non_blocking=pin_memory or non_blocking)
         row_start = row_end
 
     return result
@@ -497,18 +495,17 @@ def move_tensors_to_device(
     if device is None:
         return batch
 
+    def to_device(tensor):
+        if pin_memory:
+            # If pin_memory is True, enable non-blocking transfer.
+            return tensor.pin_memory().to(device, non_blocking=True)
+        else:
+            return tensor.to(device, non_blocking=non_blocking)
+
     if _is_tensor(batch):
-        if pin_memory:
-            return batch.pin_memory().to(device, non_blocking=True)
-        else:
-            return batch.to(device, non_blocking=non_blocking)
+        return to_device(batch)
     elif _is_tensor_sequence(batch):
-        if pin_memory:
-            return type(batch)(
-                [t.pin_memory().to(device, non_blocking=True) for t in batch]
-            )
-        else:
-            return type(batch)([t.to(device, non_blocking=non_blocking) for t in batch])
+        return type(batch)([to_device(t) for t in batch])
     elif _is_nested_tensor_sequence(batch):
         return type(batch)(
             [
@@ -517,15 +514,7 @@ def move_tensors_to_device(
             ]
         )
     elif _is_tensor_mapping(batch):
-        if pin_memory:
-            return {
-                k: t.pin_memory().to(device, non_blocking=True)
-                for k, t in batch.items()
-            }
-        else:
-            return {
-                k: t.to(device, non_blocking=non_blocking) for k, t in batch.items()
-            }
+        return {k: to_device(t) for k, t in batch.items()}
     elif _is_tensor_sequence_mapping(batch):
         return {
             k: concat_tensors_to_device(v, device, non_blocking, pin_memory)
