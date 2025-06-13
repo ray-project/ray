@@ -854,6 +854,7 @@ class SingletonThreadRouter(Router):
 class SharedRouterLongPollClient:
     def __init__(self, controller_handle: ActorHandle, event_loop: AbstractEventLoop):
         self.controller_handler = controller_handle
+        self.event_loop = event_loop
 
         # We use a WeakSet to store the Routers so that we don't prevent them
         # from being garbage-collected.
@@ -865,7 +866,7 @@ class SharedRouterLongPollClient:
         self.long_poll_client = LongPollClient(
             controller_handle,
             key_listeners={},
-            call_in_event_loop=event_loop,
+            call_in_event_loop=self.event_loop,
         )
 
     @classmethod
@@ -894,6 +895,15 @@ class SharedRouterLongPollClient:
             router.long_poll_client.stop()
 
     def register(self, router: AsyncioRouter) -> None:
+        # We need to run the underlying method in the same event loop that runs
+        # the long poll loop, because we need to mutate the mapping of routers,
+        # which are also being iterated over by the key listener callbacks.
+        # If those happened concurrently in different threads,
+        # we could get a `RuntimeError: Set changed size during iteration`.
+        # See https://github.com/ray-project/ray/pull/53613 for more details.
+        self.event_loop.call_soon_threadsafe(self._register, router)
+
+    def _register(self, router: AsyncioRouter) -> None:
         self.routers[router.deployment_id].add(router)
 
         # Remove the entries for any deployment ids that no longer have any routers.

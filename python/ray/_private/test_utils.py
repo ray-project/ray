@@ -1781,7 +1781,7 @@ def job_hook(**kwargs):
     sys.exit(0)
 
 
-def find_free_port():
+def find_free_port() -> int:
     sock = socket.socket()
     sock.bind(("", 0))
     port = sock.getsockname()[1]

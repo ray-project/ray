@@ -336,12 +336,14 @@ class ReplicaBase(ABC):
         deployment_config: DeploymentConfig,
         version: DeploymentVersion,
         ingress: bool,
+        route_prefix: str,
     ):
         self._version = version
         self._replica_id = replica_id
         self._deployment_id = replica_id.deployment_id
         self._deployment_config = deployment_config
         self._ingress = ingress
+        self._route_prefix = route_prefix
         self._component_name = f"{self._deployment_id.name}"
         if self._deployment_id.app_name:
             self._component_name = (
@@ -953,6 +955,7 @@ class ReplicaActor:
         deployment_config_proto_bytes: bytes,
         version: DeploymentVersion,
         ingress: bool,
+        route_prefix: str,
     ):
         deployment_config = DeploymentConfig.from_proto_bytes(
             deployment_config_proto_bytes
@@ -969,6 +972,7 @@ class ReplicaActor:
             deployment_config=deployment_config,
             version=version,
             ingress=ingress,
+            route_prefix=route_prefix,
         )
 
     def push_proxy_handle(self, handle: ActorHandle):
