@@ -24,7 +24,10 @@ class TestResults:
         self.commit = commit
 
     def set_targets(self, targets: List[str]):
-        self.targets.extend([BazelTarget(target) for target in targets])
+        self.targets= [BazelTarget(target) for target in targets]
+
+    def add_targets(self, targets: List[str]):
+        self.targets += [BazelTarget(target) for target in targets]
 
     def set_tested_targets(self, tested_targets: Dict[str, List[str]]):
         self.tested_targets = tested_targets

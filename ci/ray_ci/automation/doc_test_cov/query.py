@@ -29,7 +29,8 @@ class Query:
         for target in test_results.targets:
             try:
                 #cmd = f"bazel query 'filter(\"\\.rst$|\\.md$|\\.ipynb$|\\.py$\", deps({target}, 1))'"
-                cmd = f"bazel query 'kind(\"source file\", filter(\"source/.*\", deps({target.target_name})))'"
+                #cmd = f"bazel query 'kind(\"source file\", filter(\"source/.*\", deps({target.target_name})))'"
+                cmd = f"bazel query 'filter(\"^//\", kind(\"source file\", deps({target.target_name})))'"
                 result = subprocess.run(
                     cmd,
                     cwd=ray_path,

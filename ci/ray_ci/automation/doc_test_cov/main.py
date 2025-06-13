@@ -107,11 +107,8 @@ def main():
     #Query targets in //doc/..
     test_results.set_targets(Query.get_all_test_targets(args.ray_path, "//doc/..."))
 
-    #Query targets in //java/...
-    test_results.set_targets(Query.get_all_test_targets(args.ray_path, "//java/..."))
-
     #Query targets in //python/...
-    test_results.set_targets(Query.get_all_test_targets(args.ray_path, "//python/..."))
+    test_results.add_targets(Query.get_all_test_targets(args.ray_path, "//python/..."))
 
     # # List and Get all bazel events from s3
     s3_source = S3DataSource(S3_BUCKET, commit, job_ids_to_names.keys())
@@ -136,28 +133,29 @@ def main():
     # print("done filtering out targets that don't have a generated file in doc/_build")
     # print(f"len(test_results.targets): {len(test_results.targets)}")
 
-    test_results.calculate_test_coverage()
-    print("done calculating test coverage")
+    # test_results.calculate_test_coverage()
+    # print("done calculating test coverage")
 
-    print(f"len(test_results.targets): {len(test_results.targets)}")
-    test_results.save_test_results()
-    print("done saving test results")
+    # print(f"len(test_results.targets): {len(test_results.targets)}")
+    # test_results.save_test_results()
+    # print("done saving test results")
 
     doc_parser.assign_testing_info_to_code_snippets(literalinclude_doc_files, test_results.targets)
     print("done assigning testing info to code snippets")
 
-    if args.offline:
-        test_file = []
-        with open("results/literal_include_doc_files_with_testing_info.json", "r") as f:
-            content = f.read()
-            test_file = json.loads(content)
-            doc_files = []
-            # doc_parser.save_doc_file_snippets(literalinclude_doc_files, "results/literal_include_doc_files_with_testing_info.json")
-            # print("done saving doc file snippets with testing info")
-            for file in test_file:
-                doc_file = DocFile.from_dict(DocFile,file)
-                doc_files.append(doc_file)
+    # if args.offline:
+    #     test_file = []
+    #     with open("results/literal_include_doc_files_with_testing_info.json", "r") as f:
+    #         content = f.read()
+    #         test_file = json.loads(content)
+    #         doc_files = []
+    #         # doc_parser.save_doc_file_snippets(literalinclude_doc_files, "results/literal_include_doc_files_with_testing_info.json")
+    #         # print("done saving doc file snippets with testing info")
+    #         for file in test_file:
+    #             doc_file = DocFile.from_dict(DocFile,file)
+    #             doc_files.append(doc_file)
 
+    doc_parser.save_doc_files_to_json(literalinclude_doc_files)
     doc_parser.save_doc_files_to_csv(literalinclude_doc_files)
     print("done saving doc files to csv")
 

@@ -19,7 +19,7 @@ class DocParser:
         if search_string_rst:
             # Search for RST style literalinclude
             end_anchor = "$" if strict else ""
-            rst_cmd = f"find {self.ray_path}/doc -type d -path '*/venv/*' -prune -o \\( -type f -name '*.rst' -o -name '*.txt' \\) -print | xargs grep -H '^[[:space:]]*{search_string_rst}{end_anchor}'"
+            rst_cmd = f"find {self.ray_path}/doc -type d -path '*/venv/*' -prune -o \\( -type f -name '*.rst' \\) -print | xargs grep -H '^[[:space:]]*{search_string_rst}{end_anchor}'"
             rst_result = subprocess.run(["bash", "-c", rst_cmd],
                                 cwd=self.ray_path,
                                 capture_output=True,
@@ -28,7 +28,7 @@ class DocParser:
         if search_string_md:
             # Search for Markdown style literalinclude
             end_anchor = "$" if strict else ""
-            md_cmd = f"find {self.ray_path}/doc -type d -path '*/venv/*' -prune -o \\( -type f -name '*.md' -o -name '*.txt' \\) -print | xargs grep -H '^[[:space:]]*{search_string_md}{end_anchor}'"
+            md_cmd = f"find {self.ray_path}/doc -type d -path '*/venv/*' -prune -o \\( -type f -name '*.md' \\) -print | xargs grep -H '^[[:space:]]*{search_string_md}{end_anchor}'"
             md_result = subprocess.run(["bash", "-c", md_cmd],
                                 cwd=self.ray_path,
                                 capture_output=True,
@@ -41,7 +41,7 @@ class DocParser:
         # Combine and deduplicate files
         rst_files = rst_stdout.split("\n") if rst_stdout else []
         md_files = md_stdout.split("\n") if md_stdout else []
-    
+
         print(f"len of rst_result: {len(rst_files)}")
         print(f"len of md_result: {len(md_files)}")
 
@@ -107,48 +107,47 @@ class DocParser:
                         file_name = file.file_name.lstrip("//").split(":")[-1].split("/")[-1]
                         snippet_file_name = snippet.ref_to_file.lstrip("//").split(":")[-1].split("/")[-1]
                         if snippet_file_name == file_name:
-                            snippet.testing_info.append(target)
+                            filtered_target = self.filter_file_from_target(target, file_name)
+                            snippet.testing_info.append(filtered_target)
+
+    def filter_file_from_target(self, target, filename):
+        # Get the filename from the target path using the same logic as shown
+        filtered_files = []
+        temp_target = target
+        for file in temp_target.files:
+            file_name = file.file_name.lstrip("//").split(":")[-1].split("/")[-1]
+            if file_name == filename:
+                filtered_files.append(file)
+        temp_target.files = filtered_files
+        return temp_target
+
+    def save_doc_files_to_json(self, docfiles: List[DocFile], filename: str = "results/json/final_test_results.json"):
+        with open(filename, "w") as f:
+            json.dump([docfile.to_dict() for docfile in docfiles], f, indent=4)
 
     def save_doc_files_to_csv(self, docfiles: List[DocFile], filename: str = "results/csv/final_test_results.csv"):
         df = pd.DataFrame([docfile.to_dict() for docfile in docfiles])
         df.to_csv(filename, index=False)
-        #df.to_csv("results/csv/final_test_results_2.csv", index=False, columns=["file_path", "snippet_type", "ref_to_file", "testing_info"])
-        # new_df = pd.concat([pd.DataFrame(doc.to_dict() for doc in docfiles),
-        #         json_normalize(doc.to_dict()["code_snippets"] for doc in docfiles),
-        #         json_normalize(doc.to_dict()["code_snippets"]["testing_info"] for doc in docfiles if doc.to_dict()["code_snippets"]["testing_info"])],
-        #         axis=1)
-
-        # new_df = pd.json_normalize([docfile.to_dict() for docfile in docfiles], record_path=["code_snippets", "testing_info"], meta=[
-        #         "file_path",
-        #         ["code_snippets", 0, "snippet_type"],
-        #         ["code_snippets", 0, "ref_to_file"]
-        #     ],record_prefix="test_")
-        # #new_df = pd.json_normalize([docfile.to_dict() for docfile in docfiles],  meta=["file_path", ["code_snippets", "snippet_type"], ["code_snippets","ref_to_file"], ["code_snippets","testing_info", "target_name"], ["code_snippets","testing_info", "tested"], ["code_snippets","testing_info", "status"], ["code_snippets","testing_info", "active"], ["code_snippets","testing_info", "files", "file_name"], ["code_snippets","testing_info", "files", "file_refs"]], errors="ignore")
-        # new_df.to_csv("results/csv/final_test_results_3_new.csv", index=False)
 
         rows = []
         for docfile in docfiles:
             for snippet in docfile.code_snippets:
-                # Ensure we have at least one iteration, even if testing_info is None or empty
                 test_infos = snippet.testing_info or [None]
-
                 for test_info in test_infos:
-                    # If test_info exists, use its files; else one dummy None
                     files = test_info.files if test_info and test_info.files else [None]
 
                     for file in files:
                         row = {
-                            'file_path': docfile.file_path,
-                            'snippet_type': snippet.snippet_type,
-                            'ref_to_file': snippet.ref_to_file,
-                            'target_name': test_info.target_name if test_info else None,
-                            'tested': test_info.tested if test_info else None,
-                            'status': test_info.status if test_info else None,
-                            'active': test_info.active if test_info else None,
-                            'bazel_file_location': test_info.bazel_file_location if test_info else None,
-                            'file_name': file.file_name if file else None,
+                            "file_path": docfile.file_path,
+                            "snippet_type": snippet.snippet_type,
+                            "ref_to_file": snippet.ref_to_file,
+                            "target_name": test_info.target_name if test_info else None,
+                            "tested": test_info.tested if test_info else None,
+                            "status": test_info.status if test_info else None,
+                            "bazel_file_location": test_info.bazel_file_location if test_info else None,
+                            "file_name": file.file_name if file else None,
                         }
                         rows.append(row)
 
         df = pd.DataFrame(rows)
-        df.to_csv("results/csv/final_test_results_4_new.csv", index=False)
+        df.to_csv(filename, index=False)
