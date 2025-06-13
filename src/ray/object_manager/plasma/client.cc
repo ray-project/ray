@@ -97,6 +97,7 @@ struct ObjectInUseEntry {
 class PlasmaClient::Impl : public std::enable_shared_from_this<PlasmaClient::Impl> {
  public:
   Impl();
+  explicit Impl(bool exit_on_connection_failure);
   ~Impl();
 
   // PlasmaClient method implementations
@@ -235,11 +236,17 @@ class PlasmaClient::Impl : public std::enable_shared_from_this<PlasmaClient::Imp
   std::unordered_set<ObjectID> deletion_cache_;
   /// A mutex which protects this class.
   std::recursive_mutex client_mutex_;
+  /// Whether the current process should exit when read or write to the connection fails.
+  /// It should only be turned on when the plasma client is in a core worker.
+  bool exit_on_connection_failure_;
 };
 
 PlasmaBuffer::~PlasmaBuffer() { RAY_UNUSED(client_->Release(object_id_)); }
 
-PlasmaClient::Impl::Impl() : store_capacity_(0) {}
+PlasmaClient::Impl::Impl() : store_capacity_(0), exit_on_connection_failure_(false) {}
+
+PlasmaClient::Impl::Impl(bool exit_on_connection_failure)
+    : store_capacity_(0), exit_on_connection_failure_(exit_on_connection_failure) {}
 
 PlasmaClient::Impl::~Impl() {}
 
@@ -868,7 +875,7 @@ Status PlasmaClient::Impl::Connect(const std::string &store_socket_name,
   /// The local stream socket that connects to store.
   ray::local_stream_socket socket(main_service_);
   RAY_RETURN_NOT_OK(ray::ConnectSocketRetry(socket, store_socket_name));
-  store_conn_.reset(new StoreConn(std::move(socket)));
+  store_conn_.reset(new StoreConn(std::move(socket), exit_on_connection_failure_));
   // Send a ConnectRequest to the store to get its memory capacity.
   RAY_RETURN_NOT_OK(SendConnectRequest(store_conn_));
   std::vector<uint8_t> buffer;
@@ -911,6 +918,9 @@ std::string PlasmaClient::Impl::DebugString() {
 // PlasmaClient
 
 PlasmaClient::PlasmaClient() : impl_(std::make_shared<PlasmaClient::Impl>()) {}
+
+PlasmaClient::PlasmaClient(bool exit_on_connection_failure)
+    : impl_(std::make_shared<PlasmaClient::Impl>(exit_on_connection_failure)) {}
 
 Status PlasmaClient::Connect(const std::string &store_socket_name,
                              const std::string &manager_socket_name,
