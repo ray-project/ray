@@ -37,7 +37,7 @@ def mock_subprocess_popen(monkeypatch):
     yield (mock_popen, mock_proc)
 
 
-MOCK_IP_ADDRESS = "127.0.0.1"
+LOCALHOST = "127.0.0.1"
 
 
 @pytest.fixture
@@ -51,7 +51,7 @@ def mock_asyncio_create_subprocess_exec(monkeypatch):
 
 
 def test_enabled(tmp_path, mock_node_has_gpus, mock_dynolog_binaries):
-    gpu_profiler = GpuProfilingManager(tmp_path, MOCK_IP_ADDRESS)
+    gpu_profiler = GpuProfilingManager(tmp_path, ip_address=LOCALHOST)
     assert gpu_profiler.enabled
 
 
@@ -59,19 +59,19 @@ def test_disabled_no_gpus(tmp_path, monkeypatch):
     monkeypatch.setattr(
         GpuProfilingManager, "node_has_gpus", classmethod(lambda cls: False)
     )
-    gpu_profiler = GpuProfilingManager(tmp_path, MOCK_IP_ADDRESS)
+    gpu_profiler = GpuProfilingManager(tmp_path, ip_address=LOCALHOST)
     assert not gpu_profiler.enabled
 
 
 def test_disabled_no_dynolog_bin(tmp_path, mock_node_has_gpus):
-    gpu_profiler = GpuProfilingManager(tmp_path, MOCK_IP_ADDRESS)
+    gpu_profiler = GpuProfilingManager(tmp_path, ip_address=LOCALHOST)
     assert not gpu_profiler.enabled
 
 
 def test_start_monitoring_daemon(
     tmp_path, mock_node_has_gpus, mock_dynolog_binaries, mock_subprocess_popen
 ):
-    gpu_profiler = GpuProfilingManager(tmp_path, MOCK_IP_ADDRESS)
+    gpu_profiler = GpuProfilingManager(tmp_path, ip_address=LOCALHOST)
 
     mocked_popen, mocked_proc = mock_subprocess_popen
     mocked_proc.pid = 123
@@ -95,7 +95,7 @@ def test_start_monitoring_daemon(
 
 @pytest.mark.asyncio
 async def test_gpu_profile_disabled(tmp_path):
-    gpu_profiler = GpuProfilingManager(tmp_path, MOCK_IP_ADDRESS)
+    gpu_profiler = GpuProfilingManager(tmp_path, ip_address=LOCALHOST)
     assert not gpu_profiler.enabled
 
     success, output = await gpu_profiler.gpu_profile(pid=123, num_iterations=1)
@@ -109,7 +109,7 @@ async def test_gpu_profile_disabled(tmp_path):
 async def test_gpu_profile_without_starting_daemon(
     tmp_path, mock_node_has_gpus, mock_dynolog_binaries
 ):
-    gpu_profiler = GpuProfilingManager(tmp_path, MOCK_IP_ADDRESS)
+    gpu_profiler = GpuProfilingManager(tmp_path, ip_address=LOCALHOST)
     assert not gpu_profiler.is_monitoring_daemon_running
 
     with pytest.raises(RuntimeError, match="start_monitoring_daemon"):
@@ -120,7 +120,7 @@ async def test_gpu_profile_without_starting_daemon(
 async def test_gpu_profile_with_dead_daemon(
     tmp_path, mock_node_has_gpus, mock_dynolog_binaries, mock_subprocess_popen
 ):
-    gpu_profiler = GpuProfilingManager(tmp_path, MOCK_IP_ADDRESS)
+    gpu_profiler = GpuProfilingManager(tmp_path, ip_address=LOCALHOST)
     gpu_profiler.start_monitoring_daemon()
 
     mocked_popen, mocked_proc = mock_subprocess_popen
@@ -143,7 +143,7 @@ async def test_gpu_profile_on_dead_process(
     mock_dynolog_binaries,
     mock_subprocess_popen,
 ):
-    gpu_profiler = GpuProfilingManager(tmp_path, MOCK_IP_ADDRESS)
+    gpu_profiler = GpuProfilingManager(tmp_path, ip_address=LOCALHOST)
     gpu_profiler.start_monitoring_daemon()
 
     _, mocked_proc = mock_subprocess_popen
@@ -168,7 +168,7 @@ async def test_gpu_profile_no_matched_processes(
     mock_subprocess_popen,
     mock_asyncio_create_subprocess_exec,
 ):
-    gpu_profiler = GpuProfilingManager(tmp_path, MOCK_IP_ADDRESS)
+    gpu_profiler = GpuProfilingManager(tmp_path, ip_address=LOCALHOST)
     gpu_profiler.start_monitoring_daemon()
 
     # Mock the daemon process
@@ -210,7 +210,7 @@ async def test_gpu_profile_timeout(
     mock_subprocess_popen,
     mock_asyncio_create_subprocess_exec,
 ):
-    gpu_profiler = GpuProfilingManager(tmp_path, MOCK_IP_ADDRESS)
+    gpu_profiler = GpuProfilingManager(tmp_path, ip_address=LOCALHOST)
     gpu_profiler.start_monitoring_daemon()
 
     # Mock the daemon process
@@ -243,7 +243,7 @@ async def test_gpu_profile_process_dies_during_profiling(
     mock_subprocess_popen,
     mock_asyncio_create_subprocess_exec,
 ):
-    gpu_profiler = GpuProfilingManager(tmp_path, MOCK_IP_ADDRESS)
+    gpu_profiler = GpuProfilingManager(tmp_path, ip_address=LOCALHOST)
     gpu_profiler.start_monitoring_daemon()
 
     # Mock the daemon process
@@ -279,7 +279,7 @@ async def test_gpu_profile_success(
     mock_subprocess_popen,
     mock_asyncio_create_subprocess_exec,
 ):
-    gpu_profiler = GpuProfilingManager(tmp_path, MOCK_IP_ADDRESS)
+    gpu_profiler = GpuProfilingManager(tmp_path, ip_address=LOCALHOST)
     gpu_profiler.start_monitoring_daemon()
 
     # Mock the daemon process
