@@ -438,7 +438,9 @@ class ReporterAgent(
         )
         self._gcs_pid = None
 
-        self._gpu_profiling_manager = GpuProfilingManager(self._log_dir)
+        self._gpu_profiling_manager = GpuProfilingManager(
+            profile_dir_path=self._log_dir, ip_address=self._ip
+        )
         self._gpu_profiling_manager.start_monitoring_daemon()
 
     async def GetTraceback(self, request, context):
