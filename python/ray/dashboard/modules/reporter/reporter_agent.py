@@ -700,7 +700,7 @@ class ReporterAgent(
                     # Skip irrelevant metrics
                     if not hasattr(sample, "labels"):
                         continue
-                    if not "accelerator_id" in sample.labels:
+                    if "accelerator_id" not in sample.labels:
                         continue
                     labels = sample.labels
                     accelerator_id = labels["accelerator_id"]
