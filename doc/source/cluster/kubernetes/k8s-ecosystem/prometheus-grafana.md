@@ -35,7 +35,7 @@ kubectl get all -n prometheus-system
 
 * KubeRay provides an [install.sh script](https://github.com/ray-project/kuberay/blob/master/install/prometheus/install.sh) to:
   * Install the [kube-prometheus-stack v48.2.1](https://github.com/prometheus-community/helm-charts/tree/kube-prometheus-stack-48.2.1/charts/kube-prometheus-stack) chart and related custom resources, including **PodMonitor**, **ServiceMonitor** and **PrometheusRule**, in the namespace `prometheus-system` automatically. 
-  * Import Ray Dashboard’s [Grafana JSON files](https://github.com/ray-project/kuberay/tree/master/config/grafana) into Grafana using the `--auto-load-dashboard true` flag. If the flag isn't set, the following step also provides instructions for manual import.
+  * Import Ray Dashboard's [Grafana JSON files](https://github.com/ray-project/kuberay/tree/master/config/grafana) into Grafana using the `--auto-load-dashboard true` flag. If the flag isn't set, the following step also provides instructions for manual import. See [Step 12: Import Grafana dashboards manually (optional)](#step-12-import-grafana-dashboards-manually-optional) for more details.
 
 * We made some modifications to the original `values.yaml` in kube-prometheus-stack chart to allow embedding Grafana panels in Ray Dashboard. See [overrides.yaml](https://github.com/ray-project/kuberay/tree/master/install/prometheus/overrides.yaml) for more details.
   ```yaml
@@ -430,7 +430,7 @@ For example, in the following figures, one selects the metrics from the RayClust
 
 ## Step 14: View KubeRay Operator dashboard
 
-Once the KubeRay Operator dashboard is imported into Grafana, you can monitor metrics from the KubeRay operator. The dashboard provides a dropdown menu to filter and view specific controller runtime metrics for different Ray CRs (`raycluster`, `rayjob`, `rayservice`).
+Once the KubeRay Operator dashboard is imported into Grafana, you can monitor metrics from the KubeRay operator. The dashboard provides a dropdown menu to filter and view controller runtime metrics for specific Ray CRs (`raycluster`, `rayjob`, `rayservice`).
 
 - Controller Runtime Panel
 ![Grafana KubeRay Operator Controller Runtime dashboard](../images/kuberay-dashboard-controller-runtime.png)
