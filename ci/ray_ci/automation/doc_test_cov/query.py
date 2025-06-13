@@ -6,11 +6,11 @@ import gc
 class Query:
 
     @staticmethod
-    def get_all_test_targets(ray_path: str) -> List[str]: # update this to be a SET
+    def get_all_test_targets(ray_path: str, query_path: str) -> List[str]: # update this to be a SET
         """
         Get all test targets in the workspace using bazel query.
         """
-        cmd = "bazel query 'kind(\".*_test rule\", //doc/...)'"
+        cmd = f"bazel query 'kind(\".*_test rule\", {query_path})'"
         result = subprocess.run(
             cmd,
             cwd=ray_path,

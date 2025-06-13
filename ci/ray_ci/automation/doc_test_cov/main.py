@@ -104,7 +104,14 @@ def main():
 
     # Get all available test targets
     print("Querying available test targets...")
-    test_results.set_targets(Query.get_all_test_targets(args.ray_path))
+    #Query targets in //doc/..
+    test_results.set_targets(Query.get_all_test_targets(args.ray_path, "//doc/..."))
+
+    #Query targets in //java/...
+    test_results.set_targets(Query.get_all_test_targets(args.ray_path, "//java/..."))
+
+    #Query targets in //python/...
+    test_results.set_targets(Query.get_all_test_targets(args.ray_path, "//python/..."))
 
     # # List and Get all bazel events from s3
     s3_source = S3DataSource(S3_BUCKET, commit, job_ids_to_names.keys())
@@ -125,9 +132,9 @@ def main():
     print("done getting files for targets")
 
     # #filter out targets that don't have a generated file in doc/_build (don't need)
-    Query.filter_out_targets_without_doc_builds(test_results)
-    print("done filtering out targets that don't have a generated file in doc/_build")
-    print(f"len(test_results.targets): {len(test_results.targets)}")
+    # Query.filter_out_targets_without_doc_builds(test_results)
+    # print("done filtering out targets that don't have a generated file in doc/_build")
+    # print(f"len(test_results.targets): {len(test_results.targets)}")
 
     test_results.calculate_test_coverage()
     print("done calculating test coverage")
