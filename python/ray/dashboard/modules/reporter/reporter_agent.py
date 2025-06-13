@@ -383,6 +383,7 @@ class ReporterAgent(
         self._log_dir = dashboard_agent.log_dir
         self._is_head_node = self._ip == dashboard_agent.gcs_address.split(":")[0]
         self._hostname = socket.gethostname()
+        logger.info(self._hostname)
         # (pid, created_time) -> psutil.Process
         self._workers = {}
         # psutil.Process of the parent.
@@ -438,7 +439,7 @@ class ReporterAgent(
         )
         self._gcs_pid = None
 
-        self._gpu_profiling_manager = GpuProfilingManager(self._log_dir)
+        self._gpu_profiling_manager = GpuProfilingManager(self._log_dir, ip_address=self._ip)
         self._gpu_profiling_manager.start_monitoring_daemon()
 
     async def GetTraceback(self, request, context):
