@@ -12,13 +12,14 @@ import numpy as np
 import psutil
 import pytest
 
+from ray._common.utils import RESOURCE_CONSTRAINT_PREFIX
 import ray
 import ray._private.gcs_utils as gcs_utils
 import ray._private.ray_constants as ray_constants
 import ray._private.utils
 import ray.cluster_utils
 import ray.util.accelerators
-from ray._private.test_utils import wait_for_condition
+from ray._common.test_utils import wait_for_condition
 from ray.dashboard import k8s_utils
 from ray.runtime_env import RuntimeEnv
 
@@ -208,7 +209,7 @@ def test_ray_labels_environment_variables(shutdown_only):
     [ray.util.accelerators.NVIDIA_TESLA_V100, ray.util.accelerators.AWS_NEURON_CORE],
 )
 def test_accelerator_type_api(accelerator_type, shutdown_only):
-    resource_name = f"{ray_constants.RESOURCE_CONSTRAINT_PREFIX}{accelerator_type}"
+    resource_name = f"{RESOURCE_CONSTRAINT_PREFIX}{accelerator_type}"
     ray.init(num_cpus=4, resources={resource_name: 1})
 
     quantity = 1
@@ -266,7 +267,7 @@ def test_get_system_memory():
         memory_limit_file.write("100")
         memory_limit_file.flush()
         assert (
-            ray._private.utils.get_system_memory(
+            ray._common.utils.get_system_memory(
                 memory_limit_filename=memory_limit_file.name,
                 memory_limit_filename_v2="__does_not_exist__",
             )
@@ -279,7 +280,7 @@ def test_get_system_memory():
         memory_limit_file.flush()
         psutil_memory_in_bytes = psutil.virtual_memory().total
         assert (
-            ray._private.utils.get_system_memory(
+            ray._common.utils.get_system_memory(
                 memory_limit_filename=memory_limit_file.name,
                 memory_limit_filename_v2="__does_not_exist__",
             )
@@ -290,7 +291,7 @@ def test_get_system_memory():
         memory_max_file.write("100\n")
         memory_max_file.flush()
         assert (
-            ray._private.utils.get_system_memory(
+            ray._common.utils.get_system_memory(
                 memory_limit_filename="__does_not_exist__",
                 memory_limit_filename_v2=memory_max_file.name,
             )
@@ -303,7 +304,7 @@ def test_get_system_memory():
         memory_max_file.flush()
         psutil_memory_in_bytes = psutil.virtual_memory().total
         assert (
-            ray._private.utils.get_system_memory(
+            ray._common.utils.get_system_memory(
                 memory_limit_filename="__does_not_exist__",
                 memory_limit_filename_v2=memory_max_file.name,
             )

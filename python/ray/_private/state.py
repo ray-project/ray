@@ -5,13 +5,11 @@ from collections import defaultdict
 from typing import Dict, Optional
 
 import ray
+from ray._common.utils import binary_to_hex, decode, hex_to_binary
 from ray._private.client_mode_hook import client_mode_hook
 from ray._private.protobuf_compat import message_to_dict
 from ray._private.resource_spec import HEAD_NODE_RESOURCE_NAME, NODE_ID_PREFIX
 from ray._private.utils import (
-    binary_to_hex,
-    decode,
-    hex_to_binary,
     validate_actor_state_name,
 )
 from ray._raylet import GlobalStateAccessor
@@ -764,7 +762,7 @@ class GlobalState:
             for resource_id, capacity in message.resources_available.items():
                 dynamic_resources[resource_id] = capacity
             # Update available resources for this node.
-            node_id = ray._private.utils.binary_to_hex(message.node_id)
+            node_id = ray._common.utils.binary_to_hex(message.node_id)
             available_resources_by_id[node_id] = dynamic_resources
 
         return available_resources_by_id
@@ -782,7 +780,7 @@ class GlobalState:
             for resource_id, capacity in message.resources_total.items():
                 node_resources[resource_id] = capacity
             # Update total resources for this node.
-            node_id = ray._private.utils.binary_to_hex(message.node_id)
+            node_id = ray._common.utils.binary_to_hex(message.node_id)
             total_resources_by_node[node_id] = node_resources
 
         return total_resources_by_node

@@ -1,6 +1,5 @@
 import asyncio
 import fnmatch
-import inspect
 import io
 import json
 import logging
@@ -34,6 +33,7 @@ import ray._private.services
 import ray._private.services as services
 import ray._private.usage.usage_lib as ray_usage_lib
 import ray._private.utils
+from ray._common.test_utils import wait_for_condition
 from ray._common.utils import get_or_create_event_loop
 from ray._private import (
     ray_constants,
@@ -464,12 +464,12 @@ def run_string_as_driver(driver_script: str, env: Dict = None, encode: str = "ut
     with proc:
         output = proc.communicate(driver_script.encode(encoding=encode))[0]
         if proc.returncode:
-            print(ray._private.utils.decode(output, encode_type=encode))
+            print(ray._common.utils.decode(output, encode_type=encode))
             logger.error(proc.stderr)
             raise subprocess.CalledProcessError(
                 proc.returncode, proc.args, output, proc.stderr
             )
-        out = ray._private.utils.decode(output, encode_type=encode)
+        out = ray._common.utils.decode(output, encode_type=encode)
     return out
 
 
@@ -495,7 +495,7 @@ def run_string_as_driver_stdout_stderr(
     with proc:
         outputs_bytes = proc.communicate(driver_script.encode(encoding=encode))
         out_str, err_str = [
-            ray._private.utils.decode(output, encode_type=encode)
+            ray._common.utils.decode(output, encode_type=encode)
             for output in outputs_bytes
         ]
         if proc.returncode:
@@ -578,43 +578,6 @@ def kill_actor_and_wait_for_failure(actor, timeout=10, retry_interval_ms=100):
     raise RuntimeError("It took too much time to kill an actor: {}".format(actor_id))
 
 
-def wait_for_condition(
-    condition_predictor,
-    timeout=10,
-    retry_interval_ms=100,
-    raise_exceptions=False,
-    **kwargs: Any,
-):
-    """Wait until a condition is met or time out with an exception.
-
-    Args:
-        condition_predictor: A function that predicts the condition.
-        timeout: Maximum timeout in seconds.
-        retry_interval_ms: Retry interval in milliseconds.
-        raise_exceptions: If true, exceptions that occur while executing
-            condition_predictor won't be caught and instead will be raised.
-        **kwargs: Arguments to pass to the condition_predictor.
-
-    Raises:
-        RuntimeError: If the condition is not met before the timeout expires.
-    """
-    start = time.time()
-    last_ex = None
-    while time.time() - start <= timeout:
-        try:
-            if condition_predictor(**kwargs):
-                return
-        except Exception:
-            if raise_exceptions:
-                raise
-            last_ex = ray._private.utils.format_error_message(traceback.format_exc())
-        time.sleep(retry_interval_ms / 1000.0)
-    message = "The condition wasn't met before the timeout expired."
-    if last_ex is not None:
-        message += f" Last exception: {last_ex}"
-    raise RuntimeError(message)
-
-
 def wait_for_assertion(
     assertion_predictor: Callable,
     timeout: int = 10,
@@ -653,38 +616,6 @@ def wait_for_assertion(
         )
     except RuntimeError:
         assertion_predictor(**kwargs)  # Should fail assert
-
-
-async def async_wait_for_condition(
-    condition_predictor, timeout=10, retry_interval_ms=100, **kwargs: Any
-):
-    """Wait until a condition is met or time out with an exception.
-
-    Args:
-        condition_predictor: A function that predicts the condition.
-        timeout: Maximum timeout in seconds.
-        retry_interval_ms: Retry interval in milliseconds.
-
-    Raises:
-        RuntimeError: If the condition is not met before the timeout expires.
-    """
-    start = time.time()
-    last_ex = None
-    while time.time() - start <= timeout:
-        try:
-            if inspect.iscoroutinefunction(condition_predictor):
-                if await condition_predictor(**kwargs):
-                    return
-            else:
-                if condition_predictor(**kwargs):
-                    return
-        except Exception as ex:
-            last_ex = ex
-        await asyncio.sleep(retry_interval_ms / 1000.0)
-    message = "The condition wasn't met before the timeout expired."
-    if last_ex is not None:
-        message += f" Last exception: {last_ex}"
-    raise RuntimeError(message)
 
 
 @dataclass
@@ -1841,50 +1772,6 @@ def no_resource_leaks_excluding_node_resources():
             del available_resources[r]
 
     return cluster_resources == available_resources
-
-
-@contextmanager
-def simulate_storage(
-    storage_type: str,
-    root: Optional[str] = None,
-    port: int = 5002,
-    region: str = "us-west-2",
-):
-    """Context that simulates a given storage type and yields the URI.
-
-    Args:
-        storage_type: The storage type to simiulate ("fs" or "s3")
-        root: Root directory of the URI to return (e.g., s3 bucket name)
-        port: The port of the localhost endpoint where s3 is being served (s3 only)
-        region: The s3 region (s3 only)
-    """
-    if storage_type == "fs":
-        if root is None:
-            with tempfile.TemporaryDirectory() as d:
-                yield "file://" + d
-        else:
-            yield "file://" + root
-    elif storage_type == "s3":
-        from moto.server import ThreadedMotoServer
-
-        old_env = os.environ
-        os.environ["AWS_ACCESS_KEY_ID"] = "testing"
-        os.environ["AWS_SECRET_ACCESS_KEY"] = "testing"
-        os.environ["AWS_SECURITY_TOKEN"] = "testing"
-        os.environ["AWS_SESSION_TOKEN"] = "testing"
-
-        root = root or uuid.uuid4().hex
-        s3_server = f"http://localhost:{port}"
-        server = ThreadedMotoServer(port=port)
-        server.start()
-        url = f"s3://{root}?region={region}&endpoint_override={s3_server}"
-        yield url
-        server.stop()
-
-        os.environ = old_env
-
-    else:
-        raise NotImplementedError(f"Unknown storage type: {storage_type}")
 
 
 def job_hook(**kwargs):

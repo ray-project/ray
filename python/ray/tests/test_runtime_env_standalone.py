@@ -14,12 +14,12 @@ from typing import List
 import pytest
 
 import ray
+from ray._common.test_utils import wait_for_condition
 from ray._private.runtime_env.context import RuntimeEnvContext
 from ray._private.runtime_env.plugin import RuntimeEnvPlugin
 from ray._private.test_utils import (
     get_error_message,
     get_log_sources,
-    wait_for_condition,
 )
 from ray.exceptions import RuntimeEnvSetupError
 from ray.runtime_env import RuntimeEnv
@@ -367,6 +367,26 @@ class TestNoUserInfoInLogs:
         assert_no_user_info_in_logs(
             USER_SECRET, file_whitelist=["runtime_env*.log", "event_EXPORT*.log"]
         )
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="Hangs on windows.")
+def test_failed_job_env_no_hang(shutdown_only):
+    """Test that after a failed job-level env, tasks can still be run."""
+    runtime_env_for_init = RuntimeEnv(pip=["ray-doesnotexist-123"])
+    ray.init(runtime_env=runtime_env_for_init)
+
+    @ray.remote
+    def f():
+        import pip_install_test  # noqa: F401
+
+        return True
+
+    runtime_env_for_f = RuntimeEnv(pip=["pip-install-test==0.5"])
+    assert ray.get(f.options(runtime_env=runtime_env_for_f).remote())
+
+    # Task with no runtime env should inherit the bad job env.
+    with pytest.raises(RuntimeEnvSetupError):
+        ray.get(f.remote())
 
 
 if __name__ == "__main__":
