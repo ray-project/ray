@@ -4,6 +4,7 @@ import copy
 import logging
 import numpy
 import platform
+import tree
 from typing import (
     Any,
     Callable,
@@ -1359,12 +1360,19 @@ class Learner(Checkpointable):
             isinstance(training_data.batch, MultiAgentBatch)
             and training_data.batch.policy_batches
             and (
-                isinstance(
-                    next(iter(training_data.batch.policy_batches.values()))["obs"],
-                    numpy.ndarray,
+                any(
+                    tree.map_structure(
+                        lambda a: isinstance(a, numpy.ndarray),
+                        tree.flatten(training_data.batch.policy_batches),
+                    )
                 )
-                or next(iter(training_data.batch.policy_batches.values()))["obs"].device
-                != self._device
+                or any(
+                    tree.map_structure(
+                        lambda a: isinstance(a, torch.Tensor)
+                        and a.device != self._device,
+                        tree.flatten(training_data.batch.policy_batches),
+                    )
+                )
             )
         ):
             batch = self._convert_batch_type(training_data.batch)
