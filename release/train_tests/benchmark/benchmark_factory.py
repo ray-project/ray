@@ -34,12 +34,3 @@ class BenchmarkFactory(ABC):
 
     def get_dataloader_metrics(self):
         return self.dataloader_factory.get_metrics()
-
-    def get_ray_datasets(self):
-        return self.dataloader_factory.get_ray_datasets()
-
-    def get_dataset_creation_time(self):
-        return self.dataset_creation_time
-
-    def set_dataset_creation_time(self, time):
-        self.dataset_creation_time = time
