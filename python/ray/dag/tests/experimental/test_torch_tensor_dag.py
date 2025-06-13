@@ -559,6 +559,16 @@ def test_torch_tensor_custom_comm(ray_start_regular):
             self._inner.broadcast(send_buf, recv_buf, root_rank)
             recv_buf += 1
 
+        def reduce(
+            self,
+            send_buf: "torch.Tensor",
+            recv_buf: "torch.Tensor",
+            root_rank: int,
+            op: ReduceOp = ReduceOp.SUM,
+        ) -> None:
+            self._inner.reduce(send_buf, recv_buf, root_rank, op)
+            recv_buf += 1
+
         @property
         def recv_stream(self):
             return self._inner.recv_stream
@@ -704,6 +714,15 @@ def test_torch_tensor_custom_comm_inited(ray_start_regular):
             send_buf: "torch.Tensor",
             recv_buf: "torch.Tensor",
             root_rank: int,
+        ) -> None:
+            raise NotImplementedError
+
+        def reduce(
+            self,
+            send_buf: "torch.Tensor",
+            recv_buf: "torch.Tensor",
+            root_rank: int,
+            op: ReduceOp = ReduceOp.SUM,
         ) -> None:
             raise NotImplementedError
 
@@ -856,6 +875,15 @@ def test_torch_tensor_default_comm(ray_start_regular, transports):
             send_buf: "torch.Tensor",
             recv_buf: "torch.Tensor",
             root_rank: int,
+        ) -> None:
+            raise NotImplementedError
+
+        def reduce(
+            self,
+            send_buf: "torch.Tensor",
+            recv_buf: "torch.Tensor",
+            root_rank: int,
+            op: ReduceOp = ReduceOp.SUM,
         ) -> None:
             raise NotImplementedError
 
@@ -1021,6 +1049,15 @@ def test_torch_tensor_invalid_custom_comm(ray_start_regular):
             send_buf: "torch.Tensor",
             recv_buf: "torch.Tensor",
             root_rank: int,
+        ) -> None:
+            raise NotImplementedError
+
+        def reduce(
+            self,
+            send_buf: "torch.Tensor",
+            recv_buf: "torch.Tensor",
+            root_rank: int,
+            op: ReduceOp = ReduceOp.SUM,
         ) -> None:
             raise NotImplementedError
 
@@ -1385,6 +1422,10 @@ def test_torch_tensor_explicit_communicator(ray_start_regular):
         (collective.reducescatter, ReduceOp.MIN),
         (collective.reducescatter, ReduceOp.MAX),
         (collective.broadcast, None),
+        (collective.reduce, ReduceOp.SUM),
+        (collective.reduce, ReduceOp.PRODUCT),
+        (collective.reduce, ReduceOp.MIN),
+        (collective.reduce, ReduceOp.MAX),
     ],
 )
 def test_torch_tensor_nccl_collective_ops(ray_start_regular, operation, reduce_op):
@@ -1407,6 +1448,8 @@ def test_torch_tensor_nccl_collective_ops(ray_start_regular, operation, reduce_o
             collectives = operation.bind(computes)
         elif operation == collective.broadcast:
             collectives = operation.bind(computes[0], computes)
+        elif operation == collective.reduce:
+            collectives = operation.bind(computes[0], computes, op=reduce_op)
         else:
             collectives = operation.bind(computes, op=reduce_op)
         recvs = [
@@ -1481,6 +1524,18 @@ def test_torch_tensor_nccl_collective_ops(ray_start_regular, operation, reduce_o
                 raise ValueError(f"Unknown reduce_op: {reduce_op}")
         elif operation == collective.broadcast:
             expected_tensors = [input_tensors[0] for _ in range(num_workers)]
+        elif operation == collective.reduce:
+            # Only validate result of root node for NCCL reduce
+            if reduce_op == ReduceOp.SUM:
+                expected_tensors = [torch.sum(torch.stack(input_tensors), dim=0)]
+            elif reduce_op == ReduceOp.PRODUCT:
+                expected_tensors = [torch.prod(torch.stack(input_tensors), dim=0)]
+            elif reduce_op == ReduceOp.MIN:
+                expected_tensors = [torch.min(torch.stack(input_tensors), dim=0).values]
+            elif reduce_op == ReduceOp.MAX:
+                expected_tensors = [torch.max(torch.stack(input_tensors), dim=0).values]
+            else:
+                raise ValueError(f"Unknown reduce_op: {reduce_op}")
         else:
             raise ValueError(f"Unknown operation: {operation}")
 
@@ -1778,6 +1833,16 @@ def test_torch_tensor_nccl_all_reduce_custom_comm(ray_start_regular):
             self._inner.broadcast(send_buf, recv_buf, root_rank)
             recv_buf += 1
 
+        def reduce(
+            self,
+            send_buf: "torch.Tensor",
+            recv_buf: "torch.Tensor",
+            root_rank: int,
+            op: ReduceOp = ReduceOp.SUM,
+        ) -> None:
+            self._inner.reduce(send_buf, recv_buf, root_rank, op)
+            recv_buf += 1
+
         @property
         def recv_stream(self):
             return self._inner.recv_stream
@@ -2040,7 +2105,8 @@ def test_torch_nccl_channel_with_all_local_readers(ray_start_regular):
 
 
 @pytest.mark.parametrize("ray_start_regular", [{"num_gpus": 4}], indirect=True)
-def test_torch_tensor_nccl_broadcast_wrong_root_node(ray_start_regular):
+@pytest.mark.parametrize("collective_op", [collective.broadcast, collective.reduce])
+def test_torch_tensor_nccl_wrong_root_node(ray_start_regular, collective_op):
     actor_cls = TorchTensorWorker.options(num_cpus=0, num_gpus=1)
 
     num_workers = 2
@@ -2057,12 +2123,12 @@ def test_torch_tensor_nccl_broadcast_wrong_root_node(ray_start_regular):
                 worker.compute_with_tuple_args.bind(inp, i)
                 for i, worker in enumerate(workers)
             ]
-
-            collective.broadcast.bind(root_compute, computes)
+            collective_op.bind(root_compute, computes)
 
 
 @pytest.mark.parametrize("ray_start_regular", [{"num_gpus": 4}], indirect=True)
-def test_torch_tensor_nccl_broadcast_no_root_node(ray_start_regular):
+@pytest.mark.parametrize("collective_op", [collective.broadcast, collective.reduce])
+def test_torch_tensor_nccl_no_root_node(ray_start_regular, collective_op):
     actor_cls = TorchTensorWorker.options(num_cpus=0, num_gpus=1)
 
     num_workers = 2
@@ -2077,8 +2143,7 @@ def test_torch_tensor_nccl_broadcast_no_root_node(ray_start_regular):
                 worker.compute_with_tuple_args.bind(inp, i)
                 for i, worker in enumerate(workers)
             ]
-
-            collective.broadcast.bind(computes)
+            collective_op.bind(computes)
 
 
 if __name__ == "__main__":

@@ -3,6 +3,7 @@ from ray.experimental.collective.operations import (
     allreduce,
     reducescatter,
     broadcast,
+    reduce,
 )
 from ray.experimental.collective.collective import (
     get_collective_groups,
@@ -16,6 +17,7 @@ __all__ = [
     "allreduce",
     "reducescatter",
     "broadcast",
+    "reduce",
     "get_collective_groups",
     "create_collective_group",
     "destroy_collective_group",

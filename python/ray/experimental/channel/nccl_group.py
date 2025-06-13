@@ -353,6 +353,29 @@ class _NcclGroup(Communicator):
             *operation_args,
         )
 
+    def reduce(
+        self,
+        send_buf: "torch.Tensor",
+        recv_buf: "torch.Tensor",
+        root: int,
+        op: ReduceOp = ReduceOp.SUM,
+    ):
+        operation_args = [
+            self.nccl_util.get_tensor_ptr(send_buf),
+            self.nccl_util.get_tensor_ptr(recv_buf),
+            send_buf.numel(),
+            self.nccl_util.get_nccl_tensor_dtype(send_buf),
+            op.value,
+            root,
+            self._cuda_stream.cuda_stream,
+        ]
+        self._exec_collective(
+            send_buf,
+            recv_buf,
+            self._comm.reduce,
+            *operation_args,
+        )
+
     @property
     def recv_stream(self):
         import torch

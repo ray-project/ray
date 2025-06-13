@@ -17,6 +17,8 @@ from ray.experimental.util.types import (
     AllReduceOp,
     ReduceScatterOp,
     BroadcastOp,
+    ReduceOp,
+    ReduceOperation,
 )
 from ray.util.annotations import DeveloperAPI
 
@@ -262,6 +264,10 @@ class _CollectiveOperation:
             recv_buf = torch.empty_like(send_buf)
             root_rank = communicator.get_rank(self._root_actor_handle)
             communicator.broadcast(send_buf, recv_buf, root_rank)
+        elif isinstance(self._op, ReduceOperation):
+            recv_buf = torch.empty_like(send_buf)
+            root_rank = communicator.get_rank(self._root_actor_handle)
+            communicator.reduce(send_buf, recv_buf, root_rank, self._op.reduceOp)
         else:
             raise ValueError("Expected a collective operation")
         return recv_buf
@@ -274,9 +280,7 @@ class CollectiveOutputNode(ClassMethodNode):
     def __init__(
         self,
         method_name: str,
-        method_args: Tuple[
-            DAGNode,
-        ],
+        method_args: Tuple[DAGNode,],
         method_kwargs: Dict[str, Any],
         method_options: Dict[str, Any],
         other_args_to_resolve: Dict[str, Any],
