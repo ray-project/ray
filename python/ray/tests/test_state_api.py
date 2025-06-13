@@ -2153,7 +2153,11 @@ async def test_cloud_envs(ray_start_cluster, monkeypatch):
             "test_cloud_id",
         )
         m.setenv("RAY_NODE_TYPE_NAME", "test-node-type")
-        cluster.add_node(num_cpus=1, node_name="worker_node", dashboard_agent_listen_port=find_free_port())
+        cluster.add_node(
+            num_cpus=1,
+            node_name="worker_node",
+            dashboard_agent_listen_port=find_free_port(),
+        )
     client = state_source_client(cluster.address)
 
     async def verify():
@@ -2181,7 +2185,11 @@ def test_list_get_nodes(ray_start_cluster):
     cluster = ray_start_cluster
     cluster.add_node(num_cpus=1, node_name="head_node")
     ray.init(address=cluster.address)
-    worker_node = cluster.add_node(num_cpus=1, node_name="worker_node", dashboard_agent_listen_port=find_free_port())
+    worker_node = cluster.add_node(
+        num_cpus=1,
+        node_name="worker_node",
+        dashboard_agent_listen_port=find_free_port(),
+    )
 
     cluster.remove_node(worker_node)
 
