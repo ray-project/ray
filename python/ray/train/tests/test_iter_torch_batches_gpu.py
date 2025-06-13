@@ -240,6 +240,7 @@ def collate_fn_map():
     "return_type", ["single", "tuple", "dict", "list", "chunked_dict"]
 )
 @pytest.mark.parametrize("device", ["cpu", "cuda:0"])
+@pytest.mark.parametrize("pin_memory", [True, False])
 def test_custom_batch_collate_fn(
     ray_start_4_cpus_1_gpu,
     monkeypatch,
@@ -247,6 +248,7 @@ def test_custom_batch_collate_fn(
     return_type,
     device,
     collate_fn_map,
+    pin_memory,
 ):
     """Tests that custom batch collate functions can be used to modify
     the batch before it is converted to a PyTorch tensor.
@@ -257,6 +259,10 @@ def test_custom_batch_collate_fn(
     # Skip GPU tests if CUDA is not available
     if device == "cuda:0" and not torch.cuda.is_available():
         pytest.skip("CUDA is not available")
+
+    # Skip pin_memory tests if CUDA is not available
+    if pin_memory and not torch.cuda.is_available():
+        pytest.skip("pin_memory is set to True, but CUDA is not available.")
 
     collate_fn = collate_fn_map[collate_batch_type].get(return_type)
     if collate_fn is None:
@@ -274,11 +280,13 @@ def test_custom_batch_collate_fn(
     )
     it = ds.iterator()
 
-    for batch in it.iter_torch_batches(collate_fn=collate_fn):
+    for batch in it.iter_torch_batches(collate_fn=collate_fn, pin_memory=pin_memory):
         if return_type == "single":
             assert isinstance(batch, torch.Tensor)
             assert sorted(batch.tolist()) == list(range(5, 10))
             assert batch.device == device
+            if pin_memory:
+                assert batch.is_pinned()
         elif return_type == "dict" or return_type == "chunked_dict":
             # Chunked dicts get concatenated to single Tensors on the device,
             # so the assertions are shared with the dict case.
@@ -287,6 +295,9 @@ def test_custom_batch_collate_fn(
             assert sorted(batch["value"].tolist()) == list(range(5))
             assert batch["id"].device == device
             assert batch["value"].device == device
+            if pin_memory:
+                assert batch["id"].is_pinned()
+                assert batch["value"].is_pinned()
         else:  # tuple or list
             assert isinstance(batch, (tuple, list))
             assert len(batch) == 2
@@ -294,6 +305,9 @@ def test_custom_batch_collate_fn(
             assert sorted(batch[1].tolist()) == list(range(5))
             assert batch[0].device == device
             assert batch[1].device == device
+            if pin_memory:
+                assert batch[0].is_pinned()
+                assert batch[1].is_pinned()
 
 
 if __name__ == "__main__":

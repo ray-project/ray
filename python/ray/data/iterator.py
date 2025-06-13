@@ -278,6 +278,7 @@ class DataIterator(abc.ABC):
         drop_last: bool = False,
         local_shuffle_buffer_size: Optional[int] = None,
         local_shuffle_seed: Optional[int] = None,
+        pin_memory: bool = False,
     ) -> Iterable["TorchBatchType"]:
         """Return a batched iterable of Torch Tensors over the dataset.
 
@@ -365,10 +366,13 @@ class DataIterator(abc.ABC):
                 therefore ``batch_size`` must also be specified when using local
                 shuffling.
             local_shuffle_seed: The seed to use for the local random shuffle.
+            pin_memory: [Alpha] Whether to pin the memory of the tensors. Defaults to False.
 
         Returns:
             An iterable over Torch Tensor batches.
         """
+
+        import torch
 
         from ray.train.torch import get_device
 
@@ -378,6 +382,13 @@ class DataIterator(abc.ABC):
                 "You should manually move the output Torch tensors to the"
                 "desired dtype and device outside of collate_fn."
             )
+
+        if pin_memory and not torch.cuda.is_available():
+            warnings.warn(
+                "pin_memory is set to True, but CUDA is not available. "
+                "pin_memory will be ignored."
+            )
+            pin_memory = False
 
         if device == "auto":
             # Use the appropriate device for Ray Train, or falls back to CPU if
@@ -409,7 +420,9 @@ class DataIterator(abc.ABC):
                 to device.
             """
             if is_tensor_batch_type(batch):
-                return move_tensors_to_device(batch, device=device)
+                return move_tensors_to_device(
+                    batch, device=device, pin_memory=pin_memory
+                )
             else:
                 return batch
 
