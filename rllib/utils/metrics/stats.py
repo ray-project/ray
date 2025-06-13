@@ -595,18 +595,22 @@ class Stats:
                 else:
                     n_values = len(tmp_values)
 
-            if self._ema_coeff is not None:
-                new_values.extend([np.nanmean(tmp_values)] * n_values)
-            elif self._reduce_method is None:
-                new_values.extend(tmp_values)
-            elif self._reduce_method == "sum":
-                # We add [sum(tmp_values) / n_values] * n_values to the new values list
-                # Instead of tmp_values, because every incoming element should have the
-                # same weight
-                reduced_value = self._reduced_values(values=tmp_values)[0][0] / n_values
-                new_values.extend([reduced_value] * n_values)
-            else:
-                new_values.extend(self._reduced_values(values=tmp_values)[0] * n_values)
+                if self._ema_coeff is not None:
+                    new_values.extend([np.nanmean(tmp_values)] * n_values)
+                elif self._reduce_method is None:
+                    new_values.extend(tmp_values)
+                elif self._reduce_method == "sum":
+                    # We add [sum(tmp_values) / n_values] * n_values to the new values
+                    # list instead of tmp_values, because every incoming element should
+                    # have the same weight.
+                    reduced_value = (
+                        self._reduced_values(values=tmp_values)[0][0] / n_values
+                    )
+                    new_values.extend([reduced_value] * n_values)
+                else:
+                    new_values.extend(
+                        self._reduced_values(values=tmp_values)[0] * n_values
+                    )
 
                 tmp_values.clear()
                 if len(new_values) >= win:
