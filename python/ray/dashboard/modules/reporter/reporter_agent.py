@@ -46,7 +46,7 @@ from ray.dashboard.consts import (
     GPU_TAG_KEYS,
     NODE_TAG_KEYS,
 )
-from ray.dashboard.modules.reporter.gpu_profiling_manager import GpuProfilingManager
+from ray.dashboard.modules.reporter.gpu_profiling_manager import GPUProfilingManager
 from ray.dashboard.modules.reporter.profile_manager import (
     CpuProfilingManager,
     MemoryProfilingManager,
@@ -438,7 +438,7 @@ class ReporterAgent(
         )
         self._gcs_pid = None
 
-        self._gpu_profiling_manager = GpuProfilingManager(
+        self._gpu_profiling_manager = GPUProfilingManager(
             profile_dir_path=self._log_dir, ip_address=self._ip
         )
         self._gpu_profiling_manager.start_monitoring_daemon()
