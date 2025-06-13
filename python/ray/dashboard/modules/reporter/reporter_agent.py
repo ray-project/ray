@@ -668,12 +668,11 @@ class ReporterAgent(
         return gpu_utilizations
 
     @staticmethod
-    def _get_tpu_usage():
+    def _get_tpu_usage() -> List[TpuUtilizationInfo]:
 
         global enable_tpu_usage_check
         if not enable_tpu_usage_check:
             return []
-        tpu_utilizations = []
 
         if not TPU_DEVICE_PLUGIN_ADDR:
             enable_tpu_usage_check = False
@@ -690,13 +689,24 @@ class ReporterAgent(
             enable_tpu_usage_check = False
             return []
 
+        tpu_utilizations = []
+        # Sample should look like:
+        # Name: tensorcore_utilization_node Labels: {'accelerator_id': '4804690994094478883-0', 'make': 'cloud-tpu', 'model': 'tpu-v6e-slice', 'tpu_topology': '2x4'} Value: 0.0
+        # See https://cloud.google.com/monitoring/api/metrics_gcp#gcp-tpu for
+        # schema.
         try:
             for family in text_string_to_metric_families(metrics):
                 for sample in family.samples:
+                    # Skip irrelevant metrics
+                    if not hasattr(sample, "labels"):
+                        continue
+                    if not "accelerator_id" in sample.labels:
+                        continue
+                    labels = sample.labels
+                    accelerator_id = labels["accelerator_id"]
+                    index = accelerator_id.split("-")[1]
+
                     if sample.name == "memory_bandwidth_utilization":
-                        labels = sample.labels
-                        accelerator_id = labels["accelerator_id"]
-                        index = accelerator_id.split("-")[1]
                         info = TpuUtilizationInfo(
                             index=index,
                             name=accelerator_id,
@@ -711,9 +721,6 @@ class ReporterAgent(
                         tpu_utilizations.append(info)
 
                     if sample.name == "tensorcore_utilization":
-                        labels = sample.labels
-                        accelerator_id = labels["accelerator_id"]
-                        index = accelerator_id.split("-")[1]
                         info = TpuUtilizationInfo(
                             index=index,
                             name=accelerator_id,
@@ -728,9 +735,6 @@ class ReporterAgent(
                         tpu_utilizations.append(info)
 
                     if sample.name == "duty_cycle":
-                        labels = sample.labels
-                        accelerator_id = labels["accelerator_id"]
-                        index = accelerator_id.split("-")[1]
                         info = TpuUtilizationInfo(
                             index=index,
                             name=accelerator_id,
@@ -745,9 +749,6 @@ class ReporterAgent(
                         tpu_utilizations.append(info)
 
                     if sample.name == "memory_used":
-                        labels = sample.labels
-                        accelerator_id = labels["accelerator_id"]
-                        index = accelerator_id.split("-")[1]
                         info = TpuUtilizationInfo(
                             index=index,
                             name=accelerator_id,
@@ -762,9 +763,6 @@ class ReporterAgent(
                         tpu_utilizations.append(info)
 
                     if sample.name == "memory_total":
-                        labels = sample.labels
-                        accelerator_id = labels["accelerator_id"]
-                        index = accelerator_id.split("-")[1]
                         info = TpuUtilizationInfo(
                             index=index,
                             name=accelerator_id,
@@ -781,7 +779,10 @@ class ReporterAgent(
             logger.debug(f"Failed to parse metrics from device plugin: {metrics} {e}")
             return []
 
-        # Merge metrics
+        # Each collected sample records only one metric (e.g. duty cycle) during
+        # the metric interval for one TPU. So here we need to aggregate the
+        # sample records together. The aggregated list should be indexed by the
+        # TPU accelerator index.
         merged_tpu_utilizations = []
 
         for info in tpu_utilizations:
@@ -1361,61 +1362,59 @@ class ReporterAgent(
 
         # -- TPU per node --
         tpus = stats["tpus"]
-        tpus_available = len(tpus)
 
-        if tpus_available:
-            for tpu in tpus:
-                tpu_index = tpu.get("index")
-                tpu_name = tpu.get("name")
-                tpu_type = tpu.get("tpu_type")
-                tpu_topology = tpu.get("tpu_topology")
-                tensorcore_utilization = tpu.get("tensorcore_utilization")
-                hbm_utilization = tpu.get("hbm_utilization")
-                duty_cycle = tpu.get("duty_cycle")
-                memory_used = tpu.get("memory_used")
-                memory_total = tpu.get("memory_total")
+        for tpu in tpus:
+            tpu_index = tpu.get("index")
+            tpu_name = tpu.get("name")
+            tpu_type = tpu.get("tpu_type")
+            tpu_topology = tpu.get("tpu_topology")
+            tensorcore_utilization = tpu.get("tensorcore_utilization")
+            hbm_utilization = tpu.get("hbm_utilization")
+            duty_cycle = tpu.get("duty_cycle")
+            memory_used = tpu.get("memory_used")
+            memory_total = tpu.get("memory_total")
 
-                tpu_tags = {
-                    **node_tags,
-                    "TpuIndex": str(tpu_index),
-                    "TpuDeviceName": tpu_name,
-                    "TpuType": tpu_type,
-                    "TpuTopology": tpu_topology,
-                }
-                tensorcore_utilization_record = Record(
-                    gauge=METRICS_GAUGES["tpu_tensorcore_utilization"],
-                    value=tensorcore_utilization,
-                    tags=tpu_tags,
-                )
-                hbm_utilization_record = Record(
-                    gauge=METRICS_GAUGES["tpu_memory_bandwidth_utilization"],
-                    value=hbm_utilization,
-                    tags=tpu_tags,
-                )
-                duty_cycle_record = Record(
-                    gauge=METRICS_GAUGES["tpu_duty_cycle"],
-                    value=duty_cycle,
-                    tags=tpu_tags,
-                )
-                memory_used_record = Record(
-                    gauge=METRICS_GAUGES["tpu_memory_used"],
-                    value=memory_used,
-                    tags=tpu_tags,
-                )
-                memory_total_record = Record(
-                    gauge=METRICS_GAUGES["tpu_memory_total"],
-                    value=memory_total,
-                    tags=tpu_tags,
-                )
-                records_reported.extend(
-                    [
-                        tensorcore_utilization_record,
-                        hbm_utilization_record,
-                        duty_cycle_record,
-                        memory_used_record,
-                        memory_total_record,
-                    ]
-                )
+            tpu_tags = {
+                **node_tags,
+                "TpuIndex": str(tpu_index),
+                "TpuDeviceName": tpu_name,
+                "TpuType": tpu_type,
+                "TpuTopology": tpu_topology,
+            }
+            tensorcore_utilization_record = Record(
+                gauge=METRICS_GAUGES["tpu_tensorcore_utilization"],
+                value=tensorcore_utilization,
+                tags=tpu_tags,
+            )
+            hbm_utilization_record = Record(
+                gauge=METRICS_GAUGES["tpu_memory_bandwidth_utilization"],
+                value=hbm_utilization,
+                tags=tpu_tags,
+            )
+            duty_cycle_record = Record(
+                gauge=METRICS_GAUGES["tpu_duty_cycle"],
+                value=duty_cycle,
+                tags=tpu_tags,
+            )
+            memory_used_record = Record(
+                gauge=METRICS_GAUGES["tpu_memory_used"],
+                value=memory_used,
+                tags=tpu_tags,
+            )
+            memory_total_record = Record(
+                gauge=METRICS_GAUGES["tpu_memory_total"],
+                value=memory_total,
+                tags=tpu_tags,
+            )
+            records_reported.extend(
+                [
+                    tensorcore_utilization_record,
+                    hbm_utilization_record,
+                    duty_cycle_record,
+                    memory_used_record,
+                    memory_total_record,
+                ]
+            )
 
         # -- Disk per node --
         disk_io_stats = stats["disk_io"]

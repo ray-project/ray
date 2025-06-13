@@ -23,7 +23,10 @@ from ray._private.test_utils import (
     wait_until_server_available,
 )
 from ray.core.generated.metrics_pb2 import Metric
-from ray.dashboard.modules.reporter.reporter_agent import ReporterAgent
+from ray.dashboard.modules.reporter.reporter_agent import (
+    ReporterAgent,
+    TpuUtilizationInfo,
+)
 from ray.dashboard.tests.conftest import *  # noqa
 from ray.dashboard.utils import Bunch
 
@@ -476,6 +479,63 @@ def test_report_stats_gpu():
     assert gpu_metrics_aggregatd["node_gpus_utilization"] == 6
     assert gpu_metrics_aggregatd["node_gram_used"] == 6
     assert gpu_metrics_aggregatd["node_gram_available"] == GPU_MEMORY * 4 - 6
+
+
+def test_get_tpu_usage():
+    dashboard_agent = MagicMock()
+    agent = ReporterAgent(dashboard_agent)
+    tpu_utilization = agent._get_tpu_usage()
+
+    fake_metrics_content = """
+    duty_cycle{accelerator_id="1234-0",container="ray-head",make="cloud-tpu",model="tpu-v6e-slice",namespace="default",pod="test",tpu_topology="2x2"} 20.0 
+    duty_cycle{accelerator_id="1234-1",container="ray-head",make="cloud-tpu",model="tpu-v6e-slice",namespace="default",pod="test",tpu_topology="2x2"} 40.0
+    memory_bandwidth_utilization{accelerator_id="1234-0",container="ray-head",make="cloud-tpu",model="tpu-v6e-slice",namespace="default",pod="test",tpu_topology="2x2"} 11
+    memory_bandwidth_utilization{accelerator_id="1234-1",container="ray-head",make="cloud-tpu",model="tpu-v6e-slice",namespace="default",pod="test",tpu_topology="2x2"} 12
+    memory_used{accelerator_id="1234-0",container="ray-head",make="cloud-tpu",model="tpu-v6e-slice",namespace="default",pod="test",tpu_topology="2x2"} 1000 
+    memory_used{accelerator_id="1234-1",container="ray-head",make="cloud-tpu",model="tpu-v6e-slice",namespace="default",pod="test",tpu_topology="2x2"} 2000
+    memory_total{accelerator_id="1234-0",container="ray-head",make="cloud-tpu",model="tpu-v6e-slice",namespace="default",pod="test",tpu_topology="2x2"} 4000
+    memory_total{accelerator_id="1234-1",container="ray-head",make="cloud-tpu",model="tpu-v6e-slice",namespace="default",pod="test",tpu_topology="2x2"} 4000
+    tensorcore_utilization{accelerator_id="1234-0",container="ray-head",make="cloud-tpu",model="tpu-v6e-slice",namespace="default",pod="test",tpu_topology="2x2"} 22
+    tensorcore_utilization{accelerator_id="1234-1",container="ray-head",make="cloud-tpu",model="tpu-v6e-slice",namespace="default",pod="test",tpu_topology="2x2"} 23
+    """
+    with patch.multiple(
+        "ray.dashboard.modules.reporter.reporter_agent",
+        TPU_DEVICE_PLUGIN_ADDR="localhost:2112",
+    ):
+        with patch("requests.get") as mock_get:
+            mock_response = MagicMock()
+            mock_response.content = fake_metrics_content.encode("utf-8")
+            mock_get.return_value = mock_response
+
+            tpu_utilizations = agent._get_tpu_usage()
+
+            mock_get.assert_called_once_with(f"http://localhost:2112/metrics")
+
+            expected_utilizations = [
+                TpuUtilizationInfo(
+                    index="0",
+                    name="1234-0",
+                    tpu_type="tpu-v6e-slice",
+                    tpu_topology="2x2",
+                    tensorcore_utilization=22.0,
+                    hbm_utilization=11.0,
+                    duty_cycle=20.0,
+                    memory_used=1000,
+                    memory_total=4000,
+                ),
+                TpuUtilizationInfo(
+                    index="1",
+                    name="1234-1",
+                    tpu_type="tpu-v6e-slice",
+                    tpu_topology="2x2",
+                    tensorcore_utilization=23.0,
+                    hbm_utilization=12.0,
+                    duty_cycle=40.0,
+                    memory_used=2000,
+                    memory_total=4000,
+                ),
+            ]
+            assert tpu_utilizations == expected_utilizations
 
 
 def test_report_stats_tpu():
