@@ -11,6 +11,8 @@ try:
         delete,
         deployment,
         get_app_handle,
+        get_application_url,
+        get_application_urls,
         get_deployment_handle,
         get_multiplexed_model_id,
         get_replica_context,
@@ -60,4 +62,6 @@ __all__ = [
     "status",
     "get_app_handle",
     "get_deployment_handle",
+    "get_application_urls",
+    "get_application_url",
 ]

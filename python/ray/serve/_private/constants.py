@@ -445,3 +445,8 @@ DEFAULT_REQUEST_ROUTING_STATS_TIMEOUT_S = 30
 
 # Name of deployment request routing stats method implemented by user.
 REQUEST_ROUTING_STATS_METHOD = "record_routing_stats"
+
+# Whether to only return proxy URLs when getting application URLs.
+RAY_SERVE_PROXY_ONLY_GET_APPLICATION_URLS = (
+    os.environ.get("RAY_SERVE_PROXY_ONLY_GET_APPLICATION_URLS", "1") == "1"
+)

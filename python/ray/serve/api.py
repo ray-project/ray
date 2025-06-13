@@ -1,6 +1,7 @@
 import collections
 import inspect
 import logging
+import random
 from functools import wraps
 from typing import Any, Callable, Dict, List, Optional, Sequence, Type, Union
 
@@ -12,6 +13,7 @@ import ray
 from ray import cloudpickle
 from ray._private.serialization import pickle_dumps
 from ray.serve._private.build_app import build_app
+from ray.serve._private.common import RequestProtocol
 from ray.serve._private.config import (
     DeploymentConfig,
     ReplicaConfig,
@@ -19,6 +21,7 @@ from ray.serve._private.config import (
 )
 from ray.serve._private.constants import (
     RAY_SERVE_FORCE_LOCAL_TESTING_MODE,
+    RAY_SERVE_PROXY_ONLY_GET_APPLICATION_URLS,
     SERVE_DEFAULT_APP_NAME,
     SERVE_LOGGER_NAME,
 )
@@ -55,7 +58,12 @@ from ray.serve.deployment import Application, Deployment
 from ray.serve.exceptions import RayServeException
 from ray.serve.handle import DeploymentHandle
 from ray.serve.multiplex import _ModelMultiplexWrapper
-from ray.serve.schema import LoggingConfig, ServeInstanceDetails, ServeStatus
+from ray.serve.schema import (
+    LoggingConfig,
+    ServeInstanceDetails,
+    ServeStatus,
+    TargetGroup,
+)
 from ray.util.annotations import DeveloperAPI, PublicAPI
 
 from ray.serve._private import api as _private_api  # isort:skip
@@ -1072,3 +1080,78 @@ def get_deployment_handle(
         ServeUsageTag.SERVE_GET_DEPLOYMENT_HANDLE_API_USED.record("1")
 
     return client.get_handle(deployment_name, app_name, check_exists=_check_exists)
+
+
+@DeveloperAPI
+def get_application_urls(
+    protocol: Union[str, RequestProtocol],
+    app_name: str = SERVE_DEFAULT_APP_NAME,
+    proxy_ingress: bool = RAY_SERVE_PROXY_ONLY_GET_APPLICATION_URLS,
+) -> List[str]:
+    """Get the URL of the application.
+
+    Args:
+        protocol: The protocol to use for the application.
+        app_name: The name of the application.
+        proxy_ingress: Whether to use the proxy ingress.
+
+    Returns:
+        The URLs of the application.
+    """
+    client = _get_global_client()
+    serve_details = client.get_serve_details()
+    route_prefix = serve_details["applications"][app_name]["route_prefix"]
+    if proxy_ingress:
+        target_groups: List[TargetGroup] = ray.get(
+            client._controller.get_proxy_target_groups.remote()
+        )
+        target_groups = [
+            target_group
+            for target_group in target_groups
+            if target_group.protocol == protocol
+        ]
+    else:
+        if isinstance(protocol, str):
+            protocol = RequestProtocol(protocol)
+        target_groups: List[TargetGroup] = ray.get(
+            client._controller.get_target_groups.remote()
+        )
+        target_groups = [
+            target_group
+            for target_group in target_groups
+            if target_group.protocol == protocol
+            and target_group.route_prefix == route_prefix
+        ]
+    if len(target_groups) == 0:
+        raise ValueError(
+            f"No target group found for app {app_name} with protocol {protocol} and route prefix {route_prefix}"
+        )
+    urls = []
+    for target_group in target_groups:
+        for target in target_group.targets:
+            if protocol == RequestProtocol.HTTP:
+                urls.append(f"http://{target.ip}:{target.port}{route_prefix}")
+            elif protocol == RequestProtocol.GRPC:
+                urls.append(f"{target.ip}:{target.port}")
+            else:
+                raise ValueError(f"Unsupported protocol: {protocol}")
+    return urls
+
+
+@DeveloperAPI
+def get_application_url(
+    protocol: Union[str, RequestProtocol],
+    app_name: str = SERVE_DEFAULT_APP_NAME,
+    proxy_ingress: bool = RAY_SERVE_PROXY_ONLY_GET_APPLICATION_URLS,
+) -> str:
+    """Get the URL of the application.
+
+    Args:
+        protocol: The protocol to use for the application.
+        app_name: The name of the application.
+        proxy_ingress: Whether to use the proxy ingress.
+
+    Returns:
+        The URL of the application. If there are multiple URLs, a random one is returned.
+    """
+    return random.choice(get_application_urls(protocol, app_name, proxy_ingress))
