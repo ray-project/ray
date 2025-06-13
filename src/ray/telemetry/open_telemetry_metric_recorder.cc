@@ -13,11 +13,17 @@
 // limitations under the License.
 #include "ray/telemetry/open_telemetry_metric_recorder.h"
 
+#include <opentelemetry/context/context.h>
 #include <opentelemetry/exporters/otlp/otlp_grpc_metric_exporter.h>
 #include <opentelemetry/metrics/provider.h>
 #include <opentelemetry/nostd/variant.h>
+#include <opentelemetry/sdk/metrics/aggregation/histogram_aggregation.h>
 #include <opentelemetry/sdk/metrics/export/periodic_exporting_metric_reader.h>
 #include <opentelemetry/sdk/metrics/instruments.h>
+#include <opentelemetry/sdk/metrics/view/instrument_selector.h>
+#include <opentelemetry/sdk/metrics/view/meter_selector.h>
+#include <opentelemetry/sdk/metrics/view/view.h>
+#include <opentelemetry/sdk/metrics/view/view_registry.h>
 
 #include <cassert>
 #include <utility>
@@ -161,6 +167,36 @@ void OpenTelemetryMetricRecorder::RegisterSumMetric(const std::string &name,
   registered_instruments_[name] = std::move(instrument);
 }
 
+void OpenTelemetryMetricRecorder::RegisterHistogramMetric(
+    const std::string &name,
+    const std::string &description,
+    const std::vector<double> &buckets) {
+  std::lock_guard<std::mutex> lock(mutex_);
+  if (registered_instruments_.contains(name)) {
+    return;  // Already registered
+  }
+  // Create a histogram instrument with explicit buckets
+  auto aggregation_config =
+      std::make_shared<opentelemetry::sdk::metrics::HistogramAggregationConfig>();
+  aggregation_config->boundaries_ = buckets;
+  auto view = std::make_unique<opentelemetry::sdk::metrics::View>(
+      name,
+      description,
+      "",
+      opentelemetry::sdk::metrics::AggregationType::kHistogram,
+      aggregation_config);
+
+  auto instrument_selector =
+      std::make_unique<opentelemetry::sdk::metrics::InstrumentSelector>(
+          opentelemetry::sdk::metrics::InstrumentType::kHistogram, name, "");
+  auto meter_selector =
+      std::make_unique<opentelemetry::sdk::metrics::MeterSelector>(meter_name_, "", "");
+  meter_provider_->AddView(
+      std::move(instrument_selector), std::move(meter_selector), std::move(view));
+  auto instrument = GetMeter()->CreateDoubleHistogram(name, description, "");
+  registered_instruments_[name] = std::move(instrument);
+}
+
 void OpenTelemetryMetricRecorder::SetMetricValue(
     const std::string &name,
     absl::flat_hash_map<std::string, std::string> &&tags,
@@ -218,6 +254,9 @@ void OpenTelemetryMetricRecorder::SetSynchronousMetricValue(
   } else if (auto *sum = dynamic_cast<opentelemetry::metrics::UpDownCounter<double> *>(
                  sync_instr_ptr->get())) {
     sum->Add(value, std::move(tags));
+  } else if (auto *histogram = dynamic_cast<opentelemetry::metrics::Histogram<double> *>(
+                 sync_instr_ptr->get())) {
+    histogram->Record(value, std::move(tags), opentelemetry::context::Context());
   } else {
     // Unknown or unsupported instrument type
     RAY_CHECK(false) << "Unsupported synchronous instrument type for metric: " << name;
