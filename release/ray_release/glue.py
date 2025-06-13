@@ -100,10 +100,6 @@ def _load_test_configuration(
 
     run_type = test["run"].get("type", DEFAULT_RUN_TYPE)
 
-    # Workaround while Anyscale Jobs don't support leaving cluster alive
-    # after the job has finished.
-    # TODO: Remove once we have support in Anyscale
-
     command_runner_cls = type_str_to_command_runner.get(run_type)
     if not command_runner_cls:
         raise ReleaseTestConfigError(
