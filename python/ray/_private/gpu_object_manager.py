@@ -1,45 +1,26 @@
 from typing import TYPE_CHECKING, Any, Dict, List, NamedTuple, Optional, Tuple
 
-try:
-    import torch
-
-    _TORCH_AVAILABLE = True
-except ImportError:
-    _TORCH_AVAILABLE = False
-    torch = None
-
-import ray.util.collective as collective
 from ray._private.custom_types import TensorTransportEnum
 from ray._raylet import ObjectRef
 from ray.actor import ActorHandle
-from ray.experimental.collective import get_collective_groups
-from ray.util.collective.types import Backend
+
+# Avoid importing util until needed because it requires several external
+# dependencies like torch and cupy. These dependencies can significantly slow
+# down normal worker startup time.
+util = None
 
 if TYPE_CHECKING:
     import torch
 
-# Only define these mappings if torch is available
-if _TORCH_AVAILABLE:
-    TENSOR_TRANSPORT_TO_COLLECTIVE_BACKEND = {
-        TensorTransportEnum.NCCL: Backend.NCCL,
-        TensorTransportEnum.GLOO: Backend.TORCH_GLOO,
-    }
-
-    COLLECTIVE_BACKEND_TO_TORCH_DEVICE = {
-        Backend.NCCL: torch.device("cuda"),
-        Backend.TORCH_GLOO: torch.device("cpu"),
-    }
-else:
-    TENSOR_TRANSPORT_TO_COLLECTIVE_BACKEND = {}
-    COLLECTIVE_BACKEND_TO_TORCH_DEVICE = {}
+    from ray._private import gpu_object_manager_util as util
 
 
-def _raise_torch_not_available_exception():
-    if not _TORCH_AVAILABLE:
-        raise ImportError(
-            "`tensor_transport` requires PyTorch. "
-            "Please install torch with 'pip install torch' to use this feature."
-        )
+def _get_or_import_util():
+    """Lazily import the gpu_object_manager_util module."""
+    global util
+    if util is None:
+        from ray._private import gpu_object_manager_util as util
+    return util
 
 
 # GPUObjectMeta is a named tuple containing the source actor, tensor transport
@@ -113,16 +94,10 @@ class GPUObjectManager:
             src_actor: The actor that executes the task and that creates the GPU object.
             tensor_transport: The tensor transport protocol to use for the GPU object.
         """
-        _raise_torch_not_available_exception()
-
-        try:
-            tensor_transport_backend = TENSOR_TRANSPORT_TO_COLLECTIVE_BACKEND[
-                tensor_transport
-            ]
-        except KeyError:
-            raise ValueError(
-                f"Invalid tensor transport {tensor_transport.name}, must be one of {list(TENSOR_TRANSPORT_TO_COLLECTIVE_BACKEND.keys())}."
-            )
+        util = _get_or_import_util()
+        tensor_transport_backend = util.tensor_transport_to_collective_backend(
+            tensor_transport
+        )
         tensor_meta = self._get_tensor_meta(src_actor, obj_ref.hex())
         self.gpu_object_refs[obj_ref] = GPUObjectMeta(
             src_actor=src_actor,
@@ -146,34 +121,10 @@ class GPUObjectManager:
     ):
         # Send tensors stored in the `src_actor`'s GPU object store to the
         # destination rank `dst_rank`.
-        def __ray_send__(self, communicator_name: str, obj_id: str, dst_rank: int):
-            from ray._private.worker import global_worker
-
-            _raise_torch_not_available_exception()
-
-            gpu_object_manager = global_worker.gpu_object_manager
-            assert gpu_object_manager.has_gpu_object(
-                obj_id
-            ), f"obj_id={obj_id} not found in GPU object store"
-            tensors = gpu_object_manager.get_gpu_object(obj_id)
-
-            backend = collective.get_group_handle(communicator_name).backend()
-            device = COLLECTIVE_BACKEND_TO_TORCH_DEVICE[backend]
-
-            for tensor in tensors:
-                if tensor.device.type != device.type:
-                    # TODO(swang): Right now there is no way to catch this error
-                    # and the receiving Ray task will hang.
-                    raise ValueError(
-                        f"tensor device {tensor.device} does not match device {device}"
-                    )
-                collective.send(tensor, dst_rank, group_name=communicator_name)
-            # TODO(kevin85421): The current garbage collection implementation for the
-            # in-actor object store is naive. We garbage collect each object after it
-            # is consumed once.
-            gpu_object_manager.remove_gpu_object(obj_id)
-
-        src_actor.__ray_call__.remote(__ray_send__, communicator_name, obj_id, dst_rank)
+        util = _get_or_import_util()
+        src_actor.__ray_call__.remote(
+            util.__ray_send__, communicator_name, obj_id, dst_rank
+        )
 
     def _recv_gpu_object(
         self,
@@ -185,31 +136,9 @@ class GPUObjectManager:
     ):
         # Receive tensors from the source rank and store them in the
         # `dst_actor`'s GPU object store.
-        def __ray_recv__(
-            self,
-            communicator_name: str,
-            obj_id: str,
-            src_rank: int,
-            tensor_meta: List[Tuple["torch.Size", "torch.dtype"]],
-        ):
-            from ray._private.worker import global_worker
-
-            _raise_torch_not_available_exception()
-
-            backend = collective.get_group_handle(communicator_name).backend()
-            device = COLLECTIVE_BACKEND_TO_TORCH_DEVICE[backend]
-
-            gpu_object_manager = global_worker.gpu_object_manager
-            tensors = []
-            for meta in tensor_meta:
-                shape, dtype = meta
-                tensor = torch.zeros(shape, dtype=dtype, device=device)
-                collective.recv(tensor, src_rank, group_name=communicator_name)
-                tensors.append(tensor)
-            gpu_object_manager.add_gpu_object(obj_id, tensors)
-
+        util = _get_or_import_util()
         dst_actor.__ray_call__.remote(
-            __ray_recv__, communicator_name, obj_id, src_rank, tensor_meta
+            util.__ray_recv__, communicator_name, obj_id, src_rank, tensor_meta
         )
 
     def trigger_out_of_band_tensor_transfer(
@@ -246,7 +175,8 @@ class GPUObjectManager:
 
             src_actor = gpu_object_meta.src_actor
             tensor_meta = gpu_object_meta.tensor_meta
-            communicators = get_collective_groups(
+            util = _get_or_import_util()
+            communicators = util.get_collective_groups(
                 [src_actor, dst_actor], backend=gpu_object_meta.tensor_transport_backend
             )
             # TODO(kevin85421): Support multiple communicators.

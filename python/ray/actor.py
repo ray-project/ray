@@ -54,10 +54,7 @@ _actor_launch_hook = None
 
 @PublicAPI
 @client_mode_hook
-def method(  # noqa: DOC102, DOC103
-    *args,
-    **kwargs,
-):
+def method(*args, **kwargs):  # type: ignore[docstring]
     """Annotate an actor method.
 
     .. code-block:: python
