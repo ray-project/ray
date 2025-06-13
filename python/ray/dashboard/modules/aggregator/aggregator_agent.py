@@ -56,6 +56,7 @@ EVENT_SEND_PORT = ray_constants.env_integer(f"{env_var_prefix}_EVENT_SEND_PORT",
 METRICS_UPDATE_INTERVAL_SECONDS = ray_constants.env_float(
     f"{env_var_prefix}_METRICS_UPDATE_INTERVAL_SECONDS", 0.1
 )
+USE_PROTO = ray_constants.env_bool(f"{env_var_prefix}_USE_PROTO", True)
 
 # Metrics
 if prometheus_client:
@@ -173,9 +174,19 @@ class AggregatorAgent(
         if not event_batch:
             return
         try:
-            response = requests.post(
-                f"{EVENT_SEND_ADDR}:{EVENT_SEND_PORT}", json=event_batch
-            )
+            if USE_PROTO:
+                event_batch_proto = events_event_aggregator_service_pb2.RayEventData(
+                    events=event_batch
+                )
+                response = requests.post(
+                    f"{EVENT_SEND_ADDR}:{EVENT_SEND_PORT}",
+                    data=event_batch_proto.SerializeToString(),
+                    headers={"Content-Type": "application/x-protobuf"},
+                )
+            else:
+                response = requests.post(
+                    f"{EVENT_SEND_ADDR}:{EVENT_SEND_PORT}", json=event_batch
+                )
             response.raise_for_status()
             with self._lock:
                 self._events_published_since_last_metrics_update += len(event_batch)
@@ -190,7 +201,10 @@ class AggregatorAgent(
             while len(event_batch) < MAX_EVENT_SEND_BATCH_SIZE:
                 try:
                     event_proto = self._event_buffer.get(block=False)
-                    event_batch.append(json.loads(MessageToJson((event_proto))))
+                    if USE_PROTO:
+                        event_batch.append(event_proto)
+                    else:
+                        event_batch.append(json.loads(MessageToJson((event_proto))))
                 except queue.Empty:
                     break
 
@@ -256,7 +270,10 @@ class AggregatorAgent(
         while True:
             try:
                 event_proto = self._event_buffer.get(block=False)
-                event_batch.append(json.loads(MessageToJson((event_proto))))
+                if USE_PROTO:
+                    event_batch.append(event_proto)
+                else:
+                    event_batch.append(json.loads(MessageToJson((event_proto))))
             except:  # noqa: E722
                 break
 
