@@ -37,11 +37,12 @@ class RLlibGateway:
 
         namespace py = pybind11;
 
-        int main(int argc, char** argv) {
-            // Proper interpreter init (RAII-safe)
+        int main(int argc, char** argv)
+        {
+            // Proper interpreter init (RAII-safe).
             py::scoped_interpreter guard{};
 
-            // Import `RLlibGateway` class.
+            // Import RLlibGateway class.
             py::object rllib_gateway_class = py::module_::import(
                 "ray.rllib.env.external.rllib_gateway"
             ).attr("RLlibGateway");
@@ -54,11 +55,13 @@ class RLlibGateway:
             int eps = 0;
 
             // Endless loop through an infinite number of episodes.
-            while (true) {
+            while (true)
+            {
                 // Send previous reward (result of the previous action taken) and
-                // current observation to `get_action`. If the episode has just been
+                // current observation to get_action. If the episode has just been
                 // reset, the gateway won't log it (for example, set it to 0.0).
-                try {
+                try
+                {
                     py::gil_scoped_acquire gil;
                     py::object action = rllib.attr("get_action")(
                         env.reward,  // 0.0 if episode just started with a reset-obs.
@@ -69,14 +72,16 @@ class RLlibGateway:
                     // Apply the locally computed action in the simulation.
                     env.step(action.cast<int>());
                 }
-                catch (const py::error_already_set& e) {
+                catch (const py::error_already_set& e)
+                {
                     std::cerr << "[Python error in `get_action`]\n" << e.what() << std::endl;
                     break;
                 }
 
                 // Send last reward and last observation (with dummy-action request) to
-                // `get_action`.
-                if (env.terminated || env.truncated) {
+                // get_action.
+                if (env.terminated || env.truncated)
+                {
                     try {
                         py::gil_scoped_acquire gil;
                         rllib.attr("get_action")(
