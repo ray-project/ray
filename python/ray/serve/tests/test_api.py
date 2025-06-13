@@ -27,6 +27,7 @@ from ray.serve._private.request_router.replica_wrapper import (
 from ray.serve._private.request_router.request_router import (
     RequestRouter,
 )
+from ray.serve._private.test_utils import get_application_url, get_application_urls
 from ray.serve.deployment import Application
 from ray.serve.exceptions import RayServeException
 from ray.serve.handle import DeploymentHandle
@@ -92,7 +93,7 @@ def test_e2e(serve_instance):
         return {"method": starlette_request.method}
 
     serve.run(function.bind())
-    url = f"{serve.get_application_url('HTTP', proxy_ingress=True)}/api"
+    url = f"{get_application_url(use_proxy_targets=True)}/api"
     resp = httpx.get(url).json()["method"]
     assert resp == "GET"
 
@@ -106,7 +107,7 @@ def test_starlette_response_basic(serve_instance):
         return starlette.responses.Response("Hello, world!", media_type="text/plain")
 
     serve.run(basic.bind())
-    url = f"{serve.get_application_url('HTTP')}/"
+    url = f"{get_application_url()}/"
     assert httpx.get(url).text == "Hello, world!"
 
 
@@ -118,7 +119,7 @@ def test_starlette_response_html(serve_instance):
         )
 
     serve.run(html.bind())
-    url = f"{serve.get_application_url('HTTP')}/"
+    url = f"{get_application_url()}/"
     assert httpx.get(url).text == "<html><body><h1>Hello, world!</h1></body></html>"
 
 
@@ -128,7 +129,7 @@ def test_starlette_response_plain_text(serve_instance):
         return starlette.responses.PlainTextResponse("Hello, world!")
 
     serve.run(plain_text.bind())
-    url = f"{serve.get_application_url('HTTP')}/"
+    url = f"{get_application_url()}/"
     assert httpx.get(url).text == "Hello, world!"
 
 
@@ -138,7 +139,7 @@ def test_starlette_response_json(serve_instance):
         return starlette.responses.JSONResponse({"hello": "world"})
 
     serve.run(json.bind())
-    url = f"{serve.get_application_url('HTTP')}/json"
+    url = f"{get_application_url()}/json"
     assert httpx.get(url).json()["hello"] == "world"
 
 
@@ -149,12 +150,12 @@ def test_starlette_response_redirect(serve_instance):
 
     @serve.deployment(name="redirect")
     def redirect():
-        url = serve.get_application_url("HTTP", app_name="app1", proxy_ingress=True)
+        url = get_application_url("HTTP", app_name="app1", use_proxy_targets=True)
         return starlette.responses.RedirectResponse(url=url)
 
     serve.run(basic.bind(), name="app1", route_prefix="/")
     serve.run(redirect.bind(), name="app2", route_prefix="/redirect")
-    url = f"{serve.get_application_url('HTTP', app_name='app2')}"
+    url = f"{get_application_url(app_name='app2')}"
     assert httpx.get(url, follow_redirects=True).text == "Hello, world!"
 
 
@@ -171,7 +172,7 @@ def test_starlette_response_streaming(serve_instance):
         )
 
     serve.run(streaming.bind())
-    url = f"{serve.get_application_url('HTTP')}/"
+    url = f"{get_application_url()}/"
     resp = httpx.get(url)
     assert resp.text == "123"
     assert resp.status_code == 418
@@ -186,7 +187,7 @@ def test_deploy_function_no_params(serve_instance, use_async):
         expected_output = "sync!"
         deployment_cls = sync_d
     handle = serve.run(deployment_cls.bind())
-    url = f"{serve.get_application_url('HTTP')}/{deployment_cls.name}"
+    url = f"{get_application_url()}/{deployment_cls.name}"
     assert httpx.get(url).text == expected_output
     assert handle.remote().result() == expected_output
 
@@ -201,7 +202,7 @@ def test_deploy_function_no_params_call_with_param(serve_instance, use_async):
         deployment_cls = sync_d
 
     handle = serve.run(deployment_cls.bind())
-    url = f"{serve.get_application_url('HTTP')}/{deployment_cls.name}"
+    url = f"{get_application_url()}/{deployment_cls.name}"
     assert httpx.get(url).text == expected_output
     with pytest.raises(
         TypeError, match=r"\(\) takes 0 positional arguments but 1 was given"
@@ -221,7 +222,7 @@ def test_deploy_class_no_params(serve_instance, use_async):
 
     handle = serve.run(deployment_cls.bind())
 
-    url = f"{serve.get_application_url('HTTP')}/{deployment_cls.name}"
+    url = f"{get_application_url()}/{deployment_cls.name}"
     assert httpx.get(url).json() == {"count": 1}
     assert httpx.get(url).json() == {"count": 2}
     assert handle.remote().result() == {"count": 3}
@@ -291,7 +292,7 @@ def test_scaling_replicas(serve_instance):
 
     counter_result = []
     for _ in range(10):
-        url = f"{serve.get_application_url('HTTP')}/counter"
+        url = f"{get_application_url()}/counter"
         resp = httpx.get(url).json()
         counter_result.append(resp)
 
@@ -302,7 +303,7 @@ def test_scaling_replicas(serve_instance):
 
     counter_result = []
     for _ in range(10):
-        url = f"{serve.get_application_url('HTTP')}/counter"
+        url = f"{get_application_url()}/counter"
         resp = httpx.get(url).json()
         counter_result.append(resp)
     # Give some time for a replica to spin down. But majority of the request
@@ -322,7 +323,7 @@ def test_starlette_request(serve_instance):
     UVICORN_HIGH_WATER_MARK = 65536  # max bytes in one message
     long_string = "x" * 10 * UVICORN_HIGH_WATER_MARK
 
-    url = f"{serve.get_application_url('HTTP')}/api"
+    url = f"{get_application_url()}/api"
     resp = httpx.post(url, data=long_string).text
     assert resp == long_string
 
@@ -392,25 +393,25 @@ def test_deploy_application_basic(serve_instance):
     # Test function deployment with app name
     f_handle = serve.run(f.bind(), name="app_f")
     assert f_handle.remote().result() == "got f"
-    url = f"{serve.get_application_url('HTTP', app_name='app_f')}/"
+    url = f"{get_application_url(app_name='app_f')}/"
     assert httpx.get(url).text == "got f"
 
     # Test function deployment with app name and route_prefix
     g_handle = serve.run(g.bind(), name="app_g", route_prefix="/app_g")
     assert g_handle.remote().result() == "got g"
-    url = f"{serve.get_application_url('HTTP', app_name='app_g')}"
+    url = f"{get_application_url(app_name='app_g')}"
     assert httpx.get(url).text == "got g"
 
     # Test function deployment with app name and route_prefix set in deployment
     # decorator
     h_handle = serve.run(h.bind(), name="app_h", route_prefix="/my_prefix")
     assert h_handle.remote().result() == "got h"
-    url = f"{serve.get_application_url('HTTP', app_name='app_h')}"
+    url = f"{get_application_url(app_name='app_h')}"
     assert httpx.get(url).text == "got h"
 
     # Test FastAPI
     serve.run(MyFastAPIDeployment.bind(), name="FastAPI", route_prefix="/hello")
-    url = f"{serve.get_application_url('HTTP', app_name='FastAPI')}"
+    url = f"{get_application_url(app_name='FastAPI')}"
     assert httpx.get(url, follow_redirects=True).text == '"Hello, world!"'
 
 
@@ -428,7 +429,7 @@ def test_delete_application(serve_instance):
     f_handle = serve.run(f.bind(), name="app_f")
     g_handle = serve.run(g.bind(), name="app_g", route_prefix="/app_g")
     assert f_handle.remote().result() == "got f"
-    url = serve.get_application_url("HTTP", app_name="app_f")
+    url = get_application_url("HTTP", app_name="app_f")
     assert httpx.get(url).text == "got f"
 
     serve.delete("app_f")
@@ -439,7 +440,7 @@ def test_delete_application(serve_instance):
 
     # make sure no affect to app_g
     assert g_handle.remote().result() == "got g"
-    url = f"{serve.get_application_url('HTTP', app_name='app_g')}"
+    url = f"{get_application_url(app_name='app_g')}"
     assert httpx.get(url).text == "got g"
 
 
@@ -523,7 +524,7 @@ def test_deploy_application_with_same_name(serve_instance):
 
     handle = serve.run(Model.bind(), name="app")
     assert handle.remote().result() == "got model"
-    url = serve.get_application_url("HTTP", app_name="app")
+    url = get_application_url("HTTP", app_name="app")
     assert httpx.get(url).text == "got model"
     deployment_info = ray.get(controller._all_running_replicas.remote())
     assert DeploymentID(name="Model", app_name="app") in deployment_info
@@ -536,7 +537,7 @@ def test_deploy_application_with_same_name(serve_instance):
 
     handle = serve.run(Model1.bind(), name="app")
     assert handle.remote().result() == "got model1"
-    url = serve.get_application_url("HTTP", app_name="app")
+    url = get_application_url("HTTP", app_name="app")
     assert httpx.get(url).text == "got model1"
     deployment_info = ray.get(controller._all_running_replicas.remote())
     assert DeploymentID(name="Model1", app_name="app") in deployment_info
@@ -547,7 +548,7 @@ def test_deploy_application_with_same_name(serve_instance):
 
     # Redeploy with same app to update route prefix
     serve.run(Model1.bind(), name="app", route_prefix="/my_app")
-    url_new = serve.get_application_url("HTTP", app_name="app")
+    url_new = get_application_url("HTTP", app_name="app")
     assert httpx.get(url_new).text == "got model1"
     assert httpx.get(url).status_code == 404
 
@@ -562,7 +563,7 @@ def test_deploy_application_with_route_prefix_conflict(serve_instance):
 
     handle = serve.run(Model.bind(), name="app")
     assert handle.remote().result() == "got model"
-    url = serve.get_application_url("HTTP", app_name="app")
+    url = get_application_url("HTTP", app_name="app")
     assert httpx.get(url).text == "got model"
 
     # Second app with the same route_prefix fails to be deployed
@@ -577,7 +578,7 @@ def test_deploy_application_with_route_prefix_conflict(serve_instance):
     # Update the route prefix
     handle = serve.run(Model1.bind(), name="app1", route_prefix="/model1")
     assert handle.remote().result() == "got model1"
-    url_new = serve.get_application_url("HTTP", app_name="app1")
+    url_new = get_application_url("HTTP", app_name="app1")
     assert httpx.get(url_new).text == "got model1"
 
     # The "app" application should still work properly
@@ -897,7 +898,7 @@ def test_status_constructor_error(serve_instance):
     # return a 503 error to reflect the failed deployment state.
     # The timeout is there to prevent the test from hanging and blocking
     # the test suite if it does fail.
-    url = serve.get_application_url("HTTP", proxy_ingress=True)
+    url = get_application_url("HTTP", use_proxy_targets=True)
     r = httpx.post(url, timeout=10)
     assert r.status_code == 503 and "unavailable" in r.text
 
@@ -1118,28 +1119,25 @@ def test_get_application_urls(serve_instance):
     serve.run(f.bind())
     controller_details = ray.get(serve_instance._controller.get_actor_details.remote())
     node_ip = controller_details.node_ip
-    assert serve.get_application_urls("HTTP", proxy_ingress=True) == [
+    assert get_application_urls(use_proxy_targets=True) == [f"http://{node_ip}:8000/"]
+    assert get_application_urls("gRPC", use_proxy_targets=True) == [f"{node_ip}:9000"]
+    assert get_application_urls(RequestProtocol.HTTP, use_proxy_targets=True) == [
         f"http://{node_ip}:8000/"
     ]
-    assert serve.get_application_urls("gRPC", proxy_ingress=True) == [f"{node_ip}:9000"]
-    assert serve.get_application_urls(RequestProtocol.HTTP, proxy_ingress=True) == [
-        f"http://{node_ip}:8000/"
-    ]
-    assert serve.get_application_urls(RequestProtocol.GRPC, proxy_ingress=True) == [
+    assert get_application_urls(RequestProtocol.GRPC, use_proxy_targets=True) == [
         f"{node_ip}:9000"
     ]
 
     assert (
-        serve.get_application_url("HTTP", proxy_ingress=True)
+        get_application_url("HTTP", use_proxy_targets=True) == f"http://{node_ip}:8000/"
+    )
+    assert get_application_url("gRPC", use_proxy_targets=True) == f"{node_ip}:9000"
+    assert (
+        get_application_url(RequestProtocol.HTTP, use_proxy_targets=True)
         == f"http://{node_ip}:8000/"
     )
-    assert serve.get_application_url("gRPC", proxy_ingress=True) == f"{node_ip}:9000"
     assert (
-        serve.get_application_url(RequestProtocol.HTTP, proxy_ingress=True)
-        == f"http://{node_ip}:8000/"
-    )
-    assert (
-        serve.get_application_url(RequestProtocol.GRPC, proxy_ingress=True)
+        get_application_url(RequestProtocol.GRPC, use_proxy_targets=True)
         == f"{node_ip}:9000"
     )
 
@@ -1152,16 +1150,16 @@ def test_get_application_urls_with_app_name(serve_instance):
     serve.run(f.bind(), name="app1", route_prefix="/")
     controller_details = ray.get(serve_instance._controller.get_actor_details.remote())
     node_ip = controller_details.node_ip
-    assert serve.get_application_urls("HTTP", app_name="app1", proxy_ingress=True) == [
+    assert get_application_urls("HTTP", app_name="app1", use_proxy_targets=True) == [
         f"http://{node_ip}:8000/"
     ]
-    assert serve.get_application_urls("gRPC", app_name="app1", proxy_ingress=True) == [
+    assert get_application_urls("gRPC", app_name="app1", use_proxy_targets=True) == [
         f"{node_ip}:9000"
     ]
-    assert serve.get_application_urls("HTTP", app_name="app1", proxy_ingress=False) == [
+    assert get_application_urls("HTTP", app_name="app1", use_proxy_targets=False) == [
         f"http://{node_ip}:8000/"
     ]
-    assert serve.get_application_urls("gRPC", app_name="app1", proxy_ingress=False) == [
+    assert get_application_urls("gRPC", app_name="app1", use_proxy_targets=False) == [
         f"{node_ip}:9000"
     ]
 
@@ -1174,9 +1172,9 @@ def test_get_application_urls_with_route_prefix(serve_instance):
     serve.run(f.bind(), name="app1", route_prefix="/app1")
     controller_details = ray.get(serve_instance._controller.get_actor_details.remote())
     node_ip = controller_details.node_ip
-    assert serve.get_application_urls("HTTP", app_name="app1", proxy_ingress=True) == [
+    assert get_application_urls("HTTP", app_name="app1", use_proxy_targets=True) == [
         f"http://{node_ip}:8000/app1"
     ]
-    assert serve.get_application_urls("gRPC", app_name="app1", proxy_ingress=True) == [
+    assert get_application_urls("gRPC", app_name="app1", use_proxy_targets=True) == [
         f"{node_ip}:9000"
     ]
