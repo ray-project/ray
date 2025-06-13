@@ -130,11 +130,11 @@ GPU_UTILIZATION_PANEL = Panel(
     unit="GPUs",
     targets=[
         Target(
-            expr='sum(ray_node_gpus_utilization{{instance=~"$Instance", SessionName=~"$SessionName"}} / 100) by (instance, GpuIndex, GpuDeviceName)',
+            expr='sum(ray_node_gpus_utilization{{instance=~"$Instance", SessionName=~"$SessionName", GpuIndex=~"$GpuIndex", GpuDeviceName=~"$GpuDeviceName"}} / 100) by (instance, GpuIndex, GpuDeviceName)',
             legend="GPU Usage: {{instance}}, gpu.{{GpuIndex}}, {{GpuDeviceName}}",
         ),
         Target(
-            expr='sum(ray_node_gpus_available{{instance=~"$Instance", SessionName=~"$SessionName"}})',
+            expr='sum(ray_node_gpus_available{{instance=~"$Instance", SessionName=~"$SessionName", GpuIndex=~"$GpuIndex", GpuDeviceName=~"$GpuDeviceName"}})',
             legend="MAX",
         ),
     ],
@@ -147,11 +147,11 @@ GPU_MEMORY_UTILIZATION_PANEL = Panel(
     unit="bytes",
     targets=[
         Target(
-            expr='sum(ray_node_gram_used{{instance=~"$Instance", SessionName=~"$SessionName"}} * 1024 * 1024) by (instance, GpuIndex, GpuDeviceName)',
+            expr='sum(ray_node_gram_used{{instance=~"$Instance", SessionName=~"$SessionName", GpuIndex=~"$GpuIndex", GpuDeviceName=~"$GpuDeviceName"}} * 1024 * 1024) by (instance, GpuIndex, GpuDeviceName)',
             legend="Used GRAM: {{instance}}, gpu.{{GpuIndex}}, {{GpuDeviceName}}",
         ),
         Target(
-            expr='(sum(ray_node_gram_available{{instance=~"$Instance", SessionName=~"$SessionName"}}) + sum(ray_node_gram_used{{instance=~"$Instance", SessionName=~"$SessionName"}})) * 1024 * 1024',
+            expr='(sum(ray_node_gram_available{{instance=~"$Instance", SessionName=~"$SessionName", GpuIndex=~"$GpuIndex", GpuDeviceName=~"$GpuDeviceName"}}) + sum(ray_node_gram_used{{instance=~"$Instance", SessionName=~"$SessionName", GpuIndex=~"$GpuIndex", GpuDeviceName=~"$GpuDeviceName"}})) * 1024 * 1024',
             legend="MAX",
         ),
     ],

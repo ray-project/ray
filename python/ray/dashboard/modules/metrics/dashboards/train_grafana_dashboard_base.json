@@ -181,8 +181,53 @@
           "text": ["All"],
           "value": ["$__all"]
         }
-      }
+      },
 
+      {
+        "name": "GpuIndex",
+        "type": "query",
+        "description": "Filter queries to specific GPU indices.",
+        "datasource": "${datasource}",
+        "definition": "label_values(ray_node_gpus_utilization{{{global_filters}}}, GpuIndex)",
+        "query": {
+          "query": "label_values(ray_node_gpus_utilization{{{global_filters}}}, GpuIndex)",
+          "refId": "StandardVariableQuery"
+        },
+        "refresh": 1,
+        "hide": 2,
+        "includeAll": true,
+        "multi": false,
+        "allValue": ".*",
+        "sort": 2,
+        "current": {
+          "selected": true,
+          "text": ["All"],
+          "value": ["$__all"]
+        }
+      },
+
+      {
+        "name": "GpuDeviceName",
+        "type": "query",
+        "description": "Filter queries to specific GPU device names.",
+        "datasource": "${datasource}",
+        "definition": "label_values(ray_node_gpus_utilization{{{global_filters}}}, GpuDeviceName)",
+        "query": {
+          "query": "label_values(ray_node_gpus_utilization{{{global_filters}}}, GpuDeviceName)",
+          "refId": "StandardVariableQuery"
+        },
+        "refresh": 1,
+        "hide": 2,
+        "includeAll": true,
+        "multi": false,
+        "allValue": ".*",
+        "sort": 2,
+        "current": {
+          "selected": true,
+          "text": ["All"],
+          "value": ["$__all"]
+        }
+      }
 
     ]
   }
