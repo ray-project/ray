@@ -36,6 +36,8 @@ void ActorTaskSubmitter::NotifyGCSWhenActorOutOfScope(
       absl::MutexLock lock(&mu_);
       if (auto iter = client_queues_.find(actor_id); iter != client_queues_.end()) {
         if (iter->second.state != rpc::ActorTableData::DEAD) {
+          RAY_LOG(INFO).WithField(actor_id)
+              << "Actor is not dead, setting pending out of scope death";
           iter->second.pending_out_of_scope_death = true;
         }
       }
@@ -181,6 +183,7 @@ Status ActorTaskSubmitter::SubmitTask(TaskSpecification task_spec) {
     RAY_CHECK(queue != client_queues_.end());
     if (queue->second.state == rpc::ActorTableData::DEAD &&
         queue->second.is_restartable && queue->second.owned) {
+      RAY_LOG(INFO).WithField(actor_id) << "Restarting actor for lineage reconstruction";
       RestartActorForLineageReconstruction(actor_id);
     }
     if (queue->second.state != rpc::ActorTableData::DEAD) {
@@ -190,6 +193,7 @@ Status ActorTaskSubmitter::SubmitTask(TaskSpecification task_spec) {
       // this sequence number.
       send_pos = task_spec.SequenceNumber();
       RAY_CHECK(queue->second.actor_submit_queue->Emplace(send_pos, task_spec));
+      RAY_LOG(INFO).WithField(task_id) << "Task queued";
       queue->second.cur_pending_calls++;
       task_queued = true;
     }
@@ -216,16 +220,22 @@ Status ActorTaskSubmitter::SubmitTask(TaskSpecification task_spec) {
                   if (actor_submit_queue->Contains(send_pos)) {
                     if (status.ok()) {
                       actor_submit_queue->MarkDependencyResolved(send_pos);
+                      RAY_LOG(INFO).WithField(task_id)
+                          << "Dependency resolved and sending pending task";
                       SendPendingTasks(actor_id);
                     } else {
                       fail_or_retry_task =
                           actor_submit_queue->Get(send_pos).first.TaskId();
                       actor_submit_queue->MarkDependencyFailed(send_pos);
+                      RAY_LOG(INFO).WithField(task_id)
+                          << "Dependency failed and failing task";
                     }
                   }
                 }
 
                 if (!fail_or_retry_task.IsNil()) {
+                  RAY_LOG(INFO).WithField(task_id)
+                      << "Failing task due to dependency resolution failure";
                   GetTaskFinisherWithoutMu().FailOrRetryPendingTask(
                       task_id, rpc::ErrorType::DEPENDENCY_RESOLUTION_FAILED, &status);
                 }
@@ -314,6 +324,7 @@ void ActorTaskSubmitter::ConnectActor(const ActorID &actor_id,
     if (queue->second.state == rpc::ActorTableData::DEAD) {
       // This message is about an old version of the actor and the actor has
       // already died since then. Skip the connection.
+      RAY_LOG(INFO).WithField(actor_id) << "Actor is dead, skipping connection";
       return;
     }
 
@@ -330,7 +341,10 @@ void ActorTaskSubmitter::ConnectActor(const ActorID &actor_id,
     queue->second.worker_id = address.worker_id();
     // Create a new connection to the actor.
     queue->second.rpc_client = core_worker_client_pool_.GetOrConnect(address);
+    RAY_LOG(INFO).WithField(actor_id)
+        << "Is client from connect valid: " << (queue->second.rpc_client != nullptr);
 
+    RAY_LOG(INFO).WithField(actor_id) << "Sending pending tasks";
     SendPendingTasks(actor_id);
   }
 
@@ -401,6 +415,7 @@ void ActorTaskSubmitter::DisconnectActor(const ActorID &actor_id,
     if (dead) {
       queue->second.state = rpc::ActorTableData::DEAD;
       queue->second.death_cause = death_cause;
+      RAY_LOG(INFO).WithField(actor_id) << "Setting pending out of scope death to false";
       queue->second.pending_out_of_scope_death = false;
       queue->second.is_restartable = is_restartable;
 
@@ -525,7 +540,12 @@ void ActorTaskSubmitter::SendPendingTasks(const ActorID &actor_id) {
   RAY_CHECK(it != client_queues_.end());
   auto &client_queue = it->second;
   auto &actor_submit_queue = client_queue.actor_submit_queue;
+  RAY_LOG(INFO).WithField(actor_id)
+      << "Sending pending tasks, is empty=" << client_queue.actor_submit_queue->Empty();
   if (client_queue.pending_out_of_scope_death) {
+    RAY_LOG(INFO).WithField(actor_id)
+        << "Actor is pending out of scope death, skipping sending pending tasks";
+
     // Wait until the actor is dead and then decide
     // whether we should fail pending tasks or restart the actor.
     // If the actor is restarted, ConnectActor will be called
@@ -535,6 +555,7 @@ void ActorTaskSubmitter::SendPendingTasks(const ActorID &actor_id) {
   if (!client_queue.rpc_client) {
     if (client_queue.state == rpc::ActorTableData::RESTARTING &&
         client_queue.fail_if_actor_unreachable) {
+      RAY_LOG(INFO).WithField(actor_id) << "in fail_if_actor_unreachable";
       // When `fail_if_actor_unreachable` is true, tasks submitted while the actor is in
       // `RESTARTING` state fail immediately.
       while (true) {
