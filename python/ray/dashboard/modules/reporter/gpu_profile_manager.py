@@ -60,7 +60,7 @@ class GpuProfilingManager:
         "GPU profiling is not available for this process."
     )
 
-    def __init__(self, profile_dir_path: str, ip_address: str):
+    def __init__(self, profile_dir_path: str, *, ip_address: str):
         # Dump trace files to: /tmp/ray/session_latest/logs/profiles/
         self._root_log_dir = Path(profile_dir_path)
         self._profile_dir_path = self._root_log_dir / "profiles"
