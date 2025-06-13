@@ -1105,6 +1105,9 @@ void CoreWorker::Disconnect(
       }
     }
   }
+
+  // Shutdown the gRPC server.
+  core_worker_server_->Shutdown();
 }
 
 void CoreWorker::KillChildProcs() {
