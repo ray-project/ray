@@ -374,6 +374,18 @@ def arrow_batch_to_tensors(
         )
 
 
+def tensor_pin_memory_if_needed(tensor: torch.Tensor, pin_memory: bool) -> torch.Tensor:
+    if pin_memory and tensor.device.type == "cpu" and not tensor.is_pinned():
+        return tensor.pin_memory()
+    else:
+        return tensor
+
+
+def is_tensor_non_blocking_transfer(tensor: torch.Tensor, non_blocking: bool) -> bool:
+    # If pin_memory is True, enable non-blocking transfer.
+    return non_blocking and tensor.is_pinned()
+
+
 @torch.no_grad()
 def concat_tensors_to_device(
     tensor_sequence: Sequence[torch.Tensor],
@@ -432,10 +444,10 @@ def concat_tensors_to_device(
     row_start = 0
     for t in tensor_sequence:
         row_end = row_start + t.shape[0]
-        if pin_memory and t.device.type == "cpu":
-            t = t.pin_memory()
-        # If pin_memory is True, enable non-blocking transfer.
-        result[row_start:row_end].copy_(t, non_blocking=t.is_pinned() or non_blocking)
+        t = tensor_pin_memory_if_needed(t, pin_memory)
+        result[row_start:row_end].copy_(
+            t, non_blocking=is_tensor_non_blocking_transfer(t, non_blocking)
+        )
         row_start = row_end
 
     return result
@@ -501,11 +513,11 @@ def move_tensors_to_device(
         return batch
 
     def to_device(tensor: torch.Tensor) -> torch.Tensor:
-        if pin_memory and tensor.device.type == "cpu":
-            # If pin_memory is True, enable non-blocking transfer.
-            return tensor.pin_memory().to(device, non_blocking=True)
-        else:
-            return tensor.to(device, non_blocking=non_blocking)
+        tensor = tensor_pin_memory_if_needed(tensor, pin_memory)
+
+        return tensor.to(
+            device, non_blocking=is_tensor_non_blocking_transfer(tensor, non_blocking)
+        )
 
     if _is_tensor(batch):
         return to_device(batch)

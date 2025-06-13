@@ -285,7 +285,7 @@ def test_custom_batch_collate_fn(
             assert isinstance(batch, torch.Tensor)
             assert sorted(batch.tolist()) == list(range(5, 10))
             assert batch.device == device
-            if pin_memory:
+            if pin_memory and device.type == "cpu":
                 assert batch.is_pinned()
         elif return_type == "dict" or return_type == "chunked_dict":
             # Chunked dicts get concatenated to single Tensors on the device,
@@ -295,7 +295,7 @@ def test_custom_batch_collate_fn(
             assert sorted(batch["value"].tolist()) == list(range(5))
             assert batch["id"].device == device
             assert batch["value"].device == device
-            if pin_memory:
+            if pin_memory and device.type == "cpu":
                 assert batch["id"].is_pinned()
                 assert batch["value"].is_pinned()
         else:  # tuple or list
@@ -305,7 +305,7 @@ def test_custom_batch_collate_fn(
             assert sorted(batch[1].tolist()) == list(range(5))
             assert batch[0].device == device
             assert batch[1].device == device
-            if pin_memory:
+            if pin_memory and device.type == "cpu":
                 assert batch[0].is_pinned()
                 assert batch[1].is_pinned()
 
