@@ -484,7 +484,6 @@ def test_report_stats_gpu():
 def test_get_tpu_usage():
     dashboard_agent = MagicMock()
     agent = ReporterAgent(dashboard_agent)
-    tpu_utilization = agent._get_tpu_usage()
 
     fake_metrics_content = """
     duty_cycle{accelerator_id="1234-0",container="ray-head",make="cloud-tpu",model="tpu-v6e-slice",namespace="default",pod="test",tpu_topology="2x2"} 20.0 
