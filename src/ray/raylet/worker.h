@@ -209,6 +209,8 @@ class Worker : public WorkerInterface {
 
   void ClearAllocatedInstances() { allocated_instances_ = nullptr; };
 
+  void CheckProcNetTcp(int port);
+
   void SetLifetimeAllocatedInstances(
       const std::shared_ptr<TaskResourceInstances> &allocated_instances) {
     lifetime_allocated_instances_ = allocated_instances;

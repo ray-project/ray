@@ -9,6 +9,7 @@ ARG RAY_INSTALL_MASK=
 
 ENV CC=clang
 ENV CXX=clang++-12
+ENV RAY_BACKEND_LOG_LEVEL=debug
 
 RUN mkdir /rayci
 WORKDIR /rayci

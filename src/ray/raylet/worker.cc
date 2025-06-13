@@ -15,10 +15,14 @@
 #include "ray/raylet/worker.h"
 
 #include <boost/bind/bind.hpp>
+#include <fstream>
+#include <iostream>
 #include <memory>
+#include <sstream>
 #include <string>
 #include <utility>
 
+#include "ray/common/network_util.h"
 #include "ray/raylet/format/node_manager_generated.h"
 #include "src/ray/protobuf/core_worker.grpc.pb.h"
 #include "src/ray/protobuf/core_worker.pb.h"
@@ -192,8 +196,9 @@ void Worker::ActorCallArgWaitComplete(int64_t tag) {
   auto send_request = std::make_shared<std::function<void()>>();
 
   *send_request = [this, port, request, worker_id, retries, send_request]() {
-    this->Connect(
-        port);  // Ensure the connection is established before sending the request.
+    auto port_state = GetPortState(port);
+    RAY_LOG(ERROR) << "Worker port state " << port_state << " , hex=" << worker_id.Hex()
+                   << ", port: " << port;
     rpc_client_->ActorCallArgWaitComplete(
         request,
         [worker_id, retries, send_request](

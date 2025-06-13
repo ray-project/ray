@@ -18,7 +18,7 @@ set -euo pipefail
 
 apt-get update
 apt-get upgrade -y
-apt-get install -y ca-certificates curl zip unzip sudo gnupg tzdata git
+apt-get install -y ca-certificates curl zip unzip sudo gnupg tzdata git net-tools
 
 # Add docker client APT repository
 mkdir -p /etc/apt/keyrings
