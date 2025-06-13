@@ -508,7 +508,7 @@ def test_get_tpu_usage():
 
             tpu_utilizations = agent._get_tpu_usage()
 
-            mock_get.assert_called_once_with(f"http://localhost:2112/metrics")
+            mock_get.assert_called_once_with("http://localhost:2112/metrics")
 
             expected_utilizations = [
                 TpuUtilizationInfo(
