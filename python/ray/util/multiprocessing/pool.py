@@ -240,7 +240,8 @@ class ResultThread(threading.Thread):
         while self._num_ready < self._total_object_refs:
             # Get as many new IDs from the queue as possible without blocking,
             # unless we have no IDs to wait on, in which case we block.
-            while True:
+            ready_id = None
+            while ready_id is None:
                 try:
                     block = len(unready) == 0
                     new_object_ref = self._new_object_refs.get(block=block)
@@ -253,29 +254,37 @@ class ResultThread(threading.Thread):
                         unready.append(new_object_ref)
                 except queue.Empty:
                     # queue.Empty means no result was retrieved if block=False.
-                    break
+                    pass
 
-            [ready_id], unready = ray.wait(unready, num_returns=1)
+                # Check if any of the available IDs are done. We need a timeout here
+                # because we need to check for new IDs from self._new_object_refs
+                ready, unready = ray.wait(unready, num_returns=1, timeout=0.1)
+                if len(ready) > 0:
+                    ready_id = ready[0]
+
             try:
-                batch = ray.get(ready_id)
-            except ray.exceptions.RayError as e:
-                batch = [e]
+                try:
+                    batch = ray.get(ready_id)
+                except ray.exceptions.RayError as e:
+                    batch = [e]
 
-            # The exception callback is called only once on the first result
-            # that errors. If no result errors, it is never called.
-            if not self._got_error:
-                for result in batch:
-                    if isinstance(result, Exception):
-                        self._got_error = True
-                        if self._error_callback is not None:
-                            self._error_callback(result)
-                        break
-                    else:
-                        aggregated_batch_results.append(result)
+                # The exception callback is called only once on the first result
+                # that errors. If no result errors, it is never called.
+                if not self._got_error:
+                    for result in batch:
+                        if isinstance(result, Exception):
+                            self._got_error = True
+                            if self._error_callback is not None:
+                                self._error_callback(result)
+                            break
+                        else:
+                            aggregated_batch_results.append(result)
 
-            self._num_ready += 1
-            self._results[self._indices[ready_id]] = batch
-            self._ready_index_queue.put(self._indices[ready_id])
+                self._num_ready += 1
+                self._results[self._indices[ready_id]] = batch
+                self._ready_index_queue.put(self._indices[ready_id])
+            except Exception as e:
+                logger.exception("DSFDSF")
 
         # The regular callback is called only once on the entire List of
         # results as long as none of the results were errors. If any results
