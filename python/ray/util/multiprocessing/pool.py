@@ -263,28 +263,25 @@ class ResultThread(threading.Thread):
                     ready_id = ready[0]
 
             try:
-                try:
-                    batch = ray.get(ready_id)
-                except ray.exceptions.RayError as e:
-                    batch = [e]
+                batch = ray.get(ready_id)
+            except ray.exceptions.RayError as e:
+                batch = [e]
 
-                # The exception callback is called only once on the first result
-                # that errors. If no result errors, it is never called.
-                if not self._got_error:
-                    for result in batch:
-                        if isinstance(result, Exception):
-                            self._got_error = True
-                            if self._error_callback is not None:
-                                self._error_callback(result)
-                            break
-                        else:
-                            aggregated_batch_results.append(result)
+            # The exception callback is called only once on the first result
+            # that errors. If no result errors, it is never called.
+            if not self._got_error:
+                for result in batch:
+                    if isinstance(result, Exception):
+                        self._got_error = True
+                        if self._error_callback is not None:
+                            self._error_callback(result)
+                        break
+                    else:
+                        aggregated_batch_results.append(result)
 
-                self._num_ready += 1
-                self._results[self._indices[ready_id]] = batch
-                self._ready_index_queue.put(self._indices[ready_id])
-            except Exception:
-                logger.exception("DSFDSF")
+            self._num_ready += 1
+            self._results[self._indices[ready_id]] = batch
+            self._ready_index_queue.put(self._indices[ready_id])
 
         # The regular callback is called only once on the entire List of
         # results as long as none of the results were errors. If any results
