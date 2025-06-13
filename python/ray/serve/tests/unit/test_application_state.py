@@ -512,12 +512,11 @@ def test_deploy_and_delete_app(mocked_application_state):
     d2_id = DeploymentID(name="d2", app_name="test_app")
     app_state.deploy_app(
         {
-            "d1": deployment_info("d1", "/hi", "/documentation"),
+            "d1": deployment_info("d1", "/hi"),
             "d2": deployment_info("d2"),
         }
     )
     assert app_state.route_prefix == "/hi"
-    assert app_state.docs_path == "/documentation"
 
     app_status = app_state.get_application_status_info()
     assert app_status.status == ApplicationStatus.DEPLOYING
@@ -677,7 +676,7 @@ def test_app_unhealthy(mocked_application_state):
 
 
 @patch("ray.serve._private.application_state.build_serve_application", Mock())
-@patch("ray.get", Mock(return_value=([deployment_params("a", "/old", "/docs")], None)))
+@patch("ray.get", Mock(return_value=([deployment_params("a", "/old")], None)))
 @patch("ray.serve._private.application_state.check_obj_ref_ready_nowait")
 def test_apply_app_configs_succeed(check_obj_ref_ready_nowait):
     """Test deploying through config successfully.
@@ -715,7 +714,6 @@ def test_apply_app_configs_succeed(check_obj_ref_ready_nowait):
     assert app_state.status == ApplicationStatus.DEPLOYING
     assert app_state.target_deployments == ["a"]
     assert app_state.route_prefix == "/new"
-    assert app_state.docs_path == "/docs"
 
     # Set healthy
     deployment_state_manager.set_deployment_healthy(deployment_id)
