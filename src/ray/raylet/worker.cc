@@ -183,12 +183,38 @@ void Worker::ActorCallArgWaitComplete(int64_t tag) {
   rpc::ActorCallArgWaitCompleteRequest request;
   request.set_tag(tag);
   request.set_intended_worker_id(worker_id_.Binary());
-  rpc_client_->ActorCallArgWaitComplete(
-      request, [](Status status, const rpc::ActorCallArgWaitCompleteReply &reply) {
-        if (!status.ok()) {
-          RAY_LOG(ERROR) << "Failed to send wait complete: " << status.ToString();
-        }
-      });
+  const auto worker_id = worker_id_;
+  const auto port = port_;
+  const int max_retries = 5;
+
+  // Use shared_ptr to keep retry count across async calls.
+  auto retries = std::make_shared<int>(max_retries);
+  auto send_request = std::make_shared<std::function<void()>>();
+
+  *send_request = [this, port, request, worker_id, retries, send_request]() {
+    this->Connect(
+        port);  // Ensure the connection is established before sending the request.
+    rpc_client_->ActorCallArgWaitComplete(
+        request,
+        [worker_id, retries, send_request](
+            Status status, const rpc::ActorCallArgWaitCompleteReply &reply) {
+          if (!status.ok()) {
+            RAY_LOG(ERROR) << "Failed to send wait complete to worker, hex="
+                           << worker_id.Hex() << ", status: " << status.ToString();
+            if (status.IsRpcError() && (*retries)-- > 0) {
+              std::this_thread::sleep_for(std::chrono::milliseconds(1000));
+              RAY_LOG(ERROR) << "Retrying send wait complete to worker, hex="
+                             << worker_id.Hex() << ", retries left: " << *retries;
+              (*send_request)();  // Recurse
+            }
+          } else {
+            RAY_LOG(ERROR) << "Sent wait complete to worker, hex=" << worker_id.Hex()
+                           << ", status: " << status.ToString();
+          }
+        });
+  };
+
+  (*send_request)();  // Kick off the first attempt
 }
 
 const BundleID &Worker::GetBundleId() const { return bundle_id_; }
