@@ -200,6 +200,8 @@ DEFAULT_ENABLE_PER_NODE_METRICS = bool(
     int(os.environ.get("RAY_DATA_PER_NODE_METRICS", "0"))
 )
 
+DEFAULT_MAX_HASH_SHUFFLE_AGGREGATOR_WAIT_TIME_IN_SECS = 30
+
 
 def _execution_options_factory() -> "ExecutionOptions":
     # Lazily import to avoid circular dependencies.
@@ -367,6 +369,11 @@ class DataContext:
     #
     # When unset defaults to `DataContext.min_parallelism`
     max_hash_shuffle_aggregators: Optional[int] = DEFAULT_MAX_HASH_SHUFFLE_AGGREGATORS
+
+    max_hash_shuffle_aggregator_wait_time_in_secs: int = (
+        DEFAULT_MAX_HASH_SHUFFLE_AGGREGATOR_WAIT_TIME_IN_SECS
+    )
+
     # Max number of *concurrent* hash-shuffle finalization tasks running
     # at the same time. This config is helpful to control concurrency of
     # finalization tasks to prevent single aggregator running multiple tasks

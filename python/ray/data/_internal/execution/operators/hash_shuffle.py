@@ -448,7 +448,12 @@ class HashShufflingOperatorBase(PhysicalOperator):
 
         # Resource monitoring state
         self._aggregator_startup_time: Optional[float] = None
-        self._aggregator_monitoring_warned: bool = False
+
+        # Add last warning timestamp for health checks
+        self._last_health_warning_time: Optional[float] = None
+        self._health_warning_interval: float = 10.0  # 10 seconds between warnings
+        # Track readiness refs for non-blocking health checks
+        self._readiness_refs: Optional[List[ObjectRef]] = None
 
     def start(self, options: ExecutionOptions) -> None:
         super().start(options)
@@ -492,7 +497,7 @@ class HashShufflingOperatorBase(PhysicalOperator):
                 f"Insufficient CPU resources in cluster for hash shuffle operation. "
                 f"Required: {required_cpus} CPUs for {self._aggregator_pool.num_aggregators} aggregators, "
                 f"but cluster only has {total_cpus} total CPUs. "
-                f"Consider reducing the number of partitions or increasing cluster size."
+                f"Consider either increasing the cluster size or reducing the number of aggregators via `DataContext.max_hash_shuffle_aggregators`."
             )
 
         if required_cpus > available_cpus:
@@ -528,32 +533,59 @@ class HashShufflingOperatorBase(PhysicalOperator):
             f"required memory={required_memory / GiB:.2f} GiB, available memory={available_memory / GiB:.2f} GiB"
         )
 
-    def _check_aggregator_health(self, timeout_seconds: float = 30.0) -> None:
+    def _check_aggregator_health(self) -> None:
         """Check if all aggregators are up and running after a timeout period.
-
-        Args:
-            timeout_seconds: Time to wait before checking aggregator health.
+        Uses non-blocking ray.wait to check actor readiness.
+        Will warn every 10 seconds if aggregators remain unhealthy.
         """
+        timeout_seconds = (
+            self.data_context.max_hash_shuffle_aggregator_wait_time_in_secs
+        )
         if (
             self._aggregator_startup_time is None
-            or self._aggregator_monitoring_warned
             or time.time() - self._aggregator_startup_time < timeout_seconds
         ):
             return
 
         try:
-            # Check if all aggregators are responsive
-            unresponsive_aggregators = []
+            # Initialize readiness refs if not done yet
+            if self._readiness_refs is None:
+                self._readiness_refs = [
+                    aggregator.__ray_ready__.remote()
+                    for aggregator in self._aggregator_pool._aggregators
+                ]
 
-            for i, aggregator in enumerate(self._aggregator_pool._aggregators):
-                try:
-                    # Try to get a simple health check from the actor
-                    # We use a very short timeout to avoid blocking
-                    ray.get(aggregator.__ray_ready__.remote(), timeout=1.0)
-                except Exception as e:
-                    unresponsive_aggregators.append((i, str(e)))
+            # Use ray.wait to check readiness in non-blocking fashion
+            _, unready_refs = ray.wait(
+                self._readiness_refs,
+                num_returns=len(self._readiness_refs),
+                timeout=0.1,  # Short timeout to avoid blocking
+            )
 
-            if unresponsive_aggregators:
+            current_time = time.time()
+            should_warn = unready_refs and (  # If any refs are not ready
+                self._last_health_warning_time is None
+                or current_time - self._last_health_warning_time
+                >= self._health_warning_interval
+            )
+
+            if should_warn:
+                # Get indices of unready aggregators
+                unready_indices = [
+                    i
+                    for i, ref in enumerate(self._readiness_refs)
+                    if ref in unready_refs
+                ]
+
+                # Try to get error messages for unready aggregators
+                unresponsive_aggregators = []
+                for i in unready_indices:
+                    try:
+                        # Try to get the error if any
+                        ray.get(self._readiness_refs[i], timeout=0.1)
+                    except Exception as e:
+                        unresponsive_aggregators.append((i, str(e)))
+
                 aggregator_details = ", ".join(
                     [
                         f"aggregator-{i} ({error})"
@@ -562,22 +594,24 @@ class HashShufflingOperatorBase(PhysicalOperator):
                 )
                 logger.warning(
                     f"Hash shuffle aggregator health check failed after {timeout_seconds}s. "
-                    f"{len(unresponsive_aggregators)}/{self._aggregator_pool.num_aggregators} "
+                    f"{len(unready_refs)}/{self._aggregator_pool.num_aggregators} "
                     f"aggregators are unresponsive: {aggregator_details}. "
                     f"This may indicate resource constraints or cluster issues. "
-                    f"The operation may proceed slowly or fail."
+                    f"The operation may proceed slowly or fail. "
+                    f"Will continue checking every {self._health_warning_interval}s."
                 )
-            else:
+                self._last_health_warning_time = current_time
+            elif not unready_refs and self._last_health_warning_time is not None:
+                # All aggregators are ready
+                self._last_health_warning_time = None
+                self._readiness_refs = None  # Reset for next time
                 logger.debug(
                     f"All {self._aggregator_pool.num_aggregators} hash shuffle aggregators "
-                    f"are healthy after {timeout_seconds}s"
+                    f"are now healthy"
                 )
 
         except Exception as e:
             logger.warning(f"Failed to check aggregator health: {e}")
-
-        # Mark as warned to avoid repeated warnings
-        self._aggregator_monitoring_warned = True
 
     def _add_input_inner(self, input_bundle: RefBundle, input_index: int) -> None:
         # Check aggregator health after T secs
@@ -997,7 +1031,33 @@ class HashShufflingOperatorBase(PhysicalOperator):
         num_partitions: int,
         partition_byte_size_estimate: int,
     ) -> int:
-        raise NotImplementedError()
+        dataset_size = num_partitions * partition_byte_size_estimate
+        # Estimate of object store memory required to accommodate all partitions
+        # handled by a single aggregator
+        aggregator_shuffle_object_store_memory_required: int = math.ceil(
+            dataset_size / num_aggregators
+        )
+        # Estimate of memory required to accommodate single partition as an output
+        # (inside Object Store)
+        output_object_store_memory_required: int = partition_byte_size_estimate
+
+        aggregator_total_memory_required: int = (
+            # Inputs (object store)
+            aggregator_shuffle_object_store_memory_required
+            +
+            # Output (object store)
+            output_object_store_memory_required
+        )
+
+        logger.debug(
+            f"Estimated memory requirement for shuffling operator "
+            f"(partitions={num_partitions}, aggregators={num_aggregators}): "
+            f"shuffle={aggregator_shuffle_object_store_memory_required / GiB:.2f}GiB, "
+            f"output={output_object_store_memory_required / GiB:.2f}GiB, "
+            f"total={aggregator_total_memory_required / GiB:.2f}GiB, "
+        )
+
+        return aggregator_total_memory_required
 
 
 class HashShuffleOperator(HashShufflingOperatorBase):
