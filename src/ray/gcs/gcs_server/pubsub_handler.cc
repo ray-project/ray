@@ -113,8 +113,8 @@ void InternalPubSubHandler::HandleGcsUnregisterSubscriber(
   send_reply_callback(Status::OK(), nullptr, nullptr);
 }
 
-void InternalPubSubHandler::RemoveSubscriberFrom(const std::string &sender_id) {
-  io_service_.dispatch(
+void InternalPubSubHandler::AsyncRemoveSubscriberFrom(const std::string &sender_id) {
+  io_service_.post(
       [this, sender_id]() {
         auto iter = sender_to_subscribers_.find(sender_id);
         if (iter == sender_to_subscribers_.end()) {
