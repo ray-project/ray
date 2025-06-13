@@ -1948,18 +1948,31 @@ class Node:
             for (
                 accelerator_resource_name
             ) in ray._private.accelerators.get_all_accelerator_resource_names():
-                accelerator_manager = (
-                    ray._private.accelerators.get_accelerator_manager_for_resource(
-                        accelerator_resource_name
+                try:
+                    accelerator_manager = (
+                        ray._private.accelerators.get_accelerator_manager_for_resource(
+                            accelerator_resource_name
+                        )
                     )
-                )
-                accelerator_type = (
-                    accelerator_manager.get_current_node_accelerator_type()
-                )
-                num_accelerators = resource_spec.resources.get(
-                    accelerator_resource_name, None
-                )
+                    num_accelerators = resource_spec.resources.get(
+                        accelerator_resource_name, None
+                    )
+                    accelerator_type = (
+                        accelerator_manager.get_current_node_accelerator_type()
+                    )
+                    if num_accelerators is None:
+                        # Try to automatically detect the number of accelerators.
+                        num_accelerators = (
+                            accelerator_manager.get_current_node_num_accelerators()
+                        )
+                except Exception:
+                    accelerator_type = None
+                    logger.debug(
+                        "Failed to detect accelerator type for default Ray labels during Node init."
+                    )
                 if accelerator_type and num_accelerators:
+                    # Only set label if both accelerator type and the number of
+                    # accelerators were successfully detected.
                     default_labels[
                         ray._raylet.RAY_NODE_ACCELERATOR_TYPE_KEY
                     ] = accelerator_type
