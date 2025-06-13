@@ -41,6 +41,12 @@ class BroadcastOp(_CollectiveOp):
     pass
 
 
+@PublicAPI
+@dataclass
+class ReduceOperation(_CollectiveOp):
+    reduceOp: ReduceOp = ReduceOp.SUM
+
+
 @PublicAPI(stability="alpha")
 class Device(Enum):
     DEFAULT = "default"
