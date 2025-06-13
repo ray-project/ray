@@ -320,6 +320,6 @@ train_dashboard_config = DashboardConfig(
     name="TRAIN",
     default_uid="rayTrainDashboard",
     rows=TRAIN_GRAFANA_ROWS,
-    standard_global_filters=[],
+    standard_global_filters=["SessionName=~'$SessionName'"],
     base_json_file_name="train_grafana_dashboard_base.json",
 )
