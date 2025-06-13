@@ -283,7 +283,7 @@ class ResultThread(threading.Thread):
                 self._num_ready += 1
                 self._results[self._indices[ready_id]] = batch
                 self._ready_index_queue.put(self._indices[ready_id])
-            except Exception as e:
+            except Exception:
                 logger.exception("DSFDSF")
 
         # The regular callback is called only once on the entire List of

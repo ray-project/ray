@@ -438,7 +438,7 @@ def test_imap_timeout(pool_4_processes):
     # index == 0 will block, so the first call to get a result should time out.
     result_iter = pool_4_processes.imap(f, range(10))
     with pytest.raises(TimeoutError):
-        result = result_iter.next(timeout=0.1)
+        result_iter.next(timeout=0.5)
 
     # Unblock index == 0, then all results should come back in order.
     ray.get(signal.send.remote())
