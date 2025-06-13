@@ -1006,33 +1006,7 @@ class HashShufflingOperatorBase(PhysicalOperator):
         num_partitions: int,
         partition_byte_size_estimate: int,
     ) -> int:
-        dataset_size = num_partitions * partition_byte_size_estimate
-        # Estimate of object store memory required to accommodate all partitions
-        # handled by a single aggregator
-        aggregator_shuffle_object_store_memory_required: int = math.ceil(
-            dataset_size / num_aggregators
-        )
-        # Estimate of memory required to accommodate single partition as an output
-        # (inside Object Store)
-        output_object_store_memory_required: int = partition_byte_size_estimate
-
-        aggregator_total_memory_required: int = (
-            # Inputs (object store)
-            aggregator_shuffle_object_store_memory_required
-            +
-            # Output (object store)
-            output_object_store_memory_required
-        )
-
-        logger.debug(
-            f"Estimated memory requirement for shuffling operator "
-            f"(partitions={num_partitions}, aggregators={num_aggregators}): "
-            f"shuffle={aggregator_shuffle_object_store_memory_required / GiB:.2f}GiB, "
-            f"output={output_object_store_memory_required / GiB:.2f}GiB, "
-            f"total={aggregator_total_memory_required / GiB:.2f}GiB, "
-        )
-
-        return aggregator_total_memory_required
+        raise NotImplementedError()
 
 
 class HashShuffleOperator(HashShufflingOperatorBase):
