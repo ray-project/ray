@@ -319,8 +319,7 @@ def convert_ndarray_list_to_torch_tensor_list(
         device: The device on which the tensor(s) should be placed; if None, the Torch
             tensor(s) will be constructed on the CPU.
 
-    Returns:
-        A dict mapping column names to lists of Tensors.
+    Returns: A dict mapping column names to lists of Tensors.
     """
     return {
         col_name: [
