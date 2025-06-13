@@ -75,11 +75,11 @@ class GPUProfilingManager:
         self._dynolog_daemon_process: Optional[subprocess.Popen] = None
 
         if not self.node_has_gpus():
-            logger.warning(
+            logger.info(
                 "[GPUProfilingManager] No GPUs found on this node, GPU profiling will not be setup."
             )
         if not self._dynolog_bin or not self._dyno_bin:
-            logger.warning(
+            logger.info(
                 "[GPUProfilingManager] `dynolog` is not installed, GPU profiling will not be available."
             )
 
@@ -122,13 +122,13 @@ class GPUProfilingManager:
         """
 
         if not self.enabled:
-            logger.warning(
+            logger.info(
                 "[GPUProfilingManager] GPU profiling is disabled, skipping daemon setup."
             )
             return
 
         if self.is_monitoring_daemon_running:
-            logger.warning(
+            logger.info(
                 "[GPUProfilingManager] GPU profiling monitoring daemon is already running."
             )
             return
