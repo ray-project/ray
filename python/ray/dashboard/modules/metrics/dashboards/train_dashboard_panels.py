@@ -28,7 +28,7 @@ CONTROLLER_STATE_PANEL = Panel(
     unit="",
     targets=[
         Target(
-            expr="sum(ray_train_controller_state{{{global_filters}}}) by (ray_train_run_name, ray_train_controller_state)",
+            expr='sum(ray_train_controller_state{{SessionName=~"$SessionName", ray_train_run_name=~"$TrainRunName", ray_train_run_id=~"$TrainRunId"}}) by (ray_train_run_name, ray_train_controller_state)',
             legend="Run Name: {{ray_train_run_name}}, Controller State: {{ray_train_controller_state}}",
         ),
     ],
@@ -41,11 +41,11 @@ CONTROLLER_OPERATION_TIME_PANEL = Panel(
     unit="seconds",
     targets=[
         Target(
-            expr="sum(ray_train_worker_group_start_total_time_s{{{global_filters}}}) by (ray_train_run_name)",
+            expr='sum(ray_train_worker_group_start_total_time_s{{SessionName=~"$SessionName", ray_train_run_name=~"$TrainRunName", ray_train_run_id=~"$TrainRunId"}}) by (ray_train_run_name)',
             legend="Run Name: {{ray_train_run_name}}, Worker Group Start Time",
         ),
         Target(
-            expr="sum(ray_train_worker_group_shutdown_total_time_s{{{global_filters}}}) by (ray_train_run_name)",
+            expr='sum(ray_train_worker_group_shutdown_total_time_s{{SessionName=~"$SessionName", ray_train_run_name=~"$TrainRunName", ray_train_run_id=~"$TrainRunId"}}) by (ray_train_run_name)',
             legend="Run Name: {{ray_train_run_name}}, Worker Group Shutdown Time",
         ),
     ],
@@ -61,7 +61,7 @@ WORKER_CHECKPOINT_REPORT_TIME_PANEL = Panel(
     unit="seconds",
     targets=[
         Target(
-            expr="sum(ray_train_report_total_blocked_time_s{{ray_train_worker_world_rank=~'$TrainWorkerWorldRank', ray_train_worker_actor_id=~'$TrainWorkerActorId', {global_filters}}}) by (ray_train_run_name, ray_train_worker_world_rank, ray_train_worker_actor_id)",
+            expr='sum(ray_train_report_total_blocked_time_s{{SessionName=~"$SessionName", ray_train_run_name=~"$TrainRunName", ray_train_run_id=~"$TrainRunId", ray_train_worker_world_rank=~"$TrainWorkerWorldRank", ray_train_worker_actor_id=~"$TrainWorkerActorId"}}) by (ray_train_run_name, ray_train_worker_world_rank, ray_train_worker_actor_id)',
             legend="Run Name: {{ray_train_run_name}}, World Rank: {{ray_train_worker_world_rank}}",
         )
     ],
@@ -77,11 +77,11 @@ CPU_UTILIZATION_PANEL = Panel(
     unit="cores",
     targets=[
         Target(
-            expr='sum(ray_node_cpu_utilization{{instance=~"$Instance",{global_filters}}} * ray_node_cpu_count{{instance=~"$Instance",{global_filters}}} / 100) by (instance)',
+            expr='sum(ray_node_cpu_utilization{{instance=~"$Instance", SessionName=~"$SessionName"}} * ray_node_cpu_count{{instance=~"$Instance", SessionName=~"$SessionName"}} / 100) by (instance)',
             legend="CPU Usage: {{instance}}",
         ),
         Target(
-            expr='sum(ray_node_cpu_count{{instance=~"$Instance",{global_filters}}})',
+            expr='sum(ray_node_cpu_count{{instance=~"$Instance", SessionName=~"$SessionName"}})',
             legend="MAX",
         ),
     ],
@@ -94,11 +94,11 @@ MEMORY_UTILIZATION_PANEL = Panel(
     unit="bytes",
     targets=[
         Target(
-            expr='sum(ray_node_mem_used{{instance=~"$Instance",{global_filters}}}) by (instance)',
+            expr='sum(ray_node_mem_used{{instance=~"$Instance", SessionName=~"$SessionName"}}) by (instance)',
             legend="Memory Used: {{instance}}",
         ),
         Target(
-            expr='sum(ray_node_mem_total{{instance=~"$Instance",{global_filters}}})',
+            expr='sum(ray_node_mem_total{{instance=~"$Instance", SessionName=~"$SessionName"}})',
             legend="MAX",
         ),
     ],
@@ -111,11 +111,11 @@ MEMORY_DETAILED_PANEL = Panel(
     unit="bytes",
     targets=[
         Target(
-            expr='sum(ray_node_mem_available{{instance=~"$Instance",{global_filters}}}) by (instance)',
+            expr='sum(ray_node_mem_available{{instance=~"$Instance", SessionName=~"$SessionName"}}) by (instance)',
             legend="Available Memory: {{instance}}",
         ),
         Target(
-            expr='sum(ray_node_mem_shared_bytes{{instance=~"$Instance",{global_filters}}}) by (instance)',
+            expr='sum(ray_node_mem_shared_bytes{{instance=~"$Instance", SessionName=~"$SessionName"}}) by (instance)',
             legend="Shared Memory: {{instance}}",
         ),
     ],
@@ -130,11 +130,11 @@ GPU_UTILIZATION_PANEL = Panel(
     unit="GPUs",
     targets=[
         Target(
-            expr='sum(ray_node_gpus_utilization{{instance=~"$Instance",{global_filters}}} / 100) by (instance, GpuIndex, GpuDeviceName)',
+            expr='sum(ray_node_gpus_utilization{{instance=~"$Instance", SessionName=~"$SessionName"}} / 100) by (instance, GpuIndex, GpuDeviceName)',
             legend="GPU Usage: {{instance}}, gpu.{{GpuIndex}}, {{GpuDeviceName}}",
         ),
         Target(
-            expr='sum(ray_node_gpus_available{{instance=~"$Instance",{global_filters}}})',
+            expr='sum(ray_node_gpus_available{{instance=~"$Instance", SessionName=~"$SessionName"}})',
             legend="MAX",
         ),
     ],
@@ -147,11 +147,11 @@ GPU_MEMORY_UTILIZATION_PANEL = Panel(
     unit="bytes",
     targets=[
         Target(
-            expr='sum(ray_node_gram_used{{instance=~"$Instance",{global_filters}}} * 1024 * 1024) by (instance, GpuIndex, GpuDeviceName)',
+            expr='sum(ray_node_gram_used{{instance=~"$Instance", SessionName=~"$SessionName"}} * 1024 * 1024) by (instance, GpuIndex, GpuDeviceName)',
             legend="Used GRAM: {{instance}}, gpu.{{GpuIndex}}, {{GpuDeviceName}}",
         ),
         Target(
-            expr='(sum(ray_node_gram_available{{instance=~"$Instance",{global_filters}}}) + sum(ray_node_gram_used{{instance=~"$Instance",{global_filters}}})) * 1024 * 1024',
+            expr='(sum(ray_node_gram_available{{instance=~"$Instance", SessionName=~"$SessionName"}}) + sum(ray_node_gram_used{{instance=~"$Instance", SessionName=~"$SessionName"}})) * 1024 * 1024',
             legend="MAX",
         ),
     ],
@@ -165,11 +165,11 @@ DISK_UTILIZATION_PANEL = Panel(
     unit="bytes",
     targets=[
         Target(
-            expr='sum(ray_node_disk_usage{{instance=~"$Instance",{global_filters}}}) by (instance)',
+            expr='sum(ray_node_disk_usage{{instance=~"$Instance", SessionName=~"$SessionName"}}) by (instance)',
             legend="Disk Used: {{instance}}",
         ),
         Target(
-            expr='sum(ray_node_disk_free{{instance=~"$Instance",{global_filters}}}) + sum(ray_node_disk_usage{{instance=~"$Instance",{global_filters}}})',
+            expr='sum(ray_node_disk_free{{instance=~"$Instance", SessionName=~"$SessionName"}}) + sum(ray_node_disk_usage{{instance=~"$Instance", SessionName=~"$SessionName"}})',
             legend="MAX",
         ),
     ],
@@ -182,11 +182,11 @@ DISK_THROUGHPUT_PANEL = Panel(
     unit="Bps",
     targets=[
         Target(
-            expr='sum(ray_node_disk_io_read_speed{{instance=~"$Instance",{global_filters}}}) by (instance)',
+            expr='sum(ray_node_disk_io_read_speed{{instance=~"$Instance", SessionName=~"$SessionName"}}) by (instance)',
             legend="Read Speed: {{instance}}",
         ),
         Target(
-            expr='sum(ray_node_disk_io_write_speed{{instance=~"$Instance",{global_filters}}}) by (instance)',
+            expr='sum(ray_node_disk_io_write_speed{{instance=~"$Instance", SessionName=~"$SessionName"}}) by (instance)',
             legend="Write Speed: {{instance}}",
         ),
     ],
@@ -199,11 +199,11 @@ DISK_OPERATIONS_PANEL = Panel(
     unit="ops/s",
     targets=[
         Target(
-            expr='sum(ray_node_disk_read_iops{{instance=~"$Instance",{global_filters}}}) by (instance)',
+            expr='sum(ray_node_disk_read_iops{{instance=~"$Instance", SessionName=~"$SessionName"}}) by (instance)',
             legend="Read IOPS: {{instance}}",
         ),
         Target(
-            expr='sum(ray_node_disk_write_iops{{instance=~"$Instance",{global_filters}}}) by (instance)',
+            expr='sum(ray_node_disk_write_iops{{instance=~"$Instance", SessionName=~"$SessionName"}}) by (instance)',
             legend="Write IOPS: {{instance}}",
         ),
     ],
@@ -217,11 +217,11 @@ NETWORK_THROUGHPUT_PANEL = Panel(
     unit="Bps",
     targets=[
         Target(
-            expr='sum(ray_node_network_receive_speed{{instance=~"$Instance",{global_filters}}}) by (instance)',
+            expr='sum(ray_node_network_receive_speed{{instance=~"$Instance", SessionName=~"$SessionName"}}) by (instance)',
             legend="Receive Speed: {{instance}}",
         ),
         Target(
-            expr='sum(ray_node_network_send_speed{{instance=~"$Instance",{global_filters}}}) by (instance)',
+            expr='sum(ray_node_network_send_speed{{instance=~"$Instance", SessionName=~"$SessionName"}}) by (instance)',
             legend="Send Speed: {{instance}}",
         ),
     ],
@@ -234,11 +234,11 @@ NETWORK_TOTAL_PANEL = Panel(
     unit="bytes",
     targets=[
         Target(
-            expr='sum(ray_node_network_sent{{instance=~"$Instance",{global_filters}}}) by (instance)',
+            expr='sum(ray_node_network_sent{{instance=~"$Instance", SessionName=~"$SessionName"}}) by (instance)',
             legend="Total Sent: {{instance}}",
         ),
         Target(
-            expr='sum(ray_node_network_received{{instance=~"$Instance",{global_filters}}}) by (instance)',
+            expr='sum(ray_node_network_received{{instance=~"$Instance", SessionName=~"$SessionName"}}) by (instance)',
             legend="Total Received: {{instance}}",
         ),
     ],
@@ -330,6 +330,6 @@ train_dashboard_config = DashboardConfig(
     name="TRAIN",
     default_uid="rayTrainDashboard",
     rows=TRAIN_GRAFANA_ROWS,
-    standard_global_filters=['SessionName=~"$SessionName"'],
+    standard_global_filters=[],
     base_json_file_name="train_grafana_dashboard_base.json",
 )
