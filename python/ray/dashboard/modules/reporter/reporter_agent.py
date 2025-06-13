@@ -783,11 +783,11 @@ class ReporterAgent(
         # the metric interval for one TPU. So here we need to aggregate the
         # sample records together. The aggregated list should be indexed by the
         # TPU accelerator index.
-        merged_tpu_utilizations = []
+        merged_tpu_utilizations = {}
 
         for info in tpu_utilizations:
             index = int(info.get("index"))
-            if len(merged_tpu_utilizations) > index:
+            if index in merged_tpu_utilizations:
                 merged_info = merged_tpu_utilizations[index]
                 merged_info["tensorcore_utilization"] += info.get(
                     "tensorcore_utilization"
@@ -808,9 +808,12 @@ class ReporterAgent(
                     memory_used=info.get("memory_used"),
                     memory_total=info.get("memory_total"),
                 )
-                merged_tpu_utilizations.append(merged_info)
+                merged_tpu_utilizations[index] = merged_info
 
-        return merged_tpu_utilizations
+        sorted_tpu_utilizations = [
+            value for _, value in sorted(merged_tpu_utilizations.items())
+        ]
+        return sorted_tpu_utilizations
 
     @staticmethod
     def _get_boot_time():
