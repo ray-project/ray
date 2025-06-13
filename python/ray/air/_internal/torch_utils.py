@@ -423,14 +423,19 @@ def concat_tensors_to_device(
 
     # Allocate an empty Tensor on device
     result = torch.empty(
-        (total_rows, *shape_tail), dtype=dtype, device=device, pin_memory=pin_memory
+        (total_rows, *shape_tail),
+        dtype=dtype,
+        device=device,
+        pin_memory=pin_memory and device.type == "cpu",
     )
 
     row_start = 0
     for t in tensor_sequence:
         row_end = row_start + t.shape[0]
+        if pin_memory and t.device.type == "cpu":
+            t = t.pin_memory()
         # If pin_memory is True, enable non-blocking transfer.
-        result[row_start:row_end].copy_(t, non_blocking=pin_memory or non_blocking)
+        result[row_start:row_end].copy_(t, non_blocking=t.is_pinned() or non_blocking)
         row_start = row_end
 
     return result
@@ -495,8 +500,8 @@ def move_tensors_to_device(
     if device is None:
         return batch
 
-    def to_device(tensor):
-        if pin_memory:
+    def to_device(tensor: torch.Tensor) -> torch.Tensor:
+        if pin_memory and tensor.device.type == "cpu":
             # If pin_memory is True, enable non-blocking transfer.
             return tensor.pin_memory().to(device, non_blocking=True)
         else:
