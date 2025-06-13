@@ -68,23 +68,27 @@ def test_inter_actor_gpu_tensor_transfer(ray_start_regular):
 
 
 def test_intra_gpu_tensor_transfer(ray_start_regular):
-    world_size = 2
-    actors = [GPUTestActor.remote() for _ in range(world_size)]
-    init_process_group(actors)
+    actor = GPUTestActor.remote()
+    init_process_group([actor])
 
     small_tensor = torch.randn((1,))
-    actor0 = actors[0]
-    actor1 = actors[1]
 
-    # Intra-actor GPU tensor transfer
-    ref = actor0.echo.remote(small_tensor)
-    result = actor0.double.remote(ref)
+    # Intra-actor communication for pure GPU tensors
+    ref = actor.echo.remote(small_tensor)
+    result = actor.double.remote(ref)
     assert ray.get(result) == pytest.approx(small_tensor * 2)
 
-    # Inter-actor GPU tensor transfer
+    # Intra-actor communication for mixed CPU and GPU data
+    cpu_data = random.randint(0, 100)
+    data = [small_tensor, cpu_data]
+    ref = actor.echo.remote(data)
+    result = actor.double.remote(ref)
+    assert ray.get(result) == pytest.approx([small_tensor * 2, cpu_data * 2])
+
+    # Intra-actor communication for multiple GPU tensors
     medium_tensor = torch.randn((500, 500))
-    ref = actor0.echo.remote(medium_tensor)
-    result = actor1.double.remote(ref)
+    ref = actor.echo.remote(medium_tensor)
+    result = actor.double.remote(ref)
     assert ray.get(result) == pytest.approx(medium_tensor * 2)
 
 
