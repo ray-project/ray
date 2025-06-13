@@ -21,6 +21,11 @@ QF_TWIN_PREDS = "qf_twin_preds"
 TD_ERROR_MEAN_KEY = "td_error_mean"
 CRITIC_TARGET = "critic_target"
 ACTION_DIST_INPUTS_NEXT = "action_dist_inputs_next"
+QF_TARGET_NEXT = "q_target_next"
+ACTION_PROBS_NEXT = "action_probs_next"
+ACTION_LOG_PROBS_NEXT = "action_log_probs_next"
+ACTION_PROBS = "action_probs"
+ACTION_LOG_PROBS = "action_log_probs"
 
 
 class SACLearner(DQNLearner):
