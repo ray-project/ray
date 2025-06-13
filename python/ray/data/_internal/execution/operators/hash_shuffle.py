@@ -538,12 +538,10 @@ class HashShufflingOperatorBase(PhysicalOperator):
         Uses non-blocking ray.wait to check actor readiness.
         Will warn every 10 seconds if aggregators remain unhealthy.
         """
-        timeout_seconds = (
-            self.data_context.max_hash_shuffle_aggregator_wait_time_in_secs
-        )
+        min_wait_time = self.data_context.min_hash_shuffle_aggregator_wait_time_in_secs
         if (
             self._aggregator_startup_time is None
-            or time.time() - self._aggregator_startup_time < timeout_seconds
+            or time.time() - self._aggregator_startup_time < min_wait_time
         ):
             return
 
@@ -570,32 +568,9 @@ class HashShufflingOperatorBase(PhysicalOperator):
             )
 
             if should_warn:
-                # Get indices of unready aggregators
-                unready_indices = [
-                    i
-                    for i, ref in enumerate(self._readiness_refs)
-                    if ref in unready_refs
-                ]
-
-                # Try to get error messages for unready aggregators
-                unresponsive_aggregators = []
-                for i in unready_indices:
-                    try:
-                        # Try to get the error if any
-                        ray.get(self._readiness_refs[i], timeout=0.1)
-                    except Exception as e:
-                        unresponsive_aggregators.append((i, str(e)))
-
-                aggregator_details = ", ".join(
-                    [
-                        f"aggregator-{i} ({error})"
-                        for i, error in unresponsive_aggregators
-                    ]
-                )
                 logger.warning(
-                    f"Hash shuffle aggregator health check failed after {timeout_seconds}s. "
+                    f"Hash shuffle aggregator health check failed after {min_wait_time}s. "
                     f"{len(unready_refs)}/{self._aggregator_pool.num_aggregators} "
-                    f"aggregators are unresponsive: {aggregator_details}. "
                     f"This may indicate resource constraints or cluster issues. "
                     f"The operation may proceed slowly or fail. "
                     f"Will continue checking every {self._health_warning_interval}s."
