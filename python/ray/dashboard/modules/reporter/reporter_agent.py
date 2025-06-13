@@ -46,7 +46,7 @@ from ray.dashboard.consts import (
     GPU_TAG_KEYS,
     NODE_TAG_KEYS,
 )
-from ray.dashboard.modules.reporter.gpu_profile_manager import GpuProfilingManager
+from ray.dashboard.modules.reporter.gpu_profiling_manager import GpuProfilingManager
 from ray.dashboard.modules.reporter.profile_manager import (
     CpuProfilingManager,
     MemoryProfilingManager,
