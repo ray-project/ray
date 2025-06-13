@@ -5,7 +5,7 @@ import argparse
 import ray
 from ray._private.state_api_test_utils import verify_failed_task
 from ray.util.state import list_workers
-from ray._private.test_utils import wait_for_condition
+from ray._common.test_utils import wait_for_condition
 from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
 
 parser = argparse.ArgumentParser()
