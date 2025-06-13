@@ -1,4 +1,4 @@
-"""Utility functions for the LLM module."""
+"""Utility functions for importing modules in the LLM module."""
 import importlib
 import logging
 from types import ModuleType
