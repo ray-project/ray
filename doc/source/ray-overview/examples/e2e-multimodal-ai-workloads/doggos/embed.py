@@ -55,8 +55,8 @@ def get_top_matches(query_embedding, embeddings_ds, class_filters=None, n=4):
     # Package results
     return [
         {
-            "class":      rows[i]["class"],
-            "path":       rows[i]["path"],
+            "class": rows[i]["class"],
+            "path": rows[i]["path"],
             "similarity": float(sims[i]),
         }
         for i in idx
