@@ -24,6 +24,7 @@
 #include <string>
 #include <utility>
 
+#include "ray/common/network_util.h"
 #include "ray/common/ray_config.h"
 #include "ray/rpc/common.h"
 #include "ray/util/thread_utils.h"
@@ -92,6 +93,7 @@ void GrpcServer::Run() {
       // "too many pings" error and crash.
       std::min(static_cast<int64_t>(60000),
                RayConfig::instance().grpc_client_keepalive_time_ms()));
+  RAY_LOG(INFO) << "gRPC server will listen on port " << specified_port;
   if (RayConfig::instance().USE_TLS()) {
     // Create credentials from locations specified in config
     std::string rootcert = ReadCert(RayConfig::instance().TLS_CA_CERT());
@@ -139,6 +141,10 @@ void GrpcServer::Run() {
       << " to check if there are other processes listening to the port.";
   RAY_CHECK(port_ > 0);
   RAY_LOG(INFO) << name_ << " server started, listening on port " << port_ << ".";
+  auto port_state = GetPortState(port_);
+  RAY_LOG(INFO) << "Worker port state " << port_state;
+  auto port_state_and_pid = GetPortStateAndPID(port_);
+  RAY_LOG(INFO) << "Worker port state and pid " << port_state_and_pid;
 
   // Create calls for all the server call factories
   //

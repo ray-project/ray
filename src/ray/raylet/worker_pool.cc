@@ -681,6 +681,9 @@ Process WorkerPool::StartProcess(const std::vector<std::string> &worker_command_
 }
 
 Status WorkerPool::GetNextFreePort(int *port) {
+  RAY_LOG(ERROR) << "GetNextFreePort " << port << " called on port pool with "
+                 << (free_ports_ ? std::to_string(free_ports_->size()) : "null")
+                 << " free ports.";
   if (!free_ports_) {
     *port = 0;
     return Status::OK();
@@ -806,7 +809,7 @@ Status WorkerPool::RegisterWorker(const std::shared_ptr<WorkerInterface> &worker
   auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(
       end - starting_process_info.start_time);
   STATS_worker_register_time_ms.Record(duration.count());
-  RAY_LOG(DEBUG) << "Registering worker " << worker->WorkerId() << " with pid " << pid
+  RAY_LOG(ERROR) << "Registering worker " << worker->WorkerId() << " with pid " << pid
                  << ", port: " << port << ", register cost: " << duration.count()
                  << ", worker_type: " << rpc::WorkerType_Name(worker->GetWorkerType())
                  << ", startup token: " << worker_startup_token;

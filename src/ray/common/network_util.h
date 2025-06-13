@@ -14,6 +14,12 @@
 
 #pragma once
 
+#include <string>
+
 // Check whether the given [port] is available, via attempt to bind a socket to the port.
 // Notice, the check could be non-authentic if there're concurrent port assignments.
 bool CheckPortFree(int port);
+
+std::string GetPortState(uint16_t port);
+
+std::string GetPortStateAndPID(uint16_t port);

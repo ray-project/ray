@@ -14,11 +14,17 @@
 
 #include "ray/raylet/worker.h"
 
+#include <unistd.h>
+
 #include <boost/bind/bind.hpp>
+#include <fstream>
+#include <iostream>
 #include <memory>
+#include <sstream>
 #include <string>
 #include <utility>
 
+#include "ray/common/network_util.h"
 #include "ray/raylet/format/node_manager_generated.h"
 #include "src/ray/protobuf/core_worker.grpc.pb.h"
 #include "src/ray/protobuf/core_worker.pb.h"
@@ -183,29 +189,78 @@ void Worker::ActorCallArgWaitComplete(int64_t tag) {
   rpc::ActorCallArgWaitCompleteRequest request;
   request.set_tag(tag);
   request.set_intended_worker_id(worker_id_.Binary());
+
   const auto worker_id = worker_id_;
   const auto port = port_;
-  const int max_retries = 5;
+  const double initial_backoff_ms = 1000.0;  // 1 second
+  const double backoff_multiplier = 1.6;
+  const double max_backoff_ms = 30000.0;  // 30 seconds
+  const double jitter_factor = 0.2;
+  int max_retries = 1;  // Safety limit to avoid infinite retries
 
-  // Use shared_ptr to keep retry count across async calls.
   auto retries = std::make_shared<int>(max_retries);
+  auto backoff = std::make_shared<double>(initial_backoff_ms);
+
   auto send_request = std::make_shared<std::function<void()>>();
 
-  *send_request = [this, port, request, worker_id, retries, send_request]() {
-    this->Connect(
-        port);  // Ensure the connection is established before sending the request.
+  *send_request = [this,
+                   port,
+                   request,
+                   worker_id,
+                   retries,
+                   backoff,
+                   max_backoff_ms,
+                   backoff_multiplier,
+                   jitter_factor,
+                   send_request]() {
     rpc_client_->ActorCallArgWaitComplete(
         request,
-        [worker_id, retries, send_request](
-            Status status, const rpc::ActorCallArgWaitCompleteReply &reply) {
+        [port,
+         worker_id,
+         retries,
+         backoff,
+         max_backoff_ms,
+         backoff_multiplier,
+         jitter_factor,
+         send_request](Status status, const rpc::ActorCallArgWaitCompleteReply &reply) {
           if (!status.ok()) {
+            if (CheckPortFree(port)) {
+              RAY_LOG(ERROR) << "Worker port is free, hex=" << worker_id.Hex()
+                             << ", port: " << port;
+            } else {
+              RAY_LOG(ERROR) << "Worker port is NOT free, hex=" << worker_id.Hex()
+                             << ", port: " << port;
+            }
             RAY_LOG(ERROR) << "Failed to send wait complete to worker, hex="
-                           << worker_id.Hex() << ", status: " << status.ToString();
-            if (status.IsRpcError() && (*retries)-- > 0) {
-              std::this_thread::sleep_for(std::chrono::milliseconds(1000));
+                           << worker_id.Hex() << ", status: " << status.ToString()
+                           << ", from pid: " << std::to_string(GetPID());
+            auto port_state = GetPortState(port);
+            RAY_LOG(ERROR) << "Worker port state " << port_state
+                           << " , hex=" << worker_id.Hex() << ", port: " << port;
+            auto port_state_and_pid = GetPortStateAndPID(port);
+            RAY_LOG(ERROR) << "Worker port state and pid " << port_state_and_pid
+                           << " , hex=" << worker_id.Hex() << ", port: " << port;
+
+            if (status.IsRpcError() && *retries > 0 && *backoff <= max_backoff_ms) {
+              // Add ±20% jitter
+              std::random_device rd;
+              std::mt19937 gen(rd());
+              std::uniform_real_distribution<> jitter(1.0 - jitter_factor,
+                                                      1.0 + jitter_factor);
+              double backoff_with_jitter = (*backoff) * jitter(gen);
+
               RAY_LOG(ERROR) << "Retrying send wait complete to worker, hex="
-                             << worker_id.Hex() << ", retries left: " << *retries;
-              (*send_request)();  // Recurse
+                             << worker_id.Hex() << ", retries left: " << *retries
+                             << ", backoff: " << static_cast<int>(backoff_with_jitter)
+                             << " ms";
+
+              std::this_thread::sleep_for(
+                  std::chrono::milliseconds(static_cast<int>(backoff_with_jitter)));
+
+              --(*retries);
+              *backoff = std::min((*backoff) * backoff_multiplier, max_backoff_ms);
+
+              (*send_request)();  // Retry
             }
           } else {
             RAY_LOG(ERROR) << "Sent wait complete to worker, hex=" << worker_id.Hex()
@@ -214,7 +269,7 @@ void Worker::ActorCallArgWaitComplete(int64_t tag) {
         });
   };
 
-  (*send_request)();  // Kick off the first attempt
+  (*send_request)();  // Initial attempt
 }
 
 const BundleID &Worker::GetBundleId() const { return bundle_id_; }

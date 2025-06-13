@@ -9,6 +9,7 @@ ARG RAY_INSTALL_MASK=
 
 ENV CC=clang
 ENV CXX=clang++-12
+ENV RAY_BACKEND_LOG_LEVEL=debug
 
 RUN mkdir /rayci
 WORKDIR /rayci
@@ -18,6 +19,8 @@ RUN <<EOF
 #!/bin/bash -i
 
 set -euo pipefail
+
+sudo apt-get install net-tools -y
 
 if [[ "$BUILDKITE_CACHE_READONLY" == "true" ]]; then
   # Disables uploading cache when it is read-only.

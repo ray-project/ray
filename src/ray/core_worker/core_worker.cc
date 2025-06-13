@@ -1105,9 +1105,6 @@ void CoreWorker::Disconnect(
       }
     }
   }
-
-  // Shutdown the gRPC server.
-  core_worker_server_->Shutdown();
 }
 
 void CoreWorker::KillChildProcs() {
@@ -1272,7 +1269,7 @@ void CoreWorker::ForceExit(const rpc::WorkerExitType exit_type,
   Disconnect(exit_type, detail);
 
   // Shutdown the gRPC server.
-  core_worker_server_->Shutdown();
+  // core_worker_server_->Shutdown();
 
   // NOTE(hchen): Use `QuickExit()` to force-exit this process without doing cleanup.
   // `exit()` will destruct static objects in an incorrect order, which will lead to
