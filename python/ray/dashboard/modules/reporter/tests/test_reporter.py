@@ -486,11 +486,11 @@ def test_get_tpu_usage():
     agent = ReporterAgent(dashboard_agent)
 
     fake_metrics_content = """
-    duty_cycle{accelerator_id="1234-0",container="ray-head",make="cloud-tpu",model="tpu-v6e-slice",namespace="default",pod="test",tpu_topology="2x2"} 20.0 
+    duty_cycle{accelerator_id="1234-0",container="ray-head",make="cloud-tpu",model="tpu-v6e-slice",namespace="default",pod="test",tpu_topology="2x2"} 20.0
     duty_cycle{accelerator_id="1234-1",container="ray-head",make="cloud-tpu",model="tpu-v6e-slice",namespace="default",pod="test",tpu_topology="2x2"} 40.0
     memory_bandwidth_utilization{accelerator_id="1234-0",container="ray-head",make="cloud-tpu",model="tpu-v6e-slice",namespace="default",pod="test",tpu_topology="2x2"} 11
     memory_bandwidth_utilization{accelerator_id="1234-1",container="ray-head",make="cloud-tpu",model="tpu-v6e-slice",namespace="default",pod="test",tpu_topology="2x2"} 12
-    memory_used{accelerator_id="1234-0",container="ray-head",make="cloud-tpu",model="tpu-v6e-slice",namespace="default",pod="test",tpu_topology="2x2"} 1000 
+    memory_used{accelerator_id="1234-0",container="ray-head",make="cloud-tpu",model="tpu-v6e-slice",namespace="default",pod="test",tpu_topology="2x2"} 1000
     memory_used{accelerator_id="1234-1",container="ray-head",make="cloud-tpu",model="tpu-v6e-slice",namespace="default",pod="test",tpu_topology="2x2"} 2000
     memory_total{accelerator_id="1234-0",container="ray-head",make="cloud-tpu",model="tpu-v6e-slice",namespace="default",pod="test",tpu_topology="2x2"} 4000
     memory_total{accelerator_id="1234-1",container="ray-head",make="cloud-tpu",model="tpu-v6e-slice",namespace="default",pod="test",tpu_topology="2x2"} 4000
