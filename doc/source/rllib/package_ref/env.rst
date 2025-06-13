@@ -55,4 +55,5 @@ Environment API Reference
    env/multi_agent_env.rst
    env/multi_agent_env_runner.rst
    env/multi_agent_episode.rst
+   env/external.rst
    env/utils.rst
