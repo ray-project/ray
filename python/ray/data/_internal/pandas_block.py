@@ -29,7 +29,6 @@ from ray.data.block import (
     BlockColumn,
     BlockColumnAccessor,
     BlockExecStats,
-    BlockMetadata,
     BlockType,
     U,
 )
@@ -40,6 +39,7 @@ if TYPE_CHECKING:
     import pyarrow
 
     from ray.data._internal.planner.exchange.sort_task_spec import SortKey
+    from ray.data.block import BlockMetadataWithSchema
 
 T = TypeVar("T")
 # Max number of samples used to estimate the Pandas block size.
@@ -554,7 +554,7 @@ class PandasBlockAccessor(TableBlockAccessor):
     @staticmethod
     def merge_sorted_blocks(
         blocks: List[Block], sort_key: "SortKey"
-    ) -> Tuple["pandas.DataFrame", BlockMetadata]:
+    ) -> Tuple[Block, "BlockMetadataWithSchema"]:
         pd = lazy_import_pandas()
         stats = BlockExecStats.builder()
         blocks = [b for b in blocks if b.shape[0] > 0]
@@ -566,7 +566,9 @@ class PandasBlockAccessor(TableBlockAccessor):
             ret = pd.concat(blocks, ignore_index=True)
             columns, ascending = sort_key.to_pandas_sort_args()
             ret = ret.sort_values(by=columns, ascending=ascending)
-        return ret, PandasBlockAccessor(ret).get_metadata(exec_stats=stats.build())
+        from ray.data.block import BlockMetadataWithSchema
+
+        return ret, BlockMetadataWithSchema.from_block(ret, stats=stats.build())
 
     def block_type(self) -> BlockType:
         return BlockType.PANDAS

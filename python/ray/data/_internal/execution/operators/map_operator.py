@@ -47,12 +47,12 @@ from ray.data._internal.execution.operators.map_transformer import (
 )
 from ray.data._internal.execution.util import memory_string
 from ray.data._internal.stats import StatsDict
-from ray.data._internal.util import MemoryProfiler
+from ray.data._internal.util import MemoryProfiler, unify_ref_bundles_schema
 from ray.data.block import (
     Block,
     BlockAccessor,
     BlockExecStats,
-    BlockMetadata,
+    BlockMetadataWithSchema,
     BlockStats,
     to_stats,
 )
@@ -381,7 +381,10 @@ class MapOperator(OneToOneOperator, InternalQueueOperatorMixin, ABC):
         self._next_data_task_idx += 1
         self._metrics.on_task_submitted(task_index, inputs)
 
-        def _output_ready_callback(task_index, output: RefBundle):
+        def _output_ready_callback(
+            task_index,
+            output: RefBundle,
+        ):
             # Since output is streamed, it should only contain one block.
             assert len(output) == 1
             self._metrics.on_task_output_generated(task_index, output)
@@ -526,7 +529,7 @@ def _map_task(
     ctx: TaskContext,
     *blocks: Block,
     **kwargs: Dict[str, Any],
-) -> Iterator[Union[Block, List[BlockMetadata]]]:
+) -> Iterator[Union[Block, "BlockMetadataWithSchema"]]:
     """Remote function for a single operator task.
 
     Args:
@@ -538,6 +541,8 @@ def _map_task(
         A generator of blocks, followed by the list of BlockMetadata for the blocks
         as the last generator return.
     """
+    from ray.data.block import BlockMetadataWithSchema
+
     logger.debug(
         "Executing map task of operator %s with task index %d",
         ctx.op_name,
@@ -552,12 +557,14 @@ def _map_task(
         for b_out in map_transformer.apply_transform(iter(blocks), ctx):
             # TODO(Clark): Add input file propagation from input blocks.
             m_out = BlockAccessor.for_block(b_out).get_metadata()
+            s_out = BlockAccessor.for_block(b_out).schema()
             m_out.exec_stats = stats.build()
             m_out.exec_stats.udf_time_s = map_transformer.udf_time()
             m_out.exec_stats.task_idx = ctx.task_idx
             m_out.exec_stats.max_uss_bytes = profiler.estimate_max_uss()
+            meta_with_schema = BlockMetadataWithSchema(metadata=m_out, schema=s_out)
             yield b_out
-            yield m_out
+            yield meta_with_schema
             stats = BlockExecStats.builder()
             profiler.reset()
 
@@ -662,7 +669,8 @@ def _merge_ref_bundles(*bundles: RefBundle) -> RefBundle:
         )
     )
     owns_blocks = all(bundle.owns_blocks for bundle in bundles if bundle is not None)
-    return RefBundle(blocks, owns_blocks)
+    schema = unify_ref_bundles_schema(bundles)
+    return RefBundle(blocks, owns_blocks=owns_blocks, schema=schema)
 
 
 class _OutputQueue(ABC):

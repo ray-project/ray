@@ -8,13 +8,15 @@ from ray.data._internal.progress_bar import ProgressBar
 from ray.data._internal.remote_fn import cached_remote_fn
 from ray.data._internal.table_block import TableBlockAccessor
 from ray.data._internal.util import NULL_SENTINEL
-from ray.data.block import Block, BlockAccessor, BlockExecStats, BlockMetadata
+from ray.data.block import Block, BlockAccessor, BlockExecStats
 from ray.types import ObjectRef
 
 T = TypeVar("T")
 
 if TYPE_CHECKING:
     import pyarrow
+
+    from ray.data.block import BlockMetadataWithSchema
 
 
 class SortKey:
@@ -131,11 +133,16 @@ class SortTaskSpec(ExchangeTaskSpec):
         output_num_blocks: int,
         boundaries: List[T],
         sort_key: SortKey,
-    ) -> List[Union[BlockMetadata, Block]]:
+    ) -> List[Union[Block, "BlockMetadataWithSchema"]]:
         stats = BlockExecStats.builder()
-        out = BlockAccessor.for_block(block).sort_and_partition(boundaries, sort_key)
-        meta = BlockAccessor.for_block(block).get_metadata(exec_stats=stats.build())
-        return out + [meta]
+        accessor = BlockAccessor.for_block(block)
+        out = accessor.sort_and_partition(boundaries, sort_key)
+        from ray.data.block import BlockMetadataWithSchema
+
+        meta_with_schema = BlockMetadataWithSchema.from_block(
+            block, stats=stats.build()
+        )
+        return out + [meta_with_schema]
 
     @staticmethod
     def reduce(
@@ -143,14 +150,15 @@ class SortTaskSpec(ExchangeTaskSpec):
         batch_format: str,
         *mapper_outputs: List[Block],
         partial_reduce: bool = False,
-    ) -> Tuple[Block, BlockMetadata]:
+    ) -> Tuple[Block, "BlockMetadataWithSchema"]:
         normalized_blocks = TableBlockAccessor.normalize_block_types(
             mapper_outputs,
             target_block_type=ExchangeTaskSpec._derive_target_block_type(batch_format),
         )
-        return BlockAccessor.for_block(normalized_blocks[0]).merge_sorted_blocks(
-            normalized_blocks, sort_key
-        )
+        blocks, meta_with_schema = BlockAccessor.for_block(
+            normalized_blocks[0]
+        ).merge_sorted_blocks(normalized_blocks, sort_key)
+        return blocks, meta_with_schema
 
     @staticmethod
     def sample_boundaries(

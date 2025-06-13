@@ -8,8 +8,8 @@ from typing import (
 
 from fastapi import status
 
+from ray.llm._internal.common.utils.import_utils import try_import
 from ray.llm._internal.serve.configs.openai_api_models import OpenAIHTTPException
-from ray.llm._internal.utils import try_import
 
 jsonref = try_import("jsonref", warning=True)
 jsonschema = try_import("jsonschema", warning=True)

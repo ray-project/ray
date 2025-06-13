@@ -5,6 +5,7 @@ from pydantic import ConfigDict, Field, ValidationError, field_validator
 
 from ray.llm._internal.common.base_pydantic import BaseModelExtended
 from ray.llm._internal.common.utils.cloud_utils import CloudMirrorConfig
+from ray.llm._internal.common.utils.import_utils import try_import
 from ray.llm._internal.serve.configs.constants import (
     ALLOW_NEW_PLACEMENT_GROUPS_IN_DEPLOYMENT,
     ENV_VARS_TO_PROPAGATE,
@@ -18,7 +19,6 @@ from ray.llm._internal.serve.configs.server_models import (
     SamplingParams,
 )
 from ray.llm._internal.serve.observability.logging import get_logger
-from ray.llm._internal.utils import try_import
 from ray.util.placement_group import (
     PlacementGroup,
     get_current_placement_group,
