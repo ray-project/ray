@@ -43,6 +43,8 @@ from ray_release.signal_handling import (
     register_handler,
 )
 from ray_release.util import (
+    create_cluster_env_from_image,
+    get_custom_cluster_env_name,
     upload_working_dir,
 )
 from ray_release.kuberay_util import convert_cluster_compute_to_kuberay_compute_config
@@ -153,7 +155,6 @@ def _setup_cluster_environment(
         try:
             cluster_manager.cluster_env_id = cluster_env_id
             cluster_manager.build_cluster_env()
-            cluster_manager.fetch_build_info()
             logger.info(
                 "Using overridden cluster environment with ID "
                 f"{cluster_env_id} and build ID "
@@ -459,6 +460,7 @@ def run_release_test_anyscale(
     no_terminate: bool = False,
     test_definition_root: Optional[str] = None,
     log_streaming_limit: int = LAST_LOGS_LENGTH,
+    image: Optional[str] = None,
 ) -> Result:
     old_wd = os.getcwd()
     start_time = time.monotonic()
@@ -468,6 +470,7 @@ def run_release_test_anyscale(
     # non critical for some tests. So separate it from the general one.
     fetch_result_exception = None
     try:
+
         buildkite_group(":spiral_note_pad: Loading test configuration")
         cluster_manager, command_runner, artifact_path = _load_test_configuration(
             test,
@@ -479,6 +482,15 @@ def run_release_test_anyscale(
             log_streaming_limit,
         )
         buildkite_group(":nut_and_bolt: Setting up cluster environment")
+
+        # If image is provided, create/reuse a custom cluster environment
+        if image and not cluster_env_id:
+            cluster_env_id = create_cluster_env_from_image(
+                image, test.get_name(), test.get_byod_runtime_env()
+            )
+            cluster_manager.cluster_env_name = get_custom_cluster_env_name(
+                image, test.get_name()
+            )
         (
             prepare_cmd,
             prepare_timeout,

@@ -4174,7 +4174,7 @@
 
   cluster:
     byod:
-      type: llm-cu124
+      type: llm-cu128
     cluster_compute: llm_auto_select_worker.yaml
     # NOTE: Important for getting the correct secrets
     cloud_id: cld_wy5a6nhazplvu32526ams61d98
@@ -4195,7 +4195,7 @@
 
   cluster:
     byod:
-      type: llm-cu124
+      type: llm-cu128
     cluster_compute: llm_auto_select_worker.yaml
     # NOTE: Important for getting the correct secrets
     cloud_id: cld_wy5a6nhazplvu32526ams61d98
@@ -4215,7 +4215,7 @@
 
   cluster:
     byod:
-      type: llm-cu124
+      type: llm-cu128
     cluster_compute: llm_g5-4xlarge.yaml
     # NOTE: Important for getting the correct secrets
     cloud_id: cld_wy5a6nhazplvu32526ams61d98
@@ -4236,7 +4236,7 @@
 
   cluster:
     byod:
-      type: llm-cu124
+      type: llm-cu128
     cluster_compute: llm_auto_select_worker.yaml
     # NOTE: Important for getting the correct secrets
     cloud_id: cld_wy5a6nhazplvu32526ams61d98
@@ -4256,7 +4256,7 @@
 
   cluster:
     byod:
-      type: llm-cu124
+      type: llm-cu128
     cluster_compute: llm_auto_select_worker.yaml
     # NOTE: Important for getting the correct secrets
     cloud_id: cld_wy5a6nhazplvu32526ams61d98
@@ -4276,7 +4276,7 @@
 
   cluster:
     byod:
-      type: llm-cu124
+      type: llm-cu128
       runtime_env:
         - VLLM_USE_V1=1
     cluster_compute: llm_four_L4_gpu_head_node.yaml
@@ -4297,7 +4297,7 @@
 
   cluster:
     byod:
-      type: llm-cu124
+      type: llm-cu128
       runtime_env:
         - VLLM_USE_V1=1
     cluster_compute: llm_g5-4xlarge.yaml
@@ -4318,7 +4318,7 @@
 
   cluster:
     byod:
-      type: llm-cu124
+      type: llm-cu128
     cluster_compute: llm_auto_select_worker.yaml
     # NOTE: Important for getting the correct secrets
     cloud_id: cld_wy5a6nhazplvu32526ams61d98
@@ -4338,7 +4338,7 @@
 
   cluster:
     byod:
-      type: llm-cu124
+      type: llm-cu128
     cluster_compute: llm_auto_select_worker.yaml
     # NOTE: Important for getting the correct secrets
     cloud_id: cld_wy5a6nhazplvu32526ams61d98
@@ -4363,7 +4363,7 @@
 
   cluster:
     byod:
-      type: llm-cu124
+      type: llm-cu128
     cluster_compute: llm_4xl4.yaml
     # NOTE: Important for getting the correct secrets
     cloud_id: cld_wy5a6nhazplvu32526ams61d98
@@ -4383,7 +4383,7 @@
 
   cluster:
     byod:
-      type: llm-cu124
+      type: llm-cu128
       post_build_script: byod_llm_sglang_test.sh
     cluster_compute: llm_4xl4.yaml
 
@@ -4433,7 +4433,7 @@
 
   cluster:
     byod:
-      type: llm-cu124  # anyscale/ray-llm:<PR_RAY_VERSION>-py311-cu124
+      type: llm-cu128  # anyscale/ray-llm:<PR_RAY_VERSION>-py311-cu128
       post_build_script: byod_llm_ner.sh  # release/ray_release/byod/
     cluster_compute: ci/aws.yaml  # relative to working_dir
 
@@ -4482,7 +4482,7 @@
 
   cluster:
     byod:
-      type: llm-cu124
+      type: llm-cu128
       post_build_script: byod_e2e_audio.sh
     cluster_compute: ci/aws.yaml
 
@@ -4554,7 +4554,7 @@
 
   cluster:
     byod:
-      type: llm-cu124  # anyscale/ray-llm:<PR_RAY_VERSION>-py311-cu124
+      type: llm-cu128  # anyscale/ray-llm:<PR_RAY_VERSION>-py311-cu128
       post_build_script: byod_object_detection.sh # release/ray_release/byod/
     cluster_compute: ci/aws.yaml  # relative to working_dir
 
@@ -4579,7 +4579,7 @@
 
   cluster:
     byod:
-      type: llm-cu124  # anyscale/ray-llm:<PR_RAY_VERSION>-py311-cu124
+      type: llm-cu128  # anyscale/ray-llm:<PR_RAY_VERSION>-py311-cu128
       post_build_script: byod_e2e_rag.sh  # release/ray_release/byod/
     cluster_compute: ci/aws.yaml  # relative to working_dir
 

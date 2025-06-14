@@ -45,7 +45,8 @@ class AggregateNumRows(PhysicalOperator):
         block_ref = ray.put(block)
 
         metadata = BlockAccessor.for_block(block).get_metadata()
-        bundle = RefBundle([(block_ref, metadata)], owns_blocks=True)
+        schema = BlockAccessor.for_block(block).schema()
+        bundle = RefBundle([(block_ref, metadata)], owns_blocks=True, schema=schema)
 
         self._has_outputted = True
         return bundle
