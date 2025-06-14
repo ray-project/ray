@@ -1,0 +1,27 @@
+# deploy.yaml – Ray Serve application config
+runtime_env:
+  working_dir: .
+
+applications:
+  - name: doggos_service
+    route_prefix: "/"
+    import_path: doggos.serve:app 
+    deployments:
+      - name: ClassPredictor
+        num_replicas: 1
+        min_replicas: 1
+        max_replicas: 1
+        ray_actor_options:
+          num_cpus: 2
+          num_gpus: 1
+          accelerator_type: L4
+      - name: EmbeddingSimilarity
+        num_replicas: 1
+        ray_actor_options:
+          num_cpus: 2
+          num_gpus: 1
+          accelerator_type: L4
+      - name: Doggos
+        num_replicas: 1
+        ray_actor_options:
+          num_cpus: 1

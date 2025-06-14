@@ -1,3 +1,9 @@
+- file: ray-overview/learn
+  title: "Learn"
+  sections:
+    - file: ray-overview/tutorials/multimodal-ai-tutorial/index
+      title: "Tutorial: Image Classification"
+      caption: Build a dog classification and search application
 - file: ray-overview/getting-started
   title: "Get Started"
 - file: ray-overview/use-cases
@@ -33,9 +39,6 @@
     - link: https://discuss.ray.io
       title: "Discussion Forum"
       caption: Get your Ray questions answered
-    - link: https://github.com/ray-project/ray-educational-materials
-      title: "Training"
-      caption: Hands-on learning
     - link: https://www.anyscale.com/blog
       title: "Blog"
       caption: Updates, best practices, user-stories
