@@ -4,7 +4,7 @@ from enum import Enum
 from typing import Any, Callable, List, Optional, Union
 
 from ray import cloudpickle
-from ray._private.pydantic_compat import (
+from ray._common.pydantic_compat import (
     BaseModel,
     Field,
     NonNegativeFloat,

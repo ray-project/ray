@@ -1,27 +1,27 @@
 import asyncio
-import sys
-from copy import deepcopy
-from collections import defaultdict
 import concurrent.futures
-from concurrent.futures import ThreadPoolExecutor
-from dataclasses import dataclass, field
 import logging
-import numpy as np
 import pprint
+import sys
 import time
 import traceback
+from collections import defaultdict
+from concurrent.futures import ThreadPoolExecutor
+from copy import deepcopy
+from dataclasses import dataclass, field
 from typing import Callable, Dict, List, Optional, Tuple, Union
-from ray.util.state import list_tasks
-import ray
-from ray.actor import ActorHandle
-from ray.util.state import list_workers
-import psutil
 
-from ray._private.gcs_utils import GcsAioClient, GcsChannel
-from ray.util.state.state_manager import StateDataSourceClient
+import numpy as np
+
+import ray
+import ray._common.test_utils as test_utils
+from ray._private.gcs_utils import GcsChannel
+from ray._raylet import GcsClient
+from ray.actor import ActorHandle
 from ray.dashboard.state_aggregator import (
     StateAPIManager,
 )
+from ray.util.state import list_tasks, list_workers
 from ray.util.state.common import (
     DEFAULT_LIMIT,
     DEFAULT_RPC_TIMEOUT,
@@ -29,7 +29,9 @@ from ray.util.state.common import (
     PredicateType,
     SupportedFilterType,
 )
-import ray._private.test_utils as test_utils
+from ray.util.state.state_manager import StateDataSourceClient
+
+import psutil
 
 
 @dataclass
@@ -338,11 +340,11 @@ def periodic_invoke_state_apis_with_actor(*args, **kwargs) -> ActorHandle:
 
 
 def get_state_api_manager(gcs_address: str) -> StateAPIManager:
-    gcs_aio_client = GcsAioClient(address=gcs_address)
+    gcs_client = GcsClient(address=gcs_address)
     gcs_channel = GcsChannel(gcs_address=gcs_address, aio=True)
     gcs_channel.connect()
     state_api_data_source_client = StateDataSourceClient(
-        gcs_channel.channel(), gcs_aio_client
+        gcs_channel.channel(), gcs_client
     )
     return StateAPIManager(
         state_api_data_source_client,

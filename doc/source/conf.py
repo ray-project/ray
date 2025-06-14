@@ -3,6 +3,7 @@ import os
 import pathlib
 import sys
 from datetime import datetime
+from dataclasses import is_dataclass
 from importlib import import_module
 from typing import Any, Dict
 
@@ -112,6 +113,15 @@ myst_enable_extensions = [
 
 myst_heading_anchors = 3
 
+# Add these for attachment handling
+nb_render_key_pairs = {
+    "html": [
+        ("img", ["src", "alt"]),
+    ]
+}
+
+nb_output_folder = "_build/jupyter_execute"
+
 # Make broken internal references into build time errors.
 # See https://www.sphinx-doc.org/en/master/usage/configuration.html#confval-nitpicky
 # for more information. :py:class: references are ignored due to false positives
@@ -215,6 +225,8 @@ exclude_patterns = [
     "templates/*",
     "cluster/running-applications/doc/ray.*",
     "data/api/ray.data.*.rst",
+    "ray-overview/examples/**/README.md",  # Exclude .md files in examples subfolders
+    "train/examples/**/README.md",
 ] + autogen_files
 
 # If "DOC_LIB" is found, only build that top-level navigation item.
@@ -305,7 +317,7 @@ html_theme = "pydata_sphinx_theme"
 # documentation.
 html_theme_options = {
     "use_edit_page_button": True,
-    "announcement": """$100 to try Ray on Anyscale — <a target="_blank" href="https://console.anyscale.com/register/ha?render_flow=ray&utm_source=ray_docs&utm_medium=docs&utm_campaign=banner">Start now</a>.""",
+    "announcement": """Try Ray with $100 credit — <a target="_blank" href="https://console.anyscale.com/register/ha?render_flow=ray&utm_source=ray_docs&utm_medium=docs&utm_campaign=banner">Start now</a><button type="button" id="close-banner" aria-label="Close banner">&times;</button>""",
     "logo": {
         "svg": render_svg_logo("_static/img/ray_logo.svg"),
     },
@@ -314,7 +326,6 @@ html_theme_options = {
         "theme-switcher",
         "version-switcher",
         "navbar-icon-links",
-        "navbar-anyscale",
     ],
     "navbar_center": ["navbar-links"],
     "navbar_align": "left",
@@ -514,6 +525,13 @@ def _autogen_apis(app: sphinx.application.Sphinx):
     )
 
 
+def process_signature(app, what, name, obj, options, signature, return_annotation):
+    # Sphinx is unable to render dataclass with factory/`field`
+    # https://github.com/sphinx-doc/sphinx/issues/10893
+    if what == "class" and is_dataclass(obj):
+        return signature.replace("<factory>", "..."), return_annotation
+
+
 def setup(app):
     # Only generate versions JSON during RTD build
     if os.getenv("READTHEDOCS") == "True":
@@ -547,6 +565,9 @@ def setup(app):
     app.add_js_file("js/assistant.js", defer="defer")
     app.add_css_file("css/assistant.css")
 
+    app.add_js_file("js/dismissable-banner.js", defer="defer")
+    app.add_css_file("css/dismissable-banner.css")
+
     base_path = pathlib.Path(__file__).parent
     github_docs = DownloadAndPreprocessEcosystemDocs(base_path)
     # Download docs from ecosystem library repos
@@ -561,6 +582,8 @@ def setup(app):
 
     # Hook into the auto generation of public apis
     app.connect("builder-inited", _autogen_apis)
+
+    app.connect("autodoc-process-signature", process_signature)
 
     class DuplicateObjectFilter(logging.Filter):
         def filter(self, record):

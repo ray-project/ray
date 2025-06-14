@@ -1,14 +1,14 @@
+import sys
 from collections import defaultdict
-import os
 
 import pytest
 
 import ray
 
+from ray._common.test_utils import wait_for_condition
 from ray._private.test_utils import (
     fetch_prometheus_metrics,
     run_string_as_driver_nonblocking,
-    wait_for_condition,
 )
 
 
@@ -101,9 +101,4 @@ ray.get([f.remote() for _ in range(2)])"""
 
 
 if __name__ == "__main__":
-    import sys
-
-    if os.environ.get("PARALLEL_CI"):
-        sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))
-    else:
-        sys.exit(pytest.main(["-sv", __file__]))
+    sys.exit(pytest.main(["-sv", __file__]))

@@ -94,6 +94,7 @@ class TestResult:
     timestamp: int
     pull_request: str
     rayci_step_id: str
+    duration_ms: Optional[float] = None
 
     @classmethod
     def from_result(cls, result: Result):
@@ -105,6 +106,7 @@ class TestResult:
             timestamp=int(time.time() * 1000),
             pull_request=os.environ.get("BUILDKITE_PULL_REQUEST", ""),
             rayci_step_id=os.environ.get("RAYCI_STEP_ID", ""),
+            duration_ms=result.runtime,
         )
 
     @classmethod
@@ -117,6 +119,9 @@ class TestResult:
                 buildkite_url=(
                     f"{os.environ.get('BUILDKITE_BUILD_URL')}"
                     f"#{os.environ.get('BUILDKITE_JOB_ID')}"
+                ),
+                runtime=cls._to_float_or_none(
+                    event["testResult"].get("testAttemptDurationMillis")
                 ),
             )
         )
@@ -131,7 +136,15 @@ class TestResult:
             timestamp=result["timestamp"],
             pull_request=result.get("pull_request", ""),
             rayci_step_id=result.get("rayci_step_id", ""),
+            duration_ms=result.get("duration_ms"),
         )
+
+    @classmethod
+    def _to_float_or_none(cls, s: str) -> Optional[float]:
+        try:
+            return float(s)
+        except (ValueError, TypeError):
+            return None
 
     def is_failing(self) -> bool:
         return not self.is_passing()
@@ -369,6 +382,12 @@ class Test(dict):
         """
         return self.get("env") == "gce"
 
+    def is_kuberay(self) -> bool:
+        """
+        Returns whether this test is running on KubeRay.
+        """
+        return self.get("env") == "kuberay"
+
     def is_high_impact(self) -> bool:
         # a test is high impact if it catches regressions frequently, this field is
         # populated by the determine_microcheck_tests.py script
@@ -572,7 +591,7 @@ class Test(dict):
         """
         Returns the anyscale byod ecr to use for this test.
         """
-        if self.is_gce():
+        if self.is_gce() or self.is_kuberay():
             return get_global_config()["byod_gcp_cr"]
         byod_ecr = get_global_config()["byod_aws_cr"]
         if byod_ecr:

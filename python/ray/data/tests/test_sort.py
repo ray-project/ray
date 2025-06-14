@@ -208,8 +208,8 @@ def test_sort_arrow_with_empty_blocks(
 
         assert (
             BlockAccessor.for_block(pa.Table.from_pydict({}))
-            .merge_sorted_blocks([pa.Table.from_pydict({})], SortKey("A"))[0]
-            .num_rows
+            .merge_sorted_blocks([pa.Table.from_pydict({})], SortKey("A"))[1]
+            .metadata.num_rows
             == 0
         )
 
@@ -317,8 +317,8 @@ def test_sort_pandas_with_empty_blocks(ray_start_regular, configure_shuffle_meth
 
     assert (
         BlockAccessor.for_block(pa.Table.from_pydict({}))
-        .merge_sorted_blocks([pa.Table.from_pydict({})], SortKey("A"))[0]
-        .num_rows
+        .merge_sorted_blocks([pa.Table.from_pydict({})], SortKey("A"))[1]
+        .metadata.num_rows
         == 0
     )
 
@@ -667,6 +667,9 @@ SHUFFLE_ALL_TO_ALL_OPS = [
 def test_debug_limit_shuffle_execution_to_num_blocks(
     ray_start_regular, restore_data_context, configure_shuffle_method, shuffle_op
 ):
+    if configure_shuffle_method == ShuffleStrategy.HASH_SHUFFLE:
+        pytest.skip("Not supported by hash-shuffle")
+
     shuffle_fn = shuffle_op
 
     parallelism = 100

@@ -6,24 +6,31 @@ import pickle
 import socket
 from collections import deque
 from dataclasses import dataclass
-from packaging import version
-from typing import Any, Awaitable, Callable, List, Optional, Tuple, Type
+from typing import Any, Awaitable, Callable, List, Optional, Tuple, Type, Union
 
 import starlette
 import uvicorn
+from fastapi import FastAPI
 from fastapi.encoders import jsonable_encoder
+from packaging import version
 from starlette.datastructures import MutableHeaders
 from starlette.middleware import Middleware
 from starlette.types import ASGIApp, Message, Receive, Scope, Send
 from uvicorn.config import Config
 from uvicorn.lifespan.on import LifespanOn
 
-from ray._private.pydantic_compat import IS_PYDANTIC_2
-from ray.serve.config import HTTPOptions
+from ray._common.pydantic_compat import IS_PYDANTIC_2
+from ray.exceptions import RayActorError, RayTaskError
 from ray.serve._private.common import RequestMetadata
-from ray.serve._private.constants import SERVE_LOGGER_NAME
-from ray.serve._private.utils import serve_encoders, generate_request_id
-from ray.serve.exceptions import RayServeException
+from ray.serve._private.constants import SERVE_HTTP_REQUEST_ID_HEADER, SERVE_LOGGER_NAME
+from ray.serve._private.proxy_request_response import ResponseStatus
+from ray.serve._private.utils import generate_request_id, serve_encoders
+from ray.serve.config import HTTPOptions
+from ray.serve.exceptions import (
+    BackPressureError,
+    DeploymentUnavailableError,
+    RayServeException,
+)
 
 logger = logging.getLogger(SERVE_LOGGER_NAME)
 
@@ -466,8 +473,11 @@ def set_socket_reuse_port(sock: socket.socket) -> bool:
 class ASGIAppReplicaWrapper:
     """Provides a common wrapper for replicas running an ASGI app."""
 
-    def __init__(self, app: ASGIApp):
-        self._asgi_app = app
+    def __init__(self, app_or_func: Union[ASGIApp, Callable]):
+        if inspect.isfunction(app_or_func):
+            self._asgi_app = app_or_func()
+        else:
+            self._asgi_app = app_or_func
 
         # Use uvicorn's lifespan handling code to properly deal with
         # startup and shutdown event.
@@ -479,6 +489,11 @@ class ASGIAppReplicaWrapper:
     @property
     def app(self) -> ASGIApp:
         return self._asgi_app
+
+    @property
+    def docs_path(self) -> Optional[str]:
+        if isinstance(self._asgi_app, FastAPI):
+            return self._asgi_app.docs_url
 
     async def _run_asgi_lifespan_startup(self):
         # LifespanOn's logger logs in INFO level thus becomes spammy
@@ -551,11 +566,11 @@ class RequestIdMiddleware:
 
     async def __call__(self, scope: Scope, receive: Receive, send: Send):
         headers = MutableHeaders(scope=scope)
-        if "x-request-id" not in headers:
+        if SERVE_HTTP_REQUEST_ID_HEADER not in headers:
             request_id = generate_request_id()
-            headers.append("x-request-id", request_id)
-        elif "x-request-id" in headers:
-            request_id = headers["x-request-id"]
+            headers.append(SERVE_HTTP_REQUEST_ID_HEADER, request_id)
+        elif SERVE_HTTP_REQUEST_ID_HEADER in headers:
+            request_id = headers[SERVE_HTTP_REQUEST_ID_HEADER]
 
         async def send_with_request_id(message: Message):
             if message["type"] == "http.response.start":
@@ -636,3 +651,52 @@ async def start_asgi_http_server(
     server.install_signal_handlers = lambda: None
 
     return event_loop.create_task(server.serve(sockets=[sock]))
+
+
+def get_http_response_status(
+    exc: BaseException, request_timeout_s: float, request_id: str
+) -> ResponseStatus:
+    if isinstance(exc, TimeoutError):
+        return ResponseStatus(
+            code=408,
+            is_error=True,
+            message=f"Request {request_id} timed out after {request_timeout_s}s.",
+        )
+
+    elif isinstance(exc, asyncio.CancelledError):
+        message = f"Client for request {request_id} disconnected, cancelling request."
+        logger.info(message)
+        return ResponseStatus(
+            code=499,
+            is_error=True,
+            message=message,
+        )
+    elif isinstance(exc, (BackPressureError, DeploymentUnavailableError)):
+        if isinstance(exc, RayTaskError):
+            logger.warning(f"Request failed: {exc}", extra={"log_to_stderr": False})
+        return ResponseStatus(
+            code=503,
+            is_error=True,
+            message=exc.message,
+        )
+    else:
+        if isinstance(exc, (RayActorError, RayTaskError)):
+            logger.warning(f"Request failed: {exc}", extra={"log_to_stderr": False})
+        else:
+            logger.exception("Request failed due to unexpected error.")
+        return ResponseStatus(
+            code=500,
+            is_error=True,
+            message=str(exc),
+        )
+
+
+def send_http_response_on_exception(
+    status: ResponseStatus, response_started: bool
+) -> List[Message]:
+    if response_started or status.code not in (408, 503):
+        return []
+    return convert_object_to_asgi_messages(
+        status.message,
+        status_code=status.code,
+    )

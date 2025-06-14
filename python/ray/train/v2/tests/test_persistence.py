@@ -14,7 +14,7 @@ import pytest
 
 import ray
 import ray.train
-from ray._private.test_utils import simulate_storage
+from ray._common.test_utils import simulate_s3_bucket
 from ray.air._internal.uri_utils import URI
 from ray.train import (
     Checkpoint,
@@ -24,9 +24,9 @@ from ray.train import (
     ScalingConfig,
 )
 from ray.train.v2._internal.constants import HEALTH_CHECK_INTERVAL_S_ENV_VAR
+from ray.train.v2._internal.execution.context import get_train_context
 from ray.train.v2._internal.execution.storage import _download_from_fs_path
 from ray.train.v2.api.data_parallel_trainer import DataParallelTrainer
-from ray.train.v2._internal.execution.context import get_train_context
 
 
 class TestConstants:
@@ -41,7 +41,7 @@ class TestConstants:
 def mock_s3_bucket_uri():
     port = 5002
     region = "us-west-2"
-    with simulate_storage("s3", port=port, region=region) as s3_uri:
+    with simulate_s3_bucket(port=port, region=region) as s3_uri:
         import boto3
 
         s3 = boto3.client(

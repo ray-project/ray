@@ -3,15 +3,17 @@ import json
 import random
 import os
 import shutil
+import sys
 import platform
-import pytest
 import psutil
 
+import pytest
+
 import ray
+from ray._common.test_utils import wait_for_condition
 from ray._private.test_utils import (
     check_spilled_mb,
     fetch_prometheus,
-    wait_for_condition,
 )
 
 MB = 1024 * 1024
@@ -371,9 +373,4 @@ def test_object_store_memory_metrics_reported_correctly(shutdown_only):
 
 
 if __name__ == "__main__":
-    import sys
-
-    if os.environ.get("PARALLEL_CI"):
-        sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))
-    else:
-        sys.exit(pytest.main(["-sv", __file__]))
+    sys.exit(pytest.main(["-sv", __file__]))

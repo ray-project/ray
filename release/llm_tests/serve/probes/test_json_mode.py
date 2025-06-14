@@ -4,6 +4,7 @@ from typing import List
 
 import openai
 import pytest
+import vllm
 from pydantic import BaseModel, Field
 
 from probes.messages import messages, system, user
@@ -133,6 +134,9 @@ async def query_json_model(
     return response_str, expected_type
 
 
+@pytest.mark.skipif(
+    "0.8.2" <= vllm.__version__ < "0.8.5", reason="vllm will hang for json requests"
+)
 @pytest.mark.asyncio
 @pytest.mark.parametrize("model", MODEL_IDS)
 # @pytest.mark.parametrize("response_type", ["basic", "array", "nested"])
@@ -165,6 +169,9 @@ async def test_json_mode(
         expected_type(**json.loads(response_str))
 
 
+@pytest.mark.skipif(
+    "0.8.2" <= vllm.__version__ < "0.8.5", reason="vllm will hang for json requests"
+)
 @pytest.mark.parametrize("model", MODEL_IDS)
 @pytest.mark.parametrize("response_format", get_response_formats())
 @pytest.mark.parametrize("stream", [True, False])

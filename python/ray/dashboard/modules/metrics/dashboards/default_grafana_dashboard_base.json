@@ -59,7 +59,7 @@
           "query": "label_values(ray_node_network_receive_speed{{{global_filters}}}, SessionName)",
           "refId": "StandardVariableQuery"
         },
-        "refresh": 2,
+        "refresh": 1,
         "regex": "",
         "skipUrlSync": false,
         "sort": 2,
@@ -90,7 +90,7 @@
           "query": "label_values(ray_node_network_receive_speed{{SessionName=~\"$SessionName\",{global_filters}}}, instance)",
           "refId": "Prometheus-Instance-Variable-Query"
         },
-        "refresh": 2,
+        "refresh": 1,
         "regex": "",
         "skipUrlSync": false,
         "sort": 0,
@@ -118,7 +118,7 @@
           "query": "label_values(ray_node_network_receive_speed{{{global_filters}}}, ray_io_cluster)",
           "refId": "StandardVariableQuery"
         },
-        "refresh": 2,
+        "refresh": 1,
         "regex": "",
         "skipUrlSync": false,
         "sort": 2,

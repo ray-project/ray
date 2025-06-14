@@ -1,12 +1,11 @@
-from typing import TYPE_CHECKING
-
 import asyncio
 import base64
 import io
+from typing import TYPE_CHECKING
 
 import aiohttp
 
-from ray.llm._internal.utils import try_import
+from ray.llm._internal.common.utils.import_utils import try_import
 
 if TYPE_CHECKING:
     from PIL.Image import Image

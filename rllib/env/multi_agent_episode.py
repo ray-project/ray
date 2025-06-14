@@ -467,7 +467,6 @@ class MultiAgentEpisode:
                 v is not None
                 for v in [_observation, _action, _reward, _infos, _extra_model_outputs]
             ):
-
                 raise MultiAgentEnvError(
                     f"Agent {agent_id} already had its `SingleAgentEpisode.is_done` "
                     f"set to True, but still received data in a following step! "
@@ -808,7 +807,8 @@ class MultiAgentEpisode:
         Args:
             other: The other `MultiAgentEpisode` to be concatenated to this one.
 
-        Returns: A `MultiAgentEpisode` instance containing the concatenated data
+        Returns:
+            A `MultiAgentEpisode` instance containing the concatenated data
             from both episodes (`self` and `other`).
         """
         # Make sure the IDs match.
@@ -910,7 +910,7 @@ class MultiAgentEpisode:
         the returned successor will have `len_lookback_buffer` observations (and
         actions, rewards, etc..) taken from the right side (end) of `self`. For example
         if `len_lookback_buffer=2`, the returned successor's lookback buffer actions
-        will be identical to teh results of `self.get_actions([-2, -1])`.
+        will be identical to the results of `self.get_actions([-2, -1])`.
 
         This method is useful if you would like to discontinue building an episode
         chunk (b/c you have to return it from somewhere), but would like to have a new

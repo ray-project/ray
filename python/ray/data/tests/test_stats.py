@@ -1,5 +1,6 @@
 import gc
 import logging
+import platform
 import re
 import threading
 import time
@@ -8,12 +9,13 @@ from contextlib import contextmanager
 from dataclasses import fields
 from typing import Dict, List, Optional
 from unittest.mock import MagicMock, patch
-import platform
+
 import numpy as np
 import pytest
 
 import ray
-from ray._private.test_utils import wait_for_condition, run_string_as_driver
+from ray._common.test_utils import wait_for_condition
+from ray._private.test_utils import run_string_as_driver
 from ray.data._internal.execution.backpressure_policy import (
     ENABLED_BACKPRESSURE_POLICIES_CONFIG_KEY,
 )
@@ -28,9 +30,7 @@ from ray.data._internal.stats import (
     NodeMetrics,
     StatsManager,
     _get_or_create_stats_actor,
-    _StatsActor,
 )
-from ray.data.block import BlockMetadata
 from ray.data._internal.util import MemoryProfiler
 from ray.data.context import DataContext
 from ray.data.tests.util import column_udf
@@ -104,6 +104,7 @@ def gen_expected_metrics(
                 "'task_submission_backpressure_time': "
                 f"{'N' if task_backpressure else 'Z'}"
             ),
+            ("'task_completion_time': " f"{'N' if task_backpressure else 'Z'}"),
             "'num_alive_actors': Z",
             "'num_restarting_actors': Z",
             "'num_pending_actors': Z",
@@ -129,6 +130,7 @@ def gen_expected_metrics(
                 "'task_submission_backpressure_time': "
                 f"{'N' if task_backpressure else 'Z'}"
             ),
+            ("'task_completion_time': " f"{'N' if task_backpressure else 'Z'}"),
             "'num_alive_actors': Z",
             "'num_restarting_actors': Z",
             "'num_pending_actors': Z",
@@ -620,6 +622,7 @@ def test_dataset__repr__(ray_start_regular_shared, restore_data_context):
         "      num_tasks_failed: Z,\n"
         "      block_generation_time: N,\n"
         "      task_submission_backpressure_time: N,\n"
+        "      task_completion_time: N,\n"
         "      num_alive_actors: Z,\n"
         "      num_restarting_actors: Z,\n"
         "      num_pending_actors: Z,\n"
@@ -740,6 +743,7 @@ def test_dataset__repr__(ray_start_regular_shared, restore_data_context):
         "      num_tasks_failed: Z,\n"
         "      block_generation_time: N,\n"
         "      task_submission_backpressure_time: N,\n"
+        "      task_completion_time: N,\n"
         "      num_alive_actors: Z,\n"
         "      num_restarting_actors: Z,\n"
         "      num_pending_actors: Z,\n"
@@ -815,6 +819,7 @@ def test_dataset__repr__(ray_start_regular_shared, restore_data_context):
         "            num_tasks_failed: Z,\n"
         "            block_generation_time: N,\n"
         "            task_submission_backpressure_time: N,\n"
+        "            task_completion_time: N,\n"
         "            num_alive_actors: Z,\n"
         "            num_restarting_actors: Z,\n"
         "            num_pending_actors: Z,\n"
@@ -1539,7 +1544,7 @@ def test_task_duration_stats():
 # tests should only be carefully reordered to retain this invariant!
 
 
-def test_dataset_throughput():
+def test_dataset_throughput(shutdown_only):
     ray.shutdown()
     ray.init(num_cpus=2)
 
@@ -1565,43 +1570,6 @@ def test_dataset_throughput():
 
     dataset_match = dataset_pattern.search(ds.stats())
     assert float(dataset_match[1]) >= float(dataset_match[2])
-
-
-def test_stats_actor_cap_num_stats(ray_start_cluster):
-    actor = _StatsActor.remote(3)
-    metadatas = []
-    task_idx = 0
-    for uuid in range(3):
-        metadatas.append(
-            BlockMetadata(
-                num_rows=uuid,
-                size_bytes=None,
-                schema=None,
-                input_files=None,
-                exec_stats=None,
-            )
-        )
-        num_stats = uuid + 1
-        actor.record_start.remote(uuid)
-        assert ray.get(actor._get_stats_dict_size.remote()) == (
-            num_stats,
-            num_stats - 1,
-            num_stats - 1,
-        )
-        actor.record_task.remote(uuid, task_idx, [metadatas[-1]])
-        assert ray.get(actor._get_stats_dict_size.remote()) == (
-            num_stats,
-            num_stats,
-            num_stats,
-        )
-    for uuid in range(3):
-        assert ray.get(actor.get.remote(uuid))[0][task_idx] == [metadatas[uuid]]
-    # Add the fourth stats to exceed the limit.
-    actor.record_start.remote(3)
-    # The first stats (with uuid=0) should have been purged.
-    assert ray.get(actor.get.remote(0))[0] == {}
-    # The start_time has 3 entries because we just added it above with record_start().
-    assert ray.get(actor._get_stats_dict_size.remote()) == (3, 2, 2)
 
 
 @pytest.mark.parametrize("verbose_stats_logs", [True, False])

@@ -1,10 +1,9 @@
-import pytest
-import ray
-from ray.actor import ActorHandle
 from unittest.mock import MagicMock
 
-from ray.train.v2.api.config import RunConfig
+import pytest
 
+import ray
+from ray.actor import ActorHandle
 from ray.train.v2._internal.callbacks.state_manager import StateManagerCallback
 from ray.train.v2._internal.execution.context import DistributedContext, TrainRunContext
 from ray.train.v2._internal.execution.controller.state import (
@@ -12,8 +11,8 @@ from ray.train.v2._internal.execution.controller.state import (
     FinishedState,
     InitializingState,
     ReschedulingState,
-    RestartingState,
     ResizingState,
+    RestartingState,
     RunningState,
     SchedulingState,
 )
@@ -37,6 +36,7 @@ from ray.train.v2._internal.state.state_actor import (
     get_state_actor,
 )
 from ray.train.v2._internal.state.state_manager import TrainStateManager
+from ray.train.v2.api.config import RunConfig
 from ray.train.v2.api.exceptions import TrainingFailedError
 
 

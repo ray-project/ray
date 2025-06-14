@@ -260,6 +260,9 @@ if setup_spec.type == SetupType.RAY:
             "grpcio >= 1.32.0; python_version < '3.10'",  # noqa:E501
             "grpcio >= 1.42.0; python_version >= '3.10'",  # noqa:E501
             "opencensus",
+            "opentelemetry-sdk",
+            "opentelemetry-exporter-prometheus",
+            "opentelemetry-proto",
             pydantic_dep,
             "prometheus_client >= 0.7.1",
             "smart_open",
@@ -364,7 +367,7 @@ if setup_spec.type == SetupType.RAY:
     setup_spec.extras["llm"] = list(
         set(
             [
-                "vllm>=0.8.2",
+                "vllm>=0.9.0.1",
                 "jsonref>=1.1.0",
                 "jsonschema",
                 "ninja",
@@ -570,7 +573,7 @@ def build(build_python, build_java, build_cpp):
     # that certain flags will not be passed along such as --user or sudo.
     # TODO(rkn): Fix this.
     if not os.getenv("SKIP_THIRDPARTY_INSTALL_CONDA_FORGE"):
-        pip_packages = ["psutil", "setproctitle==1.2.2", "colorama"]
+        pip_packages = ["psutil", "colorama"]
         subprocess.check_call(
             [
                 sys.executable,

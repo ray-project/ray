@@ -28,9 +28,9 @@ from ray.serve._private.common import (
     DeploymentStatusTrigger,
     DeploymentTargetInfo,
     Duration,
-    MultiplexedReplicaInfo,
     ReplicaID,
     ReplicaState,
+    RequestRoutingInfo,
     RunningReplicaInfo,
 )
 from ray.serve._private.config import DeploymentConfig
@@ -242,7 +242,7 @@ class ActorReplicaWrapper:
         self._consecutive_health_check_failures = 0
         self._initialization_latency_s: Optional[float] = None
         self._port: Optional[int] = None
-
+        self._docs_path: Optional[str] = None
         # Populated in `on_scheduled` or `recover`.
         self._actor_handle: ActorHandle = None
         self._placement_group: PlacementGroup = None
@@ -253,6 +253,7 @@ class ActorReplicaWrapper:
         self._worker_id: str = None
         self._node_id: str = None
         self._node_ip: str = None
+        self._node_instance_id: str = None
         self._log_file_path: str = None
 
         # Populated in self.stop().
@@ -261,6 +262,9 @@ class ActorReplicaWrapper:
         # todo: will be confused with deployment_config.is_cross_language
         self._is_cross_language = False
         self._deployment_is_cross_language = False
+        self._routing_stats: Dict[str, Any] = {}
+        self._record_routing_stats_ref: Optional[ObjectRef] = None
+        self._last_record_routing_stats_time: float = 0.0
 
     @property
     def replica_id(self) -> str:
@@ -324,6 +328,10 @@ class ActorReplicaWrapper:
         return self._version.deployment_config
 
     @property
+    def docs_path(self) -> Optional[str]:
+        return self._docs_path
+
+    @property
     def max_ongoing_requests(self) -> int:
         return self.deployment_config.max_ongoing_requests
 
@@ -342,6 +350,14 @@ class ActorReplicaWrapper:
     @property
     def health_check_timeout_s(self) -> float:
         return self.deployment_config.health_check_timeout_s
+
+    @property
+    def request_routing_stats_period_s(self) -> float:
+        return self.deployment_config.request_routing_stats_period_s
+
+    @property
+    def request_routing_stats_timeout_s(self) -> float:
+        return self.deployment_config.request_routing_stats_timeout_s
 
     @property
     def pid(self) -> Optional[int]:
@@ -367,6 +383,11 @@ class ActorReplicaWrapper:
     def node_ip(self) -> Optional[str]:
         """Returns the node ip of the actor, None if not placed."""
         return self._node_ip
+
+    @property
+    def node_instance_id(self) -> Optional[str]:
+        """Returns the node instance id of the actor, None if not placed."""
+        return self._node_instance_id
 
     @property
     def log_file_path(self) -> Optional[str]:
@@ -431,6 +452,8 @@ class ActorReplicaWrapper:
                 else cloudpickle.dumps({}),
                 deployment_info.deployment_config.to_proto_bytes(),
                 self._version,
+                deployment_info.ingress,
+                deployment_info.route_prefix,
             )
         # TODO(simon): unify the constructor arguments across language
         elif (
@@ -649,6 +672,7 @@ class ActorReplicaWrapper:
                     self._worker_id,
                     self._node_id,
                     self._node_ip,
+                    self._node_instance_id,
                     self._log_file_path,
                 ) = ray.get(self._allocated_obj_ref)
             except RayTaskError as e:
@@ -691,6 +715,7 @@ class ActorReplicaWrapper:
                         self._version,
                         self._initialization_latency_s,
                         self._port,
+                        self._docs_path,
                     ) = ray.get(self._ready_obj_ref)
             except RayTaskError as e:
                 logger.exception(
@@ -829,6 +854,32 @@ class ActorReplicaWrapper:
         randomized_period = self.health_check_period_s * random.uniform(0.9, 1.1)
         return time_since_last > randomized_period
 
+    def _should_record_routing_stats(self) -> bool:
+        """Determines if a new record routing stats should be kicked off.
+
+        A record routing stats will be started if:
+            1) There is not already an active record routing stats.
+            2) It has been more than request_routing_stats_period_s since
+               the previous record routing stats was *started*.
+
+        This assumes that self._record_routing_stats_ref is reset to `None`
+        when an active record routing stats succeeds or fails (due to
+        returning or timeout).
+        """
+        if self._record_routing_stats_ref is not None:
+            # There's already an active record routing stats.
+            return False
+
+        # If there's no active record routing stats, kick off another and
+        # reset the timer if it's been long enough since the last record
+        # routing stats. Add some randomness to avoid synchronizing across
+        # all replicas.
+        time_since_last = time.time() - self._last_record_routing_stats_time
+        randomized_period = self.request_routing_stats_period_s * random.uniform(
+            0.9, 1.1
+        )
+        return time_since_last > randomized_period
+
     def check_health(self) -> bool:
         """Check if the actor is healthy.
 
@@ -883,6 +934,41 @@ class ActorReplicaWrapper:
 
         return self._healthy
 
+    def get_routing_stats(self) -> Dict[str, Any]:
+        """Get the routing stats for the replica."""
+        if self._record_routing_stats_ref is None:
+            # There's no active record routing stats.
+            pass
+        elif check_obj_ref_ready_nowait(self._record_routing_stats_ref):
+            # Object ref is ready, ray.get it to check for exceptions.
+            try:
+                self._routing_stats = ray.get(self._record_routing_stats_ref)
+            except Exception:
+                logger.exception(
+                    "Exception when trying to get routing stats:\n"
+                    + traceback.format_exc()
+                )
+            self._record_routing_stats_ref = None
+        elif (
+            time.time() - self._last_record_routing_stats_time
+            > self.request_routing_stats_timeout_s
+        ):
+            # Record routing stats hasn't returned and the timeout is up, retrying.
+            logger.warning(
+                "Didn't receive routing stats response for replica "
+                f"{self._replica_id} after "
+                f"{self.request_routing_stats_timeout_s}s, retrying."
+            )
+            self._record_routing_stats_ref = None
+
+        if self._should_record_routing_stats():
+            self._last_record_routing_stats_time = time.time()
+            self._record_routing_stats_ref = (
+                self._actor_handle.record_routing_stats.remote()
+            )
+
+        return self._routing_stats
+
     def force_stop(self):
         """Force the actor to exit without shutting down gracefully."""
         try:
@@ -912,6 +998,8 @@ class DeploymentReplica:
             start_time_s=0,
         )
         self._multiplexed_model_ids: List = []
+        self._multiplexed_model_ids: List[str] = []
+        self._routing_stats: Dict[str, Any] = {}
         self._cached_start_status: Optional[ReplicaStartupStatus] = None
 
     def get_running_replica_info(
@@ -926,6 +1014,7 @@ class DeploymentReplica:
             max_ongoing_requests=self._actor.max_ongoing_requests,
             is_cross_language=self._actor.is_cross_language,
             multiplexed_model_ids=self.multiplexed_model_ids,
+            routing_stats=self.routing_stats,
             port=self._actor._port,
         )
 
@@ -933,9 +1022,22 @@ class DeploymentReplica:
         """Record the multiplexed model ids for this replica."""
         self._multiplexed_model_ids = multiplexed_model_ids
 
+    def record_routing_stats(self, routing_stats: Optional[Dict[str, Any]]):
+        """Record the routing stats for this replica.
+
+        Recording routing_stats as an empty dictionary is valid. But skip
+        update if the routing_stats is None.
+        """
+        if routing_stats is not None:
+            self._routing_stats = routing_stats
+
     @property
     def multiplexed_model_ids(self) -> List[str]:
         return self._multiplexed_model_ids
+
+    @property
+    def routing_stats(self) -> Dict[str, Any]:
+        return self._routing_stats
 
     @property
     def actor_details(self) -> ReplicaDetails:
@@ -956,6 +1058,10 @@ class DeploymentReplica:
     @property
     def version(self):
         return self._actor.version
+
+    @property
+    def docs_path(self) -> Optional[str]:
+        return self._actor.docs_path
 
     @property
     def actor_id(self) -> str:
@@ -1032,6 +1138,7 @@ class DeploymentReplica:
             pid=self._actor.pid,
             node_id=self._actor.node_id,
             node_ip=self._actor.node_ip,
+            node_instance_id=self._actor.node_instance_id,
             actor_id=self._actor.actor_id,
             worker_id=self._actor.worker_id,
             log_file_path=self._actor.log_file_path,
@@ -1077,6 +1184,13 @@ class DeploymentReplica:
         Returns `True` if the replica is healthy, else `False`.
         """
         return self._actor.check_health()
+
+    def pull_routing_stats(self) -> Optional[Dict[str, Any]]:
+        """Get the latest response from the routing stats on the replica.
+
+        Returns None if the replica is still calculating the stats.
+        """
+        return self._actor.get_routing_stats()
 
     def update_state(self, state: ReplicaState) -> None:
         """Updates state in actor details."""
@@ -1298,13 +1412,15 @@ class DeploymentState:
             tag_keys=("deployment", "replica", "application"),
         )
 
-        # Whether the multiplexed model ids have been updated since the last
+        # Whether the request routing info have been updated since the last
         # time we checked.
-        self._multiplexed_model_ids_updated = False
+        self._request_routing_info_updated = False
 
         self._last_broadcasted_running_replica_infos: List[RunningReplicaInfo] = []
         self._last_broadcasted_availability: bool = True
         self._last_broadcasted_deployment_config = None
+
+        self._docs_path: Optional[str] = None
 
     def should_autoscale(self) -> bool:
         """
@@ -1394,6 +1510,10 @@ class DeploymentState:
         return self._id.app_name
 
     @property
+    def docs_path(self) -> Optional[str]:
+        return self._docs_path
+
+    @property
     def _failed_to_start_threshold(self) -> int:
         return min(
             MAX_DEPLOYMENT_CONSTRUCTOR_RETRY_COUNT,
@@ -1480,7 +1600,7 @@ class DeploymentState:
         running_replicas_changed = (
             set(self._last_broadcasted_running_replica_infos)
             != set(running_replica_infos)
-            or self._multiplexed_model_ids_updated
+            or self._request_routing_info_updated
         )
         availability_changed = is_available != self._last_broadcasted_availability
         if not running_replicas_changed and not availability_changed:
@@ -1508,7 +1628,7 @@ class DeploymentState:
         )
         self._last_broadcasted_running_replica_infos = running_replica_infos
         self._last_broadcasted_availability = is_available
-        self._multiplexed_model_ids_updated = False
+        self._request_routing_info_updated = False
 
     def broadcast_deployment_config_if_changed(self) -> None:
         """Broadcasts the deployment config over long poll if it has changed.
@@ -1732,7 +1852,7 @@ class DeploymentState:
 
         Args:
             max_to_stop: max number of replicas to stop, by default,
-            it will stop all replicas with outdated version.
+                         it stops all replicas with an outdated version.
         """
         replicas_to_update = self._replicas.pop(
             exclude_version=self._target_state.version,
@@ -2001,6 +2121,11 @@ class DeploymentState:
                     replica.replica_id, replica.actor_node_id
                 )
 
+                # if replica version is the same as the target version,
+                # we update the docs path
+                if replica.version == self._target_state.version:
+                    self._docs_path = replica.docs_path
+
                 # Log the startup latency.
                 e2e_replica_start_latency = time.time() - replica._start_time
                 replica_startup_message = (
@@ -2123,6 +2248,8 @@ class DeploymentState:
                         "application": self.app_name,
                     },
                 )
+                routing_stats = replica.pull_routing_stats()
+                replica.record_routing_stats(routing_stats)
             else:
                 logger.warning(
                     f"Replica {replica.replica_id} failed health check, stopping it."
@@ -2324,23 +2451,24 @@ class DeploymentState:
         for replica in replicas_to_keep:
             self._replicas.add(ReplicaState.PENDING_MIGRATION, replica)
 
-    def record_multiplexed_model_ids(
-        self, replica_id: ReplicaID, multiplexed_model_ids: List[str]
-    ) -> None:
+    def record_request_routing_info(self, info: RequestRoutingInfo) -> None:
         """Records the multiplexed model IDs of a replica.
 
         Args:
-            replica_name: Name of the replica.
-            multiplexed_model_ids: List of model IDs that replica is serving.
+            info: RequestRoutingInfo including deployment name, replica tag,
+                multiplex model ids, and routing stats.
         """
         # Find the replica
         for replica in self._replicas.get():
-            if replica.replica_id == replica_id:
-                replica.record_multiplexed_model_ids(multiplexed_model_ids)
-                self._multiplexed_model_ids_updated = True
+            if replica.replica_id == info.replica_id:
+                if info.multiplexed_model_ids is not None:
+                    replica.record_multiplexed_model_ids(info.multiplexed_model_ids)
+                if info.routing_stats is not None:
+                    replica.record_routing_stats(info.routing_stats)
+                self._request_routing_info_updated = True
                 return
 
-        logger.warning(f"{replica_id} not found.")
+        logger.warning(f"{info.replica_id} not found.")
 
     def _stop_one_running_replica_for_testing(self):
         running_replicas = self._replicas.pop(states=[ReplicaState.RUNNING])
@@ -2579,6 +2707,10 @@ class DeploymentStateManager:
             return self._deployment_states[deployment_id].target_info
         else:
             return None
+
+    def get_deployment_docs_path(self, deployment_id: DeploymentID) -> Optional[str]:
+        if deployment_id in self._deployment_states:
+            return self._deployment_states[deployment_id].docs_path
 
     def get_deployment_details(self, id: DeploymentID) -> Optional[DeploymentDetails]:
         """Gets detailed info on a deployment.
@@ -2822,13 +2954,13 @@ class DeploymentStateManager:
                 num_gpu_deployments += 1
         ServeUsageTag.NUM_GPU_DEPLOYMENTS.record(str(num_gpu_deployments))
 
-    def record_multiplexed_replica_info(self, info: MultiplexedReplicaInfo):
+    def record_request_routing_info(self, info: RequestRoutingInfo) -> None:
         """
-        Record multiplexed model ids for a multiplexed replica.
+        Record request routing information for a replica.
 
         Args:
-            info: Multiplexed replica info including deployment name,
-                replica tag and model ids.
+            info: Request routing info including deployment name, replica tag,
+                multiplex model ids, and routing stats.
         """
         deployment_id = info.replica_id.deployment_id
         if deployment_id not in self._deployment_states:
@@ -2838,9 +2970,7 @@ class DeploymentStateManager:
                 "manager."
             )
             return
-        self._deployment_states[deployment_id].record_multiplexed_model_ids(
-            info.replica_id, info.model_ids
-        )
+        self._deployment_states[deployment_id].record_request_routing_info(info)
 
     def get_active_node_ids(self) -> Set[str]:
         """Return set of node ids with running replicas of any deployment.

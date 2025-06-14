@@ -1,4 +1,5 @@
 import multiprocessing
+import sys
 import time
 import warnings
 from collections import defaultdict
@@ -12,7 +13,7 @@ from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
 
 if (
     multiprocessing.cpu_count() < 40
-    or ray._private.utils.get_system_memory() < 50 * 10**9
+    or ray._common.utils.get_system_memory() < 50 * 10**9
 ):
     warnings.warn("This test must be run on large machines.")
 
@@ -728,10 +729,4 @@ def test_maximize_concurrent_pull_race_condition(ray_start_cluster_head):
 
 
 if __name__ == "__main__":
-    import sys
-    import os
-
-    if os.environ.get("PARALLEL_CI"):
-        sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))
-    else:
-        sys.exit(pytest.main(["-sv", __file__]))
+    sys.exit(pytest.main(["-sv", __file__]))

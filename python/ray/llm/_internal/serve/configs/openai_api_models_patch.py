@@ -1,14 +1,14 @@
 import json
 from abc import ABC, abstractmethod
-
 from typing import (
+    TYPE_CHECKING,
     Any,
     Dict,
+    Literal,
     Optional,
     Union,
-    Literal,
-    TYPE_CHECKING,
 )
+
 from pydantic import (
     BaseModel,
     ConfigDict,
@@ -16,7 +16,8 @@ from pydantic import (
     model_validator,
 )
 from typing_extensions import Annotated
-from ray.llm._internal.utils import try_import
+
+from ray.llm._internal.common.utils.import_utils import try_import
 
 if TYPE_CHECKING:
     from vllm.sampling_params import GuidedDecodingParams

@@ -7,6 +7,7 @@ from typing import (
     Dict,
     Iterator,
     List,
+    Mapping,
     Optional,
     Tuple,
     TypeVar,
@@ -14,8 +15,8 @@ from typing import (
 )
 
 import numpy as np
+from pandas.api.types import is_object_dtype, is_string_dtype
 
-from pandas.api.types import is_string_dtype, is_object_dtype
 from ray.air.constants import TENSOR_COLUMN_NAME
 from ray.air.util.tensor_extensions.utils import _should_convert_to_tensor
 from ray.data._internal.numpy_support import convert_to_numpy
@@ -28,7 +29,6 @@ from ray.data.block import (
     BlockColumn,
     BlockColumnAccessor,
     BlockExecStats,
-    BlockMetadata,
     BlockType,
     U,
 )
@@ -39,6 +39,7 @@ if TYPE_CHECKING:
     import pyarrow
 
     from ray.data._internal.planner.exchange.sort_task_spec import SortKey
+    from ray.data.block import BlockMetadataWithSchema
 
 T = TypeVar("T")
 # Max number of samples used to estimate the Pandas block size.
@@ -553,7 +554,7 @@ class PandasBlockAccessor(TableBlockAccessor):
     @staticmethod
     def merge_sorted_blocks(
         blocks: List[Block], sort_key: "SortKey"
-    ) -> Tuple["pandas.DataFrame", BlockMetadata]:
+    ) -> Tuple[Block, "BlockMetadataWithSchema"]:
         pd = lazy_import_pandas()
         stats = BlockExecStats.builder()
         blocks = [b for b in blocks if b.shape[0] > 0]
@@ -565,7 +566,19 @@ class PandasBlockAccessor(TableBlockAccessor):
             ret = pd.concat(blocks, ignore_index=True)
             columns, ascending = sort_key.to_pandas_sort_args()
             ret = ret.sort_values(by=columns, ascending=ascending)
-        return ret, PandasBlockAccessor(ret).get_metadata(exec_stats=stats.build())
+        from ray.data.block import BlockMetadataWithSchema
+
+        return ret, BlockMetadataWithSchema.from_block(ret, stats=stats.build())
 
     def block_type(self) -> BlockType:
         return BlockType.PANDAS
+
+    def iter_rows(
+        self, public_row_format: bool
+    ) -> Iterator[Union[Mapping, np.ndarray]]:
+        for i in range(self.num_rows()):
+            row = self._get_row(i)
+            if public_row_format and isinstance(row, TableRow):
+                yield row.as_pydict()
+            else:
+                yield row

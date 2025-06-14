@@ -4,11 +4,11 @@ import os
 import sys
 import time
 import pytest
+from ray._common.test_utils import wait_for_condition
 from ray.dag import InputNode, MultiOutputNode
 import ray.remote_function
 from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
 from ray.tests.conftest import *  # noqa
-from ray.tests.conftest import wait_for_condition
 
 if sys.platform != "linux" and sys.platform != "darwin":
     pytest.skip("Skipping, requires Linux or Mac.", allow_module_level=True)
@@ -185,6 +185,79 @@ def test_pp(ray_start_cluster, single_fetch):
 
     # So that raylets' error messages are printed to the driver
     time.sleep(2)
+
+
+@pytest.mark.parametrize("single_fetch", [True, False])
+def test_pp_exception(ray_start_cluster, single_fetch):
+    """
+    This test is to verify that the exception can be passed properly
+    through pipeline parallel workers on different nodes.
+    """
+    cluster = ray_start_cluster
+    # This node is for the driver.
+    cluster.add_node(num_cpus=0)
+    ray.init(address=cluster.address)
+    TP = 2
+    # This node is for the PP stage 1.
+    cluster.add_node(resources={"pp1": TP})
+    # This node is for the PP stage 2.
+    cluster.add_node(resources={"pp2": TP})
+    # This node is for the PP stage 3.
+    cluster.add_node(resources={"pp3": TP})
+
+    # Simulate a large error message (e.g., those with a long stack trace)
+    large_error_message = "Model execution failed" * 10000
+
+    @ray.remote
+    class Worker:
+        def __init__(self):
+            pass
+
+        def execute_model(self, val):
+            if val == "exception_trigger":
+                # Simulate an exception happened during model execution
+                raise RuntimeError(large_error_message)
+            return val
+
+    pp1_workers = [
+        Worker.options(num_cpus=0, resources={"pp1": 1}).remote() for _ in range(TP)
+    ]
+    pp2_workers = [
+        Worker.options(num_cpus=0, resources={"pp2": 1}).remote() for _ in range(TP)
+    ]
+    pp3_workers = [
+        Worker.options(num_cpus=0, resources={"pp3": 1}).remote() for _ in range(TP)
+    ]
+
+    with InputNode() as inp:
+        outputs = [inp for _ in range(TP)]
+        outputs = [pp1_workers[i].execute_model.bind(outputs[i]) for i in range(TP)]
+        outputs = [pp2_workers[i].execute_model.bind(outputs[i]) for i in range(TP)]
+        outputs = [pp3_workers[i].execute_model.bind(outputs[i]) for i in range(TP)]
+        dag = MultiOutputNode(outputs)
+
+    compiled_dag = dag.experimental_compile()
+    refs = compiled_dag.execute("exception_trigger")
+
+    # Without the fix in this PR, we will encounter the following exception:
+    # File "/Users/ruiqiao/repos2/ray/python/ray/_private/serialization.py",
+    # line 460, in deserialize_objects
+    #     obj = self._deserialize_object(data, metadata, object_ref)
+    #     raise Exception(
+    #     Exception: Can't deserialize object:
+    #       ObjectRef(00a33d534c5b0ce51bdf175790467da3114801680100000002e1f505), metadata: b'\x00'
+    # With this fix, the original exception will be propagated.
+    if single_fetch:
+        for i in range(TP):
+            with pytest.raises(RuntimeError) as exc_info:
+                ray.get(refs[i])
+            assert "Can't deserialize object" not in str(exc_info.value)
+            assert large_error_message in str(exc_info.value)
+    else:
+        with pytest.raises(RuntimeError) as exc_info:
+            ray.get(refs)
+        assert "Can't deserialize object" not in str(exc_info.value)
+        assert large_error_message in str(exc_info.value)
 
 
 def test_payload_large(ray_start_cluster, monkeypatch):
