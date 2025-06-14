@@ -430,7 +430,7 @@ For example, in the following figures, one selects the metrics from the RayClust
 
 ## Step 14: View KubeRay Operator dashboard
 
-Once the KubeRay Operator dashboard is imported into Grafana, you can monitor metrics from the KubeRay operator. The dashboard provides a dropdown menu to filter and view controller runtime metrics for specific Ray CRs (`raycluster`, `rayjob`, `rayservice`).
+Once the KubeRay Operator dashboard is imported into Grafana, you can monitor metrics from the KubeRay operator. The dashboard provides a dropdown menu to filter and view controller runtime metrics for specific Ray CRs (`RayCluster`, `RayJob`, `RayService`).
 
 - Controller Runtime Panel
 ![Grafana KubeRay Operator Controller Runtime dashboard](../images/kuberay-dashboard-controller-runtime.png)
