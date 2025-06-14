@@ -2004,6 +2004,26 @@ def test_map_names():
     assert r.startswith("OneHotEncoder"), r
 
 
+def test_map_with_max_calls():
+
+    ds = ray.data.range(10)
+
+    # OK to set 'max_calls' as static option
+    ds = ds.map(lambda x: x, max_calls=1)
+
+    assert ds.count() == 10
+
+    ds = ray.data.range(10)
+
+    # Not OK to set 'max_calls' as dynamic option
+    with pytest.raises(ValueError):
+        ds = ds.map(
+            lambda x: x,
+            ray_remote_args_fn=lambda: {"max_calls": 1},
+        )
+        ds.take_all()
+
+
 if __name__ == "__main__":
     import sys
 
