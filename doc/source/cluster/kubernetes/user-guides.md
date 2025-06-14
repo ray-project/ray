@@ -31,6 +31,7 @@ user-guides/kubectl-plugin
 user-guides/kuberay-auth
 user-guides/reduce-image-pull-latency
 user-guides/uv
+user-guides/kuberay-dashboard
 ```
 
 
