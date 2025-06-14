@@ -21,6 +21,7 @@ class RayDataConfig(DataLoaderConfig):
     enable_operator_progress_bars: bool = False
     ray_data_prefetch_batches: int = 4
     ray_data_override_num_blocks: int = -1
+    ray_data_pin_memory: bool = False
 
 
 class TorchConfig(DataLoaderConfig):

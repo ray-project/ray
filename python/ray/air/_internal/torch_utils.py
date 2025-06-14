@@ -374,11 +374,24 @@ def arrow_batch_to_tensors(
         )
 
 
+def tensor_pin_memory_if_needed(tensor: torch.Tensor, pin_memory: bool) -> torch.Tensor:
+    if pin_memory and tensor.device.type == "cpu" and not tensor.is_pinned():
+        return tensor.pin_memory()
+    else:
+        return tensor
+
+
+def is_tensor_non_blocking_transfer(tensor: torch.Tensor, non_blocking: bool) -> bool:
+    # If pin_memory is True, enable non-blocking transfer.
+    return non_blocking and tensor.is_pinned()
+
+
 @torch.no_grad()
 def concat_tensors_to_device(
     tensor_sequence: Sequence[torch.Tensor],
     device: Optional[Union[str, "torch.device"]] = None,
     non_blocking: bool = False,
+    pin_memory: bool = False,
 ) -> torch.Tensor:
     """Stack sequence of tensors into a contiguous GPU tensor.
 
@@ -387,6 +400,7 @@ def concat_tensors_to_device(
         device: The device to move tensors to
         non_blocking: If True, perform device transfer without forcing a
             synchronization.
+        pin_memory: Whether to pin the memory of the tensors. Defaults to False.
 
     Returns:
         A contiguous tensor on the target device
@@ -420,12 +434,20 @@ def concat_tensors_to_device(
     total_rows = sum(t.shape[0] for t in tensor_sequence)
 
     # Allocate an empty Tensor on device
-    result = torch.empty((total_rows, *shape_tail), dtype=dtype, device=device)
+    result = torch.empty(
+        (total_rows, *shape_tail),
+        dtype=dtype,
+        device=device,
+        pin_memory=pin_memory and device.type == "cpu",
+    )
 
     row_start = 0
     for t in tensor_sequence:
         row_end = row_start + t.shape[0]
-        result[row_start:row_end].copy_(t, non_blocking=non_blocking)
+        t = tensor_pin_memory_if_needed(t, pin_memory)
+        result[row_start:row_end].copy_(
+            t, non_blocking=is_tensor_non_blocking_transfer(t, non_blocking)
+        )
         row_start = row_end
 
     return result
@@ -461,6 +483,7 @@ def move_tensors_to_device(
     batch: TensorBatchType,
     device: Optional[Union[str, "torch.device"]] = None,
     non_blocking: bool = False,
+    pin_memory: bool = False,
 ) -> TensorBatchReturnType:
     """Move tensors to the specified device.
 
@@ -481,6 +504,7 @@ def move_tensors_to_device(
         device: The device to move tensors to. If None, tensors are not moved.
         non_blocking: If True, perform device transfer without forcing a
             synchronization.
+        pin_memory: Whether to pin the memory of the tensors. Defaults to False.
 
     Returns:
         The input tensors moved to the specified device
@@ -488,19 +512,29 @@ def move_tensors_to_device(
     if device is None:
         return batch
 
+    def to_device(tensor: torch.Tensor) -> torch.Tensor:
+        tensor = tensor_pin_memory_if_needed(tensor, pin_memory)
+
+        return tensor.to(
+            device, non_blocking=is_tensor_non_blocking_transfer(tensor, non_blocking)
+        )
+
     if _is_tensor(batch):
-        return batch.to(device, non_blocking=non_blocking)
+        return to_device(batch)
     elif _is_tensor_sequence(batch):
-        return type(batch)([t.to(device, non_blocking=non_blocking) for t in batch])
+        return type(batch)([to_device(t) for t in batch])
     elif _is_nested_tensor_sequence(batch):
         return type(batch)(
-            [concat_tensors_to_device(t, device, non_blocking) for t in batch]
+            [
+                concat_tensors_to_device(t, device, non_blocking, pin_memory)
+                for t in batch
+            ]
         )
     elif _is_tensor_mapping(batch):
-        return {k: t.to(device, non_blocking=non_blocking) for k, t in batch.items()}
+        return {k: to_device(t) for k, t in batch.items()}
     elif _is_tensor_sequence_mapping(batch):
         return {
-            k: concat_tensors_to_device(v, device, non_blocking)
+            k: concat_tensors_to_device(v, device, non_blocking, pin_memory)
             for k, v in batch.items()
         }
     else:
