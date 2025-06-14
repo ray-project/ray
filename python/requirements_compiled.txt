@@ -2321,7 +2321,7 @@ tornado==6.1
     #   notebook
     #   pymars
     #   terminado
-tqdm==4.64.1
+tqdm==4.66.3
     # via
     #   -r python/requirements/cloud-requirements.txt
     #   -r python/requirements/test-requirements.txt

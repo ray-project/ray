@@ -3978,8 +3978,9 @@ tornado==6.1 \
     #   nbclassic
     #   notebook
     #   terminado
-tqdm==4.64.1 \
-    --hash=sha256:6fee160d6ffcd1b1c68c65f14c829c22832bc401726335ce92c52d395944a6a1
+tqdm==4.66.3 \
+    --hash=sha256:23097a41eba115ba99ecae40d06444c15d1c0c698d527a01c6c8bd1c5d0647e5 \
+    --hash=sha256:4f41d54107ff9a223dca80b53efe4fb654c67efaba7f47bada3ee9d50e05bd53
     # via
     #   -c python/requirements_compiled_ray_test_py311_cu128.txt
     #   -r python/requirements/cloud-requirements.txt
