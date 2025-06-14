@@ -154,7 +154,7 @@ kubectl get podgroup ray-test-cluster-0-pg -o yaml
 #   phase: Running
 ```
 
-Check the status of the queue to see 1 running job:
+Check the status of the queue to see allocated resources:
 
 ```shell
 kubectl get queue kuberay-test-queue -o yaml
@@ -174,8 +174,11 @@ kubectl get queue kuberay-test-queue -o yaml
 #   reclaimable: true
 #   weight: 1
 # status:
+#   allocated:
+#     cpu: "3"
+#     memory: 4Gi 
+#     pods: "3"
 #   reservation: {}
-#   running: 1
 #   state: Open
 ```
 
@@ -236,10 +239,10 @@ kubectl get pods
 
 # NAME                                            READY   STATUS         RESTARTS   AGE
 # test-cluster-0-worker-worker-ddfbz              1/1     Running        0          7m
-# test-cluster-0-head-vst5j                       1/1     Running        0          7m
+# test-cluster-0-head                             1/1     Running        0          7m
 # test-cluster-0-worker-worker-57pc7              1/1     Running        0          6m59s
 # test-cluster-1-worker-worker-6tzf7              0/1     Pending        0          2m12s
-# test-cluster-1-head-6668q                       0/1     Pending        0          2m12s
+# test-cluster-1-head                             0/1     Pending        0          2m12s
 # test-cluster-1-worker-worker-n5g8k              0/1     Pending        0          2m12s
 ```
 
@@ -311,7 +314,7 @@ kubectl get pods
 
 # NAME                                            READY   STATUS         RESTARTS   AGE
 # test-cluster-1-worker-worker-n5g8k              1/1     Running        0          9m4s
-# test-cluster-1-head-6668q                       1/1     Running        0          9m4s
+# test-cluster-1-head                             1/1     Running        0          9m4s
 # test-cluster-1-worker-worker-6tzf7              1/1     Running        0          9m4s
 ```
 
