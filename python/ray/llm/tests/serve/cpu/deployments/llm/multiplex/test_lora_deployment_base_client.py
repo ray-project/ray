@@ -44,9 +44,6 @@ deployment_config:
     downscale_delay_s: 300.0
     upscale_delay_s: 60.0
   max_ongoing_requests: 15
-  ray_actor_options:
-    resources:
-      mock_resource: 0
 
 """
 
