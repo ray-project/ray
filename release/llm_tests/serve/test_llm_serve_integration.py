@@ -47,22 +47,26 @@ async def test_engine_metrics():
 @pytest.mark.asyncio(scope="function")
 async def test_remote_code_model():
     """
-    Tests that a remote code model can be loaded successfully. This is important
-    to avoid regressions for pickling issues for custom huggingface configs.
-    It may be a bit big/end-to-end, but it's good to have coverage for DeepSeek models
-    in general.
+    Tests that a remote code model fails to load when trust_remote_code=False
+    and succeeds when trust_remote_code=True.
+
+    If it loads successfully without remote code, the model should be changed to one
+    that does require remote code.
+
+    This helps avoid regressions for pickling issues for custom huggingface configs,
+    since this custom code needs to be registered and imported across processes and workers.
     """
 
-    llm_config = LLMConfig(
-        model_loading_config=dict(
+    base_config = {
+        "model_loading_config": dict(
             model_id="deepseek",
             model_source="deepseek-ai/DeepSeek-V2-Lite",
         ),
-        runtime_env=dict(env_vars={"VLLM_USE_V1": "1"}),
-        deployment_config=dict(
+        "runtime_env": dict(env_vars={"VLLM_USE_V1": "1"}),
+        "deployment_config": dict(
             autoscaling_config=dict(min_replicas=1, max_replicas=1),
         ),
-        engine_kwargs=dict(
+        "engine_kwargs": dict(
             tensor_parallel_size=2,
             pipeline_parallel_size=2,
             gpu_memory_utilization=0.92,
@@ -71,26 +75,56 @@ async def test_remote_code_model():
             max_model_len=16384,
             enable_chunked_prefill=True,
             enable_prefix_caching=True,
-            trust_remote_code=True,
         ),
-    )
+    }
 
+    # First part: Should fail with trust_remote_code=False
+    base_config["engine_kwargs"]["trust_remote_code"] = False
+    llm_config = LLMConfig(**base_config)
     app = build_openai_app({"llm_configs": [llm_config]})
-    serve.run(app, blocking=False)
 
-    def check_for_running_app():
-        """Check if the application is running successfully."""
+    try:
+        with pytest.raises(RuntimeError, match="Deploying application default failed"):
+            serve.run(app, blocking=False)
+    except AssertionError:
+        # If pytest.raises fails, it means no RuntimeError was raised
+        # Check if the app actually came up successfully
         try:
             default_app = serve.status().applications[SERVE_DEFAULT_APP_NAME]
-            return default_app.status == ApplicationStatus.RUNNING
+            if default_app.status == ApplicationStatus.RUNNING:
+                pytest.fail(
+                    "App deployed successfully without trust_remote_code=True. "
+                    "This model may not actually require remote code. "
+                    "Consider using a different model that requires remote code."
+                )
         except (KeyError, AttributeError):
-            return False
+            pass
+        finally:
+            serve.shutdown()
+        # Re-raise the original AssertionError if it wasn't a successful deployment
+        raise
 
-    # Wait for the application to be running (timeout after 5 minutes)
-    wait_for_condition(check_for_running_app, timeout=300)
+    # Second part: Should succeed with trust_remote_code=True
+    base_config["engine_kwargs"]["trust_remote_code"] = True
+    llm_config = LLMConfig(**base_config)
+    app = build_openai_app({"llm_configs": [llm_config]})
 
-    # Clean up the deployment
-    serve.shutdown()
+    try:
+        serve.run(app, blocking=False)
+
+        def check_for_running_app():
+            """Check if the application is running successfully."""
+            try:
+                default_app = serve.status().applications[SERVE_DEFAULT_APP_NAME]
+                return default_app.status == ApplicationStatus.RUNNING
+            except (KeyError, AttributeError):
+                return False
+
+        # Wait for the application to be running (timeout after 5 minutes)
+        wait_for_condition(check_for_running_app, timeout=300)
+    finally:
+        # Clean up the deployment
+        serve.shutdown()
 
 
 if __name__ == "__main__":
