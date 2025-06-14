@@ -51,6 +51,7 @@ py_test_module_list(
         "test_component_failures_3.py",
         "test_dashboard_profiler.py",
         "test_exit_observability.py",
+        "test_experimental_collective.py",
         "test_failure_3.py",
         "test_gcs_utils.py",
         "test_get_locations.py",
@@ -66,6 +67,27 @@ py_test_module_list(
         "test_reference_counting_standalone.py",
         "test_runtime_env_agent.py",
     ],
+    tags = [
+        "exclusive",
+        "medium_size_python_tests_a_to_j",
+        "team:core",
+    ],
+    deps = [
+        ":conftest",
+        "//:ray_lib",
+    ],
+)
+
+py_test_module_list(
+    size = "medium",
+    env = {
+        "RAY_experimental_enable_open_telemetry_on_agent": "1",
+        "RAY_experimental_enable_open_telemetry_on_core": "1",
+    },
+    files = [
+        "test_metrics_agent.py",
+    ],
+    name_suffix = "_open_telemetry",
     tags = [
         "exclusive",
         "medium_size_python_tests_a_to_j",
