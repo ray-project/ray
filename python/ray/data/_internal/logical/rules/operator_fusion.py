@@ -1,6 +1,6 @@
 import itertools
 import logging
-from typing import List, Optional, Tuple
+from typing import List, Optional
 
 from ray.data._internal.compute import (
     ActorPoolStrategy,
@@ -11,6 +11,9 @@ from ray.data._internal.execution.interfaces import (
     PhysicalOperator,
     RefBundle,
     TaskContext,
+)
+from ray.data._internal.execution.interfaces.transform_fn import (
+    AllToAllTransformFnResult,
 )
 from ray.data._internal.execution.operators.actor_pool_map_operator import (
     ActorPoolMapOperator,
@@ -32,7 +35,6 @@ from ray.data._internal.logical.operators.map_operator import (
     AbstractMap,
     AbstractUDFMap,
 )
-from ray.data._internal.stats import StatsDict
 from ray.data.context import DataContext
 
 # Scheduling strategy can be inherited from upstream operator if not specified.
@@ -413,8 +415,9 @@ class FuseOperators(Rule):
         up_map_transformer = up_op.get_map_transformer()
 
         def fused_all_to_all_transform_fn(
-            blocks: List[RefBundle], ctx: TaskContext
-        ) -> Tuple[List[RefBundle], StatsDict]:
+            blocks: List[RefBundle],
+            ctx: TaskContext,
+        ) -> AllToAllTransformFnResult:
             """To fuse MapOperator->AllToAllOperator, we store the map function
             in the TaskContext so that it may be used by the downstream
             AllToAllOperator's transform function."""

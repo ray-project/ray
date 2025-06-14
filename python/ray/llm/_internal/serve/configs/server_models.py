@@ -32,6 +32,7 @@ from ray.llm._internal.common.utils.cloud_utils import (
     CloudMirrorConfig,
     is_remote_path,
 )
+from ray.llm._internal.common.utils.import_utils import try_import
 from ray.llm._internal.serve.configs.constants import (
     DEFAULT_MULTIPLEX_DOWNLOAD_TIMEOUT_S,
     DEFAULT_MULTIPLEX_DOWNLOAD_TRIES,
@@ -48,7 +49,6 @@ from ray.llm._internal.serve.configs.prompt_formats import (
     Prompt,
 )
 from ray.llm._internal.serve.observability.logging import get_logger
-from ray.llm._internal.utils import try_import
 from ray.serve._private.config import DeploymentConfig
 
 transformers = try_import("transformers")
