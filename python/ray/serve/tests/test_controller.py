@@ -125,11 +125,10 @@ def test_get_serve_instance_details_json_serializable(serve_instance, policy):
                 "log_file_path": controller_details.log_file_path,
             },
             "proxy_location": "HeadOnly",
-            "http_options": {"host": "0.0.0.0", "request_timeout_s": 10.0},
+            "http_options": {"host": "0.0.0.0"},
             "grpc_options": {
                 "port": 9000,
                 "grpc_servicer_functions": TEST_GRPC_SERVICER_FUNCTIONS,
-                "request_timeout_s": 10.0,
             },
             "proxies": {
                 node_id: {
