@@ -1,5 +1,6 @@
 import warnings
 from typing import Any, Dict, List, Optional, Union, Sequence
+from concurrent.futures import ThreadPoolExecutor
 
 import numpy as np
 import pandas as pd
@@ -304,40 +305,12 @@ c18da597e0bb1c1aecc97c77a73fed1849057fa4/torch/nn/modules/utils.py
     return state_dict
 
 
-def convert_ndarray_list_to_torch_tensor_list(
-    ndarrays: Dict[str, List[np.ndarray]],
-    dtypes: Optional[Union[torch.dtype, Dict[str, torch.dtype]]] = None,
-    device: Optional[Union[str, "torch.device"]] = None,
-) -> Dict[str, List[torch.Tensor]]:
-    """Convert a dict mapping column names to lists of ndarrays to Torch Tensors.
-
-    Args:
-        ndarrays: A dict mapping column names to lists of ndarrays that we wish to convert
-            to Torch Tensors.
-        dtypes: A (dict of) Torch dtype(s) for the created tensors; if None, the dtype
-            will be inferred from the NumPy ndarray data.
-        device: The device on which the tensor(s) should be placed; if None, the Torch
-            tensor(s) will be constructed on the CPU.
-
-    Returns: A dict mapping column names to lists of Tensors.
-    """
-    return {
-        col_name: [
-            convert_ndarray_batch_to_torch_tensor_batch(
-                ndarray,
-                dtypes=dtypes[col_name] if isinstance(dtypes, dict) else dtypes,
-                device=device,
-            )
-            for ndarray in col_ndarrays
-        ]
-        for col_name, col_ndarrays in ndarrays.items()
-    }
-
-
 def arrow_batch_to_tensors(
     batch: pyarrow.Table,
     dtypes: Optional[Union[torch.dtype, Dict[str, torch.dtype]]] = None,
     combine_chunks: bool = False,
+    pin_memory: bool = False,
+    num_threads: int = 4,
 ) -> Dict[str, List[torch.Tensor]]:
     """Convert PyArrow batch to PyTorch tensors.
 
@@ -347,6 +320,8 @@ def arrow_batch_to_tensors(
             will be inferred from the NumPy ndarray data.
         combine_chunks: If True, combine chunks in Arrow batch before converting to
             tensors.
+        pin_memory: If True, the returned tensors will be pinned in memory.
+        num_threads: The number of threads to use for the conversion.
 
     Returns:
         A dictionary of column name to list of tensors. For non-chunked columns,
@@ -357,21 +332,49 @@ def arrow_batch_to_tensors(
 
     if combine_chunks:
         numpy_batch = ArrowBlockAccessor(batch).to_batch_format("numpy")
-        return {
-            col_name: convert_ndarray_batch_to_torch_tensor_batch(
+
+        def convert(col_name, col_array):
+            tensor = convert_ndarray_batch_to_torch_tensor_batch(
                 col_array,
                 dtypes=dtypes[col_name] if isinstance(dtypes, dict) else dtypes,
             )
-            for col_name, col_array in numpy_batch.items()
-        }
+            if pin_memory:
+                if isinstance(tensor, torch.Tensor):
+                    return tensor.pin_memory()
+                elif isinstance(tensor, dict):
+                    return {k: v.pin_memory() for k, v in tensor.items()}
+            return tensor
+
+        with ThreadPoolExecutor(max_workers=num_threads) as executor:
+            futures = {
+                col: executor.submit(convert, col, col_array)
+                for col, col_array in numpy_batch.items()
+            }
+            return_batch = {col: fut.result() for col, fut in futures.items()}
+
     else:
-        numpy_list = transform_pyarrow.table_to_numpy_dict_chunked(
-            batch,
-        )
-        return convert_ndarray_list_to_torch_tensor_list(
-            numpy_list,
-            dtypes=dtypes,
-        )
+        numpy_list = transform_pyarrow.table_to_numpy_dict_chunked(batch)
+
+        def convert_list(col_name, col_ndarrays):
+            tensor_list = [
+                convert_ndarray_batch_to_torch_tensor_batch(
+                    ndarray,
+                    dtypes=dtypes[col_name] if isinstance(dtypes, dict) else dtypes,
+                )
+                for ndarray in col_ndarrays
+            ]
+            if pin_memory:
+                tensor_list = [t.pin_memory() for t in tensor_list]
+            return tensor_list
+
+        with ThreadPoolExecutor(max_workers=num_threads) as executor:
+            futures = {
+                col: executor.submit(convert_list, col, col_ndarrays)
+                for col, col_ndarrays in numpy_list.items()
+            }
+            return_batch = {col: fut.result() for col, fut in futures.items()}
+
+    return return_batch
 
 
 @torch.no_grad()
