@@ -2209,9 +2209,6 @@ class DeploymentState:
         logger.debug(f"Adding STOPPING to replica: {replica.replica_id}.")
 
         start_status = replica._cached_start_status
-        if start_status is None:
-            start_status, _ = replica.check_started()
-
         if start_status == ReplicaStartupStatus.PENDING_ALLOCATION:
             replica.stop(graceful=False)
         else:
