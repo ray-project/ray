@@ -483,7 +483,8 @@ class RuntimeEnvAgent:
                 time.sleep(int(SLEEP_FOR_TESTING_S))
 
             runtime_env_config = RuntimeEnvConfig.from_proto(request.runtime_env_config)
-
+            # Can't resetup runtime env if enable the cache.
+            disable_cache = True if runtime_env_config["disable_cache"] == 1 else False
             # accroding to the document of `asyncio.wait_for`,
             # None means disable timeout logic
             setup_timeout_seconds = (
@@ -503,22 +504,26 @@ class RuntimeEnvAgent:
                 runtime_env_config,
             )
             creation_time_ms = int(round((time.perf_counter() - start) * 1000, 0))
+            if not disable_cache:
+                # Add the result to env cache.
+                self._env_cache[serialized_env] = CreatedEnvResult(
+                    successful,
+                    serialized_context if successful else error_message,
+                    creation_time_ms,
+                )
             if not successful:
                 # Recover the reference.
                 self._reference_table.decrease_reference(
                     runtime_env, serialized_env, request.source_process
                 )
-            # Add the result to env cache.
-            self._env_cache[serialized_env] = CreatedEnvResult(
-                successful,
-                serialized_context if successful else error_message,
-                creation_time_ms,
-            )
+
             # Reply the RPC
             return runtime_env_agent_pb2.GetOrCreateRuntimeEnvReply(
-                status=runtime_env_agent_pb2.AGENT_RPC_STATUS_OK
-                if successful
-                else runtime_env_agent_pb2.AGENT_RPC_STATUS_FAILED,
+                status=(
+                    runtime_env_agent_pb2.AGENT_RPC_STATUS_OK
+                    if successful
+                    else runtime_env_agent_pb2.AGENT_RPC_STATUS_FAILED
+                ),
                 serialized_runtime_env_context=serialized_context,
                 error_message=error_message,
             )
