@@ -25,6 +25,7 @@ from custom_directives import (  # noqa
     LinkcheckSummarizer,
     parse_navbar_config,
     setup_context,
+    create_tutorial_zips,
     pregenerate_example_rsts,
     generate_versions_json,
 )
@@ -369,7 +370,6 @@ html_favicon = "_static/favicon.ico"
 # so a file named "default.css" will overwrite the builtin "default.css".
 html_static_path = ["_static"]
 
-
 # Output file base name for HTML help builder.
 htmlhelp_basename = "Raydoc"
 
@@ -412,6 +412,14 @@ autodoc_member_order = "bysource"
 
 # Better typehint formatting (see custom.css)
 autodoc_typehints = "signature"
+
+# Dictionary mapping tutorial names to their E2E example directories. This helps the zip generator find the correct example directory.
+TUTORIAL_EXAMPLES = {
+    "doggos": {
+        "source": "ray-overview/examples/e2e-multimodal-ai-workloads/doggos",
+        "tutorial": "ray-overview/tutorials/multimodal-ai-tutorial"
+    }
+}
 
 
 def filter_out_undoc_class_members(member_name, class_name, module_name):
@@ -537,10 +545,16 @@ def setup(app):
     doctest.register_optionflag("MOCK")
     app.connect("html-page-context", update_context)
 
+    # Add TUTORIAL_EXAMPLES to Sphinx's configuration
+    app.add_config_value("TUTORIAL_EXAMPLES", TUTORIAL_EXAMPLES, "env")
+
     app.add_config_value("navbar_content_path", "navbar.yml", "env")
     app.connect("config-inited", parse_navbar_config)
     app.connect("html-page-context", setup_context)
     app.connect("html-page-context", add_custom_assets)
+
+    # Connect the zip creation to the builder-inited event
+    app.connect('builder-inited', create_tutorial_zips)
 
     # https://github.com/ines/termynal
     app.add_js_file("js/termynal.js", defer="defer")

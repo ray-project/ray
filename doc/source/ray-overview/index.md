@@ -1,7 +1,7 @@
 (overview-overview)=
 # Overview
 
-Ray is an open-source unified framework for scaling AI and Python applications like machine learning. It provides the compute layer for parallel processing so that you don’t need to be a distributed systems expert. Ray minimizes the complexity of running your distributed individual and end-to-end machine learning workflows with these components:
+Ray is an open-source unified framework for scaling AI and Python applications like machine learning. It provides the compute layer for parallel processing so that you don't need to be a distributed systems expert. Ray minimizes the complexity of running your distributed individual and end-to-end machine learning workflows with these components:
 * Scalable libraries for common machine learning tasks such as data preprocessing, distributed training, hyperparameter tuning, reinforcement learning, and model serving.
 * Pythonic distributed computing primitives for parallelizing and scaling Python applications.
 * Integrations and utilities for integrating and deploying a Ray cluster with existing tools and infrastructure such as Kubernetes, AWS, GCP, and Azure.
@@ -30,6 +30,12 @@ These are some common ML workloads that individuals, organizations, and companie
 * [Parallel hyperparameter tuning experiments](project:#ref-use-cases-hyperparameter-tuning)
 * [Reinforcement learning](project:#ref-use-cases-reinforcement-learning)
 * [ML platform](project:#ref-use-cases-ml-platform)
+
+## Tutorials
+
+Get started with Ray through our hands-on tutorials:
+
+* :doc:`Multimodal AI Tutorial <tutorials/multimodal-ai-tutorial/index>` - Build a dog breed classification and search application
 
 ## Ray framework
 

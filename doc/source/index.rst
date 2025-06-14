@@ -9,6 +9,7 @@
    Getting Started <ray-overview/getting-started>
    Installation <ray-overview/installation>
    Use Cases <ray-overview/use-cases>
+   Tutorials <ray-overview/learn>
    Examples <ray-overview/examples/index>
    Ecosystem <ray-overview/ray-libraries>
    Ray Core <ray-core/walkthrough>
