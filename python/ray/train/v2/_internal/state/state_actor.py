@@ -6,7 +6,6 @@ from collections import defaultdict
 from typing import Dict, Optional
 
 import ray
-from ray._private.custom_types import TypeActorStatus
 from ray._private.event.export_event_logger import (
     EventLogType,
     check_export_api_enabled,
@@ -29,6 +28,7 @@ from ray.train.v2._internal.state.util import (
 )
 from ray.train.v2._internal.util import time_monotonic
 from ray.util.state import get_actor
+from ray.util.state.common import ActorState
 
 logger = logging.getLogger(__name__)
 
@@ -70,7 +70,7 @@ class TrainStateActor:
                     if is_terminal_run_status(run.status):
                         continue
                     actor_state = get_actor(run.controller_actor_id)
-                    if not actor_state or actor_state.state == TypeActorStatus.DEAD:
+                    if not actor_state or actor_state.state == ActorState.DEAD:
                         update_train_run_aborted(run)
                         self.create_or_update_train_run(run)
                         for run_attempt in self._run_attempts.get(run_id, {}).values():
