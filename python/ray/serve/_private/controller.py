@@ -50,6 +50,7 @@ from ray.serve._private.utils import (
     call_function_from_import_path,
     get_all_live_placement_group_names,
     get_head_node_id,
+    is_grpc_enabled,
 )
 from ray.serve.config import HTTPOptions, ProxyLocation, gRPCOptions
 from ray.serve.generated.serve_pb2 import (
@@ -977,31 +978,44 @@ class ServeController:
             target_groups=self.get_target_groups(),
         )._get_user_facing_json_serializable_dict(exclude_unset=True)
 
-    def get_target_groups(self) -> List[TargetGroup]:
+    def get_proxy_target_groups(self) -> List[TargetGroup]:
         """Target groups contains information about IP
         addresses and ports of all proxies in the cluster.
 
         This information is used to setup the load balancer.
         """
-        if self.proxy_state_manager is None:
-            return []
         target_groups: List[TargetGroup] = []
 
         if self.proxy_state_manager.get_proxy_details():
             # setting prefix route to "/" because in ray serve, proxy
             # accepts requests from the client and routes them to the
             # correct application. This is true for both HTTP and gRPC proxies.
-            target_groups.extend(
-                [
-                    TargetGroup(
-                        protocol=protocol,
-                        route_prefix="/",
-                        targets=self.proxy_state_manager.get_targets(protocol),
-                    )
-                    for protocol in [RequestProtocol.HTTP, RequestProtocol.GRPC]
-                ]
+            target_groups.append(
+                TargetGroup(
+                    protocol=RequestProtocol.HTTP,
+                    route_prefix="/",
+                    targets=self.proxy_state_manager.get_targets(RequestProtocol.HTTP),
+                )
             )
+            if is_grpc_enabled(self.get_grpc_config()):
+                target_groups.append(
+                    TargetGroup(
+                        protocol=RequestProtocol.GRPC,
+                        route_prefix="/",
+                        targets=self.proxy_state_manager.get_targets(
+                            RequestProtocol.GRPC
+                        ),
+                    )
+                )
         return target_groups
+
+    def get_target_groups(self) -> List[TargetGroup]:
+        """Target groups contains information about IP
+        addresses and ports of all proxies in the cluster.
+
+        This information is used to setup the load balancer.
+        """
+        return self.get_proxy_target_groups()
 
     def get_serve_status(self, name: str = SERVE_DEFAULT_APP_NAME) -> bytes:
         """Return application status
