@@ -35,6 +35,8 @@ class CountBasedCuriosity(ConnectorV2):
     If you would like to use a more sophisticated mechanism for intrinsic reward
     computations, take a look at the `EuclidianDistanceBasedCuriosity` connector piece
     at `ray.rllib.examples.connectors.classes.euclidian_distance_based_curiosity`
+
+    This connector piece doesn't alter the incoming `batch` and returns it as-is.
     """
 
     def __init__(

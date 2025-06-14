@@ -320,7 +320,7 @@ class SingleAgentEnvRunner(EnvRunner, Checkpointable):
                 # Module-to-env connector.
                 to_env = self._module_to_env(
                     rl_module=self.module,
-                    batch=to_env,
+                    batch={DEFAULT_MODULE_ID: to_env},
                     episodes=episodes,
                     explore=explore,
                     shared_data=shared_data,

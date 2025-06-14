@@ -75,7 +75,7 @@ import uuid
 
 import ray
 from ray.rllib.algorithms.appo import APPOConfig
-from ray.rllib.connectors.connector_v2 import ConnectorV2
+from ray.rllib.connectors.connector_v2 import ConnectorV2, ConnectorV2BatchFormats
 from ray.rllib.core import Columns
 from ray.rllib.env.single_agent_episode import SingleAgentEpisode
 from ray.rllib.examples.algorithms.classes.appo_w_shared_data_actor import (
@@ -137,6 +137,21 @@ def on_sample_end(*, samples, env_runner, **kwargs):
 
 
 class ManipulatedRewardConnector(ConnectorV2):
+    # Incoming batches have the format:
+    # [column name] -> [(episodeID, agentID, moduleID)-tuple] -> [.. individual items]
+    # For more details on the various possible batch formats, see the
+    # `ray.rllib.connectors.connector_v2.ConnectorV2BatchFormats` Enum.
+    INPUT_BATCH_FORMAT = (
+        ConnectorV2BatchFormats.BATCH_FORMAT_COLUMN_TO_EPISODE_TO_INDIVIDUAL_ITEMS
+    )
+    # Returned batches have the format:
+    # [column name] -> [(episodeID, agentID, moduleID)-tuple] -> [.. individual items]
+    # For more details on the various possible batch formats, see the
+    # `ray.rllib.connectors.connector_v2.ConnectorV2BatchFormats` Enum.
+    OUTPUT_BATCH_FORMAT = (
+        ConnectorV2BatchFormats.BATCH_FORMAT_COLUMN_TO_EPISODE_TO_INDIVIDUAL_ITEMS
+    )
+
     def __call__(self, *, episodes, batch, metrics, **kwargs):
         if not isinstance(episodes[0], SingleAgentEpisode):
             raise ValueError("This connector only works on `SingleAgentEpisodes`.")
