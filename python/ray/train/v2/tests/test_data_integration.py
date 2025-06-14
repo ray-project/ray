@@ -13,6 +13,7 @@ from ray.train.v2._internal.execution.worker_group.worker_group import (
     WorkerGroupContext,
 )
 from ray.train.v2.api.data_parallel_trainer import DataParallelTrainer
+from ray.train.v2.api.exceptions import TrainingFailedError
 from ray.train.v2.tests.util import DummyObjectRefWrapper, DummyWorkerGroup
 
 # TODO(justinvyu): Bring over more tests from ray/air/tests/test_new_dataset_config.py
@@ -107,6 +108,24 @@ def test_dataset_setup_callback(ray_start_4_cpus):
         processed_valid_ds._base_dataset.context.execution_options.exclude_resources
         == ExecutionResources(cpu=NUM_WORKERS, gpu=NUM_WORKERS)
     )
+
+
+def test_transform_on_split_iterator_raises(ray_start_4_cpus):
+    """Check that calling illegal method on a StreamSplitDataIterator shard raises TrainingFailedError."""
+    ds = ray.data.range(10)
+
+    def train_fn():
+        ds_shard = ray.train.get_dataset_shard("train")
+        ds_shard.map_batches(lambda x: x)
+
+    trainer = DataParallelTrainer(
+        train_fn,
+        datasets={"train": ds},
+        scaling_config=ray.train.ScalingConfig(num_workers=1),
+    )
+
+    with pytest.raises(TrainingFailedError):
+        trainer.fit()
 
 
 if __name__ == "__main__":
