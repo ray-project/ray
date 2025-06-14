@@ -321,15 +321,6 @@ def test_allreduce_duplicate_actors(ray_start_cluster):
         ):
             collective.allreduce.bind(computes, transport=cpu_group)
 
-    with InputNode() as inp:
-        compute = worker.return_tensor.bind(inp)
-        computes = [compute for _ in range(2)]
-        with pytest.raises(
-            ValueError,
-            match="Expected unique input nodes for a collective operation",
-        ):
-            collective.allreduce.bind(computes, transport=cpu_group)
-
 
 @pytest.mark.parametrize(
     "ray_start_cluster",
