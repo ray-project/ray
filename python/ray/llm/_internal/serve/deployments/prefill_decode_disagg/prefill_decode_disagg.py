@@ -144,8 +144,6 @@ class PDProxyServer(LLMServer):
             prefill_response_gen
         )
 
-        logger.debug(f"Prefill response: {prefill_response}")
-
         if prefill_response.error:
             logger.error(f"Prefill server returned error: {prefill_response.error}")
             yield prefill_response
