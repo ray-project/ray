@@ -303,11 +303,6 @@ def ingress(app: Union[ASGIApp, Callable]) -> Callable:
                         cls.__del__(self)
 
         ASGIIngressWrapper.__name__ = cls.__name__
-        if hasattr(frozen_app_or_func, "docs_url"):
-            # TODO (abrar): fastapi apps instantiated by builder function will set
-            # the docs path on application state via the replica.
-            # This split in logic is not desirable, we should consolidate the two.
-            ASGIIngressWrapper.__fastapi_docs_path__ = frozen_app_or_func.docs_url
 
         return ASGIIngressWrapper
 
