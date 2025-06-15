@@ -162,7 +162,7 @@ if __name__ == "__main__":
     if os.environ.get("RAY_TEST_UV_MULTIPROCESSING_SPAWN") == "1":
         import multiprocessing
 
-        multiprocessing.set_start_method('spawn')
+        multiprocessing.set_start_method("spawn")
         pool = multiprocessing.Pool(processes=1)
         runtime_env = json.loads(args.runtime_env)
         print(json.dumps(pool.apply(hook, (runtime_env,))))
