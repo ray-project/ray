@@ -5,7 +5,6 @@
 ```{toctree}
 :hidden:
 
-examples/ml-example
 examples/gpu-training-example
 examples/mnist-training-example
 examples/stable-diffusion-rayservice
