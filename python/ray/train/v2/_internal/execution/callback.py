@@ -64,6 +64,10 @@ class WorkerGroupCallback(RayTrainCallback):
     ):
         pass
 
+    def before_worker_group_abort(self, worker_group_context: "WorkerGroupContext"):
+        """Called before the worker group is aborted."""
+        pass
+
 
 @DeveloperAPI
 class ControllerCallback(RayTrainCallback):
@@ -97,17 +101,6 @@ class ControllerCallback(RayTrainCallback):
         resize_decision: "ResizeDecision",
     ):
         """Called before the controller executes a resize decision."""
-        pass
-
-    def before_controller_abort(
-        self, worker_group_context: Optional["WorkerGroupContext"]
-    ):
-        """Called before the controller is aborted.
-
-        Note that worker group context will be None if the controller
-        hasn't started the worker group yet, and we want to support
-        aborting in either case.
-        """
         pass
 
 

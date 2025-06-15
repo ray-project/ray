@@ -1,5 +1,4 @@
-from typing import Optional
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, create_autospec
 
 import pytest
 
@@ -13,6 +12,7 @@ from ray.train.v2._internal.execution.callback import ControllerCallback
 from ray.train.v2._internal.execution.context import TrainRunContext
 from ray.train.v2._internal.execution.controller import TrainController
 from ray.train.v2._internal.execution.controller.state import (
+    AbortedState,
     ErroredState,
     InitializingState,
     ReschedulingState,
@@ -26,9 +26,6 @@ from ray.train.v2._internal.execution.failure_handling import FailureDecision
 from ray.train.v2._internal.execution.scaling_policy import (
     NoopDecision,
     ResizeDecision,
-)
-from ray.train.v2._internal.execution.worker_group.worker_group import (
-    WorkerGroupContext,
 )
 from ray.train.v2.api.config import RunConfig, ScalingConfig
 from ray.train.v2.tests.util import (
@@ -330,32 +327,21 @@ async def test_controller_callback():
 
 
 @pytest.mark.asyncio
-async def test_controller_abort(tmp_path):
-    class AbortCallback(ControllerCallback):
-        def before_controller_abort(
-            self, worker_group_context: Optional[WorkerGroupContext]
-        ):
-            tmp_path.joinpath("before_controller_abort").touch()
-
-    callback = AbortCallback()
-
+async def test_controller_abort(monkeypatch):
+    mock_exit_actor = create_autospec(ray.actor.exit_actor)
+    monkeypatch.setattr("ray.actor.exit_actor", mock_exit_actor)
     scaling_policy = MockScalingPolicy(scaling_config=ScalingConfig())
     failure_policy = MockFailurePolicy(failure_config=None)
     train_run_context = TrainRunContext(run_config=RunConfig())
-
-    train_controller_cls = ray.remote(TrainController)
-
-    controller = train_controller_cls.remote(
+    controller = TrainController(
         train_fn_ref=DummyObjectRefWrapper(lambda: None),
         train_run_context=train_run_context,
         scaling_policy=scaling_policy,
         failure_policy=failure_policy,
-        callbacks=[callback],
     )
-
-    with pytest.raises(ray.exceptions.ActorDiedError):
-        ray.get(controller.abort.remote())
-    assert tmp_path.joinpath("before_controller_abort").exists()
+    await controller.abort()
+    assert mock_exit_actor.call_count == 1
+    assert isinstance(controller.get_state(), AbortedState)
 
 
 if __name__ == "__main__":

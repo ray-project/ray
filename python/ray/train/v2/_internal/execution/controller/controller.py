@@ -34,6 +34,7 @@ from ray.train.v2._internal.execution.checkpoint.report_handler import (
 )
 from ray.train.v2._internal.execution.context import TrainRunContext
 from ray.train.v2._internal.execution.controller.state import (
+    AbortedState,
     ErroredState,
     FinishedState,
     InitializingState,
@@ -477,12 +478,9 @@ class TrainController:
 
     async def abort(self):
         """Trigger callback abort hooks and terminate the controller process."""
+        self._set_state(AbortedState())
         if self._worker_group:
-            worker_group_context = self._worker_group.get_worker_group_context()
-        else:
-            worker_group_context = None
-        for callback in self._controller_callbacks:
-            callback.before_controller_abort(worker_group_context)
+            self._worker_group.abort()
         ray.actor.exit_actor()
 
     def _build_result(self) -> Result:

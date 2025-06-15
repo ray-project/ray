@@ -8,6 +8,7 @@ from ray.train.v2._internal.execution.callback import (
 )
 from ray.train.v2._internal.execution.context import TrainRunContext
 from ray.train.v2._internal.execution.controller.state import (
+    AbortedState,
     ErroredState,
     FinishedState,
     ResizingState,
@@ -109,6 +110,11 @@ class StateManagerCallback(ControllerCallback, WorkerGroupCallback):
                 run_id=self._run_id,
             )
 
+        elif isinstance(current_state, AbortedState):
+            self._state_manager.update_train_run_aborted(
+                run_id=self._run_id,
+            )
+
     def before_worker_group_start(self, worker_group_context: WorkerGroupContext):
         self._state_manager.create_train_run_attempt(
             run_id=self._run_id,
@@ -151,12 +157,8 @@ class StateManagerCallback(ControllerCallback, WorkerGroupCallback):
                 attempt_id=worker_group_context.run_attempt_id,
             )
 
-    def before_controller_abort(
-        self, worker_group_context: Optional[WorkerGroupContext]
-    ):
-        self._state_manager.update_train_run_aborted(self._run_id)
-        if worker_group_context:
-            self._state_manager.update_train_run_attempt_aborted(
-                self._run_id,
-                worker_group_context.run_attempt_id,
-            )
+    def before_worker_group_abort(self, worker_group_context: WorkerGroupContext):
+        self._state_manager.update_train_run_attempt_aborted(
+            self._run_id,
+            worker_group_context.run_attempt_id,
+        )

@@ -206,8 +206,8 @@ class DataParallelTrainer:
             try:
                 ray.get(controller.abort.remote())
             except ray.exceptions.ActorDiedError:
-                # Note: signal handler during ray.get still exits with 1.
-                # Possibly because the actor dies in the middle.
+                # We catch the error and exit 0 to indicate graceful termination.
+                # However, for some reason the process still exits with 1.
                 sys.exit(0)
 
         signal.signal(signal.SIGINT, sigint_handler)
