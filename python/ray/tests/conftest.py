@@ -533,16 +533,30 @@ def class_ray_instance():
 
 @contextmanager
 def _ray_start(**kwargs):
-    init_kwargs = get_default_fixture_ray_kwargs()
-    init_kwargs.update(kwargs)
-    # Start the Ray processes.
-    address_info = ray.init("local", **init_kwargs)
+    from filelock import FileLock
 
-    yield address_info
-    # The code after the yield will run as teardown code.
-    ray.shutdown()
-    # Delete the cluster address just in case.
-    ray._common.utils.reset_ray_address()
+    lock_file = os.path.join(tempfile.gettempdir(), "setup_once.lock")
+    done_file = os.path.join(tempfile.gettempdir(), "setup_once.done")
+
+    with FileLock(lock_file):
+        if not os.path.exists(done_file):
+            init_kwargs = get_default_fixture_ray_kwargs()
+            init_kwargs.update(kwargs)
+            # Start the Ray processes.
+            address_info = ray.init("local", **init_kwargs)
+
+            yield address_info
+            # The code after the yield will run as teardown code.
+            ray.shutdown()
+            # Delete the cluster address just in case.
+            ray._common.utils.reset_ray_address()
+            # Perform one-time setup
+            print("Running setup once across workers")
+            # simulate setup delay
+            open(done_file, "w").close()
+        else:
+            yield None
+            print("Setup already done.")
 
 
 @pytest.fixture
