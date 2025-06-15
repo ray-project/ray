@@ -6,9 +6,11 @@ steps:
   # builds
   - name: data9build
     wanda: ci/docker/data9.build.wanda.yaml
+    tags: cibase
 
   - name: datalbuild
     wanda: ci/docker/datal.build.wanda.yaml
+    tags: cibase
 
   - name: databuild-multipy
     label: "wanda: databuild-py{{matrix}}"
@@ -17,15 +19,19 @@ steps:
     env:
       PYTHON: "{{matrix}}"
     depends_on: oss-ci-base_ml-multipy
+    tags: cibase
 
   - name: datanbuild
     wanda: ci/docker/datan.build.wanda.yaml
+    tags: cibase
 
   - name: datamongobuild
     wanda: ci/docker/datamongo.build.wanda.yaml
+    tags: cibase
 
   - name: datatfxbslbuild
     wanda: ci/docker/datatfxbsl.build.wanda.yaml
+    tags: cibase
 
   # tests
   - label: ":database: data: arrow v9 tests"
