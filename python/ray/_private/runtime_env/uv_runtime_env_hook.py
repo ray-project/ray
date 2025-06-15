@@ -119,7 +119,7 @@ def hook(runtime_env: Optional[Dict[str, Any]]) -> Dict[str, Any]:
     parser = argparse.ArgumentParser()
     parser.add_argument("script")
     cmdline_args, _ = parser.parse_known_args(cmdline[2:])
-    uv_run_args = cmdline[:cmdline.index(cmdline_args.script)]
+    uv_run_args = cmdline[: cmdline.index(cmdline_args.script)]
 
     # Remove the "--directory" argument since it has already been taken into
     # account when setting the current working directory of the current process
