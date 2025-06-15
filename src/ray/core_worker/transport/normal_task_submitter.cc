@@ -366,9 +366,9 @@ void NormalTaskSubmitter::RequestNewWorkerIfNeeded(const SchedulingKey &scheduli
         {
           absl::MutexLock lock(&mu_);
 
-          auto &scheduling_key_entry = scheduling_key_entries_[scheduling_key];
-          auto lease_client = GetOrConnectLeaseClient(&raylet_address);
-          scheduling_key_entry.pending_lease_requests.erase(task_id);
+          auto &_scheduling_key_entry = scheduling_key_entries_[scheduling_key];
+          auto _lease_client = GetOrConnectLeaseClient(&raylet_address);
+          _scheduling_key_entry.pending_lease_requests.erase(task_id);
 
           if (status.ok()) {
             if (reply.canceled()) {
@@ -411,9 +411,9 @@ void NormalTaskSubmitter::RequestNewWorkerIfNeeded(const SchedulingKey &scheduli
                                  ", task_name=",
                                  task_name));
 
-                tasks_to_fail = std::move(scheduling_key_entry.task_queue);
-                scheduling_key_entry.task_queue.clear();
-                if (scheduling_key_entry.CanDelete()) {
+                tasks_to_fail = std::move(_scheduling_key_entry.task_queue);
+                _scheduling_key_entry.task_queue.clear();
+                if (_scheduling_key_entry.CanDelete()) {
                   scheduling_key_entries_.erase(scheduling_key);
                 }
               } else {
@@ -438,11 +438,11 @@ void NormalTaskSubmitter::RequestNewWorkerIfNeeded(const SchedulingKey &scheduli
               auto resources_copy = reply.resource_mapping();
 
               AddWorkerLeaseClient(reply.worker_address(),
-                                   std::move(lease_client),
+                                   std::move(_lease_client),
                                    resources_copy,
                                    scheduling_key,
                                    task_id);
-              RAY_CHECK(scheduling_key_entry.active_workers.size() >= 1);
+              RAY_CHECK(_scheduling_key_entry.active_workers.size() >= 1);
               OnWorkerIdle(reply.worker_address(),
                            scheduling_key,
                            /*error=*/false,
@@ -460,7 +460,7 @@ void NormalTaskSubmitter::RequestNewWorkerIfNeeded(const SchedulingKey &scheduli
 
               RequestNewWorkerIfNeeded(scheduling_key, &reply.retry_at_raylet_address());
             }
-          } else if (lease_client != local_lease_client_) {
+          } else if (_lease_client != local_lease_client_) {
             // A lease request to a remote raylet failed. Retry locally if the lease is
             // still needed.
             // TODO(swang): Fail after some number of retries?
@@ -498,9 +498,9 @@ void NormalTaskSubmitter::RequestNewWorkerIfNeeded(const SchedulingKey &scheduli
                  << "because the raylet is "
                     "unavailable (crashed).";
               error_info.set_error_message(ss.str());
-              tasks_to_fail = std::move(scheduling_key_entry.task_queue);
-              scheduling_key_entry.task_queue.clear();
-              if (scheduling_key_entry.CanDelete()) {
+              tasks_to_fail = std::move(_scheduling_key_entry.task_queue);
+              _scheduling_key_entry.task_queue.clear();
+              if (_scheduling_key_entry.CanDelete()) {
                 scheduling_key_entries_.erase(scheduling_key);
               }
             } else {
