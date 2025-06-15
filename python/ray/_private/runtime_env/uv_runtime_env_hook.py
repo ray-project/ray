@@ -116,9 +116,9 @@ def hook(runtime_env: Optional[Dict[str, Any]]) -> Dict[str, Any]:
     # Extract the arguments of 'uv run' that are not arguments of the script.
     # We do this by parsing the script name out of the "uv run <args> script <script_args>" command line
     # extracting everything up to the script part.
-    parser = argparse.ArgumentParser(prog="uv run")
+    parser = argparse.ArgumentParser()
     parser.add_argument("script")
-    cmdline_args, _ = parser.parse_known_args(cmdline)
+    cmdline_args, _ = parser.parse_known_args(cmdline[2:])
     uv_run_args = cmdline[:cmdline.index(cmdline_args.script)]
 
     # Remove the "--directory" argument since it has already been taken into
