@@ -100,9 +100,8 @@ RayObject::RayObject(rpc::ErrorType error_type, const rpc::RayErrorInfo *ray_err
     return;
   }
 
-  const auto error_buffer = MakeSerializedErrorBuffer<rpc::RayErrorInfo>(*ray_error_info);
+  auto error_buffer = MakeSerializedErrorBuffer<rpc::RayErrorInfo>(*ray_error_info);
   Init(std::move(error_buffer), MakeErrorMetadataBuffer(error_type), {});
-  return;
 }
 
 bool RayObject::IsException(rpc::ErrorType *error_type) const {

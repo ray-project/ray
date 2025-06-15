@@ -137,15 +137,12 @@ CoreWorkerMemoryStore::CoreWorkerMemoryStore(
     ReferenceCounter *counter,
     std::shared_ptr<raylet::RayletClient> raylet_client,
     std::function<Status()> check_signals,
-    std::function<void(const RayObject &)> unhandled_exception_handler,
-    std::function<std::shared_ptr<ray::RayObject>(
-        const ray::RayObject &object, const ObjectID &object_id)> object_allocator)
+    std::function<void(const RayObject &)> unhandled_exception_handler)
     : io_context_(io_context),
       ref_counter_(counter),
       raylet_client_(std::move(raylet_client)),
       check_signals_(std::move(check_signals)),
-      unhandled_exception_handler_(std::move(unhandled_exception_handler)),
-      object_allocator_(std::move(object_allocator)) {}
+      unhandled_exception_handler_(std::move(unhandled_exception_handler)) {}
 
 void CoreWorkerMemoryStore::GetAsync(
     const ObjectID &object_id, std::function<void(std::shared_ptr<RayObject>)> callback) {
@@ -184,15 +181,17 @@ std::shared_ptr<RayObject> CoreWorkerMemoryStore::GetIfExists(const ObjectID &ob
   return ptr;
 }
 
-bool CoreWorkerMemoryStore::Put(const RayObject &object, const ObjectID &object_id) {
+bool CoreWorkerMemoryStore::Put(RayObject object,
+                                const ObjectID &object_id,
+                                bool copy_data) {
   std::vector<std::function<void(std::shared_ptr<RayObject>)>> async_callbacks;
   RAY_LOG(DEBUG).WithField(object_id) << "Putting object into memory store.";
   std::shared_ptr<RayObject> object_entry = nullptr;
-  if (object_allocator_ != nullptr) {
-    object_entry = object_allocator_(object, object_id);
-  } else {
+  if (copy_data) {
     object_entry = std::make_shared<RayObject>(
         object.GetData(), object.GetMetadata(), object.GetNestedRefs(), true);
+  } else {
+    object_entry = std::make_shared<RayObject>(std::move(object));
   }
 
   // TODO(edoakes): we should instead return a flag to the caller to put the object in
