@@ -435,6 +435,12 @@ class WorkerGroup:
         self._worker_group_state = None
         self._world_rank_to_ongoing_poll = {}
 
+    def abort(self):
+        """Abort the worker group."""
+        self._assert_active()
+        for callback in self._callbacks:
+            callback.before_worker_group_abort(self._worker_group_context)
+
     #####################################################################################
     # Polling Worker Group
     #####################################################################################
