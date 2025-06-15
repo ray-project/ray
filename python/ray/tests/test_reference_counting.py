@@ -16,11 +16,10 @@ import pytest
 
 import ray
 import ray.cluster_utils
-from ray._common.test_utils import SignalActor
+from ray._common.test_utils import SignalActor, wait_for_condition
 from ray._private.test_utils import (
     kill_actor_and_wait_for_failure,
     put_object,
-    wait_for_condition,
     skip_flaky_core_test_premerge,
 )
 

@@ -28,15 +28,20 @@
 namespace ray {
 namespace core {
 
+using TensorTransportGetter =
+    std::function<std::optional<rpc::TensorTransport>(const ObjectID &object_id)>;
+
 // This class is thread-safe.
 class LocalDependencyResolver {
  public:
   LocalDependencyResolver(CoreWorkerMemoryStore &store,
                           TaskFinisherInterface &task_finisher,
-                          ActorCreatorInterface &actor_creator)
+                          ActorCreatorInterface &actor_creator,
+                          const TensorTransportGetter &tensor_transport_getter)
       : in_memory_store_(store),
         task_finisher_(task_finisher),
-        actor_creator_(actor_creator) {}
+        actor_creator_(actor_creator),
+        tensor_transport_getter_(tensor_transport_getter) {}
 
   /// Resolve all local and remote dependencies for the task, calling the specified
   /// callback when done. Direct call ids in the task specification will be resolved
@@ -103,6 +108,14 @@ class LocalDependencyResolver {
   TaskFinisherInterface &task_finisher_;
 
   ActorCreatorInterface &actor_creator_;
+
+  /// Used to get the tensor transport for an object.
+  /// ObjectRefs with a tensor transport other than OBJECT_STORE will be only
+  /// partially inlined. The rest of the data will be transferred via a
+  /// different communication backend directly between actors. Thus, for these
+  /// objects, we will not clear the ObjectRef metadata, even if the task
+  /// executor has inlined the object value.
+  const TensorTransportGetter tensor_transport_getter_;
 
   absl::flat_hash_map<TaskID, std::unique_ptr<TaskState>> pending_tasks_
       ABSL_GUARDED_BY(mu_);

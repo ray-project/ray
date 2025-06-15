@@ -5,6 +5,7 @@ import pytest
 import sys
 import threading
 import time
+from ray._common.test_utils import wait_for_condition
 from ray._private.state_api_test_utils import (
     verify_failed_task,
 )
@@ -15,7 +16,6 @@ import ray
 from ray._private.test_utils import (
     raw_metrics,
     run_string_as_driver_nonblocking,
-    wait_for_condition,
 )
 from ray.util.state import list_tasks
 

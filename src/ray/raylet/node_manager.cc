@@ -115,9 +115,16 @@ NodeManager::NodeManager(
     std::shared_ptr<gcs::GcsClient> gcs_client,
     rpc::ClientCallManager &client_call_manager,
     rpc::CoreWorkerClientPool &worker_rpc_pool,
-    std::unique_ptr<pubsub::SubscriberInterface> core_worker_subscriber,
-    std::unique_ptr<IObjectDirectory> object_directory,
-    std::unique_ptr<ObjectManagerInterface> object_manager,
+    std::shared_ptr<pubsub::SubscriberInterface> core_worker_subscriber,
+    std::shared_ptr<ClusterResourceScheduler> cluster_resource_scheduler,
+    std::shared_ptr<LocalTaskManager> local_task_manager,
+    std::shared_ptr<ClusterTaskManagerInterface> cluster_task_manager,
+    std::shared_ptr<IObjectDirectory> object_directory,
+    std::shared_ptr<ObjectManagerInterface> object_manager,
+    LocalObjectManager &local_object_manager,
+    DependencyManager &dependency_manager,
+    WorkerPoolInterface &worker_pool,
+    absl::flat_hash_map<WorkerID, std::shared_ptr<WorkerInterface>> &leased_workers,
     plasma::PlasmaClientInterface &store_client,
     std::unique_ptr<core::experimental::MutableObjectProviderInterface>
         mutable_object_provider,
@@ -127,40 +134,7 @@ NodeManager::NodeManager(
       io_service_(io_service),
       gcs_client_(std::move(gcs_client)),
       shutdown_raylet_gracefully_(shutdown_raylet_gracefully),
-      worker_pool_(
-          io_service,
-          self_node_id_,
-          config.node_manager_address,
-          [this, config]() {
-            // Callback to determine the maximum number of idle workers to keep
-            // around.
-            if (config.num_workers_soft_limit >= 0) {
-              return config.num_workers_soft_limit;
-            }
-            // If no limit is provided, use the available number of CPUs,
-            // assuming that each incoming task will likely require 1 CPU.
-            // We floor the available CPUs to the nearest integer to avoid starting too
-            // many workers when there is less than 1 CPU left. Otherwise, we could end
-            // up repeatedly starting the worker, then killing it because it idles for
-            // too long. The downside is that we will be slower to schedule tasks that
-            // could use a fraction of a CPU.
-            return static_cast<int64_t>(
-                cluster_resource_scheduler_->GetLocalResourceManager()
-                    .GetLocalAvailableCpus());
-          },
-          config.num_prestart_python_workers,
-          config.maximum_startup_concurrency,
-          config.min_worker_port,
-          config.max_worker_port,
-          config.worker_ports,
-          gcs_client_,
-          config.worker_commands,
-          config.native_library_path,
-          /*starting_worker_timeout_callback=*/
-          [this] { cluster_task_manager_->ScheduleAndDispatchTasks(); },
-          config.ray_debugger_external,
-          /*get_time=*/[]() { return absl::Now(); },
-          config.enable_resource_isolation),
+      worker_pool_(worker_pool),
       client_call_manager_(client_call_manager),
       worker_rpc_pool_(worker_rpc_pool),
       core_worker_subscriber_(std::move(core_worker_subscriber)),
@@ -171,7 +145,7 @@ NodeManager::NodeManager(
       periodical_runner_(PeriodicalRunner::Create(io_service)),
       report_resources_period_ms_(config.report_resources_period_ms),
       initial_config_(config),
-      dependency_manager_(*object_manager_),
+      dependency_manager_(dependency_manager),
       wait_manager_(/*is_object_local*/
                     [this](const ObjectID &object_id) {
                       return dependency_manager_.CheckObjectLocal(object_id);
@@ -184,35 +158,16 @@ NodeManager::NodeManager(
       node_manager_server_("NodeManager",
                            config.node_manager_port,
                            config.node_manager_address == "127.0.0.1"),
-      local_object_manager_(
-          self_node_id_,
-          config.node_manager_address,
-          config.node_manager_port,
-          io_service_,
-          RayConfig::instance().free_objects_batch_size(),
-          RayConfig::instance().free_objects_period_milliseconds(),
-          worker_pool_,
-          worker_rpc_pool_,
-          /*max_io_workers*/ config.max_io_workers,
-          /*is_external_storage_type_fs*/
-          RayConfig::instance().is_external_storage_type_fs(),
-          /*max_fused_object_count*/ RayConfig::instance().max_fused_object_count(),
-          /*on_objects_freed*/
-          [this](const std::vector<ObjectID> &object_ids) {
-            object_manager_->FreeObjects(object_ids,
-                                         /*local_only=*/false);
-          },
-          /*is_plasma_object_spillable*/
-          [this](const ObjectID &object_id) {
-            return object_manager_->IsPlasmaObjectSpillable(object_id);
-          },
-          /*core_worker_subscriber_=*/core_worker_subscriber_.get(),
-          object_directory_.get()),
+      local_object_manager_(local_object_manager),
+      leased_workers_(leased_workers),
       high_plasma_storage_usage_(RayConfig::instance().high_plasma_storage_usage()),
       local_gc_run_time_ns_(absl::GetCurrentTimeNanos()),
       local_gc_throttler_(RayConfig::instance().local_gc_min_interval_s() * 1e9),
       global_gc_throttler_(RayConfig::instance().global_gc_min_interval_s() * 1e9),
       local_gc_interval_ns_(RayConfig::instance().local_gc_interval_s() * 1e9),
+      cluster_resource_scheduler_(std::move(cluster_resource_scheduler)),
+      local_task_manager_(std::move(local_task_manager)),
+      cluster_task_manager_(std::move(cluster_task_manager)),
       record_metrics_period_ms_(config.record_metrics_period_ms),
       next_resource_seq_no_(0),
       ray_syncer_(io_service_, self_node_id_.Binary()),
@@ -225,73 +180,7 @@ NodeManager::NodeManager(
           RayConfig::instance().memory_monitor_refresh_ms(),
           CreateMemoryUsageRefreshCallback())) {
   RAY_LOG(INFO).WithField(kLogKeyNodeID, self_node_id_) << "Initializing NodeManager";
-  cluster_resource_scheduler_ = std::make_shared<ClusterResourceScheduler>(
-      io_service,
-      scheduling::NodeID(self_node_id_.Binary()),
-      config.resource_config.GetResourceMap(),
-      /*is_node_available_fn*/
-      [this](scheduling::NodeID node_id) {
-        return gcs_client_->Nodes().Get(NodeID::FromBinary(node_id.Binary())) != nullptr;
-      },
-      /*get_used_object_store_memory*/
-      [this]() {
-        if (RayConfig::instance().scheduler_report_pinned_bytes_only()) {
-          // Get the current bytes used by local primary object copies.  This
-          // is used to help node scale down decisions. A node can only be
-          // safely drained when this function reports zero.
-          int64_t bytes_used = local_object_manager_.GetPrimaryBytes();
-          // Report nonzero if we have objects spilled to the local filesystem.
-          if (bytes_used == 0 && local_object_manager_.HasLocallySpilledObjects()) {
-            bytes_used = 1;
-          }
-          return bytes_used;
-        }
-        return object_manager_->GetUsedMemory();
-      },
-      /*get_pull_manager_at_capacity*/
-      [this]() { return object_manager_->PullManagerHasPullsQueued(); },
-      shutdown_raylet_gracefully,
-      /*labels*/
-      config.labels);
 
-  auto get_node_info_func = [this](const NodeID &node_id) {
-    return gcs_client_->Nodes().Get(node_id);
-  };
-  auto announce_infeasible_task = [this](const RayTask &task) {
-    PublishInfeasibleTaskError(task);
-  };
-  RAY_CHECK(RayConfig::instance().max_task_args_memory_fraction() > 0 &&
-            RayConfig::instance().max_task_args_memory_fraction() <= 1)
-      << "max_task_args_memory_fraction must be a nonzero fraction.";
-  auto max_task_args_memory =
-      static_cast<int64_t>(static_cast<float>(object_manager_->GetMemoryCapacity()) *
-                           RayConfig::instance().max_task_args_memory_fraction());
-  if (max_task_args_memory <= 0) {
-    RAY_LOG(WARNING)
-        << "Max task args should be a fraction of the object store capacity, but object "
-           "store capacity is zero or negative. Allowing task args to use 100% of the "
-           "local object store. This can cause ObjectStoreFullErrors if the tasks' "
-           "return values are greater than the remaining capacity.";
-    max_task_args_memory = 0;
-  }
-  local_task_manager_ = std::make_unique<LocalTaskManager>(
-      self_node_id_,
-      *std::dynamic_pointer_cast<ClusterResourceScheduler>(cluster_resource_scheduler_),
-      dependency_manager_,
-      get_node_info_func,
-      worker_pool_,
-      leased_workers_,
-      [this](const std::vector<ObjectID> &object_ids,
-             std::vector<std::unique_ptr<RayObject>> *results) {
-        return GetObjectsFromPlasma(object_ids, results);
-      },
-      max_task_args_memory);
-  cluster_task_manager_ = std::make_shared<ClusterTaskManager>(
-      self_node_id_,
-      *std::dynamic_pointer_cast<ClusterResourceScheduler>(cluster_resource_scheduler_),
-      get_node_info_func,
-      announce_infeasible_task,
-      *local_task_manager_);
   placement_group_resource_manager_ = std::make_shared<NewPlacementGroupResourceManager>(
       std::dynamic_pointer_cast<ClusterResourceScheduler>(cluster_resource_scheduler_));
 
@@ -434,10 +323,15 @@ ray::Status NodeManager::RegisterGcs() {
         [this] { local_object_manager_.FlushFreeObjects(); },
         RayConfig::instance().free_objects_period_milliseconds(),
         "NodeManager.deadline_timer.flush_free_objects");
-    periodical_runner_->RunFnPeriodically(
-        [this] { SpillIfOverPrimaryObjectsThreshold(); },
-        RayConfig::instance().free_objects_period_milliseconds(),
-        "NodeManager.deadline_timer.spill_objects_when_over_threshold");
+    if (RayConfig::instance().object_spilling_config().empty()) {
+      RAY_LOG(INFO) << "Object spilling is disabled because spilling config is "
+                    << "unspecified";
+    } else {
+      periodical_runner_->RunFnPeriodically(
+          [this] { SpillIfOverPrimaryObjectsThreshold(); },
+          RayConfig::instance().free_objects_period_milliseconds(),
+          "NodeManager.deadline_timer.spill_objects_when_over_threshold");
+    }
   }
   /// If periodic asio stats print is enabled, it will print it.
   const auto event_stats_print_interval_ms =
@@ -2386,6 +2280,10 @@ void NodeManager::FinishAssignedActorCreationTask(WorkerInterface &worker,
 }
 
 void NodeManager::SpillIfOverPrimaryObjectsThreshold() {
+  if (RayConfig::instance().object_spilling_config().empty()) {
+    RAY_LOG(INFO) << "Object spilling is disabled because spilling config is unspecified";
+    return;
+  }
   // Trigger object spilling if current usage is above the specified threshold.
   const float allocated_percentage =
       static_cast<float>(local_object_manager_.GetPrimaryBytes()) /
@@ -2949,31 +2847,6 @@ std::optional<syncer::RaySyncMessage> NodeManager::CreateSyncMessage(
   RAY_CHECK(commands_sync_message.SerializeToString(&serialized_msg));
   msg.set_sync_message(std::move(serialized_msg));
   return std::make_optional(std::move(msg));
-}
-
-void NodeManager::PublishInfeasibleTaskError(const RayTask &task) const {
-  bool suppress_warning = false;
-
-  if (!task.GetTaskSpecification().PlacementGroupBundleId().first.IsNil()) {
-    // If the task is part of a placement group, do nothing. If necessary, the infeasible
-    // warning should come from the placement group scheduling, not the task scheduling.
-    suppress_warning = true;
-  }
-
-  // Push a warning to the task's driver that this task is currently infeasible.
-  if (!suppress_warning) {
-    std::ostringstream error_message;
-    error_message
-        << "The actor or task with ID " << task.GetTaskSpecification().TaskId()
-        << " cannot be scheduled right now. It requires "
-        << task.GetTaskSpecification().GetRequiredPlacementResources().DebugString()
-        << " for placement, however the cluster currently cannot provide the requested "
-           "resources. The required resources may be added as autoscaling takes place "
-           "or placement groups are scheduled. Otherwise, consider reducing the "
-           "resource requirements of the task.";
-    std::string error_message_str = error_message.str();
-    RAY_LOG(WARNING) << error_message_str;
-  }
 }
 
 // Picks the worker with the latest submitted task and kills the process

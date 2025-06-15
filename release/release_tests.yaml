@@ -935,6 +935,11 @@
       frequency: manual
       cluster:
         cluster_compute: tpl_gce_1x16.yaml
+    - __suffix__: kuberay
+      env: kuberay
+      frequency: manual
+      cluster:
+        cluster_compute: kuberay.yaml
 
 - name: tune_scalability_durable_trainable
   group: Tune scalability tests
@@ -4169,7 +4174,7 @@
 
   cluster:
     byod:
-      type: llm-cu124
+      type: llm-cu128
     cluster_compute: llm_auto_select_worker.yaml
     # NOTE: Important for getting the correct secrets
     cloud_id: cld_wy5a6nhazplvu32526ams61d98
@@ -4190,7 +4195,7 @@
 
   cluster:
     byod:
-      type: llm-cu124
+      type: llm-cu128
     cluster_compute: llm_auto_select_worker.yaml
     # NOTE: Important for getting the correct secrets
     cloud_id: cld_wy5a6nhazplvu32526ams61d98
@@ -4210,7 +4215,7 @@
 
   cluster:
     byod:
-      type: llm-cu124
+      type: llm-cu128
     cluster_compute: llm_g5-4xlarge.yaml
     # NOTE: Important for getting the correct secrets
     cloud_id: cld_wy5a6nhazplvu32526ams61d98
@@ -4231,7 +4236,7 @@
 
   cluster:
     byod:
-      type: llm-cu124
+      type: llm-cu128
     cluster_compute: llm_auto_select_worker.yaml
     # NOTE: Important for getting the correct secrets
     cloud_id: cld_wy5a6nhazplvu32526ams61d98
@@ -4251,7 +4256,7 @@
 
   cluster:
     byod:
-      type: llm-cu124
+      type: llm-cu128
     cluster_compute: llm_auto_select_worker.yaml
     # NOTE: Important for getting the correct secrets
     cloud_id: cld_wy5a6nhazplvu32526ams61d98
@@ -4271,7 +4276,7 @@
 
   cluster:
     byod:
-      type: llm-cu124
+      type: llm-cu128
       runtime_env:
         - VLLM_USE_V1=1
     cluster_compute: llm_four_L4_gpu_head_node.yaml
@@ -4292,7 +4297,7 @@
 
   cluster:
     byod:
-      type: llm-cu124
+      type: llm-cu128
       runtime_env:
         - VLLM_USE_V1=1
     cluster_compute: llm_g5-4xlarge.yaml
@@ -4313,9 +4318,7 @@
 
   cluster:
     byod:
-      type: llm-cu124
-      # TODO(lk-chen): remove once we bump vllm to 0.9.0
-      post_build_script: byod_llm_pd_disagg_test.sh
+      type: llm-cu128
     cluster_compute: llm_auto_select_worker.yaml
     # NOTE: Important for getting the correct secrets
     cloud_id: cld_wy5a6nhazplvu32526ams61d98
@@ -4335,9 +4338,7 @@
 
   cluster:
     byod:
-      type: llm-cu124
-      # TODO(lk-chen): remove once we bump vllm to 0.9.0
-      post_build_script: byod_llm_pd_disagg_test.sh
+      type: llm-cu128
     cluster_compute: llm_auto_select_worker.yaml
     # NOTE: Important for getting the correct secrets
     cloud_id: cld_wy5a6nhazplvu32526ams61d98
@@ -4362,8 +4363,11 @@
 
   cluster:
     byod:
-      type: llm-cu124
+      type: llm-cu128
     cluster_compute: llm_4xl4.yaml
+    # NOTE: Important for getting the correct secrets
+    cloud_id: cld_wy5a6nhazplvu32526ams61d98
+    project_id: prj_lhlrf1u5yv8qz9qg3xzw8fkiiq
 
   run:
     timeout: 3600
@@ -4379,7 +4383,7 @@
 
   cluster:
     byod:
-      type: llm-cu124
+      type: llm-cu128
       post_build_script: byod_llm_sglang_test.sh
     cluster_compute: llm_4xl4.yaml
 
@@ -4429,7 +4433,7 @@
 
   cluster:
     byod:
-      type: llm-cu124  # anyscale/ray-llm:<PR_RAY_VERSION>-py311-cu124
+      type: llm-cu128  # anyscale/ray-llm:<PR_RAY_VERSION>-py311-cu128
       post_build_script: byod_llm_ner.sh  # release/ray_release/byod/
     cluster_compute: ci/aws.yaml  # relative to working_dir
 
@@ -4445,6 +4449,30 @@
       cluster:
         cluster_compute: ci/gce.yaml  # relative to working_dir
 
+- name: distributing_pytorch  # do not use dashes (regex sensitive)
+  frequency: weekly
+  group: ray-examples
+  team: ml
+  working_dir: //doc/source/train/examples/pytorch/distributing-pytorch
+
+  cluster:
+    byod:
+      type: gpu
+      post_build_script: byod_pytorch_train_data.sh  # release/ray_release/byod/
+    cluster_compute: ci/aws.yaml  # relative to working_dir
+
+  run:
+    timeout: 3600
+    script: bash ci/tests.sh  # relative to working_dir
+
+  variations:
+    - __suffix__: aws
+    - __suffix__: gce
+      env: gce
+      frequency: manual
+      cluster:
+        cluster_compute: ci/gce.yaml  # relative to working_dir
+
 - name: e2e_audio
   frequency: weekly
   python: "3.11"
@@ -4454,7 +4482,7 @@
 
   cluster:
     byod:
-      type: llm-cu124
+      type: llm-cu128
       post_build_script: byod_e2e_audio.sh
     cluster_compute: ci/aws.yaml
 
@@ -4468,7 +4496,29 @@
       env: gce
       frequency: manual
       cluster:
-        cluster_compute: ci/gce.yaml  # relative to working_dir
+        cluster_compute: ci/gce.yaml  # Relative to working_dir.
+
+- name: e2e_timeseries
+  frequency: weekly
+  python: "3.11"
+  group: ray-examples
+  team: ml
+  working_dir: //doc/source/ray-overview/examples/e2e-timeseries  # Use // to access from repo's root.
+
+  cluster:
+    byod:
+      type: cu123
+      post_build_script: byod_e2e_timeseries.sh
+    cluster_compute: ci/aws.yaml
+
+  run:
+    prepare: pip install -e .
+    prepare_timeout: 300
+    script: python ci/test.py --target-dir e2e_timeseries/
+    timeout: 3600
+
+  variations:
+    - __suffix__: aws
 
 - name: e2e_multimodal_ai_workloads  # do not use dashes (regex sensitive)
   frequency: weekly
@@ -4481,6 +4531,56 @@
     byod:
       type: cu123  # anyscale/ray-llm:<PR_RAY_VERSION>-py311-cu124
       post_build_script: byod_e2e_multimodal_ai_workloads.sh  # release/ray_release/byod/
+    cluster_compute: ci/aws.yaml  # relative to working_dir
+
+  run:
+    timeout: 3600
+    script: bash ci/tests.sh  # relative to working_dir
+
+  variations:
+    - __suffix__: aws  # uses default specs above
+    - __suffix__: gce
+      env: gce
+      frequency: manual
+      cluster:
+        cluster_compute: ci/gce.yaml  # relative to working_dir
+
+- name: object_detection  # do not use dashes (regex sensitive)
+  frequency: weekly
+  python: "3.11"
+  group: ray-examples
+  team: ml
+  working_dir: //doc/source/ray-overview/examples/object-detection
+
+  cluster:
+    byod:
+      type: llm-cu128  # anyscale/ray-llm:<PR_RAY_VERSION>-py311-cu128
+      post_build_script: byod_object_detection.sh # release/ray_release/byod/
+    cluster_compute: ci/aws.yaml  # relative to working_dir
+
+  run:
+    timeout: 3600
+    script: bash ci/tests.sh  # relative to working_dir
+
+  variations:
+    - __suffix__: aws
+    - __suffix__: gce
+      env: gce
+      frequency: manual
+      cluster:
+        cluster_compute: ci/gce.yaml  # relative to working_dir
+
+- name: e2e_rag  # do not use dashes (regex sensitive)
+  frequency: weekly
+  python: "3.11"
+  group: ray-examples
+  team: ml
+  working_dir: //doc/source/ray-overview/examples/e2e-rag  # use // to access from repo's root
+
+  cluster:
+    byod:
+      type: llm-cu128  # anyscale/ray-llm:<PR_RAY_VERSION>-py311-cu128
+      post_build_script: byod_e2e_rag.sh  # release/ray_release/byod/
     cluster_compute: ci/aws.yaml  # relative to working_dir
 
   run:
