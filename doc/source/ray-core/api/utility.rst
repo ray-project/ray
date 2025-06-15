@@ -16,6 +16,8 @@ Utility
    ray.util.accelerators.tpu.get_current_pod_name
    ray.util.accelerators.tpu.get_num_tpu_chips_on_node
 
+   ray.util.concurrent.futures.ray_executor.RayExecutor
+
    ray.nodes
    ray.cluster_resources
    ray.available_resources
