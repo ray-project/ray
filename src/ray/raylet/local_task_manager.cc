@@ -612,8 +612,8 @@ bool LocalTaskManager::PoppedWorkerHandler(
       // eventually. The task will be removed from dispatch queue in
       // `CancelTask`.
       CancelTasks(
-          [task_id](const auto &work) {
-            return task_id == work->task_.GetTaskSpecification().TaskId();
+          [task_id](const auto &w) {
+            return task_id == w->task_.GetTaskSpecification().TaskId();
           },
           rpc::RequestWorkerLeaseReply::SCHEDULING_CANCELLED_RUNTIME_ENV_SETUP_FAILED,
           /*scheduling_failure_message*/ runtime_env_setup_error_message);
