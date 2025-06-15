@@ -114,10 +114,12 @@ def hook(runtime_env: Optional[Dict[str, Any]]) -> Dict[str, Any]:
         )
 
     # Extract the arguments of 'uv run' that are not arguments of the script.
-    # First we get the arguments of this script (without the executable):
-    script_args = psutil.Process().cmdline()[1:]
-    # Then, we remove those arguments from the parent process commandline:
-    uv_run_args = cmdline[: len(cmdline) - len(script_args)]
+    # We do this by parsing the script name out of the "uv run <args> script <script_args>" command line
+    # extracting everything up to the script part.
+    parser = argparse.ArgumentParser(prog="uv run")
+    parser.add_argument("script")
+    cmdline_args, _ = parser.parse_known_args(cmdline)
+    uv_run_args = cmdline[:cmdline.index(cmdline_args.script)]
 
     # Remove the "--directory" argument since it has already been taken into
     # account when setting the current working directory of the current process
