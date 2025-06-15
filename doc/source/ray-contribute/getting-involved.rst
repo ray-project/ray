@@ -13,6 +13,7 @@ Getting Involved / Contributing
     ci
     docs
     writing-code-snippets
+    writing-kuberay-doctests
     fake-autoscaler
     testing-tips
     debugging
