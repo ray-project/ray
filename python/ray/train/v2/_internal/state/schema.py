@@ -33,6 +33,10 @@ class RunStatus(str, Enum):
     ABORTED = "ABORTED"
 
 
+def is_terminal_run_status(status: RunStatus) -> bool:
+    return status in [RunStatus.FINISHED, RunStatus.ERRORED, RunStatus.ABORTED]
+
+
 @DeveloperAPI
 class RunAttemptStatus(str, Enum):
     """Enumeration of the possible statuses for a Train run attempt."""
