@@ -156,6 +156,18 @@ if __name__ == "__main__":
         subprocess.check_call([sys.executable] + sys.argv, env=env)
         sys.exit(0)
 
+    # If the following env variable is set, we use multiprocessing
+    # spawn to start the subprocess, since it uses a different way to
+    # modify the command line than subprocess.check_call
+    if os.environ.get("RAY_TEST_UV_MULTIPROCESSING_SPAWN") == "1":
+        import multiprocessing
+
+        multiprocessing.set_start_method('spawn')
+        pool = multiprocessing.Pool(processes=1)
+        runtime_env = json.loads(args.runtime_env)
+        print(json.dumps(pool.apply(hook, (runtime_env,))))
+        sys.exit(0)
+
     # We purposefully modify sys.argv here to make sure the hook is robust
     # against such modification.
     sys.argv.pop(1)

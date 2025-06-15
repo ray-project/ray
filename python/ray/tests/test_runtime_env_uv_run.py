@@ -282,6 +282,19 @@ def test_uv_run_runtime_env_hook(with_uv):
         },
     )
 
+    # Check in the case that the process title was reset
+    check_uv_run(
+        cmd=[uv, "run", "--no-project"],
+        runtime_env={},
+        expected_output={
+            "py_executable": f"{uv} run --no-project",
+            "working_dir": os.getcwd(),
+        },
+        subprocess_kwargs={
+            "env": {**os.environ, "RAY_TEST_UV_MULTIPROCESSING_SPAWN": "1"}
+        },
+    )
+
 
 @pytest.mark.skipif(sys.platform == "win32", reason="Not ported to Windows yet.")
 def test_uv_run_runtime_env_hook_e2e(shutdown_only, with_uv, temp_dir):
