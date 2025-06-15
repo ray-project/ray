@@ -400,7 +400,7 @@ void LocalTaskManager::DispatchScheduledTasksToWorkers() {
       info_by_sched_cls_.erase(scheduling_class);
     }
     if (is_infeasible) {
-      const auto &front_task = dispatch_queue.front()->task.GetTaskSpecification();
+      const auto &front_task = dispatch_queue.front()->task_.GetTaskSpecification();
       RAY_LOG(ERROR) << "A task got scheduled to a node even though it was infeasible. "
                         "Please report an issue on GitHub.\nTask: "
                      << front_task.DebugString();
