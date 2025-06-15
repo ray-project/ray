@@ -24,7 +24,6 @@ examples/rayserve-llm-example
 
 This section presents example Ray workloads to try out on your Kubernetes cluster.
 
-- {ref}`kuberay-ml-example` (CPU-only)
 - {ref}`kuberay-gpu-training-example`
 - {ref}`kuberay-mnist-training-example` (CPU-only)
 - {ref}`kuberay-mobilenet-rayservice-example` (CPU-only)
