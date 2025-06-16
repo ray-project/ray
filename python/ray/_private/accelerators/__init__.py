@@ -2,13 +2,13 @@ from typing import Optional, Set
 
 from ray._private.accelerators.accelerator import AcceleratorManager
 from ray._private.accelerators.amd_gpu import AMDGPUAcceleratorManager
+from ray._private.accelerators.apple_gpu import AppleGPUAcceleratorManager
 from ray._private.accelerators.hpu import HPUAcceleratorManager
 from ray._private.accelerators.intel_gpu import IntelGPUAcceleratorManager
 from ray._private.accelerators.neuron import NeuronAcceleratorManager
 from ray._private.accelerators.npu import NPUAcceleratorManager
 from ray._private.accelerators.nvidia_gpu import NvidiaGPUAcceleratorManager
 from ray._private.accelerators.tpu import TPUAcceleratorManager
-from ray._private.accelerators.apple_gpu import AppleGPUAcceleratorManager
 
 
 def get_all_accelerator_managers() -> Set[AcceleratorManager]:
@@ -57,6 +57,8 @@ def get_accelerator_manager_for_resource(
             resource_name_to_accelerator_manager["GPU"] = AMDGPUAcceleratorManager
         elif IntelGPUAcceleratorManager.get_current_node_num_accelerators() > 0:
             resource_name_to_accelerator_manager["GPU"] = IntelGPUAcceleratorManager
+        elif AppleGPUAcceleratorManager.get_current_node_num_accelerators() > 0:
+            resource_name_to_accelerator_manager["GPU"] = AppleGPUAcceleratorManager
         else:
             resource_name_to_accelerator_manager["GPU"] = NvidiaGPUAcceleratorManager
         get_accelerator_manager_for_resource._resource_name_to_accelerator_manager = (
