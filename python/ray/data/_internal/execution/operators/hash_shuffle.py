@@ -1005,6 +1005,10 @@ class AggregatorPool:
     def start(self):
         # Record start time for monitoring
         self._started_at = time.time()
+
+        # Check cluster resources before starting aggregators
+        self._check_cluster_resources()
+
         for aggregator_id in range(self._num_aggregators):
             target_partition_ids = self._aggregator_partition_map[aggregator_id]
 
@@ -1015,9 +1019,6 @@ class AggregatorPool:
             ).remote(aggregator_id, target_partition_ids, self._aggregation_factory_ref)
 
             self._aggregators.append(aggregator)
-
-        # Check cluster resources before starting aggregators
-        self._check_cluster_resources()
 
     def _check_cluster_resources(self) -> None:
         """Check if cluster has enough resources to schedule all aggregators.
