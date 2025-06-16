@@ -17,9 +17,9 @@ def get_all_accelerator_managers() -> Set[AcceleratorManager]:
         NvidiaGPUAcceleratorManager,
         IntelGPUAcceleratorManager,
         AMDGPUAcceleratorManager,
+        AppleGPUAcceleratorManager,
         TPUAcceleratorManager,
         NeuronAcceleratorManager,
-        AppleGPUAcceleratorManager,
         HPUAcceleratorManager,
         NPUAcceleratorManager,
     }
