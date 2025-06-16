@@ -7,6 +7,7 @@ from concurrent.futures.thread import ThreadPoolExecutor
 from typing import TYPE_CHECKING, AsyncGenerator, List, Optional, Tuple
 
 import ray
+from ray.llm._internal.common.utils.import_utils import try_import
 from ray.llm._internal.serve.configs.constants import (
     MAX_NUM_TOPLOGPROBS_ALLOWED,
     MIN_NUM_TOPLOGPROBS_ALLOWED,
@@ -51,7 +52,6 @@ from ray.llm._internal.serve.observability.metrics.utils import (
     ClockUnit,
     MsClock,
 )
-from ray.llm._internal.utils import try_import
 from ray.util import metrics
 from ray.util.placement_group import PlacementGroup
 from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
@@ -125,6 +125,13 @@ def _clear_current_platform_cache():
     https://github.com/vllm-project/vllm/issues/7890
     """
     from vllm.platforms import current_platform
+
+    # TODO(seiji): remove this once https://github.com/vllm-project/vllm/pull/18979 is merged
+    if (
+        "CUDA_VISIBLE_DEVICES" in os.environ
+        and os.environ["CUDA_VISIBLE_DEVICES"] == ""
+    ):
+        del os.environ["CUDA_VISIBLE_DEVICES"]
 
     # This check is just to future proof this implementation
     # in case vllm removes their lru_cache decorator
@@ -200,35 +207,23 @@ class VLLMEngine(LLMEngine):
                 "VLLM_NIXL_SIDE_CHANNEL_PORT" not in vllm.envs.environment_variables
                 or "VLLM_NIXL_SIDE_CHANNEL_HOST" not in vllm.envs.environment_variables
             ):
-                logger.warning(
+                raise ValueError(
                     "This vLLM version does not support VLLM_NIXL_SIDE_CHANNEL_PORT"
                     "or VLLM_NIXL_SIDE_CHANNEL_HOST environment variable. It's likely"
                     "that you are using an older version of vLLM."
                 )
-            else:
-                if not vllm.envs.is_set("VLLM_NIXL_SIDE_CHANNEL_PORT"):
-                    port: int = vllm.utils.get_open_port()
-                    os.environ["VLLM_NIXL_SIDE_CHANNEL_PORT"] = str(port)
-                if not vllm.envs.is_set("VLLM_NIXL_SIDE_CHANNEL_HOST"):
-                    os.environ["VLLM_NIXL_SIDE_CHANNEL_HOST"] = vllm.utils.get_ip()
 
-                # We need to overwrite the engine_id to make it unique across replicas.
-                # "engine_id" is added in vllm 0.9.0, so do existance check.
-                try:
-                    engine_id = getattr(
-                        kv_transfer_config, "engine_id", str(uuid.uuid4())
-                    )
-                    host = vllm.envs.VLLM_NIXL_SIDE_CHANNEL_HOST
-                    port = vllm.envs.VLLM_NIXL_SIDE_CHANNEL_PORT
-                    kv_transfer_config.engine_id = "-".join(
-                        [engine_id, host, str(port)]
-                    )
-                except ValueError:
-                    # TODO(lk-chen): Raise error once vllm 0.9.0 is pinned to rayllm
-                    logger.warning(
-                        "engine_id is not supported in vllm < 0.9.0, NIXL-backed kv transfer "
-                        "is not supported."
-                    )
+            if not vllm.envs.is_set("VLLM_NIXL_SIDE_CHANNEL_PORT"):
+                port: int = vllm.utils.get_open_port()
+                os.environ["VLLM_NIXL_SIDE_CHANNEL_PORT"] = str(port)
+            if not vllm.envs.is_set("VLLM_NIXL_SIDE_CHANNEL_HOST"):
+                os.environ["VLLM_NIXL_SIDE_CHANNEL_HOST"] = vllm.utils.get_ip()
+
+            # We need to overwrite the engine_id to make it unique across replicas.
+            engine_id = getattr(kv_transfer_config, "engine_id", str(uuid.uuid4()))
+            host = vllm.envs.VLLM_NIXL_SIDE_CHANNEL_HOST
+            port = vllm.envs.VLLM_NIXL_SIDE_CHANNEL_PORT
+            kv_transfer_config.engine_id = "-".join([engine_id, host, str(port)])
 
         assert isinstance(
             llm_config, LLMConfig

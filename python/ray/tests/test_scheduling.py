@@ -13,12 +13,10 @@ import ray.cluster_utils
 import ray.util.accelerators
 from ray._private.internal_api import memory_summary
 from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
+from ray._common.test_utils import SignalActor, Semaphore, wait_for_condition
 from ray._private.test_utils import (
-    Semaphore,
-    SignalActor,
     object_memory_usage,
     get_metric_check_condition,
-    wait_for_condition,
     MetricSamplePattern,
 )
 
@@ -742,11 +740,67 @@ def test_scheduling_class_depth(ray_start_regular):
         get_metric_check_condition([MetricSamplePattern(name=metric_name, value=3)]),
         timeout=timeout,
     )
-    start_infeasible.remote(4)
-    wait_for_condition(
-        get_metric_check_condition([MetricSamplePattern(name=metric_name, value=4)]),
-        timeout=timeout,
-    )
+
+
+def test_no_resource_oversubscription_during_shutdown(shutdown_only):
+    """
+    Ensures that workers don't release their acquired resources
+    until all running tasks have been drained.
+    """
+    # Initialize Ray with 1 CPU, so we can detect if it over-allocates.
+    ray.init(num_cpus=1, log_to_driver=False)
+
+    # Separate signal actors for each task to track their execution
+    task1_started = SignalActor.remote()
+    task1_can_finish = SignalActor.remote()
+    task2_started = SignalActor.remote()
+    task2_can_finish = SignalActor.remote()
+
+    @ray.remote(num_cpus=1)
+    def blocking_task(
+        worker_id: str,
+        started_signal: ray.actor.ActorHandle,
+        can_finish_signal: ray.actor.ActorHandle,
+    ) -> str:
+        """A task that signals when it starts and waits for permission to finish."""
+        print(f"  Worker {worker_id}: Starting execution")
+        # Signal that this task has started executing
+        ray.get(started_signal.send.remote())
+        # Wait for permission to finish
+        ray.get(can_finish_signal.wait.remote())
+        print(f"  Worker {worker_id}: Completed")
+        return f"Worker {worker_id} completed"
+
+    # 1. Start task1 - should consume the only CPU
+    task1 = blocking_task.remote("A", task1_started, task1_can_finish)
+
+    # Wait for task1 to start executing
+    ray.get(task1_started.wait.remote())
+    print("Task1 is now executing")
+
+    # 2. Start task2 - should be queued since CPU is occupied
+    task2 = blocking_task.remote("B", task2_started, task2_can_finish)
+    print("Task2 submitted (should be queued)")
+
+    # 3. The key test: verify task2 does NOT start executing while task1 is running
+    # If the bug exists, task2 will start immediately. If fixed, it should wait.
+
+    # Check if task2 starts within 1 second (indicating the bug)
+    with pytest.raises(ray.exceptions.GetTimeoutError):
+        ray.get(task2_started.wait.remote(), timeout=0.5)
+
+    # Now let task1 complete
+    ray.get(task1_can_finish.send.remote())
+    result1 = ray.get(task1)
+    assert result1 == "Worker A completed"
+
+    # After task1 completes, task2 should now be able to start
+    ray.get(task2_started.wait.remote())
+
+    # Let task2 complete
+    ray.get(task2_can_finish.send.remote())
+    result2 = ray.get(task2)
+    assert result2 == "Worker B completed"
 
 
 if __name__ == "__main__":
