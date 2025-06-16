@@ -207,10 +207,9 @@ class GPUObjectManager:
                     "Please make sure the sender and receiver are in the same communicator."
                 )
             if src_rank == dst_rank:
-                raise ValueError(
-                    f"src_rank: {src_rank} and dst_rank: {dst_rank} are the same. This may cause deadlock for transports like NCCL."
-                )
+                # If the source and destination ranks are the same, the tensors can
+                # be transferred intra-process, so we skip the out-of-band tensor
+                # transfer.
+                continue
             self._send_gpu_object(communicator.name, src_actor, arg.hex(), dst_rank)
-            self._recv_gpu_object(
-                communicator.name, dst_actor, arg.hex(), src_rank, tensor_meta
-            )
+            self._recv_gpu_object(communicator.name, dst_actor, arg.hex(), src_rank, tensor_meta)

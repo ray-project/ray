@@ -5,7 +5,6 @@
 ```{toctree}
 :hidden:
 
-examples/ml-example
 examples/gpu-training-example
 examples/mnist-training-example
 examples/stable-diffusion-rayservice
@@ -18,12 +17,12 @@ examples/rayjob-kueue-gang-scheduling
 examples/distributed-checkpointing-with-gcsfuse
 examples/modin-example
 examples/vllm-rayservice
+examples/rayserve-llm-example
 ```
 
 
 This section presents example Ray workloads to try out on your Kubernetes cluster.
 
-- {ref}`kuberay-ml-example` (CPU-only)
 - {ref}`kuberay-gpu-training-example`
 - {ref}`kuberay-mnist-training-example` (CPU-only)
 - {ref}`kuberay-mobilenet-rayservice-example` (CPU-only)
@@ -36,3 +35,4 @@ This section presents example Ray workloads to try out on your Kubernetes cluste
 - {ref}`kuberay-distributed-checkpointing-gcsefuse`
 - {ref}`kuberay-modin-example`
 - {ref}`kuberay-vllm-rayservice-example`
+- {ref}`kuberay-rayservice-llm-example`
