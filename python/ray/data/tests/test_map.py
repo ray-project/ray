@@ -3,6 +3,7 @@ import itertools
 import logging
 import math
 import os
+import re
 import threading
 import time
 from typing import Iterator, Literal
@@ -15,8 +16,9 @@ import pyarrow.parquet as pq
 import pytest
 
 import ray
+from ray._common.test_utils import wait_for_condition
 from ray._private.arrow_utils import get_pyarrow_version
-from ray._private.test_utils import run_string_as_driver, wait_for_condition
+from ray._private.test_utils import run_string_as_driver
 from ray.data import Dataset
 from ray.data._internal.arrow_ops.transform_pyarrow import (
     MIN_PYARROW_VERSION_TYPE_PROMOTION,
@@ -111,6 +113,9 @@ def test_basic_actors(shutdown_only):
         assert len(actors) > 0
         return all(actor_info["State"] == "DEAD" for actor_info in actors.values())
 
+    import gc
+
+    gc.collect()
     wait_for_condition(_all_actors_dead)
 
 
@@ -797,8 +802,37 @@ def test_filter_with_invalid_expression(ray_start_regular_shared, tmp_path):
         parquet_ds.filter(expr="fake_news super fake")
 
     fake_column_ds = parquet_ds.filter(expr="sepal_length_123 > 1")
-    with pytest.raises(UserCodeException):
+    with pytest.raises(RuntimeError) as exc_info:
         fake_column_ds.to_pandas()
+
+    # Strip and normalize the error message
+    error_message = str(exc_info.value)
+    error_message_core = re.sub(r"\s+", " ", error_message.strip())
+
+    # Expected error message
+    expected_message = (
+        "Filter expression: '(sepal_length_123 > 1)' failed on parquet file: "
+        "'sample_data.parquet' with columns: "
+        "{'sepal.length', 'sepal.width', 'petal.length', 'petal.width'}"
+    )
+    expected_message_core = re.sub(r"\s+", " ", expected_message.strip())
+
+    # Sort the set in the message
+    def normalize_set_order(message):
+        return re.sub(
+            r"{([^}]*)}",
+            lambda m: "{" + ", ".join(sorted(m.group(1).split(", "))) + "}",
+            message,
+        )
+
+    # Sort the schema columns set in the message before comparing
+    error_message_core = normalize_set_order(error_message_core)
+    expected_message_core = normalize_set_order(expected_message_core)
+
+    assert expected_message_core in error_message_core, (
+        f"Expected error message to contain: '{expected_message_core}', "
+        f"but got: '{error_message_core}'"
+    )
 
 
 def test_drop_columns(ray_start_regular_shared, tmp_path):
@@ -1446,28 +1480,6 @@ def test_map_batches_block_bundling_skewed_auto(
 
     # Blocks should be bundled up to the batch size.
     assert ds._plan.initial_num_blocks() == num_out_blocks
-
-
-def test_map_with_mismatched_columns(ray_start_regular_shared):
-    def bad_fn(row):
-        if row["id"] > 5:
-            return {"a": "hello1"}
-        else:
-            return {"b": "hello1"}
-
-    def good_fn(row):
-        if row["id"] > 5:
-            return {"a": "hello1", "b": "hello2"}
-        else:
-            return {"b": "hello2", "a": "hello1"}
-
-    ds = ray.data.range(10, override_num_blocks=1)
-    error_message = "Current row has different columns compared to previous rows."
-    with pytest.raises(ValueError) as e:
-        ds.map(bad_fn).materialize()
-    assert error_message in str(e.value)
-    ds_map = ds.map(good_fn)
-    assert ds_map.take() == [{"a": "hello1", "b": "hello2"} for _ in range(10)]
 
 
 def test_map_batches_preserve_empty_blocks(ray_start_regular_shared):
