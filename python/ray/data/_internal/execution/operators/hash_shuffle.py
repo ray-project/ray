@@ -447,11 +447,13 @@ class HashShufflingOperatorBase(PhysicalOperator):
         ] = defaultdict(dict)
 
         # Resource monitoring state
-        self._aggregator_startup_time: Optional[float] = None
+        self._started_at: Optional[float] = None
 
         # Add last warning timestamp for health checks
         self._last_health_warning_time: Optional[float] = None
-        self._health_warning_interval: float = 10.0  # 10 seconds between warnings
+        self._health_warning_interval: float = (
+            self.data_context.hash_shuffle_aggregator_health_warning_interval_s
+        )
         # Track readiness refs for non-blocking health checks
         self._readiness_refs: Optional[List[ObjectRef]] = None
 
@@ -462,7 +464,7 @@ class HashShufflingOperatorBase(PhysicalOperator):
         self._check_cluster_resources()
 
         # Record start time for monitoring
-        self._aggregator_startup_time = time.time()
+        self._started_at = time.time()
 
         self._aggregator_pool.start()
 
@@ -493,7 +495,7 @@ class HashShufflingOperatorBase(PhysicalOperator):
         available_cpus = available_resources.get("CPU", 0)
 
         if required_cpus > total_cpus:
-            raise ValueError(
+            logger.warning(
                 f"Insufficient CPU resources in cluster for hash shuffle operation. "
                 f"Required: {required_cpus} CPUs for {self._aggregator_pool.num_aggregators} aggregators, "
                 f"but cluster only has {total_cpus} total CPUs. "
@@ -513,7 +515,7 @@ class HashShufflingOperatorBase(PhysicalOperator):
             available_memory = available_resources.get("memory", 0)
 
             if required_memory > total_memory:
-                raise ValueError(
+                logger.warning(
                     f"Insufficient memory resources in cluster for hash shuffle operation. "
                     f"Required: {required_memory / GiB:.2f} GiB for {self._aggregator_pool.num_aggregators} aggregators, "
                     f"but cluster only has {total_memory / GiB:.2f} GiB total memory. "
@@ -538,11 +540,8 @@ class HashShufflingOperatorBase(PhysicalOperator):
         Uses non-blocking ray.wait to check actor readiness.
         Will warn every 10 seconds if aggregators remain unhealthy.
         """
-        min_wait_time = self.data_context.min_hash_shuffle_aggregator_wait_time_in_secs
-        if (
-            self._aggregator_startup_time is None
-            or time.time() - self._aggregator_startup_time < min_wait_time
-        ):
+        min_wait_time = self.data_context.min_hash_shuffle_aggregator_wait_time_in_s
+        if self._started_at is None or time.time() - self._started_at < min_wait_time:
             return
 
         try:
@@ -557,7 +556,7 @@ class HashShufflingOperatorBase(PhysicalOperator):
             _, unready_refs = ray.wait(
                 self._readiness_refs,
                 num_returns=len(self._readiness_refs),
-                timeout=0.1,  # Short timeout to avoid blocking
+                timeout=0,  # Short timeout to avoid blocking
             )
 
             current_time = time.time()
@@ -568,11 +567,30 @@ class HashShufflingOperatorBase(PhysicalOperator):
             )
 
             if should_warn:
+                # Get cluster resource information for better diagnostics
+                try:
+                    available_resources = ray.available_resources()
+                    available_cpus = available_resources.get("CPU", 0)
+
+                    required_cpus = (
+                        self._aggregator_pool._aggregator_ray_remote_args.get(
+                            "num_cpus", 1
+                        )
+                        * self._aggregator_pool.num_aggregators
+                    )
+                except Exception:
+                    available_cpus = "unknown"
+                    required_cpus = "unknown"
+
+                ready_aggregators = self._aggregator_pool.num_aggregators - len(
+                    unready_refs
+                )
+                wait_time_min = min_wait_time / 60.0
+
                 logger.warning(
-                    f"Hash shuffle aggregator health check failed after {min_wait_time}s. "
-                    f"{len(unready_refs)}/{self._aggregator_pool.num_aggregators} "
-                    f"This may indicate resource constraints or cluster issues. "
-                    f"The operation may proceed slowly or fail. "
+                    f"Only {ready_aggregators} out of {self._aggregator_pool.num_aggregators} hash-shuffle aggregators are ready after {wait_time_min:.1f} min. "
+                    f"This might indicate resource contention for cluster resources (available CPUs: {available_cpus}, required CPUs: {required_cpus}). "
+                    f"Consider increasing cluster size or reducing the number of aggregators via `DataContext.max_hash_shuffle_aggregators`. "
                     f"Will continue checking every {self._health_warning_interval}s."
                 )
                 self._last_health_warning_time = current_time
