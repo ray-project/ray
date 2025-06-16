@@ -28,6 +28,8 @@ numpy>=1.20
 pyarrow >= 9.0.0
 pyarrow <18; sys_platform == "darwin" and platform_machine == "x86_64"
 
+polars>=1.30.0,<2.0.0
+
 # ray[all]
 smart_open
 lz4

@@ -86,7 +86,7 @@ nbval==0.11.0
 bash_kernel==0.10.0
 
 # For dataset tests
-polars==0.14.21
+polars>=1.30.0,<2.0.0
 
 importlib-metadata==6.11.0
 

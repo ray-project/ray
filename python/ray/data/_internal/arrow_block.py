@@ -70,14 +70,14 @@ ARROW_MAX_CHUNK_SIZE_BYTES = env_integer(
 
 # We offload some transformations to polars for performance.
 def get_sort_transform(context: DataContext) -> Callable:
-    if context.use_polars:
+    if context.use_polars or context.use_polars_sort:
         return transform_polars.sort
     else:
         return transform_pyarrow.sort
 
 
 def get_concat_and_sort_transform(context: DataContext) -> Callable:
-    if context.use_polars:
+    if context.use_polars or context.use_polars_sort:
         return transform_polars.concat_and_sort
     else:
         return transform_pyarrow.concat_and_sort
