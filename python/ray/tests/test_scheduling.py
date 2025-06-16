@@ -742,70 +742,71 @@ def test_scheduling_class_depth(ray_start_regular):
     )
 
 
-def test_resource_oversubscription_bug(shutdown_only):
+def test_no_resource_oversubscription_during_shutdown(shutdown_only):
     """
-    Tests the bug where a worker can exit and release its resources early
-    while its tasks are still running, leading to resource oversubscription.
+    Ensures that workers don't release their acquired resources
+    until all running tasks have been drained.
     """
     # Initialize Ray with 1 CPU, so we can detect if it over-allocates.
     ray.init(num_cpus=1, log_to_driver=False)
 
-    @ray.remote(num_cpus=1)
-    def cpu_bound_work(worker_id, work_duration):
-        """A simple CPU-intensive task that runs for a given duration."""
-        print(f"  Worker {worker_id}: Starting CPU-bound work ({work_duration}s)")
-        start_time = time.time()
-        while time.time() - start_time < work_duration:
-            # Burn CPU cycles. A pointless calculation is used to ensure the
-            # CPU is actually busy and the operation is not optimized away.
-            sum(range(10000))
+    # Separate signal actors for each task to track their execution
+    task1_started = SignalActor.remote()
+    task1_can_finish = SignalActor.remote()
+    task2_started = SignalActor.remote()
+    task2_can_finish = SignalActor.remote()
 
-        print(f"  Worker {worker_id}: Completed work")
+    @ray.remote(num_cpus=1)
+    def blocking_task(worker_id, started_signal, can_finish_signal):
+        """A task that signals when it starts and waits for permission to finish."""
+        print(f"  Worker {worker_id}: Starting execution")
+        # Signal that this task has started executing
+        ray.get(started_signal.send.remote())
+        # Wait for permission to finish
+        ray.get(can_finish_signal.wait.remote())
+        print(f"  Worker {worker_id}: Completed")
         return f"Worker {worker_id} completed"
 
-    # 1. Start a long-running task that should occupy the only CPU.
-    task1 = cpu_bound_work.remote("A", 4.0)
+    # 1. Start task1 - should consume the only CPU
+    task1 = blocking_task.remote("A", task1_started, task1_can_finish)
 
-    # Give it a moment to start and be scheduled.
-    time.sleep(0.3)
+    # Wait for task1 to start executing
+    ray.get(task1_started.wait.remote())
+    print("Task1 is now executing")
 
-    # Sanity check: At this point, no CPUs should be available.
-    assert ray.available_resources().get("CPU", 0) == 0
+    # 2. Start task2 - should be queued since CPU is occupied
+    task2 = blocking_task.remote("B", task2_started, task2_can_finish)
+    print("Task2 submitted (should be queued)")
 
-    # 2. Simulate the bug:
-    # In the buggy scenario, the raylet would be incorrectly notified that
-    # the worker for task1 has exited, releasing its CPU resource even
-    # though the task is still running.
+    # 3. The key test: verify task2 does NOT start executing while task1 is running
+    # If the bug exists, task2 will start immediately. If fixed, it should wait.
 
-    # 3. Schedule a second task.
-    # The scheduler now incorrectly believes it has a free CPU and schedules
-    # this task, leading to 2 tasks competing for 1 physical CPU core.
-    task2 = cpu_bound_work.remote("B", 2.0)
+    # Check if task2 starts within 1 second (indicating the bug)
+    try:
+        ray.get(task2_started.wait.remote(), timeout=1.0)
+        # If we get here, task2 started while task1 was running - this is the bug
+        # Clean up both tasks before failing
+        ray.get([task1_can_finish.send.remote(), task2_can_finish.send.remote()])
+        ray.get([task1, task2])
+        assert (
+            False
+        ), "Resource oversubscription bug detected: task2 executed before task1 completed"
+    except ray.exceptions.GetTimeoutError:
+        # Correct behavior: task2 did not start within timeout
+        pass
 
-    # 4. Monitor Ray's internal resource accounting.
-    # We check if the 'used_cpus' ever exceeds the total number of CPUs.
-    used_cpus_snapshots = []
-    total_cpus = ray.cluster_resources().get("CPU", 1)
-    for _ in range(20):  # Monitor for 2 seconds
-        used_cpus = total_cpus - ray.available_resources().get("CPU", 0)
-        used_cpus_snapshots.append(used_cpus)
-        time.sleep(0.1)
+    # Now let task1 complete
+    ray.get(task1_can_finish.send.remote())
+    result1 = ray.get(task1)
+    assert result1 == "Worker A completed"
 
-    # If the bug exists, at some point Ray's accounting will show that
-    # 2 CPUs are in use, despite only 1 being in the cluster.
-    # With the fix, this should never exceed 1.
-    max_used_cpus = max(used_cpus_snapshots)
-    print(f"Max CPUs reported as used by Ray: {max_used_cpus}")
-    print(f"Total CPUs in cluster: {total_cpus}")
+    # After task1 completes, task2 should now be able to start
+    ray.get(task2_started.wait.remote())
 
-    # The core of the test: assert that Ray never thinks it's using
-    # more CPUs than are physically available. We allow a small tolerance
-    # for floating point inaccuracies.
-    assert max_used_cpus <= total_cpus * 1.05
-
-    # Wait for tasks to complete and print results.
-    results = ray.get([task1, task2])
-    print(f"Task results: {results}")
+    # Let task2 complete
+    ray.get(task2_can_finish.send.remote())
+    result2 = ray.get(task2)
+    assert result2 == "Worker B completed"
 
 
 if __name__ == "__main__":

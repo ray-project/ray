@@ -1215,8 +1215,8 @@ void CoreWorker::Exit(
           auto status = local_raylet_client_->NotifyDirectCallTaskBlocked();
           if (!status.ok()) {
             RAY_LOG(WARNING)
-                << "Failed to notify Raylet. It is either the raylet is already dead or "
-                << "the raylet disconnects the client because it kills this worker.";
+                << "Failed to notify Raylet. The raylet may have already shut down or "
+                << "the connection was lost.";
           }
 
           bool not_actor_task = false;
