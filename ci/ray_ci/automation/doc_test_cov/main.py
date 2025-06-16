@@ -138,8 +138,7 @@ def main():
     doc_parser.save_doc_files_to_json(literalinclude_doc_files)
     doc_parser.save_doc_files_to_csv(literalinclude_doc_files)
     test_coverage = doc_parser.calculate_test_coverage(literalinclude_doc_files)
-    print(f"test coverage: {test_results.coverage_percentage}%")
-    print(f"test_coverage: {test_coverage}")
+    print(f"test coverage: {test_coverage["coverage_percentage"]}%")
     print("done saving doc files to csv")
 
 
