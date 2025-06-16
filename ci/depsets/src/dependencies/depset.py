@@ -17,17 +17,17 @@ class Dep:
         return self.__str__()
 
     @classmethod
-    def from_requirement(cls, requirement: str) -> 'Dep':
+    def from_requirement(cls, requirement: str) -> "Dep":
         # Simple parsing of requirement strings like "package==1.0.0" or "package>=1.0.0"
-        parts = requirement.split('==')
+        parts = requirement.split("==")
         if len(parts) == 2:
-            return cls(parts[0], ['=='], parts[1])
-        parts = requirement.split('>=')
+            return cls(parts[0], ["=="], parts[1])
+        parts = requirement.split(">=")
         if len(parts) == 2:
-            return cls(parts[0], ['>='], parts[1])
-        parts = requirement.split('<=')
+            return cls(parts[0], [">="], parts[1])
+        parts = requirement.split("<=")
         if len(parts) == 2:
-            return cls(parts[0], ['<='], parts[1])
+            return cls(parts[0], ["<="], parts[1])
         return cls(requirement, [], "")
 
     def to_dict(self) -> Dict:
@@ -38,7 +38,7 @@ class Dep:
         }
 
     @classmethod
-    def from_dict(cls, data: Dict) -> 'Dep':
+    def from_dict(cls, data: Dict) -> "Dep":
         return cls(
             data["name"],
             data["constraints"],
@@ -57,22 +57,22 @@ class DepSet:
         with open(self.requirements_fp) as f:
             for line in f:
                 line = line.strip()
-                if line and not line.startswith('#'):
+                if line and not line.startswith("#"):
                     self.dependencies.append(Dep.from_requirement(line))
 
-    def compile(self, constraints: List[str], set: Optional['DepSet'] = None):
+    def compile(self, constraints: List[str], set: Optional["DepSet"] = None):
         # Creates a depset from a list of constraint files or an existing depset
         pass
 
-    def subset(self, packages: List[str]) -> 'DepSet':
+    def subset(self, packages: List[str]) -> "DepSet":
         # Creates a depset based on existing set and a set of package names (min dep set)
         pass
 
-    def expand(self, deps: List[Dep], constraints: List[str]) -> 'DepSet':
+    def expand(self, deps: List[Dep], constraints: List[str]) -> "DepSet":
         # Creates a new expanded depset based on 1 or more depsets and 1 or more constraint files
         pass
 
-    def relax(self, degree: int) -> 'DepSet':
+    def relax(self, degree: int) -> "DepSet":
         # Converts a set back into versioned constraints - keeping select dep versions pinned
         pass
 
@@ -86,7 +86,7 @@ class DepSet:
         return "\n".join([str(dep) for dep in self.dependencies])
 
     @classmethod
-    def from_dict(cls, data: Dict) -> 'DepSet':
+    def from_dict(cls, data: Dict) -> "DepSet":
         depset = cls(data["requirements_fp"])
         depset.dependencies = [Dep.from_dict(dep_data) for dep_data in data["dependencies"]]
         return depset
