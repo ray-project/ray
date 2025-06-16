@@ -16,6 +16,8 @@
 
 #include <opentelemetry/metrics/meter.h>
 #include <opentelemetry/metrics/observer_result.h>
+#include <opentelemetry/metrics/sync_instruments.h>
+#include <opentelemetry/nostd/shared_ptr.h>
 #include <opentelemetry/sdk/metrics/meter_provider.h>
 
 #include <cassert>
@@ -53,22 +55,28 @@ class OpenTelemetryMetricRecorder {
   // Registers a gauge metric with the given name and description
   void RegisterGaugeMetric(const std::string &name, const std::string &description);
 
+  // Registers a counter metric with the given name and description
+  void RegisterCounterMetric(const std::string &name, const std::string &description);
+
+  // Check if a metric with the given name is registered.
+  bool IsMetricRegistered(const std::string &name);
+
   // Set the value of a metric given the tags and the metric value.
   void SetMetricValue(const std::string &name,
                       absl::flat_hash_map<std::string, std::string> &&tags,
                       double value);
 
   // Get the value of a metric given the tags.
-  std::optional<double> GetMetricValue(
-      const std::string &name,
-      const absl::flat_hash_map<std::string, std::string> &tags) const;
+  std::optional<double> GetObservableMetricValue(
+      const std::string &name, const absl::flat_hash_map<std::string, std::string> &tags);
 
   // Helper function to collect gauge metric values. This function is called only once
   // per interval for each metric. It collects the values from the observations_by_name_
   // map and passes them to the observer.
   void CollectGaugeMetricValues(
       const std::string &name,
-      const std::shared_ptr<opentelemetry::metrics::ObserverResultT<double>> &observer);
+      const opentelemetry::nostd::shared_ptr<
+          opentelemetry::metrics::ObserverResultT<double>> &observer);
 
   // Delete copy constructors and assignment operators. Skip generation of the move
   // constructors and assignment operators.
@@ -87,17 +95,32 @@ class OpenTelemetryMetricRecorder {
       std::string,
       absl::flat_hash_map<absl::flat_hash_map<std::string, std::string>, double>>
       observations_by_name_;
-  // Map of metric names to their instrument pointers. This is used to ensure that
-  // each metric is only registered once.
-  absl::flat_hash_map<std::string,
-                      std::shared_ptr<opentelemetry::metrics::ObservableInstrument>>
+  // Map of metric names to their instrument pointers. This is used to ensure
+  // that each metric is only registered once.
+  absl::flat_hash_map<
+      std::string,
+      opentelemetry::nostd::variant<
+          opentelemetry::nostd::shared_ptr<opentelemetry::metrics::ObservableInstrument>,
+          opentelemetry::nostd::unique_ptr<
+              opentelemetry::metrics::SynchronousInstrument>>>
       registered_instruments_;
   // List of gauge callback names. This is used as data for the gauge callbacks.
   std::list<std::string> gauge_callback_names_;
   // Lock for thread safety when modifying state.
   std::mutex mutex_;
+  // Flag to indicate if the recorder is shutting down. This is used to make sure that
+  // the recorder will only shutdown once.
+  std::atomic<bool> is_shutdown_{false};
 
-  std::shared_ptr<opentelemetry::metrics::Meter> GetMeter() {
+  void SetObservableMetricValue(const std::string &name,
+                                absl::flat_hash_map<std::string, std::string> &&tags,
+                                double value);
+
+  void SetSynchronousMetricValue(const std::string &name,
+                                 absl::flat_hash_map<std::string, std::string> &&tags,
+                                 double value);
+
+  opentelemetry::nostd::shared_ptr<opentelemetry::metrics::Meter> GetMeter() {
     return meter_provider_->GetMeter("ray");
   }
 };

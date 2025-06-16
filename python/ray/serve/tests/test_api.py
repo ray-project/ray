@@ -10,9 +10,8 @@ from fastapi import FastAPI
 
 import ray
 from ray import serve
-from ray._common.test_utils import SignalActor
-from ray._private.pydantic_compat import BaseModel, ValidationError
-from ray._private.test_utils import wait_for_condition
+from ray._common.pydantic_compat import BaseModel, ValidationError
+from ray._common.test_utils import SignalActor, wait_for_condition
 from ray.serve._private.api import call_user_app_builder_with_args_if_necessary
 from ray.serve._private.common import DeploymentID
 from ray.serve._private.constants import (
