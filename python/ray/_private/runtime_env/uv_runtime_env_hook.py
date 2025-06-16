@@ -235,6 +235,10 @@ def hook(runtime_env: Optional[Dict[str, Any]]) -> Dict[str, Any]:
     # extracting everything up to the script part.
     parser = _create_uv_run_parser()
     cmdline_args = parser.parse_args(cmdline[2:])
+    if cmdline[-len(cmdline_args.command):] != cmdline_args.command:
+        raise AssertionError(
+            f"uv run command {cmdline_args.command} is not a suffix of command line {cmdline}"
+        )
     uv_run_args = cmdline[: -len(cmdline_args.command)]
 
     # Remove the "--directory" argument since it has already been taken into
