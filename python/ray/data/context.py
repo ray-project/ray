@@ -380,6 +380,10 @@ class DataContext:
         DEFAULT_MIN_HASH_SHUFFLE_AGGREGATOR_WAIT_TIME_IN_S
     )
 
+    hash_shuffle_aggregator_health_warning_interval_s: int = (
+        DEFAULT_HASH_SHUFFLE_AGGREGATOR_HEALTH_WARNING_INTERVAL_S
+    )
+
     # Max number of *concurrent* hash-shuffle finalization tasks running
     # at the same time. This config is helpful to control concurrency of
     # finalization tasks to prevent single aggregator running multiple tasks
