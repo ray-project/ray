@@ -133,7 +133,7 @@ def _create_uv_run_parser():
 
 
 def _check_working_dir_files(
-    uv_run_args: List[str], runtime_env: Dict[str, Any]
+    uv_run_args: argparse.Namespace, runtime_env: Dict[str, Any]
 ) -> None:
     """
     Check that the files required by uv are local to the working_dir. This catches
@@ -142,21 +142,14 @@ def _check_working_dir_files(
 
     The function won't return anything, it just raises a RuntimeError if there is an error.
     """
-    # First parse the arguments we need to check
-    uv_run_parser = argparse.ArgumentParser()
-    uv_run_parser.add_argument("--with-requirements", nargs="?")
-    uv_run_parser.add_argument("--project", nargs="?")
-    uv_run_parser.add_argument("--no-project", action="store_true")
-    known_args, _ = uv_run_parser.parse_known_args(uv_run_args)
-
     working_dir = Path(runtime_env["working_dir"]).resolve()
 
     # Check if the requirements.txt file is in the working_dir
-    if known_args.with_requirements and not Path(
-        known_args.with_requirements
+    if uv_run_args.with_requirements and not Path(
+        uv_run_args.with_requirements
     ).resolve().is_relative_to(working_dir):
         raise RuntimeError(
-            f"You specified --with-requirements={known_args.with_requirements} but "
+            f"You specified --with-requirements={uv_run_args.with_requirements} but "
             f"the requirements file is not in the working_dir {runtime_env['working_dir']}, "
             "so the workers will not have access to the file. Make sure "
             "the requirements file is in the working directory. "
@@ -167,10 +160,10 @@ def _check_working_dir_files(
 
     # Check if the pyproject.toml file is in the working_dir
     pyproject = None
-    if known_args.no_project:
+    if uv_run_args.no_project:
         pyproject = None
-    elif known_args.project:
-        pyproject = Path(known_args.project)
+    elif uv_run_args.project:
+        pyproject = Path(uv_run_args.project)
     else:
         # Walk up the directory tree until pyproject.toml is found
         current_path = Path.cwd().resolve()
@@ -256,7 +249,7 @@ def hook(runtime_env: Optional[Dict[str, Any]]) -> Dict[str, Any]:
     # use the same working_dir that uv run would use
     if "working_dir" not in runtime_env:
         runtime_env["working_dir"] = os.getcwd()
-        _check_working_dir_files(uv_run_args, runtime_env)
+        _check_working_dir_files(cmdline_args, runtime_env)
 
     return runtime_env
 
