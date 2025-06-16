@@ -1,8 +1,9 @@
 """Using Ray Serve to deploy LLM models with P/D disaggregation.
 """
 import logging
+import time
 import uuid
-from typing import Any, AsyncGenerator, Dict, Union
+from typing import TYPE_CHECKING, Any, AsyncGenerator, Dict, Union
 
 from pydantic import BaseModel, Field
 from vllm.config import KVTransferConfig
@@ -122,7 +123,6 @@ class PDProxyServer(LLMServer):
         }
         prefill_prompt.parameters["max_tokens"] = 1
 
-        import time
         begin = time.perf_counter()
         prefill_response_gen: AsyncGenerator[
             LLMRawResponse, None
@@ -143,7 +143,11 @@ class PDProxyServer(LLMServer):
             return
 
         prefill_end = time.perf_counter()
-        prefill_speed = None if prefill_response.num_input_tokens is None else prefill_response.num_input_tokens / (prefill_end - begin)
+        prefill_speed = (
+            "N/A"
+            if prefill_response.num_input_tokens is None
+            else f"{prefill_response.num_input_tokens / (prefill_end - begin):.2f}"
+        )
 
         kv_transfer_params = prefill_response.metadata[KV_TRANSFER_PARAMS_KEY]
         logger.debug(
@@ -151,31 +155,39 @@ class PDProxyServer(LLMServer):
         )
         prompt.parameters[KV_TRANSFER_PARAMS_KEY] = kv_transfer_params
 
-        decoded_tokens = 0
+        decoded_tokens: Union[int, None] = 0
+        time_to_first_token: Union[float, None] = None
         async for chunk in self.decode_server.options(stream=True)._predict.remote(
             request_id=request_id, prompt=prompt, stream=stream
         ):
-            chunk: LLMRawResponse
+            if TYPE_CHECKING:
+                chunk: LLMRawResponse
             if decoded_tokens is not None:
-                if chunk.num_generated_tokens is None:
+                if not isinstance(chunk.num_generated_tokens, int):
                     decoded_tokens = None
                 else:
                     decoded_tokens += chunk.num_generated_tokens
+            if time_to_first_token is None:
+                time_to_first_token = time.perf_counter() - begin
             yield chunk
 
         end = time.perf_counter()
-        decode_speed = None if decoded_tokens is None else decoded_tokens / (end - prefill_end)
+        decode_speed = (
+            "N/A"
+            if not decoded_tokens
+            else f"{((end - prefill_end) * 1000 / decoded_tokens):.2f}"
+        )
 
-        logger.info(f"TTFT {prefill_end - begin:.2f}s, TPOT: {decode_speed:.2f} tokens/s, prefill speed: {prefill_speed:.2f} tokens/s, prefill took {prefill_end - begin:.2f}s, decode took {end - prefill_end:.2f}s")
+        logger.info(
+            f"{request_id=} TTFT {time_to_first_token:.2f}s, TPOT: {decode_speed} ms/token, "
+            f"prefill speed: {prefill_speed} tokens/s, prefill took {prefill_end - begin:.2f}s, "
+            f"decode took {end - prefill_end:.2f}s."
+        )
 
     @classmethod
     def as_deployment(cls) -> serve.Deployment:
         """Turns PDProxyServer into a Ray Serve deployment."""
-        # TODO(lk-chen): Enable autoscaling_config for PDProxyServer
-        deployment_decorator = serve.deployment(
-            max_ongoing_requests=1000,
-        )
-        return deployment_decorator(cls)
+        return serve.deployment()(cls)
 
 
 def build_app(pd_serving_args: dict) -> Application:
