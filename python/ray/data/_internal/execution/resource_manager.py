@@ -129,7 +129,7 @@ class ResourceManager:
                     f"out of {total_memory/1e9:.1f}GB total). For optimal Ray Data performance, "
                     f"we recommend setting the object store to at least 50% of available memory. "
                     f"You can do this by setting the 'object_store_memory' parameter when calling "
-                    f"ray.init() or by setting the RAY_OBJECT_STORE_ALLOW_SLOW_STORAGE environment variable."
+                    f"ray.init() or by setting the RAY_DEFAULT_OBJECT_STORE_MEMORY_PROPORTION environment variable."
                 )
 
     def _estimate_object_store_memory(
