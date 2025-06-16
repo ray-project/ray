@@ -217,6 +217,7 @@ def test_agg_errors(
     with pytest.raises(ValueError):
         ds.aggregate(Max("bad_field"))
 
+
 if __name__ == "__main__":
     import sys
 

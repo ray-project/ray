@@ -297,9 +297,65 @@ py_test(
 )
 
 py_test(
-    name = "test_all_to_all",
+    name = "test_all_to_all_01",
     size = "enormous",
-    srcs = ["tests/test_all_to_all.py"],
+    srcs = ["tests/test_all_to_all_01.py"],
+    tags = [
+        "exclusive",
+        "team:data",
+    ],
+    deps = [
+        ":conftest",
+        "//:ray_lib",
+    ],
+)
+
+py_test(
+    name = "test_all_to_all_02",
+    size = "enormous",
+    srcs = ["tests/test_all_to_all_02.py"],
+    tags = [
+        "exclusive",
+        "team:data",
+    ],
+    deps = [
+        ":conftest",
+        "//:ray_lib",
+    ],
+)
+
+py_test(
+    name = "test_all_to_all_03",
+    size = "enormous",
+    srcs = ["tests/test_all_to_all_03.py"],
+    tags = [
+        "exclusive",
+        "team:data",
+    ],
+    deps = [
+        ":conftest",
+        "//:ray_lib",
+    ],
+)
+
+py_test(
+    name = "test_all_to_all_04",
+    size = "enormous",
+    srcs = ["tests/test_all_to_all_04.py"],
+    tags = [
+        "exclusive",
+        "team:data",
+    ],
+    deps = [
+        ":conftest",
+        "//:ray_lib",
+    ],
+)
+
+py_test(
+    name = "test_all_to_all_05",
+    size = "enormous",
+    srcs = ["tests/test_all_to_all_05.py"],
     tags = [
         "exclusive",
         "team:data",

@@ -320,6 +320,7 @@ def test_unique_with_nulls(
     assert set(ds3.unique("col3")) == {"1.0", "2.0", None}
     assert len(ds3.unique("col3")) == 3
 
+
 if __name__ == "__main__":
     import sys
 

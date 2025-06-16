@@ -55,7 +55,7 @@ void GrpcServer::Shutdown() {
       polling_thread.join();
     }
     is_closed_ = true;
-    RAY_LOG(INFO) << "gRPC server of " << name_ << " shutdown.";
+    RAY_LOG(DEBUG) << "gRPC server of " << name_ << " shutdown.";
     server_.reset();
   }
 }

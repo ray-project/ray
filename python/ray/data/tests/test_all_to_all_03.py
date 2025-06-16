@@ -660,6 +660,7 @@ def test_groupby_tabular_std(
 
     np.testing.assert_array_equal(result, expected)
 
+
 if __name__ == "__main__":
     import sys
 
