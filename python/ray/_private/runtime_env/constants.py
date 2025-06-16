@@ -52,7 +52,7 @@ CONTAINER_ENV_PLACEHOLDER = "$CONTAINER_ENV_PLACEHOLDER"
 RAY_JAVA_JARS_DIRS = "RAY_JAVA_JARS_DIRS"
 
 # Whether podman integrate nydus
-RAY_PODMAN_UES_NYDUS = env_bool("RAY_PODMAN_UES_NYDUS", False)
+RAY_PODMAN_USE_NYDUS = env_bool("RAY_PODMAN_USE_NYDUS", False)
 
 # Default mount points for Podman containers.
 # The format allows "{source_path}:{target_path}" for bind mounts

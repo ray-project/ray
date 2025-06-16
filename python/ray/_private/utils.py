@@ -2280,6 +2280,12 @@ def try_update_runtime_env_vars(
         if env_var_name.startswith("RAY_"):
             env_vars[env_var_name] = env_var_value
 
+    # The RAY_JOB_ID environment variable is needed for the default worker.
+    # It won't be set at the time setup() is called, but it will be set
+    # when worker command is executed, so we use RAY_JOB_ID=$RAY_JOB_ID
+    # for the container start command
+    env_vars["RAY_JOB_ID"] = "$RAY_JOB_ID"
+
     # Support for runtime_env['env_vars']
     runtime_env_vars.update(env_vars)
     # unset PYENV_VERSION, the image may use pyenv with other python.
