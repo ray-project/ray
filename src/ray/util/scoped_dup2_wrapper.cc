@@ -12,11 +12,12 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+#include "ray/util/scoped_dup2_wrapper.h"
+
 #include <cstring>
 #include <memory>
 
 #include "ray/util/logging.h"
-#include "ray/util/scoped_dup2_wrapper.h"
 
 namespace ray {
 

@@ -14,6 +14,8 @@
 
 #include "ray/util/pipe_logger.h"
 
+#include <fcntl.h>
+
 #include <condition_variable>
 #include <cstring>
 #include <deque>

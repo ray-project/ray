@@ -60,6 +60,7 @@ mach_port_t pthread_mach_thread_np(pthread_t);
 #endif
 
 #ifdef _WIN32
+#include <io.h>
 #ifndef _WINDOWS_
 #ifndef WIN32_LEAN_AND_MEAN  // Sorry for the inconvenience. Please include any related
                              // headers you need manually.

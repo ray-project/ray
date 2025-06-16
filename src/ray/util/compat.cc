@@ -84,7 +84,7 @@ Status CompleteWrite(int fd, const char *data, size_t len) {
   return Status::OK();
 }
 Status Flush(int fd) {
-  HANDLE handle = _get_osfhandle(fd);
+  HANDLE handle = reinterpret_cast<HANDLE>(_get_osfhandle(fd));
   if (handle == INVALID_HANDLE_VALUE) {
     return Status::IOError("") << "Fails to get file handle for flushing";
   }
