@@ -100,8 +100,9 @@ def _test_equal_split_balanced(block_sizes, num_splits):
         block = pd.DataFrame({"id": list(range(total_rows, total_rows + block_size))})
         blocks.append(ray.put(block))
         metadata.append(BlockAccessor.for_block(block).get_metadata())
+        schema = BlockAccessor.for_block(block).schema()
         blk = (blocks[-1], metadata[-1])
-        ref_bundles.append(RefBundle((blk,), owns_blocks=True))
+        ref_bundles.append(RefBundle((blk,), owns_blocks=True, schema=schema))
         total_rows += block_size
 
     logical_plan = LogicalPlan(InputData(input_data=ref_bundles), ctx)
@@ -485,7 +486,6 @@ def _create_meta(num_rows):
     return BlockMetadata(
         num_rows=num_rows,
         size_bytes=None,
-        schema=None,
         input_files=None,
         exec_stats=None,
     )
@@ -508,8 +508,11 @@ def _create_blocklist(blocks):
 
 
 def _create_bundle(blocks: List[List[Any]]) -> RefBundle:
+    schema = BlockAccessor.for_block(pd.DataFrame({"id": []})).schema()
     return RefBundle(
-        [_create_block_and_metadata(block) for block in blocks], owns_blocks=True
+        [_create_block_and_metadata(block) for block in blocks],
+        owns_blocks=True,
+        schema=schema,
     )
 
 

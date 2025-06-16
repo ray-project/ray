@@ -4,10 +4,10 @@ import sys
 import time
 
 import ray
+from ray._common.test_utils import wait_for_condition
 import ray.cluster_utils
 from ray._private.test_utils import (
     get_other_nodes,
-    wait_for_condition,
     is_placement_group_removed,
     placement_group_assert_no_leak,
 )

@@ -49,7 +49,8 @@ def test_enabled_default_config_proportions(monkeypatch):
     total_system_memory = 128 * 10**9
     total_system_cpu = 32
     monkeypatch.setattr(
-        utils, "get_system_memory", lambda *args, **kwargs: total_system_memory
+        "ray._common.utils.get_system_memory",
+        lambda *args, **kwargs: total_system_memory,
     )
     monkeypatch.setattr(utils, "get_num_cpus", lambda *args, **kwargs: total_system_cpu)
     resource_isolation_config = ResourceIsolationConfig(enable_resource_isolation=True)
@@ -70,7 +71,8 @@ def test_enabled_default_config_values(monkeypatch):
     total_system_memory = 500 * 10**9
     total_system_cpu = 64
     monkeypatch.setattr(
-        utils, "get_system_memory", lambda *args, **kwargs: total_system_memory
+        "ray._common.utils.get_system_memory",
+        lambda *args, **kwargs: total_system_memory,
     )
     monkeypatch.setattr(utils, "get_num_cpus", lambda *args, **kwargs: total_system_cpu)
     resource_isolation_config = ResourceIsolationConfig(enable_resource_isolation=True)
@@ -92,7 +94,8 @@ def test_enabled_reserved_cpu_default_memory(monkeypatch):
     total_system_cpu = 32
     system_reserved_cpu = 5
     monkeypatch.setattr(
-        utils, "get_system_memory", lambda *args, **kwargs: total_system_memory
+        "ray._common.utils.get_system_memory",
+        lambda *args, **kwargs: total_system_memory,
     )
     monkeypatch.setattr(utils, "get_num_cpus", lambda *args, **kwargs: total_system_cpu)
     resource_isolation_config = ResourceIsolationConfig(
@@ -116,7 +119,8 @@ def test_enabled_reserved_memory_default_cpu(monkeypatch):
     total_system_cpu = 32
     system_reserved_memory = 15 * 10**9
     monkeypatch.setattr(
-        utils, "get_system_memory", lambda *args, **kwargs: total_system_memory
+        "ray._common.utils.get_system_memory",
+        lambda *args, **kwargs: total_system_memory,
     )
     monkeypatch.setattr(utils, "get_num_cpus", lambda *args, **kwargs: total_system_cpu)
     resource_isolation_config = ResourceIsolationConfig(
@@ -142,7 +146,8 @@ def test_enabled_override_all_default_values(monkeypatch):
     system_reserved_cpu = 5
     cgroup_path = "/sys/fs/cgroup/subcgroup"
     monkeypatch.setattr(
-        utils, "get_system_memory", lambda *args, **kwargs: total_system_memory
+        "ray._common.utils.get_system_memory",
+        lambda *args, **kwargs: total_system_memory,
     )
     monkeypatch.setattr(utils, "get_num_cpus", lambda *args, **kwargs: total_system_cpu)
     resource_isolation_config = ResourceIsolationConfig(
@@ -186,7 +191,8 @@ def test_enabled_reserved_memory_exceeds_available_memory_raises_exception(monke
     system_reserved_memory = (128 * 10**9) + 1
     monkeypatch.setattr(utils, "get_num_cpus", lambda *args, **kwargs: total_system_cpu)
     monkeypatch.setattr(
-        utils, "get_system_memory", lambda *args, **kwargs: total_system_memory
+        "ray._common.utils.get_system_memory",
+        lambda *args, **kwargs: total_system_memory,
     )
     with pytest.raises(ValueError):
         ResourceIsolationConfig(
@@ -205,7 +211,8 @@ def test_enabled_total_system_reserved_memory_exceeds_available_memory_raises_ex
     system_reserved_memory = 119 * 10**9
     monkeypatch.setattr(utils, "get_num_cpus", lambda *args, **kwargs: total_system_cpu)
     monkeypatch.setattr(
-        utils, "get_system_memory", lambda *args, **kwargs: total_system_memory
+        "ray._common.utils.get_system_memory",
+        lambda *args, **kwargs: total_system_memory,
     )
     resource_isolation_config = ResourceIsolationConfig(
         enable_resource_isolation=True, system_reserved_memory=system_reserved_memory

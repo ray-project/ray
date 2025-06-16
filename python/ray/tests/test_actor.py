@@ -6,28 +6,22 @@ import tempfile
 
 import numpy as np
 import pytest
+import psutil
 
 import ray
 from ray import cloudpickle as pickle
 from ray._private import ray_constants
 from ray._private.test_utils import (
     client_test_enabled,
-    wait_for_condition,
     wait_for_pid_to_exit,
 )
 from ray.actor import ActorClassInheritanceException
 from ray.tests.client_test_utils import create_remote_signal_actor
-from ray._private.test_utils import SignalActor
+from ray._common.test_utils import SignalActor, wait_for_condition
 from ray.core.generated import gcs_pb2
-from ray._private.utils import hex_to_binary
+from ray._common.utils import hex_to_binary
 from ray._private.state_api_test_utils import invoke_state_api, invoke_state_api_n
-
 from ray.util.state import list_actors
-
-
-# NOTE: We have to import setproctitle after ray because we bundle setproctitle
-# with ray.
-import setproctitle  # noqa
 
 
 @pytest.mark.parametrize("set_enable_auto_connect", [True, False], indirect=True)
@@ -853,11 +847,14 @@ def test_options_num_returns(ray_start_regular_shared):
     assert ray.get([obj1, obj2]) == [1, 2]
 
 
+@pytest.mark.skipif(
+    sys.platform == "win32", reason="Windows doesn't support changing process title."
+)
 def test_options_name(ray_start_regular_shared):
     @ray.remote
     class Foo:
         def method(self, name):
-            assert setproctitle.getproctitle() == f"ray::{name}"
+            assert psutil.Process().cmdline()[0] == f"ray::{name}"
 
     f = Foo.remote()
 
@@ -1686,6 +1683,19 @@ def test_exit_immediately_after_creation(ray_start_regular_shared, exit_type: st
         pytest.fail(f"Unrecognized exit_type: '{exit_type}'.")
 
     wait_for_condition(lambda: _num_actors_alive() == 0)
+
+
+def test_one_liner_actor_method_invocation(shutdown_only):
+    @ray.remote
+    class Foo:
+        def method(self):
+            return "ok"
+
+    # This one‐liner used to fail with “Lost reference to actor”.
+    # Now it should succeed and return our value.
+    # See https://github.com/ray-project/ray/pull/53178
+    result = ray.get(Foo.remote().method.remote())
+    assert result == "ok"
 
 
 if __name__ == "__main__":
