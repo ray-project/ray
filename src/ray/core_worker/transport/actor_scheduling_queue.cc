@@ -76,9 +76,9 @@ size_t ActorSchedulingQueue::Size() const {
 void ActorSchedulingQueue::EnqueueTask(
     int64_t seq_no,
     int64_t client_processed_up_to,
-    std::function<void(const TaskSpecification &, rpc::SendReplyCallback)> accept_request,
+    std::function<void(const TaskSpecification &, rpc::SendReplyCallback)> execute_task_callback,
     std::function<void(const TaskSpecification &, const Status &, rpc::SendReplyCallback)>
-        reject_request,
+        reject_task_callback,
     rpc::SendReplyCallback send_reply_callback,
     TaskSpecification task_spec) {
   // A seq_no of -1 means no ordering constraint. Actor tasks must be executed in order.
@@ -92,8 +92,8 @@ void ActorSchedulingQueue::EnqueueTask(
   }
   RAY_LOG(DEBUG) << "Enqueue " << seq_no << " cur seqno " << next_seq_no_;
 
-  pending_actor_tasks_[seq_no] = QueuedTask(std::move(accept_request),
-                                                std::move(reject_request),
+  pending_actor_tasks_[seq_no] = QueuedTask(std::move(execute_task_callback),
+                                                std::move(reject_task_callback),
                                                 std::move(send_reply_callback),
                                                 task_spec);
   {
