@@ -157,8 +157,7 @@ def test_uv_run_runtime_env_hook(with_uv):
         cmd, runtime_env, expected_output, subprocess_kwargs=None, expected_error=None
     ):
         result = subprocess.run(
-            cmd
-            + [json.dumps(runtime_env)],
+            cmd + [json.dumps(runtime_env)],
             capture_output=True,
             **(subprocess_kwargs if subprocess_kwargs else {}),
         )
@@ -247,7 +246,13 @@ def test_uv_run_runtime_env_hook(with_uv):
         with open(tmp_dir / "requirements.txt", "w") as file:
             file.write("psutil\n")
         check_uv_run(
-            cmd=[uv, "run", "--with-requirements", tmp_dir / "requirements.txt", script],
+            cmd=[
+                uv,
+                "run",
+                "--with-requirements",
+                tmp_dir / "requirements.txt",
+                script,
+            ],
             runtime_env={},
             expected_output=None,
             subprocess_kwargs={"cwd": tmp_dir / "cwd"},
@@ -265,9 +270,7 @@ def test_uv_run_runtime_env_hook(with_uv):
         )
 
     # Check without uv run
-    subprocess.check_output(
-        [sys.executable, script, "{}"]
-    ).strip().decode() == "{}"
+    subprocess.check_output([sys.executable, script, "{}"]).strip().decode() == "{}"
 
     # Check in the case that there is one more level of subprocess indirection between
     # the "uv run" process and the process that checks the environment
@@ -298,7 +301,13 @@ def test_uv_run_runtime_env_hook(with_uv):
 
     # Check in the case that a module is used for "uv run" (-m or --module)
     check_uv_run(
-        cmd=[uv, "run", "--no-project", "-m", "ray._private.runtime_env.uv_runtime_env_hook"],
+        cmd=[
+            uv,
+            "run",
+            "--no-project",
+            "-m",
+            "ray._private.runtime_env.uv_runtime_env_hook",
+        ],
         runtime_env={},
         expected_output={
             "py_executable": f"{uv} run --no-project",
