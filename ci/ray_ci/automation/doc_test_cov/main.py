@@ -5,9 +5,6 @@ from query import Query
 from buildkite import BuildKiteClient
 from test_results import TestResults
 from parser import DocParser
-import json
-from test_results import DocFile
-from typing import List
 
 S3_BUCKET = "ray-travis-logs"
 BK_ORGANIZATION = "ray-project"
@@ -128,35 +125,21 @@ def main():
     Query.get_files_for_targets(test_results, args.ray_path)
     print("done getting files for targets")
 
-    # #filter out targets that don't have a generated file in doc/_build (don't need)
-    # Query.filter_out_targets_without_doc_builds(test_results)
-    # print("done filtering out targets that don't have a generated file in doc/_build")
-    # print(f"len(test_results.targets): {len(test_results.targets)}")
+    test_results.calculate_test_coverage()
+    print("done calculating test coverage")
 
-    # test_results.calculate_test_coverage()
-    # print("done calculating test coverage")
-
-    # print(f"len(test_results.targets): {len(test_results.targets)}")
-    # test_results.save_test_results()
-    # print("done saving test results")
+    print(f"len(test_results.targets): {len(test_results.targets)}")
+    test_results.save_test_results()
+    print("done saving test results")
 
     doc_parser.assign_testing_info_to_code_snippets(literalinclude_doc_files, test_results.targets)
     print("done assigning testing info to code snippets")
 
-    # if args.offline:
-    #     test_file = []
-    #     with open("results/literal_include_doc_files_with_testing_info.json", "r") as f:
-    #         content = f.read()
-    #         test_file = json.loads(content)
-    #         doc_files = []
-    #         # doc_parser.save_doc_file_snippets(literalinclude_doc_files, "results/literal_include_doc_files_with_testing_info.json")
-    #         # print("done saving doc file snippets with testing info")
-    #         for file in test_file:
-    #             doc_file = DocFile.from_dict(DocFile,file)
-    #             doc_files.append(doc_file)
-
     doc_parser.save_doc_files_to_json(literalinclude_doc_files)
     doc_parser.save_doc_files_to_csv(literalinclude_doc_files)
+    test_coverage = doc_parser.calculate_test_coverage(literalinclude_doc_files)
+    print(f"test coverage: {test_results.coverage_percentage}%")
+    print(f"test_coverage: {test_coverage}")
     print("done saving doc files to csv")
 
 

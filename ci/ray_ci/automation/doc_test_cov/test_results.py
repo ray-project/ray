@@ -136,6 +136,7 @@ class DocFile:
     def __init__(self, file_path: str, snippets: List[CodeSnippet]):
         self.file_path = file_path
         self.code_snippets = snippets
+        self.coverage_percentage = 0.00
 
     def to_dict(self) -> Dict:
         return {

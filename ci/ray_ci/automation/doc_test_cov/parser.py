@@ -3,7 +3,7 @@ import subprocess
 import json
 from test_results import CodeSnippet, DocFile, BazelTarget
 import pandas as pd
-from pandas import json_normalize
+import copy
 
 class DocParser:
     def __init__(self, ray_path: str):
@@ -96,30 +96,50 @@ class DocParser:
         with open(output_path, "w") as f:
             json.dump([s.to_dict() for s in file_paths], f, indent=4)
 
+    # def assign_testing_info_to_code_snippets(self, doc_files: List[DocFile], targets: List[BazelTarget]) -> None:
+    #     """
+    #     Assign testing info to code snippets.
+    #     """
+    #     for doc_file in doc_files:
+    #         for snippet in doc_file.code_snippets:
+    #             found = False
+    #             if snippet.testing_info:  # Skip if already has testing info
+    #                 continue
+    #             for target in targets:
+    #                 for file in target.files:
+    #                     #file_name = file.file_name.replace("//", "").replace(":","/")
+    #                     file_name = "/".join(file.file_name.lstrip("//").replace(":", "/").split("/")[-2:])
+    #                     # file_name = file.file_name.lstrip("//").split(":")[-1].split("/")[-1]
+    #                     # snippet_file_name = snippet.ref_to_file.lstrip("//").split(":")[-1].split("/")[-1]
+    #                     if file_name in snippet.ref_to_file:
+    #                         filtered_target = self.filter_target_to_single_file(target, file.file_name)
+    #                         snippet.testing_info.append(filtered_target)
+    #                         found = True
+    #                         break
+    #             if found:
+    #                 break
+
     def assign_testing_info_to_code_snippets(self, doc_files: List[DocFile], targets: List[BazelTarget]) -> None:
         """
         Assign testing info to code snippets.
         """
         for doc_file in doc_files:
             for snippet in doc_file.code_snippets:
-                for target in targets:
-                    for file in target.files:
-                        file_name = file.file_name.lstrip("//").split(":")[-1].split("/")[-1]
-                        snippet_file_name = snippet.ref_to_file.lstrip("//").split(":")[-1].split("/")[-1]
-                        if snippet_file_name == file_name:
-                            filtered_target = self.filter_file_from_target(target, file_name)
-                            snippet.testing_info.append(filtered_target)
+                self._find_and_assign_target(snippet, targets)
 
-    def filter_file_from_target(self, target, filename):
-        # Get the filename from the target path using the same logic as shown
-        filtered_files = []
-        temp_target = target
-        for file in temp_target.files:
-            file_name = file.file_name.lstrip("//").split(":")[-1].split("/")[-1]
-            if file_name == filename:
-                filtered_files.append(file)
-        temp_target.files = filtered_files
-        return temp_target
+    def _find_and_assign_target(self, snippet, targets):
+        for target in targets:
+            for file in target.files:
+                file_name = "/".join(file.file_name.lstrip("//").replace(":", "/").split("/")[-2:])
+                if file_name in snippet.ref_to_file:
+                    filtered_target = self.filter_target_to_single_file(target, file.file_name)
+                    snippet.testing_info.append(filtered_target)
+                    return
+
+    def filter_target_to_single_file(self, target, filename):
+        filtered_target = copy.deepcopy(target)
+        filtered_target.files = [file for file in target.files if file.file_name == filename]
+        return filtered_target
 
     def save_doc_files_to_json(self, docfiles: List[DocFile], filename: str = "results/json/final_test_results.json"):
         with open(filename, "w") as f:
@@ -151,3 +171,53 @@ class DocParser:
 
         df = pd.DataFrame(rows)
         df.to_csv(filename, index=False)
+
+    def calculate_test_coverage(self,doc_files: List[DocFile]) -> dict:
+        """
+        Calculate test coverage for code snippets in documentation files.
+
+        Args:
+            doc_files: List of DocFile objects containing code snippets
+
+        Returns:
+            dict: Coverage statistics with total, tested, untested counts and percentage
+        """
+        total_snippets = 0
+        tested_snippets = 0
+
+        for doc_file in doc_files:
+            for snippet in doc_file.code_snippets:
+                total_snippets += 1
+
+                # Check if snippet is tested
+                if self.is_snippet_tested(snippet):
+                    tested_snippets += 1
+
+        untested_snippets = total_snippets - tested_snippets
+        coverage_percentage = (tested_snippets / total_snippets * 100) if total_snippets > 0 else 0
+
+        return {
+            "total_snippets": total_snippets,
+            "tested_snippets": tested_snippets,
+            "untested_snippets": untested_snippets,
+            "coverage_percentage": round(coverage_percentage, 2)
+        }
+
+    def is_snippet_tested(self, snippet: CodeSnippet) -> bool:
+        """
+        Determine if a code snippet is tested.
+
+        Returns True if:
+        - Has testing_info AND at least one testing_info.tested = True
+
+        Returns False if:
+        - No testing_info OR empty testing_info OR all testing_info.tested = False
+        """
+        if snippet.testing_info is None or not snippet.testing_info:
+            return False
+
+        for testing_info in snippet.testing_info:
+            if testing_info and testing_info.tested:
+                return True
+
+        return False
