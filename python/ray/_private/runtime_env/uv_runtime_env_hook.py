@@ -230,9 +230,7 @@ def hook(runtime_env: Optional[Dict[str, Any]]) -> Dict[str, Any]:
             "'uv run' environment e.g. by including them in your pyproject.toml."
         )
 
-    # Extract the arguments of 'uv run' that are not arguments of the script.
-    # We do this by parsing the script name out of the "uv run <args> script <script_args>" command line
-    # extracting everything up to the script part.
+    # Extract the arguments uv_run_args of 'uv run' that are not part of the command.
     parser = _create_uv_run_parser()
     cmdline_args = parser.parse_args(cmdline[2:])
     if cmdline[-len(cmdline_args.command):] != cmdline_args.command:
