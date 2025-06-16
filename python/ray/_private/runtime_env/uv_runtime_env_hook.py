@@ -30,7 +30,7 @@ def _create_uv_run_parser():
     main_group.add_argument("--no-default-groups", action="store_true")
     main_group.add_argument("--only-group", action="append", dest="only_groups")
     main_group.add_argument("--all-groups", action="store_true")
-    main_group.add_argument("-m", "--module", action="store_true")
+    main_group.add_argument("-m", "--module")
     main_group.add_argument("--only-dev", action="store_true")
     main_group.add_argument("--no-editable", action="store_true")
     main_group.add_argument("--exact", action="store_true")
@@ -240,9 +240,12 @@ def hook(runtime_env: Optional[Dict[str, Any]]) -> Dict[str, Any]:
     uv_run_args = cmdline[: -len(cmdline_args.command)]
 
     # Remove the "--directory" argument since it has already been taken into
-    # account when setting the current working directory of the current process
+    # account when setting the current working directory of the current process.
+    # Also remove the "--module" argument, since the default_worker.py is
+    # invoked as a script and not as a module.
     parser = argparse.ArgumentParser()
-    parser.add_argument("--directory", nargs="?")
+    parser.add_argument("--directory")
+    parser.add_argument("-m", "--module")
     _, remaining_uv_run_args = parser.parse_known_args(uv_run_args)
 
     runtime_env["py_executable"] = " ".join(remaining_uv_run_args)
