@@ -181,18 +181,18 @@ def _check_working_dir_files(
     working_dir = Path(runtime_env["working_dir"]).resolve()
 
     # Check if the requirements.txt file is in the working_dir
-    if uv_run_args.with_requirements and not Path(
-        uv_run_args.with_requirements
-    ).resolve().is_relative_to(working_dir):
-        raise RuntimeError(
-            f"You specified --with-requirements={uv_run_args.with_requirements} but "
-            f"the requirements file is not in the working_dir {runtime_env['working_dir']}, "
-            "so the workers will not have access to the file. Make sure "
-            "the requirements file is in the working directory. "
-            "You can do so by specifying --directory in 'uv run', by changing the current "
-            "working directory before running 'uv run', or by using the 'working_dir' "
-            "parameter of the runtime_environment."
-        )
+    if uv_run_args.with_requirements:
+        for requirements_file in uv_run_args.with_requirements:
+            if not Path(requirements_file).resolve().is_relative_to(working_dir):
+                raise RuntimeError(
+                    f"You specified --with-requirements={uv_run_args.with_requirements} but "
+                    f"the requirements file is not in the working_dir {runtime_env['working_dir']}, "
+                    "so the workers will not have access to the file. Make sure "
+                    "the requirements file is in the working directory. "
+                    "You can do so by specifying --directory in 'uv run', by changing the current "
+                    "working directory before running 'uv run', or by using the 'working_dir' "
+                    "parameter of the runtime_environment."
+                )
 
     # Check if the pyproject.toml file is in the working_dir
     pyproject = None
