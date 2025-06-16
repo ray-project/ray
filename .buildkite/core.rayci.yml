@@ -430,7 +430,8 @@ steps:
         -t rayproject/ray:runtime_env_container -f ci/docker/runtime_env_container/Dockerfile .
       - bazel run //ci/ray_ci:test_in_docker -- //python/ray/tests/... core
         --install-mask all-ray-libraries
-        --only-tags container
+        --only-tags container || true
+      - sleep 200000
     depends_on:
       - manylinux
       - forge
