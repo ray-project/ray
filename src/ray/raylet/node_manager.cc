@@ -834,7 +834,7 @@ void NodeManager::NodeRemoved(const NodeID &node_id) {
   RAY_LOG(DEBUG).WithField(node_id) << "[NodeRemoved] Received callback from node id ";
 
   if (node_id == self_node_id_) {
-    if (!is_shutdown_request_received_) {
+    if (!is_shutting_down_) {
       std::ostringstream error_message;
       error_message
           << "[Timeout] Exiting because this node manager has mistakenly been marked as "
@@ -2054,7 +2054,7 @@ void NodeManager::HandleShutdownRaylet(rpc::ShutdownRayletRequest request,
   if (!request.graceful()) {
     std::_Exit(EXIT_SUCCESS);
   }
-  if (is_shutdown_request_received_) {
+  if (is_shutting_down_) {
     RAY_LOG(INFO) << "Node already has received the shutdown request. The shutdown "
                      "request RPC is ignored.";
     return;
@@ -2069,7 +2069,7 @@ void NodeManager::HandleShutdownRaylet(rpc::ShutdownRayletRequest request,
     node_death_info.set_reason_message("Terminated by autoscaler.");
     shutdown_raylet_gracefully_(node_death_info);
   };
-  is_shutdown_request_received_ = true;
+  is_shutting_down_ = true;
   send_reply_callback(Status::OK(), shutdown_after_reply, shutdown_after_reply);
 }
 
@@ -3114,8 +3114,8 @@ std::unique_ptr<AgentManager> NodeManager::CreateDashboardAgentManager(
         return execute_after(io_service_, task, std::chrono::milliseconds(delay_ms));
       },
       [this](const rpc::NodeDeathInfo &death_info) {
-        is_shutdown_request_received_ = true;
-        shutdown_raylet_gracefully_(death_info);
+        this->is_shutting_down_ = true;
+        this->shutdown_raylet_gracefully_(death_info);
       });
 }
 
@@ -3149,8 +3149,8 @@ std::unique_ptr<AgentManager> NodeManager::CreateRuntimeEnvAgentManager(
         return execute_after(io_service_, task, std::chrono::milliseconds(delay_ms));
       },
       [this](const rpc::NodeDeathInfo &death_info) {
-        is_shutdown_request_received_ = true;
-        shutdown_raylet_gracefully_(death_info);
+        this->is_shutting_down_ = true;
+        this->shutdown_raylet_gracefully_(death_info);
       });
 }
 
