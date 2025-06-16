@@ -193,42 +193,42 @@ class _CollectiveOperation:
         if not all(isinstance(t, torch.Tensor) for t in send_buf):
             raise ValueError("Expected a torch tensor for each input node")
 
-        if len(send_buf) == 1:
-            send_buf = send_buf[0]
-
         communicator = self.get_communicator()
         if isinstance(self._op, AllGatherOp):
-            assert isinstance(send_buf, torch.Tensor)
+            assert len(send_buf) == 1
+            t = send_buf[0]
             world_size = len(self._actor_handles)
             recv_buf = torch.empty(
-                (send_buf.shape[0] * world_size, *send_buf.shape[1:]),
-                dtype=send_buf.dtype,
-                device=send_buf.device,
+                (t.shape[0] * world_size, *t.shape[1:]),
+                dtype=t.dtype,
+                device=t.device,
             )
-            communicator.allgather(send_buf, recv_buf)
+            communicator.allgather(t, recv_buf)
         elif isinstance(self._op, AllReduceOp):
-            if isinstance(send_buf, torch.Tensor):
-                recv_buf = torch.empty_like(send_buf)
-                communicator.allreduce(send_buf, recv_buf, self._op.reduceOp)
+            if len(send_buf) == 1:
+                t = send_buf[0]
+                recv_buf = torch.empty_like(t)
+                communicator.allreduce(t, recv_buf, self._op.reduceOp)
             else:
                 recv_buf = tuple(torch.empty_like(t) for t in send_buf)
                 flat_buf = torch.nn.utils.parameters_to_vector(send_buf)
                 communicator.allreduce(flat_buf, flat_buf, self._op.reduceOp)
                 torch.nn.utils.vector_to_parameters(flat_buf, recv_buf)
         elif isinstance(self._op, ReduceScatterOp):
-            assert isinstance(send_buf, torch.Tensor)
+            assert len(send_buf) == 1
+            t = send_buf[0]
             world_size = len(self._actor_handles)
-            if send_buf.shape[0] % world_size != 0:
+            if t.shape[0] % world_size != 0:
                 raise ValueError(
                     "Expected the first dimension of the input tensor to be divisible "
                     f"by the world size {world_size}"
                 )
             recv_buf = torch.empty(
-                (send_buf.shape[0] // world_size, *send_buf.shape[1:]),
-                dtype=send_buf.dtype,
-                device=send_buf.device,
+                (t.shape[0] // world_size, *t.shape[1:]),
+                dtype=t.dtype,
+                device=t.device,
             )
-            communicator.reducescatter(send_buf, recv_buf, self._op.reduceOp)
+            communicator.reducescatter(t, recv_buf, self._op.reduceOp)
         return recv_buf
 
 
