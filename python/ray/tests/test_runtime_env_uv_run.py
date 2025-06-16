@@ -282,7 +282,7 @@ def test_uv_run_runtime_env_hook(with_uv):
         },
     )
 
-    # Check in the case that the process title was reset
+    # Check in the case that the script is started with multiprocessing spawn
     check_uv_run(
         cmd=[uv, "run", "--no-project"],
         runtime_env={},
