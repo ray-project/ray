@@ -452,6 +452,10 @@ class PandasBlockAccessor(TableBlockAccessor):
         # extension columns separately.
         memory_usage = self._table.memory_usage(index=True, deep=False)
 
+        # Skip the deep inspection for empty table
+        if self._table.empty:
+            return int(memory_usage.sum())
+
         # TensorDtype for ray.air.util.tensor_extensions.pandas.TensorDtype
         object_need_check = (TensorDtype,)
         max_sample_count = _PANDAS_SIZE_BYTES_MAX_SAMPLE_COUNT
