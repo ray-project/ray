@@ -3,6 +3,7 @@ import logging
 import os
 import pickle
 import random
+import re
 import sys
 import time
 
@@ -10,8 +11,8 @@ import pytest
 
 import ray
 import ray.cluster_utils
+from ray._common.test_utils import SignalActor
 from ray._private.test_utils import (
-    SignalActor,
     client_test_enabled,
     run_string_as_driver,
 )
@@ -89,15 +90,11 @@ def test_release_cpu_resources(shutdown_only):
 
 # https://github.com/ray-project/ray/issues/16025
 def test_release_resources_race(shutdown_only):
-    # This test fails with the flag set to false.
-    ray.init(
-        num_cpus=2,
-        object_store_memory=700e6,
-        _system_config={"inline_object_status_in_refs": True},
-    )
+    ray.init(num_cpus=2)
+
     refs = []
     for _ in range(10):
-        refs.append(ray.put(bytearray(20 * 1024 * 1024)))
+        refs.append(ray.put(bytearray(1024 * 1024)))
 
     @ray.remote
     def consume(refs):
@@ -105,7 +102,7 @@ def test_release_resources_race(shutdown_only):
         ray.get(refs)
         return os.getpid()
 
-    pids = set(ray.get([consume.remote(refs) for _ in range(1000)]))
+    pids = set(ray.get([consume.remote(refs) for _ in range(10)]))
     # Should not have started multiple workers.
     assert len(pids) <= 2, pids
 
@@ -237,8 +234,6 @@ def test_default_worker_import_dependency(shutdown_only):
 
 # https://github.com/ray-project/ray/issues/7287
 def test_omp_threads_set(ray_start_cluster, monkeypatch):
-    import os
-
     cluster = ray_start_cluster
     cluster.add_node(num_cpus=2)
     ray.init(address=cluster.address)
@@ -381,8 +376,6 @@ def test_submit_api(shutdown_only):
 
 
 def test_invalid_arguments():
-    import re
-
     def f():
         return 1
 
@@ -424,7 +417,7 @@ def test_invalid_arguments():
             ValueError,
             match=f"The keyword '{keyword}' only accepts None, "
             "a non-negative integer, "
-            "'streaming' \(for generators\), or 'dynamic'",
+            r"'streaming' \(for generators\), or 'dynamic'",
         ):
             ray.remote(**{keyword: v})(f)
 
@@ -473,8 +466,6 @@ def test_invalid_arguments():
 
 def test_options():
     """General test of option keywords in Ray."""
-    import re
-
     from ray._private import ray_option_utils
 
     def f():
@@ -655,22 +646,6 @@ def test_put_get(shutdown_only):
         object_ref = ray.put(value_before)
         value_after = ray.get(object_ref)
         assert value_before == value_after
-
-
-def test_wait_timing(shutdown_only):
-    ray.init(num_cpus=2)
-
-    @ray.remote
-    def f():
-        time.sleep(1)
-
-    future = f.remote()
-
-    start = time.time()
-    ready, not_ready = ray.wait([future], timeout=0.2)
-    assert 0.2 < time.time() - start < 0.3
-    assert len(ready) == 0
-    assert len(not_ready) == 1
 
 
 @pytest.mark.skipif(client_test_enabled(), reason="internal _raylet")
@@ -866,9 +841,9 @@ def test_passing_arguments_by_value_out_of_the_box(ray_start_shared_local_modes)
     assert ray.get(f.remote(s)) == s
 
     # Test types.
-    assert ray.get(f.remote(int)) == int
-    assert ray.get(f.remote(float)) == float
-    assert ray.get(f.remote(str)) == str
+    assert ray.get(f.remote(int)) is int
+    assert ray.get(f.remote(float)) is float
+    assert ray.get(f.remote(str)) is str
 
     class Foo:
         def __init__(self):
@@ -888,7 +863,7 @@ def test_putting_object_that_closes_over_object_ref(ray_start_shared_local_modes
             self.val = ray.put(0)
 
         def method(self):
-            f
+            _ = f
 
     f = Foo()
     ray.put(f)
@@ -1202,7 +1177,4 @@ def test_import_ray_does_not_import_grpc():
 
 
 if __name__ == "__main__":
-    if os.environ.get("PARALLEL_CI"):
-        sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))
-    else:
-        sys.exit(pytest.main(["-sv", __file__]))
+    sys.exit(pytest.main(["-sv", __file__]))

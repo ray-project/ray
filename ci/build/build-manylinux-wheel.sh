@@ -4,9 +4,11 @@ set -exuo pipefail
 PYTHON="$1"
 TRAVIS_COMMIT="${TRAVIS_COMMIT:-$BUILDKITE_COMMIT}"
 
+export RAY_BUILD_ENV="manylinux_py${PYTHON}"
+
 mkdir -p .whl
 cd python
-/opt/python/"${PYTHON}"/bin/pip install -q cython==0.29.37
+/opt/python/"${PYTHON}"/bin/pip install -q cython==3.0.12 setuptools==75.8.0
 # Set the commit SHA in _version.py.
 if [[ -n "$TRAVIS_COMMIT" ]]; then
   sed -i.bak "s/{{RAY_COMMIT_SHA}}/$TRAVIS_COMMIT/g" ray/_version.py && rm ray/_version.py.bak
@@ -20,13 +22,13 @@ fi
 
 # build ray wheel
 PATH="/opt/python/${PYTHON}/bin:$PATH" RAY_INSTALL_JAVA=0 \
-"/opt/python/${PYTHON}/bin/python" setup.py -q bdist_wheel
+"/opt/python/${PYTHON}/bin/python" -m pip wheel -q -w dist . --no-deps
 
 
 if [[ "${RAY_DISABLE_EXTRA_CPP:-}" != 1 ]]; then
   # build ray-cpp wheel
   PATH="/opt/python/${PYTHON}/bin:$PATH" RAY_INSTALL_JAVA=0 \
-  RAY_INSTALL_CPP=1 "/opt/python/${PYTHON}/bin/python" setup.py -q bdist_wheel
+  RAY_INSTALL_CPP=1 "/opt/python/${PYTHON}/bin/python" -m pip wheel -q -w dist . --no-deps
 fi
 
 # Rename the wheels so that they can be uploaded to PyPI. TODO(rkn): This is a

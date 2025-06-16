@@ -53,6 +53,9 @@ const MOCK_ACTORS: { [actorId: string]: ActorDetail } = {
       },
       pid: 25321,
     },
+    labelSelector: {
+      "test-label-key": "test-label-value",
+    },
   },
   ACTOR_2: {
     actorId: "ACTOR_2",
@@ -101,11 +104,14 @@ const MOCK_ACTORS: { [actorId: string]: ActorDetail } = {
       },
       pid: 25322,
     },
+    labelSelector: {},
   },
 };
 
-// For some reason these tests are really slow, so we need to increase the timeout
-jest.setTimeout(20000);
+// These tests are slow because they involve a lot of interactivity.
+// Clicking various buttons and waiting for the table to update.
+// So we increase the timeout to 40 seconds.
+jest.setTimeout(40000);
 
 describe("ActorTable", () => {
   it("renders a table of actors filtered by node ID", async () => {
@@ -182,6 +188,9 @@ describe("ActorTable", () => {
 
     expect(within(actor1Row).getByText("ACTOR_1")).toBeInTheDocument();
     expect(within(actor2Row).getByText("ACTOR_2")).toBeInTheDocument();
+    expect(
+      screen.queryByText('{ "test-label-key": "test-label-value" }'),
+    ).toBeInTheDocument();
 
     expect(actor2Row.compareDocumentPosition(actor1Row)).toBe(
       Node.DOCUMENT_POSITION_FOLLOWING,

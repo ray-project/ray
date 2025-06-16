@@ -68,9 +68,10 @@ class FileSystemMonitor {
   const std::vector<std::string> paths_;
   const double capacity_threshold_;
   std::atomic<bool> over_capacity_;
-  instrumented_io_context io_context_;
+  instrumented_io_context io_context_{/*enable_lag_probe=*/false,
+                                      /*running_on_single_thread=*/true};
   std::thread monitor_thread_;
-  PeriodicalRunner runner_;
+  std::shared_ptr<PeriodicalRunner> runner_;
 };
 
 std::vector<std::string> ParseSpillingPaths(const std::string &spilling_config);

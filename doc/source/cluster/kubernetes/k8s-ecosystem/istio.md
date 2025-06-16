@@ -66,7 +66,7 @@ In this mode, you _must_ disable the KubeRay init container injection by setting
 
 ```bash
 # Set ENABLE_INIT_CONTAINER_INJECTION=false on the KubeRay operator.
-helm upgrade kuberay-operator kuberay/kuberay-operator --version 1.2.2 \
+helm upgrade kuberay-operator kuberay/kuberay-operator --version 1.3.0 \
   --set env\[0\].name=ENABLE_INIT_CONTAINER_INJECTION \
   --set-string env\[0\].value=false
 
@@ -165,7 +165,7 @@ Kubernetes Service doesn't support specifying ports in ranges. You _must_ set th
 :::
 
 :::{warning}
-The default Ray worker port range, from 10002 to 19999, is too large to specify in the service manifest and can cause memory issues in Kubernetes. Set a smaller `max-worker-port` to work with Istio.
+The default Ray worker port range, from 10002 to 19999, is too large to specify in the service manifest and can cause memory issues in Kubernetes. Set a smaller `max-worker-port` to work with Istio. Note that by default every sidecar in the service mesh caches these ports, which could lead to sidecar OOMs if you create too many headless services. 
 :::
 
 ## Step 4: Create the RayCluster

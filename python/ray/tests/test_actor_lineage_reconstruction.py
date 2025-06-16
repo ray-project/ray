@@ -1,22 +1,33 @@
-import os
 import gc
+import os
 import sys
+import signal
 
 import pytest
 
 import ray
-from ray._private.test_utils import wait_for_condition
+from ray._common.test_utils import wait_for_condition
 from ray.core.generated import gcs_pb2
 from ray.core.generated import common_pb2
 
 
-def test_actor_reconstruction_triggered_by_lineage_reconstruction(ray_start_cluster):
+@pytest.mark.parametrize("deterministic_failure", ["request", "response"])
+def test_actor_reconstruction_triggered_by_lineage_reconstruction(
+    monkeypatch, ray_start_cluster, deterministic_failure
+):
     # Test the sequence of events:
     # actor goes out of scope and killed
     # -> lineage reconstruction triggered by object lost
     # -> actor is restarted
     # -> actor goes out of scope again after lineage reconstruction is done
     # -> actor is permanently dead when there is no reference.
+    # This test also injects network failure to make sure relevant rpcs are retried.
+    chaos_failure = "100:0" if deterministic_failure == "request" else "0:100"
+    monkeypatch.setenv(
+        "RAY_testing_rpc_failure",
+        f"ray::rpc::ActorInfoGcsService.grpc_client.RestartActorForLineageReconstruction=1:{chaos_failure},"
+        f"ray::rpc::ActorInfoGcsService.grpc_client.ReportActorOutOfScope=1:{chaos_failure}",
+    )
     cluster = ray_start_cluster
     cluster.add_node(resources={"head": 1})
     ray.init(address=cluster.address)
@@ -29,10 +40,16 @@ def test_actor_reconstruction_triggered_by_lineage_reconstruction(ray_start_clus
         def ping(self):
             return [1] * 1024 * 1024
 
+        def pid(self):
+            return os.getpid()
+
     actor = Actor.remote()
     actor_id = actor._actor_id
 
     obj1 = actor.ping.remote()
+    os.kill(ray.get(actor.pid.remote()), signal.SIGKILL)
+
+    # obj2 should be ready after actor is restarted
     obj2 = actor.ping.remote()
 
     # Make the actor out of scope
@@ -103,7 +120,4 @@ def test_actor_reconstruction_triggered_by_lineage_reconstruction(ray_start_clus
 
 
 if __name__ == "__main__":
-    if os.environ.get("PARALLEL_CI"):
-        sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))
-    else:
-        sys.exit(pytest.main(["-sv", __file__]))
+    sys.exit(pytest.main(["-sv", __file__]))

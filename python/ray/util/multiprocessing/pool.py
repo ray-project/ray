@@ -240,7 +240,8 @@ class ResultThread(threading.Thread):
         while self._num_ready < self._total_object_refs:
             # Get as many new IDs from the queue as possible without blocking,
             # unless we have no IDs to wait on, in which case we block.
-            while True:
+            ready_id = None
+            while ready_id is None:
                 try:
                     block = len(unready) == 0
                     new_object_ref = self._new_object_refs.get(block=block)
@@ -253,9 +254,14 @@ class ResultThread(threading.Thread):
                         unready.append(new_object_ref)
                 except queue.Empty:
                     # queue.Empty means no result was retrieved if block=False.
-                    break
+                    pass
 
-            [ready_id], unready = ray.wait(unready, num_returns=1)
+                # Check if any of the available IDs are done. The timeout is required
+                # here to periodically check for new IDs from self._new_object_refs.
+                ready, unready = ray.wait(unready, num_returns=1, timeout=0.1)
+                if len(ready) > 0:
+                    ready_id = ready[0]
+
             try:
                 batch = ray.get(ready_id)
             except ray.exceptions.RayError as e:
@@ -559,7 +565,7 @@ class Pool:
             be passed to `ray.init()` to connect to a running cluster. This may
             also be specified using the `RAY_ADDRESS` environment variable.
         ray_remote_args: arguments used to configure the Ray Actors making up
-            the pool.
+            the pool. See :func:`ray.remote` for details.
     """
 
     def __init__(
@@ -605,7 +611,10 @@ class Pool:
                 RAY_ADDRESS_ENV in os.environ
                 or ray._private.utils.read_ray_address() is not None
             ):
-                ray.init()
+                init_kwargs = {}
+                if os.environ.get(RAY_ADDRESS_ENV) == "local":
+                    init_kwargs["num_cpus"] = processes
+                ray.init(**init_kwargs)
             elif ray_address is not None:
                 init_kwargs = {}
                 if ray_address == "local":

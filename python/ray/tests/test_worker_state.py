@@ -1,10 +1,9 @@
-import os
 import pytest
 import sys
 import threading
 
 import ray
-from ray._private.test_utils import (
+from ray._common.test_utils import (
     wait_for_condition,
 )
 from ray.util.state import list_workers
@@ -159,7 +158,4 @@ def test_worker_paused_async_actor(shutdown_only, actor_concurrency):
 
 
 if __name__ == "__main__":
-    if os.environ.get("PARALLEL_CI"):
-        sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))
-    else:
-        sys.exit(pytest.main(["-sv", __file__]))
+    sys.exit(pytest.main(["-sv", __file__]))

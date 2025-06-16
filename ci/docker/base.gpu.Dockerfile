@@ -1,4 +1,5 @@
-FROM nvidia/cuda:12.1.1-cudnn8-devel-ubuntu20.04
+ARG BASE_IMAGE=nvidia/cuda:12.1.1-cudnn8-devel-ubuntu20.04
+FROM $BASE_IMAGE
 
 ARG REMOTE_CACHE_URL
 ARG BUILDKITE_PULL_REQUEST
@@ -9,6 +10,7 @@ ARG PYTHON=3.9
 ENV DEBIAN_FRONTEND=noninteractive
 ENV TZ=America/Los_Angeles
 
+ENV RAY_BUILD_ENV=ubuntu20.04_cuda12.1_py$PYTHON
 ENV BUILDKITE=true
 ENV CI=true
 ENV PYTHON=$PYTHON
@@ -18,12 +20,6 @@ ENV RAY_INSTALL_JAVA=0
 ENV BUILDKITE_PULL_REQUEST=${BUILDKITE_PULL_REQUEST}
 ENV BUILDKITE_COMMIT=${BUILDKITE_COMMIT}
 ENV BUILDKITE_PULL_REQUEST_BASE_BRANCH=${BUILDKITE_PULL_REQUEST_BASE_BRANCH}
-# For wheel build
-# https://github.com/docker-library/docker/blob/master/20.10/docker-entrypoint.sh
-ENV DOCKER_TLS_CERTDIR=/certs
-ENV DOCKER_HOST=tcp://docker:2376
-ENV DOCKER_TLS_VERIFY=1
-ENV DOCKER_CERT_PATH=/certs/client
 ENV TRAVIS_COMMIT=${BUILDKITE_COMMIT}
 ENV BUILDKITE_BAZEL_CACHE_URL=${REMOTE_CACHE_URL}
 
@@ -52,7 +48,7 @@ RUN (echo "build --remote_cache=${REMOTE_CACHE_URL}" >> /root/.bazelrc); \
     (if [ "${BUILDKITE_PULL_REQUEST}" != "false" ]; then (echo "build --remote_upload_local_results=false" >> /root/.bazelrc); fi); \
     cat /root/.bazelrc
 
-# Install some dependencies (miniconda, pip dependencies, etc)
+# Install some dependencies (miniforge, pip dependencies, etc)
 RUN mkdir /ray
 WORKDIR /ray
 
@@ -60,7 +56,5 @@ WORKDIR /ray
 COPY . .
 
 RUN bash --login -ie -c '\
-    BUILD=1 ./ci/env/install-dependencies.sh \
-    RLLIB_TESTING=1 TRAIN_TESTING=1 TUNE_TESTING=1 ./ci/env/install-dependencies.sh \
-    pip uninstall -y ray \
+    BUILD=1 SKIP_PYTHON_PACKAGES=1 ./ci/env/install-dependencies.sh \
 '

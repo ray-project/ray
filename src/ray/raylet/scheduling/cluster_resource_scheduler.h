@@ -17,11 +17,12 @@
 #include <gtest/gtest_prod.h>
 
 #include <iostream>
+#include <memory>
 #include <sstream>
+#include <string>
 #include <vector>
 
 #include "absl/container/flat_hash_map.h"
-#include "absl/container/flat_hash_set.h"
 #include "ray/common/scheduling/cluster_resource_data.h"
 #include "ray/common/scheduling/fixed_point.h"
 #include "ray/common/scheduling/resource_set.h"
@@ -93,7 +94,7 @@ class ClusterResourceScheduler {
   ///  \param is_infeasible[out]: It is set
   ///  true if the task is not schedulable because it is infeasible.
   ///
-  ///  \return emptry string, if no node can schedule the current request; otherwise,
+  ///  \return empty string, if no node can schedule the current request; otherwise,
   ///          return the string name of a node that can schedule the resource request.
   scheduling::NodeID GetBestSchedulableNode(const TaskSpecification &task_spec,
                                             const std::string &preferred_node_id,
@@ -119,9 +120,11 @@ class ClusterResourceScheduler {
   /// schedulable if it has the available resources needed to execute the task.
   ///
   /// \param node_name Name of the node.
+  /// \param label_selector: label requirements to schedule on a node.
   /// \param shape The resource demand's shape.
   bool IsSchedulableOnNode(scheduling::NodeID node_id,
                            const absl::flat_hash_map<std::string, double> &shape,
+                           const LabelSelector &label_selector,
                            bool requires_object_store_memory);
 
   LocalResourceManager &GetLocalResourceManager() { return *local_resource_manager_; }
@@ -194,6 +197,7 @@ class ClusterResourceScheduler {
   //           resource request.
   scheduling::NodeID GetBestSchedulableNode(
       const absl::flat_hash_map<std::string, double> &resource_request,
+      const LabelSelector &label_selector,
       const rpc::SchedulingStrategy &scheduling_strategy,
       bool requires_object_store_memory,
       bool actor_creation,
@@ -243,6 +247,7 @@ class ClusterResourceScheduler {
   FRIEND_TEST(ClusterTaskManagerTestWithGPUsAtHead, RleaseAndReturnWorkerCpuResources);
   FRIEND_TEST(ClusterResourceSchedulerTest, TestForceSpillback);
   FRIEND_TEST(ClusterResourceSchedulerTest, AffinityWithBundleScheduleTest);
+  FRIEND_TEST(ClusterResourceSchedulerTest, LabelSelectorIsSchedulableOnNodeTest);
 };
 
 }  // end namespace ray

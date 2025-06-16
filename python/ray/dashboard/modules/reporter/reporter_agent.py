@@ -3,6 +3,7 @@ import datetime
 import json
 import logging
 import os
+import requests
 import socket
 import sys
 import traceback
@@ -12,26 +13,43 @@ from typing import List, Optional, Tuple, TypedDict, Union
 
 from opencensus.stats import stats as stats_module
 from prometheus_client.core import REGISTRY
+from prometheus_client.parser import text_string_to_metric_families
+from opentelemetry.proto.collector.metrics.v1 import metrics_service_pb2
+from grpc.aio import ServicerContext
+
 
 import ray
 import ray._private.prometheus_exporter as prometheus_exporter
-import ray._private.services
-import ray._private.utils
 import ray.dashboard.modules.reporter.reporter_consts as reporter_consts
 import ray.dashboard.utils as dashboard_utils
+from ray._common.utils import (
+    get_or_create_event_loop,
+    get_system_memory,
+    get_user_temp_dir,
+)
 from ray._private import utils
 from ray._private.metrics_agent import Gauge, MetricsAgent, Record
-from ray._private.ray_constants import DEBUG_AUTOSCALING_STATUS, env_integer
-from ray._raylet import WorkerID
-from ray.core.generated import reporter_pb2, reporter_pb2_grpc
+from ray._private.ray_constants import (
+    DEBUG_AUTOSCALING_STATUS,
+    RAY_EXPERIMENTAL_ENABLE_OPEN_TELEMETRY_ON_AGENT,
+    RAY_EXPERIMENTAL_ENABLE_OPEN_TELEMETRY_ON_CORE,
+    env_integer,
+)
+from ray._private.telemetry.open_telemetry_metric_recorder import (
+    OpenTelemetryMetricRecorder,
+)
+from ray._raylet import GCS_PID_KEY, WorkerID
+from ray.core.generated import metrics_service_pb2_grpc, reporter_pb2, reporter_pb2_grpc
 from ray.dashboard import k8s_utils
 from ray.dashboard.consts import (
     CLUSTER_TAG_KEYS,
     COMPONENT_METRICS_TAG_KEYS,
     GCS_RPC_TIMEOUT_SECONDS,
     GPU_TAG_KEYS,
+    TPU_TAG_KEYS,
     NODE_TAG_KEYS,
 )
+from ray.dashboard.modules.reporter.gpu_profile_manager import GpuProfilingManager
 from ray.dashboard.modules.reporter.profile_manager import (
     CpuProfilingManager,
     MemoryProfilingManager,
@@ -42,6 +60,8 @@ import psutil
 logger = logging.getLogger(__name__)
 
 enable_gpu_usage_check = True
+
+enable_tpu_usage_check = True
 
 # Are we in a K8s pod?
 IN_KUBERNETES_POD = "KUBERNETES_SERVICE_HOST" in os.environ
@@ -60,6 +80,9 @@ IN_CONTAINER = os.path.exists("/sys/fs/cgroup")
 RAY_DASHBOARD_REPORTER_AGENT_TPE_MAX_WORKERS = env_integer(
     "RAY_DASHBOARD_REPORTER_AGENT_TPE_MAX_WORKERS", 1
 )
+
+# TPU device plugin metric address should be in the format "{HOST_IP}:2112"
+TPU_DEVICE_PLUGIN_ADDR = os.environ.get("TPU_DEVICE_PLUGIN_ADDR", None)
 
 
 def recursive_asdict(o):
@@ -147,6 +170,37 @@ METRICS_GAUGES = {
         "Total GPU RAM available on a ray node",
         "bytes",
         GPU_TAG_KEYS,
+    ),
+    # TPU metrics
+    "tpu_tensorcore_utilization": Gauge(
+        "tpu_tensorcore_utilization",
+        "Percentage TPU tensorcore utilization on a ray node, value should be between 0 and 100",
+        "percentage",
+        TPU_TAG_KEYS,
+    ),
+    "tpu_memory_bandwidth_utilization": Gauge(
+        "tpu_memory_bandwidth_utilization",
+        "Percentage TPU memory bandwidth utilization on a ray node, value should be between 0 and 100",
+        "percentage",
+        TPU_TAG_KEYS,
+    ),
+    "tpu_duty_cycle": Gauge(
+        "tpu_duty_cycle",
+        "Percentage of time during which the TPU was actively processing, value should be between 0 and 100",
+        "percentage",
+        TPU_TAG_KEYS,
+    ),
+    "tpu_memory_used": Gauge(
+        "tpu_memory_used",
+        "Total memory used by the accelerator in bytes",
+        "bytes",
+        TPU_TAG_KEYS,
+    ),
+    "tpu_memory_total": Gauge(
+        "tpu_memory_total",
+        "Total memory allocatable by the accelerator in bytes",
+        "bytes",
+        TPU_TAG_KEYS,
     ),
     # Disk I/O metrics
     "node_disk_io_read": Gauge(
@@ -314,6 +368,7 @@ MB = 1024 * 1024
 # Types
 Percentage = int
 Megabytes = int
+Bytes = int
 
 
 # gpu utilization for nvidia gpu from a single process
@@ -333,8 +388,23 @@ class GpuUtilizationInfo(TypedDict):
     processes_pids: Optional[List[ProcessGPUInfo]]
 
 
+# tpu utilization for google tpu
+class TpuUtilizationInfo(TypedDict):
+    index: int
+    name: str
+    tpu_type: str
+    tpu_topology: str
+    tensorcore_utilization: Percentage
+    hbm_utilization: Percentage
+    duty_cycle: Percentage
+    memory_used: Bytes
+    memory_total: Bytes
+
+
 class ReporterAgent(
-    dashboard_utils.DashboardAgentModule, reporter_pb2_grpc.ReporterServiceServicer
+    dashboard_utils.DashboardAgentModule,
+    reporter_pb2_grpc.ReporterServiceServicer,
+    metrics_service_pb2_grpc.MetricsServiceServicer,
 ):
     """A monitor process for monitoring Ray nodes.
 
@@ -350,9 +420,7 @@ class ReporterAgent(
             # psutil does not give a meaningful logical cpu count when in a K8s pod, or
             # in a container in general.
             # Use ray._private.utils for this instead.
-            logical_cpu_count = ray._private.utils.get_num_cpus(
-                override_docker_cpu_warning=True
-            )
+            logical_cpu_count = utils.get_num_cpus(override_docker_cpu_warning=True)
             # (Override the docker warning to avoid dashboard log spam.)
 
             # The dashboard expects a physical CPU count as well.
@@ -363,7 +431,7 @@ class ReporterAgent(
             logical_cpu_count = psutil.cpu_count()
             physical_cpu_count = psutil.cpu_count(logical=False)
         self._cpu_counts = (logical_cpu_count, physical_cpu_count)
-        self._gcs_aio_client = dashboard_agent.gcs_aio_client
+        self._gcs_client = dashboard_agent.gcs_client
         self._ip = dashboard_agent.ip
         self._log_dir = dashboard_agent.log_dir
         self._is_head_node = self._ip == dashboard_agent.gcs_address.split(":")[0]
@@ -382,6 +450,7 @@ class ReporterAgent(
         ]  # time, (bytes read, bytes written, read ops, write ops)
         self._metrics_collection_disabled = dashboard_agent.metrics_collection_disabled
         self._metrics_agent = None
+        self._open_telemetry_metric_recorder = None
         self._session_name = dashboard_agent.session_name
         if not self._metrics_collection_disabled:
             try:
@@ -407,6 +476,7 @@ class ReporterAgent(
                 stats_module.stats.stats_recorder,
                 stats_exporter,
             )
+            self._open_telemetry_metric_recorder = OpenTelemetryMetricRecorder()
             if self._metrics_agent.proxy_exporter_collector:
                 # proxy_exporter_collector is None
                 # if Prometheus server is not started.
@@ -419,6 +489,12 @@ class ReporterAgent(
             max_workers=RAY_DASHBOARD_REPORTER_AGENT_TPE_MAX_WORKERS,
             thread_name_prefix="reporter_agent_executor",
         )
+        self._gcs_pid = None
+
+        self._gpu_profiling_manager = GpuProfilingManager(
+            profile_dir_path=self._log_dir, ip_address=self._ip
+        )
+        self._gpu_profiling_manager.start_monitoring_daemon()
 
     async def GetTraceback(self, request, context):
         pid = request.pid
@@ -437,6 +513,14 @@ class ReporterAgent(
             pid, format=format, duration=duration, native=native
         )
         return reporter_pb2.CpuProfilingReply(output=output, success=success)
+
+    async def GpuProfiling(self, request, context):
+        pid = request.pid
+        num_iterations = request.num_iterations
+        success, output = await self._gpu_profiling_manager.gpu_profile(
+            pid=pid, num_iterations=num_iterations
+        )
+        return reporter_pb2.GpuProfilingReply(success=success, output=output)
 
     async def MemoryProfiling(self, request, context):
         pid = request.pid
@@ -477,6 +561,29 @@ class ReporterAgent(
         except Exception:
             logger.error(traceback.format_exc())
         return reporter_pb2.ReportOCMetricsReply()
+
+    async def Export(
+        self,
+        request: metrics_service_pb2.ExportMetricsServiceRequest,
+        context: ServicerContext,
+    ) -> metrics_service_pb2.ExportMetricsServiceResponse:
+        for resource_metrics in request.resource_metrics:
+            for scope_metrics in resource_metrics.scope_metrics:
+                for metric in scope_metrics.metrics:
+                    self._open_telemetry_metric_recorder.register_gauge_metric(
+                        metric.name, metric.description or ""
+                    )
+                    for data_point in metric.gauge.data_points:
+                        self._open_telemetry_metric_recorder.set_metric_value(
+                            metric.name,
+                            {
+                                tag.key: tag.value.string_value
+                                for tag in data_point.attributes
+                            },
+                            data_point.as_double,
+                        )
+
+        return metrics_service_pb2.ExportMetricsServiceResponse()
 
     @staticmethod
     def _get_cpu_percent(in_k8s: bool):
@@ -537,9 +644,11 @@ class ReporterAgent(
                 processes_pids = [
                     ProcessGPUInfo(
                         pid=int(nv_process.pid),
-                        gpu_memory_usage=int(nv_process.usedGpuMemory) // MB
-                        if nv_process.usedGpuMemory
-                        else 0,
+                        gpu_memory_usage=(
+                            int(nv_process.usedGpuMemory) // MB
+                            if nv_process.usedGpuMemory
+                            else 0
+                        ),
                     )
                     for nv_process in (nv_comp_processes + nv_graphics_processes)
                 ]
@@ -561,6 +670,154 @@ class ReporterAgent(
         return gpu_utilizations
 
     @staticmethod
+    def _get_tpu_usage() -> List[TpuUtilizationInfo]:
+
+        global enable_tpu_usage_check
+        if not enable_tpu_usage_check:
+            return []
+
+        if not TPU_DEVICE_PLUGIN_ADDR:
+            enable_tpu_usage_check = False
+            return []
+
+        endpoint = f"http://{TPU_DEVICE_PLUGIN_ADDR}/metrics"
+        try:
+            metrics = requests.get(endpoint).content
+            metrics = metrics.decode("utf-8")
+        except Exception as e:
+            logger.debug(
+                f"Failed to retrieve TPU information from device plugin: {endpoint} {e}"
+            )
+            enable_tpu_usage_check = False
+            return []
+
+        tpu_utilizations = []
+        # Sample should look like:
+        # Name: tensorcore_utilization_node Labels: {'accelerator_id': '4804690994094478883-0', 'make': 'cloud-tpu', 'model': 'tpu-v6e-slice', 'tpu_topology': '2x4'} Value: 0.0
+        # See https://cloud.google.com/monitoring/api/metrics_gcp#gcp-tpu for
+        # schema.
+        try:
+            for family in text_string_to_metric_families(metrics):
+                for sample in family.samples:
+                    # Skip irrelevant metrics
+                    if not hasattr(sample, "labels"):
+                        continue
+                    if "accelerator_id" not in sample.labels:
+                        continue
+                    labels = sample.labels
+                    accelerator_id = labels["accelerator_id"]
+                    index = accelerator_id.split("-")[1]
+
+                    if sample.name == "memory_bandwidth_utilization":
+                        info = TpuUtilizationInfo(
+                            index=index,
+                            name=accelerator_id,
+                            tpu_type=labels["model"],
+                            tpu_topology=labels["tpu_topology"],
+                            tensorcore_utilization=0.0,
+                            hbm_utilization=sample.value,
+                            duty_cycle=0.0,
+                            memory_used=0,
+                            memory_total=0,
+                        )
+                        tpu_utilizations.append(info)
+
+                    if sample.name == "tensorcore_utilization":
+                        info = TpuUtilizationInfo(
+                            index=index,
+                            name=accelerator_id,
+                            tpu_type=labels["model"],
+                            tpu_topology=labels["tpu_topology"],
+                            tensorcore_utilization=sample.value,
+                            hbm_utilization=0.0,
+                            duty_cycle=0.0,
+                            memory_used=0,
+                            memory_total=0,
+                        )
+                        tpu_utilizations.append(info)
+
+                    if sample.name == "duty_cycle":
+                        info = TpuUtilizationInfo(
+                            index=index,
+                            name=accelerator_id,
+                            tpu_type=labels["model"],
+                            tpu_topology=labels["tpu_topology"],
+                            tensorcore_utilization=0.0,
+                            hbm_utilization=0.0,
+                            duty_cycle=sample.value,
+                            memory_used=0,
+                            memory_total=0,
+                        )
+                        tpu_utilizations.append(info)
+
+                    if sample.name == "memory_used":
+                        info = TpuUtilizationInfo(
+                            index=index,
+                            name=accelerator_id,
+                            tpu_type=labels["model"],
+                            tpu_topology=labels["tpu_topology"],
+                            tensorcore_utilization=0.0,
+                            hbm_utilization=0.0,
+                            duty_cycle=0.0,
+                            memory_used=sample.value,
+                            memory_total=0,
+                        )
+                        tpu_utilizations.append(info)
+
+                    if sample.name == "memory_total":
+                        info = TpuUtilizationInfo(
+                            index=index,
+                            name=accelerator_id,
+                            tpu_type=labels["model"],
+                            tpu_topology=labels["tpu_topology"],
+                            tensorcore_utilization=0.0,
+                            hbm_utilization=0.0,
+                            duty_cycle=0.0,
+                            memory_used=0,
+                            memory_total=sample.value,
+                        )
+                        tpu_utilizations.append(info)
+        except Exception as e:
+            logger.debug(f"Failed to parse metrics from device plugin: {metrics} {e}")
+            return []
+
+        # Each collected sample records only one metric (e.g. duty cycle) during
+        # the metric interval for one TPU. So here we need to aggregate the
+        # sample records together. The aggregated list should be indexed by the
+        # TPU accelerator index.
+        merged_tpu_utilizations = {}
+
+        for info in tpu_utilizations:
+            index = int(info.get("index"))
+            if index in merged_tpu_utilizations:
+                merged_info = merged_tpu_utilizations[index]
+                merged_info["tensorcore_utilization"] += info.get(
+                    "tensorcore_utilization"
+                )
+                merged_info["hbm_utilization"] += info.get("hbm_utilization")
+                merged_info["duty_cycle"] += info.get("duty_cycle")
+                merged_info["memory_used"] += info.get("memory_used")
+                merged_info["memory_total"] += info.get("memory_total")
+            else:
+                merged_info = TpuUtilizationInfo(
+                    index=info.get("index"),
+                    name=info.get("name"),
+                    tpu_type=info.get("tpu_type"),
+                    tpu_topology=info.get("tpu_topology"),
+                    tensorcore_utilization=info.get("tensorcore_utilization"),
+                    hbm_utilization=info.get("hbm_utilization"),
+                    duty_cycle=info.get("duty_cycle"),
+                    memory_used=info.get("memory_used"),
+                    memory_total=info.get("memory_total"),
+                )
+                merged_tpu_utilizations[index] = merged_info
+
+        sorted_tpu_utilizations = [
+            value for _, value in sorted(merged_tpu_utilizations.items())
+        ]
+        return sorted_tpu_utilizations
+
+    @staticmethod
     def _get_boot_time():
         if IN_KUBERNETES_POD:
             # Return start time of container entrypoint
@@ -580,8 +837,8 @@ class ReporterAgent(
 
     @staticmethod
     def _get_mem_usage():
-        total = ray._private.utils.get_system_memory()
-        used = ray._private.utils.get_used_memory()
+        total = get_system_memory()
+        used = utils.get_used_memory()
         available = total - used
         percent = round(used / total, 3) * 100
         return total, available, percent, used
@@ -597,7 +854,7 @@ class ReporterAgent(
             root = psutil.disk_partitions()[0].mountpoint
         else:
             root = os.sep
-        tmp = ray._private.utils.get_user_temp_dir()
+        tmp = get_user_temp_dir()
         return {
             "/": psutil.disk_usage(root),
             tmp: psutil.disk_usage(tmp),
@@ -670,11 +927,11 @@ class ReporterAgent(
                 try:
                     if w.status() == psutil.STATUS_ZOMBIE:
                         continue
+                    result.append(w.as_dict(attrs=PSUTIL_PROCESS_ATTRS))
                 except psutil.NoSuchProcess:
                     # the process may have terminated due to race condition.
                     continue
 
-                result.append(w.as_dict(attrs=PSUTIL_PROCESS_ATTRS))
             return result
 
     def _get_raylet_proc(self):
@@ -701,6 +958,13 @@ class ReporterAgent(
         except (psutil.AccessDenied, ProcessLookupError):
             pass
         return None
+
+    def _get_gcs(self):
+        if self._gcs_pid:
+            gcs_proc = psutil.Process(self._gcs_pid)
+            if gcs_proc:
+                return gcs_proc.as_dict(attrs=PSUTIL_PROCESS_ATTRS)
+        return {}
 
     def _get_raylet(self):
         raylet_proc = self._get_raylet_proc()
@@ -756,7 +1020,7 @@ class ReporterAgent(
         self._disk_io_stats_hist.append((now, disk_stats))
         disk_speed_stats = self._compute_speed_from_hist(self._disk_io_stats_hist)
 
-        return {
+        stats = {
             "now": now,
             "hostname": self._hostname,
             "ip": self._ip,
@@ -774,11 +1038,15 @@ class ReporterAgent(
             "disk_io": disk_stats,
             "disk_io_speed": disk_speed_stats,
             "gpus": self._get_gpu_usage(),
+            "tpus": self._get_tpu_usage(),
             "network": network_stats,
             "network_speed": network_speed_stats,
             # Deprecated field, should be removed with frontend.
             "cmdline": self._get_raylet().get("cmdline", []),
         }
+        if self._is_head_node:
+            stats["gcs"] = self._get_gcs()
+        return stats
 
     def _generate_reseted_stats_record(self, component_name: str) -> List[Record]:
         """Return a list of Record that will reset
@@ -1097,6 +1365,62 @@ class ReporterAgent(
                         ]
                     )
 
+        # -- TPU per node --
+        tpus = stats["tpus"]
+
+        for tpu in tpus:
+            tpu_index = tpu.get("index")
+            tpu_name = tpu.get("name")
+            tpu_type = tpu.get("tpu_type")
+            tpu_topology = tpu.get("tpu_topology")
+            tensorcore_utilization = tpu.get("tensorcore_utilization")
+            hbm_utilization = tpu.get("hbm_utilization")
+            duty_cycle = tpu.get("duty_cycle")
+            memory_used = tpu.get("memory_used")
+            memory_total = tpu.get("memory_total")
+
+            tpu_tags = {
+                **node_tags,
+                "TpuIndex": str(tpu_index),
+                "TpuDeviceName": tpu_name,
+                "TpuType": tpu_type,
+                "TpuTopology": tpu_topology,
+            }
+            tensorcore_utilization_record = Record(
+                gauge=METRICS_GAUGES["tpu_tensorcore_utilization"],
+                value=tensorcore_utilization,
+                tags=tpu_tags,
+            )
+            hbm_utilization_record = Record(
+                gauge=METRICS_GAUGES["tpu_memory_bandwidth_utilization"],
+                value=hbm_utilization,
+                tags=tpu_tags,
+            )
+            duty_cycle_record = Record(
+                gauge=METRICS_GAUGES["tpu_duty_cycle"],
+                value=duty_cycle,
+                tags=tpu_tags,
+            )
+            memory_used_record = Record(
+                gauge=METRICS_GAUGES["tpu_memory_used"],
+                value=memory_used,
+                tags=tpu_tags,
+            )
+            memory_total_record = Record(
+                gauge=METRICS_GAUGES["tpu_memory_total"],
+                value=memory_total,
+                tags=tpu_tags,
+            )
+            records_reported.extend(
+                [
+                    tensorcore_utilization_record,
+                    hbm_utilization_record,
+                    duty_cycle_record,
+                    memory_used_record,
+                    memory_total_record,
+                ]
+            )
+
         # -- Disk per node --
         disk_io_stats = stats["disk_io"]
         disk_read_record = Record(
@@ -1185,6 +1509,15 @@ class ReporterAgent(
         Record system stats.
         """
 
+        if self._is_head_node:
+            gcs_stats = stats["gcs"]
+            if gcs_stats:
+                records_reported.extend(
+                    self._generate_system_stats_record(
+                        [gcs_stats], "gcs", pid=str(gcs_stats["pid"])
+                    )
+                )
+
         # Record component metrics.
         raylet_stats = stats["raylet"]
         if raylet_stats:
@@ -1205,7 +1538,6 @@ class ReporterAgent(
                 )
             )
 
-        # TODO(sang): Record GCS metrics.
         # NOTE: Dashboard metrics is recorded within the dashboard because
         # it can be deployed as a standalone instance. It shouldn't
         # depend on the agent.
@@ -1237,20 +1569,30 @@ class ReporterAgent(
 
         return records_reported
 
-    async def _run_loop(self, publisher):
+    async def _run_loop(self):
         """Get any changes to the log files and push updates to kv."""
-        loop = utils.get_or_create_event_loop()
+        loop = get_or_create_event_loop()
 
         while True:
             try:
                 # Fetch autoscaler debug status
-                autoscaler_status_json_bytes: Optional[
-                    bytes
-                ] = await self._gcs_aio_client.internal_kv_get(
-                    DEBUG_AUTOSCALING_STATUS.encode(),
-                    None,
-                    timeout=GCS_RPC_TIMEOUT_SECONDS,
-                )
+                autoscaler_status_json_bytes: Optional[bytes] = None
+                if self._is_head_node:
+                    autoscaler_status_json_bytes = (
+                        await self._gcs_client.async_internal_kv_get(
+                            DEBUG_AUTOSCALING_STATUS.encode(),
+                            None,
+                            timeout=GCS_RPC_TIMEOUT_SECONDS,
+                        )
+                    )
+                    self._gcs_pid = await self._gcs_client.async_internal_kv_get(
+                        GCS_PID_KEY.encode(),
+                        None,
+                        timeout=GCS_RPC_TIMEOUT_SECONDS,
+                    )
+                    self._gcs_pid = (
+                        int(self._gcs_pid.decode()) if self._gcs_pid else None
+                    )
 
                 # NOTE: Stats collection is executed inside the thread-pool
                 #       executor (TPE) to avoid blocking the Agent's event-loop
@@ -1260,7 +1602,9 @@ class ReporterAgent(
                     autoscaler_status_json_bytes,
                 )
 
-                await publisher.publish_resource_usage(self._key, json_payload)
+                await self._gcs_client.async_publish_node_resource_usage(
+                    self._key, json_payload
+                )
 
             except Exception:
                 logger.exception("Error publishing node physical stats.")
@@ -1282,13 +1626,22 @@ class ReporterAgent(
 
             records = self._to_records(stats, cluster_stats)
 
-            self._metrics_agent.record_and_export(
-                records,
-                global_tags={
-                    "Version": ray.__version__,
-                    "SessionName": self._session_name,
-                },
-            )
+            if RAY_EXPERIMENTAL_ENABLE_OPEN_TELEMETRY_ON_AGENT:
+                self._open_telemetry_metric_recorder.record_and_export(
+                    records,
+                    global_tags={
+                        "Version": ray.__version__,
+                        "SessionName": self._session_name,
+                    },
+                )
+            else:
+                self._metrics_agent.record_and_export(
+                    records,
+                    global_tags={
+                        "Version": ray.__version__,
+                        "SessionName": self._session_name,
+                    },
+                )
 
             self._metrics_agent.clean_all_dead_worker_metrics()
 
@@ -1297,8 +1650,12 @@ class ReporterAgent(
     async def run(self, server):
         if server:
             reporter_pb2_grpc.add_ReporterServiceServicer_to_server(self, server)
+            if RAY_EXPERIMENTAL_ENABLE_OPEN_TELEMETRY_ON_CORE:
+                metrics_service_pb2_grpc.add_MetricsServiceServicer_to_server(
+                    self, server
+                )
 
-        await self._run_loop(self._dashboard_agent.publisher)
+        await self._run_loop()
 
     @staticmethod
     def is_minimal_module():

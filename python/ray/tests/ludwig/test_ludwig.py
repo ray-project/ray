@@ -20,8 +20,10 @@
 import contextlib
 import os
 import tempfile
+import sys
 
 import pytest
+
 import ray
 
 ludwig_installed = True
@@ -160,7 +162,4 @@ def test_ray_tabular_client():
 
 
 if __name__ == "__main__":
-    import pytest
-    import sys
-
     sys.exit(pytest.main(["-v", "-x", __file__]))

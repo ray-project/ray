@@ -84,9 +84,9 @@ And if you are using the `--as-test` option, you should see a finel message:
 import re
 import time
 
-from ray import train, tune
+from ray import tune
 from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
-from ray.rllib.algorithms.callbacks import DefaultCallbacks
+from ray.rllib.callbacks.callbacks import RLlibCallback
 from ray.rllib.examples.envs.classes.multi_agent import MultiAgentCartPole
 from ray.rllib.policy.policy import PolicySpec
 from ray.rllib.utils.metrics import (
@@ -114,7 +114,7 @@ parser.add_argument(
 parser.set_defaults(checkpoint_freq=1, checkpoint_at_end=True)
 
 
-class CrashAfterNIters(DefaultCallbacks):
+class CrashAfterNIters(RLlibCallback):
     """Callback that makes the algo crash after a certain avg. return is reached."""
 
     def __init__(self):
@@ -200,9 +200,9 @@ if __name__ == "__main__":
     tuner = tune.Tuner(
         trainable=config.algo_class,
         param_space=config,
-        run_config=train.RunConfig(
+        run_config=tune.RunConfig(
             callbacks=tune_callbacks,
-            checkpoint_config=train.CheckpointConfig(
+            checkpoint_config=tune.CheckpointConfig(
                 checkpoint_frequency=args.checkpoint_freq,
                 checkpoint_at_end=args.checkpoint_at_end,
             ),

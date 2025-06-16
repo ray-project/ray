@@ -11,6 +11,7 @@ from ray.rllib.connectors.learner import (
     GeneralAdvantageEstimation,
 )
 from ray.rllib.core.learner.learner import Learner
+from ray.rllib.core.rl_module.apis.value_function_api import ValueFunctionAPI
 from ray.rllib.utils.annotations import (
     override,
     OverrideToImplementCustomLogic_CallToSuperRecommended,
@@ -118,6 +119,13 @@ class PPOLearner(Learner):
                     config=config,
                     kl_loss=kl_loss,
                 )
+
+    @classmethod
+    @override(Learner)
+    def rl_module_required_apis(cls) -> list[type]:
+        # In order for a PPOLearner to update an RLModule, it must implement the
+        # following APIs:
+        return [ValueFunctionAPI]
 
     @abc.abstractmethod
     def _update_module_kl_coeff(

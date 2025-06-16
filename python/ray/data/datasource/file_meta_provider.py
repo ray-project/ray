@@ -16,10 +16,9 @@ from typing import (
 
 import numpy as np
 
-import ray
 from ray.data._internal.progress_bar import ProgressBar
 from ray.data._internal.remote_fn import cached_remote_fn
-from ray.data._internal.util import call_with_retry
+from ray.data._internal.util import RetryingPyFileSystem
 from ray.data.block import BlockMetadata
 from ray.data.datasource.partitioning import Partitioning
 from ray.util.annotations import DeveloperAPI
@@ -43,7 +42,6 @@ class FileMetadataProvider:
     def _get_block_metadata(
         self,
         paths: List[str],
-        schema: Optional[Union[type, "pyarrow.lib.Schema"]],
         **kwargs,
     ) -> BlockMetadata:
         """Resolves and returns block metadata for files in the given paths.
@@ -52,8 +50,7 @@ class FileMetadataProvider:
 
         Args:
             paths: The file paths for a single dataset block.
-            schema: The user-provided or inferred schema for the given paths,
-                if any.
+            **kwargs: Additional kwargs used to determine block metadata.
 
         Returns:
             BlockMetadata aggregated across the given paths.
@@ -63,10 +60,9 @@ class FileMetadataProvider:
     def __call__(
         self,
         paths: List[str],
-        schema: Optional[Union[type, "pyarrow.lib.Schema"]],
         **kwargs,
     ) -> BlockMetadata:
-        return self._get_block_metadata(paths, schema, **kwargs)
+        return self._get_block_metadata(paths, **kwargs)
 
 
 @DeveloperAPI
@@ -85,7 +81,6 @@ class BaseFileMetadataProvider(FileMetadataProvider):
     def _get_block_metadata(
         self,
         paths: List[str],
-        schema: Optional[Union[type, "pyarrow.lib.Schema"]],
         *,
         rows_per_file: Optional[int],
         file_sizes: List[Optional[int]],
@@ -96,8 +91,6 @@ class BaseFileMetadataProvider(FileMetadataProvider):
             paths: The file paths for a single dataset block. These
                 paths will always be a subset of those previously returned from
                 :meth:`.expand_paths`.
-            schema: The user-provided or inferred schema for the given file
-                paths, if any.
             rows_per_file: The fixed number of rows per input file, or None.
             file_sizes: Optional file size per input file previously returned
                 from :meth:`.expand_paths`, where `file_sizes[i]` holds the size of
@@ -111,7 +104,7 @@ class BaseFileMetadataProvider(FileMetadataProvider):
     def expand_paths(
         self,
         paths: List[str],
-        filesystem: Optional["pyarrow.fs.FileSystem"],
+        filesystem: Optional["RetryingPyFileSystem"],
         partitioning: Optional[Partitioning] = None,
         ignore_missing_paths: bool = False,
     ) -> Iterator[Tuple[str, int]]:
@@ -152,7 +145,6 @@ class DefaultFileMetadataProvider(BaseFileMetadataProvider):
     def _get_block_metadata(
         self,
         paths: List[str],
-        schema: Optional[Union[type, "pyarrow.lib.Schema"]],
         *,
         rows_per_file: Optional[int],
         file_sizes: List[Optional[int]],
@@ -164,7 +156,6 @@ class DefaultFileMetadataProvider(BaseFileMetadataProvider):
         return BlockMetadata(
             num_rows=num_rows,
             size_bytes=None if None in file_sizes else int(sum(file_sizes)),
-            schema=schema,
             input_files=paths,
             exec_stats=None,
         )  # Exec stats filled in later.
@@ -172,7 +163,7 @@ class DefaultFileMetadataProvider(BaseFileMetadataProvider):
     def expand_paths(
         self,
         paths: List[str],
-        filesystem: "pyarrow.fs.FileSystem",
+        filesystem: "RetryingPyFileSystem",
         partitioning: Optional[Partitioning] = None,
         ignore_missing_paths: bool = False,
     ) -> Iterator[Tuple[str, int]]:
@@ -197,7 +188,7 @@ class FastFileMetadataProvider(DefaultFileMetadataProvider):
     def expand_paths(
         self,
         paths: List[str],
-        filesystem: "pyarrow.fs.FileSystem",
+        filesystem: "RetryingPyFileSystem",
         partitioning: Optional[Partitioning] = None,
         ignore_missing_paths: bool = False,
     ) -> Iterator[Tuple[str, int]]:
@@ -254,7 +245,7 @@ def _handle_read_os_error(error: OSError, paths: Union[str, List[str]]) -> str:
 
 def _expand_paths(
     paths: List[str],
-    filesystem: "pyarrow.fs.FileSystem",
+    filesystem: "RetryingPyFileSystem",
     partitioning: Optional[Partitioning],
     ignore_missing_paths: bool = False,
 ) -> Iterator[Tuple[str, int]]:
@@ -264,7 +255,7 @@ def _expand_paths(
     from ray.data.datasource.file_based_datasource import (
         FILE_SIZE_FETCH_PARALLELIZATION_THRESHOLD,
     )
-    from ray.data.datasource.path_util import _unwrap_protocol
+    from ray.data.datasource.path_util import _is_http_url, _unwrap_protocol
 
     # We break down our processing paths into a few key cases:
     # 1. If len(paths) < threshold, fetch the file info for the individual files/paths
@@ -274,10 +265,14 @@ def _expand_paths(
     #    provided paths on the client; this should be a single file info request.
     # 3. If more than threshold requests required, parallelize them via Ray tasks.
     # 1. Small # of paths case.
+    is_local = isinstance(filesystem, LocalFileSystem)
+    if isinstance(filesystem, RetryingPyFileSystem):
+        is_local = isinstance(filesystem.unwrap(), LocalFileSystem)
+
     if (
         len(paths) < FILE_SIZE_FETCH_PARALLELIZATION_THRESHOLD
         # Local file systems are very fast to hit.
-        or isinstance(filesystem, LocalFileSystem)
+        or is_local
     ):
         yield from _get_file_infos_serial(paths, filesystem, ignore_missing_paths)
     else:
@@ -287,10 +282,13 @@ def _expand_paths(
         # If parent directory (or base directory, if using partitioning) is common to
         # all paths, fetch all file infos at that prefix and filter the response to the
         # provided paths.
-        if (
-            partitioning is not None
-            and common_path == _unwrap_protocol(partitioning.base_dir)
-        ) or all(str(pathlib.Path(path).parent) == common_path for path in paths):
+        if not _is_http_url(common_path) and (
+            (
+                partitioning is not None
+                and common_path == _unwrap_protocol(partitioning.base_dir)
+            )
+            or all(str(pathlib.Path(path).parent) == common_path for path in paths)
+        ):
             yield from _get_file_infos_common_path_prefix(
                 paths, common_path, filesystem, ignore_missing_paths
             )
@@ -302,7 +300,7 @@ def _expand_paths(
 
 def _get_file_infos_serial(
     paths: List[str],
-    filesystem: "pyarrow.fs.FileSystem",
+    filesystem: "RetryingPyFileSystem",
     ignore_missing_paths: bool = False,
 ) -> Iterator[Tuple[str, int]]:
     for path in paths:
@@ -349,7 +347,7 @@ def _get_file_infos_common_path_prefix(
 
 def _get_file_infos_parallel(
     paths: List[str],
-    filesystem: "pyarrow.fs.FileSystem",
+    filesystem: "RetryingPyFileSystem",
     ignore_missing_paths: bool = False,
 ) -> Iterator[Tuple[str, int]]:
     from ray.data.datasource.file_based_datasource import (
@@ -413,19 +411,14 @@ def _fetch_metadata_parallel(
 
 
 def _get_file_infos(
-    path: str, filesystem: "pyarrow.fs.FileSystem", ignore_missing_path: bool = False
+    path: str, filesystem: "RetryingPyFileSystem", ignore_missing_path: bool = False
 ) -> List[Tuple[str, int]]:
     """Get the file info for all files at or under the provided path."""
     from pyarrow.fs import FileType
 
     file_infos = []
     try:
-        ctx = ray.data.DataContext.get_current()
-        file_info = call_with_retry(
-            lambda: filesystem.get_file_info(path),
-            description="get file info",
-            match=ctx.retried_io_errors,
-        )
+        file_info = filesystem.get_file_info(path)
     except OSError as e:
         _handle_read_os_error(e, path)
     if file_info.type == FileType.Directory:
@@ -443,7 +436,7 @@ def _get_file_infos(
 
 def _expand_directory(
     path: str,
-    filesystem: "pyarrow.fs.FileSystem",
+    filesystem: "RetryingPyFileSystem",
     exclude_prefixes: Optional[List[str]] = None,
     ignore_missing_path: bool = False,
 ) -> List[Tuple[str, int]]:

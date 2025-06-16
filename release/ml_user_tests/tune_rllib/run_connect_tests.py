@@ -32,7 +32,7 @@ def run(smoke_test=False, storage_path: str = None):
         )
         .environment("ale_py:ALE/Pong-v5", clip_rewards=True)
         .framework(tune.grid_search(["tf", "torch"]))
-        .rollouts(
+        .env_runners(
             rollout_fragment_length=50,
             num_env_runners=num_workers,
             num_envs_per_env_runner=1,

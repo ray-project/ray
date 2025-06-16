@@ -21,5 +21,5 @@ class Plan:
         raise NotImplementedError
 
     @property
-    def context(self) -> Operator:
+    def context(self) -> "DataContext":
         return self._context

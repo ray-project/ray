@@ -7,7 +7,7 @@ import pytest
 
 import ray
 from ray import serve
-from ray._private.utils import get_or_create_event_loop
+from ray._common.utils import get_or_create_event_loop
 from ray.serve._private.common import DeploymentID, ReplicaID
 from ray.serve._private.config import DeploymentConfig
 from ray.serve._private.constants import SERVE_LOGGER_NAME
@@ -126,14 +126,14 @@ async def test_batch_size_one_long_timeout(use_class):
     @serve.batch(max_batch_size=1, batch_wait_timeout_s=1000)
     async def long_timeout(requests):
         if "raise" in requests:
-            1 / 0
+            _ = 1 / 0
         return requests
 
     class LongTimeout:
         @serve.batch(max_batch_size=1, batch_wait_timeout_s=1000)
         async def long_timeout(self, requests):
             if "raise" in requests:
-                1 / 0
+                _ = 1 / 0
             return requests
 
     cls = LongTimeout()
@@ -158,7 +158,7 @@ async def test_batch_size_multiple_zero_timeout(use_class):
     async def zero_timeout(requests):
         await block_execution_event.wait()
         if "raise" in requests:
-            1 / 0
+            _ = 1 / 0
         return requests
 
     class ZeroTimeout:
@@ -166,7 +166,7 @@ async def test_batch_size_multiple_zero_timeout(use_class):
         async def zero_timeout(self, requests):
             await block_execution_event.wait()
             if "raise" in requests:
-                1 / 0
+                _ = 1 / 0
             return requests
 
     cls = ZeroTimeout()
@@ -262,14 +262,14 @@ async def test_batch_size_multiple_long_timeout(use_class):
     @serve.batch(max_batch_size=3, batch_wait_timeout_s=1000)
     async def long_timeout(requests):
         if "raise" in requests:
-            1 / 0
+            _ = 1 / 0
         return requests
 
     class LongTimeout:
         @serve.batch(max_batch_size=3, batch_wait_timeout_s=1000)
         async def long_timeout(self, requests):
             if "raise" in requests:
-                1 / 0
+                _ = 1 / 0
             return requests
 
     cls = LongTimeout()
@@ -818,16 +818,21 @@ def test_warn_if_max_batch_size_exceeds_max_ongoing_requests():
     over_bound = bound + 1
     under_bound = bound - 1
     over_bound_warning_message = (
-        f"`max_batch_size` ({over_bound}) is larger than "
-        f"`max_ongoing_requests` ({bound}). This means "
-        "the replica will never receive a full batch. Please update "
-        "`max_ongoing_requests` to be >= `max_batch_size`.\n"
+        f"`max_batch_size` ({over_bound}) * `max_concurrent_batches` "
+        f"({1}) is larger than `max_ongoing_requests` "
+        f"({bound}). This means the replica will never achieve "
+        "the configured `max_batch_size` concurrently. Please update "
+        "`max_ongoing_requests` to be >= `max_batch_size` * `max_concurrent_batches`.\n"
     )
 
     # Start queue above the bound will log warning. Start at under or at the bound will
     # not log warning
     for max_batch_size in [over_bound, under_bound, bound]:
-        queue = _BatchQueue(max_batch_size=max_batch_size, batch_wait_timeout_s=1000)
+        queue = _BatchQueue(
+            max_batch_size=max_batch_size,
+            batch_wait_timeout_s=1000,
+            max_concurrent_batches=1,
+        )
         if max_batch_size > bound:
             assert over_bound_warning_message in stream.messages
         else:

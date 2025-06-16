@@ -14,6 +14,12 @@
 
 #include "ray/core_worker/task_manager.h"
 
+#include <memory>
+#include <string>
+#include <unordered_set>
+#include <utility>
+#include <vector>
+
 #include "gmock/gmock.h"
 #include "gtest/gtest.h"
 #include "mock/ray/gcs/gcs_client/gcs_client.h"
@@ -104,7 +110,7 @@ class MockTaskEventBuffer : public worker::TaskEventBuffer {
 
   MOCK_METHOD(bool, Enabled, (), (const, override));
 
-  MOCK_METHOD(const std::string, DebugString, (), (override));
+  MOCK_METHOD(std::string, DebugString, (), (override));
 };
 
 class TaskManagerTest : public ::testing::Test {
@@ -116,25 +122,22 @@ class TaskManagerTest : public ::testing::Test {
         publisher_(std::make_shared<pubsub::MockPublisher>()),
         subscriber_(std::make_shared<pubsub::MockSubscriber>()),
         task_event_buffer_mock_(std::make_unique<MockTaskEventBuffer>()),
-        reference_counter_(std::shared_ptr<ReferenceCounter>(new ReferenceCounter(
+        reference_counter_(std::make_shared<ReferenceCounter>(
             addr_,
             publisher_.get(),
             subscriber_.get(),
             [this](const NodeID &node_id) { return all_nodes_alive_; },
-            lineage_pinning_enabled))),
+            lineage_pinning_enabled)),
         io_context_("TaskManagerTest"),
-        store_(std::shared_ptr<CoreWorkerMemoryStore>(
-            new CoreWorkerMemoryStore(io_context_.GetIoService(), reference_counter_))),
+        store_(std::make_shared<CoreWorkerMemoryStore>(io_context_.GetIoService(),
+                                                       reference_counter_.get())),
         manager_(
-            store_,
-            reference_counter_,
+            *store_,
+            *reference_counter_,
             [this](const RayObject &object, const ObjectID &object_id) {
               stored_in_plasma.insert(object_id);
             },
-            [this](TaskSpecification &spec,
-                   bool object_recovery,
-                   bool update_seqno,
-                   uint32_t delay_ms) {
+            [this](TaskSpecification &spec, bool object_recovery, uint32_t delay_ms) {
               num_retries_++;
               last_delay_ms_ = delay_ms;
               last_object_recovery_ = object_recovery;
@@ -688,10 +691,11 @@ TEST_F(TaskManagerLineageTest, TestActorLineagePinned) {
       {},
       "",
       0,
-      TaskID::Nil());
+      TaskID::Nil(),
+      "");
   builder.SetActorTaskSpec(
       actor_id, actor_creation_dummy_object_id, num_retries, false, "", 0);
-  TaskSpecification spec = builder.Build();
+  TaskSpecification spec = std::move(builder).ConsumeAndBuild();
 
   ASSERT_EQ(reference_counter_->NumObjectIDsInScope(), 0);
   manager_.AddPendingTask(caller_address, spec, "", num_retries);
@@ -2192,7 +2196,7 @@ TEST_F(TaskManagerTest, TestObjectRefStreamTemporarilyOwnGeneratorReturnRefIfNee
 
   /**
    * Test TemporarilyOwnGeneratorReturnRefIfNeeded called before any
-   * HandleReportGeneratorItemReturns adds a refernece.
+   * HandleReportGeneratorItemReturns adds a reference.
    */
   manager_.TemporarilyOwnGeneratorReturnRefIfNeeded(dynamic_return_id_index_0,
                                                     generator_id);

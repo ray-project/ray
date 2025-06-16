@@ -1,3 +1,4 @@
+import asyncio
 import inspect
 import threading
 import time
@@ -6,6 +7,7 @@ from functools import wraps
 from typing import Callable, Coroutine, Optional, Union
 
 import ray
+from ray.serve._private.common import RequestMetadata
 from ray.serve._private.utils import calculate_remaining_timeout
 from ray.serve.exceptions import RequestCancelledError
 
@@ -54,14 +56,14 @@ class ActorReplicaResult(ReplicaResult):
     def __init__(
         self,
         obj_ref_or_gen: Union[ray.ObjectRef, ray.ObjectRefGenerator],
-        is_streaming: bool,
-        request_id: str,
+        metadata: RequestMetadata,
     ):
         self._obj_ref: Optional[ray.ObjectRef] = None
         self._obj_ref_gen: Optional[ray.ObjectRefGenerator] = None
-        self._is_streaming: bool = is_streaming
-        self._request_id: str = request_id
+        self._is_streaming: bool = metadata.is_streaming
+        self._request_id: str = metadata.request_id
         self._object_ref_or_gen_sync_lock = threading.Lock()
+        self._lazy_object_ref_or_gen_asyncio_lock = None
 
         if isinstance(obj_ref_or_gen, ray.ObjectRefGenerator):
             self._obj_ref_gen = obj_ref_or_gen
@@ -72,6 +74,14 @@ class ActorReplicaResult(ReplicaResult):
             assert (
                 self._obj_ref_gen is not None
             ), "An ObjectRefGenerator must be passed for streaming requests."
+
+    @property
+    def _object_ref_or_gen_asyncio_lock(self) -> asyncio.Lock:
+        """Lazy `asyncio.Lock` object."""
+        if self._lazy_object_ref_or_gen_asyncio_lock is None:
+            self._lazy_object_ref_or_gen_asyncio_lock = asyncio.Lock()
+
+        return self._lazy_object_ref_or_gen_asyncio_lock
 
     def _process_response(f: Union[Callable, Coroutine]):
         @wraps(f)
@@ -174,7 +184,7 @@ class ActorReplicaResult(ReplicaResult):
         # object ref cached in order to avoid calling `__anext__()` to
         # resolve to the underlying object ref more than once.
         # See: https://github.com/ray-project/ray/issues/43879.
-        with self._object_ref_or_gen_sync_lock:
+        async with self._object_ref_or_gen_asyncio_lock:
             if self._obj_ref is None:
                 self._obj_ref = await self._obj_ref_gen.__anext__()
 

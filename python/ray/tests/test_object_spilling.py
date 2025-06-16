@@ -5,9 +5,13 @@ import random
 import sys
 from datetime import datetime, timedelta
 from unittest.mock import patch
+from pathlib import Path
+import os
 
+import psutil
 import numpy as np
 import pytest
+
 
 import ray
 from ray._private.external_storage import (
@@ -18,8 +22,9 @@ from ray._private.external_storage import (
     ExternalStorageSmartOpenImpl,
 )
 from ray._private.internal_api import memory_summary
-from ray._private.test_utils import wait_for_condition
+from ray._common.test_utils import wait_for_condition
 from ray._raylet import GcsClientOptions
+import ray.remote_function
 from ray.tests.conftest import (
     buffer_object_spilling_config,
     file_system_object_spilling_config,
@@ -148,7 +153,7 @@ def test_url_generation_and_parse():
 
 
 def test_default_config(shutdown_only):
-    ray.init(num_cpus=0, object_store_memory=75 * 1024 * 1024)
+    ray_context = ray.init(num_cpus=0, object_store_memory=75 * 1024 * 1024)
     # Make sure the object spilling configuration is properly set.
     config = json.loads(
         ray._private.worker._global_node._config["object_spilling_config"]
@@ -158,8 +163,17 @@ def test_default_config(shutdown_only):
         config["params"]["directory_path"]
         == ray._private.worker._global_node._session_dir
     )
-    # Make sure the basic workload can succeed.
+
+    # Make sure the spill directory is empty before running the workload.
+    assert is_dir_empty(
+        Path(ray._private.worker._global_node._session_dir), ray_context["node_id"]
+    )
+
+    # Make sure the basic workload can succeed and the spill directory is not empty.
     run_basic_workload()
+    assert not is_dir_empty(
+        Path(ray._private.worker._global_node._session_dir), ray_context["node_id"]
+    )
     ray.shutdown()
 
     # Make sure config is not initalized if spilling is not enabled..
@@ -229,14 +243,192 @@ def test_default_config_cluster(ray_start_cluster_enabled):
     ray.get([task.remote() for _ in range(2)])
 
 
+def test_custom_spill_dir_env_var(shutdown_only):
+    os.environ["RAY_object_spilling_directory"] = "/tmp/custom_spill_dir"
+    ray_context = ray.init(num_cpus=0, object_store_memory=75 * 1024 * 1024)
+    config = json.loads(
+        ray._private.worker._global_node._config["object_spilling_config"]
+    )
+    assert config["type"] == "filesystem"
+    assert config["params"]["directory_path"] == "/tmp/custom_spill_dir"
+
+    # Make sure the spill directory is empty before running the workload.
+    assert is_dir_empty(Path("/tmp/custom_spill_dir"), ray_context["node_id"])
+
+    # Make sure the basic workload can succeed and the spill directory is not empty.
+    run_basic_workload()
+    assert not is_dir_empty(Path("/tmp/custom_spill_dir"), ray_context["node_id"])
+
+
+def test_custom_spill_dir_system_config(shutdown_only):
+    ray_context = ray.init(
+        num_cpus=0,
+        object_store_memory=75 * 1024 * 1024,
+        _system_config={"object_spilling_directory": "/tmp/custom_spill_dir"},
+    )
+    config = json.loads(
+        ray._private.worker._global_node._config["object_spilling_config"]
+    )
+    assert config["type"] == "filesystem"
+    assert config["params"]["directory_path"] == "/tmp/custom_spill_dir"
+
+    # Make sure the spill directory is empty before running the workload.
+    assert is_dir_empty(Path("/tmp/custom_spill_dir"), ray_context["node_id"])
+
+    # Make sure the basic workload can succeed and the spill directory is not empty.
+    run_basic_workload()
+    assert not is_dir_empty(Path("/tmp/custom_spill_dir"), ray_context["node_id"])
+
+
+def test_custom_spill_dir(shutdown_only):
+    # Make sure the object spilling directory can be set by the user
+    ray_context = ray.init(
+        object_spilling_directory="/tmp/custom_spill_dir",
+        num_cpus=0,
+        object_store_memory=75 * 1024 * 1024,
+    )
+    config = json.loads(
+        ray._private.worker._global_node._config["object_spilling_config"]
+    )
+    assert config["type"] == "filesystem"
+    assert config["params"]["directory_path"] == "/tmp/custom_spill_dir"
+
+    # Make sure the spill directory is empty before running the workload.
+    assert is_dir_empty(Path("/tmp/custom_spill_dir"), ray_context["node_id"])
+
+    # Make sure the basic workload can succeed and the spill directory is not empty.
+    run_basic_workload()
+    assert not is_dir_empty(Path("/tmp/custom_spill_dir"), ray_context["node_id"])
+
+
+@pytest.mark.parametrize(
+    "call_ray_start",
+    [
+        "ray start --head --object-spilling-directory=/tmp/custom_spill_dir --num-cpus 0 --object-store-memory 78643200"
+    ],
+    indirect=True,
+)
+def test_custom_spill_dir_cli(call_ray_start, shutdown_only):
+    ray_context = ray.init(address=call_ray_start)
+
+    # Make sure the spill directory is empty before running the workload.
+    assert is_dir_empty(Path("/tmp/custom_spill_dir"), ray_context["node_id"])
+
+    # Make sure the basic workload can succeed and the spill directory is not empty.
+    run_basic_workload()
+    assert not is_dir_empty(Path("/tmp/custom_spill_dir"), ray_context["node_id"])
+
+
+def test_custom_spill_dir_set_ray_params_and_system_config(shutdown_only):
+    # Set directory in both ray params and system config.
+    # ray params should take precedence.
+    ray_context = ray.init(
+        object_spilling_directory="/tmp/custom_spill_dir",
+        num_cpus=0,
+        object_store_memory=75 * 1024 * 1024,
+        _system_config={"object_spilling_directory": "/tmp/custom_spill_dir2"},
+    )
+    config = json.loads(
+        ray._private.worker._global_node._config["object_spilling_config"]
+    )
+    assert config["type"] == "filesystem"
+    assert config["params"]["directory_path"] == "/tmp/custom_spill_dir"
+
+    # Make sure the spill directory is empty before running the workload.
+    assert is_dir_empty(Path("/tmp/custom_spill_dir"), ray_context["node_id"])
+
+    run_basic_workload()
+    # Make sure the spill directory is not empty after running the workload.
+    assert not is_dir_empty(Path("/tmp/custom_spill_dir"), ray_context["node_id"])
+
+
+def test_custom_spill_dir_set_system_config_and_env_var(shutdown_only):
+    # Set directory in both system config and env var.
+    # system config should take precedence.
+    os.environ["RAY_object_spilling_directory"] = "/tmp/custom_spill_dir2"
+    ray_context = ray.init(
+        num_cpus=0,
+        object_store_memory=75 * 1024 * 1024,
+        _system_config={"object_spilling_directory": "/tmp/custom_spill_dir"},
+    )
+    config = json.loads(
+        ray._private.worker._global_node._config["object_spilling_config"]
+    )
+    assert config["type"] == "filesystem"
+    assert config["params"]["directory_path"] == "/tmp/custom_spill_dir"
+
+    # Make sure the spill directory is empty before running the workload.
+    assert is_dir_empty(Path("/tmp/custom_spill_dir"), ray_context["node_id"])
+
+    run_basic_workload()
+    # Make sure the spill directory is not empty after running the workload.
+    assert not is_dir_empty(Path("/tmp/custom_spill_dir"), ray_context["node_id"])
+
+
+def test_set_custom_spill_dir_in_env_var_and_spill_config_in_system_config(
+    shutdown_only,
+):
+    # Set directory in env var and object spilling config in system config.
+    # the directory in env var should take precedence.
+    os.environ["RAY_object_spilling_directory"] = "/tmp/custom_spill_dir"
+    ray_context = ray.init(
+        num_cpus=0,
+        object_store_memory=75 * 1024 * 1024,
+        _system_config={
+            "object_spilling_config": json.dumps(file_system_object_spilling_config)
+        },
+    )
+    config = json.loads(
+        ray._private.worker._global_node._config["object_spilling_config"]
+    )
+    assert config["type"] == "filesystem"
+    assert config["params"]["directory_path"] == "/tmp/custom_spill_dir"
+
+    # Make sure the spill directory is empty before running the workload.
+    assert is_dir_empty(Path("/tmp/custom_spill_dir"), ray_context["node_id"])
+
+    run_basic_workload()
+    # Make sure the spill directory is not empty after running the workload.
+    assert not is_dir_empty(Path("/tmp/custom_spill_dir"), ray_context["node_id"])
+
+
+def test_set_object_spilling_config_in_system_config_and_env_var(shutdown_only):
+    # Set object spilling config in both system config and env var.
+    # the object spilling config in system config should take precedence.
+    custom_object_spilling_config = {
+        "type": "filesystem",
+        "params": {"directory_path": "/tmp/custom_spill_dir"},
+    }
+    ray_context = ray.init(
+        num_cpus=0,
+        object_store_memory=75 * 1024 * 1024,
+        _system_config={
+            "object_spilling_config": json.dumps(custom_object_spilling_config)
+        },
+    )
+    os.environ["RAY_object_spilling_config"] = json.dumps(
+        file_system_object_spilling_config
+    )
+    config = json.loads(
+        ray._private.worker._global_node._config["object_spilling_config"]
+    )
+    assert config["type"] == "filesystem"
+    assert config["params"]["directory_path"] == "/tmp/custom_spill_dir"
+
+    # Make sure the spill directory is empty before running the workload.
+    assert is_dir_empty(Path("/tmp/custom_spill_dir"), ray_context["node_id"])
+
+    run_basic_workload()
+    # Make sure the spill directory is not empty after running the workload.
+    assert not is_dir_empty(Path("/tmp/custom_spill_dir"), ray_context["node_id"])
+
+
 def test_node_id_in_spill_dir_name():
     node_id = ray.NodeID.from_random().hex()
     session_dir = "test_session_dir"
     storage = ray._private.external_storage.setup_external_storage(
         file_system_object_spilling_config, node_id, session_dir
     )
-
-    import os
 
     dir_prefix = ray._private.ray_constants.DEFAULT_OBJECT_PREFIX
     expected_dir_name = f"{dir_prefix}_{node_id}"
@@ -266,6 +458,7 @@ def test_spilling_not_done_for_pinned_object(object_spilling_config, shutdown_on
     ref = ray.get(ray.put(arr))  # noqa
     ref2 = ray.put(arr)  # noqa
 
+    print(type(temp_folder))
     wait_for_condition(lambda: is_dir_empty(temp_folder, ray_context["node_id"]))
     assert_no_thrashing(ray_context["address"])
 
@@ -553,25 +746,16 @@ async def test_spill_during_get(object_spilling_config, shutdown_only, is_async)
     ],
     indirect=True,
 )
-def test_spill_worker_failure(ray_start_regular):
-    def run_workload():
-        @ray.remote
-        def f():
-            return np.zeros(50 * 1024 * 1024, dtype=np.uint8)
+def test_recover_from_spill_worker_failure(ray_start_regular):
+    @ray.remote
+    def f():
+        return np.zeros(50 * 1024 * 1024, dtype=np.uint8)
 
-        ids = []
-        for _ in range(5):
-            x = f.remote()
-            ids.append(x)
-        for id in ids:
-            ray.get(id)
-        del ids
-
-    run_workload()
+    def _run_spilling_workload():
+        for obj_ref in [f.remote() for _ in range(5)]:
+            ray.get(obj_ref)
 
     def get_spill_worker():
-        import psutil
-
         for proc in psutil.process_iter():
             try:
                 name = ray._private.ray_constants.WORKER_PROCESS_TYPE_SPILL_WORKER_IDLE
@@ -588,26 +772,26 @@ def test_spill_worker_failure(ray_start_regular):
             except psutil.NoSuchProcess:
                 pass
 
-    # Spilling occurred. Get the PID of the spill worker.
+    # Run a workload that forces spilling to occur.
+    _run_spilling_workload()
+
+    # Get the PID of the spill worker that was created and kill it.
     spill_worker_proc = get_spill_worker()
     assert spill_worker_proc
-
-    # Kill the spill worker
     spill_worker_proc.kill()
     spill_worker_proc.wait()
 
-    # Now we trigger spilling again
-    run_workload()
+    # Run the workload again and ensure that it succeeds.
+    _run_spilling_workload()
 
-    # A new spill worker should be created
-    spill_worker_proc = get_spill_worker()
-    assert spill_worker_proc
+    # Check that the spilled files are cleaned up after the workload finishes.
+    wait_for_condition(
+        lambda: is_dir_empty(
+            Path(ray._private.worker._global_node._session_dir),
+            ray.get_runtime_context().get_node_id(),
+        )
+    )
 
 
 if __name__ == "__main__":
-    import os
-
-    if os.environ.get("PARALLEL_CI"):
-        sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))
-    else:
-        sys.exit(pytest.main(["-sv", __file__]))
+    sys.exit(pytest.main(["-sv", __file__]))

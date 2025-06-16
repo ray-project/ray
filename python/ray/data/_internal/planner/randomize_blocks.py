@@ -1,12 +1,14 @@
-from typing import List, Tuple
+from typing import List
 
 from ray.data._internal.execution.interfaces import (
     AllToAllTransformFn,
     RefBundle,
     TaskContext,
 )
+from ray.data._internal.execution.interfaces.transform_fn import (
+    AllToAllTransformFnResult,
+)
 from ray.data._internal.logical.operators.all_to_all_operator import RandomizeBlocks
-from ray.data._internal.stats import StatsDict
 
 
 def generate_randomize_blocks_fn(
@@ -15,14 +17,19 @@ def generate_randomize_blocks_fn(
     """Generate function to randomize order of blocks."""
 
     def fn(
-        refs: List[RefBundle], context: TaskContext
-    ) -> Tuple[List[RefBundle], StatsDict]:
+        refs: List[RefBundle],
+        context: TaskContext,
+    ) -> AllToAllTransformFnResult:
         import random
 
         nonlocal op
         blocks_with_metadata = []
-        for ref_bundle in refs:
-            blocks_with_metadata.extend(ref_bundle.blocks)
+        index_to_schema = [None] * len(refs)
+        for i, ref_bundle in enumerate(refs):
+            index_to_schema[i] = ref_bundle.schema
+            blocks_with_metadata.extend(
+                (block, meta, i) for block, meta in ref_bundle.blocks
+            )
 
         if len(blocks_with_metadata) == 0:
             return refs, {op._name: []}
@@ -32,9 +39,9 @@ def generate_randomize_blocks_fn(
             input_owned = all(b.owns_blocks for b in refs)
             random.shuffle(blocks_with_metadata)
             output = []
-            meta_list = []
-            for block, meta in blocks_with_metadata:
-                meta_list.append(meta)
+            stats_list = []
+            for block, meta, i in blocks_with_metadata:
+                stats_list.append(meta.to_stats())
                 output.append(
                     RefBundle(
                         [
@@ -44,8 +51,9 @@ def generate_randomize_blocks_fn(
                             )
                         ],
                         owns_blocks=input_owned,
+                        schema=index_to_schema[i],
                     )
                 )
-            return output, {op._name: meta_list}
+            return output, {op._name: stats_list}
 
     return fn

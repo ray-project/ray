@@ -1,11 +1,16 @@
 from typing import List, Tuple, Union
 
-from ray.data._internal.aggregate import Count, _AggregateOnKeyBase
 from ray.data._internal.planner.exchange.interfaces import ExchangeTaskSpec
 from ray.data._internal.planner.exchange.sort_task_spec import SortKey
 from ray.data._internal.table_block import TableBlockAccessor
-from ray.data.aggregate import AggregateFn
-from ray.data.block import Block, BlockAccessor, BlockExecStats, BlockMetadata, KeyType
+from ray.data.aggregate import AggregateFn, AggregateFnV2, Count
+from ray.data.block import (
+    Block,
+    BlockAccessor,
+    BlockExecStats,
+    BlockMetadataWithSchema,
+    KeyType,
+)
 
 
 class SortAggregateTaskSpec(ExchangeTaskSpec):
@@ -44,7 +49,7 @@ class SortAggregateTaskSpec(ExchangeTaskSpec):
         boundaries: List[KeyType],
         sort_key: SortKey,
         aggs: List[AggregateFn],
-    ) -> List[Union[BlockMetadata, Block]]:
+    ) -> List[Union[Block, "BlockMetadataWithSchema"]]:
         stats = BlockExecStats.builder()
 
         block = SortAggregateTaskSpec._prune_unused_columns(block, sort_key, aggs)
@@ -55,9 +60,15 @@ class SortAggregateTaskSpec(ExchangeTaskSpec):
             )
         else:
             partitions = [block]
-        parts = [BlockAccessor.for_block(p).combine(sort_key, aggs) for p in partitions]
-        meta = BlockAccessor.for_block(block).get_metadata(exec_stats=stats.build())
-        return parts + [meta]
+        parts = [
+            BlockAccessor.for_block(p)._aggregate(sort_key, aggs) for p in partitions
+        ]
+        from ray.data.block import BlockMetadataWithSchema
+
+        meta_with_schema = BlockMetadataWithSchema.from_block(
+            block, stats=stats.build()
+        )
+        return parts + [meta_with_schema]
 
     @staticmethod
     def reduce(
@@ -66,13 +77,17 @@ class SortAggregateTaskSpec(ExchangeTaskSpec):
         batch_format: str,
         *mapper_outputs: List[Block],
         partial_reduce: bool = False,
-    ) -> Tuple[Block, BlockMetadata]:
+    ) -> Tuple[Block, "BlockMetadataWithSchema"]:
         normalized_blocks = TableBlockAccessor.normalize_block_types(
-            mapper_outputs, normalize_type=batch_format
+            mapper_outputs,
+            target_block_type=ExchangeTaskSpec._derive_target_block_type(batch_format),
         )
-        return BlockAccessor.for_block(normalized_blocks[0]).aggregate_combined_blocks(
+        blocks, meta_with_schema = BlockAccessor.for_block(
+            normalized_blocks[0]
+        )._combine_aggregated_blocks(
             list(normalized_blocks), key, aggs, finalize=not partial_reduce
         )
+        return blocks, meta_with_schema
 
     @staticmethod
     def _prune_unused_columns(
@@ -93,8 +108,8 @@ class SortAggregateTaskSpec(ExchangeTaskSpec):
             prune_columns = False
 
         for agg in aggs:
-            if isinstance(agg, _AggregateOnKeyBase) and isinstance(agg._key_fn, str):
-                columns.add(agg._key_fn)
+            if isinstance(agg, AggregateFnV2) and agg.get_target_column():
+                columns.add(agg.get_target_column())
             elif not isinstance(agg, Count):
                 # Don't prune columns if any aggregate key is not string.
                 prune_columns = False

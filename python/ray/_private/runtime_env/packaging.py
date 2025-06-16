@@ -1,10 +1,9 @@
-import time
 import asyncio
 import hashlib
 import logging
 import os
 import shutil
-from enum import Enum
+import time
 from pathlib import Path
 from tempfile import TemporaryDirectory
 from typing import Callable, List, Optional, Tuple
@@ -12,20 +11,24 @@ from urllib.parse import urlparse
 from zipfile import ZipFile
 
 from filelock import FileLock
-from ray.util.annotations import DeveloperAPI
 
+from ray._private.path_utils import is_path
 from ray._private.ray_constants import (
+    GRPC_CPP_MAX_MESSAGE_SIZE,
+    RAY_RUNTIME_ENV_IGNORE_GITIGNORE,
     RAY_RUNTIME_ENV_URI_PIN_EXPIRATION_S_DEFAULT,
     RAY_RUNTIME_ENV_URI_PIN_EXPIRATION_S_ENV_VAR,
-    RAY_RUNTIME_ENV_IGNORE_GITIGNORE,
 )
 from ray._private.runtime_env.conda_utils import exec_cmd_stream_to_logger
+from ray._private.runtime_env.protocol import Protocol
 from ray._private.thirdparty.pathspec import PathSpec
+from ray._raylet import GcsClient
 from ray.experimental.internal_kv import (
     _internal_kv_exists,
     _internal_kv_put,
     _pin_runtime_env_uri,
 )
+from ray.util.annotations import DeveloperAPI
 
 default_logger = logging.getLogger(__name__)
 
@@ -34,7 +37,7 @@ FILE_SIZE_WARNING = 10 * 1024 * 1024  # 10MiB
 # The size is bounded by the max gRPC message size.
 # Keep in sync with max_grpc_message_size in ray_config_def.h.
 GCS_STORAGE_MAX_SIZE = int(
-    os.environ.get("RAY_max_grpc_message_size", 500 * 1024 * 1024)
+    os.environ.get("RAY_max_grpc_message_size", GRPC_CPP_MAX_MESSAGE_SIZE)
 )
 RAY_PKG_PREFIX = "_ray_pkg_"
 
@@ -71,33 +74,6 @@ class _AsyncFileLock:
 
     async def __aexit__(self, exc_type, exc, tb):
         self.file.release()
-
-
-class Protocol(Enum):
-    """A enum for supported storage backends."""
-
-    # For docstring
-    def __new__(cls, value, doc=None):
-        self = object.__new__(cls)
-        self._value_ = value
-        if doc is not None:
-            self.__doc__ = doc
-        return self
-
-    GCS = "gcs", "For packages dynamically uploaded and managed by the GCS."
-    CONDA = "conda", "For conda environments installed locally on each node."
-    PIP = "pip", "For pip environments installed locally on each node."
-    UV = "uv", "For uv environments install locally on each node."
-    HTTPS = "https", "Remote https path, assumes everything packed in one zip file."
-    S3 = "s3", "Remote s3 path, assumes everything packed in one zip file."
-    GS = "gs", "Remote google storage path, assumes everything packed in one zip file."
-    FILE = "file", "File storage path, assumes everything packed in one zip file."
-
-    @classmethod
-    def remote_protocols(cls):
-        # Returns a list of protocols that support remote storage
-        # These protocols should only be used with paths that end in ".zip" or ".whl"
-        return [cls.HTTPS, cls.S3, cls.GS, cls.FILE]
 
 
 def _xor_bytes(left: bytes, right: bytes) -> bytes:
@@ -211,6 +187,15 @@ def _hash_directory(
     return hash_val
 
 
+def parse_path(pkg_path: str) -> None:
+    """Parse the path to check it is well-formed and exists."""
+    path = Path(pkg_path)
+    try:
+        path.resolve(strict=True)
+    except OSError:
+        raise ValueError(f"{path} is not a valid path.")
+
+
 def parse_uri(pkg_uri: str) -> Tuple[Protocol, str]:
     """
     Parse package uri into protocol and package name based on its format.
@@ -224,6 +209,9 @@ def parse_uri(pkg_uri: str) -> Tuple[Protocol, str]:
     (<Protocol.HTTPS: 'https'>, 'file.whl')
 
     """
+    if is_path(pkg_uri):
+        raise ValueError(f"Expected URI but received path {pkg_uri}")
+
     uri = urlparse(pkg_uri)
     try:
         protocol = Protocol(uri.scheme)
@@ -234,15 +222,15 @@ def parse_uri(pkg_uri: str) -> Tuple[Protocol, str]:
         )
 
     if protocol in Protocol.remote_protocols():
-        if pkg_uri.endswith(".whl"):
+        if uri.path.endswith(".whl"):
             # Don't modify the .whl filename. See
             # https://peps.python.org/pep-0427/#file-name-convention
             # for more information.
-            package_name = pkg_uri.split("/")[-1]
+            package_name = uri.path.split("/")[-1]
         else:
             package_name = f"{protocol.value}_{uri.netloc}{uri.path}"
 
-            disallowed_chars = ["/", ":", "@", "+", " "]
+            disallowed_chars = ["/", ":", "@", "+", " ", "(", ")"]
             for disallowed_char in disallowed_chars:
                 package_name = package_name.replace(disallowed_char, "_")
 
@@ -251,7 +239,6 @@ def parse_uri(pkg_uri: str) -> Tuple[Protocol, str]:
             package_name = package_name.replace(".", "_", package_name.count(".") - 1)
     else:
         package_name = uri.netloc
-
     return (protocol, package_name)
 
 
@@ -508,7 +495,7 @@ def get_uri_for_file(file: str) -> str:
         URI (str)
 
     Raises:
-        ValueError if the file doesn't exist.
+        ValueError: If the file doesn't exist.
     """
     filepath = Path(file).absolute()
     if not filepath.exists() or not filepath.is_file():
@@ -543,7 +530,7 @@ def get_uri_for_directory(directory: str, excludes: Optional[List[str]] = None) 
         URI (str)
 
     Raises:
-        ValueError if the directory doesn't exist.
+        ValueError: If the directory doesn't exist.
     """
     if excludes is None:
         excludes = []
@@ -655,6 +642,7 @@ def upload_package_if_needed(
     package_file = package_file.with_name(
         f"{time.time_ns()}_{os.getpid()}_{package_file.name}"
     )
+
     create_package(
         module_path,
         package_file,
@@ -681,8 +669,9 @@ def get_local_dir_from_uri(uri: str, base_directory: str) -> Path:
 async def download_and_unpack_package(
     pkg_uri: str,
     base_directory: str,
-    gcs_aio_client: Optional["GcsAioClient"] = None,  # noqa: F821
+    gcs_client: Optional[GcsClient] = None,
     logger: Optional[logging.Logger] = default_logger,
+    overwrite: bool = False,
 ) -> str:
     """Download the package corresponding to this URI and unpack it if zipped.
 
@@ -693,8 +682,9 @@ async def download_and_unpack_package(
         pkg_uri: URI of the package to download.
         base_directory: Directory to use as the parent directory of the target
             directory for the unpacked files.
-        gcs_aio_client: Client to use for downloading from the GCS.
+        gcs_client: Client to use for downloading from the GCS.
         logger: The logger to use.
+        overwrite: If True, overwrite the existing package.
 
     Returns:
         Path to the local directory containing the unpacked package files.
@@ -722,18 +712,29 @@ async def download_and_unpack_package(
 
         local_dir = get_local_dir_from_uri(pkg_uri, base_directory)
         assert local_dir != pkg_file, "Invalid pkg_file!"
-        if local_dir.exists():
+
+        download_package: bool = True
+        if local_dir.exists() and not overwrite:
+            download_package = False
             assert local_dir.is_dir(), f"{local_dir} is not a directory"
-        else:
-            protocol, pkg_name = parse_uri(pkg_uri)
+        elif local_dir.exists():
+            logger.info(f"Removing {local_dir} with pkg_file {pkg_file}")
+            shutil.rmtree(local_dir)
+
+        if download_package:
+            protocol, _ = parse_uri(pkg_uri)
+            logger.info(
+                f"Downloading package from {pkg_uri} to {pkg_file} "
+                f"with protocol {protocol}"
+            )
             if protocol == Protocol.GCS:
-                if gcs_aio_client is None:
+                if gcs_client is None:
                     raise ValueError(
                         "GCS client must be provided to download from GCS."
                     )
 
                 # Download package from the GCS.
-                code = await gcs_aio_client.internal_kv_get(
+                code = await gcs_client.async_internal_kv_get(
                     pkg_uri.encode(), namespace=None, timeout=None
                 )
                 if os.environ.get(RAY_RUNTIME_ENV_FAIL_DOWNLOAD_FOR_TESTING_ENV_VAR):
@@ -766,55 +767,7 @@ async def download_and_unpack_package(
                 else:
                     return str(pkg_file)
             elif protocol in Protocol.remote_protocols():
-                # Download package from remote URI
-                tp = None
-                install_warning = (
-                    "Note that these must be preinstalled "
-                    "on all nodes in the Ray cluster; it is not "
-                    "sufficient to install them in the runtime_env."
-                )
-
-                if protocol == Protocol.S3:
-                    try:
-                        import boto3
-                        from smart_open import open as open_file
-                    except ImportError:
-                        raise ImportError(
-                            "You must `pip install smart_open` and "
-                            "`pip install boto3` to fetch URIs in s3 "
-                            "bucket. " + install_warning
-                        )
-                    tp = {"client": boto3.client("s3")}
-                elif protocol == Protocol.GS:
-                    try:
-                        from google.cloud import storage  # noqa: F401
-                        from smart_open import open as open_file
-                    except ImportError:
-                        raise ImportError(
-                            "You must `pip install smart_open` and "
-                            "`pip install google-cloud-storage` "
-                            "to fetch URIs in Google Cloud Storage bucket."
-                            + install_warning
-                        )
-                elif protocol == Protocol.FILE:
-                    pkg_uri = pkg_uri[len("file://") :]
-
-                    def open_file(uri, mode, *, transport_params=None):
-                        return open(uri, mode)
-
-                else:
-                    try:
-                        from smart_open import open as open_file
-                    except ImportError:
-                        raise ImportError(
-                            "You must `pip install smart_open` "
-                            f"to fetch {protocol.value.upper()} URIs. "
-                            + install_warning
-                        )
-
-                with open_file(pkg_uri, "rb", transport_params=tp) as package_zip:
-                    with open_file(pkg_file, "wb") as fin:
-                        fin.write(package_zip.read())
+                protocol.download_remote_uri(source_uri=pkg_uri, dest_file=pkg_file)
 
                 if pkg_file.suffix in [".zip", ".jar"]:
                     unzip_package(
@@ -1001,12 +954,16 @@ async def install_wheel_package(
         # TODO(architkulkarni): Use `await check_output_cmd` or similar.
         exit_code, output = exec_cmd_stream_to_logger(pip_install_cmd, logger)
     finally:
-        if Path(wheel_uri).exists():
-            Path(wheel_uri).unlink()
+        wheel_uri_path = Path(wheel_uri)
+        if wheel_uri_path.exists():
+            if wheel_uri_path.is_dir():
+                shutil.rmtree(wheel_uri)
+            else:
+                Path(wheel_uri).unlink()
 
         if exit_code != 0:
             if Path(target_dir).exists():
-                Path(target_dir).unlink()
+                shutil.rmtree(target_dir)
             raise RuntimeError(
                 f"Failed to install py_modules wheel {wheel_uri}"
                 f"to {target_dir}:\n{output}"

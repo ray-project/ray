@@ -1,0 +1,324 @@
+load("@com_github_google_flatbuffers//:build_defs.bzl", "flatbuffer_cc_library")
+load("//bazel:ray.bzl", "COPTS", "FLATC_ARGS", "ray_cc_library")
+
+# TODO(mehrdadn): (How to) support dynamic linking?
+_PROPAGATED_WINDOWS_DEFINES = ["ARROW_STATIC"]
+
+PLASMA_COPTS = COPTS + select({
+    "@platforms//os:windows": [
+    ] + ["-D" + define for define in _PROPAGATED_WINDOWS_DEFINES],
+    "//conditions:default": [
+        "-DARROW_USE_GLOG",
+    ],
+})
+
+PLASMA_LINKOPTS = [] + select({
+    "@platforms//os:windows": [
+        "-DefaultLib:" + "ws2_32.lib",
+    ],
+    "//conditions:default": [
+    ],
+})
+
+ray_cc_library(
+    name = "plasma_client",
+    srcs = ["client.cc"],
+    hdrs = ["client.h"],
+    copts = PLASMA_COPTS,
+    defines = select({
+        "@platforms//os:windows": _PROPAGATED_WINDOWS_DEFINES,
+        "//conditions:default": [],
+    }),
+    linkopts = PLASMA_LINKOPTS,
+    deps = [
+        ":fling",
+        ":object_manager_plasma_common",
+        ":plasma_connection_protocol",
+        ":plasma_generated",
+        ":plasma_malloc",
+        ":plasma_shared_memory",
+        "//src/ray/common:asio",
+        "//src/ray/common:ray_config",
+        "//src/ray/common:ray_object",
+        "//src/ray/common:status",
+        "//src/ray/object_manager:object_manager_common",
+        "//src/ray/protobuf:common_cc_proto",
+        "//src/ray/util",
+        "//src/ray/util:compat",
+        "//src/ray/util:visibility",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@msgpack",
+    ],
+)
+
+ray_cc_library(
+    name = "plasma_shared_memory",
+    srcs = ["shared_memory.cc"],
+    hdrs = ["shared_memory.h"],
+    copts = PLASMA_COPTS,
+    linkopts = PLASMA_LINKOPTS,
+    deps = [
+        ":plasma_malloc",
+        "//src/ray/common:ray_config",
+        "//src/ray/util:compat",
+        "//src/ray/util:logging",
+        "//src/ray/util:macros",
+    ],
+)
+
+ray_cc_library(
+    name = "plasma_store_server_lib",
+    srcs = ["store_runner.cc"],
+    hdrs = ["store_runner.h"],
+    copts = PLASMA_COPTS,
+    linkopts = PLASMA_LINKOPTS,
+    deps = [
+        ":obj_lifecycle_mgr",
+        ":plasma_allocator",
+        ":plasma_object_store",
+        ":plasma_store",
+        "//src/ray/common:asio",
+        "//src/ray/common:file_system_monitor",
+        "//src/ray/common:ray_config",
+        "//src/ray/util:thread_utils",
+        "@com_google_absl//absl/synchronization",
+    ],
+)
+
+ray_cc_library(
+    name = "plasma_store",
+    srcs = ["store.cc"],
+    hdrs = ["store.h"],
+    deps = [
+        ":obj_lifecycle_mgr",
+        ":object_manager_plasma_common",
+        ":plasma_allocator",
+        ":plasma_connection_protocol",
+        ":plasma_create_request_queue",
+        ":plasma_eviction_policy",
+        ":plasma_get_request_queue",
+        ":plasma_malloc",
+        ":plasma_object_store",
+        "//src/ray/common:asio",
+        "//src/ray/common:file_system_monitor",
+        "//src/ray/common:id",
+        "//src/ray/common:network",
+        "//src/ray/common:ray_config",
+        "//src/ray/common:status",
+        "//src/ray/object_manager:object_manager_common",
+        "//src/ray/stats:stats_metric",
+        "//src/ray/util",
+        "@boost//:bind",
+        "@com_google_absl//absl/base:core_headers",
+        "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/synchronization",
+    ],
+)
+
+ray_cc_library(
+    name = "plasma_get_request_queue",
+    srcs = ["get_request_queue.cc"],
+    hdrs = ["get_request_queue.h"],
+    deps = [
+        ":obj_lifecycle_mgr",
+        ":plasma_connection_protocol",
+        "//src/ray/common:asio",
+        "//src/ray/common:id",
+    ],
+)
+
+ray_cc_library(
+    name = "obj_lifecycle_mgr",
+    srcs = ["obj_lifecycle_mgr.cc"],
+    hdrs = ["obj_lifecycle_mgr.h"],
+    deps = [
+        ":plasma_allocator",
+        ":plasma_connection_protocol",
+        ":plasma_eviction_policy",
+        ":plasma_object_store",
+        ":stats_collector",
+        "//src/ray/common:asio",
+        "//src/ray/common:id",
+        "//src/ray/common:ray_config",
+        "//src/ray/object_manager:object_manager_common",
+        "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/time",
+        "@com_google_googletest//:gtest_prod",
+    ],
+)
+
+ray_cc_library(
+    name = "stats_collector",
+    srcs = ["stats_collector.cc"],
+    hdrs = ["stats_collector.h"],
+    deps = [
+        ":object_manager_plasma_common",
+        "//src/ray/stats:stats_metric",
+        "//src/ray/util:counter_map",
+    ],
+)
+
+ray_cc_library(
+    name = "plasma_malloc",
+    srcs = [
+        "dlmalloc.cc",
+        "malloc.cc",
+    ],
+    hdrs = [
+        "malloc.h",
+    ],
+    deps = [
+        ":object_manager_plasma_common",
+        "//src/ray/thirdparty:dlmalloc",
+        "//src/ray/common:ray_config",
+        "//src/ray/util:compat",
+        "@com_google_absl//absl/container:flat_hash_map",
+    ],
+)
+
+ray_cc_library(
+    name = "plasma_eviction_policy",
+    srcs = ["eviction_policy.cc"],
+    hdrs = ["eviction_policy.h"],
+    deps = [
+        ":object_manager_plasma_common",
+        ":plasma_allocator",
+        ":plasma_object_store",
+        "//src/ray/object_manager:object_manager_common",
+    ],
+)
+
+ray_cc_library(
+    name = "plasma_object_store",
+    srcs = ["object_store.cc"],
+    hdrs = ["object_store.h"],
+    deps = [
+        ":object_manager_plasma_common",
+        ":plasma_allocator_interface",
+        "@com_google_absl//absl/container:flat_hash_map",
+    ],
+)
+
+ray_cc_library(
+    name = "plasma_allocator_interface",
+    hdrs = ["allocator.h"],
+    deps = [
+        ":object_manager_plasma_common",
+        ":plasma_generated",
+        "//src/ray/common:status",
+        "//src/ray/object_manager:object_manager_common",
+        "//src/ray/protobuf:common_cc_proto",
+        "@com_google_absl//absl/container:flat_hash_map",
+    ],
+)
+
+ray_cc_library(
+    name = "plasma_allocator",
+    srcs = ["plasma_allocator.cc"],
+    hdrs = ["plasma_allocator.h"],
+    deps = [
+        ":plasma_allocator_interface",
+        ":plasma_malloc",
+        "//src/ray/common:ray_config",
+        "//src/ray/object_manager:object_manager_common",
+        "//src/ray/util:logging",
+        "@com_google_absl//absl/types:optional",
+    ],
+)
+
+ray_cc_library(
+    name = "plasma_create_request_queue",
+    srcs = ["create_request_queue.cc"],
+    hdrs = ["create_request_queue.h"],
+    deps = [
+        ":object_manager_plasma_common",
+        ":plasma_connection_protocol",
+        "//src/ray/common:file_system_monitor",
+        "//src/ray/common:status",
+        "//src/ray/object_manager:object_manager_common",
+        "@com_google_absl//absl/container:flat_hash_map",
+    ],
+)
+
+ray_cc_library(
+    name = "object_manager_plasma_common",
+    srcs = ["plasma.cc"],
+    hdrs = [
+        "common.h",
+        "plasma.h",
+    ],
+    deps = [
+        ":plasma_generated",
+        "//src/ray/common:id",
+        "//src/ray/object_manager:object_manager_common",
+        "//src/ray/util:compat",
+        "//src/ray/util:macros",
+        "@boost//:asio",
+        "@com_google_googletest//:gtest_prod",
+    ],
+)
+
+ray_cc_library(
+    name = "plasma_generated",
+    hdrs = ["plasma_generated.h"],
+    deps = ["@com_github_google_flatbuffers//:flatbuffers"],
+)
+
+ray_cc_library(
+    name = "plasma_connection_protocol",
+    srcs = [
+        "connection.cc",
+        "protocol.cc",
+    ],
+    hdrs = [
+        "connection.h",
+        "protocol.h",
+    ],
+    deps = [
+        ":fling",
+        ":object_manager_plasma_common",
+        ":plasma_generated",
+        "//src/ray/common:id",
+        "//src/ray/common:network",
+        "//src/ray/common:status",
+        "//src/ray/object_manager:object_manager_common",
+        "//src/ray/protobuf:common_cc_proto",
+        "//src/ray/util:compat",
+        "//src/ray/util:logging",
+        "@com_github_google_flatbuffers//:flatbuffers",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/container:flat_hash_set",
+    ],
+)
+
+ray_cc_library(
+    name = "fling",
+    srcs = select({
+        "@platforms//os:windows": [
+        ],
+        "//conditions:default": [
+            "fling.cc",
+        ],
+    }),
+    hdrs = select({
+        "@platforms//os:windows": [
+        ],
+        "//conditions:default": [
+            "fling.h",
+        ],
+    }),
+    deps = select({
+        "@platforms//os:windows": [
+        ],
+        "//conditions:default": [
+            "//src/ray/util:logging",
+        ],
+    }),
+)
+
+flatbuffer_cc_library(
+    name = "plasma_fbs",
+    srcs = ["plasma.fbs"],
+    flatc_args = FLATC_ARGS,
+    out_prefix = "",
+)

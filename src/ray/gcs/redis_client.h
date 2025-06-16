@@ -15,18 +15,16 @@
 #pragma once
 
 #include <map>
+#include <memory>
 #include <string>
 
 #include "ray/common/asio/instrumented_io_context.h"
 #include "ray/common/status.h"
-#include "ray/gcs/asio.h"
 #include "ray/gcs/redis_context.h"
 #include "ray/util/logging.h"
 
 namespace ray {
-
 namespace gcs {
-
 class RedisClientOptions {
  public:
   RedisClientOptions(const std::string &ip,
@@ -58,7 +56,7 @@ class RedisClientOptions {
 /// This class is used to send commands to Redis.
 class RedisClient {
  public:
-  RedisClient(const RedisClientOptions &options);
+  explicit RedisClient(const RedisClientOptions &options);
 
   /// Connect to Redis. Non-thread safe.
   /// Call this function before calling other functions.
@@ -72,23 +70,16 @@ class RedisClient {
   /// Disconnect with Redis. Non-thread safe.
   void Disconnect();
 
-  std::shared_ptr<RedisContext> GetPrimaryContext() { return primary_context_; }
+  RedisContext *GetPrimaryContext() { return primary_context_.get(); }
 
  protected:
-  /// Attach this client to an asio event loop. Note that only
-  /// one event loop should be attached at a time.
-  void Attach();
-
   RedisClientOptions options_;
 
   /// Whether this client is connected to redis.
   bool is_connected_{false};
 
   // The following context writes everything to the primary shard
-  std::unique_ptr<RedisAsioClient> asio_async_auxiliary_client_;
-  std::shared_ptr<RedisContext> primary_context_;
+  std::unique_ptr<RedisContext> primary_context_;
 };
-
 }  // namespace gcs
-
 }  // namespace ray

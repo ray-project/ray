@@ -18,10 +18,10 @@
 // ThreadChecker thread_checker{};
 //
 // // Initialize on the thread at first usage.
-// RAY_CHECK(thread_checker.ok());
+// RAY_CHECK(thread_checker.IsOnSameThread());
 //
 // // Check it's on the same thread.
-// RAY_CHECK(thread_checker.ok());
+// RAY_CHECK(thread_checker.IsOnSameThread());
 
 #pragma once
 
@@ -34,7 +34,7 @@ class ThreadChecker {
  public:
   // Return true at initialization, or current invocation happens on the same thread as
   // initialization.
-  bool IsOnSameThread() const;
+  [[nodiscard]] bool IsOnSameThread() const;
 
  private:
   mutable std::atomic<std::thread::id> thread_id_{};

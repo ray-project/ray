@@ -15,7 +15,11 @@
 #pragma once
 #include <gtest/gtest_prod.h>
 
+#include <list>
+#include <memory>
+#include <string>
 #include <utility>
+#include <vector>
 
 #include "absl/container/flat_hash_map.h"
 #include "ray/common/id.h"
@@ -31,6 +35,7 @@
 #include "ray/rpc/worker/core_worker_client.h"
 #include "ray/util/counter_map.h"
 #include "ray/util/event.h"
+#include "ray/util/thread_checker.h"
 #include "src/ray/protobuf/gcs_service.pb.h"
 
 namespace ray {
@@ -51,6 +56,7 @@ class GcsActor {
           counter)
       : actor_table_data_(std::move(actor_table_data)), counter_(counter) {
     RefreshMetrics();
+    export_event_write_enabled_ = IsExportAPIEnabledActor();
   }
 
   /// Create a GcsActor by actor_table_data and task_spec.
@@ -69,6 +75,7 @@ class GcsActor {
         counter_(counter) {
     RAY_CHECK(actor_table_data_.state() != rpc::ActorTableData::DEAD);
     RefreshMetrics();
+    export_event_write_enabled_ = IsExportAPIEnabledActor();
   }
 
   /// Create a GcsActor by TaskSpec.
@@ -128,14 +135,22 @@ class GcsActor {
           function_descriptor.python_function_descriptor().class_name());
       break;
     default:
-      // TODO (Alex): Handle the C++ case, which we currently don't have an
+      // TODO(Alex): Handle the C++ case, which we currently don't have an
       // easy equivalent to class_name for.
       break;
     }
 
     actor_table_data_.set_serialized_runtime_env(
         task_spec.runtime_env_info().serialized_runtime_env());
+    if (task_spec.call_site().size() > 0) {
+      actor_table_data_.set_call_site(task_spec.call_site());
+    }
+    if (task_spec.label_selector().size() > 0) {
+      actor_table_data_.mutable_label_selector()->insert(
+          task_spec.label_selector().begin(), task_spec.label_selector().end());
+    }
     RefreshMetrics();
+    export_event_write_enabled_ = IsExportAPIEnabledActor();
   }
 
   ~GcsActor() {
@@ -192,6 +207,13 @@ class GcsActor {
   /// Write an event containing this actor's ActorTableData
   /// to file for the Export API.
   void WriteActorExportEvent() const;
+  // Verify if export events should be written for EXPORT_ACTOR source types
+  bool IsExportAPIEnabledActor() const {
+    return IsExportAPIEnabledSourceType(
+        "EXPORT_ACTOR",
+        RayConfig::instance().enable_export_api_write(),
+        RayConfig::instance().enable_export_api_write_config());
+  }
 
   const ResourceRequest &GetAcquiredResources() const;
   void SetAcquiredResources(ResourceRequest &&resource_request);
@@ -252,11 +274,14 @@ class GcsActor {
   bool grant_or_reject_ = false;
   /// The last recorded metric state.
   std::optional<rpc::ActorTableData::ActorState> last_metric_state_;
+  /// If true, actor events are exported for Export API
+  bool export_event_write_enabled_ = false;
 };
 
 using RegisterActorCallback =
     std::function<void(std::shared_ptr<GcsActor>, const Status &status)>;
-using RestartActorCallback = std::function<void(std::shared_ptr<GcsActor>)>;
+using RestartActorForLineageReconstructionCallback =
+    std::function<void(std::shared_ptr<GcsActor>)>;
 using CreateActorCallback = std::function<void(
     std::shared_ptr<GcsActor>, const rpc::PushTaskReply &reply, const Status &status)>;
 
@@ -313,8 +338,9 @@ class GcsActorManager : public rpc::ActorInfoHandler {
   /// \param gcs_table_storage Used to flush actor data to storage.
   /// \param gcs_publisher Used to publish gcs message.
   GcsActorManager(
-      std::shared_ptr<GcsActorSchedulerInterface> scheduler,
+      std::unique_ptr<GcsActorSchedulerInterface> scheduler,
       GcsTableStorage *gcs_table_storage,
+      instrumented_io_context &io_context,
       GcsPublisher *gcs_publisher,
       RuntimeEnvManager &runtime_env_manager,
       GcsFunctionManager &function_manager,
@@ -327,9 +353,10 @@ class GcsActorManager : public rpc::ActorInfoHandler {
                            rpc::RegisterActorReply *reply,
                            rpc::SendReplyCallback send_reply_callback) override;
 
-  void HandleRestartActor(rpc::RestartActorRequest request,
-                          rpc::RestartActorReply *reply,
-                          rpc::SendReplyCallback send_reply_callback) override;
+  void HandleRestartActorForLineageReconstruction(
+      rpc::RestartActorForLineageReconstructionRequest request,
+      rpc::RestartActorForLineageReconstructionReply *reply,
+      rpc::SendReplyCallback send_reply_callback) override;
 
   void HandleCreateActor(rpc::CreateActorRequest request,
                          rpc::CreateActorReply *reply,
@@ -365,7 +392,7 @@ class GcsActorManager : public rpc::ActorInfoHandler {
   /// \param success_callback Will be invoked after the actor is created successfully or
   /// be invoked immediately if the actor is already registered to `registered_actors_`
   /// and its state is `ALIVE`.
-  /// \return Status::Invalid if this is a named actor and an
+  /// \return Status::AlreadyExists if this is a named actor and an
   /// actor with the specified name already exists. The callback will not be called in
   /// this case.
   Status RegisterActor(const rpc::RegisterActorRequest &request,
@@ -500,7 +527,7 @@ class GcsActorManager : public rpc::ActorInfoHandler {
       const ray::gcs::GcsActor *actor, std::shared_ptr<rpc::GcsNodeInfo> node);
   /// A data structure representing an actor's owner.
   struct Owner {
-    Owner(std::shared_ptr<rpc::CoreWorkerClientInterface> client)
+    explicit Owner(std::shared_ptr<rpc::CoreWorkerClientInterface> client)
         : client(std::move(client)) {}
     /// A client that can be used to contact the owner.
     std::shared_ptr<rpc::CoreWorkerClientInterface> client;
@@ -646,17 +673,17 @@ class GcsActorManager : public rpc::ActorInfoHandler {
   /// messages from a driver/worker caused by some network problems.
   absl::flat_hash_map<ActorID, std::vector<RegisterActorCallback>>
       actor_to_register_callbacks_;
-  /// Callbacks of pending `RestartActor` requests.
+  /// Callbacks of pending `RestartActorForLineageReconstruction` requests.
   /// Maps actor ID to actor restart callbacks, which is used to filter duplicated
   /// messages from a driver/worker caused by some network problems.
-  absl::flat_hash_map<ActorID, std::vector<RestartActorCallback>>
-      actor_to_restart_callbacks_;
+  absl::flat_hash_map<ActorID, std::vector<RestartActorForLineageReconstructionCallback>>
+      actor_to_restart_for_lineage_reconstruction_callbacks_;
   /// Callbacks of actor creation requests.
   /// Maps actor ID to actor creation callbacks, which is used to filter duplicated
   /// messages come from a Driver/Worker caused by some network problems.
   absl::flat_hash_map<ActorID, std::vector<CreateActorCallback>>
       actor_to_create_callbacks_;
-  /// All registered actors (unresoved and pending actors are also included).
+  /// All registered actors (unresolved and pending actors are also included).
   /// TODO(swang): Use unique_ptr instead of shared_ptr.
   absl::flat_hash_map<ActorID, std::shared_ptr<GcsActor>> registered_actors_;
   /// All destroyed actors.
@@ -685,9 +712,10 @@ class GcsActorManager : public rpc::ActorInfoHandler {
   absl::flat_hash_map<NodeID, absl::flat_hash_map<WorkerID, Owner>> owners_;
 
   /// The scheduler to schedule all registered actors.
-  std::shared_ptr<GcsActorSchedulerInterface> gcs_actor_scheduler_;
+  std::unique_ptr<GcsActorSchedulerInterface> gcs_actor_scheduler_;
   /// Used to update actor information upon creation, deletion, etc.
   GcsTableStorage *gcs_table_storage_;
+  instrumented_io_context &io_context_;
   /// A publisher for publishing gcs messages.
   GcsPublisher *gcs_publisher_;
   /// Factory to produce clients to workers. This is used to communicate with
@@ -714,6 +742,10 @@ class GcsActorManager : public rpc::ActorInfoHandler {
 
   /// Total number of successfully created actors in the cluster lifetime.
   int64_t liftime_num_created_actors_ = 0;
+
+  // Make sure our unprotected maps are accessed from the same thread.
+  // Currently protects actor_to_register_callbacks_.
+  ThreadChecker thread_checker_;
 
   // Debug info.
   enum CountType {

@@ -1,19 +1,17 @@
-from collections import defaultdict
-import sys
-import os
 import copy
 import multiprocessing
+import sys
+from collections import defaultdict
 
 import pytest
 
 import ray
-
+from ray._common.test_utils import wait_for_condition
 from ray._private.metrics_agent import RAY_WORKER_TIMEOUT_S
 from ray._private.test_utils import (
     raw_metrics,
     run_string_as_driver,
     run_string_as_driver_nonblocking,
-    wait_for_condition,
 )
 
 
@@ -705,9 +703,4 @@ time.sleep(999)
 
 
 if __name__ == "__main__":
-    import sys
-
-    if os.environ.get("PARALLEL_CI"):
-        sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))
-    else:
-        sys.exit(pytest.main(["-sv", __file__]))
+    sys.exit(pytest.main(["-sv", __file__]))

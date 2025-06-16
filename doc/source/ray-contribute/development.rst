@@ -108,7 +108,7 @@ RLlib, Tune, Autoscaler, and most Python files do not require you to build and c
 .. code-block:: shell
 
     # This links all folders except "_private" and "dashboard" without user prompt.
-    python setup-dev.py -y --skip _private dashboard
+    python python/ray/setup-dev.py -y --skip _private dashboard
 
 .. warning:: Do not run ``pip uninstall ray`` or ``pip install -U`` (for Ray or Ray wheels) if setting up your environment this way. To uninstall or upgrade, you must first ``rm -rf`` the pip-installation site (usually a directory at the ``site-packages/ray`` location), then do a pip reinstall (see the command above), and finally run the above ``setup-dev.py`` script again.
 
@@ -134,12 +134,13 @@ To build Ray on Ubuntu, run the following commands:
   ci/env/install-bazel.sh
 
   # Install node version manager and node 14
-  $(curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.39.0/install.sh)
+  curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.40.1/install.sh | bash
   nvm install 14
   nvm use 14
 
 .. note::
-  The `install-bazel.sh` script installs `bazelisk` for building Ray. 
+  The `install-bazel.sh` script installs `bazelisk` for building Ray.
+  Note that `bazel` is installed at `$HOME/bin/bazel`; make sure it's on the executable `PATH`.
   If you prefer to use `bazel`, only version `6.5.0` is currently supported.
 
 For RHELv8 (Redhat EL 8.0-64 Minimal), run the following commands:
@@ -194,7 +195,7 @@ After that, you can now move back to the top level Ray directory:
 
 .. code-block:: shell
 
-  cd ../..
+  cd -
 
 
 Now let's build Ray for Python. Make sure you activate any Python virtual (or conda) environment you could be using as described above.
@@ -227,7 +228,7 @@ directory will take effect without reinstalling the package.
   The ``build --disk_cache=~/bazel-cache`` option can be useful to speed up repeated builds too.
 
 .. note::
-  Warning: If you run into an error building protobuf, switching from miniconda to anaconda might help.
+  Warning: If you run into an error building protobuf, switching from miniforge to anaconda might help.
 
 .. _NodeJS: https://nodejs.org
 
@@ -241,7 +242,7 @@ The following links were correct during the writing of this section. In case the
 - Bazel 6.5.0 (https://github.com/bazelbuild/bazel/releases/tag/6.5.0)
 - Microsoft Visual Studio 2019 (or Microsoft Build Tools 2019 - https://visualstudio.microsoft.com/downloads/#build-tools-for-visual-studio-2019)
 - JDK 15 (https://www.oracle.com/java/technologies/javase-jdk15-downloads.html)
-- Miniconda 3 (https://docs.conda.io/en/latest/miniconda.html)
+- Miniforge 3 (https://github.com/conda-forge/miniforge/blob/main/README.md)
 - git for Windows, version 2.31.1 or later (https://git-scm.com/download/win)
 
 You can also use the included script to install Bazel:
@@ -262,11 +263,11 @@ You can also use the included script to install Bazel:
    3. Go to "For Developers" on the left pane;
    4. Turn on "Developer mode".
 
-2. Add the following Miniconda subdirectories to PATH. If Miniconda was installed for all users, the following paths are correct. If Miniconda is installed for a single user, adjust the paths accordingly.
+2. Add the following Miniforge subdirectories to PATH. If Miniforge was installed for all users, the following paths are correct. If Miniforge is installed for a single user, adjust the paths accordingly.
 
-   - ``C:\ProgramData\Miniconda3``
-   - ``C:\ProgramData\Miniconda3\Scripts``
-   - ``C:\ProgramData\Miniconda3\Library\bin``
+   - ``C:\ProgramData\miniforge3``
+   - ``C:\ProgramData\miniforge3\Scripts``
+   - ``C:\ProgramData\miniforge3\Library\bin``
 
 3. Define an environment variable ``BAZEL_SH`` to point to ``bash.exe``. If git for Windows was installed for all users, bash's path should be ``C:\Program Files\Git\bin\bash.exe``. If git was installed for a single user, adjust the path accordingly.
 
@@ -297,14 +298,15 @@ You can tweak the build with the following environment variables (when running `
   ``cpp``) build will not provide some ``cpp`` interfaces
 - ``SKIP_BAZEL_BUILD``: If set and equal to ``1``, no Bazel build steps will be
   executed
-- ``SKIP_THIRDPARTY_INSTALL``: If set will skip installation of third-party
-  python packages
+- ``SKIP_THIRDPARTY_INSTALL_CONDA_FORGE``: If set, setup will skip installation of
+  third-party packages required for build. This is active on conda-forge where
+  pip is not used to create a build environment.
 - ``RAY_DEBUG_BUILD``: Can be set to ``debug``, ``asan``, or ``tsan``. Any
   other value will be ignored
 - ``BAZEL_ARGS``: If set, pass a space-separated set of arguments to Bazel. This can be useful
   for restricting resource usage during builds, for example. See https://bazel.build/docs/user-manual
   for more information about valid arguments.
-- ``IS_AUTOMATED_BUILD``: Used in CI to tweak the build for the CI machines
+- ``IS_AUTOMATED_BUILD``: Used in conda-forge CI to tweak the build for the managed CI machines
 - ``SRC_DIR``: Can be set to the root of the source checkout, defaults to
   ``None`` which is ``cwd()``
 - ``BAZEL_SH``: used on Windows to find a ``bash.exe``, see below
@@ -352,7 +354,9 @@ you commit new code changes with git. To temporarily skip pre-commit checks, use
    git commit -n
 
 If you find that ``scripts/format.sh`` makes a change that is different from what ``pre-commit``
-does, please report an issue on the Ray github page.
+does, please `report an issue here`_.
+
+.. _report an issue here: https://github.com/ray-project/ray/issues/new?template=bug-report.yml
 
 Fast, Debug, and Optimized Builds
 ---------------------------------
@@ -444,4 +448,4 @@ Then you should run the following commands:
 .. code-block:: bash
 
   rm -rf python/ray/thirdparty_files/
-  python3 -m pip install setproctitle
+  python3 -m pip install psutil

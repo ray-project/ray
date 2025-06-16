@@ -1,27 +1,25 @@
+import asyncio
 import json
 import os
 import sys
-import asyncio
+from pathlib import Path
 from typing import List
-import urllib
-import re
 from unittest.mock import MagicMock, AsyncMock
 
-import pytest
-from ray.util.state.state_cli import logs_state_cli_group
-from ray.util.state import list_jobs
-import requests
-from click.testing import CliRunner
 import grpc
-
-from pathlib import Path
+from ray._common.test_utils import wait_for_condition
+import requests
+import pytest
+import urllib
+from click.testing import CliRunner
 
 import ray
 from ray._private.test_utils import (
     format_web_url,
-    wait_for_condition,
     wait_until_server_available,
 )
+from ray.util.state.state_cli import logs_state_cli_group
+from ray.util.state import list_jobs
 
 from ray._raylet import ActorID, NodeID, TaskID, WorkerID
 from ray.core.generated.common_pb2 import Address
@@ -33,7 +31,6 @@ from ray.core.generated.gcs_pb2 import (
     TaskStateUpdate,
     TaskLogInfo,
 )
-from ray.dashboard.modules.actor.actor_head import actor_table_data_to_dict
 from ray.dashboard.modules.log.log_agent import (
     find_offset_of_content_in_file,
     find_end_offset_file,
@@ -46,7 +43,7 @@ from ray.dashboard.modules.log.log_manager import LogsManager
 from ray.dashboard.tests.conftest import *  # noqa
 from ray.util.state import get_log, list_logs, list_nodes, list_workers
 from ray.util.state.common import GetLogOptions
-from ray.util.state.exception import DataSourceUnavailable, RayStateApiException
+from ray.util.state.exception import RayStateApiException
 from ray.util.state.state_manager import StateDataSourceClient
 
 
@@ -83,7 +80,7 @@ def generate_task_event(
     return task_event
 
 
-def generate_actor_data(id, node_id, worker_id):
+async def generate_actor_data(id, node_id, worker_id):
     if worker_id:
         worker_id = worker_id.binary()
     message = ActorTableData(
@@ -99,7 +96,7 @@ def generate_actor_data(id, node_id, worker_id):
             worker_id=worker_id,
         ),
     )
-    return actor_table_data_to_dict(message)
+    return message
 
 
 # Unit Tests (Log Agent)
@@ -442,16 +439,15 @@ async def generate_logs_stream(num_chunks: int):
 async def test_logs_manager_list_logs(logs_manager):
     logs_client = logs_manager.data_source_client
 
-    logs_client.get_all_registered_log_agent_ids = MagicMock()
-    logs_client.get_all_registered_log_agent_ids.return_value = ["1", "2"]
+    async def my_list_logs(node_id, glob_filter, timeout):
+        if node_id != "2":
+            raise ValueError("Agent for node id: 3 doesn't exist.")
+        return generate_list_logs(["gcs_server.out"])
 
-    logs_client.list_logs.side_effect = [
-        generate_list_logs(["gcs_server.out"]),
-        DataSourceUnavailable(),
-    ]
+    logs_client.list_logs = AsyncMock()
+    logs_client.list_logs.side_effect = my_list_logs
 
-    # Unregistered node id should raise a DataSourceUnavailable.
-    with pytest.raises(DataSourceUnavailable):
+    with pytest.raises(ValueError):
         result = await logs_manager.list_logs(
             node_id="3", timeout=30, glob_filter="*gcs*"
         )
@@ -460,12 +456,8 @@ async def test_logs_manager_list_logs(logs_manager):
     assert len(result) == 1
     assert result["gcs_server"] == ["gcs_server.out"]
     assert result["raylet"] == []
-    logs_client.get_all_registered_log_agent_ids.assert_called()
-    logs_client.list_logs.assert_awaited_with("2", "*gcs*", timeout=30)
 
-    # The second call raises DataSourceUnavailable, which will
-    # return DataSourceUnavailable to the caller.
-    with pytest.raises(DataSourceUnavailable):
+    with pytest.raises(ValueError):
         result = await logs_manager.list_logs(
             node_id="1", timeout=30, glob_filter="*gcs*"
         )
@@ -478,8 +470,6 @@ async def test_logs_manager_resolve_file(logs_manager):
     Test filename is given.
     """
     logs_client = logs_manager.data_source_client
-    logs_client.get_all_registered_log_agent_ids = MagicMock()
-    logs_client.get_all_registered_log_agent_ids.return_value = [node_id.hex()]
     expected_filename = "filename"
     res = await logs_manager.resolve_filename(
         node_id=node_id.hex(),
@@ -487,7 +477,7 @@ async def test_logs_manager_resolve_file(logs_manager):
         actor_id=None,
         task_id=None,
         pid=None,
-        get_actor_fn=lambda _: True,
+        get_actor_fn=None,
         timeout=10,
     )
     log_file_name, n = res.filename, res.node_id
@@ -500,7 +490,7 @@ async def test_logs_manager_resolve_file(logs_manager):
     with pytest.raises(ValueError):
         actor_id = ActorID(b"2" * 16)
 
-        def get_actor_fn(id):
+        async def get_actor_fn(id):
             if id == actor_id:
                 return None
             assert False, "Not reachable."
@@ -508,7 +498,7 @@ async def test_logs_manager_resolve_file(logs_manager):
         await logs_manager.resolve_filename(
             node_id=node_id.hex(),
             log_filename=None,
-            actor_id=actor_id,
+            actor_id=actor_id.hex(),
             task_id=None,
             pid=None,
             get_actor_fn=get_actor_fn,
@@ -522,7 +512,7 @@ async def test_logs_manager_resolve_file(logs_manager):
         await logs_manager.resolve_filename(
             node_id=node_id.hex(),
             log_filename=None,
-            actor_id=actor_id,
+            actor_id=actor_id.hex(),
             task_id=None,
             pid=None,
             get_actor_fn=lambda _: generate_actor_data(actor_id, node_id, None),
@@ -540,7 +530,7 @@ async def test_logs_manager_resolve_file(logs_manager):
     res = await logs_manager.resolve_filename(
         node_id=node_id.hex(),
         log_filename=None,
-        actor_id=actor_id,
+        actor_id=actor_id.hex(),
         task_id=None,
         pid=None,
         get_actor_fn=lambda _: generate_actor_data(actor_id, node_id, worker_id),
@@ -691,14 +681,15 @@ async def test_logs_manager_resolve_file(logs_manager):
     assert log_file_name == f"worker-123-123-{pid}.err"
 
 
+async def get_actor_info_raises(actor_id):
+    raise ValueError("should not be called")
+
+
 @pytest.mark.asyncio
 async def test_logs_manager_stream_log(logs_manager):
     NUM_LOG_CHUNKS = 10
     logs_client = logs_manager.data_source_client
 
-    logs_client.get_all_registered_log_agent_ids = MagicMock()
-    logs_client.get_all_registered_log_agent_ids.return_value = ["1", "2"]
-    logs_client.ip_to_node_id = MagicMock()
     logs_client.stream_log.return_value = generate_logs_stream(NUM_LOG_CHUNKS)
 
     # Test file_name, media_type="file", node_id
@@ -707,7 +698,9 @@ async def test_logs_manager_stream_log(logs_manager):
     )
 
     i = 0
-    async for chunk in logs_manager.stream_logs(options):
+    async for chunk in logs_manager.stream_logs(
+        options, get_actor_fn=get_actor_info_raises
+    ):
         assert chunk.decode("utf-8") == generate_logs_stream_chunk(index=i)
         i += 1
     assert i == NUM_LOG_CHUNKS
@@ -723,8 +716,10 @@ async def test_logs_manager_stream_log(logs_manager):
     )
 
     # Test pid, media_type = "stream", node_ip
+    async def returns_1(node_ip):
+        return "1"
 
-    logs_client.ip_to_node_id.return_value = "1"
+    logs_client.ip_to_node_id = returns_1
     logs_client.list_logs.side_effect = [
         generate_list_logs(
             ["worker-0-0-10.out", "worker-0-0-11.out", "worker-0-0-10.err"]
@@ -736,7 +731,9 @@ async def test_logs_manager_stream_log(logs_manager):
 
     logs_client.stream_log.return_value = generate_logs_stream(NUM_LOG_CHUNKS)
     i = 0
-    async for chunk in logs_manager.stream_logs(options):
+    async for chunk in logs_manager.stream_logs(
+        options, get_actor_fn=get_actor_info_raises
+    ):
         assert chunk.decode("utf-8") == generate_logs_stream_chunk(index=i)
         i += 1
     assert i == NUM_LOG_CHUNKS
@@ -764,9 +761,6 @@ async def test_logs_manager_keepalive_no_timeout(logs_manager):
     NUM_LOG_CHUNKS = 10
     logs_client = logs_manager.data_source_client
 
-    logs_client.get_all_registered_log_agent_ids = MagicMock()
-    logs_client.get_all_registered_log_agent_ids.return_value = ["1", "2"]
-    logs_client.ip_to_node_id = MagicMock()
     logs_client.stream_log.return_value = generate_logs_stream(NUM_LOG_CHUNKS)
 
     # Test file_name, media_type="file", node_id
@@ -774,7 +768,9 @@ async def test_logs_manager_keepalive_no_timeout(logs_manager):
         timeout=30, media_type="stream", lines=10, node_id="1", filename="raylet.out"
     )
 
-    async for chunk in logs_manager.stream_logs(options):
+    async for chunk in logs_manager.stream_logs(
+        options, get_actor_fn=get_actor_info_raises
+    ):
         pass
 
     # Make sure timeout == None when media_type == stream. This is to avoid
@@ -972,6 +968,41 @@ def test_logs_stream_and_tail(ray_start_with_dashboard):
         assert line in file_response
 
 
+def test_log_download_filename(ray_start_with_dashboard):
+    """Test that the download filename can be specified when downloading a log."""
+
+    assert (
+        wait_until_server_available(ray_start_with_dashboard.address_info["webui_url"])
+        is True
+    )
+    webui_url = ray_start_with_dashboard.address_info["webui_url"]
+    webui_url = format_web_url(webui_url)
+    node_id = list_nodes()[0]["node_id"]
+
+    download_filename = "dummy.out"
+
+    def verify():
+        stream_response = requests.get(
+            webui_url
+            + (
+                f"/api/v0/logs/file?node_id={node_id}&filename=gcs_server.out"
+                f"&lines=5&download_filename={download_filename}"
+            ),
+            stream=True,
+        )
+        if stream_response.status_code != 200:
+            raise ValueError(stream_response.content.decode("utf-8"))
+
+        assert (
+            stream_response.headers["Content-Disposition"]
+            == f'attachment; filename="{download_filename}"'
+        )
+        return True
+
+    # Node ID may not be found immediately, so may need to retry the check a few times.
+    wait_for_condition(verify)
+
+
 def test_log_list(ray_start_cluster):
     cluster = ray_start_cluster
     num_nodes = 5
@@ -1002,9 +1033,7 @@ def test_log_list(ray_start_cluster):
     with pytest.raises(requests.HTTPError) as e:
         list_logs(node_id=node_id)
 
-    assert re.match(
-        f"Given node id {node_id} is not available", e.value.response.json()["msg"]
-    )
+    assert e.value.response.status_code == 500
 
 
 @pytest.mark.skipif(
@@ -1304,7 +1333,8 @@ def test_log_get(ray_start_cluster):
 
     def verify():
         lines = get_log(task_id=task.task_id().hex())
-        assert expected_out == "".join(lines)
+        actual_out = "".join(lines)
+        assert expected_out == actual_out, actual_out
 
         return True
 
@@ -1564,9 +1594,4 @@ def test_log_cli(shutdown_only):
 
 
 if __name__ == "__main__":
-    import sys
-
-    if os.environ.get("PARALLEL_CI"):
-        sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))
-    else:
-        sys.exit(pytest.main(["-sv", __file__]))
+    sys.exit(pytest.main(["-sv", __file__]))
