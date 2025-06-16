@@ -15,9 +15,8 @@ import pyarrow.parquet as pq
 import pytest
 
 import ray
-from ray._common.test_utils import wait_for_condition
 from ray._private.arrow_utils import get_pyarrow_version
-from ray._private.test_utils import run_string_as_driver
+from ray._private.test_utils import run_string_as_driver, wait_for_condition
 from ray.data import Dataset
 from ray.data._internal.arrow_ops.transform_pyarrow import (
     MIN_PYARROW_VERSION_TYPE_PROMOTION,
