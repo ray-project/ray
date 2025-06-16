@@ -782,18 +782,8 @@ def test_no_resource_oversubscription_during_shutdown(shutdown_only):
     # If the bug exists, task2 will start immediately. If fixed, it should wait.
 
     # Check if task2 starts within 1 second (indicating the bug)
-    try:
-        ray.get(task2_started.wait.remote(), timeout=1.0)
-        # If we get here, task2 started while task1 was running - this is the bug
-        # Clean up both tasks before failing
-        ray.get([task1_can_finish.send.remote(), task2_can_finish.send.remote()])
-        ray.get([task1, task2])
-        assert (
-            False
-        ), "Resource oversubscription bug detected: task2 executed before task1 completed"
-    except ray.exceptions.GetTimeoutError:
-        # Correct behavior: task2 did not start within timeout
-        pass
+    with pytest.raises(ray.exceptions.GetTimeoutError):
+        ray.get(task2_started.wait.remote(), timeout=0.5)
 
     # Now let task1 complete
     ray.get(task1_can_finish.send.remote())
