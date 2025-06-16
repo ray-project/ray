@@ -422,7 +422,7 @@ steps:
       - python
       - docker
       - oss
-    instance_type: large
+    instance_type: medium
     commands:
       - bazel run //ci/ray_ci:build_in_docker -- docker --platform cpu
         --canonical-tag test_container
