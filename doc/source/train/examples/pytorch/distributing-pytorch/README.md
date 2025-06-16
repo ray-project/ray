@@ -13,7 +13,12 @@ In this tutorial, you:
 
 In this step you train a PyTorch VisionTransformer model to recognize objects using the open CIFAR-10 dataset. It's a minimal example that trains on a single machine. Note that the code has multiple functions to highlight the changes needed to run things with Ray.
 
-First, import the required Python modules.
+First, install and import the required Python modules.
+
+
+```python
+pip install torch torchvision
+```
 
 
 ```python

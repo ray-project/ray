@@ -4458,7 +4458,6 @@
   cluster:
     byod:
       type: gpu
-      post_build_script: byod_pytorch_train_data.sh  # release/ray_release/byod/
     cluster_compute: ci/aws.yaml  # relative to working_dir
 
   run:
