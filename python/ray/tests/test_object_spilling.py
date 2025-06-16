@@ -752,7 +752,8 @@ def test_recover_from_spill_worker_failure(ray_start_regular):
         return np.zeros(50 * 1024 * 1024, dtype=np.uint8)
 
     def _run_spilling_workload():
-        ray.get([f.remote() for _ in range(5)])
+        for obj_ref in [f.remote() for _ in range(5)]:
+            ray.get(obj_ref)
 
     def get_spill_worker():
         for proc in psutil.process_iter():
@@ -782,6 +783,15 @@ def test_recover_from_spill_worker_failure(ray_start_regular):
 
     # Run the workload again and ensure that it succeeds.
     _run_spilling_workload()
+
+    # Check that the spilled files are cleaned up after the workload finishes.
+    ray._private.worker._global_node._session_dir
+    node_id = ray.get_runtime_context().get_node_id()
+    wait_for_condition(
+        lambda: is_dir_empty(
+            Path(ray._private.worker._global_node._session_dir), node_id
+        )
+    )
 
 
 if __name__ == "__main__":
