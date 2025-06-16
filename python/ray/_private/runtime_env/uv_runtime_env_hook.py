@@ -150,8 +150,10 @@ def _create_uv_run_parser():
     python_group.add_argument("--no-python-downloads", action="store_true")
     # note: the following is a legacy option and will be removed at some point
     # https://github.com/astral-sh/uv/pull/12246
-    python_group.add_argument("--python-preference",
-                             choices=["only-managed", "managed", "system", "only-system"])
+    python_group.add_argument(
+        "--python-preference",
+        choices=["only-managed", "managed", "system", "only-system"],
+    )
 
     # Global options
     global_group = parser.add_argument_group("Global options")
