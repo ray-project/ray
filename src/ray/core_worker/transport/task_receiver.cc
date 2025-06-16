@@ -70,7 +70,7 @@ void TaskReceiver::HandleTask(rpc::PushTaskRequest request,
     std::vector<std::pair<ObjectID, bool>> streaming_generator_returns;
     bool is_retryable_error = false;
     std::string application_error;
-    auto status = task_handler_(task_spec,
+    auto status = execute_task_(task_spec,
                                 std::move(resource_ids),
                                 &return_objects,
                                 &dynamic_return_objects,

@@ -50,7 +50,6 @@ void NormalSchedulingQueue::Add(
   // Normal tasks should not have ordering constraints.
   RAY_CHECK(seq_no == -1);
   // Create a InboundRequest object for the new task, and add it to the queue.
-
   pending_normal_tasks_.push_back(InboundRequest(std::move(accept_request),
                                                  std::move(reject_request),
                                                  std::move(send_reply_callback),
