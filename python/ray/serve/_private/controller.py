@@ -978,7 +978,7 @@ class ServeController:
             target_groups=self.get_target_groups(),
         )._get_user_facing_json_serializable_dict(exclude_unset=True)
 
-    def get_proxy_target_groups(self) -> List[TargetGroup]:
+    def get_target_groups(self, app_name: Optional[str] = None) -> List[TargetGroup]:
         """Target groups contains information about IP
         addresses and ports of all proxies in the cluster.
 
@@ -1008,14 +1008,6 @@ class ServeController:
                     )
                 )
         return target_groups
-
-    def get_target_groups(self) -> List[TargetGroup]:
-        """Target groups contains information about IP
-        addresses and ports of all proxies in the cluster.
-
-        This information is used to setup the load balancer.
-        """
-        return self.get_proxy_target_groups()
 
     def get_serve_status(self, name: str = SERVE_DEFAULT_APP_NAME) -> bytes:
         """Return application status

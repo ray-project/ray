@@ -93,7 +93,7 @@ def test_e2e(serve_instance):
         return {"method": starlette_request.method}
 
     serve.run(function.bind())
-    url = f"{get_application_url(use_proxy_targets=True)}/api"
+    url = f"{get_application_url()}/api"
     resp = httpx.get(url).json()["method"]
     assert resp == "GET"
 
@@ -150,7 +150,7 @@ def test_starlette_response_redirect(serve_instance):
 
     @serve.deployment(name="redirect")
     def redirect():
-        url = get_application_url("HTTP", app_name="app1", use_proxy_targets=True)
+        url = get_application_url("HTTP", app_name="app1")
         return starlette.responses.RedirectResponse(url=url)
 
     serve.run(basic.bind(), name="app1", route_prefix="/")
@@ -898,7 +898,7 @@ def test_status_constructor_error(serve_instance):
     # return a 503 error to reflect the failed deployment state.
     # The timeout is there to prevent the test from hanging and blocking
     # the test suite if it does fail.
-    url = get_application_url("HTTP", use_proxy_targets=True)
+    url = get_application_url("HTTP")
     r = httpx.post(url, timeout=10)
     assert r.status_code == 503 and "unavailable" in r.text
 
@@ -1119,27 +1119,10 @@ def test_get_application_urls(serve_instance):
     serve.run(f.bind())
     controller_details = ray.get(serve_instance._controller.get_actor_details.remote())
     node_ip = controller_details.node_ip
-    assert get_application_urls(use_proxy_targets=True) == [f"http://{node_ip}:8000/"]
-    assert get_application_urls("gRPC", use_proxy_targets=True) == [f"{node_ip}:9000"]
-    assert get_application_urls(RequestProtocol.HTTP, use_proxy_targets=True) == [
-        f"http://{node_ip}:8000/"
-    ]
-    assert get_application_urls(RequestProtocol.GRPC, use_proxy_targets=True) == [
-        f"{node_ip}:9000"
-    ]
-
-    assert (
-        get_application_url("HTTP", use_proxy_targets=True) == f"http://{node_ip}:8000/"
-    )
-    assert get_application_url("gRPC", use_proxy_targets=True) == f"{node_ip}:9000"
-    assert (
-        get_application_url(RequestProtocol.HTTP, use_proxy_targets=True)
-        == f"http://{node_ip}:8000/"
-    )
-    assert (
-        get_application_url(RequestProtocol.GRPC, use_proxy_targets=True)
-        == f"{node_ip}:9000"
-    )
+    assert get_application_urls() == [f"http://{node_ip}:8000/"]
+    assert get_application_urls("gRPC") == [f"{node_ip}:9000"]
+    assert get_application_urls(RequestProtocol.HTTP) == [f"http://{node_ip}:8000/"]
+    assert get_application_urls(RequestProtocol.GRPC) == [f"{node_ip}:9000"]
 
 
 def test_get_application_urls_with_app_name(serve_instance):
@@ -1150,18 +1133,8 @@ def test_get_application_urls_with_app_name(serve_instance):
     serve.run(f.bind(), name="app1", route_prefix="/")
     controller_details = ray.get(serve_instance._controller.get_actor_details.remote())
     node_ip = controller_details.node_ip
-    assert get_application_urls("HTTP", app_name="app1", use_proxy_targets=True) == [
-        f"http://{node_ip}:8000/"
-    ]
-    assert get_application_urls("gRPC", app_name="app1", use_proxy_targets=True) == [
-        f"{node_ip}:9000"
-    ]
-    assert get_application_urls("HTTP", app_name="app1", use_proxy_targets=False) == [
-        f"http://{node_ip}:8000/"
-    ]
-    assert get_application_urls("gRPC", app_name="app1", use_proxy_targets=False) == [
-        f"{node_ip}:9000"
-    ]
+    assert get_application_urls("HTTP", app_name="app1") == [f"http://{node_ip}:8000/"]
+    assert get_application_urls("gRPC", app_name="app1") == [f"{node_ip}:9000"]
 
 
 def test_get_application_urls_with_route_prefix(serve_instance):
@@ -1172,9 +1145,7 @@ def test_get_application_urls_with_route_prefix(serve_instance):
     serve.run(f.bind(), name="app1", route_prefix="/app1")
     controller_details = ray.get(serve_instance._controller.get_actor_details.remote())
     node_ip = controller_details.node_ip
-    assert get_application_urls("HTTP", app_name="app1", use_proxy_targets=True) == [
+    assert get_application_urls("HTTP", app_name="app1") == [
         f"http://{node_ip}:8000/app1"
     ]
-    assert get_application_urls("gRPC", app_name="app1", use_proxy_targets=True) == [
-        f"{node_ip}:9000"
-    ]
+    assert get_application_urls("gRPC", app_name="app1") == [f"{node_ip}:9000"]

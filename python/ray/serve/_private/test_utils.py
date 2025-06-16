@@ -24,7 +24,6 @@ from ray.serve._private.common import (
     RequestProtocol,
 )
 from ray.serve._private.constants import (
-    RAY_SERVE_USE_PROXY_TARGETS_FOR_GET_APPLICATION_URLS,
     SERVE_DEFAULT_APP_NAME,
     SERVE_NAMESPACE,
 )
@@ -709,14 +708,12 @@ def tlog(s: str, level: str = "INFO"):
 def get_application_urls(
     protocol: Union[str, RequestProtocol] = RequestProtocol.HTTP,
     app_name: str = SERVE_DEFAULT_APP_NAME,
-    use_proxy_targets: bool = RAY_SERVE_USE_PROXY_TARGETS_FOR_GET_APPLICATION_URLS,
 ) -> List[str]:
     """Get the URL of the application.
 
     Args:
         protocol: The protocol to use for the application.
         app_name: The name of the application.
-        use_proxy_targets: Whether to use the proxy targets.
 
     Returns:
         The URLs of the application.
@@ -724,27 +721,16 @@ def get_application_urls(
     client = _get_global_client()
     serve_details = client.get_serve_details()
     route_prefix = serve_details["applications"][app_name]["route_prefix"]
-    if use_proxy_targets:
-        target_groups: List[TargetGroup] = ray.get(
-            client._controller.get_proxy_target_groups.remote()
-        )
-        target_groups = [
-            target_group
-            for target_group in target_groups
-            if target_group.protocol == protocol
-        ]
-    else:
-        if isinstance(protocol, str):
-            protocol = RequestProtocol(protocol)
-        target_groups: List[TargetGroup] = ray.get(
-            client._controller.get_target_groups.remote()
-        )
-        target_groups = [
-            target_group
-            for target_group in target_groups
-            if target_group.protocol == protocol
-            and target_group.route_prefix == route_prefix
-        ]
+    if isinstance(protocol, str):
+        protocol = RequestProtocol(protocol)
+    target_groups: List[TargetGroup] = ray.get(
+        client._controller.get_target_groups.remote(app_name)
+    )
+    target_groups = [
+        target_group
+        for target_group in target_groups
+        if target_group.protocol == protocol
+    ]
     if len(target_groups) == 0:
         raise ValueError(
             f"No target group found for app {app_name} with protocol {protocol} and route prefix {route_prefix}"
@@ -764,16 +750,14 @@ def get_application_urls(
 def get_application_url(
     protocol: Union[str, RequestProtocol] = RequestProtocol.HTTP,
     app_name: str = SERVE_DEFAULT_APP_NAME,
-    use_proxy_targets: bool = RAY_SERVE_USE_PROXY_TARGETS_FOR_GET_APPLICATION_URLS,
 ) -> str:
     """Get the URL of the application.
 
     Args:
         protocol: The protocol to use for the application.
         app_name: The name of the application.
-        use_proxy_targets: Whether to use the proxy targets.
 
     Returns:
         The URL of the application. If there are multiple URLs, a random one is returned.
     """
-    return random.choice(get_application_urls(protocol, app_name, use_proxy_targets))
+    return random.choice(get_application_urls(protocol, app_name))
