@@ -8,6 +8,130 @@ from typing import Any, Dict, List, Optional
 import psutil
 
 
+def _create_uv_run_parser():
+    """Create and return the argument parser for 'uv run' command."""
+
+    parser = argparse.ArgumentParser(
+        prog='uv run',
+        add_help=False
+    )
+
+    # Positional argument - using remainder to capture everything after the command
+    parser.add_argument('command', nargs=argparse.REMAINDER)
+
+    # Main options group
+    main_group = parser.add_argument_group('Main options')
+    main_group.add_argument('--extra', action='append', dest='extras')
+    main_group.add_argument('--all-extras', action='store_true')
+    main_group.add_argument('--no-extra', action='append', dest='no_extras')
+    main_group.add_argument('--no-dev', action='store_true')
+    main_group.add_argument('--group', action='append', dest='groups')
+    main_group.add_argument('--no-group', action='append', dest='no_groups')
+    main_group.add_argument('--no-default-groups', action='store_true')
+    main_group.add_argument('--only-group', action='append', dest='only_groups')
+    main_group.add_argument('--all-groups', action='store_true')
+    main_group.add_argument('-m', '--module', action='store_true')
+    main_group.add_argument('--only-dev', action='store_true')
+    main_group.add_argument('--no-editable', action='store_true')
+    main_group.add_argument('--exact', action='store_true')
+    main_group.add_argument('--env-file', action='append', dest='env_files')
+    main_group.add_argument('--no-env-file', action='store_true')
+
+    # With options
+    with_group = parser.add_argument_group('With options')
+    with_group.add_argument('--with', action='append', dest='with_packages')
+    with_group.add_argument('--with-editable', action='append', dest='with_editable')
+    with_group.add_argument('--with-requirements', action='append', dest='with_requirements')
+
+    # Environment options
+    env_group = parser.add_argument_group('Environment options')
+    env_group.add_argument('--isolated', action='store_true')
+    env_group.add_argument('--active', action='store_true')
+    env_group.add_argument('--no-sync', action='store_true')
+    env_group.add_argument('--locked', action='store_true')
+    env_group.add_argument('--frozen', action='store_true')
+
+    # Script options
+    script_group = parser.add_argument_group('Script options')
+    script_group.add_argument('-s', '--script', action='store_true')
+    script_group.add_argument('--gui-script', action='store_true')
+
+    # Workspace options
+    workspace_group = parser.add_argument_group('Workspace options')
+    workspace_group.add_argument('--all-packages', action='store_true')
+    workspace_group.add_argument('--package')
+    workspace_group.add_argument('--no-project', action='store_true')
+
+    # Index options
+    index_group = parser.add_argument_group('Index options')
+    index_group.add_argument('--index', action='append', dest='indexes')
+    index_group.add_argument('--default-index')
+    index_group.add_argument('-i', '--index-url')
+    index_group.add_argument('--extra-index-url', action='append', dest='extra_index_urls')
+    index_group.add_argument('-f', '--find-links', action='append', dest='find_links')
+    index_group.add_argument('--no-index', action='store_true')
+    index_group.add_argument('--index-strategy', choices=['first-index', 'unsafe-first-match', 'unsafe-best-match'])
+    index_group.add_argument('--keyring-provider', choices=['disabled', 'subprocess'])
+
+    # Resolver options
+    resolver_group = parser.add_argument_group('Resolver options')
+    resolver_group.add_argument('-U', '--upgrade', action='store_true')
+    resolver_group.add_argument('-P', '--upgrade-package', action='append', dest='upgrade_packages')
+    resolver_group.add_argument('--resolution', choices=['highest', 'lowest', 'lowest-direct'])
+    resolver_group.add_argument('--prerelease',
+                               choices=['disallow', 'allow', 'if-necessary', 'explicit', 'if-necessary-or-explicit'])
+    resolver_group.add_argument('--fork-strategy', choices=['fewest', 'requires-python'])
+    resolver_group.add_argument('--exclude-newer')
+    resolver_group.add_argument('--no-sources', action='store_true')
+
+    # Installer options
+    installer_group = parser.add_argument_group('Installer options')
+    installer_group.add_argument('--reinstall', action='store_true')
+    installer_group.add_argument('--reinstall-package', action='append', dest='reinstall_packages')
+    installer_group.add_argument('--link-mode', choices=['clone', 'copy', 'hardlink', 'symlink'])
+    installer_group.add_argument('--compile-bytecode', action='store_true')
+
+    # Build options
+    build_group = parser.add_argument_group('Build options')
+    build_group.add_argument('-C', '--config-setting', action='append', dest='config_settings')
+    build_group.add_argument('--no-build-isolation', action='store_true')
+    build_group.add_argument('--no-build-isolation-package', action='append', dest='no_build_isolation_packages')
+    build_group.add_argument('--no-build', action='store_true')
+    build_group.add_argument('--no-build-package', action='append', dest='no_build_packages')
+    build_group.add_argument('--no-binary', action='store_true')
+    build_group.add_argument('--no-binary-package', action='append', dest='no_binary_packages')
+
+    # Cache options
+    cache_group = parser.add_argument_group('Cache options')
+    cache_group.add_argument('-n', '--no-cache', action='store_true')
+    cache_group.add_argument('--cache-dir')
+    cache_group.add_argument('--refresh', action='store_true')
+    cache_group.add_argument('--refresh-package', action='append', dest='refresh_packages')
+
+    # Python options
+    python_group = parser.add_argument_group('Python options')
+    python_group.add_argument('-p', '--python')
+    python_group.add_argument('--managed-python', action='store_true')
+    python_group.add_argument('--no-managed-python', action='store_true')
+    python_group.add_argument('--no-python-downloads', action='store_true')
+
+    # Global options
+    global_group = parser.add_argument_group('Global options')
+    global_group.add_argument('-q', '--quiet', action='count', default=0)
+    global_group.add_argument('-v', '--verbose', action='count', default=0)
+    global_group.add_argument('--color', choices=['auto', 'always', 'never'])
+    global_group.add_argument('--native-tls', action='store_true')
+    global_group.add_argument('--offline', action='store_true')
+    global_group.add_argument('--allow-insecure-host', action='append', dest='insecure_hosts')
+    global_group.add_argument('--no-progress', action='store_true')
+    global_group.add_argument('--directory')
+    global_group.add_argument('--project')
+    global_group.add_argument('--config-file')
+    global_group.add_argument('--no-config', action='store_true')
+
+    return parser
+
+
 def _check_working_dir_files(
     uv_run_args: List[str], runtime_env: Dict[str, Any]
 ) -> None:
@@ -116,10 +240,9 @@ def hook(runtime_env: Optional[Dict[str, Any]]) -> Dict[str, Any]:
     # Extract the arguments of 'uv run' that are not arguments of the script.
     # We do this by parsing the script name out of the "uv run <args> script <script_args>" command line
     # extracting everything up to the script part.
-    parser = argparse.ArgumentParser()
-    parser.add_argument("script")
-    cmdline_args, _ = parser.parse_known_args(cmdline[2:])
-    uv_run_args = cmdline[: cmdline.index(cmdline_args.script)]
+    parser = _create_uv_run_parser()
+    cmdline_args = parser.parse_args(cmdline[2:])
+    uv_run_args = cmdline[: -len(cmdline_args.command)]
 
     # Remove the "--directory" argument since it has already been taken into
     # account when setting the current working directory of the current process
