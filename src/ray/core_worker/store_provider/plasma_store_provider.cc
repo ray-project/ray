@@ -21,6 +21,8 @@
 #include <vector>
 
 #include "ray/common/ray_config.h"
+#include "ray/common/status.h"
+#include "ray/common/status_or.h"
 #include "src/ray/protobuf/gcs.pb.h"
 
 namespace ray {
@@ -142,11 +144,13 @@ Status CoreWorkerPlasmaStoreProvider::Create(const std::shared_ptr<Buffer> &meta
                                             /*device_num=*/0);
 
   if (status.IsObjectStoreFull()) {
+    StatusOr<std::string> memory_usage = GetMemoryUsage();
+    RAY_CHECK_OK(memory_usage.status()) << "Unable to communicate with the Plasma Store.";
     RAY_LOG(ERROR) << "Failed to put object " << object_id
                    << " in object store because it "
                    << "is full. Object size is " << data_size << " bytes.\n"
                    << "Plasma store status:\n"
-                   << MemoryUsageString() << "\n---\n"
+                   << memory_usage.value() << "\n---\n"
                    << "--- Tip: Use the `ray memory` command to list active objects "
                       "in the cluster."
                    << "\n---\n";
@@ -431,8 +435,8 @@ Status CoreWorkerPlasmaStoreProvider::Delete(
   return raylet_client_->FreeObjects(object_id_vector, local_only);
 }
 
-std::string CoreWorkerPlasmaStoreProvider::MemoryUsageString() {
-  return store_client_->DebugString();
+StatusOr<std::string> CoreWorkerPlasmaStoreProvider::GetMemoryUsage() {
+  return store_client_->GetMemoryUsage();
 }
 
 absl::flat_hash_map<ObjectID, std::pair<int64_t, std::string>>

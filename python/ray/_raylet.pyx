@@ -3575,10 +3575,19 @@ cdef class CoreWorker:
         with nogil:
             CCoreWorkerProcess.GetCoreWorker().TriggerGlobalGC()
 
-    def dump_object_store_memory_usage(self):
-        message = CCoreWorkerProcess.GetCoreWorker().MemoryUsageString()
-        logger.warning("Local object store memory usage:\n{}\n".format(
-            message.decode("utf-8")))
+    def log_object_store_memory_usage(self):
+        """Logs the current usage of the Plasma Object Store.
+        This leads to an unretriable blocking IPC to the Plasma Store.
+
+        Raises an Error if cannot connect to the Plasma Store. This is a fatal exception
+        for the worker.
+        """
+        cdef:
+            c_string result
+        status = CCoreWorkerProcess.GetCoreWorker().GetObjectStoreMemoryUsage(result)
+        check_status(status)
+        logger.warning("Object Store memory usage:\n{}\n".format(
+            result.decode("utf-8")))
 
     def get_memory_store_size(self):
         return CCoreWorkerProcess.GetCoreWorker().GetMemoryStoreSize()
