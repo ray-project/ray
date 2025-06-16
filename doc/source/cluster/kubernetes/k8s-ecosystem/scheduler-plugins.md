@@ -1,3 +1,4 @@
+(kuberay-scheduler-plugins)=
 # KubeRay integration with scheduler plugins
 
 The [kubernetes-sigs/scheduler-plugins](https://github.com/kubernetes-sigs/scheduler-plugins) repository provides out-of-tree scheduler plugins based on the scheduler framework.
