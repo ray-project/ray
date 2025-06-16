@@ -35,7 +35,6 @@ from ray.serve._private.utils import TimerBase
 from ray.serve.context import _get_global_client
 from ray.serve.generated import serve_pb2, serve_pb2_grpc
 from ray.serve.schema import ApplicationStatus, TargetGroup
-from ray.util.annotations import DeveloperAPI
 
 TELEMETRY_ROUTE_PREFIX = "/telemetry"
 STORAGE_ACTOR_NAME = "storage"
@@ -707,7 +706,6 @@ def tlog(s: str, level: str = "INFO"):
     print(f"[{level}] {now} {s}")
 
 
-@DeveloperAPI
 def get_application_urls(
     protocol: Union[str, RequestProtocol] = RequestProtocol.HTTP,
     app_name: str = SERVE_DEFAULT_APP_NAME,
@@ -763,7 +761,6 @@ def get_application_urls(
     return urls
 
 
-@DeveloperAPI
 def get_application_url(
     protocol: Union[str, RequestProtocol] = RequestProtocol.HTTP,
     app_name: str = SERVE_DEFAULT_APP_NAME,
