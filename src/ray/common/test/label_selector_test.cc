@@ -23,9 +23,11 @@ TEST(LabelSelectorTest, BasicConstruction) {
   label_selector_dict["market-type"] = "spot";
   label_selector_dict["region"] = "us-east";
 
-  LabelSelector selector(label_selector_dict);
-  auto constraints = selector.GetConstraints();
+  auto result = LabelSelector::FromProto(label_selector_dict);
+  ASSERT_TRUE(result.ok()) << result.status().ToString();
+  auto selector = std::move(result.value());
 
+  auto constraints = selector.GetConstraints();
   ASSERT_EQ(constraints.size(), 2);
 
   for (const auto &constraint : constraints) {
@@ -39,7 +41,8 @@ TEST(LabelSelectorTest, BasicConstruction) {
 
 TEST(LabelSelectorTest, InOperatorParsing) {
   LabelSelector selector;
-  selector.AddConstraint("region", "in(us-west,us-east,me-central)");
+  Status status = selector.AddConstraint("region", "in(us-west,us-east,me-central)");
+  ASSERT_TRUE(status.ok());
 
   auto constraints = selector.GetConstraints();
   ASSERT_EQ(constraints.size(), 1);
@@ -55,7 +58,8 @@ TEST(LabelSelectorTest, InOperatorParsing) {
 
 TEST(LabelSelectorTest, NotInOperatorParsing) {
   LabelSelector selector;
-  selector.AddConstraint("tier", "!in(premium,free)");
+  Status status = selector.AddConstraint("tier", "!in(premium,free)");
+  ASSERT_TRUE(status.ok());
 
   auto constraints = selector.GetConstraints();
   ASSERT_EQ(constraints.size(), 1);
@@ -70,7 +74,8 @@ TEST(LabelSelectorTest, NotInOperatorParsing) {
 
 TEST(LabelSelectorTest, SingleValueNotInParsing) {
   LabelSelector selector;
-  selector.AddConstraint("env", "!dev");
+  Status status = selector.AddConstraint("env", "!dev");
+  ASSERT_TRUE(status.ok());
 
   auto constraints = selector.GetConstraints();
   ASSERT_EQ(constraints.size(), 1);
@@ -86,22 +91,18 @@ TEST(LabelSelectorTest, ErrorLogsOnEmptyKey) {
   google::protobuf::Map<std::string, std::string> label_selector_dict;
   label_selector_dict[""] = "value";
 
-  testing::internal::CaptureStderr();
-  LabelSelector selector(label_selector_dict);
-  std::string stderr_output = testing::internal::GetCapturedStderr();
+  auto result = LabelSelector::FromProto(label_selector_dict);
 
-  EXPECT_NE(stderr_output.find("Empty Label Selector key."), std::string::npos);
+  ASSERT_FALSE(result.ok());
+  ASSERT_EQ(result.status().message(), "Empty label selector key is not supported.");
 }
 
 TEST(LabelSelectorTest, ErrorLogsOnEmptyInList) {
   LabelSelector selector;
 
-  testing::internal::CaptureStderr();
-  selector.AddConstraint("key", "in()");
-  std::string stderr_output = testing::internal::GetCapturedStderr();
-
-  EXPECT_NE(stderr_output.find("No values provided for Label Selector key: key"),
-            std::string::npos);
+  Status status = selector.AddConstraint("key", "in()");
+  ASSERT_FALSE(status.ok());
+  ASSERT_EQ(status.message(), "No values provided for Label Selector 'in' operator.");
 }
 
 }  // namespace ray

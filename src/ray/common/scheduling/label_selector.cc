@@ -20,25 +20,28 @@
 namespace ray {
 
 // Constructor to parse LabelSelector data type from proto.
-LabelSelector::LabelSelector(
+StatusOr<LabelSelector> LabelSelector::FromProto(
     const google::protobuf::Map<std::string, std::string> &label_selector) {
+  LabelSelector selector;
   for (const auto &[key, value] : label_selector) {
     if (key.empty()) {
-      // TODO (ryanaoleary@): propagate up an InvalidArgument from here.
-      RAY_LOG(ERROR) << "Empty Label Selector key.";
+      return Status::InvalidArgument("Empty label selector key is not supported.");
     }
-
-    AddConstraint(key, value);
+    RAY_RETURN_NOT_OK(selector.AddConstraint(key, value));
   }
+  return selector;
 }
 
-void LabelSelector::AddConstraint(const std::string &key, const std::string &value) {
-  auto [op, values] = ParseLabelSelectorValue(key, value);
+Status LabelSelector::AddConstraint(const std::string &key, const std::string &value) {
+  RAY_ASSIGN_OR_RETURN(auto parsed, ParseLabelSelectorValue(key, value));
+  auto &[op, values] = parsed;
+
   LabelConstraint constraint(key, op, values);
   AddConstraint(std::move(constraint));
+  return Status::OK();
 }
 
-std::pair<LabelSelectorOperator, absl::flat_hash_set<std::string>>
+StatusOr<std::pair<LabelSelectorOperator, absl::flat_hash_set<std::string>>>
 LabelSelector::ParseLabelSelectorValue(const std::string &key, const std::string &value) {
   bool is_negated = false;
   std::string_view val = value;
@@ -65,8 +68,8 @@ LabelSelector::ParseLabelSelectorValue(const std::string &key, const std::string
     }
 
     if (values.empty()) {
-      // TODO (ryanaoleary@): propagate up an InvalidArgument from here.
-      RAY_LOG(ERROR) << "No values provided for Label Selector key: " << key;
+      return Status::InvalidArgument(
+          "No values provided for Label Selector 'in' operator.");
     }
 
     op = is_negated ? LabelSelectorOperator::LABEL_NOT_IN
@@ -77,7 +80,7 @@ LabelSelector::ParseLabelSelectorValue(const std::string &key, const std::string
                     : LabelSelectorOperator::LABEL_IN;
   }
 
-  return {op, values};
+  return std::make_pair(op, values);
 }
 
 }  // namespace ray
