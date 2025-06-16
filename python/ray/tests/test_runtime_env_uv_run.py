@@ -158,7 +158,6 @@ def test_uv_run_runtime_env_hook(with_uv):
     ):
         result = subprocess.run(
             cmd
-            + [ray._private.runtime_env.uv_runtime_env_hook.__file__]
             + [json.dumps(runtime_env)],
             capture_output=True,
             **(subprocess_kwargs if subprocess_kwargs else {}),
@@ -170,8 +169,10 @@ def test_uv_run_runtime_env_hook(with_uv):
         else:
             assert json.loads(output) == expected_output
 
+    script = ray._private.runtime_env.uv_runtime_env_hook.__file__
+
     check_uv_run(
-        cmd=[uv, "run", "--no-project"],
+        cmd=[uv, "run", "--no-project", script],
         runtime_env={},
         expected_output={
             "py_executable": f"{uv} run --no-project",
@@ -179,7 +180,7 @@ def test_uv_run_runtime_env_hook(with_uv):
         },
     )
     check_uv_run(
-        cmd=[uv, "run", "--no-project", "--directory", "/tmp"],
+        cmd=[uv, "run", "--no-project", "--directory", "/tmp", script],
         runtime_env={},
         expected_output={
             "py_executable": f"{uv} run --no-project",
@@ -187,7 +188,7 @@ def test_uv_run_runtime_env_hook(with_uv):
         },
     )
     check_uv_run(
-        [uv, "run", "--no-project"],
+        [uv, "run", "--no-project", script],
         {"working_dir": "/some/path"},
         {"py_executable": f"{uv} run --no-project", "working_dir": "/some/path"},
     )
@@ -200,7 +201,7 @@ def test_uv_run_runtime_env_hook(with_uv):
             file.write('version = "0.1"\n')
             file.write('dependencies = ["psutil"]\n')
         check_uv_run(
-            cmd=[uv, "run"],
+            cmd=[uv, "run", script],
             runtime_env={},
             expected_output={"py_executable": f"{uv} run", "working_dir": f"{tmp_dir}"},
             subprocess_kwargs={"cwd": tmp_dir},
@@ -213,7 +214,7 @@ def test_uv_run_runtime_env_hook(with_uv):
         with open(requirements, "w") as file:
             file.write("psutil\n")
         check_uv_run(
-            cmd=[uv, "run", "--with-requirements", requirements],
+            cmd=[uv, "run", "--with-requirements", requirements, script],
             runtime_env={},
             expected_output={
                 "py_executable": f"{uv} run --with-requirements {requirements}",
@@ -232,7 +233,7 @@ def test_uv_run_runtime_env_hook(with_uv):
             file.write('version = "0.1"\n')
             file.write('dependencies = ["psutil"]\n')
         check_uv_run(
-            cmd=[uv, "run"],
+            cmd=[uv, "run", script],
             runtime_env={},
             expected_output=None,
             subprocess_kwargs={"cwd": tmp_dir / "cwd"},
@@ -246,7 +247,7 @@ def test_uv_run_runtime_env_hook(with_uv):
         with open(tmp_dir / "requirements.txt", "w") as file:
             file.write("psutil\n")
         check_uv_run(
-            cmd=[uv, "run", "--with-requirements", tmp_dir / "requirements.txt"],
+            cmd=[uv, "run", "--with-requirements", tmp_dir / "requirements.txt", script],
             runtime_env={},
             expected_output=None,
             subprocess_kwargs={"cwd": tmp_dir / "cwd"},
@@ -257,7 +258,7 @@ def test_uv_run_runtime_env_hook(with_uv):
     # when combined with the 'pip' or 'uv' environment.
     for runtime_env in [{"uv": ["emoji"]}, {"pip": ["emoji"]}]:
         check_uv_run(
-            cmd=[uv, "run", "--no-project"],
+            cmd=[uv, "run", "--no-project", script],
             runtime_env=runtime_env,
             expected_output=None,
             expected_error="You are using the 'pip' or 'uv' runtime environments together with 'uv run'.",
@@ -265,13 +266,13 @@ def test_uv_run_runtime_env_hook(with_uv):
 
     # Check without uv run
     subprocess.check_output(
-        [sys.executable, ray._private.runtime_env.uv_runtime_env_hook.__file__, "{}"]
+        [sys.executable, script, "{}"]
     ).strip().decode() == "{}"
 
     # Check in the case that there is one more level of subprocess indirection between
     # the "uv run" process and the process that checks the environment
     check_uv_run(
-        cmd=[uv, "run", "--no-project"],
+        cmd=[uv, "run", "--no-project", script],
         runtime_env={},
         expected_output={
             "py_executable": f"{uv} run --no-project",
@@ -284,7 +285,7 @@ def test_uv_run_runtime_env_hook(with_uv):
 
     # Check in the case that the script is started with multiprocessing spawn
     check_uv_run(
-        cmd=[uv, "run", "--no-project"],
+        cmd=[uv, "run", "--no-project", script],
         runtime_env={},
         expected_output={
             "py_executable": f"{uv} run --no-project",
@@ -292,6 +293,16 @@ def test_uv_run_runtime_env_hook(with_uv):
         },
         subprocess_kwargs={
             "env": {**os.environ, "RAY_TEST_UV_MULTIPROCESSING_SPAWN": "1"}
+        },
+    )
+
+    # Check in the case that a module is used for "uv run" (-m or --module)
+    check_uv_run(
+        cmd=[uv, "run", "--no-project", "-m", "ray._private.runtime_env.uv_runtime_env_hook"],
+        runtime_env={},
+        expected_output={
+            "py_executable": f"{uv} run --no-project",
+            "working_dir": os.getcwd(),
         },
     )
 
