@@ -36,7 +36,10 @@ class AMDGPUAcceleratorManager(AcceleratorManager):
 
     @staticmethod
     def get_current_process_visible_accelerator_ids() -> Optional[List[str]]:
-        if "ROCR_VISIBLE_DEVICES" in os.environ:
+        if (
+            HIP_VISIBLE_DEVICES_ENV_VAR not in os.environ
+            and "ROCR_VISIBLE_DEVICES" in os.environ
+        ):
             raise RuntimeError(
                 f"Please use {HIP_VISIBLE_DEVICES_ENV_VAR} instead of ROCR_VISIBLE_DEVICES"
             )
