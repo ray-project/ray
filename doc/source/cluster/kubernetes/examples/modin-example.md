@@ -8,7 +8,6 @@ This example runs a modified version of the [Using Modin with the NYC Taxi Datas
 
 Follow steps 1 to 3 from [KubeRay Operator Installation](kuberay-operator-deploy) to install KubeRay operator.
 
-
 ## Step 2: Run the Modin example with RayJob
 
 Create a RayJob that runs the Modin example using the following command:
