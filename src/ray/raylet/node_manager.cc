@@ -3113,7 +3113,10 @@ std::unique_ptr<AgentManager> NodeManager::CreateDashboardAgentManager(
       [this](std::function<void()> task, uint32_t delay_ms) {
         return execute_after(io_service_, task, std::chrono::milliseconds(delay_ms));
       },
-      shutdown_raylet_gracefully_);
+      [this](const rpc::NodeDeathInfo &death_info) {
+        is_shutdown_request_received_ = true;
+        shutdown_raylet_gracefully_(death_info);
+      });
 }
 
 std::unique_ptr<AgentManager> NodeManager::CreateRuntimeEnvAgentManager(
@@ -3145,7 +3148,10 @@ std::unique_ptr<AgentManager> NodeManager::CreateRuntimeEnvAgentManager(
       [this](std::function<void()> task, uint32_t delay_ms) {
         return execute_after(io_service_, task, std::chrono::milliseconds(delay_ms));
       },
-      shutdown_raylet_gracefully_);
+      [this](const rpc::NodeDeathInfo &death_info) {
+        is_shutdown_request_received_ = true;
+        shutdown_raylet_gracefully_(death_info);
+      });
 }
 
 }  // namespace ray::raylet
