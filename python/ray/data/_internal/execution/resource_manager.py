@@ -132,7 +132,6 @@ class ResourceManager:
                     f"ray.init() or by setting the RAY_OBJECT_STORE_ALLOW_SLOW_STORAGE environment variable."
                 )
 
-
     def _estimate_object_store_memory(
         self, op: "PhysicalOperator", state: "OpState"
     ) -> int:
