@@ -43,7 +43,7 @@ RELEASE_TEST_CONFIG_FILES = [
     "release/release_data_tests.yaml",
 ]
 
-ALLOWED_BYOD_TYPES = ["gpu", "cpu", "cu123", "llm-cu124"]
+ALLOWED_BYOD_TYPES = ["gpu", "cpu", "cu123", "llm-cu128"]
 
 
 def read_and_validate_release_test_collection(

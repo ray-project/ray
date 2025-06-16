@@ -193,6 +193,11 @@ def test_vllm_vision_language_models(
 ):
     """Test vLLM with vision language models using different configurations."""
 
+    # todo(seiji): Commenting out due to https://github.com/ray-project/ray/issues/53824
+    # Need to follow up once torch_compile_cache issue is fixed or PyTorch 2.8
+    if model_source == "mistral-community/pixtral-12b":
+        pytest.skip("Skipping test due to torch_compile_cache issue")
+
     ray.get(delete_torch_compile_cache_on_worker.remote())
 
     # vLLM v1 does not support decoupled tokenizer,
