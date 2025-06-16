@@ -88,14 +88,6 @@ class BazelTarget:
             "bazel_file_location": self.bazel_file_location
         }
 
-    # def from_dict(self, data: Dict):
-    #     self.target_name = data["target_name"]
-    #     self.tested = data["tested"]
-    #     self.status = data["status"]
-    #     self.active = data["active"]
-    #     self.files = [BazelFile.from_dict(BazelFile,file) for file in data["files"]]
-    #     self.bazel_file_location = data["bazel_file_location"]
-
     def set_files(self, files: List[str]):
         self.files = [BazelFile(file) for file in files]
 
@@ -110,10 +102,6 @@ class BazelFile:
             "file_refs": self.file_refs
         }
 
-    # def from_dict(self, data: Dict):
-    #     self.file_name = data["file_name"]
-    #     self.file_refs = data["file_refs"]
-
 class CodeSnippet:
     def __init__(self, snippet_type: str, ref_to_file: str, testing_info: List[BazelTarget]=None):
         self.snippet_type = snippet_type
@@ -127,11 +115,6 @@ class CodeSnippet:
             "testing_info": [target.to_dict() for target in self.testing_info]
         }
 
-    # def from_dict(self, data: Dict):
-    #     self.snippet_type = data["snippet_type"]
-    #     self.ref_to_file = data["ref_to_file"]
-    #     self.testing_info = [BazelTarget.from_dict(BazelTarget,target) for target in data["testing_info"]]
-
 class DocFile:
     def __init__(self, file_path: str, snippets: List[CodeSnippet]):
         self.file_path = file_path
@@ -143,7 +126,3 @@ class DocFile:
             "file_path": self.file_path,
             "code_snippets": [snippet.to_dict() for snippet in self.code_snippets],
         }
-
-    # def from_dict(self, data: Dict):
-    #     self.file_path = data["file_path"]
-    #     self.code_snippets = [CodeSnippet.from_dict(CodeSnippet,snippet) for snippet in data["code_snippets"]]

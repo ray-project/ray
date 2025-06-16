@@ -96,29 +96,6 @@ class DocParser:
         with open(output_path, "w") as f:
             json.dump([s.to_dict() for s in file_paths], f, indent=4)
 
-    # def assign_testing_info_to_code_snippets(self, doc_files: List[DocFile], targets: List[BazelTarget]) -> None:
-    #     """
-    #     Assign testing info to code snippets.
-    #     """
-    #     for doc_file in doc_files:
-    #         for snippet in doc_file.code_snippets:
-    #             found = False
-    #             if snippet.testing_info:  # Skip if already has testing info
-    #                 continue
-    #             for target in targets:
-    #                 for file in target.files:
-    #                     #file_name = file.file_name.replace("//", "").replace(":","/")
-    #                     file_name = "/".join(file.file_name.lstrip("//").replace(":", "/").split("/")[-2:])
-    #                     # file_name = file.file_name.lstrip("//").split(":")[-1].split("/")[-1]
-    #                     # snippet_file_name = snippet.ref_to_file.lstrip("//").split(":")[-1].split("/")[-1]
-    #                     if file_name in snippet.ref_to_file:
-    #                         filtered_target = self.filter_target_to_single_file(target, file.file_name)
-    #                         snippet.testing_info.append(filtered_target)
-    #                         found = True
-    #                         break
-    #             if found:
-    #                 break
-
     def assign_testing_info_to_code_snippets(self, doc_files: List[DocFile], targets: List[BazelTarget]) -> None:
         """
         Assign testing info to code snippets.
