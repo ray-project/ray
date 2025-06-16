@@ -13,7 +13,7 @@ kind create cluster --image=kindest/node:v1.26.0
 
 ## Step 2: Install Scheduler Plugins
 
-Follow [install.md](https://github.com/kubernetes-sigs/scheduler-plugins/blob/master/doc/install.md) in the scheduler-plugins repository to install the scheduler plugins.
+Follow the [installation guide](https://scheduler-plugins.sigs.k8s.io/docs/user-guide/installation/) in the scheduler-plugins repository to install the scheduler plugins.
 
 :::{note}
 
