@@ -13,10 +13,13 @@ A summary of the results are then saved to results/test_results.txt with the tes
 ## Install depedencies
 pip install -r requirements.txt
 
-Ensure you have AWS credentials defined in ~/.aws/config or exported the following vars:
+Ensure you have AWS credentials defined in ~/.aws/config or exported as the following vars:
 AWS_ACCESS_KEY_ID
 AWS_SECRET_ACCESS_KEY
 AWS_SESSION_TOKEN
+
+To set these vars navigate to go/aws and search for the anyscale-prod-osstravistracker AWS account
+Click Access Keys and copy the snippet under `Option 1: Set AWS environment variables`
 
 ## Setup buildkite api token
 Go to https://buildkite.com/user/api-access-tokens and setup an API access token with the following options checked:
