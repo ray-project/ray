@@ -50,7 +50,7 @@ the second `mobilenet` is the name of the Python file in the directory `mobilene
 helm uninstall raycluster
 
 # Install the RayCluster CR with the Ray image `rayproject/ray-ml:${RAY_VERSION}`
-helm install raycluster kuberay/ray-cluster --version 1.3.0 --set image.repository=rayproject/ray-ml
+helm install raycluster kuberay/ray-cluster --version 1.3.0 --set image.repository=rayproject/ray-ml,image.tag=latest
 ```
 
 The error message in Step 4 indicates that the Ray image `rayproject/ray:${RAY_VERSION}` does not have the TensorFlow package.
