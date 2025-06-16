@@ -275,17 +275,6 @@ class LLMConfig(BaseModelExtended):
         self._infer_supports_vision(model_id_or_path)
         self._set_model_architecture(model_id_or_path)
 
-        # TODO(seiji): remove this once https://github.com/vllm-project/vllm/pull/19510 is merged
-        # It prevents a pickle error since this loads transformers_modules
-        try:
-            transformers.AutoProcessor.from_pretrained(
-                model_id_or_path,
-                trust_remote_code=trust_remote_code,
-            )
-        except Exception:
-            # Some models don't have processors, which is fine
-            pass
-
     @property
     def supports_vision(self) -> bool:
         return self._supports_vision
