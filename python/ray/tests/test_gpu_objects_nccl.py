@@ -25,7 +25,7 @@ def test_p2p(ray_start_regular):
 
     # Create test tensor
     tensor = torch.tensor([1, 2, 3])
-    gpu_ref = src_actor.echo_cuda.remote(tensor)
+    gpu_ref = src_actor.echo.remote(tensor)
 
     # Trigger tensor transfer from src to dst actor
     remote_sum = ray.get(dst_actor.sum.remote(gpu_ref))
