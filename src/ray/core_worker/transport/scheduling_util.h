@@ -27,10 +27,10 @@ namespace ray {
 namespace core {
 
 /// Object dependency and RPC state of an inbound request.
-class InboundRequest {
+class QueuedTask {
  public:
-  InboundRequest();
-  InboundRequest(std::function<void(const TaskSpecification &, rpc::SendReplyCallback)>
+  QueuedTask();
+  QueuedTask(std::function<void(const TaskSpecification &, rpc::SendReplyCallback)>
                      execute_task_callback,
                  std::function<void(const TaskSpecification &,
                                     const Status &,

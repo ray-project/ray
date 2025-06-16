@@ -89,12 +89,12 @@ void OutOfOrderActorSchedulingQueue::EnqueueTask(
   // code can handle concurrent execution of the same actor method.
   RAY_CHECK(std::this_thread::get_id() == main_thread_id_);
   auto task_id = task_spec.TaskId();
-  auto request = InboundRequest(std::move(accept_request),
+  auto request = QueuedTask(std::move(accept_request),
                                 std::move(reject_request),
                                 std::move(send_reply_callback),
                                 std::move(task_spec));
   bool run_request = true;
-  std::optional<InboundRequest> request_to_cancel;
+  std::optional<QueuedTask> request_to_cancel;
   {
     absl::MutexLock lock(&mu_);
     if (pending_task_id_to_is_canceled.contains(task_id)) {
@@ -146,7 +146,7 @@ bool OutOfOrderActorSchedulingQueue::CancelTaskIfFound(TaskID task_id) {
 }
 
 void OutOfOrderActorSchedulingQueue::RunRequestWithSatisfiedDependencies(
-    InboundRequest &request) {
+    QueuedTask &request) {
   RAY_CHECK(request.CanExecute());
   const auto task_id = request.TaskID();
   if (is_asyncio_) {
@@ -171,7 +171,7 @@ void OutOfOrderActorSchedulingQueue::RunRequestWithSatisfiedDependencies(
   }
 }
 
-void OutOfOrderActorSchedulingQueue::RunRequest(InboundRequest request) {
+void OutOfOrderActorSchedulingQueue::RunRequest(QueuedTask request) {
   const TaskSpecification &task_spec = request.TaskSpec();
   if (!request.PendingDependencies().empty()) {
     RAY_UNUSED(task_event_buffer_.RecordTaskStatusEventIfNeeded(
@@ -212,7 +212,7 @@ void OutOfOrderActorSchedulingQueue::RunRequest(InboundRequest request) {
 }
 
 void OutOfOrderActorSchedulingQueue::AcceptRequestOrRejectIfCanceled(
-    TaskID task_id, InboundRequest &request) {
+    TaskID task_id, QueuedTask &request) {
   bool is_canceled = false;
   {
     absl::MutexLock lock(&mu_);
@@ -230,7 +230,7 @@ void OutOfOrderActorSchedulingQueue::AcceptRequestOrRejectIfCanceled(
     request.Accept();
   }
 
-  std::optional<InboundRequest> request_to_run;
+  std::optional<QueuedTask> request_to_run;
   {
     absl::MutexLock lock(&mu_);
     if (queued_actor_tasks_.contains(task_id)) {

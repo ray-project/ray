@@ -92,7 +92,7 @@ void ActorSchedulingQueue::EnqueueTask(
   }
   RAY_LOG(DEBUG) << "Enqueue " << seq_no << " cur seqno " << next_seq_no_;
 
-  pending_actor_tasks_[seq_no] = InboundRequest(std::move(accept_request),
+  pending_actor_tasks_[seq_no] = QueuedTask(std::move(accept_request),
                                                 std::move(reject_request),
                                                 std::move(send_reply_callback),
                                                 task_spec);
@@ -235,7 +235,7 @@ void ActorSchedulingQueue::OnSequencingWaitTimeout() {
 }
 
 void ActorSchedulingQueue::AcceptRequestOrRejectIfCanceled(TaskID task_id,
-                                                           InboundRequest &request) {
+                                                           QueuedTask &request) {
   bool is_canceled = false;
   {
     absl::MutexLock lock(&mu_);

@@ -48,8 +48,8 @@ class NormalSchedulingQueue : public SchedulingQueue {
                    rpc::SendReplyCallback send_reply_callback,
                    TaskSpecification task_spec) override;
 
-  // Search for an InboundRequest associated with the task that we are trying to cancel.
-  // If found, remove the InboundRequest from the queue and return true. Otherwise,
+  // Search for an QueuedTask associated with the task that we are trying to cancel.
+  // If found, remove the QueuedTask from the queue and return true. Otherwise,
   // return false.
   bool CancelTaskIfFound(TaskID task_id) override;
 
@@ -60,7 +60,7 @@ class NormalSchedulingQueue : public SchedulingQueue {
   /// Protects access to the dequeue below.
   mutable absl::Mutex mu_;
   /// Queue with (accept, rej) callbacks for non-actor tasks
-  std::deque<InboundRequest> pending_normal_tasks_ ABSL_GUARDED_BY(mu_);
+  std::deque<QueuedTask> pending_normal_tasks_ ABSL_GUARDED_BY(mu_);
   friend class SchedulingQueueTest;
 };
 

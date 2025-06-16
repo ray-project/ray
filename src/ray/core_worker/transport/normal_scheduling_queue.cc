@@ -49,19 +49,19 @@ void NormalSchedulingQueue::EnqueueTask(
   absl::MutexLock lock(&mu_);
   // Normal tasks should not have ordering constraints.
   RAY_CHECK(seq_no == -1);
-  // Create a InboundRequest object for the new task, and add it to the queue.
-  pending_normal_tasks_.push_back(InboundRequest(std::move(accept_request),
+  // Create a QueuedTask object for the new task, and add it to the queue.
+  pending_normal_tasks_.push_back(QueuedTask(std::move(accept_request),
                                                  std::move(reject_request),
                                                  std::move(send_reply_callback),
                                                  std::move(task_spec)));
 }
 
-// Search for an InboundRequest associated with the task that we are trying to cancel.
-// If found, remove the InboundRequest from the queue and return true. Otherwise,
+// Search for an QueuedTask associated with the task that we are trying to cancel.
+// If found, remove the QueuedTask from the queue and return true. Otherwise,
 // return false.
 bool NormalSchedulingQueue::CancelTaskIfFound(TaskID task_id) {
   absl::MutexLock lock(&mu_);
-  for (std::deque<InboundRequest>::reverse_iterator it = pending_normal_tasks_.rbegin();
+  for (std::deque<QueuedTask>::reverse_iterator it = pending_normal_tasks_.rbegin();
        it != pending_normal_tasks_.rend();
        ++it) {
     if (it->TaskID() == task_id) {
@@ -76,7 +76,7 @@ bool NormalSchedulingQueue::CancelTaskIfFound(TaskID task_id) {
 /// Schedules as many requests as possible in sequence.
 void NormalSchedulingQueue::ScheduleRequests() {
   while (true) {
-    InboundRequest head;
+    QueuedTask head;
     {
       absl::MutexLock lock(&mu_);
       if (!pending_normal_tasks_.empty()) {
