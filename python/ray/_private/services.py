@@ -1141,11 +1141,19 @@ def start_log_monitor(
         )
         command.append(f"--logging-format={logging_format}")
 
+    stdout_file = None
+    if stdout_filepath:
+        stdout_file = open(os.devnull, "w")
+
+    stderr_file = None
+    if stderr_filepath:
+        stderr_file = open(os.devnull, "w")
+
     process_info = start_ray_process(
         command,
         ray_constants.PROCESS_TYPE_LOG_MONITOR,
-        stdout_file=None,
-        stderr_file=None,
+        stdout_file=stdout_file,
+        stderr_file=stderr_file,
         fate_share=fate_share,
     )
     return process_info
@@ -1296,11 +1304,19 @@ def start_api_server(
             command.append("--modules-to-load=UsageStatsHead")
             command.append("--disable-frontend")
 
+        stdout_file = None
+        if stdout_filepath:
+            stdout_file = open(os.devnull, "w")
+
+        stderr_file = None
+        if stderr_filepath:
+            stderr_file = open(os.devnull, "w")
+
         process_info = start_ray_process(
             command,
             ray_constants.PROCESS_TYPE_DASHBOARD,
-            stdout_file=None,
-            stderr_file=None,
+            stdout_file=stdout_file,
+            stderr_file=stderr_file,
             fate_share=fate_share,
         )
 
@@ -1489,11 +1505,19 @@ def start_gcs_server(
     if redis_password:
         command += [f"--redis_password={redis_password}"]
 
+    stdout_file = None
+    if stdout_filepath:
+        stdout_file = open(os.devnull, "w")
+
+    stderr_file = None
+    if stderr_filepath:
+        stderr_file = open(os.devnull, "w")
+
     process_info = start_ray_process(
         command,
         ray_constants.PROCESS_TYPE_GCS_SERVER,
-        stdout_file=None,
-        stderr_file=None,
+        stdout_file=stdout_file,
+        stderr_file=stderr_file,
         fate_share=fate_share,
     )
     return process_info
@@ -1904,6 +1928,14 @@ def start_raylet(
             f"--node-name={node_name}",
         )
 
+    stdout_file = None
+    if raylet_stdout_filepath:
+        stdout_file = open(os.devnull, "w")
+
+    stderr_file = None
+    if raylet_stderr_filepath:
+        stderr_file = open(os.devnull, "w")
+
     process_info = start_ray_process(
         command,
         ray_constants.PROCESS_TYPE_RAYLET,
@@ -1911,8 +1943,8 @@ def start_raylet(
         use_gdb=False,
         use_valgrind_profiler=use_profiler,
         use_perftools_profiler=("RAYLET_PERFTOOLS_PATH" in os.environ),
-        stdout_file=None,
-        stderr_file=None,
+        stdout_file=stdout_file,
+        stderr_file=stderr_file,
         fate_share=fate_share,
         env_updates=env_updates,
     )
@@ -2263,11 +2295,19 @@ def start_monitor(
     if monitor_ip:
         command.append("--monitor-ip=" + monitor_ip)
 
+    stdout_file = None
+    if stdout_filepath:
+        stdout_file = open(os.devnull, "w")
+
+    stderr_file = None
+    if stderr_filepath:
+        stderr_file = open(os.devnull, "w")
+
     process_info = start_ray_process(
         command,
         ray_constants.PROCESS_TYPE_MONITOR,
-        stdout_file=None,
-        stderr_file=None,
+        stdout_file=stdout_file,
+        stderr_file=stderr_file,
         fate_share=fate_share,
     )
     return process_info
