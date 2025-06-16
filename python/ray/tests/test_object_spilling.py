@@ -785,11 +785,10 @@ def test_recover_from_spill_worker_failure(ray_start_regular):
     _run_spilling_workload()
 
     # Check that the spilled files are cleaned up after the workload finishes.
-    ray._private.worker._global_node._session_dir
-    node_id = ray.get_runtime_context().get_node_id()
     wait_for_condition(
         lambda: is_dir_empty(
-            Path(ray._private.worker._global_node._session_dir), node_id
+            Path(ray._private.worker._global_node._session_dir),
+            ray.get_runtime_context().get_node_id(),
         )
     )
 
