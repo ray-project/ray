@@ -59,9 +59,10 @@ void TaskReceiver::HandleTask(rpc::PushTaskRequest request,
     }
   }
 
-  auto accept_callback = [this, reply, resource_ids = std::move(resource_ids)](
-                             const TaskSpecification &task_spec,
-                             const rpc::SendReplyCallback &send_reply_callback) mutable {
+  auto execute_task_callback = [this, reply, resource_ids = std::move(resource_ids)](
+                                   const TaskSpecification &task_spec,
+                                   const rpc::SendReplyCallback
+                                       &send_reply_callback) mutable {
     auto num_returns = task_spec.NumReturns();
     RAY_CHECK(num_returns >= 0);
 
@@ -194,9 +195,9 @@ void TaskReceiver::HandleTask(rpc::PushTaskRequest request,
     }
   };
 
-  auto cancel_callback = [reply](const TaskSpecification &task_spec,
-                                 const Status &status,
-                                 const rpc::SendReplyCallback &send_reply_callback) {
+  auto cancel_task_callback = [reply](const TaskSpecification &task_spec,
+                                      const Status &status,
+                                      const rpc::SendReplyCallback &send_reply_callback) {
     if (task_spec.IsActorTask()) {
       // We consider cancellation of actor tasks to be a push task RPC failure.
       send_reply_callback(status, nullptr, nullptr);
@@ -242,22 +243,22 @@ void TaskReceiver::HandleTask(rpc::PushTaskRequest request,
       }
     }
 
-    it->second->Add(request.sequence_number(),
-                    request.client_processed_up_to(),
-                    std::move(accept_callback),
-                    std::move(cancel_callback),
-                    std::move(send_reply_callback),
-                    std::move(task_spec));
+    it->second->EnqueueTask(request.sequence_number(),
+                            request.client_processed_up_to(),
+                            std::move(execute_task_callback),
+                            std::move(cancel_task_callback),
+                            std::move(send_reply_callback),
+                            std::move(task_spec));
   } else {
     // Add the normal task's callbacks to the non-actor scheduling queue.
     RAY_LOG(DEBUG) << "Adding task " << task_spec.TaskId()
                    << " to normal scheduling task queue.";
-    normal_scheduling_queue_->Add(request.sequence_number(),
-                                  request.client_processed_up_to(),
-                                  std::move(accept_callback),
-                                  std::move(cancel_callback),
-                                  std::move(send_reply_callback),
-                                  std::move(task_spec));
+    normal_scheduling_queue_->EnqueueTask(request.sequence_number(),
+                                          request.client_processed_up_to(),
+                                          std::move(execute_task_callback),
+                                          std::move(cancel_task_callback),
+                                          std::move(send_reply_callback),
+                                          std::move(task_spec));
   }
 }
 

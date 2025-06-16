@@ -72,7 +72,7 @@ void OutOfOrderActorSchedulingQueue::ScheduleRequests() {
   RAY_LOG(FATAL) << "ScheduleRequests() not implemented for actor queues";
 }
 
-void OutOfOrderActorSchedulingQueue::Add(
+void OutOfOrderActorSchedulingQueue::EnqueueTask(
     int64_t seq_no,
     int64_t client_processed_up_to,
     std::function<void(const TaskSpecification &, rpc::SendReplyCallback)> accept_request,

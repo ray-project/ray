@@ -31,10 +31,10 @@ class InboundRequest {
  public:
   InboundRequest();
   InboundRequest(std::function<void(const TaskSpecification &, rpc::SendReplyCallback)>
-                     accept_callback,
+                     execute_task_callback,
                  std::function<void(const TaskSpecification &,
                                     const Status &,
-                                    rpc::SendReplyCallback)> reject_callback,
+                                    rpc::SendReplyCallback)> cancel_task_callback,
                  rpc::SendReplyCallback send_reply_callback,
                  TaskSpecification task_spec);
 
@@ -50,9 +50,10 @@ class InboundRequest {
   const TaskSpecification &TaskSpec() const;
 
  private:
-  std::function<void(const TaskSpecification &, rpc::SendReplyCallback)> accept_callback_;
+  std::function<void(const TaskSpecification &, rpc::SendReplyCallback)>
+      execute_task_callback_;
   std::function<void(const TaskSpecification &, const Status &, rpc::SendReplyCallback)>
-      reject_callback_;
+      cancel_task_callback_;
   rpc::SendReplyCallback send_reply_callback_;
 
   TaskSpecification task_spec_;

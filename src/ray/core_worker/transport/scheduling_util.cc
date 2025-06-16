@@ -25,22 +25,22 @@ InboundRequest::InboundRequest() {}
 
 InboundRequest::InboundRequest(
     std::function<void(const TaskSpecification &, rpc::SendReplyCallback)>
-        accept_callback,
+        execute_task_callback,
     std::function<void(const TaskSpecification &, const Status &, rpc::SendReplyCallback)>
-        reject_callback,
+        cancel_task_callback,
     rpc::SendReplyCallback send_reply_callback,
     TaskSpecification task_spec)
-    : accept_callback_(std::move(accept_callback)),
-      reject_callback_(std::move(reject_callback)),
+    : execute_task_callback_(std::move(execute_task_callback)),
+      cancel_task_callback_(std::move(cancel_task_callback)),
       send_reply_callback_(std::move(send_reply_callback)),
       task_spec_(std::move(task_spec)),
       pending_dependencies_(task_spec_.GetDependencies()) {}
 
 void InboundRequest::Accept() {
-  accept_callback_(task_spec_, std::move(send_reply_callback_));
+  execute_task_callback_(task_spec_, std::move(send_reply_callback_));
 }
 void InboundRequest::Cancel(const Status &status) {
-  reject_callback_(task_spec_, status, std::move(send_reply_callback_));
+  cancel_task_callback_(task_spec_, status, std::move(send_reply_callback_));
 }
 
 bool InboundRequest::CanExecute() const { return pending_dependencies_.empty(); }

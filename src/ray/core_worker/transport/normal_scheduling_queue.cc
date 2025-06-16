@@ -37,8 +37,8 @@ size_t NormalSchedulingQueue::Size() const {
   return pending_normal_tasks_.size();
 }
 
-/// Add a new task's callbacks to the worker queue.
-void NormalSchedulingQueue::Add(
+/// Enqueue a task to be executed on this worker.
+void NormalSchedulingQueue::EnqueueTask(
     int64_t seq_no,
     int64_t client_processed_up_to,
     std::function<void(const TaskSpecification &, rpc::SendReplyCallback)> accept_request,

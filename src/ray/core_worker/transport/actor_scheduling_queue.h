@@ -58,16 +58,16 @@ class ActorSchedulingQueue : public SchedulingQueue {
 
   size_t Size() const override;
 
-  /// Add a new actor task's callbacks to the worker queue.
-  void Add(int64_t seq_no,
-           int64_t client_processed_up_to,
-           std::function<void(const TaskSpecification &, rpc::SendReplyCallback)>
-               accept_request,
-           std::function<void(const TaskSpecification &,
-                              const Status &,
-                              rpc::SendReplyCallback)> reject_request,
-           rpc::SendReplyCallback send_reply_callback,
-           TaskSpecification task_spec) override;
+  /// Enqueue a task to be executed on this worker.
+  void Enqueue(int64_t seq_no,
+               int64_t client_processed_up_to,
+               std::function<void(const TaskSpecification &, rpc::SendReplyCallback)>
+                   accept_request,
+               std::function<void(const TaskSpecification &,
+                                  const Status &,
+                                  rpc::SendReplyCallback)> reject_request,
+               rpc::SendReplyCallback send_reply_callback,
+               TaskSpecification task_spec) override;
 
   /// Cancel the actor task in the queue.
   /// Tasks are in the queue if it is either queued, or executing.

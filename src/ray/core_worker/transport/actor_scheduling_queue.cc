@@ -72,8 +72,8 @@ size_t ActorSchedulingQueue::Size() const {
   return 0;
 }
 
-/// Add a new actor task's callbacks to the worker queue.
-void ActorSchedulingQueue::Add(
+/// Enqueue a task to be executed on this worker.
+void ActorSchedulingQueue::EnqueueTask(
     int64_t seq_no,
     int64_t client_processed_up_to,
     std::function<void(const TaskSpecification &, rpc::SendReplyCallback)> accept_request,
