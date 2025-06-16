@@ -16,10 +16,17 @@
 
 #include <gtest/gtest.h>
 
-#include <boost/iostreams/device/file_descriptor.hpp>
 #include <iostream>
 #include <string>
 #include <string_view>
+#if defined(__APPLE__) || defined(__linux__)
+#include <fcntl.h>
+#include <sys/stat.h>
+#include <sys/types.h>
+#include <unistd.h>
+#elif defined(_WIN32)
+#include <windows.h>
+#endif
 
 #include "ray/common/test/testing.h"
 #include "ray/util/compat.h"
@@ -37,11 +44,18 @@ TEST(ScopedDup2WrapperTest, BasicTest) {
   const auto dir = temp_dir.GetDirectory();
   const auto path = dir / "test_file";
   const std::string path_string = path.string();
-  boost::iostreams::file_descriptor_sink fd_sink{path_string, std::ios_base::out};
+#if defined(__APPLE__) || defined(__linux__)
+  int file_fd = open(path_string.c_str(),
+                     O_WRONLY | O_CREAT | O_APPEND,
+                     S_IRUSR | S_IWUSR | S_IRGRP | S_IROTH);
+#elif defined(_WIN32)
+  int file_fd =
+      _open(path_string.c_str(), _O_WRONLY | _O_CREAT | _O_APPEND, _S_IREAD | _S_IWRITE);
+#endif
 
   {
     auto dup2_wrapper =
-        ScopedDup2Wrapper::New(/*oldfd=*/fd_sink.handle(), /*newfd=*/GetStderrHandle());
+        ScopedDup2Wrapper::New(/*oldfd=*/file_fd, /*newfd=*/GetStderrFd());
 
     // Write to stdout should appear in file.
     std::cerr << kContent << std::flush;
