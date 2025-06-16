@@ -42,14 +42,23 @@ class RuntimeEnvConfig(dict):
         eager_install: Indicates whether to install the runtime environment
             on the cluster at `ray.init()` time, before the workers are leased.
             This flag is set to `True` by default.
+        disable_cache: Indicates whether to cache the runtime environment on the
+            cluster. If enabled, the same runtime environment can't resetup even
+            if the previous one failed.
     """
 
-    known_fields: Set[str] = {"setup_timeout_seconds", "eager_install", "log_files"}
+    known_fields: Set[str] = {
+        "setup_timeout_seconds",
+        "eager_install",
+        "log_files",
+        "disable_cache",
+    }
 
     _default_config: Dict = {
         "setup_timeout_seconds": DEFAULT_RUNTIME_ENV_TIMEOUT_SECONDS,
         "eager_install": True,
         "log_files": [],
+        "disable_cache": False,
     }
 
     def __init__(
@@ -57,6 +66,7 @@ class RuntimeEnvConfig(dict):
         setup_timeout_seconds: int = DEFAULT_RUNTIME_ENV_TIMEOUT_SECONDS,
         eager_install: bool = True,
         log_files: Optional[List[str]] = None,
+        disable_cache: bool = False,
     ):
         super().__init__()
         if not isinstance(setup_timeout_seconds, int):
@@ -91,9 +101,15 @@ class RuntimeEnvConfig(dict):
 
         self["log_files"] = log_files
 
+        if not isinstance(disable_cache, bool):
+            raise TypeError(
+                f"disable_cache must be a boolean. got {type(disable_cache)}"
+            )
+        self["disable_cache"] = disable_cache
+
     @staticmethod
     def parse_and_validate_runtime_env_config(
-        config: Union[Dict, "RuntimeEnvConfig"]
+        config: Union[Dict, "RuntimeEnvConfig"],
     ) -> "RuntimeEnvConfig":
         if isinstance(config, RuntimeEnvConfig):
             return config
@@ -123,6 +139,7 @@ class RuntimeEnvConfig(dict):
         runtime_env_config = ProtoRuntimeEnvConfig()
         runtime_env_config.setup_timeout_seconds = self["setup_timeout_seconds"]
         runtime_env_config.eager_install = self["eager_install"]
+        runtime_env_config.disable_cache = self["disable_cache"]
         if self["log_files"] is not None:
             runtime_env_config.log_files.extend(self["log_files"])
         return runtime_env_config
@@ -141,6 +158,7 @@ class RuntimeEnvConfig(dict):
             setup_timeout_seconds=setup_timeout_seconds,
             eager_install=runtime_env_config.eager_install,
             log_files=list(runtime_env_config.log_files),
+            disable_cache=runtime_env_config.disable_cache,
         )
 
     def to_dict(self) -> Dict:

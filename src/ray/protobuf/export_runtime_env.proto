@@ -37,6 +37,8 @@ message ExportRuntimeEnvInfo {
     bool eager_install = 2;
     /// A list of files to stream the runtime env setup logs to.
     repeated string log_files = 3;
+    /// Indicates whether to cache the runtime environment on the cluster
+    bool disable_cache = 4;
   }
 
   /// The serialized runtime env passed from the user.

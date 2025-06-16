@@ -3,6 +3,7 @@
 If you need a customized Ray instance (e.g., to change system config or env vars),
 put the test in `test_runtime_env_standalone.py`.
 """
+
 import os
 import sys
 
@@ -165,6 +166,28 @@ def test_runtime_env_config(start_cluster_shared):
         run(runtime_env)
         runtime_env = RuntimeEnv(config=RuntimeEnvConfig(**good_config))
         run(runtime_env)
+
+
+def test_runtime_env_config_disable_cache(start_cluster_shared):
+    _, address = start_cluster_shared
+
+    @ray.remote
+    def f():
+        return True
+
+    def run(runtime_env):
+        ray.shutdown()
+        ray.init(address, runtime_env=runtime_env)
+        assert ray.get(f.options(runtime_env=runtime_env).remote())
+
+    runtime_env = {"config": {"disable_cache": True}}
+    run(runtime_env)
+    runtime_env = {"config": RuntimeEnvConfig(disable_cache=True)}
+    run(runtime_env)
+    runtime_env = RuntimeEnv(config={"disable_cache": True})
+    run(runtime_env)
+    runtime_env = RuntimeEnv(config=RuntimeEnvConfig(disable_cache=True))
+    run(runtime_env)
 
 
 if __name__ == "__main__":

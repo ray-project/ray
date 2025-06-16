@@ -81,6 +81,8 @@ void GcsJobManager::WriteDriverJobExportEvent(rpc::JobTableData job_data) const 
       job_data.config().runtime_env_info().runtime_env_config().eager_install());
   export_runtime_env_config->mutable_log_files()->CopyFrom(
       job_data.config().runtime_env_info().runtime_env_config().log_files());
+  export_runtime_env_config->set_disable_cache(
+      job_data.config().runtime_env_info().runtime_env_config().disable_cache());
 
   RayExportEvent(export_driver_job_data_ptr).SendEvent();
 }
