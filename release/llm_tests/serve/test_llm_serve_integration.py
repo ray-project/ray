@@ -45,17 +45,16 @@ async def test_engine_metrics():
 
 
 @pytest.mark.asyncio(scope="function")
-async def test_remote_code_model():
+@pytest.fixture
+def remote_model_app(request):
     """
-    Tests that a remote code model fails to load when trust_remote_code=False
-    and succeeds when trust_remote_code=True.
+    Fixture that creates an app with a remote code model for testing.
 
-    If it loads successfully without remote code, the model should be changed to one
-    that does require remote code.
-
+    The remote_code parameter controls whether trust_remote_code is enabled.
     This helps avoid regressions for pickling issues for custom huggingface configs,
     since this custom code needs to be registered and imported across processes and workers.
     """
+    remote_code = request.param
 
     base_config = {
         "model_loading_config": dict(
@@ -75,56 +74,75 @@ async def test_remote_code_model():
             max_model_len=16384,
             enable_chunked_prefill=True,
             enable_prefix_caching=True,
+            trust_remote_code=remote_code,
         ),
     }
 
-    # First part: Should fail with trust_remote_code=False
-    base_config["engine_kwargs"]["trust_remote_code"] = False
     llm_config = LLMConfig(**base_config)
     app = build_openai_app({"llm_configs": [llm_config]})
 
-    try:
-        with pytest.raises(RuntimeError, match="Deploying application default failed"):
-            serve.run(app, blocking=False)
-    except AssertionError:
-        # If pytest.raises fails, it means no RuntimeError was raised
-        # Check if the app actually came up successfully
+    yield app
+
+    # Cleanup
+    serve.shutdown()
+
+
+class TestRemoteCode:
+    """Tests for remote code model loading behavior."""
+
+    def _check_for_running_app(self):
+        """Check if the application is running successfully."""
         try:
             default_app = serve.status().applications[SERVE_DEFAULT_APP_NAME]
-            if default_app.status == ApplicationStatus.RUNNING:
+            return default_app.status == ApplicationStatus.RUNNING
+        except (KeyError, AttributeError):
+            return False
+
+    @pytest.mark.parametrize("remote_model_app", [False], indirect=True)
+    def test_remote_code_failure(self, remote_model_app):
+        """
+        Tests that a remote code model fails to load when trust_remote_code=False.
+
+        If it loads successfully without remote code, the fixture should be changed to one
+        that does require remote code.
+        """
+        app = remote_model_app
+
+        serve.run(app, blocking=False)
+
+        def check_for_failed_deployment():
+            """Check if the application deployment has failed."""
+            try:
+                default_app = serve.status().applications[SERVE_DEFAULT_APP_NAME]
+                return default_app.status == ApplicationStatus.DEPLOY_FAILED
+            except (KeyError, AttributeError):
+                return False
+
+        # Wait for either failure or success (timeout after 2 minutes)
+        try:
+            wait_for_condition(check_for_failed_deployment, timeout=120)
+        except TimeoutError:
+            # If deployment didn't fail, check if it succeeded
+            if self._check_for_running_app():
                 pytest.fail(
                     "App deployed successfully without trust_remote_code=True. "
                     "This model may not actually require remote code. "
                     "Consider using a different model that requires remote code."
                 )
-        except (KeyError, AttributeError):
-            pass
-        finally:
-            serve.shutdown()
-        # Re-raise the original AssertionError if it wasn't a successful deployment
-        raise
+            else:
+                pytest.fail("Deployment did not fail or succeed within timeout period.")
 
-    # Second part: Should succeed with trust_remote_code=True
-    base_config["engine_kwargs"]["trust_remote_code"] = True
-    llm_config = LLMConfig(**base_config)
-    app = build_openai_app({"llm_configs": [llm_config]})
+    @pytest.mark.parametrize("remote_model_app", [True], indirect=True)
+    def test_remote_code_success(self, remote_model_app):
+        """
+        Tests that a remote code model succeeds to load when trust_remote_code=True.
+        """
+        app = remote_model_app
 
-    try:
         serve.run(app, blocking=False)
 
-        def check_for_running_app():
-            """Check if the application is running successfully."""
-            try:
-                default_app = serve.status().applications[SERVE_DEFAULT_APP_NAME]
-                return default_app.status == ApplicationStatus.RUNNING
-            except (KeyError, AttributeError):
-                return False
-
         # Wait for the application to be running (timeout after 5 minutes)
-        wait_for_condition(check_for_running_app, timeout=300)
-    finally:
-        # Clean up the deployment
-        serve.shutdown()
+        wait_for_condition(self._check_for_running_app, timeout=300)
 
 
 if __name__ == "__main__":
