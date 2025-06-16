@@ -92,8 +92,14 @@ class DependencySetManager:
             f.write(new_depset.to_txt())
         self.create_depset(name, req_name)
 
+    def py_version(self, source: str, version: str, name: str, flags: str = ""):
+        source_depset = self.depsets[source]
+        depset_path = self.storage_path / f"{name}.txt"
+        click.echo(f"Compiling {source_depset.requirements_fp} with python version {version} to {depset_path}")
+        self.exec_uv__cmd("compile", [source_depset.requirements_fp, "-o", f"\"{depset_path}\"", "--python-version", version, flags if flags else ""])
+
     def exec_uv__cmd(self, cmd: str, args: List[str]) -> str:
-        cmd = f"uv pip {cmd} {' '.join(args)}"
+        cmd = f"uv pip {cmd} {" ".join(args)}"
         click.echo(f"Executing command: {cmd}")
         status = subprocess.run(cmd, shell=True)
         if status.returncode != 0:
@@ -162,7 +168,7 @@ def delete(name: str):
 @click.option("--constraints", type=str, help="comma separated list of absolute filepaths for constraint files")
 @click.option("--requirements", type=str, help="filename for requirements file")
 @click.option("--output", type=str, help="filename for output file")
-def compile(constraints: List[str], requirements: str, output: str):
+def compile(constraints: str, requirements: str, output: str):
     """Compile a dependency set."""
     try:
         manager = DependencySetManager()
@@ -198,6 +204,20 @@ def expand(source: str, constraints: str, name: str):
             constraints = f.read().splitlines()
         manager.expand_depset(source, constraints, name)
         click.echo(f"Created subset {name} from {source} with {len(constraints)} constraints")
+    except ValueError as e:
+        click.echo(f"Error: {str(e)}", err=True)
+
+@cli.command()
+@click.option("--source", type=str, help="name of source depset")
+@click.option("--version", type=str, help="python version")
+@click.option("--flags", type=str, help="flags to pass to uv pip compile")
+@click.argument("name")
+def py_version(source: str, version: str, name: str, flags: str = ""):
+    """Set the python version for a dependency set."""
+    try:
+        manager = DependencySetManager()
+        manager.py_version(source, version, name, flags)
+        click.echo(f"Set python version for {name} to {version}")
     except ValueError as e:
         click.echo(f"Error: {str(e)}", err=True)
 
