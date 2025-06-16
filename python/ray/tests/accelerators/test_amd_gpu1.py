@@ -57,7 +57,7 @@ def test_get_current_process_visible_accelerator_ids(monkeypatch):
 
     monkeypatch.setenv("CUDA_VISIBLE_DEVICES", "")
     assert (
-        AMDGPUAcceleratorManager.get_current_process_visible_accelerator_ids() == None
+        AMDGPUAcceleratorManager.get_current_process_visible_accelerator_ids() is None
     )
 
     del os.environ["CUDA_VISIBLE_DEVICES"]
