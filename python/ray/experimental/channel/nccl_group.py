@@ -344,7 +344,7 @@ class _NcclGroup(Communicator):
             send_buf.numel(),
             self.nccl_util.get_nccl_tensor_dtype(send_buf),
             root,
-            self._cuda_stream.ptr,
+            self._cuda_stream.cuda_stream,
         ]
         self._exec_collective(
             send_buf,
