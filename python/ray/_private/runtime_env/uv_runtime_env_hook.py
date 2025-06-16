@@ -11,10 +11,7 @@ import psutil
 def _create_uv_run_parser():
     """Create and return the argument parser for 'uv run' command."""
 
-    parser = argparse.ArgumentParser(
-        prog="uv run",
-        add_help=False
-    )
+    parser = argparse.ArgumentParser(prog="uv run", add_help=False)
 
     # Positional argument - using remainder to capture everything after the command
     parser.add_argument("command", nargs=argparse.REMAINDER)
@@ -41,7 +38,9 @@ def _create_uv_run_parser():
     with_group = parser.add_argument_group("With options")
     with_group.add_argument("--with", action="append", dest="with_packages")
     with_group.add_argument("--with-editable", action="append", dest="with_editable")
-    with_group.add_argument("--with-requirements", action="append", dest="with_requirements")
+    with_group.add_argument(
+        "--with-requirements", action="append", dest="with_requirements"
+    )
 
     # Environment options
     env_group = parser.add_argument_group("Environment options")
@@ -67,46 +66,81 @@ def _create_uv_run_parser():
     index_group.add_argument("--index", action="append", dest="indexes")
     index_group.add_argument("--default-index")
     index_group.add_argument("-i", "--index-url")
-    index_group.add_argument("--extra-index-url", action="append", dest="extra_index_urls")
+    index_group.add_argument(
+        "--extra-index-url", action="append", dest="extra_index_urls"
+    )
     index_group.add_argument("-f", "--find-links", action="append", dest="find_links")
     index_group.add_argument("--no-index", action="store_true")
-    index_group.add_argument("--index-strategy", choices=["first-index", "unsafe-first-match", "unsafe-best-match"])
+    index_group.add_argument(
+        "--index-strategy",
+        choices=["first-index", "unsafe-first-match", "unsafe-best-match"],
+    )
     index_group.add_argument("--keyring-provider", choices=["disabled", "subprocess"])
 
     # Resolver options
     resolver_group = parser.add_argument_group("Resolver options")
     resolver_group.add_argument("-U", "--upgrade", action="store_true")
-    resolver_group.add_argument("-P", "--upgrade-package", action="append", dest="upgrade_packages")
-    resolver_group.add_argument("--resolution", choices=["highest", "lowest", "lowest-direct"])
-    resolver_group.add_argument("--prerelease",
-                               choices=["disallow", "allow", "if-necessary", "explicit", "if-necessary-or-explicit"])
-    resolver_group.add_argument("--fork-strategy", choices=["fewest", "requires-python"])
+    resolver_group.add_argument(
+        "-P", "--upgrade-package", action="append", dest="upgrade_packages"
+    )
+    resolver_group.add_argument(
+        "--resolution", choices=["highest", "lowest", "lowest-direct"]
+    )
+    resolver_group.add_argument(
+        "--prerelease",
+        choices=[
+            "disallow",
+            "allow",
+            "if-necessary",
+            "explicit",
+            "if-necessary-or-explicit",
+        ],
+    )
+    resolver_group.add_argument(
+        "--fork-strategy", choices=["fewest", "requires-python"]
+    )
     resolver_group.add_argument("--exclude-newer")
     resolver_group.add_argument("--no-sources", action="store_true")
 
     # Installer options
     installer_group = parser.add_argument_group("Installer options")
     installer_group.add_argument("--reinstall", action="store_true")
-    installer_group.add_argument("--reinstall-package", action="append", dest="reinstall_packages")
-    installer_group.add_argument("--link-mode", choices=["clone", "copy", "hardlink", "symlink"])
+    installer_group.add_argument(
+        "--reinstall-package", action="append", dest="reinstall_packages"
+    )
+    installer_group.add_argument(
+        "--link-mode", choices=["clone", "copy", "hardlink", "symlink"]
+    )
     installer_group.add_argument("--compile-bytecode", action="store_true")
 
     # Build options
     build_group = parser.add_argument_group("Build options")
-    build_group.add_argument("-C", "--config-setting", action="append", dest="config_settings")
+    build_group.add_argument(
+        "-C", "--config-setting", action="append", dest="config_settings"
+    )
     build_group.add_argument("--no-build-isolation", action="store_true")
-    build_group.add_argument("--no-build-isolation-package", action="append", dest="no_build_isolation_packages")
+    build_group.add_argument(
+        "--no-build-isolation-package",
+        action="append",
+        dest="no_build_isolation_packages",
+    )
     build_group.add_argument("--no-build", action="store_true")
-    build_group.add_argument("--no-build-package", action="append", dest="no_build_packages")
+    build_group.add_argument(
+        "--no-build-package", action="append", dest="no_build_packages"
+    )
     build_group.add_argument("--no-binary", action="store_true")
-    build_group.add_argument("--no-binary-package", action="append", dest="no_binary_packages")
+    build_group.add_argument(
+        "--no-binary-package", action="append", dest="no_binary_packages"
+    )
 
     # Cache options
     cache_group = parser.add_argument_group("Cache options")
     cache_group.add_argument("-n", "--no-cache", action="store_true")
     cache_group.add_argument("--cache-dir")
     cache_group.add_argument("--refresh", action="store_true")
-    cache_group.add_argument("--refresh-package", action="append", dest="refresh_packages")
+    cache_group.add_argument(
+        "--refresh-package", action="append", dest="refresh_packages"
+    )
 
     # Python options
     python_group = parser.add_argument_group("Python options")
@@ -122,7 +156,9 @@ def _create_uv_run_parser():
     global_group.add_argument("--color", choices=["auto", "always", "never"])
     global_group.add_argument("--native-tls", action="store_true")
     global_group.add_argument("--offline", action="store_true")
-    global_group.add_argument("--allow-insecure-host", action="append", dest="insecure_hosts")
+    global_group.add_argument(
+        "--allow-insecure-host", action="append", dest="insecure_hosts"
+    )
     global_group.add_argument("--no-progress", action="store_true")
     global_group.add_argument("--directory")
     global_group.add_argument("--project")
@@ -233,7 +269,7 @@ def hook(runtime_env: Optional[Dict[str, Any]]) -> Dict[str, Any]:
     # Extract the arguments uv_run_args of 'uv run' that are not part of the command.
     parser = _create_uv_run_parser()
     cmdline_args = parser.parse_args(cmdline[2:])
-    if cmdline[-len(cmdline_args.command):] != cmdline_args.command:
+    if cmdline[-len(cmdline_args.command) :] != cmdline_args.command:
         raise AssertionError(
             f"uv run command {cmdline_args.command} is not a suffix of command line {cmdline}"
         )
