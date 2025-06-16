@@ -92,6 +92,19 @@ class DependencySetManager:
             f.write(new_depset.to_txt())
         self.create_depset(name, req_name)
 
+    def relax(self, source: str, degree: int, name: str):
+        source_depset = self.depsets[source]
+        req_name = f"{name}.txt"
+        new_depset = DepSet(req_name)
+
+        for dep in source_depset.dependencies:
+            #need to check the degrees for each of the exisitng deps
+
+        with open(req_name, "w") as f:
+            f.write(new_depset.to_txt())
+        self.create_depset(name, req_name)
+
+
     def py_version(self, source: str, version: str, name: str, flags: str = ""):
         source_depset = self.depsets[source]
         depset_path = self.storage_path / f"{name}.txt"
@@ -204,6 +217,19 @@ def expand(source: str, constraints: str, name: str):
             constraints = f.read().splitlines()
         manager.expand_depset(source, constraints, name)
         click.echo(f"Created subset {name} from {source} with {len(constraints)} constraints")
+    except ValueError as e:
+        click.echo(f"Error: {str(e)}", err=True)
+
+@cli.command()
+@click.option("--source", type=str, help="name of source depset")
+@click.option("--degree", type=int, help="degree of relaxation")
+@click.argument("name")
+def relax(source: str, degree: int, name: str):
+    """Relax a dependency set by selectively keeping and removing constraints"""
+    try:
+        manager = DependencySetManager()
+        manager.relax(source, degree, name)
+        click.echo(f"Relaxed depset {name} to the {degree} degree. Output written to {name}.txt")
     except ValueError as e:
         click.echo(f"Error: {str(e)}", err=True)
 
