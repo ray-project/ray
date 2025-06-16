@@ -70,6 +70,8 @@ class GcsActorSchedulerMockTest : public Test {
         /*local_task_manager=*/*local_task_manager_);
     counter.reset(
         new CounterMap<std::pair<rpc::ActorTableData::ActorState, std::string>>());
+    worker_client_pool_ = std::make_unique<rpc::CoreWorkerClientPool>(
+        [this](const rpc::Address &address) { return core_worker_client; });
     actor_scheduler = std::make_unique<GcsActorScheduler>(
         io_context,
         *actor_table,
@@ -78,7 +80,7 @@ class GcsActorSchedulerMockTest : public Test {
         [this](auto a, auto b, auto c) { schedule_failure_handler(a); },
         [this](auto a, const rpc::PushTaskReply) { schedule_success_handler(a); },
         *client_pool,
-        [this](const rpc::Address &) { return core_worker_client; });
+        *worker_client_pool_);
     auto node_info = std::make_shared<rpc::GcsNodeInfo>();
     node_info->set_state(rpc::GcsNodeInfo::ALIVE);
     node_id = NodeID::FromRandom();
@@ -96,6 +98,7 @@ class GcsActorSchedulerMockTest : public Test {
   std::unique_ptr<ClusterTaskManager> cluster_task_manager;
   std::unique_ptr<GcsActorScheduler> actor_scheduler;
   std::shared_ptr<rpc::MockCoreWorkerClientInterface> core_worker_client;
+  std::unique_ptr<rpc::CoreWorkerClientPool> worker_client_pool_;
   std::unique_ptr<rpc::NodeManagerClientPool> client_pool;
   std::shared_ptr<CounterMap<std::pair<rpc::ActorTableData::ActorState, std::string>>>
       counter;
