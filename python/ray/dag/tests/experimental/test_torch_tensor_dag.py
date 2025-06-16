@@ -1454,12 +1454,9 @@ def test_torch_tensor_nccl_all_reduce_bind_list_of_nodes(ray_start_regular):
     workers = [actor_cls.remote() for _ in range(num_workers)]
 
     with InputNode() as inp:
-        computes = [
-            worker.return_two_tensors.bind(inp[0], inp[1]) for worker in workers
-        ]
-        collectives = collective.allreduce.bind(
-            [list(computes[0]), list(computes[1])], ReduceOp.SUM
-        )
+        computes_0 = [worker.send_tensor.bind(inp[0]) for worker in workers]
+        computes_1 = [worker.send_tensor.bind(inp[1]) for worker in workers]
+        collectives = collective.allreduce.bind([computes_0, computes_1], ReduceOp.SUM)
         recvs = [
             worker.recv_tensors.bind(*collective)
             for worker, collective in zip(workers, collectives)

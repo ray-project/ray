@@ -30,8 +30,14 @@ def _bind(
     """
     Bind inputs (input nodes or lists of input nodes) with a collective operation.
     The collective operation is directly applied to the torch tensors from the input
-    nodes. The output nodes are the results of the collective operation in the same
+    nodes. The output nodes are the results of the collective operation on the bound
     torch tensors.
+
+    Example of binding a list of input node:
+    with InputNode() as inp:
+        res_comp1 = [actor.comp1.bind(inp) for actor in actors]
+        res_comp2 = [actor.comp2.bind(inp) for actor in actors]
+        res_ar = allreduce.bind([res_comp1, res_comp2])
 
     Requirements:
     1. Each input node returns a torch tensor.
@@ -44,7 +50,9 @@ def _bind(
     Requirement 4 is not checked yet.
 
     Args:
-        inputs: A list of DAG nodes or a list of lists of DAG nodes.
+        inputs: A list of DAG nodes or a list of lists of DAG nodes. For nested
+            list inputs, each nested list inside of inputs contain one object
+            per actor.
         op: The collective operation.
         transport: GPU communicator for the collective operation. If not
             specified, the default NCCL is used.
@@ -52,14 +60,16 @@ def _bind(
     Returns:
         A list of collective output nodes or a list of lists of collective output nodes.
         Each output node or list of output nodes has the same order and belongs to the
-        same actor as the corresponding input node or lists of input node.
+        same actor as the corresponding input node or list of input node.
     """
     if isinstance(inputs[0], list) and not isinstance(op, AllReduceOp):
         raise ValueError(
             "Currently binding a list of dag nodes is only supported for allreduce"
         )
 
-    inputs = [inp if isinstance(inp, list) else [inp] for inp in inputs]
+    # Convert list of DAGNode into nested list for type checking
+    if not isinstance(inputs[0], list):
+        inputs = [inputs]
 
     if transport is None:
         transport = TorchTensorType.NCCL
@@ -75,17 +85,33 @@ def _bind(
     else:
         raise ValueError(f"Expected a collective operation, but got {op}")
 
+    # Rearrange inputs so that each list contains DAGNodes from the same actor
+    rearranged_inputs: List[List["ray.dag.DAGNode"]] = []
+    actor_to_nodes = {}
     for input_node_list in inputs:
+        for i, node in enumerate(input_node_list):
+            actor_handle = node._get_actor_handle()
+            if actor_handle not in actor_to_nodes:
+                actor_to_nodes[actor_handle] = []
+            actor_to_nodes[actor_handle].append(node)
+    for nodes in actor_to_nodes.values():
+        assert len(nodes) == len(inputs), (
+            f"Expected the same number of nodes for each actor, "
+            f"but got {len(nodes)} nodes for actor {nodes[0]._get_actor_handle()}"
+        )
+    for i, node in enumerate(inputs[0]):
+        actor_handle = node._get_actor_handle()
+        nodes_for_actor = actor_to_nodes[actor_handle]
+        rearranged_inputs.append(nodes_for_actor)
+
+    for input_node_list in rearranged_inputs:
         actor_handle: Optional["ray.actor.ActorHandle"] = input_node_list[
             0
         ]._get_actor_handle()
-        if actor_handle is None:
-            raise ValueError("Expected an actor handle from the input node")
+        assert actor_handle is not None
         collective_output_node = CollectiveOutputNode(
             method_name=method_name,
-            method_args=tuple(input_node_list)
-            if isinstance(input_node_list, list)
-            else (input_node_list,),
+            method_args=tuple(input_node_list),
             method_kwargs=dict(),
             method_options=dict(),
             other_args_to_resolve={

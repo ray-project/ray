@@ -25,9 +25,8 @@ class _CollectiveOperation:
     Represent metadata for a NCCL collective operation.
 
     Args:
-        inputs: A list of inputs. Each input is a input node or a list of
-            input nodes. If a list of input nodes is provided, all lists must be
-            of the same length.
+        inputs: A list of lists of DAGNode. Each nested list inside
+            of inputs contain one object per actor.
         op: The collective operation to perform.
         transport: The transport to use for the collective operation.
 
@@ -39,60 +38,103 @@ class _CollectiveOperation:
 
     def __init__(
         self,
-        inputs: Union[List[DAGNode], List[List[DAGNode]]],
+        inputs: List[List[DAGNode]],
         op: _CollectiveOp,
         transport: Optional[Union[str, Communicator]] = None,
     ):
-        if len(inputs) == 0:
-            raise ValueError("Expected input nodes for a collective operation")
-
-        assert all(isinstance(input_node_list, list) for input_node_list in inputs)
-
-        # Check elements in input list are DAGNode instances
-        if not all(
-            isinstance(input_node, DAGNode)
-            for input_node_list in inputs
-            for input_node in input_node_list
-        ):
-            raise ValueError("Expected inputs to be of type DAGNode")
-
-        # Check inputs nodes from each actor are unique
-        if not all(
-            len(set(input_node_list)) == len(input_node_list)
-            for input_node_list in inputs
-        ):
-            raise ValueError("Expected unique input nodes for a collective operation")
-
-        # Check equal number of input nodes from each actor
-        if len({len(input_node_list) for input_node_list in inputs}) != 1:
-            raise ValueError("Expected equal number of nodes bound from all actors")
-
         self._actor_handles: List["ray.actor.ActorHandle"] = []
-        for input_node_list in inputs:
-            # Check that all input nodes in the list are from the same actor
-            if not len({node._get_actor_handle() for node in input_node_list}) == 1:
-                raise ValueError("Expected list of input nodes from the same actor")
-            actor_handle = input_node_list[0]._get_actor_handle()
-            if actor_handle is None:
-                raise ValueError("Expected an actor handle from the input node")
-            self._actor_handles.append(actor_handle)
-
-        if len(set(self._actor_handles)) != len(self._actor_handles):
-            invalid_input_nodes = [
-                inp
-                for inp in inputs
-                if self._actor_handles.count(
-                    inp[0]._get_actor_handle()
-                    if isinstance(inp, list)
-                    else inp._get_actor_handle()
+        for i, input_nodes in enumerate(inputs, 0):
+            # Check non-empty input list
+            if len(input_nodes) == 0:
+                nested_list_error_msg = f" at index {i}" if len(inputs) > 1 else ""
+                raise ValueError(
+                    f"Expected non-empty input list{nested_list_error_msg}, but got empty list."
                 )
-                > 1
-            ]
-            raise ValueError(
-                "Expected unique actor handles for a collective operation, "
-                "but found duplicate actor handles from input nodes: "
-                f"{invalid_input_nodes}"
-            )
+
+            # Check input nodes are DAGNode
+            if not all(isinstance(node, DAGNode) for node in input_nodes):
+                nested_list_error_msg = (
+                    f" at list at index {i}" if len(inputs) > 1 else ""
+                )
+                raise ValueError(
+                    f"Expected all input nodes to be DAGNode{nested_list_error_msg}, "
+                    f"but got {input_nodes}."
+                )
+
+            # Check unique input nodes
+            if len(set(input_nodes)) != len(input_nodes):
+                duplicates = [
+                    input_node
+                    for input_node in input_nodes
+                    if input_nodes.count(input_node) > 1
+                ]
+                nested_list_error_msg = (
+                    f" at list at index {i}" if len(inputs) > 1 else ""
+                )
+                raise ValueError(
+                    f"Expected unique input nodes{nested_list_error_msg}, but found duplicates: "
+                    f"{duplicates}"
+                )
+
+            current_actor_handles = []
+            for input_node in input_nodes:
+                actor_handle = input_node._get_actor_handle()
+                if actor_handle is None:
+                    nested_list_error_msg = (
+                        f" at list at index {i}" if len(inputs) > 1 else ""
+                    )
+                    raise ValueError(
+                        f"Expected an actor handle from the input node{nested_list_error_msg}"
+                    )
+                current_actor_handles.append(actor_handle)
+
+            # Check unique actor handles
+            if len(set(current_actor_handles)) != len(current_actor_handles):
+                invalid_input_nodes = [
+                    input_node
+                    for input_node in input_nodes
+                    if current_actor_handles.count(input_node._get_actor_handle()) > 1
+                ]
+                nested_list_error_msg = (
+                    f" at list at index {i}" if len(inputs) > 1 else ""
+                )
+                raise ValueError(
+                    f"Expected unique actor handles{nested_list_error_msg}, "
+                    "but found duplicate actor handles from input nodes: "
+                    f"{invalid_input_nodes}"
+                )
+
+            if i == 0:
+                first_actor_handles = current_actor_handles
+
+            if len(inputs) > 1:
+                # Check all lists of DAGNode have the same number of nodes
+                if len(inputs[0]) != len(inputs[i]):
+                    raise ValueError(
+                        f"Expected all input lists to have the same number of nodes. "
+                        f"List at index 0 has length {len(inputs[0])}, but list at "
+                        f"index {i} has length {len(inputs[i])}."
+                    )
+
+                # Check all lists of DAGNode have same set of actor handles
+                if set(first_actor_handles) != set(current_actor_handles):
+                    raise ValueError(
+                        f"Expected all input lists to have the same set of actor handles. "
+                        f"List at index 0 has actors {set(first_actor_handles)}, but list at "
+                        f"index {i} has actors {set(current_actor_handles)}."
+                    )
+
+                # Check all lists of DAGNode have same order of actor handles
+                for j, (first, current) in enumerate(
+                    zip(first_actor_handles, current_actor_handles)
+                ):
+                    if first != current:
+                        raise ValueError(
+                            f"Expected all input lists to have the same order of actor handles. "
+                            f"List at index 0 has actor {first} at position {j}, but list at "
+                            f"index {i} has actor {current} at position {j}."
+                        )
+        self._actor_handles = current_actor_handles
 
         self._op = op
         if transport is None:
