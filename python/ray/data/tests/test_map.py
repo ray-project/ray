@@ -112,9 +112,6 @@ def test_basic_actors(shutdown_only):
         assert len(actors) > 0
         return all(actor_info["State"] == "DEAD" for actor_info in actors.values())
 
-    import gc
-
-    gc.collect()
     wait_for_condition(_all_actors_dead)
 
 
