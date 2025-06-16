@@ -43,4 +43,9 @@ make develop && open _build/html/index.html
 python main.py --bk-api-token <bk_api_token> --ray-path <absolute-path-to-ray-repo> --look-back-hours <lookback-period-for-doc-test-build>
 
 ## Test Coverage results:
-Test coverage results will be output to test_cov/results/test_results.txt in text file format
+Test coverage results will be output to `doc_test_cov/results/json` in json file format and 
+`doc_test_cov/results/csv` in the csv file format
+
+Test coverage percentage will be output to std out once the script is complete
+
+CSV format for the test coverage results can be imported to google sheets and filtered for further analysis
