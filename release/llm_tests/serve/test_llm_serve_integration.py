@@ -90,8 +90,8 @@ def remote_model_app(request):
 class TestRemoteCode:
     """Tests for remote code model loading behavior."""
 
-    def _check_for_running_app(self):
-        """Check if the application is running successfully."""
+    def _is_default_app_running(self):
+        """Check if the default application is running successfully."""
         try:
             default_app = serve.status().applications[SERVE_DEFAULT_APP_NAME]
             return default_app.status == ApplicationStatus.RUNNING
@@ -107,8 +107,8 @@ class TestRemoteCode:
         that does require remote code.
         """
         app = remote_model_app
-
-        serve.run(app, blocking=False)
+        with pytest.raises(RuntimeError, match="Deploying application default failed"):
+            serve.run(app, blocking=False)
 
         def check_for_failed_deployment():
             """Check if the application deployment has failed."""
@@ -123,7 +123,7 @@ class TestRemoteCode:
             wait_for_condition(check_for_failed_deployment, timeout=120)
         except TimeoutError:
             # If deployment didn't fail, check if it succeeded
-            if self._check_for_running_app():
+            if self._is_default_app_running():
                 pytest.fail(
                     "App deployed successfully without trust_remote_code=True. "
                     "This model may not actually require remote code. "
@@ -142,7 +142,7 @@ class TestRemoteCode:
         serve.run(app, blocking=False)
 
         # Wait for the application to be running (timeout after 5 minutes)
-        wait_for_condition(self._check_for_running_app, timeout=300)
+        wait_for_condition(self._is_default_app_running, timeout=300)
 
 
 if __name__ == "__main__":
