@@ -3,7 +3,7 @@ from typing import Any, Dict, List, Optional
 
 import gymnasium as gym
 
-from ray.rllib.connectors.connector_v2 import ConnectorV2
+from ray.rllib.connectors.connector_v2 import ConnectorV2, ConnectorV2BatchFormats
 from ray.rllib.core.columns import Columns
 from ray.rllib.core.rl_module.rl_module import RLModule
 from ray.rllib.utils.annotations import override
@@ -40,9 +40,9 @@ class NormalizeAndClipActions(ConnectorV2):
     ]
 
     This ConnectorV2:
-    - Deep copies the Columns.ACTIONS in the incoming `data` into a new column:
+    - Deep copies the Columns.ACTIONS in the incoming `batch` into a new column:
     Columns.ACTIONS_FOR_ENV.
-    - Loops through the Columns.ACTIONS in the incoming `data` and normalizes or clips
+    - Loops through the Columns.ACTIONS in the incoming `batch` and normalizes or clips
     these depending on the c'tor settings in `config.normalize_actions` and
     `config.clip_actions`.
     - Only applies to envs with Box action spaces.
@@ -56,6 +56,21 @@ class NormalizeAndClipActions(ConnectorV2):
     between the bounds defined by the action-space. Note that clipping is only performed
     if `normalize_actions` is False.
     """
+
+    # Incoming batches have the format:
+    # [column name] -> [(episodeID, agentID, moduleID)-tuple] -> [.. individual items]
+    # For more details on the various possible batch formats, see the
+    # `ray.rllib.connectors.connector_v2.ConnectorV2BatchFormats` Enum.
+    INPUT_BATCH_FORMAT = (
+        ConnectorV2BatchFormats.BATCH_FORMAT_COLUMN_TO_EPISODE_TO_INDIVIDUAL_ITEMS
+    )
+    # Returned batches have the format:
+    # [column name] -> [(episodeID, agentID, moduleID)-tuple] -> [.. individual items]
+    # For more details on the various possible batch formats, see the
+    # `ray.rllib.connectors.connector_v2.ConnectorV2BatchFormats` Enum.
+    OUTPUT_BATCH_FORMAT = (
+        ConnectorV2BatchFormats.BATCH_FORMAT_COLUMN_TO_EPISODE_TO_INDIVIDUAL_ITEMS
+    )
 
     @override(ConnectorV2)
     def recompute_output_action_space(

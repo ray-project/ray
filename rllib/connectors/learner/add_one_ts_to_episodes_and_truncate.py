@@ -1,6 +1,6 @@
 from typing import Any, Dict, List, Optional
 
-from ray.rllib.connectors.connector_v2 import ConnectorV2
+from ray.rllib.connectors.connector_v2 import ConnectorV2, ConnectorV2BatchFormats
 from ray.rllib.core.columns import Columns
 from ray.rllib.core.rl_module.rl_module import RLModule
 from ray.rllib.env.multi_agent_episode import MultiAgentEpisode
@@ -77,6 +77,21 @@ class AddOneTsToEpisodesAndTruncate(ConnectorV2):
         check(episode2.is_truncated, False)
         check(episode2.is_terminated, True)
     """
+
+    # Incoming batches have the format:
+    # [column name] -> [(episodeID, agentID, moduleID)-tuple] -> [.. individual items]
+    # For more details on the various possible batch formats, see the
+    # `ray.rllib.connectors.connector_v2.ConnectorV2BatchFormats` Enum.
+    INPUT_BATCH_FORMAT = (
+        ConnectorV2BatchFormats.BATCH_FORMAT_COLUMN_TO_EPISODE_TO_INDIVIDUAL_ITEMS
+    )
+    # Returned batches have the format:
+    # [column name] -> [(episodeID, agentID, moduleID)-tuple] -> [.. individual items]
+    # For more details on the various possible batch formats, see the
+    # `ray.rllib.connectors.connector_v2.ConnectorV2BatchFormats` Enum.
+    OUTPUT_BATCH_FORMAT = (
+        ConnectorV2BatchFormats.BATCH_FORMAT_COLUMN_TO_EPISODE_TO_INDIVIDUAL_ITEMS
+    )
 
     @override(ConnectorV2)
     def __call__(
@@ -162,7 +177,7 @@ class AddOneTsToEpisodesAndTruncate(ConnectorV2):
 
         # Signal to following connector pieces that the loss-mask which masks out
         # invalid episode ts (for the extra added ts at the end) has already been
-        # added to `data`.
+        # added to `batch`.
         shared_data["_added_loss_mask_for_valid_episode_ts"] = True
 
         return batch
