@@ -757,7 +757,11 @@ def test_no_resource_oversubscription_during_shutdown(shutdown_only):
     task2_can_finish = SignalActor.remote()
 
     @ray.remote(num_cpus=1)
-    def blocking_task(worker_id, started_signal, can_finish_signal):
+    def blocking_task(
+        worker_id: str,
+        started_signal: ray.actor.ActorHandle,
+        can_finish_signal: ray.actor.ActorHandle,
+    ) -> str:
         """A task that signals when it starts and waits for permission to finish."""
         print(f"  Worker {worker_id}: Starting execution")
         # Signal that this task has started executing
