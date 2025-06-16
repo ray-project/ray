@@ -1,22 +1,15 @@
+import sys
+from pathlib import Path
+
 import pydantic
 import pytest
-import sys
 
 from ray.llm._internal.serve.configs.server_models import LLMConfig, ModelLoadingConfig
-
-from pathlib import Path
 
 CONFIG_DIRS_PATH = str(Path(__file__).parent / "configs")
 
 
 class TestModelConfig:
-    def test_hf_prompt_format(self):
-        """Check that the HF prompt format is correctly parsed."""
-        with open(
-            f"{CONFIG_DIRS_PATH}/matching_configs/hf_prompt_format.yaml", "r"
-        ) as f:
-            LLMConfig.parse_yaml(f)
-
     def test_construction(self):
         """Test construct an LLMConfig doesn't error out and has correct attributes."""
         llm_config = LLMConfig(

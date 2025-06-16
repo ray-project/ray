@@ -608,6 +608,12 @@ message TaskInfoEntry {
   // Human readable stacktrace of the task invocation, or actor creation. The exact data
   // format depends on the language. Only populated if the flag is enabled.
   optional string call_site = 27;
+  // The key-value label constraints of the node to schedule this task or actor on.
+  map<string, string> label_selector = 28;
+}
+
+message LabelSelector {
+  map<string, string> label_selector_dict = 1;
 }
 
 message TaskAttempt {
@@ -626,6 +632,9 @@ message Bundle {
   map<string, double> unit_resources = 2;
   // The location of this bundle.
   bytes node_id = 3;
+  // Label selector associated with this bundle.
+  // Populated from bundle_label_selector if provided.
+  map<string, string> label_selector = 4;
 }
 
 message PlacementGroupSpec {

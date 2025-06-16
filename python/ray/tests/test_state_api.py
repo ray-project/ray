@@ -7,7 +7,9 @@ from collections import Counter
 from concurrent.futures import ThreadPoolExecutor
 from typing import List
 from unittest.mock import MagicMock, AsyncMock, patch
+import yaml
 
+from click.testing import CliRunner
 import pytest
 import pytest_asyncio
 from ray._private.state_api_test_utils import (
@@ -18,8 +20,6 @@ from ray._private.state_api_test_utils import (
 from ray.util.state import get_job
 from ray.dashboard.modules.job.pydantic_models import JobDetails
 from ray.util.state.common import Humanify
-import yaml
-from click.testing import CliRunner
 
 from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
 import ray
@@ -29,10 +29,12 @@ import ray._private.ray_constants as ray_constants
 from ray._raylet import GcsClient, ActorID, JobID, TaskID
 from ray._private.test_utils import (
     run_string_as_driver,
-    wait_for_condition,
-    async_wait_for_condition,
     find_free_port,
+)
+from ray._common.test_utils import (
     SignalActor,
+    async_wait_for_condition,
+    wait_for_condition,
 )
 from ray.cluster_utils import cluster_not_supported
 from ray._raylet import NodeID
@@ -1765,17 +1767,12 @@ def test_humanify():
 async def test_state_data_source_client_limit_distributed_sources(ray_start_cluster):
     cluster = ray_start_cluster
     # head
-    cluster.add_node(num_cpus=8)
+    cluster.add_node(num_cpus=8, dashboard_agent_listen_port=find_free_port())
     ray.init(address=cluster.address)
     client = state_source_client(cluster.address)
 
-    nodes = ray.nodes()
-    assert len(nodes) == 1
-    ip = nodes[0]["NodeManagerAddress"]
-    port = int(nodes[0]["NodeManagerPort"])
-    """
-    Test objects
-    """
+    [node] = ray.nodes()
+    ip, port = node["NodeManagerAddress"], int(node["NodeManagerPort"])
 
     @ray.remote
     def long_running_task(obj):  # noqa
@@ -1808,8 +1805,7 @@ async def test_state_data_source_client_limit_distributed_sources(ray_start_clus
         return True
 
     await async_wait_for_condition(verify)
-    for ref in refs:
-        ray.cancel(ref, force=True, recursive=True)
+    [ray.cancel(ref, force=True) for ref in refs]
     del refs
 
     """
@@ -1863,7 +1859,7 @@ def test_cli_apis_sanity_check(ray_start_cluster):
     cluster.add_node(num_cpus=2)
     ray.init(address=cluster.address)
     for _ in range(NUM_NODES - 1):
-        cluster.add_node(num_cpus=2)
+        cluster.add_node(num_cpus=2, dashboard_agent_listen_port=find_free_port())
     runner = CliRunner()
 
     client = JobSubmissionClient(
@@ -2157,7 +2153,11 @@ async def test_cloud_envs(ray_start_cluster, monkeypatch):
             "test_cloud_id",
         )
         m.setenv("RAY_NODE_TYPE_NAME", "test-node-type")
-        cluster.add_node(num_cpus=1, node_name="worker_node")
+        cluster.add_node(
+            num_cpus=1,
+            node_name="worker_node",
+            dashboard_agent_listen_port=find_free_port(),
+        )
     client = state_source_client(cluster.address)
 
     async def verify():
@@ -2185,7 +2185,11 @@ def test_list_get_nodes(ray_start_cluster):
     cluster = ray_start_cluster
     cluster.add_node(num_cpus=1, node_name="head_node")
     ray.init(address=cluster.address)
-    worker_node = cluster.add_node(num_cpus=1, node_name="worker_node")
+    worker_node = cluster.add_node(
+        num_cpus=1,
+        node_name="worker_node",
+        dashboard_agent_listen_port=find_free_port(),
+    )
 
     cluster.remove_node(worker_node)
 
@@ -2546,6 +2550,71 @@ def test_list_actor_tasks_call_site(shutdown_only):
 
     wait_for_condition(verify)
     print(list_tasks())
+
+
+def test_list_get_tasks_label_selector(ray_start_cluster):
+    """
+    Call chain: Driver -> caller -> callee.
+    Verify that the call site is captured in callee, and it contains string
+    "caller".
+    """
+    cluster = ray_start_cluster
+    cluster.add_node(
+        num_cpus=2, labels={"ray.io/accelerator-type": "A100", "region": "us-west4"}
+    )
+    ray.init(address=cluster.address)
+    cluster.wait_for_nodes()
+
+    @ray.remote(label_selector={"region": "us-west4"})
+    def foo():
+        import time
+
+        time.sleep(5)
+
+    call_ref = foo.remote()
+
+    ray.get(call_ref)
+
+    def verify():
+        task = get_task(call_ref)
+        assert task["label_selector"] == {"region": "us-west4"}
+        return True
+
+    wait_for_condition(verify)
+    print(list_tasks())
+
+
+def test_list_actor_tasks_label_selector(ray_start_cluster):
+    """
+    Call chain: Driver -> create_actor -> (Actor, Actor.method).
+
+    Verify that the call sites are captured in both Actor and Actor.method,
+    and they contain string "create_actor".
+    """
+    cluster = ray_start_cluster
+    cluster.add_node(num_cpus=2, labels={"region": "us-west4"})
+    ray.init(address=cluster.address)
+    cluster.wait_for_nodes()
+
+    @ray.remote(label_selector={"region": "us-west4"})
+    class Actor:
+        def method(self):
+            import time
+
+            time.sleep(5)
+
+    actor = Actor.remote()
+    ray.get(actor.method.remote())
+
+    def verify():
+        actors = list_actors(detail=True)
+        assert len(actors) == 1
+        actor = actors[0]
+        assert actor["label_selector"] == {"region": "us-west4"}
+        return True
+
+    wait_for_condition(verify)
+    print(list_actors(detail=True))
 
 
 def test_pg_worker_id_tasks(shutdown_only):

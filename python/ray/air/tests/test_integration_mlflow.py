@@ -193,6 +193,41 @@ class MLflowTest(unittest.TestCase):
             {"dir": "artifact", "run_id": run.info.run_id},
         )
 
+        # Check if params are logged at the end.
+        run = logger.mlflow_util._mlflow.get_run(run_id=run.info.run_id)
+        self.assertDictEqual(run.data.params, trial_config)
+
+    @patch("ray.air.integrations.mlflow._MLflowLoggerUtil", Mock_MLflowLoggerUtil)
+    def testMlFlowLoggerLogging_logAtEnd(self):
+        clear_env_vars()
+        trial_config = {"par1": "a", "par2": "b"}
+        trial = MockTrial(trial_config, "trial1", 0, "artifact")
+
+        logger = MLflowLoggerCallback(
+            tracking_uri=self.tracking_uri,
+            registry_uri=self.registry_uri,
+            experiment_name="test_log_at_end",
+            tags={"hello": "world"},
+            log_params_on_trial_end=True,
+        )
+        logger.setup()
+        exp_id = logger.mlflow_util.experiment_id
+
+        logger.on_trial_start(iteration=0, trials=[], trial=trial)
+        all_runs = logger.mlflow_util._mlflow.search_runs(experiment_ids=[exp_id])
+        self.assertEqual(len(all_runs), 1)
+        # all_runs is a pandas dataframe.
+        all_runs = all_runs.to_dict(orient="records")
+        run = logger.mlflow_util._mlflow.get_run(all_runs[0]["run_id"])
+
+        # Params should NOT be logged at start.
+        self.assertDictEqual(run.data.params, {})
+
+        # Check that params are logged at the end.
+        logger.on_trial_complete(0, [], trial)
+        run = logger.mlflow_util._mlflow.get_run(run_id=run.info.run_id)
+        self.assertDictEqual(run.data.params, trial_config)
+
     def testMlFlowSetupExplicit(self):
         clear_env_vars()
         trial_config = {"par1": 4, "par2": 9.0}
