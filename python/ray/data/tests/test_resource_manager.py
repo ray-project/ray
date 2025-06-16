@@ -128,7 +128,9 @@ class TestResourceManager:
                 DataContext.get_current(),
             )
             expected_resource = ExecutionResources(4, 1, 0)
-            # The first call should call ray.cluster_resources().
+            # Reset call count after initialization (which now calls get_total_resources once)
+            get_total_resources.reset_mock()
+            # The first call should call get_total_resources().
             assert resource_manager.get_global_limits() == expected_resource
             assert get_total_resources.call_count == 1
             # The second call should return the cached value.
@@ -136,7 +138,7 @@ class TestResourceManager:
             assert get_total_resources.call_count == 1
             time.sleep(cache_interval_s)
             # After the cache interval, the third call should call
-            # ray.cluster_resources() again.
+            # get_total_resources() again.
             assert resource_manager.get_global_limits() == expected_resource
             assert get_total_resources.call_count == 2
 

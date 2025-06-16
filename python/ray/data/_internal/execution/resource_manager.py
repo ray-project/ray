@@ -109,15 +109,19 @@ class ResourceManager:
 
     def _warn_about_object_store_memory_if_needed(self):
         """Warn if object store memory is configured below 50% of total memory."""
-        import ray
         from ray.data.context import WARN_PREFIX
         from ray.util.debug import log_once
 
-        cluster_resources = ray.cluster_resources()
-        total_memory = cluster_resources.get("memory", 0)
-        object_store_memory = cluster_resources.get("object_store_memory", 0)
+        total_resources = self._get_total_resources()
+        total_memory = total_resources.memory
+        object_store_memory = total_resources.object_store_memory
 
-        if total_memory > 0:
+        # Check if we have actual numeric values (not mocks or None)
+        if (
+            isinstance(total_memory, (int, float))
+            and isinstance(object_store_memory, (int, float))
+            and total_memory > 0
+        ):
             object_store_fraction = object_store_memory / total_memory
 
             if object_store_fraction < 0.5 and log_once(
