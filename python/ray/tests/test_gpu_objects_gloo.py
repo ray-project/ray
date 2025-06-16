@@ -48,7 +48,7 @@ def test_inter_actor_gpu_tensor_transfer(ray_start_regular):
 
 def test_intra_gpu_tensor_transfer(ray_start_regular):
     actor = GPUTestActor.remote()
-    init_process_group([actor])
+    create_collective_group([actor], backend="torch_gloo")
 
     small_tensor = torch.randn((1,))
 

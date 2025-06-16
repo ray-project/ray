@@ -171,12 +171,16 @@ class GPUObjectManager:
 
             if not self._is_gpu_object_ref(arg):
                 continue
+
+            # Import get_collective_groups here to avoid dependency on
+            # collective libraries for default Ray installation.
+            from ray.experimental.collective import get_collective_groups
+
             gpu_object_meta = self._get_gpu_object_ref(arg)
 
             src_actor = gpu_object_meta.src_actor
             tensor_meta = gpu_object_meta.tensor_meta
-            util = _get_or_import_util()
-            communicators = util.get_collective_groups(
+            communicators = get_collective_groups(
                 [src_actor, dst_actor], backend=gpu_object_meta.tensor_transport_backend
             )
             # TODO(kevin85421): Support multiple communicators.
@@ -212,4 +216,6 @@ class GPUObjectManager:
                 # transfer.
                 continue
             self._send_gpu_object(communicator.name, src_actor, arg.hex(), dst_rank)
-            self._recv_gpu_object(communicator.name, dst_actor, arg.hex(), src_rank, tensor_meta)
+            self._recv_gpu_object(
+                communicator.name, dst_actor, arg.hex(), src_rank, tensor_meta
+            )
