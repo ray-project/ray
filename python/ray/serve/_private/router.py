@@ -502,6 +502,7 @@ class AsyncioRouter:
                 prefer_local_node_routing=self._prefer_local_node_routing,
                 prefer_local_az_routing=RAY_SERVE_PROXY_PREFER_LOCAL_AZ_ROUTING,
                 self_availability_zone=self._availability_zone,
+                **self._request_router_kwargs,
             )
 
             # Populate the running replicas if they are already available.
@@ -538,6 +539,7 @@ class AsyncioRouter:
 
     def update_deployment_config(self, deployment_config: DeploymentConfig):
         self._request_router_class = deployment_config.get_request_router_class()
+        self._request_router_kwargs = deployment_config.request_router_kwargs
         self._metrics_manager.update_deployment_config(
             deployment_config,
             curr_num_replicas=len(self.request_router.curr_replicas),
