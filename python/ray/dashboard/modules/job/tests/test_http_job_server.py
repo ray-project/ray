@@ -977,9 +977,10 @@ async def test_get_upload_package(ray_start_context, tmp_path):
     await download_and_unpack_package(package_uri, str(tmp_path), gcs_client)
     assert (package_file.with_suffix("") / filename).read_bytes() == file_content
 
+
 @pytest.mark.asyncio
 async def test_overwrite_http_request_entity_size(ray_start_context, tmp_path):
-    os.environ[ray_constants.RAY_HTTP_REQUEST_ENTITY_MAX_SIZE] = '1'
+    os.environ[ray_constants.RAY_HTTP_REQUEST_ENTITY_MAX_SIZE] = "1"
     assert wait_until_server_available(ray_start_context["webui_url"])
     webui_url = format_web_url(ray_start_context["webui_url"])
     gcs_client = ray._private.worker.global_worker.gcs_client
@@ -1012,6 +1013,7 @@ async def test_overwrite_http_request_entity_size(ray_start_context, tmp_path):
 
     await download_and_unpack_package(package_uri, str(tmp_path), gcs_client)
     assert (package_file.with_suffix("") / filename).read_bytes() == file_content
+
 
 if __name__ == "__main__":
     sys.exit(pytest.main(["-v", __file__]))

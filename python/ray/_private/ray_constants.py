@@ -595,4 +595,6 @@ RAY_EXPERIMENTAL_ENABLE_OPEN_TELEMETRY_ON_CORE = env_bool(
 
 # The default maximum size of the http request entity.
 # Used to overwrite the _client_max_size of BaseRequest.
-RAY_HTTP_REQUEST_ENTITY_MAX_SIZE = env_integer("RAY_HTTP_REQUEST_ENTITY_MAX_SIZE", 1024**2)
+RAY_HTTP_REQUEST_ENTITY_MAX_SIZE = env_integer(
+    "RAY_HTTP_REQUEST_ENTITY_MAX_SIZE", 1024**2
+)
