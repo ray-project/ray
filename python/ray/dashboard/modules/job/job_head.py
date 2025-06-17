@@ -17,15 +17,14 @@ from aiohttp.web import Request, Response, StreamResponse
 import ray
 import ray.dashboard.consts as dashboard_consts
 from ray import NodeID
-from ray._common.utils import get_or_create_event_loop
-from ray._private.pydantic_compat import BaseModel, Extra, Field, validator
+from ray._common.utils import get_or_create_event_loop, load_class
+from ray._common.pydantic_compat import BaseModel, Extra, Field, validator
 from ray._private.ray_constants import KV_NAMESPACE_DASHBOARD, env_bool
 from ray._private.runtime_env.packaging import (
     package_exists,
     pin_runtime_env_uri,
     upload_package_to_gcs,
 )
-from ray._private.utils import load_class
 from ray.dashboard.consts import (
     DASHBOARD_AGENT_ADDR_NODE_ID_PREFIX,
     GCS_RPC_TIMEOUT_SECONDS,
