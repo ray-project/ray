@@ -4,7 +4,7 @@
 
 ## Prerequisites
 
-This guide mainly focuses on the behavior of KubeRay v1.4.0 and Ray 2.41.0.
+This guide mainly focuses on the behavior of KubeRay v1.4.0 and Ray 2.46.0.
 
 ## What's a RayService?
 

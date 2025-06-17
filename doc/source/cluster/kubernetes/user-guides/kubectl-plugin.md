@@ -51,7 +51,7 @@ The `kubectl ray create cluster` command allows you to create a valid RayCluster
 
 | Parameter       | Default                        |
 |-----------------|--------------------------------|
-| ray version     | 2.41.0                         |
+| ray version     | 2.46.0                         |
 | ray image       | rayproject/ray:\<ray version\> |
 | head CPU        | 2                              |
 | head memory     | 4Gi                            |
@@ -171,7 +171,7 @@ You can submit a RayJob without specifying a YAML file. The command generates a 
 
 | Parameter       | Default                        |
 |-----------------|--------------------------------|
-| ray version     | 2.41.0                         |
+| ray version     | 2.46.0                         |
 | ray image       | rayproject/ray:\<ray version\> |
 | head CPU        | 2                              |
 | head memory     | 4Gi                            |
