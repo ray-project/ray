@@ -3,12 +3,7 @@
 # KubeRay metrics references
 
 ## `controller-runtime` metrics
-KubeRay is built with Controller Runtime, which natively exposes metrics that KubeRay includes in its metrics. These metrics include:
-- Reconciliation counts like success, error, and requeue
-- Length of the reconcile queue
-- Reconciliation latency
-- CPU, memory, and file descriptor usage
-- Go runtime stats like Goroutines and GC duration
+KubeRay exposes metrics provided by [kubernetes-sigs/controller-runtime](https://github.com/kubernetes-sigs/controller-runtime), including information about reconciliation, work queues, and more, to help users operate the KubeRay operator in production environments.
 
 For more details about the default metrics provided by [kubernetes-sigs/controller-runtime](https://github.com/kubernetes-sigs/controller-runtime), see [Default Exported Metrics References](https://book.kubebuilder.io/reference/metrics-reference).
 

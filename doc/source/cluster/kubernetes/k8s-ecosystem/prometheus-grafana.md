@@ -53,7 +53,11 @@ kubectl get all -n prometheus-system
 ## Step 3: Install a KubeRay operator
 
 * Follow [this document](kuberay-operator-deploy) to install the latest stable KubeRay operator via Helm repository.
-* You can enable the ServiceMonitor when installing the KubeRay operator with helm. See [Step 7](#step-7-collect-kuberay-metrics-with-servicemonitor) for more details.
+* To enable the ServiceMonitor when installing the KubeRay operator with helm use the following command:
+  ```sh
+  helm install kuberay-operator kuberay/kuberay-operator --version 1.4.0 \
+    --set metrics.serviceMonitor.enabled=true
+  ```
 
 ## Step 4: Install a RayCluster
 
@@ -230,7 +234,14 @@ spec:
 
 ## Step 7: Collect KubeRay metrics with ServiceMonitor
 
-Starting with KubeRay 1.4.0, KubeRay provides a [ServiceMonitor](https://github.com/ray-project/kuberay/blob/master/config/prometheus/serviceMonitor.yaml) to help Prometheus discover and scrape KubeRay metrics.
+Installing the KubeRay operator automatically creates a ServiceMonitor to help Prometheus discover and scrape KubeRay metrics. You can verify the ServiceMonitor creation with:
+```sh
+kubectl get servicemonitor -n prometheus-system
+
+# Example output:
+# NAME                                                 AGE
+# kuberay-operator-monitor                             53m
+```
 
 ```yaml
 apiVersion: monitoring.coreos.com/v1
@@ -430,19 +441,10 @@ For example, in the following figures, one selects the metrics from the RayClust
 
 ## Step 14: View the KubeRay operator dashboard
 
-Once the KubeRay Operator dashboard is imported into Grafana, you can monitor metrics from the KubeRay operator. The dashboard provides a dropdown menu to filter and view controller runtime metrics for specific Ray CRs:`RayCluster`, `RayJob`, `RayService`.
+After importing the KubeRay Operator dashboard into Grafana, you can monitor metrics from the KubeRay operator. The dashboard includes a dropdown menu that lets you filter and view controller runtime metrics for specific Ray custom resources CRs: `RayCluster`, `RayJob`, and `RayService`.
 
-- Controller runtime panel
+The KubeRay operator dashboard should look like this:
 ![Grafana KubeRay Operator Controller Runtime dashboard](../images/kuberay-dashboard-controller-runtime.png)
-
-- RayCluster panel
-![Grafana KubeRay Operator RayCluster dashboard](../images/kuberay-dashboard-raycluster.png)
-
-- RayService panel
-![Grafana KubeRay Operator RayService dashboard](../images/kuberay-dashboard-rayservice.png)
-
-- RayJob panel
-![Grafana KubeRay Operator RayJob dashboard](../images/kuberay-dashboard-rayjob.png)
 
 ## Step 15: Embed Grafana panels in the Ray dashboard (optional)
 
