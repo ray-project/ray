@@ -1,11 +1,26 @@
 #!/usr/bin/env python3
 
 import click
-import json
 from pathlib import Path
 from typing import Dict, List, Optional
-from dependencies.depset import DepSet, Dep
+from dependencies.depset import DepSet, Dep, parse_compiled_requirements
 import subprocess
+import logging
+
+# Set up logging
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+logger = logging.getLogger(__name__)
+
+def debug_print(ctx, message: str):
+    """Print debug message if debug flag is set"""
+    if ctx and ctx.obj and ctx.obj.get("debug"):
+        click.secho(f"DEBUG: {message}", fg='cyan', err=True)
+
+def verbose_print(ctx, message: str):
+    """Print verbose message if verbose flag is set"""
+    if ctx and ctx.obj and ctx.obj.get("verbose"):
+        click.secho(f"VERBOSE: {message}", fg='blue', err=True)
+
 
 class DependencySetManager:
     def __init__(self, storage_path: Path = Path.home() / ".depsets"):
@@ -53,12 +68,20 @@ class DependencySetManager:
             depset_path.unlink()
         del self.depsets[name]
 
-    def compile_depset(self, constraints: List[str], requirements: List[str], name: str):
+    def compile_depset(self, constraints: List[str], requirements: List[str], name: str, generate_hashes: bool, header: bool, no_cache: bool):
         args = []
-        for constraint in constraints:
-            args.extend(["-c", constraint])
-        args.extend(requirements)
-        args.extend(["-o", name])
+        if generate_hashes:
+            args.append("--generate-hashes")
+        if not header:
+            args.append("--no-header")
+        if no_cache:
+            args.append("--no-cache")
+        if constraints:
+            for constraint in constraints:
+                args.extend(["-c", constraint])
+        if requirements:
+            args.extend(requirements)
+        args.extend(["-o", f"{self.storage_path}/{name}.txt"])
         return self.exec_uv__cmd("compile", args)
 
     def subset_depset(self, source: str, packages: List[str], name: str):
@@ -92,18 +115,32 @@ class DependencySetManager:
             f.write(new_depset.to_txt())
         self.create_depset(name, req_name)
 
-    def relax(self, source: str, degree: int, name: str):
+    def build_dag(self, source: str):
         source_depset = self.depsets[source]
-        req_name = f"{name}.txt"
-        new_depset = DepSet(req_name)
+        print(f"# of deps for depset {source}: {len(source_depset.dependencies)}")
+        with open(f"{source}_deps.txt", "w") as f:
+            for dep in source_depset.dependencies:
+                f.write(f"{dep}\n")
 
-        for dep in source_depset.dependencies:
-            #need to check the degrees for each of the exisitng deps
+        source_depset.dep_dag = parse_compiled_requirements(source_depset.requirements_fp)
+        with open(f"{source}_dag.txt", "w") as f:
+            f.write(str(source_depset.dep_dag))
 
-        with open(req_name, "w") as f:
-            f.write(new_depset.to_txt())
-        self.create_depset(name, req_name)
-
+    def relax_depset(self, source: str, degree: int, name: str):
+        source_depset = self.depsets[source]
+        n_degree_deps = source_depset.dep_dag.relax(degree)
+        with open(f"{name}_relaxed.txt", "w") as f:
+            for item in sorted(n_degree_deps):
+                f.write(f"{item}\n")
+        # Copy the requirements file to our storage location
+        output_path = self.storage_path / f"{name}.txt"
+        with open(output_path, "w") as req_file:
+            for dep in n_degree_deps:
+                dep_obj = next((d for d in source_depset.dependencies if dep in d.name), None)
+                if dep_obj is None:
+                    continue
+                req_file.write(f"{dep_obj}\n")
+        return n_degree_deps
 
     def py_version(self, source: str, version: str, name: str, flags: str = ""):
         source_depset = self.depsets[source]
@@ -120,9 +157,15 @@ class DependencySetManager:
         return status.stdout
 
 @click.group(name="depsets")
-def cli():
+@click.option("--verbose", "-v", is_flag=True, help="Enable verbose output")
+@click.option("--debug", is_flag=True, help="Enable debug output")
+@click.pass_context
+def cli(ctx, verbose, debug):
     """Manage Python dependency sets."""
-    pass
+    # Store flags in context for subcommands
+    ctx.ensure_object(dict)
+    ctx.obj["verbose"] = verbose
+    ctx.obj["debug"] = debug
 
 @cli.command()
 @click.argument("name")
@@ -180,12 +223,15 @@ def delete(name: str):
 @cli.command()
 @click.option("--constraints", type=str, help="comma separated list of absolute filepaths for constraint files")
 @click.option("--requirements", type=str, help="filename for requirements file")
-@click.option("--output", type=str, help="filename for output file")
-def compile(constraints: str, requirements: str, output: str):
+@click.option("--output", type=str, required=True, help="filename for output file")
+@click.option("--generate-hashes", type=bool, default=True, help="generate hashes")
+@click.option("--header", type=bool, default=False, help="no header")
+@click.option("--no-cache", type=bool, default=False, help="no header")
+def compile(constraints: str, requirements: str, output: str, generate_hashes: bool, header: bool, no_cache: bool):
     """Compile a dependency set."""
     try:
         manager = DependencySetManager()
-        manager.compile_depset(constraints.split(","), requirements.split(","), output)
+        manager.compile_depset(constraints.split(",") if constraints else [], requirements.split(",") if requirements else [], output, generate_hashes, header, no_cache)
         click.echo(f"Compiled dependency set {output}")
     except ValueError as e:
         click.echo(f"Error: {str(e)}", err=True)
@@ -228,8 +274,10 @@ def relax(source: str, degree: int, name: str):
     """Relax a dependency set by selectively keeping and removing constraints"""
     try:
         manager = DependencySetManager()
-        manager.relax(source, degree, name)
-        click.echo(f"Relaxed depset {name} to the {degree} degree. Output written to {name}.txt")
+        manager.build_dag(source)
+        click.echo(f"Built dag for {source}")
+        manager.relax_depset(source, degree, name)
+        click.echo(f"Relaxed depset: {name} to the {degree} degree. Output written to {name}.txt")
     except ValueError as e:
         click.echo(f"Error: {str(e)}", err=True)
 
