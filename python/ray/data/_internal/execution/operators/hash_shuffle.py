@@ -868,7 +868,33 @@ class HashShufflingOperatorBase(PhysicalOperator):
         num_partitions: int,
         partition_byte_size_estimate: int,
     ) -> int:
-        raise NotImplementedError()
+        dataset_size = num_partitions * partition_byte_size_estimate
+        # Estimate of object store memory required to accommodate all partitions
+        # handled by a single aggregator
+        aggregator_shuffle_object_store_memory_required: int = math.ceil(
+            dataset_size / num_aggregators
+        )
+        # Estimate of memory required to accommodate single partition as an output
+        # (inside Object Store)
+        output_object_store_memory_required: int = partition_byte_size_estimate
+
+        aggregator_total_memory_required: int = (
+            # Inputs (object store)
+            aggregator_shuffle_object_store_memory_required
+            +
+            # Output (object store)
+            output_object_store_memory_required
+        )
+
+        logger.debug(
+            f"Estimated memory requirement for shuffling operator "
+            f"(partitions={num_partitions}, aggregators={num_aggregators}): "
+            f"shuffle={aggregator_shuffle_object_store_memory_required / GiB:.2f}GiB, "
+            f"output={output_object_store_memory_required / GiB:.2f}GiB, "
+            f"total={aggregator_total_memory_required / GiB:.2f}GiB, "
+        )
+
+        return aggregator_total_memory_required
 
 
 class HashShuffleOperator(HashShufflingOperatorBase):
@@ -996,7 +1022,7 @@ class AggregatorPool:
 
         # Add last warning timestamp for health checks
         self._last_health_warning_time: Optional[float] = None
-        self._health_warning_interval: float = (
+        self._health_warning_interval_s: float = (
             self._data_context.hash_shuffle_aggregator_health_warning_interval_s
         )
         # Track readiness refs for non-blocking health checks
@@ -1056,7 +1082,7 @@ class AggregatorPool:
             logger.warning(
                 f"Limited available CPU resources for hash shuffle operation. "
                 f"Required: {required_cpus} CPUs, available: {available_cpus} CPUs. "
-                f"Aggregators may take longer to start due to resource contention."
+                f"Aggregators may take longer to start due to contention for resources."
             )
 
         # Check memory resources if specified
@@ -1102,6 +1128,10 @@ class AggregatorPool:
                     for aggregator in self._aggregators
                 ]
 
+            # If all aggregators are already ready, no need to check
+            if not self._readiness_refs:
+                return
+
             # Use ray.wait to check readiness in non-blocking fashion
             _, unready_refs = ray.wait(
                 self._readiness_refs,
@@ -1109,11 +1139,14 @@ class AggregatorPool:
                 timeout=0,  # Short timeout to avoid blocking
             )
 
+            # Update readiness refs to only track the unready ones
+            self._readiness_refs = unready_refs
+
             current_time = time.time()
             should_warn = unready_refs and (  # If any refs are not ready
                 self._last_health_warning_time is None
                 or current_time - self._last_health_warning_time
-                >= self._health_warning_interval
+                >= self._health_warning_interval_s
             )
 
             if should_warn:
@@ -1127,19 +1160,17 @@ class AggregatorPool:
                 )
 
                 ready_aggregators = self._num_aggregators - len(unready_refs)
-                wait_time_min = min_wait_time / 60.0
 
                 logger.warning(
-                    f"Only {ready_aggregators} out of {self._num_aggregators} hash-shuffle aggregators are ready after {wait_time_min:.1f} min. "
+                    f"Only {ready_aggregators} out of {self._num_aggregators} hash-shuffle aggregators are ready after {min_wait_time:.1f} secs. "
                     f"This might indicate resource contention for cluster resources (available CPUs: {available_cpus}, required CPUs: {required_cpus}). "
                     f"Consider increasing cluster size or reducing the number of aggregators via `DataContext.max_hash_shuffle_aggregators`. "
-                    f"Will continue checking every {self._health_warning_interval}s."
+                    f"Will continue checking every {self._health_warning_interval_s}s."
                 )
                 self._last_health_warning_time = current_time
             elif not unready_refs and self._last_health_warning_time is not None:
                 # All aggregators are ready
                 self._last_health_warning_time = None
-                self._readiness_refs = None  # Reset for next time
                 logger.debug(
                     f"All {self._num_aggregators} hash shuffle aggregators "
                     f"are now healthy"
