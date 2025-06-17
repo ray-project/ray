@@ -195,11 +195,11 @@ bool ShouldUsePipeStream(const StreamRedirectionOption &stream_redirect_opt) {
 
 RedirectionFileHandle OpenFileForRedirection(const std::string &file_path) {
 #if defined(__APPLE__) || defined(__linux__)
-  int fd = open(file_path.c_str(),
-                O_WRONLY | O_CREAT | O_APPEND,
-                S_IRUSR | S_IWUSR | S_IRGRP | S_IROTH);
+  const int fd = open(file_path.c_str(),
+                      O_WRONLY | O_CREAT | O_APPEND,
+                      S_IRUSR | S_IWUSR | S_IRGRP | S_IROTH);
 #elif defined(_WIN32)
-  int fd =
+  const int fd =
       _open(file_path.c_str(), _O_WRONLY | _O_CREAT | _O_APPEND, _S_IREAD | _S_IWRITE);
 #endif
 
@@ -209,7 +209,6 @@ RedirectionFileHandle OpenFileForRedirection(const std::string &file_path) {
   auto logger = std::make_shared<spdlog::logger>(
       /*name=*/absl::StrFormat("pipe-logger-%s", file_path), std::move(logger_sink));
 
-  // Lifecycle for the file handle is bound at [ostream] thus [close_fn].
   auto close_fn = [fd]() { RAY_CHECK_OK(Close(fd)); };
 
   return RedirectionFileHandle{fd, std::move(logger), std::move(close_fn)};

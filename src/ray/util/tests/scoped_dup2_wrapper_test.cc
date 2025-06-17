@@ -14,19 +14,12 @@
 
 #include "ray/util/scoped_dup2_wrapper.h"
 
+#include <fcntl.h>
 #include <gtest/gtest.h>
 
 #include <iostream>
 #include <string>
 #include <string_view>
-#if defined(__APPLE__) || defined(__linux__)
-#include <fcntl.h>
-#include <sys/stat.h>
-#include <sys/types.h>
-#include <unistd.h>
-#elif defined(_WIN32)
-#include <windows.h>
-#endif
 
 #include "ray/common/test/testing.h"
 #include "ray/util/compat.h"
@@ -45,11 +38,11 @@ TEST(ScopedDup2WrapperTest, BasicTest) {
   const auto path = dir / "test_file";
   const std::string path_string = path.string();
 #if defined(__APPLE__) || defined(__linux__)
-  int file_fd = open(path_string.c_str(),
-                     O_WRONLY | O_CREAT | O_APPEND,
-                     S_IRUSR | S_IWUSR | S_IRGRP | S_IROTH);
+  const int file_fd = open(path_string.c_str(),
+                           O_WRONLY | O_CREAT | O_APPEND,
+                           S_IRUSR | S_IWUSR | S_IRGRP | S_IROTH);
 #elif defined(_WIN32)
-  int file_fd =
+  const int file_fd =
       _open(path_string.c_str(), _O_WRONLY | _O_CREAT | _O_APPEND, _S_IREAD | _S_IWRITE);
 #endif
 
@@ -57,7 +50,7 @@ TEST(ScopedDup2WrapperTest, BasicTest) {
     auto dup2_wrapper =
         ScopedDup2Wrapper::New(/*oldfd=*/file_fd, /*newfd=*/GetStderrFd());
 
-    // Write to stdout should appear in file.
+    // Write to stderr should appear in file.
     std::cerr << kContent << std::flush;
     const auto actual_content = ReadEntireFile(path_string);
     RAY_ASSERT_OK(actual_content);
@@ -73,6 +66,7 @@ TEST(ScopedDup2WrapperTest, BasicTest) {
   const auto actual_content = ReadEntireFile(path_string);
   RAY_ASSERT_OK(actual_content);
   EXPECT_EQ(*actual_content, kContent);
+  RAY_CHECK_OK(Close(file_fd));
 }
 
 }  // namespace
