@@ -1,5 +1,6 @@
 from typing import TYPE_CHECKING, Any, Dict, List, NamedTuple, Optional, Tuple
 
+import ray
 from ray._private.custom_types import TensorTransportEnum
 from ray._raylet import ObjectRef
 from ray.actor import ActorHandle
@@ -50,6 +51,9 @@ class GPUObjectManager:
         # The entries in this dictionary are 1:1 with ObjectRefs created by this process with a tensor_transport hint and that are currently in scope.
         self.gpu_object_refs: Dict[ObjectRef, GPUObjectMeta] = {}
 
+        # A dictionary that maps from an object ID to the corresponding ObjectRef.
+        self.gpu_object_id_to_obj_ref: Dict[str, ObjectRef] = {}
+
     def has_gpu_object(self, obj_id: str) -> bool:
         return obj_id in self.gpu_object_store
 
@@ -79,6 +83,19 @@ class GPUObjectManager:
 
         return src_actor.__ray_call__.remote(__ray_get_tensor_meta__, obj_id)
 
+    def is_driver(self, obj_id: str) -> bool:
+        """
+        Check if the GPU object is managed by this process.
+
+        Args:
+            obj_id: The object ID of the GPU object.
+
+        Returns:
+            True if the current process is the driver process coordinating the data transfer
+            of this GPU object.
+        """
+        return obj_id in self.gpu_object_id_to_obj_ref
+
     def add_gpu_object_ref(
         self,
         obj_ref: ObjectRef,
@@ -104,11 +121,13 @@ class GPUObjectManager:
             tensor_transport_backend=tensor_transport_backend,
             tensor_meta=tensor_meta,
         )
+        self.gpu_object_id_to_obj_ref[obj_ref.hex()] = obj_ref
 
     # TODO(kevin85421): Call this function to remove the `obj_ref` from the `gpu_object_refs` dictionary
     # to allow garbage collection of the object.
     def remove_gpu_object_ref(self, obj_ref: ObjectRef):
         del self.gpu_object_refs[obj_ref]
+        del self.gpu_object_id_to_obj_ref[obj_ref.hex()]
 
     def _get_gpu_object_ref(self, obj_ref: ObjectRef) -> Optional[GPUObjectMeta]:
         return self.gpu_object_refs[obj_ref]
@@ -140,6 +159,33 @@ class GPUObjectManager:
         dst_actor.__ray_call__.remote(
             util.__ray_recv__, communicator_name, obj_id, src_rank, tensor_meta
         )
+
+    def fetch_gpu_object(self, obj_id: str):
+        """
+        Fetches the GPU object from the source actor's GPU object store via the object store
+        instead of out-of-band tensor transfer and stores the tensors in `gpu_object_store`.
+
+        This is useful when the current process is the driver process that coordinates the data
+        transfer of this GPU object. For example, when the driver process calls `ray.get(gpu_object_ref)`,
+        the tensors will not be transferred out-of-band automatically. We need to fetch the tensors from
+        the corresponding actor's GPU object store via the object store API.
+
+        Args:
+            obj_id: The object ID of the GPU object.
+
+        Returns:
+            None
+        """
+        if obj_id in self.gpu_object_store:
+            return
+
+        obj_ref = self.gpu_object_id_to_obj_ref[obj_id]
+        gpu_object_meta = self.gpu_object_refs[obj_ref]
+        src_actor = gpu_object_meta.src_actor
+        tensors = ray.get(
+            src_actor.__ray_call__.remote(util.__ray_fetch_gpu_object__, obj_id)
+        )
+        self.gpu_object_store[obj_id] = tensors
 
     def trigger_out_of_band_tensor_transfer(
         self, dst_actor: ActorHandle, task_args: Tuple[Any, ...]
