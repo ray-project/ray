@@ -2220,6 +2220,14 @@ def test_random_shuffle_spread(
         assert set(locations) == {node1_id, node2_id}
 
 
+@pytest.mark.parametrize("val", ["1MiB", 1024 * 1024, "2MiB"])
+def test_repartition_target_bytes_accepts_int_and_str(val):
+    ds = ds = ray.data.range(10_000_000, override_num_blocks=1)
+    out = ds.repartition(target_bytes_per_block=val)
+    assert out.materialize().num_blocks() > 1
+    assert out.count() == ds.count()
+
+
 if __name__ == "__main__":
     import sys
 
