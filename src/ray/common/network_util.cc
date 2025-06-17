@@ -21,10 +21,22 @@ using boost::asio::ip::tcp;
 
 bool CheckPortFree(int port) {
   instrumented_io_context io_service;
-  tcp::socket socket(io_service);
-  socket.open(boost::asio::ip::tcp::v4());
   boost::system::error_code ec;
-  socket.bind(boost::asio::ip::tcp::endpoint(boost::asio::ip::tcp::v4(), port), ec);
-  socket.close();
-  return !ec.failed();
+  tcp::acceptor acceptor(io_service);
+  tcp::endpoint endpoint(tcp::v4(), port);
+
+  acceptor.open(endpoint.protocol(), ec);
+  if (ec) return false;
+
+  // Check if the port is already in use
+  acceptor.set_option(boost::asio::socket_base::reuse_address(false));
+  acceptor.bind(endpoint, ec);
+  if (ec) return false;
+
+  // Listening helps ensure the port can be fully connectable
+  acceptor.listen(boost::asio::socket_base::max_listen_connections, ec);
+  if (ec) return false;
+
+  acceptor.close();
+  return true;
 }
