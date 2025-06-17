@@ -6,10 +6,13 @@ _common/ (not in tests/) to be accessible in the Ray package distribution.
 """
 
 import asyncio
+from contextlib import contextmanager
 import inspect
+import os
 import time
 import traceback
-from typing import Any, Callable
+from typing import Any, Callable, Iterator
+import uuid
 
 import ray
 import ray._private.utils
@@ -143,3 +146,34 @@ async def async_wait_for_condition(
     if last_ex is not None:
         message += f" Last exception: {last_ex}"
     raise RuntimeError(message)
+
+
+@contextmanager
+def simulate_s3_bucket(
+    port: int = 5002,
+    region: str = "us-west-2",
+) -> Iterator[str]:
+    """Context manager that simulates an S3 bucket and yields the URI.
+
+    Args:
+        port: The port of the localhost endpoint where S3 is being served.
+        region: The S3 region.
+
+    Yields:
+        str: URI for the simulated S3 bucket.
+    """
+    from moto.server import ThreadedMotoServer
+
+    old_env = os.environ
+    os.environ["AWS_ACCESS_KEY_ID"] = "testing"
+    os.environ["AWS_SECRET_ACCESS_KEY"] = "testing"
+    os.environ["AWS_SECURITY_TOKEN"] = "testing"
+    os.environ["AWS_SESSION_TOKEN"] = "testing"
+
+    s3_server = f"http://localhost:{port}"
+    server = ThreadedMotoServer(port=port)
+    server.start()
+    url = f"s3://{uuid.uuid4().hex}?region={region}&endpoint_override={s3_server}"
+    yield url
+    server.stop()
+    os.environ = old_env

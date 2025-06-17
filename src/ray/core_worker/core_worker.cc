@@ -1177,13 +1177,6 @@ void CoreWorker::Exit(
     RAY_CHECK_NE(detail, "");
     exiting_detail_ = std::optional<std::string>{detail};
   }
-  // Release the resources early in case draining takes a long time.
-  auto status = local_raylet_client_->NotifyDirectCallTaskBlocked();
-  if (!status.ok()) {
-    RAY_LOG(WARNING)
-        << "Failed to notify Raylet. It is either the raylet is already dead or the "
-           "raylet disconnects the client because it kills this worker.";
-  }
 
   // Callback to shutdown.
   auto shutdown = [this, exit_type, detail, creation_task_exception_pb_bytes]() {
@@ -1217,6 +1210,14 @@ void CoreWorker::Exit(
           // finish. Note that if tasks have been posted to the thread pools but not
           // started yet, they will not be executed.
           task_receiver_->Stop();
+
+          // Release resources only after tasks have stopped executing.
+          auto status = local_raylet_client_->NotifyDirectCallTaskBlocked();
+          if (!status.ok()) {
+            RAY_LOG(WARNING)
+                << "Failed to notify Raylet. The raylet may have already shut down or "
+                << "the connection was lost.";
+          }
 
           bool not_actor_task = false;
           {
@@ -2723,45 +2724,65 @@ Status CoreWorker::CreateActor(const RayFunction &function,
       local_mode_named_actor_registry_.emplace(actor_name, actor_id);
     }
     ExecuteTaskLocalMode(task_spec);
-  } else {
-    task_manager_->AddPendingTask(
-        rpc_address_,
-        task_spec,
-        CurrentCallSite(),
-        // Actor creation task retry happens on GCS not on core worker.
-        /*max_retries*/ 0);
+    return Status::OK();
+  }
 
-    if (actor_name.empty()) {
-      io_service_.post(
-          [this, task_spec = std::move(task_spec)]() {
-            RAY_UNUSED(actor_creator_->AsyncRegisterActor(
-                task_spec, [this, task_spec](Status status) {
-                  if (!status.ok()) {
-                    RAY_LOG(ERROR).WithField(task_spec.ActorCreationId())
-                        << "Failed to register actor. Error message: " << status;
-                    task_manager_->FailPendingTask(task_spec.TaskId(),
-                                                   rpc::ErrorType::ACTOR_CREATION_FAILED,
-                                                   &status);
-                  } else {
-                    RAY_UNUSED(actor_task_submitter_->SubmitActorCreationTask(task_spec));
-                  }
-                }));
-          },
-          "ActorCreator.AsyncRegisterActor");
-    } else {
-      // For named actor, we still go through the sync way because for
-      // functions like list actors these actors need to be there, especially
-      // for local driver. But the current code all go through the gcs right now.
-      auto status = actor_creator_->RegisterActor(task_spec);
-      if (!status.ok()) {
-        return status;
+  if (task_spec.MaxActorRestarts() != 0) {
+    bool actor_restart_warning = false;
+    for (size_t i = 0; i < task_spec.NumArgs(); i++) {
+      if (task_spec.ArgByRef(i) || !task_spec.ArgInlinedRefs(i).empty()) {
+        actor_restart_warning = true;
+        break;
       }
-      io_service_.post(
-          [this, task_spec = std::move(task_spec)]() {
-            RAY_UNUSED(actor_task_submitter_->SubmitActorCreationTask(task_spec));
-          },
-          "CoreWorker.SubmitTask");
     }
+    if (actor_restart_warning) {
+      RAY_LOG(ERROR)
+          << "Actor " << (actor_name.empty() ? "" : (actor_name + " "))
+          << "with class name: '" << function.GetFunctionDescriptor()->ClassName()
+          << "' and ID: '" << task_spec.ActorCreationId()
+          << "' has constructor arguments in the object store and max_restarts > 0. If "
+             "the arguments in the object store go out of scope or are lost, the "
+             "actor restart will fail. See "
+             "https://github.com/ray-project/ray/issues/53727 for more details.";
+    }
+  }
+
+  task_manager_->AddPendingTask(
+      rpc_address_,
+      task_spec,
+      CurrentCallSite(),
+      // Actor creation task retry happens on GCS not on core worker.
+      /*max_retries*/ 0);
+
+  if (actor_name.empty()) {
+    io_service_.post(
+        [this, task_spec = std::move(task_spec)]() {
+          RAY_UNUSED(actor_creator_->AsyncRegisterActor(
+              task_spec, [this, task_spec](Status status) {
+                if (!status.ok()) {
+                  RAY_LOG(ERROR).WithField(task_spec.ActorCreationId())
+                      << "Failed to register actor. Error message: " << status;
+                  task_manager_->FailPendingTask(
+                      task_spec.TaskId(), rpc::ErrorType::ACTOR_CREATION_FAILED, &status);
+                } else {
+                  RAY_UNUSED(actor_task_submitter_->SubmitActorCreationTask(task_spec));
+                }
+              }));
+        },
+        "ActorCreator.AsyncRegisterActor");
+  } else {
+    // For named actor, we still go through the sync way because for
+    // functions like list actors these actors need to be there, especially
+    // for local driver. But the current code all go through the gcs right now.
+    auto status = actor_creator_->RegisterActor(task_spec);
+    if (!status.ok()) {
+      return status;
+    }
+    io_service_.post(
+        [this, task_spec = std::move(task_spec)]() {
+          RAY_UNUSED(actor_task_submitter_->SubmitActorCreationTask(task_spec));
+        },
+        "CoreWorker.SubmitTask");
   }
   return Status::OK();
 }
