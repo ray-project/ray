@@ -776,18 +776,16 @@ int main(int argc, char *argv[]) {
             announce_infeasible_task,
             *local_task_manager);
 
-        auto raylet_client_factory =
-            [&](const NodeID &id, ray::rpc::ClientCallManager &cc_manager) {
-              const ray::rpc::GcsNodeInfo *node_info = gcs_client->Nodes().Get(id);
-              RAY_CHECK(node_info) << "No GCS info for node " << id;
-              std::shared_ptr<ray::rpc::NodeManagerWorkerClient> raylet_client =
-                  ray::rpc::NodeManagerWorkerClient::make(
-                      node_info->node_manager_address(),
-                      node_info->node_manager_port(),
-                      cc_manager);
-              return std::make_shared<ray::raylet::RayletClient>(
-                  std::move(raylet_client));
-            };
+        auto raylet_client_factory = [&](const NodeID &id,
+                                         ray::rpc::ClientCallManager &cc_manager) {
+          const ray::rpc::GcsNodeInfo *node_info = gcs_client->Nodes().Get(id);
+          RAY_CHECK(node_info) << "No GCS info for node " << id;
+          std::shared_ptr<ray::rpc::NodeManagerWorkerClient> raylet_client =
+              ray::rpc::NodeManagerWorkerClient::make(node_info->node_manager_address(),
+                                                      node_info->node_manager_port(),
+                                                      cc_manager);
+          return std::make_shared<ray::raylet::RayletClient>(std::move(raylet_client));
+        };
 
         plasma_client = std::make_shared<plasma::PlasmaClient>();
         node_manager = std::make_shared<ray::raylet::NodeManager>(
