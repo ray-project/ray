@@ -208,7 +208,11 @@ class RowBasedFileDatasink(_FileDatasink):
     def write_block(self, block: BlockAccessor, block_index: int, ctx: TaskContext):
         for row_index, row in enumerate(block.iter_rows(public_row_format=False)):
             filename = self.filename_provider.get_filename_for_row(
-                row, ctx[WRITE_UUID_KWARG_NAME], ctx.task_idx, block_index, row_index
+                row,
+                ctx.kwargs[WRITE_UUID_KWARG_NAME],
+                ctx.task_idx,
+                block_index,
+                row_index,
             )
             write_path = posixpath.join(self.path, filename)
             logger.debug(f"Writing {write_path} file.")
@@ -261,7 +265,7 @@ class BlockBasedFileDatasink(_FileDatasink):
 
     def write_block(self, block: BlockAccessor, block_index: int, ctx: TaskContext):
         filename = self.filename_provider.get_filename_for_block(
-            block, ctx[WRITE_UUID_KWARG_NAME], ctx.task_idx, block_index
+            block, ctx.kwargs[WRITE_UUID_KWARG_NAME], ctx.task_idx, block_index
         )
         write_path = posixpath.join(self.path, filename)
 
