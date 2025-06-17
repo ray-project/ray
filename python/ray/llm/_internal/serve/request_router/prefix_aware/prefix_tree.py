@@ -139,9 +139,7 @@ class PrefixTree:
         """
         with self.lock:
             if tenant not in self.tenant_to_char_count:
-                logger.debug(
-                    f"[_insert_node_into_linked_list] Tenant '{tenant}' does not exist. No action taken."
-                )
+                logger.debug(f"Tenant '{tenant}' does not exist. No action taken.")
                 return
 
             # Skip if node is the root
@@ -166,9 +164,7 @@ class PrefixTree:
         """
         with self.lock:
             if tenant not in self.tenant_to_char_count:
-                logger.debug(
-                    f"[_remove_node_from_linked_list] Tenant '{tenant}' does not exist. No action taken."
-                )
+                logger.debug(f"Tenant '{tenant}' does not exist. No action taken.")
                 return
 
             # Skip if node is the root
@@ -206,13 +202,11 @@ class PrefixTree:
         """
         with self.lock:
             if tenant not in self.tenant_to_char_count:
-                logger.debug(
-                    f"[_remove_tenant_single_node] Tenant '{tenant}' does not exist. No action taken."
-                )
+                logger.debug(f"Tenant '{tenant}' does not exist. No action taken.")
                 return 0
             if tenant not in node.tenant_to_last_access_time:
                 logger.debug(
-                    f"[_remove_tenant_single_node] Tenant '{tenant}' does not have node '{node.text}'. No action taken."
+                    f"Tenant '{tenant}' does not have node '{node.text}'. No action taken."
                 )
                 return 0
 
@@ -244,9 +238,7 @@ class PrefixTree:
         with self.lock:
             for tenant in tenants:
                 if tenant in self.tenant_to_char_count:
-                    logger.debug(
-                        f"[_add_tenants] Tenant '{tenant}' already exists. Skipping."
-                    )
+                    logger.debug(f"Tenant '{tenant}' already exists. Skipping.")
                     continue
 
                 self.tenant_to_char_count[tenant] = 0
@@ -283,7 +275,7 @@ class PrefixTree:
         with self.lock:
             if tenant not in self.tenant_to_char_count:
                 logger.debug(
-                    f"[_insert] Tenant '{tenant}' does not exist. Use add_tenants() first."
+                    f"Tenant '{tenant}' does not exist. Use add_tenants() first."
                 )
                 return
 
@@ -468,9 +460,7 @@ class PrefixTree:
         with self.lock:
             for tenant in tenants:
                 if tenant not in self.tenant_to_char_count:
-                    logger.debug(
-                        f"[_remove_tenants] Tenant '{tenant}' does not exist. Skipping."
-                    )
+                    logger.debug(f"Tenant '{tenant}' does not exist. Skipping.")
                     chars_removed[tenant] = 0
                     continue
 
@@ -513,13 +503,13 @@ class PrefixTree:
         with self.lock:
             if tenant not in self.tenant_to_char_count:
                 logger.debug(
-                    f"[_evict_tenant_by_lru] Cannot evict tenant '{tenant}': tenant does not exist. No action taken."
+                    f"Cannot evict tenant '{tenant}': tenant does not exist. No action taken."
                 )
                 return 0
 
             if self.tenant_to_char_count[tenant] < min_remove_size:
                 logger.debug(
-                    f"[_evict_tenant_by_lru] Cannot evict {min_remove_size} characters from tenant '{tenant}', which has only "
+                    f"Cannot evict {min_remove_size} characters from tenant '{tenant}', which has only "
                     f"{self.tenant_to_char_count[tenant]} characters. Will remove all available characters."
                 )
                 min_remove_size = self.tenant_to_char_count[tenant]
@@ -573,8 +563,9 @@ class PrefixTree:
     def start_eviction_loop(
         self, eviction_threshold: int, eviction_target: int, interval_secs: float
     ) -> bool:
-        """Start a single eviction loop within the actor itself
-        Parameters:
+        """Start a single eviction loop within the actor itself.
+
+        Args:
             eviction_threshold: Minimum number of characters a tenant must have to be evicted
             eviction_target: The maximum number of characters a tenant should have after eviction
             interval_secs: Number of seconds between eviction checks
@@ -591,7 +582,7 @@ class PrefixTree:
                 )
                 return True
             else:
-                logger.debug("[_start_eviction_loop] Eviction loop already running")
+                logger.debug("Eviction loop already running")
                 return False
 
     async def _run_eviction_loop(

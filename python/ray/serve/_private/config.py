@@ -205,6 +205,9 @@ class DeploymentConfig(BaseModel):
         default=DEFAULT_REQUEST_ROUTER_PATH
     )
 
+    # Keyword arguments that will be passed to the request router class.
+    request_router_kwargs: Dict[str, Any] = Field(default={})
+
     class Config:
         validate_assignment = True
         arbitrary_types_allowed = True
