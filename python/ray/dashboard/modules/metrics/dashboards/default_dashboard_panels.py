@@ -383,11 +383,11 @@ DEFAULT_GRAFANA_PANELS = [
     Panel(
         id=50,
         title="Node TPU Tensorcore Utilization (Percentage)",
-        description="Percentage of tensorcore utilization for the TPUs on this node.",
+        description="Percentage of tensorcore utilization for the TPUs on this node. Computed by dividing the number of tensorcore operations by the maximum supported number of operations during the sample period.",
         unit="%",
         targets=[
             Target(
-                expr='sum(ray_tpu_tensorcore_utilization{{instance=~"$Instance",{global_filters}}}) by (instance, TpuIndex, TpuDeviceName)',
+                expr='sum(ray_tpu_tensorcore_utilization{{instance=~"$Instance",{global_filters}}}) by (instance, TpuIndex, TpuDeviceName) * 100',
                 legend="Tensorcore Utilization: {{instance}}, tpu.{{TpuIndex}}, {{TpuType}}, {{TpuTopology}}",
             ),
         ],
@@ -395,11 +395,11 @@ DEFAULT_GRAFANA_PANELS = [
     Panel(
         id=51,
         title="Node TPU High Bandwidth Memory Utilization (Percentage)",
-        description="Percentage of HBM utilization for the TPUs on this node.",
+        description="Percentage of bandwidth memory utilization for the TPUs on this node. Computed by dividing the memory bandwidth used by the maximum supported memory bandwidth limit during the sample period.",
         unit="%",
         targets=[
             Target(
-                expr='sum(ray_tpu_memory_bandwidth_utilization{{instance=~"$Instance",{global_filters}}}) by (instance, TpuIndex, TpuDeviceName)',
+                expr='sum(ray_tpu_memory_bandwidth_utilization{{instance=~"$Instance",{global_filters}}}) by (instance, TpuIndex, TpuDeviceName) * 100',
                 legend="Memory Bandwidth Utilization: {{instance}}, tpu.{{TpuIndex}}, {{TpuType}}, {{TpuTopology}}",
             ),
         ],
@@ -407,11 +407,11 @@ DEFAULT_GRAFANA_PANELS = [
     Panel(
         id=52,
         title="Node TPU Duty Cycle (Percentage)",
-        description="Percentage of duty cycle for the TPUs on this node.",
+        description="Percentage of time over the sample period during which the TPU is actively processing.",
         unit="%",
         targets=[
             Target(
-                expr='sum(ray_tpu_duty_cycle{{instance=~"$Instance",{global_filters}}}) by (instance, TpuIndex, TpuDeviceName) or vector(0)',
+                expr='sum(ray_tpu_duty_cycle{{instance=~"$Instance",{global_filters}}}) by (instance, TpuIndex, TpuDeviceName) or vector(0) * 100',
                 legend="Duty Cycle: {{instance}}, tpu.{{TpuIndex}}, {{TpuType}}, {{TpuTopology}}",
             ),
         ],
@@ -419,8 +419,8 @@ DEFAULT_GRAFANA_PANELS = [
     Panel(
         id=53,
         title="Node TPU Memory Used",
-        description="Memory used for the TPUs on this node.",
-        unit="%",
+        description="Total memory used/allocated for the TPUs on this node.",
+        unit="bytes",
         targets=[
             Target(
                 expr='sum(ray_tpu_memory_used{{instance=~"$Instance",{global_filters}}}) by (instance, TpuIndex, TpuDeviceName) or vector(0)',
