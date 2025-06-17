@@ -85,10 +85,10 @@ By default, logical resources are configured by the following rule.
 
     Ray **does not permit dynamic updates of resource capacities after Ray has been started on a node**.
 
-- **Number of logical CPUs (``num_cpus``)**: Set to the number of CPUs of the machine/container.
-- **Number of logical GPUs (``num_gpus``)**: Set to the number of GPUs of the machine/container.
-- **Memory (``memory``)**: Set to 70% of "available memory" when ray runtime starts.
-- **Object Store Memory (``object_store_memory``)**: Set to 30% of "available memory" when ray runtime starts. Note that the object store memory is not logical resource, and users cannot use it for scheduling.
+- **Number of logical CPUs** (``num_cpus``): Set to the number of CPUs of the machine/container.
+- **Number of logical GPUs** (``num_gpus``): Set to the number of GPUs of the machine/container.
+- **Memory** (``memory``): Set to 70% of "available memory" when ray runtime starts.
+- **Object Store Memory** (``object_store_memory``): Set to 30% of "available memory" when ray runtime starts. Note that the object store memory is not logical resource, and users cannot use it for scheduling.
 
 However, you can always override that by manually specifying the quantities of pre-defined resources and adding custom resources.
 There are several ways to do that depending on how you start the Ray cluster:
