@@ -60,13 +60,25 @@ class ProtocolsProvider:
         elif protocol == "s3":
             try:
                 import boto3
+                from botocore.config import Config
                 from smart_open import open as open_file
             except ImportError:
                 raise ImportError(
                     "You must `pip install smart_open[s3]` "
                     "to fetch URIs in s3 bucket. " + cls._MISSING_DEPENDENCIES_WARNING
                 )
-            tp = {"client": boto3.client("s3")}
+            tp = {
+                "client": boto3.client(
+                    "s3",
+                    config=Config(
+                        s3={
+                            "addressing_style": os.environ.get(
+                                "AWS_ADDRESSING_STYLE", "auto"
+                            )
+                        }
+                    ),
+                )
+            }
         elif protocol == "gs":
             try:
                 from google.cloud import storage  # noqa: F401
