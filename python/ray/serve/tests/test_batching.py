@@ -283,6 +283,7 @@ async def test_observability_helpers(
 async def send_k_requests(
     signal_actor: SignalActor, k: int, min_num_batches: float
 ) -> None:
+    """Send k requests and wait until at least min_num_batches are waiting."""
     await signal_actor.send.remote(True)  # type: ignore[attr-defined]
     async with httpx.AsyncClient() as client:
         for _ in range(k):
