@@ -245,7 +245,6 @@ if setup_spec.type == SetupType.RAY:
         "data": [
             numpy_dep,
             pandas_dep,
-            "polars>=1.30.0,<2.0.0",
             *pyarrow_deps,
             "fsspec",
         ],
