@@ -328,9 +328,9 @@ python/ray/_private/worker.py
     DOC201: Function `remote` does not have a return section in docstring
 --------------------
 python/ray/actor.py
-    DOC101: Function `method`: Docstring contains fewer arguments than in function signature.
+    DOC102: Function `method`: Docstring contains more arguments than in function signature.
     DOC106: Function `method`: The option `--arg-type-hints-in-signature` is `True` but there are no argument type hints in the signature
-    DOC103: Function `method`: Docstring arguments are different from function arguments. (Or could be other formatting issues: https://jsh9.github.io/pydoclint/violation_codes.html#notes-on-doc103 ). Arguments in the function signature but not in the docstring: [**kwargs: , *args: ]. Arguments in the docstring but not in the function signature: [num_returns: ].
+    DOC103: Function `method`: Docstring arguments are different from function arguments. (Or could be other formatting issues: https://jsh9.github.io/pydoclint/violation_codes.html#notes-on-doc103 ). Arguments in the function signature but not in the docstring: [**kwargs: , *args: ]. Arguments in the docstring but not in the function signature: [concurrency_group: , max_task_retries: , num_returns: , retry_exceptions: , tensor_transport: ].
     DOC201: Function `method` does not have a return section in docstring
     DOC107: Method `ActorMethod.__init__`: The option `--arg-type-hints-in-signature` is `True` but not all args in the signature have type hints
     DOC101: Method `ActorMethod.options`: Docstring contains fewer arguments than in function signature.

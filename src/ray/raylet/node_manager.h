@@ -926,8 +926,8 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
   /// indicate network issues (dropped/duplicated/ooo packets, etc).
   int64_t next_resource_seq_no_;
 
-  /// Whether or not if the shutdown raylet request has been received.
-  bool is_shutdown_request_received_ = false;
+  /// Whether or not if the shutdown raylet request has been initiated and in progress.
+  bool is_shutting_down_ = false;
 
   /// Ray syncer for synchronization
   syncer::RaySyncer ray_syncer_;
