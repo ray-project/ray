@@ -52,7 +52,7 @@ from ray.dashboard.modules.version import CURRENT_VERSION, VersionResponse
 from ray.dashboard.subprocesses.module import SubprocessModule
 from ray.dashboard.subprocesses.routes import SubprocessRouteTable as routes
 from ray.dashboard.subprocesses.utils import ResponseType
-
+import ray._private.ray_constants as ray_constants
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
 
@@ -463,6 +463,7 @@ class JobHead(SubprocessModule):
         )
         logger.info(f"Uploading package {package_uri} to the GCS.")
         try:
+            req = req.clone(client_max_size = ray_constants.RAY_HTTP_REQUEST_ENTITY_MAX_SIZE)
             data = await req.read()
             await get_or_create_event_loop().run_in_executor(
                 None,
