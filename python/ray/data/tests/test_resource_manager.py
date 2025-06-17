@@ -128,7 +128,7 @@ class TestResourceManager:
                 DataContext.get_current(),
             )
             expected_resource = ExecutionResources(4, 1, 0)
-            # The first call should call get_total_resources().
+            # The first call should call ray.cluster_resources().
             assert resource_manager.get_global_limits() == expected_resource
             assert get_total_resources.call_count == 1
             # The second call should return the cached value.
