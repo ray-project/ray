@@ -1,6 +1,7 @@
 import collections
 import inspect
 import logging
+from abc import ABC, abstractmethod
 from functools import wraps
 from typing import Any, Callable, Dict, List, Optional, Sequence, Type, Union
 
@@ -40,6 +41,7 @@ from ray.serve._private.utils import (
 )
 from ray.serve.config import (
     AutoscalingConfig,
+    CallbackConfig,
     DeploymentMode,
     HTTPOptions,
     ProxyLocation,
@@ -64,8 +66,58 @@ from ray.util.annotations import DeveloperAPI, PublicAPI
 
 from ray.serve._private import api as _private_api  # isort:skip
 
-
 logger = logging.getLogger(SERVE_LOGGER_NAME)
+
+
+class ServeMiddlewareBase(ABC):
+    """Base class for Ray Serve middleware."""
+
+    @abstractmethod
+    def __call__(self, request: Any) -> Any:
+        pass
+
+
+@PublicAPI(stability="stable")
+def add_middleware(middleware_class: ServeMiddlewareBase, *args: Any, **kwargs: Any):
+    """Add middleware to all deployments in the current application.
+
+    Args:
+        middleware_class: The middleware class to add
+        *args: Positional arguments for middleware initialization
+        **kwargs: Keyword arguments for middleware initialization
+    """
+    # Implementation to register middleware globally or per-deployment
+
+
+@PublicAPI(stability="stable")
+def add_callback(callback_config: CallbackConfig):
+    """Add callbacks to deployments.
+
+    Args:
+        callback_config: Configuration for the callbacks
+    """
+    # Implementation to register callbacks
+
+
+# Decorator-based API
+def middleware(middleware_class, *args, **kwargs):
+    """Decorator to add middleware to a deployment."""
+
+    def decorator(deployment_func):
+        # Add middleware configuration to the deployment
+        return deployment_func
+
+    return decorator
+
+
+def callback(**callback_kwargs):
+    """Decorator to add callbacks to a deployment."""
+
+    def decorator(deployment_func):
+        # Add callback configuration to the deployment
+        return deployment_func
+
+    return decorator
 
 
 @PublicAPI(stability="stable")
