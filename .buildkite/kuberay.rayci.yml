@@ -9,7 +9,7 @@ steps:
     tags:
       - python
       - docker
-    instance_type: medium
+    instance_type: large
     commands:
       - bash ci/k8s/run-operator-tests.sh
     docker_network: "host"

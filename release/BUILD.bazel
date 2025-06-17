@@ -282,6 +282,16 @@ py_binary(
     name = "run_release_test",
     srcs = ["ray_release/scripts/run_release_test.py"],
     deps = [":ray_release"],
+    data = glob(
+        ["**/*.yaml"],
+        exclude = ["ray_release/**/*.yaml"],
+    ) + [
+        "//python/ray/autoscaler/aws:test_configs",
+        "//python/ray/autoscaler/gcp:test_configs",
+    ] + glob(
+        ["**/*.py"],
+        exclude = ["ray_release/tests/*.py"],
+    )
 )
 
 py_library(
@@ -297,6 +307,7 @@ py_library(
         "ray_release/buildkite/aws_instance_types.csv",
         "ray_release/schema.json",
         "//doc:example_configs",
+        "//doc/source/train/examples/pytorch/distributing-pytorch/ci:ci_yamls",
     ],
     imports = ["."],
     visibility = ["//visibility:public"],
@@ -566,6 +577,21 @@ py_test(
     tags = [
         "release_unit",
         "team:ci",
+    ],
+    deps = [
+        ":ray_release",
+        bk_require("pytest"),
+    ],
+)
+
+py_test(
+    name = "test_kuberay_util",
+    size = "small",
+    srcs = ["ray_release/tests/test_kuberay_util.py"],
+    exec_compatible_with = ["//:hermetic_python"],
+    tags = [
+        "release_unit",
+        "team:ci"
     ],
     deps = [
         ":ray_release",
