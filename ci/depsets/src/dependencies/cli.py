@@ -6,6 +6,7 @@ from typing import Dict, List, Optional
 from dependencies.depset import DepSet, Dep, parse_compiled_requirements
 import subprocess
 import logging
+import os
 
 # Set up logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
@@ -68,7 +69,7 @@ class DependencySetManager:
             depset_path.unlink()
         del self.depsets[name]
 
-    def compile_depset(self, constraints: List[str], requirements: List[str], name: str, generate_hashes: bool, header: bool, no_cache: bool):
+    def compile_depset(self, constraints: List[str], requirements: List[str], generate_hashes: bool, header: bool, no_cache: bool, name: str):
         args = []
         if generate_hashes:
             args.append("--generate-hashes")
@@ -92,32 +93,27 @@ class DependencySetManager:
             if dep.name in packages:
                 new_depset.dependencies.append(dep)
 
-        with open(req_name, "w") as f:
-            f.write(new_depset.to_txt())
+        self.write_to_requirements_file(new_depset, req_name)
         self.create_depset(name, req_name)
+        return self.get_depset(name)
 
-    def expand_depset(self, source: str, constraints: List[str], name: str):
-        source_depset = self.depsets[source]
-        req_name = f"{name}.txt"
-        new_depset = DepSet(req_name)
-
-        for dep in source_depset.dependencies:
-            found_constraint = False
+    def expand_depset(self, sources: List[str], constraints: List[str], generate_hashes: bool, header: bool, no_cache: bool,name: str ):
+        args = []
+        if generate_hashes:
+            args.append("--generate-hashes")
+        if not header:
+            args.append("--no-header")
+        if no_cache:
+            args.append("--no-cache")
+        if constraints:
             for constraint in constraints:
-                if dep.name in constraint:
-                    new_depset.dependencies.append(Dep.from_requirement(constraint))
-                    found_constraint = True
-                    break
-            if not found_constraint:
-                new_depset.dependencies.append(dep)
-
-        with open(req_name, "w") as f:
-            f.write(new_depset.to_txt())
-        self.create_depset(name, req_name)
+                args.extend(["-c", constraint])
+        args.extend(["-o", f"{self.storage_path}/{name}.txt"])
+        args.extend([" ".join(self.depsets[source].requirements_fp for source in sources)])
+        return self.exec_uv__cmd("compile", args)
 
     def build_dag(self, source: str):
         source_depset = self.depsets[source]
-        print(f"# of deps for depset {source}: {len(source_depset.dependencies)}")
         with open(f"{source}_deps.txt", "w") as f:
             for dep in source_depset.dependencies:
                 f.write(f"{dep}\n")
@@ -129,14 +125,19 @@ class DependencySetManager:
     def relax_depset(self, source: str, degree: int, name: str):
         source_depset = self.depsets[source]
         n_degree_deps = source_depset.dep_dag.relax(degree)
-        with open(f"{name}_relaxed.txt", "w") as f:
+
+        # Expand ~ to home directory
+        packages_path = os.path.expanduser(f"~/repos/ray/ci/depsets/backup/{name}_relaxed.txt")
+        with open(packages_path, "w") as f:
             for item in sorted(n_degree_deps):
                 f.write(f"{item}\n")
+
+
         # Copy the requirements file to our storage location
         output_path = self.storage_path / f"{name}.txt"
         with open(output_path, "w") as req_file:
             for dep in n_degree_deps:
-                dep_obj = next((d for d in source_depset.dependencies if dep in d.name), None)
+                dep_obj = next((d for d in source_depset.dependencies if dep==d.name.split("==")[0].split(" ")[0]), None)
                 if dep_obj is None:
                     continue
                 req_file.write(f"{dep_obj}\n")
@@ -149,12 +150,17 @@ class DependencySetManager:
         self.exec_uv__cmd("compile", [source_depset.requirements_fp, "-o", f"\"{depset_path}\"", "--python-version", version, flags if flags else ""])
 
     def exec_uv__cmd(self, cmd: str, args: List[str]) -> str:
-        cmd = f"uv pip {cmd} {" ".join(args)}"
+        cmd = f"uv pip {cmd} {' '.join(args)}"
         click.echo(f"Executing command: {cmd}")
         status = subprocess.run(cmd, shell=True)
         if status.returncode != 0:
             raise Exception(f"Failed to execute command: {cmd}")
         return status.stdout
+
+    def write_to_requirements_file(self, depset: DepSet, path: str):
+        with open(path, "w") as f:
+            for dep in sorted(depset.dependencies, key=lambda x: x.name):
+                f.write(f"{dep}\n")
 
 @click.group(name="depsets")
 @click.option("--verbose", "-v", is_flag=True, help="Enable verbose output")
@@ -205,8 +211,9 @@ def show(name: str):
         click.echo(f"Error: Dependency set {name} not found.", err=True)
         return
     click.echo(f"Dependency set from: {depset.requirements_fp}")
+    click.echo(f"# of dependencies: {len(depset.dependencies)}")
     click.echo("Dependencies:")
-    for dep in depset.dependencies:
+    for dep in sorted(depset.dependencies, key=lambda x: x.name):
         click.echo(f"- {dep}")
 
 @cli.command()
@@ -223,16 +230,16 @@ def delete(name: str):
 @cli.command()
 @click.option("--constraints", type=str, help="comma separated list of absolute filepaths for constraint files")
 @click.option("--requirements", type=str, help="filename for requirements file")
-@click.option("--output", type=str, required=True, help="filename for output file")
 @click.option("--generate-hashes", type=bool, default=True, help="generate hashes")
 @click.option("--header", type=bool, default=False, help="no header")
 @click.option("--no-cache", type=bool, default=False, help="no header")
-def compile(constraints: str, requirements: str, output: str, generate_hashes: bool, header: bool, no_cache: bool):
+@click.argument("name", required=True)
+def compile(constraints: str, requirements: str, generate_hashes: bool, header: bool, no_cache: bool, name: str):
     """Compile a dependency set."""
     try:
         manager = DependencySetManager()
-        manager.compile_depset(constraints.split(",") if constraints else [], requirements.split(",") if requirements else [], output, generate_hashes, header, no_cache)
-        click.echo(f"Compiled dependency set {output}")
+        manager.compile_depset(constraints.split(",") if constraints else [], requirements.split(",") if requirements else [], generate_hashes, header, no_cache, name)
+        click.echo(f"Compiled dependency set {name}")
     except ValueError as e:
         click.echo(f"Error: {str(e)}", err=True)
 
@@ -244,25 +251,28 @@ def subset(source: str, packages: str, name: str):
     """Subset a dependency set."""
     try:
         manager = DependencySetManager()
-        with open(packages, "r") as f:
+        # Expand ~ to home directory
+        packages_path = os.path.expanduser(packages)
+        with open(packages_path, "r") as f:
             packages = f.read().splitlines()
-        manager.subset_depset(source, packages, name)
-        click.echo(f"Created subset {name} from {source} with {len(packages)} dependencies")
+        new_depset = manager.subset_depset(source, packages, name)
+        click.echo(f"Created subset {name} from {source} with {len(new_depset.dependencies)} dependencies")
     except ValueError as e:
         click.echo(f"Error: {str(e)}", err=True)
 
 @cli.command()
-@click.option("--source", type=str, help="name of source depset")
-@click.option("--constraints", type=str, help="filename for constraints file")
+@click.option("--source", type=str, help="name of source depset(s) separated by comma")
+@click.option("--constraints", type=str, help="filename for constraint(s) file(s) separated by comma")
+@click.option("--generate-hashes", type=bool, default=True, help="generate hashes")
+@click.option("--header", type=bool, default=False, help="no header")
+@click.option("--no-cache", type=bool, default=False, help="no header")
 @click.argument("name")
-def expand(source: str, constraints: str, name: str):
-    """Subset a dependency set."""
+def expand(source: str, constraints: str, name: str, generate_hashes: bool, header: bool, no_cache: bool):
+    """Expand a dependency set."""
     try:
         manager = DependencySetManager()
-        with open(constraints, "r") as f:
-            constraints = f.read().splitlines()
-        manager.expand_depset(source, constraints, name)
-        click.echo(f"Created subset {name} from {source} with {len(constraints)} constraints")
+        manager.expand_depset(source.split(",") if source else [], constraints.split(",") if constraints else [], generate_hashes, header, no_cache, name)
+        click.echo(f"Expanded {name} from {source}")
     except ValueError as e:
         click.echo(f"Error: {str(e)}", err=True)
 
