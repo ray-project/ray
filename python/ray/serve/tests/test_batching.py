@@ -1,13 +1,17 @@
 import asyncio
+import math
+from collections.abc import Callable
 from concurrent.futures.thread import ThreadPoolExecutor
 from functools import partial
-from typing import Dict, List, Optional
+from typing import List, Optional
 
 import httpx
 import pytest
 from starlette.responses import StreamingResponse
 
 from ray import serve
+from ray._common.test_utils import SignalActor, async_wait_for_condition
+from ray.serve.batching import _RuntimeSummaryStatistics
 
 
 def test_batching(serve_instance):
@@ -205,7 +209,12 @@ def test_batching_client_dropped_streaming(serve_instance):
 
 
 @pytest.mark.asyncio
-async def test_observability_helpers():
+@pytest.mark.parametrize("max_concurrent_batches", [1, 10])
+@pytest.mark.parametrize("max_batch_size", [1, 10])
+@pytest.mark.parametrize("n_requests", [1, 10])
+async def test_observability_helpers(
+    n_requests: int, max_batch_size: int, max_concurrent_batches: int
+) -> None:
     """Checks observability helper methods that are used for batching.
 
     Tests three observability helper methods:
@@ -216,17 +225,25 @@ async def test_observability_helpers():
         * _get_handling_task_stack: returns the stack for the batch-handler task.
     """
 
-    @serve.deployment(name="batcher")
+    signal_actor = SignalActor.remote()
+
+    @serve.deployment(
+        name="batcher", max_ongoing_requests=max_concurrent_batches * max_batch_size
+    )
     class Batcher:
-        @serve.batch(max_batch_size=3)
+        @serve.batch(
+            max_batch_size=max_batch_size,
+            max_concurrent_batches=max_concurrent_batches,
+            batch_wait_timeout_s=0.1,
+        )
         async def handle_batch(self, requests):
-            await asyncio.sleep(1)
+            await signal_actor.wait.remote()  # wait until the outer signal actor is released
             return [0] * len(requests)
 
         async def __call__(self, request):
             return await self.handle_batch(request)
 
-        async def _get_curr_iteration_start_times(self) -> Dict[asyncio.Task, float]:
+        async def _get_curr_iteration_start_times(self) -> _RuntimeSummaryStatistics:
             return self.handle_batch._get_curr_iteration_start_times()
 
         async def _is_batching_task_alive(self) -> bool:
@@ -240,25 +257,49 @@ async def test_observability_helpers():
 
     assert await handle._is_batching_task_alive.remote()
 
-    async with httpx.AsyncClient() as client:
-        task = asyncio.create_task(client.get("http://localhost:8000/"))
-        await asyncio.sleep(0.1)  # yield control to the above task
-        prev_iter_times = await handle._get_curr_iteration_start_times.remote()
-        await task
+    min_num_batches = min(
+        math.ceil(n_requests / max_batch_size), max_concurrent_batches
+    )
 
+    await send_k_requests(signal_actor, n_requests, min_num_batches)
+    prev_iter_times = await handle._get_curr_iteration_start_times.remote()
+    await signal_actor.send.remote()  # unblock the batch handler now that we have the iter times
+
+    assert len(prev_iter_times.start_times) >= min_num_batches
     assert len(await handle._get_handling_task_stack.remote()) is not None
     assert await handle._is_batching_task_alive.remote()
 
-    async with httpx.AsyncClient() as client:
-        futures = [client.get("http://localhost:8000/") for _ in range(5)]
-        tasks = [asyncio.create_task(future) for future in futures]
-        await asyncio.sleep(0.1)  # yield control to the above tasks
-        new_iter_times = await handle._get_curr_iteration_start_times.remote()
-        await asyncio.gather(*tasks)
+    await send_k_requests(signal_actor, n_requests, min_num_batches)
+    new_iter_times = await handle._get_curr_iteration_start_times.remote()
+    await signal_actor.send.remote()  # unblock the batch handler now that we have the iter times
+
+    assert len(new_iter_times.start_times) >= min_num_batches
+    assert len(await handle._get_handling_task_stack.remote()) is not None
+    assert await handle._is_batching_task_alive.remote()
 
     assert new_iter_times.min_start_time > prev_iter_times.max_start_time
-    assert len(await handle._get_handling_task_stack.remote()) is not None
-    assert await handle._is_batching_task_alive.remote()
+
+
+async def send_k_requests(
+    signal_actor: SignalActor, k: int, min_num_batches: float
+) -> None:
+    await signal_actor.send.remote(True)  # type: ignore[attr-defined]
+    async with httpx.AsyncClient() as client:
+        for _ in range(k):
+            asyncio.create_task(client.get("http://localhost:8000/"))
+        await wait_for_n_waiters(
+            signal_actor, lambda num_waiters: num_waiters >= min_num_batches
+        )
+
+
+async def wait_for_n_waiters(
+    signal_actor: SignalActor, condition: Callable[[int], bool]
+) -> None:
+    async def poll() -> bool:
+        num_waiters: int = await signal_actor.cur_num_waiters.remote()  # type: ignore[attr-defined]
+        return condition(num_waiters)
+
+    return await async_wait_for_condition(poll)
 
 
 if __name__ == "__main__":
