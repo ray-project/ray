@@ -105,10 +105,10 @@ if __name__ == "__main__":
 
     args = parser.parse_args()
 
-    if args.use_polars and not args.shuffle:
+    if args.use_polars_sort and not args.shuffle:
         print("Using polars for sort")
         ctx = DataContext.get_current()
-        ctx.use_polars = True
+        ctx.use_polars_sort = True
     ctx = DataContext.get_current()
     if args.limit_num_blocks is not None:
         DataContext.get_current().set_config(
