@@ -82,7 +82,14 @@ class DataParallelTrainer:
         self.datasets = datasets or {}
         self.data_config = dataset_config or DataConfig()
 
-        self.train_run_context = TrainRunContext(self.run_config)
+        self.train_run_context = TrainRunContext(
+            run_config=self.run_config,
+            train_loop_config=self.train_loop_config,
+            scaling_config=self.scaling_config,
+            backend_config=self.backend_config,
+            datasets=self.datasets,
+            dataset_config=self.data_config,
+        )
 
         if resume_from_checkpoint is not None:
             raise DeprecationWarning(_RESUME_FROM_CHECKPOINT_DEPRECATION_WARNING)

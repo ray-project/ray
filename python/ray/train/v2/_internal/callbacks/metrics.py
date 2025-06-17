@@ -27,7 +27,7 @@ class ControllerMetricsCallback(ControllerCallback, WorkerGroupCallback):
         self._run_id = train_run_context.run_id
         self._metrics: Optional[Dict[str, Metric]] = None
 
-    def after_controller_start(self):
+    def after_controller_start(self, train_run_context: TrainRunContext):
         """Initialize metrics after controller starts."""
         self._metrics = ControllerMetrics.get_controller_metrics(
             self._run_name, self._run_id

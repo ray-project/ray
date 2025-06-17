@@ -131,14 +131,15 @@ class TrainContextFilter(logging.Filter):
         WORKER = "worker"
 
     def __init__(self, context: TrainRunContext):
-        self._run_name: str = context.get_run_config().name
         self._is_worker: bool = isinstance(context, TrainContext)
         if self._is_worker:
+            self._run_name: str = context.train_run_context.get_run_config().name
             self._world_rank: int = context.get_world_rank()
             self._local_rank: int = context.get_local_rank()
             self._node_rank: int = context.get_node_rank()
             self._component: str = TrainContextFilter.TrainComponent.WORKER
         else:
+            self._run_name: str = context.get_run_config().name
             self._component: str = TrainContextFilter.TrainComponent.CONTROLLER
 
     def controller_filter(self, record):
