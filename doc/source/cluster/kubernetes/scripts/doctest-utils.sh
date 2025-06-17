@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 
-KUBERAY_VERSION="1.3.0"
+KUBERAY_VERSION="1.4.0-rc.2"
 
 script_name=$(basename "$0")
 
