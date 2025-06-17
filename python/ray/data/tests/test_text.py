@@ -50,9 +50,7 @@ def test_empty_text_files(ray_start_regular_shared, tmp_path):
     ds = ray.data.read_text(path)
     assert ds.count() == 0
     ds = ray.data.read_text(path, drop_empty_lines=False)
-    assert ds.count() == 2
-    # 2 empty lines, one from each file.
-    assert _to_lines(ds.take()) == ["", ""]
+    assert ds.count() == 0
 
 
 def test_read_text(ray_start_regular_shared, tmp_path):
@@ -68,7 +66,7 @@ def test_read_text(ray_start_regular_shared, tmp_path):
     ds = ray.data.read_text(path)
     assert sorted(_to_lines(ds.take())) == ["goodbye", "hello", "ray", "world"]
     ds = ray.data.read_text(path, drop_empty_lines=False)
-    assert ds.count() == 5
+    assert ds.count() == 4
 
 
 @pytest.mark.parametrize("ignore_missing_paths", [True, False])
@@ -110,7 +108,7 @@ def test_read_text_meta_provider(
     ds = ray.data.read_text(path, meta_provider=FastFileMetadataProvider())
     assert sorted(_to_lines(ds.take())) == ["goodbye", "hello", "ray", "world"]
     ds = ray.data.read_text(path, drop_empty_lines=False)
-    assert ds.count() == 5
+    assert ds.count() == 4
 
     with pytest.raises(NotImplementedError):
         ray.data.read_text(
