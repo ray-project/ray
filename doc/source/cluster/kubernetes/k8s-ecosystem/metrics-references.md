@@ -2,7 +2,7 @@
 
 # KubeRay metrics references
 
-## Controller runtime metrics
+## `controller-runtime` metrics
 KubeRay is built with Controller Runtime, which natively exposes metrics that KubeRay includes in its metrics. These metrics include:
 - Reconciliation counts like success, error, and requeue
 - Length of the reconcile queue
@@ -10,11 +10,11 @@ KubeRay is built with Controller Runtime, which natively exposes metrics that Ku
 - CPU, memory, and file descriptor usage
 - Go runtime stats like Goroutines and GC duration
 
-For more information, see [[Default Exported Metrics References](https://book.kubebuilder.io/reference/metrics-reference#default-exported-metrics-references)](https://book.kubebuilder.io/reference/metrics-reference).
+For more details about the default metrics provided by [kubernetes-sigs/controller-runtime](https://github.com/kubernetes-sigs/controller-runtime), see [Default Exported Metrics References](https://book.kubebuilder.io/reference/metrics-reference).
 
 ## KubeRay custom metrics
 
-Starting with KubeRay 1.4.0, KubeRay provides metrics for the three custom resources: RayCluster, RayService, and RayJob.
+Starting with KubeRay 1.4.0, KubeRay provides metrics for its custom resources to help users better understand Ray clusters and Ray applications.
 
 You can view these metrics by following the instructions below:
 ```sh
@@ -45,7 +45,7 @@ curl localhost:8080/metrics
 | `kuberay_service_condition_ready`                | Gauge | Describes whether the RayService is ready. Ready means users can send requests to the underlying cluster and the number of serve endpoints is greater than 0. See [RayServiceReady](https://github.com/ray-project/kuberay/blob/33ee6724ca2a429c77cb7ff5821ba9a3d63f7c34/ray-operator/apis/ray/v1/rayservice_types.go#L135) for more information.                                           | `namespace`: &lt;RayService-namespace&gt;<br/> `name`: &lt;RayService-name&gt;                                             |
 | `kuberay_service_condition_upgrade_in_progress`  | Gauge | Describes whether the RayService is performing a zero-downtime upgrade. See [UpgradeInProgress](https://github.com/ray-project/kuberay/blob/33ee6724ca2a429c77cb7ff5821ba9a3d63f7c34/ray-operator/apis/ray/v1/rayservice_types.go#L137) for more information.                                         | `namespace`: &lt;RayService-namespace&gt;<br/> `name`: &lt;RayService-name&gt;                                              |
 
-### Rayjob metrics
+### RayJob metrics
 
 | Metric name                                       | Type  | Description                                                | Labels                                                                   |
 |--------------------------------------------------|-------|------------------------------------------------------------|---------------------------------------------------------------------------|
