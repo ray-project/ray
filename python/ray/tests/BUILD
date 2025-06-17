@@ -612,11 +612,30 @@ py_test_module_list(
 py_test_module_list(
     size = "medium",
     files = [
-        "test_gpu_objects.py",
+        "test_gpu_objects_gloo.py",
     ],
     tags = [
         "exclusive",
         "gpu_objects",
+        "no_windows",
+        "team:core",
+    ],
+    deps = [
+        ":conftest",
+        "//:ray_lib",
+    ],
+)
+
+py_test_module_list(
+    size = "medium",
+    env = {"RAY_PYTEST_USE_GPU": "1"},
+    files = [
+        "test_gpu_objects_nccl.py",
+    ],
+    tags = [
+        "exclusive",
+        "gpu_objects",
+        "multi_gpu",
         "no_windows",
         "team:core",
     ],
