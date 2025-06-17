@@ -117,4 +117,4 @@ def plan_write_op(
     write_uuid = uuid.uuid4().hex
     map_operator.add_map_task_kwargs_fn(lambda: {WRITE_UUID_KWARG_NAME: write_uuid})
 
-    return write_uuid
+    return map_operator
