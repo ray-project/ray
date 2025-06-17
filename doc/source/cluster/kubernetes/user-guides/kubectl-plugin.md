@@ -47,18 +47,30 @@ Assume that you have installed the KubeRay operator. If not, follow the [KubeRay
 
 ### Example 1: RayCluster Management
 
-The `kubectl ray create cluster` command allows you to create a valid RayCluster without an existing YAML file. The default values are follows:
+The `kubectl ray create cluster` command allows you to create a valid RayCluster without an existing YAML file. The default values are follows (empty values mean unset):
 
-| Parameter       | Default                        |
-|-----------------|--------------------------------|
-| ray version     | 2.41.0                         |
-| ray image       | rayproject/ray:\<ray version\> |
-| head CPU        | 2                              |
-| head memory     | 4Gi                            |
-| worker replicas | 1                              |
-| worker CPU      | 2                              |
-| worker memory   | 4Gi                            |
-| worker GPU      | 0                              |
+| Parameter                                           | Default                        |
+|-----------------------------------------------------|--------------------------------|
+| K8s labels                                          |                                |
+| K8s annotations                                     |                                |
+| ray version                                         | 2.46.0                         |
+| ray image                                           | rayproject/ray:\<ray version\> |
+| head CPU                                            | 2                              |
+| head memory                                         | 4Gi                            |
+| head GPU                                            | 0                              |
+| head ephemeral storage                              |                                |
+| head `ray start` parameters                         |                                |
+| head node selectors                                 |                                |
+| worker replicas                                     | 1                              |
+| worker CPU                                          | 2                              |
+| worker memory                                       | 4Gi                            |
+| worker GPU                                          | 0                              |
+| worker TPU                                          | 0                              |
+| worker ephemeral storage                            |                                |
+| worker `ray start` parameters                       |                                |
+| worker node selectors                               |                                |
+| Number of hosts in default worker group per replica | 1                              |
+| Autoscaler version (v1 or v2)                       |                                |
 
 ```text
 $ kubectl ray create cluster raycluster-sample
@@ -169,16 +181,18 @@ print(ray.get(futures)) # [0, 1, 4, 9]
 
 You can submit a RayJob without specifying a YAML file. The command generates a RayJob based on the following:
 
-| Parameter       | Default                        |
-|-----------------|--------------------------------|
-| ray version     | 2.41.0                         |
-| ray image       | rayproject/ray:\<ray version\> |
-| head CPU        | 2                              |
-| head memory     | 4Gi                            |
-| worker replicas | 1                              |
-| worker CPU      | 2                              |
-| worker memory   | 4Gi                            |
-| worker GPU      | 0                              |
+| Parameter                                     | Default                        |
+|-----------------------------------------------|--------------------------------|
+| ray version                                   | 2.46.0                         |
+| ray image                                     | rayproject/ray:\<ray version\> |
+| head CPU                                      | 2                              |
+| head memory                                   | 4Gi                            |
+| head GPU                                      | 0                              |
+| worker replicas                               | 1                              |
+| worker CPU                                    | 2                              |
+| worker memory                                 | 4Gi                            |
+| worker GPU                                    | 0                              |
+| TTL to clean up RayClsuter after job finished | 0                              |
 
 ```text
 $ kubectl ray job submit --name rayjob-sample --working-dir . -- python sample_code.py
