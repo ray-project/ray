@@ -14,13 +14,10 @@ try:
     from ray.util.collective.collective_group.nccl_collective_group import NCCLGroup
 
     _NCCL_AVAILABLE = True
+    _LOG_NCCL_WARNING = False
 except ImportError:
     _NCCL_AVAILABLE = False
-    logger.warning(
-        "NCCL seems unavailable. Please install Cupy "
-        "following the guide at: "
-        "https://docs.cupy.dev/en/stable/install.html."
-    )
+    _LOG_NCCL_WARNING = True
 
 try:
     from ray.util.collective.collective_group.gloo_collective_group import GLOOGroup
@@ -41,6 +38,14 @@ except ImportError:
 
 
 def nccl_available():
+    global _LOG_NCCL_WARNING
+    if ray.get_gpu_ids() and _LOG_NCCL_WARNING:
+        logger.warning(
+            "NCCL seems unavailable. Please install Cupy "
+            "following the guide at: "
+            "https://docs.cupy.dev/en/stable/install.html."
+        )
+        _LOG_NCCL_WARNING = False
     return _NCCL_AVAILABLE
 
 
