@@ -15,7 +15,6 @@
 #pragma once
 
 #include <boost/asio.hpp>
-#include <boost/asio/error.hpp>
 #include <memory>
 #include <string>
 
@@ -55,7 +54,7 @@ class Raylet {
          std::shared_ptr<gcs::GcsClient> gcs_client,
          int metrics_export_port,
          bool is_head_node,
-         std::function<void(const rpc::NodeDeathInfo &)> shutdown_raylet_gracefully);
+         std::shared_ptr<NodeManager> node_manager);
 
   /// Start this raylet.
   void Start();
@@ -97,7 +96,7 @@ class Raylet {
   /// A client connection to the GCS.
   std::shared_ptr<gcs::GcsClient> gcs_client_;
   /// Manages client requests for task submission and execution.
-  std::unique_ptr<NodeManager> node_manager_;
+  std::shared_ptr<NodeManager> node_manager_;
   /// The name of the socket this raylet listens on.
   std::string socket_name_;
 
@@ -105,12 +104,6 @@ class Raylet {
   boost::asio::basic_socket_acceptor<local_stream_protocol> acceptor_;
   /// The socket to listen on for new clients.
   local_stream_socket socket_;
-
-  rpc::ClientCallManager client_call_manager_;
-
-  rpc::CoreWorkerClientPool worker_rpc_pool_;
-
-  plasma::PlasmaClient plasma_client_;
 };
 
 }  // namespace ray::raylet
