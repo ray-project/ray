@@ -56,6 +56,14 @@ class RunAttemptStatus(str, Enum):
     ABORTED = "ABORTED"
 
 
+def is_terminal_run_attempt_status(status: RunAttemptStatus) -> bool:
+    return status in [
+        RunAttemptStatus.FINISHED,
+        RunAttemptStatus.ERRORED,
+        RunAttemptStatus.ABORTED,
+    ]
+
+
 @DeveloperAPI
 class ActorStatus(str, Enum):
     """Enumeration of the statuses for a Train worker actor."""

@@ -38,6 +38,24 @@ from ray.train.v2._internal.state.state_actor import (
 from ray.train.v2._internal.state.state_manager import TrainStateManager
 from ray.train.v2.api.config import RunConfig
 from ray.train.v2.api.exceptions import TrainingFailedError
+from ray.train.v2.tests.util import (
+    create_mock_train_run,
+    create_mock_train_run_attempt,
+)
+from ray.util.state.common import ActorState
+
+
+def create_mock_actor_state(state: ActorStatus):
+    return ActorState(
+        state=state,
+        actor_id="mock_actor_id",
+        class_name="mock_class_name",
+        job_id="mock_job_id",
+        name="mock_name",
+        node_id="mock_node_id",
+        pid=1234,
+        ray_namespace="mock_ray_namespace",
+    )
 
 
 @pytest.fixture(scope="function")
@@ -193,6 +211,155 @@ def test_train_state_actor_create_and_get_run_attempt(ray_start_regular):
     ray.get(actor.create_or_update_train_run_attempt.remote(updated_attempt))
     attempts = ray.get(actor.get_train_run_attempts.remote())
     assert attempts["test_run"]["attempt_1"].status == RunAttemptStatus.RUNNING
+
+
+def test_train_state_actor_abort_dead_controller_live_runs(
+    ray_start_regular, monkeypatch
+):
+    # Monkeypatch get_actor to return correct actor state per controller actor ID.
+    def get_actor(actor_id: str):
+        if actor_id == "nonexistent_controller_no_attempts_id":
+            return None
+        if actor_id in [
+            "dead_controller_one_attempt_id",
+            "dead_controller_two_attempts_id",
+            "finished_controller_id",
+        ]:
+            return create_mock_actor_state(state="DEAD")
+        if actor_id == "live_controller_one_attempt_id":
+            return create_mock_actor_state(state="ALIVE")
+        raise ValueError(f"Unknown actor {actor_id}.")
+
+    monkeypatch.setattr("ray.train.v2._internal.state.state_actor.get_actor", get_actor)
+    monkeypatch.setattr("uuid.uuid4", lambda: MagicMock(hex="mock_uuid"))
+    monkeypatch.setattr("time.time_ns", lambda: 1000)
+
+    # Create TrainStateActor with interesting runs and run attempts.
+    actor = TrainStateActor()
+    actor._runs = {
+        "nonexistent_controller_no_attempts_run_id": create_mock_train_run(
+            status=RunStatus.INITIALIZING,
+            controller_actor_id="nonexistent_controller_no_attempts_id",
+            id="nonexistent_controller_no_attempts_run_id",
+        ),
+        "dead_controller_one_attempt_run_id": create_mock_train_run(
+            status=RunStatus.INITIALIZING,
+            controller_actor_id="dead_controller_one_attempt_id",
+            id="dead_controller_one_attempt_run_id",
+        ),
+        "dead_controller_two_attempts_run_id": create_mock_train_run(
+            status=RunStatus.SCHEDULING,
+            controller_actor_id="dead_controller_two_attempts_id",
+            id="dead_controller_two_attempts_run_id",
+        ),
+        "finished_controller_run_id": create_mock_train_run(
+            status=RunStatus.FINISHED,
+            controller_actor_id="finished_controller_id",
+            id="finished_controller_run_id",
+        ),
+        "live_controller_one_attempt_run_id": create_mock_train_run(
+            status=RunStatus.RUNNING,
+            controller_actor_id="live_controller_one_attempt_id",
+            id="live_controller_one_attempt_run_id",
+        ),
+    }
+    actor._run_attempts = {
+        "nonexistent_controller_no_attempts_run_id": {},
+        "dead_controller_one_attempt_run_id": {
+            "attempt_1": create_mock_train_run_attempt(
+                attempt_id="attempt_1",
+                status=RunAttemptStatus.PENDING,
+                run_id="dead_controller_one_attempt_run_id",
+            ),
+        },
+        "dead_controller_two_attempts_run_id": {
+            "attempt_1": create_mock_train_run_attempt(
+                attempt_id="attempt_1",
+                status=RunAttemptStatus.ERRORED,
+                run_id="dead_controller_two_attempts_run_id",
+            ),
+            "attempt_2": create_mock_train_run_attempt(
+                status=RunAttemptStatus.RUNNING,
+                attempt_id="attempt_2",
+                run_id="dead_controller_two_attempts_run_id",
+            ),
+        },
+        "finished_controller_run_id": {},
+        "live_controller_one_attempt_run_id": {
+            "attempt_1": create_mock_train_run_attempt(
+                status=RunAttemptStatus.RUNNING,
+                run_id="live_controller_one_attempt_run_id",
+                attempt_id="attempt_1",
+            ),
+        },
+    }
+
+    # Assert correct runs and run attempts get aborted.
+    actor._abort_dead_controller_live_runs()
+    assert actor._runs == {
+        "nonexistent_controller_no_attempts_run_id": create_mock_train_run(
+            status=RunStatus.ABORTED,
+            controller_actor_id="nonexistent_controller_no_attempts_id",
+            end_time_ns=1000,
+            id="nonexistent_controller_no_attempts_run_id",
+        ),
+        "dead_controller_one_attempt_run_id": create_mock_train_run(
+            status=RunStatus.ABORTED,
+            controller_actor_id="dead_controller_one_attempt_id",
+            end_time_ns=1000,
+            id="dead_controller_one_attempt_run_id",
+        ),
+        "dead_controller_two_attempts_run_id": create_mock_train_run(
+            status=RunStatus.ABORTED,
+            controller_actor_id="dead_controller_two_attempts_id",
+            end_time_ns=1000,
+            id="dead_controller_two_attempts_run_id",
+        ),
+        "finished_controller_run_id": create_mock_train_run(
+            status=RunStatus.FINISHED,
+            controller_actor_id="finished_controller_id",
+            id="finished_controller_run_id",
+        ),
+        "live_controller_one_attempt_run_id": create_mock_train_run(
+            status=RunStatus.RUNNING,
+            controller_actor_id="live_controller_one_attempt_id",
+            id="live_controller_one_attempt_run_id",
+        ),
+    }
+    assert actor._run_attempts == {
+        "nonexistent_controller_no_attempts_run_id": {},
+        "dead_controller_one_attempt_run_id": {
+            "attempt_1": create_mock_train_run_attempt(
+                status=RunAttemptStatus.ABORTED,
+                run_id="dead_controller_one_attempt_run_id",
+                attempt_id="attempt_1",
+                end_time_ns=1000,
+                worker_status=ActorStatus.DEAD,
+            )
+        },
+        "dead_controller_two_attempts_run_id": {
+            "attempt_1": create_mock_train_run_attempt(
+                status=RunAttemptStatus.ERRORED,
+                run_id="dead_controller_two_attempts_run_id",
+                attempt_id="attempt_1",
+            ),
+            "attempt_2": create_mock_train_run_attempt(
+                status=RunAttemptStatus.ABORTED,
+                run_id="dead_controller_two_attempts_run_id",
+                attempt_id="attempt_2",
+                end_time_ns=1000,
+                worker_status=ActorStatus.DEAD,
+            ),
+        },
+        "finished_controller_run_id": {},
+        "live_controller_one_attempt_run_id": {
+            "attempt_1": create_mock_train_run_attempt(
+                status=RunAttemptStatus.RUNNING,
+                run_id="live_controller_one_attempt_run_id",
+                attempt_id="attempt_1",
+            ),
+        },
+    }
 
 
 def test_train_state_manager_run_lifecycle(ray_start_regular):

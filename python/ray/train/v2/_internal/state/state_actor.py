@@ -6,6 +6,7 @@ from collections import defaultdict
 from typing import Dict, Optional
 
 import ray
+from ray._private import ray_constants
 from ray._private.event.export_event_logger import (
     EventLogType,
     check_export_api_enabled,
@@ -13,13 +14,16 @@ from ray._private.event.export_event_logger import (
 )
 from ray.actor import ActorHandle
 from ray.train.v2._internal.constants import (
+    DEFAULT_ENABLE_STATE_ACTOR_POLLING,
     DEFAULT_STATE_ACTOR_POLL_INTERVAL_S,
+    ENABLE_STATE_ACTOR_POLLING_ENV_VAR,
     STATE_ACTOR_POLL_INTERVAL_S_ENV_VAR,
     get_env_vars_to_propagate,
 )
 from ray.train.v2._internal.state.schema import (
     TrainRun,
     TrainRunAttempt,
+    is_terminal_run_attempt_status,
     is_terminal_run_status,
 )
 from ray.train.v2._internal.state.util import (
@@ -45,16 +49,52 @@ class TrainStateActor:
             self._is_train_run_export_api_enabled,
             self._is_train_run_attempt_export_api_enabled,
         ) = self._init_export_logger()
-        self._poll_interval_s = float(
-            os.getenv(
-                STATE_ACTOR_POLL_INTERVAL_S_ENV_VAR, DEFAULT_STATE_ACTOR_POLL_INTERVAL_S
+        # TODO: consider row level locking.
+        self._runs_lock = threading.Lock()
+        self._run_attempts_lock = threading.Lock()
+
+        if ray_constants.env_bool(
+            ENABLE_STATE_ACTOR_POLLING_ENV_VAR,
+            DEFAULT_ENABLE_STATE_ACTOR_POLLING,
+        ):
+            self._poll_interval_s = float(
+                os.getenv(
+                    STATE_ACTOR_POLL_INTERVAL_S_ENV_VAR,
+                    DEFAULT_STATE_ACTOR_POLL_INTERVAL_S,
+                )
             )
-        )
-        self._latest_poll_time = float("-inf")
-        self._start_controller_polling_thread()
+            self._latest_poll_time = float("-inf")
+            self._start_controller_polling_thread()
+
+    def _abort_dead_controller_live_runs(self) -> None:
+        # Get runs to abort.
+        with self._runs_lock:
+            non_terminal_runs = [
+                run
+                for run in self._runs.values()
+                if not is_terminal_run_status(run.status)
+            ]
+
+        for run in non_terminal_runs:
+            # Abort the runs.
+            actor_state = get_actor(run.controller_actor_id)
+            if not actor_state or actor_state.state == "DEAD":
+                update_train_run_aborted(run)
+                self.create_or_update_train_run(run)
+
+                # Abort the run attempts.
+                with self._run_attempts_lock:
+                    non_terminal_run_attempts = [
+                        run_attempt
+                        for run_attempt in self._run_attempts.get(run.id, {}).values()
+                        if not is_terminal_run_attempt_status(run_attempt.status)
+                    ]
+                for run_attempt in non_terminal_run_attempts:
+                    update_train_run_attempt_aborted(run_attempt)
+                    self.create_or_update_train_run_attempt(run_attempt)
 
     def _start_controller_polling_thread(self) -> None:
-        def _poll_controller():
+        def _poll_controller_continuously():
             while True:
                 # Wait for the poll interval to elapse.
                 time_since_last_poll = time_monotonic() - self._latest_poll_time
@@ -64,29 +104,20 @@ class TrainStateActor:
                     )
                     time.sleep(remaining_time)
 
-                # Abort live runs/attempts whose controllers are dead.
-                for run_id, run in self._runs.items():
-                    if is_terminal_run_status(run.status):
-                        continue
-                    actor_state = get_actor(run.controller_actor_id)
-                    if not actor_state or actor_state.state == "DEAD":
-                        update_train_run_aborted(run)
-                        self.create_or_update_train_run(run)
-                        for run_attempt in self._run_attempts.get(run_id, {}).values():
-                            update_train_run_attempt_aborted(run_attempt)
-                            self.create_or_update_train_run_attempt(run_attempt)
-
+                self._abort_dead_controller_live_runs()
                 self._latest_poll_time = time_monotonic()
 
-        thread = threading.Thread(target=_poll_controller)
+        thread = threading.Thread(target=_poll_controller_continuously, daemon=True)
         thread.start()
 
     def create_or_update_train_run(self, run: TrainRun) -> None:
-        self._runs[run.id] = run
+        with self._runs_lock:
+            self._runs[run.id] = run
         self._maybe_export_train_run(run)
 
     def create_or_update_train_run_attempt(self, run_attempt: TrainRunAttempt) -> None:
-        self._run_attempts[run_attempt.run_id][run_attempt.attempt_id] = run_attempt
+        with self._run_attempts_lock:
+            self._run_attempts[run_attempt.run_id][run_attempt.attempt_id] = run_attempt
         self._maybe_export_train_run_attempt(run_attempt)
 
     def get_train_runs(self) -> Dict[str, TrainRun]:

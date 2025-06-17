@@ -59,9 +59,11 @@ ENABLE_WORKER_STRUCTURED_LOGGING_ENV_VAR = "RAY_TRAIN_ENABLE_WORKER_STRUCTURED_L
 DEFAULT_ENABLE_CONTROLLER_LOGGING = "1"
 DEFAULT_ENABLE_WORKER_LOGGING = "1"
 
-# Polling interval for the Train state actor.
+# Environment variables to configure polling interval for Train state actor.
 # This determines how many seconds the state actor will wait between
 # polling the controller for its status.
+ENABLE_STATE_ACTOR_POLLING_ENV_VAR = "RAY_TRAIN_ENABLE_STATE_ACTOR_POLLING"
+DEFAULT_ENABLE_STATE_ACTOR_POLLING = "1"
 STATE_ACTOR_POLL_INTERVAL_S_ENV_VAR = "RAY_TRAIN_STATE_ACTOR_POLL_INTERVAL_S"
 DEFAULT_STATE_ACTOR_POLL_INTERVAL_S: float = 30.0
 
