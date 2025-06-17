@@ -74,7 +74,7 @@ class RLlibGateway:
                 }
                 catch (const py::error_already_set& e)
                 {
-                    std::cerr << "[Python error in `get_action`]\n" << e.what() << std::endl;
+                    std::cerr << "[Python error in get_action]\n" << e.what() << std::endl;
                     break;
                 }
 
@@ -92,7 +92,7 @@ class RLlibGateway:
                         );
                     }
                     catch (const py::error_already_set& e) {
-                        std::cerr << "[Python error in `get_action` (episode done)]\n" << e.what() << std::endl;
+                        std::cerr << "[Python error in get_action (episode done)]\n" << e.what() << std::endl;
                         break;
                     }
                     // Episode is done, reset it to start a new one.

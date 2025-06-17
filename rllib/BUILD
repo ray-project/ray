@@ -5070,7 +5070,6 @@ py_test(
     args = [
         "--enable-new-api-stack",
         "--as-test",
-        "--framework=torch",
     ],
     # Include the offline data files.
     data = ["tests/data/cartpole/cartpole-v1_large"],
