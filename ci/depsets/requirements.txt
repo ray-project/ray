@@ -4,5 +4,8 @@
 #
 #    pip-compile
 #
-click==8.1.7
+click>=8.0.0
     # via depsets (setup.py)
+uv>=0.1.0
+    # for UV package management
+pathlib2; python_version<"3.4"
