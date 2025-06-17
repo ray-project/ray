@@ -14,7 +14,6 @@ from typing import (
     Union,
 )
 
-from ray.air._internal.torch_utils import convert_ndarray_batch_to_torch_tensor_batch
 from ray.data.iterator import DataIterator
 from ray.rllib.connectors.env_to_module import EnvToModulePipeline
 from ray.rllib.core import (
@@ -65,6 +64,7 @@ if TYPE_CHECKING:
 torch, _ = try_import_torch()
 
 TOTAL_EVAL_LOSS_KEY = "total_eval_loss"
+
 
 # TODO (simon): Implement more ...
 class OfflinePolicyEvaluationTypes(str, Enum):
@@ -232,6 +232,11 @@ class OfflinePolicyEvaluationRunner(Runner, Checkpointable):
             )
 
     def _create_batch_iterator(self, **kwargs) -> Iterable:
+
+        # Import the torch utils here b/c Ray Air imports `torch`` directly.
+        from ray.air._internal.torch_utils import (
+            convert_ndarray_batch_to_torch_tensor_batch,
+        )
 
         # Define the collate function that converts the flattened dictionary
         # to a `MultiAgentBatch` with Tensors.
