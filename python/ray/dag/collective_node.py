@@ -17,7 +17,6 @@ from ray.experimental.util.types import (
     AllReduceOp,
     ReduceScatterOp,
     BroadcastOp,
-    ReduceOp,
     ReduceOperation,
 )
 from ray.util.annotations import DeveloperAPI
