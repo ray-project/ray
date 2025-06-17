@@ -1,4 +1,5 @@
 import itertools
+import uuid
 from typing import Callable, Iterator, List, Union
 
 from pandas import DataFrame
@@ -16,6 +17,8 @@ from ray.data.block import Block, BlockAccessor
 from ray.data.context import DataContext
 from ray.data.datasource.datasink import Datasink, WriteResult
 from ray.data.datasource.datasource import Datasource
+
+WRITE_UUID_KWARG_NAME = "write_uuid"
 
 
 def gen_datasink_write_result(
@@ -98,7 +101,7 @@ def plan_write_op(
         BlockMapTransformFn(collect_stats_fn),
     ]
     map_transformer = MapTransformer(transform_fns)
-    return MapOperator.create(
+    map_operator = MapOperator.create(
         map_transformer,
         input_physical_dag,
         data_context,
@@ -108,3 +111,10 @@ def plan_write_op(
         min_rows_per_bundle=op._min_rows_per_bundled_input,
         compute_strategy=TaskPoolStrategy(op._concurrency),
     )
+
+    # Add a UUID to write tasks to prevent filename collisions. This a UUID for the
+    # overall write operation, not the individual write tasks.
+    write_uuid = uuid.uuid4().hex
+    map_operator.add_map_task_kwargs_fn(lambda: {WRITE_UUID_KWARG_NAME: write_uuid})
+
+    return write_uuid
