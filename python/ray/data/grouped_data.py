@@ -539,6 +539,72 @@ class GroupedData:
         """
         return self._aggregate_on(Std, on, ignore_nulls=ignore_nulls, ddof=ddof)
 
+    @PublicAPI(api_group=CDS_API_GROUP)
+    def random_sample(
+        self,
+        frac: float,
+        *,
+        random_state: Optional[int] = None,
+    ) -> "Dataset":
+        """Returns a new :class:`Dataset` containing a random fraction of the rows for each group.
+
+        .. note::
+
+            This method returns roughly ``frac * total_rows`` rows per group. An exact number
+            of rows isn't guaranteed.
+
+        Examples:
+            >>> import ray
+            >>> ds = ray.data.from_items([{"A": 1, "B": 1}, {"A": 1, "B": 2}, {"A": 2, "B": 3}])
+            >>> ds.groupby("A").random_sample(0.5).count()  # doctest: +SKIP
+            1
+            >>> ds.groupby("A").random_sample(0.5, random_state=42).take(2)  # doctest: +SKIP
+            [{'A': 1, 'B': 1}, {'A': 2, 'B': 3}]
+            >>> ds.groupby("A").random_sample(0.5, random_state=42).take(2)  # doctest: +SKIP
+            [{'A': 1, 'B': 1}, {'A': 2, 'B': 3}]
+
+        Args:
+            frac: The fraction of elements to sample from each group.
+            random_state: Seeds the python random pRNG generator.
+
+        Returns:
+            Returns a :class:`Dataset` containing the sampled rows.
+        """
+        import numpy as np
+        import pandas as pd
+        import pyarrow as pa
+
+        if frac < 0 or frac > 1:
+            raise ValueError("Fraction must be between 0 and 1.")
+
+        from ray.data._internal.execution.interfaces.task_context import TaskContext
+
+        def _sample_group(batch: DataBatch, seed: Optional[int]):
+            ctx = TaskContext.get_current()
+
+            if "rng" in ctx.kwargs:
+                rng = ctx.kwargs["rng"]
+            elif seed is None:
+                rng = np.random.default_rng()
+                ctx.kwargs["rng"] = rng
+            else:
+                rng = np.random.default_rng([ctx.task_idx, seed])
+                ctx.kwargs["rng"] = rng
+
+            mask_idx = np.where(rng.random(len(batch)) < frac)[0]
+            if isinstance(batch, pa.Table):
+                return batch.take(mask_idx)
+            elif isinstance(batch, pd.DataFrame):
+                return batch.iloc[mask_idx, :]
+
+            raise ValueError(f"Unsupported batch type: {type(batch)}")
+
+        return self.map_groups(
+            _sample_group,
+            fn_args=[random_state],
+            batch_format=None,
+        )
+
 
 # Backwards compatibility alias.
 GroupedDataset = GroupedData

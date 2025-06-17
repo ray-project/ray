@@ -2220,6 +2220,111 @@ def test_random_shuffle_spread(
         assert set(locations) == {node1_id, node2_id}
 
 
+@pytest.mark.parametrize("num_parts", [1, 30])
+@pytest.mark.parametrize("ds_format", ["pyarrow", "pandas"])
+def test_groupby_random_sample(
+    ray_start_regular_shared_2_cpus,
+    ds_format,
+    num_parts,
+    configure_shuffle_method,
+    disable_fallback_to_object_extension,
+):
+    # Test sampling with fraction
+    seed = int(time.time())
+    print(f"Seeding RNG for test_groupby_random_sample with: {seed}")
+    random.seed(seed)
+
+    # Create a dataset with 3 groups, each having 10 items
+    xs = list(range(30))
+    random.shuffle(xs)
+
+    def _to_batch_format(ds):
+        return ds.map_batches(lambda x: x, batch_size=None, batch_format=ds_format)
+
+    ds = ray.data.from_items([{"A": (x % 3), "B": x} for x in xs]).repartition(
+        num_parts
+    )
+    ds = _to_batch_format(ds)
+
+    # Test sampling with fraction
+    sampled_ds = ds.groupby("A").random_sample(frac=0.3, random_state=42)
+    # With 30 items and frac=0.3, we expect around 7-11 items due to randomness
+    expected_min, expected_max = 7, 11
+    sampled_count = sampled_ds.count()
+    print(f"Sampled count: {sampled_count}")
+    assert (
+        expected_min <= sampled_count <= expected_max
+    ), f"Expected {expected_min}-{expected_max} items, got {sampled_count}"
+
+    # Test reproducibility with same seed
+    sampled_ds2 = ds.groupby("A").random_sample(frac=0.3, random_state=42)
+    out1 = sampled_ds.take_all()
+    out2 = sampled_ds2.take_all()
+    assert out1 == out2, f"Mismatch in reproducible sampling:\n{out1}\nvs\n{out2}"
+
+    # Test different seed gives different results
+    sampled_ds3 = ds.groupby("A").random_sample(frac=0.3, random_state=43)
+    out3 = sampled_ds3.take_all()
+    assert out1 != out3, "Different seeds should produce different results"
+
+
+@pytest.mark.parametrize("num_parts", [1, 30])
+@pytest.mark.parametrize("ds_format", ["pyarrow", "pandas"])
+def test_groupby_random_sample_edge_cases(
+    ray_start_regular_shared_2_cpus,
+    ds_format,
+    num_parts,
+    configure_shuffle_method,
+    disable_fallback_to_object_extension,
+):
+    # Test edge cases for sampling
+    def _to_batch_format(ds):
+        return ds.map_batches(lambda x: x, batch_size=None, batch_format=ds_format)
+
+    # Test empty dataset
+    empty_ds = ray.data.from_items([]).repartition(num_parts)
+    empty_ds = _to_batch_format(empty_ds)
+    sampled_ds = empty_ds.groupby("A").random_sample(frac=0.5)
+    assert sampled_ds.count() == 0
+
+    # Test dataset with single group
+    single_group_ds = ray.data.from_items(
+        [{"A": 1, "B": i} for i in range(5)]
+    ).repartition(num_parts)
+    single_group_ds = _to_batch_format(single_group_ds)
+    sampled_ds = single_group_ds.groupby("A").random_sample(frac=0.5)
+    # With 5 items and frac=0.5, we expect around 2-3 items due to randomness
+    expected_min, expected_max = 2, 3
+    sampled_count = sampled_ds.count()
+    print(f"Single group sampled count: {sampled_count}")
+    assert (
+        expected_min <= sampled_count <= expected_max
+    ), f"Expected {expected_min}-{expected_max} items, got {sampled_count}"
+
+    # Test sampling with frac=0.0 (should return 0 items)
+    zero_frac_ds = ray.data.from_items(
+        [{"A": 1, "B": i} for i in range(5)]
+    ).repartition(num_parts)
+    zero_frac_ds = _to_batch_format(zero_frac_ds)
+    sampled_ds = zero_frac_ds.groupby("A").random_sample(frac=0.0)
+    assert sampled_ds.count() == 0
+
+    # Test sampling with frac=1.0 (should return all items)
+    full_frac_ds = ray.data.from_items(
+        [{"A": 1, "B": i} for i in range(5)]
+    ).repartition(num_parts)
+    full_frac_ds = _to_batch_format(full_frac_ds)
+    sampled_ds = full_frac_ds.groupby("A").random_sample(frac=1.0)
+    assert sampled_ds.count() == full_frac_ds.count()
+
+    # Test sampling with invalid parameters
+    with pytest.raises(ValueError):
+        full_frac_ds.groupby("A").random_sample(frac=-0.5)  # Invalid frac < 0
+
+    with pytest.raises(ValueError):
+        full_frac_ds.groupby("A").random_sample(frac=1.5)  # Invalid frac > 1
+
+
 if __name__ == "__main__":
     import sys
 
