@@ -977,6 +977,41 @@ async def test_get_upload_package(ray_start_context, tmp_path):
     await download_and_unpack_package(package_uri, str(tmp_path), gcs_client)
     assert (package_file.with_suffix("") / filename).read_bytes() == file_content
 
+@pytest.mark.asyncio
+async def test_overwrite_http_request_entity_size(ray_start_context, tmp_path):
+    os.environ[ray_constants.RAY_HTTP_REQUEST_ENTITY_MAX_SIZE] = '1'
+    assert wait_until_server_available(ray_start_context["webui_url"])
+    webui_url = format_web_url(ray_start_context["webui_url"])
+    gcs_client = ray._private.worker.global_worker.gcs_client
+    url = webui_url + "/api/packages/{protocol}/{package_name}"
+
+    pkg_dir = tmp_path / "pkg"
+    pkg_dir.mkdir()
+    filename = "task.py"
+
+    file_content = b"Hello world"
+    with (pkg_dir / filename).open("wb") as f:
+        f.write(file_content)
+
+    package_uri = get_uri_for_file(str(pkg_dir / filename))
+    protocol, package_name = uri_to_http_components(package_uri)
+    package_file = tmp_path / package_name
+    create_package(str(pkg_dir), package_file)
+
+    resp = requests.get(url.format(protocol=protocol, package_name=package_name))
+    assert resp.status_code == 404
+
+    resp = requests.put(
+        url.format(protocol=protocol, package_name=package_name),
+        data=package_file.read_bytes(),
+    )
+    assert resp.status_code == 200
+
+    resp = requests.get(url.format(protocol=protocol, package_name=package_name))
+    assert resp.status_code == 200
+
+    await download_and_unpack_package(package_uri, str(tmp_path), gcs_client)
+    assert (package_file.with_suffix("") / filename).read_bytes() == file_content
 
 if __name__ == "__main__":
     sys.exit(pytest.main(["-v", __file__]))
