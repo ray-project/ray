@@ -206,6 +206,14 @@ Status ActorTaskSubmitter::SubmitTask(TaskSpecification task_spec) {
   }
 
   if (task_queued) {
+    std::stringstream dependencies;
+    for (size_t i = 0; i < task_spec.NumArgs(); i++) {
+      if (task_spec.ArgByRef(i)) {
+        dependencies << task_spec.ArgId(i) << " ";
+      }
+    }
+    RAY_LOG(DEBUG).WithField(actor_id).WithField(task_id)
+        << "Submitting actor creation task with dependencies: " << dependencies.str();
     io_service_.post(
         [task_spec, send_pos, this]() mutable {
           // We must release the lock before resolving the task dependencies since
