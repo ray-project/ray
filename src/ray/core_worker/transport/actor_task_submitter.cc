@@ -95,8 +95,14 @@ Status ActorTaskSubmitter::SubmitActorCreationTask(TaskSpecification task_spec) 
   RAY_CHECK(task_spec.IsActorCreationTask());
   const auto actor_id = task_spec.ActorCreationId();
   const auto task_id = task_spec.TaskId();
+  std::stringstream dependencies;
+  for (size_t i = 0; i < task_spec.NumArgs(); i++) {
+    if (task_spec.ArgByRef(i)) {
+      dependencies << task_spec.ArgId(i) << " ";
+    }
+  }
   RAY_LOG(DEBUG).WithField(actor_id).WithField(task_id)
-      << "Submitting actor creation task";
+      << "Submitting actor creation task with dependencies: " << dependencies.str();
   resolver_.ResolveDependencies(task_spec, [this, task_spec](Status status) mutable {
     // NOTE: task_spec here is capture copied (from a stack variable) and also
     // mutable. (Mutations to the variable are expected to be shared inside and

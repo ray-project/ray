@@ -36,6 +36,8 @@ bool ObjectRecoveryManager::RecoverObject(const ObjectID &object_id) {
   bool ref_exists = reference_counter_.IsPlasmaObjectPinnedOrSpilled(
       object_id, &owned_by_us, &pinned_at, &spilled);
   if (!ref_exists) {
+    RAY_LOG(DEBUG).WithField(object_id)
+        << "Object does not exist in reference counter, cannot recover";
     // References that have gone out of scope cannot be recovered.
     return false;
   }
