@@ -429,6 +429,19 @@ class Dataset:
         """
         self._plan._dataset_name = name
 
+    @PublicAPI(api_group=IM_API_GROUP)
+    def explain(self) -> str:
+        """Print the execution plan for this dataset.
+
+        This method shows the logical plan structure including all transformations
+        and operations that will be applied when the dataset is executed.
+        """
+
+        plan_str = self._plan.get_plan_as_string(type(self))
+        print("Dataset execution plan:")
+        print(plan_str)
+        return plan_str
+
     @property
     @Deprecated(message="Use name() instead", warning=True)
     def _name(self) -> Optional[str]:
