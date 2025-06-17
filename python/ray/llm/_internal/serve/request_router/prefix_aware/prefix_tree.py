@@ -1,8 +1,9 @@
 from __future__ import annotations
 
-import asyncio
 import logging
 import os
+import threading
+import time
 from threading import RLock
 from typing import Any, Dict, List, Optional, Tuple
 
@@ -96,7 +97,8 @@ class PrefixTree:
 
         # LRU tracking - root is always the head, tail is the least recently used.
         self.tenant_to_lru_tail: Dict[str, Optional[Node]] = {}
-        self._eviction_task: Optional[asyncio.Task] = None
+        self._eviction_thread: Optional[threading.Thread] = None
+        self._eviction_stop_event: threading.Event = threading.Event()
 
     @staticmethod
     def _shared_prefix_count(a: str, b: str) -> int:
@@ -574,22 +576,20 @@ class PrefixTree:
             True if the loop was started, False if it was already running
         """
         with self.lock:
-            if self._eviction_task is None:
-                self._eviction_task = asyncio.create_task(
-                    self._run_eviction_loop(
-                        eviction_threshold, eviction_target, interval_secs
-                    )
+            if self._eviction_thread is None:
+                self._eviction_thread = threading.Thread(
+                    target=self._run_eviction_loop,
+                    args=(eviction_threshold, eviction_target, interval_secs),
                 )
+                self._eviction_thread.start()
                 return True
             else:
                 logger.debug("Eviction loop already running")
                 return False
 
-    async def _run_eviction_loop(
-        self, eviction_threshold, eviction_target, interval_secs
-    ):
-        while True:
-            await asyncio.sleep(interval_secs)
+    def _run_eviction_loop(self, eviction_threshold, eviction_target, interval_secs):
+        while not self._eviction_stop_event.is_set():
+            time.sleep(interval_secs)
             with self.lock:
                 for tenant, char_count in self.tenant_to_char_count.items():
                     if char_count > eviction_threshold:
@@ -598,10 +598,10 @@ class PrefixTree:
 
     def stop_eviction_loop(self):
         with self.lock:
-            if self._eviction_task:
-                self._eviction_task.cancel()
-                # self._eviction_task.close()
-                self._eviction_task = None
+            if self._eviction_thread:
+                self._eviction_stop_event.set()
+                self._eviction_thread.join()
+                self._eviction_thread = None
 
 
 @ray.remote
