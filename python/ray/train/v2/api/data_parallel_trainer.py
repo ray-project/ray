@@ -202,6 +202,8 @@ class DataParallelTrainer:
             return controller.get_result()
 
     def _register_sigint_handler(self, controller: TrainController):
+        """Register SIGINT handler so user Ctrl C gracefully aborts run."""
+
         def sigint_handler(signum, frame):
             try:
                 ray.get(controller.abort.remote())

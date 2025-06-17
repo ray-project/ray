@@ -1,22 +1,16 @@
 import os
-import signal
 import tempfile
-import time
-from multiprocessing import Process
 from pathlib import Path
 
 import pyarrow.fs
 import pytest
 
 import ray
-from ray.tests.client_test_utils import create_remote_signal_actor
 from ray.train import BackendConfig, Checkpoint, RunConfig, ScalingConfig, UserCallback
 from ray.train.backend import Backend
 from ray.train.constants import RAY_CHDIR_TO_TRIAL_DIR, _get_ray_train_session_dir
 from ray.train.tests.util import create_dict_checkpoint
-from ray.train.v2._internal.constants import (
-    is_v2_enabled,
-)
+from ray.train.v2._internal.constants import is_v2_enabled
 from ray.train.v2.api.data_parallel_trainer import DataParallelTrainer
 from ray.train.v2.api.exceptions import TrainingFailedError
 from ray.train.v2.api.result import Result
@@ -214,47 +208,6 @@ def test_user_callback(tmp_path):
     # The error should NOT be an assertion error from the user callback.
     with pytest.raises(TrainingFailedError):
         trainer.fit()
-
-
-def run_process_for_sigint_abort():
-    # Lives outside test_sigint_abort because cannot pickle nested functions.
-    ray.init(address="auto", ignore_reinit_error=True)
-
-    def train_fn():
-        signal_actor = ray.get_actor("signal_actor", namespace="test_sigint_abort")
-        ray.get(signal_actor.send.remote())
-        time.sleep(1000)  # SIGINT will shut this down
-
-    trainer = DataParallelTrainer(
-        train_fn,
-        scaling_config=ScalingConfig(num_workers=2),
-    )
-    trainer.fit()
-
-
-@pytest.mark.skip(
-    reason=(
-        "TODO(tseah): signal_actor.wait hangs in the CI. "
-        "Test works locally but if you run it enough times most test cases in this "
-        "file fail because `The raylet exited immediately because one Ray agent "
-        "failed, agent_name = dashboard_agent.`"
-    )
-)
-def test_sigint_abort():
-    SignalActor = create_remote_signal_actor(ray)
-    signal_actor = SignalActor.options(
-        name="signal_actor", namespace="test_sigint_abort"
-    ).remote()
-
-    process = Process(target=run_process_for_sigint_abort)
-    process.start()
-
-    ray.get(signal_actor.wait.remote())
-
-    os.kill(process.pid, signal.SIGINT)
-    process.join()
-    # Ideally would like to assert that controller actor is dead.
-    # However, list_actors() gets actors from other tests.
 
 
 if __name__ == "__main__":
