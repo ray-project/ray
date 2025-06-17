@@ -113,6 +113,9 @@ class ResourceManager:
         from ray.data.context import WARN_PREFIX
         from ray.util.debug import log_once
 
+        if not ray.is_initialized():
+            return
+
         cluster_resources = ray.cluster_resources()
         total_memory = cluster_resources.get("memory", 0)
         object_store_memory = cluster_resources.get("object_store_memory", 0)
