@@ -150,16 +150,10 @@ class ReadTask(Callable[[], Iterable[Block]]):
         read_fn: Callable[[], Iterable[Block]],
         metadata: BlockMetadata,
         schema: Optional["Schema"] = None,
-        paths: Optional[List[str]] = None,
     ):
         self._metadata = metadata
         self._read_fn = read_fn
         self._schema = schema
-        self._paths = paths
-
-    @property
-    def paths(self) -> Optional[List[str]]:
-        return self._paths
 
     @property
     def metadata(self) -> BlockMetadata:

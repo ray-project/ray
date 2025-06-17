@@ -48,9 +48,10 @@ def _derive_metadata(read_task: ReadTask, read_task_ref: ObjectRef) -> BlockMeta
         )
 
     return BlockMetadata(
-        num_rows=len(read_task.paths),
+        num_rows=1,
         size_bytes=task_size,
-        input_files=read_task.paths,
+        exec_stats=None,
+        input_files=None,
     )
 
 
