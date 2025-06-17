@@ -19,7 +19,7 @@ ConnectorV2 and ConnectorV2 Pipelines
     :class-container: container pb-3
 
     .. grid-item-card::
-        :img-top: /rllib/images/connector_v2/connector_v2.svg
+        :img-top: /rllib/images/connector_v2/connector_generic.svg
         :class-img-top: pt-2 w-75 d-block mx-auto fixed-height-img
 
         .. button-ref:: connector-v2-docs
