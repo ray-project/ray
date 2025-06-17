@@ -1079,11 +1079,11 @@ class AggregatorPool:
                     f"Aggregators may take longer to start due to resource contention."
                 )
 
-        logger.debug(
-            f"Resource check passed for hash shuffle operation: "
-            f"required CPUs={required_cpus}, available CPUs={available_cpus}, "
-            f"required memory={required_memory / GiB:.2f} GiB, available memory={available_memory / GiB:.2f} GiB"
-        )
+            logger.debug(
+                f"Resource check passed for hash shuffle operation: "
+                f"required CPUs={required_cpus}, available CPUs={available_cpus}, "
+                f"required memory={required_memory / GiB:.2f} GiB, available memory={available_memory / GiB:.2f} GiB"
+            )
 
     def _check_aggregator_health(self) -> None:
         """Check if all aggregators are up and running after a timeout period.
