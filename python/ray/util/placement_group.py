@@ -1,14 +1,14 @@
 import warnings
 from typing import Dict, List, Optional, Union
 
+from ray._common.utils import hex_to_binary, PLACEMENT_GROUP_BUNDLE_RESOURCE_NAME
 import ray
 from ray._private.auto_init_hook import auto_init_ray
 from ray._private.client_mode_hook import client_mode_should_convert, client_mode_wrap
-from ray._private.utils import hex_to_binary, get_ray_doc_version
+from ray._private.utils import get_ray_doc_version
 from ray._raylet import PlacementGroupID
 from ray.util.annotations import DeveloperAPI, PublicAPI
 from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
-import ray._private.ray_constants as ray_constants
 from ray._private.label_utils import validate_label_selector
 
 bundle_reservation_check = None
@@ -496,7 +496,7 @@ def _valid_resource_shape(resources, bundle_specs):
         for resource, requested_val in resources.items():
             # Skip "bundle" resource as it is automatically added
             # to all nodes with bundles by the placement group.
-            if resource == ray_constants.PLACEMENT_GROUP_BUNDLE_RESOURCE_NAME:
+            if resource == PLACEMENT_GROUP_BUNDLE_RESOURCE_NAME:
                 continue
             if bundle.get(resource, 0) < requested_val:
                 fit_in_bundle = False

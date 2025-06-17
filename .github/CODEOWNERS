@@ -98,8 +98,9 @@
 # LLM
 /python/ray/llm/ @ray-project/ray-llm
 
-# Serve (docs)
-/doc/source/serve/ @edoakes @zcin @GeneDer @akshay-anyscale @ray-project/ray-docs
+# Ray Serve
+/python/ray/serve/ @ray-project/ray-serve
+/doc/source/serve/ @ray-project/ray-serve @ray-project/ray-docs
 
 # ML Docker Dependencies
 /python/requirements/ml/dl-cpu-requirements.txt @richardliaw @matthewdeng
@@ -128,6 +129,10 @@
 .buildkite/hooks @ray-project/ray-ci
 
 /release/ray_release @ray-project/ray-ci
+
+# Allow people to add BYOD post-installation shell scripts
+# on their own.
+/release/ray_release/byod/*.sh
 
 /.github/ISSUE_TEMPLATE/ @aslonnie
 

@@ -34,7 +34,7 @@ from ray.data.block import (
     BlockColumn,
     BlockColumnAccessor,
     BlockExecStats,
-    BlockMetadata,
+    BlockMetadataWithSchema,
     BlockType,
     U,
 )
@@ -137,6 +137,9 @@ class ArrowRow(TableRow):
     def __len__(self):
         return self._row.num_columns
 
+    def as_pydict(self) -> Dict[str, Any]:
+        return dict(self.items())
+
 
 class ArrowBlockBuilder(TableBlockBuilder):
     def __init__(self):
@@ -195,11 +198,6 @@ class ArrowBlockAccessor(TableBlockAccessor):
         if pyarrow is None:
             raise ImportError("Run `pip install pyarrow` for Arrow support")
         super().__init__(table)
-        # Set the max chunk size in rows for Arrow to Batches conversion in
-        # ArrowBlockAccessor.iter_rows().
-        self._max_chunk_size = _get_max_chunk_size(
-            self._table, ARROW_MAX_CHUNK_SIZE_BYTES
-        )
 
     def column_names(self) -> List[str]:
         return self._table.column_names
@@ -404,7 +402,7 @@ class ArrowBlockAccessor(TableBlockAccessor):
     @staticmethod
     def merge_sorted_blocks(
         blocks: List[Block], sort_key: "SortKey"
-    ) -> Tuple[Block, BlockMetadata]:
+    ) -> Tuple[Block, BlockMetadataWithSchema]:
         stats = BlockExecStats.builder()
         blocks = [b for b in blocks if b.num_rows > 0]
         if len(blocks) == 0:
@@ -414,7 +412,7 @@ class ArrowBlockAccessor(TableBlockAccessor):
             blocks = TableBlockAccessor.normalize_block_types(blocks, BlockType.ARROW)
             concat_and_sort = get_concat_and_sort_transform(DataContext.get_current())
             ret = concat_and_sort(blocks, sort_key, promote_types=True)
-        return ret, ArrowBlockAccessor(ret).get_metadata(exec_stats=stats.build())
+        return ret, BlockMetadataWithSchema.from_block(ret, stats=stats.build())
 
     def block_type(self) -> BlockType:
         return BlockType.ARROW
@@ -424,6 +422,12 @@ class ArrowBlockAccessor(TableBlockAccessor):
     ) -> Iterator[Union[Mapping, np.ndarray]]:
         table = self._table
         if public_row_format:
+            if not hasattr(self, "_max_chunk_size"):
+                # Calling _get_max_chunk_size in constructor makes it slow, so we
+                # are calling it here only when needed.
+                self._max_chunk_size = _get_max_chunk_size(
+                    self._table, ARROW_MAX_CHUNK_SIZE_BYTES
+                )
             for batch in table.to_batches(max_chunksize=self._max_chunk_size):
                 yield from batch.to_pylist()
         else:
