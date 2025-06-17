@@ -5,7 +5,7 @@ import ray
 from ray.experimental.collective import create_collective_group
 
 
-@ray.remote(num_gpus=1)
+@ray.remote(num_gpus=1, num_cpus=0)
 class GPUTestActor:
     @ray.method(tensor_transport="nccl")
     def echo(self, data):
@@ -15,6 +15,7 @@ class GPUTestActor:
         return data.sum().item()
 
 
+@pytest.mark.parametrize("ray_start_regular", [{"num_gpus": 2}], indirect=True)
 def test_p2p(ray_start_regular):
     # TODO(swang): Add tests for mocked NCCL that can run on CPU-only machines.
     world_size = 2
