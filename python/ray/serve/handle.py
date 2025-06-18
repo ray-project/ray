@@ -196,6 +196,11 @@ class _DeploymentHandleBase:
             self.init_options, self.handle_options
         )
 
+        if hasattr(self._router, "callback_manager"):
+            asyncio.create_task(
+                self._router.callback_manager.trigger_request_start(metadata)
+            )
+
         self.request_counter.inc(
             tags={
                 "route": metadata.route,
@@ -203,7 +208,18 @@ class _DeploymentHandleBase:
             }
         )
 
-        return self._router.assign_request(metadata, *args, **kwargs), metadata
+        # Apply middleware stack if configured
+        if hasattr(self._router, "middleware_manager"):
+            wrapped_assign_request = (
+                self._router.middleware_manager.build_middleware_stack(
+                    self._router.assign_request
+                )
+            )
+            future = wrapped_assign_request(metadata, *args, **kwargs)
+        else:
+            future = self._router.assign_request(metadata, *args, **kwargs)
+
+        return future, metadata
 
     def __getattr__(self, name):
         return self.options(method_name=name)
