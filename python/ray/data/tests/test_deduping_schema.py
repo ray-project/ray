@@ -43,6 +43,7 @@ def test_dedupe_schema_handle_empty(
     else:
         # old_schema is valid
         assert diverged, (old_schema, incoming_schema)
+        assert incoming_schema != old_schema, (old_schema, incoming_schema)
         assert old_schema == out_bundle.schema, (old_schema, incoming_schema)
 
 
@@ -68,3 +69,9 @@ def test_dedupe_schema_divergence(
         assert out_bundle.schema == pa.schema(list(old_schema) + list(incoming_schema))
     else:
         assert out_bundle.schema == old_schema
+
+
+if __name__ == "__main__":
+    import sys
+
+    sys.exit(pytest.main(["-v", __file__]))
