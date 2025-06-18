@@ -2,13 +2,13 @@
 
 # Use KubeRay dashboard (experimental)
 
-Starting from KubeRay v1.4.0, you can use the open source dashboard UI for KubeRay. This component is still experimental and not considered ready for production, but feedbacks are welcome.
+Starting from KubeRay v1.4.0, you can use the open source dashboard UI for KubeRay. This component is still experimental and not considered ready for production, but feedback is welcome.
 
-KubeRay dashboard is a web-based UI that allows you to view and manage KubeRay resources running on your Kubernetes cluster. It is different from the Ray dashboard, which is a part of the Ray cluster itself. The KubeRay dashboard provides a centralized view of all KubeRay resources.
+KubeRay dashboard is a web-based UI that allows you to view and manage KubeRay resources running on your Kubernetes cluster. It's different from the Ray dashboard, which is a part of the Ray cluster itself. The KubeRay dashboard provides a centralized view of all KubeRay resources.
 
 ## Installation
 
-KubeRay dashboard depends on the optional component `kuberay-apiserver`, so you need to install it first. For simplicity, let's disable the security proxy and allow all origins for CORS.
+KubeRay dashboard depends on the optional component `kuberay-apiserver`, so you need to install it first. For simplicity, this guide disables the security proxy and allow all origins for Cross-Origin Resource Sharing.
 
 ```bash
 helm install kuberay-apiserver kuberay/kuberay-apiserver --version v1.4.0 --set security= --set cors.allowOrigin='*'
@@ -32,13 +32,13 @@ Port-forward the KubeRay dashboard:
 kubectl port-forward kuberay-dashboard 3000:3000
 ```
 
-Go to `http://localhost:3000/ray/jobs` to see the list of Ray jobs. It's empty for now. Let's create a RayJob custom resource to see how it works.
+Go to `http://localhost:3000/ray/jobs` to see the list of Ray jobs. It's empty for now. You can create a RayJob custom resource to see how it works.
 
 ```bash
 kubectl apply -f https://raw.githubusercontent.com/ray-project/kuberay/refs/heads/v1.4.0/ray-operator/config/samples/ray-job.sample.yaml
 ```
 
-KubeRay dashboard will only show RayJob custom resources that are created by the KubeRay API server. For this guide, we simulate the API server by labeling the Ray job.
+The KubeRay dashboard only shows RayJob custom resources that the KubeRay API server creates. This guide simulates the API server by labeling the RayJob.
 
 ```bash
 kubectl label rayjob rayjob-sample app.kubernetes.io/managed-by=kuberay-apiserver
@@ -46,4 +46,4 @@ kubectl label rayjob rayjob-sample app.kubernetes.io/managed-by=kuberay-apiserve
 
 Go to `http://localhost:3000/ray/jobs` again. You can see `rayjob-sample` in the list of RayJob custom resources.
 
-![KubeRay Dashboard List of Rayjobs](./images/kuberay-dashboard-rayjobs.png)
+![KubeRay Dashboard List of RayJobs](./images/kuberay-dashboard-rayjobs.png)
