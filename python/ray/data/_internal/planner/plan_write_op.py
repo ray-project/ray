@@ -101,20 +101,16 @@ def plan_write_op(
         BlockMapTransformFn(collect_stats_fn),
     ]
     map_transformer = MapTransformer(transform_fns)
-    map_operator = MapOperator.create(
+    return MapOperator.create(
         map_transformer,
         input_physical_dag,
         data_context,
         name="Write",
         target_max_block_size=None,
+        # Add a UUID to write tasks to prevent filename collisions. This a UUID for the
+        # overall write operation, not the individual write tasks.
+        map_task_kwargs={WRITE_UUID_KWARG_NAME: uuid.uuid4().hex},
         ray_remote_args=op._ray_remote_args,
         min_rows_per_bundle=op._min_rows_per_bundled_input,
         compute_strategy=TaskPoolStrategy(op._concurrency),
     )
-
-    # Add a UUID to write tasks to prevent filename collisions. This a UUID for the
-    # overall write operation, not the individual write tasks.
-    write_uuid = uuid.uuid4().hex
-    map_operator.add_map_task_kwargs_fn(lambda: {WRITE_UUID_KWARG_NAME: write_uuid})
-
-    return map_operator
