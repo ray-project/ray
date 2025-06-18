@@ -1000,7 +1000,7 @@ class AggregatorPool:
             self._data_context.hash_shuffle_aggregator_health_warning_interval_s
         )
         # Track readiness refs for non-blocking health checks
-        self._readiness_refs: Optional[List[ObjectRef]] = None
+        self._pending_aggregators_refs: Optional[List[ObjectRef]] = None
 
     def start(self):
         # Record start time for monitoring
@@ -1096,13 +1096,13 @@ class AggregatorPool:
 
         try:
             # Initialize readiness refs the first time.
-            if self._readiness_refs is None:
-                self._readiness_refs = [
+            if self._pending_aggregators_refs is None:
+                self._pending_aggregators_refs = [
                     aggregator.__ray_ready__.remote()
                     for aggregator in self._aggregators
                 ]
 
-            if len(self._readiness_refs) == 0:
+            if len(self._pending_aggregators_refs) == 0:
                 self._last_health_warning_time = None
                 logger.debug(
                     f"All {self._num_aggregators} hash shuffle aggregators "
@@ -1112,13 +1112,13 @@ class AggregatorPool:
 
             # Use ray.wait to check readiness in non-blocking fashion
             _, unready_refs = ray.wait(
-                self._readiness_refs,
-                num_returns=len(self._readiness_refs),
+                self._pending_aggregators_refs,
+                num_returns=len(self._pending_aggregators_refs),
                 timeout=0,  # Short timeout to avoid blocking
             )
 
             # Update readiness refs to only track the unready ones
-            self._readiness_refs = unready_refs
+            self._pending_aggregators_refs = unready_refs
 
             current_time = time.time()
             should_warn = unready_refs and (  # If any refs are not ready
@@ -1131,6 +1131,9 @@ class AggregatorPool:
                 # Get cluster resource information for better diagnostics
                 available_resources = ray.available_resources()
                 available_cpus = available_resources.get("CPU", 0)
+                cluster_resources = ray.cluster_resources()
+                total_memory = cluster_resources.get("memory", 0)
+                available_memory = available_resources.get("memory", 0)
 
                 required_cpus = (
                     self._aggregator_ray_remote_args.get("num_cpus", 1)
@@ -1142,6 +1145,7 @@ class AggregatorPool:
                 logger.warning(
                     f"Only {ready_aggregators} out of {self._num_aggregators} hash-shuffle aggregators are ready after {min_wait_time:.1f} secs. "
                     f"This might indicate resource contention for cluster resources (available CPUs: {available_cpus}, required CPUs: {required_cpus}). "
+                    f"Cluster only has {available_memory / GiB:.2f} GiB available memory, {total_memory / GiB:.2f} GiB total memory. "
                     f"Consider increasing cluster size or reducing the number of aggregators via `DataContext.max_hash_shuffle_aggregators`. "
                     f"Will continue checking every {self._health_warning_interval_s}s."
                 )
