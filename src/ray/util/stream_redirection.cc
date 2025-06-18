@@ -35,9 +35,8 @@ namespace {
 // TODO(hjiang): Revisit later, should be able to save some heap allocation with
 // absl::InlinedVector.
 //
-// Maps from original stream file handle (i.e. stdout/stderr) to its stream redirector.
-absl::flat_hash_map<MEMFD_TYPE_NON_UNIQUE, internal::StreamRedirectionHandle>
-    redirection_file_handles;
+// Maps from original stream file fd (i.e. stdout/stderr) to its stream redirector.
+absl::flat_hash_map<int, internal::StreamRedirectionHandle> redirection_file_handles;
 
 // A validation function, which verifies redirection handles don't dump to the same file.
 void ValidateOutputPathsUniqueness() {
@@ -52,7 +51,7 @@ void ValidateOutputPathsUniqueness() {
 }
 
 // Redirect the given [stream_fd] based on the specified option.
-void RedirectStream(MEMFD_TYPE_NON_UNIQUE stream_fd, const StreamRedirectionOption &opt) {
+void RedirectStream(int stream_fd, const StreamRedirectionOption &opt) {
   internal::StreamRedirectionHandle handle_wrapper(stream_fd, opt);
   const bool is_new =
       redirection_file_handles.emplace(stream_fd, std::move(handle_wrapper)).second;
@@ -63,10 +62,10 @@ void RedirectStream(MEMFD_TYPE_NON_UNIQUE stream_fd, const StreamRedirectionOpti
 }  // namespace
 
 void RedirectStdoutOncePerProcess(const StreamRedirectionOption &opt) {
-  RedirectStream(GetStdoutHandle(), opt);
+  RedirectStream(GetStdoutFd(), opt);
 }
 void RedirectStderrOncePerProcess(const StreamRedirectionOption &opt) {
-  RedirectStream(GetStderrHandle(), opt);
+  RedirectStream(GetStderrFd(), opt);
 }
 
 }  // namespace ray
