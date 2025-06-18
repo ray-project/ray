@@ -15,7 +15,8 @@ from typing import (
 )
 
 import numpy as np
-from pandas.api.types import is_object_dtype, is_string_dtype
+import pandas as pd
+from pandas.api.types import is_object_dtype, is_scalar, is_string_dtype
 
 from ray.air.constants import TENSOR_COLUMN_NAME
 from ray.air.util.tensor_extensions.utils import _should_convert_to_tensor
@@ -96,6 +97,7 @@ class PandasRow(TableRow):
 
         if items is None:
             return None
+
         elif is_single_item:
             return items[0]
         else:
@@ -107,6 +109,19 @@ class PandasRow(TableRow):
 
     def __len__(self):
         return self._row.shape[1]
+
+    def as_pydict(self) -> Dict[str, Any]:
+        pydict: Dict[str, Any] = {}
+        for key, value in self.items():
+            # Convert NA to None for consistency across block formats. `pd.isna`
+            # returns True for both NA and NaN, but since we want to preserve NaN
+            # values, we check for identity instead.
+            if is_scalar(value) and value is pd.NA:
+                pydict[key] = None
+            else:
+                pydict[key] = value
+
+        return pydict
 
 
 class PandasBlockColumnAccessor(BlockColumnAccessor):

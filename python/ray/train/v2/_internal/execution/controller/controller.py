@@ -311,7 +311,7 @@ class TrainController:
 
     def _start(self):
         for callback in self._controller_callbacks:
-            callback.after_controller_start()
+            callback.after_controller_start(self._train_run_context)
 
     def _shutdown(self):
         if self._worker_group:
@@ -475,6 +475,11 @@ class TrainController:
 
         # TODO: move to __del__ after https://github.com/ray-project/ray/issues/53169
         self._shutdown()
+
+        # Call after_controller_finish with the final result
+        result = self._build_result()
+        for callback in self._controller_callbacks:
+            callback.after_controller_finish(result)
 
     async def abort(self):
         """Trigger callback abort hooks and terminate the controller process."""

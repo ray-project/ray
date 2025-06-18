@@ -37,8 +37,9 @@ class AcceleratorContext:
         # The Communicator class used to manage communication
         self._communicator_cls: Type[Communicator] = communicator_cls
 
-        # Save the torch module corresponding to the device module name.
-        self._torch_mod = importlib.import_module(f"torch.{torch_module_name}")
+        # Import the torch backend module (e.g., torch.cuda) if the device is not 'cpu'.
+        if torch_module_name != "cpu":
+            self._torch_mod = importlib.import_module(f"torch.{torch_module_name}")
 
     @staticmethod
     def get() -> "AcceleratorContext":
