@@ -239,31 +239,7 @@ spec:
   ```
 
 ## Step 7: Scrape KubeRay metrics with ServiceMonitor
-```yaml
-apiVersion: monitoring.coreos.com/v1
-kind: ServiceMonitor
-metadata:
-  labels:
-    # `release: $HELM_RELEASE`: Prometheus can only detect ServiceMonitor with this label.
-    release: prometheus
-  name: kuberay-operator-monitor
-  namespace: prometheus-system
-spec:
-  # Only select Kubernetes Services in the "default" namespace.
-  namespaceSelector:
-    matchNames:
-      - default
-  # Only select Kubernetes Services with "matchLabels".
-  selector:
-    matchLabels:
-      app.kubernetes.io/name: kuberay-operator
-  endpoints:
-    - port: http
-      path: /metrics
-      # honorLabels ensures that Prometheus uses the labels provided by the exporter.
-      honorLabels: true
 
-```
 * See the official [ServiceMonitor doc](https://github.com/prometheus-operator/prometheus-operator/blob/main/Documentation/api-reference/api.md#servicemonitor) for more details about configurations.
 * KubeRay operator provides metrics for RayCluster, RayService, and RayJob. See {ref}`kuberay-metrics-references` for more details.
 * Prometheus uses `namespaceSelector` and `selector` to select Kubernetes Service.
