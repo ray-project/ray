@@ -816,7 +816,7 @@ class VLLMEngine(LLMEngine):
             raise RuntimeError(f"{type(self.engine)} does not support health check.")
 
         try:
-            await asyncio.wait_for(self.engine.check_health(), timeout=15)
+            await self.engine.check_health()
         except BaseException as e:
             logger.error("Healthcheck failed. The replica will be restarted")
             raise e from None
