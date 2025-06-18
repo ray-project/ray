@@ -1188,6 +1188,7 @@ py_test(
         "exclusive",
         "medium_size_python_tests_k_to_z",
         "no_windows",
+        "serve_tracing",
         "team:serve",
     ],
     deps = [
