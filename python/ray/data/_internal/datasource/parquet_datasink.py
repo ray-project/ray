@@ -29,6 +29,7 @@ class ParquetDatasink(_FileDatasink):
         arrow_parquet_args_fn: Optional[Callable[[], Dict[str, Any]]] = None,
         arrow_parquet_args: Optional[Dict[str, Any]] = None,
         min_rows_per_file: Optional[int] = None,
+        max_rows_per_file: Optional[int] = None,
         filesystem: Optional["pyarrow.fs.FileSystem"] = None,
         try_create_dir: bool = True,
         open_stream_args: Optional[Dict[str, Any]] = None,
@@ -45,6 +46,7 @@ class ParquetDatasink(_FileDatasink):
         self.arrow_parquet_args_fn = arrow_parquet_args_fn
         self.arrow_parquet_args = arrow_parquet_args
         self.min_rows_per_file = min_rows_per_file
+        self.max_rows_per_file = max_rows_per_file
         self.partition_cols = partition_cols
 
         super().__init__(
@@ -90,8 +92,10 @@ class ParquetDatasink(_FileDatasink):
                 output_schema = user_schema
 
             if not self.partition_cols:
-                self._write_single_file(
-                    self.path, tables, filename, output_schema, write_kwargs
+                # Handle row limits for non-partitioned writes
+                combined_table = concat(tables, promote_types=False)
+                self._write_with_row_limits(
+                    self.path, combined_table, filename, output_schema, write_kwargs
                 )
             else:  # partition writes
                 self._write_partition_files(
@@ -107,6 +111,99 @@ class ParquetDatasink(_FileDatasink):
             max_attempts=WRITE_FILE_MAX_ATTEMPTS,
             max_backoff_s=WRITE_FILE_RETRY_MAX_BACKOFF_SECONDS,
         )
+
+    def _write_with_row_limits(
+        self,
+        path: str,
+        table: "pyarrow.Table",
+        filename: str,
+        output_schema: "pyarrow.Schema",
+        write_kwargs: Dict[str, Any],
+    ) -> None:
+        """Write table respecting both min and max rows per file limits."""
+        total_rows = table.num_rows
+
+        # If no limits are set, write as single file
+        if self.min_rows_per_file is None and self.max_rows_per_file is None:
+            self._write_single_file(
+                path, [table], filename, output_schema, write_kwargs
+            )
+            return
+
+        # Determine the effective row limit based on priority: max takes precedence
+        if self.max_rows_per_file is not None:
+            # Split based on max_rows_per_file
+            if total_rows <= self.max_rows_per_file:
+                # Single file is sufficient
+                self._write_single_file(
+                    path, [table], filename, output_schema, write_kwargs
+                )
+            else:
+                # Need to split into multiple files
+                self._split_and_write_table(
+                    table,
+                    path,
+                    filename,
+                    output_schema,
+                    write_kwargs,
+                    self.max_rows_per_file,
+                )
+        elif self.min_rows_per_file is not None:
+            # Only min_rows_per_file is set
+            if total_rows >= self.min_rows_per_file:
+                # Single file meets minimum requirement
+                self._write_single_file(
+                    path, [table], filename, output_schema, write_kwargs
+                )
+            else:
+                # This case should be handled at a higher level by combining blocks
+                # For now, write as single file
+                self._write_single_file(
+                    path, [table], filename, output_schema, write_kwargs
+                )
+
+    def _split_and_write_table(
+        self,
+        table: "pyarrow.Table",
+        path: str,
+        base_filename: str,
+        output_schema: "pyarrow.Schema",
+        write_kwargs: Dict[str, Any],
+        rows_per_file: int,
+    ) -> None:
+        """Split a table into multiple files with specified rows per file."""
+        from ray.data.block import BlockAccessor
+
+        total_rows = table.num_rows
+        block_accessor = BlockAccessor.for_block(table)
+
+        file_idx = 0
+        offset = 0
+
+        while offset < total_rows:
+            chunk_size = min(rows_per_file, total_rows - offset)
+
+            # Create a slice of the table
+            chunk_table = block_accessor.slice(offset, offset + chunk_size)
+
+            # Generate filename with index suffix
+            name_parts = base_filename.rsplit(".", 1)
+            if len(name_parts) == 2:
+                chunk_filename = f"{name_parts[0]}_{file_idx:06d}.{name_parts[1]}"
+            else:
+                chunk_filename = f"{base_filename}_{file_idx:06d}"
+
+            # Write the chunk
+            self._write_single_file(
+                path,
+                [chunk_table],
+                chunk_filename,
+                output_schema,
+                write_kwargs,
+            )
+
+            offset += chunk_size
+            file_idx += 1
 
     def _write_single_file(
         self,
@@ -166,76 +263,10 @@ class ParquetDatasink(_FileDatasink):
             write_path = posixpath.join(self.path, partition_path)
             self._create_dir(write_path)
 
-            # Handle min_rows_per_file for partitioned data
-            if (
-                self.min_rows_per_file is not None
-                and group_table.num_rows > self.min_rows_per_file
-            ):
-                # Split the partition into multiple files
-                self._write_partition_with_row_limit(
-                    group_table, write_path, filename, output_schema, write_kwargs
-                )
-            else:
-                # Write as single file (existing behavior when min_rows_per_file is None
-                # or when partition has fewer rows than min_rows_per_file)
-                self._write_single_file(
-                    write_path,
-                    [group_table],
-                    filename,
-                    output_schema,
-                    write_kwargs,
-                )
-
-    def _write_partition_with_row_limit(
-        self,
-        table: "pyarrow.Table",
-        write_path: str,
-        base_filename: str,
-        output_schema: "pyarrow.Schema",
-        write_kwargs: Dict[str, Any],
-    ) -> None:
-        """Write a partition table to multiple files respecting min_rows_per_file."""
-        from ray.data._internal.execution.operators.map_transformer import _splitrange
-        from ray.data.block import BlockAccessor
-
-        total_rows = table.num_rows
-
-        # Calculate how many files we need based on min_rows_per_file
-        # Each file should have at least min_rows_per_file rows (except possibly the last)
-        num_files = max(
-            1, (total_rows + self.min_rows_per_file - 1) // self.min_rows_per_file
-        )
-
-        # Split the table into chunks, distributing rows as evenly as possible
-        split_sizes = _splitrange(total_rows, num_files)
-
-        block_accessor = BlockAccessor.for_block(table)
-        offset = 0
-
-        for file_idx, chunk_size in enumerate(split_sizes):
-            if chunk_size == 0:
-                continue
-
-            # Create a slice of the table
-            chunk_table = block_accessor.slice(offset, offset + chunk_size)
-
-            # Generate filename with index suffix
-            name_parts = base_filename.rsplit(".", 1)
-            if len(name_parts) == 2:
-                chunk_filename = f"{name_parts[0]}_{file_idx:06d}.{name_parts[1]}"
-            else:
-                chunk_filename = f"{base_filename}_{file_idx:06d}"
-
-            # Write the chunk
-            self._write_single_file(
-                write_path,
-                [chunk_table],
-                chunk_filename,
-                output_schema,
-                write_kwargs,
+            # Handle row limits for partitioned data
+            self._write_with_row_limits(
+                write_path, group_table, filename, output_schema, write_kwargs
             )
-
-            offset += chunk_size
 
     @property
     def min_rows_per_write(self) -> Optional[int]:

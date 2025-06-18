@@ -1613,7 +1613,6 @@ def test_write_partition_cols_with_min_rows_per_file(
     tmp_path, ray_start_regular_shared, min_rows_per_file
 ):
     """Test write_parquet with both partition_cols and min_rows_per_file."""
-    import pyarrow.parquet as pq
 
     # Create dataset with 2 partitions, each having 20 rows
     # This should trigger file splitting when min_rows_per_file < 20
@@ -1635,7 +1634,7 @@ def test_write_partition_cols_with_min_rows_per_file(
     assert partition_0_dir.exists()
     assert partition_1_dir.exists()
 
-    # Check each partition has correct number of files and total rows
+    # Check each partition has the correct number of files and total rows
     expected_files_per_partition = (20 + min_rows_per_file - 1) // min_rows_per_file
 
     for partition_dir in [partition_0_dir, partition_1_dir]:
@@ -1653,6 +1652,105 @@ def test_write_partition_cols_with_min_rows_per_file(
     ds_read = ray.data.read_parquet(tmp_path)
     assert ds_read.count() == 40
     assert set(ds_read.schema().names) == {"partition_col", "data"}
+
+
+@pytest.mark.parametrize("max_rows_per_file", [5, 10, 25])
+def test_write_max_rows_per_file(tmp_path, ray_start_regular_shared, max_rows_per_file):
+    ray.data.range(100, override_num_blocks=1).write_parquet(
+        tmp_path, max_rows_per_file=max_rows_per_file
+    )
+
+    total_rows = 0
+    for filename in os.listdir(tmp_path):
+        table = pq.read_table(os.path.join(tmp_path, filename))
+        assert len(table) <= max_rows_per_file
+        total_rows += len(table)
+
+    # Verify all rows were written
+    assert total_rows == 100
+
+
+@pytest.mark.parametrize(
+    "min_rows_per_file,max_rows_per_file", [(5, 10), (10, 20), (15, 30)]
+)
+def test_write_min_max_rows_per_file(
+    tmp_path, ray_start_regular_shared, min_rows_per_file, max_rows_per_file
+):
+    ray.data.range(100, override_num_blocks=1).write_parquet(
+        tmp_path,
+        min_rows_per_file=min_rows_per_file,
+        max_rows_per_file=max_rows_per_file,
+    )
+
+    total_rows = 0
+    for filename in os.listdir(tmp_path):
+        table = pq.read_table(os.path.join(tmp_path, filename))
+        # max_rows_per_file takes precedence, so files should not exceed max
+        assert len(table) <= max_rows_per_file
+        total_rows += len(table)
+
+    # Verify all rows were written
+    assert total_rows == 100
+
+
+def test_write_max_rows_per_file_validation(tmp_path, ray_start_regular_shared):
+    """Test validation of max_rows_per_file parameter."""
+
+    # Test negative value
+    with pytest.raises(
+        ValueError, match="max_rows_per_file must be a positive integer"
+    ):
+        ray.data.range(100).write_parquet(tmp_path, max_rows_per_file=-1)
+
+    # Test zero value
+    with pytest.raises(
+        ValueError, match="max_rows_per_file must be a positive integer"
+    ):
+        ray.data.range(100).write_parquet(tmp_path, max_rows_per_file=0)
+
+
+def test_write_min_max_rows_per_file_validation(tmp_path, ray_start_regular_shared):
+    """Test validation when both min and max are specified."""
+
+    # Test min > max
+    with pytest.raises(
+        ValueError,
+        match="min_rows_per_file .* cannot be greater than max_rows_per_file",
+    ):
+        ray.data.range(100).write_parquet(
+            tmp_path, min_rows_per_file=20, max_rows_per_file=10
+        )
+
+
+@pytest.mark.parametrize("max_rows_per_file", [5, 10])
+def test_write_partition_cols_with_max_rows_per_file(
+    tmp_path, ray_start_regular_shared_2_cpus, max_rows_per_file
+):
+    """Test max_rows_per_file with partition columns."""
+    import pyarrow.parquet as pq
+
+    # Create data with partition column
+    def create_row(i):
+        return {"id": i, "partition": i % 3, "value": f"value_{i}"}
+
+    ds = ray.data.range(30).map(create_row)
+    ds.write_parquet(
+        tmp_path, partition_cols=["partition"], max_rows_per_file=max_rows_per_file
+    )
+
+    # Check each partition directory
+    total_rows = 0
+    for partition_dir in os.listdir(tmp_path):
+        partition_path = os.path.join(tmp_path, partition_dir)
+        if os.path.isdir(partition_path):
+            for filename in os.listdir(partition_path):
+                if filename.endswith(".parquet"):
+                    table = pq.read_table(os.path.join(partition_path, filename))
+                    assert len(table) <= max_rows_per_file
+                    total_rows += len(table)
+
+    # Verify all rows were written
+    assert total_rows == 30
 
 
 if __name__ == "__main__":
