@@ -206,7 +206,7 @@ class DeploymentConfig(BaseModel):
     )
 
     # Keyword arguments that will be passed to the request router class.
-    request_router_kwargs: Dict[str, Any] = Field(default={})
+    request_router_kwargs: Dict[str, Any] = Field(default_factory=dict)
 
     class Config:
         validate_assignment = True

@@ -580,6 +580,7 @@ class PrefixTree:
                 self._eviction_thread = threading.Thread(
                     target=self._run_eviction_loop,
                     args=(eviction_threshold, eviction_target, interval_secs),
+                    daemon=True,
                 )
                 self._eviction_thread.start()
                 return True
