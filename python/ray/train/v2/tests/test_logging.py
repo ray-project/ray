@@ -6,8 +6,9 @@ from unittest.mock import MagicMock
 import pytest
 
 import ray
+from ray.data import Dataset
 from ray.runtime_context import get_runtime_context
-from ray.train import RunConfig
+from ray.train import BackendConfig, DataConfig, RunConfig, ScalingConfig
 from ray.train.v2._internal.execution.context import TrainContext, TrainRunContext
 from ray.train.v2._internal.logging.logging import (
     configure_controller_logger,
@@ -71,14 +72,24 @@ def get_log_directory() -> str:
 @pytest.fixture
 def dummy_run_context():
     """Create dummy train run context objects for testing."""
-    return TrainRunContext(run_config=RunConfig(name="test"))
+    # Create a minimal mock dataset
+    mock_dataset = MagicMock(spec=Dataset)
+
+    return TrainRunContext(
+        run_config=RunConfig(name="test"),
+        train_loop_config={},
+        scaling_config=ScalingConfig(num_workers=1),
+        backend_config=BackendConfig(),
+        datasets={"train": mock_dataset},
+        dataset_config=DataConfig(),
+    )
 
 
 @pytest.fixture
-def dummy_train_context():
+def dummy_train_context(dummy_run_context):
     """Mock a dummy train context objects for testing."""
     train_context = MagicMock(spec=TrainContext)
-    train_context.get_run_config.return_value = RunConfig(name="test")
+    train_context.train_run_context = dummy_run_context
     train_context.get_world_rank.return_value = 0
     train_context.get_local_rank.return_value = 0
     train_context.get_node_rank.return_value = 0
