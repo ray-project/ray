@@ -447,6 +447,9 @@ class Worker:
         self.actors = {}
         # GPU object manager to manage GPU object lifecycles, including coordinating out-of-band
         # tensor transfers between actors, storing and retrieving GPU objects, and garbage collection.
+        # We create the GPU object manager lazily, if a user specifies a
+        # non-default tensor_transport, to avoid circular import and because it
+        # imports third-party dependencies like PyTorch.
         self._gpu_object_manager = None
         # When the worker is constructed. Record the original value of the
         # (CUDA_VISIBLE_DEVICES, ONEAPI_DEVICE_SELECTOR, HIP_VISIBLE_DEVICES,
@@ -498,10 +501,12 @@ class Worker:
         self._is_connected: bool = False
 
     @property
-    def gpu_object_manager(self) -> "ray._private.gpu_object_manager.GPUObjectManager":
+    def gpu_object_manager(self) -> "ray.experimental.GPUObjectManager":
         if self._gpu_object_manager is None:
-            # Initialize lazily to avoid circular import.
-            from ray._private.gpu_object_manager import GPUObjectManager
+            # We create the GPU object manager lazily, if a user specifies a
+            # non-default tensor_transport, to avoid circular import and because it
+            # imports third-party dependencies like PyTorch.
+            from ray.experimental import GPUObjectManager
 
             self._gpu_object_manager = GPUObjectManager()
         return self._gpu_object_manager

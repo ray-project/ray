@@ -3,27 +3,92 @@ from typing import TYPE_CHECKING, Any, Dict, List, NamedTuple, Optional, Tuple
 import ray
 from ray._private.custom_types import TensorTransportEnum
 from ray._raylet import ObjectRef
-from ray.actor import ActorHandle
+import ray.util.collective as collective
+from ray.util.collective.types import Backend
 
-# Avoid importing util until needed because it requires several external
-# dependencies like torch and cupy. These dependencies can significantly slow
-# down normal worker startup time.
-util = None
+
+try:
+    import torch
+except ImportError:
+    raise ImportError(
+        "`tensor_transport` requires PyTorch. "
+        "Please install torch with 'pip install torch' to use this feature."
+    )
 
 if TYPE_CHECKING:
     import torch
 
-    from ray._private import gpu_object_manager_util as util
+TENSOR_TRANSPORT_TO_COLLECTIVE_BACKEND = {
+    TensorTransportEnum.NCCL: Backend.NCCL,
+    TensorTransportEnum.GLOO: Backend.TORCH_GLOO,
+}
+
+COLLECTIVE_BACKEND_TO_TORCH_DEVICE = {
+    Backend.NCCL: torch.device("cuda"),
+    Backend.TORCH_GLOO: torch.device("cpu"),
+}
 
 
-def _get_or_import_util():
-    """Lazily import the gpu_object_manager_util module."""
-    global util
-    if util is None:
-        from ray._private import gpu_object_manager_util as util
-    return util
+
+def _tensor_transport_to_collective_backend(
+    tensor_transport: TensorTransportEnum,
+) -> Backend:
+    try:
+        return TENSOR_TRANSPORT_TO_COLLECTIVE_BACKEND[tensor_transport]
+    except KeyError:
+        raise ValueError(
+            f"Invalid tensor transport {tensor_transport.name}, must be one of {list(TENSOR_TRANSPORT_TO_COLLECTIVE_BACKEND.keys())}."
+        )
 
 
+def __ray_send__(self, communicator_name: str, obj_id: str, dst_rank: int):
+    """Helper function that runs on the src actor to send tensors to the dst actor."""
+    from ray._private.worker import global_worker
+
+    gpu_object_manager = global_worker.gpu_object_manager
+    assert gpu_object_manager.has_gpu_object(
+        obj_id
+    ), f"obj_id={obj_id} not found in GPU object store"
+    tensors = gpu_object_manager.get_gpu_object(obj_id)
+
+    backend = collective.get_group_handle(communicator_name).backend()
+    device = COLLECTIVE_BACKEND_TO_TORCH_DEVICE[backend]
+
+    for tensor in tensors:
+        if tensor.device.type != device.type:
+            # TODO(swang): Right now there is no way to catch this error
+            # and the receiving Ray task will hang.
+            raise ValueError(
+                f"tensor device {tensor.device} does not match device {device}"
+            )
+        collective.send(tensor, dst_rank, group_name=communicator_name)
+    # TODO(kevin85421): The current garbage collection implementation for the
+    # in-actor object store is naive. We garbage collect each object after it
+    # is consumed once.
+    gpu_object_manager.remove_gpu_object(obj_id)
+
+
+def __ray_recv__(
+    self,
+    communicator_name: str,
+    obj_id: str,
+    src_rank: int,
+    tensor_meta: List[Tuple["torch.Size", "torch.dtype"]],
+):
+    """Helper function that runs on the dst actor to receive tensors from the src actor."""
+    from ray._private.worker import global_worker
+
+    backend = collective.get_group_handle(communicator_name).backend()
+    device = COLLECTIVE_BACKEND_TO_TORCH_DEVICE[backend]
+
+    gpu_object_manager = global_worker.gpu_object_manager
+    tensors = []
+    for meta in tensor_meta:
+        shape, dtype = meta
+        tensor = torch.zeros(shape, dtype=dtype, device=device)
+        collective.recv(tensor, src_rank, group_name=communicator_name)
+        tensors.append(tensor)
+    gpu_object_manager.add_gpu_object(obj_id, tensors)
 # GPUObjectMeta is a named tuple containing the source actor, tensor transport
 # backend, and tensor metadata.
 # - The tensor transport backend is the backend used to transport the tensors.
@@ -31,7 +96,7 @@ def _get_or_import_util():
 # - The tensor metadata is a list of tuples, each containing the shape and dtype
 #   of a tensor in the GPU object store.
 class GPUObjectMeta(NamedTuple):
-    src_actor: ActorHandle
+    src_actor: "ray.actor.ActorHandle"
     # Must be a valid backend name as defined in
     # `ray.util.collective.types.Backend`.
     tensor_transport_backend: str
@@ -63,7 +128,7 @@ class GPUObjectManager:
     def remove_gpu_object(self, obj_id: str):
         del self.gpu_object_store[obj_id]
 
-    def _get_tensor_meta(self, src_actor: ActorHandle, obj_id: str) -> ObjectRef:
+    def _get_tensor_meta(self, src_actor: "ray.actor.ActorHandle", obj_id: str) -> ObjectRef:
         # Submit a Ray actor task to the source actor to get the tensor metadata.
         # The metadata is a list of tuples, where each tuple contains the shape and dtype
         # of a tensor in the GPU object store. This function returns an ObjectRef that
@@ -72,7 +137,9 @@ class GPUObjectManager:
             from ray._private.worker import global_worker
 
             gpu_object_manager = global_worker.gpu_object_manager
-            gpu_object_manager.wait_gpu_object(obj_id)
+            assert gpu_object_manager.has_gpu_object(
+                obj_id
+            ), f"obj_id={obj_id} not found in GPU object store"
             tensors = gpu_object_manager.get_gpu_object(obj_id)
             return [(t.shape, t.dtype) for t in tensors]
 
@@ -81,7 +148,7 @@ class GPUObjectManager:
     def add_gpu_object_ref(
         self,
         obj_ref: ObjectRef,
-        src_actor: ActorHandle,
+        src_actor: "ray.actor.ActorHandle",
         tensor_transport: TensorTransportEnum,
     ):
         """Add a GPU object reference to the GPU object manager. This should be
@@ -93,8 +160,7 @@ class GPUObjectManager:
             src_actor: The actor that executes the task and that creates the GPU object.
             tensor_transport: The tensor transport protocol to use for the GPU object.
         """
-        util = _get_or_import_util()
-        tensor_transport_backend = util.tensor_transport_to_collective_backend(
+        tensor_transport_backend = _tensor_transport_to_collective_backend(
             tensor_transport
         )
         tensor_meta = self._get_tensor_meta(src_actor, obj_ref.hex())
@@ -116,32 +182,30 @@ class GPUObjectManager:
         return obj_ref in self.gpu_object_refs
 
     def _send_gpu_object(
-        self, communicator_name: str, src_actor: ActorHandle, obj_id: str, dst_rank: int
+        self, communicator_name: str, src_actor: "ray.actor.ActorHandle", obj_id: str, dst_rank: int
     ):
         # Send tensors stored in the `src_actor`'s GPU object store to the
         # destination rank `dst_rank`.
-        util = _get_or_import_util()
         src_actor.__ray_call__.remote(
-            util.__ray_send__, communicator_name, obj_id, dst_rank
+            __ray_send__, communicator_name, obj_id, dst_rank
         )
 
     def _recv_gpu_object(
         self,
         communicator_name: str,
-        dst_actor: ActorHandle,
+        dst_actor: "ray.actor.ActorHandle",
         obj_id: str,
         src_rank: int,
         tensor_meta: List[Tuple["torch.Size", "torch.dtype"]],
     ):
         # Receive tensors from the source rank and store them in the
         # `dst_actor`'s GPU object store.
-        util = _get_or_import_util()
         dst_actor.__ray_call__.remote(
-            util.__ray_recv__, communicator_name, obj_id, src_rank, tensor_meta
+            __ray_recv__, communicator_name, obj_id, src_rank, tensor_meta
         )
 
     def trigger_out_of_band_tensor_transfer(
-        self, dst_actor: ActorHandle, task_args: Tuple[Any, ...]
+        self, dst_actor: "ray.actor.ActorHandle", task_args: Tuple[Any, ...]
     ):
         """
         Triggers tensor communication operations between actors. When an ObjectRef containing
