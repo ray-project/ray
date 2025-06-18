@@ -238,6 +238,7 @@ class Deployment:
         health_check_timeout_s: Default[float] = DEFAULT.VALUE,
         logging_config: Default[Union[Dict, LoggingConfig, None]] = DEFAULT.VALUE,
         request_router_class: Default[Union[str, RequestRouter, None]] = DEFAULT.VALUE,
+        request_router_kwargs: Default[Union[Dict, None]] = DEFAULT.VALUE,
         request_routing_stats_period_s: Default[float] = DEFAULT.VALUE,
         request_routing_stats_timeout_s: Default[float] = DEFAULT.VALUE,
         _init_args: Default[Tuple[Any]] = DEFAULT.VALUE,
@@ -374,6 +375,9 @@ class Deployment:
 
         if request_router_class is not DEFAULT.VALUE:
             new_deployment_config.request_router_class = request_router_class
+
+        if request_router_kwargs is not DEFAULT.VALUE:
+            new_deployment_config.request_router_kwargs = request_router_kwargs
 
         if request_routing_stats_period_s is not DEFAULT.VALUE:
             new_deployment_config.request_routing_stats_period_s = (
