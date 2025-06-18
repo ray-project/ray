@@ -3,7 +3,6 @@ import pathlib
 import tempfile
 import time
 from typing import Dict
-from unittest.mock import patch
 
 import openai
 import pytest
@@ -17,34 +16,7 @@ from ray.llm._internal.serve.configs.server_models import (
     LLMServingArgs,
     ModelLoadingConfig,
 )
-from ray.llm._internal.serve.deployments.llm.vllm.vllm_models import VLLMEngineConfig
 from ray.serve.llm import LLMServer
-
-
-@pytest.fixture(autouse=True)
-def patch_placement_bundles_for_tests():
-    """
-    Automatically patch placement_bundles to return empty bundles in tests.
-
-    This prevents tests from requiring actual GPU hardware when configs specify
-    accelerator types, eliminating the need for mock_resource hacks in production code.
-
-    Also sets an environment variable so subprocesses (like 'serve run') get the same behavior.
-    """
-    import os
-
-    # Set environment variable for subprocesses
-    os.environ["RAYLLM_TEST_DISABLE_PLACEMENT_GROUPS"] = "1"
-
-    with patch.object(
-        VLLMEngineConfig,
-        "placement_bundles",
-        new_callable=lambda: property(lambda self: []),
-    ):
-        yield
-
-    # Clean up environment variable
-    os.environ.pop("RAYLLM_TEST_DISABLE_PLACEMENT_GROUPS", None)
 
 
 @pytest.fixture

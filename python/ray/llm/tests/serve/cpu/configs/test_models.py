@@ -150,26 +150,29 @@ class TestModelConfig:
             },
             runtime_env={"env_vars": {"FOO": "bar"}},
         ).get_serve_options(name_prefix="Test:")
-        expected_options = {
-            "autoscaling_config": {
-                "min_replicas": 0,
-                "initial_replicas": 1,
-                "max_replicas": 10,
-            },
-            "ray_actor_options": {
-                "runtime_env": {
-                    "env_vars": {"FOO": "bar"},
-                    "worker_process_setup_hook": "ray.llm._internal.serve._worker_process_setup_hook",
-                }
-            },
-            "placement_group_bundles": [
-                {"CPU": 1, "GPU": 0},
-                {"GPU": 1, "accelerator_type:A100-40G": 0.001},
-            ],
-            "placement_group_strategy": "STRICT_PACK",
-            "name": "Test:test_model",
+
+        # Test the core functionality without being strict about Ray's automatic runtime env additions
+        assert serve_options["autoscaling_config"] == {
+            "min_replicas": 0,
+            "initial_replicas": 1,
+            "max_replicas": 10,
         }
-        assert serve_options == expected_options
+        assert serve_options["placement_group_bundles"] == [
+            {"CPU": 1, "GPU": 0},
+            {"GPU": 1, "accelerator_type:A100-40G": 0.001},
+        ]
+        assert serve_options["placement_group_strategy"] == "STRICT_PACK"
+        assert serve_options["name"] == "Test:test_model"
+
+        # Check that our custom env vars are present
+        assert (
+            serve_options["ray_actor_options"]["runtime_env"]["env_vars"]["FOO"]
+            == "bar"
+        )
+        assert (
+            "worker_process_setup_hook"
+            in serve_options["ray_actor_options"]["runtime_env"]
+        )
 
     def test_get_serve_options_without_accelerator_type(self):
         """Test that get_serve_options returns the correct options when accelerator_type is not set."""
@@ -184,26 +187,29 @@ class TestModelConfig:
             },
             runtime_env={"env_vars": {"FOO": "bar"}},
         ).get_serve_options(name_prefix="Test:")
-        expected_options = {
-            "autoscaling_config": {
-                "min_replicas": 0,
-                "initial_replicas": 1,
-                "max_replicas": 10,
-            },
-            "ray_actor_options": {
-                "runtime_env": {
-                    "env_vars": {"FOO": "bar"},
-                    "worker_process_setup_hook": "ray.llm._internal.serve._worker_process_setup_hook",
-                }
-            },
-            "placement_group_bundles": [
-                {"CPU": 1, "GPU": 0},
-                {"GPU": 1},
-            ],
-            "placement_group_strategy": "STRICT_PACK",
-            "name": "Test:test_model",
+
+        # Test the core functionality without being strict about Ray's automatic runtime env additions
+        assert serve_options["autoscaling_config"] == {
+            "min_replicas": 0,
+            "initial_replicas": 1,
+            "max_replicas": 10,
         }
-        assert serve_options == expected_options
+        assert serve_options["placement_group_bundles"] == [
+            {"CPU": 1, "GPU": 0},
+            {"GPU": 1},
+        ]
+        assert serve_options["placement_group_strategy"] == "STRICT_PACK"
+        assert serve_options["name"] == "Test:test_model"
+
+        # Check that our custom env vars are present
+        assert (
+            serve_options["ray_actor_options"]["runtime_env"]["env_vars"]["FOO"]
+            == "bar"
+        )
+        assert (
+            "worker_process_setup_hook"
+            in serve_options["ray_actor_options"]["runtime_env"]
+        )
 
     def test_resources_per_bundle(self):
         """Test that resources_per_bundle is correctly parsed."""
