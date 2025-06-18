@@ -11,6 +11,7 @@ py_library(
     visibility = ["//visibility:public"],
     deps = [
         ci_require("click"),
+        ci_require("uv"),
     ],
 )
 

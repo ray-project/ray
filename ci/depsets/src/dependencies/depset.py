@@ -1,12 +1,8 @@
 from __future__ import annotations
-from typing import List, Dict, Optional
+from typing import List, Dict
 from collections import defaultdict
 import os
 import re
-
-# from dependencies.cli import debug_print, verbose_print
-import click
-
 
 class Dep:
     def __init__(self, name: str, constraints: List[str], version: str):
