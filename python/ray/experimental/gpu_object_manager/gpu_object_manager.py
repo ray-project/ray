@@ -80,7 +80,11 @@ class GPUObjectManager:
         # The metadata is a list of tuples, where each tuple contains the shape and dtype
         # of a tensor in the GPU object store. This function returns an ObjectRef that
         # points to the tensor metadata.
-        return src_actor.__ray_call__.remote(__ray_get_tensor_meta__, obj_id)
+        # NOTE(swang): We put this task on the background thread because its
+        # return value is needed for future transfers. If the main thread is
+        # blocked by other tasks, then this task will never run and pending
+        # transfers will hang.
+        return src_actor.__ray_call__.options(concurrency_group="_ray_system").remote(__ray_get_tensor_meta__, obj_id)
 
     def is_managed_gpu_object(self, obj_id: str) -> bool:
         """
@@ -140,7 +144,9 @@ class GPUObjectManager:
 
         # Send tensors stored in the `src_actor`'s GPU object store to the
         # destination rank `dst_rank`.
-        src_actor.__ray_call__.remote(__ray_send__, communicator_name, obj_id, dst_rank)
+        # NOTE(swang): We put this task on the background thread to avoid tasks
+        # executing on the main thread blocking the data transfer.
+        src_actor.__ray_call__.options(concurrency_group="_ray_system").remote(__ray_send__, communicator_name, obj_id, dst_rank)
 
     def _recv_gpu_object(
         self,
@@ -154,7 +160,12 @@ class GPUObjectManager:
 
         # Receive tensors from the source rank and store them in the
         # `dst_actor`'s GPU object store.
-        dst_actor.__ray_call__.remote(
+        # NOTE(swang): We put this task on the background thread to avoid tasks
+        # executing on the main thread blocking the data transfer. Technically,
+        # this is only needed for the sender task, but we put the receiver task
+        # on the same background thread to ensure that all communication
+        # operations are executed in a global order.
+        dst_actor.__ray_call__.options(concurrency_group="_ray_system").remote(
             __ray_recv__, communicator_name, obj_id, src_rank, tensor_meta
         )
 
