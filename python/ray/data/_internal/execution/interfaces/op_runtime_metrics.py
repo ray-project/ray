@@ -127,10 +127,10 @@ def metric_property(
 @dataclass
 class RunningTaskInfo:
     inputs: RefBundle
-    num_outputs: int
-    outputs_bytes: int
-    outputs_bytes_spilled: int
     start_time: float
+    num_outputs: int = field(default=0)
+    outputs_bytes: int = field(default=0)
+    outputs_bytes_spilled: int = field(default=0)
 
 
 @dataclass
@@ -683,7 +683,8 @@ class OpRuntimeMetrics(metaclass=OpRuntimesMetricsMeta):
         self.bytes_inputs_of_submitted_tasks += inputs.size_bytes()
         self._pending_task_inputs.add(inputs)
         self._running_tasks[task_index] = RunningTaskInfo(
-            inputs, 0, 0, time.perf_counter()
+            inputs,
+            time.perf_counter()
         )
 
     def on_task_output_generated(self, task_index: int, output: RefBundle):
