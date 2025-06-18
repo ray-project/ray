@@ -129,6 +129,9 @@ class DeploymentConfig(BaseModel):
         logging_config: Configuration for deployment logs.
         user_configured_option_names: The names of options manually
             configured by the user.
+        request_router_class: Custom router class to use for routing requests.
+        request_router_kwargs: Keyword arguments that will be passed to the
+            request router class __init__ method.
     """
 
     num_replicas: Optional[NonNegativeInt] = Field(
