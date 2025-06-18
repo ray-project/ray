@@ -632,17 +632,21 @@ def config(address: str, name: Optional[str]):
 
     # Fetch app configs for all live applications on the cluster
     if name is None:
-        print(
-            "\n---\n\n".join(
+        
+        configs = [
                 yaml.safe_dump(
                     app.deployed_app_config.dict(exclude_unset=True),
                     sort_keys=False,
                 )
                 for app in serve_details.applications.values()
                 if app.deployed_app_config is not None
-            ),
-            end="",
-        )
+            ]
+        if configs:
+            print("\n---\n\n".join(configs), end="")
+        else:
+            print("No config was provided during `serve run`. Nothing to display.")
+
+        
     # Fetch a specific app config by name.
     else:
         app = serve_details.applications.get(name)
@@ -650,7 +654,8 @@ def config(address: str, name: Optional[str]):
             print(f'No config has been deployed for application "{name}".')
         else:
             config = app.deployed_app_config.dict(exclude_unset=True)
-            print(yaml.safe_dump(config, sort_keys=False), end="")
+
+            print(yaml.safe_dump(config, sort_keys=False), end="" if config else "No config was provided during `serve run`. Nothing to display.")
 
 
 @cli.command(
