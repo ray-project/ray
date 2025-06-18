@@ -247,7 +247,7 @@ def test_controller_callback():
             self.resize_decision_called = False
             self.shutdown_called = False
 
-        def after_controller_start(self):
+        def after_controller_start(self, train_run_context: TrainRunContext):
             self.start_called = True
 
         def after_controller_state_update(
