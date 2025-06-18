@@ -1,6 +1,10 @@
 from unittest.mock import MagicMock
 
-from ray.train.v2._internal.execution.context import TrainRunContext
+from ray.train.context import TrainContext
+from ray.train.v2._internal.execution.context import (
+    DistributedContext,
+    TrainRunContext,
+)
 from ray.train.v2._internal.execution.failure_handling import (
     FailureDecision,
     FailurePolicy,
@@ -153,3 +157,33 @@ def create_dummy_run_context(**kwargs: dict) -> TrainRunContext:
     )
     config.update(kwargs)
     return TrainRunContext(**config)
+
+
+class DummyTrainContext(TrainContext):
+    """A dummy TrainContext subclass for testing."""
+
+    def __init__(self):
+        self.train_run_context = create_dummy_run_context()
+        self.distributed_context = DistributedContext(
+            world_rank=0,
+            world_size=1,
+            local_rank=0,
+            local_world_size=1,
+            node_rank=0,
+        )
+        # Mock everything else since we don't need the actual functionality
+        self.execution_context = MagicMock()
+        self.storage_context = MagicMock()
+        self.dataset_shards = {}
+
+    def get_run_config(self):
+        return self.train_run_context.run_config
+
+
+def create_dummy_train_context() -> TrainContext:
+    """Create a standardized TrainContext for testing.
+
+    Returns:
+        TrainContext: A standardized TrainContext instance for testing.
+    """
+    return DummyTrainContext()

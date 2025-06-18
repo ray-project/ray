@@ -34,12 +34,6 @@ def mock_gpu_cluster():
     cluster.shutdown()
 
 
-@pytest.fixture
-def dummy_run_context():
-    """Create dummy train run context objects for testing."""
-    return create_dummy_run_context()
-
-
 @pytest.mark.parametrize(
     "node_ids, accelerator_ids_per_worker, expected",
     [
