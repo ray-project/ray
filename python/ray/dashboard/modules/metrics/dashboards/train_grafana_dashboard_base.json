@@ -196,7 +196,7 @@
         "refresh": 1,
         "hide": 2,
         "includeAll": true,
-        "multi": false,
+        "multi": true,
         "allValue": ".*",
         "sort": 2,
         "current": {
@@ -219,7 +219,7 @@
         "refresh": 1,
         "hide": 2,
         "includeAll": true,
-        "multi": false,
+        "multi": true,
         "allValue": ".*",
         "sort": 2,
         "current": {
