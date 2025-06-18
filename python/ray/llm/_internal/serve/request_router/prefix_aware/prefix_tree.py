@@ -597,11 +597,10 @@ class PrefixTree:
                         self.evict_tenant_by_lru(tenant, excess)
 
     def stop_eviction_loop(self):
-        with self.lock:
-            if self._eviction_thread:
-                self._eviction_stop_event.set()
-                self._eviction_thread.join()
-                self._eviction_thread = None
+        self._eviction_stop_event.set()
+        if self._eviction_thread:
+            self._eviction_thread.join()
+            self._eviction_thread = None
 
 
 @ray.remote
