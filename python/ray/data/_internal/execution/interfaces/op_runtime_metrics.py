@@ -8,6 +8,7 @@ from typing import TYPE_CHECKING, Any, Dict, List, Optional
 import ray
 from ray.data._internal.execution.bundle_queue import create_bundle_queue
 from ray.data._internal.execution.interfaces.ref_bundle import RefBundle
+from ray.data._internal.execution.util import get_bytes_spilled
 from ray.data._internal.memory_tracing import trace_allocation
 from ray.data.block import BlockMetadata
 
@@ -128,6 +129,7 @@ class RunningTaskInfo:
     inputs: RefBundle
     num_outputs: int
     bytes_outputs: int
+    bytes_outputs_spilled: int
     start_time: float
 
 
@@ -693,10 +695,13 @@ class OpRuntimeMetrics(metaclass=OpRuntimesMetricsMeta):
         self.bytes_task_outputs_generated += output_bytes
 
         task_info = self._running_tasks[task_index]
+
         if task_info.num_outputs == 0:
             self.num_tasks_have_outputs += 1
+
         task_info.num_outputs += num_outputs
         task_info.bytes_outputs += output_bytes
+        task_info.bytes_outputs_spilled += get_bytes_spilled(output)
 
         for block_ref, meta in output.blocks:
             assert (
@@ -748,11 +753,7 @@ class OpRuntimeMetrics(metaclass=OpRuntimesMetricsMeta):
 
         ctx = self._op.data_context
         if ctx.enable_get_object_locations_for_metrics:
-            locations = ray.experimental.get_object_locations(inputs.block_refs)
-            for block, meta in inputs.blocks:
-                if locations[block].get("did_spill", False):
-                    assert meta.size_bytes is not None
-                    self.obj_store_mem_spilled += meta.size_bytes
+            self.obj_store_mem_spilled += task_info.bytes_outputs_spilled
 
         self.obj_store_mem_freed += total_input_size
 
