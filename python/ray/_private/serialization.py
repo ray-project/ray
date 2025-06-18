@@ -279,9 +279,9 @@ class SerializationContext:
         gpu_object_manager = worker.gpu_object_manager
         enable_gpu_objects = gpu_object_manager.has_gpu_object(
             object_id
-        ) or gpu_object_manager.is_driver(object_id)
+        ) or gpu_object_manager.is_managed_gpu_object(object_id)
         if enable_gpu_objects:
-            if gpu_object_manager.is_driver(object_id):
+            if gpu_object_manager.is_managed_gpu_object(object_id):
                 gpu_object_manager.fetch_gpu_object(object_id)
             tensors = gpu_object_manager.get_gpu_object(object_id)
             ctx.reset_out_of_band_tensors(tensors)

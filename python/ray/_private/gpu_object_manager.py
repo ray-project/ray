@@ -49,7 +49,7 @@ class GPUObjectManager:
         # The object ref in the tuple contains a list of tuples, each containing the shape
         # and dtype of a tensor.
         # The entries in this dictionary are 1:1 with ObjectRefs created by this process with a tensor_transport hint and that are currently in scope.
-        self.gpu_object_refs: Dict[ObjectRef, GPUObjectMeta] = {}
+        self.managed_gpu_object_refs: Dict[ObjectRef, GPUObjectMeta] = {}
 
         # A dictionary that maps from an object ID to the corresponding ObjectRef.
         self.gpu_object_id_to_obj_ref: Dict[str, ObjectRef] = {}
@@ -83,7 +83,7 @@ class GPUObjectManager:
 
         return src_actor.__ray_call__.remote(__ray_get_tensor_meta__, obj_id)
 
-    def is_driver(self, obj_id: str) -> bool:
+    def is_managed_gpu_object(self, obj_id: str) -> bool:
         """
         Check if the GPU object is managed by this process.
 
@@ -116,24 +116,24 @@ class GPUObjectManager:
             tensor_transport
         )
         tensor_meta = self._get_tensor_meta(src_actor, obj_ref.hex())
-        self.gpu_object_refs[obj_ref] = GPUObjectMeta(
+        self.managed_gpu_object_refs[obj_ref] = GPUObjectMeta(
             src_actor=src_actor,
             tensor_transport_backend=tensor_transport_backend,
             tensor_meta=tensor_meta,
         )
         self.gpu_object_id_to_obj_ref[obj_ref.hex()] = obj_ref
 
-    # TODO(kevin85421): Call this function to remove the `obj_ref` from the `gpu_object_refs` dictionary
+    # TODO(kevin85421): Call this function to remove the `obj_ref` from the `managed_gpu_object_refs` dictionary
     # to allow garbage collection of the object.
     def remove_gpu_object_ref(self, obj_ref: ObjectRef):
-        del self.gpu_object_refs[obj_ref]
+        del self.managed_gpu_object_refs[obj_ref]
         del self.gpu_object_id_to_obj_ref[obj_ref.hex()]
 
     def _get_gpu_object_ref(self, obj_ref: ObjectRef) -> Optional[GPUObjectMeta]:
-        return self.gpu_object_refs[obj_ref]
+        return self.managed_gpu_object_refs[obj_ref]
 
     def _is_gpu_object_ref(self, obj_ref: ObjectRef) -> bool:
-        return obj_ref in self.gpu_object_refs
+        return obj_ref in self.managed_gpu_object_refs
 
     def _send_gpu_object(
         self, communicator_name: str, src_actor: ActorHandle, obj_id: str, dst_rank: int
@@ -180,7 +180,7 @@ class GPUObjectManager:
             return
 
         obj_ref = self.gpu_object_id_to_obj_ref[obj_id]
-        gpu_object_meta = self.gpu_object_refs[obj_ref]
+        gpu_object_meta = self.managed_gpu_object_refs[obj_ref]
         src_actor = gpu_object_meta.src_actor
         tensors = ray.get(
             src_actor.__ray_call__.remote(util.__ray_fetch_gpu_object__, obj_id)
@@ -192,7 +192,7 @@ class GPUObjectManager:
     ):
         """
         Triggers tensor communication operations between actors. When an ObjectRef containing
-        in-actor tensors (i.e. ObjectRef exists in `gpu_object_refs`) is passed to another
+        in-actor tensors (i.e. ObjectRef exists in `managed_gpu_object_refs`) is passed to another
         actor task, CPU data will still be passed through the object store, but the in-actor
         tensors will be passed out-of-band.
 
@@ -209,7 +209,7 @@ class GPUObjectManager:
             task_args: List of arguments for the target actor task that may contain ObjectRefs.
         """
         for arg in task_args:
-            # If an ObjectRef exists in `gpu_object_refs`, it means the ObjectRef
+            # If an ObjectRef exists in `managed_gpu_object_refs`, it means the ObjectRef
             # is in-actor tensors. Therefore, this function will trigger a tensor
             # communication operation between the sender and receiver actors.
             if not isinstance(arg, ObjectRef):
