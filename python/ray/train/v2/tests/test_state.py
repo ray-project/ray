@@ -4,6 +4,8 @@ import pytest
 
 import ray
 from ray.actor import ActorHandle
+from ray.data import Dataset
+from ray.train import BackendConfig, DataConfig, RunConfig, ScalingConfig
 from ray.train.v2._internal.callbacks.state_manager import StateManagerCallback
 from ray.train.v2._internal.execution.context import DistributedContext, TrainRunContext
 from ray.train.v2._internal.execution.controller.state import (
@@ -36,7 +38,6 @@ from ray.train.v2._internal.state.state_actor import (
     get_state_actor,
 )
 from ray.train.v2._internal.state.state_manager import TrainStateManager
-from ray.train.v2.api.config import RunConfig
 from ray.train.v2.api.exceptions import TrainingFailedError
 
 
@@ -49,8 +50,16 @@ def ray_start_regular():
 
 @pytest.fixture
 def mock_train_run_context():
-    run_config = RunConfig(name="test_run")
-    return TrainRunContext(run_config=run_config)
+    run_context = MagicMock(spec=TrainRunContext)
+    run_context.run_id = "test_run_id"
+    run_context.run_config = RunConfig(name="test_run_name")
+    run_context.train_loop_config = {}
+    run_context.scaling_config = ScalingConfig(num_workers=1)
+    run_context.backend_config = BackendConfig()
+    run_context.datasets = {"train": MagicMock(spec=Dataset)}
+    run_context.dataset_config = DataConfig()
+    run_context.get_run_config.return_value = run_context.run_config
+    return run_context
 
 
 @pytest.fixture
@@ -121,8 +130,8 @@ def callback(mock_train_run_context, monkeypatch):
         lambda: expected_controller_log_path,
     )
 
-    callback = StateManagerCallback(mock_train_run_context)
-    callback.after_controller_start()
+    callback = StateManagerCallback()
+    callback.after_controller_start(train_run_context=mock_train_run_context)
     return callback
 
 
@@ -368,6 +377,7 @@ def test_callback_error_state_transition(ray_start_regular, callback):
     state_actor = get_state_actor()
     runs = ray.get(state_actor.get_train_runs.remote())
     run = list(runs.values())[0]
+    print(runs)
     assert run.status == RunStatus.ERRORED
     assert error_msg in run.status_detail
     assert run.end_time_ns is not None
@@ -446,7 +456,11 @@ def test_callback_worker_group_error(
 
 
 def test_callback_log_file_paths(
-    ray_start_regular, monkeypatch, mock_worker_group_context, mock_worker
+    ray_start_regular,
+    monkeypatch,
+    mock_worker_group_context,
+    mock_worker,
+    mock_train_run_context,
 ):
     """Test that StateManagerCallback correctly captures and propagates log file paths."""
 
@@ -469,11 +483,10 @@ def test_callback_log_file_paths(
     )
 
     # Create the callback
-    train_run_context = TrainRunContext(RunConfig(name="test_run"))
-    callback = StateManagerCallback(train_run_context)
+    callback = StateManagerCallback()
 
     # Initialize the callback
-    callback.after_controller_start()
+    callback.after_controller_start(train_run_context=mock_train_run_context)
 
     # Verify the log path was set in the state actor
     state_actor = get_state_actor()
