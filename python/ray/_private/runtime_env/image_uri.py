@@ -32,8 +32,9 @@ async def _create_impl(image_uri: str, logger: logging.Logger):
     worker_path = lines[-1].strip()
 
     if not worker_path.endswith(".py"):
-        logger.error(f"Invalid worker path extracted: {worker_path}")
-        logger.error(f"Full output was: {output}")
+        logger.error(
+            f"Invalid worker path extracted: {worker_path} from output: {output}"
+        )
         raise ValueError("Failed to extract valid worker path from podman output")
 
     logger.info(f"Extracted worker path: {worker_path}")
