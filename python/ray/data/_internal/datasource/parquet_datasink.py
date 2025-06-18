@@ -146,7 +146,6 @@ class ParquetDatasink(_FileDatasink):
                     filename,
                     output_schema,
                     write_kwargs,
-                    self.max_rows_per_file,
                 )
         elif self.min_rows_per_file is not None:
             # Only min_rows_per_file is set
@@ -169,7 +168,6 @@ class ParquetDatasink(_FileDatasink):
         base_filename: str,
         output_schema: "pyarrow.Schema",
         write_kwargs: Dict[str, Any],
-        rows_per_file: int,
     ) -> None:
         """Split a table into multiple files with specified rows per file."""
         from ray.data.block import BlockAccessor
@@ -181,7 +179,12 @@ class ParquetDatasink(_FileDatasink):
         offset = 0
 
         while offset < total_rows:
-            chunk_size = min(rows_per_file, total_rows - offset)
+            min_rows_per_file = (
+                self.min_rows_per_file
+                if self.min_rows_per_file is not None
+                else total_rows - offset
+            )
+            chunk_size = min(self.max_rows_per_file, min_rows_per_file)
 
             # Create a slice of the table
             chunk_table = block_accessor.slice(offset, offset + chunk_size)
