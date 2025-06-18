@@ -29,7 +29,7 @@ class TelemetryRecorder:
         return self._telemetry
 
 
-def test_push_telemetry_report_for_all_models():
+def test_push_telemetry_report_for_all_models(disable_placement_bundles):
     recorder = TelemetryRecorder.remote()
 
     def record_tag_func(key, value):

@@ -3,6 +3,7 @@ import pathlib
 import tempfile
 import time
 from typing import Dict
+from unittest.mock import patch
 
 import openai
 import pytest
@@ -16,7 +17,24 @@ from ray.llm._internal.serve.configs.server_models import (
     LLMServingArgs,
     ModelLoadingConfig,
 )
+from ray.llm._internal.serve.deployments.llm.vllm.vllm_models import VLLMEngineConfig
 from ray.serve.llm import LLMServer
+
+
+@pytest.fixture
+def disable_placement_bundles():
+    """
+    Fixture to disable placement bundles for tests that don't need GPU hardware.
+
+    Use this fixture in tests that would otherwise require GPU hardware but
+    don't actually need to test placement bundle logic.
+    """
+    with patch.object(
+        VLLMEngineConfig,
+        "placement_bundles",
+        new_callable=lambda: property(lambda self: []),
+    ):
+        yield
 
 
 @pytest.fixture
@@ -31,7 +49,7 @@ def shutdown_ray_and_serve():
 
 
 @pytest.fixture
-def llm_config(model_pixtral_12b):
+def llm_config(model_pixtral_12b, disable_placement_bundles):
     yield LLMConfig(
         model_loading_config=ModelLoadingConfig(
             model_id=model_pixtral_12b,

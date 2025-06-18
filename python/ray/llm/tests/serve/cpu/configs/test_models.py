@@ -68,7 +68,7 @@ class TestModelConfig:
                 accelerator_type="A100_40G",  # Should use A100-40G instead
             )
 
-    def test_invalid_generation_config(self):
+    def test_invalid_generation_config(self, disable_placement_bundles):
         """Test that passing an invalid generation_config raises an error."""
         with pytest.raises(
             pydantic.ValidationError,
@@ -79,7 +79,7 @@ class TestModelConfig:
                 generation_config="invalid_config",  # Should be a dictionary, not a string
             )
 
-    def test_deployment_type_checking(self):
+    def test_deployment_type_checking(self, disable_placement_bundles):
         """Test that deployment config type checking works."""
         with pytest.raises(
             pydantic.ValidationError,
@@ -92,7 +92,7 @@ class TestModelConfig:
                 accelerator_type="L4",
             )
 
-    def test_autoscaling_type_checking(self):
+    def test_autoscaling_type_checking(self, disable_placement_bundles):
         """Test that autoscaling config type checking works."""
         with pytest.raises(
             pydantic.ValidationError,
@@ -107,7 +107,7 @@ class TestModelConfig:
                 accelerator_type="L4",
             )
 
-    def test_deployment_unset_fields_are_not_included(self):
+    def test_deployment_unset_fields_are_not_included(self, disable_placement_bundles):
         """Test that unset fields are not included in the deployment config."""
         llm_config = LLMConfig(
             model_loading_config=ModelLoadingConfig(model_id="test_model"),
@@ -116,7 +116,7 @@ class TestModelConfig:
         assert "max_ongoing_requests" not in llm_config.deployment_config
         assert "graceful_shutdown_timeout_s" not in llm_config.deployment_config
 
-    def test_autoscaling_unset_fields_are_not_included(self):
+    def test_autoscaling_unset_fields_are_not_included(self, disable_placement_bundles):
         """Test that unset fields are not included in the autoscaling config."""
         llm_config = LLMConfig(
             model_loading_config=ModelLoadingConfig(model_id="test_model"),

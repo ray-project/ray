@@ -127,7 +127,7 @@ class TestBuildOpenaiApp:
         p.send_signal(signal.SIGINT)  # Equivalent to ctrl-C
         p.wait()
 
-    def test_router_built_with_autoscaling_configs(self):
+    def test_router_built_with_autoscaling_configs(self, disable_placement_bundles):
         """Test that the router is built with the correct autoscaling configs that
         will scale.
         """
