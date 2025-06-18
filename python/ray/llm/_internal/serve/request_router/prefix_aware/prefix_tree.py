@@ -575,6 +575,7 @@ class PrefixTree:
         Returns:
             True if the loop was started, False if it was already running
         """
+        self._eviction_stop_event.clear()
         with self.lock:
             if self._eviction_thread is None:
                 self._eviction_thread = threading.Thread(
