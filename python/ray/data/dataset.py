@@ -3569,7 +3569,7 @@ class Dataset:
         if pandas_json_args_fn is None:
             pandas_json_args_fn = lambda: {}  # noqa: E731
 
-        effective_min_rows = _validate_rows_per_file_args(
+        effective_min_rows, _ = _validate_rows_per_file_args(
             num_rows_per_file=num_rows_per_file, min_rows_per_file=min_rows_per_file
         )
 
@@ -3826,7 +3826,7 @@ class Dataset:
         if arrow_csv_args_fn is None:
             arrow_csv_args_fn = lambda: {}  # noqa: E731
 
-        effective_min_rows = _validate_rows_per_file_args(
+        effective_min_rows, _ = _validate_rows_per_file_args(
             num_rows_per_file=num_rows_per_file, min_rows_per_file=min_rows_per_file
         )
 
@@ -3936,7 +3936,7 @@ class Dataset:
                 NOTE: This method isn't atomic. "Overwrite" first deletes all the data
                 before writing to `path`.
         """
-        effective_min_rows = _validate_rows_per_file_args(
+        effective_min_rows, _ = _validate_rows_per_file_args(
             num_rows_per_file=num_rows_per_file, min_rows_per_file=min_rows_per_file
         )
 
@@ -4033,7 +4033,7 @@ class Dataset:
                 NOTE: This method isn't atomic. "Overwrite" first deletes all the data
                 before writing to `path`.
         """
-        effective_min_rows = _validate_rows_per_file_args(
+        effective_min_rows, _ = _validate_rows_per_file_args(
             num_rows_per_file=num_rows_per_file, min_rows_per_file=min_rows_per_file
         )
 
@@ -4133,7 +4133,7 @@ class Dataset:
                 NOTE: This method isn't atomic. "Overwrite" first deletes all the data
                 before writing to `path`.
         """
-        effective_min_rows = _validate_rows_per_file_args(
+        effective_min_rows, _ = _validate_rows_per_file_args(
             num_rows_per_file=num_rows_per_file, min_rows_per_file=min_rows_per_file
         )
 
