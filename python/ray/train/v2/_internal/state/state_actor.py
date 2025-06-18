@@ -23,8 +23,6 @@ from ray.train.v2._internal.constants import (
 from ray.train.v2._internal.state.schema import (
     TrainRun,
     TrainRunAttempt,
-    is_terminal_run_attempt_status,
-    is_terminal_run_status,
 )
 from ray.train.v2._internal.state.util import (
     update_train_run_aborted,
@@ -66,13 +64,11 @@ class TrainStateActor:
             self._latest_poll_time = float("-inf")
             self._start_controller_polling_thread()
 
-    def _abort_dead_controller_live_runs(self) -> None:
+    def _abort_live_runs_with_dead_controllers(self) -> None:
         # Get runs to abort.
         with self._runs_lock:
             non_terminal_runs = [
-                run
-                for run in self._runs.values()
-                if not is_terminal_run_status(run.status)
+                run for run in self._runs.values() if not run.status.is_terminal()
             ]
 
         for run in non_terminal_runs:
@@ -87,7 +83,7 @@ class TrainStateActor:
                     non_terminal_run_attempts = [
                         run_attempt
                         for run_attempt in self._run_attempts.get(run.id, {}).values()
-                        if not is_terminal_run_attempt_status(run_attempt.status)
+                        if not run_attempt.status.is_terminal()
                     ]
                 for run_attempt in non_terminal_run_attempts:
                     update_train_run_attempt_aborted(run_attempt)
@@ -104,7 +100,7 @@ class TrainStateActor:
                     )
                     time.sleep(remaining_time)
 
-                self._abort_dead_controller_live_runs()
+                self._abort_live_runs_with_dead_controllers()
                 self._latest_poll_time = time_monotonic()
 
         thread = threading.Thread(target=_poll_controller_continuously, daemon=True)

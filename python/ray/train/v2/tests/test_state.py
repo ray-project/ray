@@ -293,7 +293,7 @@ def test_train_state_actor_abort_dead_controller_live_runs(monkeypatch):
     }
 
     # Assert correct runs and run attempts get aborted.
-    actor._abort_dead_controller_live_runs()
+    actor._abort_live_runs_with_dead_controllers()
     assert actor._runs == {
         "nonexistent_controller_no_attempts_run_id": create_mock_train_run(
             status=RunStatus.ABORTED,

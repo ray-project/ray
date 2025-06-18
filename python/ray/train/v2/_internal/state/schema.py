@@ -32,9 +32,8 @@ class RunStatus(str, Enum):
     # The Train run was terminated due to system or controller errors.
     ABORTED = "ABORTED"
 
-
-def is_terminal_run_status(status: RunStatus) -> bool:
-    return status in [RunStatus.FINISHED, RunStatus.ERRORED, RunStatus.ABORTED]
+    def is_terminal(self) -> bool:
+        return self in [RunStatus.FINISHED, RunStatus.ERRORED, RunStatus.ABORTED]
 
 
 @DeveloperAPI
@@ -55,13 +54,12 @@ class RunAttemptStatus(str, Enum):
     # The run attempt was terminated due to system or controller errors.
     ABORTED = "ABORTED"
 
-
-def is_terminal_run_attempt_status(status: RunAttemptStatus) -> bool:
-    return status in [
-        RunAttemptStatus.FINISHED,
-        RunAttemptStatus.ERRORED,
-        RunAttemptStatus.ABORTED,
-    ]
+    def is_terminal(self) -> bool:
+        return self in [
+            RunAttemptStatus.FINISHED,
+            RunAttemptStatus.ERRORED,
+            RunAttemptStatus.ABORTED,
+        ]
 
 
 @DeveloperAPI
