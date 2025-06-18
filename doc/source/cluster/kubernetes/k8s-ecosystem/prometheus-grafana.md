@@ -53,7 +53,7 @@ kubectl get all -n prometheus-system
 ## Step 3: Install a KubeRay operator
 
 * Follow [this document](kuberay-operator-deploy) to install the latest stable KubeRay operator via Helm repository.
-* To enable the ServiceMonitor when installing the KubeRay operator with helm use the following command:
+* Set `metrics.serviceMonitor.enabled=true` when installing the KubeRay operator with Helm to create a ServiceMonitor that scrapes metrics exposed by the KubeRay operator's service.
   ```sh
   helm install kuberay-operator kuberay/kuberay-operator --version 1.4.0 \
     --set metrics.serviceMonitor.enabled=true
@@ -232,7 +232,7 @@ spec:
   # raycluster-kuberay-worker-workergroup-5stpm   1/1     Running   0          3h16m
   ```
 
-## Step 7: Collect KubeRay metrics with ServiceMonitor
+## Step 7: Scrape KubeRay metrics with ServiceMonitor
 
 Installing the KubeRay operator automatically creates a ServiceMonitor to help Prometheus discover and scrape KubeRay metrics. You can verify the ServiceMonitor creation with:
 ```sh
@@ -441,7 +441,7 @@ For example, in the following figures, one selects the metrics from the RayClust
 
 ## Step 14: View the KubeRay operator dashboard
 
-After importing the KubeRay Operator dashboard into Grafana, you can monitor metrics from the KubeRay operator. The dashboard includes a dropdown menu that lets you filter and view controller runtime metrics for specific Ray custom resources CRs: `RayCluster`, `RayJob`, and `RayService`.
+After importing the KubeRay operator dashboard into Grafana, you can monitor metrics from the KubeRay operator. The dashboard includes a dropdown menu that lets you filter and view controller runtime metrics for specific Ray custom resources CRs: `RayCluster`, `RayJob`, and `RayService`.
 
 The KubeRay operator dashboard should look like this:
 ![Grafana KubeRay Operator Controller Runtime dashboard](../images/kuberay-dashboard-controller-runtime.png)
