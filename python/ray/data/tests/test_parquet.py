@@ -291,12 +291,19 @@ def test_parquet_read_meta_provider(ray_start_regular_shared, fs, data_path):
         input_files=[path1, path2],
     )
 
-    assert read_op.infer_schema().equals(
-        pa.schema([
-            pa.field("one", pa.int64()),
-            pa.field("two", pa.string()),
-        ])
-    )
+    expected_schema = pa.schema({"one": pa.int64(), "two": pa.string()})
+
+    assert read_op.infer_schema().equals(expected_schema)
+
+    # Expected
+    #   - Fetched Parquet metadata to be reused
+    #   - *No* dataset execution performed
+    assert ds.count() == 6
+    assert ds.size_bytes() > 0
+    assert ds.schema() == Schema(expected_schema)
+    assert set(ds.input_files()) == set([path1, path2])
+
+    assert not ds._plan.has_computed_output()
 
     #
     # Case 2: Test metadata fetching *failing* (falling back to actually
@@ -318,14 +325,15 @@ def test_parquet_read_meta_provider(ray_start_regular_shared, fs, data_path):
         meta_provider=FailingMetadataProvider(),
     )
 
-    # Expect to lazily compute all metadata correctly.
+    # Expected
+    #   - Fetched Parquet metadata is not used (returns null), hence
+    #   - Dataset execution has to be performed
     assert ds.count() == 6
     assert ds.size_bytes() > 0
-    assert ds.schema() == Schema(pa.schema({"one": pa.int64(), "two": pa.string()}))
-    input_files = ds.input_files()
-    assert len(input_files) == 2, input_files
-    assert "test1.parquet" in str(input_files)
-    assert "test2.parquet" in str(input_files)
+    assert ds.schema() == Schema(expected_schema)
+    assert set(ds.input_files()) == set([path1, path2])
+
+    assert ds._plan.has_computed_output()
 
     # Forces a data read.
     values = [[s["one"], s["two"]] for s in ds.take()]
