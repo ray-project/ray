@@ -11,22 +11,22 @@ Starting with KubeRay v1.4.0, KubeRay integrates with the [PodGroup API](https:/
 kind create cluster --image=kindest/node:v1.26.0
 ```
 
-## Step 2: Install Scheduler Plugins
+## Step 2: Install scheduler plugins
 
 Follow the [installation guide](https://scheduler-plugins.sigs.k8s.io/docs/user-guide/installation/) in the scheduler-plugins repository to install the scheduler plugins.
 
 :::{note}
 
-Note that there are two modes for installing the scheduler plugins: **single scheduler mode** or **second scheduler mode**.
+There are two modes for installing the scheduler plugins: *single scheduler mode* and *second scheduler mode*.
 
-For KubeRay v1.4.0, KubeRay only supports the **single scheduler mode**.
+KubeRay v1.4.0 only supports the *single scheduler mode*.
 You need to have the access to configure Kubernetes control plane to replace the default scheduler with the scheduler plugins.
 
 :::
 
 ## Step 3: Install KubeRay operator with scheduler plugins enabled
 
-KubeRay starts to support scheduler plugins since v1.4.0.
+KubeRay v1.4.0 and later versions support scheduler plugins.
 
 ```sh
 helm install kuberay-operator kuberay/kuberay-operator --version 1.4.0 --set batchScheduler.name=scheduler-plugins
@@ -40,7 +40,7 @@ helm install kuberay-operator kuberay/kuberay-operator --version 1.4.0 --set bat
 kubectl apply -f https://raw.githubusercontent.com/ray-project/kuberay/release-1.4/ray-operator/config/samples/ray-cluster.scheduler-plugins.yaml
 ```
 
-## Step 5: Check Ray Pods and PodGroup
+## Step 5: Verify Ray Pods and PodGroup
 
 ```sh
 kubectl get podgroups.scheduling.x-k8s.io
