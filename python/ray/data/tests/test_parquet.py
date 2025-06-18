@@ -1608,6 +1608,53 @@ def test_parquet_row_group_size_002(ray_start_regular_shared, tmp_path):
     assert ds.fragments[0].num_row_groups == 10
 
 
+@pytest.mark.parametrize("min_rows_per_file", [5, 10])
+def test_write_partition_cols_with_min_rows_per_file(
+    tmp_path, ray_start_regular_shared, min_rows_per_file
+):
+    """Test write_parquet with both partition_cols and min_rows_per_file."""
+    import pyarrow.parquet as pq
+
+    # Create dataset with 2 partitions, each having 20 rows
+    # This should trigger file splitting when min_rows_per_file < 20
+    df = pd.DataFrame(
+        {
+            "partition_col": [0] * 20 + [1] * 20,  # 2 partitions with 20 rows each
+            "data": list(range(40)),
+        }
+    )
+
+    ds = ray.data.from_pandas(df)
+    ds.write_parquet(
+        tmp_path, partition_cols=["partition_col"], min_rows_per_file=min_rows_per_file
+    )
+
+    # Check partition directories exist
+    partition_0_dir = tmp_path / "partition_col=0"
+    partition_1_dir = tmp_path / "partition_col=1"
+    assert partition_0_dir.exists()
+    assert partition_1_dir.exists()
+
+    # Check each partition has correct number of files and total rows
+    expected_files_per_partition = (20 + min_rows_per_file - 1) // min_rows_per_file
+
+    for partition_dir in [partition_0_dir, partition_1_dir]:
+        parquet_files = list(partition_dir.glob("*.parquet"))
+        assert len(parquet_files) == expected_files_per_partition
+
+        # Verify total rows across all files in partition
+        total_rows = 0
+        for file_path in parquet_files:
+            table = pq.read_table(file_path)
+            total_rows += len(table)
+        assert total_rows == 20  # Each partition should have 20 rows total
+
+    # Verify we can read back the data correctly
+    ds_read = ray.data.read_parquet(tmp_path)
+    assert ds_read.count() == 40
+    assert set(ds_read.schema().names) == {"partition_col", "data"}
+
+
 if __name__ == "__main__":
     import sys
 

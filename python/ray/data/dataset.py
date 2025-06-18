@@ -3430,12 +3430,6 @@ class Dataset:
         if arrow_parquet_args_fn is None:
             arrow_parquet_args_fn = lambda: {}  # noqa: E731
 
-        if partition_cols and (num_rows_per_file or min_rows_per_file):
-            raise ValueError(
-                "Cannot pass num_rows_per_file or min_rows_per_file when partition_cols "
-                "argument is specified"
-            )
-
         effective_min_rows = _validate_rows_per_file_args(
             num_rows_per_file=num_rows_per_file, min_rows_per_file=min_rows_per_file
         )

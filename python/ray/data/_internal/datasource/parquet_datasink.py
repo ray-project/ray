@@ -165,13 +165,77 @@ class ParquetDatasink(_FileDatasink):
             )
             write_path = posixpath.join(self.path, partition_path)
             self._create_dir(write_path)
+
+            # Handle min_rows_per_file for partitioned data
+            if (
+                self.min_rows_per_file is not None
+                and group_table.num_rows > self.min_rows_per_file
+            ):
+                # Split the partition into multiple files
+                self._write_partition_with_row_limit(
+                    group_table, write_path, filename, output_schema, write_kwargs
+                )
+            else:
+                # Write as single file (existing behavior when min_rows_per_file is None
+                # or when partition has fewer rows than min_rows_per_file)
+                self._write_single_file(
+                    write_path,
+                    [group_table],
+                    filename,
+                    output_schema,
+                    write_kwargs,
+                )
+
+    def _write_partition_with_row_limit(
+        self,
+        table: "pyarrow.Table",
+        write_path: str,
+        base_filename: str,
+        output_schema: "pyarrow.Schema",
+        write_kwargs: Dict[str, Any],
+    ) -> None:
+        """Write a partition table to multiple files respecting min_rows_per_file."""
+        from ray.data._internal.execution.operators.map_transformer import _splitrange
+        from ray.data.block import BlockAccessor
+
+        total_rows = table.num_rows
+
+        # Calculate how many files we need based on min_rows_per_file
+        # Each file should have at least min_rows_per_file rows (except possibly the last)
+        num_files = max(
+            1, (total_rows + self.min_rows_per_file - 1) // self.min_rows_per_file
+        )
+
+        # Split the table into chunks, distributing rows as evenly as possible
+        split_sizes = _splitrange(total_rows, num_files)
+
+        block_accessor = BlockAccessor.for_block(table)
+        offset = 0
+
+        for file_idx, chunk_size in enumerate(split_sizes):
+            if chunk_size == 0:
+                continue
+
+            # Create a slice of the table
+            chunk_table = block_accessor.slice(offset, offset + chunk_size)
+
+            # Generate filename with index suffix
+            name_parts = base_filename.rsplit(".", 1)
+            if len(name_parts) == 2:
+                chunk_filename = f"{name_parts[0]}_{file_idx:06d}.{name_parts[1]}"
+            else:
+                chunk_filename = f"{base_filename}_{file_idx:06d}"
+
+            # Write the chunk
             self._write_single_file(
                 write_path,
-                [group_table],
-                filename,
+                [chunk_table],
+                chunk_filename,
                 output_schema,
                 write_kwargs,
             )
+
+            offset += chunk_size
 
     @property
     def min_rows_per_write(self) -> Optional[int]:
