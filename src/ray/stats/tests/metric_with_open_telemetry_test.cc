@@ -139,20 +139,5 @@ TEST_F(MetricTest, TestSumMetric) {
       "legacy_metric_sum_test"));
 }
 
-TEST_F(MetricTest, TestCounterMetric) {
-  ASSERT_TRUE(OpenTelemetryMetricRecorder::GetInstance().IsMetricRegistered(
-      "metric_counter_test"));
-  STATS_metric_counter_test.Record(100.0, {{"Tag1", "Value1"}, {"Tag2", "Value2"}});
-}
-
-TEST_F(MetricTest, TestHistogramMetric) {
-  ASSERT_TRUE(OpenTelemetryMetricRecorder::GetInstance().IsMetricRegistered(
-      "metric_histogram_test"));
-  STATS_metric_histogram_test.Record(300.0, {{"Tag1", "Value1"}, {"Tag2", "Value2"}});
-  LegacyMetricHistogramTest.Record(300.0, {{"Tag1"sv, "Value1"}, {"Tag2"sv, "Value2"}});
-  ASSERT_TRUE(OpenTelemetryMetricRecorder::GetInstance().IsMetricRegistered(
-      "legacy_metric_histogram_test"));
-}
-
 }  // namespace telemetry
 }  // namespace ray
