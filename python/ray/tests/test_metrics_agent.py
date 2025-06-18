@@ -254,6 +254,11 @@ def _setup_cluster_for_test(request, ray_start_cluster):
 
 
 @pytest.mark.skipif(prometheus_client is None, reason="Prometheus not installed")
+@pytest.mark.skipif(
+    os.environ.get("RAY_experimental_enable_open_telemetry_on_core") == "1"
+    and sys.platform == "darwin",
+    reason="OpenTelemetry is not working on macOS yet.",
+)
 @pytest.mark.parametrize("_setup_cluster_for_test", [True], indirect=True)
 def test_metrics_export_end_to_end(_setup_cluster_for_test):
     TEST_TIMEOUT_S = 30
