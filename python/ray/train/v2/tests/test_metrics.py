@@ -4,13 +4,10 @@ from unittest.mock import MagicMock
 import pytest
 
 import ray
-from ray.data import Dataset
-from ray.train import BackendConfig, DataConfig
 from ray.train.v2._internal.callbacks.metrics import (
     ControllerMetricsCallback,
     WorkerMetricsCallback,
 )
-from ray.train.v2._internal.execution.context import TrainRunContext
 from ray.train.v2._internal.execution.controller.state import (
     TrainControllerState,
     TrainControllerStateType,
@@ -18,21 +15,8 @@ from ray.train.v2._internal.execution.controller.state import (
 from ray.train.v2._internal.metrics.base import EnumMetric, TimeMetric
 from ray.train.v2._internal.metrics.controller import ControllerMetrics
 from ray.train.v2._internal.metrics.worker import WorkerMetrics
-from ray.train.v2.api.config import RunConfig, ScalingConfig
-
-
-@pytest.fixture
-def mock_train_run_context():
-    run_context = MagicMock(spec=TrainRunContext)
-    run_context.run_id = "test_run_id"
-    run_context.run_config = RunConfig(name="test_run_name")
-    run_context.train_loop_config = {}
-    run_context.scaling_config = ScalingConfig(num_workers=1)
-    run_context.backend_config = BackendConfig()
-    run_context.datasets = {"train": MagicMock(spec=Dataset)}
-    run_context.dataset_config = DataConfig()
-    run_context.get_run_config.return_value = run_context.run_config
-    return run_context
+from ray.train.v2.api.config import RunConfig
+from ray.train.v2.tests.util import create_dummy_run_context
 
 
 class MockGauge:
@@ -136,7 +120,7 @@ def test_enum_metric(monkeypatch, mock_gauge):
     assert metric.get_value(TestEnum.C) == 0
 
 
-def test_worker_metrics_callback(monkeypatch, mock_gauge, mock_train_run_context):
+def test_worker_metrics_callback(monkeypatch, mock_gauge):
     t1 = 0.0
     t2 = 1.0
     t3 = 10.0
@@ -145,14 +129,14 @@ def test_worker_metrics_callback(monkeypatch, mock_gauge, mock_train_run_context
 
     mock_train_context = MagicMock()
     mock_train_context.get_world_rank.return_value = 1
-    mock_train_context.train_run_context = mock_train_run_context
+    mock_train_context.train_run_context = create_dummy_run_context()
     monkeypatch.setattr(
         ray.train.v2._internal.callbacks.metrics,
         "get_train_context",
         lambda: mock_train_context,
     )
 
-    callback = WorkerMetricsCallback(train_run_context=mock_train_run_context)
+    callback = WorkerMetricsCallback(train_run_context=create_dummy_run_context())
     callback.after_init_train_context()
 
     # Check if the gauges is updated with the correct metrics
@@ -176,7 +160,7 @@ def test_worker_metrics_callback(monkeypatch, mock_gauge, mock_train_run_context
     )
 
 
-def test_controller_metrics_callback(monkeypatch, mock_gauge, mock_train_run_context):
+def test_controller_metrics_callback(monkeypatch, mock_gauge):
     t1 = 0.0
     t2 = 1.0
     t3 = 10.0
@@ -192,7 +176,7 @@ def test_controller_metrics_callback(monkeypatch, mock_gauge, mock_train_run_con
     )
 
     callback = ControllerMetricsCallback()
-    callback.after_controller_start(train_run_context=mock_train_run_context)
+    callback.after_controller_start(train_run_context=create_dummy_run_context())
 
     # Check if the gauges is updated with the correct metrics
     with callback.on_worker_group_start():
@@ -235,7 +219,7 @@ def test_controller_metrics_callback(monkeypatch, mock_gauge, mock_train_run_con
     )
 
 
-def test_controller_state_metrics(monkeypatch, mock_gauge, mock_train_run_context):
+def test_controller_state_metrics(monkeypatch, mock_gauge):
     """Test controller state transition metrics."""
     mock_train_context = MagicMock()
     mock_train_context.get_run_config.return_value = RunConfig(name="test_run_name")
@@ -246,7 +230,7 @@ def test_controller_state_metrics(monkeypatch, mock_gauge, mock_train_run_contex
     )
 
     callback = ControllerMetricsCallback()
-    callback.after_controller_start(train_run_context=mock_train_run_context)
+    callback.after_controller_start(train_run_context=create_dummy_run_context())
 
     # Test initial state
     assert (

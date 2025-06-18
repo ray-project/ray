@@ -5,19 +5,19 @@ import pytest
 
 import ray
 from ray.cluster_utils import Cluster
-from ray.train import BackendConfig, DataConfig
+from ray.train import BackendConfig
 from ray.train.backend import Backend
 from ray.train.v2._internal.callbacks.accelerators import (
     AcceleratorSetupCallback,
     _get_visible_accelerator_ids_per_worker,
 )
-from ray.train.v2._internal.execution.context import TrainRunContext
 from ray.train.v2._internal.execution.worker_group import ActorMetadata, WorkerGroup
 from ray.train.v2._internal.execution.worker_group.worker_group import (
     WorkerGroupContext,
 )
 from ray.train.v2._internal.util import ObjectRefWrapper
-from ray.train.v2.api.config import RunConfig, ScalingConfig
+from ray.train.v2.api.config import ScalingConfig
+from ray.train.v2.tests.util import create_dummy_run_context
 
 
 @pytest.fixture
@@ -37,14 +37,7 @@ def mock_gpu_cluster():
 @pytest.fixture
 def dummy_run_context():
     """Create dummy train run context objects for testing."""
-    return TrainRunContext(
-        run_config=RunConfig(name="test"),
-        train_loop_config={},
-        scaling_config=ScalingConfig(num_workers=1),
-        backend_config=BackendConfig(),
-        datasets={},
-        dataset_config=DataConfig(),
-    )
+    return create_dummy_run_context()
 
 
 @pytest.mark.parametrize(
@@ -111,7 +104,7 @@ def test_missing_accelerator():
         )
 
 
-def test_accelerator_setup_callback(mock_gpu_cluster, dummy_run_context):
+def test_accelerator_setup_callback(mock_gpu_cluster):
     """The accelerator setup callback should set the CUDA_VISIBLE_DEVICES
     on each worker properly."""
 
@@ -136,7 +129,7 @@ def test_accelerator_setup_callback(mock_gpu_cluster, dummy_run_context):
     )
 
     worker_group = WorkerGroup(
-        train_run_context=dummy_run_context,
+        train_run_context=create_dummy_run_context(),
         worker_group_context=worker_group_context,
     )
     with pytest.raises(RuntimeError):

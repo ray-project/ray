@@ -128,3 +128,28 @@ class DummyObjectRefWrapper(ObjectRefWrapper):
 
     def get(self):
         return self._obj
+
+
+def create_dummy_run_context(**kwargs: dict) -> TrainRunContext:
+    """Create a standardized TrainRunContext for testing.
+
+    Args:
+        **kwargs: Optional overrides for the default configuration.
+
+    Returns:
+        TrainRunContext: A standardized TrainRunContext instance for testing.
+    """
+    from ray.train import BackendConfig, DataConfig
+    from ray.train.v2._internal.execution.context import TrainRunContext
+    from ray.train.v2.api.config import RunConfig, ScalingConfig
+
+    config = dict(
+        run_config=RunConfig(name="test"),
+        train_loop_config={},
+        scaling_config=ScalingConfig(num_workers=1),
+        backend_config=BackendConfig(),
+        datasets={},
+        dataset_config=DataConfig(),
+    )
+    config.update(kwargs)
+    return TrainRunContext(**config)

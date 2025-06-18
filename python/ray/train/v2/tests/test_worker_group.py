@@ -7,8 +7,6 @@ import pytest
 import ray
 from ray.exceptions import RayActorError
 from ray.runtime_env import RuntimeEnv
-from ray.train._internal.data_config import DataConfig
-from ray.train.backend import BackendConfig
 from ray.train.v2._internal.constants import (
     ENV_VARS_TO_PROPAGATE,
     WORKER_GROUP_START_TIMEOUT_S_ENV_VAR,
@@ -21,7 +19,7 @@ from ray.train.v2._internal.exceptions import (
     WorkerHealthCheckTimeoutError,
 )
 from ray.train.v2._internal.execution.callback import WorkerGroupCallback
-from ray.train.v2._internal.execution.context import TrainRunContext, get_train_context
+from ray.train.v2._internal.execution.context import get_train_context
 from ray.train.v2._internal.execution.worker_group import (
     ActorMetadata,
     RayTrainWorker,
@@ -29,8 +27,8 @@ from ray.train.v2._internal.execution.worker_group import (
     WorkerGroup,
     WorkerGroupContext,
 )
-from ray.train.v2.api.config import RunConfig, ScalingConfig
-from ray.train.v2.tests.util import DummyObjectRefWrapper
+from ray.train.v2.api.config import RunConfig
+from ray.train.v2.tests.util import DummyObjectRefWrapper, create_dummy_run_context
 
 
 @pytest.fixture(autouse=True, scope="module")
@@ -40,22 +38,9 @@ def ray_start_4_cpus():
     ray.shutdown()
 
 
-def dummy_run_context(**kwargs):
-    config = dict(
-        run_config=RunConfig(name="test"),
-        train_loop_config={},
-        scaling_config=ScalingConfig(num_workers=1),
-        backend_config=BackendConfig(),
-        datasets={},
-        dataset_config=DataConfig(),
-    )
-    config.update(kwargs)
-    return TrainRunContext(**config)
-
-
 def _default_inactive_worker_group(**kwargs):
     default_config = {
-        "train_run_context": dummy_run_context(),
+        "train_run_context": create_dummy_run_context(),
         "worker_group_context": _default_worker_group_context(),
     }
     default_config.update(kwargs)
@@ -78,7 +63,7 @@ def test_worker_group_create():
     """Test WorkerGroup.create() factory method."""
 
     worker_group = WorkerGroup.create(
-        train_run_context=dummy_run_context(),
+        train_run_context=create_dummy_run_context(),
         worker_group_context=_default_worker_group_context(),
     )
 
@@ -101,7 +86,7 @@ def test_worker_group_create_with_runtime_env(runtime_env):
     """Test WorkerGroup.create() factory method with a custom runtime environment."""
 
     run_config = RunConfig(worker_runtime_env=runtime_env)
-    train_run_context = dummy_run_context(run_config=run_config)
+    train_run_context = create_dummy_run_context(run_config=run_config)
 
     worker_group_context = _default_worker_group_context()
 
@@ -398,7 +383,7 @@ def test_local_rank_assignment():
 def test_setup_worker_group(tmp_path):
     num_workers = 4
     worker_group = WorkerGroup(
-        train_run_context=dummy_run_context(
+        train_run_context=create_dummy_run_context(
             run_config=RunConfig(name="test", storage_path=str(tmp_path))
         ),
         worker_group_context=_default_worker_group_context(num_workers=num_workers),

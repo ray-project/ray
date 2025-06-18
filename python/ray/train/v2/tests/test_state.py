@@ -4,10 +4,8 @@ import pytest
 
 import ray
 from ray.actor import ActorHandle
-from ray.data import Dataset
-from ray.train import BackendConfig, DataConfig, RunConfig, ScalingConfig
 from ray.train.v2._internal.callbacks.state_manager import StateManagerCallback
-from ray.train.v2._internal.execution.context import DistributedContext, TrainRunContext
+from ray.train.v2._internal.execution.context import DistributedContext
 from ray.train.v2._internal.execution.controller.state import (
     ErroredState,
     FinishedState,
@@ -39,6 +37,7 @@ from ray.train.v2._internal.state.state_actor import (
 )
 from ray.train.v2._internal.state.state_manager import TrainStateManager
 from ray.train.v2.api.exceptions import TrainingFailedError
+from ray.train.v2.tests.util import create_dummy_run_context
 
 
 @pytest.fixture(scope="function")
@@ -46,20 +45,6 @@ def ray_start_regular():
     ray.init()
     yield
     ray.shutdown()
-
-
-@pytest.fixture
-def mock_train_run_context():
-    run_context = MagicMock(spec=TrainRunContext)
-    run_context.run_id = "test_run_id"
-    run_context.run_config = RunConfig(name="test_run_name")
-    run_context.train_loop_config = {}
-    run_context.scaling_config = ScalingConfig(num_workers=1)
-    run_context.backend_config = BackendConfig()
-    run_context.datasets = {"train": MagicMock(spec=Dataset)}
-    run_context.dataset_config = DataConfig()
-    run_context.get_run_config.return_value = run_context.run_config
-    return run_context
 
 
 @pytest.fixture
@@ -111,7 +96,7 @@ def mock_worker_group(mock_worker_group_context, mock_worker):
 
 
 @pytest.fixture
-def callback(mock_train_run_context, monkeypatch):
+def callback(monkeypatch):
     # Mock the runtime context to return a fixed actor ID
     mock_runtime_context = MagicMock()
     mock_runtime_context.get_job_id.return_value = "test_job_id"
@@ -131,7 +116,7 @@ def callback(mock_train_run_context, monkeypatch):
     )
 
     callback = StateManagerCallback()
-    callback.after_controller_start(train_run_context=mock_train_run_context)
+    callback.after_controller_start(train_run_context=create_dummy_run_context())
     return callback
 
 
@@ -460,7 +445,6 @@ def test_callback_log_file_paths(
     monkeypatch,
     mock_worker_group_context,
     mock_worker,
-    mock_train_run_context,
 ):
     """Test that StateManagerCallback correctly captures and propagates log file paths."""
 
@@ -486,7 +470,7 @@ def test_callback_log_file_paths(
     callback = StateManagerCallback()
 
     # Initialize the callback
-    callback.after_controller_start(train_run_context=mock_train_run_context)
+    callback.after_controller_start(train_run_context=create_dummy_run_context())
 
     # Verify the log path was set in the state actor
     state_actor = get_state_actor()
