@@ -1724,7 +1724,7 @@ def test_write_min_max_rows_per_file_validation(tmp_path, ray_start_regular_shar
 
 @pytest.mark.parametrize("max_rows_per_file", [5, 10])
 def test_write_partition_cols_with_max_rows_per_file(
-    tmp_path, ray_start_regular_shared_2_cpus, max_rows_per_file
+    tmp_path, ray_start_regular_shared, max_rows_per_file
 ):
     """Test max_rows_per_file with partition columns."""
     import pyarrow.parquet as pq
