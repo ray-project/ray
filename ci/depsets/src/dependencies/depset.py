@@ -3,8 +3,10 @@ from typing import List, Dict, Optional
 from collections import defaultdict
 import os
 import re
-#from dependencies.cli import debug_print, verbose_print
+
+# from dependencies.cli import debug_print, verbose_print
 import click
+
 
 class Dep:
     def __init__(self, name: str, constraints: List[str], version: str):
@@ -38,16 +40,13 @@ class Dep:
         return {
             "name": self.name,
             "constraints": self.constraints,
-            "version": self.version
+            "version": self.version,
         }
 
     @classmethod
     def from_dict(cls, data: Dict) -> Dep:
-        return cls(
-            data["name"],
-            data["constraints"],
-            data["version"]
-        )
+        return cls(data["name"], data["constraints"], data["version"])
+
 
 class DepSet:
     def __init__(self, requirements_fp: str):
@@ -63,12 +62,14 @@ class DepSet:
             for line in f:
                 line = line.strip()
                 if line and not line.startswith("#") and not line.startswith("--hash"):
-                    self.dependencies.append(Dep.from_requirement(line.replace(" \\","")))
+                    self.dependencies.append(
+                        Dep.from_requirement(line.replace(" \\", ""))
+                    )
 
     def to_dict(self) -> Dict:
         return {
             "requirements_fp": self.requirements_fp,
-            "dependencies": [dep.to_dict() for dep in self.dependencies]
+            "dependencies": [dep.to_dict() for dep in self.dependencies],
         }
 
     def to_txt(self) -> str:
@@ -77,7 +78,9 @@ class DepSet:
     @classmethod
     def from_dict(cls, data: Dict) -> DepSet:
         depset = cls(data["requirements_fp"])
-        depset.dependencies = [Dep.from_dict(dep_data) for dep_data in data["dependencies"]]
+        depset.dependencies = [
+            Dep.from_dict(dep_data) for dep_data in data["dependencies"]
+        ]
         return depset
 
 
@@ -158,6 +161,7 @@ class DepSet:
 
 #         return root_deps
 
+
 class DependencyGraph:
     def __init__(self):
         # Each node points to a set of its children (dependencies)
@@ -169,7 +173,7 @@ class DependencyGraph:
     def add_edge(self, parent, child):
         """parent depends on child"""
         self.graph[parent].add(child)
-        #self.graph[child.split("==")[0]]
+        # self.graph[child.split("==")[0]]
 
     def get_dependencies(self, node):
         """Return direct dependencies of a node"""
@@ -182,7 +186,9 @@ class DependencyGraph:
         return "\n".join(f"{k} -> {sorted(v)}" for k, v in self.graph.items())
 
     def only_dependencies(self):
-        return "\n".join(f"{k} -> {sorted(v)}" for k, v in self.graph.items() if v and len(v) > 0)
+        return "\n".join(
+            f"{k} -> {sorted(v)}" for k, v in self.graph.items() if v and len(v) > 0
+        )
 
     def relax(self, degree: int) -> DependencyGraph:
         return_set = set()
@@ -191,7 +197,7 @@ class DependencyGraph:
             return_set.update(self.get_nth_degree_depedencies(root, degree))
         return return_set
 
-    def get_nth_degree_depedencies(self, root_node, degree:int):
+    def get_nth_degree_depedencies(self, root_node, degree: int):
         return_set = set()
         return_set.add(root_node)  # Always include the root node (degree 0)
 
@@ -207,6 +213,7 @@ class DependencyGraph:
         root_nodes = all_nodes - child_nodes
         return root_nodes
 
+
 def parse_compiled_requirements(file_path: str) -> DependencyGraph:
     graph = DependencyGraph()
 
@@ -219,7 +226,7 @@ def parse_compiled_requirements(file_path: str) -> DependencyGraph:
         pkg_match = re.match(r"([\w\-\[\]]+)==([\d\.]+)", line)
         if pkg_match:
             name, version = pkg_match.groups()
-            #key = f"{name}=={version}"
+            # key = f"{name}=={version}"
             key = name
             graph.add_node(key)
 
@@ -234,7 +241,9 @@ def parse_compiled_requirements(file_path: str) -> DependencyGraph:
         via_match = re.match(r"#\s+via\s*$", line)
         if via_match:
             continue
-        elif line.startswith("#") and not any(ext in line for ext in [".txt",".in",".lock",".lockfile"]):
+        elif line.startswith("#") and not any(
+            ext in line for ext in [".txt", ".in", ".lock", ".lockfile"]
+        ):
             parent = line.strip("#").strip()
             graph.add_edge(parent, key)
             continue
