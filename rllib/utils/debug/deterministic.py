@@ -35,7 +35,8 @@ def update_global_seed_if_necessary(
         # See https://github.com/pytorch/pytorch/issues/47672.
         cuda_version = torch.version.cuda
         if cuda_version is not None and float(torch.version.cuda) >= 10.2:
-            os.environ["CUBLAS_WORKSPACE_CONFIG"] = "4096:8"
+            # See https://docs.nvidia.com/cuda/cublas/index.html#results-reproducibility.
+            os.environ["CUBLAS_WORKSPACE_CONFIG"] = ":4096:8"
         else:
             from packaging.version import Version
 
