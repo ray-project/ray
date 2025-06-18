@@ -409,6 +409,10 @@ class DeploymentSchema(BaseModel, allow_population_by_field_name=True):
         default=DEFAULT.VALUE,
         description="The path pointing to the custom request router class to use for this deployment.",
     )
+    request_router_kwargs: Dict[str, Any] = Field(
+        default=DEFAULT.VALUE,
+        description="Keyword arguments that will be passed to the request router class __init__ method.",
+    )
     request_routing_stats_period_s: float = Field(
         default=DEFAULT.VALUE,
         description=(

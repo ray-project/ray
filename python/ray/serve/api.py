@@ -339,6 +339,7 @@ def deployment(
     health_check_timeout_s: Default[float] = DEFAULT.VALUE,
     logging_config: Default[Union[Dict, LoggingConfig, None]] = DEFAULT.VALUE,
     request_router_class: Default[Union[str, RequestRouter, None]] = DEFAULT.VALUE,
+    request_router_kwargs: Default[Union[Dict, None]] = DEFAULT.VALUE,
     request_routing_stats_period_s: Default[float] = DEFAULT.VALUE,
     request_routing_stats_timeout_s: Default[float] = DEFAULT.VALUE,
 ) -> Callable[[Callable], Deployment]:
@@ -410,6 +411,8 @@ def deployment(
             handle created for this deployment will use the routing policy
             defined by the request router. Default to Serve's
             PowerOfTwoChoicesRequestRouter.
+        request_router_kwargs: Keyword arguments that will be passed to the
+            request router class __init__ method.
         request_routing_stats_period_s: Duration between record scheduling stats
             calls for the replica. Defaults to 10s. The health check is by default a
             no-op Actor call to the replica, but you can define your own request
