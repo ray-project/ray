@@ -224,6 +224,20 @@ class DeploymentConfig(BaseModel):
 
         return v
 
+    @validator("request_router_kwargs", always=True)
+    def request_router_kwargs_json_serializable(cls, v):
+        if isinstance(v, bytes):
+            return v
+        if v is not None:
+            try:
+                json.dumps(v)
+            except TypeError as e:
+                raise ValueError(
+                    f"request_router_kwargs is not JSON-serializable: {str(e)}."
+                )
+
+        return v
+
     @validator("logging_config", always=True)
     def logging_config_valid(cls, v):
         if v is None:
@@ -286,6 +300,11 @@ class DeploymentConfig(BaseModel):
         if data.get("user_config") is not None:
             if self.needs_pickle():
                 data["user_config"] = cloudpickle.dumps(data["user_config"])
+        if data.get("request_router_kwargs") is not None:
+            if self.needs_pickle():
+                data["request_router_kwargs"] = cloudpickle.dumps(
+                    data["request_router_kwargs"]
+                )
         if data.get("autoscaling_config"):
             data["autoscaling_config"] = AutoscalingConfigProto(
                 **data["autoscaling_config"]
@@ -308,23 +327,33 @@ class DeploymentConfig(BaseModel):
     @classmethod
     def from_proto(cls, proto: DeploymentConfigProto):
         data = _proto_to_dict(proto)
+        deployment_language = (
+            data["deployment_language"]
+            if "deployment_language" in data
+            else DeploymentLanguage.PYTHON
+        )
+        is_cross_language = (
+            data["is_cross_language"] if "is_cross_language" in data else False
+        )
+        needs_pickle = _needs_pickle(deployment_language, is_cross_language)
         if "user_config" in data:
             if data["user_config"] != b"":
-                deployment_language = (
-                    data["deployment_language"]
-                    if "deployment_language" in data
-                    else DeploymentLanguage.PYTHON
-                )
-                is_cross_language = (
-                    data["is_cross_language"] if "is_cross_language" in data else False
-                )
-                needs_pickle = _needs_pickle(deployment_language, is_cross_language)
                 if needs_pickle:
                     data["user_config"] = cloudpickle.loads(proto.user_config)
                 else:
                     data["user_config"] = proto.user_config
             else:
                 data["user_config"] = None
+        if "request_router_kwargs" in data:
+            if data["request_router_kwargs"] != b"":
+                if needs_pickle:
+                    data["request_router_kwargs"] = cloudpickle.loads(
+                        proto.request_router_kwargs
+                    )
+                else:
+                    data["request_router_kwargs"] = proto.request_router_kwargs
+            else:
+                data["request_router_kwargs"] = {}
         if "autoscaling_config" in data:
             if not data["autoscaling_config"].get("upscale_smoothing_factor"):
                 data["autoscaling_config"]["upscale_smoothing_factor"] = None
