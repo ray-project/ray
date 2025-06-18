@@ -43,12 +43,12 @@ class GPUObjectManager:
         #
         # Note: Currently, `gpu_object_store` is only supported for Ray Actors.
         self.gpu_object_store: Dict[str, List["torch.Tensor"]] = {}
-        # A dictionary that maps from owned object ref to a metadata tuple: (actor handle, object ref).
+        # A dictionary that maps from owned object ID to a metadata tuple: (actor handle, object ref).
         # The actual data of the object is stored at GPU object store of the actor referenced by the ActorHandle.
         # The object ref in the tuple contains a list of tuples, each containing the shape
         # and dtype of a tensor.
         # The entries in this dictionary are 1:1 with ObjectRefs created by this process with a tensor_transport hint and that are currently in scope.
-        self.gpu_object_refs: Dict[ObjectRef, GPUObjectMeta] = {}
+        self.gpu_object_refs: Dict[str, GPUObjectMeta] = {}
 
     def has_gpu_object(self, obj_id: str) -> bool:
         return obj_id in self.gpu_object_store
@@ -57,6 +57,7 @@ class GPUObjectManager:
         return self.gpu_object_store[obj_id]
 
     def add_gpu_object(self, obj_id: str, gpu_object: List["torch.Tensor"]):
+        print(f"add_gpu_object {obj_id}, gpu_object={gpu_object}")
         self.gpu_object_store[obj_id] = gpu_object
 
     def remove_gpu_object(self, obj_id: str):
@@ -99,22 +100,20 @@ class GPUObjectManager:
             tensor_transport
         )
         tensor_meta = self._get_tensor_meta(src_actor, obj_ref.hex())
-        self.gpu_object_refs[obj_ref] = GPUObjectMeta(
+        self.gpu_object_refs[obj_ref.hex()] = GPUObjectMeta(
             src_actor=src_actor,
             tensor_transport_backend=tensor_transport_backend,
             tensor_meta=tensor_meta,
         )
 
-    # TODO(kevin85421): Call this function to remove the `obj_ref` from the `gpu_object_refs` dictionary
-    # to allow garbage collection of the object.
     def remove_gpu_object_ref(self, obj_ref: ObjectRef):
-        del self.gpu_object_refs[obj_ref]
+        del self.gpu_object_refs[obj_ref.hex()]
 
     def _get_gpu_object_ref(self, obj_ref: ObjectRef) -> Optional[GPUObjectMeta]:
-        return self.gpu_object_refs[obj_ref]
+        return self.gpu_object_refs[obj_ref.hex()]
 
     def _is_gpu_object_ref(self, obj_ref: ObjectRef) -> bool:
-        return obj_ref in self.gpu_object_refs
+        return obj_ref.hex() in self.gpu_object_refs
 
     def _send_gpu_object(
         self, communicator_name: str, src_actor: ActorHandle, obj_id: str, dst_rank: int

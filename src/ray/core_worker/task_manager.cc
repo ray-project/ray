@@ -491,6 +491,27 @@ bool TaskManager::HandleTaskReturn(const ObjectID &object_id,
     }
   }
 
+  auto tensor_transport = reference_counter_.GetTensorTransport(object_id);
+  if (tensor_transport != absl::nullopt &&
+      tensor_transport != rpc::TensorTransport::OBJECT_STORE) {
+    RAY_LOG(INFO) << "Object is stored in actor object store, registering cleanup "
+                     "callback for object ID: "
+                  << object_id;
+    reference_counter_.AddObjectOutOfScopeOrFreedCallback(
+        object_id, [this](const ObjectID &object_id) {
+          RAY_LOG(INFO) << "Object " << object_id << " is stored in actor object store, "
+                        << "it will be cleaned up.";
+          auto actor_id = ObjectID::ToActorID(object_id);
+          auto rpc_client = get_actor_rpc_client_callback_(actor_id);
+          auto request = rpc::CleanUpGPUObjectRequest();
+          request.set_object_id(object_id.Binary());
+          rpc_client->CleanUpGPUObject(
+              request, [](Status status, const rpc::CleanUpGPUObjectReply &reply) {
+                RAY_CHECK(status.ok());
+              });
+        });
+  }
+
   rpc::Address owner_address;
   if (reference_counter_.GetOwner(object_id, &owner_address) && !nested_refs.empty()) {
     std::vector<ObjectID> nested_ids;
