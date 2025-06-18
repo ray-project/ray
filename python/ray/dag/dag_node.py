@@ -153,6 +153,7 @@ class DAGNode(DAGNodeBase):
         Args:
             transport: "nccl" means that tensors will be passed via NCCL.
                 "shm" means that tensors will be passed via host shared memory and gRPC.
+                "accelerator" means that tensors will be passed via their accelerator like NCCL.
                 "auto" (default) means that tensor transport will be
                 automatically determined based on the sender and receiver,
                 either through NCCL or host memory.
@@ -184,7 +185,14 @@ class DAGNode(DAGNodeBase):
             )
         elif transport == "nccl":
             self._type_hint = TorchTensorType(
-                transport=transport,
+                transport="accelerator",
+                device=device,
+                _static_shape=_static_shape,
+                _direct_return=_direct_return,
+            )
+        elif transport == "accelerator":
+            self._type_hint = TorchTensorType(
+                transport == "accelerator",
                 device=device,
                 _static_shape=_static_shape,
                 _direct_return=_direct_return,
@@ -198,7 +206,8 @@ class DAGNode(DAGNodeBase):
         else:
             if not isinstance(transport, Communicator):
                 raise ValueError(
-                    "transport must be 'auto', 'nccl', 'shm' or a Communicator type"
+                    "transport must be 'auto', 'nccl', 'shm', 'accelerator' or "
+                    "a Communicator type"
                 )
             self._type_hint = TorchTensorType(
                 transport=transport,
