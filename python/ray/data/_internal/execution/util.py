@@ -82,7 +82,7 @@ def make_callable_class_concurrent(callable_cls: CallableClass) -> CallableClass
     return _Wrapper
 
 
-def get_bytes_spilled(bundle: RefBundle) -> int:
+def get_bytes_spilled(bundle: "RefBundle") -> int:
     """Extracts total number of bytes spilled to disk"""
 
     spilled = 0
