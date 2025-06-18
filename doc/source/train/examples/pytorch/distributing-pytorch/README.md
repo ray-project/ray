@@ -17,7 +17,7 @@ First, install and import the required Python modules.
 
 
 ```python
-! pip install torch torchvision
+!pip install torch torchvision
 ```
 
 
