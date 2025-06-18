@@ -248,15 +248,18 @@ def test_parquet_read_basic(ray_start_regular_shared, fs, data_path):
     ],
 )
 def test_parquet_read_meta_provider(ray_start_regular_shared, fs, data_path):
-    df1 = pd.DataFrame({"one": [1, 2, 3], "two": ["a", "b", "c"]})
+    df1 = pd.DataFrame({"one": range(30_000), "two": ["a", "b", "c"] * 10_000})
     table = pa.Table.from_pandas(df1)
     setup_data_path = _unwrap_protocol(data_path)
     path1 = os.path.join(setup_data_path, "test1.parquet")
     pq.write_table(table, path1, filesystem=fs)
-    df2 = pd.DataFrame({"one": [4, 5, 6], "two": ["e", "f", "g"]})
+    df2 = pd.DataFrame({"one": range(30_000, 60_000), "two": ["e", "f", "g"] * 10000})
     table = pa.Table.from_pandas(df2)
     path2 = os.path.join(setup_data_path, "test2.parquet")
     pq.write_table(table, path2, filesystem=fs)
+
+    expected_num_rows = len(df1) + len(df2)
+    expected_byte_size = 787500
 
     #
     # Case 1: Test metadata fetching happy path (obtaining, caching and propagating
@@ -279,14 +282,14 @@ def test_parquet_read_meta_provider(ray_start_regular_shared, fs, data_path):
     )
 
     # Expect precomputed row counts and block sizes to be missing.
-    assert ds._meta_count() is 6
+    assert ds._meta_count() == expected_num_rows
 
     read_op = ds._plan._logical_plan.dag
 
     # Assert Read op metadata propagation
     assert read_op.infer_metadata() == BlockMetadata(
-        num_rows=6,
-        size_bytes=350,
+        num_rows=expected_num_rows,
+        size_bytes=expected_byte_size,
         exec_stats=None,
         input_files=[path1, path2],
     )
@@ -298,23 +301,20 @@ def test_parquet_read_meta_provider(ray_start_regular_shared, fs, data_path):
     # Expected
     #   - Fetched Parquet metadata to be reused
     #   - *No* dataset execution performed
-    assert ds.count() == 6
-    assert ds.size_bytes() > 0
+    assert ds.count() == expected_num_rows
+    assert ds.size_bytes() == expected_byte_size
     assert ds.schema() == Schema(expected_schema)
     assert set(ds.input_files()) == set([path1, path2])
 
     assert not ds._plan.has_computed_output()
 
-    expected_values = [
-        [1, "a"],
-        [2, "b"],
-        [3, "c"],
-        [4, "e"],
-        [5, "f"],
-        [6, "g"],
-    ]
+    expected_values = list(zip(
+        range(60_000),
+        ["a", "b", "c"] * 10_000 + ["e", "f", "g"] * 10_000
+    ))
 
-    values = [[s["one"], s["two"]] for s in ds.take()]
+    values = [(s["one"], s["two"]) for s in ds.take(60000)]
+
     assert sorted(values) == expected_values
 
     #
@@ -340,24 +340,12 @@ def test_parquet_read_meta_provider(ray_start_regular_shared, fs, data_path):
     # Expected
     #   - Fetched Parquet metadata is not used (returns null), hence
     #   - Dataset execution has to be performed
-    assert ds.count() == 6
-    assert ds.size_bytes() > 0
+    assert ds.count() == expected_num_rows
+    assert ds.size_bytes() == expected_byte_size
     assert ds.schema() == Schema(expected_schema)
     assert set(ds.input_files()) == set([path1, path2])
 
     assert ds._plan.has_computed_output()
-
-    expected_values = [
-        [1, "a"],
-        [2, "b"],
-        [3, "c"],
-        [4, "e"],
-        [5, "f"],
-        [6, "g"],
-    ]
-
-    values = [[s["one"], s["two"]] for s in ds.take()]
-    assert sorted(values) == expected_values
 
 
 @pytest.mark.parametrize(
