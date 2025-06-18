@@ -72,13 +72,13 @@ size_t ActorSchedulingQueue::Size() const {
   return 0;
 }
 
-/// Add a new actor task's callbacks to the worker queue.
-void ActorSchedulingQueue::Add(
+/// Enqueue a task to be executed on this worker.
+void ActorSchedulingQueue::EnqueueTask(
     int64_t seq_no,
     int64_t client_processed_up_to,
-    std::function<void(const TaskSpecification &, rpc::SendReplyCallback)> accept_request,
+    std::function<void(const TaskSpecification &, rpc::SendReplyCallback)> execute_task_callback,
     std::function<void(const TaskSpecification &, const Status &, rpc::SendReplyCallback)>
-        reject_request,
+        cancel_task_callback,
     rpc::SendReplyCallback send_reply_callback,
     TaskSpecification task_spec) {
   // A seq_no of -1 means no ordering constraint. Actor tasks must be executed in order.
@@ -92,8 +92,8 @@ void ActorSchedulingQueue::Add(
   }
   RAY_LOG(DEBUG) << "Enqueue " << seq_no << " cur seqno " << next_seq_no_;
 
-  pending_actor_tasks_[seq_no] = InboundRequest(std::move(accept_request),
-                                                std::move(reject_request),
+  pending_actor_tasks_[seq_no] = QueuedTask(std::move(execute_task_callback),
+                                                std::move(cancel_task_callback),
                                                 std::move(send_reply_callback),
                                                 task_spec);
   {
@@ -235,7 +235,7 @@ void ActorSchedulingQueue::OnSequencingWaitTimeout() {
 }
 
 void ActorSchedulingQueue::AcceptRequestOrRejectIfCanceled(TaskID task_id,
-                                                           InboundRequest &request) {
+                                                           QueuedTask &request) {
   bool is_canceled = false;
   {
     absl::MutexLock lock(&mu_);
