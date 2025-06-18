@@ -53,6 +53,19 @@ static ray::stats::Sum LegacyMetricSumTest("legacy_metric_sum_test",
                                            "",
                                            {"Tag1", "Tag2"});
 
+DECLARE_stats(metric_histogram_test);
+DEFINE_stats(metric_histogram_test,
+             "A test histogram metric",
+             ("Tag1", "Tag2"),
+             ({1, 10, 100, 1000, 10000}),
+             ray::stats::HISTOGRAM);
+
+static ray::stats::Histogram LegacyMetricHistogramTest("legacy_metric_histogram_test",
+                                                       "A legacy test histogram metric",
+                                                       "",
+                                                       {1, 10, 100, 1000, 10000},
+                                                       {"Tag1", "Tag2"});
+
 class MetricTest : public ::testing::Test {
  public:
   MetricTest() = default;
