@@ -258,7 +258,52 @@ def test_parquet_read_meta_provider(ray_start_regular_shared, fs, data_path):
     path2 = os.path.join(setup_data_path, "test2.parquet")
     pq.write_table(table, path2, filesystem=fs)
 
-    class TestMetadataProvider(ParquetMetadataProvider):
+    #
+    # Case 1: Test metadata fetching happy path (obtaining, caching and propagating
+    #         metadata)
+    #
+
+    class AssertingMetadataProvider(ParquetMetadataProvider):
+        def prefetch_file_metadata(self, fragments, **ray_remote_args):
+            assert ray_remote_args["num_cpus"] == NUM_CPUS_FOR_META_FETCH_TASK
+            assert (
+                ray_remote_args["scheduling_strategy"]
+                == DataContext.get_current().scheduling_strategy
+            )
+            return super().prefetch_file_metadata(fragments, **ray_remote_args)
+
+    ds = ray.data.read_parquet(
+        data_path,
+        filesystem=fs,
+        meta_provider=AssertingMetadataProvider(),
+    )
+
+    # Expect precomputed row counts and block sizes to be missing.
+    assert ds._meta_count() is 6
+
+    read_op = ds._plan._logical_plan.dag
+
+    # Assert Read op metadata propagation
+    assert read_op.infer_metadata() == BlockMetadata(
+        num_rows=6,
+        size_bytes=350,
+        exec_stats=None,
+        input_files=[path1, path2],
+    )
+
+    assert read_op.infer_schema().equals(
+        pa.schema([
+            pa.field("one", pa.int64()),
+            pa.field("two", pa.string()),
+        ])
+    )
+
+    #
+    # Case 2: Test metadata fetching *failing* (falling back to actually
+    #         executing the dataset)
+    #
+
+    class FailingMetadataProvider(ParquetMetadataProvider):
         def prefetch_file_metadata(self, fragments, **ray_remote_args):
             assert ray_remote_args["num_cpus"] == NUM_CPUS_FOR_META_FETCH_TASK
             assert (
@@ -270,11 +315,8 @@ def test_parquet_read_meta_provider(ray_start_regular_shared, fs, data_path):
     ds = ray.data.read_parquet(
         data_path,
         filesystem=fs,
-        meta_provider=TestMetadataProvider(),
+        meta_provider=FailingMetadataProvider(),
     )
-
-    # Expect precomputed row counts and block sizes to be missing.
-    assert ds._meta_count() is None
 
     # Expect to lazily compute all metadata correctly.
     assert ds.count() == 6
