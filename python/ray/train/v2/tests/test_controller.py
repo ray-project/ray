@@ -3,6 +3,8 @@ from unittest.mock import MagicMock
 import pytest
 
 import ray
+from ray.data import Dataset
+from ray.train import BackendConfig, DataConfig
 from ray.train.v2._internal.constants import HEALTH_CHECK_INTERVAL_S_ENV_VAR
 from ray.train.v2._internal.exceptions import (
     WorkerGroupStartupFailedError,
@@ -50,9 +52,23 @@ def ray_start():
     ray.shutdown()
 
 
-def test_resize():
+@pytest.fixture
+def mock_train_run_context():
+    run_context = MagicMock(spec=TrainRunContext)
+    run_context.run_id = "test_run_id"
+    run_context.run_config = RunConfig(name="test_run_name")
+    run_context.train_loop_config = {}
+    run_context.scaling_config = ScalingConfig(num_workers=1)
+    run_context.backend_config = BackendConfig()
+    run_context.datasets = {"train": MagicMock(spec=Dataset)}
+    run_context.dataset_config = DataConfig()
+    run_context.get_run_config.return_value = run_context.run_config
+    return run_context
+
+
+def test_resize(mock_train_run_context):
     scaling_policy = MockScalingPolicy(scaling_config=ScalingConfig())
-    train_run_context = TrainRunContext(run_config=RunConfig())
+    train_run_context = mock_train_run_context
     controller = TrainController(
         train_fn_ref=DummyObjectRefWrapper(lambda: None),
         train_run_context=train_run_context,
@@ -128,10 +144,10 @@ def test_resize():
             assert num_workers == decision.num_workers
 
 
-def test_failure_handling():
+def test_failure_handling(mock_train_run_context):
     scaling_policy = MockScalingPolicy(scaling_config=ScalingConfig())
     failure_policy = MockFailurePolicy(failure_config=None)
-    train_run_context = TrainRunContext(run_config=RunConfig())
+    train_run_context = mock_train_run_context
     controller = TrainController(
         train_fn_ref=DummyObjectRefWrapper(lambda: None),
         train_run_context=train_run_context,
@@ -170,11 +186,11 @@ def test_failure_handling():
 @pytest.mark.parametrize(
     "error_type", [WorkerGroupStartupFailedError, WorkerGroupStartupTimeoutError(2)]
 )
-def test_worker_group_start_failure(monkeypatch, error_type):
+def test_worker_group_start_failure(monkeypatch, error_type, mock_train_run_context):
     """Check that controller can gracefully handle worker group start failures."""
     scaling_policy = MockScalingPolicy(scaling_config=ScalingConfig())
     failure_policy = MockFailurePolicy(failure_config=None)
-    train_run_context = TrainRunContext(run_config=RunConfig())
+    train_run_context = mock_train_run_context
     controller = TrainController(
         train_fn_ref=DummyObjectRefWrapper(lambda: None),
         train_run_context=train_run_context,
@@ -212,12 +228,12 @@ def test_worker_group_start_failure(monkeypatch, error_type):
     assert isinstance(controller.get_state(), RunningState)
 
 
-def test_poll_frequency(monkeypatch):
+def test_poll_frequency(monkeypatch, mock_train_run_context):
     monkeypatch.setenv(HEALTH_CHECK_INTERVAL_S_ENV_VAR, "1")
 
     sleep_calls = []
     monkeypatch.setattr("time.sleep", lambda t: sleep_calls.append(t))
-    train_run_context = TrainRunContext(run_config=RunConfig())
+    train_run_context = mock_train_run_context
 
     controller = TrainController(
         train_fn_ref=DummyObjectRefWrapper(lambda: None),
@@ -236,7 +252,7 @@ def test_poll_frequency(monkeypatch):
     assert len(sleep_calls) == num_polls - 1
 
 
-def test_controller_callback():
+def test_controller_callback(mock_train_run_context):
     """Check that all controller callback hooks are called."""
 
     class AssertCallback(ControllerCallback):
@@ -276,7 +292,7 @@ def test_controller_callback():
 
     scaling_policy = MockScalingPolicy(scaling_config=ScalingConfig())
     failure_policy = MockFailurePolicy(failure_config=None)
-    train_run_context = TrainRunContext(run_config=RunConfig())
+    train_run_context = mock_train_run_context
 
     controller = TrainController(
         train_fn_ref=DummyObjectRefWrapper(lambda: None),
