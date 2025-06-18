@@ -19,12 +19,18 @@ from starlette.types import ASGIApp, Message, Receive, Scope, Send
 from uvicorn.config import Config
 from uvicorn.lifespan.on import LifespanOn
 
-from ray._private.pydantic_compat import IS_PYDANTIC_2
+from ray._common.pydantic_compat import IS_PYDANTIC_2
+from ray.exceptions import RayActorError, RayTaskError
 from ray.serve._private.common import RequestMetadata
-from ray.serve._private.constants import SERVE_LOGGER_NAME
+from ray.serve._private.constants import SERVE_HTTP_REQUEST_ID_HEADER, SERVE_LOGGER_NAME
+from ray.serve._private.proxy_request_response import ResponseStatus
 from ray.serve._private.utils import generate_request_id, serve_encoders
 from ray.serve.config import HTTPOptions
-from ray.serve.exceptions import RayServeException
+from ray.serve.exceptions import (
+    BackPressureError,
+    DeploymentUnavailableError,
+    RayServeException,
+)
 
 logger = logging.getLogger(SERVE_LOGGER_NAME)
 
@@ -560,11 +566,11 @@ class RequestIdMiddleware:
 
     async def __call__(self, scope: Scope, receive: Receive, send: Send):
         headers = MutableHeaders(scope=scope)
-        if "x-request-id" not in headers:
+        if SERVE_HTTP_REQUEST_ID_HEADER not in headers:
             request_id = generate_request_id()
-            headers.append("x-request-id", request_id)
-        elif "x-request-id" in headers:
-            request_id = headers["x-request-id"]
+            headers.append(SERVE_HTTP_REQUEST_ID_HEADER, request_id)
+        elif SERVE_HTTP_REQUEST_ID_HEADER in headers:
+            request_id = headers[SERVE_HTTP_REQUEST_ID_HEADER]
 
         async def send_with_request_id(message: Message):
             if message["type"] == "http.response.start":
@@ -645,3 +651,52 @@ async def start_asgi_http_server(
     server.install_signal_handlers = lambda: None
 
     return event_loop.create_task(server.serve(sockets=[sock]))
+
+
+def get_http_response_status(
+    exc: BaseException, request_timeout_s: float, request_id: str
+) -> ResponseStatus:
+    if isinstance(exc, TimeoutError):
+        return ResponseStatus(
+            code=408,
+            is_error=True,
+            message=f"Request {request_id} timed out after {request_timeout_s}s.",
+        )
+
+    elif isinstance(exc, asyncio.CancelledError):
+        message = f"Client for request {request_id} disconnected, cancelling request."
+        logger.info(message)
+        return ResponseStatus(
+            code=499,
+            is_error=True,
+            message=message,
+        )
+    elif isinstance(exc, (BackPressureError, DeploymentUnavailableError)):
+        if isinstance(exc, RayTaskError):
+            logger.warning(f"Request failed: {exc}", extra={"log_to_stderr": False})
+        return ResponseStatus(
+            code=503,
+            is_error=True,
+            message=exc.message,
+        )
+    else:
+        if isinstance(exc, (RayActorError, RayTaskError)):
+            logger.warning(f"Request failed: {exc}", extra={"log_to_stderr": False})
+        else:
+            logger.exception("Request failed due to unexpected error.")
+        return ResponseStatus(
+            code=500,
+            is_error=True,
+            message=str(exc),
+        )
+
+
+def send_http_response_on_exception(
+    status: ResponseStatus, response_started: bool
+) -> List[Message]:
+    if response_started or status.code not in (408, 503):
+        return []
+    return convert_object_to_asgi_messages(
+        status.message,
+        status_code=status.code,
+    )
