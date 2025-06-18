@@ -124,7 +124,7 @@ class TestPow2FallbackBehavior:
 
         req = fake_pending_request()
         for _ in range(10):
-            chosen = await prefix_request_router.choose_replica_for_request(req)
+            chosen = await prefix_request_router._choose_replica_for_request(req)
             assert chosen == r1
 
     @pytest.mark.asyncio
@@ -161,7 +161,7 @@ class TestPow2FallbackBehavior:
 
         req = fake_pending_request(prompt="hello world")
         for _ in range(10):
-            chosen = await prefix_request_router.choose_replica_for_request(req)
+            chosen = await prefix_request_router._choose_replica_for_request(req)
             # Even though r2 has a higher match rate, it is not chosen because the load is imbalanced
             assert chosen == r1
 
@@ -199,13 +199,13 @@ class TestPrefixAwareLogic:
 
         prompt_req = fake_pending_request(prompt="Hello world")
         for _ in range(10):
-            chosen = await prefix_request_router.choose_replica_for_request(prompt_req)
+            chosen = await prefix_request_router._choose_replica_for_request(prompt_req)
             assert chosen == r2
         chat_req = fake_pending_request(
             messages=[{"content": "Hello"}, {"content": " world"}]
         )
         for _ in range(10):
-            chosen = await prefix_request_router.choose_replica_for_request(chat_req)
+            chosen = await prefix_request_router._choose_replica_for_request(chat_req)
             assert chosen == r2
 
     @pytest.mark.asyncio
@@ -240,14 +240,15 @@ class TestPrefixAwareLogic:
         for _ in range(10):
             # Both tenants have 0% match rate, so the smaller tenant (r1) is chosen
             assert (
-                await prefix_request_router.choose_replica_for_request(prompt_req) == r1
+                await prefix_request_router._choose_replica_for_request(prompt_req)
+                == r1
             )
 
         chat_req = fake_pending_request(messages=[{"content": "z"}])
         for _ in range(10):
             # Both tenants have 0% match rate, so the smaller tenant (r1) is chosen
             assert (
-                await prefix_request_router.choose_replica_for_request(chat_req) == r1
+                await prefix_request_router._choose_replica_for_request(chat_req) == r1
             )
 
 
