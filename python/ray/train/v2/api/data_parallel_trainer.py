@@ -157,11 +157,11 @@ class DataParallelTrainer:
             callbacks.append(working_directory_setup_callback)
 
         if env_bool(METRICS_ENABLED_ENV_VAR, True):
-            callbacks.append(ControllerMetricsCallback(self.train_run_context))
+            callbacks.append(ControllerMetricsCallback())
             callbacks.append(WorkerMetricsCallback(self.train_run_context))
 
         if env_bool(RAY_TRAIN_ENABLE_STATE_TRACKING, False):
-            callbacks.append(StateManagerCallback(self.train_run_context))
+            callbacks.append(StateManagerCallback())
 
         # Add internal callback that invokes all user-defined callbacks.
         user_callbacks = [
