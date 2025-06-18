@@ -1,5 +1,5 @@
 
-.. _learner-pipeline:
+.. _learner-pipeline-docs:
 
 Learner Pipeline
 ++++++++++++++++

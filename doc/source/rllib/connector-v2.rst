@@ -52,10 +52,9 @@ ConnectorV2 and ConnectorV2 Pipelines
 
 
 RLlib stores and transports all trajectory data in the form of :py:class:`~ray.rllib.env.single_agent_episode.SingleAgentEpisode`
-or :py:class:`~ray.rllib.env.multi_agent_episode.MultiAgentEpisode` objects and only translates
-this data into tensor batches readable by neural network models right before the model forward pass.
-
-**Connector pipelines** are the components that perform these translations from episodes to batches.
+or :py:class:`~ray.rllib.env.multi_agent_episode.MultiAgentEpisode` objects.
+**Connector pipelines** are the components that translate this episode data into tensor batches
+readable by neural network models right before the model forward pass.
 
 .. figure:: images/connector_v2/generic_connector_pipeline.svg
     :width: 1000
@@ -72,10 +71,10 @@ this data into tensor batches readable by neural network models right before the
 
 Note that the batch output of the pipeline lives only as long as the succeeding
 :py:class:`~ray.rllib.core.rl_module.rl_module.RLModule` forward pass or `Env.step()` call. RLlib discards the data afterwards.
-The list of episodes, however, may persist longer. For example, if a env-to-module pipeline reads an observation from one episode,
-changes that observation, and then writes it back into the episode, the subsequent module-to-env pipeline is able to see this change.
-Also, the Learner pipeline operates on those episodes that have already passed through both env-to-module and module-to-env pipelines
-and might have undergone changes.
+The list of episodes, however, may persist longer. For example, if a env-to-module pipeline reads an observation from an episode,
+mutates that observation, and then writes it back into the episode, the subsequent module-to-env pipeline is able to see the changed observation.
+Also, the Learner pipeline operates on the same episodes that have already passed through both env-to-module and module-to-env pipelines
+and thus might have undergone changes.
 
 
 Three ConnectorV2 Pipeline Types
@@ -83,17 +82,14 @@ Three ConnectorV2 Pipeline Types
 
 There are three different types of connector pipelines in RLlib:
 
-1) Env-to-module pipeline, which creates tensor batches for action computing forward passes.
-2) Module-to-env pipeline, which translates a model's output into RL environment actions.
-3) Learner connector pipeline, which creates the train batch for a model update.
+1) :ref:`Env-to-module pipeline <env-to-module-connector-docs>`, which creates tensor batches for action computing forward passes.
+2) :ref:`Module-to-env pipeline <module-to-env-pipeline-docs>`, which translates a model's output into RL environment actions.
+3) :ref:`Learner connector pipeline <learner-pipeline-docs>`, which creates the train batch for a model update.
 
-.. tip::
-
-    The :py:class:`~ray.rllib.connectors.connector_v2.ConnectorV2` API is an extremely powerful tool for
-    customizing your RLlib experiments and algorithms. It allows you to take full control over accessing, changing, and re-assembling
-    the episode data collected from your RL environments or your offline RL input files as well as controlling the exact
-    nature and shape of the tensor batches that are fed into your models for computing actions or losses.
-
+The :py:class:`~ray.rllib.connectors.connector_v2.ConnectorV2` API is an extremely powerful tool for
+customizing your RLlib experiments and algorithms. It allows you to take full control over accessing, changing, and re-assembling
+the episode data collected from your RL environments or your offline RL input files as well as controlling the exact
+nature and shape of the tensor batches that are fed into your models for computing actions or losses.
 
 .. figure:: images/connector_v2/location_of_connector_pipelines_in_rllib.svg
     :width: 900
@@ -110,8 +106,7 @@ There are three different types of connector pipelines in RLlib:
     Lastly, a Learner connector pipeline, located on a :py:class:`~ray.rllib.core.learner.learner.Learner`
     worker, converts a list of episodes into a train batch for the next :py:class:`~ray.rllib.core.rl_module.rl_module.RLModule` update.
 
-
-The three pipeline types are discussed in more detail further below, however, all three have in common:
+The three pipeline types are discussed in more detail on the succeeding pages, however, all three have in common:
 
 * All connector pipelines are sequences of one or more :py:class:`~ray.rllib.connectors.connector_v2.ConnectorV2` pieces. Nesting is supported, meaning some of the pieces may be connector pipelines themselves.
 * All connector pieces and -pipelines are Python callables, overriding the :py:meth:`~ray.rllib.connectors.connector_v2.ConnectorV2.__call__` method.

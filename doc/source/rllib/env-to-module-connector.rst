@@ -3,7 +3,7 @@
 .. include:: /_includes/rllib/new_api_stack.rst
 
 
-.. _env-to-module-connector-docs:
+.. _env-to-module-pipeline-docs:
 
 Env-to-module Pipelines
 =======================
@@ -24,7 +24,7 @@ the EnvRunner's :py:class:`~ray.rllib.core.rl_module.rl_module.RLModule`.
     and used in its next `step()` call.
 
 The env-to-module pipeline, when called, performs translations from a list of ongoing :ref:`Episode objects <single-agent-episode-docs>` to an
-RLModule-readable tensor batch and RLlib passes the generated batch directly into the
+RLModule-readable tensor batch and RLlib passes the generated batch as the first call argument into the
 :py:meth:`~ray.rllib.core.rl_module.rl_module.RLModule.forward_inference` or :py:meth:`~ray.rllib.core.rl_module.rl_module.RLModule.forward_exploration`
 methods of your :py:class:`~ray.rllib.core.rl_module.rl_module.RLModule`, depending on your exploration settings.
 
@@ -40,8 +40,8 @@ methods of your :py:class:`~ray.rllib.core.rl_module.rl_module.RLModule`, depend
 Default env-to-module behavior
 ------------------------------
 
-**Default Env-to-Module Behavior:** By default, if you don't specifically say otherwise in your config, an env-to-module pipeline is populated with these
-built-in connector pieces performing the following tasks:
+**Default Env-to-Module Behavior:** By default an env-to-module pipeline is populated with the following built-in connector pieces
+performing these tasks:
 
 * :py:class:`~ray.rllib.connectors.common.add_observations_from_episodes_to_batch.AddObservationsFromEpisodesToBatch`: Places the most recent observation from each ongoing episode into the batch. Note that if you have a vector of `N` environments per `EnvRunner`, your batch size is also `N`.
 * *Relevant for stateful models only:* :py:class:`~ray.rllib.connectors.common.add_time_dim_to_batch_and_zero_pad.AddTimeDimToBatchAndZeroPad`: If the :py:class:`~ray.rllib.core.rl_module.rl_module.RLModule` is a stateful one, adds a single timestep, second axis to all data to make it sequential.
@@ -50,10 +50,10 @@ built-in connector pieces performing the following tasks:
 * :py:class:`~ray.rllib.connectors.common.batch_individual_items.BatchIndividualItems`: Converts all data in the batch, which thus far are lists of individual items, into batched structures meaning NumPy arrays, whose zeroth axis is the batch axis.
 * :py:class:`~ray.rllib.connectors.common.numpy_to_tensor.NumpyToTensor`: Converts all NumPy arrays in the batch into framework specific tensors and moves these to the GPU, if required.
 
-You can disable the default connector pieces by setting `config.env_runners(add_default_connectors_to_env_to_module_pipeline=False)`
+You can disable the preceding default connector pieces by setting `config.env_runners(add_default_connectors_to_env_to_module_pipeline=False)`
 in your :ref:`algorithm config <rllib-algo-configuration-docs>`.
 
-Take a look at the following code snippet demonstrating the functionality of the default env-to-module pipeline:
+Take a look at this code snippet here, demonstrating the functionality of the default env-to-module pipeline:
 
 .. testcode::
 
@@ -125,17 +125,26 @@ you need to allow it access to your :py:class:`~ray.rllib.core.rl_module.rl_modu
 Configuring custom env-to-module connectors
 -------------------------------------------
 
-You can customize the default env-to-module pipeline RLlib creates through providing a function to your
+You can customize the default env-to-module pipeline that RLlib creates through specifying a function in your
 :py:class:`~ray.rllib.algorithms.algorithm_config.AlgorithmConfig`, which takes an optional RL environment object (`env`) and an optional `spaces`
 dictionary as input arguments and returns a single :py:class:`~ray.rllib.connectors.connector_v2.ConnectorV2` piece or a list thereof.
-RLlib attaches the provided :py:class:`~ray.rllib.connectors.connector_v2.ConnectorV2` instances to the
+RLlib prepends the provided :py:class:`~ray.rllib.connectors.connector_v2.ConnectorV2` instances to the
 :ref:`default env-to-module pipeline <default-env-to-module-pipeline>` in the order returned,
 unless you set `add_default_connectors_to_env_to_module_pipeline=False` in your config, in which case RLlib exclusively uses the provided
-:py:class:`~ray.rllib.connectors.connector_v2.ConnectorV2` pieces as env-to-module pipeline without any automatically added default behavior.
+:py:class:`~ray.rllib.connectors.connector_v2.ConnectorV2` pieces without any automatically added default behavior.
 
+Note that the structure of the `spaces` argument is expected to be:
 
-For example, to add a custom ConnectorV2 piece to the env-to-module pipeline,
-you should do this in your config:
+.. code-block:: python
+
+    spaces = {
+        "__env__": ([env obs. space], [env action space]),  # <- may be vectorized
+        "__env_single__": ([env obs. space], [env action space]),  # <- never vectorized!
+        "[module ID, e.g. 'default_policy']": ([module obs space], [module action space]),
+        ...  # <- more modules in the multi-agent case
+    }
+
+For example, to prepend a custom ConnectorV2 piece to the env-to-module pipeline, you can do this in your config:
 
 .. testcode::
     :skipif: True
@@ -166,7 +175,7 @@ If you want to add multiple custom pieces to the pipeline, return them as a list
 .. _observation-preprocessors:
 
 Observation Preprocessors
-+++++++++++++++++++++++++
+~~~~~~~~~~~~~~~~~~~~~~~~~
 
 The simplest way of customizing an env-to-module pipeline is to write an
 :py:class:`~ray.rllib.connectors.env_to_module.observation_preprocessor.ObservationPreprocessor` and plug
@@ -226,7 +235,7 @@ example `FrozenLake-v1 <https://gymnasium.farama.org/environments/toy_text/froze
 
 
 More complex custom connector examples
-++++++++++++++++++++++++++++++++++++++
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 
 
