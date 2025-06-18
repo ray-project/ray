@@ -305,6 +305,18 @@ def test_parquet_read_meta_provider(ray_start_regular_shared, fs, data_path):
 
     assert not ds._plan.has_computed_output()
 
+    expected_values = [
+        [1, "a"],
+        [2, "b"],
+        [3, "c"],
+        [4, "e"],
+        [5, "f"],
+        [6, "g"],
+    ]
+
+    values = [[s["one"], s["two"]] for s in ds.take()]
+    assert sorted(values) == expected_values
+
     #
     # Case 2: Test metadata fetching *failing* (falling back to actually
     #         executing the dataset)
@@ -335,9 +347,7 @@ def test_parquet_read_meta_provider(ray_start_regular_shared, fs, data_path):
 
     assert ds._plan.has_computed_output()
 
-    # Forces a data read.
-    values = [[s["one"], s["two"]] for s in ds.take()]
-    assert sorted(values) == [
+    expected_values = [
         [1, "a"],
         [2, "b"],
         [3, "c"],
@@ -345,6 +355,9 @@ def test_parquet_read_meta_provider(ray_start_regular_shared, fs, data_path):
         [5, "f"],
         [6, "g"],
     ]
+
+    values = [[s["one"], s["two"]] for s in ds.take()]
+    assert sorted(values) == expected_values
 
 
 @pytest.mark.parametrize(
