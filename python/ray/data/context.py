@@ -93,6 +93,8 @@ DEFAULT_LARGE_ARGS_THRESHOLD = 50 * 1024 * 1024
 
 DEFAULT_USE_POLARS = False
 
+DEFAULT_USE_POLARS_SORT = False
+
 DEFAULT_EAGER_FREE = bool(int(os.environ.get("RAY_DATA_EAGER_FREE", "0")))
 
 DEFAULT_DECODING_SIZE_ESTIMATION_ENABLED = True
@@ -385,6 +387,7 @@ class DataContext:
     )
     large_args_threshold: int = DEFAULT_LARGE_ARGS_THRESHOLD
     use_polars: bool = DEFAULT_USE_POLARS
+    use_polars_sort: bool = DEFAULT_USE_POLARS_SORT
     eager_free: bool = DEFAULT_EAGER_FREE
     decoding_size_estimation: bool = DEFAULT_DECODING_SIZE_ESTIMATION_ENABLED
     min_parallelism: int = DEFAULT_MIN_PARALLELISM
@@ -498,6 +501,14 @@ class DataContext:
                 "`shuffle_strategy` instead.",
                 DeprecationWarning,
             )
+
+        elif name == "use_polars":
+            warnings.warn(
+                "`use_polars` is deprecated, please configure "
+                "`use_polars_sort`  instead.",
+                DeprecationWarning,
+            )
+            self.use_polars_sort = value
 
         super().__setattr__(name, value)
 
