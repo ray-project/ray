@@ -702,7 +702,9 @@ class OpRuntimeMetrics(metaclass=OpRuntimesMetricsMeta):
 
         task_info.num_outputs += num_outputs
         task_info.outputs_bytes += output_bytes
-        task_info.outputs_bytes_spilled += get_bytes_spilled(output)
+
+        if self._op.data_context.enable_get_object_locations_for_metrics:
+            task_info.outputs_bytes_spilled += get_bytes_spilled(output)
 
         for block_ref, meta in output.blocks:
             assert (
@@ -752,10 +754,7 @@ class OpRuntimeMetrics(metaclass=OpRuntimesMetricsMeta):
             input_size,
         )
 
-        ctx = self._op.data_context
-        if ctx.enable_get_object_locations_for_metrics:
-            self.obj_store_mem_spilled += task_info.outputs_bytes_spilled
-
+        self.obj_store_mem_spilled += task_info.outputs_bytes_spilled
         self.obj_store_mem_freed += total_input_size
 
         # Update per node metrics
