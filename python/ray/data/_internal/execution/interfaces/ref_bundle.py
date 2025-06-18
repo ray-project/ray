@@ -123,6 +123,14 @@ class RefBundle:
             self._cached_preferred_locations = preferred_locs
 
         return self._cached_preferred_locations
+    
+    def get_bytes_spilled(self) -> int:
+        """Return the total number of bytes from this bundle that have been spilled
+        to disk.
+        """
+        return sum(
+            m.size for m in self._get_cached_metadata().values() if m.spilled
+        )
 
     def _get_cached_metadata(self) -> Dict[ObjectRef, "_ObjectMetadata"]:
         if self._cached_object_meta is None:

@@ -8,7 +8,6 @@ from typing import TYPE_CHECKING, Any, Dict, List, Optional
 import ray
 from ray.data._internal.execution.bundle_queue import create_bundle_queue
 from ray.data._internal.execution.interfaces.ref_bundle import RefBundle
-from ray.data._internal.execution.util import get_bytes_spilled
 from ray.data._internal.memory_tracing import trace_allocation
 from ray.data.block import BlockMetadata
 
@@ -702,9 +701,7 @@ class OpRuntimeMetrics(metaclass=OpRuntimesMetricsMeta):
 
         task_info.num_outputs += num_outputs
         task_info.outputs_bytes += output_bytes
-
-        if self._op.data_context.enable_get_object_locations_for_metrics:
-            task_info.outputs_bytes_spilled += get_bytes_spilled(output)
+        task_info.outputs_bytes_spilled += output.get_bytes_spilled()
 
         for block_ref, meta in output.blocks:
             assert (

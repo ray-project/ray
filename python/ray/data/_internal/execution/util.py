@@ -80,18 +80,3 @@ def make_callable_class_concurrent(callable_cls: CallableClass) -> CallableClass
             return future.result()
 
     return _Wrapper
-
-
-def get_bytes_spilled(bundle: "RefBundle") -> int:
-    """Extracts total number of bytes spilled to disk"""
-
-    spilled = 0
-
-    locations = ray.experimental.get_object_locations(bundle.block_refs)
-    for block_ref, meta in bundle.blocks:
-        if locations[block_ref].get("did_spill", False):
-            assert meta.size_bytes is not None
-            spilled += meta.size_bytes
-
-    return spilled
-
