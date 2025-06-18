@@ -197,11 +197,9 @@ void GrpcServer::PollEventsFromCompletionQueue(int index) {
     auto deadline = gpr_time_add(gpr_now(GPR_CLOCK_REALTIME),
                                  gpr_time_from_millis(250, GPR_TIMESPAN));
     auto status = cqs_[index]->AsyncNext(&tag, &ok, deadline);
-    if (status == grpc::CompletionQueue::SHUTDOWN ||
-        (status == grpc::CompletionQueue::TIMEOUT && shutdown_)) {
-      // If we timed out and shutdown, then exit immediately. This should not
-      // be needed, but gRPC seems to not return SHUTDOWN correctly in these
-      // cases (e.g., test_wait will hang on shutdown without this check).
+    if (status == grpc::CompletionQueue::SHUTDOWN) {
+      // If the completion queue status is SHUTDOWN, meaining the queue has been
+      // drained. We can now exit the loop.
       break;
     } else if (status == grpc::CompletionQueue::TIMEOUT) {
       continue;
