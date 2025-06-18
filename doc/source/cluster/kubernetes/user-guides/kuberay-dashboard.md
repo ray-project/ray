@@ -1,3 +1,5 @@
+(kuberay-dashboard)=
+
 # Use kubectl dashboard (experimental)
 
 Starting from KubeRay v1.4.0, you can use the open source dashboard UI for KubeRay. This component is still experimental and not considered ready for production, but feedbacks are welcome.
@@ -12,7 +14,7 @@ KubeRay dashboard depends on the optional component `kuberay-apiserver`, so you 
 helm install kuberay-apiserver kuberay/kuberay-apiserver --version v1.4.0 --set security= --set cors.allowOrigin='*'
 ```
 
-And you need to port-forward the `kuberay-apiserver` service:
+And you need to port-forward the `kuberay-apiserver` service because the dashboard currently sends requests to `http://localhost:31888`:
 
 ```bash
 kubectl port-forward svc/kuberay-apiserver-service 31888:8888
@@ -30,6 +32,18 @@ Port-forward the KubeRay dashboard:
 kubectl port-forward kuberay-dashboard 3000:3000
 ```
 
-Go to `http://localhost:3000/ray/jobs` to see the list of Ray jobs.
+Go to `http://localhost:3000/ray/jobs` to see the list of Ray jobs. It's empty for now. Let's create a Ray job to see how it works.
+
+```bash
+kubectl apply -f https://raw.githubusercontent.com/ray-project/kuberay/refs/heads/v1.4.0/ray-operator/config/samples/ray-job.sample.yaml
+```
+
+KubeRay dashboard will only show Ray jobs that are created by the KubeRay API server. For this guide, we simulate the API server by labeling the Ray job.
+
+```bash
+kubectl label rayjob rayjob-sample app.kubernetes.io/managed-by=kuberay-apiserver
+```
+
+Go to `http://localhost:3000/ray/jobs` again. You can see `rayjob-sample` in the list of Ray jobs.
 
 ![KubeRay Dashboard List of Rayjobs](./images/kuberay-dashboard-rayjobs.png)

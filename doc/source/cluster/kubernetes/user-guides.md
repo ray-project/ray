@@ -66,3 +66,4 @@ at the {ref}`introductory guide <kuberay-quickstart>` first.
 * {ref}`kuberay-auth`
 * {ref}`reduce-image-pull-latency`
 * {ref}`kuberay-uv`
+* {ref}`kuberay-dashboard`
