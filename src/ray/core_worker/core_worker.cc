@@ -3838,8 +3838,9 @@ Status CoreWorker::GetAndPinArgsForExecutor(const TaskSpecification &task,
       // Python workers need this copy to pass test case
       // test_inline_arg_memory_corruption.
       bool copy_data = options_.language == Language::PYTHON;
+      rpc::TensorTransport tensor_transport = task.ArgTensorTransport(i);
       args->push_back(std::make_shared<RayObject>(
-          std::move(data), std::move(metadata), task.ArgInlinedRefs(i), copy_data));
+          std::move(data), std::move(metadata), task.ArgInlinedRefs(i), copy_data, tensor_transport));
       auto &arg_ref = arg_refs->emplace_back();
       arg_ref.set_object_id(task.ArgObjectIdBinary(i));
       // The task borrows all ObjectIDs that were serialized in the inlined

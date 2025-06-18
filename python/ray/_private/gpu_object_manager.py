@@ -1,5 +1,6 @@
 from typing import TYPE_CHECKING, Any, Dict, List, NamedTuple, Optional, Tuple
 
+import ray
 from ray._private.custom_types import TensorTransportEnum
 from ray._raylet import ObjectRef
 from ray.actor import ActorHandle
@@ -71,9 +72,7 @@ class GPUObjectManager:
             from ray._private.worker import global_worker
 
             gpu_object_manager = global_worker.gpu_object_manager
-            assert gpu_object_manager.has_gpu_object(
-                obj_id
-            ), f"obj_id={obj_id} not found in GPU object store"
+            gpu_object_manager.wait_gpu_object(obj_id)
             tensors = gpu_object_manager.get_gpu_object(obj_id)
             return [(t.shape, t.dtype) for t in tensors]
 

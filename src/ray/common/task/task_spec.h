@@ -359,6 +359,13 @@ class TaskSpecification : public MessageWrapper<rpc::TaskSpec> {
   /// \return The reference of the argument.
   const rpc::ObjectReference &ArgRef(size_t arg_index) const;
 
+  /// Get the tensor transport of the argument at the given index.
+  ///
+  /// \param arg_index The index of the argument.
+  /// \return The tensor transport used to transfer the argument to the task
+  /// executor.
+  rpc::TensorTransport ArgTensorTransport(size_t arg_index) const;
+
   ObjectID ReturnId(size_t return_index) const;
 
   bool ReturnsDynamic() const;

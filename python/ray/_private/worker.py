@@ -928,7 +928,7 @@ class Worker:
         )
 
         debugger_breakpoint = b""
-        for data, metadata in data_metadata_pairs:
+        for data, metadata, tensor_transport in data_metadata_pairs:
             if metadata:
                 metadata_fields = metadata.split(b",")
                 if len(metadata_fields) >= 2 and metadata_fields[1].startswith(
