@@ -349,10 +349,7 @@ ray_cc_library(
 
 ray_cc_library(
     name = "scoped_dup2_wrapper",
-    srcs = select({
-        "@platforms//os:windows": ["scoped_dup2_wrapper_windows.cc"],
-        "//conditions:default": ["scoped_dup2_wrapper_posix.cc"],
-    }),
+    srcs = ["scoped_dup2_wrapper.cc"],
     hdrs = ["scoped_dup2_wrapper.h"],
     deps = [
         ":compat",

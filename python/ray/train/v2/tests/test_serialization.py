@@ -7,6 +7,7 @@ from ray.train.v2._internal.execution.callback import (
     ControllerCallback,
     WorkerGroupCallback,
 )
+from ray.train.v2._internal.execution.context import TrainRunContext
 from ray.train.v2.api.data_parallel_trainer import DataParallelTrainer
 
 
@@ -32,7 +33,7 @@ def test_captured_imports(ray_start_4_cpus):
         torch.ones(1)
 
     class AssertImportsCallback(ControllerCallback):
-        def after_controller_start(self):
+        def after_controller_start(self, train_run_context: TrainRunContext):
             # Check that torch is not imported in the controller process.
             # The train_fn should be deserialized directly on the workers.
             assert "torch" not in sys.modules

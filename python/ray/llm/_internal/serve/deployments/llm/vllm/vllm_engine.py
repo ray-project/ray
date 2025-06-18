@@ -354,32 +354,20 @@ class VLLMEngine(LLMEngine):
         if self.engine_config.use_gpu:
             # Create engine config on a task with access to GPU,
             # as GPU capability may be queried.
-            if self.llm_config.accelerator_type:
-                ref = (
-                    ray.remote(
-                        num_cpus=0,
-                        num_gpus=1,
-                        accelerator_type=self.llm_config.accelerator_type,
-                    )(_get_vllm_engine_config)
-                    .options(
-                        runtime_env=node_initialization.runtime_env,
-                        scheduling_strategy=PlacementGroupSchedulingStrategy(
-                            placement_group=node_initialization.placement_group,
-                        ),
-                    )
-                    .remote(self.llm_config)
+            ref = (
+                ray.remote(
+                    num_cpus=0,
+                    num_gpus=1,
+                    accelerator_type=self.llm_config.accelerator_type,
+                )(_get_vllm_engine_config)
+                .options(
+                    runtime_env=node_initialization.runtime_env,
+                    scheduling_strategy=PlacementGroupSchedulingStrategy(
+                        placement_group=node_initialization.placement_group,
+                    ),
                 )
-            else:
-                ref = (
-                    ray.remote(num_cpus=0, num_gpus=1)(_get_vllm_engine_config)
-                    .options(
-                        runtime_env=node_initialization.runtime_env,
-                        scheduling_strategy=PlacementGroupSchedulingStrategy(
-                            placement_group=node_initialization.placement_group,
-                        ),
-                    )
-                    .remote(self.llm_config)
-                )
+                .remote(self.llm_config)
+            )
             engine_args, engine_config = ray.get(ref)
         else:
             engine_args, engine_config = _get_vllm_engine_config(self.llm_config)
