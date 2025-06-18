@@ -28,7 +28,7 @@ from ray.data._internal.datasource.parquet_datasource import (
 from ray.data._internal.execution.interfaces.ref_bundle import (
     _ref_bundles_iterator_to_block_refs_list,
 )
-from ray.data.block import BlockAccessor
+from ray.data.block import BlockAccessor, BlockMetadata
 from ray.data.context import DataContext
 from ray.data.datasource import DefaultFileMetadataProvider, ParquetMetadataProvider
 from ray.data.datasource.parquet_meta_provider import PARALLELIZE_META_FETCH_THRESHOLD
@@ -304,7 +304,7 @@ def test_parquet_read_meta_provider(ray_start_regular_shared, fs, data_path):
     assert ds.count() == expected_num_rows
     assert ds.size_bytes() == expected_byte_size
     assert ds.schema() == Schema(expected_schema)
-    assert set(ds.input_files()) == set([path1, path2])
+    assert set(ds.input_files()) == {path1, path2}
 
     assert not ds._plan.has_computed_output()
 
@@ -352,7 +352,7 @@ def test_parquet_read_meta_provider(ray_start_regular_shared, fs, data_path):
     assert ds.count() == expected_num_rows
     assert ds.size_bytes() == expected_byte_size
     assert ds.schema() == Schema(expected_schema)
-    assert set(ds.input_files()) == set([path1, path2])
+    assert set(ds.input_files()) == {path1, path2}
 
     assert ds._plan.has_computed_output()
 
