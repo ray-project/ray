@@ -377,6 +377,7 @@ class AsyncioRouter:
         prefer_local_node_routing: bool,
         resolve_request_arg_func: Coroutine = resolve_deployment_response,
         request_router_class: Optional[Callable] = None,
+        request_router_kwargs: Optional[Dict[str, Any]] = None,
         request_router: Optional[RequestRouter] = None,
         _request_router_initialized_event: Optional[asyncio.Event] = None,
     ):
@@ -391,6 +392,9 @@ class AsyncioRouter:
         self._handle_source = handle_source
         self._event_loop = event_loop
         self._request_router_class = request_router_class
+        self._request_router_kwargs = (
+            request_router_kwargs if request_router_kwargs else {}
+        )
         self._enable_strict_max_ongoing_requests = enable_strict_max_ongoing_requests
         self._node_id = node_id
         self._availability_zone = availability_zone
