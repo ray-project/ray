@@ -1,0 +1,1 @@
+jupyter execute 01-Distribute-Training.ipynb 02-Validation.ipynb 03-Serving.ipynb

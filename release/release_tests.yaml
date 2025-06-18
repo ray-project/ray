@@ -4513,7 +4513,7 @@
   run:
     prepare: pip install -e .
     prepare_timeout: 300
-    script: python ci/test.py --target-dir e2e_timeseries/
+    script: bash ci/run_tests.sh
     timeout: 3600
 
   variations:
