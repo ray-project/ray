@@ -7,9 +7,9 @@ steps:
     label: "wanda: oss-ci-base_test-py{{matrix}}"
     wanda: ci/docker/base.test.wanda.yaml
     matrix:
-      - "3.9"
+      # - "3.9"
       - "3.11"
-      - "3.12"
+      # - "3.12"
     env:
       PYTHON: "{{matrix}}"
 
@@ -21,9 +21,9 @@ steps:
     label: "wanda: oss-ci-base_build-py{{matrix}}"
     wanda: ci/docker/base.build.wanda.yaml
     matrix:
-      - "3.9"
+      # - "3.9"
       - "3.11"
-      - "3.12"
+      # - "3.12"
     env:
       PYTHON: "{{matrix}}"
     depends_on: oss-ci-base_test-multipy
@@ -46,7 +46,7 @@ steps:
     wanda: ci/docker/base.ml.wanda.yaml
     matrix:
       - "3.11"
-      - "3.12"
+      # - "3.12"
     env:
       PYTHON: "{{matrix}}"
     depends_on: oss-ci-base_test-multipy

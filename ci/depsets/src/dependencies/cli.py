@@ -3,7 +3,7 @@
 import click
 from pathlib import Path
 from typing import Dict, List, Optional
-from dependencies.depset import DepSet, Dep, parse_compiled_requirements
+from dependencies.depset import DepSet, parse_compiled_requirements
 import subprocess
 import logging
 import os
