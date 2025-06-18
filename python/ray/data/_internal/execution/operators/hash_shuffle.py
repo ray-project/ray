@@ -1095,6 +1095,13 @@ class AggregatorPool:
             return
 
         try:
+            # Initialize readiness refs the first time.
+            if self._readiness_refs is None:
+                self._readiness_refs = [
+                    aggregator.__ray_ready__.remote()
+                    for aggregator in self._aggregators
+                ]
+
             if len(self._readiness_refs) == 0:
                 self._last_health_warning_time = None
                 logger.debug(
@@ -1102,13 +1109,6 @@ class AggregatorPool:
                     f"are now healthy"
                 )
                 return
-
-            # Initialize readiness refs the first time.
-            if self._readiness_refs is None:
-                self._readiness_refs = [
-                    aggregator.__ray_ready__.remote()
-                    for aggregator in self._aggregators
-                ]
 
             # Use ray.wait to check readiness in non-blocking fashion
             _, unready_refs = ray.wait(
