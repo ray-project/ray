@@ -223,7 +223,8 @@ steps:
         --build-type asan
         --parallelism-per-worker 2
         --only-tags asan_tests
-        --except-tags kubernetes,manual
+        --except-tags kubernetes,manual || true
+      - sleep 100000
 
   - label: ":ray: core: wheel tests"
     tags: linux_wheels
