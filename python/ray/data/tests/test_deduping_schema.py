@@ -1,6 +1,8 @@
+from typing import Optional
+
 import pyarrow as pa
 import pytest
-from typing import Optional
+
 from ray.data._internal.execution.interfaces.ref_bundle import RefBundle
 from ray.data._internal.execution.streaming_executor_state import (
     dedupe_schemas_with_validation,
