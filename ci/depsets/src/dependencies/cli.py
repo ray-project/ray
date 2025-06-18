@@ -69,19 +69,41 @@ class DependencySetManager:
             depset_path.unlink()
         del self.depsets[name]
 
-    def compile_depset(self, constraints: List[str], requirements: List[str], generate_hashes: bool, header: bool, no_cache: bool, name: str):
+    def compile_depset(self, constraints: List[str], requirements: List[str], unsafe_packages: tuple, index_url: str, extra_index_url: str, find_links: str, generate_hashes: bool, header: bool, no_cache: bool, index_strategy: str, name: str, strip_extras: bool, no_strip_markers: bool, emit_index_url: bool, emit_find_links: bool, python_version: str):
         args = []
         if generate_hashes:
             args.append("--generate-hashes")
         if not header:
             args.append("--no-header")
+        if strip_extras:
+            args.append("--strip-extras")
+        if unsafe_packages:
+            for package in unsafe_packages:
+                args.extend(["--unsafe-package", package])
+        if index_url:
+            args.extend(["--index-url", index_url])
+        if extra_index_url:
+            args.extend(["--extra-index-url", extra_index_url])
+        if find_links:
+            args.extend(["--find-links", find_links])
+        if no_strip_markers:
+            args.append("--no-strip-markers")
+        if emit_index_url:
+            args.append("--emit-index-url")
+        if emit_find_links:
+            args.append("--emit-find-links")
         if no_cache:
             args.append("--no-cache")
+        if index_strategy:
+            args.extend(["--index-strategy", index_strategy])
+        if python_version:
+            args.extend(["--python-version", python_version])
         if constraints:
             for constraint in constraints:
                 args.extend(["-c", constraint])
         if requirements:
-            args.extend(requirements)
+            for requirement in requirements:
+                args.append(requirement)
         args.extend(["-o", f"{self.storage_path}/{name}.txt"])
         return self.exec_uv__cmd("compile", args)
 
@@ -108,8 +130,10 @@ class DependencySetManager:
         if constraints:
             for constraint in constraints:
                 args.extend(["-c", constraint])
+        # Add each requirements file as a separate argument
+        for source in sources:
+            args.append(self.depsets[source].requirements_fp)
         args.extend(["-o", f"{self.storage_path}/{name}.txt"])
-        args.extend([" ".join(self.depsets[source].requirements_fp for source in sources)])
         return self.exec_uv__cmd("compile", args)
 
     def build_dag(self, source: str):
@@ -228,24 +252,50 @@ def delete(name: str):
         click.echo(f"Error: {str(e)}", err=True)
 
 @cli.command()
-@click.option("--constraints", type=str, help="comma separated list of absolute filepaths for constraint files")
-@click.option("--requirements", type=str, help="filename for requirements file")
+@click.option("--constraints", "-c", type=str, help="comma separated list of absolute filepaths for constraint files")
+@click.option("--requirements", "-r", type=str, help="filename for requirements file")
 @click.option("--generate-hashes", type=bool, default=True, help="generate hashes")
+@click.option("--strip-extras", type=bool, default=True, help="generate hashes")
+@click.option("--unsafe-package", multiple=True, default=("ray","grpcio-tools","setuptools"), help="unsafe package (can be used multiple times)")
+@click.option("--index-url", type=str, default="https://pypi.org/simple", help="index url")
+@click.option("--extra-index-url", type=str, default="https://download.pytorch.org/whl/cpu", help="extra index url")
+@click.option("--find-links", type=str, default="https://data.pyg.org/whl/torch-2.5.1+cpu.html", help="find links")
+@click.option("--index-strategy", type=str, default="unsafe-best-match", help="index strategy")
+@click.option("--no-strip-markers", type=bool, default=False, help="no strip markers")
+@click.option("--emit-index-url", type=bool, default=False, help="emit index url")
+@click.option("--emit-find-links", type=bool, default=False, help="emit find links")
 @click.option("--header", type=bool, default=False, help="no header")
 @click.option("--no-cache", type=bool, default=False, help="no header")
+@click.option("--python-version", type=str, default="3.11", help="python version")
 @click.argument("name", required=True)
-def compile(constraints: str, requirements: str, generate_hashes: bool, header: bool, no_cache: bool, name: str):
+def compile(constraints: str,
+            requirements: str,
+            generate_hashes: bool,
+            strip_extras: bool,
+            unsafe_package: tuple,
+            index_url: str,
+            extra_index_url: str,
+            find_links: str,
+            index_strategy: str,
+            no_strip_markers: bool,
+            emit_index_url: bool,
+            emit_find_links: bool,
+            header: bool,
+            no_cache: bool,
+            python_version: str,
+            name: str,
+            ):
     """Compile a dependency set."""
     try:
         manager = DependencySetManager()
-        manager.compile_depset(constraints.split(",") if constraints else [], requirements.split(",") if requirements else [], generate_hashes, header, no_cache, name)
+        manager.compile_depset(constraints.split(",") if constraints else [], requirements.split(",") if requirements else [], unsafe_packages=unsafe_package, index_url=index_url, extra_index_url=extra_index_url, find_links=find_links, generate_hashes=generate_hashes, header=header, no_cache=no_cache, index_strategy=index_strategy, name=name, strip_extras=strip_extras, no_strip_markers=no_strip_markers, emit_index_url=emit_index_url, emit_find_links=emit_find_links, python_version=python_version)
         click.echo(f"Compiled dependency set {name}")
     except ValueError as e:
         click.echo(f"Error: {str(e)}", err=True)
 
 @cli.command()
-@click.option("--source", type=str, help="name of source depset")
-@click.option("--packages", type=str, help="filename for min package deps file")
+@click.option("--source", "-s", type=str, help="name of source depset")
+@click.option("--packages", "-p", type=str, help="filename for min package deps file")
 @click.argument("name")
 def subset(source: str, packages: str, name: str):
     """Subset a dependency set."""
@@ -261,8 +311,8 @@ def subset(source: str, packages: str, name: str):
         click.echo(f"Error: {str(e)}", err=True)
 
 @cli.command()
-@click.option("--source", type=str, help="name of source depset(s) separated by comma")
-@click.option("--constraints", type=str, help="filename for constraint(s) file(s) separated by comma")
+@click.option("--source", "-s", type=str, help="name of source depset(s) separated by comma")
+@click.option("--constraints", "-c", type=str, help="filename for constraint(s) file(s) separated by comma")
 @click.option("--generate-hashes", type=bool, default=True, help="generate hashes")
 @click.option("--header", type=bool, default=False, help="no header")
 @click.option("--no-cache", type=bool, default=False, help="no header")
@@ -277,8 +327,8 @@ def expand(source: str, constraints: str, name: str, generate_hashes: bool, head
         click.echo(f"Error: {str(e)}", err=True)
 
 @cli.command()
-@click.option("--source", type=str, help="name of source depset")
-@click.option("--degree", type=int, help="degree of relaxation")
+@click.option("--source", "-s", type=str, help="name of source depset")
+@click.option("--degree", "-d", type=int, help="degree of relaxation")
 @click.argument("name")
 def relax(source: str, degree: int, name: str):
     """Relax a dependency set by selectively keeping and removing constraints"""
@@ -292,9 +342,9 @@ def relax(source: str, degree: int, name: str):
         click.echo(f"Error: {str(e)}", err=True)
 
 @cli.command()
-@click.option("--source", type=str, help="name of source depset")
-@click.option("--version", type=str, help="python version")
-@click.option("--flags", type=str, help="flags to pass to uv pip compile")
+@click.option("--source", "-s", type=str, help="name of source depset")
+@click.option("--version", "-v", type=str, help="python version")
+@click.option("--flags", "-f", type=str, help="flags to pass to uv pip compile")
 @click.argument("name")
 def py_version(source: str, version: str, name: str, flags: str = ""):
     """Set the python version for a dependency set."""
