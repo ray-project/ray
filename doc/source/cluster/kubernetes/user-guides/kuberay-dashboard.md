@@ -1,6 +1,6 @@
 (kuberay-dashboard)=
 
-# Use kubectl dashboard (experimental)
+# Use KubeRay dashboard (experimental)
 
 Starting from KubeRay v1.4.0, you can use the open source dashboard UI for KubeRay. This component is still experimental and not considered ready for production, but feedbacks are welcome.
 
