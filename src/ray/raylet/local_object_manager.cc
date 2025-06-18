@@ -339,9 +339,7 @@ void LocalObjectManager::SpillObjectsInternal(
     }
 
     if (request.object_refs_to_spill_size() == 0) {
-      {
-        num_active_workers_ -= 1;
-      }
+      { num_active_workers_ -= 1; }
       io_worker_pool_.PushSpillWorker(io_worker);
       callback(Status::OK());
       return;
