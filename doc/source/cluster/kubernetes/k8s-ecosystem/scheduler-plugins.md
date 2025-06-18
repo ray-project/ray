@@ -42,6 +42,10 @@ kubectl apply -f https://raw.githubusercontent.com/ray-project/kuberay/release-1
 
 ## Step 5: Verify Ray Pods and PodGroup
 
+Note that if you use "second scheduler mode," which KubeRay currently doesn't support, the following commands still show similar results.
+However, the Ray Pods don't get scheduled in a gang scheduling manner.
+Make sure to use "single scheduler mode" to enable gang scheduling.
+
 ```sh
 kubectl get podgroups.scheduling.x-k8s.io
 # NAME              PHASE     MINMEMBER   RUNNING   SUCCEEDED   FAILED   AGE
