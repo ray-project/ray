@@ -48,7 +48,7 @@ class GcsPublisher {
     RAY_CHECK(publisher_);
   }
 
-  explicit GcsPublisher(PeriodicalRunner &periodical_runner);
+  explicit GcsPublisher(std::shared_ptr<PeriodicalRunner> periodical_runner);
 
   virtual ~GcsPublisher() = default;
 

@@ -24,7 +24,7 @@
 namespace ray {
 namespace gcs {
 
-GcsPublisher::GcsPublisher(PeriodicalRunner &periodical_runner)
+GcsPublisher::GcsPublisher(std::shared_ptr<PeriodicalRunner> periodical_runner)
     : publisher_(std::make_unique<pubsub::Publisher>(
           std::vector<rpc::ChannelType>{
               rpc::ChannelType::GCS_ACTOR_CHANNEL,
@@ -35,7 +35,7 @@ GcsPublisher::GcsPublisher(PeriodicalRunner &periodical_runner)
               rpc::ChannelType::RAY_LOG_CHANNEL,
               rpc::ChannelType::RAY_NODE_RESOURCE_USAGE_CHANNEL,
           },
-          periodical_runner,
+          *periodical_runner,
           []() { return absl::GetCurrentTimeNanos() / 1e6; },
           RayConfig::instance().subscriber_timeout_ms(),
           RayConfig::instance().publish_batch_size(),
