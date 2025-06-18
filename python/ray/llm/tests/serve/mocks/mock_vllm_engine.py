@@ -2,7 +2,7 @@ import asyncio
 import json
 import random
 from random import randint
-from typing import AsyncGenerator, Dict, Optional
+from typing import Any, AsyncGenerator, Dict, Optional
 
 from PIL import Image
 from transformers import AutoTokenizer
@@ -11,12 +11,12 @@ from vllm.config import DeviceConfig, KVTransferConfig, ModelConfig, VllmConfig
 from vllm.engine.protocol import EngineClient
 from vllm.sampling_params import SamplingParams as VLLMInternalSamplingParams
 
+from ray.llm._internal.common.models import DiskMultiplexConfig
 from ray.llm._internal.serve.configs.error_handling import ValidationError
 from ray.llm._internal.serve.configs.openai_api_models_patch import (
     ResponseFormatJsonObject,
 )
 from ray.llm._internal.serve.configs.server_models import (
-    DiskMultiplexConfig,
     FinishReason,
     LLMConfig,
     LLMRawResponse,
@@ -311,14 +311,16 @@ class MockMultiplexEngine(LLMEngine):
         return True
 
 
-class FakeLoraModelLoader:
+class Fake_LoraModelLoader:
+    """A fake LoRA model loader for testing."""
+
     async def load_model(
-        self, lora_model_id: str, llm_config: LLMConfig
+        self, lora_model_id: str, lora_mirror_config: Any
     ) -> DiskMultiplexConfig:
         return DiskMultiplexConfig.model_validate(
             {
                 "model_id": lora_model_id,
-                "max_total_tokens": llm_config.max_request_context_length,
+                "max_total_tokens": 4096,
                 "local_path": "/local/path",
                 "lora_assigned_int_id": 1,
             }

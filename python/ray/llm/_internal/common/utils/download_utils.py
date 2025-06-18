@@ -8,6 +8,7 @@ from typing import Dict, List, Optional
 
 from filelock import FileLock
 
+from ray.llm._internal.common.models import DiskMultiplexConfig
 from ray.llm._internal.common.observability.logging import get_logger
 from ray.llm._internal.common.utils.cloud_utils import (
     CloudFileSystem,
@@ -16,10 +17,7 @@ from ray.llm._internal.common.utils.cloud_utils import (
     LoraMirrorConfig,
     is_remote_path,
 )
-
-from ray.llm._internal.serve.configs.server_models import DiskMultiplexConfig
-from ray.llm._internal.utils import try_import
-
+from ray.llm._internal.common.utils.import_utils import try_import
 
 torch = try_import("torch")
 
@@ -333,7 +331,7 @@ def download_lora_adapter(
 
     # If advanced parameters are provided, use the new LoraModelLoader
     if lora_root is not None or download_timeout_s is not None or max_tries != 1:
-        loader = LoraModelLoader(
+        loader = _LoraModelLoader(
             lora_root=lora_root,
             download_timeout_s=download_timeout_s,
             max_tries=max_tries,
@@ -490,7 +488,7 @@ def make_async(func):
     return _async_wrapper
 
 
-class LoraModelLoader:
+class _LoraModelLoader:
     """Download Lora weights from remote, and manage a CPU memory cache.
 
     This entire downloader is sync.

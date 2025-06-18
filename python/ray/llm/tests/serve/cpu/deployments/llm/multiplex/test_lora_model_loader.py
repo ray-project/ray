@@ -6,7 +6,7 @@ import pytest
 
 from ray.llm._internal.common.utils.cloud_utils import LoraMirrorConfig
 from ray.llm._internal.common.utils.download_utils import (
-    LoraModelLoader,
+    _LoraModelLoader,
 )
 from ray.llm._internal.serve.configs.server_models import (
     LLMConfig,
@@ -17,12 +17,12 @@ from ray.llm._internal.serve.configs.server_models import (
 
 
 class TestLoRAModelLoader:
-    """Test suite for the LoraModelLoader class."""
+    """Test suite for the _LoraModelLoader class."""
 
     @pytest.fixture
     def model_loader(self):
-        """Provides a LoraModelLoader instance for tests."""
-        return LoraModelLoader("/tmp/ray/lora/cache", max_tries=3)
+        """Provides a _LoraModelLoader instance for tests."""
+        return _LoraModelLoader("/tmp/ray/lora/cache", max_tries=3)
 
     @pytest.fixture
     def llm_config(self):

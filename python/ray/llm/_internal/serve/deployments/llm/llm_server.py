@@ -3,11 +3,10 @@ import os
 from abc import ABC, abstractmethod
 from typing import Any, AsyncGenerator, Dict, Optional, Type, Union
 
-# Third-party imports
 from ray import serve
 from ray._common.utils import import_attr
-
-# Local imports
+from ray.llm._internal.common.models import DiskMultiplexConfig
+from ray.llm._internal.common.utils.download_utils import _LoraModelLoader
 from ray.llm._internal.serve.configs.constants import (
     DEFAULT_HEALTH_CHECK_PERIOD_S,
     DEFAULT_HEALTH_CHECK_TIMEOUT_S,
@@ -41,14 +40,13 @@ from ray.llm._internal.serve.configs.openai_api_models import (
 )
 from ray.llm._internal.serve.configs.prompt_formats import Message, Prompt
 from ray.llm._internal.serve.configs.server_models import (
-    DiskMultiplexConfig,
     LLMConfig,
     LLMRawResponse,
 )
 from ray.llm._internal.serve.deployments.llm.image_retriever import ImageRetriever
 from ray.llm._internal.serve.deployments.llm.llm_engine import LLMEngine
-from ray.llm._internal.serve.deployments.llm.multiplex.lora_model_loader import (
-    LoraModelLoader,
+from ray.llm._internal.serve.deployments.llm.multiplex.utils import (
+    get_lora_mirror_config,
 )
 from ray.llm._internal.serve.deployments.llm.vllm.vllm_engine import VLLMEngine
 from ray.llm._internal.serve.deployments.llm.vllm.vllm_models import (
@@ -417,7 +415,7 @@ class LLMServer(_LLMServerBase):
         *,
         engine_cls: Optional[Type[LLMEngine]] = None,
         image_retriever_cls: Optional[Type[ImageRetriever]] = None,
-        model_downloader: Optional[LoraModelLoader] = None,
+        model_downloader: Optional[_LoraModelLoader] = None,
     ):
         """Constructor of LLMServer.
 
@@ -426,14 +424,12 @@ class LLMServer(_LLMServerBase):
 
         Args:
             llm_config: LLMConfig for the model.
-
-        Keyword Args:
             engine_cls: Dependency injection for the vllm engine class. Defaults to
                 `VLLMEngine`.
             image_retriever_cls: Dependency injection for the image retriever class.
                 Defaults to `ImageRetriever`.
             model_downloader: Dependency injection for the model downloader object.
-                Defaults to be initialized with `LoraModelLoader`.
+                Defaults to be initialized with `_LoraModelLoader`.
         """
         await super().__init__(llm_config)
 
@@ -451,12 +447,12 @@ class LLMServer(_LLMServerBase):
         if model_downloader:
             self.model_downloader = model_downloader
         elif multiplex_config:
-            self.model_downloader = LoraModelLoader(
+            self.model_downloader = _LoraModelLoader(
                 download_timeout_s=multiplex_config.download_timeout_s,
                 max_tries=multiplex_config.max_download_tries,
             )
         else:
-            self.model_downloader = LoraModelLoader()
+            self.model_downloader = _LoraModelLoader()
 
         # Hack that lets us set max_num_models_per_replica from the llm_config
         if multiplex_config:
@@ -668,9 +664,13 @@ class LLMServer(_LLMServerBase):
             )
 
     async def _load_model(self, lora_model_id: str) -> DiskMultiplexConfig:
+        """Load a LoRA model using the unified downloading functionality."""
+        lora_mirror_config = await get_lora_mirror_config(
+            lora_model_id, self._llm_config
+        )
         return await self.model_downloader.load_model(
             lora_model_id=lora_model_id,
-            llm_config=self._llm_config,
+            lora_mirror_config=lora_mirror_config,
         )
 
     async def _disk_lora_model(self, lora_model_id: str) -> DiskMultiplexConfig:
