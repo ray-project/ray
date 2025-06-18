@@ -128,8 +128,8 @@ def metric_property(
 class RunningTaskInfo:
     inputs: RefBundle
     num_outputs: int
-    bytes_outputs: int
-    bytes_outputs_spilled: int
+    outputs_bytes: int
+    outputs_bytes_spilled: int
     start_time: float
 
 
@@ -700,8 +700,8 @@ class OpRuntimeMetrics(metaclass=OpRuntimesMetricsMeta):
             self.num_tasks_have_outputs += 1
 
         task_info.num_outputs += num_outputs
-        task_info.bytes_outputs += output_bytes
-        task_info.bytes_outputs_spilled += get_bytes_spilled(output)
+        task_info.outputs_bytes += output_bytes
+        task_info.outputs_bytes_spilled += get_bytes_spilled(output)
 
         for block_ref, meta in output.blocks:
             assert (
@@ -735,7 +735,7 @@ class OpRuntimeMetrics(metaclass=OpRuntimesMetricsMeta):
 
         task_info = self._running_tasks[task_index]
         self.num_outputs_of_finished_tasks += task_info.num_outputs
-        self.bytes_outputs_of_finished_tasks += task_info.bytes_outputs
+        self.bytes_outputs_of_finished_tasks += task_info.outputs_bytes
         task_time_delta = time.perf_counter() - task_info.start_time
         self._op_task_duration_stats.add_duration(task_time_delta)
         self.task_completion_time = task_time_delta
@@ -753,7 +753,7 @@ class OpRuntimeMetrics(metaclass=OpRuntimesMetricsMeta):
 
         ctx = self._op.data_context
         if ctx.enable_get_object_locations_for_metrics:
-            self.obj_store_mem_spilled += task_info.bytes_outputs_spilled
+            self.obj_store_mem_spilled += task_info.outputs_bytes_spilled
 
         self.obj_store_mem_freed += total_input_size
 
