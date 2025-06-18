@@ -128,7 +128,7 @@ cdef extern from "ray/common/id.h" namespace "ray" nogil:
 
         CJobID JobId() const
 
-    cdef cppclass CObjectID" ray::ObjectID"(CBaseID[CObjectID]):
+    cdef cppclass CObjectID "ray::ObjectID"(CBaseID[CObjectID]):
 
         @staticmethod
         int64_t MaxObjectIndex()
