@@ -5,8 +5,8 @@ from typing import Any, AsyncGenerator, Dict, Optional, Type, Union
 
 from ray import serve
 from ray._common.utils import import_attr
-from ray.llm._internal.common.models import DiskMultiplexConfig
 from ray.llm._internal.common.utils.download_utils import _LoraModelLoader
+from ray.llm._internal.common.utils.lora_utils import DiskMultiplexConfig
 from ray.llm._internal.serve.configs.constants import (
     DEFAULT_HEALTH_CHECK_PERIOD_S,
     DEFAULT_HEALTH_CHECK_TIMEOUT_S,

@@ -11,7 +11,7 @@ from vllm.config import DeviceConfig, KVTransferConfig, ModelConfig, VllmConfig
 from vllm.engine.protocol import EngineClient
 from vllm.sampling_params import SamplingParams as VLLMInternalSamplingParams
 
-from ray.llm._internal.common.models import DiskMultiplexConfig
+from ray.llm._internal.common.utils.lora_utils import DiskMultiplexConfig
 from ray.llm._internal.serve.configs.error_handling import ValidationError
 from ray.llm._internal.serve.configs.openai_api_models_patch import (
     ResponseFormatJsonObject,

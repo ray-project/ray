@@ -8,7 +8,7 @@ from typing import Dict, List, Optional
 
 from filelock import FileLock
 
-from ray.llm._internal.common.models import DiskMultiplexConfig
+from ray.llm._internal.common.models import DiskMultiplexConfig, global_id_manager
 from ray.llm._internal.common.observability.logging import get_logger
 from ray.llm._internal.common.utils.cloud_utils import (
     CloudFileSystem,
@@ -451,25 +451,6 @@ def retry_with_exponential_backoff(
         return wrapper
 
     return decorator
-
-
-class GlobalCounter:
-    """Manage a global counter
-
-    This counter should be a singleton global to the process.
-    """
-
-    def __init__(self):
-        # Initialize to 0, but we never return 0
-        self.global_id = 0
-
-    def next(self):
-        # The id starts at 1
-        self.global_id += 1
-        return self.global_id
-
-
-global_id_manager = GlobalCounter()
 
 
 def make_async(func):

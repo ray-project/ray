@@ -7,8 +7,8 @@ from concurrent.futures.thread import ThreadPoolExecutor
 from typing import TYPE_CHECKING, AsyncGenerator, List, Optional, Tuple
 
 import ray
-from ray.llm._internal.common.models import DiskMultiplexConfig
 from ray.llm._internal.common.utils.import_utils import try_import
+from ray.llm._internal.common.utils.lora_utils import DiskMultiplexConfig
 from ray.llm._internal.serve.configs.constants import (
     MAX_NUM_TOPLOGPROBS_ALLOWED,
     MIN_NUM_TOPLOGPROBS_ALLOWED,

@@ -32,7 +32,9 @@ class TestLoRAModelLoader:
             llm_engine=LLMEngine.vLLM,
             accelerator_type="L4",
             lora_config=LoraConfig(
-                dynamic_lora_loading_path="s3://fake-bucket-uri-abcd"
+                dynamic_lora_loading_path="s3://fake-bucket-uri-abcd",
+                download_timeout_s=30.0,
+                max_download_tries=3,
             ),
         )
 

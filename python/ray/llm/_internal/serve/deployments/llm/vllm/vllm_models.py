@@ -4,9 +4,9 @@ from typing import TYPE_CHECKING, Any, Dict, List, Literal, Optional, Union
 from pydantic import ConfigDict, Field, ValidationError, field_validator
 
 from ray.llm._internal.common.base_pydantic import BaseModelExtended
-from ray.llm._internal.common.models import DiskMultiplexConfig
 from ray.llm._internal.common.utils.cloud_utils import CloudMirrorConfig
 from ray.llm._internal.common.utils.import_utils import try_import
+from ray.llm._internal.common.utils.lora_utils import DiskMultiplexConfig
 from ray.llm._internal.serve.configs.constants import (
     ALLOW_NEW_PLACEMENT_GROUPS_IN_DEPLOYMENT,
     ENV_VARS_TO_PROPAGATE,
