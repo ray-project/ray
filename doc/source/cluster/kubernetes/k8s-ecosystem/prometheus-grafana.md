@@ -58,6 +58,12 @@ kubectl get all -n prometheus-system
   helm install kuberay-operator kuberay/kuberay-operator --version 1.4.0 \
     --set metrics.serviceMonitor.enabled=true
   ```
+  You can verify the ServiceMonitor creation with:
+  ```sh
+  kubectl get servicemonitor
+  # NAME               AGE
+  # kuberay-operator   11s
+  ```
 
 ## Step 4: Install a RayCluster
 
@@ -233,16 +239,6 @@ spec:
   ```
 
 ## Step 7: Scrape KubeRay metrics with ServiceMonitor
-
-Installing the KubeRay operator automatically creates a ServiceMonitor to help Prometheus discover and scrape KubeRay metrics. You can verify the ServiceMonitor creation with:
-```sh
-kubectl get servicemonitor -n prometheus-system
-
-# Example output:
-# NAME                                                 AGE
-# kuberay-operator-monitor                             53m
-```
-
 ```yaml
 apiVersion: monitoring.coreos.com/v1
 kind: ServiceMonitor
@@ -268,14 +264,8 @@ spec:
       honorLabels: true
 
 ```
-* Same as PodMonitor, the **install.sh** script also creates the [serviceMonitor.yaml](https://github.com/ray-project/kuberay/blob/master/config/prometheus/serviceMonitor.yaml) shown above, so you don't need to create it manually.
-* For production, you can enable the ServiceMonitor when installing the KubeRay operator by setting `metrics.serviceMonitor.enabled=true`. See [values.yaml](https://github.com/ray-project/kuberay/blob/e80e84be901102be1822c4d36f3475e59a35b21a/helm-chart/kuberay-operator/values.yaml#L92) for more details.
-  ```sh
-  helm install kuberay-operator kuberay/kuberay-operator --version 1.4.0 \
-    --set metrics.serviceMonitor.enabled=true
-  ```
 * See the official [ServiceMonitor doc](https://github.com/prometheus-operator/prometheus-operator/blob/main/Documentation/api-reference/api.md#servicemonitor) for more details about configurations.
-* KubeRay Operator provides metrics for RayCluster, RayService, and RayJob. See {ref}`kuberay-metrics-references` for more details.
+* KubeRay operator provides metrics for RayCluster, RayService, and RayJob. See {ref}`kuberay-metrics-references` for more details.
 * Prometheus uses `namespaceSelector` and `selector` to select Kubernetes Service.
 ```sh
 kubectl get service -n default -l app.kubernetes.io/name=kuberay-operator 
@@ -444,7 +434,7 @@ For example, in the following figures, one selects the metrics from the RayClust
 After importing the KubeRay operator dashboard into Grafana, you can monitor metrics from the KubeRay operator. The dashboard includes a dropdown menu that lets you filter and view controller runtime metrics for specific Ray custom resources CRs: `RayCluster`, `RayJob`, and `RayService`.
 
 The KubeRay operator dashboard should look like this:
-![Grafana KubeRay Operator Controller Runtime dashboard](../images/kuberay-dashboard-controller-runtime.png)
+![Grafana KubeRay operator Controller Runtime dashboard](../images/kuberay-dashboard-controller-runtime.png)
 
 ## Step 15: Embed Grafana panels in the Ray dashboard (optional)
 
