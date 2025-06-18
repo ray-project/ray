@@ -374,6 +374,8 @@ def compile(
 ):
     """Compile a dependency set."""
     try:
+        current_directory = os.getcwd()
+        click.echo(f"Current Working Directory (os): {current_directory}")
         manager = DependencySetManager()
         manager.compile_depset(
             constraints.split(",") if constraints else [],
