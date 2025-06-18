@@ -2496,11 +2496,12 @@ void NodeManager::HandlePinObjectIDs(rpc::PinObjectIDsRequest request,
     auto object_id_it = object_ids.begin();
     auto result_it = results.begin();
     while (object_id_it != object_ids.end()) {
-      if (*result_it == nullptr) {
+      if (*result_it == nullptr ||
+          local_object_manager_.ObjectPendingDeletion(*object_id_it)) {
         RAY_LOG(DEBUG).WithField(*object_id_it)
             << "Failed to get object in the object store. This should only happen when "
-               "the owner tries to pin a "
-            << "secondary copy and it's evicted in the meantime";
+               "the owner tries to pin an object and it's already been deleted or is "
+               "marked for deletion.";
         object_id_it = object_ids.erase(object_id_it);
         result_it = results.erase(result_it);
         reply->add_successes(false);

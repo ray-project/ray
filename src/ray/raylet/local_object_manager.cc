@@ -139,22 +139,31 @@ void LocalObjectManager::ReleaseFreedObject(const ObjectID &object_id) {
 
   // Try to evict all copies of the object from the cluster.
   if (free_objects_period_ms_ >= 0) {
-    objects_to_free_.push_back(object_id);
+    objects_pending_deletion_.emplace(object_id);
   }
-  if (objects_to_free_.size() == free_objects_batch_size_ ||
+  if (objects_pending_deletion_.size() == free_objects_batch_size_ ||
       free_objects_period_ms_ == 0) {
     FlushFreeObjects();
   }
 }
 
 void LocalObjectManager::FlushFreeObjects() {
-  if (!objects_to_free_.empty()) {
-    RAY_LOG(DEBUG) << "Freeing " << objects_to_free_.size() << " out-of-scope objects";
-    on_objects_freed_(objects_to_free_);
-    objects_to_free_.clear();
+  if (!objects_pending_deletion_.empty()) {
+    RAY_LOG(DEBUG) << "Freeing " << objects_pending_deletion_.size()
+                   << " out-of-scope objects";
+    // TODO(irabbani): CORE-1640 will modify as much as the plasma API as is
+    // reasonable to remove usage of vectors in favor of sets.
+    std::vector<ObjectID> objects_to_delete(objects_pending_deletion_.begin(),
+                                            objects_pending_deletion_.end());
+    on_objects_freed_(objects_to_delete);
+    objects_pending_deletion_.clear();
   }
   ProcessSpilledObjectsDeleteQueue(free_objects_batch_size_);
   last_free_objects_at_ms_ = current_time_ms();
+}
+
+bool LocalObjectManager::ObjectPendingDeletion(const ObjectID &object_id) {
+  return objects_pending_deletion_.find(object_id) != objects_pending_deletion_.end();
 }
 
 void LocalObjectManager::SpillObjectUptoMaxThroughput() {
@@ -330,7 +339,9 @@ void LocalObjectManager::SpillObjectsInternal(
     }
 
     if (request.object_refs_to_spill_size() == 0) {
-      { num_active_workers_ -= 1; }
+      {
+        num_active_workers_ -= 1;
+      }
       io_worker_pool_.PushSpillWorker(io_worker);
       callback(Status::OK());
       return;
