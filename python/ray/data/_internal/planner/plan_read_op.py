@@ -79,14 +79,16 @@ def plan_read_op(
         for read_task in read_tasks:
             read_task_ref = ray.put(read_task)
             ref_bundle = RefBundle(
-                tuple([
-                    (
-                        # TODO: figure out a better way to pass read
-                        # tasks other than ray.put().
-                        read_task_ref,
-                        _derive_metadata(read_task, read_task_ref),
-                    ),
-                ]),
+                tuple(
+                    [
+                        (
+                            # TODO: figure out a better way to pass read
+                            # tasks other than ray.put().
+                            read_task_ref,
+                            _derive_metadata(read_task, read_task_ref),
+                        ),
+                    ]
+                ),
                 # `owns_blocks` is False, because these refs are the root of the
                 # DAG. We shouldn't eagerly free them. Otherwise, the DAG cannot
                 # be reconstructed.

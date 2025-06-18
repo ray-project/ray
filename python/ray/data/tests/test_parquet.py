@@ -308,10 +308,9 @@ def test_parquet_read_meta_provider(ray_start_regular_shared, fs, data_path):
 
     assert not ds._plan.has_computed_output()
 
-    expected_values = list(zip(
-        range(60_000),
-        ["a", "b", "c"] * 10_000 + ["e", "f", "g"] * 10_000
-    ))
+    expected_values = list(
+        zip(range(60_000), ["a", "b", "c"] * 10_000 + ["e", "f", "g"] * 10_000)
+    )
 
     values = [(s["one"], s["two"]) for s in ds.take(60000)]
 
