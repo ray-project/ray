@@ -1,7 +1,7 @@
 import abc
 from typing import AsyncGenerator, Optional
 
-from ray.llm._internal.common.utils.lora_utils import DiskMultiplexConfig
+from ray.llm._internal.common.models import DiskMultiplexConfig
 from ray.llm._internal.serve.configs.server_models import (
     GenerationRequest,
     LLMConfig,

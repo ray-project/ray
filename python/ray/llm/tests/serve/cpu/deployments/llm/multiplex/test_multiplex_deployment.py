@@ -11,7 +11,7 @@ from ray.llm._internal.serve.configs.server_models import (
 )
 from ray.llm._internal.serve.deployments.llm.llm_server import LLMDeployment
 from ray.llm.tests.serve.mocks.mock_vllm_engine import (
-    FakeLoraModelLoader,
+    Fake_LoraModelLoader,
     MockMultiplexEngine,
 )
 
@@ -33,7 +33,7 @@ def handle(shutdown_ray_and_serve):
         LLMDeployment.options(placement_group_bundles=[{"CPU": 1}],).bind(
             llm_config,
             engine_cls=MockMultiplexEngine,
-            model_downloader=FakeLoraModelLoader(),
+            model_downloader=Fake_LoraModelLoader(),
         ),
     )
 
@@ -73,7 +73,7 @@ async def test_multiplex_deployment(
     else:
         assert output.disk_multiplex_config.model_dump() == {
             "model_id": multiplexed_model_id,
-            "max_total_tokens": None,
+            "max_total_tokens": 4096,
             "local_path": "/local/path",
             "lora_assigned_int_id": 1,
         }
