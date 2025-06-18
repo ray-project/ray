@@ -388,7 +388,7 @@ DEFAULT_GRAFANA_PANELS = [
         targets=[
             Target(
                 expr='sum(ray_tpu_tensorcore_utilization{{instance=~"$Instance",{global_filters}}}) by (instance, TpuIndex, TpuDeviceName, TpuType, TpuTopology)',
-                legend="Tensorcore Utilization: {{instance}}, tpu.{{TpuIndex}}, {{TpuType}}, {{TpuTopology}}",
+                legend="{{instance}}, tpu.{{TpuIndex}}, {{TpuType}}, {{TpuTopology}}",
             ),
         ],
     ),
@@ -400,7 +400,7 @@ DEFAULT_GRAFANA_PANELS = [
         targets=[
             Target(
                 expr='sum(ray_tpu_memory_bandwidth_utilization{{instance=~"$Instance",{global_filters}}}) by (instance, TpuIndex, TpuDeviceName, TpuType, TpuTopology)',
-                legend="Memory Bandwidth Utilization: {{instance}}, tpu.{{TpuIndex}}, {{TpuType}}, {{TpuTopology}}",
+                legend="{{instance}}, tpu.{{TpuIndex}}, {{TpuType}}, {{TpuTopology}}",
             ),
         ],
     ),
@@ -412,7 +412,7 @@ DEFAULT_GRAFANA_PANELS = [
         targets=[
             Target(
                 expr='sum(ray_tpu_duty_cycle{{instance=~"$Instance",{global_filters}}}) by (instance, TpuIndex, TpuDeviceName, TpuType, TpuTopology) or vector(0)',
-                legend="Duty Cycle: {{instance}}, tpu.{{TpuIndex}}, {{TpuType}}, {{TpuTopology}}",
+                legend="{{instance}}, tpu.{{TpuIndex}}, {{TpuType}}, {{TpuTopology}}",
             ),
         ],
     ),
