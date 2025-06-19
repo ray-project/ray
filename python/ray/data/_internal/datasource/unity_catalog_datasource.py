@@ -24,11 +24,13 @@ class ColumnInfo:
     type_json: str
     nullable: bool
 
+
 @dataclass
 class EffectiveFlag:
     value: str
     inherited_from_type: str
     inherited_from_name: str
+
 
 @dataclass
 class TableInfo:
@@ -63,6 +65,18 @@ class TableInfo:
 
     @staticmethod
     def from_dict(obj: Dict) -> "TableInfo":
+        if obj.get("effective_auto_maintenance_flag"):
+            effective_auto_maintenance_flag = EffectiveFlag(
+                **obj["effective_auto_maintenance_flag"]
+            )
+        else:
+            effective_auto_maintenance_flag = None
+        if obj.get("effective_predictive_optimization_flag"):
+            effective_predictive_optimization_flag = EffectiveFlag(
+                **obj["effective_predictive_optimization_flag"]
+            )
+        else:
+            effective_predictive_optimization_flag = None
         return TableInfo(
             name=obj["name"],
             catalog_name=obj["catalog_name"],
@@ -75,7 +89,9 @@ class TableInfo:
             properties=obj.get("properties", {}),
             securable_kind=obj.get("securable_kind", ""),
             enable_auto_maintenance=obj.get("enable_auto_maintenance", ""),
-            enable_predictive_optimization=obj.get("enable_predictive_optimization", ""),
+            enable_predictive_optimization=obj.get(
+                "enable_predictive_optimization", ""
+            ),
             properties_pairs=obj.get("properties_pairs", {}),
             generation=obj.get("generation", 0),
             metastore_id=obj.get("metastore_id", ""),
@@ -86,10 +102,12 @@ class TableInfo:
             updated_at=obj.get("updated_at", 0),
             updated_by=obj.get("updated_by", ""),
             table_id=obj.get("table_id", ""),
-            delta_runtime_properties_kvpairs=obj.get("delta_runtime_properties_kvpairs", {}),
+            delta_runtime_properties_kvpairs=obj.get(
+                "delta_runtime_properties_kvpairs", {}
+            ),
             securable_type=obj.get("securable_type", ""),
-            effective_auto_maintenance_flag=EffectiveFlag(**obj["effective_auto_maintenance_flag"]) if obj.get("effective_auto_maintenance_flag") else None,
-            effective_predictive_optimization_flag=EffectiveFlag(**obj["effective_predictive_optimization_flag"]) if obj.get("effective_predictive_optimization_flag") else None,
+            effective_auto_maintenance_flag=effective_auto_maintenance_flag,
+            effective_predictive_optimization_flag=effective_predictive_optimization_flag,
             browse_only=obj.get("browse_only", False),
             metastore_version=obj.get("metastore_version", 0),
         )
