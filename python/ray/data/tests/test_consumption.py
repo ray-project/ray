@@ -1638,7 +1638,7 @@ def test_read_write_local_node(ray_start_cluster):
         bundles = ds.iter_internal_ref_bundles()
         block_refs = _ref_bundles_iterator_to_block_refs_list(bundles)
         ray.wait(block_refs, num_returns=len(block_refs), fetch_local=False)
-        location_data = ray.experimental.get_object_locations(block_refs)
+        location_data = ray.experimental.get_local_object_locations(block_refs)
         locations = []
         for block in block_refs:
             locations.extend(location_data[block]["node_ids"])
