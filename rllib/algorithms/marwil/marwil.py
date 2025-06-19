@@ -484,7 +484,7 @@ class MARWIL(Algorithm):
                 training_data=training_data,
                 minibatch_size=self.config.train_batch_size_per_learner,
                 num_iters=self.config.dataset_num_iters_per_learner,
-                **self.offline_data.iter_batches_kwargs,
+                **self.offline_data.iter_batches_kwargs,                
             )
             stop = time.perf_counter()
             print(f"====> Time for learner_group.update: {stop - start}")
