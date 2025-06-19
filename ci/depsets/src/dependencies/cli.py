@@ -27,6 +27,29 @@ def verbose_print(ctx, message: str):
         click.secho(f"VERBOSE: {message}", fg="blue", err=True)
 
 
+def resolve_path_for_bazel(path_str: str) -> str:
+    """Resolve paths relative to where bazel run was invoked."""
+    if not path_str or os.path.isabs(path_str):
+        return path_str
+
+    # Use BUILD_WORKSPACE_DIRECTORY if available (set by bazel run)
+    workspace_dir = os.environ.get("BUILD_WORKSPACE_DIRECTORY")
+    if workspace_dir:
+        return os.path.join(workspace_dir, path_str)
+
+    # Fallback to current directory
+    return os.path.abspath(path_str)
+
+def resolve_paths(paths: str) -> List[str]:
+    """Resolve paths relative to where bazel run was invoked."""
+    resolved_paths = []
+    if paths:
+        for c in paths.split(","):
+            resolved_path = resolve_path_for_bazel(c.strip())
+            resolved_paths.append(resolved_path)
+            click.echo(f"path resolved: {c.strip()} -> {resolved_path}")
+    return resolved_paths
+
 class DependencySetManager:
     def __init__(self, storage_path: Path = Path.home() / ".depsets"):
         self.storage_path = storage_path
@@ -46,13 +69,13 @@ class DependencySetManager:
                 for dep in depset.dependencies:
                     f.write(f"{str(dep)}\n")
 
-    def create_depset(self, name: str, requirements_path: Path) -> DepSet:
+    def create_depset(self, requirements: str, name: str) -> DepSet:
         if name in self.depsets:
             raise ValueError(f"Dependency set {name} already exists")
 
         # Copy the requirements file to our storage location
         output_path = self.storage_path / f"{name}.txt"
-        with open(requirements_path) as src, open(output_path, "w") as dst:
+        with open(requirements) as src, open(output_path, "w") as dst:
             dst.write(src.read())
 
         depset = DepSet(str(output_path))
@@ -137,8 +160,7 @@ class DependencySetManager:
             if dep.name in packages:
                 new_depset.dependencies.append(dep)
 
-        self.write_to_requirements_file(new_depset, req_name)
-        self.create_depset(name, req_name)
+        self.create_depset(req_name, name)
         return self.get_depset(name)
 
     def expand_depset(
@@ -233,12 +255,6 @@ class DependencySetManager:
             raise Exception(f"Failed to execute command: {cmd}")
         return status.stdout
 
-    def write_to_requirements_file(self, depset: DepSet, path: str):
-        with open(path, "w") as f:
-            for dep in sorted(depset.dependencies, key=lambda x: x.name):
-                f.write(f"{dep}\n")
-
-
 @click.group(name="depsets")
 @click.option("--verbose", "-v", is_flag=True, help="Enable verbose output")
 @click.option("--debug", is_flag=True, help="Enable debug output")
@@ -252,16 +268,19 @@ def cli(ctx, verbose, debug):
 
 
 @cli.command()
-@click.argument("name")
-@click.argument(
-    "requirements_file",
-    type=click.Path(exists=True, file_okay=True, dir_okay=False, path_type=Path),
+@click.option(
+    "--requirements",
+    "-r",
+    type=str,
+    help="filepath for requirements file"
 )
-def init(name: str, requirements_file: Path):
+@click.argument("name")
+def init(requirements: str, name: str):
     """Initialize a new dependency set from a requirements file."""
     try:
         manager = DependencySetManager()
-        depset = manager.create_depset(name, requirements_file)
+        resolved_requirements = resolve_paths(requirements)
+        depset = manager.create_depset(resolved_requirements[0], name)
         click.echo(
             f"Created dependency set {name} with {len(depset.dependencies)} dependencies"
         )
@@ -320,7 +339,7 @@ def delete(name: str):
     type=str,
     help="comma separated list of absolute filepaths for constraint files",
 )
-@click.option("--requirements", "-r", type=str, help="filename for requirements file")
+@click.option("--requirements", "-r", type=str, help="comma separated list of absolute filepaths for requirements files")
 @click.option("--generate-hashes", type=bool, default=True, help="generate hashes")
 @click.option("--strip-extras", type=bool, default=True, help="generate hashes")
 @click.option(
@@ -375,11 +394,19 @@ def compile(
     """Compile a dependency set."""
     try:
         current_directory = os.getcwd()
-        click.echo(f"Current Working Directory (os): {current_directory}")
+        workspace_directory = os.environ.get("BUILD_WORKSPACE_DIRECTORY", "Not set")
+        click.echo(f"Current Working Directory (sandbox): {current_directory}")
+        click.echo(f"Workspace Directory (where you ran bazel): {workspace_directory}")
+
+        # Resolve paths relative to where bazel run was invoked
+        resolved_constraints = resolve_paths(constraints)
+
+        resolved_requirements = resolve_paths(requirements)
+
         manager = DependencySetManager()
         manager.compile_depset(
-            constraints.split(",") if constraints else [],
-            requirements.split(",") if requirements else [],
+            resolved_constraints,
+            resolved_requirements,
             unsafe_packages=unsafe_package,
             index_url=index_url,
             extra_index_url=extra_index_url,
@@ -409,7 +436,8 @@ def subset(source: str, packages: str, name: str):
     try:
         manager = DependencySetManager()
         # Expand ~ to home directory
-        packages_path = os.path.expanduser(packages)
+        # packages_path = os.path.expanduser(packages)
+        packages_path = resolve_paths(packages)
         with open(packages_path, "r") as f:
             packages = f.read().splitlines()
         new_depset = manager.subset_depset(source, packages, name)
@@ -422,13 +450,13 @@ def subset(source: str, packages: str, name: str):
 
 @cli.command()
 @click.option(
-    "--source", "-s", type=str, help="name of source depset(s) separated by comma"
+    "--source", "-s", type=str, help="comma separated list of absolute filepaths for source depset(s)"
 )
 @click.option(
     "--constraints",
     "-c",
     type=str,
-    help="filename for constraint(s) file(s) separated by comma",
+    help="comma separated list of absolute filepaths for constraint(s) file(s)",
 )
 @click.option("--generate-hashes", type=bool, default=True, help="generate hashes")
 @click.option("--header", type=bool, default=False, help="no header")
@@ -446,8 +474,8 @@ def expand(
     try:
         manager = DependencySetManager()
         manager.expand_depset(
-            source.split(",") if source else [],
-            constraints.split(",") if constraints else [],
+            resolve_paths(source),
+            resolve_paths(constraints),
             generate_hashes,
             header,
             no_cache,
