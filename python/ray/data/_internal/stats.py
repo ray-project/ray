@@ -1048,11 +1048,6 @@ class DatasetStatsSummary:
                 out += "* Spilled to disk: {}MB\n".format(mb_spilled)
                 out += "* Restored from disk: {}MB\n".format(mb_restored)
 
-            dataset_mb_spilled = round(self.dataset_bytes_spilled / 1e6)
-            if dataset_mb_spilled:
-                out += "\nDataset memory:\n"
-                out += "* Spilled to disk: {}MB\n".format(dataset_mb_spilled)
-
             # For throughput, we compute both an observed Ray Data dataset throughput
             # and an estimated single node dataset throughput.
 
@@ -1153,7 +1148,6 @@ class DatasetStatsSummary:
             f"{indent}   iter_stats={self.iter_stats.__repr__(level+1)},\n"
             f"{indent}   global_bytes_spilled={self.global_bytes_spilled / 1e6}MB,\n"
             f"{indent}   global_bytes_restored={self.global_bytes_restored / 1e6}MB,\n"
-            f"{indent}   dataset_bytes_spilled={self.dataset_bytes_spilled / 1e6}MB,\n"
             f"{indent}   parents=[{parent_stats}],\n"
             f"{indent})"
         )
