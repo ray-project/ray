@@ -1177,13 +1177,6 @@ void CoreWorker::Exit(
     RAY_CHECK_NE(detail, "");
     exiting_detail_ = std::optional<std::string>{detail};
   }
-  // Release the resources early in case draining takes a long time.
-  auto status = local_raylet_client_->NotifyDirectCallTaskBlocked();
-  if (!status.ok()) {
-    RAY_LOG(WARNING)
-        << "Failed to notify Raylet. It is either the raylet is already dead or the "
-           "raylet disconnects the client because it kills this worker.";
-  }
 
   // Callback to shutdown.
   auto shutdown = [this, exit_type, detail, creation_task_exception_pb_bytes]() {
@@ -1217,6 +1210,14 @@ void CoreWorker::Exit(
           // finish. Note that if tasks have been posted to the thread pools but not
           // started yet, they will not be executed.
           task_receiver_->Stop();
+
+          // Release resources only after tasks have stopped executing.
+          auto status = local_raylet_client_->NotifyDirectCallTaskBlocked();
+          if (!status.ok()) {
+            RAY_LOG(WARNING)
+                << "Failed to notify Raylet. The raylet may have already shut down or "
+                << "the connection was lost.";
+          }
 
           bool not_actor_task = false;
           {
