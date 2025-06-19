@@ -127,6 +127,8 @@ class AggregatorAgent(
             signal.SIGTERM, self._sigterm_handler
         )
 
+        self._is_cleanup = False
+
     async def AddEvents(self, request, context):
         """
         gRPC handler for adding events to the event aggregator
@@ -293,6 +295,11 @@ class AggregatorAgent(
         Cleans up the aggregator agent by stopping the publisher threads,
         sending any remaining events in the buffer, and updating metrics.
         """
+
+        with self._lock:
+            if self._is_cleanup:
+                return
+            self._is_cleanup = True
 
         # Send any remaining events in the buffer
         event_batch = []
