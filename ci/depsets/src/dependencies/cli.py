@@ -366,7 +366,7 @@ def delete(name: str):
 @click.option("--no-strip-markers", type=bool, default=False, help="no strip markers")
 @click.option("--emit-index-url", type=bool, default=False, help="emit index url")
 @click.option("--emit-find-links", type=bool, default=False, help="emit find links")
-@click.option("--header", type=bool, default=False, help="no header")
+@click.option("--header", type=bool, default=True, help="no header")
 @click.option("--no-cache", type=bool, default=False, help="no header")
 @click.option("--python-version", type=str, default="3.11", help="python version")
 @click.argument("name", required=True)
@@ -432,12 +432,17 @@ def subset(sources: str, packages: str, name: str):
     """Subset a dependency set."""
     try:
         manager = DependencySetManager()
-        # Expand ~ to home directory
-        # packages_path = os.path.expanduser(packages)
-        packages_path = resolve_paths(packages)
-        with open(packages_path, "r") as f:
-            packages = f.read().splitlines()
-        new_depset = manager.subset_depset(sources, packages, name)
+        resolved_packages = resolve_paths(packages)
+
+        # Read packages from each resolved package file
+        all_packages = []
+        for package_file in resolved_packages:
+            with open(package_file, "r") as f:
+                file_packages = f.read().splitlines()
+                all_packages.extend(file_packages)
+                click.echo(f"Loaded {len(file_packages)} packages from {package_file}")
+
+        new_depset = manager.subset_depset(sources, all_packages, name)
         click.echo(
             f"Created subset {name} from {sources} with {len(new_depset.dependencies)} dependencies"
         )
@@ -447,7 +452,7 @@ def subset(sources: str, packages: str, name: str):
 
 @cli.command()
 @click.option(
-    "--source", "-s", type=str, help="comma separated list of absolute filepaths for source depset(s)"
+    "--sources", "-s", type=str, help="comma separated list of absolute filepaths for source depset(s)"
 )
 @click.option(
     "--constraints",
@@ -456,11 +461,11 @@ def subset(sources: str, packages: str, name: str):
     help="comma separated list of absolute filepaths for constraint(s) file(s)",
 )
 @click.option("--generate-hashes", type=bool, default=True, help="generate hashes")
-@click.option("--header", type=bool, default=False, help="no header")
+@click.option("--header", type=bool, default=True, help="no header")
 @click.option("--no-cache", type=bool, default=False, help="no header")
 @click.argument("name")
 def expand(
-    source: str,
+    sources: str,
     constraints: str,
     name: str,
     generate_hashes: bool,
@@ -471,14 +476,14 @@ def expand(
     try:
         manager = DependencySetManager()
         manager.expand_depset(
-            resolve_paths(source),
+            sources.split(","),
             resolve_paths(constraints),
             generate_hashes,
             header,
             no_cache,
             name,
         )
-        click.echo(f"Expanded {name} from {source}")
+        click.echo(f"Expanded {name} from {sources}")
     except ValueError as e:
         click.echo(f"Error: {str(e)}", err=True)
 
