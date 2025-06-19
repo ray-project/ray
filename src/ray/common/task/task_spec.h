@@ -484,7 +484,11 @@ class TaskSpecification : public MessageWrapper<rpc::TaskSpec> {
 
   const rpc::Address &CallerAddress() const;
 
+  /// Get the worker ID of the caller.
   WorkerID CallerWorkerId() const;
+
+  /// Get the raw worker ID string of the caller.
+  std::string CallerWorkerIdBinary() const;
 
   NodeID CallerNodeId() const;
 

@@ -475,6 +475,10 @@ WorkerID TaskSpecification::CallerWorkerId() const {
   return WorkerID::FromBinary(message_->caller_address().worker_id());
 }
 
+std::string TaskSpecification::CallerWorkerIdBinary() const {
+  return message_->caller_address().worker_id();
+}
+
 NodeID TaskSpecification::CallerNodeId() const {
   return NodeID::FromBinary(message_->caller_address().raylet_id());
 }
