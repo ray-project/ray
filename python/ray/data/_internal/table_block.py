@@ -31,7 +31,7 @@ from ray.data.block import (
     BlockAccessor,
     BlockColumnAccessor,
     BlockExecStats,
-    BlockMetadata,
+    BlockMetadataWithSchema,
     BlockType,
     KeyType,
     U,
@@ -55,8 +55,6 @@ class TableBlockBuilder(BlockBuilder):
     def __init__(self, block_type):
         # The set of uncompacted Python values buffered.
         self._columns = collections.defaultdict(list)
-        # The column names of uncompacted Python values buffered.
-        self._column_names = None
         # The set of compacted tables we have built so far.
         self._tables: List[Any] = []
         # Cursor into tables indicating up to which table we've accumulated table sizes.
@@ -71,6 +69,7 @@ class TableBlockBuilder(BlockBuilder):
         # Size estimator for un-compacted table values.
         self._uncompacted_size = SizeEstimator()
         self._num_rows = 0
+        self._num_uncompacted_rows = 0
         self._num_compactions = 0
         self._block_type = block_type
 
@@ -85,23 +84,17 @@ class TableBlockBuilder(BlockBuilder):
                 "got {} (type {}).".format(item, type(item))
             )
 
-        item_column_names = item.keys()
-        if self._column_names is not None:
-            # Check all added rows have same columns.
-            if item_column_names != self._column_names:
-                raise ValueError(
-                    "Current row has different columns compared to previous rows. "
-                    f"Columns of current row: {sorted(item_column_names)}, "
-                    f"Columns of previous rows: {sorted(self._column_names)}."
-                )
-        else:
-            # Initialize column names with the first added row.
-            self._column_names = item_column_names
+        # Fill in missing columns with None.
+        for column_name in item:
+            if column_name not in self._columns:
+                self._columns[column_name] = [None] * self._num_uncompacted_rows
 
-        for key, value in item.items():
-            self._columns[key].append(value)
+        for column_name in self._columns:
+            value = item.get(column_name)
+            self._columns[column_name].append(value)
 
         self._num_rows += 1
+        self._num_uncompacted_rows += 1
         self._compact_if_needed()
         self._uncompacted_size.add(item)
 
@@ -172,6 +165,7 @@ class TableBlockBuilder(BlockBuilder):
         self._uncompacted_size = SizeEstimator()
         self._columns.clear()
         self._num_compactions += 1
+        self._num_uncompacted_rows = 0
 
 
 class TableBlockAccessor(BlockAccessor):
@@ -392,7 +386,7 @@ class TableBlockAccessor(BlockAccessor):
         sort_key: "SortKey",
         aggs: Tuple["AggregateFn"],
         finalize: bool = True,
-    ) -> Tuple[Block, BlockMetadata]:
+    ) -> Tuple[Block, "BlockMetadataWithSchema"]:
         """Combine previously aggregated blocks.
 
         This assumes blocks are already sorted by key in ascending order,
@@ -506,7 +500,7 @@ class TableBlockAccessor(BlockAccessor):
                 break
 
         ret = builder.build()
-        return ret, BlockAccessor.for_block(ret).get_metadata(exec_stats=stats.build())
+        return ret, BlockMetadataWithSchema.from_block(ret, stats=stats.build())
 
     def _find_partitions_sorted(
         self,
