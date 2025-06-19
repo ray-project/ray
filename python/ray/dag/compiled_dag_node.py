@@ -948,13 +948,13 @@ class CompiledDAG:
         ] = {}
 
         # Set of actors involved in P2P communication using an unresolved communicator.
-        self._p2p_actors_with_unresolved_communicators: Set["ray.actor.ActorHandle"] = (
-            set()
-        )
+        self._p2p_actors_with_unresolved_communicators: Set[
+            "ray.actor.ActorHandle"
+        ] = set()
         # Set of DAG nodes involved in P2P communication using an unresolved communicator.
-        self._p2p_dag_nodes_with_unresolved_communicators: Set["ray.dag.DAGNode"] = (
-            set()
-        )
+        self._p2p_dag_nodes_with_unresolved_communicators: Set[
+            "ray.dag.DAGNode"
+        ] = set()
         # Set of collective operations using an unresolved communicator.
         self._collective_ops_with_unresolved_communicators: Set[
             "ray.dag.collective_node._CollectiveOperation"
@@ -1008,9 +1008,9 @@ class CompiledDAG:
         # ObjectRef for each worker's task. The task is an infinite loop that
         # repeatedly executes the method specified in the DAG.
         self.worker_task_refs: Dict["ray.actor.ActorHandle", "ray.ObjectRef"] = {}
-        self.actor_to_tasks: Dict["ray.actor.ActorHandle", List["CompiledTask"]] = (
-            defaultdict(list)
-        )
+        self.actor_to_tasks: Dict[
+            "ray.actor.ActorHandle", List["CompiledTask"]
+        ] = defaultdict(list)
         # Mapping from actor handle to its GPU IDs.
         # This is used for type hint resolution for with_tensor_transport("auto").
         self.actor_to_gpu_ids: Dict["ray.actor.ActorHandle", List[str]] = {}

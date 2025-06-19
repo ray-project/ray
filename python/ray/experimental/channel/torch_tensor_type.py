@@ -142,7 +142,7 @@ class TorchTensorType(ChannelOutputType):
         _tensor_metadata_channel: Optional["Channel"] = None,
     ) -> type:
         if self.requires_accelerator():
-            from python.ray.experimental.channel.torch_tensor_accelerator_channel import (
+            from ray.experimental.channel.torch_tensor_accelerator_channel import (
                 TorchTensorAcceleratorChannel,
             )
 
