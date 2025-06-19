@@ -176,15 +176,6 @@ class _StatsActor:
         # a dataset's metrics to 0 after each finishes execution.
         op_tags_keys = ("dataset", "operator")
 
-        # TODO(scottjlee): move these overvie metrics as fields in a
-        # separate dataclass, similar to OpRuntimeMetrics.
-        self.spilled_bytes = Gauge(
-            "data_spilled_bytes",
-            description="""Bytes spilled by dataset operators.
-                DataContext.enable_get_object_locations_for_metrics
-                must be set to True to report this metric""",
-            tag_keys=op_tags_keys,
-        )
         self.freed_bytes = Gauge(
             "data_freed_bytes",
             description="Bytes freed by dataset operators",
@@ -398,7 +389,6 @@ class _StatsActor:
         for stats, operator_tag in zip(op_metrics, operator_tags):
             tags = self._create_tags(dataset_tag, operator_tag)
 
-            self.spilled_bytes.set(stats.get("obj_store_mem_spilled", 0), tags)
             self.freed_bytes.set(stats.get("obj_store_mem_freed", 0), tags)
             self.current_bytes.set(stats.get("obj_store_mem_used", 0), tags)
             self.output_bytes.set(stats.get("bytes_task_outputs_generated", 0), tags)
