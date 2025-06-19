@@ -12,7 +12,7 @@ import pytest
 os.environ["RAY_enable_export_api_write_config"] = "EXPORT_SUBMISSION_JOB"
 
 import ray
-from ray._private.test_utils import async_wait_for_condition
+from ray._common.test_utils import async_wait_for_condition
 from ray.dashboard.modules.job.job_manager import JobManager
 from ray.job_submission import JobStatus
 from ray.tests.conftest import call_ray_start  # noqa: F401

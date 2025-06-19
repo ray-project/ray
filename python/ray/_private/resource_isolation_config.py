@@ -1,6 +1,7 @@
 import logging
 from typing import Optional
 
+import ray._common.utils
 import ray._private.ray_constants as ray_constants
 import ray._private.utils as utils
 
@@ -104,7 +105,7 @@ class ResourceIsolationConfig:
             "multiple times."
         )
         self.system_reserved_memory += object_store_memory
-        available_system_memory = utils.get_system_memory()
+        available_system_memory = ray._common.utils.get_system_memory()
         if self.system_reserved_memory > available_system_memory:
             raise ValueError(
                 f"The total requested system_reserved_memory={self.system_reserved_memory}, calculated by "
@@ -220,7 +221,7 @@ class ResourceIsolationConfig:
         Raises:
             ValueError: If system_reserved_memory is specified, but invalid.
         """
-        available_system_memory = utils.get_system_memory()
+        available_system_memory = ray._common.utils.get_system_memory()
 
         if not system_reserved_memory:
             system_reserved_memory = int(
