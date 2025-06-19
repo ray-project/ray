@@ -61,7 +61,6 @@ class BlockReader(Reader):
                 BlockMetadata(
                     num_rows=self.num_blocks_per_task * self.block_size,
                     size_bytes=size_bytes,
-                    schema=None,
                     input_files=None,
                     exec_stats=None,
                 ),
