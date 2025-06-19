@@ -1633,26 +1633,33 @@ def test_write_partition_cols_with_min_rows_per_file(
     assert partition_0_dir.exists()
     assert partition_1_dir.exists()
 
-    # With the current implementation, min_rows_per_file with partitions
-    # writes all rows in each partition to a single file when the partition
-    # has >= min_rows_per_file rows
-    expected_files_per_partition = 1  # Current behavior: single file per partition
-
+    # With the new implementation, we try to minimize file count by using larger chunk sizes
+    # when possible, but each partition is processed independently
     for partition_dir in [partition_0_dir, partition_1_dir]:
         parquet_files = list(partition_dir.glob("*.parquet"))
-        assert len(parquet_files) == expected_files_per_partition
 
         # Verify total rows across all files in partition
         total_rows = 0
+        file_sizes = []
         for file_path in parquet_files:
             table = pq.read_table(file_path)
-            total_rows += len(table)
+            file_size = len(table)
+            file_sizes.append(file_size)
+            total_rows += file_size
+
         assert total_rows == 20  # Each partition should have 20 rows total
 
-        # Verify each file has at least min_rows_per_file rows
-        for file_path in parquet_files:
-            table = pq.read_table(file_path)
-            assert len(table) >= min_rows_per_file
+        # Add explicit assertion about individual file sizes for clarity
+        print(
+            f"Partition {partition_dir.name} file sizes with min_rows_per_file={min_rows_per_file}: {file_sizes}"
+        )
+
+        # Verify each file has at least min_rows_per_file rows (or all remaining rows if less)
+        for file_size in file_sizes:
+            assert file_size >= min_rows_per_file or file_size == total_rows, (
+                f"File size {file_size} is less than min_rows_per_file {min_rows_per_file} "
+                f"and not equal to total remaining rows"
+            )
 
     # Verify we can read back the data correctly
     ds_read = ray.data.read_parquet(tmp_path)
@@ -1667,13 +1674,23 @@ def test_write_max_rows_per_file(tmp_path, ray_start_regular_shared, max_rows_pe
     )
 
     total_rows = 0
+    file_sizes = []
     for filename in os.listdir(tmp_path):
         table = pq.read_table(os.path.join(tmp_path, filename))
-        assert len(table) <= max_rows_per_file
-        total_rows += len(table)
+        file_size = len(table)
+        file_sizes.append(file_size)
+        assert file_size <= max_rows_per_file
+        total_rows += file_size
 
     # Verify all rows were written
     assert total_rows == 100
+
+    # Add explicit assertion about individual file sizes for clarity
+    print(f"File sizes with max_rows_per_file={max_rows_per_file}: {file_sizes}")
+    for size in file_sizes:
+        assert (
+            size <= max_rows_per_file
+        ), f"File size {size} exceeds max_rows_per_file {max_rows_per_file}"
 
 
 @pytest.mark.parametrize(
@@ -1689,14 +1706,27 @@ def test_write_min_max_rows_per_file(
     )
 
     total_rows = 0
+    file_sizes = []
     for filename in os.listdir(tmp_path):
         table = pq.read_table(os.path.join(tmp_path, filename))
-        # max_rows_per_file takes precedence, so files should not exceed max
-        assert len(table) <= max_rows_per_file
-        total_rows += len(table)
+        file_size = len(table)
+        file_sizes.append(file_size)
+        # With the new logic, we try to maximize chunk size within the max constraint
+        # Files should still respect both min and max bounds
+        assert min_rows_per_file <= file_size <= max_rows_per_file
+        total_rows += file_size
 
     # Verify all rows were written
     assert total_rows == 100
+
+    # Add explicit assertion about individual file sizes for clarity
+    print(
+        f"File sizes with min={min_rows_per_file}, max={max_rows_per_file}: {file_sizes}"
+    )
+    for size in file_sizes:
+        assert (
+            min_rows_per_file <= size <= max_rows_per_file
+        ), f"File size {size} not within bounds [{min_rows_per_file}, {max_rows_per_file}]"
 
 
 def test_write_max_rows_per_file_validation(tmp_path, ray_start_regular_shared):
@@ -1747,17 +1777,31 @@ def test_write_partition_cols_with_max_rows_per_file(
 
     # Check each partition directory
     total_rows = 0
+    all_file_sizes = []
     for partition_dir in os.listdir(tmp_path):
         partition_path = os.path.join(tmp_path, partition_dir)
         if os.path.isdir(partition_path):
+            partition_file_sizes = []
             for filename in os.listdir(partition_path):
                 if filename.endswith(".parquet"):
                     table = pq.read_table(os.path.join(partition_path, filename))
-                    assert len(table) <= max_rows_per_file
-                    total_rows += len(table)
+                    file_size = len(table)
+                    partition_file_sizes.append(file_size)
+                    assert file_size <= max_rows_per_file
+                    total_rows += file_size
+            all_file_sizes.extend(partition_file_sizes)
+            print(
+                f"Partition {partition_dir} file sizes with max_rows_per_file={max_rows_per_file}: {partition_file_sizes}"
+            )
 
     # Verify all rows were written
     assert total_rows == 30
+
+    # Add explicit assertion about individual file sizes for clarity
+    for size in all_file_sizes:
+        assert (
+            size <= max_rows_per_file
+        ), f"File size {size} exceeds max_rows_per_file {max_rows_per_file}"
 
 
 if __name__ == "__main__":

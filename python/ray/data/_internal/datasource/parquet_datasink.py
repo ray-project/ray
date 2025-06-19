@@ -175,16 +175,57 @@ class ParquetDatasink(_FileDatasink):
         total_rows = table.num_rows
         block_accessor = BlockAccessor.for_block(table)
 
+        # Estimate max rows based on target_max_block_size
+        def _estimate_max_rows_from_block_size() -> int:
+            """Estimate the maximum number of rows based on target_max_block_size."""
+            if total_rows == 0:
+                return 1
+
+            # Calculate bytes per row
+            table_size_bytes = table.nbytes
+            if table_size_bytes == 0:
+                return 1
+
+            bytes_per_row = table_size_bytes / total_rows
+            target_max_block_size = self._data_context.target_max_block_size
+
+            # Estimate max rows that would fit in target_max_block_size
+            estimated_max_rows = max(1, int(target_max_block_size / bytes_per_row))
+            return estimated_max_rows
+
         file_idx = 0
         offset = 0
 
         while offset < total_rows:
-            min_rows_per_file = (
-                self.min_rows_per_file
-                if self.min_rows_per_file is not None
-                else total_rows - offset
-            )
-            chunk_size = min(self.max_rows_per_file, min_rows_per_file)
+            remaining_rows = total_rows - offset
+            estimated_max_rows = _estimate_max_rows_from_block_size()
+
+            # Apply the new logic for determining chunk_size to minimize number of files
+            if self.max_rows_per_file is None and self.min_rows_per_file is None:
+                # If max_size is None, and min_size is None default to max_block_size
+                chunk_size = min(estimated_max_rows, remaining_rows)
+            elif self.max_rows_per_file is None and self.min_rows_per_file is not None:
+                # If max_size is None, and min_size is defined default to max(min_size, remaining_num_rows, max_block_size)
+                chunk_size = max(
+                    self.min_rows_per_file, min(remaining_rows, estimated_max_rows)
+                )
+            else:
+                # If max_rows_per_file is defined, it acts as a hard upper bound
+                # Try to maximize chunk size within this constraint to minimize file count
+                if self.min_rows_per_file is not None:
+                    # Both min and max are defined
+                    # Use the larger of min_rows_per_file and estimated_max_rows, but don't exceed max_rows_per_file
+                    chunk_size = min(
+                        self.max_rows_per_file,
+                        max(self.min_rows_per_file, estimated_max_rows),
+                        remaining_rows,
+                    )
+                else:
+                    # Only max is defined
+                    # Use the smaller of max_rows_per_file and estimated_max_rows to respect the constraint
+                    chunk_size = min(
+                        self.max_rows_per_file, estimated_max_rows, remaining_rows
+                    )
 
             # Create a slice of the table
             chunk_table = block_accessor.slice(offset, offset + chunk_size)
