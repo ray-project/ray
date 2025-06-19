@@ -8,7 +8,6 @@ from ray.train.v2._internal.callbacks.metrics import (
     ControllerMetricsCallback,
     WorkerMetricsCallback,
 )
-from ray.train.v2._internal.execution.context import TrainRunContext
 from ray.train.v2._internal.execution.controller.state import (
     TrainControllerState,
     TrainControllerStateType,
@@ -17,6 +16,7 @@ from ray.train.v2._internal.metrics.base import EnumMetric, TimeMetric
 from ray.train.v2._internal.metrics.controller import ControllerMetrics
 from ray.train.v2._internal.metrics.worker import WorkerMetrics
 from ray.train.v2.api.config import RunConfig
+from ray.train.v2.tests.util import create_dummy_run_context
 
 
 class MockGauge:
@@ -129,16 +129,14 @@ def test_worker_metrics_callback(monkeypatch, mock_gauge):
 
     mock_train_context = MagicMock()
     mock_train_context.get_world_rank.return_value = 1
-    mock_train_context.get_run_config.return_value = RunConfig(name="test_run_name")
+    mock_train_context.train_run_context = create_dummy_run_context()
     monkeypatch.setattr(
         ray.train.v2._internal.callbacks.metrics,
         "get_train_context",
         lambda: mock_train_context,
     )
 
-    callback = WorkerMetricsCallback(
-        train_run_context=TrainRunContext(run_config=RunConfig(name="test_run_name"))
-    )
+    callback = WorkerMetricsCallback(train_run_context=create_dummy_run_context())
     callback.after_init_train_context()
 
     # Check if the gauges is updated with the correct metrics
@@ -177,10 +175,8 @@ def test_controller_metrics_callback(monkeypatch, mock_gauge):
         lambda: mock_train_context,
     )
 
-    callback = ControllerMetricsCallback(
-        train_run_context=TrainRunContext(run_config=RunConfig(name="test_run_name"))
-    )
-    callback.after_controller_start()
+    callback = ControllerMetricsCallback()
+    callback.after_controller_start(train_run_context=create_dummy_run_context())
 
     # Check if the gauges is updated with the correct metrics
     with callback.on_worker_group_start():
@@ -233,10 +229,8 @@ def test_controller_state_metrics(monkeypatch, mock_gauge):
         lambda: mock_train_context,
     )
 
-    callback = ControllerMetricsCallback(
-        train_run_context=TrainRunContext(run_config=RunConfig(name="test_run_name"))
-    )
-    callback.after_controller_start()
+    callback = ControllerMetricsCallback()
+    callback.after_controller_start(train_run_context=create_dummy_run_context())
 
     # Test initial state
     assert (
