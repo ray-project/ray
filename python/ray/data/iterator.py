@@ -366,7 +366,8 @@ class DataIterator(abc.ABC):
                 therefore ``batch_size`` must also be specified when using local
                 shuffling.
             local_shuffle_seed: The seed to use for the local random shuffle.
-            pin_memory: [Alpha] If True, will copy Tensors into device pinned memory.
+            pin_memory: [Alpha] If True, copies the tensor to pinned memory. Note that
+                `pin_memory` is only supported when using `DefaultCollateFn`.
 
         Returns:
             An iterable over Torch Tensor batches.
@@ -389,6 +390,11 @@ class DataIterator(abc.ABC):
                 "pin_memory will be ignored."
             )
             pin_memory = False
+
+        if pin_memory and not isinstance(collate_fn, DefaultCollateFn):
+            raise ValueError(
+                "pin_memory is only supported when using DefaultCollateFn."
+            )
 
         if device == "auto":
             # Use the appropriate device for Ray Train, or falls back to CPU if
@@ -420,9 +426,7 @@ class DataIterator(abc.ABC):
                 to device.
             """
             if is_tensor_batch_type(batch):
-                return move_tensors_to_device(
-                    batch, device=device, pin_memory=pin_memory
-                )
+                return move_tensors_to_device(batch, device=device)
             else:
                 return batch
 
@@ -433,6 +437,7 @@ class DataIterator(abc.ABC):
             collate_fn = DefaultCollateFn(
                 dtypes=dtypes,
                 device=device,
+                pin_memory=pin_memory,
             )
             batch_format = "pyarrow"
         elif isinstance(collate_fn, ArrowBatchCollateFn):
