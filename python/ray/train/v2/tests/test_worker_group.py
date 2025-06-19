@@ -481,6 +481,7 @@ def test_worker_group_abort():
     wg._start()
     wg.abort()
     assert hooks.abort_hook_called
+    wg.shutdown()
 
 
 def test_worker_log_file_paths():
