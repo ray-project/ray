@@ -2,6 +2,7 @@
 import logging
 import time
 from typing import Dict, Tuple, Iterator, Generator, Optional, Union
+from concurrent.futures import ThreadPoolExecutor
 
 # Third-party imports
 import torch
@@ -10,7 +11,11 @@ import pyarrow
 import ray
 import ray.data
 import ray.train
-from ray.data.collate_fn import ArrowBatchCollateFn, CollateFn
+from ray.data.collate_fn import (
+    ArrowBatchCollateFn,
+    CollateFn,
+    DEFAULT_COLLATE_FN_NUM_WORKERS,
+)
 
 # Local imports
 from benchmark_factory import BenchmarkFactory
@@ -191,6 +196,7 @@ class CustomArrowCollateFn(ArrowBatchCollateFn):
         self.dtypes = dtypes
         self.device = device
         self.pin_memory = pin_memory
+        self._executor = ThreadPoolExecutor(max_workers=DEFAULT_COLLATE_FN_NUM_WORKERS)
 
     def __call__(self, batch: "pyarrow.Table") -> Tuple[torch.Tensor, torch.Tensor]:
         """Convert an Arrow batch to PyTorch tensors.
@@ -210,8 +216,13 @@ class CustomArrowCollateFn(ArrowBatchCollateFn):
             dtypes=self.dtypes,
             combine_chunks=self.device.type == "cpu",
             pin_memory=self.pin_memory,
+            executor=self._executor,
         )
         return tensors["image"], tensors["label"]
+
+    def __del__(self):
+        """Clean up the thread pool executor when the object is destroyed."""
+        self._executor.shutdown(wait=True)
 
 
 class ImageClassificationRayDataLoaderFactory(RayDataLoaderFactory):

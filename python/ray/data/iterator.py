@@ -373,8 +373,6 @@ class DataIterator(abc.ABC):
             An iterable over Torch Tensor batches.
         """
 
-        import torch
-
         from ray.train.torch import get_device
 
         if collate_fn is not None and (dtypes is not None or device != "auto"):
@@ -383,13 +381,6 @@ class DataIterator(abc.ABC):
                 "You should manually move the output Torch tensors to the"
                 "desired dtype and device outside of collate_fn."
             )
-
-        if pin_memory and not torch.cuda.is_available():
-            warnings.warn(
-                "pin_memory is set to True, but CUDA is not available. "
-                "pin_memory will be ignored."
-            )
-            pin_memory = False
 
         if pin_memory and not isinstance(collate_fn, DefaultCollateFn):
             raise ValueError(
