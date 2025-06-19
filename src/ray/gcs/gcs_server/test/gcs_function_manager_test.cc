@@ -78,3 +78,64 @@ TEST_F(GCSFunctionManagerTest, TestFunctionManagerGC) {
   EXPECT_FALSE(HasKey("fun", "ActorClass:" + job_id_hex + ":key1"));
   EXPECT_FALSE(HasKey("fun", "FunctionsToRun:" + job_id_hex + ":key1"));
 }
+
+TEST_F(GcsFunctionManagerTest, TestDuplicateRemoveJobReference) {
+  JobID job_id = BaseID<JobID>::FromRandom();
+  int num_del_called = 0;
+  auto f = [&num_del_called]() mutable { ++num_del_called; };
+  EXPECT_CALL(*kv, Del(StrEq("fun"), StartsWith("RemoteFunction:"), true, _))
+      .WillOnce(InvokeWithoutArgs(f));
+  EXPECT_CALL(*kv, Del(StrEq("fun"), StartsWith("ActorClass:"), true, _))
+      .WillOnce(InvokeWithoutArgs(f));
+  EXPECT_CALL(*kv, Del(StrEq("fun"), StartsWith("FunctionsToRun:"), true, _))
+      .WillOnce(InvokeWithoutArgs(f));
+
+  // Add a job reference (counter becomes 1)
+  function_manager->AddJobReference(job_id);
+  EXPECT_EQ(0, num_del_called);
+
+  // First RemoveJobReference call - should succeed and trigger cleanup
+  function_manager->RemoveJobReference(job_id);
+  EXPECT_EQ(3, num_del_called);  // All 3 Del operations should be called
+
+  // Second RemoveJobReference call for the same job - this should crash without fix
+  // With the fix, this should handle gracefully and not crash
+  EXPECT_NO_THROW(function_manager->RemoveJobReference(job_id));
+
+  // KV operations should not be called again
+  EXPECT_EQ(3, num_del_called);
+}
+
+TEST_F(GcsFunctionManagerTest, TestNetworkRetryScenario) {
+  JobID job_id = JobID::FromBinary("03000000");
+  int num_del_called = 0;
+  auto f = [&num_del_called]() mutable { ++num_del_called; };
+  EXPECT_CALL(*kv, Del(StrEq("fun"), StartsWith("RemoteFunction:"), true, _))
+      .WillOnce(InvokeWithoutArgs(f));
+  EXPECT_CALL(*kv, Del(StrEq("fun"), StartsWith("ActorClass:"), true, _))
+      .WillOnce(InvokeWithoutArgs(f));
+  EXPECT_CALL(*kv, Del(StrEq("fun"), StartsWith("FunctionsToRun:"), true, _))
+      .WillOnce(InvokeWithoutArgs(f));
+
+  // 1. Job gets added (simulate job creation)
+  function_manager->AddJobReference(job_id);
+
+  // 2. First MarkJobFinished call succeeds on GCS side
+  function_manager->RemoveJobReference(job_id);
+  EXPECT_EQ(3, num_del_called);
+
+  // 3. Network failure causes raylet to retry MarkJobFinished
+  // This second call should NOT crash the GCS
+  EXPECT_NO_THROW({ function_manager->RemoveJobReference(job_id); });
+
+  // 4. KV operations should not be called again (idempotent)
+  EXPECT_EQ(3, num_del_called);
+
+  // 5. Additional retries should also be handled gracefully
+  EXPECT_NO_THROW({
+    function_manager->RemoveJobReference(job_id);
+    function_manager->RemoveJobReference(job_id);
+  });
+
+  EXPECT_EQ(3, num_del_called);  // Still only called once
+}
