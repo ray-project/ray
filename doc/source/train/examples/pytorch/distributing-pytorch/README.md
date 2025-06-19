@@ -16,7 +16,8 @@ In this step you train a PyTorch VisionTransformer model to recognize objects us
 First, install and import the required Python modules.
 
 
-```python
+```bash
+%%bash
 pip install torch torchvision
 ```
 
