@@ -288,9 +288,15 @@ def _split(bundle: RefBundle, left_size: int) -> Tuple[RefBundle, RefBundle]:
             right_blocks.append(rb)
             acc += lm.num_rows
             assert acc == left_size
-    left = RefBundle(list(zip(left_blocks, left_meta)), owns_blocks=bundle.owns_blocks)
+    left = RefBundle(
+        list(zip(left_blocks, left_meta)),
+        owns_blocks=bundle.owns_blocks,
+        schema=bundle.schema,
+    )
     right = RefBundle(
-        list(zip(right_blocks, right_meta)), owns_blocks=bundle.owns_blocks
+        list(zip(right_blocks, right_meta)),
+        owns_blocks=bundle.owns_blocks,
+        schema=bundle.schema,
     )
     assert left.num_rows() == left_size
     assert left.num_rows() + right.num_rows() == bundle.num_rows()
@@ -304,14 +310,12 @@ def _split_meta(
     left = BlockMetadata(
         num_rows=left_size,
         size_bytes=left_bytes,
-        schema=m.schema,
         input_files=m.input_files,
         exec_stats=None,
     )
     right = BlockMetadata(
         num_rows=m.num_rows - left_size,
         size_bytes=m.size_bytes - left_bytes,
-        schema=m.schema,
         input_files=m.input_files,
         exec_stats=None,
     )

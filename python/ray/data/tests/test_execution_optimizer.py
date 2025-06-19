@@ -104,7 +104,7 @@ def test_read_operator_emits_warning_for_large_read_tasks():
                 _ = large_object
                 yield pd.DataFrame({"column": [0]})
 
-            return [ReadTask(read_fn, BlockMetadata(1, None, None, None, None))]
+            return [ReadTask(read_fn, BlockMetadata(1, None, None, None))]
 
     with pytest.warns(UserWarning):
         ray.data.read_datasource(StubDatasource()).materialize()

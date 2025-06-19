@@ -66,11 +66,15 @@ from ray.data._internal.remote_fn import cached_remote_fn
 from ray.data._internal.stats import DatasetStats
 from ray.data._internal.util import (
     _autodetect_parallelism,
-    get_table_block_metadata,
+    get_table_block_metadata_schema,
     ndarray_to_block,
     pandas_df_to_arrow_block,
 )
-from ray.data.block import Block, BlockAccessor, BlockExecStats, BlockMetadata
+from ray.data.block import (
+    Block,
+    BlockExecStats,
+    BlockMetadataWithSchema,
+)
 from ray.data.context import DataContext
 from ray.data.dataset import Dataset, MaterializedDataset
 from ray.data.datasource import (
@@ -131,10 +135,11 @@ def from_blocks(blocks: List[Block]):
         A :class:`~ray.data.Dataset` holding the blocks.
     """
     block_refs = [ray.put(block) for block in blocks]
-    metadata = [BlockAccessor.for_block(block).get_metadata() for block in blocks]
-    from_blocks_op = FromBlocks(block_refs, metadata)
+    meta_with_schema = [BlockMetadataWithSchema.from_block(block) for block in blocks]
+
+    from_blocks_op = FromBlocks(block_refs, meta_with_schema)
     execution_plan = ExecutionPlan(
-        DatasetStats(metadata={"FromBlocks": metadata}, parent=None),
+        DatasetStats(metadata={"FromBlocks": meta_with_schema}, parent=None),
         DataContext.get_current().copy(),
     )
     logical_plan = LogicalPlan(from_blocks_op, execution_plan._context)
@@ -199,7 +204,7 @@ def from_items(
     # NOTE: We need to explicitly use the builtins range since we override range below,
     # with the definition of ray.data.range.
     blocks: List[ObjectRef[Block]] = []
-    metadata: List[BlockMetadata] = []
+    meta_with_schema: List[BlockMetadataWithSchema] = []
     for i in builtins.range(detected_parallelism):
         stats = BlockExecStats.builder()
         builder = DelegatingBlockBuilder()
@@ -213,13 +218,13 @@ def from_items(
             builder.add(item)
         block = builder.build()
         blocks.append(ray.put(block))
-        metadata.append(
-            BlockAccessor.for_block(block).get_metadata(exec_stats=stats.build())
+        meta_with_schema.append(
+            BlockMetadataWithSchema.from_block(block, stats=stats.build())
         )
 
-    from_items_op = FromItems(blocks, metadata)
+    from_items_op = FromItems(blocks, meta_with_schema)
     execution_plan = ExecutionPlan(
-        DatasetStats(metadata={"FromItems": metadata}, parent=None),
+        DatasetStats(metadata={"FromItems": meta_with_schema}, parent=None),
         DataContext.get_current().copy(),
     )
     logical_plan = LogicalPlan(from_items_op, execution_plan._context)
@@ -2815,13 +2820,15 @@ def from_pandas_refs(
 
     context = DataContext.get_current()
     if context.enable_pandas_block:
-        get_metadata = cached_remote_fn(get_table_block_metadata)
-        metadata = ray.get([get_metadata.remote(df) for df in dfs])
+        get_metadata_schema = cached_remote_fn(get_table_block_metadata_schema)
+        metadata_schema = ray.get([get_metadata_schema.remote(df) for df in dfs])
         execution_plan = ExecutionPlan(
-            DatasetStats(metadata={"FromPandas": metadata}, parent=None),
+            DatasetStats(metadata={"FromPandas": metadata_schema}, parent=None),
             DataContext.get_current().copy(),
         )
-        logical_plan = LogicalPlan(FromPandas(dfs, metadata), execution_plan._context)
+        logical_plan = LogicalPlan(
+            FromPandas(dfs, metadata_schema), execution_plan._context
+        )
         return MaterializedDataset(
             execution_plan,
             logical_plan,
@@ -2830,13 +2837,15 @@ def from_pandas_refs(
     df_to_block = cached_remote_fn(pandas_df_to_arrow_block, num_returns=2)
 
     res = [df_to_block.remote(df) for df in dfs]
-    blocks, metadata = map(list, zip(*res))
-    metadata = ray.get(metadata)
+    blocks, metadata_schema = map(list, zip(*res))
+    metadata_schema = ray.get(metadata_schema)
     execution_plan = ExecutionPlan(
-        DatasetStats(metadata={"FromPandas": metadata}, parent=None),
+        DatasetStats(metadata={"FromPandas": metadata_schema}, parent=None),
         DataContext.get_current().copy(),
     )
-    logical_plan = LogicalPlan(FromPandas(blocks, metadata), execution_plan._context)
+    logical_plan = LogicalPlan(
+        FromPandas(blocks, metadata_schema), execution_plan._context
+    )
     return MaterializedDataset(
         execution_plan,
         logical_plan,
@@ -2919,14 +2928,17 @@ def from_numpy_refs(
     ndarray_to_block_remote = cached_remote_fn(ndarray_to_block, num_returns=2)
 
     res = [ndarray_to_block_remote.remote(ndarray, ctx) for ndarray in ndarrays]
-    blocks, metadata = map(list, zip(*res))
-    metadata = ray.get(metadata)
+    blocks, metadata_schema = map(list, zip(*res))
+    metadata_schema = ray.get(metadata_schema)
 
     execution_plan = ExecutionPlan(
-        DatasetStats(metadata={"FromNumpy": metadata}, parent=None),
+        DatasetStats(metadata={"FromNumpy": metadata_schema}, parent=None),
         DataContext.get_current().copy(),
     )
-    logical_plan = LogicalPlan(FromNumpy(blocks, metadata), execution_plan._context)
+
+    logical_plan = LogicalPlan(
+        FromNumpy(blocks, metadata_schema), execution_plan._context
+    )
 
     return MaterializedDataset(
         execution_plan,
@@ -3000,13 +3012,15 @@ def from_arrow_refs(
     if isinstance(tables, ray.ObjectRef):
         tables = [tables]
 
-    get_metadata = cached_remote_fn(get_table_block_metadata)
-    metadata = ray.get([get_metadata.remote(t) for t in tables])
+    get_metadata_schema = cached_remote_fn(get_table_block_metadata_schema)
+    metadata_schema = ray.get([get_metadata_schema.remote(t) for t in tables])
     execution_plan = ExecutionPlan(
-        DatasetStats(metadata={"FromArrow": metadata}, parent=None),
+        DatasetStats(metadata={"FromArrow": metadata_schema}, parent=None),
         DataContext.get_current().copy(),
     )
-    logical_plan = LogicalPlan(FromArrow(tables, metadata), execution_plan._context)
+    logical_plan = LogicalPlan(
+        FromArrow(tables, metadata_schema), execution_plan._context
+    )
 
     return MaterializedDataset(
         execution_plan,

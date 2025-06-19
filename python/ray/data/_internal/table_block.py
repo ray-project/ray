@@ -31,7 +31,7 @@ from ray.data.block import (
     BlockAccessor,
     BlockColumnAccessor,
     BlockExecStats,
-    BlockMetadata,
+    BlockMetadataWithSchema,
     BlockType,
     KeyType,
     U,
@@ -392,7 +392,7 @@ class TableBlockAccessor(BlockAccessor):
         sort_key: "SortKey",
         aggs: Tuple["AggregateFn"],
         finalize: bool = True,
-    ) -> Tuple[Block, BlockMetadata]:
+    ) -> Tuple[Block, "BlockMetadataWithSchema"]:
         """Combine previously aggregated blocks.
 
         This assumes blocks are already sorted by key in ascending order,
@@ -506,7 +506,7 @@ class TableBlockAccessor(BlockAccessor):
                 break
 
         ret = builder.build()
-        return ret, BlockAccessor.for_block(ret).get_metadata(exec_stats=stats.build())
+        return ret, BlockMetadataWithSchema.from_block(ret, stats=stats.build())
 
     def _find_partitions_sorted(
         self,

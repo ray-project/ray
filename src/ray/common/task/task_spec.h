@@ -301,6 +301,9 @@ class TaskSpecification : public MessageWrapper<rpc::TaskSpec> {
 
   TaskID ParentTaskId() const;
 
+  // Get the parent task id in binary format.
+  std::string ParentTaskIdBinary() const;
+
   ActorID RootDetachedActorId() const;
 
   TaskID SubmitterTaskId() const;
