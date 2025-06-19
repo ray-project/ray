@@ -23,6 +23,37 @@ from ray.data.context import DataContext
 from ray.types import ObjectRef
 
 
+def _trace_locality(
+    ref_bundles: Iterator[RefBundle],
+    stats: Optional[DatasetStats] = None
+) -> Iterator[RefBundle]:
+    """Traces locality for individual blocks relative to the node where
+    iteration is happening.
+
+    Args:
+        ref_bundles: An iterator over (block references) bundles
+        stats: An optional stats object to recording block hits and misses.
+    """
+    hits = 0
+    misses = 0
+    unknowns = 0
+
+    node_id = ray.get_runtime_context().get_node_id()
+
+    for bundle in ref_bundles:
+        hits, misses, unknowns = bundle.trace_locality(node_id)
+        hits += hits
+        misses += misses
+        unknowns += unknowns
+
+        yield bundle
+
+    if stats:
+        stats.iter_blocks_local = hits
+        stats.iter_blocks_remote = misses
+        stats.iter_unknown_location = unknowns
+
+
 def iter_batches(
     ref_bundles: Iterator[RefBundle],
     *,
@@ -123,6 +154,9 @@ def iter_batches(
     def _async_iter_batches(
         ref_bundles: Iterator[RefBundle],
     ) -> Iterator[DataBatch]:
+        # Step 0: Trace locality of individual objects
+        ref_bundles = _trace_locality(ref_bundles, stats)
+
         # Step 1: Prefetch logical batches locally.
         block_iter = prefetch_batches_locally(
             ref_bundles=ref_bundles,
