@@ -1,3 +1,4 @@
+import time
 from collections import defaultdict
 from dataclasses import dataclass
 from typing import Dict, Iterator, List, Optional, Tuple
@@ -8,6 +9,10 @@ from ray.data._internal.memory_tracing import trace_deallocation
 from ray.data.block import Block, BlockMetadata, Schema
 from ray.data.context import DataContext
 from ray.types import ObjectRef
+
+
+# Cached object metadata should be retained for no longer than 1s
+_OBJECT_REF_META_CACHE_STALENESS_THRESHOLD_S = 1
 
 
 @dataclass
@@ -44,6 +49,7 @@ class RefBundle:
 
     # Object metadata (size, locations, spilling status)
     _cached_object_meta: Optional[Dict[ObjectRef, "_ObjectMetadata"]] = None
+    _cached_object_meta_at: Optional[float] = None
 
     # Preferred locations for this bundle determined based on the locations
     # of individual objects and their corresponding size, ie location with the
@@ -133,7 +139,7 @@ class RefBundle:
         )
 
     def _get_cached_metadata(self) -> Dict[ObjectRef, "_ObjectMetadata"]:
-        if self._cached_object_meta is None:
+        if not self._has_cached_metadata():
             # This call is pretty fast for owned objects (~5k/s), so we don't need to
             # batch it for now.
             meta = ray.experimental.get_local_object_locations(self.block_refs)
@@ -148,8 +154,16 @@ class RefBundle:
             }
 
             self._cached_object_meta = object_metas
+            self._cached_object_meta_at = time.perf_counter()
 
         return self._cached_object_meta
+
+    def _has_cached_metadata(self):
+        return (
+            self._cached_object_meta is not None and
+            self._cached_object_meta_at is not None and
+            time.perf_counter() - self._cached_object_meta_at <= _OBJECT_REF_META_CACHE_STALENESS_THRESHOLD_S
+        )
 
     def __eq__(self, other) -> bool:
         return self is other
