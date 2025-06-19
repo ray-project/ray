@@ -15,7 +15,7 @@ cleanup() {
 }
 trap cleanup EXIT
 
-echo "BUILD_WORKSPACE_DIRECTORY: $BUILD_WORKSPACE_DIRECTORY
+echo "BUILD_WORKSPACE_DIRECTORY: $BUILD_WORKSPACE_DIRECTORY"
 
 echo "Created temporary directory: $TEMP_DIR"
 
