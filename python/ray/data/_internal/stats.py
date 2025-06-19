@@ -1649,13 +1649,12 @@ class IterStatsSummary:
                     fmt(self.finalize_batch_time.avg()),
                     fmt(self.finalize_batch_time.get()),
                 )
-            if DataContext.get_current().enable_get_object_locations_for_metrics:
-                out += "Block locations:\n"
-                out += "    * Num blocks local: {}\n".format(self.iter_blocks_local)
-                out += "    * Num blocks remote: {}\n".format(self.iter_blocks_remote)
-                out += "    * Num blocks unknown location: {}\n".format(
-                    self.iter_unknown_location
-                )
+            out += "Block locations:\n"
+            out += "    * Num blocks local: {}\n".format(self.iter_blocks_local)
+            out += "    * Num blocks remote: {}\n".format(self.iter_blocks_remote)
+            out += "    * Num blocks unknown location: {}\n".format(
+                self.iter_unknown_location
+            )
             if self.streaming_split_coord_time.get() != 0:
                 out += "Streaming split coordinator overhead time: "
                 out += f"{fmt(self.streaming_split_coord_time.get())}\n"
