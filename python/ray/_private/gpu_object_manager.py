@@ -150,10 +150,9 @@ class GPUObjectManager:
         Fetches the GPU object from the source actor's GPU object store via the object store
         instead of out-of-band tensor transfer and stores the tensors in the local GPU object store.
 
-        This is useful when the current process is the driver process that coordinates the data
-        transfer of this GPU object. For example, when the driver process calls `ray.get(gpu_object_ref)`,
-        the tensors will not be transferred out-of-band automatically. We need to fetch the tensors from
-        the corresponding actor's GPU object store via the object store API.
+        This is useful when the current process does not support the designated out-of-band tensor transport.
+        For example, if the tensor transport is NCCL but the driver does not have a GPU, we use this call to
+        fulfill a `ray.get` call.
 
         Args:
             obj_id: The object ID of the GPU object.
@@ -175,9 +174,8 @@ class GPUObjectManager:
         self, dst_actor: ActorHandle, task_args: Tuple[Any, ...]
     ):
         """
-        Triggers tensor communication operations between actors. When an ObjectRef containing
-        in-actor tensors (i.e. ObjectRef exists in `managed_gpu_object_metadata`) is passed to another
-        actor task, CPU data will still be passed through the object store, but the in-actor
+        Triggers tensor communication operations between actors. When a managed ObjectRef is passed
+        to another actor task, CPU data will still be passed through the object store, but the in-actor
         tensors will be passed out-of-band.
 
         This function triggers the out-of-band tensor transfer by submitting Ray actor
@@ -193,9 +191,9 @@ class GPUObjectManager:
             task_args: List of arguments for the target actor task that may contain ObjectRefs.
         """
         for arg in task_args:
-            # If an ObjectRef exists in `managed_gpu_object_metadata`, it means the ObjectRef
-            # is in-actor tensors. Therefore, this function will trigger a tensor
-            # communication operation between the sender and receiver actors.
+            # If an ObjectRef is managed, it means the actual value is a list of tensors stored
+            # on a remote actor. Therefore, this function will trigger a tensor communication
+            # operation between the sender and receiver actors.
             if not isinstance(arg, ObjectRef):
                 continue
 
