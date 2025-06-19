@@ -75,9 +75,11 @@ class ILocalTaskManager {
 
   virtual void ReleaseWorkerResources(std::shared_ptr<WorkerInterface> worker) = 0;
 
-  virtual bool ReleaseCpuResourcesFromBlockedWorker(std::shared_ptr<WorkerInterface> worker) = 0;
+  virtual bool ReleaseCpuResourcesFromBlockedWorker(
+      std::shared_ptr<WorkerInterface> worker) = 0;
 
-  virtual bool ReturnCpuResourcesToUnblockedWorker(std::shared_ptr<WorkerInterface> worker) = 0;
+  virtual bool ReturnCpuResourcesToUnblockedWorker(
+      std::shared_ptr<WorkerInterface> worker) = 0;
 
   virtual ResourceSet CalcNormalTaskResources() const = 0;
 
@@ -145,17 +147,17 @@ class NoopLocalTaskManager : public ILocalTaskManager {
 
   void ReleaseWorkerResources(std::shared_ptr<WorkerInterface> worker) override {}
 
-  bool ReleaseCpuResourcesFromBlockedWorker(std::shared_ptr<WorkerInterface> worker) override {
+  bool ReleaseCpuResourcesFromBlockedWorker(
+      std::shared_ptr<WorkerInterface> worker) override {
     return false;
   }
 
-  bool ReturnCpuResourcesToUnblockedWorker(std::shared_ptr<WorkerInterface> worker) override {
+  bool ReturnCpuResourcesToUnblockedWorker(
+      std::shared_ptr<WorkerInterface> worker) override {
     return false;
   }
 
-  ResourceSet CalcNormalTaskResources() const override {
-    return ResourceSet();
-  }
+  ResourceSet CalcNormalTaskResources() const override { return ResourceSet(); }
 
   void RecordMetrics() const override{};
 
