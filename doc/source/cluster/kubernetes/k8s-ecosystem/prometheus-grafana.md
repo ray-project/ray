@@ -56,7 +56,8 @@ kubectl get all -n prometheus-system
 * Set `metrics.serviceMonitor.enabled=true` when installing the KubeRay operator with Helm to create a ServiceMonitor that scrapes metrics exposed by the KubeRay operator's service.
   ```sh
   helm install kuberay-operator kuberay/kuberay-operator --version 1.4.0 \
-    --set metrics.serviceMonitor.enabled=true
+    --set metrics.serviceMonitor.enabled=true \
+    --set metrics.serviceMonitor.selector.release=prometheus
   ```
   You can verify the ServiceMonitor creation with:
   ```sh
