@@ -195,10 +195,9 @@ class ParquetDatasink(_FileDatasink):
 
         file_idx = 0
         offset = 0
-
+        estimated_max_rows = _estimate_max_rows_from_block_size()
         while offset < total_rows:
             remaining_rows = total_rows - offset
-            estimated_max_rows = _estimate_max_rows_from_block_size()
 
             # Apply the new logic for determining chunk_size to minimize number of files
             if self.max_rows_per_file is None and self.min_rows_per_file is None:
@@ -206,8 +205,11 @@ class ParquetDatasink(_FileDatasink):
                 chunk_size = min(estimated_max_rows, remaining_rows)
             elif self.max_rows_per_file is None and self.min_rows_per_file is not None:
                 # If max_size is None, and min_size is defined default to max(min_size, remaining_num_rows, max_block_size)
-                chunk_size = max(
-                    self.min_rows_per_file, min(remaining_rows, estimated_max_rows)
+                chunk_size = min(
+                    remaining_rows,
+                    max(
+                        self.min_rows_per_file, min(remaining_rows, estimated_max_rows)
+                    ),
                 )
             else:
                 # If max_rows_per_file is defined, it acts as a hard upper bound
