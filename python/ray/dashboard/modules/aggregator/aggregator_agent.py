@@ -31,28 +31,37 @@ logger = logging.getLogger(__name__)
 
 # Environment variables for the aggregator agent
 env_var_prefix = "RAY_DASHBOARD_AGGREGATOR_AGENT"
+# Max number of threads for the thread pool executor handling gRPC requests
 GRPC_TPE_MAX_WORKERS = ray_constants.env_integer(
     f"{env_var_prefix}_GRPC_TPE_MAX_WORKERS", 10
 )
+# Number of worker threads that publish events to the external service
 PUBLISH_EVENT_WORKERS = ray_constants.env_integer(
     f"{env_var_prefix}_PUBLISH_EVENT_WORKERS", 1
 )
+# Interval to check the main thread liveness
 CHECK_MAIN_THREAD_LIVENESS_INTERVAL_SECONDS = ray_constants.env_float(
     f"{env_var_prefix}_CHECK_MAIN_THREAD_LIVENESS_INTERVAL_SECONDS", 0.1
 )
+# Maximum size of the event buffer
 MAX_EVENT_BUFFER_SIZE = ray_constants.env_integer(
     f"{env_var_prefix}_MAX_EVENT_BUFFER_SIZE", 1000000
 )
+# Maximum sleep time between sending batches of events to the external service
 MAX_BUFFER_SEND_INTERVAL_SECONDS = ray_constants.env_float(
     f"{env_var_prefix}_MAX_BUFFER_SEND_INTERVAL_SECONDS", 0.1
 )
+# Maximum number of events to send in a single batch to the external service
 MAX_EVENT_SEND_BATCH_SIZE = ray_constants.env_integer(
     f"{env_var_prefix}_MAX_EVENT_SEND_BATCH_SIZE", 10000
 )
+# Address of the external service to send events
 EVENT_SEND_ADDR = os.environ.get(
     f"{env_var_prefix}_EVENT_SEND_ADDR", "http://127.0.0.1"
 )
+# Port of the external service to send events
 EVENT_SEND_PORT = ray_constants.env_integer(f"{env_var_prefix}_EVENT_SEND_PORT", 12345)
+# Interval to update metrics
 METRICS_UPDATE_INTERVAL_SECONDS = ray_constants.env_float(
     f"{env_var_prefix}_METRICS_UPDATE_INTERVAL_SECONDS", 0.1
 )
@@ -72,15 +81,15 @@ if prometheus_client:
         tuple(dashboard_consts.COMPONENT_METRICS_TAG_KEYS),
         namespace="ray",
     )
-    events_dropped_at_event_buffer = Counter(
-        f"{metrics_prefix}_events_dropped_at_event_buffer",
-        "Total number of events dropped at receiver.",
+    events_dropped_at_event_aggregator = Counter(
+        f"{metrics_prefix}_events_dropped_at_event_aggregator",
+        "Total number of events dropped at the event aggregator.",
         tuple(dashboard_consts.COMPONENT_METRICS_TAG_KEYS),
         namespace="ray",
     )
     events_published = Counter(
         f"{metrics_prefix}_events_published",
-        "Total number of events published.",
+        "Total number of events successfully published to the external server.",
         tuple(dashboard_consts.COMPONENT_METRICS_TAG_KEYS),
         namespace="ray",
     )
@@ -105,7 +114,7 @@ class AggregatorAgent(
         self._publisher_threads = []
         self._events_received_since_last_metrics_update = 0
         self._events_dropped_at_core_worker_since_last_metrics_update = 0
-        self._events_dropped_at_event_buffer_since_last_metrics_update = 0
+        self._events_dropped_at_event_aggregator_since_last_metrics_update = 0
         self._events_published_since_last_metrics_update = 0
 
         self._orig_sigterm_handler = signal.signal(
@@ -127,7 +136,7 @@ class AggregatorAgent(
             )
         # The status code is defined in `src/ray/common/status.h`
         status_code = 0
-        status_messages = []
+        error_messages = []
         for event in events_data.events:
             try:
                 self._event_buffer.put_nowait(event)
@@ -138,10 +147,12 @@ class AggregatorAgent(
                 self._event_buffer.put_nowait(event)
                 with self._lock:
                     self._events_received_since_last_metrics_update += 1
-                    self._events_dropped_at_event_buffer_since_last_metrics_update += 1
+                    self._events_dropped_at_event_aggregator_since_last_metrics_update += (
+                        1
+                    )
                 if status_code == 0:
                     status_code = 5
-                status_messages.append(
+                error_messages.append(
                     f"event {old_event.event_id.decode()} dropped because event buffer full"
                 )
             except Exception as e:
@@ -150,19 +161,21 @@ class AggregatorAgent(
                     e,
                 )
                 with self._lock:
-                    self._events_dropped_at_event_buffer_since_last_metrics_update += 1
+                    self._events_dropped_at_event_aggregator_since_last_metrics_update += (
+                        1
+                    )
                 status_code = 9
-                status_messages.append(
+                error_messages.append(
                     f"event {event.event_id.decode()} failed to add to buffer with error {e}"
                 )
 
         status_message = "all events received"
-        if status_messages:
+        if error_messages:
             truncate_num = 5
-            status_message = ", ".join(status_messages[:truncate_num])
-            if len(status_messages) > truncate_num:
+            status_message = ", ".join(error_messages[:truncate_num])
+            if len(error_messages) > truncate_num:
                 status_message += (
-                    f", and {len(status_messages) - truncate_num} more events dropped"
+                    f", and {len(error_messages) - truncate_num} more events dropped"
                 )
         status = events_event_aggregator_service_pb2.AddEventStatus(
             status_code=status_code, status_message=status_message
@@ -215,14 +228,14 @@ class AggregatorAgent(
             _events_dropped_at_core_worker = (
                 self._events_dropped_at_core_worker_since_last_metrics_update
             )
-            _events_dropped_at_event_buffer = (
-                self._events_dropped_at_event_buffer_since_last_metrics_update
+            _events_dropped_at_event_aggregator = (
+                self._events_dropped_at_event_aggregator_since_last_metrics_update
             )
             _events_published = self._events_published_since_last_metrics_update
 
             self._events_received_since_last_metrics_update = 0
             self._events_dropped_at_core_worker_since_last_metrics_update = 0
-            self._events_dropped_at_event_buffer_since_last_metrics_update = 0
+            self._events_dropped_at_event_aggregator_since_last_metrics_update = 0
             self._events_published_since_last_metrics_update = 0
 
         labels = {
@@ -236,8 +249,8 @@ class AggregatorAgent(
         events_dropped_at_core_worker.labels(**labels).inc(
             _events_dropped_at_core_worker
         )
-        events_dropped_at_event_buffer.labels(**labels).inc(
-            _events_dropped_at_event_buffer
+        events_dropped_at_event_aggregator.labels(**labels).inc(
+            _events_dropped_at_event_aggregator
         )
         events_published.labels(**labels).inc(_events_published)
 

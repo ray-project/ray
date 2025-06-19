@@ -471,20 +471,20 @@ def test_metrics_export_event_aggregator_agent(ray_start_cluster_head, httpserve
         event_aggregator_metrics = [
             "ray_event_aggregator_agent_events_received_total",
             "ray_event_aggregator_agent_events_dropped_at_core_worker_total",
-            "ray_event_aggregator_agent_events_dropped_at_event_buffer_total",
+            "ray_event_aggregator_agent_events_dropped_at_event_aggregator_total",
             "ray_event_aggregator_agent_events_published_total",
         ]
         return all(metric in metrics_names for metric in event_aggregator_metrics)
 
     def test_case_value_correct():
         _, _, metric_samples = fetch_prometheus(prom_addresses)
-        metrics_values = {
+        expected_metrics_values = {
             "ray_event_aggregator_agent_events_received_total": 1.0,
             "ray_event_aggregator_agent_events_dropped_at_core_worker_total": 0.0,
-            "ray_event_aggregator_agent_events_dropped_at_event_buffer_total": 0.0,
+            "ray_event_aggregator_agent_events_dropped_at_event_aggregator_total": 0.0,
             "ray_event_aggregator_agent_events_published_total": 1.0,
         }
-        for descriptor, expected_value in metrics_values.items():
+        for descriptor, expected_value in expected_metrics_values.items():
             samples = [m for m in metric_samples if m.name == descriptor]
             if not samples:
                 return False
