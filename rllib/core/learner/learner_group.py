@@ -303,8 +303,14 @@ class LearnerGroup(Checkpointable):
                 episodes_refs=episodes_refs,
                 data_iterators=data_iterators,
             )
+        import time
+        start = time.perf_counter()
+        
         training_data.validate()
 
+        stop = time.perf_counter()
+        print(f"===> Training_data.validate(): {stop - start}")
+        start = time.perf_counter()
         # Local Learner instance.
         if self.is_local:
             if async_update:
@@ -318,6 +324,8 @@ class LearnerGroup(Checkpointable):
             if return_state:
                 kwargs["return_state"] = return_state
             # Return the single Learner's update results.
+            stop = time.perf_counter()
+            print(f"===> Before learner.update(): {stop - start}")
             return [
                 self._learner.update(
                     training_data=training_data,
