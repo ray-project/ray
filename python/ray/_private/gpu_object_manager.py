@@ -120,10 +120,6 @@ class GPUObjectManager:
         obj_id = obj_ref.hex()
         return self.managed_gpu_object_metadata[obj_id]
 
-    def _is_gpu_object_ref(self, obj_ref: ObjectRef) -> bool:
-        obj_id = obj_ref.hex()
-        return obj_id in self.managed_gpu_object_metadata
-
     def _send_gpu_object(
         self, communicator_name: str, src_actor: ActorHandle, obj_id: str, dst_rank: int
     ):
@@ -203,7 +199,7 @@ class GPUObjectManager:
             if not isinstance(arg, ObjectRef):
                 continue
 
-            if not self._is_gpu_object_ref(arg):
+            if not self.is_managed_gpu_object(arg.hex()):
                 continue
 
             # Import get_collective_groups here to avoid dependency on
