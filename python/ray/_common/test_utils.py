@@ -96,7 +96,7 @@ def wait_for_condition(
     last_ex = None
     while time.time() - start <= timeout:
         try:
-            if condition_predictor.__name__ == "<lambda>":
+            if not raise_exceptions:
                 assert condition_predictor(**kwargs)
                 return
             else:
