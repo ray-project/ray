@@ -31,26 +31,12 @@ def resolve_block_refs(
         block_ref_iter: An iterator over block object references.
         stats: An optional stats object to recording block hits and misses.
     """
-    hits = 0
-    misses = 0
-    unknowns = 0
-
     for block_ref in block_ref_iter:
-        current_hit, current_miss, current_unknown = _calculate_ref_hits([block_ref])
-        hits += current_hit
-        misses += current_miss
-        unknowns += current_unknown
-
         # TODO(amogkam): Optimized further by batching multiple references in a single
         # `ray.get()` call.
         with stats.iter_get_s.timer() if stats else nullcontext():
             block = ray.get(block_ref)
         yield block
-
-    if stats:
-        stats.iter_blocks_local = hits
-        stats.iter_blocks_remote = misses
-        stats.iter_unknown_location = unknowns
 
 
 def blocks_to_batches(
