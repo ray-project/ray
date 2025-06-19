@@ -152,7 +152,7 @@ class GPUObjectManager:
     def fetch_gpu_object(self, obj_id: str):
         """
         Fetches the GPU object from the source actor's GPU object store via the object store
-        instead of out-of-band tensor transfer and stores the tensors in `gpu_object_store`.
+        instead of out-of-band tensor transfer and stores the tensors in the local GPU object store.
 
         This is useful when the current process is the driver process that coordinates the data
         transfer of this GPU object. For example, when the driver process calls `ray.get(gpu_object_ref)`,
