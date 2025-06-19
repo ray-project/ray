@@ -13,6 +13,7 @@ k8s-ecosystem/volcano
 k8s-ecosystem/yunikorn
 k8s-ecosystem/kueue
 k8s-ecosystem/istio
+k8s-ecosystem/scheduler-plugins
 ```
 
 * {ref}`kuberay-ingress`
@@ -23,3 +24,4 @@ k8s-ecosystem/istio
 * {ref}`kuberay-yunikorn`
 * {ref}`kuberay-kueue`
 * {ref}`kuberay-istio`
+* {ref}`kuberay-scheduler-plugins`
