@@ -95,6 +95,7 @@ class MapOperator(OneToOneOperator, InternalQueueOperatorMixin, ABC):
 
         self._map_transformer = map_transformer
         self._supports_fusion = supports_fusion
+        print("Setting map_task_kwargs", map_task_kwargs, name)
         self._map_task_kwargs = map_task_kwargs
         self._ray_remote_args = _canonicalize_ray_remote_args(ray_remote_args or {})
         self._ray_remote_args_fn = ray_remote_args_fn

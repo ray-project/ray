@@ -34,9 +34,9 @@ class FilenameProvider:
                 def __init__(self, file_format: str):
                     self.file_format = file_format
 
-                def get_filename_for_row(self, row, task_index, block_index, row_index):
+                def get_filename_for_row(self, row, write_uuid, task_index, block_index, row_index):
                     return (
-                        f"{row['label']}_{task_index:06}_{block_index:06}"
+                        f"{row['label']}_{write_uuid}_{task_index:06}_{block_index:06}"
                         f"_{row_index:06}.{self.file_format}"
                     )
 
