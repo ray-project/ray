@@ -30,6 +30,7 @@ from ray.exceptions import GetTimeoutError
 from ray.serve._private.client import ServeControllerClient
 from ray.serve._private.constants import SERVE_DEFAULT_APP_NAME
 from ray.serve._private.http_util import make_fastapi_class_based_view
+from ray.serve._private.test_utils import get_application_url
 from ray.serve.exceptions import RayServeException
 from ray.serve.handle import DeploymentHandle
 
@@ -48,10 +49,12 @@ def test_fastapi_function(serve_instance):
 
     serve.run(FastAPIApp.bind())
 
-    resp = httpx.get("http://localhost:8000/100")
+    url = get_application_url("HTTP")
+
+    resp = httpx.get(f"{url}/100")
     assert resp.json() == {"result": 100}
 
-    resp = httpx.get("http://localhost:8000/not-number")
+    resp = httpx.get(f"{url}/not-number")
     assert resp.status_code == 422  # Unprocessable Entity
     # Pydantic 1.X returns `type_error.integer`, 2.X returns `int_parsing`.
     assert resp.json()["detail"][0]["type"] in {"type_error.integer", "int_parsing"}
@@ -71,7 +74,8 @@ def test_ingress_prefix(serve_instance):
 
     serve.run(App.bind(), route_prefix="/api")
 
-    resp = httpx.get("http://localhost:8000/api/100")
+    url = get_application_url("HTTP")
+    resp = httpx.get(f"{url}/100")
     assert resp.json() == {"result": 100}
 
 
@@ -102,11 +106,12 @@ def test_class_based_view(serve_instance):
     serve.run(A.bind())
 
     # Test HTTP calls.
-    resp = httpx.get("http://localhost:8000/calc/41")
+    url = get_application_url("HTTP")
+    resp = httpx.get(f"{url}/calc/41")
     assert resp.json() == 42
-    resp = httpx.post("http://localhost:8000/calc/41")
+    resp = httpx.post(f"{url}/calc/41")
     assert resp.json() == 40
-    resp = httpx.get("http://localhost:8000/other")
+    resp = httpx.get(f"{url}/other")
     assert resp.json() == "hello"
 
     # Test handle calls.
@@ -257,7 +262,7 @@ def test_fastapi_features(serve_instance):
 
     serve.run(Worker.bind())
 
-    url = "http://localhost:8000"
+    url = get_application_url("HTTP")
     resp = httpx.get(f"{url}/")
     assert resp.status_code == 404
     assert "x-process-time" in resp.headers
@@ -351,7 +356,8 @@ def test_fast_api_mounted_app(serve_instance):
 
     serve.run(A.bind(), route_prefix="/api")
 
-    assert httpx.get("http://localhost:8000/api/mounted/hi").json() == "world"
+    url = get_application_url("HTTP")
+    assert httpx.get(f"{url}/mounted/hi").json() == "world"
 
 
 def test_fastapi_init_lifespan_should_not_shutdown(serve_instance):
@@ -413,15 +419,17 @@ def test_fastapi_duplicate_routes(serve_instance):
 
     serve.run(App1.bind(), name="app1", route_prefix="/api/v1")
     serve.run(App2.bind(), name="app2", route_prefix="/api/v2")
+    app1_url = get_application_url("HTTP", app_name="app1")
+    app2_url = get_application_url("HTTP", app_name="app2")
 
-    resp = httpx.get("http://localhost:8000/api/v1", follow_redirects=True)
+    resp = httpx.get(app1_url, follow_redirects=True)
     assert resp.json() == "first"
 
-    resp = httpx.get("http://localhost:8000/api/v2", follow_redirects=True)
+    resp = httpx.get(app2_url, follow_redirects=True)
     assert resp.json() == "second"
 
-    for version in ["v1", "v2"]:
-        resp = httpx.get(f"http://localhost:8000/api/{version}/ignored")
+    for version in [app1_url, app2_url]:
+        resp = httpx.get(f"{version}/ignored")
         assert resp.status_code == 404
 
 
@@ -438,7 +446,8 @@ def test_asgi_compatible(serve_instance):
 
     serve.run(MyApp.bind())
 
-    resp = httpx.get("http://localhost:8000/")
+    url = get_application_url("HTTP")
+    resp = httpx.get(url)
     assert resp.json() == {"hello": "world"}
 
 
@@ -458,14 +467,16 @@ def test_doc_generation(serve_instance, input_route_prefix, expected_route_prefi
 
     serve.run(App.bind(), route_prefix=input_route_prefix)
 
-    r = httpx.get(f"http://localhost:8000{expected_route_prefix}openapi.json")
+    url = get_application_url("HTTP")
+    assert expected_route_prefix.rstrip("/") in url
+    r = httpx.get(f"{url}/openapi.json")
     assert r.status_code == 200
     assert len(r.json()["paths"]) == 1
     assert "/" in r.json()["paths"]
     assert len(r.json()["paths"]["/"]) == 1
     assert "get" in r.json()["paths"]["/"]
 
-    r = httpx.get(f"http://localhost:8000{expected_route_prefix}docs")
+    r = httpx.get(f"{url}/docs")
     assert r.status_code == 200
 
     @serve.deployment
@@ -481,7 +492,9 @@ def test_doc_generation(serve_instance, input_route_prefix, expected_route_prefi
 
     serve.run(App.bind(), route_prefix=input_route_prefix)
 
-    r = httpx.get(f"http://localhost:8000{expected_route_prefix}openapi.json")
+    url = get_application_url("HTTP")
+    assert expected_route_prefix.rstrip("/") in url
+    r = httpx.get(f"{url}/openapi.json")
     assert r.status_code == 200
     assert len(r.json()["paths"]) == 2
     assert "/" in r.json()["paths"]
@@ -491,7 +504,7 @@ def test_doc_generation(serve_instance, input_route_prefix, expected_route_prefi
     assert len(r.json()["paths"]["/hello"]) == 1
     assert "post" in r.json()["paths"]["/hello"]
 
-    r = httpx.get(f"http://localhost:8000{expected_route_prefix}docs")
+    r = httpx.get(f"{url}/docs")
     assert r.status_code == 200
 
 
@@ -512,7 +525,8 @@ def test_fastapi_multiple_headers(serve_instance):
 
     serve.run(FastAPIApp.bind())
 
-    resp = httpx.get("http://localhost:8000/")
+    url = get_application_url("HTTP")
+    resp = httpx.get(url)
     assert dict(resp.cookies) == {"a": "b", "c": "d"}
 
 
@@ -548,13 +562,14 @@ def test_fastapi_nested_field_in_response_model(serve_instance):
 
     serve.run(TestDeployment.bind())
 
-    resp = httpx.get("http://localhost:8000/")
+    url = get_application_url("HTTP")
+    resp = httpx.get(url)
     assert resp.json() == {"a": "a", "b": ["b"]}
 
-    resp = httpx.get("http://localhost:8000/inner")
+    resp = httpx.get(f"{url}/inner")
     assert resp.json() == {"a": "a", "b": ["b"]}
 
-    resp = httpx.get("http://localhost:8000/inner2")
+    resp = httpx.get(f"{url}/inner2")
     assert resp.json() == [{"a": "a", "b": ["b"]}]
 
 
@@ -589,7 +604,8 @@ def test_fastapiwrapper_constructor_before_startup_hooks(serve_instance):
             return self.test_passed
 
     serve.run(TestDeployment.bind())
-    resp = httpx.get("http://localhost:8000/")
+    url = get_application_url("HTTP")
+    resp = httpx.get(url)
     assert resp.json()
 
 
@@ -654,8 +670,9 @@ def test_fastapi_method_redefinition(serve_instance):
             return "hi post"
 
     serve.run(A.bind(), route_prefix="/a")
-    assert httpx.get("http://localhost:8000/a/").json() == "hi get"
-    assert httpx.post("http://localhost:8000/a/").json() == "hi post"
+    url = get_application_url("HTTP")
+    assert httpx.get(f"{url}/").json() == "hi get"
+    assert httpx.post(f"{url}/").json() == "hi post"
 
 
 def test_fastapi_same_app_multiple_deployments(serve_instance):
@@ -687,23 +704,26 @@ def test_fastapi_same_app_multiple_deployments(serve_instance):
     serve.run(CounterDeployment1.bind(), name="app1", route_prefix="/app1")
     serve.run(CounterDeployment2.bind(), name="app2", route_prefix="/app2")
 
+    app1_url = get_application_url("HTTP", app_name="app1")
+    app2_url = get_application_url("HTTP", app_name="app2")
+
     should_work = [
-        ("/app1/incr", "incr"),
-        ("/app1/decr", "decr"),
-        ("/app2/incr2", "incr2"),
-        ("/app2/decr2", "decr2"),
+        (app1_url, "/incr", "incr"),
+        (app1_url, "/decr", "decr"),
+        (app2_url, "/incr2", "incr2"),
+        (app2_url, "/decr2", "decr2"),
     ]
-    for path, resp in should_work:
-        assert httpx.get("http://localhost:8000" + path).json() == resp, (path, resp)
+    for url, path, resp in should_work:
+        assert httpx.get(f"{url}{path}").json() == resp, (path, resp)
 
     should_404 = [
-        "/app2/incr",
-        "/app2/decr",
-        "/app1/incr2",
-        "/app1/decr2",
+        (app1_url, "/incr2", 404),
+        (app1_url, "/decr2", 404),
+        (app2_url, "/incr", 404),
+        (app2_url, "/decr", 404),
     ]
-    for path in should_404:
-        assert httpx.get("http://localhost:8000" + path).status_code == 404, path
+    for url, path, status_code in should_404:
+        assert httpx.get(f"{url}{path}").status_code == status_code, (path, status_code)
 
 
 @pytest.mark.parametrize("two_fastapi", [True, False])
@@ -818,11 +838,12 @@ def test_ingress_with_fastapi_routes_outside_deployment(serve_instance):
             return "hello class route"
 
     serve.run(ASGIIngress.bind())
-    assert httpx.get("http://localhost:8000/").json() == "hello"
-    assert httpx.get("http://localhost:8000/f2").json() == "hello f2"
-    assert httpx.get("http://localhost:8000/class_route").json() == "hello class route"
-    assert httpx.get("http://localhost:8000/error").status_code == 500
-    assert httpx.get("http://localhost:8000/error").json() == {"error": "fake-error"}
+    url = get_application_url("HTTP")
+    assert httpx.get(url).json() == "hello"
+    assert httpx.get(f"{url}/f2").json() == "hello f2"
+    assert httpx.get(f"{url}/class_route").json() == "hello class route"
+    assert httpx.get(f"{url}/error").status_code == 500
+    assert httpx.get(f"{url}/error").json() == {"error": "fake-error"}
 
     # get the docs path from the controller
     docs_path = ray.get(serve_instance._controller.get_docs_path.remote("default"))
@@ -835,10 +856,11 @@ def test_ingress_with_fastapi_with_no_deployment_class(serve_instance):
     ingress_deployment = serve.deployment(serve.ingress(app)())
     assert ingress_deployment.name == "ASGIIngressDeployment"
     serve.run(ingress_deployment.bind())
-    assert httpx.get("http://localhost:8000/").json() == "hello"
-    assert httpx.get("http://localhost:8000/f2").json() == "hello f2"
-    assert httpx.get("http://localhost:8000/error").status_code == 500
-    assert httpx.get("http://localhost:8000/error").json() == {"error": "fake-error"}
+    url = get_application_url("HTTP")
+    assert httpx.get(url).json() == "hello"
+    assert httpx.get(f"{url}/f2").json() == "hello f2"
+    assert httpx.get(f"{url}/error").status_code == 500
+    assert httpx.get(f"{url}/error").json() == {"error": "fake-error"}
 
     # get the docs path from the controller
     docs_path = ray.get(serve_instance._controller.get_docs_path.remote("default"))
@@ -849,15 +871,16 @@ def test_ingress_with_fastapi_builder_function(serve_instance):
     ingress_deployment = serve.deployment(serve.ingress(fastapi_builder)())
     serve.run(ingress_deployment.bind())
 
-    resp = httpx.get("http://localhost:8000/")
+    url = get_application_url("HTTP")
+    resp = httpx.get(url)
     assert resp.json() == "hello"
     assert resp.headers["X-Custom-Middleware"] == "fake-middleware"
 
-    resp = httpx.get("http://localhost:8000/f2")
+    resp = httpx.get(f"{url}/f2")
     assert resp.json() == "hello f2"
     assert resp.headers["X-Custom-Middleware"] == "fake-middleware"
 
-    resp = httpx.get("http://localhost:8000/error")
+    resp = httpx.get(f"{url}/error")
     assert resp.status_code == 500
     assert resp.json() == {"error": "fake-error"}
 
@@ -874,13 +897,14 @@ def test_ingress_with_fastapi_builder_with_deployment_class(serve_instance):
 
     serve.run(ASGIIngress.bind())
 
-    resp = httpx.get("http://localhost:8000/")
+    url = get_application_url("HTTP")
+    resp = httpx.get(url)
     assert resp.json() == "hello"
 
-    resp = httpx.get("http://localhost:8000/f2")
+    resp = httpx.get(f"{url}/f2")
     assert resp.json() == "hello f2"
 
-    resp = httpx.get("http://localhost:8000/error")
+    resp = httpx.get(f"{url}/error")
     assert resp.status_code == 500
     assert resp.json() == {"error": "fake-error"}
 
@@ -941,7 +965,8 @@ def test_deployment_composition_with_builder_function(serve_instance):
 
     serve.run(ASGIIngress.bind(sub_deployment().bind()))
 
-    resp = httpx.get("http://localhost:8000/sub_deployment?a=2")
+    url = get_application_url("HTTP")
+    resp = httpx.get(f"{url}/sub_deployment?a=2")
     assert resp.json() == {"a": 3}
 
 
@@ -952,7 +977,8 @@ def test_deployment_composition_with_builder_function_without_decorator(serve_in
     # and passes them to the deployment constructor
     serve.run(app.bind(sub_deployment().bind()))
 
-    resp = httpx.get("http://localhost:8000/sub_deployment?a=2")
+    url = get_application_url("HTTP")
+    resp = httpx.get(f"{url}/sub_deployment?a=2")
     assert resp.json() == {"a": 3}
 
 
@@ -1016,15 +1042,16 @@ def test_ingress_with_starlette_app_with_no_deployment_class(serve_instance):
     ingress_deployment = serve.deployment(serve.ingress(starlette_builder())())
     serve.run(ingress_deployment.bind())
 
-    resp = httpx.get("http://localhost:8000/")
+    url = get_application_url("HTTP")
+    resp = httpx.get(url)
     assert resp.json() == "hello"
     assert resp.headers["X-Custom-Middleware"] == "fake-middleware"
 
-    resp = httpx.get("http://localhost:8000/f2")
+    resp = httpx.get(f"{url}/f2")
     assert resp.json() == "hello f2"
     assert resp.headers["X-Custom-Middleware"] == "fake-middleware"
 
-    resp = httpx.get("http://localhost:8000/error")
+    resp = httpx.get(f"{url}/error")
     assert resp.status_code == 500
     assert resp.json() == {"error": "fake-error"}
 
@@ -1036,15 +1063,16 @@ def test_ingress_with_starlette_builder_with_no_deployment_class(serve_instance)
     ingress_deployment = serve.deployment(serve.ingress(starlette_builder)())
     serve.run(ingress_deployment.bind())
 
-    resp = httpx.get("http://localhost:8000/")
+    url = get_application_url("HTTP")
+    resp = httpx.get(url)
     assert resp.json() == "hello"
     assert resp.headers["X-Custom-Middleware"] == "fake-middleware"
 
-    resp = httpx.get("http://localhost:8000/f2")
+    resp = httpx.get(f"{url}/f2")
     assert resp.json() == "hello f2"
     assert resp.headers["X-Custom-Middleware"] == "fake-middleware"
 
-    resp = httpx.get("http://localhost:8000/error")
+    resp = httpx.get(f"{url}/error")
     assert resp.status_code == 500
     assert resp.json() == {"error": "fake-error"}
 
@@ -1061,15 +1089,16 @@ def test_ingress_with_starlette_builder_with_deployment_class(serve_instance):
 
     serve.run(ASGIIngress.bind())
 
-    resp = httpx.get("http://localhost:8000/")
+    url = get_application_url("HTTP")
+    resp = httpx.get(url)
     assert resp.json() == "hello"
     assert resp.headers["X-Custom-Middleware"] == "fake-middleware"
 
-    resp = httpx.get("http://localhost:8000/f2")
+    resp = httpx.get(f"{url}/f2")
     assert resp.json() == "hello f2"
     assert resp.headers["X-Custom-Middleware"] == "fake-middleware"
 
-    resp = httpx.get("http://localhost:8000/error")
+    resp = httpx.get(f"{url}/error")
     assert resp.status_code == 500
     assert resp.json() == {"error": "fake-error"}
 
