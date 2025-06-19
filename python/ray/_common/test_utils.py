@@ -96,8 +96,8 @@ def wait_for_condition(
     last_ex = None
     while time.time() - start <= timeout:
         try:
-            if condition_predictor(**kwargs):
-                return
+            assert condition_predictor(**kwargs)
+            return
         except Exception:
             if raise_exceptions:
                 raise
