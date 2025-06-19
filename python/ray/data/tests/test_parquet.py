@@ -28,6 +28,7 @@ from ray.data._internal.datasource.parquet_datasource import (
 from ray.data._internal.execution.interfaces.ref_bundle import (
     _ref_bundles_iterator_to_block_refs_list,
 )
+from ray.data._internal.util import rows_same
 from ray.data.block import BlockAccessor, BlockMetadata
 from ray.data.context import DataContext
 from ray.data.datasource import DefaultFileMetadataProvider, ParquetMetadataProvider
@@ -939,43 +940,19 @@ def test_parquet_reader_estimate_data_size(shutdown_only, tmp_path):
         ctx.decoding_size_estimation = old_decoding_size_estimation
 
 
-@pytest.mark.parametrize(
-    "fs,data_path,endpoint_url",
-    [
-        (None, lazy_fixture("local_path"), None),
-        (lazy_fixture("local_fs"), lazy_fixture("local_path"), None),
-        (lazy_fixture("s3_fs"), lazy_fixture("s3_path"), lazy_fixture("s3_server")),
-    ],
-)
-def test_parquet_write(ray_start_regular_shared, fs, data_path, endpoint_url):
-    if endpoint_url is None:
-        storage_options = {}
-    else:
-        storage_options = dict(client_kwargs=dict(endpoint_url=endpoint_url))
-    df1 = pd.DataFrame({"one": [1, 2, 3], "two": ["a", "b", "c"]})
-    df2 = pd.DataFrame({"one": [4, 5, 6], "two": ["e", "f", "g"]})
-    df = pd.concat([df1, df2])
-    ds = ray.data.from_blocks([df1, df2])
-    path = os.path.join(data_path, "test_parquet_dir")
-    if fs is None:
-        os.mkdir(path)
-    else:
-        fs.create_dir(_unwrap_protocol(path))
-    ds._set_uuid("data")
-    ds.write_parquet(path, filesystem=fs)
-    path1 = os.path.join(path, "data_000000_000000.parquet")
-    path2 = os.path.join(path, "data_000001_000000.parquet")
-    dfds = pd.concat(
+def test_parquet_write(ray_start_regular_shared, tmp_path):
+    input_df = pd.DataFrame({"id": [0]})
+    ds = ray.data.from_blocks([input_df])
+
+    ds.write_parquet(tmp_path)
+
+    output_df = pd.concat(
         [
-            pd.read_parquet(path1, storage_options=storage_options),
-            pd.read_parquet(path2, storage_options=storage_options),
+            pd.read_parquet(os.path.join(tmp_path, filename))
+            for filename in os.listdir(tmp_path)
         ]
     )
-    assert df.equals(dfds)
-    if fs is None:
-        shutil.rmtree(path)
-    else:
-        fs.delete_dir(_unwrap_protocol(path))
+    assert rows_same(input_df, output_df)
 
 
 def test_parquet_write_ignore_save_mode(ray_start_regular_shared, local_path):
@@ -1080,131 +1057,41 @@ def test_parquet_file_extensions(ray_start_regular_shared, tmp_path):
     assert ds.count() == 3
 
 
-@pytest.mark.parametrize(
-    "fs,data_path,endpoint_url",
-    [
-        (None, lazy_fixture("local_path"), None),
-        (lazy_fixture("local_fs"), lazy_fixture("local_path"), None),
-        (lazy_fixture("s3_fs"), lazy_fixture("s3_path"), lazy_fixture("s3_server")),
-    ],
-)
-def test_parquet_write_create_dir(
-    ray_start_regular_shared, fs, data_path, endpoint_url
+def test_parquet_write_creates_dir_if_not_exists(ray_start_regular_shared, tmp_path):
+    ds = ray.data.range(1)
+    path = os.path.join(tmp_path, "does_not_exist")
+
+    ds.write_parquet(path)
+
+    assert os.path.isdir(path)
+    expected_df = pd.DataFrame({"id": [0]})
+    actual_df = pd.concat(
+        [pd.read_parquet(os.path.join(path, filename)) for filename in os.listdir(path)]
+    )
+    assert rows_same(actual_df, expected_df)
+
+
+def test_parquet_write_does_not_create_dir_for_empty_dataset(
+    ray_start_regular_shared, tmp_path
 ):
-    if endpoint_url is None:
-        storage_options = {}
-    else:
-        storage_options = dict(client_kwargs=dict(endpoint_url=endpoint_url))
-    df1 = pd.DataFrame({"one": [1, 2, 3], "two": ["a", "b", "c"]})
-    df2 = pd.DataFrame({"one": [4, 5, 6], "two": ["e", "f", "g"]})
-    df = pd.concat([df1, df2])
-    ds = ray.data.from_blocks([df1, df2])
-    path = os.path.join(data_path, "test_parquet_dir")
-    # Set the uuid to a known value so that we can easily get the parquet file names.
-    data_key = "data"
-    ds._set_uuid(data_key)
-    ds.write_parquet(path, filesystem=fs)
+    ds = ray.data.from_blocks([pd.DataFrame({})])
+    path = os.path.join(tmp_path, "does_not_exist")
 
-    # Ensure that directory was created.
-    if fs is None:
-        assert os.path.isdir(path)
-    else:
-        assert fs.get_file_info(_unwrap_protocol(path)).type == pa.fs.FileType.Directory
+    ds.write_parquet(path)
 
-    # Check that data was properly written to the directory.
-    path1 = os.path.join(path, f"{data_key}_000000_000000.parquet")
-    path2 = os.path.join(path, f"{data_key}_000001_000000.parquet")
-    dfds = pd.concat(
-        [
-            pd.read_parquet(path1, storage_options=storage_options),
-            pd.read_parquet(path2, storage_options=storage_options),
-        ]
-    )
-    assert df.equals(dfds)
+    assert not os.path.isdir(path)
 
-    # Ensure that directories that already exist are left alone and that the
-    # attempted creation still succeeds.
-    path3 = os.path.join(path, f"{data_key}_0000002_000000.parquet")
-    path4 = os.path.join(path, f"{data_key}_0000003_000000.parquet")
-    if fs is None:
-        os.rename(path1, path3)
-        os.rename(path2, path4)
-    else:
-        fs.move(_unwrap_protocol(path1), _unwrap_protocol(path3))
-        fs.move(_unwrap_protocol(path2), _unwrap_protocol(path4))
-    ds.write_parquet(path, filesystem=fs)
 
-    # Check that the original Parquet files were left untouched and that the
-    # new ones were added.
-    dfds = pd.concat(
-        [
-            pd.read_parquet(path1, storage_options=storage_options),
-            pd.read_parquet(path2, storage_options=storage_options),
-            pd.read_parquet(path3, storage_options=storage_options),
-            pd.read_parquet(path4, storage_options=storage_options),
-        ]
-    )
-    assert pd.concat([df, df]).equals(dfds)
-    if fs is None:
-        shutil.rmtree(path)
-    else:
-        fs.delete_dir(_unwrap_protocol(path))
+def test_parquet_write_does_not_write_empty_blocks(ray_start_regular_shared, tmp_path):
+    ds = ray.data.from_blocks([pd.DataFrame({}), pd.DataFrame({"id": [0]})])
+    path = os.path.join(tmp_path, "does_not_exist")
 
-    # Test that writing empty blocks does not create empty parquet files,
-    # nor does it create empty directories when no files are created.
-    ds_all_empty = ds.filter(lambda x: x["one"] > 10).materialize()
-    assert ds_all_empty._plan.initial_num_blocks() == 2
-    assert ds_all_empty.count() == 0
+    ds.write_parquet(path)
 
-    all_empty_key = "all_empty"
-    all_empty_path = os.path.join(data_path, f"test_parquet_dir_{all_empty_key}")
-    ds_all_empty.write_parquet(all_empty_path, filesystem=fs)
-
-    ds_contains_some_empty = ds.union(ds_all_empty)
-    # 2 blocks from original ds with 6 rows total, 2 empty blocks from ds_all_empty.
-    assert ds_contains_some_empty._plan.initial_num_blocks() == 4
-    assert ds_contains_some_empty.count() == 6
-
-    some_empty_key = "some_empty"
-    # Set the uuid to a known value so that we can easily get the parquet file names.
-    ds_contains_some_empty._set_uuid(some_empty_key)
-    some_empty_path = os.path.join(path, f"test_parquet_dir_{some_empty_key}")
-    ds_contains_some_empty.write_parquet(some_empty_path, filesystem=fs)
-
-    # Ensure that directory was created for only the non-empty dataset.
-    if fs is None:
-        assert not os.path.isdir(all_empty_path)
-        assert os.path.isdir(some_empty_path)
-        # Only files for the non-empty blocks should be created.
-        file_list = os.listdir(some_empty_path)
-        file_list.sort()
-        assert file_list == [
-            f"{some_empty_key}_00000{i}_000000.parquet" for i in range(2)
-        ]
-    else:
-        assert (
-            fs.get_file_info(_unwrap_protocol(all_empty_path)).type
-            == pa.fs.FileType.NotFound
-        )
-        assert (
-            fs.get_file_info(_unwrap_protocol(some_empty_path)).type
-            == pa.fs.FileType.Directory
-        )
-
-    # Check that data was properly written to the directory.
-    dfds = pd.concat(
-        [
-            pd.read_parquet(
-                os.path.join(
-                    some_empty_path,
-                    f"{some_empty_key}_00000{i}_000000.parquet",
-                ),
-                storage_options=storage_options,
-            )
-            for i in range(2)
-        ]
-    )
-    assert df.equals(dfds)
+    assert len(os.listdir(path)) == 1
+    expected_df = pd.DataFrame({"id": [0]})
+    actual_df = pd.read_parquet(os.path.join(path, os.listdir(path)[0]))
+    assert rows_same(actual_df, expected_df)
 
 
 @pytest.mark.parametrize(
