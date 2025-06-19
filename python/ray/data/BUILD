@@ -438,6 +438,17 @@ py_test(
 )
 
 py_test(
+    name = "test_deduping_schema",
+    size = "small",
+    srcs = ["tests/test_deduping_schema.py"],
+    tags = [
+        "exclusive",
+        "team:data",
+    ],
+    deps = [],
+)
+
+py_test(
     name = "test_ecosystem",
     size = "small",
     srcs = ["tests/test_ecosystem.py"],
