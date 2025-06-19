@@ -183,7 +183,7 @@ def plan_recursively(
     logical_op: LogicalOperator,
     plan_fns: Dict[Type[LogicalOperator], PlanLogicalOpFn],
     data_context: DataContext,
-) -> Tuple[PhysicalOperator, Dict[LogicalOperator, PhysicalOperator]]:
+) -> Tuple[PhysicalOperator, Dict[PhysicalOperator, LogicalOperator]]:
     """Plan a logical operator and its input dependencies recursively.
 
     Args:
