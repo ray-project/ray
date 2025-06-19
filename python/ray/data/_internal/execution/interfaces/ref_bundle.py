@@ -138,6 +138,17 @@ class RefBundle:
             m.size for m in self._get_cached_metadata().values() if m.spilled
         )
 
+    def trace_locality(self, target_node_id: str) -> Tuple[int, int, int]:
+        """Given a list of object references, returns how many are already on the local
+        node, how many require fetching from another node, and how many have unknown
+        locations. """
+        metas = self._get_cached_metadata().values()
+        nodes: List[List[str]] = [m.locs for m in metas]
+        hits = sum(1 for node_ids in nodes if target_node_id in node_ids)
+        unknowns = sum(1 for node_ids in nodes if not node_ids)
+        misses = len(nodes) - hits - unknowns
+        return hits, misses, unknowns
+
     def _get_cached_metadata(self) -> Dict[ObjectRef, "_ObjectMetadata"]:
         if not self._has_cached_metadata():
             # This call is pretty fast for owned objects (~5k/s), so we don't need to

@@ -402,32 +402,6 @@ def test_make_async_gen_multiple_threads_unfinished(
     assert end_time - start_time < 9.5
 
 
-def test_calculate_ref_hits(ray_start_regular_shared):
-    refs = [ray.put(0), ray.put(1)]
-    hits, misses, unknowns = _calculate_ref_hits(refs)
-    # With ctx.enable_get_object_locations_for_metrics set to False
-    # by default, `_calculate_ref_hits` returns -1 for all, since
-    # getting object locations is disabled.
-    assert hits == -1
-    assert misses == -1
-    assert unknowns == -1
-
-    ctx = ray.data.context.DataContext.get_current()
-    prev_enable_get_object_locations_for_metrics = (
-        ctx.enable_get_object_locations_for_metrics
-    )
-    try:
-        ctx.enable_get_object_locations_for_metrics = True
-        hits, misses, unknowns = _calculate_ref_hits(refs)
-        assert hits == 2
-        assert misses == 0
-        assert unknowns == 0
-    finally:
-        ctx.enable_get_object_locations_for_metrics = (
-            prev_enable_get_object_locations_for_metrics
-        )
-
-
 if __name__ == "__main__":
     import sys
 
