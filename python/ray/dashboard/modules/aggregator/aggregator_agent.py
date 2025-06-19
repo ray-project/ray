@@ -99,6 +99,12 @@ class AggregatorAgent(
     dashboard_utils.DashboardAgentModule,
     events_event_aggregator_service_pb2_grpc.EventAggregatorServiceServicer,
 ):
+    """
+    AggregatorAgent is a dashboard agent module that collects events sent with
+    gRPC from other components, buffers them, and periodically sends them to an
+    external service with HTTP POST requests for further processing or storage
+    """
+
     def __init__(self, dashboard_agent):
         super().__init__(dashboard_agent)
         self._ip = dashboard_agent.ip
@@ -122,6 +128,9 @@ class AggregatorAgent(
         )
 
     async def AddEvents(self, request, context):
+        """
+        gRPC handler for adding events to the event aggregator
+        """
         loop = get_or_create_event_loop()
 
         return await loop.run_in_executor(
@@ -129,6 +138,9 @@ class AggregatorAgent(
         )
 
     def _receive_events(self, request):
+        """
+        Receives events from the request, adds them to the event buffer,
+        """
         events_data = request.events_data
         with self._lock:
             self._events_dropped_at_core_worker_since_last_metrics_update += len(
@@ -183,6 +195,9 @@ class AggregatorAgent(
         return events_event_aggregator_service_pb2.AddEventReply(status=status)
 
     def _send_events_to_external_service(self, event_batch):
+        """
+        Sends a batch of events to the external service via HTTP POST request
+        """
         if not event_batch:
             return
         try:
@@ -197,6 +212,9 @@ class AggregatorAgent(
             logger.error("Failed to send events to external service. Error: %s", e)
 
     def _publish_events(self):
+        """
+        Continuously publishes events from the event buffer to the external service
+        """
         event_batch = []
 
         while True:
@@ -220,6 +238,9 @@ class AggregatorAgent(
                     return
 
     def _update_metrics(self):
+        """
+        Updates the Prometheus metrics
+        """
         if not prometheus_client:
             return
 
@@ -255,6 +276,10 @@ class AggregatorAgent(
         events_published.labels(**labels).inc(_events_published)
 
     def _check_main_thread_liveness(self):
+        """
+        Continuously checks if the main thread is alive. If the main thread is not alive,
+        it sets the stop event to trigger cleanup and shutdown of the agent.
+        """
         while True:
             if not threading.main_thread().is_alive():
                 self._stop_event.set()
@@ -264,6 +289,11 @@ class AggregatorAgent(
             time.sleep(CHECK_MAIN_THREAD_LIVENESS_INTERVAL_SECONDS)
 
     def _cleanup(self):
+        """
+        Cleans up the aggregator agent by stopping the publisher threads,
+        sending any remaining events in the buffer, and updating metrics.
+        """
+
         # Send any remaining events in the buffer
         event_batch = []
         while True:
