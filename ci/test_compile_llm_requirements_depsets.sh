@@ -22,7 +22,7 @@ cp ./python/requirements_compiled_rayllm_py311_cpu.txt "$TEMP_DIR/requirements_c
 cp ./python/requirements_compiled_rayllm_py311_cu121.txt "$TEMP_DIR/requirements_compiled_rayllm_py311_cu121_backup.txt"
 cp ./python/requirements_compiled_rayllm_py311_cu124.txt "$TEMP_DIR/requirements_compiled_rayllm_py311_cu124_backup.txt"
 
-./ci/compile_llm_requirements.sh
+./ci/compile_llm_requirements_depsets.sh
 
 # Copy files to artifact mount on Buildkite
 cp ./python/requirements_compiled_rayllm_py311_cpu.txt /artifact-mount/
