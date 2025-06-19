@@ -28,19 +28,10 @@ steps:
     depends_on: oss-ci-base_test-multipy
 
   - label: ":tapioca: build: depsets: uv pip compile LLM dependencies"
-    key: uv_pip_compile_llm_dependencies_depsets
+    key: uv_pip_compile_llm_dependencies
     tags: always
-    instance_type: large
-    commands:
-      # base deps
-      - pwd && ls -la
-      - pip install uv
-      - uv python install 3.11
-      - uv python pin 3.11
-      - echo $${RAYCI_CHECKOUT_DIR}
-      - bazel run //ci/depsets:depsets -- compile -c "ray/python/requirements_compiled.txt" -r "ray/python/requirements.txt,ray/python/requirements/cloud-requirements.txt,ray/python/requirements/base-test-requirements.txt" --header True base_deps
-      - cp -f ~/.depsets/base_deps.txt /artifact-mount/
-      - diff ~/.depsets/base_deps.txt requirements_compiled_rayllm_py311_cpu.txt || (echo "requirements_compiled.txt is not up to date. Please download it from Artifacts tab and git push the changes." && exit 1)
+    instance_type: small
+    command: ./ci/test_compile_llm_requirements_depsets.sh
     job_env: oss-ci-base_test-py3.11
     depends_on: oss-ci-base_test-multipy
   # docs
