@@ -48,7 +48,7 @@ from ray.data._internal.datasource.sql_datasource import SQLDatasource
 from ray.data._internal.datasource.text_datasource import TextDatasource
 from ray.data._internal.datasource.tfrecords_datasource import TFRecordDatasource
 from ray.data._internal.datasource.torch_datasource import TorchDatasource
-from ray.data._internal.datasource.uc_datasource import UnityCatalogConnector
+from ray.data._internal.datasource.unity_catalog_datasource import UnityCatalogConnector
 from ray.data._internal.datasource.video_datasource import VideoDatasource
 from ray.data._internal.datasource.webdataset_datasource import WebDatasetDatasource
 from ray.data._internal.delegating_block_builder import DelegatingBlockBuilder
@@ -3650,7 +3650,7 @@ def read_unity_catalog(
 
     Features:
         - **Secure Access**: Only principals with `EXTERNAL USE SCHEMA` on the containing schema, and after explicit metastore enablement, can obtain short-lived credentials.
-        - **Format Support**: Supports reading `delta`, `parquet`, `iceberg` formats via supported Ray Dataset readers.
+        - **Format Support**: Supports reading `delta` and `parquet` formats via supported Ray Dataset readers (iceberg coming soon).
         - **Cloud Support**: AWS, Azure, and GCP supported, with automatic environment setup for the vended credentials per session.
         - **Auto-Infer**: Data format is auto-inferred from table metadata, but can be explicitly specified.
 
