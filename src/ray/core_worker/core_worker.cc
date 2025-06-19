@@ -2288,9 +2288,12 @@ void CoreWorker::TriggerGlobalGC() {
       });
 }
 
-std::string CoreWorker::MemoryUsageString() {
-  // Currently only the Plasma store returns a debug string.
-  return plasma_store_provider_->MemoryUsageString();
+Status CoreWorker::GetObjectStoreMemoryUsage(std::string &output) {
+  StatusOr<std::string> response = plasma_store_provider_->GetMemoryUsage();
+  if (response.ok()) {
+    output = response.value();
+  }
+  return response.status();
 }
 
 TaskID CoreWorker::GetCallerId() const {
