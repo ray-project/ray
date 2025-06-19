@@ -55,11 +55,7 @@ from ray.serve.deployment import Application, Deployment
 from ray.serve.exceptions import RayServeException
 from ray.serve.handle import DeploymentHandle
 from ray.serve.multiplex import _ModelMultiplexWrapper
-from ray.serve.schema import (
-    LoggingConfig,
-    ServeInstanceDetails,
-    ServeStatus,
-)
+from ray.serve.schema import LoggingConfig, ServeInstanceDetails, ServeStatus
 from ray.util.annotations import DeveloperAPI, PublicAPI
 
 from ray.serve._private import api as _private_api  # isort:skip
@@ -493,6 +489,9 @@ def deployment(
 
     if request_router_class is not DEFAULT.VALUE:
         deployment_config.request_router_class = request_router_class
+
+    if request_router_kwargs is not DEFAULT.VALUE:
+        deployment_config.request_router_kwargs = request_router_kwargs
 
     def decorator(_func_or_class):
         replica_config = ReplicaConfig.create(
