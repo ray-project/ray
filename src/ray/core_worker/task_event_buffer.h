@@ -527,11 +527,6 @@ class TaskEventBufferImpl : public TaskEventBuffer {
     return gcs_client_.get();
   }
 
-  /// Test only functions.
-  EventAggregatorExporter *GetEventAggregatorExporter() {
-    return event_aggregator_exporter_.get();
-  }
-
   /// Mutex guarding task_events_data_.
   absl::Mutex mutex_;
 
