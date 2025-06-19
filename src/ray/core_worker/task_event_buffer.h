@@ -276,8 +276,8 @@ enum TaskEventBufferCounter {
 class TaskEventBuffer {
  public:
   struct TaskEventDataToSend {
-    std::optional<std::unique_ptr<rpc::TaskEventData>> task_event_data;
-    std::optional<std::unique_ptr<rpc::events::RayEventData>> ray_event_data;
+    std::unique_ptr<rpc::TaskEventData> task_event_data;
+    std::unique_ptr<rpc::events::RayEventData> ray_event_data;
   };
 
   /// Update task status change for the task attempt in TaskEventBuffer if needed.
@@ -443,7 +443,7 @@ class TaskEventBufferImpl : public TaskEventBuffer {
       absl::flat_hash_map<TaskAttempt,
                           std::pair<std::optional<rpc::events::RayEvent>,
                                     std::optional<rpc::events::RayEvent>>>
-          &agg_task_events,
+          &&agg_task_events,
       const absl::flat_hash_set<TaskAttempt> &dropped_task_attempts_to_send,
       std::unique_ptr<rpc::events::RayEventData> &data);
 
@@ -456,8 +456,8 @@ class TaskEventBufferImpl : public TaskEventBuffer {
   /// \param profile_events_to_send Task profile events to be sent.
   /// \param dropped_task_attempts_to_send Task attempts that were dropped due to
   ///        status events being dropped.
-  /// \return A unique_ptr to rpc::TaskEvents to be sent to GCS.
-  std::unique_ptr<TaskEventDataToSend> CreateDataToSend(
+  /// \return TaskEventDataToSend to be sent to GCS and the event aggregator.
+  TaskEventDataToSend CreateDataToSend(
       const std::vector<std::shared_ptr<TaskEvent>> &status_events_to_send,
       const std::vector<std::shared_ptr<TaskEvent>> &profile_events_to_send,
       const absl::flat_hash_set<TaskAttempt> &dropped_task_attempts_to_send);
@@ -501,47 +501,9 @@ class TaskEventBufferImpl : public TaskEventBuffer {
   }
 
   /// Test only functions.
-  size_t GetTotalNumStatusTaskEventsDropped() {
-    return stats_counter_.Get(TaskEventBufferCounter::kTotalNumTaskStatusEventDropped);
-  }
-
-  /// Test only functions.
-  size_t GetNumStatusTaskEventsDroppedSinceLastFlush() {
-    return stats_counter_.Get(
-        TaskEventBufferCounter::kNumTaskStatusEventDroppedSinceLastFlush);
-  }
-
-  /// Test only functions.
-  size_t GetTotalNumProfileTaskEventsDropped() {
-    return stats_counter_.Get(TaskEventBufferCounter::kTotalNumTaskProfileEventDropped);
-  }
-
-  /// Test only functions.
-  size_t GetNumProfileTaskEventsDroppedSinceLastFlush() {
-    return stats_counter_.Get(
-        TaskEventBufferCounter::kNumTaskProfileEventDroppedSinceLastFlush);
-  }
-
-  /// Test only functions.
-  size_t GetNumFailedToReport() {
-    return stats_counter_.Get(TaskEventBufferCounter::kTotalNumFailedToReport);
-  }
-
-  /// Test only functions.
-  size_t GetNumFailedToReportToAggregator() {
-    return stats_counter_.Get(
-        TaskEventBufferCounter::kTotalNumFailedToReportToAggregator);
-  }
-
-  /// Test only functions.
   gcs::GcsClient *GetGcsClient() {
     absl::MutexLock lock(&mutex_);
     return gcs_client_.get();
-  }
-
-  /// Test only functions.
-  EventAggregatorExporter *GetEventAggregatorExporter() {
-    return event_aggregator_exporter_.get();
   }
 
   /// Mutex guarding task_events_data_.

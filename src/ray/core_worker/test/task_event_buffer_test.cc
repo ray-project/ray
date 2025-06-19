@@ -427,7 +427,7 @@ TEST_P(TaskEventBufferTestDifferentDestination, TestFlushEvents) {
   }
 
   auto event_aggregator_exporter = static_cast<ray::MockEventAggregatorExporter *>(
-      task_event_buffer_->GetEventAggregatorExporter());
+      task_event_buffer_->event_aggregator_exporter_.get()());
   if (to_aggregator) {
     EXPECT_CALL(*event_aggregator_exporter, AsyncAddRayEventData(_, _))
         .WillOnce([&](std::unique_ptr<rpc::events::RayEventData> actual_data,
@@ -480,7 +480,7 @@ TEST_P(TaskEventBufferTestDifferentDestination, TestFailedFlush) {
   }
 
   auto event_aggregator_exporter = static_cast<ray::MockEventAggregatorExporter *>(
-      task_event_buffer_->GetEventAggregatorExporter());
+      task_event_buffer_->event_aggregator_exporter_.get()());
   if (to_aggregator) {
     EXPECT_CALL(*event_aggregator_exporter, AsyncAddRayEventData)
         .Times(2)
@@ -501,10 +501,14 @@ TEST_P(TaskEventBufferTestDifferentDestination, TestFailedFlush) {
 
   // Expect the number of dropped events incremented.
   if (to_gcs) {
-    ASSERT_EQ(task_event_buffer_->GetNumFailedToReport(), 1);
+    ASSERT_EQ(task_event_buffer_->stats_counter_.Get(
+                  TaskEventBufferCounter::kTotalNumFailedToReport)(),
+              1);
   }
   if (to_aggregator) {
-    ASSERT_EQ(task_event_buffer_->GetNumFailedToReportToAggregator(), 1);
+    ASSERT_EQ(task_event_buffer_->stats_counter_.Get(
+                  TaskEventBufferCounter::kTotalNumFailedToReportToAggregator)(),
+              1);
   }
 
   // Adding some more events
@@ -520,10 +524,14 @@ TEST_P(TaskEventBufferTestDifferentDestination, TestFailedFlush) {
   // Flush successfully will not affect the failed to report count.
   task_event_buffer_->FlushEvents(false);
   if (to_gcs) {
-    ASSERT_EQ(task_event_buffer_->GetNumFailedToReport(), 1);
+    ASSERT_EQ(task_event_buffer_->stats_counter_.Get(
+                  TaskEventBufferCounter::kTotalNumFailedToReport)(),
+              1);
   }
   if (to_aggregator) {
-    ASSERT_EQ(task_event_buffer_->GetNumFailedToReportToAggregator(), 1);
+    ASSERT_EQ(task_event_buffer_->stats_counter_.Get(
+                  TaskEventBufferCounter::kTotalNumFailedToReportToAggregator)(),
+              1);
   }
 }
 
@@ -547,7 +555,7 @@ TEST_P(TaskEventBufferTestDifferentDestination, TestBackPressure) {
   }
 
   auto event_aggregator_exporter = static_cast<ray::MockEventAggregatorExporter *>(
-      task_event_buffer_->GetEventAggregatorExporter());
+      task_event_buffer_->event_aggregator_exporter_.get()());
   if (to_aggregator) {
     EXPECT_CALL(*event_aggregator_exporter, AsyncAddRayEventData).Times(1);
   } else {
@@ -585,7 +593,7 @@ TEST_P(TaskEventBufferTestDifferentDestination, TestForcedFlush) {
   }
 
   auto event_aggregator_exporter = static_cast<ray::MockEventAggregatorExporter *>(
-      task_event_buffer_->GetEventAggregatorExporter());
+      task_event_buffer_->event_aggregator_exporter_.get()());
   if (to_aggregator) {
     EXPECT_CALL(*event_aggregator_exporter, AsyncAddRayEventData).Times(2);
   } else {
@@ -631,7 +639,7 @@ TEST_P(TaskEventBufferTestBatchSendDifferentDestination, TestBatchedSend) {
   }
 
   auto event_aggregator_exporter = static_cast<ray::MockEventAggregatorExporter *>(
-      task_event_buffer_->GetEventAggregatorExporter());
+      task_event_buffer_->event_aggregator_exporter_.get()());
   if (to_aggregator) {
     EXPECT_CALL(*event_aggregator_exporter, AsyncAddRayEventData)
         .Times(num_events / batch_size)
@@ -732,7 +740,7 @@ TEST_P(TaskEventBufferTestLimitBufferDifferentDestination,
   }
 
   auto event_aggregator_exporter = static_cast<ray::MockEventAggregatorExporter *>(
-      task_event_buffer_->GetEventAggregatorExporter());
+      task_event_buffer_->event_aggregator_exporter_.get()());
   if (to_aggregator) {
     EXPECT_CALL(*event_aggregator_exporter, AsyncAddRayEventData(_, _))
         .WillOnce([&](std::unique_ptr<rpc::events::RayEventData> actual_data,
@@ -747,10 +755,18 @@ TEST_P(TaskEventBufferTestLimitBufferDifferentDestination,
 
   // Expect data flushed.
   ASSERT_EQ(task_event_buffer_->GetNumTaskEventsStored(), 0);
-  ASSERT_EQ(task_event_buffer_->GetNumProfileTaskEventsDroppedSinceLastFlush(), 0);
-  ASSERT_EQ(task_event_buffer_->GetNumStatusTaskEventsDroppedSinceLastFlush(), 0);
-  ASSERT_EQ(task_event_buffer_->GetTotalNumProfileTaskEventsDropped(), 0);
-  ASSERT_EQ(task_event_buffer_->GetTotalNumStatusTaskEventsDropped(), num_status_dropped);
+  ASSERT_EQ(task_event_buffer_->stats_counter_.Get(
+                TaskEventBufferCounter::kNumTaskProfileEventDroppedSinceLastFlush)(),
+            0);
+  ASSERT_EQ(task_event_buffer_->stats_counter_.Get(
+                TaskEventBufferCounter::kNumTaskStatusEventDroppedSinceLastFlush)(),
+            0);
+  ASSERT_EQ(task_event_buffer_->stats_counter_.Get(
+                TaskEventBufferCounter::kTotalNumTaskProfileEventDropped)(),
+            0);
+  ASSERT_EQ(task_event_buffer_->stats_counter_.Get(
+                TaskEventBufferCounter::kTotalNumTaskStatusEventDropped)(),
+            num_status_dropped);
 }
 
 TEST_F(TaskEventBufferTestLimitProfileEvents, TestBufferSizeLimitProfileEvents) {
@@ -795,11 +811,18 @@ TEST_F(TaskEventBufferTestLimitProfileEvents, TestBufferSizeLimitProfileEvents) 
 
   // Expect data flushed.
   ASSERT_EQ(task_event_buffer_->GetNumTaskEventsStored(), 0);
-  ASSERT_EQ(task_event_buffer_->GetNumProfileTaskEventsDroppedSinceLastFlush(), 0);
-  ASSERT_EQ(task_event_buffer_->GetNumStatusTaskEventsDroppedSinceLastFlush(), 0);
-  ASSERT_EQ(task_event_buffer_->GetTotalNumProfileTaskEventsDropped(),
+  ASSERT_EQ(task_event_buffer_->stats_counter_.Get(
+                TaskEventBufferCounter::kNumTaskProfileEventDroppedSinceLastFlush)(),
+            0);
+  ASSERT_EQ(task_event_buffer_->stats_counter_.Get(
+                TaskEventBufferCounter::kNumTaskStatusEventDroppedSinceLastFlush)(),
+            0);
+  ASSERT_EQ(task_event_buffer_->stats_counter_.Get(
+                TaskEventBufferCounter::kTotalNumTaskProfileEventDropped)(),
             num_profile_dropped);
-  ASSERT_EQ(task_event_buffer_->GetTotalNumStatusTaskEventsDropped(), 0);
+  ASSERT_EQ(task_event_buffer_->stats_counter_.Get(
+                TaskEventBufferCounter::kTotalNumTaskStatusEventDropped)(),
+            0);
 }
 
 TEST_F(TaskEventBufferTestLimitProfileEvents, TestLimitProfileEventsPerTask) {
@@ -820,9 +843,12 @@ TEST_F(TaskEventBufferTestLimitProfileEvents, TestLimitProfileEventsPerTask) {
 
   // Assert dropped count
   task_event_buffer_->FlushEvents(false);
-  ASSERT_EQ(task_event_buffer_->GetTotalNumProfileTaskEventsDropped(),
+  ASSERT_EQ(task_event_buffer_->stats_counter_.Get(
+                TaskEventBufferCounter::kTotalNumTaskProfileEventDropped)(),
             num_total_profile_events - num_profile_events_per_task);
-  ASSERT_EQ(task_event_buffer_->GetTotalNumStatusTaskEventsDropped(), 0);
+  ASSERT_EQ(task_event_buffer_->stats_counter_.Get(
+                TaskEventBufferCounter::kTotalNumTaskStatusEventDropped)(),
+            0);
 }
 
 TEST_F(TaskEventBufferTest, TestIsDebuggerPausedFlag) {

@@ -15,6 +15,7 @@
 #include "ray/core_worker/event_aggregator_exporter.h"
 
 #include <memory>
+#include <utility>
 
 #include "ray/common/status.h"
 #include "ray/rpc/event_aggregator_client.h"
@@ -25,7 +26,7 @@ Status EventAggregatorExporter::AsyncAddRayEventData(
     std::unique_ptr<rpc::events::RayEventData> data_ptr,
     std::function<void(Status status)> callback) {
   rpc::events::AddEventRequest request;
-  request.mutable_events_data()->Swap(data_ptr.get());
+  *request.mutable_events_data() = std::move(*data_ptr);
   client_impl_->AddEvents(
       request, [callback](const Status &status, const rpc::events::AddEventReply &reply) {
         if (callback) {
