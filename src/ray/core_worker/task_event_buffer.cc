@@ -189,15 +189,16 @@ void TaskStatusEvent::PopulateRpcRayTaskDefinitionEvent(T &definition_event_data
 
   // Common fields
   const auto &required_resources = task_spec_->GetRequiredResources().GetResourceMap();
-  definition_event_data.mutable_required_resources()->insert(required_resources.begin(),
-                                                             required_resources.end());
+  definition_event_data.mutable_required_resources()->insert(
+      std::make_move_iterator(required_resources.begin()),
+      std::make_move_iterator(required_resources.end()));
   definition_event_data.mutable_runtime_env_info()->CopyFrom(
       task_spec_->RuntimeEnvInfo());
   definition_event_data.set_job_id(job_id_.Binary());
   definition_event_data.set_parent_task_id(task_spec_->ParentTaskId().Binary());
   definition_event_data.set_placement_group_id(
       task_spec_->PlacementGroupBundleId().first.Binary());
-  const auto &labels = task_spec_->GetLabels();
+  const auto &labels = task_spec_->GetMessage().labels();
   definition_event_data.mutable_ref_ids()->insert(labels.begin(), labels.end());
 
   // Specific fields
@@ -608,12 +609,13 @@ void TaskEventBufferImpl::CreateTaskEventDataToSend(
 void TaskEventBufferImpl::CreateRayEventDataToSend(
     absl::flat_hash_map<TaskAttempt,
                         std::pair<std::optional<rpc::events::RayEvent>,
-                                  std::optional<rpc::events::RayEvent>>> &agg_task_events,
+                                  std::optional<rpc::events::RayEvent>>>
+        &&agg_task_events,
     const absl::flat_hash_set<TaskAttempt> &dropped_task_attempts_to_send,
     std::unique_ptr<rpc::events::RayEventData> &data) {
   // Move the ray events.
   for (auto &[task_attempt, ray_events] : agg_task_events) {
-    auto [task_definition_event, task_execution_event] = ray_events;
+    auto &[task_definition_event, task_execution_event] = ray_events;
     if (task_definition_event) {
       auto events = data->add_events();
       *events = std::move(task_definition_event.value());
@@ -634,8 +636,7 @@ void TaskEventBufferImpl::CreateRayEventDataToSend(
   }
 }
 
-std::unique_ptr<TaskEventBuffer::TaskEventDataToSend>
-TaskEventBufferImpl::CreateDataToSend(
+TaskEventBuffer::TaskEventDataToSend TaskEventBufferImpl::CreateDataToSend(
     const std::vector<std::shared_ptr<TaskEvent>> &status_events_to_send,
     const std::vector<std::shared_ptr<TaskEvent>> &profile_events_to_send,
     const absl::flat_hash_set<TaskAttempt> &dropped_task_attempts_to_send) {
@@ -679,23 +680,22 @@ TaskEventBufferImpl::CreateDataToSend(
       profile_events_to_send.begin(), profile_events_to_send.end(), to_rpc_event_fn);
 
   // Create the data to send.
-  std::unique_ptr<TaskEventDataToSend> dataToSend =
-      std::make_unique<TaskEventDataToSend>();
+  TaskEventDataToSend dataToSend;
 
   // Convert to rpc::TaskEventsData
   if (send_task_events_to_gcs_enabled_) {
     auto task_event_data = std::make_unique<rpc::TaskEventData>();
     CreateTaskEventDataToSend(
         agg_task_events, dropped_task_attempts_to_send, task_event_data);
-    dataToSend->task_event_data = std::move(task_event_data);
+    dataToSend.task_event_data = std::move(task_event_data);
   }
 
   // Convert to rpc::events::RayEventData
   if (send_ray_events_to_aggregator_enabled_) {
     auto ray_event_data = std::make_unique<rpc::events::RayEventData>();
     CreateRayEventDataToSend(
-        agg_ray_events, dropped_task_attempts_to_send, ray_event_data);
-    dataToSend->ray_event_data = std::move(ray_event_data);
+        std::move(agg_ray_events), dropped_task_attempts_to_send, ray_event_data);
+    dataToSend.ray_event_data = std::move(ray_event_data);
   }
 
   return dataToSend;
@@ -849,7 +849,7 @@ void TaskEventBufferImpl::FlushEvents(bool forced) {
   GetTaskProfileEventsToSend(&profile_events_to_send);
 
   // Aggregate and prepare the data to send.
-  std::unique_ptr<TaskEventBuffer::TaskEventDataToSend> data = CreateDataToSend(
+  TaskEventBuffer::TaskEventDataToSend data = CreateDataToSend(
       status_events_to_send, profile_events_to_send, dropped_task_attempts_to_send);
 
   ResetCountersForFlush();
@@ -858,12 +858,12 @@ void TaskEventBufferImpl::FlushEvents(bool forced) {
     WriteExportData(status_events_to_write_for_export, profile_events_to_send);
   }
   if (send_task_events_to_gcs_enabled_) {
-    RAY_CHECK(data->task_event_data);
-    SendTaskEventsToGCS(std::move(*data->task_event_data));
+    RAY_CHECK(data.task_event_data);
+    SendTaskEventsToGCS(std::move(data.task_event_data));
   }
   if (send_ray_events_to_aggregator_enabled_) {
-    RAY_CHECK(data->ray_event_data);
-    SendRayEventsToAggregator(std::move(*data->ray_event_data));
+    RAY_CHECK(data.ray_event_data);
+    SendRayEventsToAggregator(std::move(data.ray_event_data));
   }
 }
 
