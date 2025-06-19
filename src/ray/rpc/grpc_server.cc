@@ -198,7 +198,7 @@ void GrpcServer::PollEventsFromCompletionQueue(int index) {
                                  gpr_time_from_millis(250, GPR_TIMESPAN));
     auto status = cqs_[index]->AsyncNext(&tag, &ok, deadline);
     if (status == grpc::CompletionQueue::SHUTDOWN) {
-      // If the completion queue status is SHUTDOWN, meaining the queue has been
+      // If the completion queue status is SHUTDOWN, meaning the queue has been
       // drained. We can now exit the loop.
       break;
     } else if (status == grpc::CompletionQueue::TIMEOUT) {
