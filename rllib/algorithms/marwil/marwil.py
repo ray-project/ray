@@ -470,6 +470,7 @@ class MARWIL(Algorithm):
                 # multiple times per RLlib iteration.
                 return_iterator=return_iterator,
             )
+            # TODO (simon): Return TrainingData in sample.
             if return_iterator:
                 training_data = TrainingData(data_iterators=batch_or_iterator)
             else:
