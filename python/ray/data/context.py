@@ -304,8 +304,6 @@ class DataContext:
         enable_progress_bar_name_truncation: If True, the name of the progress bar
             (often the operator name) will be truncated if it exceeds
             `ProgressBar.MAX_NAME_LENGTH`. Otherwise, the full operator name is shown.
-        enable_get_object_locations_for_metrics: Whether to enable
-            ``get_object_locations`` for metrics.
         write_file_retry_on_errors: A list of substrings of error messages that should
             trigger a retry when writing files. This is useful for handling transient
             errors when writing to remote storage systems.

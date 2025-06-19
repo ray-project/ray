@@ -537,7 +537,6 @@ def test_dataset_stats_basic(
 
 def test_block_location_nums(ray_start_regular_shared, restore_data_context):
     context = DataContext.get_current()
-    context.enable_get_object_locations_for_metrics = True
     ds = ray.data.range(1000, override_num_blocks=10)
     ds = ds.map_batches(dummy_map_batches).materialize()
 
@@ -581,7 +580,6 @@ def test_block_location_nums(ray_start_regular_shared, restore_data_context):
 
 def test_dataset__repr__(ray_start_regular_shared, restore_data_context):
     context = DataContext.get_current()
-    context.enable_get_object_locations_for_metrics = True
     n = 100
     ds = ray.data.range(n)
     assert len(ds.take_all()) == n
@@ -1576,7 +1574,6 @@ def test_dataset_throughput(shutdown_only):
 def test_spilled_stats(shutdown_only, verbose_stats_logs, restore_data_context):
     context = DataContext.get_current()
     context.verbose_stats_logs = verbose_stats_logs
-    context.enable_get_object_locations_for_metrics = True
     # The object store is about 100MB.
     ray.init(object_store_memory=100e6)
     # The size of dataset is 1000*80*80*4*8B, about 200MB.
