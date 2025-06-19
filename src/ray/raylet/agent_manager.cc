@@ -86,7 +86,7 @@ void AgentManager::StartAgent() {
       // Agent died out-of-band (not during planned raylet shutdown).
       // The raylet assumes it controls the lifecycle of the agent, so any
       // unplanned exit is treated as an error condition, regardless of exit code.
-      RAY_LOG(FATAL)
+      RAY_LOG(ERROR)
           << "The raylet exited immediately because agent '" << options_.agent_name
           << "' failed unexpectedly with exit code " << exit_code
           << ". This can happen because:\n"
@@ -101,6 +101,17 @@ void AgentManager::StartAgent() {
              "configure-logging.html#logging-directory-structure.\n"
           << "- The agent is killed by the OS (e.g., out of memory).\n"
           << "- The agent is killed by an external process.";
+
+      // Notify GCS of unexpected termination (this triggers the GCS notification
+      // part of graceful shutdown but we'll exit immediately after)
+      rpc::NodeDeathInfo node_death_info;
+      node_death_info.set_reason(rpc::NodeDeathInfo::UNEXPECTED_TERMINATION);
+      node_death_info.set_reason_message("Agent '" + options_.agent_name +
+                                         "' failed and raylet fate-shares with it.");
+      shutdown_raylet_gracefully_(node_death_info);
+
+      // Immediately exit ungracefully - the GCS notification is asynchronous
+      // and will be sent before the process actually terminates
       QuickExit();
     }
   });
