@@ -893,7 +893,6 @@ class DatasetStats:
         # Memory usage stats
         self.global_bytes_spilled: int = 0
         self.global_bytes_restored: int = 0
-        self.dataset_bytes_spilled: int = 0
 
         # Streaming split coordinator stats (dataset level)
         self.streaming_split_coordinator_s: Timer = Timer()
@@ -957,7 +956,6 @@ class DatasetStats:
             self.extra_metrics,
             self.global_bytes_spilled,
             self.global_bytes_restored,
-            self.dataset_bytes_spilled,
             streaming_exec_schedule_s,
         )
 
@@ -983,7 +981,6 @@ class DatasetStatsSummary:
     extra_metrics: Dict[str, Any]
     global_bytes_spilled: int
     global_bytes_restored: int
-    dataset_bytes_spilled: int
     streaming_exec_schedule_s: float
 
     def to_string(

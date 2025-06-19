@@ -546,17 +546,6 @@ class ExecutionPlan:
                     f"exception: {e}"
                 )
 
-            stats.dataset_bytes_spilled = 0
-
-            def collect_stats(cur_stats):
-                stats.dataset_bytes_spilled += cur_stats.extra_metrics.get(
-                    "obj_store_mem_spilled", 0
-                )
-                for parent in cur_stats.parents:
-                    collect_stats(parent)
-
-            collect_stats(stats)
-
             # Set the snapshot to the output of the final operator.
             self._snapshot_bundle = bundle
             self._snapshot_operator = self._logical_plan.dag
