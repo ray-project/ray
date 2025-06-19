@@ -1437,7 +1437,7 @@ py_test(
 
 py_test(
     name = "test_state_export",
-    size = "small",
+    size = "medium",
     srcs = ["tests/test_state_export.py"],
     tags = [
         "exclusive",
