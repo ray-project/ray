@@ -330,7 +330,6 @@ class LearnerGroup(Checkpointable):
                 self._learner.update(
                     training_data=training_data,
                     timesteps=timesteps,
-                    _no_metrics_reduce=True,
                     **kwargs,
                 )
             ]
