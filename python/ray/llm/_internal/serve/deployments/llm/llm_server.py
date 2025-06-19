@@ -67,6 +67,9 @@ from ray.llm._internal.serve.observability.logging import get_logger
 from ray.llm._internal.serve.observability.usage_telemetry.usage import (
     push_telemetry_report_for_all_models,
 )
+from ray.serve._private.request_router.prefix_aware_router import (
+    TokenAwarePow2ReplicaRouter,
+)
 
 logger = get_logger(__name__)
 
@@ -694,6 +697,8 @@ class LLMServer(_LLMServerBase):
 
 
 @serve.deployment(
+    # request_router_class=PrefixAwarePow2ReplicaRouter,
+    request_router_class=TokenAwarePow2ReplicaRouter,
     autoscaling_config={
         "min_replicas": 1,
         "initial_replicas": 1,

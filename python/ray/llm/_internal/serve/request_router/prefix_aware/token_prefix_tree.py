@@ -1,9 +1,11 @@
 from __future__ import annotations
 
 import logging
+from typing import Any, List, Optional, Tuple
 
 from transformers.models.auto.tokenization_auto import AutoTokenizer
 
+import ray
 from ray.llm._internal.serve.request_router.prefix_aware.prefix_tree import (
     Node,
     PrefixTree,
@@ -18,9 +20,7 @@ logger = logging.getLogger(SERVE_LOGGER_NAME)
 class PrefixTokenTree(PrefixTree):
     def __init__(self):
         super().__init__()
-        self.tokenizer = AutoTokenizer.from_pretrained(
-            "meta-llama/Meta-Llama-3-8B-Instruct"
-        )
+        self.tokenizer = AutoTokenizer.from_pretrained("Qwen/Qwen2.5-1.5B-Instruct")
 
     def insert(self, text: str, tenant: str, time_s: float) -> None:
         """
@@ -47,7 +47,7 @@ class PrefixTokenTree(PrefixTree):
         """
 
         tokens = self.tokenizer.encode(text)
-        tokens = ["<" + str(token) + ">" for token in tokens]
+        text = "".join([chr(t) for t in tokens])
 
         with self.lock:
             if tenant not in self.tenant_to_char_count:
@@ -148,3 +148,89 @@ class PrefixTokenTree(PrefixTree):
                     # Full match, continue down the tree
                     curr_node = matched_node
                     i += shared_count
+
+    def prefix_match(
+        self, text: str, available_tenants: Optional[List[str]] = None
+    ) -> Tuple[str, Optional[List[str]]]:
+        """
+        Match text against tree and return matched text and matching tenants.
+
+        Args:
+            text: Text to match
+            available_tenants: List of tenants to match against (or None for all)
+
+        Returns:
+            Tuple of (matched_text, matched_tenants):
+                If the list of available tenants doesn't match any tenants in the tree: returns ("", None)
+                When no prefix match is found (does not traverse further than the root node): returns ("", list of available tenants)
+                When a prefix match is found: returns (matched_prefix, list of tenants that own the matched node)
+        """
+        with self.lock:
+            if available_tenants:
+                # Filter available_tenants to only include those in the tree
+                available_tenants = [
+                    tenant
+                    for tenant in available_tenants
+                    if tenant in self.tenant_to_char_count
+                ]
+                if not available_tenants:
+                    return "", None
+            else:
+                available_tenants = list(self.tenant_to_char_count.keys())
+
+            curr_node: Node = self.root
+            i: int = 0
+            tokens = self.tokenizer.encode(text)
+            text = "".join([chr(t) for t in tokens])
+            text_len: int = len(text)
+
+            while i < text_len:
+                first_char: str = text[i]
+                curr_text: str = text[i:]
+
+                if first_char in curr_node.edge_label_to_child:
+                    matched_node: Node = curr_node.edge_label_to_child[first_char]
+
+                    # Check if any available tenants match this node
+                    if not any(
+                        tenant in matched_node.tenant_to_last_access_time
+                        for tenant in available_tenants
+                    ):
+                        break
+
+                    shared_count: int = self._shared_prefix_count(
+                        matched_node.text, curr_text
+                    )
+                    i += shared_count
+                    curr_node = matched_node
+
+                    if shared_count < len(matched_node.text):
+                        # Partial match, stop here
+                        break
+                else:
+                    # No match found, stop here
+                    break
+
+            # Find tenants in current node that match available tenants
+            matched_tenants = [
+                tenant
+                for tenant in available_tenants
+                if tenant in curr_node.tenant_to_last_access_time
+            ] or None
+
+            matched_text: str = text[:i]
+
+            return matched_text, matched_tenants
+
+
+@ray.remote
+class TokenPrefixTreeActor(PrefixTokenTree):
+    def getattr(self, attribute: str) -> Any:
+        """
+        Get an attribute of the PrefixTree.
+        Note: This method is intended to be used only in tests.
+        """
+        return getattr(self, attribute)
+
+    def setattr(self, attribute: str, value: Any) -> None:
+        setattr(self, attribute, value)
