@@ -439,8 +439,7 @@ class LLMServer(_LLMServerBase):
         self.engine: Optional[LLMEngine] = None
         if self._engine_cls is not None:
             self.engine = self._engine_cls(self._llm_config)
-
-        await asyncio.wait_for(self._start_engine(), timeout=ENGINE_START_TIMEOUT_S)
+            await asyncio.wait_for(self._start_engine(), timeout=ENGINE_START_TIMEOUT_S)
 
         # TODO (Kourosh): I think we can completely remove image retriever.
         # It was missed to get removed.
