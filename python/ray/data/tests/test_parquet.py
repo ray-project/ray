@@ -1615,7 +1615,6 @@ def test_write_partition_cols_with_min_rows_per_file(
     """Test write_parquet with both partition_cols and min_rows_per_file."""
 
     # Create dataset with 2 partitions, each having 20 rows
-    # This should trigger file splitting when min_rows_per_file < 20
     df = pd.DataFrame(
         {
             "partition_col": [0] * 20 + [1] * 20,  # 2 partitions with 20 rows each
@@ -1634,8 +1633,10 @@ def test_write_partition_cols_with_min_rows_per_file(
     assert partition_0_dir.exists()
     assert partition_1_dir.exists()
 
-    # Check each partition has the correct number of files and total rows
-    expected_files_per_partition = (20 + min_rows_per_file - 1) // min_rows_per_file
+    # With the current implementation, min_rows_per_file with partitions
+    # writes all rows in each partition to a single file when the partition
+    # has >= min_rows_per_file rows
+    expected_files_per_partition = 1  # Current behavior: single file per partition
 
     for partition_dir in [partition_0_dir, partition_1_dir]:
         parquet_files = list(partition_dir.glob("*.parquet"))
@@ -1647,6 +1648,11 @@ def test_write_partition_cols_with_min_rows_per_file(
             table = pq.read_table(file_path)
             total_rows += len(table)
         assert total_rows == 20  # Each partition should have 20 rows total
+
+        # Verify each file has at least min_rows_per_file rows
+        for file_path in parquet_files:
+            table = pq.read_table(file_path)
+            assert len(table) >= min_rows_per_file
 
     # Verify we can read back the data correctly
     ds_read = ray.data.read_parquet(tmp_path)
@@ -1730,7 +1736,8 @@ def test_write_partition_cols_with_max_rows_per_file(
     import pyarrow.parquet as pq
 
     # Create data with partition column
-    def create_row(i):
+    def create_row(row):
+        i = row["id"]
         return {"id": i, "partition": i % 3, "value": f"value_{i}"}
 
     ds = ray.data.range(30).map(create_row)
