@@ -82,7 +82,14 @@ class DataParallelTrainer:
         self.datasets = datasets or {}
         self.data_config = dataset_config or DataConfig()
 
-        self.train_run_context = TrainRunContext(self.run_config)
+        self.train_run_context = TrainRunContext(
+            run_config=self.run_config,
+            train_loop_config=self.train_loop_config,
+            scaling_config=self.scaling_config,
+            backend_config=self.backend_config,
+            datasets=self.datasets,
+            dataset_config=self.data_config,
+        )
 
         if resume_from_checkpoint is not None:
             raise DeprecationWarning(_RESUME_FROM_CHECKPOINT_DEPRECATION_WARNING)
@@ -150,11 +157,11 @@ class DataParallelTrainer:
             callbacks.append(working_directory_setup_callback)
 
         if env_bool(METRICS_ENABLED_ENV_VAR, True):
-            callbacks.append(ControllerMetricsCallback(self.train_run_context))
+            callbacks.append(ControllerMetricsCallback())
             callbacks.append(WorkerMetricsCallback(self.train_run_context))
 
         if env_bool(RAY_TRAIN_ENABLE_STATE_TRACKING, False):
-            callbacks.append(StateManagerCallback(self.train_run_context))
+            callbacks.append(StateManagerCallback())
 
         # Add internal callback that invokes all user-defined callbacks.
         user_callbacks = [

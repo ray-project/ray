@@ -29,7 +29,7 @@ from ray.data._internal.execution.interfaces.ref_bundle import (
     _ref_bundles_iterator_to_block_refs_list,
 )
 from ray.data._internal.util import rows_same
-from ray.data.block import BlockAccessor
+from ray.data.block import BlockAccessor, BlockMetadata
 from ray.data.context import DataContext
 from ray.data.datasource import DefaultFileMetadataProvider, ParquetMetadataProvider
 from ray.data.datasource.parquet_meta_provider import PARALLELIZE_META_FETCH_THRESHOLD
@@ -249,17 +249,99 @@ def test_parquet_read_basic(ray_start_regular_shared, fs, data_path):
     ],
 )
 def test_parquet_read_meta_provider(ray_start_regular_shared, fs, data_path):
-    df1 = pd.DataFrame({"one": [1, 2, 3], "two": ["a", "b", "c"]})
+    df1 = pd.DataFrame({"one": range(30_000), "two": ["a", "b", "c"] * 10_000})
     table = pa.Table.from_pandas(df1)
     setup_data_path = _unwrap_protocol(data_path)
     path1 = os.path.join(setup_data_path, "test1.parquet")
     pq.write_table(table, path1, filesystem=fs)
-    df2 = pd.DataFrame({"one": [4, 5, 6], "two": ["e", "f", "g"]})
+    df2 = pd.DataFrame({"one": range(30_000, 60_000), "two": ["e", "f", "g"] * 10000})
     table = pa.Table.from_pandas(df2)
     path2 = os.path.join(setup_data_path, "test2.parquet")
     pq.write_table(table, path2, filesystem=fs)
 
-    class TestMetadataProvider(ParquetMetadataProvider):
+    expected_num_rows = len(df1) + len(df2)
+    expected_byte_size = 787500
+
+    #
+    # Case 1: Test metadata fetching happy path (obtaining, caching and propagating
+    #         metadata)
+    #
+
+    class AssertingMetadataProvider(ParquetMetadataProvider):
+        def prefetch_file_metadata(self, fragments, **ray_remote_args):
+            assert ray_remote_args["num_cpus"] == NUM_CPUS_FOR_META_FETCH_TASK
+            assert (
+                ray_remote_args["scheduling_strategy"]
+                == DataContext.get_current().scheduling_strategy
+            )
+            return super().prefetch_file_metadata(fragments, **ray_remote_args)
+
+    ds = ray.data.read_parquet(
+        data_path,
+        filesystem=fs,
+        meta_provider=AssertingMetadataProvider(),
+    )
+
+    # Expect precomputed row counts and block sizes to be missing.
+    assert ds._meta_count() == expected_num_rows
+
+    read_op = ds._plan._logical_plan.dag
+
+    # Assert Read op metadata propagation
+    assert read_op.infer_metadata() == BlockMetadata(
+        num_rows=expected_num_rows,
+        size_bytes=expected_byte_size,
+        exec_stats=None,
+        input_files=[path1, path2],
+    )
+
+    expected_schema = pa.schema({"one": pa.int64(), "two": pa.string()})
+
+    assert read_op.infer_schema().equals(expected_schema)
+
+    # Expected
+    #   - Fetched Parquet metadata to be reused
+    #   - *No* dataset execution performed
+    assert ds.count() == expected_num_rows
+    assert ds.size_bytes() == expected_byte_size
+    assert ds.schema() == Schema(expected_schema)
+    assert set(ds.input_files()) == {path1, path2}
+
+    assert not ds._plan.has_computed_output()
+
+    expected_values = list(
+        zip(range(60_000), ["a", "b", "c"] * 10_000 + ["e", "f", "g"] * 10_000)
+    )
+
+    values = [(s["one"], s["two"]) for s in ds.take(60000)]
+
+    exec_stats = ds._plan._snapshot_stats
+    read_stats = exec_stats.parents[0]
+
+    # Assert that ref-bundles
+    #   - Passed to ReadParquet hold metadata matching actual bundle
+    #   - Produced by ReadParquet reflects actual amount of bytes read
+    assert read_stats.base_name == "ReadParquet"
+    # NOTE: Size of the task should be ~5kb, but could vary from platform to platform
+    #       alas for different Python versions. However, it is substantially smaller
+    #       than the dataset itself (~750kb)
+    assert read_stats.extra_metrics["average_bytes_inputs_per_task"] < 10_000
+
+    # TODO stats are broken for iteration-based executions due to the fact
+    #      that returned stats object is obtained before iteration completes,
+    #      hence not capturing the final state of the pipeline
+    # assert (
+    #     read_stats.extra_metrics["bytes_task_outputs_generated"] == expected_byte_size
+    # )
+
+    assert sorted(values) == expected_values
+
+    #
+    # Case 2: Test metadata fetching *failing* (falling back to actually
+    #         executing the dataset)
+    #
+
+    class FailingMetadataProvider(ParquetMetadataProvider):
         def prefetch_file_metadata(self, fragments, **ray_remote_args):
             assert ray_remote_args["num_cpus"] == NUM_CPUS_FOR_META_FETCH_TASK
             assert (
@@ -271,31 +353,18 @@ def test_parquet_read_meta_provider(ray_start_regular_shared, fs, data_path):
     ds = ray.data.read_parquet(
         data_path,
         filesystem=fs,
-        meta_provider=TestMetadataProvider(),
+        meta_provider=FailingMetadataProvider(),
     )
 
-    # Expect precomputed row counts and block sizes to be missing.
-    assert ds._meta_count() is None
+    # Expected
+    #   - Fetched Parquet metadata is not used (returns null), hence
+    #   - Dataset execution has to be performed
+    assert ds.count() == expected_num_rows
+    assert ds.size_bytes() == expected_byte_size
+    assert ds.schema() == Schema(expected_schema)
+    assert set(ds.input_files()) == {path1, path2}
 
-    # Expect to lazily compute all metadata correctly.
-    assert ds.count() == 6
-    assert ds.size_bytes() > 0
-    assert ds.schema() == Schema(pa.schema({"one": pa.int64(), "two": pa.string()}))
-    input_files = ds.input_files()
-    assert len(input_files) == 2, input_files
-    assert "test1.parquet" in str(input_files)
-    assert "test2.parquet" in str(input_files)
-
-    # Forces a data read.
-    values = [[s["one"], s["two"]] for s in ds.take()]
-    assert sorted(values) == [
-        [1, "a"],
-        [2, "b"],
-        [3, "c"],
-        [4, "e"],
-        [5, "f"],
-        [6, "g"],
-    ]
+    assert ds._plan.has_computed_output()
 
 
 @pytest.mark.parametrize(
