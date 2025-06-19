@@ -149,6 +149,7 @@ message DeploymentConfig {
   // Timeout after which a replica started a record routing stats without a response.
   double request_routing_stats_timeout_s = 18;
 
+  // kwargs which will be passed to the router class' __init__ method
   bytes request_router_kwargs = 19;
 }
 
