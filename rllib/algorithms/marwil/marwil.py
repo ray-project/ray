@@ -478,15 +478,21 @@ class MARWIL(Algorithm):
 
         with self.metrics.log_time((TIMERS, LEARNER_UPDATE_TIMER)):
             # Updating the policy.
+            import time
+            start = time.perf_counter()
             learner_results = self.learner_group.update(
                 training_data=training_data,
                 minibatch_size=self.config.train_batch_size_per_learner,
                 num_iters=self.config.dataset_num_iters_per_learner,
                 **self.offline_data.iter_batches_kwargs,
             )
-
+            stop = time.perf_counter()
+            print(f"====> Time for learner_group.update: {stop - start}")
             # Log training results.
+            start= time.perf_counter()
             self.metrics.aggregate(learner_results, key=LEARNER_RESULTS)
+            stop = time.perf_counter()
+            print(f"====> Time for metrics aggregate: {stop - start}")
 
     @OldAPIStack
     def _training_step_old_api_stack(self) -> ResultDict:
