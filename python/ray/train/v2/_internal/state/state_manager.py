@@ -2,6 +2,7 @@ import logging
 from collections import defaultdict
 from typing import Dict, List, Optional
 
+import ray
 from ray.actor import ActorHandle
 from ray.train.v2._internal.execution.context import DistributedContext
 from ray.train.v2._internal.execution.scaling_policy.scaling_policy import (
@@ -112,7 +113,7 @@ class TrainStateManager:
         run.status = RunStatus.FINISHED
         run.status_detail = None
         run.end_time_ns = current_time_ns()
-        self._create_or_update_train_run(run)
+        self._create_or_update_train_run(run, block=True)
 
     def update_train_run_errored(
         self,
@@ -123,7 +124,7 @@ class TrainStateManager:
         run.status = RunStatus.ERRORED
         run.status_detail = status_detail
         run.end_time_ns = current_time_ns()
-        self._create_or_update_train_run(run)
+        self._create_or_update_train_run(run, block=True)
 
     # TODO: This may be handled in the StateManager.
     def update_train_run_aborted(
@@ -132,7 +133,7 @@ class TrainStateManager:
     ):
         run = self._runs[run_id]
         update_train_run_aborted(run)
-        self._create_or_update_train_run(run)
+        self._create_or_update_train_run(run, block=True)
 
     def create_train_run_attempt(
         self,
@@ -199,7 +200,7 @@ class TrainStateManager:
         run_attempt.status_detail = None
         run_attempt.end_time_ns = current_time_ns()
         mark_workers_dead(run_attempt)
-        self._create_or_update_train_run_attempt(run_attempt)
+        self._create_or_update_train_run_attempt(run_attempt, block=True)
 
     def update_train_run_attempt_errored(
         self,
@@ -212,7 +213,7 @@ class TrainStateManager:
         run_attempt.status_detail = status_detail
         run_attempt.end_time_ns = current_time_ns()
         mark_workers_dead(run_attempt)
-        self._create_or_update_train_run_attempt(run_attempt)
+        self._create_or_update_train_run_attempt(run_attempt, block=True)
 
     def update_train_run_attempt_aborted(
         self,
@@ -221,13 +222,19 @@ class TrainStateManager:
     ):
         run_attempt = self._run_attempts[run_id][attempt_id]
         update_train_run_attempt_aborted(run_attempt)
-        self._create_or_update_train_run_attempt(run_attempt)
+        self._create_or_update_train_run_attempt(run_attempt, block=True)
 
-    def _create_or_update_train_run(self, run: TrainRun) -> None:
-        self._state_actor.create_or_update_train_run.remote(run)
+    def _create_or_update_train_run(self, run: TrainRun, block: bool = False) -> None:
+        ref = self._state_actor.create_or_update_train_run.remote(run)
+        if block:
+            ray.get(ref)
 
-    def _create_or_update_train_run_attempt(self, run_attempt: TrainRunAttempt) -> None:
-        self._state_actor.create_or_update_train_run_attempt.remote(run_attempt)
+    def _create_or_update_train_run_attempt(
+        self, run_attempt: TrainRunAttempt, block: bool = False
+    ) -> None:
+        ref = self._state_actor.create_or_update_train_run_attempt.remote(run_attempt)
+        if block:
+            ray.get(ref)
 
 
 def _get_scheduling_status_detail(

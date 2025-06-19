@@ -1,5 +1,7 @@
+import copy
 import logging
 import os
+import random
 import threading
 import time
 from collections import defaultdict
@@ -14,9 +16,13 @@ from ray._private.event.export_event_logger import (
 )
 from ray.actor import ActorHandle
 from ray.train.v2._internal.constants import (
+    CONTROLLERS_TO_POLL_PER_ITERATION_ENV_VAR,
+    DEFAULT_CONTROLLERS_TO_POLL_PER_ITERATION,
     DEFAULT_ENABLE_STATE_ACTOR_POLLING,
+    DEFAULT_GET_ACTOR_TIMEOUT_S,
     DEFAULT_STATE_ACTOR_POLL_INTERVAL_S,
     ENABLE_STATE_ACTOR_POLLING_ENV_VAR,
+    GET_ACTOR_TIMEOUT_S_ENV_VAR,
     STATE_ACTOR_POLL_INTERVAL_S_ENV_VAR,
     get_env_vars_to_propagate,
 )
@@ -47,10 +53,23 @@ class TrainStateActor:
             self._is_train_run_export_api_enabled,
             self._is_train_run_attempt_export_api_enabled,
         ) = self._init_export_logger()
-        # TODO: consider row level locking.
-        self._runs_lock = threading.Lock()
-        self._run_attempts_lock = threading.Lock()
 
+        # TODO: consider row level locking if loop takes too long.
+        self._runs_lock = threading.RLock()
+
+        # Set env vars related to polling the controller.
+        self._get_actor_timeout_s = float(
+            os.getenv(
+                GET_ACTOR_TIMEOUT_S_ENV_VAR,
+                DEFAULT_GET_ACTOR_TIMEOUT_S,
+            )
+        )
+        self._controllers_to_poll_per_iteration = int(
+            os.getenv(
+                CONTROLLERS_TO_POLL_PER_ITERATION_ENV_VAR,
+                DEFAULT_CONTROLLERS_TO_POLL_PER_ITERATION,
+            )
+        )
         if ray_constants.env_bool(
             ENABLE_STATE_ACTOR_POLLING_ENV_VAR,
             DEFAULT_ENABLE_STATE_ACTOR_POLLING,
@@ -65,29 +84,28 @@ class TrainStateActor:
             self._start_controller_polling_thread()
 
     def _abort_live_runs_with_dead_controllers(self) -> None:
-        # Get runs to abort.
         with self._runs_lock:
+            # Get non-terminal runs to consider aborting this iteration.
             non_terminal_runs = [
                 run for run in self._runs.values() if not run.status.is_terminal()
             ]
+            sampled_runs = random.sample(
+                non_terminal_runs,
+                min(len(non_terminal_runs), self._controllers_to_poll_per_iteration),
+            )
 
-        for run in non_terminal_runs:
-            # Abort the runs.
-            actor_state = get_actor(run.controller_actor_id)
-            if not actor_state or actor_state.state == "DEAD":
-                update_train_run_aborted(run)
-                self.create_or_update_train_run(run)
-
-                # Abort the run attempts.
-                with self._run_attempts_lock:
-                    non_terminal_run_attempts = [
-                        run_attempt
-                        for run_attempt in self._run_attempts.get(run.id, {}).values()
-                        if not run_attempt.status.is_terminal()
-                    ]
-                for run_attempt in non_terminal_run_attempts:
-                    update_train_run_attempt_aborted(run_attempt)
-                    self.create_or_update_train_run_attempt(run_attempt)
+            # Abort runs and run attempts.
+            for run in sampled_runs:
+                actor_state = get_actor(
+                    run.controller_actor_id, timeout=self._get_actor_timeout_s
+                )
+                if not actor_state or actor_state.state == "DEAD":
+                    update_train_run_aborted(run)
+                    self.create_or_update_train_run(run)
+                    for run_attempt in self._run_attempts.get(run.id, {}).values():
+                        if not run_attempt.status.is_terminal():
+                            update_train_run_attempt_aborted(run_attempt)
+                            self.create_or_update_train_run_attempt(run_attempt)
 
     def _start_controller_polling_thread(self) -> None:
         def _poll_controller_continuously():
@@ -109,12 +127,14 @@ class TrainStateActor:
     def create_or_update_train_run(self, run: TrainRun) -> None:
         with self._runs_lock:
             self._runs[run.id] = run
-        self._maybe_export_train_run(run)
+            run_copy = copy.deepcopy(run)
+        self._maybe_export_train_run(run_copy)
 
     def create_or_update_train_run_attempt(self, run_attempt: TrainRunAttempt) -> None:
-        with self._run_attempts_lock:
+        with self._runs_lock:
             self._run_attempts[run_attempt.run_id][run_attempt.attempt_id] = run_attempt
-        self._maybe_export_train_run_attempt(run_attempt)
+            run_attempt_copy = copy.deepcopy(run_attempt)
+        self._maybe_export_train_run_attempt(run_attempt_copy)
 
     def get_train_runs(self) -> Dict[str, TrainRun]:
         return self._runs

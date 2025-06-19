@@ -215,7 +215,7 @@ def test_train_state_actor_create_and_get_run_attempt(ray_start_regular):
 
 def test_train_state_actor_abort_dead_controller_live_runs(monkeypatch):
     # Monkeypatch get_actor to return correct actor state per controller actor ID.
-    def get_actor(actor_id: str):
+    def get_actor(actor_id: str, timeout: float):
         if actor_id == "nonexistent_controller_no_attempts_id":
             return None
         if actor_id in [
