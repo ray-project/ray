@@ -1,1 +1,1 @@
-jupyter execute 01-Distribute-Training.ipynb 02-Validation.ipynb 03-Serving.ipynb
+jupyter execute e2e_timeseries/01-Distribute-Training.ipynb e2e_timeseries/02-Validation.ipynb e2e_timeseries/03-Serving.ipynb
