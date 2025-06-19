@@ -79,7 +79,9 @@ def test_calculate_ref_hits(ray_start_regular_shared):
     )
     try:
         ctx.enable_get_object_locations_for_metrics = True
-        hits, misses, unknowns = bundle.trace_locality(ray.get_runtime_context().get_node_id())
+        hits, misses, unknowns = bundle.trace_locality(
+            ray.get_runtime_context().get_node_id()
+        )
         assert hits == 2
         assert misses == 0
         assert unknowns == 0

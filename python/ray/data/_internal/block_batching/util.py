@@ -1,7 +1,7 @@
 import logging
 import threading
 from contextlib import nullcontext
-from typing import Any, Callable, Iterator, List, Optional, Tuple
+from typing import Any, Callable, Iterator, List, Optional
 
 import ray
 from ray.actor import ActorHandle
@@ -17,8 +17,6 @@ from ray.types import ObjectRef
 from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
 
 logger = logging.getLogger(__name__)
-
-
 
 
 def resolve_block_refs(

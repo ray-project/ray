@@ -12,7 +12,6 @@ import pytest
 import ray
 from ray.data._internal.block_batching.interfaces import Batch
 from ray.data._internal.block_batching.util import (
-    _calculate_ref_hits,
     blocks_to_batches,
     collate,
     finalize_batches,

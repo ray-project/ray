@@ -10,7 +10,6 @@ from ray.data.block import Block, BlockMetadata, Schema
 from ray.data.context import DataContext
 from ray.types import ObjectRef
 
-
 # Cached object metadata should be retained for no longer than 1s
 _OBJECT_REF_META_CACHE_STALENESS_THRESHOLD_S = 1
 
@@ -129,19 +128,17 @@ class RefBundle:
             self._cached_preferred_locations = preferred_locs
 
         return self._cached_preferred_locations
-    
+
     def get_bytes_spilled(self) -> int:
         """Return the total number of bytes from this bundle that have been spilled
         to disk.
         """
-        return sum(
-            m.size for m in self._get_cached_metadata().values() if m.spilled
-        )
+        return sum(m.size for m in self._get_cached_metadata().values() if m.spilled)
 
     def trace_locality(self, target_node_id: str) -> Tuple[int, int, int]:
         """Given a list of object references, returns how many are already on the local
         node, how many require fetching from another node, and how many have unknown
-        locations. """
+        locations."""
         metas = self._get_cached_metadata().values()
         nodes: List[List[str]] = [m.locs for m in metas]
         hits = sum(1 for node_ids in nodes if target_node_id in node_ids)
@@ -171,9 +168,10 @@ class RefBundle:
 
     def _has_cached_metadata(self):
         return (
-            self._cached_object_meta is not None and
-            self._cached_object_meta_at is not None and
-            time.perf_counter() - self._cached_object_meta_at <= _OBJECT_REF_META_CACHE_STALENESS_THRESHOLD_S
+            self._cached_object_meta is not None
+            and self._cached_object_meta_at is not None
+            and time.perf_counter() - self._cached_object_meta_at
+            <= _OBJECT_REF_META_CACHE_STALENESS_THRESHOLD_S
         )
 
     def __eq__(self, other) -> bool:

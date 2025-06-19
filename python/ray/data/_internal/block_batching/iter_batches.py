@@ -24,8 +24,7 @@ from ray.types import ObjectRef
 
 
 def _trace_locality(
-    ref_bundles: Iterator[RefBundle],
-    stats: Optional[DatasetStats] = None
+    ref_bundles: Iterator[RefBundle], stats: Optional[DatasetStats] = None
 ) -> Iterator[RefBundle]:
     """Traces locality for individual blocks relative to the node where
     iteration is happening.
