@@ -1049,7 +1049,7 @@ class Learner(Checkpointable):
         self._weights_seq_no += 1
 
         stop = time.perf_counter()
-        self.metrics(
+        self.metrics.log_value(
             (ALL_MODULES, "until_create_iterator"),
             stop - start,
             reduce="mean",
@@ -1066,7 +1066,7 @@ class Learner(Checkpointable):
             **kwargs,
         )
         stop = time.perf_counter()
-        self.metrics(
+        self.metrics.log_value(
             (ALL_MODULES, "_create_iterator"),
             stop - start,
             reduce="mean",
@@ -1125,7 +1125,7 @@ class Learner(Checkpointable):
             )
 
         stop = time.perf_counter()
-        self.metrics(
+        self.metrics.log_value(
             (ALL_MODULES, "after_loop"),
             stop - start,
             reduce="mean",
@@ -1141,7 +1141,7 @@ class Learner(Checkpointable):
 
         self.metrics.deactivate_tensor_mode()
         stop = time.perf_counter()
-        self.metrics(
+        self.metrics.log_value(
             (ALL_MODULES, "after_deactivate_tensor_mode"),
             stop - start,
             reduce="mean",
