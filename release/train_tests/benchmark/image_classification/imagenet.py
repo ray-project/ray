@@ -1,5 +1,7 @@
 import torchvision
 
+from constants import DatasetKey
+
 
 def _get_sysnet_mapping():
     """Read a mapping of WNID to its class label. Source file:
@@ -1011,6 +1013,11 @@ def _get_sysnet_mapping():
 IMAGENET_WNID_TO_LABEL = _get_sysnet_mapping()
 SORTED_WNIDS = sorted(IMAGENET_WNID_TO_LABEL.keys())
 IMAGENET_WNID_TO_ID = {wnid: SORTED_WNIDS.index(wnid) for wnid in SORTED_WNIDS}
+
+IMAGENET_LOCALFS_SPLIT_DIRS = {
+    DatasetKey.TRAIN: "/mnt/local_storage/imagenet/train/",
+    DatasetKey.VALID: "/mnt/local_storage/imagenet/val/",
+}
 
 
 def get_transform(to_torch_tensor: bool = True, random_transforms: bool = True):
