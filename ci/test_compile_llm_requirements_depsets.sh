@@ -29,6 +29,11 @@ cp ./python/requirements_compiled_rayllm_py311_cpu.txt /artifact-mount/
 cp ./python/requirements_compiled_rayllm_py311_cu121.txt /artifact-mount/
 cp ./python/requirements_compiled_rayllm_py311_cu124.txt /artifact-mount/
 
+# Copy depset files to artifact mount on Buildkite
+cp ~/.depsets/ray_llm_compiled_deps_py311_cpu.txt /artifact-mount/
+cp ~/.depsets/ray_llm_compiled_deps_py311_cu121.txt /artifact-mount/
+cp ~/.depsets/ray_llm_compiled_deps_py311_cu124.txt /artifact-mount/
+
 # Check all files and print if files are not up to date
 FAILED=0
 for VARIANT in cpu cu121 cu124; do
