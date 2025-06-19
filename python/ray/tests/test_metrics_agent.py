@@ -19,6 +19,7 @@ import ray
 from ray.dashboard.modules.aggregator.tests.test_aggregator_agent import (
     get_event_aggregator_grpc_stub,
 )
+from ray.core.generated.common_pb2 import TaskAttempt
 from ray.core.generated.events_base_event_pb2 import RayEvent
 from ray.core.generated.events_event_aggregator_service_pb2 import (
     AddEventRequest,
@@ -135,6 +136,13 @@ _DASHBOARD_METRICS = [
     "ray_dashboard_api_requests_count_requests_created",
     "ray_component_cpu_percentage",
     "ray_component_uss_mb",
+]
+
+_EVENT_AGGREGATOR_METRICS = [
+    "ray_event_aggregator_agent_events_received_total",
+    "ray_event_aggregator_agent_events_dropped_at_core_worker_total",
+    "ray_event_aggregator_agent_events_dropped_at_event_aggregator_total",
+    "ray_event_aggregator_agent_events_published_total",
 ]
 
 _NODE_METRICS = [
@@ -454,8 +462,21 @@ def httpserver_listen_address():
     return ("127.0.0.1", 12345)
 
 
-def test_metrics_export_event_aggregator_agent(ray_start_cluster_head, httpserver):
-    cluster = ray_start_cluster_head
+@pytest.mark.parametrize(
+    "ray_start_cluster_head_with_env_vars",
+    [
+        {
+            "env_vars": {
+                "RAY_DASHBOARD_AGGREGATOR_AGENT_MAX_EVENT_BUFFER_SIZE": 1,
+            },
+        },
+    ],
+    indirect=True,
+)
+def test_metrics_export_event_aggregator_agent(
+    ray_start_cluster_head_with_env_vars, httpserver
+):
+    cluster = ray_start_cluster_head_with_env_vars
     stub = get_event_aggregator_grpc_stub(
         cluster.webui_url, cluster.gcs_address, cluster.head_node.node_id
     )
@@ -479,9 +500,9 @@ def test_metrics_export_event_aggregator_agent(ray_start_cluster_head, httpserve
     def test_case_value_correct():
         _, _, metric_samples = fetch_prometheus(prom_addresses)
         expected_metrics_values = {
-            "ray_event_aggregator_agent_events_received_total": 1.0,
-            "ray_event_aggregator_agent_events_dropped_at_core_worker_total": 0.0,
-            "ray_event_aggregator_agent_events_dropped_at_event_aggregator_total": 0.0,
+            "ray_event_aggregator_agent_events_received_total": 2.0,
+            "ray_event_aggregator_agent_events_dropped_at_core_worker_total": 1.0,
+            "ray_event_aggregator_agent_events_dropped_at_event_aggregator_total": 1.0,
             "ray_event_aggregator_agent_events_published_total": 1.0,
         }
         for descriptor, expected_value in expected_metrics_values.items():
@@ -508,16 +529,29 @@ def test_metrics_export_event_aggregator_agent(ray_start_cluster_head, httpserve
                     severity=RayEvent.Severity.INFO,
                     message="hello",
                 ),
+                RayEvent(
+                    event_id=b"2",
+                    source_type=RayEvent.SourceType.CORE_WORKER,
+                    event_type=RayEvent.EventType.TASK_DEFINITION_EVENT,
+                    timestamp=timestamp,
+                    severity=RayEvent.Severity.INFO,
+                    message="hello 2",
+                ),
             ],
             task_events_metadata=TaskEventsMetadata(
-                dropped_task_attempts=[],
+                dropped_task_attempts=[
+                    TaskAttempt(
+                        task_id=b"1",
+                        attempt_number=1,
+                    ),
+                ],
             ),
         )
     )
 
     reply = stub.AddEvents(request)
-    assert reply.status.status_code == 0
-    assert reply.status.status_message == "all events received"
+    assert reply.status.status_code == 5
+    assert reply.status.status_message == "event 1 dropped because event buffer full"
     wait_for_condition(lambda: len(httpserver.log) == 1)
 
     wait_for_condition(test_case_value_correct, timeout=30, retry_interval_ms=1000)
@@ -1111,7 +1145,12 @@ def test_metrics_disablement(_setup_cluster_for_test):
                 return False
 
         # Make sure metrics are not there.
-        for metric in _METRICS + _AUTOSCALER_METRICS + _DASHBOARD_METRICS:
+        for metric in (
+            _METRICS
+            + _AUTOSCALER_METRICS
+            + _DASHBOARD_METRICS
+            + _EVENT_AGGREGATOR_METRICS
+        ):
             if metric in metric_names:
                 print("f{metric} exists although it should not.")
                 return False
