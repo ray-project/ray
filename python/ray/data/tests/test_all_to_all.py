@@ -2208,7 +2208,7 @@ def test_random_shuffle_spread(
     bundles = ds.iter_internal_ref_bundles()
     blocks = _ref_bundles_iterator_to_block_refs_list(bundles)
     ray.wait(blocks, num_returns=len(blocks), fetch_local=False)
-    location_data = ray.experimental.get_object_locations(blocks)
+    location_data = ray.experimental.get_local_object_locations(blocks)
     locations = []
     for block in blocks:
         locations.extend(location_data[block]["node_ids"])

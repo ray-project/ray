@@ -537,7 +537,6 @@ def test_dataset_stats_basic(
 
 def test_block_location_nums(ray_start_regular_shared, restore_data_context):
     context = DataContext.get_current()
-    context.enable_get_object_locations_for_metrics = True
     ds = ray.data.range(1000, override_num_blocks=10)
     ds = ds.map_batches(dummy_map_batches).materialize()
 
@@ -581,7 +580,6 @@ def test_block_location_nums(ray_start_regular_shared, restore_data_context):
 
 def test_dataset__repr__(ray_start_regular_shared, restore_data_context):
     context = DataContext.get_current()
-    context.enable_get_object_locations_for_metrics = True
     n = 100
     ds = ray.data.range(n)
     assert len(ds.take_all()) == n
@@ -662,7 +660,6 @@ def test_dataset__repr__(ray_start_regular_shared, restore_data_context):
         "   ),\n"
         "   global_bytes_spilled=M,\n"
         "   global_bytes_restored=M,\n"
-        "   dataset_bytes_spilled=M,\n"
         "   parents=[\n"
         "      DatasetStatsSummary(\n"
         "         dataset_uuid=unknown_uuid,\n"
@@ -683,7 +680,6 @@ def test_dataset__repr__(ray_start_regular_shared, restore_data_context):
         "         ),\n"
         "         global_bytes_spilled=M,\n"
         "         global_bytes_restored=M,\n"
-        "         dataset_bytes_spilled=M,\n"
         "         parents=[],\n"
         "      ),\n"
         "   ],\n"
@@ -783,7 +779,6 @@ def test_dataset__repr__(ray_start_regular_shared, restore_data_context):
         "   ),\n"
         "   global_bytes_spilled=M,\n"
         "   global_bytes_restored=M,\n"
-        "   dataset_bytes_spilled=M,\n"
         "   parents=[\n"
         "      DatasetStatsSummary(\n"
         "         dataset_uuid=N,\n"
@@ -859,7 +854,6 @@ def test_dataset__repr__(ray_start_regular_shared, restore_data_context):
         "         ),\n"
         "         global_bytes_spilled=M,\n"
         "         global_bytes_restored=M,\n"
-        "         dataset_bytes_spilled=M,\n"
         "         parents=[\n"
         "            DatasetStatsSummary(\n"
         "               dataset_uuid=unknown_uuid,\n"
@@ -880,7 +874,6 @@ def test_dataset__repr__(ray_start_regular_shared, restore_data_context):
         "               ),\n"
         "               global_bytes_spilled=M,\n"
         "               global_bytes_restored=M,\n"
-        "               dataset_bytes_spilled=M,\n"
         "               parents=[],\n"
         "            ),\n"
         "         ],\n"
@@ -1576,7 +1569,6 @@ def test_dataset_throughput(shutdown_only):
 def test_spilled_stats(shutdown_only, verbose_stats_logs, restore_data_context):
     context = DataContext.get_current()
     context.verbose_stats_logs = verbose_stats_logs
-    context.enable_get_object_locations_for_metrics = True
     # The object store is about 100MB.
     ray.init(object_store_memory=100e6)
     # The size of dataset is 1000*80*80*4*8B, about 200MB.
@@ -1623,7 +1615,7 @@ def test_spilled_stats(shutdown_only, verbose_stats_logs, restore_data_context):
         .materialize()
     )
     # two map_batches operators, twice the spillage
-    assert ds._plan.stats().dataset_bytes_spilled > 200e6
+    assert ds._plan.stats().global_bytes_spilled > 200e6
 
     # The size of dataset is around 50MB, there should be no spillage
     ds = (
@@ -1632,7 +1624,7 @@ def test_spilled_stats(shutdown_only, verbose_stats_logs, restore_data_context):
         .materialize()
     )
 
-    assert ds._plan.stats().dataset_bytes_spilled == 0
+    assert ds._plan.stats().global_bytes_spilled == 0
 
 
 def test_stats_actor_metrics():
@@ -1643,7 +1635,6 @@ def test_stats_actor_metrics():
     # last emitted metrics from map operator
     final_metric = update_fn.call_args_list[-1].args[1][-1]
 
-    assert final_metric.obj_store_mem_spilled == ds._plan.stats().dataset_bytes_spilled
     assert (
         final_metric.obj_store_mem_freed
         == ds._plan.stats().extra_metrics["obj_store_mem_freed"]

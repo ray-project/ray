@@ -1968,7 +1968,7 @@ class Dataset:
             simplicity, if the block is stored on multiple nodes we
             only pick the first one.
             """
-            block_ref_locations = ray.experimental.get_object_locations(blocks)
+            block_ref_locations = ray.experimental.get_local_object_locations(blocks)
             block_refs_by_node_id = collections.defaultdict(list)
             for block_ref in blocks:
                 node_ids = block_ref_locations.get(block_ref, {}).get("node_ids", [])
