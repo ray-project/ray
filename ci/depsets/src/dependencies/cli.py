@@ -154,13 +154,13 @@ class DependencySetManager:
 
     def subset_depset(self, source: str, packages: List[str], name: str):
         source_depset = self.depsets[source]
-        req_name = f"{name}.txt"
-        new_depset = DepSet(req_name)
+        output_file = f"{name}.txt"
+        new_depset = DepSet(output_file)
         for dep in source_depset.dependencies:
             if dep.name in packages:
                 new_depset.dependencies.append(dep)
 
-        self.create_depset(req_name, name)
+        self.create_depset(output_file, name)
         return self.get_depset(name)
 
     def expand_depset(
@@ -204,13 +204,10 @@ class DependencySetManager:
         source_depset = self.depsets[source]
         n_degree_deps = source_depset.dep_dag.relax(degree)
 
-        # Expand ~ to home directory
-        packages_path = os.path.expanduser(
-            f"~/repos/ray/ci/depsets/backup/{name}_relaxed.txt"
-        )
-        with open(packages_path, "w") as f:
-            for item in sorted(n_degree_deps):
-                f.write(f"{item}\n")
+        # output_path = self.storage_path / f"{name}_relaxed.txt"
+        # with open(output_path, "w") as f:
+        #     for item in sorted(n_degree_deps):
+        #         f.write(f"{item}\n")
 
         # Copy the requirements file to our storage location
         output_path = self.storage_path / f"{name}.txt"
@@ -428,10 +425,10 @@ def compile(
 
 
 @cli.command()
-@click.option("--source", "-s", type=str, help="name of source depset")
+@click.option("--sources", "-s", type=str, help="comma separated list of names of source depset")
 @click.option("--packages", "-p", type=str, help="filename for min package deps file")
 @click.argument("name")
-def subset(source: str, packages: str, name: str):
+def subset(sources: str, packages: str, name: str):
     """Subset a dependency set."""
     try:
         manager = DependencySetManager()
@@ -440,9 +437,9 @@ def subset(source: str, packages: str, name: str):
         packages_path = resolve_paths(packages)
         with open(packages_path, "r") as f:
             packages = f.read().splitlines()
-        new_depset = manager.subset_depset(source, packages, name)
+        new_depset = manager.subset_depset(sources, packages, name)
         click.echo(
-            f"Created subset {name} from {source} with {len(new_depset.dependencies)} dependencies"
+            f"Created subset {name} from {sources} with {len(new_depset.dependencies)} dependencies"
         )
     except ValueError as e:
         click.echo(f"Error: {str(e)}", err=True)
