@@ -1150,7 +1150,15 @@ class Learner(Checkpointable):
         start = time.perf_counter()
         # Reduce results across all minibatch update steps.
         if not _no_metrics_reduce:
-            return self.metrics.reduce()
+            reduced_metrics = self.metrics.reduce()
+            stop = time.perf_counter()
+            self.metrics.log_value(
+                (ALL_MODULES, "metrics_reduce"),
+                stop - start,
+                reduce="mean",
+                clear_on_reduce=True,
+            ) 
+            return reduced_metrics
 
     def _create_iterator_if_necessary(
         self,
