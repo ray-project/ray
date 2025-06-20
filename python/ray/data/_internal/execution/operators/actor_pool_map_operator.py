@@ -12,6 +12,8 @@ from ray.actor import ActorHandle
 from ray.core.generated import gcs_pb2
 from ray.data._internal.compute import ActorPoolStrategy
 from ray.data._internal.execution.autoscaler import AutoscalingActorPool
+from ray.data._internal.execution.autoscaler.default_autoscaler import \
+    _AutoscalingAction, _AutoscalingActionKind
 from ray.data._internal.execution.bundle_queue import create_bundle_queue
 from ray.data._internal.execution.bundle_queue.bundle_queue import BundleQueue
 from ray.data._internal.execution.interfaces import (
@@ -740,7 +742,7 @@ class _ActorPool(AutoscalingActorPool):
     def max_tasks_in_flight_per_actor(self) -> int:
         return self._max_tasks_in_flight
 
-    def num_in_flight_tasks(self) -> int:
+    def num_tasks_in_flight(self) -> int:
         return self._total_num_tasks_in_flight
 
     def can_scale_down(self):
@@ -762,20 +764,32 @@ class _ActorPool(AutoscalingActorPool):
             >= self._last_scaling_up_ts + self._ACTOR_POOL_SCALE_DOWN_DEBOUNCE_PERIOD_S
         )
 
-    def scale_up(self, num_actors: int, *, reason: Optional[str] = None) -> int:
-        logger.info(
-            f"Scaling up actor pool by {num_actors} "
-            f"(reason={reason}, {self.get_actor_info()})"
-        )
+    def apply(self, action: _AutoscalingAction):
+        if action.kind is _AutoscalingActionKind.SCALE_UP:
+            logger.info(
+                f"Scaling up actor pool by {action.delta} "
+                f"(reason={action.reason}, {self.get_actor_info()})"
+            )
 
-        for _ in range(num_actors):
-            actor, ready_ref = self._create_actor()
-            self.add_pending_actor(actor, ready_ref)
+            for _ in range(action.delta):
+                actor, ready_ref = self._create_actor()
+                self.add_pending_actor(actor, ready_ref)
 
-        # Capture last scale up timestamp
-        self._last_scaling_up_ts = time.time()
+            # Capture last scale up timestamp
+            self._last_scaling_up_ts = time.time()
 
-        return num_actors
+        elif action.kind is _AutoscalingActionKind.SCALE_DOWN:
+            num_released = 0
+
+            for _ in range(action.delta):
+                if self._remove_inactive_actor():
+                    num_released += 1
+
+            if num_released > 0:
+                logger.info(
+                    f"Scaled down actor pool by {num_released} "
+                    f"(reason={action.reason}; {self.get_actor_info()})"
+                )
 
     def _create_actor(self) -> Tuple[ray.actor.ActorHandle, ObjectRef]:
         logical_actor_id = str(uuid.uuid4())
@@ -783,20 +797,6 @@ class _ActorPool(AutoscalingActorPool):
         actor, ready_ref = self._create_actor_fn(labels)
         self._actor_to_logical_id[actor] = logical_actor_id
         return actor, ready_ref
-
-    def scale_down(self, num_actors: int, *, reason: Optional[str] = None) -> int:
-        num_released = 0
-        for _ in range(num_actors):
-            if self._remove_inactive_actor():
-                num_released += 1
-
-        if num_released > 0:
-            logger.info(
-                f"Scaled down actor pool by {num_released} "
-                f"(reason={reason}; {self.get_actor_info()})"
-            )
-
-        return num_released
 
     # === End of overriding methods of AutoscalingActorPool ===
 

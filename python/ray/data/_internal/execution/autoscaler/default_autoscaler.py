@@ -148,14 +148,11 @@ class DefaultAutoscaler(Autoscaler):
             actor_pools = op.get_autoscaling_actor_pools()
             for actor_pool in actor_pools:
                 # Try to scale up or down the actor pool.
-                recommended_action, reason = self._derive_scaling_action(
+                recommended_action = self._derive_scaling_action(
                     actor_pool, op, state
                 )
 
-                if recommended_action is _AutoscalingActionKind.SCALE_UP:
-                    actor_pool.scale_up(1, reason=reason)
-                elif recommended_action is _AutoscalingActionKind.SCALE_DOWN:
-                    actor_pool.scale_down(1, reason=reason)
+                actor_pool.apply(recommended_action)
 
     def _try_scale_up_cluster(self):
         """Try to scale up the cluster to accomodate the provided in-progress workload.
