@@ -293,20 +293,20 @@ def test_combine_chunked_fixed_width_array_large():
 
 
 @pytest.mark.parametrize(
-    "array_type,input_factory", [
+    "array_type,input_factory",
+    [
         (
             pa.binary(),
             lambda num_bytes: np.arange(num_bytes, dtype=np.uint8).tobytes(),
         ),
         (
             pa.string(),
-            lambda num_bytes: base64.encodebytes(np.arange(num_bytes, dtype=np.int8).tobytes()).decode("ascii"),
+            lambda num_bytes: base64.encodebytes(
+                np.arange(num_bytes, dtype=np.int8).tobytes()
+            ).decode("ascii"),
         ),
-        (
-            pa.list_(pa.uint8()),
-            lambda num_bytes: np.arange(num_bytes, dtype=np.uint8)
-        ),
-    ]
+        (pa.list_(pa.uint8()), lambda num_bytes: np.arange(num_bytes, dtype=np.uint8)),
+    ],
 )
 def test_combine_chunked_variable_width_array_large(array_type, input_factory):
     """Verifies `combine_chunked_array` on variable-width arrays > 2 GiB,
@@ -314,7 +314,9 @@ def test_combine_chunked_variable_width_array_large(array_type, input_factory):
     larger ones up to INT32_MAX in size"""
 
     one_half_gb_arr = pa.array([input_factory(GiB / 2)], type=array_type)
-    chunked_arr = pa.chunked_array([one_half_gb_arr, one_half_gb_arr, one_half_gb_arr, one_half_gb_arr])
+    chunked_arr = pa.chunked_array(
+        [one_half_gb_arr, one_half_gb_arr, one_half_gb_arr, one_half_gb_arr]
+    )
 
     # 2 GiB + offsets (4 x int32)
     num_bytes = chunked_arr.nbytes
