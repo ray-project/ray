@@ -77,10 +77,9 @@ class _LLMServerBase(ABC):
     need to implement an async constructor, an async predict, and check_health method.
     """
 
-    # TODO (Kourosh): I don't know why this is an async init. Need to fix.
-    async def __init__(self, llm_config: LLMConfig):
+    def __init__(self, llm_config: LLMConfig):
         """
-        Constructor takes in an LLMConfig object and start the underlying engine.
+        Constructor takes in an LLMConfig object and stores the configuration.
         """
         self._llm_config = llm_config
 
@@ -435,7 +434,7 @@ class LLMServer(_LLMServerBase):
             model_downloader: Dependency injection for the model downloader object.
                 Defaults to be initialized with `LoraModelLoader`.
         """
-        await super().__init__(llm_config)
+        super().__init__(llm_config)
 
         self._engine_cls = engine_cls or self._default_engine_cls
         self.engine = self._get_engine_class(self._llm_config)
