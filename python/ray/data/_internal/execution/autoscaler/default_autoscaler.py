@@ -2,7 +2,7 @@ import enum
 import math
 import time
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, Dict, Optional, Tuple
+from typing import TYPE_CHECKING, Dict, Optional
 
 import ray
 from .autoscaler import Autoscaler
@@ -38,12 +38,16 @@ class _AutoscalingAction:
     @classmethod
     def up(cls, *, delta: int, reason: Optional[str] = None):
         assert delta > 0
-        return _AutoscalingAction(kind=_AutoscalingActionKind.SCALE_UP, delta=delta, reason=reason)
+        return _AutoscalingAction(
+            kind=_AutoscalingActionKind.SCALE_UP, delta=delta, reason=reason
+        )
 
     @classmethod
     def down(cls, *, delta: int, reason: Optional[str] = None):
         assert delta > 0
-        return _AutoscalingAction(kind=_AutoscalingActionKind.SCALE_DOWN, delta=delta, reason=reason)
+        return _AutoscalingAction(
+            kind=_AutoscalingActionKind.SCALE_DOWN, delta=delta, reason=reason
+        )
 
 
 class DefaultAutoscaler(Autoscaler):
@@ -91,13 +95,13 @@ class DefaultAutoscaler(Autoscaler):
             # Scale up, if the actor pool is below min size.
             return _AutoscalingAction.up(
                 delta=actor_pool.min_size() - actor_pool.current_size(),
-                reason="pool below min size"
+                reason="pool below min size",
             )
         elif actor_pool.current_size() > actor_pool.max_size():
             # Do not scale up, if the actor pool is already at max size.
             return _AutoscalingAction.down(
                 delta=actor_pool.current_size() - actor_pool.max_size(),
-                reason="pool exceeding max size"
+                reason="pool exceeding max size",
             )
 
         # Determine whether to scale up based on the actor pool utilization.
@@ -114,7 +118,9 @@ class DefaultAutoscaler(Autoscaler):
             elif actor_pool.current_size() >= actor_pool.max_size():
                 return _AutoscalingAction.no_op(reason="reached max size")
             if not op_state._scheduling_status.under_resource_limits:
-                return _AutoscalingAction.no_op(reason="operator exceeding resource quota")
+                return _AutoscalingAction.no_op(
+                    reason="operator exceeding resource quota"
+                )
 
             # TODO add log warning if max_tasks_in_flight > actor_pool max size
             target_size = min(actor_pool.num_tasks_in_flight(), actor_pool.max_size())
@@ -153,9 +159,7 @@ class DefaultAutoscaler(Autoscaler):
             actor_pools = op.get_autoscaling_actor_pools()
             for actor_pool in actor_pools:
                 # Try to scale up or down the actor pool.
-                recommended_action = self._derive_scaling_action(
-                    actor_pool, op, state
-                )
+                recommended_action = self._derive_scaling_action(actor_pool, op, state)
 
                 actor_pool.apply(recommended_action)
 
