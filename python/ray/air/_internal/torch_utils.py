@@ -306,9 +306,6 @@ c18da597e0bb1c1aecc97c77a73fed1849057fa4/torch/nn/modules/utils.py
         state_dict: a state-dict to be loaded to the model.
         prefix: prefix.
 
-    Returns:
-        A new dictionary with the prefix stripped from keys if present.
-
     """
     copied = False
 
