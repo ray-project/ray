@@ -122,12 +122,8 @@ class DefaultAutoscaler(Autoscaler):
                     reason="operator exceeding resource quota"
                 )
 
-            # TODO add log warning if max_tasks_in_flight > actor_pool max size
-            target_size = min(actor_pool.num_tasks_in_flight(), actor_pool.max_size())
-            delta = target_size - actor_pool.current_size()
-
             return _AutoscalingAction.up(
-                delta=delta,
+                delta=1,
                 reason=(
                     f"utilization of {util} >= "
                     f"{self._actor_pool_scaling_up_threshold}"
