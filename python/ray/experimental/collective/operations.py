@@ -29,9 +29,8 @@ def _bind(
 ):
     """
     Bind inputs (input nodes or lists of input nodes) with a collective operation.
-    The collective operation is directly applied to the torch tensors from the input
-    nodes. The output nodes are the results of the collective operation on the bound
-    torch tensors.
+    The collective operation is applied to each list of input nodes. The output nodes
+    will have the same shape as the input nodes.
 
     Example of binding a list of input node:
     with InputNode() as inp:
@@ -41,7 +40,7 @@ def _bind(
 
     Requirements:
     1. Each input node returns a torch tensor.
-    2. Each input node or list of input nodes is from a different actor.
+    2. Each input node within a list is from a different actor.
     3. If a custom transport is specified, its actor set matches the actor set
         of the input nodes.
     4. All tensors have the same shape.
@@ -50,21 +49,20 @@ def _bind(
     Requirement 4 is not checked yet.
 
     Args:
-        inputs: A list of DAG nodes or a list of lists of DAG nodes. For nested
-            list inputs, each nested list inside of inputs contain one object
-            per actor.
+        inputs: A list of DAG nodes or a list of lists of DAG nodes. Each leaf list
+        should contain one object per actor.
         op: The collective operation.
         transport: GPU communicator for the collective operation. If not
             specified, the default NCCL is used.
 
     Returns:
-        A list of collective output nodes or a list of lists of collective output nodes.
-        Each output node or list of output nodes has the same order and belongs to the
-        same actor as the corresponding input node or list of input node.
+        A list of collective output nodes or a list of lists of collective output nodes,
+        with the same shape as the input nodes. Each output node has the same order and
+        belongs to the same actor as the corresponding input node.
     """
     if isinstance(inputs[0], list) and not isinstance(op, AllReduceOp):
         raise ValueError(
-            "Currently binding a list of dag nodes is only supported for allreduce"
+            "Currently binding a nested list of dag nodes is only supported for allreduce"
         )
 
     # Convert list of DAGNode into nested list for type checking

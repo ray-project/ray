@@ -26,7 +26,9 @@ class _CollectiveOperation:
 
     Args:
         inputs: A list of lists of DAGNode. Each nested list inside
-            of inputs contain one object per actor.
+            of inputs should contain exactly one object per actor.
+            If multiple nested lists are provided, then the order of
+            actors should be the same for each nested list.
         op: The collective operation to perform.
         transport: The transport to use for the collective operation.
 
@@ -43,12 +45,12 @@ class _CollectiveOperation:
         transport: Optional[Union[str, Communicator]] = None,
     ):
         self._actor_handles: List["ray.actor.ActorHandle"] = []
-        for i, input_nodes in enumerate(inputs, 0):
+        for i, input_nodes in enumerate(inputs):
             # Check non-empty input list
             if len(input_nodes) == 0:
                 nested_list_error_msg = f" at index {i}" if len(inputs) > 1 else ""
                 raise ValueError(
-                    f"Expected non-empty input list{nested_list_error_msg}, but got empty list."
+                    f"Expected non-empty input list{nested_list_error_msg}."
                 )
 
             # Check input nodes are DAGNode
@@ -107,33 +109,32 @@ class _CollectiveOperation:
             if i == 0:
                 first_actor_handles = current_actor_handles
 
-            if len(inputs) > 1:
-                # Check all lists of DAGNode have the same number of nodes
-                if len(inputs[0]) != len(inputs[i]):
-                    raise ValueError(
-                        f"Expected all input lists to have the same number of nodes. "
-                        f"List at index 0 has length {len(inputs[0])}, but list at "
-                        f"index {i} has length {len(inputs[i])}."
-                    )
+            # Check all lists of DAGNode have the same number of nodes
+            if len(inputs[0]) != len(inputs[i]):
+                raise ValueError(
+                    f"Expected all input lists to have the same number of nodes. "
+                    f"List at index 0 has length {len(inputs[0])}, but list at "
+                    f"index {i} has length {len(inputs[i])}."
+                )
 
-                # Check all lists of DAGNode have same set of actor handles
-                if set(first_actor_handles) != set(current_actor_handles):
-                    raise ValueError(
-                        f"Expected all input lists to have the same set of actor handles. "
-                        f"List at index 0 has actors {set(first_actor_handles)}, but list at "
-                        f"index {i} has actors {set(current_actor_handles)}."
-                    )
+            # Check all lists of DAGNode have same set of actor handles
+            if set(first_actor_handles) != set(current_actor_handles):
+                raise ValueError(
+                    f"Expected all input lists to have the same set of actor handles. "
+                    f"List at index 0 has actors {set(first_actor_handles)}, but list at "
+                    f"index {i} has actors {set(current_actor_handles)}."
+                )
 
-                # Check all lists of DAGNode have same order of actor handles
-                for j, (first, current) in enumerate(
-                    zip(first_actor_handles, current_actor_handles)
-                ):
-                    if first != current:
-                        raise ValueError(
-                            f"Expected all input lists to have the same order of actor handles. "
-                            f"List at index 0 has actor {first} at position {j}, but list at "
-                            f"index {i} has actor {current} at position {j}."
-                        )
+            # Check all lists of DAGNode have same order of actor handles
+            for j, (first, current) in enumerate(
+                zip(first_actor_handles, current_actor_handles)
+            ):
+                if first != current:
+                    raise ValueError(
+                        f"Expected all input lists to have the same order of actor handles. "
+                        f"List at index 0 has actor {first} at position {j}, but list at "
+                        f"index {i} has actor {current} at position {j}."
+                    )
         self._actor_handles = current_actor_handles
 
         self._op = op
