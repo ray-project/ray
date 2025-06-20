@@ -140,7 +140,7 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
       rpc::CoreWorkerClientPool &worker_rpc_pool,
       std::shared_ptr<pubsub::SubscriberInterface> core_worker_subscriber,
       std::shared_ptr<ClusterResourceScheduler> cluster_resource_scheduler,
-      std::shared_ptr<LocalTaskManager> local_task_manager,
+      std::shared_ptr<ILocalTaskManager> local_task_manager,
       std::shared_ptr<ClusterTaskManagerInterface> cluster_task_manager,
       std::shared_ptr<IObjectDirectory> object_directory,
       std::shared_ptr<ObjectManagerInterface> object_manager,
@@ -878,7 +878,7 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
   /// usage. ClusterTaskManager is responsible for queuing, spilling back, and
   /// dispatching tasks.
   std::shared_ptr<ClusterResourceScheduler> cluster_resource_scheduler_;
-  std::shared_ptr<LocalTaskManager> local_task_manager_;
+  std::shared_ptr<ILocalTaskManager> local_task_manager_;
   std::shared_ptr<ClusterTaskManagerInterface> cluster_task_manager_;
 
   absl::flat_hash_map<ObjectID, std::unique_ptr<RayObject>> pinned_objects_;
