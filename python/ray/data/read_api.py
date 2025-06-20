@@ -3641,7 +3641,7 @@ def read_unity_catalog(
     *,
     data_format: Optional[str] = None,
     region: Optional[str] = None,
-    **reader_kwargs: Optional[dict],
+    reader_kwargs: Optional[dict],
 ) -> Dataset:
     """
     Loads a Unity Catalog table or files into a Ray Dataset using Databricks Unity Catalog credential vending,
