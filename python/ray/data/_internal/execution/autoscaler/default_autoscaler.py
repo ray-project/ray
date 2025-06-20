@@ -90,11 +90,13 @@ class DefaultAutoscaler(Autoscaler):
         if actor_pool.current_size() < actor_pool.min_size():
             # Scale up, if the actor pool is below min size.
             return _AutoscalingAction.up(
+                delta=actor_pool.min_size() - actor_pool.current_size(),
                 reason="pool below min size"
             )
         elif actor_pool.current_size() > actor_pool.max_size():
             # Do not scale up, if the actor pool is already at max size.
             return _AutoscalingAction.down(
+                delta=actor_pool.current_size() - actor_pool.max_size(),
                 reason="pool exceeding max size"
             )
 
@@ -114,9 +116,12 @@ class DefaultAutoscaler(Autoscaler):
             if not op_state._scheduling_status.under_resource_limits:
                 return _AutoscalingAction.no_op(reason="operator exceeding resource quota")
 
-            # scale up by # of pending tasks
+            # TODO add log warning if max_tasks_in_flight > actor_pool max size
+            target_size = min(actor_pool.num_tasks_in_flight(), actor_pool.max_size())
+            delta = target_size - actor_pool.current_size()
+
             return _AutoscalingAction.up(
-                delta=1,
+                delta=delta,
                 reason=(
                     f"utilization of {util} >= "
                     f"{self._actor_pool_scaling_up_threshold}"
