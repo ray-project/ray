@@ -44,34 +44,34 @@ class GCSFunctionManagerTest : public Test {
 TEST_F(GCSFunctionManagerTest, TestFunctionManagerGC) {
   JobID job_id = BaseID<JobID>::FromRandom();
   std::string job_id_hex = job_id.Hex();
-  
+
   // Pre-populate KV store with function/actor data for this job
   kv->kv_store_["funRemoteFunction:" + job_id_hex + ":key1"] = "value1";
   kv->kv_store_["funActorClass:" + job_id_hex + ":key1"] = "value1";
   kv->kv_store_["funFunctionsToRun:" + job_id_hex + ":key1"] = "value1";
-  
+
   function_manager->AddJobReference(job_id);
   // Keys should still exist (job not finished)
   EXPECT_TRUE(HasKey("fun", "RemoteFunction:" + job_id_hex + ":key1"));
   EXPECT_TRUE(HasKey("fun", "ActorClass:" + job_id_hex + ":key1"));
   EXPECT_TRUE(HasKey("fun", "FunctionsToRun:" + job_id_hex + ":key1"));
-  
+
   function_manager->AddJobReference(job_id);
   // Keys should still exist (job not finished)
   EXPECT_TRUE(HasKey("fun", "RemoteFunction:" + job_id_hex + ":key1"));
-  
+
   function_manager->AddJobReference(job_id);
   // Keys should still exist (job not finished)
   EXPECT_TRUE(HasKey("fun", "RemoteFunction:" + job_id_hex + ":key1"));
-  
+
   function_manager->RemoveJobReference(job_id);
   // Keys should still exist (job not finished)
   EXPECT_TRUE(HasKey("fun", "RemoteFunction:" + job_id_hex + ":key1"));
-  
+
   function_manager->RemoveJobReference(job_id);
   // Keys should still exist (job not finished)
   EXPECT_TRUE(HasKey("fun", "RemoteFunction:" + job_id_hex + ":key1"));
-  
+
   function_manager->RemoveJobReference(job_id);
   // Now all keys should be deleted (job finished)
   EXPECT_FALSE(HasKey("fun", "RemoteFunction:" + job_id_hex + ":key1"));
