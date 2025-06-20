@@ -20,12 +20,18 @@
 namespace ray {
 namespace telemetry {
 
+using namespace std::literals;
 using OpenTelemetryMetricRecorder = ray::telemetry::OpenTelemetryMetricRecorder;
 using StatsConfig = ray::stats::StatsConfig;
 
 DECLARE_stats(metric_gauge_test);
 DEFINE_stats(
     metric_gauge_test, "A test gauge metric", ("Tag1", "Tag2"), (), ray::stats::GAUGE);
+
+static ray::stats::Gauge LegacyMetricGaugeTest("legacy_metric_gauge_test",
+                                               "A legacy test gauge metric",
+                                               "",
+                                               {"Tag1", "Tag2"});
 
 DECLARE_stats(metric_counter_test);
 DEFINE_stats(metric_counter_test,
@@ -34,8 +40,18 @@ DEFINE_stats(metric_counter_test,
              (),
              ray::stats::COUNT);
 
+static ray::stats::Count LegacyMetricCounterTest("legacy_metric_counter_test",
+                                                 "A legacy test counter metric",
+                                                 "",
+                                                 {"Tag1", "Tag2"});
+
 DECLARE_stats(metric_sum_test);
 DEFINE_stats(metric_sum_test, "A test sum metric", ("Tag1", "Tag2"), (), ray::stats::SUM);
+
+static ray::stats::Sum LegacyMetricSumTest("legacy_metric_sum_test",
+                                           "A legacy test sum metric",
+                                           "",
+                                           {"Tag1", "Tag2"});
 
 class MetricTest : public ::testing::Test {
  public:
@@ -54,9 +70,15 @@ TEST_F(MetricTest, TestGaugeMetric) {
   ASSERT_TRUE(
       OpenTelemetryMetricRecorder::GetInstance().IsMetricRegistered("metric_gauge_test"));
   STATS_metric_gauge_test.Record(42.0, {{"Tag1", "Value1"}, {"Tag2", "Value2"}});
+  LegacyMetricGaugeTest.Record(24.0, {{"Tag1"sv, "Value1"}, {"Tag2"sv, "Value2"}});
+  ASSERT_TRUE(OpenTelemetryMetricRecorder::GetInstance().IsMetricRegistered(
+      "legacy_metric_gauge_test"));
   ASSERT_EQ(OpenTelemetryMetricRecorder::GetInstance().GetObservableMetricValue(
                 "metric_gauge_test", {{"Tag1", "Value1"}, {"Tag2", "Value2"}}),
             42.0);
+  ASSERT_EQ(OpenTelemetryMetricRecorder::GetInstance().GetObservableMetricValue(
+                "legacy_metric_gauge_test", {{"Tag1", "Value1"}, {"Tag2", "Value2"}}),
+            24.0);
 }
 
 TEST_F(MetricTest, TestCounterMetric) {
@@ -66,6 +88,9 @@ TEST_F(MetricTest, TestCounterMetric) {
   // because open telemetry does not provide a way to retrieve the value of a counter.
   // Checking value is performed via e2e tests instead (e.g., in test_metrics_agent.py).
   STATS_metric_counter_test.Record(100.0, {{"Tag1", "Value1"}, {"Tag2", "Value2"}});
+  LegacyMetricCounterTest.Record(100.0, {{"Tag1"sv, "Value1"}, {"Tag2"sv, "Value2"}});
+  ASSERT_TRUE(OpenTelemetryMetricRecorder::GetInstance().IsMetricRegistered(
+      "legacy_metric_counter_test"));
 }
 
 TEST_F(MetricTest, TestSumMetric) {
@@ -75,6 +100,9 @@ TEST_F(MetricTest, TestSumMetric) {
   // because open telemetry does not provide a way to retrieve the value of a counter.
   // Checking value is performed via e2e tests instead (e.g., in test_metrics_agent.py).
   STATS_metric_sum_test.Record(200.0, {{"Tag1", "Value1"}, {"Tag2", "Value2"}});
+  LegacyMetricSumTest.Record(200.0, {{"Tag1"sv, "Value1"}, {"Tag2"sv, "Value2"}});
+  ASSERT_TRUE(OpenTelemetryMetricRecorder::GetInstance().IsMetricRegistered(
+      "legacy_metric_sum_test"));
 }
 
 }  // namespace telemetry
