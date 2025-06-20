@@ -559,7 +559,7 @@ def setup(app):
     app.add_js_file("js/custom.js", defer="defer")
     app.add_css_file("css/custom.css", priority=800)
 
-    app.add_js_file("js/csat.js")
+    app.add_js_file("js/csat.js", defer="defer")
     app.add_css_file("css/csat.css")
 
     app.add_js_file("js/assistant.js", defer="defer")
