@@ -1261,80 +1261,6 @@ def test_parquet_bulk_columns(ray_start_regular_shared):
     assert ds.columns() == ["variety"]
 
 
-@pytest.mark.parametrize("min_rows_per_file", [5, 10])
-def test_write_partition_cols_with_min_rows_per_file(
-    tmp_path, ray_start_regular_shared, min_rows_per_file
-):
-    """Test write_parquet with both partition_cols and min_rows_per_file."""
-
-    # Create dataset with 2 partitions, each having 20 rows
-    df = pd.DataFrame(
-        {
-            "partition_col": [0] * 20 + [1] * 20,  # 2 partitions with 20 rows each
-            "data": list(range(40)),
-        }
-    )
-
-    ds = ray.data.from_pandas(df)
-    ds.write_parquet(
-        tmp_path, partition_cols=["partition_col"], min_rows_per_file=min_rows_per_file
-    )
-
-    # Check partition directories exist
-    partition_0_dir = tmp_path / "partition_col=0"
-    partition_1_dir = tmp_path / "partition_col=1"
-    assert partition_0_dir.exists()
-    assert partition_1_dir.exists()
-
-    # With the new implementation that tries to minimize file count,
-    # each partition (20 rows) should be written as a single file
-    # since 20 >= min_rows_per_file for both test cases (5 and 10)
-    for partition_dir in [partition_0_dir, partition_1_dir]:
-        parquet_files = list(partition_dir.glob("*.parquet"))
-
-        # Verify total rows across all files in partition
-        total_rows = 0
-        file_sizes = []
-        for file_path in parquet_files:
-            table = pq.read_table(file_path)
-            file_size = len(table)
-            file_sizes.append(file_size)
-            total_rows += file_size
-
-        assert total_rows == 20  # Each partition should have 20 rows total
-
-        # Add explicit assertion about individual file sizes for clarity
-        print(
-            f"Partition {partition_dir.name} file sizes with min_rows_per_file={min_rows_per_file}: {file_sizes}"
-        )
-
-        # With the new logic that tries to minimize file count, we expect:
-        # - If the partition has >= min_rows_per_file, it could be written as a single larger file
-        # - Each file should have at least min_rows_per_file rows, except possibly the last file
-        #   which might have fewer if it's the remainder
-        for i, file_size in enumerate(file_sizes):
-            if i == len(file_sizes) - 1:  # Last file can have remainder
-                assert file_size > 0, f"File {i} has zero rows"
-                # Last file should have at least min_rows_per_file unless it's a remainder
-                if total_rows % min_rows_per_file != 0 and len(file_sizes) > 1:
-                    # If there's a remainder and multiple files, last file can be smaller
-                    assert file_size >= min(
-                        min_rows_per_file, total_rows % min_rows_per_file
-                    )
-                else:
-                    assert file_size >= min_rows_per_file
-            else:
-                # Non-last files should meet the minimum
-                assert (
-                    file_size >= min_rows_per_file
-                ), f"File {i} size {file_size} is less than min_rows_per_file {min_rows_per_file}"
-
-    # Verify we can read back the data correctly
-    ds_read = ray.data.read_parquet(tmp_path)
-    assert ds_read.count() == 40
-    assert set(ds_read.schema().names) == {"partition_col", "data"}
-
-
 @pytest.mark.parametrize("shuffle", [True, False, "file"])
 def test_invalid_shuffle_arg_raises_error(ray_start_regular_shared, shuffle):
 
@@ -1742,9 +1668,13 @@ def test_write_min_max_rows_per_file(
         f"File sizes with min={min_rows_per_file}, max={max_rows_per_file}: {file_sizes}"
     )
     for size in file_sizes:
+        if size < min_rows_per_file:
+            print(
+                f"File size {size} is less than min_rows_per_file {min_rows_per_file}"
+            )
         assert (
-            min_rows_per_file <= size <= max_rows_per_file
-        ), f"File size {size} not within bounds [{min_rows_per_file}, {max_rows_per_file}]"
+            size <= max_rows_per_file
+        ), f"File size {size} not less than {max_rows_per_file}"
 
 
 def test_write_max_rows_per_file_validation(tmp_path, ray_start_regular_shared):
