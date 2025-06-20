@@ -1,3 +1,5 @@
+import base64
+import gc
 import os
 import sys
 import types
@@ -290,18 +292,33 @@ def test_combine_chunked_fixed_width_array_large():
     assert isinstance(result, pa.Int32Array)
 
 
-def test_combine_chunked_variable_width_array_large():
+@pytest.mark.parametrize(
+    "array_type,input_factory", [
+        (
+            pa.binary(),
+            lambda num_bytes: np.arange(num_bytes, dtype=np.uint8).tobytes(),
+        ),
+        (
+            pa.string(),
+            lambda num_bytes: base64.encodebytes(np.arange(num_bytes, dtype=np.int8).tobytes()).decode("ascii"),
+        ),
+        (
+            pa.list_(pa.uint8()),
+            lambda num_bytes: np.arange(num_bytes, dtype=np.uint8)
+        ),
+    ]
+)
+def test_combine_chunked_variable_width_array_large(array_type, input_factory):
     """Verifies `combine_chunked_array` on variable-width arrays > 2 GiB,
     safely produces new ChunkedArray with provided chunks recombined into
     larger ones up to INT32_MAX in size"""
 
-    one_half_gb_bytes = np.arange(GiB / 2, dtype=np.uint8).tobytes()
-    one_half_gb_arr = pa.array([one_half_gb_bytes], type=pa.binary())
+    one_half_gb_arr = pa.array([input_factory(GiB / 2)], type=array_type)
     chunked_arr = pa.chunked_array([one_half_gb_arr, one_half_gb_arr, one_half_gb_arr, one_half_gb_arr])
 
     # 2 GiB + offsets (4 x int32)
     num_bytes = chunked_arr.nbytes
-    expected_num_bytes = 2 * GiB + 4 * pa.int32().byte_width
+    expected_num_bytes = 4 * one_half_gb_arr.nbytes
 
     num_chunks = len(chunked_arr.chunks)
     assert num_chunks == 4
