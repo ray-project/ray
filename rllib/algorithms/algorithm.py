@@ -3280,59 +3280,68 @@ class Algorithm(Checkpointable, Trainable):
             over the history and reduce behavior of individual metrics at the time these
             metrics are logged with `self.metrics.log_...()`.
         """
-        with self.metrics.log_time((TIMERS, TRAINING_ITERATION_TIMER)):
-            # In case we are training (in a thread) parallel to evaluation,
-            # we may have to re-enable eager mode here (gets disabled in the
-            # thread).
-            if self.config.get("framework") == "tf2" and not tf.executing_eagerly():
-                tf1.enable_eager_execution()
+        import time
+        start = time.perf_counter()
+        # with self.metrics.log_time((TIMERS, TRAINING_ITERATION_TIMER)):
+        # In case we are training (in a thread) parallel to evaluation,
+        # we may have to re-enable eager mode here (gets disabled in the
+        # thread).
+        if self.config.get("framework") == "tf2" and not tf.executing_eagerly():
+            tf1.enable_eager_execution()
 
-            has_run_once = False
-            # Create a step context ...
-            with TrainIterCtx(algo=self) as train_iter_ctx:
-                # .. so we can query it whether we should stop the iteration loop (e.g.
-                # when we have reached `min_time_s_per_iteration`).
-                while not train_iter_ctx.should_stop(has_run_once):
-                    # Before training step, try to bring failed workers back.
-                    with self.metrics.log_time((TIMERS, RESTORE_ENV_RUNNERS_TIMER)):
-                        restored = self.restore_env_runners(self.env_runner_group)
-                        # Fire the callback for re-created EnvRunners.
-                        if restored:
-                            self._make_on_env_runners_recreated_callbacks(
-                                config=self.config,
-                                env_runner_group=self.env_runner_group,
-                                restored_env_runner_indices=restored,
-                            )
-
-                    # Try to train one step.
-                    with self.metrics.log_time((TIMERS, TRAINING_STEP_TIMER)):
-                        training_step_return_value = self.training_step()
-                        has_run_once = True
-
-                    # On the new API stack, results should NOT be returned anymore as
-                    # a dict, but purely logged through the `MetricsLogger` API. This
-                    # way, we make sure to never miss a single stats/counter/timer
-                    # when calling `self.training_step()` more than once within the same
-                    # iteration.
-                    if training_step_return_value is not None:
-                        raise ValueError(
-                            "`Algorithm.training_step()` should NOT return a result "
-                            "dict anymore on the new API stack! Instead, log all "
-                            "results, timers, counters through the `self.metrics` "
-                            "(MetricsLogger) instance of the Algorithm and return "
-                            "None. The logged results are compiled automatically into "
-                            "one single result dict per training iteration."
+        has_run_once = False
+        # Create a step context ...
+        with TrainIterCtx(algo=self) as train_iter_ctx:
+            # .. so we can query it whether we should stop the iteration loop (e.g.
+            # when we have reached `min_time_s_per_iteration`).
+            while not train_iter_ctx.should_stop(has_run_once):
+                # Before training step, try to bring failed workers back.
+                with self.metrics.log_time((TIMERS, RESTORE_ENV_RUNNERS_TIMER)):
+                    restored = self.restore_env_runners(self.env_runner_group)
+                    # Fire the callback for re-created EnvRunners.
+                    if restored:
+                        self._make_on_env_runners_recreated_callbacks(
+                            config=self.config,
+                            env_runner_group=self.env_runner_group,
+                            restored_env_runner_indices=restored,
                         )
 
-                    # TODO (sven): Resolve this metric through log_time's future
-                    #  ability to compute throughput.
-                    self.metrics.log_value(
-                        NUM_TRAINING_STEP_CALLS_PER_ITERATION,
-                        1,
-                        reduce="sum",
-                        clear_on_reduce=True,
+                # Try to train one step.
+                with self.metrics.log_time((TIMERS, TRAINING_STEP_TIMER)):
+                    training_step_return_value = self.training_step()
+                    has_run_once = True
+
+                # On the new API stack, results should NOT be returned anymore as
+                # a dict, but purely logged through the `MetricsLogger` API. This
+                # way, we make sure to never miss a single stats/counter/timer
+                # when calling `self.training_step()` more than once within the same
+                # iteration.
+                if training_step_return_value is not None:
+                    raise ValueError(
+                        "`Algorithm.training_step()` should NOT return a result "
+                        "dict anymore on the new API stack! Instead, log all "
+                        "results, timers, counters through the `self.metrics` "
+                        "(MetricsLogger) instance of the Algorithm and return "
+                        "None. The logged results are compiled automatically into "
+                        "one single result dict per training iteration."
                     )
 
+                # TODO (sven): Resolve this metric through log_time's future
+                #  ability to compute throughput.
+                self.metrics.log_value(
+                    NUM_TRAINING_STEP_CALLS_PER_ITERATION,
+                    1,
+                    reduce="sum",
+                    clear_on_reduce=True,
+                )
+
+        stop = time.perf_counter
+        self.metrics.log_value(
+            TRAINING_ITERATION_TIMER,
+            stop - start,
+            reduce="mean",
+            clear_on_reduce=True,
+        )
         if self.config.num_aggregator_actors_per_learner:
             remote_aggregator_metrics: RemoteCallResults = (
                 self._aggregator_actor_manager.fetch_ready_async_reqs(
