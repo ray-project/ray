@@ -60,7 +60,6 @@ class RandomIntRowDatasource(Datasource):
             meta = BlockMetadata(
                 num_rows=count,
                 size_bytes=count * (8 + row_size_bytes),
-                schema=schema,
                 input_files=None,
                 exec_stats=None,
             )
@@ -70,6 +69,7 @@ class RandomIntRowDatasource(Datasource):
                         make_block(count, row_size_bytes)
                     ],
                     meta,
+                    schema=schema,
                 )
             )
             i += block_size
