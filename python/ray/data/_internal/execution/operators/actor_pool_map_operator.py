@@ -36,7 +36,8 @@ logger = logging.getLogger(__name__)
 
 # Higher values here are better for prefetching and locality. It's ok for this to be
 # fairly high since streaming backpressure prevents us from overloading actors.
-DEFAULT_MAX_TASKS_IN_FLIGHT = 4
+# TODO make configurable
+DEFAULT_MAX_TASKS_IN_FLIGHT = 2
 
 
 class ActorPoolMapOperator(MapOperator):
@@ -630,6 +631,8 @@ class _ActorTaskSelectorImpl(_ActorTaskSelector):
             else {}
         )
 
+        # NOTE: Ranks are ordered in descending order (ie rank[0] is the highest
+        #       and rank[-1] is the lowest)
         ranks = [
             (
                 # Priority/rank of the location (based on the object size).
@@ -736,7 +739,7 @@ class _ActorPool(AutoscalingActorPool):
     def max_tasks_in_flight_per_actor(self) -> int:
         return self._max_tasks_in_flight
 
-    def current_in_flight_tasks(self) -> int:
+    def num_in_flight_tasks(self) -> int:
         return self._total_num_tasks_in_flight
 
     def can_scale_down(self):
@@ -802,6 +805,7 @@ class _ActorPool(AutoscalingActorPool):
     def on_task_submitted(self, actor: ray.actor.ActorHandle):
         self._running_actors[actor].num_tasks_in_flight += 1
         self._total_num_tasks_in_flight += 1
+
         if self._running_actors[actor].num_tasks_in_flight == 1:
             self._num_active_actors += 1
 
