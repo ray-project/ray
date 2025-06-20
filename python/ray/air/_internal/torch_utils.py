@@ -187,9 +187,9 @@ def convert_ndarray_to_torch_tensor(
         result = torch.as_tensor(ndarray, dtype=dtype, device=device)
 
     if pin_memory:
-        assert device.type == "cpu", (
+        assert result.device.type == "cpu", (
             "Pin memory is only supported for CPU tensors. "
-            f"Got device: {device} and pin_memory: {pin_memory}."
+            f"Got device: {result.device} and pin_memory: {pin_memory}."
         )
         result = result.pin_memory()
 
