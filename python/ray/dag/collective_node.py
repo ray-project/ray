@@ -1,4 +1,5 @@
 from typing import Any, Dict, List, Union, Tuple, Optional, TYPE_CHECKING
+import math
 
 if TYPE_CHECKING:
     import torch
@@ -211,10 +212,21 @@ class _CollectiveOperation:
                 recv_buf = torch.empty_like(t)
                 communicator.allreduce(t, recv_buf, self._op.reduceOp)
             else:
-                recv_buf = tuple(torch.empty_like(t) for t in send_buf)
+
+                def unflatten_from(flat_buf, shapes):
+                    views = []
+                    offset = 0
+                    for shape in shapes:
+                        numel = math.prod(shape)
+                        t = flat_buf[offset : offset + numel].view(shape)
+                        views.append(t)
+                        offset += numel
+                    return tuple(views)
+
+                shapes = tuple(t.shape for t in send_buf)
                 flat_buf = torch.nn.utils.parameters_to_vector(send_buf)
                 communicator.allreduce(flat_buf, flat_buf, self._op.reduceOp)
-                torch.nn.utils.vector_to_parameters(flat_buf, recv_buf)
+                recv_buf = unflatten_from(flat_buf, shapes)
         elif isinstance(self._op, ReduceScatterOp):
             assert len(send_buf) == 1
             t = send_buf[0]

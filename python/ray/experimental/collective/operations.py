@@ -41,9 +41,13 @@ def _bind(
     Requirements:
     1. Each input node returns a torch tensor.
     2. Each input node within a list is from a different actor.
-    3. If a custom transport is specified, its actor set matches the actor set
-        of the input nodes.
-    4. All tensors have the same shape.
+    3. If lists of input nodes are provided, the order of actors should
+        be the same for each nested list.
+    4. If a custom transport is specified, its actor set matches the actor
+        set of the input nodes.
+    5. If input nodes are provided, then all tensors have the same shape.
+        If lists of input nodes are provided, then all tensors in each
+        list have the same shape.
 
     Requirements 1-3 are checked in the `CollectiveGroup` constructor.
     Requirement 4 is not checked yet.
