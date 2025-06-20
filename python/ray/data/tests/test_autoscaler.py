@@ -108,11 +108,10 @@ def test_actor_pool_scaling():
 
             # If inputs are not completed, should be no-op as there's nothing
             # to schedule and Actor Pool still has free slots
-            with patch(op, "_inputs_complete", False, is_method=False):
-                assert_autoscaling_action(
-                    _AutoscalingAction.NO_OP,
-                    "pool has sufficient task slots remaining: enqueued inputs 0 <= free slots 5)",
-                )
+            assert_autoscaling_action(
+                _AutoscalingAction.NO_OP,
+                "pool has sufficient task slots remaining: enqueued inputs 0 <= free slots 5)",
+            )
 
     # Should be no-op since the op doesn't have enough resources.
     with patch(
