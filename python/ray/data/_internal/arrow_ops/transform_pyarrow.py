@@ -812,7 +812,7 @@ _VARIABLE_WIDTH_INT32_OFFSET_PA_TYPE_PREDICATES = [
 
 
 def _try_combine_chunks_safe(
-    array: "pyarrow.ChunkedArray"
+    array: "pyarrow.ChunkedArray",
 ) -> Union["pyarrow.Array", "pyarrow.ChunkedArray"]:
     """This method provides a safe way of combining `ChunkedArray`s exceeding 2 GiB
     in size, which aren't using "large_*" types (and therefore relying on int32
@@ -851,11 +851,11 @@ def _try_combine_chunks_safe(
     #   - It's type is a variable-width type using int64 offsets (large_list,
     #     large_string, etc)
     #   - It's cumulative byte-size is < INT32_MAX
-    if not any(
-        p(array.type) for p in _VARIABLE_WIDTH_INT32_OFFSET_PA_TYPE_PREDICATES
-    ) or any(
-        p(array.type) for p in _VARIABLE_WIDTH_INT64_OFFSET_PA_TYPE_PREDICATES
-    ) or array.nbytes < INT32_MAX:
+    if (
+        not any(p(array.type) for p in _VARIABLE_WIDTH_INT32_OFFSET_PA_TYPE_PREDICATES)
+        or any(p(array.type) for p in _VARIABLE_WIDTH_INT64_OFFSET_PA_TYPE_PREDICATES)
+        or array.nbytes < INT32_MAX
+    ):
         return array.combine_chunks()
 
     # In this case it's actually *NOT* safe to try to directly combine
