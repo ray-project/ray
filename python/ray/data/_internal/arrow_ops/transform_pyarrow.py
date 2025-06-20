@@ -851,12 +851,6 @@ def _try_combine_chunks_safe(
     #   - It's type is a variable-width type using int64 offsets (large_list,
     #     large_string, etc)
     #   - It's cumulative byte-size is < INT32_MAX
-    print(f">>> [DBG] {array.nbytes} {array.type}, {INT32_MAX} {not any(
-        p(array.type) for p in _VARIABLE_WIDTH_INT32_OFFSET_PA_TYPE_PREDICATES
-    ) }, {any(
-        p(array.type) for p in _VARIABLE_WIDTH_INT64_OFFSET_PA_TYPE_PREDICATES
-    )}")
-
     if not any(
         p(array.type) for p in _VARIABLE_WIDTH_INT32_OFFSET_PA_TYPE_PREDICATES
     ) or any(
