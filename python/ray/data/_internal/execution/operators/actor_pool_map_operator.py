@@ -766,12 +766,19 @@ class _ActorPool(AutoscalingActorPool):
 
     def apply(self, action: _AutoscalingAction):
         if action.kind is _AutoscalingActionKind.SCALE_UP:
+            # Make sure after scaling up actor pool won't exceed its target
+            # max size
+            target_num_actors = min(
+                action.delta,
+                max(self.max_size() - self.current_size(), 0)
+            )
+
             logger.info(
-                f"Scaling up actor pool by {action.delta} "
+                f"Scaling up actor pool by {target_num_actors} (requested delta={action.delta}) "
                 f"(reason={action.reason}, {self.get_actor_info()})"
             )
 
-            for _ in range(action.delta):
+            for _ in range(target_num_actors):
                 actor, ready_ref = self._create_actor()
                 self.add_pending_actor(actor, ready_ref)
 
@@ -781,7 +788,14 @@ class _ActorPool(AutoscalingActorPool):
         elif action.kind is _AutoscalingActionKind.SCALE_DOWN:
             num_released = 0
 
-            for _ in range(action.delta):
+            # Make sure after scaling down actor pool size won't fall below its
+            # min size
+            target_num_actors = min(
+                action.delta,
+                max(self.current_size() - self.min_size(), 0)
+            )
+
+            for _ in range(target_num_actors):
                 if self._remove_inactive_actor():
                     num_released += 1
 
