@@ -35,10 +35,6 @@ MIN_PYARROW_VERSION_CHUNKED_ARRAY_TO_NUMPY_ZERO_COPY_ONLY = parse_version("13.0.
 
 NUM_BYTES_PER_UNICODE_CHAR = 4
 
-# NOTE: Overflow threshold in bytes for most Arrow types using int32 as
-#       its offsets
-INT32_OVERFLOW_THRESHOLD = 2 * GiB
-
 
 logger = logging.getLogger(__name__)
 
