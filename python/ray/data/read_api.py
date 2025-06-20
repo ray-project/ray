@@ -3639,9 +3639,9 @@ def read_unity_catalog(
     url: str,
     token: str,
     *,
-    data_format=None,
-    region=None,
-    **reader_kwargs,
+    data_format: Optional[str] = None,
+    region: Optional[str] = None,
+    **reader_kwargs: Optional[dict],
 ) -> Dataset:
     """
     Loads a Unity Catalog table or files into a Ray Dataset using Databricks Unity Catalog credential vending,
@@ -3697,7 +3697,7 @@ def read_unity_catalog(
         token: Databricks PAT (Personal Access Token) with `EXTERNAL USE SCHEMA` on the schema containing the table, and with access to the workspace API.
         data_format: (Optional) Data format override. If not specified, inferred from Unity Catalog metadata and file extension. Supported: `"delta"`, `"parquet"`
         region: (Optional) For S3: AWS region for cloud credential environment setup.
-        **reader_kwargs: Additional arguments forwarded to the underlying Ray Dataset reader (e.g., override_num_blocks, etc.).
+        reader_kwargs: Additional arguments forwarded to the underlying Ray Dataset reader (e.g., override_num_blocks, etc.).
 
     Returns:
         A :class:`ray.data.Dataset` containing the data from the external Unity Catalog table.
@@ -3725,7 +3725,7 @@ def read_delta(
     filesystem: Optional["pyarrow.fs.FileSystem"] = None,
     columns: Optional[List[str]] = None,
     parallelism: int = -1,
-    ray_remote_args: Dict[str, Any] = None,
+    ray_remote_args: Optional[Dict[str, Any]] = None,
     meta_provider: Optional[ParquetMetadataProvider] = None,
     partition_filter: Optional[PathPartitionFilter] = None,
     partitioning: Optional[Partitioning] = Partitioning("hive"),
@@ -3745,8 +3745,6 @@ def read_delta(
     Args:
         path: A single file path for a Delta Lake table. Multiple tables are not yet
             supported.
-        filters: A filter predicate to apply to the data. Only rows that match the
-            filter predicate are read during the file scan.
         filesystem: The PyArrow filesystem
             implementation to read from. These filesystems are specified in the
             `pyarrow docs <https://arrow.apache.org/docs/python/api/\
