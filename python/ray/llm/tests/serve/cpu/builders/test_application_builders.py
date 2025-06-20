@@ -83,6 +83,7 @@ def serve_config_separate_model_config_files():
 
 
 class TestBuildOpenaiApp:
+    
     def test_build_openai_app(self, get_llm_serve_args, shutdown_ray_and_serve):
         """Test `build_openai_app` can build app and run it with Serve."""
 

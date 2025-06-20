@@ -65,6 +65,7 @@ RAYLLM_ROUTER_HTTP_TIMEOUT = float(os.environ.get("RAYLLM_ROUTER_HTTP_TIMEOUT", 
 
 ENABLE_VERBOSE_TELEMETRY = bool(int(os.getenv("RAYLLM_ENABLE_VERBOSE_TELEMETRY", "0")))
 
+RAYLLM_VLLM_ENGINE_CLS_ENV = "RAYLLM_VLLM_ENGINE_CLS"
 
 # The ratio of number of router replicas to number of model replicas. Default to 2
 # meaning that there are 2 router replicas for every model replica.

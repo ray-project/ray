@@ -5,6 +5,8 @@ from typing import Any, AsyncGenerator, Dict, Optional, Type, Union
 
 # Third-party imports
 from ray import serve
+from ray._common.utils import import_attr
+
 
 # Local imports
 from ray.llm._internal.serve.configs.constants import (
@@ -12,6 +14,7 @@ from ray.llm._internal.serve.configs.constants import (
     DEFAULT_HEALTH_CHECK_TIMEOUT_S,
     ENGINE_START_TIMEOUT_S,
     MODEL_RESPONSE_BATCH_TIMEOUT_MS,
+    RAYLLM_VLLM_ENGINE_CLS_ENV,
 )
 from ray.llm._internal.serve.configs.openai_api_models import (
     ChatCompletionLogProb,
@@ -435,7 +438,7 @@ class LLMServer(_LLMServerBase):
         """
         await super().__init__(llm_config)
 
-        self._engine_cls = engine_cls or self._default_engine_cls
+        self._engine_cls = engine_cls or self._get_default_engine_class()
         self.engine: Optional[LLMEngine] = None
         if self._engine_cls is not None:
             self.engine = self._engine_cls(self._llm_config)
@@ -467,6 +470,16 @@ class LLMServer(_LLMServerBase):
             )(lambda lora_model_id: self._load_model(lora_model_id))
 
         self.response_postprocessor = ResponsePostprocessor()
+        
+    def _get_default_engine_class(self) -> Type[LLMEngine]:
+        """Helper to load the engine class from the environment variable.
+        This is used for testing or escape-hatch for patching purposes.
+        If env variable is not set, it will fallback to the default engine class.
+        """
+        engine_cls_path = os.environ.get(RAYLLM_VLLM_ENGINE_CLS_ENV)
+        if engine_cls_path:
+            return import_attr(engine_cls_path)
+        return self._default_engine_cls
 
     async def _start_engine(self):
         if self.engine is None:
