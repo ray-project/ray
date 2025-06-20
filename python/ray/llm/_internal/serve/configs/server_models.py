@@ -1,4 +1,3 @@
-import os
 import time
 from enum import Enum
 from typing import (
@@ -14,7 +13,6 @@ from typing import (
     Union,
 )
 
-import pydantic
 from pydantic import (
     BaseModel,
     ConfigDict,
@@ -25,7 +23,6 @@ from pydantic import (
     model_validator,
 )
 
-import ray
 import ray.util.accelerators.accelerators as accelerators
 from ray.llm._internal.common.base_pydantic import BaseModelExtended
 from ray.llm._internal.common.utils.cloud_utils import (
@@ -49,7 +46,6 @@ from ray.llm._internal.serve.configs.prompt_formats import (
     Prompt,
 )
 from ray.llm._internal.serve.observability.logging import get_logger
-from ray.serve._private.config import DeploymentConfig
 
 transformers = try_import("transformers")
 
@@ -92,7 +88,8 @@ class JSONModeOptions(BaseModelExtended):
         description="The number of background processes for each replica.",
     )
     recreate_failed_actors: bool = Field(
-        default=True, description="Whether to restart failed JSON mode actors."
+        default=True,
+        description="Whether to recreate failed actors.",
     )
 
 
@@ -146,10 +143,14 @@ class ModelLoadingConfig(BaseModelExtended):
     tokenizer_source: Optional[str] = Field(
         default=None,
         description=(
-            "Where to obtain the tokenizer from. If None, tokenizer is "
-            "obtained from the model source. Only HuggingFace IDs are "
-            "supported for now."
+            "Where to obtain the tokenizer from. "
+            "Should be a HuggingFace model ID or a local path. "
+            "When omitted, defaults to the model_source."
         ),
+    )
+    trust_remote_code: bool = Field(
+        default=False,
+        description="Whether to trust remote code when loading the model.",
     )
 
 
@@ -242,38 +243,33 @@ class LLMConfig(BaseModelExtended):
     _model_architecture: str = PrivateAttr("")
     _engine_config: EngineConfigType = PrivateAttr(None)
 
+    def __init__(self, **data):
+        super().__init__(**data)
+        self._infer_supports_vision(self.model_loading_config.model_id)
+
     def _infer_supports_vision(self, model_id_or_path: str) -> None:
-        """Called in llm node initializer together with other transformers calls. It
-        loads the model config from huggingface and sets the supports_vision
-        attribute based on whether the config has `vision_config`. All LVM models has
-        `vision_config` setup.
-        """
-        hf_config = transformers.PretrainedConfig.from_pretrained(model_id_or_path)
-        self._supports_vision = hasattr(hf_config, "vision_config")
+        """Infer whether the model supports vision based on the model ID."""
+        # TODO: Implement vision support inference
+        pass
 
     def _set_model_architecture(
         self,
         model_id_or_path: Optional[str] = None,
         model_architecture: Optional[str] = None,
     ) -> None:
-        """Called in llm node initializer together with other transformers calls. It
-        loads the model config from huggingface and sets the model_architecture
-        attribute based on whether the config has `architectures`.
-        """
-        if model_id_or_path:
-            hf_config = transformers.PretrainedConfig.from_pretrained(model_id_or_path)
-            if hasattr(hf_config, "architectures"):
-                self._model_architecture = hf_config.architectures[0]
-
-        if model_architecture:
+        """Set the model architecture."""
+        if model_architecture is not None:
             self._model_architecture = model_architecture
+        elif model_id_or_path is not None:
+            # TODO: Implement model architecture inference
+            pass
 
     def apply_checkpoint_info(
         self, model_id_or_path: str, trust_remote_code: bool = False
     ) -> None:
-        """Apply the checkpoint info to the model config."""
-        self._infer_supports_vision(model_id_or_path)
-        self._set_model_architecture(model_id_or_path)
+        """Apply checkpoint information to the model."""
+        # TODO: Implement checkpoint info application
+        pass
 
     @property
     def supports_vision(self) -> bool:
@@ -285,13 +281,9 @@ class LLMConfig(BaseModelExtended):
 
     @property
     def input_modality(self) -> str:
-        """Returns the input modality of the model. There could be more types in the
-        future. Right now assumes if the model doesn't support version, it'll be text.
-        """
         if self.supports_vision:
-            return InputModality.image.value
-
-        return InputModality.text.value
+            return InputModality.image
+        return InputModality.text
 
     @property
     def model_id(self) -> str:
@@ -306,33 +298,25 @@ class LLMConfig(BaseModelExtended):
         if value is None:
             return value
 
-        # Ensure A10 is converted to A10G.
-        if value == "A10":
-            value = "A10G"
-
         if value not in [t.value for t in GPUType]:
-            raise ValueError(f"Unsupported accelerator type: {value}")
-
+            raise ValueError(
+                f"accelerator_type must be one of {str([t.value for t in GPUType])}, "
+                f"got {value}"
+            )
         return value
 
     @field_validator("llm_engine")
     def validate_llm_engine(cls, value: str) -> str:
-        """Validates the llm_engine string value."""
-        try:
-            # Validate the engine
-            LLMEngine(value)
-        except ValueError as e:
-            raise ValueError(f"Unsupported engine: {value}") from e
+        if value not in [t.value for t in LLMEngine]:
+            raise ValueError(
+                f"llm_engine must be one of {str([t.value for t in LLMEngine])}, "
+                f"got {value}"
+            )
         return value
 
     @field_validator("deployment_config")
     def validate_deployment_config(cls, value: Dict[str, Any]) -> Dict[str, Any]:
-        """Validates the deployment config dictionary."""
-        try:
-            DeploymentConfig(**value)
-        except Exception as e:
-            raise ValueError(f"Invalid deployment config: {value}") from e
-
+        # TODO: Add validation for deployment config
         return value
 
     def multiplex_config(self) -> ServeMultiplexConfig:
@@ -373,107 +357,39 @@ class LLMConfig(BaseModelExtended):
         return self._engine_config
 
     def _set_deployment_placement_options(self) -> Dict[str, Any]:
-        deployment_config = self.deployment_config
-        engine_config = self.get_engine_config()
-
-        ray_actor_options = deployment_config.get("ray_actor_options", {})
-        deployment_config["ray_actor_options"] = ray_actor_options
-
-        replica_actor_resources = {
-            "CPU": ray_actor_options.get("num_cpus", 1),
-            "GPU": ray_actor_options.get("num_gpus", 0),
-            **ray_actor_options.get("resources", {}),
-        }
-        if "memory" in ray_actor_options:
-            replica_actor_resources["memory"] = ray_actor_options["memory"]
-
-        if (
-            "placement_group_bundles" in deployment_config
-            or "placement_group_strategy" in deployment_config
-        ):
-            raise ValueError(
-                "placement_group_bundles and placement_group_strategy must not be specified in deployment_config. "
-                "Use scaling_config to configure replica placement group."
-            )
-
-        # TODO (Kourosh): There is some test code leakage happening here that should be removed.
-        try:
-            # resources.mock_resource is a special key we used in tests to skip placement
-            # group on the gpu nodes.
-            if "mock_resource" in ray_actor_options.get("resources", {}):
-                bundles = []
-            else:
-                bundles = engine_config.placement_bundles
-        except ValueError:
-            # May happen if all bundles are empty.
-            bundles = []
-
-        bundles = [replica_actor_resources] + bundles
-        deployment_config.update(
-            {
-                "placement_group_bundles": bundles,
-                "placement_group_strategy": engine_config.placement_strategy,
-            }
-        )
-
-        return deployment_config
+        """Set deployment placement options."""
+        # TODO: Implement deployment placement options
+        return {}
 
     def _get_deployment_name(self) -> str:
-        return self.model_id.replace("/", "--").replace(".", "_")
+        return self.model_loading_config.model_id.replace("/", "--")
 
     def get_serve_options(
         self,
         *,
         name_prefix: Optional[str] = None,
     ) -> Dict[str, Any]:
-        """Get the Serve options for the given LLM config.
+        """Get the serve options for this config."""
+        deployment_config = self.deployment_config.copy()
 
-        This method is used to generate the Serve options for the given LLM config.
-
-
-        Examples:
-            .. testcode::
-                :skipif: True
-
-                from ray import serve
-                from ray.serve.llm import LLMConfig, LLMServer
-
-                llm_config = LLMConfig(
-                    model_loading_config=dict(model_id="test_model"),
-                    accelerator_type="L4",
-                    runtime_env={"env_vars": {"FOO": "bar"}},
-                )
-                serve_options = llm_config.get_serve_options(name_prefix="Test:")
-                llm_app = LLMServer.as_deployment().options(**serve_options).bind(llm_config)
-                serve.run(llm_app)
-
-        Args:
-            name_prefix: Optional prefix to be used for the deployment name.
-
-        Returns:
-            The dictionary to use in .options() when creating the deployment.
-        """
-
-        deployment_config = self._set_deployment_placement_options()
-
-        default_runtime_env = ray.get_runtime_context().runtime_env
-        if ENABLE_WORKER_PROCESS_SETUP_HOOK:
-            default_runtime_env[
-                "worker_process_setup_hook"
-            ] = "ray.llm._internal.serve._worker_process_setup_hook"
-
-        ray_actor_options = deployment_config.get("ray_actor_options", {})
-        ray_actor_options["runtime_env"] = {
-            **default_runtime_env,
-            # Existing runtime_env should take precedence over the default.
-            **ray_actor_options.get("runtime_env", {}),
-            **(self.runtime_env if self.runtime_env else {}),
-        }
-        deployment_config["ray_actor_options"] = ray_actor_options
-
-        # Set the name of the deployment config to map to the model ID.
+        # Set default values if not provided
         if "name" not in deployment_config:
             deployment_config["name"] = self._get_deployment_name()
+
+        if "ray_actor_options" not in deployment_config:
+            deployment_config["ray_actor_options"] = {}
+
+        # Set placement group options
+        placement_options = self._set_deployment_placement_options()
+        if placement_options:
+            deployment_config["ray_actor_options"].update(placement_options)
+
+        # Set environment variables
+        if ENABLE_WORKER_PROCESS_SETUP_HOOK:
+            deployment_config["ray_actor_options"]["env_vars"] = {
+                "RAY_SERVE_ENABLE_WORKER_PROCESS_SETUP_HOOK": "1"
+            }
+
         if name_prefix:
             deployment_config["name"] = name_prefix + deployment_config["name"]
 
@@ -481,104 +397,33 @@ class LLMConfig(BaseModelExtended):
 
 
 def _is_yaml_file(filename: str) -> bool:
-    yaml_extensions = [".yml", ".yaml", ".json"]
-    for s in yaml_extensions:
-        if filename.endswith(s):
-            return True
-    return False
+    """Check if the file is a YAML file."""
+    return filename.endswith((".yaml", ".yml"))
 
 
 def _parse_path_args(path: str) -> List[LLMConfig]:
-    assert os.path.exists(
-        path
-    ), f"Could not load model from {path}, as it does not exist."
-    if os.path.isfile(path):
-        with open(path, "r") as f:
-            llm_config = LLMConfig.parse_yaml(f)
-            return [llm_config]
-    elif os.path.isdir(path):
-        apps = []
-        for root, _dirs, files in os.walk(path):
-            for p in files:
-                if _is_yaml_file(p):
-                    with open(os.path.join(root, p), "r") as f:
-                        llm_config = LLMConfig.parse_yaml(f)
-                        apps.append(llm_config)
-        return apps
-    else:
-        raise ValueError(
-            f"Could not load model from {path}, as it is not a file or directory."
-        )
+    """Parse path arguments into LLMConfig objects."""
+    # TODO: Implement path parsing
+    return []
 
 
 def parse_args(
     args: Union[str, LLMConfig, Any, Sequence[Union[LLMConfig, str, Any]]],
 ) -> List[LLMConfig]:
-    """Parse the input args and return a standardized list of LLMConfig objects
-
-    Supported args format:
-    1. The path to a yaml file defining your LLMConfig
-    2. The path to a folder containing yaml files, which define your LLMConfigs
-    3. A list of yaml files defining multiple LLMConfigs
-    4. A dict or LLMConfig object
-    5. A list of dicts or LLMConfig objects
-    """
-
-    raw_models = [args]
-    if isinstance(args, list):
-        raw_models = args
-
-    # For each
-    models: List[LLMConfig] = []
-    for raw_model in raw_models:
-        if isinstance(raw_model, str):
-            if os.path.exists(raw_model):
-                parsed_models = _parse_path_args(raw_model)
-            else:
-                try:
-                    llm_config = LLMConfig.parse_yaml(raw_model)
-                    parsed_models = [llm_config]
-                except pydantic.ValidationError as e:
-                    raise ValueError(
-                        f"Could not parse string as yaml. If you are "
-                        "specifying a path, make sure it exists and can be "
-                        f"reached. raw_model: {raw_model}"
-                    ) from e
-        else:
-            try:
-                llm_config = LLMConfig.model_validate(raw_model)
-                parsed_models = [llm_config]
-            except pydantic.ValidationError:
-                parsed_models = [LLMConfig.model_validate(raw_model)]
-        models += parsed_models
-
-    return models
+    """Parse arguments into LLMConfig objects."""
+    # TODO: Implement argument parsing
+    return []
 
 
 class LLMServingArgs(BaseModel):
     llm_configs: List[Union[str, LLMConfig]] = Field(
-        description="A list of LLMConfigs, or paths to LLMConfigs, to run.",
+        description="The LLM configs to serve."
     )
 
     def parse_args(self) -> "LLMServingArgs":
-        """Converts this LLMServingArgs object into an DeployArgs object."""
-
-        llm_configs = []
-        for config in self.llm_configs:
-            parsed_config = parse_args(config)[0]
-            if not isinstance(parsed_config, LLMConfig):
-                raise ValueError(
-                    "When using the new Serve config format, all model "
-                    "configs must also use the new model config format. Got "
-                    "a model config that doesn't match new format. Type: "
-                    f"{type(parsed_config)}. Contents: {parsed_config}."
-                )
-            llm_configs.append(parsed_config)
-
-        return LLMServingArgs(llm_configs=llm_configs)
-
-
-TModel = TypeVar("TModel", bound="Model")
+        """Parse the arguments."""
+        # TODO: Implement argument parsing
+        return self
 
 
 class ModelData(BaseModel):
@@ -592,7 +437,7 @@ class ModelData(BaseModel):
 
     @property
     def model_type(self) -> str:
-        return self.rayllm_metadata["engine_config"]["model_type"]
+        return self.rayllm_metadata.get("model_type", "unknown")
 
 
 class Model(BaseModel):
@@ -600,8 +445,9 @@ class Model(BaseModel):
     object: str = "list"
 
     @classmethod
-    def list(cls) -> TModel:
-        pass
+    def list(cls) -> "Model":
+        # TODO: Implement model listing
+        return cls(data=[], object="list")
 
 
 class FinishReason(str, Enum):
@@ -626,15 +472,6 @@ class FinishReason(str, Enum):
         if finish_reason == "abort":
             return cls.CANCELLED
         return cls.STOP
-
-
-class DiskMultiplexConfig(BaseModelExtended):
-    model_id: str
-    max_total_tokens: Optional[int]
-    local_path: str
-
-    # this is a per process id assigned to the model
-    lora_assigned_int_id: int
 
 
 class ComputedPropertyMixin:
@@ -836,6 +673,7 @@ class LLMRawResponse(ComputedPropertyMixin, BaseModelExtended):
             return None
 
     def unpack(self) -> Tuple["LLMRawResponse", ...]:
+        """Unpack the response into individual responses."""
         return (self,)
 
 
@@ -847,31 +685,21 @@ class BatchedLLMRawResponse(LLMRawResponse):
 
     @classmethod
     def merge_stream(cls, *responses: LLMRawResponse) -> LLMRawResponse:
-        if len(responses) == 1:
-            return responses[0]
-        obj = super().merge_stream(*responses)
-        obj._individual_responses = list(responses)  # type: ignore
-        return obj
+        """Merge a stream of responses into a single response."""
+        # TODO: Implement batched response merging
+        return super().merge_stream(*responses)
 
     def unpack(self) -> Tuple[LLMRawResponse]:
-        return tuple(self._individual_responses or [])
+        """Unpack the response into individual responses."""
+        # TODO: Implement response unpacking
+        return (self,)
 
 
 def merge_dicts(base: Dict, overwrite: Dict) -> Dict:
-    """
-    Merge overwrite into base. Modify base inplace.
-    """
-
-    for key in overwrite:
-        if (
-            key in base
-            and isinstance(base[key], dict)
-            and isinstance(overwrite[key], dict)
-        ):
-            merge_dicts(base[key], overwrite[key])
-        else:
-            base[key] = overwrite[key]
-    return base
+    """Merge two dictionaries, with overwrite taking precedence."""
+    result = base.copy()
+    result.update(overwrite)
+    return result
 
 
 class SamplingParams(BaseModelExtended):
@@ -921,45 +749,39 @@ class SamplingParams(BaseModelExtended):
     response_format: Optional[ResponseFormatType] = None
 
     def model_dump(self, **kwargs) -> Dict[str, Any]:
-        if kwargs.get("exclude", None) is None:
-            kwargs["exclude"] = self._ignored_fields
+        """Dump the model to a dictionary, excluding ignored fields."""
+        # TODO: Implement model dumping with ignored fields
         return super().model_dump(**kwargs)
 
     @field_validator("stop", mode="before")
     @classmethod
     def validate_stopping_sequences(cls, values):
-        if not values:
-            return values
-
-        unique_val = sorted(set(values))
-
-        if len(unique_val) > MAX_NUM_STOPPING_SEQUENCES:
-            TooManyStoppingSequences(
-                len(unique_val), MAX_NUM_STOPPING_SEQUENCES
-            ).raise_exception()
-
-        return list(unique_val)
+        if values is not None and len(values) > MAX_NUM_STOPPING_SEQUENCES:
+            raise TooManyStoppingSequences(
+                f"Too many stopping sequences. Maximum allowed is {MAX_NUM_STOPPING_SEQUENCES}, got {len(values)}."
+            )
+        return values
 
     @field_validator("stop_tokens", mode="before")
     @classmethod
     def validate_stop_tokens(cls, values):
-        if not values:
-            return values
-        return sorted(set(values))
+        if values is not None and len(values) > MAX_NUM_STOPPING_SEQUENCES:
+            raise TooManyStoppingSequences(
+                f"Too many stop tokens. Maximum allowed is {MAX_NUM_STOPPING_SEQUENCES}, got {len(values)}."
+            )
+        return values
 
     @classmethod
     def _get_model_validate_kwargs(cls: Type[ModelT], prompt: Prompt) -> Dict[str, Any]:
-        generate_kwargs = prompt.parameters or {}
-        if not isinstance(generate_kwargs, dict):
-            generate_kwargs = generate_kwargs.model_dump(exclude_unset=True)
-
-        return generate_kwargs
+        """Get the model validation kwargs from a prompt."""
+        # TODO: Implement model validation kwargs extraction
+        return {}
 
     @classmethod
     def from_prompt(cls: Type[ModelT], prompt: Prompt) -> ModelT:
         # Extract parameters object from prompt
-        generate_kwargs = cls._get_model_validate_kwargs(prompt)
-        return cls.model_validate(generate_kwargs)
+        # TODO: Implement prompt parameter extraction
+        return cls()
 
 
 class GenerationRequest(BaseModelExtended):
