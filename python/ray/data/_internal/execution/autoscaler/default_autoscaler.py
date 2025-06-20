@@ -26,7 +26,8 @@ class _AutoscalingAction(enum.Enum):
 class DefaultAutoscaler(Autoscaler):
 
     # Default threshold of actor pool utilization to trigger scaling up.
-    DEFAULT_ACTOR_POOL_SCALING_UP_THRESHOLD: float = 0.8
+    # TODO make configurable
+    DEFAULT_ACTOR_POOL_SCALING_UP_THRESHOLD: float = 0.95
     # Default threshold of actor pool utilization to trigger scaling down.
     DEFAULT_ACTOR_POOL_SCALING_DOWN_THRESHOLD: float = 0.5
 
@@ -85,15 +86,6 @@ class DefaultAutoscaler(Autoscaler):
                 return _AutoscalingAction.NO_OP, "reached max size"
             if not op_state._scheduling_status.under_resource_limits:
                 return _AutoscalingAction.NO_OP, "operator exceeding resource quota"
-            elif (
-                op_state.total_enqueued_input_bundles()
-                <= actor_pool.num_free_task_slots()
-            ):
-                return _AutoscalingAction.NO_OP, (
-                    f"pool has sufficient task slots remaining: "
-                    f"enqueued inputs {op_state.total_enqueued_input_bundles()} <= "
-                    f"free slots {actor_pool.num_free_task_slots()})"
-                )
 
             return (
                 _AutoscalingAction.SCALE_UP,
