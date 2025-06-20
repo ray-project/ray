@@ -83,10 +83,10 @@ class CoreWorkerClientPool {
   struct CoreWorkerClientEntry {
    public:
     CoreWorkerClientEntry() = default;
-    CoreWorkerClientEntry(ray::WorkerID worker_id,
-                          std::shared_ptr<CoreWorkerClientInterface> core_worker_client)
-        : worker_id(std::move(worker_id)),
-          core_worker_client(std::move(core_worker_client)) {}
+    CoreWorkerClientEntry(ray::WorkerID _worker_id,
+                          std::shared_ptr<CoreWorkerClientInterface> _core_worker_client)
+        : worker_id(std::move(_worker_id)),
+          core_worker_client(std::move(_core_worker_client)) {}
 
     ray::WorkerID worker_id;
     std::shared_ptr<CoreWorkerClientInterface> core_worker_client;

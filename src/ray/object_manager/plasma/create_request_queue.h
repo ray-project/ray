@@ -121,16 +121,16 @@ class CreateRequestQueue {
 
  private:
   struct CreateRequest {
-    CreateRequest(const ObjectID &object_id,
-                  uint64_t request_id,
-                  const std::shared_ptr<ClientInterface> &client,
-                  CreateObjectCallback create_callback,
-                  size_t object_size)
-        : object_id(object_id),
-          request_id(request_id),
-          client(client),
-          create_callback(create_callback),
-          object_size(object_size) {}
+    CreateRequest(const ObjectID &_object_id,
+                  uint64_t _request_id,
+                  const std::shared_ptr<ClientInterface> &_client,
+                  CreateObjectCallback _create_callback,
+                  size_t _object_size)
+        : object_id(_object_id),
+          request_id(_request_id),
+          client(_client),
+          create_callback(_create_callback),
+          object_size(_object_size) {}
 
     // The ObjectID to create.
     const ObjectID object_id;

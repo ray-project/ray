@@ -583,19 +583,19 @@ class TaskManager : public TaskFinisherInterface, public TaskResubmissionInterfa
     TaskEntry(TaskSpecification spec_arg,
               int num_retries_left_arg,
               size_t num_returns,
-              TaskStatusCounter &counter,
-              int64_t num_oom_retries_left)
+              TaskStatusCounter &_counter,
+              int64_t _num_oom_retries_left)
         : spec(std::move(spec_arg)),
           num_retries_left(num_retries_left_arg),
-          counter(&counter),
-          num_oom_retries_left(num_oom_retries_left) {
+          counter(&_counter),
+          num_oom_retries_left(_num_oom_retries_left) {
       reconstructable_return_ids.reserve(num_returns);
       for (size_t i = 0; i < num_returns; i++) {
         reconstructable_return_ids.insert(spec.ReturnId(i));
       }
       status =
           std::make_tuple(spec.GetName(), rpc::TaskStatus::PENDING_ARGS_AVAIL, false);
-      counter.Increment(status);
+      counter->Increment(status);
     }
 
     void SetStatus(rpc::TaskStatus new_status) {

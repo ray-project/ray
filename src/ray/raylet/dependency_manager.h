@@ -233,11 +233,11 @@ class DependencyManager : public TaskDependencyManagerInterface {
   struct TaskDependencies {
     TaskDependencies(const absl::flat_hash_set<ObjectID> &deps,
                      CounterMap<std::pair<std::string, bool>> &counter_map,
-                     const TaskMetricsKey &task_key)
+                     const TaskMetricsKey &_task_key)
         : dependencies(std::move(deps)),
           num_missing_dependencies(dependencies.size()),
           waiting_task_counter_map(counter_map),
-          task_key(task_key) {
+          task_key(_task_key) {
       if (num_missing_dependencies > 0) {
         waiting_task_counter_map.Increment(task_key);
       }

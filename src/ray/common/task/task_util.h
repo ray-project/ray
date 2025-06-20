@@ -31,10 +31,10 @@ struct TaskFailureEntry {
 
   /// Whether this task should be retried.
   bool should_retry;
-  TaskFailureEntry(const rpc::RayErrorInfo &ray_error_info, bool should_retry)
-      : ray_error_info(ray_error_info),
+  TaskFailureEntry(const rpc::RayErrorInfo &_ray_error_info, bool _should_retry)
+      : ray_error_info(_ray_error_info),
         creation_time(std::chrono::steady_clock::now()),
-        should_retry(should_retry) {}
+        should_retry(_should_retry) {}
 };
 
 /// Argument of a task.

@@ -35,7 +35,7 @@ namespace raylet {
 /// Key groups on its owner id. For non-retriable task the owner id is itself,
 /// Since non-retriable task forms its own group.
 struct GroupKey {
-  explicit GroupKey(const TaskID &owner_id) : owner_id(owner_id) {}
+  explicit GroupKey(const TaskID &_owner_id) : owner_id(_owner_id) {}
   const TaskID &owner_id;
 };
 
