@@ -96,10 +96,8 @@ class DependencySetManager:
             depset_path.unlink()
         del self.depsets[name]
 
-    def compile_depset(
+    def process_flags(
         self,
-        constraints: List[str],
-        requirements: List[str],
         unsafe_packages: tuple,
         index_url: str,
         extra_index_url: str,
@@ -108,7 +106,6 @@ class DependencySetManager:
         header: bool,
         no_cache: bool,
         index_strategy: str,
-        name: str,
         strip_extras: bool,
         no_strip_markers: bool,
         emit_index_url: bool,
@@ -116,12 +113,6 @@ class DependencySetManager:
         python_version: str,
     ):
         args = []
-        if generate_hashes:
-            args.append("--generate-hashes")
-        if not header:
-            args.append("--no-header")
-        if strip_extras:
-            args.append("--strip-extras")
         if unsafe_packages:
             for package in unsafe_packages:
                 args.extend(["--unsafe-package", package])
@@ -131,18 +122,33 @@ class DependencySetManager:
             args.extend(["--extra-index-url", extra_index_url])
         if find_links:
             args.extend(["--find-links", find_links])
+        if generate_hashes:
+            args.append("--generate-hashes")
+        if not header:
+            args.append("--no-header")
+        if no_cache:
+            args.append("--no-cache")
+        if index_strategy:
+            args.extend(["--index-strategy", index_strategy])
+        if strip_extras:
+            args.append("--strip-extras")
         if no_strip_markers:
             args.append("--no-strip-markers")
         if emit_index_url:
             args.append("--emit-index-url")
         if emit_find_links:
             args.append("--emit-find-links")
-        if no_cache:
-            args.append("--no-cache")
-        if index_strategy:
-            args.extend(["--index-strategy", index_strategy])
         if python_version:
             args.extend(["--python-version", python_version])
+        return args
+
+    def compile_depset(
+        self,
+        constraints: List[str],
+        requirements: List[str],
+        args: List[str],
+        name: str,
+    ):
         if constraints:
             for constraint in constraints:
                 args.extend(["-c", constraint])
@@ -167,18 +173,9 @@ class DependencySetManager:
         self,
         sources: List[str],
         constraints: List[str],
-        generate_hashes: bool,
-        header: bool,
-        no_cache: bool,
+        args: List[str],
         name: str,
     ):
-        args = []
-        if generate_hashes:
-            args.append("--generate-hashes")
-        if not header:
-            args.append("--no-header")
-        if no_cache:
-            args.append("--no-cache")
         if constraints:
             for constraint in constraints:
                 args.extend(["-c", constraint])
@@ -337,8 +334,8 @@ def delete(name: str):
     help="comma separated list of absolute filepaths for constraint files",
 )
 @click.option("--requirements", "-r", type=str, help="comma separated list of absolute filepaths for requirements files")
-@click.option("--generate-hashes", type=bool, default=True, help="generate hashes")
-@click.option("--strip-extras", type=bool, default=True, help="generate hashes")
+@click.option("--generate-hashes", is_flag=True, help="generate hashes")
+@click.option("--strip-extras", is_flag=True, help="strip extras")
 @click.option(
     "--unsafe-package",
     multiple=True,
@@ -363,11 +360,11 @@ def delete(name: str):
 @click.option(
     "--index-strategy", type=str, default="unsafe-best-match", help="index strategy"
 )
-@click.option("--no-strip-markers", type=bool, default=False, help="no strip markers")
-@click.option("--emit-index-url", type=bool, default=False, help="emit index url")
-@click.option("--emit-find-links", type=bool, default=False, help="emit find links")
-@click.option("--header", type=bool, default=True, help="no header")
-@click.option("--no-cache", type=bool, default=False, help="no header")
+@click.option("--no-strip-markers", is_flag=True, help="no strip markers")
+@click.option("--emit-index-url", is_flag=True, help="emit index url")
+@click.option("--emit-find-links", is_flag=True, help="emit find links")
+@click.option("--header", is_flag=True, help="no header")
+@click.option("--no-cache", is_flag=True, help="no header")
 @click.option("--python-version", type=str, default="3.11", help="python version")
 @click.argument("name", required=True)
 def compile(
@@ -401,23 +398,12 @@ def compile(
         resolved_requirements = resolve_paths(requirements)
 
         manager = DependencySetManager()
+        args = manager.process_flags(unsafe_package, index_url, extra_index_url, find_links, generate_hashes, header, no_cache, index_strategy, strip_extras, no_strip_markers, emit_index_url, emit_find_links, python_version)
         manager.compile_depset(
             resolved_constraints,
             resolved_requirements,
-            unsafe_packages=unsafe_package,
-            index_url=index_url,
-            extra_index_url=extra_index_url,
-            find_links=find_links,
-            generate_hashes=generate_hashes,
-            header=header,
-            no_cache=no_cache,
-            index_strategy=index_strategy,
+            args,
             name=name,
-            strip_extras=strip_extras,
-            no_strip_markers=no_strip_markers,
-            emit_index_url=emit_index_url,
-            emit_find_links=emit_find_links,
-            python_version=python_version,
         )
         click.echo(f"Compiled dependency set {name}")
     except ValueError as e:
@@ -460,27 +446,65 @@ def subset(sources: str, packages: str, name: str):
     type=str,
     help="comma separated list of absolute filepaths for constraint(s) file(s)",
 )
-@click.option("--generate-hashes", type=bool, default=True, help="generate hashes")
-@click.option("--header", type=bool, default=True, help="no header")
-@click.option("--no-cache", type=bool, default=False, help="no header")
+@click.option("--generate-hashes", is_flag=True, help="generate hashes")
+@click.option("--strip-extras", is_flag=True, help="strip extras")
+@click.option(
+    "--unsafe-package",
+    multiple=True,
+    default=("ray", "grpcio-tools", "setuptools"),
+    help="unsafe package (can be used multiple times)",
+)
+@click.option(
+    "--index-url", type=str, default="https://pypi.org/simple", help="index url"
+)
+@click.option(
+    "--extra-index-url",
+    type=str,
+    default="https://download.pytorch.org/whl/cpu",
+    help="extra index url",
+)
+@click.option(
+    "--find-links",
+    type=str,
+    default="https://data.pyg.org/whl/torch-2.5.1+cpu.html",
+    help="find links",
+)
+@click.option(
+    "--index-strategy", type=str, default="unsafe-best-match", help="index strategy"
+)
+@click.option("--no-strip-markers", is_flag=True, help="no strip markers")
+@click.option("--emit-index-url", is_flag=True, help="emit index url")
+@click.option("--emit-find-links", is_flag=True, help="emit find links")
+@click.option("--header", is_flag=True, help="no header")
+@click.option("--no-cache", is_flag=True, help="no header")
+@click.option("--python-version", type=str, default="3.11", help="python version")
 @click.argument("name")
 def expand(
     sources: str,
     constraints: str,
-    name: str,
     generate_hashes: bool,
+    strip_extras: bool,
+    unsafe_package: tuple,
+    index_url: str,
+    extra_index_url: str,
+    find_links: str,
+    index_strategy: str,
+    no_strip_markers: bool,
+    emit_index_url: bool,
+    emit_find_links: bool,
     header: bool,
     no_cache: bool,
+    python_version: str,
+    name: str,
 ):
     """Expand a dependency set."""
     try:
         manager = DependencySetManager()
+        args = manager.process_flags(unsafe_package, index_url, extra_index_url, find_links, generate_hashes, header, no_cache, index_strategy, strip_extras, no_strip_markers, emit_index_url, emit_find_links, python_version)
         manager.expand_depset(
             sources.split(","),
             resolve_paths(constraints),
-            generate_hashes,
-            header,
-            no_cache,
+            args,
             name,
         )
         click.echo(f"Expanded {name} from {sources}")

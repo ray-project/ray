@@ -14,8 +14,9 @@ for CUDA_CODE in cpu cu121 cu124 ; do
 
 	echo "--- Compile dependencies for ${PYTHON_CODE}_${CUDA_CODE}"
 
-	UV_PIP_COMPILE=(
-		uv pip compile --generate-hashes --strip-extras
+	FLAGS=(
+		--generate-hashes
+		--strip-extras
 		--unsafe-package ray
 		# The version we use on python 3.9 is not installable on python 3.11
 		--unsafe-package grpcio-tools
@@ -44,7 +45,7 @@ for CUDA_CODE in cpu cu121 cu124 ; do
 	echo "--- Compile ray base test dependencies"
 	bazel run //ci/depsets:depsets -- compile -c "/tmp/ray-deps/requirements_compiled.txt" \
 		-r "python/requirements.txt,python/requirements/cloud-requirements.txt,python/requirements/base-test-requirements.txt" \
-		ray_base_test_deps_${PYTHON_CUDA_CODE}
+		ray_base_test_deps_${PYTHON_CUDA_CODE} ${FLAGS[@]}
 
 	# Second, expand it into LLM test dependencies
 	echo "--- Expand ray base test dependencies into LLM test dependencies"
@@ -54,20 +55,20 @@ for CUDA_CODE in cpu cu121 cu124 ; do
 	bazel run //ci/depsets:depsets -- compile -r "python/requirements/llm/llm-requirements.txt" llm_req_deps
 	bazel run //ci/depsets:depsets -- compile -r "python/requirements/llm/llm-test-requirements.txt" llm_test_req_deps
 	bazel run //ci/depsets:depsets -- expand -s reqs,cloud_req_deps,base_test_req_deps,llm_req_deps,llm_test_req_deps -c ~/.depsets/ray_base_test_deps_${PYTHON_CUDA_CODE}.txt \
-		ray_llm_test_deps_${PYTHON_CUDA_CODE}
+		ray_llm_test_deps_${PYTHON_CUDA_CODE} ${FLAGS[@]}
 
 	# Third, extract the ray base dependencies from ray base test dependencies.
 	# TODO(aslonnie): This should be used for installing ray in the container images.
 	echo "--- Compile ray base test dependencies"
 	bazel run //ci/depsets:depsets -- compile -c ~/.depsets/ray_base_test_deps_${PYTHON_CUDA_CODE}.txt -r "python/requirements.txt" \
-		ray_compiled_deps_${PYTHON_CUDA_CODE}
+		ray_compiled_deps_${PYTHON_CUDA_CODE} ${FLAGS[@]}
 
 	# Finally, extract the LLM dependencies from the LLM test dependencies,
 	# which is also an expansion of the ray base dependencies.
 	# TODO(aslonnie): This should be used for installing ray[llm] in the container images.
 	echo "--- Compile LLM dependencies"
 	bazel run //ci/depsets:depsets -- compile -c ~/.depsets/ray_llm_test_deps_${PYTHON_CUDA_CODE}.txt -r "python/requirements.txt,python/requirements/llm/llm-requirements.txt" \
-		ray_llm_compiled_deps_${PYTHON_CUDA_CODE}
+		ray_llm_compiled_deps_${PYTHON_CUDA_CODE} ${FLAGS[@]}
 done
 
 echo "--- Done"
