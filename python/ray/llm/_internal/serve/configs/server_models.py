@@ -1,3 +1,4 @@
+import os
 import time
 from enum import Enum
 from typing import (
@@ -13,6 +14,7 @@ from typing import (
     Union,
 )
 
+import yaml
 from pydantic import (
     BaseModel,
     ConfigDict,
@@ -384,11 +386,15 @@ class LLMConfig(BaseModelExtended):
         if placement_options:
             deployment_config["ray_actor_options"].update(placement_options)
 
-        # Set environment variables
+        # Set environment variables in runtime_env instead of ray_actor_options
         if ENABLE_WORKER_PROCESS_SETUP_HOOK:
-            deployment_config["ray_actor_options"]["env_vars"] = {
-                "RAY_SERVE_ENABLE_WORKER_PROCESS_SETUP_HOOK": "1"
-            }
+            if "runtime_env" not in deployment_config["ray_actor_options"]:
+                deployment_config["ray_actor_options"]["runtime_env"] = {}
+            if "env_vars" not in deployment_config["ray_actor_options"]["runtime_env"]:
+                deployment_config["ray_actor_options"]["runtime_env"]["env_vars"] = {}
+            deployment_config["ray_actor_options"]["runtime_env"]["env_vars"][
+                "RAY_SERVE_ENABLE_WORKER_PROCESS_SETUP_HOOK"
+            ] = "1"
 
         if name_prefix:
             deployment_config["name"] = name_prefix + deployment_config["name"]
@@ -403,16 +409,45 @@ def _is_yaml_file(filename: str) -> bool:
 
 def _parse_path_args(path: str) -> List[LLMConfig]:
     """Parse path arguments into LLMConfig objects."""
-    # TODO: Implement path parsing
-    return []
+    if not _is_yaml_file(path):
+        raise ValueError(f"Only YAML files are supported. Got: {path}")
+
+    if not os.path.exists(path):
+        raise FileNotFoundError(f"Config file not found: {path}")
+
+    with open(path, "r") as f:
+        config_dict = yaml.safe_load(f)
+
+    return [LLMConfig.model_validate(config_dict)]
 
 
 def parse_args(
     args: Union[str, LLMConfig, Any, Sequence[Union[LLMConfig, str, Any]]],
 ) -> List[LLMConfig]:
     """Parse arguments into LLMConfig objects."""
-    # TODO: Implement argument parsing
-    return []
+    if args is None:
+        return []
+
+    # Handle single argument
+    if not isinstance(args, (list, tuple)):
+        args = [args]
+
+    result = []
+    for arg in args:
+        if isinstance(arg, LLMConfig):
+            result.append(arg)
+        elif isinstance(arg, str):
+            # String path to YAML file
+            result.extend(_parse_path_args(arg))
+        elif isinstance(arg, dict):
+            # Dictionary config
+            result.append(LLMConfig.model_validate(arg))
+        else:
+            raise ValueError(
+                f"Unsupported argument type: {type(arg)}. Expected LLMConfig, str (file path), or dict."
+            )
+
+    return result
 
 
 class LLMServingArgs(BaseModel):
@@ -422,8 +457,8 @@ class LLMServingArgs(BaseModel):
 
     def parse_args(self) -> "LLMServingArgs":
         """Parse the arguments."""
-        # TODO: Implement argument parsing
-        return self
+        parsed_configs = parse_args(self.llm_configs)
+        return LLMServingArgs(llm_configs=parsed_configs)
 
 
 class ModelData(BaseModel):
