@@ -49,7 +49,7 @@ for CUDA_CODE in cpu cu121 cu124 ; do
 
 	# Second, expand it into LLM test dependencies
 	echo "--- Expand ray base test dependencies into LLM test dependencies"
-	bazel run //ci/depsets:depsets -- compile -r "python/requirements/llm/llm-test-requirements.txt,python/requirements/cloud-requirements.txt,python/requirements/base-test-requirements.txt,python/requirements/llm/llm-requirements.txt,python/requirements/llm/llm-test-requirements.txt" \
+	bazel run //ci/depsets:depsets -- compile -r "python/requirements.txt,python/requirements/cloud-requirements.txt,python/requirements/base-test-requirements.txt,python/requirements/llm/llm-requirements.txt,python/requirements/llm/llm-test-requirements.txt" \
 		-c ~/.depsets/ray_base_test_deps_${PYTHON_CUDA_CODE}.txt \
 		ray_llm_test_deps_${PYTHON_CUDA_CODE} ${FLAGS[@]}
 
