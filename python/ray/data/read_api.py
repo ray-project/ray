@@ -3777,7 +3777,7 @@ def read_delta(
             By default, the number of output blocks is dynamically decided based on
             input data size and available resources. You shouldn't manually set this
             value in most cases.
-        arrow_parquet_args: Other parquet read options to pass to PyArrow. For the full
+        **arrow_parquet_args: Other parquet read options to pass to PyArrow. For the full
             set of arguments, see the `PyArrow API <https://arrow.apache.org/docs/\
                 python/generated/pyarrow.dataset.Scanner.html\
                     #pyarrow.dataset.Scanner.from_fragment>`_
