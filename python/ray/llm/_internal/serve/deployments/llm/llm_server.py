@@ -7,7 +7,6 @@ from typing import Any, AsyncGenerator, Dict, Optional, Type, Union
 from ray import serve
 from ray._common.utils import import_attr
 
-
 # Local imports
 from ray.llm._internal.serve.configs.constants import (
     DEFAULT_HEALTH_CHECK_PERIOD_S,
@@ -470,7 +469,7 @@ class LLMServer(_LLMServerBase):
             )(lambda lora_model_id: self._load_model(lora_model_id))
 
         self.response_postprocessor = ResponsePostprocessor()
-        
+
     def _get_default_engine_class(self) -> Type[LLMEngine]:
         """Helper to load the engine class from the environment variable.
         This is used for testing or escape-hatch for patching purposes.
