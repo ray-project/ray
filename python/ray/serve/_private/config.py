@@ -129,6 +129,9 @@ class DeploymentConfig(BaseModel):
         logging_config: Configuration for deployment logs.
         user_configured_option_names: The names of options manually
             configured by the user.
+        request_router_class: Custom router class to use for routing requests.
+        request_router_kwargs: Keyword arguments that will be passed to the
+            request router class __init__ method.
     """
 
     num_replicas: Optional[NonNegativeInt] = Field(
@@ -205,6 +208,9 @@ class DeploymentConfig(BaseModel):
         default=DEFAULT_REQUEST_ROUTER_PATH
     )
 
+    # Keyword arguments that will be passed to the request router class.
+    request_router_kwargs: Dict[str, Any] = Field(default_factory=dict)
+
     class Config:
         validate_assignment = True
         arbitrary_types_allowed = True
@@ -218,6 +224,20 @@ class DeploymentConfig(BaseModel):
                 json.dumps(v)
             except TypeError as e:
                 raise ValueError(f"user_config is not JSON-serializable: {str(e)}.")
+
+        return v
+
+    @validator("request_router_kwargs", always=True)
+    def request_router_kwargs_json_serializable(cls, v):
+        if isinstance(v, bytes):
+            return v
+        if v is not None:
+            try:
+                json.dumps(v)
+            except TypeError as e:
+                raise ValueError(
+                    f"request_router_kwargs is not JSON-serializable: {str(e)}."
+                )
 
         return v
 
@@ -283,6 +303,11 @@ class DeploymentConfig(BaseModel):
         if data.get("user_config") is not None:
             if self.needs_pickle():
                 data["user_config"] = cloudpickle.dumps(data["user_config"])
+        if data.get("request_router_kwargs") is not None:
+            if self.needs_pickle():
+                data["request_router_kwargs"] = cloudpickle.dumps(
+                    data["request_router_kwargs"]
+                )
         if data.get("autoscaling_config"):
             data["autoscaling_config"] = AutoscalingConfigProto(
                 **data["autoscaling_config"]
@@ -305,23 +330,33 @@ class DeploymentConfig(BaseModel):
     @classmethod
     def from_proto(cls, proto: DeploymentConfigProto):
         data = _proto_to_dict(proto)
+        deployment_language = (
+            data["deployment_language"]
+            if "deployment_language" in data
+            else DeploymentLanguage.PYTHON
+        )
+        is_cross_language = (
+            data["is_cross_language"] if "is_cross_language" in data else False
+        )
+        needs_pickle = _needs_pickle(deployment_language, is_cross_language)
         if "user_config" in data:
             if data["user_config"] != b"":
-                deployment_language = (
-                    data["deployment_language"]
-                    if "deployment_language" in data
-                    else DeploymentLanguage.PYTHON
-                )
-                is_cross_language = (
-                    data["is_cross_language"] if "is_cross_language" in data else False
-                )
-                needs_pickle = _needs_pickle(deployment_language, is_cross_language)
                 if needs_pickle:
                     data["user_config"] = cloudpickle.loads(proto.user_config)
                 else:
                     data["user_config"] = proto.user_config
             else:
                 data["user_config"] = None
+        if "request_router_kwargs" in data:
+            if data["request_router_kwargs"] != b"":
+                if needs_pickle:
+                    data["request_router_kwargs"] = cloudpickle.loads(
+                        proto.request_router_kwargs
+                    )
+                else:
+                    data["request_router_kwargs"] = proto.request_router_kwargs
+            else:
+                data["request_router_kwargs"] = {}
         if "autoscaling_config" in data:
             if not data["autoscaling_config"].get("upscale_smoothing_factor"):
                 data["autoscaling_config"]["upscale_smoothing_factor"] = None
