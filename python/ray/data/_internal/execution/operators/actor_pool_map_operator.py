@@ -133,8 +133,9 @@ class ActorPoolMapOperator(MapOperator):
         )
 
         per_actor_resource_usage = ExecutionResources(
-            cpu=self._ray_remote_args.get("num_cpus", 0),
-            gpu=self._ray_remote_args.get("num_gpus", 0),
+            cpu=self._ray_remote_args.get("num_cpus"),
+            gpu=self._ray_remote_args.get("num_gpus"),
+            memory=self._ray_remote_args.get("memory"),
         )
         self._actor_pool = _ActorPool(
             compute_strategy,
