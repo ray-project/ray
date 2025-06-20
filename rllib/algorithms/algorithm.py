@@ -3337,7 +3337,7 @@ class Algorithm(Checkpointable, Trainable):
 
         stop = time.perf_counter()
         self.metrics.log_value(
-            TRAINING_ITERATION_TIMER,
+            "training_iteration_timer",
             stop - start,
             reduce="mean",
             clear_on_reduce=True,
