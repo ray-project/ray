@@ -1,8 +1,8 @@
 from abc import ABC, abstractmethod
-from typing import Optional
 
-from ray.data._internal.execution.autoscaler.default_autoscaler import \
-    _AutoscalingAction
+from ray.data._internal.execution.autoscaler.default_autoscaler import (
+    _AutoscalingAction,
+)
 from ray.data._internal.execution.interfaces.execution_options import ExecutionResources
 from ray.util.annotations import DeveloperAPI
 
