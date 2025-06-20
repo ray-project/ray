@@ -755,8 +755,8 @@ class DefaultDeploymentScheduler(DeploymentScheduler):
                 else sys.maxsize
             )
 
-        for node_id, _ in sorted(
-            node_to_running_replicas_of_all_deployments.items(), key=key
+        for node_id, _ in reversed(  # noqa: C413
+            sorted(node_to_running_replicas_of_all_deployments.items(), key=key)
         ):
             if node_id not in node_to_running_replicas_of_target_deployment:
                 continue
