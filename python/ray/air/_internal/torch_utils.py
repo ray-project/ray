@@ -456,11 +456,7 @@ def concat_tensors_to_device(
     total_rows = sum(t.shape[0] for t in tensor_sequence)
 
     # Allocate an empty Tensor on device
-    result = torch.empty(
-        (total_rows, *shape_tail),
-        dtype=dtype,
-        device=device,
-    )
+    result = torch.empty((total_rows, *shape_tail), dtype=dtype, device=device)
 
     row_start = 0
     for t in tensor_sequence:
@@ -528,19 +524,16 @@ def move_tensors_to_device(
     if device is None:
         return batch
 
-    def to_device(tensor: torch.Tensor) -> torch.Tensor:
-        return tensor.to(device, non_blocking=non_blocking)
-
     if _is_tensor(batch):
-        return to_device(batch)
+        return batch.to(device, non_blocking=non_blocking)
     elif _is_tensor_sequence(batch):
-        return type(batch)([to_device(t) for t in batch])
+        return type(batch)([t.to(device, non_blocking=non_blocking) for t in batch])
     elif _is_nested_tensor_sequence(batch):
         return type(batch)(
             [concat_tensors_to_device(t, device, non_blocking) for t in batch]
         )
     elif _is_tensor_mapping(batch):
-        return {k: to_device(t) for k, t in batch.items()}
+        return {k: t.to(device, non_blocking=non_blocking) for k, t in batch.items()}
     elif _is_tensor_sequence_mapping(batch):
         return {
             k: concat_tensors_to_device(v, device, non_blocking)
