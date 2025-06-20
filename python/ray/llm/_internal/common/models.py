@@ -9,6 +9,8 @@ from pydantic import BaseModel
 class DiskMultiplexConfig(BaseModel):
     """Configuration for disk-based model multiplexing."""
 
+    model_config = {"protected_namespaces": ()}
+
     model_id: str
     max_total_tokens: Optional[int] = None
     local_path: str
