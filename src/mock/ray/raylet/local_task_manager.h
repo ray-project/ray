@@ -52,6 +52,24 @@ class MockLocalTaskManager : public ILocalTaskManager {
               AnyPendingTasksForResourceAcquisition,
               (int *num_pending_actor_creation, int *num_pending_tasks),
               (const, override));
+  MOCK_METHOD(void,
+              TaskFinished,
+              (std::shared_ptr<WorkerInterface> worker, RayTask *task),
+              (override));
+  MOCK_METHOD(void, TasksUnblocked, (const std::vector<TaskID> &ready_ids), (override));
+  MOCK_METHOD(void,
+              ReleaseWorkerResources,
+              (std::shared_ptr<WorkerInterface> worker),
+              (override));
+  MOCK_METHOD(bool,
+              ReleaseCpuResourcesFromBlockedWorker,
+              (std::shared_ptr<WorkerInterface> worker),
+              (override));
+  MOCK_METHOD(bool,
+              ReturnCpuResourcesToUnblockedWorker,
+              (std::shared_ptr<WorkerInterface> worker),
+              (override));
+  MOCK_METHOD(ResourceSet, CalcNormalTaskResources, (), (const, override));
   MOCK_METHOD(void, RecordMetrics, (), (const, override));
   MOCK_METHOD(void, DebugStr, (std::stringstream & buffer), (const, override));
   MOCK_METHOD(size_t, GetNumTaskSpilled, (), (const, override));
