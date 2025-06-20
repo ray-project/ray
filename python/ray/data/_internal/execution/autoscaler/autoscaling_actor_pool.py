@@ -104,3 +104,10 @@ class AutoscalingActorPool(ABC):
     def per_actor_resource_usage(self) -> ExecutionResources:
         """Per actor resource usage."""
         ...
+
+    def get_pool_util(self) -> float:
+        """Calculate the utilization of the given actor pool."""
+        if self.num_running_actors() == 0:
+            return 0.0
+        else:
+            return self.num_active_actors() / self.num_running_actors()

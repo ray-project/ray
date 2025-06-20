@@ -51,13 +51,6 @@ class DefaultAutoscaler(Autoscaler):
         self._try_scale_up_cluster()
         self._try_scale_up_or_down_actor_pool()
 
-    def _calculate_actor_pool_util(self, actor_pool: AutoscalingActorPool):
-        """Calculate the utilization of the given actor pool."""
-        if actor_pool.current_size() == 0:
-            return 0
-        else:
-            return actor_pool.num_active_actors() / actor_pool.current_size()
-
     def _derive_scaling_action(
         self,
         actor_pool: AutoscalingActorPool,
@@ -78,7 +71,7 @@ class DefaultAutoscaler(Autoscaler):
             return _AutoscalingAction.SCALE_DOWN, "pool exceeding max size"
 
         # Determine whether to scale up based on the actor pool utilization.
-        util = self._calculate_actor_pool_util(actor_pool)
+        util = actor_pool.get_pool_util()
         if util >= self._actor_pool_scaling_up_threshold:
             # Do not scale up if either
             #   - Previous scale up has not finished yet
