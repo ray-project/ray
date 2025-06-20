@@ -56,6 +56,13 @@ both in the usual template (layout.html) as well as (index.html). -->
   })(window, document, 'script', 'dataLayer', 'GTM-P8H6KQG');
 </script>
 <!-- End Google Tag Manager -->
+
+<!-- Initialize gtag function for GTM compatibility -->
+<script>
+  window.dataLayer = window.dataLayer || [];
+  function gtag(){dataLayer.push(arguments);}
+</script>
+
 <!-- Data to be shared with JS on every page -->
 <script>
   window.data = {
