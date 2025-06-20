@@ -16,5 +16,6 @@ EVENT_AGENT_REPORT_INTERVAL_SECONDS = env_float(
 )
 EVENT_AGENT_RETRY_TIMES = 10
 EVENT_AGENT_CACHE_SIZE = 10240
+
 # Event sources
-EVENT_SOURCE_ALL = event_pb2.Event.SourceType.keys()
+ALL_EVENT_SOURCE_TYPES = event_pb2.Event.SourceType.keys()
