@@ -103,7 +103,7 @@ class DependencySetManager:
         extra_index_url: str,
         find_links: str,
         generate_hashes: bool,
-        header: bool,
+        no_header: bool,
         no_cache: bool,
         index_strategy: str,
         strip_extras: bool,
@@ -124,7 +124,7 @@ class DependencySetManager:
             args.extend(["--find-links", find_links])
         if generate_hashes:
             args.append("--generate-hashes")
-        if not header:
+        if no_header:
             args.append("--no-header")
         if no_cache:
             args.append("--no-cache")
@@ -363,7 +363,7 @@ def delete(name: str):
 @click.option("--no-strip-markers", is_flag=True, help="no strip markers")
 @click.option("--emit-index-url", is_flag=True, help="emit index url")
 @click.option("--emit-find-links", is_flag=True, help="emit find links")
-@click.option("--header", is_flag=True, help="no header")
+@click.option("--no-header", is_flag=True, help="no header")
 @click.option("--no-cache", is_flag=True, help="no header")
 @click.option("--python-version", type=str, default="3.11", help="python version")
 @click.argument("name", required=True)
@@ -380,7 +380,7 @@ def compile(
     no_strip_markers: bool,
     emit_index_url: bool,
     emit_find_links: bool,
-    header: bool,
+    no_header: bool,
     no_cache: bool,
     python_version: str,
     name: str,
@@ -398,7 +398,7 @@ def compile(
         resolved_requirements = resolve_paths(requirements)
 
         manager = DependencySetManager()
-        args = manager.process_flags(unsafe_package, index_url, extra_index_url, find_links, generate_hashes, header, no_cache, index_strategy, strip_extras, no_strip_markers, emit_index_url, emit_find_links, python_version)
+        args = manager.process_flags(unsafe_package, index_url, extra_index_url, find_links, generate_hashes, no_header, no_cache, index_strategy, strip_extras, no_strip_markers, emit_index_url, emit_find_links, python_version)
         manager.compile_depset(
             resolved_constraints,
             resolved_requirements,
@@ -475,7 +475,7 @@ def subset(sources: str, packages: str, name: str):
 @click.option("--no-strip-markers", is_flag=True, help="no strip markers")
 @click.option("--emit-index-url", is_flag=True, help="emit index url")
 @click.option("--emit-find-links", is_flag=True, help="emit find links")
-@click.option("--header", is_flag=True, help="no header")
+@click.option("--no-header", is_flag=True, help="no header")
 @click.option("--no-cache", is_flag=True, help="no header")
 @click.option("--python-version", type=str, default="3.11", help="python version")
 @click.argument("name")
@@ -492,7 +492,7 @@ def expand(
     no_strip_markers: bool,
     emit_index_url: bool,
     emit_find_links: bool,
-    header: bool,
+    no_header: bool,
     no_cache: bool,
     python_version: str,
     name: str,
@@ -500,7 +500,7 @@ def expand(
     """Expand a dependency set."""
     try:
         manager = DependencySetManager()
-        args = manager.process_flags(unsafe_package, index_url, extra_index_url, find_links, generate_hashes, header, no_cache, index_strategy, strip_extras, no_strip_markers, emit_index_url, emit_find_links, python_version)
+        args = manager.process_flags(unsafe_package, index_url, extra_index_url, find_links, generate_hashes, no_header, no_cache, index_strategy, strip_extras, no_strip_markers, emit_index_url, emit_find_links, python_version)
         manager.expand_depset(
             sources.split(","),
             resolve_paths(constraints),

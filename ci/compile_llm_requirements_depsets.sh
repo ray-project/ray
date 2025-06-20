@@ -49,12 +49,8 @@ for CUDA_CODE in cpu cu121 cu124 ; do
 
 	# Second, expand it into LLM test dependencies
 	echo "--- Expand ray base test dependencies into LLM test dependencies"
-	bazel run //ci/depsets:depsets -- compile -r "python/requirements/llm/llm-test-requirements.txt" reqs
-	bazel run //ci/depsets:depsets -- compile -r "python/requirements/cloud-requirements.txt" cloud_req_deps
-	bazel run //ci/depsets:depsets -- compile -r "python/requirements/base-test-requirements.txt" base_test_req_deps
-	bazel run //ci/depsets:depsets -- compile -r "python/requirements/llm/llm-requirements.txt" llm_req_deps
-	bazel run //ci/depsets:depsets -- compile -r "python/requirements/llm/llm-test-requirements.txt" llm_test_req_deps
-	bazel run //ci/depsets:depsets -- expand -s reqs,cloud_req_deps,base_test_req_deps,llm_req_deps,llm_test_req_deps -c ~/.depsets/ray_base_test_deps_${PYTHON_CUDA_CODE}.txt \
+	bazel run //ci/depsets:depsets -- compile -r "python/requirements/llm/llm-test-requirements.txt,python/requirements/cloud-requirements.txt,python/requirements/base-test-requirements.txt,python/requirements/llm/llm-requirements.txt,python/requirements/llm/llm-test-requirements.txt" \
+		-c ~/.depsets/ray_base_test_deps_${PYTHON_CUDA_CODE}.txt \
 		ray_llm_test_deps_${PYTHON_CUDA_CODE} ${FLAGS[@]}
 
 	# Third, extract the ray base dependencies from ray base test dependencies.
