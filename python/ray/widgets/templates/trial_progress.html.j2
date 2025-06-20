@@ -14,4 +14,17 @@
 .trialProgress td {
   white-space: nowrap;
 }
+:root[data-jp-theme-light="false"] .trialProgress,
+body.vscode-dark .trialProgress {
+  --tp-bg: var(--jp-layout-color1, #1e1e1e);
+  --tp-fg: var(--jp-content-font-color1, #e0e0e0);
+}
+
+.trialProgress table,
+.trialProgress th,
+.trialProgress td {
+  background-color: var(--tp-bg, #fff);
+  color: var(--tp-fg, #000);
+  border: 1px solid var(--jp-border-color0, #444);
+}
 </style>
