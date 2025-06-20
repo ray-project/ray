@@ -8,6 +8,7 @@ import numpy as np
 import pandas as pd
 import pyarrow as pa
 import pytest
+from pyarrow import ArrowInvalid
 
 import ray
 from ray._private.test_utils import run_string_as_driver
@@ -267,8 +268,9 @@ def test_combine_chunked_array_small(
     expected_output.equals(result)
 
 
-def test_combine_chunked_array_large():
-    """Verifies `combine_chunked_array` on arrays > 2 GiB"""
+def test_combine_chunked_fixed_width_array_large():
+    """Verifies `combine_chunked_array` on fixed-width arrays > 2 GiB, produces
+    single contiguous PA Array"""
 
     # 144 MiB
     ones_1gb = np.ones(shape=(550, 128, 128, 4), dtype=np.int32()).ravel()
@@ -285,13 +287,38 @@ def test_combine_chunked_array_large():
 
     result = combine_chunked_array(input_)
 
-    assert isinstance(result, pa.ChunkedArray)
-    assert len(result.chunks) == 2
+    assert isinstance(result, pa.Int32Array)
 
-    # Should re-combine first provided 14 chunks into 1
-    assert result.chunks[0].nbytes == sum([c.nbytes for c in input_.chunks[:14]])
-    # Remaining 2 go into the second one
-    assert result.chunks[1].nbytes == sum([c.nbytes for c in input_.chunks[14:]])
+
+def test_combine_chunked_variable_width_array_large():
+    """Verifies `combine_chunked_array` on variable-width arrays > 2 GiB,
+    safely produces new ChunkedArray with provided chunks recombined into
+    larger ones up to INT32_MAX in size"""
+
+    one_half_gb_bytes = np.arange(GiB / 2, dtype=np.uint8).tobytes()
+    one_half_gb_arr = pa.array([one_half_gb_bytes], type=pa.binary())
+    chunked_arr = pa.chunked_array([one_half_gb_arr, one_half_gb_arr, one_half_gb_arr, one_half_gb_arr])
+
+    # 2 GiB + offsets (4 x int32)
+    num_bytes = chunked_arr.nbytes
+    expected_num_bytes = 2 * GiB + 4 * pa.int32().byte_width
+
+    num_chunks = len(chunked_arr.chunks)
+    assert num_chunks == 4
+    assert num_bytes == expected_num_bytes
+
+    # Assert attempt to combine directly fails
+    with pytest.raises(ArrowInvalid):
+        chunked_arr.combine_chunks()
+
+    # Safe combination succeeds by avoiding overflowing combination
+    combined = combine_chunked_array(chunked_arr)
+
+    num_bytes = combined.nbytes
+
+    num_chunks = len(combined.chunks)
+    assert num_chunks == 2
+    assert num_bytes == expected_num_bytes
 
 
 @pytest.mark.parametrize(
