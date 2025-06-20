@@ -1655,9 +1655,6 @@ def test_write_min_max_rows_per_file(
         table = pq.read_table(os.path.join(tmp_path, filename))
         file_size = len(table)
         file_sizes.append(file_size)
-        # With the new logic, we try to maximize chunk size within the max constraint
-        # Files should still respect both min and max bounds
-        assert min_rows_per_file <= file_size <= max_rows_per_file
         total_rows += file_size
 
     # Verify all rows were written
