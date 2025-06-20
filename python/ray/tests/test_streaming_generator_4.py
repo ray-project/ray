@@ -298,5 +298,88 @@ def test_cancel(shutdown_only, use_asyncio):
         pass
 
 
+def test_streaming_generator_failed_and_try_get_yield_object(ray_start_cluster):
+    cluster = ray_start_cluster
+    cluster.add_node(
+        num_cpus=1,
+        resources={"head": 1},
+        _system_config=RECONSTRUCTION_CONFIG,
+        enable_object_reconstruction=True,
+    )
+    ray.init(address=cluster.address)
+
+    worker = cluster.add_node(
+        num_cpus=1,
+        resources={"worker": 1},
+    )
+
+    @ray.remote
+    class Actor:
+        def __init__(self):
+            self._no_wait = False
+
+        def set_no_wait(self):
+            self._no_wait = True
+            return
+
+        def stream(self):
+            for _ in range(3):
+                yield True
+                # 100KB, in plasma
+                yield b"0" * (1024 * 100 + 1)
+
+            yield False
+            if self._no_wait:
+                return
+
+            # hang in here, wait for ray.kill
+            time.sleep(3600)
+
+    @ray.remote
+    def tigger_task_after_10s():
+        time.sleep(10)
+
+    @ray.remote
+    def fetch_data(_, *args):
+        for arg in args:
+            print(len(arg))
+
+    a = Actor.options(
+        resources={"worker": 0.1}, max_restarts=-1, max_task_retries=-1
+    ).remote()
+
+    ray.get(a.set_no_wait.remote())
+
+    gen = a.stream.remote()
+    refs = []
+    while True:
+        has_next = next(gen)
+        if not ray.get(has_next):
+            break
+
+        ref = next(gen)
+        refs.append(ref)
+
+    fetch_result = fetch_data.options(resources={"head": 0.1}).remote(
+        # make sure mark all refs failed.
+        tigger_task_after_10s.options(resources={"head": 0.1}).remote(),
+        *refs,
+    )
+
+    cluster.remove_node(worker, allow_graceful=False)
+
+    worker = cluster.add_node(
+        num_cpus=1,
+        resources={"worker": 1},
+    )
+
+    # make sure all refs ready!
+    ray.get(refs[-1])
+
+    ray.kill(a, no_restart=True)
+
+    ray.get(fetch_result)
+
+
 if __name__ == "__main__":
     sys.exit(pytest.main(["-sv", __file__]))
