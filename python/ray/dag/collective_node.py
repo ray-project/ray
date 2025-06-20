@@ -9,7 +9,7 @@ from ray.dag import (
     DAGNode,
     ClassMethodNode,
 )
-from ray.dag.constants import COLLECTIVE_OPERATION_KEY
+from ray.dag.constants import COLLECTIVE_OPERATION_KEY, IS_CLASS_METHOD_OUTPUT_KEY
 from ray.experimental.channel import ChannelContext
 from ray.experimental.channel.torch_tensor_type import Communicator, TorchTensorType
 from ray.experimental.util.types import (
@@ -265,7 +265,10 @@ class CollectiveOutputNode(ClassMethodNode):
         self._collective_op: _CollectiveOperation = other_args_to_resolve.get(
             COLLECTIVE_OPERATION_KEY, None
         )
-        if self._collective_op is None:
+        self._is_class_method_output: bool = other_args_to_resolve.get(
+            IS_CLASS_METHOD_OUTPUT_KEY, False
+        )
+        if self._collective_op is None and not self._is_class_method_output:
             raise ValueError("Expected a collective operation")
 
         super().__init__(

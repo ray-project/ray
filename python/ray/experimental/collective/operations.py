@@ -2,12 +2,12 @@ import logging
 from typing import List, Optional, Union
 
 import ray
-from ray.dag.class_node import IS_CLASS_METHOD_OUTPUT_KEY, ClassMethodNode
 from ray.dag.collective_node import CollectiveOutputNode, _CollectiveOperation
 from ray.dag.constants import (
     BIND_INDEX_KEY,
     COLLECTIVE_OPERATION_KEY,
     PARENT_CLASS_NODE_KEY,
+    IS_CLASS_METHOD_OUTPUT_KEY,
 )
 from ray.experimental.channel.torch_tensor_type import Communicator, TorchTensorType
 from ray.experimental.util.types import (
@@ -87,26 +87,8 @@ def _bind(
     else:
         raise ValueError(f"Expected a collective operation, but got {op}")
 
-    # Rearrange inputs so that each list contains DAGNodes from the same actor
-    rearranged_inputs: List[List["ray.dag.DAGNode"]] = []
-    actor_to_nodes = {}
-    for input_node_list in inputs:
-        for i, node in enumerate(input_node_list):
-            actor_handle = node._get_actor_handle()
-            if actor_handle not in actor_to_nodes:
-                actor_to_nodes[actor_handle] = []
-            actor_to_nodes[actor_handle].append(node)
-    for nodes in actor_to_nodes.values():
-        assert len(nodes) == len(inputs), (
-            f"Expected the same number of nodes for each actor, "
-            f"but got {len(nodes)} nodes for actor {nodes[0]._get_actor_handle()}"
-        )
-    for i, node in enumerate(inputs[0]):
-        actor_handle = node._get_actor_handle()
-        nodes_for_actor = actor_to_nodes[actor_handle]
-        rearranged_inputs.append(nodes_for_actor)
-
-    for input_node_list in rearranged_inputs:
+    for i in range(len(inputs[0])):
+        input_node_list = [l[i] for l in inputs if l]
         actor_handle: Optional["ray.actor.ActorHandle"] = input_node_list[
             0
         ]._get_actor_handle()
@@ -125,9 +107,9 @@ def _bind(
         actor_handle._ray_dag_bind_index += 1
 
         if len(input_node_list) > 1:
-            output_nodes: List[ClassMethodNode] = []
+            output_nodes: List[CollectiveOutputNode] = []
             for i in range(len(input_node_list)):
-                output_node = ClassMethodNode(
+                output_node = CollectiveOutputNode(
                     f"return_idx_{i}",
                     (collective_output_node, i),
                     dict(),
