@@ -88,6 +88,7 @@ from ray.serve._private.utils import (
 )
 from ray.serve._private.version import DeploymentVersion
 from ray.serve.config import AutoscalingConfig
+from ray.serve.context import _get_in_flight_requests
 from ray.serve.deployment import Deployment
 from ray.serve.exceptions import (
     BackPressureError,
@@ -891,16 +892,21 @@ class Replica(ReplicaBase):
             self._initialization_latency = time.time() - self._initialization_start_time
 
     def _on_request_cancelled(
-        self, request_metadata: RequestMetadata, e: asyncio.CancelledError
+        self, metadata: RequestMetadata, e: asyncio.CancelledError
     ):
         """Recursively cancels child requests."""
         requests_pending_assignment = (
             ray.serve.context._get_requests_pending_assignment(
-                request_metadata.internal_request_id
+                metadata.internal_request_id
             )
         )
         for task in requests_pending_assignment.values():
             task.cancel()
+
+        # Cancel child requests that have already been assigned.
+        in_flight_requests = _get_in_flight_requests(metadata.internal_request_id)
+        for replica_result in in_flight_requests.values():
+            replica_result.cancel()
 
     def _on_request_failed(self, request_metadata: RequestMetadata, e: Exception):
         if ray.util.pdb._is_ray_debugger_post_mortem_enabled():
