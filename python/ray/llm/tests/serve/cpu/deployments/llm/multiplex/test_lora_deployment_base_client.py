@@ -1,23 +1,17 @@
 import sys
 from copy import deepcopy
-from typing import List
+from typing import List, Set
 
 import pytest
 from fastapi import HTTPException
 
 from ray import serve
-from ray.llm._internal.serve.configs.server_models import (
-    LLMConfig,
-    LoraConfig,
-    ModelData,
-)
+from ray.llm._internal.serve.configs.server_models import ModelData
 from ray.llm._internal.serve.deployments.llm.llm_server import LLMDeployment
-from ray.llm._internal.serve.deployments.routers.router import (
-    LLMRouter,
-)
 from ray.llm.tests.serve.mocks.fake_image_retriever import FakeImageRetriever
 from ray.llm.tests.serve.mocks.mock_vllm_engine import MockEchoVLLMEngine
 from ray.serve.handle import DeploymentHandle
+from ray.serve.llm import LLMConfig, LLMRouter, LoraConfig
 
 VLLM_APP_DEF = """
 model_loading_config:
@@ -72,7 +66,9 @@ def get_mocked_llm_deployments(llm_configs) -> List[DeploymentHandle]:
 
 
 @pytest.mark.asyncio
-async def test_lora_unavailable_base_model(shutdown_ray_and_serve):
+async def test_lora_unavailable_base_model(
+    shutdown_ray_and_serve, disable_placement_bundles
+):
     """Getting the handle for an unavailable model should return a 404."""
     llm_config = VLLM_APP.model_copy(deep=True)
     llm_deployments = get_mocked_llm_deployments([llm_config])
@@ -86,7 +82,7 @@ async def test_lora_unavailable_base_model(shutdown_ray_and_serve):
 
 
 @pytest.mark.asyncio
-async def test_lora_get_model(shutdown_ray_and_serve):
+async def test_lora_get_model(shutdown_ray_and_serve, disable_placement_bundles):
     """Test behavior when getting a LoRA model."""
 
     base_model_id = "meta-llama/Llama-2-7b-hf"
@@ -138,7 +134,7 @@ async def test_lora_get_model(shutdown_ray_and_serve):
 
 
 @pytest.mark.asyncio
-async def test_lora_list_base_model(shutdown_ray_and_serve):
+async def test_lora_list_base_model(shutdown_ray_and_serve, disable_placement_bundles):
     """Test model-listing behavior when only the base model is available."""
     base_model_id = "base_model"
     llm_config = VLLM_APP.model_copy(deep=True)
@@ -193,6 +189,7 @@ async def test_lora_list_base_model(shutdown_ray_and_serve):
 @pytest.mark.asyncio
 async def test_lora_include_adapters_in_list_models(
     shutdown_ray_and_serve,
+    disable_placement_bundles,
     dynamic_lora_loading_path: str,
     base_model_id: str,
     expected_model_ids: List[str],
@@ -217,13 +214,13 @@ async def test_lora_include_adapters_in_list_models(
     assert {model.id for model in models} == set(expected_model_ids)
 
     # Confirm that all expected model IDs exist.
-    expected_model_ids = set(expected_model_ids)
+    expected_model_ids_set: Set[str] = set(expected_model_ids)
     for model in models:
         model_data = model.model_dump()
-        assert model_data["id"] in expected_model_ids
-        expected_model_ids.discard(model_data["id"])
+        assert model_data["id"] in expected_model_ids_set
+        expected_model_ids_set.discard(model_data["id"])
 
-    assert len(expected_model_ids) == 0
+    assert len(expected_model_ids_set) == 0
 
 
 if __name__ == "__main__":
