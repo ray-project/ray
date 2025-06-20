@@ -3,7 +3,6 @@ import logging
 from typing import Dict
 
 # Third-party imports
-import torch
 import torchvision
 from torch.utils.data import IterableDataset
 import pyarrow.fs
@@ -14,17 +13,15 @@ from ray.data.datasource.partitioning import Partitioning
 
 # Local imports
 from constants import DatasetKey
-from config import DataloaderType, BenchmarkConfig
-from factory import BenchmarkFactory
-from dataloader_factory import BaseDataLoaderFactory
+from config import BenchmarkConfig
 from image_classification.factory import (
     ImageClassificationRayDataLoaderFactory,
     ImageClassificationTorchDataLoaderFactory,
-    ImageClassificationMockDataLoaderFactory,
 )
+from image_classification.imagenet import get_transform
 from s3_reader import AWS_REGION
-from .imagenet import get_preprocess_map_fn, IMAGENET_JPEG_SPLIT_S3_DIRS
-from .torch_jpeg_image_iterable_dataset import S3JpegImageIterableDataset
+from .imagenet import get_preprocess_map_fn
+from .jpeg_iterable_dataset import S3JpegImageIterableDataset
 from s3_jpeg_reader import S3JpegReader
 from logger_utils import ContextLoggerAdapter
 
@@ -42,6 +39,10 @@ class ImageClassificationJpegRayDataLoaderFactory(
     3. Resource allocation for concurrent validation
     4. Image preprocessing with optional random transforms
     """
+
+    def __init__(self, benchmark_config: BenchmarkConfig, dataset_dirs: Dict[str, str]):
+        super().__init__(benchmark_config)
+        self._dataset_dirs = dataset_dirs
 
     def get_s3fs_with_boto_creds(
         self, connection_timeout: int = 60, request_timeout: int = 60
@@ -83,40 +84,40 @@ class ImageClassificationJpegRayDataLoaderFactory(
                 - "train": Training dataset with random transforms
                 - "val": Validation dataset without transforms
         """
-        # Configure S3 filesystem connection
-        s3fs = self.get_s3fs_with_boto_creds()
+        train_dir = self._dataset_dirs[DatasetKey.TRAIN]
+        val_dir = self._dataset_dirs[DatasetKey.VALID]
+
+        filesystem = (
+            self.get_s3fs_with_boto_creds() if train_dir.startswith("s3://") else None
+        )
 
         # Create training dataset with class-based partitioning
-        train_pattern = IMAGENET_JPEG_SPLIT_S3_DIRS[DatasetKey.TRAIN]
         train_partitioning = Partitioning(
-            "dir", base_dir=train_pattern, field_names=["class"]
+            "dir", base_dir=train_dir, field_names=["class"]
         )
         train_ds = (
             ray.data.read_images(
-                train_pattern,
+                train_dir,
                 mode="RGB",
                 include_paths=False,
                 partitioning=train_partitioning,
-                filesystem=s3fs,
+                filesystem=filesystem,
             )
-            .limit(self.benchmark_config.limit_training_rows)
+            .limit(self.get_dataloader_config().limit_training_rows)
             .map(get_preprocess_map_fn(random_transforms=True))
         )
 
         # Create validation dataset with same partitioning
-        val_pattern = IMAGENET_JPEG_SPLIT_S3_DIRS[DatasetKey.TRAIN]
-        val_partitioning = Partitioning(
-            "dir", base_dir=val_pattern, field_names=["class"]
-        )
+        val_partitioning = Partitioning("dir", base_dir=val_dir, field_names=["class"])
         val_ds = (
             ray.data.read_images(
-                val_pattern,
+                val_dir,
                 mode="RGB",
                 include_paths=False,
                 partitioning=val_partitioning,
-                filesystem=s3fs,
+                filesystem=filesystem,
             )
-            .limit(self.benchmark_config.limit_validation_rows)
+            .limit(self.get_dataloader_config().limit_validation_rows)
             .map(get_preprocess_map_fn(random_transforms=False))
         )
 
@@ -138,10 +139,10 @@ class ImageClassificationJpegTorchDataLoaderFactory(
     - Dataset caching for efficiency
     """
 
-    def __init__(self, benchmark_config: BenchmarkConfig):
+    def __init__(self, benchmark_config: BenchmarkConfig, data_dirs: Dict[str, str]):
         super().__init__(benchmark_config)
         S3JpegReader.__init__(self)  # Initialize S3JpegReader to set up _s3_client
-        self.train_url = IMAGENET_JPEG_SPLIT_S3_DIRS[DatasetKey.TRAIN]
+        self._data_dirs = data_dirs
         self._cached_datasets = None
 
     def get_iterable_datasets(self) -> Dict[str, IterableDataset]:
@@ -155,15 +156,44 @@ class ImageClassificationJpegTorchDataLoaderFactory(
         if self._cached_datasets is not None:
             return self._cached_datasets
 
+        if self._data_dirs[DatasetKey.TRAIN].startswith("s3://"):
+            return self._get_iterable_datasets_s3()
+        else:
+            return self._get_iterable_datasets_local()
+
+    def _get_iterable_datasets_local(self) -> Dict[str, IterableDataset]:
+        """Get train and validation datasets from local filesystem."""
+        train_dir = self._data_dirs[DatasetKey.TRAIN]
+        val_dir = self._data_dirs[DatasetKey.VALID]
+
+        train_dataset = torchvision.datasets.ImageFolder(
+            root=train_dir,
+            transform=get_transform(to_torch_tensor=True, random_transforms=True),
+        )
+
+        val_dataset = torchvision.datasets.ImageFolder(
+            root=val_dir,
+            transform=get_transform(to_torch_tensor=True, random_transforms=False),
+        )
+
+        return {
+            DatasetKey.TRAIN: train_dataset,
+            DatasetKey.VALID: val_dataset,
+        }
+
+    def _get_iterable_datasets_s3(self) -> Dict[str, IterableDataset]:
+        """Get train and validation datasets from S3."""
+
+        train_dir = self._data_dirs[DatasetKey.TRAIN]
+
         # Get row limits for workers and total processing
         (
             limit_training_rows_per_worker,
             limit_validation_rows_per_worker,
         ) = self._get_worker_row_limits()
-        total_training_rows, total_validation_rows = self._get_total_row_limits()
 
         # Get file URLs for training and validation
-        train_file_urls = val_file_urls = self._get_file_urls(self.train_url)
+        train_file_urls = val_file_urls = self._get_file_urls(train_dir)
         train_ds = S3JpegImageIterableDataset(
             file_urls=train_file_urls,
             random_transforms=True,
@@ -183,20 +213,3 @@ class ImageClassificationJpegTorchDataLoaderFactory(
             DatasetKey.VALID: val_ds,
         }
         return self._cached_datasets
-
-
-class ImageClassificationJpegFactory(BenchmarkFactory):
-    def get_dataloader_factory(self) -> BaseDataLoaderFactory:
-        data_factory_cls = {
-            DataloaderType.MOCK: ImageClassificationMockDataLoaderFactory,
-            DataloaderType.RAY_DATA: ImageClassificationJpegRayDataLoaderFactory,
-            DataloaderType.TORCH: ImageClassificationJpegTorchDataLoaderFactory,
-        }[self.benchmark_config.dataloader_type]
-
-        return data_factory_cls(self.benchmark_config)
-
-    def get_model(self) -> torch.nn.Module:
-        return torchvision.models.resnet50(weights=None)
-
-    def get_loss_fn(self) -> torch.nn.Module:
-        return torch.nn.CrossEntropyLoss()
