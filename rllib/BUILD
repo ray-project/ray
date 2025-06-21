@@ -3418,7 +3418,7 @@ py_test(
 # ....................................
 py_test(
     name = "examples/algorithms/appo_custom_algorithm_w_shared_data_actor",
-    size = "medium",
+    size = "large",
     srcs = ["examples/algorithms/appo_custom_algorithm_w_shared_data_actor.py"],
     args = [
         "--enable-new-api-stack",
@@ -3456,7 +3456,7 @@ py_test(
 
 py_test(
     name = "examples/algorithms/vpg_custom_algorithm",
-    size = "medium",
+    size = "large",
     srcs = ["examples/algorithms/vpg_custom_algorithm.py"],
     args = [
         "--enable-new-api-stack",
@@ -5070,7 +5070,6 @@ py_test(
     args = [
         "--enable-new-api-stack",
         "--as-test",
-        "--framework=torch",
     ],
     # Include the offline data files.
     data = ["tests/data/cartpole/cartpole-v1_large"],
