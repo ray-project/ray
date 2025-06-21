@@ -2,7 +2,7 @@ from typing import Any, List, Dict
 
 import numpy as np
 
-from ray.rllib.connectors.connector_v2 import ConnectorV2
+from ray.rllib.connectors.connector_v2 import ConnectorV2, ConnectorV2BatchFormats
 from ray.rllib.connectors.common.numpy_to_tensor import NumpyToTensor
 from ray.rllib.core.columns import Columns
 from ray.rllib.core.rl_module.apis.value_function_api import ValueFunctionAPI
@@ -39,6 +39,21 @@ class GeneralAdvantageEstimation(ConnectorV2):
     timesteps), performing GAE, and adding the results back into `batch` (under
     Postprocessing.ADVANTAGES and Postprocessing.VALUE_TARGETS.
     """
+
+    # Incoming batches have the format:
+    # [moduleID] -> [column name] -> [tensors]
+    # For more details on the various possible batch formats, see the
+    # `ray.rllib.connectors.connector_v2.ConnectorV2BatchFormats` Enum.
+    INPUT_BATCH_FORMAT = (
+        ConnectorV2BatchFormats.BATCH_FORMAT_MODULE_TO_COLUMN_TO_BATCHED
+    )
+    # Returned batches have the format:
+    # [moduleID] -> [column name] -> [tensors]
+    # For more details on the various possible batch formats, see the
+    # `ray.rllib.connectors.connector_v2.ConnectorV2BatchFormats` Enum.
+    OUTPUT_BATCH_FORMAT = (
+        ConnectorV2BatchFormats.BATCH_FORMAT_MODULE_TO_COLUMN_TO_BATCHED
+    )
 
     def __init__(
         self,

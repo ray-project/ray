@@ -3,7 +3,7 @@ from typing import Any, Dict, List, Optional
 
 import gymnasium as gym
 
-from ray.rllib.connectors.connector_v2 import ConnectorV2
+from ray.rllib.connectors.connector_v2 import ConnectorV2, ConnectorV2BatchFormats
 from ray.rllib.core.rl_module.rl_module import RLModule, RLModuleSpec
 from ray.rllib.env.multi_agent_episode import MultiAgentEpisode
 from ray.rllib.utils.annotations import override
@@ -46,7 +46,7 @@ class AgentToModuleMapping(ConnectorV2):
     This connector piece is only used by RLlib (as a default connector piece) in a
     multi-agent setup.
 
-    Note that before the mapping, `data` is expected to have the following
+    Note that before the mapping, `batch` is expected to have the following
     structure:
     [col0]:
         (eps_id0, ag0, mod0): [list of individual batch items]
@@ -55,7 +55,7 @@ class AgentToModuleMapping(ConnectorV2):
     [col1]:
         etc..
 
-    The target structure of the above `data` would then be:
+    The target structure of the above `batch` would then be:
     [mod0]:
         [col0]: [batched data -> batch_size_B will be the number of all items in the
             input data under col0 that have mod0 as their ModuleID]
@@ -115,7 +115,7 @@ class AgentToModuleMapping(ConnectorV2):
             shared_data={},
         )
 
-        # `data` should now be mapped from ModuleIDs to module data.
+        # `batch` should now be mapped from ModuleIDs to module data.
         check(
             output_batch,
             {
@@ -130,6 +130,21 @@ class AgentToModuleMapping(ConnectorV2):
             },
         )
     """
+
+    # Incoming batches have the format:
+    # [column name] -> [(episodeID, agentID, moduleID)-tuple] -> [.. individual items]
+    # For more details on the various possible batch formats, see the
+    # `ray.rllib.connectors.connector_v2.ConnectorV2BatchFormats` Enum.
+    INPUT_BATCH_FORMAT = (
+        ConnectorV2BatchFormats.BATCH_FORMAT_COLUMN_TO_EPISODE_TO_INDIVIDUAL_ITEMS
+    )
+    # Returned batches have the format:
+    # [moduleID] -> [column name] -> [.. individual items]
+    # For more details on the various possible batch formats, see the
+    # `ray.rllib.connectors.connector_v2.ConnectorV2BatchFormats` Enum.
+    OUTPUT_BATCH_FORMAT = (
+        ConnectorV2BatchFormats.BATCH_FORMAT_MODULE_TO_COLUMN_TO_INDIVIDUAL_ITEMS
+    )
 
     @override(ConnectorV2)
     def recompute_output_observation_space(
