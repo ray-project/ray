@@ -42,7 +42,8 @@ spec:
         minReplicas: 1
         maxReplicas: 1
         groupName: small-group
-        rayStartParams: {}
+        # rayStartParams is optional with RayCluster CRD from KubeRay 1.4.0 or later but required in earlier versions.
+        # rayStartParams: {}
         template:
           spec:
             containers:
