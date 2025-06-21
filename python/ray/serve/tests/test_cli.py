@@ -789,6 +789,12 @@ def test_deploy_with_access_to_current_directory(ray_start_stop_in_specific_dire
 
     wait_for_condition(check_deploy_successfully, timeout=5)
 
-
+def test_serve_config_no_config_prints_warning():
+    """Test that `serve config` prints a warning when no config is available."""
+    with pytest.raises(subprocess.CalledProcessError) as e:
+        subprocess.check_output(["serve", "config"], stderr=subprocess.STDOUT)
+    output = e.value.output.decode("utf-8")
+    assert "No config was provided during `serve run`. Nothing to display." in output
+    return True
 if __name__ == "__main__":
     sys.exit(pytest.main(["-v", "-s", __file__]))
