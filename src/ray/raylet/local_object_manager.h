@@ -18,6 +18,7 @@
 #include <memory>
 #include <queue>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "ray/common/id.h"
@@ -58,19 +59,19 @@ class LocalObjectManager {
       pubsub::SubscriberInterface *core_worker_subscriber,
       IObjectDirectory *object_directory)
       : self_node_id_(node_id),
-        self_node_address_(self_node_address),
+        self_node_address_(std::move(self_node_address)),
         self_node_port_(self_node_port),
         io_service_(io_service),
         free_objects_period_ms_(free_objects_period_ms),
         free_objects_batch_size_(free_objects_batch_size),
         io_worker_pool_(io_worker_pool),
         owner_client_pool_(owner_client_pool),
-        on_objects_freed_(on_objects_freed),
+        on_objects_freed_(std::move(on_objects_freed)),
         last_free_objects_at_ms_(current_time_ms()),
         min_spilling_size_(RayConfig::instance().min_spilling_size()),
         num_active_workers_(0),
         max_active_workers_(max_io_workers),
-        is_plasma_object_spillable_(is_plasma_object_spillable),
+        is_plasma_object_spillable_(std::move(is_plasma_object_spillable)),
         is_external_storage_type_fs_(is_external_storage_type_fs),
         max_fused_object_count_(max_fused_object_count),
         next_spill_error_log_bytes_(RayConfig::instance().verbose_spill_logs()),
@@ -129,6 +130,10 @@ class LocalObjectManager {
   /// Clear any freed objects. This will trigger the callback for freed
   /// objects.
   void FlushFreeObjects();
+
+  /// Returns true if the object has been marked for deletion through the
+  /// eviction notification.
+  bool ObjectPendingDeletion(const ObjectID &object_id);
 
   /// Judge if objects are deletable from pending_delete_queue and delete them if
   /// necessary.
@@ -284,7 +289,7 @@ class LocalObjectManager {
   /// from plasma. The cache is flushed when it reaches the
   /// free_objects_batch_size, or if objects have been in the cache for longer
   /// than the config's free_objects_period, whichever occurs first.
-  std::vector<ObjectID> objects_to_free_;
+  absl::flat_hash_set<ObjectID> objects_pending_deletion_;
 
   /// The total size of the objects that are currently being
   /// spilled from this node, in bytes.
