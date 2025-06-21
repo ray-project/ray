@@ -7,8 +7,8 @@ from ray._private.accelerators.intel_gpu import IntelGPUAcceleratorManager
 from ray._private.accelerators.neuron import NeuronAcceleratorManager
 from ray._private.accelerators.npu import NPUAcceleratorManager
 from ray._private.accelerators.nvidia_gpu import NvidiaGPUAcceleratorManager
-from ray._private.accelerators.tpu import TPUAcceleratorManager
 from ray._private.accelerators.rbln import RBLNAcceleratorManager
+from ray._private.accelerators.tpu import TPUAcceleratorManager
 
 
 def get_all_accelerator_managers() -> Set[AcceleratorManager]:
