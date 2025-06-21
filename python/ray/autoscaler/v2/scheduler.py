@@ -23,6 +23,7 @@ from ray.autoscaler.v2.utils import ProtobufUtil, ResourceRequestUtil
 from ray.core.generated.autoscaler_pb2 import (
     ClusterResourceConstraint,
     GangResourceRequest,
+    LabelOperator,
     ResourceRequest,
     ResourceRequestByCount,
 )
@@ -433,7 +434,7 @@ class SchedulingNode:
         A "higher" score means that this node is more suitable for scheduling the
         current scheduled resource requests.
 
-        The score is a tuple of 4 values:
+        The score is a tuple of 5 values:
             1. Whether this node is a GPU node and the current resource request has
                 GPU requirements:
                     0: if this node is a GPU node and the current resource request
@@ -443,6 +444,11 @@ class SchedulingNode:
             2. The number of resource types being scheduled.
             3. The minimum utilization rate across all resource types.
             4. The average utilization rate across all resource types.
+            5. Whether this node has labels matching the current resource request's
+                label_selector requirements:
+                    0: if this node does not satisfy the label_selector requirements.
+                    1: if this node satisfies the label_selector requirements (or no
+                        requirements provided).
 
         NOTE:
             This function is adapted from  _resource_based_utilization_scorer from
@@ -495,6 +501,9 @@ class SchedulingNode:
             if is_gpu_node and not any_gpu_requests:
                 gpu_ok = False
 
+        # Check if node satisfies label requirements.
+        matches_labels = self._satisfies_label_constraints(sched_requests)
+
         # Prioritize avoiding gpu nodes for non-gpu workloads first,
         # then prioritize matching multiple resource types,
         # then prioritize using all resources,
@@ -506,7 +515,39 @@ class SchedulingNode:
             float(sum(util_by_resources)) / len(util_by_resources)
             if util_by_resources
             else 0,
+            matches_labels,
         )
+
+    def _satisfies_label_constraints(
+        self, sched_requests: List[ResourceRequest]
+    ) -> int:
+        """Returns 1 if this node satisfies at least one label selector, 0 otherwise."""
+        for req in sched_requests:
+            for selector in req.label_selectors:
+                # A label selector passes only if all constraints are satisfied
+                all_constraints_pass = True
+                for constraint in selector.label_constraints:
+                    key = constraint.label_key
+                    values = set(constraint.label_values)
+                    op = constraint.operator
+                    node_val = self.labels.get(key)
+
+                    if op == LabelOperator.LABEL_OPERATOR_IN:
+                        if node_val not in values:
+                            all_constraints_pass = False
+                            break
+                    elif op == LabelOperator.LABEL_OPERATOR_NOT_IN:
+                        if node_val in values:
+                            all_constraints_pass = False
+                            break
+                    else:
+                        all_constraints_pass = False
+                        break
+
+                if all_constraints_pass:
+                    return 1  # One label selector matched
+
+        return 0  # No label selectors are satisfied by SchedulingNode
 
     def _try_schedule_one(
         self, request: ResourceRequest, resource_request_source: ResourceRequestSource
