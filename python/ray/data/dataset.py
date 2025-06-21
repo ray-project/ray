@@ -1478,6 +1478,12 @@ class Dataset:
 
             .. image:: /data/images/dataset-shuffle.svg
                 :align: center
+                figure: /data/images/dataset-shuffle.svg
+                :scale: 60%
+                :align: center
+
+                *Shuffle vs. non-shuffle repartition.*  Figure scaled so the
+                parameter list stays above the fold.
 
             ..
                 https://docs.google.com/drawings/d/132jhE3KXZsf29ho1yUdPrCHB9uheHBWHJhDQMXqIVPA/edit
@@ -1490,36 +1496,36 @@ class Dataset:
 
         Time complexity: O(dataset size / parallelism)
 
-        Args:
-            num_blocks: Number of blocks after repartitioning.
-            target_num_rows_per_block: [Experimental] The target number of rows per block to
-                repartition. Note that either `num_blocks` or
-                `target_num_rows_per_block` must be set, but not both. When
-                `target_num_rows_per_block` is set, it only repartitions
-                :class:`Dataset` :ref:`blocks <dataset_concept>` that are larger than
-                `target_num_rows_per_block`. Note that the system will internally
-                figure out the number of rows per :ref:`blocks <dataset_concept>` for
-                optimal execution, based on the `target_num_rows_per_block`. This is
-                the current behavior because of the implementation and may change in
-                the future.
-            shuffle: Whether to perform a distributed shuffle during the
-                repartition. When shuffle is enabled, each output block
-                contains a subset of data rows from each input block, which
-                requires all-to-all data movement. When shuffle is disabled,
-                output blocks are created from adjacent input blocks,
-                minimizing data movement.
-            keys: List of key columns repartitioning will use to determine which
-                partition will row belong to after repartitioning (by applying
-                hash-partitioning algorithm to the whole dataset). Note that, this
-                config is only relevant when `DataContext.use_hash_based_shuffle`
-                is set to True.
-            sort: Whether the blocks should be sorted after repartitioning. Note,
-                that by default blocks will be sorted in the ascending order.
+        Parameters
+        ----------
+        num_blocks : int, optional
+            Exact number of blocks in the output dataset.
+        target_num_rows_per_block : int, optional
+            **Experimental.** Desired rows per block; mutually exclusive with
+            *num_blocks*.
+        shuffle : bool, default False
+            Perform a full distributed shuffle; otherwise move only the data
+            needed to balance block sizes.
+        keys : str or list[str], optional
+            Columns to hash-partition by.  **Either `num_blocks` or
+            `target_num_rows_per_block` is still required** when this is set.
+        sort : bool, default False
+            Sort each output block (ascending) after repartitioning.
 
-        Note that you must set either `num_blocks` or `target_num_rows_per_block`
-        but not both.
-        Additionally note that this operation materializes the entire dataset in memory
-        when you set shuffle to True.
+        Notes
+        -----
+        One (and only one) of ``num_blocks`` or ``target_num_rows_per_block``
+        **must** be set.  This operation materialises the entire dataset in
+        memory when ``shuffle`` is ``True``.
+
+        Examples
+        --------
+        >>> import ray
+        >>> ds = ray.data.range(100).repartition(10).materialize()
+        >>> ds.num_blocks()
+        10
+
+        Time complexity: ``O(dataset_size / parallelism)``
 
         Returns:
             The repartitioned :class:`Dataset`.
