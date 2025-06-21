@@ -1,6 +1,8 @@
 from abc import ABC, abstractmethod
-from typing import Optional
 
+from ray.data._internal.execution.autoscaler.default_autoscaler import (
+    _AutoscalingAction,
+)
 from ray.data._internal.execution.interfaces.execution_options import ExecutionResources
 from ray.util.annotations import DeveloperAPI
 
@@ -50,8 +52,8 @@ class AutoscalingActorPool(ABC):
         ...
 
     @abstractmethod
-    def current_in_flight_tasks(self) -> int:
-        """Number of current in-flight tasks."""
+    def num_tasks_in_flight(self) -> int:
+        """Number of current in-flight tasks (running + pending tasks)."""
         ...
 
     def num_free_task_slots(self) -> int:
@@ -61,7 +63,7 @@ class AutoscalingActorPool(ABC):
         """
         return (
             self.max_tasks_in_flight_per_actor() * self.num_running_actors()
-            - self.current_in_flight_tasks()
+            - self.num_tasks_in_flight()
         )
 
     @abstractmethod
@@ -69,38 +71,18 @@ class AutoscalingActorPool(ABC):
         ...
 
     @abstractmethod
-    def scale_up(self, num_actors: int, *, reason: Optional[str] = None) -> int:
-        """Request the actor pool to scale up by the given number of actors.
-
-        The number of actually added actors may be less than the requested
-        number.
-
-        Args:
-            num_actors: Number of additional actors to be added to the pool
-            reason: (Optional) Reason for action
-
-        Returns:
-            The number of actors actually added.
-        """
-        ...
-
-    @abstractmethod
-    def scale_down(self, num_actors: int, *, reason: Optional[str] = None) -> int:
-        """Request actor pool to scale down by the given number of actors.
-
-        The number of actually removed actors may be less than the requested
-        number.
-
-        Args:
-            num_actors: Number of additional actors to be removed from the pool
-            reason: (Optional) Reason for action
-
-        Returns:
-            The number of actors actually removed.
-        """
+    def apply(self, action: _AutoscalingAction):
+        # TODO elaborate
         ...
 
     @abstractmethod
     def per_actor_resource_usage(self) -> ExecutionResources:
         """Per actor resource usage."""
         ...
+
+    def get_pool_util(self) -> float:
+        """Calculate the utilization of the given actor pool."""
+        if self.num_running_actors() == 0:
+            return 0.0
+        else:
+            return self.num_active_actors() / self.num_running_actors()
