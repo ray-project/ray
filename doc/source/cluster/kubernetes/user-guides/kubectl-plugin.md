@@ -13,6 +13,12 @@ Install the KubeRay kubectl plugin using one of the following methods:
 - Install using Krew kubectl plugin manager (recommended)
 - Download from GitHub releases
 
+```{admonition} Plugin after 1.4.0 may be incompatible with RayCluster before 1.4.0
+:class: warning
+Certain plugin commands since 1.4.0 aren't compatible out-of-the-box with RayCluster Kubernetes
+Custom Resource Definition from KubeRay before 1.4.0.
+```
+
 ### Install using the Krew kubectl plugin manager (recommended)
 
 1. Install [Krew](https://krew.sigs.k8s.io/docs/user-guide/setup/install/).
