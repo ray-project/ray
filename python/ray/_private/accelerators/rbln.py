@@ -1,6 +1,6 @@
-import os
 import logging
-from typing import Optional, List, Tuple
+import os
+from typing import List, Optional, Tuple
 
 from ray._private.accelerators.accelerator import AcceleratorManager
 
@@ -65,6 +65,6 @@ class RBLNAcceleratorManager(AcceleratorManager):
         visible_npu_devices: List[str],
     ) -> None:
         if not os.getenv(NOSET_RBLN_RT_VISIBLE_DEVICES_ENV_VAR):
-            os.environ[RBLNAcceleratorManager.get_visible_accelerator_ids_env_var()] = (
-                ",".join(map(str, visible_npu_devices))
-            )
+            os.environ[
+                RBLNAcceleratorManager.get_visible_accelerator_ids_env_var()
+            ] = ",".join(map(str, visible_npu_devices))
