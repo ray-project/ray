@@ -2,13 +2,15 @@
 
 set -euo pipefail
 
+source "$(dirname "${BASH_SOURCE[0]}")/test-constants.sh"
+
 echo "--- Setup k8s environment"
 SKIP_CREATE_KIND_CLUSTER=1 bash ci/k8s/prep-k8s-environment.sh
 
 echo "--- Install Python dependencies"
 pip install -c python/requirements_compiled.txt pytest nbval bash_kernel
 python -m bash_kernel.install
-pip install "ray[default]==2.41.0"
+pip install "ray[default]==${RAY_VERSION}"
 
 echo "--- Run a deliberate failure test to ensure the test script fails on error"
 # The following Jupyter notebook only contains a single cell that runs the `date` command.
@@ -61,13 +63,7 @@ set -e
 
 echo "--- Run doc tests"
 cd doc/source/cluster/kubernetes
-TESTS=(
-  "getting-started/raycluster-quick-start.ipynb"
-  "getting-started/rayjob-quick-start.ipynb"
-  "getting-started/rayservice-quick-start.ipynb"
-  "user-guides/kuberay-gcs-ft.ipynb"
-)
-for test in "${TESTS[@]}"; do
+for test in "${DOC_TESTS[@]}"; do
   echo "Running test: ${test}"
   pytest --nbval "${test}" --nbval-kernel-name bash --sanitize-with doc_sanitize.cfg
 done

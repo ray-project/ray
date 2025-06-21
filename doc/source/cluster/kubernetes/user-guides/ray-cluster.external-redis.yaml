@@ -1,0 +1,187 @@
+apiVersion: ray.io/v1
+kind: RayCluster
+metadata:
+  name: raycluster-external-redis
+spec:
+  rayVersion: '2.46.0'
+  gcsFaultToleranceOptions:
+    # In most cases, you don't need to set `externalStorageNamespace` because KubeRay will
+    # automatically set it to the UID of RayCluster. Only modify this annotation if you fully understand
+    # the behaviors of the Ray GCS FT and RayService to avoid misconfiguration.
+    # [Example]:
+    # externalStorageNamespace: "my-raycluster-storage"
+    redisAddress: "redis:6379"
+    redisPassword:
+      valueFrom:
+        secretKeyRef:
+          name: redis-password-secret
+          key: password
+  headGroupSpec:
+    # The `rayStartParams` are used to configure the `ray start` command.
+    # See https://github.com/ray-project/kuberay/blob/master/docs/guidance/rayStartParams.md for the default settings of `rayStartParams` in KubeRay.
+    # See https://docs.ray.io/en/latest/cluster/cli.html#ray-start for all available options in `rayStartParams`.
+    rayStartParams:
+      # Setting "num-cpus: 0" to avoid any Ray actors or tasks being scheduled on the Ray head Pod.
+      num-cpus: "0"
+    # Pod template
+    template:
+      spec:
+        containers:
+        - name: ray-head
+          image: rayproject/ray:2.46.0
+          resources:
+            limits:
+              cpu: "1"
+            requests:
+              cpu: "1"
+          ports:
+          - containerPort: 6379
+            name: redis
+          - containerPort: 8265
+            name: dashboard
+          - containerPort: 10001
+            name: client
+          volumeMounts:
+          - mountPath: /tmp/ray
+            name: ray-logs
+          - mountPath: /home/ray/samples
+            name: ray-example-configmap
+        volumes:
+        - name: ray-logs
+          emptyDir: {}
+        - name: ray-example-configmap
+          configMap:
+            name: ray-example
+            defaultMode: 0777
+            items:
+            - key: detached_actor.py
+              path: detached_actor.py
+            - key: increment_counter.py
+              path: increment_counter.py
+  workerGroupSpecs:
+  # the pod replicas in this group typed worker
+  - replicas: 1
+    minReplicas: 1
+    maxReplicas: 10
+    groupName: small-group
+    # The `rayStartParams` are used to configure the `ray start` command.
+    # See https://github.com/ray-project/kuberay/blob/master/docs/guidance/rayStartParams.md for the default settings of `rayStartParams` in KubeRay.
+    # See https://docs.ray.io/en/latest/cluster/cli.html#ray-start for all available options in `rayStartParams`.
+    rayStartParams: {}
+    # Pod template
+    template:
+      spec:
+        containers:
+        - name: ray-worker
+          image: rayproject/ray:2.46.0
+          volumeMounts:
+          - mountPath: /tmp/ray
+            name: ray-logs
+          resources:
+            limits:
+              cpu: "1"
+            requests:
+              cpu: "1"
+        volumes:
+        - name: ray-logs
+          emptyDir: {}
+---
+kind: ConfigMap
+apiVersion: v1
+metadata:
+  name: redis-config
+  labels:
+    app: redis
+data:
+  redis.conf: |-
+    dir /data
+    port 6379
+    bind 0.0.0.0
+    appendonly yes
+    protected-mode no
+    requirepass 5241590000000000
+    pidfile /data/redis-6379.pid
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: redis
+  labels:
+    app: redis
+spec:
+  type: ClusterIP
+  ports:
+  - name: redis
+    port: 6379
+  selector:
+    app: redis
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: redis
+  labels:
+    app: redis
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: redis
+  template:
+    metadata:
+      labels:
+        app: redis
+    spec:
+      containers:
+      - name: redis
+        image: redis:7.4.0
+        command:
+        - "sh"
+        - "-c"
+        - "redis-server /usr/local/etc/redis/redis.conf"
+        ports:
+        - containerPort: 6379
+        volumeMounts:
+        - name: config
+          mountPath: /usr/local/etc/redis/redis.conf
+          subPath: redis.conf
+      volumes:
+      - name: config
+        configMap:
+          name: redis-config
+---
+# Redis password
+apiVersion: v1
+kind: Secret
+metadata:
+  name: redis-password-secret
+type: Opaque
+data:
+  # echo -n "5241590000000000" | base64
+  password: NTI0MTU5MDAwMDAwMDAwMA==
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: ray-example
+data:
+  detached_actor.py: |
+    import ray
+
+    @ray.remote(num_cpus=1)
+    class Counter:
+      def __init__(self):
+          self.value = 0
+
+      def increment(self):
+          self.value += 1
+          return self.value
+
+    ray.init(namespace="default_namespace")
+    Counter.options(name="counter_actor", lifetime="detached").remote()
+  increment_counter.py: |
+    import ray
+
+    ray.init(namespace="default_namespace")
+    counter = ray.get_actor("counter_actor")
+    print(ray.get(counter.increment.remote()))
