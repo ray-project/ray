@@ -900,9 +900,9 @@ class StandardAutoscaler:
         if not resource_demands and not strict_spreads:
             return frozenset(nodes_not_allowed_to_terminate)
 
-        static_node_resources: Dict[NodeIP, ResourceDict] = (
-            self.load_metrics.get_static_node_resources_by_ip()
-        )
+        static_node_resources: Dict[
+            NodeIP, ResourceDict
+        ] = self.load_metrics.get_static_node_resources_by_ip()
 
         head_node_resources: ResourceDict = copy.deepcopy(
             self.available_node_types[self.config["head_node_type"]]["resources"]
