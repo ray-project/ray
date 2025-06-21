@@ -1,6 +1,5 @@
 """Using Ray Serve to deploy LLM models with P/D disaggregation.
 """
-import asyncio
 import logging
 import uuid
 from typing import Any, AsyncGenerator, Dict, Union
@@ -63,6 +62,7 @@ class PDServingArgs(BaseModel):
 
 
 class PDProxyServer(LLMServer):
+    _default_engine_cls = None
     """
     Proxy between P/D LLM servers.
 
@@ -83,14 +83,6 @@ class PDProxyServer(LLMServer):
         prefill_server: DeploymentHandle,
         decode_server: DeploymentHandle,
     ):
-        class FakeEngine:
-            """Provide a fake engine such that proxy don't really start any engine."""
-
-            def __init__(self, *args, **kwargs):
-                pass
-
-            async def start(self, *args, **kwargs):
-                pass
 
         # We pass `llm_config` here to let super() extract the model_id, such that /v1/models
         # endpoint can work correctly.
@@ -98,7 +90,6 @@ class PDProxyServer(LLMServer):
         # API, instead of passing it in as an argument.
         await super().__init__(
             llm_config,
-            engine_cls=FakeEngine,
         )
 
         self.prefill_server = prefill_server
@@ -159,13 +150,6 @@ class PDProxyServer(LLMServer):
             request_id=request_id, prompt=prompt, stream=stream
         ):
             yield chunk
-
-    async def check_health(self) -> None:
-        """Check the health of the llm engine."""
-        await asyncio.gather(
-            self.prefill_server.check_health.remote(),
-            self.decode_server.check_health.remote(),
-        )
 
     @classmethod
     def as_deployment(cls) -> serve.Deployment:
