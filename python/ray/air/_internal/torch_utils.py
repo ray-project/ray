@@ -1,10 +1,11 @@
 import warnings
-from typing import Any, Dict, List, Optional, Union, Sequence
+from typing import Any, Dict, List, Optional, Union, Sequence, Tuple
 
 import numpy as np
 import pandas as pd
 import torch
 import pyarrow
+from concurrent.futures import Executor, as_completed
 
 from ray.air._internal.device_manager import get_torch_device_manager_by_context
 from ray.air.util.data_batch_conversion import _unwrap_ndarray_object_type_if_needed
@@ -16,6 +17,14 @@ from ray.data.collate_fn import (
     _is_nested_tensor_sequence,
     _is_tensor_mapping,
     _is_tensor_sequence_mapping,
+)
+from ray._private.ray_constants import env_bool
+
+
+# Default non-blocking transfer for tensors.
+DEFAULT_TENSOR_NON_BLOCKING_TRANSFER = env_bool(
+    "RAY_AIR_DEFAULT_TENSOR_NON_BLOCKING_TRANSFER",
+    True,
 )
 
 
@@ -142,6 +151,7 @@ def convert_ndarray_to_torch_tensor(
     ndarray: np.ndarray,
     dtype: Optional[torch.dtype] = None,
     device: Optional[Union[str, "torch.device"]] = None,
+    pin_memory: bool = False,
 ) -> torch.Tensor:
     """Convert a NumPy ndarray to a Torch Tensor.
 
@@ -151,6 +161,7 @@ def convert_ndarray_to_torch_tensor(
             inferred from the NumPy ndarray data.
         device: The device on which the tensor(s) should be placed; if None, the Torch
             tensor(s) will be constructed on the CPU.
+        pin_memory: Whether to pin the memory of the created tensors.
 
     Returns: A Torch Tensor.
     """
@@ -173,13 +184,23 @@ def convert_ndarray_to_torch_tensor(
     # torch/csrc/utils/tensor_numpy.cpp#L198-L206
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")
-        return torch.as_tensor(ndarray, dtype=dtype, device=device)
+        result = torch.as_tensor(ndarray, dtype=dtype, device=device)
+
+    if pin_memory:
+        assert result.device.type == "cpu", (
+            "Pin memory is only supported for CPU tensors. "
+            f"Got device: {result.device} and pin_memory: {pin_memory}."
+        )
+        result = result.pin_memory()
+
+    return result
 
 
 def convert_ndarray_batch_to_torch_tensor_batch(
     ndarrays: Union[np.ndarray, Dict[str, np.ndarray]],
     dtypes: Optional[Union[torch.dtype, Dict[str, torch.dtype]]] = None,
     device: Optional[Union[str, "torch.device"]] = None,
+    pin_memory: bool = False,
 ) -> Union[torch.Tensor, Dict[str, torch.Tensor]]:
     """Convert a NumPy ndarray batch to a Torch Tensor batch.
 
@@ -189,6 +210,7 @@ def convert_ndarray_batch_to_torch_tensor_batch(
             will be inferred from the NumPy ndarray data.
         device: The device on which the tensor(s) should be placed; if None, the Torch
             tensor(s) will be constructed on the CPU.
+        pin_memory: Whether to pin the memory of the created tensors.
 
     Returns: A (dict of) Torch Tensor(s).
     """
@@ -201,7 +223,12 @@ def convert_ndarray_batch_to_torch_tensor_batch(
                     f"should be given, instead got: {dtypes}"
                 )
             dtypes = next(iter(dtypes.values()))
-        batch = convert_ndarray_to_torch_tensor(ndarrays, dtype=dtypes, device=device)
+        batch = convert_ndarray_to_torch_tensor(
+            ndarrays,
+            dtype=dtypes,
+            device=device,
+            pin_memory=pin_memory,
+        )
     else:
         # Multi-tensor case.
         batch = {
@@ -209,6 +236,7 @@ def convert_ndarray_batch_to_torch_tensor_batch(
                 col_ndarray,
                 dtype=dtypes[col_name] if isinstance(dtypes, dict) else dtypes,
                 device=device,
+                pin_memory=pin_memory,
             )
             for col_name, col_ndarray in ndarrays.items()
         }
@@ -304,42 +332,15 @@ c18da597e0bb1c1aecc97c77a73fed1849057fa4/torch/nn/modules/utils.py
     return state_dict
 
 
-def convert_ndarray_list_to_torch_tensor_list(
-    ndarrays: Dict[str, List[np.ndarray]],
-    dtypes: Optional[Union[torch.dtype, Dict[str, torch.dtype]]] = None,
-    device: Optional[Union[str, "torch.device"]] = None,
-) -> Dict[str, List[torch.Tensor]]:
-    """Convert a dict mapping column names to lists of ndarrays to Torch Tensors.
-
-    Args:
-        ndarrays: A dict mapping column names to lists of ndarrays that we wish to convert
-            to Torch Tensors.
-        dtypes: A (dict of) Torch dtype(s) for the created tensors; if None, the dtype
-            will be inferred from the NumPy ndarray data.
-        device: The device on which the tensor(s) should be placed; if None, the Torch
-            tensor(s) will be constructed on the CPU.
-
-    Returns: A dict mapping column names to lists of Tensors.
-    """
-    return {
-        col_name: [
-            convert_ndarray_batch_to_torch_tensor_batch(
-                ndarray,
-                dtypes=dtypes[col_name] if isinstance(dtypes, dict) else dtypes,
-                device=device,
-            )
-            for ndarray in col_ndarrays
-        ]
-        for col_name, col_ndarrays in ndarrays.items()
-    }
-
-
 def arrow_batch_to_tensors(
     batch: pyarrow.Table,
     dtypes: Optional[Union[torch.dtype, Dict[str, torch.dtype]]] = None,
     combine_chunks: bool = False,
-) -> Dict[str, List[torch.Tensor]]:
-    """Convert PyArrow batch to PyTorch tensors.
+    pin_memory: bool = False,
+    executor: Optional[Executor] = None,
+) -> Dict[str, Union[torch.Tensor, List[torch.Tensor]]]:
+    """
+    Convert PyArrow batch to PyTorch tensors.
 
     Args:
         batch: PyArrow batch to convert
@@ -347,6 +348,8 @@ def arrow_batch_to_tensors(
             will be inferred from the NumPy ndarray data.
         combine_chunks: If True, combine chunks in Arrow batch before converting to
             tensors.
+        pin_memory: Whether to pin the memory of the created tensors.
+        executor: Optional executor for parallelism.
 
     Returns:
         A dictionary of column name to list of tensors. For non-chunked columns,
@@ -356,29 +359,62 @@ def arrow_batch_to_tensors(
     from ray.data._internal.arrow_block import ArrowBlockAccessor
 
     if combine_chunks:
-        numpy_batch = ArrowBlockAccessor(batch).to_batch_format("numpy")
-        return {
-            col_name: convert_ndarray_batch_to_torch_tensor_batch(
-                col_array,
-                dtypes=dtypes[col_name] if isinstance(dtypes, dict) else dtypes,
-            )
-            for col_name, col_array in numpy_batch.items()
-        }
+        numpy_batch: Dict[str, np.ndarray] = ArrowBlockAccessor(batch).to_batch_format(
+            "numpy"
+        )
     else:
-        numpy_list = transform_pyarrow.table_to_numpy_dict_chunked(
-            batch,
-        )
-        return convert_ndarray_list_to_torch_tensor_list(
-            numpy_list,
-            dtypes=dtypes,
-        )
+        numpy_batch: Dict[
+            str, List[np.ndarray]
+        ] = transform_pyarrow.table_to_numpy_dict_chunked(batch)
+
+    def convert_column(
+        col_name: str, col_data: Union[np.ndarray, List[np.ndarray]]
+    ) -> Tuple[str, Union[torch.Tensor, List[torch.Tensor]]]:
+        dtype = dtypes[col_name] if isinstance(dtypes, dict) else dtypes
+
+        if isinstance(col_data, list):
+            # Multiple chunks - convert each chunk to tensor
+            tensors = [
+                convert_ndarray_batch_to_torch_tensor_batch(
+                    chunk,
+                    dtypes=dtype,
+                    pin_memory=pin_memory,
+                )
+                for chunk in col_data
+            ]
+            # Unwrap single element list if combine_chunks True or you want single
+            # tensor.
+            if combine_chunks and len(tensors) == 1:
+                return col_name, tensors[0]
+            else:
+                return col_name, tensors
+        else:
+            # Single chunk, single tensor.
+            tensor = convert_ndarray_batch_to_torch_tensor_batch(
+                col_data,
+                dtypes=dtype,
+                pin_memory=pin_memory,
+            )
+            return col_name, tensor
+
+    if executor is None:
+        return {
+            col_name: convert_column(col_name, col_data)[1]
+            for col_name, col_data in numpy_batch.items()
+        }
+
+    futures = {
+        executor.submit(convert_column, col_name, col_data): col_name
+        for col_name, col_data in numpy_batch.items()
+    }
+    return {future.result()[0]: future.result()[1] for future in as_completed(futures)}
 
 
 @torch.no_grad()
 def concat_tensors_to_device(
     tensor_sequence: Sequence[torch.Tensor],
     device: Optional[Union[str, "torch.device"]] = None,
-    non_blocking: bool = False,
+    non_blocking: bool = DEFAULT_TENSOR_NON_BLOCKING_TRANSFER,
 ) -> torch.Tensor:
     """Stack sequence of tensors into a contiguous GPU tensor.
 
@@ -460,7 +496,7 @@ def _get_type_str(batch: Any) -> str:
 def move_tensors_to_device(
     batch: TensorBatchType,
     device: Optional[Union[str, "torch.device"]] = None,
-    non_blocking: bool = False,
+    non_blocking: bool = DEFAULT_TENSOR_NON_BLOCKING_TRANSFER,
 ) -> TensorBatchReturnType:
     """Move tensors to the specified device.
 
