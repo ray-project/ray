@@ -54,7 +54,7 @@ class GcsJobManager : public rpc::JobInfoHandler {
   explicit GcsJobManager(GcsTableStorage &gcs_table_storage,
                          GcsPublisher &gcs_publisher,
                          RuntimeEnvManager &runtime_env_manager,
-                         GcsFunctionManager &function_manager,
+                         GCSFunctionManager &function_manager,
                          InternalKVInterface &internal_kv,
                          instrumented_io_context &io_context,
                          rpc::CoreWorkerClientFactoryFn client_factory = nullptr)
@@ -142,7 +142,7 @@ class GcsJobManager : public rpc::JobInfoHandler {
   absl::flat_hash_map<JobID, std::shared_ptr<rpc::JobConfig>> cached_job_configs_;
 
   ray::RuntimeEnvManager &runtime_env_manager_;
-  GcsFunctionManager &function_manager_;
+  GCSFunctionManager &function_manager_;
   InternalKVInterface &internal_kv_;
   instrumented_io_context &io_context_;
   /// The cached core worker clients which are used to communicate with workers.
