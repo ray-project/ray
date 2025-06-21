@@ -17,6 +17,7 @@ kind load docker-image ray-ci:kuberay-test
 # python python/ray/tests/kuberay/setup/setup_kuberay.py
 
 bash python/ray/autoscaler/kuberay/init-config.sh
+kubectl create namespace kuberay-system
 kubectl create -k python/ray/autoscaler/kuberay/config/default
 
 echo "--- Test ray cluster creation"
@@ -28,7 +29,7 @@ echo "--- Wait until all pods of test cluster are deleted"
 kubectl get pods -o custom-columns=POD:metadata.name --no-headers
 
 for i in {1..120}; do
-    if [[ "$(kubectl get pods -o custom-columns=POD:metadata.name --no-headers | grep -vc kuberay-operator)" == "0" ]]; then
+    if [[ "$(kubectl get pods -o custom-columns=POD:metadata.name --no-headers | wc -l)" == "0" ]]; then
         break
     fi
     if [[ $i == 120 ]]; then

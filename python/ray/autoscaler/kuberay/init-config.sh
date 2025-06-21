@@ -24,6 +24,7 @@ DIR=$(mktemp -d -t "kuberay-XXXXXX")
     (
         cd kuberay/ray-operator/config/default
         kustomize edit set image kuberay/operator=quay.io/kuberay/operator:"$OPERATOR_TAG"
+        kustomize edit set namespace kuberay-system
     )
     cp -r kuberay/ray-operator/config "$SCRIPT_DIR/"
 )
