@@ -88,7 +88,10 @@ from ray.rllib.utils.test_utils import (
 from ray.rllib.utils.typing import ResultDict
 from ray.tune.registry import get_trainable_cls, register_env
 
-parser = add_rllib_example_script_args(default_reward=500.0)
+parser = add_rllib_example_script_args(
+    default_timesteps=200000,
+    default_reward=500.0,
+)
 parser.set_defaults(
     evaluation_num_env_runners=2,
     evaluation_interval=1,

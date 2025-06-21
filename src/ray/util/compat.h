@@ -60,6 +60,7 @@ mach_port_t pthread_mach_thread_np(pthread_t);
 #endif
 
 #ifdef _WIN32
+#include <io.h>
 #ifndef _WINDOWS_
 #ifndef WIN32_LEAN_AND_MEAN  // Sorry for the inconvenience. Please include any related
                              // headers you need manually.
@@ -89,22 +90,22 @@ namespace ray {
 #if defined(__APPLE__) || defined(__linux__)
 inline int GetStdoutFd() { return STDOUT_FILENO; }
 inline int GetStderrFd() { return STDERR_FILENO; }
-inline MEMFD_TYPE_NON_UNIQUE GetStdoutHandle() { return STDOUT_FILENO; }
-inline MEMFD_TYPE_NON_UNIQUE GetStderrHandle() { return STDERR_FILENO; }
+inline int Dup(int fd) { return dup(fd); }
+inline int Dup2(int oldfd, int newfd) { return dup2(oldfd, newfd); }
 #elif defined(_WIN32)
 inline int GetStdoutFd() { return _fileno(stdout); }
 inline int GetStderrFd() { return _fileno(stderr); }
-inline MEMFD_TYPE_NON_UNIQUE GetStdoutHandle() { return GetStdHandle(STD_OUTPUT_HANDLE); }
-inline MEMFD_TYPE_NON_UNIQUE GetStderrHandle() { return GetStdHandle(STD_ERROR_HANDLE); }
+inline int Dup(int fd) { return _dup(fd); }
+inline int Dup2(int oldfd, int newfd) { return _dup2(oldfd, newfd); }
 #endif
 
 // Write the whole content into file descriptor, if any error happens, or actual written
 // content is less than expected, IO error status will be returned.
-Status CompleteWrite(MEMFD_TYPE_NON_UNIQUE fd, const char *data, size_t len);
+Status CompleteWrite(int fd, const char *data, size_t len);
 // Flush the given file descriptor, if EIO happens, error message is logged and process
 // exits directly. Reference to fsyncgate: https://wiki.postgresql.org/wiki/Fsync_Errors
-Status Flush(MEMFD_TYPE_NON_UNIQUE fd);
+Status Flush(int fd);
 // Close the given file descriptor, if any error happens, IO error status will be
 // returned.
-Status Close(MEMFD_TYPE_NON_UNIQUE fd);
+Status Close(int fd);
 }  // namespace ray

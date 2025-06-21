@@ -2,10 +2,12 @@ from contextlib import contextmanager
 from typing import TYPE_CHECKING, Any, Dict, List, Optional
 
 from ray.train.v2.api.callback import RayTrainCallback
+from ray.train.v2.api.result import Result
 from ray.util.annotations import DeveloperAPI
 
 if TYPE_CHECKING:
     from ray.train import Checkpoint
+    from ray.train.v2._internal.execution.context import TrainRunContext
     from ray.train.v2._internal.execution.controller import (
         TrainControllerState,
     )
@@ -67,7 +69,7 @@ class WorkerGroupCallback(RayTrainCallback):
 
 @DeveloperAPI
 class ControllerCallback(RayTrainCallback):
-    def after_controller_start(self):
+    def after_controller_start(self, train_run_context: "TrainRunContext"):
         """Called immediately after `TrainController.run` is called,
         before the control loop starts executing."""
         pass
@@ -97,6 +99,14 @@ class ControllerCallback(RayTrainCallback):
         resize_decision: "ResizeDecision",
     ):
         """Called before the controller executes a resize decision."""
+        pass
+
+    def after_controller_finish(self, result: Result):
+        """Called after the training run completes, providing access to the final result.
+
+        Args:
+            result: The final training result containing metrics and checkpoint.
+        """
         pass
 
 

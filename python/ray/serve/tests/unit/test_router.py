@@ -10,8 +10,8 @@ from unittest.mock import Mock, patch
 import pytest
 
 import ray
+from ray._common.test_utils import async_wait_for_condition, wait_for_condition
 from ray._common.utils import get_or_create_event_loop
-from ray._private.test_utils import async_wait_for_condition, wait_for_condition
 from ray.exceptions import ActorDiedError, ActorUnavailableError
 from ray.serve._private.common import (
     DeploymentHandleSource,
@@ -197,7 +197,7 @@ class FakeRequestRouter(RequestRouter):
         for _ in range(num):
             self._blocked_requests.pop(0).set()
 
-    async def choose_replica_for_request(
+    async def _choose_replica_for_request(
         self, pr: PendingRequest, *, is_retry: bool = False
     ) -> FakeReplica:
         if self._block_requests:
@@ -883,7 +883,7 @@ class TestRouterMetricsManager:
         )
 
         # Running replicas reduces to [r2, r4]
-        metrics_manager.update_running_replicas(
+        metrics_manager._update_running_replicas(
             [
                 running_replica_info(r2),
                 running_replica_info(r4),
@@ -1051,7 +1051,7 @@ class TestRouterMetricsManager:
         metrics_manager.dec_num_running_requests_for_replica(r3)
 
         # update running replicas {r2}
-        metrics_manager.update_running_replicas([running_replica_info(r2)])
+        metrics_manager._update_running_replicas([running_replica_info(r2)])
         await async_wait_for_condition(
             check_database, expected={r1, r2, QUEUED_REQUESTS_KEY}
         )

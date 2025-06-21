@@ -83,7 +83,6 @@ class OnesSource(Datasource):
         meta = BlockMetadata(
             num_rows=1,
             size_bytes=n_per_block,
-            schema=None,
             input_files=None,
             exec_stats=None,
         )

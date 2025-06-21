@@ -2044,7 +2044,7 @@ serpent==1.41
     # via
     #   hpbandster
     #   pyro4
-setproctitle==1.3.3
+setproctitle==1.3.6
     # via wandb
 shellcheck-py==0.7.1.1
     # via -r python/requirements/lint-requirements.txt

@@ -12,7 +12,7 @@ import pyarrow.fs
 
 import ray
 from ray import logger
-from ray._private.utils import load_class
+from ray._common.utils import load_class
 from ray.air._internal import usage as air_usage
 from ray.air.constants import TRAINING_ITERATION
 from ray.air.util.node import _force_on_current_node
@@ -423,6 +423,13 @@ class _WandbLoggingActor:
                 # Ignore HTTPError. Missing a few data points is not a
                 # big issue, as long as things eventually recover.
                 logger.warning("Failed to log result to w&b: {}".format(str(e)))
+            except FileNotFoundError as e:
+                logger.error(
+                    "FileNotFoundError: Did not log result to Weights & Biases. "
+                    "Possible cause: relative file path used instead of absolute path. "
+                    "Error: %s",
+                    e,
+                )
         self._wandb.finish()
 
     def _handle_checkpoint(self, checkpoint_path: str):
@@ -518,7 +525,7 @@ class WandbLoggerCallback(LoggerCallback):
     values.
 
     Please see here for all other valid configuration settings:
-    https://docs.wandb.ai/library/init
+    https://docs.wandb.ai/ref/python/init/
     """  # noqa: E501
 
     # Do not log these result keys

@@ -445,31 +445,6 @@ ray::Status OwnershipBasedObjectDirectory::UnsubscribeObjectLocations(
   return Status::OK();
 }
 
-void OwnershipBasedObjectDirectory::LookupRemoteConnectionInfo(
-    RemoteConnectionInfo &connection_info) const {
-  auto node_info = gcs_client_->Nodes().Get(connection_info.node_id);
-  if (node_info != nullptr) {
-    NodeID result_node_id = NodeID::FromBinary(node_info->node_id());
-    RAY_CHECK(result_node_id == connection_info.node_id);
-    connection_info.ip = node_info->node_manager_address();
-    connection_info.port = static_cast<uint16_t>(node_info->object_manager_port());
-  }
-}
-
-std::vector<RemoteConnectionInfo>
-OwnershipBasedObjectDirectory::LookupAllRemoteConnections() const {
-  std::vector<RemoteConnectionInfo> remote_connections;
-  const auto &node_map = gcs_client_->Nodes().GetAll();
-  for (const auto &item : node_map) {
-    RemoteConnectionInfo info(item.first);
-    LookupRemoteConnectionInfo(info);
-    if (info.Connected() && info.node_id != gcs_client_->Nodes().GetSelfId()) {
-      remote_connections.push_back(info);
-    }
-  }
-  return remote_connections;
-}
-
 void OwnershipBasedObjectDirectory::HandleNodeRemoved(const NodeID &node_id) {
   for (auto &[object_id, listener] : listeners_) {
     bool updated = listener.current_object_locations.erase(node_id) > 0;

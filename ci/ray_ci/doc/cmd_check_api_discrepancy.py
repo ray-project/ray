@@ -21,7 +21,17 @@ TEAM_API_CONFIGS = {
     "serve": {
         "head_modules": {"ray.serve"},
         "head_doc_file": "doc/source/serve/api/index.md",
-        "white_list_apis": {},
+        "white_list_apis": {
+            # private versions of request router APIs
+            "ray.serve._private.common.ReplicaID",
+            "ray.serve._private.request_router.common.PendingRequest",
+            "ray.serve._private.request_router.pow_2_router.PowerOfTwoChoicesRequestRouter",
+            "ray.serve._private.request_router.request_router.RequestRouter",
+            "ray.serve._private.request_router.replica_wrapper.RunningReplica",
+            "ray.serve._private.request_router.request_router.FIFOMixin",
+            "ray.serve._private.request_router.request_router.LocalityMixin",
+            "ray.serve._private.request_router.request_router.MultiplexMixin",
+        },
     },
     "core": {
         "head_modules": {"ray"},

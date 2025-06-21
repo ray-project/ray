@@ -88,7 +88,7 @@ steps:
     instance_type: medium
     commands:
       - bazel run //ci/ray_ci:build_in_docker -- docker --python-version {{matrix}}
-        --platform cu12.4.1-cudnn --image-type ray-llm --upload
+        --platform cu12.8.1-cudnn --image-type ray-llm --upload
     depends_on:
       - manylinux
       - forge
@@ -136,6 +136,7 @@ steps:
       - oss
       - skip-on-premerge
     commands:
+      - bazel run .buildkite:copy_files -- --destination docker_login
       - bazel run //ci/ray_ci/automation:generate_index -- --prefix nightly
     depends_on:
       - ray_images

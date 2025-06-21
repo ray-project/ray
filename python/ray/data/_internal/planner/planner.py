@@ -18,7 +18,7 @@ PlanLogicalOpFn = Callable[
 ]
 
 # A list of registered plan functions for logical operators.
-PLAN_LOGICAL_OP_FNS: List[Tuple[Type[LogicalOperator], PlanLogicalOpFn]] = []
+_PLAN_LOGICAL_OP_FNS: Dict[Type[LogicalOperator], PlanLogicalOpFn] = {}
 
 
 @DeveloperAPI
@@ -27,7 +27,12 @@ def register_plan_logical_op_fn(
     plan_fn: PlanLogicalOpFn,
 ):
     """Register a plan function for a logical operator type."""
-    PLAN_LOGICAL_OP_FNS.append((logical_op_type, plan_fn))
+    _PLAN_LOGICAL_OP_FNS[logical_op_type] = plan_fn
+
+
+@DeveloperAPI
+def get_plan_logical_op_fns():
+    return _PLAN_LOGICAL_OP_FNS.copy()
 
 
 def _register_default_plan_logical_op_fns():
@@ -74,7 +79,10 @@ def _register_default_plan_logical_op_fns():
         """Get the corresponding DAG of physical operators for InputData."""
         assert len(physical_children) == 0
 
-        return InputDataBuffer(data_context, input_data=logical_op.input_data)
+        return InputDataBuffer(
+            data_context,
+            input_data=logical_op.input_data,
+        )
 
     register_plan_logical_op_fn(InputData, plan_input_data_op)
     register_plan_logical_op_fn(Write, plan_write_op)
@@ -160,52 +168,68 @@ class Planner:
     done by physical optimizer.
     """
 
-    def __init__(self):
-        self._physical_op_to_logical_op: Dict[PhysicalOperator, LogicalOperator] = {}
-
     def plan(self, logical_plan: LogicalPlan) -> PhysicalPlan:
         """Convert logical to physical operators recursively in post-order."""
-        physical_dag = self._plan(logical_plan.dag, logical_plan.context)
-        physical_plan = PhysicalPlan(
-            physical_dag,
-            self._physical_op_to_logical_op,
-            logical_plan.context,
+        plan_fns = get_plan_logical_op_fns()
+        physical_dag, op_map = plan_recursively(
+            logical_plan.dag, plan_fns, logical_plan.context
         )
+        physical_plan = PhysicalPlan(physical_dag, op_map, logical_plan.context)
         return physical_plan
 
-    def _plan(
-        self, logical_op: LogicalOperator, data_context: DataContext
-    ) -> PhysicalOperator:
-        # Plan the input dependencies first.
-        physical_children = []
-        for child in logical_op.input_dependencies:
-            physical_children.append(self._plan(child, data_context))
 
-        physical_op = None
-        for op_type, plan_fn in PLAN_LOGICAL_OP_FNS:
-            if isinstance(logical_op, op_type):
-                # We will call `set_logical_operators()` in the following for-loop,
-                # no need to do it here.
-                physical_op = plan_fn(logical_op, physical_children, data_context)
-                break
+@DeveloperAPI
+def plan_recursively(
+    logical_op: LogicalOperator,
+    plan_fns: Dict[Type[LogicalOperator], PlanLogicalOpFn],
+    data_context: DataContext,
+) -> Tuple[PhysicalOperator, Dict[PhysicalOperator, LogicalOperator]]:
+    """Plan a logical operator and its input dependencies recursively.
 
-        if physical_op is None:
-            raise ValueError(
-                f"Found unknown logical operator during planning: {logical_op}"
-            )
+    Args:
+        logical_op: The logical operator to plan.
+        plan_fns: A dictionary of planning functions for different logical operator
+            types.
+        data_context: The data context.
 
-        # Traverse up the DAG, and set the mapping from physical to logical operators.
-        # At this point, all physical operators without logical operators set
-        # must have been created by the current logical operator.
-        queue = [physical_op]
-        while queue:
-            curr_physical_op = queue.pop()
-            # Once we find an operator with a logical operator set, we can stop.
-            if curr_physical_op._logical_operators:
-                break
+    Returns:
+        A tuple of the physical operator corresponding to the logical operator, and
+        a mapping from physical to logical operators.
+    """
+    op_map: Dict[PhysicalOperator, LogicalOperator] = {}
 
-            curr_physical_op.set_logical_operators(logical_op)
-            queue.extend(physical_op.input_dependencies)
+    # Plan the input dependencies first.
+    physical_children = []
+    for child in logical_op.input_dependencies:
+        physical_child, child_op_map = plan_recursively(child, plan_fns, data_context)
+        physical_children.append(physical_child)
+        op_map.update(child_op_map)
 
-        self._physical_op_to_logical_op[physical_op] = logical_op
-        return physical_op
+    physical_op = None
+    for op_type, plan_fn in plan_fns.items():
+        if isinstance(logical_op, op_type):
+            # We will call `set_logical_operators()` in the following for-loop,
+            # no need to do it here.
+            physical_op = plan_fn(logical_op, physical_children, data_context)
+            break
+
+    if physical_op is None:
+        raise ValueError(
+            f"Found unknown logical operator during planning: {logical_op}"
+        )
+
+    # Traverse up the DAG, and set the mapping from physical to logical operators.
+    # At this point, all physical operators without logical operators set
+    # must have been created by the current logical operator.
+    queue = [physical_op]
+    while queue:
+        curr_physical_op = queue.pop()
+        # Once we find an operator with a logical operator set, we can stop.
+        if curr_physical_op._logical_operators:
+            break
+
+        curr_physical_op.set_logical_operators(logical_op)
+        queue.extend(physical_op.input_dependencies)
+
+    op_map[physical_op] = logical_op
+    return physical_op, op_map

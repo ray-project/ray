@@ -11,6 +11,7 @@ import pytest
 
 import ray
 import ray.util.state
+from ray._common.test_utils import wait_for_condition
 from ray._private.arrow_utils import get_pyarrow_version
 from ray._private.internal_api import get_memory_info_reply, get_state_from_address
 from ray.air.constants import TENSOR_COLUMN_NAME
@@ -22,11 +23,7 @@ from ray.data.tests.mock_server import *  # noqa
 
 # Trigger pytest hook to automatically zip test cluster logs to archive dir on failure
 from ray.tests.conftest import *  # noqa
-from ray.tests.conftest import (
-    _ray_start,
-    pytest_runtest_makereport,  # noqa
-    wait_for_condition,
-)
+from ray.tests.conftest import _ray_start  # noqa,
 from ray.util.debug import reset_log_once
 
 
@@ -315,18 +312,18 @@ def configure_shuffle_method(request):
 
 
 @pytest.fixture(params=[True, False])
-def use_polars(request):
-    use_polars = request.param
+def use_polars_sort(request):
+    use_polars_sort = request.param
 
     ctx = ray.data.context.DataContext.get_current()
 
-    original_use_polars = ctx.use_polars
+    original_use_polars = ctx.use_polars_sort
 
-    ctx.use_polars = use_polars
+    ctx.use_polars_sort = use_polars_sort
 
     yield request.param
 
-    ctx.use_polars = original_use_polars
+    ctx.use_polars_sort = original_use_polars
 
 
 @pytest.fixture(params=[True, False])
@@ -481,7 +478,6 @@ def op_two_block():
             BlockMetadata(
                 num_rows=block_params["num_rows"][i],
                 size_bytes=block_params["size_bytes"][i],
-                schema=None,
                 input_files=None,
                 exec_stats=block_exec_stats,
             )

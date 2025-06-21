@@ -44,13 +44,15 @@ class DirectTaskTransportTest : public ::testing::Test {
         [&](const rpc::Address &) { return nullptr; });
     memory_store = DefaultCoreWorkerMemoryStoreWithThread::Create();
     reference_counter = std::make_shared<MockReferenceCounter>();
-    actor_task_submitter = std::make_unique<ActorTaskSubmitter>(*client_pool,
-                                                                *memory_store,
-                                                                *task_finisher,
-                                                                *actor_creator,
-                                                                nullptr,
-                                                                io_context,
-                                                                reference_counter);
+    actor_task_submitter = std::make_unique<ActorTaskSubmitter>(
+        *client_pool,
+        *memory_store,
+        *task_finisher,
+        *actor_creator,
+        [](const ObjectID &object_id) { return rpc::TensorTransport::OBJECT_STORE; },
+        nullptr,
+        io_context,
+        reference_counter);
   }
 
   TaskSpecification GetActorTaskSpec(const ActorID &actor_id) {

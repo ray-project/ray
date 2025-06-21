@@ -51,12 +51,17 @@ document.addEventListener("DOMContentLoaded", function() {
         for (let i = 0; i < codeButtons.length; i++) {
             const button = codeButtons[i];
             button.addEventListener("click", function() {
+                if (typeof gtag === 'undefined') {
+                    console.warn('Google Analytics (gtag) not loaded - code copy not tracked');
+                    return;
+                }
+
                 gtag("event", "code_copy_click", {
-                     "send_to": "UA-110413294-1",
-                     "event_category": "ray_docs_copy_code",
-                     "event_label": "URL: " + document.URL
-                         + " Button: " + button.getAttribute("data-clipboard-target"),
-                     "value": 1,
+                     category: "ray_docs_copy_code",
+                     page_location: window.location.href,
+                     page_title: document.title,
+                     button_target: button.getAttribute("data-clipboard-target") || "unknown",
+                     value: 1,
                 });
             });
         }
@@ -64,14 +69,22 @@ document.addEventListener("DOMContentLoaded", function() {
 
 document.addEventListener("DOMContentLoaded", function() {
   let anyscaleButton = document.getElementById("try-anyscale")
-  anyscaleButton.onclick = () => {
-    gtag("event", "try_anyscale", {
-        "send_to": "UA-110413294-1",
-        "event_category": "TryAnyscale",
-        "event_label": "TryAnyscale",
-        "value": 1,
-    });
-    window.open('https://www.anyscale.com', '_blank');
+  if (anyscaleButton) {
+    anyscaleButton.onclick = () => {
+      if (typeof gtag === 'undefined') {
+          console.warn('Google Analytics (gtag) not loaded - try anyscale click not tracked');
+          return;
+      }
+
+      gtag("event", "try_anyscale_click", {
+          category: "TryAnyscale",
+          page_location: window.location.href,
+          page_title: document.title,
+          link_url: "https://www.anyscale.com",
+          value: 1,
+      });
+      window.open('https://www.anyscale.com', '_blank');
+    }
   }
 });
 

@@ -5,6 +5,7 @@ from typing import Dict
 import pytest
 import sys
 import time
+from ray._common.test_utils import async_wait_for_condition, wait_for_condition
 from ray._private import ray_constants
 from functools import reduce
 
@@ -18,10 +19,8 @@ from ray._private.state_api_test_utils import (
 )
 from ray.util.state.common import ListApiOptions, StateResource
 from ray._private.test_utils import (
-    async_wait_for_condition,
     run_string_as_driver,
     run_string_as_driver_nonblocking,
-    wait_for_condition,
 )
 from ray.util.state import (
     StateApiClient,

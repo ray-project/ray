@@ -36,6 +36,7 @@ class ServeUsageTag(Enum):
     )
     NUM_NODE_COMPACTIONS = TagKey.SERVE_NUM_NODE_COMPACTIONS
     AUTO_NUM_REPLICAS_USED = TagKey.SERVE_AUTO_NUM_REPLICAS_USED
+    CUSTOM_REQUEST_ROUTER_USED = TagKey.SERVE_CUSTOM_REQUEST_ROUTER_USED
 
     def record(self, value: str):
         """Record telemetry value."""

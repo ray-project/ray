@@ -14,6 +14,7 @@ from ray.serve.generated.serve_pb2 import (
     DeploymentStatusTrigger as DeploymentStatusTriggerProto,
 )
 from ray.serve.grpc_util import RayServegRPCContext
+from ray.util.annotations import PublicAPI
 
 REPLICA_ID_FULL_ID_STR_PREFIX = "SERVE_REPLICA::"
 
@@ -33,10 +34,16 @@ class DeploymentID:
         return str(self)
 
 
+@PublicAPI(stability="alpha")
 @dataclass(frozen=True)
 class ReplicaID:
+    """A unique identifier for a replica."""
+
     unique_id: str
+    """A unique identifier for the replica within the deployment."""
+
     deployment_id: DeploymentID
+    """The deployment this replica belongs to."""
 
     def to_full_id_str(self) -> str:
         s = f"{self.deployment_id.name}#{self.unique_id}"
@@ -511,6 +518,7 @@ class RunningReplicaInfo:
     max_ongoing_requests: int
     is_cross_language: bool = False
     multiplexed_model_ids: List[str] = field(default_factory=list)
+    routing_stats: Dict[str, Any] = field(default_factory=dict)
     port: Optional[int] = None
 
     def __post_init__(self):
@@ -529,6 +537,7 @@ class RunningReplicaInfo:
                     str(self.max_ongoing_requests),
                     str(self.is_cross_language),
                     str(self.multiplexed_model_ids),
+                    str(self.routing_stats),
                 ]
             )
         )
@@ -564,9 +573,16 @@ class ServeComponentType(str, Enum):
 
 
 @dataclass
-class MultiplexedReplicaInfo:
+class RequestRoutingInfo:
+    """Information about the request routing.
+
+    It includes deployment name (from ReplicaID), replica tag (from ReplicaID),
+    multiplex model ids, and routing stats.
+    """
+
     replica_id: ReplicaID
-    model_ids: List[str]
+    multiplexed_model_ids: Optional[List[str]] = None
+    routing_stats: Optional[Dict[str, Any]] = None
 
 
 @dataclass

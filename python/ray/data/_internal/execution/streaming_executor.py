@@ -157,6 +157,7 @@ class StreamingExecutor(Executor, threading.Thread):
             self._dataset_id,
             self._get_operator_tags(),
             TopologyMetadata.create_topology_metadata(dag, op_to_id),
+            self._data_context,
         )
         for callback in get_execution_callbacks(self._data_context):
             callback.before_execution_starts(self)

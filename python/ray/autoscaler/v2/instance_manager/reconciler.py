@@ -5,7 +5,7 @@ import uuid
 from collections import defaultdict
 from typing import Dict, List, Optional, Set, Tuple
 
-from ray._private.utils import binary_to_hex
+from ray._common.utils import binary_to_hex
 from ray.autoscaler.v2.instance_manager.common import InstanceUtil
 from ray.autoscaler.v2.instance_manager.config import (
     AutoscalingConfig,

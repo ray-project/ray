@@ -4,7 +4,7 @@ from dataclasses import dataclass
 from queue import Queue
 from typing import List
 
-from ray._private.utils import hex_to_binary
+from ray._common.utils import hex_to_binary
 from ray._raylet import GcsClient
 from ray.autoscaler.v2.instance_manager.instance_manager import (
     InstanceUpdatedSubscriber,

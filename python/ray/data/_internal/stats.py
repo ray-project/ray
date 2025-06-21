@@ -472,6 +472,7 @@ class _StatsActor:
         dataset_tag: str,
         operator_tags: List[str],
         topology: Topology,
+        data_context: DataContext,
     ):
         start_time = time.time()
         self.datasets[dataset_tag] = {
@@ -500,6 +501,7 @@ class _StatsActor:
                 topology=topology,
                 dataset_id=dataset_tag,
                 start_time=start_time,
+                data_context=data_context,
             )
             self._metadata_exporter.export_dataset_metadata(dataset_metadata)
 
@@ -775,6 +777,7 @@ class _StatsManager:
         dataset_tag: str,
         operator_tags: List[str],
         topology: Topology,
+        data_context: DataContext,
     ):
         """Register a dataset with the stats actor.
 
@@ -782,12 +785,14 @@ class _StatsManager:
             dataset_tag: Tag for the dataset
             operator_tags: List of operator tags
             topology: Optional Topology representing the DAG structure to export
+            data_context: The DataContext attached to the dataset
         """
         self._stats_actor().register_dataset.remote(
             ray.get_runtime_context().get_job_id(),
             dataset_tag,
             operator_tags,
             topology,
+            data_context,
         )
 
     def get_dataset_id_from_stats_actor(self) -> str:
@@ -1118,7 +1123,8 @@ class DatasetStatsSummary:
         total_wall_time = self.get_total_wall_time()
 
         def fmt_line(name: str, time: float) -> str:
-            return f"* {name}: {fmt(time)} ({time / total_wall_time * 100:.3f}%)\n"
+            fraction = time / total_wall_time if total_wall_time > 0 else 0
+            return f"* {name}: {fmt(time)} ({fraction * 100:.3f}%)\n"
 
         summaries = DatasetStatsSummary._collect_dataset_stats_summaries(self)
         out = "Runtime Metrics:\n"

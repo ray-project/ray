@@ -1,4 +1,4 @@
-from typing import Any, Dict, List, Optional
+from typing import TYPE_CHECKING, Any, Dict, List, Optional
 
 from ray.data._internal.logical.interfaces import LogicalOperator
 from ray.data._internal.planner.exchange.interfaces import ExchangeTaskSpec
@@ -6,6 +6,10 @@ from ray.data._internal.planner.exchange.shuffle_task_spec import ShuffleTaskSpe
 from ray.data._internal.planner.exchange.sort_task_spec import SortKey, SortTaskSpec
 from ray.data.aggregate import AggregateFn
 from ray.data.block import BlockMetadata
+
+if TYPE_CHECKING:
+
+    from ray.data.block import Schema
 
 
 class AbstractAllToAll(LogicalOperator):
@@ -51,9 +55,17 @@ class RandomizeBlocks(AbstractAllToAll):
         )
         self._seed = seed
 
-    def aggregate_output_metadata(self) -> BlockMetadata:
+    def infer_metadata(self) -> "BlockMetadata":
         assert len(self._input_dependencies) == 1, len(self._input_dependencies)
-        return self._input_dependencies[0].aggregate_output_metadata()
+        assert isinstance(self._input_dependencies[0], LogicalOperator)
+        return self._input_dependencies[0].infer_metadata()
+
+    def infer_schema(
+        self,
+    ) -> Optional["Schema"]:
+        assert len(self._input_dependencies) == 1, len(self._input_dependencies)
+        assert isinstance(self._input_dependencies[0], LogicalOperator)
+        return self._input_dependencies[0].infer_schema()
 
 
 class RandomShuffle(AbstractAllToAll):
@@ -77,9 +89,17 @@ class RandomShuffle(AbstractAllToAll):
         )
         self._seed = seed
 
-    def aggregate_output_metadata(self) -> BlockMetadata:
+    def infer_metadata(self) -> "BlockMetadata":
         assert len(self._input_dependencies) == 1, len(self._input_dependencies)
-        return self._input_dependencies[0].aggregate_output_metadata()
+        assert isinstance(self._input_dependencies[0], LogicalOperator)
+        return self._input_dependencies[0].infer_metadata()
+
+    def infer_schema(
+        self,
+    ) -> Optional["Schema"]:
+        assert len(self._input_dependencies) == 1, len(self._input_dependencies)
+        assert isinstance(self._input_dependencies[0], LogicalOperator)
+        return self._input_dependencies[0].infer_schema()
 
 
 class Repartition(AbstractAllToAll):
@@ -112,9 +132,17 @@ class Repartition(AbstractAllToAll):
         self._keys = keys
         self._sort = sort
 
-    def aggregate_output_metadata(self) -> BlockMetadata:
+    def infer_metadata(self) -> "BlockMetadata":
         assert len(self._input_dependencies) == 1, len(self._input_dependencies)
-        return self._input_dependencies[0].aggregate_output_metadata()
+        assert isinstance(self._input_dependencies[0], LogicalOperator)
+        return self._input_dependencies[0].infer_metadata()
+
+    def infer_schema(
+        self,
+    ) -> Optional["Schema"]:
+        assert len(self._input_dependencies) == 1, len(self._input_dependencies)
+        assert isinstance(self._input_dependencies[0], LogicalOperator)
+        return self._input_dependencies[0].infer_schema()
 
 
 class Sort(AbstractAllToAll):
@@ -138,9 +166,17 @@ class Sort(AbstractAllToAll):
         self._sort_key = sort_key
         self._batch_format = batch_format
 
-    def aggregate_output_metadata(self) -> BlockMetadata:
+    def infer_metadata(self) -> "BlockMetadata":
         assert len(self._input_dependencies) == 1, len(self._input_dependencies)
-        return self._input_dependencies[0].aggregate_output_metadata()
+        assert isinstance(self._input_dependencies[0], LogicalOperator)
+        return self._input_dependencies[0].infer_metadata()
+
+    def infer_schema(
+        self,
+    ) -> Optional["Schema"]:
+        assert len(self._input_dependencies) == 1, len(self._input_dependencies)
+        assert isinstance(self._input_dependencies[0], LogicalOperator)
+        return self._input_dependencies[0].infer_schema()
 
 
 class Aggregate(AbstractAllToAll):

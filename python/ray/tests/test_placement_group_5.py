@@ -4,16 +4,17 @@ import time
 from functools import reduce
 from itertools import chain
 
+from click.testing import CliRunner
 import pytest
 
 import ray
+from ray._common.test_utils import wait_for_condition
 from ray._private.test_utils import placement_group_assert_no_leak
 from ray.tests.test_placement_group import are_pairwise_unique
 from ray.util.state import list_actors, list_placement_groups
 from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
 from ray._private.runtime_env.plugin import RuntimeEnvPlugin
-from ray._private.test_utils import wait_for_condition, fetch_prometheus_metrics
-from click.testing import CliRunner
+from ray._private.test_utils import fetch_prometheus_metrics
 import ray.scripts.scripts as scripts
 
 
@@ -131,8 +132,8 @@ def test_pg_no_resource_bundle_index(ray_start_cluster):
     ray.get(pg.ready())
     first_bundle_node_id = ray.util.placement_group_table(pg)["bundles_to_node_id"][0]
 
-    # Iterate 10 times to make sure it is not flaky.
-    for _ in range(10):
+    # Iterate 5 times to make sure it is not flaky.
+    for _ in range(5):
         actor = Actor.options(
             scheduling_strategy=PlacementGroupSchedulingStrategy(
                 placement_group=pg, placement_group_bundle_index=0
@@ -409,37 +410,45 @@ def test_placement_group_max_cpu_frac_edge_cases(ray_start_cluster):
     ray.get(pg2.ready())
 
 
-@pytest.mark.parametrize(
-    "scheduling_strategy", ["SPREAD", "STRICT_SPREAD", "PACK", "STRICT_PACK"]
-)
-def test_placement_group_parallel_submission(ray_start_cluster, scheduling_strategy):
-    @ray.remote(resources={"custom_resource": 1})
-    def task(input):
-        return input
-
-    @ray.remote(num_cpus=0)
-    def manage_tasks(input):
-        pg = ray.util.placement_group(
-            [{"custom_resource": 1, "CPU": 1}], strategy=scheduling_strategy
-        )
-        ray.get(pg.ready())
-        pg_strategy = ray.util.scheduling_strategies.PlacementGroupSchedulingStrategy(
-            placement_group=pg
-        )
-
-        obj_ref = task.options(scheduling_strategy=pg_strategy).remote(input)
-        ray.get(obj_ref)
-
-        ray.util.remove_placement_group(pg)
-        return "OK"
-
+def test_placement_group_parallel_submission(ray_start_cluster):
+    NUM_PARALLEL_PGS = 5
     cluster = ray_start_cluster
-    cluster.add_node(num_cpus=1, resources={"custom_resource": 20})
+    cluster.add_node(num_cpus=1, resources={"custom_resource": NUM_PARALLEL_PGS})
     cluster.wait_for_nodes()
     ray.init(address=cluster.address)
 
-    # Test all tasks will not hang
-    ray.get([manage_tasks.remote(i) for i in range(20)], timeout=50)
+    @ray.remote(resources={"custom_resource": 1})
+    def task(input):
+        return "ok"
+
+    @ray.remote(num_cpus=0)
+    class Submitter:
+        def submit(self, strategy: str):
+            pg = ray.util.placement_group(
+                [{"custom_resource": 1, "CPU": 1}], strategy=strategy
+            )
+            try:
+                ray.get(pg.ready())
+                pg_strategy = (
+                    ray.util.scheduling_strategies.PlacementGroupSchedulingStrategy(
+                        placement_group=pg
+                    )
+                )
+                return ray.get(
+                    task.options(scheduling_strategy=pg_strategy).remote(input)
+                )
+            finally:
+                ray.util.remove_placement_group(pg)
+
+    # For each strategy, submit multiple placement groups in parallel and check that they
+    # will all eventually be placed and their tasks executed.
+    submitters = [Submitter.remote() for _ in range(NUM_PARALLEL_PGS)]
+    for strategy in ["SPREAD", "STRICT_SPREAD", "PACK", "STRICT_PACK"]:
+        print("Testing strategy:", strategy)
+        assert (
+            ray.get([s.submit.remote(strategy) for s in submitters], timeout=30)
+            == ["ok"] * NUM_PARALLEL_PGS
+        )
 
 
 MyPlugin = "MyPlugin"

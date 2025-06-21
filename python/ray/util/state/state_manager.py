@@ -13,7 +13,7 @@ import ray
 import ray.dashboard.modules.log.log_consts as log_consts
 import ray.dashboard.consts as dashboard_consts
 from ray._private import ray_constants
-from ray._private.utils import hex_to_binary
+from ray._common.utils import hex_to_binary
 from ray._raylet import GcsClient, ActorID, JobID, TaskID, NodeID
 from ray.core.generated import gcs_service_pb2_grpc
 from ray.core.generated.gcs_pb2 import ActorTableData, GcsNodeInfo

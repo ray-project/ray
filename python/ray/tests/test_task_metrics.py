@@ -6,12 +6,12 @@ from collections import defaultdict
 import pytest
 
 import ray
+from ray._common.test_utils import wait_for_condition
 from ray._private.metrics_agent import RAY_WORKER_TIMEOUT_S
 from ray._private.test_utils import (
     raw_metrics,
     run_string_as_driver,
     run_string_as_driver_nonblocking,
-    wait_for_condition,
 )
 
 

@@ -6,7 +6,7 @@ srcs:
   - ci/env/install-llvm-binaries.sh
   - ci/suppress_output
   - python/requirements_compiled_rayllm_test_py311_cpu.txt
-  - python/requirements_compiled_rayllm_test_py311_cu121.txt
+  - python/requirements_compiled_rayllm_test_py311_cu128.txt
 tags:
   - cr.ray.io/rayproject/$IMAGE_TO
 build_args:

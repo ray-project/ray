@@ -1,10 +1,10 @@
 import asyncio
 from concurrent.futures.thread import ThreadPoolExecutor
 from functools import partial
-from typing import List, Optional
+from typing import Dict, List, Optional
 
+import httpx
 import pytest
-import requests
 from starlette.responses import StreamingResponse
 
 from ray import serve
@@ -32,6 +32,58 @@ def test_batching(serve_instance):
     # If there atleast one __call__ fn call with batch size greater than 1
     # counter result will always be less than 20
     assert max([r.result() for r in result_list]) < 20
+
+
+def test_concurrent_batching(serve_instance):
+    BATCHES_IN_FLIGHT = 2
+    MAX_BATCH_SIZE = 5
+    BATCH_WAIT_TIMEOUT_S = 1
+    MAX_REQUESTS_IN_FLIGHT = BATCHES_IN_FLIGHT * MAX_BATCH_SIZE
+
+    @serve.deployment(max_ongoing_requests=MAX_REQUESTS_IN_FLIGHT * 2)
+    class BatchingExample:
+        def __init__(self):
+            self.n_batches_in_flight = 0
+            self.n_requests_in_flight = 0
+
+        @serve.batch(
+            max_batch_size=MAX_BATCH_SIZE,
+            batch_wait_timeout_s=BATCH_WAIT_TIMEOUT_S,
+            max_concurrent_batches=BATCHES_IN_FLIGHT,
+        )
+        async def handle_batch(self, requests):
+            self.n_batches_in_flight += 1
+            self.n_requests_in_flight += len(requests)
+            await asyncio.sleep(0.5)
+            out = [
+                (req_idx, self.n_batches_in_flight, self.n_requests_in_flight)
+                for req_idx in requests
+            ]
+            await asyncio.sleep(0.5)
+            self.n_requests_in_flight -= len(requests)
+            self.n_batches_in_flight -= 1
+            return out
+
+        async def __call__(self, request):
+            return await self.handle_batch(request)
+
+    handle = serve.run(BatchingExample.bind())
+
+    idxs = set(range(20))
+    result_futures = [handle.remote(i) for i in idxs]
+    result_list = [future.result() for future in result_futures]
+
+    out_idxs = set()
+    for idx, batches_in_flight, requests_in_flight in result_list:
+        out_idxs.add(idx)
+        assert (
+            batches_in_flight == BATCHES_IN_FLIGHT
+        ), f"Should have been {BATCHES_IN_FLIGHT} batches in flight at all times, got {batches_in_flight}"
+        assert (
+            requests_in_flight == MAX_REQUESTS_IN_FLIGHT
+        ), f"Should have been {MAX_REQUESTS_IN_FLIGHT} requests in flight at all times, got {requests_in_flight}"
+
+    assert idxs == out_idxs, "All requests should be processed"
 
 
 def test_batching_exception(serve_instance):
@@ -81,7 +133,7 @@ async def test_batch_generator_streaming_response_integration_test(serve_instanc
     prompt_prefix = "hola"
     url = f"http://localhost:8000/?prompt={prompt_prefix}"
     with ThreadPoolExecutor() as pool:
-        futs = [pool.submit(partial(requests.get, url + str(idx))) for idx in range(4)]
+        futs = [pool.submit(partial(httpx.get, url + str(idx))) for idx in range(4)]
         responses = [fut.result() for fut in futs]
 
     for idx, response in enumerate(responses):
@@ -111,11 +163,11 @@ def test_batching_client_dropped_unary(serve_instance):
 
     # Sending requests with clients that drops the connection.
     for _ in range(3):
-        with pytest.raises(requests.exceptions.ReadTimeout):
-            requests.get(url, timeout=0.005)
+        with pytest.raises(httpx.ReadTimeout):
+            httpx.get(url, timeout=0.005)
 
     # The following request should succeed.
-    resp = requests.get(url, timeout=1)
+    resp = httpx.get(url, timeout=1)
     assert resp.status_code == 200
     assert resp.text == "fake-response"
 
@@ -143,22 +195,21 @@ def test_batching_client_dropped_streaming(serve_instance):
 
     # Sending requests with clients that drops the connection.
     for _ in range(3):
-        with pytest.raises(
-            (requests.exceptions.ReadTimeout, requests.exceptions.ConnectionError)
-        ):
-            requests.get(url, timeout=0.005)
+        with pytest.raises((httpx.ReadTimeout, httpx.ConnectError)):
+            httpx.get(url, timeout=0.005)
 
     # The following request should succeed.
-    resp = requests.get(url, timeout=1)
+    resp = httpx.get(url, timeout=1)
     assert resp.status_code == 200
     assert resp.text == "0123456789"
 
 
-def test_observability_helpers():
+@pytest.mark.asyncio
+async def test_observability_helpers():
     """Checks observability helper methods that are used for batching.
 
     Tests three observability helper methods:
-        * _get_curr_iteration_start_time: gets the current iteration's start
+        * _get_curr_iteration_start_times: gets the current iteration's start
             time.
         * _is_batching_task_alive: returns whether the batch-handler task is
             alive.
@@ -169,13 +220,14 @@ def test_observability_helpers():
     class Batcher:
         @serve.batch(max_batch_size=3)
         async def handle_batch(self, requests):
+            await asyncio.sleep(1)
             return [0] * len(requests)
 
         async def __call__(self, request):
             return await self.handle_batch(request)
 
-        async def _get_curr_iteration_start_time(self) -> Optional[float]:
-            return self.handle_batch._get_curr_iteration_start_time()
+        async def _get_curr_iteration_start_times(self) -> Dict[asyncio.Task, float]:
+            return self.handle_batch._get_curr_iteration_start_times()
 
         async def _is_batching_task_alive(self) -> bool:
             return await self.handle_batch._is_batching_task_alive()
@@ -186,23 +238,27 @@ def test_observability_helpers():
     serve.run(target=Batcher.bind(), name="app_name")
     handle = serve.get_deployment_handle(deployment_name="batcher", app_name="app_name")
 
-    assert handle._is_batching_task_alive.remote().result()
+    assert await handle._is_batching_task_alive.remote()
 
-    requests.get("http://localhost:8000/")
+    async with httpx.AsyncClient() as client:
+        task = asyncio.create_task(client.get("http://localhost:8000/"))
+        await asyncio.sleep(0.1)  # yield control to the above task
+        prev_iter_times = await handle._get_curr_iteration_start_times.remote()
+        await task
 
-    assert len(handle._get_handling_task_stack.remote().result()) is not None
-    assert handle._is_batching_task_alive.remote().result()
+    assert len(await handle._get_handling_task_stack.remote()) is not None
+    assert await handle._is_batching_task_alive.remote()
 
-    curr_iteration_start_time = handle._get_curr_iteration_start_time.remote().result()
+    async with httpx.AsyncClient() as client:
+        futures = [client.get("http://localhost:8000/") for _ in range(5)]
+        tasks = [asyncio.create_task(future) for future in futures]
+        await asyncio.sleep(0.1)  # yield control to the above tasks
+        new_iter_times = await handle._get_curr_iteration_start_times.remote()
+        await asyncio.gather(*tasks)
 
-    for _ in range(5):
-        requests.get("http://localhost:8000/")
-
-    new_iteration_start_time = handle._get_curr_iteration_start_time.remote().result()
-
-    assert new_iteration_start_time > curr_iteration_start_time
-    assert len(handle._get_handling_task_stack.remote().result()) is not None
-    assert handle._is_batching_task_alive.remote().result()
+    assert new_iter_times.min_start_time > prev_iter_times.max_start_time
+    assert len(await handle._get_handling_task_stack.remote()) is not None
+    assert await handle._is_batching_task_alive.remote()
 
 
 if __name__ == "__main__":

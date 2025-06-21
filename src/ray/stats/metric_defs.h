@@ -92,7 +92,7 @@ DECLARE_stats(pull_manager_num_object_pins);
 DECLARE_stats(pull_manager_object_request_time_ms);
 
 /// Push Manager
-DECLARE_stats(push_manager_in_flight_pushes);
+DECLARE_stats(push_manager_num_pushes_remaining);
 DECLARE_stats(push_manager_chunks);
 
 /// Scheduler

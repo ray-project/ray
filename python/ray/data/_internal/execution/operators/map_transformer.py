@@ -489,9 +489,9 @@ class BlocksToBatchesMapTransformFn(MapTransformFn):
     def __eq__(self, other):
         return (
             isinstance(other, BlocksToBatchesMapTransformFn)
-            and self.batch_format == other.batch_format
-            and self.batch_size == other.batch_size
-            and self.zero_copy_batch == other.zero_copy_batch
+            and self._batch_format == other._batch_format
+            and self._batch_size == other._batch_size
+            and self._ensure_copy == other._ensure_copy
         )
 
 
@@ -558,7 +558,7 @@ class BuildOutputBlocksMapTransformFn(MapTransformFn):
     def __eq__(self, other):
         return (
             isinstance(other, BuildOutputBlocksMapTransformFn)
-            and self.input_type == other.input_type
+            and self._input_type == other._input_type
         )
 
 

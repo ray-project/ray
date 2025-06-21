@@ -93,6 +93,8 @@ DEFAULT_LARGE_ARGS_THRESHOLD = 50 * 1024 * 1024
 
 DEFAULT_USE_POLARS = False
 
+DEFAULT_USE_POLARS_SORT = False
+
 DEFAULT_EAGER_FREE = bool(int(os.environ.get("RAY_DATA_EAGER_FREE", "0")))
 
 DEFAULT_DECODING_SIZE_ESTIMATION_ENABLED = True
@@ -198,6 +200,14 @@ DEFAULT_WAIT_FOR_MIN_ACTORS_S = env_integer(
 # Enable per node metrics reporting for Ray Data, disabled by default.
 DEFAULT_ENABLE_PER_NODE_METRICS = bool(
     int(os.environ.get("RAY_DATA_PER_NODE_METRICS", "0"))
+)
+
+DEFAULT_MIN_HASH_SHUFFLE_AGGREGATOR_WAIT_TIME_IN_S = env_integer(
+    "RAY_DATA_MIN_HASH_SHUFFLE_AGGREGATOR_WAIT_TIME_IN_S", 300
+)
+
+DEFAULT_HASH_SHUFFLE_AGGREGATOR_HEALTH_WARNING_INTERVAL_S = env_integer(
+    "RAY_DATA_HASH_SHUFFLE_AGGREGATOR_HEALTH_WARNING_INTERVAL_S", 30
 )
 
 
@@ -367,6 +377,15 @@ class DataContext:
     #
     # When unset defaults to `DataContext.min_parallelism`
     max_hash_shuffle_aggregators: Optional[int] = DEFAULT_MAX_HASH_SHUFFLE_AGGREGATORS
+
+    min_hash_shuffle_aggregator_wait_time_in_s: int = (
+        DEFAULT_MIN_HASH_SHUFFLE_AGGREGATOR_WAIT_TIME_IN_S
+    )
+
+    hash_shuffle_aggregator_health_warning_interval_s: int = (
+        DEFAULT_HASH_SHUFFLE_AGGREGATOR_HEALTH_WARNING_INTERVAL_S
+    )
+
     # Max number of *concurrent* hash-shuffle finalization tasks running
     # at the same time. This config is helpful to control concurrency of
     # finalization tasks to prevent single aggregator running multiple tasks
@@ -385,6 +404,7 @@ class DataContext:
     )
     large_args_threshold: int = DEFAULT_LARGE_ARGS_THRESHOLD
     use_polars: bool = DEFAULT_USE_POLARS
+    use_polars_sort: bool = DEFAULT_USE_POLARS_SORT
     eager_free: bool = DEFAULT_EAGER_FREE
     decoding_size_estimation: bool = DEFAULT_DECODING_SIZE_ESTIMATION_ENABLED
     min_parallelism: int = DEFAULT_MIN_PARALLELISM
@@ -498,6 +518,14 @@ class DataContext:
                 "`shuffle_strategy` instead.",
                 DeprecationWarning,
             )
+
+        elif name == "use_polars":
+            warnings.warn(
+                "`use_polars` is deprecated, please configure "
+                "`use_polars_sort`  instead.",
+                DeprecationWarning,
+            )
+            self.use_polars_sort = value
 
         super().__setattr__(name, value)
 

@@ -58,10 +58,11 @@ class GcsJobManagerTest : public ::testing::Test {
     // Mock client factory which abuses the "address" argument to return a
     // CoreWorkerClient whose number of running tasks equal to the address port. This is
     // just for testing purposes.
-    client_factory_ = [](const rpc::Address &address) {
-      return std::make_shared<rpc::MockCoreWorkerClientConfigurableRunningTasks>(
-          address.port());
-    };
+    worker_client_pool_ =
+        std::make_unique<rpc::CoreWorkerClientPool>([](const rpc::Address &address) {
+          return std::make_shared<rpc::MockCoreWorkerClientConfigurableRunningTasks>(
+              address.port());
+        });
     log_dir_ = "event_12345";
   }
 
@@ -80,7 +81,7 @@ class GcsJobManagerTest : public ::testing::Test {
   std::unique_ptr<gcs::GcsFunctionManager> function_manager_;
   std::unique_ptr<gcs::MockInternalKVInterface> kv_;
   std::unique_ptr<gcs::FakeInternalKVInterface> fake_kv_;
-  rpc::CoreWorkerClientFactoryFn client_factory_;
+  std::unique_ptr<rpc::CoreWorkerClientPool> worker_client_pool_;
   RuntimeEnvManager runtime_env_manager_;
   const std::chrono::milliseconds timeout_ms_{5000};
   std::string log_dir_;
@@ -108,10 +109,10 @@ TEST_F(GcsJobManagerTest, TestExportDriverJobEvents) {
                                      *function_manager_,
                                      *fake_kv_,
                                      io_service_,
-                                     client_factory_);
+                                     *worker_client_pool_);
 
   gcs::GcsInitData gcs_init_data(*gcs_table_storage_);
-  gcs_job_manager.Initialize(/*init_data=*/gcs_init_data);
+  gcs_job_manager.Initialize(gcs_init_data);
 
   auto job_api_job_id = JobID::FromInt(100);
   std::string submission_id = "submission_id_100";

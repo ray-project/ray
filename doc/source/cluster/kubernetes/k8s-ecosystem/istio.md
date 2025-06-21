@@ -165,7 +165,7 @@ Kubernetes Service doesn't support specifying ports in ranges. You _must_ set th
 :::
 
 :::{warning}
-The default Ray worker port range, from 10002 to 19999, is too large to specify in the service manifest and can cause memory issues in Kubernetes. Set a smaller `max-worker-port` to work with Istio.
+The default Ray worker port range, from 10002 to 19999, is too large to specify in the service manifest and can cause memory issues in Kubernetes. Set a smaller `max-worker-port` to work with Istio. Note that by default every sidecar in the service mesh caches these ports, which could lead to sidecar OOMs if you create too many headless services. 
 :::
 
 ## Step 4: Create the RayCluster

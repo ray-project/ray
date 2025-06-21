@@ -19,7 +19,7 @@ import warnings
 import pyarrow.fs
 
 import ray
-from ray._private.ray_constants import RESOURCE_CONSTRAINT_PREFIX
+from ray._common.utils import RESOURCE_CONSTRAINT_PREFIX
 from ray._private.thirdparty.tabulate.tabulate import tabulate
 from ray.util.annotations import PublicAPI, RayDeprecationWarning
 from ray.widgets import Template, make_table_html_repr

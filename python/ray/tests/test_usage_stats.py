@@ -7,6 +7,7 @@ import threading
 from dataclasses import asdict
 from pathlib import Path
 from unittest.mock import patch
+from ray._common.test_utils import wait_for_condition
 from ray._raylet import GcsClient
 
 import requests
@@ -20,7 +21,6 @@ import ray._private.usage.usage_lib as ray_usage_lib
 from ray._private.test_utils import (
     format_web_url,
     run_string_as_driver,
-    wait_for_condition,
     wait_until_server_available,
 )
 from ray._private.usage.usage_lib import ClusterConfigToReport, UsageStatsEnabledness

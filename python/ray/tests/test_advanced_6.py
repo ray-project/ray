@@ -10,10 +10,10 @@ import psutil
 import pytest
 
 import ray
+from ray._common.test_utils import wait_for_condition
 import ray.cluster_utils
 from ray._private.test_utils import (
     run_string_as_driver_nonblocking,
-    wait_for_condition,
     wait_for_pid_to_exit,
 )
 

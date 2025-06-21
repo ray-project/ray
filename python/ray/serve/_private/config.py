@@ -6,9 +6,7 @@ from google.protobuf.descriptor import FieldDescriptor
 from google.protobuf.message import Message
 
 from ray import cloudpickle
-from ray._common.utils import import_attr
-from ray._private import ray_option_utils
-from ray._private.pydantic_compat import (
+from ray._common.pydantic_compat import (
     BaseModel,
     Field,
     NonNegativeFloat,
@@ -18,8 +16,9 @@ from ray._private.pydantic_compat import (
     root_validator,
     validator,
 )
+from ray._common.utils import import_attr, resources_from_ray_options
+from ray._private import ray_option_utils
 from ray._private.serialization import pickle_dumps
-from ray._private.utils import resources_from_ray_options
 from ray.serve._private.constants import (
     DEFAULT_GRACEFUL_SHUTDOWN_TIMEOUT_S,
     DEFAULT_GRACEFUL_SHUTDOWN_WAIT_LOOP_S,
@@ -27,6 +26,8 @@ from ray.serve._private.constants import (
     DEFAULT_HEALTH_CHECK_TIMEOUT_S,
     DEFAULT_MAX_ONGOING_REQUESTS,
     DEFAULT_REQUEST_ROUTER_PATH,
+    DEFAULT_REQUEST_ROUTING_STATS_PERIOD_S,
+    DEFAULT_REQUEST_ROUTING_STATS_TIMEOUT_S,
     MAX_REPLICAS_PER_NODE_MAX_VALUE,
 )
 from ray.serve._private.utils import DEFAULT, DeploymentOptionUpdateType
@@ -120,6 +121,10 @@ class DeploymentConfig(BaseModel):
         health_check_timeout_s: Timeout that the controller waits for a
             response from the replica's health check before marking it
             unhealthy.
+        request_routing_stats_period_s: Frequency at which the controller
+            record request routing stats.
+        request_routing_stats_timeout_s: Timeout that the controller waits
+            for a response from the replica's record routing stats call.
         autoscaling_config: Autoscaling configuration.
         logging_config: Configuration for deployment logs.
         user_configured_option_names: The names of options manually
@@ -156,6 +161,14 @@ class DeploymentConfig(BaseModel):
     )
     health_check_timeout_s: PositiveFloat = Field(
         default=DEFAULT_HEALTH_CHECK_TIMEOUT_S,
+        update_type=DeploymentOptionUpdateType.NeedsReconfigure,
+    )
+    request_routing_stats_period_s: PositiveFloat = Field(
+        default=DEFAULT_REQUEST_ROUTING_STATS_PERIOD_S,
+        update_type=DeploymentOptionUpdateType.NeedsReconfigure,
+    )
+    request_routing_stats_timeout_s: PositiveFloat = Field(
+        default=DEFAULT_REQUEST_ROUTING_STATS_TIMEOUT_S,
         update_type=DeploymentOptionUpdateType.NeedsReconfigure,
     )
 

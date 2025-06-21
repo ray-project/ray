@@ -55,7 +55,11 @@ from ray.serve.deployment import Application, Deployment
 from ray.serve.exceptions import RayServeException
 from ray.serve.handle import DeploymentHandle
 from ray.serve.multiplex import _ModelMultiplexWrapper
-from ray.serve.schema import LoggingConfig, ServeInstanceDetails, ServeStatus
+from ray.serve.schema import (
+    LoggingConfig,
+    ServeInstanceDetails,
+    ServeStatus,
+)
 from ray.util.annotations import DeveloperAPI, PublicAPI
 
 from ray.serve._private import api as _private_api  # isort:skip
@@ -335,6 +339,8 @@ def deployment(
     health_check_timeout_s: Default[float] = DEFAULT.VALUE,
     logging_config: Default[Union[Dict, LoggingConfig, None]] = DEFAULT.VALUE,
     request_router_class: Default[Union[str, RequestRouter, None]] = DEFAULT.VALUE,
+    request_routing_stats_period_s: Default[float] = DEFAULT.VALUE,
+    request_routing_stats_timeout_s: Default[float] = DEFAULT.VALUE,
 ) -> Callable[[Callable], Deployment]:
     """Decorator that converts a Python class to a `Deployment`.
 
@@ -404,6 +410,14 @@ def deployment(
             handle created for this deployment will use the routing policy
             defined by the request router. Default to Serve's
             PowerOfTwoChoicesRequestRouter.
+        request_routing_stats_period_s: Duration between record scheduling stats
+            calls for the replica. Defaults to 10s. The health check is by default a
+            no-op Actor call to the replica, but you can define your own request
+            scheduling stats using the "record_scheduling_stats" method in your
+            deployment.
+        request_routing_stats_timeout_s: Duration in seconds, that replicas wait for
+            a request scheduling stats method to return before considering it as failed.
+            Defaults to 30s.
 
     Returns:
         `Deployment`
@@ -469,6 +483,8 @@ def deployment(
         health_check_period_s=health_check_period_s,
         health_check_timeout_s=health_check_timeout_s,
         logging_config=logging_config,
+        request_routing_stats_period_s=request_routing_stats_period_s,
+        request_routing_stats_timeout_s=request_routing_stats_timeout_s,
     )
     deployment_config.user_configured_option_names = set(user_configured_option_names)
 

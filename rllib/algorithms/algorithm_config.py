@@ -4349,10 +4349,10 @@ class AlgorithmConfig(_Config):
     def get_rl_module_spec(
         self,
         env: Optional[EnvType] = None,
-        spaces: Optional[Dict[str, gym.Space]] = None,
+        spaces: Optional[Dict[str, Tuple[gym.Space, gym.Space]]] = None,
         inference_only: Optional[bool] = None,
     ) -> RLModuleSpec:
-        """Returns the RLModuleSpec based on the given env/spaces.
+        """Returns the RLModuleSpec based on the given env/spaces and this config.
 
         Args:
             env: An optional environment instance, from which to infer the observation-
@@ -4363,10 +4363,10 @@ class AlgorithmConfig(_Config):
             spaces: Optional dict mapping ModuleIDs to 2-tuples of observation- and
                 action space that should be used for the respective RLModule.
                 These spaces are usually provided by an already instantiated remote
-                EnvRunner (call `EnvRunner.get_spaces()`). If not provided, tries
-                to infer from `env`, otherwise from `self.observation_space` and
-                `self.action_space`. Raises an error, if no information on spaces can be
-                inferred.
+                EnvRunner (call `EnvRunner.get_spaces()` to receive this dict). If not
+                provided, RLlib tries to infer this from `env`, if provided, otherwise
+                from `self.observation_space` and `self.action_space`. Raises an error,
+                if no information on spaces can be inferred.
             inference_only: If `True`, the returned module spec is used in an
                 inference-only setting (sampling) and the RLModule can thus be built in
                 its light version (if available). For example, the `inference_only`
@@ -4592,10 +4592,6 @@ class AlgorithmConfig(_Config):
                 multi_rl_module_spec.remove_modules(module_id)
                 continue
 
-            policy_spec = policy_dict.get(module_id)
-            if policy_spec is None:
-                policy_spec = policy_dict[DEFAULT_MODULE_ID]
-
             if module_spec.module_class is None:
                 if isinstance(default_rl_module_spec, RLModuleSpec):
                     module_spec.module_class = default_rl_module_spec.module_class
@@ -4639,10 +4635,18 @@ class AlgorithmConfig(_Config):
                     )
             # TODO (sven): Find a good way to pack module specific parameters from
             # the algorithms into the `model_config_dict`.
-            if module_spec.observation_space is None:
-                module_spec.observation_space = policy_spec.observation_space
-            if module_spec.action_space is None:
-                module_spec.action_space = policy_spec.action_space
+            if (
+                module_spec.observation_space is None
+                or module_spec.action_space is None
+            ):
+                policy_spec = policy_dict.get(
+                    module_id, policy_dict.get(DEFAULT_MODULE_ID)
+                )
+                if policy_spec is not None:
+                    if module_spec.observation_space is None:
+                        module_spec.observation_space = policy_spec.observation_space
+                    if module_spec.action_space is None:
+                        module_spec.action_space = policy_spec.action_space
             # In case the `RLModuleSpec` does not have a model config dict, we use the
             # the one defined by the auto keys and the `model_config_dict` arguments in
             # `self.rl_module()`.

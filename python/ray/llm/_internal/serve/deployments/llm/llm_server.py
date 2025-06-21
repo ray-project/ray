@@ -694,7 +694,6 @@ class LLMServer(_LLMServerBase):
 
 
 @serve.deployment(
-    # TODO make this configurable
     autoscaling_config={
         "min_replicas": 1,
         "initial_replicas": 1,

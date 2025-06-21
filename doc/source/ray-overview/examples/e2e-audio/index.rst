@@ -1,11 +1,10 @@
-.. _ref-e2e-audio:
+.. _ref-audio-curation-llm-judge:
 
-End-to-end audio
-=================
+Audio dataset curation using LLM-as-a-judge
+===========================================
 
-An end-to-end tutorial to transcribe an audio dataset and filter it by educational rating using an LLM-as-a-judge.
+A tutorial demonstrating how to transcribe an audio dataset and filter it using a LLM-as-a-judge.
 
 .. toctree::
 
     ./README.ipynb
-    ./e2e_audio/curation.ipynb

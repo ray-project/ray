@@ -99,29 +99,13 @@ class ServerConnection : public std::enable_shared_from_this<ServerConnection> {
   ///
   /// \param buffer The buffer.
   /// \return Status.
-  Status WriteBuffer(const std::vector<boost::asio::const_buffer> &buffer);
-
-  /// Write a buffer to this connection asynchronously.
-  ///
-  /// \param buffer The buffer.
-  /// \param handler A callback to run on write completion.
-  /// \return Status.
-  void WriteBufferAsync(const std::vector<boost::asio::const_buffer> &buffer,
-                        const std::function<void(const ray::Status &)> &handler);
+  virtual Status WriteBuffer(const std::vector<boost::asio::const_buffer> &buffer);
 
   /// Read a buffer from this connection.
   ///
   /// \param buffer The buffer.
   /// \return Status.
-  Status ReadBuffer(const std::vector<boost::asio::mutable_buffer> &buffer);
-
-  /// Read a buffer from this connection asynchronously.
-  ///
-  /// \param buffer The buffer.
-  /// \param handler A callback to run on read completion.
-  /// \return Status.
-  void ReadBufferAsync(const std::vector<boost::asio::mutable_buffer> &buffer,
-                       const std::function<void(const ray::Status &)> &handler);
+  virtual Status ReadBuffer(const std::vector<boost::asio::mutable_buffer> &buffer);
 
   /// Shuts down socket for this connection.
   void Close() {

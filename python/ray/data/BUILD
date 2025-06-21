@@ -297,9 +297,65 @@ py_test(
 )
 
 py_test(
-    name = "test_all_to_all",
+    name = "test_agg_e2e",
     size = "enormous",
-    srcs = ["tests/test_all_to_all.py"],
+    srcs = ["tests/test_agg_e2e.py"],
+    tags = [
+        "exclusive",
+        "team:data",
+    ],
+    deps = [
+        ":conftest",
+        "//:ray_lib",
+    ],
+)
+
+py_test(
+    name = "test_groupby_e2e",
+    size = "enormous",
+    srcs = ["tests/test_groupby_e2e.py"],
+    tags = [
+        "exclusive",
+        "team:data",
+    ],
+    deps = [
+        ":conftest",
+        "//:ray_lib",
+    ],
+)
+
+py_test(
+    name = "test_random_e2e",
+    size = "enormous",
+    srcs = ["tests/test_random_e2e.py"],
+    tags = [
+        "exclusive",
+        "team:data",
+    ],
+    deps = [
+        ":conftest",
+        "//:ray_lib",
+    ],
+)
+
+py_test(
+    name = "test_repartition_e2e",
+    size = "enormous",
+    srcs = ["tests/test_repartition_e2e.py"],
+    tags = [
+        "exclusive",
+        "team:data",
+    ],
+    deps = [
+        ":conftest",
+        "//:ray_lib",
+    ],
+)
+
+py_test(
+    name = "test_unique_e2e",
+    size = "enormous",
+    srcs = ["tests/test_unique_e2e.py"],
     tags = [
         "exclusive",
         "team:data",
@@ -379,6 +435,17 @@ py_test(
         ":conftest",
         "//:ray_lib",
     ],
+)
+
+py_test(
+    name = "test_deduping_schema",
+    size = "small",
+    srcs = ["tests/test_deduping_schema.py"],
+    tags = [
+        "exclusive",
+        "team:data",
+    ],
+    deps = [],
 )
 
 py_test(
@@ -1381,7 +1448,7 @@ py_test(
 
 py_test(
     name = "test_state_export",
-    size = "small",
+    size = "medium",
     srcs = ["tests/test_state_export.py"],
     tags = [
         "exclusive",
