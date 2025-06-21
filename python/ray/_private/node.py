@@ -1270,6 +1270,11 @@ class Node:
             create_out=True,
             create_err=True,
         )
+        # Add default labels to Ray node labels, with labels passed in
+        # from `--labels` taking precedence.
+        default_labels = self._get_default_ray_node_labels()
+        node_labels = {**default_labels, **self._get_node_labels()}
+
         process_info = ray._private.services.start_raylet(
             self.redis_address,
             self.gcs_address,
@@ -1318,7 +1323,7 @@ class Node:
             env_updates=self._ray_params.env_vars,
             node_name=self._ray_params.node_name,
             webui=self._webui_url,
-            labels=self.node_labels,
+            labels=node_labels,
             resource_isolation_config=self.resource_isolation_config,
         )
         assert ray_constants.PROCESS_TYPE_RAYLET not in self.all_processes
@@ -1916,3 +1921,64 @@ class Node:
             # so we truncate it to the first 50 characters
             # to avoid any issues.
             record_hardware_usage(cpu_model_name[:50])
+
+    # _get_default_ray_node_labels is a helper function to return a dictionary with
+    # default ray.io/ labels set for this node.
+    def _get_default_ray_node_labels(self):
+        default_labels = {}
+        resource_spec = self.get_resource_spec()
+
+        # Get environment variables populated from K8s Pod Spec
+        node_group = os.environ.get(ray._raylet.NODE_TYPE_NAME_ENV, "")
+        market_type = os.environ.get(ray._raylet.NODE_MARKET_TYPE_ENV, "")
+        availability_region = os.environ.get(ray._raylet.NODE_REGION_ENV, "")
+        availability_zone = os.environ.get(ray._raylet.NODE_ZONE_ENV, "")
+
+        # Map environment variables to default ray node labels
+        if market_type:
+            default_labels[ray._raylet.RAY_NODE_MARKET_TYPE_KEY] = market_type
+        if node_group:
+            default_labels[ray._raylet.RAY_NODE_GROUP_KEY] = node_group
+        if availability_zone:
+            default_labels[ray._raylet.RAY_NODE_ZONE_KEY] = availability_zone
+        if availability_region:
+            default_labels[ray._raylet.RAY_NODE_REGION_KEY] = availability_region
+
+        # Get accelerator type from AcceleratorManager
+        if resource_spec.resolved():
+            # Check first that the resource configuration passed to the Raylet has been set.
+            # Only check for accelerator-type if resource_spec.resources is not None.
+            for (
+                accelerator_resource_name
+            ) in ray._private.accelerators.get_all_accelerator_resource_names():
+                try:
+                    accelerator_manager = (
+                        ray._private.accelerators.get_accelerator_manager_for_resource(
+                            accelerator_resource_name
+                        )
+                    )
+                    num_accelerators = resource_spec.resources.get(
+                        accelerator_resource_name, None
+                    )
+                    accelerator_type = (
+                        accelerator_manager.get_current_node_accelerator_type()
+                    )
+                    if num_accelerators is None:
+                        # Try to automatically detect the number of accelerators.
+                        num_accelerators = (
+                            accelerator_manager.get_current_node_num_accelerators()
+                        )
+                except Exception:
+                    accelerator_type = None
+                    logger.debug(
+                        "Failed to detect accelerator type for default Ray labels during Node init."
+                    )
+                if accelerator_type and num_accelerators:
+                    # Only set label if both accelerator type and the number of
+                    # accelerators were successfully detected.
+                    default_labels[
+                        ray._raylet.RAY_NODE_ACCELERATOR_TYPE_KEY
+                    ] = accelerator_type
+                    break  # Only add one value for ray.io/accelerator-type
+
+        return default_labels
