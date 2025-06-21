@@ -1,8 +1,10 @@
 import contextlib
+import os
 import pathlib
 import tempfile
 import time
 from typing import Dict
+from unittest.mock import patch
 
 import openai
 import pytest
@@ -10,13 +12,36 @@ import yaml
 
 import ray
 from ray import serve
-from ray.llm._internal.serve.builders.application_builders import build_openai_app
-from ray.llm._internal.serve.configs.server_models import (
+from ray.llm._internal.serve.deployments.llm.vllm.vllm_models import (
+    VLLMEngineConfig,
+)
+from ray.serve.llm import (
     LLMConfig,
+    LLMServer,
     LLMServingArgs,
     ModelLoadingConfig,
+    build_openai_app,
 )
-from ray.serve.llm import LLMServer
+
+
+@pytest.fixture
+def disable_placement_bundles():
+    """
+    Fixture to disable placement bundles for tests that don't need GPU hardware.
+
+    Use this fixture in tests that would otherwise require GPU hardware but
+    don't actually need to test placement bundle logic.
+    """
+    # Set environment variable for subprocesses
+    os.environ["RAYLLM_TEST_DISABLE_PLACEMENT_GROUPS"] = "1"
+    with patch.object(
+        VLLMEngineConfig,
+        "placement_bundles",
+        new_callable=lambda: property(lambda self: []),
+    ):
+        yield
+
+    os.environ.pop("RAYLLM_TEST_DISABLE_PLACEMENT_GROUPS", None)
 
 
 @pytest.fixture
@@ -31,15 +56,14 @@ def shutdown_ray_and_serve():
 
 
 @pytest.fixture
-def llm_config(model_pixtral_12b):
+def llm_config(model_pixtral_12b, disable_placement_bundles):
     yield LLMConfig(
         model_loading_config=ModelLoadingConfig(
             model_id=model_pixtral_12b,
         ),
         accelerator_type="L4",
-        deployment_config=dict(
-            ray_actor_options={"resources": {"mock_resource": 0}},
-        ),
+        runtime_env={},
+        log_engine_metrics=False,
     )
 
 
