@@ -38,7 +38,6 @@ from ray.rllib.core.rl_module.multi_rl_module import (
     MultiRLModuleSpec,
 )
 from ray.rllib.core.rl_module.rl_module import RLModule, RLModuleSpec
-from ray.rllib.utils import unflatten_dict
 from ray.rllib.policy.policy import PolicySpec
 from ray.rllib.policy.sample_batch import MultiAgentBatch, SampleBatch
 from ray.rllib.utils.annotations import (
@@ -1025,6 +1024,9 @@ class Learner(Checkpointable):
             Learner) to further reduce these results (for example over n parallel
             Learners).
         """
+        import time
+        start = time.perf_counter()
+
         self._check_is_built()
 
         # Call `before_gradient_based_update` to allow for non-gradient based
@@ -1046,6 +1048,15 @@ class Learner(Checkpointable):
 
         self._weights_seq_no += 1
 
+        stop = time.perf_counter()
+        self.metrics.log_value(
+            (ALL_MODULES, "until_create_iterator"),
+            stop - start,
+            reduce="mean",
+            clear_on_reduce=True,
+        )
+        start = time.perf_counter()
+
         batch_iter = self._create_iterator_if_necessary(
             training_data=training_data,
             num_total_minibatches=num_total_minibatches,
@@ -1054,6 +1065,14 @@ class Learner(Checkpointable):
             shuffle_batch_per_epoch=shuffle_batch_per_epoch,
             **kwargs,
         )
+        stop = time.perf_counter()
+        self.metrics.log_value(
+            (ALL_MODULES, "_create_iterator"),
+            stop - start,
+            reduce="mean",
+            clear_on_reduce=True,
+        )
+        start = time.perf_counter()
 
         self.metrics.activate_tensor_mode()
 
@@ -1105,6 +1124,14 @@ class Learner(Checkpointable):
                 window=1,
             )
 
+        stop = time.perf_counter()
+        self.metrics.log_value(
+            (ALL_MODULES, "after_loop"),
+            stop - start,
+            reduce="mean",
+            clear_on_reduce=True,
+        )
+        start = time.perf_counter()
         # Call `after_gradient_based_update` to allow for non-gradient based
         # cleanups-, logging-, and update logic to happen.
         # TODO (simon): Check, if this should stay here, when running multiple
@@ -1113,10 +1140,25 @@ class Learner(Checkpointable):
         self.after_gradient_based_update(timesteps=timesteps or {})
 
         self.metrics.deactivate_tensor_mode()
-
+        stop = time.perf_counter()
+        self.metrics.log_value(
+            (ALL_MODULES, "after_deactivate_tensor_mode"),
+            stop - start,
+            reduce="mean",
+            clear_on_reduce=True,
+        )
+        start = time.perf_counter()
         # Reduce results across all minibatch update steps.
         if not _no_metrics_reduce:
-            return self.metrics.reduce()
+            reduced_metrics = self.metrics.reduce()
+            stop = time.perf_counter()
+            self.metrics.log_value(
+                (ALL_MODULES, "metrics_reduce"),
+                stop - start,
+                reduce="mean",
+                clear_on_reduce=True,
+            ) 
+            return reduced_metrics
 
     def _create_iterator_if_necessary(
         self,
@@ -1136,30 +1178,11 @@ class Learner(Checkpointable):
                     "Learner.update(data_iterators=..) requires `num_iters` kwarg!"
                 )
 
-            def _collate_fn(_batch: Dict[str, numpy.ndarray]) -> MultiAgentBatch:
-                _batch = unflatten_dict(_batch)
-                _batch = MultiAgentBatch(
-                    {
-                        module_id: SampleBatch(module_data)
-                        for module_id, module_data in _batch.items()
-                    },
-                    env_steps=sum(
-                        len(next(iter(module_data.values())))
-                        for module_data in _batch.values()
-                    ),
-                )
-                _batch = self._convert_batch_type(_batch, to_device=False)
-                return self._set_slicing_by_batch_id(_batch, value=True)
-
-            def _finalize_fn(batch: MultiAgentBatch) -> MultiAgentBatch:
-                return self._convert_batch_type(batch, to_device=True, use_stream=True)
-
             if not self.iterator:
                 # This iterator holds a `ray.data.DataIterator` and manages it state.
                 self.iterator = MiniBatchRayDataIterator(
                     iterator=training_data.data_iterators[0],
-                    collate_fn=_collate_fn,
-                    finalize_fn=_finalize_fn,
+                    device=self.device,
                     minibatch_size=minibatch_size,
                     num_iters=num_iters,
                     **kwargs,
