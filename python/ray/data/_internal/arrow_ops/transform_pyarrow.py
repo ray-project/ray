@@ -863,7 +863,8 @@ def _try_combine_chunks_safe(
         chunk_size = chunk.nbytes
 
         if cur_slice_size_bytes + chunk_size > max_chunk_size:
-            slices.append(array.chunks[cur_slice_start:i])
+            if cur_slice_start != i:
+                slices.append(array.chunks[cur_slice_start:i])
 
             cur_slice_start = i
             cur_slice_size_bytes = 0
