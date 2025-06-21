@@ -2,7 +2,7 @@
 
 # Use kubectl plugin (beta)
 
-Starting from KubeRay v1.3.0, you can use the `kubectl ray` plugin to simplify common workflows when deploying Ray on Kubernetes. If you aren't familiar with Kubernetes, this plugin simplifies running Ray on Kubernetes.
+Starting from KubeRay v1.4.0, you can use the `kubectl ray` plugin to simplify common workflows when deploying Ray on Kubernetes. If you aren't familiar with Kubernetes, this plugin simplifies running Ray on Kubernetes.
 
 ## Installation
 
@@ -23,11 +23,11 @@ Install the KubeRay kubectl plugin using one of the following methods:
 
 Go to the [releases page](https://github.com/ray-project/kuberay/releases) and download the binary for your platform.
 
-For example, to install kubectl plugin version 1.3.0 on Linux amd64:
+For example, to install kubectl plugin version 1.4.0 on Linux amd64:
 
 ```bash
-curl -LO https://github.com/ray-project/kuberay/releases/download/v1.3.0/kubectl-ray_v1.3.0_linux_amd64.tar.gz
-tar -xvf kubectl-ray_v1.3.0_linux_amd64.tar.gz
+curl -LO https://github.com/ray-project/kuberay/releases/download/v1.4.0/kubectl-ray_v1.4.0_linux_amd64.tar.gz
+tar -xvf kubectl-ray_v1.4.0_linux_amd64.tar.gz
 cp kubectl-ray ~/.local/bin
 ```
 
@@ -51,7 +51,7 @@ The `kubectl ray create cluster` command allows you to create a valid RayCluster
 
 | Parameter       | Default                        |
 |-----------------|--------------------------------|
-| ray version     | 2.41.0                         |
+| ray version     | 2.46.0                         |
 | ray image       | rayproject/ray:\<ray version\> |
 | head CPU        | 2                              |
 | head memory     | 4Gi                            |
@@ -171,7 +171,7 @@ You can submit a RayJob without specifying a YAML file. The command generates a 
 
 | Parameter       | Default                        |
 |-----------------|--------------------------------|
-| ray version     | 2.41.0                         |
+| ray version     | 2.46.0                         |
 | ray image       | rayproject/ray:\<ray version\> |
 | head CPU        | 2                              |
 | head memory     | 4Gi                            |
