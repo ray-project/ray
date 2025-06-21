@@ -8,5 +8,4 @@ readonly DOC_TESTS=(
   "getting-started/rayjob-quick-start.ipynb"
   "getting-started/rayservice-quick-start.ipynb"
   "user-guides/kuberay-gcs-ft.ipynb"
-  "user-guides/configuring-autoscaling.ipynb"
 )
