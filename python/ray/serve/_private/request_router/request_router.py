@@ -29,6 +29,7 @@ from ray.serve._private.common import (
     RunningReplicaInfo,
 )
 from ray.serve._private.constants import (
+    DEFAULT_REQUEST_ROUTER_BACKOFF_SEQUENCE_S,
     RAY_SERVE_MAX_QUEUE_LENGTH_RESPONSE_DEADLINE_S,
     RAY_SERVE_MULTIPLEXED_MODEL_ID_MATCHING_TIMEOUT_S,
     RAY_SERVE_QUEUE_LENGTH_RESPONSE_DEADLINE_S,
@@ -429,12 +430,6 @@ class FIFOMixin:
 class RequestRouter(ABC):
     """Abstract interface for a request router (how the router calls it)."""
 
-    backoff_sequence_s = [0, 0.05, 0.1, 0.15, 0.2, 0.5, 1.0]
-    """
-    The sequence of backoff timeouts to use when all replicas' queues are full.
-    The last item in the list is the max timeout and will be used repeatedly.
-    """
-
     # Deadline for replicas to respond with their queue length. If the response isn't
     # received within this deadline, the replica will not be considered.
     # If this deadline is repeatedly missed, it will be exponentially increased up to
@@ -463,6 +458,7 @@ class RequestRouter(ABC):
         create_replica_wrapper_func: Optional[
             Callable[[RunningReplicaInfo], RunningReplica]
         ] = None,
+        backoff_sequence_s: Optional[List[float]] = None,
         *args,
         **kwargs,
     ):
@@ -471,6 +467,9 @@ class RequestRouter(ABC):
         self._self_actor_handle = self_actor_handle
         self._use_replica_queue_len_cache = use_replica_queue_len_cache
         self._create_replica_wrapper_func = create_replica_wrapper_func
+        self._backoff_sequence_s = (
+            backoff_sequence_s or DEFAULT_REQUEST_ROUTER_BACKOFF_SEQUENCE_S
+        )
 
         # Current replicas available to be routed.
         # Updated via `update_replicas`.
@@ -885,7 +884,7 @@ class RequestRouter(ABC):
         will be considered. If those are occupied, the full set of replicas will be
         considered on subsequent iterations.
         After each iteration, there will be an increasing backoff sleep time (dictated
-        by `self.backoff_sequence_s`). The caller should exit the generator to reset the
+        by `self._backoff_sequence_s`). The caller should exit the generator to reset the
         backoff sleep time.
         """
         entered_backoff = False
@@ -935,8 +934,10 @@ class RequestRouter(ABC):
                         self.num_routing_tasks_in_backoff
                     )
 
-                await asyncio.sleep(self.backoff_sequence_s[backoff_index])
-                backoff_index = min(backoff_index + 1, len(self.backoff_sequence_s) - 1)
+                await asyncio.sleep(self._backoff_sequence_s[backoff_index])
+                backoff_index = min(
+                    backoff_index + 1, len(self._backoff_sequence_s) - 1
+                )
         finally:
             if entered_backoff:
                 self.num_routing_tasks_in_backoff -= 1

@@ -432,6 +432,10 @@ RAY_SERVE_METRICS_EXPORT_INTERVAL_MS = int(
     os.environ.get("RAY_SERVE_METRICS_EXPORT_INTERVAL_MS", "100")
 )
 
+# The default sequence of backoff timeouts to use when all replicas' queues are
+# full. The last item in the list is the max timeout and will be used repeatedly.
+DEFAULT_REQUEST_ROUTER_BACKOFF_SEQUENCE_S = [0.025, 0.05, 0.1, 0.2]
+
 # The default request router class to use if none is specified.
 DEFAULT_REQUEST_ROUTER_PATH = (
     "ray.serve._private.request_router:PowerOfTwoChoicesRequestRouter"
