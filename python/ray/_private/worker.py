@@ -3334,8 +3334,6 @@ class RemoteDecorator(Protocol):
         ...
 
 
-# Pass on typing actors for now. The following makes it so no type errors
-# are generated for actors.
 @overload
 def remote(__t: Type[T]) -> ActorClass[T]:
     ...
