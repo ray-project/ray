@@ -4,11 +4,11 @@
 
 Starting from KubeRay v1.4.0, you can use the open source dashboard UI for KubeRay. This component is still experimental and not considered ready for production, but feedback is welcome.
 
-KubeRay dashboard is a web-based UI that allows you to view and manage KubeRay resources running on your Kubernetes cluster. It's different from the Ray dashboard, which is a part of the Ray cluster itself. The KubeRay dashboard provides a centralized view of all KubeRay resources.
+The KubeRay dashboard is a web-based UI that allows you to view and manage KubeRay resources running on your Kubernetes cluster. It's different from the Ray dashboard, which is a part of the Ray cluster itself. The KubeRay dashboard provides a centralized view of all KubeRay resources.
 
 ## Installation
 
-KubeRay dashboard depends on the optional component `kuberay-apiserver`, so you need to install it first. For simplicity, this guide disables the security proxy and allow all origins for Cross-Origin Resource Sharing.
+The KubeRay dashboard depends on the optional `kuberay-apiserver` that you need to install. For simplicity, this guide disables the security proxy and allows all origins for Cross-Origin Resource Sharing.
 
 ```bash
 helm install kuberay-apiserver kuberay/kuberay-apiserver --version v1.4.0 --set security= --set cors.allowOrigin='*'
