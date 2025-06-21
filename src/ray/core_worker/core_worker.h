@@ -1268,6 +1268,12 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   void HandleNumPendingTasks(rpc::NumPendingTasksRequest request,
                              rpc::NumPendingTasksReply *reply,
                              rpc::SendReplyCallback send_reply_callback) override;
+
+  // Clean up GPU objects from the in-actor GPU object store.
+  void HandleCleanUpGPUObject(rpc::CleanUpGPUObjectRequest request,
+                              rpc::CleanUpGPUObjectReply *reply,
+                              rpc::SendReplyCallback send_reply_callback) override;
+
   ///
   /// Public methods related to async actor call. This should only be used when
   /// the actor is (1) direct actor and (2) using async mode.
