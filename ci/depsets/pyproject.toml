@@ -1,0 +1,16 @@
+[build-system]
+requires = ["setuptools>=45", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "depsets"
+version = "0.1.0"
+description = "Python dependency set management tool"
+readme = "README.md"
+requires-python = ">=3.7"
+dependencies = [
+    "click>=8.0.0",
+]
+
+[project.scripts]
+depsets = "dependencies.cli:cli"
