@@ -34,7 +34,6 @@ def clear_rbln_environment():
 
 @pytest.mark.usefixtures("clear_rbln_environment")
 class TestRBLNAcceleratorManager:
-
     def test_get_resource_name(self):
         assert RBLNAcceleratorManager.get_resource_name() == "RBLN"
 
