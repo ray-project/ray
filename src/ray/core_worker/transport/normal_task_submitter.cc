@@ -578,12 +578,19 @@ void NormalTaskSubmitter::PushNormalTask(
        scheduling_key,
        addr,
        assigned_resources](Status status, const rpc::PushTaskReply &reply) {
+        bool generator_to_resubmit = false;
         {
           RAY_LOG(DEBUG) << "Task " << task_id << " finished from worker "
                          << WorkerID::FromBinary(addr.worker_id()) << " of raylet "
                          << NodeID::FromBinary(addr.raylet_id());
           absl::MutexLock lock(&mu_);
           executing_tasks_.erase(task_id);
+
+          auto generator_iter = generators_to_resubmit_.find(task_id);
+          if (generator_iter != generators_to_resubmit_.end()) {
+            generators_to_resubmit_.erase(generator_iter);
+            generator_to_resubmit = true;
+          }
 
           // Decrement the number of tasks in flight to the worker
           auto &lease_entry = worker_to_lease_entry_[addr];
@@ -629,7 +636,9 @@ void NormalTaskSubmitter::PushNormalTask(
           }
         }
         if (status.ok()) {
-          if (reply.was_cancelled_before_running()) {
+          if (generator_to_resubmit) {
+            task_finisher_.MarkGeneratorFailedAndResubmit(task_id);
+          } else if (reply.was_cancelled_before_running()) {
             RAY_LOG(DEBUG) << "Task " << task_id
                            << " was cancelled before it started running.";
             task_finisher_.FailPendingTask(task_id, rpc::ErrorType::TASK_CANCELLED);
@@ -819,6 +828,36 @@ Status NormalTaskSubmitter::CancelRemoteTask(const ObjectID &object_id,
   request.set_remote_object_id(object_id.Binary());
   client->RemoteCancelTask(request, nullptr);
   return Status::OK();
+}
+
+bool NormalTaskSubmitter::CancelAndResubmitGenerator(const TaskSpecification &spec) {
+  std::shared_ptr<rpc::CoreWorkerClientInterface> client;
+  {
+    absl::MutexLock lock(&mu_);
+    auto address_iter = executing_tasks_.find(spec.TaskId());
+    if (address_iter == executing_tasks_.end()) {
+      // The task is no longer executing.
+      return false;
+    }
+    client = client_cache_->GetOrConnect(address_iter->second);
+    generators_to_resubmit_.emplace(spec.TaskId());
+  }
+  rpc::CancelTaskRequest request;
+  request.set_intended_task_id(spec.TaskIdBinary());
+  request.set_force_kill(false);
+  request.set_recursive(true);
+  request.set_caller_worker_id(spec.CallerWorkerId().Binary());
+  client->CancelTask(
+      request,
+      [task_id = spec.TaskId()](const Status &status, const rpc::CancelTaskReply &reply) {
+        if (!status.ok() ||
+            (!reply.attempt_succeeded() && reply.requested_task_running())) {
+          RAY_LOG(INFO) << "Failed to cancel generator " << task_id << " with status "
+                        << status.ToString();
+          return;
+        }
+      });
+  return true;
 }
 
 }  // namespace core

@@ -70,6 +70,47 @@ def test_caller_death(monkeypatch, shutdown_only):
     ray.get(callee.ping.remote())
 
 
+def test_intermediate_generator_object_recovery_while_generator_running(
+    ray_start_cluster,
+):
+    """
+    1. Streaming Task A starts on worker 1.
+    2. Task B consumes ref A1 on worker 2 and finishes.
+    3. Add worker 3.
+    3. Worker 2 dies.
+    4. Try to get Ref B.
+    5. Try to reconstruct ref A1.
+    6. Streaming Task A should be cancelled and resubmitted.
+    7. Retry for Task B should complete.
+    """
+
+    cluster = ray_start_cluster
+    cluster.add_node(num_cpus=0)  # head
+    ray.init(address=cluster.address)
+    cluster.add_node(num_cpus=1, resources={"producer": 1})  # worker 1
+    worker2 = cluster.add_node(num_cpus=1, resources={"consumer": 1})
+
+    @ray.remote(num_cpus=1, resources={"producer": 1})
+    def producer():
+        for i in range(3):
+            yield np.zeros(10 * 1024 * 1024, dtype=np.uint8)
+            time.sleep(10)
+
+    @ray.remote(num_cpus=1, resources={"consumer": 1})
+    def consumer(np_arr):
+        return np_arr.copy()
+
+    streaming_ref = producer.remote()
+    consumer_ref = consumer.remote(next(streaming_ref))
+
+    ray.wait([consumer_ref], num_returns=1, fetch_local=False)
+
+    cluster.add_node(num_cpus=1, resources={"consumer": 1})  # worker 3
+    cluster.remove_node(worker2, allow_graceful=True)
+
+    assert ray.get(consumer_ref).size == (10 * 1024 * 1024)
+
+
 @pytest.mark.parametrize("backpressure", [False, True])
 @pytest.mark.parametrize("delay_latency", [0.1, 1])
 @pytest.mark.parametrize("threshold", [1, 3])

@@ -174,17 +174,20 @@ class ObjectRefStream {
 
 class TaskManager : public TaskFinisherInterface, public TaskResubmissionInterface {
  public:
-  TaskManager(CoreWorkerMemoryStore &in_memory_store,
-              ReferenceCounter &reference_counter,
-              PutInLocalPlasmaCallback put_in_local_plasma_callback,
-              RetryTaskCallback retry_task_callback,
-              PushErrorCallback push_error_callback,
-              int64_t max_lineage_bytes,
-              worker::TaskEventBuffer &task_event_buffer)
+  TaskManager(
+      CoreWorkerMemoryStore &in_memory_store,
+      ReferenceCounter &reference_counter,
+      PutInLocalPlasmaCallback put_in_local_plasma_callback,
+      RetryTaskCallback retry_task_callback,
+      std::function<bool(const TaskSpecification &spec)> queue_generator_for_resubmit,
+      PushErrorCallback push_error_callback,
+      int64_t max_lineage_bytes,
+      worker::TaskEventBuffer &task_event_buffer)
       : in_memory_store_(in_memory_store),
         reference_counter_(reference_counter),
         put_in_local_plasma_callback_(std::move(put_in_local_plasma_callback)),
         retry_task_callback_(std::move(retry_task_callback)),
+        queue_generator_for_resubmit_(std::move(queue_generator_for_resubmit)),
         push_error_callback_(std::move(push_error_callback)),
         max_lineage_bytes_(max_lineage_bytes),
         task_event_buffer_(task_event_buffer) {
@@ -428,6 +431,10 @@ class TaskManager : public TaskFinisherInterface, public TaskResubmissionInterfa
   /// It should not be nil.
   std::pair<ObjectID, bool> PeekObjectRefStream(const ObjectID &generator_id)
       ABSL_LOCKS_EXCLUDED(mu_);
+
+  /// Used when generator needs to be cancelled and resubmitted for intermediate object
+  /// recovery.
+  void MarkGeneratorFailedAndResubmit(const TaskID &task_id) override;
 
   /// Returns true if task can be retried.
   ///
@@ -727,6 +734,9 @@ class TaskManager : public TaskFinisherInterface, public TaskResubmissionInterfa
   /// Shutdown if all tasks are finished and shutdown is scheduled.
   void ShutdownIfNeeded() ABSL_LOCKS_EXCLUDED(mu_);
 
+  void SetupTaskEntryForResubmit(TaskEntry &task_entry)
+      ABSL_EXCLUSIVE_LOCKS_REQUIRED(mu_);
+
   /// Set the TaskStatus
   ///
   /// Sets the task status on the TaskEntry, and record the task status change events in
@@ -753,23 +763,6 @@ class TaskManager : public TaskFinisherInterface, public TaskResubmissionInterfa
       std::optional<int32_t> attempt_number = std::nullopt)
       ABSL_EXCLUSIVE_LOCKS_REQUIRED(mu_);
 
-  /// Update the task entry for the task attempt to reflect retry on resubmit.
-  ///
-  /// This will set the task status, update the attempt number for the task, and increment
-  /// the retry counter.
-  ///
-  /// \param task_entry Task entry for the corresponding task attempt
-  void MarkTaskRetryOnResubmit(TaskEntry &task_entry) ABSL_EXCLUSIVE_LOCKS_REQUIRED(mu_);
-
-  /// Update the task entry for the task attempt to reflect retry on failure.
-  ///
-  /// This will set the task status, update the attempt number for the task, and increment
-  /// the retry counter.
-  ///
-  /// \param task_entry Task entry for the corresponding task attempt
-  void MarkTaskRetryOnFailed(TaskEntry &task_entry, const rpc::RayErrorInfo &error_info)
-      ABSL_EXCLUSIVE_LOCKS_REQUIRED(mu_);
-
   /// Mark the stream is ended.
   /// The end of the stream always contains a "sentinel object" passed
   /// via end_of_stream_obj.
@@ -793,6 +786,14 @@ class TaskManager : public TaskFinisherInterface, public TaskResubmissionInterfa
   /// delete the stream and task metadata for the generator.
   bool TryDelObjectRefStreamInternal(const ObjectID &generator_id)
       ABSL_EXCLUSIVE_LOCKS_REQUIRED(object_ref_stream_ops_mu_) ABSL_LOCKS_EXCLUDED(mu_);
+
+  /// Update the references for a task that is being resubmitted.
+  ///
+  /// \param[in] spec The task specification.
+  /// \param[out] task_deps The task dependencies.
+  void UpdateReferencesForResubmit(const TaskSpecification &spec,
+                                   std::vector<ObjectID> *task_deps)
+      ABSL_LOCKS_EXCLUDED(mu_);
 
   /// Used to store task results.
   CoreWorkerMemoryStore &in_memory_store_;
@@ -820,6 +821,9 @@ class TaskManager : public TaskFinisherInterface, public TaskResubmissionInterfa
 
   /// Called when a task should be retried.
   const RetryTaskCallback retry_task_callback_;
+
+  /// For when a streaming generator task currently in progress needs to be resubmitted.
+  std::function<bool(const TaskSpecification &spec)> queue_generator_for_resubmit_;
 
   // Called to push an error to the relevant driver.
   const PushErrorCallback push_error_callback_;
