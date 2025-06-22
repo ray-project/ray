@@ -955,5 +955,39 @@ Status ActorTaskSubmitter::CancelTask(TaskSpecification task_spec, bool recursiv
   return Status::OK();
 }
 
+bool ActorTaskSubmitter::CancelAndResubmitGenerator(const TaskSpecification &spec) {
+  std::shared_ptr<rpc::CoreWorkerClientInterface> client;
+  {
+    absl::MutexLock lock(&mu_);
+    auto client_queue_iter = client_queues_.find(spec.ActorId());
+    RAY_CHECK(client_queue_iter != client_queues_.end());
+    auto &inflight_task_callbacks = client_queue_iter->second.inflight_task_callbacks;
+    auto inflight_iter =
+        inflight_task_callbacks.find(TaskAttempt{spec.TaskId(), spec.AttemptNumber()});
+    if (inflight_iter == inflight_task_callbacks.end()) {
+      // The task is no longer executing.
+      return false;
+    }
+    client = client_queue_iter->second.rpc_client;
+    RAY_CHECK(client != nullptr);
+  }
+  rpc::CancelTaskRequest request;
+  request.set_intended_task_id(spec.TaskIdBinary());
+  request.set_force_kill(false);
+  request.set_recursive(true);
+  request.set_caller_worker_id(spec.CallerWorkerId().Binary());
+  client->CancelTask(
+      request,
+      [task_id = spec.TaskId()](const Status &status, const rpc::CancelTaskReply &reply) {
+        if (!status.ok() ||
+            (!reply.attempt_succeeded() && reply.requested_task_running())) {
+          RAY_LOG(INFO) << "Failed to cancel generator " << task_id << " with status "
+                        << status.ToString();
+          return;
+        }
+      });
+  return true;
+}
+
 }  // namespace core
 }  // namespace ray

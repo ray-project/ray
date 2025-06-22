@@ -250,6 +250,10 @@ class ActorTaskSubmitter : public ActorTaskSubmitterInterface {
   /// Retry the CancelTask in milliseconds.
   void RetryCancelTask(TaskSpecification task_spec, bool recursive, int64_t milliseconds);
 
+  /// Cancel and resubmit a streaming generator task.
+  /// \return true if the task is still executing.
+  bool CancelAndResubmitGenerator(const TaskSpecification &spec);
+
  private:
   struct PendingTaskWaitingForDeathInfo {
     int64_t deadline_ms;
@@ -423,6 +427,9 @@ class ActorTaskSubmitter : public ActorTaskSubmitterInterface {
   mutable absl::Mutex mu_;
 
   absl::flat_hash_map<ActorID, ClientQueue> client_queues_ ABSL_GUARDED_BY(mu_);
+
+  // Generators that are currently running and need to be resubmitted.
+  absl::flat_hash_set<TaskID> generators_to_resubmit_ ABSL_GUARDED_BY(mu_);
 
   /// Resolve object dependencies.
   LocalDependencyResolver resolver_;

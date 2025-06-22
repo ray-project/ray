@@ -314,9 +314,8 @@ std::vector<rpc::ObjectReference> TaskManager::AddPendingTask(
 
 bool TaskManager::ResubmitTask(const TaskID &task_id, std::vector<ObjectID> *task_deps) {
   RAY_CHECK(task_deps->empty());
-
   TaskSpecification spec;
-  bool resubmit = false;
+  bool generator_to_queue_for_resubmit = false;
   {
     absl::MutexLock lock(&mu_);
     auto it = submissible_tasks_.find(task_id);
@@ -325,31 +324,92 @@ bool TaskManager::ResubmitTask(const TaskID &task_id, std::vector<ObjectID> *tas
       // retried up to its max attempts.
       return false;
     }
+    auto &task_entry = it->second;
 
-    if (!it->second.IsPending()) {
-      resubmit = true;
-      MarkTaskRetryOnResubmit(it->second);
-      num_pending_tasks_++;
-
-      // The task is pending again, so it's no longer counted as lineage. If
-      // the task finishes and we still need the spec, we'll add the task back
-      // to the footprint sum.
-      total_lineage_footprint_bytes_ -= it->second.lineage_footprint_bytes;
-      it->second.lineage_footprint_bytes = 0;
-
-      if (it->second.num_retries_left > 0) {
-        it->second.num_retries_left--;
-      } else {
-        RAY_CHECK(it->second.num_retries_left == -1);
+    if (task_entry.spec.IsStreamingGenerator() &&
+        task_entry.GetStatus() == rpc::TaskStatus::SUBMITTED_TO_WORKER) {
+      if (task_entry.num_retries_left == 0) {
+        // If the last attempt is in progress.
+        return false;
       }
-      spec = it->second.spec;
+      // If the task is a running streaming generator, the object may have been created,
+      // deleted, and then needed again for recovery. We have to cancel and resubmit the
+      // generator to recover the object. When the task is finished / failed, ResubmitTask
+      // will be called again.
+      generator_to_queue_for_resubmit = true;
     }
+
+    if (!generator_to_queue_for_resubmit &&
+        task_entry.GetStatus() != rpc::TaskStatus::FINISHED &&
+        task_entry.GetStatus() != rpc::TaskStatus::FAILED) {
+      // Assuming the task retry is already submitted / running.
+      return true;
+    }
+
+    if (!generator_to_queue_for_resubmit) {
+      SetupTaskEntryForResubmit(task_entry);
+    }
+    spec = task_entry.spec;
   }
 
-  if (!resubmit) {
-    return true;
+  if (generator_to_queue_for_resubmit) {
+    bool still_executing = queue_generator_for_resubmit_(spec);
+    // Resubmit was queued up.
+    if (still_executing) {
+      return true;
+    }
+    // Generator was no longer executing.
+    absl::MutexLock lock(&mu_);
+    auto it = submissible_tasks_.find(task_id);
+    RAY_CHECK(it != submissible_tasks_.end());
+    auto &task_entry = it->second;
+    // Don't need to do anything if the submitter resubmitted. Otherwise we should
+    // resubmit.
+    if (task_entry.GetStatus() != rpc::TaskStatus::FINISHED &&
+        task_entry.GetStatus() != rpc::TaskStatus::FAILED) {
+      return true;
+    }
+    SetupTaskEntryForResubmit(task_entry);
   }
 
+  UpdateReferencesForResubmit(spec, task_deps);
+
+  RAY_LOG(INFO) << "Resubmitting task that produced lost plasma object, attempt #"
+                << spec.AttemptNumber() << ": " << spec.DebugString();
+  // We should actually detect if the actor for this task is dead, but let's just assume
+  // it's not for now.
+  retry_task_callback_(spec, /*object_recovery*/ true, /*delay_ms*/ 0);
+
+  return true;
+}
+
+void TaskManager::SetupTaskEntryForResubmit(TaskEntry &task_entry) {
+  task_entry.MarkRetry();
+  // NOTE(rickyx): We only increment the AttemptNumber on the task spec when
+  // `retry_task_callback_` is invoked. In order to record the correct status change for
+  // the new task attempt, we pass the attempt number explicitly.
+  SetTaskStatus(task_entry,
+                rpc::TaskStatus::PENDING_ARGS_AVAIL,
+                /* state_update */ std::nullopt,
+                /* include_task_info */ true,
+                task_entry.spec.AttemptNumber() + 1);
+  num_pending_tasks_++;
+
+  // The task is pending again, so it's no longer counted as lineage. If
+  // the task finishes and we still need the spec, we'll add the task back
+  // to the footprint sum.
+  total_lineage_footprint_bytes_ -= task_entry.lineage_footprint_bytes;
+  task_entry.lineage_footprint_bytes = 0;
+
+  if (task_entry.num_retries_left > 0) {
+    task_entry.num_retries_left--;
+  } else {
+    RAY_CHECK(task_entry.num_retries_left == -1);
+  }
+}
+
+void TaskManager::UpdateReferencesForResubmit(const TaskSpecification &spec,
+                                              std::vector<ObjectID> *task_deps) {
   task_deps->reserve(spec.NumArgs());
   for (size_t i = 0; i < spec.NumArgs(); i++) {
     if (spec.ArgByRef(i)) {
@@ -367,7 +427,7 @@ bool TaskManager::ResubmitTask(const TaskID &task_id, std::vector<ObjectID> *tas
   for (const auto &task_dep : *task_deps) {
     bool was_freed = reference_counter_.TryMarkFreedObjectInUseAgain(task_dep);
     if (was_freed) {
-      RAY_LOG(DEBUG) << "Dependency " << task_dep << " of task " << task_id
+      RAY_LOG(DEBUG) << "Dependency " << task_dep << " of task " << spec.TaskId()
                      << " was freed";
       // We do not keep around copies for objects that were freed, but now that
       // they're needed for recovery, we need to generate and pin a new copy.
@@ -381,14 +441,30 @@ bool TaskManager::ResubmitTask(const TaskID &task_id, std::vector<ObjectID> *tas
     const auto actor_creation_return_id = spec.ActorCreationDummyObjectId();
     reference_counter_.UpdateResubmittedTaskReferences({actor_creation_return_id});
   }
+}
 
-  RAY_LOG(INFO) << "Resubmitting task that produced lost plasma object, attempt #"
-                << spec.AttemptNumber() << ": " << spec.DebugString();
-  // We should actually detect if the actor for this task is dead, but let's just assume
-  // it's not for now.
+void TaskManager::MarkGeneratorFailedAndResubmit(const TaskID &task_id) {
+  TaskSpecification spec;
+  {
+    absl::MutexLock lock(&mu_);
+    auto it = submissible_tasks_.find(task_id);
+    RAY_CHECK(it != submissible_tasks_.end());
+    auto &task_entry = it->second;
+
+    rpc::RayErrorInfo error_info;
+    error_info.set_error_type(rpc::ErrorType::REQUIRED_INTERMEDIATE_GENERATOR_RECOVERY);
+    SetTaskStatus(task_entry,
+                  rpc::TaskStatus::FAILED,
+                  worker::TaskStatusEvent::TaskStateUpdate(error_info));
+
+    SetupTaskEntryForResubmit(task_entry);
+    spec = task_entry.spec;
+  }
+
+  // Note: Don't need to call UpdateReferencesForResubmit because CompletePendingTask or
+  // FailPendingTask are not called when this is. Therefore, RemoveFinishedTaskReferences
+  // never happened for this task.
   retry_task_callback_(spec, /*object_recovery*/ true, /*delay_ms*/ 0);
-
-  return true;
 }
 
 void TaskManager::DrainAndShutdown(std::function<void()> shutdown) {
@@ -976,15 +1052,16 @@ bool TaskManager::RetryTaskIfPossible(const TaskID &task_id,
     auto it = submissible_tasks_.find(task_id);
     RAY_CHECK(it != submissible_tasks_.end())
         << "Tried to retry task that was not pending " << task_id;
-    RAY_CHECK(it->second.IsPending())
+    auto &task_entry = it->second;
+    RAY_CHECK(task_entry.IsPending())
         << "Tried to retry task that was not pending " << task_id;
-    spec = it->second.spec;
-    num_retries_left = it->second.num_retries_left;
-    num_oom_retries_left = it->second.num_oom_retries_left;
+    spec = task_entry.spec;
+    num_retries_left = task_entry.num_retries_left;
+    num_oom_retries_left = task_entry.num_oom_retries_left;
     if (task_failed_due_to_oom) {
       if (num_oom_retries_left > 0) {
         will_retry = true;
-        it->second.num_oom_retries_left--;
+        task_entry.num_oom_retries_left--;
       } else if (num_oom_retries_left == -1) {
         will_retry = true;
       } else {
@@ -993,7 +1070,7 @@ bool TaskManager::RetryTaskIfPossible(const TaskID &task_id,
     } else {
       if (num_retries_left > 0) {
         will_retry = true;
-        it->second.num_retries_left--;
+        task_entry.num_retries_left--;
       } else if (num_retries_left == -1) {
         will_retry = true;
       } else {
@@ -1001,11 +1078,22 @@ bool TaskManager::RetryTaskIfPossible(const TaskID &task_id,
       }
     }
     // Keep `num_retries_left` and `num_oom_retries_left` up to date
-    num_retries_left = it->second.num_retries_left;
-    num_oom_retries_left = it->second.num_oom_retries_left;
+    num_retries_left = task_entry.num_retries_left;
+    num_oom_retries_left = task_entry.num_oom_retries_left;
 
     if (will_retry) {
-      MarkTaskRetryOnFailed(it->second, error_info);
+      // Record the old attempt status as FAILED.
+      SetTaskStatus(task_entry,
+                    rpc::TaskStatus::FAILED,
+                    worker::TaskStatusEvent::TaskStateUpdate(error_info));
+      task_entry.MarkRetry();
+
+      // Mark the new status and also include task spec info for the new attempt.
+      SetTaskStatus(task_entry,
+                    rpc::TaskStatus::PENDING_ARGS_AVAIL,
+                    /* state_update */ std::nullopt,
+                    /* include_task_info */ true,
+                    task_entry.spec.AttemptNumber() + 1);
     }
   }
 
@@ -1426,42 +1514,6 @@ void TaskManager::MarkTaskWaitingForExecution(const TaskID &task_id,
   SetTaskStatus(it->second,
                 rpc::TaskStatus::SUBMITTED_TO_WORKER,
                 worker::TaskStatusEvent::TaskStateUpdate(node_id, worker_id));
-}
-
-void TaskManager::MarkTaskRetryOnResubmit(TaskEntry &task_entry) {
-  RAY_CHECK(!task_entry.IsPending())
-      << "Only finished tasks can be resubmitted: " << task_entry.spec.TaskId();
-
-  task_entry.MarkRetry();
-
-  // Mark the new status and also include task spec info for the new attempt.
-  //
-  // NOTE(rickyx): We only increment the AttemptNumber on the task spec when
-  // `retry_task_callback_` is invoked. In order to record the correct status change for
-  // the new task attempt, we pass the attempt number explicitly.
-  SetTaskStatus(task_entry,
-                rpc::TaskStatus::PENDING_ARGS_AVAIL,
-                /* state_update */ std::nullopt,
-                /* include_task_info */ true,
-                task_entry.spec.AttemptNumber() + 1);
-}
-
-void TaskManager::MarkTaskRetryOnFailed(TaskEntry &task_entry,
-                                        const rpc::RayErrorInfo &error_info) {
-  RAY_CHECK(task_entry.IsPending());
-
-  // Record the old attempt status as FAILED.
-  SetTaskStatus(task_entry,
-                rpc::TaskStatus::FAILED,
-                worker::TaskStatusEvent::TaskStateUpdate(error_info));
-  task_entry.MarkRetry();
-
-  // Mark the new status and also include task spec info for the new attempt.
-  SetTaskStatus(task_entry,
-                rpc::TaskStatus::PENDING_ARGS_AVAIL,
-                /* state_update */ std::nullopt,
-                /* include_task_info */ true,
-                task_entry.spec.AttemptNumber() + 1);
 }
 
 void TaskManager::SetTaskStatus(
