@@ -17,11 +17,8 @@
 #include <boost/asio/thread_pool.hpp>
 #include <boost/thread.hpp>
 #include <deque>
-#include <list>
 #include <memory>
 #include <optional>
-#include <queue>
-#include <set>
 #include <string>
 #include <utility>
 
@@ -29,17 +26,13 @@
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/synchronization/mutex.h"
-#include "ray/common/asio/asio_util.h"
 #include "ray/common/id.h"
-#include "ray/common/ray_object.h"
 #include "ray/core_worker/actor_creator.h"
-#include "ray/core_worker/context.h"
 #include "ray/core_worker/store_provider/memory_store/memory_store.h"
 #include "ray/core_worker/transport/actor_submit_queue.h"
 #include "ray/core_worker/transport/dependency_resolver.h"
 #include "ray/core_worker/transport/out_of_order_actor_submit_queue.h"
 #include "ray/core_worker/transport/sequential_actor_submit_queue.h"
-#include "ray/gcs/gcs_client/gcs_client.h"
 #include "ray/rpc/worker/core_worker_client.h"
 
 namespace ray {
@@ -68,7 +61,7 @@ class ActorTaskSubmitterInterface {
   /// If called, preempted = true will be set in the death cause upon actor death.
   virtual void SetPreempted(const ActorID &actor_id) = 0;
 
-  virtual ~ActorTaskSubmitterInterface() {}
+  virtual ~ActorTaskSubmitterInterface() = default;
 };
 
 // This class is thread-safe.
@@ -86,14 +79,13 @@ class ActorTaskSubmitter : public ActorTaskSubmitterInterface {
         actor_creator_(actor_creator),
         resolver_(store, task_finisher, actor_creator, tensor_transport_getter),
         task_finisher_(task_finisher),
-        warn_excess_queueing_(warn_excess_queueing),
+        warn_excess_queueing_(std::move(warn_excess_queueing)),
+        next_queueing_warn_threshold_(
+            ::RayConfig::instance().actor_excess_queueing_warn_threshold()),
         io_service_(io_service),
-        reference_counter_(reference_counter) {
-    next_queueing_warn_threshold_ =
-        ::RayConfig::instance().actor_excess_queueing_warn_threshold();
-  }
+        reference_counter_(std::move(reference_counter)) {}
 
-  void SetPreempted(const ActorID &actor_id) {
+  void SetPreempted(const ActorID &actor_id) override {
     absl::MutexLock lock(&mu_);
     if (auto iter = client_queues_.find(actor_id); iter != client_queues_.end()) {
       iter->second.preempted = true;
@@ -115,7 +107,7 @@ class ActorTaskSubmitter : public ActorTaskSubmitterInterface {
                                 int32_t max_pending_calls,
                                 bool execute_out_of_order,
                                 bool fail_if_actor_unreachable,
-                                bool owned);
+                                bool owned) override;
 
   /// Submit a task to an actor for execution.
   ///
@@ -136,7 +128,7 @@ class ActorTaskSubmitter : public ActorTaskSubmitterInterface {
   /// ignore the command to connect.
   void ConnectActor(const ActorID &actor_id,
                     const rpc::Address &address,
-                    int64_t num_restarts);
+                    int64_t num_restarts) override;
 
   /// Disconnect from a failed actor.
   ///
@@ -152,13 +144,13 @@ class ActorTaskSubmitter : public ActorTaskSubmitterInterface {
                        int64_t num_restarts,
                        bool dead,
                        const rpc::ActorDeathCause &death_cause,
-                       bool is_restartable);
+                       bool is_restartable) override;
 
   /// Set the timerstamp for the caller.
   void SetCallerCreationTimestamp(int64_t timestamp);
 
   /// Check timeout tasks that are waiting for Death info.
-  void CheckTimeoutTasks();
+  void CheckTimeoutTasks() override;
 
   /// If the number of tasks in requests is greater than or equal to
   /// max_pending_calls.
@@ -312,7 +304,7 @@ class ActorTaskSubmitter : public ActorTaskSubmitterInterface {
     /// pending client callbacks.
     std::shared_ptr<rpc::CoreWorkerClientInterface> rpc_client = nullptr;
     /// The intended worker ID of the actor.
-    std::string worker_id = "";
+    std::string worker_id;
     /// The actor is out of scope but the death info is not published
     /// to this worker yet.
     bool pending_out_of_scope_death = false;
@@ -340,7 +332,7 @@ class ActorTaskSubmitter : public ActorTaskSubmitterInterface {
 
     /// Stores all callbacks of inflight tasks. An actor task is inflight
     /// if the PushTask RPC is sent but the reply is not received yet.
-    absl::flat_hash_map<TaskAttempt, rpc::ClientCallback<rpc::PushTaskReply>>
+    absl::flat_hash_map<TaskID, rpc::ClientCallback<rpc::PushTaskReply>>
         inflight_task_callbacks;
 
     /// The max number limit of task capacity used for back pressure.
@@ -403,7 +395,7 @@ class ActorTaskSubmitter : public ActorTaskSubmitterInterface {
 
   /// Fail all in-flight tasks.
   void FailInflightTasks(
-      const absl::flat_hash_map<TaskAttempt, rpc::ClientCallback<rpc::PushTaskReply>>
+      const absl::flat_hash_map<TaskID, rpc::ClientCallback<rpc::PushTaskReply>>
           &inflight_task_callbacks) ABSL_LOCKS_EXCLUDED(mu_);
 
   /// Restart the actor from DEAD by sending a RestartActorForLineageReconstruction rpc to
