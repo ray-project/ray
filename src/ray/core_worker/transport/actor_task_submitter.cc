@@ -603,13 +603,18 @@ void ActorTaskSubmitter::PushActorTask(ClientQueue &queue,
   RAY_CHECK(
       queue.inflight_task_callbacks.emplace(task_id, std::move(reply_callback)).second);
   rpc::ClientCallback<rpc::PushTaskReply> wrapped_callback =
-      [this, task_id, actor_id](const Status &status, rpc::PushTaskReply &&reply) {
+      [this, task_id, actor_id, request_client = queue.rpc_client](
+          const Status &status, rpc::PushTaskReply &&reply) {
         rpc::ClientCallback<rpc::PushTaskReply> reply_callback;
         {
           absl::MutexLock lock(&mu_);
           auto it = client_queues_.find(actor_id);
           RAY_CHECK(it != client_queues_.end());
           auto &queue = it->second;
+          if (request_client != queue.rpc_client) {
+            // The actor has since been restarted on another worker. Ignore this reply.
+            return;
+          }
           auto callback_it = queue.inflight_task_callbacks.find(task_id);
           if (callback_it == queue.inflight_task_callbacks.end()) {
             RAY_LOG(DEBUG).WithField(task_id)
