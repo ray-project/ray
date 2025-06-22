@@ -183,7 +183,7 @@ In addition, the `node-ip-address` _must_ be set to the Pod FQDN of the Headless
   metadata:
     name: raycluster-istio
   spec:
-    rayVersion: '2.10.0'
+    rayVersion: '2.46.0'
     headGroupSpec:
       rayStartParams:
         num-cpus: '1'
@@ -199,7 +199,7 @@ In addition, the `node-ip-address` _must_ be set to the Pod FQDN of the Headless
         spec:
           containers:
           - name: ray-head
-            image: rayproject/ray:2.10.0-aarch64
+            image: rayproject/ray:2.46.0-aarch64
     workerGroupSpecs:
       - replicas: 1
         minReplicas: 1
@@ -219,7 +219,7 @@ In addition, the `node-ip-address` _must_ be set to the Pod FQDN of the Headless
           spec:
             containers:
             - name: ray-worker
-              image: rayproject/ray:2.10.0-aarch64
+              image: rayproject/ray:2.46.0-aarch64
   EOF
   ```
   :::
@@ -232,7 +232,7 @@ In addition, the `node-ip-address` _must_ be set to the Pod FQDN of the Headless
   metadata:
     name: raycluster-istio
   spec:
-    rayVersion: '2.10.0'
+    rayVersion: '2.46.0'
     headGroupSpec:
       rayStartParams:
         num-cpus: '1'
@@ -248,7 +248,7 @@ In addition, the `node-ip-address` _must_ be set to the Pod FQDN of the Headless
         spec:
           containers:
           - name: ray-head
-            image: rayproject/ray:2.10.0
+            image: rayproject/ray:2.46.0
     workerGroupSpecs:
       - replicas: 1
         minReplicas: 1
@@ -268,7 +268,7 @@ In addition, the `node-ip-address` _must_ be set to the Pod FQDN of the Headless
           spec:
             containers:
             - name: ray-worker
-              image: rayproject/ray:2.10.0
+              image: rayproject/ray:2.46.0
   EOF
   ```
   :::
