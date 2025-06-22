@@ -1,5 +1,6 @@
 import pytest
 import os
+import sys
 
 from ray._private.accelerators.rbln import (
     RBLNAcceleratorManager,
@@ -10,7 +11,6 @@ from ray._private.accelerators.rbln import (
 
 @pytest.fixture(autouse=True)
 def mock_rebel_module(monkeypatch):
-    import sys
     from ray.tests.accelerators import mock_rebel
 
     monkeypatch.setitem(sys.modules, "rebel", mock_rebel)
@@ -75,3 +75,7 @@ class TestRBLNAcceleratorManager:
         os.environ[NOSET_RBLN_RT_VISIBLE_DEVICES_ENV_VAR] = "1"
         RBLNAcceleratorManager.set_current_process_visible_accelerator_ids(["2", "3"])
         assert os.environ[RBLN_RT_VISIBLE_DEVICES_ENV_VAR] == "0,1"
+
+
+if __name__ == "__main__":
+    sys.exit(pytest.main(["-sv", __file__]))
