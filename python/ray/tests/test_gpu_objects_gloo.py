@@ -149,6 +149,32 @@ def test_trigger_out_of_band_tensor_transfer(ray_start_regular):
     assert torch.equal(ret_val_dst[0], tensor)
 
 
+def test_fetch_gpu_object_to_driver(ray_start_regular):
+    actor = GPUTestActor.remote()
+    create_collective_group([actor], backend="torch_gloo")
+
+    tensor1 = torch.tensor([1, 2, 3])
+    tensor2 = torch.tensor([4, 5, 6])
+
+    # Case 1: Single tensor
+    ref = actor.echo.remote(tensor1)
+    assert torch.equal(ray.get(ref), tensor1)
+
+    # Case 2: Multiple tensors
+    ref = actor.echo.remote([tensor1, tensor2])
+    result = ray.get(ref)
+    assert torch.equal(result[0], tensor1)
+    assert torch.equal(result[1], tensor2)
+
+    # Case 3: Mixed CPU and GPU data
+    data = [tensor1, tensor2, 7]
+    ref = actor.echo.remote(data)
+    result = ray.get(ref)
+    assert torch.equal(result[0], tensor1)
+    assert torch.equal(result[1], tensor2)
+    assert result[2] == 7
+
+
 def test_invalid_tensor_transport(ray_start_regular):
     with pytest.raises(ValueError, match="Invalid tensor transport"):
 
