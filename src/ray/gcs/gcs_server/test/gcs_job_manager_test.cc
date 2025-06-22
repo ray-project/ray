@@ -52,13 +52,21 @@ class GcsJobManagerTest : public ::testing::Test {
     fake_kv_ = std::make_unique<gcs::FakeInternalKVInterface>();
     function_manager_ = std::make_unique<gcs::GcsFunctionManager>(*kv_, io_service_);
 
-    // Mock client factory which abuses the "address" argument to return a
+    // Mock client pool which abuses the "address" argument to return a
     // CoreWorkerClient whose number of running tasks equal to the address port. This is
     // just for testing purposes.
-    client_factory_ = [](const rpc::Address &address) {
-      return std::make_shared<rpc::MockCoreWorkerClientConfigurableRunningTasks>(
-          address.port());
-    };
+    worker_client_pool_ =
+        std::make_unique<rpc::CoreWorkerClientPool>([](const rpc::Address &address) {
+          return std::make_shared<rpc::MockCoreWorkerClientConfigurableRunningTasks>(
+              address.port());
+        });
+    gcs_job_manager_ = std::make_unique<gcs::GcsJobManager>(*gcs_table_storage_,
+                                                            *gcs_publisher_,
+                                                            runtime_env_manager_,
+                                                            *function_manager_,
+                                                            *fake_kv_,
+                                                            io_service_,
+                                                            *worker_client_pool_);
   }
 
   ~GcsJobManagerTest() {
@@ -75,9 +83,10 @@ class GcsJobManagerTest : public ::testing::Test {
   std::unique_ptr<gcs::GcsFunctionManager> function_manager_;
   std::unique_ptr<gcs::MockInternalKVInterface> kv_;
   std::unique_ptr<gcs::FakeInternalKVInterface> fake_kv_;
-  rpc::CoreWorkerClientFactoryFn client_factory_;
+  std::unique_ptr<rpc::CoreWorkerClientPool> worker_client_pool_;
   RuntimeEnvManager runtime_env_manager_;
   const std::chrono::milliseconds timeout_ms_{5000};
+  std::unique_ptr<gcs::GcsJobManager> gcs_job_manager_;
 };
 
 TEST_F(GcsJobManagerTest, TestFakeInternalKV) {
@@ -104,16 +113,8 @@ TEST_F(GcsJobManagerTest, TestFakeInternalKV) {
 }
 
 TEST_F(GcsJobManagerTest, TestIsRunningTasks) {
-  gcs::GcsJobManager gcs_job_manager(*gcs_table_storage_,
-                                     *gcs_publisher_,
-                                     runtime_env_manager_,
-                                     *function_manager_,
-                                     *fake_kv_,
-                                     io_service_,
-                                     client_factory_);
-
   gcs::GcsInitData gcs_init_data(*gcs_table_storage_);
-  gcs_job_manager.Initialize(/*init_data=*/gcs_init_data);
+  gcs_job_manager_->Initialize(/*init_data=*/gcs_init_data);
 
   // Add 100 jobs. Job i should have i running tasks.
   int num_jobs = 100;
@@ -136,7 +137,7 @@ TEST_F(GcsJobManagerTest, TestIsRunningTasks) {
         Mocker::GenAddJobRequest(job_id, std::to_string(i), std::to_string(i), address);
     rpc::AddJobReply empty_reply;
     std::promise<bool> promise;
-    gcs_job_manager.HandleAddJob(
+    gcs_job_manager_->HandleAddJob(
         *add_job_request,
         &empty_reply,
         [&promise](Status, std::function<void()>, std::function<void()>) {
@@ -150,7 +151,7 @@ TEST_F(GcsJobManagerTest, TestIsRunningTasks) {
   rpc::GetAllJobInfoReply all_job_info_reply;
   std::promise<bool> all_job_info_promise;
 
-  gcs_job_manager.HandleGetAllJobInfo(
+  gcs_job_manager_->HandleGetAllJobInfo(
       all_job_info_request,
       &all_job_info_reply,
       [&all_job_info_promise](Status, std::function<void()>, std::function<void()>) {
@@ -169,16 +170,8 @@ TEST_F(GcsJobManagerTest, TestIsRunningTasks) {
 }
 
 TEST_F(GcsJobManagerTest, TestGetAllJobInfo) {
-  gcs::GcsJobManager gcs_job_manager(*gcs_table_storage_,
-                                     *gcs_publisher_,
-                                     runtime_env_manager_,
-                                     *function_manager_,
-                                     *fake_kv_,
-                                     io_service_,
-                                     client_factory_);
-
   gcs::GcsInitData gcs_init_data(*gcs_table_storage_);
-  gcs_job_manager.Initialize(/*init_data=*/gcs_init_data);
+  gcs_job_manager_->Initialize(/*init_data=*/gcs_init_data);
 
   // Add 100 jobs.
   for (int i = 0; i < 100; ++i) {
@@ -187,7 +180,7 @@ TEST_F(GcsJobManagerTest, TestGetAllJobInfo) {
         Mocker::GenAddJobRequest(job_id, "namespace_" + std::to_string(i));
     rpc::AddJobReply empty_reply;
     std::promise<bool> promise;
-    gcs_job_manager.HandleAddJob(
+    gcs_job_manager_->HandleAddJob(
         *add_job_request,
         &empty_reply,
         [&promise](Status, std::function<void()>, std::function<void()>) {
@@ -201,7 +194,7 @@ TEST_F(GcsJobManagerTest, TestGetAllJobInfo) {
   rpc::GetAllJobInfoReply all_job_info_reply;
   std::promise<bool> all_job_info_promise;
 
-  gcs_job_manager.HandleGetAllJobInfo(
+  gcs_job_manager_->HandleGetAllJobInfo(
       all_job_info_request,
       &all_job_info_reply,
       [&all_job_info_promise](Status, std::function<void()>, std::function<void()>) {
@@ -219,7 +212,7 @@ TEST_F(GcsJobManagerTest, TestGetAllJobInfo) {
       Mocker::GenAddJobRequest(job_api_job_id, "namespace_100", submission_id);
   rpc::AddJobReply empty_reply;
   std::promise<bool> promise;
-  gcs_job_manager.HandleAddJob(
+  gcs_job_manager_->HandleAddJob(
       *add_job_request,
       &empty_reply,
       [&promise](Status, std::function<void()>, std::function<void()>) {
@@ -255,7 +248,7 @@ TEST_F(GcsJobManagerTest, TestGetAllJobInfo) {
   rpc::GetAllJobInfoReply all_job_info_reply2;
   std::promise<bool> all_job_info_promise2;
 
-  gcs_job_manager.HandleGetAllJobInfo(
+  gcs_job_manager_->HandleGetAllJobInfo(
       all_job_info_request2,
       &all_job_info_reply2,
       [&all_job_info_promise2](Status, std::function<void()>, std::function<void()>) {
@@ -306,7 +299,7 @@ TEST_F(GcsJobManagerTest, TestGetAllJobInfo) {
   rpc::GetAllJobInfoReply all_job_info_reply3;
   std::promise<bool> all_job_info_promise3;
 
-  gcs_job_manager.HandleGetAllJobInfo(
+  gcs_job_manager_->HandleGetAllJobInfo(
       all_job_info_request3,
       &all_job_info_reply3,
       [&all_job_info_promise3](Status, std::function<void()>, std::function<void()>) {
@@ -322,7 +315,7 @@ TEST_F(GcsJobManagerTest, TestGetAllJobInfo) {
   auto add_job_request2 =
       Mocker::GenAddJobRequest(job_id2, "namespace_100", submission_id);
   std::promise<bool> promise4;
-  gcs_job_manager.HandleAddJob(
+  gcs_job_manager_->HandleAddJob(
       *add_job_request2,
       &empty_reply,
       [&promise4](Status, std::function<void()>, std::function<void()>) {
@@ -335,7 +328,7 @@ TEST_F(GcsJobManagerTest, TestGetAllJobInfo) {
   rpc::GetAllJobInfoReply all_job_info_reply4;
   std::promise<bool> all_job_info_promise4;
 
-  gcs_job_manager.HandleGetAllJobInfo(
+  gcs_job_manager_->HandleGetAllJobInfo(
       all_job_info_request4,
       &all_job_info_reply4,
       [&all_job_info_promise4](Status, std::function<void()>, std::function<void()>) {
@@ -347,18 +340,10 @@ TEST_F(GcsJobManagerTest, TestGetAllJobInfo) {
 }
 
 TEST_F(GcsJobManagerTest, TestGetAllJobInfoWithFilter) {
-  gcs::GcsJobManager gcs_job_manager(*gcs_table_storage_,
-                                     *gcs_publisher_,
-                                     runtime_env_manager_,
-                                     *function_manager_,
-                                     *fake_kv_,
-                                     io_service_,
-                                     client_factory_);
-
   auto job_id1 = JobID::FromInt(1);
   auto job_id2 = JobID::FromInt(2);
   gcs::GcsInitData gcs_init_data(*gcs_table_storage_);
-  gcs_job_manager.Initialize(/*init_data=*/gcs_init_data);
+  gcs_job_manager_->Initialize(/*init_data=*/gcs_init_data);
 
   rpc::AddJobReply empty_reply;
   std::promise<bool> promise1;
@@ -366,7 +351,7 @@ TEST_F(GcsJobManagerTest, TestGetAllJobInfoWithFilter) {
 
   auto add_job_request1 =
       Mocker::GenAddJobRequest(job_id1, "namespace_1", "submission_1");
-  gcs_job_manager.HandleAddJob(
+  gcs_job_manager_->HandleAddJob(
       *add_job_request1,
       &empty_reply,
       [&promise1](Status, std::function<void()>, std::function<void()>) {
@@ -376,7 +361,7 @@ TEST_F(GcsJobManagerTest, TestGetAllJobInfoWithFilter) {
 
   auto add_job_request2 =
       Mocker::GenAddJobRequest(job_id2, "namespace_2", "submission_2");
-  gcs_job_manager.HandleAddJob(
+  gcs_job_manager_->HandleAddJob(
       *add_job_request2,
       &empty_reply,
       [&promise2](Status, std::function<void()>, std::function<void()>) {
@@ -390,7 +375,7 @@ TEST_F(GcsJobManagerTest, TestGetAllJobInfoWithFilter) {
   std::promise<bool> all_job_info_promise;
 
   all_job_info_request.set_job_or_submission_id(job_id2.Hex());
-  gcs_job_manager.HandleGetAllJobInfo(
+  gcs_job_manager_->HandleGetAllJobInfo(
       all_job_info_request,
       &all_job_info_reply,
       [&all_job_info_promise](Status, std::function<void()>, std::function<void()>) {
@@ -406,7 +391,7 @@ TEST_F(GcsJobManagerTest, TestGetAllJobInfoWithFilter) {
   std::promise<bool> all_job_info_promise2;
 
   all_job_info_request2.set_job_or_submission_id("submission_1");
-  gcs_job_manager.HandleGetAllJobInfo(
+  gcs_job_manager_->HandleGetAllJobInfo(
       all_job_info_request2,
       &all_job_info_reply2,
       [&all_job_info_promise2](Status, std::function<void()>, std::function<void()>) {
@@ -422,7 +407,7 @@ TEST_F(GcsJobManagerTest, TestGetAllJobInfoWithFilter) {
   std::promise<bool> all_job_info_promise3;
 
   all_job_info_request3.set_job_or_submission_id("does_not_exist");
-  gcs_job_manager.HandleGetAllJobInfo(
+  gcs_job_manager_->HandleGetAllJobInfo(
       all_job_info_request3,
       &all_job_info_reply3,
       [&all_job_info_promise3](Status, std::function<void()>, std::function<void()>) {
@@ -433,25 +418,17 @@ TEST_F(GcsJobManagerTest, TestGetAllJobInfoWithFilter) {
 }
 
 TEST_F(GcsJobManagerTest, TestGetAllJobInfoWithLimit) {
-  gcs::GcsJobManager gcs_job_manager(*gcs_table_storage_,
-                                     *gcs_publisher_,
-                                     runtime_env_manager_,
-                                     *function_manager_,
-                                     *fake_kv_,
-                                     io_service_,
-                                     client_factory_);
-
   auto job_id1 = JobID::FromInt(1);
   auto job_id2 = JobID::FromInt(2);
   gcs::GcsInitData gcs_init_data(*gcs_table_storage_);
-  gcs_job_manager.Initialize(/*init_data=*/gcs_init_data);
+  gcs_job_manager_->Initialize(/*init_data=*/gcs_init_data);
 
   rpc::AddJobReply empty_reply;
   std::promise<bool> promise1;
   std::promise<bool> promise2;
 
   auto add_job_request1 = Mocker::GenAddJobRequest(job_id1, "namespace_1");
-  gcs_job_manager.HandleAddJob(
+  gcs_job_manager_->HandleAddJob(
       *add_job_request1,
       &empty_reply,
       [&promise1](Status, std::function<void()>, std::function<void()>) {
@@ -460,7 +437,7 @@ TEST_F(GcsJobManagerTest, TestGetAllJobInfoWithLimit) {
   promise1.get_future().get();
 
   auto add_job_request2 = Mocker::GenAddJobRequest(job_id2, "namespace_2");
-  gcs_job_manager.HandleAddJob(
+  gcs_job_manager_->HandleAddJob(
       *add_job_request2,
       &empty_reply,
       [&promise2](Status, std::function<void()>, std::function<void()>) {
@@ -474,7 +451,7 @@ TEST_F(GcsJobManagerTest, TestGetAllJobInfoWithLimit) {
   std::promise<bool> all_job_info_promise;
 
   all_job_info_request.set_limit(1);
-  gcs_job_manager.HandleGetAllJobInfo(
+  gcs_job_manager_->HandleGetAllJobInfo(
       all_job_info_request,
       &all_job_info_reply,
       [&all_job_info_promise](Status, std::function<void()>, std::function<void()>) {
@@ -490,7 +467,7 @@ TEST_F(GcsJobManagerTest, TestGetAllJobInfoWithLimit) {
   std::promise<bool> all_job_info_promise2;
 
   all_job_info_request2.set_limit(0);
-  gcs_job_manager.HandleGetAllJobInfo(
+  gcs_job_manager_->HandleGetAllJobInfo(
       all_job_info_request2,
       &all_job_info_reply2,
       [&all_job_info_promise2](Status, std::function<void()>, std::function<void()>) {
@@ -506,7 +483,7 @@ TEST_F(GcsJobManagerTest, TestGetAllJobInfoWithLimit) {
   std::promise<bool> all_job_info_promise3;
 
   all_job_info_request3.set_limit(100);
-  gcs_job_manager.HandleGetAllJobInfo(
+  gcs_job_manager_->HandleGetAllJobInfo(
       all_job_info_request3,
       &all_job_info_reply3,
       [&all_job_info_promise3](Status, std::function<void()>, std::function<void()>) {
@@ -522,7 +499,7 @@ TEST_F(GcsJobManagerTest, TestGetAllJobInfoWithLimit) {
   std::promise<bool> all_job_info_promise4;
 
   all_job_info_request4.set_limit(-1);
-  gcs_job_manager.HandleGetAllJobInfo(
+  gcs_job_manager_->HandleGetAllJobInfo(
       all_job_info_request4,
       &all_job_info_reply4,
       [&all_job_info_promise4](Status, std::function<void()>, std::function<void()>) {
@@ -537,25 +514,17 @@ TEST_F(GcsJobManagerTest, TestGetAllJobInfoWithLimit) {
 }
 
 TEST_F(GcsJobManagerTest, TestGetJobConfig) {
-  gcs::GcsJobManager gcs_job_manager(*gcs_table_storage_,
-                                     *gcs_publisher_,
-                                     runtime_env_manager_,
-                                     *function_manager_,
-                                     *kv_,
-                                     io_service_,
-                                     client_factory_);
-
   auto job_id1 = JobID::FromInt(1);
   auto job_id2 = JobID::FromInt(2);
   gcs::GcsInitData gcs_init_data(*gcs_table_storage_);
-  gcs_job_manager.Initialize(/*init_data=*/gcs_init_data);
+  gcs_job_manager_->Initialize(/*init_data=*/gcs_init_data);
 
   rpc::AddJobReply empty_reply;
   std::promise<bool> promise1;
   std::promise<bool> promise2;
 
   auto add_job_request1 = Mocker::GenAddJobRequest(job_id1, "namespace_1");
-  gcs_job_manager.HandleAddJob(
+  gcs_job_manager_->HandleAddJob(
       *add_job_request1,
       &empty_reply,
       [&promise1](Status, std::function<void()>, std::function<void()>) {
@@ -564,7 +533,7 @@ TEST_F(GcsJobManagerTest, TestGetJobConfig) {
   promise1.get_future().get();
 
   auto add_job_request2 = Mocker::GenAddJobRequest(job_id2, "namespace_2");
-  gcs_job_manager.HandleAddJob(
+  gcs_job_manager_->HandleAddJob(
       *add_job_request2,
       &empty_reply,
       [&promise2](Status, std::function<void()>, std::function<void()>) {
@@ -572,25 +541,17 @@ TEST_F(GcsJobManagerTest, TestGetJobConfig) {
       });
   promise2.get_future().get();
 
-  auto job_config1 = gcs_job_manager.GetJobConfig(job_id1);
+  auto job_config1 = gcs_job_manager_->GetJobConfig(job_id1);
   ASSERT_EQ("namespace_1", job_config1->ray_namespace());
 
-  auto job_config2 = gcs_job_manager.GetJobConfig(job_id2);
+  auto job_config2 = gcs_job_manager_->GetJobConfig(job_id2);
   ASSERT_EQ("namespace_2", job_config2->ray_namespace());
 }
 
 TEST_F(GcsJobManagerTest, TestPreserveDriverInfo) {
-  gcs::GcsJobManager gcs_job_manager(*gcs_table_storage_,
-                                     *gcs_publisher_,
-                                     runtime_env_manager_,
-                                     *function_manager_,
-                                     *fake_kv_,
-                                     io_service_,
-                                     client_factory_);
-
   auto job_id = JobID::FromInt(1);
   gcs::GcsInitData gcs_init_data(*gcs_table_storage_);
-  gcs_job_manager.Initialize(/*init_data=*/gcs_init_data);
+  gcs_job_manager_->Initialize(/*init_data=*/gcs_init_data);
   auto add_job_request = Mocker::GenAddJobRequest(job_id, "namespace");
 
   rpc::Address address;
@@ -606,7 +567,7 @@ TEST_F(GcsJobManagerTest, TestPreserveDriverInfo) {
   rpc::AddJobReply empty_reply;
   std::promise<bool> promise;
 
-  gcs_job_manager.HandleAddJob(
+  gcs_job_manager_->HandleAddJob(
       *add_job_request,
       &empty_reply,
       [&promise](Status, std::function<void()>, std::function<void()>) {
@@ -620,7 +581,7 @@ TEST_F(GcsJobManagerTest, TestPreserveDriverInfo) {
 
   job_finished_request.set_job_id(JobID::FromInt(1).Binary());
 
-  gcs_job_manager.HandleMarkJobFinished(
+  gcs_job_manager_->HandleMarkJobFinished(
       job_finished_request,
       &job_finished_reply,
       [&job_finished_promise](Status, std::function<void()>, std::function<void()>) {
@@ -632,7 +593,7 @@ TEST_F(GcsJobManagerTest, TestPreserveDriverInfo) {
   rpc::GetAllJobInfoReply all_job_info_reply;
   std::promise<bool> all_job_info_promise;
 
-  gcs_job_manager.HandleGetAllJobInfo(
+  gcs_job_manager_->HandleGetAllJobInfo(
       all_job_info_request,
       &all_job_info_reply,
       [&all_job_info_promise](Status, std::function<void()>, std::function<void()>) {
@@ -648,25 +609,17 @@ TEST_F(GcsJobManagerTest, TestPreserveDriverInfo) {
 }
 
 TEST_F(GcsJobManagerTest, TestNodeFailure) {
-  gcs::GcsJobManager gcs_job_manager(*gcs_table_storage_,
-                                     *gcs_publisher_,
-                                     runtime_env_manager_,
-                                     *function_manager_,
-                                     *fake_kv_,
-                                     io_service_,
-                                     client_factory_);
-
   auto job_id1 = JobID::FromInt(1);
   auto job_id2 = JobID::FromInt(2);
   gcs::GcsInitData gcs_init_data(*gcs_table_storage_);
-  gcs_job_manager.Initialize(/*init_data=*/gcs_init_data);
+  gcs_job_manager_->Initialize(/*init_data=*/gcs_init_data);
 
   rpc::AddJobReply empty_reply;
   std::promise<bool> promise1;
   std::promise<bool> promise2;
 
   auto add_job_request1 = Mocker::GenAddJobRequest(job_id1, "namespace_1");
-  gcs_job_manager.HandleAddJob(
+  gcs_job_manager_->HandleAddJob(
       *add_job_request1,
       &empty_reply,
       [&promise1](Status, std::function<void()>, std::function<void()>) {
@@ -675,7 +628,7 @@ TEST_F(GcsJobManagerTest, TestNodeFailure) {
   promise1.get_future().get();
 
   auto add_job_request2 = Mocker::GenAddJobRequest(job_id2, "namespace_2");
-  gcs_job_manager.HandleAddJob(
+  gcs_job_manager_->HandleAddJob(
       *add_job_request2,
       &empty_reply,
       [&promise2](Status, std::function<void()>, std::function<void()>) {
@@ -688,7 +641,7 @@ TEST_F(GcsJobManagerTest, TestNodeFailure) {
   std::promise<bool> all_job_info_promise;
 
   // Check if all job are not dead
-  gcs_job_manager.HandleGetAllJobInfo(
+  gcs_job_manager_->HandleGetAllJobInfo(
       all_job_info_request,
       &all_job_info_reply,
       [&all_job_info_promise](Status, std::function<void()>, std::function<void()>) {
@@ -702,14 +655,14 @@ TEST_F(GcsJobManagerTest, TestNodeFailure) {
   // Remove node and then check that the job is dead.
   auto address = all_job_info_reply.job_info_list().Get(0).driver_address();
   auto node_id = NodeID::FromBinary(address.raylet_id());
-  gcs_job_manager.OnNodeDead(node_id);
+  gcs_job_manager_->OnNodeDead(node_id);
 
   // Test get all jobs and check if killed node jobs marked as finished
-  auto condition = [&gcs_job_manager, node_id]() -> bool {
+  auto condition = [this, node_id]() -> bool {
     rpc::GetAllJobInfoRequest all_job_info_request2;
     rpc::GetAllJobInfoReply all_job_info_reply2;
     std::promise<bool> all_job_info_promise2;
-    gcs_job_manager.HandleGetAllJobInfo(
+    gcs_job_manager_->HandleGetAllJobInfo(
         all_job_info_request2,
         &all_job_info_reply2,
         [&all_job_info_promise2](Status, std::function<void()>, std::function<void()>) {
