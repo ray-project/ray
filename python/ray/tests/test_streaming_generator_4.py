@@ -111,6 +111,39 @@ def test_intermediate_generator_object_recovery_while_generator_running(
     assert ray.get(consumer_ref).size == (10 * 1024 * 1024)
 
 
+def test_actor_intermediate_generator_object_recovery_while_generator_running(
+    ray_start_cluster,
+):
+    # See test_intermediate_generator_object_recovery_while_generator_running.
+    # This is the same except the generator is an actor task.
+    cluster = ray_start_cluster
+    cluster.add_node(num_cpus=0)  # head
+    ray.init(address=cluster.address)
+    cluster.add_node(num_cpus=1, resources={"producer": 1})  # worker 1
+    worker2 = cluster.add_node(num_cpus=1, resources={"consumer": 1})
+
+    @ray.remote(num_cpus=1, resources={"producer": 1}, max_task_retries=-1)
+    class Producer:
+        def producer(self):
+            for i in range(3):
+                yield np.zeros(10 * 1024 * 1024, dtype=np.uint8)
+                time.sleep(10)
+
+    @ray.remote(num_cpus=1, resources={"consumer": 1})
+    def consumer(np_arr):
+        return np_arr.copy()
+
+    streaming_ref = Producer.remote().producer.remote()
+    consumer_ref = consumer.remote(next(streaming_ref))
+
+    ray.wait([consumer_ref], num_returns=1, fetch_local=False)
+
+    cluster.add_node(num_cpus=1, resources={"consumer": 1})  # worker 3
+    cluster.remove_node(worker2, allow_graceful=True)
+
+    assert ray.get(consumer_ref).size == (10 * 1024 * 1024)
+
+
 @pytest.mark.parametrize("backpressure", [False, True])
 @pytest.mark.parametrize("delay_latency", [0.1, 1])
 @pytest.mark.parametrize("threshold", [1, 3])

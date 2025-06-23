@@ -668,6 +668,15 @@ void ActorTaskSubmitter::HandlePushTaskReply(const Status &status,
                                              const rpc::Address &addr,
                                              const TaskSpecification &task_spec) {
   const auto task_id = task_spec.TaskId();
+
+  mu_.Lock();
+  bool resubmit_generator = generators_to_resubmit_.erase(task_id) > 0;
+  mu_.Unlock();
+  if (resubmit_generator && status.ok()) {
+    GetTaskFinisherWithoutMu().MarkGeneratorFailedAndResubmit(task_id);
+    return;
+  }
+
   const auto actor_id = task_spec.ActorId();
   const bool is_retryable_exception = status.ok() && reply.is_retryable_error();
   /// Whether or not we will retry this actor task.
@@ -676,7 +685,7 @@ void ActorTaskSubmitter::HandlePushTaskReply(const Status &status,
   if (status.ok() && !is_retryable_exception) {
     // status.ok() means the worker completed the reply, either succeeded or with a
     // retryable failure (e.g. user exceptions). We complete only on non-retryable case.
-    task_finisher_.CompletePendingTask(
+    GetTaskFinisherWithoutMu().CompletePendingTask(
         task_id, reply, addr, reply.is_application_error());
   } else if (status.IsSchedulingCancelled()) {
     std::ostringstream stream;
@@ -1002,6 +1011,11 @@ bool ActorTaskSubmitter::CancelAndResubmitGenerator(const TaskSpecification &spe
     if (inflight_iter == inflight_task_callbacks.end()) {
       // The task is no longer executing.
       return false;
+    }
+    auto [_, inserted] = generators_to_resubmit_.insert(spec.TaskId());
+    if (!inserted) {
+      // The task is already in the set.
+      return true;
     }
     client = client_queue_iter->second.rpc_client;
     RAY_CHECK(client != nullptr);

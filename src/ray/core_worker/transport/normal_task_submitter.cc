@@ -578,7 +578,7 @@ void NormalTaskSubmitter::PushNormalTask(
        scheduling_key,
        addr,
        assigned_resources](Status status, const rpc::PushTaskReply &reply) {
-        bool generator_to_resubmit = false;
+        bool resubmit_generator = false;
         {
           RAY_LOG(DEBUG) << "Task " << task_id << " finished from worker "
                          << WorkerID::FromBinary(addr.worker_id()) << " of raylet "
@@ -586,11 +586,7 @@ void NormalTaskSubmitter::PushNormalTask(
           absl::MutexLock lock(&mu_);
           executing_tasks_.erase(task_id);
 
-          auto generator_iter = generators_to_resubmit_.find(task_id);
-          if (generator_iter != generators_to_resubmit_.end()) {
-            generators_to_resubmit_.erase(generator_iter);
-            generator_to_resubmit = true;
-          }
+          resubmit_generator = generators_to_resubmit_.erase(task_id) > 0;
 
           // Decrement the number of tasks in flight to the worker
           auto &lease_entry = worker_to_lease_entry_[addr];
@@ -636,7 +632,7 @@ void NormalTaskSubmitter::PushNormalTask(
           }
         }
         if (status.ok()) {
-          if (generator_to_resubmit) {
+          if (resubmit_generator) {
             task_finisher_.MarkGeneratorFailedAndResubmit(task_id);
           } else if (reply.was_cancelled_before_running()) {
             RAY_LOG(DEBUG) << "Task " << task_id
@@ -839,8 +835,12 @@ bool NormalTaskSubmitter::CancelAndResubmitGenerator(const TaskSpecification &sp
       // The task is no longer executing.
       return false;
     }
+    auto [_, inserted] = generators_to_resubmit_.insert(spec.TaskId());
+    if (!inserted) {
+      // The task is already in the set.
+      return true;
+    }
     client = client_cache_->GetOrConnect(address_iter->second);
-    generators_to_resubmit_.emplace(spec.TaskId());
   }
   rpc::CancelTaskRequest request;
   request.set_intended_task_id(spec.TaskIdBinary());
