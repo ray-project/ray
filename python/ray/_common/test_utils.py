@@ -97,10 +97,10 @@ def wait_for_condition(
     last_ex = None
     while time.time() - start <= timeout:
         try:
-            if condition_predictor(**kwargs):
-                return
-        except Exception:
-            if raise_exceptions:
+            assert condition_predictor(**kwargs)
+            return
+        except (AssertionError, Exception) as e:
+            if raise_exceptions and not isinstance(e, AssertionError):
                 raise
             last_ex = ray._private.utils.format_error_message(traceback.format_exc())
         time.sleep(retry_interval_ms / 1000.0)
