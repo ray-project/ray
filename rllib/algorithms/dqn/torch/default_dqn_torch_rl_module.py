@@ -93,8 +93,14 @@ class DefaultDQNTorchRLModule(TorchRLModule, DefaultDQNRLModule):
             dim=1,
         )
 
+        if not random_actions.device == exploit_actions.device:
+            raise RuntimeError(
+                f"Device mismatch: random_actions is on {random_actions.device}, "
+                f"but exploit_actions is on {exploit_actions.device}."
+            )
+
         actions = torch.where(
-            torch.rand((B,)) < epsilon,
+            torch.rand((B,)).to(exploit_actions.device) < epsilon,
             random_actions,
             exploit_actions,
         )
