@@ -1269,7 +1269,7 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
                              rpc::NumPendingTasksReply *reply,
                              rpc::SendReplyCallback send_reply_callback) override;
 
-  // Clean up GPU objects from the in-actor GPU object store.
+  // Free GPU objects from the in-actor GPU object store.
   void HandleFreeActorObject(rpc::FreeActorObjectRequest request,
                               rpc::FreeActorObjectReply *reply,
                               rpc::SendReplyCallback send_reply_callback) override;

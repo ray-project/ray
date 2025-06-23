@@ -578,7 +578,7 @@ service CoreWorkerService {
   // API user.
   rpc NumPendingTasks(NumPendingTasksRequest) returns (NumPendingTasksReply);
 
-  // Clean up GPU object from in-actor GPU object store.
+  // Free GPU object from in-actor GPU object store.
   rpc FreeActorObject(FreeActorObjectRequest)
       returns (FreeActorObjectReply);
 
