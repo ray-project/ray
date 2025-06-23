@@ -419,7 +419,8 @@ CoreWorker::CoreWorker(CoreWorkerOptions options, const WorkerID &worker_id)
   task_event_buffer_ = std::make_unique<worker::TaskEventBufferImpl>(
       std::make_shared<gcs::GcsClient>(options_.gcs_options),
       std::make_unique<rpc::EventAggregatorClientImpl>(
-          "127.0.0.1", options_.metrics_agent_port, *client_call_manager_));
+          "127.0.0.1", options_.metrics_agent_port, *client_call_manager_),
+      options_.session_name);
 
   // Initialize task receivers.
   if (options_.worker_type == WorkerType::WORKER || options_.is_local_mode) {
@@ -756,14 +757,14 @@ CoreWorker::CoreWorker(CoreWorkerOptions options, const WorkerID &worker_id)
         !RayConfig::instance().task_events_skip_driver_for_test()) {
       auto spec = std::move(builder).ConsumeAndBuild();
       auto job_id = spec.JobId();
-      bool is_actor_task_event = spec.IsActorTask();
       auto task_event = std::make_unique<worker::TaskStatusEvent>(
           task_id,
           std::move(job_id),
           /*attempt_number=*/0,
           rpc::TaskStatus::RUNNING,
           /*timestamp=*/absl::GetCurrentTimeNanos(),
-          is_actor_task_event,
+          /*is_actor_task_event=*/false,
+          options_.session_name,
           std::make_shared<const TaskSpecification>(std::move(spec)));
       task_event_buffer_->AddTaskEvent(std::move(task_event));
     }
@@ -1093,7 +1094,8 @@ void CoreWorker::Disconnect(
         /* attempt_number */ 0,
         rpc::TaskStatus::FINISHED,
         /* timestamp */ absl::GetCurrentTimeNanos(),
-        /*is_actor_task_event=*/worker_context_.GetCurrentActorID().IsNil());
+        /*is_actor_task_event=*/worker_context_.GetCurrentActorID().IsNil(),
+        options_.session_name);
     task_event_buffer_->AddTaskEvent(std::move(task_event));
   }
 
