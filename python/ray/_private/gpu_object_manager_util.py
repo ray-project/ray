@@ -81,3 +81,17 @@ def __ray_recv__(
         collective.recv(tensor, src_rank, group_name=communicator_name)
         tensors.append(tensor)
     gpu_object_manager.add_gpu_object(obj_id, tensors)
+
+
+def __ray_fetch_gpu_object__(self, obj_id: str):
+    """Helper function that runs on the src actor to fetch tensors from the GPU object store via the object store."""
+    gpu_object_manager = global_worker.gpu_object_manager
+    assert gpu_object_manager.has_gpu_object(
+        obj_id
+    ), f"obj_id={obj_id} not found in GPU object store"
+    tensors = gpu_object_manager.get_gpu_object(obj_id)
+    # TODO(kevin85421): The current garbage collection implementation for the
+    # in-actor object store is naive. We garbage collect each object after it
+    # is consumed once.
+    gpu_object_manager.remove_gpu_object(obj_id)
+    return tensors
