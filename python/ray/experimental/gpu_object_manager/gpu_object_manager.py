@@ -29,7 +29,6 @@ COLLECTIVE_BACKEND_TO_TORCH_DEVICE = {
 }
 
 
-
 def _tensor_transport_to_collective_backend(
     tensor_transport: TensorTransportEnum,
 ) -> Backend:
@@ -89,6 +88,8 @@ def __ray_recv__(
         collective.recv(tensor, src_rank, group_name=communicator_name)
         tensors.append(tensor)
     gpu_object_manager.add_gpu_object(obj_id, tensors)
+
+
 # GPUObjectMeta is a named tuple containing the source actor, tensor transport
 # backend, and tensor metadata.
 # - The tensor transport backend is the backend used to transport the tensors.
@@ -128,7 +129,9 @@ class GPUObjectManager:
     def remove_gpu_object(self, obj_id: str):
         del self.gpu_object_store[obj_id]
 
-    def _get_tensor_meta(self, src_actor: "ray.actor.ActorHandle", obj_id: str) -> ObjectRef:
+    def _get_tensor_meta(
+        self, src_actor: "ray.actor.ActorHandle", obj_id: str
+    ) -> ObjectRef:
         # Submit a Ray actor task to the source actor to get the tensor metadata.
         # The metadata is a list of tuples, where each tuple contains the shape and dtype
         # of a tensor in the GPU object store. This function returns an ObjectRef that
@@ -182,13 +185,15 @@ class GPUObjectManager:
         return obj_ref in self.gpu_object_refs
 
     def _send_gpu_object(
-        self, communicator_name: str, src_actor: "ray.actor.ActorHandle", obj_id: str, dst_rank: int
+        self,
+        communicator_name: str,
+        src_actor: "ray.actor.ActorHandle",
+        obj_id: str,
+        dst_rank: int,
     ):
         # Send tensors stored in the `src_actor`'s GPU object store to the
         # destination rank `dst_rank`.
-        src_actor.__ray_call__.remote(
-            __ray_send__, communicator_name, obj_id, dst_rank
-        )
+        src_actor.__ray_call__.remote(__ray_send__, communicator_name, obj_id, dst_rank)
 
     def _recv_gpu_object(
         self,

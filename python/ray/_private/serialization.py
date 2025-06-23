@@ -21,9 +21,9 @@ from ray._raylet import (
     Pickle5SerializedObject,
     Pickle5Writer,
     RawSerializedObject,
+    SerializedRayObject,
     split_buffer,
     unpack_pickle5_buffers,
-    SerializedRayObject,
 )
 from ray.core.generated.common_pb2 import ErrorType, RayErrorInfo
 from ray.exceptions import (
@@ -257,7 +257,12 @@ class SerializationContext:
                 )
 
     def _deserialize_pickle5_data(
-        self, data: Any, object_id: Optional[str] = None, tensor_transport: Optional[TensorTransportEnum] = TensorTransportEnum.OBJECT_STORE
+        self,
+        data: Any,
+        object_id: Optional[str] = None,
+        tensor_transport: Optional[
+            TensorTransportEnum
+        ] = TensorTransportEnum.OBJECT_STORE,
     ) -> Any:
         """
         If `object_id` exists in `in_actor_object_store`, it means that tensors are sent
@@ -280,9 +285,7 @@ class SerializationContext:
         enable_gpu_objects = tensor_transport != TensorTransportEnum.OBJECT_STORE
         if enable_gpu_objects:
             gpu_object_manager = ray._private.worker.global_worker.gpu_object_manager
-            if not gpu_object_manager.has_gpu_object(
-                object_id
-            ):
+            if not gpu_object_manager.has_gpu_object(object_id):
                 raise RuntimeError(f"obj_id={object_id} not found in GPU object store")
             tensors = gpu_object_manager.get_gpu_object(object_id)
             ctx.reset_out_of_band_tensors(tensors)
@@ -305,12 +308,20 @@ class SerializationContext:
         return obj
 
     def _deserialize_msgpack_data(
-        self, data, metadata_fields, object_id: Optional[str] = None, tensor_transport: Optional[TensorTransportEnum] = TensorTransportEnum.OBJECT_STORE
+        self,
+        data,
+        metadata_fields,
+        object_id: Optional[str] = None,
+        tensor_transport: Optional[
+            TensorTransportEnum
+        ] = TensorTransportEnum.OBJECT_STORE,
     ):
         msgpack_data, pickle5_data = split_buffer(data)
 
         if metadata_fields[0] == ray_constants.OBJECT_METADATA_TYPE_PYTHON:
-            python_objects = self._deserialize_pickle5_data(pickle5_data, object_id, tensor_transport)
+            python_objects = self._deserialize_pickle5_data(
+                pickle5_data, object_id, tensor_transport
+            )
         else:
             python_objects = []
 
@@ -348,8 +359,12 @@ class SerializationContext:
                 cause=ray_error_info.actor_died_error.actor_died_error_context
             )
 
-    def _deserialize_object(self, data, metadata, object_ref, tensor_transport_value: Optional[int]):
-        tensor_transport = TensorTransportEnum(tensor_transport_value if tensor_transport_value is not None else 0)
+    def _deserialize_object(
+        self, data, metadata, object_ref, tensor_transport_value: Optional[int]
+    ):
+        tensor_transport = TensorTransportEnum(
+            tensor_transport_value if tensor_transport_value is not None else 0
+        )
         if metadata:
             metadata_fields = metadata.split(b",")
             if metadata_fields[0] in [
@@ -490,18 +505,24 @@ class SerializationContext:
             # throws an exception.
             return PlasmaObjectNotAvailable
 
-    def deserialize_objects(self, serialized_ray_objects: List[SerializedRayObject], object_refs):
+    def deserialize_objects(
+        self, serialized_ray_objects: List[SerializedRayObject], object_refs
+    ):
         assert len(serialized_ray_objects) == len(object_refs)
         # initialize the thread-local field
         if not hasattr(self._thread_local, "object_ref_stack"):
             self._thread_local.object_ref_stack = []
         results = []
-        for object_ref, (data, metadata, tensor_transport_value) in zip(object_refs, serialized_ray_objects):
+        for object_ref, (data, metadata, tensor_transport_value) in zip(
+            object_refs, serialized_ray_objects
+        ):
             try:
                 # Push the object ref to the stack, so the object under
                 # the object ref knows where it comes from.
                 self._thread_local.object_ref_stack.append(object_ref)
-                obj = self._deserialize_object(data, metadata, object_ref, tensor_transport_value)
+                obj = self._deserialize_object(
+                    data, metadata, object_ref, tensor_transport_value
+                )
             except Exception as e:
                 logger.exception(e)
                 obj = RaySystemError(e, traceback.format_exc())
