@@ -673,6 +673,8 @@ void ActorTaskSubmitter::HandlePushTaskReply(const Status &status,
   bool resubmit_generator = generators_to_resubmit_.erase(task_id) > 0;
   mu_.Unlock();
   if (resubmit_generator && status.ok()) {
+    // If the generator was queued up for resubmission for object recovery,
+    // resubmit as long as we get a valid reply.
     GetTaskFinisherWithoutMu().MarkGeneratorFailedAndResubmit(task_id);
     return;
   }

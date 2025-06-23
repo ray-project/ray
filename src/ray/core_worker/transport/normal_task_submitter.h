@@ -128,7 +128,8 @@ class NormalTaskSubmitter {
                           bool recursive);
 
   /// Cancel and resubmit a streaming generator task.
-  /// \return true if the task is still executing.
+  /// \return true if the task is still executing and the submitter will handle cancelling
+  /// and resubmitting.
   bool CancelAndResubmitGenerator(const TaskSpecification &spec);
 
   /// Check that the scheduling_key_entries_ hashmap is empty by calling the private
