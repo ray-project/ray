@@ -151,6 +151,7 @@ class TaskStatusEvent : public TaskEvent {
       const rpc::TaskStatus &task_status,
       int64_t timestamp,
       bool is_actor_task_event,
+      std::string session_name,
       const std::shared_ptr<const TaskSpecification> &task_spec = nullptr,
       std::optional<const TaskStateUpdate> state_update = std::nullopt);
 
@@ -192,6 +193,8 @@ class TaskStatusEvent : public TaskEvent {
   int64_t timestamp_ = -1;
   /// Whether the task is an actor task.
   bool is_actor_task_event_ = false;
+  /// The cluster ID (session name) of the cluster
+  std::string session_name_;
   /// Pointer to the task spec.
   std::shared_ptr<const TaskSpecification> task_spec_ = nullptr;
   /// Optional task state update
@@ -355,7 +358,8 @@ class TaskEventBufferImpl : public TaskEventBuffer {
   /// \param event_aggregator_client Event aggregator client
   explicit TaskEventBufferImpl(
       std::unique_ptr<gcs::GcsClient> gcs_client,
-      std::unique_ptr<rpc::EventAggregatorClient> event_aggregator_client);
+      std::unique_ptr<rpc::EventAggregatorClient> event_aggregator_client,
+      std::string session_name);
 
   TaskEventBufferImpl(const TaskEventBufferImpl &) = delete;
   TaskEventBufferImpl &operator=(const TaskEventBufferImpl &) = delete;
@@ -556,6 +560,9 @@ class TaskEventBufferImpl : public TaskEventBuffer {
 
   /// If true, ray events from the event buffer are sent to the event aggregator
   bool send_ray_events_to_aggregator_enabled_ = false;
+
+  /// The cluster ID (session name) of the cluster. Passed in from the core worker
+  std::string session_name_;
 
   FRIEND_TEST(TaskEventBufferTestManualStart, TestGcsClientFail);
   FRIEND_TEST(TaskEventBufferTestBatchSendDifferentDestination, TestBatchedSend);

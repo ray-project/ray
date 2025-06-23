@@ -37,12 +37,14 @@ TaskStatusEvent::TaskStatusEvent(
     const rpc::TaskStatus &task_status,
     int64_t timestamp,
     bool is_actor_task_event,
+    std::string session_name,
     const std::shared_ptr<const TaskSpecification> &task_spec,
     std::optional<const TaskStatusEvent::TaskStateUpdate> state_update)
     : TaskEvent(task_id, job_id, attempt_number),
       task_status_(task_status),
       timestamp_(timestamp),
       is_actor_task_event_(is_actor_task_event),
+      session_name_(session_name),
       task_spec_(task_spec),
       state_update_(std::move(state_update)) {}
 
@@ -181,6 +183,7 @@ void TaskStatusEvent::PopulateRpcRayTaskDefinitionEvent(T &definition_event_data
   definition_event_data.set_task_attempt(attempt_number_);
 
   // Common fields
+  definition_event_data.set_language(task_spec_->GetLanguage());
   const auto &required_resources = task_spec_->GetRequiredResources().GetResourceMap();
   definition_event_data.mutable_required_resources()->insert(
       std::make_move_iterator(required_resources.begin()),
@@ -191,6 +194,7 @@ void TaskStatusEvent::PopulateRpcRayTaskDefinitionEvent(T &definition_event_data
   definition_event_data.set_parent_task_id(task_spec_->ParentTaskId().Binary());
   definition_event_data.set_placement_group_id(
       task_spec_->PlacementGroupBundleId().first.Binary());
+  definition_event_data.set_session_name(session_name_);
   const auto &labels = task_spec_->GetMessage().labels();
   definition_event_data.mutable_ref_ids()->insert(labels.begin(), labels.end());
 
@@ -199,9 +203,11 @@ void TaskStatusEvent::PopulateRpcRayTaskDefinitionEvent(T &definition_event_data
     definition_event_data.mutable_actor_func()->CopyFrom(
         task_spec_->FunctionDescriptor()->GetMessage());
     definition_event_data.set_actor_id(task_spec_->ActorId().Binary());
+    definition_event_data.set_actor_task_name(task_spec_->GetName());
   } else {
     definition_event_data.mutable_task_func()->CopyFrom(
         task_spec_->FunctionDescriptor()->GetMessage());
+    definition_event_data.set_task_type(task_spec_->TaskType());
     definition_event_data.set_task_name(task_spec_->GetName());
   }
 }
@@ -373,6 +379,7 @@ bool TaskEventBuffer::RecordTaskStatusEventIfNeeded(
       status,
       /* timestamp */ absl::GetCurrentTimeNanos(),
       /*is_actor_task_event=*/spec.IsActorTask(),
+      session_name_,
       include_task_info ? std::make_shared<const TaskSpecification>(spec) : nullptr,
       std::move(state_update));
 
@@ -381,12 +388,14 @@ bool TaskEventBuffer::RecordTaskStatusEventIfNeeded(
 }
 
 TaskEventBufferImpl::TaskEventBufferImpl(
-    std::unique_ptr<gcs::GcsClient> gcs_client,
-    std::unique_ptr<rpc::EventAggregatorClient> event_aggregator_client)
+    std::shared_ptr<gcs::GcsClient> gcs_client,
+    std::unique_ptr<rpc::EventAggregatorClientImpl> event_aggregator_client,
+    std::string session_name)
     : work_guard_(boost::asio::make_work_guard(io_service_)),
       periodical_runner_(PeriodicalRunner::Create(io_service_)),
       gcs_client_(std::move(gcs_client)),
-      event_aggregator_client_(std::move(event_aggregator_client)) {}
+      event_aggregator_client_(std::move(event_aggregator_client)),
+      session_name_(session_name) {}
 
 TaskEventBufferImpl::~TaskEventBufferImpl() { Stop(); }
 

@@ -157,6 +157,7 @@ class TaskEventBufferTest : public ::testing::Test {
         rpc::TaskStatus::RUNNING,
         1,
         /*is_actor_task_event=*/false,
+        "",
         std::make_shared<TaskSpecification>(task_spec),
         status_update);
   }
@@ -173,6 +174,7 @@ class TaskEventBufferTest : public ::testing::Test {
                                              rpc::TaskStatus::RUNNING,
                                              running_ts,
                                              /*is_actor_task_event=*/false,
+                                             "",
                                              nullptr,
                                              state_update);
   }
