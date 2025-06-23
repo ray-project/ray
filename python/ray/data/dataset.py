@@ -1016,7 +1016,12 @@ class Dataset:
             return table.take(pa.array(unique_indices))
 
         # Only for dedupe on *all columns* and keep="first", we can do in-batch dedup to save shuffle.
-        if keys is None and keep == "first":
+        # But only safe if the dataset is a single block, otherwise duplicates across blocks will survive.
+        if (
+            keys is None
+            and keep == "first"
+            and getattr(self, "_get_num_blocks", lambda: 1)() == 1
+        ):
             return self.map_batches(
                 remove_duplicates_arrow,
                 batch_format="pyarrow",
