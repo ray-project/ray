@@ -63,7 +63,7 @@ class GcsAutoscalerStateManagerTest : public ::testing::Test {
   std::unique_ptr<MockGcsActorManager> gcs_actor_manager_;
   std::unique_ptr<GcsAutoscalerStateManager> gcs_autoscaler_state_manager_;
   std::shared_ptr<MockGcsPlacementGroupManager> gcs_placement_group_manager_;
-  std::unique_ptr<GcsFunctionManager> function_manager_;
+  std::unique_ptr<GCSFunctionManager> function_manager_;
   std::unique_ptr<RuntimeEnvManager> runtime_env_manager_;
   std::unique_ptr<GcsInternalKVManager> kv_manager_;
   std::unique_ptr<rpc::CoreWorkerClientPool> worker_client_pool_;
@@ -79,7 +79,7 @@ class GcsAutoscalerStateManagerTest : public ::testing::Test {
         kRayletConfig,
         io_service_);
     function_manager_ =
-        std::make_unique<GcsFunctionManager>(kv_manager_->GetInstance(), io_service_);
+        std::make_unique<GCSFunctionManager>(kv_manager_->GetInstance(), io_service_);
     runtime_env_manager_ = std::make_unique<RuntimeEnvManager>(
         [](const std::string &, std::function<void(bool)>) {});
     worker_client_pool_ =
