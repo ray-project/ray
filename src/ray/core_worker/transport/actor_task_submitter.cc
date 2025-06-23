@@ -1023,7 +1023,7 @@ bool ActorTaskSubmitter::CancelAndResubmitGenerator(const TaskSpecification &spe
     RAY_CHECK(client != nullptr);
   }
   rpc::CancelTaskRequest request;
-  request.set_intended_task_id(spec.TaskIdBinary());
+  request.set_intended_task_id(spec.TaskId().Binary());
   request.set_force_kill(false);
   request.set_recursive(true);
   request.set_caller_worker_id(spec.CallerWorkerId().Binary());
