@@ -364,7 +364,6 @@ class ReplicaBase(ABC):
         self._component_id = self._replica_id.unique_id
         self._configure_logger_and_profilers(self._deployment_config.logging_config)
         self._event_loop = get_or_create_event_loop()
-        self._num_queued_requests = 0
 
         self._user_callable_wrapper = UserCallableWrapper(
             deployment_def,
@@ -821,9 +820,7 @@ class ReplicaBase(ABC):
 
     @asynccontextmanager
     async def _start_request(self):
-        self._num_queued_requests += 1
         async with self._semaphore:
-            self._num_queued_requests -= 1
             yield
 
     async def _drain_ongoing_requests(self):
