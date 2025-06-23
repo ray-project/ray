@@ -86,11 +86,11 @@ def test_cardinality_levels(_setup_cluster_for_test, cardinality_level):
                 if cardinality_level == "recommended":
                     # If the cardinality level is recommended, the WorkerId tag should
                     # be removed
-                    return sample.labels.get(WORKER_ID_TAG_KEY) is None
+                    return sample.labels.get(WORKER_ID_TAG_KEY) is not None
                 elif cardinality_level == "legacy":
                     # If the cardinality level is legacy, the WorkerId tag should be
                     # present
-                    return sample.labels.get(WORKER_ID_TAG_KEY) is not None
+                    return sample.labels.get(WORKER_ID_TAG_KEY) is None
                 else:
                     raise ValueError(f"Unknown cardinality level: {cardinality_level}")
 

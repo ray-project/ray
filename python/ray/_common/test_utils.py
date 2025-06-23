@@ -14,6 +14,7 @@ import time
 import traceback
 from typing import Any, Callable, Iterator
 import uuid
+import sys
 
 import ray
 import ray._private.utils
@@ -102,7 +103,17 @@ def wait_for_condition(
         except (AssertionError, Exception) as e:
             if raise_exceptions and not isinstance(e, AssertionError):
                 raise
-            last_ex = ray._private.utils.format_error_message(traceback.format_exc())
+            # Capture full stack trace including inside condition_predictor
+            exc_type, exc_value, exc_traceback = sys.exc_info()
+            if exc_traceback and exc_type:
+                # Extract all frames from the traceback
+                tb_list = traceback.extract_tb(exc_traceback)
+                # Format the full traceback with all frames
+                full_traceback = "".join(traceback.format_list(tb_list))
+                full_traceback += f"{exc_type.__name__}: {exc_value}\n"
+            else:
+                full_traceback = traceback.format_exc()
+            last_ex = ray._private.utils.format_error_message(full_traceback)
         time.sleep(retry_interval_ms / 1000.0)
     message = "The condition wasn't met before the timeout expired."
     if last_ex is not None:
