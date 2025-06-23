@@ -343,7 +343,7 @@ class GcsActorManager : public rpc::ActorInfoHandler {
       instrumented_io_context &io_context,
       GcsPublisher *gcs_publisher,
       RuntimeEnvManager &runtime_env_manager,
-      GcsFunctionManager &function_manager,
+      GCSFunctionManager &function_manager,
       std::function<void(const ActorID &)> destroy_owned_placement_group_if_needed,
       rpc::CoreWorkerClientPool &worker_client_pool);
 
@@ -727,7 +727,7 @@ class GcsActorManager : public rpc::ActorInfoHandler {
   /// Runtime environment manager for GC purpose
   RuntimeEnvManager &runtime_env_manager_;
   /// Function manager for GC purpose
-  GcsFunctionManager &function_manager_;
+  GCSFunctionManager &function_manager_;
 
   UsageStatsClient *usage_stats_client_;
   /// Run a function on a delay. This is useful for guaranteeing data will be
