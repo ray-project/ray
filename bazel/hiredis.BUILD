@@ -56,10 +56,11 @@ cc_library(
     copts = COPTS,
     linkopts = LOPTS,
     include_prefix = "hiredis",
-    deps = [
-        ":_hiredis",
+    deps =     select({
+            "@com_github_ray_project_ray//:use_openssl":["@com_github_ray_project_ray//:openssl",":_hiredis", ] ,
+            "//conditions:default": [":_hiredis",
         "@boringssl//:ssl",
         "@boringssl//:crypto"
-    ],
+    ],}),
     visibility = ["//visibility:public"],
 )

@@ -1,0 +1,70 @@
+diff --git a/BUILD b/BUILD
+index d3fce3b015..a847a95af0 100644
+--- BUILD
++++ BUILD
+@@ -2384,6 +2384,22 @@ grpc_cc_library(
+     ],
+ )
+
++config_setting(
++    name = "use_openssl",
++    values = {"define": "USE_OPENSSL=1"},
++)
++
++cc_library(
++    name = "openssl",
++    #srcs = glob(["/usr/include/openssl/**/*.h"]),
++    includes = ["/usr/include"],
++    linkopts = ["-L/usr/lib", "-lssl", "-lcrypto"],
++    copts = select({
++        ":use_openssl": ["-DUSE_OPENSSL=1"],
++        "//conditions:default": [],
++    }),
++)
++
+ grpc_cc_library(
+     name = "tsi",
+     external_deps = [
+@@ -2925,10 +2941,11 @@ grpc_cc_library(
+     ],
+     language = "c++",
+     tags = ["nofixdeps"],
+-    deps = [
+-        ":grpcpp_otel_plugin",
+-        "//src/cpp/ext/csm:csm_observability",
+-    ],
++    deps = select({
++            "//:use_openssl":[] ,
++            "//conditions:default": ["grpcpp_otel_plugin",
++         "//src/cpp/ext/csm:csm_observability",
++    ],}),
+ )
+
+ # This is an EXPERIMENTAL target subject to change.
+diff --git a/third_party/BUILD b/third_party/BUILD
+index 77cb52d0fc..ee4bb2e397 100644
+--- third_party/BUILD
++++ third_party/BUILD
+@@ -18,13 +18,19 @@ package(default_visibility = ["//:__subpackages__"])
+
+ alias(
+     name = "libssl",
+-    actual = "@boringssl//:ssl",
++    actual = select({
++        "//:use_openssl": "//:openssl",
++        "//conditions:default": "@boringssl//:ssl",  # Default target
++    }),
+     tags = ["manual"],
+ )
+
+ alias(
+     name = "libcrypto",
+-    actual = "@boringssl//:crypto",
++    actual = select({
++        "//:use_openssl": "//:openssl",
++        "//conditions:default": "@boringssl//:crypto",  # Default target
++    }),
+     tags = ["manual"],
+ )
+
+
