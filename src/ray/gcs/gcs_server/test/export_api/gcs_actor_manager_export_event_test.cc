@@ -153,7 +153,7 @@ class GcsActorManagerTest : public ::testing::Test {
     gcs_publisher_ = std::make_unique<gcs::GcsPublisher>(std::move(publisher));
     gcs_table_storage_ = std::make_unique<gcs::InMemoryGcsTableStorage>();
     kv_ = std::make_unique<gcs::MockInternalKVInterface>();
-    function_manager_ = std::make_unique<gcs::GcsFunctionManager>(*kv_, io_service_);
+    function_manager_ = std::make_unique<gcs::GCSFunctionManager>(*kv_, io_service_);
     auto actor_scheduler = std::make_unique<MockActorScheduler>();
     mock_actor_scheduler_ = actor_scheduler.get();
     worker_client_pool_ = std::make_unique<rpc::CoreWorkerClientPool>(
@@ -256,7 +256,7 @@ class GcsActorManagerTest : public ::testing::Test {
   std::unique_ptr<ray::RuntimeEnvManager> runtime_env_mgr_;
   const std::chrono::milliseconds timeout_ms_{2000};
   absl::Mutex mutex_;
-  std::unique_ptr<gcs::GcsFunctionManager> function_manager_;
+  std::unique_ptr<gcs::GCSFunctionManager> function_manager_;
   std::unique_ptr<gcs::MockInternalKVInterface> kv_;
   std::shared_ptr<PeriodicalRunner> periodical_runner_;
   std::string log_dir_;

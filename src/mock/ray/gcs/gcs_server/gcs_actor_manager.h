@@ -28,7 +28,7 @@ namespace gcs {
 class MockGcsActorManager : public GcsActorManager {
  public:
   MockGcsActorManager(RuntimeEnvManager &runtime_env_manager,
-                      GcsFunctionManager &function_manager,
+                      GCSFunctionManager &function_manager,
                       rpc::CoreWorkerClientPool &worker_client_pool)
       : GcsActorManager(
             /*scheduler=*/
