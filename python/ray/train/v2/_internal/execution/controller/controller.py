@@ -483,9 +483,9 @@ class TrainController:
 
     async def abort(self):
         """Trigger callback abort hooks and terminate the controller process."""
-        self._set_state(AbortedState())
         if self._worker_group:
             self._worker_group.abort()
+        self._set_state(AbortedState())
         ray.actor.exit_actor()
 
     def _build_result(self) -> Result:
