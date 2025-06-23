@@ -633,6 +633,8 @@ void NormalTaskSubmitter::PushNormalTask(
         }
         if (status.ok()) {
           if (resubmit_generator) {
+            // If the generator was queued up for resubmission for object recovery,
+            // resubmit as long as we get a valid reply.
             task_finisher_.MarkGeneratorFailedAndResubmit(task_id);
           } else if (reply.was_cancelled_before_running()) {
             RAY_LOG(DEBUG) << "Task " << task_id
@@ -826,6 +828,45 @@ Status NormalTaskSubmitter::CancelRemoteTask(const ObjectID &object_id,
   return Status::OK();
 }
 
+namespace {
+
+void CancelGenerator(std::optional<boost::asio::steady_timer> &cancel_retry_timer,
+                     const std::shared_ptr<rpc::CoreWorkerClientInterface> &client,
+                     TaskID task_id,
+                     WorkerID worker_id) {
+  rpc::CancelTaskRequest request;
+  request.set_intended_task_id(task_id.Binary());
+  request.set_force_kill(false);
+  request.set_recursive(true);
+  request.set_caller_worker_id(worker_id.Binary());
+  client->CancelTask(
+      request,
+      [&cancel_retry_timer, client, task_id, worker_id](
+          const Status &status, const rpc::CancelTaskReply &reply) {
+        if (!status.ok()) {
+          RAY_LOG(INFO) << "Failed to cancel generator " << task_id << " with status "
+                        << status.ToString();
+          return;
+        }
+        if (!reply.attempt_succeeded() && reply.requested_task_running()) {
+          if (cancel_retry_timer.has_value()) {
+            if (cancel_retry_timer->expiry().time_since_epoch() <=
+                std::chrono::high_resolution_clock::now().time_since_epoch()) {
+              cancel_retry_timer->expires_after(boost::asio::chrono::milliseconds(
+                  RayConfig::instance().cancellation_retry_ms()));
+            }
+            cancel_retry_timer->async_wait(boost::bind(&CancelGenerator,
+                                                       boost::ref(cancel_retry_timer),
+                                                       client,
+                                                       task_id,
+                                                       worker_id));
+          }
+        }
+      });
+}
+
+}  // namespace
+
 bool NormalTaskSubmitter::CancelAndResubmitGenerator(const TaskSpecification &spec) {
   std::shared_ptr<rpc::CoreWorkerClientInterface> client;
   {
@@ -842,21 +883,7 @@ bool NormalTaskSubmitter::CancelAndResubmitGenerator(const TaskSpecification &sp
     }
     client = client_cache_->GetOrConnect(address_iter->second);
   }
-  rpc::CancelTaskRequest request;
-  request.set_intended_task_id(spec.TaskIdBinary());
-  request.set_force_kill(false);
-  request.set_recursive(true);
-  request.set_caller_worker_id(spec.CallerWorkerId().Binary());
-  client->CancelTask(
-      request,
-      [task_id = spec.TaskId()](const Status &status, const rpc::CancelTaskReply &reply) {
-        if (!status.ok() ||
-            (!reply.attempt_succeeded() && reply.requested_task_running())) {
-          RAY_LOG(INFO) << "Failed to cancel generator " << task_id << " with status "
-                        << status.ToString();
-          return;
-        }
-      });
+  CancelGenerator(cancel_retry_timer_, client, spec.TaskId(), spec.CallerWorkerId());
   return true;
 }
 

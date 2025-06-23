@@ -452,7 +452,8 @@ void TaskManager::MarkGeneratorFailedAndResubmit(const TaskID &task_id) {
     auto &task_entry = it->second;
 
     rpc::RayErrorInfo error_info;
-    error_info.set_error_type(rpc::ErrorType::REQUIRED_INTERMEDIATE_GENERATOR_RECOVERY);
+    error_info.set_error_type(
+        rpc::ErrorType::GENERATOR_REQUIRED_INTERMEDIATE_OBJECT_RECOVERY);
     SetTaskStatus(task_entry,
                   rpc::TaskStatus::FAILED,
                   worker::TaskStatusEvent::TaskStateUpdate(error_info));

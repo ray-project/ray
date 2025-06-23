@@ -85,7 +85,7 @@ def test_intermediate_generator_object_recovery_while_generator_running(
     """
 
     cluster = ray_start_cluster
-    cluster.add_node(num_cpus=0)  # head
+    head_node = cluster.add_node(num_cpus=0)  # head
     ray.init(address=cluster.address)
     cluster.add_node(num_cpus=1, resources={"producer": 1})  # worker 1
     worker2 = cluster.add_node(num_cpus=1, resources={"consumer": 1})
@@ -94,11 +94,17 @@ def test_intermediate_generator_object_recovery_while_generator_running(
     def producer():
         for i in range(3):
             yield np.zeros(10 * 1024 * 1024, dtype=np.uint8)
+            ray.get(signal_actor.wait.remote())
             time.sleep(10)
 
     @ray.remote(num_cpus=1, resources={"consumer": 1})
     def consumer(np_arr):
         return np_arr.copy()
+
+    schedule_on_head = ray.util.scheduling_strategies.NodeAffinitySchedulingStrategy(
+        node_id=head_node.node_id, soft=False
+    )
+    signal_actor = SignalActor.options(scheduling_strategy=schedule_on_head).remote()
 
     streaming_ref = producer.remote()
     consumer_ref = consumer.remote(next(streaming_ref))
@@ -108,13 +114,18 @@ def test_intermediate_generator_object_recovery_while_generator_running(
     cluster.add_node(num_cpus=1, resources={"consumer": 1})  # worker 3
     cluster.remove_node(worker2, allow_graceful=True)
 
+    signal_actor.send.remote()
+
+    start_time = time.time()
     assert ray.get(consumer_ref).size == (10 * 1024 * 1024)
+    # Assert that the ongoing generator was cancelled.
+    assert time.time() - start_time < 10
 
 
 def test_actor_intermediate_generator_object_recovery_while_generator_running(
     ray_start_cluster,
 ):
-    # See test_intermediate_generator_object_recovery_while_generator_running.
+    # See description of test_intermediate_generator_object_recovery_while_generator_running above.
     # This is the same except the generator is an actor task.
     cluster = ray_start_cluster
     cluster.add_node(num_cpus=0)  # head
@@ -127,19 +138,26 @@ def test_actor_intermediate_generator_object_recovery_while_generator_running(
         def producer(self):
             for i in range(3):
                 yield np.zeros(10 * 1024 * 1024, dtype=np.uint8)
-                time.sleep(10)
 
     @ray.remote(num_cpus=1, resources={"consumer": 1})
     def consumer(np_arr):
         return np_arr.copy()
 
-    streaming_ref = Producer.remote().producer.remote()
+    producer_actor = Producer.remote()
+    streaming_ref = producer_actor.producer.options(
+        _generator_backpressure_num_objects=1
+    ).remote()
     consumer_ref = consumer.remote(next(streaming_ref))
 
     ray.wait([consumer_ref], num_returns=1, fetch_local=False)
 
     cluster.add_node(num_cpus=1, resources={"consumer": 1})  # worker 3
     cluster.remove_node(worker2, allow_graceful=True)
+
+    # Recovery periodical runner runs every 100ms
+    time.sleep(0.1)
+    # Allow streaming generator to finish
+    ray.get([next(streaming_ref), next(streaming_ref)])
 
     assert ray.get(consumer_ref).size == (10 * 1024 * 1024)
 
