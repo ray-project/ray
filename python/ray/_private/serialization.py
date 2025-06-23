@@ -289,7 +289,9 @@ class SerializationContext:
                 if gpu_object_manager.is_managed_gpu_object(object_id):
                     gpu_object_manager.fetch_gpu_object(object_id)
                 else:
-                    raise RuntimeError(f"obj_id={object_id} not found in GPU object store")
+                    raise RuntimeError(
+                        f"obj_id={object_id} not found in GPU object store"
+                    )
             tensors = gpu_object_manager.get_gpu_object(object_id)
             ctx.reset_out_of_band_tensors(tensors)
             # TODO(kevin85421): The current garbage collection implementation for the in-actor object store
@@ -366,7 +368,9 @@ class SerializationContext:
         self, data, metadata, object_ref, tensor_transport_value: Optional[int]
     ):
         tensor_transport = TensorTransportEnum(
-            tensor_transport_value if tensor_transport_value is not None else 0
+            tensor_transport_value
+            if tensor_transport_value is not None
+            else TensorTransportEnum.OBJECT_STORE.value
         )
         if metadata:
             metadata_fields = metadata.split(b",")
