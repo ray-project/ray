@@ -93,8 +93,6 @@ from ray._raylet import (  # noqa: E402,F401
     WorkerID,
     FunctionID,
     ObjectID,
-    ObjectRef,
-    ObjectRefGenerator,
     DynamicObjectRefGenerator,
     TaskID,
     UniqueID,
