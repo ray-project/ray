@@ -412,9 +412,7 @@ class LLMServer(_LLMServerBase):
         llm_config: LLMConfig,
         *,
         engine_cls: Optional[Type[LLMEngine]] = None,
-        image_retriever_cls: Optional[Type[ImageRetriever]] = None,
         model_downloader: Optional[_LoraModelLoader] = None,
-
     ):
         """Constructor of LLMServer.
 
@@ -425,8 +423,6 @@ class LLMServer(_LLMServerBase):
             llm_config: LLMConfig for the model.
             engine_cls: Dependency injection for the vllm engine class. Defaults to
                 `VLLMEngine`.
-            image_retriever_cls: Dependency injection for the image retriever class.
-                Defaults to `ImageRetriever`.
             model_downloader: Dependency injection for the model downloader object.
                 Defaults to be initialized with `_LoraModelLoader`.
         """
