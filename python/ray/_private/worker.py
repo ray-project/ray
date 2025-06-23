@@ -30,6 +30,7 @@ from typing import (
     Protocol,
     Sequence,
     Tuple,
+    Type,
     TypeVar,
     Union,
     overload,
@@ -79,6 +80,7 @@ from ray._raylet import (
     TaskID,
     raise_sys_exit_with_custom_error_message,
 )
+from ray.actor import ActorClass
 from ray.exceptions import ObjectStoreFullError, RayError, RaySystemError, RayTaskError
 from ray.experimental import tqdm_ray
 from ray.experimental.compiled_dag_ref import CompiledDAGRef
@@ -3333,6 +3335,11 @@ class RemoteDecorator(Protocol):
 
 
 @overload
+def remote(__t: Type[T]) -> ActorClass[T]:
+    ...
+
+
+@overload
 def remote(__function: Callable[[], R]) -> RemoteFunctionNoArgs[R]:
     ...
 
@@ -3398,13 +3405,6 @@ def remote(
 def remote(
     __function: Callable[[T0, T1, T2, T3, T4, T5, T6, T7, T8, T9], R]
 ) -> RemoteFunction9[R, T0, T1, T2, T3, T4, T5, T6, T7, T8, T9]:
-    ...
-
-
-# Pass on typing actors for now. The following makes it so no type errors
-# are generated for actors.
-@overload
-def remote(__t: type) -> Any:
     ...
 
 
