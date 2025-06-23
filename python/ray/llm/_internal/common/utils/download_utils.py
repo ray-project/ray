@@ -1,8 +1,6 @@
 import asyncio
 import enum
 import os
-import time
-from functools import wraps
 from pathlib import Path
 from typing import Dict, List, Optional
 
@@ -18,6 +16,15 @@ from ray.llm._internal.common.utils.cloud_utils import (
     is_remote_path,
 )
 from ray.llm._internal.common.utils.import_utils import try_import
+
+# Import utility functions from canonical location
+from ray.llm._internal.common.utils.lora_utils import (
+    clean_model_id,
+    clear_directory,
+    get_lora_id,
+    retry_with_exponential_backoff,
+)
+from ray.llm._internal.serve.deployments.utils.server_utils import make_async
 
 torch = try_import("torch")
 
@@ -352,121 +359,6 @@ def download_lora_adapter(
     mirror_config = CloudMirrorConfig(bucket_uri=lora_path)
     downloader = CloudModelDownloader(lora_name, mirror_config)
     return downloader.get_model(tokenizer_only=False)
-
-
-# Utility functions moved from multiplex/utils.py
-def get_base_model_id(model_id: str) -> str:
-    """Get base model id for a given model id.
-
-    A LoRA fine-tuned model_id is expected to be in the format of
-        base_model_id:lora_id
-        e.g. meta-llama/Llama-2-7b-chat-hf:my_suffix:aBc1234
-
-    The returned base model id is in the format of
-        base_model_id
-        e.g. meta-llama/Llama-2-7b-chat-hf
-
-    This function can safely take any string.
-    """
-    return model_id.split(":")[0]
-
-
-def get_lora_id(lora_model_id: str) -> str:
-    """Get lora id for a given lora model id.
-
-    A LoRA fine-tuned model_id is expected to be in the format of
-        base_model_id:lora_id
-        e.g. meta-llama/Llama-2-7b-chat-hf:my_suffix:aBc1234
-
-    The returned lora id is in the format of
-        lora_id
-        e.g. my_suffix:aBc1234
-
-    This function can safely take any string.
-    """
-    return ":".join(lora_model_id.split(":")[1:])
-
-
-def clean_model_id(model_id: str):
-    return model_id.replace("/", "--")
-
-
-def clear_directory(dir: str):
-    import subprocess
-
-    try:
-        subprocess.run(f"rm -r {dir}", shell=True, check=False)
-    except FileNotFoundError:
-        pass
-
-
-def retry_with_exponential_backoff(
-    max_tries: int,
-    exception_to_check: type[Exception],
-    base_delay: float = 1,
-    max_delay: float = 32,
-    exponential_base: float = 2,
-):
-    """Retry decorator with exponential backoff.
-
-    Args:
-        max_tries: Maximum number of retry attempts
-        exception_to_check: Exception type to catch and retry on
-        base_delay: Initial delay between retries in seconds
-        max_delay: Maximum delay between retries in seconds
-        exponential_base: Base for exponential calculation
-
-    Returns:
-        A decorator function that applies retry logic with exponential backoff
-    """
-
-    def decorator(func):
-        @wraps(func)
-        def wrapper(*args, **kwargs):
-            delay = base_delay
-            last_exception = None
-
-            for attempt in range(max_tries):
-                try:
-                    return func(*args, **kwargs)
-                except exception_to_check as e:
-                    last_exception = e
-                    if attempt == max_tries - 1:  # Last attempt
-                        raise last_exception
-
-                    # Log the failure and retry
-                    logger.warning(
-                        f"Attempt {attempt + 1}/{max_tries} failed: {str(e)}. "
-                        f"Retrying in {delay} seconds..."
-                    )
-                    time.sleep(delay)
-                    # Calculate next delay with exponential backoff
-                    delay = min(delay * exponential_base, max_delay)
-
-            # This should never be reached due to the raise in the loop
-            raise last_exception if last_exception else RuntimeError(
-                "Unexpected error in retry logic"
-            )
-
-        return wrapper
-
-    return decorator
-
-
-def make_async(func):
-    """Take a blocking function, and run it on in an executor thread.
-
-    This function prevents the blocking function from blocking the asyncio event loop.
-    The code in this function needs to be thread safe.
-    """
-    from functools import partial
-
-    def _async_wrapper(*args, **kwargs):
-        loop = asyncio.get_event_loop()
-        func_partial = partial(func, *args, **kwargs)
-        return loop.run_in_executor(executor=None, func=func_partial)
-
-    return _async_wrapper
 
 
 class _LoraModelLoader:

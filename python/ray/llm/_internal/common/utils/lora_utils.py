@@ -1,12 +1,13 @@
 """
 Generic LoRA utilities and abstractions.
 
-This module provides generic LoRA functionality that can be used by both
-serve and batch components. It uses abstractions from download_utils.py
-and provides clean separation between generic and specific concerns.
+This module provides the canonical LoRA functionality for both serve and batch components.
+It serves as the single source of truth for LoRA-related operations, replacing duplicated
+functions across the codebase.
 """
 
 import json
+import subprocess
 import time
 from functools import wraps
 from typing import List, Tuple, TypeVar, Union
@@ -63,13 +64,13 @@ def get_lora_id(lora_model_id: str) -> str:
     return ":".join(lora_model_id.split(":")[1:])
 
 
-def clean_model_id(model_id: str):
+def clean_model_id(model_id: str) -> str:
+    """Clean model ID for filesystem usage by replacing slashes with dashes."""
     return model_id.replace("/", "--")
 
 
-def clear_directory(dir: str):
-    import subprocess
-
+def clear_directory(dir: str) -> None:
+    """Clear a directory recursively, ignoring missing directories."""
     try:
         subprocess.run(f"rm -r {dir}", shell=True, check=False)
     except FileNotFoundError:

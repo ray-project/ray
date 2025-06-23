@@ -6,7 +6,6 @@ LoRA abstractions from common/lora_utils.py. This ensures clean separation
 between generic and serve-specific concerns.
 """
 
-import subprocess
 import time
 from functools import wraps
 from typing import Any, Callable, Dict, List, Optional, Tuple, TypeVar
@@ -33,15 +32,8 @@ T = TypeVar("T")
 logger = get_logger(__name__)
 
 
-def clean_model_id(model_id: str):
-    return model_id.replace("/", "--")
-
-
-def clear_directory(dir: str):
-    try:
-        subprocess.run(f"rm -r {dir}", check=False)
-    except FileNotFoundError:
-        pass
+# These utility functions are now imported from the canonical location
+# in lora_utils.py to avoid duplication
 
 
 def sync_model(
