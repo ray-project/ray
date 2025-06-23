@@ -4953,13 +4953,13 @@ void CoreWorker::HandlePlasmaObjectReady(rpc::PlasmaObjectReadyRequest request,
   send_reply_callback(Status::OK(), nullptr, nullptr);
 }
 
-void CoreWorker::HandleCleanUpGPUObject(rpc::CleanUpGPUObjectRequest request,
-                                        rpc::CleanUpGPUObjectReply *reply,
+void CoreWorker::HandleFreeActorObject(rpc::FreeActorObjectRequest request,
+                                        rpc::FreeActorObjectReply *reply,
                                         rpc::SendReplyCallback send_reply_callback) {
-  RAY_LOG(INFO) << "HandleCleanUpGPUObject " << ObjectID::FromBinary(request.object_id());
+  RAY_LOG(INFO) << "HandleFreeActorObject " << ObjectID::FromBinary(request.object_id());
   // TODO(kevin85421): Call Python callback to clean up the GPU object.
   ObjectID object_id = ObjectID::FromBinary(request.object_id());
-  options_.clean_up_gpu_object_callback(object_id);
+  options_.free_actor_object_callback(object_id);
   send_reply_callback(Status::OK(), nullptr, nullptr);
 }
 

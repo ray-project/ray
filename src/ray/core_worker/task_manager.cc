@@ -503,10 +503,10 @@ bool TaskManager::HandleTaskReturn(const ObjectID &object_id,
                         << "it will be cleaned up.";
           auto actor_id = ObjectID::ToActorID(object_id);
           auto rpc_client = get_actor_rpc_client_callback_(actor_id);
-          auto request = rpc::CleanUpGPUObjectRequest();
+          auto request = rpc::FreeActorObjectRequest();
           request.set_object_id(object_id.Binary());
-          rpc_client->CleanUpGPUObject(
-              request, [](Status status, const rpc::CleanUpGPUObjectReply &reply) {
+          rpc_client->FreeActorObject(
+              request, [](Status status, const rpc::FreeActorObjectReply &reply) {
                 RAY_CHECK(status.ok());
               });
         });

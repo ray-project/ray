@@ -1270,8 +1270,8 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
                              rpc::SendReplyCallback send_reply_callback) override;
 
   // Clean up GPU objects from the in-actor GPU object store.
-  void HandleCleanUpGPUObject(rpc::CleanUpGPUObjectRequest request,
-                              rpc::CleanUpGPUObjectReply *reply,
+  void HandleFreeActorObject(rpc::FreeActorObjectRequest request,
+                              rpc::FreeActorObjectReply *reply,
                               rpc::SendReplyCallback send_reply_callback) override;
 
   ///

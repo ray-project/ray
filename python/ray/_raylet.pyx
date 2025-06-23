@@ -2264,7 +2264,7 @@ cdef execute_task_with_cancellation_handler(
                 f"Exited because worker reached max_calls={execution_info.max_calls}"
                 " for this method.")
 
-cdef void clean_up_gpu_object_callback(const CObjectID &c_object_id) nogil:
+cdef void free_actor_object_callback(const CObjectID &c_object_id) nogil:
     with gil:
         # c_object_id.Hex()?
         object_id = ObjectRef(c_object_id.Binary()).hex().encode('ascii')
@@ -2983,7 +2983,7 @@ cdef class CoreWorker:
         options.driver_name = driver_name
         options.initialize_thread_callback = initialize_pygilstate_for_thread
         options.task_execution_callback = task_execution_handler
-        options.clean_up_gpu_object_callback = clean_up_gpu_object_callback
+        options.free_actor_object_callback = free_actor_object_callback
         options.check_signals = check_signals
         options.gc_collect = gc_collect
         options.spill_objects = spill_objects_handler

@@ -415,11 +415,11 @@ message NumPendingTasksReply {
   int64 num_pending_tasks = 1;
 }
 
-message CleanUpGPUObjectRequest {
+message FreeActorObjectRequest {
   bytes object_id = 1;
 }
 
-message CleanUpGPUObjectReply {}
+message FreeActorObjectReply {}
 
 message ReportGeneratorItemReturnsRequest {
   // The intermediate return object that's dynamically
@@ -579,8 +579,8 @@ service CoreWorkerService {
   rpc NumPendingTasks(NumPendingTasksRequest) returns (NumPendingTasksReply);
 
   // Clean up GPU object from in-actor GPU object store.
-  rpc CleanUpGPUObject(CleanUpGPUObjectRequest)
-      returns (CleanUpGPUObjectReply);
+  rpc FreeActorObject(FreeActorObjectRequest)
+      returns (FreeActorObjectReply);
 
   // Registers a mutable object reader for compiled graphs.
   // Failure: TODO: Needs failure behavior.
