@@ -2,6 +2,7 @@ import logging
 import posixpath
 from typing import TYPE_CHECKING, Any, Callable, Dict, Iterable, List, Optional
 
+from ray.data._internal.arrow_block import _get_max_chunk_size
 from ray.data._internal.arrow_ops.transform_pyarrow import concat
 from ray.data._internal.execution.interfaces import TaskContext
 from ray.data._internal.planner.plan_write_op import WRITE_UUID_KWARG_NAME
@@ -176,27 +177,15 @@ class ParquetDatasink(_FileDatasink):
         total_rows = table.num_rows
         block_accessor = BlockAccessor.for_block(table)
 
-        # Estimate max rows based on target_max_block_size
-        def _estimate_max_rows_from_block_size() -> int:
-            """Estimate the maximum number of rows based on target_max_block_size."""
-            if total_rows == 0:
-                return 1
-
-            # Calculate bytes per row
-            table_size_bytes = table.nbytes
-            if table_size_bytes == 0:
-                return 1
-
-            bytes_per_row = table_size_bytes / total_rows
-            target_max_block_size = self._data_context.target_max_block_size
-
-            # Estimate max rows that would fit in target_max_block_size
-            estimated_max_rows = max(1, int(target_max_block_size / bytes_per_row))
-            return estimated_max_rows
-
         file_idx = 0
         offset = 0
-        estimated_max_rows = _estimate_max_rows_from_block_size()
+        estimated_max_rows = _get_max_chunk_size(
+            table, self._data_context.target_max_block_size
+        )
+        if estimated_max_rows is None:
+            logger.warning("Estimated max rows is None, since table is empty")
+            return
+
         while offset < total_rows:
             remaining_rows = total_rows - offset
 
