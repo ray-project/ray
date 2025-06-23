@@ -4954,8 +4954,8 @@ void CoreWorker::HandlePlasmaObjectReady(rpc::PlasmaObjectReadyRequest request,
 }
 
 void CoreWorker::HandleFreeActorObject(rpc::FreeActorObjectRequest request,
-                                        rpc::FreeActorObjectReply *reply,
-                                        rpc::SendReplyCallback send_reply_callback) {
+                                       rpc::FreeActorObjectReply *reply,
+                                       rpc::SendReplyCallback send_reply_callback) {
   RAY_LOG(INFO) << "HandleFreeActorObject " << ObjectID::FromBinary(request.object_id());
   // TODO(kevin85421): Call Python callback to clean up the GPU object.
   ObjectID object_id = ObjectID::FromBinary(request.object_id());

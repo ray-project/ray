@@ -1271,8 +1271,8 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
 
   // Free GPU objects from the in-actor GPU object store.
   void HandleFreeActorObject(rpc::FreeActorObjectRequest request,
-                              rpc::FreeActorObjectReply *reply,
-                              rpc::SendReplyCallback send_reply_callback) override;
+                             rpc::FreeActorObjectReply *reply,
+                             rpc::SendReplyCallback send_reply_callback) override;
 
   ///
   /// Public methods related to async actor call. This should only be used when

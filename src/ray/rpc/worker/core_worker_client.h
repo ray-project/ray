@@ -190,7 +190,7 @@ class CoreWorkerClientInterface : public pubsub::SubscriberClientInterface {
       const ClientCallback<RayletNotifyGCSRestartReply> &callback) {}
 
   virtual void FreeActorObject(const FreeActorObjectRequest &request,
-                                const ClientCallback<FreeActorObjectReply> &callback) {}
+                               const ClientCallback<FreeActorObjectReply> &callback) {}
 
   virtual ~CoreWorkerClientInterface() = default;
 };
