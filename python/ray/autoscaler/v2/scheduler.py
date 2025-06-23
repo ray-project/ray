@@ -169,6 +169,9 @@ class SchedulingNode:
     # The instance id of the IM(Instance Manager) instance. None if the node
     # is not yet in IM.
     im_instance_id: Optional[str] = None
+    # The instance status of the IM(Instance Manager) instance. None if the in-flight node
+    # has not yet been assigned to an IM instance.
+    im_instance_status: Optional[Instance.InstanceStatus.ValueType] = None
     # The ray node id of the ray node. None if the node is not included in
     # ray cluster's GCS report yet (not running ray yet).
     ray_node_id: Optional[str] = None
@@ -187,6 +190,7 @@ class SchedulingNode:
         labels: Dict[str, str],
         status: SchedulingNodeStatus,
         im_instance_id: str = "",
+        im_instance_status: Optional[Instance.InstanceStatus.ValueType] = None,
         ray_node_id: str = "",
         idle_duration_ms: int = 0,
         launch_config_hash: str = "",
@@ -206,6 +210,7 @@ class SchedulingNode:
         self.labels = labels
         self.status = status
         self.im_instance_id = im_instance_id
+        self.im_instance_status = im_instance_status
         self.ray_node_id = ray_node_id
         self.idle_duration_ms = idle_duration_ms
         self.launch_config_hash = launch_config_hash
@@ -274,6 +279,7 @@ class SchedulingNode:
                 labels=dict(instance.ray_node.dynamic_labels),
                 status=SchedulingNodeStatus.SCHEDULABLE,
                 im_instance_id=instance.im_instance.instance_id,
+                im_instance_status=instance.im_instance.status,
                 ray_node_id=instance.im_instance.node_id,
                 idle_duration_ms=instance.ray_node.idle_duration_ms,
                 launch_config_hash=instance.im_instance.launch_config_hash,
@@ -303,9 +309,11 @@ class SchedulingNode:
                 labels={},
                 status=SchedulingNodeStatus.TO_TERMINATE,
                 im_instance_id=instance.im_instance.instance_id,
+                im_instance_status=instance.im_instance.status,
                 termination_request=TerminationRequest(
                     id=str(uuid.uuid4()),
                     instance_id=instance.im_instance.instance_id,
+                    instance_status=instance.im_instance.status,
                     cause=TerminationRequest.Cause.OUTDATED,
                     instance_type=instance.im_instance.instance_type,
                 ),
@@ -317,6 +325,7 @@ class SchedulingNode:
             SchedulingNodeStatus.SCHEDULABLE,
             node_kind=instance.im_instance.node_kind,
             im_instance_id=instance.im_instance.instance_id,
+            im_instance_status=instance.im_instance.status,
         )
 
     @staticmethod
@@ -356,6 +365,7 @@ class SchedulingNode:
         status: SchedulingNodeStatus,
         node_kind: NodeKind,
         im_instance_id: Optional[str] = None,
+        im_instance_status: Optional[str] = None,
     ) -> "SchedulingNode":
         """
         Create a scheduling node from a node config.
@@ -365,6 +375,7 @@ class SchedulingNode:
             status: The status of the node.
             node_kind: The node kind.
             im_instance_id: The instance id of the im instance.
+            im_instance_status: The instance status of the im instance.
             node_kind: The node kind.
         """
         return SchedulingNode(
@@ -374,6 +385,7 @@ class SchedulingNode:
             labels=dict(node_config.labels),
             status=status,
             im_instance_id=im_instance_id,
+            im_instance_status=im_instance_status,
             node_kind=node_kind,
         )
 
@@ -577,6 +589,7 @@ class SchedulingNode:
             "SchedulingNode(node_type={node_type}, "
             "node_kind={node_kind}, "
             "instance_id={instance_id},"
+            "instance_status={instance_status},"
             "ray_node_id={ray_node_id},"
             "idle_duration_ms={idle_duration_ms},"
             "termination_request={termination_request},"
@@ -593,6 +606,7 @@ class SchedulingNode:
             node_type=self.node_type,
             node_kind=self.node_kind,
             instance_id=self.im_instance_id,
+            instance_status=self.im_instance_status,
             ray_node_id=self.ray_node_id,
             idle_duration_ms=self.idle_duration_ms,
             termination_request=str(message_to_dict(self.termination_request))
@@ -1074,6 +1088,7 @@ class ResourceDemandScheduler(IResourceScheduler):
                 ray_node_id=node.ray_node_id,
                 cause=cause,
                 instance_type=node.node_type,
+                instance_status=node.im_instance_status,
                 details=(
                     f"Terminating node due to {TerminationRequest.Cause.Name(cause)}: "
                     f"max_num_nodes={max_num_nodes}, "
@@ -1550,6 +1565,7 @@ class ResourceDemandScheduler(IResourceScheduler):
                     instance_id=node.im_instance_id,
                     ray_node_id=node.ray_node_id,
                     instance_type=node.node_type,
+                    instance_status=node.im_instance_status,
                     cause=TerminationRequest.Cause.OUTDATED,
                     details=f"node from {node.node_type} has outdated config",
                 )
@@ -1644,6 +1660,7 @@ class ResourceDemandScheduler(IResourceScheduler):
                 ray_node_id=node.ray_node_id,
                 cause=TerminationRequest.Cause.IDLE,
                 instance_type=node.node_type,
+                instance_status=node.im_instance_status,
                 idle_duration_ms=node.idle_duration_ms,
                 details=f"idle for {node.idle_duration_ms/s_to_ms} secs > "
                 f"timeout={idle_timeout_s} secs",
