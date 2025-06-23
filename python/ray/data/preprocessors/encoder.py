@@ -271,22 +271,10 @@ class OneHotEncoder(Preprocessor):
 
         # Compute new one-hot encoded columns
         for column, output_column in zip(self.columns, self.output_columns):
-            column_values = self.stats_[f"unique_values({column})"]
-            if _is_series_composed_of_lists(df[column]):
-                df[column] = df[column].map(lambda x: tuple(x))
-            for column_value in column_values:
-                df[f"{column}_{column_value}"] = (df[column] == column_value).astype(
-                    int
-                )
-            # Concatenate the value columns
-            value_columns = [
-                f"{column}_{column_value}" for column_value in column_values
-            ]
-            concatenated = df[value_columns].to_numpy()
-            df = df.drop(columns=value_columns)
-            # Use a Pandas Series for column assignment to get more consistent
-            # behavior across Pandas versions.
-            df.loc[:, output_column] = pd.Series(list(concatenated))
+            codes, uniques = df[column].factorize()
+            ohe = np.eye(len(uniques), dtype=int)[codes]  # (n_rows, n_cats)
+            df[output_column] = ohe.tolist()  # vector per row
+
         return df
 
     def __repr__(self):
