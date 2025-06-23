@@ -423,10 +423,10 @@ class LLMServer(_LLMServerBase):
 
         Args:
             llm_config: LLMConfig for the model.
-
-        Keyword Args:
-            engine_cls: Dependency injection for the vllm engine class. Defaults to `VLLMEngine`.
-            model_downloader: Dependency injection for the model downloader object. Defaults to be initialized with `LoraModelLoader`.
+            engine_cls: Dependency injection for the vllm engine class.
+                Defaults to `VLLMEngine`.
+            model_downloader: Dependency injection for the model downloader
+                object. Defaults to be initialized with `LoraModelLoader`.
         """
         await super().__init__(llm_config)
 
