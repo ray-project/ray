@@ -1,6 +1,7 @@
 # coding: utf-8
 import collections
 import logging
+import os
 import subprocess
 import sys
 import time
@@ -25,6 +26,26 @@ from ray._private.test_utils import (
 )
 
 logger = logging.getLogger(__name__)
+
+# Add pytest timeout for debug mode - similar to test_object_spilling.py
+# Increased timeout for debug mode builds which run significantly slower
+pytestmark = [pytest.mark.timeout(1800 if os.getenv("RAY_DEBUG_MODE") == "1" else 600)]
+
+# Debug mode aware timeouts - similar to test_object_spilling_2.py
+DEFAULT_TIMEOUT = 30
+DEBUG_MODE_TIMEOUT_MULTIPLIER = 2
+
+
+def get_timeout(base_timeout=DEFAULT_TIMEOUT):
+    """Get timeout adjusted for debug mode."""
+    if os.getenv("RAY_DEBUG_MODE") == "1":
+        return base_timeout * DEBUG_MODE_TIMEOUT_MULTIPLIER
+    return base_timeout
+
+
+def get_wait_timeout():
+    """Get wait_for_condition timeout adjusted for debug mode."""
+    return 20 if os.getenv("RAY_DEBUG_MODE") == "1" else 10
 
 
 def attempt_to_load_balance(
@@ -54,7 +75,10 @@ def test_load_balancing(ray_start_cluster):
 
     @ray.remote
     def f():
-        time.sleep(0.10)
+        import os
+
+        sleep_time = 0.20 if os.getenv("RAY_DEBUG_MODE") == "1" else 0.10
+        time.sleep(sleep_time)
         return ray._private.worker.global_worker.node.unique_id
 
     attempt_to_load_balance(f, [], 100, num_nodes, 10)
@@ -176,14 +200,17 @@ def test_local_scheduling_first(ray_start_cluster):
 
     @ray.remote(num_cpus=1)
     def f():
-        time.sleep(0.01)
+        import os
+
+        sleep_time = 0.02 if os.getenv("RAY_DEBUG_MODE") == "1" else 0.01
+        time.sleep(sleep_time)
         return ray._private.worker.global_worker.node.unique_id
 
     def local():
         return ray.get(f.remote()) == ray._private.worker.global_worker.node.unique_id
 
     # Wait for a worker to get started.
-    wait_for_condition(local)
+    wait_for_condition(local, timeout=get_wait_timeout())
 
     # Check that we are scheduling locally while there are resources available.
     for i in range(20):
@@ -201,7 +228,10 @@ def test_load_balancing_with_dependencies(ray_start_cluster):
 
     @ray.remote
     def f(x):
-        time.sleep(0.1)
+        import os
+
+        sleep_time = 0.2 if os.getenv("RAY_DEBUG_MODE") == "1" else 0.1
+        time.sleep(sleep_time)
         return ray._private.worker.global_worker.node.unique_id
 
     # This object will be local to one of the raylets. Make sure
@@ -251,7 +281,7 @@ def test_spillback_waiting_task_on_oom(ray_start_cluster):
     time.sleep(1)
     # This task can't run on the local node. Make sure it gets spilled even
     # though we have the local CPUs to run it.
-    ray.get(f.remote(dep), timeout=30)
+    ray.get(f.remote(dep), timeout=get_timeout(30))
 
 
 def test_spread_scheduling_overrides_locality_aware_scheduling(ray_start_cluster):
@@ -442,7 +472,7 @@ def test_lease_request_leak(shutdown_only):
         del obj_ref
     ray.get(tasks)
 
-    wait_for_condition(lambda: object_memory_usage() == 0)
+    wait_for_condition(lambda: object_memory_usage() == 0, timeout=get_wait_timeout())
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="Fails on windows")
@@ -481,7 +511,7 @@ def test_many_args(ray_start_cluster):
     for i in range(100):
         args = [np.random.choice(xs) for _ in range(10)]
         tasks.append(f.remote(i, *args))
-    ray.get(tasks, timeout=30)
+    ray.get(tasks, timeout=get_timeout(30))
 
     (
         num_tasks_submitted,
@@ -516,11 +546,11 @@ def test_pull_manager_at_capacity_reports(ray_start_cluster):
 
     signal = SignalActor.remote()
     xs = [f.remote(signal, ref) for ref in refs]
-    wait_for_condition(fetches_queued)
+    wait_for_condition(fetches_queued, timeout=get_wait_timeout())
 
     signal.send.remote()
     ray.get(xs)
-    wait_for_condition(lambda: not fetches_queued())
+    wait_for_condition(lambda: not fetches_queued(), timeout=get_wait_timeout())
 
 
 @pytest.mark.xfail(
@@ -649,7 +679,10 @@ def test_gpu_scheduling_liveness(ray_start_cluster):
             self.i = i
 
         def work(self):
-            time.sleep(0.1)
+            import os
+
+            sleep_time = 0.2 if os.getenv("RAY_DEBUG_MODE") == "1" else 0.1
+            time.sleep(sleep_time)
             print("work ", self.i)
 
     @ray.remote(num_cpus=1, num_gpus=1)
@@ -658,7 +691,10 @@ def test_gpu_scheduling_liveness(ray_start_cluster):
             self.i = i
 
         def train(self):
-            time.sleep(0.2)
+            import os
+
+            sleep_time = 0.4 if os.getenv("RAY_DEBUG_MODE") == "1" else 0.2
+            time.sleep(sleep_time)
             print("train ", self.i)
 
     bundles = [{"CPU": 1, "GPU": 1}]
@@ -684,8 +720,11 @@ def test_gpu_scheduling_liveness(ray_start_cluster):
 
     # If the gpu scheduling doesn't properly work, the below
     # code will hang.
-    ray.get([workers[i].work.remote() for i in range(NUM_CPU_BUNDLES)], timeout=30)
-    ray.get(trainer.train.remote(), timeout=30)
+    ray.get(
+        [workers[i].work.remote() for i in range(NUM_CPU_BUNDLES)],
+        timeout=get_timeout(30),
+    )
+    ray.get(trainer.train.remote(), timeout=get_timeout(30))
 
 
 @pytest.mark.parametrize(
@@ -717,10 +756,10 @@ def test_scheduling_class_depth(ray_start_regular):
     # because one has depth=1, and the other has depth=2.
     metric_name = "ray_internal_num_infeasible_scheduling_classes"
 
-    timeout = 60
+    timeout = get_timeout(60)
     if sys.platform == "win32":
         # longer timeout is necessary to pass on windows debug/asan builds.
-        timeout = 180
+        timeout = get_timeout(180)
 
     wait_for_condition(
         get_metric_check_condition([MetricSamplePattern(name=metric_name, value=2)]),
@@ -776,9 +815,11 @@ def test_no_resource_oversubscription_during_shutdown(shutdown_only):
     # 3. The key test: verify task2 does NOT start executing while task1 is running
     # If the bug exists, task2 will start immediately. If fixed, it should wait.
 
-    # Check if task2 starts within 1 second (indicating the bug)
+    # Check if task2 starts within expected time (indicating the bug)
+    # Use slightly longer timeout in debug mode but still short enough to catch the bug
+    check_timeout = 1.0 if os.getenv("RAY_DEBUG_MODE") == "1" else 0.5
     with pytest.raises(ray.exceptions.GetTimeoutError):
-        ray.get(task2_started.wait.remote(), timeout=0.5)
+        ray.get(task2_started.wait.remote(), timeout=check_timeout)
 
     # Now let task1 complete
     ray.get(task1_can_finish.send.remote())
