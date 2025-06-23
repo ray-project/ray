@@ -1155,7 +1155,7 @@ class Reconciler:
                     new_instance_status=IMInstance.TERMINATING,
                     cloud_instance_id=im_instance_to_terminate.cloud_instance_id,
                     termination_request=terminate_request,
-                    details=f"draining ray: {terminate_request.details}",
+                    details=f"terminating ray: {terminate_request.details}",
                 )
             else:
                 updates[terminate_request.instance_id] = IMInstanceUpdateEvent(
