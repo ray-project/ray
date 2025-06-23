@@ -48,12 +48,6 @@ def prefix_request_router(tree_actor, request):
             deployment_id=DeploymentID(name="TEST_DEPLOYMENT"),
             handle_source=DeploymentHandleSource.REPLICA,
             use_replica_queue_len_cache=False,
-            imbalanced_threshold=params.get("imbalanced_threshold", 10),
-            match_rate_threshold=params.get("match_rate_threshold", 0.1),
-            do_eviction=params.get("do_eviction", False),
-            eviction_threshold_chars=params.get("eviction_threshold_chars"),
-            eviction_target_chars=params.get("eviction_target_chars"),
-            eviction_interval_secs=params.get("eviction_interval_secs"),
             get_curr_time_s=TIMER.time,
             tree_actor=tree_actor,
         )
@@ -61,6 +55,14 @@ def prefix_request_router(tree_actor, request):
 
     request_router = asyncio.new_event_loop().run_until_complete(
         construct_request_router(get_or_create_event_loop())
+    )
+    request_router.initialize_state(
+        imbalanced_threshold=params.get("imbalanced_threshold", 10),
+        match_rate_threshold=params.get("match_rate_threshold", 0.1),
+        do_eviction=params.get("do_eviction", False),
+        eviction_threshold_chars=params.get("eviction_threshold_chars"),
+        eviction_target_chars=params.get("eviction_target_chars"),
+        eviction_interval_secs=params.get("eviction_interval_secs"),
     )
 
     yield request_router
