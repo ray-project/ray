@@ -14,7 +14,7 @@ def check_cmd_stderr(cmd):
 
 
 def add_default_labels_for_test(node_info, labels):
-    labels["ray.io/node_id"] = node_info["NodeID"]
+    labels["ray.io/node-id"] = node_info["NodeID"]
     return labels
 
 
@@ -87,7 +87,7 @@ def test_ray_start_set_node_labels_value_error():
     assert "Label string is not a key-value pair." in out
 
     out = check_cmd_stderr(
-        ["ray", "start", "--head", '--labels={"ray.io/node_id":"111"}']
+        ["ray", "start", "--head", '--labels={"ray.io/node-id":"111"}']
     )
     assert "Label string is not a key-value pair" in out
 

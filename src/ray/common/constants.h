@@ -102,7 +102,7 @@ constexpr char kLibraryPathEnvName[] = "LD_LIBRARY_PATH";
 
 #define RAY_LABEL_KEY_PREFIX "ray.io/"
 /// Default node label keys populated by the Raylet
-constexpr char kLabelKeyNodeID[] = RAY_LABEL_KEY_PREFIX "node_id";
+constexpr char kLabelKeyNodeID[] = RAY_LABEL_KEY_PREFIX "node-id";
 constexpr char kLabelKeyNodeAcceleratorType[] = RAY_LABEL_KEY_PREFIX "accelerator-type";
 constexpr char kLabelKeyNodeMarketType[] = RAY_LABEL_KEY_PREFIX "market-type";
 constexpr char kLabelKeyNodeRegion[] = RAY_LABEL_KEY_PREFIX "availability-region";
