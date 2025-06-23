@@ -103,6 +103,12 @@ from ray._raylet import (  # noqa: E402,F401
     ClusterID,
 )
 
+class ObjectRef(ray._raylet.ObjectRef):
+    pass
+
+class ObjectRefGenerator(ray._raylet.ObjectRefGenerator):
+    pass
+
 _config = _Config()
 
 from ray._private.state import (  # noqa: E402,F401
