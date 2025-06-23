@@ -1146,13 +1146,7 @@ class Reconciler:
         # Add terminating instances.
         for terminate_request in to_terminate:
             instance_id = terminate_request.instance_id
-            curr_instance_status = terminate_request.instance_status
-            logger.info(
-                "Processing termination request for instance %s with current status: %s",
-                terminate_request.instance_id,
-                curr_instance_status,
-            )
-            if curr_instance_status == IMInstance.ALLOCATED:
+            if terminate_request.instance_status == IMInstance.ALLOCATED:
                 # The instance is not yet running, so we can't request to stop/drain Ray.
                 # Therefore, we can skip the RAY_STOP_REQUESTED state and directly terminate the node.
                 im_instance_to_terminate = im_instances_by_instance_id[instance_id]
