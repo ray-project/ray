@@ -8,9 +8,9 @@
 Env-to-module Pipelines
 =======================
 
-A single env-to-module pipeline is located on each :py:class:`~ray.rllib.env.env_runner.EnvRunner` (see figure below) and responsible
+One env-to-module pipeline resides on each :py:class:`~ray.rllib.env.env_runner.EnvRunner` (see figure below) and is responsible
 for handling the data flow from the `gymnasium.Env <https://gymnasium.farama.org/api/env/>`__ to
-the EnvRunner's :py:class:`~ray.rllib.core.rl_module.rl_module.RLModule`.
+the :py:class:`~ray.rllib.core.rl_module.rl_module.RLModule`.
 
 .. figure:: images/connector_v2/env_runner_connector_pipelines.svg
     :width: 1000
@@ -24,9 +24,9 @@ the EnvRunner's :py:class:`~ray.rllib.core.rl_module.rl_module.RLModule`.
     and used in its next `step()` call.
 
 The env-to-module pipeline, when called, performs translations from a list of ongoing :ref:`Episode objects <single-agent-episode-docs>` to an
-RLModule-readable tensor batch and RLlib passes the generated batch as the first call argument into the
+RLModule-readable tensor batch and RLlib passes the generated batch as the first argument into the
 :py:meth:`~ray.rllib.core.rl_module.rl_module.RLModule.forward_inference` or :py:meth:`~ray.rllib.core.rl_module.rl_module.RLModule.forward_exploration`
-methods of your :py:class:`~ray.rllib.core.rl_module.rl_module.RLModule`, depending on your exploration settings.
+methods of the :py:class:`~ray.rllib.core.rl_module.rl_module.RLModule`, depending on your exploration settings.
 
 .. hint::
 
@@ -53,7 +53,13 @@ performing these tasks:
 You can disable the preceding default connector pieces by setting `config.env_runners(add_default_connectors_to_env_to_module_pipeline=False)`
 in your :ref:`algorithm config <rllib-algo-configuration-docs>`.
 
-Take a look at this code snippet here, demonstrating the functionality of the default env-to-module pipeline:
+
+Constructing an env-to-module connector
+---------------------------------------
+
+Normally, you wouldn't have to construct the env-to-module connector pipeline yourself. RLlib's :py:class:`~ray.rllib.env.env_runner.EnvRunner`
+actors already take care of this. However, if you would like to test or debug either the default pipeline or your custom ones, you can
+use the following code snippet as a starting point:
 
 .. testcode::
 
@@ -62,7 +68,7 @@ Take a look at this code snippet here, demonstrating the functionality of the de
     from ray.rllib.algorithms.ppo import PPOConfig
     from ray.rllib.env.single_agent_episode import SingleAgentEpisode
 
-    # Build a default env-to-module pipeline from a config.
+    # Start with an algorithm config.
     config = (
         PPOConfig()
         .environment("CartPole-v1")
@@ -70,36 +76,85 @@ Take a look at this code snippet here, demonstrating the functionality of the de
     # Create the env to generate some episode data.
     env = gym.make("CartPole-v1")
 
-    # Build the env-to-module connector.
+    # Build the env-to-module connector through the config object.
     env_to_module = config.build_env_to_module_connector(env=env, spaces=None)
 
-    # Create two SingleAgentEpisode instances. You pass these to the connector pipeline
-    # as input.
-    episode1 = SingleAgentEpisode()
-    episode2 = SingleAgentEpisode()
-
-    # Fill episodes with some data, as if we were currently stepping through them
-    # to collect samples.
-    # - episode 1 (two timesteps)
-    obs, _ = env.reset()
-    episode1.add_env_reset(observation=obs)
-    action = 0
-    obs, _, _, _, _ = env.step(action)
-    episode1.add_env_step(observation=obs, action=action, reward=1.0)
-    # - episode 2 (just one timestep)
-    obs, _ = env.reset()
-    episode2.add_env_reset(observation=obs)
-
-    # Call the connector on the two running episodes.
-    batch = {}
-    batch = env_to_module(
-        episodes=[episode1, episode2],
-        batch=batch,
-        rl_module=None,
-        explore=True,
+    # Alternatively, in case there is no `env` object available,
+    # you should pass in the `spaces` argument:
+    env_to_module = config.build_env_to_module_connector(
+        env=None,  # no env available?
+        spaces={
+            # At minimum, pass in the single, non-vectorized observation- and
+            # action spaces:
+            "__env_single__": (env.observation_space, env.action_space),
+        },
     )
-    # Print out the resulting batch.
-    print(batch)
+
+To test the actual behavior or the created pipeline, look at the following code snippets,
+for stateless- and stateful :py:class:`~ray.rllib.core.rl_module.rl_module.RLModule` cases:
+
+.. tab-set::
+
+    .. tab-item:: Stateless RLModules
+
+        .. testcode::
+
+            from ray.rllib.env.single_agent_episode import SingleAgentEpisode
+
+            # Create two SingleAgentEpisode instances. You pass these to the connector pipeline
+            # as input.
+            episode1 = SingleAgentEpisode()
+            episode2 = SingleAgentEpisode()
+
+            # Fill episodes with some data, as if we were currently stepping through them
+            # to collect samples.
+            # - episode 1 (two timesteps)
+            obs, _ = env.reset()
+            episode1.add_env_reset(observation=obs)
+            action = 0
+            obs, _, _, _, _ = env.step(action)
+            episode1.add_env_step(observation=obs, action=action, reward=1.0)
+            # - episode 2 (just one timestep)
+            obs, _ = env.reset()
+            episode2.add_env_reset(observation=obs)
+
+            # Call the connector on the two running episodes.
+            batch = {}
+            batch = env_to_module(
+                episodes=[episode1, episode2],
+                batch=batch,
+                rl_module=None,  # in stateless case, RLModule is not strictly required
+                explore=True,
+            )
+            # Print out the resulting batch.
+            print(batch)
+
+
+    .. tab-item:: RNN/Stateful RLModules
+
+        .. testcode::
+
+            from ray.rllib.env.single_agent_episode import SingleAgentEpisode
+
+            # Create a SingleAgentEpisode instance. You pass this to the connector pipeline
+            # as input.
+            episode = SingleAgentEpisode()
+
+            # Initialize episode with first (reset) observation.
+            obs, _ = env.reset()
+            episode.add_env_reset(observation=obs)
+
+            # Call the connector on the running episode.
+            batch = {}
+            batch = env_to_module(
+                episodes=[episode],
+                batch=batch,
+                rl_module=rl_module,  # in stateful case, RLModule is required
+                explore=True,
+            )
+            # Print out the resulting batch.
+            print(batch)
+
 
 
 You can see that the pipeline extracted the two current observations from the two
@@ -111,14 +166,13 @@ The batch should look similar to this:
     {'obs': tensor([[ 0.0212, -0.1996, -0.0414,  0.2848],
             [ 0.0292,  0.0259, -0.0322, -0.0004]])}
 
+Or in the stateful case, the ``STATE_IN`` columns should also be set.
 
-Default env-to-module behavior for stateful RLModules
------------------------------------------------------
 
-In the preceding example, you passed ``None`` for the ``rl_module`` argument into the connector.
-However, if you want the RLlib default env-to-module connector to handle RNN-states as well,
-you need to allow it access to your :py:class:`~ray.rllib.core.rl_module.rl_module.RLModule`, which should be stateful.
+.. code-block:: txt
 
+    {'obs': tensor([[ 0.0212, -0.1996, -0.0414,  0.2848],
+            [ 0.0292,  0.0259, -0.0322, -0.0004]])}
 
 
 
