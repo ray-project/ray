@@ -7,6 +7,7 @@ import time
 from abc import ABC, abstractmethod
 from collections import defaultdict, deque
 from typing import (
+    Any,
     AsyncGenerator,
     Callable,
     DefaultDict,
@@ -463,6 +464,7 @@ class RequestRouter(ABC):
         create_replica_wrapper_func: Optional[
             Callable[[RunningReplicaInfo], RunningReplica]
         ] = None,
+        request_router_kwargs: Optional[Dict[str, Any]] = None,
         *args,
         **kwargs,
     ):
@@ -533,6 +535,15 @@ class RequestRouter(ABC):
             }
         )
         self.num_routing_tasks_in_backoff_gauge.set(self.num_routing_tasks_in_backoff)
+
+        self.initialize_state(**(request_router_kwargs or {}))
+
+    def initialize_state(self, **kwargs):
+        """Initialize the state of the request router.
+        Called at the end of RequestRouter.__init__ with request_router_kwargs
+        from DeploymentConfig .
+        """
+        pass
 
     @property
     def _event_loop(self) -> asyncio.AbstractEventLoop:
