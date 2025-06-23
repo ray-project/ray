@@ -153,9 +153,11 @@ class GcsActorManagerTest : public ::testing::Test {
     store_client_ = std::make_shared<gcs::InMemoryStoreClient>();
     gcs_table_storage_ = std::make_unique<gcs::InMemoryGcsTableStorage>();
     kv_ = std::make_unique<gcs::MockInternalKVInterface>();
-    function_manager_ = std::make_unique<gcs::GcsFunctionManager>(*kv_, io_service_);
+    function_manager_ = std::make_unique<gcs::GCSFunctionManager>(*kv_, io_service_);
     auto scheduler = std::make_unique<MockActorScheduler>();
     mock_actor_scheduler_ = scheduler.get();
+    worker_client_pool_ = std::make_unique<rpc::CoreWorkerClientPool>(
+        [this](const rpc::Address &address) { return worker_client_; });
     gcs_actor_manager_ = std::make_unique<gcs::GcsActorManager>(
         std::move(scheduler),
         gcs_table_storage_.get(),
@@ -164,7 +166,7 @@ class GcsActorManagerTest : public ::testing::Test {
         *runtime_env_mgr_,
         *function_manager_,
         [](const ActorID &actor_id) {},
-        [this](const rpc::Address &addr) { return worker_client_; });
+        *worker_client_pool_);
 
     for (int i = 1; i <= 10; i++) {
       auto job_id = JobID::FromInt(i);
@@ -332,13 +334,14 @@ class GcsActorManagerTest : public ::testing::Test {
   // Actor scheduler's ownership lies in actor manager.
   MockActorScheduler *mock_actor_scheduler_ = nullptr;
   std::shared_ptr<MockWorkerClient> worker_client_;
+  std::unique_ptr<rpc::CoreWorkerClientPool> worker_client_pool_;
   absl::flat_hash_map<JobID, std::string> job_namespace_table_;
   std::unique_ptr<gcs::GcsActorManager> gcs_actor_manager_;
   std::shared_ptr<gcs::GcsPublisher> gcs_publisher_;
   std::unique_ptr<ray::RuntimeEnvManager> runtime_env_mgr_;
   const std::chrono::milliseconds timeout_ms_{2000};
   absl::Mutex mutex_;
-  std::unique_ptr<gcs::GcsFunctionManager> function_manager_;
+  std::unique_ptr<gcs::GCSFunctionManager> function_manager_;
   std::unique_ptr<gcs::MockInternalKVInterface> kv_;
   std::shared_ptr<PeriodicalRunner> periodical_runner_;
 };

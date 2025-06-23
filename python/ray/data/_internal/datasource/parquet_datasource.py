@@ -403,6 +403,7 @@ class ParquetDatasource(Datasource):
                 self._include_paths,
                 self._partitioning,
             )
+
             read_tasks.append(
                 ReadTask(
                     lambda f=fragments: read_fragments(

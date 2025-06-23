@@ -235,3 +235,14 @@ py_test(
         ":automation",
     ],
 )
+
+py_binary(
+    name = "get_contributors",
+    srcs = ["get_contributors.py"],
+    exec_compatible_with = ["//:hermetic_python"],
+    deps = [
+        ci_require("click"),
+        ci_require("pygithub"),
+        ci_require("tqdm"),
+    ],
+)

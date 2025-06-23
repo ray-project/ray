@@ -9,6 +9,7 @@ import sys
 import threading
 import time
 import urllib.parse
+from collections import Counter
 from queue import Empty, Full, Queue
 from types import ModuleType
 from typing import (
@@ -26,6 +27,7 @@ from typing import (
 )
 
 import numpy as np
+import pandas as pd
 import pyarrow
 from packaging.version import parse as parse_version
 
@@ -1692,3 +1694,19 @@ def unzip(data: List[Tuple[Any, ...]]) -> Tuple[List[Any], ...]:
         the input list.
     """
     return tuple(map(list, zip(*data)))
+
+
+def rows_same(actual: pd.DataFrame, expected: pd.DataFrame) -> bool:
+    """Check if two DataFrames have the same rows.
+
+    Unlike the built-in pandas equals method, this function ignores indices and the
+    order of rows. This is useful for testing Ray Data because its interface doesn't
+    usually guarantee the order of rows.
+    """
+    actual_rows = actual.to_dict(orient="records")
+    expected_rows = expected.to_dict(orient="records")
+
+    actual_items_counts = Counter(frozenset(row.items()) for row in actual_rows)
+    expected_items_counts = Counter(frozenset(row.items()) for row in expected_rows)
+
+    return actual_items_counts == expected_items_counts
