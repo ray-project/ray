@@ -70,6 +70,9 @@ def serve_config_separate_model_config_files():
                 "RAYLLM_VLLM_ENGINE_CLS": "ray.llm.tests.serve.mocks.mock_vllm_engine.MockVLLMEngine"
             }
 
+            # Explicitly set accelerator_type to None to avoid GPU placement groups
+            llm_config_yaml["accelerator_type"] = None
+
             os.makedirs(os.path.dirname(llm_config_dst), exist_ok=True)
             with open(llm_config_dst, "w") as f:
                 yaml.dump(llm_config_yaml, f)

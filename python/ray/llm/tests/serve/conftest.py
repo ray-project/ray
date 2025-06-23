@@ -1,5 +1,4 @@
 import contextlib
-import os
 import pathlib
 import tempfile
 import time
@@ -32,16 +31,12 @@ def disable_placement_bundles():
     Use this fixture in tests that would otherwise require GPU hardware but
     don't actually need to test placement bundle logic.
     """
-    # Set environment variable for subprocesses
-    os.environ["RAYLLM_TEST_DISABLE_PLACEMENT_GROUPS"] = "1"
     with patch.object(
         VLLMEngineConfig,
         "placement_bundles",
         new_callable=lambda: property(lambda self: []),
     ):
         yield
-
-    os.environ.pop("RAYLLM_TEST_DISABLE_PLACEMENT_GROUPS", None)
 
 
 @pytest.fixture
@@ -116,7 +111,7 @@ def get_rayllm_testing_model(
 
 
 @pytest.fixture
-def testing_model(shutdown_ray_and_serve):
+def testing_model(shutdown_ray_and_serve, disable_placement_bundles):
     test_model_path = get_test_model_path("mock_vllm_model.yaml")
 
     with get_rayllm_testing_model(test_model_path) as (client, model_id):
@@ -124,7 +119,7 @@ def testing_model(shutdown_ray_and_serve):
 
 
 @pytest.fixture
-def testing_model_no_accelerator(shutdown_ray_and_serve):
+def testing_model_no_accelerator(shutdown_ray_and_serve, disable_placement_bundles):
     test_model_path = get_test_model_path("mock_vllm_model_no_accelerator.yaml")
 
     with get_rayllm_testing_model(test_model_path) as (client, model_id):
