@@ -143,6 +143,7 @@ class TaskManagerTest : public ::testing::Test {
               last_object_recovery_ = object_recovery;
               return Status::OK();
             },
+            [](const TaskSpecification &spec) { return true; },
             [](const JobID &job_id,
                const std::string &type,
                const std::string &error_message,
