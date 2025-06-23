@@ -100,6 +100,7 @@ class TaskEventTestWriteExport : public ::testing::Test {
                                              rpc::TaskStatus::RUNNING,
                                              running_ts,
                                              /*is_actor_task_event=*/false,
+                                             "",
                                              nullptr,
                                              state_update);
   }
