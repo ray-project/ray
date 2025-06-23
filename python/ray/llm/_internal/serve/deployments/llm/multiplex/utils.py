@@ -135,10 +135,28 @@ def get_lora_model_ids(
     Returns:
         List of LoRA model IDs in the format base_model_id:lora_id
     """
-    # This is serve-specific implementation that would list objects
-    # in cloud storage and filter by base model
-    # For now, return empty list as this requires cloud-specific logic
-    return []
+    # Ensure that the dynamic_lora_loading_path has no trailing slash.
+    dynamic_lora_loading_path = dynamic_lora_loading_path.rstrip("/")
+
+    try:
+        # List subfolders directly from the dynamic_lora_loading_path
+        # The path should already point to the correct model-specific directory
+        lora_subfolders = CloudFileSystem.list_subfolders(dynamic_lora_loading_path)
+    except Exception as e:
+        logger.warning(
+            f"Failed to list LoRA subfolders from {dynamic_lora_loading_path}: {e}. "
+            "Returning empty list."
+        )
+        return []
+
+    lora_model_ids = []
+    for subfolder in lora_subfolders:
+        # Each subfolder represents a LoRA adapter for the base model
+        # Create the full LoRA model ID by combining base_model_id with the subfolder name
+        lora_model_id = f"{base_model_id}:{subfolder}"
+        lora_model_ids.append(lora_model_id)
+
+    return lora_model_ids
 
 
 async def download_multiplex_config_info(
@@ -153,11 +171,11 @@ async def download_multiplex_config_info(
         base_path: The base path where the model is stored
 
     Returns:
-        Tuple of (model_id, max_total_tokens)
+        Tuple of (bucket_uri, max_total_tokens)
     """
-    # This is serve-specific implementation that would download
-    # and parse configuration files using generic cloud utilities
-    return model_id, 4096  # Default max tokens
+    bucket_uri = f"{base_path}/{model_id}"
+    ft_context_length = await get_lora_finetuned_context_length(bucket_uri)
+    return bucket_uri, ft_context_length or 4096
 
 
 async def get_lora_model_metadata(
@@ -180,17 +198,28 @@ async def get_lora_model_metadata(
     ):
         return {}
 
-    base_path = llm_config.lora_config.dynamic_lora_loading_path
+    # Note (genesu): `model_id` passed is a lora model id where it's in a form of
+    #     base_model_id:suffix:id
+    base_model_id = get_base_model_id(model_id)
     lora_id = get_lora_id(model_id)
-    bucket_uri = f"{base_path}/{lora_id}"
+    base_path = llm_config.lora_config.dynamic_lora_loading_path
 
-    # Use generic utility to get context length
-    max_length = await get_lora_finetuned_context_length(bucket_uri)
+    # Examples of the variables:
+    #   model_id: "meta-llama/Meta-Llama-3.1-8B-Instruct:my_suffix:aBc1234"
+    #   base_path: "s3://ray-llama-weights"
+    #   bucket_uri: "s3://ray-llama-weights/my_suffix:aBc1234"
+    (
+        bucket_uri,
+        ft_context_length,
+    ) = await download_multiplex_config_info(lora_id, base_path)
 
     return {
         "model_id": model_id,
-        "base_model_id": get_base_model_id(model_id),
-        "max_request_context_length": max_length or 4096,
+        "base_model_id": base_model_id,
+        "max_request_context_length": ft_context_length,
+        # Note (genesu): `bucket_uri` affects where the lora weights are downloaded
+        # from remote location.
+        "bucket_uri": bucket_uri,
     }
 
 

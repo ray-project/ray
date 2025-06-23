@@ -199,6 +199,8 @@ def get_lora_model_ids(
 ) -> List[str]:
     """Get all LoRA model IDs from the dynamic loading path.
 
+    This is generic logic that can be used by serve and other components.
+
     Args:
         dynamic_lora_loading_path: The base path where LoRA adapters are stored
         base_model_id: The base model ID to filter by
@@ -206,10 +208,30 @@ def get_lora_model_ids(
     Returns:
         List of LoRA model IDs in the format base_model_id:lora_id
     """
-    # This is a simplified implementation - in practice this would
-    # list objects in the cloud storage and filter by base model
-    # For now, return empty list as this is serve-specific logic
-    return []
+    from ray.llm._internal.common.utils.cloud_utils import CloudFileSystem
+
+    # Ensure that the dynamic_lora_loading_path has no trailing slash.
+    dynamic_lora_loading_path = dynamic_lora_loading_path.rstrip("/")
+
+    try:
+        # List subfolders directly from the dynamic_lora_loading_path
+        # The path should already point to the correct model-specific directory
+        lora_subfolders = CloudFileSystem.list_subfolders(dynamic_lora_loading_path)
+    except Exception as e:
+        logger.warning(
+            f"Failed to list LoRA subfolders from {dynamic_lora_loading_path}: {e}. "
+            "Returning empty list."
+        )
+        return []
+
+    lora_model_ids = []
+    for subfolder in lora_subfolders:
+        # Each subfolder represents a LoRA adapter for the base model
+        # Create the full LoRA model ID by combining base_model_id with the subfolder name
+        lora_model_id = f"{base_model_id}:{subfolder}"
+        lora_model_ids.append(lora_model_id)
+
+    return lora_model_ids
 
 
 async def download_multiplex_config_info(
