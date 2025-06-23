@@ -382,9 +382,9 @@ class DataIterator(abc.ABC):
                 "desired dtype and device outside of collate_fn."
             )
 
-        if pin_memory and not isinstance(collate_fn, DefaultCollateFn):
+        if pin_memory and collate_fn is not None:
             raise ValueError(
-                "pin_memory is only supported when using DefaultCollateFn."
+                "pin_memory is only supported when using `DefaultCollateFn`."
             )
 
         if device == "auto":
