@@ -6,13 +6,13 @@ from typing import TYPE_CHECKING, Dict, Optional
 
 import ray
 from .autoscaler import Autoscaler
-from .autoscaling_actor_pool import AutoscalingActorPool
 from ray.data._internal.execution.autoscaling_requester import (
     get_or_create_autoscaling_requester_actor,
 )
 from ray.data._internal.execution.interfaces.execution_options import ExecutionResources
 
 if TYPE_CHECKING:
+    from .autoscaling_actor_pool import AutoscalingActorPool
     from ray.data._internal.execution.interfaces import PhysicalOperator
     from ray.data._internal.execution.resource_manager import ResourceManager
     from ray.data._internal.execution.streaming_executor_state import OpState, Topology
@@ -81,7 +81,7 @@ class DefaultAutoscaler(Autoscaler):
 
     def _derive_scaling_action(
         self,
-        actor_pool: AutoscalingActorPool,
+        actor_pool: "AutoscalingActorPool",
         op: "PhysicalOperator",
         op_state: "OpState",
     ) -> _AutoscalingAction:
