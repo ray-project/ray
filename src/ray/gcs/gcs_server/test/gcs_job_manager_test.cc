@@ -617,7 +617,7 @@ TEST_F(GcsJobManagerTest, TestMarkJobFinishedIdempotency) {
                                      *function_manager_,
                                      *fake_kv_,
                                      io_service_,
-                                     client_factory_);
+                                     *worker_client_pool_);
 
   auto job_id = JobID::FromInt(1);
   gcs::GcsInitData gcs_init_data(*gcs_table_storage_);
