@@ -43,7 +43,7 @@ After installing the plugin, you can use `kubectl ray --help` to see the availab
 
 ## Examples
 
-Assume that you have installed the KubeRay operator. If not, follow the [RayCluster Quickstart](kuberay-operator-deploy) to install the latest stable KubeRay operator by Helm repository.
+Assume that you have installed the KubeRay operator. If not, follow the [KubeRay Operator Installation](kuberay-operator-deploy) to install the latest stable KubeRay operator by Helm repository.
 
 ### Example 1: RayCluster Management
 
