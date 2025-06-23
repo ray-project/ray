@@ -30,6 +30,7 @@ from typing import (
     Protocol,
     Sequence,
     Tuple,
+    Type,
     TypeVar,
     Union,
     overload,
@@ -47,6 +48,7 @@ import ray._private.serialization as serialization
 import ray._private.services as services
 import ray._private.state
 import ray._private.worker
+from ray._private.custom_types import TensorTransportEnum
 
 # Ray modules
 import ray.actor
@@ -79,6 +81,7 @@ from ray._raylet import (
     TaskID,
     raise_sys_exit_with_custom_error_message,
 )
+from ray.actor import ActorClass
 from ray.exceptions import ObjectStoreFullError, RayError, RaySystemError, RayTaskError
 from ray.experimental import tqdm_ray
 from ray.experimental.compiled_dag_ref import CompiledDAGRef
@@ -926,14 +929,14 @@ class Worker:
             int(timeout * 1000) if timeout is not None and timeout != -1 else -1
         )
         data_metadata_pairs: List[
-            Tuple[ray._raylet.Buffer, bytes]
+            Tuple[ray._raylet.Buffer, bytes, TensorTransportEnum]
         ] = self.core_worker.get_objects(
             object_refs,
             timeout_ms,
         )
 
         debugger_breakpoint = b""
-        for data, metadata, tensor_transport in data_metadata_pairs:
+        for data, metadata, _ in data_metadata_pairs:
             if metadata:
                 metadata_fields = metadata.split(b",")
                 if len(metadata_fields) >= 2 and metadata_fields[1].startswith(
@@ -3338,6 +3341,11 @@ class RemoteDecorator(Protocol):
 
 
 @overload
+def remote(__t: Type[T]) -> ActorClass[T]:
+    ...
+
+
+@overload
 def remote(__function: Callable[[], R]) -> RemoteFunctionNoArgs[R]:
     ...
 
@@ -3403,13 +3411,6 @@ def remote(
 def remote(
     __function: Callable[[T0, T1, T2, T3, T4, T5, T6, T7, T8, T9], R]
 ) -> RemoteFunction9[R, T0, T1, T2, T3, T4, T5, T6, T7, T8, T9]:
-    ...
-
-
-# Pass on typing actors for now. The following makes it so no type errors
-# are generated for actors.
-@overload
-def remote(__t: type) -> Any:
     ...
 
 

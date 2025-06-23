@@ -268,7 +268,7 @@ int main(int argc, char *argv[]) {
   /// usage. ClusterTaskManager is responsible for queuing, spilling back, and
   /// dispatching tasks.
   std::shared_ptr<ray::ClusterResourceScheduler> cluster_resource_scheduler;
-  std::shared_ptr<ray::raylet::LocalTaskManager> local_task_manager;
+  std::shared_ptr<ray::raylet::ILocalTaskManager> local_task_manager;
   std::shared_ptr<ray::raylet::ClusterTaskManagerInterface> cluster_task_manager;
   /// The raylet client to initiate the pubsub to core workers (owners).
   /// It is used to subscribe objects to evict.

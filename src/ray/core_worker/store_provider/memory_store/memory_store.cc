@@ -192,7 +192,7 @@ bool CoreWorkerMemoryStore::Put(const RayObject &object, const ObjectID &object_
     object_entry = object_allocator_(object, object_id);
   } else {
     object_entry = std::make_shared<RayObject>(
-        object.GetData(), object.GetMetadata(), object.GetNestedRefs(), true);
+        object.GetData(), object.GetMetadata(), object.GetNestedRefs(), true, object.GetTensorTransport());
   }
 
   // TODO(edoakes): we should instead return a flag to the caller to put the object in

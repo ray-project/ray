@@ -286,7 +286,10 @@ class SerializationContext:
         if enable_gpu_objects:
             gpu_object_manager = ray._private.worker.global_worker.gpu_object_manager
             if not gpu_object_manager.has_gpu_object(object_id):
-                raise RuntimeError(f"obj_id={object_id} not found in GPU object store")
+                if gpu_object_manager.is_managed_gpu_object(object_id):
+                    gpu_object_manager.fetch_gpu_object(object_id)
+                else:
+                    raise RuntimeError(f"obj_id={object_id} not found in GPU object store")
             tensors = gpu_object_manager.get_gpu_object(object_id)
             ctx.reset_out_of_band_tensors(tensors)
             # TODO(kevin85421): The current garbage collection implementation for the in-actor object store

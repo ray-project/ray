@@ -483,7 +483,8 @@ bool TaskManager::HandleTaskReturn(const ObjectID &object_id,
           return_object.metadata().size());
     }
 
-    RayObject object(data_buffer, metadata_buffer, nested_refs);
+    auto tensor_transport = reference_counter_.GetTensorTransport(object_id);
+    RayObject object(data_buffer, metadata_buffer, nested_refs, /*copy_data=*/false, tensor_transport.value_or(rpc::TensorTransport::OBJECT_STORE));
     if (store_in_plasma) {
       put_in_local_plasma_callback_(object, object_id);
     } else {
