@@ -65,9 +65,9 @@ class HttpServerAgent:
                     )
                     await asyncio.sleep(delay)
                 else:
-                    logger.error(
+                    logger.exception(
                         f"Agent port #{self.listen_port} failed to bind after "
-                        f"{max_retries + 1} attempts. Last error: {e}"
+                        f"{max_retries + 1} attempts."
                     )
                     break
 
