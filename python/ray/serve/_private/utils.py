@@ -649,6 +649,7 @@ def run_coroutine_or_future_threadsafe(coro_or_future, loop):
 
 class Semaphore:
     """Based on asyncio.Semaphore.
+
     This is a semaphore that can be used to limit the number of concurrent requests.
     Its maximum value is dynamic and is determined by the `get_value_fn` function.
     """
