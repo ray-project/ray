@@ -84,6 +84,7 @@ class LLMEngine(str, Enum):
     """Enum that represents an LLMEngine."""
 
     vLLM = "vLLM"
+    SGLang = "SGLang"
 
 
 class JSONModeOptions(BaseModelExtended):
@@ -365,6 +366,11 @@ class LLMConfig(BaseModelExtended):
             )
 
             self._engine_config = VLLMEngineConfig.from_llm_config(self)
+        elif self.llm_engine == LLMEngine.SGLang:
+            from ray.llm._internal.serve.deployments.llm.sglang.sglang_models import (
+                SGLangEngineConfig,
+            )
+            self._engine_config = SGLangEngineConfig.from_llm_config(self)
         else:
             # Note (genesu): This should never happen because we validate the engine
             # in the config.
@@ -409,7 +415,8 @@ class LLMConfig(BaseModelExtended):
                 "placement_group_strategy": engine_config.placement_strategy,
             }
         )
-
+        
+        print(f"[DEBUG] deployment_config={deployment_config} ")
         return deployment_config
 
     def _get_deployment_name(self) -> str:
