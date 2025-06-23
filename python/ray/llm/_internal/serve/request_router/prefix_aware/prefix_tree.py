@@ -3,7 +3,6 @@ from __future__ import annotations
 import logging
 import os
 import threading
-import time
 from threading import RLock
 from typing import Any, Dict, List, Optional, Tuple
 
@@ -591,7 +590,7 @@ class PrefixTree:
 
     def _run_eviction_loop(self, eviction_threshold, eviction_target, interval_secs):
         while not self._eviction_stop_event.is_set():
-            time.sleep(interval_secs)
+            self._eviction_stop_event.wait(interval_secs)
             with self.lock:
                 for tenant, char_count in self.tenant_to_char_count.items():
                     if char_count > eviction_threshold:
