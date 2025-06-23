@@ -1222,7 +1222,6 @@ class Dataset:
                     arr = batch[col]
                     if col in value:
                         try:
-                            # Try fill; skip incompatible
                             scalar = pa.scalar(value[col], type=arr.type)
                             filled = pa.compute.fill_null(arr, scalar)
                             new_arrays.append(filled)
@@ -1245,6 +1244,7 @@ class Dataset:
                     arr = batch[col]
                     if col in subcols:
                         try:
+                            # Only try to fill if fill value matches type, else skip (unless enforce_schema)
                             scalar = pa.scalar(value, type=arr.type)
                             filled = pa.compute.fill_null(arr, scalar)
                             new_arrays.append(filled)
@@ -1254,7 +1254,7 @@ class Dataset:
                             new_arrays.append(arr)
                     else:
                         new_arrays.append(arr)
-            return pa.table(new_arrays, names=columns)
+            return pa.table(dict(zip(columns, new_arrays)))
 
         return self.map_batches(
             fillna_batch,
