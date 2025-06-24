@@ -282,6 +282,7 @@ async_task_name = contextvars.ContextVar('async_task_name', default=None)
 async_task_function_name = contextvars.ContextVar('async_task_function_name',
                                                   default=None)
 
+@PublicAPI
 class ObjectRefGenerator:
     """A generator to obtain object references
     from a task in a streaming manner.
