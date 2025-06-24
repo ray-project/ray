@@ -1,5 +1,3 @@
-# @OldAPIStack
-
 """
 Example of a fully deterministic, repeatable RLlib train run using
 the "seed" config key.
@@ -21,44 +19,24 @@ from ray.tune.result import TRAINING_ITERATION
 
 parser = argparse.ArgumentParser()
 parser.add_argument("--run", type=str, default="PPO")
-parser.add_argument("--framework", choices=["tf2", "tf", "torch"], default="torch")
 parser.add_argument("--seed", type=int, default=42)
-parser.add_argument("--as-test", action="store_true")
-parser.add_argument("--stop-iters", type=int, default=2)
-parser.add_argument("--num-gpus", type=float, default=0)
 parser.add_argument("--num-gpus-per-env-runner", type=float, default=0)
 
 if __name__ == "__main__":
     args = parser.parse_args()
 
-    param_storage = ParameterStorage.options(name="param-server").remote()
+    #param_storage = ParameterStorage.options(name="param-server").remote()
 
     config = (
         get_trainable_cls(args.run)
         .get_default_config()
-        .api_stack(
-            enable_rl_module_and_learner=False,
-            enable_env_runner_and_connector_v2=False,
-        )
         .environment(
             CartPoleWithRemoteParamServer,
             env_config={"param_server": "param-server"},
         )
-        .framework(args.framework)
         .env_runners(
-            num_env_runners=1,
-            num_envs_per_env_runner=2,
             rollout_fragment_length=50,
             num_gpus_per_env_runner=args.num_gpus_per_env_runner,
-        )
-        # The new Learner API.
-        .learners(
-            num_learners=int(args.num_gpus),
-            num_gpus_per_learner=int(args.num_gpus > 0),
-        )
-        # Old gpu-training API.
-        .resources(
-            num_gpus=args.num_gpus,
         )
         # Make sure every environment gets a fixed seed.
         .debugging(seed=args.seed)
@@ -74,14 +52,14 @@ if __name__ == "__main__":
     stop = {TRAINING_ITERATION: args.stop_iters}
 
     results1 = tune.Tuner(
-        args.run,
+        config.algo_class,
         param_space=config.to_dict(),
         run_config=tune.RunConfig(
             stop=stop, verbose=1, failure_config=tune.FailureConfig(fail_fast="raise")
         ),
     ).fit()
     results2 = tune.Tuner(
-        args.run,
+        config.algo_class,
         param_space=config.to_dict(),
         run_config=tune.RunConfig(
             stop=stop, verbose=1, failure_config=tune.FailureConfig(fail_fast="raise")
