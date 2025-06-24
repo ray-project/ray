@@ -67,4 +67,10 @@ class Info:
 
     def get_info(self):
         """Get previously stored collective information."""
-        return self.ids, self.world_size, self.rank, self.backend, self.gloo_timeout
+        return (
+            self.ids,
+            self.world_size,
+            self.rank,
+            self.backend,
+            self.gloo_timeout,
+        )

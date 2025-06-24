@@ -565,7 +565,7 @@ def test_agent_logs_not_streamed_to_drivers():
 import ray
 from ray.job_submission import JobSubmissionClient, JobStatus
 from ray._private.test_utils import format_web_url
-from ray._private.test_utils import wait_for_condition
+from ray._common.test_utils import wait_for_condition
 
 ray.init()
 address = ray._private.worker._global_node.webui_url

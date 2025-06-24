@@ -971,7 +971,6 @@ class DataIterator(abc.ABC):
         from ray.data.dataset import MaterializedDataset
 
         ref_bundles_iter, stats, _ = self._to_ref_bundle_iterator()
-
         ref_bundles = list(ref_bundles_iter)
         execution_plan = ExecutionPlan(stats, self.get_context())
         logical_plan = LogicalPlan(
