@@ -2,24 +2,27 @@
 
 <div align="left">
 <a target="_blank" href="https://console.anyscale.com/"><img src="https://img.shields.io/badge/🚀 Run_on-Anyscale-9hf"></a>&nbsp;
-<a href="https://github.com/ray-project/ray/tree/master/doc/source/ray-overview/examples/e2e-multimodal-ai-workloads" role="button"><img src="https://img.shields.io/static/v1?label=&amp;message=View%20On%20GitHub&amp;color=586069&amp;logo=github&amp;labelColor=2f363d"></a>&nbsp;
+<a href="https://github.com/anyscale/multimodal-ai" role="button"><img src="https://img.shields.io/static/v1?label=&amp;message=View%20On%20GitHub&amp;color=586069&amp;logo=github&amp;labelColor=2f363d"></a>&nbsp;
 </div>
+
+💻 Run this entire tutorial on [Anyscale](https://www.anyscale.com/) for free:
+**https://console.anyscale.com/template-preview/image-search-and-classification**
 
 This tutorial focuses on the fundamental challenges of multimodal AI workloads at scale:
 
 - **🔋 Compute**: managing heterogeneous clusters, reducing idle time, and handling complex dependencies
 - **📈 Scale**: integrating with the Python ecosystem, improving observability, and enabling effective debugging
-- **🛡️ Reliability**: ensuring fault tolerance, leveraging checkpointing, and supporting job resumption
+- **🛡️ Reliability**: ensuring fault tolerance, leveraging checkpointing, and supporting job resumability
 - **🚀 Production**: bridging dev-to-prod gaps, enabling fast iteration, maintaining zero downtime, and meeting SLAs
 
 This tutorial covers how Ray addresses each of these challenges and shows the solutions hands-on by implementing scalable batch inference, distributed training, and online serving workloads.
 
-- [**`01-Batch-Inference.ipynb`**](https://github.com/ray-project/ray/blob/master/doc/source/ray-overview/examples/e2e-multimodal-ai-workloads/notebooks/01-Batch-Inference.ipynb): ingest and preprocess data at scale using [Ray Data](https://docs.ray.io/en/latest/data/data.html) to generate embeddings for an image dataset of different dog breeds and store them.
-- [**`02-Distributed-Training.ipynb`**](https://github.com/ray-project/ray/blob/master/doc/source/ray-overview/examples/e2e-multimodal-ai-workloads/notebooks/02-Distributed-Training.ipynb): preprocess data to train an image classifier using [Ray Train](https://docs.ray.io/en/latest/train/train.html) and save model artifacts to a model registry (MLOps).
-- [**`03-Online-Serving.ipynb`**](https://github.com/ray-project/ray/blob/master/doc/source/ray-overview/examples/e2e-multimodal-ai-workloads/notebooks/03-Online-Serving.ipynb): deploy an online service using [Ray Serve](https://docs.ray.io/en/latest/serve/index.html), that uses the trained model to generate predictions.
+- [**`01-Batch-Inference.ipynb`**](https://github.com/anyscale/multimodal-ai/tree/main/notebooks/01-Batch-Inference.ipynb): ingest and preprocess data at scale using [Ray Data](https://docs.ray.io/en/latest/data/data.html) to generate embeddings for an image dataset of different dog breeds and store them.
+- [**`02-Distributed-Training.ipynb`**](https://github.com/anyscale/multimodal-ai/tree/main/notebooks/02-Distributed-Training.ipynb): preprocess data to train an image classifier using [Ray Train](https://docs.ray.io/en/latest/train/train.html) and save model artifacts to a model registry (MLOps).
+- [**`03-Online-Serving.ipynb`**](https://github.com/anyscale/multimodal-ai/tree/main/notebooks/03-Online-Serving.ipynb): deploy an online service using [Ray Serve](https://docs.ray.io/en/latest/serve/index.html), that uses the trained model to generate predictions.
 - Create production batch [**Jobs**](https://docs.anyscale.com/platform/jobs/) for offline workloads like embedding generation, model training, etc., and production online [**Services**](https://docs.anyscale.com/platform/services/) that can scale.
 
-<img src="https://raw.githubusercontent.com/ray-project/ray/refs/heads/master/doc/source/ray-overview/examples/e2e-multimodal-ai-workloads/images/overview.png" width=1000>
+<img src="https://raw.githubusercontent.com/anyscale/multimodal-ai/refs/heads/main/images/overview.png" width=1000>
 
 ## Development
 
@@ -33,10 +36,10 @@ The application is developed on [Anyscale Workspaces](https://docs.anyscale.com/
 Learn more about Anyscale Workspaces in the [official documentation](https://docs.anyscale.com/platform/workspaces/).
 
 <div align="center">
-  <img src="https://raw.githubusercontent.com/ray-project/ray/refs/heads/master/doc/source/ray-overview/examples/e2e-multimodal-ai-workloads/images/compute.png" width=600>
+  <img src="https://raw.githubusercontent.com/anyscale/multimodal-ai/refs/heads/main/images/compute.png" width=600>
 </div>
 
-**Note**: Run the entire tutorial for free on [Anyscale](https://console.anyscale.com/)—all dependencies come pre-installed, and compute autoscales automatically. To run it elsewhere, install the dependencies from the [`containerfile`](https://github.com/ray-project/ray/blob/master/doc/source/ray-overview/examples/e2e-multimodal-ai-workloads/containerfile) and provision the appropriate GPU resources.
+**Note**: Run the entire tutorial for free on [Anyscale](https://console.anyscale.com/)—all dependencies come pre-installed, and compute autoscales automatically. To run it elsewhere, install the dependencies from the [`containerfile`](https://github.com/anyscale/multimodal-ai/tree/main/containerfile) and provision the appropriate GPU resources.
 
 ## Production
 Seamlessly integrate with your existing CI/CD pipelines by leveraging the Anyscale [CLI](https://docs.anyscale.com/reference/quickstart-cli) or [SDK](https://docs.anyscale.com/reference/quickstart-sdk) to deploy [highly available services](https://docs.anyscale.com/platform/services) and run [reliable batch jobs](https://docs.anyscale.com/platform/jobs). Developing in an environment nearly identical to production—a multi-node cluster—drastically accelerates the dev-to-prod transition. This tutorial also introduces proprietary RayTurbo features that optimize workloads for performance, fault tolerance, scale, and observability.

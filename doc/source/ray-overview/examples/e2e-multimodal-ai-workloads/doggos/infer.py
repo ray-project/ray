@@ -6,29 +6,27 @@ from doggos.model import ClassificationModel, collate_fn
 
 
 class TorchPredictor:
-    def __init__(self, preprocessor, model, device="cuda"):
+    def __init__(self, preprocessor, model):
         self.preprocessor = preprocessor
         self.model = model
         self.model.eval()
-        self.model.to(device)
 
-    def __call__(self, batch):
+    def __call__(self, batch, device="cuda"):
+        self.model.to(device)
         batch["prediction"] = self.model.predict(collate_fn(batch))
         return batch
 
-    def predict_probabilities(self, batch):
+    def predict_probabilities(self, batch, device="cuda"):
+        self.model.to(device)
         predicted_probabilities = self.model.predict_probabilities(collate_fn(batch))
         batch["probabilities"] = [
-            {
-                self.preprocessor.label_to_class[i]: float(prob)
-                for i, prob in enumerate(probabilities)
-            }
+            {self.preprocessor.label_to_class[i]: prob for i, prob in enumerate(probabilities)}
             for probabilities in predicted_probabilities
         ]
         return batch
 
     @classmethod
-    def from_artifacts_dir(cls, artifacts_dir, device="cuda"):
+    def from_artifacts_dir(cls, artifacts_dir):
         with open(os.path.join(artifacts_dir, "class_to_label.json"), "r") as fp:
             class_to_label = json.load(fp)
         preprocessor = Preprocessor(class_to_label=class_to_label)
@@ -36,4 +34,4 @@ class TorchPredictor:
             args_fp=os.path.join(artifacts_dir, "args.json"),
             state_dict_fp=os.path.join(artifacts_dir, "model.pt"),
         )
-        return cls(preprocessor=preprocessor, model=model, device=device)
+        return cls(preprocessor=preprocessor, model=model)
