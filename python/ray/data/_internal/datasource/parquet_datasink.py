@@ -1,5 +1,4 @@
 import logging
-import posixpath
 from typing import TYPE_CHECKING, Any, Callable, Dict, Iterable, List, Optional
 
 from ray.data._internal.arrow_ops.transform_pyarrow import concat
@@ -123,20 +122,17 @@ class ParquetDatasink(_FileDatasink):
         # keep the rest for ParquetWriter()
         row_group_size = write_kwargs.pop("row_group_size", None)
 
-        combined_table = concat(
-            [tbl.cast(output_schema) for tbl in tables], promote_types=False
-        )
-
-        pq.write_to_dataset(
-            combined_table,
-            root_path=path,
-            max_rows_per_group=row_group_size,
-            filesystem=self.filesystem,
-            basename_template=filename,
-            schema=output_schema,
-            use_legacy_dataset=False,
-            **write_kwargs,
-        )
+        for table in tables:
+            pq.write_to_dataset(
+                table,
+                root_path=path,
+                max_rows_per_group=row_group_size,
+                filesystem=self.filesystem,
+                basename_template=filename,
+                schema=output_schema,
+                use_legacy_dataset=False,
+                **write_kwargs,
+            )
 
     def _write_partition_files(
         self,
@@ -145,42 +141,18 @@ class ParquetDatasink(_FileDatasink):
         output_schema: "pyarrow.Schema",
         write_kwargs: Dict[str, Any],
     ) -> None:
-        import pyarrow as pa
-        import pyarrow.compute as pc
+        import pyarrow.parquet as pq
 
         table = concat(tables, promote_types=False)
-        # Create unique combinations of the partition columns
-        partition_col_values: List[Dict[str, Any]] = (
-            table.select(self.partition_cols)
-            .group_by(self.partition_cols)
-            .aggregate([])
-        ).to_pylist()
-        table_fields = [
-            field for field in output_schema if field.name not in self.partition_cols
-        ]
-        non_partition_cols = [f.name for f in table_fields]
-        output_schema = pa.schema(
-            [field for field in output_schema if field.name not in self.partition_cols]
+        pq.write_to_dataset(
+            table,
+            root_path=self.path,
+            partition_cols=self.partition_cols,
+            schema=output_schema,
+            basename_template=filename,
+            use_legacy_dataset=False,
+            **write_kwargs,
         )
-
-        for combo in partition_col_values:
-            filters = [pc.equal(table[col], value) for col, value in combo.items()]
-            combined_filter = filters[0]
-            for filter_ in filters[1:]:
-                combined_filter = pc.and_(combined_filter, filter_)
-            group_table = table.filter(combined_filter).select(non_partition_cols)
-            partition_path = "/".join(
-                [f"{col}={value}" for col, value in combo.items()]
-            )
-            write_path = posixpath.join(self.path, partition_path)
-            self._create_dir(write_path)
-            self._write_single_file(
-                write_path,
-                [group_table],
-                filename,
-                output_schema,
-                write_kwargs,
-            )
 
     @property
     def min_rows_per_write(self) -> Optional[int]:
