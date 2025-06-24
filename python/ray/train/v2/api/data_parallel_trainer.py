@@ -214,9 +214,9 @@ class DataParallelTrainer:
         def sigint_handler(signum, frame):
             try:
                 logger.info(
-                    "Handling SIGINT by gracefully aborting the train run, which "
-                    "can take several seconds. You can force kill the train run "
-                    "with a different signal like SIGKILL."
+                    "Received SIGINT. Gracefully aborting the training run — this "
+                    "may take a few seconds. To forcefully abort immediately, you "
+                    "can send a different signal, such as SIGKILL."
                 )
                 ray.get(controller.abort.remote())
             except ray.exceptions.ActorDiedError:
