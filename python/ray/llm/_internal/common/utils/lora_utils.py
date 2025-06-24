@@ -10,7 +10,7 @@ import json
 import subprocess
 import time
 from functools import wraps
-from typing import List, Tuple, TypeVar, Union
+from typing import Any, Callable, List, Tuple, TypeVar, Union
 
 from ray.llm._internal.common.observability.logging import get_logger
 from ray.llm._internal.common.utils.cloud_utils import (
@@ -83,7 +83,7 @@ def retry_with_exponential_backoff(
     base_delay: float = 1,
     max_delay: float = 32,
     exponential_base: float = 2,
-):
+) -> Callable[[Callable[..., T]], Callable[..., T]]:
     """Retry decorator with exponential backoff.
 
     Args:
@@ -97,9 +97,9 @@ def retry_with_exponential_backoff(
         A decorator function that applies retry logic with exponential backoff
     """
 
-    def decorator(func):
+    def decorator(func: Callable[..., T]) -> Callable[..., T]:
         @wraps(func)
-        def wrapper(*args, **kwargs):
+        def wrapper(*args: Any, **kwargs: Any) -> T:
             delay = base_delay
             last_exception = None
 

@@ -6,9 +6,7 @@ LoRA abstractions from common/lora_utils.py. This ensures clean separation
 between generic and serve-specific concerns.
 """
 
-import time
-from functools import wraps
-from typing import Any, Callable, Dict, List, Optional, Tuple, TypeVar
+from typing import Any, Dict, List, Optional, Tuple
 
 from filelock import FileLock
 
@@ -25,9 +23,6 @@ from ray.llm._internal.serve.configs.server_models import LLMConfig
 from ray.llm._internal.serve.observability.logging import get_logger
 
 CLOUD_OBJECT_MISSING = object()
-
-# Type variable for the retry decorator
-T = TypeVar("T")
 
 logger = get_logger(__name__)
 
@@ -67,96 +62,8 @@ def sync_model(
             raise
 
 
-def retry_with_exponential_backoff(
-    max_tries: int,
-    exception_to_check: type[Exception],
-    base_delay: float = 1,
-    max_delay: float = 32,
-    exponential_base: float = 2,
-) -> Callable[[Callable[..., T]], Callable[..., T]]:
-    """Retry decorator with exponential backoff.
-
-    Args:
-        max_tries: Maximum number of retry attempts
-        exception_to_check: Exception type to catch and retry on
-        base_delay: Initial delay between retries in seconds
-        max_delay: Maximum delay between retries in seconds
-        exponential_base: Base for exponential calculation
-
-    Returns:
-        A decorator function that applies retry logic with exponential backoff
-    """
-
-    def decorator(func: Callable[..., T]) -> Callable[..., T]:
-        @wraps(func)
-        def wrapper(*args: Any, **kwargs: Any) -> T:
-            delay = base_delay
-            last_exception = None
-
-            for attempt in range(max_tries):
-                try:
-                    return func(*args, **kwargs)
-                except exception_to_check as e:
-                    last_exception = e
-                    if attempt == max_tries - 1:  # Last attempt
-                        raise last_exception
-
-                    # Log the failure and retry
-                    logger.warning(
-                        f"Attempt {attempt + 1}/{max_tries} failed: {str(e)}. "
-                        f"Retrying in {delay} seconds..."
-                    )
-                    time.sleep(delay)
-                    # Calculate next delay with exponential backoff
-                    delay = min(delay * exponential_base, max_delay)
-
-            # This should never be reached due to the raise in the loop
-            raise last_exception if last_exception else RuntimeError(
-                "Unexpected error in retry logic"
-            )
-
-        return wrapper
-
-    return decorator
-
-
-def get_lora_model_ids(
-    dynamic_lora_loading_path: str,
-    base_model_id: str,
-) -> List[str]:
-    """Get all LoRA model IDs from the dynamic loading path.
-
-    This is serve-specific logic that uses generic cloud utilities.
-
-    Args:
-        dynamic_lora_loading_path: The base path where LoRA adapters are stored
-        base_model_id: The base model ID to filter by
-
-    Returns:
-        List of LoRA model IDs in the format base_model_id:lora_id
-    """
-    # Ensure that the dynamic_lora_loading_path has no trailing slash.
-    dynamic_lora_loading_path = dynamic_lora_loading_path.rstrip("/")
-
-    try:
-        # List subfolders directly from the dynamic_lora_loading_path
-        # The path should already point to the correct model-specific directory
-        lora_subfolders = CloudFileSystem.list_subfolders(dynamic_lora_loading_path)
-    except Exception as e:
-        logger.warning(
-            f"Failed to list LoRA subfolders from {dynamic_lora_loading_path}: {e}. "
-            "Returning empty list."
-        )
-        return []
-
-    lora_model_ids = []
-    for subfolder in lora_subfolders:
-        # Each subfolder represents a LoRA adapter for the base model
-        # Create the full LoRA model ID by combining base_model_id with the subfolder name
-        lora_model_id = f"{base_model_id}:{subfolder}"
-        lora_model_ids.append(lora_model_id)
-
-    return lora_model_ids
+# These utility functions are now imported from the canonical location
+# in lora_utils.py to avoid duplication
 
 
 async def download_multiplex_config_info(
