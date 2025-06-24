@@ -1045,7 +1045,9 @@ class _ActorPool(AutoscalingActorPool):
 
 
 def _derive_max_actor_tasks_in_flight(data_context: "DataContext", ray_remote_args: Optional[Dict[str, Any]]) -> int:
-    max_per_actor_task_queue_size = data_context.max_per_actor_task_queue_size
     max_actor_concurrency = ray_remote_args.get("max_concurrency", 1)
 
-    return max_actor_concurrency + max_per_actor_task_queue_size
+    # NOTE: Unless explicitly configured by the user, max tasks-in-flight config
+    #       will fall back to be 2 x of `max_concurrency`, entailing that for every
+    #       running task we'd allow 1 more task to be enqueued
+    return data_context.max_tasks_in_flight_per_actor or max_actor_concurrency * 2
