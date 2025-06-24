@@ -1,5 +1,13 @@
 # Multimodal AI Workloads
 
+```{toctree}
+:hidden:
+
+notebooks/01-Batch-Inference
+notebooks/02-Distributed-Training
+notebooks/03-Online-Serving
+```
+
 <div align="left">
 <a target="_blank" href="https://console.anyscale.com/"><img src="https://img.shields.io/badge/🚀 Run_on-Anyscale-9hf"></a>&nbsp;
 <a href="https://github.com/anyscale/multimodal-ai" role="button"><img src="https://img.shields.io/static/v1?label=&amp;message=View%20On%20GitHub&amp;color=586069&amp;logo=github&amp;labelColor=2f363d"></a>&nbsp;
@@ -12,7 +20,7 @@ This tutorial focuses on the fundamental challenges of multimodal AI workloads a
 
 - **🔋 Compute**: managing heterogeneous clusters, reducing idle time, and handling complex dependencies
 - **📈 Scale**: integrating with the Python ecosystem, improving observability, and enabling effective debugging
-- **🛡️ Reliability**: ensuring fault tolerance, leveraging checkpointing, and supporting job resumability
+- **🛡️ Reliability**: ensuring fault tolerance, leveraging checkpointing, and supporting job resumption
 - **🚀 Production**: bridging dev-to-prod gaps, enabling fast iteration, maintaining zero downtime, and meeting SLAs
 
 This tutorial covers how Ray addresses each of these challenges and shows the solutions hands-on by implementing scalable batch inference, distributed training, and online serving workloads.
