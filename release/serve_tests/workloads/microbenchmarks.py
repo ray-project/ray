@@ -13,7 +13,6 @@ import click
 from functools import partial
 import json
 import logging
-import os
 
 import grpc
 import pandas as pd
