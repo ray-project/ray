@@ -36,6 +36,7 @@ from ray.train.v2._internal.state.state_actor import (
     get_state_actor,
 )
 from ray.train.v2._internal.state.state_manager import TrainStateManager
+from ray.train.v2._internal.state.util import _DEAD_CONTROLLER_ABORT_STATUS_DETAIL
 from ray.train.v2.api.config import RunConfig
 from ray.train.v2.api.exceptions import TrainingFailedError
 from ray.train.v2.tests.util import (
@@ -239,26 +240,31 @@ def test_train_state_actor_abort_dead_controller_live_runs(monkeypatch):
             status=RunStatus.INITIALIZING,
             controller_actor_id="nonexistent_controller_no_attempts_id",
             id="nonexistent_controller_no_attempts_run_id",
+            status_detail=_DEAD_CONTROLLER_ABORT_STATUS_DETAIL,
         ),
         "dead_controller_one_attempt_run_id": create_mock_train_run(
             status=RunStatus.INITIALIZING,
             controller_actor_id="dead_controller_one_attempt_id",
             id="dead_controller_one_attempt_run_id",
+            status_detail=_DEAD_CONTROLLER_ABORT_STATUS_DETAIL,
         ),
         "dead_controller_two_attempts_run_id": create_mock_train_run(
             status=RunStatus.SCHEDULING,
             controller_actor_id="dead_controller_two_attempts_id",
             id="dead_controller_two_attempts_run_id",
+            status_detail=_DEAD_CONTROLLER_ABORT_STATUS_DETAIL,
         ),
         "finished_controller_run_id": create_mock_train_run(
             status=RunStatus.FINISHED,
             controller_actor_id="finished_controller_id",
             id="finished_controller_run_id",
+            status_detail=_DEAD_CONTROLLER_ABORT_STATUS_DETAIL,
         ),
         "live_controller_one_attempt_run_id": create_mock_train_run(
             status=RunStatus.RUNNING,
             controller_actor_id="live_controller_one_attempt_id",
             id="live_controller_one_attempt_run_id",
+            status_detail=_DEAD_CONTROLLER_ABORT_STATUS_DETAIL,
         ),
     }
     actor._run_attempts = {
@@ -268,6 +274,7 @@ def test_train_state_actor_abort_dead_controller_live_runs(monkeypatch):
                 attempt_id="attempt_1",
                 status=RunAttemptStatus.PENDING,
                 run_id="dead_controller_one_attempt_run_id",
+                status_detail=_DEAD_CONTROLLER_ABORT_STATUS_DETAIL,
             ),
         },
         "dead_controller_two_attempts_run_id": {
@@ -275,11 +282,13 @@ def test_train_state_actor_abort_dead_controller_live_runs(monkeypatch):
                 attempt_id="attempt_1",
                 status=RunAttemptStatus.ERRORED,
                 run_id="dead_controller_two_attempts_run_id",
+                status_detail=_DEAD_CONTROLLER_ABORT_STATUS_DETAIL,
             ),
             "attempt_2": create_mock_train_run_attempt(
                 status=RunAttemptStatus.RUNNING,
                 attempt_id="attempt_2",
                 run_id="dead_controller_two_attempts_run_id",
+                status_detail=_DEAD_CONTROLLER_ABORT_STATUS_DETAIL,
             ),
         },
         "finished_controller_run_id": {},
@@ -288,6 +297,7 @@ def test_train_state_actor_abort_dead_controller_live_runs(monkeypatch):
                 status=RunAttemptStatus.RUNNING,
                 run_id="live_controller_one_attempt_run_id",
                 attempt_id="attempt_1",
+                status_detail=_DEAD_CONTROLLER_ABORT_STATUS_DETAIL,
             ),
         },
     }
@@ -300,28 +310,33 @@ def test_train_state_actor_abort_dead_controller_live_runs(monkeypatch):
             controller_actor_id="nonexistent_controller_no_attempts_id",
             end_time_ns=1000,
             id="nonexistent_controller_no_attempts_run_id",
+            status_detail=_DEAD_CONTROLLER_ABORT_STATUS_DETAIL,
         ),
         "dead_controller_one_attempt_run_id": create_mock_train_run(
             status=RunStatus.ABORTED,
             controller_actor_id="dead_controller_one_attempt_id",
             end_time_ns=1000,
             id="dead_controller_one_attempt_run_id",
+            status_detail=_DEAD_CONTROLLER_ABORT_STATUS_DETAIL,
         ),
         "dead_controller_two_attempts_run_id": create_mock_train_run(
             status=RunStatus.ABORTED,
             controller_actor_id="dead_controller_two_attempts_id",
             end_time_ns=1000,
             id="dead_controller_two_attempts_run_id",
+            status_detail=_DEAD_CONTROLLER_ABORT_STATUS_DETAIL,
         ),
         "finished_controller_run_id": create_mock_train_run(
             status=RunStatus.FINISHED,
             controller_actor_id="finished_controller_id",
             id="finished_controller_run_id",
+            status_detail=_DEAD_CONTROLLER_ABORT_STATUS_DETAIL,
         ),
         "live_controller_one_attempt_run_id": create_mock_train_run(
             status=RunStatus.RUNNING,
             controller_actor_id="live_controller_one_attempt_id",
             id="live_controller_one_attempt_run_id",
+            status_detail=_DEAD_CONTROLLER_ABORT_STATUS_DETAIL,
         ),
     }
     assert actor._run_attempts == {
@@ -333,6 +348,7 @@ def test_train_state_actor_abort_dead_controller_live_runs(monkeypatch):
                 attempt_id="attempt_1",
                 end_time_ns=1000,
                 worker_status=ActorStatus.DEAD,
+                status_detail=_DEAD_CONTROLLER_ABORT_STATUS_DETAIL,
             )
         },
         "dead_controller_two_attempts_run_id": {
@@ -340,6 +356,7 @@ def test_train_state_actor_abort_dead_controller_live_runs(monkeypatch):
                 status=RunAttemptStatus.ERRORED,
                 run_id="dead_controller_two_attempts_run_id",
                 attempt_id="attempt_1",
+                status_detail=_DEAD_CONTROLLER_ABORT_STATUS_DETAIL,
             ),
             "attempt_2": create_mock_train_run_attempt(
                 status=RunAttemptStatus.ABORTED,
@@ -347,6 +364,7 @@ def test_train_state_actor_abort_dead_controller_live_runs(monkeypatch):
                 attempt_id="attempt_2",
                 end_time_ns=1000,
                 worker_status=ActorStatus.DEAD,
+                status_detail=_DEAD_CONTROLLER_ABORT_STATUS_DETAIL,
             ),
         },
         "finished_controller_run_id": {},
@@ -355,6 +373,7 @@ def test_train_state_actor_abort_dead_controller_live_runs(monkeypatch):
                 status=RunAttemptStatus.RUNNING,
                 run_id="live_controller_one_attempt_run_id",
                 attempt_id="attempt_1",
+                status_detail=_DEAD_CONTROLLER_ABORT_STATUS_DETAIL,
             ),
         },
     }

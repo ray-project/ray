@@ -100,11 +100,11 @@ class TrainStateActor:
                     run.controller_actor_id, timeout=self._get_actor_timeout_s
                 )
                 if not actor_state or actor_state.state == "DEAD":
-                    update_train_run_aborted(run)
+                    update_train_run_aborted(run, False)
                     self.create_or_update_train_run(run)
                     for run_attempt in self._run_attempts.get(run.id, {}).values():
                         if not run_attempt.status.is_terminal():
-                            update_train_run_attempt_aborted(run_attempt)
+                            update_train_run_attempt_aborted(run_attempt, False)
                             self.create_or_update_train_run_attempt(run_attempt)
 
     def _start_controller_polling_thread(self) -> None:

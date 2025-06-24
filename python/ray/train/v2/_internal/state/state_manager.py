@@ -132,7 +132,7 @@ class TrainStateManager:
         run_id: str,
     ):
         run = self._runs[run_id]
-        update_train_run_aborted(run)
+        update_train_run_aborted(run, True)
         self._create_or_update_train_run(run, block=True)
 
     def create_train_run_attempt(
@@ -221,7 +221,7 @@ class TrainStateManager:
         attempt_id: str,
     ):
         run_attempt = self._run_attempts[run_id][attempt_id]
-        update_train_run_attempt_aborted(run_attempt)
+        update_train_run_attempt_aborted(run_attempt, True)
         self._create_or_update_train_run_attempt(run_attempt, block=True)
 
     def _create_or_update_train_run(self, run: TrainRun, block: bool = False) -> None:

@@ -150,6 +150,7 @@ def create_mock_train_run(
     controller_actor_id: Optional[str] = None,
     end_time_ns: Optional[int] = None,
     id: Optional[str] = None,
+    status_detail: Optional[str] = None,
 ):
     return TrainRun(
         schema_version=0,
@@ -158,7 +159,7 @@ def create_mock_train_run(
         job_id=uuid.uuid4().hex,
         controller_actor_id=controller_actor_id or uuid.uuid4().hex,
         status=status,
-        status_detail=None,
+        status_detail=status_detail,
         start_time_ns=time.time_ns(),
         end_time_ns=end_time_ns,
         controller_log_file_path="/tmp/ray/session_xxx/logs/train/ray-train-app-controller.log",
@@ -171,6 +172,7 @@ def create_mock_train_run_attempt(
     end_time_ns: Optional[int] = None,
     run_id: Optional[str] = None,
     worker_status: Optional[ActorStatus] = ActorStatus.ALIVE,
+    status_detail: Optional[str] = None,
 ):
     worker = TrainWorker(
         world_rank=0,
@@ -191,7 +193,7 @@ def create_mock_train_run_attempt(
         attempt_id=attempt_id,
         run_id=run_id or _RUN_ID,
         status=status,
-        status_detail=None,
+        status_detail=status_detail,
         start_time_ns=time.time_ns(),
         resources=[TrainResources(resources={"CPU": 1})],
         workers=[worker],
