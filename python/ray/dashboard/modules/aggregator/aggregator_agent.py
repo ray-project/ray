@@ -128,6 +128,7 @@ class AggregatorAgent(
         )
 
         self._is_cleanup = False
+        self._cleanup_finished_event = threading.Event()
 
     async def AddEvents(self, request, context):
         """
@@ -296,10 +297,16 @@ class AggregatorAgent(
         sending any remaining events in the buffer, and updating metrics.
         """
 
+        should_wait_cleanup_finished = False
         with self._lock:
             if self._is_cleanup:
-                return
+                should_wait_cleanup_finished = True
             self._is_cleanup = True
+
+        if should_wait_cleanup_finished:
+            # If cleanup is already in progress, wait for it to finish.
+            self._cleanup_finished_event.wait()
+            return
 
         # Send any remaining events in the buffer
         event_batch = []
@@ -317,6 +324,8 @@ class AggregatorAgent(
 
         # Update metrics immediately
         self._update_metrics()
+
+        self._cleanup_finished_event.set()
 
     def _sigterm_handler(self, signum, frame):
         self._stop_event.set()
