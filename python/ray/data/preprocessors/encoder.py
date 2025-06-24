@@ -273,9 +273,15 @@ class OneHotEncoder(Preprocessor):
         for column, output_column in zip(self.columns, self.output_columns):
             if _is_series_composed_of_lists(df[column]):
                 df[column] = df[column].map(tuple)
-            codes, uniques = df[column].factorize()
-            ohe = np.eye(len(uniques), dtype=int)[codes]  # (n_rows, n_cats)
-            df[output_column] = ohe.tolist()  # vector per row
+
+            stats = self.stats_[f"unique_values({column})"]
+            num_categories = len(stats)
+            one_hot = np.zeros((len(df), num_categories), dtype=int)
+
+            codes = df[column].apply(lambda v, m=stats: m.get(v, -1)).to_numpy()
+            valid_rows = codes != -1
+            one_hot[np.nonzero(valid_rows)[0], codes[valid_rows].astype(int)] = 1
+            df[output_column] = one_hot.tolist()
 
         return df
 
