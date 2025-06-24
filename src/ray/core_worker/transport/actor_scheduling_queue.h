@@ -38,7 +38,7 @@ namespace ray {
 namespace core {
 
 /// Used to ensure serial order of task execution per actor handle.
-/// See direct_actor.proto for a description of the ordering protocol.
+/// See core_worker.proto for a description of the ordering protocol.
 class ActorSchedulingQueue : public SchedulingQueue {
  public:
   ActorSchedulingQueue(
