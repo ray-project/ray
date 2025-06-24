@@ -56,7 +56,7 @@ EVENT_SEND_PORT = ray_constants.env_integer(f"{env_var_prefix}_EVENT_SEND_PORT",
 METRICS_UPDATE_INTERVAL_SECONDS = ray_constants.env_float(
     f"{env_var_prefix}_METRICS_UPDATE_INTERVAL_SECONDS", 0.1
 )
-USE_PROTO = ray_constants.env_bool(f"{env_var_prefix}_USE_PROTO", True)
+USE_PROTO = ray_constants.env_bool(f"{env_var_prefix}_USE_PROTO", False)
 
 # Metrics
 if prometheus_client:
