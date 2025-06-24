@@ -767,17 +767,17 @@ class _ActorPool(AutoscalingActorPool):
             >= self._last_scaling_up_ts + self._ACTOR_POOL_SCALE_DOWN_DEBOUNCE_PERIOD_S
         )
 
-    def scale(self, action: ScalingConfig) -> Optional[int]:
-        if action.delta > 0:
+    def scale(self, config: ScalingConfig) -> Optional[int]:
+        if config.delta > 0:
             # Make sure after scaling up actor pool won't exceed its target
             # max size
             target_num_actors = min(
-                action.delta, max(self.max_size() - self.current_size(), 0)
+                config.delta, max(self.max_size() - self.current_size(), 0)
             )
 
             logger.info(
-                f"Scaling up actor pool by {target_num_actors} (requested delta={action.delta}) "
-                f"(reason={action.reason}, {self.get_actor_info()})"
+                f"Scaling up actor pool by {target_num_actors} (requested delta={config.delta}) "
+                f"(reason={config.reason}, {self.get_actor_info()})"
             )
 
             for _ in range(target_num_actors):
@@ -789,13 +789,13 @@ class _ActorPool(AutoscalingActorPool):
 
             return target_num_actors
 
-        elif action.delta < 0:
+        elif config.delta < 0:
             num_released = 0
 
             # Make sure after scaling down actor pool size won't fall below its
             # min size
             target_num_actors = min(
-                abs(action.delta), max(self.current_size() - self.min_size(), 0)
+                abs(config.delta), max(self.current_size() - self.min_size(), 0)
             )
 
             for _ in range(target_num_actors):
@@ -805,7 +805,7 @@ class _ActorPool(AutoscalingActorPool):
             if num_released > 0:
                 logger.info(
                     f"Scaled down actor pool by {num_released} "
-                    f"(reason={action.reason}; {self.get_actor_info()})"
+                    f"(reason={config.reason}; {self.get_actor_info()})"
                 )
 
             return -num_released

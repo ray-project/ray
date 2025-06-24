@@ -73,7 +73,7 @@ def test_actor_pool_scaling():
     def assert_autoscaling_action(*, delta: int, expected_reason: Optional[str]):
         nonlocal actor_pool, op, op_state
 
-        assert autoscaler._derive_scaling_action(
+        assert autoscaler._derive_target_scaling_config(
             actor_pool=actor_pool,
             op=op,
             op_state=op_state,

@@ -71,7 +71,7 @@ class AutoscalingActorPool(ABC):
         ...
 
     @abstractmethod
-    def scale(self, action: ScalingConfig):
+    def scale(self, config: ScalingConfig):
         """Applies autoscaling action"""
         ...
 
