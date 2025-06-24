@@ -28,7 +28,7 @@ Typically, while new fields are added to the KubeRay CRD in each release, KubeRa
 * KubeRay v1.0.0: CRD v1alpha1 and v1
 * KubeRay v1.1.0: CRD v1
 * KubeRay v1.2.2: CRD v1
-* KubeRay v1.4.0: CRD v1
+* KubeRay v1.3.0: CRD v1
 
 If you want to understand the reasoning behind the CRD versioning plan, see [ray-project/ray#40357](https://github.com/ray-project/ray/pull/40357) for more details.
 
@@ -42,7 +42,7 @@ To upgrade the KubeRay version, follow these steps in order:
 2. Upgrade the kuberay-operator image to the new version.
 3. Verify the success of the upgrade.
 
-The following is an example of upgrading KubeRay from v1.2.X to v1.4.0:
+The following is an example of upgrading KubeRay from v1.3.X to v1.4.0:
 ```
 # Upgrade the CRD to v1.4.0.
 # Note: This example uses kubectl because Helm doesn't support lifecycle management of CRDs.

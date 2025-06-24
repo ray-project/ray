@@ -63,7 +63,7 @@ Or, just make your KubeRay Operator executable run with `--feature-gates=RayClus
 
 #### RayService `.Status.Conditions`
 
-From KubeRay v1.4.0, RayService also supports the `Status.Conditions` field.
+From KubeRay v1.3.0, RayService also supports the `Status.Conditions` field.
 
 * `Ready`: If `Ready` is true, the RayService is ready to serve requests.
 * `UpgradeInProgress`: If `UpgradeInProgress` is true, the RayService is currently in the upgrade process and both active and pending RayCluster exist.

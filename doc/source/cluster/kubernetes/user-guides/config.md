@@ -141,7 +141,7 @@ See {ref}`this guide <kuberay-gpu>` for more details on GPU support.
 
 KubeRay automatically configures Ray to use the CPU, memory, and GPU **limits** in the Ray container
 config. These values are the logical resource capacities of Ray pods in the head or
-worker group. As of KubeRay 1.4.0, KubeRay uses the CPU request if the limit is absent.
+worker group. As of KubeRay 1.3.0, KubeRay uses the CPU request if the limit is absent.
 KubeRay rounds up CPU quantities to the nearest integer. You can override these resource capacities
 with {ref}`rayStartParams`. KubeRay ignores memory and GPU **requests**. So
 **set memory and GPU resource requests equal to their limits** when possible

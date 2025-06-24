@@ -2,7 +2,7 @@
 
 # Use kubectl plugin (beta)
 
-Starting from KubeRay v1.4.0, you can use the `kubectl ray` plugin to simplify common workflows when deploying Ray on Kubernetes. If you aren't familiar with Kubernetes, this plugin simplifies running Ray on Kubernetes.
+Starting from KubeRay v1.3.0, you can use the `kubectl ray` plugin to simplify common workflows when deploying Ray on Kubernetes. If you aren't familiar with Kubernetes, this plugin simplifies running Ray on Kubernetes.
 
 ## Installation
 
