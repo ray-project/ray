@@ -1,6 +1,7 @@
 import asyncio
 import datetime
 import os
+import random
 import threading
 import time
 from contextlib import asynccontextmanager
@@ -22,14 +23,17 @@ from ray.serve._private.common import (
     DeploymentStatus,
     RequestProtocol,
 )
-from ray.serve._private.constants import SERVE_DEFAULT_APP_NAME, SERVE_NAMESPACE
+from ray.serve._private.constants import (
+    SERVE_DEFAULT_APP_NAME,
+    SERVE_NAMESPACE,
+)
 from ray.serve._private.deployment_state import ALL_REPLICA_STATES, ReplicaState
 from ray.serve._private.proxy import DRAINING_MESSAGE
 from ray.serve._private.usage import ServeUsageTag
 from ray.serve._private.utils import TimerBase
 from ray.serve.context import _get_global_client
 from ray.serve.generated import serve_pb2, serve_pb2_grpc
-from ray.serve.schema import ApplicationStatus
+from ray.serve.schema import ApplicationStatus, TargetGroup
 
 TELEMETRY_ROUTE_PREFIX = "/telemetry"
 STORAGE_ACTOR_NAME = "storage"
@@ -699,3 +703,63 @@ def tlog(s: str, level: str = "INFO"):
 
     now = datetime.datetime.now().strftime("%H:%M:%S.%f")[:-3]
     print(f"[{level}] {now} {s}")
+
+
+def get_application_urls(
+    protocol: Union[str, RequestProtocol] = RequestProtocol.HTTP,
+    app_name: str = SERVE_DEFAULT_APP_NAME,
+) -> List[str]:
+    """Get the URL of the application.
+
+    Args:
+        protocol: The protocol to use for the application.
+        app_name: The name of the application.
+
+    Returns:
+        The URLs of the application.
+    """
+    client = _get_global_client()
+    serve_details = client.get_serve_details()
+    route_prefix = serve_details["applications"][app_name]["route_prefix"]
+    if isinstance(protocol, str):
+        protocol = RequestProtocol(protocol)
+    target_groups: List[TargetGroup] = ray.get(
+        client._controller.get_target_groups.remote(app_name)
+    )
+    target_groups = [
+        target_group
+        for target_group in target_groups
+        if target_group.protocol == protocol
+    ]
+    if len(target_groups) == 0:
+        raise ValueError(
+            f"No target group found for app {app_name} with protocol {protocol} and route prefix {route_prefix}"
+        )
+    urls = []
+    for target_group in target_groups:
+        for target in target_group.targets:
+            if protocol == RequestProtocol.HTTP:
+                url = f"http://{target.ip}:{target.port}{route_prefix}"
+            elif protocol == RequestProtocol.GRPC:
+                url = f"{target.ip}:{target.port}"
+            else:
+                raise ValueError(f"Unsupported protocol: {protocol}")
+            url = url.rstrip("/")
+            urls.append(url)
+    return urls
+
+
+def get_application_url(
+    protocol: Union[str, RequestProtocol] = RequestProtocol.HTTP,
+    app_name: str = SERVE_DEFAULT_APP_NAME,
+) -> str:
+    """Get the URL of the application.
+
+    Args:
+        protocol: The protocol to use for the application.
+        app_name: The name of the application.
+
+    Returns:
+        The URL of the application. If there are multiple URLs, a random one is returned.
+    """
+    return random.choice(get_application_urls(protocol, app_name))
