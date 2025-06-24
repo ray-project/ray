@@ -8,6 +8,17 @@ notebooks/02-Distributed-Training
 notebooks/03-Online-Serving
 ```
 
+
+
+```{toctree}
+:hidden:
+
+notebooks/01-Batch-Inference
+notebooks/02-Distributed-Training
+notebooks/03-Online-Serving
+```
+
+
 <div align="left">
 <a target="_blank" href="https://console.anyscale.com/"><img src="https://img.shields.io/badge/🚀 Run_on-Anyscale-9hf"></a>&nbsp;
 <a href="https://github.com/anyscale/multimodal-ai" role="button"><img src="https://img.shields.io/static/v1?label=&amp;message=View%20On%20GitHub&amp;color=586069&amp;logo=github&amp;labelColor=2f363d"></a>&nbsp;
