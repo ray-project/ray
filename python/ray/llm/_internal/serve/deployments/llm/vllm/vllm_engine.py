@@ -177,6 +177,7 @@ class _EngineBackgroundProcess:
         return self._error
 
 
+
 class VLLMEngine(LLMEngine):
     def __init__(
         self,
@@ -188,6 +189,11 @@ class VLLMEngine(LLMEngine):
             llm_config: The llm configuration for this engine
         """
         super().__init__(llm_config)
+        
+        from argparse import Namespace
+        # Convert this to a namespace object
+        vllm_cli_args = llm_config.experimental_configs.get("vllm_cli_args", {})
+        self.vllm_cli_args = Namespace(**vllm_cli_args)
 
         if vllm is None:
             raise ImportError(
@@ -267,44 +273,64 @@ class VLLMEngine(LLMEngine):
 
         If the engine is already running, do nothing.
         """
-        from vllm.entrypoints.chat_utils import (
-            resolve_chat_template_content_format as _resolve_chat_template_content_format,
-        )
+        # from vllm.entrypoints.chat_utils import (
+        #     resolve_chat_template_content_format as _resolve_chat_template_content_format,
+        # )
 
-        if self.running:
-            # The engine is already running!
-            logger.info("Skipping engine restart because the engine is already running")
-            return
+        # if self.running:
+        #     # The engine is already running!
+        #     logger.info("Skipping engine restart because the engine is already running")
+        #     return
 
+        # self.engine = await self._start_engine()
+        # self.running = True
+        # self.model_config = await self.engine.get_model_config()
+
+        # self._tokenizer = await self.engine.get_tokenizer()
+
+        # def resolve_chat_template_content_format(model_config, **kwargs):
+        #     try:
+        #         return _resolve_chat_template_content_format(
+        #             model_config=model_config, **kwargs
+        #         )
+        #     except TypeError:
+        #         # Legacy API before vLLM 0.9.0.
+        #         # TODO(#52975): Remove this try-except once vLLM <0.9.0 is no longer supported.
+        #         return _resolve_chat_template_content_format(
+        #             trust_remote_code=model_config.trust_remote_code, **kwargs
+        #         )
+
+        # self._resolved_content_format = resolve_chat_template_content_format(
+        #     model_config=self.model_config,
+        #     # Use HF to get the chat template so set it to None here.
+        #     chat_template=None,
+        #     # Default to None, change when it's needed.
+        #     # vLLM does not have a high level API to support all of this.
+        #     tools=None,
+        #     # Let vLLM decide the content format.
+        #     given_format="auto",
+        #     tokenizer=self._tokenizer,
+        # )
+        
+        
+        from vllm.entrypoints.openai.api_server import init_app_state
         self.engine = await self._start_engine()
-        self.running = True
-        self.model_config = await self.engine.get_model_config()
-
-        self._tokenizer = await self.engine.get_tokenizer()
-
-        def resolve_chat_template_content_format(model_config, **kwargs):
-            try:
-                return _resolve_chat_template_content_format(
-                    model_config=model_config, **kwargs
-                )
-            except TypeError:
-                # Legacy API before vLLM 0.9.0.
-                # TODO(#52975): Remove this try-except once vLLM <0.9.0 is no longer supported.
-                return _resolve_chat_template_content_format(
-                    trust_remote_code=model_config.trust_remote_code, **kwargs
-                )
-
-        self._resolved_content_format = resolve_chat_template_content_format(
-            model_config=self.model_config,
-            # Use HF to get the chat template so set it to None here.
-            chat_template=None,
-            # Default to None, change when it's needed.
-            # vLLM does not have a high level API to support all of this.
-            tools=None,
-            # Let vLLM decide the content format.
-            given_format="auto",
-            tokenizer=self._tokenizer,
+        
+        from starlette.datastructures import State
+        state = State()
+        
+        await init_app_state(
+            engine_client=self.engine,
+            vllm_config=self.vllm_config,
+            state=state,
+            args=self.vllm_cli_args,
         )
+        
+        self.oai_serving_chat = state.openai_serving_chat
+        self.oai_serving_completion = state.openai_serving_completion
+        self.oai_serving_embedding = state.openai_serving_embedding
+        
+        self.running = True
 
         logger.info("Started vLLM engine.")
 
@@ -586,6 +612,12 @@ class VLLMEngine(LLMEngine):
 
         vllm_request = VLLMGenerationRequest(**request_params)
         return vllm_request
+
+    async def chat(self, request: GenerationRequest) -> AsyncGenerator[LLMRawResponse, None]:
+        generator = self.oai_serving_chat.create_chat_completion(request)
+        async for response in generator:
+            yield response
+
 
     async def generate(
         self, request: GenerationRequest

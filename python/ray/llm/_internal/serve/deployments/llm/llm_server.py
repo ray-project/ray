@@ -597,7 +597,8 @@ class LLMServer(_LLMServerBase):
         Returns:
             A LLMChatResponse object.
         """
-        return self._process_llm_request(request, is_chat=True)
+        # return self._process_llm_request(request, is_chat=True)
+        self.engine.chat(request)
 
     async def completions(self, request: CompletionRequest) -> LLMCompletionsResponse:
         """Runs a completion request to the LLM engine and returns the response.
