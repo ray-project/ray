@@ -1,5 +1,8 @@
 from typing import TYPE_CHECKING, Any, Dict, List, NamedTuple, Optional, Tuple
 
+import nixl._utils as nixl_utils
+from nixl._api import nixl_agent, nixl_agent_config
+
 import ray
 from ray._private.custom_types import TensorTransportEnum
 from ray._raylet import ObjectRef
@@ -47,6 +50,16 @@ class GPUObjectManager:
         # A dictionary that maps from owned object's ID to GPUObjectMeta.
         self.managed_gpu_object_metadata: Dict[str, GPUObjectMeta] = {}
 
+        self.agent = None
+
+    def init_nixl_agent(self):
+        if self.agent is None:
+            agent_config = nixl_agent_config(backends=["UCX"])
+            ctx = ray.get_runtime_context()
+            actor_id = ctx.get_actor_id()
+            self.agent = nixl_agent(actor_id, agent_config)
+        return self.agent
+
     def has_gpu_object(self, obj_id: str) -> bool:
         return obj_id in self.gpu_object_store
 
@@ -54,6 +67,7 @@ class GPUObjectManager:
         return self.gpu_object_store[obj_id]
 
     def add_gpu_object(self, obj_id: str, gpu_object: List["torch.Tensor"]):
+        self.init_nixl_agent()
         self.gpu_object_store[obj_id] = gpu_object
 
     def remove_gpu_object(self, obj_id: str):
@@ -72,7 +86,12 @@ class GPUObjectManager:
                 obj_id
             ), f"obj_id={obj_id} not found in GPU object store"
             tensors = gpu_object_manager.get_gpu_object(obj_id)
-            return [(t.shape, t.dtype) for t in tensors]
+
+            agent = gpu_object_manager.init_nixl_agent()
+            reg_descs = agent.register_memory(tensors)
+            xfer_descs = reg_descs.trim()
+
+            return [(t.shape, t.dtype) for t in tensors], agent.get_serialized_descs(xfer_descs), agent.get_agent_metadata()
 
         return src_actor.__ray_call__.remote(__ray_get_tensor_meta__, obj_id)
 
@@ -123,6 +142,7 @@ class GPUObjectManager:
     def _send_gpu_object(
         self, communicator_name: str, src_actor: ActorHandle, obj_id: str, dst_rank: int
     ):
+        return
         # Send tensors stored in the `src_actor`'s GPU object store to the
         # destination rank `dst_rank`.
         util = _get_or_import_util()
