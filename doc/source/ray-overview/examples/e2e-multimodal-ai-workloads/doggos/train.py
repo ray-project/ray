@@ -173,7 +173,7 @@ if __name__ == "__main__":
 
     # Write processed data to cloud storage
     preprocessed_data_path = os.path.join(
-        "/mnt/user_storage", "doggos/preprocessed_data"
+        "/mnt/cluster_storage", "doggos/preprocessed_data"
     )
     if os.path.exists(preprocessed_data_path):
         shutil.rmtree(preprocessed_data_path)  # clean up

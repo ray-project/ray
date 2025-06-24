@@ -12,23 +12,20 @@ from transformers import CLIPModel, CLIPProcessor
 from doggos.utils import add_class, url_to_array
 
 
-class EmbeddingGenerator(object):
-    def __init__(self, model_id):
+class EmbedImages(object):
+    def __init__(self, model_id, device):
         # Load CLIP model and processor
-        self.model = CLIPModel.from_pretrained(model_id)
         self.processor = CLIPProcessor.from_pretrained(model_id)
+        self.model = CLIPModel.from_pretrained(model_id)
+        self.model.to(device)
+        self.device = device
 
-    def __call__(self, batch, device="cpu"):
+    def __call__(self, batch):
         # Load and preprocess images
-        images = [
-            Image.fromarray(np.uint8(img)).convert("RGB") for img in batch["image"]
-        ]
-        inputs = self.processor(images=images, return_tensors="pt", padding=True).to(
-            device
-        )
+        images = [Image.fromarray(np.uint8(img)).convert("RGB") for img in batch["image"]]
+        inputs = self.processor(images=images, return_tensors="pt", padding=True).to(self.device)
 
         # Generate embeddings
-        self.model.to(device)
         with torch.inference_mode():
             batch["embedding"] = self.model.get_image_features(**inputs).cpu().numpy()
 
@@ -97,7 +94,7 @@ if __name__ == "__main__":
 
     # Batch embedding generation
     embeddings_ds = ds.map_batches(
-        EmbeddingGenerator,
+        EmbedImages,
         fn_constructor_kwargs={"model_id": "openai/clip-vit-base-patch32"},
         fn_kwargs={"device": "cuda"},
         concurrency=4,
