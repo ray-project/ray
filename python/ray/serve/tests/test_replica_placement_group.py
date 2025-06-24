@@ -6,7 +6,7 @@ import pytest
 
 import ray
 from ray import serve
-from ray._private.test_utils import wait_for_condition
+from ray._common.test_utils import wait_for_condition
 from ray.serve._private.utils import get_all_live_placement_group_names
 from ray.serve.context import _get_global_client
 from ray.util.placement_group import PlacementGroup, get_current_placement_group

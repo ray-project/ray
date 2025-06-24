@@ -47,8 +47,8 @@ from ray.data._internal.logical.optimizers import PhysicalOptimizer
 from ray.data._internal.logical.rules.configure_map_task_memory import (
     ConfigureMapTaskMemoryUsingOutputSize,
 )
+from ray.data._internal.planner import create_planner
 from ray.data._internal.planner.exchange.sort_task_spec import SortKey
-from ray.data._internal.planner.planner import Planner
 from ray.data._internal.stats import DatasetStats
 from ray.data.aggregate import Count
 from ray.data.block import BlockMetadata
@@ -77,7 +77,7 @@ def _check_valid_plan_and_result(
 
 def test_read_operator(ray_start_regular_shared_2_cpus):
     ctx = DataContext.get_current()
-    planner = Planner()
+    planner = create_planner()
     op = get_parquet_read_logical_op()
     plan = LogicalPlan(op, ctx)
     physical_op = planner.plan(plan).dag
@@ -104,7 +104,7 @@ def test_read_operator_emits_warning_for_large_read_tasks():
                 _ = large_object
                 yield pd.DataFrame({"column": [0]})
 
-            return [ReadTask(read_fn, BlockMetadata(1, None, None, None, None))]
+            return [ReadTask(read_fn, BlockMetadata(1, None, None, None))]
 
     with pytest.warns(UserWarning):
         ray.data.read_datasource(StubDatasource()).materialize()
@@ -113,7 +113,7 @@ def test_read_operator_emits_warning_for_large_read_tasks():
 def test_split_blocks_operator(ray_start_regular_shared_2_cpus):
     ctx = DataContext.get_current()
 
-    planner = Planner()
+    planner = create_planner()
     op = get_parquet_read_logical_op(parallelism=10)
     logical_plan = LogicalPlan(op, ctx)
     physical_plan = planner.plan(logical_plan)
@@ -156,7 +156,7 @@ def test_from_operators(ray_start_regular_shared_2_cpus):
         FromPandas,
     ]
     for op_cls in op_classes:
-        planner = Planner()
+        planner = create_planner()
         op = op_cls([], [])
         plan = LogicalPlan(op, ctx)
         physical_op = planner.plan(plan).dag
@@ -227,7 +227,7 @@ def test_map_operator_udf_name(ray_start_regular_shared_2_cpus):
 def test_map_batches_operator(ray_start_regular_shared_2_cpus):
     ctx = DataContext.get_current()
 
-    planner = Planner()
+    planner = create_planner()
     read_op = get_parquet_read_logical_op()
     op = MapBatches(
         read_op,
@@ -255,7 +255,7 @@ def test_map_batches_e2e(ray_start_regular_shared_2_cpus):
 def test_map_rows_operator(ray_start_regular_shared_2_cpus):
     ctx = DataContext.get_current()
 
-    planner = Planner()
+    planner = create_planner()
     read_op = get_parquet_read_logical_op()
     op = MapRows(
         read_op,
@@ -282,7 +282,7 @@ def test_map_rows_e2e(ray_start_regular_shared_2_cpus):
 def test_filter_operator(ray_start_regular_shared_2_cpus):
     ctx = DataContext.get_current()
 
-    planner = Planner()
+    planner = create_planner()
     read_op = get_parquet_read_logical_op()
     op = Filter(
         read_op,
@@ -324,7 +324,7 @@ def test_project_operator_select(ray_start_regular_shared_2_cpus):
     assert isinstance(op, Project), op.name
     assert op.cols == cols
 
-    physical_plan = Planner().plan(logical_plan)
+    physical_plan = create_planner().plan(logical_plan)
     physical_plan = PhysicalOptimizer().optimize(physical_plan)
     physical_op = physical_plan.dag
     assert isinstance(physical_op, TaskPoolMapOperator)
@@ -348,7 +348,7 @@ def test_project_operator_rename(ray_start_regular_shared_2_cpus):
     assert not op.cols
     assert op.cols_rename == cols_rename
 
-    physical_plan = Planner().plan(logical_plan)
+    physical_plan = create_planner().plan(logical_plan)
     physical_plan = PhysicalOptimizer().optimize(physical_plan)
     physical_op = physical_plan.dag
     assert isinstance(physical_op, TaskPoolMapOperator)
@@ -358,7 +358,7 @@ def test_project_operator_rename(ray_start_regular_shared_2_cpus):
 def test_flat_map(ray_start_regular_shared_2_cpus):
     ctx = DataContext.get_current()
 
-    planner = Planner()
+    planner = create_planner()
     read_op = get_parquet_read_logical_op()
     op = FlatMap(
         read_op,
@@ -423,7 +423,7 @@ def test_random_sample_e2e(ray_start_regular_shared_2_cpus):
 def test_random_shuffle_operator(ray_start_regular_shared_2_cpus):
     ctx = DataContext.get_current()
 
-    planner = Planner()
+    planner = create_planner()
     read_op = get_parquet_read_logical_op()
     op = RandomShuffle(
         read_op,
@@ -462,7 +462,7 @@ def test_random_shuffle_e2e(ray_start_regular_shared_2_cpus, configure_shuffle_m
 def test_repartition_operator(ray_start_regular_shared_2_cpus, shuffle):
     ctx = DataContext.get_current()
 
-    planner = Planner()
+    planner = create_planner()
     read_op = get_parquet_read_logical_op()
     op = Repartition(read_op, num_outputs=5, shuffle=shuffle)
     plan = LogicalPlan(op, ctx)
@@ -543,7 +543,7 @@ def test_write_operator(ray_start_regular_shared_2_cpus, tmp_path):
     ctx = DataContext.get_current()
 
     concurrency = 2
-    planner = Planner()
+    planner = create_planner()
     datasink = ParquetDatasink(tmp_path)
     read_op = get_parquet_read_logical_op()
     op = Write(
@@ -569,7 +569,7 @@ def test_sort_operator(
 ):
     ctx = DataContext.get_current()
 
-    planner = Planner()
+    planner = create_planner()
     read_op = get_parquet_read_logical_op()
     op = Sort(
         read_op,
@@ -708,7 +708,7 @@ def test_batch_format_on_aggregate(ray_start_regular_shared_2_cpus):
 def test_aggregate_operator(ray_start_regular_shared_2_cpus):
     ctx = DataContext.get_current()
 
-    planner = Planner()
+    planner = create_planner()
     read_op = get_parquet_read_logical_op()
     op = Aggregate(
         read_op,
@@ -778,7 +778,7 @@ def test_aggregate_validate_keys(ray_start_regular_shared_2_cpus):
 def test_zip_operator(ray_start_regular_shared_2_cpus):
     ctx = DataContext.get_current()
 
-    planner = Planner()
+    planner = create_planner()
     read_op1 = get_parquet_read_logical_op()
     read_op2 = get_parquet_read_logical_op()
     op = Zip(read_op1, read_op2)
