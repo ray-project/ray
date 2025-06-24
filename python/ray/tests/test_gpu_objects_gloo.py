@@ -19,7 +19,9 @@ class GPUTestActor:
         return data * 2
 
     def get_gpu_object(self, obj_id: str):
-        gpu_object_store = ray._private.worker.global_worker.gpu_object_manager.gpu_object_store
+        gpu_object_store = (
+            ray._private.worker.global_worker.gpu_object_manager.gpu_object_store
+        )
         if gpu_object_store.has_gpu_object(obj_id):
             gpu_object = gpu_object_store.get_gpu_object(obj_id)
             print(f"gpu_object: {gpu_object}")

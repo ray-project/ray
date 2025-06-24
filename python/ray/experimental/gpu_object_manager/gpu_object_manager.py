@@ -66,7 +66,10 @@ class GPUObjectManager:
     @property
     def gpu_object_store(self) -> "ray.experimental.GPUObjectStore":
         if self._gpu_object_store is None:
-            from ray.experimental.gpu_object_manager.gpu_object_store import GPUObjectStore
+            from ray.experimental.gpu_object_manager.gpu_object_store import (
+                GPUObjectStore,
+            )
+
             self._gpu_object_store = GPUObjectStore()
         return self._gpu_object_store
 
@@ -107,7 +110,9 @@ class GPUObjectManager:
             src_actor: The actor that executes the task and that creates the GPU object.
             tensor_transport: The tensor transport protocol to use for the GPU object.
         """
-        from ray.experimental.gpu_object_manager.gpu_object_store import _tensor_transport_to_collective_backend
+        from ray.experimental.gpu_object_manager.gpu_object_store import (
+            _tensor_transport_to_collective_backend,
+        )
 
         tensor_transport_backend = _tensor_transport_to_collective_backend(
             tensor_transport
@@ -168,7 +173,6 @@ class GPUObjectManager:
         Returns:
             None
         """
-        from ray._private.worker import global_worker
 
         if self.gpu_object_store.has_gpu_object(obj_id):
             return
