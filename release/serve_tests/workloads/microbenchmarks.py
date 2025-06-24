@@ -13,6 +13,7 @@ import click
 from functools import partial
 import json
 import logging
+import os
 
 import grpc
 import pandas as pd
@@ -34,7 +35,7 @@ from ray.serve._private.benchmarks.common import (
 from ray.serve._private.common import RequestProtocol
 from ray.serve._private.test_utils import get_application_url
 from ray.serve.generated import serve_pb2, serve_pb2_grpc
-from ray.serve.config import gRPCOptions
+from ray.serve.config import HTTPOptions, gRPCOptions
 from ray.serve.handle import DeploymentHandle
 
 from serve_test_utils import save_test_results
@@ -125,6 +126,7 @@ async def _main(
     run_throughput: bool,
     run_streaming: bool,
 ):
+    http_options = HTTPOptions(host="0.0.0.0")
     perf_metrics = []
     payload_1mb = generate_payload(1000000)
     payload_10mb = generate_payload(10000000)
@@ -137,6 +139,7 @@ async def _main(
                 (payload_1mb, "http_1mb"),
                 (payload_10mb, "http_10mb"),
             ]:
+                serve.start(http_options=http_options)
                 serve.run(Noop.bind())
                 url = get_application_url()
                 latencies = await run_latency_benchmark(
@@ -148,6 +151,7 @@ async def _main(
 
         if run_throughput:
             # Microbenchmark: HTTP throughput
+            serve.start(http_options=http_options)
             serve.run(Noop.bind())
             url = get_application_url()
             mean, std, _ = await run_throughput_benchmark(
@@ -160,6 +164,7 @@ async def _main(
             serve.shutdown()
 
             # Microbenchmark: HTTP throughput at max_ongoing_requests=100
+            serve.start(http_options=http_options)
             serve.run(Noop.options(max_ongoing_requests=100).bind())
             url = get_application_url()
             mean, std, _ = await run_throughput_benchmark(
@@ -177,6 +182,7 @@ async def _main(
 
         if run_streaming:
             # Direct streaming between replica
+            serve.start(http_options=http_options)
             serve.run(
                 Streamer.options(max_ongoing_requests=1000).bind(
                     tokens_per_request=STREAMING_TOKENS_PER_REQUEST,
@@ -213,6 +219,7 @@ async def _main(
             serve.shutdown()
 
             # Streaming with intermediate router
+            serve.start(http_options=http_options)
             serve.run(
                 IntermediateRouter.options(max_ongoing_requests=1000).bind(
                     Streamer.options(max_ongoing_requests=1000).bind(
@@ -264,7 +271,7 @@ async def _main(
                 (grpc_payload_1mb, "grpc_1mb"),
                 (grpc_payload_10mb, "grpc_10mb"),
             ]:
-                serve.start(grpc_options=serve_grpc_options)
+                serve.start(http_options=http_options, grpc_options=serve_grpc_options)
                 serve.run(GrpcDeployment.bind())
                 target = get_application_url(protocol=RequestProtocol.GRPC)
                 channel = grpc.insecure_channel(target)
@@ -278,7 +285,7 @@ async def _main(
 
         if run_throughput:
             # Microbenchmark: GRPC throughput
-            serve.start(grpc_options=serve_grpc_options)
+            serve.start(http_options=http_options, grpc_options=serve_grpc_options)
             serve.run(GrpcDeployment.bind())
             target = get_application_url(protocol=RequestProtocol.GRPC)
             mean, std, _ = await run_throughput_benchmark(
@@ -291,7 +298,7 @@ async def _main(
             serve.shutdown()
 
             # Microbenchmark: GRPC throughput at max_ongoing_requests = 100
-            serve.start(grpc_options=serve_grpc_options)
+            serve.start(http_options=http_options, grpc_options=serve_grpc_options)
             serve.run(GrpcDeployment.options(max_ongoing_requests=100).bind())
             target = get_application_url(protocol=RequestProtocol.GRPC)
             mean, std, _ = await run_throughput_benchmark(
