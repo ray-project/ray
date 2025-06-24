@@ -67,6 +67,7 @@ from libcpp.unordered_map cimport unordered_map
 from libcpp.vector cimport vector as c_vector
 from libcpp.pair cimport pair as c_pair
 
+from cpython.object cimport PyTypeObject
 from cython.operator import dereference, postincrement
 from cpython.pystate cimport (
     PyGILState_Ensure,
@@ -560,6 +561,13 @@ class ObjectRefGenerator:
         raise TypeError(
             "You cannot return or pass a generator to other task. "
             "Serializing a ObjectRefGenerator is not allowed.")
+
+
+# Update the type names of the extension type so they are
+# ray.{ObjectRef, ObjectRefGenerator} instead of ray._raylet.*
+cdef PyTypeObject* object_ref_py_type = <PyTypeObject*>ObjectRef
+object_ref_py_type.tp_name = "ray.ObjectRef"
+ObjectRefGenerator.__module__ = "ray"
 
 
 # For backward compatibility.

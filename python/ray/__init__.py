@@ -93,6 +93,8 @@ from ray._raylet import (  # noqa: E402,F401
     WorkerID,
     FunctionID,
     ObjectID,
+    ObjectRef,
+    ObjectRefGenerator,
     DynamicObjectRefGenerator,
     TaskID,
     UniqueID,
@@ -100,19 +102,6 @@ from ray._raylet import (  # noqa: E402,F401
     PlacementGroupID,
     ClusterID,
 )
-
-import ray.util.annotations
-
-
-@ray.util.annotations.PublicAPI
-class ObjectRef(ray._raylet.ObjectRef):
-    pass
-
-
-@ray.util.annotations.PublicAPI
-class ObjectRefGenerator(ray._raylet.ObjectRefGenerator):
-    pass
-
 
 _config = _Config()
 
