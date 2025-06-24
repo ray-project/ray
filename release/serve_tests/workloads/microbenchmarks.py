@@ -140,7 +140,7 @@ async def _main(
             ]:
                 serve.start(http_options=http_options)
                 serve.run(Noop.bind())
-                url = get_application_url()
+                url = f"{get_application_url()}/"
                 latencies = await run_latency_benchmark(
                     lambda: requests.get(url, data=payload),
                     num_requests=NUM_REQUESTS,
@@ -152,7 +152,7 @@ async def _main(
             # Microbenchmark: HTTP throughput
             serve.start(http_options=http_options)
             serve.run(Noop.bind())
-            url = get_application_url()
+            url = f"{get_application_url()}/"
             mean, std, _ = await run_throughput_benchmark(
                 fn=partial(do_single_http_batch, batch_size=BATCH_SIZE, url=url),
                 multiplier=BATCH_SIZE,
@@ -165,7 +165,7 @@ async def _main(
             # Microbenchmark: HTTP throughput at max_ongoing_requests=100
             serve.start(http_options=http_options)
             serve.run(Noop.options(max_ongoing_requests=100).bind())
-            url = get_application_url()
+            url = f"{get_application_url()}/"
             mean, std, _ = await run_throughput_benchmark(
                 fn=partial(do_single_http_batch, batch_size=BATCH_SIZE, url=url),
                 multiplier=BATCH_SIZE,
@@ -188,7 +188,7 @@ async def _main(
                     inter_token_delay_ms=10,
                 )
             )
-            url = get_application_url()
+            url = f"{get_application_url()}/"
             # In each trial, complete only one batch of requests. Each
             # batch should take 10+ seconds to complete (because we are
             # streaming 1000 tokens per request with a 10ms inter token
@@ -227,7 +227,7 @@ async def _main(
                     )
                 )
             )
-            url = get_application_url()
+            url = f"{get_application_url()}/"
             mean, std, latencies = await run_throughput_benchmark(
                 fn=partial(
                     do_single_http_batch,
