@@ -1,0 +1,8 @@
+Currently vendored `setproctitle` version is 1.3.6
+The Cython code that exposes the C library to Python is setproctitle.pxd and setproctitle.pxi
+
+Instructions to upgrade `setproctitle`:
+
+- pip download setproctitle==1.3.6 --no-binary=:all: --no-deps
+- tar xzvf setproctitle-1.3.6.tar.gz
+- mv setproctitle-1.3.6/src src/ray/thirdparty/setproctitle/

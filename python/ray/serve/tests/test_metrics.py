@@ -1,4 +1,5 @@
 import http
+import json
 import os
 import random
 import sys
@@ -17,10 +18,10 @@ from websockets.sync.client import connect
 import ray
 import ray.util.state as state_api
 from ray import serve
-from ray._common.test_utils import SignalActor
+from ray._common.test_utils import SignalActor, wait_for_condition
+from ray._common.utils import reset_ray_address
 from ray._private.test_utils import (
     fetch_prometheus_metrics,
-    wait_for_condition,
 )
 from ray.serve._private.constants import DEFAULT_LATENCY_BUCKET_MS
 from ray.serve._private.long_poll import LongPollHost, UpdatedObject
@@ -68,7 +69,7 @@ def serve_start_shutdown(request):
     )
     serve.shutdown()
     ray.shutdown()
-    ray._private.utils.reset_ray_address()
+    reset_ray_address()
 
 
 def extract_tags(line: str) -> Dict[str, str]:
@@ -139,6 +140,7 @@ def check_sum_metric_eq(
         tags = {}
 
     metrics = fetch_prometheus_metrics([f"localhost:{TEST_METRICS_EXPORT_PORT}"])
+    metrics = {k: v for k, v in metrics.items() if "ray_serve_" in k}
     metric_samples = metrics.get(metric_name, None)
     if metric_samples is None:
         metric_sum = 0
@@ -149,9 +151,11 @@ def check_sum_metric_eq(
         metric_sum = sum(sample.value for sample in metric_samples)
 
     # Check the metrics sum to the expected number
-    assert float(metric_sum) == float(
-        expected
-    ), f"The following metrics don't sum to {expected}: {metric_samples}. {metrics}"
+    assert float(metric_sum) == float(expected), (
+        f"The following metrics don't sum to {expected}: "
+        f"{json.dumps(metric_samples, indent=4)}\n."
+        f"All metrics: {json.dumps(metrics, indent=4)}"
+    )
 
     # # For debugging
     if metric_samples:
@@ -193,7 +197,8 @@ def get_metric_dictionaries(name: str, timeout: float = 20) -> List[Dict]:
     wait_for_condition(metric_available, retry_interval_ms=1000, timeout=timeout)
 
     metrics = httpx.get("http://127.0.0.1:9999").text
-    print("metrics", metrics)
+    serve_metrics = [line for line in metrics.splitlines() if "ray_serve_" in line]
+    print("metrics", "\n".join(serve_metrics))
 
     metric_dicts = []
     for line in metrics.split("\n"):

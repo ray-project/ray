@@ -132,11 +132,11 @@ build_wheel_windows() {
         exit 1
       fi
       # build ray wheel
-      python setup.py --quiet bdist_wheel
+      python -m pip wheel -q -w dist . --no-deps
       # Pack any needed system dlls like msvcp140.dll
       delvewheel repair dist/ray-*.whl
       # build ray-cpp wheel
-      RAY_INSTALL_CPP=1 python setup.py --quiet bdist_wheel
+      RAY_INSTALL_CPP=1 python -m pip wheel -q -w dist . --no-deps
       # No extra dlls are needed, do not call delvewheel
       uninstall_ray
     )

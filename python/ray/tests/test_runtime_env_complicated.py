@@ -4,6 +4,7 @@ import subprocess
 import sys
 import tempfile
 import time
+from ray._common.test_utils import wait_for_condition
 import yaml
 from pathlib import Path
 from typing import List
@@ -11,6 +12,7 @@ from unittest import mock
 
 import pytest
 
+from ray._common.utils import try_to_create_directory
 import ray
 from ray.runtime_env import RuntimeEnv
 from ray._private.runtime_env.conda import (
@@ -28,13 +30,11 @@ from ray._private.runtime_env.conda_utils import (
 from ray._private.test_utils import (
     run_string_as_driver,
     run_string_as_driver_nonblocking,
-    wait_for_condition,
     chdir,
 )
 from ray._private.utils import (
     get_conda_env_dir,
     get_conda_bin_executable,
-    try_to_create_directory,
 )
 
 if not os.environ.get("CI"):

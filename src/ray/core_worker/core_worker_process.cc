@@ -264,7 +264,8 @@ void CoreWorkerProcessImpl::InitializeSystemConfig() {
   // the system config in the constructor of `CoreWorkerProcessImpl`.
   std::promise<std::string> promise;
   std::thread thread([&] {
-    instrumented_io_context io_service;
+    instrumented_io_context io_service{/*enable_lag_probe=*/false,
+                                       /*running_on_single_thread=*/true};
     boost::asio::executor_work_guard<boost::asio::io_context::executor_type> work(
         io_service.get_executor());
     rpc::ClientCallManager client_call_manager(io_service, /*record_stats=*/false);

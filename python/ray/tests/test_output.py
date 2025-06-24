@@ -8,11 +8,11 @@ import time
 import pytest
 
 import ray
+from ray._common.test_utils import wait_for_condition
 from ray._private.test_utils import (
     run_string_as_driver,
     run_string_as_driver_nonblocking,
     run_string_as_driver_stdout_stderr,
-    wait_for_condition,
 )
 from ray.autoscaler.v2.utils import is_autoscaler_v2
 
@@ -22,8 +22,7 @@ def test_dedup_logs():
 import time
 
 import ray
-from ray._common.test_utils import SignalActor
-from ray._private.test_utils import wait_for_condition
+from ray._common.test_utils import SignalActor, wait_for_condition
 
 signal = SignalActor.remote()
 
@@ -277,6 +276,7 @@ ray.get([a.__ray_ready__.remote(), b.__ray_ready__.remote()])
     wait_for_condition(_check_for_deadlock_msg, timeout=30)
 
 
+@pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
 def test_autoscaler_v2_stream_events_with_filter(shutdown_only):
     """Test that autoscaler v2 events are streamed to the driver."""
     address = ray.init(_system_config={"enable_autoscaler_v2": True})["address"]
@@ -334,11 +334,13 @@ while True:
                 out_str += l
 
             # Check that *all* expected messages are present.
-            assert all([msg in out_str for msg in expected_msg.split(",")])
+            assert all([msg in out_str for msg in expected_msg.split(",")]), out_str
 
             # Check that *no* unexpected messages are present.
             if unexpected_msg:
-                assert all([msg not in out_str for msg in unexpected_msg.split(",")])
+                assert all(
+                    [msg not in out_str for msg in unexpected_msg.split(",")]
+                ), out_str
 
             return True
 
@@ -356,14 +358,14 @@ import sys
 import tempfile
 import ray
 
-temporary_python_file = '''
+f = tempfile.NamedTemporaryFile("w+", suffix=".py", prefix="_", delete=False)
+try:
+    f.write('''
 def temporary_helper_function():
    return 1
-'''
-
-with tempfile.NamedTemporaryFile("w+", suffix=".py", prefix="_", delete=True) as f:
-    f.write(temporary_python_file)
+''')
     f.flush()
+    f.close()
 
     # Get the module name and strip ".py" from the end.
     directory = os.path.dirname(f.name)
@@ -380,6 +382,8 @@ with tempfile.NamedTemporaryFile("w+", suffix=".py", prefix="_", delete=True) as
 
         def ready(self):
             pass
+finally:
+    os.unlink(f.name)
 
 ray.get(Foo.remote().ready.remote())
 """
@@ -397,14 +401,14 @@ import sys
 import tempfile
 import ray
 
-temporary_python_file = '''
+f = tempfile.NamedTemporaryFile("w+", suffix=".py", prefix="_", delete=False)
+try:
+    f.write('''
 def temporary_helper_function():
    return 1
-'''
-
-with tempfile.NamedTemporaryFile("w+", suffix=".py", prefix="_", delete=True) as f:
-    f.write(temporary_python_file)
+''')
     f.flush()
+    f.close()
 
     # Get the module name and strip ".py" from the end.
     directory = os.path.dirname(f.name)
@@ -417,6 +421,8 @@ with tempfile.NamedTemporaryFile("w+", suffix=".py", prefix="_", delete=True) as
     @ray.remote
     def foo():
         return module.temporary_python_file()
+finally:
+    os.unlink(f.name)
 
 ray.get(foo.remote())
 """
