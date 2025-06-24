@@ -12,7 +12,8 @@ e2e_timeseries/03-Serving
 
 
 <div align="left">
-<a target="_blank" href="https://console.anyscale.com/"><img src="https://img.shields.io/badge/🚀%20Run%20on-Anyscale-9hf"></a>&nbsp;
+<a target="_blank" href="https://console.anyscale.com/template-preview/e2e-timeseries-forecasting?render_flow=ray&utm_source=ray_docs&utm_medium=docs&utm_content=run_on_anyscale&utm_campaign=e2e-timeseries-forecasting"><img src="https://raw.githubusercontent.com/ray-project/ray/c34b74c22a9390aa89baf80815ede59397786d2e/doc/source/_static/img/run-on-anyscale.svg" alt="Run on Anyscale">
+<br></br>
 <a href="https://github.com/anyscale/e2e-timeseries" role="button"><img src="https://img.shields.io/static/v1?label=&message=View%20On%20GitHub&color=586069&logo=github&labelColor=2f363d"></a>
 </div>
 

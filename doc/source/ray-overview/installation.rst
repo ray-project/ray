@@ -5,7 +5,7 @@ Installing Ray
 
 .. raw:: html
 
-    <a id="try-anyscale-quickstart-install-ray" target="_blank" href="https://console.anyscale.com/register/ha?render_flow=ray&utm_source=ray_docs&utm_medium=docs&utm_campaign=installing_ray&redirectTo=/v2/template-preview/workspace-intro">
+    <a id="try-anyscale-quickstart-install-ray" target="_blank" href="https://console.anyscale.com/template-preview/workspace-intro?render_flow=ray&utm_source=ray_docs&utm_medium=docs&utm_campaign=installing_ray">
       <img src="../_static/img/run-on-anyscale.svg" alt="Run Quickstart on Anyscale" />
       <br/><br/>
     </a>

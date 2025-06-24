@@ -12,7 +12,9 @@ notebooks/03-Online-Serving
 
 
 <div align="left">
-<a target="_blank" href="https://console.anyscale.com/"><img src="https://img.shields.io/badge/🚀 Run_on-Anyscale-9hf"></a>&nbsp;
+<a target="_blank" href="https://console.anyscale.com/template-preview/image-search-and-classification?render_flow=ray&utm_source=ray_docs&utm_medium=docs&utm_content=run_on_anyscale&utm_campaign=image-search-and-classification">
+<img src="https://raw.githubusercontent.com/ray-project/ray/c34b74c22a9390aa89baf80815ede59397786d2e/doc/source/_static/img/run-on-anyscale.svg" alt="Run on Anyscale">
+<br></br>
 <a href="https://github.com/anyscale/foundational-ray-app" role="button"><img src="https://img.shields.io/static/v1?label=&amp;message=View%20On%20GitHub&amp;color=586069&amp;logo=github&amp;labelColor=2f363d"></a>&nbsp;
 </div>
 
