@@ -34,7 +34,7 @@ kubectl get all -n prometheus-system
 ```
 
 * KubeRay provides an [install.sh script](https://github.com/ray-project/kuberay/blob/master/install/prometheus/install.sh) to:
-  * Install the [kube-prometheus-stack v48.2.1](https://github.com/prometheus-community/helm-charts/tree/kube-prometheus-stack-48.2.1/charts/kube-prometheus-stack) chart and related custom resources, including **PodMonitor** for Ray Pods and **PrometheusRule**, in the namespace `prometheus-system` automatically. 
+  * Install the [kube-prometheus-stack v48.2.1](https://github.com/prometheus-community/helm-charts/tree/kube-prometheus-stack-48.2.1/charts/kube-prometheus-stack) chart and related custom resources, including **PodMonitor** for Ray Pods and **PrometheusRule**, in the namespace `prometheus-system` automatically.
   * Import Ray Dashboard's [Grafana JSON files](https://github.com/ray-project/kuberay/tree/master/config/grafana) into Grafana using the `--auto-load-dashboard true` flag. If the flag isn't set, the following step also provides instructions for manual import. See [Step 12: Import Grafana dashboards manually (optional)](#step-12-import-grafana-dashboards-manually-optional) for more details.
 
 * We made some modifications to the original `values.yaml` in kube-prometheus-stack chart to allow embedding Grafana panels in Ray Dashboard. See [overrides.yaml](https://github.com/ray-project/kuberay/tree/master/install/prometheus/overrides.yaml) for more details.
@@ -54,12 +54,14 @@ kubectl get all -n prometheus-system
 
 * Follow [this document](kuberay-operator-deploy) to install the latest stable KubeRay operator via Helm repository.
 * Set `metrics.serviceMonitor.enabled=true` when installing the KubeRay operator with Helm to create a ServiceMonitor that scrapes metrics exposed by the KubeRay operator's service.
+
   ```sh
   # Enable the ServiceMonitor and set the label `release: prometheus` to the ServiceMonitor so that Prometheus can discover it
-  helm install kuberay-operator kuberay/kuberay-operator --version 1.4.0 \ 
-    --set metrics.serviceMonitor.enabled=true \ 
-    --set metrics.serviceMonitor.selector.release=prometheus 
+  helm install kuberay-operator kuberay/kuberay-operator --version 1.4.0 \
+    --set metrics.serviceMonitor.enabled=true \
+    --set metrics.serviceMonitor.selector.release=prometheus
   ```
+
   You can verify the ServiceMonitor creation with:
   ```sh
   kubectl get servicemonitor
@@ -104,7 +106,7 @@ curl localhost:8080
   * `# HELP`: Describe the meaning of this metric.
   * `# TYPE`: See [this document](https://prometheus.io/docs/concepts/metric_types/) for more details.
 
-* Three required environment variables are defined in [ray-cluster.embed-grafana.yaml](https://github.com/ray-project/kuberay/blob/v1.3.0/ray-operator/config/samples/ray-cluster.embed-grafana.yaml). See [Configuring and Managing Ray Dashboard](https://docs.ray.io/en/latest/cluster/configure-manage-dashboard.html) for more details about these environment variables.
+* [ray-cluster.embed-grafana.yaml](https://github.com/ray-project/kuberay/blob/v1.4.0/ray-operator/config/samples/ray-cluster.embed-grafana.yaml) defines three required environment variables. See [Configuring and Managing Ray Dashboard](https://docs.ray.io/en/latest/cluster/configure-manage-dashboard.html) for more details about these environment variables.
   ```yaml
   env:
     - name: RAY_GRAFANA_IFRAME_HOST
@@ -246,7 +248,7 @@ spec:
 * KubeRay operator provides metrics for RayCluster, RayService, and RayJob. See {ref}`kuberay-metrics-references` for more details.
 * Prometheus uses `namespaceSelector` and `selector` to select Kubernetes Service.
 ```sh
-kubectl get service -n default -l app.kubernetes.io/name=kuberay-operator 
+kubectl get service -n default -l app.kubernetes.io/name=kuberay-operator
 NAME               TYPE        CLUSTER-IP      EXTERNAL-IP   PORT(S)    AGE
 kuberay-operator   ClusterIP   10.96.205.229   <none>        8080/TCP   53m
 ```

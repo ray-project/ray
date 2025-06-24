@@ -272,7 +272,7 @@ class TestJobDelete:
 
 class TestJobStatus:
     # `ray job status` should exit with 0 if the job exists and non-zero if it doesn't.
-    # This is the contract between Ray and KubRay v1.3.0.
+    # This is the contract between Ray and KubeRay.
     def test_status_job_exists(self, ray_start_stop):
         cmd = "echo hello"
         job_id = "test_job_id"
