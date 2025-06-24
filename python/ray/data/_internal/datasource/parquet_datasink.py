@@ -122,17 +122,17 @@ class ParquetDatasink(_FileDatasink):
         # keep the rest for ParquetWriter()
         row_group_size = write_kwargs.pop("row_group_size", None)
 
-        for table in tables:
-            pq.write_to_dataset(
-                table,
-                root_path=path,
-                max_rows_per_group=row_group_size,
-                filesystem=self.filesystem,
-                basename_template=filename,
-                schema=output_schema,
-                use_legacy_dataset=False,
-                **write_kwargs,
-            )
+        table = concat(tables, promote_types=False)
+        pq.write_to_dataset(
+            table,
+            root_path=path,
+            max_rows_per_group=row_group_size,
+            filesystem=self.filesystem,
+            basename_template=filename,
+            schema=output_schema,
+            use_legacy_dataset=False,
+            **write_kwargs,
+        )
 
     def _write_partition_files(
         self,
