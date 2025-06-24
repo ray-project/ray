@@ -31,9 +31,7 @@ ActorSchedulingQueue::ActorSchedulingQueue(
       main_thread_id_(std::this_thread::get_id()),
       waiter_(waiter),
       task_event_buffer_(task_event_buffer),
-      pool_manager_(std::move(pool_manager)) {
-  RAY_CHECK(pool_manager_ != nullptr);
-}
+      pool_manager_(std::move(pool_manager)) {}
 
 void ActorSchedulingQueue::Stop() { pool_manager_->Stop(); }
 
