@@ -65,5 +65,5 @@ echo "--- Run doc tests"
 cd doc/source/cluster/kubernetes
 for test in "${DOC_TESTS[@]}"; do
   echo "Running test: ${test}"
-  pytest --nbval "${test}" --nbval-kernel-name bash --sanitize-with doc_sanitize.cfg
+  pytest --nbval "${test}" --nbval-kernel-name bash --sanitize-with doc_sanitize.cfg -v
 done
