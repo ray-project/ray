@@ -44,7 +44,7 @@ class TrainStateActor:
         # NOTE: All runs and attempts are stored in memory.
         # This may be a memory issue for large runs.
         # TODO: consider cleaning up runs over time.
-        self._runs: Dict[str, TrainRun] = {}
+        self._runs: Dict[str, TrainRun] = OrderedDict()
         # {run_id: {attempt_id: TrainRunAttempt}}
         self._run_attempts: Dict[str, OrderedDict[str, TrainRunAttempt]] = defaultdict(
             OrderedDict
@@ -83,24 +83,36 @@ class TrainStateActor:
             )
             self._start_controller_polling_thread()
 
-    def _abort_live_runs_with_dead_controllers(self, poll_index: int) -> int:
+    def _abort_live_runs_with_dead_controllers(
+        self, last_poll_run_id: Optional[str]
+    ) -> str:
         with self._runs_lock:
-            # Get non-terminal runs to consider aborting this iteration.
-            non_terminal_runs = [
-                run for run in self._runs.values() if not run.status.is_terminal()
-            ]
+            runs = list(self._runs.values())
 
-            # Sample runs by starting at the poll index and wrapping around.
-            num_runs_to_sample = min(
-                len(non_terminal_runs), self._controllers_to_poll_per_iteration
-            )
+            # Start iterating from poll index.
+            poll_index = 0
+            if last_poll_run_id is not None:
+                for i, run in enumerate(runs):
+                    if run.id == last_poll_run_id:
+                        poll_index = (i + 1) % len(runs)
+                        break
 
             # Abort runs and run attempts.
-            for i in range(poll_index, poll_index + num_runs_to_sample):
-                run = non_terminal_runs[i % len(non_terminal_runs)]
+            sampled_runs = 0
+            i = poll_index
+            while (
+                i < poll_index + len(runs)
+                and sampled_runs < self._controllers_to_poll_per_iteration
+            ):
+                run = runs[i % len(runs)]
+                i += 1
+                last_poll_run_id = run.id
+                if run.status.is_terminal():
+                    continue
                 actor_state = get_actor(
                     run.controller_actor_id, timeout=self._get_actor_timeout_s
                 )
+                sampled_runs += 1
                 if not actor_state or actor_state.state == "DEAD":
                     update_train_run_aborted(run, False)
                     self.create_or_update_train_run(run)
@@ -112,11 +124,11 @@ class TrainStateActor:
                         update_train_run_attempt_aborted(latest_run_attempt, False)
                         self.create_or_update_train_run_attempt(latest_run_attempt)
 
-            return (poll_index + num_runs_to_sample) % len(non_terminal_runs)
+            return last_poll_run_id
 
     def _start_controller_polling_thread(self) -> None:
         def _poll_controller_continuously():
-            poll_index = 0
+            last_poll_run_id = None
             latest_poll_time = float("-inf")
             while True:
                 # Wait for the poll interval to elapse.
@@ -125,7 +137,9 @@ class TrainStateActor:
                     remaining_time = self._poll_interval_s - time_since_last_poll
                     time.sleep(remaining_time)
 
-                poll_index = self._abort_live_runs_with_dead_controllers(poll_index)
+                last_poll_run_id = self._abort_live_runs_with_dead_controllers(
+                    last_poll_run_id
+                )
                 latest_poll_time = time_monotonic()
 
         thread = threading.Thread(target=_poll_controller_continuously, daemon=True)
@@ -151,10 +165,12 @@ class TrainStateActor:
         self._maybe_export_train_run_attempt(run_attempt_copy)
 
     def get_train_runs(self) -> Dict[str, TrainRun]:
-        return self._runs
+        with self._runs_lock:
+            return self._runs
 
     def get_train_run_attempts(self) -> Dict[str, Dict[str, TrainRunAttempt]]:
-        return self._run_attempts
+        with self._runs_lock:
+            return self._run_attempts
 
     # ============================
     # Export API
