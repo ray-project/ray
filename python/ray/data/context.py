@@ -197,6 +197,10 @@ DEFAULT_WAIT_FOR_MIN_ACTORS_S = env_integer(
     "RAY_DATA_DEFAULT_WAIT_FOR_MIN_ACTORS_S", -1
 )
 
+DEFAULT_MAX_PER_ACTOR_TASK_QUEUE_SIZE = env_integer(
+    "RAY_DATA_DEFAULT_MAX_PER_ACTOR_TASK_QUEUE_SIZE", 1
+)
+
 # Enable per node metrics reporting for Ray Data, disabled by default.
 DEFAULT_ENABLE_PER_NODE_METRICS = bool(
     int(os.environ.get("RAY_DATA_PER_NODE_METRICS", "0"))
@@ -339,8 +343,11 @@ class DataContext:
             call is made with a S3 URI.
         wait_for_min_actors_s: The default time to wait for minimum requested
             actors to start before raising a timeout, in seconds.
-        max_buffered_blocks_per_actor: Number of blocks that could be buffered
-            by individual Actor in the Actor Pool
+        max_per_actor_task_queue_size: Max number of tasks that could be enqueued
+            into the individual Actor's queue. Note that running tasks are not counted
+            towards this limit. This setting allows Actors to start pulling and buffering
+             blocks for the tasks waiting in the queue to make sure tasks could start
+            executing immediately once taken from the queue.
         retried_io_errors: A list of substrings of error messages that should
             trigger a retry when reading or writing files. This is useful for handling
             transient errors when reading from remote storage systems.
@@ -456,7 +463,7 @@ class DataContext:
     # Setting non-positive value here (ie <= 0) disables this functionality
     # (defaults to -1).
     wait_for_min_actors_s: int = DEFAULT_WAIT_FOR_MIN_ACTORS_S
-    max_buffered_blocks_per_actor: int = DEFAULT_MAX_BUFFERED_BLOCKS_PER_ACTOR
+    max_per_actor_task_queue_size: int = DEFAULT_MAX_PER_ACTOR_TASK_QUEUE_SIZE
     retried_io_errors: List[str] = field(
         default_factory=lambda: list(DEFAULT_RETRIED_IO_ERRORS)
     )
