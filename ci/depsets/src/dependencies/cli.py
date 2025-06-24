@@ -111,6 +111,7 @@ class DependencySetManager:
         emit_index_url: bool,
         emit_find_links: bool,
         python_version: str,
+        prerelease: str,
     ):
         args = []
         if unsafe_packages:
@@ -140,6 +141,8 @@ class DependencySetManager:
             args.append("--emit-find-links")
         if python_version:
             args.extend(["--python-version", python_version])
+        if prerelease:
+            args.extend(["--prerelease", prerelease])
         return args
 
     def compile_depset(
@@ -366,6 +369,7 @@ def delete(name: str):
 @click.option("--no-header", is_flag=True, help="no header")
 @click.option("--no-cache", is_flag=True, help="no header")
 @click.option("--python-version", type=str, default="3.11", help="python version")
+@click.option("--prerelease", type=str, default="allow", help="include prerelease packages")
 @click.argument("name", required=True)
 def compile(
     constraints: str,
@@ -383,6 +387,7 @@ def compile(
     no_header: bool,
     no_cache: bool,
     python_version: str,
+    prerelease: str,
     name: str,
 ):
     """Compile a dependency set."""
@@ -398,7 +403,7 @@ def compile(
         resolved_requirements = resolve_paths(requirements)
 
         manager = DependencySetManager()
-        args = manager.process_flags(unsafe_package, index_url, extra_index_url, find_links, generate_hashes, no_header, no_cache, index_strategy, strip_extras, no_strip_markers, emit_index_url, emit_find_links, python_version)
+        args = manager.process_flags(unsafe_package, index_url, extra_index_url, find_links, generate_hashes, no_header, no_cache, index_strategy, strip_extras, no_strip_markers, emit_index_url, emit_find_links, python_version, prerelease)
         manager.compile_depset(
             resolved_constraints,
             resolved_requirements,
@@ -478,6 +483,7 @@ def subset(sources: str, packages: str, name: str):
 @click.option("--no-header", is_flag=True, help="no header")
 @click.option("--no-cache", is_flag=True, help="no header")
 @click.option("--python-version", type=str, default="3.11", help="python version")
+@click.option("--prerelease", type=str, default="allow", help="include prerelease packages")
 @click.argument("name")
 def expand(
     sources: str,
@@ -495,12 +501,13 @@ def expand(
     no_header: bool,
     no_cache: bool,
     python_version: str,
+    prerelease: str,
     name: str,
 ):
     """Expand a dependency set."""
     try:
         manager = DependencySetManager()
-        args = manager.process_flags(unsafe_package, index_url, extra_index_url, find_links, generate_hashes, no_header, no_cache, index_strategy, strip_extras, no_strip_markers, emit_index_url, emit_find_links, python_version)
+        args = manager.process_flags(unsafe_package, index_url, extra_index_url, find_links, generate_hashes, no_header, no_cache, index_strategy, strip_extras, no_strip_markers, emit_index_url, emit_find_links, python_version, prerelease)
         manager.expand_depset(
             sources.split(","),
             resolve_paths(constraints),
