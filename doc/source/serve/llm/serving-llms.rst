@@ -911,7 +911,7 @@ An example config is shown below:
 There are some differences between how `vllm serve` cli works and how ray serve llm works. How do I work around that?
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-We have openned an issue to track and fix this: https://github.com/ray-project/ray/issues/53533. Please add comments to this issue thread if you are facing problems that fall under this category. We have identified the following example issues so far: 
+We have opened an issue to track and fix this: https://github.com/ray-project/ray/issues/53533. Please add comments to this issue thread if you are facing problems that fall under this category. We have identified the following example issues so far: 
 
 - Tool calling is not supported in the same way it is supported in vllm serve cli. This is due to the extra logical pieces of code that map cli args to extra layers in the api server critical path. 
 
