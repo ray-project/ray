@@ -57,6 +57,8 @@ class EnvRunner(FaultAwareApply, metaclass=abc.ABCMeta):
         self.config: AlgorithmConfig = config.copy(copy_frozen=False)
 
         # Get the worker index on which this instance is running.
+
+        # TODO (sven): We should make these c'tor named args.
         self.worker_index: int = kwargs.get("worker_index")
         self.num_workers: int = kwargs.get("num_workers", self.config.num_env_runners)
 

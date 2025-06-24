@@ -76,7 +76,7 @@ class MultiAgentEnvRunner(EnvRunner, Checkpointable):
             config: An `AlgorithmConfig` object containing all settings needed to
                 build this `EnvRunner` class.
         """
-        super().__init__(config=config)
+        super().__init__(config=config, **kwargs)
 
         # Raise an Error, if the provided config is not a multi-agent one.
         if not self.config.is_multi_agent:

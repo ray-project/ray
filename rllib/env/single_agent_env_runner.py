@@ -76,7 +76,7 @@ class SingleAgentEnvRunner(EnvRunner, Checkpointable):
             config: An `AlgorithmConfig` object containing all settings needed to
                 build this `EnvRunner` class.
         """
-        super().__init__(config=config)
+        super().__init__(config=config, **kwargs)
 
         self.tune_trial_id: str = kwargs.get("tune_trial_id")
         self.spaces = kwargs.get("spaces", {})
