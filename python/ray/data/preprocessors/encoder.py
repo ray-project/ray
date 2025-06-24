@@ -271,6 +271,8 @@ class OneHotEncoder(Preprocessor):
 
         # Compute new one-hot encoded columns
         for column, output_column in zip(self.columns, self.output_columns):
+            if _is_series_composed_of_lists(df[column]):
+                df[column] = df[column].map(tuple)
             codes, uniques = df[column].factorize()
             ohe = np.eye(len(uniques), dtype=int)[codes]  # (n_rows, n_cats)
             df[output_column] = ohe.tolist()  # vector per row
