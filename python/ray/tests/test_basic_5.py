@@ -133,11 +133,10 @@ def test_exit_logging():
 import ray
 import unittest.mock
 
-# Patch method that makes calls to AcceleratorManager in Node init
-with unittest.mock.patch(
-    "ray._private.node.Node._get_default_ray_node_labels",
-    return_value={}
-):
+# Patch methods that makes calls to AcceleratorManager in Node init
+with unittest.mock.patch("ray._private.accelerators.accelerator_utils.resolve_and_update_accelerator_resources", return_value=0), \\
+     unittest.mock.patch("ray._private.accelerators.get_all_accelerator_resource_names", return_value=[]):
+
     @ray.remote
     class A:
         def pid(self):

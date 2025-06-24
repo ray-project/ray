@@ -495,6 +495,7 @@ py_test_module_list(
 py_test_module_list(
     size = "small",
     files = [
+        "accelerators/test_accelerator_utils.py",
         "accelerators/test_accelerators.py",
         "accelerators/test_amd_gpu.py",
         "accelerators/test_intel_gpu.py",

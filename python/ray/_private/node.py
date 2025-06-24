@@ -24,6 +24,9 @@ import ray._private.ray_constants as ray_constants
 import ray._private.services
 from ray._common.ray_constants import LOGGING_ROTATE_BACKUP_COUNT, LOGGING_ROTATE_BYTES
 from ray._common.utils import try_to_create_directory
+from ray._private.accelerators.accelerator_utils import (
+    get_first_detectable_accelerator_type,
+)
 from ray._private.resource_isolation_config import ResourceIsolationConfig
 from ray._private.resource_spec import ResourceSpec
 from ray._private.services import get_address, serialize_config
@@ -1943,39 +1946,12 @@ class Node:
 
         # Get accelerator type from AcceleratorManager
         if resource_spec.resolved():
-            # Check first that the resource configuration passed to the Raylet has been set.
-            # Only check for accelerator-type if resource_spec.resources is not None.
-            for (
-                accelerator_resource_name
-            ) in ray._private.accelerators.get_all_accelerator_resource_names():
-                try:
-                    accelerator_manager = (
-                        ray._private.accelerators.get_accelerator_manager_for_resource(
-                            accelerator_resource_name
-                        )
-                    )
-                    num_accelerators = resource_spec.resources.get(
-                        accelerator_resource_name, None
-                    )
-                    accelerator_type = (
-                        accelerator_manager.get_current_node_accelerator_type()
-                    )
-                    if num_accelerators is None:
-                        # Try to automatically detect the number of accelerators.
-                        num_accelerators = (
-                            accelerator_manager.get_current_node_num_accelerators()
-                        )
-                except Exception:
-                    accelerator_type = None
-                    logger.debug(
-                        "Failed to detect accelerator type for default Ray labels during Node init."
-                    )
-                if accelerator_type and num_accelerators:
-                    # Only set label if both accelerator type and the number of
-                    # accelerators were successfully detected.
-                    default_labels[
-                        ray._raylet.RAY_NODE_ACCELERATOR_TYPE_KEY
-                    ] = accelerator_type
-                    break  # Only add one value for ray.io/accelerator-type
+            accelerator_type = get_first_detectable_accelerator_type(
+                resource_spec.resources or {}
+            )
+            if accelerator_type:
+                default_labels[
+                    ray._raylet.RAY_NODE_ACCELERATOR_TYPE_KEY
+                ] = accelerator_type
 
         return default_labels
