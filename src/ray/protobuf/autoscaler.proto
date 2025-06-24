@@ -195,6 +195,10 @@ message NodeState {
 
   // Observability debug string describing why the node is not idle.
   repeated string node_activity = 12;
+
+  // Labels associated with this node. `ray.io/` labels set by
+  // default by Ray or specified by the user at node init.
+  map<string, string> labels = 13;
 }
 
 // ============= Autoscaling State Service API =======================
