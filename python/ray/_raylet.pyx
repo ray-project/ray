@@ -565,6 +565,9 @@ class ObjectRefGenerator:
 
 # Update the type names of the extension type so they are
 # ray.{ObjectRef, ObjectRefGenerator} instead of ray._raylet.*
+# For ObjectRefGenerator that can be done directly since it is
+# a full Python class. For ObjectRef we need to update the
+# tp_name since it is a C extension class and not a full class.
 cdef PyTypeObject* object_ref_py_type = <PyTypeObject*>ObjectRef
 object_ref_py_type.tp_name = "ray.ObjectRef"
 ObjectRefGenerator.__module__ = "ray"
