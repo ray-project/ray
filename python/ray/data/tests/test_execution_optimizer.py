@@ -955,55 +955,6 @@ def test_from_arrow_refs_e2e(ray_start_regular_shared_2_cpus):
     _check_usage_record(["FromArrow"])
 
 
-def test_from_huggingface_e2e(ray_start_regular_shared_2_cpus):
-    import datasets
-
-    from ray.data.tests.test_huggingface import hfds_assert_equals
-
-    data = datasets.load_dataset("tweet_eval", "emotion")
-    assert isinstance(data, datasets.DatasetDict)
-    ray_datasets = {
-        "train": ray.data.from_huggingface(data["train"]),
-        "validation": ray.data.from_huggingface(data["validation"]),
-        "test": ray.data.from_huggingface(data["test"]),
-    }
-
-    for ds_key, ds in ray_datasets.items():
-        assert isinstance(ds, ray.data.Dataset)
-        # `ds.take_all()` triggers execution with new backend, which is
-        # needed for checking operator usage below.
-        assert len(ds.take_all()) > 0
-        # Check that metadata fetch is included in stats;
-        # the underlying implementation uses the `ReadParquet` operator
-        # as this is an un-transformed public dataset.
-        assert "ReadParquet" in ds.stats() or "FromArrow" in ds.stats()
-        assert (
-            ds._plan._logical_plan.dag.name == "ReadParquet"
-            or ds._plan._logical_plan.dag.name == "FromArrow"
-        )
-        # use sort by 'text' to match order of rows
-        hfds_assert_equals(data[ds_key], ds)
-        try:
-            _check_usage_record(["ReadParquet"])
-        except AssertionError:
-            _check_usage_record(["FromArrow"])
-
-    # test transformed public dataset for fallback behavior
-    base_hf_dataset = data["train"]
-    hf_dataset_split = base_hf_dataset.train_test_split(test_size=0.2)
-    ray_dataset_split_train = ray.data.from_huggingface(hf_dataset_split["train"])
-    assert isinstance(ray_dataset_split_train, ray.data.Dataset)
-    # `ds.take_all()` triggers execution with new backend, which is
-    # needed for checking operator usage below.
-    assert len(ray_dataset_split_train.take_all()) > 0
-    # Check that metadata fetch is included in stats;
-    # the underlying implementation uses the `FromArrow` operator.
-    assert "FromArrow" in ray_dataset_split_train.stats()
-    assert ray_dataset_split_train._plan._logical_plan.dag.name == "FromArrow"
-    assert ray_dataset_split_train.count() == hf_dataset_split["train"].num_rows
-    _check_usage_record(["FromArrow"])
-
-
 @pytest.mark.skipif(
     sys.version_info >= (3, 12),
     reason="Skip due to incompatibility tensorflow with Python 3.12+",

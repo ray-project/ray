@@ -849,6 +849,9 @@ py_test(
     tags = [
         "exclusive",
         "team:data",
+        # Many of the HuggingFace tests depend on HuggingFace's servers, which
+        # occasionally fail.
+        "flaky",
     ],
     deps = [
         ":conftest",
