@@ -112,7 +112,7 @@ class TrainStateActor:
             return last_poll_run_id
 
     def _start_run_state_reconciliation_thread(self) -> None:
-        def _poll_controller_continuously():
+        def _reconciliation_loop():
             last_poll_run_id = None
             latest_poll_time = float("-inf")
             while True:
@@ -127,7 +127,7 @@ class TrainStateActor:
                 )
                 latest_poll_time = time_monotonic()
 
-        thread = threading.Thread(target=_poll_controller_continuously, daemon=True)
+        thread = threading.Thread(target=_reconciliation_loop, daemon=True)
         thread.start()
 
     def _get_latest_run_attempt(self, run_id: str) -> Optional[TrainRunAttempt]:
