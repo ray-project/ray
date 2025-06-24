@@ -87,9 +87,6 @@ class MultiAgentEnvRunner(EnvRunner, Checkpointable):
                 "policy_mapping_fn=...)`."
             )
 
-        # Get the worker index on which this instance is running.
-        self.worker_index: int = kwargs.get("worker_index")
-        self.tune_trial_id: str = kwargs.get("tune_trial_id")
         self.spaces = kwargs.get("spaces", {})
 
         self._setup_metrics()
@@ -545,7 +542,12 @@ class MultiAgentEnvRunner(EnvRunner, Checkpointable):
         self._ongoing_episodes_for_metrics.clear()
 
         # Try resetting the environment.
-        observations, infos = self._try_env_reset()
+        observations, infos = self._try_env_reset(
+            # Only seed (if seed provided) upon initial reset.
+            seed=self._seed if self._needs_initial_reset else None,
+            # TODO (sven): Support options?
+            options=None,
+        )
 
         # Set the initial obs and infos in the episodes.
         for env_index in range(self.num_envs):

@@ -1,5 +1,6 @@
 import numpy as np
 import os
+from packaging.version import Version
 import random
 from typing import Optional
 
@@ -32,20 +33,27 @@ def update_global_seed_if_necessary(
     if framework == "torch":
         torch, _ = try_import_torch()
         torch.manual_seed(seed)
+
         # See https://github.com/pytorch/pytorch/issues/47672.
         cuda_version = torch.version.cuda
         if cuda_version is not None and float(torch.version.cuda) >= 10.2:
             os.environ["CUBLAS_WORKSPACE_CONFIG"] = "4096:8"
-        else:
-            from packaging.version import Version
+            torch.cuda.manual_seed(seed)
+            torch.cuda.manual_seed_all(seed)  # if using multi-GPU
 
-            if Version(torch.__version__) >= Version("1.8.0"):
-                # Not all Operations support this.
-                torch.use_deterministic_algorithms(True)
-            else:
-                torch.set_deterministic(True)
+        if Version(torch.__version__) >= Version("1.8.0"):
+            # Not all Operations support this.
+            torch.use_deterministic_algorithms(True)
+        else:
+            torch.set_deterministic(True)
+
         # This is only for Convolution no problem.
         torch.backends.cudnn.deterministic = True
+        # For benchmark=True, CuDNN may choose different algorithms depending on runtime
+        # conditions or slight differences in input sizes, even if the seed is fixed,
+        # which breaks determinism.
+        torch.backends.cudnn.benchmark = False
+
     elif framework == "tf2":
         tf1, tf, tfv = try_import_tf()
         # Tf2.x.
