@@ -3743,14 +3743,12 @@ class AutoscalingTest(unittest.TestCase):
         autoscaler.update()
         self.waitForNodes(1, tag_filters=WORKER_FILTER)
 
-        # Reduce cluster size to 1
         new_config = copy.deepcopy(SMALL_CLUSTER)
         new_config["available_node_types"]["worker"]["min_workers"] = 0
         self.write_config(new_config)
         autoscaler.update()
 
         worker_ip = self.provider.non_terminated_node_ips(WORKER_FILTER)[0]
-        # Mark the node as idle
         lm.update(worker_ip, mock_raylet_id(), {"CPU": 1}, {"CPU": 1}, 0)
         autoscaler.update()
 
@@ -3765,7 +3763,6 @@ class AutoscalingTest(unittest.TestCase):
         lm.last_heartbeat_time_by_ip[worker_ip] = past_heartbeat
         autoscaler.update()
 
-        # The node should now be considered inactive due to timeout
         assert not lm.is_active(
             worker_ip
         ), "Node should not be active after heartbeat timeout"
