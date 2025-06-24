@@ -392,6 +392,9 @@ python_grpc_compile(
 proto_library(
     name = "export_dataset_metadata_proto",
     srcs = ["export_dataset_metadata.proto"],
+    deps = [
+        "@com_google_protobuf//:struct_proto",
+    ],
 )
 
 cc_proto_library(

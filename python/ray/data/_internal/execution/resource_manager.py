@@ -105,6 +105,37 @@ class ResourceManager:
             )
         )
 
+        self._warn_about_object_store_memory_if_needed()
+
+    def _warn_about_object_store_memory_if_needed(self):
+        """Warn if object store memory is configured below 50% of total memory."""
+        import ray
+        from ray.data.context import WARN_PREFIX
+        from ray.util.debug import log_once
+
+        if not ray.is_initialized():
+            return
+
+        cluster_resources = ray.cluster_resources()
+        total_memory = cluster_resources.get("memory", 0)
+        object_store_memory = cluster_resources.get("object_store_memory", 0)
+
+        # Check if we have actual numeric values (not mocks or None)
+        if total_memory > 0:
+            object_store_fraction = object_store_memory / total_memory
+
+            if object_store_fraction < 0.5 and log_once(
+                "ray_data_object_store_memory_warning"
+            ):
+                logger.warning(
+                    f"{WARN_PREFIX} Ray's object store is configured to use only "
+                    f"{object_store_fraction:.1%} of available memory ({object_store_memory/1e9:.1f}GB "
+                    f"out of {total_memory/1e9:.1f}GB total). For optimal Ray Data performance, "
+                    f"we recommend setting the object store to at least 50% of available memory. "
+                    f"You can do this by setting the 'object_store_memory' parameter when calling "
+                    f"ray.init() or by setting the RAY_DEFAULT_OBJECT_STORE_MEMORY_PROPORTION environment variable."
+                )
+
     def _estimate_object_store_memory(
         self, op: "PhysicalOperator", state: "OpState"
     ) -> int:
@@ -669,7 +700,7 @@ class ReservationOpResourceAllocator(OpResourceAllocator):
             self._op_budgets[op].gpu = float("inf")
 
         # A materializing operator like `AllToAllOperator` waits for all its input
-        # operator’s outputs before processing data. This often forces the input
+        # operator's outputs before processing data. This often forces the input
         # operator to exceed its object store memory budget. To prevent deadlock, we
         # disable object store memory backpressure for the input operator.
         for op in eligible_ops:

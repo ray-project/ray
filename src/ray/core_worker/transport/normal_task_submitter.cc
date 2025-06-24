@@ -94,7 +94,7 @@ void NormalTaskSubmitter::AddWorkerLeaseClient(
     const google::protobuf::RepeatedPtrField<rpc::ResourceMapEntry> &assigned_resources,
     const SchedulingKey &scheduling_key,
     const TaskID &task_id) {
-  client_cache_->GetOrConnect(addr);
+  core_worker_client_pool_->GetOrConnect(addr);
   int64_t expiration = current_time_ms() + lease_timeout_ms_;
   LeaseEntry new_lease_entry = LeaseEntry(
       std::move(lease_client), expiration, assigned_resources, scheduling_key, task_id);
@@ -166,7 +166,7 @@ void NormalTaskSubmitter::OnWorkerIdle(
       ReturnWorker(addr, was_error, error_detail, worker_exiting, scheduling_key);
     }
   } else {
-    auto client = client_cache_->GetOrConnect(addr);
+    auto client = core_worker_client_pool_->GetOrConnect(addr);
 
     while (!current_queue.empty() && !lease_entry.is_busy) {
       auto task_spec = std::move(current_queue.front());
@@ -556,7 +556,6 @@ void NormalTaskSubmitter::PushNormalTask(
                  << NodeID::FromBinary(addr.raylet_id());
   auto task_id = task_spec.TaskId();
   auto request = std::make_unique<rpc::PushTaskRequest>();
-  bool is_actor = task_spec.IsActorTask();
   bool is_actor_creation = task_spec.IsActorCreationTask();
 
   // NOTE(swang): CopyFrom is needed because if we use Swap here and the task
@@ -573,7 +572,6 @@ void NormalTaskSubmitter::PushNormalTask(
       [this,
        task_spec = std::move(task_spec),
        task_id,
-       is_actor,
        is_actor_creation,
        scheduling_key,
        addr,
@@ -600,11 +598,10 @@ void NormalTaskSubmitter::PushNormalTask(
           if (!status.ok()) {
             RAY_LOG(DEBUG) << "Getting error from raylet for task " << task_id;
             const ray::rpc::ClientCallback<ray::rpc::GetTaskFailureCauseReply> callback =
-                [this, status, is_actor, task_id, addr](
+                [this, status, task_id, addr](
                     const Status &get_task_failure_cause_reply_status,
                     const rpc::GetTaskFailureCauseReply &get_task_failure_cause_reply) {
                   HandleGetTaskFailureCause(status,
-                                            is_actor,
                                             task_id,
                                             addr,
                                             get_task_failure_cause_reply_status,
@@ -648,7 +645,6 @@ void NormalTaskSubmitter::PushNormalTask(
 
 void NormalTaskSubmitter::HandleGetTaskFailureCause(
     const Status &task_execution_status,
-    const bool is_actor,
     const TaskID &task_id,
     const rpc::Address &addr,
     const Status &get_task_failure_cause_reply_status,
@@ -690,13 +686,12 @@ void NormalTaskSubmitter::HandleGetTaskFailureCause(
     error_info->set_error_message(buffer.str());
     error_info->set_error_type(rpc::ErrorType::NODE_DIED);
   }
-  RAY_UNUSED(task_finisher_.FailOrRetryPendingTask(
-      task_id,
-      is_actor ? rpc::ErrorType::ACTOR_DIED : task_error_type,
-      &task_execution_status,
-      error_info.get(),
-      /*mark_task_object_failed*/ true,
-      fail_immediately));
+  RAY_UNUSED(task_finisher_.FailOrRetryPendingTask(task_id,
+                                                   task_error_type,
+                                                   &task_execution_status,
+                                                   error_info.get(),
+                                                   /*mark_task_object_failed*/ true,
+                                                   fail_immediately));
 }
 
 Status NormalTaskSubmitter::CancelTask(TaskSpecification task_spec,
@@ -752,15 +747,15 @@ Status NormalTaskSubmitter::CancelTask(TaskSpecification task_spec,
       return Status::OK();
     }
     // Looks for an RPC handle for the worker executing the task.
-    client = client_cache_->GetOrConnect(rpc_client->second);
+    client = core_worker_client_pool_->GetOrConnect(rpc_client->second);
   }
 
   RAY_CHECK(client != nullptr);
   auto request = rpc::CancelTaskRequest();
-  request.set_intended_task_id(task_spec.TaskId().Binary());
+  request.set_intended_task_id(task_spec.TaskIdBinary());
   request.set_force_kill(force_kill);
   request.set_recursive(recursive);
-  request.set_caller_worker_id(task_spec.CallerWorkerId().Binary());
+  request.set_caller_worker_id(task_spec.CallerWorkerIdBinary());
   client->CancelTask(
       request,
       [this,
@@ -812,7 +807,7 @@ Status NormalTaskSubmitter::CancelRemoteTask(const ObjectID &object_id,
                                              const rpc::Address &worker_addr,
                                              bool force_kill,
                                              bool recursive) {
-  auto client = client_cache_->GetOrConnect(worker_addr);
+  auto client = core_worker_client_pool_->GetOrConnect(worker_addr);
   auto request = rpc::RemoteCancelTaskRequest();
   request.set_force_kill(force_kill);
   request.set_recursive(recursive);

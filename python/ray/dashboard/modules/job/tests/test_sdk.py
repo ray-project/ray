@@ -9,6 +9,7 @@ from unittest.mock import Mock, patch
 import pytest
 
 import ray
+from ray._common.test_utils import wait_for_condition
 import ray.experimental.internal_kv as kv
 from ray._private.ray_constants import (
     DEFAULT_DASHBOARD_AGENT_LISTEN_PORT,
@@ -16,7 +17,6 @@ from ray._private.ray_constants import (
 )
 from ray._private.test_utils import (
     format_web_url,
-    wait_for_condition,
     wait_until_server_available,
 )
 from ray._raylet import GcsClient

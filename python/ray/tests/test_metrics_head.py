@@ -14,7 +14,7 @@ from ray.dashboard.modules.metrics.dashboards.serve_dashboard_panels import (
 )
 from ray.tests.conftest import _ray_start
 from ray._private.ray_constants import SESSION_LATEST
-from ray._private.utils import get_ray_temp_dir
+from ray._common.utils import get_ray_temp_dir
 
 
 logger = logging.getLogger(__name__)
