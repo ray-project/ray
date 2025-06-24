@@ -13,7 +13,7 @@ from ray.core.generated import gcs_pb2
 from ray.data._internal.compute import ActorPoolStrategy
 from ray.data._internal.execution.autoscaler import AutoscalingActorPool
 from ray.data._internal.execution.autoscaler.default_autoscaler import (
-    AutoscalingAction,
+    ScalingConfig,
 )
 from ray.data._internal.execution.bundle_queue import create_bundle_queue
 from ray.data._internal.execution.bundle_queue.bundle_queue import BundleQueue
@@ -182,8 +182,8 @@ class ActorPoolMapOperator(MapOperator):
 
         # Create the actor workers and add them to the pool.
         self._cls = ray.remote(**self._ray_remote_args)(_MapWorker)
-        self._actor_pool.apply(
-            AutoscalingAction(
+        self._actor_pool.scale(
+            ScalingConfig(
                 delta=self._actor_pool.min_size(),
                 reason="scaling to min size"
             )
@@ -768,7 +768,7 @@ class _ActorPool(AutoscalingActorPool):
             >= self._last_scaling_up_ts + self._ACTOR_POOL_SCALE_DOWN_DEBOUNCE_PERIOD_S
         )
 
-    def apply(self, action: AutoscalingAction) -> Optional[int]:
+    def scale(self, action: ScalingConfig) -> Optional[int]:
         if action.delta > 0:
             # Make sure after scaling up actor pool won't exceed its target
             # max size

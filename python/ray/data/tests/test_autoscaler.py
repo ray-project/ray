@@ -11,7 +11,7 @@ from ray.data import ExecutionResources
 from ray.data._internal.execution.autoscaler import AutoscalingActorPool
 from ray.data._internal.execution.autoscaler.default_autoscaler import (
     DefaultAutoscaler,
-    AutoscalingAction,
+    ScalingConfig,
 )
 from ray.data._internal.execution.operators.base_physical_operator import (
     InternalQueueOperatorMixin,
@@ -77,7 +77,7 @@ def test_actor_pool_scaling():
             actor_pool=actor_pool,
             op=op,
             op_state=op_state,
-        ) == AutoscalingAction(delta=delta, reason=expected_reason)
+        ) == ScalingConfig(delta=delta, reason=expected_reason)
 
     # Should scale up since the util above the threshold.
     assert actor_pool.get_pool_util() == 1.0
