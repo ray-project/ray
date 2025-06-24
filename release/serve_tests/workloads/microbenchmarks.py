@@ -19,7 +19,6 @@ import pandas as pd
 import requests
 from typing import Dict, List, Optional
 
-from python.ray.serve._private.common import RequestProtocol
 from ray import serve
 from ray.serve._private.benchmarks.common import (
     Benchmarker,
@@ -32,6 +31,7 @@ from ray.serve._private.benchmarks.common import (
     run_throughput_benchmark,
     Streamer,
 )
+from ray.serve._private.common import RequestProtocol
 from ray.serve._private.test_utils import get_application_url
 from ray.serve.generated import serve_pb2, serve_pb2_grpc
 from ray.serve.config import gRPCOptions
