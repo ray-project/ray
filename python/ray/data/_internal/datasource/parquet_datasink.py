@@ -51,6 +51,11 @@ class ParquetDatasink(_FileDatasink):
         self.max_rows_per_file = max_rows_per_file
         self.partition_cols = partition_cols
 
+        if self.min_rows_per_file is not None and self.max_rows_per_file is not None:
+            assert (
+                self.min_rows_per_file <= self.max_rows_per_file
+            ), "min_rows_per_file must be less than or equal to max_rows_per_file"
+
         super().__init__(
             path,
             filesystem=filesystem,
@@ -150,18 +155,9 @@ class ParquetDatasink(_FileDatasink):
                     write_kwargs,
                 )
         elif self.min_rows_per_file is not None:
-            # Only min_rows_per_file is set
-            if total_rows >= self.min_rows_per_file:
-                # Single file meets minimum requirement
-                self._write_single_file(
-                    path, [table], filename, output_schema, write_kwargs
-                )
-            else:
-                # This case should be handled at a higher level by combining blocks
-                # For now, write as single file
-                self._write_single_file(
-                    path, [table], filename, output_schema, write_kwargs
-                )
+            self._write_single_file(
+                path, [table], filename, output_schema, write_kwargs
+            )
 
     def _split_and_write_table(
         self,
