@@ -19,7 +19,7 @@ This tutorial covers how Ray addresses each of these challenges and shows the so
 - [**`03-Online-Serving.ipynb`**](https://github.com/ray-project/ray/blob/master/doc/source/ray-overview/examples/e2e-multimodal-ai-workloads/notebooks/03-Online-Serving.ipynb): deploy an online service using [Ray Serve](https://docs.ray.io/en/latest/serve/index.html), that uses the trained model to generate predictions.
 - Create production batch [**Jobs**](https://docs.anyscale.com/platform/jobs/) for offline workloads like embedding generation, model training, etc., and production online [**Services**](https://docs.anyscale.com/platform/services/) that can scale.
 
-<img src="https://raw.githubusercontent.com/anyscale/foundational-ray-app/refs/heads/main/images/overview.png" width=1000>
+<img src="https://raw.githubusercontent.com/ray-project/ray/refs/heads/master/doc/source/ray-overview/examples/e2e-multimodal-ai-workloads/images/overview.png" width=1000>
 
 ## Development
 
@@ -33,7 +33,7 @@ The application is developed on [Anyscale Workspaces](https://docs.anyscale.com/
 Learn more about Anyscale Workspaces in the [official documentation](https://docs.anyscale.com/platform/workspaces/).
 
 <div align="center">
-  <img src="https://raw.githubusercontent.com/anyscale/foundational-ray-app/refs/heads/main/images/compute.png" width=600>
+  <img src="https://raw.githubusercontent.com/ray-project/ray/refs/heads/master/doc/source/ray-overview/examples/e2e-multimodal-ai-workloads/images/compute.png" width=600>
 </div>
 
 **Note**: Run the entire tutorial for free on [Anyscale](https://console.anyscale.com/)—all dependencies come pre-installed, and compute autoscales automatically. To run it elsewhere, install the dependencies from the [`containerfile`](https://github.com/ray-project/ray/blob/master/doc/source/ray-overview/examples/e2e-multimodal-ai-workloads/containerfile) and provision the appropriate GPU resources.
