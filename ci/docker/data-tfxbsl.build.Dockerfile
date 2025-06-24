@@ -7,12 +7,15 @@ ARG ARROW_VERSION=14.*
 ARG ARROW_MONGO_VERSION=
 ARG RAY_CI_JAVA_BUILD=
 
-SHELL ["/bin/bash", "-ice"]
+SHELL ["/bin/bash", "-ce"]
 
 COPY . .
 
 RUN <<EOF
 #!/bin/bash
+
+set -euo pipefail
+
 pip install -r python/requirements_datatfxbslbuild_py310.txt
 
 EOF
