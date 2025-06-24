@@ -184,8 +184,7 @@ class ActorPoolMapOperator(MapOperator):
         self._cls = ray.remote(**self._ray_remote_args)(_MapWorker)
         self._actor_pool.scale(
             ScalingConfig(
-                delta=self._actor_pool.min_size(),
-                reason="scaling to min size"
+                delta=self._actor_pool.min_size(), reason="scaling to min size"
             )
         )
 

@@ -107,9 +107,7 @@ class DefaultAutoscaler(Autoscaler):
             elif actor_pool.current_size() >= actor_pool.max_size():
                 return ScalingConfig.no_op(reason="reached max size")
             if not op_state._scheduling_status.under_resource_limits:
-                return ScalingConfig.no_op(
-                    reason="operator exceeding resource quota"
-                )
+                return ScalingConfig.no_op(reason="operator exceeding resource quota")
 
             return ScalingConfig.up(
                 delta=1,
