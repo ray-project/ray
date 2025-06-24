@@ -4,7 +4,7 @@ from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Dict, Optional
 
 import ray
-from .autoscaler import Autoscaler
+from .autoscaler import Autoscaler, AutoscalingConfig
 from ray.data._internal.execution.autoscaling_requester import (
     get_or_create_autoscaling_requester_actor,
 )
@@ -40,12 +40,6 @@ class ScalingConfig:
 
 class DefaultAutoscaler(Autoscaler):
 
-    # Default threshold of actor pool utilization to trigger scaling up.
-    # TODO make configurable
-    DEFAULT_ACTOR_POOL_SCALING_UP_THRESHOLD: float = 0.95
-    # Default threshold of actor pool utilization to trigger scaling down.
-    DEFAULT_ACTOR_POOL_SCALING_DOWN_THRESHOLD: float = 0.5
-
     # Min number of seconds between two autoscaling requests.
     MIN_GAP_BETWEEN_AUTOSCALING_REQUESTS = 20
 
@@ -53,15 +47,16 @@ class DefaultAutoscaler(Autoscaler):
         self,
         topology: "Topology",
         resource_manager: "ResourceManager",
+        *,
         execution_id: str,
-        actor_pool_scaling_up_threshold: float = DEFAULT_ACTOR_POOL_SCALING_UP_THRESHOLD,  # noqa: E501
-        actor_pool_scaling_down_threshold: float = DEFAULT_ACTOR_POOL_SCALING_DOWN_THRESHOLD,  # noqa: E501
+        config: AutoscalingConfig,
     ):
-        self._actor_pool_scaling_up_threshold = actor_pool_scaling_up_threshold
-        self._actor_pool_scaling_down_threshold = actor_pool_scaling_down_threshold
+        super().__init__(topology, resource_manager, execution_id)
+
+        self._actor_pool_scaling_up_threshold = config.actor_pool_util_upscaling_threshold
+        self._actor_pool_scaling_down_threshold = config.actor_pool_util_downscaling_threshold
         # Last time when a request was sent to Ray's autoscaler.
         self._last_request_time = 0
-        super().__init__(topology, resource_manager, execution_id)
 
     def try_trigger_scaling(self):
         self._try_scale_up_cluster()
