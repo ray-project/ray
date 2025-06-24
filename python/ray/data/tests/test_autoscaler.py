@@ -8,7 +8,8 @@ import pytest
 
 import ray
 from ray.data import ExecutionResources
-from ray.data._internal.execution.autoscaler import AutoscalingActorPool
+from ray.data._internal.execution.autoscaler import AutoscalingActorPool, \
+    AutoscalingConfig
 from ray.data._internal.execution.autoscaler.default_autoscaler import (
     DefaultAutoscaler,
     ScalingConfig,
@@ -27,8 +28,10 @@ def test_actor_pool_scaling():
         topology=MagicMock(),
         resource_manager=MagicMock(),
         execution_id="execution_id",
-        actor_pool_scaling_up_threshold=0.8,
-        actor_pool_scaling_down_threshold=0.5,
+        config=AutoscalingConfig(
+            actor_pool_util_upscaling_threshold=0.8,
+            actor_pool_util_downscaling_threshold=0.5,
+        ),
     )
 
     # Current actor pool utilization is 0.9, which is above the threshold.
@@ -218,6 +221,7 @@ def test_cluster_scaling():
         topology=topology,
         resource_manager=MagicMock(),
         execution_id="execution_id",
+        config=AutoscalingConfig(),
     )
 
     autoscaler._send_resource_request = MagicMock()
