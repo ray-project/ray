@@ -18,24 +18,24 @@ if TYPE_CHECKING:
 
 
 @dataclass
-class _AutoscalingAction:
+class AutoscalingAction:
 
     delta: int
     reason: Optional[str] = field(default=None)
 
     @classmethod
-    def no_op(cls, *, reason: Optional[str] = None) -> "_AutoscalingAction":
-        return _AutoscalingAction(delta=0, reason=reason)
+    def no_op(cls, *, reason: Optional[str] = None) -> "AutoscalingAction":
+        return AutoscalingAction(delta=0, reason=reason)
 
     @classmethod
     def up(cls, *, delta: int, reason: Optional[str] = None):
         assert delta > 0
-        return _AutoscalingAction(delta=delta, reason=reason)
+        return AutoscalingAction(delta=delta, reason=reason)
 
     @classmethod
     def down(cls, *, delta: int, reason: Optional[str] = None):
         assert delta < 0, "For scale down delta is expected to be negative!"
-        return _AutoscalingAction(delta=delta, reason=reason)
+        return AutoscalingAction(delta=delta, reason=reason)
 
 
 class DefaultAutoscaler(Autoscaler):
@@ -72,22 +72,22 @@ class DefaultAutoscaler(Autoscaler):
         actor_pool: "AutoscalingActorPool",
         op: "PhysicalOperator",
         op_state: "OpState",
-    ) -> _AutoscalingAction:
+    ) -> AutoscalingAction:
         # Do not scale up, if the op is completed or no more inputs are coming.
         if op.completed() or (
             op._inputs_complete and op_state.total_enqueued_input_bundles() == 0
         ):
-            return _AutoscalingAction.down(delta=-1, reason="consumed all inputs")
+            return AutoscalingAction.down(delta=-1, reason="consumed all inputs")
 
         if actor_pool.current_size() < actor_pool.min_size():
             # Scale up, if the actor pool is below min size.
-            return _AutoscalingAction.up(
+            return AutoscalingAction.up(
                 delta=actor_pool.min_size() - actor_pool.current_size(),
                 reason="pool below min size",
             )
         elif actor_pool.current_size() > actor_pool.max_size():
             # Do not scale up, if the actor pool is already at max size.
-            return _AutoscalingAction.down(
+            return AutoscalingAction.down(
                 # NOTE: For scale down delta has to be negative
                 delta=-(actor_pool.current_size() - actor_pool.max_size()),
                 reason="pool exceeding max size",
@@ -103,15 +103,15 @@ class DefaultAutoscaler(Autoscaler):
             #   - Actor Pool has sufficient amount of slots available to handle
             #   pending tasks
             if actor_pool.num_pending_actors() > 0:
-                return _AutoscalingAction.no_op(reason="pending actors")
+                return AutoscalingAction.no_op(reason="pending actors")
             elif actor_pool.current_size() >= actor_pool.max_size():
-                return _AutoscalingAction.no_op(reason="reached max size")
+                return AutoscalingAction.no_op(reason="reached max size")
             if not op_state._scheduling_status.under_resource_limits:
-                return _AutoscalingAction.no_op(
+                return AutoscalingAction.no_op(
                     reason="operator exceeding resource quota"
                 )
 
-            return _AutoscalingAction.up(
+            return AutoscalingAction.up(
                 delta=1,
                 reason=(
                     f"utilization of {util} >= "
@@ -120,11 +120,11 @@ class DefaultAutoscaler(Autoscaler):
             )
         elif util <= self._actor_pool_scaling_down_threshold:
             if not actor_pool.can_scale_down():
-                return _AutoscalingAction.no_op(reason="not allowed")
+                return AutoscalingAction.no_op(reason="not allowed")
             elif actor_pool.current_size() <= actor_pool.min_size():
-                return _AutoscalingAction.no_op(reason="reached min size")
+                return AutoscalingAction.no_op(reason="reached min size")
 
-            return _AutoscalingAction.down(
+            return AutoscalingAction.down(
                 delta=-1,
                 reason=(
                     f"utilization of {util} <= "
@@ -132,7 +132,7 @@ class DefaultAutoscaler(Autoscaler):
                 ),
             )
         else:
-            return _AutoscalingAction.no_op(
+            return AutoscalingAction.no_op(
                 reason=(
                     f"{self._actor_pool_scaling_down_threshold} < "
                     f"{util} < {self._actor_pool_scaling_up_threshold}"

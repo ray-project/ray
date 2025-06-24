@@ -1,7 +1,7 @@
 from abc import ABC, abstractmethod
 
 from ray.data._internal.execution.autoscaler.default_autoscaler import (
-    _AutoscalingAction,
+    AutoscalingAction,
 )
 from ray.data._internal.execution.interfaces.execution_options import ExecutionResources
 from ray.util.annotations import DeveloperAPI
@@ -71,8 +71,8 @@ class AutoscalingActorPool(ABC):
         ...
 
     @abstractmethod
-    def apply(self, action: _AutoscalingAction):
-        # TODO elaborate
+    def apply(self, action: AutoscalingAction):
+        """Applies autoscaling action"""
         ...
 
     @abstractmethod
