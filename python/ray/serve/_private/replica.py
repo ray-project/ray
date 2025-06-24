@@ -11,7 +11,7 @@ import traceback
 import warnings
 from abc import ABC, abstractmethod
 from collections import defaultdict, deque
-from contextlib import contextmanager
+from contextlib import asynccontextmanager, contextmanager
 from dataclasses import dataclass
 from importlib import import_module
 from typing import (
@@ -83,6 +83,7 @@ from ray.serve._private.logging_utils import (
 from ray.serve._private.metrics_utils import InMemoryMetricsStore, MetricsPusher
 from ray.serve._private.thirdparty.get_asgi_route_name import get_asgi_route_name
 from ray.serve._private.utils import (
+    Semaphore,
     get_component_file_name,  # noqa: F401
     parse_import_path,
 )
@@ -98,6 +99,15 @@ from ray.serve.exceptions import (
 from ray.serve.schema import LoggingConfig
 
 logger = logging.getLogger(SERVE_LOGGER_NAME)
+
+
+ReplicaMetadata = Tuple[
+    DeploymentConfig,
+    DeploymentVersion,
+    Optional[float],
+    Optional[int],
+    Optional[str],
+]
 
 
 def _load_deployment_def_from_import_path(import_path: str) -> Callable:
@@ -362,6 +372,7 @@ class ReplicaBase(ABC):
             deployment_id=self._deployment_id,
             run_sync_methods_in_threadpool=RAY_SERVE_RUN_SYNC_IN_THREADPOOL,
         )
+        self._semaphore = Semaphore(lambda: self.max_ongoing_requests)
 
         # Guards against calling the user's callable constructor multiple times.
         self._user_callable_initialized = False
@@ -392,6 +403,22 @@ class ReplicaBase(ABC):
 
         self._port: Optional[int] = None
         self._docs_path: Optional[str] = None
+
+    @property
+    def max_ongoing_requests(self) -> int:
+        return self._deployment_config.max_ongoing_requests
+
+    def get_num_ongoing_requests(self) -> int:
+        return self._metrics_manager.get_num_ongoing_requests()
+
+    def get_metadata(self) -> ReplicaMetadata:
+        return (
+            self._version.deployment_config,
+            self._version,
+            self._initialization_latency,
+            self._port,
+            self._docs_path,
+        )
 
     def _set_internal_replica_context(self, *, servable_object: Callable = None):
         ray.serve.context._set_internal_replica_context(
@@ -426,8 +453,12 @@ class ReplicaBase(ABC):
             component_id=self._component_id,
         )
 
-    def get_num_ongoing_requests(self):
-        return self._metrics_manager.get_num_ongoing_requests()
+    def _can_accept_request(self) -> bool:
+        # This replica gates concurrent request handling with an asyncio.Semaphore.
+        # Each in-flight request acquires the semaphore. When the number of ongoing
+        # requests reaches max_ongoing_requests, the semaphore becomes locked.
+        # A new request can be accepted if the semaphore is currently unlocked.
+        return not self._semaphore.locked()
 
     def _maybe_get_http_route(
         self, request_metadata: RequestMetadata, request_args: Tuple[Any]
@@ -629,7 +660,7 @@ class ReplicaBase(ABC):
     async def handle_request(
         self, request_metadata: RequestMetadata, *request_args, **request_kwargs
     ) -> Tuple[bytes, Any]:
-        with self._wrap_user_method_call(request_metadata, request_args):
+        async with self._wrap_user_method_call(request_metadata, request_args):
             return await asyncio.wrap_future(
                 self._user_callable_wrapper.call_user_method(
                     request_metadata, request_args, request_kwargs
@@ -640,7 +671,7 @@ class ReplicaBase(ABC):
         self, request_metadata: RequestMetadata, *request_args, **request_kwargs
     ) -> AsyncGenerator[Any, None]:
         """Generator that is the entrypoint for all `stream=True` handle calls."""
-        with self._wrap_user_method_call(
+        async with self._wrap_user_method_call(
             request_metadata, request_args
         ) as status_code_callback:
             async for result in self._call_user_generator(
@@ -654,20 +685,18 @@ class ReplicaBase(ABC):
     async def handle_request_with_rejection(
         self, request_metadata: RequestMetadata, *request_args, **request_kwargs
     ):
-        limit = self._deployment_config.max_ongoing_requests
-        num_ongoing_requests = self.get_num_ongoing_requests()
-        if num_ongoing_requests >= limit:
+        # Check if the replica has capacity for the request.
+        if not self._can_accept_request():
+            limit = self.max_ongoing_requests
             logger.warning(
                 f"Replica at capacity of max_ongoing_requests={limit}, "
                 f"rejecting request {request_metadata.request_id}.",
                 extra={"log_to_stderr": False},
             )
-            yield ReplicaQueueLengthInfo(
-                accepted=False, num_ongoing_requests=num_ongoing_requests
-            )
+            yield ReplicaQueueLengthInfo(False, self.get_num_ongoing_requests())
             return
 
-        with self._wrap_user_method_call(
+        async with self._wrap_user_method_call(
             request_metadata, request_args
         ) as status_code_callback:
             yield ReplicaQueueLengthInfo(
@@ -772,23 +801,6 @@ class ReplicaBase(ABC):
         except Exception:
             raise RuntimeError(traceback.format_exc()) from None
 
-    def get_metadata(
-        self,
-    ) -> Tuple[
-        DeploymentConfig,
-        DeploymentVersion,
-        Optional[float],
-        Optional[int],
-        Optional[str],
-    ]:
-        return (
-            self._version.deployment_config,
-            self._version,
-            self._initialization_latency,
-            self._port,
-            self._docs_path,
-        )
-
     @abstractmethod
     def _on_request_cancelled(
         self, request_metadata: RequestMetadata, e: asyncio.CancelledError
@@ -800,11 +812,16 @@ class ReplicaBase(ABC):
         pass
 
     @abstractmethod
-    @contextmanager
-    def _wrap_user_method_call(
+    @asynccontextmanager
+    async def _wrap_user_method_call(
         self, request_metadata: RequestMetadata, request_args: Tuple[Any]
     ) -> Generator[StatusCodeCallback, None, None]:
         pass
+
+    @asynccontextmanager
+    async def _start_request(self):
+        async with self._semaphore:
+            yield
 
     async def _drain_ongoing_requests(self):
         """Wait for any ongoing requests to finish.
@@ -912,34 +929,35 @@ class Replica(ReplicaBase):
         if ray.util.pdb._is_ray_debugger_post_mortem_enabled():
             ray.util.pdb._post_mortem()
 
-    @contextmanager
-    def _wrap_user_method_call(
+    @asynccontextmanager
+    async def _wrap_user_method_call(
         self, request_metadata: RequestMetadata, request_args: Tuple[Any]
-    ) -> Generator[StatusCodeCallback, None, None]:
+    ) -> AsyncGenerator[StatusCodeCallback, None]:
         """Context manager that wraps user method calls.
 
         1) Sets the request context var with appropriate metadata.
         2) Records the access log message (if not disabled).
         3) Records per-request metrics via the metrics manager.
         """
-        request_metadata.route = self._maybe_get_http_route(
-            request_metadata, request_args
-        )
-        ray.serve.context._serve_request_context.set(
-            ray.serve.context._RequestContext(
-                route=request_metadata.route,
-                request_id=request_metadata.request_id,
-                _internal_request_id=request_metadata.internal_request_id,
-                app_name=self._deployment_id.app_name,
-                multiplexed_model_id=request_metadata.multiplexed_model_id,
-                grpc_context=request_metadata.grpc_context,
+        async with self._start_request():
+            request_metadata.route = self._maybe_get_http_route(
+                request_metadata, request_args
             )
-        )
+            ray.serve.context._serve_request_context.set(
+                ray.serve.context._RequestContext(
+                    route=request_metadata.route,
+                    request_id=request_metadata.request_id,
+                    _internal_request_id=request_metadata.internal_request_id,
+                    app_name=self._deployment_id.app_name,
+                    multiplexed_model_id=request_metadata.multiplexed_model_id,
+                    grpc_context=request_metadata.grpc_context,
+                )
+            )
 
-        with self._handle_errors_and_metrics(
-            request_metadata, request_args
-        ) as status_code_callback:
-            yield status_code_callback
+            with self._handle_errors_and_metrics(
+                request_metadata, request_args
+            ) as status_code_callback:
+                yield status_code_callback
 
 
 class ReplicaActor:
@@ -1019,7 +1037,7 @@ class ReplicaActor:
 
     async def initialize_and_get_metadata(
         self, deployment_config: DeploymentConfig = None, _after: Optional[Any] = None
-    ):
+    ) -> ReplicaMetadata:
         """Handles initializing the replica.
 
         Returns: 3-tuple containing
@@ -1038,9 +1056,7 @@ class ReplicaActor:
     async def record_routing_stats(self) -> Dict[str, Any]:
         return await self._replica_impl.record_routing_stats()
 
-    async def reconfigure(
-        self, deployment_config
-    ) -> Tuple[DeploymentConfig, DeploymentVersion, Optional[float], Optional[int]]:
+    async def reconfigure(self, deployment_config) -> ReplicaMetadata:
         await self._replica_impl.reconfigure(deployment_config)
         return self._replica_impl.get_metadata()
 
