@@ -4960,6 +4960,7 @@ void CoreWorker::HandleFreeActorObject(rpc::FreeActorObjectRequest request,
   // TODO(kevin85421): Call Python callback to clean up the GPU object.
   ObjectID object_id = ObjectID::FromBinary(request.object_id());
   options_.free_actor_object_callback(object_id);
+  RAY_LOG(INFO) << "HandleFreeActorObject done";
   send_reply_callback(Status::OK(), nullptr, nullptr);
 }
 

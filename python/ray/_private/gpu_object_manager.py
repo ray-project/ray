@@ -58,6 +58,7 @@ class GPUObjectManager:
         self.gpu_object_store[obj_id] = gpu_object
 
     def remove_gpu_object(self, obj_id: str):
+        print(f"remove_gpu_object {obj_id}")
         del self.gpu_object_store[obj_id]
 
     def _get_tensor_meta(self, src_actor: ActorHandle, obj_id: str) -> ObjectRef:

@@ -2266,11 +2266,12 @@ cdef execute_task_with_cancellation_handler(
 
 cdef void free_actor_object_callback(const CObjectID &c_object_id) nogil:
     with gil:
-        # c_object_id.Hex()?
-        object_id = ObjectRef(c_object_id.Binary()).hex().encode('ascii')
+        object_id = c_object_id.Hex().decode()
+        print(f"free_actor_object_callback, object_id: {object_id}")
         gpu_object_manager = ray._private.worker.global_worker.gpu_object_manager
-        print(f"clean_up_in_actor_object_callback, object_id: {object_id}, {c_object_id.Hex()}, {c_object_id.Hex().encode('ascii')}, delete: {object_id in gpu_object_manager.gpu_object_store}")
+        print(f"free_actor_object_callback before remove_gpu_object, gpu_object_store: {gpu_object_manager.gpu_object_store}")
         gpu_object_manager.remove_gpu_object(object_id)
+        print(f"free_actor_object_callback after remove_gpu_object, gpu_object_store: {gpu_object_manager.gpu_object_store}")
 
 cdef shared_ptr[LocalMemoryBuffer] ray_error_to_memory_buf(ray_error):
     cdef bytes py_bytes = ray_error.to_bytes()
