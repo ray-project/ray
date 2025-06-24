@@ -37,11 +37,6 @@ from ray.util.common import INT32_MAX
 
 logger = logging.getLogger(__name__)
 
-# Higher values here are better for prefetching and locality. It's ok for this to be
-# fairly high since streaming backpressure prevents us from overloading actors.
-# TODO make configurable
-DEFAULT_MAX_TASKS_IN_FLIGHT = 2
-
 
 class ActorPoolMapOperator(MapOperator):
     """A MapOperator implementation that executes tasks on an actor pool.
@@ -141,10 +136,15 @@ class ActorPoolMapOperator(MapOperator):
             memory=self._ray_remote_args.get("memory"),
         )
         self._actor_pool = _ActorPool(
-            compute_strategy,
             self._start_actor,
             per_actor_resource_usage,
-            self.data_context._enable_actor_pool_on_exit_hook,
+            min_size=compute_strategy.min_size,
+            max_size=compute_strategy.max_size,
+            max_tasks_in_flight_per_actor=(
+                compute_strategy.max_tasks_in_flight_per_actor or
+                _derive_max_actor_tasks_in_flight(data_context, self._ray_remote_args)
+            ),
+            _enable_actor_pool_on_exit_hook=self.data_context._enable_actor_pool_on_exit_hook,
         )
         self._actor_task_selector = self._create_task_selector(self._actor_pool)
         # A queue of bundles awaiting dispatch to actors.
@@ -669,9 +669,12 @@ class _ActorPool(AutoscalingActorPool):
 
     def __init__(
         self,
-        compute_strategy: ActorPoolStrategy,
         create_actor_fn: "Callable[[Dict[str, str]], Tuple[ActorHandle, ObjectRef[Any]]]",
         per_actor_resource_usage: ExecutionResources,
+        *,
+        min_size: int,
+        max_size: int,
+        max_tasks_in_flight_per_actor: int,
         _enable_actor_pool_on_exit_hook: bool = False,
     ):
         """Initialize the actor pool.
@@ -686,12 +689,9 @@ class _ActorPool(AutoscalingActorPool):
                 hook.
         """
 
-        self._min_size: int = compute_strategy.min_size
-        self._max_size: int = compute_strategy.max_size
-        self._max_tasks_in_flight: int = (
-            compute_strategy.max_tasks_in_flight_per_actor
-            or DEFAULT_MAX_TASKS_IN_FLIGHT
-        )
+        self._min_size: int = min_size
+        self._max_size: int = max_size
+        self._max_tasks_in_flight: int = max_tasks_in_flight_per_actor
         self._create_actor_fn = create_actor_fn
         self._per_actor_resource_usage = per_actor_resource_usage
         assert self._min_size >= 1
@@ -1042,3 +1042,10 @@ class _ActorPool(AutoscalingActorPool):
     def per_actor_resource_usage(self) -> ExecutionResources:
         """Per actor resource usage."""
         return self._per_actor_resource_usage
+
+
+def _derive_max_actor_tasks_in_flight(data_context: "DataContext", ray_remote_args: Optional[Dict[str, Any]]) -> int:
+    max_per_actor_task_queue_size = data_context.max_per_actor_task_queue_size
+    max_actor_concurrency = ray_remote_args.get("max_concurrency", 1)
+
+    return max_actor_concurrency + max_per_actor_task_queue_size
