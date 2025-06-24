@@ -15,15 +15,12 @@ from ray._private.event.export_event_logger import (
 )
 from ray.actor import ActorHandle
 from ray.train.v2._internal.constants import (
-    CONTROLLERS_TO_POLL_PER_ITERATION_ENV_VAR,
-    DEFAULT_CONTROLLERS_TO_POLL_PER_ITERATION,
+    CONTROLLERS_TO_RECONCILE_PER_CHECK,
     DEFAULT_ENABLE_STATE_ACTOR_POLLING,
-    DEFAULT_GET_ACTOR_TIMEOUT_S,
     DEFAULT_STATE_ACTOR_POLL_INTERVAL_S,
     ENABLE_STATE_ACTOR_POLLING_ENV_VAR,
-    GET_ACTOR_TIMEOUT_S_ENV_VAR,
+    GET_ACTOR_TIMEOUT_S,
     STATE_ACTOR_POLL_INTERVAL_S_ENV_VAR,
-    get_env_vars_to_propagate,
 )
 from ray.train.v2._internal.state.schema import (
     TrainRun,
@@ -40,7 +37,13 @@ logger = logging.getLogger(__name__)
 
 
 class TrainStateActor:
-    def __init__(self):
+    def __init__(
+        self,
+        enable_state_actor_polling: bool,
+        poll_interval_s: float,
+        get_actor_timeout_s: int = GET_ACTOR_TIMEOUT_S,
+        controllers_to_poll_per_iteration: int = CONTROLLERS_TO_RECONCILE_PER_CHECK,
+    ):
         # NOTE: All runs and attempts are stored in memory.
         # This may be a memory issue for large runs.
         # TODO: consider cleaning up runs over time.
@@ -59,29 +62,11 @@ class TrainStateActor:
         self._runs_lock = threading.RLock()
 
         # Set env vars related to polling the controller.
-        self._get_actor_timeout_s = float(
-            os.getenv(
-                GET_ACTOR_TIMEOUT_S_ENV_VAR,
-                DEFAULT_GET_ACTOR_TIMEOUT_S,
-            )
-        )
-        self._controllers_to_poll_per_iteration = int(
-            os.getenv(
-                CONTROLLERS_TO_POLL_PER_ITERATION_ENV_VAR,
-                DEFAULT_CONTROLLERS_TO_POLL_PER_ITERATION,
-            )
-        )
-        if ray_constants.env_bool(
-            ENABLE_STATE_ACTOR_POLLING_ENV_VAR,
-            DEFAULT_ENABLE_STATE_ACTOR_POLLING,
-        ):
-            self._poll_interval_s = float(
-                os.getenv(
-                    STATE_ACTOR_POLL_INTERVAL_S_ENV_VAR,
-                    DEFAULT_STATE_ACTOR_POLL_INTERVAL_S,
-                )
-            )
-            self._start_controller_polling_thread()
+        if enable_state_actor_polling:
+            self._poll_interval_s = poll_interval_s
+            self._controllers_to_poll_per_iteration = controllers_to_poll_per_iteration
+            self._get_actor_timeout_s = get_actor_timeout_s
+            self._start_run_state_reconciliation_thread()
 
     def _abort_live_runs_with_dead_controllers(
         self, last_poll_run_id: Optional[str]
@@ -126,7 +111,7 @@ class TrainStateActor:
 
             return last_poll_run_id
 
-    def _start_controller_polling_thread(self) -> None:
+    def _start_run_state_reconciliation_thread(self) -> None:
         def _poll_controller_continuously():
             last_poll_run_id = None
             latest_poll_time = float("-inf")
@@ -275,9 +260,19 @@ def get_or_create_state_actor() -> ActorHandle:
                 scheduling_strategy="DEFAULT",
                 max_restarts=-1,
                 max_task_retries=-1,
-                runtime_env={"env_vars": get_env_vars_to_propagate()},
             )
-            .remote()
+            .remote(
+                enable_state_actor_polling=ray_constants.env_bool(
+                    ENABLE_STATE_ACTOR_POLLING_ENV_VAR,
+                    DEFAULT_ENABLE_STATE_ACTOR_POLLING,
+                ),
+                poll_interval_s=float(
+                    os.getenv(
+                        STATE_ACTOR_POLL_INTERVAL_S_ENV_VAR,
+                        DEFAULT_STATE_ACTOR_POLL_INTERVAL_S,
+                    )
+                ),
+            )
         )
 
     return state_actor

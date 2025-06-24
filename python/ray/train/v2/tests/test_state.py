@@ -142,7 +142,10 @@ def callback(monkeypatch):
 
 def test_train_state_actor_create_and_get_run(ray_start_regular):
     """Test basic CRUD operations for train runs in the state actor."""
-    actor = ray.remote(TrainStateActor).remote()
+    actor = ray.remote(TrainStateActor).remote(
+        enable_state_actor_polling=False,
+        poll_interval_s=30,
+    )
 
     # Test creation with minimal fields
     run = TrainRun(
@@ -177,7 +180,10 @@ def test_train_state_actor_create_and_get_run(ray_start_regular):
 
 
 def test_train_state_actor_create_and_get_run_attempt(ray_start_regular):
-    actor = ray.remote(TrainStateActor).remote()
+    actor = ray.remote(TrainStateActor).remote(
+        enable_state_actor_polling=False,
+        poll_interval_s=30,
+    )
 
     resources = [TrainResources(resources={"CPU": 1})]
     run_attempt = TrainRunAttempt(
@@ -229,7 +235,10 @@ def test_train_state_actor_abort_dead_controller_live_runs(monkeypatch):
     monkeypatch.setattr("time.time_ns", lambda: 1000)
 
     # Create TrainStateActor with interesting runs and run attempts.
-    actor = TrainStateActor()
+    actor = TrainStateActor(
+        enable_state_actor_polling=True,
+        poll_interval_s=30,
+    )
     actor._runs = OrderedDict(
         {
             "nonexistent_controller_no_attempts_run_id": create_mock_train_run(
