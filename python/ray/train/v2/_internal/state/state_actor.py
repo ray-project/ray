@@ -1,10 +1,9 @@
 import copy
 import logging
 import os
-import random
 import threading
 import time
-from collections import defaultdict
+from collections import OrderedDict, defaultdict
 from typing import Dict, Optional
 
 import ray
@@ -47,7 +46,9 @@ class TrainStateActor:
         # TODO: consider cleaning up runs over time.
         self._runs: Dict[str, TrainRun] = {}
         # {run_id: {attempt_id: TrainRunAttempt}}
-        self._run_attempts: Dict[str, Dict[str, TrainRunAttempt]] = defaultdict(dict)
+        self._run_attempts: Dict[str, OrderedDict[str, TrainRunAttempt]] = defaultdict(
+            OrderedDict
+        )
         (
             self._export_logger,
             self._is_train_run_export_api_enabled,
@@ -80,49 +81,62 @@ class TrainStateActor:
                     DEFAULT_STATE_ACTOR_POLL_INTERVAL_S,
                 )
             )
-            self._latest_poll_time = float("-inf")
             self._start_controller_polling_thread()
 
-    def _abort_live_runs_with_dead_controllers(self) -> None:
+    def _abort_live_runs_with_dead_controllers(self, poll_index: int) -> int:
         with self._runs_lock:
             # Get non-terminal runs to consider aborting this iteration.
             non_terminal_runs = [
                 run for run in self._runs.values() if not run.status.is_terminal()
             ]
-            sampled_runs = random.sample(
-                non_terminal_runs,
-                min(len(non_terminal_runs), self._controllers_to_poll_per_iteration),
+
+            # Sample runs by starting at the poll index and wrapping around.
+            num_runs_to_sample = min(
+                len(non_terminal_runs), self._controllers_to_poll_per_iteration
             )
 
             # Abort runs and run attempts.
-            for run in sampled_runs:
+            for i in range(poll_index, poll_index + num_runs_to_sample):
+                run = non_terminal_runs[i % len(non_terminal_runs)]
                 actor_state = get_actor(
                     run.controller_actor_id, timeout=self._get_actor_timeout_s
                 )
                 if not actor_state or actor_state.state == "DEAD":
                     update_train_run_aborted(run, False)
                     self.create_or_update_train_run(run)
-                    for run_attempt in self._run_attempts.get(run.id, {}).values():
-                        if not run_attempt.status.is_terminal():
-                            update_train_run_attempt_aborted(run_attempt, False)
-                            self.create_or_update_train_run_attempt(run_attempt)
+                    latest_run_attempt = self._get_latest_run_attempt(run.id)
+                    if (
+                        latest_run_attempt
+                        and not latest_run_attempt.status.is_terminal()
+                    ):
+                        update_train_run_attempt_aborted(latest_run_attempt, False)
+                        self.create_or_update_train_run_attempt(latest_run_attempt)
+
+            return (poll_index + num_runs_to_sample) % len(non_terminal_runs)
 
     def _start_controller_polling_thread(self) -> None:
         def _poll_controller_continuously():
+            poll_index = 0
+            latest_poll_time = float("-inf")
             while True:
                 # Wait for the poll interval to elapse.
-                time_since_last_poll = time_monotonic() - self._latest_poll_time
+                time_since_last_poll = time_monotonic() - latest_poll_time
                 if time_since_last_poll < self._poll_interval_s:
-                    remaining_time = max(
-                        self._poll_interval_s - time_since_last_poll, 0
-                    )
+                    remaining_time = self._poll_interval_s - time_since_last_poll
                     time.sleep(remaining_time)
 
-                self._abort_live_runs_with_dead_controllers()
-                self._latest_poll_time = time_monotonic()
+                poll_index = self._abort_live_runs_with_dead_controllers(poll_index)
+                latest_poll_time = time_monotonic()
 
         thread = threading.Thread(target=_poll_controller_continuously, daemon=True)
         thread.start()
+
+    def _get_latest_run_attempt(self, run_id: str) -> Optional[TrainRunAttempt]:
+        with self._runs_lock:
+            run_attempts = self._run_attempts.get(run_id, {})
+            if not run_attempts:
+                return None
+            return next(reversed(run_attempts.values()))
 
     def create_or_update_train_run(self, run: TrainRun) -> None:
         with self._runs_lock:

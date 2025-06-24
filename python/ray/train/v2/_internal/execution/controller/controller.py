@@ -250,9 +250,7 @@ class TrainController:
         # Ensure that the time between polls is at least HEALTH_CHECK_INTERVAL_S.
         time_since_last_poll = time_monotonic() - self._latest_poll_time
         if time_since_last_poll < self._health_check_interval_s:
-            remaining_time = max(
-                self._health_check_interval_s - time_since_last_poll, 0
-            )
+            remaining_time = self._health_check_interval_s - time_since_last_poll
             time.sleep(remaining_time)
 
         status = self._worker_group.poll_status(timeout=self._health_check_interval_s)
