@@ -1,4 +1,3 @@
-import copy
 import enum
 import logging
 import os
@@ -10,6 +9,7 @@ from typing import TYPE_CHECKING, Any, Dict, List, Optional, Union
 import ray
 from ray._private.ray_constants import env_bool, env_integer
 from ray._private.worker import WORKER_MODE
+from ray.data._internal.execution.autoscaler import AutoscalingConfig
 from ray.data._internal.logging import update_dataset_logger_for_worker
 from ray.util.annotations import DeveloperAPI
 from ray.util.debug import log_once
@@ -268,6 +268,7 @@ class DataContext:
             remote storage.
         enable_pandas_block: Whether pandas block format is enabled.
         actor_prefetcher_enabled: Whether to use actor based block prefetcher.
+        autoscaling_config: Autoscaling configuration.
         use_push_based_shuffle: Whether to use push-based shuffle.
         pipeline_push_based_shuffle_reduce_tasks:
         scheduling_strategy: The global scheduling strategy. For tasks with large args,
@@ -338,6 +339,8 @@ class DataContext:
             call is made with a S3 URI.
         wait_for_min_actors_s: The default time to wait for minimum requested
             actors to start before raising a timeout, in seconds.
+        max_buffered_blocks_per_actor: Number of blocks that could be buffered
+            by individual Actor in the Actor Pool
         retried_io_errors: A list of substrings of error messages that should
             trigger a retry when reading or writing files. This is useful for handling
             transient errors when reading from remote storage systems.
@@ -353,6 +356,8 @@ class DataContext:
     streaming_read_buffer_size: int = DEFAULT_STREAMING_READ_BUFFER_SIZE
     enable_pandas_block: bool = DEFAULT_ENABLE_PANDAS_BLOCK
     actor_prefetcher_enabled: bool = DEFAULT_ACTOR_PREFETCHER_ENABLED
+
+    autoscaling_config: AutoscalingConfig = AutoscalingConfig()
 
     ################################################################
     # Sort-based shuffling configuration
@@ -451,6 +456,7 @@ class DataContext:
     # Setting non-positive value here (ie <= 0) disables this functionality
     # (defaults to -1).
     wait_for_min_actors_s: int = DEFAULT_WAIT_FOR_MIN_ACTORS_S
+    max_buffered_blocks_per_actor: int = DEFAULT_MAX_BUFFERED_BLOCKS_PER_ACTOR
     retried_io_errors: List[str] = field(
         default_factory=lambda: list(DEFAULT_RETRIED_IO_ERRORS)
     )
