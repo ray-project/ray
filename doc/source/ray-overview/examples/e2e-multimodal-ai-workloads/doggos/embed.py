@@ -3,13 +3,13 @@ import shutil
 
 import matplotlib.pyplot as plt
 import numpy as np
-import ray
 import torch
+from doggos.utils import add_class, url_to_array
 from PIL import Image
 from scipy.spatial.distance import cdist
 from transformers import CLIPModel, CLIPProcessor
 
-from doggos.utils import add_class, url_to_array
+import ray
 
 
 class EmbedImages(object):
@@ -22,8 +22,12 @@ class EmbedImages(object):
 
     def __call__(self, batch):
         # Load and preprocess images
-        images = [Image.fromarray(np.uint8(img)).convert("RGB") for img in batch["image"]]
-        inputs = self.processor(images=images, return_tensors="pt", padding=True).to(self.device)
+        images = [
+            Image.fromarray(np.uint8(img)).convert("RGB") for img in batch["image"]
+        ]
+        inputs = self.processor(images=images, return_tensors="pt", padding=True).to(
+            self.device
+        )
 
         # Generate embeddings
         with torch.inference_mode():
@@ -37,7 +41,7 @@ def get_top_matches(query_embedding, embeddings_ds, class_filters=None, n=4):
     if class_filters:
         class_filters = set(class_filters)
         rows = [r for r in rows if r["class"] in class_filters]
-    if not rows:                             
+    if not rows:
         return []
 
     # Vectorise

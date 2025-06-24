@@ -5,14 +5,14 @@ import tempfile
 
 import mlflow
 import numpy as np
-import ray
 import torch
 import torch.nn.functional as F
-from ray.train.torch import TorchTrainer
-
 from doggos.data import Preprocessor
 from doggos.model import ClassificationModel, collate_fn
 from doggos.utils import add_class, set_seeds
+from ray.train.torch import TorchTrainer
+
+import ray
 
 
 def train_epoch(ds, batch_size, model, num_classes, loss_fn, optimizer):

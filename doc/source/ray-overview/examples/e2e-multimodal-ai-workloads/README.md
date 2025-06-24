@@ -9,7 +9,7 @@ This tutorial focuses on the fundamental challenges of multimodal AI workloads a
 
 - **🔋 Compute**: managing heterogeneous clusters, reducing idle time, and handling complex dependencies
 - **📈 Scale**: integrating with the Python ecosystem, improving observability, and enabling effective debugging
-- **🛡️ Reliability**: ensuring fault tolerance, leveraging checkpointing, and supporting job resumability
+- **🛡️ Reliability**: ensuring fault tolerance, leveraging checkpointing, and supporting job resumption
 - **🚀 Production**: bridging dev-to-prod gaps, enabling fast iteration, maintaining zero downtime, and meeting SLAs
 
 This tutorial covers how Ray addresses each of these challenges and shows the solutions hands-on by implementing scalable batch inference, distributed training, and online serving workloads.
