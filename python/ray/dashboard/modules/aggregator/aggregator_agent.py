@@ -43,7 +43,7 @@ PUBLISH_EVENT_WORKERS = ray_constants.env_integer(
 CHECK_MAIN_THREAD_LIVENESS_INTERVAL_SECONDS = ray_constants.env_float(
     f"{env_var_prefix}_CHECK_MAIN_THREAD_LIVENESS_INTERVAL_SECONDS", 0.1
 )
-# Maximum size of the event buffer
+# Maximum size of the event buffer in the aggregator agent
 MAX_EVENT_BUFFER_SIZE = ray_constants.env_integer(
     f"{env_var_prefix}_MAX_EVENT_BUFFER_SIZE", 1000000
 )
