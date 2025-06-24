@@ -153,7 +153,7 @@ class DAGNode(DAGNodeBase):
         Args:
             transport: "nccl" means that tensors will be passed via NCCL.
                 "shm" means that tensors will be passed via host shared memory and gRPC.
-                "accelerator" means that tensors will be passed via their accelerator like NCCL.
+                "accelerator" means that tensors are communicated using accelerator-specific backends.
                 "auto" (default) means that tensor transport will be
                 automatically determined based on the sender and receiver,
                 either through NCCL or host memory.

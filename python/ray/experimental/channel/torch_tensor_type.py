@@ -79,14 +79,13 @@ class TorchTensorType(ChannelOutputType):
             transport = transport.get_transport_name()
 
         if transport not in [self.AUTO, self.CPU, self.ACCELERATOR]:
-            print(f"lcg ====>{transport=}")
             raise ValueError(
                 "`transport` must be TorchTensorType.AUTO, TorchTensorType.ACCELERATOR "
                 "or TorchTensorType.CPU"
             )
         if device == Device.CPU and transport == self.ACCELERATOR:
             raise ValueError(
-                "accelerator transport is not supported with CPU " "target device."
+                "accelerator transport is not supported with CPU target device."
             )
         self.transport = transport
 
