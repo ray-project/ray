@@ -464,7 +464,7 @@ def test_validate_dag():
 
 # Mock the `scale_up` method to avoid creating and leaking resources.
 @patch(
-    "ray.data._internal.execution.operators.actor_pool_map_operator._ActorPool.scale_up",
+    "ray.data._internal.execution.operators.actor_pool_map_operator._ActorPool.scale",
     return_value=1,
 )
 def test_configure_output_locality(mock_scale_up):
