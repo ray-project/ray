@@ -22,7 +22,7 @@ from ray.util.annotations import DeveloperAPI
 
 class _CollectiveOperation:
     """
-    Represent metadata for a communicator collective operation.
+    Represent metadata for a collective communicator collective operation.
 
     Args:
         input_nodes: A list of input nodes to the collective operation.

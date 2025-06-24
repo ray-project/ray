@@ -59,9 +59,9 @@ class TorchTensorAcceleratorChannel(ChannelInterface):
         _local_channel: Optional["IntraProcessChannel"] = None,
     ):
         """
-        Can be used to send GPU tensors nested inside other data. The data is
-        sent via shared memory while the GPU tensors are sent through a P2P
-        transport (e.g., NCCL).
+        Can be used to send accelerator tensors nested inside other data. The data is
+        sent via shared memory while the accelerator tensors are sent through a P2P
+        transport (e.g., NCCL for GPU).
 
         NOTE: This class is currently not thread-safe because it reads and
         writes the worker-local
