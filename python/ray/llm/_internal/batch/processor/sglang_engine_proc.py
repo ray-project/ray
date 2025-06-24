@@ -6,9 +6,6 @@ import transformers
 from pydantic import Field, root_validator
 
 import ray
-from ray.data._internal.execution.operators.actor_pool_map_operator import (
-    DEFAULT_MAX_TASKS_IN_FLIGHT,
-)
 from ray.data.block import UserDefinedFunction
 from ray.llm._internal.batch.observability.usage_telemetry.usage import (
     BatchModelTelemetry,
@@ -128,7 +125,7 @@ def build_sglang_engine_processor(
                     min_size=config.concurrency,
                     max_size=config.concurrency,
                     max_tasks_in_flight_per_actor=max(
-                        DEFAULT_MAX_TASKS_IN_FLIGHT, config.max_concurrent_batches
+                        config.max_concurrent_batches, 4
                     ),
                 ),
                 # The number of running batches "per actor" in Ray Core level.
