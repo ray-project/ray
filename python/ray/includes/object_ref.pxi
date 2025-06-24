@@ -8,7 +8,6 @@ import threading
 from typing import Callable, Any, Union
 
 import ray
-from ray.util.annotations import PublicAPI
 import cython
 
 logger = logging.getLogger(__name__)
@@ -34,7 +33,6 @@ def _set_future_helper(
         py_future.set_result(result)
 
 
-@PublicAPI
 cdef class ObjectRef(BaseID):
 
     def __cinit__(self):
