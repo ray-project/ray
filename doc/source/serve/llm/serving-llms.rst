@@ -921,13 +921,6 @@ We have openned an issue to track and fix this: https://github.com/ray-project/r
 
 
 
-.. code-block:: python
-
-    from ray.serve.llm import LLMServer
-
-    class MyLLMServer(LLMServer):
-
-
 Usage Data Collection
 --------------------------
 We collect usage data to improve Ray Serve LLM.
