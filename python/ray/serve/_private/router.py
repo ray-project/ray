@@ -624,7 +624,8 @@ class AsyncioRouter:
         # Wait for the router to be initialized before sending the request.
         await self._request_router_initialized.wait()
 
-        r = await self.request_router._choose_replica_for_request(pr)
+        # r = await self.request_router._choose_replica_for_request(pr)
+        r = list(self.request_router._replicas.values())[0]
 
         # If the queue len cache is disabled or we're sending a request to Java,
         # then directly send the query and hand the response back. The replica will
@@ -671,7 +672,7 @@ class AsyncioRouter:
             # request will be placed on the front of the queue to avoid tail latencies.
             # TODO(edoakes): this retry procedure is not perfect because it'll reset the
             # process of choosing candidates replicas (i.e., for locality-awareness).
-            r = await self.request_router._choose_replica_for_request(pr, is_retry=True)
+            # r = await self.request_router._choose_replica_for_request(pr, is_retry=True)
 
     async def assign_request(
         self,

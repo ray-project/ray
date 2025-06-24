@@ -191,8 +191,9 @@ def get_metric_dictionaries(name: str, timeout: float = 20) -> List[Dict]:
     """
 
     def metric_available() -> bool:
-        metrics = httpx.get("http://127.0.0.1:9999").text
-        return name in metrics
+        metrics = httpx.get("http://127.0.0.1:9999", timeout=10).text
+        assert name in metrics
+        return True
 
     wait_for_condition(metric_available, retry_interval_ms=1000, timeout=timeout)
 
@@ -1706,7 +1707,7 @@ class TestHandleMetrics:
 
         @ray.remote(num_cpus=0)
         def do_request():
-            r = httpx.get("http://localhost:8000/")
+            r = httpx.get("http://localhost:8000/", timeout=10)
             r.raise_for_status()
             return r
 
