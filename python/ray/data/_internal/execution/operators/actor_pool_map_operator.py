@@ -14,7 +14,6 @@ from ray.data._internal.compute import ActorPoolStrategy
 from ray.data._internal.execution.autoscaler import AutoscalingActorPool
 from ray.data._internal.execution.autoscaler.default_autoscaler import (
     _AutoscalingAction,
-    _AutoscalingActionKind,
 )
 from ray.data._internal.execution.bundle_queue import create_bundle_queue
 from ray.data._internal.execution.bundle_queue.bundle_queue import BundleQueue
@@ -767,7 +766,7 @@ class _ActorPool(AutoscalingActorPool):
         )
 
     def apply(self, action: _AutoscalingAction):
-        if action.kind is _AutoscalingActionKind.SCALE_UP:
+        if action.delta > 0:
             # Make sure after scaling up actor pool won't exceed its target
             # max size
             target_num_actors = min(
@@ -786,13 +785,14 @@ class _ActorPool(AutoscalingActorPool):
             # Capture last scale up timestamp
             self._last_scaling_up_ts = time.time()
 
-        elif action.kind is _AutoscalingActionKind.SCALE_DOWN:
+        elif action.delta < 0:
             num_released = 0
 
             # Make sure after scaling down actor pool size won't fall below its
             # min size
             target_num_actors = min(
-                action.delta, max(self.current_size() - self.min_size(), 0)
+                abs(action.delta),
+                max(self.current_size() - self.min_size(), 0)
             )
 
             for _ in range(target_num_actors):

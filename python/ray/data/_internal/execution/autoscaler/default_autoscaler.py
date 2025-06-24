@@ -18,35 +18,29 @@ if TYPE_CHECKING:
     from ray.data._internal.execution.streaming_executor_state import OpState, Topology
 
 
-class _AutoscalingActionKind(enum.Enum):
-    NO_OP = 0
-    SCALE_UP = 1
-    SCALE_DOWN = -1
-
-
 @dataclass
 class _AutoscalingAction:
 
-    kind: _AutoscalingActionKind
-    delta: int = field(default=0)
+    delta: int
     reason: Optional[str] = field(default=None)
 
     @classmethod
     def no_op(cls, *, reason: Optional[str] = None) -> "_AutoscalingAction":
-        return _AutoscalingAction(kind=_AutoscalingActionKind.NO_OP, reason=reason)
+        return _AutoscalingAction(delta=0, reason=reason)
 
     @classmethod
     def up(cls, *, delta: int, reason: Optional[str] = None):
         assert delta > 0
         return _AutoscalingAction(
-            kind=_AutoscalingActionKind.SCALE_UP, delta=delta, reason=reason
+            delta=delta, reason=reason
         )
 
     @classmethod
     def down(cls, *, delta: int, reason: Optional[str] = None):
-        assert delta > 0
+        assert delta < 0, "For scale down delta is expected to be negative!"
         return _AutoscalingAction(
-            kind=_AutoscalingActionKind.SCALE_DOWN, delta=delta, reason=reason
+            delta=delta,
+            reason=reason
         )
 
 
@@ -89,7 +83,7 @@ class DefaultAutoscaler(Autoscaler):
         if op.completed() or (
             op._inputs_complete and op_state.total_enqueued_input_bundles() == 0
         ):
-            return _AutoscalingAction.down(delta=1, reason="consumed all inputs")
+            return _AutoscalingAction.down(delta=-1, reason="consumed all inputs")
 
         if actor_pool.current_size() < actor_pool.min_size():
             # Scale up, if the actor pool is below min size.
@@ -100,7 +94,8 @@ class DefaultAutoscaler(Autoscaler):
         elif actor_pool.current_size() > actor_pool.max_size():
             # Do not scale up, if the actor pool is already at max size.
             return _AutoscalingAction.down(
-                delta=actor_pool.current_size() - actor_pool.max_size(),
+                # NOTE: For scale down delta has to be negative
+                delta=-(actor_pool.current_size() - actor_pool.max_size()),
                 reason="pool exceeding max size",
             )
 
@@ -136,7 +131,7 @@ class DefaultAutoscaler(Autoscaler):
                 return _AutoscalingAction.no_op(reason="reached min size")
 
             return _AutoscalingAction.down(
-                delta=1,
+                delta=-1,
                 reason=(
                     f"utilization of {util} <= "
                     f"{self._actor_pool_scaling_down_threshold}"
