@@ -123,12 +123,20 @@ class ParquetDatasink(_FileDatasink):
         # keep the rest for ParquetWriter()
         row_group_size = write_kwargs.pop("row_group_size", None)
 
-        write_path = posixpath.join(path, filename)
-        with self.open_output_stream(write_path) as file:
-            with pq.ParquetWriter(file, output_schema, **write_kwargs) as writer:
-                for table in tables:
-                    table = table.cast(output_schema)
-                    writer.write_table(table, row_group_size=row_group_size)
+        combined_table = concat(
+            [tbl.cast(output_schema) for tbl in tables], promote_types=False
+        )
+
+        pq.write_to_dataset(
+            combined_table,
+            root_path=path,
+            max_rows_per_group=row_group_size,
+            filesystem=self.filesystem,
+            basename_template=filename,
+            schema=output_schema,
+            use_legacy_dataset=False,
+            **write_kwargs,
+        )
 
     def _write_partition_files(
         self,
