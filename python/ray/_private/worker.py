@@ -48,6 +48,7 @@ import ray._private.serialization as serialization
 import ray._private.services as services
 import ray._private.state
 import ray._private.worker
+from ray._private.custom_types import TensorTransportEnum
 
 # Ray modules
 import ray.actor
@@ -58,7 +59,6 @@ from ray import ActorID, JobID, Language, ObjectRef
 from ray._common.utils import load_class
 from ray._private import ray_option_utils
 from ray._private.client_mode_hook import client_mode_hook
-from ray._private.custom_types import TensorTransportEnum
 from ray._private.function_manager import FunctionActorManager
 from ray._private.inspect_util import is_cython
 from ray._private.ray_logging import (
