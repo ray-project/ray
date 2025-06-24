@@ -1,6 +1,6 @@
 # Distributing your PyTorch Training Code with Ray Train and Ray Data
 
-**⏱️ Time to complete**: 10 min
+**Time to complete**: 10 min
 
 This template shows you how to distribute your PyTorch training code with Ray Train and Ray Data, getting performance and usability improvements along the way.
 
@@ -16,7 +16,8 @@ In this step you train a PyTorch VisionTransformer model to recognize objects us
 First, install and import the required Python modules.
 
 
-```python
+```bash
+%%bash
 pip install torch torchvision
 ```
 

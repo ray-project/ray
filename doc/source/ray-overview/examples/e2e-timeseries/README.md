@@ -1,5 +1,16 @@
 # Time-series forecasting with DLinear
 
+
+```{toctree}
+:hidden:
+
+e2e_timeseries/01-Distributed-Training
+e2e_timeseries/02-Validation
+e2e_timeseries/03-Serving
+
+```
+
+
 <div align="left">
 <a target="_blank" href="https://console.anyscale.com/"><img src="https://img.shields.io/badge/🚀%20Run%20on-Anyscale-9hf"></a>&nbsp;
 <a href="https://github.com/anyscale/e2e-timeseries" role="button"><img src="https://img.shields.io/static/v1?label=&message=View%20On%20GitHub&color=586069&logo=github&labelColor=2f363d"></a>
@@ -32,3 +43,4 @@ This repository is based on the official `DLinear` implementations:
 
 And the original publication:
 - ["Are Transformers Effective for Time Series Forecasting?"](https://arxiv.org/abs/2205.13504)
+
