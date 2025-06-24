@@ -14,6 +14,8 @@ import ray
 from ray._common.test_utils import wait_for_condition
 from ray.actor import ActorHandle
 from ray.data._internal.compute import ActorPoolStrategy
+from ray.data._internal.execution.autoscaler.default_autoscaler import \
+    AutoscalingAction
 from ray.data._internal.execution.bundle_queue import FIFOBundleQueue
 from ray.data._internal.execution.interfaces import ExecutionResources
 from ray.data._internal.execution.interfaces.physical_operator import _ActorPoolInfo
@@ -106,7 +108,7 @@ class TestActorPool(unittest.TestCase):
         self, pool: _ActorPool, node_id="node1"
     ) -> Tuple[ActorHandle, ObjectRef[Any]]:
         self._actor_node_id = node_id
-        num_actors = pool.scale_up(1)
+        num_actors = pool.apply(AutoscalingAction(delta=1, reason="adding pending actor"))
 
         assert num_actors == 1
         assert self._last_created_actor_and_ready_ref is not None
@@ -149,7 +151,7 @@ class TestActorPool(unittest.TestCase):
 
         with freeze_time() as f:
             # Scale up
-            pool.scale_up(1)
+            pool.apply(AutoscalingAction(delta=1, reason="scaling up"))
             # Assert we can't scale down immediately after scale up
             assert not pool.can_scale_down()
             assert pool._last_scaling_up_ts == time.time()
