@@ -189,7 +189,7 @@ Status ActorTaskSubmitter::SubmitTask(TaskSpecification task_spec) {
       // backpressure. The receiving actor will execute the tasks according to
       // this sequence number.
       send_pos = task_spec.SequenceNumber();
-      RAY_CHECK(queue->second.actor_submit_queue->Emplace(send_pos, task_spec));
+      queue->second.actor_submit_queue->Emplace(send_pos, task_spec);
       queue->second.cur_pending_calls++;
       task_queued = true;
     }
@@ -563,7 +563,7 @@ void ActorTaskSubmitter::SendPendingTasks(const ActorID &actor_id) {
       break;
     }
     RAY_CHECK(!client_queue.worker_id.empty());
-    PushActorTask(client_queue, task.value().first, task.value().second);
+    PushActorTask(client_queue, /*task_spec=*/task->first, /*skip_queue=*/task->second);
   }
 }
 

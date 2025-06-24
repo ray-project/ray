@@ -14,7 +14,6 @@
 
 #pragma once
 
-#include <map>
 #include <utility>
 #include <vector>
 
@@ -43,9 +42,8 @@ namespace core {
 class IActorSubmitQueue {
  public:
   virtual ~IActorSubmitQueue() = default;
-  /// Add a task into the queue. Returns false if a task with the same sequence_no has
-  /// already been inserted.
-  virtual bool Emplace(uint64_t sequence_no, const TaskSpecification &task_spec) = 0;
+  /// Add a task into the queue.
+  virtual void Emplace(uint64_t sequence_no, const TaskSpecification &task_spec) = 0;
   /// If a task exists.
   virtual bool Contains(uint64_t sequence_no) const = 0;
   /// Get a task; the bool indicates if the task's dependency was resolved.

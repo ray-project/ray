@@ -35,13 +35,13 @@ ActorSchedulingQueue::ActorSchedulingQueue(
       main_thread_id_(std::this_thread::get_id()),
       waiter_(waiter),
       task_event_buffer_(task_event_buffer),
-      pool_manager_(pool_manager),
-      fiber_state_manager_(fiber_state_manager),
+      pool_manager_(std::move(pool_manager)),
+      fiber_state_manager_(std::move(fiber_state_manager)),
       is_asyncio_(is_asyncio) {
-  if (is_asyncio_) {
+  if (is_asyncio_ && RayLog::IsLevelEnabled(RayLogLevel::DEBUG)) {
     std::stringstream ss;
     ss << "Setting actor as asyncio with max_concurrency=" << fiber_max_concurrency
-       << ", and defined concurrency groups are:" << std::endl;
+       << ", and defined concurrency groups are:\n";
     for (const auto &concurrency_group : concurrency_groups) {
       ss << "\t" << concurrency_group.name << " : " << concurrency_group.max_concurrency;
     }
@@ -81,8 +81,9 @@ void ActorSchedulingQueue::Add(
         reject_request,
     rpc::SendReplyCallback send_reply_callback,
     TaskSpecification task_spec) {
-  // A seq_no of -1 means no ordering constraint. Actor tasks must be executed in order.
-  RAY_CHECK(seq_no != -1);
+  // A seq_no of -1 means no ordering constraint. Actor tasks that are not retries must be
+  // executed in order.
+  RAY_CHECK(seq_no != -1 || task_spec.IsRetry());
 
   RAY_CHECK(std::this_thread::get_id() == main_thread_id_);
   if (client_processed_up_to >= next_seq_no_) {
@@ -90,19 +91,38 @@ void ActorSchedulingQueue::Add(
                   << client_processed_up_to;
     next_seq_no_ = client_processed_up_to + 1;
   }
-  RAY_LOG(DEBUG) << "Enqueue " << seq_no << " cur seqno " << next_seq_no_;
+  auto task_id = task_spec.TaskId();
+  RAY_LOG(DEBUG).WithField(task_id) << "Enqueuing in order actor task, seq_no=" << seq_no
+                                    << ", next_seq_no_=" << next_seq_no_;
 
-  pending_actor_tasks_[seq_no] = InboundRequest(std::move(accept_request),
-                                                std::move(reject_request),
-                                                std::move(send_reply_callback),
-                                                task_spec);
+  const auto dependencies = task_spec.GetDependencies();
+  if (seq_no == -1 && !dependencies.empty()) {
+    retries_pending_args_fetch_.emplace(task_id,
+                                        InboundRequest(std::move(accept_request),
+                                                       std::move(reject_request),
+                                                       std::move(send_reply_callback),
+                                                       task_spec));
+  } else if (seq_no == -1) {
+    retries_pending_execution_.emplace(task_id,
+                                       InboundRequest(std::move(accept_request),
+                                                      std::move(reject_request),
+                                                      std::move(send_reply_callback),
+                                                      task_spec));
+  } else {
+    RAY_CHECK(pending_actor_tasks_
+                  .emplace(seq_no,
+                           InboundRequest(std::move(accept_request),
+                                          std::move(reject_request),
+                                          std::move(send_reply_callback),
+                                          task_spec))
+                  .second);
+  }
   {
     absl::MutexLock lock(&mu_);
     pending_task_id_to_is_canceled.emplace(task_spec.TaskId(), false);
   }
 
-  const auto dependencies = task_spec.GetDependencies();
-  if (dependencies.size() > 0) {
+  if (!dependencies.empty()) {
     RAY_UNUSED(task_event_buffer_.RecordTaskStatusEventIfNeeded(
         task_spec.TaskId(),
         task_spec.JobId(),
@@ -110,11 +130,21 @@ void ActorSchedulingQueue::Add(
         task_spec,
         rpc::TaskStatus::PENDING_ACTOR_TASK_ARGS_FETCH,
         /* include_task_info */ false));
-    waiter_.Wait(dependencies, [seq_no, this]() {
+    waiter_.Wait(dependencies, [this, seq_no, task_id]() mutable {
       RAY_CHECK(std::this_thread::get_id() == main_thread_id_);
-      auto it = pending_actor_tasks_.find(seq_no);
-      if (it != pending_actor_tasks_.end()) {
-        const TaskSpecification &task_spec = it->second.TaskSpec();
+      InboundRequest *inbound_request = nullptr;
+      if (auto it = pending_actor_tasks_.find(seq_no); it != pending_actor_tasks_.end()) {
+        inbound_request = &it->second;
+      } else if (auto it = retries_pending_args_fetch_.find(task_id);
+                 it != retries_pending_args_fetch_.end()) {
+        auto [new_it, inserted] =
+            retries_pending_execution_.emplace(task_id, std::move(it->second));
+        retries_pending_args_fetch_.erase(it);
+        RAY_CHECK(inserted);
+        inbound_request = &new_it->second;
+      }
+      if (inbound_request != nullptr) {
+        const auto &task_spec = inbound_request->TaskSpec();
         RAY_UNUSED(task_event_buffer_.RecordTaskStatusEventIfNeeded(
             task_spec.TaskId(),
             task_spec.JobId(),
@@ -122,7 +152,7 @@ void ActorSchedulingQueue::Add(
             task_spec,
             rpc::TaskStatus::PENDING_ACTOR_TASK_ORDERING_OR_CONCURRENCY,
             /* include_task_info */ false));
-        it->second.MarkDependenciesSatisfied();
+        inbound_request->MarkDependenciesSatisfied();
         ScheduleRequests();
       }
     });
@@ -168,12 +198,24 @@ void ActorSchedulingQueue::ScheduleRequests() {
   }
 
   // Process as many in-order requests as we can.
-  while (!pending_actor_tasks_.empty() &&
-         pending_actor_tasks_.begin()->first == next_seq_no_ &&
-         pending_actor_tasks_.begin()->second.CanExecute()) {
-    auto head = pending_actor_tasks_.begin();
-    auto request = head->second;
-    auto task_id = head->second.TaskID();
+  while (!retries_pending_execution_.empty() ||
+         (!pending_actor_tasks_.empty() &&
+          pending_actor_tasks_.begin()->first == next_seq_no_ &&
+          pending_actor_tasks_.begin()->second.CanExecute())) {
+    InboundRequest request;
+    TaskID task_id;
+    if (!retries_pending_execution_.empty()) {
+      auto it = retries_pending_execution_.begin();
+      task_id = it->second.TaskID();
+      request = std::move(it->second);
+      retries_pending_execution_.erase(it);
+    } else {
+      auto it = pending_actor_tasks_.begin();
+      task_id = it->second.TaskID();
+      request = std::move(it->second);
+      pending_actor_tasks_.erase(it);
+      next_seq_no_++;
+    }
 
     if (is_asyncio_) {
       // Process async actor task.
@@ -195,8 +237,6 @@ void ActorSchedulingQueue::ScheduleRequests() {
         });
       }
     }
-    pending_actor_tasks_.erase(head);
-    next_seq_no_++;
   }
 
   if (pending_actor_tasks_.empty() ||
@@ -242,6 +282,7 @@ void ActorSchedulingQueue::AcceptRequestOrRejectIfCanceled(TaskID task_id,
     auto it = pending_task_id_to_is_canceled.find(task_id);
     if (it != pending_task_id_to_is_canceled.end()) {
       is_canceled = it->second;
+      pending_task_id_to_is_canceled.erase(it);
     }
   }
 
@@ -252,9 +293,6 @@ void ActorSchedulingQueue::AcceptRequestOrRejectIfCanceled(TaskID task_id,
   } else {
     request.Accept();
   }
-
-  absl::MutexLock lock(&mu_);
-  pending_task_id_to_is_canceled.erase(task_id);
 }
 
 }  // namespace core
