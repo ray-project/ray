@@ -234,6 +234,18 @@ void GcsAutoscalerStateManager::GetPendingGangResourceRequests(
       *resource_req->mutable_resources_bundle() =
           std::move(*bundle.mutable_unit_resources());
 
+      // Create a new BundleSelector
+      auto *bundle_selector = gang_resource_req->add_bundle_selectors();
+
+      // Add ResourceRequest for this bundle.
+      auto *resource_req = bundle_selector->add_resource_requests();
+      *resource_req->mutable_resources_bundle() =
+          std::move(*bundle.mutable_unit_resources());
+
+      if (bundle.has_label_selector()) {
+        resource_req->add_label_selectors()->CopyFrom(bundle.label_selector());
+      }
+
       // Add the placement constraint.
       if (pg_constraint.has_value()) {
         resource_req->add_placement_constraints()->CopyFrom(pg_constraint.value());
@@ -392,8 +404,8 @@ void GcsAutoscalerStateManager::GetNodeStates(
     }
     // Add Ray node labels to dynamic labels
     const auto &node_labels = gcs_node_info.labels();
-    node_state_proto->mutable_dynamic_labels()->insert(node_labels.begin(),
-                                                       node_labels.end());
+    node_state_proto->mutable_labels()->insert(node_labels.begin(),
+                                               node_labels.end());
   };
 
   const auto &alive_nodes = gcs_node_manager_.GetAllAliveNodes();
