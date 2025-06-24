@@ -128,7 +128,7 @@ class ParquetDatasink(_FileDatasink):
             root_path=path,
             max_rows_per_group=row_group_size,
             filesystem=self.filesystem,
-            basename_template=filename,
+            basename_template=filename + "-{i}.parquet",
             schema=output_schema,
             use_legacy_dataset=False,
             **write_kwargs,
@@ -149,7 +149,7 @@ class ParquetDatasink(_FileDatasink):
             root_path=self.path,
             partition_cols=self.partition_cols,
             schema=output_schema,
-            basename_template=filename,
+            basename_template=filename + "-{i}.parquet",
             use_legacy_dataset=False,
             **write_kwargs,
         )
