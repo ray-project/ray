@@ -45,7 +45,9 @@ def test_actor_pool_scaling():
             # NOTE: Unittest mocking library doesn't support proxying to actual
             #       non-mocked methods so we have emulate it by directly binding existing
             #       method of `get_pool_util` to a mocked object
-            side_effect=lambda: MethodType(AutoscalingActorPool.get_pool_util, actor_pool)()
+            side_effect=lambda: MethodType(
+                AutoscalingActorPool.get_pool_util, actor_pool
+            )()
         ),
     )
 
@@ -68,21 +70,14 @@ def test_actor_pool_scaling():
         yield
         setattr(mock, attr, original)
 
-    def assert_autoscaling_action(
-        *,
-        delta: int,
-        expected_reason: Optional[str]
-    ):
+    def assert_autoscaling_action(*, delta: int, expected_reason: Optional[str]):
         nonlocal actor_pool, op, op_state
 
         assert autoscaler._derive_scaling_action(
             actor_pool=actor_pool,
             op=op,
             op_state=op_state,
-        ) == _AutoscalingAction(
-            delta=delta,
-            reason=expected_reason
-        )
+        ) == _AutoscalingAction(delta=delta, reason=expected_reason)
 
     # Should scale up since the util above the threshold.
     assert actor_pool.get_pool_util() == 1.0

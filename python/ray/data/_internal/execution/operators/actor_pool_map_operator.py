@@ -791,8 +791,7 @@ class _ActorPool(AutoscalingActorPool):
             # Make sure after scaling down actor pool size won't fall below its
             # min size
             target_num_actors = min(
-                abs(action.delta),
-                max(self.current_size() - self.min_size(), 0)
+                abs(action.delta), max(self.current_size() - self.min_size(), 0)
             )
 
             for _ in range(target_num_actors):

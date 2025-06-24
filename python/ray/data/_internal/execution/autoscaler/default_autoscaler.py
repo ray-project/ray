@@ -1,4 +1,3 @@
-import enum
 import math
 import time
 from dataclasses import dataclass, field
@@ -31,17 +30,12 @@ class _AutoscalingAction:
     @classmethod
     def up(cls, *, delta: int, reason: Optional[str] = None):
         assert delta > 0
-        return _AutoscalingAction(
-            delta=delta, reason=reason
-        )
+        return _AutoscalingAction(delta=delta, reason=reason)
 
     @classmethod
     def down(cls, *, delta: int, reason: Optional[str] = None):
         assert delta < 0, "For scale down delta is expected to be negative!"
-        return _AutoscalingAction(
-            delta=delta,
-            reason=reason
-        )
+        return _AutoscalingAction(delta=delta, reason=reason)
 
 
 class DefaultAutoscaler(Autoscaler):
