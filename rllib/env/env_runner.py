@@ -66,7 +66,7 @@ class EnvRunner(FaultAwareApply, metaclass=abc.ABCMeta):
         # Create a MetricsLogger object for logging custom stats.
         self.metrics: MetricsLogger = MetricsLogger()
 
-        super().__init__(**kwargs)
+        super().__init__()
 
         # This eager check is necessary for certain all-framework tests
         # that use tf's eager_mode() context generator.
