@@ -326,6 +326,11 @@ bool TaskManager::ResubmitTask(const TaskID &task_id, std::vector<ObjectID> *tas
       return false;
     }
 
+    if (it->second.num_retries_left == 0) {
+      // This can happen when the task has been marked for cancellation.
+      return false;
+    }
+
     if (!it->second.IsPending()) {
       resubmit = true;
       MarkTaskRetryOnResubmit(it->second);
