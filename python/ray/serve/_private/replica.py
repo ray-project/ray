@@ -371,6 +371,7 @@ class ReplicaBase(ABC):
             init_kwargs,
             deployment_id=self._deployment_id,
             run_sync_methods_in_threadpool=RAY_SERVE_RUN_SYNC_IN_THREADPOOL,
+            local_testing_mode=False,
         )
         self._semaphore = Semaphore(lambda: self.max_ongoing_requests)
 
