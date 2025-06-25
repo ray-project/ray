@@ -53,6 +53,8 @@ steps:
     instance_type: large
     parallelism: 4
     commands:
+      - bazel run //ci/ray_ci:test_in_docker -- //python/ray/tests:test_aggregated_prometheus_metrics core
+        --install-mask all-ray-libraries
       - bazel run //ci/ray_ci:test_in_docker -- //python/ray/tests/... //python/ray/_common/tests/... //python/ray/dag/... //python/ray/autoscaler/v2/... core
         --install-mask all-ray-libraries
         --workers "$${BUILDKITE_PARALLEL_JOB_COUNT}" --worker-id "$${BUILDKITE_PARALLEL_JOB}" --parallelism-per-worker 3

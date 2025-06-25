@@ -7,10 +7,8 @@ import os
 import pytest
 
 import ray
-from ray._private.test_utils import (
-    fetch_prometheus_metrics,
-    wait_for_assertion,
-)
+from ray._private.test_utils import fetch_prometheus_metrics
+from ray._common.test_utils import wait_for_condition
 from ray._private.metrics_agent import WORKER_ID_TAG_KEY
 
 
@@ -88,19 +86,15 @@ def test_cardinality_levels(_setup_cluster_for_test, cardinality_level):
                 if cardinality_level == "recommended":
                     # If the cardinality level is recommended, the WorkerId tag should
                     # be removed
-                    assert (
-                        sample.labels.get(WORKER_ID_TAG_KEY) is None
-                    ), f"Sample {sample} contains WorkerId tag"
+                    return sample.labels.get(WORKER_ID_TAG_KEY) is None
                 elif cardinality_level == "legacy":
                     # If the cardinality level is legacy, the WorkerId tag should be
                     # present
-                    assert (
-                        sample.labels.get(WORKER_ID_TAG_KEY) is not None
-                    ), f"Sample {sample} does not contain WorkerId tag"
+                    return sample.labels.get(WORKER_ID_TAG_KEY) is not None
                 else:
                     raise ValueError(f"Unknown cardinality level: {cardinality_level}")
 
-    wait_for_assertion(
+    wait_for_condition(
         _validate,
         timeout=TEST_TIMEOUT_S,
         retry_interval_ms=1000,  # Yield resource for other processes
