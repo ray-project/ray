@@ -146,12 +146,17 @@ class TestActorPool(unittest.TestCase):
     def test_can_scale_down(self):
         pool = self._create_actor_pool(min_size=1, max_size=4)
 
+        downscaling_request = ScalingConfig.downscale(
+            delta=-1,
+            reason="scaling down"
+        )
+
         with freeze_time() as f:
             # Scale up
             pool.scale(ScalingConfig(delta=1, reason="scaling up"))
             # Assert we can't scale down immediately after scale up
-            assert not pool.can_scale_down()
-            assert pool._last_scaling_up_ts == time.time()
+            assert not pool._can_apply(downscaling_request)
+            assert pool._last_upscaling_ts == time.time()
 
             # Advance clock
             f.tick(
@@ -161,7 +166,7 @@ class TestActorPool(unittest.TestCase):
             )
 
             # Assert can scale down after debounce period
-            assert pool.can_scale_down()
+            assert pool._can_apply(downscaling_request)
 
     def test_add_pending(self):
         # Test that pending actor is added in the correct state.
