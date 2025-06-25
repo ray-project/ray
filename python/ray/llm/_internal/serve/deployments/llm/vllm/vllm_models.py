@@ -111,16 +111,19 @@ class VLLMEngineConfig(BaseModelExtended):
         else:
             # If it's a CloudMirrorConfig (or subtype)
             mirror_config = llm_config.model_loading_config.model_source
-            
 
         all_engine_kwargs = llm_config.engine_kwargs.copy()
         engine_kwargs = {}
         frontend_kwargs = {}
-        
+
         # Get field names from dataclasses
-        frontend_field_names = {field.name for field in dataclasses.fields(FrontendArgs)}
-        async_engine_field_names = {field.name for field in dataclasses.fields(AsyncEngineArgs)}
-        
+        frontend_field_names = {
+            field.name for field in dataclasses.fields(FrontendArgs)
+        }
+        async_engine_field_names = {
+            field.name for field in dataclasses.fields(AsyncEngineArgs)
+        }
+
         for key, value in all_engine_kwargs.items():
             if key in frontend_field_names:
                 frontend_kwargs[key] = value

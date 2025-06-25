@@ -385,7 +385,9 @@ class LLMRouter:
                 first_chunk = initial_response
 
             if isinstance(first_chunk, ErrorResponse):
-                logger.info(f"[Kourosh] error encountered in first_chunk: {first_chunk}")
+                logger.info(
+                    f"[Kourosh] error encountered in first_chunk: {first_chunk}"
+                )
                 raise OpenAIHTTPException(
                     message=first_chunk.message,
                     status_code=first_chunk.code,
@@ -394,7 +396,9 @@ class LLMRouter:
 
             if isinstance(first_chunk, NoneStreamingResponseType):
                 # Not streaming, first chunk should be a single response
-                logger.info(f"[Kourosh] non streaming response received, first_chunk: {first_chunk}")
+                logger.info(
+                    f"[Kourosh] non streaming response received, first_chunk: {first_chunk}"
+                )
                 return JSONResponse(content=first_chunk.model_dump())
 
             # In case of streaming we need to iterate over the chunks and yield them

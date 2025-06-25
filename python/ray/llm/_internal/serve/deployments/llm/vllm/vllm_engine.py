@@ -181,12 +181,13 @@ class _EngineBackgroundProcess:
 class CustomNamespace:
     def __init__(self, *args):
         self.classes = args
-        
+
     def __getattr__(self, name):
         for cls in self.classes:
             if hasattr(cls, name):
                 return getattr(cls, name)
         raise AttributeError(f"Attribute {name} not found in {self.classes}")
+
 
 class VLLMEngine(LLMEngine):
     def __init__(
@@ -199,7 +200,6 @@ class VLLMEngine(LLMEngine):
             llm_config: The llm configuration for this engine
         """
         super().__init__(llm_config)
-        
 
         # Convert this to a namespace object
         # TODO: How to get the args in a way that is also inherits the default values?
@@ -208,12 +208,12 @@ class VLLMEngine(LLMEngine):
         # self.vllm_cli_args.update(
         #     disable_request_logs=True,
         # )
-        
-        # filter out the llm_config.engine_kwargs to those that belong to FrontendArgs and pop them over. 
+
+        # filter out the llm_config.engine_kwargs to those that belong to FrontendArgs and pop them over.
         engine_config = llm_config.get_engine_config()
         self.frontend_args = FrontendArgs(**engine_config.frontend_kwargs)
         self.engine_args = AsyncEngineArgs(**engine_config.engine_kwargs)
-        
+
         self.namespace_args = CustomNamespace(self.engine_args, self.frontend_args)
 
         if vllm is None:
@@ -332,12 +332,13 @@ class VLLMEngine(LLMEngine):
         #     given_format="auto",
         #     tokenizer=self._tokenizer,
         # )
-        
-        
+
         from vllm.entrypoints.openai.api_server import init_app_state
+
         self.engine = await self._start_engine()
-        
+
         from starlette.datastructures import State
+
         state = State()
 
         await init_app_state(
@@ -346,11 +347,11 @@ class VLLMEngine(LLMEngine):
             state=state,
             args=self.namespace_args,
         )
-        
+
         self.oai_serving_chat = state.openai_serving_chat
         self.oai_serving_completion = state.openai_serving_completion
         self.oai_serving_embedding = state.openai_serving_embedding
-        
+
         self.running = True
 
         logger.info("Started vLLM engine.")
@@ -544,7 +545,7 @@ class VLLMEngine(LLMEngine):
         from vllm.v1.executor.abstract import Executor
 
         vllm_config.parallel_config.placement_group = placement_group
-        
+
         if use_v1:
             from vllm.v1.engine.async_llm import AsyncLLM as AsyncLLMEngine
         else:
@@ -639,17 +640,20 @@ class VLLMEngine(LLMEngine):
         vllm_request = VLLMGenerationRequest(**request_params)
         return vllm_request
 
-    async def chat(self, request: GenerationRequest) -> AsyncGenerator[LLMRawResponse, None]:
+    async def chat(
+        self, request: GenerationRequest
+    ) -> AsyncGenerator[LLMRawResponse, None]:
 
         chat_response = await self.oai_serving_chat.create_chat_completion(request)
-        
+
         if isinstance(chat_response, AsyncGenerator):
             async for response in chat_response:
                 yield response
         else:
-            logger.info(f"[Kourosh] non streaming response received, chat_response: {chat_response}")
+            logger.info(
+                f"[Kourosh] non streaming response received, chat_response: {chat_response}"
+            )
             yield chat_response
-
 
     async def generate(
         self, request: GenerationRequest
