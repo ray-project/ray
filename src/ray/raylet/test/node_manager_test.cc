@@ -803,6 +803,9 @@ TEST_F(NodeManagerTest, TestPinningAnObjectPendingDeletionFails) {
     EXPECT_EQ(reply.successes_size(), 1);
     EXPECT_TRUE(reply.successes(0));
 
+    // TODO(irabbani): This is a hack to mark object for pending deletion in the
+    // FakeLocalObjectManager. Follow up in CORE-1677 to remove this and
+    // integrate with a Fake SubscriberInterface.
     objects_pending_deletion_->emplace(id);
 
     grpc::ClientContext context_second;
@@ -811,6 +814,7 @@ TEST_F(NodeManagerTest, TestPinningAnObjectPendingDeletionFails) {
     rpc::PinObjectIDsReply reply_second;
     auto status_second = stub->PinObjectIDs(&context_second, request, &reply_second);
 
+    // Object was not pinned successfully because it was pending deletion.
     EXPECT_TRUE(status_second.ok());
     EXPECT_EQ(reply_second.successes_size(), 1);
     EXPECT_FALSE(reply_second.successes(0));

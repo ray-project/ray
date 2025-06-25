@@ -116,23 +116,13 @@ NodeManager::NodeManager(
     gcs::GcsClient &gcs_client,
     rpc::ClientCallManager &client_call_manager,
     rpc::CoreWorkerClientPool &worker_rpc_pool,
-<<<<<<< irabbani/CORE-1618
-    std::shared_ptr<pubsub::SubscriberInterface> core_worker_subscriber,
-    std::shared_ptr<ClusterResourceScheduler> cluster_resource_scheduler,
-    std::shared_ptr<ILocalTaskManager> local_task_manager,
-    std::shared_ptr<ClusterTaskManagerInterface> cluster_task_manager,
-    std::shared_ptr<IObjectDirectory> object_directory,
-    std::shared_ptr<ObjectManagerInterface> object_manager,
-    LocalObjectManagerInterface &local_object_manager,
-=======
     pubsub::SubscriberInterface &core_worker_subscriber,
     ClusterResourceScheduler &cluster_resource_scheduler,
     ILocalTaskManager &local_task_manager,
     ClusterTaskManagerInterface &cluster_task_manager,
     IObjectDirectory &object_directory,
     ObjectManagerInterface &object_manager,
-    LocalObjectManager &local_object_manager,
->>>>>>> master
+    LocalObjectManagerInterface &local_object_manager,
     DependencyManager &dependency_manager,
     WorkerPoolInterface &worker_pool,
     absl::flat_hash_map<WorkerID, std::shared_ptr<WorkerInterface>> &leased_workers,
@@ -2501,6 +2491,10 @@ void NodeManager::HandlePinObjectIDs(rpc::PinObjectIDsRequest request,
     auto object_id_it = object_ids.begin();
     auto result_it = results.begin();
     while (object_id_it != object_ids.end()) {
+      // Note: It is safe to call ObjectPendingDeletion here because the asynchronous
+      // deletion can only happen on the same thread as the call to HandlePinObjectIDs.
+      // Therefore, a new object cannot be marked for deletion while this function is
+      // executing.
       if (*result_it == nullptr ||
           local_object_manager_.ObjectPendingDeletion(*object_id_it)) {
         RAY_LOG(DEBUG).WithField(*object_id_it)

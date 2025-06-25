@@ -263,11 +263,7 @@ int main(int argc, char *argv[]) {
   std::unique_ptr<ray::raylet::WorkerPoolInterface> worker_pool;
   /// Manages all local objects that are pinned (primary
   /// copies), freed, and/or spilled.
-<<<<<<< irabbani/CORE-1618
-  std::shared_ptr<ray::raylet::LocalObjectManagerInterface> local_object_manager;
-=======
-  std::unique_ptr<ray::raylet::LocalObjectManager> local_object_manager;
->>>>>>> master
+  std::unique_ptr<ray::raylet::LocalObjectManagerInterface> local_object_manager;
   /// These classes make up the new scheduler. ClusterResourceScheduler is
   /// responsible for maintaining a view of the cluster state w.r.t resource
   /// usage. ClusterTaskManager is responsible for queuing, spilling back, and
