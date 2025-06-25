@@ -704,6 +704,7 @@ class _ActorPool(AutoscalingActorPool):
         self._max_tasks_in_flight: int = max_tasks_in_flight_per_actor
         self._create_actor_fn = create_actor_fn
         self._per_actor_resource_usage = per_actor_resource_usage
+
         assert self._min_size >= 1
         assert self._max_size >= self._min_size
         assert self._max_tasks_in_flight >= 1
@@ -754,6 +755,9 @@ class _ActorPool(AutoscalingActorPool):
 
     def max_tasks_in_flight_per_actor(self) -> int:
         return self._max_tasks_in_flight
+
+    def max_actor_concurrency(self) -> int:
+        return self._max_actor_concurrency
 
     def num_tasks_in_flight(self) -> int:
         return self._total_num_tasks_in_flight

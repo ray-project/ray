@@ -72,6 +72,11 @@ class AutoscalingActorPool(ABC):
         ...
 
     @abstractmethod
+    def max_actor_concurrency(self) -> int:
+        """Returns max number of tasks single actor could run concurrently."""
+        ...
+
+    @abstractmethod
     def num_tasks_in_flight(self) -> int:
         """Number of current in-flight tasks (running + pending tasks)."""
         ...

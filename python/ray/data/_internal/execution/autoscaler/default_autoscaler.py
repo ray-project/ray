@@ -1,3 +1,4 @@
+import logging
 import math
 import time
 from typing import TYPE_CHECKING, Dict
@@ -9,12 +10,15 @@ from ray.data._internal.execution.autoscaling_requester import (
     get_or_create_autoscaling_requester_actor,
 )
 from ray.data._internal.execution.interfaces.execution_options import ExecutionResources
-from ray.data.context import AutoscalingConfig
+from ray.data.context import AutoscalingConfig, WARN_PREFIX
 
 if TYPE_CHECKING:
     from ray.data._internal.execution.interfaces import PhysicalOperator
     from ray.data._internal.execution.resource_manager import ResourceManager
     from ray.data._internal.execution.streaming_executor_state import OpState, Topology
+
+
+logger = logging.getLogger(__name__)
 
 
 class DefaultAutoscaler(Autoscaler):
@@ -38,6 +42,9 @@ class DefaultAutoscaler(Autoscaler):
         self._actor_pool_scaling_down_threshold = (
             config.actor_pool_util_downscaling_threshold
         )
+
+        self._validate_autoscaling_config()
+
         # Last time when a request was sent to Ray's autoscaler.
         self._last_request_time = 0
 
@@ -195,3 +202,18 @@ class DefaultAutoscaler(Autoscaler):
 
     def get_total_resources(self) -> ExecutionResources:
         return ExecutionResources.from_resource_dict(ray.cluster_resources())
+
+    def _validate_autoscaling_config(self):
+        for op, state in self._topology.items():
+            for actor_pool in op.get_autoscaling_actor_pools():
+                self._validate_actor_pool_autoscaling_config(actor_pool, op)
+
+    def _validate_actor_pool_autoscaling_config(self, actor_pool: AutoscalingActorPool, op: "PhysicalOperator"):
+        if actor_pool.max_actor_concurrency() == actor_pool.max_tasks_in_flight_per_actor() and self._actor_pool_scaling_up_threshold > 1.0:
+            logger.warning(
+                f"{WARN_PREFIX} Actor Pool configuration of the {op} will not allow it to scale up: "
+                f"upscaling threshold ({self._actor_pool_scaling_up_threshold}) is above "
+                f"100%, but actor pool utilization won't be able to exceed it because "
+                f"actor pool is configured to avoid buffering (its "
+                f"`max_tasks_in_flight_per_actor` == `max_concurrency`)"
+            )
