@@ -109,7 +109,7 @@ the Ray Serve Multi-application API `PUT "/api/serve/applications/"`.
 You have two options to resolve this issue:
 
 * Build your own Ray image with the required dependencies.
-* Specify the required dependencies using `runtime_env` in `serveConfigV2` field.
+* Specify the required dependencies using `runtime_env` in the `serveConfigV2` field.
   * For example, the MobileNet example requires `python-multipart`, which isn't included in the Ray image `rayproject/ray:x.y.z`.
 Therefore, the YAML file includes `python-multipart` in the runtime environment. For more details, refer to [the MobileNet example](kuberay-mobilenet-rayservice-example).
 
