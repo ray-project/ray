@@ -138,9 +138,25 @@ class ParquetDatasink(_FileDatasink):
         min_rows_per_group = row_group_size if row_group_size else 0
         max_rows_per_group = row_group_size if row_group_size else 1024 * 1024
 
-        if FILE_FORMAT not in filename:
+        # Check if filename is already templatized
+        if "{i}" in filename:
+            # Filename is already templatized, but may need file extension
+            if FILE_FORMAT not in filename:
+                # Add file extension to templatized filename
+                basename_template = f"{filename}.{FILE_FORMAT}"
+            else:
+                # Already has extension, use as-is
+                basename_template = filename
+        elif FILE_FORMAT not in filename:
+            # No extension and not templatized, add extension and template
             basename_template = f"{filename}-{{i}}.{FILE_FORMAT}"
         else:
+            # Has extension but not templatized, add template while preserving extension
+            logger.warning(
+                f"Filename '{filename}' is not templatized. Adding '{{i}}' template "
+                f"to ensure unique filenames when writing multiple files. This is an expectation"
+                f"from the pyarrow write_dataset API."
+            )
             # Use pathlib.Path to properly handle filenames with dots
             filename_path = Path(filename)
             stem = filename_path.stem  # filename without extension
