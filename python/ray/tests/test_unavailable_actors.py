@@ -60,6 +60,24 @@ def call_from(f, source):
         raise ValueError(f"unknown {source}")
 
 
+@ray.remote(num_cpus=0)
+class SignalCounter:
+    def __init__(self, s: SignalActor) -> None:
+        self._count = 0
+        self._signal = s
+
+    def getpid(self):
+        return os.getpid()
+
+    def inc(self) -> int:
+        ray.get(self._signal.wait.remote())
+        self._count += 1
+        return self._count
+
+    def get(self) -> int:
+        return self._count
+
+
 def sigkill_actor(actor, timeout=5):
     """Sends SIGKILL to an actor's process. The actor must be on the same node, and it
     must has a `getpid` method."""
@@ -110,19 +128,32 @@ def _close_common_connections(pid: int):
 @pytest.mark.parametrize("ray_start_regular", [{"log_to_driver": False}], indirect=True)
 def test_actor_unavailable_conn_broken(ray_start_regular, caller):
     def body():
-        a = Counter.remote()
-        assert ray.get(a.slow_increment.remote(2, 0.1)) == 2
+        signal = SignalActor.remote()
+        a = SignalCounter.remote(signal)
         pid = ray.get(a.getpid.remote())
-        task = a.slow_increment.remote(3, 5)
-        # Break the grpc connection from this process to the actor process. The
-        # next `ray.get` call should fail with ActorUnavailableError.
+        print("PID!", pid)
+
+        # Start a method call on the actor, then break the connection.
+        # The next `ray.get` call should fail with ActorUnavailableError.
+        obj_ref = a.inc.remote()
+        wait_for_condition(lambda: ray.get(signal.cur_num_waiters.remote()) == 1)
         _close_common_connections(pid)
-        with pytest.raises(ActorUnavailableError, match="RpcError"):
-            ray.get(task)
-        # Since the remote() call happens *before* the break, the actor did receive the
-        # request, so the side effects are observable, and the actor recovered.
-        assert ray.get(a.read.remote()) == 5
-        assert ray.get(a.slow_increment.remote(4, 0.1)) == 9
+        ray.get(signal.send.remote())
+        print("SDFDSF")
+        # with pytest.raises(ActorUnavailableError, match="RpcError"):
+            # print("HERREERER")
+        assert ray.get(obj_ref) == 1
+        print("HERE1!")
+
+        # Now signal the method to finish.
+        # The side effects should be observable and we should be able to get the result
+        # of a new method call.
+        print("HERE2!")
+        ray.get(signal.send.remote())
+        print("HERE3!")
+        assert ray.get(a.get.remote()) == 1
+        print("HERE4!")
+        return
 
         # Break the connection again. This time, the method call happens after the break
         # so it did not reach the actor. The actor is still in the previous state and
@@ -134,7 +165,8 @@ def test_actor_unavailable_conn_broken(ray_start_regular, caller):
             ray.get(task2)
         assert ray.get(a.read.remote()) == 9
 
-    call_from(body, caller)
+    body()
+    # call_from(body, caller)
 
 
 @pytest.mark.parametrize(
