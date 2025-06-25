@@ -32,7 +32,7 @@ function retry {
     if "$@"; then
       break
     fi
-    if [ $n -lt $max ]; then
+    if [[ $n -lt $max ]]; then
       ((n++))
       echo "Command failed. Attempt $n/$max:"
     else
@@ -42,38 +42,26 @@ function retry {
   done
 }
 
-MACPYTHON_PY_PREFIX=/Library/Frameworks/Python.framework/Versions
+# TODO(aslonnie): add python 3.10 and above
+PY_MINOR_VERSIONS=("9" "10")
 
-PY_WHEEL_VERSIONS=("39" "310")
-PY_MMS=("3.9" "3.10")
+for PY_MINOR_VERSION in "${PY_MINOR_VERSIONS[@]}"; do
+  PY_MM="3.${PY_MINOR_VERSION}"
+  PY_WHEEL_VERSION="3${PY_MINOR_VERSION}"
 
-for ((i=0; i<${#PY_MMS[@]}; ++i)); do
-  PY_MM="${PY_MMS[i]}"
+  CONDA_ENV_NAME="test-wheels-p$PY_MM"
 
-  PY_WHEEL_VERSION="${PY_WHEEL_VERSIONS[i]}"
+  [[ -f "$HOME/.bash_profile" ]] && conda init bash
 
-  # Todo: The main difference between arm64 and x86_64 is
-  # the Mac OS version. We should move everything to a
-  # single path when it's acceptable to move up our lower
-  # Python + MacOS compatibility bound.
-  if [[ "$(uname -m)" == "arm64" ]]; then
-    CONDA_ENV_NAME="test-wheels-p$PY_MM"
+  source ~/.bash_profile
 
-    [[ -f "$HOME/.bash_profile" ]] && conda init bash
+  conda create -y -n "$CONDA_ENV_NAME"
+  conda activate "$CONDA_ENV_NAME"
+  conda remove -y python || true
+  conda install -y python="${PY_MM}"
 
-    source ~/.bash_profile
-
-    conda create -y -n "$CONDA_ENV_NAME"
-    conda activate "$CONDA_ENV_NAME"
-    conda remove -y python || true
-    conda install -y python="${PY_MM}"
-
-    PYTHON_EXE="/opt/homebrew/opt/miniforge/envs/${CONDA_ENV_NAME}/bin/python"
-    PIP_CMD="/opt/homebrew/opt/miniforge/envs/${CONDA_ENV_NAME}/bin/pip"
-  else
-    PYTHON_EXE="$MACPYTHON_PY_PREFIX/$PY_MM/bin/python$PY_MM"
-    PIP_CMD="$(dirname "$PYTHON_EXE")/pip$PY_MM"
-  fi
+  PYTHON_EXE="${CONDA_PREFIX}/bin/python"
+  PIP_CMD="${CONDA_PREFIX}/bin/pip"
 
   # Find the appropriate wheel by grepping for the Python version.
   PYTHON_WHEEL="$(printf "%s\n" "$ROOT_DIR"/../../.whl/*"cp$PY_WHEEL_VERSION-cp$PY_WHEEL_VERSION"* | head -n 1)"
@@ -90,7 +78,7 @@ for ((i=0; i<${#PY_MMS[@]}; ++i)); do
   "$PIP_CMD" install -q "$PYTHON_WHEEL"
 
   # Install the dependencies to run the tests.
-  "$PIP_CMD" install -q aiohttp numpy 'pytest==7.0.1' requests proxy.py
+  "$PIP_CMD" install -q aiohttp numpy 'pytest==7.4.4' requests proxy.py
 
   # Run a simple test script to make sure that the wheel works.
   # We set the python path to prefer the directory of the wheel content: https://github.com/ray-project/ray/pull/30090
