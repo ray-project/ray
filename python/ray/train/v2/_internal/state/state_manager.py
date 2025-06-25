@@ -126,7 +126,6 @@ class TrainStateManager:
         run.end_time_ns = current_time_ns()
         self._create_or_update_train_run(run, block=True)
 
-    # TODO: This may be handled in the StateManager.
     def update_train_run_aborted(
         self,
         run_id: str,

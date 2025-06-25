@@ -270,13 +270,13 @@ void ActorTaskSubmitter::DisconnectRpcClient(ClientQueue &queue) {
   queue.worker_id.clear();
 }
 
-void ActorTaskSubmitter::FailInflightTasks(
+void ActorTaskSubmitter::FailInflightTasksOnRestart(
     const absl::flat_hash_map<TaskAttempt, rpc::ClientCallback<rpc::PushTaskReply>>
         &inflight_task_callbacks) {
   // NOTE(kfstorm): We invoke the callbacks with a bad status to act like there's a
   // network issue. We don't call `task_finisher_.FailOrRetryPendingTask` directly because
   // there's much more work to do in the callback.
-  auto status = Status::IOError("Fail all inflight tasks due to actor state change.");
+  auto status = Status::IOError("The actor was restarted");
   for (const auto &[_, callback] : inflight_task_callbacks) {
     callback(status, rpc::PushTaskReply());
   }
@@ -335,7 +335,7 @@ void ActorTaskSubmitter::ConnectActor(const ActorID &actor_id,
   }
 
   // NOTE(kfstorm): We need to make sure the lock is released before invoking callbacks.
-  FailInflightTasks(inflight_task_callbacks);
+  FailInflightTasksOnRestart(inflight_task_callbacks);
 }
 
 void ActorTaskSubmitter::RestartActorForLineageReconstruction(const ActorID &actor_id) {
@@ -467,7 +467,7 @@ void ActorTaskSubmitter::DisconnectActor(const ActorID &actor_id,
     }
   }
   // NOTE(kfstorm): We need to make sure the lock is released before invoking callbacks.
-  FailInflightTasks(inflight_task_callbacks);
+  FailInflightTasksOnRestart(inflight_task_callbacks);
 }
 
 void ActorTaskSubmitter::FailTaskWithError(const PendingTaskWaitingForDeathInfo &task) {
