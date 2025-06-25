@@ -26,6 +26,7 @@ from ray._private.test_utils import (
 from ray.serve._private.constants import DEFAULT_LATENCY_BUCKET_MS
 from ray.serve._private.long_poll import LongPollHost, UpdatedObject
 from ray.serve._private.test_utils import (
+    get_application_url,
     ping_fruit_stand,
     ping_grpc_call_method,
     ping_grpc_list_applications,
@@ -64,6 +65,7 @@ def serve_start_shutdown(request):
             request_timeout_s=request_timeout_s,
         ),
         http_options=HTTPOptions(
+            host="0.0.0.0",
             request_timeout_s=request_timeout_s,
         ),
     )
@@ -220,10 +222,11 @@ def test_serve_metrics_for_successful_connection(serve_start_shutdown):
     app_name = "app1"
     handle = serve.run(target=f.bind(), name=app_name)
 
+    http_url = f'{get_application_url("HTTP", app_name)}/metrics'
+
     # send 10 concurrent requests
-    url = "http://127.0.0.1:8000/metrics"
-    ray.get([block_until_http_ready.remote(url) for _ in range(10)])
-    [handle.remote(url) for _ in range(10)]
+    ray.get([block_until_http_ready.remote(http_url) for _ in range(10)])
+    [handle.remote(http_url) for _ in range(10)]
 
     # Ping gPRC proxy
     channel = grpc.insecure_channel("localhost:9000")
@@ -563,7 +566,9 @@ def test_proxy_timeout_metrics(serve_start_shutdown):
         name="status_code_timeout",
     )
 
-    r = httpx.get("http://127.0.0.1:8000/status_code_timeout")
+    http_url = get_application_url("HTTP", "status_code_timeout")
+
+    r = httpx.get(http_url)
     assert r.status_code == 408
     ray.get(signal.send.remote(clear=True))
 
@@ -605,7 +610,10 @@ def test_proxy_disconnect_metrics(serve_start_shutdown):
     )
 
     # Simulate an HTTP disconnect
-    conn = http.client.HTTPConnection("127.0.0.1", 8000)
+    http_url = get_application_url("HTTP", "disconnect")
+    ip_port = http_url.replace("http://", "").split("/")[0]  # remove the route prefix
+    ip, port = ip_port.split(":")
+    conn = http.client.HTTPConnection(ip, int(port))
     conn.request("GET", "/disconnect")
     wait_for_condition(
         lambda: ray.get(signal.cur_num_waiters.remote()) == 1, timeout=10
@@ -667,7 +675,7 @@ def test_proxy_metrics_fields_internal_error(serve_start_shutdown):
     serve.run(f.bind(), name=real_app_name2, route_prefix="/real_route2")
 
     # Deployment should generate divide-by-zero errors
-    correct_url = "http://127.0.0.1:8000/real_route"
+    correct_url = get_application_url("HTTP", real_app_name)
     _ = httpx.get(correct_url).text
     print("Sent requests to correct URL.")
 
@@ -743,8 +751,10 @@ def test_proxy_metrics_http_status_code_is_error(serve_start_shutdown):
 
     serve.run(return_status_code.bind())
 
+    http_url = get_application_url("HTTP")
+
     # 200 is not an error.
-    r = httpx.request("GET", "http://127.0.0.1:8000/", content=b"200")
+    r = httpx.request("GET", http_url, content=b"200")
     assert r.status_code == 200
     wait_for_condition(
         check_request_count_metrics,
@@ -753,7 +763,7 @@ def test_proxy_metrics_http_status_code_is_error(serve_start_shutdown):
     )
 
     # 2xx is not an error.
-    r = httpx.request("GET", "http://127.0.0.1:8000/", content=b"250")
+    r = httpx.request("GET", http_url, content=b"250")
     assert r.status_code == 250
     wait_for_condition(
         check_request_count_metrics,
@@ -762,7 +772,7 @@ def test_proxy_metrics_http_status_code_is_error(serve_start_shutdown):
     )
 
     # 3xx is not an error.
-    r = httpx.request("GET", "http://127.0.0.1:8000/", content=b"300")
+    r = httpx.request("GET", http_url, content=b"300")
     assert r.status_code == 300
     wait_for_condition(
         check_request_count_metrics,
@@ -771,7 +781,7 @@ def test_proxy_metrics_http_status_code_is_error(serve_start_shutdown):
     )
 
     # 4xx is an error.
-    r = httpx.request("GET", "http://127.0.0.1:8000/", content=b"400")
+    r = httpx.request("GET", http_url, content=b"400")
     assert r.status_code == 400
     wait_for_condition(
         check_request_count_metrics,
@@ -780,7 +790,7 @@ def test_proxy_metrics_http_status_code_is_error(serve_start_shutdown):
     )
 
     # 5xx is an error.
-    r = httpx.request("GET", "http://127.0.0.1:8000/", content=b"500")
+    r = httpx.request("GET", http_url, content=b"500")
     assert r.status_code == 500
     wait_for_condition(
         check_request_count_metrics,
@@ -884,8 +894,8 @@ def test_replica_metrics_fields(serve_start_shutdown):
 
     serve.run(f.bind(), name="app1", route_prefix="/f")
     serve.run(g.bind(), name="app2", route_prefix="/g")
-    url_f = "http://127.0.0.1:8000/f"
-    url_g = "http://127.0.0.1:8000/g"
+    url_f = get_application_url("HTTP", "app1")
+    url_g = get_application_url("HTTP", "app2")
 
     assert "hello" == httpx.get(url_f).text
     assert "world" == httpx.get(url_g).text
@@ -955,7 +965,8 @@ def test_replica_metrics_fields(serve_start_shutdown):
         return 1 / 0
 
     serve.run(h.bind(), name="app3", route_prefix="/h")
-    assert 500 == httpx.get("http://127.0.0.1:8000/h").status_code
+    url_h = get_application_url("HTTP", "app3")
+    assert 500 == httpx.get(url_h).status_code
     wait_for_condition(
         lambda: len(get_metric_dictionaries("serve_deployment_error_counter_total"))
         == 1,
@@ -1229,9 +1240,10 @@ class TestRequestContextMetrics:
                 return await self.handle2.remote()
 
         serve.run(G.bind(g1.bind(), g2.bind()), name="app")
-        resp = httpx.get("http://127.0.0.1:8000/api")
+        app_url = get_application_url("HTTP", "app")
+        resp = httpx.get(f"{app_url}/api")
         assert resp.text == '"ok1"'
-        resp = httpx.get("http://127.0.0.1:8000/api2")
+        resp = httpx.get(f"{app_url}/api2")
         assert resp.text == '"ok2"'
 
         # G deployment metrics:
@@ -1278,10 +1290,10 @@ class TestRequestContextMetrics:
         else:
             serve.run(A.bind())
 
-        base_url = "http://127.0.0.1:8000" + route_prefix
-        resp = httpx.get(base_url + "/api")
+        base_url = get_application_url("HTTP")
+        resp = httpx.get(f"{base_url}/api")
         assert resp.text == '"ok1"'
-        resp = httpx.get(base_url + "/api2/abc123")
+        resp = httpx.get(f"{base_url}/api2/abc123")
         assert resp.text == '"ok2"'
 
         wait_for_condition(
@@ -1348,7 +1360,8 @@ class TestRequestContextMetrics:
                 ]
 
         serve.run(Model.bind(), name="app", route_prefix="/app")
-        resp = httpx.get("http://127.0.0.1:8000/app")
+        http_url = get_application_url("HTTP", "app")
+        resp = httpx.get(http_url)
         deployment_name, replica_id = resp.json()
         wait_for_condition(
             lambda: len(get_metric_dictionaries("my_gauge")) == 1,
@@ -1484,7 +1497,8 @@ class TestRequestContextMetrics:
                     return await fn.remote()
 
         serve.run(Model.bind(), name="app", route_prefix="/app")
-        resp = httpx.get("http://127.0.0.1:8000/app")
+        http_url = get_application_url("HTTP", "app")
+        resp = httpx.get(http_url)
         assert resp.text == "hello"
         wait_for_condition(
             lambda: len(get_metric_dictionaries("my_gauge")) == 1,
