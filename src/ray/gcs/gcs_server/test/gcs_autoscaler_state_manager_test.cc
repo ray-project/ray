@@ -1012,18 +1012,20 @@ TEST_F(GcsAutoscalerStateManagerTest,
 }
 
 TEST_F(GcsAutoscalerStateManagerTest, TestGetPendingResourceRequestsWithLabelSelectors) {
-  // Simulate resource demand with label selectors.
   auto node = Mocker::GenNodeInfo();
   node->mutable_resources_total()->insert({"CPU", 2});
   node->set_instance_id("instance_1");
   AddNode(node);
 
-  // Inject demand with label selector.
+  // Add label selector to ResourceDemand
   {
     rpc::LabelSelector selector;
-    (*selector.mutable_label_selector_dict())["foo"] = "bar";
+    (*selector.mutable_label_selector_dict())["accelerator-type"] = "TPU";
+    (*selector.mutable_label_selector_dict())["node-group"] = "!gpu-group";
+    (*selector.mutable_label_selector_dict())["market-type"] = "in(spot)";
+    (*selector.mutable_label_selector_dict())["region"] = "!in(us-west4)";
 
-    // Simulate one infeasible request with selector.
+    // Simulate an infeasible request with a label selector
     UpdateResourceLoads(node->node_id(),
                         {Mocker::GenResourceDemand({{"CPU", 2}},
                                                    /*ready=*/0,
@@ -1032,7 +1034,7 @@ TEST_F(GcsAutoscalerStateManagerTest, TestGetPendingResourceRequestsWithLabelSel
                                                    {selector})});
   }
 
-  // Validate the state includes this pending request.
+  // Validate the cluster state includes the generated pending request
   {
     const auto &state = GetClusterResourceStateSync();
     ASSERT_EQ(state.pending_resource_requests_size(), 1);
@@ -1041,14 +1043,29 @@ TEST_F(GcsAutoscalerStateManagerTest, TestGetPendingResourceRequestsWithLabelSel
     ASSERT_EQ(req.count(), 1);
     CheckResourceRequest(req.request(), {{"CPU", 2}});
 
+    std::unordered_map<std::string, std::pair<rpc::autoscaler::LabelOperator, std::string>> expected_vals = {
+        {"accelerator-type", {rpc::autoscaler::LABEL_OPERATOR_IN, "TPU"}},
+        {"node-group",       {rpc::autoscaler::LABEL_OPERATOR_NOT_IN, "gpu-group"}},
+        {"market-type",      {rpc::autoscaler::LABEL_OPERATOR_IN, "spot"}},
+        {"region",           {rpc::autoscaler::LABEL_OPERATOR_NOT_IN, "us-west4"}},
+    };
+
     ASSERT_EQ(req.request().label_selectors_size(), 1);
-    const auto &sel = req.request().label_selectors(0);
-    ASSERT_EQ(sel.label_constraints_size(), 1);
-    const auto &constraint = sel.label_constraints(0);
-    ASSERT_EQ(constraint.label_key(), "foo");
-    ASSERT_EQ(constraint.operator_(), rpc::autoscaler::LABEL_OPERATOR_IN);
-    ASSERT_EQ(constraint.label_values_size(), 1);
-    ASSERT_EQ(constraint.label_values(0), "bar");
+    const auto &parsed_selector = req.request().label_selectors(0);
+    ASSERT_EQ(parsed_selector.label_constraints_size(), expected_vals.size());
+
+    for (const auto &constraint : parsed_selector.label_constraints()) {
+      const auto it = expected_vals.find(constraint.label_key());
+      if (it == expected_vals.end()) {
+        FAIL() << "Unexpected label key: " << constraint.label_key();
+      }
+
+      if (constraint.operator_() != it->second.first) {
+        FAIL() << "Mismatched operator for " << constraint.label_key();
+      }
+      ASSERT_EQ(constraint.label_values_size(), 1);
+      ASSERT_EQ(constraint.label_values(0), it->second.second);
+    }
   }
 
   // Clean up.
