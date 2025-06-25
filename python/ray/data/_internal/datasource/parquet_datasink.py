@@ -110,12 +110,23 @@ class ParquetDatasink(_FileDatasink):
         import pyarrow.dataset as ds
 
         # Make every incoming batch conform to the final schema *before* writing
-        for idx, t in enumerate(tables):
-            if output_schema and not t.schema.equals(output_schema):
-                t = t.cast(output_schema, safe=False)
-            tables[idx] = t
+        for idx, table in enumerate(tables):
+            if output_schema and not table.schema.equals(output_schema):
+                table = table.cast(output_schema)
+            tables[idx] = table
 
         row_group_size = write_kwargs.pop("row_group_size", None)
+
+        # Map SaveMode to existing_data_behavior
+        existing_data_behavior_map = {
+            SaveMode.APPEND: "overwrite_or_ignore",
+            SaveMode.OVERWRITE: "delete_matching",
+            SaveMode.IGNORE: "overwrite_or_ignore",
+            SaveMode.ERROR: "error",
+        }
+        existing_data_behavior = existing_data_behavior_map.get(
+            self.mode, "overwrite_or_ignore"
+        )
 
         ds.write_dataset(
             data=tables,
@@ -125,11 +136,15 @@ class ParquetDatasink(_FileDatasink):
             filesystem=self.filesystem,
             partitioning=self.partition_cols,
             format="parquet",
-            existing_data_behavior="overwrite_or_ignore",
+            existing_data_behavior=existing_data_behavior,
             partitioning_flavor="hive",
             use_threads=True,
-            min_rows_per_group=row_group_size if row_group_size else 0,
-            max_rows_per_group=row_group_size if row_group_size else 1024 * 1024,
+            min_rows_per_group=row_group_size
+            if row_group_size
+            else 0,  # defaults set by pyarrow
+            max_rows_per_group=row_group_size
+            if row_group_size
+            else 1024 * 1024,  # defaults set by pyarrow
             file_options=ds.ParquetFileFormat().make_write_options(**write_kwargs),
         )
 

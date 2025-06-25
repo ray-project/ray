@@ -3390,7 +3390,7 @@ class Dataset:
                 opening the file to write to.
             filename_provider: A :class:`~ray.data.datasource.FilenameProvider`
                 implementation. Use this parameter to customize what your filenames
-                look like.
+                look like. The following convention is used: ```{filename}-{i}.parquet```
             arrow_parquet_args_fn: Callable that returns a dictionary of write
                 arguments that are provided to `pyarrow.parquet.ParquetWriter() <https:/\
                     /arrow.apache.org/docs/python/generated/\
