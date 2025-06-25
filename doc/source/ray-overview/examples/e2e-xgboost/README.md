@@ -18,3 +18,10 @@ These tutorials implement an end-to-end XGBoost application including:
 - **Online model serving**: Deploy the model as a scalable online service using [Ray Serve](https://docs.ray.io/en/latest/serve/index.html) in `notebooks/03-Serving.ipynb`.
 - **Production deployment**: Create production batch [**Jobs**](https://docs.anyscale.com/platform/jobs/) for offline workloads including data prep, training, batch prediction, and potentially online [**Services**](https://docs.anyscale.com/platform/services/).
 
+# Dependencies
+
+To install the dependencies, run:
+
+```bash
+pip install -r requirements.txt
+```

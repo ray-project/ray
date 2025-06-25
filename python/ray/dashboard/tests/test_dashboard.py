@@ -14,6 +14,7 @@ from unittest.mock import MagicMock
 from urllib.parse import quote_plus
 
 import pytest
+from ray._common.test_utils import wait_for_condition
 import requests
 from click.testing import CliRunner
 from requests.exceptions import ConnectionError, HTTPError
@@ -35,7 +36,6 @@ from ray._private.test_utils import (
     get_error_message,
     init_error_pubsub,
     run_string_as_driver,
-    wait_for_condition,
     wait_until_server_available,
     wait_until_succeeded_without_exception,
 )

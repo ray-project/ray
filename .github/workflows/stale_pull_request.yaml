@@ -9,9 +9,6 @@ jobs:
   stale:
     runs-on: ubuntu-latest
     permissions:
-      # Currently we are not planning on marking issues as stale, so this permission is read only.
-      # Just gonna leave this in here in case we need it in the future.
-      issues: read
       pull-requests: write # Required to add labels, comment, close PRs.
 
     steps:
@@ -21,8 +18,9 @@ jobs:
           repo-token: ${{ secrets.GITHUB_TOKEN }}
 
           # --- Ignore Issues ---
-          # Set to -1 so we never mark issues as stale.
+          # Set to -1 so we never mark issues as stale or closed.
           days-before-issue-stale: -1
+          days-before-issue-close: -1
 
           # --- Pull Request Specific Settings ---
           # Number of days of inactivity before a Pull Request becomes stale (currently 2 weeks)
@@ -64,8 +62,8 @@ jobs:
           exempt-all-pr-milestones: true
 
           # --- Shared Settings & Other Options ---
-          # Limit the number of actions per run
-          operations-per-run: 30
+          # Limit the number of actions per run.
+          operations-per-run: 500
 
           # Remove stale label from PRs on update (default is true)
           remove-pr-stale-when-updated: true

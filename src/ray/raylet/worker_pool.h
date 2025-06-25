@@ -123,10 +123,33 @@ struct PopWorkerRequest {
         callback(std::move(callback)) {}
 };
 
+/// \class IOWorkerPoolInterface
+///
+/// Used for object spilling manager unit tests.
+class IOWorkerPoolInterface {
+ public:
+  virtual void PushSpillWorker(const std::shared_ptr<WorkerInterface> &worker) = 0;
+
+  virtual void PopSpillWorker(
+      std::function<void(std::shared_ptr<WorkerInterface>)> callback) = 0;
+
+  virtual void PushRestoreWorker(const std::shared_ptr<WorkerInterface> &worker) = 0;
+
+  virtual void PopRestoreWorker(
+      std::function<void(std::shared_ptr<WorkerInterface>)> callback) = 0;
+
+  virtual void PushDeleteWorker(const std::shared_ptr<WorkerInterface> &worker) = 0;
+
+  virtual void PopDeleteWorker(
+      std::function<void(std::shared_ptr<WorkerInterface>)> callback) = 0;
+
+  virtual ~IOWorkerPoolInterface() = default;
+};
+
 /// \class WorkerPoolInterface
 ///
 /// Used for new scheduler unit tests.
-class WorkerPoolInterface {
+class WorkerPoolInterface : public IOWorkerPoolInterface {
  public:
   /// Pop an idle worker from the pool. The caller is responsible for pushing
   /// the worker back onto the pool once the worker has completed its work.
@@ -160,41 +183,73 @@ class WorkerPoolInterface {
   /// non-retriable workers that are still registered.
   ///
   /// \return A list containing all the workers.
-  virtual const std::vector<std::shared_ptr<WorkerInterface>> GetAllRegisteredWorkers(
+  virtual std::vector<std::shared_ptr<WorkerInterface>> GetAllRegisteredWorkers(
       bool filter_dead_workers = false, bool filter_io_workers = false) const = 0;
+
+  /// Checks if any registered worker is available for scheduling.
+  virtual bool IsWorkerAvailableForScheduling() const = 0;
 
   /// Get registered worker process by id or nullptr if not found.
   virtual std::shared_ptr<WorkerInterface> GetRegisteredWorker(
       const WorkerID &worker_id) const = 0;
 
+  virtual std::shared_ptr<WorkerInterface> GetRegisteredWorker(
+      const std::shared_ptr<ClientConnection> &connection) const = 0;
+
   /// Get registered driver process by id or nullptr if not found.
   virtual std::shared_ptr<WorkerInterface> GetRegisteredDriver(
       const WorkerID &worker_id) const = 0;
 
+  virtual std::shared_ptr<WorkerInterface> GetRegisteredDriver(
+      const std::shared_ptr<ClientConnection> &connection) const = 0;
+
   virtual ~WorkerPoolInterface() = default;
-};
 
-/// \class IOWorkerPoolInterface
-///
-/// Used for object spilling manager unit tests.
-class IOWorkerPoolInterface {
- public:
-  virtual void PushSpillWorker(const std::shared_ptr<WorkerInterface> &worker) = 0;
+  virtual void HandleJobStarted(const JobID &job_id,
+                                const rpc::JobConfig &job_config) = 0;
 
-  virtual void PopSpillWorker(
-      std::function<void(std::shared_ptr<WorkerInterface>)> callback) = 0;
+  virtual void HandleJobFinished(const JobID &job_id) = 0;
 
-  virtual void PushRestoreWorker(const std::shared_ptr<WorkerInterface> &worker) = 0;
+  virtual void Start() = 0;
 
-  virtual void PopRestoreWorker(
-      std::function<void(std::shared_ptr<WorkerInterface>)> callback) = 0;
+  virtual void SetNodeManagerPort(int node_manager_port) = 0;
 
-  virtual void PushDeleteWorker(const std::shared_ptr<WorkerInterface> &worker) = 0;
+  virtual void SetRuntimeEnvAgentClient(
+      std::unique_ptr<RuntimeEnvAgentClient> runtime_env_agent_client) = 0;
 
-  virtual void PopDeleteWorker(
-      std::function<void(std::shared_ptr<WorkerInterface>)> callback) = 0;
+  virtual std::vector<std::shared_ptr<WorkerInterface>> GetAllRegisteredDrivers(
+      bool filter_dead_drivers = false) const = 0;
 
-  virtual ~IOWorkerPoolInterface() = default;
+  virtual Status RegisterDriver(const std::shared_ptr<WorkerInterface> &worker,
+                                const rpc::JobConfig &job_config,
+                                std::function<void(Status, int)> send_reply_callback) = 0;
+
+  virtual Status RegisterWorker(const std::shared_ptr<WorkerInterface> &worker,
+                                pid_t pid,
+                                StartupToken worker_startup_token,
+                                std::function<void(Status, int)> send_reply_callback) = 0;
+
+  virtual Status RegisterWorker(const std::shared_ptr<WorkerInterface> &worker,
+                                pid_t pid,
+                                StartupToken worker_startup_token) = 0;
+
+  virtual boost::optional<const rpc::JobConfig &> GetJobConfig(
+      const JobID &job_id) const = 0;
+
+  virtual void OnWorkerStarted(const std::shared_ptr<WorkerInterface> &worker) = 0;
+
+  virtual void DisconnectWorker(const std::shared_ptr<WorkerInterface> &worker,
+                                rpc::WorkerExitType disconnect_type) = 0;
+
+  virtual void DisconnectDriver(const std::shared_ptr<WorkerInterface> &driver) = 0;
+
+  virtual void PrestartWorkers(const TaskSpecification &task_spec,
+                               int64_t backlog_size) = 0;
+
+  virtual void StartNewWorker(
+      const std::shared_ptr<PopWorkerRequest> &pop_worker_request) = 0;
+
+  virtual std::string DebugString() const = 0;
 };
 
 class WorkerInterface;
@@ -225,7 +280,7 @@ inline std::ostream &operator<<(std::ostream &os,
 ///
 /// The WorkerPool is responsible for managing a pool of Workers. Each Worker
 /// is a container for a unit of work.
-class WorkerPool : public WorkerPoolInterface, public IOWorkerPoolInterface {
+class WorkerPool : public WorkerPoolInterface {
  public:
   /// Create a pool and asynchronously start at least the specified number of workers per
   /// language.
@@ -278,28 +333,28 @@ class WorkerPool : public WorkerPoolInterface, public IOWorkerPoolInterface {
   ~WorkerPool() override;
 
   /// Start the worker pool. Could only be called once.
-  void Start();
+  void Start() override;
 
   /// Set the node manager port.
   /// \param node_manager_port The port Raylet uses for listening to incoming connections.
-  void SetNodeManagerPort(int node_manager_port);
+  void SetNodeManagerPort(int node_manager_port) override;
 
   /// Set Runtime Env Manager Client.
   void SetRuntimeEnvAgentClient(
-      std::unique_ptr<RuntimeEnvAgentClient> runtime_env_agent_client);
+      std::unique_ptr<RuntimeEnvAgentClient> runtime_env_agent_client) override;
 
   /// Handles the event that a job is started.
   ///
   /// \param job_id ID of the started job.
   /// \param job_config The config of the started job.
   /// \return Void
-  void HandleJobStarted(const JobID &job_id, const rpc::JobConfig &job_config);
+  void HandleJobStarted(const JobID &job_id, const rpc::JobConfig &job_config) override;
 
   /// Handles the event that a job is finished.
   ///
   /// \param job_id ID of the finished job.
   /// \return Void.
-  void HandleJobFinished(const JobID &job_id);
+  void HandleJobFinished(const JobID &job_id) override;
 
   /// \brief Get the job config by job id.
   ///
@@ -307,7 +362,8 @@ class WorkerPool : public WorkerPoolInterface, public IOWorkerPoolInterface {
   ///
   /// \param job_id ID of the job.
   /// \return Job config if given job is running, else nullptr.
-  boost::optional<const rpc::JobConfig &> GetJobConfig(const JobID &job_id) const;
+  boost::optional<const rpc::JobConfig &> GetJobConfig(
+      const JobID &job_id) const override;
 
   /// Register a new worker. The Worker should be added by the caller to the
   /// pool after it becomes idle (e.g., requests a work assignment).
@@ -323,20 +379,20 @@ class WorkerPool : public WorkerPoolInterface, public IOWorkerPoolInterface {
   Status RegisterWorker(const std::shared_ptr<WorkerInterface> &worker,
                         pid_t pid,
                         StartupToken worker_startup_token,
-                        std::function<void(Status, int)> send_reply_callback);
+                        std::function<void(Status, int)> send_reply_callback) override;
 
   // Similar to the above function overload, but the port has been assigned, but directly
   // returns registration status without taking a callback.
   Status RegisterWorker(const std::shared_ptr<WorkerInterface> &worker,
                         pid_t pid,
-                        StartupToken worker_startup_token);
+                        StartupToken worker_startup_token) override;
 
   /// To be invoked when a worker is started. This method should be called when the worker
   /// announces its port.
   ///
   /// \param[in] worker The worker which is started.
   /// \return void
-  void OnWorkerStarted(const std::shared_ptr<WorkerInterface> &worker);
+  void OnWorkerStarted(const std::shared_ptr<WorkerInterface> &worker) override;
 
   /// Register a new driver.
   ///
@@ -347,7 +403,7 @@ class WorkerPool : public WorkerPoolInterface, public IOWorkerPoolInterface {
   /// \return If the registration is successful.
   Status RegisterDriver(const std::shared_ptr<WorkerInterface> &worker,
                         const rpc::JobConfig &job_config,
-                        std::function<void(Status, int)> send_reply_callback);
+                        std::function<void(Status, int)> send_reply_callback) override;
 
   /// Get the client connection's registered worker.
   ///
@@ -355,7 +411,7 @@ class WorkerPool : public WorkerPoolInterface, public IOWorkerPoolInterface {
   /// \return The Worker that owns the given client connection. Returns nullptr
   /// if the client has not registered a worker yet.
   std::shared_ptr<WorkerInterface> GetRegisteredWorker(
-      const std::shared_ptr<ClientConnection> &connection) const;
+      const std::shared_ptr<ClientConnection> &connection) const override;
 
   /// Get the registered worker by worker id or nullptr if not found.
   std::shared_ptr<WorkerInterface> GetRegisteredWorker(
@@ -367,7 +423,7 @@ class WorkerPool : public WorkerPoolInterface, public IOWorkerPoolInterface {
   /// \return The Worker that owns the given client connection. Returns nullptr
   /// if the client has not registered a driver.
   std::shared_ptr<WorkerInterface> GetRegisteredDriver(
-      const std::shared_ptr<ClientConnection> &connection) const;
+      const std::shared_ptr<ClientConnection> &connection) const override;
 
   /// Get the registered driver by worker id or nullptr if not found.
   std::shared_ptr<WorkerInterface> GetRegisteredDriver(
@@ -378,12 +434,12 @@ class WorkerPool : public WorkerPoolInterface, public IOWorkerPoolInterface {
   /// \param worker The worker to disconnect. The worker must be registered.
   /// \param disconnect_type Type of a worker exit.
   void DisconnectWorker(const std::shared_ptr<WorkerInterface> &worker,
-                        rpc::WorkerExitType disconnect_type);
+                        rpc::WorkerExitType disconnect_type) override;
 
   /// Disconnect a registered driver.
   ///
   /// \param The driver to disconnect. The driver must be registered.
-  void DisconnectDriver(const std::shared_ptr<WorkerInterface> &driver);
+  void DisconnectDriver(const std::shared_ptr<WorkerInterface> &driver) override;
 
   /// Add an idle spill I/O worker to the pool.
   ///
@@ -444,7 +500,7 @@ class WorkerPool : public WorkerPoolInterface, public IOWorkerPoolInterface {
   /// \param task_spec The returned worker must be able to execute this task.
   /// \param backlog_size The number of tasks in the client backlog of this shape.
   /// We aim to prestart 1 worker per CPU, up to the backlog size.
-  void PrestartWorkers(const TaskSpecification &task_spec, int64_t backlog_size);
+  void PrestartWorkers(const TaskSpecification &task_spec, int64_t backlog_size) override;
 
   void PrestartWorkersInternal(const TaskSpecification &task_spec, int64_t num_needed);
 
@@ -462,8 +518,10 @@ class WorkerPool : public WorkerPoolInterface, public IOWorkerPoolInterface {
   /// non-retriable workers that are still registered.
   ///
   /// \return A list containing all the workers.
-  const std::vector<std::shared_ptr<WorkerInterface>> GetAllRegisteredWorkers(
+  std::vector<std::shared_ptr<WorkerInterface>> GetAllRegisteredWorkers(
       bool filter_dead_workers = false, bool filter_io_workers = false) const override;
+
+  bool IsWorkerAvailableForScheduling() const override;
 
   /// Get all the registered drivers.
   ///
@@ -471,13 +529,13 @@ class WorkerPool : public WorkerPoolInterface, public IOWorkerPoolInterface {
   /// that are still registered.
   ///
   /// \return A list containing all the drivers.
-  const std::vector<std::shared_ptr<WorkerInterface>> GetAllRegisteredDrivers(
-      bool filter_dead_drivers = false) const;
+  std::vector<std::shared_ptr<WorkerInterface>> GetAllRegisteredDrivers(
+      bool filter_dead_drivers = false) const override;
 
   /// Returns debug string for class.
   ///
   /// \return string.
-  std::string DebugString() const;
+  std::string DebugString() const override;
 
   /// Try killing idle workers to ensure the running workers are in a
   /// reasonable size.
@@ -501,7 +559,8 @@ class WorkerPool : public WorkerPoolInterface, public IOWorkerPoolInterface {
   //
   // Note: NONE of these methods guarantee that pop_worker_request.callback will be called
   // with the started worker. It may be called with any fitting workers.
-  void StartNewWorker(const std::shared_ptr<PopWorkerRequest> &pop_worker_request);
+  void StartNewWorker(
+      const std::shared_ptr<PopWorkerRequest> &pop_worker_request) override;
 
  protected:
   void update_worker_startup_token_counter();

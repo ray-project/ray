@@ -1,23 +1,20 @@
-import pydantic
 import os
-import ray
-
+import time
 from enum import Enum
-from ray.llm._internal.serve.configs.error_handling import TooManyStoppingSequences
-
 from typing import (
     Any,
     Dict,
     List,
     Optional,
+    Sequence,
+    Set,
+    Tuple,
     Type,
     TypeVar,
     Union,
-    Tuple,
-    Sequence,
-    Set,
 )
-import time
+
+import pydantic
 from pydantic import (
     BaseModel,
     ConfigDict,
@@ -28,32 +25,31 @@ from pydantic import (
     model_validator,
 )
 
+import ray
+import ray.util.accelerators.accelerators as accelerators
 from ray.llm._internal.common.base_pydantic import BaseModelExtended
 from ray.llm._internal.common.utils.cloud_utils import (
     CloudMirrorConfig,
     is_remote_path,
 )
-from ray.llm._internal.utils import try_import
-
-from ray.llm._internal.serve.observability.logging import get_logger
-import ray.util.accelerators.accelerators as accelerators
-from ray.serve._private.config import DeploymentConfig
-
+from ray.llm._internal.common.utils.import_utils import try_import
 from ray.llm._internal.serve.configs.constants import (
     DEFAULT_MULTIPLEX_DOWNLOAD_TIMEOUT_S,
     DEFAULT_MULTIPLEX_DOWNLOAD_TRIES,
-    MAX_NUM_STOPPING_SEQUENCES,
     ENABLE_WORKER_PROCESS_SETUP_HOOK,
+    MAX_NUM_STOPPING_SEQUENCES,
     MODEL_RESPONSE_BATCH_TIMEOUT_MS,
 )
-from ray.llm._internal.serve.configs.prompt_formats import (
-    Prompt,
-    HuggingFacePromptFormat,
-)
+from ray.llm._internal.serve.configs.error_handling import TooManyStoppingSequences
 from ray.llm._internal.serve.configs.openai_api_models_patch import (
     ErrorResponse,
     ResponseFormatType,
 )
+from ray.llm._internal.serve.configs.prompt_formats import (
+    Prompt,
+)
+from ray.llm._internal.serve.observability.logging import get_logger
+from ray.serve._private.config import DeploymentConfig
 
 transformers = try_import("transformers")
 
@@ -244,9 +240,6 @@ class LLMConfig(BaseModelExtended):
 
     _supports_vision: bool = PrivateAttr(False)
     _model_architecture: str = PrivateAttr("")
-    _prompt_format: HuggingFacePromptFormat = PrivateAttr(
-        default_factory=HuggingFacePromptFormat
-    )
     _engine_config: EngineConfigType = PrivateAttr(None)
 
     def _infer_supports_vision(self, model_id_or_path: str) -> None:
@@ -281,10 +274,6 @@ class LLMConfig(BaseModelExtended):
         """Apply the checkpoint info to the model config."""
         self._infer_supports_vision(model_id_or_path)
         self._set_model_architecture(model_id_or_path)
-        self._prompt_format.set_processor(
-            model_id_or_path,
-            trust_remote_code=trust_remote_code,
-        )
 
     @property
     def supports_vision(self) -> bool:
@@ -293,10 +282,6 @@ class LLMConfig(BaseModelExtended):
     @property
     def model_architecture(self) -> str:
         return self._model_architecture
-
-    @property
-    def prompt_format(self) -> HuggingFacePromptFormat:
-        return self._prompt_format
 
     @property
     def input_modality(self) -> str:

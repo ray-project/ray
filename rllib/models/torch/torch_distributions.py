@@ -67,6 +67,11 @@ class TorchDistribution(Distribution, abc.ABC):
         )
         return rsample
 
+    @classmethod
+    @override(Distribution)
+    def from_logits(cls, logits: TensorType, **kwargs) -> "TorchDistribution":
+        return cls(logits=logits, **kwargs)
+
 
 @DeveloperAPI
 class TorchCategorical(TorchDistribution):
@@ -96,7 +101,7 @@ class TorchCategorical(TorchDistribution):
 
     Args:
         logits: Event log probabilities (unnormalized)
-        probs: The probablities of each event.
+        probs: The probabilities of each event.
         temperature: In case of using logits, this parameter can be used to determine
             the sharpness of the distribution. i.e.
             ``probs = softmax(logits / temperature)``. The temperature must be strictly
@@ -147,11 +152,6 @@ class TorchCategorical(TorchDistribution):
             )
         one_hot_sample = self._one_hot.sample(sample_shape)
         return (one_hot_sample - self.probs).detach() + self.probs
-
-    @classmethod
-    @override(Distribution)
-    def from_logits(cls, logits: TensorType, **kwargs) -> "TorchCategorical":
-        return TorchCategorical(logits=logits, **kwargs)
 
     def to_deterministic(self) -> "TorchDeterministic":
         if self.probs is not None:
@@ -234,7 +234,7 @@ class TorchDiagGaussian(TorchDistribution):
     def from_logits(cls, logits: TensorType, **kwargs) -> "TorchDiagGaussian":
         loc, log_std = logits.chunk(2, dim=-1)
         scale = log_std.exp()
-        return TorchDiagGaussian(loc=loc, scale=scale)
+        return cls(loc=loc, scale=scale)
 
     def to_deterministic(self) -> "TorchDeterministic":
         return TorchDeterministic(loc=self.loc)
@@ -334,7 +334,7 @@ class TorchSquashedGaussian(TorchDistribution):
         # Assert that `low` is smaller than `high`.
         assert np.all(np.less(low, high))
         # Return class instance.
-        return TorchSquashedGaussian(loc=loc, scale=scale, low=low, high=high)
+        return cls(loc=loc, scale=scale, low=low, high=high, **kwargs)
 
     def to_deterministic(self) -> Distribution:
         return TorchDeterministic(loc=self.loc)
@@ -407,11 +407,6 @@ class TorchDeterministic(Distribution):
     def required_input_dim(space: gym.Space, **kwargs) -> int:
         assert isinstance(space, gym.spaces.Box)
         return int(np.prod(space.shape, dtype=np.int32))
-
-    @classmethod
-    @override(Distribution)
-    def from_logits(cls, logits: TensorType, **kwargs) -> "TorchDeterministic":
-        return TorchDeterministic(loc=logits)
 
     def to_deterministic(self) -> "TorchDeterministic":
         return self
@@ -507,7 +502,7 @@ class TorchMultiCategorical(Distribution):
             for logits in torch.split(logits, input_lens, dim=-1)
         ]
 
-        return TorchMultiCategorical(categoricals=categoricals)
+        return cls(categoricals=categoricals)
 
     def to_deterministic(self) -> "TorchDeterministic":
         if self._cats[0].probs is not None:
@@ -670,7 +665,7 @@ class TorchMultiDistribution(Distribution):
             child_distribution_cls_struct, child_distribution_list
         )
 
-        return TorchMultiDistribution(
+        return cls(
             child_distribution_struct=child_distribution_struct,
         )
 

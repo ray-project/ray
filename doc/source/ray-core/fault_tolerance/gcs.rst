@@ -48,10 +48,6 @@ Setting up Redis
             - ray stop
             - ulimit -n 65536; RAY_REDIS_ADDRESS=redis_ip:port ray start --head --redis-password PASSWORD --redis-username default --port=6379 --object-manager-port=8076 --autoscaling-config=~/ray_bootstrap_config.yaml --dashboard-host=0.0.0.0
 
-    .. tab-item:: Kubernetes
-
-        If you are using Kubernetes but not :ref:`KubeRay <kuberay-index>`, please refer to :ref:`this doc <deploy-a-static-ray-cluster-without-kuberay>`.
-
 
 After you back the GCS with Redis, it recovers its state from Redis when it restarts.
 While the GCS recovers, each raylet tries to reconnect to it.

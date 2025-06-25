@@ -194,7 +194,7 @@ class TrainController:
         self,
         failure_decision: FailureDecision,
         worker_group_status: WorkerGroupPollStatus,
-    ) -> TrainControllerState:
+    ) -> TrainControllerLoopIterationResult:
         """Executes failure handling decisions (ex: restart, terminate)."""
         assert worker_group_status.errors
 
@@ -308,7 +308,7 @@ class TrainController:
 
     def _start(self):
         for callback in self._controller_callbacks:
-            callback.after_controller_start()
+            callback.after_controller_start(self._train_run_context)
 
     def _shutdown(self):
         if self._worker_group:
@@ -474,6 +474,11 @@ class TrainController:
             self._run_control_loop_iteration()
 
         self._shutdown()
+
+        # Call after_controller_finish with the final result
+        result = self._build_result()
+        for callback in self._controller_callbacks:
+            callback.after_controller_finish(result)
 
     def _build_result(self) -> Result:
         storage = self._checkpoint_manager._storage_context

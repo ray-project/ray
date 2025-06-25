@@ -2,36 +2,32 @@
 
 from typing import Any, Dict, Optional
 
+import transformers
 from pydantic import Field, root_validator
 
-from ray.data.block import UserDefinedFunction
+import ray
 from ray.data._internal.execution.operators.actor_pool_map_operator import (
     DEFAULT_MAX_TASKS_IN_FLIGHT,
 )
-
-import ray
+from ray.data.block import UserDefinedFunction
+from ray.llm._internal.batch.observability.usage_telemetry.usage import (
+    BatchModelTelemetry,
+    TelemetryAgent,
+    get_or_create_telemetry_agent,
+)
 from ray.llm._internal.batch.processor.base import (
-    Processor,
     OfflineProcessorConfig,
+    Processor,
     ProcessorBuilder,
 )
 from ray.llm._internal.batch.stages import (
-    SGLangEngineStage,
     ChatTemplateStage,
-    TokenizeStage,
     DetokenizeStage,
+    SGLangEngineStage,
+    TokenizeStage,
 )
 from ray.llm._internal.batch.stages.sglang_engine_stage import SGLangTaskType
-from ray.llm._internal.batch.observability.usage_telemetry.usage import (
-    TelemetryAgent,
-    BatchModelTelemetry,
-)
 from ray.llm._internal.common.observability.telemetry_utils import DEFAULT_GPU_TYPE
-from ray.llm._internal.batch.observability.usage_telemetry.usage import (
-    get_or_create_telemetry_agent,
-)
-
-import transformers
 
 DEFAULT_MODEL_ARCHITECTURE = "UNKNOWN_MODEL_ARCHITECTURE"
 

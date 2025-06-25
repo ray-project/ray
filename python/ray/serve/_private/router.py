@@ -45,7 +45,11 @@ from ray.serve._private.long_poll import LongPollClient, LongPollNamespace
 from ray.serve._private.metrics_utils import InMemoryMetricsStore, MetricsPusher
 from ray.serve._private.replica_result import ReplicaResult
 from ray.serve._private.request_router import PendingRequest, RequestRouter
+from ray.serve._private.request_router.pow_2_router import (
+    PowerOfTwoChoicesRequestRouter,
+)
 from ray.serve._private.request_router.replica_wrapper import RunningReplica
+from ray.serve._private.usage import ServeUsageTag
 from ray.serve._private.utils import (
     generate_request_id,
     resolve_deployment_response,
@@ -166,7 +170,7 @@ class RouterMetricsManager:
             # is correctly decremented in this case.
             self.dec_num_queued_requests()
 
-    def update_running_replicas(self, running_replicas: List[RunningReplicaInfo]):
+    def _update_running_replicas(self, running_replicas: List[RunningReplicaInfo]):
         """Prune list of replica ids in self.num_queries_sent_to_replicas.
 
         We want to avoid self.num_queries_sent_to_replicas from growing
@@ -502,10 +506,15 @@ class AsyncioRouter:
 
             # Populate the running replicas if they are already available.
             if self._running_replicas is not None:
-                request_router.update_running_replicas(self._running_replicas)
+                request_router._update_running_replicas(self._running_replicas)
 
             self._request_router = request_router
             self._request_router_initialized.set()
+
+            # Log usage telemetry to indicate that custom request router
+            # feature is being used in this cluster.
+            if self._request_router_class is not PowerOfTwoChoicesRequestRouter:
+                ServeUsageTag.CUSTOM_REQUEST_ROUTER_USED.record("1")
         return self._request_router
 
     def running_replicas_populated(self) -> bool:
@@ -516,13 +525,13 @@ class AsyncioRouter:
 
         running_replicas = deployment_target_info.running_replicas
         if self.request_router:
-            self.request_router.update_running_replicas(running_replicas)
+            self.request_router._update_running_replicas(running_replicas)
         else:
             # In this case, the request router hasn't been initialized yet.
             # Store the running replicas so that we can update the request
             # router once it is initialized.
             self._running_replicas = running_replicas
-        self._metrics_manager.update_running_replicas(running_replicas)
+        self._metrics_manager._update_running_replicas(running_replicas)
 
         if running_replicas:
             self._running_replicas_populated = True
@@ -615,7 +624,7 @@ class AsyncioRouter:
         # Wait for the router to be initialized before sending the request.
         await self._request_router_initialized.wait()
 
-        r = await self.request_router.choose_replica_for_request(pr)
+        r = await self.request_router._choose_replica_for_request(pr)
 
         # If the queue len cache is disabled or we're sending a request to Java,
         # then directly send the query and hand the response back. The replica will
@@ -629,6 +638,7 @@ class AsyncioRouter:
             try:
                 result, queue_info = await r.send_request(pr, with_rejection=True)
                 self.request_router.on_new_queue_len_info(r.replica_id, queue_info)
+                self.request_router.on_request_routed(pr, r.replica_id, result)
                 if queue_info.accepted:
                     return result, r.replica_id
             except asyncio.CancelledError:
@@ -661,7 +671,7 @@ class AsyncioRouter:
             # request will be placed on the front of the queue to avoid tail latencies.
             # TODO(edoakes): this retry procedure is not perfect because it'll reset the
             # process of choosing candidates replicas (i.e., for locality-awareness).
-            r = await self.request_router.choose_replica_for_request(pr, is_retry=True)
+            r = await self.request_router._choose_replica_for_request(pr, is_retry=True)
 
     async def assign_request(
         self,
@@ -844,6 +854,7 @@ class SingletonThreadRouter(Router):
 class SharedRouterLongPollClient:
     def __init__(self, controller_handle: ActorHandle, event_loop: AbstractEventLoop):
         self.controller_handler = controller_handle
+        self.event_loop = event_loop
 
         # We use a WeakSet to store the Routers so that we don't prevent them
         # from being garbage-collected.
@@ -855,7 +866,7 @@ class SharedRouterLongPollClient:
         self.long_poll_client = LongPollClient(
             controller_handle,
             key_listeners={},
-            call_in_event_loop=event_loop,
+            call_in_event_loop=self.event_loop,
         )
 
     @classmethod
@@ -884,6 +895,15 @@ class SharedRouterLongPollClient:
             router.long_poll_client.stop()
 
     def register(self, router: AsyncioRouter) -> None:
+        # We need to run the underlying method in the same event loop that runs
+        # the long poll loop, because we need to mutate the mapping of routers,
+        # which are also being iterated over by the key listener callbacks.
+        # If those happened concurrently in different threads,
+        # we could get a `RuntimeError: Set changed size during iteration`.
+        # See https://github.com/ray-project/ray/pull/53613 for more details.
+        self.event_loop.call_soon_threadsafe(self._register, router)
+
+    def _register(self, router: AsyncioRouter) -> None:
         self.routers[router.deployment_id].add(router)
 
         # Remove the entries for any deployment ids that no longer have any routers.

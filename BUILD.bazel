@@ -325,7 +325,7 @@ ray_cc_library(
         ":object_manager_cc_grpc",
         "//src/ray/common:asio",
         "//src/ray/common:status",
-        "//src/ray/object_manager:object_manager_grpc_stub_manager",
+        "//src/ray/object_manager:object_manager_grpc_client_manager",
         "@boost//:asio",
         "@com_github_grpc_grpc//:grpc++",
     ],
@@ -901,31 +901,6 @@ cc_proto_library(
     deps = [":extra_actions_base_proto_lib"],
 )
 
-ray_cc_library(
-    name = "sha256",
-    srcs = [
-        "src/ray/thirdparty/sha256.c",
-    ],
-    hdrs = [
-        "src/ray/thirdparty/sha256.h",
-    ],
-)
-
-ray_cc_library(
-    name = "aligned_alloc",
-    srcs = [
-        "src/ray/thirdparty/aligned_alloc.c",
-    ],
-    hdrs = [
-        "src/ray/thirdparty/aligned_alloc.h",
-    ],
-)
-
-ray_cc_library(
-    name = "dlmalloc",
-    hdrs = ["src/ray/thirdparty/dlmalloc.c"],
-)
-
 alias(
     name = "hiredis",
     actual = "@com_github_redis_hiredis//:hiredis",
@@ -965,6 +940,8 @@ pyx_library(
             ],
         }),
         linkstatic = 1,
+        # This is needed since Windows has long file path issues and command length limits
+        features = ["compiler_param_file"],
     ),
     deps = [
         "//:exported_internal",
@@ -981,6 +958,7 @@ pyx_library(
         "//src/ray/util:memory",
         "//src/ray/util:stream_redirection",
         "//src/ray/util:stream_redirection_options",
+        "//src/ray/thirdparty/setproctitle:setproctitle",
     ],
 )
 
@@ -1038,6 +1016,7 @@ filegroup(
         "//src/ray/protobuf:gcs_service_py_proto",
         "//src/ray/protobuf:instance_manager_py_proto",
         "//src/ray/protobuf:node_manager_py_proto",
+        "//src/ray/protobuf:metrics_service_py_proto",
         "//src/ray/protobuf:ray_client_py_proto",
         "//src/ray/protobuf:reporter_py_proto",
         "//src/ray/protobuf:runtime_env_agent_py_proto",

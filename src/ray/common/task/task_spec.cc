@@ -142,6 +142,13 @@ TaskID TaskSpecification::TaskId() const {
   return TaskID::FromBinary(message_->task_id());
 }
 
+std::string TaskSpecification::TaskIdBinary() const {
+  if (message_->task_id().empty()) {
+    return TaskID::Nil().Binary();
+  }
+  return message_->task_id();
+}
+
 TaskAttempt TaskSpecification::GetTaskAttempt() const {
   return std::make_pair(TaskId(), AttemptNumber());
 }
@@ -167,6 +174,13 @@ TaskID TaskSpecification::ParentTaskId() const {
     return TaskID::Nil();
   }
   return TaskID::FromBinary(message_->parent_task_id());
+}
+
+std::string TaskSpecification::ParentTaskIdBinary() const {
+  if (message_->parent_task_id().empty()) {
+    return TaskID::Nil().Binary();
+  }
+  return message_->parent_task_id();
 }
 
 ActorID TaskSpecification::RootDetachedActorId() const {
@@ -276,11 +290,25 @@ void TaskSpecification::AddDynamicReturnId(const ObjectID &dynamic_return_id) {
 }
 
 bool TaskSpecification::ArgByRef(size_t arg_index) const {
-  return message_->args(arg_index).has_object_ref();
+  // If `has_object_ref()` is true and `is_inlined()` is true, it means that the argument
+  // is an ObjectRef, but the object doesn't get pushed to the object store. Hence, it is
+  // inlined in the task spec.
+  return message_->args(arg_index).has_object_ref() &&
+         !message_->args(arg_index).is_inlined();
 }
 
-ObjectID TaskSpecification::ArgId(size_t arg_index) const {
-  return ObjectID::FromBinary(message_->args(arg_index).object_ref().object_id());
+ObjectID TaskSpecification::ArgObjectId(size_t arg_index) const {
+  if (message_->args(arg_index).has_object_ref()) {
+    return ObjectID::FromBinary(message_->args(arg_index).object_ref().object_id());
+  }
+  return ObjectID::Nil();
+}
+
+std::string TaskSpecification::ArgObjectIdBinary(size_t arg_index) const {
+  if (message_->args(arg_index).has_object_ref()) {
+    return message_->args(arg_index).object_ref().object_id();
+  }
+  return ObjectID::Nil().Binary();
 }
 
 const rpc::ObjectReference &TaskSpecification::ArgRef(size_t arg_index) const {
@@ -342,7 +370,7 @@ std::vector<ObjectID> TaskSpecification::GetDependencyIds() const {
   std::vector<ObjectID> dependencies;
   for (size_t i = 0; i < NumArgs(); ++i) {
     if (ArgByRef(i)) {
-      dependencies.push_back(ArgId(i));
+      dependencies.push_back(ArgObjectId(i));
     }
   }
   return dependencies;
@@ -447,6 +475,10 @@ WorkerID TaskSpecification::CallerWorkerId() const {
   return WorkerID::FromBinary(message_->caller_address().worker_id());
 }
 
+std::string TaskSpecification::CallerWorkerIdBinary() const {
+  return message_->caller_address().worker_id();
+}
+
 NodeID TaskSpecification::CallerNodeId() const {
   return NodeID::FromBinary(message_->caller_address().raylet_id());
 }
@@ -477,6 +509,13 @@ int TaskSpecification::MaxActorConcurrency() const {
 const std::string &TaskSpecification::ConcurrencyGroupName() const {
   RAY_CHECK(IsActorTask());
   return message_->concurrency_group_name();
+}
+
+const rpc::TensorTransport TaskSpecification::TensorTransport() const {
+  if (IsActorTask()) {
+    return message_->tensor_transport();
+  }
+  return rpc::TensorTransport::OBJECT_STORE;
 }
 
 bool TaskSpecification::ExecuteOutOfOrder() const {
