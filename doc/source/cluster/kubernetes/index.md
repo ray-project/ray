@@ -17,13 +17,19 @@ references
 
 In this section we cover how to execute your distributed Ray programs on a Kubernetes cluster.
 
-Using the [KubeRay operator](https://github.com/ray-project/kuberay) is the
-recommended way to do so. The operator provides a Kubernetes-native way to manage Ray clusters.
+We recommend using an implementation of the Kubernetes [operator pattern](https://kubernetes.io/docs/concepts/extend-kubernetes/operator/). Available options for operators are:
+* [KubeRay operator](https://github.com/ray-project/kuberay) (self-managed). The operator provides a Kubernetes-native way to manage Ray clusters.
 Each Ray cluster consists of a head node pod and a collection of worker node pods. Optional
 autoscaling support allows the KubeRay operator to size your Ray clusters according to the
 requirements of your Ray workload, adding and removing Ray pods as needed. KubeRay supports
 heterogenous compute nodes (including GPUs) as well as running multiple Ray clusters with
 different Ray versions in the same Kubernetes cluster.
+
+* [Anyscale operator](https://docs.anyscale.com/administration/cloud-deployment/kubernetes/) (managed service). The Anyscale operator for Kubernetes enables deploying the Anyscale platform on Kubernetes clusters on Amazon Elastic Kubernetes Service (EKS), Google Kubernetes Engine (GKE), Azure Kubernetes Service (AKS), Oracle Kubernetes Engine (OKE), CoreWeave, or other Kubernetes clusters running in the cloud or on-prem.
+
+See [Considerations for Building a Ray ML Platform](considerations-build-ml-platform) when choosing an operator (self-managed vs managed service)
+
+## Kuberay Overview
 
 ```{eval-rst}
 .. image:: images/ray_on_kubernetes.png
