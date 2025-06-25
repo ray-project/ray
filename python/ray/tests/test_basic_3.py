@@ -94,7 +94,7 @@ def test_many_fractional_resources(shutdown_only, k: int):
         return 1
 
     @ray.remote
-    def f(block: bool, expected_resources: Dict[str, float]) -> bool:
+    def check_assigned_resources(block: bool, expected_resources: Dict[str, float]):
         assigned_resources = ray.get_runtime_context().get_assigned_resources()
 
         # Have some tasks block to release their occupied resources to further
@@ -102,17 +102,14 @@ def test_many_fractional_resources(shutdown_only, k: int):
         if block:
             ray.get(g.remote())
 
-        eq = _resource_dicts_close(assigned_resources, expected_resources)
-        if not eq:
-            print(
+        if not _resource_dicts_close(assigned_resources, expected_resources):
+            raise RuntimeError(
                 "Mismatched resources.",
                 "Expected:",
                 expected_resources,
                 "Assigned:",
                 assigned_resources,
             )
-
-        return eq
 
     def _rand_resource_val() -> float:
         return int(random.random() * 10000) / 10000
@@ -129,15 +126,17 @@ def test_many_fractional_resources(shutdown_only, k: int):
 
         for block in [False, True]:
             result_ids.append(
-                f.options(
+                check_assigned_resources.options(
                     num_cpus=resources["CPU"],
                     num_gpus=resources["GPU"],
                     resources={"Custom": resources["Custom"]},
                 ).remote(block, resources)
             )
 
-    assert all(ray.get(result_ids))
+    # This would raise if any assigned resources don't match the expectation.
+    ray.get(result_ids)
 
+    # Check that the available resources are reset to their original values.
     wait_for_condition(
         lambda: ray.available_resources() == original_available_resources,
     )
