@@ -77,6 +77,8 @@ V1_TOO_LONG_PATTERN = re.compile(
 
 
 def _get_async_engine_args(llm_config: LLMConfig) -> "AsyncEngineArgs":
+    from vllm.engine.arg_utils import AsyncEngineArgs
+
     engine_config = llm_config.get_engine_config()
 
     # This `model` is the local path on disk, or the hf model id.
@@ -88,7 +90,7 @@ def _get_async_engine_args(llm_config: LLMConfig) -> "AsyncEngineArgs":
     if isinstance(llm_config.model_loading_config.model_source, str):
         model = llm_config.model_loading_config.model_source
 
-    return vllm.engine.arg_utils.AsyncEngineArgs(
+    return AsyncEngineArgs(
         **{
             "model": model,
             "distributed_executor_backend": "ray",
@@ -141,9 +143,10 @@ def _clear_current_platform_cache():
 
 class _EngineBackgroundProcess:
     def __init__(self, ipc_path, engine_args, engine_config):
+        # Adapted from vllm.engine.multiprocessing.engine.MQLLMEngine.from_engine_args
+        import vllm.plugins
         from vllm.engine.multiprocessing.engine import MQLLMEngine
 
-        # Adapted from vllm.engine.multiprocessing.engine.MQLLMEngine.from_engine_args
         vllm.plugins.load_general_plugins()
 
         # Note (genesu): There is a bug in vllm 0.7.2 forced the use of uni processing
@@ -156,6 +159,8 @@ class _EngineBackgroundProcess:
         # Clear the cache of the current platform.
         _clear_current_platform_cache()
 
+        from vllm.usage.usage_lib import UsageContext
+
         self.engine = MQLLMEngine(
             ipc_path=ipc_path,
             use_async_sockets=engine_config.model_config.use_async_output_proc,
@@ -163,7 +168,7 @@ class _EngineBackgroundProcess:
             executor_class=RayDistributedExecutor,
             log_requests=not engine_args.disable_log_requests,
             log_stats=not engine_args.disable_log_stats,
-            usage_context=vllm.usage.usage_lib.UsageContext.API_SERVER,
+            usage_context=UsageContext.API_SERVER,
         )
         self._error = None
 
@@ -189,14 +194,17 @@ class VLLMEngine(LLMEngine):
         """
         super().__init__(llm_config)
 
-        if vllm is None:
-            raise ImportError(
-                "vLLM is not installed. Please install it with `pip install ray[llm]`."
-            )
+        # if vllm is None:
+        #     raise ImportError(
+        #         "vLLM is not installed. Please install it with `pip install ray[llm]`."
+        #     )
 
         # Pick a random port in P/D case.
         kv_transfer_config = llm_config.engine_kwargs.get("kv_transfer_config", None)
         if kv_transfer_config is not None:
+            import vllm.envs
+            import vllm.utils
+
             if not vllm.envs.VLLM_USE_V1:
                 logger.warning("Ray Serve LLM only supports P/D with v1 vLLM engine.")
             connector_type = getattr(kv_transfer_config, "kv_connector", "")
@@ -242,9 +250,9 @@ class VLLMEngine(LLMEngine):
         self._tokenizer = None
 
         self._tokenizer_executor = ThreadPoolExecutor(max_workers=1)
-        self._atokenize = vllm.utils.make_async(
-            self._tokenize, executor=self._tokenizer_executor
-        )
+        from vllm.utils import make_async
+
+        self._atokenize = make_async(self._tokenize, executor=self._tokenizer_executor)
 
     @staticmethod
     async def initialize_node(llm_config: LLMConfig) -> InitializeNodeOutput:
@@ -429,8 +437,9 @@ class VLLMEngine(LLMEngine):
         placement_group: PlacementGroup,
     ) -> "EngineClient":
         from vllm.engine.multiprocessing.client import MQLLMEngineClient
+        from vllm.utils import get_open_zmq_ipc_path
 
-        ipc_path = vllm.utils.get_open_zmq_ipc_path()
+        ipc_path = get_open_zmq_ipc_path()
 
         BackgroundCls = ray.remote(
             num_cpus=0,
@@ -512,7 +521,9 @@ class VLLMEngine(LLMEngine):
 
         executor_class = Executor.get_class(vllm_config)
         logger.info(f"Using executor class: {executor_class}")
-        engine = vllm.engine.async_llm_engine.AsyncLLMEngine(
+        from vllm.engine.async_llm_engine import AsyncLLMEngine
+
+        engine = AsyncLLMEngine(
             vllm_config=vllm_config,
             executor_class=executor_class,
             log_stats=not engine_args.disable_log_stats,
@@ -609,13 +620,15 @@ class VLLMEngine(LLMEngine):
                 f"Request {request.request_id} started. " f"Prompt: {request.prompt}"
             )
 
+        from vllm.inputs import TextPrompt, TokensPrompt
+
         if request.prompt_token_ids is not None:
-            prompt = vllm.inputs.TokensPrompt(
+            prompt = TokensPrompt(
                 prompt_token_ids=request.prompt_token_ids,
                 multi_modal_data=request.multi_modal_data,
             )
         else:
-            prompt = vllm.inputs.TextPrompt(
+            prompt = TextPrompt(
                 prompt=request.prompt,
                 multi_modal_data=request.multi_modal_data,
             )
@@ -786,11 +799,14 @@ class VLLMEngine(LLMEngine):
 
         for i, prompt in enumerate(prompts):
             request_id = f"{vllm_embedding_request.request_id}-{i}"
+            from vllm.inputs import TextPrompt
+            from vllm.pooling_params import PoolingParams
+
             gen: AsyncGenerator["PoolingRequestOutput", None] = self.engine.encode(
-                prompt=vllm.inputs.TextPrompt(
+                prompt=TextPrompt(
                     prompt=prompt,
                 ),
-                pooling_params=vllm.pooling_params.PoolingParams(),
+                pooling_params=PoolingParams(),
                 request_id=request_id,
                 lora_request=vllm_embedding_request.lora_request,  # type: ignore
             )
@@ -947,7 +963,9 @@ class VLLMEngine(LLMEngine):
                     KV_TRANSFER_PARAMS_KEY: sampling_params.kv_transfer_params
                 }
 
-            return vllm.SamplingParams(**kwargs)
+            from vllm import SamplingParams
+
+            return SamplingParams(**kwargs)
         except Exception as e:
             # Wrap the error in ValidationError so the status code
             # returned to the user is correct.
