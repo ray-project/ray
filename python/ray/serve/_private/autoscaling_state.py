@@ -299,14 +299,19 @@ class AutoscalingState:
 
         total_requests = 0
 
-        for handle_metric in self._handle_requests.values():
-            total_requests += handle_metric.queued_requests
-            for id in self._running_replicas:
-                if id in handle_metric.running_requests:
-                    total_requests += handle_metric.running_requests[id]
         for id in self._running_replicas:
             if id in self._replica_requests:
                 total_requests += self._replica_requests[id].running_requests
+
+        metrics_collected_on_replicas = total_requests > 0
+        for handle_metric in self._handle_requests.values():
+            total_requests += handle_metric.queued_requests
+
+            if not metrics_collected_on_replicas:
+                for id in self._running_replicas:
+                    if id in handle_metric.running_requests:
+                        total_requests += handle_metric.running_requests[id]
+
         return total_requests
 
 

@@ -8,12 +8,13 @@ from click.testing import CliRunner
 import pytest
 
 import ray
+from ray._common.test_utils import wait_for_condition
 from ray._private.test_utils import placement_group_assert_no_leak
 from ray.tests.test_placement_group import are_pairwise_unique
 from ray.util.state import list_actors, list_placement_groups
 from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
 from ray._private.runtime_env.plugin import RuntimeEnvPlugin
-from ray._private.test_utils import wait_for_condition, fetch_prometheus_metrics
+from ray._private.test_utils import fetch_prometheus_metrics
 import ray.scripts.scripts as scripts
 
 

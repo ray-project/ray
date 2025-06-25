@@ -18,12 +18,11 @@ from ray.util.state import list_nodes
 from ray._private.metrics_agent import PrometheusServiceDiscoveryWriter
 from ray._private.metrics_agent import Gauge as MetricsAgentGauge
 from ray._private.ray_constants import PROMETHEUS_SERVICE_DISCOVERY_FILE
-from ray._common.test_utils import SignalActor
+from ray._common.test_utils import SignalActor, wait_for_condition
 from ray._private.test_utils import (
     fetch_prometheus,
     fetch_prometheus_metrics,
     get_log_batch,
-    wait_for_condition,
     raw_metrics,
 )
 from ray.autoscaler._private.constants import AUTOSCALER_METRIC_PORT
@@ -255,6 +254,11 @@ def _setup_cluster_for_test(request, ray_start_cluster):
 
 
 @pytest.mark.skipif(prometheus_client is None, reason="Prometheus not installed")
+@pytest.mark.skipif(
+    os.environ.get("RAY_experimental_enable_open_telemetry_on_core") == "1"
+    and sys.platform == "darwin",
+    reason="OpenTelemetry is not working on macOS yet.",
+)
 @pytest.mark.parametrize("_setup_cluster_for_test", [True], indirect=True)
 def test_metrics_export_end_to_end(_setup_cluster_for_test):
     TEST_TIMEOUT_S = 30

@@ -154,13 +154,13 @@ install_node() {
   if [[ -n "${BUILDKITE-}" ]] ; then
     if [[ "${OSTYPE}" = darwin* ]]; then
       if [[ "$(uname -m)" == "arm64" ]]; then
-        curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.39.0/install.sh | bash
+        curl -sSL -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.39.0/install.sh | bash
       else
-        curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.38.0/install.sh | bash
+        curl -sSL -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.38.0/install.sh | bash
       fi
     else
       # https://github.com/nodesource/distributions/blob/master/README.md#installation-instructions
-      curl -sL https://deb.nodesource.com/setup_14.x | sudo -E bash -
+      curl -sSL https://deb.nodesource.com/setup_14.x | sudo -E bash -
       sudo apt-get install -y nodejs
       return
     fi
@@ -415,7 +415,7 @@ install_thirdparty_packages() {
   fi
   mkdir -p "${WORKSPACE_DIR}/python/ray/thirdparty_files"
   RAY_THIRDPARTY_FILES="$(realpath "${WORKSPACE_DIR}/python/ray/thirdparty_files")"
-  CC=gcc python -m pip install psutil==5.9.6 setproctitle==1.2.2 colorama==0.4.6 --target="${RAY_THIRDPARTY_FILES}"
+  CC=gcc python -m pip install psutil==5.9.6 colorama==0.4.6 --target="${RAY_THIRDPARTY_FILES}"
 }
 
 install_dependencies() {

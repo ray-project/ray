@@ -6,11 +6,10 @@ import pytest
 import ray
 from ray.autoscaler._private.constants import AUTOSCALER_METRIC_PORT
 from ray._private.test_utils import (
-    wait_for_condition,
     get_metric_check_condition,
     MetricSamplePattern,
 )
-from ray._common.test_utils import SignalActor
+from ray._common.test_utils import SignalActor, wait_for_condition
 from ray.autoscaler.node_launch_exception import NodeLaunchException
 
 

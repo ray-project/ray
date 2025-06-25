@@ -3,7 +3,7 @@ from typing import Callable, Iterable, List, Optional
 import numpy as np
 
 from ray.data._internal.util import _check_pyarrow_version
-from ray.data.block import Block, BlockMetadata
+from ray.data.block import Block, BlockMetadata, Schema
 from ray.util.annotations import Deprecated, DeveloperAPI, PublicAPI
 
 
@@ -145,13 +145,24 @@ class ReadTask(Callable[[], Iterable[Block]]):
     contents of the block itself.
     """
 
-    def __init__(self, read_fn: Callable[[], Iterable[Block]], metadata: BlockMetadata):
+    def __init__(
+        self,
+        read_fn: Callable[[], Iterable[Block]],
+        metadata: BlockMetadata,
+        schema: Optional["Schema"] = None,
+    ):
         self._metadata = metadata
         self._read_fn = read_fn
+        self._schema = schema
 
     @property
     def metadata(self) -> BlockMetadata:
         return self._metadata
+
+    # TODO(justin): We want to remove schema from `ReadTask` later on
+    @property
+    def schema(self) -> Optional["Schema"]:
+        return self._schema
 
     @property
     def read_fn(self) -> Callable[[], Iterable[Block]]:
@@ -219,7 +230,6 @@ class RandomIntRowDatasource(Datasource):
             meta = BlockMetadata(
                 num_rows=count,
                 size_bytes=8 * count * num_columns,
-                schema=schema,
                 input_files=None,
                 exec_stats=None,
             )
@@ -229,6 +239,7 @@ class RandomIntRowDatasource(Datasource):
                         make_block(count, num_columns)
                     ],
                     meta,
+                    schema=schema,
                 )
             )
             i += block_size
