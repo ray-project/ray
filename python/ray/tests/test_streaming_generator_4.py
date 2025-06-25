@@ -74,47 +74,39 @@ def test_intermediate_generator_object_recovery_while_generator_running(
     ray_start_cluster,
 ):
     """
-    1. Streaming Task A starts on worker 1.
-    2. Task B consumes ref A1 on worker 2 and finishes.
-    3. Add worker 3.
-    3. Worker 2 dies.
-    4. Try to get Ref B.
-    5. Try to reconstruct ref A1.
-    6. Streaming Task A should be cancelled and resubmitted.
+    1. Streaming producer starts on worker1.
+    2. consumer consumes value 1 from producer on worker2 and finishes.
+    3. Add worker3.
+    4. worker2 dies.
+    4. Try to get consumer output.
+    5. Therefore Ray tries to reconstruct value 1 from producer.
+    6. Streaming producer should be cancelled and resubmitted.
     7. Retry for Task B should complete.
     """
 
     cluster = ray_start_cluster
-    head_node = cluster.add_node(num_cpus=0)  # head
+    cluster.add_node(num_cpus=0)  # head
     ray.init(address=cluster.address)
-    cluster.add_node(num_cpus=1, resources={"producer": 1})  # worker 1
+    cluster.add_node(num_cpus=1, resources={"producer": 1})  # worker1
     worker2 = cluster.add_node(num_cpus=1, resources={"consumer": 1})
 
     @ray.remote(num_cpus=1, resources={"producer": 1})
     def producer():
         for i in range(3):
             yield np.zeros(10 * 1024 * 1024, dtype=np.uint8)
-            ray.get(signal_actor.wait.remote())
             time.sleep(10)
 
     @ray.remote(num_cpus=1, resources={"consumer": 1})
     def consumer(np_arr):
         return np_arr.copy()
 
-    schedule_on_head = ray.util.scheduling_strategies.NodeAffinitySchedulingStrategy(
-        node_id=head_node.node_id, soft=False
-    )
-    signal_actor = SignalActor.options(scheduling_strategy=schedule_on_head).remote()
-
     streaming_ref = producer.remote()
     consumer_ref = consumer.remote(next(streaming_ref))
 
     ray.wait([consumer_ref], num_returns=1, fetch_local=False)
 
-    cluster.add_node(num_cpus=1, resources={"consumer": 1})  # worker 3
+    cluster.add_node(num_cpus=1, resources={"consumer": 1})  # worker3
     cluster.remove_node(worker2, allow_graceful=True)
-
-    signal_actor.send.remote()
 
     start_time = time.time()
     assert ray.get(consumer_ref).size == (10 * 1024 * 1024)
@@ -126,7 +118,7 @@ def test_actor_intermediate_generator_object_recovery_while_generator_running(
     ray_start_cluster,
 ):
     # See description of test_intermediate_generator_object_recovery_while_generator_running above.
-    # This is the same except the generator is an actor task.
+    # This is the same except the generator is an actor task and we're using backpressure to make sure the streaming generator doesn't finish, because a cancel won't actually exit out of a running actor task.
     cluster = ray_start_cluster
     cluster.add_node(num_cpus=0)  # head
     ray.init(address=cluster.address)

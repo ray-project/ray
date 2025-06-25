@@ -116,7 +116,7 @@ ERROR_TYPE = [
     "NODE_DIED",
     "END_OF_STREAMING_GENERATOR",
     "ACTOR_UNAVAILABLE",
-    "GENERATOR_REQUIRED_INTERMEDIATE_OBJECT_RECOVERY",
+    "GENERATOR_TASK_CANCELLED_FOR_OBJECT_RECONSTRUCTION",
 ]
 # The Language enum is used in the export API so it is public
 # and any modifications must be backward compatible.

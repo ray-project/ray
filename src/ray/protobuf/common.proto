@@ -256,9 +256,9 @@ enum ErrorType {
   // ACTOR_DIED is that the actor may still be alive and may become available again
   // after some retries.
   ACTOR_UNAVAILABLE = 25;
-  // An ongoing generator needed to be cancelled and resubmitted because an
-  // intermediate value needed to be recovered.
-  GENERATOR_REQUIRED_INTERMEDIATE_OBJECT_RECOVERY = 26;
+  // An executing generator needed to be cancelled and resubmitted because an
+  // object that dependended on an intermediate value needed to be recovered.
+  GENERATOR_TASK_CANCELLED_FOR_OBJECT_RECONSTRUCTION = 26;
 }
 
 // The user error information.
