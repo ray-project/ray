@@ -1,4 +1,5 @@
 import ray
+from ray.util.queue import Queue
 
 ray.init()
 
@@ -31,3 +32,26 @@ unwrapped_str + 100  # Fail
 
 # Check ObjectRef[T] as args
 f.remote(ref_to_str)  # Fail
+
+
+# Does not type check due to incorrect input type
+def put_float_in_int_queue():
+    queue = Queue[int]()
+    queue.put(1.0)  # Fail, float cannot be put into int queue
+
+
+def get_str_from_float_queue():
+    queue = Queue[float]()
+    item: str = queue.get()  # Fail, str cannot be assigned to int
+    return item
+
+
+async def put_async():
+    queue = Queue[int]()
+    await queue.put_async(1.0)  # Fail, float cannot be put into int queue
+
+
+async def get_async():
+    queue = Queue[int]()
+    item: str = await queue.get_async()  # Fail, str cannot be assigned to int
+    return item
