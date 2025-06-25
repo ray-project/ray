@@ -135,19 +135,26 @@ class ActorPoolMapOperator(MapOperator):
             gpu=self._ray_remote_args.get("num_gpus"),
             memory=self._ray_remote_args.get("memory"),
         )
+
+        max_actor_concurrency = self._ray_remote_args.get("max_concurrency", 1)
+
         self._actor_pool = _ActorPool(
             self._start_actor,
             per_actor_resource_usage,
             min_size=compute_strategy.min_size,
             max_size=compute_strategy.max_size,
+            max_actor_concurrency=max_actor_concurrency,
             max_tasks_in_flight_per_actor=(
+                # NOTE: Unless explicitly configured by the user, max tasks-in-flight config
+                #       will fall back to be 2 x of `max_concurrency`, entailing that for every
+                #       running task we'd allow 1 more task to be enqueued
                 compute_strategy.max_tasks_in_flight_per_actor
-                or _derive_max_actor_tasks_in_flight(
-                    data_context, self._ray_remote_args
-                )
+                or data_context.max_tasks_in_flight_per_actor
+                or max_actor_concurrency * 2
             ),
             _enable_actor_pool_on_exit_hook=self.data_context._enable_actor_pool_on_exit_hook,
         )
+
         self._actor_task_selector = self._create_task_selector(self._actor_pool)
         # A queue of bundles awaiting dispatch to actors.
         self._bundle_queue = create_bundle_queue()
@@ -676,7 +683,7 @@ class _ActorPool(AutoscalingActorPool):
         *,
         min_size: int,
         max_size: int,
-        max_concurrency: int,
+        max_actor_concurrency: int,
         max_tasks_in_flight_per_actor: int,
         _enable_actor_pool_on_exit_hook: bool = False,
     ):
@@ -693,7 +700,7 @@ class _ActorPool(AutoscalingActorPool):
 
         self._min_size: int = min_size
         self._max_size: int = max_size
-        self._max_actor_concurrency: int = max_concurrency
+        self._max_actor_concurrency: int = max_actor_concurrency
         self._max_tasks_in_flight: int = max_tasks_in_flight_per_actor
         self._create_actor_fn = create_actor_fn
         self._per_actor_resource_usage = per_actor_resource_usage
@@ -1062,12 +1069,3 @@ class _ActorPool(AutoscalingActorPool):
             )
 
 
-def _derive_max_actor_tasks_in_flight(
-    data_context: "DataContext", ray_remote_args: Optional[Dict[str, Any]]
-) -> int:
-    max_actor_concurrency = ray_remote_args.get("max_concurrency", 1)
-
-    # NOTE: Unless explicitly configured by the user, max tasks-in-flight config
-    #       will fall back to be 2 x of `max_concurrency`, entailing that for every
-    #       running task we'd allow 1 more task to be enqueued
-    return data_context.max_tasks_in_flight_per_actor or max_actor_concurrency * 2
