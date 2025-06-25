@@ -130,7 +130,9 @@ def test_many_fractional_resources(shutdown_only, k: int):
 
     def _available_resources_reset() -> bool:
         return ray.available_resources() == {
-            "CPU": 2.0, "GPU": 2.0, "Custom": 2.0,
+            "CPU": 2.0,
+            "GPU": 2.0,
+            "Custom": 2.0,
         }
 
     wait_for_condition(_available_resources_reset)
