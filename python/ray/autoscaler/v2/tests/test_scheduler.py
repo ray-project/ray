@@ -2358,24 +2358,26 @@ def test_schedule_node_with_matching_labels():
             min_worker_nodes=0,
             max_worker_nodes=10,
             labels={"accelerator": "A100"},
-        )
+        ),
     }
 
     # The existing instance has matching dynamic label.
     instance = make_autoscaler_instance(
-        ray_node=NodeState(
-            ray_node_type_name="labelled_node",
-            available_resources={"CPU": 1},
-            total_resources={"CPU": 1},
-            node_id=b"r1",
-            dynamic_labels={"accelerator": "A100"},
-        ),
         im_instance=Instance(
             instance_type="labelled_node",
             status=Instance.RAY_RUNNING,
             instance_id="1",
-            node_id="r1",
+            node_id=b"r-1",
         ),
+        ray_node=NodeState(
+            node_id=b"r-1",
+            ray_node_type_name="labelled_node",
+            available_resources={"CPU": 1},
+            total_resources={"CPU": 1},
+            labels={"accelerator": "A100"},
+            status=NodeStatus.RUNNING,
+        ),
+        cloud_instance_id="c-1",
     )
 
     # No new nodes should be launched if the existing node satisfies the request.
@@ -2433,6 +2435,71 @@ def test_scale_up_node_to_satisfy_labels():
     to_launch, _ = _launch_and_terminate(reply)
 
     assert to_launch == {"gpu_node": 1}
+
+
+def test_pg_with_bundle_infeasible_label_selectors():
+    """
+    Test that placement group scheduling honors bundle_label_selectors.
+    """
+    scheduler = ResourceDemandScheduler(event_logger)
+    AFFINITY = ResourceRequestUtil.PlacementConstraintType.AFFINITY
+
+    node_type_configs = {
+        "gpu_node": NodeTypeConfig(
+            name="gpu_node",
+            resources={"CPU": 4, "GPU": 1},
+            min_worker_nodes=0,
+            max_worker_nodes=5,
+            labels={"accelerator": "A100"},
+        ),
+        "tpu_node": NodeTypeConfig(
+            name="tpu_node",
+            resources={"CPU": 4},
+            min_worker_nodes=0,
+            max_worker_nodes=5,
+            labels={"accelerator": "TPU"},
+        ),
+    }
+
+    # Create ResourceRequests for a placement group where each bundle has different label selectors
+    gpu_request = ResourceRequestUtil.make(
+        {"CPU": 2, "GPU": 1},
+        constraints=[(AFFINITY, "pg-1", "")],
+        label_selectors=[[("accelerator", LabelOperator.LABEL_OPERATOR_IN, ["A100"])]],
+    )
+    tpu_request = ResourceRequestUtil.make(
+        {"CPU": 2},
+        constraints=[(AFFINITY, "pg-1", "")],
+        label_selectors=[[("accelerator", LabelOperator.LABEL_OPERATOR_IN, ["TPU"])]],
+    )
+
+    request = sched_request(
+        node_type_configs=node_type_configs,
+        gang_resource_requests=[[gpu_request, tpu_request]],
+    )
+
+    reply = scheduler.schedule(request)
+    to_launch, _ = _launch_and_terminate(reply)
+
+    assert sorted(to_launch) == sorted({"gpu_node": 1, "tpu_node": 1})
+
+    # Both bundles require A100, but no node has enough resources -> infeasible
+    infeasbile_gpu_request = ResourceRequestUtil.make(
+        {"CPU": 3, "GPU": 1},
+        constraints=[(AFFINITY, "pg-2", "")],
+        label_selectors=[[("accelerator", LabelOperator.LABEL_OPERATOR_IN, ["A100"])]],
+    )
+
+    request = sched_request(
+        node_type_configs=node_type_configs,
+        gang_resource_requests=[[infeasbile_gpu_request, infeasbile_gpu_request]],
+    )
+
+    reply = scheduler.schedule(request)
+    to_launch, _ = _launch_and_terminate(reply)
+
+    assert to_launch == {}
+    assert len(reply.infeasible_gang_resource_requests) == 1
 
 
 if __name__ == "__main__":

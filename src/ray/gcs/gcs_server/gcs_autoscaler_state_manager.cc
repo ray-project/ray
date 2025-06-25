@@ -230,25 +230,38 @@ void GcsAutoscalerStateManager::GetPendingGangResourceRequests(
         continue;
       }
       // Add the resources.
-      auto resource_req = gang_resource_req->add_requests();
-      *resource_req->mutable_resources_bundle() =
+      auto legacy_resource_req = gang_resource_req->add_requests();
+      *legacy_resource_req->mutable_resources_bundle() =
           std::move(*bundle.mutable_unit_resources());
 
       // Create a new BundleSelector
       auto *bundle_selector = gang_resource_req->add_bundle_selectors();
 
       // Add ResourceRequest for this bundle.
-      auto *resource_req = bundle_selector->add_resource_requests();
-      *resource_req->mutable_resources_bundle() =
+      auto *bundle_resource_req = bundle_selector->add_resource_requests();
+      *bundle_resource_req->mutable_resources_bundle() =
           std::move(*bundle.mutable_unit_resources());
 
-      if (bundle.has_label_selector()) {
-        resource_req->add_label_selectors()->CopyFrom(bundle.label_selector());
+      // Parse label selector map into LabelSelector proto in ResourceRequest
+      if (!bundle.label_selector().empty()) {
+        ray::LabelSelector selector(bundle.label_selector());
+
+        auto *proto_selector = bundle_resource_req->add_label_selectors();
+        for (const auto &constraint : selector.GetConstraints()) {
+          auto *proto_constraint = proto_selector->add_label_constraints();
+          proto_constraint->set_label_key(constraint.GetLabelKey());
+          proto_constraint->set_operator_(static_cast<rpc::autoscaler::LabelOperator>(
+              constraint.GetOperator()));  // Convert enum class -> proto enum
+          for (const auto &val : constraint.GetLabelValues()) {
+            proto_constraint->add_label_values(val);
+          }
+        }
       }
 
       // Add the placement constraint.
       if (pg_constraint.has_value()) {
-        resource_req->add_placement_constraints()->CopyFrom(pg_constraint.value());
+        legacy_resource_req->add_placement_constraints()->CopyFrom(pg_constraint.value());
+        bundle_resource_req->add_placement_constraints()->CopyFrom(pg_constraint.value());
       }
     }
   }
@@ -324,6 +337,10 @@ void GcsAutoscalerStateManager::GetPendingResourceRequests(
       pending_req->set_count(num_pending);
       auto req = pending_req->mutable_request();
       req->mutable_resources_bundle()->insert(shape.begin(), shape.end());
+
+      for (const auto &selector : demand.label_selectors()) {
+        req->add_label_selectors()->CopyFrom(selector);
+      }
     }
   }
 }
@@ -404,8 +421,7 @@ void GcsAutoscalerStateManager::GetNodeStates(
     }
     // Add Ray node labels to dynamic labels
     const auto &node_labels = gcs_node_info.labels();
-    node_state_proto->mutable_labels()->insert(node_labels.begin(),
-                                               node_labels.end());
+    node_state_proto->mutable_labels()->insert(node_labels.begin(), node_labels.end());
   };
 
   const auto &alive_nodes = gcs_node_manager_.GetAllAliveNodes();
