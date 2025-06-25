@@ -395,7 +395,7 @@ See [(Advanced) Understanding the Ray Autoscaler in the Context of Kubernetes](r
 
 #### Prerequisites
 
-* KubeRay v1.3.0 and the latest Ray version are the preferred setup for Autoscaler V2.
+* KubeRay v1.4.0 and the latest Ray version are the preferred setup for Autoscaler V2.
 
 The release of Ray 2.10.0 introduces the alpha version of Ray Autoscaler V2 integrated with KubeRay, bringing enhancements in terms of observability and stability:
 
