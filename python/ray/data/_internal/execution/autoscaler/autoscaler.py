@@ -11,13 +11,11 @@ if TYPE_CHECKING:
     from ray.data._internal.execution.streaming_executor_state import Topology
 
 
-# Default threshold of actor pool utilization to trigger scaling up.
 DEFAULT_ACTOR_POOL_UTIL_UPSCALING_THRESHOLD: float = env_float(
     "RAY_DATA_DEFAULT_ACTOR_POOL_UTIL_UPSCALING_THRESHOLD",
-    0.95,
+    1.0,
 )
 
-# Default threshold of actor pool utilization to trigger scaling down.
 DEFAULT_ACTOR_POOL_UTIL_DOWNSCALING_THRESHOLD: float = env_float(
     "RAY_DATA_DEFAULT_ACTOR_POOL_UTIL_DOWNSCALING_THRESHOLD",
     0.5,
