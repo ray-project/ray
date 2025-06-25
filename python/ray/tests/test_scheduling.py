@@ -411,6 +411,7 @@ def test_locality_aware_leasing_borrowed_objects(ray_start_cluster):
     @ray.remote(num_cpus=0)
     def borrower(o: List[ray.ObjectRef]) -> str:
         obj_ref = o[0]
+        ray.wait([obj_ref], fetch_local=False)
         return ray.get(get_node_id.remote(obj_ref))
 
     # The result of worker_node_ref will be pinned on the worker node.
@@ -419,10 +420,6 @@ def test_locality_aware_leasing_borrowed_objects(ray_start_cluster):
             worker_node.node_id, soft=False
         ),
     ).remote()
-
-    # Ensure that the owner has object info so it will be inlined when submitting
-    # the borrower task. This task should run on the worker node based on locality.
-    assert ray.get(get_node_id.remote(worker_node_ref)) == worker_node.node_id
 
     # Run a borrower task on the head node. From within the borrower task, we launch
     # another task. That inner task should run on the worker node based on locality.
