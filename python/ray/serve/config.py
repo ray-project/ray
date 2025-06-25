@@ -1,5 +1,6 @@
 import logging
 import warnings
+from dataclasses import dataclass
 from enum import Enum
 from typing import Any, Callable, List, Optional, Union
 
@@ -339,3 +340,27 @@ class gRPCOptions(BaseModel):
                 raise ModuleNotFoundError(message) from e
 
         return callables
+
+
+@dataclass
+class MiddlewareConfig:
+    """Configuration for deployment middleware."""
+
+    middleware_class: type
+    args: tuple = ()
+    kwargs: dict = None
+
+    def __post_init__(self):
+        if self.kwargs is None:
+            self.kwargs = {}
+
+
+@dataclass
+class CallbackConfig:
+    """Configuration for deployment callbacks."""
+
+    on_request_start: Optional[Callable[[Any], None]] = None
+    on_request_end: Optional[Callable[[Any, Any], None]] = None
+    on_deployment_start: Optional[Callable[[str], None]] = None
+    on_deployment_stop: Optional[Callable[[str], None]] = None
+    on_error: Optional[Callable[[Exception, Any], None]] = None
