@@ -2340,7 +2340,7 @@ class AlgorithmConfig(_Config):
         learner_class: Optional[Type["Learner"]] = NotProvided,
         learner_connector: Optional[
             Callable[
-                ["Optional[gym.Space]", Optional[gym.Space]],
+                [Optional[gym.Space], Optional[gym.Space]],
                 Union["ConnectorV2", List["ConnectorV2"]],
             ]
         ] = NotProvided,
