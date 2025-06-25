@@ -1,10 +1,11 @@
 from typing import TYPE_CHECKING
 
-from .autoscaler import Autoscaler, AutoscalingConfig
+from .autoscaler import Autoscaler
 from .autoscaling_actor_pool import AutoscalingActorPool
 from .default_autoscaler import DefaultAutoscaler
 
 if TYPE_CHECKING:
+    from ray.data.context import AutoscalingConfig
     from ..resource_manager import ResourceManager
     from ..streaming_executor_state import Topology
 
@@ -12,7 +13,7 @@ if TYPE_CHECKING:
 def create_autoscaler(
     topology: "Topology",
     resource_manager: "ResourceManager",
-    config: AutoscalingConfig,
+    config: "AutoscalingConfig",
     *,
     execution_id: str
 ) -> Autoscaler:
@@ -25,7 +26,6 @@ def create_autoscaler(
 
 
 __all__ = [
-    "AutoscalingConfig",
     "Autoscaler",
     "DefaultAutoscaler",
     "create_autoscaler",

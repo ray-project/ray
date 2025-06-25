@@ -4,7 +4,8 @@ from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Dict, Optional
 
 import ray
-from .autoscaler import Autoscaler, AutoscalingConfig
+from ray.data.context import AutoscalingConfig
+from .autoscaler import Autoscaler
 from ray.data._internal.execution.autoscaling_requester import (
     get_or_create_autoscaling_requester_actor,
 )

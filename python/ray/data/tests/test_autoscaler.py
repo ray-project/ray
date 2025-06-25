@@ -10,7 +10,6 @@ import ray
 from ray.data import ExecutionResources
 from ray.data._internal.execution.autoscaler import (
     AutoscalingActorPool,
-    AutoscalingConfig,
 )
 from ray.data._internal.execution.autoscaler.default_autoscaler import (
     DefaultAutoscaler,
@@ -20,6 +19,7 @@ from ray.data._internal.execution.operators.base_physical_operator import (
     InternalQueueOperatorMixin,
 )
 from ray.data._internal.execution.streaming_executor_state import OpState
+from ray.data.context import AutoscalingConfig
 
 
 def test_actor_pool_scaling():

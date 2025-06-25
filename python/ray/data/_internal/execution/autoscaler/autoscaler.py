@@ -11,47 +11,6 @@ if TYPE_CHECKING:
     from ray.data._internal.execution.streaming_executor_state import Topology
 
 
-DEFAULT_ACTOR_POOL_UTIL_UPSCALING_THRESHOLD: float = env_float(
-    "RAY_DATA_DEFAULT_ACTOR_POOL_UTIL_UPSCALING_THRESHOLD",
-    1.0,
-)
-
-DEFAULT_ACTOR_POOL_UTIL_DOWNSCALING_THRESHOLD: float = env_float(
-    "RAY_DATA_DEFAULT_ACTOR_POOL_UTIL_DOWNSCALING_THRESHOLD",
-    0.5,
-)
-
-
-@DeveloperAPI
-@dataclass
-class AutoscalingConfig:
-    # Actor Pool utilization threshold for upscaling. Once Actor Pool
-    # exceeds this utilization threshold it will start adding new actors.
-    #
-    # NOTE: Actor Pool utilization is defined as ratio of
-    #
-    #   - Number of submitted tasks to
-    #   - Max number of tasks the current set of Actors in the pool could run
-    #     (defined as Ray Actor's `max_concurrency` * `pool.num_running_actors`)
-    #
-    # This utilization value could exceed 100%, when the number of submitted tasks
-    # exceed available concurrency-slots to run them in the current set of actors.
-    #
-    # This is possible when `max_tasks_in_flight_per_actor` (defaults to 2 x
-    # of `max_concurrency`) > Actor's `max_concurrency` and allows to overlap
-    # task execution with the fetching of the blocks for the next task providing
-    # for ability to negotiate a trade-off between autoscaling speed and resource
-    # efficiency (ie making tasks wait instead of immediately triggering execution)
-    actor_pool_util_upscaling_threshold: float = (
-        DEFAULT_ACTOR_POOL_UTIL_UPSCALING_THRESHOLD,
-    )
-
-    # Actor Pool utilization threshold for downscaling
-    actor_pool_util_downscaling_threshold: float = (
-        DEFAULT_ACTOR_POOL_UTIL_DOWNSCALING_THRESHOLD,
-    )
-
-
 @DeveloperAPI
 class Autoscaler(ABC):
     """Abstract interface for Ray Data autoscaler."""
