@@ -56,6 +56,8 @@ from ray.util.placement_group import PlacementGroup
 from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
 from vllm.entrypoints.openai.cli_args import FrontendArgs
 from vllm.engine.arg_utils import AsyncEngineArgs
+from vllm.entrypoints.openai.protocol import ErrorResponse
+from ray.llm._internal.serve.configs.openai_api_models_patch import ErrorResponse as PatchedErrorResponse
 
 if TYPE_CHECKING:
     from vllm import SamplingParams as VLLMInternalSamplingParams
@@ -201,14 +203,6 @@ class VLLMEngine(LLMEngine):
         """
         super().__init__(llm_config)
 
-        # Convert this to a namespace object
-        # TODO: How to get the args in a way that is also inherits the default values?
-        # vllm_cli_args = llm_config.experimental_configs.get("vllm_cli_args", {})
-        # self.vllm_cli_args = CustomNamespace(**vllm_cli_args)
-        # self.vllm_cli_args.update(
-        #     disable_request_logs=True,
-        # )
-
         # filter out the llm_config.engine_kwargs to those that belong to FrontendArgs and pop them over.
         engine_config = llm_config.get_engine_config()
         self.frontend_args = FrontendArgs(**engine_config.frontend_kwargs)
@@ -348,6 +342,7 @@ class VLLMEngine(LLMEngine):
             args=self.namespace_args,
         )
 
+        self.oai_models = state.openai_serving_models
         self.oai_serving_chat = state.openai_serving_chat
         self.oai_serving_completion = state.openai_serving_completion
         self.oai_serving_embedding = state.openai_serving_embedding
@@ -573,6 +568,31 @@ class VLLMEngine(LLMEngine):
         )
 
         return engine
+    
+    
+    async def resolve_lora(self, disk_lora_model: DiskMultiplexConfig):
+        from vllm.entrypoints.openai.protocol import LoadLoRAAdapterRequest
+        # lora_add_response = await self.oai_models.load_lora_adapter(
+        #     request=LoadLoRAAdapterRequest(
+        #         lora_name=disk_lora_model.model_id,
+        #         lora_path=disk_lora_model.local_path,
+        #     )
+        # )
+        
+        if disk_lora_model.model_id in self.oai_models.lora_requests:
+            return self.oai_models.lora_requests[disk_lora_model.model_id]
+        else:
+            lora_request = await self.oai_models.load_lora_adapter(
+                request=LoadLoRAAdapterRequest(
+                    lora_name=disk_lora_model.model_id,
+                    lora_path=disk_lora_model.local_path,
+                )
+            )
+            
+            if isinstance(lora_request, ErrorResponse):
+                raise ValueError(f"Failed to load lora model: {lora_request.message}") 
+        
+        return lora_request
 
     async def prepare_request(
         self,
@@ -653,7 +673,15 @@ class VLLMEngine(LLMEngine):
             logger.info(
                 f"[Kourosh] non streaming response received, chat_response: {chat_response}"
             )
-            yield chat_response
+            if isinstance(chat_response, ErrorResponse):
+                yield PatchedErrorResponse(
+                    message=chat_response.message,
+                    internal_message=chat_response.message,
+                    type=chat_response.type,
+                    code=chat_response.code,
+                )
+            else:
+                yield chat_response
 
     async def generate(
         self, request: GenerationRequest
