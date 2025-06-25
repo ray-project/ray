@@ -1,5 +1,6 @@
 import os
 import ray
+import ray._common.test_utils
 import ray._private.test_utils as test_utils
 from ray.util.placement_group import placement_group, remove_placement_group
 from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
@@ -79,7 +80,7 @@ def no_resource_leaks():
 
 addr = ray.init(address="auto")
 
-test_utils.wait_for_condition(no_resource_leaks)
+ray._common.test_utils.wait_for_condition(no_resource_leaks)
 monitor_actor = test_utils.monitor_memory_usage()
 dashboard_test = DashboardTestAtScale(addr)
 
@@ -91,7 +92,7 @@ used_gb, usage = ray.get(monitor_actor.get_peak_memory_info.remote())
 print(f"Peak memory usage: {round(used_gb, 2)}GB")
 print(f"Peak memory usage per processes:\n {usage}")
 del monitor_actor
-test_utils.wait_for_condition(no_resource_leaks)
+ray._common.test_utils.wait_for_condition(no_resource_leaks)
 
 rate = MAX_PLACEMENT_GROUPS / (end_time - start_time)
 print(

@@ -14,7 +14,8 @@ def _create_bundle(data: Any) -> RefBundle:
     block = pa.Table.from_pydict({"data": [data]})
     block_ref = ray.put(block)
     metadata = BlockAccessor.for_block(block).get_metadata()
-    return RefBundle([(block_ref, metadata)], owns_blocks=False)
+    schema = BlockAccessor.for_block(block).schema()
+    return RefBundle([(block_ref, metadata)], owns_blocks=False, schema=schema)
 
 
 # CVGA-start

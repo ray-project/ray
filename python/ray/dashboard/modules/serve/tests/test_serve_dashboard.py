@@ -6,9 +6,9 @@ from pathlib import Path
 from typing import Dict
 
 import pytest
+from ray._common.test_utils import wait_for_condition
 import requests
 
-from ray._private.test_utils import wait_for_condition
 from ray.serve._private.common import (
     DeploymentStatus,
     DeploymentStatusTrigger,

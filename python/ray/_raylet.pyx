@@ -67,6 +67,7 @@ from libcpp.unordered_map cimport unordered_map
 from libcpp.vector cimport vector as c_vector
 from libcpp.pair cimport pair as c_pair
 
+from cpython.object cimport PyTypeObject
 from cython.operator import dereference, postincrement
 from cpython.pystate cimport (
     PyGILState_Ensure,
@@ -225,7 +226,8 @@ from ray._private.client_mode_hook import disable_client_hook
 import ray.core.generated.common_pb2 as common_pb2
 import ray._private.memory_monitor as memory_monitor
 import ray._private.profiling as profiling
-from ray._private.utils import decode, DeferSigint
+from ray._common.utils import decode
+from ray._private.utils import DeferSigint
 from ray._private.object_ref_generator import DynamicObjectRefGenerator
 from ray.util.annotations import PublicAPI
 
@@ -242,6 +244,7 @@ include "includes/serialization.pxi"
 include "includes/libcoreworker.pxi"
 include "includes/global_state_accessor.pxi"
 include "includes/metric.pxi"
+include "includes/setproctitle.pxi"
 
 # Expose GCC & Clang macro to report
 # whether C++ optimizations were enabled during compilation.
@@ -279,6 +282,7 @@ async_task_name = contextvars.ContextVar('async_task_name', default=None)
 async_task_function_name = contextvars.ContextVar('async_task_function_name',
                                                   default=None)
 
+@PublicAPI
 class ObjectRefGenerator:
     """A generator to obtain object references
     from a task in a streaming manner.
@@ -558,6 +562,16 @@ class ObjectRefGenerator:
         raise TypeError(
             "You cannot return or pass a generator to other task. "
             "Serializing a ObjectRefGenerator is not allowed.")
+
+
+# Update the type names of the extension type so they are
+# ray.{ObjectRef, ObjectRefGenerator} instead of ray._raylet.*
+# For ObjectRefGenerator that can be done directly since it is
+# a full Python class. For ObjectRef we need to update the
+# tp_name since it is a C extension class and not a full class.
+cdef PyTypeObject* object_ref_py_type = <PyTypeObject*>ObjectRef
+object_ref_py_type.tp_name = "ray.ObjectRef"
+ObjectRefGenerator.__module__ = "ray"
 
 
 # For backward compatibility.
