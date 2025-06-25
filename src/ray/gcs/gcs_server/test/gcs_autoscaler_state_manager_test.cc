@@ -1043,12 +1043,14 @@ TEST_F(GcsAutoscalerStateManagerTest, TestGetPendingResourceRequestsWithLabelSel
     ASSERT_EQ(req.count(), 1);
     CheckResourceRequest(req.request(), {{"CPU", 2}});
 
-    std::unordered_map<std::string, std::pair<rpc::autoscaler::LabelOperator, std::string>> expected_vals = {
-        {"accelerator-type", {rpc::autoscaler::LABEL_OPERATOR_IN, "TPU"}},
-        {"node-group",       {rpc::autoscaler::LABEL_OPERATOR_NOT_IN, "gpu-group"}},
-        {"market-type",      {rpc::autoscaler::LABEL_OPERATOR_IN, "spot"}},
-        {"region",           {rpc::autoscaler::LABEL_OPERATOR_NOT_IN, "us-west4"}},
-    };
+    std::unordered_map<std::string,
+                       std::pair<rpc::autoscaler::LabelOperator, std::string>>
+        expected_vals = {
+            {"accelerator-type", {rpc::autoscaler::LABEL_OPERATOR_IN, "TPU"}},
+            {"node-group", {rpc::autoscaler::LABEL_OPERATOR_NOT_IN, "gpu-group"}},
+            {"market-type", {rpc::autoscaler::LABEL_OPERATOR_IN, "spot"}},
+            {"region", {rpc::autoscaler::LABEL_OPERATOR_NOT_IN, "us-west4"}},
+        };
 
     ASSERT_EQ(req.request().label_selectors_size(), 1);
     const auto &parsed_selector = req.request().label_selectors(0);
