@@ -103,7 +103,7 @@ class GrpcServer {
         port_(port),
         listen_to_localhost_only_(listen_to_localhost_only),
         cluster_id_(ClusterID::Nil()),
-        is_closed_(true),
+        is_shutdown_(true),
         num_threads_(num_threads),
         keepalive_time_ms_(keepalive_time_ms) {
     Init();
@@ -166,8 +166,8 @@ class GrpcServer {
   const bool listen_to_localhost_only_;
   /// Token representing ID of this cluster.
   ClusterID cluster_id_;
-  /// Indicates whether this server has been closed.
-  std::atomic<bool> is_closed_;
+  /// Indicates whether this server is in shutdown state.
+  std::atomic<bool> is_shutdown_;
   /// The `grpc::Service` objects which should be registered to `ServerBuilder`.
   std::vector<std::unique_ptr<grpc::Service>> grpc_services_;
   /// The `GrpcService`(defined below) objects which contain grpc::Service objects not in

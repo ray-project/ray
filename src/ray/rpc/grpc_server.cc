@@ -42,7 +42,7 @@ void GrpcServer::Init() {
 }
 
 void GrpcServer::Shutdown() {
-  if (!is_closed_) {
+  if (!is_shutdown_) {
     // Drain the executor threads.
     // Shutdown the server with an immediate deadline.
     // TODO(edoakes): do we want to do this in all cases?
@@ -53,7 +53,7 @@ void GrpcServer::Shutdown() {
     for (auto &polling_thread : polling_threads_) {
       polling_thread.join();
     }
-    is_closed_ = true;
+    is_shutdown_ = true;
     RAY_LOG(DEBUG) << "gRPC server of " << name_ << " shutdown.";
     server_.reset();
   }
@@ -168,7 +168,7 @@ void GrpcServer::Run() {
     polling_threads_.emplace_back(&GrpcServer::PollEventsFromCompletionQueue, this, i);
   }
   // Set the server as running.
-  is_closed_ = false;
+  is_shutdown_ = false;
 }
 
 void GrpcServer::RegisterService(std::unique_ptr<grpc::Service> &&grpc_service) {
