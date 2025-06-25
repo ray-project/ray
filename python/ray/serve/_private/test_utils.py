@@ -716,6 +716,8 @@ def get_application_urls(
         protocol: The protocol to use for the application.
         app_name: The name of the application.
         use_localhost: Whether to use localhost instead of the IP address.
+            Set to True if Serve deployments are not exposed publicly or
+            for low latency benchmarking.
 
     Returns:
         The URLs of the application.
@@ -763,6 +765,8 @@ def get_application_url(
         protocol: The protocol to use for the application.
         app_name: The name of the application.
         use_localhost: Whether to use localhost instead of the IP address.
+            Set to True if Serve deployments are not exposed publicly or
+            for low latency benchmarking.
 
     Returns:
         The URL of the application. If there are multiple URLs, a random one is returned.
