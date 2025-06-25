@@ -1067,5 +1067,3 @@ class _ActorPool(AutoscalingActorPool):
             return self.num_tasks_in_flight() / (
                 self._max_actor_concurrency * self.num_running_actors()
             )
-
-

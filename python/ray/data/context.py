@@ -242,14 +242,10 @@ class AutoscalingConfig:
     # task execution with the fetching of the blocks for the next task providing
     # for ability to negotiate a trade-off between autoscaling speed and resource
     # efficiency (ie making tasks wait instead of immediately triggering execution)
-    actor_pool_util_upscaling_threshold: float = (
-        DEFAULT_ACTOR_POOL_UTIL_UPSCALING_THRESHOLD,
-    )
+    actor_pool_util_upscaling_threshold: float = DEFAULT_ACTOR_POOL_UTIL_UPSCALING_THRESHOLD
 
     # Actor Pool utilization threshold for downscaling
-    actor_pool_util_downscaling_threshold: float = (
-        DEFAULT_ACTOR_POOL_UTIL_DOWNSCALING_THRESHOLD,
-    )
+    actor_pool_util_downscaling_threshold: float = DEFAULT_ACTOR_POOL_UTIL_DOWNSCALING_THRESHOLD
 
 
 def _execution_options_factory() -> "ExecutionOptions":
