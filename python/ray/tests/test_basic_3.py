@@ -83,7 +83,7 @@ def _resource_dicts_close(d1: Dict, d2: Dict, *, abs_tol: float = 1e-4):
     return True
 
 
-def test_many_fractional_resources(shutdown_only, k: int):
+def test_many_fractional_resources(shutdown_only):
     ray.init(num_cpus=2, num_gpus=2, resources={"Custom": 2})
     original_available_resources = ray.available_resources()
 
