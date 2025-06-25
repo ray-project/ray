@@ -1,5 +1,4 @@
 # coding: utf-8
-from copy import deepcopy
 import gc
 import logging
 import math
@@ -130,11 +129,9 @@ def test_many_fractional_resources(shutdown_only, k: int):
     assert all(ray.get(result_ids))
 
     def _available_resources_reset() -> bool:
-        available_resources = ray.available_resources()
-        assert ray.available_resources()["CPU"] == 2.0
-        assert ray.available_resources()["GPU"] == 2.0
-        assert ray.available_resources()["Custom"] == 2.0
-        return True
+        return ray.available_resources() == {
+            "CPU": 2.0, "GPU": 2.0, "Custom": 2.0,
+        }
 
     wait_for_condition(_available_resources_reset)
 

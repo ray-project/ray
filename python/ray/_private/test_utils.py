@@ -3,7 +3,6 @@ import fnmatch
 import io
 import json
 import logging
-import math
 import os
 import pathlib
 import random
