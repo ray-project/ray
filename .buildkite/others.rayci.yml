@@ -37,7 +37,7 @@ steps:
   # docs
   - name: doctestbuild
     wanda: ci/docker/doctest.build.wanda.yaml
-    depends_on: uv_pip_compile_llm_dependencies
+    depends_on: oss-ci-base_build
 
   - label: doc tests
     tags: python
