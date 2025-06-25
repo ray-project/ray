@@ -806,6 +806,11 @@ class _ActorPool(AutoscalingActorPool):
             return target_num_actors
 
         elif config.delta < 0:
+            allowed, reason = self.can_scale_down()
+            if not allowed:
+                logger.warning(f"Ignoring scaling down request (config={config}; reason={reason})")
+                return 0
+
             num_released = 0
 
             # Make sure after scaling down actor pool size won't fall below its
