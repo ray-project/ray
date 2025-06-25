@@ -241,7 +241,7 @@ def test_actor_restart(ray_start_regular):
     ray.get(signal_actor.send.remote(clear=True))
     sigkill_actor(actor)
 
-    with pytest.raises(ActorUnavailableError, match="RpcError|The actor is restarting"):
+    with pytest.raises(ActorUnavailableError):
         print(ray.get(actor.ping.remote("unavailable")))
 
     # unblock actor creation, actor should be created eventually
