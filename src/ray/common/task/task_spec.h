@@ -486,6 +486,8 @@ class TaskSpecification : public MessageWrapper<rpc::TaskSpec> {
 
   WorkerID CallerWorkerId() const;
 
+  std::string CallerWorkerIdBinary() const;
+
   NodeID CallerNodeId() const;
 
   uint64_t SequenceNumber() const;
