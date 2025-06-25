@@ -1,7 +1,6 @@
 import logging
 from typing import TYPE_CHECKING, Any, Callable, Dict, Iterable, List, Optional
 
-from ray.data._internal.arrow_ops.transform_pyarrow import concat
 from ray.data._internal.execution.interfaces import TaskContext
 from ray.data._internal.planner.plan_write_op import WRITE_UUID_KWARG_NAME
 from ray.data._internal.savemode import SaveMode
@@ -108,31 +107,31 @@ class ParquetDatasink(_FileDatasink):
         output_schema: "pyarrow.Schema",
         write_kwargs: Dict[str, Any],
     ) -> None:
-        import pyarrow.parquet as pq
+        import pyarrow.dataset as ds
 
-        table = concat(tables, promote_types=False)
-        table = table.combine_chunks()
+        # Make every incoming batch conform to the final schema *before* writing
+        for idx, t in enumerate(tables):
+            if output_schema and not t.schema.equals(output_schema):
+                t = t.cast(output_schema, safe=False)
+            tables[idx] = t
 
-        if output_schema and not table.schema.equals(output_schema):
-            table = table.cast(output_schema, safe=False)
+        row_group_size = write_kwargs.pop("row_group_size", None)
 
-        # Prepare common arguments for pq.write_to_dataset
-        dataset_kwargs = {
-            "table": table,
-            "root_path": self.path,
-            "basename_template": filename + "-{i}.parquet",
-            "schema": output_schema,
-            "use_legacy_dataset": False,
-            **write_kwargs,
-        }
-
-        # Add partition-specific or filesystem-specific arguments
-        if self.partition_cols:
-            dataset_kwargs["partition_cols"] = self.partition_cols
-        else:
-            dataset_kwargs["filesystem"] = self.filesystem
-
-        pq.write_to_dataset(**dataset_kwargs)
+        ds.write_dataset(
+            data=tables,
+            base_dir=self.path,
+            schema=output_schema,
+            basename_template=f"{filename}-{{i}}.parquet",
+            filesystem=self.filesystem,
+            partitioning=self.partition_cols,
+            format="parquet",
+            existing_data_behavior="overwrite_or_ignore",
+            partitioning_flavor="hive",
+            use_threads=True,
+            min_rows_per_group=row_group_size if row_group_size else 0,
+            max_rows_per_group=row_group_size if row_group_size else 1024 * 1024,
+            file_options=ds.ParquetFileFormat().make_write_options(**write_kwargs),
+        )
 
     @property
     def min_rows_per_write(self) -> Optional[int]:
