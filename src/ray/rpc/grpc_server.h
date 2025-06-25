@@ -118,7 +118,7 @@ class GrpcServer {
   // Shutdown this server. Note that this function implements a mechanism to avoid
   // going through shutdown process again after the function is successfully returned.
   // However, the method is not thread safe. The caller of the method should guarantee
-  // that potential multiple calls to the method should be sequencial.
+  // that potential multiple calls to the method should be sequential.
   void Shutdown();
 
   /// Get the port of this gRPC server.
