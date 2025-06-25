@@ -715,6 +715,7 @@ def get_application_urls(
     Args:
         protocol: The protocol to use for the application.
         app_name: The name of the application.
+        use_localhost: Whether to use localhost instead of the IP address.
 
     Returns:
         The URLs of the application.
