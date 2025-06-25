@@ -78,6 +78,8 @@ class GcsActorSchedulerTest : public ::testing::Test {
         cluster_resource_scheduler_->GetClusterResourceManager(),
         *gcs_node_manager_,
         local_node_id_);
+    worker_client_pool_ = std::make_unique<rpc::CoreWorkerClientPool>(
+        [this](const rpc::Address &address) { return worker_client_; });
     gcs_actor_scheduler_ = std::make_shared<GcsServerMocker::MockedGcsActorScheduler>(
         io_context_->GetIoService(),
         *gcs_actor_table_,
@@ -94,8 +96,7 @@ class GcsActorSchedulerTest : public ::testing::Test {
           success_actors_.emplace_back(std::move(actor));
         },
         *raylet_client_pool_,
-        /*client_factory=*/
-        [this](const rpc::Address &address) { return worker_client_; },
+        *worker_client_pool_,
         /*normal_task_resources_changed_callback=*/
         [gcs_resource_manager](const NodeID &node_id,
                                const rpc::ResourcesData &resources) {
@@ -158,6 +159,7 @@ class GcsActorSchedulerTest : public ::testing::Test {
   std::shared_ptr<GcsServerMocker::MockedGcsActorTable> gcs_actor_table_;
   std::shared_ptr<GcsServerMocker::MockRayletClient> raylet_client_;
   std::shared_ptr<GcsServerMocker::MockWorkerClient> worker_client_;
+  std::unique_ptr<rpc::CoreWorkerClientPool> worker_client_pool_;
   std::shared_ptr<gcs::GcsNodeManager> gcs_node_manager_;
   std::unique_ptr<raylet::ILocalTaskManager> local_task_manager_;
   std::unique_ptr<ClusterResourceScheduler> cluster_resource_scheduler_;

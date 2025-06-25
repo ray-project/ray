@@ -15,8 +15,8 @@ import yaml
 
 import ray
 from ray import serve
-from ray._private.pydantic_compat import BaseModel
-from ray._private.test_utils import wait_for_condition
+from ray._common.pydantic_compat import BaseModel
+from ray._common.test_utils import wait_for_condition
 from ray.serve._private.constants import SERVE_DEFAULT_APP_NAME, SERVE_NAMESPACE
 from ray.serve._private.test_utils import (
     ping_fruit_stand,

@@ -7,9 +7,8 @@ import pytest
 
 import ray
 from ray import serve
-from ray._common.test_utils import SignalActor
+from ray._common.test_utils import SignalActor, wait_for_condition
 from ray._common.utils import get_or_create_event_loop
-from ray._private.test_utils import wait_for_condition
 from ray.serve._private.common import DeploymentID, ReplicaID
 from ray.serve._private.config import DeploymentConfig
 from ray.serve._private.constants import SERVE_MULTIPLEXED_MODEL_ID
@@ -304,8 +303,8 @@ class TestBasicAPI:
         assert serve.get_multiplexed_model_id() == "1"
 
 
-def test_multiplexed_replica_info(serve_instance):
-    """Test MultiplexedReplicaInfo is passed to the controller & router"""
+def test_request_routing_info(serve_instance):
+    """Test RequestRoutingInfo is passed to the controller & router"""
 
     @serve.deployment
     class MyModel:
