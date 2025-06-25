@@ -60,24 +60,6 @@ def call_from(f, source):
         raise ValueError(f"unknown {source}")
 
 
-@ray.remote(num_cpus=0)
-class SignalCounter:
-    def __init__(self, s: SignalActor) -> None:
-        self._count = 0
-        self._signal = s
-
-    def getpid(self):
-        return os.getpid()
-
-    def inc(self) -> int:
-        ray.get(self._signal.wait.remote())
-        self._count += 1
-        return self._count
-
-    def get(self) -> int:
-        return self._count
-
-
 def sigkill_actor(actor, timeout=5):
     """Sends SIGKILL to an actor's process. The actor must be on the same node, and it
     must has a `getpid` method."""
@@ -120,53 +102,49 @@ def _close_common_connections(pid: int):
             print(f"Closed FD: {fd}, laddr: {laddr}, raddr: {raddr}")
 
 
-@pytest.mark.parametrize(
-    "caller",
-    ["actor", "task", "driver"],
-)
+@pytest.mark.parametrize("caller", ["actor", "task", "driver"])
 @pytest.mark.skipif(sys.platform == "win32", reason="does not work on windows")
-@pytest.mark.parametrize("ray_start_regular", [{"log_to_driver": False}], indirect=True)
 def test_actor_unavailable_conn_broken(ray_start_regular, caller):
-    def body():
-        signal = SignalActor.remote()
-        a = SignalCounter.remote(signal)
-        pid = ray.get(a.getpid.remote())
-        print("PID!", pid)
+    @ray.remote(num_cpus=0)
+    class Counter:
+        def __init__(self, caller_pid: int) -> None:
+            self._count = 0
+            self._caller_pid = caller_pid
 
-        # Start a method call on the actor, then break the connection.
-        # The next `ray.get` call should fail with ActorUnavailableError.
-        obj_ref = a.inc.remote()
-        wait_for_condition(lambda: ray.get(signal.cur_num_waiters.remote()) == 1)
-        _close_common_connections(pid)
-        ray.get(signal.send.remote())
-        print("SDFDSF")
-        # with pytest.raises(ActorUnavailableError, match="RpcError"):
-        # print("HERREERER")
-        assert ray.get(obj_ref) == 1
-        print("HERE1!")
+        def getpid(self) -> int:
+            return os.getpid()
 
-        # Now signal the method to finish.
-        # The side effects should be observable and we should be able to get the result
-        # of a new method call.
-        print("HERE2!")
-        ray.get(signal.send.remote())
-        print("HERE3!")
+        def inc(self, *, disconnect: bool) -> int:
+            if disconnect:
+                _close_common_connections(self._caller_pid)
+
+            self._count += 1
+            return self._count
+
+        def get(self) -> int:
+            return self._count
+
+    def _run_test():
+        a = Counter.remote(os.getpid())
+        counter_pid = ray.get(a.getpid.remote())
+
+        # Server (counter actor) unexpectedly disconnects the connection once the method
+        # has started executing. The task should raise `ActorUnavailableError` but its
+        # side effects should be observable (count was incremented).
+        obj_ref = a.inc.remote(disconnect=True)
+        with pytest.raises(ActorUnavailableError):
+            ray.get(obj_ref)
         assert ray.get(a.get.remote()) == 1
-        print("HERE4!")
-        return
 
-        # Break the connection again. This time, the method call happens after the break
-        # so it did not reach the actor. The actor is still in the previous state and
-        # the side effects are not observable. Regardless, the method call `.remote()`
-        # itself won't raise an error.
-        _close_common_connections(pid)
-        task2 = a.slow_increment.remote(5, 0.1)
-        with pytest.raises(ActorUnavailableError, match="RpcError"):
-            ray.get(task2)
-        assert ray.get(a.read.remote()) == 9
+        # Client (driver) unexpectedly disconnects the connection prior to submitting the
+        # task. The task should raise `ActorUnavailableError` and should never have
+        # executed, therefore the count should not have been incremented.
+        _close_common_connections(counter_pid)
+        with pytest.raises(ActorUnavailableError):
+            ray.get(a.inc.remote(disconnect=False))
+        assert ray.get(a.get.remote()) == 1
 
-    body()
-    # call_from(body, caller)
+    call_from(_run_test, caller)
 
 
 @pytest.mark.parametrize(
