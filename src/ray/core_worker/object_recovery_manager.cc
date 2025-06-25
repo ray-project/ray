@@ -18,6 +18,7 @@
 #include <utility>
 #include <vector>
 
+#include "ray/core_worker/task_manager.h"
 #include "ray/util/util.h"
 
 namespace ray {
@@ -183,9 +184,9 @@ void ObjectRecoveryManager::ReconstructObject(const ObjectID &object_id) {
   // after ResubmitTask, then it will remain true forever.
   // see https://github.com/ray-project/ray/issues/47606 for more details.
   reference_counter_.UpdateObjectPendingCreation(object_id, true);
-  auto resubmitted = task_resubmitter_.ResubmitTask(task_id, &task_deps);
+  auto resubmit_result = task_resubmitter_.ResubmitTask(task_id, &task_deps);
 
-  if (resubmitted) {
+  if (resubmit_result == ResubmitTaskResult::SUCCESS) {
     // Try to recover the task's dependencies.
     for (const auto &dep : task_deps) {
       auto recovered = RecoverObject(dep);
@@ -204,10 +205,17 @@ void ObjectRecoveryManager::ReconstructObject(const ObjectID &object_id) {
     RAY_LOG(INFO).WithField(object_id)
         << "Failed to reconstruct object because lineage has already been deleted";
     reference_counter_.UpdateObjectPendingCreation(object_id, false);
-    recovery_failure_callback_(
-        object_id,
-        rpc::ErrorType::OBJECT_UNRECONSTRUCTABLE_MAX_ATTEMPTS_EXCEEDED,
-        /*pin_object=*/true);
+    if (resubmit_result == ResubmitTaskResult::FAILED_MAX_ATTEMPT_EXCEEDED) {
+      recovery_failure_callback_(
+          object_id,
+          rpc::ErrorType::OBJECT_UNRECONSTRUCTABLE_MAX_ATTEMPTS_EXCEEDED,
+          /*pin_object=*/true);
+    } else {
+      RAY_CHECK(resubmit_result == ResubmitTaskResult::FAILED_TASK_CANCELED);
+      recovery_failure_callback_(object_id,
+                                 rpc::ErrorType::TASK_CANCELLED,
+                                 /*pin_object=*/true);
+    }
   }
 }
 

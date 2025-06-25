@@ -28,6 +28,7 @@
 #include "ray/common/task/task_util.h"
 #include "ray/common/test_util.h"
 #include "ray/core_worker/store_provider/memory_store/memory_store.h"
+#include "ray/core_worker/task_manager.h"
 #include "ray/core_worker/transport/normal_task_submitter.h"
 #include "ray/raylet_client/raylet_client.h"
 
@@ -47,16 +48,17 @@ class MockTaskResubmitter : public TaskResubmissionInterface {
     task_specs[task_id] = task_deps;
   }
 
-  bool ResubmitTask(const TaskID &task_id, std::vector<ObjectID> *task_deps) {
+  ResubmitTaskResult ResubmitTask(const TaskID &task_id,
+                                  std::vector<ObjectID> *task_deps) {
     if (task_specs.find(task_id) == task_specs.end()) {
-      return false;
+      return ResubmitTaskResult::FAILED_MAX_ATTEMPT_EXCEEDED;
     }
 
     for (const auto &dep : task_specs[task_id]) {
       task_deps->push_back(dep);
     }
     num_tasks_resubmitted++;
-    return true;
+    return ResubmitTaskResult::SUCCESS;
   }
 
   absl::flat_hash_map<TaskID, std::vector<ObjectID>> task_specs;
