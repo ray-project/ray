@@ -33,7 +33,7 @@ from ray.serve._private.constants import (
 )
 from ray.serve._private.deployment_info import DeploymentInfo
 from ray.serve._private.utils import DEFAULT
-from ray.serve.config import ProxyLocation
+from ray.serve.config import ProxyLocation, RouterConfig
 from ray.util.annotations import PublicAPI
 
 # Shared amongst multiple schemas.
@@ -405,29 +405,9 @@ class DeploymentSchema(BaseModel, allow_population_by_field_name=True):
         default=DEFAULT.VALUE,
         description="Logging config for configuring serve deployment logs.",
     )
-    request_router_class: str = Field(
+    router_config: Union[Dict, RouterConfig] = Field(
         default=DEFAULT.VALUE,
-        description="The path pointing to the custom request router class to use for this deployment.",
-    )
-    request_router_kwargs: Dict[str, Any] = Field(
-        default=DEFAULT.VALUE,
-        description="Keyword arguments that will be passed to the request router class __init__ method.",
-    )
-    request_routing_stats_period_s: float = Field(
-        default=DEFAULT.VALUE,
-        description=(
-            "Frequency at which the controller will record routing stats "
-            "replicas. Uses a default if null."
-        ),
-        gt=0,
-    )
-    request_routing_stats_timeout_s: float = Field(
-        default=DEFAULT.VALUE,
-        description=(
-            "Timeout that the controller will wait for a response "
-            "from the replica's record routing stats. Uses a default if null."
-        ),
-        gt=0,
+        description="Config for the request router used for this deployment.",
     )
 
     @root_validator
@@ -507,9 +487,7 @@ def _deployment_info_to_schema(name: str, info: DeploymentInfo) -> DeploymentSch
         health_check_period_s=info.deployment_config.health_check_period_s,
         health_check_timeout_s=info.deployment_config.health_check_timeout_s,
         ray_actor_options=info.replica_config.ray_actor_options,
-        request_router_class=info.deployment_config.request_router_class,
-        request_routing_stats_period_s=info.deployment_config.request_routing_stats_period_s,
-        request_routing_stats_timeout_s=info.deployment_config.request_routing_stats_timeout_s,
+        router_config=info.deployment_config.router_config,
     )
 
     if info.deployment_config.autoscaling_config is not None:
@@ -1207,15 +1185,20 @@ class ServeInstanceDetails(BaseModel, extra=Extra.forbid):
         """Generates json serializable dictionary with user facing data."""
         values = super().dict(*args, **kwargs)
 
-        # `serialized_policy_def` and `serialized_request_router_cls` are only used
+        # `serialized_policy_def` and internal router config fields are only used
         # internally and should not be exposed to the REST api. This method iteratively
-        # removes them from each deployment and autoscaling config if exists.
+        # removes them from each deployment config if exists.
         for app_name, application in values["applications"].items():
             for deployment_name, deployment in application["deployments"].items():
                 if "deployment_config" in deployment:
-                    deployment["deployment_config"].pop(
-                        "serialized_request_router_cls", None
-                    )
+                    # Remove internal fields from router_config if it exists
+                    if "router_config" in deployment["deployment_config"]:
+                        if isinstance(
+                            deployment["deployment_config"]["router_config"], dict
+                        ):
+                            deployment["deployment_config"]["router_config"].pop(
+                                "serialized_request_router_cls", None
+                            )
                     if "autoscaling_config" in deployment["deployment_config"]:
                         deployment["deployment_config"]["autoscaling_config"].pop(
                             "_serialized_policy_def", None
