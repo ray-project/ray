@@ -16,6 +16,14 @@ if TYPE_CHECKING:
 WRITE_FILE_MAX_ATTEMPTS = 10
 WRITE_FILE_RETRY_MAX_BACKOFF_SECONDS = 32
 
+# Map SaveMode to existing_data_behavior
+EXISTING_DATA_BEHAVIOR_MAP = {
+    SaveMode.APPEND: "overwrite_or_ignore",
+    SaveMode.OVERWRITE: "delete_matching",
+    SaveMode.IGNORE: "overwrite_or_ignore",
+    SaveMode.ERROR: "error",
+}
+
 logger = logging.getLogger(__name__)
 
 
@@ -117,14 +125,7 @@ class ParquetDatasink(_FileDatasink):
 
         row_group_size = write_kwargs.pop("row_group_size", None)
 
-        # Map SaveMode to existing_data_behavior
-        existing_data_behavior_map = {
-            SaveMode.APPEND: "overwrite_or_ignore",
-            SaveMode.OVERWRITE: "delete_matching",
-            SaveMode.IGNORE: "overwrite_or_ignore",
-            SaveMode.ERROR: "error",
-        }
-        existing_data_behavior = existing_data_behavior_map.get(
+        existing_data_behavior = EXISTING_DATA_BEHAVIOR_MAP.get(
             self.mode, "overwrite_or_ignore"
         )
 
