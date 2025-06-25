@@ -58,6 +58,32 @@ void Worker::MarkDead() { dead_ = true; }
 
 bool Worker::IsDead() const { return dead_; }
 
+void Worker::Kill(instrumented_io_context &io_service, bool force) {
+  auto process = GetProcess();
+  if (force) {
+    process.Kill();
+    return;
+  }
+#ifdef _WIN32
+  // TODO(mehrdadn): implement graceful process termination mechanism
+#else
+  // If we're just cleaning up a single worker, allow it some time to clean
+  // up its state before force killing. The client socket will be closed
+  // and the worker struct will be freed after the timeout.
+  kill(process.GetId(), SIGTERM);
+#endif
+
+  auto retry_timer = std::make_shared<boost::asio::deadline_timer>(io_service);
+  auto retry_duration = boost::posix_time::milliseconds(
+      RayConfig::instance().kill_worker_timeout_milliseconds());
+  retry_timer->expires_from_now(retry_duration);
+  retry_timer->async_wait([process](const boost::system::error_code &error) {
+    RAY_LOG(DEBUG) << "Send SIGKILL to worker, pid=" << process.GetId();
+    // Force kill worker
+    process.Kill();
+  });
+}
+
 void Worker::MarkBlocked() { blocked_ = true; }
 
 void Worker::MarkUnblocked() { blocked_ = false; }

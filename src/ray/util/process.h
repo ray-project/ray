@@ -117,7 +117,7 @@ class Process {
   bool IsNull() const;
   bool IsValid() const;
   /// Forcefully kills the process. Unsafe for unowned processes.
-  void Kill();
+  void Kill() const;
   /// Check whether the process is alive.
   bool IsAlive() const;
   /// Convenience function to start a process in the background.

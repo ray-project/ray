@@ -46,6 +46,7 @@ class WorkerInterface {
   virtual rpc::WorkerType GetWorkerType() const = 0;
   virtual void MarkDead() = 0;
   virtual bool IsDead() const = 0;
+  virtual void Kill(instrumented_io_context &io_service, bool force) = 0;
   virtual void MarkBlocked() = 0;
   virtual void MarkUnblocked() = 0;
   virtual bool IsBlocked() const = 0;
@@ -154,6 +155,12 @@ class Worker : public WorkerInterface {
   rpc::WorkerType GetWorkerType() const;
   void MarkDead();
   bool IsDead() const;
+  /// Kill the worker.
+  /// \param io_service for scheduling the graceful period timer.
+  /// \param force true to kill immediately, false to give time for the worker to
+  /// clean up and exit gracefully.
+  /// \return Void.
+  void Kill(instrumented_io_context &io_service, bool force);
   void MarkBlocked();
   void MarkUnblocked();
   bool IsBlocked() const;

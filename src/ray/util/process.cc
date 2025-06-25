@@ -543,7 +543,7 @@ bool Process::IsAlive() const {
   return false;
 }
 
-void Process::Kill() {
+void Process::Kill() const {
   if (p_) {
     pid_t pid = p_->GetId();
     if (pid >= 0) {
