@@ -92,7 +92,7 @@ python/ray/util/client/
 ;
 
 python/ray/util/dask/
-@ python data_dask
+@ python dask
 ;
 
 python/ray/util/spark/
