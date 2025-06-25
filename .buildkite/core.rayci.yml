@@ -174,7 +174,7 @@ steps:
       # These tests are only triggered on premerge if there are changes under
       # `ray/util/dask/`. This is not technically related to modin, but modin tests can
       # run postmerge-only and are too small for their own build.
-      - dask
+      - data_dask
     instance_type: medium
     commands:
       - bazel run //ci/ray_ci:test_in_docker --
