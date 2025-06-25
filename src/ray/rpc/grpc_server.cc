@@ -43,7 +43,6 @@ void GrpcServer::Init() {
 
 void GrpcServer::Shutdown() {
   if (!is_closed_) {
-    shutdown_ = true;
     // Drain the executor threads.
     // Shutdown the server with an immediate deadline.
     // TODO(edoakes): do we want to do this in all cases?

@@ -105,8 +105,7 @@ class GrpcServer {
         cluster_id_(ClusterID::Nil()),
         is_closed_(true),
         num_threads_(num_threads),
-        keepalive_time_ms_(keepalive_time_ms),
-        shutdown_(false) {
+        keepalive_time_ms_(keepalive_time_ms) {
     Init();
   }
 
@@ -116,7 +115,10 @@ class GrpcServer {
   /// Initialize and run this server.
   void Run();
 
-  // Shutdown this server
+  // Shutdown this server. Note that this function implements a mechanism to avoid
+  // going through shutdown process again after the function is successfully returned.
+  // However, the method is not thread safe. The caller of the method should guarantee
+  // that potential multiple calls to the method should be sequencial.
   void Shutdown();
 
   /// Get the port of this gRPC server.
@@ -165,7 +167,7 @@ class GrpcServer {
   /// Token representing ID of this cluster.
   ClusterID cluster_id_;
   /// Indicates whether this server has been closed.
-  bool is_closed_;
+  std::atomic<bool> is_closed_;
   /// The `grpc::Service` objects which should be registered to `ServerBuilder`.
   std::vector<std::unique_ptr<grpc::Service>> grpc_services_;
   /// The `GrpcService`(defined below) objects which contain grpc::Service objects not in
@@ -185,8 +187,6 @@ class GrpcServer {
   /// gRPC server cannot get the ping response within the time, it triggers
   /// the watchdog timer fired error, which will close the connection.
   const int64_t keepalive_time_ms_;
-
-  std::atomic_bool shutdown_;
 };
 
 /// Base class that represents an abstract gRPC service.
