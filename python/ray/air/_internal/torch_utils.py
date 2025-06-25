@@ -374,11 +374,80 @@ def arrow_batch_to_tensors(
         )
 
 
+class TensorCache:
+    """A class to manage tensor caching with optional pinned memory support.
+
+    This class provides functionality to cache tensors and reuse them for better
+    memory efficiency. It supports pinned memory which can improve transfer speeds
+    between CPU and GPU.
+
+    Args:
+        pinned: Whether to use pinned memory for cached tensors. Pinned memory
+            can improve transfer speeds between CPU and GPU but uses more system
+            memory. Defaults to False.
+    """
+
+    def __init__(self, pinned: bool = False):
+        self._cache: Dict[str, torch.Tensor] = {}
+        self._pinned = pinned
+
+    def get(self, key: str) -> Optional[torch.Tensor]:
+        """Get a cached tensor by key.
+
+        Args:
+            key: The key to look up in the cache.
+
+        Returns:
+            The cached tensor if it exists, None otherwise.
+        """
+        return self._cache.get(key)
+
+    def __getitem__(self, key: str) -> torch.Tensor:
+        """Get a cached tensor by key.
+
+        Args:
+            key: The key to look up in the cache.
+
+        Returns:
+            The cached tensor.
+
+        Raises:
+            KeyError: If the key is not found in the cache.
+        """
+        return self._cache[key]
+
+    def __setitem__(self, key: str, tensor: torch.Tensor) -> None:
+        """Store a tensor in the cache.
+
+        Args:
+            key: The key to store the tensor under.
+            tensor: The tensor to cache.
+        """
+        if self._pinned and tensor.device.type == "cpu":
+            try:
+                # Create a new tensor with pinned memory
+                tensor = tensor.pin_memory()
+            except RuntimeError:
+                # If pin_memory fails, just use the original tensor
+                pass
+        self._cache[key] = tensor
+
+    def clear(self) -> None:
+        """Clear all cached tensors."""
+        self._cache.clear()
+
+    def __contains__(self, key: str) -> bool:
+        """Check if a key exists in the cache."""
+        return key in self._cache
+
+
 @torch.no_grad()
 def concat_tensors_to_device(
     tensor_sequence: Sequence[torch.Tensor],
     device: Optional[Union[str, "torch.device"]] = None,
     non_blocking: bool = False,
+    tensor_cache_key: Optional[str] = None,
+    tensor_cache: Optional[TensorCache] = None,
 ) -> torch.Tensor:
     """Stack sequence of tensors into a contiguous GPU tensor.
 
@@ -387,6 +456,8 @@ def concat_tensors_to_device(
         device: The device to move tensors to
         non_blocking: If True, perform device transfer without forcing a
             synchronization.
+        tensor_cache_key: Key to use for caching tensors.
+        tensor_cache: A TensorCache instance to cache tensors.
 
     Returns:
         A contiguous tensor on the target device
@@ -419,13 +490,28 @@ def concat_tensors_to_device(
     shape_tail = first.shape[1:]
     total_rows = sum(t.shape[0] for t in tensor_sequence)
 
-    # Allocate an empty Tensor on device
-    result = torch.empty((total_rows, *shape_tail), dtype=dtype, device=device)
+    # Allocate an empty Tensor on device if not cached
+    if tensor_cache is not None and tensor_cache_key is not None:
+        cached_tensor = tensor_cache.get(tensor_cache_key)
+
+        if cached_tensor is None:
+            new_tensor = torch.empty(
+                (total_rows, *shape_tail), dtype=dtype, device=device
+            )
+            tensor_cache[tensor_cache_key] = new_tensor
+            result = new_tensor
+        else:
+            assert cached_tensor.shape == (total_rows, *shape_tail)
+            assert cached_tensor.dtype == dtype
+            assert cached_tensor.device == torch.device(device)
+            result = cached_tensor
+    else:
+        result = torch.empty((total_rows, *shape_tail), dtype=dtype, device=device)
 
     row_start = 0
     for t in tensor_sequence:
         row_end = row_start + t.shape[0]
-        result[row_start:row_end].copy_(t, non_blocking=non_blocking)
+        result[row_start:row_end].copy_(t, non_blocking=non_blocking or t.is_pinned())
         row_start = row_end
 
     return result
@@ -461,6 +547,7 @@ def move_tensors_to_device(
     batch: TensorBatchType,
     device: Optional[Union[str, "torch.device"]] = None,
     non_blocking: bool = False,
+    tensor_cache: Optional[TensorCache] = None,
 ) -> TensorBatchReturnType:
     """Move tensors to the specified device.
 
@@ -481,6 +568,7 @@ def move_tensors_to_device(
         device: The device to move tensors to. If None, tensors are not moved.
         non_blocking: If True, perform device transfer without forcing a
             synchronization.
+        tensor_cache: A TensorCache instance to cache tensors.
 
     Returns:
         The input tensors moved to the specified device
@@ -497,10 +585,17 @@ def move_tensors_to_device(
             [concat_tensors_to_device(t, device, non_blocking) for t in batch]
         )
     elif _is_tensor_mapping(batch):
-        return {k: t.to(device, non_blocking=non_blocking) for k, t in batch.items()}
+        return {
+            k: concat_tensors_to_device(
+                [t], device, non_blocking, tensor_cache_key=k, tensor_cache=tensor_cache
+            )
+            for k, t in batch.items()
+        }
     elif _is_tensor_sequence_mapping(batch):
         return {
-            k: concat_tensors_to_device(v, device, non_blocking)
+            k: concat_tensors_to_device(
+                v, device, non_blocking, tensor_cache_key=k, tensor_cache=tensor_cache
+            )
             for k, v in batch.items()
         }
     else:
