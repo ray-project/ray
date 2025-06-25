@@ -8,7 +8,6 @@ import numpy as np
 import pandas as pd
 import pyarrow as pa
 import pytest
-from pyarrow import parquet as pq
 
 import ray
 from ray._private.test_utils import run_string_as_driver
@@ -144,39 +143,6 @@ class TestArrowBlockColumnAccessor:
     def test_to_pylist(self, arr, as_py):
         accessor = ArrowBlockColumnAccessor(arr)
         assert accessor.to_pylist() == arr.to_pylist()
-
-
-@pytest.fixture(scope="module")
-def parquet_dataset_single_column_gt_2gb():
-    chunk_size = 256 * MiB
-    num_chunks = 10
-
-    total_column_size = chunk_size * 10  # ~2.5 GiB
-
-    with TemporaryDirectory() as tmp_dir:
-        dataset_path = f"{tmp_dir}/large_parquet_chunk_{chunk_size}"
-
-        # Create directory
-        os.mkdir(dataset_path)
-
-        for i in range(num_chunks):
-            chunk = b"a" * chunk_size
-
-            d = {"id": [i], "bin": [chunk]}
-            t = pa.Table.from_pydict(d)
-
-            print(f">>> Table schema: {t.schema} (size={sys.getsizeof(t)})")
-
-            filepath = f"{dataset_path}/chunk_{i}.parquet"
-            pq.write_table(t, filepath)
-
-            print(f">>> Created a chunk #{i}")
-
-        print(f">>> Created dataset at {dataset_path}")
-
-        yield dataset_path, num_chunks, total_column_size
-
-        print(f">>> Cleaning up dataset at {dataset_path}")
 
 
 @pytest.fixture(scope="module")
