@@ -33,7 +33,7 @@ class TaskFinisherInterface {
   virtual ~TaskFinisherInterface() = default;
 
   virtual void CompletePendingTask(const TaskID &task_id,
-                                   const rpc::PushTaskReply &reply,
+                                   rpc::PushTaskReply reply,
                                    const rpc::Address &actor_addr,
                                    bool is_application_error) = 0;
 

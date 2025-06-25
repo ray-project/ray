@@ -3724,7 +3724,7 @@ void CoreWorker::HandleReportGeneratorItemReturns(
   auto generator_id = ObjectID::FromBinary(request.generator_id());
   auto worker_id = WorkerID::FromBinary(request.worker_addr().worker_id());
   task_manager_->HandleReportGeneratorItemReturns(
-      request,
+      std::move(request),
       /*execution_signal_callback*/
       [reply,
        worker_id = std::move(worker_id),

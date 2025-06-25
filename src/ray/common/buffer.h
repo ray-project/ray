@@ -41,7 +41,7 @@ class Buffer {
 
   virtual bool IsPlasmaBuffer() const = 0;
 
-  virtual ~Buffer(){};
+  virtual ~Buffer() = default;
 
   bool operator==(const Buffer &rhs) const {
     if (this->Size() != rhs.Size()) {
@@ -81,12 +81,19 @@ class LocalMemoryBuffer : public Buffer {
     }
   }
 
+  explicit LocalMemoryBuffer(std::string data)
+      : data_string_(std::move(data)), size_(data.size()), has_data_copy_(false) {}
+
   /// Construct a LocalMemoryBuffer of all zeros of the given size.
-  LocalMemoryBuffer(size_t size) : has_data_copy_(true) {
-    buffer_ = reinterpret_cast<uint8_t *>(aligned_malloc(size, BUFFER_ALIGNMENT));
+  explicit LocalMemoryBuffer(size_t size)
+      : size_(size),
+        has_data_copy_(true),
+        buffer_(reinterpret_cast<uint8_t *>(aligned_malloc(size, BUFFER_ALIGNMENT))) {
     data_ = buffer_;
-    size_ = size;
   }
+
+  LocalMemoryBuffer &operator=(const LocalMemoryBuffer &) = delete;
+  LocalMemoryBuffer(const LocalMemoryBuffer &) = delete;
 
   uint8_t *Data() const override { return data_; }
 
@@ -96,9 +103,9 @@ class LocalMemoryBuffer : public Buffer {
 
   bool IsPlasmaBuffer() const override { return false; }
 
-  ~LocalMemoryBuffer() {
+  ~LocalMemoryBuffer() override {
     size_ = 0;
-    if (buffer_ != NULL) {
+    if (buffer_ != nullptr) {
       aligned_free(buffer_);
     }
   }
@@ -106,17 +113,17 @@ class LocalMemoryBuffer : public Buffer {
  private:
   /// Disable copy constructor and assignment, as default copy will
   /// cause invalid data_.
-  LocalMemoryBuffer &operator=(const LocalMemoryBuffer &) = delete;
-  LocalMemoryBuffer(const LocalMemoryBuffer &) = delete;
 
   /// Pointer to the data.
-  uint8_t *data_;
+  uint8_t *data_ = nullptr;
+  /// Owned data string if the buffer is created from a string.
+  std::optional<std::string> data_string_;
   /// Size of the buffer.
   size_t size_ = 0;
   /// Whether this buffer holds a copy of data.
-  bool has_data_copy_ = false;
+  bool has_data_copy_;
   /// This is only valid when `should_copy` is true.
-  uint8_t *buffer_ = NULL;
+  uint8_t *buffer_ = nullptr;
 };
 
 /// Represents a byte buffer in shared memory.
