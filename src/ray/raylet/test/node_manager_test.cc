@@ -421,7 +421,6 @@ class NodeManagerTest : public ::testing::Test {
     local_object_manager_ =
         std::make_unique<FakeLocalObjectManager>(objects_pending_deletion_);
 
-
     dependency_manager_ = std::make_unique<DependencyManager>(*mock_object_manager_);
 
     cluster_resource_scheduler_ = std::make_unique<ClusterResourceScheduler>(
