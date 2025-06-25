@@ -16,7 +16,9 @@ if TYPE_CHECKING:
 WRITE_FILE_MAX_ATTEMPTS = 10
 WRITE_FILE_RETRY_MAX_BACKOFF_SECONDS = 32
 
-# Map SaveMode to existing_data_behavior
+# Map Ray Data's SaveMode to pyarrow's existing_data_behavior property which is exposed via the
+# `pyarrow.dataset.write_dataset` function.
+# Docs: https://arrow.apache.org/docs/python/generated/pyarrow.dataset.write_dataset.html
 EXISTING_DATA_BEHAVIOR_MAP = {
     SaveMode.APPEND: "overwrite_or_ignore",
     SaveMode.OVERWRITE: "delete_matching",
@@ -129,6 +131,10 @@ class ParquetDatasink(_FileDatasink):
             self.mode, "overwrite_or_ignore"
         )
 
+        # Set default row group size if not provided. Defaults are set by pyarrow.
+        min_rows_per_group = row_group_size if row_group_size else 0
+        max_rows_per_group = row_group_size if row_group_size else 1024 * 1024
+
         ds.write_dataset(
             data=tables,
             base_dir=self.path,
@@ -140,12 +146,8 @@ class ParquetDatasink(_FileDatasink):
             existing_data_behavior=existing_data_behavior,
             partitioning_flavor="hive",
             use_threads=True,
-            min_rows_per_group=row_group_size
-            if row_group_size
-            else 0,  # defaults set by pyarrow
-            max_rows_per_group=row_group_size
-            if row_group_size
-            else 1024 * 1024,  # defaults set by pyarrow
+            min_rows_per_group=min_rows_per_group,
+            max_rows_per_group=max_rows_per_group,
             file_options=ds.ParquetFileFormat().make_write_options(**write_kwargs),
         )
 
