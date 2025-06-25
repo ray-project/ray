@@ -116,7 +116,8 @@ def test_ray_init_existing_instance_via_blocked_ray_start():
         fut = tp.submit(_wait_for_startup_msg)
         fut.result(timeout=5)
 
-        # Make sure ray.init can connect to the existing cluster.
+        # Verify that `ray.init()` connects to the existing cluster
+        # (verified by checking the resources specified to the `ray start` command).
         ray.init()
         assert ray.cluster_resources().get("CPU", 0) == 1999
     finally:
