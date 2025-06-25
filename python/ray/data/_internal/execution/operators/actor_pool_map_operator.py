@@ -775,11 +775,13 @@ class _ActorPool(AutoscalingActorPool):
         to scale back up immediately.
         """
 
-        return (
-            self._last_scaling_up_ts is None
-            or time.time()
-            >= self._last_scaling_up_ts + self._ACTOR_POOL_SCALE_DOWN_DEBOUNCE_PERIOD_S
-        )
+        if (
+            self._last_scaling_up_ts is not None
+            and time.time() <= self._last_scaling_up_ts + self._ACTOR_POOL_SCALE_DOWN_DEBOUNCE_PERIOD_S
+        ):
+            return False, "debounced from scaling up"
+
+        return True, None
 
     def scale(self, config: ScalingConfig) -> Optional[int]:
         if config.delta > 0:

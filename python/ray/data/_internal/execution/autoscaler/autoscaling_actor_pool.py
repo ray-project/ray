@@ -1,6 +1,6 @@
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
-from typing import Optional
+from typing import Optional, Tuple
 
 from ray.data._internal.execution.interfaces.execution_options import ExecutionResources
 from ray.util.annotations import DeveloperAPI
@@ -92,7 +92,7 @@ class AutoscalingActorPool(ABC):
         )
 
     @abstractmethod
-    def can_scale_down(self):
+    def can_scale_down(self) -> Tuple[bool, Optional[str]]:
         ...
 
     @abstractmethod
