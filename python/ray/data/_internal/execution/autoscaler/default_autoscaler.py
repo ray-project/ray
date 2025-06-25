@@ -62,13 +62,6 @@ class DefaultAutoscaler(Autoscaler):
         if op.completed() or (
             op._inputs_complete and op_state.total_enqueued_input_bundles() == 0
         ):
-            # NOTE: This check is redundant here as Actor Pool will ignore requests
-            #       if not allowed to scale down. This is just to reduce noise in
-            #       the telemetry
-            allowed, reason = actor_pool.can_scale_down()
-            if not allowed:
-                return ScalingConfig.no_op(reason=f"not allowed to scale down (reason: {reason}")
-
             return ScalingConfig.downscale(delta=-1, reason="consumed all inputs")
 
         if actor_pool.current_size() < actor_pool.min_size():
@@ -109,11 +102,7 @@ class DefaultAutoscaler(Autoscaler):
                 ),
             )
         elif util <= self._actor_pool_scaling_down_threshold:
-            allowed, reason = actor_pool.can_scale_down()
-
-            if not allowed:
-                return ScalingConfig.no_op(reason=f"not allowed to scale down (reason: {reason})")
-            elif actor_pool.current_size() <= actor_pool.min_size():
+            if actor_pool.current_size() <= actor_pool.min_size():
                 return ScalingConfig.no_op(reason="reached min size")
 
             return ScalingConfig.downscale(

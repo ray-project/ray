@@ -92,10 +92,6 @@ class AutoscalingActorPool(ABC):
         )
 
     @abstractmethod
-    def can_scale_down(self) -> Tuple[bool, Optional[str]]:
-        ...
-
-    @abstractmethod
     def scale(self, config: ScalingConfig):
         """Applies autoscaling action"""
         ...

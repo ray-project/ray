@@ -711,7 +711,8 @@ class _ActorPool(AutoscalingActorPool):
         assert self._create_actor_fn is not None
 
         # Timestamp of the last scale up action
-        self._last_scaling_up_ts: Optional[float] = None
+        self._last_upscaling_ts: Optional[float] = None
+        self._last_downscaling_debounce_warning_ts: Optional[float] = None
         # Actors that have started running, including alive and restarting actors.
         self._running_actors: Dict[ray.actor.ActorHandle, _ActorState] = {}
         # Actors that are not yet ready (still pending creation).
@@ -762,28 +763,37 @@ class _ActorPool(AutoscalingActorPool):
     def num_tasks_in_flight(self) -> int:
         return self._total_num_tasks_in_flight
 
-    def can_scale_down(self):
-        """Returns whether Actor Pool is able to scale down.
+    def _can_apply(self, config: ScalingConfig) -> bool:
+        """Returns whether Actor Pool is able to execute scaling request"""
 
-        To prevent bouncing back and forth, we disallow scale down for
-        a "cool-off" period after the most recent scaling up, with an intention
-        to allow application to actually utilize newly provisioned resources
-        before making decisions on subsequent actions.
+        if config.delta < 0:
+            # To prevent bouncing back and forth, we disallow scale down for
+            # a "cool-off" period after the most recent scaling up, with an intention
+            # to allow application to actually utilize newly provisioned resources
+            # before making decisions on subsequent actions.
+            #
+            # Note that this action is unidirectional and doesn't apply to
+            # scaling up, ie if actor pool just scaled down, it'd still be able
+            # to scale back up immediately.
+            if (
+                self._last_upscaling_ts is not None and
+                time.time() <= self._last_upscaling_ts + self._ACTOR_POOL_SCALE_DOWN_DEBOUNCE_PERIOD_S
+            ):
+                # NOTE: To avoid spamming logs unnecessarily, debounce log is produced once
+                #       per upscaling event
+                if self._last_upscaling_ts != self._last_downscaling_debounce_warning_ts:
+                    logger.debug(f"Ignoring scaling down request (request={config}; reason=debounced from scaling up at {self._last_upscaling_ts})")
+                    self._last_downscaling_debounce_warning_ts = self._last_upscaling_ts
 
-        Note that this action is unidirectional and doesn't apply to
-        scaling up, ie if actor pool just scaled down, it'd still be able
-        to scale back up immediately.
-        """
+                return False
 
-        if (
-            self._last_scaling_up_ts is not None
-            and time.time() <= self._last_scaling_up_ts + self._ACTOR_POOL_SCALE_DOWN_DEBOUNCE_PERIOD_S
-        ):
-            return False, "debounced from scaling up"
-
-        return True, None
+        return True
 
     def scale(self, config: ScalingConfig) -> Optional[int]:
+        # Verify request could be applied
+        if not self._can_apply(config):
+            return 0
+
         if config.delta > 0:
             # Make sure after scaling up actor pool won't exceed its target
             # max size
@@ -801,16 +811,11 @@ class _ActorPool(AutoscalingActorPool):
                 self.add_pending_actor(actor, ready_ref)
 
             # Capture last scale up timestamp
-            self._last_scaling_up_ts = time.time()
+            self._last_upscaling_ts = time.time()
 
             return target_num_actors
 
         elif config.delta < 0:
-            allowed, reason = self.can_scale_down()
-            if not allowed:
-                logger.warning(f"Ignoring scaling down request (config={config}; reason={reason})")
-                return 0
-
             num_released = 0
 
             # Make sure after scaling down actor pool size won't fall below its
