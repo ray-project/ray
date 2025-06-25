@@ -183,6 +183,7 @@ class TrainContext:
                 world_rank=self.distributed_context.world_rank,
                 world_size=self.distributed_context.world_size,
                 data=checkpoint_dir_name,
+                barrier_method="ray.train.report",
             )
         )
 

@@ -16,18 +16,25 @@ logger = logging.getLogger(__name__)
 
 
 BROADCAST_PERIODIC_WARNING = """
-`ray.train.report` has not been called by all {world_size} workers in the group.
+`{barrier_method}` has not been called by all {world_size} workers in the group.
 
 The workers have been waiting for {max_time_elapsed_s:.2f} s for the following ranks
-to join the `report` call: {missing_ranks}.
-
-Please ensure that all workers call `ray.train.report` regardless of whether
-they participate in checkpointing or not (e.g., pass `checkpoint=None` for ranks
-that do not save a checkpoint). Also ensure that workers are not hanging on
-other operations, causing them to miss this synchronization barrier.
-
+to join the `{barrier_method}` call: {missing_ranks}.
+{reminder}
 You can set the {warn_interval_env_var} environment variable to change the frequency
 of this warning (current value: {warn_interval_s} s).
+"""
+
+BROADCAST_PERIODIC_WARNING_WITH_DATA = """
+Please ensure that all workers call `{barrier_method}` regardless of whether
+they send data or not; if only one rank sends data, the other ranks should call
+`{barrier_method}` with `None`. Also ensure that workers are not hanging on
+other operations, causing them to miss this synchronization barrier.
+"""
+
+BROADCAST_PERIODIC_WARNING_WITHOUT_DATA = """
+Please ensure that workers are not hanging on other operations, causing them to
+miss this synchronization barrier.
 """
 
 
@@ -124,7 +131,9 @@ class SynchronizationActor:
         """Returns the ranks that have not entered the synchronization barrier."""
         return [i for i, t in enumerate(self._sync_start_times) if t is None]
 
-    async def _wait_with_logging(self, condition, world_rank: int):
+    async def _wait_with_logging(
+        self, condition, world_rank: int, barrier_method: str, has_data: bool = True
+    ):
         """Waits for the condition to be notified, logging an warning every
         `log_interval` seconds, and raises a timeout error if `timeout` is reached.
         """
@@ -141,16 +150,29 @@ class SynchronizationActor:
             except (asyncio.TimeoutError, TimeoutError):
                 logger.warning(
                     BROADCAST_PERIODIC_WARNING.format(
+                        barrier_method=barrier_method,
                         world_size=self._world_size,
                         max_time_elapsed_s=self._get_time_elapsed(),
                         missing_ranks=self._get_missing_ranks(),
                         warn_interval_env_var=REPORT_BARRIER_WARN_INTERVAL_S_ENV_VAR,
                         warn_interval_s=self._warn_interval_s,
+                        reminder=BROADCAST_PERIODIC_WARNING_WITH_DATA.format(
+                            barrier_method=barrier_method
+                        )
+                        if has_data
+                        else BROADCAST_PERIODIC_WARNING_WITHOUT_DATA.format(
+                            barrier_method=barrier_method
+                        ),
                     )
                 )
 
     async def broadcast_from_rank_zero(
-        self, world_rank: int, world_size: int, data: T
+        self,
+        world_rank: int,
+        world_size: int,
+        data: T,
+        barrier_method: str,
+        has_data: bool = True,
     ) -> T:
         """Broadcasts a data from the worker with rank 0 to all other workers.
 
@@ -175,7 +197,9 @@ class SynchronizationActor:
                 # other workers to call the broadcast_from_rank_zero method.
                 try:
                     await asyncio.wait_for(
-                        self._wait_with_logging(self._condition, world_rank),
+                        self._wait_with_logging(
+                            self._condition, world_rank, barrier_method, has_data
+                        ),
                         timeout=self._timeout_s,
                     )
                     return self._reduced_data

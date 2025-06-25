@@ -21,7 +21,8 @@ def broadcast_from_rank_zero(
 
     Example:
 
-        .. testcode::
+        .. testcode:
+            :skipif: True
 
             from ray.train import get_context
             from ray.train.collectives import broadcast_from_rank_zero
@@ -76,10 +77,44 @@ def broadcast_from_rank_zero(
             world_rank=train_context.get_world_rank(),
             world_size=train_context.get_world_size(),
             data=data,
+            barrier_method="ray.train.collectives.broadcast_from_rank_zero",
         )
     )
 
 
 @PublicAPI(stability="beta")
 def barrier() -> None:
-    pass
+    """Create a barrier across all workers.
+
+    All workers must call this method before the training function can continue.
+
+    Example:
+
+        .. testcode:
+            :skipif: True
+
+            from ray.train import get_context
+            from ray.train.collectives import barrier
+            from ray.train.torch import TorchTrainer
+
+            def train_func():
+                ...
+                print(f"Rank {get_context().get_world_rank()} is waiting at the barrier.")
+                barrier()
+                print(f"Rank {get_context().get_world_rank()} has passed the barrier.")
+                ...
+
+            trainer = TorchTrainer(train_func)
+            trainer.fit()
+    """
+    train_context = get_train_context()
+    sync_actor = train_context.get_synchronization_actor()
+    return ray.get(
+        sync_actor.broadcast_from_rank_zero.remote(
+            world_rank=train_context.get_world_rank(),
+            world_size=train_context.get_world_size(),
+            data=None,
+            barrier_method="ray.train.collectives.barrier",
+            has_data=False,
+        )
+    )
