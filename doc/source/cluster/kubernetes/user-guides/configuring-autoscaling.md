@@ -454,31 +454,38 @@ Node: 2d5fd3d4337ba5b5a8c3106c572492abb9a8de2dee9da7f6c24c1346
 2. **Stability**
 Autoscaler V2 makes significant improvements to idle node handling. The V1 autoscaler could stop nodes that became active during termination processing, potentially failing tasks or actors. V2 uses Ray's graceful draining mechanism, which safely stops idle nodes without disrupting ongoing work.
 
-[ray-cluster.autoscaler-v2.yaml](https://github.com/ray-project/kuberay/blob/master/ray-operator/config/samples/ray-cluster.autoscaler-v2.yaml) is an example YAML file of a RayCluster with Autoscaler V2 enabled.
+[ray-cluster.autoscaler-v2.yaml](https://github.com/ray-project/kuberay/blob/v1.3.0/ray-operator/config/samples/ray-cluster.autoscaler-v2.yaml) is an example YAML file of a RayCluster with Autoscaler V2 enabled that works with the latest KubeRay version.
 
-```bash
-# Change 1: Select the Ray version to either the nightly build or version 2.10.0+
+If you're using KubeRay >= 1.4.0, enable V2 by setting `RayCluster.spec.autoscalerOptions.version: v2`.
+
+```yaml
 spec:
-  # Specify Ray version 2.10.0 or use the nightly build.
-  rayVersion: '2.X.Y'
-...
+  enableInTreeAutoscaling: true
+  # Set .spec.autoscalerOptions.version: v2
+  autoscalerOptions:
+    version: v2
+```
 
+If you're using KubeRay < 1.4.0, enable V2 by setting the `RAY_enable_autoscaler_v2` environment variable
+in the head and using `restartPolicy: Never` on head and all worker groups.
 
-# Change 2: Enable Autoscaler V2 by setting the RAY_enable_autoscaler_v2 environment variable on the Ray head container.
+```yaml
+spec:
+  enableInTreeAutoscaling: true
   headGroupSpec:
     template:
       spec:
         containers:
         - name: ray-head
           image: rayproject/ray:2.X.Y
-          # Include the environment variable.
           env:
-            - name: RAY_enable_autoscaler_v2
-              value: "1"
+          # Set this environment variable
+          - name: RAY_enable_autoscaler_v2
+            value: "1"
         restartPolicy: Never # Prevent container restart to maintain Ray health.
 
 
-# Change 3: Prevent Kubernetes from restarting Ray worker pod containers, enabling correct instance management by Ray.
+  # Prevent Kubernetes from restarting Ray worker pod containers, enabling correct instance management by Ray.
   workerGroupSpecs:
   - replicas: 1
     template:
@@ -486,9 +493,3 @@ spec:
         restartPolicy: Never
         ...
 ```
-
-# For KubeRay >= 1.4.0, enable Autoscaler V2 with:
-spec:
-  enableInTreeAutoscaling: true
-  autoscalerOptions:
-    version: v2
