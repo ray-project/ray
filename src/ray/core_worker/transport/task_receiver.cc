@@ -292,10 +292,10 @@ void TaskReceiver::SetupActor(bool is_asyncio,
                               bool execute_out_of_order) {
   RAY_CHECK(fiber_max_concurrency_ == 0)
       << "SetupActor should only be called at most once.";
-  RAY_CHECK(execute_out_of_order == is_asyncio || fiber_max_concurrency > 1)
-      << "execute_out_of_order must be true if is_asyncio is true or "
-         "fiber_max_concurrency "
-         "is greater than 1";
+  // Note: It's possible to have execute_out_of_order as false but max_concurrency > 1,
+  // from the C++ / Java API's.
+  RAY_CHECK(is_asyncio ? execute_out_of_order : true)
+      << "execute_out_of_order must be true if is_asyncio is true";
   is_asyncio_ = is_asyncio;
   fiber_max_concurrency_ = fiber_max_concurrency;
   execute_out_of_order_ = execute_out_of_order;
