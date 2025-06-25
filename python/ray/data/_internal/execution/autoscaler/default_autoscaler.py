@@ -28,12 +28,12 @@ class ScalingConfig:
         return ScalingConfig(delta=0, reason=reason)
 
     @classmethod
-    def up(cls, *, delta: int, reason: Optional[str] = None):
+    def upscale(cls, *, delta: int, reason: Optional[str] = None):
         assert delta > 0
         return ScalingConfig(delta=delta, reason=reason)
 
     @classmethod
-    def down(cls, *, delta: int, reason: Optional[str] = None):
+    def downscale(cls, *, delta: int, reason: Optional[str] = None):
         assert delta < 0, "For scale down delta is expected to be negative!"
         return ScalingConfig(delta=delta, reason=reason)
 
@@ -76,17 +76,17 @@ class DefaultAutoscaler(Autoscaler):
         if op.completed() or (
             op._inputs_complete and op_state.total_enqueued_input_bundles() == 0
         ):
-            return ScalingConfig.down(delta=-1, reason="consumed all inputs")
+            return ScalingConfig.downscale(delta=-1, reason="consumed all inputs")
 
         if actor_pool.current_size() < actor_pool.min_size():
             # Scale up, if the actor pool is below min size.
-            return ScalingConfig.up(
+            return ScalingConfig.upscale(
                 delta=actor_pool.min_size() - actor_pool.current_size(),
                 reason="pool below min size",
             )
         elif actor_pool.current_size() > actor_pool.max_size():
             # Do not scale up, if the actor pool is already at max size.
-            return ScalingConfig.down(
+            return ScalingConfig.downscale(
                 # NOTE: For scale down delta has to be negative
                 delta=-(actor_pool.current_size() - actor_pool.max_size()),
                 reason="pool exceeding max size",
@@ -108,7 +108,7 @@ class DefaultAutoscaler(Autoscaler):
             if not op_state._scheduling_status.under_resource_limits:
                 return ScalingConfig.no_op(reason="operator exceeding resource quota")
 
-            return ScalingConfig.up(
+            return ScalingConfig.upscale(
                 delta=1,
                 reason=(
                     f"utilization of {util} >= "
@@ -121,7 +121,7 @@ class DefaultAutoscaler(Autoscaler):
             elif actor_pool.current_size() <= actor_pool.min_size():
                 return ScalingConfig.no_op(reason="reached min size")
 
-            return ScalingConfig.down(
+            return ScalingConfig.downscale(
                 delta=-1,
                 reason=(
                     f"utilization of {util} <= "
