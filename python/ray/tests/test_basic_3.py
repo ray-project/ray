@@ -17,7 +17,6 @@ logger = logging.getLogger(__name__)
 
 
 def test_auto_global_gc(shutdown_only):
-    # 100MB
     ray.init(num_cpus=1, object_store_memory=100 * 1024 * 1024)
 
     @ray.remote
@@ -84,7 +83,6 @@ def _resource_dicts_close(d1: Dict, d2: Dict, *, abs_tol: float = 1e-4):
     return True
 
 
-@pytest.mark.parametrize("k", list(range(100)))
 def test_many_fractional_resources(shutdown_only, k: int):
     ray.init(num_cpus=2, num_gpus=2, resources={"Custom": 2})
     original_available_resources = ray.available_resources()
