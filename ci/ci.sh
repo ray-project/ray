@@ -227,7 +227,16 @@ install_ray() {
   (
     cd "${WORKSPACE_DIR}"/python
     build_dashboard_front_end
+<<<<<<< lonnie-250625-nokeepalive
     pip install -v -e .
+=======
+
+    # This is required so that pip does not pick up a cython version that is
+    # too high that can break CI, especially on MacOS.
+    pip install -q cython==3.0.12
+
+    pip install -v -e . -c requirements_compiled.txt
+>>>>>>> master
   )
   (
     # For runtime_env tests, wheels are needed
