@@ -6,14 +6,12 @@ import unittest.mock
 import signal
 import subprocess
 import tempfile
-import threading
 from pathlib import Path
 
 import grpc
 import pytest
 
 import ray
-from ray._common.test_utils import wait_for_condition
 import ray._private.services
 import ray._private.utils as utils
 from ray.client_builder import ClientContext
