@@ -180,6 +180,49 @@
       python groupby_benchmark.py --sf 10 --map-groups --group-by {{columns}}
       --shuffle-strategy {{shuffle_strategy}}
 
+###############
+# Join tests
+###############
+
+# NOTE:
+# Joining on Benchmark TPCH parquet datasets
+# Left dataset 'LINEITEM' = SF*6M rows
+# Right dataset 'ORDERS' = SF*1.5M rows
+# Join key = 'l_orderkey', 'o_orderkey' respectively from 'LINEITEM', 'ORDERS' dataset. In the generated dataset,
+# * For 'LINEITEM' dataset, 'column_00' corresponds to l_orderkey
+# * For 'ORDERS' dataset, 'column_0' corresponds to o_orderkey.
+# Join type = inner, left_join, right_join and full_join
+#
+# Dataset TPCH Scale Factor (SF) for CSV files. Note that parquet files will be low smaller with column compression.
+# SF1 = 1GB
+# SF10 = 10GB
+# SF100 = 100GB
+# SF1000 = 1TB
+# SF10000 = 10TB
+#
+# Do adjust timeout below based on SF above.
+#
+
+- name: joins_{{dataset}}_{{join_type}}
+
+  cluster:
+    cluster_compute: fixed_size_100_cpu_compute.yaml
+
+  matrix:
+    setup:
+      dataset: [sf100]
+      join_type: [inner, left_outer, right_outer, full_outer]
+
+  run:
+    timeout: 3600
+    script: >
+      python join_benchmark.py
+      --left_dataset s3://ray-benchmark-data/tpch/parquet/{{dataset}}/lineitem
+      --right_dataset s3://ray-benchmark-data/tpch/parquet/{{dataset}}/orders
+      --left_join_keys column00
+      --right_join_keys column0
+      --join_type {{join_type}}
+      --num_partitions 50
 
 #######################
 # Streaming split tests
