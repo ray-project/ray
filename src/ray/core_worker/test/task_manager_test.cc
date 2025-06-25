@@ -426,6 +426,16 @@ TEST_F(TaskManagerTest, TestTaskKill) {
   ASSERT_EQ(stored_error, error);
 }
 
+TEST_F(TaskManagerTest, TestResubmitCanceledTask) {
+  rpc::Address caller_address;
+  auto spec = CreateTaskHelper(1, {});
+  manager_.AddPendingTask(caller_address, spec, "", 0);
+  ASSERT_TRUE(manager_.IsTaskPending(spec.TaskId()));
+  manager_.MarkTaskCanceled(spec.TaskId());
+  // Check that resubmitting a canceled task does not crash and returns false.
+  ASSERT_FALSE(manager_.ResubmitTask(spec.TaskId(), nullptr));
+}
+
 TEST_F(TaskManagerTest, TestTaskOomKillNoOomRetryFailsImmediately) {
   RayConfig::instance().initialize(R"({"task_oom_retries": 0})");
 
