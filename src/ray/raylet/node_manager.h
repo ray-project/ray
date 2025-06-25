@@ -38,7 +38,7 @@
 #include "ray/pubsub/subscriber.h"
 #include "ray/raylet/agent_manager.h"
 #include "ray/raylet/dependency_manager.h"
-#include "ray/raylet/local_object_manager.h"
+#include "ray/raylet/local_object_manager_interface.h"
 #include "ray/raylet/local_task_manager.h"
 #include "ray/raylet/placement_group_resource_manager.h"
 #include "ray/raylet/runtime_env_agent_client.h"
@@ -144,7 +144,7 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
       std::shared_ptr<ClusterTaskManagerInterface> cluster_task_manager,
       std::shared_ptr<IObjectDirectory> object_directory,
       std::shared_ptr<ObjectManagerInterface> object_manager,
-      LocalObjectManager &local_object_manager,
+      LocalObjectManagerInterface &local_object_manager,
       DependencyManager &dependency_manager,
       WorkerPoolInterface &worker_pool,
       absl::flat_hash_map<WorkerID, std::shared_ptr<WorkerInterface>> &leased_workers,
@@ -202,7 +202,7 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
 
   int GetObjectManagerPort() const { return object_manager_->GetServerPort(); }
 
-  LocalObjectManager &GetLocalObjectManager() { return local_object_manager_; }
+  LocalObjectManagerInterface &GetLocalObjectManager() { return local_object_manager_; }
 
   /// Trigger global GC across the cluster to free up references to actors or
   /// object ids.
@@ -835,7 +835,7 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
 
   /// Manages all local objects that are pinned (primary
   /// copies), freed, and/or spilled.
-  LocalObjectManager &local_object_manager_;
+  LocalObjectManagerInterface &local_object_manager_;
 
   /// Map from node ids to addresses of the remote node managers.
   absl::flat_hash_map<NodeID, std::pair<std::string, int32_t>>

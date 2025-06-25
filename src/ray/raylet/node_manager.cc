@@ -42,6 +42,7 @@
 #include "ray/gcs/pb_util.h"
 #include "ray/object_manager/ownership_object_directory.h"
 #include "ray/raylet/format/node_manager_generated.h"
+#include "ray/raylet/local_object_manager_interface.h"
 #include "ray/raylet/scheduling/cluster_task_manager.h"
 #include "ray/raylet/worker_killing_policy.h"
 #include "ray/raylet/worker_pool.h"
@@ -121,7 +122,7 @@ NodeManager::NodeManager(
     std::shared_ptr<ClusterTaskManagerInterface> cluster_task_manager,
     std::shared_ptr<IObjectDirectory> object_directory,
     std::shared_ptr<ObjectManagerInterface> object_manager,
-    LocalObjectManager &local_object_manager,
+    LocalObjectManagerInterface &local_object_manager,
     DependencyManager &dependency_manager,
     WorkerPoolInterface &worker_pool,
     absl::flat_hash_map<WorkerID, std::shared_ptr<WorkerInterface>> &leased_workers,
