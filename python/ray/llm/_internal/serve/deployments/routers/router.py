@@ -45,8 +45,8 @@ from ray.llm._internal.serve.configs.openai_api_models import (
     to_model_metadata,
 )
 from vllm.entrypoints.openai.protocol import (
-    ChatCompletionRequest, 
-    ChatCompletionResponse, 
+    ChatCompletionRequest,
+    ChatCompletionResponse,
     ChatCompletionStreamResponse,
 )
 from ray.llm._internal.serve.configs.openai_api_models_patch import (
@@ -301,7 +301,9 @@ class LLMRouter:
         model_handle = self._get_configured_serve_handle(model)
 
         async for response in getattr(model_handle, call_method).remote(body):
-            logger.info(f"[Kourosh] in router._get_response, response_type: {type(response)}, response: {response}")
+            logger.info(
+                f"[Kourosh] in router._get_response, response_type: {type(response)}, response: {response}"
+            )
             yield response
 
     async def model(self, model_id: str) -> Optional[ModelData]:

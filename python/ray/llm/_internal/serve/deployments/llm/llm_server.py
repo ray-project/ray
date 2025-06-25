@@ -598,7 +598,7 @@ class LLMServer(_LLMServerBase):
         Returns:
             A LLMChatResponse object.
         """
-        
+
         multiplexed_model_id = serve.get_multiplexed_model_id()
 
         if multiplexed_model_id:
@@ -609,10 +609,12 @@ class LLMServer(_LLMServerBase):
             await self.engine.resolve_lora(disk_lora_model)
         else:
             disk_lora_model = None
-                
+
         # return self._process_llm_request(request, is_chat=True)
         async for response in self.engine.chat(request):
-            logger.info(f"[Kourosh] in llm_server.chat, response_type: {type(response)} response: {response}")
+            logger.info(
+                f"[Kourosh] in llm_server.chat, response_type: {type(response)} response: {response}"
+            )
             yield response
 
     async def completions(self, request: CompletionRequest) -> LLMCompletionsResponse:

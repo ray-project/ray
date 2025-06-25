@@ -57,7 +57,9 @@ from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
 from vllm.entrypoints.openai.cli_args import FrontendArgs
 from vllm.engine.arg_utils import AsyncEngineArgs
 from vllm.entrypoints.openai.protocol import ErrorResponse
-from ray.llm._internal.serve.configs.openai_api_models_patch import ErrorResponse as PatchedErrorResponse
+from ray.llm._internal.serve.configs.openai_api_models_patch import (
+    ErrorResponse as PatchedErrorResponse,
+)
 
 if TYPE_CHECKING:
     from vllm import SamplingParams as VLLMInternalSamplingParams
@@ -568,17 +570,17 @@ class VLLMEngine(LLMEngine):
         )
 
         return engine
-    
-    
+
     async def resolve_lora(self, disk_lora_model: DiskMultiplexConfig):
         from vllm.entrypoints.openai.protocol import LoadLoRAAdapterRequest
+
         # lora_add_response = await self.oai_models.load_lora_adapter(
         #     request=LoadLoRAAdapterRequest(
         #         lora_name=disk_lora_model.model_id,
         #         lora_path=disk_lora_model.local_path,
         #     )
         # )
-        
+
         if disk_lora_model.model_id in self.oai_models.lora_requests:
             return self.oai_models.lora_requests[disk_lora_model.model_id]
         else:
@@ -588,10 +590,10 @@ class VLLMEngine(LLMEngine):
                     lora_path=disk_lora_model.local_path,
                 )
             )
-            
+
             if isinstance(lora_request, ErrorResponse):
-                raise ValueError(f"Failed to load lora model: {lora_request.message}") 
-        
+                raise ValueError(f"Failed to load lora model: {lora_request.message}")
+
         return lora_request
 
     async def prepare_request(
