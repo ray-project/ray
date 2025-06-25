@@ -110,8 +110,9 @@ class DefaultAutoscaler(Autoscaler):
         else:
             return ScalingConfig.no_op(
                 reason=(
-                    f"{self._actor_pool_scaling_down_threshold} < "
-                    f"{util} < {self._actor_pool_scaling_up_threshold}"
+                    f"utilization of {util} w/in limits "
+                    f"[{self._actor_pool_scaling_down_threshold}, "
+                    f"{self._actor_pool_scaling_up_threshold}]"
                 )
             )
 

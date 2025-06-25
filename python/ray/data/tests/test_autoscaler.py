@@ -100,7 +100,7 @@ def test_actor_pool_scaling():
     # Should be no-op since the util is below the threshold.
     with patch(actor_pool, "num_tasks_in_flight", 9):
         assert actor_pool.get_pool_util() == 0.9
-        assert_autoscaling_action(delta=0, expected_reason="0.5 < 0.9 < 1.0")
+        assert_autoscaling_action(delta=0, expected_reason="utilization of 0.9 w/in limits [0.5, 1.0]")
 
     # Should be no-op since previous scaling hasn't finished yet
     with patch(actor_pool, "num_pending_actors", 1):
@@ -139,7 +139,8 @@ def test_actor_pool_scaling():
             expected_reason="consumed all inputs",
         )
 
-    # Should scale down only once all inputs have been already dispatched
+    # Should scale down only once all inputs have been already dispatched AND
+    # no new inputs ar expected
     with patch(op_state.input_queues[0], "__len__", 0):
         with patch(op, "internal_queue_size", 0):
             with patch(op, "_inputs_complete", True, is_method=False):
@@ -148,10 +149,10 @@ def test_actor_pool_scaling():
                     expected_reason="consumed all inputs",
                 )
 
-            # If the input queue is empty, should be no-op as there's nothing
-            # to schedule and Actor Pool still has free slots
+            # If the input queue is empty but inputs did not complete,
+            # allow to scale up still
             assert_autoscaling_action(
-                delta=0,
+                delta=1,
                 expected_reason="utilization of 1.5 >= 1.0",
             )
 
@@ -167,16 +168,16 @@ def test_actor_pool_scaling():
             expected_reason="operator exceeding resource quota",
         )
 
-    # Should be a no-op since the op has enough free slots for
+    # Should be a no-op since the op has enough available concurrency slots for
     # the existing inputs.
-    with patch(op_state, "total_enqueued_input_bundles", 5):
+    with patch(actor_pool, "num_tasks_in_flight", 7):
         assert_autoscaling_action(
-            delta=1,
-            expected_reason="utilization of 1.0 >= 0.8",
+            delta=0,
+            expected_reason="utilization of 0.7 w/in limits [0.5, 1.0]",
         )
 
     # Should scale down since the util is below the threshold.
-    with patch(actor_pool, "num_active_actors", 4):
+    with patch(actor_pool, "num_tasks_in_flight", 4):
         assert actor_pool.get_pool_util() == 0.4
         assert_autoscaling_action(
             delta=-1,
