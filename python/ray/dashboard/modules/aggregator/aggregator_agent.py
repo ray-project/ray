@@ -1,13 +1,15 @@
 import asyncio
 import signal
 import time
-import requests
 import os
 import json
 import queue
 from concurrent.futures import ThreadPoolExecutor
 import threading
 import logging
+from urllib3.util import Retry
+from requests import Session
+from requests.adapters import HTTPAdapter
 
 from google.protobuf.json_format import MessageToJson
 
@@ -54,6 +56,14 @@ MAX_BUFFER_SEND_INTERVAL_SECONDS = ray_constants.env_float(
 # Maximum number of events to send in a single batch to the external service
 MAX_EVENT_SEND_BATCH_SIZE = ray_constants.env_integer(
     f"{env_var_prefix}_MAX_EVENT_SEND_BATCH_SIZE", 10000
+)
+# Maximum number of retries for sending events to the external service for a single request
+REQUEST_BACKOFF_MAX = ray_constants.env_integer(
+    f"{env_var_prefix}_REQUEST_BACKOFF_MAX", 5
+)
+# Backoff factor for the request retries
+REQUEST_BACKOFF_FACTOR = ray_constants.env_float(
+    f"{env_var_prefix}_REQUEST_BACKOFF_FACTOR", 1.0
 )
 # Address of the external service to send events
 EVENT_SEND_ADDR = os.environ.get(
@@ -114,6 +124,17 @@ class AggregatorAgent(
             max_workers=GRPC_TPE_MAX_WORKERS,
             thread_name_prefix="event_aggregator_agent_grpc_executor",
         )
+
+        self._http_session = Session()
+        retries = Retry(
+            total=REQUEST_BACKOFF_MAX,
+            backoff_factor=REQUEST_BACKOFF_FACTOR,
+            status_forcelist=[500, 502, 503, 504],
+            allowed_methods={"POST"},
+            respect_retry_after_header=True,
+        )
+        self._http_session.mount("http://", HTTPAdapter(max_retries=retries))
+        self._http_session.mount("https://", HTTPAdapter(max_retries=retries))
 
         self._lock = threading.Lock()
         self._stop_event = threading.Event()
@@ -204,7 +225,7 @@ class AggregatorAgent(
         if not event_batch:
             return
         try:
-            response = requests.post(
+            response = self._http_session.post(
                 f"{EVENT_SEND_ADDR}:{EVENT_SEND_PORT}", json=event_batch
             )
             response.raise_for_status()
