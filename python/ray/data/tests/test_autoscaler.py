@@ -18,8 +18,6 @@ from ray.data._internal.execution.operators.base_physical_operator import (
 )
 from ray.data._internal.execution.streaming_executor_state import OpState
 from ray.data.context import (
-    DEFAULT_ACTOR_POOL_UTIL_DOWNSCALING_THRESHOLD,
-    DEFAULT_ACTOR_POOL_UTIL_UPSCALING_THRESHOLD,
     AutoscalingConfig,
 )
 
@@ -33,8 +31,8 @@ def test_actor_pool_scaling():
         resource_manager=MagicMock(),
         execution_id="execution_id",
         config=AutoscalingConfig(
-            actor_pool_util_upscaling_threshold=DEFAULT_ACTOR_POOL_UTIL_UPSCALING_THRESHOLD,
-            actor_pool_util_downscaling_threshold=DEFAULT_ACTOR_POOL_UTIL_DOWNSCALING_THRESHOLD,
+            actor_pool_util_upscaling_threshold=1.0,
+            actor_pool_util_downscaling_threshold=0.5,
         ),
     )
 
