@@ -118,7 +118,9 @@ def test_actor_intermediate_generator_object_recovery_while_generator_running(
     ray_start_cluster,
 ):
     # See description of test_intermediate_generator_object_recovery_while_generator_running above.
-    # This is the same except the generator is an actor task and we're using backpressure to make sure the streaming generator doesn't finish, because a cancel won't actually exit out of a running actor task.
+    # This is the same except the generator is an actor task and we're using backpressure to make
+    # sure the streaming generator doesn't finish, because a cancel won't actually exit out of a
+    # running actor task.
     cluster = ray_start_cluster
     cluster.add_node(num_cpus=0)  # head
     ray.init(address=cluster.address)
