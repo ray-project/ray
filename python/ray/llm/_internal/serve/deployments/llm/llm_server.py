@@ -45,7 +45,6 @@ from ray.llm._internal.serve.configs.server_models import (
     LLMConfig,
     LLMRawResponse,
 )
-from ray.llm._internal.serve.deployments.llm.image_retriever import ImageRetriever
 from ray.llm._internal.serve.deployments.llm.llm_engine import LLMEngine
 from ray.llm._internal.serve.deployments.llm.multiplex.lora_model_loader import (
     LoraModelLoader,
@@ -409,14 +408,12 @@ class ResponsePostprocessor:
 
 class LLMServer(_LLMServerBase):
     _default_engine_cls = VLLMEngine
-    _default_image_retriever_cls = ImageRetriever
 
     async def __init__(
         self,
         llm_config: LLMConfig,
         *,
         engine_cls: Optional[Type[LLMEngine]] = None,
-        image_retriever_cls: Optional[Type[ImageRetriever]] = None,
         model_downloader: Optional[LoraModelLoader] = None,
     ):
         """Constructor of LLMServer.
@@ -426,26 +423,18 @@ class LLMServer(_LLMServerBase):
 
         Args:
             llm_config: LLMConfig for the model.
-
-        Keyword Args:
-            engine_cls: Dependency injection for the vllm engine class. Defaults to
-                `VLLMEngine`.
-            image_retriever_cls: Dependency injection for the image retriever class.
-                Defaults to `ImageRetriever`.
-            model_downloader: Dependency injection for the model downloader object.
-                Defaults to be initialized with `LoraModelLoader`.
+            engine_cls: Dependency injection for the vllm engine class.
+                Defaults to `VLLMEngine`.
+            model_downloader: Dependency injection for the model downloader
+                object. Defaults to be initialized with `LoraModelLoader`.
         """
         await super().__init__(llm_config)
 
-        self._engine_cls = engine_cls or self._default_engine_cls
-        self.engine = self._get_engine_class(self._llm_config)
-        await asyncio.wait_for(self._start_engine(), timeout=ENGINE_START_TIMEOUT_S)
-
-        self.image_retriever = (
-            image_retriever_cls()
-            if image_retriever_cls
-            else self._default_image_retriever_cls()
-        )
+        self._engine_cls = engine_cls or self._get_default_engine_class()
+        self.engine: Optional[LLMEngine] = None
+        if self._engine_cls is not None:
+            self.engine = self._engine_cls(self._llm_config)
+            await asyncio.wait_for(self._start_engine(), timeout=ENGINE_START_TIMEOUT_S)
 
         multiplex_config = self._llm_config.multiplex_config()
         if model_downloader:
@@ -466,25 +455,20 @@ class LLMServer(_LLMServerBase):
 
         self.response_postprocessor = ResponsePostprocessor()
 
-    @property
-    def _get_engine_class(self) -> Type[LLMEngine]:
+    def _get_default_engine_class(self) -> Type[LLMEngine]:
         """Helper to load the engine class from the environment variable.
-
         This is used for testing or escape-hatch for patching purposes.
         If env variable is not set, it will fallback to the default engine class.
         """
         engine_cls_path = os.environ.get(RAYLLM_VLLM_ENGINE_CLS_ENV)
         if engine_cls_path:
-            try:
-                return import_attr(engine_cls_path)
-            except AttributeError:
-                logger.warning(
-                    f"Failed to import engine class {engine_cls_path}. "
-                    f"Using the default engine class {self._engine_cls}."
-                )
-        return self._engine_cls
+            return import_attr(engine_cls_path)
+        return self._default_engine_cls
 
     async def _start_engine(self):
+        if self.engine is None:
+            raise ValueError("Engine is not set")
+
         await self.engine.start()
 
         # Push telemetry reports for the model in the current deployment.
@@ -616,7 +600,13 @@ class LLMServer(_LLMServerBase):
         Check the health of the replica. Does not return anything. Raise error when
         the engine is dead and needs to be restarted.
         """
-        return await self.engine.check_health()
+        if self.engine is None:
+            return
+        try:
+            return await self.engine.check_health()
+        except Exception as e:
+            logger.error("Engine health check failed in LLMServer.check_health: %s", e)
+            raise e
 
     async def embeddings(self, request: EmbeddingRequest) -> LLMEmbeddingsResponse:
         """Runs an embeddings request to the vllm engine, and return the response.

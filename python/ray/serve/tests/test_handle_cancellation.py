@@ -214,7 +214,7 @@ def test_cancel_generator_async(serve_instance):
             g.cancel()
 
             with pytest.raises(RequestCancelledError):
-                assert await g.__anext__() == "hi"
+                await g.__anext__()
 
             await signal_actor.wait.remote()
 

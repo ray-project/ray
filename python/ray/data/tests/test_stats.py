@@ -1604,9 +1604,6 @@ def test_spilled_stats(shutdown_only, verbose_stats_logs, restore_data_context):
         f"* Spilled to disk: M\n"
         f"* Restored from disk: M\n"
         f"\n"
-        f"Dataset memory:\n"
-        f"* Spilled to disk: M\n"
-        f"\n"
         f"Dataset throughput:\n"
         f"    * Ray Data throughput: N rows/s\n"
         f"    * Estimated single node throughput: N rows/s\n"
@@ -1616,7 +1613,7 @@ def test_spilled_stats(shutdown_only, verbose_stats_logs, restore_data_context):
     assert canonicalize(ds.stats(), filter_global_stats=False) == expected_stats
 
     # Around 100MB should be spilled (200MB - 100MB)
-    assert ds._plan.stats().dataset_bytes_spilled > 100e6
+    assert ds._plan.stats().global_bytes_spilled > 100e6
 
     ds = (
         ray.data.range(1000 * 80 * 80 * 4)

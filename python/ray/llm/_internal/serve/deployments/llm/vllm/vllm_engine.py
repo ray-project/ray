@@ -1,4 +1,3 @@
-import asyncio
 import os
 import re
 import time
@@ -354,32 +353,20 @@ class VLLMEngine(LLMEngine):
         if self.engine_config.use_gpu:
             # Create engine config on a task with access to GPU,
             # as GPU capability may be queried.
-            if self.llm_config.accelerator_type:
-                ref = (
-                    ray.remote(
-                        num_cpus=0,
-                        num_gpus=1,
-                        accelerator_type=self.llm_config.accelerator_type,
-                    )(_get_vllm_engine_config)
-                    .options(
-                        runtime_env=node_initialization.runtime_env,
-                        scheduling_strategy=PlacementGroupSchedulingStrategy(
-                            placement_group=node_initialization.placement_group,
-                        ),
-                    )
-                    .remote(self.llm_config)
+            ref = (
+                ray.remote(
+                    num_cpus=0,
+                    num_gpus=1,
+                    accelerator_type=self.llm_config.accelerator_type,
+                )(_get_vllm_engine_config)
+                .options(
+                    runtime_env=node_initialization.runtime_env,
+                    scheduling_strategy=PlacementGroupSchedulingStrategy(
+                        placement_group=node_initialization.placement_group,
+                    ),
                 )
-            else:
-                ref = (
-                    ray.remote(num_cpus=0, num_gpus=1)(_get_vllm_engine_config)
-                    .options(
-                        runtime_env=node_initialization.runtime_env,
-                        scheduling_strategy=PlacementGroupSchedulingStrategy(
-                            placement_group=node_initialization.placement_group,
-                        ),
-                    )
-                    .remote(self.llm_config)
-                )
+                .remote(self.llm_config)
+            )
             engine_args, engine_config = ray.get(ref)
         else:
             engine_args, engine_config = _get_vllm_engine_config(self.llm_config)
@@ -828,9 +815,9 @@ class VLLMEngine(LLMEngine):
             raise RuntimeError(f"{type(self.engine)} does not support health check.")
 
         try:
-            return await asyncio.wait_for(self.engine.check_health(), timeout=15)
+            await self.engine.check_health()
         except BaseException as e:
-            logger.exception("Healthcheck failed. The replica will be restarted")
+            logger.error("Healthcheck failed. The replica will be restarted")
             raise e from None
 
     @staticmethod

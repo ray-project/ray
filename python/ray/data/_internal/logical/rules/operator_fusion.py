@@ -309,6 +309,10 @@ class FuseOperators(Rule):
             up_logical_op._compute, down_logical_op._compute
         )
         assert compute is not None
+
+        # Merge map task kwargs
+        map_task_kwargs = {**up_op._map_task_kwargs, **down_op._map_task_kwargs}
+
         ray_remote_args = up_logical_op._ray_remote_args
         ray_remote_args_fn = (
             up_logical_op._ray_remote_args_fn or down_logical_op._ray_remote_args_fn
@@ -328,6 +332,7 @@ class FuseOperators(Rule):
             name=name,
             compute_strategy=compute,
             min_rows_per_bundle=min_rows_per_bundled_input,
+            map_task_kwargs=map_task_kwargs,
             ray_remote_args=ray_remote_args,
             ray_remote_args_fn=ray_remote_args_fn,
         )

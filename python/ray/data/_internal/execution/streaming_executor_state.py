@@ -756,15 +756,12 @@ def dedupe_schemas_with_validation(
     # Note, often times the refbundles correspond to only one schema. We can reduce the
     # memory footprint of multiple schemas by keeping only one copy.
     diverged = False
-    if old_schema is None:
+    if not old_schema:
         return bundle, diverged
 
     # This check is fast assuming pyarrow schemas
     if old_schema == bundle.schema:
-        return (
-            bundle,
-            diverged,
-        )
+        return bundle, diverged
 
     diverged = True
     if warn:

@@ -196,7 +196,7 @@ class RayTrainWorker:
             c for c in worker_callbacks if isinstance(c, TrainContextCallback)
         ]
         context = TrainContext(
-            run_config=train_run_context.run_config,
+            train_run_context=train_run_context,
             distributed_context=distributed_context,
             execution_context=ExecutionContext(
                 synchronization_actor=synchronization_actor,

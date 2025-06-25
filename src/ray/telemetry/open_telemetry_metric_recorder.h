@@ -66,10 +66,6 @@ class OpenTelemetryMetricRecorder {
                       absl::flat_hash_map<std::string, std::string> &&tags,
                       double value);
 
-  // Get the value of a metric given the tags.
-  std::optional<double> GetObservableMetricValue(
-      const std::string &name, const absl::flat_hash_map<std::string, std::string> &tags);
-
   // Helper function to collect gauge metric values. This function is called only once
   // per interval for each metric. It collects the values from the observations_by_name_
   // map and passes them to the observer.
@@ -120,9 +116,16 @@ class OpenTelemetryMetricRecorder {
                                  absl::flat_hash_map<std::string, std::string> &&tags,
                                  double value);
 
+  std::optional<double> GetObservableMetricValue(
+      const std::string &name, const absl::flat_hash_map<std::string, std::string> &tags);
+
   opentelemetry::nostd::shared_ptr<opentelemetry::metrics::Meter> GetMeter() {
     return meter_provider_->GetMeter("ray");
   }
+
+  // Declare the test class as a friend to allow access to private members for testing.
+  friend class MetricTest_TestGaugeMetric_Test;
+  friend class OpenTelemetryMetricRecorderTest_TestGaugeMetric_Test;
 };
 }  // namespace telemetry
 }  // namespace ray

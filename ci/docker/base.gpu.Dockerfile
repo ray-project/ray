@@ -1,4 +1,5 @@
-FROM nvidia/cuda:12.1.1-cudnn8-devel-ubuntu20.04
+ARG BASE_IMAGE=nvidia/cuda:12.1.1-cudnn8-devel-ubuntu20.04
+FROM $BASE_IMAGE
 
 ARG REMOTE_CACHE_URL
 ARG BUILDKITE_PULL_REQUEST

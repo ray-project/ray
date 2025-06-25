@@ -23,7 +23,7 @@ from ray.data.tests.mock_server import *  # noqa
 
 # Trigger pytest hook to automatically zip test cluster logs to archive dir on failure
 from ray.tests.conftest import *  # noqa
-from ray.tests.conftest import _ray_start  # noqa,
+from ray.tests.conftest import _ray_start
 from ray.util.debug import reset_log_once
 
 
@@ -312,18 +312,18 @@ def configure_shuffle_method(request):
 
 
 @pytest.fixture(params=[True, False])
-def use_polars(request):
-    use_polars = request.param
+def use_polars_sort(request):
+    use_polars_sort = request.param
 
     ctx = ray.data.context.DataContext.get_current()
 
-    original_use_polars = ctx.use_polars
+    original_use_polars = ctx.use_polars_sort
 
-    ctx.use_polars = use_polars
+    ctx.use_polars_sort = use_polars_sort
 
     yield request.param
 
-    ctx.use_polars = original_use_polars
+    ctx.use_polars_sort = original_use_polars
 
 
 @pytest.fixture(params=[True, False])

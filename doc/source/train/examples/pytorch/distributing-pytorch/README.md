@@ -1,6 +1,6 @@
 # Distributing your PyTorch Training Code with Ray Train and Ray Data
 
-**⏱️ Time to complete**: 10 min
+**Time to complete**: 10 min
 
 This template shows you how to distribute your PyTorch training code with Ray Train and Ray Data, getting performance and usability improvements along the way.
 
@@ -13,7 +13,13 @@ In this tutorial, you:
 
 In this step you train a PyTorch VisionTransformer model to recognize objects using the open CIFAR-10 dataset. It's a minimal example that trains on a single machine. Note that the code has multiple functions to highlight the changes needed to run things with Ray.
 
-First, import the required Python modules.
+First, install and import the required Python modules.
+
+
+```bash
+%%bash
+pip install torch torchvision
+```
 
 
 ```python
