@@ -91,7 +91,6 @@ message LoggingConfig {
 
 //[End] Logging Config
 
-
 //[Begin] ROUTING CONFIG
 message RouterConfig {
   // Cloudpickled request router definition.
