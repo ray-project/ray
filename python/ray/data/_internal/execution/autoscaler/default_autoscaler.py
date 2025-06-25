@@ -11,31 +11,10 @@ from ray.data._internal.execution.autoscaling_requester import (
 from ray.data._internal.execution.interfaces.execution_options import ExecutionResources
 
 if TYPE_CHECKING:
-    from .autoscaling_actor_pool import AutoscalingActorPool
+    from .autoscaling_actor_pool import AutoscalingActorPool, ScalingConfig
     from ray.data._internal.execution.interfaces import PhysicalOperator
     from ray.data._internal.execution.resource_manager import ResourceManager
     from ray.data._internal.execution.streaming_executor_state import OpState, Topology
-
-
-@dataclass
-class ScalingConfig:
-
-    delta: int
-    reason: Optional[str] = field(default=None)
-
-    @classmethod
-    def no_op(cls, *, reason: Optional[str] = None) -> "ScalingConfig":
-        return ScalingConfig(delta=0, reason=reason)
-
-    @classmethod
-    def upscale(cls, *, delta: int, reason: Optional[str] = None):
-        assert delta > 0
-        return ScalingConfig(delta=delta, reason=reason)
-
-    @classmethod
-    def downscale(cls, *, delta: int, reason: Optional[str] = None):
-        assert delta < 0, "For scale down delta is expected to be negative!"
-        return ScalingConfig(delta=delta, reason=reason)
 
 
 class DefaultAutoscaler(Autoscaler):

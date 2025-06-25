@@ -1,10 +1,30 @@
 from abc import ABC, abstractmethod
+from dataclasses import dataclass, field
+from typing import Optional
 
-from ray.data._internal.execution.autoscaler.default_autoscaler import (
-    ScalingConfig,
-)
 from ray.data._internal.execution.interfaces.execution_options import ExecutionResources
 from ray.util.annotations import DeveloperAPI
+
+
+@dataclass
+class ScalingConfig:
+
+    delta: int
+    reason: Optional[str] = field(default=None)
+
+    @classmethod
+    def no_op(cls, *, reason: Optional[str] = None) -> "ScalingConfig":
+        return ScalingConfig(delta=0, reason=reason)
+
+    @classmethod
+    def upscale(cls, *, delta: int, reason: Optional[str] = None):
+        assert delta > 0
+        return ScalingConfig(delta=delta, reason=reason)
+
+    @classmethod
+    def downscale(cls, *, delta: int, reason: Optional[str] = None):
+        assert delta < 0, "For scale down delta is expected to be negative!"
+        return ScalingConfig(delta=delta, reason=reason)
 
 
 @DeveloperAPI
