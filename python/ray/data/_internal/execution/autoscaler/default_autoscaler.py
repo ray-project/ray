@@ -1,15 +1,14 @@
 import math
 import time
-from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, Dict, Optional
+from typing import TYPE_CHECKING, Dict
 
 import ray
-from ray.data.context import AutoscalingConfig
 from .autoscaler import Autoscaler
 from ray.data._internal.execution.autoscaling_requester import (
     get_or_create_autoscaling_requester_actor,
 )
 from ray.data._internal.execution.interfaces.execution_options import ExecutionResources
+from ray.data.context import AutoscalingConfig
 
 if TYPE_CHECKING:
     from .autoscaling_actor_pool import AutoscalingActorPool, ScalingConfig

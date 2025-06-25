@@ -5,9 +5,9 @@ from .autoscaling_actor_pool import AutoscalingActorPool
 from .default_autoscaler import DefaultAutoscaler
 
 if TYPE_CHECKING:
-    from ray.data.context import AutoscalingConfig
     from ..resource_manager import ResourceManager
     from ..streaming_executor_state import Topology
+    from ray.data.context import AutoscalingConfig
 
 
 def create_autoscaler(

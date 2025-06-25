@@ -8,9 +8,8 @@ from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any, Dict, List, Optional, Union
 
 import ray
-from ray._private.ray_constants import env_bool, env_integer, env_float
+from ray._private.ray_constants import env_bool, env_float, env_integer
 from ray._private.worker import WORKER_MODE
-from ray.data._internal.execution.autoscaler import AutoscalingConfig
 from ray.data._internal.logging import update_dataset_logger_for_worker
 from ray.util.annotations import DeveloperAPI
 from ray.util.debug import log_once
