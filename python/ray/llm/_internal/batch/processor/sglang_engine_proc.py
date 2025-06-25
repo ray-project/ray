@@ -124,9 +124,7 @@ def build_sglang_engine_processor(
                 compute=ray.data.ActorPoolStrategy(
                     min_size=config.concurrency,
                     max_size=config.concurrency,
-                    max_tasks_in_flight_per_actor=max(
-                        config.max_concurrent_batches, 4
-                    ),
+                    max_tasks_in_flight_per_actor=max(config.max_concurrent_batches, 4),
                 ),
                 # The number of running batches "per actor" in Ray Core level.
                 # This is used to make sure we overlap batches to avoid the tail

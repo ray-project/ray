@@ -28,8 +28,12 @@ DEFAULT_ACTOR_POOL_UTIL_DOWNSCALING_THRESHOLD: float = env_float(
 @dataclass
 class AutoscalingConfig:
 
-    actor_pool_util_upscaling_threshold: float = DEFAULT_ACTOR_POOL_UTIL_UPSCALING_THRESHOLD,  # noqa: E501
-    actor_pool_util_downscaling_threshold: float = DEFAULT_ACTOR_POOL_UTIL_DOWNSCALING_THRESHOLD,
+    actor_pool_util_upscaling_threshold: float = (
+        DEFAULT_ACTOR_POOL_UTIL_UPSCALING_THRESHOLD,
+    )  # noqa: E501
+    actor_pool_util_downscaling_threshold: float = (
+        DEFAULT_ACTOR_POOL_UTIL_DOWNSCALING_THRESHOLD,
+    )
 
 
 @DeveloperAPI

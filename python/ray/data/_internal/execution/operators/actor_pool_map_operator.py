@@ -141,8 +141,10 @@ class ActorPoolMapOperator(MapOperator):
             min_size=compute_strategy.min_size,
             max_size=compute_strategy.max_size,
             max_tasks_in_flight_per_actor=(
-                compute_strategy.max_tasks_in_flight_per_actor or
-                _derive_max_actor_tasks_in_flight(data_context, self._ray_remote_args)
+                compute_strategy.max_tasks_in_flight_per_actor
+                or _derive_max_actor_tasks_in_flight(
+                    data_context, self._ray_remote_args
+                )
             ),
             _enable_actor_pool_on_exit_hook=self.data_context._enable_actor_pool_on_exit_hook,
         )
@@ -1044,7 +1046,9 @@ class _ActorPool(AutoscalingActorPool):
         return self._per_actor_resource_usage
 
 
-def _derive_max_actor_tasks_in_flight(data_context: "DataContext", ray_remote_args: Optional[Dict[str, Any]]) -> int:
+def _derive_max_actor_tasks_in_flight(
+    data_context: "DataContext", ray_remote_args: Optional[Dict[str, Any]]
+) -> int:
     max_actor_concurrency = ray_remote_args.get("max_concurrency", 1)
 
     # NOTE: Unless explicitly configured by the user, max tasks-in-flight config

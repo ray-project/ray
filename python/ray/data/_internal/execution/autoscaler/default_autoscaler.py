@@ -53,8 +53,12 @@ class DefaultAutoscaler(Autoscaler):
     ):
         super().__init__(topology, resource_manager, execution_id)
 
-        self._actor_pool_scaling_up_threshold = config.actor_pool_util_upscaling_threshold
-        self._actor_pool_scaling_down_threshold = config.actor_pool_util_downscaling_threshold
+        self._actor_pool_scaling_up_threshold = (
+            config.actor_pool_util_upscaling_threshold
+        )
+        self._actor_pool_scaling_down_threshold = (
+            config.actor_pool_util_downscaling_threshold
+        )
         # Last time when a request was sent to Ray's autoscaler.
         self._last_request_time = 0
 
