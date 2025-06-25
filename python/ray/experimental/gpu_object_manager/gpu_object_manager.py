@@ -28,10 +28,11 @@ def __ray_get_tensor_meta__(self, obj_id: str):
     from ray._private.worker import global_worker
 
     gpu_object_store = global_worker.gpu_object_manager.gpu_object_store
-    assert gpu_object_store.has_gpu_object(
-        obj_id
-    ), f"obj_id={obj_id} not found in GPU object store"
-    tensors = gpu_object_store.get_gpu_object(obj_id)
+    # NOTE: We do not specify a timeout here because the user task that returns
+    # it could take arbitrarily long and we don't want to trigger a spurious
+    # timeout.
+    gpu_object_store.wait_object(obj_id)
+    tensors = gpu_object_store.get_object(obj_id)
     return [(t.shape, t.dtype) for t in tensors]
 
 
@@ -40,14 +41,14 @@ def __ray_fetch_gpu_object__(self, obj_id: str):
     from ray._private.worker import global_worker
 
     gpu_object_store = global_worker.gpu_object_manager.gpu_object_store
-    assert gpu_object_store.has_gpu_object(
+    assert gpu_object_store.has_object(
         obj_id
     ), f"obj_id={obj_id} not found in GPU object store"
-    tensors = gpu_object_store.get_gpu_object(obj_id)
+    tensors = gpu_object_store.get_object(obj_id)
     # TODO(kevin85421): The current garbage collection implementation for the
     # in-actor object store is naive. We garbage collect each object after it
     # is consumed once.
-    gpu_object_store.remove_gpu_object(obj_id)
+    gpu_object_store.pop_object(obj_id)
     return tensors
 
 
@@ -86,7 +87,7 @@ class GPUObjectManager:
         # transfers will hang.
         return src_actor.__ray_call__.options(concurrency_group="_ray_system").remote(__ray_get_tensor_meta__, obj_id)
 
-    def is_managed_gpu_object(self, obj_id: str) -> bool:
+    def is_managed_object(self, obj_id: str) -> bool:
         """
         Check if the GPU object is managed by this process.
 
@@ -133,7 +134,7 @@ class GPUObjectManager:
         obj_id = obj_ref.hex()
         return self.managed_gpu_object_metadata[obj_id]
 
-    def _send_gpu_object(
+    def _send_object(
         self,
         communicator_name: str,
         src_actor: "ray.actor.ActorHandle",
@@ -148,7 +149,7 @@ class GPUObjectManager:
         # executing on the main thread blocking the data transfer.
         src_actor.__ray_call__.options(concurrency_group="_ray_system").remote(__ray_send__, communicator_name, obj_id, dst_rank)
 
-    def _recv_gpu_object(
+    def _recv_object(
         self,
         communicator_name: str,
         dst_actor: "ray.actor.ActorHandle",
@@ -169,7 +170,7 @@ class GPUObjectManager:
             __ray_recv__, communicator_name, obj_id, src_rank, tensor_meta
         )
 
-    def fetch_gpu_object(self, obj_id: str):
+    def fetch_object(self, obj_id: str):
         """
         Fetches the GPU object from the source actor's GPU object store via the object store
         instead of out-of-band tensor transfer and stores the tensors in the local GPU object store.
@@ -185,15 +186,15 @@ class GPUObjectManager:
             None
         """
 
-        if self.gpu_object_store.has_gpu_object(obj_id):
+        if self.gpu_object_store.has_object(obj_id):
             return
 
         gpu_object_meta = self.managed_gpu_object_metadata[obj_id]
         src_actor = gpu_object_meta.src_actor
         tensors = ray.get(
-            src_actor.__ray_call__.remote(__ray_fetch_gpu_object__, obj_id)
+            src_actor.__ray_call__.options(concurrency_group="_ray_system").remote(__ray_fetch_gpu_object__, obj_id)
         )
-        self.gpu_object_store.add_gpu_object(obj_id, tensors)
+        self.gpu_object_store.add_object(obj_id, tensors)
 
     def trigger_out_of_band_tensor_transfer(
         self, dst_actor: "ray.actor.ActorHandle", task_args: Tuple[Any, ...]
@@ -222,7 +223,7 @@ class GPUObjectManager:
             if not isinstance(arg, ObjectRef):
                 continue
 
-            if not self.is_managed_gpu_object(arg.hex()):
+            if not self.is_managed_object(arg.hex()):
                 continue
 
             # Import get_collective_groups here to avoid dependency on
@@ -268,7 +269,7 @@ class GPUObjectManager:
                 # be transferred intra-process, so we skip the out-of-band tensor
                 # transfer.
                 continue
-            self._send_gpu_object(communicator.name, src_actor, arg.hex(), dst_rank)
-            self._recv_gpu_object(
+            self._send_object(communicator.name, src_actor, arg.hex(), dst_rank)
+            self._recv_object(
                 communicator.name, dst_actor, arg.hex(), src_rank, tensor_meta
             )

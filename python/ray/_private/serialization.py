@@ -285,18 +285,11 @@ class SerializationContext:
         enable_gpu_objects = tensor_transport != TensorTransportEnum.OBJECT_STORE
         if enable_gpu_objects:
             gpu_object_manager = ray._private.worker.global_worker.gpu_object_manager
-            if not gpu_object_manager.gpu_object_store.has_gpu_object(object_id):
-                if gpu_object_manager.is_managed_gpu_object(object_id):
-                    gpu_object_manager.fetch_gpu_object(object_id)
-                else:
-                    raise RuntimeError(
-                        f"obj_id={object_id} not found in GPU object store"
-                    )
-            tensors = gpu_object_manager.gpu_object_store.get_gpu_object(object_id)
+            if not gpu_object_manager.gpu_object_store.has_object(object_id) and gpu_object_manager.is_managed_object(object_id):
+                gpu_object_manager.fetch_object(object_id)
+
+            tensors = gpu_object_manager.gpu_object_store.wait_and_pop_object(object_id, timeout=ray_constants.FETCH_WARN_TIMEOUT_SECONDS)
             ctx.reset_out_of_band_tensors(tensors)
-            # TODO(kevin85421): The current garbage collection implementation for the in-actor object store
-            # is naive. We garbage collect each object after it is consumed once.
-            gpu_object_manager.gpu_object_store.remove_gpu_object(object_id)
 
         try:
             in_band, buffers = unpack_pickle5_buffers(data)
@@ -636,7 +629,7 @@ class SerializationContext:
             obj_id = obj_id.decode("ascii")
             worker = ray._private.worker.global_worker
             gpu_object_manager = worker.gpu_object_manager
-            gpu_object_manager.gpu_object_store.add_gpu_object(obj_id, tensors)
+            gpu_object_manager.gpu_object_store.add_object(obj_id, tensors)
 
         return serialized_val
 

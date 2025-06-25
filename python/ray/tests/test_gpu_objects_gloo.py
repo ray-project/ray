@@ -7,7 +7,7 @@ from ray.experimental.collective import create_collective_group
 from ray._private.custom_types import TensorTransportEnum
 
 
-@ray.remote
+@ray.remote(concurrency_groups={"_ray_system": 1})
 class GPUTestActor:
     @ray.method(tensor_transport="gloo")
     def echo(self, data):
@@ -24,12 +24,11 @@ class GPUTestActor:
         )
         if gpu_object_store.has_gpu_object(obj_id):
             gpu_object = gpu_object_store.get_gpu_object(obj_id)
-            print(f"gpu_object: {gpu_object}")
             return gpu_object
         return None
 
 
-def test_inter_actor_gpu_tensor_transfer(ray_start_regular):
+def test_p2p(ray_start_regular):
     world_size = 2
     actors = [GPUTestActor.remote() for _ in range(world_size)]
     create_collective_group(actors, backend="torch_gloo")
