@@ -254,6 +254,16 @@ SERVE_LOG_UNWANTED_ATTRS = {
     "job_id",
 }
 
+RAY_SERVE_HTTP_KEEP_ALIVE_TIMEOUT_S = int(
+    os.environ.get("RAY_SERVE_HTTP_KEEP_ALIVE_TIMEOUT_S", 0)
+)
+
+RAY_SERVE_REQUEST_PROCESSING_TIMEOUT_S = (
+    float(os.environ.get("RAY_SERVE_REQUEST_PROCESSING_TIMEOUT_S", 0))
+    or float(os.environ.get("SERVE_REQUEST_PROCESSING_TIMEOUT_S", 0))
+    or None
+)
+
 SERVE_LOG_EXTRA_FIELDS = "ray_serve_extra_fields"
 
 # Serve HTTP request header key for routing requests.
