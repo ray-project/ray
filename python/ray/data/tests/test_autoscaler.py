@@ -282,11 +282,16 @@ def test_actor_pool_scales_up(ray_start_10_cpus_shared, restore_data_context):
     # The `BarrierWaiter` UDF blocks until there are 2 actors running. If we don't
     # scale up, the UDF raises a timeout.
     barrier = Barrier.remote(2)
-    ray.data.range(2, override_num_blocks=2).map(
+    # We produce 3 blocks (1 elem each) such that
+    #   - We start wiht actor pool of min_size
+    #   - 2 tasks could be submitted to an actor (utilization reaches 200%)
+    #   - Autoscaler kicks in and creates another actor
+    #   - 3 task is submitted to a new actor (unblocking the barrier)
+    ray.data.range(3, override_num_blocks=3).map(
         BarrierWaiter,
         fn_constructor_args=(barrier,),
         compute=ray.data.ActorPoolStrategy(
-            min_size=1, max_size=2, max_tasks_in_flight_per_actor=1
+            min_size=1, max_size=2, max_tasks_in_flight_per_actor=2
         ),
     ).take_all()
 
