@@ -92,7 +92,7 @@ $ kubectl ray create cluster raycluster-sample-3 --file create-cluster.sample.ya
 Created Ray Cluster: raycluster-sample-3
 ```
 
-See https://github.com/ray-project/kuberay/blob/v1.4.0/kubectl-plugin/config/samples/create-cluster.complete.yaml for the complete list of parameters that can be set in the config file.
+See https://github.com/ray-project/kuberay/blob/v1.4.0/kubectl-plugin/config/samples/create-cluster.complete.yaml for the complete list of parameters that you can set in the config file.
 
 By default it only creates one worker group. You can use `kubectl ray create workergroup` to add additional worker groups to existing RayClusters.
 
