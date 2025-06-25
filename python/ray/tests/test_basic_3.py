@@ -63,6 +63,12 @@ def test_auto_global_gc(shutdown_only):
 
 def _resource_dicts_close(d1: Dict, d2: Dict, *, abs_tol: float = 1e-3):
     """Return if all values in the dicts are within the abs_tol."""
+
+    # A resource value of 0 is equivalent to the key not being present,
+    # so filter keys whose values are 0.
+    d1 = {k: v for k, v in d1.items() if v != 0}
+    d2 = {k: v for k, v in d2.items() if v != 0}
+
     if d1.keys() != d2.keys():
         return False
 
@@ -81,6 +87,7 @@ def _resource_dicts_close(d1: Dict, d2: Dict, *, abs_tol: float = 1e-3):
 @pytest.mark.parametrize("k", list(range(100)))
 def test_many_fractional_resources(shutdown_only, k: int):
     ray.init(num_cpus=2, num_gpus=2, resources={"Custom": 2})
+    original_available_resources = ray.available_resources()
 
     @ray.remote
     def g():
@@ -128,14 +135,9 @@ def test_many_fractional_resources(shutdown_only, k: int):
 
     assert all(ray.get(result_ids))
 
-    def _available_resources_reset() -> bool:
-        return ray.available_resources() == {
-            "CPU": 2.0,
-            "GPU": 2.0,
-            "Custom": 2.0,
-        }
-
-    wait_for_condition(_available_resources_reset)
+    wait_for_condition(
+        lambda: ray.available_resources() == original_available_resources,
+    )
 
 
 if __name__ == "__main__":
