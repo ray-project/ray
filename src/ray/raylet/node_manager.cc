@@ -117,7 +117,7 @@ NodeManager::NodeManager(
     rpc::CoreWorkerClientPool &worker_rpc_pool,
     std::shared_ptr<pubsub::SubscriberInterface> core_worker_subscriber,
     std::shared_ptr<ClusterResourceScheduler> cluster_resource_scheduler,
-    std::shared_ptr<LocalTaskManager> local_task_manager,
+    std::shared_ptr<ILocalTaskManager> local_task_manager,
     std::shared_ptr<ClusterTaskManagerInterface> cluster_task_manager,
     std::shared_ptr<IObjectDirectory> object_directory,
     std::shared_ptr<ObjectManagerInterface> object_manager,
@@ -2270,7 +2270,6 @@ void NodeManager::FinishAssignedActorCreationTask(WorkerInterface &worker,
   worker.AssignActorId(actor_id);
 
   if (task_spec.IsDetachedActor()) {
-    worker.MarkDetachedActor();
     auto job_id = task.GetTaskSpecification().JobId();
     auto job_config = worker_pool_.GetJobConfig(job_id);
     RAY_CHECK(job_config);
