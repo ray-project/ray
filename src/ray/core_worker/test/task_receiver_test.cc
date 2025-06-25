@@ -117,12 +117,12 @@ class MockTaskReceiver : public TaskReceiver {
  public:
   MockTaskReceiver(instrumented_io_context &task_execution_service,
                    worker::TaskEventBuffer &task_event_buffer,
-                   const TaskHandler &task_handler,
+                   const ExecuteTaskCallback &execute_task,
                    std::function<std::function<void()>()> initialize_thread_callback,
                    const OnActorCreationTaskDone &actor_creation_task_done_)
       : TaskReceiver(task_execution_service,
                      task_event_buffer,
-                     task_handler,
+                     execute_task,
                      initialize_thread_callback,
                      actor_creation_task_done_) {}
 

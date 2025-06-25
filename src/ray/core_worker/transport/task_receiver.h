@@ -49,7 +49,7 @@ namespace core {
 
 class TaskReceiver {
  public:
-  using TaskHandler = std::function<Status(
+  using ExecuteTaskCallback = std::function<Status(
       const TaskSpecification &task_spec,
       std::optional<ResourceMappingType> resource_ids,
       std::vector<std::pair<ObjectID, std::shared_ptr<RayObject>>> *return_objects,
@@ -64,10 +64,10 @@ class TaskReceiver {
 
   TaskReceiver(instrumented_io_context &task_execution_service,
                worker::TaskEventBuffer &task_event_buffer,
-               TaskHandler task_handler,
+               ExecuteTaskCallback execute_task,
                std::function<std::function<void()>()> initialize_thread_callback,
                const OnActorCreationTaskDone &actor_creation_task_done)
-      : task_handler_(std::move(task_handler)),
+      : execute_task_(std::move(execute_task)),
         task_execution_service_(task_execution_service),
         task_event_buffer_(task_event_buffer),
         initialize_thread_callback_(std::move(initialize_thread_callback)),
@@ -123,8 +123,8 @@ class TaskReceiver {
   absl::flat_hash_map<ActorID, std::vector<ConcurrencyGroup>> concurrency_groups_cache_;
 
  private:
-  /// The callback function to process a task.
-  TaskHandler task_handler_;
+  /// The callback function to execute a task.
+  ExecuteTaskCallback execute_task_;
   /// The event loop for running tasks on.
   instrumented_io_context &task_execution_service_;
   worker::TaskEventBuffer &task_event_buffer_;

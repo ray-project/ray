@@ -58,16 +58,16 @@ class ActorSchedulingQueue : public SchedulingQueue {
 
   size_t Size() const override;
 
-  /// Add a new actor task's callbacks to the worker queue.
-  void Add(int64_t seq_no,
-           int64_t client_processed_up_to,
-           std::function<void(const TaskSpecification &, rpc::SendReplyCallback)>
-               accept_request,
-           std::function<void(const TaskSpecification &,
-                              const Status &,
-                              rpc::SendReplyCallback)> reject_request,
-           rpc::SendReplyCallback send_reply_callback,
-           TaskSpecification task_spec) override;
+  /// EnqueueTask a task to be executed on this worker.
+  void EnqueueTask(int64_t seq_no,
+               int64_t client_processed_up_to,
+               std::function<void(const TaskSpecification &, rpc::SendReplyCallback)>
+                   execute_task_callback,
+               std::function<void(const TaskSpecification &,
+                                  const Status &,
+                                  rpc::SendReplyCallback)> reject_request,
+               rpc::SendReplyCallback cancel_task_callback,
+               TaskSpecification task_spec) override;
 
   /// Cancel the actor task in the queue.
   /// Tasks are in the queue if it is either queued, or executing.
@@ -79,9 +79,9 @@ class ActorSchedulingQueue : public SchedulingQueue {
   void ScheduleRequests() override;
 
  private:
-  /// Accept the given InboundRequest or reject it if a task id is canceled via
+  /// Accept the given QueuedTask or reject it if a task id is canceled via
   /// CancelTaskIfFound.
-  void AcceptRequestOrRejectIfCanceled(TaskID task_id, InboundRequest &request);
+  void AcceptRequestOrRejectIfCanceled(TaskID task_id, QueuedTask &request);
 
   /// Called when we time out waiting for an earlier task to show up.
   void OnSequencingWaitTimeout();
@@ -89,7 +89,7 @@ class ActorSchedulingQueue : public SchedulingQueue {
   const int64_t reorder_wait_seconds_ =
       ::RayConfig::instance().actor_scheduling_queue_max_reorder_wait_seconds();
   /// Sorted map of (accept, rej) task callbacks keyed by their sequence number.
-  std::map<int64_t, InboundRequest> pending_actor_tasks_;
+  std::map<int64_t, QueuedTask> pending_actor_tasks_;
   /// The next sequence number we are waiting for to arrive.
   int64_t next_seq_no_ = 0;
   /// Timer for waiting on dependencies. Note that this is set on the task main
