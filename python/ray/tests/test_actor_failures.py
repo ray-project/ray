@@ -376,6 +376,7 @@ def test_actor_restart_on_node_failure(ray_start_cluster):
         """An actor that will be reconstructed at most once."""
 
         def echo(self, value):
+            time.sleep(0.1)
             return value
 
     actor = RestartableActor.options(lifetime="detached").remote()
