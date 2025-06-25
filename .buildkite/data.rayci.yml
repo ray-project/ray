@@ -38,7 +38,7 @@ steps:
         --workers "$${BUILDKITE_PARALLEL_JOB_COUNT}"
         --worker-id "$${BUILDKITE_PARALLEL_JOB}" --parallelism-per-worker 3
         --build-name data9build
-        --except-tags data_integration,doctest,data_non_parallel
+        --except-tags data_integration,doctest,data_non_parallel,dask
     depends_on: data9build
 
   - label: ":database: data: arrow v9 tests (data_non_parallel)"
@@ -63,7 +63,7 @@ steps:
         --workers "$${BUILDKITE_PARALLEL_JOB_COUNT}"
         --worker-id "$${BUILDKITE_PARALLEL_JOB}" --parallelism-per-worker 3
         --build-name datalbuild
-        --except-tags data_integration,doctest,data_non_parallel
+        --except-tags data_integration,doctest,data_non_parallel,dask
     depends_on: datalbuild
 
   - label: ":database: data: arrow v19 tests (data_non_parallel)"
@@ -88,7 +88,7 @@ steps:
       - bazel run //ci/ray_ci:test_in_docker -- //python/ray/data/... //python/ray/air/... data
         --workers 2 --worker-id {{matrix.worker_id}} --parallelism-per-worker 3
         --python-version {{matrix.python}}
-        --except-tags data_integration,doctest,data_non_parallel
+        --except-tags data_integration,doctest,data_non_parallel,dask
     depends_on: databuild-multipy
     matrix:
       setup:
@@ -122,7 +122,7 @@ steps:
         --workers "$${BUILDKITE_PARALLEL_JOB_COUNT}"
         --worker-id "$${BUILDKITE_PARALLEL_JOB}" --parallelism-per-worker 3
         --build-name datanbuild
-        --except-tags data_integration,doctest,data_non_parallel
+        --except-tags data_integration,doctest,data_non_parallel,dask
     depends_on: datanbuild
     soft_fail: true
 
@@ -142,9 +142,13 @@ steps:
   - label: ":database: data: dask tests"
     tags:
       - data
+      - dask
     instance_type: medium
     commands:
-      - bazel run //ci/ray_ci:test_in_docker -- //python/ray/data/... //python/ray/air/... data
+      - bazel run //ci/ray_ci:test_in_docker -- //python/ray/data/... data
+        --only-tags dask
+        --build-name databuild-py3.12
+    depends_on: databuild-multipy
 
   - label: ":database: data: TFRecords (tfx-bsl) tests"
     tags:
