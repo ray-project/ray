@@ -8,8 +8,10 @@ import pytest
 
 import ray
 from ray.data import ExecutionResources
-from ray.data._internal.execution.autoscaler import AutoscalingActorPool, \
-    AutoscalingConfig
+from ray.data._internal.execution.autoscaler import (
+    AutoscalingActorPool,
+    AutoscalingConfig,
+)
 from ray.data._internal.execution.autoscaler.default_autoscaler import (
     DefaultAutoscaler,
     ScalingConfig,
