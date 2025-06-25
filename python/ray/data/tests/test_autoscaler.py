@@ -8,22 +8,20 @@ import pytest
 
 import ray
 from ray.data import ExecutionResources
-from ray.data._internal.execution.autoscaler import (
-    AutoscalingActorPool,
-)
 from ray.data._internal.execution.autoscaler.default_autoscaler import (
     DefaultAutoscaler,
     ScalingConfig,
 )
-from ray.data._internal.execution.operators.actor_pool_map_operator import \
-    _ActorPool
+from ray.data._internal.execution.operators.actor_pool_map_operator import _ActorPool
 from ray.data._internal.execution.operators.base_physical_operator import (
     InternalQueueOperatorMixin,
 )
 from ray.data._internal.execution.streaming_executor_state import OpState
-from ray.data.context import AutoscalingConfig, \
-    DEFAULT_ACTOR_POOL_UTIL_UPSCALING_THRESHOLD, \
-    DEFAULT_ACTOR_POOL_UTIL_DOWNSCALING_THRESHOLD
+from ray.data.context import (
+    DEFAULT_ACTOR_POOL_UTIL_DOWNSCALING_THRESHOLD,
+    DEFAULT_ACTOR_POOL_UTIL_UPSCALING_THRESHOLD,
+    AutoscalingConfig,
+)
 
 
 def test_actor_pool_scaling():
@@ -56,9 +54,7 @@ def test_actor_pool_scaling():
             # NOTE: Unittest mocking library doesn't support proxying to actual
             #       non-mocked methods so we have emulate it by directly binding existing
             #       method of `get_pool_util` to a mocked object
-            side_effect=lambda: MethodType(
-                _ActorPool.get_pool_util, actor_pool
-            )()
+            side_effect=lambda: MethodType(_ActorPool.get_pool_util, actor_pool)()
         ),
     )
 
@@ -100,7 +96,9 @@ def test_actor_pool_scaling():
     # Should be no-op since the util is below the threshold.
     with patch(actor_pool, "num_tasks_in_flight", 9):
         assert actor_pool.get_pool_util() == 0.9
-        assert_autoscaling_action(delta=0, expected_reason="utilization of 0.9 w/in limits [0.5, 1.0]")
+        assert_autoscaling_action(
+            delta=0, expected_reason="utilization of 0.9 w/in limits [0.5, 1.0]"
+        )
 
     # Should be no-op since previous scaling hasn't finished yet
     with patch(actor_pool, "num_pending_actors", 1):
