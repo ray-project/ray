@@ -753,24 +753,6 @@ class Collector:
         return self.items
 
 
-def dicts_equal(dict1, dict2, abs_tol=1e-4):
-    """Compares to dicts whose values may be floating point numbers."""
-
-    if dict1.keys() != dict2.keys():
-        return False
-
-    for k, v in dict1.items():
-        if (
-            isinstance(v, float)
-            and isinstance(dict2[k], float)
-            and math.isclose(v, dict2[k], abs_tol=abs_tol)
-        ):
-            continue
-        if v != dict2[k]:
-            return False
-    return True
-
-
 def same_elements(elems_a, elems_b):
     """Checks if two iterables (such as lists) contain the same elements. Elements
     do not have to be hashable (this allows us to compare sets of dicts for

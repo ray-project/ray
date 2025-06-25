@@ -1,14 +1,18 @@
 # coding: utf-8
+from copy import deepcopy
+import gc
 import logging
+import math
 import random
 import sys
 import time
+from typing import Dict
 
 import pytest
 
 import ray
 import ray.cluster_utils
-from ray._private.test_utils import dicts_equal
+from ray._common.test_utils import wait_for_condition
 
 logger = logging.getLogger(__name__)
 
@@ -21,8 +25,6 @@ def test_auto_global_gc(shutdown_only):
     class Test:
         def __init__(self):
             self.collected = False
-            import gc
-
             gc.disable()
 
             def gc_called(phase, info):
@@ -60,11 +62,25 @@ def test_auto_global_gc(shutdown_only):
     assert ray.get(test.collected.remote())
 
 
-@pytest.mark.skipif(
-    sys.version_info >= (3, 10, 0),
-    reason=("Currently not passing for Python 3.10"),
-)
-def test_many_fractional_resources(shutdown_only):
+def _resource_dicts_close(d1: Dict, d2: Dict, *, abs_tol: float = 1e-3):
+    """Return if all values in the dicts are within the abs_tol."""
+    if d1.keys() != d2.keys():
+        return False
+
+    for k, v in d1.items():
+        if (
+            isinstance(v, float)
+            and isinstance(d2[k], float)
+            and math.isclose(v, d2[k], abs_tol=abs_tol)
+        ):
+            continue
+        if v != d2[k]:
+            return False
+    return True
+
+
+@pytest.mark.parametrize("k", list(range(100)))
+def test_many_fractional_resources(shutdown_only, k: int):
     ray.init(num_cpus=2, num_gpus=2, resources={"Custom": 2})
 
     @ray.remote
@@ -72,82 +88,56 @@ def test_many_fractional_resources(shutdown_only):
         return 1
 
     @ray.remote
-    def f(block, accepted_resources):
-        true_resources = {
-            resource: value[0][1]
-            for resource, value in ray._private.worker.get_resource_ids().items()
-        }
+    def f(block: bool, expected_resources: Dict[str, float]) -> bool:
+        assigned_resources = ray.get_runtime_context().get_assigned_resources()
+
+        # Have some tasks block to release their occupied resources to further
+        # stress the scheduler.
         if block:
             ray.get(g.remote())
-        return dicts_equal(true_resources, accepted_resources)
 
-    # Check that the resource are assigned correctly.
+        eq = _resource_dicts_close(assigned_resources, expected_resources)
+        if not eq:
+            print(
+                "Mismatched resources.",
+                "Expected:",
+                expected_resources,
+                "Assigned:",
+                assigned_resources,
+            )
+
+        return eq
+
+    # Submit many tasks with random resource requirements and assert that they are
+    # assigned the correct resources.
     result_ids = []
-    for i in range(100):
-        rand1 = random.random()
-        rand2 = random.random()
-        rand3 = random.random()
-
-        resource_set = {"CPU": int(rand1 * 10000) / 10000}
-        result_ids.append(
-            f._remote([False, resource_set], num_cpus=resource_set["CPU"])
-        )
-
-        resource_set = {"CPU": 1, "GPU": int(rand1 * 10000) / 10000}
-        result_ids.append(
-            f._remote([False, resource_set], num_gpus=resource_set["GPU"])
-        )
-
-        resource_set = {"CPU": 1, "Custom": int(rand1 * 10000) / 10000}
-        result_ids.append(
-            f._remote(
-                [False, resource_set], resources={"Custom": resource_set["Custom"]}
-            )
-        )
-
-        resource_set = {
-            "CPU": int(rand1 * 10000) / 10000,
-            "GPU": int(rand2 * 10000) / 10000,
-            "Custom": int(rand3 * 10000) / 10000,
+    for i in range(10):
+        resources = {
+            "CPU": int(random.random() * 1000) / 1000,
+            "GPU": int(random.random() * 1000) / 1000,
+            "Custom": int(random.random() * 1000) / 1000,
         }
-        result_ids.append(
-            f._remote(
-                [False, resource_set],
-                num_cpus=resource_set["CPU"],
-                num_gpus=resource_set["GPU"],
-                resources={"Custom": resource_set["Custom"]},
+
+        for block in [False, True]:
+            result_ids.append(
+                f.options(
+                    num_cpus=resources["CPU"],
+                    num_gpus=resources["GPU"],
+                    resources={"Custom": resources["Custom"]},
+                ).remote(block, resources)
             )
-        )
-        result_ids.append(
-            f._remote(
-                [True, resource_set],
-                num_cpus=resource_set["CPU"],
-                num_gpus=resource_set["GPU"],
-                resources={"Custom": resource_set["Custom"]},
-            )
-        )
+
     assert all(ray.get(result_ids))
 
-    # Check that the available resources at the end are the same as the
-    # beginning.
-    stop_time = time.time() + 10
-    correct_available_resources = False
-    while time.time() < stop_time:
+    def _available_resources_reset() -> bool:
         available_resources = ray.available_resources()
-        if (
-            "CPU" in available_resources
-            and ray.available_resources()["CPU"] == 2.0
-            and "GPU" in available_resources
-            and ray.available_resources()["GPU"] == 2.0
-            and "Custom" in available_resources
-            and ray.available_resources()["Custom"] == 2.0
-        ):
-            correct_available_resources = True
-            break
-    if not correct_available_resources:
-        assert False, "Did not get correct available resources."
+        assert ray.available_resources()["CPU"] == 2.0
+        assert ray.available_resources()["GPU"] == 2.0
+        assert ray.available_resources()["Custom"] == 2.0
+        return True
+
+    wait_for_condition(_available_resources_reset)
 
 
 if __name__ == "__main__":
-
     sys.exit(pytest.main(["-sv", __file__]))
