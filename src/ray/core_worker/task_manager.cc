@@ -315,7 +315,7 @@ std::vector<rpc::ObjectReference> TaskManager::AddPendingTask(
 bool TaskManager::ResubmitTask(const TaskID &task_id, std::vector<ObjectID> *task_deps) {
   RAY_CHECK(task_deps->empty());
   TaskSpecification spec;
-  bool generator_to_queue_for_resubmit = false;
+  bool should_cancel_and_resubmit_generator = false;
   {
     absl::MutexLock lock(&mu_);
     auto it = submissible_tasks_.find(task_id);
@@ -336,37 +336,32 @@ bool TaskManager::ResubmitTask(const TaskID &task_id, std::vector<ObjectID> *tas
       // deleted, and then needed again for recovery. We have to cancel and resubmit the
       // generator to recover the object. When the task is finished / failed, ResubmitTask
       // will be called again.
-      generator_to_queue_for_resubmit = true;
-    }
-
-    if (!generator_to_queue_for_resubmit &&
-        task_entry.GetStatus() != rpc::TaskStatus::FINISHED &&
-        task_entry.GetStatus() != rpc::TaskStatus::FAILED) {
+      should_cancel_and_resubmit_generator = true;
+    } else if (task_entry.GetStatus() != rpc::TaskStatus::FINISHED &&
+               task_entry.GetStatus() != rpc::TaskStatus::FAILED) {
       // Assuming the task retry is already submitted / running.
       return true;
-    }
-
-    if (!generator_to_queue_for_resubmit) {
+    } else {
+      // Going to resubmit the task now.
       SetupTaskEntryForResubmit(task_entry);
     }
+
     spec = task_entry.spec;
   }
 
-  if (generator_to_queue_for_resubmit) {
-    bool still_executing = queue_generator_for_resubmit_(spec);
-    // Resubmit was queued up.
-    if (still_executing) {
+  if (should_cancel_and_resubmit_generator) {
+    if (cancel_and_resubmit_generator_(spec)) {
       return true;
     }
-    // Generator was no longer executing.
+    // We didn't cancel because the task finished since the time we first set
+    // should_cancel_and_resubmit_generator, so we have we should resubmit now.
     absl::MutexLock lock(&mu_);
     auto it = submissible_tasks_.find(task_id);
     RAY_CHECK(it != submissible_tasks_.end());
     auto &task_entry = it->second;
-    // Don't need to do anything if the submitter resubmitted. Otherwise we should
-    // resubmit.
     if (task_entry.GetStatus() != rpc::TaskStatus::FINISHED &&
         task_entry.GetStatus() != rpc::TaskStatus::FAILED) {
+      // There was an retryable error and the submitter already kicked off the retry.
       return true;
     }
     SetupTaskEntryForResubmit(task_entry);
@@ -376,8 +371,6 @@ bool TaskManager::ResubmitTask(const TaskID &task_id, std::vector<ObjectID> *tas
 
   RAY_LOG(INFO) << "Resubmitting task that produced lost plasma object, attempt #"
                 << spec.AttemptNumber() << ": " << spec.DebugString();
-  // We should actually detect if the actor for this task is dead, but let's just assume
-  // it's not for now.
   retry_task_callback_(spec, /*object_recovery*/ true, /*delay_ms*/ 0);
 
   return true;
