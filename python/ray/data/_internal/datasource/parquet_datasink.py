@@ -1,4 +1,5 @@
 import logging
+from pathlib import Path
 from typing import TYPE_CHECKING, Any, Callable, Dict, Iterable, List, Optional
 
 from ray.data._internal.execution.interfaces import TaskContext
@@ -25,6 +26,8 @@ EXISTING_DATA_BEHAVIOR_MAP = {
     SaveMode.IGNORE: "overwrite_or_ignore",
     SaveMode.ERROR: "error",
 }
+
+FILE_FORMAT = "parquet"
 
 logger = logging.getLogger(__name__)
 
@@ -63,7 +66,7 @@ class ParquetDatasink(_FileDatasink):
             open_stream_args=open_stream_args,
             filename_provider=filename_provider,
             dataset_uuid=dataset_uuid,
-            file_format="parquet",
+            file_format=FILE_FORMAT,
             mode=mode,
         )
 
@@ -135,14 +138,23 @@ class ParquetDatasink(_FileDatasink):
         min_rows_per_group = row_group_size if row_group_size else 0
         max_rows_per_group = row_group_size if row_group_size else 1024 * 1024
 
+        if FILE_FORMAT not in filename:
+            basename_template = f"{filename}-{{i}}.{FILE_FORMAT}"
+        else:
+            # Use pathlib.Path to properly handle filenames with dots
+            filename_path = Path(filename)
+            stem = filename_path.stem  # filename without extension
+            suffix = filename_path.suffix  # extension including the dot
+            basename_template = f"{stem}-{{i}}{suffix}"
+
         ds.write_dataset(
             data=tables,
             base_dir=self.path,
             schema=output_schema,
-            basename_template=f"{filename}-{{i}}.parquet",
+            basename_template=basename_template,
             filesystem=self.filesystem,
             partitioning=self.partition_cols,
-            format="parquet",
+            format=FILE_FORMAT,
             existing_data_behavior=existing_data_behavior,
             partitioning_flavor="hive",
             use_threads=True,

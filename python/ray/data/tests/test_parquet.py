@@ -1564,6 +1564,39 @@ def test_parquet_row_group_size_002(ray_start_regular_shared, tmp_path):
     assert ds.fragments[0].num_row_groups == 10
 
 
+def test_parquet_write_with_custom_filename_provider(
+    ray_start_regular_shared, tmp_path
+):
+    """Test write_parquet with a custom filename provider and assert on output file names."""
+    from ray.data.datasource.filename_provider import FilenameProvider
+
+    class CustomFilenameProvider(FilenameProvider):
+        def get_filename_for_block(self, block, write_uuid, task_index, block_index):
+            return f"custom_file_{task_index}_{block_index}.parquet"
+
+    # Create a dataset with multiple blocks
+    ds = ray.data.range(100).repartition(3)
+
+    # Write with custom filename provider
+    custom_provider = CustomFilenameProvider()
+    ds.write_parquet(tmp_path, filename_provider=custom_provider)
+
+    # Check that files exist with expected names
+    written_files = sorted(os.listdir(tmp_path))
+    expected_files = [
+        "custom_file_0_0-0.parquet",
+        "custom_file_1_0-0.parquet",
+        "custom_file_2_0-0.parquet",
+    ]
+
+    assert written_files == expected_files
+
+    # Verify the content is correct by reading back
+    ds_read = ray.data.read_parquet(tmp_path)
+    assert ds_read.count() == 100
+    assert sorted([row["id"] for row in ds_read.take_all()]) == list(range(100))
+
+
 if __name__ == "__main__":
     import sys
 
