@@ -30,7 +30,7 @@ from ray.llm._internal.serve.configs.constants import (
     ROUTER_TO_MODEL_REPLICA_RATIO,
 )
 from ray.llm._internal.serve.configs.openai_api_models import (
-    ChatCompletionRequest,
+    # ChatCompletionRequest,
     ChatCompletionResponse,
     ChatCompletionStreamResponse,
     CompletionRequest,
@@ -44,6 +44,7 @@ from ray.llm._internal.serve.configs.openai_api_models import (
     OpenAIHTTPException,
     to_model_metadata,
 )
+from vllm.entrypoints.openai.protocol import ChatCompletionRequest
 from ray.llm._internal.serve.configs.openai_api_models_patch import (
     ErrorResponse,
 )
@@ -139,7 +140,9 @@ def _apply_openai_json_format(
         return "".join(f"data: {r.model_dump_json()}\n\n" for r in response)
     if hasattr(response, "model_dump_json"):
         return f"data: {response.model_dump_json()}\n\n"
-    raise ValueError(f"Unexpected response type: {type(response)}")
+    if isinstance(response, str):
+        return response
+    raise ValueError(f"Unexpected response type: {type(response)}, {response=}")
 
 
 async def _peek_at_generator(
@@ -294,6 +297,7 @@ class LLMRouter:
         model_handle = self._get_configured_serve_handle(model)
 
         async for response in getattr(model_handle, call_method).remote(body):
+            logger.info(f"[Kourosh] in router._get_response, response: {response}")
             yield response
 
     async def model(self, model_id: str) -> Optional[ModelData]:
@@ -381,6 +385,7 @@ class LLMRouter:
                 first_chunk = initial_response
 
             if isinstance(first_chunk, ErrorResponse):
+                logger.info(f"[Kourosh] error encountered in first_chunk: {first_chunk}")
                 raise OpenAIHTTPException(
                     message=first_chunk.message,
                     status_code=first_chunk.code,
@@ -389,6 +394,7 @@ class LLMRouter:
 
             if isinstance(first_chunk, NoneStreamingResponseType):
                 # Not streaming, first chunk should be a single response
+                logger.info(f"[Kourosh] non streaming response received, first_chunk: {first_chunk}")
                 return JSONResponse(content=first_chunk.model_dump())
 
             # In case of streaming we need to iterate over the chunks and yield them

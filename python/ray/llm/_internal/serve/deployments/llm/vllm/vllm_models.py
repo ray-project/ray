@@ -1,5 +1,6 @@
 import os
 from typing import TYPE_CHECKING, Any, Dict, List, Literal, Optional, Union
+import dataclasses
 
 from pydantic import ConfigDict, Field, ValidationError, field_validator
 
@@ -25,6 +26,9 @@ from ray.util.placement_group import (
     placement_group,
     placement_group_table,
 )
+
+from vllm.engine.arg_utils import AsyncEngineArgs
+from vllm.entrypoints.openai.cli_args import FrontendArgs
 
 # The key for the kv_transfer_params in the internal metadata.
 KV_TRANSFER_PARAMS_KEY = "kv_transfer_params"
@@ -64,6 +68,7 @@ class VLLMEngineConfig(BaseModelExtended):
     )
     runtime_env: Optional[Dict[str, Any]] = None
     engine_kwargs: Dict[str, Any] = {}
+    frontend_kwargs: Dict[str, Any] = {}
 
     @property
     def actual_hf_model_id(self) -> str:
@@ -106,6 +111,25 @@ class VLLMEngineConfig(BaseModelExtended):
         else:
             # If it's a CloudMirrorConfig (or subtype)
             mirror_config = llm_config.model_loading_config.model_source
+            
+
+        all_engine_kwargs = llm_config.engine_kwargs.copy()
+        engine_kwargs = {}
+        frontend_kwargs = {}
+        
+        # Get field names from dataclasses
+        frontend_field_names = {field.name for field in dataclasses.fields(FrontendArgs)}
+        async_engine_field_names = {field.name for field in dataclasses.fields(AsyncEngineArgs)}
+        
+        for key, value in all_engine_kwargs.items():
+            if key in frontend_field_names:
+                frontend_kwargs[key] = value
+            elif key in async_engine_field_names:
+                engine_kwargs[key] = value
+            else:
+                raise ValueError(f"Unknown engine argument: {key}")
+        engine_kwargs["model"] = hf_model_id
+        engine_kwargs["served_model_name"] = [llm_config.model_id]
 
         return VLLMEngineConfig(
             model_id=llm_config.model_id,
@@ -113,7 +137,8 @@ class VLLMEngineConfig(BaseModelExtended):
             mirror_config=mirror_config,
             resources_per_bundle=llm_config.resources_per_bundle,
             accelerator_type=llm_config.accelerator_type,
-            engine_kwargs=llm_config.engine_kwargs,
+            engine_kwargs=engine_kwargs,
+            frontend_kwargs=frontend_kwargs,
             runtime_env=llm_config.runtime_env,
         )
 

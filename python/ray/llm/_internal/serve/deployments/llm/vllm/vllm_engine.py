@@ -54,11 +54,12 @@ from ray.llm._internal.serve.observability.metrics.utils import (
 from ray.util import metrics
 from ray.util.placement_group import PlacementGroup
 from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
+from vllm.entrypoints.openai.cli_args import FrontendArgs
+from vllm.engine.arg_utils import AsyncEngineArgs
 
 if TYPE_CHECKING:
     from vllm import SamplingParams as VLLMInternalSamplingParams
     from vllm.config import ModelConfig, VllmConfig
-    from vllm.engine.arg_utils import AsyncEngineArgs
     from vllm.engine.protocol import EngineClient
     from vllm.outputs import PoolingRequestOutput, RequestOutput
 
@@ -177,6 +178,15 @@ class _EngineBackgroundProcess:
         return self._error
 
 
+class CustomNamespace:
+    def __init__(self, *args):
+        self.classes = args
+        
+    def __getattr__(self, name):
+        for cls in self.classes:
+            if hasattr(cls, name):
+                return getattr(cls, name)
+        raise AttributeError(f"Attribute {name} not found in {self.classes}")
 
 class VLLMEngine(LLMEngine):
     def __init__(
@@ -190,10 +200,21 @@ class VLLMEngine(LLMEngine):
         """
         super().__init__(llm_config)
         
-        from argparse import Namespace
+
         # Convert this to a namespace object
-        vllm_cli_args = llm_config.experimental_configs.get("vllm_cli_args", {})
-        self.vllm_cli_args = Namespace(**vllm_cli_args)
+        # TODO: How to get the args in a way that is also inherits the default values?
+        # vllm_cli_args = llm_config.experimental_configs.get("vllm_cli_args", {})
+        # self.vllm_cli_args = CustomNamespace(**vllm_cli_args)
+        # self.vllm_cli_args.update(
+        #     disable_request_logs=True,
+        # )
+        
+        # filter out the llm_config.engine_kwargs to those that belong to FrontendArgs and pop them over. 
+        engine_config = llm_config.get_engine_config()
+        self.frontend_args = FrontendArgs(**engine_config.frontend_kwargs)
+        self.engine_args = AsyncEngineArgs(**engine_config.engine_kwargs)
+        
+        self.namespace_args = CustomNamespace(self.engine_args, self.frontend_args)
 
         if vllm is None:
             raise ImportError(
@@ -318,12 +339,12 @@ class VLLMEngine(LLMEngine):
         
         from starlette.datastructures import State
         state = State()
-        
+
         await init_app_state(
             engine_client=self.engine,
             vllm_config=self.vllm_config,
             state=state,
-            args=self.vllm_cli_args,
+            args=self.namespace_args,
         )
         
         self.oai_serving_chat = state.openai_serving_chat
@@ -523,6 +544,11 @@ class VLLMEngine(LLMEngine):
         from vllm.v1.executor.abstract import Executor
 
         vllm_config.parallel_config.placement_group = placement_group
+        
+        if use_v1:
+            from vllm.v1.engine.async_llm import AsyncLLM as AsyncLLMEngine
+        else:
+            from vllm.engine.async_llm_engine import AsyncLLMEngine
 
         _clear_current_platform_cache()
 
@@ -538,7 +564,7 @@ class VLLMEngine(LLMEngine):
 
         executor_class = Executor.get_class(vllm_config)
         logger.info(f"Using executor class: {executor_class}")
-        engine = vllm.engine.async_llm_engine.AsyncLLMEngine(
+        engine = AsyncLLMEngine(
             vllm_config=vllm_config,
             executor_class=executor_class,
             log_stats=not engine_args.disable_log_stats,
@@ -614,9 +640,15 @@ class VLLMEngine(LLMEngine):
         return vllm_request
 
     async def chat(self, request: GenerationRequest) -> AsyncGenerator[LLMRawResponse, None]:
-        generator = self.oai_serving_chat.create_chat_completion(request)
-        async for response in generator:
-            yield response
+
+        chat_response = await self.oai_serving_chat.create_chat_completion(request)
+        
+        if isinstance(chat_response, AsyncGenerator):
+            async for response in chat_response:
+                yield response
+        else:
+            logger.info(f"[Kourosh] non streaming response received, chat_response: {chat_response}")
+            yield chat_response
 
 
     async def generate(

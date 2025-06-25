@@ -19,7 +19,7 @@ from ray.llm._internal.serve.configs.openai_api_models import (
     ChatCompletionLogProb,
     ChatCompletionLogProbs,
     ChatCompletionLogProbsContent,
-    ChatCompletionRequest,
+    # ChatCompletionRequest,
     ChatCompletionResponse,
     ChatCompletionResponseChoice,
     ChatCompletionResponseStreamChoice,
@@ -39,6 +39,7 @@ from ray.llm._internal.serve.configs.openai_api_models import (
     LLMEmbeddingsResponse,
     UsageInfo,
 )
+from vllm.entrypoints.openai.protocol import ChatCompletionRequest
 from ray.llm._internal.serve.configs.prompt_formats import Message, Prompt
 from ray.llm._internal.serve.configs.server_models import (
     DiskMultiplexConfig,
@@ -598,7 +599,9 @@ class LLMServer(_LLMServerBase):
             A LLMChatResponse object.
         """
         # return self._process_llm_request(request, is_chat=True)
-        self.engine.chat(request)
+        async for response in self.engine.chat(request):
+            logger.info(f"[Kourosh] in llm_server.chat, response: {response}")
+            yield response
 
     async def completions(self, request: CompletionRequest) -> LLMCompletionsResponse:
         """Runs a completion request to the LLM engine and returns the response.
