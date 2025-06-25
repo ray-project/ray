@@ -15,7 +15,7 @@ A Ray Train run produces :ref:`checkpoints <train-checkpointing>` that can be sa
 
 **Ray Train expects all workers to be able to write files to the same persistent storage location.**
 Therefore, Ray Train requires some form of external persistent storage such as
-cloud storage (e.g., S3, GCS) or a shared filesystem (e.g., AWS EFS, Google Filestore, Azure File Shares, HDFS)
+cloud storage (e.g., S3, GCS, Azure Blob) or a shared filesystem (e.g., AWS EFS, Google Filestore, Azure File Shares, HDFS)
 for multi-node training.
 
 Here are some capabilities that persistent storage enables:
@@ -29,7 +29,7 @@ Here are some capabilities that persistent storage enables:
   and artifacts to share them with others or use them in downstream tasks.
 
 
-Cloud storage (AWS S3, Google Cloud Storage)
+Cloud storage (AWS S3, Google Cloud Storage, Azure Blob)
 --------------------------------------------
 
 .. tip::
