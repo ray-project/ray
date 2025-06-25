@@ -1,7 +1,8 @@
+import json
 import logging
 import warnings
 from enum import Enum
-from typing import Any, Callable, List, Optional, Union
+from typing import Any, Callable, Dict, List, Optional, Union
 
 from ray import cloudpickle
 from ray._common.pydantic_compat import (
@@ -12,6 +13,7 @@ from ray._common.pydantic_compat import (
     PositiveFloat,
     PositiveInt,
     PrivateAttr,
+    root_validator,
     validator,
 )
 from ray._common.utils import import_attr
@@ -20,6 +22,9 @@ from ray.serve._private.constants import (
     DEFAULT_GRPC_PORT,
     DEFAULT_HTTP_HOST,
     DEFAULT_HTTP_PORT,
+    DEFAULT_REQUEST_ROUTER_PATH,
+    DEFAULT_REQUEST_ROUTING_STATS_PERIOD_S,
+    DEFAULT_REQUEST_ROUTING_STATS_TIMEOUT_S,
     DEFAULT_TARGET_ONGOING_REQUESTS,
     DEFAULT_UVICORN_KEEP_ALIVE_TIMEOUT_S,
     SERVE_LOGGER_NAME,
@@ -27,6 +32,88 @@ from ray.serve._private.constants import (
 from ray.util.annotations import Deprecated, PublicAPI
 
 logger = logging.getLogger(SERVE_LOGGER_NAME)
+
+
+@PublicAPI(stability="stable")
+class RouterConfig(BaseModel):
+    """Config for Serve Router.
+
+    Args:
+        request_router_class: The import path of the request router if user passed a string. Will be the
+        concatenation of the request router module and the request router name
+        if user passed a callable.
+    """
+
+    # Cloudpickled request router class.
+    serialized_request_router_cls: bytes = Field(default=b"")
+
+    # The class of the request router used for this
+    # deployment. This can be a string or a class. All the deployment
+    # handle created for this deployment will use the routing policy
+    # defined by the request router. Default to Serve's PowerOfTwoChoicesRequestRouter.
+    request_router_class: Union[str, Callable] = Field(
+        default=DEFAULT_REQUEST_ROUTER_PATH
+    )
+    # Keyword arguments that will be passed to the
+    # request router class __init__ method.
+    request_router_kwargs: Dict[str, Any] = Field(default_factory=dict)
+
+    # Duration between record scheduling stats
+    # calls for the replica. Defaults to 10s. The health check is by default a
+    # no-op Actor call to the replica, but you can define your own request
+    # scheduling stats using the "record_scheduling_stats" method in your
+    # deployment.
+    request_routing_stats_period_s: PositiveFloat = (
+        DEFAULT_REQUEST_ROUTING_STATS_PERIOD_S
+    )
+
+    # Duration in seconds, that replicas wait for
+    # a request scheduling stats method to return before considering it as failed.
+    # Defaults to 30s.
+    request_routing_stats_timeout_s: PositiveFloat = (
+        DEFAULT_REQUEST_ROUTING_STATS_TIMEOUT_S
+    )
+
+    @validator("request_router_kwargs", always=True)
+    def request_router_kwargs_json_serializable(cls, v):
+        if isinstance(v, bytes):
+            return v
+        if v is not None:
+            try:
+                json.dumps(v)
+            except TypeError as e:
+                raise ValueError(
+                    f"request_router_kwargs is not JSON-serializable: {str(e)}."
+                )
+
+        return v
+
+    @root_validator
+    def import_and_serialize_request_router_cls(cls, values) -> Dict[str, Any]:
+        """Import and serialize request router class with cloudpickle.
+
+        Import the request router if it's passed in as a string import path.
+        Then cloudpickle the request router and set to
+        `serialized_request_router_cls`.
+        """
+        request_router_class = values.get("request_router_class")
+        if isinstance(request_router_class, Callable):
+            request_router_class = (
+                f"{request_router_class.__module__}.{request_router_class.__name__}"
+            )
+
+        request_router_path = request_router_class or DEFAULT_REQUEST_ROUTER_PATH
+        request_router_class = import_attr(request_router_path)
+
+        values["serialized_request_router_cls"] = cloudpickle.dumps(
+            request_router_class
+        )
+        values["request_router_class"] = request_router_path
+        return values
+
+    def get_request_router_class(self) -> Callable:
+        """Deserialize request router from cloudpickled bytes."""
+        return cloudpickle.loads(self.serialized_request_router_cls)
 
 
 @PublicAPI(stability="stable")
