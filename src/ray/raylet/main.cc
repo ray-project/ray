@@ -160,12 +160,9 @@ int main(int argc, char *argv[]) {
   }
 
   // Backward compatibility notes:
-  // By default, GCS server flushes all logging and stdout/stderr to a single file called
-  // `gcs_server.out`, without log rotations. To keep backward compatibility at best
+  // By default, raylet flushes all logging and stdout to a single file called
+  // `raylet.out`, without log rotations. To keep backward compatibility at best
   // effort, we use the same filename as output, and disable log rotation by default.
-
-  // For compatibility, by default GCS server dumps logging into a single file with no
-  // rotation.
   InitShutdownRAII ray_log_shutdown_raii(ray::RayLog::StartRayLog,
                                          ray::RayLog::ShutDownRayLog,
                                          /*app_name=*/argv[0],
@@ -271,7 +268,7 @@ int main(int argc, char *argv[]) {
   /// usage. ClusterTaskManager is responsible for queuing, spilling back, and
   /// dispatching tasks.
   std::shared_ptr<ray::ClusterResourceScheduler> cluster_resource_scheduler;
-  std::shared_ptr<ray::raylet::LocalTaskManager> local_task_manager;
+  std::shared_ptr<ray::raylet::ILocalTaskManager> local_task_manager;
   std::shared_ptr<ray::raylet::ClusterTaskManagerInterface> cluster_task_manager;
   /// The raylet client to initiate the pubsub to core workers (owners).
   /// It is used to subscribe objects to evict.

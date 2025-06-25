@@ -58,6 +58,12 @@ void OpenTelemetryMetricRecorder::RegisterGrpcExporter(
   // Create an OTLP exporter
   opentelemetry::exporter::otlp::OtlpGrpcMetricExporterOptions exporter_options;
   exporter_options.endpoint = endpoint;
+  // This line ensures that only the delta values for count and sum are exported during
+  // each collection interval. This is necessary because the dashboard agent already
+  // accumulates these metrics—re-accumulating them during export would lead to double
+  // counting.
+  exporter_options.aggregation_temporality =
+      opentelemetry::exporter::otlp::PreferredAggregationTemporality::kDelta;
   auto exporter = std::make_unique<opentelemetry::exporter::otlp::OtlpGrpcMetricExporter>(
       exporter_options);
 
