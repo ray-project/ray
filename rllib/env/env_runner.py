@@ -190,7 +190,7 @@ class EnvRunner(FaultAwareApply, metaclass=abc.ABCMeta):
         seed: Optional[int] = None,
         options: Optional[dict] = None,
     ) -> Tuple[Any, Any]:
-        """Tries resetting the env and - if an error orrurs - handles it gracefully.
+        """Tries resetting the env and - if an error occurs - handles it gracefully.
 
         Args:
             seed: An optional seed (int) to be passed to the Env.reset() call.

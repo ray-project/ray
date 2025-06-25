@@ -4,7 +4,7 @@ This example shows:
     - how to seed an experiment, both on the Learner and on the EnvRunner side.
     - that different experiments run with the exact same seed always yield the exact
     same results (use the `--as-test` option to enforce assertions on the results).
-    Results checked range from EnvRunner stats, such as episde return, to Learner
+    Results checked range from EnvRunner stats, such as episode return, to Learner
     stats, such as losses and gradient averages.
 
 Note that some algorithms, such as APPO which rely on asynchronous sampling in
