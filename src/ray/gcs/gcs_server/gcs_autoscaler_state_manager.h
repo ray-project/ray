@@ -231,6 +231,10 @@ class GcsAutoscalerStateManager : public rpc::autoscaler::AutoscalerStateHandler
               TestGetPerNodeInfeasibleResourceRequests_NoInfeasibleRequests);
   FRIEND_TEST(GcsAutoscalerStateManagerTest,
               TestGetPerNodeInfeasibleResourceRequests_WithInfeasibleRequests);
+  FRIEND_TEST(GcsAutoscalerStateManagerTest,
+              TestGetPendingResourceRequestsWithLabelSelectors);
+  FRIEND_TEST(GcsAutoscalerStateManagerTest,
+              TestGetPendingGangResourceRequestsWithBundleSelectors);
 };
 
 }  // namespace gcs

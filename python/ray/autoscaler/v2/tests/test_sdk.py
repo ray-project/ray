@@ -359,7 +359,7 @@ def test_pg_usage_labels(shutdown_only):
                 ExpectedNodeState(
                     head_node_id,
                     NodeStatus.RUNNING,
-                    labels={f"_PG_{pg_id}": "", "ray.io/node_id": head_node_id},
+                    labels={f"_PG_{pg_id}": ""},
                 ),
             ],
         )

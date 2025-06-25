@@ -488,11 +488,13 @@ TEST_F(GcsAutoscalerStateManagerTest, TestBasicResourceRequests) {
                         {Mocker::GenResourceDemand({{"CPU", 1}},
                                                    /* nun_ready_queued */ 1,
                                                    /* nun_infeasible */ 1,
-                                                   /* num_backlog */ 0),
+                                                   /* num_backlog */ 0,
+                                                   /* label_selectors */ {}),
                          Mocker::GenResourceDemand({{"CPU", 4}, {"GPU", 2}},
                                                    /* num_ready_queued */ 0,
                                                    /* num_infeasible */ 1,
-                                                   /* num_backlog */ 1)});
+                                                   /* num_backlog */ 1,
+                                                   /* label_selectors */ {})});
 
     const auto &state = GetClusterResourceStateSync();
     // Expect each pending resources shape to be num_infeasible + num_backlog.
@@ -880,20 +882,24 @@ TEST_F(GcsAutoscalerStateManagerTest,
                         {Mocker::GenResourceDemand({{"GPU", 1}},
                                                    /* nun_ready_queued */ 1,
                                                    /* nun_infeasible */ 1,
-                                                   /* num_backlog */ 0),
+                                                   /* num_backlog */ 0,
+                                                   /* label_selectors */ {}),
                          Mocker::GenResourceDemand({{"CPU", 1}},
                                                    /* nun_ready_queued */ 1,
                                                    /* nun_infeasible */ 0,
-                                                   /* num_backlog */ 1),
+                                                   /* num_backlog */ 1,
+                                                   /* label_selectors */ {}),
                          Mocker::GenResourceDemand({{"CPU", 3}},
                                                    /* num_ready_queued */ 0,
                                                    /* num_infeasible */ 1,
-                                                   /* num_backlog */ 1)});
+                                                   /* num_backlog */ 1,
+                                                   /* label_selectors */ {})});
     UpdateResourceLoads(node_2->node_id(),
                         {Mocker::GenResourceDemand({{"CPU", 2}},
                                                    /* nun_ready_queued */ 1,
                                                    /* nun_infeasible */ 0,
-                                                   /* num_backlog */ 1)});
+                                                   /* num_backlog */ 1,
+                                                   /* label_selectors */ {})});
   }
 
   // Update autoscaling state
@@ -940,19 +946,23 @@ TEST_F(GcsAutoscalerStateManagerTest,
                                                    /* nun_ready_queued */ 1,
                                                    /* nun_infeasible */ 1,
                                                    /* num_backlog */ 0),
+                         /* label_selectors */ {},
                          Mocker::GenResourceDemand({{"CPU", 1}},
                                                    /* nun_ready_queued */ 1,
                                                    /* nun_infeasible */ 0,
                                                    /* num_backlog */ 1),
+                         /* label_selectors */ {},
                          Mocker::GenResourceDemand({{"CPU", 3}},
                                                    /* num_ready_queued */ 0,
                                                    /* num_infeasible */ 1,
-                                                   /* num_backlog */ 1)});
+                                                   /* num_backlog */ 1,
+                                                   /* label_selectors */ {})});
     UpdateResourceLoads(node_2->node_id(),
                         {Mocker::GenResourceDemand({{"CPU", 2}},
                                                    /* nun_ready_queued */ 1,
                                                    /* nun_infeasible */ 0,
-                                                   /* num_backlog */ 1)});
+                                                   /* num_backlog */ 1,
+                                                   /* label_selectors */ {})});
   }
 
   // Update autoscaling state
@@ -992,6 +1002,99 @@ TEST_F(GcsAutoscalerStateManagerTest,
     RemoveNode(node_1);
     RemoveNode(node_2);
   }
+}
+
+TEST_F(GcsAutoscalerStateManagerTest, TestGetPendingResourceRequestsWithLabelSelectors) {
+  // Simulate resource demand with label selectors.
+  auto node = Mocker::GenNodeInfo();
+  node->mutable_resources_total()->insert({"CPU", 2});
+  node->set_instance_id("instance_1");
+  AddNode(node);
+
+  // Inject demand with label selector.
+  {
+    rpc::LabelSelector selector;
+    (*selector.mutable_label_selector_dict())["foo"] = "bar";
+
+    // Simulate one infeasible request with selector.
+    UpdateResourceLoads(node->node_id(),
+                        {Mocker::GenResourceDemand({{"CPU", 2}},
+                                                   /*ready=*/0,
+                                                   /*infeasible=*/1,
+                                                   /*backlog=*/0,
+                                                   {selector})});
+  }
+
+  // Validate the state includes this pending request.
+  {
+    const auto &state = GetClusterResourceStateSync();
+    ASSERT_EQ(state.pending_resource_requests_size(), 1);
+
+    const auto &req = state.pending_resource_requests(0);
+    ASSERT_EQ(req.count(), 1);
+    CheckResourceRequest(req.request(), {{"CPU", 2}});
+
+    ASSERT_EQ(req.request().label_selectors_size(), 1);
+    const auto &sel = req.request().label_selectors(0);
+    ASSERT_EQ(sel.label_constraints_size(), 1);
+    const auto &constraint = sel.label_constraints(0);
+    ASSERT_EQ(constraint.label_key(), "foo");
+    ASSERT_EQ(constraint.operator_(), rpc::autoscaler::LABEL_OPERATOR_IN);
+    ASSERT_EQ(constraint.label_values_size(), 1);
+    ASSERT_EQ(constraint.label_values(0), "bar");
+  }
+
+  // Clean up.
+  RemoveNode(node);
+}
+
+TEST_F(GcsAutoscalerStateManagerTest,
+       TestGetPendingGangResourceRequestsWithBundleSelectors) {
+  rpc::PlacementGroupLoad load;
+
+  // Create PG with two bundles with different label selectors
+  auto *pg_data = load.add_placement_group_data();
+  pg_data->set_state(rpc::PlacementGroupTableData::PENDING);
+  auto pg_id = PlacementGroupID::Of(JobID::FromInt(1));
+  pg_data->set_placement_group_id(pg_id.Binary());
+
+  auto *bundle1 = pg_data->add_bundles();
+  (*bundle1->mutable_unit_resources())["CPU"] = 2;
+  (*bundle1->mutable_unit_resources())["GPU"] = 1;
+  (*bundle1->mutable_label_selector())["accelerator"] = "A100";
+
+  auto *bundle2 = pg_data->add_bundles();
+  (*bundle2->mutable_unit_resources())["CPU"] = 4;
+  (*bundle2->mutable_label_selector())["accelerator"] = "TPU";
+
+  EXPECT_CALL(*gcs_placement_group_manager_, GetPlacementGroupLoad)
+      .WillOnce(Return(std::make_shared<rpc::PlacementGroupLoad>(std::move(load))));
+
+  rpc::autoscaler::ClusterResourceState state;
+  gcs_autoscaler_state_manager_->GetPendingGangResourceRequests(&state);
+
+  const auto &requests = state.pending_gang_resource_requests();
+  ASSERT_EQ(requests.size(), 1);
+
+  const auto &req = requests.Get(0);
+  ASSERT_EQ(req.bundle_selectors_size(), 2);
+
+  const auto &r1 = req.bundle_selectors(0).resource_requests(0);
+  const auto &r2 = req.bundle_selectors(1).resource_requests(0);
+
+  ASSERT_EQ(r1.label_selectors_size(), 1);
+  ASSERT_EQ(r2.label_selectors_size(), 1);
+
+  const auto &c1 = r1.label_selectors(0).label_constraints(0);
+  const auto &c2 = r2.label_selectors(0).label_constraints(0);
+
+  EXPECT_EQ(c1.label_key(), "accelerator");
+  ASSERT_EQ(c1.label_values_size(), 1);
+  EXPECT_EQ(c1.label_values(0), "A100");
+
+  EXPECT_EQ(c2.label_key(), "accelerator");
+  ASSERT_EQ(c2.label_values_size(), 1);
+  EXPECT_EQ(c2.label_values(0), "TPU");
 }
 
 }  // namespace gcs

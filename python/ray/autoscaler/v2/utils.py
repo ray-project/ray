@@ -273,7 +273,7 @@ class ResourceRequestUtil(ProtobufUtil):
 
         # Map of set of serialized affinity constraint to the list of resource requests
         requests_by_affinity: Dict[
-            Tuple[str, str], List[ResourceRequest]
+            Tuple[str, str, Tuple], List[ResourceRequest]
         ] = defaultdict(list)
         combined_requests: List[ResourceRequest] = []
 
@@ -291,10 +291,14 @@ class ResourceRequestUtil(ProtobufUtil):
             constraint = request.placement_constraints[0]
 
             if constraint.HasField("affinity"):
+                # Combine requests with affinity and label selectors.
                 affinity = constraint.affinity
-                requests_by_affinity[
-                    (affinity.label_name, affinity.label_value)
-                ].append(request)
+                key = (
+                    affinity.label_name,
+                    affinity.label_value,
+                    ResourceRequestUtil._label_selector_key(request.label_selectors),
+                )
+                requests_by_affinity[key].append(request)
             elif constraint.HasField("anti_affinity"):
                 # We don't need to combine requests with anti-affinity constraints.
                 combined_requests.append(request)
@@ -302,6 +306,7 @@ class ResourceRequestUtil(ProtobufUtil):
         for (
             affinity_label_name,
             affinity_label_value,
+            label_selector_key,
         ), requests in requests_by_affinity.items():
             combined_request = ResourceRequest()
 
@@ -320,9 +325,32 @@ class ResourceRequestUtil(ProtobufUtil):
                 PlacementConstraint(affinity=affinity_constraint)
             )
 
+            combined_request.label_selectors.extend(requests[0].label_selectors)
+
             combined_requests.append(combined_request)
 
         return combined_requests
+
+    def _label_selector_key(
+        label_selectors: List[LabelSelector],
+    ) -> Tuple:
+        """
+        Convert label selectors into a hashable form for grouping.
+        This is used for gang requests with identical label_selectors.
+        """
+        result = []
+        for selector in label_selectors:
+            constraints = []
+            for constraint in selector.label_constraints:
+                constraints.append(
+                    (
+                        constraint.label_key,
+                        constraint.operator,
+                        tuple(sorted(constraint.label_values)),
+                    )
+                )
+            result.append(tuple(constraints))
+        return tuple(result)
 
 
 class ClusterStatusFormatter:
