@@ -89,14 +89,7 @@ class ParquetDatasink(_FileDatasink):
             else:
                 output_schema = user_schema
 
-            if not self.partition_cols:
-                self._write_single_file(
-                    self.path, tables, filename, output_schema, write_kwargs
-                )
-            else:  # partition writes
-                self._write_partition_files(
-                    tables, filename, output_schema, write_kwargs
-                )
+            self._write_parquet_files(tables, filename, output_schema, write_kwargs)
 
         logger.debug(f"Writing {filename} file to {self.path}.")
 
@@ -108,33 +101,7 @@ class ParquetDatasink(_FileDatasink):
             max_backoff_s=WRITE_FILE_RETRY_MAX_BACKOFF_SECONDS,
         )
 
-    def _write_single_file(
-        self,
-        path: str,
-        tables: List["pyarrow.Table"],
-        filename: str,
-        output_schema: "pyarrow.Schema",
-        write_kwargs: Dict[str, Any],
-    ) -> None:
-        import pyarrow.parquet as pq
-
-        # We extract 'row_group_size' for write_table() and
-        # keep the rest for ParquetWriter()
-        row_group_size = write_kwargs.pop("row_group_size", None)
-
-        table = concat(tables, promote_types=False)
-        pq.write_to_dataset(
-            table,
-            root_path=path,
-            max_rows_per_group=row_group_size,
-            filesystem=self.filesystem,
-            basename_template=filename + "-{i}.parquet",
-            schema=output_schema,
-            use_legacy_dataset=False,
-            **write_kwargs,
-        )
-
-    def _write_partition_files(
+    def _write_parquet_files(
         self,
         tables: List["pyarrow.Table"],
         filename: str,
@@ -144,15 +111,28 @@ class ParquetDatasink(_FileDatasink):
         import pyarrow.parquet as pq
 
         table = concat(tables, promote_types=False)
-        pq.write_to_dataset(
-            table,
-            root_path=self.path,
-            partition_cols=self.partition_cols,
-            schema=output_schema,
-            basename_template=filename + "-{i}.parquet",
-            use_legacy_dataset=False,
+        table = table.combine_chunks()
+
+        if output_schema and not table.schema.equals(output_schema):
+            table = table.cast(output_schema, safe=False)
+
+        # Prepare common arguments for pq.write_to_dataset
+        dataset_kwargs = {
+            "table": table,
+            "root_path": self.path,
+            "basename_template": filename + "-{i}.parquet",
+            "schema": output_schema,
+            "use_legacy_dataset": False,
             **write_kwargs,
-        )
+        }
+
+        # Add partition-specific or filesystem-specific arguments
+        if self.partition_cols:
+            dataset_kwargs["partition_cols"] = self.partition_cols
+        else:
+            dataset_kwargs["filesystem"] = self.filesystem
+
+        pq.write_to_dataset(**dataset_kwargs)
 
     @property
     def min_rows_per_write(self) -> Optional[int]:
