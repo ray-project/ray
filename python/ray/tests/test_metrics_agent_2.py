@@ -1,9 +1,11 @@
+import random
 import sys
 import time
 from unittest.mock import patch
 
 import pytest
 
+from ray._common.test_utils import wait_for_condition
 import ray._private.prometheus_exporter as prometheus_exporter
 
 from typing import List
@@ -29,7 +31,6 @@ from ray._private.metrics_agent import (
     OpencensusProxyMetric,
     WORKER_ID_TAG_KEY,
 )
-from ray._private.services import new_port
 from ray.core.generated.metrics_pb2 import (
     Metric,
     MetricDescriptor,
@@ -42,7 +43,6 @@ from ray._raylet import WorkerID
 from ray._private.test_utils import (
     fetch_prometheus_metrics,
     fetch_raw_prometheus,
-    wait_for_condition,
 )
 
 
@@ -106,7 +106,7 @@ def get_agent(request, monkeypatch):
             delay = 0
 
         m.setenv(RAY_WORKER_TIMEOUT_S, delay)
-        agent_port = new_port()
+        agent_port = random.randint(10000, 65535)
         stats_recorder = StatsRecorder()
         view_manager = ViewManager()
         stats_exporter = prometheus_exporter.new_stats_exporter(

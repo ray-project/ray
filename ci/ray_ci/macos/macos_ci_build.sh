@@ -59,11 +59,11 @@ build() {
   if [ "$BUILDKITE_PULL_REQUEST" != "false" ]; then exit 0; fi
   python -m pip install -q docker aws_requests_auth boto3
   # Upload to branch directory.
-  python .buildkite/copy_files.py --destination branch_wheels --path ./.whl
-  python .buildkite/copy_files.py --destination branch_jars --path ./.jar/darwin
+  bazel run .buildkite:copy_files -- --destination branch_wheels --path "${PWD}/.whl"
+  bazel run .buildkite:copy_files -- --destination branch_jars --path "${PWD}/.jar/darwin"
   # Upload to latest directory.
-  if [ "$BUILDKITE_BRANCH" = "master" ]; then python .buildkite/copy_files.py --destination wheels --path ./.whl; fi
-  if [ "$BUILDKITE_BRANCH" = "master" ]; then python .buildkite/copy_files.py --destination jars --path ./.jar/darwin; fi
+  if [[ "$BUILDKITE_BRANCH" = "master" ]]; then bazel run .buildkite:copy_files -- --destination wheels --path "${PWD}/.whl" ; fi
+  if [[ "$BUILDKITE_BRANCH" = "master" ]]; then bazel run .buildkite:copy_files -- --destination jars --path "${PWD}/.jar/darwin" ; fi
 }
 
 build "$@"

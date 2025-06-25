@@ -27,9 +27,6 @@ from ray.util import log_once
 from ray.util.annotations import DeveloperAPI, PublicAPI
 
 PYARROW_VERSION = get_pyarrow_version()
-# Minimum version of Arrow that supports ExtensionScalars.
-# TODO(Clark): Remove conditional definition once we only support Arrow 8.0.0+.
-MIN_PYARROW_VERSION_SCALAR = parse_version("8.0.0")
 # Minimum version of Arrow that supports subclassable ExtensionScalars.
 # TODO(Clark): Remove conditional definition once we only support Arrow 9.0.0+.
 MIN_PYARROW_VERSION_SCALAR_SUBCLASS = parse_version("9.0.0")
@@ -57,17 +54,6 @@ class ArrowConversionError(Exception):
             data_str = data_str[: self.MAX_DATA_STR_LEN] + "..."
         message = f"Error converting data to Arrow: {data_str}"
         super().__init__(message)
-
-
-def _arrow_supports_extension_scalars():
-    """
-    Whether Arrow ExtensionScalars are supported in the current pyarrow version.
-
-    This returns True if the pyarrow version is 8.0.0+, or if the pyarrow version is
-    unknown.
-    """
-    # TODO(Clark): Remove utility once we only support Arrow 8.0.0+.
-    return PYARROW_VERSION is None or PYARROW_VERSION >= MIN_PYARROW_VERSION_SCALAR
 
 
 def _arrow_extension_scalars_are_subclassable():
@@ -489,20 +475,16 @@ class _BaseFixedShapeArrowTensorType(pa.ExtensionType, abc.ABC):
             """
             return ArrowTensorScalar
 
-    if _arrow_supports_extension_scalars():
-        # TODO(Clark): Remove this version guard once we only support Arrow 8.0.0+.
-        def _extension_scalar_to_ndarray(
-            self, scalar: pa.ExtensionScalar
-        ) -> np.ndarray:
-            """
-            Convert an ExtensionScalar to a tensor element.
-            """
-            raw_values = scalar.value.values
-            shape = scalar.type.shape
-            value_type = raw_values.type
-            offset = raw_values.offset
-            data_buffer = raw_values.buffers()[1]
-            return _to_ndarray_helper(shape, value_type, offset, data_buffer)
+    def _extension_scalar_to_ndarray(self, scalar: "pa.ExtensionScalar") -> np.ndarray:
+        """
+        Convert an ExtensionScalar to a tensor element.
+        """
+        raw_values = scalar.value.values
+        shape = scalar.type.shape
+        value_type = raw_values.type
+        offset = raw_values.offset
+        data_buffer = raw_values.buffers()[1]
+        return _to_ndarray_helper(shape, value_type, offset, data_buffer)
 
     def __str__(self) -> str:
         return (
@@ -657,42 +639,20 @@ class _ArrowTensorScalarIndexingMixin:
             # support (see comment in __getitem__).
             return list(self)
 
-        if _arrow_supports_extension_scalars():
-            # NOTE(Clark): This __getitem__ override is only needed for Arrow 8.*,
-            # before ExtensionScalar subclassing support was added.
-            # TODO(Clark): Remove these methods once we only support Arrow 9.0.0+.
-            def __getitem__(self, key):
-                # This __getitem__ hook allows us to support proper indexing when
-                # accessing a single tensor (a "scalar" item of the array). Without this
-                # hook for integer keys, the indexing will fail on pyarrow < 9.0.0 due
-                # to a lack of ExtensionScalar subclassing support.
+        def __getitem__(self, key):
+            # This __getitem__ hook allows us to support proper indexing when
+            # accessing a single tensor (a "scalar" item of the array). Without this
+            # hook for integer keys, the indexing will fail on pyarrow < 9.0.0 due
+            # to a lack of ExtensionScalar subclassing support.
 
-                # NOTE(Clark): We'd like to override the pa.Array.getitem() helper
-                # instead, which would obviate the need for overriding __iter__(), but
-                # unfortunately overriding Cython cdef methods with normal Python
-                # methods isn't allowed.
-                item = super().__getitem__(key)
-                if not isinstance(key, slice):
-                    item = item.type._extension_scalar_to_ndarray(item)
-                return item
-
-        else:
-            # NOTE(Clark): This __getitem__ override is only needed for Arrow < 8.0.0,
-            # before any ExtensionScalar support was added.
-            # TODO(Clark): Remove these methods once we only support Arrow 8.0.0+.
-            def __getitem__(self, key):
-                # This __getitem__ hook allows us to support proper indexing when
-                # accessing a single tensor (a "scalar" item of the array). Without this
-                # hook for integer keys, the indexing will fail on pyarrow < 8.0.0 due
-                # to a lack of ExtensionScalar support.
-
-                # NOTE(Clark): We'd like to override the pa.Array.getitem() helper
-                # instead, which would obviate the need for overriding __iter__(), but
-                # unfortunately overriding Cython cdef methods with normal Python
-                # methods isn't allowed.
-                if isinstance(key, slice):
-                    return super().__getitem__(key)
-                return self._to_numpy(key)
+            # NOTE(Clark): We'd like to override the pa.Array.getitem() helper
+            # instead, which would obviate the need for overriding __iter__(), but
+            # unfortunately overriding Cython cdef methods with normal Python
+            # methods isn't allowed.
+            item = super().__getitem__(key)
+            if not isinstance(key, slice):
+                item = item.type._extension_scalar_to_ndarray(item)
+            return item
 
 
 # NOTE: We need to inherit from the mixin before pa.ExtensionArray to ensure that the
@@ -1109,22 +1069,18 @@ class ArrowVariableShapedTensorType(pa.ExtensionType):
     def __repr__(self) -> str:
         return str(self)
 
-    if _arrow_supports_extension_scalars():
-        # TODO(Clark): Remove this version guard once we only support Arrow 8.0.0+.
-        def _extension_scalar_to_ndarray(
-            self, scalar: pa.ExtensionScalar
-        ) -> np.ndarray:
-            """
-            Convert an ExtensionScalar to a tensor element.
-            """
-            data = scalar.value.get("data")
-            raw_values = data.values
+    def _extension_scalar_to_ndarray(self, scalar: "pa.ExtensionScalar") -> np.ndarray:
+        """
+        Convert an ExtensionScalar to a tensor element.
+        """
+        data = scalar.value.get("data")
+        raw_values = data.values
 
-            shape = tuple(scalar.value.get("shape").as_py())
-            value_type = raw_values.type
-            offset = raw_values.offset
-            data_buffer = raw_values.buffers()[1]
-            return _to_ndarray_helper(shape, value_type, offset, data_buffer)
+        shape = tuple(scalar.value.get("shape").as_py())
+        value_type = raw_values.type
+        offset = raw_values.offset
+        data_buffer = raw_values.buffers()[1]
+        return _to_ndarray_helper(shape, value_type, offset, data_buffer)
 
 
 # NOTE: We need to inherit from the mixin before pa.ExtensionArray to ensure that the

@@ -18,7 +18,6 @@
 #include <string>
 #include <unordered_set>
 #include <utility>
-#include <vector>
 
 #include "absl/container/flat_hash_map.h"
 #include "ray/common/asio/instrumented_io_context.h"
@@ -47,10 +46,6 @@ class OwnershipBasedObjectDirectory : public IObjectDirectory {
       pubsub::SubscriberInterface *object_location_subscriber,
       rpc::CoreWorkerClientPool *owner_client_pool,
       std::function<void(const ObjectID &, const rpc::ErrorType &)> mark_as_failed);
-
-  void LookupRemoteConnectionInfo(RemoteConnectionInfo &connection_info) const override;
-
-  std::vector<RemoteConnectionInfo> LookupAllRemoteConnections() const override;
 
   void HandleNodeRemoved(const NodeID &node_id) override;
 

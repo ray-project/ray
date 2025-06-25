@@ -8,6 +8,7 @@ from typing import Callable, Dict, List, Optional, TypeVar, Union
 
 import ray
 import ray._private.ray_constants as ray_constants
+from .thread_runner import ThreadRunner
 from ray.actor import ActorHandle
 from ray.data.iterator import DataIterator
 from ray.train import Checkpoint
@@ -34,8 +35,6 @@ from ray.train.v2._internal.logging.logging import configure_worker_logger
 from ray.train.v2._internal.logging.patch_print import patch_print_function
 from ray.train.v2._internal.util import ObjectRefWrapper
 from ray.types import ObjectRef
-
-from .thread_runner import ThreadRunner
 
 T = TypeVar("T")
 
@@ -197,7 +196,7 @@ class RayTrainWorker:
             c for c in worker_callbacks if isinstance(c, TrainContextCallback)
         ]
         context = TrainContext(
-            run_config=train_run_context.run_config,
+            train_run_context=train_run_context,
             distributed_context=distributed_context,
             execution_context=ExecutionContext(
                 synchronization_actor=synchronization_actor,

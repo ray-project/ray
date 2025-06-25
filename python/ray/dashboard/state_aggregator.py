@@ -4,8 +4,8 @@ from concurrent.futures import ThreadPoolExecutor
 from itertools import islice
 from typing import List, Optional
 
-from ray import NodeID
 import ray.dashboard.memory_utils as memory_utils
+from ray import NodeID
 from ray._common.utils import get_or_create_event_loop
 from ray._private.profiling import chrome_tracing_dump
 from ray._private.ray_constants import env_integer

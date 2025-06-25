@@ -5,10 +5,9 @@ import time
 import pytest
 
 import ray
+from ray._common.test_utils import SignalActor, wait_for_condition
 from ray._private.test_utils import (
-    SignalActor,
     generate_system_config_map,
-    wait_for_condition,
 )
 from ray.autoscaler._private.monitor import Monitor
 from ray.autoscaler.sdk import request_resources

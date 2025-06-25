@@ -1,27 +1,31 @@
 import asyncio
 import os
-from typing import AsyncGenerator
+from typing import AsyncGenerator, Optional
 
+import httpx
 import pytest
-import requests
 from fastapi import FastAPI
 from starlette.requests import Request
 from starlette.responses import StreamingResponse
 
 import ray
 from ray import serve
-from ray._private.test_utils import SignalActor
+from ray._common.test_utils import SignalActor
+from ray.serve._private.test_utils import get_application_url, get_application_urls
 from ray.serve.handle import DeploymentHandle
 
 
 @ray.remote
 class StreamingRequester:
-    async def make_request(self) -> AsyncGenerator[str, None]:
-        r = requests.get("http://localhost:8000", stream=True)
-        r.raise_for_status()
-        for chunk in r.iter_content(chunk_size=None, decode_unicode=True):
-            yield chunk
-            await asyncio.sleep(0.001)
+    async def make_request(
+        self, url: Optional[str] = None
+    ) -> AsyncGenerator[str, None]:
+        url = url or get_application_url("HTTP")
+        with httpx.stream("GET", url) as r:
+            r.raise_for_status()
+            for chunk in r.iter_text():
+                yield chunk
+                await asyncio.sleep(0.001)
 
 
 @pytest.mark.parametrize("use_fastapi", [False, True])
@@ -56,10 +60,11 @@ def test_basic(serve_instance, use_async: bool, use_fastapi: bool):
 
     serve.run(SimpleGenerator.bind())
 
-    r = requests.get("http://localhost:8000", stream=True)
-    r.raise_for_status()
-    for i, chunk in enumerate(r.iter_content(chunk_size=None, decode_unicode=True)):
-        assert chunk == f"hi_{i}"
+    url = get_application_url("HTTP")
+    with httpx.stream("GET", url) as r:
+        r.raise_for_status()
+        for i, chunk in enumerate(r.iter_text()):
+            assert chunk == f"hi_{i}"
 
 
 @pytest.mark.parametrize("use_fastapi", [False, True])
@@ -111,9 +116,15 @@ def test_responses_actually_streamed(
         ).bind()
     )
 
+    urls = get_application_urls("HTTP")
+
     requester = StreamingRequester.remote()
-    gen1 = requester.make_request.options(num_returns="streaming").remote()
-    gen2 = requester.make_request.options(num_returns="streaming").remote()
+    if len(urls) == 2:
+        gen1 = requester.make_request.options(num_returns="streaming").remote(urls[0])
+        gen2 = requester.make_request.options(num_returns="streaming").remote(urls[1])
+    else:
+        gen1 = requester.make_request.options(num_returns="streaming").remote()
+        gen2 = requester.make_request.options(num_returns="streaming").remote()
 
     # Check that we get the first responses before the signal is sent
     # (so the generator is still hanging after the first yield).
@@ -186,12 +197,13 @@ def test_metadata_preserved(serve_instance, use_fastapi: bool):
 
     serve.run(SimpleGenerator.bind())
 
-    r = requests.get("http://localhost:8000", stream=True)
-    assert r.status_code == 301
-    assert r.headers["hello"] == "world"
-    assert r.headers["content-type"] == "foo/bar"
-    for i, chunk in enumerate(r.iter_content(chunk_size=None)):
-        assert chunk == f"hi_{i}".encode("utf-8")
+    url = get_application_url("HTTP")
+    with httpx.stream("GET", url) as r:
+        assert r.status_code == 301
+        assert r.headers["hello"] == "world"
+        assert r.headers["content-type"] == "foo/bar"
+        for i, chunk in enumerate(r.iter_bytes()):
+            assert chunk == f"hi_{i}".encode("utf-8")
 
 
 @pytest.mark.parametrize("use_fastapi", [False, True])
@@ -226,12 +238,13 @@ def test_exception_in_generator(serve_instance, use_async: bool, use_fastapi: bo
 
     serve.run(SimpleGenerator.bind())
 
-    r = requests.get("http://localhost:8000", stream=True)
-    r.raise_for_status()
-    stream_iter = r.iter_content(chunk_size=None, decode_unicode=True)
-    assert next(stream_iter) == "first result"
-    with pytest.raises(requests.exceptions.ChunkedEncodingError):
-        next(stream_iter)
+    url = get_application_url("HTTP")
+    with httpx.stream("GET", url) as r:
+        r.raise_for_status()
+        stream_iter = r.iter_text()
+        assert next(stream_iter) == "first result"
+        with pytest.raises(httpx.HTTPError):
+            next(stream_iter)
 
 
 @pytest.mark.parametrize("use_fastapi", [False, True])
@@ -284,10 +297,11 @@ def test_proxy_from_streaming_handle(
 
     serve.run(SimpleGenerator.bind(Streamer.bind()))
 
-    r = requests.get("http://localhost:8000", stream=True)
-    r.raise_for_status()
-    for i, chunk in enumerate(r.iter_content(chunk_size=None, decode_unicode=True)):
-        assert chunk == f"hi_{i}"
+    url = get_application_url("HTTP")
+    with httpx.stream("GET", url) as r:
+        r.raise_for_status()
+        for i, chunk in enumerate(r.iter_text()):
+            assert chunk == f"hi_{i}"
 
 
 def test_http_disconnect(serve_instance):
@@ -309,9 +323,10 @@ def test_http_disconnect(serve_instance):
 
     serve.run(SimpleGenerator.bind())
 
-    with requests.get("http://localhost:8000", stream=True):
+    url = get_application_url("HTTP")
+    with httpx.stream("GET", url):
         with pytest.raises(TimeoutError):
-            ray.get(signal_actor.wait.remote(), timeout=1)
+            _ = ray.get(signal_actor.wait.remote(), timeout=1)
 
     ray.get(signal_actor.wait.remote(), timeout=5)
 

@@ -11,6 +11,7 @@ import grpc
 import pytest
 
 import ray
+from ray._common.test_utils import wait_for_condition
 import ray._private.services
 import ray._private.utils as utils
 from ray.client_builder import ClientContext
@@ -18,7 +19,7 @@ from ray.cluster_utils import Cluster
 from ray.util.client.common import ClientObjectRef
 from ray.util.client.ray_client_helpers import ray_start_client_server
 from ray.util.client.worker import Worker
-from ray._private.test_utils import wait_for_condition, external_redis_test_enabled
+from ray._private.test_utils import external_redis_test_enabled
 from ray._private import ray_constants
 from ray.runtime_env.runtime_env import RuntimeEnv
 
@@ -134,7 +135,7 @@ def test_ray_init_existing_instance_crashed(address):
         with pytest.raises(ConnectionError):
             ray.init(address=address)
     finally:
-        ray._private.utils.reset_ray_address()
+        ray._common.utils.reset_ray_address()
 
 
 class Credentials(grpc.ChannelCredentials):
@@ -360,8 +361,10 @@ def runtime_env_working_dir():
 
 @pytest.fixture
 def py_module_whl():
-    with tempfile.NamedTemporaryFile(suffix=".whl") as tmp_file:
-        yield tmp_file.name
+    f = tempfile.NamedTemporaryFile(suffix=".whl", delete=False)
+    f.close()
+    yield f.name
+    os.unlink(f.name)
 
 
 def test_ray_init_with_runtime_env_as_dict(

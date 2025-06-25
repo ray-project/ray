@@ -3,8 +3,8 @@ import subprocess
 import sys
 import time
 
+import httpx
 import pytest
-import requests
 
 import ray
 from ray import serve
@@ -88,7 +88,7 @@ serve.run(f.bind(), name="test1", route_prefix="/hello")
     run_string_as_driver(deploy)
 
     assert "test1" in serve.status().applications
-    assert requests.get("http://localhost:8000/hello").text == "hello"
+    assert httpx.get("http://localhost:8000/hello").text == "hello"
 
     delete = """
 import ray
@@ -128,7 +128,7 @@ serve.run(A.bind(), route_prefix="/A")
     )
     run_string_as_driver(fastapi)
 
-    assert requests.get("http://localhost:8000/A").json() == "hello"
+    assert httpx.get("http://localhost:8000/A", follow_redirects=True).json() == "hello"
 
     serve.shutdown()
     ray.util.disconnect()
@@ -143,7 +143,7 @@ def test_quickstart_class(serve_with_client):
     serve.run(hello.bind())
 
     # Query our endpoint over HTTP.
-    response = requests.get("http://127.0.0.1:8000/hello?name=serve").text
+    response = httpx.get("http://127.0.0.1:8000/hello?name=serve").text
     assert response == "Hello serve!"
 
 
@@ -162,7 +162,7 @@ def test_quickstart_counter(serve_with_client):
     print("deploy finished")
 
     # Query our endpoint in two different ways: from HTTP and from Python.
-    assert requests.get("http://127.0.0.1:8000/Counter").json() == {"count": 1}
+    assert httpx.get("http://127.0.0.1:8000/Counter").json() == {"count": 1}
     print("query 1 finished")
     assert handle.remote().result() == {"count": 2}
     print("query 2 finished")

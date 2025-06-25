@@ -146,7 +146,7 @@ class SQLDatasource(Datasource):
                 "Sharding is not supported. "
                 "Falling back to reading all data in a single task."
             )
-            metadata = BlockMetadata(None, None, None, None, None)
+            metadata = BlockMetadata(None, None, None, None)
             return [ReadTask(fallback_read_fn, metadata)]
 
         tasks = []
@@ -158,7 +158,6 @@ class SQLDatasource(Datasource):
             metadata = BlockMetadata(
                 num_rows=num_rows,
                 size_bytes=None,
-                schema=None,
                 input_files=None,
                 exec_stats=None,
             )

@@ -4,13 +4,12 @@ import time
 from typing import TYPE_CHECKING, Dict, Optional, Tuple
 
 import ray
+from .autoscaler import Autoscaler
+from .autoscaling_actor_pool import AutoscalingActorPool
 from ray.data._internal.execution.autoscaling_requester import (
     get_or_create_autoscaling_requester_actor,
 )
 from ray.data._internal.execution.interfaces.execution_options import ExecutionResources
-
-from .autoscaler import Autoscaler
-from .autoscaling_actor_pool import AutoscalingActorPool
 
 if TYPE_CHECKING:
     from ray.data._internal.execution.interfaces import PhysicalOperator

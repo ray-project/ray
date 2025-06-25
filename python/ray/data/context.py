@@ -93,6 +93,8 @@ DEFAULT_LARGE_ARGS_THRESHOLD = 50 * 1024 * 1024
 
 DEFAULT_USE_POLARS = False
 
+DEFAULT_USE_POLARS_SORT = False
+
 DEFAULT_EAGER_FREE = bool(int(os.environ.get("RAY_DATA_EAGER_FREE", "0")))
 
 DEFAULT_DECODING_SIZE_ESTIMATION_ENABLED = True
@@ -198,6 +200,14 @@ DEFAULT_WAIT_FOR_MIN_ACTORS_S = env_integer(
 # Enable per node metrics reporting for Ray Data, disabled by default.
 DEFAULT_ENABLE_PER_NODE_METRICS = bool(
     int(os.environ.get("RAY_DATA_PER_NODE_METRICS", "0"))
+)
+
+DEFAULT_MIN_HASH_SHUFFLE_AGGREGATOR_WAIT_TIME_IN_S = env_integer(
+    "RAY_DATA_MIN_HASH_SHUFFLE_AGGREGATOR_WAIT_TIME_IN_S", 300
+)
+
+DEFAULT_HASH_SHUFFLE_AGGREGATOR_HEALTH_WARNING_INTERVAL_S = env_integer(
+    "RAY_DATA_HASH_SHUFFLE_AGGREGATOR_HEALTH_WARNING_INTERVAL_S", 30
 )
 
 
@@ -367,6 +377,15 @@ class DataContext:
     #
     # When unset defaults to `DataContext.min_parallelism`
     max_hash_shuffle_aggregators: Optional[int] = DEFAULT_MAX_HASH_SHUFFLE_AGGREGATORS
+
+    min_hash_shuffle_aggregator_wait_time_in_s: int = (
+        DEFAULT_MIN_HASH_SHUFFLE_AGGREGATOR_WAIT_TIME_IN_S
+    )
+
+    hash_shuffle_aggregator_health_warning_interval_s: int = (
+        DEFAULT_HASH_SHUFFLE_AGGREGATOR_HEALTH_WARNING_INTERVAL_S
+    )
+
     # Max number of *concurrent* hash-shuffle finalization tasks running
     # at the same time. This config is helpful to control concurrency of
     # finalization tasks to prevent single aggregator running multiple tasks
@@ -385,6 +404,7 @@ class DataContext:
     )
     large_args_threshold: int = DEFAULT_LARGE_ARGS_THRESHOLD
     use_polars: bool = DEFAULT_USE_POLARS
+    use_polars_sort: bool = DEFAULT_USE_POLARS_SORT
     eager_free: bool = DEFAULT_EAGER_FREE
     decoding_size_estimation: bool = DEFAULT_DECODING_SIZE_ESTIMATION_ENABLED
     min_parallelism: int = DEFAULT_MIN_PARALLELISM
@@ -438,6 +458,12 @@ class DataContext:
     override_object_store_memory_limit_fraction: float = None
     memory_usage_poll_interval_s: Optional[float] = 1
     dataset_logger_id: Optional[str] = None
+    # This is a temporary workaround to allow actors to perform cleanup
+    # until https://github.com/ray-project/ray/issues/53169 is fixed.
+    # This hook is known to have a race condition bug in fault tolerance.
+    # I.E., after the hook is triggered and the UDF is deleted, another
+    # retry task may still be scheduled to this actor and it will fail.
+    _enable_actor_pool_on_exit_hook: bool = False
 
     def __post_init__(self):
         # The additonal ray remote args that should be added to
@@ -492,6 +518,14 @@ class DataContext:
                 "`shuffle_strategy` instead.",
                 DeprecationWarning,
             )
+
+        elif name == "use_polars":
+            warnings.warn(
+                "`use_polars` is deprecated, please configure "
+                "`use_polars_sort`  instead.",
+                DeprecationWarning,
+            )
+            self.use_polars_sort = value
 
         super().__setattr__(name, value)
 

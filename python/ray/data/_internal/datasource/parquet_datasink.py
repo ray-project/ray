@@ -4,6 +4,7 @@ from typing import TYPE_CHECKING, Any, Callable, Dict, Iterable, List, Optional
 
 from ray.data._internal.arrow_ops.transform_pyarrow import concat
 from ray.data._internal.execution.interfaces import TaskContext
+from ray.data._internal.planner.plan_write_op import WRITE_UUID_KWARG_NAME
 from ray.data._internal.savemode import SaveMode
 from ray.data._internal.util import call_with_retry
 from ray.data.block import Block, BlockAccessor
@@ -75,7 +76,7 @@ class ParquetDatasink(_FileDatasink):
         ]
 
         filename = self.filename_provider.get_filename_for_block(
-            blocks[0], ctx.task_idx, 0
+            blocks[0], ctx.kwargs[WRITE_UUID_KWARG_NAME], ctx.task_idx, 0
         )
         write_kwargs = _resolve_kwargs(
             self.arrow_parquet_args_fn, **self.arrow_parquet_args

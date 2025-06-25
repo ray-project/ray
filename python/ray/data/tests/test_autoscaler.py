@@ -1,8 +1,10 @@
+import time
 from contextlib import contextmanager
 from unittest.mock import MagicMock
 
 import pytest
 
+import ray
 from ray.data import ExecutionResources
 from ray.data._internal.execution.autoscaler.default_autoscaler import (
     DefaultAutoscaler,
@@ -193,6 +195,76 @@ def test_cluster_scaling():
     autoscaler._send_resource_request.assert_called_once_with(
         [{"CPU": 1}, {"CPU": 2}, {"CPU": 2}]
     )
+
+
+class BarrierWaiter:
+    def __init__(self, barrier):
+        self._barrier = barrier
+
+    def __call__(self, x):
+        ray.get(self._barrier.wait.remote(), timeout=10)
+        return x
+
+
+@ray.remote(max_concurrency=10)
+class Barrier:
+    def __init__(self, n, delay=0):
+        self.n = n
+        self.delay = delay
+        self.max_waiters = 0
+        self.cur_waiters = 0
+
+    def wait(self):
+        self.cur_waiters += 1
+        if self.cur_waiters > self.max_waiters:
+            self.max_waiters = self.cur_waiters
+        self.n -= 1
+        print("wait", self.n)
+        while self.n > 0:
+            time.sleep(0.1)
+        time.sleep(self.delay)
+        print("wait done")
+        self.cur_waiters -= 1
+
+    def get_max_waiters(self):
+        return self.max_waiters
+
+
+def test_actor_pool_scales_up(ray_start_10_cpus_shared, restore_data_context):
+    # The Ray cluster started by the fixture might not have much object store memory.
+    # To prevent the actor pool from getting backpressured, we decrease the max block
+    # size.
+    ctx = ray.data.DataContext.get_current()
+    ctx.target_max_block_size = 1 * 1024**2
+
+    # The `BarrierWaiter` UDF blocks until there are 2 actors running. If we don't
+    # scale up, the UDF raises a timeout.
+    barrier = Barrier.remote(2)
+    ray.data.range(2, override_num_blocks=2).map(
+        BarrierWaiter,
+        fn_constructor_args=(barrier,),
+        compute=ray.data.ActorPoolStrategy(
+            min_size=1, max_size=2, max_tasks_in_flight_per_actor=1
+        ),
+    ).take_all()
+
+
+def test_actor_pool_respects_max_size(ray_start_10_cpus_shared, restore_data_context):
+    # The Ray cluster started by the fixture might not have much object store memory.
+    # To prevent the actor pool from getting backpressured, we decrease the max block
+    # size.
+    ctx = ray.data.DataContext.get_current()
+    ctx.target_max_block_size = 1 * 1024**2
+
+    # The `BarrierWaiter` UDF blocks until there are 3 actors running. Since the max
+    # pool size is 2, the UDF should eventually timeout.
+    barrier = Barrier.remote(3)
+    with pytest.raises(ray.exceptions.RayTaskError):
+        ray.data.range(2, override_num_blocks=2).map(
+            BarrierWaiter,
+            fn_constructor_args=(barrier,),
+            compute=ray.data.ActorPoolStrategy(min_size=1, max_size=2),
+        ).take_all()
 
 
 if __name__ == "__main__":
