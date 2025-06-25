@@ -4,6 +4,7 @@ import logging
 import subprocess
 import sys
 import time
+from typing import List
 
 import numpy as np
 import pytest
@@ -12,7 +13,10 @@ import ray
 import ray.cluster_utils
 import ray.util.accelerators
 from ray._private.internal_api import memory_summary
-from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
+from ray.util.scheduling_strategies import (
+    PlacementGroupSchedulingStrategy,
+    NodeAffinitySchedulingStrategy,
+)
 from ray._common.test_utils import SignalActor, Semaphore, wait_for_condition
 from ray._private.test_utils import (
     object_memory_usage,
@@ -385,47 +389,52 @@ def test_locality_aware_leasing_cached_objects(ray_start_cluster):
 
 
 def test_locality_aware_leasing_borrowed_objects(ray_start_cluster):
+    """Test that a task runs where its dependencies are located for borrowed objects."""
     # This test ensures that a task will run where its task dependencies are
     # located, even when those objects are borrowed.
     cluster = ray_start_cluster
-
-    # Disable worker caching so worker leases are not reused, and disable
-    # inlining of return objects so return objects are always put into Plasma.
-    cluster.add_node(
-        num_cpus=1,
-        resources={"pin_head": 1},
+    head_node = cluster.add_node(
         _system_config={
+            # Disable worker caching so worker leases are not reused.
             "worker_lease_timeout_milliseconds": 0,
+            # Force all return objects to be put into the object store.
             "max_direct_call_object_size": 0,
         },
     )
-    # Use a custom resource for pinning tasks to a node.
-    worker_node = cluster.add_node(num_cpus=1, resources={"pin_worker": 1})
+    worker_node = cluster.add_node()
     ray.init(address=cluster.address)
 
-    @ray.remote
-    def f():
-        return ray._private.worker.global_worker.node.unique_id
+    @ray.remote(num_cpus=0)
+    def get_node_id(*args) -> str:
+        return ray.get_runtime_context().get_node_id()
 
-    @ray.remote
-    def g(x):
-        return ray.get(h.remote(x[0]))
+    @ray.remote(num_cpus=0)
+    def borrower(o: List[ray.ObjectRef]) -> str:
+        obj_ref = o[0]
+        return ray.get(get_node_id.remote(obj_ref))
 
-    @ray.remote
-    def h(x):
-        return ray._private.worker.global_worker.node.unique_id
+    # The result of worker_node_ref will be pinned on the worker node.
+    worker_node_ref = get_node_id.options(
+        scheduling_strategy=NodeAffinitySchedulingStrategy(
+            worker_node.node_id, soft=False
+        ),
+    ).remote()
 
-    # f will run on worker, f_obj will be pinned on worker.
-    f_obj = f.options(resources={"pin_worker": 1}).remote()
-    # Make sure owner has the location information for f_obj,
-    # before we launch g so g worker can get the locality information
-    # from the owner.
-    ray.wait([f_obj], fetch_local=False)
-    # g will run on head, f_obj will be borrowed by head, and we confirm that
-    # h(f_obj) is scheduled onto worker, the node that has f_obj.
+    # Ensure the owner has object info prior to scheduling the task so the object info
+    # will be inlined to the borrower.
+    ray.wait([worker_node_ref], fetch_local=False)
+
+    # Run a borrower task on the head node. From within the borrower task, we launch
+    # another task. That inner task should run on the worker node based on locality.
     assert (
-        ray.get(g.options(resources={"pin_head": 1}).remote([f_obj]))
-        == worker_node.unique_id
+        ray.get(
+            borrower.options(
+                scheduling_strategy=NodeAffinitySchedulingStrategy(
+                    head_node.node_id, soft=False
+                ),
+            ).remote([worker_node_ref])
+        )
+        == worker_node.node_id
     )
 
 
