@@ -610,7 +610,7 @@ TEST_F(GcsJobManagerTest, TestPreserveDriverInfo) {
 
 TEST_F(GcsJobManagerTest, TestMarkJobFinishedIdempotency) {
   // Test that MarkJobFinished can be called multiple times with the same job ID
-  // without crashing, simulating network retry scenarios
+  // without crashing, simulating network retries.
   gcs::GcsJobManager gcs_job_manager(*gcs_table_storage_,
                                      *gcs_publisher_,
                                      runtime_env_manager_,

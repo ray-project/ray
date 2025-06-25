@@ -68,8 +68,8 @@ class GCSFunctionManager {
             {[](auto) {}, io_context_});
   }
 
-  InternalKVInterface &kv_;  ///< KV store interface for function/actor cleanup
-  instrumented_io_context &io_context_;  ///< IO context for async operations
+  InternalKVInterface &kv_;              // KV store interface for function/actor cleanup
+  instrumented_io_context &io_context_;  // IO context for async operations
 
   /// Reference count per job. A job is considered finished when:
   /// 1. The job/driver has exited, AND 2. All detached actors from the job are dead.

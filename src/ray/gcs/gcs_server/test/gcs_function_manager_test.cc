@@ -105,7 +105,7 @@ TEST_F(GCSFunctionManagerTest, TestRemoveJobReferenceIsIdempotent) {
   EXPECT_FALSE(HasKey("fun", "ActorClass:" + job_id_hex + ":key1"));
   EXPECT_FALSE(HasKey("fun", "FunctionsToRun:" + job_id_hex + ":key1"));
 
-  // Network retry scenario: Subsequent calls should handle gracefully
+  // Network retry scenario: Subsequent calls should be handled gracefully.
   // This simulates when raylet retries MarkJobFinished due to network failures
   function_manager_->RemoveJobReference(job_id);
   function_manager_->RemoveJobReference(job_id);
