@@ -18,6 +18,7 @@
 #include <utility>
 #include <vector>
 
+#include "ray/core_worker/task_manager.h"
 #include "ray/util/util.h"
 
 namespace ray {

@@ -38,6 +38,12 @@ namespace core {
 
 class ActorManager;
 
+enum class ResubmitTaskResult {
+  SUCCESS,
+  FAILED_MAX_ATTEMPT_EXCEEDED,
+  FAILED_TASK_CANCELED
+};
+
 class TaskResubmissionInterface {
  public:
   virtual std::optional<rpc::ErrorType> ResubmitTask(
