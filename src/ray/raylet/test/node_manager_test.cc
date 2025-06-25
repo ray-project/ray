@@ -523,7 +523,7 @@ TEST_F(NodeManagerTest, TestDetachedWorkerIsKilledByFailedWorker) {
   worker->SetProcess(proc);
   // Complete the RequestWorkerLease rpc with the mock worker.
   pop_worker_callback_promise.get_future().wait();
-  io_service_.dispatch([&] { pop_worker_callback(worker, PopWorkerStatus::OK, ""); },
+  io_service_.post([&] { pop_worker_callback(worker, PopWorkerStatus::OK, ""); },
                        "pop_worker_callback");
 
   // Wait for the client thead to complete. This waits for the RequestWorkerLease call
@@ -630,7 +630,7 @@ TEST_F(NodeManagerTest, TestDetachedWorkerIsKilledByFailedNode) {
   worker->SetProcess(proc);
   // Complete the RequestWorkerLease rpc with the mock worker.
   pop_worker_callback_promise.get_future().wait();
-  io_service_.dispatch([&] { pop_worker_callback(worker, PopWorkerStatus::OK, ""); },
+  io_service_.post([&] { pop_worker_callback(worker, PopWorkerStatus::OK, ""); },
                        "pop_worker_callback");
 
   // Wait for the client thead to complete. This waits for the RequestWorkerLease call
