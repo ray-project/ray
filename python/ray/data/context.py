@@ -401,7 +401,7 @@ class DataContext:
     enable_pandas_block: bool = DEFAULT_ENABLE_PANDAS_BLOCK
     actor_prefetcher_enabled: bool = DEFAULT_ACTOR_PREFETCHER_ENABLED
 
-    autoscaling_config: AutoscalingConfig = AutoscalingConfig()
+    autoscaling_config: AutoscalingConfig = field(default_factory=AutoscalingConfig)
 
     ################################################################
     # Sort-based shuffling configuration
