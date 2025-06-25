@@ -711,67 +711,6 @@ class KubeRayProviderIntegrationTest(unittest.TestCase):
         assert finished_deletes == set()
         assert workers_to_delete == {pod_names[0], pod_names[1]}
 
-    def test_scale_down_with_multi_host_group(self):
-        """
-        Test the case where a worker group has numOfHosts > 1.
-        This ensures that the KubeRay provider accounts for multi-host replicas
-        during scale down and properly updates the workersToDelete field.
-        """
-        # Setup mock RayCluster CR with numOfHosts: 2 and replicas: 1,
-        # resulting in 2 workers total.
-        raycluster_cr = get_basic_ray_cr()
-        mock_client = MockKubernetesHttpApiClient(
-            _get_test_yaml("podlist2.yaml"), raycluster_cr
-        )
-        provider = KubeRayProvider(
-            cluster_name="test",
-            provider_config={
-                "namespace": "default",
-                "head_node_type": "headgroup",
-            },
-            k8s_api_client=mock_client,
-        )
-
-        # Identify all pods in the multi-host group
-        pod_names = []
-        for pod in mock_client._pod_list["items"]:
-            if pod["metadata"]["labels"]["ray.io/group"] == "tpu-group":
-                pod_names.append(pod["metadata"]["name"])
-
-        # Expect 2 pods since replicas=1 and numOfHosts=2
-        assert len(pod_names) == 2, "Expected 2 pods in the multi-host group."
-
-        # Sync provider state and mark all pods for deletion
-        provider._sync_with_api_server()
-        cur_instance_ids = set(provider.instances.keys())
-        pods_to_terminate = [name for name in pod_names if name in cur_instance_ids]
-
-        assert (
-            len(pods_to_terminate) == 2
-        ), "Expected all multi-host pods to be tracked by the provider."
-
-        # Terminate all pods in the group
-        provider.terminate(ids=pods_to_terminate, request_id="term-multi")
-
-        # Check that scale request successfully created
-        patches = mock_client.get_patches(f"rayclusters/{provider._cluster_name}")
-
-        assert len(patches) == 2
-        assert patches == [
-            {
-                "op": "replace",
-                "path": "/spec/workerGroupSpecs/2/replicas",
-                "value": 0,
-            },
-            {
-                "op": "replace",
-                "path": "/spec/workerGroupSpecs/2/scaleStrategy",
-                "value": {
-                    "workersToDelete": pods_to_terminate,
-                },
-            },
-        ]
-
 
 if __name__ == "__main__":
     if os.environ.get("PARALLEL_CI"):
