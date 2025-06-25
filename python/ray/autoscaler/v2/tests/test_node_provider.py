@@ -363,13 +363,8 @@ class MockKubernetesHttpApiClient(IKubernetesHttpApiClient):
 
 class KubeRayProviderIntegrationTest(unittest.TestCase):
     def setUp(self):
-        raycluster_cr = get_basic_ray_cr()
-        # Remove fake TPU and GPU worker groups from CR since podlist1 only
-        # contains small-group.
-        raycluster_cr["spec"]["workerGroupSpecs"][1]["replicas"] = 0
-        raycluster_cr["spec"]["workerGroupSpecs"][2]["replicas"] = 0
         self.mock_client = MockKubernetesHttpApiClient(
-            _get_test_yaml("podlist1.yaml"), raycluster_cr
+            _get_test_yaml("podlist1.yaml"), get_basic_ray_cr()
         )
         self.provider = KubeRayProvider(
             cluster_name="test",
@@ -623,43 +618,43 @@ class KubeRayProviderIntegrationTest(unittest.TestCase):
         properly handles multiple pod deletions and counting workers_to_delete.
         """
         # Setup provider with multiple worker pods in podlist. We use podlist2
-        # here because podlist1 only contains one running worker.
+        # here because podlist1 only contains one worker.
         raycluster_cr = get_basic_ray_cr()
         raycluster_cr["spec"]["workerGroupSpecs"][0]["replicas"] = 2
-        raycluster_cr["spec"]["workerGroupSpecs"][1]["replicas"] = 0
-        raycluster_cr["spec"]["workerGroupSpecs"][2]["replicas"] = 0
-        mock_client = MockKubernetesHttpApiClient(
+        self.mock_client = MockKubernetesHttpApiClient(
             _get_test_yaml("podlist2.yaml"), raycluster_cr
         )
-        provider = KubeRayProvider(
+        self.provider = KubeRayProvider(
             cluster_name="test",
             provider_config={
                 "namespace": "default",
                 "head_node_type": "headgroup",
             },
-            k8s_api_client=mock_client,
+            k8s_api_client=self.mock_client,
         )
 
         # Identify all pods in the target group
         small_group = "small-group"
         pod_names = []
-        for pod in mock_client._pod_list["items"]:
+        for pod in self.mock_client._pod_list["items"]:
             if pod["metadata"]["labels"]["ray.io/group"] == small_group:
                 pod_names.append(pod["metadata"]["name"])
 
         # Terminate all pods in the group
-        provider._sync_with_api_server()
-        cur_instance_ids = set(provider.instances.keys())
+        self.provider._sync_with_api_server()
+        cur_instance_ids = set(self.provider.instances.keys())
         pods_to_terminate = [name for name in pod_names if name in cur_instance_ids]
 
         assert (
             len(pods_to_terminate) > 1
         ), "Expected multiple pods to terminate in the target group."
 
-        provider.terminate(ids=pods_to_terminate, request_id="term-2")
+        self.provider.terminate(ids=pods_to_terminate, request_id="term-2")
 
         # Check the patches applied to the RayCluster resource
-        patches = mock_client.get_patches(f"rayclusters/{provider._cluster_name}")
+        patches = self.mock_client.get_patches(
+            f"rayclusters/{self.provider._cluster_name}"
+        )
 
         assert len(patches) == 2
         assert patches == [
@@ -686,14 +681,14 @@ class KubeRayProviderIntegrationTest(unittest.TestCase):
         # patches the RayCluster with `replicas: 0`, but alive Pods still exist in workersToDelete.
         raycluster_cr = get_basic_ray_cr()
         raycluster_cr["spec"]["workerGroupSpecs"][0]["replicas"] = 0
-        mock_client = MockKubernetesHttpApiClient(
+        self.mock_client = MockKubernetesHttpApiClient(
             _get_test_yaml("podlist2.yaml"), raycluster_cr
         )
 
         # Add some workers to workersToDelete.
         small_group = "small-group"
         pod_names = []
-        for pod in mock_client._pod_list["items"]:
+        for pod in self.mock_client._pod_list["items"]:
             if pod["metadata"]["labels"]["ray.io/group"] == small_group:
                 pod_names.append(pod["metadata"]["name"])
         raycluster_cr["spec"]["workerGroupSpecs"][0]["scaleStrategy"] = {
