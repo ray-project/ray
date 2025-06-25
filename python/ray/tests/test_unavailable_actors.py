@@ -132,10 +132,7 @@ def test_actor_unavailable_conn_broken(ray_start_regular, caller):
     call_from(_run_test, caller)
 
 
-@pytest.mark.parametrize(
-    "caller",
-    ["actor", "task", "driver"],
-)
+@pytest.mark.parametrize("caller", ["actor", "task", "driver"])
 @pytest.mark.skipif(sys.platform == "win32", reason="does not work on windows")
 def test_actor_unavailable_restarting(ray_start_regular, caller):
     def _run_test():
@@ -218,7 +215,6 @@ class ActorAwaitingOnCreation:
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="does not work on windows")
-@pytest.mark.parametrize("ray_start_regular", [{"log_to_driver": False}], indirect=True)
 def test_actor_restart(ray_start_regular):
     """
     Test the following actor restart scenarios:
@@ -271,7 +267,6 @@ def test_actor_restart(ray_start_regular):
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="does not work on windows")
-@pytest.mark.parametrize("ray_start_regular", [{"log_to_driver": False}], indirect=True)
 def test_actor_inifite_restart(ray_start_regular):
     """
     Test that the actor can be restarted inifinitely. We do that by intentionally
