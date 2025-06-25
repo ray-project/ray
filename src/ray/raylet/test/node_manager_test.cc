@@ -247,11 +247,9 @@ class NodeManagerTest : public ::testing::Test {
     node_manager_config.maximum_startup_concurrency = 1;
     node_manager_config.store_socket_name = "test_store_socket";
 
-    auto core_worker_subscriber = std::make_unique<pubsub::MockSubscriber>();
-    auto object_directory = std::make_unique<MockObjectDirectory>();
-    mock_object_directory_ = object_directory.get();
-    auto object_manager = std::make_unique<MockObjectManager>();
-    mock_object_manager_ = object_manager.get();
+    core_worker_subscriber_ = std::make_unique<pubsub::MockSubscriber>();
+    mock_object_directory_ = std::make_unique<MockObjectDirectory>();
+    mock_object_manager_ = std::make_unique<MockObjectManager>();
 
     EXPECT_CALL(*mock_object_manager_, GetMemoryCapacity()).WillRepeatedly(Return(0));
 
@@ -270,11 +268,11 @@ class NodeManagerTest : public ::testing::Test {
     EXPECT_CALL(*mock_gcs_client_, DebugString()).WillRepeatedly(Return(""));
     EXPECT_CALL(*mock_object_manager_, DebugString()).WillRepeatedly(Return(""));
     EXPECT_CALL(*mock_object_directory_, DebugString()).WillRepeatedly(Return(""));
-    EXPECT_CALL(*core_worker_subscriber, DebugString()).WillRepeatedly(Return(""));
+    EXPECT_CALL(*core_worker_subscriber_, DebugString()).WillRepeatedly(Return(""));
 
     raylet_node_id_ = NodeID::FromRandom();
 
-    local_object_manager_ = std::make_shared<LocalObjectManager>(
+    local_object_manager_ = std::make_unique<LocalObjectManager>(
         raylet_node_id_,
         node_manager_config.node_manager_address,
         node_manager_config.node_manager_port,
@@ -296,12 +294,12 @@ class NodeManagerTest : public ::testing::Test {
         [&](const ObjectID &object_id) {
           return mock_object_manager_->IsPlasmaObjectSpillable(object_id);
         },
-        /*core_worker_subscriber_=*/core_worker_subscriber.get(),
-        mock_object_directory_);
+        core_worker_subscriber_.get(),
+        mock_object_directory_.get());
 
-    dependency_manager_ = std::make_shared<DependencyManager>(*mock_object_manager_);
+    dependency_manager_ = std::make_unique<DependencyManager>(*mock_object_manager_);
 
-    cluster_resource_scheduler_ = std::make_shared<ClusterResourceScheduler>(
+    cluster_resource_scheduler_ = std::make_unique<ClusterResourceScheduler>(
         io_service_,
         ray::scheduling::NodeID(raylet_node_id_.Binary()),
         node_manager_config.resource_config.GetResourceMap(),
@@ -339,9 +337,9 @@ class NodeManagerTest : public ::testing::Test {
         static_cast<float>(mock_object_manager_->GetMemoryCapacity()) *
         RayConfig::instance().max_task_args_memory_fraction());
 
-    local_task_manager_ = std::make_shared<LocalTaskManager>(
+    local_task_manager_ = std::make_unique<LocalTaskManager>(
         raylet_node_id_,
-        *std::dynamic_pointer_cast<ClusterResourceScheduler>(cluster_resource_scheduler_),
+        *cluster_resource_scheduler_,
         *dependency_manager_,
         get_node_info_func,
         mock_worker_pool_,
@@ -352,9 +350,9 @@ class NodeManagerTest : public ::testing::Test {
         },
         max_task_args_memory);
 
-    cluster_task_manager_ = std::make_shared<ClusterTaskManager>(
+    cluster_task_manager_ = std::make_unique<ClusterTaskManager>(
         raylet_node_id_,
-        *std::dynamic_pointer_cast<ClusterResourceScheduler>(cluster_resource_scheduler_),
+        *cluster_resource_scheduler_,
         get_node_info_func,
         [](const ray::RayTask &task) {},
         *local_task_manager_);
@@ -363,15 +361,15 @@ class NodeManagerTest : public ::testing::Test {
                                                   raylet_node_id_,
                                                   "test_node_name",
                                                   node_manager_config,
-                                                  mock_gcs_client_,
+                                                  *mock_gcs_client_,
                                                   client_call_manager_,
                                                   worker_rpc_pool_,
-                                                  std::move(core_worker_subscriber),
-                                                  cluster_resource_scheduler_,
-                                                  local_task_manager_,
-                                                  cluster_task_manager_,
-                                                  std::move(object_directory),
-                                                  std::move(object_manager),
+                                                  *core_worker_subscriber_,
+                                                  *cluster_resource_scheduler_,
+                                                  *local_task_manager_,
+                                                  *cluster_task_manager_,
+                                                  *mock_object_directory_,
+                                                  *mock_object_manager_,
                                                   *local_object_manager_,
                                                   *dependency_manager_,
                                                   mock_worker_pool_,
@@ -387,15 +385,16 @@ class NodeManagerTest : public ::testing::Test {
   rpc::CoreWorkerClientPool worker_rpc_pool_;
 
   NodeID raylet_node_id_;
-  std::shared_ptr<ClusterResourceScheduler> cluster_resource_scheduler_;
-  std::shared_ptr<LocalTaskManager> local_task_manager_;
-  std::shared_ptr<ClusterTaskManagerInterface> cluster_task_manager_;
-  std::shared_ptr<LocalObjectManager> local_object_manager_;
-  std::shared_ptr<DependencyManager> dependency_manager_;
-  std::shared_ptr<gcs::MockGcsClient> mock_gcs_client_ =
-      std::make_shared<gcs::MockGcsClient>();
-  MockObjectDirectory *mock_object_directory_;
-  MockObjectManager *mock_object_manager_;
+  std::unique_ptr<pubsub::MockSubscriber> core_worker_subscriber_;
+  std::unique_ptr<ClusterResourceScheduler> cluster_resource_scheduler_;
+  std::unique_ptr<LocalTaskManager> local_task_manager_;
+  std::unique_ptr<ClusterTaskManagerInterface> cluster_task_manager_;
+  std::unique_ptr<LocalObjectManager> local_object_manager_;
+  std::unique_ptr<DependencyManager> dependency_manager_;
+  std::unique_ptr<gcs::MockGcsClient> mock_gcs_client_ =
+      std::make_unique<gcs::MockGcsClient>();
+  std::unique_ptr<MockObjectDirectory> mock_object_directory_;
+  std::unique_ptr<MockObjectManager> mock_object_manager_;
   core::experimental::MockMutableObjectProvider *mock_mutable_object_provider_;
   plasma::MockPlasmaClient mock_store_client_;
 
