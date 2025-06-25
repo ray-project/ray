@@ -61,7 +61,7 @@ def test_auto_global_gc(shutdown_only):
     assert ray.get(test.collected.remote())
 
 
-def _resource_dicts_close(d1: Dict, d2: Dict, *, abs_tol: float = 1e-3):
+def _resource_dicts_close(d1: Dict, d2: Dict, *, abs_tol: float = 1e-4):
     """Return if all values in the dicts are within the abs_tol."""
 
     # A resource value of 0 is equivalent to the key not being present,
@@ -114,14 +114,17 @@ def test_many_fractional_resources(shutdown_only, k: int):
 
         return eq
 
+    def _rand_resource_val() -> float:
+        return int(random.random() * 10000) / 10000
+
     # Submit many tasks with random resource requirements and assert that they are
     # assigned the correct resources.
     result_ids = []
     for i in range(10):
         resources = {
-            "CPU": int(random.random() * 1000) / 1000,
-            "GPU": int(random.random() * 1000) / 1000,
-            "Custom": int(random.random() * 1000) / 1000,
+            "CPU": _rand_resource_val(),
+            "GPU": _rand_resource_val(),
+            "Custom": _rand_resource_val(),
         }
 
         for block in [False, True]:
