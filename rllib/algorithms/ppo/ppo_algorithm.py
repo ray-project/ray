@@ -1,14 +1,18 @@
+import tree
+from typing import Any, Dict, Optional
+
 from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
 from ray.rllib.algorithms.rl_algorithm import RLAlgorithm
+from ray.rllib.algorithms.rl_algorithm_mixins.learner_mixin import LearnerConcreteMixin
 from ray.rllib.algorithms.rl_algorithm_mixins.online_mixin import (
     SyncEnvRunnerConcreteMixin,
 )
+from ray.rllib.core.learner.training_data import TrainingData
 
 
-class PPOAlgorithm(RLAlgorithm, SyncEnvRunnerConcreteMixin):
+class PPOAlgorithm(SyncEnvRunnerConcreteMixin, LearnerConcreteMixin, RLAlgorithm):
     def __init__(self, config: AlgorithmConfig, logger_creator=None, **kwargs):
         super().__init__(config=config, logger_creator=logger_creator, **kwargs)
-        self._setup(config=config)
 
     def _setup(self, config: AlgorithmConfig):
 
@@ -37,3 +41,22 @@ class PPOAlgorithm(RLAlgorithm, SyncEnvRunnerConcreteMixin):
         #   Like this, it can be a mixin that is derived into two forms:
         #       1. MetricsConcreteMixin
         #       2. MetricsActorConcreteMixin
+
+        # TODO (simon): Maybe returning from EnvRunnerGroup(s) already a TrainingData?
+        learner_results = self.update(
+            training_data=TrainingData(episodes=tree.flatten(episodes)),
+            num_epochs=self.config.num_epochs,
+            minibatch_size=self.config.minibatch_size,
+            shuffle_batch_per_epoch=self.config.shuffle_batch_per_epoch,
+        )
+
+        self.sync()
+
+        return learner_results, metrics
+
+    def sync(self, state: Optional[Dict[str, Any]] = None, **kwargs):
+        state = super().sync(state, learner_group=self._learner_group)
+
+        # state = self._provide_sync_state(state, **kwargs)
+
+        # return state
