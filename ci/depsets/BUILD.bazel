@@ -4,9 +4,7 @@ py_library(
     name = "depsets_lib",
     srcs = [
         "src/dependencies/cli.py",
-        "src/__init__.py",
         "src/dependencies/depset.py",
-        "src/dependencies/__init__.py",
     ],
     visibility = ["//visibility:public"],
     deps = [
