@@ -1,7 +1,6 @@
 import os
 import pytest
 import sys
-import time
 import signal
 from typing import Optional, Tuple
 
