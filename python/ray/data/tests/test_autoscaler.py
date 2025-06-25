@@ -15,11 +15,15 @@ from ray.data._internal.execution.autoscaler.default_autoscaler import (
     DefaultAutoscaler,
     ScalingConfig,
 )
+from ray.data._internal.execution.operators.actor_pool_map_operator import \
+    _ActorPool
 from ray.data._internal.execution.operators.base_physical_operator import (
     InternalQueueOperatorMixin,
 )
 from ray.data._internal.execution.streaming_executor_state import OpState
-from ray.data.context import AutoscalingConfig
+from ray.data.context import AutoscalingConfig, \
+    DEFAULT_ACTOR_POOL_UTIL_UPSCALING_THRESHOLD, \
+    DEFAULT_ACTOR_POOL_UTIL_DOWNSCALING_THRESHOLD
 
 
 def test_actor_pool_scaling():
@@ -31,14 +35,14 @@ def test_actor_pool_scaling():
         resource_manager=MagicMock(),
         execution_id="execution_id",
         config=AutoscalingConfig(
-            actor_pool_util_upscaling_threshold=0.8,
-            actor_pool_util_downscaling_threshold=0.5,
+            actor_pool_util_upscaling_threshold=DEFAULT_ACTOR_POOL_UTIL_UPSCALING_THRESHOLD,
+            actor_pool_util_downscaling_threshold=DEFAULT_ACTOR_POOL_UTIL_DOWNSCALING_THRESHOLD,
         ),
     )
 
     # Current actor pool utilization is 0.9, which is above the threshold.
-    actor_pool: AutoscalingActorPool = MagicMock(
-        spec=AutoscalingActorPool,
+    actor_pool: _ActorPool = MagicMock(
+        spec=_ActorPool,
         min_size=MagicMock(return_value=5),
         max_size=MagicMock(return_value=15),
         current_size=MagicMock(return_value=10),
@@ -46,12 +50,14 @@ def test_actor_pool_scaling():
         num_running_actors=MagicMock(return_value=10),
         num_pending_actors=MagicMock(return_value=0),
         num_free_task_slots=MagicMock(return_value=5),
+        num_tasks_in_flight=MagicMock(return_value=15),
+        _max_actor_concurrency=1,
         get_pool_util=MagicMock(
             # NOTE: Unittest mocking library doesn't support proxying to actual
             #       non-mocked methods so we have emulate it by directly binding existing
             #       method of `get_pool_util` to a mocked object
             side_effect=lambda: MethodType(
-                AutoscalingActorPool.get_pool_util, actor_pool
+                _ActorPool.get_pool_util, actor_pool
             )()
         ),
     )
@@ -85,32 +91,34 @@ def test_actor_pool_scaling():
         ) == ScalingConfig(delta=delta, reason=expected_reason)
 
     # Should scale up since the util above the threshold.
-    assert actor_pool.get_pool_util() == 1.0
+    assert actor_pool.get_pool_util() == 1.5
     assert_autoscaling_action(
         delta=1,
-        expected_reason="utilization of 1.0 >= 0.8",
+        expected_reason="utilization of 1.5 >= 1.0",
     )
 
     # Should be no-op since the util is below the threshold.
-    with patch(actor_pool, "num_active_actors", 7):
-        assert actor_pool.get_pool_util() == 0.7
-        assert_autoscaling_action(delta=0, expected_reason="0.5 < 0.7 < 0.8")
+    with patch(actor_pool, "num_tasks_in_flight", 9):
+        assert actor_pool.get_pool_util() == 0.9
+        assert_autoscaling_action(delta=0, expected_reason="0.5 < 0.9 < 1.0")
 
     # Should be no-op since previous scaling hasn't finished yet
     with patch(actor_pool, "num_pending_actors", 1):
         assert_autoscaling_action(delta=0, expected_reason="pending actors")
 
-    # Should be no-op since we have reached the max size.
+    # Should be no-op since we have reached the max size (ie could not scale
+    # up even though utilization > threshold)
     with patch(actor_pool, "current_size", 15):
-        with patch(actor_pool, "num_active_actors", 15):
+        with patch(actor_pool, "num_tasks_in_flight", 15):
             assert_autoscaling_action(
                 delta=0,
                 expected_reason="reached max size",
             )
 
-    # Should be no-op since we have reached the min size.
+    # Should be no-op since we have reached the min size (ie could not scale
+    # down up even though utilization < threshold))
     with patch(actor_pool, "current_size", 5):
-        with patch(actor_pool, "num_active_actors", 2):
+        with patch(actor_pool, "num_tasks_in_flight", 4):
             assert_autoscaling_action(
                 delta=0,
                 expected_reason="reached min size",
@@ -140,11 +148,11 @@ def test_actor_pool_scaling():
                     expected_reason="consumed all inputs",
                 )
 
-            # If inputs are not completed, should be no-op as there's nothing
+            # If the input queue is empty, should be no-op as there's nothing
             # to schedule and Actor Pool still has free slots
             assert_autoscaling_action(
-                delta=1,
-                expected_reason="utilization of 1.0 >= 0.8",
+                delta=0,
+                expected_reason="utilization of 1.5 >= 1.0",
             )
 
     # Should be no-op since the op doesn't have enough resources.
