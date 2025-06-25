@@ -179,7 +179,7 @@ def test_actor_unavailable_norestart(ray_start_regular, caller):
         with pytest.raises(ActorDiedError):
             print(ray.get(a.get.remote()))
 
-    call_from(run_test, caller)
+    call_from(_run_test, caller)
 
 
 @ray.remote(max_restarts=-1, max_task_retries=0)
