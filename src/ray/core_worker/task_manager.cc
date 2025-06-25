@@ -354,7 +354,7 @@ bool TaskManager::ResubmitTask(const TaskID &task_id, std::vector<ObjectID> *tas
       return true;
     }
     // We didn't cancel because the task finished since the time we first set
-    // should_cancel_and_resubmit_generator, so we have we should resubmit now.
+    // should_cancel_and_resubmit_generator, so we should resubmit now.
     absl::MutexLock lock(&mu_);
     auto it = submissible_tasks_.find(task_id);
     RAY_CHECK(it != submissible_tasks_.end());
