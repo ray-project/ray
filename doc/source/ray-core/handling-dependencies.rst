@@ -316,16 +316,6 @@ packages. It also allows you to lock package versions using `uv lock`.
 For more details, see the `UV scripts documentation <https://docs.astral.sh/uv/guides/scripts/>`_ as
 well as `our blog post <https://www.anyscale.com/blog/uv-ray-pain-free-python-dependencies-in-clusters>`_.
 
-.. note::
-
-  Because this is a new feature, you currently need to set a feature flag:
-
-  .. code-block:: shell
-
-    export RAY_RUNTIME_ENV_HOOK=ray._private.runtime_env.uv_runtime_env_hook.hook
-
-  We plan to make it the default after collecting more feedback, and adapting the behavior if necessary.
-
 Create a file `pyproject.toml` in your working directory like the following:
 
 .. code-block:: toml
@@ -416,6 +406,50 @@ your programs:
   run in via `py_executable`. It could even be a shell script that is stored in `working_dir` if you are trying to wrap
   multiple processes in more complex ways.
 
+.. note::
+
+  The uv environment is inherited by all children tasks and actors. If you want to mix environments, for example, `pip`
+  runtime environments with `uv run`, you need to set the Python executable back to an executable
+  that's not running in the isolated uv environment like the following:
+
+  .. code-block:: toml
+
+    [project]
+
+    name = "test"
+
+    version = "0.1"
+
+    dependencies = [
+      "emoji",
+      "ray",
+      "pip",
+      "virtualenv",
+    ]
+
+  .. testcode::
+    :skipif: True
+
+    import ray
+
+    @ray.remote(runtime_env={"pip": ["wikipedia"], "py_executable": "python"})
+    def f():
+        import wikipedia
+        return wikipedia.summary("Wikipedia")
+
+    @ray.remote
+    def g():
+        import emoji
+        return emoji.emojize('Python is :thumbs_up:')
+
+    print(ray.get(f.remote()))
+    print(ray.get(g.remote()))
+
+
+  While the above pattern can be useful for supporting legacy applications, the Ray Team recommends
+  also using uv for tracking nested environments. You can use this approach by creating a separate
+  `pyproject.toml` containing the dependencies of the nested environment.
+
 
 Library Development
 """""""""""""""""""
@@ -451,7 +485,7 @@ API Reference
 
 The ``runtime_env`` is a Python dictionary or a Python class :class:`ray.runtime_env.RuntimeEnv <ray.runtime_env.RuntimeEnv>` including one or more of the following fields:
 
-- ``working_dir`` (str): Specifies the working directory for the Ray workers. This must either be (1) an local existing directory with total size at most 100 MiB, (2) a local existing zipped file with total unzipped size at most 100 MiB (Note: ``excludes`` has no effect), or (3) a URI to a remotely-stored zip file containing the working directory for your job (no file size limit is enforced by Ray). See :ref:`remote-uris` for details.
+- ``working_dir`` (str): Specifies the working directory for the Ray workers. This must either be (1) an local existing directory with total size at most 500 MiB, (2) a local existing zipped file with total unzipped size at most 500 MiB (Note: ``excludes`` has no effect), or (3) a URI to a remotely-stored zip file containing the working directory for your job (no file size limit is enforced by Ray). See :ref:`remote-uris` for details.
   The specified directory will be downloaded to each node on the cluster, and Ray workers will be started in their node's copy of this directory.
 
   - Examples
@@ -526,7 +560,11 @@ The ``runtime_env`` is a Python dictionary or a Python class :class:`ray.runtime
   When specifying a path to a ``requirements.txt`` file, the file must be present on your local machine and it must be a valid absolute path or relative filepath relative to your local current working directory, *not* relative to the ``working_dir`` specified in the ``runtime_env``.
   Furthermore, referencing local files *within* a ``requirements.txt`` file isn't directly supported (e.g., ``-r ./my-laptop/more-requirements.txt``, ``./my-pkg.whl``). Instead, use the ``${RAY_RUNTIME_ENV_CREATE_WORKING_DIR}`` environment variable in the creation process. For example, use ``-r ${RAY_RUNTIME_ENV_CREATE_WORKING_DIR}/my-laptop/more-requirements.txt`` or ``${RAY_RUNTIME_ENV_CREATE_WORKING_DIR}/my-pkg.whl`` to reference local files, while ensuring they're in the ``working_dir``.
 
-- ``uv`` (dict | List[str] | str): Alpha version feature. Either (1) a list of uv `requirements specifiers <https://pip.pypa.io/en/stable/cli/pip_install/#requirement-specifiers>`_, (2) a string containing
+- ``uv`` (dict | List[str] | str): Alpha version feature. This plugin is the ``uv pip`` version of the ``pip`` plugin above. If you
+  are looking for ``uv run`` support with ``pyproject.toml`` and ``uv.lock`` support, use
+  :ref:`the uv run runtime environment plugin <use-uv-for-package-management>` instead.
+
+  Either (1) a list of uv `requirements specifiers <https://pip.pypa.io/en/stable/cli/pip_install/#requirement-specifiers>`_, (2) a string containing
   the path to a local uv `“requirements.txt” <https://pip.pypa.io/en/stable/user_guide/#requirements-files>`_ file, or (3) a python dictionary that has three fields: (a) ``packages`` (required, List[str]): a list of uv packages,
   (b) ``uv_version`` (optional, str): the version of uv; Ray will spell the package name "uv" in front of the ``uv_version`` to form the final requirement string.
   (c) ``uv_check`` (optional, bool): whether to enable pip check at the end of uv install, default to False.

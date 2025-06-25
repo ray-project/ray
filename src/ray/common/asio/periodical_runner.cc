@@ -14,6 +14,10 @@
 
 #include "ray/common/asio/periodical_runner.h"
 
+#include <memory>
+#include <string>
+#include <utility>
+
 #include "ray/common/ray_config.h"
 #include "ray/util/logging.h"
 

@@ -75,13 +75,12 @@ class WorkerInterface {
   virtual void AssignActorId(const ActorID &actor_id) = 0;
   virtual const ActorID &GetActorId() const = 0;
   virtual const std::string GetTaskOrActorIdAsDebugString() const = 0;
-  virtual void MarkDetachedActor() = 0;
   virtual bool IsDetachedActor() const = 0;
   virtual const std::shared_ptr<ClientConnection> Connection() const = 0;
   virtual void SetOwnerAddress(const rpc::Address &address) = 0;
   virtual const rpc::Address &GetOwnerAddress() const = 0;
 
-  virtual void DirectActorCallArgWaitComplete(int64_t tag) = 0;
+  virtual void ActorCallArgWaitComplete(int64_t tag) = 0;
 
   virtual const BundleID &GetBundleId() const = 0;
   virtual void SetBundleId(const BundleID &bundle_id) = 0;
@@ -186,13 +185,12 @@ class Worker : public WorkerInterface {
   // Creates the debug string for the ID of the task or actor depending on which is
   // running.
   const std::string GetTaskOrActorIdAsDebugString() const;
-  void MarkDetachedActor();
   bool IsDetachedActor() const;
   const std::shared_ptr<ClientConnection> Connection() const;
   void SetOwnerAddress(const rpc::Address &address);
   const rpc::Address &GetOwnerAddress() const;
 
-  void DirectActorCallArgWaitComplete(int64_t tag);
+  void ActorCallArgWaitComplete(int64_t tag);
 
   const BundleID &GetBundleId() const;
   void SetBundleId(const BundleID &bundle_id);
@@ -307,9 +305,6 @@ class Worker : public WorkerInterface {
   rpc::ClientCallManager &client_call_manager_;
   /// The rpc client to send tasks to this worker.
   std::shared_ptr<rpc::CoreWorkerClientInterface> rpc_client_;
-  /// Whether the worker is detached. This is applies when the worker is actor.
-  /// Detached actor means the actor's creator can exit without killing this actor.
-  bool is_detached_actor_;
   /// The address of this worker's owner. The owner is the worker that
   /// currently holds the lease on this worker, if any.
   rpc::Address owner_address_;

@@ -210,7 +210,7 @@ class TestRolloutWorker(unittest.TestCase):
             .env_runners(
                 num_env_runners=2,
                 num_envs_per_env_runner=2,
-                create_env_on_local_worker=True,
+                create_local_env_runner=True,
             )
             .training(train_batch_size=20, minibatch_size=5, num_epochs=1)
         )

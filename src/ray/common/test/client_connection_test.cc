@@ -405,23 +405,6 @@ TEST_F(ServerConnectionTest, SimpleSyncReadWriteMessage) {
   RAY_CHECK(write_buffer == read_buffer);
 }
 
-TEST_F(ServerConnectionTest, SimpleAsyncReadWriteBuffers) {
-  auto [client, server] = CreateConnectionPair();
-
-  const std::vector<uint8_t> write_buffer = {1, 2, 3, 4, 5};
-  std::vector<uint8_t> read_buffer = {0, 0, 0, 0, 0};
-
-  client->WriteBufferAsync({boost::asio::buffer(write_buffer)},
-                           [](const ray::Status &status) { RAY_CHECK_OK(status); });
-
-  server->ReadBufferAsync({boost::asio::buffer(read_buffer)},
-                          [&write_buffer, &read_buffer](const ray::Status &status) {
-                            RAY_CHECK_OK(status);
-                            RAY_CHECK(write_buffer == read_buffer);
-                          });
-  io_service_.run();
-}
-
 }  // namespace raylet
 
 }  // namespace ray

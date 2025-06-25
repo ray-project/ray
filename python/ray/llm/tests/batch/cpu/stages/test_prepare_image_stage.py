@@ -1,14 +1,14 @@
+import base64
+import io
 import sys
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
-from unittest.mock import patch, MagicMock, AsyncMock
 from PIL import Image
-import io
-import base64
 
 from ray.llm._internal.batch.stages.prepare_image_stage import (
-    PrepareImageUDF,
     ImageProcessor,
+    PrepareImageUDF,
 )
 
 
@@ -45,7 +45,7 @@ def mock_image_processor(mock_http_connection, mock_image):
 
 @pytest.mark.asyncio
 async def test_prepare_image_udf_basic(mock_image_processor, mock_image):
-    udf = PrepareImageUDF(data_column="__data")
+    udf = PrepareImageUDF(data_column="__data", expected_input_keys=["messages"])
 
     # Test batch with one message containing an image URL
     batch = {
@@ -75,7 +75,7 @@ async def test_prepare_image_udf_basic(mock_image_processor, mock_image):
 
 @pytest.mark.asyncio
 async def test_prepare_image_udf_multiple_images(mock_image_processor, mock_image):
-    udf = PrepareImageUDF(data_column="__data")
+    udf = PrepareImageUDF(data_column="__data", expected_input_keys=["messages"])
 
     # Test batch with multiple images in one message
     batch = {
@@ -104,7 +104,7 @@ async def test_prepare_image_udf_multiple_images(mock_image_processor, mock_imag
 
 @pytest.mark.asyncio
 async def test_prepare_image_udf_no_images(mock_image_processor):
-    udf = PrepareImageUDF(data_column="__data")
+    udf = PrepareImageUDF(data_column="__data", expected_input_keys=["messages"])
 
     # Test batch with no images
     batch = {"__data": [{"messages": [{"content": "Hello, world!"}]}]}
@@ -140,13 +140,13 @@ async def test_image_processor_fetch_images(mock_http_connection, mock_image):
 
 
 def test_prepare_image_udf_expected_keys():
-    udf = PrepareImageUDF(data_column="__data")
-    assert udf.expected_input_keys == ["messages"]
+    udf = PrepareImageUDF(data_column="__data", expected_input_keys=["messages"])
+    assert udf.expected_input_keys == {"messages"}
 
 
 @pytest.mark.asyncio
 async def test_prepare_image_udf_invalid_image_type(mock_image_processor):
-    udf = PrepareImageUDF(data_column="__data")
+    udf = PrepareImageUDF(data_column="__data", expected_input_keys=["messages"])
 
     # Test batch with invalid image type
     batch = {

@@ -1,12 +1,12 @@
 import sys
 
+import httpx
 import pytest
-import requests
 from starlette.requests import Request
 
 import ray
 from ray import serve
-from ray._private.test_utils import wait_for_condition
+from ray._common.test_utils import wait_for_condition
 from ray.serve._private.constants import RAY_SERVE_ENABLE_TASK_EVENTS
 from ray.util.state import list_tasks
 
@@ -34,7 +34,7 @@ def test_task_events_disabled_by_default(serve_instance):
     serve.run(Deployment.bind())
 
     assert (
-        requests.get("http://localhost:8000", json={"call_task": False}).text
+        httpx.request("GET", "http://localhost:8000/", json={"call_task": False}).text
         == "hi from deployment"
     )
     for _ in range(100):
@@ -43,7 +43,7 @@ def test_task_events_disabled_by_default(serve_instance):
     # Now call a Ray task from within the deployment.
     # A task event should be generated.
     assert (
-        requests.get("http://localhost:8000", json={"call_task": True}).text
+        httpx.request("GET", "http://localhost:8000/", json={"call_task": True}).text
         == "hi from task"
     )
     wait_for_condition(lambda: len(list_tasks()) == 1)
@@ -59,7 +59,7 @@ def test_enable_task_events(serve_instance):
     serve.run(Deployment.bind())
 
     assert (
-        requests.get("http://localhost:8000", json={"call_task": False}).text
+        httpx.request("GET", "http://localhost:8000/", json={"call_task": False}).text
         == "hi from deployment"
     )
 

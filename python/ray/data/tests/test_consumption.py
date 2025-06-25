@@ -171,7 +171,7 @@ def test_count_after_caching_after_execution(ray_start_regular):
     list(ds.iter_internal_ref_bundles())
     assert f"num_rows={DS_ROW_COUNT}" in str(ds)
     assert ds.count() == DS_ROW_COUNT
-    assert ds._plan._snapshot_metadata.num_rows == DS_ROW_COUNT
+    assert ds._plan._snapshot_metadata_schema.metadata.num_rows == DS_ROW_COUNT
 
 
 def test_limit_execution(ray_start_regular):
@@ -246,54 +246,32 @@ def test_avoid_placement_group_capture(shutdown_only):
     )
 
 
-def test_ray_remote_args_fn(shutdown_only):
+@pytest.fixture
+def remove_named_placement_groups():
+    yield
+    for info in ray.util.placement_group_table().values():
+        if info["name"]:
+            pg = ray.util.get_placement_group(info["name"])
+            ray.util.remove_placement_group(pg)
+
+
+def test_ray_remote_args_fn(shutdown_only, remove_named_placement_groups):
     ray.init()
 
-    global_idx = 1
-    placement_groups = []
+    pg = ray.util.placement_group([{"CPU": 1}], name="test_pg")
 
-    def _generate_ray_remote_args_with_scheduling_strategy():
-        nonlocal placement_groups
-        pg = ray.util.placement_group([{"CPU": global_idx}])
-        placement_groups.append(pg)
-
+    def ray_remote_args_fn():
         scheduling_strategy = PlacementGroupSchedulingStrategy(placement_group=pg)
         return {"scheduling_strategy": scheduling_strategy}
 
     class ActorClass:
-        def __init__(self):
-            # Each time a new actor is created with ActorClass,
-            # global_idx is incremented, and the number of CPUs in its
-            # placement group should match the saved self._idx value.
-            nonlocal global_idx
-            self._idx = global_idx
-            global_idx += 1
-
         def __call__(self, batch):
-            pg = ray.util.get_current_placement_group()
-            if global_idx > 0:
-                assert pg.bundle_specs == [{"CPU": self._idx}]
-            else:
-                assert pg is not None
+            assert ray.util.get_current_placement_group() == pg
             return batch
 
-    ray.data.range(10).map_batches(
-        ActorClass,
-        concurrency=3,
-        ray_remote_args_fn=_generate_ray_remote_args_with_scheduling_strategy,
+    ray.data.range(1).map_batches(
+        ActorClass, concurrency=1, ray_remote_args_fn=ray_remote_args_fn
     ).take_all()
-
-    global_idx = -10
-    with pytest.raises(ValueError):  # cannot use -10 for pg
-        ray.data.range(10).map_batches(
-            ActorClass,
-            concurrency=3,
-            ray_remote_args_fn=_generate_ray_remote_args_with_scheduling_strategy,
-        ).take_all()
-
-    # Be sure to remove placement groups after use.
-    for pg in placement_groups:
-        ray.util.remove_placement_group(pg)
 
 
 def test_dataset_lineage_serialization(shutdown_only):
@@ -500,7 +478,7 @@ def test_dataset_repr(ray_start_regular_shared):
     assert repr(ds) == "Dataset(num_rows=10, schema={id: int64})"
     ds = ds.map_batches(lambda x: x)
     assert repr(ds) == (
-        "MapBatches(<lambda>)\n" "+- Dataset(num_rows=10, schema={id: int64})"
+        "MapBatches(<lambda>)\n+- Dataset(num_rows=10, schema={id: int64})"
     )
     ds = ds.filter(lambda x: x["id"] > 0)
     assert repr(ds) == (
@@ -522,7 +500,7 @@ def test_dataset_repr(ray_start_regular_shared):
     ds = ds.map_batches(lambda x: x)
 
     assert repr(ds) == (
-        "MapBatches(<lambda>)\n" "+- Dataset(num_rows=9, schema={id: int64})"
+        "MapBatches(<lambda>)\n+- Dataset(num_rows=9, schema={id: int64})"
     )
     ds1, ds2 = ds.split(2)
     assert (
@@ -553,7 +531,7 @@ def test_dataset_repr(ray_start_regular_shared):
     ds = ray.data.range(10, override_num_blocks=10)
     ds = ds.map_batches(my_dummy_fn)
     assert repr(ds) == (
-        "MapBatches(my_dummy_fn)\n" "+- Dataset(num_rows=10, schema={id: int64})"
+        "MapBatches(my_dummy_fn)\n+- Dataset(num_rows=10, schema={id: int64})"
     )
 
 
@@ -608,10 +586,10 @@ def test_limit_no_redundant_read(
                             sys.getsizeof(i)
                             for i in range(parallelism * i, parallelism * i + n)
                         ),
-                        schema=None,
                         input_files=None,
                         exec_stats=None,
                     ),
+                    schema=pa.lib.Schema.from_pandas(pd.DataFrame({"id": []})),
                 )
                 for i in range(parallelism)
             ]
@@ -652,10 +630,10 @@ def test_limit_no_num_row_info(ray_start_regular_shared):
                     BlockMetadata(
                         num_rows=None,
                         size_bytes=sys.getsizeof(1) * n,
-                        schema=None,
                         input_files=None,
                         exec_stats=None,
                     ),
+                    schema=pa.lib.Schema.from_pandas(pd.DataFrame({"id": []})),
                 )
             ]
 

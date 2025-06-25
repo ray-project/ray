@@ -66,15 +66,3 @@ message Event {
   // store custom key such as node_id, job_id, task_id
   map<string, string> custom_fields = 9;
 }
-
-message ReportEventsReply {
-  bool send_success = 1;
-}
-
-message ReportEventsRequest {
-  repeated string event_strings = 1;
-}
-
-service ReportEventService {
-  rpc ReportEvents(ReportEventsRequest) returns (ReportEventsReply);
-}

@@ -1,56 +1,50 @@
 .. _observability-general-debugging:
 
-General Debugging
+Common Issues
 =======================
 
-Distributed applications are more powerful yet complicated than non-distributed ones. Some of Ray's behavior might catch
-users off guard while there may be sound arguments for these design choices.
+Distributed applications offer great power but also increased complexity. 
+Some of Ray's behaviors may initially surprise users, but these design choices serve important purposes in distributed computing environments.
 
-This page lists some common issues users may run into. In particular, users think of Ray as running on their local machine, and
-while this is sometimes true, this leads to a lot of issues.
+This document outlines common issues encountered when running Ray in a cluster, highlighting key differences compared to running Ray locally.
 
-Environment variables are not passed from the Driver process to Worker processes
+Environment variables aren't passed from the Driver process to Worker processes
 ---------------------------------------------------------------------------------
 
-**Issue**: If you set an environment variable at the command line (where you run your Driver), it is not passed to all the Workers running in the Cluster
-if the Cluster was started previously.
+**Issue:** When you set an environment variable on your Driver, it isn't propagated to the Worker processes.
 
-**Example**: If you have a file ``baz.py`` in the directory you are running Ray in, and you run the following command:
-
-.. literalinclude:: /ray-observability/doc_code/gotchas.py
-  :language: python
-  :start-after: __env_var_start__
-  :end-before: __env_var_end__
-
-**Expected behavior**: Most people would expect (as if it was a single process on a single machine) that the environment variables would be the same in all Workers. It won’t be.
-
-**Fix**: Use Runtime Environments to pass environment variables explicitly.
-If you call ``ray.init(runtime_env=...)``,
-then the Workers will have the environment variable set.
-
+**Example:** Suppose you have a file ``baz.py`` in the directory where you run Ray, and you execute the following command:
 
 .. literalinclude:: /ray-observability/doc_code/gotchas.py
-  :language: python
-  :start-after: __env_var_fix_start__
-  :end-before: __env_var_fix_end__
+   :language: python
+   :start-after: __env_var_start__
+   :end-before: __env_var_end__
+
+
+**Expected behavior:** Users may expect that setting environment variables on the Driver sends them to all Worker processes as if running on a single machine, but it doesn't.
+
+**Fix:** Enable Runtime Environments to explicitly pass environment variables. When you call ``ray.init(runtime_env=...)``, it sends the specified environment variables to the Workers.
+Alternatively, you can set the environment variables as part of your cluster setup configuration.
+
+.. literalinclude:: /ray-observability/doc_code/gotchas.py
+   :language: python
+   :start-after: __env_var_fix_start__
+   :end-before: __env_var_fix_end__
 
 
 Filenames work sometimes and not at other times
 -----------------------------------------------
 
-**Issue**: If you reference a file by name in a Task or Actor,
-it will sometimes work and sometimes fail. This is
-because if the Task or Actor runs on the Head Node
-of the Cluster, it will work, but if the Task or A8ctor
-runs on another machine it won't.
+**Issue:** Referencing a file by its name in a Task or Actor may sometimes succeed and sometimes fail. 
+This inconsistency arises because the Task or Actor finds the file when running on the Head Node, but the file might not exist on other machines.
 
-**Example**: Let's say we do the following command:
+**Example:** Consider the following scenario:
 
 .. code-block:: bash
 
-	% touch /tmp/foo.txt
+   % touch /tmp/foo.txt
 
-And I have this code:
+And this code:
 
 .. testcode::
 
@@ -59,71 +53,62 @@ And I have this code:
 
   @ray.remote
   def check_file():
-    foo_exists = os.path.exists("/tmp/foo.txt")
-    return foo_exists
+      foo_exists = os.path.exists("/tmp/foo.txt")
+      return foo_exists
 
   futures = []
   for _ in range(1000):
-    futures.append(check_file.remote())
+      futures.append(check_file.remote())
 
   print(ray.get(futures))
 
+In this case, you might receive a mixture of True and False. If ``check_file()`` runs on the Head Node or locally, it finds the file; however, on a Worker Node, it doesn't.
 
-then you will get a mix of True and False. If
-``check_file()`` runs on the Head Node, or we're running
-locally it works. But if it runs on a Worker Node, it returns ``False``.
+**Expected behavior:** Users generally expect file references to either work consistently or to reliably fail, rather than behaving inconsistently.
 
-**Expected behavior**: Most people would expect this to either fail or succeed consistently.
-It's the same code after all.
+**Fix:**
 
-**Fix**
-
-- Use only shared paths for such applications -- e.g. if you are using a network file system you can use that, or the files can be on S3.
-- Do not rely on file path consistency.
+— Use only shared file paths for such applications. For example, a network file system or S3 storage can provide the required consistency.
+— Avoid relying on local files to be consistent across machines.
 
 
-
-Placement Groups are not composable
+Placement Groups aren't composable
 -----------------------------------
 
-**Issue**: If you have a task that is called from something that runs in a Placement
-Group, the resources are never allocated and it hangs.
+**Issue:** If you schedule a new task from the tasks or actors running within a Placement Group, the system might fail to allocate resources properly, causing the operation to hang.
 
-**Example**: You are using Ray Tune which creates Placement Groups, and you want to
-apply it to an objective function, but that objective function makes use
-of Ray Tasks itself, e.g.
+**Example:** Imagine you are using Ray Tune (which creates Placement Groups) and want to apply it to an objective function that in turn uses Ray Tasks. For example:
 
 .. testcode::
 
   import ray
   from ray import tune
+  from ray.util.placement_group import PlacementGroupSchedulingStrategy
 
   def create_task_that_uses_resources():
-    @ray.remote(num_cpus=10)
-    def sample_task():
-      print("Hello")
-      return
+      @ray.remote(num_cpus=10)
+      def sample_task():
+          print("Hello")
+          return
 
-    return ray.get([sample_task.remote() for i in range(10)])
+      return ray.get([sample_task.remote() for i in range(10)])
 
   def objective(config):
-    create_task_that_uses_resources()
+      create_task_that_uses_resources()
 
   tuner = tune.Tuner(objective, param_space={"a": 1})
   tuner.fit()
 
-This will error with message:
+This code errors with the message:
 
-.. testoutput::
-  :options: +MOCK
+.. code-block::
 
     ValueError: Cannot schedule create_task_that_uses_resources.<locals>.sample_task with the placement group
     because the resource request {'CPU': 10} cannot fit into any bundles for the placement group, [{'CPU': 1.0}].
 
-**Expected behavior**: The above executes.
+**Expected behavior:** The code executes successfully without resource allocation issues.
 
-**Fix**: In the ``@ray.remote`` declaration of Tasks
-called by ``create_task_that_uses_resources()`` , include a
+**Fix:** Ensure that in the ``@ray.remote`` declaration of tasks called within ``create_task_that_uses_resources()``, you include the parameter
 ``scheduling_strategy=PlacementGroupSchedulingStrategy(placement_group=None)``.
 
 .. code-block:: diff
@@ -132,15 +117,12 @@ called by ``create_task_that_uses_resources()`` , include a
   +     @ray.remote(num_cpus=10, scheduling_strategy=PlacementGroupSchedulingStrategy(placement_group=None))
   -     @ray.remote(num_cpus=10)
 
+
 Outdated Function Definitions
 -----------------------------
 
-Due to subtleties of Python, if you redefine a remote function, you may not
-always get the expected behavior. In this case, it may be that Ray is not
-running the newest version of the function.
-
-Suppose you define a remote function ``f`` and then redefine it. Ray should use
-the newest version.
+Because of Python's subtleties, redefining a remote function may not always update Ray to use the latest version. 
+For example, suppose you define a remote function ``f`` and then redefine it; Ray should use the new definition:
 
 .. testcode::
 
@@ -154,107 +136,57 @@ the newest version.
   def f():
       return 2
 
-  print(ray.get(f.remote()))  # This should be 2.
+  print(ray.get(f.remote()))  # This should print 2.
 
 .. testoutput::
 
   2
 
-However, the following are cases where modifying the remote function will
-not update Ray to the new version (at least without stopping and restarting
-Ray).
+However, there are cases where modifying a remote function doesn't take effect without restarting the cluster:
 
-- **The function is imported from an external file:** In this case,
-  ``f`` is defined in some external file ``file.py``. If you ``import file``,
-  change the definition of ``f`` in ``file.py``, then re-``import file``,
-  the function ``f`` will not be updated.
+— **Imported function issue:** If ``f`` is defined in an external file (e.g., ``file.py``), and you modify its definition, re-importing the file may be ignored because Python treats the subsequent import as a no-op. A solution is to use ``from importlib import reload; reload(file)`` instead of a second import.
 
-  This is because the second import gets ignored as a no-op, so ``f`` is
-  still defined by the first import.
+— **Helper function dependency:** If ``f`` depends on a helper function ``h`` defined in an external file, changes to ``h`` may not propagate. The easiest solution is to restart the Ray cluster. Alternatively, you can redefine ``f`` to reload ``file.py`` before invoking ``h``:
 
-  A solution to this problem is to use ``reload(file)`` instead of a second
-  ``import file``. Reloading causes the new definition of ``f`` to be
-  re-executed, and exports it to the other machines. Note that in Python 3, you
-  need to do ``from importlib import reload``.
+.. testcode::
 
-- **The function relies on a helper function from an external file:**
-  In this case, ``f`` can be defined within your Ray application, but relies
-  on a helper function ``h`` defined in some external file ``file.py``. If the
-  definition of ``h`` gets changed in ``file.py``, redefining ``f`` will not
-  update Ray to use the new version of ``h``.
+  @ray.remote
+  def f():
+      from importlib import reload
+      reload(file)
+      return file.h()
 
-  This is because when ``f`` first gets defined, its definition is shipped to
-  all of the Worker processes, and is unpickled. During unpickling, ``file.py`` gets
-  imported in the Workers. Then when ``f`` gets redefined, its definition is
-  again shipped and unpickled in all of the Workers. But since ``file.py``
-  has been imported in the Workers already, it is treated as a second import
-  and is ignored as a no-op.
+This forces the external module to reload on the Workers. Note that in Python 3, you must use ``from importlib import reload``.
 
-  Unfortunately, reloading on the Driver does not update ``h``, as the reload
-  needs to happen on the worker.
-
-  A solution to this problem is to redefine ``f`` to reload ``file.py`` before
-  it calls ``h``. For example, if inside ``file.py`` you have
-
-  .. testcode::
-
-    def h():
-        return 1
-
-  And you define remote function ``f`` as
-
-  .. testcode::
-
-    @ray.remote
-    def f():
-        return file.h()
-
-  You can redefine ``f`` as follows.
-
-  .. testcode::
-
-    @ray.remote
-    def f():
-        reload(file)
-        return file.h()
-
-  This forces the reload to happen on the Workers as needed. Note that in
-  Python 3, you need to do ``from importlib import reload``.
-
-This document discusses some common problems that people run into when using Ray
-as well as some known problems. If you encounter other problems, `let us know`_.
-
-.. _`let us know`: https://github.com/ray-project/ray/issues
 
 Capture task and actor call sites
 ---------------------------------
 
-Ray can optionally capture and display the stacktrace of where your code invokes tasks, creates actors or invokes actor tasks. This feature can help with debugging and understanding the execution flow of your application.
+Ray captures and displays a stack trace when you invoke a task, create an actor, or call an actor method.
 
 To enable call site capture, set the environment variable ``RAY_record_task_actor_creation_sites=true``. When enabled:
 
-- Ray captures the stacktrace when creating tasks, actors or calling actor methods
-- The call site stacktrace is visible in:
-  - Ray Dashboard UI under the task details and actor details pages
-  - ``ray list task --detail`` CLI command output
-  - State API responses
+— Ray captures a stack trace when creating tasks, actors, or invoking actor methods.
+— The captured stack trace is available in the Ray Dashboard (under task and actor details), output of the state CLI command ``ray list task --detail``, and state API responses.
 
-Note that stacktrace capture is disabled by default to avoid any performance overhead. Only enable it when needed for debugging purposes.
+Note that Ray turns off stack trace capture by default due to potential performance impacts. Enable it only when you need it for debugging.
 
 Example:
 
+.. NOTE(edoakes): test is skipped because it reinitializes Ray.
 .. testcode::
+    :skipif: True
 
     import ray
 
-    # Enable stacktrace capture
+    # Enable stack trace capture
     ray.init(runtime_env={"env_vars": {"RAY_record_task_actor_creation_sites": "true"}})
 
     @ray.remote
     def my_task():
         return 42
 
-    # Capture the stacktrace upon task invocation.
+    # Capture the stack trace upon task invocation.
     future = my_task.remote()
     result = ray.get(future)
 
@@ -267,13 +199,12 @@ Example:
             self.value += 1
             return self.value
 
-    # Capture stacktrace upon actor creation.
+    # Capture the stack trace upon actor creation.
     counter = Counter.remote()
 
-    # Capture stacktrace upon method invocation.
+    # Capture the stack trace upon method invocation.
     counter.increment.remote()
 
+This document outlines common problems encountered when using Ray along with potential solutions. If you encounter additional issues, please report them.
 
-The stacktrace shows the exact line numbers and call stack where the task was invoked, actor was created and methods were invoked.
-
-This feature is currently only supported for Python and C++ tasks.
+.. _`let us know`: https://github.com/ray-project/ray/issues

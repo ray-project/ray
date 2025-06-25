@@ -8,8 +8,8 @@ from unittest.mock import patch
 import pytest
 
 import ray
-from ray._private.accelerators.neuron import NEURON_RT_VISIBLE_CORES_ENV_VAR
 from ray import train
+from ray._private.accelerators.neuron import NEURON_RT_VISIBLE_CORES_ENV_VAR
 from ray.air._internal.util import StartTraceback
 
 # Trigger pytest hook to automatically zip test cluster logs to archive dir on failure

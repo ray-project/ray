@@ -1,6 +1,5 @@
 from ray.train.constants import V2_MIGRATION_GUIDE_MESSAGE
 
-
 FAIL_FAST_DEPRECATION_MESSAGE = (
     "`ray.train.FailureConfig(fail_fast)` is deprecated since it is "
     "only relevant in the context of multiple trials running in Ray Tune. "

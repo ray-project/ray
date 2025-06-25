@@ -1,27 +1,27 @@
-from typing import (
-    List,
-    Optional,
-    Tuple,
-    Union,
-    Dict,
-    Any,
-    Callable,
-    Awaitable,
-    TypeVar,
-    NamedTuple,
-)
-from pydantic import Field, field_validator
+import asyncio
+import inspect
 import os
 import time
-import inspect
-import asyncio
+from pathlib import Path
+from typing import (
+    Any,
+    Awaitable,
+    Callable,
+    Dict,
+    List,
+    NamedTuple,
+    Optional,
+    Tuple,
+    TypeVar,
+    Union,
+)
 
 # Use pyarrow for cloud storage access
 import pyarrow.fs as pa_fs
+from pydantic import Field, field_validator
 
-from ray.llm._internal.serve.observability.logging import get_logger
 from ray.llm._internal.common.base_pydantic import BaseModelExtended
-
+from ray.llm._internal.common.observability.logging import get_logger
 
 T = TypeVar("T")
 
@@ -306,7 +306,7 @@ class CloudFileSystem:
                 )
             else:
                 f_hash = "0000000000000000000000000000000000000000"
-                logger.warning(
+                logger.info(
                     f"Hash file does not exist in bucket {bucket_uri}. "
                     f"Using {f_hash} as the hash."
                 )
@@ -335,6 +335,65 @@ class CloudFileSystem:
 
         except Exception as e:
             logger.exception(f"Error downloading model from {bucket_uri}: {e}")
+            raise
+
+    @staticmethod
+    def upload_files(
+        local_path: str,
+        bucket_uri: str,
+    ) -> None:
+        """Upload files to cloud storage.
+
+        Args:
+            local_path: The local path of the files to upload.
+            bucket_uri: The bucket uri to upload the files to, must start with `s3://` or `gs://`.
+        """
+        try:
+            fs, dest_path = CloudFileSystem.get_fs_and_path(bucket_uri)
+
+            pa_fs.copy_files(
+                source=local_path,
+                destination=dest_path,
+                source_filesystem=pa_fs.LocalFileSystem(),
+                destination_filesystem=fs,
+            )
+        except Exception as e:
+            logger.exception(f"Error uploading files to {bucket_uri}: {e}")
+            raise
+
+    @staticmethod
+    def upload_model(
+        local_path: str,
+        bucket_uri: str,
+    ) -> None:
+        """Upload a model to cloud storage.
+
+        Args:
+            local_path: The local path of the model.
+            bucket_uri: The bucket uri to upload the model to, must start with `s3://` or `gs://`.
+        """
+        try:
+            # If refs/main exists, upload as hash, and treat snapshots/<hash> as the model.
+            # Otherwise, this is a custom model, we do not assume folder hierarchy.
+            refs_main = Path(local_path, "refs", "main")
+            if refs_main.exists():
+                model_path = os.path.join(
+                    local_path, "snapshots", refs_main.read_text().strip()
+                )
+                CloudFileSystem.upload_files(
+                    local_path=model_path, bucket_uri=bucket_uri
+                )
+                CloudFileSystem.upload_files(
+                    local_path=str(refs_main),
+                    bucket_uri=os.path.join(bucket_uri, "hash"),
+                )
+            else:
+                CloudFileSystem.upload_files(
+                    local_path=local_path, bucket_uri=bucket_uri
+                )
+            logger.info(f"Uploaded model files to {bucket_uri}.")
+        except Exception as e:
+            logger.exception(f"Error uploading model to {bucket_uri}: {e}")
             raise
 
 
@@ -471,6 +530,34 @@ class CloudObjectCache:
 
     def __len__(self) -> int:
         return len(self._cache)
+
+
+class CloudModelAccessor:
+    """Unified accessor for models stored in cloud storage (S3 or GCS).
+
+    Args:
+        model_id: The model id to download or upload.
+        mirror_config: The mirror config for the model.
+    """
+
+    def __init__(self, model_id: str, mirror_config: CloudMirrorConfig):
+        self.model_id = model_id
+        self.mirror_config = mirror_config
+
+    def _get_lock_path(self, suffix: str = "") -> Path:
+        return Path(
+            "~", f"{self.model_id.replace('/', '--')}{suffix}.lock"
+        ).expanduser()
+
+    def _get_model_path(self) -> Path:
+        if Path(self.model_id).exists():
+            return Path(self.model_id)
+        # Delayed import to avoid circular dependencies
+        from transformers.utils.hub import TRANSFORMERS_CACHE
+
+        return Path(
+            TRANSFORMERS_CACHE, f"models--{self.model_id.replace('/', '--')}"
+        ).expanduser()
 
 
 def remote_object_cache(

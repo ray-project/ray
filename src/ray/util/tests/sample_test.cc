@@ -14,9 +14,9 @@
 
 #include "ray/util/sample.h"
 
-#include <vector>
+#include <gtest/gtest.h>
 
-#include "gtest/gtest.h"
+#include <vector>
 
 namespace ray {
 

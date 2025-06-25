@@ -6,12 +6,15 @@ from ray.data._internal.execution.interfaces import (
     PhysicalOperator,
     RefBundle,
 )
-from ray.data._internal.execution.operators.base_physical_operator import NAryOperator
+from ray.data._internal.execution.operators.base_physical_operator import (
+    InternalQueueOperatorMixin,
+    NAryOperator,
+)
 from ray.data._internal.stats import StatsDict
 from ray.data.context import DataContext
 
 
-class UnionOperator(NAryOperator):
+class UnionOperator(InternalQueueOperatorMixin, NAryOperator):
     """An operator that combines output blocks from
     two or more input operators into a single output."""
 
@@ -68,6 +71,9 @@ class UnionOperator(NAryOperator):
                 return None
             total_rows += input_num_rows
         return total_rows
+
+    def internal_queue_size(self) -> int:
+        return sum([len(buf) for buf in self._input_buffers])
 
     def _add_input_inner(self, refs: RefBundle, input_index: int) -> None:
         assert not self.completed()

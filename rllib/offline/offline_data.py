@@ -1,14 +1,18 @@
 import logging
 from pathlib import Path
 import pyarrow.fs
+import numpy as np
 import ray
 import time
 import types
 
-from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
+from typing import Any, Dict, TYPE_CHECKING
+
 from ray.rllib.core import COMPONENT_RL_MODULE
 from ray.rllib.env import INPUT_ENV_SPACES
 from ray.rllib.offline.offline_prelearner import OfflinePreLearner
+from ray.rllib.utils import unflatten_dict
+from ray.rllib.policy.sample_batch import MultiAgentBatch, SampleBatch
 from ray.rllib.utils import force_list
 from ray.rllib.utils.annotations import (
     OverrideToImplementCustomLogic,
@@ -16,14 +20,18 @@ from ray.rllib.utils.annotations import (
 )
 from ray.util.annotations import PublicAPI
 
+if TYPE_CHECKING:
+    from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
+
 logger = logging.getLogger(__name__)
 
 
 @PublicAPI(stability="alpha")
 class OfflineData:
     @OverrideToImplementCustomLogic_CallToSuperRecommended
-    def __init__(self, config: AlgorithmConfig):
+    def __init__(self, config: "AlgorithmConfig"):
 
+        # TODO (simon): Define self.spaces here.
         self.config = config
         self.is_multi_agent = self.config.is_multi_agent
         self.path = (
@@ -120,6 +128,7 @@ class OfflineData:
         num_samples: int,
         return_iterator: bool = False,
         num_shards: int = 1,
+        module_state: Dict[str, Any] = None,
     ):
         # Materialize the mapped data, if necessary. This runs for all the
         # data the `OfflinePreLearner` logic and maps them to `MultiAgentBatch`es.
@@ -132,45 +141,46 @@ class OfflineData:
         #       is costly.
         if not self.data_is_mapped:
 
-            # Get the RLModule state from learners.
-            if num_shards >= 1:
-                # Call here the learner to get an up-to-date module state.
-                # TODO (simon): This is a workaround as along as learners cannot
-                # receive any calls from another actor.
-                module_state = ray.get(
-                    self.learner_handles[0].get_state.remote(
+            if not module_state:
+                # Get the RLModule state from learners.
+                if num_shards >= 1:
+                    # Call here the learner to get an up-to-date module state.
+                    # TODO (simon): This is a workaround as along as learners cannot
+                    # receive any calls from another actor.
+                    module_state = ray.get(
+                        self.learner_handles[0].get_state.remote(
+                            component=COMPONENT_RL_MODULE,
+                        )
+                    )[COMPONENT_RL_MODULE]
+                    # Provide the `Learner`(s) GPU devices, if needed.
+                    # if not self.map_batches_uses_gpus(self.config) and self.config._validate_config:
+                    #     devices = ray.get(self.learner_handles[0].get_device.remote())
+                    #     devices = [devices] if not isinstance(devices, list) else devices
+                    #     device_strings = [
+                    #         f"{device.type}:{str(device.index)}"
+                    #         if device.type == "cuda"
+                    #         else device.type
+                    #         for device in devices
+                    #     ]
+                    # # Otherwise, set the GPU strings to `None`.
+                    # # TODO (simon): Check inside 'OfflinePreLearner'.
+                    # else:
+                    #     device_strings = None
+                else:
+                    # Get the module state from the `Learner`(S).
+                    module_state = self.learner_handles[0].get_state(
                         component=COMPONENT_RL_MODULE,
-                    )
-                )[COMPONENT_RL_MODULE]
-                # Provide the `Learner`(s) GPU devices, if needed.
-                # if not self.map_batches_uses_gpus(self.config) and self.config._validate_config:
-                #     devices = ray.get(self.learner_handles[0].get_device.remote())
-                #     devices = [devices] if not isinstance(devices, list) else devices
-                #     device_strings = [
-                #         f"{device.type}:{str(device.index)}"
-                #         if device.type == "cuda"
-                #         else device.type
-                #         for device in devices
-                #     ]
-                # # Otherwise, set the GPU strings to `None`.
-                # # TODO (simon): Check inside 'OfflinePreLearner'.
-                # else:
-                #     device_strings = None
-            else:
-                # Get the module state from the `Learner`(S).
-                module_state = self.learner_handles[0].get_state(
-                    component=COMPONENT_RL_MODULE,
-                )[COMPONENT_RL_MODULE]
-                # Provide the `Learner`(s) GPU devices, if needed.
-                # if not self.map_batches_uses_gpus(self.config) and self.config._validate_config:
-                #     device = self.learner_handles[0].get_device()
-                #     device_strings = [
-                #         f"{device.type}:{str(device.index)}"
-                #         if device.type == "cuda"
-                #         else device.type
-                #     ]
-                # else:
-                #     device_strings = None
+                    )[COMPONENT_RL_MODULE]
+                    # Provide the `Learner`(s) GPU devices, if needed.
+                    # if not self.map_batches_uses_gpus(self.config) and self.config._validate_config:
+                    #     device = self.learner_handles[0].get_device()
+                    #     device_strings = [
+                    #         f"{device.type}:{str(device.index)}"
+                    #         if device.type == "cuda"
+                    #         else device.type
+                    #     ]
+                    # else:
+                    #     device_strings = None
             # Constructor `kwargs` for the `OfflinePreLearner`.
             fn_constructor_kwargs = {
                 "config": self.config,
@@ -223,13 +233,26 @@ class OfflineData:
                     self.batch_iterators = self.data.iterator()
                 # Otherwise, the user wants batches returned.
                 else:
+                    # Define a collate (last-mile) transformation that maps batches
+                    # to RLlib's `MultiAgentBatch`.
+                    def _collate_fn(_batch: Dict[str, np.ndarray]) -> MultiAgentBatch:
+                        _batch = unflatten_dict(_batch)
+                        return MultiAgentBatch(
+                            {
+                                module_id: SampleBatch(module_data)
+                                for module_id, module_data in _batch.items()
+                            },
+                            env_steps=sum(
+                                len(next(iter(module_data.values())))
+                                for module_data in _batch.values()
+                            ),
+                        )
+
                     # If no iterator should be returned, or if we want to return a single
                     # batch iterator, we instantiate the batch iterator once, here.
                     self.batch_iterators = self.data.iter_batches(
-                        # This is important. The batch size is now 1, because the data
-                        # is already run through the `OfflinePreLearner` and a single
-                        # instance is a single `MultiAgentBatch` of size `num_samples`.
-                        batch_size=1,
+                        batch_size=num_samples,
+                        _collate_fn=_collate_fn,
                         **self.iter_batches_kwargs,
                     )
                     self.batch_iterators = iter(self.batch_iterators)
@@ -240,7 +263,7 @@ class OfflineData:
         else:
             # Return a single batch from the iterator.
             try:
-                return next(self.batch_iterators)["batch"][0]
+                return next(self.batch_iterators)
             except StopIteration:
                 # If the batch iterator is exhausted, reinitiate a new one.
                 logger.debug(

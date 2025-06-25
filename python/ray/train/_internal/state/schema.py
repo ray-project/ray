@@ -1,7 +1,7 @@
 from enum import Enum
 from typing import Dict, List, Optional
 
-from ray._private.pydantic_compat import BaseModel, Field
+from ray._common.pydantic_compat import BaseModel, Field
 from ray.dashboard.modules.job.pydantic_models import JobDetails
 from ray.util.annotations import DeveloperAPI
 
@@ -53,7 +53,6 @@ class TrainWorkerInfo(BaseModel):
     resources: Dict[str, float] = Field(
         description="The resources allocated to the worker."
     )
-    worker_log_file_path: str = Field(description="The path to the worker log file.")
 
 
 @DeveloperAPI
@@ -142,9 +141,6 @@ class TrainRunInfo(BaseModel):
     end_time_ms: Optional[int] = Field(
         description="The UNIX timestamp of the end time of this Train run. "
         "If null, the Train run has not ended yet."
-    )
-    controller_log_file_path: str = Field(
-        description="The path to the controller log file."
     )
     resources: List[Dict[str, float]] = Field(
         description="The resources allocated to the worker."

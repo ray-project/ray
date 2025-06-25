@@ -110,7 +110,7 @@ to set `appendfsync` to `always` so Redis stores all writes immediately.
 ## Putting it together
 
 Edit
-[the full YAML](https://github.com/ray-project/kuberay/blob/master/config/samples/ray-cluster.persistent-redis.yaml)
+[the full YAML](https://github.com/ray-project/kuberay/blob/release-1.3/ray-operator/config/samples/ray-cluster.persistent-redis.yaml)
 to your satisfaction and apply it:
 
 ```

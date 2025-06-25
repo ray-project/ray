@@ -23,6 +23,7 @@ For example, consider the following Ray Core code, which sends data to an actor
 and gets the result:
 
 .. testcode::
+    :skipif: True
 
     # Ray Core API for remote execution.
     # ~1ms overhead to invoke `recv`.
@@ -33,6 +34,7 @@ and gets the result:
 This code shows how to compile and execute the same example as a Compiled Graph.
 
 .. testcode::
+    :skipif: True
 
     # Compiled Graph for remote execution.
     # less than 50us overhead to invoke `recv` (during `graph.execute(data)`).

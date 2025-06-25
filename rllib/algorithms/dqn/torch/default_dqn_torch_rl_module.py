@@ -242,7 +242,7 @@ class DefaultDQNTorchRLModule(TorchRLModule, DefaultDQNRLModule):
                 for all heads (Q or advantages and value in case of a dueling
                 architecture).
             head: Either a head model or a dictionary of head model (dueling
-            architecture) containing advantage and value stream heads.
+                architecture) containing advantage and value stream heads.
 
         Returns:
             In case of expectation learning the Q-value predictions ("qf_preds")

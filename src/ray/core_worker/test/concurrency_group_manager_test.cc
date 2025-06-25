@@ -14,6 +14,9 @@
 
 #include "ray/core_worker/transport/concurrency_group_manager.h"
 
+#include <memory>
+#include <vector>
+
 #include "gtest/gtest.h"
 #include "ray/common/asio/instrumented_io_context.h"
 #include "ray/common/test_util.h"

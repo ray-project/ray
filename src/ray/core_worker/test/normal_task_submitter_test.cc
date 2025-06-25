@@ -14,6 +14,14 @@
 
 #include "ray/core_worker/transport/normal_task_submitter.h"
 
+#include <list>
+#include <map>
+#include <memory>
+#include <string>
+#include <unordered_map>
+#include <utility>
+#include <vector>
+
 #include "gtest/gtest.h"
 #include "mock/ray/core_worker/memory_store.h"
 #include "ray/common/task/task_spec.h"
@@ -169,7 +177,7 @@ class MockTaskFinisher : public TaskFinisherInterface {
 
   bool MarkTaskCanceled(const TaskID &task_id) override { return true; }
 
-  absl::optional<TaskSpecification> GetTaskSpec(const TaskID &task_id) const override {
+  std::optional<TaskSpecification> GetTaskSpec(const TaskID &task_id) const override {
     TaskSpecification task = BuildEmptyTaskSpec();
     return task;
   }
@@ -377,9 +385,10 @@ class MockActorCreator : public ActorCreatorInterface {
     return Status::OK();
   }
 
-  Status AsyncRestartActor(const ActorID &actor_id,
-                           uint64_t num_restarts,
-                           gcs::StatusCallback callback) override {
+  Status AsyncRestartActorForLineageReconstruction(
+      const ActorID &actor_id,
+      uint64_t num_restarts_due_to_lineage_reconstructions,
+      gcs::StatusCallback callback) override {
     return Status::OK();
   }
 
@@ -412,7 +421,7 @@ class MockActorCreator : public ActorCreatorInterface {
 
 class MockLeasePolicy : public LeasePolicyInterface {
  public:
-  MockLeasePolicy(const NodeID &node_id = NodeID::Nil()) {
+  explicit MockLeasePolicy(const NodeID &node_id = NodeID::Nil()) {
     fallback_rpc_address_ = rpc::Address();
     fallback_rpc_address_.set_raylet_id(node_id.Binary());
   }
@@ -456,19 +465,21 @@ TEST(NormalTaskSubmitterTest, TestLocalityAwareSubmitOneTask) {
   auto lease_policy = std::make_unique<MockLeasePolicy>();
   auto *lease_policy_ptr = lease_policy.get();
   lease_policy->is_locality_aware = true;
-  NormalTaskSubmitter submitter(address,
-                                raylet_client,
-                                client_pool,
-                                nullptr,
-                                std::move(lease_policy),
-                                store,
-                                *task_finisher,
-                                NodeID::Nil(),
-                                WorkerType::WORKER,
-                                kLongTimeout,
-                                actor_creator,
-                                JobID::Nil(),
-                                kOneRateLimiter);
+  NormalTaskSubmitter submitter(
+      address,
+      raylet_client,
+      client_pool,
+      nullptr,
+      std::move(lease_policy),
+      store,
+      *task_finisher,
+      NodeID::Nil(),
+      WorkerType::WORKER,
+      kLongTimeout,
+      actor_creator,
+      JobID::Nil(),
+      kOneRateLimiter,
+      [](const ObjectID &object_id) { return rpc::TensorTransport::OBJECT_STORE; });
 
   TaskSpecification task = BuildEmptyTaskSpec();
 
@@ -509,19 +520,21 @@ TEST(NormalTaskSubmitterTest, TestSubmitOneTask) {
   auto actor_creator = std::make_shared<MockActorCreator>();
   auto lease_policy = std::make_unique<MockLeasePolicy>();
   auto *lease_policy_ptr = lease_policy.get();
-  NormalTaskSubmitter submitter(address,
-                                raylet_client,
-                                client_pool,
-                                nullptr,
-                                std::move(lease_policy),
-                                store,
-                                *task_finisher,
-                                NodeID::Nil(),
-                                WorkerType::WORKER,
-                                kLongTimeout,
-                                actor_creator,
-                                JobID::Nil(),
-                                kOneRateLimiter);
+  NormalTaskSubmitter submitter(
+      address,
+      raylet_client,
+      client_pool,
+      nullptr,
+      std::move(lease_policy),
+      store,
+      *task_finisher,
+      NodeID::Nil(),
+      WorkerType::WORKER,
+      kLongTimeout,
+      actor_creator,
+      JobID::Nil(),
+      kOneRateLimiter,
+      [](const ObjectID &object_id) { return rpc::TensorTransport::OBJECT_STORE; });
 
   TaskSpecification task = BuildEmptyTaskSpec();
 
@@ -561,19 +574,21 @@ TEST(NormalTaskSubmitterTest, TestRetryTaskApplicationLevelError) {
   auto task_finisher = std::make_unique<MockTaskFinisher>();
   auto actor_creator = std::make_shared<MockActorCreator>();
   auto lease_policy = std::make_unique<MockLeasePolicy>();
-  NormalTaskSubmitter submitter(address,
-                                raylet_client,
-                                client_pool,
-                                nullptr,
-                                std::move(lease_policy),
-                                store,
-                                *task_finisher,
-                                NodeID::Nil(),
-                                WorkerType::WORKER,
-                                kLongTimeout,
-                                actor_creator,
-                                JobID::Nil(),
-                                kOneRateLimiter);
+  NormalTaskSubmitter submitter(
+      address,
+      raylet_client,
+      client_pool,
+      nullptr,
+      std::move(lease_policy),
+      store,
+      *task_finisher,
+      NodeID::Nil(),
+      WorkerType::WORKER,
+      kLongTimeout,
+      actor_creator,
+      JobID::Nil(),
+      kOneRateLimiter,
+      [](const ObjectID &object_id) { return rpc::TensorTransport::OBJECT_STORE; });
   TaskSpecification task = BuildEmptyTaskSpec();
   task.GetMutableMessage().set_retry_exceptions(true);
 
@@ -618,19 +633,21 @@ TEST(NormalTaskSubmitterTest, TestHandleTaskFailure) {
   auto task_finisher = std::make_unique<MockTaskFinisher>();
   auto actor_creator = std::make_shared<MockActorCreator>();
   auto lease_policy = std::make_unique<MockLeasePolicy>();
-  NormalTaskSubmitter submitter(address,
-                                raylet_client,
-                                client_pool,
-                                nullptr,
-                                std::move(lease_policy),
-                                store,
-                                *task_finisher,
-                                NodeID::Nil(),
-                                WorkerType::WORKER,
-                                kLongTimeout,
-                                actor_creator,
-                                JobID::Nil(),
-                                kOneRateLimiter);
+  NormalTaskSubmitter submitter(
+      address,
+      raylet_client,
+      client_pool,
+      nullptr,
+      std::move(lease_policy),
+      store,
+      *task_finisher,
+      NodeID::Nil(),
+      WorkerType::WORKER,
+      kLongTimeout,
+      actor_creator,
+      JobID::Nil(),
+      kOneRateLimiter,
+      [](const ObjectID &object_id) { return rpc::TensorTransport::OBJECT_STORE; });
   TaskSpecification task = BuildEmptyTaskSpec();
 
   ASSERT_TRUE(submitter.SubmitTask(task).ok());
@@ -662,19 +679,21 @@ TEST(NormalTaskSubmitterTest, TestHandleUnschedulableTask) {
   auto actor_creator = std::make_shared<MockActorCreator>();
   auto lease_policy = std::make_unique<MockLeasePolicy>();
   auto *lease_policy_ptr = lease_policy.get();
-  NormalTaskSubmitter submitter(address,
-                                raylet_client,
-                                client_pool,
-                                nullptr,
-                                std::move(lease_policy),
-                                store,
-                                *task_finisher,
-                                NodeID::Nil(),
-                                WorkerType::WORKER,
-                                kLongTimeout,
-                                actor_creator,
-                                JobID::Nil(),
-                                kTwoRateLimiter);
+  NormalTaskSubmitter submitter(
+      address,
+      raylet_client,
+      client_pool,
+      nullptr,
+      std::move(lease_policy),
+      store,
+      *task_finisher,
+      NodeID::Nil(),
+      WorkerType::WORKER,
+      kLongTimeout,
+      actor_creator,
+      JobID::Nil(),
+      kTwoRateLimiter,
+      [](const ObjectID &object_id) { return rpc::TensorTransport::OBJECT_STORE; });
 
   TaskSpecification task1 = BuildEmptyTaskSpec();
   TaskSpecification task2 = BuildEmptyTaskSpec();
@@ -733,19 +752,21 @@ TEST(NormalTaskSubmitterTest, TestHandleRuntimeEnvSetupFailed) {
   auto actor_creator = std::make_shared<MockActorCreator>();
   auto lease_policy = std::make_unique<MockLeasePolicy>();
   auto *lease_policy_ptr = lease_policy.get();
-  NormalTaskSubmitter submitter(address,
-                                raylet_client,
-                                client_pool,
-                                nullptr,
-                                std::move(lease_policy),
-                                store,
-                                *task_finisher,
-                                NodeID::Nil(),
-                                WorkerType::WORKER,
-                                kLongTimeout,
-                                actor_creator,
-                                JobID::Nil(),
-                                kTwoRateLimiter);
+  NormalTaskSubmitter submitter(
+      address,
+      raylet_client,
+      client_pool,
+      nullptr,
+      std::move(lease_policy),
+      store,
+      *task_finisher,
+      NodeID::Nil(),
+      WorkerType::WORKER,
+      kLongTimeout,
+      actor_creator,
+      JobID::Nil(),
+      kTwoRateLimiter,
+      [](const ObjectID &object_id) { return rpc::TensorTransport::OBJECT_STORE; });
 
   TaskSpecification task1 = BuildEmptyTaskSpec();
   TaskSpecification task2 = BuildEmptyTaskSpec();
@@ -803,19 +824,21 @@ TEST(NormalTaskSubmitterTest, TestWorkerHandleLocalRayletDied) {
   auto task_finisher = std::make_unique<MockTaskFinisher>();
   auto actor_creator = std::make_shared<MockActorCreator>();
   auto lease_policy = std::make_unique<MockLeasePolicy>();
-  NormalTaskSubmitter submitter(address,
-                                raylet_client,
-                                client_pool,
-                                nullptr,
-                                std::move(lease_policy),
-                                store,
-                                *task_finisher,
-                                NodeID::Nil(),
-                                WorkerType::WORKER,
-                                kLongTimeout,
-                                actor_creator,
-                                JobID::Nil(),
-                                kTwoRateLimiter);
+  NormalTaskSubmitter submitter(
+      address,
+      raylet_client,
+      client_pool,
+      nullptr,
+      std::move(lease_policy),
+      store,
+      *task_finisher,
+      NodeID::Nil(),
+      WorkerType::WORKER,
+      kLongTimeout,
+      actor_creator,
+      JobID::Nil(),
+      kTwoRateLimiter,
+      [](const ObjectID &object_id) { return rpc::TensorTransport::OBJECT_STORE; });
 
   TaskSpecification task1 = BuildEmptyTaskSpec();
   ASSERT_TRUE(submitter.SubmitTask(task1).ok());
@@ -833,19 +856,21 @@ TEST(NormalTaskSubmitterTest, TestDriverHandleLocalRayletDied) {
   auto actor_creator = std::make_shared<MockActorCreator>();
   auto lease_policy = std::make_unique<MockLeasePolicy>();
   auto *lease_policy_ptr = lease_policy.get();
-  NormalTaskSubmitter submitter(address,
-                                raylet_client,
-                                client_pool,
-                                nullptr,
-                                std::move(lease_policy),
-                                store,
-                                *task_finisher,
-                                NodeID::Nil(),
-                                WorkerType::DRIVER,
-                                kLongTimeout,
-                                actor_creator,
-                                JobID::Nil(),
-                                kTwoRateLimiter);
+  NormalTaskSubmitter submitter(
+      address,
+      raylet_client,
+      client_pool,
+      nullptr,
+      std::move(lease_policy),
+      store,
+      *task_finisher,
+      NodeID::Nil(),
+      WorkerType::DRIVER,
+      kLongTimeout,
+      actor_creator,
+      JobID::Nil(),
+      kTwoRateLimiter,
+      [](const ObjectID &object_id) { return rpc::TensorTransport::OBJECT_STORE; });
 
   TaskSpecification task1 = BuildEmptyTaskSpec();
   TaskSpecification task2 = BuildEmptyTaskSpec();
@@ -891,19 +916,21 @@ TEST(NormalTaskSubmitterTest, TestConcurrentWorkerLeases) {
 
   int64_t concurrency = 10;
   auto rateLimiter = std::make_shared<StaticLeaseRequestRateLimiter>(concurrency);
-  NormalTaskSubmitter submitter(address,
-                                raylet_client,
-                                client_pool,
-                                nullptr,
-                                std::move(lease_policy),
-                                store,
-                                *task_finisher,
-                                NodeID::Nil(),
-                                WorkerType::WORKER,
-                                kLongTimeout,
-                                actor_creator,
-                                JobID::Nil(),
-                                rateLimiter);
+  NormalTaskSubmitter submitter(
+      address,
+      raylet_client,
+      client_pool,
+      nullptr,
+      std::move(lease_policy),
+      store,
+      *task_finisher,
+      NodeID::Nil(),
+      WorkerType::WORKER,
+      kLongTimeout,
+      actor_creator,
+      JobID::Nil(),
+      rateLimiter,
+      [](const ObjectID &object_id) { return rpc::TensorTransport::OBJECT_STORE; });
 
   std::vector<TaskSpecification> tasks;
   for (int i = 0; i < 2 * concurrency; i++) {
@@ -970,19 +997,21 @@ TEST(NormalTaskSubmitterTest, TestConcurrentWorkerLeasesDynamic) {
 
   int64_t concurrency = 10;
   auto rateLimiter = std::make_shared<DynamicRateLimiter>(1);
-  NormalTaskSubmitter submitter(address,
-                                raylet_client,
-                                client_pool,
-                                nullptr,
-                                std::move(lease_policy),
-                                store,
-                                *task_finisher,
-                                NodeID::Nil(),
-                                WorkerType::WORKER,
-                                kLongTimeout,
-                                actor_creator,
-                                JobID::Nil(),
-                                rateLimiter);
+  NormalTaskSubmitter submitter(
+      address,
+      raylet_client,
+      client_pool,
+      nullptr,
+      std::move(lease_policy),
+      store,
+      *task_finisher,
+      NodeID::Nil(),
+      WorkerType::WORKER,
+      kLongTimeout,
+      actor_creator,
+      JobID::Nil(),
+      rateLimiter,
+      [](const ObjectID &object_id) { return rpc::TensorTransport::OBJECT_STORE; });
 
   std::vector<TaskSpecification> tasks;
   for (int i = 0; i < 2 * concurrency; i++) {
@@ -1078,19 +1107,21 @@ TEST(NormalTaskSubmitterTest, TestConcurrentWorkerLeasesDynamicWithSpillback) {
 
   int64_t concurrency = 10;
   auto rateLimiter = std::make_shared<DynamicRateLimiter>(1);
-  NormalTaskSubmitter submitter(address,
-                                raylet_client,
-                                client_pool,
-                                lease_client_factory,
-                                std::move(lease_policy),
-                                store,
-                                *task_finisher,
-                                NodeID::Nil(),
-                                WorkerType::WORKER,
-                                kLongTimeout,
-                                actor_creator,
-                                JobID::Nil(),
-                                rateLimiter);
+  NormalTaskSubmitter submitter(
+      address,
+      raylet_client,
+      client_pool,
+      lease_client_factory,
+      std::move(lease_policy),
+      store,
+      *task_finisher,
+      NodeID::Nil(),
+      WorkerType::WORKER,
+      kLongTimeout,
+      actor_creator,
+      JobID::Nil(),
+      rateLimiter,
+      [](const ObjectID &object_id) { return rpc::TensorTransport::OBJECT_STORE; });
 
   std::vector<TaskSpecification> tasks;
   for (int i = 0; i < 2 * concurrency; i++) {
@@ -1183,19 +1214,21 @@ TEST(NormalTaskSubmitterTest, TestSubmitMultipleTasks) {
   auto actor_creator = std::make_shared<MockActorCreator>();
   auto lease_policy = std::make_unique<MockLeasePolicy>();
   auto *lease_policy_ptr = lease_policy.get();
-  NormalTaskSubmitter submitter(address,
-                                raylet_client,
-                                client_pool,
-                                nullptr,
-                                std::move(lease_policy),
-                                store,
-                                *task_finisher,
-                                NodeID::Nil(),
-                                WorkerType::WORKER,
-                                kLongTimeout,
-                                actor_creator,
-                                JobID::Nil(),
-                                kOneRateLimiter);
+  NormalTaskSubmitter submitter(
+      address,
+      raylet_client,
+      client_pool,
+      nullptr,
+      std::move(lease_policy),
+      store,
+      *task_finisher,
+      NodeID::Nil(),
+      WorkerType::WORKER,
+      kLongTimeout,
+      actor_creator,
+      JobID::Nil(),
+      kOneRateLimiter,
+      [](const ObjectID &object_id) { return rpc::TensorTransport::OBJECT_STORE; });
 
   TaskSpecification task1 = BuildEmptyTaskSpec();
   TaskSpecification task2 = BuildEmptyTaskSpec();
@@ -1256,19 +1289,21 @@ TEST(NormalTaskSubmitterTest, TestReuseWorkerLease) {
   auto actor_creator = std::make_shared<MockActorCreator>();
   auto lease_policy = std::make_unique<MockLeasePolicy>();
   auto *lease_policy_ptr = lease_policy.get();
-  NormalTaskSubmitter submitter(address,
-                                raylet_client,
-                                client_pool,
-                                nullptr,
-                                std::move(lease_policy),
-                                store,
-                                *task_finisher,
-                                NodeID::Nil(),
-                                WorkerType::WORKER,
-                                kLongTimeout,
-                                actor_creator,
-                                JobID::Nil(),
-                                kOneRateLimiter);
+  NormalTaskSubmitter submitter(
+      address,
+      raylet_client,
+      client_pool,
+      nullptr,
+      std::move(lease_policy),
+      store,
+      *task_finisher,
+      NodeID::Nil(),
+      WorkerType::WORKER,
+      kLongTimeout,
+      actor_creator,
+      JobID::Nil(),
+      kOneRateLimiter,
+      [](const ObjectID &object_id) { return rpc::TensorTransport::OBJECT_STORE; });
 
   TaskSpecification task1 = BuildEmptyTaskSpec();
   TaskSpecification task2 = BuildEmptyTaskSpec();
@@ -1329,19 +1364,21 @@ TEST(NormalTaskSubmitterTest, TestRetryLeaseCancellation) {
   auto task_finisher = std::make_unique<MockTaskFinisher>();
   auto actor_creator = std::make_shared<MockActorCreator>();
   auto lease_policy = std::make_unique<MockLeasePolicy>();
-  NormalTaskSubmitter submitter(address,
-                                raylet_client,
-                                client_pool,
-                                nullptr,
-                                std::move(lease_policy),
-                                store,
-                                *task_finisher,
-                                NodeID::Nil(),
-                                WorkerType::WORKER,
-                                kLongTimeout,
-                                actor_creator,
-                                JobID::Nil(),
-                                kOneRateLimiter);
+  NormalTaskSubmitter submitter(
+      address,
+      raylet_client,
+      client_pool,
+      nullptr,
+      std::move(lease_policy),
+      store,
+      *task_finisher,
+      NodeID::Nil(),
+      WorkerType::WORKER,
+      kLongTimeout,
+      actor_creator,
+      JobID::Nil(),
+      kOneRateLimiter,
+      [](const ObjectID &object_id) { return rpc::TensorTransport::OBJECT_STORE; });
   TaskSpecification task1 = BuildEmptyTaskSpec();
   TaskSpecification task2 = BuildEmptyTaskSpec();
   TaskSpecification task3 = BuildEmptyTaskSpec();
@@ -1397,19 +1434,21 @@ TEST(NormalTaskSubmitterTest, TestConcurrentCancellationAndSubmission) {
   auto task_finisher = std::make_unique<MockTaskFinisher>();
   auto actor_creator = std::make_shared<MockActorCreator>();
   auto lease_policy = std::make_unique<MockLeasePolicy>();
-  NormalTaskSubmitter submitter(address,
-                                raylet_client,
-                                client_pool,
-                                nullptr,
-                                std::move(lease_policy),
-                                store,
-                                *task_finisher,
-                                NodeID::Nil(),
-                                WorkerType::WORKER,
-                                kLongTimeout,
-                                actor_creator,
-                                JobID::Nil(),
-                                kOneRateLimiter);
+  NormalTaskSubmitter submitter(
+      address,
+      raylet_client,
+      client_pool,
+      nullptr,
+      std::move(lease_policy),
+      store,
+      *task_finisher,
+      NodeID::Nil(),
+      WorkerType::WORKER,
+      kLongTimeout,
+      actor_creator,
+      JobID::Nil(),
+      kOneRateLimiter,
+      [](const ObjectID &object_id) { return rpc::TensorTransport::OBJECT_STORE; });
   TaskSpecification task1 = BuildEmptyTaskSpec();
   TaskSpecification task2 = BuildEmptyTaskSpec();
   TaskSpecification task3 = BuildEmptyTaskSpec();
@@ -1462,19 +1501,21 @@ TEST(NormalTaskSubmitterTest, TestWorkerNotReusedOnError) {
   auto task_finisher = std::make_unique<MockTaskFinisher>();
   auto actor_creator = std::make_shared<MockActorCreator>();
   auto lease_policy = std::make_unique<MockLeasePolicy>();
-  NormalTaskSubmitter submitter(address,
-                                raylet_client,
-                                client_pool,
-                                nullptr,
-                                std::move(lease_policy),
-                                store,
-                                *task_finisher,
-                                NodeID::Nil(),
-                                WorkerType::WORKER,
-                                kLongTimeout,
-                                actor_creator,
-                                JobID::Nil(),
-                                kOneRateLimiter);
+  NormalTaskSubmitter submitter(
+      address,
+      raylet_client,
+      client_pool,
+      nullptr,
+      std::move(lease_policy),
+      store,
+      *task_finisher,
+      NodeID::Nil(),
+      WorkerType::WORKER,
+      kLongTimeout,
+      actor_creator,
+      JobID::Nil(),
+      kOneRateLimiter,
+      [](const ObjectID &object_id) { return rpc::TensorTransport::OBJECT_STORE; });
   TaskSpecification task1 = BuildEmptyTaskSpec();
   TaskSpecification task2 = BuildEmptyTaskSpec();
 
@@ -1518,19 +1559,21 @@ TEST(NormalTaskSubmitterTest, TestWorkerNotReturnedOnExit) {
   auto task_finisher = std::make_unique<MockTaskFinisher>();
   auto actor_creator = std::make_shared<MockActorCreator>();
   auto lease_policy = std::make_unique<MockLeasePolicy>();
-  NormalTaskSubmitter submitter(address,
-                                raylet_client,
-                                client_pool,
-                                nullptr,
-                                std::move(lease_policy),
-                                store,
-                                *task_finisher,
-                                NodeID::Nil(),
-                                WorkerType::WORKER,
-                                kLongTimeout,
-                                actor_creator,
-                                JobID::Nil(),
-                                kOneRateLimiter);
+  NormalTaskSubmitter submitter(
+      address,
+      raylet_client,
+      client_pool,
+      nullptr,
+      std::move(lease_policy),
+      store,
+      *task_finisher,
+      NodeID::Nil(),
+      WorkerType::WORKER,
+      kLongTimeout,
+      actor_creator,
+      JobID::Nil(),
+      kOneRateLimiter,
+      [](const ObjectID &object_id) { return rpc::TensorTransport::OBJECT_STORE; });
   TaskSpecification task1 = BuildEmptyTaskSpec();
 
   ASSERT_TRUE(submitter.SubmitTask(task1).ok());
@@ -1575,19 +1618,21 @@ TEST(NormalTaskSubmitterTest, TestSpillback) {
   auto actor_creator = std::make_shared<MockActorCreator>();
   auto lease_policy = std::make_unique<MockLeasePolicy>();
   auto *lease_policy_ptr = lease_policy.get();
-  NormalTaskSubmitter submitter(address,
-                                raylet_client,
-                                client_pool,
-                                lease_client_factory,
-                                std::move(lease_policy),
-                                store,
-                                *task_finisher,
-                                NodeID::Nil(),
-                                WorkerType::WORKER,
-                                kLongTimeout,
-                                actor_creator,
-                                JobID::Nil(),
-                                kOneRateLimiter);
+  NormalTaskSubmitter submitter(
+      address,
+      raylet_client,
+      client_pool,
+      lease_client_factory,
+      std::move(lease_policy),
+      store,
+      *task_finisher,
+      NodeID::Nil(),
+      WorkerType::WORKER,
+      kLongTimeout,
+      actor_creator,
+      JobID::Nil(),
+      kOneRateLimiter,
+      [](const ObjectID &object_id) { return rpc::TensorTransport::OBJECT_STORE; });
   TaskSpecification task = BuildEmptyTaskSpec();
 
   ASSERT_TRUE(submitter.SubmitTask(task).ok());
@@ -1650,19 +1695,21 @@ TEST(NormalTaskSubmitterTest, TestSpillbackRoundTrip) {
   auto actor_creator = std::make_shared<MockActorCreator>();
   auto lease_policy = std::make_unique<MockLeasePolicy>(local_raylet_id);
   auto *lease_policy_ptr = lease_policy.get();
-  NormalTaskSubmitter submitter(address,
-                                raylet_client,
-                                client_pool,
-                                lease_client_factory,
-                                std::move(lease_policy),
-                                store,
-                                *task_finisher,
-                                local_raylet_id,
-                                WorkerType::WORKER,
-                                kLongTimeout,
-                                actor_creator,
-                                JobID::Nil(),
-                                kOneRateLimiter);
+  NormalTaskSubmitter submitter(
+      address,
+      raylet_client,
+      client_pool,
+      lease_client_factory,
+      std::move(lease_policy),
+      store,
+      *task_finisher,
+      local_raylet_id,
+      WorkerType::WORKER,
+      kLongTimeout,
+      actor_creator,
+      JobID::Nil(),
+      kOneRateLimiter,
+      [](const ObjectID &object_id) { return rpc::TensorTransport::OBJECT_STORE; });
   TaskSpecification task = BuildEmptyTaskSpec();
 
   ASSERT_TRUE(submitter.SubmitTask(task).ok());
@@ -1728,19 +1775,21 @@ void TestSchedulingKey(const std::shared_ptr<CoreWorkerMemoryStore> store,
   auto task_finisher = std::make_unique<MockTaskFinisher>();
   auto actor_creator = std::make_shared<MockActorCreator>();
   auto lease_policy = std::make_unique<MockLeasePolicy>();
-  NormalTaskSubmitter submitter(address,
-                                raylet_client,
-                                client_pool,
-                                nullptr,
-                                std::move(lease_policy),
-                                store,
-                                *task_finisher,
-                                NodeID::Nil(),
-                                WorkerType::WORKER,
-                                kLongTimeout,
-                                actor_creator,
-                                JobID::Nil(),
-                                kOneRateLimiter);
+  NormalTaskSubmitter submitter(
+      address,
+      raylet_client,
+      client_pool,
+      nullptr,
+      std::move(lease_policy),
+      store,
+      *task_finisher,
+      NodeID::Nil(),
+      WorkerType::WORKER,
+      kLongTimeout,
+      actor_creator,
+      JobID::Nil(),
+      kOneRateLimiter,
+      [](const ObjectID &object_id) { return rpc::TensorTransport::OBJECT_STORE; });
 
   ASSERT_TRUE(submitter.SubmitTask(same1).ok());
   ASSERT_TRUE(submitter.SubmitTask(same2).ok());
@@ -1886,19 +1935,21 @@ TEST(NormalTaskSubmitterTest, TestBacklogReport) {
   auto task_finisher = std::make_unique<MockTaskFinisher>();
   auto actor_creator = std::make_shared<MockActorCreator>();
   auto lease_policy = std::make_unique<MockLeasePolicy>();
-  NormalTaskSubmitter submitter(address,
-                                raylet_client,
-                                client_pool,
-                                nullptr,
-                                std::move(lease_policy),
-                                store,
-                                *task_finisher,
-                                NodeID::Nil(),
-                                WorkerType::WORKER,
-                                kLongTimeout,
-                                actor_creator,
-                                JobID::Nil(),
-                                kOneRateLimiter);
+  NormalTaskSubmitter submitter(
+      address,
+      raylet_client,
+      client_pool,
+      nullptr,
+      std::move(lease_policy),
+      store,
+      *task_finisher,
+      NodeID::Nil(),
+      WorkerType::WORKER,
+      kLongTimeout,
+      actor_creator,
+      JobID::Nil(),
+      kOneRateLimiter,
+      [](const ObjectID &object_id) { return rpc::TensorTransport::OBJECT_STORE; });
 
   TaskSpecification task1 = BuildEmptyTaskSpec();
 
@@ -1963,19 +2014,21 @@ TEST(NormalTaskSubmitterTest, TestWorkerLeaseTimeout) {
   auto task_finisher = std::make_unique<MockTaskFinisher>();
   auto actor_creator = std::make_shared<MockActorCreator>();
   auto lease_policy = std::make_unique<MockLeasePolicy>();
-  NormalTaskSubmitter submitter(address,
-                                raylet_client,
-                                client_pool,
-                                nullptr,
-                                std::move(lease_policy),
-                                store,
-                                *task_finisher,
-                                NodeID::Nil(),
-                                WorkerType::WORKER,
-                                /*lease_timeout_ms=*/5,
-                                actor_creator,
-                                JobID::Nil(),
-                                kOneRateLimiter);
+  NormalTaskSubmitter submitter(
+      address,
+      raylet_client,
+      client_pool,
+      nullptr,
+      std::move(lease_policy),
+      store,
+      *task_finisher,
+      NodeID::Nil(),
+      WorkerType::WORKER,
+      /*lease_timeout_ms=*/5,
+      actor_creator,
+      JobID::Nil(),
+      kOneRateLimiter,
+      [](const ObjectID &object_id) { return rpc::TensorTransport::OBJECT_STORE; });
   TaskSpecification task1 = BuildEmptyTaskSpec();
   TaskSpecification task2 = BuildEmptyTaskSpec();
   TaskSpecification task3 = BuildEmptyTaskSpec();
@@ -2030,19 +2083,21 @@ TEST(NormalTaskSubmitterTest, TestKillExecutingTask) {
   auto task_finisher = std::make_unique<MockTaskFinisher>();
   auto actor_creator = std::make_shared<MockActorCreator>();
   auto lease_policy = std::make_unique<MockLeasePolicy>();
-  NormalTaskSubmitter submitter(address,
-                                raylet_client,
-                                client_pool,
-                                nullptr,
-                                std::move(lease_policy),
-                                store,
-                                *task_finisher,
-                                NodeID::Nil(),
-                                WorkerType::WORKER,
-                                kLongTimeout,
-                                actor_creator,
-                                JobID::Nil(),
-                                kOneRateLimiter);
+  NormalTaskSubmitter submitter(
+      address,
+      raylet_client,
+      client_pool,
+      nullptr,
+      std::move(lease_policy),
+      store,
+      *task_finisher,
+      NodeID::Nil(),
+      WorkerType::WORKER,
+      kLongTimeout,
+      actor_creator,
+      JobID::Nil(),
+      kOneRateLimiter,
+      [](const ObjectID &object_id) { return rpc::TensorTransport::OBJECT_STORE; });
   TaskSpecification task = BuildEmptyTaskSpec();
 
   ASSERT_TRUE(submitter.SubmitTask(task).ok());
@@ -2050,8 +2105,7 @@ TEST(NormalTaskSubmitterTest, TestKillExecutingTask) {
 
   // Try force kill, exiting the worker
   ASSERT_TRUE(submitter.CancelTask(task, true, false).ok());
-  ASSERT_EQ(worker_client->kill_requests.front().intended_task_id(),
-            task.TaskId().Binary());
+  ASSERT_EQ(worker_client->kill_requests.front().intended_task_id(), task.TaskIdBinary());
   ASSERT_TRUE(worker_client->ReplyPushTask(Status::IOError("workerdying"), true));
   ASSERT_EQ(worker_client->callbacks.size(), 0);
   ASSERT_EQ(raylet_client->num_workers_returned, 0);
@@ -2068,8 +2122,7 @@ TEST(NormalTaskSubmitterTest, TestKillExecutingTask) {
   // Try non-force kill, worker returns normally
   ASSERT_TRUE(submitter.CancelTask(task, false, false).ok());
   ASSERT_TRUE(worker_client->ReplyPushTask());
-  ASSERT_EQ(worker_client->kill_requests.front().intended_task_id(),
-            task.TaskId().Binary());
+  ASSERT_EQ(worker_client->kill_requests.front().intended_task_id(), task.TaskIdBinary());
   ASSERT_EQ(worker_client->callbacks.size(), 0);
   ASSERT_EQ(raylet_client->num_workers_returned, 1);
   ASSERT_EQ(raylet_client->num_workers_returned_exiting, 0);
@@ -2092,19 +2145,21 @@ TEST(NormalTaskSubmitterTest, TestKillPendingTask) {
   auto task_finisher = std::make_unique<MockTaskFinisher>();
   auto actor_creator = std::make_shared<MockActorCreator>();
   auto lease_policy = std::make_unique<MockLeasePolicy>();
-  NormalTaskSubmitter submitter(address,
-                                raylet_client,
-                                client_pool,
-                                nullptr,
-                                std::move(lease_policy),
-                                store,
-                                *task_finisher,
-                                NodeID::Nil(),
-                                WorkerType::WORKER,
-                                kLongTimeout,
-                                actor_creator,
-                                JobID::Nil(),
-                                kOneRateLimiter);
+  NormalTaskSubmitter submitter(
+      address,
+      raylet_client,
+      client_pool,
+      nullptr,
+      std::move(lease_policy),
+      store,
+      *task_finisher,
+      NodeID::Nil(),
+      WorkerType::WORKER,
+      kLongTimeout,
+      actor_creator,
+      JobID::Nil(),
+      kOneRateLimiter,
+      [](const ObjectID &object_id) { return rpc::TensorTransport::OBJECT_STORE; });
   TaskSpecification task = BuildEmptyTaskSpec();
 
   ASSERT_TRUE(submitter.SubmitTask(task).ok());
@@ -2137,19 +2192,21 @@ TEST(NormalTaskSubmitterTest, TestKillResolvingTask) {
   auto task_finisher = std::make_unique<MockTaskFinisher>();
   auto actor_creator = std::make_shared<MockActorCreator>();
   auto lease_policy = std::make_unique<MockLeasePolicy>();
-  NormalTaskSubmitter submitter(address,
-                                raylet_client,
-                                client_pool,
-                                nullptr,
-                                std::move(lease_policy),
-                                store,
-                                *task_finisher,
-                                NodeID::Nil(),
-                                WorkerType::WORKER,
-                                kLongTimeout,
-                                actor_creator,
-                                JobID::Nil(),
-                                kOneRateLimiter);
+  NormalTaskSubmitter submitter(
+      address,
+      raylet_client,
+      client_pool,
+      nullptr,
+      std::move(lease_policy),
+      store,
+      *task_finisher,
+      NodeID::Nil(),
+      WorkerType::WORKER,
+      kLongTimeout,
+      actor_creator,
+      JobID::Nil(),
+      kOneRateLimiter,
+      [](const ObjectID &object_id) { return rpc::TensorTransport::OBJECT_STORE; });
   TaskSpecification task = BuildEmptyTaskSpec();
   ObjectID obj1 = ObjectID::FromRandom();
   task.GetMutableMessage().add_args()->mutable_object_ref()->set_object_id(obj1.Binary());

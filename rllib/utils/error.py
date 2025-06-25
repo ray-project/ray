@@ -49,8 +49,8 @@ Try one of the following:
 a) For Atari support: `pip install gym[atari] autorom[accept-rom-license]`.
    For PyBullet support: `pip install pybullet`.
 b) To register your custom env, do `from ray import tune;
-   tune.register('[name]', lambda cfg: [return env obj from here using cfg])`.
-   Then in your config, do `config['env'] = [name]`.
+   tune.register_env('[name]', lambda cfg: [return env obj from here using cfg])`.
+   Then in your config, do `config.environment(env='[name]').
 c) Make sure you provide a fully qualified classpath, e.g.:
    `ray.rllib.examples.envs.classes.repeat_after_me_env.RepeatAfterMeEnv`
 """

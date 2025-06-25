@@ -21,6 +21,7 @@ from ray.data._internal.arrow_block import (
     ArrowBlockAccessor,
     ArrowBlockBuilder,
     ArrowBlockColumnAccessor,
+    _get_max_chunk_size,
 )
 from ray.data._internal.arrow_ops.transform_pyarrow import combine_chunked_array
 from ray.data._internal.util import GiB, MiB
@@ -387,16 +388,29 @@ def test_combine_chunked_array_large():
     assert result.chunks[1].nbytes == sum([c.nbytes for c in input_.chunks[14:]])
 
 
-def test_append_column(ray_start_regular_shared):
-    animals = ["Flamingo", "Centipede"]
-    num_legs = [2, 100]
-    block = pa.Table.from_pydict({"animals": animals})
+@pytest.mark.parametrize(
+    "input_block, fill_column_name, fill_value, expected_output_block",
+    [
+        (
+            pa.Table.from_pydict({"a": [0, 1]}),
+            "b",
+            2,
+            pa.Table.from_pydict({"a": [0, 1], "b": [2, 2]}),
+        ),
+        (
+            pa.Table.from_pydict({"a": [0, 1]}),
+            "b",
+            pa.scalar(2),
+            pa.Table.from_pydict({"a": [0, 1], "b": [2, 2]}),
+        ),
+    ],
+)
+def test_fill_column(input_block, fill_column_name, fill_value, expected_output_block):
+    block_accessor = ArrowBlockAccessor.for_block(input_block)
 
-    block_accessor = ArrowBlockAccessor.for_block(block)
-    actual_block = block_accessor.append_column("num_legs", num_legs)
+    actual_output_block = block_accessor.fill_column(fill_column_name, fill_value)
 
-    expected_block = pa.Table.from_pydict({"animals": animals, "num_legs": num_legs})
-    assert actual_block.equals(expected_block)
+    assert actual_output_block.equals(expected_output_block)
 
 
 def test_random_shuffle(ray_start_regular_shared):
@@ -505,6 +519,32 @@ def test_build_block_with_null_column(ray_start_regular_shared):
     assert np.array_equal(rows[1]["array"], np.zeros((2, 2)))
 
 
+def test_add_rows_with_different_column_names():
+    builder = ArrowBlockBuilder()
+
+    builder.add({"col1": "spam"})
+    builder.add({"col2": "foo"})
+    block = builder.build()
+
+    expected_table = pa.Table.from_pydict(
+        {"col1": ["spam", None], "col2": [None, "foo"]}
+    )
+    assert block.equals(expected_table)
+
+
+def test_add_blocks_with_different_column_names():
+    builder = ArrowBlockBuilder()
+
+    builder.add_block(pa.Table.from_pydict({"col1": ["spam"]}))
+    builder.add_block(pa.Table.from_pydict({"col2": ["foo"]}))
+    block = builder.build()
+
+    expected_table = pa.Table.from_pydict(
+        {"col1": ["spam", None], "col2": [None, "foo"]}
+    )
+    assert block.equals(expected_table)
+
+
 def test_arrow_block_timestamp_ns(ray_start_regular_shared):
     # Input data with nanosecond precision timestamps
     data_rows = [
@@ -545,6 +585,21 @@ def test_arrow_nan_element():
     ds = ds.filter(lambda v: np.isnan(v["item"]))
     result = ds.take_all()
     assert result[0]["count()"] == 2
+
+
+@pytest.mark.parametrize(
+    "table_data,max_chunk_size_bytes,expected",
+    [
+        ({"a": []}, 100, None),
+        ({"a": list(range(100))}, 10, 1),
+        ({"a": list(range(100))}, 25, 3),
+        ({"a": list(range(100))}, 50, 6),
+        ({"a": list(range(100))}, 100, 12),
+    ],
+)
+def test_arrow_block_max_chunk_size(table_data, max_chunk_size_bytes, expected):
+    table = pa.table(table_data)
+    assert _get_max_chunk_size(table, max_chunk_size_bytes) == expected
 
 
 if __name__ == "__main__":

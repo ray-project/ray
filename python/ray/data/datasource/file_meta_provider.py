@@ -42,7 +42,6 @@ class FileMetadataProvider:
     def _get_block_metadata(
         self,
         paths: List[str],
-        schema: Optional[Union[type, "pyarrow.lib.Schema"]],
         **kwargs,
     ) -> BlockMetadata:
         """Resolves and returns block metadata for files in the given paths.
@@ -51,8 +50,7 @@ class FileMetadataProvider:
 
         Args:
             paths: The file paths for a single dataset block.
-            schema: The user-provided or inferred schema for the given paths,
-                if any.
+            **kwargs: Additional kwargs used to determine block metadata.
 
         Returns:
             BlockMetadata aggregated across the given paths.
@@ -62,10 +60,9 @@ class FileMetadataProvider:
     def __call__(
         self,
         paths: List[str],
-        schema: Optional[Union[type, "pyarrow.lib.Schema"]],
         **kwargs,
     ) -> BlockMetadata:
-        return self._get_block_metadata(paths, schema, **kwargs)
+        return self._get_block_metadata(paths, **kwargs)
 
 
 @DeveloperAPI
@@ -84,7 +81,6 @@ class BaseFileMetadataProvider(FileMetadataProvider):
     def _get_block_metadata(
         self,
         paths: List[str],
-        schema: Optional[Union[type, "pyarrow.lib.Schema"]],
         *,
         rows_per_file: Optional[int],
         file_sizes: List[Optional[int]],
@@ -95,8 +91,6 @@ class BaseFileMetadataProvider(FileMetadataProvider):
             paths: The file paths for a single dataset block. These
                 paths will always be a subset of those previously returned from
                 :meth:`.expand_paths`.
-            schema: The user-provided or inferred schema for the given file
-                paths, if any.
             rows_per_file: The fixed number of rows per input file, or None.
             file_sizes: Optional file size per input file previously returned
                 from :meth:`.expand_paths`, where `file_sizes[i]` holds the size of
@@ -151,7 +145,6 @@ class DefaultFileMetadataProvider(BaseFileMetadataProvider):
     def _get_block_metadata(
         self,
         paths: List[str],
-        schema: Optional[Union[type, "pyarrow.lib.Schema"]],
         *,
         rows_per_file: Optional[int],
         file_sizes: List[Optional[int]],
@@ -163,7 +156,6 @@ class DefaultFileMetadataProvider(BaseFileMetadataProvider):
         return BlockMetadata(
             num_rows=num_rows,
             size_bytes=None if None in file_sizes else int(sum(file_sizes)),
-            schema=schema,
             input_files=paths,
             exec_stats=None,
         )  # Exec stats filled in later.
@@ -263,7 +255,7 @@ def _expand_paths(
     from ray.data.datasource.file_based_datasource import (
         FILE_SIZE_FETCH_PARALLELIZATION_THRESHOLD,
     )
-    from ray.data.datasource.path_util import _unwrap_protocol
+    from ray.data.datasource.path_util import _is_http_url, _unwrap_protocol
 
     # We break down our processing paths into a few key cases:
     # 1. If len(paths) < threshold, fetch the file info for the individual files/paths
@@ -290,10 +282,13 @@ def _expand_paths(
         # If parent directory (or base directory, if using partitioning) is common to
         # all paths, fetch all file infos at that prefix and filter the response to the
         # provided paths.
-        if (
-            partitioning is not None
-            and common_path == _unwrap_protocol(partitioning.base_dir)
-        ) or all(str(pathlib.Path(path).parent) == common_path for path in paths):
+        if not _is_http_url(common_path) and (
+            (
+                partitioning is not None
+                and common_path == _unwrap_protocol(partitioning.base_dir)
+            )
+            or all(str(pathlib.Path(path).parent) == common_path for path in paths)
+        ):
             yield from _get_file_infos_common_path_prefix(
                 paths, common_path, filesystem, ignore_missing_paths
             )

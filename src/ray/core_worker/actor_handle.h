@@ -16,6 +16,10 @@
 
 #include <gtest/gtest_prod.h>
 
+#include <string>
+#include <unordered_map>
+#include <utility>
+
 #include "absl/types/optional.h"
 #include "ray/common/id.h"
 #include "ray/common/task/task_util.h"
@@ -29,7 +33,7 @@ namespace core {
 
 class ActorHandle {
  public:
-  ActorHandle(rpc::ActorHandle inner) : inner_(std::move(inner)) {}
+  explicit ActorHandle(rpc::ActorHandle inner) : inner_(std::move(inner)) {}
 
   // Constructs a new ActorHandle as part of the actor creation process.
   ActorHandle(const ActorID &actor_id,
@@ -45,7 +49,7 @@ class ActorHandle {
               const std::string &ray_namespace,
               int32_t max_pending_calls,
               bool execute_out_of_order = false,
-              absl::optional<bool> enable_task_events = absl::nullopt,
+              std::optional<bool> enable_task_events = absl::nullopt,
               const std::unordered_map<std::string, std::string> &labels = {});
 
   /// Constructs an ActorHandle from a serialized string.

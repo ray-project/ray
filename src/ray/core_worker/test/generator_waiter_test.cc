@@ -14,6 +14,7 @@
 
 #include "ray/core_worker/generator_waiter.h"
 
+#include <memory>
 #include <thread>
 
 #include "gtest/gtest.h"

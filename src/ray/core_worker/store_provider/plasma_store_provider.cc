@@ -14,9 +14,13 @@
 
 #include "ray/core_worker/store_provider/plasma_store_provider.h"
 
+#include <algorithm>
+#include <memory>
+#include <string>
+#include <utility>
+#include <vector>
+
 #include "ray/common/ray_config.h"
-#include "ray/core_worker/context.h"
-#include "ray/core_worker/core_worker.h"
 #include "src/ray/protobuf/gcs.pb.h"
 
 namespace ray {
@@ -61,7 +65,13 @@ CoreWorkerPlasmaStoreProvider::CoreWorkerPlasmaStoreProvider(
     bool warmup,
     std::function<std::string()> get_current_call_site)
     : raylet_client_(raylet_client),
-      store_client_(std::make_shared<plasma::PlasmaClient>()),
+      // We can turn on exit_on_connection_failure on for the core worker plasma
+      // client to early exit core worker after the raylet's death because on the
+      // raylet side, we never proactively close the plasma store connection even
+      // during shutdown. So any error from the raylet side should be a sign of raylet
+      // death.
+      store_client_(
+          std::make_shared<plasma::PlasmaClient>(/*exit_on_connection_failure*/ true)),
       reference_counter_(reference_counter),
       check_signals_(std::move(check_signals)) {
   if (get_current_call_site != nullptr) {
@@ -311,7 +321,7 @@ Status CoreWorkerPlasmaStoreProvider::Get(
   while (!remaining.empty() && !should_break) {
     batch_ids.clear();
     for (const auto &id : remaining) {
-      if (int64_t(batch_ids.size()) == batch_size) {
+      if (static_cast<int64_t>(batch_ids.size()) == batch_size) {
         break;
       }
       batch_ids.push_back(id);
@@ -319,7 +329,7 @@ Status CoreWorkerPlasmaStoreProvider::Get(
 
     int64_t batch_timeout =
         std::max(RayConfig::instance().get_check_signal_interval_milliseconds(),
-                 int64_t(10 * batch_ids.size()));
+                 static_cast<int64_t>(10 * batch_ids.size()));
     if (remaining_timeout >= 0) {
       batch_timeout = std::min(remaining_timeout, batch_timeout);
       remaining_timeout -= batch_timeout;

@@ -22,10 +22,10 @@
 #include <boost/asio/detail/socket_holder.hpp>
 #include <memory>
 #include <string>
+#include <utility>
 
 #include "ray/common/ray_config.h"
 #include "ray/rpc/common.h"
-#include "ray/stats/metric.h"
 #include "ray/util/thread_utils.h"
 
 namespace ray {
@@ -111,11 +111,14 @@ void GrpcServer::Run() {
     builder.AddListeningPort(server_address, grpc::InsecureServerCredentials(), &port_);
   }
   // Register all the services to this server.
-  if (services_.empty()) {
+  if (grpc_services_.empty() && services_.empty()) {
     RAY_LOG(WARNING) << "No service is found when start grpc server " << name_;
   }
-  for (auto &entry : services_) {
-    builder.RegisterService(&entry.get());
+  for (auto &service : grpc_services_) {
+    builder.RegisterService(service.get());
+  }
+  for (auto &user_service : services_) {
+    builder.RegisterService(&user_service->GetGrpcService());
   }
   // Get hold of the completion queue used for the asynchronous communication
   // with the gRPC runtime.
@@ -169,19 +172,19 @@ void GrpcServer::Run() {
   is_closed_ = false;
 }
 
-void GrpcServer::RegisterService(grpc::Service &service) {
-  services_.emplace_back(service);
+void GrpcServer::RegisterService(std::unique_ptr<grpc::Service> &&grpc_service) {
+  grpc_services_.push_back(std::move(grpc_service));
 }
 
-void GrpcServer::RegisterService(GrpcService &service, bool token_auth) {
-  services_.emplace_back(service.GetGrpcService());
-
+void GrpcServer::RegisterService(std::unique_ptr<GrpcService> &&service,
+                                 bool token_auth) {
   for (int i = 0; i < num_threads_; i++) {
     if (token_auth && cluster_id_.IsNil()) {
       RAY_LOG(FATAL) << "Expected cluster ID for token auth!";
     }
-    service.InitServerCallFactories(cqs_[i], &server_call_factories_, cluster_id_);
+    service->InitServerCallFactories(cqs_[i], &server_call_factories_, cluster_id_);
   }
+  services_.push_back(std::move(service));
 }
 
 void GrpcServer::PollEventsFromCompletionQueue(int index) {

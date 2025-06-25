@@ -19,7 +19,6 @@
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "gtest/gtest.h"
-#include "ray/common/test_util.h"
 
 namespace ray {
 
@@ -32,13 +31,13 @@ TEST(TestPushManager, TestSingleTransfer) {
   pm.StartPush(node_id, obj_id, 10, [&](int64_t chunk_id) { results[chunk_id] = 1; });
   ASSERT_EQ(pm.NumChunksInFlight(), 5);
   ASSERT_EQ(pm.NumChunksRemaining(), 10);
-  ASSERT_EQ(pm.NumPushesInFlight(), 1);
+  ASSERT_EQ(pm.NumPushRequestsWithChunksToSend(), 1);
   for (int i = 0; i < 10; i++) {
-    pm.OnChunkComplete(node_id, obj_id);
+    pm.OnChunkComplete();
   }
   ASSERT_EQ(pm.NumChunksInFlight(), 0);
   ASSERT_EQ(pm.NumChunksRemaining(), 0);
-  ASSERT_EQ(pm.NumPushesInFlight(), 0);
+  ASSERT_EQ(pm.NumPushRequestsWithChunksToSend(), 0);
   for (int i = 0; i < 10; i++) {
     ASSERT_EQ(results[i], 1);
   }
@@ -49,51 +48,39 @@ TEST(TestPushManager, TestPushState) {
   {
     std::vector<int64_t> sent_chunks;
     PushManager::PushState state{
-        2, [&](int64_t chunk_id) { sent_chunks.push_back(chunk_id); }};
+        NodeID::FromRandom(), ObjectID::FromRandom(), 2, [&](int64_t chunk_id) {
+          sent_chunks.push_back(chunk_id);
+        }};
     ASSERT_EQ(state.num_chunks, 2);
     ASSERT_EQ(state.next_chunk_id, 0);
-    ASSERT_EQ(state.num_chunks_inflight, 0);
     ASSERT_EQ(state.num_chunks_to_send, 2);
-    ASSERT_TRUE(state.SendOneChunk());
-    ASSERT_FALSE(state.AllChunksComplete());
+
+    state.SendOneChunk();
     ASSERT_EQ(state.num_chunks, 2);
     ASSERT_EQ(state.next_chunk_id, 1);
-    ASSERT_EQ(state.num_chunks_inflight, 1);
     ASSERT_EQ(state.num_chunks_to_send, 1);
-    std::vector<int64_t> expected_chunks{0};
-    ASSERT_EQ(sent_chunks, expected_chunks);
+    ASSERT_EQ(sent_chunks, (std::vector<int64_t>{0}));
 
-    ASSERT_TRUE(state.SendOneChunk());
+    state.SendOneChunk();
     ASSERT_EQ(state.num_chunks, 2);
     ASSERT_EQ(state.next_chunk_id, 0);
-    ASSERT_EQ(state.num_chunks_inflight, 2);
     ASSERT_EQ(state.num_chunks_to_send, 0);
-    std::vector<int64_t> expected_chunks1{0, 1};
-    ASSERT_EQ(sent_chunks, expected_chunks1);
-    ASSERT_FALSE(state.AllChunksComplete());
-
-    ASSERT_FALSE(state.SendOneChunk());
-    state.OnChunkComplete();
-    ASSERT_EQ(state.num_chunks_inflight, 1);
-    ASSERT_FALSE(state.AllChunksComplete());
-    state.OnChunkComplete();
-    ASSERT_EQ(state.num_chunks_inflight, 0);
-    ASSERT_TRUE(state.AllChunksComplete());
+    ASSERT_EQ(sent_chunks, (std::vector<int64_t>{0, 1}));
+    ASSERT_EQ(state.num_chunks_to_send, 0);
   }
 
   // resend all chunks.
   {
     std::vector<int64_t> sent_chunks;
     PushManager::PushState state{
-        3, [&](int64_t chunk_id) { sent_chunks.push_back(chunk_id); }};
-    ASSERT_TRUE(state.SendOneChunk());
-    ASSERT_FALSE(state.AllChunksComplete());
+        NodeID::FromRandom(), ObjectID::FromRandom(), 3, [&](int64_t chunk_id) {
+          sent_chunks.push_back(chunk_id);
+        }};
+    state.SendOneChunk();
     ASSERT_EQ(state.num_chunks, 3);
     ASSERT_EQ(state.next_chunk_id, 1);
-    ASSERT_EQ(state.num_chunks_inflight, 1);
     ASSERT_EQ(state.num_chunks_to_send, 2);
-    std::vector<int64_t> expected_chunks{0};
-    ASSERT_EQ(sent_chunks, expected_chunks);
+    ASSERT_EQ(sent_chunks, (std::vector<int64_t>{0}));
 
     // resend chunks when 1 chunk is in flight.
     ASSERT_EQ(1, state.ResendAllChunks([&](int64_t chunk_id) {
@@ -101,27 +88,17 @@ TEST(TestPushManager, TestPushState) {
     }));
     ASSERT_EQ(state.num_chunks, 3);
     ASSERT_EQ(state.next_chunk_id, 1);
-    ASSERT_EQ(state.num_chunks_inflight, 1);
     ASSERT_EQ(state.num_chunks_to_send, 3);
 
     for (auto i = 0; i < 3; i++) {
-      ASSERT_TRUE(state.SendOneChunk());
+      state.SendOneChunk();
       ASSERT_EQ(state.num_chunks, 3);
       ASSERT_EQ(state.next_chunk_id, (2 + i) % 3);
-      ASSERT_EQ(state.num_chunks_inflight, 2 + i);
       ASSERT_EQ(state.num_chunks_to_send, 3 - i - 1);
     }
-    std::vector<int64_t> expected_chunks1{0, 1, 2, 0};
-    ASSERT_EQ(sent_chunks, expected_chunks1);
 
-    ASSERT_FALSE(state.SendOneChunk());
-    ASSERT_FALSE(state.AllChunksComplete());
-    state.OnChunkComplete();
-    state.OnChunkComplete();
-    state.OnChunkComplete();
-    ASSERT_FALSE(state.AllChunksComplete());
-    state.OnChunkComplete();
-    ASSERT_TRUE(state.AllChunksComplete());
+    ASSERT_EQ(sent_chunks, (std::vector<int64_t>{0, 1, 2, 0}));
+    ASSERT_EQ(state.num_chunks_to_send, 0);
   }
 }
 
@@ -136,15 +113,15 @@ TEST(TestPushManager, TestRetryDuplicates) {
   pm.StartPush(node_id, obj_id, 10, [&](int64_t chunk_id) { results[chunk_id] = 1; });
   ASSERT_EQ(pm.NumChunksInFlight(), 5);
   ASSERT_EQ(pm.NumChunksRemaining(), 10);
-  ASSERT_EQ(pm.NumPushesInFlight(), 1);
+  ASSERT_EQ(pm.NumPushRequestsWithChunksToSend(), 1);
   // Second push request will resent the full chunks.
   pm.StartPush(node_id, obj_id, 10, [&](int64_t chunk_id) { results[chunk_id] = 2; });
   ASSERT_EQ(pm.NumChunksInFlight(), 5);
   ASSERT_EQ(pm.NumChunksRemaining(), 15);
-  ASSERT_EQ(pm.NumPushesInFlight(), 1);
+  ASSERT_EQ(pm.NumPushRequestsWithChunksToSend(), 1);
   // first 5 chunks will be sent by first push request.
   for (int i = 0; i < 5; i++) {
-    pm.OnChunkComplete(node_id, obj_id);
+    pm.OnChunkComplete();
   }
   for (int i = 0; i < 5; i++) {
     ASSERT_EQ(results[i], 1);
@@ -153,14 +130,14 @@ TEST(TestPushManager, TestRetryDuplicates) {
   ASSERT_EQ(pm.NumChunksRemaining(), 10);
   // we will resend all chunks by second push request.
   for (int i = 0; i < 10; i++) {
-    pm.OnChunkComplete(node_id, obj_id);
+    pm.OnChunkComplete();
   }
   for (int i = 0; i < 10; i++) {
     ASSERT_EQ(results[i], 2);
   }
   ASSERT_EQ(pm.NumChunksInFlight(), 0);
   ASSERT_EQ(pm.NumChunksRemaining(), 0);
-  ASSERT_EQ(pm.NumPushesInFlight(), 0);
+  ASSERT_EQ(pm.NumPushRequestsWithChunksToSend(), 0);
 }
 
 TEST(TestPushManager, TestResendWholeObject) {
@@ -172,11 +149,10 @@ TEST(TestPushManager, TestResendWholeObject) {
   pm.StartPush(node_id, obj_id, 10, [&](int64_t chunk_id) { results[chunk_id] = 1; });
   ASSERT_EQ(pm.NumChunksInFlight(), 5);
   ASSERT_EQ(pm.NumChunksRemaining(), 10);
-  ASSERT_EQ(pm.NumPushesInFlight(), 1);
   ASSERT_EQ(pm.NumPushRequestsWithChunksToSend(), 1);
 
   for (int i = 0; i < 5; i++) {
-    pm.OnChunkComplete(node_id, obj_id);
+    pm.OnChunkComplete();
   }
   // All chunks have been sent out
   ASSERT_EQ(pm.NumPushRequestsWithChunksToSend(), 0);
@@ -189,14 +165,13 @@ TEST(TestPushManager, TestResendWholeObject) {
   ASSERT_EQ(pm.NumPushRequestsWithChunksToSend(), 1);
   // we will resend all chunks by second push request.
   for (int i = 0; i < 15; i++) {
-    pm.OnChunkComplete(node_id, obj_id);
+    pm.OnChunkComplete();
   }
   for (int i = 0; i < 10; i++) {
     ASSERT_EQ(results[i], 2);
   }
   ASSERT_EQ(pm.NumChunksInFlight(), 0);
   ASSERT_EQ(pm.NumChunksRemaining(), 0);
-  ASSERT_EQ(pm.NumPushesInFlight(), 0);
   ASSERT_EQ(pm.NumPushRequestsWithChunksToSend(), 0);
 }
 
@@ -221,19 +196,19 @@ TEST(TestPushManager, TestMultipleTransfers) {
   });
   ASSERT_EQ(pm.NumChunksInFlight(), 5);
   ASSERT_EQ(pm.NumChunksRemaining(), 20);
-  ASSERT_EQ(pm.NumPushesInFlight(), 2);
+  ASSERT_EQ(pm.NumPushRequestsWithChunksToSend(), 2);
   for (int i = 0; i < 20; i++) {
     if (num_active1 > 0) {
-      pm.OnChunkComplete(node1, obj_id);
+      pm.OnChunkComplete();
       num_active1--;
     } else if (num_active2 > 0) {
-      pm.OnChunkComplete(node2, obj_id);
+      pm.OnChunkComplete();
       num_active2--;
     }
   }
   ASSERT_EQ(pm.NumChunksInFlight(), 0);
   ASSERT_EQ(pm.NumChunksRemaining(), 0);
-  ASSERT_EQ(pm.NumPushesInFlight(), 0);
+  ASSERT_EQ(pm.NumPushRequestsWithChunksToSend(), 0);
   for (int i = 0; i < 10; i++) {
     ASSERT_EQ(results1[i], 1);
   }
@@ -243,8 +218,6 @@ TEST(TestPushManager, TestMultipleTransfers) {
 }
 
 TEST(TestPushManager, TestPushMultipleObject) {
-  std::vector<int> results;
-  results.resize(10);
   auto node_id = NodeID::FromRandom();
   auto obj_id_1 = ObjectID::FromRandom();
   auto obj_id_2 = ObjectID::FromRandom();
@@ -267,28 +240,73 @@ TEST(TestPushManager, TestPushMultipleObject) {
   ASSERT_EQ(pm.NumPushRequestsWithChunksToSend(), 3);
   ASSERT_EQ(pm.NumChunksInFlight(), 3);
   ASSERT_EQ(pm.NumChunksRemaining(), 7);
-  ASSERT_EQ(pm.NumPushesInFlight(), 3);
+  ASSERT_EQ(pm.NumPushRequestsWithChunksToSend(), 3);
 
-  pm.OnChunkComplete(node_id, obj_id_1);
+  pm.OnChunkComplete();
   ASSERT_EQ(pm.NumPushRequestsWithChunksToSend(), 2);
-  pm.OnChunkComplete(node_id, obj_id_1);
+  pm.OnChunkComplete();
   ASSERT_EQ(pm.NumPushRequestsWithChunksToSend(), 1);
-  pm.OnChunkComplete(node_id, obj_id_1);
+  pm.OnChunkComplete();
   ASSERT_EQ(pm.NumPushRequestsWithChunksToSend(), 1);
-  pm.OnChunkComplete(node_id, obj_id_1);
+  pm.OnChunkComplete();
   ASSERT_EQ(pm.NumPushRequestsWithChunksToSend(), 0);
 
-  pm.OnChunkComplete(node_id, obj_id_2);
-  pm.OnChunkComplete(node_id, obj_id_3);
-  pm.OnChunkComplete(node_id, obj_id_3);
+  pm.OnChunkComplete();
+  pm.OnChunkComplete();
+  pm.OnChunkComplete();
 
   ASSERT_EQ(pm.NumChunksInFlight(), 0);
   ASSERT_EQ(pm.NumChunksRemaining(), 0);
-  ASSERT_EQ(pm.NumPushesInFlight(), 0);
+  ASSERT_EQ(pm.NumPushRequestsWithChunksToSend(), 0);
 
   ASSERT_EQ(result[obj_id_1].size(), 4);
   ASSERT_EQ(result[obj_id_2].size(), 1);
   ASSERT_EQ(result[obj_id_3].size(), 2);
+}
+
+TEST(TestPushManager, TestNodeRemoved) {
+  PushManager pm(3);
+
+  // Start pushing two objects to node 1.
+  auto node_id_1 = NodeID::FromRandom();
+  auto obj_id_1 = ObjectID::FromRandom();
+  auto obj_id_2 = ObjectID::FromRandom();
+  pm.StartPush(node_id_1, obj_id_1, 4, [](int64_t) {});
+  pm.StartPush(node_id_1, obj_id_2, 2, [](int64_t) {});
+
+  // Start pushing one object to node 2.
+  auto node_id_2 = NodeID::FromRandom();
+  auto obj_id_3 = ObjectID::FromRandom();
+  pm.StartPush(node_id_2, obj_id_3, 3, [](int64_t) {});
+
+  // 3 chunks in flight for 3 objects to two nodes.
+  ASSERT_EQ(pm.NumPushRequestsWithChunksToSend(), 3);
+  ASSERT_EQ(pm.NumChunksInFlight(), 3);
+  ASSERT_EQ(pm.push_state_map_.size(), 2);
+  ASSERT_EQ(pm.push_requests_with_chunks_to_send_.size(), 3);
+
+  // Remove Node 1. This should cause its associated push requests to be cleaned up.
+  pm.HandleNodeRemoved(node_id_1);
+  ASSERT_EQ(pm.NumPushRequestsWithChunksToSend(), 1);
+  ASSERT_EQ(pm.NumChunksInFlight(), 3);
+  ASSERT_EQ(pm.push_state_map_.size(), 1);
+  ASSERT_EQ(pm.push_requests_with_chunks_to_send_.size(), 1);
+
+  // All 3 in flight chunks finish.
+  // All pushes should be done with chunks to node 2 in flight.
+  for (int i = 0; i < 3; i++) {
+    pm.OnChunkComplete();
+  }
+  ASSERT_EQ(pm.NumPushRequestsWithChunksToSend(), 0);
+  ASSERT_EQ(pm.NumChunksInFlight(), 3);
+  ASSERT_EQ(pm.push_state_map_.size(), 0);
+  ASSERT_EQ(pm.push_requests_with_chunks_to_send_.size(), 0);
+
+  // The in flight chunks complete.
+  for (int i = 0; i < 3; i++) {
+    pm.OnChunkComplete();
+  }
+  ASSERT_EQ(pm.NumChunksInFlight(), 0);
 }
 
 }  // namespace ray

@@ -12,8 +12,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+#include <algorithm>
 #include <atomic>
-#include <boost/fiber/all.hpp>
 
 #include "gtest/gtest.h"
 #include "ray/core_worker/fiber.h"

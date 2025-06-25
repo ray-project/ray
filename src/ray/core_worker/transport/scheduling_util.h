@@ -14,6 +14,9 @@
 
 #pragma once
 
+#include <string>
+#include <vector>
+
 #include "ray/common/id.h"
 #include "ray/common/task/task_spec.h"
 #include "ray/raylet_client/raylet_client.h"
@@ -68,7 +71,7 @@ class DependencyWaiter {
 
 class DependencyWaiterImpl : public DependencyWaiter {
  public:
-  DependencyWaiterImpl(DependencyWaiterInterface &dependency_client);
+  explicit DependencyWaiterImpl(DependencyWaiterInterface &dependency_client);
 
   void Wait(const std::vector<rpc::ObjectReference> &dependencies,
             std::function<void()> on_dependencies_available) override;

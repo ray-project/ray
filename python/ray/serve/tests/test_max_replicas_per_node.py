@@ -5,8 +5,7 @@ import pytest
 
 import ray
 from ray import serve
-from ray._private.test_utils import wait_for_condition
-from ray.serve._private.constants import RAY_SERVE_EAGERLY_START_REPLACEMENT_REPLICAS
+from ray._common.test_utils import wait_for_condition
 from ray.util.state import list_actors
 
 
@@ -187,8 +186,6 @@ def test_update_max_replicas_per_node(ray_autoscaling_cluster):
         name="app",
     )
 
-    if not RAY_SERVE_EAGERLY_START_REPLACEMENT_REPLICAS:
-        check_alive_nodes(expected=4)
     node_to_deployment_to_num_replicas = get_node_to_deployment_to_num_replicas()
 
     assert len(node_to_deployment_to_num_replicas) == 3
@@ -197,14 +194,13 @@ def test_update_max_replicas_per_node(ray_autoscaling_cluster):
         assert deployment_to_num_replicas["deploy1"] == 1
 
     # Head + 3 worker nodes
-    if RAY_SERVE_EAGERLY_START_REPLACEMENT_REPLICAS:
-        # We wait for this to be satisfied at the end because there may be
-        # more than 3 worker nodes after the deployment finishes deploying,
-        # since replicas are being started and stopped at the same time, and
-        # there is a strict max replicas per node requirement. However nodes
-        # that were hosting the replicas of the old version should eventually
-        # be removed from scale-down.
-        wait_for_condition(check_alive_nodes, expected=4, timeout=60)
+    # We wait for this to be satisfied at the end because there may be
+    # more than 3 worker nodes after the deployment finishes deploying,
+    # since replicas are being started and stopped at the same time, and
+    # there is a strict max replicas per node requirement. However nodes
+    # that were hosting the replicas of the old version should eventually
+    # be removed from scale-down.
+    wait_for_condition(check_alive_nodes, expected=4, timeout=60)
 
 
 if __name__ == "__main__":

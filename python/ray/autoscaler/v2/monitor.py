@@ -35,6 +35,7 @@ from ray.autoscaler.v2.metrics_reporter import AutoscalerMetricsReporter
 from ray.core.generated.autoscaler_pb2 import AutoscalingState
 from ray.core.generated.event_pb2 import Event as RayEvent
 from ray.core.generated.usage_pb2 import TagKey
+from ray._private import logging_utils
 
 try:
     import prometheus_client
@@ -261,15 +262,44 @@ if __name__ == "__main__":
         default=None,
         help="The IP address of the machine hosting the monitor process.",
     )
+    parser.add_argument(
+        "--stdout-filepath",
+        required=False,
+        type=str,
+        default="",
+        help="The filepath to dump monitor stdout.",
+    )
+    parser.add_argument(
+        "--stderr-filepath",
+        required=False,
+        type=str,
+        default="",
+        help="The filepath to dump monitor stderr.",
+    )
 
     args = parser.parse_args()
+
+    # Disable log rotation for windows platform.
+    logging_rotation_bytes = args.logging_rotate_bytes if sys.platform != "win32" else 0
+    logging_rotation_backup_count = (
+        args.logging_rotate_backup_count if sys.platform != "win32" else 1
+    )
+
     setup_component_logger(
         logging_level=args.logging_level,
         logging_format=args.logging_format,
         log_dir=args.logs_dir,
         filename=args.logging_filename,
-        max_bytes=args.logging_rotate_bytes,
-        backup_count=args.logging_rotate_backup_count,
+        max_bytes=logging_rotation_bytes,
+        backup_count=logging_rotation_backup_count,
+    )
+
+    # Setup stdout/stderr redirect files if redirection enabled.
+    logging_utils.redirect_stdout_stderr_if_needed(
+        args.stdout_filepath,
+        args.stderr_filepath,
+        logging_rotation_bytes,
+        logging_rotation_backup_count,
     )
 
     logger.info(

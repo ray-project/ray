@@ -16,8 +16,6 @@
 
 #include <utility>
 
-#include "absl/base/thread_annotations.h"
-#include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "ray/common/id.h"
 #include "ray/common/task/task_spec.h"
@@ -34,7 +32,7 @@ struct LocalityData {
 /// Interface for providers of locality data to the lease policy.
 class LocalityDataProviderInterface {
  public:
-  virtual absl::optional<LocalityData> GetLocalityData(
+  virtual std::optional<LocalityData> GetLocalityData(
       const ObjectID &object_id) const = 0;
 
   virtual ~LocalityDataProviderInterface() = default;
@@ -50,8 +48,7 @@ class LeasePolicyInterface {
   virtual ~LeasePolicyInterface() = default;
 };
 
-using NodeAddrFactory =
-    std::function<absl::optional<rpc::Address>(const NodeID &node_id)>;
+using NodeAddrFactory = std::function<std::optional<rpc::Address>(const NodeID &node_id)>;
 
 /// Class used by the core worker to implement a locality-aware lease policy for
 /// picking a worker node for a lease request. This class is not thread-safe.
@@ -72,7 +69,7 @@ class LocalityAwareLeasePolicy : public LeasePolicyInterface {
 
  private:
   /// Get the best worker node for a lease request for the provided task.
-  absl::optional<NodeID> GetBestNodeIdForTask(const TaskSpecification &spec);
+  std::optional<NodeID> GetBestNodeIdForTask(const TaskSpecification &spec);
 
   /// Provider of locality data that will be used in choosing the best lessor.
   LocalityDataProviderInterface &locality_data_provider_;

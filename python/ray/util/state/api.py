@@ -120,7 +120,7 @@ class StateApiClient(SubmissionClient):
 
         Args:
             address: Ray bootstrap address (e.g. `127.0.0.0:6379`, `auto`), or Ray
-                Client adress (e.g. `ray://<head-node-ip>:10001`), or Ray dashboard
+                Client address (e.g. `ray://<head-node-ip>:10001`), or Ray dashboard
                 address (e.g. `http://<head-node-ip>:8265`).
                 If not provided, it will be detected automatically from any running
                 local Ray cluster.
@@ -273,10 +273,9 @@ class StateApiClient(SubmissionClient):
             Empty list for objects if not found, or list of ObjectState for objects
 
         Raises:
-            This doesn't catch any exceptions raised when the underlying request
-            call raises exceptions. For example, it could raise `requests.Timeout`
-            when timeout occurs.
-
+            Exception: This doesn't catch any exceptions raised when the underlying request
+                call raises exceptions. For example, it could raise `requests.Timeout`
+                when timeout occurs.
             ValueError:
                 if the resource could not be GET by id, i.e. jobs and runtime-envs.
 
@@ -482,9 +481,9 @@ class StateApiClient(SubmissionClient):
             A list of queried result from `ListApiResponse`,
 
         Raises:
-            This doesn't catch any exceptions raised when the underlying request
-            call raises exceptions. For example, it could raise `requests.Timeout`
-            when timeout occurs.
+            Exception: This doesn't catch any exceptions raised when the
+                underlying request call raises exceptions. For example, it could
+                raise `requests.Timeout` when timeout occurs.
 
         """
         if options.has_conflicting_filters():
@@ -530,9 +529,9 @@ class StateApiClient(SubmissionClient):
             A dictionary of queried result from `SummaryApiResponse`.
 
         Raises:
-            This doesn't catch any exceptions raised when the underlying request
-            call raises exceptions. For example, it could raise `requests.Timeout`
-            when timeout occurs.
+            Exception: This doesn't catch any exceptions raised when the
+                underlying request call raises exceptions. For example, it could
+                raise `requests.Timeout` when timeout occurs.
         """
         params = {"timeout": options.timeout}
         endpoint = f"/api/v0/{resource.value}/summarize"
@@ -1269,7 +1268,7 @@ def get_log(
         submission_id=submission_id,
         attempt_number=attempt_number,
     )
-    options_dict = {"format": "leading_1"}
+    options_dict = {}
     for field in fields(options):
         option_val = getattr(options, field.name)
         if option_val is not None:
@@ -1282,19 +1281,10 @@ def get_log(
     ) as r:
         if r.status_code != 200:
             raise RayStateApiException(r.text)
-        for bytes in r.iter_content(chunk_size=None):
-            bytes = bytearray(bytes)
-            # First byte 1 means success.
-            if bytes.startswith(b"1"):
-                bytes.pop(0)
-                logs = bytes
-                if encoding is not None:
-                    logs = bytes.decode(encoding=encoding, errors=errors)
-            else:
-                assert bytes.startswith(b"0")
-                error_msg = bytes.decode("utf-8")
-                raise RayStateApiException(error_msg)
-            yield logs
+        for chunk in r.iter_content(chunk_size=None):
+            if encoding is not None:
+                chunk = chunk.decode(encoding=encoding, errors=errors)
+            yield chunk
 
 
 @DeveloperAPI

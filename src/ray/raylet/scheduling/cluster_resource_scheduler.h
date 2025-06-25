@@ -23,7 +23,6 @@
 #include <vector>
 
 #include "absl/container/flat_hash_map.h"
-#include "absl/container/flat_hash_set.h"
 #include "ray/common/scheduling/cluster_resource_data.h"
 #include "ray/common/scheduling/fixed_point.h"
 #include "ray/common/scheduling/resource_set.h"
@@ -121,9 +120,11 @@ class ClusterResourceScheduler {
   /// schedulable if it has the available resources needed to execute the task.
   ///
   /// \param node_name Name of the node.
+  /// \param label_selector: label requirements to schedule on a node.
   /// \param shape The resource demand's shape.
   bool IsSchedulableOnNode(scheduling::NodeID node_id,
                            const absl::flat_hash_map<std::string, double> &shape,
+                           const LabelSelector &label_selector,
                            bool requires_object_store_memory);
 
   LocalResourceManager &GetLocalResourceManager() { return *local_resource_manager_; }
@@ -196,6 +197,7 @@ class ClusterResourceScheduler {
   //           resource request.
   scheduling::NodeID GetBestSchedulableNode(
       const absl::flat_hash_map<std::string, double> &resource_request,
+      const LabelSelector &label_selector,
       const rpc::SchedulingStrategy &scheduling_strategy,
       bool requires_object_store_memory,
       bool actor_creation,
@@ -245,6 +247,7 @@ class ClusterResourceScheduler {
   FRIEND_TEST(ClusterTaskManagerTestWithGPUsAtHead, RleaseAndReturnWorkerCpuResources);
   FRIEND_TEST(ClusterResourceSchedulerTest, TestForceSpillback);
   FRIEND_TEST(ClusterResourceSchedulerTest, AffinityWithBundleScheduleTest);
+  FRIEND_TEST(ClusterResourceSchedulerTest, LabelSelectorIsSchedulableOnNodeTest);
 };
 
 }  // end namespace ray

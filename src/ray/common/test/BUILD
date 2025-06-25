@@ -239,3 +239,16 @@ ray_cc_test(
         "@com_google_googletest//:gtest_main",
     ],
 )
+
+ray_cc_test(
+    name = "label_selector_test",
+    size = "small",
+    srcs = [
+        "label_selector_test.cc",
+    ],
+    tags = ["team:core"],
+    deps = [
+        "//src/ray/common:task_common",
+        "@com_google_googletest//:gtest_main",
+    ],
+)

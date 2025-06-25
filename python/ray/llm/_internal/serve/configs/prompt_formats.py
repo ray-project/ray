@@ -5,26 +5,20 @@ from typing import (
     Literal,
     Optional,
     Union,
-    TYPE_CHECKING,
 )
 
 from pydantic import (
     BaseModel,
-    ConfigDict,
-    PrivateAttr,
     field_validator,
     model_validator,
 )
-from ray.llm._internal.utils import try_import
 
-if TYPE_CHECKING:
-    from transformers import AutoProcessor
+from ray.llm._internal.common.utils.import_utils import try_import
 
 transformers = try_import("transformers")
 
 
 class Text(BaseModel):
-    field: str = "text"
     type: str = "text"
     text: str
 
@@ -35,18 +29,23 @@ class Text(BaseModel):
 # This is to support the "content" content type in the prompt format, as opposite of
 # the "text" content from the above which most other model uses.
 class Content(BaseModel):
-    field: str = "text"
     type: str = "text"
     content: str
 
 
 class Image(BaseModel):
-    field: str = "image_url"
+    type: str = "image_url"
     image_url: Dict
 
     @field_validator("image_url")
     @classmethod
     def check_image_url(cls, value):
+        """Checks if the image_url is a dict with a 'url' key.
+        Example:
+            image_url = {
+                "url": "https://example.com/image.png"
+            }
+        """
         if "url" not in value or not value["url"] or not isinstance(value["url"], str):
             raise ValueError(
                 # TODO(xwjiang): Link to doc.
@@ -118,78 +117,3 @@ class EngineInput(BaseModel):
 
     text: str
     image: Optional[List[ImageInput]] = None
-
-
-class AbstractPromptFormat(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-
-    def generate_prompt(self, messages: Union[Prompt, List[Message]]) -> EngineInput:
-        raise NotImplementedError()
-
-
-class HuggingFacePromptFormat(AbstractPromptFormat):
-    _processor: "AutoProcessor" = PrivateAttr()
-
-    def set_processor(self, model_id_or_path: str, trust_remote_code: bool = False):
-        if hasattr(self, "_processor"):
-            return
-
-        self._processor = transformers.AutoProcessor.from_pretrained(
-            model_id_or_path,
-            trust_remote_code=trust_remote_code,
-        )
-
-    def generate_prompt(
-        self, messages: Union[Prompt, List[Message], dict, List[dict]]
-    ) -> EngineInput:
-        # Normalize to Prompt if the input is a dict
-        if isinstance(messages, dict):
-            messages = Prompt.model_validate(messages)
-
-        # Normalize to List[Message] if the input is a Prompt object
-        if isinstance(messages, Prompt):
-            if isinstance(messages.prompt, str):
-                if not messages.use_prompt_format:
-                    return EngineInput(text=messages.prompt)
-                raise ValueError("String prompts are not supported.")
-            messages = messages.prompt
-
-        # If messages is a list, ensure all elements are of the same type and convert List[dict]to List[Message]
-        elif isinstance(messages, list):
-            if messages == []:
-                raise ValueError("List cannot be empty.")
-            elif all(isinstance(msg, dict) for msg in messages):
-                messages = [Message.model_validate(msg) for msg in messages]
-            elif all(isinstance(msg, Message) for msg in messages):
-                pass
-            else:
-                raise ValueError(
-                    "List must contain either all dicts or all Message objects."
-                )
-
-        assert hasattr(
-            self, "_processor"
-        ), "HuggingFacePromptFormat's processor is not set."
-
-        conversation = []
-        images = []
-        for message in messages:
-            content = []
-            if isinstance(message.content, list):
-                for c in message.content:
-                    if isinstance(c, (Text, Content)):
-                        content.append(c.model_dump())
-                    elif isinstance(c, Image):
-                        content.append({"type": "image"})
-                        images.append(ImageInput(image_url=c.image_url["url"]))
-            else:
-                content = message.content
-            conversation.append({"role": message.role, "content": content})
-
-        prompt = self._processor.apply_chat_template(
-            conversation=conversation,
-            tokenize=False,
-            add_generation_prompt=True,
-        )
-
-        return EngineInput(text=prompt, image=images)

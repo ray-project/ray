@@ -17,7 +17,7 @@ namespace ray {
 class MockRayletClientInterface : public RayletClientInterface {
  public:
   MOCK_METHOD(ray::Status,
-              WaitForDirectActorCallArgs,
+              WaitForActorCallArgs,
               (const std::vector<rpc::ObjectReference> &references, int64_t tag),
               (override));
   MOCK_METHOD(std::shared_ptr<grpc::Channel>, GetChannel, (), (const));
@@ -110,6 +110,7 @@ class MockRayletClientInterface : public RayletClientInterface {
                uint64_t data_size,
                uint64_t metadata_size,
                void *data,
+               void *metadata,
                const rpc::ClientCallback<ray::rpc::PushMutableObjectReply> &callback),
               (override));
   MOCK_METHOD(void,

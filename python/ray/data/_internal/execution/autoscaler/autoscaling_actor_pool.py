@@ -1,4 +1,5 @@
 from abc import ABC, abstractmethod
+from typing import Optional
 
 from ray.data._internal.execution.interfaces.execution_options import ExecutionResources
 from ray.util.annotations import DeveloperAPI
@@ -53,23 +54,30 @@ class AutoscalingActorPool(ABC):
         """Number of current in-flight tasks."""
         ...
 
-    def num_total_task_slots(self) -> int:
-        """Total number of task slots."""
-        return self.max_tasks_in_flight_per_actor() * self.current_size()
-
     def num_free_task_slots(self) -> int:
-        """Number of free slots to run tasks."""
+        """Number of free slots to run tasks.
+
+        This doesn't include task slots for pending actors.
+        """
         return (
-            self.max_tasks_in_flight_per_actor() * self.current_size()
+            self.max_tasks_in_flight_per_actor() * self.num_running_actors()
             - self.current_in_flight_tasks()
         )
 
     @abstractmethod
-    def scale_up(self, num_actors: int) -> int:
+    def can_scale_down(self):
+        ...
+
+    @abstractmethod
+    def scale_up(self, num_actors: int, *, reason: Optional[str] = None) -> int:
         """Request the actor pool to scale up by the given number of actors.
 
         The number of actually added actors may be less than the requested
         number.
+
+        Args:
+            num_actors: Number of additional actors to be added to the pool
+            reason: (Optional) Reason for action
 
         Returns:
             The number of actors actually added.
@@ -77,11 +85,15 @@ class AutoscalingActorPool(ABC):
         ...
 
     @abstractmethod
-    def scale_down(self, num_actors: int) -> int:
+    def scale_down(self, num_actors: int, *, reason: Optional[str] = None) -> int:
         """Request actor pool to scale down by the given number of actors.
 
         The number of actually removed actors may be less than the requested
         number.
+
+        Args:
+            num_actors: Number of additional actors to be removed from the pool
+            reason: (Optional) Reason for action
 
         Returns:
             The number of actors actually removed.

@@ -9,6 +9,7 @@ from unittest.mock import Mock, patch
 import pytest
 
 import ray
+from ray._common.test_utils import wait_for_condition
 import ray.experimental.internal_kv as kv
 from ray._private.ray_constants import (
     DEFAULT_DASHBOARD_AGENT_LISTEN_PORT,
@@ -16,13 +17,13 @@ from ray._private.ray_constants import (
 )
 from ray._private.test_utils import (
     format_web_url,
-    wait_for_condition,
     wait_until_server_available,
 )
+from ray._raylet import GcsClient
 from ray.dashboard.consts import (
-    RAY_JOB_ALLOW_DRIVER_ON_WORKER_NODES_ENV_VAR,
     DASHBOARD_AGENT_ADDR_NODE_ID_PREFIX,
     GCS_RPC_TIMEOUT_SECONDS,
+    RAY_JOB_ALLOW_DRIVER_ON_WORKER_NODES_ENV_VAR,
 )
 from ray.dashboard.modules.dashboard_sdk import (
     DEFAULT_DASHBOARD_ADDRESS,
@@ -32,9 +33,10 @@ from ray.dashboard.modules.dashboard_sdk import (
 from ray.dashboard.modules.job.pydantic_models import JobType
 from ray.dashboard.modules.job.sdk import JobStatus, JobSubmissionClient
 from ray.dashboard.tests.conftest import *  # noqa
+from ray.runtime_env.runtime_env import RuntimeEnv
 from ray.tests.conftest import _ray_start
 from ray.util.state import list_nodes
-from ray._raylet import GcsClient
+
 import psutil
 
 
@@ -375,6 +377,53 @@ def test_jobs_run_on_head_by_default_E2E(ray_start_cluster_head_with_env_vars):
     assert (num_ids > 1) if allow_driver_on_worker_nodes else (num_ids == 1), [
         id[:5] for id in driver_node_ids
     ]
+
+
+@pytest.fixture
+def runtime_env_working_dir():
+    with tempfile.TemporaryDirectory() as tmp_dir:
+        path = Path(tmp_dir)
+        working_dir = path / "working_dir"
+        working_dir.mkdir(parents=True)
+        yield working_dir
+
+
+@pytest.fixture
+def py_module_whl():
+    with tempfile.NamedTemporaryFile(suffix=".whl") as tmp_file:
+        yield tmp_file.name
+
+
+def test_job_submission_with_runtime_env_as_dict(
+    runtime_env_working_dir, py_module_whl
+):
+    working_dir_str = str(runtime_env_working_dir)
+    with _ray_start(num_cpus=1):
+        client = JobSubmissionClient()
+        runtime_env = {"working_dir": working_dir_str, "py_modules": [py_module_whl]}
+        job_id = client.submit_job(entrypoint="echo hi", runtime_env=runtime_env)
+        job_details = client.get_job_info(job_id)
+        parsed_runtime_env = job_details.runtime_env
+        assert "gcs://" in parsed_runtime_env["working_dir"]
+        assert len(parsed_runtime_env["py_modules"]) == 1
+        assert "gcs://" in parsed_runtime_env["py_modules"][0]
+
+
+def test_job_submission_with_runtime_env_as_object(
+    runtime_env_working_dir, py_module_whl
+):
+    working_dir_str = str(runtime_env_working_dir)
+    with _ray_start(num_cpus=1):
+        client = JobSubmissionClient()
+        runtime_env = RuntimeEnv(
+            working_dir=working_dir_str, py_modules=[py_module_whl]
+        )
+        job_id = client.submit_job(entrypoint="echo hi", runtime_env=runtime_env)
+        job_details = client.get_job_info(job_id)
+        parsed_runtime_env = job_details.runtime_env
+        assert "gcs://" in parsed_runtime_env["working_dir"]
+        assert len(parsed_runtime_env["py_modules"]) == 1
+        assert "gcs://" in parsed_runtime_env["py_modules"][0]
 
 
 if __name__ == "__main__":

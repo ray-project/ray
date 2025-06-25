@@ -14,6 +14,11 @@
 
 #pragma once
 
+#include <map>
+#include <memory>
+#include <thread>
+#include <vector>
+
 #include "absl/base/thread_annotations.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
@@ -33,23 +38,19 @@
 namespace ray {
 namespace core {
 
-/// The max time to wait for out-of-order tasks.
-const int kMaxReorderWaitSeconds = 30;
-
 /// Used to ensure serial order of task execution per actor handle.
 /// See direct_actor.proto for a description of the ordering protocol.
 class ActorSchedulingQueue : public SchedulingQueue {
  public:
   ActorSchedulingQueue(
-      instrumented_io_context &main_io_service,
+      instrumented_io_context &task_execution_service,
       DependencyWaiter &waiter,
       worker::TaskEventBuffer &task_event_buffer,
       std::shared_ptr<ConcurrencyGroupManager<BoundedExecutor>> pool_manager,
       std::shared_ptr<ConcurrencyGroupManager<FiberState>> fiber_state_manager,
       bool is_asyncio,
       int fiber_max_concurrency,
-      const std::vector<ConcurrencyGroup> &concurrency_groups,
-      int64_t reorder_wait_seconds = kMaxReorderWaitSeconds);
+      const std::vector<ConcurrencyGroup> &concurrency_groups);
 
   void Stop() override;
 
@@ -85,7 +86,8 @@ class ActorSchedulingQueue : public SchedulingQueue {
   /// Called when we time out waiting for an earlier task to show up.
   void OnSequencingWaitTimeout();
   /// Max time in seconds to wait for dependencies to show up.
-  const int64_t reorder_wait_seconds_ = 0;
+  const int64_t reorder_wait_seconds_ =
+      ::RayConfig::instance().actor_scheduling_queue_max_reorder_wait_seconds();
   /// Sorted map of (accept, rej) task callbacks keyed by their sequence number.
   std::map<int64_t, InboundRequest> pending_actor_tasks_;
   /// The next sequence number we are waiting for to arrive.
@@ -94,7 +96,7 @@ class ActorSchedulingQueue : public SchedulingQueue {
   /// io service, which is fine since it only ever fires if no tasks are running.
   boost::asio::deadline_timer wait_timer_;
   /// The id of the thread that constructed this scheduling queue.
-  boost::thread::id main_thread_id_;
+  std::thread::id main_thread_id_;
   /// Reference to the waiter owned by the task receiver.
   DependencyWaiter &waiter_;
   worker::TaskEventBuffer &task_event_buffer_;

@@ -20,6 +20,7 @@ import Pagination from "@mui/material/Pagination";
 import _ from "lodash";
 import React, { useMemo, useState } from "react";
 import { Link as RouterLink } from "react-router-dom";
+import { CodeDialogButtonWithPreview } from "../common/CodeDialogButton";
 import { DurationText, getDurationVal } from "../common/DurationText";
 import { ActorLink, generateNodeLink } from "../common/links";
 import {
@@ -269,7 +270,7 @@ const ActorTable = ({
           <br />
           1. non-GPU Ray image is used on this node. Switch to a GPU Ray image
           and try again. <br />
-          2. Non Nvidia GPUs are being used. Non Nvidia GPUs' utilizations are
+          2. Non NVIDIA GPUs are being used. Non NVIDIA GPUs' utilizations are
           not currently supported.
           <br />
           3. pynvml module raises an exception.
@@ -318,6 +319,10 @@ const ActorTable = ({
           <br />
         </Typography>
       ),
+    },
+    {
+      label: "Label selector",
+      helpInfo: <Typography>The label selector of the actor.</Typography>,
     },
     {
       label: "Exit detail",
@@ -550,6 +555,7 @@ const ActorTable = ({
                 gpus,
                 processStats,
                 mem,
+                labelSelector,
               }) => (
                 <ExpandableTableRow
                   length={
@@ -702,23 +708,26 @@ const ActorTable = ({
                     </Tooltip>
                   </TableCell>
                   <TableCell align="center">
-                    <Tooltip
-                      title={Object.entries(requiredResources || {}).map(
-                        ([key, val]) => (
-                          <div style={{ margin: 4 }}>
-                            {key}: {val}
-                          </div>
-                        ),
-                      )}
-                      arrow
-                    >
-                      <OverflowCollapsibleCell
-                        text={Object.entries(requiredResources || {})
-                          .map(([key, val]) => `${key}: ${val}`)
-                          .join(", ")}
-                        wordBreak="break-all"
+                    {Object.entries(requiredResources || {}).length > 0 ? (
+                      <CodeDialogButtonWithPreview
+                        sx={{ maxWidth: 200 }}
+                        title="Required resources"
+                        code={JSON.stringify(requiredResources, undefined, 2)}
                       />
-                    </Tooltip>
+                    ) : (
+                      "{}"
+                    )}
+                  </TableCell>
+                  <TableCell align="center">
+                    {Object.entries(labelSelector || {}).length > 0 ? (
+                      <CodeDialogButtonWithPreview
+                        sx={{ maxWidth: 200 }}
+                        title="Label selector"
+                        code={JSON.stringify(labelSelector, undefined, 2)}
+                      />
+                    ) : (
+                      "{}"
+                    )}
                   </TableCell>
                   <TableCell align="center">
                     <OverflowCollapsibleCell text={exitDetail} />

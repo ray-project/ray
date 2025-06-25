@@ -1,0 +1,7 @@
+model_loading_config:
+  model_id: model1
+
+deployment_config:
+  ray_actor_options:
+    resources:
+      mock_resource: 0

@@ -49,12 +49,6 @@ class AggregatorActor(FaultAwareApply):
         # Set device and node.
         self._node = platform.node()
         self._device = torch.device("cpu")
-        # TODO (sven): Activate this when Ray has figured out GPU pre-loading.
-        # self._device = torch.device(
-        #    f"cuda:{ray.get_gpu_ids()[0]}"
-        #    if self.config.num_gpus_per_learner > 0
-        #    else "cpu"
-        # )
         self.metrics = MetricsLogger()
 
         # Create the RLModule.
@@ -90,7 +84,7 @@ class AggregatorActor(FaultAwareApply):
         env_steps = sum(len(e) for e in episodes)
 
         # If we have enough episodes collected to create a single train batch, pass
-        # them at once through the connector to recieve a single train batch.
+        # them at once through the connector to receive a single train batch.
         batch = self._learner_connector(
             episodes=episodes,
             rl_module=self._module,
@@ -119,6 +113,17 @@ def _get_env_runner_bundles(config):
             **config.custom_resources_per_env_runner,
         }
         for _ in range(config.num_env_runners)
+    ]
+
+
+def _get_offline_eval_runner_bundles(config):
+    return [
+        {
+            "CPU": config.num_cpus_per_offline_eval_runner,
+            "GPU": config.num_gpus_per_offline_eval_runner,
+            **config.custom_resources_per_offline_eval_runner,
+        }
+        for _ in range(config.num_offline_eval_runners)
     ]
 
 

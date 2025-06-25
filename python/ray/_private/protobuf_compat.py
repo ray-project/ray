@@ -1,5 +1,6 @@
-from google.protobuf.json_format import MessageToDict
 import inspect
+
+from google.protobuf.json_format import MessageToDict
 
 """
 This module provides a compatibility layer for different versions of the protobuf

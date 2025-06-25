@@ -10,7 +10,7 @@ PyTorch profiler
 To run PyTorch Profiling on Compiled Graph, simply set the environment variable ``RAY_CGRAPH_ENABLE_TORCH_PROFILING=1``
 when running the script. For example, for a Compiled Graph script in ``example.py``, run the following command:
 
-.. testcode::
+.. code-block:: bash
 
     RAY_CGRAPH_ENABLE_TORCH_PROFILING=1 python3 example.py
 
@@ -43,7 +43,7 @@ Then, create a Compiled Graph as usual.
 
 Finally, run the script as usual.
 
-.. testcode::
+.. code-block:: bash
 
     python3 example.py
 
@@ -53,7 +53,7 @@ directory.
 For fine-grained performance analysis of method calls and system overhead, set the environment variable
 ``RAY_CGRAPH_ENABLE_NVTX_PROFILING=1`` when running the script:
 
-.. testcode::
+.. code-block:: bash
 
     RAY_CGRAPH_ENABLE_NVTX_PROFILING=1 python3 example.py
 

@@ -4,6 +4,8 @@ from typing import TYPE_CHECKING, Any, Callable, Dict, Iterable, List, Optional
 
 from ray.data._internal.arrow_ops.transform_pyarrow import concat
 from ray.data._internal.execution.interfaces import TaskContext
+from ray.data._internal.planner.plan_write_op import WRITE_UUID_KWARG_NAME
+from ray.data._internal.savemode import SaveMode
 from ray.data._internal.util import call_with_retry
 from ray.data.block import Block, BlockAccessor
 from ray.data.datasource.file_based_datasource import _resolve_kwargs
@@ -33,6 +35,7 @@ class ParquetDatasink(_FileDatasink):
         open_stream_args: Optional[Dict[str, Any]] = None,
         filename_provider: Optional[FilenameProvider] = None,
         dataset_uuid: Optional[str] = None,
+        mode: SaveMode = SaveMode.APPEND,
     ):
         if arrow_parquet_args_fn is None:
             arrow_parquet_args_fn = lambda: {}  # noqa: E731
@@ -53,6 +56,7 @@ class ParquetDatasink(_FileDatasink):
             filename_provider=filename_provider,
             dataset_uuid=dataset_uuid,
             file_format="parquet",
+            mode=mode,
         )
 
     def write(
@@ -72,7 +76,7 @@ class ParquetDatasink(_FileDatasink):
         ]
 
         filename = self.filename_provider.get_filename_for_block(
-            blocks[0], ctx.task_idx, 0
+            blocks[0], ctx.kwargs[WRITE_UUID_KWARG_NAME], ctx.task_idx, 0
         )
         write_kwargs = _resolve_kwargs(
             self.arrow_parquet_args_fn, **self.arrow_parquet_args
@@ -87,7 +91,9 @@ class ParquetDatasink(_FileDatasink):
                 output_schema = user_schema
 
             if not self.partition_cols:
-                self._write_single_file(tables, filename, output_schema, write_kwargs)
+                self._write_single_file(
+                    self.path, tables, filename, output_schema, write_kwargs
+                )
             else:  # partition writes
                 self._write_partition_files(
                     tables, filename, output_schema, write_kwargs
@@ -105,6 +111,7 @@ class ParquetDatasink(_FileDatasink):
 
     def _write_single_file(
         self,
+        path: str,
         tables: List["pyarrow.Table"],
         filename: str,
         output_schema: "pyarrow.Schema",
@@ -112,12 +119,16 @@ class ParquetDatasink(_FileDatasink):
     ) -> None:
         import pyarrow.parquet as pq
 
-        write_path = posixpath.join(self.path, filename)
+        # We extract 'row_group_size' for write_table() and
+        # keep the rest for ParquetWriter()
+        row_group_size = write_kwargs.pop("row_group_size", None)
+
+        write_path = posixpath.join(path, filename)
         with self.open_output_stream(write_path) as file:
             with pq.ParquetWriter(file, output_schema, **write_kwargs) as writer:
                 for table in tables:
                     table = table.cast(output_schema)
-                    writer.write_table(table)
+                    writer.write_table(table, row_group_size=row_group_size)
 
     def _write_partition_files(
         self,
@@ -127,7 +138,6 @@ class ParquetDatasink(_FileDatasink):
         write_kwargs: Dict[str, Any],
     ) -> None:
         import pyarrow as pa
-        import pyarrow.parquet as pq
         import pyarrow.compute as pc
 
         table = concat(tables, promote_types=False)
@@ -156,10 +166,13 @@ class ParquetDatasink(_FileDatasink):
             )
             write_path = posixpath.join(self.path, partition_path)
             self._create_dir(write_path)
-            write_path = posixpath.join(write_path, filename)
-            with self.open_output_stream(write_path) as file:
-                with pq.ParquetWriter(file, output_schema, **write_kwargs) as writer:
-                    writer.write_table(group_table)
+            self._write_single_file(
+                write_path,
+                [group_table],
+                filename,
+                output_schema,
+                write_kwargs,
+            )
 
     @property
     def min_rows_per_write(self) -> Optional[int]:

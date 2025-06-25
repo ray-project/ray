@@ -1,14 +1,15 @@
 """Tokenize and detokenize stage"""
 
-from typing import Any, Dict, AsyncIterator, List, Type
+from typing import Any, AsyncIterator, Dict, List, Type
 
 from ray.llm._internal.batch.stages.base import (
     StatefulStage,
     StatefulStageUDF,
 )
-from ray.llm._internal.batch.utils import (
-    get_cached_tokenizer,
-    download_hf_model,
+from ray.llm._internal.batch.utils import get_cached_tokenizer
+from ray.llm._internal.common.utils.download_utils import (
+    NodeModelDownloadable,
+    download_model_files,
 )
 
 
@@ -16,6 +17,7 @@ class TokenizeUDF(StatefulStageUDF):
     def __init__(
         self,
         data_column: str,
+        expected_input_keys: List[str],
         model: str,
     ):
         """
@@ -23,12 +25,18 @@ class TokenizeUDF(StatefulStageUDF):
 
         Args:
             data_column: The data column name.
+            expected_input_keys: The expected input keys of the stage.
             model: The model to use for the chat template.
         """
         from transformers import AutoTokenizer
 
-        super().__init__(data_column)
-        model_path = download_hf_model(model, tokenizer_only=True)
+        super().__init__(data_column, expected_input_keys)
+        model_path = download_model_files(
+            model_id=model,
+            mirror_config=None,
+            download_model=NodeModelDownloadable.TOKENIZER_ONLY,
+            download_extra_files=False,
+        )
         self.tokenizer = get_cached_tokenizer(
             AutoTokenizer.from_pretrained(
                 model_path,
@@ -55,11 +63,6 @@ class TokenizeUDF(StatefulStageUDF):
                 "tokenized_prompt": prompt_token_ids,
             }
 
-    @property
-    def expected_input_keys(self) -> List[str]:
-        """The expected input keys."""
-        return ["prompt"]
-
 
 class TokenizeStage(StatefulStage):
     """
@@ -68,11 +71,16 @@ class TokenizeStage(StatefulStage):
 
     fn: Type[StatefulStageUDF] = TokenizeUDF
 
+    def get_required_input_keys(self) -> Dict[str, str]:
+        """The required input keys of the stage and their descriptions."""
+        return {"prompt": "The text prompt (str) to tokenize."}
+
 
 class DetokenizeUDF(StatefulStageUDF):
     def __init__(
         self,
         data_column: str,
+        expected_input_keys: List[str],
         model: str,
     ):
         """
@@ -80,12 +88,18 @@ class DetokenizeUDF(StatefulStageUDF):
 
         Args:
             data_column: The data column name.
+            expected_input_keys: The expected input keys of the stage.
             model: The model to use for the chat template.
         """
         from transformers import AutoTokenizer
 
-        super().__init__(data_column)
-        model_path = download_hf_model(model, tokenizer_only=True)
+        super().__init__(data_column, expected_input_keys)
+        model_path = download_model_files(
+            model_id=model,
+            mirror_config=None,
+            download_model=NodeModelDownloadable.TOKENIZER_ONLY,
+            download_extra_files=False,
+        )
         self.tokenizer = get_cached_tokenizer(
             AutoTokenizer.from_pretrained(
                 model_path,
@@ -115,11 +129,6 @@ class DetokenizeUDF(StatefulStageUDF):
                 "generated_text": generated_text,
             }
 
-    @property
-    def expected_input_keys(self) -> List[str]:
-        """The expected input keys."""
-        return ["generated_tokens"]
-
 
 class DetokenizeStage(StatefulStage):
     """
@@ -127,3 +136,7 @@ class DetokenizeStage(StatefulStage):
     """
 
     fn: Type[StatefulStageUDF] = DetokenizeUDF
+
+    def get_required_input_keys(self) -> Dict[str, str]:
+        """The required input keys of the stage and their descriptions."""
+        return {"generated_tokens": "A list of generated tokens (int) to detokenize."}

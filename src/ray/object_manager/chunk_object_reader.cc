@@ -33,7 +33,7 @@ uint64_t ChunkObjectReader::GetNumChunks() const {
          chunk_size_;
 }
 
-absl::optional<std::string> ChunkObjectReader::GetChunk(uint64_t chunk_index) const {
+std::optional<std::string> ChunkObjectReader::GetChunk(uint64_t chunk_index) const {
   // The spilled file stores metadata before data. But the GetChunk needs to
   // return data before metadata. We achieve by first read from data section,
   // then read from metadata section.
@@ -50,7 +50,7 @@ absl::optional<std::string> ChunkObjectReader::GetChunk(uint64_t chunk_index) co
     auto offset = cur_chunk_offset;
     auto data_size = std::min(object_->GetDataSize() - cur_chunk_offset, cur_chunk_size);
     if (!object_->ReadFromDataSection(offset, data_size, result)) {
-      return absl::optional<std::string>();
+      return std::optional<std::string>();
     }
   }
 
@@ -61,9 +61,9 @@ absl::optional<std::string> ChunkObjectReader::GetChunk(uint64_t chunk_index) co
     auto size = std::min(cur_chunk_offset + cur_chunk_size - object_->GetDataSize(),
                          cur_chunk_size);
     if (!object_->ReadFromMetadataSection(offset, size, result)) {
-      return absl::optional<std::string>();
+      return std::optional<std::string>();
     }
   }
-  return absl::optional<std::string>(std::move(result));
+  return std::optional<std::string>(std::move(result));
 }
 };  // namespace ray

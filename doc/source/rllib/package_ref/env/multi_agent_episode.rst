@@ -60,7 +60,6 @@ Getting environment data
     ~MultiAgentEpisode.get_extra_model_outputs
     ~MultiAgentEpisode.get_terminateds
     ~MultiAgentEpisode.get_truncateds
-    ~MultiAgentEpisode.get_temporary_timestep_data
 
 Adding data
 ~~~~~~~~~~~
@@ -70,7 +69,6 @@ Adding data
 
     ~MultiAgentEpisode.add_env_reset
     ~MultiAgentEpisode.add_env_step
-    ~MultiAgentEpisode.add_temporary_timestep_data
 
 Creating and handling episode chunks
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~

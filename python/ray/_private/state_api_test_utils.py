@@ -1,27 +1,27 @@
 import asyncio
-import sys
-from copy import deepcopy
-from collections import defaultdict
 import concurrent.futures
-from concurrent.futures import ThreadPoolExecutor
-from dataclasses import dataclass, field
 import logging
-import numpy as np
 import pprint
+import sys
 import time
 import traceback
+from collections import defaultdict
+from concurrent.futures import ThreadPoolExecutor
+from copy import deepcopy
+from dataclasses import dataclass, field
 from typing import Callable, Dict, List, Optional, Tuple, Union
-from ray.util.state import list_tasks
-import ray
-from ray.actor import ActorHandle
-from ray.util.state import list_workers
-import psutil
 
-from ray._private.gcs_utils import GcsAioClient, GcsChannel
-from ray.util.state.state_manager import StateDataSourceClient
+import numpy as np
+
+import ray
+import ray._common.test_utils as test_utils
+from ray._private.gcs_utils import GcsChannel
+from ray._raylet import GcsClient
+from ray.actor import ActorHandle
 from ray.dashboard.state_aggregator import (
     StateAPIManager,
 )
+from ray.util.state import list_tasks, list_workers
 from ray.util.state.common import (
     DEFAULT_LIMIT,
     DEFAULT_RPC_TIMEOUT,
@@ -29,6 +29,9 @@ from ray.util.state.common import (
     PredicateType,
     SupportedFilterType,
 )
+from ray.util.state.state_manager import StateDataSourceClient
+
+import psutil
 
 
 @dataclass
@@ -111,6 +114,16 @@ def invoke_state_api(
         state_stats.pending_calls -= 1
 
     return res
+
+
+def invoke_state_api_n(*args, **kwargs):
+    def verify():
+        NUM_API_CALL_SAMPLES = 10
+        for _ in range(NUM_API_CALL_SAMPLES):
+            invoke_state_api(*args, **kwargs)
+        return True
+
+    test_utils.wait_for_condition(verify, retry_interval_ms=2000, timeout=30)
 
 
 def aggregate_perf_results(state_stats: StateAPIStats = GLOBAL_STATE_STATS):
@@ -327,11 +340,11 @@ def periodic_invoke_state_apis_with_actor(*args, **kwargs) -> ActorHandle:
 
 
 def get_state_api_manager(gcs_address: str) -> StateAPIManager:
-    gcs_aio_client = GcsAioClient(address=gcs_address)
+    gcs_client = GcsClient(address=gcs_address)
     gcs_channel = GcsChannel(gcs_address=gcs_address, aio=True)
     gcs_channel.connect()
     state_api_data_source_client = StateDataSourceClient(
-        gcs_channel.channel(), gcs_aio_client
+        gcs_channel.channel(), gcs_client
     )
     return StateAPIManager(
         state_api_data_source_client,
@@ -377,7 +390,7 @@ def summarize_worker_startup_time():
 
 
 def verify_failed_task(
-    name: str, error_type: str, error_message: Union[str, List[str]]
+    name: str, error_type: str, error_message: Union[str, List[str], None] = None
 ) -> bool:
     """
     Check if a task with 'name' has failed with the exact error type 'error_type'
@@ -388,10 +401,11 @@ def verify_failed_task(
     t = tasks[0]
     assert t["state"] == "FAILED", t
     assert t["error_type"] == error_type, t
-    if isinstance(error_message, str):
-        error_message = [error_message]
-    for msg in error_message:
-        assert msg in t.get("error_message", None), t
+    if error_message is not None:
+        if isinstance(error_message, str):
+            error_message = [error_message]
+        for msg in error_message:
+            assert msg in t.get("error_message", None), t
     return True
 
 

@@ -63,7 +63,7 @@ enum MessageType:int {
   // remaining.
   WaitReply,
   // Wait for objects asynchronously. The reply will be sent back via gRPC push.
-  WaitForDirectActorCallArgsRequest,
+  WaitForActorCallArgsRequest,
   // Push an error to the relevant driver. This is sent from a worker to the
   // node manager.
   PushErrorRequest,
@@ -234,7 +234,7 @@ table WaitReply {
   remaining: [string];
 }
 
-table WaitForDirectActorCallArgsRequest {
+table WaitForActorCallArgsRequest {
   // List of object ids we'll be waiting on.
   object_ids: [string];
   // The RPC addresses of the workers that own the objects in object_ids.
