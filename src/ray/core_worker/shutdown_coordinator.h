@@ -16,10 +16,57 @@
 
 #include <atomic>
 #include <chrono>
+#include <functional>
+#include <memory>
 #include <string>
+
+#include "ray/core_worker/common.h"
 
 namespace ray {
 namespace core {
+
+// Forward declarations
+class TaskManager;
+class ObjectRecoveryManager;
+
+/// Interface for external services that need to be coordinated during shutdown.
+/// This allows dependency injection for testing and modularity.
+class ShutdownDependencies {
+ public:
+  virtual ~ShutdownDependencies() = default;
+
+  /// Disconnect from raylet
+  virtual void DisconnectRaylet() = 0;
+
+  /// Disconnect from GCS
+  virtual void DisconnectGcs() = 0;
+
+  /// Shutdown task manager gracefully
+  virtual void ShutdownTaskManager(bool force) = 0;
+
+  /// Shutdown object recovery manager
+  virtual void ShutdownObjectRecovery() = 0;
+
+  /// Cancel all pending tasks
+  virtual void CancelPendingTasks(bool force) = 0;
+
+  /// Clean up actor state (if actor worker)
+  virtual void CleanupActorState() = 0;
+
+  /// Flush any remaining logs/metrics
+  virtual void FlushMetrics() = 0;
+
+  /// Get pending task count for graceful shutdown decisions
+  virtual size_t GetPendingTaskCount() const = 0;
+
+  /// Check if graceful shutdown timeout has elapsed
+  virtual bool IsGracefulShutdownTimedOut(
+      std::chrono::steady_clock::time_point start_time,
+      std::chrono::milliseconds timeout) const = 0;
+};
+
+// Forward declaration to use existing WorkerType
+class CoreWorkerOptions;
 
 /// Reasons for worker shutdown. Used for observability and debugging.
 enum class ShutdownReason : uint32_t {
@@ -86,7 +133,16 @@ enum class ShutdownState : uint32_t {
 ///   }
 class ShutdownCoordinator {
  public:
-  ShutdownCoordinator();
+  /// Constructor with dependency injection for testability
+  ///
+  /// \param dependencies External service dependencies (can be mock for testing)
+  /// \param worker_type Type of worker for shutdown behavior customization
+  /// \param graceful_timeout_ms Timeout for graceful shutdown operations
+  explicit ShutdownCoordinator(
+      std::shared_ptr<ShutdownDependencies> dependencies,
+      WorkerType worker_type = WorkerType::WORKER,
+      std::chrono::milliseconds graceful_timeout_ms = std::chrono::milliseconds{30000});
+
   ~ShutdownCoordinator() = default;
 
   // Non-copyable and non-movable for safety
@@ -95,13 +151,24 @@ class ShutdownCoordinator {
   ShutdownCoordinator(ShutdownCoordinator &&) = delete;
   ShutdownCoordinator &operator=(ShutdownCoordinator &&) = delete;
 
-  /// Attempt to initiate shutdown from running state.
-  /// 
-  /// This is an atomic operation that will only succeed for the first caller.
-  /// Subsequent calls will return false, ensuring idempotent behavior.
+  /// Request shutdown with specified mode and reason.
   ///
+  /// This is the main entry point for all shutdown operations. It will:
+  /// 1. Atomically transition to shutting down state (idempotent)
+  /// 2. Execute appropriate shutdown sequence based on mode and worker type
+  /// 3. Handle graceful vs force shutdown behavior
+  ///
+  /// \param force_shutdown If true, force immediate shutdown; if false, graceful shutdown
   /// \param reason The reason for shutdown initiation
+  /// \param detail Optional detailed explanation
   /// \return true if this call initiated shutdown, false if already shutting down
+  bool RequestShutdown(bool force_shutdown,
+                      ShutdownReason reason, 
+                      const std::string& detail = "");
+
+  /// Legacy method for compatibility - delegates to RequestShutdown
+  /// \param reason The reason for shutdown initiation
+  /// \return true if this call initiated shutdown, false if already shutting down  
   bool TryInitiateShutdown(ShutdownReason reason);
 
   /// Attempt to transition to disconnecting state.
@@ -169,6 +236,20 @@ class ShutdownCoordinator {
   std::string GetReasonString() const;
 
  private:
+  /// Execute shutdown sequence based on worker type and mode
+  void ExecuteShutdownSequence(bool force_shutdown, const std::string& detail);
+
+  /// Execute graceful shutdown with timeout
+  void ExecuteGracefulShutdown(const std::string& detail);
+
+  /// Execute force shutdown immediately
+  void ExecuteForceShutdown(const std::string& detail);
+
+  /// Worker-type specific shutdown behavior
+  void ExecuteDriverShutdown(bool force_shutdown, const std::string& detail);
+  void ExecuteWorkerShutdown(bool force_shutdown, const std::string& detail);
+  void ExecuteActorShutdown(bool force_shutdown, const std::string& detail);
+
   /// Pack state and reason into a single 64-bit value for atomic operations.
   /// Layout: [32-bit state][32-bit reason]
   static uint64_t PackStateReason(ShutdownState state, ShutdownReason reason);
@@ -182,10 +263,18 @@ class ShutdownCoordinator {
   /// Validate state transition is allowed.
   static bool IsValidTransition(ShutdownState from, ShutdownState to);
 
+  // Dependencies and configuration
+  std::shared_ptr<ShutdownDependencies> dependencies_;
+  WorkerType worker_type_;
+  std::chrono::milliseconds graceful_timeout_ms_;
+
   /// Single atomic variable holding both state and reason.
   /// This design minimizes memory overhead and ensures atomic updates
   /// of both fields together, preventing inconsistent intermediate states.
   std::atomic<uint64_t> state_and_reason_;
+
+  /// Shutdown detail for observability (set once during shutdown initiation)
+  std::string shutdown_detail_;
 
   // Constants for bit manipulation
   static constexpr uint32_t STATE_MASK = 0xFFFFFFFF;
