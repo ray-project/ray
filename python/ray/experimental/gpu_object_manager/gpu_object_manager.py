@@ -1,4 +1,5 @@
 from typing import TYPE_CHECKING, Any, Dict, List, NamedTuple, Optional, Tuple
+import threading
 
 import ray
 from ray._private.custom_types import TensorTransportEnum
@@ -63,16 +64,22 @@ class GPUObjectManager:
         # avoid circular import and because it imports third-party dependencies
         # like PyTorch.
         self._gpu_object_store: Optional["GPUObjectStore"] = None
+        # Lock to synchronize access to the GPU object store. This is needed
+        # because the GPU object store is accessed by both user threads, to
+        # put/getobjects into the object store from user tasks, and by a
+        # background system thread, which handles data transfers and GC.
+        self.gpu_object_store_lock = threading.RLock()
 
     @property
     def gpu_object_store(self) -> "ray.experimental.GPUObjectStore":
-        if self._gpu_object_store is None:
-            from ray.experimental.gpu_object_manager.gpu_object_store import (
-                GPUObjectStore,
-            )
-
-            self._gpu_object_store = GPUObjectStore()
+        with self.gpu_object_store_lock:
+            if self._gpu_object_store is None:
+                from ray.experimental.gpu_object_manager.gpu_object_store import (
+                    GPUObjectStore,
+                )
+                self._gpu_object_store = GPUObjectStore(self.gpu_object_store_lock)
         return self._gpu_object_store
+
 
     def _get_tensor_meta(
         self, src_actor: "ray.actor.ActorHandle", obj_id: str
@@ -81,10 +88,8 @@ class GPUObjectManager:
         # The metadata is a list of tuples, where each tuple contains the shape and dtype
         # of a tensor in the GPU object store. This function returns an ObjectRef that
         # points to the tensor metadata.
-        # NOTE(swang): We put this task on the background thread because its
-        # return value is needed for future transfers. If the main thread is
-        # blocked by other tasks, then this task will never run and pending
-        # transfers will hang.
+        # NOTE(swang): We put this task on the background thread to avoid tasks
+        # executing on the main thread blocking this task.
         return src_actor.__ray_call__.options(concurrency_group="_ray_system").remote(__ray_get_tensor_meta__, obj_id)
 
     def is_managed_object(self, obj_id: str) -> bool:

@@ -284,11 +284,20 @@ class SerializationContext:
 
         enable_gpu_objects = tensor_transport != TensorTransportEnum.OBJECT_STORE
         if enable_gpu_objects:
-            gpu_object_manager = ray._private.worker.global_worker.gpu_object_manager
+            global_worker = ray._private.worker.global_worker
+            gpu_object_manager = global_worker.gpu_object_manager
             if not gpu_object_manager.gpu_object_store.has_object(object_id) and gpu_object_manager.is_managed_object(object_id):
                 gpu_object_manager.fetch_object(object_id)
 
+            # NOTE(swang): This lock is held during all deserialization
+            # operations to prevent a race condition resulting in a partial
+            # import. We have to release the lock here because it may be needed
+            # to deserialize arguments for the task that receives and puts the
+            # tensors into the GPU object store. Releasing the lock should be
+            # safe because we should not be mid-import.
+            global_worker.function_actor_manager.lock.release()
             tensors = gpu_object_manager.gpu_object_store.wait_and_pop_object(object_id, timeout=ray_constants.FETCH_WARN_TIMEOUT_SECONDS)
+            global_worker.function_actor_manager.lock.acquire()
             ctx.reset_out_of_band_tensors(tensors)
 
         try:

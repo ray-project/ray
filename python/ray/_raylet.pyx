@@ -1789,6 +1789,7 @@ cdef void execute_task(
     function_name = execution_info.function_name
     extra_data = (b'{"name": "' + function_name.encode("ascii") +
                   b'", "task_id": "' + task_id.hex().encode("ascii") + b'"}')
+    print("Executing task", function_name.encode("ascii"))
 
     name_of_concurrency_group_to_execute = \
         c_name_of_concurrency_group_to_execute.decode("ascii")
@@ -1845,6 +1846,7 @@ cdef void execute_task(
                         task_name=task_name, func_args=(actor, *arguments),
                         func_kwargs=kwarguments)
 
+            print("Executing function", function_name.encode("ascii"))
             return function(actor, *arguments, **kwarguments)
 
     with core_worker.profile_event(b"task::" + name, extra_data=extra_data), \
