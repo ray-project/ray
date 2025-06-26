@@ -140,7 +140,7 @@ doc/BUILD
 doc/*/BUILD
 doc/*.rst
 .vale.ini
-.vale/*
+.vale/
 @ doc
 ;
 
