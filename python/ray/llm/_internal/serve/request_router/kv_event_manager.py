@@ -11,10 +11,33 @@ class KVEventManager:
 
     def __init__(self):
         """Initialize the KV Event Manager."""
-        # Import types needed inside the method
+        self.initialize_types()
+        self.decoder = Decoder(type=self.KVEventBatch)
+        self.last_seq = -1
+
+        self.context = zmq.Context()
+
+        # Set up the main subscription socket
+        self.sub = self.context.socket(zmq.SUB)
+        self.sub.connect("tcp://localhost:5557")
+        topic = "kv-events"
+        self.sub.setsockopt_string(zmq.SUBSCRIBE, topic)
+
+        # Initialize replay socket
+        self.replay = self.context.socket(zmq.REQ)
+        self.replay.connect("tcp://localhost:5558")
+        self.poller = zmq.Poller()
+        self.poller.register(self.replay, zmq.POLLIN)
+
+        print("Listening for KV cache events on topic:", topic)
+
+    def initialize_types(self):
+        """
+        Store the classes as instance attributes because Ray can't serialize
+        StructMeta, used by msgspec.
+        """
         from typing import Any, Optional, Union
 
-        # Define msgspec structs locally inside the actor - no serialization needed!
         class EventBatch(msgspec.Struct, array_like=True, omit_defaults=True, gc=False):
             ts: float
             events: list[Any]
@@ -40,33 +63,12 @@ class KVEventManager:
         class KVEventBatch(EventBatch):
             events: list[Union[BlockStored, BlockRemoved, AllBlocksCleared]]
 
-        # Store the classes as instance attributes because Ray can't serialize
-        # StructMeta, used by msgspec.
         self.EventBatch = EventBatch
         self.KVCacheEvent = KVCacheEvent
         self.BlockStored = BlockStored
         self.BlockRemoved = BlockRemoved
         self.AllBlocksCleared = AllBlocksCleared
         self.KVEventBatch = KVEventBatch
-
-        self.decoder = Decoder(type=KVEventBatch)
-        self.last_seq = -1
-
-        self.context = zmq.Context()
-
-        # Set up the main subscription socket
-        self.sub = self.context.socket(zmq.SUB)
-        self.sub.connect("tcp://localhost:5557")
-        topic = "kv-events"
-        self.sub.setsockopt_string(zmq.SUBSCRIBE, topic)
-
-        # Initialize replay socket
-        self.replay = self.context.socket(zmq.REQ)
-        self.replay.connect("tcp://localhost:5558")
-        self.poller = zmq.Poller()
-        self.poller.register(self.replay, zmq.POLLIN)
-
-        print("Listening for KV cache events on topic:", topic)
 
     def process_event(self, event_batch):
         """Process a batch of KV cache events."""
