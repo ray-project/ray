@@ -10,7 +10,7 @@ from ray.data._internal.execution.autoscaling_requester import (
     get_or_create_autoscaling_requester_actor,
 )
 from ray.data._internal.execution.interfaces.execution_options import ExecutionResources
-from ray.data.context import AutoscalingConfig, WARN_PREFIX
+from ray.data.context import WARN_PREFIX, AutoscalingConfig
 
 if TYPE_CHECKING:
     from ray.data._internal.execution.interfaces import PhysicalOperator
@@ -206,8 +206,14 @@ class DefaultAutoscaler(Autoscaler):
             for actor_pool in op.get_autoscaling_actor_pools():
                 self._validate_actor_pool_autoscaling_config(actor_pool, op)
 
-    def _validate_actor_pool_autoscaling_config(self, actor_pool: AutoscalingActorPool, op: "PhysicalOperator"):
-        if actor_pool.max_actor_concurrency() == actor_pool.max_tasks_in_flight_per_actor() and self._actor_pool_scaling_up_threshold > 1.0:
+    def _validate_actor_pool_autoscaling_config(
+        self, actor_pool: AutoscalingActorPool, op: "PhysicalOperator"
+    ):
+        if (
+            actor_pool.max_actor_concurrency()
+            == actor_pool.max_tasks_in_flight_per_actor()
+            and self._actor_pool_scaling_up_threshold > 1.0
+        ):
             logger.warning(
                 f"{WARN_PREFIX} Actor Pool configuration of the {op} will not allow it to scale up: "
                 f"upscaling threshold ({self._actor_pool_scaling_up_threshold}) is above "

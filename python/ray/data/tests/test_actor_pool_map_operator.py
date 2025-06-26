@@ -146,10 +146,7 @@ class TestActorPool(unittest.TestCase):
     def test_can_scale_down(self):
         pool = self._create_actor_pool(min_size=1, max_size=4)
 
-        downscaling_request = ScalingConfig.downscale(
-            delta=-1,
-            reason="scaling down"
-        )
+        downscaling_request = ScalingConfig.downscale(delta=-1, reason="scaling down")
 
         with freeze_time() as f:
             # Scale up
