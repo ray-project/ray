@@ -7,6 +7,7 @@ import ray
 from ray.data.tests.conftest import *  # noqa
 from ray.tests.conftest import *  # noqa
 
+
 def test_from_modin(ray_start_regular_shared):
     import modin.pandas as mopd
 
