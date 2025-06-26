@@ -121,7 +121,7 @@ you can wait on the ref with Python 3.9 and Python 3.10:
 
     asyncio.run(await_obj_ref())
 
-or the Future object directly (Python 3.11+):
+or the Future object directly with Python 3.11+:
 
 .. testcode::
 
