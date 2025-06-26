@@ -17,7 +17,7 @@ import psutil
 logger = logging.getLogger(__name__)
 
 
-class GpuProfilingManager:
+class GPUProfilingManager:
     """GPU profiling manager for Ray Dashboard.
 
     NOTE: The current implementation is based on the `dynolog` OSS project,
@@ -75,12 +75,12 @@ class GpuProfilingManager:
         self._dynolog_daemon_process: Optional[subprocess.Popen] = None
 
         if not self.node_has_gpus():
-            logger.warning(
-                "[GpuProfilingManager] No GPUs found on this node, GPU profiling will not be setup."
+            logger.info(
+                "[GPUProfilingManager] No GPUs found on this node, GPU profiling will not be setup."
             )
         if not self._dynolog_bin or not self._dyno_bin:
-            logger.warning(
-                "[GpuProfilingManager] `dynolog` is not installed, GPU profiling will not be available."
+            logger.info(
+                "[GPUProfilingManager] `dynolog` is not installed, GPU profiling will not be available."
             )
 
         self._profile_dir_path.mkdir(parents=True, exist_ok=True)
@@ -122,14 +122,14 @@ class GpuProfilingManager:
         """
 
         if not self.enabled:
-            logger.warning(
-                "[GpuProfilingManager] GPU profiling is disabled, skipping daemon setup."
+            logger.info(
+                "[GPUProfilingManager] GPU profiling is disabled, skipping daemon setup."
             )
             return
 
         if self.is_monitoring_daemon_running:
-            logger.warning(
-                "[GpuProfilingManager] GPU profiling monitoring daemon is already running."
+            logger.info(
+                "[GPUProfilingManager] GPU profiling monitoring daemon is already running."
             )
             return
 
@@ -149,13 +149,13 @@ class GpuProfilingManager:
                 )
         except (FileNotFoundError, PermissionError, OSError) as e:
             logger.error(
-                f"[GpuProfilingManager] Failed to launch GPU profiling monitoring daemon: {e}\n"
+                f"[GPUProfilingManager] Failed to launch GPU profiling monitoring daemon: {e}\n"
                 f"Check error log for more details: {self._daemon_log_file_path}"
             )
             return
 
         logger.info(
-            "[GpuProfilingManager] Launched GPU profiling monitoring daemon "
+            "[GPUProfilingManager] Launched GPU profiling monitoring daemon "
             f"(pid={daemon.pid}, port={self._DYNOLOG_PORT})\n"
             f"Redirecting logs to: {self._daemon_log_file_path}"
         )
@@ -198,14 +198,14 @@ class GpuProfilingManager:
                 f"is not running on node {self._ip_address}. "
                 f"See log for more details: {self._daemon_log_file_path}"
             )
-            logger.error(f"[GpuProfilingManager] {error_msg}")
+            logger.error(f"[GPUProfilingManager] {error_msg}")
             return False, error_msg
 
         if not self.is_pid_alive(pid):
             error_msg = self._DEAD_PROCESS_ERROR_MESSAGE.format(
                 pid=pid, ip_address=self._ip_address
             )
-            logger.error(f"[GpuProfilingManager] {error_msg}")
+            logger.error(f"[GPUProfilingManager] {error_msg}")
             return False, error_msg
 
         trace_file_name = self._get_trace_filename()
@@ -236,7 +236,7 @@ class GpuProfilingManager:
             return False, _format_failed_profiler_command(cmd, "dyno", stdout, stderr)
 
         stdout_str = stdout.decode("utf-8")
-        logger.info(f"[GpuProfilingManager] Launched profiling: {stdout_str}")
+        logger.info(f"[GPUProfilingManager] Launched profiling: {stdout_str}")
 
         # The initial launch command returns immediately,
         # so wait for the profiling to actually finish before returning.
@@ -251,7 +251,7 @@ class GpuProfilingManager:
             error_msg = self._NO_PROCESSES_MATCHED_ERROR_MESSAGE.format(
                 pid=pid, ip_address=self._ip_address
             )
-            logger.error(f"[GpuProfilingManager] {error_msg}")
+            logger.error(f"[GPUProfilingManager] {error_msg}")
             return False, error_msg
 
         # The actual trace file gets dumped with a suffix of `_{pid}.json
@@ -281,7 +281,7 @@ class GpuProfilingManager:
         remaining_timeout_s = timeout_s
 
         logger.info(
-            "[GpuProfilingManager] Waiting for trace file to be created "
+            "[GPUProfilingManager] Waiting for trace file to be created "
             f"with the pattern: {trace_file_name_pattern}"
         )
 
@@ -311,6 +311,6 @@ class GpuProfilingManager:
                 )
 
         logger.info(
-            f"[GpuProfilingManager] GPU profiling finished, trace file: {dumped_trace_file_path}"
+            f"[GPUProfilingManager] GPU profiling finished, trace file: {dumped_trace_file_path}"
         )
         return True, str(dumped_trace_file_path.relative_to(self._root_log_dir))
