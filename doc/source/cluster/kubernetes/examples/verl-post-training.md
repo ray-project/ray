@@ -42,7 +42,7 @@ kubectl apply -f https://raw.githubusercontent.com/ray-project/kuberay/master/ra
 # Step 4: Install verl in the head Pod
 
 Log in to the head Pod and install verl.
-This step won't be necessary when the verl community supports images with verl pre-installed in the future.
+The verl community doesn't provide images with verl installed ([verl#2222](https://github.com/volcengine/verl/issues/2222)) at the moment.
 
 ```sh
 # Log in to the head Pod.
