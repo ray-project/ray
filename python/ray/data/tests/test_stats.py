@@ -535,12 +535,11 @@ def test_dataset_stats_basic(
     )
 
 
-def test_block_location_nums(ray_start_regular_shared, restore_data_context):
-    context = DataContext.get_current()
+def test_block_location_nums(ray_start_regular_shared):
     ds = ray.data.range(1000, override_num_blocks=10)
     ds = ds.map_batches(dummy_map_batches).materialize()
 
-    for batch in ds.iter_batches():
+    for _ in ds.iter_batches():
         pass
     stats = canonicalize(ds.materialize().stats())
 
@@ -578,8 +577,7 @@ def test_block_location_nums(ray_start_regular_shared, restore_data_context):
     )
 
 
-def test_dataset__repr__(ray_start_regular_shared, restore_data_context):
-    context = DataContext.get_current()
+def test_dataset__repr__(ray_start_regular_shared):
     n = 100
     ds = ray.data.range(n)
     assert len(ds.take_all()) == n
