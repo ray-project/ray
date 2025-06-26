@@ -2,7 +2,7 @@
 # Reinforcement Learning with Human Feedback (RLHF) for LLMs with verl on KubeRay
 
 [verl](https://github.com/volcengine/verl) is an open-source framework that provides a flexible, efficient, and production-ready RL training library for large language models (LLMs).
-This guide demonstrates PPO training on the GSM8K dataset with verl for `Qwen2.5-0.5B-Instruct` on KubeRay.
+This guide demonstrates Proximal Policy Optimization (PPO) training on the GSM8K dataset with verl for `Qwen2.5-0.5B-Instruct` on KubeRay.
 
 * To make it easier to follow, this guide launches a single-node RayCluster with 4 GPUs.
 You can easily use KubeRay to launch a multi-node RayCluster to train larger models.
@@ -103,7 +103,8 @@ PYTHONUNBUFFERED=1 python3 -m verl.trainer.main_ppo \
  trainer.total_epochs=15 2>&1 | tee verl_demo.log
 ```
 
-This job takes hours to complete. While it's running, you can check the Ray dashboard to see more details about the PPO job and the Ray cluster.
+This job takes 5 hours to complete. While it's running, you can check the Ray dashboard to see more details about the PPO job and the Ray cluster.
+Additionally, you can follow the next step to check the PPO job logs to see how the model improves.
 
 ```sh
 # Port forward the Ray dashboard to your local machine's port 8265.
@@ -128,6 +129,7 @@ For every 10 steps, verl validates the model with a simple math problem.
 You should be able to see the model becomes gradually better at this question after several steps.
 
 In this example run, the model first got the correct answer after 130 steps, and the following is the log.
+Throughout the entire process, the validation ran 44 times and got the correct answer 20 times.
 It may vary depending on the random seed.
 
 ```
