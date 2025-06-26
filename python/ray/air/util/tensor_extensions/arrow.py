@@ -25,6 +25,7 @@ from ray.data._internal.numpy_support import (
 from ray.data._internal.util import GiB
 from ray.util import log_once
 from ray.util.annotations import DeveloperAPI, PublicAPI
+from ray.util.common import INT32_MAX
 
 PYARROW_VERSION = get_pyarrow_version()
 # Minimum version of Arrow that supports subclassable ExtensionScalars.
@@ -321,7 +322,7 @@ def _infer_pyarrow_type(
         #
         #       Check out test cases for this method for an additional context.
         if isinstance(obj, (str, bytes)):
-            return len(obj) > INT32_OVERFLOW_THRESHOLD
+            return len(obj) > INT32_MAX
 
         return False
 
