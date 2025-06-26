@@ -82,7 +82,9 @@ def mock_hf_iterable_dataset():
             "label": labels,
         }
     )
-    return dataset.to_iterable_dataset()
+    iterable_dataset = dataset.to_iterable_dataset()
+    iterable_dataset.expected_count = len(texts)
+    return iterable_dataset
 
 
 def hfds_assert_equals(hfds: datasets.Dataset, ds: Dataset):
@@ -142,7 +144,8 @@ def test_from_huggingface_streaming(
     assert isinstance(hfds, datasets.IterableDataset)
 
     ds = ray.data.from_huggingface(hfds)
-    assert ds.count() == 15  # Our mock dataset has 15 rows
+    expected_count = mock_hf_iterable_dataset.expected_count
+    assert ds.count() == expected_count
 
 
 @pytest.mark.skipif(
