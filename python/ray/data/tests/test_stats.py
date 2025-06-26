@@ -1566,13 +1566,11 @@ def test_dataset_throughput(shutdown_only):
 
 
 @pytest.mark.parametrize("verbose_stats_logs", [True, False])
-def test_spilled_stats(shutdown_only, verbose_stats_logs, restore_data_context):
+def test_spilled_stats_1(shutdown_only, verbose_stats_logs, restore_data_context):
     context = DataContext.get_current()
     context.verbose_stats_logs = verbose_stats_logs
     # The object store is about 100MB.
     ray.init(object_store_memory=100e6)
-    # The size of dataset is 1000*80*80*4*8B, about 200MB.
-    ds = ray.data.range(1000 * 80 * 80 * 4).map_batches(lambda x: x).materialize()
 
     extra_metrics = gen_extra_metrics_str(
         MEM_SPILLED_EXTRA_METRICS_TASK_BACKPRESSURE,
@@ -1602,11 +1600,20 @@ def test_spilled_stats(shutdown_only, verbose_stats_logs, restore_data_context):
         f"{gen_runtime_metrics_str(['ReadRange->MapBatches(<lambda>)'], verbose_stats_logs)}"  # noqa: E501
     )
 
+    # The size of dataset is 1000*80*80*4*8B, about 200MB.
+    ds = ray.data.range(1000 * 80 * 80 * 4).map_batches(lambda x: x).materialize()
+
     assert canonicalize(ds.stats(), filter_global_stats=False) == expected_stats
 
     # Around 100MB should be spilled (200MB - 100MB)
     assert ds._plan.stats().global_bytes_spilled > 100e6
 
+
+def test_spilled_stats_2(shutdown_only):
+    # The object store is about 100MB.
+    ray.init(object_store_memory=100e6)
+
+    # Two map_batches operators, twice the bytes spilled
     ds = (
         ray.data.range(1000 * 80 * 80 * 4)
         .map_batches(lambda x: x)
@@ -1614,8 +1621,13 @@ def test_spilled_stats(shutdown_only, verbose_stats_logs, restore_data_context):
         .map_batches(lambda x: x)
         .materialize()
     )
-    # two map_batches operators, twice the spillage
+
     assert ds._plan.stats().global_bytes_spilled > 200e6
+
+
+def test_spilled_stats_3(shutdown_only):
+    # The object store is about 100MB.
+    ray.init(object_store_memory=100e6)
 
     # The size of dataset is around 50MB, there should be no spillage
     ds = (
