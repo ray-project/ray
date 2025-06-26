@@ -138,7 +138,7 @@ or the Future object directly (Python 3.11+):
     1
 
 
-Please refer to `asyncio doc <https://docs.python.org/3/library/asyncio-task.html>`__
+See the `asyncio doc <https://docs.python.org/3/library/asyncio-task.html>`__
 for more `asyncio` patterns including timeouts and ``asyncio.gather``.
 
 .. _async-ref-to-futures:
