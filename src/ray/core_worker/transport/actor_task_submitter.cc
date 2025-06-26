@@ -634,9 +634,11 @@ void ActorTaskSubmitter::HandlePushTaskReply(const Status &status,
                                              const TaskSpecification &task_spec) {
   const auto task_id = task_spec.TaskId();
 
-  mu_.Lock();
-  bool resubmit_generator = generators_to_resubmit_.erase(task_id) > 0;
-  mu_.Unlock();
+  bool resubmit_generator = false;
+  {
+    absl::MutexLock lock(&mu_);
+    resubmit_generator = generators_to_resubmit_.erase(task_id) > 0;
+  }
   if (resubmit_generator && status.ok()) {
     // If the generator was queued up for resubmission for object recovery,
     // resubmit as long as we get a valid reply.
@@ -652,7 +654,7 @@ void ActorTaskSubmitter::HandlePushTaskReply(const Status &status,
   if (status.ok() && !is_retryable_exception) {
     // status.ok() means the worker completed the reply, either succeeded or with a
     // retryable failure (e.g. user exceptions). We complete only on non-retryable case.
-    GetTaskFinisherWithoutMu().CompletePendingTask(
+    task_finisher_.CompletePendingTask(
         task_id, reply, addr, reply.is_application_error());
   } else if (status.IsSchedulingCancelled()) {
     std::ostringstream stream;

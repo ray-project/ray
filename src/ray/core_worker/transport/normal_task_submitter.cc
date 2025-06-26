@@ -830,12 +830,10 @@ Status NormalTaskSubmitter::CancelRemoteTask(const ObjectID &object_id,
   return Status::OK();
 }
 
-namespace {
-
-void CancelGenerator(std::optional<boost::asio::steady_timer> &cancel_retry_timer,
-                     const std::shared_ptr<rpc::CoreWorkerClientInterface> &client,
-                     TaskID task_id,
-                     WorkerID worker_id) {
+void NormalTaskSubmitter::CancelGenerator(
+    const std::shared_ptr<rpc::CoreWorkerClientInterface> &client,
+    TaskID task_id,
+    WorkerID worker_id) {
   rpc::CancelTaskRequest request;
   request.set_intended_task_id(task_id.Binary());
   request.set_force_kill(false);
@@ -843,49 +841,42 @@ void CancelGenerator(std::optional<boost::asio::steady_timer> &cancel_retry_time
   request.set_caller_worker_id(worker_id.Binary());
   client->CancelTask(
       request,
-      [&cancel_retry_timer, client, task_id, worker_id](
-          const Status &status, const rpc::CancelTaskReply &reply) {
+      [this, client, task_id, worker_id](const Status &status,
+                                         const rpc::CancelTaskReply &reply) {
         if (!status.ok()) {
           RAY_LOG(INFO) << "Failed to cancel generator " << task_id << " with status "
                         << status.ToString();
           return;
         }
         if (!reply.attempt_succeeded() && reply.requested_task_running()) {
-          if (cancel_retry_timer.has_value()) {
-            if (cancel_retry_timer->expiry().time_since_epoch() <=
+          absl::MutexLock lock(&mu_);
+          if (this->cancel_retry_timer_.has_value()) {
+            if (this->cancel_retry_timer_->expiry().time_since_epoch() <=
                 std::chrono::high_resolution_clock::now().time_since_epoch()) {
-              cancel_retry_timer->expires_after(boost::asio::chrono::milliseconds(
+              this->cancel_retry_timer_->expires_after(boost::asio::chrono::milliseconds(
                   RayConfig::instance().cancellation_retry_ms()));
             }
-            cancel_retry_timer->async_wait(boost::bind(&CancelGenerator,
-                                                       boost::ref(cancel_retry_timer),
-                                                       client,
-                                                       task_id,
-                                                       worker_id));
+            this->cancel_retry_timer_->async_wait(boost::bind(
+                &NormalTaskSubmitter::CancelGenerator, this, client, task_id, worker_id));
           }
         }
       });
 }
 
-}  // namespace
-
 bool NormalTaskSubmitter::CancelAndResubmitGenerator(const TaskSpecification &spec) {
-  std::shared_ptr<rpc::CoreWorkerClientInterface> client;
-  {
-    absl::MutexLock lock(&mu_);
-    auto address_iter = executing_tasks_.find(spec.TaskId());
-    if (address_iter == executing_tasks_.end()) {
-      // The task is no longer executing.
-      return false;
-    }
-    auto [_, inserted] = generators_to_resubmit_.insert(spec.TaskId());
-    if (!inserted) {
-      // The task is already in the set.
-      return true;
-    }
-    client = client_cache_->GetOrConnect(address_iter->second);
+  absl::MutexLock lock(&mu_);
+  auto address_iter = executing_tasks_.find(spec.TaskId());
+  if (address_iter == executing_tasks_.end()) {
+    // The task is no longer executing.
+    return false;
   }
-  CancelGenerator(cancel_retry_timer_, client, spec.TaskId(), spec.CallerWorkerId());
+  auto [_, inserted] = generators_to_resubmit_.insert(spec.TaskId());
+  if (!inserted) {
+    // The task is already in the set.
+    return true;
+  }
+  auto client = client_cache_->GetOrConnect(address_iter->second);
+  CancelGenerator(client, spec.TaskId(), spec.CallerWorkerId());
   return true;
 }
 

@@ -245,6 +245,11 @@ class NormalTaskSubmitter {
       const Status &get_task_failure_cause_reply_status,
       const rpc::GetTaskFailureCauseReply &get_task_failure_cause_reply);
 
+  /// Used to cancel a generator task and retry cancels if needed.
+  void CancelGenerator(const std::shared_ptr<rpc::CoreWorkerClientInterface> &client,
+                       TaskID task_id,
+                       WorkerID worker_id) ABSL_EXCLUSIVE_LOCKS_REQUIRED(mu_);
+
   /// Address of our RPC server.
   rpc::Address rpc_address_;
 
@@ -385,7 +390,7 @@ class NormalTaskSubmitter {
   std::shared_ptr<LeaseRequestRateLimiter> lease_request_rate_limiter_;
 
   // Retries cancelation requests if they were not successful.
-  std::optional<boost::asio::steady_timer> cancel_retry_timer_;
+  std::optional<boost::asio::steady_timer> cancel_retry_timer_ ABSL_GUARDED_BY(mu_);
 
   int64_t num_tasks_submitted_ = 0;
   int64_t num_leases_requested_ ABSL_GUARDED_BY(mu_) = 0;

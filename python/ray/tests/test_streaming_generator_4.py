@@ -81,7 +81,7 @@ def test_intermediate_generator_object_recovery_while_generator_running(
     4. Try to get consumer output.
     5. Therefore Ray tries to reconstruct value 1 from producer.
     6. Streaming producer should be cancelled and resubmitted.
-    7. Retry for Task B should complete.
+    7. Retry for consumer should complete.
     """
 
     cluster = ray_start_cluster
@@ -117,10 +117,18 @@ def test_intermediate_generator_object_recovery_while_generator_running(
 def test_actor_intermediate_generator_object_recovery_while_generator_running(
     ray_start_cluster,
 ):
-    # See description of test_intermediate_generator_object_recovery_while_generator_running above.
-    # This is the same except the generator is an actor task and we're using backpressure to make
-    # sure the streaming generator doesn't finish, because a cancel won't actually exit out of a
-    # running actor task.
+    """
+    1. Producer actor and its generator producer task start on worker1.
+    2. consumer consumes value 1 from producer on worker2 and finishes.
+    3. Add worker3.
+    4. worker2 dies.
+    5. 0.1 second sleep to allow recovery to kick off.
+    6. Ray tries to reconstruct value 1 from producer.
+    7. Ray tries and fails to cancel the producer task.
+    8. Get the next two values to relieve backpressure and allow producer to finish.
+    9. Ray resubmits the producer generator task.
+    10. Retry for consumer should complete.
+    """
     cluster = ray_start_cluster
     cluster.add_node(num_cpus=0)  # head
     ray.init(address=cluster.address)
@@ -135,7 +143,7 @@ def test_actor_intermediate_generator_object_recovery_while_generator_running(
 
     @ray.remote(num_cpus=1, resources={"consumer": 1})
     def consumer(np_arr):
-        return np_arr.copy()
+        return np_arr
 
     producer_actor = Producer.remote()
     streaming_ref = producer_actor.producer.options(
