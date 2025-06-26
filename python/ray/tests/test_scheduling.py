@@ -269,37 +269,43 @@ def test_spillback_waiting_task_on_oom(ray_start_cluster):
 
 
 def test_spread_scheduling_overrides_locality_aware_scheduling(ray_start_cluster):
-    # This test ensures that explicit spread scheduling strategy has higher
-    # priority than locality aware scheduling which means the lease request
-    # will be sent to local raylet instead of locality favored raylet.
+    """Verify that an explicit SPREAD strategy overrides locality-based scheduling."""
     cluster = ray_start_cluster
-    local_node = cluster.add_node(
-        num_cpus=8,
+    head_node = cluster.add_node(
         _system_config={
+            # Disable worker caching so worker leases are not reused.
             "worker_lease_timeout_milliseconds": 0,
+            # Force all return objects to be put into the object store.
             "max_direct_call_object_size": 0,
         },
     )
     ray.init(address=cluster.address)
-    remote_node = cluster.add_node(num_cpus=8, resources={"pin": 1})
+    worker_node = cluster.add_node()
     cluster.wait_for_nodes()
+    signal = SignalActor.remote()
 
-    @ray.remote(resources={"pin": 1})
-    def non_local():
-        return ray._private.worker.global_worker.node.unique_id
+    @ray.remote(
+        num_cpus=0,
+        scheduling_strategy=NodeAffinitySchedulingStrategy(
+            worker_node.node_id, soft=False
+        )
+    )
+    def pinned_to_worker() -> str:
+        return ray.get_runtime_context().get_node_id()
 
-    @ray.remote(scheduling_strategy="SPREAD")
-    def f(x):
-        return ray._private.worker.global_worker.node.unique_id
+    @ray.remote(num_cpus=0, scheduling_strategy="SPREAD")
+    def spread(*args) -> str:
+        ray.get(signal.wait.remote())
+        return ray.get_runtime_context().get_node_id()
 
-    # Test that task f() runs on the local node as well
-    # even though remote node has the dependencies.
-    obj1 = non_local.remote()
-    obj2 = non_local.remote()
-    assert {ray.get(f.remote(obj1)), ray.get(f.remote(obj2))} == {
-        local_node.unique_id,
-        remote_node.unique_id,
-    }
+    # Run two `spread` tasks in parallel (ensure they run in parallel using signal).
+    # Despite their dependency being on the worker node, one should run on each node
+    # due to the SPREAD policy.
+    worker_node_obj_ref = pinned_to_worker.remote()
+    refs = [spread.remote(worker_node_obj_ref) for _ in range(2)]
+    wait_for_condition(lambda: ray.get(signal.cur_num_waiters.remote()) == 2)
+    ray.get(signal.send.remote())
+    assert set(ray.get(refs)) == {head_node.node_id, worker_node.node_id}
 
 
 def test_locality_aware_leasing(ray_start_cluster):
@@ -491,7 +497,6 @@ def test_many_args(ray_start_cluster):
 
     @ray.remote
     def f(i, *args):
-        print(i)
         return
 
     @ray.remote
