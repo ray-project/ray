@@ -29,6 +29,10 @@ EXISTING_DATA_BEHAVIOR_MAP = {
 
 FILE_FORMAT = "parquet"
 
+# These args are part of https://arrow.apache.org/docs/python/generated/pyarrow.fs.FileSystem.html#pyarrow.fs.FileSystem.open_output_stream
+# and are not supported by ParquetDatasink.
+UNSUPPORTED_OPEN_STREAM_ARGS = {"path", "buffer", "metadata"}
+
 logger = logging.getLogger(__name__)
 
 
@@ -58,6 +62,17 @@ class ParquetDatasink(_FileDatasink):
         self.arrow_parquet_args = arrow_parquet_args
         self.min_rows_per_file = min_rows_per_file
         self.partition_cols = partition_cols
+
+        if self.open_stream_args is not None:
+            intersecting_keys = UNSUPPORTED_OPEN_STREAM_ARGS.intersection(
+                set(self.open_stream_args.keys())
+            )
+            if intersecting_keys:
+                logger.warning(
+                    "open_stream_args contains unsupported arguments: %s. These arguments "
+                    "are not supported by ParquetDatasink. They will be ignored.",
+                    intersecting_keys,
+                )
 
         super().__init__(
             path,
@@ -162,6 +177,9 @@ class ParquetDatasink(_FileDatasink):
             stem = filename_path.stem  # filename without extension
             suffix = filename_path.suffix  # extension including the dot
             basename_template = f"{stem}-{{i}}{suffix}"
+
+        if "compression" in self.open_stream_args:
+            write_kwargs["compression"] = self.open_stream_args["compression"]
 
         ds.write_dataset(
             data=tables,
