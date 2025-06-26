@@ -5,6 +5,8 @@ from typing import Generator, Tuple
 from unittest.mock import MagicMock, patch
 
 import pytest
+from starlette.middleware import Middleware
+from starlette.middleware.base import BaseHTTPMiddleware
 
 from ray._common.utils import get_or_create_event_loop
 from ray.serve import HTTPOptions
@@ -301,9 +303,9 @@ class TestConfigureHttpOptionsWithDefaults:
         """Test basic configuration with mocked environment constants."""
         result = configure_http_options_with_defaults(base_http_options)
 
-        # Should apply default request timeout from mock (300)
+        # Should apply default request timeout from mock (30)
         assert result.request_timeout_s == 30.0
-        # Keep alive timeout should remain original since mock sets it to 0
+        # Keep alive timeout should remain original since mock sets it to 300
         assert result.keep_alive_timeout_s == 300.0
         # Should initialize middlewares list
         assert result.middlewares == []
@@ -334,35 +336,47 @@ class TestConfigureHttpOptionsWithDefaults:
             result = configure_http_options_with_defaults(http_options)
             assert result.request_timeout_s == 120.0
 
-    @patch("ray.serve._private.utils.call_function_from_import_path")
-    @patch("ray.serve._private.http_util.validate_http_proxy_callback_return")
-    def test_callback_middleware_injection(
-        self, mock_validate, mock_call_function, base_http_options
-    ):
-        """Test callback middleware injection from environment variable."""
-        mock_middleware = [MockMiddleware("test_callback")]
-        mock_call_function.return_value = MagicMock()
-        mock_validate.return_value = mock_middleware
+    @patch("ray.serve._private.http_util.call_function_from_import_path")
+    @patch(
+        "ray.serve._private.http_util.RAY_SERVE_HTTP_PROXY_CALLBACK_IMPORT_PATH",
+        "my.module.callback",
+    )
+    def test_callback_middleware_injection(self, mock_call_function, base_http_options):
+        """Test that the callback middleware is injected correctly."""
 
-        with patch(
-            "ray.serve._private.http_util.RAY_SERVE_HTTP_PROXY_CALLBACK_IMPORT_PATH",
-            "my.module.callback",
-        ):
-            result = configure_http_options_with_defaults(base_http_options)
+        # Arrange: Create a valid middleware by wrapping it with Starlette's Middleware class
+        class CustomMiddleware(BaseHTTPMiddleware):
+            async def dispatch(self, request, call_next):
+                response = await call_next(request)  # Simply pass the request through
+                return response
 
-            mock_call_function.assert_called_once_with("my.module.callback")
-            mock_validate.assert_called_once()
-            assert result.middlewares == mock_middleware
+        # Mock the app argument
+        mock_app = MagicMock()
+
+        wrapped_middleware = Middleware(CustomMiddleware, app=mock_app)
+        mock_call_function.return_value = [
+            wrapped_middleware
+        ]  # Return list of wrapped middleware
+
+        # Act
+        result = configure_http_options_with_defaults(base_http_options)
+
+        # Assert
+        mock_call_function.assert_called_once_with(
+            "my.module.callback"
+        )  # Verify callback execution
+        assert len(result.middlewares) == 1  # Ensure one middleware was injected
+        assert isinstance(result.middlewares[0], Middleware)
 
     def test_callback_middleware_disabled(self, base_http_options):
         """Test that callback middleware is not loaded when disabled."""
         with patch(
             "ray.serve._private.http_util.RAY_SERVE_HTTP_PROXY_CALLBACK_IMPORT_PATH",
-            "my.module.callback",
+            "",
         ):
-            result = configure_http_options_with_defaults(
-                base_http_options,
-            )
+            result = configure_http_options_with_defaults(base_http_options)
+
+            # Assert that no callback middleware is added
             assert result.middlewares == []
 
     def test_deep_copy_behavior(self, base_http_options, mock_env_constants):
@@ -373,7 +387,7 @@ class TestConfigureHttpOptionsWithDefaults:
 
         # Original should remain unchanged
         assert base_http_options.request_timeout_s == original_timeout
-        # Result should be different object
+        # Result should be a different object
         assert result is not base_http_options
 
 
