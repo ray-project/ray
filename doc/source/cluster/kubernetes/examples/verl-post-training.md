@@ -145,6 +145,9 @@ It may vary depending on the random seed.
 (TaskRunner pid=21297) #### 18 dollars
 ```
 
+It's not necessary to wait for all steps to complete.
+You can stop the job if you observe the process of the model improving.
+
 # Step 8: Clean up
 
 ```sh
