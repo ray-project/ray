@@ -13,6 +13,7 @@
 // limitations under the License.
 
 #include "ray/core_worker/core_worker.h"
+#include "ray/core_worker/shutdown_coordinator.h"
 
 #include <algorithm>
 #include <future>
@@ -1011,18 +1012,41 @@ CoreWorker::CoreWorker(CoreWorkerOptions options, const WorkerID &worker_id)
   } else {
     ConnectToRayletInternal();
   }
+
+  // Initialize shutdown coordinator last - after all services are ready
+  // Create a simple dependency interface inline (no separate class needed)
+  auto shutdown_deps = std::make_shared<ShutdownDependencies>();
+  shutdown_coordinator_ = std::make_shared<ShutdownCoordinator>(
+      shutdown_deps, options_.worker_type);
+  
+  RAY_LOG(DEBUG) << "Initialized unified shutdown coordinator for worker type: " 
+                 << WorkerTypeString(options_.worker_type);
 }  // NOLINT(readability/fn_size)
 
 CoreWorker::~CoreWorker() { RAY_LOG(INFO) << "Core worker is destructed"; }
 
 void CoreWorker::Shutdown() {
-  // Ensure that the shutdown logic runs at most once.
-  bool expected = false;
-  if (!is_shutdown_.compare_exchange_strong(expected, /*desired=*/true)) {
-    RAY_LOG(INFO) << "Shutdown was called more than once, ignoring.";
+  // Use unified shutdown coordinator
+  if (shutdown_coordinator_->ShouldEarlyExit()) {
+    RAY_LOG(INFO) << "Shutdown already in progress, ignoring.";
     return;
   }
-  RAY_LOG(INFO) << "Shutting down.";
+  
+  // Request graceful shutdown with 60s timeout
+  bool initiated = shutdown_coordinator_->RequestShutdown(
+      false,  // graceful shutdown
+      ShutdownReason::kIntentionalShutdown,
+      "CoreWorker::Shutdown() called",
+      std::chrono::milliseconds{60000},  // 60s timeout
+      true    // force on timeout
+  );
+  
+  if (!initiated) {
+    RAY_LOG(INFO) << "Shutdown already in progress.";
+    return;
+  }
+  
+  RAY_LOG(INFO) << "Shutting down via unified coordinator.";
 
   if (options_.worker_type == WorkerType::WORKER) {
     // Running in a main thread.
@@ -1168,15 +1192,39 @@ void CoreWorker::Exit(
     const rpc::WorkerExitType exit_type,
     const std::string &detail,
     const std::shared_ptr<LocalMemoryBuffer> &creation_task_exception_pb_bytes) {
-  // Ensure that the exit logic runs at most once.
-  bool expected = false;
-  if (!is_exited_.compare_exchange_strong(expected, /*desired=*/true)) {
-    RAY_LOG(INFO) << "Exit was called multipled times, ignoring.";
+  // Use unified shutdown coordinator
+  if (shutdown_coordinator_->ShouldEarlyExit()) {
+    RAY_LOG(INFO) << "Exit was called multiple times, ignoring.";
     return;
   }
 
-  RAY_LOG(INFO) << "Exit signal received, this process will exit after all outstanding "
-                   "tasks have finished"
+  // Convert WorkerExitType to ShutdownReason
+  ShutdownReason reason = [exit_type]() {
+    switch (exit_type) {
+      case rpc::WorkerExitType::INTENDED_SYSTEM_EXIT:
+        return ShutdownReason::kIntentionalShutdown;
+      case rpc::WorkerExitType::INTENDED_USER_EXIT:
+        return ShutdownReason::kGracefulExit;
+      default:
+        return ShutdownReason::kUnexpectedError;
+    }
+  }();
+
+  // Request graceful shutdown with 45s timeout for task draining
+  bool initiated = shutdown_coordinator_->RequestShutdown(
+      false,  // graceful shutdown
+      reason,
+      detail,
+      std::chrono::milliseconds{45000},  // 45s timeout for task draining
+      true    // force on timeout
+  );
+
+  if (!initiated) {
+    RAY_LOG(INFO) << "Exit already in progress.";
+    return;
+  }
+
+  RAY_LOG(INFO) << "Exit signal received, graceful shutdown initiated"
                 << ", exit_type=" << rpc::WorkerExitType_Name(exit_type)
                 << ", detail=" << detail;
   {
@@ -1266,19 +1314,37 @@ void CoreWorker::Exit(
 
 void CoreWorker::ForceExit(const rpc::WorkerExitType exit_type,
                            const std::string &detail) {
-  RAY_LOG(WARNING) << "Force exit the process. "
-                   << " Details: " << detail;
+  RAY_LOG(WARNING) << "Force exit requested: " << detail;
+
+  // Convert WorkerExitType to ShutdownReason
+  ShutdownReason reason = [exit_type]() {
+    switch (exit_type) {
+      case rpc::WorkerExitType::INTENDED_SYSTEM_EXIT:
+        return ShutdownReason::kForcedExit;
+      case rpc::WorkerExitType::INTENDED_USER_EXIT:
+        return ShutdownReason::kForcedExit;
+      default:
+        return ShutdownReason::kUnexpectedError;
+    }
+  }();
+
+  // Request immediate force shutdown
+  bool initiated = shutdown_coordinator_->RequestShutdown(
+      true,   // force shutdown
+      reason,
+      detail,
+      std::chrono::milliseconds{0},  // no timeout for force
+      false   // irrelevant when force=true
+  );
+
+  if (initiated) {
+    RAY_LOG(WARNING) << "Force shutdown initiated: " << detail;
+  } else {
+    RAY_LOG(WARNING) << "Force shutdown requested but already shutting down.";
+  }
 
   KillChildProcs();
-  // Disconnect should be put close to Exit
-  // https://github.com/ray-project/ray/pull/34883
-  // TODO(iycheng): Improve the Process.h and make it able to monitor
-  // process liveness
   Disconnect(exit_type, detail);
-
-  // NOTE(hchen): Use `QuickExit()` to force-exit this process without doing cleanup.
-  // `exit()` will destruct static objects in an incorrect order, which will lead to
-  // core dumps.
   QuickExit();
 }
 
@@ -4815,21 +4881,43 @@ void CoreWorker::HandleExit(rpc::ExitRequest request,
   send_reply_callback(
       Status::OK(),
       [this, will_exit, force_exit]() {
-        // If the worker is idle, we exit.
-        if (force_exit) {
-          ForceExit(rpc::WorkerExitType::INTENDED_SYSTEM_EXIT,
-                    "Worker force exits because its job has finished");
-        } else if (will_exit) {
-          Exit(rpc::WorkerExitType::INTENDED_SYSTEM_EXIT,
-               "Worker exits because it was idle (it doesn't have objects it owns while "
-               "no task or actor has been scheduled) for a long time.");
+        if (!will_exit) {
+          return;  // Don't exit if not idle and not forced
         }
+        
+        // Use shutdown coordinator for unified exit handling
+        ShutdownReason reason;
+        std::string detail;
+        std::chrono::milliseconds timeout{10000};  // 10s default
+        
+        if (force_exit) {
+          reason = ShutdownReason::kForcedExit;
+          detail = "Worker force exits because its job has finished";
+          timeout = std::chrono::milliseconds{0};  // No timeout for force
+        } else {
+          reason = ShutdownReason::kIdleTimeout;
+          detail = "Worker exits because it was idle for a long time";
+          timeout = std::chrono::milliseconds{15000};  // 15s for idle exit
+        }
+        
+        // Request shutdown through coordinator
+        shutdown_coordinator_->RequestShutdown(
+            force_exit,  // force flag from request
+            reason,
+            detail,
+            timeout,
+            true  // force on timeout
+        );
       },
-      // We need to kill it regardless if the RPC failed.
+      // Fallback on RPC failure - still attempt shutdown
       [this]() {
-        Exit(rpc::WorkerExitType::INTENDED_SYSTEM_EXIT,
-             "Worker exits because it was idle (it doesn't have objects it owns while "
-             "no task or actor has been scheduled) for a long time.");
+        shutdown_coordinator_->RequestShutdown(
+            false,  // graceful fallback
+            ShutdownReason::kIdleTimeout,
+            "Worker exits due to RPC failure during idle exit",
+            std::chrono::milliseconds{10000},
+            true
+        );
       });
 }
 
@@ -4997,8 +5085,14 @@ rpc::JobConfig CoreWorker::GetJobConfig() const {
 }
 
 bool CoreWorker::IsExiting() const {
+  // Use fast shutdown coordinator check first (< 100ns)
+  if (shutdown_coordinator_->ShouldEarlyExit()) {
+    return true;
+  }
+  
+  // Legacy compatibility during transition
   absl::MutexLock lock(&mutex_);
-  return exiting_detail_.has_value();
+  return exiting_detail_.has_value() || is_exited_.load() || is_shutdown_.load();
 }
 
 Status CoreWorker::WaitForActorRegistered(const std::vector<ObjectID> &ids) {

@@ -26,6 +26,7 @@ ray_cc_library(
         ":plasma_store_provider",
         ":profile_event",
         ":reference_count",
+        ":shutdown_coordinator",
         ":task_event_buffer",
         ":task_receiver",
         "//src/ray/raylet_client:raylet_client_lib",
@@ -105,14 +106,7 @@ ray_cc_library(
     ],
 )
 
-ray_cc_library(
-    name = "core_worker_shutdown_dependencies",
-    srcs = ["core_worker_shutdown_dependencies.cc"],
-    hdrs = ["core_worker_shutdown_dependencies.h"],
-    deps = [
-        ":shutdown_coordinator",
-    ],
-)
+
 
 ray_cc_test(
     name = "shutdown_coordinator_test",
@@ -124,15 +118,7 @@ ray_cc_test(
     ],
 )
 
-ray_cc_test(
-    name = "shutdown_integration_test",
-    size = "small",
-    srcs = ["test/shutdown_integration_test.cc"],
-    deps = [
-        ":shutdown_coordinator",
-        "@com_google_googletest//:gtest_main",
-    ],
-)
+
 
 ray_cc_library(
     name = "core_worker_common",

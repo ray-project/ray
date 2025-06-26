@@ -69,9 +69,6 @@
 
 namespace ray::core {
 
-// Forward declarations
-class CoreWorkerShutdownDependencies;
-
 JobID GetProcessJobID(const CoreWorkerOptions &options);
 
 /// Tracks stats for inbound tasks (tasks this worker is executing).
@@ -1929,9 +1926,6 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// This replaces the fragmented is_exited_/is_shutdown_ atomics with a
   /// single state machine that coordinates all shutdown entry points.
   std::shared_ptr<ShutdownCoordinator> shutdown_coordinator_;
-  
-  /// Concrete dependencies implementation for the shutdown coordinator.
-  std::shared_ptr<CoreWorkerShutdownDependencies> shutdown_dependencies_;
 
   /// Legacy fields - kept for compatibility during transition.
   /// TODO: Remove these after full migration to ShutdownCoordinator.
