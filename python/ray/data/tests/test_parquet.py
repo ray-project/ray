@@ -1080,9 +1080,10 @@ def test_parquet_write_uuid_handling_with_custom_filename_provider(
 
     if should_raise_error:
         # Should raise ValueError when UUID is missing in append mode
+        # Updated regex to match the actual error message
         with pytest.raises(
             ValueError,
-            match=r"Write UUID.*not found in filename.*Please modify your FileNameProvider implementation",
+            match=r"Write UUID.*missing from filename template.*This could result in files being overwritten.*Modify your FileNameProvider implementation",
         ):
             ds.write_parquet(tmp_path, filename_provider=custom_provider, mode="append")
     else:
