@@ -169,19 +169,28 @@ steps:
         --except-tags gpu
         --skip-ray-installation
 
-  - label: ":ray: core: dask & modin tests"
+  - label: ":ray: core: dask tests"
     tags:
-      # These tests are only triggered on premerge if there are changes under
-      # `ray/util/dask/`. This is not technically related to modin, but modin tests can
-      # run postmerge-only and are too small for their own build.
       - dask
     instance_type: medium
     commands:
       - bazel run //ci/ray_ci:test_in_docker --
-        python/ray/util/dask/... python/ray/tests/modin/... core
+        python/ray/util/dask/... core
         --install-mask all-ray-libraries
         --build-name datalbuild
-        --parallelism-per-worker 2
+    depends_on:
+      - datalbuild
+      - forge
+
+  - label: ":ray: core: modin tests"
+    tags:
+      - skip-on-premerge
+    instance_type: medium
+    commands:
+      - bazel run //ci/ray_ci:test_in_docker --
+        python/ray/tests/modin/... core
+        --install-mask all-ray-libraries
+        --build-name datalbuild
     depends_on:
       - datalbuild
       - forge
