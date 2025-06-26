@@ -130,10 +130,13 @@ def test_actor_pool_scaling():
     # Should scale down since if the op is completed, or
     # the op has no more inputs.
     with patch(op, "completed", True):
-        assert_autoscaling_action(
-            delta=-1,
-            expected_reason="consumed all inputs",
-        )
+        # NOTE: We simulate actor pool dipping below min size upon
+        #       completion (to verify that it will be able to scale to 0)
+        with patch(actor_pool, "current_size", 5):
+            assert_autoscaling_action(
+                delta=-1,
+                expected_reason="consumed all inputs",
+            )
 
     # Should scale down only once all inputs have been already dispatched AND
     # no new inputs ar expected
