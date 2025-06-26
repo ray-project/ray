@@ -1,8 +1,9 @@
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 import datasets
 import pyarrow
 import pytest
+import requests
 from packaging.version import Version
 
 import ray
@@ -233,41 +234,206 @@ def test_from_huggingface_with_parquet_files(mock_hf_dataset, ray_start_regular_
         "list_parquet_urls_from_dataset",
         return_value=mock_parquet_urls,
     ):
-        # Mock the read_parquet function to return our mock dataset
-        with patch("ray.data.read_api.read_parquet") as mock_read_parquet:
-            # Create a mock dataset that matches our mock_hf_dataset
-            mock_ds = ray.data.from_items(
-                [
-                    {"text": text, "label": label}
-                    for text, label in zip(
-                        mock_hf_dataset["text"], mock_hf_dataset["label"]
-                    )
-                ]
+        # Mock the requests.head calls to simulate successful URL resolution
+        with patch("requests.head") as mock_requests_head:
+            # Configure mock responses for successful URL resolution
+            mock_responses = []
+            for url in mock_parquet_urls:
+                mock_response = MagicMock()
+                mock_response.status_code = 200
+                mock_response.url = url
+                mock_responses.append(mock_response)
+
+            mock_requests_head.side_effect = mock_responses
+
+            # Mock the read_parquet function to return our mock dataset
+            with patch("ray.data.read_api.read_parquet") as mock_read_parquet:
+                # Create a mock dataset that matches our mock_hf_dataset
+                mock_ds = ray.data.from_items(
+                    [
+                        {"text": text, "label": label}
+                        for text, label in zip(
+                            mock_hf_dataset["text"], mock_hf_dataset["label"]
+                        )
+                    ]
+                )
+                mock_read_parquet.return_value = mock_ds
+
+                ds = ray.data.from_huggingface(mock_hf_dataset)
+
+                # Verify that requests.head was called for each URL
+                assert mock_requests_head.call_count == len(mock_parquet_urls)
+
+                # Verify the calls were made with the correct parameters
+                for i, url in enumerate(mock_parquet_urls):
+                    call_args = mock_requests_head.call_args_list[i]
+                    assert call_args[0][0] == url
+                    assert call_args[1]["allow_redirects"] is True
+                    assert call_args[1]["timeout"] == 5
+
+                # Verify that read_parquet was called with the expected parameters
+                mock_read_parquet.assert_called_once()
+                call_args = mock_read_parquet.call_args
+
+                # Check that the parquet URLs were passed
+                assert call_args[0][0] == mock_parquet_urls
+
+                # Check that the filesystem is HTTPFileSystem
+                assert "filesystem" in call_args[1]
+                assert "HTTPFileSystem" in str(type(call_args[1]["filesystem"]))
+
+                # Check that retry_exceptions includes FileNotFoundError and ClientResponseError
+                assert "ray_remote_args" in call_args[1]
+                assert (
+                    FileNotFoundError
+                    in call_args[1]["ray_remote_args"]["retry_exceptions"]
+                )
+
+                # Verify the dataset was created successfully
+                assert isinstance(ds, MaterializedDataset)
+                assert ds.count() == mock_hf_dataset.num_rows
+
+
+def test_from_huggingface_with_resolved_urls(mock_hf_dataset, ray_start_regular_shared):
+    """Test the URL resolution logic when HTTP redirects are encountered."""
+    from ray.data._internal.datasource.huggingface_datasource import (
+        HuggingFaceDatasource,
+    )
+
+    # Mock the list_parquet_urls_from_dataset method to return fake parquet URLs
+    # that will be resolved to different URLs
+    original_urls = [
+        "https://huggingface.co/datasets/test/parquet/train-00000-of-00001.parquet",
+        "https://huggingface.co/datasets/test/parquet/train-00001-of-00001.parquet",
+    ]
+
+    # URLs after resolution (simulating HTTP redirects)
+    resolved_urls = [
+        "https://cdn-lfs.huggingface.co/datasets/test/parquet/train-00000-of-00001.parquet",
+        "https://cdn-lfs.huggingface.co/datasets/test/parquet/train-00001-of-00001.parquet",
+    ]
+
+    with patch.object(
+        HuggingFaceDatasource,
+        "list_parquet_urls_from_dataset",
+        return_value=original_urls,
+    ):
+        # Mock the requests.head calls to simulate HTTP redirects
+        with patch("requests.head") as mock_requests_head:
+            # Configure mock responses for each URL
+            mock_responses = []
+            for i, (original_url, resolved_url) in enumerate(
+                zip(original_urls, resolved_urls)
+            ):
+                mock_response = MagicMock()
+                mock_response.status_code = 200
+                mock_response.url = resolved_url
+                mock_responses.append(mock_response)
+
+            # Configure the mock to return different responses for each URL
+            mock_requests_head.side_effect = mock_responses
+
+            # Mock the read_parquet function to return our mock dataset
+            with patch("ray.data.read_api.read_parquet") as mock_read_parquet:
+                # Create a mock dataset that matches our mock_hf_dataset
+                mock_ds = ray.data.from_items(
+                    [
+                        {"text": text, "label": label}
+                        for text, label in zip(
+                            mock_hf_dataset["text"], mock_hf_dataset["label"]
+                        )
+                    ]
+                )
+                mock_read_parquet.return_value = mock_ds
+
+                ds = ray.data.from_huggingface(mock_hf_dataset)
+
+                # Verify that requests.head was called for each URL
+                assert mock_requests_head.call_count == len(original_urls)
+
+                # Verify the calls were made with the correct URLs
+                for i, original_url in enumerate(original_urls):
+                    call_args = mock_requests_head.call_args_list[i]
+                    assert call_args[0][0] == original_url
+                    assert call_args[1]["allow_redirects"] is True
+                    assert call_args[1]["timeout"] == 5
+
+                # Verify that read_parquet was called with the resolved URLs
+                mock_read_parquet.assert_called_once()
+                call_args = mock_read_parquet.call_args
+
+                # Check that the resolved parquet URLs were passed
+                assert call_args[0][0] == resolved_urls
+
+                # Check that the filesystem is HTTPFileSystem
+                assert "filesystem" in call_args[1]
+                assert "HTTPFileSystem" in str(type(call_args[1]["filesystem"]))
+
+                # Check that retry_exceptions includes FileNotFoundError and ClientResponseError
+                assert "ray_remote_args" in call_args[1]
+                assert (
+                    FileNotFoundError
+                    in call_args[1]["ray_remote_args"]["retry_exceptions"]
+                )
+
+                # Verify the dataset was created successfully
+                assert isinstance(ds, MaterializedDataset)
+                assert ds.count() == mock_hf_dataset.num_rows
+
+
+def test_from_huggingface_url_resolution_failures(
+    mock_hf_dataset, ray_start_regular_shared
+):
+    """Test URL resolution failures fall back to single node read."""
+    from ray.data._internal.datasource.huggingface_datasource import (
+        HuggingFaceDatasource,
+    )
+
+    # Convert the mock dataset to an IterableDataset so it uses the read_datasource fallback
+    mock_iterable_dataset = mock_hf_dataset.to_iterable_dataset()
+
+    # Mock the list_parquet_urls_from_dataset method to return fake parquet URLs
+    mock_parquet_urls = [
+        "https://huggingface.co/datasets/test/parquet/train-00000-of-00001.parquet",
+        "https://huggingface.co/datasets/test/parquet/train-00001-of-00001.parquet",
+    ]
+
+    with patch.object(
+        HuggingFaceDatasource,
+        "list_parquet_urls_from_dataset",
+        return_value=mock_parquet_urls,
+    ):
+        # Mock the requests.head calls to simulate failures
+        with patch("requests.head") as mock_requests_head:
+            # Configure mock to raise an exception for all URLs
+            mock_requests_head.side_effect = requests.RequestException(
+                "Connection failed"
             )
-            mock_read_parquet.return_value = mock_ds
 
-            ds = ray.data.from_huggingface(mock_hf_dataset)
+            # Mock the fallback path
+            with patch("ray.data.read_api.read_datasource") as mock_read_datasource:
+                # Create a mock dataset that matches our mock_hf_dataset
+                mock_ds = ray.data.from_items(
+                    [
+                        {"text": text, "label": label}
+                        for text, label in zip(
+                            mock_hf_dataset["text"], mock_hf_dataset["label"]
+                        )
+                    ]
+                )
+                mock_read_datasource.return_value = mock_ds
 
-            # Verify that read_parquet was called with the expected parameters
-            mock_read_parquet.assert_called_once()
-            call_args = mock_read_parquet.call_args
+                ds = ray.data.from_huggingface(mock_iterable_dataset)
 
-            # Check that the parquet URLs were passed
-            assert call_args[0][0] == mock_parquet_urls
+                # Verify that requests.head was called for each URL
+                assert mock_requests_head.call_count == len(mock_parquet_urls)
 
-            # Check that the filesystem is HTTPFileSystem
-            assert "filesystem" in call_args[1]
-            assert "HTTPFileSystem" in str(type(call_args[1]["filesystem"]))
+                # Verify that the fallback read_datasource was called
+                mock_read_datasource.assert_called_once()
 
-            # Check that retry_exceptions includes FileNotFoundError and ClientResponseError
-            assert "ray_remote_args" in call_args[1]
-            assert (
-                FileNotFoundError in call_args[1]["ray_remote_args"]["retry_exceptions"]
-            )
-
-            # Verify the dataset was created successfully
-            assert isinstance(ds, MaterializedDataset)
-            assert ds.count() == mock_hf_dataset.num_rows
+                # Verify the dataset was created successfully via fallback
+                assert isinstance(ds, MaterializedDataset)
+                assert ds.count() == mock_hf_dataset.num_rows
 
 
 if __name__ == "__main__":
