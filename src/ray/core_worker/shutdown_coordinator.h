@@ -29,47 +29,46 @@ namespace core {
 class TaskManager;
 class ObjectRecoveryManager;
 
-/// Interface for external services that need to be coordinated during shutdown.
-/// This allows dependency injection for testing and modularity.
+/// Interface for executing shutdown operations.
+/// NO COORDINATION WITHOUT CONTROL - this interface provides the actual shutdown
+/// execution that the coordinator invokes. Dependencies execute real work.
 class ShutdownDependencies {
  public:
   virtual ~ShutdownDependencies() = default;
 
-  /// Disconnect from raylet
-  virtual void DisconnectRaylet() = 0;
+  /// Execute complete graceful shutdown sequence
+  /// Called by coordinator - implements the full graceful shutdown logic
+  virtual void ExecuteGracefulShutdown(const std::string& detail, 
+                                      std::chrono::milliseconds timeout_ms) = 0;
 
-  /// Disconnect from GCS
-  virtual void DisconnectGcs() = 0;
+  /// Execute complete force shutdown sequence  
+  /// Called by coordinator - implements the full force shutdown logic
+  virtual void ExecuteForceShutdown(const std::string& detail) = 0;
 
-  /// Shutdown task manager gracefully
-  virtual void ShutdownTaskManager(bool force) = 0;
+  /// Execute worker exit sequence with task draining
+  /// Called by coordinator for Exit() operations
+  virtual void ExecuteWorkerExit(const std::string& exit_type,
+                                const std::string& detail,
+                                std::chrono::milliseconds timeout_ms) = 0;
 
-  /// Shutdown object recovery manager
-  virtual void ShutdownObjectRecovery() = 0;
+  /// Execute handle exit sequence with idle checking
+  /// Called by coordinator for HandleExit() operations  
+  virtual void ExecuteHandleExit(const std::string& exit_type,
+                                const std::string& detail,
+                                std::chrono::milliseconds timeout_ms) = 0;
 
-  /// Cancel all pending tasks
-  virtual void CancelPendingTasks(bool force) = 0;
+  /// Kill child processes immediately
+  virtual void KillChildProcesses() = 0;
 
-  /// Clean up actor state (if actor worker)
-  virtual void CleanupActorState() = 0;
-
-  /// Flush any remaining logs/metrics
-  virtual void FlushMetrics() = 0;
-
-  /// Get pending task count for graceful shutdown decisions
-  virtual size_t GetPendingTaskCount() const = 0;
-
-  /// Check if graceful shutdown timeout has elapsed
-  virtual bool IsGracefulShutdownTimedOut(
-      std::chrono::steady_clock::time_point start_time,
-      std::chrono::milliseconds timeout) const = 0;
+  /// Check if worker should idle-exit (for HandleExit timeout logic)
+  virtual bool ShouldWorkerExit() const = 0;
 };
 
 // Forward declaration to use existing WorkerType
 class CoreWorkerOptions;
 
 /// Reasons for worker shutdown. Used for observability and debugging.
-enum class ShutdownReason : uint32_t {
+enum class ShutdownReason : std::uint8_t {
   kNone = 0,
   kIntentionalShutdown = 1,
   kUnexpectedError = 2,
@@ -99,7 +98,7 @@ enum class ShutdownReason : uint32_t {
 
 /// Shutdown state representing the current lifecycle phase of worker shutdown.
 /// States are ordered by progression, transitions must be monotonic.
-enum class ShutdownState : uint32_t {
+enum class ShutdownState : std::uint8_t {
   kRunning = 0,
   kShuttingDown = 1,
   kDisconnecting = 2,

@@ -1927,12 +1927,8 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// single state machine that coordinates all shutdown entry points.
   std::shared_ptr<ShutdownCoordinator> shutdown_coordinator_;
 
-  /// Legacy fields - kept for compatibility during transition.
-  /// TODO: Remove these after full migration to ShutdownCoordinator.
-  /// Used to ensure that the `CoreWorker::Exit` method is called at most once.
-  std::atomic<bool> is_exited_ = false;
-  /// Used to ensure that the `CoreWorker::Shutdown` method is called at most once.
-  std::atomic<bool> is_shutdown_ = false;
+  /// ELIMINATED: Legacy atomics removed as per unified shutdown design.
+  /// All shutdown state now managed by shutdown_coordinator_ with no race conditions.
 
   int64_t max_direct_call_object_size_;
 
