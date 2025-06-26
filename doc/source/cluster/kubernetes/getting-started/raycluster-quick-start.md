@@ -27,8 +27,8 @@ Deploy the KubeRay operator with the [Helm chart repository](https://github.com/
 ```sh
 helm repo add kuberay https://ray-project.github.io/kuberay-helm/
 helm repo update
-# Install both CRDs and KubeRay operator v1.3.0.
-helm install kuberay-operator kuberay/kuberay-operator --version 1.3.0
+# Install both CRDs and KubeRay operator v1.4.0.
+helm install kuberay-operator kuberay/kuberay-operator --version 1.4.0
 # Confirm that the operator is running in the namespace `default`.
 kubectl get pods
 # NAME                                READY   STATUS    RESTARTS   AGE
@@ -38,7 +38,7 @@ kubectl get pods
 ````{tab-item} Kustomize
 ```sh
 # Install CRD and KubeRay operator.
-kubectl create -k "github.com/ray-project/kuberay/ray-operator/config/default?ref=v1.3.0"
+kubectl create -k "github.com/ray-project/kuberay/ray-operator/config/default?ref=v1.4.0"
 # Confirm that the operator is running.
 kubectl get pods
 # NAME                                READY   STATUS    RESTARTS   AGE
@@ -59,21 +59,21 @@ Once the KubeRay operator is running, you're ready to deploy a RayCluster. Creat
   :::{tab-item} Helm ARM64 (Apple Silicon)
   ```sh
   # Deploy a sample RayCluster CR from the KubeRay Helm chart repo:
-  helm install raycluster kuberay/ray-cluster --version 1.3.0 --set 'image.tag=2.41.0-aarch64'
+  helm install raycluster kuberay/ray-cluster --version 1.4.0 --set 'image.tag=2.41.0-aarch64'
   ```
   :::
 
   :::{tab-item} Helm x86-64 (Intel/Linux)
   ```sh
   # Deploy a sample RayCluster CR from the KubeRay Helm chart repo:
-  helm install raycluster kuberay/ray-cluster --version 1.3.0
+  helm install raycluster kuberay/ray-cluster --version 1.4.0
   ```
   :::
 
   :::{tab-item} Kustomize
   ```sh
   # Deploy a sample RayCluster CR from the KubeRay repository:
-  kubectl apply -f "https://raw.githubusercontent.com/ray-project/kuberay/v1.3.0/ray-operator/config/samples/ray-cluster.sample.yaml"
+  kubectl apply -f "https://raw.githubusercontent.com/ray-project/kuberay/v1.4.0/ray-operator/config/samples/ray-cluster.sample.yaml"
   ```
   :::
 
@@ -95,7 +95,7 @@ The KubeRay operator detects the RayCluster object and starts your Ray cluster b
 kubectl get pods --selector=ray.io/cluster=raycluster-kuberay
 
 # NAME                                          READY   STATUS    RESTARTS   AGE
-# raycluster-kuberay-head-vkj4n                 1/1     Running   0          XXs
+# raycluster-kuberay-head                 1/1     Running   0          XXs
 # raycluster-kuberay-worker-workergroup-xvfkr   1/1     Running   0          XXs
 ```
 
@@ -114,7 +114,7 @@ First, identify your RayCluster's head pod:
 ```sh
 export HEAD_POD=$(kubectl get pods --selector=ray.io/node-type=head -o custom-columns=POD:metadata.name --no-headers)
 echo $HEAD_POD
-# raycluster-kuberay-head-vkj4n
+# raycluster-kuberay-head
 
 # Print the cluster resources.
 kubectl exec -it $HEAD_POD -- python -c "import ray; ray.init(); print(ray.cluster_resources())"
@@ -187,13 +187,13 @@ kind delete cluster
 ````{tab-item} Kustomize
 ```sh
 # [Step 6.1]: Delete the RayCluster CR
-kubectl delete -f "https://raw.githubusercontent.com/ray-project/kuberay/v1.3.0/ray-operator/config/samples/ray-cluster.sample.yaml"
+kubectl delete -f "https://raw.githubusercontent.com/ray-project/kuberay/v1.4.0/ray-operator/config/samples/ray-cluster.sample.yaml"
 # Confirm that the RayCluster's pods are gone by running
 kubectl get pods
 # NAME                                READY   STATUS    RESTARTS   AGE
 # kuberay-operator-7fbdbf8c89-pt8bk   1/1     Running   0          XXm
 # [Step 6.2]: Delete the KubeRay operator
-kubectl delete -k "github.com/ray-project/kuberay/ray-operator/config/default?ref=v1.3.0"
+kubectl delete -k "github.com/ray-project/kuberay/ray-operator/config/default?ref=v1.4.0"
 # Confirm that the KubeRay operator pod is gone by running
 kubectl get pods
 # No resources found in the default namespace.
