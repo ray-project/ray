@@ -104,7 +104,7 @@ Instead of:
     ray.get(some_task.remote())
     ray.wait([some_task.remote()])
 
-you can wait on the ref (Python 3.9 and Python 3.10):
+you can wait on the ref with Python 3.9 and Python 3.10:
 
 .. testcode::
 
