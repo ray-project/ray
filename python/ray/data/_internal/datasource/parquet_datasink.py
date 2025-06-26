@@ -141,9 +141,8 @@ class ParquetDatasink(_FileDatasink):
         # Check if write_uuid is present in filename, add if missing
         if write_uuid not in filename and self.mode == SaveMode.APPEND:
             raise ValueError(
-                f"Write UUID '{write_uuid}' not found in filename '{filename}'. "
-                f"Please modify your FileNameProvider implementation to include the write_uuid in the filename. "
-                f"Adding UUID as suffix to ensure uniqueness across write operations."
+                f"Write UUID '{write_uuid}' missing from filename template '{filename}'. This could result in files being overwritten."
+                f"Modify your FileNameProvider implementation to include the `write_uuid` into the filename template or change your write mode to SaveMode.OVERWRITE. "
             )
         # Check if filename is already templatized
         if "{i}" in filename:
