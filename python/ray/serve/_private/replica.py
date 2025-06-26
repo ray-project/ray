@@ -1685,8 +1685,8 @@ class UserCallableWrapper:
     ) -> Any:
         """Call an HTTP entrypoint.
 
-        The `generator_result_callback` is used to communicate the results of generator
-        methods.
+        The `generator_result_callback` is used to communicate the results of streaming
+        responses.
 
         Raises any exception raised by the user code so it can be propagated as a
         `RayTaskError`.
@@ -1773,7 +1773,7 @@ class UserCallableWrapper:
         *,
         generator_result_callback: Optional[Callable] = None,
     ) -> Any:
-        """Call a user method (unary or generator).
+        """Call a user generator.
 
         The `generator_result_callback` is used to communicate the results of generator
         methods.
@@ -1818,10 +1818,7 @@ class UserCallableWrapper:
         request_args: Tuple[Any],
         request_kwargs: Dict[str, Any],
     ) -> Any:
-        """Call a user method (unary or generator).
-
-        The `generator_result_callback` is used to communicate the results of generator
-        methods.
+        """Call a (unary) user method.
 
         Raises any exception raised by the user code so it can be propagated as a
         `RayTaskError`.
