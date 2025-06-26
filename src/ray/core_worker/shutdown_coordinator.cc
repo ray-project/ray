@@ -22,11 +22,9 @@ namespace core {
 
 ShutdownCoordinator::ShutdownCoordinator(
     std::shared_ptr<ShutdownDependencies> dependencies,
-    WorkerType worker_type,
-    std::chrono::milliseconds graceful_timeout_ms)
+    WorkerType worker_type)
     : dependencies_(std::move(dependencies)),
-      worker_type_(worker_type),
-      graceful_timeout_ms_(graceful_timeout_ms) {
+      worker_type_(worker_type) {
   // Initialize to running state with no reason
   state_and_reason_.store(PackStateReason(ShutdownState::kRunning, ShutdownReason::kNone),
                           std::memory_order_release);
@@ -34,7 +32,9 @@ ShutdownCoordinator::ShutdownCoordinator(
 
 bool ShutdownCoordinator::RequestShutdown(bool force_shutdown,
                                          ShutdownReason reason, 
-                                         const std::string& detail) {
+                                         const std::string& detail,
+                                         std::chrono::milliseconds timeout_ms,
+                                         bool force_on_timeout) {
   uint64_t expected = PackStateReason(ShutdownState::kRunning, ShutdownReason::kNone);
   uint64_t desired = PackStateReason(ShutdownState::kShuttingDown, reason);
   
@@ -47,7 +47,7 @@ bool ShutdownCoordinator::RequestShutdown(bool force_shutdown,
     shutdown_detail_ = detail;
     
     // Execute shutdown sequence based on force_shutdown flag and worker type
-    ExecuteShutdownSequence(force_shutdown, detail);
+    ExecuteShutdownSequence(force_shutdown, detail, timeout_ms, force_on_timeout);
   }
   
   return initiated;
@@ -135,22 +135,25 @@ std::string ShutdownCoordinator::GetStateString() const {
 
 // Shutdown execution methods
 
-void ShutdownCoordinator::ExecuteShutdownSequence(bool force_shutdown, const std::string& detail) {
+void ShutdownCoordinator::ExecuteShutdownSequence(bool force_shutdown, 
+                                                 const std::string& detail,
+                                                 std::chrono::milliseconds timeout_ms,
+                                                 bool force_on_timeout) {
   switch (worker_type_) {
     case WorkerType::DRIVER:
-      ExecuteDriverShutdown(force_shutdown, detail);
+      ExecuteDriverShutdown(force_shutdown, detail, timeout_ms, force_on_timeout);
       break;
     case WorkerType::WORKER:
-      ExecuteWorkerShutdown(force_shutdown, detail);
+      ExecuteWorkerShutdown(force_shutdown, detail, timeout_ms, force_on_timeout);
       break;
     case WorkerType::SPILL_WORKER:
     case WorkerType::RESTORE_WORKER:
       // Spill/Restore workers behave like normal workers for shutdown
-      ExecuteWorkerShutdown(force_shutdown, detail);
+      ExecuteWorkerShutdown(force_shutdown, detail, timeout_ms, force_on_timeout);
       break;
     default:
       // Handle any unknown worker types as regular workers
-      ExecuteWorkerShutdown(force_shutdown, detail);
+      ExecuteWorkerShutdown(force_shutdown, detail, timeout_ms, force_on_timeout);
       break;
   }
 }
