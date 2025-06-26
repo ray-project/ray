@@ -784,14 +784,6 @@ RAY_CONFIG(uint64_t, resource_broadcast_batch_size, 512)
 // Maximum ray sync message batch size in bytes (1MB by default) between nodes.
 RAY_CONFIG(uint64_t, max_sync_message_batch_bytes, 1 * 1024 * 1024)
 
-// When enabled, workers will not be re-used across tasks requesting different
-// resources (e.g., CPU vs GPU).
-RAY_CONFIG(bool, isolate_workers_across_resource_types, true)
-
-// When enabled, workers will not be re-used across tasks of different types
-// (i.e., Actor vs normal tasks).
-RAY_CONFIG(bool, isolate_workers_across_task_types, true)
-
 /// ServerCall instance number of each RPC service handler
 ///
 /// NOTE: Default value is temporarily pegged at `gcs_server_rpc_server_thread_num * 100`
@@ -927,11 +919,6 @@ RAY_CONFIG(bool, enable_autoscaler_v2, false)
 // Python GCS client number of reconnection retry and timeout.
 RAY_CONFIG(int64_t, nums_py_gcs_reconnect_retry, 5)
 RAY_CONFIG(int64_t, py_gcs_connect_timeout_s, 30)
-
-// Whether to reap actor death reason from GCS.
-// Costs an extra RPC.
-// TODO(vitsai): Remove this flag
-RAY_CONFIG(bool, enable_reap_actor_death, true)
 
 // The number of grpc clients between object managers.
 RAY_CONFIG(int, object_manager_client_connection_num, 4)
