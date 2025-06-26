@@ -124,7 +124,7 @@ class _SerializationContext:
         # CPU and another from CPU to shared memory. Ideally we should elide
         # the first copy and memcpy directly from GPU to the shared memory
         # buffer.
-        if tensor_device_type == "cuda":
+        if tensor_device_type != "cpu":
             tensor = tensor.to("cpu")
 
         # Numpy does not have an equivalent dtype for all torch dtypes, so
@@ -175,10 +175,10 @@ class _SerializationContext:
         elif target_device in [Device.GPU, Device.CUDA]:
             target_device_type = "cuda"
         else:
-            target_device_type = "cpu"
+            target_device_type = target_device.value
 
         # TODO(swang): Support local P2P transfers if available.
-        if target_device_type == "cuda":
+        if target_device_type != "cpu":
 
             def convert_numpy_to_tensor(np_array):
                 if not isinstance(np_array, np.ndarray):
