@@ -85,7 +85,16 @@ def _resource_dicts_close(d1: Dict, d2: Dict, *, abs_tol: float = 1e-4):
 
 def test_many_fractional_resources(shutdown_only):
     ray.init(num_cpus=2, num_gpus=2, resources={"Custom": 2})
-    original_available_resources = ray.available_resources()
+
+    def _get_available_resources() -> Dict[str, float]:
+        """Get only the resources we care about in this test."""
+        return {
+            k: v
+            for k, v in ray.available_resources().items()
+            if k in {"CPU", "GPU", "Custom"}
+        }
+
+    original_available_resources = _get_available_resources()
 
     @ray.remote
     def g():
@@ -136,7 +145,7 @@ def test_many_fractional_resources(shutdown_only):
 
     # Check that the available resources are reset to their original values.
     wait_for_condition(
-        lambda: ray.available_resources() == original_available_resources,
+        lambda: _get_available_resources() == original_available_resources,
     )
 
 
