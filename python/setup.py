@@ -4,6 +4,7 @@ import io
 import logging
 import os
 import pathlib
+import platform
 import re
 import shlex
 import shutil
@@ -637,6 +638,10 @@ def build(build_python, build_java, build_cpp):
         ]
     else:
         bazel_precmd_flags = []
+        if platform.system() == "Windows":
+            bazel_precmd_flags = [
+                "--output_user_root=C:/tmp"
+            ]
         # Using --incompatible_strict_action_env so that the build is more
         # cache-able We cannot turn this on for Python tests yet, as Ray's
         # Python bazel tests are not hermetic.
