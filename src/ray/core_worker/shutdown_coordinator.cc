@@ -158,30 +158,15 @@ void ShutdownCoordinator::ExecuteShutdownSequence(bool force_shutdown,
   }
 }
 
-void ShutdownCoordinator::ExecuteGracefulShutdown(const std::string& detail) {
+void ShutdownCoordinator::ExecuteGracefulShutdown(const std::string& detail,
+                                                  std::chrono::milliseconds timeout_ms) {
   if (!dependencies_) {
     return;
   }
 
-  auto start_time = std::chrono::steady_clock::now();
-  
-  // Wait for pending tasks to complete (with timeout)
-  while (dependencies_->GetPendingTaskCount() > 0) {
-    if (dependencies_->IsGracefulShutdownTimedOut(start_time, graceful_timeout_ms_)) {
-      // Timeout reached, proceed with force shutdown
-      ExecuteForceShutdown("Graceful shutdown timeout: " + detail);
-      return;
-    }
-    
-    // Small sleep to avoid busy waiting
-    std::this_thread::sleep_for(std::chrono::milliseconds(10));
-  }
-  
-  // Clean shutdown with all tasks completed
-  dependencies_->FlushMetrics();
+  // Delegate to concrete executor - this implements "no coordination without control"
   TryTransitionToDisconnecting();
-  dependencies_->DisconnectRaylet();
-  dependencies_->DisconnectGcs();
+  dependencies_->ExecuteGracefulShutdown(detail, timeout_ms);
   TryTransitionToShutdown();
 }
 
@@ -190,44 +175,55 @@ void ShutdownCoordinator::ExecuteForceShutdown(const std::string& detail) {
     return;
   }
 
-  // Cancel all pending tasks immediately
-  dependencies_->CancelPendingTasks(true /* force */);
-  
-  // Quick disconnect without waiting
+  // Delegate to concrete executor - this implements "no coordination without control"
   TryTransitionToDisconnecting();
-  dependencies_->DisconnectRaylet();
-  dependencies_->DisconnectGcs();
+  dependencies_->ExecuteForceShutdown(detail);
   TryTransitionToShutdown();
 }
 
-void ShutdownCoordinator::ExecuteDriverShutdown(bool force_shutdown, const std::string& detail) {
+void ShutdownCoordinator::ExecuteDriverShutdown(bool force_shutdown, 
+                                                const std::string& detail,
+                                                std::chrono::milliseconds timeout_ms,
+                                                bool force_on_timeout) {
   if (force_shutdown) {
     ExecuteForceShutdown(detail);
   } else {
-    ExecuteGracefulShutdown(detail);
+    ExecuteGracefulShutdown(detail, timeout_ms);
+    // Handle timeout fallback if needed
+    if (force_on_timeout && GetState() != ShutdownState::kShutdown) {
+      ExecuteForceShutdown("Graceful shutdown timeout: " + detail);
+    }
   }
 }
 
-void ShutdownCoordinator::ExecuteWorkerShutdown(bool force_shutdown, const std::string& detail) {
+void ShutdownCoordinator::ExecuteWorkerShutdown(bool force_shutdown, 
+                                                const std::string& detail,
+                                                std::chrono::milliseconds timeout_ms,
+                                                bool force_on_timeout) {
   if (force_shutdown) {
     ExecuteForceShutdown(detail);
   } else {
-    ExecuteGracefulShutdown(detail);
+    ExecuteGracefulShutdown(detail, timeout_ms);
+    // Handle timeout fallback if needed
+    if (force_on_timeout && GetState() != ShutdownState::kShutdown) {
+      ExecuteForceShutdown("Graceful shutdown timeout: " + detail);
+    }
   }
 }
 
-void ShutdownCoordinator::ExecuteActorShutdown(bool force_shutdown, const std::string& detail) {
-  if (!dependencies_) {
-    return;
-  }
-
-  // Actor shutdown always needs to clean up state
-  dependencies_->CleanupActorState();
-  
+void ShutdownCoordinator::ExecuteActorShutdown(bool force_shutdown, 
+                                               const std::string& detail,
+                                               std::chrono::milliseconds timeout_ms,
+                                               bool force_on_timeout) {
+  // For actors, delegate the entire shutdown to the executor which knows how to handle actor cleanup
   if (force_shutdown) {
     ExecuteForceShutdown(detail);
   } else {
-    ExecuteGracefulShutdown(detail);
+    ExecuteGracefulShutdown(detail, timeout_ms);
+    // Handle timeout fallback if needed
+    if (force_on_timeout && GetState() != ShutdownState::kShutdown) {
+      ExecuteForceShutdown("Graceful shutdown timeout: " + detail);
+    }
   }
 }
 
