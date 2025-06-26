@@ -288,7 +288,7 @@ def test_spread_scheduling_overrides_locality_aware_scheduling(ray_start_cluster
         num_cpus=0,
         scheduling_strategy=NodeAffinitySchedulingStrategy(
             worker_node.node_id, soft=False
-        )
+        ),
     )
     def pinned_to_worker() -> str:
         return ray.get_runtime_context().get_node_id()
