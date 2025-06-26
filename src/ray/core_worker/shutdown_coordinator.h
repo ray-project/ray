@@ -238,18 +238,31 @@ class ShutdownCoordinator {
 
  private:
   /// Execute shutdown sequence based on worker type and mode
-  void ExecuteShutdownSequence(bool force_shutdown, const std::string& detail);
+  void ExecuteShutdownSequence(bool force_shutdown, 
+                              const std::string& detail,
+                              std::chrono::milliseconds timeout_ms,
+                              bool force_on_timeout);
 
   /// Execute graceful shutdown with timeout
-  void ExecuteGracefulShutdown(const std::string& detail);
+  void ExecuteGracefulShutdown(const std::string& detail,
+                              std::chrono::milliseconds timeout_ms);
 
   /// Execute force shutdown immediately
   void ExecuteForceShutdown(const std::string& detail);
 
   /// Worker-type specific shutdown behavior
-  void ExecuteDriverShutdown(bool force_shutdown, const std::string& detail);
-  void ExecuteWorkerShutdown(bool force_shutdown, const std::string& detail);
-  void ExecuteActorShutdown(bool force_shutdown, const std::string& detail);
+  void ExecuteDriverShutdown(bool force_shutdown, 
+                            const std::string& detail,
+                            std::chrono::milliseconds timeout_ms,
+                            bool force_on_timeout);
+  void ExecuteWorkerShutdown(bool force_shutdown, 
+                            const std::string& detail,
+                            std::chrono::milliseconds timeout_ms,
+                            bool force_on_timeout);
+  void ExecuteActorShutdown(bool force_shutdown, 
+                           const std::string& detail,
+                           std::chrono::milliseconds timeout_ms,
+                           bool force_on_timeout);
 
   /// Pack state and reason into a single 64-bit value for atomic operations.
   /// Layout: [32-bit state][32-bit reason]

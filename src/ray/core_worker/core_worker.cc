@@ -14,6 +14,7 @@
 
 #include "ray/core_worker/core_worker.h"
 #include "ray/core_worker/shutdown_coordinator.h"
+#include "ray/core_worker/core_worker_shutdown_executor.h"
 
 #include <algorithm>
 #include <future>
@@ -1014,12 +1015,12 @@ CoreWorker::CoreWorker(CoreWorkerOptions options, const WorkerID &worker_id)
   }
 
   // Initialize shutdown coordinator last - after all services are ready
-  // Create a simple dependency interface inline (no separate class needed)
-  auto shutdown_deps = std::make_shared<ShutdownDependencies>();
+  // Create concrete shutdown executor that implements real shutdown operations
+  auto shutdown_executor = std::make_shared<CoreWorkerShutdownExecutor>(this);
   shutdown_coordinator_ = std::make_shared<ShutdownCoordinator>(
-      shutdown_deps, options_.worker_type);
+      shutdown_executor, options_.worker_type);
   
-  RAY_LOG(DEBUG) << "Initialized unified shutdown coordinator for worker type: " 
+  RAY_LOG(DEBUG) << "Initialized unified shutdown coordinator with concrete executor for worker type: " 
                  << WorkerTypeString(options_.worker_type);
 }  // NOLINT(readability/fn_size)
 
