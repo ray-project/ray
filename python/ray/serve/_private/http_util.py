@@ -731,6 +731,7 @@ def configure_http_options_with_defaults(http_options: HTTPOptions) -> HTTPOptio
     if (RAY_SERVE_HTTP_KEEP_ALIVE_TIMEOUT_S or 0) > 0:
         http_options.keep_alive_timeout_s = RAY_SERVE_HTTP_KEEP_ALIVE_TIMEOUT_S
 
+    # TODO: Deprecate SERVE_REQUEST_PROCESSING_TIMEOUT_S env var
     http_options.request_timeout_s = (
         http_options.request_timeout_s or RAY_SERVE_REQUEST_PROCESSING_TIMEOUT_S
     )
