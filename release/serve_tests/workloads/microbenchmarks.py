@@ -31,6 +31,8 @@ from ray.serve._private.benchmarks.common import (
     run_throughput_benchmark,
     Streamer,
 )
+from ray.serve._private.common import RequestProtocol
+from ray.serve._private.test_utils import get_application_url
 from ray.serve.generated import serve_pb2, serve_pb2_grpc
 from ray.serve.config import gRPCOptions
 from ray.serve.handle import DeploymentHandle
@@ -136,8 +138,9 @@ async def _main(
                 (payload_10mb, "http_10mb"),
             ]:
                 serve.run(Noop.bind())
+                url = get_application_url(use_localhost=True)
                 latencies = await run_latency_benchmark(
-                    lambda: requests.get("http://localhost:8000", data=payload),
+                    lambda: requests.get(url, data=payload),
                     num_requests=NUM_REQUESTS,
                 )
                 perf_metrics.extend(convert_latencies_to_perf_metrics(name, latencies))
@@ -146,8 +149,9 @@ async def _main(
         if run_throughput:
             # Microbenchmark: HTTP throughput
             serve.run(Noop.bind())
+            url = get_application_url(use_localhost=True)
             mean, std, _ = await run_throughput_benchmark(
-                fn=partial(do_single_http_batch, batch_size=BATCH_SIZE),
+                fn=partial(do_single_http_batch, batch_size=BATCH_SIZE, url=url),
                 multiplier=BATCH_SIZE,
                 num_trials=NUM_TRIALS,
                 trial_runtime=TRIAL_RUNTIME_S,
@@ -157,8 +161,9 @@ async def _main(
 
             # Microbenchmark: HTTP throughput at max_ongoing_requests=100
             serve.run(Noop.options(max_ongoing_requests=100).bind())
+            url = get_application_url(use_localhost=True)
             mean, std, _ = await run_throughput_benchmark(
-                fn=partial(do_single_http_batch, batch_size=BATCH_SIZE),
+                fn=partial(do_single_http_batch, batch_size=BATCH_SIZE, url=url),
                 multiplier=BATCH_SIZE,
                 num_trials=NUM_TRIALS,
                 trial_runtime=TRIAL_RUNTIME_S,
@@ -178,6 +183,7 @@ async def _main(
                     inter_token_delay_ms=10,
                 )
             )
+            url = get_application_url(use_localhost=True)
             # In each trial, complete only one batch of requests. Each
             # batch should take 10+ seconds to complete (because we are
             # streaming 1000 tokens per request with a 10ms inter token
@@ -189,6 +195,7 @@ async def _main(
                     do_single_http_batch,
                     batch_size=STREAMING_HTTP_BATCH_SIZE,
                     stream=True,
+                    url=url,
                 ),
                 multiplier=STREAMING_HTTP_BATCH_SIZE * STREAMING_TOKENS_PER_REQUEST,
                 num_trials=STREAMING_NUM_TRIALS,
@@ -214,11 +221,13 @@ async def _main(
                     )
                 )
             )
+            url = get_application_url(use_localhost=True)
             mean, std, latencies = await run_throughput_benchmark(
                 fn=partial(
                     do_single_http_batch,
                     batch_size=STREAMING_BATCH_SIZE,
                     stream=True,
+                    url=url,
                 ),
                 multiplier=STREAMING_BATCH_SIZE * STREAMING_TOKENS_PER_REQUEST,
                 num_trials=STREAMING_NUM_TRIALS,
@@ -246,8 +255,6 @@ async def _main(
             ],
         )
         if run_latency:
-            channel = grpc.insecure_channel("localhost:9000")
-            stub = serve_pb2_grpc.RayServeBenchmarkServiceStub(channel)
             grpc_payload_noop = serve_pb2.StringData(data="")
             grpc_payload_1mb = serve_pb2.StringData(data=payload_1mb)
             grpc_payload_10mb = serve_pb2.StringData(data=payload_10mb)
@@ -259,6 +266,11 @@ async def _main(
             ]:
                 serve.start(grpc_options=serve_grpc_options)
                 serve.run(GrpcDeployment.bind())
+                target = get_application_url(
+                    protocol=RequestProtocol.GRPC, use_localhost=True
+                )
+                channel = grpc.insecure_channel(target)
+                stub = serve_pb2_grpc.RayServeBenchmarkServiceStub(channel)
                 latencies: pd.Series = await run_latency_benchmark(
                     lambda: stub.call_with_string(payload),
                     num_requests=NUM_REQUESTS,
@@ -270,8 +282,11 @@ async def _main(
             # Microbenchmark: GRPC throughput
             serve.start(grpc_options=serve_grpc_options)
             serve.run(GrpcDeployment.bind())
+            target = get_application_url(
+                protocol=RequestProtocol.GRPC, use_localhost=True
+            )
             mean, std, _ = await run_throughput_benchmark(
-                fn=partial(do_single_grpc_batch, batch_size=BATCH_SIZE),
+                fn=partial(do_single_grpc_batch, batch_size=BATCH_SIZE, target=target),
                 multiplier=BATCH_SIZE,
                 num_trials=NUM_TRIALS,
                 trial_runtime=TRIAL_RUNTIME_S,
@@ -282,8 +297,11 @@ async def _main(
             # Microbenchmark: GRPC throughput at max_ongoing_requests = 100
             serve.start(grpc_options=serve_grpc_options)
             serve.run(GrpcDeployment.options(max_ongoing_requests=100).bind())
+            target = get_application_url(
+                protocol=RequestProtocol.GRPC, use_localhost=True
+            )
             mean, std, _ = await run_throughput_benchmark(
-                fn=partial(do_single_grpc_batch, batch_size=BATCH_SIZE),
+                fn=partial(do_single_grpc_batch, batch_size=BATCH_SIZE, target=target),
                 multiplier=BATCH_SIZE,
                 num_trials=NUM_TRIALS,
                 trial_runtime=TRIAL_RUNTIME_S,

@@ -259,6 +259,9 @@ SERVE_LOG_EXTRA_FIELDS = "ray_serve_extra_fields"
 # Serve HTTP request header key for routing requests.
 SERVE_MULTIPLEXED_MODEL_ID = "serve_multiplexed_model_id"
 
+# HTTP request ID
+SERVE_HTTP_REQUEST_ID_HEADER = "x-request-id"
+
 # Feature flag to turn on node locality routing for proxies. On by default.
 RAY_SERVE_PROXY_PREFER_LOCAL_NODE_ROUTING = (
     os.environ.get("RAY_SERVE_PROXY_PREFER_LOCAL_NODE_ROUTING", "1") == "1"
@@ -329,7 +332,7 @@ RAY_SERVE_MAX_QUEUE_LENGTH_RESPONSE_DEADLINE_S = float(
     os.environ.get("RAY_SERVE_MAX_QUEUE_LENGTH_RESPONSE_DEADLINE_S", 1.0)
 )
 
-# Length of time to respect entries in the queue length cache when scheduling requests.
+# Length of time to respect entries in the queue length cache when routing requests.
 RAY_SERVE_QUEUE_LENGTH_CACHE_TIMEOUT_S = float(
     os.environ.get("RAY_SERVE_QUEUE_LENGTH_CACHE_TIMEOUT_S", 10.0)
 )
@@ -428,3 +431,17 @@ RAY_SERVE_PROXY_GC_THRESHOLD = int(
 RAY_SERVE_METRICS_EXPORT_INTERVAL_MS = int(
     os.environ.get("RAY_SERVE_METRICS_EXPORT_INTERVAL_MS", "100")
 )
+
+# The default request router class to use if none is specified.
+DEFAULT_REQUEST_ROUTER_PATH = (
+    "ray.serve._private.request_router:PowerOfTwoChoicesRequestRouter"
+)
+
+# The default request routing period to use if none is specified.
+DEFAULT_REQUEST_ROUTING_STATS_PERIOD_S = 10
+
+# The default request routing timeout to use if none is specified.
+DEFAULT_REQUEST_ROUTING_STATS_TIMEOUT_S = 30
+
+# Name of deployment request routing stats method implemented by user.
+REQUEST_ROUTING_STATS_METHOD = "record_routing_stats"

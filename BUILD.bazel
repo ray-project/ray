@@ -325,7 +325,7 @@ ray_cc_library(
         ":object_manager_cc_grpc",
         "//src/ray/common:asio",
         "//src/ray/common:status",
-        "//src/ray/object_manager:object_manager_grpc_stub_manager",
+        "//src/ray/object_manager:object_manager_grpc_client_manager",
         "@boost//:asio",
         "@com_github_grpc_grpc//:grpc++",
     ],
@@ -631,7 +631,6 @@ ray_cc_library(
         "//src/ray/object_manager",
         "//src/ray/object_manager:ownership_object_directory",
         "//src/ray/object_manager/plasma:plasma_client",
-        "//src/ray/protobuf:agent_manager_cc_proto",
         "//src/ray/protobuf:common_cc_proto",
         "//src/ray/protobuf:runtime_env_agent_cc_proto",
         "//src/ray/pubsub:pubsub_lib",
@@ -698,6 +697,7 @@ ray_cc_test(
         "team:core",
     ],
     deps = [
+        ":ray_mock",
         ":worker_pool",
         "@com_google_googletest//:gtest_main",
     ],
@@ -902,31 +902,6 @@ cc_proto_library(
     deps = [":extra_actions_base_proto_lib"],
 )
 
-ray_cc_library(
-    name = "sha256",
-    srcs = [
-        "src/ray/thirdparty/sha256.c",
-    ],
-    hdrs = [
-        "src/ray/thirdparty/sha256.h",
-    ],
-)
-
-ray_cc_library(
-    name = "aligned_alloc",
-    srcs = [
-        "src/ray/thirdparty/aligned_alloc.c",
-    ],
-    hdrs = [
-        "src/ray/thirdparty/aligned_alloc.h",
-    ],
-)
-
-ray_cc_library(
-    name = "dlmalloc",
-    hdrs = ["src/ray/thirdparty/dlmalloc.c"],
-)
-
 alias(
     name = "hiredis",
     actual = "@com_github_redis_hiredis//:hiredis",
@@ -955,6 +930,8 @@ pyx_library(
         srcs = PYX_SRCS,
         # cython code is auto-generated, which is out of our control.
         copts = COPTS + PYX_COPTS,
+        # This is needed since Windows has long file path issues and command length limits
+        features = ["compiler_param_file"],
         # see https://github.com/tensorflow/tensorflow/blob/r2.1/tensorflow/lite/BUILD#L444
         linkopts = select({
             "@platforms//os:osx": [
@@ -978,6 +955,7 @@ pyx_library(
         "//src/ray/gcs/gcs_client:global_state_accessor_lib",
         "//src/ray/gcs/gcs_server:gcs_server_lib",
         "//src/ray/protobuf:serialization_cc_proto",
+        "//src/ray/thirdparty/setproctitle",
         "//src/ray/util",
         "//src/ray/util:memory",
         "//src/ray/util:stream_redirection",
@@ -1029,7 +1007,6 @@ alias(
 filegroup(
     name = "all_py_proto",
     srcs = [
-        "//src/ray/protobuf:agent_manager_py_proto",
         "//src/ray/protobuf:autoscaler_py_proto",
         "//src/ray/protobuf:common_py_proto",
         "//src/ray/protobuf:core_worker_py_proto",
@@ -1039,6 +1016,7 @@ filegroup(
         "//src/ray/protobuf:gcs_py_proto",
         "//src/ray/protobuf:gcs_service_py_proto",
         "//src/ray/protobuf:instance_manager_py_proto",
+        "//src/ray/protobuf:metrics_service_py_proto",
         "//src/ray/protobuf:node_manager_py_proto",
         "//src/ray/protobuf:ray_client_py_proto",
         "//src/ray/protobuf:reporter_py_proto",

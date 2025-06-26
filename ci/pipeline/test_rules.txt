@@ -139,6 +139,8 @@ doc/*.ipynb
 doc/BUILD
 doc/*/BUILD
 doc/*.rst
+.vale.ini
+.vale/
 @ doc
 ;
 
@@ -148,6 +150,7 @@ ci/docker/doctest.build.wanda.yaml
 ;
 
 release/ray_release/
+release/requirements_buildkite.*
 @ tools
 ;
 

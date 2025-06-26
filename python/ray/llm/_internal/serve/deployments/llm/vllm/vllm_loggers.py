@@ -1,16 +1,18 @@
 from typing import Optional, Type, cast
-from ray.util import metrics as ray_metrics
-from vllm.config import SupportsMetricsInfo, VllmConfig, SpeculativeConfig
-from vllm.v1.engine import FinishReason
+
+import prometheus_client
+from vllm.config import SpeculativeConfig, SupportsMetricsInfo, VllmConfig
 from vllm.engine.metrics import (
-    _RayGaugeWrapper,
     _RayCounterWrapper,
+    _RayGaugeWrapper,
     _RayHistogramWrapper,
 )
+from vllm.v1.engine import FinishReason
 from vllm.v1.metrics.loggers import StatLoggerBase, build_1_2_5_buckets
 from vllm.v1.metrics.stats import IterationStats, SchedulerStats
 from vllm.v1.spec_decode.metrics import SpecDecodingStats
-import prometheus_client
+
+from ray.util import metrics as ray_metrics
 
 
 class SpecDecodingProm:
@@ -425,6 +427,8 @@ class RayMetrics(Metrics):
         pass
 
 
+# TODO(seiji): remove this whole file once we bump to vLLM that includes
+# https://github.com/vllm-project/vllm/pull/19113
 class PrometheusStatLogger(StatLoggerBase):
     _metrics_cls = Metrics
 
@@ -432,7 +436,7 @@ class PrometheusStatLogger(StatLoggerBase):
         self.metrics = self._metrics_cls(
             vllm_config=vllm_config, engine_index=engine_index
         )
-
+        self.vllm_config = vllm_config
         #
         # Cache config info metric
         #
@@ -450,7 +454,7 @@ class PrometheusStatLogger(StatLoggerBase):
         # Info type metrics are syntactic sugar for a gauge permanently set to 1
         # Since prometheus multiprocessing mode does not support Info, emulate
         # info here with a gauge.
-        info_gauge = prometheus_client.Gauge(
+        info_gauge = self._metrics_cls._gauge_cls(
             name=name, documentation=documentation, labelnames=metrics_info.keys()
         ).labels(**metrics_info)
         info_gauge.set(1)
@@ -539,6 +543,9 @@ class PrometheusStatLogger(StatLoggerBase):
             self.metrics.gauge_lora_info.labels(
                 **lora_info_labels
             ).set_to_current_time()
+
+    def log_engine_initialized(self):
+        self.log_metrics_info("cache_config", self.vllm_config.cache_config)
 
 
 class RayPrometheusStatLogger(PrometheusStatLogger):

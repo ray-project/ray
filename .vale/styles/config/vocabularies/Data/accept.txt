@@ -3,7 +3,7 @@ autoscaler
 [Bb]ackpressure
 Dask
 [Dd]ata('s)?
-[Dd]atasource
+[Dd]atasource(s)?
 [Dd]iscretizer(s)?
 dtype
 [Gg]roupby
@@ -32,3 +32,5 @@ TFRecord(s)?
 UDF(s)?
 VLM(s)?
 XGBoost
+[Ss]harding
+[Ss]harded

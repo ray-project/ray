@@ -52,6 +52,15 @@ public class DeploymentConfig implements Serializable {
    */
   private Double healthCheckTimeoutS = Constants.DEFAULT_HEALTH_CHECK_TIMEOUT_S;
 
+  /** Frequency at which the controller will record request routing stats. */
+  private Double requestRoutingStatsPeriodS = Constants.DEFAULT_REQUEST_ROUTING_STATS_PERIOD_S;
+
+  /**
+   * Timeout that the controller will wait for a response from the replica's request routing stats
+   * before retrying.
+   */
+  private Double requestRoutingStatsTimeoutS = Constants.DEFAULT_REQUEST_ROUTING_STATS_TIMEOUT_S;
+
   private AutoscalingConfig autoscalingConfig;
 
   /** This flag is used to let replica know they are deplyed from a different language. */
@@ -140,6 +149,28 @@ public class DeploymentConfig implements Serializable {
     return this;
   }
 
+  public Double getRequestRoutingStatsPeriodS() {
+    return requestRoutingStatsPeriodS;
+  }
+
+  public DeploymentConfig setRequestRoutingStatsPeriodS(Double requestRoutingStatsPeriodS) {
+    if (requestRoutingStatsPeriodS != null) {
+      this.requestRoutingStatsPeriodS = requestRoutingStatsPeriodS;
+    }
+    return this;
+  }
+
+  public Double getRequestRoutingStatsTimeoutS() {
+    return requestRoutingStatsTimeoutS;
+  }
+
+  public DeploymentConfig setRequestRoutingStatsTimeoutS(Double requestRoutingStatsTimeoutS) {
+    if (requestRoutingStatsTimeoutS != null) {
+      this.requestRoutingStatsTimeoutS = requestRoutingStatsTimeoutS;
+    }
+    return this;
+  }
+
   public AutoscalingConfig getAutoscalingConfig() {
     return autoscalingConfig;
   }
@@ -199,6 +230,8 @@ public class DeploymentConfig implements Serializable {
             .setGracefulShutdownTimeoutS(gracefulShutdownTimeoutS)
             .setHealthCheckPeriodS(healthCheckPeriodS)
             .setHealthCheckTimeoutS(healthCheckTimeoutS)
+            .setRequestRoutingStatsPeriodS(requestRoutingStatsPeriodS)
+            .setRequestRoutingStatsTimeoutS(requestRoutingStatsTimeoutS)
             .setIsCrossLanguage(isCrossLanguage)
             .setDeploymentLanguage(deploymentLanguage)
             .setVersion(version);
@@ -220,6 +253,8 @@ public class DeploymentConfig implements Serializable {
             .setGracefulShutdownTimeoutS(gracefulShutdownTimeoutS)
             .setHealthCheckPeriodS(healthCheckPeriodS)
             .setHealthCheckTimeoutS(healthCheckTimeoutS)
+            .setRequestRoutingStatsPeriodS(requestRoutingStatsPeriodS)
+            .setRequestRoutingStatsTimeoutS(requestRoutingStatsTimeoutS)
             .setIsCrossLanguage(isCrossLanguage)
             .setDeploymentLanguage(deploymentLanguage);
     if (null != userConfig) {

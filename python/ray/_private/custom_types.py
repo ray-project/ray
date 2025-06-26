@@ -1,19 +1,20 @@
+from enum import Enum
+from typing import Literal
+
 from ray.core.generated.common_pb2 import (
-    TaskStatus,
-    TaskType,
-    WorkerExitType,
-    WorkerType,
     ErrorType,
     Language,
+    TaskStatus,
+    TaskType,
+    TensorTransport,
+    WorkerExitType,
+    WorkerType,
 )
 from ray.core.generated.gcs_pb2 import (
     ActorTableData,
     GcsNodeInfo,
     PlacementGroupTableData,
 )
-
-from typing import Literal
-
 
 ACTOR_STATUS = [
     "DEPENDENCIES_UNREADY",
@@ -118,6 +119,21 @@ ERROR_TYPE = [
 # and any modifications must be backward compatible.
 LANGUAGE = ["PYTHON", "JAVA", "CPP"]
 
+# See `common.proto` for more details.
+class TensorTransportEnum(Enum):
+    OBJECT_STORE = TensorTransport.Value("OBJECT_STORE")
+    NCCL = TensorTransport.Value("NCCL")
+    GLOO = TensorTransport.Value("GLOO")
+
+    @classmethod
+    def from_str(cls, name: str) -> "TensorTransportEnum":
+        name = name.upper()
+        if name not in cls.__members__:
+            raise ValueError(
+                f"Invalid tensor transport {name}, must be one of {list(cls.__members__.keys())}."
+            )
+        return cls[name]
+
 
 def validate_protobuf_enum(grpc_enum, custom_enum):
     """Validate the literal contains the correct enum values from protobuf"""
@@ -145,3 +161,4 @@ validate_protobuf_enum(WorkerExitType, WORKER_EXIT_TYPE)
 validate_protobuf_enum(TaskType, TASK_TYPE)
 validate_protobuf_enum(ErrorType, ERROR_TYPE)
 validate_protobuf_enum(Language, LANGUAGE)
+validate_protobuf_enum(TensorTransport, list(TensorTransportEnum.__members__.keys()))

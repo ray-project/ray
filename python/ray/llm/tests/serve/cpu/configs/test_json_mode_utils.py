@@ -1,8 +1,9 @@
 import pytest
+
 from ray.llm._internal.serve.configs.json_mode_utils import (
-    JSONSchemaValidator,
     INVALID_JSON_REFERENCES,
     INVALID_RESPONSE_FORMAT_SCHEMA,
+    JSONSchemaValidator,
 )
 from ray.llm._internal.serve.configs.openai_api_models import OpenAIHTTPException
 

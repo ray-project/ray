@@ -11,8 +11,9 @@ from typing import Union
 import pytest
 
 import ray
+from ray._common.test_utils import wait_for_condition
 from ray._private import ray_constants, services
-from ray._private.test_utils import run_string_as_driver, wait_for_condition
+from ray._private.test_utils import run_string_as_driver
 from ray.cluster_utils import Cluster, cluster_not_supported
 
 
@@ -245,7 +246,7 @@ def test_ray_debugger_public(shutdown_only, call_ray_stop_only, ray_debugger_ext
     cmd = ["ray", "start", "--head", "--num-cpus=1"]
     if ray_debugger_external:
         cmd.append("--ray-debugger-external")
-    out = ray._private.utils.decode(
+    out = ray._common.utils.decode(
         subprocess.check_output(cmd, stderr=subprocess.STDOUT)
     )
     # Get the redis address from the output.
