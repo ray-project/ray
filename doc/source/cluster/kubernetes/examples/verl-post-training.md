@@ -45,7 +45,7 @@ Log in to the head Pod and install verl.
 This step won't be necessary when the verl community supports images with verl pre-installed in the future.
 
 ```sh
-# Log in to the head Pod
+# Log in to the head Pod.
 export HEAD_POD=$(kubectl get pods --selector=ray.io/node-type=head -o custom-columns=POD:metadata.name --no-headers)
 kubectl exec -it $HEAD_POD -- bash
 
@@ -70,9 +70,9 @@ python3 -c "import transformers; transformers.pipeline('text-generation', model=
 
 Run the following command to start a PPO training job.
 This differs slightly from the instructions in [verl's documentation](https://verl.readthedocs.io/en/latest/start/quickstart.html#step-3-perform-ppo-training-with-the-instruct-model).
-The main differences are:
-* Set `n_gpus_per_node` to 4 because the head Pod has 4 GPUs.
-* Set `save_freq` to -1 to avoid disk pressure caused by checkpointing.
+The main differences are the following:
+* Set `n_gpus_per_node` to `4` because the head Pod has 4 GPUs.
+* Set `save_freq` to `-1` to avoid disk pressure caused by checkpointing.
 
 ```sh
 PYTHONUNBUFFERED=1 python3 -m verl.trainer.main_ppo \
