@@ -327,12 +327,11 @@ ResubmitTaskResult TaskManager::ResubmitTask(const TaskID &task_id,
       return ResubmitTaskResult::FAILED_MAX_ATTEMPT_EXCEEDED;
     }
 
-    if (it->second.num_retries_left == 0) {
-      // This can happen when the task has been marked for cancellation.
-      return ResubmitTaskResult::FAILED_TASK_CANCELED;
-    }
-
     if (!it->second.IsPending()) {
+      if (it->second.num_retries_left == 0) {
+        // This can happen when the task has been marked for cancellation.
+        return ResubmitTaskResult::FAILED_TASK_CANCELED;
+      }
       resubmit = true;
       MarkTaskRetryOnResubmit(it->second);
       num_pending_tasks_++;
