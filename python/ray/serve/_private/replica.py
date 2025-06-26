@@ -577,7 +577,7 @@ class ReplicaBase(ABC):
             was_error=user_exception is not None,
         )
 
-    async def _call_user_generator(
+    async def _call_streaming(
         self,
         request_metadata: RequestMetadata,
         request_args: Tuple[Any],
@@ -599,12 +599,24 @@ class ReplicaBase(ABC):
             def _enqueue_thread_safe(item: Any):
                 self._event_loop.call_soon_threadsafe(result_queue.put_nowait, item)
 
-            call_user_method_future = self._user_callable_wrapper.call_user_method(
-                request_metadata,
-                request_args,
-                request_kwargs,
-                generator_result_callback=_enqueue_thread_safe,
-            )
+            if request_metadata.is_http_request:
+                call_user_method_future = (
+                    self._user_callable_wrapper.call_http_entrypoint(
+                        request_metadata,
+                        request_args,
+                        request_kwargs,
+                        generator_result_callback=_enqueue_thread_safe,
+                    )
+                )
+            else:
+                call_user_method_future = (
+                    self._user_callable_wrapper.call_user_generator(
+                        request_metadata,
+                        request_args,
+                        request_kwargs,
+                        generator_result_callback=_enqueue_thread_safe,
+                    )
+                )
 
             first_message_peeked = False
             while True:
@@ -638,7 +650,7 @@ class ReplicaBase(ABC):
                         for msg in messages:
                             yield msg
 
-                # Exit once `call_user_method` has finished. In this case, all
+                # Exit once `call_user_generator` has finished. In this case, all
                 # messages must have already been sent.
                 if call_user_method_future in done:
                     break
@@ -671,7 +683,7 @@ class ReplicaBase(ABC):
         async with self._wrap_user_method_call(
             request_metadata, request_args
         ) as status_code_callback:
-            async for result in self._call_user_generator(
+            async for result in self._call_streaming(
                 request_metadata,
                 request_args,
                 request_kwargs,
@@ -704,7 +716,7 @@ class ReplicaBase(ABC):
             )
 
             if request_metadata.is_streaming:
-                async for result in self._call_user_generator(
+                async for result in self._call_streaming(
                     request_metadata,
                     request_args,
                     request_kwargs,
@@ -1663,7 +1675,7 @@ class UserCallableWrapper:
         return result
 
     @_run_user_code
-    async def call_user_method(
+    async def call_http_entrypoint(
         self,
         request_metadata: RequestMetadata,
         request_args: Tuple[Any],
@@ -1671,48 +1683,38 @@ class UserCallableWrapper:
         *,
         generator_result_callback: Optional[Callable] = None,
     ) -> Any:
-        """Call a user method (unary or generator).
+        """Call an HTTP entrypoint.
 
-        The `generator_result_callback` is used to communicate the results of generator
-        methods.
+        The `generator_result_callback` is used to communicate the results of streaming
+        responses.
 
         Raises any exception raised by the user code so it can be propagated as a
         `RayTaskError`.
         """
-        self._raise_if_not_initialized("call_user_method")
+        self._raise_if_not_initialized("call_http_entrypoint")
 
         logger.info(
             f"Started executing request to method '{request_metadata.call_method}'.",
             extra={"log_to_stderr": False, "serve_access_log": True},
         )
 
-        result = None
+        user_method_info = self._get_user_method_info(request_metadata.call_method)
         asgi_args = None
         receive_task = None
-        user_method_info = None
         try:
-            user_method_info = self._get_user_method_info(request_metadata.call_method)
-            if request_metadata.is_http_request:
-                assert len(request_args) == 1 and isinstance(
-                    request_args[0], StreamingHTTPRequest
-                )
-                (
-                    request_args,
-                    asgi_args,
-                    receive_task,
-                ) = self._prepare_args_for_http_request(
-                    request_args[0],
-                    request_metadata,
-                    user_method_info,
-                    generator_result_callback=generator_result_callback,
-                )
-            elif request_metadata.is_grpc_request:
-                assert len(request_args) == 1 and isinstance(
-                    request_args[0], gRPCRequest
-                )
-                request_args, request_kwargs = self._prepare_args_for_grpc_request(
-                    request_args[0], request_metadata, user_method_info
-                )
+            assert len(request_args) == 1 and isinstance(
+                request_args[0], StreamingHTTPRequest
+            )
+            (
+                request_args,
+                asgi_args,
+                receive_task,
+            ) = self._prepare_args_for_http_request(
+                request_args[0],
+                request_metadata,
+                user_method_info,
+                generator_result_callback=generator_result_callback,
+            )
 
             result, sync_gen_consumed = await self._call_func_or_gen(
                 user_method_info.callable,
@@ -1740,7 +1742,6 @@ class UserCallableWrapper:
             if (
                 request_metadata.is_http_request
                 and asgi_args is not None
-                and user_method_info is not None
                 # If the callable is an ASGI app, it already sent a 500 status response.
                 and not user_method_info.is_asgi_app
             ):
@@ -1752,7 +1753,6 @@ class UserCallableWrapper:
 
             raise
         except asyncio.CancelledError:
-            user_method_info = self._get_user_method_info(request_metadata.call_method)
             if receive_task is not None and not receive_task.done():
                 # Do NOT cancel the receive task if the request has been
                 # cancelled, but the call is a batched call. This is
@@ -1763,6 +1763,93 @@ class UserCallableWrapper:
                     receive_task.cancel()
 
             raise
+
+    @_run_user_code
+    async def call_user_generator(
+        self,
+        request_metadata: RequestMetadata,
+        request_args: Tuple[Any],
+        request_kwargs: Dict[str, Any],
+        *,
+        generator_result_callback: Optional[Callable] = None,
+    ) -> Any:
+        """Call a user generator.
+
+        The `generator_result_callback` is used to communicate the results of generator
+        methods.
+
+        Raises any exception raised by the user code so it can be propagated as a
+        `RayTaskError`.
+        """
+        self._raise_if_not_initialized("call_user_generator")
+
+        logger.info(
+            f"Started executing request to method '{request_metadata.call_method}'.",
+            extra={"log_to_stderr": False, "serve_access_log": True},
+        )
+
+        user_method_info = self._get_user_method_info(request_metadata.call_method)
+        if request_metadata.is_grpc_request:
+            assert len(request_args) == 1 and isinstance(request_args[0], gRPCRequest)
+            request_args, request_kwargs = self._prepare_args_for_grpc_request(
+                request_args[0], request_metadata, user_method_info
+            )
+
+        result, sync_gen_consumed = await self._call_func_or_gen(
+            user_method_info.callable,
+            args=request_args,
+            kwargs=request_kwargs,
+            request_metadata=request_metadata,
+            generator_result_callback=generator_result_callback,
+        )
+        return await self._handle_user_method_result(
+            result,
+            request_metadata,
+            user_method_info,
+            sync_gen_consumed=sync_gen_consumed,
+            generator_result_callback=generator_result_callback,
+            asgi_args=None,
+        )
+
+    @_run_user_code
+    async def call_user_method(
+        self,
+        request_metadata: RequestMetadata,
+        request_args: Tuple[Any],
+        request_kwargs: Dict[str, Any],
+    ) -> Any:
+        """Call a (unary) user method.
+
+        Raises any exception raised by the user code so it can be propagated as a
+        `RayTaskError`.
+        """
+        self._raise_if_not_initialized("call_user_method")
+
+        logger.info(
+            f"Started executing request to method '{request_metadata.call_method}'.",
+            extra={"log_to_stderr": False, "serve_access_log": True},
+        )
+
+        user_method_info = self._get_user_method_info(request_metadata.call_method)
+        if request_metadata.is_grpc_request:
+            assert len(request_args) == 1 and isinstance(request_args[0], gRPCRequest)
+            request_args, request_kwargs = self._prepare_args_for_grpc_request(
+                request_args[0], request_metadata, user_method_info
+            )
+
+        result, _ = await self._call_func_or_gen(
+            user_method_info.callable,
+            args=request_args,
+            kwargs=request_kwargs,
+            request_metadata=request_metadata,
+        )
+        if inspect.isgenerator(result) or inspect.isasyncgen(result):
+            raise TypeError(
+                f"Method '{user_method_info.name}' returned a generator. "
+                "You must use `handle.options(stream=True)` to call "
+                "generators on a deployment."
+            )
+        return result
 
     def handle_exception(self, exc: Exception):
         if isinstance(exc, self.service_unavailable_exceptions):
