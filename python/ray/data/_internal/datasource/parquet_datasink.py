@@ -63,17 +63,6 @@ class ParquetDatasink(_FileDatasink):
         self.min_rows_per_file = min_rows_per_file
         self.partition_cols = partition_cols
 
-        if self.open_stream_args is not None:
-            intersecting_keys = UNSUPPORTED_OPEN_STREAM_ARGS.intersection(
-                set(self.open_stream_args.keys())
-            )
-            if intersecting_keys:
-                logger.warning(
-                    "open_stream_args contains unsupported arguments: %s. These arguments "
-                    "are not supported by ParquetDatasink. They will be ignored.",
-                    intersecting_keys,
-                )
-
         super().__init__(
             path,
             filesystem=filesystem,
@@ -178,8 +167,19 @@ class ParquetDatasink(_FileDatasink):
             suffix = filename_path.suffix  # extension including the dot
             basename_template = f"{stem}-{{i}}{suffix}"
 
-        if "compression" in self.open_stream_args:
-            write_kwargs["compression"] = self.open_stream_args["compression"]
+        if self.open_stream_args is not None:
+            intersecting_keys = UNSUPPORTED_OPEN_STREAM_ARGS.intersection(
+                set(self.open_stream_args.keys())
+            )
+            if intersecting_keys:
+                logger.warning(
+                    "open_stream_args contains unsupported arguments: %s. These arguments "
+                    "are not supported by ParquetDatasink. They will be ignored.",
+                    intersecting_keys,
+                )
+
+            if "compression" in self.open_stream_args:
+                write_kwargs["compression"] = self.open_stream_args["compression"]
 
         ds.write_dataset(
             data=tables,
