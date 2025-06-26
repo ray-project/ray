@@ -98,6 +98,14 @@ ray_cc_library(
 )
 
 ray_cc_library(
+    name = "shutdown_coordinator",
+    srcs = ["shutdown_coordinator.cc"],
+    hdrs = ["shutdown_coordinator.h"],
+    deps = [
+    ],
+)
+
+ray_cc_library(
     name = "core_worker_common",
     srcs = ["common.cc"],
     hdrs = ["common.h"],
