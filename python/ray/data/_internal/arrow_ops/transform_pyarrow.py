@@ -830,10 +830,13 @@ def _try_combine_chunks_safe(
         with potentially smaller number of chunks that have resulted from clumping
         the original ones)
 
+    Args:
+        array: The PyArrow ChunkedArray to safely combine.
+
     Returns:
-        - pa.Array if it's possible to combine provided pa.ChunkedArray into single
-        contiguous array
-        - pa.ChunkedArray (albeit with chunks re-combined) if it's not possible to
+        - ``pyarrow.Array`` if it's possible to combine provided ``pyarrow.ChunkedArray``
+        into single contiguous array
+        - ``pyarrow.ChunkedArray`` (albeit with chunks re-combined) if it's not possible to
         produce single pa.Array
     """
 
