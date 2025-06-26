@@ -139,7 +139,7 @@ doc/*.ipynb
 doc/BUILD
 doc/*/BUILD
 doc/*.rst
-.vale.*
+.vale.ini
 .vale/*
 @ doc
 ;
