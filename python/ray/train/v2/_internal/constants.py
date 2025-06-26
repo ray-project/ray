@@ -67,7 +67,7 @@ DEFAULT_ENABLE_STATE_ACTOR_POLLING = "1"
 STATE_ACTOR_POLL_INTERVAL_S_ENV_VAR = "RAY_TRAIN_STATE_ACTOR_POLL_INTERVAL_S"
 DEFAULT_STATE_ACTOR_POLL_INTERVAL_S: float = 30.0
 # TODO: `ray.util.state.api.get_actor` takes 10-50ms but we cannot pick lower than 2s
-# due to a known core bug. Remove this once the core bug is fixed.
+# due to https://github.com/ray-project/ray/issues/54153. Lower this after fix.
 GET_ACTOR_TIMEOUT_S: int = 2
 # GET_ACTOR_TIMEOUT_S_ENV_VAR * CONTROLLERS_TO_POLL_PER_ITERATION_ENV_VAR should be
 # way less than STATE_ACTOR_POLL_INTERVAL_S_ENV_VAR.

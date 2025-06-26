@@ -113,7 +113,7 @@ class TrainStateManager:
         run.status = RunStatus.FINISHED
         run.status_detail = None
         run.end_time_ns = current_time_ns()
-        self._create_or_update_train_run(run, block=True)
+        self._create_or_update_train_run(run)
 
     def update_train_run_errored(
         self,
@@ -124,7 +124,7 @@ class TrainStateManager:
         run.status = RunStatus.ERRORED
         run.status_detail = status_detail
         run.end_time_ns = current_time_ns()
-        self._create_or_update_train_run(run, block=True)
+        self._create_or_update_train_run(run)
 
     def update_train_run_aborted(
         self,
@@ -132,7 +132,7 @@ class TrainStateManager:
     ):
         run = self._runs[run_id]
         update_train_run_aborted(run, True)
-        self._create_or_update_train_run(run, block=True)
+        self._create_or_update_train_run(run)
 
     def create_train_run_attempt(
         self,
@@ -199,7 +199,7 @@ class TrainStateManager:
         run_attempt.status_detail = None
         run_attempt.end_time_ns = current_time_ns()
         mark_workers_dead(run_attempt)
-        self._create_or_update_train_run_attempt(run_attempt, block=True)
+        self._create_or_update_train_run_attempt(run_attempt)
 
     def update_train_run_attempt_errored(
         self,
@@ -212,7 +212,7 @@ class TrainStateManager:
         run_attempt.status_detail = status_detail
         run_attempt.end_time_ns = current_time_ns()
         mark_workers_dead(run_attempt)
-        self._create_or_update_train_run_attempt(run_attempt, block=True)
+        self._create_or_update_train_run_attempt(run_attempt)
 
     def update_train_run_attempt_aborted(
         self,
@@ -221,18 +221,18 @@ class TrainStateManager:
     ):
         run_attempt = self._run_attempts[run_id][attempt_id]
         update_train_run_attempt_aborted(run_attempt, True)
-        self._create_or_update_train_run_attempt(run_attempt, block=True)
+        self._create_or_update_train_run_attempt(run_attempt)
 
-    def _create_or_update_train_run(self, run: TrainRun, block: bool = False) -> None:
+    def _create_or_update_train_run(self, run: TrainRun) -> None:
         ref = self._state_actor.create_or_update_train_run.remote(run)
-        if block:
+        # Block to avoid case where controller is dead but run is not terminal.
+        if run.status.is_terminal():
             ray.get(ref)
 
-    def _create_or_update_train_run_attempt(
-        self, run_attempt: TrainRunAttempt, block: bool = False
-    ) -> None:
+    def _create_or_update_train_run_attempt(self, run_attempt: TrainRunAttempt) -> None:
+        # Block to avoid case where controller is dead but attempt is not terminal.
         ref = self._state_actor.create_or_update_train_run_attempt.remote(run_attempt)
-        if block:
+        if run_attempt.status.is_terminal():
             ray.get(ref)
 
 

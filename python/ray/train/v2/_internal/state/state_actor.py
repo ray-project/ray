@@ -60,6 +60,7 @@ class TrainStateActor:
 
         # TODO: consider row level locking if loop takes too long.
         self._runs_lock = threading.RLock()
+        self._run_attempts_lock = threading.RLock()
 
         # Set env vars related to polling the controller.
         if enable_state_actor_polling:
@@ -71,6 +72,7 @@ class TrainStateActor:
     def _abort_live_runs_with_dead_controllers(
         self, last_poll_run_id: Optional[str]
     ) -> str:
+        aborted_run_ids = []
         with self._runs_lock:
             runs = list(self._runs.values())
 
@@ -82,12 +84,12 @@ class TrainStateActor:
                         poll_index = (i + 1) % len(runs)
                         break
 
-            # Abort runs and run attempts.
-            sampled_runs = 0
+            # Abort runs.
+            num_sampled_runs = 0
             i = poll_index
             while (
                 i < poll_index + len(runs)
-                and sampled_runs < self._controllers_to_poll_per_iteration
+                and num_sampled_runs < self._controllers_to_poll_per_iteration
             ):
                 run = runs[i % len(runs)]
                 i += 1
@@ -97,19 +99,21 @@ class TrainStateActor:
                 actor_state = get_actor(
                     run.controller_actor_id, timeout=self._get_actor_timeout_s
                 )
-                sampled_runs += 1
+                num_sampled_runs += 1
                 if not actor_state or actor_state.state == "DEAD":
                     update_train_run_aborted(run, False)
                     self.create_or_update_train_run(run)
-                    latest_run_attempt = self._get_latest_run_attempt(run.id)
-                    if (
-                        latest_run_attempt
-                        and not latest_run_attempt.status.is_terminal()
-                    ):
-                        update_train_run_attempt_aborted(latest_run_attempt, False)
-                        self.create_or_update_train_run_attempt(latest_run_attempt)
+                    aborted_run_ids.append(run.id)
 
-            return last_poll_run_id
+        # Abort run attempts.
+        with self._run_attempts_lock:
+            for run_id in aborted_run_ids:
+                latest_run_attempt = self._get_latest_run_attempt(run_id)
+                if latest_run_attempt and not latest_run_attempt.status.is_terminal():
+                    update_train_run_attempt_aborted(latest_run_attempt, False)
+                    self.create_or_update_train_run_attempt(latest_run_attempt)
+
+        return last_poll_run_id
 
     def _start_run_state_reconciliation_thread(self) -> None:
         def _reconciliation_loop():
@@ -131,7 +135,7 @@ class TrainStateActor:
         thread.start()
 
     def _get_latest_run_attempt(self, run_id: str) -> Optional[TrainRunAttempt]:
-        with self._runs_lock:
+        with self._run_attempts_lock:
             run_attempts = self._run_attempts.get(run_id, {})
             if not run_attempts:
                 return None
@@ -144,7 +148,7 @@ class TrainStateActor:
         self._maybe_export_train_run(run_copy)
 
     def create_or_update_train_run_attempt(self, run_attempt: TrainRunAttempt) -> None:
-        with self._runs_lock:
+        with self._run_attempts_lock:
             self._run_attempts[run_attempt.run_id][run_attempt.attempt_id] = run_attempt
             run_attempt_copy = copy.deepcopy(run_attempt)
         self._maybe_export_train_run_attempt(run_attempt_copy)
@@ -154,7 +158,7 @@ class TrainStateActor:
             return self._runs
 
     def get_train_run_attempts(self) -> Dict[str, Dict[str, TrainRunAttempt]]:
-        with self._runs_lock:
+        with self._run_attempts_lock:
             return self._run_attempts
 
     # ============================
