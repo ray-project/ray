@@ -14,7 +14,7 @@ class TestAlgorithmCheckpointStepsAfterRestore(unittest.TestCase):
         ray.init()
 
     @classmethod
-    def tearDowClass(cls) -> None:
+    def tearDownClass(cls) -> None:
         ray.shutdown()
 
     def test_correct_steps_after_restore(self):
