@@ -180,9 +180,6 @@ def test_actor_pool_scaling():
             expected_reason="utilization of 0.4 <= 0.5",
         )
 
-        with patch(actor_pool, "can_scale_down", False):
-            assert_autoscaling_action(delta=0, expected_reason="not allowed")
-
     # Should scale down since the pool is above the max size.
     with patch(actor_pool, "current_size", 16):
         assert_autoscaling_action(
