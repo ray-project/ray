@@ -577,7 +577,7 @@ class ReplicaBase(ABC):
             was_error=user_exception is not None,
         )
 
-    async def _call_user_generator(
+    async def _call_streaming(
         self,
         request_metadata: RequestMetadata,
         request_args: Tuple[Any],
@@ -683,7 +683,7 @@ class ReplicaBase(ABC):
         async with self._wrap_user_method_call(
             request_metadata, request_args
         ) as status_code_callback:
-            async for result in self._call_user_generator(
+            async for result in self._call_streaming(
                 request_metadata,
                 request_args,
                 request_kwargs,
@@ -716,7 +716,7 @@ class ReplicaBase(ABC):
             )
 
             if request_metadata.is_streaming:
-                async for result in self._call_user_generator(
+                async for result in self._call_streaming(
                     request_metadata,
                     request_args,
                     request_kwargs,
