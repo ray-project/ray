@@ -137,11 +137,9 @@ class ShutdownCoordinator {
   ///
   /// \param dependencies External service dependencies (can be mock for testing)
   /// \param worker_type Type of worker for shutdown behavior customization
-  /// \param graceful_timeout_ms Timeout for graceful shutdown operations
   explicit ShutdownCoordinator(
       std::shared_ptr<ShutdownDependencies> dependencies,
-      WorkerType worker_type = WorkerType::WORKER,
-      std::chrono::milliseconds graceful_timeout_ms = std::chrono::milliseconds{30000});
+      WorkerType worker_type = WorkerType::WORKER);
 
   ~ShutdownCoordinator() = default;
 
@@ -151,20 +149,24 @@ class ShutdownCoordinator {
   ShutdownCoordinator(ShutdownCoordinator &&) = delete;
   ShutdownCoordinator &operator=(ShutdownCoordinator &&) = delete;
 
-  /// Request shutdown with specified mode and reason.
+  /// Request shutdown with configurable timeout and fallback behavior.
   ///
   /// This is the main entry point for all shutdown operations. It will:
   /// 1. Atomically transition to shutting down state (idempotent)
   /// 2. Execute appropriate shutdown sequence based on mode and worker type
-  /// 3. Handle graceful vs force shutdown behavior
+  /// 3. Handle graceful vs force shutdown behavior with caller-specified timeout
   ///
   /// \param force_shutdown If true, force immediate shutdown; if false, graceful shutdown
   /// \param reason The reason for shutdown initiation
   /// \param detail Optional detailed explanation
+  /// \param timeout_ms Timeout for graceful shutdown (0 = no timeout, immediate force fallback)
+  /// \param force_on_timeout If true, fallback to force shutdown on timeout; if false, wait indefinitely
   /// \return true if this call initiated shutdown, false if already shutting down
   bool RequestShutdown(bool force_shutdown,
                       ShutdownReason reason, 
-                      const std::string& detail = "");
+                      const std::string& detail = "",
+                      std::chrono::milliseconds timeout_ms = std::chrono::milliseconds{0},
+                      bool force_on_timeout = false);
 
   /// Legacy method for compatibility - delegates to RequestShutdown
   /// \param reason The reason for shutdown initiation
