@@ -994,11 +994,6 @@ class Dataset:
             raise ValueError(f"keep must be 'first', 'last', or False, got {keep}")
 
         def remove_duplicates_arrow(table: pa.Table, subset=None):
-            """
-            Remove duplicate rows from a PyArrow Table using only PyArrow and Numpy.
-            Returns unique rows in the order of their first appearance.
-            subset: list of columns to deduplicate on; default is all columns.
-            """
             if subset is None:
                 subset = table.column_names
             arrays = [
@@ -1015,8 +1010,20 @@ class Dataset:
             unique_indices = np.sort(unique_indices)
             return table.take(pa.array(unique_indices))
 
-        # Only for dedupe on *all columns* and keep="first", we can do in-batch dedup to save shuffle.
-        # But only safe if the dataset is a single block, otherwise duplicates across blocks will survive.
+        def compute_dedup_key(table: pa.Table, cols):
+            arrays = [
+                table[col].combine_chunks().to_numpy(zero_copy_only=False)
+                for col in cols
+            ]
+            str_arrays = [np.array(arr, dtype=str) for arr in arrays]
+            sep = "\x1e"
+            dedup_key = np.char.add(str_arrays[0], "")
+            for arr in str_arrays[1:]:
+                dedup_key = np.char.add(dedup_key, sep)
+                dedup_key = np.char.add(dedup_key, arr)
+            key_series = pa.array(dedup_key)
+            return table.append_column("_dedup_key", key_series)
+
         if (
             keys is None
             and keep == "first"
@@ -1029,7 +1036,6 @@ class Dataset:
                 fn_kwargs={"subset": all_cols},
             )
 
-        # Otherwise, use groupby with per-group logic.
         def reducer_first(batch: pa.Table) -> pa.Table:
             return batch.slice(0, 1)
 
@@ -1048,6 +1054,18 @@ class Dataset:
             reducer = reducer_last
         elif keep is False:
             reducer = reducer_unique
+
+        if keys is None:
+            ds_keyed = self.map_batches(
+                lambda t: compute_dedup_key(t, all_cols),
+                batch_format="pyarrow",
+                zero_copy_batch=False,
+            )
+            ds_dedup = ds_keyed.groupby(["_dedup_key"]).map_groups(
+                reducer,
+                batch_format="pyarrow",
+            )
+            return ds_dedup.drop_columns(["_dedup_key"])
 
         return self.groupby(subset_cols).map_groups(
             reducer,
