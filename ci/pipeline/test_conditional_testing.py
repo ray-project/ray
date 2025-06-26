@@ -24,6 +24,7 @@ python/ray/llm/llm.py: lint llm
 python/ray/workflow/workflow.py: lint workflow
 python/ray/tune/tune.py: lint ml train tune linux_wheels
 python/ray/train/train.py: lint ml train linux_wheels
+python/ray/util/dask/dask.py: lint python dask
 .buildkite/ml.rayci.yml: lint ml train tune
 rllib/rllib.py: lint rllib rllib_gpu rllib_directly
 
