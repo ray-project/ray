@@ -197,6 +197,8 @@ DEFAULT_WAIT_FOR_MIN_ACTORS_S = env_integer(
     "RAY_DATA_DEFAULT_WAIT_FOR_MIN_ACTORS_S", -1
 )
 
+DEFAULT_MAX_TASKS_IN_FLIGHT_PER_ACTOR = 4
+
 # Enable per node metrics reporting for Ray Data, disabled by default.
 DEFAULT_ENABLE_PER_NODE_METRICS = bool(
     int(os.environ.get("RAY_DATA_PER_NODE_METRICS", "0"))
@@ -502,7 +504,7 @@ class DataContext:
     # Setting non-positive value here (ie <= 0) disables this functionality
     # (defaults to -1).
     wait_for_min_actors_s: int = DEFAULT_WAIT_FOR_MIN_ACTORS_S
-    max_tasks_in_flight_per_actor: Optional[int] = None
+    max_tasks_in_flight_per_actor: Optional[int] = DEFAULT_MAX_TASKS_IN_FLIGHT_PER_ACTOR
     retried_io_errors: List[str] = field(
         default_factory=lambda: list(DEFAULT_RETRIED_IO_ERRORS)
     )
