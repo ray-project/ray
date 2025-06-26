@@ -584,15 +584,3 @@ class ExecutionPlan:
             if isinstance(op, (Zip, Sort)):
                 return True
         return False
-
-
-def _get_op_outputs_bytes_spilled(stats: DatasetStats):
-    spilled = 0
-
-    def collect_stats(cur_stats):
-        nonlocal spilled
-        spilled += cur_stats.extra_metrics.get("obj_store_mem_spilled", 0)
-        for parent in cur_stats.parents:
-            collect_stats(parent)
-
-    collect_stats(stats)
