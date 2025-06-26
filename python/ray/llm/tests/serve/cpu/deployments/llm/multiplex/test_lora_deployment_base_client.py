@@ -8,9 +8,6 @@ from fastapi import HTTPException
 from ray import serve
 from ray.llm._internal.serve.configs.server_models import ModelData
 from ray.llm._internal.serve.deployments.llm.llm_server import LLMDeployment
-from ray.llm._internal.serve.deployments.routers.router import (
-    LLMRouter,
-)
 from ray.llm.tests.serve.mocks.mock_vllm_engine import MockEchoVLLMEngine
 from ray.serve.handle import DeploymentHandle
 from ray.serve.llm import LLMConfig, LLMRouter, LoraConfig
