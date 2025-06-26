@@ -18,6 +18,8 @@ except ImportError:
     pyarrow = None
 
 
+# Minimum version support {String,List,Binary}View types
+MIN_PYARROW_VERSION_VIEW_TYPES = parse_version("16.0.0")
 MIN_PYARROW_VERSION_TYPE_PROMOTION = parse_version("14.0.0")
 
 
@@ -801,14 +803,20 @@ _VARIABLE_WIDTH_INT64_OFFSET_PA_TYPE_PREDICATES = [
 # List of variable-width types using int32 offsets
 _VARIABLE_WIDTH_INT32_OFFSET_PA_TYPE_PREDICATES = [
     pyarrow.types.is_string,
-    pyarrow.types.is_string_view,
     pyarrow.types.is_binary,
-    pyarrow.types.is_binary_view,
     pyarrow.types.is_list,
-    pyarrow.types.is_list_view,
     # Modeled as list<struct<key, val>>
     pyarrow.types.is_map,
 ]
+
+if PYARROW_VERSION > MIN_PYARROW_VERSION_VIEW_TYPES:
+    _VARIABLE_WIDTH_INT32_OFFSET_PA_TYPE_PREDICATES.extend(
+        [
+            pyarrow.types.is_string_view,
+            pyarrow.types.is_binary_view,
+            pyarrow.types.is_list_view,
+        ]
+    )
 
 
 def _try_combine_chunks_safe(
