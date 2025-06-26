@@ -371,6 +371,7 @@ class ReplicaBase(ABC):
             init_kwargs,
             deployment_id=self._deployment_id,
             run_sync_methods_in_threadpool=RAY_SERVE_RUN_SYNC_IN_THREADPOOL,
+            local_testing_mode=False,
         )
         self._semaphore = Semaphore(lambda: self.max_ongoing_requests)
 
@@ -598,13 +599,11 @@ class ReplicaBase(ABC):
             def _enqueue_thread_safe(item: Any):
                 self._event_loop.call_soon_threadsafe(result_queue.put_nowait, item)
 
-            call_user_method_future = asyncio.wrap_future(
-                self._user_callable_wrapper.call_user_method(
-                    request_metadata,
-                    request_args,
-                    request_kwargs,
-                    generator_result_callback=_enqueue_thread_safe,
-                )
+            call_user_method_future = self._user_callable_wrapper.call_user_method(
+                request_metadata,
+                request_args,
+                request_kwargs,
+                generator_result_callback=_enqueue_thread_safe,
             )
 
             first_message_peeked = False
@@ -661,10 +660,8 @@ class ReplicaBase(ABC):
         self, request_metadata: RequestMetadata, *request_args, **request_kwargs
     ) -> Tuple[bytes, Any]:
         async with self._wrap_user_method_call(request_metadata, request_args):
-            return await asyncio.wrap_future(
-                self._user_callable_wrapper.call_user_method(
-                    request_metadata, request_args, request_kwargs
-                )
+            return await self._user_callable_wrapper.call_user_method(
+                request_metadata, request_args, request_kwargs
             )
 
     async def handle_request_streaming(
@@ -715,10 +712,8 @@ class ReplicaBase(ABC):
                 ):
                     yield result
             else:
-                yield await asyncio.wrap_future(
-                    self._user_callable_wrapper.call_user_method(
-                        request_metadata, request_args, request_kwargs
-                    )
+                yield await self._user_callable_wrapper.call_user_method(
+                    request_metadata, request_args, request_kwargs
                 )
 
     @abstractmethod
@@ -732,8 +727,8 @@ class ReplicaBase(ABC):
             async with self._user_callable_initialized_lock:
                 self._initialization_start_time = time.time()
                 if not self._user_callable_initialized:
-                    self._user_callable_asgi_app = await asyncio.wrap_future(
-                        self._user_callable_wrapper.initialize_callable()
+                    self._user_callable_asgi_app = (
+                        await self._user_callable_wrapper.initialize_callable()
                     )
                     if self._user_callable_asgi_app:
                         self._docs_path = (
@@ -743,15 +738,11 @@ class ReplicaBase(ABC):
                     self._user_callable_initialized = True
 
                 if deployment_config:
-                    await asyncio.wrap_future(
-                        self._user_callable_wrapper.set_sync_method_threadpool_limit(
-                            deployment_config.max_ongoing_requests
-                        )
+                    await self._user_callable_wrapper.set_sync_method_threadpool_limit(
+                        deployment_config.max_ongoing_requests
                     )
-                    await asyncio.wrap_future(
-                        self._user_callable_wrapper.call_reconfigure(
-                            deployment_config.user_config
-                        )
+                    await self._user_callable_wrapper.call_reconfigure(
+                        deployment_config.user_config
                     )
 
             # A new replica should not be considered healthy until it passes
@@ -781,16 +772,12 @@ class ReplicaBase(ABC):
             if logging_config_changed:
                 self._configure_logger_and_profilers(deployment_config.logging_config)
 
-            await asyncio.wrap_future(
-                self._user_callable_wrapper.set_sync_method_threadpool_limit(
-                    deployment_config.max_ongoing_requests
-                )
+            await self._user_callable_wrapper.set_sync_method_threadpool_limit(
+                deployment_config.max_ongoing_requests
             )
             if user_config_changed:
-                await asyncio.wrap_future(
-                    self._user_callable_wrapper.call_reconfigure(
-                        deployment_config.user_config
-                    )
+                await self._user_callable_wrapper.call_reconfigure(
+                    deployment_config.user_config
                 )
 
             # We need to update internal replica context to reflect the new
@@ -856,7 +843,7 @@ class ReplicaBase(ABC):
             await self._drain_ongoing_requests()
 
         try:
-            await asyncio.wrap_future(self._user_callable_wrapper.call_destructor())
+            await self._user_callable_wrapper.call_destructor()
         except:  # noqa: E722
             # We catch a blanket exception since the constructor may still be
             # running, so instance variables used by the destructor may not exist.
@@ -874,11 +861,9 @@ class ReplicaBase(ABC):
         try:
             # If there's no user-defined health check, nothing runs on the user code event
             # loop and no future is returned.
-            f: Optional[
-                concurrent.futures.Future
-            ] = self._user_callable_wrapper.call_user_health_check()
+            f = self._user_callable_wrapper.call_user_health_check()
             if f is not None:
-                await asyncio.wrap_future(f)
+                await f
             self._healthy = True
         except Exception as e:
             logger.warning("Replica health check failed.")
@@ -889,8 +874,7 @@ class ReplicaBase(ABC):
         try:
             f = self._user_callable_wrapper.call_user_record_routing_stats()
             if f is not None:
-                routing_stats = await asyncio.wrap_future(f)
-                return routing_stats
+                return await f
             return {}
         except Exception as e:
             logger.warning("Replica record routing stats failed.")
@@ -1221,6 +1205,7 @@ class UserCallableWrapper:
         *,
         deployment_id: DeploymentID,
         run_sync_methods_in_threadpool: bool,
+        local_testing_mode: bool,
     ):
         if not (inspect.isfunction(deployment_def) or inspect.isclass(deployment_def)):
             raise TypeError(
@@ -1233,6 +1218,7 @@ class UserCallableWrapper:
         self._init_kwargs = init_kwargs
         self._is_function = inspect.isfunction(deployment_def)
         self._deployment_id = deployment_id
+        self._local_testing_mode = local_testing_mode
         self._destructor_called = False
         self._run_sync_methods_in_threadpool = run_sync_methods_in_threadpool
         self._warned_about_sync_method_change = False
@@ -1257,26 +1243,28 @@ class UserCallableWrapper:
         )
         self._user_code_event_loop_thread.start()
 
-    def _run_on_user_code_event_loop(f: Callable) -> Callable:
+    def _run_user_code(f: Callable) -> Callable:
         """Decorator to run a coroutine method on the user code event loop.
 
         The method will be modified to be a sync function that returns a
-        `concurrent.futures.Future`.
+        `asyncio.Future`.
         """
         assert inspect.iscoroutinefunction(
             f
-        ), "_run_on_user_code_event_loop can only be used on coroutine functions."
+        ), "_run_user_code can only be used on coroutine functions."
 
         @functools.wraps(f)
-        def wrapper(self, *args, **kwargs) -> concurrent.futures.Future:
-            return asyncio.run_coroutine_threadsafe(
-                f(self, *args, **kwargs),
-                self._user_code_event_loop,
-            )
+        def wrapper(self, *args, **kwargs) -> Any:
+            coro = f(self, *args, **kwargs)
+            fut = asyncio.run_coroutine_threadsafe(coro, self._user_code_event_loop)
+            if self._local_testing_mode:
+                return fut
+
+            return asyncio.wrap_future(fut)
 
         return wrapper
 
-    @_run_on_user_code_event_loop
+    @_run_user_code
     async def set_sync_method_threadpool_limit(self, limit: int):
         # NOTE(edoakes): the limit is thread local, so this must
         # be run on the user code event loop.
@@ -1436,7 +1424,7 @@ class UserCallableWrapper:
 
         await self._callable._run_asgi_lifespan_startup()
 
-    @_run_on_user_code_event_loop
+    @_run_user_code
     async def initialize_callable(self) -> Optional[ASGIApp]:
         """Initialize the user callable.
 
@@ -1519,16 +1507,16 @@ class UserCallableWrapper:
 
         return None
 
-    @_run_on_user_code_event_loop
+    @_run_user_code
     async def _call_user_health_check(self):
         await self._call_func_or_gen(self._user_health_check)
 
-    @_run_on_user_code_event_loop
+    @_run_user_code
     async def _call_user_record_routing_stats(self) -> Dict[str, Any]:
         result, _ = await self._call_func_or_gen(self._user_record_routing_stats)
         return result
 
-    @_run_on_user_code_event_loop
+    @_run_user_code
     async def call_reconfigure(self, user_config: Any):
         self._raise_if_not_initialized("call_reconfigure")
 
@@ -1674,7 +1662,7 @@ class UserCallableWrapper:
 
         return result
 
-    @_run_on_user_code_event_loop
+    @_run_user_code
     async def call_user_method(
         self,
         request_metadata: RequestMetadata,
@@ -1784,7 +1772,7 @@ class UserCallableWrapper:
                 "Internal Server Error", status_code=500
             )
 
-    @_run_on_user_code_event_loop
+    @_run_user_code
     async def call_destructor(self):
         """Explicitly call the `__del__` method of the user callable.
 
