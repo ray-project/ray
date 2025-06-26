@@ -1,5 +1,4 @@
 import base64
-import gc
 import os
 import sys
 import types

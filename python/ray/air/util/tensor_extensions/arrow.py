@@ -22,7 +22,6 @@ from ray.data._internal.numpy_support import (
     convert_to_numpy,
     _convert_datetime_to_np_datetime,
 )
-from ray.data._internal.util import GiB
 from ray.util import log_once
 from ray.util.annotations import DeveloperAPI, PublicAPI
 from ray.util.common import INT32_MAX
