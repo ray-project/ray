@@ -449,7 +449,7 @@ TEST_F(TaskManagerTest, TestResubmitCanceledTask) {
   manager_.MarkTaskCanceled(spec.TaskId());
   std::vector<ObjectID> task_deps;
   ASSERT_EQ(manager_.ResubmitTask(spec.TaskId(), &task_deps),
-            ResubmitTaskResult::FAILED_TASK_CANCELED);
+            rpc::ErrorType::TASK_CANCELLED);
 
   // Final cleanup.
   reference_counter_->RemoveLocalReference(return_id, nullptr);

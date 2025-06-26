@@ -38,12 +38,6 @@ namespace core {
 
 class ActorManager;
 
-enum class ResubmitTaskResult {
-  SUCCESS,
-  FAILED_MAX_ATTEMPT_EXCEEDED,
-  FAILED_TASK_CANCELED
-};
-
 class TaskResubmissionInterface {
  public:
   virtual std::optional<rpc::ErrorType> ResubmitTask(
@@ -604,7 +598,8 @@ class TaskManager : public TaskFinisherInterface, public TaskResubmissionInterfa
         : spec(std::move(spec_arg)),
           num_retries_left(num_retries_left_arg),
           counter(&counter),
-          num_oom_retries_left(num_oom_retries_left) {
+          num_oom_retries_left(num_oom_retries_left),
+          is_canceled(false) {
       reconstructable_return_ids.reserve(num_returns);
       for (size_t i = 0; i < num_returns; i++) {
         reconstructable_return_ids.insert(spec.ReturnId(i));
@@ -665,8 +660,10 @@ class TaskManager : public TaskFinisherInterface, public TaskResubmissionInterfa
     // Number of times this task may be resubmitted if the task failed
     // due to out of memory failure.
     int32_t num_oom_retries_left;
+    // Whether the task has been marked for cancellation.
+    // Canceled tasks will never be retried.
+    bool is_canceled;
     // Objects returned by this task that are reconstructable. This is set
-
     // objects may be reconstructed by resubmitting the task. Once the task
     // finishes its first execution, then the objects that the task returned by
     // value are removed from this set because they can be inlined in any
