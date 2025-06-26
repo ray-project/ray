@@ -71,8 +71,8 @@ class ActorPoolMapOperator(MapOperator):
         """Create an ActorPoolMapOperator instance.
 
         Args:
-            transform_fn: The function to apply to each ref bundle input.
-            init_fn: The callable class to instantiate on each actor.
+            map_transformer: Instance of `MapTransformer` that will be applied
+                to each ref bundle input.
             input_op: Operator generating input data for this op.
             compute_strategy: ComputeStrategy used for this operator.
             name: The name of this operator.
@@ -694,8 +694,19 @@ class _ActorPool(AutoscalingActorPool):
                 create an actor with those labels. The function should return the actor
                 handle and a reference to the actor's node ID.
             per_actor_resource_usage: The resource usage per actor.
-            _enable_actor_pool_on_exit_hook: Whether to enable the actor pool on exit
-                hook.
+            min_size: The minimum number of running actors to be maintained
+                in the pool. Note, that this constraint could be violated when
+                no new work is available for scheduling in the actor pool (ie
+                when operator completes execution).
+            max_size: The minimum number of running actors to be maintained
+                in the pool.
+            max_actor_concurrency: The maximum number of concurrent tasks a
+                single actor can execute (derived from `ray_remote_args`
+                passed to the operator).
+            max_tasks_in_flight_per_actor: The maximum number of tasks that can
+                be submitted to a single actor at any given time.
+            _enable_actor_pool_on_exit_hook: Whether to enable the actor pool
+                on exit hook.
         """
 
         self._min_size: int = min_size
