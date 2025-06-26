@@ -74,10 +74,11 @@ class ActorPoolMapOperator(MapOperator):
             map_transformer: Instance of `MapTransformer` that will be applied
                 to each ref bundle input.
             input_op: Operator generating input data for this op.
-            compute_strategy: ComputeStrategy used for this operator.
-            name: The name of this operator.
+            data_context: The DataContext instance containing configuration settings.
             target_max_block_size: The target maximum number of bytes to
                 include in an output block.
+            compute_strategy: `ComputeStrategy` used for this operator.
+            name: The name of this operator.
             min_rows_per_bundle: The number of rows to gather per batch passed to the
                 transform_fn, or None to use the block size. Setting the batch size is
                 important for the performance of GPU-accelerated transform functions.
