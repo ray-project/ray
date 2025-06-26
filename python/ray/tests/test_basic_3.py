@@ -89,7 +89,8 @@ def test_many_fractional_resources(shutdown_only):
     def _get_available_resources() -> Dict[str, float]:
         """Get only the resources we care about in this test."""
         return {
-            k: v for k,v in ray.available_resources().items()
+            k: v
+            for k, v in ray.available_resources().items()
             if k in {"CPU", "GPU", "Custom"}
         }
 
