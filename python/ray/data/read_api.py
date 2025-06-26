@@ -2948,6 +2948,8 @@ def from_numpy_refs(
 @PublicAPI
 def from_arrow(
     tables: Union["pyarrow.Table", bytes, List[Union["pyarrow.Table", bytes]]],
+    *,
+    override_num_blocks: Optional[int] = None,
 ) -> MaterializedDataset:
     """Create a :class:`~ray.data.Dataset` from a list of PyArrow tables.
 
@@ -2967,14 +2969,45 @@ def from_arrow(
     Args:
         tables: A PyArrow table, or a list of PyArrow tables,
                 or its streaming format in bytes.
+        override_num_blocks: Override the number of output blocks from all read tasks.
+            By default, the number of output blocks is dynamically decided based on
+            input data size and available resources. You shouldn't manually set this
+            value in most cases.
 
     Returns:
         :class:`~ray.data.Dataset` holding data from the PyArrow tables.
     """
     import pyarrow as pa
 
+    def _arrow_array_split(table: pa.Table) -> List[pa.Table]:
+        """Split PyArrow table into roughly equal parts."""
+        import builtins
+
+        total_rows = len(table)
+        if total_rows == 0:
+            return [table.slice(0, 0) for _ in builtins.range(override_num_blocks)]
+
+        split_points = [
+            total_rows * i // override_num_blocks
+            for i in builtins.range(override_num_blocks + 1)
+        ]
+        result = []
+        for i in builtins.range(override_num_blocks):
+            start = split_points[i]
+            end = split_points[i + 1]
+            length = max(0, min(end - start, total_rows - start))  # prevent overflow
+            result.append(table.slice(start, length))
+        return result
+
     if isinstance(tables, (pa.Table, bytes)):
         tables = [tables]
+
+    if override_num_blocks is not None:
+        if override_num_blocks <= 0:
+            raise ValueError("override_num_blocks must be > 0")
+        combined_table = pa.concat_tables(tables) if len(tables) > 1 else tables[0]
+        tables = _arrow_array_split(combined_table)
+
     return from_arrow_refs([ray.put(t) for t in tables])
 
 
@@ -3252,20 +3285,12 @@ def from_huggingface(
             override_num_blocks=override_num_blocks,
         )
     if isinstance(dataset, datasets.Dataset):
-        # For non-streaming Hugging Face Dataset, we don't support override_num_blocks
-        if override_num_blocks is not None:
-            raise ValueError(
-                "`override_num_blocks` parameter is not supported for "
-                "non-streaming Hugging Face Datasets. Please omit the parameter and use `.repartition` instead."
-                "Alternatively, use streaming mode to read the dataset."
-            )
-
         # To get the resulting Arrow table from a Hugging Face Dataset after
         # applying transformations (e.g., train_test_split(), shard(), select()),
         # we create a copy of the Arrow table, which applies the indices
         # mapping from the transformations.
         hf_ds_arrow = dataset.with_format("arrow")
-        ray_ds = from_arrow(hf_ds_arrow[:])
+        ray_ds = from_arrow(hf_ds_arrow[:], override_num_blocks=override_num_blocks)
         return ray_ds
     elif isinstance(dataset, (datasets.DatasetDict, datasets.IterableDatasetDict)):
         available_keys = list(dataset.keys())

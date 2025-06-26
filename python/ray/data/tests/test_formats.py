@@ -41,6 +41,58 @@ def test_from_arrow(ray_start_regular_shared):
     assert "FromArrow" in ds.stats()
 
 
+@pytest.mark.parametrize(
+    "tables,override_num_blocks,expected_blocks,expected_rows",
+    [
+        # Single table tests
+        ("single", 2, 2, 3),  # Single table split into 2 blocks
+        ("single", 5, 5, 3),  # Single table, more blocks than rows
+        ("single", 1, 1, 3),  # Single table, 1 block
+        # Multiple tables tests
+        ("multiple", 3, 3, 6),  # Multiple tables split into 3 blocks
+        ("multiple", 10, 10, 6),  # Multiple tables, more blocks than rows
+        # Empty table tests
+        ("empty", 5, 5, 0),  # Empty table, more blocks than rows
+        ("empty", 1, 1, 0),  # Empty table, 1 block
+    ],
+)
+def test_from_arrow_override_num_blocks(
+    ray_start_regular_shared,
+    tables,
+    override_num_blocks,
+    expected_blocks,
+    expected_rows,
+):
+    df1 = pd.DataFrame({"one": [1, 2, 3], "two": ["a", "b", "c"]})
+    df2 = pd.DataFrame({"one": [4, 5, 6], "two": ["e", "f", "g"]})
+    empty_df = pd.DataFrame({"one": [], "two": []})
+
+    # Prepare tables based on test case
+    if tables == "single":
+        arrow_tables = pa.Table.from_pandas(df1)
+        expected_data = [(r.one, r.two) for _, r in df1.iterrows()]
+    elif tables == "multiple":
+        arrow_tables = [pa.Table.from_pandas(df1), pa.Table.from_pandas(df2)]
+        expected_data = [(r.one, r.two) for _, r in pd.concat([df1, df2]).iterrows()]
+    elif tables == "empty":
+        arrow_tables = pa.Table.from_pandas(empty_df)
+        expected_data = []
+
+    # Create dataset with override_num_blocks
+    ds = ray.data.from_arrow(arrow_tables, override_num_blocks=override_num_blocks)
+
+    # Verify number of blocks
+    assert ds.num_blocks() == expected_blocks
+
+    # Verify row count
+    assert ds.count() == expected_rows
+
+    # Verify data integrity (only for non-empty datasets)
+    if expected_rows > 0:
+        values = [(r["one"], r["two"]) for r in ds.take_all()]
+        assert values == expected_data
+
+
 def test_from_arrow_refs(ray_start_regular_shared):
     df1 = pd.DataFrame({"one": [1, 2, 3], "two": ["a", "b", "c"]})
     df2 = pd.DataFrame({"one": [4, 5, 6], "two": ["e", "f", "g"]})
