@@ -139,6 +139,8 @@ doc/*.ipynb
 doc/BUILD
 doc/*/BUILD
 doc/*.rst
+.vale.ini
+.vale/
 @ doc
 ;
 
