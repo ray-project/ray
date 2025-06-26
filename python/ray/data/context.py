@@ -386,7 +386,7 @@ class DataContext:
             for execution to individual actor at the same time. Note that only up to
             `max_concurrency` number of these tasks will be executing concurrently
             while remaining ones will be waiting in the Actor's queue. Buffering
-            tasks in the queeu allows us to overlap pulling of the blocks (which are
+            tasks in the queue allows us to overlap pulling of the blocks (which are
             tasks arguments) with the execution of the prior tasks maximizing
             individual Actor's utilization
         retried_io_errors: A list of substrings of error messages that should

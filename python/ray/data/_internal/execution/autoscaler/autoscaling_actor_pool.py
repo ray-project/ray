@@ -6,7 +6,7 @@ from ray.data._internal.execution.interfaces.execution_options import ExecutionR
 from ray.util.annotations import DeveloperAPI
 
 
-@dataclass
+@dataclass(frozen=True)
 class ActorPoolScalingRequest:
 
     delta: int
@@ -93,7 +93,7 @@ class AutoscalingActorPool(ABC):
         )
 
     @abstractmethod
-    def scale(self, config: ActorPoolScalingRequest):
+    def scale(self, req: ActorPoolScalingRequest):
         """Applies autoscaling action"""
         ...
 
