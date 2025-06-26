@@ -18,13 +18,26 @@ from ray.data.tests.util import extract_values
 from ray.tests.conftest import *  # noqa
 
 
+@pytest.fixture
+def sample_dataframes():
+    """Fixture providing sample pandas DataFrames for testing.
+    
+    Returns:
+        tuple: (df1, df2) where df1 has 3 rows and df2 has 3 rows
+    """
+    df1 = pd.DataFrame({"one": [1, 2, 3], "two": ["a", "b", "c"]})
+    df2 = pd.DataFrame({"one": [4, 5, 6], "two": ["e", "f", "g"]})
+    return df1, df2
+
+
 def df_to_csv(dataframe, path, **kwargs):
     dataframe.to_csv(path, **kwargs)
 
 
-def test_from_arrow(ray_start_regular_shared):
-    df1 = pd.DataFrame({"one": [1, 2, 3], "two": ["a", "b", "c"]})
-    df2 = pd.DataFrame({"one": [4, 5, 6], "two": ["e", "f", "g"]})
+def test_from_arrow(ray_start_regular_shared, sample_dataframes):
+    """Test basic from_arrow functionality with single and multiple tables."""
+    df1, df2 = sample_dataframes
+    
     ds = ray.data.from_arrow([pa.Table.from_pandas(df1), pa.Table.from_pandas(df2)])
     values = [(r["one"], r["two"]) for r in ds.take(6)]
     rows = [(r.one, r.two) for _, r in pd.concat([df1, df2]).iterrows()]
@@ -44,27 +57,29 @@ def test_from_arrow(ray_start_regular_shared):
 @pytest.mark.parametrize(
     "tables,override_num_blocks,expected_blocks,expected_rows",
     [
-        # Single table tests
-        ("single", 2, 2, 3),  # Single table split into 2 blocks
-        ("single", 5, 5, 3),  # Single table, more blocks than rows
-        ("single", 1, 1, 3),  # Single table, 1 block
-        # Multiple tables tests
+        # Single table scenarios
+        ("single", 1, 1, 3),   # Single table, 1 block
+        ("single", 2, 2, 3),   # Single table split into 2 blocks
+        ("single", 5, 5, 3),   # Single table, more blocks than rows
+        ("single", 10, 10, 3), # Edge case: 3 rows split into 10 blocks (creates empty blocks)
+        # Multiple tables scenarios
         ("multiple", 3, 3, 6),  # Multiple tables split into 3 blocks
-        ("multiple", 10, 10, 6),  # Multiple tables, more blocks than rows
-        # Empty table tests
-        ("empty", 5, 5, 0),  # Empty table, more blocks than rows
+        ("multiple", 10, 10, 6), # Multiple tables, more blocks than rows
+        # Empty table scenarios
         ("empty", 1, 1, 0),  # Empty table, 1 block
+        ("empty", 5, 5, 0),  # Empty table, more blocks than rows
     ],
 )
 def test_from_arrow_override_num_blocks(
     ray_start_regular_shared,
+    sample_dataframes,
     tables,
     override_num_blocks,
     expected_blocks,
     expected_rows,
 ):
-    df1 = pd.DataFrame({"one": [1, 2, 3], "two": ["a", "b", "c"]})
-    df2 = pd.DataFrame({"one": [4, 5, 6], "two": ["e", "f", "g"]})
+    """Test from_arrow with override_num_blocks parameter."""
+    df1, df2 = sample_dataframes
     empty_df = pd.DataFrame({"one": [], "two": []})
 
     # Prepare tables based on test case
@@ -93,9 +108,8 @@ def test_from_arrow_override_num_blocks(
         assert values == expected_data
 
 
-def test_from_arrow_refs(ray_start_regular_shared):
-    df1 = pd.DataFrame({"one": [1, 2, 3], "two": ["a", "b", "c"]})
-    df2 = pd.DataFrame({"one": [4, 5, 6], "two": ["e", "f", "g"]})
+def test_from_arrow_refs(ray_start_regular_shared, sample_dataframes):
+    df1, df2 = sample_dataframes
     ds = ray.data.from_arrow_refs(
         [ray.put(pa.Table.from_pandas(df1)), ray.put(pa.Table.from_pandas(df2))]
     )
@@ -151,18 +165,17 @@ def test_iter_internal_ref_bundles(ray_start_regular_shared):
     assert out == list(range(n)), out
 
 
-def test_fsspec_filesystem(ray_start_regular_shared, tmp_path):
+def test_fsspec_filesystem(ray_start_regular_shared, tmp_path, sample_dataframes):
     """Same as `test_parquet_write` but using a custom, fsspec filesystem.
 
     TODO (Alex): We should write a similar test with a mock PyArrow fs, but
     unfortunately pa.fs._MockFileSystem isn't serializable, so this may require
     some effort.
     """
-    df1 = pd.DataFrame({"one": [1, 2, 3], "two": ["a", "b", "c"]})
+    df1, df2 = sample_dataframes
     table = pa.Table.from_pandas(df1)
     path1 = os.path.join(str(tmp_path), "test1.parquet")
     pq.write_table(table, path1)
-    df2 = pd.DataFrame({"one": [4, 5, 6], "two": ["e", "f", "g"]})
     table = pa.Table.from_pandas(df2)
     path2 = os.path.join(str(tmp_path), "test2.parquet")
     pq.write_table(table, path2)
