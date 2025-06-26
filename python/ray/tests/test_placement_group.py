@@ -168,8 +168,7 @@ def test_placement_group_invalid_resource_request(shutdown_only):
     placement_group_assert_no_leak([pg])
 
 
-@pytest.mark.parametrize("gcs_actor_scheduling_enabled", [False, True])
-def test_placement_group_pack(ray_start_cluster, gcs_actor_scheduling_enabled):
+def test_placement_group_pack(ray_start_cluster):
     @ray.remote(num_cpus=2)
     class Actor(object):
         def __init__(self):
@@ -181,14 +180,7 @@ def test_placement_group_pack(ray_start_cluster, gcs_actor_scheduling_enabled):
     cluster = ray_start_cluster
     num_nodes = 2
     for i in range(num_nodes):
-        cluster.add_node(
-            num_cpus=4,
-            _system_config={
-                "gcs_actor_scheduling_enabled": gcs_actor_scheduling_enabled
-            }
-            if i == 0
-            else {},
-        )
+        cluster.add_node(num_cpus=4)
     ray.init(address=cluster.address)
 
     placement_group = ray.util.placement_group(
@@ -288,8 +280,7 @@ def test_placement_group_strict_pack(ray_start_cluster):
     placement_group_assert_no_leak([placement_group])
 
 
-@pytest.mark.parametrize("gcs_actor_scheduling_enabled", [False, True])
-def test_placement_group_spread(ray_start_cluster, gcs_actor_scheduling_enabled):
+def test_placement_group_spread(ray_start_cluster):
     @ray.remote
     class Actor(object):
         def __init__(self):
@@ -301,14 +292,7 @@ def test_placement_group_spread(ray_start_cluster, gcs_actor_scheduling_enabled)
     cluster = ray_start_cluster
     num_nodes = 2
     for i in range(num_nodes):
-        cluster.add_node(
-            num_cpus=4,
-            _system_config={
-                "gcs_actor_scheduling_enabled": gcs_actor_scheduling_enabled
-            }
-            if i == 0
-            else {},
-        )
+        cluster.add_node(num_cpus=4)
     ray.init(address=cluster.address)
 
     placement_group = ray.util.placement_group(
@@ -341,9 +325,8 @@ def test_placement_group_spread(ray_start_cluster, gcs_actor_scheduling_enabled)
     placement_group_assert_no_leak([placement_group])
 
 
-@pytest.mark.parametrize("gcs_actor_scheduling_enabled", [False, True])
 @skip_flaky_core_test_premerge("https://github.com/ray-project/ray/issues/38726")
-def test_placement_group_strict_spread(ray_start_cluster, gcs_actor_scheduling_enabled):
+def test_placement_group_strict_spread(ray_start_cluster):
     @ray.remote
     class Actor(object):
         def __init__(self):
@@ -357,11 +340,6 @@ def test_placement_group_strict_spread(ray_start_cluster, gcs_actor_scheduling_e
     for i in range(num_nodes):
         cluster.add_node(
             num_cpus=4,
-            _system_config={
-                "gcs_actor_scheduling_enabled": gcs_actor_scheduling_enabled
-            }
-            if i == 0
-            else {},
         )
     ray.init(address=cluster.address)
 
