@@ -15,23 +15,47 @@
 #include "ray/core_worker/shutdown_coordinator.h"
 
 #include <sstream>
+#include <thread>
 
 namespace ray {
 namespace core {
 
-ShutdownCoordinator::ShutdownCoordinator() {
+ShutdownCoordinator::ShutdownCoordinator(
+    std::shared_ptr<ShutdownDependencies> dependencies,
+    WorkerType worker_type,
+    std::chrono::milliseconds graceful_timeout_ms)
+    : dependencies_(std::move(dependencies)),
+      worker_type_(worker_type),
+      graceful_timeout_ms_(graceful_timeout_ms) {
   // Initialize to running state with no reason
   state_and_reason_.store(PackStateReason(ShutdownState::kRunning, ShutdownReason::kNone),
                           std::memory_order_release);
 }
 
-bool ShutdownCoordinator::TryInitiateShutdown(ShutdownReason reason) {
+bool ShutdownCoordinator::RequestShutdown(bool force_shutdown,
+                                         ShutdownReason reason, 
+                                         const std::string& detail) {
   uint64_t expected = PackStateReason(ShutdownState::kRunning, ShutdownReason::kNone);
   uint64_t desired = PackStateReason(ShutdownState::kShuttingDown, reason);
   
   // Use strong compare_exchange with acquire-release semantics for proper ordering
-  return state_and_reason_.compare_exchange_strong(
+  bool initiated = state_and_reason_.compare_exchange_strong(
       expected, desired, std::memory_order_acq_rel, std::memory_order_acquire);
+  
+  if (initiated) {
+    // Store detail for observability (only first caller sets this)
+    shutdown_detail_ = detail;
+    
+    // Execute shutdown sequence based on force_shutdown flag and worker type
+    ExecuteShutdownSequence(force_shutdown, detail);
+  }
+  
+  return initiated;
+}
+
+bool ShutdownCoordinator::TryInitiateShutdown(ShutdownReason reason) {
+  // Legacy compatibility - delegate to graceful shutdown by default
+  return RequestShutdown(false, reason, "");
 }
 
 bool ShutdownCoordinator::TryTransitionToDisconnecting() {
@@ -106,6 +130,101 @@ std::string ShutdownCoordinator::GetStateString() const {
       return "Shutdown";
     default:
       return "Unknown";
+  }
+}
+
+// Shutdown execution methods
+
+void ShutdownCoordinator::ExecuteShutdownSequence(bool force_shutdown, const std::string& detail) {
+  switch (worker_type_) {
+    case WorkerType::DRIVER:
+      ExecuteDriverShutdown(force_shutdown, detail);
+      break;
+    case WorkerType::WORKER:
+      ExecuteWorkerShutdown(force_shutdown, detail);
+      break;
+    case WorkerType::SPILL_WORKER:
+    case WorkerType::RESTORE_WORKER:
+      // Spill/Restore workers behave like normal workers for shutdown
+      ExecuteWorkerShutdown(force_shutdown, detail);
+      break;
+    default:
+      // Handle any unknown worker types as regular workers
+      ExecuteWorkerShutdown(force_shutdown, detail);
+      break;
+  }
+}
+
+void ShutdownCoordinator::ExecuteGracefulShutdown(const std::string& detail) {
+  if (!dependencies_) {
+    return;
+  }
+
+  auto start_time = std::chrono::steady_clock::now();
+  
+  // Wait for pending tasks to complete (with timeout)
+  while (dependencies_->GetPendingTaskCount() > 0) {
+    if (dependencies_->IsGracefulShutdownTimedOut(start_time, graceful_timeout_ms_)) {
+      // Timeout reached, proceed with force shutdown
+      ExecuteForceShutdown("Graceful shutdown timeout: " + detail);
+      return;
+    }
+    
+    // Small sleep to avoid busy waiting
+    std::this_thread::sleep_for(std::chrono::milliseconds(10));
+  }
+  
+  // Clean shutdown with all tasks completed
+  dependencies_->FlushMetrics();
+  TryTransitionToDisconnecting();
+  dependencies_->DisconnectRaylet();
+  dependencies_->DisconnectGcs();
+  TryTransitionToShutdown();
+}
+
+void ShutdownCoordinator::ExecuteForceShutdown(const std::string& detail) {
+  if (!dependencies_) {
+    return;
+  }
+
+  // Cancel all pending tasks immediately
+  dependencies_->CancelPendingTasks(true /* force */);
+  
+  // Quick disconnect without waiting
+  TryTransitionToDisconnecting();
+  dependencies_->DisconnectRaylet();
+  dependencies_->DisconnectGcs();
+  TryTransitionToShutdown();
+}
+
+void ShutdownCoordinator::ExecuteDriverShutdown(bool force_shutdown, const std::string& detail) {
+  if (force_shutdown) {
+    ExecuteForceShutdown(detail);
+  } else {
+    ExecuteGracefulShutdown(detail);
+  }
+}
+
+void ShutdownCoordinator::ExecuteWorkerShutdown(bool force_shutdown, const std::string& detail) {
+  if (force_shutdown) {
+    ExecuteForceShutdown(detail);
+  } else {
+    ExecuteGracefulShutdown(detail);
+  }
+}
+
+void ShutdownCoordinator::ExecuteActorShutdown(bool force_shutdown, const std::string& detail) {
+  if (!dependencies_) {
+    return;
+  }
+
+  // Actor shutdown always needs to clean up state
+  dependencies_->CleanupActorState();
+  
+  if (force_shutdown) {
+    ExecuteForceShutdown(detail);
+  } else {
+    ExecuteGracefulShutdown(detail);
   }
 }
 
