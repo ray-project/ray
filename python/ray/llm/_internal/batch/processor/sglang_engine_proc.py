@@ -13,6 +13,7 @@ from ray.llm._internal.batch.observability.usage_telemetry.usage import (
     get_or_create_telemetry_agent,
 )
 from ray.llm._internal.batch.processor.base import (
+    DEFAULT_MAX_TASKS_IN_FLIGHT,
     OfflineProcessorConfig,
     Processor,
     ProcessorBuilder,
@@ -124,7 +125,9 @@ def build_sglang_engine_processor(
                 compute=ray.data.ActorPoolStrategy(
                     min_size=config.concurrency,
                     max_size=config.concurrency,
-                    max_tasks_in_flight_per_actor=max(config.max_concurrent_batches, 4),
+                    max_tasks_in_flight_per_actor=max(
+                        config.max_concurrent_batches, DEFAULT_MAX_TASKS_IN_FLIGHT
+                    ),
                 ),
                 # The number of running batches "per actor" in Ray Core level.
                 # This is used to make sure we overlap batches to avoid the tail
