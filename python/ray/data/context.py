@@ -380,11 +380,13 @@ class DataContext:
             call is made with a S3 URI.
         wait_for_min_actors_s: The default time to wait for minimum requested
             actors to start before raising a timeout, in seconds.
-        max_tasks_in_flight_per_actor: Max number of tasks that could be enqueued
-            into the individual Actor's queue. Note that running tasks are not counted
-            towards this limit. This setting allows Actors to start pulling and buffering
-             blocks for the tasks waiting in the queue to make sure tasks could start
-            executing immediately once taken from the queue.
+        max_tasks_in_flight_per_actor: Max number of tasks that could be submitted
+            for execution to individual actor at the same time. Note that only up to
+            `max_concurrency` number of these tasks will be executing concurrently
+            while remaining ones will be waiting in the Actor's queue. Buffering
+            tasks in the queeu allows us to overlap pulling of the blocks (which are
+            tasks arguments) with the execution of the prior tasks maximizing
+            individual Actor's utilization
         retried_io_errors: A list of substrings of error messages that should
             trigger a retry when reading or writing files. This is useful for handling
             transient errors when reading from remote storage systems.
