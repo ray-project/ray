@@ -185,6 +185,21 @@ py_test(
 )
 
 py_test(
+    name = "test_arrow_block_scaling",
+    size = "large",
+    srcs = ["tests/test_arrow_block_scaling.py"],
+    tags = [
+        "data_non_parallel",
+        "exclusive",
+        "team:data",
+    ],
+    deps = [
+        ":conftest",
+        "//:ray_lib",
+    ],
+)
+
+py_test(
     name = "test_auto_parallelism",
     size = "medium",
     srcs = ["tests/test_auto_parallelism.py"],
@@ -1450,6 +1465,20 @@ py_test(
     name = "test_state_export",
     size = "medium",
     srcs = ["tests/test_state_export.py"],
+    tags = [
+        "exclusive",
+        "team:data",
+    ],
+    deps = [
+        ":conftest",
+        "//:ray_lib",
+    ],
+)
+
+py_test(
+    name = "test_delta",
+    size = "small",
+    srcs = ["tests/test_delta.py"],
     tags = [
         "exclusive",
         "team:data",

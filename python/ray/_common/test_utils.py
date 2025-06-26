@@ -6,6 +6,7 @@ _common/ (not in tests/) to be accessible in the Ray package distribution.
 """
 
 import asyncio
+from collections.abc import Awaitable
 from contextlib import contextmanager
 import inspect
 import os
@@ -110,7 +111,7 @@ def wait_for_condition(
 
 
 async def async_wait_for_condition(
-    condition_predictor: Callable[..., bool],
+    condition_predictor: Callable[..., Awaitable[bool]],
     timeout: float = 10,
     retry_interval_ms: float = 100,
     **kwargs: Any,
