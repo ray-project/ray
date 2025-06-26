@@ -401,8 +401,9 @@ class ActorTaskSubmitter : public ActorTaskSubmitterInterface {
   /// Disconnect the RPC client for an actor.
   void DisconnectRpcClient(ClientQueue &queue) ABSL_EXCLUSIVE_LOCKS_REQUIRED(mu_);
 
-  /// Fail all in-flight tasks.
-  void FailInflightTasks(
+  /// Mark all in-flight tasks as failed if the actor was restarted. This will cause the
+  /// tasks to be retried as usual.
+  void FailInflightTasksOnRestart(
       const absl::flat_hash_map<TaskAttempt, rpc::ClientCallback<rpc::PushTaskReply>>
           &inflight_task_callbacks) ABSL_LOCKS_EXCLUDED(mu_);
 

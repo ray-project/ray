@@ -33,6 +33,7 @@ from ray.autoscaler._private.constants import (
     DISABLE_NODE_UPDATERS_KEY,
     FOREGROUND_NODE_LAUNCH_KEY,
     WORKER_LIVENESS_CHECK_KEY,
+    AUTOSCALER_HEARTBEAT_TIMEOUT_S,
 )
 from ray.autoscaler._private.load_metrics import LoadMetrics
 from ray.autoscaler._private.monitor import Monitor
@@ -3711,6 +3712,117 @@ class AutoscalingTest(unittest.TestCase):
 
         autoscaler.update()
         self.waitForNodes(2, tag_filters=WORKER_FILTER)
+
+    def testRecoverUnhealthyWorkersWithNodeSpecificDocker(self):
+        """Test that recovery uses node-specific docker configuration.
+
+        This test verifies that when a worker node becomes unhealthy and needs
+        recovery, the autoscaler uses the node-specific docker configuration
+        rather than the global docker configuration.
+        """
+
+        config = copy.deepcopy(SMALL_CLUSTER)
+
+        # Top-level global docker config (should be overridden by node-specific config)
+        config["docker"]["image"] = "global-image:latest"
+        config["docker"]["worker_image"] = "global-worker-image:latest"
+
+        # Add node-specific docker configuration
+        config["available_node_types"]["worker"]["docker"] = {
+            "worker_image": "node-specific-worker-image:latest",
+            "worker_run_options": ["--gpus=all"],
+        }
+
+        config["available_node_types"]["worker"]["min_workers"] = 1
+
+        config_path = self.write_config(config)
+        self.provider = MockProvider()
+        runner = MockProcessRunner()
+        runner.respond_to_call("json .Config.Env", ["[]" for i in range(2)])
+        lm = LoadMetrics()
+        mock_metrics = Mock()
+
+        # Create head node
+        self.provider.create_node(
+            {},
+            {
+                TAG_RAY_NODE_KIND: NODE_KIND_HEAD,
+                TAG_RAY_NODE_STATUS: STATUS_UP_TO_DATE,
+                TAG_RAY_USER_NODE_TYPE: "head",
+            },
+            1,
+        )
+
+        autoscaler = MockAutoscaler(
+            config_path,
+            lm,
+            MockGcsClient(),
+            max_failures=0,
+            process_runner=runner,
+            update_interval_s=0,
+            prom_metrics=mock_metrics,
+        )
+        autoscaler.update()
+        self.waitForNodes(1, tag_filters=WORKER_FILTER)
+        self.provider.finish_starting_nodes()
+        autoscaler.update()
+        self.waitForNodes(
+            1, tag_filters={TAG_RAY_NODE_STATUS: STATUS_UP_TO_DATE, **WORKER_FILTER}
+        )
+
+        # Wait for initial updaters to finish
+        self.waitForUpdatersToFinish(autoscaler)
+        autoscaler.update()
+
+        # Ensure initial updaters are cleared after they finish
+        assert not autoscaler.updaters
+
+        # Clear command history before triggering recovery to ensure we only check
+        # commands from the recovery process, not the initial node creation
+        runner.clear_history()
+
+        # Trigger node recovery by setting the last heartbeat time to be before the timeout
+        worker_ip = "172.0.0.1"  # Expected IP of the first worker node
+        lm.last_heartbeat_time_by_ip[worker_ip] = (
+            time.time() - AUTOSCALER_HEARTBEAT_TIMEOUT_S - 1
+        )
+        autoscaler.update()
+
+        # Wait for recovery to start and finish
+        self.waitFor(lambda: len(autoscaler.updaters) > 0, num_retries=150)
+        self.waitForUpdatersToFinish(autoscaler)
+
+        # Verify that recovery has started by checking multiple indicators:
+
+        # 1. Check that an updater was created for recovery
+        assert len(autoscaler.updaters) == 1
+        node_id = list(autoscaler.updaters.keys())[0]
+        updater = autoscaler.updaters[node_id]
+
+        # 2. Verify the updater is marked as a recovery updater
+        assert updater.for_recovery is True
+
+        # 3. Verify the recovery event was logged
+        events = autoscaler.event_summarizer.summary()
+        assert any(
+            "Restarting" in event and "lost contact with raylet" in event
+            for event in events
+        )
+
+        # 4. Verify that the recovery process uses the node-specific docker image
+        # instead of the global docker image
+        runner.assert_has_call(worker_ip, pattern="node-specific-worker-image:latest")
+
+        # 5. Verify that the recovery process uses the node-specific run options
+        runner.assert_has_call(worker_ip, pattern="--gpus=all")
+
+        # 6. Verify that the recovery updater has the correct docker config
+        # by checking that it uses the node-specific docker configuration
+        assert (
+            updater.docker_config.get("worker_image")
+            == "node-specific-worker-image:latest"
+        )
+        assert "--gpus=all" in updater.docker_config.get("worker_run_options")
 
 
 def test_import():
