@@ -5,6 +5,7 @@ import pytest
 import ray
 from ray import serve
 from ray.actor import ActorHandle
+from ray.util.state import list_actors
 from ray.serve._private.constants import (
     DEFAULT_UVICORN_KEEP_ALIVE_TIMEOUT_S,
     SERVE_NAMESPACE,
@@ -16,10 +17,8 @@ class TestTimeoutKeepAliveConfig:
 
     def get_proxy_actor(self) -> ActorHandle:
         proxy_actor_name = None
-        for actor in ray._private.state.actors().values():
-            if actor["ActorClassName"] == "ProxyActor":
-                proxy_actor_name = actor["Name"]
-        return ray.get_actor(proxy_actor_name, namespace=SERVE_NAMESPACE)
+        [proxy_actor] = list_actors(filters=[("class_name", "=", "ProxyActor")])
+        return ray.get_actor(proxy_actor.name, namespace=SERVE_NAMESPACE)
 
     def test_default_keep_alive_timeout_s(self, ray_shutdown):
         """Test when no keep_alive_timeout_s is set.

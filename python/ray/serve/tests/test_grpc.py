@@ -9,6 +9,7 @@ import pytest
 
 import ray
 from ray import serve
+from ray.util.state import list_actors
 from ray._common.test_utils import SignalActor, wait_for_condition
 from ray.cluster_utils import Cluster
 from ray.serve._private.constants import SERVE_NAMESPACE
@@ -277,18 +278,21 @@ def test_grpc_proxy_on_draining_nodes(ray_cluster):
 
     # Ensure worker node has both replicas.
     def check_replicas_on_worker_nodes():
-        _actors = ray._private.state.actors().values()
-        replica_nodes = [
-            a["Address"]["NodeID"]
-            for a in _actors
-            if a["ActorClassName"].startswith("ServeReplica")
-        ]
-        return len(set(replica_nodes)) == 1
+        return (
+            len(
+                {
+                    a.node_id
+                    for a in list_actors()
+                    if a.class_name.startswith("ServeReplica")
+                }
+            )
+            == 1
+        )
 
     wait_for_condition(check_replicas_on_worker_nodes)
 
     # Ensure total actors of 2 proxies, 1 controller, and 2 replicas, and 2 nodes exist.
-    wait_for_condition(lambda: len(ray._private.state.actors()) == 5)
+    wait_for_condition(lambda: len(list_actors()) == 5)
     assert len(ray.nodes()) == 2
 
     # Set up gRPC channels.
@@ -318,21 +322,9 @@ def test_grpc_proxy_on_draining_nodes(ray_cluster):
     # replicas on all nodes.
     serve.delete(name=app_name)
 
-    def _check():
-        _actors = ray._private.state.actors().values()
-        return (
-            len(
-                list(
-                    filter(
-                        lambda a: a["State"] == "ALIVE",
-                        _actors,
-                    )
-                )
-            )
-            == 3
-        )
-
-    wait_for_condition(_check)
+    wait_for_condition(
+        lambda: len(list_actors(filters=[("STATE", "=", "ALIVE")])) == 3,
+    )
 
     # Ensures ListApplications method on the head node is succeeding.
     wait_for_condition(
