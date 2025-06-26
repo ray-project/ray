@@ -10,7 +10,6 @@ import pytest
 import ray
 import ray.actor
 from ray import serve
-from ray.util.state import list_actors
 from ray._common.test_utils import SignalActor, wait_for_condition
 from ray.cluster_utils import AutoscalingCluster, Cluster
 from ray.exceptions import RayActorError
@@ -20,6 +19,7 @@ from ray.serve._private.utils import get_head_node_id
 from ray.serve.context import _get_global_client
 from ray.serve.schema import ProxyStatus, ServeInstanceDetails
 from ray.tests.conftest import call_ray_stop_only  # noqa: F401
+from ray.util.state import list_actors
 
 
 @pytest.fixture

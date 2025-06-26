@@ -9,7 +9,6 @@ import pytest
 import ray
 from ray import serve
 from ray._common.test_utils import SignalActor, wait_for_condition
-from ray.util.state import list_actors
 from ray.cluster_utils import Cluster
 from ray.exceptions import RayActorError
 from ray.serve._private.common import DeploymentID, ReplicaState
@@ -23,6 +22,7 @@ from ray.serve._private.utils import calculate_remaining_timeout, get_head_node_
 from ray.serve.context import _get_global_client
 from ray.serve.handle import DeploymentHandle
 from ray.serve.schema import ServeDeploySchema
+from ray.util.state import list_actors
 
 
 def get_pids(expected, deployment_name="D", app_name="default", timeout=30):

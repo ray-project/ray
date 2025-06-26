@@ -9,7 +9,6 @@ import pytest
 
 import ray
 from ray import serve
-from ray.util.state import list_actors
 from ray._common.test_utils import SignalActor, wait_for_condition
 from ray.cluster_utils import Cluster
 from ray.serve._private.constants import SERVE_NAMESPACE
@@ -27,6 +26,7 @@ from ray.serve.config import gRPCOptions
 from ray.serve.generated import serve_pb2, serve_pb2_grpc
 from ray.serve.grpc_util import RayServegRPCContext
 from ray.serve.tests.test_config_files.grpc_deployment import g, g2
+from ray.util.state import list_actors
 
 
 def test_serving_request_through_grpc_proxy(ray_cluster):
