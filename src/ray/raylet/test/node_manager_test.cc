@@ -779,50 +779,33 @@ TEST_F(NodeManagerTest, TestPinningAnObjectPendingDeletionFails) {
   RAY_UNUSED(mock_store_client_->TryCreateImmediately(
       id, owner_addr, 1024, nullptr, 1024, nullptr, source, 0));
 
-  std::thread io_thread{[&] {
-    auto work_guard = boost::asio::make_work_guard(io_service_);
-    io_service_.run();
-  }};
+  rpc::PinObjectIDsRequest pin_request;
+  pin_request.add_object_ids(id.Binary());
+  rpc::PinObjectIDsReply successful_pin_reply;
 
-  std::thread grpc_client_thread{[&] {
-    rpc::PinObjectIDsRequest request;
-    request.add_object_ids(id.Binary());
+  node_manager_->HandlePinObjectIDs(
+      pin_request,
+      &successful_pin_reply,
+      [](Status s, std::function<void()> success, std::function<void()> failure) {});
 
-    rpc::PinObjectIDsReply reply;
+  EXPECT_EQ(successful_pin_reply.successes_size(), 1);
+  EXPECT_TRUE(successful_pin_reply.successes(0));
 
-    auto channel =
-        grpc::CreateChannel("localhost:" + std::to_string(node_manager_->GetServerPort()),
-                            grpc::InsecureChannelCredentials());
+  // TODO(irabbani): This is a hack to mark object for pending deletion in the
+  // FakeLocalObjectManager. Follow up in CORE-1677 to remove this and
+  // integrate with a Fake SubscriberInterface.
+  objects_pending_deletion_->emplace(id);
 
-    grpc::ClientContext context;
-    auto stub = rpc::NodeManagerService::NewStub(channel);
-    auto status = stub->PinObjectIDs(&context, request, &reply);
+  rpc::PinObjectIDsReply failed_pin_reply;
+  node_manager_->HandlePinObjectIDs(
+      pin_request,
+      &failed_pin_reply,
+      [](Status s, std::function<void()> success, std::function<void()> failure) {});
 
-    // Object was pinned successfully because it was not pending deletion.
-    EXPECT_TRUE(status.ok());
-    EXPECT_EQ(reply.successes_size(), 1);
-    EXPECT_TRUE(reply.successes(0));
+  EXPECT_EQ(failed_pin_reply.successes_size(), 1);
+  EXPECT_FALSE(failed_pin_reply.successes(0));
 
-    // TODO(irabbani): This is a hack to mark object for pending deletion in the
-    // FakeLocalObjectManager. Follow up in CORE-1677 to remove this and
-    // integrate with a Fake SubscriberInterface.
-    objects_pending_deletion_->emplace(id);
-
-    grpc::ClientContext context_second;
-    rpc::PinObjectIDsRequest request_second;
-    request_second.add_object_ids(id.Binary());
-    rpc::PinObjectIDsReply reply_second;
-    auto status_second = stub->PinObjectIDs(&context_second, request, &reply_second);
-
-    // Object was not pinned successfully because it was pending deletion.
-    EXPECT_TRUE(status_second.ok());
-    EXPECT_EQ(reply_second.successes_size(), 1);
-    EXPECT_FALSE(reply_second.successes(0));
-  }};
-
-  grpc_client_thread.join();
   io_service_.stop();
-  io_thread.join();
 }
 
 }  // namespace ray::raylet

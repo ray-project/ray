@@ -270,6 +270,12 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
     return cluster_resource_scheduler_.GetLocalResourceManager().GetLocalDrainRequest();
   }
 
+  /// gRPC Handlers
+  /// Handle a `PinObjectIDs` request.
+  void HandlePinObjectIDs(rpc::PinObjectIDsRequest request,
+                          rpc::PinObjectIDsReply *reply,
+                          rpc::SendReplyCallback send_reply_callback) override;
+
  private:
   FRIEND_TEST(NodeManagerStaticTest, TestHandleReportWorkerBacklog);
 
@@ -631,11 +637,6 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
   void HandleCancelWorkerLease(rpc::CancelWorkerLeaseRequest request,
                                rpc::CancelWorkerLeaseReply *reply,
                                rpc::SendReplyCallback send_reply_callback) override;
-
-  /// Handle a `PinObjectIDs` request.
-  void HandlePinObjectIDs(rpc::PinObjectIDsRequest request,
-                          rpc::PinObjectIDsReply *reply,
-                          rpc::SendReplyCallback send_reply_callback) override;
 
   /// Handle a `NodeStats` request.
   void HandleGetNodeStats(rpc::GetNodeStatsRequest request,
