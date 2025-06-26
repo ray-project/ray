@@ -802,15 +802,11 @@ class _ActorPool(AutoscalingActorPool):
             return 0
 
         if req.delta > 0:
-            # Make sure after scaling up actor pool won't exceed its target
-            # max size
-            target_num_actors = min(
-                req.delta, max(self.max_size() - self.current_size(), 0)
-            )
+            target_num_actors = req.delta
 
             logger.debug(
-                f"Scaling up actor pool by {target_num_actors} (requested delta={req.delta}) "
-                f"(reason={req.reason}, {self.get_actor_info()})"
+                f"Scaling up actor pool by {target_num_actors} (reason={req.reason}, "
+                f"{self.get_actor_info()})"
             )
 
             for _ in range(target_num_actors):
@@ -824,12 +820,7 @@ class _ActorPool(AutoscalingActorPool):
 
         elif req.delta < 0:
             num_released = 0
-
-            # Make sure after scaling down actor pool size won't fall below its
-            # min size
-            target_num_actors = min(
-                abs(req.delta), max(self.current_size() - self.min_size(), 0)
-            )
+            target_num_actors = abs(req.delta)
 
             for _ in range(target_num_actors):
                 if self._remove_inactive_actor():
