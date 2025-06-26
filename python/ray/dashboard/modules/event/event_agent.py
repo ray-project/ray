@@ -6,10 +6,12 @@ from concurrent.futures import ThreadPoolExecutor
 from typing import Union
 
 import ray._private.ray_constants as ray_constants
-import ray.dashboard.consts as dashboard_consts
 import ray.dashboard.utils as dashboard_utils
 from ray.dashboard.modules.event import event_consts
-from ray.dashboard.modules.event.event_utils import monitor_events
+from ray.dashboard.modules.event.event_utils import (
+    monitor_events,
+    _fetch_dashboard_address,
+)
 from ray.dashboard.utils import async_loop_forever, create_task
 
 logger = logging.getLogger(__name__)
@@ -53,20 +55,16 @@ class EventAgent(dashboard_utils.DashboardAgentModule):
         and retry forever.
         """
         while True:
-            if self._dashboard_http_address:
-                return self._dashboard_http_address
             try:
-                dashboard_http_address = await self._gcs_client.async_internal_kv_get(
-                    ray_constants.DASHBOARD_ADDRESS.encode(),
-                    namespace=ray_constants.KV_NAMESPACE_DASHBOARD,
-                    timeout=dashboard_consts.GCS_RPC_TIMEOUT_SECONDS,
-                )
-                if not dashboard_http_address:
-                    raise ValueError("Dashboard http address not found in InternalKV.")
-                self._dashboard_http_address = dashboard_http_address.decode()
+                if not self._dashboard_http_address:
+                    self._dashboard_http_address = await _fetch_dashboard_address(
+                        self._gcs_client
+                    )
+
                 return self._dashboard_http_address
             except Exception:
                 logger.exception("Get dashboard http address failed.")
+
             await asyncio.sleep(1)
 
     @async_loop_forever(event_consts.EVENT_AGENT_REPORT_INTERVAL_SECONDS)
@@ -99,24 +97,14 @@ class EventAgent(dashboard_utils.DashboardAgentModule):
                 data_str[:limit] + (data_str[limit:] and "..."),
             )
 
-    async def get_internal_states(self):
-        if self.total_event_reported <= 0 or self.total_request_sent <= 0:
-            return
-
-        elapsed = time.monotonic() - self.module_started
-        return {
-            "total_events_reported": self.total_event_reported,
-            "Total_report_request": self.total_request_sent,
-            "queue_size": self._cached_events.qsize(),
-            "total_uptime": elapsed,
-        }
-
     async def run(self, server):
         # Start monitor task.
         self._monitor = monitor_events(
             self._event_dir,
             lambda data: create_task(self._cached_events.put(data)),
             self._executor,
+            # NOTE: Make watcher track all event-types
+            source_types=None,
         )
 
         await asyncio.gather(
