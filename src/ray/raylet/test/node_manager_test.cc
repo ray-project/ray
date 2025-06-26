@@ -804,8 +804,6 @@ TEST_F(NodeManagerTest, TestPinningAnObjectPendingDeletionFails) {
 
   EXPECT_EQ(failed_pin_reply.successes_size(), 1);
   EXPECT_FALSE(failed_pin_reply.successes(0));
-
-  io_service_.stop();
 }
 
 }  // namespace ray::raylet
