@@ -12,7 +12,6 @@ import ray
 from ray import train
 from ray._private.accelerators.neuron import NEURON_RT_VISIBLE_CORES_ENV_VAR
 from ray.air._internal.util import StartTraceback
-from ray.util.state import list_actors
 
 # Trigger pytest hook to automatically zip test cluster logs to archive dir on failure
 from ray.tests.conftest import pytest_runtest_makereport  # noqa
@@ -34,6 +33,7 @@ from ray.train.constants import (
 from ray.train.torch import TorchConfig
 from ray.util.placement_group import get_current_placement_group
 from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
+from ray.util.state import list_actors
 
 
 @pytest.fixture
@@ -555,9 +555,7 @@ def test_neuron_core_accelerator_ids_sharing_disabled(
 
 
 def get_node_id_set() -> Set[str]:
-    return {
-        a.node_id for a in list_actors()
-    }
+    return {a.node_id for a in list_actors()}
 
 
 @pytest.mark.parametrize("num_workers", [3, 4, 5])
