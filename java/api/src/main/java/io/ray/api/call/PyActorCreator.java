@@ -16,6 +16,9 @@ public class PyActorCreator extends BaseActorCreator<PyActorCreator> {
 
   public PyActorCreator setAsync(boolean isAsync) {
     builder.setAsync(isAsync);
+    if (isAsync) {
+      builder.setExecuteOutOfOrder(true);
+    }
     return this;
   }
 
