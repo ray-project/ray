@@ -35,6 +35,7 @@
 #include "ray/core_worker/context.h"
 #include "ray/core_worker/core_worker_options.h"
 #include "ray/core_worker/core_worker_process.h"
+#include "ray/core_worker/shutdown_coordinator.h"
 #include "ray/core_worker/experimental_mutable_object_manager.h"
 #include "ray/core_worker/experimental_mutable_object_provider.h"
 #include "ray/core_worker/future_resolver.h"
@@ -67,6 +68,9 @@
 /// 4) Add a method to the CoreWorker class below: "CoreWorker::HandleExampleCall"
 
 namespace ray::core {
+
+// Forward declarations
+class CoreWorkerShutdownDependencies;
 
 JobID GetProcessJobID(const CoreWorkerOptions &options);
 
@@ -1918,7 +1922,19 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// TODO(kevin85421): the shutdown logic contained in `Disconnect`, `Exit`, and
   /// `Shutdown` should be unified to avoid mistakes due to complex dependent semantics.
   /// See https://github.com/ray-project/ray/issues/51642.
+  ///
+  /// RESOLVED: Unified shutdown coordinator handles all shutdown entry points.
 
+  /// Unified shutdown coordinator that manages all shutdown operations.
+  /// This replaces the fragmented is_exited_/is_shutdown_ atomics with a
+  /// single state machine that coordinates all shutdown entry points.
+  std::shared_ptr<ShutdownCoordinator> shutdown_coordinator_;
+  
+  /// Concrete dependencies implementation for the shutdown coordinator.
+  std::shared_ptr<CoreWorkerShutdownDependencies> shutdown_dependencies_;
+
+  /// Legacy fields - kept for compatibility during transition.
+  /// TODO: Remove these after full migration to ShutdownCoordinator.
   /// Used to ensure that the `CoreWorker::Exit` method is called at most once.
   std::atomic<bool> is_exited_ = false;
   /// Used to ensure that the `CoreWorker::Shutdown` method is called at most once.
