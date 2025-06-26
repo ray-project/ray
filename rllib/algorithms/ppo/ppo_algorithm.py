@@ -11,6 +11,12 @@ from ray.rllib.core.learner.training_data import TrainingData
 
 
 class PPOAlgorithm(SyncEnvRunnerConcreteMixin, LearnerConcreteMixin, RLAlgorithm):
+    """Defines the PPO algorithm.
+
+    Note, this algorithm includes mixins for policy rollout,
+    model updates and derives directly from the base algorithm.
+    """
+
     def __init__(self, config: AlgorithmConfig, logger_creator=None, **kwargs):
         super().__init__(config=config, logger_creator=logger_creator, **kwargs)
 
@@ -18,6 +24,8 @@ class PPOAlgorithm(SyncEnvRunnerConcreteMixin, LearnerConcreteMixin, RLAlgorithm
 
         # This sets up the `RLAlgorithm` base class and the `EnvRunner`s.
         print("Setup PPOAlgorithm ... ")
+        # It is important to call the `super` method here to activate
+        # the MRO.
         super()._setup(config=config)
 
     def training_step(self) -> None:
@@ -50,11 +58,15 @@ class PPOAlgorithm(SyncEnvRunnerConcreteMixin, LearnerConcreteMixin, RLAlgorithm
             shuffle_batch_per_epoch=self.config.shuffle_batch_per_epoch,
         )
 
+        state = self._provide_sync_state({})
         self.sync()
 
         return learner_results, metrics
 
     def sync(self, state: Optional[Dict[str, Any]] = None, **kwargs):
+        # Synchronize the `EnvRunner`s via the learner group.
+        # TODO (simon): This is bad style, having one mixin being dependent
+        #   on another one. Better: use state.
         state = super().sync(state, learner_group=self._learner_group)
 
         # state = self._provide_sync_state(state, **kwargs)

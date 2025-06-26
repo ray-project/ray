@@ -1,6 +1,6 @@
 import abc
 
-from typing import Any, Dict, List, Tuple, Union
+from typing import Any, Dict, List, Optional, Tuple, Union
 
 from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
 from ray.rllib.core import DEFAULT_MODULE_ID
@@ -12,10 +12,21 @@ from ray.rllib.utils.typing import ParamDict, ResultDict
 
 
 class LearnerMixin(abc.ABC):
+    """Base mixin for learning functionalities.
+
+    This base mixin defines a `LearnerGroup` and multiple related
+    methods to update `RLModule`s.
+
+    Note, only concrete mixins can be inherited from. Furthermore,
+    the "mixins-to-the-left"-rule must be applied, i.e. any mixin
+    needs to be left of `RLAlgorithm`.
+    """
 
     _learner_group: LearnerGroup = None
 
     def __init__(self, config: AlgorithmConfig, **kwargs):
+        """Initializes a LearnerMixin."""
+        # Call the super's method.
         super().__init__(config=config, **kwargs)
 
     abc.abstractmethod
@@ -33,7 +44,8 @@ class LearnerMixin(abc.ABC):
 
     abc.abstractmethod
 
-    def _provide_sync_state(self, state, **kwargs):
+    def _provide_sync_state(self, state: Any, **kwargs):
+        """Abstract method to receive a state from the Learner(s)."""
         return super()._provide_sync_state(state, **kwargs)
 
     abc.abstractmethod
@@ -43,8 +55,12 @@ class LearnerMixin(abc.ABC):
         self._learner_group = None
 
     def get_multi_rl_module_spec(self, config: AlgorithmConfig) -> MultiRLModuleSpec:
+        """Defines the MultiRLModuleSpec to be used in the Learner(s)."""
         spaces = {
             INPUT_ENV_SPACES: (
+                # TODO (sven, simon): This needs the observation and action
+                #   spaces to be defined in the config. Otherwise spaces could
+                #   be defined centrally in the config or base algorithm.
                 config.observation_space,
                 config.action_space,
             )
@@ -52,6 +68,8 @@ class LearnerMixin(abc.ABC):
 
         spaces.update(
             {
+                # TODO (sven, simon): This does not include any preprocessing
+                #   like in EnvToModule.
                 DEFAULT_MODULE_ID: (
                     config.observation_space,
                     config.action_space,
@@ -66,19 +84,26 @@ class LearnerMixin(abc.ABC):
 
 
 class LearnerConcreteMixin(LearnerMixin):
+    """Concrete mixin for learning functionalities."""
+
     def __init__(self, config: AlgorithmConfig, **kwargs):
+        # Important here to call super.
         super().__init__(config=config, **kwargs)
 
     def _setup(self, config: AlgorithmConfig):
         print("Setup LearnerConcreteMixin ...")
         module_spec = self.get_multi_rl_module_spec(config=config)
         self._learner_group = config.build_learner_group(rl_module_spec=module_spec)
+        # Super must be called here, to ensure all other mixins
+        # following in MRO are set up.
         super()._setup(config=config)
 
     def update(
         self, training_data: TrainingData, **kwargs
     ) -> Tuple[ParamDict, Union[ResultDict, List[ResultDict]]]:
-
+        # Call update via the `LearnerGroup`.
+        # TODO (simon): Maybe deprecate with v1 also any other data
+        #   but `TrainingData`.
         return self._learner_group.update(
             training_data=training_data,
             timesteps=None,
@@ -86,7 +111,9 @@ class LearnerConcreteMixin(LearnerMixin):
         )
 
     def _provide_sync_state(self, state: Any, **kwargs):
-
+        # Note, state must have an `update` method defined, too.
         state.update(self._learner_group.get_state())
 
+        # Call super's update such that all mixins can contribute to
+        # the state.
         return super()._provide_sync_state(state, **kwargs)

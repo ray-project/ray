@@ -6,6 +6,19 @@ from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
 
 
 class RLAlgorithm(Trainable):
+    """Base class for RL algorithms.
+
+    This class defines the basic methods and attributes for any RL
+    Algorithm. An RL Algorithm needs to inherit from this class
+    and implement a couple of mixins defined under rl_algorithm_mixins.
+
+    Some major inheritance rules apply when inheriting from these
+    classes:
+        1. `RLAlgorithm` is always last in inheritance order.
+        2. Any mixin is included to the left.
+        3. Any overriden method must call `super`.
+    """
+
     def __init__(
         self,
         config: AlgorithmConfig,
