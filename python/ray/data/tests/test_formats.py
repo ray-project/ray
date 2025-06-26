@@ -21,7 +21,7 @@ from ray.tests.conftest import *  # noqa
 @pytest.fixture
 def sample_dataframes():
     """Fixture providing sample pandas DataFrames for testing.
-    
+
     Returns:
         tuple: (df1, df2) where df1 has 3 rows and df2 has 3 rows
     """
@@ -37,7 +37,7 @@ def df_to_csv(dataframe, path, **kwargs):
 def test_from_arrow(ray_start_regular_shared, sample_dataframes):
     """Test basic from_arrow functionality with single and multiple tables."""
     df1, df2 = sample_dataframes
-    
+
     ds = ray.data.from_arrow([pa.Table.from_pandas(df1), pa.Table.from_pandas(df2)])
     values = [(r["one"], r["two"]) for r in ds.take(6)]
     rows = [(r.one, r.two) for _, r in pd.concat([df1, df2]).iterrows()]
@@ -58,13 +58,18 @@ def test_from_arrow(ray_start_regular_shared, sample_dataframes):
     "tables,override_num_blocks,expected_blocks,expected_rows",
     [
         # Single table scenarios
-        ("single", 1, 1, 3),   # Single table, 1 block
-        ("single", 2, 2, 3),   # Single table split into 2 blocks
-        ("single", 5, 5, 3),   # Single table, more blocks than rows
-        ("single", 10, 10, 3), # Edge case: 3 rows split into 10 blocks (creates empty blocks)
+        ("single", 1, 1, 3),  # Single table, 1 block
+        ("single", 2, 2, 3),  # Single table split into 2 blocks
+        ("single", 5, 5, 3),  # Single table, more blocks than rows
+        (
+            "single",
+            10,
+            10,
+            3,
+        ),  # Edge case: 3 rows split into 10 blocks (creates empty blocks)
         # Multiple tables scenarios
         ("multiple", 3, 3, 6),  # Multiple tables split into 3 blocks
-        ("multiple", 10, 10, 6), # Multiple tables, more blocks than rows
+        ("multiple", 10, 10, 6),  # Multiple tables, more blocks than rows
         # Empty table scenarios
         ("empty", 1, 1, 0),  # Empty table, 1 block
         ("empty", 5, 5, 0),  # Empty table, more blocks than rows

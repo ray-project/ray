@@ -2978,8 +2978,9 @@ def from_arrow(
     Returns:
         :class:`~ray.data.Dataset` holding data from the PyArrow tables.
     """
-    import pyarrow as pa
     import builtins
+
+    import pyarrow as pa
 
     if isinstance(tables, (pa.Table, bytes)):
         tables = [tables]
@@ -2993,7 +2994,9 @@ def from_arrow(
 
         if total_rows == 0:
             # Handle empty table case
-            tables = [combined_table.slice(0, 0) for _ in builtins.range(override_num_blocks)]
+            tables = [
+                combined_table.slice(0, 0) for _ in builtins.range(override_num_blocks)
+            ]
         else:
             batch_size = (total_rows + override_num_blocks - 1) // override_num_blocks
             slices = []
