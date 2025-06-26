@@ -198,8 +198,10 @@ class _NcclGroup(Communicator):
         remote actor died), and the buffer is not safe to read.
 
         Args:
-            buf: The torch.Tensor to receive into. This buffer is safe to read
+            shape: The shape of the tensor to receive.
+            dtype: The dtype of the tensor to receive.
             peer_rank: The rank of the actor to receive from.
+            allocator: The allocator to create tensor for the received data.
         """
         if self._closed:
             raise RayChannelError("NCCL group has been destroyed.")
