@@ -808,7 +808,7 @@ class _ActorPool(AutoscalingActorPool):
                 req.delta, max(self.max_size() - self.current_size(), 0)
             )
 
-            logger.info(
+            logger.debug(
                 f"Scaling up actor pool by {target_num_actors} (requested delta={req.delta}) "
                 f"(reason={req.reason}, {self.get_actor_info()})"
             )
@@ -836,7 +836,7 @@ class _ActorPool(AutoscalingActorPool):
                     num_released += 1
 
             if num_released > 0:
-                logger.info(
+                logger.debug(
                     f"Scaled down actor pool by {num_released} "
                     f"(reason={req.reason}; {self.get_actor_info()})"
                 )

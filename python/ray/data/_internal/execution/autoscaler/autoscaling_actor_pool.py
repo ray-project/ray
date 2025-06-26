@@ -78,7 +78,8 @@ class AutoscalingActorPool(ABC):
 
     @abstractmethod
     def num_tasks_in_flight(self) -> int:
-        """Number of current in-flight tasks (running + pending tasks)."""
+        """Number of current in-flight tasks (ie total nubmer of tasks that have been
+        submitted to the actor pool)."""
         ...
 
     def num_free_task_slots(self) -> int:
