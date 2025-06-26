@@ -12,7 +12,7 @@ import pytest
 import ray
 from ray._common.test_utils import wait_for_condition
 from ray.data._internal.compute import ActorPoolStrategy, TaskPoolStrategy
-from ray.data._internal.execution.autoscaler.default_autoscaler import ScalingConfig
+from ray.data._internal.execution.autoscaler.default_autoscaler import ActorPoolScalingRequest
 from ray.data._internal.execution.interfaces import (
     ExecutionOptions,
     PhysicalOperator,
@@ -657,7 +657,7 @@ def test_actor_pool_map_operator_num_active_tasks_and_completed(shutdown_only):
     assert op.num_active_tasks() == 0
 
     # Scale up to the max size, the second half of the actors will be pending.
-    actor_pool.scale(ScalingConfig(delta=num_actors))
+    actor_pool.scale(ActorPoolScalingRequest(delta=num_actors))
     assert actor_pool.num_pending_actors() == num_actors
     # `num_active_tasks` should exclude the metadata tasks for the pending actors.
     assert op.num_active_tasks() == 0

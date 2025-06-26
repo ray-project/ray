@@ -7,24 +7,24 @@ from ray.util.annotations import DeveloperAPI
 
 
 @dataclass
-class ScalingConfig:
+class ActorPoolScalingRequest:
 
     delta: int
     reason: Optional[str] = field(default=None)
 
     @classmethod
-    def no_op(cls, *, reason: Optional[str] = None) -> "ScalingConfig":
-        return ScalingConfig(delta=0, reason=reason)
+    def no_op(cls, *, reason: Optional[str] = None) -> "ActorPoolScalingRequest":
+        return ActorPoolScalingRequest(delta=0, reason=reason)
 
     @classmethod
     def upscale(cls, *, delta: int, reason: Optional[str] = None):
         assert delta > 0
-        return ScalingConfig(delta=delta, reason=reason)
+        return ActorPoolScalingRequest(delta=delta, reason=reason)
 
     @classmethod
     def downscale(cls, *, delta: int, reason: Optional[str] = None):
         assert delta < 0, "For scale down delta is expected to be negative!"
-        return ScalingConfig(delta=delta, reason=reason)
+        return ActorPoolScalingRequest(delta=delta, reason=reason)
 
 
 @DeveloperAPI
@@ -92,7 +92,7 @@ class AutoscalingActorPool(ABC):
         )
 
     @abstractmethod
-    def scale(self, config: ScalingConfig):
+    def scale(self, config: ActorPoolScalingRequest):
         """Applies autoscaling action"""
         ...
 

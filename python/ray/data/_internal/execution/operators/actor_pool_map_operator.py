@@ -13,7 +13,7 @@ from ray.core.generated import gcs_pb2
 from ray.data._internal.compute import ActorPoolStrategy
 from ray.data._internal.execution.autoscaler import AutoscalingActorPool
 from ray.data._internal.execution.autoscaler.default_autoscaler import (
-    ScalingConfig,
+    ActorPoolScalingRequest,
 )
 from ray.data._internal.execution.bundle_queue import create_bundle_queue
 from ray.data._internal.execution.bundle_queue.bundle_queue import BundleQueue
@@ -192,7 +192,7 @@ class ActorPoolMapOperator(MapOperator):
         # Create the actor workers and add them to the pool.
         self._cls = ray.remote(**self._ray_remote_args)(_MapWorker)
         self._actor_pool.scale(
-            ScalingConfig(
+            ActorPoolScalingRequest(
                 delta=self._actor_pool.min_size(), reason="scaling to min size"
             )
         )
@@ -763,7 +763,7 @@ class _ActorPool(AutoscalingActorPool):
     def num_tasks_in_flight(self) -> int:
         return self._total_num_tasks_in_flight
 
-    def _can_apply(self, config: ScalingConfig) -> bool:
+    def _can_apply(self, config: ActorPoolScalingRequest) -> bool:
         """Returns whether Actor Pool is able to execute scaling request"""
 
         if config.delta < 0:
@@ -796,21 +796,21 @@ class _ActorPool(AutoscalingActorPool):
 
         return True
 
-    def scale(self, config: ScalingConfig) -> Optional[int]:
+    def scale(self, req: ActorPoolScalingRequest) -> Optional[int]:
         # Verify request could be applied
-        if not self._can_apply(config):
+        if not self._can_apply(req):
             return 0
 
-        if config.delta > 0:
+        if req.delta > 0:
             # Make sure after scaling up actor pool won't exceed its target
             # max size
             target_num_actors = min(
-                config.delta, max(self.max_size() - self.current_size(), 0)
+                req.delta, max(self.max_size() - self.current_size(), 0)
             )
 
             logger.info(
-                f"Scaling up actor pool by {target_num_actors} (requested delta={config.delta}) "
-                f"(reason={config.reason}, {self.get_actor_info()})"
+                f"Scaling up actor pool by {target_num_actors} (requested delta={req.delta}) "
+                f"(reason={req.reason}, {self.get_actor_info()})"
             )
 
             for _ in range(target_num_actors):
@@ -822,13 +822,13 @@ class _ActorPool(AutoscalingActorPool):
 
             return target_num_actors
 
-        elif config.delta < 0:
+        elif req.delta < 0:
             num_released = 0
 
             # Make sure after scaling down actor pool size won't fall below its
             # min size
             target_num_actors = min(
-                abs(config.delta), max(self.current_size() - self.min_size(), 0)
+                abs(req.delta), max(self.current_size() - self.min_size(), 0)
             )
 
             for _ in range(target_num_actors):
@@ -838,7 +838,7 @@ class _ActorPool(AutoscalingActorPool):
             if num_released > 0:
                 logger.info(
                     f"Scaled down actor pool by {num_released} "
-                    f"(reason={config.reason}; {self.get_actor_info()})"
+                    f"(reason={req.reason}; {self.get_actor_info()})"
                 )
 
             return -num_released

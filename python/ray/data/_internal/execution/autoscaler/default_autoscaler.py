@@ -5,7 +5,7 @@ from typing import TYPE_CHECKING, Dict
 
 import ray
 from .autoscaler import Autoscaler
-from .autoscaling_actor_pool import AutoscalingActorPool, ScalingConfig
+from .autoscaling_actor_pool import AutoscalingActorPool, ActorPoolScalingRequest
 from ray.data._internal.execution.autoscaling_requester import (
     get_or_create_autoscaling_requester_actor,
 )
@@ -57,22 +57,22 @@ class DefaultAutoscaler(Autoscaler):
         actor_pool: "AutoscalingActorPool",
         op: "PhysicalOperator",
         op_state: "OpState",
-    ) -> ScalingConfig:
+    ) -> ActorPoolScalingRequest:
         # If all inputs have been consumed, short-circuit
         if op.completed() or (
             op._inputs_complete and op_state.total_enqueued_input_bundles() == 0
         ):
-            return ScalingConfig.downscale(delta=-1, reason="consumed all inputs")
+            return ActorPoolScalingRequest.downscale(delta=-1, reason="consumed all inputs")
 
         if actor_pool.current_size() < actor_pool.min_size():
             # Scale up, if the actor pool is below min size.
-            return ScalingConfig.upscale(
+            return ActorPoolScalingRequest.upscale(
                 delta=actor_pool.min_size() - actor_pool.current_size(),
                 reason="pool below min size",
             )
         elif actor_pool.current_size() > actor_pool.max_size():
             # Do not scale up, if the actor pool is already at max size.
-            return ScalingConfig.downscale(
+            return ActorPoolScalingRequest.downscale(
                 # NOTE: For scale down delta has to be negative
                 delta=-(actor_pool.current_size() - actor_pool.max_size()),
                 reason="pool exceeding max size",
@@ -88,13 +88,13 @@ class DefaultAutoscaler(Autoscaler):
             #   - Actor Pool has sufficient amount of slots available to handle
             #   pending tasks
             if actor_pool.num_pending_actors() > 0:
-                return ScalingConfig.no_op(reason="pending actors")
+                return ActorPoolScalingRequest.no_op(reason="pending actors")
             elif actor_pool.current_size() >= actor_pool.max_size():
-                return ScalingConfig.no_op(reason="reached max size")
+                return ActorPoolScalingRequest.no_op(reason="reached max size")
             if not op_state._scheduling_status.under_resource_limits:
-                return ScalingConfig.no_op(reason="operator exceeding resource quota")
+                return ActorPoolScalingRequest.no_op(reason="operator exceeding resource quota")
 
-            return ScalingConfig.upscale(
+            return ActorPoolScalingRequest.upscale(
                 delta=1,
                 reason=(
                     f"utilization of {util} >= "
@@ -103,9 +103,9 @@ class DefaultAutoscaler(Autoscaler):
             )
         elif util <= self._actor_pool_scaling_down_threshold:
             if actor_pool.current_size() <= actor_pool.min_size():
-                return ScalingConfig.no_op(reason="reached min size")
+                return ActorPoolScalingRequest.no_op(reason="reached min size")
 
-            return ScalingConfig.downscale(
+            return ActorPoolScalingRequest.downscale(
                 delta=-1,
                 reason=(
                     f"utilization of {util} <= "
@@ -113,7 +113,7 @@ class DefaultAutoscaler(Autoscaler):
                 ),
             )
         else:
-            return ScalingConfig.no_op(
+            return ActorPoolScalingRequest.no_op(
                 reason=(
                     f"utilization of {util} w/in limits "
                     f"[{self._actor_pool_scaling_down_threshold}, "
