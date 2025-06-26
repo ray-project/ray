@@ -168,6 +168,7 @@ class ParquetDatasink(_FileDatasink):
             # Use pathlib.Path to properly handle filenames with dots
             filename_path = Path(filename)
             stem = filename_path.stem  # filename without extension
+            assert "." not in stem, "Filename should not contain a dot"
             suffix = filename_path.suffix  # extension including the dot
             basename_template = f"{stem}-{{i}}{suffix}"
         return basename_template
