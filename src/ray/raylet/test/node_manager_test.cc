@@ -109,7 +109,7 @@ class FakePlasmaClient : public plasma::PlasmaClientInterface {
                                 int64_t metadata_size,
                                 std::shared_ptr<Buffer> *data,
                                 plasma::flatbuf::ObjectSource source,
-                                int device_num = 0) {
+                                int device_num = 0) override {
     return TryCreateImmediately(
         object_id, owner_address, data_size, metadata, metadata_size, data, source);
   }
@@ -776,8 +776,8 @@ TEST_F(NodeManagerTest, TestPinningAnObjectPendingDeletionFails) {
   plasma::flatbuf::ObjectSource source = plasma::flatbuf::ObjectSource::CreatedByWorker;
   ObjectID id = ObjectID::FromRandom();
 
-  mock_store_client_->TryCreateImmediately(
-      id, owner_addr, 1024, nullptr, 1024, nullptr, source, 0);
+  RAY_UNUSED(mock_store_client_->TryCreateImmediately(
+      id, owner_addr, 1024, nullptr, 1024, nullptr, source, 0));
 
   std::thread io_thread{[&] {
     auto work_guard = boost::asio::make_work_guard(io_service_);

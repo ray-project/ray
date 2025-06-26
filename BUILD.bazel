@@ -777,6 +777,7 @@ ray_cc_test(
     deps = [
         ":ray_mock",
         ":local_object_manager_interface",
+        "//src/ray/util:macros",
         ":raylet_lib",
         "@com_google_googletest//:gtest_main",
     ],
