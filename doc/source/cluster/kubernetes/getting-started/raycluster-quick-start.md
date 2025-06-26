@@ -17,37 +17,9 @@ This step creates a local Kubernetes cluster using [Kind](https://kind.sigs.k8s.
 kind create cluster --image=kindest/node:v1.26.0
 ```
 
-(kuberay-operator-deploy)=
 ## Step 2: Deploy a KubeRay operator
 
-Deploy the KubeRay operator with the [Helm chart repository](https://github.com/ray-project/kuberay-helm) or Kustomize.
-
-`````{tab-set}
-````{tab-item} Helm
-```sh
-helm repo add kuberay https://ray-project.github.io/kuberay-helm/
-helm repo update
-# Install both CRDs and KubeRay operator v1.4.0.
-helm install kuberay-operator kuberay/kuberay-operator --version 1.4.0
-# Confirm that the operator is running in the namespace `default`.
-kubectl get pods
-# NAME                                READY   STATUS    RESTARTS   AGE
-# kuberay-operator-7fbdbf8c89-pt8bk   1/1     Running   0          27s
-```
-````
-````{tab-item} Kustomize
-```sh
-# Install CRD and KubeRay operator.
-kubectl create -k "github.com/ray-project/kuberay/ray-operator/config/default?ref=v1.4.0"
-# Confirm that the operator is running.
-kubectl get pods
-# NAME                                READY   STATUS    RESTARTS   AGE
-# kuberay-operator-6d57c9f797-ffvph   1/1     Running   0          2m14s
-```
-````
-`````
-
-For further information, see [the installation instructions in the KubeRay documentation](https://ray-project.github.io/kuberay/deploy/installation/).
+Follow [this document](kuberay-operator-deploy) to install the latest stable KubeRay operator from the Helm repository.
 
 (raycluster-deploy)=
 ## Step 3: Deploy a RayCluster custom resource
