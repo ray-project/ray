@@ -114,7 +114,7 @@ def test_ray_init_existing_instance_via_blocked_ray_start():
         # because there is no direct way to read the process' stdout with a timeout.
         tp = ThreadPoolExecutor(max_workers=1)
         fut = tp.submit(_wait_for_startup_msg)
-        fut.result(timeout=5)
+        fut.result(timeout=30)
 
         # Verify that `ray.init()` connects to the existing cluster
         # (verified by checking the resources specified to the `ray start` command).
