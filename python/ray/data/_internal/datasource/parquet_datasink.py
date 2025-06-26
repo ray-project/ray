@@ -63,6 +63,20 @@ class ParquetDatasink(_FileDatasink):
         self.min_rows_per_file = min_rows_per_file
         self.partition_cols = partition_cols
 
+        if open_stream_args is not None:
+            intersecting_keys = UNSUPPORTED_OPEN_STREAM_ARGS.intersection(
+                set(open_stream_args.keys())
+            )
+            if intersecting_keys:
+                logger.warning(
+                    "open_stream_args contains unsupported arguments: %s. These arguments "
+                    "are not supported by ParquetDatasink. They will be ignored.",
+                    intersecting_keys,
+                )
+
+            if "compression" in open_stream_args:
+                self.arrow_parquet_args["compression"] = open_stream_args["compression"]
+
         super().__init__(
             path,
             filesystem=filesystem,
@@ -105,7 +119,13 @@ class ParquetDatasink(_FileDatasink):
             else:
                 output_schema = user_schema
 
-            self._write_parquet_files(tables, filename, output_schema, write_kwargs)
+            self._write_parquet_files(
+                tables,
+                filename,
+                output_schema,
+                ctx.kwargs[WRITE_UUID_KWARG_NAME],
+                write_kwargs,
+            )
 
         logger.debug(f"Writing {filename} file to {self.path}.")
 
@@ -117,11 +137,47 @@ class ParquetDatasink(_FileDatasink):
             max_backoff_s=WRITE_FILE_RETRY_MAX_BACKOFF_SECONDS,
         )
 
+    def _get_basename_template(self, filename: str, write_uuid: str) -> str:
+        # Check if write_uuid is present in filename, add if missing
+        if write_uuid not in filename and self.mode == SaveMode.APPEND:
+            raise ValueError(
+                f"Write UUID '{write_uuid}' not found in filename '{filename}'. "
+                f"Please modify your FileNameProvider implementation to include the write_uuid in the filename. "
+                f"Adding UUID as suffix to ensure uniqueness across write operations."
+            )
+        # Check if filename is already templatized
+        if "{i}" in filename:
+            # Filename is already templatized, but may need file extension
+            if FILE_FORMAT not in filename:
+                # Add file extension to templatized filename
+                basename_template = f"{filename}.{FILE_FORMAT}"
+            else:
+                # Already has extension, use as-is
+                basename_template = filename
+        elif FILE_FORMAT not in filename:
+            # No extension and not templatized, add extension and template
+            basename_template = f"{filename}-{{i}}.{FILE_FORMAT}"
+        else:
+            # Has extension but not templatized, add template while preserving extension
+            logger.warning(
+                "FilenameProvider have to providing proper filename base template including '{{i}}' "
+                "macro to ensure unique filenames when writing multiple files. Appending '{{i}}' "
+                "macros to the end of the file. For more details on the expected filename template checkout "
+                "PyArrow's `write_to_dataset` API"
+            )
+            # Use pathlib.Path to properly handle filenames with dots
+            filename_path = Path(filename)
+            stem = filename_path.stem  # filename without extension
+            suffix = filename_path.suffix  # extension including the dot
+            basename_template = f"{stem}-{{i}}{suffix}"
+        return basename_template
+
     def _write_parquet_files(
         self,
         tables: List["pyarrow.Table"],
         filename: str,
         output_schema: "pyarrow.Schema",
+        write_uuid: str,
         write_kwargs: Dict[str, Any],
     ) -> None:
         import pyarrow.dataset as ds
@@ -142,44 +198,7 @@ class ParquetDatasink(_FileDatasink):
         min_rows_per_group = row_group_size if row_group_size else 0
         max_rows_per_group = row_group_size if row_group_size else 1024 * 1024
 
-        # Check if filename is already templatized
-        if "{i}" in filename:
-            # Filename is already templatized, but may need file extension
-            if FILE_FORMAT not in filename:
-                # Add file extension to templatized filename
-                basename_template = f"{filename}.{FILE_FORMAT}"
-            else:
-                # Already has extension, use as-is
-                basename_template = filename
-        elif FILE_FORMAT not in filename:
-            # No extension and not templatized, add extension and template
-            basename_template = f"{filename}-{{i}}.{FILE_FORMAT}"
-        else:
-            # Has extension but not templatized, add template while preserving extension
-            logger.warning(
-                f"Filename '{filename}' is not templatized. Adding '{{i}}' template "
-                f"to ensure unique filenames when writing multiple files. This is an expectation"
-                f"from the pyarrow write_dataset API."
-            )
-            # Use pathlib.Path to properly handle filenames with dots
-            filename_path = Path(filename)
-            stem = filename_path.stem  # filename without extension
-            suffix = filename_path.suffix  # extension including the dot
-            basename_template = f"{stem}-{{i}}{suffix}"
-
-        if self.open_stream_args is not None:
-            intersecting_keys = UNSUPPORTED_OPEN_STREAM_ARGS.intersection(
-                set(self.open_stream_args.keys())
-            )
-            if intersecting_keys:
-                logger.warning(
-                    "open_stream_args contains unsupported arguments: %s. These arguments "
-                    "are not supported by ParquetDatasink. They will be ignored.",
-                    intersecting_keys,
-                )
-
-            if "compression" in self.open_stream_args:
-                write_kwargs["compression"] = self.open_stream_args["compression"]
+        basename_template = self._get_basename_template(filename, write_uuid)
 
         ds.write_dataset(
             data=tables,
