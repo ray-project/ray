@@ -12,7 +12,9 @@ import pytest
 import ray
 from ray._common.test_utils import wait_for_condition
 from ray.data._internal.compute import ActorPoolStrategy, TaskPoolStrategy
-from ray.data._internal.execution.autoscaler.default_autoscaler import ActorPoolScalingRequest
+from ray.data._internal.execution.autoscaler.default_autoscaler import (
+    ActorPoolScalingRequest,
+)
 from ray.data._internal.execution.interfaces import (
     ExecutionOptions,
     PhysicalOperator,

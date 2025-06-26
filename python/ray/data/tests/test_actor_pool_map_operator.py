@@ -13,7 +13,9 @@ from freezegun import freeze_time
 import ray
 from ray._common.test_utils import wait_for_condition
 from ray.actor import ActorHandle
-from ray.data._internal.execution.autoscaler.default_autoscaler import ActorPoolScalingRequest
+from ray.data._internal.execution.autoscaler.default_autoscaler import (
+    ActorPoolScalingRequest,
+)
 from ray.data._internal.execution.bundle_queue import FIFOBundleQueue
 from ray.data._internal.execution.interfaces import ExecutionResources
 from ray.data._internal.execution.interfaces.physical_operator import _ActorPoolInfo
@@ -105,7 +107,9 @@ class TestActorPool(unittest.TestCase):
         self, pool: _ActorPool, node_id="node1"
     ) -> Tuple[ActorHandle, ObjectRef[Any]]:
         self._actor_node_id = node_id
-        num_actors = pool.scale(ActorPoolScalingRequest(delta=1, reason="adding pending actor"))
+        num_actors = pool.scale(
+            ActorPoolScalingRequest(delta=1, reason="adding pending actor")
+        )
 
         assert num_actors == 1
         assert self._last_created_actor_and_ready_ref is not None
@@ -146,7 +150,9 @@ class TestActorPool(unittest.TestCase):
     def test_can_scale_down(self):
         pool = self._create_actor_pool(min_size=1, max_size=4)
 
-        downscaling_request = ActorPoolScalingRequest.downscale(delta=-1, reason="scaling down")
+        downscaling_request = ActorPoolScalingRequest.downscale(
+            delta=-1, reason="scaling down"
+        )
 
         with freeze_time() as f:
             # Scale up

@@ -5,7 +5,7 @@ from typing import TYPE_CHECKING, Dict
 
 import ray
 from .autoscaler import Autoscaler
-from .autoscaling_actor_pool import AutoscalingActorPool, ActorPoolScalingRequest
+from .autoscaling_actor_pool import ActorPoolScalingRequest, AutoscalingActorPool
 from ray.data._internal.execution.autoscaling_requester import (
     get_or_create_autoscaling_requester_actor,
 )
@@ -62,7 +62,9 @@ class DefaultAutoscaler(Autoscaler):
         if op.completed() or (
             op._inputs_complete and op_state.total_enqueued_input_bundles() == 0
         ):
-            return ActorPoolScalingRequest.downscale(delta=-1, reason="consumed all inputs")
+            return ActorPoolScalingRequest.downscale(
+                delta=-1, reason="consumed all inputs"
+            )
 
         if actor_pool.current_size() < actor_pool.min_size():
             # Scale up, if the actor pool is below min size.
@@ -92,7 +94,9 @@ class DefaultAutoscaler(Autoscaler):
             elif actor_pool.current_size() >= actor_pool.max_size():
                 return ActorPoolScalingRequest.no_op(reason="reached max size")
             if not op_state._scheduling_status.under_resource_limits:
-                return ActorPoolScalingRequest.no_op(reason="operator exceeding resource quota")
+                return ActorPoolScalingRequest.no_op(
+                    reason="operator exceeding resource quota"
+                )
 
             return ActorPoolScalingRequest.upscale(
                 delta=1,

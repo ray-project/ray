@@ -2,7 +2,9 @@ import pytest
 
 import ray
 from ray.data._internal.compute import ActorPoolStrategy, TaskPoolStrategy
-from ray.data._internal.execution.autoscaler.default_autoscaler import ActorPoolScalingRequest
+from ray.data._internal.execution.autoscaler.default_autoscaler import (
+    ActorPoolScalingRequest,
+)
 from ray.data._internal.execution.interfaces import ExecutionOptions, ExecutionResources
 from ray.data._internal.execution.operators.input_data_buffer import InputDataBuffer
 from ray.data._internal.execution.operators.limit_operator import LimitOperator
@@ -369,7 +371,9 @@ def test_actor_pool_resource_reporting(ray_start_10_cpus_shared, restore_data_co
 
     # Work is done, scale down the actor pool.
     for pool in op.get_autoscaling_actor_pools():
-        num_scaled_down = pool.scale(ActorPoolScalingRequest(delta=-pool.current_size()))
+        num_scaled_down = pool.scale(
+            ActorPoolScalingRequest(delta=-pool.current_size())
+        )
         # NOTE: Actor Pool will retain the min-size
         assert num_scaled_down == pool.current_size() - pool.min_size()
 
@@ -392,7 +396,9 @@ def test_actor_pool_resource_reporting(ray_start_10_cpus_shared, restore_data_co
 
     # Work is done, scale down the actor pool, and outputs have been consumed.
     for pool in op.get_autoscaling_actor_pools():
-        num_scaled_down = pool.scale(ActorPoolScalingRequest(delta=-pool.current_size()))
+        num_scaled_down = pool.scale(
+            ActorPoolScalingRequest(delta=-pool.current_size())
+        )
         # NOTE: Actor Pool will retain the min-size
         assert num_scaled_down == pool.current_size() - pool.min_size()
 
@@ -475,7 +481,9 @@ def test_actor_pool_resource_reporting_with_bundling(ray_start_10_cpus_shared):
 
     # Work is done, scale down the actor pool.
     for pool in op.get_autoscaling_actor_pools():
-        num_scaled_down = pool.scale(ActorPoolScalingRequest(delta=-pool.current_size()))
+        num_scaled_down = pool.scale(
+            ActorPoolScalingRequest(delta=-pool.current_size())
+        )
         # NOTE: Actor Pool will retain the min-size
         assert num_scaled_down == pool.current_size() - pool.min_size()
 
@@ -492,7 +500,9 @@ def test_actor_pool_resource_reporting_with_bundling(ray_start_10_cpus_shared):
 
     # Work is done, scale down the actor pool, and outputs have been consumed.
     for pool in op.get_autoscaling_actor_pools():
-        num_scaled_down = pool.scale(ActorPoolScalingRequest(delta=-pool.current_size()))
+        num_scaled_down = pool.scale(
+            ActorPoolScalingRequest(delta=-pool.current_size())
+        )
         # NOTE: Actor Pool will retain the min-size
         assert num_scaled_down == pool.current_size() - pool.min_size()
 

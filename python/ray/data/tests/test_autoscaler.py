@@ -9,8 +9,8 @@ import pytest
 import ray
 from ray.data import ExecutionResources
 from ray.data._internal.execution.autoscaler.default_autoscaler import (
-    DefaultAutoscaler,
     ActorPoolScalingRequest,
+    DefaultAutoscaler,
 )
 from ray.data._internal.execution.operators.actor_pool_map_operator import _ActorPool
 from ray.data._internal.execution.operators.base_physical_operator import (
