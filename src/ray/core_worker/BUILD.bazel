@@ -105,6 +105,16 @@ ray_cc_library(
     ],
 )
 
+ray_cc_test(
+    name = "shutdown_coordinator_test",
+    size = "small",
+    srcs = ["test/shutdown_coordinator_test.cc"],
+    deps = [
+        ":shutdown_coordinator",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
 ray_cc_library(
     name = "core_worker_common",
     srcs = ["common.cc"],
