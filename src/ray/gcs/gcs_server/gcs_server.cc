@@ -162,6 +162,26 @@ RedisClientOptions GcsServer::GetRedisClientOptions() const {
                             config_.enable_redis_ssl);
 }
 
+std::unique_ptr<GcsInternalKVManager> GcsServer::CreateKVManager(
+    StorageType storage_type, instrumented_io_context &io_context) {
+  std::unique_ptr<InternalKVInterface> instance;
+  switch (storage_type_) {
+  case (StorageType::REDIS_PERSIST):
+    instance = std::make_unique<StoreClientInternalKV>(
+        std::make_unique<RedisStoreClient>(CreateRedisClient(io_context)));
+    break;
+  case (StorageType::IN_MEMORY):
+    instance = std::make_unique<StoreClientInternalKV>(
+        std::make_unique<ObservableStoreClient>(std::make_unique<InMemoryStoreClient>()));
+    break;
+  default:
+    RAY_LOG(FATAL) << "Unexpected storage type! " << storage_type_;
+  }
+
+  return std::make_unique<GcsInternalKVManager>(
+      std::move(instance), config_.raylet_config_list, io_context);
+}
+
 void GcsServer::Start() {
   // Load gcs tables data asynchronously.
   auto gcs_init_data = std::make_shared<GcsInitData>(*gcs_table_storage_);
@@ -580,25 +600,8 @@ void GcsServer::InitUsageStatsClient() {
 }
 
 void GcsServer::InitKVManager() {
-  // TODO(yic): Use a factory with configs
-  std::unique_ptr<InternalKVInterface> instance;
   auto &io_context = io_context_provider_.GetIOContext<GcsInternalKVManager>();
-  switch (storage_type_) {
-  case (StorageType::REDIS_PERSIST):
-    instance = std::make_unique<StoreClientInternalKV>(
-        std::make_unique<RedisStoreClient>(CreateRedisClient(io_context)));
-    break;
-  case (StorageType::IN_MEMORY):
-    instance = std::make_unique<StoreClientInternalKV>(
-        std::make_unique<ObservableStoreClient>(std::make_unique<InMemoryStoreClient>()));
-    break;
-  default:
-    RAY_LOG(FATAL) << "Unexpected storage type! " << storage_type_;
-  }
-
-  kv_manager_ = std::make_unique<GcsInternalKVManager>(
-      std::move(instance), config_.raylet_config_list, io_context);
-
+  kv_manager_ = CreateKVManager(storage_type_, io_context);
   kv_manager_->GetInstance().Put(
       "",
       kGcsPidKey,

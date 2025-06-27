@@ -132,6 +132,9 @@ class GcsServer {
   /// Generate the redis client options
   RedisClientOptions GetRedisClientOptions() const;
 
+  std::unique_ptr<GcsInternalKVManager> CreateKVManager(
+      StorageType storage_type, instrumented_io_context &io_context);
+
   void DoStart(const GcsInitData &gcs_init_data);
 
   /// Initialize gcs node manager.
