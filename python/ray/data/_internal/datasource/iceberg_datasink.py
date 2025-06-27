@@ -1,6 +1,7 @@
 """
 Module to write a Ray Dataset into an iceberg table, by using the Ray Datasink API.
 """
+
 import logging
 import uuid
 from typing import TYPE_CHECKING, Any, Dict, Iterable, List, Optional
@@ -117,9 +118,7 @@ class IcebergDatasink(Datasink[List["DataFile"]]):
             TableProperties.MANIFEST_MERGE_ENABLED_DEFAULT,
         )
 
-    def write(
-        self, blocks: Iterable[Block], ctx: TaskContext
-    ) -> WriteResult[List["DataFile"]]:
+    def write(self, blocks: Iterable[Block], ctx: TaskContext) -> List["DataFile"]:
         from pyiceberg.io.pyarrow import (
             _check_pyarrow_schema_compatible,
             _dataframe_to_data_files,
@@ -127,7 +126,7 @@ class IcebergDatasink(Datasink[List["DataFile"]]):
         from pyiceberg.table import DOWNCAST_NS_TIMESTAMP_TO_US_ON_WRITE
         from pyiceberg.utils.config import Config
 
-        data_files_list: WriteResult[List["DataFile"]] = []
+        data_files_list: List["DataFile"] = []
         for block in blocks:
             pa_table = BlockAccessor.for_block(block).to_arrow()
 
@@ -142,9 +141,9 @@ class IcebergDatasink(Datasink[List["DataFile"]]):
 
             if pa_table.shape[0] <= 0:
                 continue
-
+            file_uuid = uuid.uuid4()
             data_files = _dataframe_to_data_files(
-                self._table_metadata, pa_table, self._io, self._uuid
+                self._table_metadata, pa_table, self._io, file_uuid
             )
             data_files_list.extend(data_files)
 
