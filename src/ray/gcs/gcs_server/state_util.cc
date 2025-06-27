@@ -33,6 +33,11 @@ void FillAggregateLoad(const rpc::ResourcesData &resources_data,
         demand.num_infeasible_requests_queued());
     aggregate_demand.set_backlog_size(aggregate_demand.backlog_size() +
                                       demand.backlog_size());
+    for (const auto &selector : demand.label_selectors()) {
+      auto *new_selector = aggregate_demand.add_label_selectors();
+      new_selector->mutable_label_selector_dict()->insert(
+          selector.label_selector_dict().begin(), selector.label_selector_dict().end());
+    }
   }
 }
 
