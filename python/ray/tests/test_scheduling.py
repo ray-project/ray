@@ -65,19 +65,13 @@ def test_load_balancing(ray_start_cluster):
 def test_hybrid_policy(ray_start_cluster):
     cluster = ray_start_cluster
 
-    num_cpus = 10
-    cluster.add_node(
-        num_cpus=num_cpus,
-        memory=num_cpus,
-        _system_config={
-            "scheduler_top_k_absolute": 1,
-            "scheduler_top_k_fraction": 0,
-        },
-    )
-    cluster.add_node(
-        num_cpus=num_cpus,
-        memory=num_cpus,
-    )
+    NUM_NODES = 2
+    NUM_CPUS_PER_NODE = 10
+    for _ in range(NUM_NODES):
+        cluster.add_node(
+            num_cpus=NUM_CPUS_PER_NODE, resources={"custom": NUM_CPUS_PER_NODE},
+        )
+
     cluster.wait_for_nodes()
     ray.init(address=cluster.address)
 
@@ -88,33 +82,34 @@ def test_hybrid_policy(ray_start_cluster):
     # until all are running.
     block_driver = Semaphore.remote(0)
 
-    # Add the memory resource because the cpu will be released in the ray.get
-    @ray.remote(num_cpus=1, memory=1)
-    def get_node():
+    # Add the custom resource because the CPU will be released when the task is
+    # blocked calling `ray.get()`.
+    @ray.remote(num_cpus=1, resources={"custom": 1})
+    def get_node_id() -> str:
         ray.get(block_driver.release.remote())
         ray.get(block_task.acquire.remote())
-        return ray._private.worker.global_worker.current_node_id
+        return ray.get_runtime_context().get_node_id()
 
     # Below the hybrid threshold we pack on the local node first.
     print("[1.0] Submitting batch of tasks.")
-    refs = [get_node.remote() for _ in range(5)]
+    refs = [get_node_id.remote() for _ in range(5)]
     print("[1.1] Acquire block_driver semaphore.")
-    ray.get([block_driver.acquire.remote() for _ in refs])
+    ray.get([block_driver.acquire.remote() for _ in refs], timeout=20)
     print("[1.2] Release block_task semaphore.")
-    ray.get([block_task.release.remote() for _ in refs])
+    ray.get([block_task.release.remote() for _ in refs], timeout=20)
     print("[1.3] Get refs.")
-    nodes = ray.get(refs)
+    nodes = ray.get(refs, timeout=20)
     assert len(set(nodes)) == 1
 
     # We pack the second node to the hybrid threshold.
     print("[2.0] Submitting batch of tasks.")
-    refs = [get_node.remote() for _ in range(10)]
+    refs = [get_node_id.remote() for _ in range(10)]
     print("[2.1] Acquire block_driver semaphore.")
-    ray.get([block_driver.acquire.remote() for _ in refs])
+    ray.get([block_driver.acquire.remote() for _ in refs], timeout=20)
     print("[2.2] Release block_task semaphore.")
-    ray.get([block_task.release.remote() for _ in refs])
+    ray.get([block_task.release.remote() for _ in refs], timeout=20)
     print("[2.3] Get refs.")
-    nodes = ray.get(refs)
+    nodes = ray.get(refs, timeout=20)
     counter = collections.Counter(nodes)
     for node_id in counter:
         print(f"{node_id}: {counter[node_id]}")
@@ -124,13 +119,13 @@ def test_hybrid_policy(ray_start_cluster):
     # TODO (Alex): Ideally we could schedule less than 20 nodes here, but the
     # policy is imperfect if a resource report interrupts the process.
     print("[3.0] Submitting batch of tasks.")
-    refs = [get_node.remote() for _ in range(20)]
+    refs = [get_node_id.remote() for _ in range(20)]
     print("[3.1] Acquire block_driver semaphore.")
-    ray.get([block_driver.acquire.remote() for _ in refs])
+    ray.get([block_driver.acquire.remote() for _ in refs], timeout=20)
     print("[3.2] Release block_task semaphore.")
-    ray.get([block_task.release.remote() for _ in refs])
+    ray.get([block_task.release.remote() for _ in refs], timeout=20)
     print("[3.3] Get refs.")
-    nodes = ray.get(refs)
+    nodes = ray.get(refs, timeout=20)
     counter = collections.Counter(nodes)
     for node_id in counter:
         print(f"{node_id}: {counter[node_id]}")
