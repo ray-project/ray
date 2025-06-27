@@ -204,7 +204,7 @@ def _shuffle_block(
             - Map of partition ids to partition shard stats produced from the
             shuffled block
     """
-    exec_stats_builder = BlockExecStats.builder()
+    stats = BlockExecStats.builder()
     assert (len(key_columns) > 0) ^ (override_partition_id is not None), (
         f"Either list of key columns to hash-partition by (got {key_columns} or "
         f"target partition id override (got {override_partition_id}) must be provided!"
@@ -220,12 +220,8 @@ def _shuffle_block(
     )
 
     if block.num_rows == 0:
-        return (
-            BlockAccessor.for_block(block).get_metadata(
-                exec_stats=exec_stats_builder.build()
-            ),
-            {},
-        )
+        empty = BlockAccessor.for_block(block).get_metadata(exec_stats=stats.build())
+        return (empty, {})
 
     num_partitions = pool.num_partitions
 
@@ -297,7 +293,7 @@ def _shuffle_block(
         i += 1
 
     original_block_metadata = BlockAccessor.for_block(block).get_metadata(
-        exec_stats=exec_stats_builder.build()
+        exec_stats=stats.build()
     )
 
     if logger.isEnabledFor(logging.DEBUG):
@@ -561,7 +557,9 @@ class HashShufflingOperatorBase(PhysicalOperator, WithSubProgressBarMixin):
 
                 # Update Shuffle metrics on task output generated
                 blocks = [(task.get_waitable(), input_block_metadata)]
-                out_bundle = RefBundle(blocks, owns_blocks=False)
+                # NOTE: schema doesn't matter because we are creating a ref bundle
+                # for metrics recording purposes
+                out_bundle = RefBundle(blocks, schema=None, owns_blocks=False)
                 shuffle_metrics.on_task_output_generated(
                     cur_shuffle_task_idx, out_bundle
                 )
@@ -585,7 +583,9 @@ class HashShufflingOperatorBase(PhysicalOperator, WithSubProgressBarMixin):
             #  Update Shuffle Metrics on task submission
             shuffle_metrics.on_task_submitted(
                 cur_shuffle_task_idx,
-                RefBundle([(block_ref, block_metadata)], owns_blocks=False),
+                RefBundle(
+                    [(block_ref, block_metadata)], schema=None, owns_blocks=False
+                ),
             )
 
             # Update Shuffle progress bar
@@ -675,7 +675,7 @@ class HashShufflingOperatorBase(PhysicalOperator, WithSubProgressBarMixin):
             finalize_bar.update(i=bundle.num_rows(), total=self.num_output_rows_total())
 
             # Update Finalize Metrics on task submission
-            empty_bundle = RefBundle([], owns_blocks=False)
+            empty_bundle = RefBundle([], schema=None, owns_blocks=False)
             finalize_metrics.on_task_submitted(partition_id, empty_bundle)
 
         def _on_aggregation_done(partition_id: int, exc: Optional[Exception]):
@@ -766,7 +766,7 @@ class HashShufflingOperatorBase(PhysicalOperator, WithSubProgressBarMixin):
             )
 
             # Update Finalize Metrics on task submission
-            empty_bundle = RefBundle([], owns_blocks=False)
+            empty_bundle = RefBundle([], schema=None, owns_blocks=False)
             finalize_metrics.on_task_submitted(partition_id, empty_bundle)
 
         # Update last finalized partition id
@@ -1368,4 +1368,4 @@ class HashShuffleAggregator:
 
         # TODO break down blocks to target size
         yield block
-        yield BlockAccessor.for_block(block).get_metadata(exec_stats=exec_stats)
+        yield BlockMetadataWithSchema.from_block(block, stats=exec_stats)
