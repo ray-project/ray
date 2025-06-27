@@ -1865,10 +1865,10 @@ py_test(
 )
 
 py_test(
-    name="test_algorithm_checkpoint_steps",
-    size="medium",
-    srcs=["algorithms/tests/test_algorithm_checkpoint_steps.py"],
-    tags=[
+    name = "test_algorithm_checkpoint_steps",
+    size = "medium",
+    srcs = ["algorithms/tests/test_algorithm_checkpoint_steps.py"],
+    tags = [
         "algorithms_dir",
         "algorithms_dir_generic",
         "team:rllib",
