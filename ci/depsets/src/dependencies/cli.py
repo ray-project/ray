@@ -7,6 +7,8 @@ from dependencies.depset import DepSet, parse_compiled_requirements
 import subprocess
 import logging
 import os
+import yaml
+from dependencies.config import load_config, Config
 
 # Set up logging
 logging.basicConfig(
@@ -40,15 +42,15 @@ def resolve_path_for_bazel(path_str: str) -> str:
     # Fallback to current directory
     return os.path.abspath(path_str)
 
-def resolve_paths(paths: str) -> List[str]:
-    """Resolve paths relative to where bazel run was invoked."""
-    resolved_paths = []
-    if paths:
-        for c in paths.split(","):
-            resolved_path = resolve_path_for_bazel(c.strip())
-            resolved_paths.append(resolved_path)
-            click.echo(f"path resolved: {c.strip()} -> {resolved_path}")
-    return resolved_paths
+# def resolve_paths(paths: str) -> List[str]:
+#     """Resolve paths relative to where bazel run was invoked."""
+#     resolved_paths = []
+#     if paths:
+#         for c in paths.split(","):
+#             resolved_path = resolve_path_for_bazel(c.strip())
+#             resolved_paths.append(resolved_path)
+#             click.echo(f"path resolved: {c.strip()} -> {resolved_path}")
+#     return resolved_paths
 
 class DependencySetManager:
     def __init__(self, storage_path: Path = Path.home() / ".depsets"):
@@ -95,55 +97,59 @@ class DependencySetManager:
         if depset_path.exists():
             depset_path.unlink()
         del self.depsets[name]
+    def load_config(self, file_path: str):
+        with open(file_path, "r") as f:
+            config = yaml.safe_load(f)
+        return config
 
-    def process_flags(
-        self,
-        unsafe_packages: tuple,
-        index_url: str,
-        extra_index_url: str,
-        find_links: str,
-        generate_hashes: bool,
-        no_header: bool,
-        no_cache: bool,
-        index_strategy: str,
-        strip_extras: bool,
-        no_strip_markers: bool,
-        emit_index_url: bool,
-        emit_find_links: bool,
-        python_version: str,
-        prerelease: str,
-    ):
-        args = []
-        if unsafe_packages:
-            for package in unsafe_packages:
-                args.extend(["--unsafe-package", package])
-        if index_url:
-            args.extend(["--index-url", index_url])
-        if extra_index_url:
-            args.extend(["--extra-index-url", extra_index_url])
-        if find_links:
-            args.extend(["--find-links", find_links])
-        if generate_hashes:
-            args.append("--generate-hashes")
-        if no_header:
-            args.append("--no-header")
-        if no_cache:
-            args.append("--no-cache")
-        if index_strategy:
-            args.extend(["--index-strategy", index_strategy])
-        if strip_extras:
-            args.append("--strip-extras")
-        if no_strip_markers:
-            args.append("--no-strip-markers")
-        if emit_index_url:
-            args.append("--emit-index-url")
-        if emit_find_links:
-            args.append("--emit-find-links")
-        if python_version:
-            args.extend(["--python-version", python_version])
-        if prerelease:
-            args.extend(["--prerelease", prerelease])
-        return args
+    # def process_flags(
+    #     self,
+    #     unsafe_packages: tuple,
+    #     index_url: str,
+    #     extra_index_url: str,
+    #     find_links: str,
+    #     generate_hashes: bool,
+    #     no_header: bool,
+    #     no_cache: bool,
+    #     index_strategy: str,
+    #     strip_extras: bool,
+    #     no_strip_markers: bool,
+    #     emit_index_url: bool,
+    #     emit_find_links: bool,
+    #     python_version: str,
+    #     prerelease: str,
+    # ):
+    #     args = []
+    #     if unsafe_packages:
+    #         for package in unsafe_packages:
+    #             args.extend(["--unsafe-package", package])
+    #     if index_url:
+    #         args.extend(["--index-url", index_url])
+    #     if extra_index_url:
+    #         args.extend(["--extra-index-url", extra_index_url])
+    #     if find_links:
+    #         args.extend(["--find-links", find_links])
+    #     if generate_hashes:
+    #         args.append("--generate-hashes")
+    #     if no_header:
+    #         args.append("--no-header")
+    #     if no_cache:
+    #         args.append("--no-cache")
+    #     if index_strategy:
+    #         args.extend(["--index-strategy", index_strategy])
+    #     if strip_extras:
+    #         args.append("--strip-extras")
+    #     if no_strip_markers:
+    #         args.append("--no-strip-markers")
+    #     if emit_index_url:
+    #         args.append("--emit-index-url")
+    #     if emit_find_links:
+    #         args.append("--emit-find-links")
+    #     if python_version:
+    #         args.extend(["--python-version", python_version])
+    #     if prerelease:
+    #         args.extend(["--prerelease", prerelease])
+    #     return args
 
     def compile_depset(
         self,
@@ -284,6 +290,34 @@ def init(requirements: str, name: str):
     except ValueError as e:
         click.echo(f"Error: {str(e)}", err=True)
 
+@cli.command()
+@click.argument("file_path")
+def load(file_path: str):
+    """Load a dependency sets from a config file."""
+    config = load_config(file_path)
+    click.echo("Generated dependency sets from config file:")
+    for depset, depconfig in config.depsets.items():
+        click.echo(f"- {depset}")
+        execute_config(depconfig.operation, depconfig)
+        # operation_map[depconfig.operation](depconfig)
+
+def execute_config(func_name: str, config: Config):
+    if func_name == "compile":
+        compile(constraints=config.constraints, requirements=config.requirements, args=config.flags, name=config.name) #output=config.output,
+    elif func_name == "relax":
+        relax(config.name, config.degree)
+    # elif func_name == "relax":
+    #     relax(func_name)
+    # elif func_name == "py_version":
+    #     py_version(func_name)
+    # elif func_name == "subset":
+    #     subset(func_name)
+    # elif func_name == "expand":
+    #     expand(func_name)
+    # elif func_name == "delete":
+    #     delete(func_name)
+    # elif func_name == "show":
+    #     show(func_name)
 
 @cli.command()
 def list():
@@ -328,117 +362,52 @@ def delete(name: str):
     except ValueError as e:
         click.echo(f"Error: {str(e)}", err=True)
 
-
-@cli.command()
-@click.option(
-    "--constraints",
-    "-c",
-    type=str,
-    help="comma separated list of absolute filepaths for constraint files",
-)
-@click.option("--requirements", "-r", type=str, help="comma separated list of absolute filepaths for requirements files")
-@click.option("--generate-hashes", is_flag=True, help="generate hashes")
-@click.option("--strip-extras", is_flag=True, help="strip extras")
-@click.option(
-    "--unsafe-package",
-    multiple=True,
-    default=("ray", "grpcio-tools", "setuptools"),
-    help="unsafe package (can be used multiple times)",
-)
-@click.option(
-    "--index-url", type=str, default="https://pypi.org/simple", help="index url"
-)
-@click.option(
-    "--extra-index-url",
-    type=str,
-    default="https://download.pytorch.org/whl/cpu",
-    help="extra index url",
-)
-@click.option(
-    "--find-links",
-    type=str,
-    default="https://data.pyg.org/whl/torch-2.5.1+cpu.html",
-    help="find links",
-)
-@click.option(
-    "--index-strategy", type=str, default="unsafe-best-match", help="index strategy"
-)
-@click.option("--no-strip-markers", is_flag=True, help="no strip markers")
-@click.option("--emit-index-url", is_flag=True, help="emit index url")
-@click.option("--emit-find-links", is_flag=True, help="emit find links")
-@click.option("--no-header", is_flag=True, help="no header")
-@click.option("--no-cache", is_flag=True, help="no header")
-@click.option("--python-version", type=str, default="3.11", help="python version")
-@click.option("--prerelease", type=str, default="allow", help="include prerelease packages")
-@click.argument("name", required=True)
 def compile(
-    constraints: str,
-    requirements: str,
-    generate_hashes: bool,
-    strip_extras: bool,
-    unsafe_package: tuple,
-    index_url: str,
-    extra_index_url: str,
-    find_links: str,
-    index_strategy: str,
-    no_strip_markers: bool,
-    emit_index_url: bool,
-    emit_find_links: bool,
-    no_header: bool,
-    no_cache: bool,
-    python_version: str,
-    prerelease: str,
+    constraints: List[str],
+    requirements: List[str],
+    args: List[str],
     name: str,
 ):
     """Compile a dependency set."""
     try:
-        current_directory = os.getcwd()
-        workspace_directory = os.environ.get("BUILD_WORKSPACE_DIRECTORY", "Not set")
-        click.echo(f"Current Working Directory (sandbox): {current_directory}")
-        click.echo(f"Workspace Directory (where you ran bazel): {workspace_directory}")
-
-        # Resolve paths relative to where bazel run was invoked
-        resolved_constraints = resolve_paths(constraints)
-
-        resolved_requirements = resolve_paths(requirements)
-
         manager = DependencySetManager()
-        args = manager.process_flags(unsafe_package, index_url, extra_index_url, find_links, generate_hashes, no_header, no_cache, index_strategy, strip_extras, no_strip_markers, emit_index_url, emit_find_links, python_version, prerelease)
         manager.compile_depset(
-            resolved_constraints,
-            resolved_requirements,
-            args,
+            constraints=constraints,
+            requirements=requirements,
+            args=args,
             name=name,
         )
         click.echo(f"Compiled dependency set {name}")
+        manager.build_dag(name)
+        click.echo(f"Built dag for {name}")
     except ValueError as e:
         click.echo(f"Error: {str(e)}", err=True)
 
 
-@cli.command()
-@click.option("--sources", "-s", type=str, help="comma separated list of names of source depset")
-@click.option("--packages", "-p", type=str, help="filename for min package deps file")
-@click.argument("name")
-def subset(sources: str, packages: str, name: str):
-    """Subset a dependency set."""
-    try:
-        manager = DependencySetManager()
-        resolved_packages = resolve_paths(packages)
+# @cli.command()
+# @click.option("--sources", "-s", type=str, help="comma separated list of names of source depset")
+# @click.option("--packages", "-p", type=str, help="filename for min package deps file")
+# @click.argument("name")
+# def subset(sources: str, packages: str, name: str):
+#     """Subset a dependency set."""
+#     try:
+#         manager = DependencySetManager()
+#         resolved_packages = resolve_paths(packages)
 
-        # Read packages from each resolved package file
-        all_packages = []
-        for package_file in resolved_packages:
-            with open(package_file, "r") as f:
-                file_packages = f.read().splitlines()
-                all_packages.extend(file_packages)
-                click.echo(f"Loaded {len(file_packages)} packages from {package_file}")
+#         # Read packages from each resolved package file
+#         all_packages = []
+#         for package_file in resolved_packages:
+#             with open(package_file, "r") as f:
+#                 file_packages = f.read().splitlines()
+#                 all_packages.extend(file_packages)
+#                 click.echo(f"Loaded {len(file_packages)} packages from {package_file}")
 
-        new_depset = manager.subset_depset(sources, all_packages, name)
-        click.echo(
-            f"Created subset {name} from {sources} with {len(new_depset.dependencies)} dependencies"
-        )
-    except ValueError as e:
-        click.echo(f"Error: {str(e)}", err=True)
+#         new_depset = manager.subset_depset(sources, all_packages, name)
+#         click.echo(
+#             f"Created subset {name} from {sources} with {len(new_depset.dependencies)} dependencies"
+#         )
+#     except ValueError as e:
+#         click.echo(f"Error: {str(e)}", err=True)
 
 
 @cli.command()
@@ -551,6 +520,34 @@ def py_version(source: str, version: str, name: str, flags: str = ""):
     except ValueError as e:
         click.echo(f"Error: {str(e)}", err=True)
 
+# def execute_config(config: dict):
+#     visited = set()
+
+#     def visit(name: str):
+#         if name in visited:
+#             return
+#         depset = config.depsets[name]
+#         for dep_name in depset.deps:
+#             visit(dep_name)
+#         handler = operation_map.get(depset.operation)
+#         if not handler:
+#             raise ValueError(f"Unknown operation: {depset.operation}")
+#         handler(depset)
+#         visited.add(name)
+
+#     for name in config.depsets:
+#         visit(name)
+
+# operation_map = {
+#     "compile": compile,
+#     "relax": relax,
+#     "py_version": py_version,
+#     "subset": subset,
+#     "expand": expand,
+#     "delete": delete,
+#     "show": show,
+#     "list": list,
+# }
 
 if __name__ == "__main__":
     cli()

@@ -1,0 +1,18 @@
+depsets:
+  ray_vllm:
+    requirements:
+      - /Users/elliot.barnwell/repos/ray/python/requirements.txt
+    constraints:
+      - /Users/elliot.barnwell/repos/ray/python/requirements_compiled.txt
+    output: requirements_vllm
+    operation: compile
+    flags:
+      - --strip-extras
+      - --no-header
+      - --no-cache
+      - --python-version=3.11
+      - --no-strip-markers
+      - --emit-index-url
+      - --emit-find-links
+      - --prerelease=allow
+

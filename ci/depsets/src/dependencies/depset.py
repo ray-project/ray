@@ -132,6 +132,20 @@ class DependencyGraph:
         return root_nodes
 
 
+# class DepsetConfig:
+#     def __init__(self, file_path: str):
+#         self.file_path = file_path
+#         self.operation = operation
+#         self.dependencies = dependencies
+#         self.constraints = constraints
+
+#     def to_dict(self) -> Dict:
+#         return {
+#             "file_path": self.file_path,
+#             "operation": self.operation,
+#             "dependencies": self.dependencies,
+#         }
+
 def parse_compiled_requirements(file_path: str) -> DependencyGraph:
     graph = DependencyGraph()
 
