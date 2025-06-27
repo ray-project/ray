@@ -403,7 +403,6 @@ def test_locality_aware_leasing_cached_objects(ray_start_cluster):
 def test_locality_aware_leasing_borrowed_objects(ray_start_cluster):
     """Test that a task runs where its dependencies are located for borrowed objects."""
     is_ray_client_test = ray._private.client_mode_hook.is_client_mode_enabled
-    print("CLIENT?", is_ray_client_test)
 
     # This test ensures that a task will run where its task dependencies are
     # located, even when those objects are borrowed.
