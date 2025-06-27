@@ -638,7 +638,7 @@ def build(build_python, build_java, build_cpp):
         ]
     else:
         bazel_precmd_flags = []
-        if platform.system() == "Windows":
+        if sys.platform == "win32":
             bazel_precmd_flags = [
                 "--output_user_root=C:/tmp"
             ]
