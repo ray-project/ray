@@ -53,7 +53,7 @@ class GcsJobManagerTest : public ::testing::Test {
     gcs_table_storage_ = std::make_shared<gcs::GcsTableStorage>(store_client_);
     kv_ = std::make_unique<gcs::MockInternalKVInterface>();
     fake_kv_ = std::make_unique<gcs::FakeInternalKVInterface>();
-    function_manager_ = std::make_unique<gcs::GcsFunctionManager>(*kv_, io_service_);
+    function_manager_ = std::make_unique<gcs::GCSFunctionManager>(*kv_, io_service_);
 
     // Mock client factory which abuses the "address" argument to return a
     // CoreWorkerClient whose number of running tasks equal to the address port. This is
@@ -78,7 +78,7 @@ class GcsJobManagerTest : public ::testing::Test {
   std::shared_ptr<gcs::StoreClient> store_client_;
   std::shared_ptr<gcs::GcsTableStorage> gcs_table_storage_;
   std::shared_ptr<gcs::GcsPublisher> gcs_publisher_;
-  std::unique_ptr<gcs::GcsFunctionManager> function_manager_;
+  std::unique_ptr<gcs::GCSFunctionManager> function_manager_;
   std::unique_ptr<gcs::MockInternalKVInterface> kv_;
   std::unique_ptr<gcs::FakeInternalKVInterface> fake_kv_;
   std::unique_ptr<rpc::CoreWorkerClientPool> worker_client_pool_;

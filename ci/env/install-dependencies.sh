@@ -154,13 +154,13 @@ install_node() {
   if [[ -n "${BUILDKITE-}" ]] ; then
     if [[ "${OSTYPE}" = darwin* ]]; then
       if [[ "$(uname -m)" == "arm64" ]]; then
-        curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.39.0/install.sh | bash
+        curl -sSL -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.39.0/install.sh | bash
       else
-        curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.38.0/install.sh | bash
+        curl -sSL -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.38.0/install.sh | bash
       fi
     else
       # https://github.com/nodesource/distributions/blob/master/README.md#installation-instructions
-      curl -sL https://deb.nodesource.com/setup_14.x | sudo -E bash -
+      curl -sSL https://deb.nodesource.com/setup_14.x | sudo -E bash -
       sudo apt-get install -y nodejs
       return
     fi
@@ -198,7 +198,6 @@ download_mnist() {
 }
 
 retry_pip_install() {
-  local pip_command=$1
   local status="0"
   local errmsg=""
 
@@ -206,7 +205,7 @@ retry_pip_install() {
   # that break the entire CI job: Simply retry installation in this case
   # after n seconds.
   for _ in {1..3}; do
-    errmsg=$(eval "${pip_command}" 2>&1) && break
+    errmsg="$("$@" 2>&1)" && break
     status=$errmsg && echo "'pip install ...' failed, will retry after n seconds!" && sleep 30
   done
   if [[ "$status" != "0" ]]; then
@@ -317,7 +316,8 @@ install_pip_packages() {
     fi
   fi
 
-  retry_pip_install "CC=gcc pip install -Ur ${WORKSPACE_DIR}/python/requirements.txt"
+  # TODO(ray-ci): pin the dependencies.
+  CC=gcc retry_pip_install pip install -Ur "${WORKSPACE_DIR}/python/requirements.txt"
 
   # Install deeplearning libraries (Torch + TensorFlow)
   if [[ -n "${TORCH_VERSION-}" || "${DL-}" == "1" || "${RLLIB_TESTING-}" == 1 || "${TRAIN_TESTING-}" == 1 || "${TUNE_TESTING-}" == 1 || "${DOC_TESTING-}" == 1 ]]; then

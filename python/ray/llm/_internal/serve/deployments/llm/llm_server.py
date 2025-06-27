@@ -45,7 +45,6 @@ from ray.llm._internal.serve.configs.server_models import (
     LLMConfig,
     LLMRawResponse,
 )
-from ray.llm._internal.serve.deployments.llm.image_retriever import ImageRetriever
 from ray.llm._internal.serve.deployments.llm.llm_engine import LLMEngine
 from ray.llm._internal.serve.deployments.llm.multiplex.lora_model_loader import (
     LoraModelLoader,
@@ -409,14 +408,12 @@ class ResponsePostprocessor:
 
 class LLMServer(_LLMServerBase):
     _default_engine_cls = VLLMEngine
-    _default_image_retriever_cls = ImageRetriever
 
     async def __init__(
         self,
         llm_config: LLMConfig,
         *,
         engine_cls: Optional[Type[LLMEngine]] = None,
-        image_retriever_cls: Optional[Type[ImageRetriever]] = None,
         model_downloader: Optional[LoraModelLoader] = None,
     ):
         """Constructor of LLMServer.
@@ -426,14 +423,10 @@ class LLMServer(_LLMServerBase):
 
         Args:
             llm_config: LLMConfig for the model.
-
-        Keyword Args:
-            engine_cls: Dependency injection for the vllm engine class. Defaults to
-                `VLLMEngine`.
-            image_retriever_cls: Dependency injection for the image retriever class.
-                Defaults to `ImageRetriever`.
-            model_downloader: Dependency injection for the model downloader object.
-                Defaults to be initialized with `LoraModelLoader`.
+            engine_cls: Dependency injection for the vllm engine class.
+                Defaults to `VLLMEngine`.
+            model_downloader: Dependency injection for the model downloader
+                object. Defaults to be initialized with `LoraModelLoader`.
         """
         await super().__init__(llm_config)
 
@@ -442,14 +435,6 @@ class LLMServer(_LLMServerBase):
         if self._engine_cls is not None:
             self.engine = self._engine_cls(self._llm_config)
             await asyncio.wait_for(self._start_engine(), timeout=ENGINE_START_TIMEOUT_S)
-
-        # TODO (Kourosh): I think we can completely remove image retriever.
-        # It was missed to get removed.
-        self.image_retriever = (
-            image_retriever_cls()
-            if image_retriever_cls
-            else self._default_image_retriever_cls()
-        )
 
         multiplex_config = self._llm_config.multiplex_config()
         if model_downloader:

@@ -565,7 +565,7 @@ void GcsServer::InitRaySyncer(const GcsInitData &gcs_init_data) {
 }
 
 void GcsServer::InitFunctionManager() {
-  function_manager_ = std::make_unique<GcsFunctionManager>(
+  function_manager_ = std::make_unique<GCSFunctionManager>(
       kv_manager_->GetInstance(), io_context_provider_.GetDefaultIOContext());
 }
 
