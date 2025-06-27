@@ -88,31 +88,22 @@ def test_intermediate_generator_object_recovery_while_generator_running(
     """
 
     cluster = ray_start_cluster
-    head_node = cluster.add_node(num_cpus=0)
-    schedule_on_head = ray.util.scheduling_strategies.NodeAffinitySchedulingStrategy(
-        node_id=head_node.node_id, soft=False
-    )
+    cluster.add_node(num_cpus=0)  # head
     ray.init(address=cluster.address)
     cluster.add_node(num_cpus=1, resources={"producer": 1})  # worker1
     worker2 = cluster.add_node(num_cpus=1, resources={"consumer": 1})
 
     @ray.remote(num_cpus=1, resources={"producer": 1})
-    def producer(signal_actor):
-        try:
-            for i in range(3):
-                yield np.zeros(10 * 1024 * 1024, dtype=np.uint8)
-                signal_ref = signal_actor.wait.remote()
-                while True:
-                    ray.wait([signal_ref], timeout=0.1)
-        except KeyboardInterrupt:
-            signal_actor.send.remote()
+    def producer():
+        for _ in range(3):
+            yield np.zeros(10 * 1024 * 1024, dtype=np.uint8)
+            time.sleep(5)
 
     @ray.remote(num_cpus=1, resources={"consumer": 1})
     def consumer(np_arr):
         return np_arr
 
-    signal_actor = SignalActor.options(scheduling_strategy=schedule_on_head).remote()
-    streaming_ref = producer.remote(signal_actor)
+    streaming_ref = producer.remote()
     consumer_ref = consumer.remote(next(streaming_ref))
 
     ray.wait([consumer_ref], num_returns=1, fetch_local=False)
@@ -120,10 +111,10 @@ def test_intermediate_generator_object_recovery_while_generator_running(
     cluster.add_node(num_cpus=1, resources={"consumer": 1})  # worker3
     cluster.remove_node(worker2, allow_graceful=True)
 
-    # Make sure the producer got the cancel signal.
-    ray.get(signal_actor.wait.remote())
-
+    start_time = time.time()
     assert ray.get(consumer_ref).size == (10 * 1024 * 1024)
+    # Make sure the producer was cancelled.
+    assert time.time() - start_time < 5
 
 
 def test_actor_intermediate_generator_object_recovery_while_generator_running(
@@ -151,7 +142,7 @@ def test_actor_intermediate_generator_object_recovery_while_generator_running(
     @ray.remote(num_cpus=1, resources={"producer": 1}, max_task_retries=-1)
     class Producer:
         def producer(self):
-            for i in range(3):
+            for _ in range(3):
                 yield np.zeros(10 * 1024 * 1024, dtype=np.uint8)
 
     @ray.remote(num_cpus=1, resources={"consumer": 1})
