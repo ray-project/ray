@@ -2610,9 +2610,10 @@ cdef void unhandled_exception_handler(const CRayObject& error) nogil:
             data = Buffer.make(error.GetData())
         if error.HasMetadata():
             metadata = Buffer.make(error.GetMetadata()).to_pybytes()
+        tensor_transport = TENSOR_TRANSPORT_OBJECT_STORE
         # TODO(ekl) why does passing a ObjectRef.nil() lead to shutdown errors?
         object_ids = [None]
-        worker.raise_errors([(data, metadata)], object_ids)
+        worker.raise_errors([SerializedRayObject(data, metadata, <int>tensor_transport)], object_ids)
 
 
 def maybe_initialize_job_config():
