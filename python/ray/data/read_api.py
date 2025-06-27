@@ -2978,27 +2978,9 @@ def from_arrow(
     Returns:
         :class:`~ray.data.Dataset` holding data from the PyArrow tables.
     """
+    import builtins
+
     import pyarrow as pa
-
-    def _arrow_array_split(table: pa.Table) -> List[pa.Table]:
-        """Split PyArrow table into roughly equal parts."""
-        import builtins
-
-        total_rows = len(table)
-        if total_rows == 0:
-            return [table.slice(0, 0) for _ in builtins.range(override_num_blocks)]
-
-        split_points = [
-            total_rows * i // override_num_blocks
-            for i in builtins.range(override_num_blocks + 1)
-        ]
-        result = []
-        for i in builtins.range(override_num_blocks):
-            start = split_points[i]
-            end = split_points[i + 1]
-            length = max(0, min(end - start, total_rows - start))  # prevent overflow
-            result.append(table.slice(start, length))
-        return result
 
     if isinstance(tables, (pa.Table, bytes)):
         tables = [tables]
@@ -3007,7 +2989,30 @@ def from_arrow(
         if override_num_blocks <= 0:
             raise ValueError("override_num_blocks must be > 0")
         combined_table = pa.concat_tables(tables) if len(tables) > 1 else tables[0]
-        tables = _arrow_array_split(combined_table)
+        total_rows = len(combined_table)
+
+        if total_rows == 0:
+            # Handle empty table case
+            tables = [
+                combined_table.slice(0, 0) for _ in builtins.range(override_num_blocks)
+            ]
+        else:
+            batch_size = (total_rows + override_num_blocks - 1) // override_num_blocks
+            slices = []
+
+            for i in builtins.range(override_num_blocks):
+                start = i * batch_size
+                if start >= total_rows:
+                    break
+                length = min(batch_size, total_rows - start)
+                slices.append(combined_table.slice(start, length))
+
+            # Pad with empty slices if needed
+            if len(slices) < override_num_blocks:
+                empty_table = combined_table.slice(0, 0)
+                slices.extend([empty_table] * (override_num_blocks - len(slices)))
+
+            tables = slices
 
     return from_arrow_refs([ray.put(t) for t in tables])
 
