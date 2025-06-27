@@ -1932,7 +1932,7 @@ class Algorithm(Checkpointable, Trainable):
                         # Now that the MultiRLModule is fixed, update the state.
                         er.set_state(ray.get(state_ref))
 
-            # Otherwise, sync from LearnerGroup's 1st Learner worker.
+            # Otherwise, sync from another EnvRunner that's still healthy.
             else:
                 # Sync the weights from the learner group to the EnvRunners.
                 rl_module_state = self.learner_group.get_state(
