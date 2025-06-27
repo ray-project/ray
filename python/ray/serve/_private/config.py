@@ -248,6 +248,11 @@ class DeploymentConfig(BaseModel):
                 **data["autoscaling_config"]
             )
         if data.get("router_config"):
+            if data.get("router_config").get("request_router_kwargs") is not None:
+                if self.needs_pickle():
+                    data["router_config"]["request_router_kwargs"] = cloudpickle.dumps(
+                        data["router_config"]["request_router_kwargs"]
+                    )
             data["router_config"] = RouterConfigProto(**data["router_config"])
         if data.get("logging_config"):
             if "encoding" in data["logging_config"]:
@@ -266,17 +271,17 @@ class DeploymentConfig(BaseModel):
     @classmethod
     def from_proto(cls, proto: DeploymentConfigProto):
         data = _proto_to_dict(proto)
+        deployment_language = (
+            data["deployment_language"]
+            if "deployment_language" in data
+            else DeploymentLanguage.PYTHON
+        )
+        is_cross_language = (
+            data["is_cross_language"] if "is_cross_language" in data else False
+        )
+        needs_pickle = _needs_pickle(deployment_language, is_cross_language)
         if "user_config" in data:
             if data["user_config"] != b"":
-                deployment_language = (
-                    data["deployment_language"]
-                    if "deployment_language" in data
-                    else DeploymentLanguage.PYTHON
-                )
-                is_cross_language = (
-                    data["is_cross_language"] if "is_cross_language" in data else False
-                )
-                needs_pickle = _needs_pickle(deployment_language, is_cross_language)
                 if needs_pickle:
                     data["user_config"] = cloudpickle.loads(proto.user_config)
                 else:
@@ -284,6 +289,20 @@ class DeploymentConfig(BaseModel):
             else:
                 data["user_config"] = None
         if "router_config" in data:
+            if "request_router_kwargs" in data["router_config"]:
+                request_router_kwargs = data["router_config"]["request_router_kwargs"]
+                if request_router_kwargs != b"":
+                    if needs_pickle:
+                        data["router_config"][
+                            "request_router_kwargs"
+                        ] = cloudpickle.loads(proto.router_config.request_router_kwargs)
+                    else:
+                        data["router_config"][
+                            "request_router_kwargs"
+                        ] = proto.router_config.request_router_kwargs
+                else:
+                    data["router_config"]["request_router_kwargs"] = {}
+
             data["router_config"] = RouterConfig(**data["router_config"])
         if "autoscaling_config" in data:
             if not data["autoscaling_config"].get("upscale_smoothing_factor"):
