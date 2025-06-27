@@ -29,7 +29,7 @@ def test_from_dask(ray_start_regular_shared):
     assert df.equals(dfds)
 
 
-def test_from_dask_e2e(ray_start_regular_shared_2_cpus):
+def test_from_dask_e2e(ray_start_regular_shared):
     import dask.dataframe as dd
 
     df = pd.DataFrame({"one": list(range(100)), "two": list(range(100))})
