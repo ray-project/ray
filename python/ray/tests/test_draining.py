@@ -444,10 +444,12 @@ def test_draining_reason(ray_start_cluster, graceful):
         # If num_retry is positive and the node is not drained before removal,
         # the task will fail after the (num_retry + 1)th node removal.
         (1, False, 2),
+        (3, False, 4),
         # If num_retry is positive and the node is drained before removal,
         # the task will never fail because we automatically retry all errors
         # when node is in the Draining state.
         (1, True, -1),
+        (3, True, -1),
     ],
 )
 def test_drain_node_actor_retry(
