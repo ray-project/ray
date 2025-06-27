@@ -274,6 +274,7 @@ class SerializationContext:
             data: The data to deserialize.
             object_id: The object ID to use as the key for the in-actor object store
                 to retrieve tensors.
+            tensor_transport: The tensor transport to use.
 
         Returns:
             Any: The deserialized object.
