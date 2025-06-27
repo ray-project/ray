@@ -39,12 +39,12 @@ class DummyWorkerGroup(WorkerGroup):
         self._worker_group_state = None
         self._worker_statuses = {}
 
-    def poll_status(self, *args, **kwargs) -> WorkerGroupPollStatus:
+    async def poll_status(self, *args, **kwargs) -> WorkerGroupPollStatus:
         return WorkerGroupPollStatus(
             worker_statuses=self._worker_statuses,
         )
 
-    def _start(self):
+    async def _start(self):
         num_workers = self._num_workers
         if self._start_failure:
             raise self._start_failure

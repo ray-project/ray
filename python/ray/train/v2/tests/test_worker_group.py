@@ -59,10 +59,11 @@ def _default_worker_group_context(**kwargs):
     return WorkerGroupContext(**default_config)
 
 
-def test_worker_group_create():
+@pytest.mark.asyncio
+async def test_worker_group_create():
     """Test WorkerGroup.create() factory method."""
 
-    worker_group = WorkerGroup.create(
+    worker_group = await WorkerGroup.create(
         train_run_context=create_dummy_run_context(),
         worker_group_context=_default_worker_group_context(),
     )
@@ -71,7 +72,7 @@ def test_worker_group_create():
     assert worker_group.has_started()
 
     with pytest.raises(ValueError, match="Worker group is active"):
-        worker_group._start()
+        await worker_group._start()
 
     worker_group.shutdown()
     with pytest.raises(ValueError, match="Worker group is not active"):
@@ -82,7 +83,8 @@ def test_worker_group_create():
     "runtime_env",
     [{"env_vars": {"DUMMY_VAR": "abcd"}}, RuntimeEnv(env_vars={"DUMMY_VAR": "abcd"})],
 )
-def test_worker_group_create_with_runtime_env(runtime_env):
+@pytest.mark.asyncio
+async def test_worker_group_create_with_runtime_env(runtime_env):
     """Test WorkerGroup.create() factory method with a custom runtime environment."""
 
     run_config = RunConfig(worker_runtime_env=runtime_env)
@@ -90,7 +92,7 @@ def test_worker_group_create_with_runtime_env(runtime_env):
 
     worker_group_context = _default_worker_group_context()
 
-    worker_group = WorkerGroup.create(
+    worker_group = await WorkerGroup.create(
         train_run_context=train_run_context,
         worker_group_context=worker_group_context,
     )
@@ -101,20 +103,22 @@ def test_worker_group_create_with_runtime_env(runtime_env):
     worker_group.shutdown()
 
 
-def test_env_var_propagation(monkeypatch):
+@pytest.mark.asyncio
+async def test_env_var_propagation(monkeypatch):
     """Ray Train should automatically propagate some environment variables
     from the driver to the workers."""
     test_env_var = list(ENV_VARS_TO_PROPAGATE)[0]
     monkeypatch.setenv(test_env_var, "1")
     wg = _default_inactive_worker_group()
-    wg._start()
+    await wg._start()
     env_vars = wg.execute(lambda: os.environ.get(test_env_var))
     wg.shutdown()
 
     assert env_vars == ["1"] * 4
 
 
-def test_actor_start_failure():
+@pytest.mark.asyncio
+async def test_actor_start_failure():
     class FailingWorker(RayTrainWorker):
         def __init__(self):
             raise RuntimeError("Worker failed to start.")
@@ -123,11 +127,12 @@ def test_actor_start_failure():
     wg._worker_cls = FailingWorker
 
     with pytest.raises(WorkerGroupStartupFailedError):
-        wg._start()
+        await wg._start()
 
 
 @pytest.mark.parametrize("error_type", [RayActorError, RuntimeError])
-def test_callback_start_failure(error_type):
+@pytest.mark.asyncio
+async def test_callback_start_failure(error_type):
     class FailingCallback(WorkerGroupCallback):
         def after_worker_group_start(self, worker_group):
             raise error_type
@@ -137,16 +142,17 @@ def test_callback_start_failure(error_type):
     if error_type is RayActorError:
         # Actor errors are wrapped in WorkerGroupStartupFailedError.
         with pytest.raises(WorkerGroupStartupFailedError):
-            wg._start()
+            await wg._start()
     else:
         # Other errors are bugs in user code and should not be wrapped.
         with pytest.raises(error_type):
-            wg._start()
+            await wg._start()
 
     wg.shutdown()
 
 
-def test_start_timeout(monkeypatch):
+@pytest.mark.asyncio
+async def test_start_timeout(monkeypatch):
     from ray.util.placement_group import PlacementGroup
 
     @ray.remote(num_cpus=0)
@@ -160,16 +166,17 @@ def test_start_timeout(monkeypatch):
 
     with pytest.raises(WorkerGroupStartupTimeoutError):
         # Not enough CPU resources are available, so the workers will not start.
-        wg._start()
+        await wg._start()
 
 
-def test_poll_status_running():
+@pytest.mark.asyncio
+async def test_poll_status_running():
     worker_group_context = _default_worker_group_context(
         train_fn_ref=DummyObjectRefWrapper(lambda: time.sleep(60)),
     )
     wg = _default_inactive_worker_group(worker_group_context=worker_group_context)
-    wg._start()
-    status = wg.poll_status()
+    await wg._start()
+    status = await wg.poll_status()
     wg.shutdown()
 
     assert len(status.worker_statuses) == 4
@@ -177,19 +184,20 @@ def test_poll_status_running():
     assert not status.errors
 
 
-def test_poll_status_finished():
+@pytest.mark.asyncio
+async def test_poll_status_finished():
     worker_group_context = _default_worker_group_context(
         train_fn_ref=DummyObjectRefWrapper(lambda: "done"),
     )
     wg = _default_inactive_worker_group(worker_group_context=worker_group_context)
-    wg._start()
+    await wg._start()
 
     # Wait for the workers to finish the training fn before polling.
     # Otherwise, the poll_status call may return before the workers finish.
-    while not wg.poll_status().finished:
+    while not await wg.poll_status().finished:
         time.sleep(0.01)
 
-    status = wg.poll_status()
+    status = await wg.poll_status()
     wg.shutdown()
 
     assert len(status.worker_statuses) == 4
@@ -199,7 +207,8 @@ def test_poll_status_finished():
 
 @pytest.mark.parametrize("training_failure", [True, False])
 @pytest.mark.parametrize("poll_failure", [True, False])
-def test_poll_status_failures(monkeypatch, training_failure, poll_failure):
+@pytest.mark.asyncio
+async def test_poll_status_failures(monkeypatch, training_failure, poll_failure):
     def train_fn():
         if training_failure:
             raise RuntimeError("train error")
@@ -215,11 +224,11 @@ def test_poll_status_failures(monkeypatch, training_failure, poll_failure):
         train_fn_ref=DummyObjectRefWrapper(train_fn),
     )
     wg = _default_inactive_worker_group(worker_group_context=worker_group_context)
-    wg._start()
-    while not wg.poll_status().finished:
+    await wg._start()
+    while not (await wg.poll_status()).finished:
         time.sleep(0.01)
 
-    status = wg.poll_status()
+    status = await wg.poll_status()
     wg.shutdown()
 
     assert len(status.worker_statuses) == 4
@@ -242,7 +251,8 @@ def test_poll_status_failures(monkeypatch, training_failure, poll_failure):
         assert not status.errors
 
 
-def test_poll_status_healthcheck_timeout(monkeypatch):
+@pytest.mark.asyncio
+async def test_poll_status_healthcheck_timeout(monkeypatch):
     monkeypatch.setenv(WORKER_HEALTH_CHECK_TIMEOUT_S_ENV_VAR, "0")
 
     def hanging_poll_status(worker_self):
@@ -254,9 +264,9 @@ def test_poll_status_healthcheck_timeout(monkeypatch):
 
     # Try 2x to ensure that shutdown clears the health-check hanging timer.
     for _ in range(2):
-        wg._start()
+        await wg._start()
 
-        status = wg.poll_status(timeout=0.01)
+        status = await wg.poll_status(timeout=0.01)
 
         assert len(status.errors) == 4
         assert all(
@@ -380,7 +390,8 @@ def test_local_rank_assignment():
     setup_and_check_worker_group(**gpu_workers_multiple_gpus_config)
 
 
-def test_setup_worker_group(tmp_path):
+@pytest.mark.asyncio
+async def test_setup_worker_group(tmp_path):
     num_workers = 4
     worker_group = WorkerGroup(
         train_run_context=create_dummy_run_context(
@@ -388,7 +399,7 @@ def test_setup_worker_group(tmp_path):
         ),
         worker_group_context=_default_worker_group_context(num_workers=num_workers),
     )
-    worker_group._start()
+    await worker_group._start()
 
     def get_world_size():
         return ray.train.get_context().get_world_size()
@@ -407,10 +418,11 @@ def test_setup_worker_group(tmp_path):
 
 
 @pytest.mark.parametrize("queue_backlog_length", [0, 1, 3])
-def test_flush_worker_result_queue(queue_backlog_length):
+@pytest.mark.asyncio
+async def test_flush_worker_result_queue(queue_backlog_length):
     """Make sure that the result queue is fully consumed before the worker exits."""
     wg = _default_inactive_worker_group()
-    wg._start()
+    await wg._start()
 
     def populate_result_queue():
         # Note that the result queue is a thread-safe queue of maxsize 1.
@@ -419,19 +431,20 @@ def test_flush_worker_result_queue(queue_backlog_length):
     for _ in range(queue_backlog_length):
         wg.execute(populate_result_queue)
 
-        status = wg.poll_status()
+        status = await wg.poll_status()
         assert all(
             worker_status.training_result
             for worker_status in status.worker_statuses.values()
         )
 
-    status = wg.poll_status()
+    status = await wg.poll_status()
     assert status.finished
 
     wg.shutdown()
 
 
-def test_worker_group_callback():
+@pytest.mark.asyncio
+async def test_worker_group_callback():
     """Check that all worker group callback hooks are called."""
 
     class AssertCallback(WorkerGroupCallback):
@@ -458,16 +471,17 @@ def test_worker_group_callback():
     hooks = AssertCallback()
     wg = _default_inactive_worker_group(callbacks=[hooks])
 
-    wg._start()
+    await wg._start()
     assert hooks.start_hook_called
     assert hooks.training_start_hook_called
-    wg.poll_status()
+    await wg.poll_status()
     assert hooks.poll_status_hook_called
     wg.shutdown()
     assert hooks.shutdown_hook_called
 
 
-def test_worker_group_abort():
+@pytest.mark.asyncio
+async def test_worker_group_abort():
     class AssertCallback(WorkerGroupCallback):
         def __init__(self):
             self.abort_hook_called = False
@@ -478,16 +492,17 @@ def test_worker_group_abort():
     hooks = AssertCallback()
     wg = _default_inactive_worker_group(callbacks=[hooks])
 
-    wg._start()
+    await wg._start()
     wg.abort()
     assert hooks.abort_hook_called
     wg.shutdown()
 
 
-def test_worker_log_file_paths():
+@pytest.mark.asyncio
+async def test_worker_log_file_paths():
     """Test that log file paths are correctly assigned to workers."""
     wg = _default_inactive_worker_group()
-    wg._start()
+    await wg._start()
 
     # Check that all workers have log file paths assigned
     workers = wg.get_workers()
@@ -498,7 +513,8 @@ def test_worker_log_file_paths():
     wg.shutdown()
 
 
-def test_shutdown_hook_with_dead_actors():
+@pytest.mark.asyncio
+async def test_shutdown_hook_with_dead_actors():
     """Check that the shutdown hook raises correctly if run
     on a mix of alive and dead actors."""
 
@@ -516,7 +532,7 @@ def test_shutdown_hook_with_dead_actors():
             ray.actor.exit_actor()
 
     wg = _default_inactive_worker_group(callbacks=[ShutdownCallback()])
-    wg._start()
+    await wg._start()
 
     # Kill some of the actors
     try:

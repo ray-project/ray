@@ -1,4 +1,4 @@
-from unittest.mock import MagicMock, create_autospec
+from unittest.mock import create_autospec
 
 import pytest
 
@@ -93,7 +93,7 @@ async def test_resize():
     assert isinstance(controller.get_state(), SchedulingState)
     assert controller.get_worker_group() is None
 
-    await controller._run_control_loop_iteration()
+    await controller._run_control_loop_iteration()  # modoru: wrong cu worker group real
     assert isinstance(controller.get_state(), RunningState)
 
     worker_group = controller.get_worker_group()
@@ -236,7 +236,7 @@ async def test_poll_frequency(monkeypatch):
         failure_policy=None,
     )
     # Mock worker group to avoid actual polling
-    controller._worker_group = MagicMock()
+    controller._worker_group = create_autospec(DummyWorkerGroup, instance=True)
 
     num_polls = 5
     for _ in range(num_polls):

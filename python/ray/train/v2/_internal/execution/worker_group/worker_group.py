@@ -1,3 +1,4 @@
+import asyncio
 import collections
 import logging
 import os
@@ -8,7 +9,7 @@ from typing import Any, Callable, Dict, List, Optional, TypeVar, Union
 import ray
 from ray._private.ray_constants import env_float
 from ray.actor import ActorHandle
-from ray.exceptions import GetTimeoutError, RayActorError
+from ray.exceptions import RayActorError
 from ray.runtime_env import RuntimeEnv
 from ray.train import Checkpoint
 from ray.train.v2._internal.constants import (
@@ -106,7 +107,7 @@ class WorkerGroup:
     _worker_cls = RayTrainWorker
 
     @classmethod
-    def create(
+    async def create(
         cls,
         train_run_context: TrainRunContext,
         worker_group_context: WorkerGroupContext,
@@ -130,7 +131,7 @@ class WorkerGroup:
         """
 
         worker_group = cls(train_run_context, worker_group_context, callbacks)
-        worker_group._start()
+        await worker_group._start()
         return worker_group
 
     def __init__(
@@ -194,7 +195,7 @@ class WorkerGroup:
     # Start Worker Group
     ################################################################################
 
-    def _start(
+    async def _start(
         self,
     ):
         """Internal method to start the worker group."""
@@ -202,7 +203,7 @@ class WorkerGroup:
         worker_group_state_builder = WorkerGroupStateBuilder()
 
         try:
-            self._start_impl(
+            await self._start_impl(
                 worker_group_state_builder,
             )
         except Exception as e:
@@ -213,7 +214,7 @@ class WorkerGroup:
 
         assert self.has_started(), "Worker group failed to start."
 
-    def _start_impl(
+    async def _start_impl(
         self,
         worker_group_state_builder: WorkerGroupStateBuilder,
     ):
@@ -256,8 +257,10 @@ class WorkerGroup:
             # For example, the controller may try to set a worker group size
             # based on stale information about cluster resources.
             try:
-                ray.get(pg.ready(), timeout=self._worker_group_start_timeout_s)
-            except GetTimeoutError as timeout_exc:
+                await asyncio.wait_for(
+                    pg.ready(), timeout=self._worker_group_start_timeout_s
+                )
+            except TimeoutError as timeout_exc:
                 remove_placement_group(pg)
                 raise WorkerGroupStartupTimeoutError(
                     num_workers=worker_group_context.num_workers
@@ -448,7 +451,9 @@ class WorkerGroup:
     # Polling Worker Group
     #####################################################################################
 
-    def poll_status(self, timeout: Optional[float] = None) -> WorkerGroupPollStatus:
+    async def poll_status(
+        self, timeout: Optional[float] = None
+    ) -> WorkerGroupPollStatus:
         """Poll the status of all workers in the worker group.
 
         Args:
@@ -468,7 +473,7 @@ class WorkerGroup:
         self._latest_poll_status = worker_group_poll_status
         return worker_group_poll_status
 
-    def _poll_workers_and_collect_errors(
+    async def _poll_workers_and_collect_errors(
         self, timeout: Optional[float]
     ) -> List[WorkerStatus]:
         """Launch poll tasks on each worker and collect the results.
@@ -498,25 +503,25 @@ class WorkerGroup:
         workers = self.get_workers()
         start_time = time_monotonic()
         poll_tasks = self._get_poll_tasks()
-        poll_task_to_world_rank = {
-            poll_task: i for i, poll_task in enumerate(poll_tasks)
+        poll_task_to_world_rank_and_task = {
+            asyncio.wrap_future(poll_task.future()): (i, poll_task)
+            for i, poll_task in enumerate(poll_tasks)
         }
-        done_polls, hanging_polls = ray.wait(
-            list(poll_task_to_world_rank),
-            num_returns=len(poll_task_to_world_rank),
+        done_polls, hanging_polls = asyncio.wait(
+            poll_task_to_world_rank_and_task.keys(),
             timeout=timeout,
         )
 
         poll_task_to_result = {}
 
         for hanging_poll in hanging_polls:
-            hanging_rank = poll_task_to_world_rank[hanging_poll]
+            hanging_rank, hanging_task = poll_task_to_world_rank_and_task[hanging_poll]
 
             # The hanging poll task should be saved and awaited in the next round.
             # Save the start time of the poll task to check for timeouts.
             # Don't overwrite the ongoing poll task if it already exists.
             ongoing_poll = self._world_rank_to_ongoing_poll.setdefault(
-                hanging_rank, PollTask(start_time, hanging_poll)
+                hanging_rank, PollTask(start_time, hanging_task)
             )
 
             error = None
@@ -529,18 +534,18 @@ class WorkerGroup:
                 )
                 error = WorkerHealthCheckTimeoutError(error_msg)
 
-            poll_task_to_result[hanging_poll] = WorkerStatus(
+            poll_task_to_result[hanging_task] = WorkerStatus(
                 running=True, error=error, training_result=None
             )
 
         for done_poll in done_polls:
-            done_rank = poll_task_to_world_rank[done_poll]
+            done_rank, done_task = poll_task_to_world_rank_and_task[done_poll]
 
             # Remove the ongoing poll task for the worker.
             self._world_rank_to_ongoing_poll.pop(done_rank, None)
 
             try:
-                poll_result: WorkerStatus = ray.get(done_poll)
+                poll_result: WorkerStatus = done_poll.result()
             except Exception as e:
                 error_msg = (
                     "A worker health check failed.\n"
@@ -552,11 +557,12 @@ class WorkerGroup:
                     training_result=None,
                 )
 
-            poll_task_to_result[done_poll] = poll_result
+            poll_task_to_result[done_task] = poll_result
 
         # Collect the results and errors in the order of the workers.
         results = [
-            poll_task_to_result.get(poll_task) for poll_task in poll_task_to_world_rank
+            poll_task_to_result.get(poll_task)
+            for poll_task in poll_task_to_world_rank_and_task.values()
         ]
         return results
 
@@ -635,6 +641,8 @@ class WorkerGroup:
             (T) The output of func.
 
         """
+        # TODO: v1 and v2 WorkerGroups can share the same parent class.
+        # Then we can make this and the methods that use it async.
         return ray.get(self.execute_single_async(rank, fn, *fn_args, **fn_kwargs))
 
     #####################################################################################

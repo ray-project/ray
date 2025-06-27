@@ -166,7 +166,7 @@ class TrainController:
 
         self._start()
 
-    def _execute_resize_decision(
+    async def _execute_resize_decision(
         self, decision: ResizeDecision
     ) -> TrainControllerLoopIterationResult:
         """Executes resize decisions."""
@@ -177,7 +177,7 @@ class TrainController:
         if self._worker_group:
             self._shutdown_worker_group()
 
-        worker_group_started = self._start_worker_group(
+        worker_group_started = await self._start_worker_group(
             num_workers=decision.num_workers,
             resources_per_worker=decision.resources_per_worker,
         )
@@ -258,11 +258,15 @@ class TrainController:
             )
             await asyncio.sleep(remaining_time)
 
-        status = self._worker_group.poll_status(timeout=self._health_check_interval_s)
+        status = await self._worker_group.poll_status(
+            timeout=self._health_check_interval_s
+        )
         self._latest_poll_time = time_monotonic()
         return status
 
-    def _start_worker_group(self, num_workers: int, resources_per_worker: dict) -> bool:
+    async def _start_worker_group(
+        self, num_workers: int, resources_per_worker: dict
+    ) -> bool:
         """Start the worker group and launch the train function.
 
         Returns:
@@ -290,7 +294,7 @@ class TrainController:
         # Otherwise, start the worker group with the checkpoint set by controller.
         # Finally, if there is no checkpoint, start the worker group with None.
         try:
-            self._worker_group = self.worker_group_cls.create(
+            self._worker_group = await self.worker_group_cls.create(
                 train_run_context=self._train_run_context,
                 worker_group_context=worker_group_context,
                 callbacks=self._worker_group_callbacks_to_propagate,
@@ -391,7 +395,9 @@ class TrainController:
             )
         elif isinstance(controller_state, SchedulingState):
             assert isinstance(controller_state.scaling_decision, ResizeDecision)
-            return self._execute_resize_decision(controller_state.scaling_decision)
+            return await self._execute_resize_decision(
+                controller_state.scaling_decision
+            )
         elif isinstance(controller_state, RunningState):
             worker_group_status = await self._poll_workers()
 
