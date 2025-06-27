@@ -29,7 +29,7 @@ Here are some capabilities that persistent storage enables:
   and artifacts to share them with others or use them in downstream tasks.
 
 
-Cloud storage (AWS S3, Google Cloud Storage, Azure Blob)
+Cloud storage (AWS S3, Google Cloud Storage, Azure Blob Storage)
 --------------------------------------------
 
 .. tip::
