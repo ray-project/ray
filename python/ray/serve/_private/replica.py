@@ -683,13 +683,21 @@ class ReplicaBase(ABC):
         async with self._wrap_user_method_call(
             request_metadata, request_args
         ) as status_code_callback:
-            async for result in self._call_streaming(
-                request_metadata,
-                request_args,
-                request_kwargs,
-                status_code_callback=status_code_callback,
-            ):
-                yield result
+            if request_metadata.is_http_request:
+                async for result in self._user_callable_wrapper.call_http_entrypoint(
+                    request_metadata,
+                    request_args,
+                    request_kwargs,
+                    status_code_callback=status_code_callback,
+                ):
+                    yield result
+            else:
+                async for result in self._user_callable_wrapper.call_user_generator(
+                    request_metadata,
+                    request_args,
+                    request_kwargs,
+                ):
+                    yield result
 
     async def handle_request_with_rejection(
         self, request_metadata: RequestMetadata, *request_args, **request_kwargs
@@ -715,12 +723,19 @@ class ReplicaBase(ABC):
                 num_ongoing_requests=self.get_num_ongoing_requests(),
             )
 
-            if request_metadata.is_streaming:
-                async for result in self._call_streaming(
+            if request_metadata.is_http_request:
+                async for result in self._user_callable_wrapper.call_http_entrypoint(
                     request_metadata,
                     request_args,
                     request_kwargs,
                     status_code_callback=status_code_callback,
+                ):
+                    yield result
+            elif request_metadata.is_streaming:
+                async for result in self._user_callable_wrapper.call_user_generator(
+                    request_metadata,
+                    request_args,
+                    request_kwargs,
                 ):
                     yield result
             else:
@@ -1674,8 +1689,47 @@ class UserCallableWrapper:
 
         return result
 
-    @_run_user_code
     async def call_http_entrypoint(
+        self,
+        request_metadata: RequestMetadata,
+        request_args: Tuple[Any],
+        request_kwargs: Dict[str, Any],
+        status_code_callback: StatusCodeCallback,
+    ) -> Any:
+        result_queue = MessageQueue()
+
+        # `asyncio.Event`s are not thread safe, so `call_soon_threadsafe` must be
+        # used to interact with the result queue from the user callable thread.
+        def _enqueue_thread_safe(item: Any):
+            self._event_loop.call_soon_threadsafe(result_queue.put_nowait, item)
+
+        call_user_method_future = self._call_http_entrypoint(
+            request_metadata,
+            request_args,
+            request_kwargs,
+            generator_result_callback=_enqueue_thread_safe,
+        )
+        first_message_peeked = False
+        async for messages in result_queue.fetch_messages_from_queue(
+            call_user_method_future
+        ):
+            # HTTP (ASGI) messages are only consumed by the proxy so batch them
+            # and use vanilla pickle (we know it's safe because these messages
+            # only contain primitive Python types).
+            # Peek the first ASGI message to determine the status code.
+            if not first_message_peeked:
+                msg = messages[0]
+                first_message_peeked = True
+                if msg["type"] == "http.response.start":
+                    # HTTP responses begin with exactly one
+                    # "http.response.start" message containing the "status"
+                    # field. Other response types like WebSockets may not.
+                    status_code_callback(str(msg["status"]))
+
+            yield pickle.dumps(messages)
+
+    @_run_user_code
+    async def _call_http_entrypoint(
         self,
         request_metadata: RequestMetadata,
         request_args: Tuple[Any],
@@ -1691,7 +1745,7 @@ class UserCallableWrapper:
         Raises any exception raised by the user code so it can be propagated as a
         `RayTaskError`.
         """
-        self._raise_if_not_initialized("call_http_entrypoint")
+        self._raise_if_not_initialized("_call_http_entrypoint")
 
         logger.info(
             f"Started executing request to method '{request_metadata.call_method}'.",
@@ -1764,8 +1818,39 @@ class UserCallableWrapper:
 
             raise
 
-    @_run_user_code
     async def call_user_generator(
+        self,
+        request_metadata: RequestMetadata,
+        request_args: Tuple[Any],
+        request_kwargs: Dict[str, Any],
+    ) -> AsyncGenerator[Any, None]:
+        """Calls a user method for a streaming call and yields its results.
+
+        The user method is called in an asyncio `Task` and places its results on a
+        `result_queue`. This method pulls and yields from the `result_queue`.
+        """
+        result_queue = MessageQueue()
+
+        # `asyncio.Event`s are not thread safe, so `call_soon_threadsafe` must be
+        # used to interact with the result queue from the user callable thread.
+        def _enqueue_thread_safe(item: Any):
+            self._event_loop.call_soon_threadsafe(result_queue.put_nowait, item)
+
+        call_user_method_future = self._call_user_generator(
+            request_metadata,
+            request_args,
+            request_kwargs,
+            generator_result_callback=_enqueue_thread_safe,
+        )
+
+        async for messages in result_queue.fetch_messages_from_queue(
+            call_user_method_future
+        ):
+            for msg in messages:
+                yield msg
+
+    @_run_user_code
+    async def _call_user_generator(
         self,
         request_metadata: RequestMetadata,
         request_args: Tuple[Any],
@@ -1781,7 +1866,7 @@ class UserCallableWrapper:
         Raises any exception raised by the user code so it can be propagated as a
         `RayTaskError`.
         """
-        self._raise_if_not_initialized("call_user_generator")
+        self._raise_if_not_initialized("_call_user_generator")
 
         logger.info(
             f"Started executing request to method '{request_metadata.call_method}'.",
