@@ -207,7 +207,7 @@ void TaskStatusEvent::PopulateRpcRayTaskDefinitionEvent(T &definition_event_data
   } else {
     definition_event_data.mutable_task_func()->CopyFrom(
         task_spec_->FunctionDescriptor()->GetMessage());
-    definition_event_data.set_task_type(task_spec_->TaskType());
+    definition_event_data.set_task_type(task_spec_->GetMessage().type());
     definition_event_data.set_task_name(task_spec_->GetName());
   }
 }
@@ -357,7 +357,30 @@ void TaskProfileEvent::ToRpcRayEvents(RayEventsPair &ray_events_pair) {
   // to the new ray event format.
 }
 
-bool TaskEventBuffer::RecordTaskStatusEventIfNeeded(
+TaskEventBufferImpl::TaskEventBufferImpl(
+    std::shared_ptr<gcs::GcsClient> gcs_client,
+    std::unique_ptr<rpc::EventAggregatorClientImpl> event_aggregator_client,
+    std::string session_name)
+    : work_guard_(boost::asio::make_work_guard(io_service_)),
+      periodical_runner_(PeriodicalRunner::Create(io_service_)),
+      gcs_client_(std::move(gcs_client)),
+      event_aggregator_exporter_(
+          std::make_unique<EventAggregatorExporter>(std::move(event_aggregator_client))),
+      session_name_(session_name) {}
+
+TaskEventBufferImpl::TaskEventBufferImpl(
+    std::shared_ptr<gcs::GcsClient> gcs_client,
+    std::unique_ptr<EventAggregatorExporter> event_aggregator_exporter,
+    std::string session_name)
+    : work_guard_(boost::asio::make_work_guard(io_service_)),
+      periodical_runner_(PeriodicalRunner::Create(io_service_)),
+      gcs_client_(std::move(gcs_client)),
+      event_aggregator_exporter_(std::move(event_aggregator_exporter)),
+      session_name_(session_name) {}
+
+TaskEventBufferImpl::~TaskEventBufferImpl() { Stop(); }
+
+bool TaskEventBufferImpl::RecordTaskStatusEventIfNeeded(
     const TaskID &task_id,
     const JobID &job_id,
     int32_t attempt_number,

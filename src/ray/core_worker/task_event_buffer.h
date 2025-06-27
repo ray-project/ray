@@ -291,14 +291,15 @@ class TaskEventBuffer {
   /// \param status the changed status.
   /// \param state_update optional task state updates.
   /// \return true if the event is recorded, false otherwise.
-  bool RecordTaskStatusEventIfNeeded(
+  virtual bool RecordTaskStatusEventIfNeeded(
       const TaskID &task_id,
       const JobID &job_id,
       int32_t attempt_number,
       const TaskSpecification &spec,
       rpc::TaskStatus status,
       bool include_task_info = false,
-      std::optional<const TaskStatusEvent::TaskStateUpdate> state_update = absl::nullopt);
+      std::optional<const TaskStatusEvent::TaskStateUpdate> state_update =
+          absl::nullopt) = 0;
 
   /// Add a task event to be reported.
   ///
@@ -365,6 +366,15 @@ class TaskEventBufferImpl : public TaskEventBuffer {
   TaskEventBufferImpl &operator=(const TaskEventBufferImpl &) = delete;
 
   ~TaskEventBufferImpl() override;
+
+  bool RecordTaskStatusEventIfNeeded(const TaskID &task_id,
+                                     const JobID &job_id,
+                                     int32_t attempt_number,
+                                     const TaskSpecification &spec,
+                                     rpc::TaskStatus status,
+                                     bool include_task_info = false,
+                                     std::optional<const TaskStatusEvent::TaskStateUpdate>
+                                         state_update = absl::nullopt) override;
 
   void AddTaskEvent(std::unique_ptr<TaskEvent> task_event)
       ABSL_LOCKS_EXCLUDED(mutex_) override;
@@ -562,7 +572,7 @@ class TaskEventBufferImpl : public TaskEventBuffer {
   bool send_ray_events_to_aggregator_enabled_ = false;
 
   /// The cluster ID (session name) of the cluster. Passed in from the core worker
-  std::string session_name_;
+  std::string session_name_ = "";
 
   FRIEND_TEST(TaskEventBufferTestManualStart, TestGcsClientFail);
   FRIEND_TEST(TaskEventBufferTestBatchSendDifferentDestination, TestBatchedSend);
