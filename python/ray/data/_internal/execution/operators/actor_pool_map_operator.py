@@ -1,11 +1,12 @@
 import abc
 import logging
+import threading
 import time
 import uuid
 import warnings
 from abc import abstractmethod
 from dataclasses import dataclass
-from typing import Any, Callable, Dict, Iterator, List, Optional, Tuple, Union
+from typing import Any, Callable, Dict, Iterator, List, Optional, Set, Tuple, Union
 
 import ray
 from ray.actor import ActorHandle
@@ -26,16 +27,105 @@ from ray.data._internal.execution.interfaces import (
     TaskContext,
 )
 from ray.data._internal.execution.interfaces.physical_operator import _ActorPoolInfo
-from ray.data._internal.execution.operators.map_operator import MapOperator, _map_task
+from ray.data._internal.execution.interfaces.op_runtime_metrics import OpRuntimeMetrics
+from ray.data._internal.execution.operators.map_operator import MapOperator, _map_task, _BlockRefBundler
 from ray.data._internal.execution.operators.map_transformer import MapTransformer
 from ray.data._internal.execution.util import locality_string
 from ray.data._internal.remote_fn import _add_system_error_to_retry_exceptions
+from ray.data._internal.stats import Timer
 from ray.data.block import Block, BlockMetadata
 from ray.data.context import DataContext
 from ray.types import ObjectRef
 from ray.util.common import INT32_MAX
 
 logger = logging.getLogger(__name__)
+
+
+class SharedActorPoolOperatorRegistry:
+    """Thread-safe registry for shared ActorPoolMapOperator instances.
+
+    This registry manages the lifecycle of shared operators across executions,
+    using explicit cleanup with usage counting.
+    """
+
+    def __init__(self):
+        # Use RLock for reentrant thread safety
+        self._lock = threading.RLock()
+        self._operators: Dict[str, "ActorPoolMapOperator"] = {}
+        self._usage_count: Dict[str, int] = {}
+
+    def register(
+        self, shared_key: str, operator: "ActorPoolMapOperator"
+    ) -> "ActorPoolMapOperator":
+        """Register or retrieve a shared operator.
+
+        Args:
+            shared_key: Unique key for the operator
+            operator: The operator to register (only used if not already registered)
+
+        Returns:
+            The registered operator
+        """
+        with self._lock:
+            if shared_key in self._operators:
+                self._usage_count[shared_key] += 1
+                logger.info(
+                    f"Reusing shared ActorPoolMapOperator for key: {shared_key}, "
+                    f"usage count: {self._usage_count[shared_key]}"
+                )
+                return self._operators[shared_key]
+            else:
+                logger.info(
+                    f"Registering new shared ActorPoolMapOperator for key: {shared_key}"
+                )
+                self._operators[shared_key] = operator
+                self._usage_count[shared_key] = 1
+                return operator
+
+    def get(self, shared_key: str) -> Optional["ActorPoolMapOperator"]:
+        """Get a shared operator if it exists."""
+        with self._lock:
+            return self._operators.get(shared_key)
+
+    def release(self, shared_key: str) -> bool:
+        """Release a shared operator.
+
+        Args:
+            shared_key: Key of the operator to release
+
+        Returns:
+            True if operator was cleaned up, False if still in use
+        """
+        with self._lock:
+            if shared_key not in self._usage_count:
+                return False
+
+            self._usage_count[shared_key] -= 1
+            logger.info(
+                f"Released shared operator {shared_key}, "
+                f"remaining usage: {self._usage_count[shared_key]}"
+            )
+
+            if self._usage_count[shared_key] <= 0:
+                operator = self._operators.pop(shared_key, None)
+                self._usage_count.pop(shared_key, None)
+
+                if operator and hasattr(operator, "shutdown"):
+                    try:
+                        shutdown_timer = Timer()
+                        operator.shutdown(shutdown_timer, force=True)
+                        logger.info(f"Cleaned up shared operator: {shared_key}")
+                    except Exception as e:
+                        logger.warning(
+                            f"Failed to cleanup shared operator {shared_key}: {e}"
+                        )
+
+                return True
+
+            return False
+
+
+_shared_operator_registry = SharedActorPoolOperatorRegistry()
 
 
 class ActorPoolMapOperator(MapOperator):
@@ -54,6 +144,80 @@ class ActorPoolMapOperator(MapOperator):
     to actual execution).
     """
 
+    @classmethod
+    def create(
+        cls,
+        map_transformer: "MapTransformer",
+        input_op: "PhysicalOperator",
+        data_context: "DataContext",
+        target_max_block_size: Optional[int],
+        compute_strategy: "ActorPoolStrategy",
+        name: str = "ActorPoolMap",
+        min_rows_per_bundle: Optional[int] = None,
+        supports_fusion: bool = True,
+        ray_remote_args_fn: Optional[Callable[[], Dict[str, Any]]] = None,
+        ray_remote_args: Optional[Dict[str, Any]] = None,
+        shared_key: Optional[str] = None,
+    ) -> "ActorPoolMapOperator":
+        """Create an ActorPoolMapOperator with support for operator sharing.
+
+        Args:
+            map_transformer: The transformer to apply to input data.
+            input_op: Operator generating input data for this op.
+            data_context: DataContext for this operator.
+            target_max_block_size: The target maximum number of bytes to
+                include in an output block.
+            compute_strategy: ActorPoolStrategy used for this operator.
+            name: The name of this operator.
+            min_rows_per_bundle: The number of rows to gather per batch passed to the
+                transform_fn, or None to use the block size.
+            supports_fusion: Whether this operator supports fusion with other operators.
+            ray_remote_args_fn: A function that returns a dictionary of remote args
+                passed to each map worker.
+            ray_remote_args: Customize the ray remote args for this op's tasks.
+            shared_key: Optional key for sharing this operator across executions.
+
+        Returns:
+            ActorPoolMapOperator instance (either new or shared).
+        """
+        if shared_key is not None:
+            existing_operator = _shared_operator_registry.get(shared_key)
+            if existing_operator is not None:
+                # Clean up old input dependency connection
+                if existing_operator._input_dependencies:
+                    old_input_op = existing_operator._input_dependencies[0]
+                    if existing_operator in old_input_op._output_dependencies:
+                        old_input_op._output_dependencies.remove(existing_operator)
+                
+                # Update the input dependencies to connect to the new execution plan
+                existing_operator._input_dependencies = [input_op]
+                # Add this operator to the new input_op's output dependencies
+                input_op._output_dependencies.append(existing_operator)
+                
+                # Reset operator state for reuse
+                existing_operator._reset()
+                
+                return _shared_operator_registry.register(shared_key, existing_operator)
+
+        operator = cls(
+            map_transformer=map_transformer,
+            input_op=input_op,
+            data_context=data_context,
+            target_max_block_size=target_max_block_size,
+            compute_strategy=compute_strategy,
+            name=name,
+            min_rows_per_bundle=min_rows_per_bundle,
+            supports_fusion=supports_fusion,
+            ray_remote_args_fn=ray_remote_args_fn,
+            ray_remote_args=ray_remote_args,
+            shared_key=shared_key,
+        )
+
+        if shared_key is not None:
+            return _shared_operator_registry.register(shared_key, operator)
+
+        return operator
+
     def __init__(
         self,
         map_transformer: MapTransformer,
@@ -67,6 +231,7 @@ class ActorPoolMapOperator(MapOperator):
         map_task_kwargs: Optional[Dict[str, Any]] = None,
         ray_remote_args_fn: Optional[Callable[[], Dict[str, Any]]] = None,
         ray_remote_args: Optional[Dict[str, Any]] = None,
+        shared_key: Optional[str] = None,
     ):
         """Create an ActorPoolMapOperator instance.
 
@@ -94,6 +259,7 @@ class ActorPoolMapOperator(MapOperator):
                 advanced, experimental feature.
             ray_remote_args: Customize the ray remote args for this op's tasks.
                 See :func:`ray.remote` for details.
+            shared_key: Optional key for sharing this operator across executions.
         """
         super().__init__(
             map_transformer,
@@ -107,6 +273,7 @@ class ActorPoolMapOperator(MapOperator):
             ray_remote_args_fn,
             ray_remote_args,
         )
+        self._shared_key = shared_key
         self._ray_actor_task_remote_args = {}
         actor_task_errors = self.data_context.actor_task_retry_on_errors
         if actor_task_errors:
@@ -359,6 +526,13 @@ class ActorPoolMapOperator(MapOperator):
             )
 
     def _do_shutdown(self, force: bool = False):
+        # For shared operators, don't release from registry during normal shutdown
+        # They should persist for reuse across executions
+        if self._shared_key is not None and not force:
+            logger.info(f"Keeping shared operator {self._shared_key} alive for reuse")
+        elif self._shared_key is not None:
+            _shared_operator_registry.release(self._shared_key)
+
         self._actor_pool.shutdown(force=force)
         # NOTE: It's critical for Actor Pool to release actors before calling into
         #       the base method that will attempt to cancel and join pending.
@@ -476,6 +650,13 @@ class ActorPoolMapOperator(MapOperator):
     def get_actor_info(self) -> _ActorPoolInfo:
         """Returns Actor counts for Alive, Restarting and Pending Actors."""
         return self._actor_pool.get_actor_info()
+
+    def _reset(self):
+        """Reset the operator's essential state for reuse across executions."""
+        self._inputs_complete = False
+        self._execution_finished = False
+        self._inputs_done = False
+        self._bundle_queue.clear()
 
 
 class _MapWorker:
@@ -938,8 +1119,8 @@ class _ActorPool(AutoscalingActorPool):
     def get_logical_ids(self) -> List[str]:
         """Get the logical IDs for pending and running actors in the actor pool.
 
-        We can’t use Ray Core actor IDs because we need to identify actors by labels,
-        but labels must be set before creation, and actor IDs aren’t available until
+        We can't use Ray Core actor IDs because we need to identify actors by labels,
+        but labels must be set before creation, and actor IDs aren't available until
         after.
         """
         return list(self._actor_to_logical_id.values())

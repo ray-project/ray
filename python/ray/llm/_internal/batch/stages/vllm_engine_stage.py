@@ -685,6 +685,36 @@ class vLLMEngineStage(StatefulStage):
         map_batches_kwargs.update(ray_remote_args)
         return values
 
+    def __init__(self, *args, **kwargs):
+        # Initialize normally first
+        super().__init__(*args, **kwargs)
+
+        # Check if this stage should support sharing and propagate to the logical operator level
+        shared_key = getattr(self, "_shared_engine_key", None)
+        if shared_key:
+            print(f"vLLMEngineStage: Setting up sharing support for key: {shared_key}")
+            # Store the shared key for later use during physical operator creation
+            self._shared_engine_key = shared_key
+
+    def get_dataset_map_batches_kwargs(
+        self,
+        batch_size: int,
+        data_column: str,
+    ) -> Dict[str, Any]:
+        """Override to inject shared engine key for logical operator creation."""
+        kwargs = super().get_dataset_map_batches_kwargs(batch_size, data_column)
+
+        # Inject shared engine key if this stage supports sharing
+        shared_key = getattr(self, "_shared_engine_key", None)
+        if shared_key:
+            print(
+                f"vLLMEngineStage get_dataset_map_batches_kwargs: Injecting shared key: {shared_key}"
+            )
+            # Use the native shared_key parameter in Ray Data
+            kwargs["shared_key"] = shared_key
+
+        return kwargs
+
     def get_required_input_keys(self) -> Dict[str, str]:
         """The required input keys of the stage and their descriptions."""
         ret = {"prompt": "The text prompt (str)."}

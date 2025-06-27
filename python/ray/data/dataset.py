@@ -465,6 +465,7 @@ class Dataset:
         memory: Optional[float] = None,
         concurrency: Optional[Union[int, Tuple[int, int]]] = None,
         ray_remote_args_fn: Optional[Callable[[], Dict[str, Any]]] = None,
+        shared_key: Optional[str] = None,  # NEW: Add shared_key parameter
         **ray_remote_args,
     ) -> "Dataset":
         """Apply the given function to batches of data.
@@ -700,6 +701,7 @@ class Dataset:
             memory=memory,
             concurrency=concurrency,
             ray_remote_args_fn=ray_remote_args_fn,
+            shared_key=shared_key,  # NEW: Pass shared_key to internal method
             **ray_remote_args,
         )
 
@@ -720,6 +722,7 @@ class Dataset:
         memory: Optional[float],
         concurrency: Optional[Union[int, Tuple[int, int]]],
         ray_remote_args_fn: Optional[Callable[[], Dict[str, Any]]],
+        shared_key: Optional[str],  # NEW: Add shared_key parameter
         **ray_remote_args,
     ):
         # NOTE: The `map_groups` implementation calls `map_batches` with
@@ -774,6 +777,7 @@ class Dataset:
             compute=compute,
             ray_remote_args_fn=ray_remote_args_fn,
             ray_remote_args=ray_remote_args,
+            shared_key=shared_key,  # NEW: Pass shared_key to internal method
         )
         logical_plan = LogicalPlan(map_batches_op, self.context)
         return Dataset(plan, logical_plan)
@@ -5622,9 +5626,9 @@ class Dataset:
         import pyarrow as pa
 
         ref_bundles: Iterator[RefBundle] = self.iter_internal_ref_bundles()
-        block_refs: List[
-            ObjectRef["pyarrow.Table"]
-        ] = _ref_bundles_iterator_to_block_refs_list(ref_bundles)
+        block_refs: List[ObjectRef["pyarrow.Table"]] = (
+            _ref_bundles_iterator_to_block_refs_list(ref_bundles)
+        )
         # Schema is safe to call since we have already triggered execution with
         # iter_internal_ref_bundles.
         schema = self.schema(fetch_if_missing=True)
