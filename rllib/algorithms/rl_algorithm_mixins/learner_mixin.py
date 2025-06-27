@@ -19,9 +19,12 @@ class LearnerMixin(abc.ABC):
 
     Note, only concrete mixins can be inherited from. Furthermore,
     the "mixins-to-the-left"-rule must be applied, i.e. any mixin
-    needs to be left of `RLAlgorithm`.
+    needs to be left of `RLAlgorithm`. Finally, any derived method
+    should always call `super()`.
     """
 
+    # A learner group for managing the `RLModule`. Note, this
+    # group could be customized.
     _learner_group: LearnerGroup = None
 
     def __init__(self, config: AlgorithmConfig, **kwargs):

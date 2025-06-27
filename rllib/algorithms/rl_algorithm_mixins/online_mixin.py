@@ -37,26 +37,44 @@ from ray.tune.registry import ENV_CREATOR, _global_registry
 
 
 class EnvRunnerMixin(abc.ABC):
+    """Base mixin for rollout functionalities.
+
+    This base mixin defines an `EnvRunnerGroup` and multiple related
+    attributes and methods to rollout an `RLModule` and collect experiences
+    in environments.
+
+    Next to the `EnvRunnerGroup` it contains a local `EnvRunner` if
+    the config requests it, the `EnvToModule` and the `ModuleToEnv`
+    pipelines, and the corresponding spaces used in the environment
+    the pipelines and the `RLModule`.
+
+    Note, only concrete mixins can be inherited from. Furthermore,
+    the "mixins-to-the-left"-rule must be applied, i.e. any mixin
+    needs to be left of `RLAlgorithm`. Finally, any derived method
+    should always call `super()`.
+    """
+
+    # The `EnvRunnerGroup` could be customized.
+    _env_runner_group: EnvRunnerGroup = None
+    # Also enable a local `EnvRunner`, if needed
+    _local_env_runner: Union[MultiAgentEnvRunner, SingleAgentEnvRunner] = None
+
+    # The spaces for environment, pipelines, and `RLModule`.
+    _spaces: Dict[str, Any] = None
+    # The pipelines for state synching.
+    _env_to_module: EnvToModulePipeline = None
+    _module_to_env: ModuleToEnvPipeline = None
+
     def __init__(self, config: AlgorithmConfig, **kwargs):
-        # The `EnvRunnerGroup` could be customized.
-        self._env_runner_group: EnvRunnerGroup = None
-        # Also enable a local `EnvRunner`.
-        self._local_env_runner: Union[MultiAgentEnvRunner, SingleAgentEpisode] = None
-
-        self._spaces: Dict[str, Any] = None
-        self._env_to_module: EnvToModulePipeline = None
-        self._module_to_env: ModuleToEnvPipeline = None
-
+        """Initializes an `EnvRunnerMixin`."""
+        # Call the super's method.
         super().__init__(config=config, **kwargs)
-        # Setup the environment runners.
-        # self.setup(config=config)
 
     abc.abstractmethod
 
     def _setup(self, config: AlgorithmConfig):
         """Abstract method to setup the specific `EnvRunner`s."""
         super()._setup(config=config)
-        # pass
 
     abc.abstractmethod
 
@@ -72,6 +90,8 @@ class EnvRunnerMixin(abc.ABC):
 
     def sync(self, state, **kwargs):
         """Syncs states between `EnvRunner`s and `RLAgorithm`."""
+        # TODO (sven, simon): This is bad style to make a mixin
+        #   dependent on another one. Better give it a state.
         self._env_runner_group.sync_weights(
             state, from_worker_or_learner_group=kwargs.get("learner_group")
         )
@@ -88,6 +108,9 @@ class EnvRunnerMixin(abc.ABC):
         self._env_runner_group.stop()
         self._env_runner_group = None
         self._local_env_runner = None
+        self._spaces = None
+        self._env_to_module = None
+        self._module_to_env = None
 
     # TODO (simon, sven): If this is a static method we could also move this
     #   for better readability into a non-class function and import.
@@ -202,6 +225,8 @@ class EnvRunnerMixin(abc.ABC):
 
 
 class SyncEnvRunnerConcreteMixin(EnvRunnerMixin):
+    """A concrete `EnvRunnerMixin` to sample sychronously."""
+
     class SyncEnvRunnerGroup(EnvRunnerGroup):
         def __init__(
             self,
@@ -214,6 +239,7 @@ class SyncEnvRunnerConcreteMixin(EnvRunnerMixin):
                 config=config,
             )
 
+            # Initialiaze the `EnvRunnerGroup`.
             super().__init__(
                 env_creator=env_creator,
                 validate_env=EnvRunnerMixin.validate_env,
@@ -227,6 +253,7 @@ class SyncEnvRunnerConcreteMixin(EnvRunnerMixin):
             self,
             env_steps: Optional[int] = None,
             agent_steps: Optional[int] = None,
+            **kwargs,
         ) -> Tuple[List[Union[MultiAgentEpisode, SingleAgentEpisode]], ResultDict]:
             """Samples synchronously from `EnvRunner`s."""
             # TODO (simon): Move logic from function to here.
@@ -237,18 +264,27 @@ class SyncEnvRunnerConcreteMixin(EnvRunnerMixin):
                 sample_timeout_s=self._local_config.sample_timeout_s,
                 concat=False,
                 _uses_new_env_runners=True,
-                # TODO (simon): Maybe in kwargs.
+                # TODO (simon): Maybe in kwargs. If a MetricsMixin is there
+                # it should set this in the algorithm to always False and
+                # collect metrics extra. Otherwise collecting metrics via
+                # Actors would not work.
                 _return_metrics=True,
             )
 
     def __init__(self, config: AlgorithmConfig, **kwargs):
+        """Initializes a `SyncEnvRunnerMixin`."""
+        # Call `super`'s method.
         super().__init__(config=config, **kwargs)
 
     @override(EnvRunnerMixin)
     def _setup(self, config: AlgorithmConfig):
+        """Sets up a `SyncEnvRunnerMixin`."""
+        # TODO (simon): Later use a logger.
         print("Setup SynvEnvRunnerMixin ... ")
+        # Setup here the customized `SyncEnvRunnerGroup`.
         self._env_runner_group = self.SyncEnvRunnerGroup(config)
 
+        # TODO (simon): Check, if we need to call this here.
         super()._setup(config=config)
         if self._env_runner_group.local_env_runner:
             self._local_env_runner = self._env_runner_group.local_env_runner
