@@ -96,16 +96,24 @@ def test_hybrid_policy(ray_start_cluster):
         return ray._private.worker.global_worker.current_node_id
 
     # Below the hybrid threshold we pack on the local node first.
+    print("[1.0] Submitting batch of tasks.")
     refs = [get_node.remote() for _ in range(5)]
+    print("[1.1] Acquire block_driver semaphore.")
     ray.get([block_driver.acquire.remote() for _ in refs])
+    print("[1.2] Release block_task semaphore.")
     ray.get([block_task.release.remote() for _ in refs])
+    print("[1.3] Get refs.")
     nodes = ray.get(refs)
     assert len(set(nodes)) == 1
 
     # We pack the second node to the hybrid threshold.
+    print("[2.0] Submitting batch of tasks.")
     refs = [get_node.remote() for _ in range(10)]
+    print("[2.1] Acquire block_driver semaphore.")
     ray.get([block_driver.acquire.remote() for _ in refs])
+    print("[2.2] Release block_task semaphore.")
     ray.get([block_task.release.remote() for _ in refs])
+    print("[2.3] Get refs.")
     nodes = ray.get(refs)
     counter = collections.Counter(nodes)
     for node_id in counter:
@@ -115,9 +123,13 @@ def test_hybrid_policy(ray_start_cluster):
     # Once all nodes are past the hybrid threshold we round robin.
     # TODO (Alex): Ideally we could schedule less than 20 nodes here, but the
     # policy is imperfect if a resource report interrupts the process.
+    print("[3.0] Submitting batch of tasks.")
     refs = [get_node.remote() for _ in range(20)]
+    print("[3.1] Acquire block_driver semaphore.")
     ray.get([block_driver.acquire.remote() for _ in refs])
+    print("[3.2] Release block_task semaphore.")
     ray.get([block_task.release.remote() for _ in refs])
+    print("[3.3] Get refs.")
     nodes = ray.get(refs)
     counter = collections.Counter(nodes)
     for node_id in counter:
@@ -391,6 +403,7 @@ def test_locality_aware_leasing_cached_objects(ray_start_cluster):
 def test_locality_aware_leasing_borrowed_objects(ray_start_cluster):
     """Test that a task runs where its dependencies are located for borrowed objects."""
     is_ray_client_test = ray._private.client_mode_hook.is_client_mode_enabled
+    print("CLIENT?", is_ray_client_test)
 
     # This test ensures that a task will run where its task dependencies are
     # located, even when those objects are borrowed.
