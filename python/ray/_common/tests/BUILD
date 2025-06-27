@@ -7,6 +7,7 @@ py_test_module_list(
         "test_signal_semaphore_utils.py",
         "test_utils.py",
         "test_wait_for_condition.py",
+        "test_collector.py"
     ],
     tags = [
         "exclusive",
