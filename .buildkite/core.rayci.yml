@@ -6,6 +6,7 @@ steps:
   # builds
   - name: corebuild
     wanda: ci/docker/core.build.py39.wanda.yaml
+    tags: cibase
     env:
       IMAGE_FROM: cr.ray.io/rayproject/oss-ci-base_build
       IMAGE_TO: corebuild
@@ -13,6 +14,7 @@ steps:
 
   - name: coregpubuild
     wanda: ci/docker/core.build.py39.wanda.yaml
+    tags: cibase
     depends_on: oss-ci-base_gpu
     env:
       IMAGE_FROM: cr.ray.io/rayproject/oss-ci-base_gpu
@@ -22,6 +24,7 @@ steps:
   - name: corebuild-multipy
     label: "wanda: corebuild-py{{matrix}}"
     wanda: ci/docker/core.build.wanda.yaml
+    tags: cibase
     matrix:
       - "3.12"
     env:
@@ -31,6 +34,7 @@ steps:
   - name: minbuild-core
     label: "wanda: minbuild-core-py{{matrix}}"
     wanda: ci/docker/min.build.wanda.yaml
+    tags: cibase
     matrix:
       - "3.9"
       - "3.10"
