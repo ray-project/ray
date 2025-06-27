@@ -1,11 +1,11 @@
 import pytest
 
 import ray
-import ray.train.collectives
+import ray.train.collective
 from ray.train.v2.api.data_parallel_trainer import DataParallelTrainer
 
 
-def test_barrier():
+def test_barrier(ray_start_4_cpus):
     @ray.remote
     class Counter:
         def __init__(self):
@@ -21,7 +21,7 @@ def test_barrier():
 
     def train_fn():
         counter.increment.remote()
-        ray.train.collectives.barrier()
+        ray.train.collective.barrier()
         assert ray.get(counter.get_num_reached_barrier.remote()) == 2
 
     trainer = DataParallelTrainer(
@@ -31,10 +31,10 @@ def test_barrier():
     trainer.fit()
 
 
-def test_broadcast_from_rank_zero():
+def test_broadcast_from_rank_zero(ray_start_4_cpus):
     def train_fn():
         rank = ray.train.get_context().get_world_rank()
-        value = ray.train.collectives.broadcast_from_rank_zero({"key": rank})
+        value = ray.train.collective.broadcast_from_rank_zero({"key": rank})
         assert value == {"key": 0}
 
     trainer = DataParallelTrainer(

@@ -38,9 +38,9 @@ py_test(
 )
 
 py_test(
-    name = "test_collectives",
+    name = "test_collective",
     size = "small",
-    srcs = ["tests/test_collectives.py"],
+    srcs = ["tests/test_collective.py"],
     env = {"RAY_TRAIN_V2_ENABLED": "1"},
     tags = [
         "exclusive",

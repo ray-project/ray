@@ -20,21 +20,14 @@ BROADCAST_PERIODIC_WARNING = """
 
 The workers have been waiting for {max_time_elapsed_s:.2f} s for the following ranks
 to join the `{barrier_method}` call: {missing_ranks}.
-{reminder}
-You can set the {warn_interval_env_var} environment variable to change the frequency
-of this warning (current value: {warn_interval_s} s).
-"""
 
-BROADCAST_PERIODIC_WARNING_WITH_DATA = """
 Please ensure that all workers call `{barrier_method}` regardless of whether
 they send data or not; if only one rank sends data, the other ranks should call
 `{barrier_method}` with `None`. Also ensure that workers are not hanging on
 other operations, causing them to miss this synchronization barrier.
-"""
 
-BROADCAST_PERIODIC_WARNING_WITHOUT_DATA = """
-Please ensure that workers are not hanging on other operations, causing them to
-miss this synchronization barrier.
+You can set the {warn_interval_env_var} environment variable to change the frequency
+of this warning (current value: {warn_interval_s} s).
 """
 
 
@@ -131,9 +124,7 @@ class SynchronizationActor:
         """Returns the ranks that have not entered the synchronization barrier."""
         return [i for i, t in enumerate(self._sync_start_times) if t is None]
 
-    async def _wait_with_logging(
-        self, condition, world_rank: int, barrier_method: str, has_data: bool = True
-    ):
+    async def _wait_with_logging(self, condition, world_rank: int, barrier_method: str):
         """Waits for the condition to be notified, logging an warning every
         `log_interval` seconds, and raises a timeout error if `timeout` is reached.
         """
@@ -156,14 +147,7 @@ class SynchronizationActor:
                         missing_ranks=self._get_missing_ranks(),
                         warn_interval_env_var=REPORT_BARRIER_WARN_INTERVAL_S_ENV_VAR,
                         warn_interval_s=self._warn_interval_s,
-                        reminder=BROADCAST_PERIODIC_WARNING_WITH_DATA.format(
-                            barrier_method=barrier_method
-                        )
-                        if has_data
-                        else BROADCAST_PERIODIC_WARNING_WITHOUT_DATA.format(
-                            barrier_method=barrier_method
-                        ),
-                    )
+                    ),
                 )
 
     async def broadcast_from_rank_zero(
@@ -172,7 +156,6 @@ class SynchronizationActor:
         world_size: int,
         data: T,
         barrier_method: str,
-        has_data: bool = True,
     ) -> T:
         """Broadcasts a data from the worker with rank 0 to all other workers.
 
@@ -198,7 +181,7 @@ class SynchronizationActor:
                 try:
                     await asyncio.wait_for(
                         self._wait_with_logging(
-                            self._condition, world_rank, barrier_method, has_data
+                            self._condition, world_rank, barrier_method
                         ),
                         timeout=self._timeout_s,
                     )

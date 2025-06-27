@@ -1,5 +1,5 @@
 import pickle
-from typing import Any, Dict, Optional
+from typing import Optional, TypeVar
 
 import ray
 from ray.train.v2._internal.execution.context import get_train_context
@@ -9,11 +9,11 @@ from ray.util.annotations import PublicAPI
 # and {"12345": "12345"} is 25 bytes.
 _MAX_BROADCAST_SIZE_BYTES = 1000
 
+T = TypeVar("T", bound=Optional[object])
 
-@PublicAPI(stability="beta")
-def broadcast_from_rank_zero(
-    data: Optional[Dict[str, Any]]
-) -> Optional[Dict[str, Any]]:
+
+@PublicAPI(stability="alpha")
+def broadcast_from_rank_zero(data: T) -> T:
     """Broadcast small (<1kb) data from the rank 0 worker to all other workers.
 
     Serves as a barrier, meaning that all workers must call this method before
@@ -25,7 +25,7 @@ def broadcast_from_rank_zero(
             :skipif: True
 
             from ray.train import get_context
-            from ray.train.collectives import broadcast_from_rank_zero
+            from ray.train.collective import broadcast_from_rank_zero
             from ray.train.torch import TorchTrainer
 
             def train_func():
@@ -50,24 +50,16 @@ def broadcast_from_rank_zero(
     Raises:
         ValueError: If the data is too big.
         pickle.PicklingError: If the data is not pickleable.
-        TypeError: If the data is not a dictionary or pickleable.
+        TypeError: If the data is not pickleable.
     """
     # Validate data.
     if data is not None:
-        if not isinstance(data, dict):
-            raise TypeError("data must be of type Dict[str, Any], got {type(data)}")
-        for key in data.keys():
-            if not isinstance(key, str):
-                raise TypeError(
-                    f"data must be of type Dict[str, Any], but the key {key} is of "
-                    f"type {type(key)}"
-                )
-    data_bytes = pickle.dumps(data)
-    if len(data_bytes) > _MAX_BROADCAST_SIZE_BYTES:
-        raise ValueError(
-            f"Data size {len(data_bytes)} bytes exceeds the maximum broadcast "
-            f"size of {_MAX_BROADCAST_SIZE_BYTES} bytes"
-        )
+        data_bytes = pickle.dumps(data)
+        if len(data_bytes) > _MAX_BROADCAST_SIZE_BYTES:
+            raise ValueError(
+                f"Data size {len(data_bytes)} bytes exceeds the maximum broadcast "
+                f"size of {_MAX_BROADCAST_SIZE_BYTES} bytes"
+            )
 
     # Send data to all workers.
     train_context = get_train_context()
@@ -77,12 +69,12 @@ def broadcast_from_rank_zero(
             world_rank=train_context.get_world_rank(),
             world_size=train_context.get_world_size(),
             data=data,
-            barrier_method="ray.train.collectives.broadcast_from_rank_zero",
+            barrier_method="ray.train.collective.broadcast_from_rank_zero",
         )
     )
 
 
-@PublicAPI(stability="beta")
+@PublicAPI(stability="alpha")
 def barrier() -> None:
     """Create a barrier across all workers.
 
@@ -94,7 +86,7 @@ def barrier() -> None:
             :skipif: True
 
             from ray.train import get_context
-            from ray.train.collectives import barrier
+            from ray.train.collective import barrier
             from ray.train.torch import TorchTrainer
 
             def train_func():
@@ -114,7 +106,6 @@ def barrier() -> None:
             world_rank=train_context.get_world_rank(),
             world_size=train_context.get_world_size(),
             data=None,
-            barrier_method="ray.train.collectives.barrier",
-            has_data=False,
+            barrier_method="ray.train.collective.barrier",
         )
     )
