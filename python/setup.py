@@ -638,9 +638,7 @@ def build(build_python, build_java, build_cpp):
     else:
         bazel_precmd_flags = []
         if sys.platform == "win32":
-            bazel_precmd_flags = [
-                "--output_user_root=C:/tmp"
-            ]
+            bazel_precmd_flags = ["--output_user_root=C:/tmp"]
         # Using --incompatible_strict_action_env so that the build is more
         # cache-able We cannot turn this on for Python tests yet, as Ray's
         # Python bazel tests are not hermetic.
