@@ -70,6 +70,9 @@ def test_caller_death(monkeypatch, shutdown_only):
     ray.get(callee.ping.remote())
 
 
+@pytest.mark.skipif(
+    sys.platform == "win32", reason="SIGINT is not available on Windows"
+)
 def test_intermediate_generator_object_recovery_while_generator_running(
     ray_start_cluster,
 ):
@@ -85,22 +88,31 @@ def test_intermediate_generator_object_recovery_while_generator_running(
     """
 
     cluster = ray_start_cluster
-    cluster.add_node(num_cpus=0)  # head
+    head_node = cluster.add_node(num_cpus=0)
+    schedule_on_head = ray.util.scheduling_strategies.NodeAffinitySchedulingStrategy(
+        node_id=head_node.node_id, soft=False
+    )
     ray.init(address=cluster.address)
     cluster.add_node(num_cpus=1, resources={"producer": 1})  # worker1
     worker2 = cluster.add_node(num_cpus=1, resources={"consumer": 1})
 
     @ray.remote(num_cpus=1, resources={"producer": 1})
-    def producer():
-        for i in range(3):
-            yield np.zeros(10 * 1024 * 1024, dtype=np.uint8)
-            time.sleep(10)
+    def producer(signal_actor):
+        try:
+            for i in range(3):
+                yield np.zeros(10 * 1024 * 1024, dtype=np.uint8)
+                signal_ref = signal_actor.wait.remote()
+                while True:
+                    ray.wait([signal_ref], timeout=0.1)
+        except KeyboardInterrupt:
+            signal_actor.send.remote()
 
     @ray.remote(num_cpus=1, resources={"consumer": 1})
     def consumer(np_arr):
-        return np_arr.copy()
+        return np_arr
 
-    streaming_ref = producer.remote()
+    signal_actor = SignalActor.options(scheduling_strategy=schedule_on_head).remote()
+    streaming_ref = producer.remote(signal_actor)
     consumer_ref = consumer.remote(next(streaming_ref))
 
     ray.wait([consumer_ref], num_returns=1, fetch_local=False)
@@ -108,10 +120,10 @@ def test_intermediate_generator_object_recovery_while_generator_running(
     cluster.add_node(num_cpus=1, resources={"consumer": 1})  # worker3
     cluster.remove_node(worker2, allow_graceful=True)
 
-    start_time = time.time()
+    # Make sure the producer got the cancel signal.
+    ray.get(signal_actor.wait.remote())
+
     assert ray.get(consumer_ref).size == (10 * 1024 * 1024)
-    # Assert that the ongoing generator was cancelled.
-    assert time.time() - start_time < 10
 
 
 def test_actor_intermediate_generator_object_recovery_while_generator_running(
@@ -120,10 +132,11 @@ def test_actor_intermediate_generator_object_recovery_while_generator_running(
     """
     1. Producer actor and its generator producer task start on worker1.
     2. consumer consumes value 1 from producer on worker2 and finishes.
+    3. Run an extra consumer on worker2 to track when reconstruction is triggered.
     3. Add worker3.
     4. worker2 dies.
-    5. 0.1 second sleep to allow recovery to kick off.
-    6. Ray tries to reconstruct value 1 from producer.
+    5. Ray tries to reconstruct value 1 from producer.
+    6. Get the reconstructed extra_consumer_ref (assures 5 happened).
     7. Ray tries and fails to cancel the producer task.
     8. Get the next two values to relieve backpressure and allow producer to finish.
     9. Ray resubmits the producer generator task.
@@ -150,14 +163,15 @@ def test_actor_intermediate_generator_object_recovery_while_generator_running(
         _generator_backpressure_num_objects=1
     ).remote()
     consumer_ref = consumer.remote(next(streaming_ref))
+    extra_consumer_ref = consumer.remote(np.zeros(10 * 1024 * 1024, dtype=np.uint8))
 
-    ray.wait([consumer_ref], num_returns=1, fetch_local=False)
+    ray.wait([consumer_ref, extra_consumer_ref], num_returns=2, fetch_local=False)
 
     cluster.add_node(num_cpus=1, resources={"consumer": 1})  # worker 3
     cluster.remove_node(worker2, allow_graceful=True)
 
-    # Recovery periodical runner runs every 100ms
-    time.sleep(0.1)
+    # Make sure reconstruction was triggered.
+    ray.get(extra_consumer_ref)
     # Allow streaming generator to finish
     ray.get([next(streaming_ref), next(streaming_ref)])
 
