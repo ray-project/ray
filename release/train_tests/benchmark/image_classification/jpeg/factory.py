@@ -85,7 +85,8 @@ class ImageClassificationJpegRayDataLoaderFactory(
                 - "val": Validation dataset without transforms
         """
         train_dir = self._dataset_dirs[DatasetKey.TRAIN]
-        val_dir = self._dataset_dirs[DatasetKey.VALID]
+        # TODO: The validation dataset directory is not partitioned by class.
+        val_dir = train_dir
 
         filesystem = (
             self.get_s3fs_with_boto_creds() if train_dir.startswith("s3://") else None
