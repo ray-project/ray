@@ -11,12 +11,16 @@ from typing import (
     TYPE_CHECKING,
     TypeVar,
     Generic,
+    Callable,
+    overload,
 )
+from typing_extensions import ParamSpec
+from typing_extensions import Concatenate
 
 import ray._private.ray_constants as ray_constants
 import ray._private.signature as signature
 import ray._raylet
-from ray import ActorClassID, Language, cross_language
+from ray import ActorClassID, Language, cross_language, ObjectRef
 from ray._private import ray_option_utils
 from ray._private.async_compat import has_async_methods
 from ray._private.auto_init_hook import wrap_auto_init
@@ -67,6 +71,304 @@ T = TypeVar("T")
 
 # return type of ActorClass[T].remote()
 ActorProxy = Union["ActorHandle[T]", type[T]]
+
+_Ret = TypeVar("_Ret")
+_P = ParamSpec("_P")
+_T0 = TypeVar("_T0")
+_T1 = TypeVar("_T1")
+_T2 = TypeVar("_T2")
+_T3 = TypeVar("_T3")
+_T4 = TypeVar("_T4")
+_T5 = TypeVar("_T5")
+_T6 = TypeVar("_T6")
+_T7 = TypeVar("_T7")
+_T8 = TypeVar("_T8")
+_T9 = TypeVar("_T9")
+
+
+class RemoteMethodNoArgs(Generic[_Ret]):
+    def remote(self) -> "ObjectRef[_Ret]":
+        ...
+
+    def bind(self) -> Any:
+        ...
+
+
+class RemoteMethod0(Generic[_Ret, _T0]):
+    def remote(self, __arg0: _T0) -> "ObjectRef[_Ret]":
+        ...
+
+    def bind(self, __arg0: _T0) -> Any:
+        ...
+
+
+class RemoteMethod1(Generic[_Ret, _T0, _T1]):
+    def remote(self, __arg0: _T0, __arg1: _T1) -> "ObjectRef[_Ret]":
+        ...
+
+    def bind(self, __arg0: _T0, __arg1: _T1) -> Any:
+        ...
+
+
+class RemoteMethod2(Generic[_Ret, _T0, _T1, _T2]):
+    def remote(self, __arg0: _T0, __arg1: _T1, __arg2: _T2) -> "ObjectRef[_Ret]":
+        ...
+
+    def bind(self, __arg0: _T0, __arg1: _T1, __arg2: _T2) -> Any:
+        ...
+
+
+class RemoteMethod3(Generic[_Ret, _T0, _T1, _T2, _T3]):
+    def remote(
+        self, __arg0: _T0, __arg1: _T1, __arg2: _T2, __arg3: _T3
+    ) -> "ObjectRef[_Ret]":
+        ...
+
+    def bind(self, __arg0: _T0, __arg1: _T1, __arg2: _T2, __arg3: _T3) -> Any:
+        ...
+
+
+class RemoteMethod4(Generic[_Ret, _T0, _T1, _T2, _T3, _T4]):
+    def remote(
+        self, __arg0: _T0, __arg1: _T1, __arg2: _T2, __arg3: _T3, __arg4: _T4
+    ) -> "ObjectRef[_Ret]":
+        ...
+
+    def bind(
+        self, __arg0: _T0, __arg1: _T1, __arg2: _T2, __arg3: _T3, __arg4: _T4
+    ) -> Any:
+        ...
+
+
+class RemoteMethod5(Generic[_Ret, _T0, _T1, _T2, _T3, _T4, _T5]):
+    def remote(
+        self,
+        __arg0: _T0,
+        __arg1: _T1,
+        __arg2: _T2,
+        __arg3: _T3,
+        __arg4: _T4,
+        __arg5: _T5,
+    ) -> "ObjectRef[_Ret]":
+        ...
+
+    def bind(
+        self,
+        __arg0: _T0,
+        __arg1: _T1,
+        __arg2: _T2,
+        __arg3: _T3,
+        __arg4: _T4,
+        __arg5: _T5,
+    ) -> Any:
+        ...
+
+
+class RemoteMethod6(Generic[_Ret, _T0, _T1, _T2, _T3, _T4, _T5, _T6]):
+    def remote(
+        self,
+        __arg0: _T0,
+        __arg1: _T1,
+        __arg2: _T2,
+        __arg3: _T3,
+        __arg4: _T4,
+        __arg5: _T5,
+        __arg6: _T6,
+    ) -> "ObjectRef[_Ret]":
+        ...
+
+    def bind(
+        self,
+        __arg0: _T0,
+        __arg1: _T1,
+        __arg2: _T2,
+        __arg3: _T3,
+        __arg4: _T4,
+        __arg5: _T5,
+        __arg6: _T6,
+    ) -> Any:
+        ...
+
+
+class RemoteMethod7(Generic[_Ret, _T0, _T1, _T2, _T3, _T4, _T5, _T6, _T7]):
+    def remote(
+        self,
+        __arg0: _T0,
+        __arg1: _T1,
+        __arg2: _T2,
+        __arg3: _T3,
+        __arg4: _T4,
+        __arg5: _T5,
+        __arg6: _T6,
+        __arg7: _T7,
+    ) -> "ObjectRef[_Ret]":
+        ...
+
+    def bind(
+        self,
+        __arg0: _T0,
+        __arg1: _T1,
+        __arg2: _T2,
+        __arg3: _T3,
+        __arg4: _T4,
+        __arg5: _T5,
+        __arg6: _T6,
+        __arg7: _T7,
+    ) -> Any:
+        ...
+
+
+class RemoteMethod8(Generic[_Ret, _T0, _T1, _T2, _T3, _T4, _T5, _T6, _T7, _T8]):
+    def remote(
+        self,
+        __arg0: _T0,
+        __arg1: _T1,
+        __arg2: _T2,
+        __arg3: _T3,
+        __arg4: _T4,
+        __arg5: _T5,
+        __arg6: _T6,
+        __arg7: _T7,
+        __arg8: _T8,
+    ) -> "ObjectRef[_Ret]":
+        ...
+
+    def bind(
+        self,
+        __arg0: _T0,
+        __arg1: _T1,
+        __arg2: _T2,
+        __arg3: _T3,
+        __arg4: _T4,
+        __arg5: _T5,
+        __arg6: _T6,
+        __arg7: _T7,
+        __arg8: _T8,
+    ) -> Any:
+        ...
+
+
+class RemoteMethod9(Generic[_Ret, _T0, _T1, _T2, _T3, _T4, _T5, _T6, _T7, _T8, _T9]):
+    def remote(
+        self,
+        __arg0: _T0,
+        __arg1: _T1,
+        __arg2: _T2,
+        __arg3: _T3,
+        __arg4: _T4,
+        __arg5: _T5,
+        __arg6: _T6,
+        __arg7: _T7,
+        __arg8: _T8,
+        __arg9: _T9,
+    ) -> "ObjectRef[_Ret]":
+        ...
+
+    def bind(
+        self,
+        __arg0: _T0,
+        __arg1: _T1,
+        __arg2: _T2,
+        __arg3: _T3,
+        __arg4: _T4,
+        __arg5: _T5,
+        __arg6: _T6,
+        __arg7: _T7,
+        __arg8: _T8,
+        __arg9: _T9,
+    ) -> Any:
+        ...
+
+
+@overload
+def method(
+    __method: Callable[[Any], _Ret],
+) -> RemoteMethodNoArgs[_Ret]:
+    ...
+
+
+@overload
+def method(
+    __method: Callable[[Any, _T0], _Ret],
+) -> RemoteMethod0[_Ret, _T0]:
+    ...
+
+
+@overload
+def method(
+    __method: Callable[[Any, _T0, _T1], _Ret],
+) -> RemoteMethod1[_Ret, _T0, _T1]:
+    ...
+
+
+@overload
+def method(
+    __method: Callable[[Any, _T0, _T1, _T2], _Ret],
+) -> RemoteMethod2[_Ret, _T0, _T1, _T2]:
+    ...
+
+
+@overload
+def method(
+    __method: Callable[[Any, _T0, _T1, _T2, _T3], _Ret],
+) -> RemoteMethod3[_Ret, _T0, _T1, _T2, _T3]:
+    ...
+
+
+@overload
+def method(
+    __method: Callable[[Any, _T0, _T1, _T2, _T3, _T4], _Ret],
+) -> RemoteMethod4[_Ret, _T0, _T1, _T2, _T3, _T4]:
+    ...
+
+
+@overload
+def method(
+    __method: Callable[[Any, _T0, _T1, _T2, _T3, _T4, _T5], _Ret],
+) -> RemoteMethod5[_Ret, _T0, _T1, _T2, _T3, _T4, _T5]:
+    ...
+
+
+@overload
+def method(
+    __method: Callable[[Any, _T0, _T1, _T2, _T3, _T4, _T5, _T6], _Ret],
+) -> RemoteMethod6[_Ret, _T0, _T1, _T2, _T3, _T4, _T5, _T6]:
+    ...
+
+
+@overload
+def method(
+    __method: Callable[[Any, _T0, _T1, _T2, _T3, _T4, _T5, _T6, _T7], _Ret],
+) -> RemoteMethod7[_Ret, _T0, _T1, _T2, _T3, _T4, _T5, _T6, _T7]:
+    ...
+
+
+@overload
+def method(
+    __method: Callable[[Any, _T0, _T1, _T2, _T3, _T4, _T5, _T6, _T7, _T8], _Ret],
+) -> RemoteMethod8[_Ret, _T0, _T1, _T2, _T3, _T4, _T5, _T6, _T7, _T8]:
+    ...
+
+
+@overload
+def method(
+    __method: Callable[[Any, _T0, _T1, _T2, _T3, _T4, _T5, _T6, _T7, _T8, _T9], _Ret],
+) -> RemoteMethod9[_Ret, _T0, _T1, _T2, _T3, _T4, _T5, _T6, _T7, _T8, _T9]:
+    ...
+
+
+@overload
+def method(
+    *,
+    num_returns: Optional[Union[int, Literal["streaming"]]] = None,
+    concurrency_group: Optional[str] = None,
+    max_task_retries: Optional[int] = None,
+    retry_exceptions: Optional[Union[bool, list, tuple]] = None,
+    _generator_backpressure_num_objects: Optional[int] = None,
+    enable_task_events: Optional[bool] = None,
+    tensor_transport: Optional[str] = None,
+) -> Callable[[Callable[Concatenate[Any, _P], _Ret]], Any]:
+    ...
 
 
 @PublicAPI
@@ -129,20 +431,8 @@ def method(*args, **kwargs):
         "enable_task_events",
         "tensor_transport",
     ]
-    error_string = (
-        "The @ray.method decorator must be applied using at least one of "
-        f"the arguments in the list {valid_kwargs}, for example "
-        "'@ray.method(num_returns=2)'."
-    )
-    assert len(args) == 0 and len(kwargs) > 0, error_string
-    for key in kwargs:
-        key_error_string = (
-            f"Unexpected keyword argument to @ray.method: '{key}'. The "
-            f"supported keyword arguments are {valid_kwargs}"
-        )
-        assert key in valid_kwargs, key_error_string
 
-    def annotate_method(method):
+    def annotate_method(method: Callable[_P, _Ret]):
         if "num_returns" in kwargs:
             method.__ray_num_returns__ = kwargs["num_returns"]
         if "max_task_retries" in kwargs:
@@ -162,6 +452,25 @@ def method(*args, **kwargs):
                 kwargs["tensor_transport"]
             )
         return method
+
+    # Check if decorator is called without parentheses (args[0] would be the function)
+    if len(args) == 1 and callable(args[0]) and len(kwargs) == 0:
+        # Called as @ray.method (without parentheses)
+        return annotate_method(args[0])
+
+    # Called as @ray.method() or @ray.method(options...)
+    error_string = (
+        "The @ray.method decorator must be applied using no arguments or at "
+        f"least one of the arguments in the list {valid_kwargs}, for example "
+        "'@ray.method(num_returns=2)'."
+    )
+    assert len(args) == 0, error_string
+    for key in kwargs:
+        key_error_string = (
+            f"Unexpected keyword argument to @ray.method: '{key}'. The "
+            f"supported keyword arguments are {valid_kwargs}"
+        )
+        assert key in valid_kwargs, key_error_string
 
     return annotate_method
 
