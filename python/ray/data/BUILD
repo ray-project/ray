@@ -464,10 +464,25 @@ py_test(
 )
 
 py_test(
-    name = "test_ecosystem",
+    name = "test_ecosystem_modin",
     size = "small",
-    srcs = ["tests/test_ecosystem.py"],
+    srcs = ["tests/test_ecosystem_modin.py"],
     tags = [
+        "exclusive",
+        "team:data",
+    ],
+    deps = [
+        ":conftest",
+        "//:ray_lib",
+    ],
+)
+
+py_test(
+    name = "test_ecosystem_dask",
+    size = "small",
+    srcs = ["tests/test_ecosystem_dask.py"],
+    tags = [
+        "dask",
         "exclusive",
         "team:data",
     ],
