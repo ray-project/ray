@@ -250,10 +250,10 @@ class ActorTaskSubmitter : public ActorTaskSubmitterInterface {
   /// Retry the CancelTask in milliseconds.
   void RetryCancelTask(TaskSpecification task_spec, bool recursive, int64_t milliseconds);
 
-  /// Cancel and resubmit a streaming generator task.
-  /// \return true if the task is still executing and the submitter will handle cancelling
-  /// and resubmitting.
-  bool CancelAndResubmitGenerator(const TaskSpecification &spec);
+  /// Queue the streaming generator up for resubmission.
+  /// \return true if the task is still executing and the submitter agrees to resubmit
+  /// when it finishes. false case is a TODO.
+  bool QueueGeneratorForResubmit(const TaskSpecification &spec);
 
  private:
   struct PendingTaskWaitingForDeathInfo {

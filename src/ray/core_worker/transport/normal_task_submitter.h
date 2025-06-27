@@ -128,10 +128,10 @@ class NormalTaskSubmitter {
                           bool force_kill,
                           bool recursive);
 
-  /// Cancel and resubmit a streaming generator task.
-  /// \return true if the task is still executing and the submitter will handle cancelling
-  /// and resubmitting.
-  bool CancelAndResubmitGenerator(const TaskSpecification &spec);
+  /// Queue the streaming generator up for resubmission.
+  /// \return true if the task is still executing and the submitter agrees to resubmit
+  /// when it finishes. false if the user cancelled the task.
+  bool QueueGeneratorForResubmit(const TaskSpecification &spec);
 
   /// Check that the scheduling_key_entries_ hashmap is empty by calling the private
   /// CheckNoSchedulingKeyEntries function after acquiring the lock.
@@ -244,11 +244,6 @@ class NormalTaskSubmitter {
       const rpc::Address &addr,
       const Status &get_task_failure_cause_reply_status,
       const rpc::GetTaskFailureCauseReply &get_task_failure_cause_reply);
-
-  /// Used to cancel a generator task and retry cancels if needed.
-  void CancelGenerator(const std::shared_ptr<rpc::CoreWorkerClientInterface> &client,
-                       TaskID task_id,
-                       WorkerID worker_id) ABSL_EXCLUSIVE_LOCKS_REQUIRED(mu_);
 
   /// Address of our RPC server.
   rpc::Address rpc_address_;

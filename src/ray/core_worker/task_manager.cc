@@ -312,17 +312,18 @@ std::vector<rpc::ObjectReference> TaskManager::AddPendingTask(
   return returned_refs;
 }
 
-bool TaskManager::ResubmitTask(const TaskID &task_id, std::vector<ObjectID> *task_deps) {
+std::optional<rpc::ErrorType> TaskManager::ResubmitTask(
+    const TaskID &task_id, std::vector<ObjectID> *task_deps) {
   RAY_CHECK(task_deps->empty());
   TaskSpecification spec;
-  bool should_cancel_and_resubmit_generator = false;
+  bool should_queue_generator_resubmit = false;
   {
     absl::MutexLock lock(&mu_);
     auto it = submissible_tasks_.find(task_id);
     if (it == submissible_tasks_.end()) {
       // This can happen when the task has already been
       // retried up to its max attempts.
-      return false;
+      return rpc::ErrorType::OBJECT_UNRECONSTRUCTABLE_MAX_ATTEMPTS_EXCEEDED;
     }
     auto &task_entry = it->second;
 
@@ -330,17 +331,17 @@ bool TaskManager::ResubmitTask(const TaskID &task_id, std::vector<ObjectID> *tas
         task_entry.GetStatus() == rpc::TaskStatus::SUBMITTED_TO_WORKER) {
       if (task_entry.num_retries_left == 0) {
         // If the last attempt is in progress.
-        return false;
+        return rpc::ErrorType::OBJECT_UNRECONSTRUCTABLE_MAX_ATTEMPTS_EXCEEDED;
       }
       // If the task is a running streaming generator, the object may have been created,
       // deleted, and then needed again for recovery. We have to cancel and resubmit the
       // generator to recover the object. When the task is finished / failed, ResubmitTask
       // will be called again.
-      should_cancel_and_resubmit_generator = true;
+      should_queue_generator_resubmit = true;
     } else if (task_entry.GetStatus() != rpc::TaskStatus::FINISHED &&
                task_entry.GetStatus() != rpc::TaskStatus::FAILED) {
       // Assuming the task retry is already submitted / running.
-      return true;
+      return std::nullopt;
     } else {
       // Going to resubmit the task now.
       SetupTaskEntryForResubmit(task_entry);
@@ -349,22 +350,10 @@ bool TaskManager::ResubmitTask(const TaskID &task_id, std::vector<ObjectID> *tas
     spec = task_entry.spec;
   }
 
-  if (should_cancel_and_resubmit_generator) {
-    if (cancel_and_resubmit_generator_(spec)) {
-      return true;
-    }
-    // We didn't cancel because the task finished since the time we first set
-    // should_cancel_and_resubmit_generator, so we should resubmit now.
-    absl::MutexLock lock(&mu_);
-    auto it = submissible_tasks_.find(task_id);
-    RAY_CHECK(it != submissible_tasks_.end());
-    auto &task_entry = it->second;
-    if (task_entry.GetStatus() != rpc::TaskStatus::FINISHED &&
-        task_entry.GetStatus() != rpc::TaskStatus::FAILED) {
-      // There was an retryable error and the submitter already kicked off the retry.
-      return true;
-    }
-    SetupTaskEntryForResubmit(task_entry);
+  if (should_queue_generator_resubmit) {
+    return queue_generator_resubmit_(spec)
+               ? std::nullopt
+               : std::make_optional(rpc::ErrorType::TASK_CANCELLED);
   }
 
   UpdateReferencesForResubmit(spec, task_deps);
@@ -373,7 +362,7 @@ bool TaskManager::ResubmitTask(const TaskID &task_id, std::vector<ObjectID> *tas
                 << spec.AttemptNumber() << ": " << spec.DebugString();
   retry_task_callback_(spec, /*object_recovery*/ true, /*delay_ms*/ 0);
 
-  return true;
+  return std::nullopt;
 }
 
 void TaskManager::SetupTaskEntryForResubmit(TaskEntry &task_entry) {

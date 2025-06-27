@@ -633,20 +633,26 @@ void ActorTaskSubmitter::HandlePushTaskReply(const Status &status,
                                              const rpc::Address &addr,
                                              const TaskSpecification &task_spec) {
   const auto task_id = task_spec.TaskId();
+  const auto actor_id = task_spec.ActorId();
 
   bool resubmit_generator = false;
   {
     absl::MutexLock lock(&mu_);
-    resubmit_generator = generators_to_resubmit_.erase(task_id) > 0;
-  }
-  if (resubmit_generator && status.ok()) {
     // If the generator was queued up for resubmission for object recovery,
     // resubmit as long as we get a valid reply.
+    resubmit_generator = generators_to_resubmit_.erase(task_id) > 0 && status.ok();
+    if (resubmit_generator) {
+      auto queue_pair = client_queues_.find(actor_id);
+      RAY_CHECK(queue_pair != client_queues_.end());
+      auto &queue = queue_pair->second;
+      queue.cur_pending_calls--;
+    }
+  }
+  if (resubmit_generator) {
     GetTaskFinisherWithoutMu().MarkGeneratorFailedAndResubmit(task_id);
     return;
   }
 
-  const auto actor_id = task_spec.ActorId();
   const bool is_retryable_exception = status.ok() && reply.is_retryable_error();
   /// Whether or not we will retry this actor task.
   auto will_retry = false;
@@ -878,6 +884,8 @@ Status ActorTaskSubmitter::CancelTask(TaskSpecification task_spec, bool recursiv
   {
     absl::MutexLock lock(&mu_);
 
+    generators_to_resubmit_.erase(task_id);
+
     auto queue = client_queues_.find(actor_id);
     RAY_CHECK(queue != client_queues_.end());
     if (queue->second.state == rpc::ActorTableData::DEAD) {
@@ -968,42 +976,11 @@ Status ActorTaskSubmitter::CancelTask(TaskSpecification task_spec, bool recursiv
   return Status::OK();
 }
 
-bool ActorTaskSubmitter::CancelAndResubmitGenerator(const TaskSpecification &spec) {
-  std::shared_ptr<rpc::CoreWorkerClientInterface> client;
-  {
-    absl::MutexLock lock(&mu_);
-    auto client_queue_iter = client_queues_.find(spec.ActorId());
-    RAY_CHECK(client_queue_iter != client_queues_.end());
-    auto &inflight_task_callbacks = client_queue_iter->second.inflight_task_callbacks;
-    auto inflight_iter =
-        inflight_task_callbacks.find(TaskAttempt{spec.TaskId(), spec.AttemptNumber()});
-    if (inflight_iter == inflight_task_callbacks.end()) {
-      // The task is no longer executing.
-      return false;
-    }
-    auto [_, inserted] = generators_to_resubmit_.insert(spec.TaskId());
-    if (!inserted) {
-      // The task is already in the set.
-      return true;
-    }
-    client = client_queue_iter->second.rpc_client;
-    RAY_CHECK(client != nullptr);
-  }
-  rpc::CancelTaskRequest request;
-  request.set_intended_task_id(spec.TaskIdBinary());
-  request.set_force_kill(false);
-  request.set_recursive(true);
-  request.set_caller_worker_id(spec.CallerWorkerId().Binary());
-  client->CancelTask(
-      request,
-      [task_id = spec.TaskId()](const Status &status, const rpc::CancelTaskReply &reply) {
-        if (!status.ok() ||
-            (!reply.attempt_succeeded() && reply.requested_task_running())) {
-          RAY_LOG(INFO) << "Failed to cancel generator " << task_id << " with status "
-                        << status.ToString();
-          return;
-        }
-      });
+bool ActorTaskSubmitter::QueueGeneratorForResubmit(const TaskSpecification &spec) {
+  // TODO(dayshah): Needs to integrate with the cancellation logic - what if task was
+  // cancelled before this?
+  absl::MutexLock lock(&mu_);
+  generators_to_resubmit_.insert(spec.TaskId());
   return true;
 }
 

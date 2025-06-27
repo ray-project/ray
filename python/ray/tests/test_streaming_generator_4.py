@@ -70,21 +70,20 @@ def test_caller_death(monkeypatch, shutdown_only):
     ray.get(callee.ping.remote())
 
 
-@pytest.mark.skipif(
-    sys.platform == "win32", reason="SIGINT is not available on Windows"
-)
 def test_intermediate_generator_object_recovery_while_generator_running(
     ray_start_cluster,
 ):
     """
     1. Streaming producer starts on worker1.
     2. consumer consumes value 1 from producer on worker2 and finishes.
-    3. Add worker3.
-    4. worker2 dies.
-    4. Try to get consumer output.
-    5. Therefore Ray tries to reconstruct value 1 from producer.
-    6. Streaming producer should be cancelled and resubmitted.
-    7. Retry for consumer should complete.
+    3. Run an extra consumer on worker2 to track when reconstruction is triggered.
+    4. Add worker3.
+    5. worker2 dies.
+    6. Try to get consumer output.
+    7. Therefore Ray tries to reconstruct value 1 from producer.
+    8. Get the reconstructed extra_consumer_ref (assures 7 happened).
+    9. Streaming producer should be cancelled and resubmitted.
+    10. Retry for consumer should complete.
     """
 
     cluster = ray_start_cluster
@@ -97,24 +96,26 @@ def test_intermediate_generator_object_recovery_while_generator_running(
     def producer():
         for _ in range(3):
             yield np.zeros(10 * 1024 * 1024, dtype=np.uint8)
-            time.sleep(5)
 
     @ray.remote(num_cpus=1, resources={"consumer": 1})
     def consumer(np_arr):
         return np_arr
 
-    streaming_ref = producer.remote()
+    streaming_ref = producer.options(_generator_backpressure_num_objects=1).remote()
     consumer_ref = consumer.remote(next(streaming_ref))
+    extra_consumer_ref = consumer.remote(np.zeros(10 * 1024 * 1024, dtype=np.uint8))
 
-    ray.wait([consumer_ref], num_returns=1, fetch_local=False)
+    ray.wait([consumer_ref, extra_consumer_ref], num_returns=2, fetch_local=False)
 
     cluster.add_node(num_cpus=1, resources={"consumer": 1})  # worker3
     cluster.remove_node(worker2, allow_graceful=True)
 
-    start_time = time.time()
+    # Make sure reconstruction was triggered.
+    assert ray.get(extra_consumer_ref).size == (10 * 1024 * 1024)
+    # Allow first streaming generator attempt to finish
+    ray.get([next(streaming_ref), next(streaming_ref)])
+
     assert ray.get(consumer_ref).size == (10 * 1024 * 1024)
-    # Make sure the producer was cancelled.
-    assert time.time() - start_time < 5
 
 
 def test_actor_intermediate_generator_object_recovery_while_generator_running(
@@ -124,14 +125,14 @@ def test_actor_intermediate_generator_object_recovery_while_generator_running(
     1. Producer actor and its generator producer task start on worker1.
     2. consumer consumes value 1 from producer on worker2 and finishes.
     3. Run an extra consumer on worker2 to track when reconstruction is triggered.
-    3. Add worker3.
-    4. worker2 dies.
-    5. Ray tries to reconstruct value 1 from producer.
-    6. Get the reconstructed extra_consumer_ref (assures 5 happened).
-    7. Ray tries and fails to cancel the producer task.
-    8. Get the next two values to relieve backpressure and allow producer to finish.
-    9. Ray resubmits the producer generator task.
-    10. Retry for consumer should complete.
+    4. Add worker3.
+    5. worker2 dies.
+    6. Ray tries to reconstruct value 1 from producer.
+    7. Get the reconstructed extra_consumer_ref (assures 6 happened).
+    8. Ray tries and fails to cancel the producer task.
+    9. Get the next two values to relieve backpressure and allow producer to finish.
+    10. Ray resubmits the producer generator task.
+    11. Retry for consumer should complete.
     """
     cluster = ray_start_cluster
     cluster.add_node(num_cpus=0)  # head
@@ -163,7 +164,7 @@ def test_actor_intermediate_generator_object_recovery_while_generator_running(
 
     # Make sure reconstruction was triggered.
     ray.get(extra_consumer_ref)
-    # Allow streaming generator to finish
+    # Allow first streaming generator attempt to finish
     ray.get([next(streaming_ref), next(streaming_ref)])
 
     assert ray.get(consumer_ref).size == (10 * 1024 * 1024)

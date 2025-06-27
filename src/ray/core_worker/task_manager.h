@@ -40,7 +40,8 @@ class ActorManager;
 
 class TaskResubmissionInterface {
  public:
-  virtual bool ResubmitTask(const TaskID &task_id, std::vector<ObjectID> *task_deps) = 0;
+  virtual std::optional<rpc::ErrorType> ResubmitTask(
+      const TaskID &task_id, std::vector<ObjectID> *task_deps) = 0;
 
   virtual ~TaskResubmissionInterface() = default;
 };
@@ -174,20 +175,19 @@ class ObjectRefStream {
 
 class TaskManager : public TaskFinisherInterface, public TaskResubmissionInterface {
  public:
-  TaskManager(
-      CoreWorkerMemoryStore &in_memory_store,
-      ReferenceCounter &reference_counter,
-      PutInLocalPlasmaCallback put_in_local_plasma_callback,
-      RetryTaskCallback retry_task_callback,
-      std::function<bool(const TaskSpecification &spec)> cancel_and_resubmit_generator,
-      PushErrorCallback push_error_callback,
-      int64_t max_lineage_bytes,
-      worker::TaskEventBuffer &task_event_buffer)
+  TaskManager(CoreWorkerMemoryStore &in_memory_store,
+              ReferenceCounter &reference_counter,
+              PutInLocalPlasmaCallback put_in_local_plasma_callback,
+              RetryTaskCallback retry_task_callback,
+              std::function<bool(const TaskSpecification &spec)> queue_generator_resubmit,
+              PushErrorCallback push_error_callback,
+              int64_t max_lineage_bytes,
+              worker::TaskEventBuffer &task_event_buffer)
       : in_memory_store_(in_memory_store),
         reference_counter_(reference_counter),
         put_in_local_plasma_callback_(std::move(put_in_local_plasma_callback)),
         retry_task_callback_(std::move(retry_task_callback)),
-        cancel_and_resubmit_generator_(std::move(cancel_and_resubmit_generator)),
+        queue_generator_resubmit_(std::move(queue_generator_resubmit)),
         push_error_callback_(std::move(push_error_callback)),
         max_lineage_bytes_(max_lineage_bytes),
         task_event_buffer_(task_event_buffer) {
@@ -234,10 +234,12 @@ class TaskManager : public TaskFinisherInterface, public TaskResubmissionInterfa
   /// responsible for making sure that these dependencies become available, so
   /// that the resubmitted task can run. This is only populated if the task was
   /// not already pending and was successfully resubmitted.
-  /// \return true if the task was successfully resubmitted (task or actor being
-  /// scheduled, but no guarantee on completion), or was already pending, Invalid if the
-  /// task spec is no longer present.
-  bool ResubmitTask(const TaskID &task_id, std::vector<ObjectID> *task_deps) override;
+  /// \return nullopt if the task was successfully resubmitted (task or actor being
+  /// scheduled, but no guarantee on completion), or was already pending. Return the
+  /// appopriate error type to propagate for the object if the task was not successfully
+  /// resubmitted.
+  std::optional<rpc::ErrorType> ResubmitTask(const TaskID &task_id,
+                                             std::vector<ObjectID> *task_deps) override;
 
   /// Wait for all pending tasks to finish, and then shutdown.
   ///
@@ -823,7 +825,7 @@ class TaskManager : public TaskFinisherInterface, public TaskResubmissionInterfa
   const RetryTaskCallback retry_task_callback_;
 
   /// For when a streaming generator task currently in progress needs to be resubmitted.
-  std::function<bool(const TaskSpecification &spec)> cancel_and_resubmit_generator_;
+  std::function<bool(const TaskSpecification &spec)> queue_generator_resubmit_;
 
   // Called to push an error to the relevant driver.
   const PushErrorCallback push_error_callback_;
