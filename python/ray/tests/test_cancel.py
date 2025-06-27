@@ -64,12 +64,15 @@ def test_task_cancel_and_failure_race_condition(ray_start_cluster):
         cluster.remove_node(worker_node)
         ray.cancel(task_to_cancel_ref)
 
-    threading.Thread(target=node_preemption).start()
+    preemption_thread = threading.Thread(target=node_preemption)
+    preemption_thread.start()
 
     # The task should fail with a NodeDiedError because the node is preempted before the
     # task is cancelled.
     with pytest.raises(NodeDiedError):
         ray.get(task_to_cancel_ref)
+
+    preemption_thread.join()
 
 
 @pytest.mark.parametrize("use_force", [True, False])

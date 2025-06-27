@@ -182,7 +182,7 @@ void NormalTaskSubmitter::OnWorkerIdle(
       task_spec.GetMutableMessage().set_lease_grant_timestamp_ms(current_sys_time_ms());
       task_spec.EmitTaskMetrics();
 
-      executing_tasks_.emplace(task_spec.TaskId(), addr);
+      pushed_to_worker_tasks_.emplace(task_spec.TaskId(), addr);
       PushNormalTask(
           addr, client, scheduling_key, std::move(task_spec), assigned_resources);
     }
@@ -581,7 +581,6 @@ void NormalTaskSubmitter::PushNormalTask(
                          << WorkerID::FromBinary(addr.worker_id()) << " of raylet "
                          << NodeID::FromBinary(addr.raylet_id());
           absl::MutexLock lock(&mu_);
-          executing_tasks_.erase(task_id);
 
           // Decrement the number of tasks in flight to the worker
           auto &lease_entry = worker_to_lease_entry_[addr];
@@ -606,6 +605,10 @@ void NormalTaskSubmitter::PushNormalTask(
                                             addr,
                                             get_task_failure_cause_reply_status,
                                             get_task_failure_cause_reply);
+                  {
+                    absl::MutexLock lock(&mu_);
+                    pushed_to_worker_tasks_.erase(task_id);
+                  }
                 };
             auto &cur_lease_entry = worker_to_lease_entry_[addr];
             RAY_CHECK(cur_lease_entry.lease_client);
@@ -625,6 +628,7 @@ void NormalTaskSubmitter::PushNormalTask(
                          assigned_resources);
           }
         }
+
         if (status.ok()) {
           if (reply.was_cancelled_before_running()) {
             RAY_LOG(DEBUG) << "Task " << task_id
@@ -638,6 +642,10 @@ void NormalTaskSubmitter::PushNormalTask(
                                               reply.task_execution_error()))) {
             task_finisher_.CompletePendingTask(
                 task_id, reply, addr, reply.is_application_error());
+          }
+          {
+            absl::MutexLock lock(&mu_);
+            pushed_to_worker_tasks_.erase(task_id);
           }
         }
       });
@@ -732,9 +740,9 @@ Status NormalTaskSubmitter::CancelTask(TaskSpecification task_spec,
     // This will get removed either when the RPC call to cancel is returned
     // or when all dependencies are resolved.
     RAY_CHECK(cancelled_tasks_.emplace(task_spec.TaskId()).second);
-    auto rpc_client = executing_tasks_.find(task_spec.TaskId());
+    auto rpc_client = pushed_to_worker_tasks_.find(task_spec.TaskId());
 
-    if (rpc_client == executing_tasks_.end()) {
+    if (rpc_client == pushed_to_worker_tasks_.end()) {
       // This case is reached for tasks that have unresolved dependencies.
       resolver_.CancelDependencyResolution(task_spec.TaskId());
       RAY_UNUSED(task_finisher_.FailPendingTask(task_spec.TaskId(),
