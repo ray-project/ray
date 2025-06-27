@@ -1047,9 +1047,6 @@ python/ray/dashboard/utils.py
 python/ray/data/_internal/arrow_ops/transform_pyarrow.py
     DOC201: Function `combine_chunks` does not have a return section in docstring
     DOC201: Function `combine_chunked_array` does not have a return section in docstring
-    DOC101: Function `_try_combine_chunks_safe`: Docstring contains fewer arguments than in function signature.
-    DOC107: Function `_try_combine_chunks_safe`: The option `--arg-type-hints-in-signature` is `True` but not all args in the signature have type hints
-    DOC103: Function `_try_combine_chunks_safe`: Docstring arguments are different from function arguments. (Or could be other formatting issues: https://jsh9.github.io/pydoclint/violation_codes.html#notes-on-doc103 ). Arguments in the function signature but not in the docstring: [array: 'pyarrow.ChunkedArray', max_chunk_size: ].
 --------------------
 python/ray/data/_internal/block_batching/iter_batches.py
     DOC103: Function `_format_in_threadpool`: Docstring arguments are different from function arguments. (Or could be other formatting issues: https://jsh9.github.io/pydoclint/violation_codes.html#notes-on-doc103 ). Arguments in the function signature but not in the docstring: [batch_iter: Iterator[Batch]]. Arguments in the docstring but not in the function signature: [logical_batch_iterator: ].
