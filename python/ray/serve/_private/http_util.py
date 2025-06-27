@@ -295,9 +295,6 @@ class MessageQueue(Send):
                 # Exit once `call_fut` has finished. In this case, all
                 # messages must have already been sent.
                 if call_fut in done:
-                    if call_fut.result() is not None:
-                        yield call_fut.result()
-
                     break
 
             e = call_fut.exception()

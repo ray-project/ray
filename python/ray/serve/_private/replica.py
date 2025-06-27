@@ -577,97 +577,6 @@ class ReplicaBase(ABC):
             was_error=user_exception is not None,
         )
 
-    async def _call_streaming(
-        self,
-        request_metadata: RequestMetadata,
-        request_args: Tuple[Any],
-        request_kwargs: Dict[str, Any],
-        status_code_callback: StatusCodeCallback,
-    ) -> AsyncGenerator[Any, None]:
-        """Calls a user method for a streaming call and yields its results.
-
-        The user method is called in an asyncio `Task` and places its results on a
-        `result_queue`. This method pulls and yields from the `result_queue`.
-        """
-        call_user_method_future = None
-        wait_for_message_task = None
-        try:
-            result_queue = MessageQueue()
-
-            # `asyncio.Event`s are not thread safe, so `call_soon_threadsafe` must be
-            # used to interact with the result queue from the user callable thread.
-            def _enqueue_thread_safe(item: Any):
-                self._event_loop.call_soon_threadsafe(result_queue.put_nowait, item)
-
-            if request_metadata.is_http_request:
-                call_user_method_future = (
-                    self._user_callable_wrapper.call_http_entrypoint(
-                        request_metadata,
-                        request_args,
-                        request_kwargs,
-                        generator_result_callback=_enqueue_thread_safe,
-                    )
-                )
-            else:
-                call_user_method_future = (
-                    self._user_callable_wrapper.call_user_generator(
-                        request_metadata,
-                        request_args,
-                        request_kwargs,
-                        generator_result_callback=_enqueue_thread_safe,
-                    )
-                )
-
-            first_message_peeked = False
-            while True:
-                wait_for_message_task = self._event_loop.create_task(
-                    result_queue.wait_for_message()
-                )
-                done, _ = await asyncio.wait(
-                    [call_user_method_future, wait_for_message_task],
-                    return_when=asyncio.FIRST_COMPLETED,
-                )
-
-                # Consume and yield all available messages in the queue.
-                messages = result_queue.get_messages_nowait()
-                if messages:
-                    # HTTP (ASGI) messages are only consumed by the proxy so batch them
-                    # and use vanilla pickle (we know it's safe because these messages
-                    # only contain primitive Python types).
-                    if request_metadata.is_http_request:
-                        # Peek the first ASGI message to determine the status code.
-                        if not first_message_peeked:
-                            msg = messages[0]
-                            first_message_peeked = True
-                            if msg["type"] == "http.response.start":
-                                # HTTP responses begin with exactly one
-                                # "http.response.start" message containing the "status"
-                                # field. Other response types like WebSockets may not.
-                                status_code_callback(str(msg["status"]))
-
-                        yield pickle.dumps(messages)
-                    else:
-                        for msg in messages:
-                            yield msg
-
-                # Exit once `call_user_generator` has finished. In this case, all
-                # messages must have already been sent.
-                if call_user_method_future in done:
-                    break
-
-            e = call_user_method_future.exception()
-            if e is not None:
-                raise e from None
-        finally:
-            if (
-                call_user_method_future is not None
-                and not call_user_method_future.done()
-            ):
-                call_user_method_future.cancel()
-
-            if wait_for_message_task is not None and not wait_for_message_task.done():
-                wait_for_message_task.cancel()
-
     async def handle_request(
         self, request_metadata: RequestMetadata, *request_args, **request_kwargs
     ) -> Tuple[bytes, Any]:
@@ -1700,8 +1609,10 @@ class UserCallableWrapper:
 
         # `asyncio.Event`s are not thread safe, so `call_soon_threadsafe` must be
         # used to interact with the result queue from the user callable thread.
+        system_event_loop = asyncio.get_running_loop()
+
         def _enqueue_thread_safe(item: Any):
-            self._event_loop.call_soon_threadsafe(result_queue.put_nowait, item)
+            system_event_loop.call_soon_threadsafe(result_queue.put_nowait, item)
 
         call_user_method_future = self._call_http_entrypoint(
             request_metadata,
@@ -1833,8 +1744,10 @@ class UserCallableWrapper:
 
         # `asyncio.Event`s are not thread safe, so `call_soon_threadsafe` must be
         # used to interact with the result queue from the user callable thread.
+        system_event_loop = asyncio.get_running_loop()
+
         def _enqueue_thread_safe(item: Any):
-            self._event_loop.call_soon_threadsafe(result_queue.put_nowait, item)
+            system_event_loop.call_soon_threadsafe(result_queue.put_nowait, item)
 
         call_user_method_future = self._call_user_generator(
             request_metadata,
