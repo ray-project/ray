@@ -18,7 +18,7 @@ def _wait_and_get_single_batch(
     refs: "Sequence[ObjectRef]",
     *,
     chunk_size: int,
-    return_objrefs: bool = False,
+    yield_obj_refs: bool = False,
     **kwargs,
 ) -> tuple[list[Union[Any, "ObjectRef"]], "list[ObjectRef]"]:
     """Call ray.wait and explicitly return the ready objects/results
@@ -27,7 +27,7 @@ def _wait_and_get_single_batch(
     Args:
         refs: A list of Ray object refs.
         chunk_size: The `num_returns` parameter to pass to `ray.wait()`.
-        return_objrefs: If True, return Ray remote refs instead of results (by calling :meth:`~ray.get`).
+        yield_obj_refs: If True, return Ray remote refs instead of results (by calling :meth:`~ray.get`).
         **kwargs: Additional keyword arguments to pass to `ray.wait()`.
     """
 
@@ -43,7 +43,7 @@ def _wait_and_get_single_batch(
         **kwargs,
     )
 
-    if not return_objrefs:
+    if not yield_obj_refs:
         return ray.get(ready), refs
 
     return ready, refs
@@ -54,7 +54,7 @@ def as_completed(
     refs: "Sequence[ObjectRef]",
     *,
     chunk_size: int = DEFAULT_CHUNK_SIZE,
-    return_objrefs: bool = False,
+    yield_obj_refs: bool = False,
     **kwargs,
 ) -> Iterator[Union[Any, "ObjectRef"]]:
     """Given a list of Ray task references, yield results as they become available.
@@ -104,7 +104,7 @@ def as_completed(
         refs: A list of Ray object refs.
         chunk_size: The number of tasks to wait for in each iteration (default 10).
             The parameter is passed as `num_returns` to :meth:`~ray.wait` internally.
-        return_objrefs: If True, return Ray remote refs instead of results (by calling :meth:`~ray.get`).
+        yield_obj_refs: If True, return Ray remote refs instead of results (by calling :meth:`~ray.get`).
         **kwargs: Additional keyword arguments to pass to :meth:`~ray.wait`, e.g.,
             `timeout` and `fetch_local`.
 
@@ -121,7 +121,7 @@ def as_completed(
         results, refs = _wait_and_get_single_batch(
             refs,
             chunk_size=chunk_size,
-            return_objrefs=return_objrefs,
+            yield_obj_refs=yield_obj_refs,
             **kwargs,
         )
         yield from results
@@ -134,7 +134,7 @@ def map_unordered(
     *,
     backpressure_size: Optional[int] = DEFAULT_BACKPRESSURE_SIZE,
     chunk_size: int = DEFAULT_CHUNK_SIZE,
-    return_objrefs: bool = False,
+    yield_obj_refs: bool = False,
     **kwargs,
 ) -> Iterator[Union[Any, "ObjectRef"]]:
     """Apply a Ray remote function to a list of items and return an iterator that yields
@@ -193,7 +193,7 @@ def map_unordered(
         fn: A remote function to apply to the list of items. For more complex use cases, use Ray Data's
             :meth:`~ray.data.Dataset.map` / :meth:`~ray.data.Dataset.map_batches` instead.
         items: An iterable of items to apply the function to.
-        return_objrefs: If True, return Ray remote refs instead of results (by calling :meth:`~ray.get`).
+        yield_obj_refs: If True, return Ray remote refs instead of results (by calling :meth:`~ray.get`).
         backpressure_size: Maximum number of in-flight tasks allowed before
             calling a blocking :meth:`~ray.wait` (default 100). If None, no backpressure is applied.
         chunk_size: The number of tasks to wait for when the number of in-flight tasks exceeds
@@ -218,7 +218,7 @@ def map_unordered(
     """
 
     if backpressure_size is None:
-        backpressure_size = float("inf")
+        backpressure_size: float = float("inf")
     elif backpressure_size <= 0:
         raise ValueError("backpressure_size must be positive.")
 
@@ -236,7 +236,7 @@ def map_unordered(
             results, refs = _wait_and_get_single_batch(
                 refs,
                 chunk_size=chunk_size,
-                return_objrefs=return_objrefs,
+                yield_obj_refs=yield_obj_refs,
                 **kwargs,
             )
             yield from results
@@ -244,6 +244,6 @@ def map_unordered(
         yield from as_completed(
             refs,
             chunk_size=chunk_size,
-            return_objrefs=return_objrefs,
+            yield_obj_refs=yield_obj_refs,
             **kwargs,
         )
