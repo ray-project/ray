@@ -774,3 +774,12 @@ cdef extern from "ray/common/constants.h" nogil:
     cdef const char[] kGcsAutoscalerV2EnabledKey
     cdef const char[] kGcsAutoscalerClusterConfigKey
     cdef const char[] kGcsPidKey
+    cdef const char[] kNodeTypeNameEnv
+    cdef const char[] kNodeMarketTypeEnv
+    cdef const char[] kNodeRegionEnv
+    cdef const char[] kNodeZoneEnv
+    cdef const char[] kLabelKeyNodeAcceleratorType
+    cdef const char[] kLabelKeyNodeMarketType
+    cdef const char[] kLabelKeyNodeRegion
+    cdef const char[] kLabelKeyNodeZone
+    cdef const char[] kLabelKeyNodeGroup
