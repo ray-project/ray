@@ -409,7 +409,7 @@ defusedxml==0.7.1
     #   semgrep
 delta-sharing==1.0.5
     # via -r python/requirements/ml/data-test-requirements.txt
-deltalake==0.18.2
+deltalake==0.9.0
     # via -r python/requirements/ml/data-test-requirements.txt
 deprecated==1.2.18
     # via
@@ -1611,7 +1611,6 @@ pyarrow==14.0.2
 pyarrow-hotfix==0.7
     # via
     #   datasets
-    #   deltalake
     #   hudi
 pyasn1==0.5.1
     # via

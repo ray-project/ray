@@ -338,7 +338,7 @@ GcsActorManager::GcsActorManager(
     instrumented_io_context &io_context,
     GcsPublisher *gcs_publisher,
     RuntimeEnvManager &runtime_env_manager,
-    GcsFunctionManager &function_manager,
+    GCSFunctionManager &function_manager,
     std::function<void(const ActorID &)> destroy_owned_placement_group_if_needed,
     rpc::CoreWorkerClientPool &worker_client_pool)
     : gcs_actor_scheduler_(std::move(scheduler)),
