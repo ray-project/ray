@@ -844,7 +844,7 @@ void NodeManager::NodeRemoved(const NodeID &node_id) {
     // worker.
     RAY_LOG(INFO).WithField(worker->WorkerId()).WithField(owner_node_id)
         << "The leased worker is killed because the owner node died.";
-    worker->Kill(io_service_, /* force */ false);
+    worker->Kill(io_service_);
   }
 
   // Below, when we remove node_id from all of these data structures, we could
@@ -887,7 +887,7 @@ void NodeManager::HandleUnexpectedWorkerFailure(const WorkerID &worker_id) {
     RAY_LOG(INFO) << "The leased worker " << worker->WorkerId()
                   << " is killed because the owner process " << owner_worker_id
                   << " died.";
-    worker->Kill(io_service_, /* force */ false);
+    worker->Kill(io_service_);
   }
 }
 
