@@ -17,11 +17,8 @@ logger = logging.getLogger(__name__)
 
 BROADCAST_PERIODIC_WARNING = """
 `{barrier_method}` has not been called by all {world_size} workers in the group.
-
 The workers have been waiting for {max_time_elapsed_s:.2f} s for the following ranks to join the `{barrier_method}` call: {missing_ranks}.
-
 Also ensure that workers are not hanging on other operations, causing them to miss this synchronization barrier.
-
 You can set the {warn_interval_env_var} environment variable to change the frequency of this warning (current value: {warn_interval_s} s).
 """
 
