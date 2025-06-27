@@ -69,7 +69,8 @@ def test_hybrid_policy(ray_start_cluster):
     NUM_CPUS_PER_NODE = 10
     for _ in range(NUM_NODES):
         cluster.add_node(
-            num_cpus=NUM_CPUS_PER_NODE, resources={"custom": NUM_CPUS_PER_NODE},
+            num_cpus=NUM_CPUS_PER_NODE,
+            resources={"custom": NUM_CPUS_PER_NODE},
         )
 
     cluster.wait_for_nodes()
