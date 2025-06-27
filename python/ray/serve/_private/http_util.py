@@ -322,7 +322,8 @@ class ASGIReceiveProxy:
         receive_asgi_messages: Callable[[RequestMetadata], Awaitable[bytes]],
     ):
         self._type = scope["type"]  # Either 'http' or 'websocket'.
-        self._queue = asyncio.Queue()
+        # Lazy init the queue to ensure it is created in the user code event loop.
+        self._queue = None
         self._request_metadata = request_metadata
         self._receive_asgi_messages = receive_asgi_messages
         self._disconnect_message = None
@@ -344,6 +345,13 @@ class ASGIReceiveProxy:
             }
         else:
             return {"type": "http.disconnect"}
+
+    @property
+    def queue(self) -> asyncio.Queue:
+        if self._queue is None:
+            self._queue = asyncio.Queue()
+
+        return self._queue
 
     async def fetch_until_disconnect(self):
         """Fetch messages repeatedly until a disconnect message is received.
@@ -368,7 +376,7 @@ class ASGIReceiveProxy:
                     )
 
                 for message in messages:
-                    self._queue.put_nowait(message)
+                    self.queue.put_nowait(message)
 
                     if message["type"] in {"http.disconnect", "websocket.disconnect"}:
                         self._disconnect_message = message
@@ -378,12 +386,12 @@ class ASGIReceiveProxy:
                 # (i.e., the user disconnects). This is expected behavior and we should
                 # not log an error: https://github.com/ray-project/ray/issues/43290.
                 message = self._get_default_disconnect_message()
-                self._queue.put_nowait(message)
+                self.queue.put_nowait(message)
                 self._disconnect_message = message
                 return
             except Exception as e:
                 # Raise unexpected exceptions in the next `__call__`.
-                self._queue.put_nowait(e)
+                self.queue.put_nowait(e)
                 return
 
     async def __call__(self) -> Message:
@@ -391,10 +399,10 @@ class ASGIReceiveProxy:
 
         This will repeatedly return a disconnect message once it's been received.
         """
-        if self._queue.empty() and self._disconnect_message is not None:
+        if self.queue.empty() and self._disconnect_message is not None:
             return self._disconnect_message
 
-        message = await self._queue.get()
+        message = await self.queue.get()
         if isinstance(message, Exception):
             raise message
 
