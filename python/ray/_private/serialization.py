@@ -365,7 +365,7 @@ class SerializationContext:
             )
 
     def _deserialize_object(
-        self, data, metadata, object_ref, tensor_transport_value: Optional[int]
+        self, data, metadata, object_ref, tensor_transport_value: Optional[int] = None
     ):
         tensor_transport = TensorTransportEnum(
             tensor_transport_value
