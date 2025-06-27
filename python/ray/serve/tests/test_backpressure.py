@@ -66,7 +66,9 @@ def test_http_backpressure(serve_instance):
 
     @ray.remote(num_cpus=0)
     def do_request(msg: str) -> Tuple[int, str]:
-        r = httpx.request("GET", "http://localhost:8000/", json={"msg": msg})
+        r = httpx.request(
+            "GET", "http://localhost:8000/", json={"msg": msg}, timeout=30.0
+        )
         return r.status_code, r.text
 
     # First response should block. Until the signal is sent, all subsequent requests

@@ -14,11 +14,11 @@ steps:
   - name: llmgpubuild
     wanda: ci/docker/llm.build.wanda.yaml
     depends_on:
-      - oss-ci-base_gpu-multipy
+      - oss-ci-base_cu128-multipy
     env:
       IMAGE_TO: "llmgpubuild"
-      IMAGE_FROM: "cr.ray.io/rayproject/oss-ci-base_gpu-py3.11"
-      RAY_CUDA_CODE: "cu121"
+      IMAGE_FROM: "cr.ray.io/rayproject/oss-ci-base_cu128-py3.11"
+      RAY_CUDA_CODE: "cu128"
 
   - label: "llm cpu tests"
     key: "llm-cpu-tests"

@@ -145,6 +145,10 @@ class GcsActor {
     if (task_spec.call_site().size() > 0) {
       actor_table_data_.set_call_site(task_spec.call_site());
     }
+    if (task_spec.label_selector().size() > 0) {
+      actor_table_data_.mutable_label_selector()->insert(
+          task_spec.label_selector().begin(), task_spec.label_selector().end());
+    }
     RefreshMetrics();
     export_event_write_enabled_ = IsExportAPIEnabledActor();
   }

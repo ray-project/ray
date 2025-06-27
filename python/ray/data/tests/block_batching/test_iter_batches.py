@@ -25,11 +25,13 @@ def ref_bundle_generator(num_rows: int, num_blocks: int) -> Iterator[RefBundle]:
         metadata = BlockMetadata(
             num_rows=num_rows,
             size_bytes=0,
-            schema=None,
             input_files=[],
             exec_stats=None,
         )
-        yield RefBundle(blocks=((ray.put(block), metadata),), owns_blocks=True)
+        schema = block.schema
+        yield RefBundle(
+            blocks=((ray.put(block), metadata),), owns_blocks=True, schema=schema
+        )
 
 
 @pytest.mark.parametrize("num_batches_to_prefetch", [1, 2])

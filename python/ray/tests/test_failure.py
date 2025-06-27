@@ -772,7 +772,7 @@ def test_update_object_location_batch_failure(
                 node_id=head_node_id, soft=False
             )
         ).remote(obj_ref)
-        assert ray.get(consume_ref) > 0
+        assert ray.get(consume_ref, timeout=10) > 0
 
 
 if __name__ == "__main__":

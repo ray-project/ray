@@ -49,6 +49,7 @@ from ray.data.block import (
     BlockAccessor,
     BlockExecStats,
     BlockMetadata,
+    BlockMetadataWithSchema,
     BlockStats,
     BlockType,
     to_stats,
@@ -1193,7 +1194,7 @@ class HashShuffleAggregator:
 
     def finalize(
         self, partition_id: int
-    ) -> AsyncGenerator[Union[Block, BlockMetadata], None]:
+    ) -> AsyncGenerator[Union[Block, "BlockMetadataWithSchema"], None]:
         with self._lock:
             # Finalize given partition id
             exec_stats_builder = BlockExecStats.builder()

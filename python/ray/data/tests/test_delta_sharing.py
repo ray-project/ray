@@ -98,7 +98,7 @@ class TestDeltaSharingDatasource(unittest.TestCase):
             self.assertTrue(metadata.input_files[0]["url"] in ["file1", "file2"])
             self.assertEqual(metadata.num_rows, None)
             self.assertEqual(metadata.size_bytes, None)
-            self.assertEqual(metadata.schema, None)
+            self.assertEqual(task.schema, None)
             self.assertEqual(metadata.exec_stats, None)
 
 

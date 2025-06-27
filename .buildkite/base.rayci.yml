@@ -63,6 +63,12 @@ steps:
     env:
       PYTHON: "{{matrix}}"
 
+  - name: oss-ci-base_cu128-multipy
+    label: "wanda: oss-ci-base_cu128-py3.11"
+    wanda: ci/docker/base.cu128.wanda.yaml
+    env:
+      PYTHON: "3.11"
+
   - name: docbuild
     label: "wanda: docbuild-py{{matrix}}"
     wanda: ci/docker/doc.build.wanda.yaml

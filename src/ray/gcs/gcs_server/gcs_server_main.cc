@@ -114,7 +114,8 @@ int main(int argc, char *argv[]) {
 
   // IO Service for main loop.
   SetThreadName("gcs_server");
-  instrumented_io_context main_service(/*enable_lag_probe=*/true);
+  instrumented_io_context main_service(/*enable_lag_probe=*/true,
+                                       /*running_on_single_thread=*/true);
   // Ensure that the IO service keeps running. Without this, the main_service will exit
   // as soon as there is no more work to be processed.
   boost::asio::executor_work_guard<boost::asio::io_context::executor_type> work(

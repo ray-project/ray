@@ -92,14 +92,12 @@ def plan_read_op(
                 # DAG. We shouldn't eagerly free them. Otherwise, the DAG cannot
                 # be reconstructed.
                 owns_blocks=False,
+                schema=None,
             )
             ret.append(ref_bundle)
         return ret
 
-    inputs = InputDataBuffer(
-        data_context,
-        input_data_factory=get_input_data,
-    )
+    inputs = InputDataBuffer(data_context, input_data_factory=get_input_data)
 
     def do_read(blocks: Iterable[ReadTask], _: TaskContext) -> Iterable[Block]:
         for read_task in blocks:

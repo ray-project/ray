@@ -9,7 +9,7 @@ from ray.data._internal.execution.interfaces import NodeIdStr, RefBundle
 from ray.data._internal.execution.legacy_compat import execute_to_legacy_bundle_iterator
 from ray.data._internal.execution.operators.output_splitter import OutputSplitter
 from ray.data._internal.stats import DatasetStats
-from ray.data.block import Block, BlockMetadata
+from ray.data.block import Block
 from ray.data.context import DataContext
 from ray.data.iterator import DataIterator
 from ray.types import ObjectRef
@@ -84,16 +84,18 @@ class StreamSplitDataIterator(DataIterator):
                 Optional[ObjectRef[Block]]
             ] = self._coord_actor.get.remote(cur_epoch, self._output_split_idx)
             while True:
-                block_ref_and_md: Optional[
-                    Tuple[ObjectRef[Block], BlockMetadata]
-                ] = ray.get(future)
+                block_ref_and_md: Optional[RefBundle] = ray.get(future)
                 if not block_ref_and_md:
                     break
                 else:
                     future = self._coord_actor.get.remote(
                         cur_epoch, self._output_split_idx
                     )
-                    yield RefBundle(blocks=(block_ref_and_md,), owns_blocks=False)
+                    yield RefBundle(
+                        blocks=block_ref_and_md.blocks,
+                        owns_blocks=False,
+                        schema=block_ref_and_md.schema,
+                    )
 
         return gen_blocks(), self._iter_stats, False
 
@@ -209,9 +211,7 @@ class SplitCoordinator:
         epoch_id = self._barrier(split_idx)
         return epoch_id
 
-    def get(
-        self, epoch_id: int, output_split_idx: int
-    ) -> Optional[Tuple[ObjectRef[Block], BlockMetadata]]:
+    def get(self, epoch_id: int, output_split_idx: int) -> Optional[RefBundle]:
         """Blocking get operation.
 
         This is intended to be called concurrently from multiple clients.
@@ -235,6 +235,7 @@ class SplitCoordinator:
                 # This is a BLOCKING call, so do it outside the lock.
                 next_bundle = self._output_iterator.get_next(output_split_idx)
 
+            schema = next_bundle.schema
             block = next_bundle.blocks[-1]
             next_bundle = replace(next_bundle, blocks=next_bundle.blocks[:-1])
 
@@ -244,7 +245,9 @@ class SplitCoordinator:
                 if not next_bundle.blocks:
                     del self._next_bundle[output_split_idx]
 
-            return block
+            return RefBundle(
+                [block], schema=schema, owns_blocks=next_bundle.owns_blocks
+            )
         except StopIteration:
             return None
         finally:
