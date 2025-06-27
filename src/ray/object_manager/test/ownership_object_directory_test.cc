@@ -129,7 +129,7 @@ class OwnershipBasedObjectDirectoryTest : public ::testing::Test {
     RayConfig::instance().initialize(R"({"max_object_report_batch_size": 20})");
     obod_ = std::make_unique<OwnershipBasedObjectDirectory>(
         io_service_,
-        *gcs_client_mock_,
+        gcs_client_mock_,
         subscriber_.get(),
         &client_pool,
         [this](const ObjectID &object_id, const rpc::ErrorType &error_type) {

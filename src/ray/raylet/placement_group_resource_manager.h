@@ -92,8 +92,8 @@ class NewPlacementGroupResourceManager : public PlacementGroupResourceManager {
   /// Create a new placement group resource manager.
   ///
   /// \param cluster_resource_scheduler_: The resource allocator of new scheduler.
-  explicit NewPlacementGroupResourceManager(
-      ClusterResourceScheduler &cluster_resource_scheduler);
+  NewPlacementGroupResourceManager(
+      std::shared_ptr<ClusterResourceScheduler> cluster_resource_scheduler);
 
   virtual ~NewPlacementGroupResourceManager() = default;
 
@@ -105,12 +105,12 @@ class NewPlacementGroupResourceManager : public PlacementGroupResourceManager {
 
   Status ReturnBundle(const BundleSpecification &bundle_spec) override;
 
-  const ClusterResourceScheduler &GetResourceScheduler() const {
+  const std::shared_ptr<ClusterResourceScheduler> GetResourceScheduler() const {
     return cluster_resource_scheduler_;
   }
 
  private:
-  ClusterResourceScheduler &cluster_resource_scheduler_;
+  std::shared_ptr<ClusterResourceScheduler> cluster_resource_scheduler_;
 
   /// Tracking placement group bundles and their states. This mapping is the source of
   /// truth for the new scheduler.

@@ -42,7 +42,7 @@ class OwnershipBasedObjectDirectory : public IObjectDirectory {
   /// information from.
   OwnershipBasedObjectDirectory(
       instrumented_io_context &io_service,
-      gcs::GcsClient &gcs_client,
+      std::shared_ptr<gcs::GcsClient> &gcs_client,
       pubsub::SubscriberInterface *object_location_subscriber,
       rpc::CoreWorkerClientPool *owner_client_pool,
       std::function<void(const ObjectID &, const rpc::ErrorType &)> mark_as_failed);
@@ -109,7 +109,7 @@ class OwnershipBasedObjectDirectory : public IObjectDirectory {
   /// Reference to the event loop.
   instrumented_io_context &io_service_;
   /// Reference to the gcs client.
-  gcs::GcsClient &gcs_client_;
+  std::shared_ptr<gcs::GcsClient> gcs_client_;
   /// Info about subscribers to object locations.
   absl::flat_hash_map<ObjectID, LocationListenerState> listeners_;
   /// The client call manager used to create the RPC clients.

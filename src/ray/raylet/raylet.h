@@ -51,10 +51,10 @@ class Raylet {
          const std::string &node_name,
          const NodeManagerConfig &node_manager_config,
          const ObjectManagerConfig &object_manager_config,
-         gcs::GcsClient &gcs_client,
+         std::shared_ptr<gcs::GcsClient> gcs_client,
          int metrics_export_port,
          bool is_head_node,
-         NodeManager &node_manager);
+         std::shared_ptr<NodeManager> node_manager);
 
   /// Start this raylet.
   void Start();
@@ -75,7 +75,7 @@ class Raylet {
 
   NodeID GetNodeId() const { return self_node_id_; }
 
-  NodeManager &node_manager() { return node_manager_; }
+  NodeManager &node_manager() { return *node_manager_; }
 
  private:
   /// Register GCS client.
@@ -94,9 +94,9 @@ class Raylet {
   GcsNodeInfo self_node_info_;
 
   /// A client connection to the GCS.
-  gcs::GcsClient &gcs_client_;
+  std::shared_ptr<gcs::GcsClient> gcs_client_;
   /// Manages client requests for task submission and execution.
-  NodeManager &node_manager_;
+  std::shared_ptr<NodeManager> node_manager_;
   /// The name of the socket this raylet listens on.
   std::string socket_name_;
 

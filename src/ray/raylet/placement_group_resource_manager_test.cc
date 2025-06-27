@@ -53,7 +53,7 @@ class NewPlacementGroupResourceManagerTest : public ::testing::Test {
         io_context, scheduling::NodeID("local"), unit_resource, is_node_available_fn_);
     new_placement_group_resource_manager_ =
         std::make_unique<raylet::NewPlacementGroupResourceManager>(
-            *cluster_resource_scheduler_);
+            cluster_resource_scheduler_);
   }
 
   void CheckAvailableResoueceEmpty(const std::string &resource) {

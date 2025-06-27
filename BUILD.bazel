@@ -697,7 +697,6 @@ ray_cc_test(
         "team:core",
     ],
     deps = [
-        ":ray_mock",
         ":worker_pool",
         "@com_google_googletest//:gtest_main",
     ],
@@ -930,8 +929,6 @@ pyx_library(
         srcs = PYX_SRCS,
         # cython code is auto-generated, which is out of our control.
         copts = COPTS + PYX_COPTS,
-        # This is needed since Windows has long file path issues and command length limits
-        features = ["compiler_param_file"],
         # see https://github.com/tensorflow/tensorflow/blob/r2.1/tensorflow/lite/BUILD#L444
         linkopts = select({
             "@platforms//os:osx": [
@@ -943,6 +940,8 @@ pyx_library(
             ],
         }),
         linkstatic = 1,
+        # This is needed since Windows has long file path issues and command length limits
+        features = ["compiler_param_file"],
     ),
     deps = [
         "//:exported_internal",
@@ -955,11 +954,11 @@ pyx_library(
         "//src/ray/gcs/gcs_client:global_state_accessor_lib",
         "//src/ray/gcs/gcs_server:gcs_server_lib",
         "//src/ray/protobuf:serialization_cc_proto",
-        "//src/ray/thirdparty/setproctitle",
         "//src/ray/util",
         "//src/ray/util:memory",
         "//src/ray/util:stream_redirection",
         "//src/ray/util:stream_redirection_options",
+        "//src/ray/thirdparty/setproctitle:setproctitle",
     ],
 )
 
@@ -1016,8 +1015,8 @@ filegroup(
         "//src/ray/protobuf:gcs_py_proto",
         "//src/ray/protobuf:gcs_service_py_proto",
         "//src/ray/protobuf:instance_manager_py_proto",
-        "//src/ray/protobuf:metrics_service_py_proto",
         "//src/ray/protobuf:node_manager_py_proto",
+        "//src/ray/protobuf:metrics_service_py_proto",
         "//src/ray/protobuf:ray_client_py_proto",
         "//src/ray/protobuf:reporter_py_proto",
         "//src/ray/protobuf:runtime_env_agent_py_proto",

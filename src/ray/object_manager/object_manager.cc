@@ -63,7 +63,7 @@ ObjectManager::ObjectManager(
     instrumented_io_context &main_service,
     const NodeID &self_node_id,
     const ObjectManagerConfig &config,
-    gcs::GcsClient &gcs_client,
+    std::shared_ptr<gcs::GcsClient> gcs_client,
     IObjectDirectory *object_directory,
     RestoreSpilledObjectCallback restore_spilled_object,
     std::function<std::string(const ObjectID &)> get_spilled_object_url,
@@ -76,7 +76,7 @@ ObjectManager::ObjectManager(
     : main_service_(&main_service),
       self_node_id_(self_node_id),
       config_(config),
-      gcs_client_(gcs_client),
+      gcs_client_(std::move(gcs_client)),
       object_directory_(object_directory),
       object_store_internal_(std::make_unique<ObjectStoreRunner>(
           config,
@@ -674,7 +674,7 @@ void ObjectManager::FreeObjects(const std::vector<ObjectID> &object_ids,
   buffer_pool_.FreeObjects(object_ids);
   if (!local_only) {
     std::vector<std::shared_ptr<rpc::ObjectManagerClient>> rpc_clients;
-    const auto &node_info_map = gcs_client_.Nodes().GetAll();
+    const auto &node_info_map = gcs_client_->Nodes().GetAll();
     for (const auto &[node_id, node_info] : node_info_map) {
       if (node_id == self_node_id_) {
         continue;
@@ -719,7 +719,7 @@ std::shared_ptr<rpc::ObjectManagerClient> ObjectManager::GetRpcClient(
   if (it != remote_object_manager_clients_.end()) {
     return it->second;
   }
-  auto *node_info = gcs_client_.Nodes().Get(node_id, /*filter_dead_nodes=*/true);
+  auto *node_info = gcs_client_->Nodes().Get(node_id, /*filter_dead_nodes=*/true);
   if (node_info == nullptr) {
     return nullptr;
   }

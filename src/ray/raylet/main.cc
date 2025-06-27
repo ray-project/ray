@@ -245,42 +245,42 @@ int main(int argc, char *argv[]) {
       main_service_work(main_service.get_executor());
 
   // Initialize gcs client
-  std::unique_ptr<ray::gcs::GcsClient> gcs_client;
+  std::shared_ptr<ray::gcs::GcsClient> gcs_client;
   ray::gcs::GcsClientOptions client_options(FLAGS_gcs_address,
                                             cluster_id,
                                             /*allow_cluster_id_nil=*/false,
                                             /*fetch_cluster_id_if_nil=*/false);
-  gcs_client = std::make_unique<ray::gcs::GcsClient>(client_options);
+  gcs_client = std::make_shared<ray::gcs::GcsClient>(client_options);
 
   RAY_CHECK_OK(gcs_client->Connect(main_service));
   std::unique_ptr<ray::raylet::Raylet> raylet;
 
-  std::unique_ptr<plasma::PlasmaClient> plasma_client;
-  std::unique_ptr<ray::raylet::NodeManager> node_manager;
-  std::unique_ptr<ray::rpc::ClientCallManager> client_call_manager;
-  std::unique_ptr<ray::rpc::CoreWorkerClientPool> worker_rpc_pool;
-  std::unique_ptr<ray::raylet::WorkerPoolInterface> worker_pool;
+  std::shared_ptr<plasma::PlasmaClient> plasma_client;
+  std::shared_ptr<ray::raylet::NodeManager> node_manager;
+  std::shared_ptr<ray::rpc::ClientCallManager> client_call_manager;
+  std::shared_ptr<ray::rpc::CoreWorkerClientPool> worker_rpc_pool;
+  std::shared_ptr<ray::raylet::WorkerPoolInterface> worker_pool;
   /// Manages all local objects that are pinned (primary
   /// copies), freed, and/or spilled.
-  std::unique_ptr<ray::raylet::LocalObjectManager> local_object_manager;
+  std::shared_ptr<ray::raylet::LocalObjectManager> local_object_manager;
   /// These classes make up the new scheduler. ClusterResourceScheduler is
   /// responsible for maintaining a view of the cluster state w.r.t resource
   /// usage. ClusterTaskManager is responsible for queuing, spilling back, and
   /// dispatching tasks.
-  std::unique_ptr<ray::ClusterResourceScheduler> cluster_resource_scheduler;
-  std::unique_ptr<ray::raylet::ILocalTaskManager> local_task_manager;
-  std::unique_ptr<ray::raylet::ClusterTaskManagerInterface> cluster_task_manager;
+  std::shared_ptr<ray::ClusterResourceScheduler> cluster_resource_scheduler;
+  std::shared_ptr<ray::raylet::ILocalTaskManager> local_task_manager;
+  std::shared_ptr<ray::raylet::ClusterTaskManagerInterface> cluster_task_manager;
   /// The raylet client to initiate the pubsub to core workers (owners).
   /// It is used to subscribe objects to evict.
-  std::unique_ptr<ray::pubsub::SubscriberInterface> core_worker_subscriber;
+  std::shared_ptr<ray::pubsub::SubscriberInterface> core_worker_subscriber;
   /// The object table. This is shared between the object manager and node
   /// manager.
-  std::unique_ptr<ray::IObjectDirectory> object_directory;
+  std::shared_ptr<ray::IObjectDirectory> object_directory;
   /// Manages client requests for object transfers and availability.
-  std::unique_ptr<ray::ObjectManagerInterface> object_manager;
+  std::shared_ptr<ray::ObjectManagerInterface> object_manager;
   /// A manager to resolve objects needed by queued tasks and workers that
   /// called `ray.get` or `ray.wait`.
-  std::unique_ptr<ray::raylet::DependencyManager> dependency_manager;
+  std::shared_ptr<ray::raylet::DependencyManager> dependency_manager;
   /// Map of workers leased out to clients.
   absl::flat_hash_map<WorkerID, std::shared_ptr<ray::raylet::WorkerInterface>>
       leased_workers;
@@ -501,7 +501,7 @@ int main(int argc, char *argv[]) {
 
         node_manager_config.AddDefaultLabels(raylet_node_id.Hex());
 
-        worker_pool = std::make_unique<ray::raylet::WorkerPool>(
+        worker_pool = std::make_shared<ray::raylet::WorkerPool>(
             main_service,
             raylet_node_id,
             node_manager_config.node_manager_address,
@@ -528,7 +528,7 @@ int main(int argc, char *argv[]) {
             node_manager_config.min_worker_port,
             node_manager_config.max_worker_port,
             node_manager_config.worker_ports,
-            *gcs_client,
+            gcs_client,
             node_manager_config.worker_commands,
             node_manager_config.native_library_path,
             /*starting_worker_timeout_callback=*/
@@ -537,10 +537,10 @@ int main(int argc, char *argv[]) {
             /*get_time=*/[]() { return absl::Now(); },
             node_manager_config.enable_resource_isolation);
 
-        client_call_manager = std::make_unique<ray::rpc::ClientCallManager>(
+        client_call_manager = std::make_shared<ray::rpc::ClientCallManager>(
             main_service, /*record_stats=*/true);
 
-        worker_rpc_pool = std::make_unique<ray::rpc::CoreWorkerClientPool>(
+        worker_rpc_pool = std::make_shared<ray::rpc::CoreWorkerClientPool>(
             [&](const ray::rpc::Address &addr) {
               return std::make_shared<ray::rpc::CoreWorkerClient>(
                   addr,
@@ -556,7 +556,7 @@ int main(int argc, char *argv[]) {
                       addr));
             });
 
-        core_worker_subscriber = std::make_unique<ray::pubsub::Subscriber>(
+        core_worker_subscriber = std::make_shared<ray::pubsub::Subscriber>(
             raylet_node_id,
             /*channels=*/
             std::vector<ray::rpc::ChannelType>{
@@ -570,9 +570,9 @@ int main(int argc, char *argv[]) {
             },
             &main_service);
 
-        object_directory = std::make_unique<ray::OwnershipBasedObjectDirectory>(
+        object_directory = std::make_shared<ray::OwnershipBasedObjectDirectory>(
             main_service,
-            *gcs_client,
+            gcs_client,
             core_worker_subscriber.get(),
             worker_rpc_pool.get(),
             [&](const ObjectID &obj_id, const ray::rpc::ErrorType &error_type) {
@@ -581,11 +581,11 @@ int main(int argc, char *argv[]) {
               node_manager->MarkObjectsAsFailed(error_type, {ref}, JobID::Nil());
             });
 
-        object_manager = std::make_unique<ray::ObjectManager>(
+        object_manager = std::make_shared<ray::ObjectManager>(
             main_service,
             raylet_node_id,
             object_manager_config,
-            *gcs_client,
+            gcs_client,
             object_directory.get(),
             /*restore_spilled_object=*/
             [&](const ObjectID &object_id,
@@ -642,7 +642,7 @@ int main(int argc, char *argv[]) {
               node_manager->MarkObjectsAsFailed(error_type, {ref}, JobID::Nil());
             });
 
-        local_object_manager = std::make_unique<ray::raylet::LocalObjectManager>(
+        local_object_manager = std::make_shared<ray::raylet::LocalObjectManager>(
             raylet_node_id,
             node_manager_config.node_manager_address,
             node_manager_config.node_manager_port,
@@ -668,9 +668,9 @@ int main(int argc, char *argv[]) {
             object_directory.get());
 
         dependency_manager =
-            std::make_unique<ray::raylet::DependencyManager>(*object_manager);
+            std::make_shared<ray::raylet::DependencyManager>(*object_manager);
 
-        cluster_resource_scheduler = std::make_unique<ray::ClusterResourceScheduler>(
+        cluster_resource_scheduler = std::make_shared<ray::ClusterResourceScheduler>(
             main_service,
             ray::scheduling::NodeID(raylet_node_id.Binary()),
             node_manager_config.resource_config.GetResourceMap(),
@@ -752,9 +752,10 @@ int main(int argc, char *argv[]) {
           max_task_args_memory = 0;
         }
 
-        local_task_manager = std::make_unique<ray::raylet::LocalTaskManager>(
+        local_task_manager = std::make_shared<ray::raylet::LocalTaskManager>(
             raylet_node_id,
-            *cluster_resource_scheduler,
+            *std::dynamic_pointer_cast<ray::ClusterResourceScheduler>(
+                cluster_resource_scheduler),
             *dependency_manager,
             get_node_info_func,
             *worker_pool,
@@ -765,12 +766,13 @@ int main(int argc, char *argv[]) {
             },
             max_task_args_memory);
 
-        cluster_task_manager =
-            std::make_unique<ray::raylet::ClusterTaskManager>(raylet_node_id,
-                                                              *cluster_resource_scheduler,
-                                                              get_node_info_func,
-                                                              announce_infeasible_task,
-                                                              *local_task_manager);
+        cluster_task_manager = std::make_shared<ray::raylet::ClusterTaskManager>(
+            raylet_node_id,
+            *std::dynamic_pointer_cast<ray::ClusterResourceScheduler>(
+                cluster_resource_scheduler),
+            get_node_info_func,
+            announce_infeasible_task,
+            *local_task_manager);
 
         auto raylet_client_factory =
             [&](const NodeID &node_id, ray::rpc::ClientCallManager &client_call_manager) {
@@ -785,21 +787,21 @@ int main(int argc, char *argv[]) {
                   std::move(raylet_client));
             };
 
-        plasma_client = std::make_unique<plasma::PlasmaClient>();
-        node_manager = std::make_unique<ray::raylet::NodeManager>(
+        plasma_client = std::make_shared<plasma::PlasmaClient>();
+        node_manager = std::make_shared<ray::raylet::NodeManager>(
             main_service,
             raylet_node_id,
             node_name,
             node_manager_config,
-            *gcs_client,
+            gcs_client,
             *client_call_manager,
             *worker_rpc_pool,
-            *core_worker_subscriber,
-            *cluster_resource_scheduler,
-            *local_task_manager,
-            *cluster_task_manager,
-            *object_directory,
-            *object_manager,
+            core_worker_subscriber,
+            cluster_resource_scheduler,
+            local_task_manager,
+            cluster_task_manager,
+            object_directory,
+            object_manager,
             *local_object_manager,
             *dependency_manager,
             *worker_pool,
@@ -819,10 +821,10 @@ int main(int argc, char *argv[]) {
                                                        node_name,
                                                        node_manager_config,
                                                        object_manager_config,
-                                                       *gcs_client,
+                                                       gcs_client,
                                                        metrics_export_port,
                                                        is_head_node,
-                                                       *node_manager);
+                                                       node_manager);
 
         // Initialize event framework.
         if (RayConfig::instance().event_log_reporter_enabled() && !log_dir.empty()) {

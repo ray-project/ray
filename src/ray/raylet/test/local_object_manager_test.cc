@@ -333,7 +333,7 @@ class LocalObjectManagerTestWithMinSpillingSize {
         gcs_client_(),
         object_directory_(std::make_unique<OwnershipBasedObjectDirectory>(
             io_service_,
-            *gcs_client_,
+            gcs_client_,
             subscriber_.get(),
             &client_pool,
             [](const ObjectID &object_id, const rpc::ErrorType &error_type) {})),

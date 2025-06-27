@@ -321,7 +321,7 @@ class WorkerPool : public WorkerPoolInterface {
              int min_worker_port,
              int max_worker_port,
              const std::vector<int> &worker_ports,
-             gcs::GcsClient &gcs_client,
+             std::shared_ptr<gcs::GcsClient> gcs_client,
              const WorkerCommandMap &worker_commands,
              std::string native_library_path,
              std::function<void()> starting_worker_timeout_callback,
@@ -878,7 +878,7 @@ class WorkerPool : public WorkerPoolInterface {
   /// The port Raylet uses for listening to incoming connections.
   int node_manager_port_ = 0;
   /// A client connection to the GCS.
-  gcs::GcsClient &gcs_client_;
+  std::shared_ptr<gcs::GcsClient> gcs_client_;
   /// The native library path which includes the core libraries.
   std::string native_library_path_;
   /// The callback that will be triggered once it times out to start a worker.
