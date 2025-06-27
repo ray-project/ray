@@ -64,7 +64,7 @@ Follow [this document](kuberay-operator-deploy) to install the latest stable Kub
 ### Step 3: Create a RayCluster custom resource with autoscaling enabled
 
 ```bash
-kubectl apply -f https://raw.githubusercontent.com/ray-project/kuberay/v1.3.0/ray-operator/config/samples/ray-cluster.autoscaler.yaml
+kubectl apply -f https://raw.githubusercontent.com/ray-project/kuberay/v1.4.0/ray-operator/config/samples/ray-cluster.autoscaler.yaml
 ```
 
 ### Step 4: Verify the Kubernetes cluster status
@@ -74,8 +74,8 @@ kubectl apply -f https://raw.githubusercontent.com/ray-project/kuberay/v1.3.0/ra
 kubectl get pods -l=ray.io/is-ray-node=yes
 
 # [Example output]
-# NAME                               READY   STATUS    RESTARTS   AGE
-# raycluster-autoscaler-head-6zc2t   2/2     Running   0          107s
+# NAME                         READY   STATUS    RESTARTS   AGE
+# raycluster-autoscaler-head   2/2     Running   0          107s
 
 # Step 4.2: Check the ConfigMap in the `default` namespace.
 kubectl get configmaps
@@ -124,7 +124,7 @@ kubectl get pods -l=ray.io/is-ray-node=yes
 
 # [Example output]
 # NAME                                             READY   STATUS    RESTARTS   AGE
-# raycluster-autoscaler-head-xxxxx                 2/2     Running   0          xxm
+# raycluster-autoscaler-head                       2/2     Running   0          xxm
 # raycluster-autoscaler-small-group-worker-yyyyy   1/1     Running   0          xxm
 
 # Step 5.3: Create a detached actor which requires 1 CPU.
@@ -133,7 +133,7 @@ kubectl get pods -l=ray.io/is-ray-node=yes
 
 # [Example output]
 # NAME                                             READY   STATUS    RESTARTS   AGE
-# raycluster-autoscaler-head-xxxxx                 2/2     Running   0          xxm
+# raycluster-autoscaler-head                       2/2     Running   0          xxm
 # raycluster-autoscaler-small-group-worker-yyyyy   1/1     Running   0          xxm
 # raycluster-autoscaler-small-group-worker-zzzzz   1/1     Running   0          xxm
 
@@ -177,7 +177,7 @@ kubectl get pods -l=ray.io/is-ray-node=yes
 
 # [Example output]
 # NAME                                             READY   STATUS    RESTARTS   AGE
-# raycluster-autoscaler-head-xxxxx                 2/2     Running   0          xxm
+# raycluster-autoscaler-head                       2/2     Running   0          xxm
 # raycluster-autoscaler-small-group-worker-zzzzz   1/1     Running   0          xxm
 
 # Step 6.3: Terminate the detached actor "actor2".
@@ -187,8 +187,8 @@ kubectl exec -it $HEAD_POD -- python3 /home/ray/samples/terminate_detached_actor
 kubectl get pods -l=ray.io/is-ray-node=yes
 
 # [Example output]
-# NAME                                             READY   STATUS    RESTARTS   AGE
-# raycluster-autoscaler-head-xxxxx                 2/2     Running   0          xxm
+# NAME                         READY   STATUS    RESTARTS   AGE
+# raycluster-autoscaler-head   2/2     Running   0          xxm
 ```
 
 ### Step 7: Ray Autoscaler observability
@@ -247,7 +247,7 @@ kubectl logs $HEAD_POD -c autoscaler | tail -n 20
 
 ```bash
 # Delete RayCluster and ConfigMap
-kubectl delete -f https://raw.githubusercontent.com/ray-project/kuberay/v1.3.0/ray-operator/config/samples/ray-cluster.autoscaler.yaml
+kubectl delete -f https://raw.githubusercontent.com/ray-project/kuberay/v1.4.0/ray-operator/config/samples/ray-cluster.autoscaler.yaml
 
 # Uninstall the KubeRay operator
 helm uninstall kuberay-operator
@@ -259,7 +259,7 @@ kind delete cluster
 (kuberay-autoscaling-config)=
 ## KubeRay Autoscaling Configurations
 
-The [ray-cluster.autoscaler.yaml](https://github.com/ray-project/kuberay/blob/v1.3.0/ray-operator/config/samples/ray-cluster.autoscaler.yaml) used in the quickstart example contains detailed comments about the configuration options.
+The [ray-cluster.autoscaler.yaml](https://github.com/ray-project/kuberay/blob/v1.4.0/ray-operator/config/samples/ray-cluster.autoscaler.yaml) used in the quickstart example contains detailed comments about the configuration options.
 ***It's recommended to read this section in conjunction with the YAML file.***
 
 ### 1. Enabling autoscaling
@@ -328,7 +328,7 @@ Earlier versions only support `rayStartParams` or resource limits, and don't rec
 The Ray Autoscaler reads the `rayStartParams` field or the Ray container's resource limits in the RayCluster custom resource specification to determine the Ray Pod's resource requirements.
 The information regarding the number of CPUs is essential for the Ray Autoscaler to scale the cluster.
 Therefore, without this information, the Ray Autoscaler reports an error and fails to start.
-Take [ray-cluster.autoscaler.yaml](https://github.com/ray-project/kuberay/blob/v1.3.0/ray-operator/config/samples/ray-cluster.autoscaler.yaml) as an example below:
+Take [ray-cluster.autoscaler.yaml](https://github.com/ray-project/kuberay/blob/v1.4.0/ray-operator/config/samples/ray-cluster.autoscaler.yaml) as an example below:
 
 * If users set `num-cpus` in `rayStartParams`, Ray Autoscaler would work regardless of the resource limits on the container.
 * If users don't set `rayStartParams`, the Ray container must have a specified CPU resource limit.
