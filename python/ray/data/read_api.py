@@ -3260,7 +3260,7 @@ def from_huggingface(
             file_urls = HuggingFaceDatasource.list_parquet_urls_from_dataset(dataset)
 
             if len(file_urls) > 0:
-                # Resolve HTTP 302 redirects (PyArrow doesn't follow them)
+                # Resolve HTTP 302 redirects
                 import requests
 
                 resolved_urls = []
