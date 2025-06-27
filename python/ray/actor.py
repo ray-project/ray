@@ -95,7 +95,7 @@ class RemoteMethodNoArgs(Generic[_Ret]):
 
 
 class RemoteMethod0(Generic[_Ret, _T0]):
-    def remote(self, __arg0: _T0) -> "ObjectRef[_Ret]":
+    def remote(self, __arg0: "Union[_T0, ObjectRef[_T0]]") -> "ObjectRef[_Ret]":
         ...
 
     def bind(self, __arg0: _T0) -> Any:
@@ -103,7 +103,9 @@ class RemoteMethod0(Generic[_Ret, _T0]):
 
 
 class RemoteMethod1(Generic[_Ret, _T0, _T1]):
-    def remote(self, __arg0: _T0, __arg1: _T1) -> "ObjectRef[_Ret]":
+    def remote(
+        self, __arg0: "Union[_T0, ObjectRef[_T0]]", __arg1: "Union[_T1, ObjectRef[_T1]]"
+    ) -> "ObjectRef[_Ret]":
         ...
 
     def bind(self, __arg0: _T0, __arg1: _T1) -> Any:
@@ -111,7 +113,12 @@ class RemoteMethod1(Generic[_Ret, _T0, _T1]):
 
 
 class RemoteMethod2(Generic[_Ret, _T0, _T1, _T2]):
-    def remote(self, __arg0: _T0, __arg1: _T1, __arg2: _T2) -> "ObjectRef[_Ret]":
+    def remote(
+        self,
+        __arg0: "Union[_T0, ObjectRef[_T0]]",
+        __arg1: "Union[_T1, ObjectRef[_T1]]",
+        __arg2: "Union[_T2, ObjectRef[_T2]]",
+    ) -> "ObjectRef[_Ret]":
         ...
 
     def bind(self, __arg0: _T0, __arg1: _T1, __arg2: _T2) -> Any:
@@ -120,7 +127,11 @@ class RemoteMethod2(Generic[_Ret, _T0, _T1, _T2]):
 
 class RemoteMethod3(Generic[_Ret, _T0, _T1, _T2, _T3]):
     def remote(
-        self, __arg0: _T0, __arg1: _T1, __arg2: _T2, __arg3: _T3
+        self,
+        __arg0: "Union[_T0, ObjectRef[_T0]]",
+        __arg1: "Union[_T1, ObjectRef[_T1]]",
+        __arg2: "Union[_T2, ObjectRef[_T2]]",
+        __arg3: "Union[_T3, ObjectRef[_T3]]",
     ) -> "ObjectRef[_Ret]":
         ...
 
@@ -130,7 +141,12 @@ class RemoteMethod3(Generic[_Ret, _T0, _T1, _T2, _T3]):
 
 class RemoteMethod4(Generic[_Ret, _T0, _T1, _T2, _T3, _T4]):
     def remote(
-        self, __arg0: _T0, __arg1: _T1, __arg2: _T2, __arg3: _T3, __arg4: _T4
+        self,
+        __arg0: "Union[_T0, ObjectRef[_T0]]",
+        __arg1: "Union[_T1, ObjectRef[_T1]]",
+        __arg2: "Union[_T2, ObjectRef[_T2]]",
+        __arg3: "Union[_T3, ObjectRef[_T3]]",
+        __arg4: "Union[_T4, ObjectRef[_T4]]",
     ) -> "ObjectRef[_Ret]":
         ...
 
@@ -143,12 +159,12 @@ class RemoteMethod4(Generic[_Ret, _T0, _T1, _T2, _T3, _T4]):
 class RemoteMethod5(Generic[_Ret, _T0, _T1, _T2, _T3, _T4, _T5]):
     def remote(
         self,
-        __arg0: _T0,
-        __arg1: _T1,
-        __arg2: _T2,
-        __arg3: _T3,
-        __arg4: _T4,
-        __arg5: _T5,
+        __arg0: "Union[_T0, ObjectRef[_T0]]",
+        __arg1: "Union[_T1, ObjectRef[_T1]]",
+        __arg2: "Union[_T2, ObjectRef[_T2]]",
+        __arg3: "Union[_T3, ObjectRef[_T3]]",
+        __arg4: "Union[_T4, ObjectRef[_T4]]",
+        __arg5: "Union[_T5, ObjectRef[_T5]]",
     ) -> "ObjectRef[_Ret]":
         ...
 
@@ -167,13 +183,13 @@ class RemoteMethod5(Generic[_Ret, _T0, _T1, _T2, _T3, _T4, _T5]):
 class RemoteMethod6(Generic[_Ret, _T0, _T1, _T2, _T3, _T4, _T5, _T6]):
     def remote(
         self,
-        __arg0: _T0,
-        __arg1: _T1,
-        __arg2: _T2,
-        __arg3: _T3,
-        __arg4: _T4,
-        __arg5: _T5,
-        __arg6: _T6,
+        __arg0: "Union[_T0, ObjectRef[_T0]]",
+        __arg1: "Union[_T1, ObjectRef[_T1]]",
+        __arg2: "Union[_T2, ObjectRef[_T2]]",
+        __arg3: "Union[_T3, ObjectRef[_T3]]",
+        __arg4: "Union[_T4, ObjectRef[_T4]]",
+        __arg5: "Union[_T5, ObjectRef[_T5]]",
+        __arg6: "Union[_T6, ObjectRef[_T6]]",
     ) -> "ObjectRef[_Ret]":
         ...
 
@@ -193,14 +209,14 @@ class RemoteMethod6(Generic[_Ret, _T0, _T1, _T2, _T3, _T4, _T5, _T6]):
 class RemoteMethod7(Generic[_Ret, _T0, _T1, _T2, _T3, _T4, _T5, _T6, _T7]):
     def remote(
         self,
-        __arg0: _T0,
-        __arg1: _T1,
-        __arg2: _T2,
-        __arg3: _T3,
-        __arg4: _T4,
-        __arg5: _T5,
-        __arg6: _T6,
-        __arg7: _T7,
+        __arg0: "Union[_T0, ObjectRef[_T0]]",
+        __arg1: "Union[_T1, ObjectRef[_T1]]",
+        __arg2: "Union[_T2, ObjectRef[_T2]]",
+        __arg3: "Union[_T3, ObjectRef[_T3]]",
+        __arg4: "Union[_T4, ObjectRef[_T4]]",
+        __arg5: "Union[_T5, ObjectRef[_T5]]",
+        __arg6: "Union[_T6, ObjectRef[_T6]]",
+        __arg7: "Union[_T7, ObjectRef[_T7]]",
     ) -> "ObjectRef[_Ret]":
         ...
 
@@ -221,15 +237,15 @@ class RemoteMethod7(Generic[_Ret, _T0, _T1, _T2, _T3, _T4, _T5, _T6, _T7]):
 class RemoteMethod8(Generic[_Ret, _T0, _T1, _T2, _T3, _T4, _T5, _T6, _T7, _T8]):
     def remote(
         self,
-        __arg0: _T0,
-        __arg1: _T1,
-        __arg2: _T2,
-        __arg3: _T3,
-        __arg4: _T4,
-        __arg5: _T5,
-        __arg6: _T6,
-        __arg7: _T7,
-        __arg8: _T8,
+        __arg0: "Union[_T0, ObjectRef[_T0]]",
+        __arg1: "Union[_T1, ObjectRef[_T1]]",
+        __arg2: "Union[_T2, ObjectRef[_T2]]",
+        __arg3: "Union[_T3, ObjectRef[_T3]]",
+        __arg4: "Union[_T4, ObjectRef[_T4]]",
+        __arg5: "Union[_T5, ObjectRef[_T5]]",
+        __arg6: "Union[_T6, ObjectRef[_T6]]",
+        __arg7: "Union[_T7, ObjectRef[_T7]]",
+        __arg8: "Union[_T8, ObjectRef[_T8]]",
     ) -> "ObjectRef[_Ret]":
         ...
 
@@ -251,16 +267,16 @@ class RemoteMethod8(Generic[_Ret, _T0, _T1, _T2, _T3, _T4, _T5, _T6, _T7, _T8]):
 class RemoteMethod9(Generic[_Ret, _T0, _T1, _T2, _T3, _T4, _T5, _T6, _T7, _T8, _T9]):
     def remote(
         self,
-        __arg0: _T0,
-        __arg1: _T1,
-        __arg2: _T2,
-        __arg3: _T3,
-        __arg4: _T4,
-        __arg5: _T5,
-        __arg6: _T6,
-        __arg7: _T7,
-        __arg8: _T8,
-        __arg9: _T9,
+        __arg0: "Union[_T0, ObjectRef[_T0]]",
+        __arg1: "Union[_T1, ObjectRef[_T1]]",
+        __arg2: "Union[_T2, ObjectRef[_T2]]",
+        __arg3: "Union[_T3, ObjectRef[_T3]]",
+        __arg4: "Union[_T4, ObjectRef[_T4]]",
+        __arg5: "Union[_T5, ObjectRef[_T5]]",
+        __arg6: "Union[_T6, ObjectRef[_T6]]",
+        __arg7: "Union[_T7, ObjectRef[_T7]]",
+        __arg8: "Union[_T8, ObjectRef[_T8]]",
+        __arg9: "Union[_T9, ObjectRef[_T9]]",
     ) -> "ObjectRef[_Ret]":
         ...
 
