@@ -674,10 +674,6 @@ class HashShufflingOperatorBase(PhysicalOperator, WithSubProgressBarMixin):
             # Update Finalize progress bar
             finalize_bar.update(i=bundle.num_rows(), total=self.num_output_rows_total())
 
-            # Update Finalize Metrics on task submission
-            empty_bundle = RefBundle([], schema=None, owns_blocks=False)
-            finalize_metrics.on_task_submitted(partition_id, empty_bundle)
-
         def _on_aggregation_done(partition_id: int, exc: Optional[Exception]):
             if partition_id in self._finalizing_tasks:
                 self._finalizing_tasks.pop(partition_id)
