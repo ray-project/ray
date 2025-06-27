@@ -679,10 +679,9 @@ class ReportsExtraResourceUsage(abc.ABC):
         ...
 
 
-class ContainsSubProgressBars(PhysicalOperator):
-    def __init__(self, *args, sub_progress_bar_names: Optional[List[str]], **kwargs):
+class WithSubProgressBarMixin:
+    def init_sub_progress_bars(self, sub_progress_bar_names: List[Optional[str]]):
         """Initialize the sub progress bar mixin."""
-        super().__init__(*args, **kwargs)
         self._sub_progress_bar_names: Optional[List[str]] = sub_progress_bar_names
         self._sub_progress_bar_dict: Optional[Dict[str, ProgressBar]] = None
         self._metric_dict: Dict[str, OpRuntimeMetrics] = {}
@@ -707,8 +706,8 @@ class ContainsSubProgressBars(PhysicalOperator):
         key = self._key(key)
         return self._metric_dict.get(key)
 
-    def initialize_sub_progress_bars(self, position: int) -> int:
-        """Initialize all internal sub progress bars, and return the number of bars."""
+    def start_sub_progress_bars(self, position: int) -> int:
+        """Display all sub progres bars in the termainl, and return the number of bars."""
         if self._sub_progress_bar_names is not None:
             self._sub_progress_bar_dict = {}
             for name in self._sub_progress_bar_names:

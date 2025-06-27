@@ -8,7 +8,7 @@ from ray.data._internal.execution.interfaces import (
     TaskContext,
 )
 from ray.data._internal.execution.interfaces.physical_operator import (
-    ContainsSubProgressBars,
+    WithSubProgressBarMixin,
 )
 from ray.data._internal.logical.interfaces import LogicalOperator
 from ray.data._internal.stats import StatsDict
@@ -50,7 +50,7 @@ class OneToOneOperator(PhysicalOperator):
 
 
 class AllToAllOperator(
-    InternalQueueOperatorMixin, ContainsSubProgressBars, PhysicalOperator
+    InternalQueueOperatorMixin, WithSubProgressBarMixin, PhysicalOperator
 ):
     """A blocking operator that executes once its inputs are complete.
 
@@ -84,13 +84,9 @@ class AllToAllOperator(
         self._input_buffer: List[RefBundle] = []
         self._output_buffer: List[RefBundle] = []
         self._stats: StatsDict = {}
-        super().__init__(
-            name,
-            [input_op],
-            data_context,
-            target_max_block_size,
-            sub_progress_bar_names=sub_progress_bar_names,
-        )
+        super().__init__(name, [input_op], data_context, target_max_block_size)
+
+        self.init_sub_progress_bars(sub_progress_bar_names)
 
     def num_outputs_total(self) -> Optional[int]:
         return (
