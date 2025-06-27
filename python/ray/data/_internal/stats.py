@@ -1123,7 +1123,8 @@ class DatasetStatsSummary:
         total_wall_time = self.get_total_wall_time()
 
         def fmt_line(name: str, time: float) -> str:
-            return f"* {name}: {fmt(time)} ({time / total_wall_time * 100:.3f}%)\n"
+            fraction = time / total_wall_time if total_wall_time > 0 else 0
+            return f"* {name}: {fmt(time)} ({fraction * 100:.3f}%)\n"
 
         summaries = DatasetStatsSummary._collect_dataset_stats_summaries(self)
         out = "Runtime Metrics:\n"

@@ -143,7 +143,8 @@ class StreamingExecutor(Executor, threading.Thread):
         self._autoscaler = create_autoscaler(
             self._topology,
             self._resource_manager,
-            self._dataset_id,
+            config=self._data_context.autoscaling_config,
+            execution_id=self._dataset_id,
         )
 
         self._has_op_completed = {op: False for op in self._topology}

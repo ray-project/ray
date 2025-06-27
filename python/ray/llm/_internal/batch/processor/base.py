@@ -18,6 +18,11 @@ from ray.util.annotations import DeveloperAPI, PublicAPI
 logger = logging.getLogger(__name__)
 
 
+# Higher values here are better for prefetching and locality. It's ok for this to be
+# fairly high since streaming backpressure prevents us from overloading actors.
+DEFAULT_MAX_TASKS_IN_FLIGHT = 4
+
+
 class ProcessorConfig(BaseModelExtended):
     """The processor configuration."""
 

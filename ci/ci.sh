@@ -231,12 +231,17 @@ install_ray() {
   (
     cd "${WORKSPACE_DIR}"/python
     build_dashboard_front_end
-    keep_alive pip install -v -e .
+
+    # This is required so that pip does not pick up a cython version that is
+    # too high that can break CI, especially on MacOS.
+    pip install -q cython==3.0.12
+
+    pip install -v -e . -c requirements_compiled.txt
   )
   (
     # For runtime_env tests, wheels are needed
     cd "${WORKSPACE_DIR}"
-    keep_alive pip wheel -e python -w .whl
+    pip wheel -e python -w .whl
   )
 }
 

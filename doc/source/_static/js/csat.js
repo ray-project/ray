@@ -6,15 +6,19 @@
  * @param {string} vote 'Yes' or 'No' vote to send as feedback
  */
 function sendVote(vote) {
-  gtag(
-    'event',
-    'Vote',
-    {
-      event_category: 'CSAT',
-      event_label: vote,
-      value: vote === 'Yes' ? 1 : 0
-    }
-  )
+  if (typeof window.dataLayer === 'undefined' || !Array.isArray(window.dataLayer)) {
+    console.warn('Google Tag Manager dataLayer not available - CSAT vote not tracked');
+    return;
+  }
+
+  window.dataLayer.push({
+    event: 'csat_vote',
+    vote_type: vote,
+    category: 'CSAT',
+    page_location: window.location.href,
+    page_title: document.title,
+    value: vote === 'Yes' ? 1 : 0
+  });
 }
 
 /**
@@ -22,14 +26,19 @@ function sendVote(vote) {
  * @param {string} text Text to send as feedback
  */
 function sendFeedback(text) {
-  gtag(
-    'event',
-    'Feedback',
-    {
-      event_category: 'CSAT',
-      event_label: text,
-    }
-  )
+  if (typeof window.dataLayer === 'undefined' || !Array.isArray(window.dataLayer)) {
+    console.warn('Google Tag Manager dataLayer not available - CSAT feedback not tracked');
+    return;
+  }
+
+  window.dataLayer.push({
+    event: 'csat_feedback',
+    feedback_text: text.substring(0, 500),
+    category: 'CSAT',
+    page_location: window.location.href,
+    page_title: document.title,
+    feedback_length: text.length
+  });
 }
 
 window.addEventListener("DOMContentLoaded", () => {

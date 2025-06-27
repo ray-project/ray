@@ -2,8 +2,8 @@ name: Mark and Close Stale Pull Requests
 
 on:
   schedule:
-    # Runs daily at midnight UTC.
-    - cron: '0 0 * * *'
+    # Runs twice a day at 15 minutes past midnight and noon UTC
+    - cron: '15 */12 * * *'
 
 jobs:
   stale:

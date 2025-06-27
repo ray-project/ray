@@ -1076,6 +1076,9 @@ class Reconciler:
         # Get the current instance states.
         im_instances, version = Reconciler._get_im_instances(instance_manager)
 
+        im_instances_by_instance_id = {
+            i.instance_id: i for i in im_instances if i.instance_id
+        }
         autoscaler_instances = []
         ray_nodes_by_id = {
             binary_to_hex(node.node_id): node for node in ray_state.node_states
@@ -1143,17 +1146,24 @@ class Reconciler:
         # Add terminating instances.
         for terminate_request in to_terminate:
             instance_id = terminate_request.instance_id
-            new_instance_status = IMInstance.RAY_STOP_REQUESTED
             if terminate_request.instance_status == IMInstance.ALLOCATED:
                 # The instance is not yet running, so we can't request to stop/drain Ray.
                 # Therefore, we can skip the RAY_STOP_REQUESTED state and directly terminate the node.
-                new_instance_status = IMInstance.TERMINATING
-            updates[terminate_request.instance_id] = IMInstanceUpdateEvent(
-                instance_id=instance_id,
-                new_instance_status=new_instance_status,
-                termination_request=terminate_request,
-                details=f"draining ray: {terminate_request.details}",
-            )
+                im_instance_to_terminate = im_instances_by_instance_id[instance_id]
+                updates[terminate_request.instance_id] = IMInstanceUpdateEvent(
+                    instance_id=instance_id,
+                    new_instance_status=IMInstance.TERMINATING,
+                    cloud_instance_id=im_instance_to_terminate.cloud_instance_id,
+                    termination_request=terminate_request,
+                    details=f"terminating ray: {terminate_request.details}",
+                )
+            else:
+                updates[terminate_request.instance_id] = IMInstanceUpdateEvent(
+                    instance_id=instance_id,
+                    new_instance_status=IMInstance.RAY_STOP_REQUESTED,
+                    termination_request=terminate_request,
+                    details=f"draining ray: {terminate_request.details}",
+                )
 
         # Add new instances.
         for launch_request in to_launch:

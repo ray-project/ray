@@ -22,9 +22,9 @@ from ray.data._internal.numpy_support import (
     convert_to_numpy,
     _convert_datetime_to_np_datetime,
 )
-from ray.data._internal.util import GiB
 from ray.util import log_once
 from ray.util.annotations import DeveloperAPI, PublicAPI
+from ray.util.common import INT32_MAX
 
 PYARROW_VERSION = get_pyarrow_version()
 # Minimum version of Arrow that supports subclassable ExtensionScalars.
@@ -34,10 +34,6 @@ MIN_PYARROW_VERSION_SCALAR_SUBCLASS = parse_version("9.0.0")
 MIN_PYARROW_VERSION_CHUNKED_ARRAY_TO_NUMPY_ZERO_COPY_ONLY = parse_version("13.0.0")
 
 NUM_BYTES_PER_UNICODE_CHAR = 4
-
-# NOTE: Overflow threshold in bytes for most Arrow types using int32 as
-#       its offsets
-INT32_OVERFLOW_THRESHOLD = 2 * GiB
 
 
 logger = logging.getLogger(__name__)
@@ -325,7 +321,7 @@ def _infer_pyarrow_type(
         #
         #       Check out test cases for this method for an additional context.
         if isinstance(obj, (str, bytes)):
-            return len(obj) > INT32_OVERFLOW_THRESHOLD
+            return len(obj) > INT32_MAX
 
         return False
 

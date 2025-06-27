@@ -435,6 +435,15 @@ class WorkerGroup:
         self._worker_group_state = None
         self._world_rank_to_ongoing_poll = {}
 
+    def abort(self):
+        """Abort the worker group."""
+        # TODO: consider shutting down the workers in the future.
+        # We don't do this for now due to this risk of hanging e.g. when calling
+        # `destroy_process_group` on an active group.
+        self._assert_active()
+        for callback in self._callbacks:
+            callback.before_worker_group_abort(self._worker_group_context)
+
     #####################################################################################
     # Polling Worker Group
     #####################################################################################

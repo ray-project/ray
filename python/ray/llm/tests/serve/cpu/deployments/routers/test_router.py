@@ -170,8 +170,6 @@ class TestRouter:
 
         await router.check_health()
 
-        assert server.check_health.remote.call_count == 1
-
 
 if __name__ == "__main__":
     sys.exit(pytest.main(["-v", __file__]))

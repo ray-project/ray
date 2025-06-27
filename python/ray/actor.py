@@ -1,6 +1,17 @@
 import inspect
 import logging
-from typing import Any, Dict, List, Literal, Optional, Tuple, Union, TYPE_CHECKING
+from typing import (
+    Any,
+    Dict,
+    List,
+    Literal,
+    Optional,
+    Tuple,
+    Union,
+    TYPE_CHECKING,
+    TypeVar,
+    Generic,
+)
 
 import ray._private.ray_constants as ray_constants
 import ray._private.signature as signature
@@ -50,6 +61,12 @@ logger = logging.getLogger(__name__)
 
 # Hook to call with (actor, resources, strategy) on each local actor creation.
 _actor_launch_hook = None
+
+# TypeVar for generic ActorHandle
+T = TypeVar("T")
+
+# return type of ActorClass[T].remote()
+ActorProxy = Union["ActorHandle[T]", type[T]]
 
 
 @PublicAPI
@@ -761,7 +778,7 @@ def _process_option_dict(actor_options):
 
 
 @PublicAPI
-class ActorClass:
+class ActorClass(Generic[T]):
     """An actor class.
 
     This is a decorated class. It can be used to create actors.
@@ -901,7 +918,7 @@ class ActorClass:
             self._default_options["runtime_env"] = self.__ray_metadata__.runtime_env
         return self
 
-    def remote(self, *args, **kwargs):
+    def remote(self, *args, **kwargs) -> ActorProxy[T]:
         """Create an actor.
 
         Args:
@@ -1052,7 +1069,7 @@ class ActorClass:
 
     @wrap_auto_init
     @_tracing_actor_creation
-    def _remote(self, args=None, kwargs=None, **actor_options):
+    def _remote(self, args=None, kwargs=None, **actor_options) -> ActorProxy[T]:
         """Create an actor.
 
         This method allows more flexibility than the remote method because
@@ -1434,7 +1451,7 @@ class ActorClass:
 
 
 @PublicAPI
-class ActorHandle:
+class ActorHandle(Generic[T]):
     """A handle to an actor.
 
     The fields in this class are prefixed with _ray_ to hide them from the user

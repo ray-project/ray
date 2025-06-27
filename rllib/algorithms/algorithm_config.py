@@ -4592,10 +4592,6 @@ class AlgorithmConfig(_Config):
                 multi_rl_module_spec.remove_modules(module_id)
                 continue
 
-            policy_spec = policy_dict.get(module_id)
-            if policy_spec is None:
-                policy_spec = policy_dict[DEFAULT_MODULE_ID]
-
             if module_spec.module_class is None:
                 if isinstance(default_rl_module_spec, RLModuleSpec):
                     module_spec.module_class = default_rl_module_spec.module_class
@@ -4639,10 +4635,18 @@ class AlgorithmConfig(_Config):
                     )
             # TODO (sven): Find a good way to pack module specific parameters from
             # the algorithms into the `model_config_dict`.
-            if module_spec.observation_space is None:
-                module_spec.observation_space = policy_spec.observation_space
-            if module_spec.action_space is None:
-                module_spec.action_space = policy_spec.action_space
+            if (
+                module_spec.observation_space is None
+                or module_spec.action_space is None
+            ):
+                policy_spec = policy_dict.get(
+                    module_id, policy_dict.get(DEFAULT_MODULE_ID)
+                )
+                if policy_spec is not None:
+                    if module_spec.observation_space is None:
+                        module_spec.observation_space = policy_spec.observation_space
+                    if module_spec.action_space is None:
+                        module_spec.action_space = policy_spec.action_space
             # In case the `RLModuleSpec` does not have a model config dict, we use the
             # the one defined by the auto keys and the `model_config_dict` arguments in
             # `self.rl_module()`.
