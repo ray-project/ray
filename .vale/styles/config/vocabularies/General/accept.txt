@@ -81,6 +81,8 @@ SageMaker
 serverless
 SFT
 ShareGPT
+SLA
+SLAs
 Softmax
 teardown
 deserialization
