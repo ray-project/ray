@@ -434,6 +434,72 @@ def test_draining_reason(ray_start_cluster, graceful):
             assert "the actor's node was preempted: " + drain_reason_message in str(e)
 
 
+@pytest.mark.parametrize(
+    "num_retry,should_drain_node,failed_at",
+    [
+        # If num_retry is 0, no matter whether the node is drained before removal
+        # or not, the task will always fail after the first node removal.
+        (0, False, 1),
+        (0, True, 1),
+        # If num_retry is positive and the node is not drained before removal,
+        # the task will fail after the (num_retry + 1)th node removal.
+        (1, False, 2),
+        # If num_retry is positive and the node is drained before removal,
+        # the task will never fail because we automatically retry all errors
+        # when node is in the Draining state.
+        (1, True, -1),
+    ],
+)
+def test_drain_node_actor_retry(
+    ray_start_cluster, num_retry, should_drain_node, failed_at
+):
+    cluster = ray_start_cluster
+    cluster.add_node(num_cpus=1, resources={"head": 1})
+    ray.init(address=cluster.address)
+
+    cur_worker = cluster.add_node(num_cpus=1, resources={"worker": 1})
+    cluster.wait_for_nodes()
+
+    gcs_client = GcsClient(address=ray.get_runtime_context().gcs_address)
+
+    @ray.remote(max_restarts=num_retry, max_task_retries=num_retry)
+    class Actor:
+        def get_node_id(self):
+            return ray.get_runtime_context().get_node_id()
+
+    actor = Actor.options(num_cpus=0, resources={"worker": 1}).remote()
+
+    node_id = ray.get(actor.get_node_id.remote())
+    assert node_id == cur_worker.node_id
+
+    for i in range(num_retry + 1):
+        new_worker = cluster.add_node(num_cpus=1, resources={"worker": 1})
+        cluster.wait_for_nodes()
+
+        if should_drain_node:
+            # Preemption is always accepted.
+            is_accepted, _ = gcs_client.drain_node(
+                cur_worker.node_id,
+                autoscaler_pb2.DrainNodeReason.Value("DRAIN_NODE_REASON_PREEMPTION"),
+                "preemption",
+                1,
+            )
+            assert is_accepted
+
+        # Simulate autoscaler terminates the worker node after the draining deadline.
+        cluster.remove_node(cur_worker, True)
+
+        cur_worker = new_worker
+
+        if i + 1 == failed_at:
+            with pytest.raises(ray.exceptions.ActorDiedError):
+                ray.get(actor.get_node_id.remote())
+            break
+
+        node_id = ray.get(actor.get_node_id.remote())
+        assert node_id == cur_worker.node_id
+
+
 if __name__ == "__main__":
 
     sys.exit(pytest.main(["-sv", __file__]))
