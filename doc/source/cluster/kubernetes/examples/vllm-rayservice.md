@@ -44,10 +44,10 @@ This guide references this secret as an environment variable in the RayCluster u
 
 Create a RayService custom resource:
 ```
-kubectl apply -f https://raw.githubusercontent.com/ray-project/kuberay/master/ray-operator/config/samples/vllm/ray-service.vllm.yaml
+kubectl apply -f https://raw.githubusercontent.com/ray-project/kuberay/v1.3.2/ray-operator/config/samples/vllm/ray-service.vllm.yaml
 ```
 
-This step configures RayService to deploy a Ray Serve app, running vLLM as the serving engine for the Llama 3 8B Instruct model. You can find the code for this example [on GitHub](https://github.com/ray-project/kuberay/blob/master/ray-operator/config/samples/vllm/serve.py).
+This step configures RayService to deploy a Ray Serve app, running vLLM as the serving engine for the Llama 3 8B Instruct model. You can find the code for this example [on GitHub](https://github.com/ray-project/kuberay/blob/v1.3.2/ray-operator/config/samples/vllm/serve.py).
 You can inspect the Serve Config for more details about the Serve deployment:
 ```yaml
   serveConfigV2: |
@@ -62,7 +62,7 @@ You can inspect the Serve Config for more details about the Serve deployment:
           num_cpus: 8
           # NOTE: num_gpus is set automatically based on TENSOR_PARALLELISM
       runtime_env:
-        working_dir: "https://github.com/ray-project/kuberay/archive/master.zip"
+        working_dir: "https://github.com/ray-project/kuberay/archive/v1.3.2.zip"
         pip: ["vllm==0.5.4"]
         env_vars:
           MODEL_ID: "meta-llama/Meta-Llama-3-8B-Instruct"
