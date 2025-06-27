@@ -4,7 +4,6 @@ import io
 import logging
 import os
 import pathlib
-import platform
 import re
 import shlex
 import shutil
