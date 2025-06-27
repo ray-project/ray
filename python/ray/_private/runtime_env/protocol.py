@@ -82,9 +82,10 @@ class ProtocolsProvider:
         elif protocol == "azure":
             try:
                 import os
+
+                from azure.identity import DefaultAzureCredential
                 from azure.storage.blob import BlobServiceClient  # noqa: F401
                 from smart_open import open as open_file
-                from azure.identity import DefaultAzureCredential
             except ImportError:
                 raise ImportError(
                     "You must `pip install azure-storage-blob azure-identity smart_open[azure]` "
