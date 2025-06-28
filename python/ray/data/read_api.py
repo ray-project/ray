@@ -2988,7 +2988,6 @@ def from_arrow(
     if override_num_blocks is not None:
         if override_num_blocks <= 0:
             raise ValueError("override_num_blocks must be > 0")
-
         combined_table = pa.concat_tables(tables) if len(tables) > 1 else tables[0]
         total_rows = len(combined_table)
 
@@ -3259,7 +3258,32 @@ def from_huggingface(
             # Attempt to read data via Hugging Face Hub parquet files. If the
             # returned list of files is empty, attempt read via other methods.
             file_urls = HuggingFaceDatasource.list_parquet_urls_from_dataset(dataset)
+
             if len(file_urls) > 0:
+                # Resolve HTTP 302 redirects
+                import requests
+
+                resolved_urls = []
+                for url in file_urls:
+                    try:
+                        resp = requests.head(url, allow_redirects=True, timeout=5)
+                        if resp.status_code == 200:
+                            resolved_urls.append(resp.url)
+                        else:
+                            logger.warning(
+                                f"Unexpected status {resp.status_code} resolving {url} from "
+                                f"Hugging Face Hub parquet files"
+                            )
+                    except requests.RequestException as e:
+                        logger.warning(
+                            f"Failed to resolve {url}: {e} from Hugging Face Hub parquet files"
+                        )
+
+                if not resolved_urls:
+                    raise FileNotFoundError(
+                        "No resolvable Parquet URLs found from Hugging Face Hub parquet files"
+                    )
+
                 # If file urls are returned, the parquet files are available via API
                 # TODO: Add support for reading from http filesystem in
                 # FileBasedDatasource. GH Issue:
@@ -3268,7 +3292,7 @@ def from_huggingface(
 
                 http = fsspec.implementations.http.HTTPFileSystem()
                 return read_parquet(
-                    file_urls,
+                    resolved_urls,
                     parallelism=parallelism,
                     filesystem=http,
                     concurrency=concurrency,
@@ -3277,6 +3301,7 @@ def from_huggingface(
                         "retry_exceptions": [FileNotFoundError, ClientResponseError]
                     },
                 )
+
         except (FileNotFoundError, ClientResponseError):
             logger.warning(
                 "Distributed read via Hugging Face Hub parquet files failed, "
