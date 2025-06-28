@@ -46,6 +46,7 @@ class BatcherInterface(ABC):
         pass
 
 
+    @abstractmethod
     def next_batch(self) -> Block:
         """Get the next batch from the block buffer.
 
