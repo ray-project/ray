@@ -607,11 +607,18 @@ class LLMServer(_LLMServerBase):
             ), "Must setup lora config for multiplexed requests."
             disk_lora_model = await self._disk_lora_model(multiplexed_model_id)
             await self.engine.resolve_lora(disk_lora_model)
-        else:
-            disk_lora_model = None
 
-        # return self._process_llm_request(request, is_chat=True)
-        async for response in self.engine.chat(request):
+
+        if request.stream:
+            # 4. Apply batching with appropriate interval in case of streaming
+            response_generator = OpenAIResponseBatcher(
+                self.engine.chat(request),
+                interval_ms=self._get_batch_interval_ms(),
+            ).stream()
+        else:
+            response_generator = self.engine.chat(request)
+
+        async for response in response_generator:
             logger.info(
                 f"[Kourosh] in llm_server.chat, response_type: {type(response)} response: {response}"
             )

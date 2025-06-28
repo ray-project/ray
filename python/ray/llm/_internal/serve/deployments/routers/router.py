@@ -141,6 +141,9 @@ def _apply_openai_json_format(
         data: <response-json1>\n\ndata: <response-json2>\n\n...
     """
     if isinstance(response, list):
+        first_response = next(iter(response))
+        if isinstance(first_response, str):
+            return "".join(response)
         return "".join(f"data: {r.model_dump_json()}\n\n" for r in response)
     if hasattr(response, "model_dump_json"):
         return f"data: {response.model_dump_json()}\n\n"
