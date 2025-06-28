@@ -161,9 +161,11 @@ def build_vllm_engine_processor(
                 compute=ray.data.ActorPoolStrategy(
                     # vLLM start up time is significant, so if user give fixed
                     # concurrency, start all instances without auto-scaling.
-                    min_size=config.concurrency
-                    if isinstance(config.concurrency, int)
-                    else processor_concurrency[0],
+                    min_size=(
+                        config.concurrency
+                        if isinstance(config.concurrency, int)
+                        else processor_concurrency[0]
+                    ),
                     max_size=processor_concurrency[1],
                     max_tasks_in_flight_per_actor=max(
                         config.max_concurrent_batches, DEFAULT_MAX_TASKS_IN_FLIGHT
