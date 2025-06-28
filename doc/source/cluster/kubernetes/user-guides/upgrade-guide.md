@@ -17,6 +17,7 @@ When a Ray job is created, the Ray dashboard agent process on the head node gets
 * KubeRay v1.1.0: Supports Ray 2.8.0 and later.
 * KubeRay v1.2.X: Supports Ray 2.8.0 and later.
 * KubeRay v1.3.X: Supports Ray 2.38.0 and later.
+* KubeRay v1.4.X: Supports Ray 2.38.0 and later.
 
 The preceding compatibility plan is closely tied to the KubeRay CRD versioning plan.
 
@@ -26,9 +27,7 @@ Typically, while new fields are added to the KubeRay CRD in each release, KubeRa
 
 * KubeRay v0.6.0 and older: CRD v1alpha1
 * KubeRay v1.0.0: CRD v1alpha1 and v1
-* KubeRay v1.1.0: CRD v1
-* KubeRay v1.2.2: CRD v1
-* KubeRay v1.3.0: CRD v1
+* KubeRay v1.1.0 and later: CRD v1
 
 If you want to understand the reasoning behind the CRD versioning plan, see [ray-project/ray#40357](https://github.com/ray-project/ray/pull/40357) for more details.
 
