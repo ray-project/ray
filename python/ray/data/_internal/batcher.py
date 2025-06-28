@@ -45,7 +45,6 @@ class BatcherInterface(ABC):
         """Whether this Batcher has any data."""
         pass
 
-
     @abstractmethod
     def next_batch(self) -> Block:
         """Get the next batch from the block buffer.
@@ -381,10 +380,10 @@ class ShufflingBatcher(BatcherInterface):
 def create_batcher(
     *,
     batch_size: Optional[int],
-    shuffle_buffer_min_size: Optional[int],
-    shuffle_seed: Optional[int],
-    ensure_copy: bool,
-    batcher_fn: Optional[Callable[..., BatcherInterface]],
+    shuffle_buffer_min_size: Optional[int] = None,
+    shuffle_seed: Optional[int] = None,
+    ensure_copy: bool = False,
+    batcher_fn: Optional[Callable[..., BatcherInterface]] = None,
 ) -> BatcherInterface:
     """Create a batcher"""
 
