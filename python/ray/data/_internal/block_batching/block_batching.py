@@ -1,6 +1,7 @@
 from contextlib import nullcontext
 from typing import Callable, Iterator, Optional, TypeVar
 
+from ray.data._internal.batcher import create_batcher
 from ray.data._internal.block_batching.util import (
     blocks_to_batches,
     collate,
@@ -31,16 +32,22 @@ def batch_blocks(
     function doesn't support block prefetching.
     """
 
+    # Create a default batcher
+    batcher = create_batcher(
+        batch_size=batch_size,
+        shuffle_buffer_min_size=shuffle_buffer_min_size,
+        shuffle_seed=shuffle_seed,
+        ensure_copy=ensure_copy,
+        batcher_fn=None,
+    )
+
     def _iterator_fn(base_iterator: Iterator[Block]) -> Iterator[DataBatch]:
         batch_iter = format_batches(
             blocks_to_batches(
                 block_iter=base_iterator,
+                batcher=batcher,
                 stats=stats,
-                batch_size=batch_size,
                 drop_last=drop_last,
-                shuffle_buffer_min_size=shuffle_buffer_min_size,
-                shuffle_seed=shuffle_seed,
-                ensure_copy=ensure_copy,
             ),
             batch_format=batch_format,
             stats=stats,

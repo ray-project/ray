@@ -5,7 +5,7 @@ from typing import Any, Callable, Iterator, List, Optional, Tuple
 
 import ray
 from ray.actor import ActorHandle
-from ray.data._internal.batcher import Batcher, ShufflingBatcher
+from ray.data._internal.batcher import BatcherInterface
 from ray.data._internal.block_batching.interfaces import (
     Batch,
     BlockPrefetcher,
@@ -72,12 +72,9 @@ def resolve_block_refs(
 
 def blocks_to_batches(
     block_iter: Iterator[Block],
+    batcher: BatcherInterface,
     stats: Optional[DatasetStats] = None,
-    batch_size: Optional[int] = None,
     drop_last: bool = False,
-    shuffle_buffer_min_size: Optional[int] = None,
-    shuffle_seed: Optional[int] = None,
-    ensure_copy: bool = False,
 ) -> Iterator[Batch]:
     """Given an iterator over blocks, returns an iterator over blocks
     of the appropriate bacth size.
@@ -101,14 +98,6 @@ def blocks_to_batches(
     Returns:
         An iterator over blocks of the given size that are potentially shuffled.
     """
-    if shuffle_buffer_min_size is not None:
-        batcher = ShufflingBatcher(
-            batch_size=batch_size,
-            shuffle_buffer_min_size=shuffle_buffer_min_size,
-            shuffle_seed=shuffle_seed,
-        )
-    else:
-        batcher = Batcher(batch_size=batch_size, ensure_copy=ensure_copy)
 
     def get_iter_next_batch_s_timer():
         return stats.iter_next_batch_s.timer() if stats else nullcontext()

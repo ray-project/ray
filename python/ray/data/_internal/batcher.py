@@ -1,5 +1,6 @@
 import warnings
-from typing import Optional
+from abc import ABC, abstractmethod
+from typing import Callable, Optional
 
 from ray.data._internal.arrow_block import ArrowBlockAccessor
 from ray.data._internal.arrow_ops import transform_pyarrow
@@ -17,34 +18,41 @@ from ray.util import log_once
 SHUFFLE_BUFFER_COMPACTION_RATIO = 1.5
 
 
-class BatcherInterface:
+class BatcherInterface(ABC):
+    """Interface for batchers."""
+
+    @abstractmethod
     def add(self, block: Block):
         """Add a block to the block buffer.
 
         Args:
             block: Block to add to the block buffer.
         """
-        raise NotImplementedError()
+        pass
 
+    @abstractmethod
     def done_adding(self) -> bool:
         """Indicate to the batcher that no more blocks will be added to the buffer."""
-        raise NotImplementedError()
+        pass
 
+    @abstractmethod
     def has_batch(self) -> bool:
         """Whether this Batcher has any full batches."""
-        raise NotImplementedError()
+        pass
 
+    @abstractmethod
     def has_any(self) -> bool:
         """Whether this Batcher has any data."""
-        raise NotImplementedError()
+        pass
 
+    @abstractmethod
     def next_batch(self) -> Block:
         """Get the next batch from the block buffer.
 
         Returns:
             A batch represented as a Block.
         """
-        raise NotImplementedError()
+        pass
 
 
 class Batcher(BatcherInterface):
@@ -367,3 +375,37 @@ class ShufflingBatcher(BatcherInterface):
         return BlockAccessor.for_block(self._shuffle_buffer).slice(
             slice_start, self._batch_head
         )
+
+
+def create_batcher(
+    *,
+    batch_size: Optional[int],
+    shuffle_buffer_min_size: Optional[int] = None,
+    shuffle_seed: Optional[int] = None,
+    ensure_copy: bool = False,
+    batcher_fn: Optional[Callable[..., BatcherInterface]] = None,
+    **kwargs,
+) -> BatcherInterface:
+    """Create a batcher."""
+
+    # Custom batchers
+    if batcher_fn is not None:
+        return batcher_fn(
+            batch_size=batch_size,
+            shuffle_buffer_min_size=shuffle_buffer_min_size,
+            shuffle_seed=shuffle_seed,
+            ensure_copy=ensure_copy,
+            **kwargs,
+        )
+
+    # Default batcher with local shuffle
+    if shuffle_buffer_min_size is not None:
+        return ShufflingBatcher(
+            batch_size=batch_size,
+            shuffle_buffer_min_size=shuffle_buffer_min_size,
+            shuffle_seed=shuffle_seed,
+            **kwargs,
+        )
+
+    # Default batcher without shuffle
+    return Batcher(batch_size=batch_size, ensure_copy=ensure_copy)
