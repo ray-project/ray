@@ -203,10 +203,6 @@ class ParquetDatasink(_FileDatasink):
             self.mode, "overwrite_or_ignore"
         )
 
-        # # Set default row group size if not provided. Defaults are set by pyarrow.
-        # min_rows_per_group = row_group_size if row_group_size else 0
-        # max_rows_per_group = row_group_size if row_group_size else 1024 * 1024
-
         basename_template = self._get_basename_template(filename, write_uuid)
 
         # Default to 0 set by pyarrow.dataset.write_dataset
