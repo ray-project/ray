@@ -11,7 +11,7 @@ from ray.llm._internal.serve.configs.server_models import (
 )
 from ray.llm._internal.serve.deployments.llm.llm_server import LLMDeployment
 from ray.llm.tests.serve.mocks.mock_vllm_engine import (
-    Fake_LoraModelLoader,
+    FakeLoraModelLoader,
     MockMultiplexEngine,
 )
 
@@ -33,7 +33,7 @@ def handle(shutdown_ray_and_serve):
         LLMDeployment.options(placement_group_bundles=[{"CPU": 1}],).bind(
             llm_config,
             engine_cls=MockMultiplexEngine,
-            model_downloader=Fake_LoraModelLoader(),
+            model_downloader=FakeLoraModelLoader(),
         ),
     )
 

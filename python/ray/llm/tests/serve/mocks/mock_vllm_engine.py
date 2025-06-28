@@ -311,7 +311,7 @@ class MockMultiplexEngine(LLMEngine):
         return True
 
 
-class Fake_LoraModelLoader:
+class FakeLoraModelLoader:
     """A fake LoRA model loader for testing."""
 
     async def load_model(

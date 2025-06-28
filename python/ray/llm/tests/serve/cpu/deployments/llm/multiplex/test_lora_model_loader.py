@@ -5,7 +5,7 @@ from unittest.mock import Mock, patch
 import pytest
 
 from ray.llm._internal.common.utils.cloud_utils import LoraMirrorConfig
-from ray.llm._internal.common.utils.download_utils import (
+from ray.llm._internal.common.utils.lora_utils import (
     _LoraModelLoader,
 )
 from ray.llm._internal.serve.configs.server_models import (
