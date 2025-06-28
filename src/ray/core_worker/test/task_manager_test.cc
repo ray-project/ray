@@ -422,6 +422,35 @@ TEST_F(TaskManagerTest, TestTaskKill) {
   ASSERT_EQ(stored_error, error);
 }
 
+TEST_F(TaskManagerTest, TestResubmitCanceledTask) {
+  // Set up a pending task.
+  rpc::Address caller_address;
+  auto spec = CreateTaskHelper(1, {});
+  int num_retries = 3;
+  manager_.AddPendingTask(caller_address, spec, "", num_retries);
+  ASSERT_TRUE(manager_.IsTaskPending(spec.TaskId()));
+
+  // Complete the task, but still pin it in the submissible tasks map.
+  auto return_id = spec.ReturnId(0);
+  rpc::PushTaskReply reply;
+  auto return_object = reply.add_return_objects();
+  return_object->set_object_id(return_id.Binary());
+  return_object->set_in_plasma(true);
+  manager_.CompletePendingTask(spec.TaskId(), reply, rpc::Address(), false);
+  ASSERT_TRUE(manager_.IsTaskSubmissible(spec.TaskId()));
+  ASSERT_FALSE(manager_.IsTaskPending(spec.TaskId()));
+
+  // Check that resubmitting a canceled task does not crash and returns
+  // FAILED_TASK_CANCELED.
+  manager_.MarkTaskCanceled(spec.TaskId());
+  std::vector<ObjectID> task_deps;
+  ASSERT_EQ(manager_.ResubmitTask(spec.TaskId(), &task_deps),
+            ResubmitTaskResult::FAILED_TASK_CANCELED);
+
+  // Final cleanup.
+  reference_counter_->RemoveLocalReference(return_id, nullptr);
+}
+
 TEST_F(TaskManagerTest, TestTaskOomKillNoOomRetryFailsImmediately) {
   RayConfig::instance().initialize(R"({"task_oom_retries": 0})");
 
@@ -955,7 +984,8 @@ TEST_F(TaskManagerLineageTest, TestResubmitTask) {
 
   // Cannot resubmit a task whose spec we do not have.
   std::vector<ObjectID> resubmitted_task_deps;
-  ASSERT_FALSE(manager_.ResubmitTask(spec.TaskId(), &resubmitted_task_deps));
+  ASSERT_EQ(manager_.ResubmitTask(spec.TaskId(), &resubmitted_task_deps),
+            ResubmitTaskResult::FAILED_MAX_ATTEMPT_EXCEEDED);
   ASSERT_TRUE(resubmitted_task_deps.empty());
   ASSERT_EQ(num_retries_, 0);
   ASSERT_FALSE(reference_counter_->IsObjectPendingCreation(return_id));
@@ -965,7 +995,8 @@ TEST_F(TaskManagerLineageTest, TestResubmitTask) {
   ASSERT_TRUE(manager_.IsTaskPending(spec.TaskId()));
   ASSERT_FALSE(manager_.IsTaskWaitingForExecution(spec.TaskId()));
   // A task that is already pending does not get resubmitted.
-  ASSERT_TRUE(manager_.ResubmitTask(spec.TaskId(), &resubmitted_task_deps));
+  ASSERT_EQ(manager_.ResubmitTask(spec.TaskId(), &resubmitted_task_deps),
+            ResubmitTaskResult::SUCCESS);
   ASSERT_TRUE(resubmitted_task_deps.empty());
   ASSERT_EQ(num_retries_, 0);
   ASSERT_TRUE(reference_counter_->IsObjectPendingCreation(return_id));
@@ -985,7 +1016,8 @@ TEST_F(TaskManagerLineageTest, TestResubmitTask) {
 
   // The task finished, its return ID is still in scope, and the return object
   // was stored in plasma. It is okay to resubmit it now.
-  ASSERT_TRUE(manager_.ResubmitTask(spec.TaskId(), &resubmitted_task_deps));
+  ASSERT_EQ(manager_.ResubmitTask(spec.TaskId(), &resubmitted_task_deps),
+            ResubmitTaskResult::SUCCESS);
   ASSERT_EQ(resubmitted_task_deps, spec.GetDependencyIds());
   ASSERT_EQ(num_retries_, 1);
   ASSERT_EQ(last_delay_ms_, 0);
@@ -997,7 +1029,8 @@ TEST_F(TaskManagerLineageTest, TestResubmitTask) {
   // The task is still pending execution.
   ASSERT_TRUE(manager_.IsTaskPending(spec.TaskId()));
   // A task that is already pending does not get resubmitted.
-  ASSERT_TRUE(manager_.ResubmitTask(spec.TaskId(), &resubmitted_task_deps));
+  ASSERT_EQ(manager_.ResubmitTask(spec.TaskId(), &resubmitted_task_deps),
+            ResubmitTaskResult::SUCCESS);
   ASSERT_TRUE(resubmitted_task_deps.empty());
   ASSERT_EQ(num_retries_, 1);
   // Object is out of scope, so no longer pending creation.
@@ -1007,7 +1040,8 @@ TEST_F(TaskManagerLineageTest, TestResubmitTask) {
   manager_.CompletePendingTask(spec.TaskId(), reply, rpc::Address(), false);
   ASSERT_FALSE(manager_.IsTaskPending(spec.TaskId()));
   // The task cannot be resubmitted because its spec has been released.
-  ASSERT_FALSE(manager_.ResubmitTask(spec.TaskId(), &resubmitted_task_deps));
+  ASSERT_EQ(manager_.ResubmitTask(spec.TaskId(), &resubmitted_task_deps),
+            ResubmitTaskResult::FAILED_MAX_ATTEMPT_EXCEEDED);
   ASSERT_TRUE(resubmitted_task_deps.empty());
   ASSERT_EQ(num_retries_, 1);
   ASSERT_EQ(reference_counter_->NumObjectIDsInScope(), 0);
@@ -1049,7 +1083,8 @@ TEST_F(TaskManagerLineageTest, TestResubmittedTaskNondeterministicReturns) {
   // was stored in plasma. It is okay to resubmit it now.
   ASSERT_TRUE(stored_in_plasma.empty());
   std::vector<ObjectID> resubmitted_task_deps;
-  ASSERT_TRUE(manager_.ResubmitTask(spec.TaskId(), &resubmitted_task_deps));
+  ASSERT_EQ(manager_.ResubmitTask(spec.TaskId(), &resubmitted_task_deps),
+            ResubmitTaskResult::SUCCESS);
   ASSERT_EQ(num_retries_, 1);
   ASSERT_EQ(last_delay_ms_, 0);
   ASSERT_EQ(last_object_recovery_, true);
@@ -1114,7 +1149,8 @@ TEST_F(TaskManagerLineageTest, TestResubmittedTaskFails) {
   // was stored in plasma. It is okay to resubmit it now.
   ASSERT_TRUE(stored_in_plasma.empty());
   std::vector<ObjectID> resubmitted_task_deps;
-  ASSERT_TRUE(manager_.ResubmitTask(spec.TaskId(), &resubmitted_task_deps));
+  ASSERT_EQ(manager_.ResubmitTask(spec.TaskId(), &resubmitted_task_deps),
+            ResubmitTaskResult::SUCCESS);
   ASSERT_EQ(num_retries_, 1);
   ASSERT_EQ(last_delay_ms_, 0);
   ASSERT_EQ(last_object_recovery_, true);
@@ -1235,7 +1271,8 @@ TEST_F(TaskManagerLineageTest, TestResubmittedDynamicReturnsTaskFails) {
   // Resubmit the task.
   ASSERT_TRUE(stored_in_plasma.empty());
   std::vector<ObjectID> resubmitted_task_deps;
-  ASSERT_TRUE(manager_.ResubmitTask(spec.TaskId(), &resubmitted_task_deps));
+  ASSERT_EQ(manager_.ResubmitTask(spec.TaskId(), &resubmitted_task_deps),
+            ResubmitTaskResult::SUCCESS);
   ASSERT_EQ(num_retries_, 1);
   ASSERT_EQ(last_delay_ms_, 0);
   ASSERT_EQ(last_object_recovery_, true);

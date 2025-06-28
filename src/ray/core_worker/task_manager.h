@@ -38,9 +38,16 @@ namespace core {
 
 class ActorManager;
 
+enum class ResubmitTaskResult {
+  SUCCESS,
+  FAILED_MAX_ATTEMPT_EXCEEDED,
+  FAILED_TASK_CANCELED
+};
+
 class TaskResubmissionInterface {
  public:
-  virtual bool ResubmitTask(const TaskID &task_id, std::vector<ObjectID> *task_deps) = 0;
+  virtual ResubmitTaskResult ResubmitTask(const TaskID &task_id,
+                                          std::vector<ObjectID> *task_deps) = 0;
 
   virtual ~TaskResubmissionInterface() = default;
 };
@@ -231,10 +238,13 @@ class TaskManager : public TaskFinisherInterface, public TaskResubmissionInterfa
   /// responsible for making sure that these dependencies become available, so
   /// that the resubmitted task can run. This is only populated if the task was
   /// not already pending and was successfully resubmitted.
-  /// \return true if the task was successfully resubmitted (task or actor being
-  /// scheduled, but no guarantee on completion), or was already pending, Invalid if the
-  /// task spec is no longer present.
-  bool ResubmitTask(const TaskID &task_id, std::vector<ObjectID> *task_deps) override;
+  /// \return SUCCESS if the task was successfully resubmitted (task or actor being
+  /// scheduled, but no guarantee on completion), or was already pending.
+  /// FAILED_MAX_ATTEMPT_EXCEEDED if the task has already been retried up to its
+  /// maximum number of attempts.
+  /// FAILED_TASK_CANCELED if the task has been marked for cancellation.
+  ResubmitTaskResult ResubmitTask(const TaskID &task_id,
+                                  std::vector<ObjectID> *task_deps) override;
 
   /// Wait for all pending tasks to finish, and then shutdown.
   ///

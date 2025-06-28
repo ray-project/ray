@@ -312,7 +312,8 @@ std::vector<rpc::ObjectReference> TaskManager::AddPendingTask(
   return returned_refs;
 }
 
-bool TaskManager::ResubmitTask(const TaskID &task_id, std::vector<ObjectID> *task_deps) {
+ResubmitTaskResult TaskManager::ResubmitTask(const TaskID &task_id,
+                                             std::vector<ObjectID> *task_deps) {
   RAY_CHECK(task_deps->empty());
 
   TaskSpecification spec;
@@ -323,10 +324,14 @@ bool TaskManager::ResubmitTask(const TaskID &task_id, std::vector<ObjectID> *tas
     if (it == submissible_tasks_.end()) {
       // This can happen when the task has already been
       // retried up to its max attempts.
-      return false;
+      return ResubmitTaskResult::FAILED_MAX_ATTEMPT_EXCEEDED;
     }
 
     if (!it->second.IsPending()) {
+      if (it->second.num_retries_left == 0) {
+        // This can happen when the task has been marked for cancellation.
+        return ResubmitTaskResult::FAILED_TASK_CANCELED;
+      }
       resubmit = true;
       MarkTaskRetryOnResubmit(it->second);
       num_pending_tasks_++;
@@ -347,7 +352,7 @@ bool TaskManager::ResubmitTask(const TaskID &task_id, std::vector<ObjectID> *tas
   }
 
   if (!resubmit) {
-    return true;
+    return ResubmitTaskResult::SUCCESS;
   }
 
   task_deps->reserve(spec.NumArgs());
@@ -388,7 +393,7 @@ bool TaskManager::ResubmitTask(const TaskID &task_id, std::vector<ObjectID> *tas
   // it's not for now.
   retry_task_callback_(spec, /*object_recovery*/ true, /*delay_ms*/ 0);
 
-  return true;
+  return ResubmitTaskResult::SUCCESS;
 }
 
 void TaskManager::DrainAndShutdown(std::function<void()> shutdown) {
