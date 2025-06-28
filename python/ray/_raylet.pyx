@@ -3173,9 +3173,6 @@ cdef class CoreWorker:
     def set_actor_repr_name(self, repr_name):
         CCoreWorkerProcess.GetCoreWorker().SetActorReprName(repr_name)
 
-    def get_plasma_event_handler(self):
-        return self.plasma_event_handler
-
     def get_objects(self, object_refs, int64_t timeout_ms=-1):
         cdef:
             c_vector[shared_ptr[CRayObject]] results

@@ -206,6 +206,22 @@ def test_repartition_invalid_inputs(
         )
 
 
+@pytest.mark.parametrize("shuffle", [True, False])
+def test_repartition_empty_datasets(ray_start_regular_shared_2_cpus, shuffle):
+    # Test repartitioning an empty dataset with shuffle=True
+    num_partitions = 5
+    ds_empty = ray.data.range(100).filter(lambda row: False)
+    ds_repartitioned = ds_empty.repartition(num_partitions, shuffle=shuffle)
+
+    ref_bundles = list(ds_repartitioned.iter_internal_ref_bundles())
+    assert len(ref_bundles) == num_partitions
+    for ref_bundle in ref_bundles:
+        assert len(ref_bundle.blocks) == 1
+        metadata = ref_bundle.blocks[0][1]
+        assert metadata.num_rows == 0
+        assert metadata.size_bytes == 0
+
+
 if __name__ == "__main__":
     import sys
 

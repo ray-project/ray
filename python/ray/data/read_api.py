@@ -2949,6 +2949,8 @@ def from_numpy_refs(
 @PublicAPI
 def from_arrow(
     tables: Union["pyarrow.Table", bytes, List[Union["pyarrow.Table", bytes]]],
+    *,
+    override_num_blocks: Optional[int] = None,
 ) -> MaterializedDataset:
     """Create a :class:`~ray.data.Dataset` from a list of PyArrow tables.
 
@@ -2968,14 +2970,50 @@ def from_arrow(
     Args:
         tables: A PyArrow table, or a list of PyArrow tables,
                 or its streaming format in bytes.
+        override_num_blocks: Override the number of output blocks from all read tasks.
+            By default, the number of output blocks is dynamically decided based on
+            input data size and available resources. You shouldn't manually set this
+            value in most cases.
 
     Returns:
         :class:`~ray.data.Dataset` holding data from the PyArrow tables.
     """
+    import builtins
+
     import pyarrow as pa
 
     if isinstance(tables, (pa.Table, bytes)):
         tables = [tables]
+
+    if override_num_blocks is not None:
+        if override_num_blocks <= 0:
+            raise ValueError("override_num_blocks must be > 0")
+        combined_table = pa.concat_tables(tables) if len(tables) > 1 else tables[0]
+        total_rows = len(combined_table)
+
+        if total_rows == 0:
+            # Handle empty table case
+            tables = [
+                combined_table.slice(0, 0) for _ in builtins.range(override_num_blocks)
+            ]
+        else:
+            batch_size = (total_rows + override_num_blocks - 1) // override_num_blocks
+            slices = []
+
+            for i in builtins.range(override_num_blocks):
+                start = i * batch_size
+                if start >= total_rows:
+                    break
+                length = min(batch_size, total_rows - start)
+                slices.append(combined_table.slice(start, length))
+
+            # Pad with empty slices if needed
+            if len(slices) < override_num_blocks:
+                empty_table = combined_table.slice(0, 0)
+                slices.extend([empty_table] * (override_num_blocks - len(slices)))
+
+            tables = slices
+
     return from_arrow_refs([ray.put(t) for t in tables])
 
 
@@ -3220,7 +3258,32 @@ def from_huggingface(
             # Attempt to read data via Hugging Face Hub parquet files. If the
             # returned list of files is empty, attempt read via other methods.
             file_urls = HuggingFaceDatasource.list_parquet_urls_from_dataset(dataset)
+
             if len(file_urls) > 0:
+                # Resolve HTTP 302 redirects
+                import requests
+
+                resolved_urls = []
+                for url in file_urls:
+                    try:
+                        resp = requests.head(url, allow_redirects=True, timeout=5)
+                        if resp.status_code == 200:
+                            resolved_urls.append(resp.url)
+                        else:
+                            logger.warning(
+                                f"Unexpected status {resp.status_code} resolving {url} from "
+                                f"Hugging Face Hub parquet files"
+                            )
+                    except requests.RequestException as e:
+                        logger.warning(
+                            f"Failed to resolve {url}: {e} from Hugging Face Hub parquet files"
+                        )
+
+                if not resolved_urls:
+                    raise FileNotFoundError(
+                        "No resolvable Parquet URLs found from Hugging Face Hub parquet files"
+                    )
+
                 # If file urls are returned, the parquet files are available via API
                 # TODO: Add support for reading from http filesystem in
                 # FileBasedDatasource. GH Issue:
@@ -3229,7 +3292,7 @@ def from_huggingface(
 
                 http = fsspec.implementations.http.HTTPFileSystem()
                 return read_parquet(
-                    file_urls,
+                    resolved_urls,
                     parallelism=parallelism,
                     filesystem=http,
                     concurrency=concurrency,
@@ -3238,6 +3301,7 @@ def from_huggingface(
                         "retry_exceptions": [FileNotFoundError, ClientResponseError]
                     },
                 )
+
         except (FileNotFoundError, ClientResponseError):
             logger.warning(
                 "Distributed read via Hugging Face Hub parquet files failed, "
@@ -3253,20 +3317,12 @@ def from_huggingface(
             override_num_blocks=override_num_blocks,
         )
     if isinstance(dataset, datasets.Dataset):
-        # For non-streaming Hugging Face Dataset, we don't support override_num_blocks
-        if override_num_blocks is not None:
-            raise ValueError(
-                "`override_num_blocks` parameter is not supported for "
-                "non-streaming Hugging Face Datasets. Please omit the parameter and use `.repartition` instead."
-                "Alternatively, use streaming mode to read the dataset."
-            )
-
         # To get the resulting Arrow table from a Hugging Face Dataset after
         # applying transformations (e.g., train_test_split(), shard(), select()),
         # we create a copy of the Arrow table, which applies the indices
         # mapping from the transformations.
         hf_ds_arrow = dataset.with_format("arrow")
-        ray_ds = from_arrow(hf_ds_arrow[:])
+        ray_ds = from_arrow(hf_ds_arrow[:], override_num_blocks=override_num_blocks)
         return ray_ds
     elif isinstance(dataset, (datasets.DatasetDict, datasets.IterableDatasetDict)):
         available_keys = list(dataset.keys())
