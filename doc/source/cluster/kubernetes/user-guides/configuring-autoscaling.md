@@ -87,7 +87,7 @@ kubectl get configmaps
 ```
 
 The RayCluster has one head Pod and zero worker Pods. The head Pod has two containers: a Ray head container and a Ray Autoscaler sidecar container.
-Additionally, the [ray-cluster.autoscaler.yaml](https://github.com/ray-project/kuberay/blob/v1.3.0/ray-operator/config/samples/ray-cluster.autoscaler.yaml) includes a ConfigMap named `ray-example` that houses two Python scripts: `detached_actor.py` and `terminate_detached_actor.py`.
+Additionally, the [ray-cluster.autoscaler.yaml](https://github.com/ray-project/kuberay/blob/v1.4.0/ray-operator/config/samples/ray-cluster.autoscaler.yaml) includes a ConfigMap named `ray-example` that contains two Python scripts: `detached_actor.py` and `terminate_detached_actor.py`.
 
 * `detached_actor.py` is a Python script that creates a detached actor which requires 1 CPU.
   ```py
@@ -454,7 +454,7 @@ Node: 2d5fd3d4337ba5b5a8c3106c572492abb9a8de2dee9da7f6c24c1346
 2. **Stability**
 Autoscaler V2 makes significant improvements to idle node handling. The V1 autoscaler could stop nodes that became active during termination processing, potentially failing tasks or actors. V2 uses Ray's graceful draining mechanism, which safely stops idle nodes without disrupting ongoing work.
 
-[ray-cluster.autoscaler-v2.yaml](https://github.com/ray-project/kuberay/blob/v1.3.0/ray-operator/config/samples/ray-cluster.autoscaler-v2.yaml) is an example YAML file of a RayCluster with Autoscaler V2 enabled that works with the latest KubeRay version.
+[ray-cluster.autoscaler-v2.yaml](https://github.com/ray-project/kuberay/blob/v1.4.0/ray-operator/config/samples/ray-cluster.autoscaler-v2.yaml) is an example YAML file of a RayCluster with Autoscaler V2 enabled that works with the latest KubeRay version.
 
 If you're using KubeRay >= 1.4.0, enable V2 by setting `RayCluster.spec.autoscalerOptions.version: v2`.
 
