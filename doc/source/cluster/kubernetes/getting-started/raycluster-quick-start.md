@@ -31,7 +31,6 @@ Once the KubeRay operator is running, you're ready to deploy a RayCluster. Creat
 helm install raycluster kuberay/ray-cluster --version 1.4.0
 ```
 
-Use `helm install raycluster kuberay/ray-cluster --version 1.4.0 --set 'image.tag=2.41.0-aarch64'` instead if are using ARM64 (Apple Silicon) machines.
 
 Once the RayCluster CR has been created, you can view it by running:
 
