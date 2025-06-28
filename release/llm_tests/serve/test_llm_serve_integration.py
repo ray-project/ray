@@ -27,6 +27,7 @@ async def test_engine_metrics():
         model="Qwen/Qwen2.5-0.5B-Instruct",
         dtype="auto",
         disable_log_stats=False,
+        enforce_eager=True,
     )
 
     engine = AsyncLLM.from_engine_args(
@@ -75,6 +76,7 @@ def remote_model_app(request):
             enable_chunked_prefill=True,
             enable_prefix_caching=True,
             trust_remote_code=remote_code,
+            enforce_eager=True,
         ),
     }
 
