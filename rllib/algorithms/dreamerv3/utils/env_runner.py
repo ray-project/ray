@@ -72,7 +72,7 @@ class DreamerV3EnvRunner(EnvRunner):
         Args:
             config: The config to use to setup this EnvRunner.
         """
-        super().__init__(config=config)
+        super().__init__(config=config, **kwargs)
 
         # Create the gym.vector.Env object.
         # Atari env.
