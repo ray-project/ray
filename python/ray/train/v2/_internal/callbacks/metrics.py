@@ -36,9 +36,6 @@ class ControllerMetricsCallback(ControllerCallback, WorkerGroupCallback):
 
     def before_controller_shutdown(self):
         """Shutdown metrics before controller shuts down."""
-        import time
-
-        time.sleep(60)
         for metric in self._metrics.values():
             metric.reset()
 
