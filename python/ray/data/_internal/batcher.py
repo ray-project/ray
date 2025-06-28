@@ -1,3 +1,4 @@
+from abc import ABC, abstractmethod
 import warnings
 from typing import Optional, Callable
 
@@ -17,26 +18,33 @@ from ray.util import log_once
 SHUFFLE_BUFFER_COMPACTION_RATIO = 1.5
 
 
-class BatcherInterface:
+class BatcherInterface(ABC):
+    """Interface for batchers."""
+
+    @abstractmethod
     def add(self, block: Block):
         """Add a block to the block buffer.
 
         Args:
             block: Block to add to the block buffer.
         """
-        raise NotImplementedError()
+        pass
 
+    @abstractmethod
     def done_adding(self) -> bool:
         """Indicate to the batcher that no more blocks will be added to the buffer."""
-        raise NotImplementedError()
+        pass
 
+    @abstractmethod
     def has_batch(self) -> bool:
         """Whether this Batcher has any full batches."""
-        raise NotImplementedError()
+        pass
 
+    @abstractmethod
     def has_any(self) -> bool:
         """Whether this Batcher has any data."""
-        raise NotImplementedError()
+        pass
+
 
     def next_batch(self) -> Block:
         """Get the next batch from the block buffer.
@@ -44,7 +52,7 @@ class BatcherInterface:
         Returns:
             A batch represented as a Block.
         """
-        raise NotImplementedError()
+        pass
 
 
 class Batcher(BatcherInterface):
@@ -370,11 +378,12 @@ class ShufflingBatcher(BatcherInterface):
 
 
 def create_batcher(
+    *,
     batch_size: Optional[int],
     shuffle_buffer_min_size: Optional[int],
     shuffle_seed: Optional[int],
     ensure_copy: bool,
-    batcher_fn: Optional[Callable[..., BatcherInterface]] = None,
+    batcher_fn: Optional[Callable[..., BatcherInterface]],
 ) -> BatcherInterface:
     """Create a batcher"""
 
@@ -384,6 +393,7 @@ def create_batcher(
             batch_size=batch_size,
             shuffle_buffer_min_size=shuffle_buffer_min_size,
             shuffle_seed=shuffle_seed,
+            ensure_copy=ensure_copy,
         )
 
     # Default batcher with local shuffle
