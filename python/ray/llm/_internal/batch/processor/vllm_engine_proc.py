@@ -88,7 +88,8 @@ def build_vllm_engine_processor(
 
     stages = []
     if isinstance(config.concurrency, int):
-        processor_concurrency = (1, config.concurrency)  # copied from previous logic
+        # For CPU-only stages, we leverage auto-scaling to recycle resources.
+        processor_concurrency = (1, config.concurrency)
     elif isinstance(config.concurrency, tuple):
         processor_concurrency = config.concurrency
     else:
@@ -158,8 +159,12 @@ def build_vllm_engine_processor(
                 # which initiates enough many overlapping UDF calls per actor, to
                 # saturate `max_concurrency`.
                 compute=ray.data.ActorPoolStrategy(
-                    min_size=config.concurrency,
-                    max_size=config.concurrency,
+                    # vLLM start up time is significant, so if user give fixed
+                    # concurrency, start all instances without auto-scaling.
+                    min_size=config.concurrency
+                    if isinstance(config.concurrency, int)
+                    else processor_concurrency[0],
+                    max_size=processor_concurrency[1],
                     max_tasks_in_flight_per_actor=max(
                         config.max_concurrent_batches, DEFAULT_MAX_TASKS_IN_FLIGHT
                     ),
