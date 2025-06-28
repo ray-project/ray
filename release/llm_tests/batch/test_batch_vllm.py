@@ -262,5 +262,54 @@ def test_vllm_vision_language_models(
     assert all("resp" in out for out in outs)
 
 
+@pytest.mark.parametrize("concurrency", [1, 4])
+def test_no_memory_leak(concurrency):
+    """"""
+
+    processor_config = vLLMEngineProcessorConfig(
+        model_source="unsloth/Llama-3.2-1B-Instruct",
+        engine_kwargs=dict(
+            max_model_len=16384,
+            enable_chunked_prefill=True,
+            max_num_batched_tokens=2048,
+        ),
+        tokenize=False,
+        detokenize=False,
+        batch_size=16,
+        accelerator_type=None,
+        concurrency=concurrency,
+    )
+
+    processor = build_llm_processor(
+        processor_config,
+        preprocess=lambda row: dict(
+            # 100M utft-8 chars, should not leak to memory heap.
+            large_memory_to_carry_over="x" * 100_000_000,
+            messages=[
+                {"role": "system", "content": "You are a calculator"},
+                {"role": "user", "content": f"{row['id']} ** 3 = ?"},
+            ],
+            sampling_params=dict(
+                temperature=0.3,
+                # we don't care about the actual output
+                max_tokens=1,
+                detokenize=False,
+            ),
+        ),
+        postprocess=lambda row: {
+            "resp": row["generated_text"],
+            "large_memory_still_there": "large_memory_to_carry_over" in row,
+        },
+    )
+
+    ds = ray.data.range(120)
+    ds = ds.map(lambda x: {"id": x["id"], "val": x["id"] + 5})
+    ds = processor(ds)
+    ds = ds.materialize()
+
+    outs = ds.take_all()
+    assert all(out["large_memory_still_there"] for out in outs)
+
+
 if __name__ == "__main__":
     sys.exit(pytest.main(["-v", __file__]))
