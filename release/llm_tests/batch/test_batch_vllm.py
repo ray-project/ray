@@ -264,7 +264,10 @@ def test_vllm_vision_language_models(
 
 @pytest.mark.parametrize("concurrency", [1, 4])
 def test_no_memory_leak(concurrency):
-    """"""
+    """
+    Test that the large object in input/output rows
+    are stored in object store and does not OOM.
+    """
 
     processor_config = vLLMEngineProcessorConfig(
         model_source="unsloth/Llama-3.2-1B-Instruct",
@@ -283,8 +286,8 @@ def test_no_memory_leak(concurrency):
     processor = build_llm_processor(
         processor_config,
         preprocess=lambda row: dict(
-            # 100M utft-8 chars, should not leak to memory heap.
-            large_memory_to_carry_over="x" * 100_000_000,
+            # 100M emoji (4 bytes), should not leak to memory heap.
+            large_memory_to_carry_over="🤗" * 100_000_000,
             messages=[
                 {"role": "system", "content": "You are a calculator"},
                 {"role": "user", "content": f"{row['id']} ** 3 = ?"},
@@ -303,7 +306,9 @@ def test_no_memory_leak(concurrency):
     )
 
     ds = ray.data.range(120)
-    ds = ds.map(lambda x: {"id": x["id"], "val": x["id"] + 5})
+    def map_id_to_val_in_test_no_memory_leak(x):
+        return {"id": x["id"], "val": x["id"] + 5}
+    ds = ds.map(map_id_to_val_in_test_no_memory_leak)
     ds = processor(ds)
     ds = ds.materialize()
 

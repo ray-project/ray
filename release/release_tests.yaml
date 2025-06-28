@@ -4364,6 +4364,7 @@
   cluster:
     byod:
       type: llm-cu128
+      # TODO(lk-chen); Force OOM killer threshold here
     cluster_compute: llm_4xl4.yaml
     # NOTE: Important for getting the correct secrets
     cloud_id: cld_wy5a6nhazplvu32526ams61d98
@@ -4384,6 +4385,7 @@
   cluster:
     byod:
       type: llm-cu128
+      # TODO(lk-chen); Force OOM killer threshold here
       post_build_script: byod_llm_sglang_test.sh
     cluster_compute: llm_4xl4.yaml
 
