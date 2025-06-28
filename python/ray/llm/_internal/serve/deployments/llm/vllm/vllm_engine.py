@@ -27,6 +27,8 @@ from ray.llm._internal.serve.configs.server_models import (
     LogProbs,
     Prompt,
 )
+from transformers.dynamic_module_utils import init_hf_modules
+
 from ray.llm._internal.serve.deployments.llm.llm_engine import LLMEngine
 from ray.llm._internal.serve.deployments.llm.vllm.vllm_engine_stats import (
     ArgUsage,
@@ -204,6 +206,10 @@ class VLLMEngine(LLMEngine):
             llm_config: The llm configuration for this engine
         """
         super().__init__(llm_config)
+        
+        # Ensure transformers_modules is initialized early in worker processes.
+        # This is critical for models with trust_remote_code=True to avoid pickle errors.
+        init_hf_modules()
 
         # filter out the llm_config.engine_kwargs to those that belong to FrontendArgs and pop them over.
         engine_config = llm_config.get_engine_config()
@@ -542,7 +548,7 @@ class VLLMEngine(LLMEngine):
         """Creates an async LLM engine from the engine arguments."""
         from vllm.v1.executor.abstract import Executor
 
-        vllm_config.parallel_config.placement_group = placement_group
+        # vllm_config.parallel_config.placement_group = placement_group
 
         if use_v1:
             from vllm.v1.engine.async_llm import AsyncLLM as AsyncLLMEngine
@@ -597,77 +603,100 @@ class VLLMEngine(LLMEngine):
 
         return lora_request
 
-    async def prepare_request(
-        self,
-        request_id: str,
-        prompt: Prompt,
-        stream: bool,
-        disk_lora_model: Optional[DiskMultiplexConfig] = None,
-    ) -> GenerationRequest:
-        from vllm.entrypoints.chat_utils import (
-            apply_hf_chat_template as _apply_hf_chat_template,
-            parse_chat_messages_futures,
-        )
+    # async def prepare_request(
+    #     self,
+    #     request_id: str,
+    #     prompt: Prompt,
+    #     stream: bool,
+    #     disk_lora_model: Optional[DiskMultiplexConfig] = None,
+    # ) -> GenerationRequest:
+    #     from vllm.entrypoints.chat_utils import (
+    #         apply_hf_chat_template as _apply_hf_chat_template,
+    #         parse_chat_messages_futures,
+    #     )
 
-        model_config = self.model_config
-        mm_data = None
+    #     model_config = self.model_config
+    #     mm_data = None
 
-        if isinstance(prompt.prompt, list):
-            messages = [m.model_dump() for m in prompt.prompt]
-            conversation, mm_futures = parse_chat_messages_futures(
-                messages=messages,
-                model_config=model_config,
-                tokenizer=self._tokenizer,
-                content_format=self._resolved_content_format,
-            )
-            mm_data = await mm_futures
+    #     if isinstance(prompt.prompt, list):
+    #         messages = [m.model_dump() for m in prompt.prompt]
+    #         conversation, mm_futures = parse_chat_messages_futures(
+    #             messages=messages,
+    #             model_config=model_config,
+    #             tokenizer=self._tokenizer,
+    #             content_format=self._resolved_content_format,
+    #         )
+    #         mm_data = await mm_futures
 
-            def apply_hf_chat_template(model_config, **kwargs):
-                try:
-                    return _apply_hf_chat_template(model_config=model_config, **kwargs)
-                except TypeError:
-                    # Legacy API before vLLM 0.9.0.
-                    # TODO(#52975): Remove above once vLLM <0.9.0 is no longer supported.
-                    return _apply_hf_chat_template(
-                        trust_remote_code=model_config.trust_remote_code, **kwargs
-                    )
+    #         def apply_hf_chat_template(model_config, **kwargs):
+    #             try:
+    #                 return _apply_hf_chat_template(model_config=model_config, **kwargs)
+    #             except TypeError:
+    #                 # Legacy API before vLLM 0.9.0.
+    #                 # TODO(#52975): Remove above once vLLM <0.9.0 is no longer supported.
+    #                 return _apply_hf_chat_template(
+    #                     trust_remote_code=model_config.trust_remote_code, **kwargs
+    #                 )
 
-            prompt_text = apply_hf_chat_template(
-                model_config=model_config,
-                tokenizer=self._tokenizer,
-                conversation=conversation,
-                chat_template=None,
-                tools=None,
-                tokenize=False,
-                # **kwargs for tokenizer.apply_chat_template
-                trust_remote_code=model_config.trust_remote_code,
-                add_generation_prompt=True,
-                continue_final_message=False,
-            )
-        else:
-            prompt_text = prompt.prompt
+    #         prompt_text = apply_hf_chat_template(
+    #             model_config=model_config,
+    #             tokenizer=self._tokenizer,
+    #             conversation=conversation,
+    #             chat_template=None,
+    #             tools=None,
+    #             tokenize=False,
+    #             # **kwargs for tokenizer.apply_chat_template
+    #             trust_remote_code=model_config.trust_remote_code,
+    #             add_generation_prompt=True,
+    #             continue_final_message=False,
+    #         )
+    #     else:
+    #         prompt_text = prompt.prompt
 
-        prompt_token_ids = await self._atokenize(prompt_text)
+    #     prompt_token_ids = await self._atokenize(prompt_text)
 
-        request_params = {
-            "prompt": prompt_text,
-            "prompt_token_ids": prompt_token_ids,
-            "request_id": request_id,
-            "sampling_params": VLLMSamplingParams.from_prompt(prompt),
-            "disk_multiplex_config": disk_lora_model,
-            "stream": stream,
-        }
-        if mm_data:
-            request_params["multi_modal_data"] = mm_data
+    #     request_params = {
+    #         "prompt": prompt_text,
+    #         "prompt_token_ids": prompt_token_ids,
+    #         "request_id": request_id,
+    #         "sampling_params": VLLMSamplingParams.from_prompt(prompt),
+    #         "disk_multiplex_config": disk_lora_model,
+    #         "stream": stream,
+    #     }
+    #     if mm_data:
+    #         request_params["multi_modal_data"] = mm_data
 
-        vllm_request = VLLMGenerationRequest(**request_params)
-        return vllm_request
+    #     vllm_request = VLLMGenerationRequest(**request_params)
+    #     return vllm_request
 
     async def chat(
         self, request: GenerationRequest
-    ) -> AsyncGenerator[LLMRawResponse, None]:
+    ) -> AsyncGenerator[str, None]:
+        """
+        
+        input: Take a genric free form input type and cast it to the target engine request type inside the engine.
+        
+        output: 
+        - stream: True --> for each chunk, yield astring representing data: <json_str>\n\n
+        - stream: False --> yield only one string representing the response <json_str>
 
-        chat_response = await self.oai_serving_chat.create_chat_completion(request)
+        Error:
+        option A:
+        when request hits an error, raise an HTTPException(msg, code, type)
+        option B:
+        yield a HTTPException object
+        """
+
+        try:
+            chat_response = await self.oai_serving_chat.create_chat_completion(request)
+        except Exception as e:
+            logger.error(f"[Kourosh] error in chat: {e}")
+            yield PatchedErrorResponse(
+                message=str(e),
+                internal_message=str(e),
+                type="internal_error",
+                code=500,
+            )
 
         if isinstance(chat_response, AsyncGenerator):
             async for response in chat_response:
@@ -684,188 +713,193 @@ class VLLMEngine(LLMEngine):
                     code=chat_response.code,
                 )
             else:
-                yield chat_response
+                yield chat_response.model_dump_json()
 
-    async def generate(
-        self, request: GenerationRequest
-    ) -> AsyncGenerator[LLMRawResponse, None]:
-        """Generate an LLMRawResponse stream
+    # async def generate(
+    #     self, request: GenerationRequest
+    # ) -> AsyncGenerator[LLMRawResponse, None]:
+    #     """Generate an LLMRawResponse stream
 
-        The vLLM generation request will be passed into vLLM, and the resulting output
-        will be wrapped in an LLMRawResponse and yielded back to the user.
+    #     The vLLM generation request will be passed into vLLM, and the resulting output
+    #     will be wrapped in an LLMRawResponse and yielded back to the user.
 
-        Error handling:
+    #     Error handling:
 
-        We schedule a finalizer that will abort the request on the engine.
+    #     We schedule a finalizer that will abort the request on the engine.
 
-        If an exception is raised in this function or vllm, the finalizer guarantees that the request is aborted.
-        If an exception is raised in the caller, when this generator is gced, it will run the finalizer and abort the request.
+    #     If an exception is raised in this function or vllm, the finalizer guarantees that the request is aborted.
+    #     If an exception is raised in the caller, when this generator is gced, it will run the finalizer and abort the request.
 
-        This should also handle the case where the caller is cancelled (raises asyncio.CancelledError)
-        """
-        if RAYLLM_ENABLE_REQUEST_PROMPT_LOGS:
-            logger.info(
-                f"Request {request.request_id} started. " f"Prompt: {request.prompt}"
-            )
+    #     This should also handle the case where the caller is cancelled (raises asyncio.CancelledError)
+    #     """
+    #     if RAYLLM_ENABLE_REQUEST_PROMPT_LOGS:
+    #         logger.info(
+    #             f"Request {request.request_id} started. " f"Prompt: {request.prompt}"
+    #         )
 
-        if request.prompt_token_ids is not None:
-            prompt = vllm.inputs.TokensPrompt(
-                prompt_token_ids=request.prompt_token_ids,
-                multi_modal_data=request.multi_modal_data,
-            )
-        else:
-            prompt = vllm.inputs.TextPrompt(
-                prompt=request.prompt,
-                multi_modal_data=request.multi_modal_data,
-            )
+    #     if request.prompt_token_ids is not None:
+    #         prompt = vllm.inputs.TokensPrompt(
+    #             prompt_token_ids=request.prompt_token_ids,
+    #             multi_modal_data=request.multi_modal_data,
+    #         )
+    #     else:
+    #         prompt = vllm.inputs.TextPrompt(
+    #             prompt=request.prompt,
+    #             multi_modal_data=request.multi_modal_data,
+    #         )
 
-        # Construct a results generator from vLLM
-        results_generator: AsyncGenerator["RequestOutput", None] = self.engine.generate(
-            prompt=prompt,
-            sampling_params=self._parse_sampling_params(request.sampling_params),
-            request_id=request.request_id,
-            lora_request=request.lora_request,  # type: ignore
-        )
+    #     # Construct a results generator from vLLM
+    #     results_generator: AsyncGenerator["RequestOutput", None] = self.engine.generate(
+    #         prompt=prompt,
+    #         sampling_params=self._parse_sampling_params(request.sampling_params),
+    #         request_id=request.request_id,
+    #         lora_request=request.lora_request,  # type: ignore
+    #     )
 
-        # Loop over the results
-        num_text_returned = 0
-        all_tokens_collected = 0
-        clock = MsClock(unit=ClockUnit.s)
-        log_probs_idx = 0
-        finish_reason = None
-        num_input_tokens = 0
-        try:
-            start = time.perf_counter()
-            request_output = None
-            async for request_output in self._stats.auto_track(results_generator):
-                # TODO(tchordia): handle more than one output
-                assert (
-                    len(request_output.outputs) == 1
-                ), "Received more than 1 output from vllm, aborting"
+    #     # Loop over the results
+    #     num_text_returned = 0
+    #     all_tokens_collected = 0
+    #     clock = MsClock(unit=ClockUnit.s)
+    #     log_probs_idx = 0
+    #     finish_reason = None
+    #     num_input_tokens = 0
+    #     try:
+    #         start = time.perf_counter()
+    #         request_output = None
+    #         async for request_output in self._stats.auto_track(results_generator):
+    #             # TODO(tchordia): handle more than one output
+    #             assert (
+    #                 len(request_output.outputs) == 1
+    #             ), "Received more than 1 output from vllm, aborting"
 
-                output = request_output.outputs[0]
-                text_output = output.text[num_text_returned:]
-                num_text_returned += len(text_output)
-                num_input_tokens = len(request_output.prompt_token_ids)
-                tokens_collected = len(output.token_ids) - all_tokens_collected
-                all_tokens_collected += tokens_collected
-                finish_reason = FinishReason.from_vllm_finish_reason(
-                    output.finish_reason
-                )
+    #             output = request_output.outputs[0]
+    #             text_output = output.text[num_text_returned:]
+    #             num_text_returned += len(text_output)
+    #             num_input_tokens = len(request_output.prompt_token_ids)
+    #             tokens_collected = len(output.token_ids) - all_tokens_collected
+    #             all_tokens_collected += tokens_collected
+    #             finish_reason = FinishReason.from_vllm_finish_reason(
+    #                 output.finish_reason
+    #             )
 
-                self._handle_input_too_long(request_output, finish_reason)
+    #             self._handle_input_too_long(request_output, finish_reason)
 
-                log_probs, log_probs_idx = self._extract_logprobs(
-                    output,
-                    log_probs_idx,
-                    request.sampling_params.top_logprobs,
-                )
-                internal_metadata = {}
-                if getattr(request_output, "kv_transfer_params", None) is not None:
-                    internal_metadata[
-                        KV_TRANSFER_PARAMS_KEY
-                    ] = request_output.kv_transfer_params
-                yield LLMRawResponse(
-                    generated_text=text_output,
-                    num_generated_tokens=tokens_collected,
-                    logprobs=log_probs,
-                    num_generated_tokens_batch=tokens_collected,
-                    num_input_tokens=num_input_tokens,
-                    num_input_tokens_batch=num_input_tokens,
-                    preprocessing_time=0,
-                    generation_time=clock.reset_interval(),
-                    finish_reason=finish_reason,
-                    metadata=internal_metadata,
-                )
+    #             log_probs, log_probs_idx = self._extract_logprobs(
+    #                 output,
+    #                 log_probs_idx,
+    #                 request.sampling_params.top_logprobs,
+    #             )
+    #             internal_metadata = {}
+    #             if getattr(request_output, "kv_transfer_params", None) is not None:
+    #                 internal_metadata[
+    #                     KV_TRANSFER_PARAMS_KEY
+    #                 ] = request_output.kv_transfer_params
+    #             yield LLMRawResponse(
+    #                 generated_text=text_output,
+    #                 num_generated_tokens=tokens_collected,
+    #                 logprobs=log_probs,
+    #                 num_generated_tokens_batch=tokens_collected,
+    #                 num_input_tokens=num_input_tokens,
+    #                 num_input_tokens_batch=num_input_tokens,
+    #                 preprocessing_time=0,
+    #                 generation_time=clock.reset_interval(),
+    #                 finish_reason=finish_reason,
+    #                 metadata=internal_metadata,
+    #             )
 
-            if request_output is not None:
-                total_request_time = time.perf_counter() - start
-                if request_output.metrics is None:
-                    # vLLM V1 metrics are not included in the request output yet.
-                    queue_time = "N/A"
-                    generation_time_str = "N/A"
-                    tokens_s = "N/A"
-                    generated_tokens_s = "N/A"
-                else:
-                    time_in_queue_histogram.observe(
-                        request_output.metrics.time_in_queue
-                    )
-                    queue_time = f"{request_output.metrics.time_in_queue}s"
-                    generation_time = (
-                        total_request_time - request_output.metrics.time_in_queue
-                    )
-                    generation_time_str = f"{generation_time}s"
-                    tokens_s = (
-                        num_input_tokens + all_tokens_collected
-                    ) / generation_time
-                    generated_tokens_s = all_tokens_collected / generation_time
+    #         if request_output is not None:
+    #             total_request_time = time.perf_counter() - start
+    #             if request_output.metrics is None:
+    #                 # vLLM V1 metrics are not included in the request output yet.
+    #                 queue_time = "N/A"
+    #                 generation_time_str = "N/A"
+    #                 tokens_s = "N/A"
+    #                 generated_tokens_s = "N/A"
+    #             else:
+    #                 time_in_queue_histogram.observe(
+    #                     request_output.metrics.time_in_queue
+    #                 )
+    #                 queue_time = f"{request_output.metrics.time_in_queue}s"
+    #                 generation_time = (
+    #                     total_request_time - request_output.metrics.time_in_queue
+    #                 )
+    #                 generation_time_str = f"{generation_time}s"
+    #                 tokens_s = (
+    #                     num_input_tokens + all_tokens_collected
+    #                 ) / generation_time
+    #                 generated_tokens_s = all_tokens_collected / generation_time
 
-                logger.info(
-                    f"Request {request.request_id} finished ({finish_reason}). "
-                    f"Total time: {total_request_time}s, "
-                    f"Queue time: {queue_time}, "
-                    f"Generation+async time: {generation_time_str}, "
-                    f"Input tokens: {num_input_tokens}, "
-                    f"Generated tokens: {all_tokens_collected}, "
-                    f"tokens/s: {tokens_s}, "
-                    f"generated tokens/s: {generated_tokens_s}."
-                )
-            else:
-                logger.warning(
-                    f"Request {request.request_id} "
-                    "finished without any output. "
-                    f"Input tokens: {num_input_tokens}."
-                )
-        except ValueError as e:
-            error_args = e.args
-            if len(error_args) == 3 and "Input too long." == error_args[0]:
-                _, input_length, max_input_length = error_args
-                raise InputTooLong(input_length, max_input_length).exception from None
-            elif len(error_args) == 1 and V1_TOO_LONG_PATTERN.match(error_args[0]):
-                parsed_error = V1_TOO_LONG_PATTERN.match(error_args[0])
-                raise InputTooLong(
-                    int(parsed_error[1]), int(parsed_error[2])
-                ).exception from None
-            else:
-                raise e from None
-        finally:
-            # Ensure that we cancel on the engine once we have exited the streaming
-            # phase
-            await self.engine.abort(request.request_id)
+    #             logger.info(
+    #                 f"Request {request.request_id} finished ({finish_reason}). "
+    #                 f"Total time: {total_request_time}s, "
+    #                 f"Queue time: {queue_time}, "
+    #                 f"Generation+async time: {generation_time_str}, "
+    #                 f"Input tokens: {num_input_tokens}, "
+    #                 f"Generated tokens: {all_tokens_collected}, "
+    #                 f"tokens/s: {tokens_s}, "
+    #                 f"generated tokens/s: {generated_tokens_s}."
+    #             )
+    #         else:
+    #             logger.warning(
+    #                 f"Request {request.request_id} "
+    #                 "finished without any output. "
+    #                 f"Input tokens: {num_input_tokens}."
+    #             )
+    #     except ValueError as e:
+    #         error_args = e.args
+    #         if len(error_args) == 3 and "Input too long." == error_args[0]:
+    #             _, input_length, max_input_length = error_args
+    #             raise InputTooLong(input_length, max_input_length).exception from None
+    #         elif len(error_args) == 1 and V1_TOO_LONG_PATTERN.match(error_args[0]):
+    #             parsed_error = V1_TOO_LONG_PATTERN.match(error_args[0])
+    #             raise InputTooLong(
+    #                 int(parsed_error[1]), int(parsed_error[2])
+    #             ).exception from None
+    #         else:
+    #             raise e from None
+    #     finally:
+    #         # Ensure that we cancel on the engine once we have exited the streaming
+    #         # phase
+    #         await self.engine.abort(request.request_id)
 
-    def _get_prompt_limit(self) -> int:
-        """Helper to get the prompt limit from scheduler config
+    # def _get_prompt_limit(self) -> int:
+    #     """Helper to get the prompt limit from scheduler config
 
-        Port from https://github.com/vllm-project/vllm/blob/7b5ecf79bd94aab0d782c70126d0dcc37c16bc60/vllm/core/scheduler.py#L939
-        """
-        scheduler_config = self.vllm_config.scheduler_config
-        if (
-            scheduler_config.chunked_prefill_enabled
-            and not scheduler_config.is_multi_step
-        ):
-            prompt_limit = scheduler_config.max_model_len
-        else:
-            prompt_limit = min(
-                scheduler_config.max_model_len,
-                scheduler_config.max_num_batched_tokens,
-            )
-        return prompt_limit
+    #     Port from https://github.com/vllm-project/vllm/blob/7b5ecf79bd94aab0d782c70126d0dcc37c16bc60/vllm/core/scheduler.py#L939
+    #     """
+    #     scheduler_config = self.vllm_config.scheduler_config
+    #     if (
+    #         scheduler_config.chunked_prefill_enabled
+    #         and not scheduler_config.is_multi_step
+    #     ):
+    #         prompt_limit = scheduler_config.max_model_len
+    #     else:
+    #         prompt_limit = min(
+    #             scheduler_config.max_model_len,
+    #             scheduler_config.max_num_batched_tokens,
+    #         )
+    #     return prompt_limit
 
-    def _handle_input_too_long(
-        self, request_output: "RequestOutput", finish_reason: Optional[FinishReason]
+    # def _handle_input_too_long(
+    #     self, request_output: "RequestOutput", finish_reason: Optional[FinishReason]
+    # ):
+    #     if (
+    #         finish_reason
+    #         and finish_reason == FinishReason.LENGTH
+    #         and hasattr(request_output.metrics, "first_token_time")
+    #         and request_output.metrics.first_token_time is None
+    #     ):
+    #         # This means that the prompt was too long and we did not generate anything.
+    #         raise InputTooLong(
+    #             len(request_output.prompt_token_ids), self._get_prompt_limit()
+    #         ).exception
+
+    async def completions(
+        self, request
     ):
-        if (
-            finish_reason
-            and finish_reason == FinishReason.LENGTH
-            and hasattr(request_output.metrics, "first_token_time")
-            and request_output.metrics.first_token_time is None
-        ):
-            # This means that the prompt was too long and we did not generate anything.
-            raise InputTooLong(
-                len(request_output.prompt_token_ids), self._get_prompt_limit()
-            ).exception
-
-    async def embed(
+        raise NotImplementedError("Completions are not supported yet")
+    
+    async def embeddings(
         self, vllm_embedding_request: VLLMEmbeddingRequest
     ) -> Tuple[List[List[float]], int]:
         """Return (embeddings, num_prompt_tokens)"""

@@ -1,7 +1,5 @@
 import abc
-from typing import AsyncGenerator, Optional
-
-from transformers.dynamic_module_utils import init_hf_modules
+from typing import AsyncGenerator, Optional, Any
 
 from ray.llm._internal.serve.configs.server_models import (
     DiskMultiplexConfig,
@@ -13,37 +11,36 @@ from ray.llm._internal.serve.configs.server_models import (
 
 
 class LLMEngine(abc.ABC):
-    """Base class for all LLM engines"""
+    """Base protocal class for all LLM engines"""
 
+    @abc.abstractmethod
     def __init__(self, llm_config: LLMConfig):
-        self._llm_config = llm_config
-
-        # Ensure transformers_modules is initialized early in worker processes.
-        # This is critical for models with trust_remote_code=True to avoid pickle errors.
-        init_hf_modules()
+        """Initialize the engine with the llm config"""
+        pass
 
     @abc.abstractmethod
     async def start(self):
         """Start the engine"""
         pass
-
+    
     @abc.abstractmethod
-    async def prepare_request(
-        self,
-        request_id: str,
-        prompt: Prompt,
-        stream: bool,
-        disk_lora_model: Optional[DiskMultiplexConfig] = None,
-        **kwargs,
-    ) -> GenerationRequest:
-        """Prepare a GenerationRequest for the engine"""
+    async def resolve_lora(self, lora_model: DiskMultiplexConfig):
+        """Resolve the lora model"""
         pass
-
+    
     @abc.abstractmethod
-    async def generate(
-        self, request: GenerationRequest
-    ) -> AsyncGenerator[LLMRawResponse, None]:
-        """Generate an LLMRawResponse stream based on the GenerationRequest"""
+    async def chat(self, request) ->  AsyncGenerator[Any, None]:
+        """Chat with the engine"""
+        pass
+    
+    @abc.abstractmethod
+    async def completions(self, request) ->  AsyncGenerator[Any, None]:
+        """Completion with the engine"""
+        pass
+    
+    @abc.abstractmethod
+    async def embeddings(self, request) ->  AsyncGenerator[Any, None]:
+        """Embed with the engine"""
         pass
 
     async def check_health(self) -> None:
