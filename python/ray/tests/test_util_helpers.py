@@ -6,16 +6,14 @@ from ray.util import as_completed, map_unordered
 
 
 @pytest.fixture(scope="module")
-def ray_cluster_10_cpus():
-    """Shared Ray cluster with 10 CPUs for all tests in this module"""
-    ray.init(num_cpus=10, object_store_memory=150 * 1024 * 1024)
-    yield
+def ray_init_4_cpu_shared():
+    yield ray.init(num_cpus=4)
     ray.shutdown()
 
 
 @pytest.mark.parametrize("chunk_size", [1, 2])
-@pytest.mark.parametrize("return_objrefs", [True, False])
-def test_as_completed(ray_cluster_10_cpus, chunk_size, return_objrefs):
+@pytest.mark.parametrize("yield_obj_refs", [True, False])
+def test_as_completed(ray_init_4_cpu_shared, chunk_size, yield_obj_refs):
     # With 10 cpus, the tasks are all running at the same time.
 
     @ray.remote
@@ -26,7 +24,7 @@ def test_as_completed(ray_cluster_10_cpus, chunk_size, return_objrefs):
     refs = [f.remote(i) for i in [10, 8, 6, 4, 2]]
 
     results = list(
-        as_completed(refs, chunk_size=chunk_size, return_objrefs=return_objrefs)
+        as_completed(refs, chunk_size=chunk_size, yield_obj_refs=yield_obj_refs)
     )
 
     if chunk_size == 1:
@@ -36,15 +34,15 @@ def test_as_completed(ray_cluster_10_cpus, chunk_size, return_objrefs):
         # the submission order.
         expected = [4, 2, 8, 6, 10]
 
-    if return_objrefs:
+    if yield_obj_refs:
         results = ray.get(results)
 
     assert results == expected
 
 
 @pytest.mark.parametrize("chunk_size", [1, 2])
-@pytest.mark.parametrize("return_objrefs", [True, False])
-def test_map_unordered(ray_cluster_10_cpus, chunk_size, return_objrefs):
+@pytest.mark.parametrize("yield_obj_refs", [True, False])
+def test_map_unordered(ray_init_4_cpu_shared, chunk_size, yield_obj_refs):
     # With 10 cpus, the tasks are all running at the same time.
 
     @ray.remote
@@ -55,7 +53,7 @@ def test_map_unordered(ray_cluster_10_cpus, chunk_size, return_objrefs):
     inputs = [10, 8, 6, 4, 2]
 
     results = list(
-        map_unordered(f, inputs, chunk_size=chunk_size, return_objrefs=return_objrefs)
+        map_unordered(f, inputs, chunk_size=chunk_size, yield_obj_refs=yield_obj_refs)
     )
 
     # Tasks complete in order of their sleep time (shortest first)
@@ -66,7 +64,7 @@ def test_map_unordered(ray_cluster_10_cpus, chunk_size, return_objrefs):
         # the submission order.
         expected = [4, 2, 8, 6, 10]
 
-    if return_objrefs:
+    if yield_obj_refs:
         results = ray.get(results)
 
     assert results == expected
