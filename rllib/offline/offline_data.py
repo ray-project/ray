@@ -90,22 +90,22 @@ class OfflineData:
                 }
             )
 
-        #try:
-        # Load the dataset.
-        start_time = time.perf_counter()
-        self.data = getattr(ray.data, self.data_read_method)(
-            self.path, **self.data_read_method_kwargs
-        )
-        if self.materialize_data:
-            self.data = self.data.materialize()
-        stop_time = time.perf_counter()
-        logger.debug(
-            "===> [OfflineData] - Time for loading dataset: "
-            f"{stop_time - start_time}s."
-        )
-        logger.info("Reading data from {}".format(self.path))
-        #except Exception as e:
-        #    logger.error(e)
+        try:
+            # Load the dataset.
+            start_time = time.perf_counter()
+            self.data = getattr(ray.data, self.data_read_method)(
+                self.path, **self.data_read_method_kwargs
+            )
+            if self.materialize_data:
+                self.data = self.data.materialize()
+            stop_time = time.perf_counter()
+            logger.debug(
+                "===> [OfflineData] - Time for loading dataset: "
+                f"{stop_time - start_time}s."
+            )
+            logger.info("Reading data from {}".format(self.path))
+        except Exception as e:
+            logger.error(e)
         # Avoids reinstantiating the batch iterator each time we sample.
         self.batch_iterators = None
         self.map_batches_kwargs = (
