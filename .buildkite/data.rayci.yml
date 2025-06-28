@@ -152,18 +152,16 @@ steps:
     instance_type: medium
     commands:
       - bazel run //ci/ray_ci:test_in_docker -- //python/ray/data/... data
-        --only-tags dask
         --build-name databuild-py3.12
+        --only-tags dask
     depends_on: databuild-multipy
 
   - label: ":database: data: TFRecords (tfx-bsl) tests"
     tags:
-      - python
       - data
     instance_type: medium
     commands:
       - bazel run //ci/ray_ci:test_in_docker -- //python/ray/data/... data
-        --parallelism-per-worker 3
         --build-name datatfxbslbuild
         --only-tags tfxbsl
     depends_on: datatfxbslbuild
