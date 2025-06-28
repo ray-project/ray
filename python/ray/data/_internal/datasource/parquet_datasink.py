@@ -189,6 +189,8 @@ class ParquetDatasink(_FileDatasink):
     ) -> None:
         import pyarrow.dataset as ds
 
+        from ray.data._internal.arrow_block import _get_max_chunk_size
+
         # Make every incoming batch conform to the final schema *before* writing
         for idx, table in enumerate(tables):
             if output_schema and not table.schema.equals(output_schema):
@@ -201,11 +203,89 @@ class ParquetDatasink(_FileDatasink):
             self.mode, "overwrite_or_ignore"
         )
 
-        # Set default row group size if not provided. Defaults are set by pyarrow.
-        min_rows_per_group = row_group_size if row_group_size else 0
-        max_rows_per_group = row_group_size if row_group_size else 1024 * 1024
+        # # Set default row group size if not provided. Defaults are set by pyarrow.
+        # min_rows_per_group = row_group_size if row_group_size else 0
+        # max_rows_per_group = row_group_size if row_group_size else 1024 * 1024
 
         basename_template = self._get_basename_template(filename, write_uuid)
+
+        # Default to 0 set by pyarrow.dataset.write_dataset
+        ### From docs:
+        # max_rows_per_file : int, default 0
+        # Maximum number of rows per file. If greater than 0 then this will
+        # limit how many rows are placed in any single file. Otherwise there
+        # will be no limit and one file will be created in each output
+        # directory unless files need to be closed to respect max_open_files
+        max_rows_per_file = self.max_rows_per_file if self.max_rows_per_file else 0
+
+        chunked_tables: List["pyarrow.Table"] = []
+        for table in tables:
+            estimated_max_rows = _get_max_chunk_size(
+                table, self._data_context.target_max_block_size
+            )
+            total_rows = table.num_rows
+            if total_rows == 0:
+                continue
+
+            if estimated_max_rows is None:
+                estimated_max_rows = total_rows
+
+            offset = 0
+            while offset < total_rows:
+                remaining_rows = total_rows - offset
+
+                if self.max_rows_per_file is None and self.min_rows_per_file is None:
+                    chunk_size = min(estimated_max_rows, remaining_rows)
+                elif (
+                    self.max_rows_per_file is None
+                    and self.min_rows_per_file is not None
+                ):
+                    chunk_size = min(
+                        remaining_rows,
+                        max(
+                            self.min_rows_per_file,
+                            min(remaining_rows, estimated_max_rows),
+                        ),
+                    )
+
+                else:
+                    if self.min_rows_per_file is not None:
+                        chunk_size = min(
+                            self.max_rows_per_file,
+                            max(self.min_rows_per_file, estimated_max_rows),
+                            remaining_rows,
+                        )
+
+                    else:
+                        chunk_size = min(
+                            self.max_rows_per_file, estimated_max_rows, remaining_rows
+                        )
+
+                if chunk_size <= 0:
+                    chunk_size = remaining_rows
+
+                chunked_tables.append(table.slice(offset, chunk_size))
+                offset += chunk_size
+
+        if chunked_tables:
+            tables = chunked_tables
+
+        if row_group_size is not None:
+            if (
+                self.max_rows_per_file
+                and self.max_rows_per_file > 0
+                and row_group_size > self.max_rows_per_file
+            ):
+                row_group_size = self.max_rows_per_file
+            min_rows_per_group = max_rows_per_group = row_group_size
+        else:
+            min_rows_per_group = 0
+            max_rows_per_group = 1024 * 1024
+            if self.max_rows_per_file and self.max_rows_per_file > 0:
+                max_rows_per_group = min(max_rows_per_group, self.max_rows_per_file)
+
+        if min_rows_per_group > max_rows_per_group:
+            min_rows_per_group = max_rows_per_group
 
         ds.write_dataset(
             data=tables,
@@ -220,6 +300,7 @@ class ParquetDatasink(_FileDatasink):
             use_threads=True,
             min_rows_per_group=min_rows_per_group,
             max_rows_per_group=max_rows_per_group,
+            max_rows_per_file=max_rows_per_file,
             file_options=ds.ParquetFileFormat().make_write_options(**write_kwargs),
         )
 
