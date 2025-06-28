@@ -608,7 +608,6 @@ class LLMServer(_LLMServerBase):
             disk_lora_model = await self._disk_lora_model(multiplexed_model_id)
             await self.engine.resolve_lora(disk_lora_model)
 
-
         if request.stream:
             # 4. Apply batching with appropriate interval in case of streaming
             response_generator = OpenAIResponseBatcher(

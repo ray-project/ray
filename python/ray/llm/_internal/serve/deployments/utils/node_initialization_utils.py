@@ -148,7 +148,7 @@ def _initialize_local_node(
     if not isinstance(local_path, str) or not os.path.exists(local_path):
         logger.info(f"Downloading the tokenizer for {engine_config.actual_hf_model_id}")
 
-    # TODO: NEEDED for Mistral models that don't support tekken 
+    # TODO: NEEDED for Mistral models that don't support tekken
     # _ = transformers.AutoTokenizer.from_pretrained(
     #     engine_config.actual_hf_model_id,
     #     trust_remote_code=engine_config.trust_remote_code,
