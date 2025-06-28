@@ -2471,6 +2471,48 @@ TEST_F(TaskManagerTest, TestBackpressureAfterReconstruction) {
   CompletePendingStreamingTask(spec, caller_address, 2);
 }
 
+TEST_F(TaskManagerLineageTest, RecoverIntermediateObjectInStreamingGenerator) {
+  rpc::Address caller_address;
+
+  // The generator is submitted to the worker and then the resubmit is queued up.
+  did_queue_generator_resubmit_ = true;
+  auto spec = CreateTaskHelper(1,
+                               {},
+                               /*dynamic_returns=*/true,
+                               /*is_streaming_generator=*/true,
+                               /*generator_backpressure_num_objects*/ 2);
+  manager_.AddPendingTask(caller_address, spec, "", 2);
+  manager_.MarkDependenciesResolved(spec.TaskId());
+  manager_.MarkTaskWaitingForExecution(
+      spec.TaskId(), NodeID::FromRandom(), WorkerID::FromRandom());
+  ASSERT_TRUE(manager_.IsTaskWaitingForExecution(spec.TaskId()));
+  std::vector<ObjectID> task_deps;
+  ASSERT_EQ(manager_.ResubmitTask(spec.TaskId(), &task_deps), std::nullopt);
+  ASSERT_TRUE(task_deps.empty());
+  ASSERT_TRUE(manager_.IsTaskWaitingForExecution(spec.TaskId()));
+
+  // This generator loses an output but resubmit is not queued up.
+  did_queue_generator_resubmit_ = false;
+  auto spec2 = CreateTaskHelper(1,
+                                {},
+                                /*dynamic_returns=*/true,
+                                /*is_streaming_generator=*/true,
+                                /*generator_backpressure_num_objects*/ 2);
+  manager_.AddPendingTask(caller_address, spec2, "", 2);
+  manager_.MarkDependenciesResolved(spec2.TaskId());
+  manager_.MarkTaskWaitingForExecution(
+      spec2.TaskId(), NodeID::FromRandom(), WorkerID::FromRandom());
+  ASSERT_TRUE(manager_.IsTaskWaitingForExecution(spec2.TaskId()));
+  ASSERT_EQ(manager_.ResubmitTask(spec2.TaskId(), &task_deps),
+            rpc::ErrorType::TASK_CANCELLED);
+  ASSERT_TRUE(task_deps.empty());
+  ASSERT_TRUE(manager_.IsTaskWaitingForExecution(spec2.TaskId()));
+
+  // Just complete the tasks for cleanup.
+  CompletePendingStreamingTask(spec, caller_address, 0);
+  CompletePendingStreamingTask(spec2, caller_address, 0);
+}
+
 }  // namespace core
 }  // namespace ray
 

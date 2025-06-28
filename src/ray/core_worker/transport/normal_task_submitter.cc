@@ -632,14 +632,14 @@ void NormalTaskSubmitter::PushNormalTask(
           }
         }
         if (status.ok()) {
-          if (resubmit_generator) {
-            // If the generator was queued up for resubmission for object recovery,
-            // resubmit as long as we get a valid reply.
-            task_finisher_.MarkGeneratorFailedAndResubmit(task_id);
-          } else if (reply.was_cancelled_before_running()) {
+          if (reply.was_cancelled_before_running()) {
             RAY_LOG(DEBUG) << "Task " << task_id
                            << " was cancelled before it started running.";
             task_finisher_.FailPendingTask(task_id, rpc::ErrorType::TASK_CANCELLED);
+          } else if (resubmit_generator) {
+            // If the generator was queued up for resubmission for object recovery,
+            // resubmit as long as we get a valid reply.
+            task_finisher_.MarkGeneratorFailedAndResubmit(task_id);
           } else if (!task_spec.GetMessage().retry_exceptions() ||
                      !reply.is_retryable_error() ||
                      !task_finisher_.RetryTaskIfPossible(
