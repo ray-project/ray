@@ -377,6 +377,7 @@ class AsyncioRouter:
         prefer_local_node_routing: bool,
         resolve_request_arg_func: Coroutine = resolve_deployment_response,
         request_router_class: Optional[Callable] = None,
+        request_router_kwargs: Optional[Dict[str, Any]] = None,
         request_router: Optional[RequestRouter] = None,
         _request_router_initialized_event: Optional[asyncio.Event] = None,
     ):
@@ -391,6 +392,9 @@ class AsyncioRouter:
         self._handle_source = handle_source
         self._event_loop = event_loop
         self._request_router_class = request_router_class
+        self._request_router_kwargs = (
+            request_router_kwargs if request_router_kwargs else {}
+        )
         self._enable_strict_max_ongoing_requests = enable_strict_max_ongoing_requests
         self._node_id = node_id
         self._availability_zone = availability_zone
@@ -502,7 +506,9 @@ class AsyncioRouter:
                 prefer_local_node_routing=self._prefer_local_node_routing,
                 prefer_local_az_routing=RAY_SERVE_PROXY_PREFER_LOCAL_AZ_ROUTING,
                 self_availability_zone=self._availability_zone,
+                **(self._request_router_kwargs or {}),
             )
+            request_router.initialize_state(**(self._request_router_kwargs or {}))
 
             # Populate the running replicas if they are already available.
             if self._running_replicas is not None:
@@ -537,7 +543,12 @@ class AsyncioRouter:
             self._running_replicas_populated = True
 
     def update_deployment_config(self, deployment_config: DeploymentConfig):
-        self._request_router_class = deployment_config.get_request_router_class()
+        self._request_router_class = (
+            deployment_config.router_config.get_request_router_class()
+        )
+        self._request_router_kwargs = (
+            deployment_config.router_config.request_router_kwargs
+        )
         self._metrics_manager.update_deployment_config(
             deployment_config,
             curr_num_replicas=len(self.request_router.curr_replicas),

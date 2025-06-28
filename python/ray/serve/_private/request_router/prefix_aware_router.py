@@ -55,12 +55,6 @@ class PrefixAwarePow2ReplicaRouter(LocalityMixin, MultiplexMixin, RequestRouter)
     def __init__(
         self,
         *args,
-        imbalanced_threshold=10,
-        match_rate_threshold=0.1,
-        do_eviction=False,
-        eviction_threshold_chars=400_000,
-        eviction_target_chars=360_000,
-        eviction_interval_secs=10,
         tree_actor=None,
         **kwargs,
     ):
@@ -73,6 +67,15 @@ class PrefixAwarePow2ReplicaRouter(LocalityMixin, MultiplexMixin, RequestRouter)
         else:
             self._tree_actor = tree_actor
 
+    def initialize_state(
+        self,
+        imbalanced_threshold: Optional[int] = 10,
+        match_rate_threshold: Optional[float] = 0.1,
+        do_eviction: Optional[bool] = False,
+        eviction_threshold_chars: Optional[int] = 400_000,
+        eviction_target_chars: Optional[int] = 360_000,
+        eviction_interval_secs: Optional[int] = 10,
+    ):
         # === Prefix-aware routing logic hyperparameters ===
         self._imbalanced_threshold = imbalanced_threshold
         self._match_rate_threshold = match_rate_threshold

@@ -238,6 +238,7 @@ class Deployment:
         health_check_timeout_s: Default[float] = DEFAULT.VALUE,
         logging_config: Default[Union[Dict, LoggingConfig, None]] = DEFAULT.VALUE,
         request_router_class: Default[Union[str, RequestRouter, None]] = DEFAULT.VALUE,
+        request_router_kwargs: Default[Union[Dict, None]] = DEFAULT.VALUE,
         request_routing_stats_period_s: Default[float] = DEFAULT.VALUE,
         request_routing_stats_timeout_s: Default[float] = DEFAULT.VALUE,
         _init_args: Default[Tuple[Any]] = DEFAULT.VALUE,
@@ -375,6 +376,9 @@ class Deployment:
         if request_router_class is not DEFAULT.VALUE:
             new_deployment_config.request_router_class = request_router_class
 
+        if request_router_kwargs is not DEFAULT.VALUE:
+            new_deployment_config.request_router_kwargs = request_router_kwargs
+
         if request_routing_stats_period_s is not DEFAULT.VALUE:
             new_deployment_config.request_routing_stats_period_s = (
                 request_routing_stats_period_s
@@ -453,8 +457,7 @@ def deployment_to_schema(d: Deployment) -> DeploymentSchema:
         "placement_group_bundles": d._replica_config.placement_group_bundles,
         "max_replicas_per_node": d._replica_config.max_replicas_per_node,
         "logging_config": d._deployment_config.logging_config,
-        "request_routing_stats_period_s": d._deployment_config.request_routing_stats_period_s,
-        "request_routing_stats_timeout_s": d._deployment_config.request_routing_stats_timeout_s,
+        "router_config": d._deployment_config.router_config,
     }
 
     # Let non-user-configured options be set to defaults. If the schema
@@ -515,8 +518,7 @@ def schema_to_deployment(s: DeploymentSchema) -> Deployment:
         health_check_period_s=s.health_check_period_s,
         health_check_timeout_s=s.health_check_timeout_s,
         logging_config=s.logging_config,
-        request_routing_stats_period_s=s.request_routing_stats_period_s,
-        request_routing_stats_timeout_s=s.request_routing_stats_timeout_s,
+        router_config=s.router_config,
     )
     deployment_config.user_configured_option_names = (
         s._get_user_configured_option_names()
