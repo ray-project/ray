@@ -378,7 +378,7 @@ def _generate_transform_fn_for_map_batches(
 ) -> MapTransformCallable[DataBatch, DataBatch]:
     if inspect.iscoroutinefunction(fn):
         # UDF is a callable class with async generator `__call__` method.
-        transform_fn = _generate_transform_fn_for_async_map(fn, _validate_batch_output)
+        transform_fn = _generate_transform_fn_for_async_map(fn, _validate_batch_output, max_queue_size=16)
 
     else:
 
@@ -427,7 +427,9 @@ def _generate_transform_fn_for_map_batches(
 
 def _generate_transform_fn_for_async_map(
     fn: UserDefinedFunction,
-    validate_fn,
+    validate_fn: Callable,
+    *,
+    max_queue_size: int,
 ) -> MapTransformCallable:
     # Generates a transform function for asynchronous mapping of items (either batches or rows)
     # using a user-defined function (UDF). This consolidated function handles both asynchronous
@@ -437,7 +439,10 @@ def _generate_transform_fn_for_async_map(
         # We will put output items into this queue from async
         # generators, and in the main event loop, yield them from
         # the queue as they become available.
-        output_item_queue = queue.Queue()
+        #
+        # NOTE: We limit queue size to make sure we balance producer (async task)
+        #       filling it in against consumer (Ray Task) yielding from it
+        output_item_queue = queue.Queue(maxsize=max_queue_size)
         # Sentinel object to signal the end of the async generator.
         sentinel = object()
 
@@ -517,7 +522,7 @@ def _generate_transform_fn_for_flat_map(
 ) -> MapTransformCallable[Row, Row]:
     if inspect.iscoroutinefunction(fn):
         # UDF is a callable class with async generator `__call__` method.
-        transform_fn = _generate_transform_fn_for_async_map(fn, _validate_row_output)
+        transform_fn = _generate_transform_fn_for_async_map(fn, _validate_row_output, max_queue_size=256)
 
     else:
 
