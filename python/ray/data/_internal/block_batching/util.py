@@ -6,10 +6,9 @@ from typing import Any, Callable, Iterator, List, Optional, Tuple
 
 import ray
 from ray.actor import ActorHandle
-from ray.data._internal.batcher import Batcher, ShufflingBatcher
+from ray.data._internal.batcher import BatchingIteratorInterface
 from ray.data._internal.block_batching.interfaces import (
     Batch,
-    BatchMetadata,
     BlockPrefetcher,
     CollatedBatch,
 )
@@ -74,73 +73,20 @@ def resolve_block_refs(
 
 def blocks_to_batches(
     block_iter: Iterator[Block],
-    stats: Optional[DatasetStats] = None,
-    batch_size: Optional[int] = None,
-    drop_last: bool = False,
-    shuffle_buffer_min_size: Optional[int] = None,
-    shuffle_seed: Optional[int] = None,
-    ensure_copy: bool = False,
+    batching_iterator: BatchingIteratorInterface,
 ) -> Iterator[Batch]:
     """Given an iterator over blocks, returns an iterator over blocks
-    of the appropriate bacth size.
-
-    If the shuffling configurations are specified, then the
-    output blocks contain shuffled data.
+    of the appropriate bacth size specified by the block iterator.
 
     Args:
         block_iter: An iterator over blocks.
-        stats: Dataset stats object used to store block batching time.
-        batch_size: Record batch size, or None to let the system pick.
-        drop_last: Whether to drop the last batch if it's incomplete.
-        shuffle_buffer_min_size: If non-None, the data will be randomly shuffled
-            using a local in-memory shuffle buffer, and this value will serve as the
-            minimum number of rows that must be in the local in-memory shuffle buffer in
-            order to yield a batch.
-        shuffle_seed: The seed to use for the local random shuffle.
-        ensure_copy: Whether batches are always copied from the underlying base
-            blocks (not zero-copy views).
+        batching_iterator: A batching iterator, which is a subclass of `BatchingIteratorInterface`.
 
     Returns:
-        An iterator over blocks of the given size that are potentially shuffled.
+        An iterator over batches.
     """
-    if shuffle_buffer_min_size is not None:
-        batcher = ShufflingBatcher(
-            batch_size=batch_size,
-            shuffle_buffer_min_size=shuffle_buffer_min_size,
-            shuffle_seed=shuffle_seed,
-        )
-    else:
-        batcher = Batcher(batch_size=batch_size, ensure_copy=ensure_copy)
 
-    def get_iter_next_batch_s_timer():
-        return stats.iter_next_batch_s.timer() if stats else nullcontext()
-
-    global_counter = 0
-
-    for block in block_iter:
-        batcher.add(block)
-        while batcher.has_batch():
-            with get_iter_next_batch_s_timer():
-                batch = batcher.next_batch()
-            yield Batch(metadata=BatchMetadata(batch_idx=global_counter), data=batch)
-            global_counter += 1
-
-    # Signal to the batcher that there are no more blocks to add.
-    batcher.done_adding()
-
-    # Get any leftover batches in ShufflingBatcher.
-    while batcher.has_batch():
-        with get_iter_next_batch_s_timer():
-            batch = batcher.next_batch()
-        yield Batch(metadata=BatchMetadata(batch_idx=global_counter), data=batch)
-        global_counter += 1
-
-    # Get any remaining data.
-    if not drop_last and batcher.has_any():
-        with get_iter_next_batch_s_timer():
-            batch = batcher.next_batch()
-        yield Batch(metadata=BatchMetadata(batch_idx=global_counter), data=batch)
-        global_counter += 1
+    yield from batching_iterator.iter_batches(block_iter)
 
 
 def format_batches(

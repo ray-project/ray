@@ -13,7 +13,7 @@ def block_generator(num_rows: int, num_blocks: int):
 
 def test_batch_blocks():
     with mock.patch(
-        "ray.data._internal.block_batching.block_batching.blocks_to_batches"
+        "ray.data._internal.block_batching.util.blocks_to_batches"
     ) as mock_batch, mock.patch(
         "ray.data._internal.block_batching.block_batching.format_batches"
     ) as mock_format:
@@ -21,7 +21,8 @@ def test_batch_blocks():
         batch_iter = batch_blocks(block_iter)
         for _ in batch_iter:
             pass
-        assert mock_batch.call_count == 1
+        # We no longer need to call blocks_to_batches
+        assert mock_batch.call_count == 0
         assert mock_format.call_count == 1
 
 
