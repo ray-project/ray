@@ -1,5 +1,5 @@
 import warnings
-from typing import Optional
+from typing import Optional, Callable
 
 from ray.data._internal.arrow_block import ArrowBlockAccessor
 from ray.data._internal.arrow_ops import transform_pyarrow
@@ -367,3 +367,32 @@ class ShufflingBatcher(BatcherInterface):
         return BlockAccessor.for_block(self._shuffle_buffer).slice(
             slice_start, self._batch_head
         )
+
+
+def create_batcher(
+    batch_size: Optional[int],
+    shuffle_buffer_min_size: Optional[int],
+    shuffle_seed: Optional[int],
+    ensure_copy: bool,
+    batcher_fn: Optional[Callable[..., BatcherInterface]] = None,
+) -> BatcherInterface:
+    """Create a batcher"""
+
+    # Custom batchers
+    if batcher_fn is not None:
+        return batcher_fn(
+            batch_size=batch_size,
+            shuffle_buffer_min_size=shuffle_buffer_min_size,
+            shuffle_seed=shuffle_seed,
+        )
+
+    # Default batcher with local shuffle
+    if shuffle_buffer_min_size is not None:
+        return ShufflingBatcher(
+            batch_size=batch_size,
+            shuffle_buffer_min_size=shuffle_buffer_min_size,
+            shuffle_seed=shuffle_seed,
+        )
+
+    # Default batcher without shuffle
+    return Batcher(batch_size=batch_size, ensure_copy=ensure_copy)
