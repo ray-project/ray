@@ -17,6 +17,7 @@ from typing import (
 
 import numpy as np
 
+from ray.data._internal.batcher import BatcherInterface
 from ray.data._internal.block_batching.iter_batches import iter_batches
 from ray.data._internal.execution.interfaces import RefBundle
 from ray.data._internal.logical.interfaces import LogicalPlan
@@ -162,13 +163,16 @@ class DataIterator(abc.ABC):
         self,
         *,
         prefetch_batches: int = 1,
-        batch_size: int = 256,
+        batch_size: Optional[int] = 256,
         batch_format: Optional[str] = "default",
         drop_last: bool = False,
         local_shuffle_buffer_size: Optional[int] = None,
         local_shuffle_seed: Optional[int] = None,
-        _collate_fn: Optional[Callable[[DataBatch], "CollatedData"]] = None,
+        _collate_fn: Optional[
+            Union[Callable[[Dict[str, np.ndarray]], "CollatedData"], CollateFn]
+        ] = None,
         _finalize_fn: Optional[Callable[[Any], Any]] = None,
+        _batcher_fn: Optional[Callable[[Any], Any]] = None,
     ) -> Iterable[DataBatch]:
         batch_format = _apply_batch_format(batch_format)
 
@@ -197,6 +201,7 @@ class DataIterator(abc.ABC):
                     shuffle_buffer_min_size=local_shuffle_buffer_size,
                     shuffle_seed=local_shuffle_seed,
                     prefetch_batches=prefetch_batches,
+                    batcher_fn=_batcher_fn,
                 )
             )
 
@@ -279,6 +284,7 @@ class DataIterator(abc.ABC):
         local_shuffle_buffer_size: Optional[int] = None,
         local_shuffle_seed: Optional[int] = None,
         pin_memory: bool = False,
+        batcher_fn: Optional[Callable[..., BatcherInterface]] = None,
     ) -> Iterable["TorchBatchType"]:
         """Return a batched iterable of Torch Tensors over the dataset.
 
@@ -452,6 +458,9 @@ class DataIterator(abc.ABC):
         else:
             raise ValueError(f"Unsupported collate function: {type(collate_fn)}")
 
+        if batcher_fn is not None and not callable(batcher_fn):
+            raise ValueError(f"{batcher_fn} must be either None or a callable.")
+
         return self._iter_batches(
             prefetch_batches=prefetch_batches,
             batch_size=batch_size,
@@ -461,6 +470,7 @@ class DataIterator(abc.ABC):
             local_shuffle_seed=local_shuffle_seed,
             _collate_fn=collate_fn,
             _finalize_fn=default_finalize_fn,
+            _batcher_fn=batcher_fn,
         )
 
     def iter_tf_batches(
