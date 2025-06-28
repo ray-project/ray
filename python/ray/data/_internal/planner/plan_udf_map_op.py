@@ -378,7 +378,9 @@ def _generate_transform_fn_for_map_batches(
 ) -> MapTransformCallable[DataBatch, DataBatch]:
     if inspect.iscoroutinefunction(fn):
         # UDF is a callable class with async generator `__call__` method.
-        transform_fn = _generate_transform_fn_for_async_map(fn, _validate_batch_output, max_queue_size=16)
+        transform_fn = _generate_transform_fn_for_async_map(
+            fn, _validate_batch_output, max_queue_size=16
+        )
 
     else:
 
@@ -522,7 +524,9 @@ def _generate_transform_fn_for_flat_map(
 ) -> MapTransformCallable[Row, Row]:
     if inspect.iscoroutinefunction(fn):
         # UDF is a callable class with async generator `__call__` method.
-        transform_fn = _generate_transform_fn_for_async_map(fn, _validate_row_output, max_queue_size=256)
+        transform_fn = _generate_transform_fn_for_async_map(
+            fn, _validate_row_output, max_queue_size=256
+        )
 
     else:
 
