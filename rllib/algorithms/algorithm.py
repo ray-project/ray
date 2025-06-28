@@ -1890,7 +1890,9 @@ class Algorithm(Checkpointable, Trainable):
         """
         # This is really cheap, since probe_unhealthy_env_runners() is a no-op
         # if there are no unhealthy workers.
-        restored = env_runner_group.probe_unhealthy_env_runners()
+        restored = None
+        if self.config.is_online:
+            restored = env_runner_group.probe_unhealthy_env_runners()
 
         if not restored:
             return []
