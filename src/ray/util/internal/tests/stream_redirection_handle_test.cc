@@ -69,7 +69,7 @@ TEST(LoggingUtilTest, WriteContentWithNewliner) {
   opts.tee_to_stderr = true;
   opts.rotation_max_size = 5;
   opts.rotation_max_file_count = 2;
-  StreamRedirectionHandle redirection_handle(GetStderrHandle(), opts);
+  StreamRedirectionHandle redirection_handle(GetStderrFd(), opts);
 
   std::cerr << kLogLine1 << std::flush;
   std::cerr << kLogLine2 << std::flush;
@@ -115,7 +115,7 @@ TEST(LoggingUtilTest, WriteContentWithFlush) {
   opts.tee_to_stderr = true;
   opts.rotation_max_size = 5;
   opts.rotation_max_file_count = 2;
-  StreamRedirectionHandle redirection_handle(GetStderrHandle(), opts);
+  StreamRedirectionHandle redirection_handle(GetStderrFd(), opts);
 
   std::cerr << kLogLine1 << std::flush;
   std::cerr << kLogLine2 << std::flush;

@@ -263,7 +263,6 @@ def test_input_backpressure_e2e(restore_data_context, shutdown_only):  # noqa: F
                     BlockMetadata(
                         num_rows=n // parallelism,
                         size_bytes=sz,
-                        schema=None,
                         input_files=None,
                         exec_stats=None,
                     ),

@@ -11,6 +11,7 @@ from fastapi import FastAPI
 
 import ray
 from ray import serve
+from ray.serve._private.constants import SERVE_HTTP_REQUEST_ID_HEADER
 from ray.serve._private.utils import generate_request_id
 
 
@@ -26,7 +27,7 @@ def test_request_id_header_by_default(serve_instance):
     serve.run(Model.bind())
     resp = httpx.get("http://localhost:8000")
     assert resp.status_code == 200
-    assert resp.text == resp.headers["x-request-id"]
+    assert resp.text == resp.headers[SERVE_HTTP_REQUEST_ID_HEADER]
 
     def is_valid_uuid(num: str):
         try:
@@ -104,8 +105,8 @@ def test_set_request_id_headers_with_two_attributes(serve_instance):
     )
 
     assert resp.status_code == 200
-    assert "x-request-id" in resp.headers
-    assert resp.text == resp.headers["x-request-id"]
+    assert SERVE_HTTP_REQUEST_ID_HEADER in resp.headers
+    assert resp.text == resp.headers[SERVE_HTTP_REQUEST_ID_HEADER]
 
 
 def test_reuse_request_id(serve_instance):
@@ -137,7 +138,7 @@ def test_reuse_request_id(serve_instance):
     async def send_request(
         session: ClientSession, body: Dict[str, Any], request_id: Optional[str]
     ) -> Tuple[str, str]:
-        headers = {"x-request-id": request_id}
+        headers = {SERVE_HTTP_REQUEST_ID_HEADER: request_id}
         url = "http://localhost:8000/hello"
 
         async with session.post(url=url, headers=headers, json=body) as response:
@@ -147,7 +148,7 @@ def test_reuse_request_id(serve_instance):
             # Ensure the request id from the serve context is set correctly.
             assert result["serve_context_request_id"] == request_id
             # Ensure the request id from the response header is returned correctly.
-            assert response.headers["x-request-id"] == request_id
+            assert response.headers[SERVE_HTTP_REQUEST_ID_HEADER] == request_id
 
     async def main():
         """Sending 20 requests in parallel all with the same request id, but with

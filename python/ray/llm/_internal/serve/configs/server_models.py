@@ -32,6 +32,7 @@ from ray.llm._internal.common.utils.cloud_utils import (
     CloudMirrorConfig,
     is_remote_path,
 )
+from ray.llm._internal.common.utils.import_utils import try_import
 from ray.llm._internal.serve.configs.constants import (
     DEFAULT_MULTIPLEX_DOWNLOAD_TIMEOUT_S,
     DEFAULT_MULTIPLEX_DOWNLOAD_TRIES,
@@ -45,11 +46,9 @@ from ray.llm._internal.serve.configs.openai_api_models_patch import (
     ResponseFormatType,
 )
 from ray.llm._internal.serve.configs.prompt_formats import (
-    HuggingFacePromptFormat,
     Prompt,
 )
 from ray.llm._internal.serve.observability.logging import get_logger
-from ray.llm._internal.utils import try_import
 from ray.serve._private.config import DeploymentConfig
 
 transformers = try_import("transformers")
@@ -241,9 +240,6 @@ class LLMConfig(BaseModelExtended):
 
     _supports_vision: bool = PrivateAttr(False)
     _model_architecture: str = PrivateAttr("")
-    _prompt_format: HuggingFacePromptFormat = PrivateAttr(
-        default_factory=HuggingFacePromptFormat
-    )
     _engine_config: EngineConfigType = PrivateAttr(None)
 
     def _infer_supports_vision(self, model_id_or_path: str) -> None:
@@ -278,10 +274,6 @@ class LLMConfig(BaseModelExtended):
         """Apply the checkpoint info to the model config."""
         self._infer_supports_vision(model_id_or_path)
         self._set_model_architecture(model_id_or_path)
-        self._prompt_format.set_processor(
-            model_id_or_path,
-            trust_remote_code=trust_remote_code,
-        )
 
     @property
     def supports_vision(self) -> bool:
@@ -290,10 +282,6 @@ class LLMConfig(BaseModelExtended):
     @property
     def model_architecture(self) -> str:
         return self._model_architecture
-
-    @property
-    def prompt_format(self) -> HuggingFacePromptFormat:
-        return self._prompt_format
 
     @property
     def input_modality(self) -> str:
@@ -408,14 +396,8 @@ class LLMConfig(BaseModelExtended):
                 "Use scaling_config to configure replica placement group."
             )
 
-        # TODO (Kourosh): There is some test code leakage happening here that should be removed.
         try:
-            # resources.mock_resource is a special key we used in tests to skip placement
-            # group on the gpu nodes.
-            if "mock_resource" in ray_actor_options.get("resources", {}):
-                bundles = []
-            else:
-                bundles = engine_config.placement_bundles
+            bundles = engine_config.placement_bundles
         except ValueError:
             # May happen if all bundles are empty.
             bundles = []

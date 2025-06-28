@@ -10,7 +10,7 @@ import pytest
 
 import ray
 from ray import cloudpickle
-from ray._private.test_utils import wait_for_condition
+from ray._common.test_utils import wait_for_condition
 from ray.data._internal.execution.interfaces import ExecutionResources, RefBundle
 from ray.data._internal.execution.operators.base_physical_operator import (
     AllToAllOperator,

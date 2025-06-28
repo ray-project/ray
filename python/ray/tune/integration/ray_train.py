@@ -6,7 +6,6 @@ from ray.train.v2._internal.execution.context import TrainRunContext
 from ray.train.v2.api.callback import UserCallback
 from ray.util.annotations import DeveloperAPI
 
-
 CHECKPOINT_PATH_KEY = "checkpoint_path"
 
 
