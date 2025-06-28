@@ -739,11 +739,13 @@ def get_application_urls(
     for target_group in target_groups:
         for target in target_group.targets:
             if protocol == RequestProtocol.HTTP:
-                urls.append(f"http://{target.ip}:{target.port}{route_prefix}")
+                url = f"http://{target.ip}:{target.port}{route_prefix}"
             elif protocol == RequestProtocol.GRPC:
-                urls.append(f"{target.ip}:{target.port}")
+                url = f"{target.ip}:{target.port}"
             else:
                 raise ValueError(f"Unsupported protocol: {protocol}")
+            url = url.rstrip("/")
+            urls.append(url)
     return urls
 
 
