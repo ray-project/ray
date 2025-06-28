@@ -54,6 +54,20 @@ namespace rpc {
     INVOKE_RPC_CALL(SERVICE, METHOD, request, callback, rpc_client, method_timeout_ms); \
   }
 
+// Define a void RPC client method with an additional synchronous version.
+#define VOID_RPC_CLIENT_SYNC_METHOD(                                                    \
+    SERVICE, METHOD, rpc_client, method_timeout_ms, SPECS)                              \
+  VOID_RPC_CLIENT_METHOD(SERVICE, METHOD, rpc_client, method_timeout_ms, SPECS)         \
+  void Sync##METHOD(const METHOD##Request &request,                                     \
+                    const ClientCallback<METHOD##Reply> &callback) {                    \
+    std::promise<Status> promise;                                                       \
+    METHOD(request, [&promise, callback](const Status &status, METHOD##Reply &&reply) { \
+      callback(status, std::move(reply));                                               \
+      promise.set_value(status);                                                        \
+    });                                                                                 \
+    RAY_UNUSED(promise.get_future().get());                                             \
+  }
+
 inline std::shared_ptr<grpc::Channel> BuildChannel(
     const std::string &address,
     int port,

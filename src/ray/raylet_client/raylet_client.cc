@@ -306,7 +306,7 @@ void RayletClient::GetTaskFailureCause(
     const ray::rpc::ClientCallback<ray::rpc::GetTaskFailureCauseReply> &callback) {
   rpc::GetTaskFailureCauseRequest request;
   request.set_task_id(task_id.Binary());
-  grpc_client_->GetTaskFailureCause(
+  grpc_client_->SyncGetTaskFailureCause(
       request, [callback](const Status &status, rpc::GetTaskFailureCauseReply &&reply) {
         RAY_LOG_IF_ERROR(INFO, status) << "Error getting task result: " << status;
         callback(status, std::move(reply));
