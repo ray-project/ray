@@ -1,4 +1,3 @@
-import argparse
 import errno
 import io
 import logging
@@ -9,9 +8,6 @@ import shlex
 import shutil
 import subprocess
 import sys
-import urllib.error
-import urllib.parse
-import urllib.request
 import warnings
 from enum import Enum
 from itertools import chain
@@ -41,11 +37,6 @@ THIRDPARTY_SUBDIR = os.path.join("ray", "thirdparty_files")
 RUNTIME_ENV_AGENT_THIRDPARTY_SUBDIR = os.path.join(
     "ray", "_private", "runtime_env", "agent", "thirdparty_files"
 )
-
-CLEANABLE_SUBDIRS = [
-    THIRDPARTY_SUBDIR,
-    RUNTIME_ENV_AGENT_THIRDPARTY_SUBDIR,
-]
 
 # In automated builds, we do a few adjustments before building. For instance,
 # the bazel environment is set up slightly differently, and symlinks are
@@ -437,16 +428,6 @@ def bazel_invoke(invoker, cmdline, *args, **kwargs):
     return result
 
 
-def download(url):
-    try:
-        result = urllib.request.urlopen(url).read()
-    except urllib.error.URLError:
-        # This fallback is necessary on Python 3.5 on macOS due to TLS 1.2.
-        curl_args = ["curl", "-s", "-L", "-f", "-o", "-", url]
-        result = subprocess.check_output(curl_args)
-    return result
-
-
 def patch_isdir():
     """
     Python on Windows is having hard times at telling if a symlink is
@@ -731,62 +712,6 @@ def pip_run(build_ext):
     print("# of files copied to {}: {}".format(build_ext.build_lib, copied_files))
 
 
-def api_main(program, *args):
-    parser = argparse.ArgumentParser()
-    choices = ["build", "python_versions", "clean", "help"]
-    parser.add_argument("command", type=str, choices=choices)
-    parser.add_argument(
-        "-l",
-        "--language",
-        default="python",
-        type=str,
-        help="A list of languages to build native libraries. "
-        'Supported languages include "python", "cpp", and "java". '
-        "If not specified, only the Python library will be built.",
-    )
-    parsed_args = parser.parse_args(args)
-
-    result = None
-
-    if parsed_args.command == "build":
-        kwargs = dict(build_python=False, build_java=False, build_cpp=False)
-        for lang in parsed_args.language.split(","):
-            if "python" in lang:
-                kwargs.update(build_python=True)
-            elif "java" in lang:
-                kwargs.update(build_java=True)
-            elif "cpp" in lang:
-                kwargs.update(build_cpp=True)
-            else:
-                raise ValueError("invalid language: {!r}".format(lang))
-        result = build(**kwargs)
-    elif parsed_args.command == "python_versions":
-        for version in SUPPORTED_PYTHONS:
-            # NOTE: On Windows this will print "\r\n" on the command line.
-            # Strip it out by piping to tr -d "\r".
-            print(".".join(map(str, version)))
-    elif parsed_args.command == "clean":
-
-        def onerror(function, path, excinfo):
-            nonlocal result
-            if excinfo[1].errno != errno.ENOENT:
-                msg = excinfo[1].strerror
-                logger.error("cannot remove {}: {}".format(path, msg))
-                result = 1
-
-        for subdir in CLEANABLE_SUBDIRS:
-            shutil.rmtree(os.path.join(ROOT_DIR, subdir), onerror=onerror)
-    elif parsed_args.command == "help":
-        parser.print_help()
-    else:
-        raise ValueError("Invalid command: {!r}".format(parsed_args.command))
-
-    return result
-
-
-if __name__ == "__api__":
-    api_main(*sys.argv)
-
 if __name__ == "__main__":
     import setuptools
     import setuptools.command.build_ext
@@ -799,60 +724,59 @@ if __name__ == "__main__":
         def has_ext_modules(self):
             return True
 
+    # Ensure no remaining lib files.
+    build_dir = os.path.join(ROOT_DIR, "build")
+    if os.path.isdir(build_dir):
+        shutil.rmtree(build_dir)
 
-# Ensure no remaining lib files.
-build_dir = os.path.join(ROOT_DIR, "build")
-if os.path.isdir(build_dir):
-    shutil.rmtree(build_dir)
-
-setuptools.setup(
-    name=setup_spec.name,
-    version=setup_spec.version,
-    author="Ray Team",
-    author_email="ray-dev@googlegroups.com",
-    description=(setup_spec.description),
-    long_description=io.open(
-        os.path.join(ROOT_DIR, os.path.pardir, "README.rst"), "r", encoding="utf-8"
-    ).read(),
-    url="https://github.com/ray-project/ray",
-    keywords=(
-        "ray distributed parallel machine-learning hyperparameter-tuning"
-        "reinforcement-learning deep-learning serving python"
-    ),
-    python_requires=">=3.9",
-    classifiers=[
-        "Programming Language :: Python :: 3.9",
-        "Programming Language :: Python :: 3.10",
-        "Programming Language :: Python :: 3.11",
-        "Programming Language :: Python :: 3.12",
-    ],
-    packages=setup_spec.get_packages(),
-    cmdclass={"build_ext": build_ext},
-    # The BinaryDistribution argument triggers build_ext.
-    distclass=BinaryDistribution,
-    install_requires=setup_spec.install_requires,
-    setup_requires=["cython >= 3.0.12", "pip", "wheel"],
-    extras_require=setup_spec.extras,
-    entry_points={
-        "console_scripts": [
-            "ray=ray.scripts.scripts:main",
-            "tune=ray.tune.cli.scripts:cli",
-            "serve=ray.serve.scripts:cli",
-        ]
-    },
-    package_data={
-        "ray": [
-            "includes/*.pxd",
-            "*.pxd",
-            "llm/_internal/serve/config_generator/base_configs/templates/*.yaml",
+    setuptools.setup(
+        name=setup_spec.name,
+        version=setup_spec.version,
+        author="Ray Team",
+        author_email="ray-dev@googlegroups.com",
+        description=(setup_spec.description),
+        long_description=io.open(
+            os.path.join(ROOT_DIR, os.path.pardir, "README.rst"), "r", encoding="utf-8"
+        ).read(),
+        url="https://github.com/ray-project/ray",
+        keywords=(
+            "ray distributed parallel machine-learning hyperparameter-tuning"
+            "reinforcement-learning deep-learning serving python"
+        ),
+        python_requires=">=3.9",
+        classifiers=[
+            "Programming Language :: Python :: 3.9",
+            "Programming Language :: Python :: 3.10",
+            "Programming Language :: Python :: 3.11",
+            "Programming Language :: Python :: 3.12",
         ],
-    },
-    include_package_data=True,
-    exclude_package_data={
-        # Empty string means "any package".
-        # Therefore, exclude BUILD from every package:
-        "": ["BUILD"],
-    },
-    zip_safe=False,
-    license="Apache 2.0",
-) if __name__ == "__main__" else None
+        packages=setup_spec.get_packages(),
+        cmdclass={"build_ext": build_ext},
+        # The BinaryDistribution argument triggers build_ext.
+        distclass=BinaryDistribution,
+        install_requires=setup_spec.install_requires,
+        setup_requires=["cython >= 3.0.12", "pip", "wheel"],
+        extras_require=setup_spec.extras,
+        entry_points={
+            "console_scripts": [
+                "ray=ray.scripts.scripts:main",
+                "tune=ray.tune.cli.scripts:cli",
+                "serve=ray.serve.scripts:cli",
+            ]
+        },
+        package_data={
+            "ray": [
+                "includes/*.pxd",
+                "*.pxd",
+                "llm/_internal/serve/config_generator/base_configs/templates/*.yaml",
+            ],
+        },
+        include_package_data=True,
+        exclude_package_data={
+            # Empty string means "any package".
+            # Therefore, exclude BUILD from every package:
+            "": ["BUILD"],
+        },
+        zip_safe=False,
+        license="Apache 2.0",
+    )

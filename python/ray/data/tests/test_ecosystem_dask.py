@@ -15,6 +15,7 @@ from ray.data.extensions.tensor_extension import (
     TensorDtype,
 )
 from ray.data.tests.conftest import *  # noqa
+from ray.data.tests.test_util import _check_usage_record
 from ray.tests.conftest import *  # noqa
 
 
@@ -26,6 +27,29 @@ def test_from_dask(ray_start_regular_shared):
     ds = ray.data.from_dask(ddf)
     dfds = ds.to_pandas()
     assert df.equals(dfds)
+
+
+def test_from_dask_e2e(ray_start_regular_shared):
+    import dask.dataframe as dd
+
+    df = pd.DataFrame({"one": list(range(100)), "two": list(range(100))})
+    ddf = dd.from_pandas(df, npartitions=10)
+    ds = ray.data.from_dask(ddf)
+    # `ds.take_all()` triggers execution with new backend, which is
+    # needed for checking operator usage below.
+    assert len(ds.take_all()) == len(df)
+    dfds = ds.to_pandas()
+    assert df.equals(dfds)
+
+    # Underlying implementation uses `FromPandas` operator
+    assert "FromPandas" in ds.stats()
+    assert ds._plan._logical_plan.dag.name == "FromPandas"
+    _check_usage_record(["FromPandas"])
+
+
+def test_to_dask_simple(ray_start_regular_shared):
+    ds = ray.data.range(100)
+    assert ds.to_dask().sum().compute()[0] == 4950
 
 
 @pytest.mark.parametrize("ds_format", ["pandas", "arrow"])
@@ -147,34 +171,6 @@ def test_to_dask_tensor_column_cast_arrow(ray_start_regular_shared):
         pd.testing.assert_frame_equal(out_df, expected_df)
     finally:
         ctx.enable_tensor_extension_casting = original
-
-
-def test_from_modin(ray_start_regular_shared):
-    import modin.pandas as mopd
-
-    df = pd.DataFrame(
-        {"one": list(range(100)), "two": list(range(100))},
-    )
-    modf = mopd.DataFrame(df)
-    ds = ray.data.from_modin(modf)
-    dfds = ds.to_pandas()
-    assert df.equals(dfds)
-
-
-def test_to_modin(ray_start_regular_shared):
-    # create two modin dataframes
-    # one directly from a pandas dataframe, and
-    # another from ray.dataset created from the original pandas dataframe
-    #
-    import modin.pandas as mopd
-
-    df = pd.DataFrame(
-        {"one": list(range(100)), "two": list(range(100))},
-    )
-    modf1 = mopd.DataFrame(df)
-    ds = ray.data.from_pandas([df])
-    modf2 = ds.to_modin()
-    assert modf1.equals(modf2)
 
 
 if __name__ == "__main__":
