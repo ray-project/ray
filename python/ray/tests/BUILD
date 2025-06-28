@@ -506,7 +506,6 @@ py_test_module_list(
         "test_actor_out_of_order.py",
         "test_annotations.py",
         "test_args.py",
-        "test_array.py",
         "test_async_compat.py",
         "test_asyncio_cluster.py",
         "test_autoscaling_policy.py",
@@ -611,11 +610,30 @@ py_test_module_list(
 py_test_module_list(
     size = "medium",
     files = [
-        "test_gpu_objects.py",
+        "test_gpu_objects_gloo.py",
     ],
     tags = [
         "exclusive",
         "gpu_objects",
+        "no_windows",
+        "team:core",
+    ],
+    deps = [
+        ":conftest",
+        "//:ray_lib",
+    ],
+)
+
+py_test_module_list(
+    size = "medium",
+    env = {"RAY_PYTEST_USE_GPU": "1"},
+    files = [
+        "test_gpu_objects_nccl.py",
+    ],
+    tags = [
+        "exclusive",
+        "gpu_objects",
+        "multi_gpu",
         "no_windows",
         "team:core",
     ],
@@ -1271,7 +1289,6 @@ py_test_module_list(
         "RAY_DEBUG_MODE": "1",
     },
     files = [
-        "test_array.py",
         "test_object_spilling.py",
         "test_object_spilling_2.py",
         "test_object_spilling_3.py",
@@ -1293,7 +1310,6 @@ py_test_module_list(
 py_test_module_list(
     size = "large",
     files = [
-        "test_array.py",
         "test_object_spilling.py",
         "test_object_spilling_2.py",
         "test_object_spilling_3.py",
