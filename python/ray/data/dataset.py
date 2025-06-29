@@ -92,6 +92,7 @@ from ray.data._internal.stats import DatasetStats, DatasetStatsSummary, StatsMan
 from ray.data._internal.util import (
     AllToAllAPI,
     ConsumptionAPI,
+    _check_import,
     _validate_rows_per_file_args,
     get_compute_strategy,
 )
@@ -766,6 +767,356 @@ class Dataset:
             zero_copy_batch=zero_copy_batch,
             min_rows_per_bundled_input=batch_size,
             fn_args=fn_args,
+            fn_kwargs=fn_kwargs,
+            fn_constructor_args=fn_constructor_args,
+            fn_constructor_kwargs=fn_constructor_kwargs,
+            compute=compute,
+            ray_remote_args_fn=ray_remote_args_fn,
+            ray_remote_args=ray_remote_args,
+        )
+        logical_plan = LogicalPlan(map_batches_op, self.context)
+        return Dataset(plan, logical_plan)
+
+    @PublicAPI(api_group=BT_API_GROUP)
+    def map_sql(
+        self,
+        query: str,
+        view_name: Optional[str] = "batch",
+        engine: Optional[str] = "duckdb",
+        pushdown_filter: Optional[bool] = True,
+        *,
+        batch_size: Optional[Union[int, None, Literal["default"]]] = None,
+        compute: Optional[ComputeStrategy] = None,
+        zero_copy_batch: Optional[bool] = False,
+        fn_kwargs: Optional[Dict[str, Any]] = None,
+        fn_constructor_args: Optional[Iterable[Any]] = None,
+        fn_constructor_kwargs: Optional[Dict[str, Any]] = None,
+        num_cpus: Optional[float] = None,
+        num_gpus: Optional[float] = None,
+        memory: Optional[float] = None,
+        concurrency: Optional[Union[int, Tuple[int, int]]] = None,
+        ray_remote_args_fn: Optional[Callable[[], Dict[str, Any]]] = None,
+        **ray_remote_args,
+    ) -> "Dataset":
+        """
+        Map a SQL query to blocks of the Ray Dataset using a SQL engine.
+
+        This method allows you to perform SQL transformations on batches of data
+        using a supported SQL engine such as DuckDB.
+
+        Examples:
+
+        .. testcode::
+
+            import ray
+            ds = ray.data.range(1000)
+            print(ds.map_sql("SELECT * FROM batch WHERE id < 500").count())
+
+        .. testoutput::
+
+            500
+
+        .. tip::
+            This method is useful for complicated SQL queries that are either more difficult to
+            implement or migrate to Python or would be faster running on top of lightweight
+            SQL engines like DuckDB or Polars.
+
+        .. note::
+
+            This does not support a SQL operation on top of the whole dataset (i.e. joins across
+            blocks), but rather just maps SQL operations. For operations like groupBys or joins,
+            use the native Ray Dataset operations like ``ray.dataset.join`` if you need data
+            from multiple blocks.
+
+        .. warning::
+            ``map_sql`` is currently experimental, and may result in issues. Please
+            `report any issues <https://github.com/ray-project/ray/issues/new/choose>`_
+            to the Ray team.
+
+        .. warning::
+            The Polars SQL API is somewhat limited in full SQL support, please visit the
+            the official Polars SQL documentation <https://docs.pola.rs/api/python/stable/reference/sql/index.html>`_
+            for full API support details.
+
+        Args:
+            query: The SQL query to execute on each batch of data.
+            view_name: The name of the temporary view created for the batch in the SQL engine.
+                Defaults to ``"batch"``.
+            engine: The SQL engine to use for executing the query. Supported values are "duckdb".
+                Defaults to ``"duckdb"``.
+            pushdown_filter: If set to ``True``, extract the filter expression from the SQL query
+                and run as a Ray Dataset filter function, which can push the filter down to the source.
+                If set to `False`, the query is run as-is with the SQL engine, which won't support
+                pushdown filters or predicates.
+            batch_size: The desired number of rows in each batch.
+            compute: The compute strategy to use for the operation.
+            zero_copy_batch: Whether to provide zero-copy, read-only batches to the SQL engine.
+            fn_kwargs: Keyword arguments to pass to the SQL engine.
+            fn_constructor_args: Positional arguments to pass to the SQL engine's constructor.
+            fn_constructor_kwargs: Keyword arguments to pass to the SQL engine's constructor.
+            num_cpus: The number of CPUs to reserve for each parallel map worker.
+            num_gpus: The number of GPUs to reserve for each parallel map worker.
+            memory: The heap memory in bytes to reserve for each parallel map worker.
+            concurrency: The concurrency level for the operation.
+            ray_remote_args_fn: A function that returns a dictionary
+                of remote args passed to each map worker.
+            **ray_remote_args: Additional resource requirements to request from Ray for each map worker.
+                See :func:`ray.remote` for details.
+
+        Returns:
+            Dataset: A new Dataset with the applied SQL transformation.
+
+        """
+        if pushdown_filter is True:
+            _check_import(self, module="sqlglot", package="sqlglot")
+
+        if engine == "duckdb":
+            _check_import(self, module="duckdb", package="duckdb")
+        elif engine == "polars":
+            _check_import(self, module="polars", package="polars")
+
+        def safe_ray_filter_for_sql(query: str):
+            """
+            Attempt to extract a WHERE filter *only* if FROM is a single simple table (no joins),
+            and the expression is simple. Otherwise, fall back to original SQL.
+            """
+            import sqlglot
+            from sqlglot import exp
+
+            try:
+                parsed = sqlglot.parse_one(query)
+                # Check for joins: any Join node in AST means we must skip
+                if any(isinstance(n, exp.Join) for n in parsed.walk()):
+                    return query, None
+                # FROM must be a single table (not a subquery, not a comma, not a join)
+                from_ = parsed.args.get("from")
+                if not from_ or not single_table_source(from_):
+                    return query, None
+                # Only proceed if WHERE is present
+                where = parsed.args.get("where")
+                if not where:
+                    return query, None
+                parsed.set("where", None)
+                base_query = parsed.sql()
+                expr = ast_to_pyexpr_safe(where.this)
+                if expr is None:
+                    return query, None
+                # Paranoia: if subquery, function, etc, in WHERE, abort
+                if any(
+                    isinstance(
+                        n,
+                        (exp.Subquery, exp.Exists, exp.Function, exp.Case, exp.Window),
+                    )
+                    for n in where.walk()
+                ):
+                    return query, None
+                return base_query, expr
+            except Exception:
+                return query, None
+
+        def single_table_source(from_ast: Any):
+            """Returns True if FROM is a single Table or Alias(Table), else False."""
+            from sqlglot import exp
+
+            # FROM foo AS bar
+            if isinstance(from_ast, exp.Alias):
+                return isinstance(from_ast.this, exp.Table)
+            # FROM foo
+            if isinstance(from_ast, exp.Table):
+                return True
+            # Anything else (comma, subquery, etc): Reject
+            return False
+
+        def ast_to_pyexpr_safe(ast: Any):
+            """
+            Recursively attempt to convert sqlglot expression AST to a valid
+            Ray Dataset expr string. Returns None if not safely supported.
+            """
+            from sqlglot import exp
+
+            if isinstance(ast, exp.Column):
+                return ast.name
+            elif isinstance(ast, exp.Literal):
+                if isinstance(ast.this, str):
+                    return f'"{ast.this}"'
+                return str(ast.this)
+            elif isinstance(ast, exp.Paren):
+                child = ast_to_pyexpr_safe(ast.this)
+                return f"({child})" if child else None
+            elif isinstance(ast, exp.And):
+                l, r = ast_to_pyexpr_safe(ast.left), ast_to_pyexpr_safe(ast.right)
+                if l and r:
+                    return f"{l} and {r}"
+                return None
+            elif isinstance(ast, exp.Or):
+                l, r = ast_to_pyexpr_safe(ast.left), ast_to_pyexpr_safe(ast.right)
+                if l and r:
+                    return f"{l} or {r}"
+                return None
+            elif isinstance(ast, exp.Not):
+                sub = ast_to_pyexpr_safe(ast.this)
+                return f"not {sub}" if sub else None
+            elif isinstance(ast, exp.EQ):
+                l, r = ast_to_pyexpr_safe(ast.left), ast_to_pyexpr_safe(ast.right)
+                if l and r:
+                    return f"{l} == {r}"
+                return None
+            elif isinstance(ast, exp.NEQ):
+                l, r = ast_to_pyexpr_safe(ast.left), ast_to_pyexpr_safe(ast.right)
+                if l and r:
+                    return f"{l} != {r}"
+                return None
+            elif isinstance(ast, exp.GT):
+                l, r = ast_to_pyexpr_safe(ast.left), ast_to_pyexpr_safe(ast.right)
+                if l and r:
+                    return f"{l} > {r}"
+                return None
+            elif isinstance(ast, exp.GTE):
+                l, r = ast_to_pyexpr_safe(ast.left), ast_to_pyexpr_safe(ast.right)
+                if l and r:
+                    return f"{l} >= {r}"
+                return None
+            elif isinstance(ast, exp.LT):
+                l, r = ast_to_pyexpr_safe(ast.left), ast_to_pyexpr_safe(ast.right)
+                if l and r:
+                    return f"{l} < {r}"
+                return None
+            elif isinstance(ast, exp.LTE):
+                l, r = ast_to_pyexpr_safe(ast.left), ast_to_pyexpr_safe(ast.right)
+                if l and r:
+                    return f"{l} <= {r}"
+                return None
+            elif isinstance(ast, exp.Is):
+                left = ast_to_pyexpr_safe(ast.left)
+                if isinstance(ast.right, exp.Null):
+                    return f"{left} is None" if left else None
+                else:
+                    right = ast_to_pyexpr_safe(ast.right)
+                    return f"{left} is {right}" if left and right else None
+            elif isinstance(ast, exp.In):
+                left = ast_to_pyexpr_safe(ast.args["this"])
+                vals = [ast_to_pyexpr_safe(e) for e in ast.args["expressions"]]
+                if left and all(vals):
+                    return f"{left} in [{', '.join(vals)}]"
+                return None
+            elif isinstance(ast, exp.NotIn):
+                left = ast_to_pyexpr_safe(ast.args["this"])
+                vals = [ast_to_pyexpr_safe(e) for e in ast.args["expressions"]]
+                if left and all(vals):
+                    return f"{left} not in [{', '.join(vals)}]"
+                return None
+            elif isinstance(ast, exp.Between):
+                val = ast_to_pyexpr_safe(ast.this)
+                low = ast_to_pyexpr_safe(ast.args["low"])
+                high = ast_to_pyexpr_safe(ast.args["high"])
+                if val and low and high:
+                    return f"({val} >= {low} and {val} <= {high})"
+                return None
+            return None
+
+        shuffle_ops = [" join ", " group by "]
+        for op in shuffle_ops:
+            if op in query.lower():
+                print(
+                    f"Warning: {op} found in query. Note that this will only be run on each block independently",
+                    f"Consider using `ray.dataset.{'join' if op == ' join ' else 'groupBy'} instead if you need data across multiple blocks",
+                )
+
+        if pushdown_filter is True:
+            base_query, filter_expr = safe_ray_filter_for_sql(query)
+            use_ray_filter = filter_expr is not None
+
+            if use_ray_filter:
+                self = self.filter(expr=filter_expr)
+        else:
+            base_query = query
+
+        supported_engines = {"duckdb", "polars"}
+        if engine.lower() not in supported_engines:
+            warnings.warn(
+                f"Unsupported engine '{engine}'. Supported engines are: {supported_engines}.",
+                UserWarning,
+            )
+
+        if not view_name.isidentifier():
+            warnings.warn(
+                f"The provided view_name '{view_name}' is not a valid Python identifier. "
+                "Please ensure the view_name contains only alphanumeric characters or underscores, "
+                "and does not start with a digit.",
+                UserWarning,
+            )
+
+        if batch_size == "default":
+            warnings.warn(
+                "Passing 'default' to `map_batches` is deprecated and won't be "
+                "supported after September 2025. Use `batch_size=None` instead.",
+                DeprecationWarning,
+            )
+            batch_size = None
+
+        if num_cpus is not None:
+            ray_remote_args["num_cpus"] = num_cpus
+
+        if num_gpus is not None:
+            ray_remote_args["num_gpus"] = num_gpus
+
+        if memory is not None:
+            ray_remote_args["memory"] = memory
+
+        if not isinstance(base_query, str):
+            warnings.warn(
+                "SQL query must be a string. "
+                "Please use the `query` argument to pass a SQL query.",
+                UserWarning,
+            )
+        if not isinstance(view_name, str):
+            warnings.warn(
+                "View name must be a string. "
+                "Please use the `view_name` argument to pass a view name.",
+                UserWarning,
+            )
+
+        if engine.lower() == "duckdb":
+            import duckdb
+
+            def map_duckdb_sql(batch, query, batch_name="batch"):
+                if batch_name != "batch":
+                    locals()[batch_name] = batch
+                return duckdb.sql(query).arrow()
+
+            fnc = map_duckdb_sql
+
+        elif engine.lower() == "polars":
+            import polars as pl
+
+            def map_polars_sql(batch, query, batch_name="batch"):
+                df = pl.from_arrow(batch)
+                result = df.sql(query, table_name=batch_name)
+                return result.to_arrow()
+
+            fnc = map_polars_sql
+
+        else:
+            raise NotImplementedError(
+                "Only duckdb and polars engines are supported for map_sql calls."
+            )
+
+        compute = get_compute_strategy(
+            fnc,
+            fn_constructor_args=fn_constructor_args,
+            compute=compute,
+            concurrency=concurrency,
+        )
+
+        plan = self._plan.copy()
+        map_batches_op = MapBatches(
+            self._logical_plan.dag,
+            fnc,
+            batch_size=batch_size,
+            batch_format="pyarrow",
+            zero_copy_batch=zero_copy_batch,
+            min_rows_per_bundled_input=batch_size,
+            fn_args=[base_query, view_name],
             fn_kwargs=fn_kwargs,
             fn_constructor_args=fn_constructor_args,
             fn_constructor_kwargs=fn_constructor_kwargs,
