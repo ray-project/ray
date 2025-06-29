@@ -33,6 +33,7 @@ from typing import (
     Optional,
     Tuple,
     Union,
+    NamedTuple,
 )
 
 import contextvars
@@ -586,6 +587,11 @@ cdef c_bool is_plasma_object(shared_ptr[CRayObject] obj):
     return False
 
 
+class SerializedRayObject(NamedTuple):
+    data: Optional[Buffer]
+    metadata: Optional[Buffer]
+    tensor_transport: Optional[int]
+
 cdef RayObjectsToDataMetadataPairs(
         const c_vector[shared_ptr[CRayObject]] objects):
     data_metadata_pairs = []
@@ -593,7 +599,7 @@ cdef RayObjectsToDataMetadataPairs(
         # core_worker will return a nullptr for objects that couldn't be
         # retrieved from the store or if an object was an exception.
         if not objects[i].get():
-            data_metadata_pairs.append((None, None))
+            data_metadata_pairs.append(SerializedRayObject(None, None, None))
         else:
             data = None
             metadata = None
@@ -602,7 +608,7 @@ cdef RayObjectsToDataMetadataPairs(
             if objects[i].get().HasMetadata():
                 metadata = Buffer.make(
                     objects[i].get().GetMetadata()).to_pybytes()
-            data_metadata_pairs.append((data, metadata))
+            data_metadata_pairs.append(SerializedRayObject(data, metadata, <int>(objects[i].get().GetTensorTransport())))
     return data_metadata_pairs
 
 
@@ -2604,9 +2610,10 @@ cdef void unhandled_exception_handler(const CRayObject& error) nogil:
             data = Buffer.make(error.GetData())
         if error.HasMetadata():
             metadata = Buffer.make(error.GetMetadata()).to_pybytes()
+        tensor_transport = TENSOR_TRANSPORT_OBJECT_STORE
         # TODO(ekl) why does passing a ObjectRef.nil() lead to shutdown errors?
         object_ids = [None]
-        worker.raise_errors([(data, metadata)], object_ids)
+        worker.raise_errors([SerializedRayObject(data, metadata, <int>tensor_transport)], object_ids)
 
 
 def maybe_initialize_job_config():

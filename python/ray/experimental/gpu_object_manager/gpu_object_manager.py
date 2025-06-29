@@ -3,26 +3,11 @@ from typing import TYPE_CHECKING, Any, Dict, List, NamedTuple, Optional, Tuple
 import ray
 from ray._private.custom_types import TensorTransportEnum
 from ray._raylet import ObjectRef
-from ray.actor import ActorHandle
 
-# Avoid importing util until needed because it requires several external
-# dependencies like torch and cupy. These dependencies can significantly slow
-# down normal worker startup time.
-util = None
 
 if TYPE_CHECKING:
     import torch
-
-    from ray._private import gpu_object_manager_util as util
-
-
-def _get_or_import_util():
-    """Lazily import the gpu_object_manager_util module."""
-    global util
-    if util is None:
-        from ray._private import gpu_object_manager_util as util
-    return util
-
+    from ray.experimental.gpu_object_manager.gpu_object_store import GPUObjectStore
 
 # GPUObjectMeta is a named tuple containing the source actor, tensor transport
 # backend, and tensor metadata.
@@ -31,49 +16,70 @@ def _get_or_import_util():
 # - The tensor metadata is a list of tuples, each containing the shape and dtype
 #   of a tensor in the GPU object store.
 class GPUObjectMeta(NamedTuple):
-    src_actor: ActorHandle
+    src_actor: "ray.actor.ActorHandle"
     # Must be a valid backend name as defined in
     # `ray.util.collective.types.Backend`.
     tensor_transport_backend: str
     tensor_meta: List[Tuple["torch.Size", "torch.dtype"]]
 
 
+def __ray_get_tensor_meta__(self, obj_id: str):
+    """Helper function that runs on the src actor to get the tensor metadata."""
+    from ray._private.worker import global_worker
+
+    gpu_object_store = global_worker.gpu_object_manager.gpu_object_store
+    assert gpu_object_store.has_gpu_object(
+        obj_id
+    ), f"obj_id={obj_id} not found in GPU object store"
+    tensors = gpu_object_store.get_gpu_object(obj_id)
+    return [(t.shape, t.dtype) for t in tensors]
+
+
+def __ray_fetch_gpu_object__(self, obj_id: str):
+    """Helper function that runs on the src actor to fetch tensors from the GPU object store via the object store."""
+    from ray._private.worker import global_worker
+
+    gpu_object_store = global_worker.gpu_object_manager.gpu_object_store
+    assert gpu_object_store.has_gpu_object(
+        obj_id
+    ), f"obj_id={obj_id} not found in GPU object store"
+    tensors = gpu_object_store.get_gpu_object(obj_id)
+    # TODO(kevin85421): The current garbage collection implementation for the
+    # in-actor object store is naive. We garbage collect each object after it
+    # is consumed once.
+    gpu_object_store.remove_gpu_object(obj_id)
+    return tensors
+
+
 class GPUObjectManager:
     def __init__(self):
-        # A dictionary that maps from an object ID to a list of tensors.
-        #
-        # Note: Currently, `gpu_object_store` is only supported for Ray Actors.
-        self.gpu_object_store: Dict[str, List["torch.Tensor"]] = {}
         # A dictionary that maps from owned object's ID to GPUObjectMeta.
+        # This dictionary is hosted on the "driver" process of the actors that
+        # store and send/receive GPU objects.
         self.managed_gpu_object_metadata: Dict[str, GPUObjectMeta] = {}
+        # Per-actor local storage for GPU objects. We create the GPU object
+        # store lazily, if a user specifies a non-default tensor_transport, to
+        # avoid circular import and because it imports third-party dependencies
+        # like PyTorch.
+        self._gpu_object_store: Optional["GPUObjectStore"] = None
 
-    def has_gpu_object(self, obj_id: str) -> bool:
-        return obj_id in self.gpu_object_store
+    @property
+    def gpu_object_store(self) -> "ray.experimental.GPUObjectStore":
+        if self._gpu_object_store is None:
+            from ray.experimental.gpu_object_manager.gpu_object_store import (
+                GPUObjectStore,
+            )
 
-    def get_gpu_object(self, obj_id: str) -> Optional[List["torch.Tensor"]]:
-        return self.gpu_object_store[obj_id]
+            self._gpu_object_store = GPUObjectStore()
+        return self._gpu_object_store
 
-    def add_gpu_object(self, obj_id: str, gpu_object: List["torch.Tensor"]):
-        self.gpu_object_store[obj_id] = gpu_object
-
-    def remove_gpu_object(self, obj_id: str):
-        del self.gpu_object_store[obj_id]
-
-    def _get_tensor_meta(self, src_actor: ActorHandle, obj_id: str) -> ObjectRef:
+    def _get_tensor_meta(
+        self, src_actor: "ray.actor.ActorHandle", obj_id: str
+    ) -> ObjectRef:
         # Submit a Ray actor task to the source actor to get the tensor metadata.
         # The metadata is a list of tuples, where each tuple contains the shape and dtype
         # of a tensor in the GPU object store. This function returns an ObjectRef that
         # points to the tensor metadata.
-        def __ray_get_tensor_meta__(self, obj_id: str):
-            from ray._private.worker import global_worker
-
-            gpu_object_manager = global_worker.gpu_object_manager
-            assert gpu_object_manager.has_gpu_object(
-                obj_id
-            ), f"obj_id={obj_id} not found in GPU object store"
-            tensors = gpu_object_manager.get_gpu_object(obj_id)
-            return [(t.shape, t.dtype) for t in tensors]
-
         return src_actor.__ray_call__.remote(__ray_get_tensor_meta__, obj_id)
 
     def is_managed_gpu_object(self, obj_id: str) -> bool:
@@ -92,7 +98,7 @@ class GPUObjectManager:
     def add_gpu_object_ref(
         self,
         obj_ref: ObjectRef,
-        src_actor: ActorHandle,
+        src_actor: "ray.actor.ActorHandle",
         tensor_transport: TensorTransportEnum,
     ):
         """Add a GPU object reference to the GPU object manager. This should be
@@ -104,8 +110,11 @@ class GPUObjectManager:
             src_actor: The actor that executes the task and that creates the GPU object.
             tensor_transport: The tensor transport protocol to use for the GPU object.
         """
-        util = _get_or_import_util()
-        tensor_transport_backend = util.tensor_transport_to_collective_backend(
+        from ray.experimental.gpu_object_manager.gpu_object_store import (
+            _tensor_transport_to_collective_backend,
+        )
+
+        tensor_transport_backend = _tensor_transport_to_collective_backend(
             tensor_transport
         )
         obj_id = obj_ref.hex()
@@ -121,28 +130,32 @@ class GPUObjectManager:
         return self.managed_gpu_object_metadata[obj_id]
 
     def _send_gpu_object(
-        self, communicator_name: str, src_actor: ActorHandle, obj_id: str, dst_rank: int
+        self,
+        communicator_name: str,
+        src_actor: "ray.actor.ActorHandle",
+        obj_id: str,
+        dst_rank: int,
     ):
+        from ray.experimental.gpu_object_manager.gpu_object_store import __ray_send__
+
         # Send tensors stored in the `src_actor`'s GPU object store to the
         # destination rank `dst_rank`.
-        util = _get_or_import_util()
-        src_actor.__ray_call__.remote(
-            util.__ray_send__, communicator_name, obj_id, dst_rank
-        )
+        src_actor.__ray_call__.remote(__ray_send__, communicator_name, obj_id, dst_rank)
 
     def _recv_gpu_object(
         self,
         communicator_name: str,
-        dst_actor: ActorHandle,
+        dst_actor: "ray.actor.ActorHandle",
         obj_id: str,
         src_rank: int,
         tensor_meta: List[Tuple["torch.Size", "torch.dtype"]],
     ):
+        from ray.experimental.gpu_object_manager.gpu_object_store import __ray_recv__
+
         # Receive tensors from the source rank and store them in the
         # `dst_actor`'s GPU object store.
-        util = _get_or_import_util()
         dst_actor.__ray_call__.remote(
-            util.__ray_recv__, communicator_name, obj_id, src_rank, tensor_meta
+            __ray_recv__, communicator_name, obj_id, src_rank, tensor_meta
         )
 
     def fetch_gpu_object(self, obj_id: str):
@@ -160,18 +173,19 @@ class GPUObjectManager:
         Returns:
             None
         """
-        if obj_id in self.gpu_object_store:
+
+        if self.gpu_object_store.has_gpu_object(obj_id):
             return
 
         gpu_object_meta = self.managed_gpu_object_metadata[obj_id]
         src_actor = gpu_object_meta.src_actor
         tensors = ray.get(
-            src_actor.__ray_call__.remote(util.__ray_fetch_gpu_object__, obj_id)
+            src_actor.__ray_call__.remote(__ray_fetch_gpu_object__, obj_id)
         )
-        self.gpu_object_store[obj_id] = tensors
+        self.gpu_object_store.add_gpu_object(obj_id, tensors)
 
     def trigger_out_of_band_tensor_transfer(
-        self, dst_actor: ActorHandle, task_args: Tuple[Any, ...]
+        self, dst_actor: "ray.actor.ActorHandle", task_args: Tuple[Any, ...]
     ):
         """
         Triggers tensor communication operations between actors. When a managed ObjectRef is passed
