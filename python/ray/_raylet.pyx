@@ -2276,6 +2276,15 @@ cdef execute_task_with_cancellation_handler(
                 f"Exited because worker reached max_calls={execution_info.max_calls}"
                 " for this method.")
 
+cdef void free_actor_object_callback(const CObjectID &c_object_id) nogil:
+    with gil:
+        object_id = c_object_id.Hex().decode()
+        print(f"free_actor_object_callback, object_id: {object_id}")
+        gpu_object_manager = ray._private.worker.global_worker.gpu_object_manager
+        print(f"free_actor_object_callback before remove_gpu_object, gpu_object_store: {gpu_object_manager.gpu_object_store}")
+        gpu_object_manager.remove_gpu_object(object_id)
+        print(f"free_actor_object_callback after remove_gpu_object, gpu_object_store: {gpu_object_manager.gpu_object_store}")
+
 cdef shared_ptr[LocalMemoryBuffer] ray_error_to_memory_buf(ray_error):
     cdef bytes py_bytes = ray_error.to_bytes()
     return make_shared[LocalMemoryBuffer](
@@ -2987,6 +2996,7 @@ cdef class CoreWorker:
         options.driver_name = driver_name
         options.initialize_thread_callback = initialize_pygilstate_for_thread
         options.task_execution_callback = task_execution_handler
+        options.free_actor_object_callback = free_actor_object_callback
         options.check_signals = check_signals
         options.gc_collect = gc_collect
         options.spill_objects = spill_objects_handler
