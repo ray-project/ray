@@ -262,6 +262,11 @@ def test_vllm_vision_language_models(
     assert all("resp" in out for out in outs)
 
 
+@pytest.mark.skipif(
+    True,
+    # TODO(alexeykudinkin): Enable the test.
+    reason="Wait for #54190 submission",
+)
 @pytest.mark.parametrize("concurrency", [1, 4])
 def test_no_memory_leak(concurrency):
     """

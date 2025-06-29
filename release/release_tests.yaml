@@ -4364,7 +4364,15 @@
   cluster:
     byod:
       type: llm-cu128
-      # TODO(lk-chen); Force OOM killer threshold here
+      # we need m6.12xlarge instance (192GiB) to test parallelsim
+      # and set memory usage threshold (192 * 15% = 28.8GiB) to
+      # capture memory leak. We don't fully control when object
+      # store is spilled to disk, so set proportion to 10% such
+      # that memory usage threshold is not affected no matter
+      # whether object store is spilled.
+      runtime_env:
+        - RAY_memory_usage_threshold=0.15
+        - RAY_DEFAULT_OBJECT_STORE_MEMORY_PROPORTION=0.1
     cluster_compute: llm_4xl4.yaml
     # NOTE: Important for getting the correct secrets
     cloud_id: cld_wy5a6nhazplvu32526ams61d98
@@ -4385,7 +4393,15 @@
   cluster:
     byod:
       type: llm-cu128
-      # TODO(lk-chen); Force OOM killer threshold here
+      # we need m6.12xlarge instance (192GiB) to test parallelsim
+      # and set memory usage threshold (192 * 15% = 28.8GiB) to
+      # capture memory leak. We don't fully control when object
+      # store is spilled to disk, so set proportion to 10% such
+      # that memory usage threshold is not affected no matter
+      # whether object store is spilled.
+      runtime_env:
+        - RAY_memory_usage_threshold=0.15
+        - RAY_DEFAULT_OBJECT_STORE_MEMORY_PROPORTION=0.1
       post_build_script: byod_llm_sglang_test.sh
     cluster_compute: llm_4xl4.yaml
 
