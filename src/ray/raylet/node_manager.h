@@ -255,6 +255,11 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
   /// \return Void.
   void HandleObjectMissing(const ObjectID &object_id);
 
+  /// Handle a `WorkerLease` request.
+  void HandleRequestWorkerLease(rpc::RequestWorkerLeaseRequest request,
+                                rpc::RequestWorkerLeaseReply *reply,
+                                rpc::SendReplyCallback send_reply_callback) override;
+
   /// Get pointers to objects stored in plasma. They will be
   /// released once the returned references go out of scope.
   ///
@@ -576,11 +581,6 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
   void HandleCancelResourceReserve(rpc::CancelResourceReserveRequest request,
                                    rpc::CancelResourceReserveReply *reply,
                                    rpc::SendReplyCallback send_reply_callback) override;
-
-  /// Handle a `WorkerLease` request.
-  void HandleRequestWorkerLease(rpc::RequestWorkerLeaseRequest request,
-                                rpc::RequestWorkerLeaseReply *reply,
-                                rpc::SendReplyCallback send_reply_callback) override;
 
   void HandlePrestartWorkers(rpc::PrestartWorkersRequest request,
                              rpc::PrestartWorkersReply *reply,
