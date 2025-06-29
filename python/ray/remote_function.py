@@ -424,7 +424,7 @@ class RemoteFunction:
         ):
             _warn_if_using_deprecated_placement_group(task_options, 4)
 
-        resources = ray._private.utils.resources_from_ray_options(task_options)
+        resources = ray._common.utils.resources_from_ray_options(task_options)
 
         if scheduling_strategy is None or isinstance(
             scheduling_strategy, PlacementGroupSchedulingStrategy

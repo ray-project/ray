@@ -17,7 +17,6 @@ from starlette.types import Receive
 
 import ray
 from ray._common.utils import get_or_create_event_loop
-from ray.exceptions import RayActorError, RayTaskError
 from ray.serve._private.common import (
     DeploymentID,
     EndpointInfo,
@@ -29,22 +28,29 @@ from ray.serve._private.common import (
 from ray.serve._private.constants import (
     PROXY_MIN_DRAINING_PERIOD_S,
     RAY_SERVE_ENABLE_PROXY_GC_OPTIMIZATIONS,
-    RAY_SERVE_HTTP_PROXY_CALLBACK_IMPORT_PATH,
     RAY_SERVE_PROXY_GC_THRESHOLD,
+    RAY_SERVE_REQUEST_PROCESSING_TIMEOUT_S,
     REQUEST_LATENCY_BUCKETS_MS,
     SERVE_CONTROLLER_NAME,
+    SERVE_HTTP_REQUEST_ID_HEADER,
     SERVE_LOGGER_NAME,
     SERVE_MULTIPLEXED_MODEL_ID,
     SERVE_NAMESPACE,
 )
 from ray.serve._private.default_impl import get_proxy_handle
-from ray.serve._private.grpc_util import start_grpc_server
+from ray.serve._private.grpc_util import (
+    get_grpc_response_status,
+    set_grpc_code_and_details,
+    start_grpc_server,
+)
 from ray.serve._private.http_util import (
     MessageQueue,
+    configure_http_options_with_defaults,
     convert_object_to_asgi_messages,
+    get_http_response_status,
     receive_http_body,
+    send_http_response_on_exception,
     start_asgi_http_server,
-    validate_http_proxy_callback_return,
 )
 from ray.serve._private.logging_utils import (
     access_log_msg,
@@ -67,13 +73,11 @@ from ray.serve._private.proxy_response_generator import ProxyResponseGenerator
 from ray.serve._private.proxy_router import ProxyRouter
 from ray.serve._private.usage import ServeUsageTag
 from ray.serve._private.utils import (
-    call_function_from_import_path,
     generate_request_id,
     get_head_node_id,
     is_grpc_enabled,
 )
 from ray.serve.config import HTTPOptions, gRPCOptions
-from ray.serve.exceptions import BackPressureError, DeploymentUnavailableError
 from ray.serve.generated.serve_pb2 import HealthzResponse, ListApplicationsResponse
 from ray.serve.handle import DeploymentHandle
 from ray.serve.schema import LoggingConfig
@@ -81,20 +85,8 @@ from ray.util import metrics
 
 logger = logging.getLogger(SERVE_LOGGER_NAME)
 
-TIMEOUT_ERROR_CODE = "408"
-DISCONNECT_ERROR_CODE = "499"
 SOCKET_REUSE_PORT_ENABLED = (
     os.environ.get("SERVE_SOCKET_REUSE_PORT_ENABLED", "1") == "1"
-)
-
-RAY_SERVE_HTTP_KEEP_ALIVE_TIMEOUT_S = int(
-    os.environ.get("RAY_SERVE_HTTP_KEEP_ALIVE_TIMEOUT_S", 0)
-)
-# TODO (shrekris-anyscale): Deprecate SERVE_REQUEST_PROCESSING_TIMEOUT_S env var
-RAY_SERVE_REQUEST_PROCESSING_TIMEOUT_S = (
-    float(os.environ.get("RAY_SERVE_REQUEST_PROCESSING_TIMEOUT_S", 0))
-    or float(os.environ.get("SERVE_REQUEST_PROCESSING_TIMEOUT_S", 0))
-    or None
 )
 
 if os.environ.get("SERVE_REQUEST_PROCESSING_TIMEOUT_S") is not None:
@@ -581,20 +573,6 @@ class gRPCProxy(GenericProxy):
         )
 
     def service_handler_factory(self, service_method: str, stream: bool) -> Callable:
-        def set_grpc_code_and_details(
-            context: grpc._cython.cygrpc._ServicerContext, status: ResponseStatus
-        ):
-            # Only the latest code and details will take effect. If the user already
-            # set them to a truthy value in the context, skip setting them with Serve's
-            # default values. By default, if nothing is set, the code is 0 and the
-            # details is "", which both are falsy. So if the user did not set them or
-            # if they're explicitly set to falsy values, such as None, Serve will
-            # continue to set them with our default values.
-            if not context.code():
-                context.set_code(status.code)
-            if not context.details():
-                context.set_details(status.message)
-
         async def unary_unary(
             request_proto: Any, context: grpc._cython.cygrpc._ServicerContext
         ) -> bytes:
@@ -709,38 +687,8 @@ class gRPCProxy(GenericProxy):
                 yield result
 
             status = ResponseStatus(code=grpc.StatusCode.OK)
-        except TimeoutError:
-            message = f"Request timed out after {self.request_timeout_s}s."
-            logger.warning(message)
-            status = ResponseStatus(
-                code=grpc.StatusCode.DEADLINE_EXCEEDED,
-                is_error=True,
-                message=message,
-            )
-        except asyncio.CancelledError:
-            message = f"Client for request {request_id} disconnected."
-            logger.info(message)
-            status = ResponseStatus(
-                code=grpc.StatusCode.CANCELLED,
-                is_error=True,
-                message=message,
-            )
-        except BackPressureError as e:
-            status = ResponseStatus(
-                code=grpc.StatusCode.UNAVAILABLE,
-                is_error=True,
-                message=e.message,
-            )
-        except Exception as e:
-            if isinstance(e, (RayActorError, RayTaskError)):
-                logger.warning(f"Request failed: {e}", extra={"log_to_stderr": False})
-            else:
-                logger.exception("Request failed due to unexpected error.")
-            status = ResponseStatus(
-                code=grpc.StatusCode.INTERNAL,
-                is_error=True,
-                message=str(e),
-            )
+        except BaseException as e:
+            status = get_grpc_response_status(e, self.request_timeout_s, request_id)
 
         # The status code should always be set.
         assert status is not None
@@ -902,7 +850,7 @@ class HTTPProxy(GenericProxy):
                 multiplexed_model_id = value.decode()
                 handle = handle.options(multiplexed_model_id=multiplexed_model_id)
                 request_context_info["multiplexed_model_id"] = multiplexed_model_id
-            if key.decode() == "x-request-id":
+            if key.decode() == SERVE_HTTP_REQUEST_ID_HEADER:
                 request_context_info["request_id"] = value.decode()
         ray.serve.context._serve_request_context.set(
             ray.serve.context._RequestContext(**request_context_info)
@@ -1016,49 +964,12 @@ class HTTPProxy(GenericProxy):
 
                     yield asgi_message
                     response_started = True
-        except TimeoutError:
-            status = ResponseStatus(
-                code=TIMEOUT_ERROR_CODE,
-                is_error=True,
-            )
-            logger.warning(f"Request timed out after {self.request_timeout_s}s.")
-            # We should only send timeout response if we have not sent
-            # any messages to the client yet. Header (including status code)
-            # messages can only be sent once.
-            if not response_started:
-                for message in convert_object_to_asgi_messages(
-                    f"Request {request_id} timed out after {self.request_timeout_s}s.",
-                    status_code=408,
-                ):
-                    yield message
-        except asyncio.CancelledError:
-            status = ResponseStatus(
-                code=DISCONNECT_ERROR_CODE,
-                is_error=True,
-            )
-            logger.info(
-                f"Client for request {request_id} disconnected, cancelling request."
-            )
-        except (BackPressureError, DeploymentUnavailableError) as e:
-            status = ResponseStatus(
-                code="503",
-                is_error=True,
-                message=e.message,
-            )
-            if isinstance(e, RayTaskError):
-                logger.warning(f"Request failed: {e}", extra={"log_to_stderr": False})
-            else:
-                for message in convert_object_to_asgi_messages(e.message, 503):
-                    yield message
-        except Exception as e:
-            if isinstance(e, (RayActorError, RayTaskError)):
-                logger.warning(f"Request failed: {e}", extra={"log_to_stderr": False})
-            else:
-                logger.exception("Request failed due to unexpected error.")
-            status = ResponseStatus(
-                code="500",
-                is_error=True,
-            )
+        except BaseException as e:
+            status = get_http_response_status(e, self.request_timeout_s, request_id)
+            for asgi_message in send_http_response_on_exception(
+                status, response_started
+            ):
+                yield asgi_message
 
         finally:
             # For websocket connection, queue receive task is done when receiving
@@ -1095,34 +1006,6 @@ class HTTPProxy(GenericProxy):
         yield status
 
 
-def _set_proxy_default_http_options(http_options: HTTPOptions) -> HTTPOptions:
-    http_options = deepcopy(http_options)
-    # Override keep alive setting if the environment variable is set.
-    # TODO(edoakes): more sane behavior here.
-    if RAY_SERVE_HTTP_KEEP_ALIVE_TIMEOUT_S > 0:
-        http_options.keep_alive_timeout_s = RAY_SERVE_HTTP_KEEP_ALIVE_TIMEOUT_S
-
-    http_options.request_timeout_s = (
-        http_options.request_timeout_s or RAY_SERVE_REQUEST_PROCESSING_TIMEOUT_S
-    )
-
-    http_options.middlewares = http_options.middlewares or []
-    if RAY_SERVE_HTTP_PROXY_CALLBACK_IMPORT_PATH:
-        logger.info(
-            "Calling user-provided callback from import path "
-            f"'{RAY_SERVE_HTTP_PROXY_CALLBACK_IMPORT_PATH}'."
-        )
-        http_options.middlewares.extend(
-            validate_http_proxy_callback_return(
-                call_function_from_import_path(
-                    RAY_SERVE_HTTP_PROXY_CALLBACK_IMPORT_PATH
-                )
-            )
-        )
-
-    return http_options
-
-
 def _set_proxy_default_grpc_options(grpc_options) -> gRPCOptions:
     grpc_options = deepcopy(grpc_options) or gRPCOptions()
 
@@ -1149,7 +1032,7 @@ class ProxyActor:
         self._node_ip_address = node_ip_address
 
         # Configure proxy default HTTP and gRPC options.
-        http_options = _set_proxy_default_http_options(http_options)
+        http_options = configure_http_options_with_defaults(http_options)
         grpc_options = _set_proxy_default_grpc_options(grpc_options)
         self._http_options = http_options
         self._grpc_options = grpc_options

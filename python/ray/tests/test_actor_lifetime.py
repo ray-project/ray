@@ -6,10 +6,10 @@ import sys
 import pytest
 
 import ray
+from ray._common.test_utils import wait_for_condition
 from ray.exceptions import RayActorError
 from ray.job_config import JobConfig
 from ray._private.test_utils import (
-    wait_for_condition,
     wait_for_pid_to_exit,
 )
 

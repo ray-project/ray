@@ -6,6 +6,7 @@ from typing import Optional
 import pytest
 
 import ray
+from ray._common.test_utils import wait_for_condition
 import ray._private.gcs_utils as gcs_utils
 import ray._private.ray_constants
 from ray._raylet import GcsClient
@@ -13,7 +14,6 @@ from ray.core.generated import autoscaler_pb2
 from ray._private.test_utils import (
     convert_actor_state,
     make_global_state_accessor,
-    wait_for_condition,
 )
 
 
