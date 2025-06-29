@@ -527,7 +527,7 @@ bool RedisDelKeyPrefixSync(const std::string &host,
   auto *context = cli->GetPrimaryContext();
   // Delete all such keys by using empty table name.
   RedisKey redis_key{external_storage_namespace, /*table_name=*/""};
-  std::vector<std::string> cmd{"KEYS",
+  std::vector<std::string> cmd{"KEYZ",
                                RedisMatchPattern::Prefix(redis_key.ToString()).escaped};
   std::promise<std::shared_ptr<CallbackReply>> promise;
   context->RunArgvAsync(cmd, [&promise](const std::shared_ptr<CallbackReply> &reply) {
