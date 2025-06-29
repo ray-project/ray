@@ -4,6 +4,7 @@ from typing import TYPE_CHECKING, Any, Dict, List, Literal, Optional, Union
 from pydantic import ConfigDict, Field, ValidationError, field_validator
 
 from ray.llm._internal.common.base_pydantic import BaseModelExtended
+from ray.llm._internal.common.models import DiskMultiplexConfig
 from ray.llm._internal.common.utils.cloud_utils import CloudMirrorConfig
 from ray.llm._internal.common.utils.import_utils import try_import
 from ray.llm._internal.serve.configs.constants import (
@@ -12,7 +13,6 @@ from ray.llm._internal.serve.configs.constants import (
 )
 from ray.llm._internal.serve.configs.prompt_formats import Prompt
 from ray.llm._internal.serve.configs.server_models import (
-    DiskMultiplexConfig,
     GenerationRequest,
     GPUType,
     LLMConfig,

@@ -73,7 +73,7 @@ async def test_multiplex_deployment(
     else:
         assert output.disk_multiplex_config.model_dump() == {
             "model_id": multiplexed_model_id,
-            "max_total_tokens": None,
+            "max_total_tokens": 4096,
             "local_path": "/local/path",
             "lora_assigned_int_id": 1,
         }
