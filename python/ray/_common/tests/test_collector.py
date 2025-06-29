@@ -1,13 +1,11 @@
 import ray
 from ray._common.test_utils import Collector
 
-def add_numbers(a, b):
-    return a + b
 
 def test_collector_class():
     collector = Collector.remote()
 
-    random_items = ['this', 'is', 1 , 'demo', 'string']
+    random_items = ["this", "is", 1 , "demo", "string"]
 
     for item in random_items:
         collector.add.remote(item)

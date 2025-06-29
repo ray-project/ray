@@ -8,7 +8,7 @@ from starlette.requests import Request
 
 import ray
 from ray import serve
-from ray._common.test_utils import SignalActor, Collector, wait_for_condition
+from ray._common.test_utils import Collector, SignalActor, wait_for_condition
 from ray.serve._private.test_utils import (
     get_application_url,
     send_signal_on_cancellation,
