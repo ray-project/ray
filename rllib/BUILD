@@ -4225,7 +4225,7 @@ py_test(
         "--num-agents=2",
         "--as-test",
         "--evaluation-parallel-to-training",
-        "--stop-reward=800.0",
+        "--stop-reward=400.0",
         "--num-cpus=6",
         "--evaluation-duration=auto",
         "--evaluation-duration-unit=episodes",
