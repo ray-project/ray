@@ -2,7 +2,9 @@ import copy
 import logging
 import logging.handlers
 import os
+import zipfile
 import pathlib
+from pathlib import Path
 import random
 import re
 import subprocess
@@ -14,6 +16,7 @@ from enum import Enum
 from functools import lru_cache
 from queue import Queue
 from typing import Any, Callable, Dict, List, Optional, Tuple, Union
+import shutil
 
 import bs4
 import requests
@@ -218,6 +221,64 @@ class LinkcheckSummarizer:
         if not has_broken_links:
             self.logger.info("No broken links found!")
 
+# Allows E2E example code to be downloaded from the docs.
+def create_tutorial_zips(app, *args):
+    """Create zip files for tutorial examples during the build process."""
+    # Create _static directories if they don't exist
+    source_static_dir = Path(app.srcdir) / "_static"
+    output_static_dir = Path(app.outdir) / "_static"
+    source_static_dir.mkdir(parents=True, exist_ok=True)
+    output_static_dir.mkdir(parents=True, exist_ok=True)
+    
+    # Create zip files for each tutorial
+    for tutorial_name, paths in app.config.TUTORIAL_EXAMPLES.items():
+        source_dir = Path(app.srcdir) / paths["source"]
+        zip_name = f"{tutorial_name}.zip"
+        
+        # Create original zip
+        source_zip_path = source_static_dir / zip_name
+        with zipfile.ZipFile(source_zip_path, 'w', zipfile.ZIP_DEFLATED) as zipf:
+            for root, dirs, files in os.walk(source_dir):
+                for file in files:
+                    file_path = os.path.join(root, file)
+                    arcname = os.path.relpath(file_path, source_dir)
+                    zipf.write(file_path, arcname)
+        
+        # Create original directory and copy zip
+        original_dir = output_static_dir / "original"
+        original_dir.mkdir(exist_ok=True)
+        output_zip_path = original_dir / zip_name
+        shutil.copy2(source_zip_path, output_zip_path)
+        
+        # Create modified zip
+        source_modified_zip_path = source_static_dir / zip_name
+        
+        with zipfile.ZipFile(source_modified_zip_path, 'w', zipfile.ZIP_DEFLATED) as zipf:
+            for root, dirs, files in os.walk(source_dir):
+                for file in files:
+                    file_path = os.path.join(root, file)
+                    arcname = os.path.relpath(file_path, source_dir)
+                    
+                    # Read and modify content for Python files
+                    if file.endswith('.py'):
+                        with open(file_path, 'r') as f:
+                            content = f.read()
+                        # Make modifications
+                        modified_content = content.replace('num_gpus=1', 'num_gpus=0')
+                        modified_content = modified_content.replace('"L4"', 'None')
+                        modified_content = modified_content.replace('cuda', 'cpu')
+                        modified_content = modified_content.replace('/mnt/user_storage', '.')
+                        # Add modified content to zip
+                        zipf.writestr(arcname, modified_content)
+                    else:
+                        # Add unmodified files to zip
+                        zipf.write(file_path, arcname)
+        
+        # Create modified directory and copy zip
+        modified_dir = output_static_dir / "modified"
+        modified_dir.mkdir(exist_ok=True)
+        output_modified_zip_path = modified_dir / zip_name
+        shutil.copy2(source_modified_zip_path, output_modified_zip_path)
 
 def parse_navbar_config(app: sphinx.application.Sphinx, config: sphinx.config.Config):
     """Parse the navbar config file into a set of links to show in the navbar.
