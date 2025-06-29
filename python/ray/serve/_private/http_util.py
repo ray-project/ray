@@ -7,7 +7,17 @@ import socket
 from collections import deque
 from copy import deepcopy
 from dataclasses import dataclass
-from typing import Any, Awaitable, Callable, List, Optional, Tuple, Type, Union
+from typing import (
+    Any,
+    AsyncGenerator,
+    Awaitable,
+    Callable,
+    List,
+    Optional,
+    Tuple,
+    Type,
+    Union,
+)
 
 import starlette
 import uvicorn
@@ -264,6 +274,49 @@ class MessageQueue(Send):
             raise self._error
         elif len(self._message_queue) == 0 and self._closed:
             raise StopAsyncIteration
+
+    async def fetch_messages_from_queue(
+        self, call_fut: asyncio.Future
+    ) -> AsyncGenerator[List[Any], None]:
+        """Repeatedly consume messages from the queue and yield them.
+
+        This is used to fetch queue messages in the system event loop in
+        a thread-safe manner.
+
+        Args:
+            call_fut: The async Future pointing to the task from the user
+                code event loop that is pushing messages onto the queue.
+
+        Yields:
+            List[Any]: Messages from the queue.
+        """
+        # Repeatedly consume messages from the queue.
+        wait_for_msg_task = None
+        try:
+            while True:
+                wait_for_msg_task = asyncio.create_task(self.wait_for_message())
+                done, _ = await asyncio.wait(
+                    [call_fut, wait_for_msg_task], return_when=asyncio.FIRST_COMPLETED
+                )
+
+                messages = self.get_messages_nowait()
+                if messages:
+                    yield messages
+
+                # Exit once `call_fut` has finished. In this case, all
+                # messages must have already been sent.
+                if call_fut in done:
+                    break
+
+            e = call_fut.exception()
+            if e is not None:
+                raise e from None
+        finally:
+            if not call_fut.done():
+                call_fut.cancel()
+
+            if wait_for_msg_task is not None and not wait_for_msg_task.done():
+                wait_for_msg_task.cancel()
 
 
 class ASGIReceiveProxy:
