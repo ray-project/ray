@@ -175,16 +175,28 @@ steps:
       # doc tests
       - bazel run //ci/ray_ci:test_in_docker -- python/ray/... //doc/... data
         --build-name datalbuild
-        --except-tags gpu
+        --except-tags gpu,dask
         --only-tags doctest
         --parallelism-per-worker 2
       # doc examples
       - bazel run //ci/ray_ci:test_in_docker -- //doc/... data
         --build-name datalbuild
-        --except-tags gpu,post_wheel_build,doctest
+        --except-tags gpu,post_wheel_build,doctest,dask
         --parallelism-per-worker 2
         --skip-ray-installation
     depends_on: datalbuild
+
+  - label: ":database: data: dask doc tests"
+    tags:
+      - data
+      - doc
+    instance_type: medium
+    commands:
+      - bazel run //ci/ray_ci:test_in_docker -- //doc/... data
+        --build-name databuild-py3.12
+        --only-tags dask
+        --parallelism-per-worker 2
+    depends_on: databuild-multipy
 
   - label: ":database: data: doc gpu tests"
     tags:
