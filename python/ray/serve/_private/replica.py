@@ -770,14 +770,7 @@ class ReplicaBase(ABC):
                 )
                 break
 
-    async def perform_graceful_shutdown(self):
-        self._shutting_down = True
-
-        # If the replica was never initialized it never served traffic, so we
-        # can skip the wait period.
-        if self._user_callable_initialized:
-            await self._drain_ongoing_requests()
-
+    async def shutdown(self):
         try:
             await self._user_callable_wrapper.call_destructor()
         except:  # noqa: E722
@@ -792,6 +785,16 @@ class ReplicaBase(ABC):
                 logger.exception("__del__ raised an exception.")
 
         await self._metrics_manager.shutdown()
+
+    async def perform_graceful_shutdown(self):
+        self._shutting_down = True
+
+        # If the replica was never initialized it never served traffic, so we
+        # can skip the wait period.
+        if self._user_callable_initialized:
+            await self._drain_ongoing_requests()
+
+        await self.shutdown()
 
     async def check_health(self):
         try:
@@ -907,7 +910,6 @@ class ReplicaActor:
         deployment_def = cloudpickle.loads(serialized_deployment_def)
         if isinstance(deployment_def, str):
             deployment_def = _load_deployment_def_from_import_path(deployment_def)
-
         self._replica_impl: ReplicaBase = create_replica_impl(
             replica_id=replica_id,
             deployment_def=deployment_def,
