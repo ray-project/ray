@@ -8,7 +8,7 @@ import pytest
 import ray
 import ray._private.services as services
 import ray._private.ray_constants as ray_constants
-from ray._private.test_utils import wait_for_condition
+from ray._common.test_utils import wait_for_condition
 
 
 @pytest.fixture

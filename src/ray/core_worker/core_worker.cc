@@ -785,13 +785,18 @@ CoreWorker::CoreWorker(CoreWorkerOptions options, const WorkerID &worker_id)
 
   actor_creator_ = std::make_shared<DefaultActorCreator>(gcs_client_);
 
-  actor_task_submitter_ = std::make_unique<ActorTaskSubmitter>(*core_worker_client_pool_,
-                                                               *memory_store_,
-                                                               *task_manager_,
-                                                               *actor_creator_,
-                                                               on_excess_queueing,
-                                                               io_service_,
-                                                               reference_counter_);
+  actor_task_submitter_ = std::make_unique<ActorTaskSubmitter>(
+      *core_worker_client_pool_,
+      *memory_store_,
+      *task_manager_,
+      *actor_creator_,
+      /*tensor_transport_getter=*/
+      [this](const ObjectID &object_id) {
+        return reference_counter_->GetTensorTransport(object_id);
+      },
+      on_excess_queueing,
+      io_service_,
+      reference_counter_);
 
   auto node_addr_factory = [this](const NodeID &node_id) {
     std::optional<rpc::Address> addr;
@@ -825,6 +830,13 @@ CoreWorker::CoreWorker(CoreWorkerOptions options, const WorkerID &worker_id)
       actor_creator_,
       worker_context_.GetCurrentJobID(),
       lease_request_rate_limiter_,
+      /*tensor_transport_getter=*/
+      [](const ObjectID &object_id) {
+        // Currently, out-of-band tensor transport (i.e., GPU objects) is only
+        // supported for actor tasks. Therefore, normal tasks should always use
+        // OBJECT_STORE.
+        return rpc::TensorTransport::OBJECT_STORE;
+      },
       boost::asio::steady_timer(io_service_));
   auto report_locality_data_callback = [this](
                                            const ObjectID &object_id,
@@ -1016,10 +1028,6 @@ void CoreWorker::Shutdown() {
     }
     task_execution_service_.stop();
   }
-  if (options_.on_worker_shutdown) {
-    // Running in a main thread.
-    options_.on_worker_shutdown(GetWorkerID());
-  }
 
   task_event_buffer_->FlushEvents(/*forced=*/true);
   task_event_buffer_->Stop();
@@ -1169,13 +1177,6 @@ void CoreWorker::Exit(
     RAY_CHECK_NE(detail, "");
     exiting_detail_ = std::optional<std::string>{detail};
   }
-  // Release the resources early in case draining takes a long time.
-  auto status = local_raylet_client_->NotifyDirectCallTaskBlocked();
-  if (!status.ok()) {
-    RAY_LOG(WARNING)
-        << "Failed to notify Raylet. It is either the raylet is already dead or the "
-           "raylet disconnects the client because it kills this worker.";
-  }
 
   // Callback to shutdown.
   auto shutdown = [this, exit_type, detail, creation_task_exception_pb_bytes]() {
@@ -1209,6 +1210,14 @@ void CoreWorker::Exit(
           // finish. Note that if tasks have been posted to the thread pools but not
           // started yet, they will not be executed.
           task_receiver_->Stop();
+
+          // Release resources only after tasks have stopped executing.
+          auto status = local_raylet_client_->NotifyDirectCallTaskBlocked();
+          if (!status.ok()) {
+            RAY_LOG(WARNING)
+                << "Failed to notify Raylet. The raylet may have already shut down or "
+                << "the connection was lost.";
+          }
 
           bool not_actor_task = false;
           {
@@ -2715,45 +2724,65 @@ Status CoreWorker::CreateActor(const RayFunction &function,
       local_mode_named_actor_registry_.emplace(actor_name, actor_id);
     }
     ExecuteTaskLocalMode(task_spec);
-  } else {
-    task_manager_->AddPendingTask(
-        rpc_address_,
-        task_spec,
-        CurrentCallSite(),
-        // Actor creation task retry happens on GCS not on core worker.
-        /*max_retries*/ 0);
+    return Status::OK();
+  }
 
-    if (actor_name.empty()) {
-      io_service_.post(
-          [this, task_spec = std::move(task_spec)]() {
-            RAY_UNUSED(actor_creator_->AsyncRegisterActor(
-                task_spec, [this, task_spec](Status status) {
-                  if (!status.ok()) {
-                    RAY_LOG(ERROR).WithField(task_spec.ActorCreationId())
-                        << "Failed to register actor. Error message: " << status;
-                    task_manager_->FailPendingTask(task_spec.TaskId(),
-                                                   rpc::ErrorType::ACTOR_CREATION_FAILED,
-                                                   &status);
-                  } else {
-                    RAY_UNUSED(actor_task_submitter_->SubmitActorCreationTask(task_spec));
-                  }
-                }));
-          },
-          "ActorCreator.AsyncRegisterActor");
-    } else {
-      // For named actor, we still go through the sync way because for
-      // functions like list actors these actors need to be there, especially
-      // for local driver. But the current code all go through the gcs right now.
-      auto status = actor_creator_->RegisterActor(task_spec);
-      if (!status.ok()) {
-        return status;
+  if (task_spec.MaxActorRestarts() != 0) {
+    bool actor_restart_warning = false;
+    for (size_t i = 0; i < task_spec.NumArgs(); i++) {
+      if (task_spec.ArgByRef(i) || !task_spec.ArgInlinedRefs(i).empty()) {
+        actor_restart_warning = true;
+        break;
       }
-      io_service_.post(
-          [this, task_spec = std::move(task_spec)]() {
-            RAY_UNUSED(actor_task_submitter_->SubmitActorCreationTask(task_spec));
-          },
-          "CoreWorker.SubmitTask");
     }
+    if (actor_restart_warning) {
+      RAY_LOG(ERROR)
+          << "Actor " << (actor_name.empty() ? "" : (actor_name + " "))
+          << "with class name: '" << function.GetFunctionDescriptor()->ClassName()
+          << "' and ID: '" << task_spec.ActorCreationId()
+          << "' has constructor arguments in the object store and max_restarts > 0. If "
+             "the arguments in the object store go out of scope or are lost, the "
+             "actor restart will fail. See "
+             "https://github.com/ray-project/ray/issues/53727 for more details.";
+    }
+  }
+
+  task_manager_->AddPendingTask(
+      rpc_address_,
+      task_spec,
+      CurrentCallSite(),
+      // Actor creation task retry happens on GCS not on core worker.
+      /*max_retries*/ 0);
+
+  if (actor_name.empty()) {
+    io_service_.post(
+        [this, task_spec = std::move(task_spec)]() {
+          RAY_UNUSED(actor_creator_->AsyncRegisterActor(
+              task_spec, [this, task_spec](Status status) {
+                if (!status.ok()) {
+                  RAY_LOG(ERROR).WithField(task_spec.ActorCreationId())
+                      << "Failed to register actor. Error message: " << status;
+                  task_manager_->FailPendingTask(
+                      task_spec.TaskId(), rpc::ErrorType::ACTOR_CREATION_FAILED, &status);
+                } else {
+                  RAY_UNUSED(actor_task_submitter_->SubmitActorCreationTask(task_spec));
+                }
+              }));
+        },
+        "ActorCreator.AsyncRegisterActor");
+  } else {
+    // For named actor, we still go through the sync way because for
+    // functions like list actors these actors need to be there, especially
+    // for local driver. But the current code all go through the gcs right now.
+    auto status = actor_creator_->RegisterActor(task_spec);
+    if (!status.ok()) {
+      return status;
+    }
+    io_service_.post(
+        [this, task_spec = std::move(task_spec)]() {
+          RAY_UNUSED(actor_task_submitter_->SubmitActorCreationTask(task_spec));
+        },
+        "CoreWorker.SubmitTask");
   }
   return Status::OK();
 }
@@ -3791,7 +3820,7 @@ Status CoreWorker::GetAndPinArgsForExecutor(const TaskSpecification &task,
       // otherwise, the put is a no-op.
       if (!options_.is_local_mode) {
         RAY_UNUSED(memory_store_->Put(RayObject(rpc::ErrorType::OBJECT_IN_PLASMA),
-                                      task.ArgId(i)));
+                                      task.ArgObjectId(i)));
       }
     } else {
       // A pass-by-value argument.
@@ -3812,7 +3841,7 @@ Status CoreWorker::GetAndPinArgsForExecutor(const TaskSpecification &task,
       args->push_back(std::make_shared<RayObject>(
           std::move(data), std::move(metadata), task.ArgInlinedRefs(i), copy_data));
       auto &arg_ref = arg_refs->emplace_back();
-      arg_ref.set_object_id(task.ArgId(i).Binary());
+      arg_ref.set_object_id(task.ArgObjectIdBinary(i));
       // The task borrows all ObjectIDs that were serialized in the inlined
       // arguments. The task will receive references to these IDs, so it is
       // possible for the task to continue borrowing these arguments by the
@@ -4630,7 +4659,7 @@ void CoreWorker::HandleGetCoreWorkerStats(rpc::GetCoreWorkerStatsRequest request
   if (request.include_task_info()) {
     task_manager_->FillTaskInfo(reply, limit);
     for (const auto &current_running_task : running_tasks_) {
-      reply->add_running_task_ids(current_running_task.second.TaskId().Binary());
+      reply->add_running_task_ids(current_running_task.second.TaskIdBinary());
     }
   }
 

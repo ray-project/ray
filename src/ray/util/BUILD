@@ -229,7 +229,7 @@ ray_cc_library(
         ":logging",
         ":macros",
         ":process",
-        "//:sha256",
+        "//src/ray/thirdparty:sha256",
         "@boost//:asio",
         "@com_google_absl//absl/container:flat_hash_map",
     ],
@@ -349,10 +349,7 @@ ray_cc_library(
 
 ray_cc_library(
     name = "scoped_dup2_wrapper",
-    srcs = select({
-        "@platforms//os:windows": ["scoped_dup2_wrapper_windows.cc"],
-        "//conditions:default": ["scoped_dup2_wrapper_posix.cc"],
-    }),
+    srcs = ["scoped_dup2_wrapper.cc"],
     hdrs = ["scoped_dup2_wrapper.h"],
     deps = [
         ":compat",

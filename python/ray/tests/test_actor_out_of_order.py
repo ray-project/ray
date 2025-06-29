@@ -4,7 +4,7 @@ import pytest
 
 import ray
 import ray.cluster_utils
-from ray._private.test_utils import SignalActor
+from ray._common.test_utils import SignalActor
 
 
 def test_threaded_actor_execute_out_of_order(shutdown_only):

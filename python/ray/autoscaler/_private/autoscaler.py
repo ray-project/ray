@@ -15,7 +15,7 @@ from typing import Any, Callable, Dict, FrozenSet, List, Optional, Set, Tuple, U
 import yaml
 
 import ray
-import ray._private.ray_constants as ray_constants
+from ray._common.utils import PLACEMENT_GROUP_BUNDLE_RESOURCE_NAME
 from ray.autoscaler._private.constants import (
     AUTOSCALER_HEARTBEAT_TIMEOUT_S,
     AUTOSCALER_MAX_CONCURRENT_LAUNCHES,
@@ -821,8 +821,7 @@ class StandardAutoscaler:
         infeasible = []
         for bundle in unfulfilled:
             placement_group = any(
-                "_group_" in k
-                or k == ray_constants.PLACEMENT_GROUP_BUNDLE_RESOURCE_NAME
+                "_group_" in k or k == PLACEMENT_GROUP_BUNDLE_RESOURCE_NAME
                 for k in bundle
             )
             if placement_group:
@@ -1262,7 +1261,7 @@ class StandardAutoscaler:
             process_runner=self.process_runner,
             use_internal_ip=True,
             is_head_node=False,
-            docker_config=self.config.get("docker"),
+            docker_config=self._get_node_specific_docker_config(node_id),
             node_resources=self._node_resources(node_id),
             node_labels=self._node_labels(node_id),
             for_recovery=True,
