@@ -47,16 +47,17 @@ class MockTaskResubmitter : public TaskResubmissionInterface {
     task_specs[task_id] = task_deps;
   }
 
-  bool ResubmitTask(const TaskID &task_id, std::vector<ObjectID> *task_deps) {
+  std::optional<rpc::ErrorType> ResubmitTask(const TaskID &task_id,
+                                             std::vector<ObjectID> *task_deps) override {
     if (task_specs.find(task_id) == task_specs.end()) {
-      return false;
+      return rpc::ErrorType::OBJECT_UNRECONSTRUCTABLE_MAX_ATTEMPTS_EXCEEDED;
     }
 
     for (const auto &dep : task_specs[task_id]) {
       task_deps->push_back(dep);
     }
     num_tasks_resubmitted++;
-    return true;
+    return std::nullopt;
   }
 
   absl::flat_hash_map<TaskID, std::vector<ObjectID>> task_specs;

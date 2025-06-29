@@ -81,8 +81,9 @@ class ObjectRecoveryManager {
   /// storing a new value for the object in the direct memory store.
   /// 3. If pinning fails at all locations for the object (or there are no
   /// locations), attempt to reconstruct the object by resubmitting the task
-  /// that created the object. If the task resubmission fails, then the
-  /// fail the recovery operation.
+  /// that created the object. If the task resubmission fails, then fail the recovery
+  /// operation. If the task is a streaming generator task that has been pushed to the
+  /// worker and hasn't finished, cancel the task and resubmit it.
   /// 4. If task resubmission succeeds, recursively attempt to recover any
   /// plasma arguments to the task. The recovery operation will succeed once
   /// the task completes and stores a new value for its return object.
