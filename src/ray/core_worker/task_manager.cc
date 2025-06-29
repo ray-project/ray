@@ -224,8 +224,8 @@ std::vector<rpc::ObjectReference> TaskManager::AddPendingTask(
   std::vector<ObjectID> task_deps;
   for (size_t i = 0; i < spec.NumArgs(); i++) {
     if (spec.ArgByRef(i)) {
-      task_deps.push_back(spec.ArgId(i));
-      RAY_LOG(DEBUG) << "Adding arg ID " << spec.ArgId(i);
+      task_deps.push_back(spec.ArgObjectId(i));
+      RAY_LOG(DEBUG) << "Adding arg ID " << spec.ArgObjectId(i);
     } else {
       const auto &inlined_refs = spec.ArgInlinedRefs(i);
       for (const auto &inlined_ref : inlined_refs) {
@@ -265,7 +265,9 @@ std::vector<rpc::ObjectReference> TaskManager::AddPendingTask(
                                         call_site,
                                         -1,
                                         is_reconstructable,
-                                        /*add_local_ref=*/true);
+                                        /*add_local_ref=*/true,
+                                        /*pinned_at_raylet_id=*/std::optional<NodeID>(),
+                                        /*tensor_transport=*/spec.TensorTransport());
     }
 
     return_ids.push_back(return_id);
@@ -351,7 +353,7 @@ bool TaskManager::ResubmitTask(const TaskID &task_id, std::vector<ObjectID> *tas
   task_deps->reserve(spec.NumArgs());
   for (size_t i = 0; i < spec.NumArgs(); i++) {
     if (spec.ArgByRef(i)) {
-      task_deps->emplace_back(spec.ArgId(i));
+      task_deps->emplace_back(spec.ArgObjectId(i));
     } else {
       const auto &inlined_refs = spec.ArgInlinedRefs(i);
       for (const auto &inlined_ref : inlined_refs) {
@@ -1173,7 +1175,7 @@ void TaskManager::RemoveFinishedTaskReferences(
   std::vector<ObjectID> plasma_dependencies;
   for (size_t i = 0; i < spec.NumArgs(); i++) {
     if (spec.ArgByRef(i)) {
-      plasma_dependencies.push_back(spec.ArgId(i));
+      plasma_dependencies.push_back(spec.ArgObjectId(i));
     } else {
       const auto &inlined_refs = spec.ArgInlinedRefs(i);
       for (const auto &inlined_ref : inlined_refs) {
@@ -1241,7 +1243,7 @@ int64_t TaskManager::RemoveLineageReference(const ObjectID &object_id,
     // for each of the task's args.
     for (size_t i = 0; i < it->second.spec.NumArgs(); i++) {
       if (it->second.spec.ArgByRef(i)) {
-        released_objects->push_back(it->second.spec.ArgId(i));
+        released_objects->push_back(it->second.spec.ArgObjectId(i));
       } else {
         const auto &inlined_refs = it->second.spec.ArgInlinedRefs(i);
         for (const auto &inlined_ref : inlined_refs) {
@@ -1560,8 +1562,8 @@ void TaskManager::FillTaskInfo(rpc::GetCoreWorkerStatsReply *reply,
     if (!node_id.IsNil()) {
       entry->set_node_id(node_id.Binary());
     }
-    entry->set_task_id(task_spec.TaskId().Binary());
-    entry->set_parent_task_id(task_spec.ParentTaskId().Binary());
+    entry->set_task_id(task_spec.TaskIdBinary());
+    entry->set_parent_task_id(task_spec.ParentTaskIdBinary());
     const auto &resources_map = task_spec.GetRequiredResources().GetResourceMap();
     entry->mutable_required_resources()->insert(resources_map.begin(),
                                                 resources_map.end());

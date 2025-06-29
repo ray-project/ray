@@ -145,6 +145,10 @@ class GcsActor {
     if (task_spec.call_site().size() > 0) {
       actor_table_data_.set_call_site(task_spec.call_site());
     }
+    if (task_spec.label_selector().size() > 0) {
+      actor_table_data_.mutable_label_selector()->insert(
+          task_spec.label_selector().begin(), task_spec.label_selector().end());
+    }
     RefreshMetrics();
     export_event_write_enabled_ = IsExportAPIEnabledActor();
   }
@@ -276,7 +280,8 @@ class GcsActor {
 
 using RegisterActorCallback =
     std::function<void(std::shared_ptr<GcsActor>, const Status &status)>;
-using RestartActorCallback = std::function<void(std::shared_ptr<GcsActor>)>;
+using RestartActorForLineageReconstructionCallback =
+    std::function<void(std::shared_ptr<GcsActor>)>;
 using CreateActorCallback = std::function<void(
     std::shared_ptr<GcsActor>, const rpc::PushTaskReply &reply, const Status &status)>;
 
@@ -338,9 +343,9 @@ class GcsActorManager : public rpc::ActorInfoHandler {
       instrumented_io_context &io_context,
       GcsPublisher *gcs_publisher,
       RuntimeEnvManager &runtime_env_manager,
-      GcsFunctionManager &function_manager,
+      GCSFunctionManager &function_manager,
       std::function<void(const ActorID &)> destroy_owned_placement_group_if_needed,
-      const rpc::CoreWorkerClientFactoryFn &worker_client_factory = nullptr);
+      rpc::CoreWorkerClientPool &worker_client_pool);
 
   ~GcsActorManager() override = default;
 
@@ -348,9 +353,10 @@ class GcsActorManager : public rpc::ActorInfoHandler {
                            rpc::RegisterActorReply *reply,
                            rpc::SendReplyCallback send_reply_callback) override;
 
-  void HandleRestartActor(rpc::RestartActorRequest request,
-                          rpc::RestartActorReply *reply,
-                          rpc::SendReplyCallback send_reply_callback) override;
+  void HandleRestartActorForLineageReconstruction(
+      rpc::RestartActorForLineageReconstructionRequest request,
+      rpc::RestartActorForLineageReconstructionReply *reply,
+      rpc::SendReplyCallback send_reply_callback) override;
 
   void HandleCreateActor(rpc::CreateActorRequest request,
                          rpc::CreateActorReply *reply,
@@ -667,11 +673,11 @@ class GcsActorManager : public rpc::ActorInfoHandler {
   /// messages from a driver/worker caused by some network problems.
   absl::flat_hash_map<ActorID, std::vector<RegisterActorCallback>>
       actor_to_register_callbacks_;
-  /// Callbacks of pending `RestartActor` requests.
+  /// Callbacks of pending `RestartActorForLineageReconstruction` requests.
   /// Maps actor ID to actor restart callbacks, which is used to filter duplicated
   /// messages from a driver/worker caused by some network problems.
-  absl::flat_hash_map<ActorID, std::vector<RestartActorCallback>>
-      actor_to_restart_callbacks_;
+  absl::flat_hash_map<ActorID, std::vector<RestartActorForLineageReconstructionCallback>>
+      actor_to_restart_for_lineage_reconstruction_callbacks_;
   /// Callbacks of actor creation requests.
   /// Maps actor ID to actor creation callbacks, which is used to filter duplicated
   /// messages come from a Driver/Worker caused by some network problems.
@@ -712,9 +718,8 @@ class GcsActorManager : public rpc::ActorInfoHandler {
   instrumented_io_context &io_context_;
   /// A publisher for publishing gcs messages.
   GcsPublisher *gcs_publisher_;
-  /// Factory to produce clients to workers. This is used to communicate with
-  /// actors and their owners.
-  rpc::CoreWorkerClientFactoryFn worker_client_factory_;
+  /// This is used to communicate with actors and their owners.
+  rpc::CoreWorkerClientPool &worker_client_pool_;
   /// A callback that is used to destroy placemenet group owned by the actor.
   /// This method MUST BE IDEMPOTENT because it can be called multiple times during
   /// actor destroy process.
@@ -722,7 +727,7 @@ class GcsActorManager : public rpc::ActorInfoHandler {
   /// Runtime environment manager for GC purpose
   RuntimeEnvManager &runtime_env_manager_;
   /// Function manager for GC purpose
-  GcsFunctionManager &function_manager_;
+  GCSFunctionManager &function_manager_;
 
   UsageStatsClient *usage_stats_client_;
   /// Run a function on a delay. This is useful for guaranteeing data will be

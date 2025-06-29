@@ -4,7 +4,8 @@ from concurrent.futures import Future
 import pytest
 
 import ray as real_ray
-from ray._private.test_utils import object_memory_usage, wait_for_condition
+from ray._common.test_utils import wait_for_condition
+from ray._private.test_utils import object_memory_usage
 from ray._raylet import ActorID, ObjectRef
 from ray.util.client import _ClientContext
 from ray.util.client.common import ClientActorRef, ClientObjectRef

@@ -62,6 +62,12 @@ Actions
    Configures an RL module that generates actions in an autoregressive manner, where the second component of an action depends on
    the previously sampled first component of the same action.
 
+- `Custom action distribution class <https://github.com/ray-project/ray/blob/master/rllib/examples/actions/custom_action_distribution.py>`__:
+   Demonstrates how to write a custom action distribution class, taking an additional temperature parameter on top of a Categorical
+   distribution, and how to configure this class inside your :py:class:`~ray.rllib.core.rl_module.rl_module.RLModule` implementation.
+   Further explains how to define different such classes for the different forward methods of your :py:class:`~ray.rllib.core.rl_module.rl_module.RLModule`
+   in case you need more granularity.
+
 - `Nested Action Spaces <https://github.com/ray-project/ray/blob/master/rllib/examples/actions/nested_action_spaces.py>`__:
    Sets up an environment with nested action spaces using custom single- or multi-agent
    configurations. This example demonstrates how RLlib manages complex action structures,
@@ -162,6 +168,16 @@ Curriculum learning
    Demonstrates curriculum learning, where the environment difficulty increases as the agent improves.
    This approach enables gradual learning, allowing agents to master simpler tasks before progressing to more challenging ones,
    ideal for environments with hierarchical or staged difficulties. Also see the :doc:`curriculum learning how-to </rllib/rllib-advanced-api>` from the documentation.
+
+
+Debugging
++++++++++
+
+- `Deterministic sampling and training <https://github.com/ray-project/ray/blob/master/rllib/examples/debugging/deterministic_training.py>`__:
+   Demonstrates the possibility to seed an experiment through the algorithm config. RLlib passes the seed through to all components that have a copy of the
+   :ref:`RL environment <rllib-environments-doc>` and the :ref:`RLModule <rlmodule-guide>` and thus makes sure these components behave deterministically.
+   When using a seed, train results should become repeatable. Note that some algorithms, such as :ref:`APPO <appo>` which rely on asynchronous sampling
+   in combination with Ray network communication always behave stochastically, no matter whether you set a seed or not.
 
 
 Environments

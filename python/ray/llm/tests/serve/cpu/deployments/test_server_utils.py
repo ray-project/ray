@@ -1,9 +1,10 @@
 import base64
 import struct
-from ray.llm._internal.serve.deployments.utils.server_utils import floats_to_base64
-
 import sys
+
 import pytest
+
+from ray.llm._internal.serve.deployments.utils.server_utils import floats_to_base64
 
 
 def test_floats_to_base64_empty_list():
