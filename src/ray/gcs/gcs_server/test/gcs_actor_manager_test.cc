@@ -171,7 +171,6 @@ class GcsActorManagerTest : public ::testing::Test {
     // io_context themselves. This is a hack, and future tests shouldn't use this
     // RegisterActor function.
     while (io_service_.poll_one()) {
-      std::cout << "io_service_.poll_one()" << std::endl;
       continue;
     }
     auto request = Mocker::GenRegisterActorRequest(
@@ -626,7 +625,7 @@ TEST_F(GcsActorManagerTest, TestNamedActors) {
                                                   /*max_restarts=*/0,
                                                   /*detached=*/true,
                                                   /*name=*/"actor1",
-                                                  /*ray_namesapce=*/"test_named_actor");
+                                                  /*ray_namespace=*/"test_named_actor");
   Status status = gcs_actor_manager_->RegisterActor(
       request1, [](std::shared_ptr<gcs::GcsActor> actor, const Status &status) {});
   io_service_.run_one();
