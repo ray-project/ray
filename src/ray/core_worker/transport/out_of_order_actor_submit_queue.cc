@@ -14,7 +14,6 @@
 
 #include "ray/core_worker/transport/out_of_order_actor_submit_queue.h"
 
-#include <map>
 #include <utility>
 #include <vector>
 
@@ -24,14 +23,12 @@ namespace core {
 OutofOrderActorSubmitQueue::OutofOrderActorSubmitQueue(ActorID actor_id)
     : kActorId(actor_id) {}
 
-bool OutofOrderActorSubmitQueue::Emplace(uint64_t position,
+void OutofOrderActorSubmitQueue::Emplace(uint64_t position,
                                          const TaskSpecification &spec) {
-  if (Contains(position)) {
-    return false;
-  }
-  return pending_queue_
-      .emplace(position, std::make_pair(spec, /*dependency_resolved*/ false))
-      .second;
+  RAY_CHECK(!sending_queue_.contains(position));
+  RAY_CHECK(pending_queue_
+                .emplace(position, std::make_pair(spec, /*dependency_resolved*/ false))
+                .second);
 }
 
 bool OutofOrderActorSubmitQueue::Contains(uint64_t position) const {

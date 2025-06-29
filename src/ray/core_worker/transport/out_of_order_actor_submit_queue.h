@@ -14,7 +14,6 @@
 
 #pragma once
 
-#include <map>
 #include <utility>
 #include <vector>
 
@@ -36,9 +35,8 @@ namespace core {
 class OutofOrderActorSubmitQueue : public IActorSubmitQueue {
  public:
   explicit OutofOrderActorSubmitQueue(ActorID actor_id);
-  /// Add a task into the queue. Returns false if a task with the same sequence_no has
-  /// already been inserted.
-  bool Emplace(uint64_t position, const TaskSpecification &spec) override;
+  /// Add a task into the queue.
+  void Emplace(uint64_t position, const TaskSpecification &spec) override;
   /// If a task exists.
   bool Contains(uint64_t position) const override;
   /// Get a task; the bool indicates if the task's dependency was resolved.
