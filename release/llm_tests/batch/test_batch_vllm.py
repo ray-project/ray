@@ -278,7 +278,7 @@ def test_no_memory_leak(concurrency):
         ),
         tokenize=False,
         detokenize=False,
-        batch_size=16,
+        batch_size=4,
         accelerator_type=None,
         concurrency=concurrency,
     )
