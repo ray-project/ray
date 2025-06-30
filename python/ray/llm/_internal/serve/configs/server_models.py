@@ -262,7 +262,7 @@ class LLMConfig(BaseModelExtended):
         """
         if model_id_or_path:
             hf_config = transformers.PretrainedConfig.from_pretrained(model_id_or_path)
-            if hasattr(hf_config, "architectures"):
+            if hasattr(hf_config, "architectures") and hf_config.architectures:
                 self._model_architecture = hf_config.architectures[0]
 
         if model_architecture:
