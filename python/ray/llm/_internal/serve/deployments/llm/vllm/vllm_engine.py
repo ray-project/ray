@@ -86,8 +86,7 @@ def _get_vllm_engine_config(
     llm_config: LLMConfig,
 ) -> Tuple["AsyncEngineArgs", "VllmConfig"]:
     engine_config = llm_config.get_engine_config()
-    async_engine_args = vllm.engine.arg_utils.AsyncEngineArgs(**engine_config.engine_kwargs)
-    print(f"[Kourosh] async_engine_args: {engine_config.engine_kwargs}")
+    async_engine_args = vllm.engine.arg_utils.AsyncEngineArgs(**engine_config.get_initialization_kwargs())
     vllm_engine_config = async_engine_args.create_engine_config()
     return async_engine_args, vllm_engine_config
 

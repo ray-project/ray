@@ -87,7 +87,24 @@ class VLLMEngineConfig(BaseModelExtended):
         Get kwargs that will be actually passed to the LLMInitializer
         constructor.
         """
-        return self.engine_kwargs.copy()
+        engine_kwargs = self.engine_kwargs.copy()
+        
+        if "model" in engine_kwargs or "served_model_name" in engine_kwargs:
+            raise ValueError("model or served_model_name is not allowed in engine_kwargs when using Ray Serve LLM. Please use `model_loading_config` in LLMConfig instead.")
+        
+        engine_kwargs["model"] = self.actual_hf_model_id
+        engine_kwargs["served_model_name"] = [self.model_id]
+        
+        if "distributed_executor_backend" in engine_kwargs and engine_kwargs["distributed_executor_backend"] != "ray":
+            raise ValueError("distributed_executor_backend != 'ray' is not allowed in engine_kwargs when using Ray Serve LLM Configs.")
+        else: 
+            engine_kwargs["distributed_executor_backend"] = "ray"
+        
+        if "disable_log_stats" in engine_kwargs and engine_kwargs["disable_log_stats"] != False:
+            logger.warning("disable_log_stats = True is not allowed in engine_kwargs when using Ray Serve LLM Configs. Setting it to False.")
+        engine_kwargs["disable_log_stats"] = False
+        
+        return engine_kwargs
 
     def get_runtime_env_with_local_env_vars(self) -> dict:
         runtime_env = self.runtime_env or {}
@@ -132,8 +149,6 @@ class VLLMEngineConfig(BaseModelExtended):
             else:
                 raise ValueError(f"Unknown engine argument: {key}")
             
-                
-        VLLMEngineConfig._validate_engine_kwargs(engine_kwargs, hf_model_id, llm_config)
 
         return VLLMEngineConfig(
             model_id=llm_config.model_id,
@@ -145,25 +160,8 @@ class VLLMEngineConfig(BaseModelExtended):
             frontend_kwargs=frontend_kwargs,
             runtime_env=llm_config.runtime_env,
         )
-        
-    @staticmethod
-    def _validate_engine_kwargs(engine_kwargs: Dict[str, Any], hf_model_id: str, llm_config: LLMConfig):
-        # Modify the engine_kwargs to match with expectations of  Ray Serve LLM Configs.
-        
-        if "model" in engine_kwargs or "served_model_name" in engine_kwargs:
-            raise ValueError("model or served_model_name is not allowed in engine_kwargs when using Ray Serve LLM. Please use `model_loading_config` in LLMConfig instead.")
+    
 
-        engine_kwargs["model"] = hf_model_id or llm_config.model_id
-        engine_kwargs["served_model_name"] = [llm_config.model_id]
-        
-        if "distributed_executor_backend" in engine_kwargs and engine_kwargs["distributed_executor_backend"] != "ray":
-            raise ValueError("distributed_executor_backend != 'ray' is not allowed in engine_kwargs when using Ray Serve LLM Configs.")
-        else: 
-            engine_kwargs["distributed_executor_backend"] = "ray"
-        
-        if "disable_log_stats" in engine_kwargs and engine_kwargs["disable_log_stats"] != False:
-            logger.warning("disable_log_stats = True is not allowed in engine_kwargs when using Ray Serve LLM Configs. Setting it to False.")
-        engine_kwargs["disable_log_stats"] = False
 
     def ray_accelerator_type(self) -> str:
         """Converts the accelerator type to the Ray Core format."""
