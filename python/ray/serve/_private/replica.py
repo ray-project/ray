@@ -55,6 +55,7 @@ from ray.serve._private.constants import (
     RAY_SERVE_REPLICA_AUTOSCALING_METRIC_RECORD_PERIOD_S,
     RAY_SERVE_RUN_SYNC_IN_THREADPOOL,
     RAY_SERVE_RUN_SYNC_IN_THREADPOOL_WARNING,
+    RAY_SERVE_RUN_USER_CODE_IN_SEPARATE_THREAD,
     RECONFIGURE_METHOD,
     REQUEST_LATENCY_BUCKETS_MS,
     REQUEST_ROUTING_STATS_METHOD,
@@ -371,6 +372,7 @@ class ReplicaBase(ABC):
             init_kwargs,
             deployment_id=self._deployment_id,
             run_sync_methods_in_threadpool=RAY_SERVE_RUN_SYNC_IN_THREADPOOL,
+            run_user_code_in_separate_thread=RAY_SERVE_RUN_USER_CODE_IN_SEPARATE_THREAD,
             local_testing_mode=False,
         )
         self._semaphore = Semaphore(lambda: self.max_ongoing_requests)
@@ -1169,6 +1171,7 @@ class UserCallableWrapper:
         *,
         deployment_id: DeploymentID,
         run_sync_methods_in_threadpool: bool,
+        run_user_code_in_separate_thread: bool,
         local_testing_mode: bool,
     ):
         if not (inspect.isfunction(deployment_def) or inspect.isclass(deployment_def)):
@@ -1185,27 +1188,37 @@ class UserCallableWrapper:
         self._local_testing_mode = local_testing_mode
         self._destructor_called = False
         self._run_sync_methods_in_threadpool = run_sync_methods_in_threadpool
+        self._run_user_code_in_separate_thread = run_user_code_in_separate_thread
         self._warned_about_sync_method_change = False
         self._cached_user_method_info: Dict[str, UserMethodInfo] = {}
 
         # Will be populated in `initialize_callable`.
         self._callable = None
 
-        # All interactions with user code run on this loop to avoid blocking the
-        # replica's main event loop.
-        self._user_code_event_loop: asyncio.AbstractEventLoop = asyncio.new_event_loop()
+        if self._run_user_code_in_separate_thread:
+            # All interactions with user code run on this loop to avoid blocking the
+            # replica's main event loop.
+            self._user_code_event_loop: asyncio.AbstractEventLoop = (
+                asyncio.new_event_loop()
+            )
 
-        def _run_user_code_event_loop():
-            # Required so that calls to get the current running event loop work
-            # properly in user code.
-            asyncio.set_event_loop(self._user_code_event_loop)
-            self._user_code_event_loop.run_forever()
+            def _run_user_code_event_loop():
+                # Required so that calls to get the current running event loop work
+                # properly in user code.
+                asyncio.set_event_loop(self._user_code_event_loop)
+                self._user_code_event_loop.run_forever()
 
-        self._user_code_event_loop_thread = threading.Thread(
-            daemon=True,
-            target=_run_user_code_event_loop,
-        )
-        self._user_code_event_loop_thread.start()
+            self._user_code_event_loop_thread = threading.Thread(
+                daemon=True,
+                target=_run_user_code_event_loop,
+            )
+            self._user_code_event_loop_thread.start()
+        else:
+            self._user_code_event_loop = asyncio.get_running_loop()
+
+    @property
+    def event_loop(self) -> asyncio.AbstractEventLoop:
+        return self._user_code_event_loop
 
     def _run_user_code(f: Callable) -> Callable:
         """Decorator to run a coroutine method on the user code event loop.
@@ -1220,11 +1233,14 @@ class UserCallableWrapper:
         @functools.wraps(f)
         def wrapper(self, *args, **kwargs) -> Any:
             coro = f(self, *args, **kwargs)
-            fut = asyncio.run_coroutine_threadsafe(coro, self._user_code_event_loop)
-            if self._local_testing_mode:
-                return fut
+            if self._run_user_code_in_separate_thread:
+                fut = asyncio.run_coroutine_threadsafe(coro, self._user_code_event_loop)
+                if self._local_testing_mode:
+                    return fut
 
-            return asyncio.wrap_future(fut)
+                return asyncio.wrap_future(fut)
+            else:
+                return asyncio.create_task(coro)
 
         return wrapper
 
@@ -1576,14 +1592,22 @@ class UserCallableWrapper:
         # `asyncio.Event`s are not thread safe, so `call_soon_threadsafe` must be
         # used to interact with the result queue from the user callable thread.
         system_event_loop = asyncio.get_running_loop()
-
-        async def enq(item: Any):
-            system_event_loop.call_soon_threadsafe(result_queue.put_nowait, item)
-
         user_method_info = self.get_user_method_info(request_metadata.call_method)
+
+        if self._run_user_code_in_separate_thread:
+
+            async def enq(item: Any):
+                system_event_loop.call_soon_threadsafe(result_queue.put_nowait, item)
+
+        else:
+
+            async def enq(item: Any):
+                result_queue.put_nowait(item)
+
         call_user_method_future = self._call_http_entrypoint(
             user_method_info, scope, receive, enq
         )
+
         first_message_peeked = False
         async for messages in result_queue.fetch_messages_from_queue(
             call_user_method_future
