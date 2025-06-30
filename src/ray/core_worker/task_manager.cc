@@ -334,9 +334,8 @@ std::optional<rpc::ErrorType> TaskManager::ResubmitTask(
         return rpc::ErrorType::OBJECT_UNRECONSTRUCTABLE_MAX_ATTEMPTS_EXCEEDED;
       }
       // If the task is a running streaming generator, the object may have been created,
-      // deleted, and then needed again for recovery. We have to cancel and resubmit the
-      // generator to recover the object. When the task is finished / failed, ResubmitTask
-      // will be called again.
+      // deleted, and then needed again for recovery. When the task is finished / failed,
+      // ResubmitTask will be called again.
       should_queue_generator_resubmit = true;
     } else if (task_entry.GetStatus() != rpc::TaskStatus::FINISHED &&
                task_entry.GetStatus() != rpc::TaskStatus::FAILED) {
@@ -351,6 +350,7 @@ std::optional<rpc::ErrorType> TaskManager::ResubmitTask(
   }
 
   if (should_queue_generator_resubmit) {
+    // Needs to be called outside of the lock to avoid deadlock.
     return queue_generator_resubmit_(spec)
                ? std::nullopt
                : std::make_optional(rpc::ErrorType::TASK_CANCELLED);

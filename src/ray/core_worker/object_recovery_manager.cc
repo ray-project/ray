@@ -183,9 +183,9 @@ void ObjectRecoveryManager::ReconstructObject(const ObjectID &object_id) {
   // after ResubmitTask, then it will remain true forever.
   // see https://github.com/ray-project/ray/issues/47606 for more details.
   reference_counter_.UpdateObjectPendingCreation(object_id, true);
-  auto error_type_opt = task_resubmitter_.ResubmitTask(task_id, &task_deps);
+  auto error_type_optional = task_resubmitter_.ResubmitTask(task_id, &task_deps);
 
-  if (!error_type_opt.has_value()) {
+  if (!error_type_optional.has_value()) {
     // Try to recover the task's dependencies.
     for (const auto &dep : task_deps) {
       auto recovered = RecoverObject(dep);
@@ -205,7 +205,7 @@ void ObjectRecoveryManager::ReconstructObject(const ObjectID &object_id) {
         << "Failed to reconstruct object because lineage has already been deleted";
     reference_counter_.UpdateObjectPendingCreation(object_id, false);
     recovery_failure_callback_(object_id,
-                               *error_type_opt,
+                               *error_type_optional,
                                /*pin_object=*/true);
   }
 }
