@@ -15,9 +15,8 @@ from ray.serve._private.common import (
     DeploymentID,
     RequestMetadata,
     RequestProtocol,
-    StreamingHTTPRequest,
-    gRPCRequest,
 )
+from ray.serve._private.http_util import ASGIReceiveProxy
 from ray.serve._private.replica import UserCallableWrapper
 from ray.serve.generated import serve_pb2
 
@@ -554,10 +553,9 @@ async def test_grpc_unary_request(run_sync_methods_in_threadpool: bool):
     )
     await user_callable_wrapper.initialize_callable()
 
-    grpc_request = gRPCRequest(serve_pb2.UserDefinedResponse(greeting="world"))
     request_metadata = _make_request_metadata(call_method="greet", is_grpc_request=True)
     result = await user_callable_wrapper.call_user_method(
-        request_metadata, (grpc_request,), dict()
+        request_metadata, (serve_pb2.UserDefinedResponse(greeting="world"),), dict()
     )
     assert isinstance(result, serve_pb2.UserDefinedResponse)
     assert result.greeting == "Hello world!"
@@ -571,8 +569,6 @@ async def test_grpc_streaming_request(run_sync_methods_in_threadpool: bool):
     )
     user_callable_wrapper.initialize_callable()
 
-    grpc_request = gRPCRequest(serve_pb2.UserDefinedResponse(greeting="world"))
-
     result_list = []
 
     request_metadata = _make_request_metadata(
@@ -580,7 +576,7 @@ async def test_grpc_streaming_request(run_sync_methods_in_threadpool: bool):
     )
     await user_callable_wrapper._call_user_generator(
         request_metadata,
-        (grpc_request,),
+        (serve_pb2.UserDefinedResponse(greeting="world"),),
         dict(),
         generator_result_callback=result_list.append,
     )
@@ -652,20 +648,16 @@ async def test_http_handler(callable: Callable, monkeypatch):
     async def receive_asgi_messages(_: str):
         return pickle.dumps(asgi_messages)
 
-    http_request = StreamingHTTPRequest(
-        asgi_scope=asgi_scope,
-        receive_asgi_messages=receive_asgi_messages,
-    )
-
     result_list = []
 
     request_metadata = _make_request_metadata(is_http_request=True, is_streaming=True)
-    await user_callable_wrapper._call_http_entrypoint(
+    async for result in user_callable_wrapper.call_http_entrypoint(
         request_metadata,
-        (http_request,),
-        dict(),
-        generator_result_callback=result_list.append,
-    )
+        lambda *args: None,
+        asgi_scope,
+        ASGIReceiveProxy(asgi_scope, request_metadata, receive_asgi_messages),
+    ):
+        result_list.extend(pickle.loads(result))
 
     assert result_list[0]["type"] == "http.response.start"
     assert result_list[0]["status"] == 200
