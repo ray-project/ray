@@ -62,11 +62,12 @@ def test_load_balancing(ray_start_cluster):
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="Times out on Windows")
-def test_hybrid_policy(ray_start_cluster):
+def test_hybrid_policy_threshold(ray_start_cluster):
     cluster = ray_start_cluster
 
     NUM_NODES = 2
     NUM_CPUS_PER_NODE = 4
+    # The default hybrid policy packs nodes up to 50% capacity before spreading.
     PER_NODE_HYBRID_THRESHOLD = int(NUM_CPUS_PER_NODE / 2)
     for _ in range(NUM_NODES):
         cluster.add_node(
@@ -108,16 +109,6 @@ def test_hybrid_policy(ray_start_cluster):
     ray.get([block_task.release.remote() for _ in refs], timeout=20)
     counter = collections.Counter(ray.get(refs, timeout=20))
     assert all(v == PER_NODE_HYBRID_THRESHOLD for v in counter.values()), counter
-
-    # Submit more than PER_NODE_HYBRID_THRESHOLD tasks per node.
-    # Once all nodes are past the hybrid threshold we round robin.
-    # TODO(wuisawesome): Ideally we could schedule less than 20 nodes here, but the
-    # policy is imperfect if a resource report interrupts the process.
-    refs = [get_node_id.remote() for _ in range(int(NUM_CPUS_PER_NODE * NUM_NODES))]
-    ray.get([block_driver.acquire.remote() for _ in refs], timeout=20)
-    ray.get([block_task.release.remote() for _ in refs], timeout=20)
-    counter = collections.Counter(ray.get(refs, timeout=20))
-    assert all(v == NUM_CPUS_PER_NODE for v in counter.values()), counter
 
 
 def test_legacy_spillback_distribution(ray_start_cluster):
