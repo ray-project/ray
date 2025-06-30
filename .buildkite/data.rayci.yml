@@ -175,7 +175,7 @@ steps:
       # doc tests
       - bazel run //ci/ray_ci:test_in_docker -- python/ray/... //doc/... data
         --build-name datalbuild
-        --except-tags gpu,dask
+        --except-tags gpu
         --only-tags doctest
         --parallelism-per-worker 2
       # doc examples
