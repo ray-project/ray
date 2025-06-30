@@ -6,6 +6,7 @@ from datetime import timedelta
 _NUMPY_AVAILABLE = True
 _TORCH_AVAILABLE = True
 _CUPY_AVAILABLE = True
+_TENSORDICT_AVAILABLE = True
 
 try:
     import torch as th  # noqa: F401
@@ -17,6 +18,11 @@ try:
 except ImportError:
     _CUPY_AVAILABLE = False
 
+try:
+    import tensordict as td  # noqa: F401
+except ImportError:
+    _TENSORDICT_AVAILABLE = False
+
 
 def cupy_available():
     return _CUPY_AVAILABLE
@@ -24,6 +30,10 @@ def cupy_available():
 
 def torch_available():
     return _TORCH_AVAILABLE
+
+
+def tensordict_available():
+    return _TENSORDICT_AVAILABLE
 
 
 class Backend(object):

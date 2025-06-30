@@ -130,6 +130,25 @@ class TorchTensorType(ChannelOutputType):
             deserializer=deserialize,
         )
 
+    def register_custom_tensordict_serializer(self) -> None:
+        super().register_custom_serializer()
+
+        from tensordict import TensorDict
+
+        def serialize(t):
+            ctx = ChannelContext.get_current()
+            return ctx.serialization_context.serialize_tensordict(t)
+
+        def deserialize(b):
+            ctx = ChannelContext.get_current()
+            return ctx.serialization_context.deserialize_tensordict(b, self.device)
+
+        ray.util.serialization.register_serializer(
+            TensorDict,
+            serializer=serialize,
+            deserializer=deserialize,
+        )
+
     def create_channel(
         self,
         writer: Optional["ray.actor.ActorHandle"],

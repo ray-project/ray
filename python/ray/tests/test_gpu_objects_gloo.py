@@ -1,6 +1,7 @@
 import sys
 import random
 import torch
+from tensordict import TensorDict
 import pytest
 import ray
 from ray.experimental.collective import create_collective_group
@@ -16,6 +17,8 @@ class GPUTestActor:
     def double(self, data):
         if isinstance(data, list):
             return [d * 2 for d in data]
+        if isinstance(data, TensorDict):
+            return data.apply(lambda x: x * 2)
         return data * 2
 
     def get_gpu_object(self, obj_id: str):
@@ -174,6 +177,15 @@ def test_fetch_gpu_object_to_driver(ray_start_regular):
     assert torch.equal(result[1], tensor2)
     assert result[2] == 7
 
+    # Case 4: Tensordict
+    td = TensorDict(
+        {"action": torch.randn((2,)), "reward": torch.randn((2,))}, batch_size=[2]
+    )
+    ref = actor.echo.remote(td)
+    result = ray.get(ref)
+    assert torch.equal(result["action"], td["action"])
+    assert torch.equal(result["reward"], td["reward"])
+
 
 def test_invalid_tensor_transport(ray_start_regular):
     with pytest.raises(ValueError, match="Invalid tensor transport"):
@@ -183,6 +195,61 @@ def test_invalid_tensor_transport(ray_start_regular):
             @ray.method(tensor_transport="invalid")
             def echo(self, data):
                 return data
+
+
+def test_tensordict_transfer(ray_start_regular):
+    world_size = 2
+    actors = [GPUTestActor.remote() for _ in range(world_size)]
+    create_collective_group(actors, backend="torch_gloo")
+
+    td = TensorDict(
+        {"action": torch.randn((2,)), "reward": torch.randn((2,))}, batch_size=[2]
+    )
+    sender, receiver = actors[0], actors[1]
+    ref = sender.echo.remote(td)
+    result = receiver.double.remote(ref)
+    td_result = ray.get(result)
+
+    assert td_result["action"] == pytest.approx(td["action"] * 2)
+    assert td_result["reward"] == pytest.approx(td["reward"] * 2)
+
+
+def test_trigger_out_of_band_tensordict_transfer(ray_start_regular):
+    world_size = 2
+    actors = [GPUTestActor.remote() for _ in range(world_size)]
+    create_collective_group(actors, backend="torch_gloo")
+
+    src_actor, dst_actor = actors[0], actors[1]
+
+    td = TensorDict(
+        {"action": torch.randn((2,)), "reward": torch.randn((2,))}, batch_size=[2]
+    ).to("cpu")
+    gpu_ref = src_actor.echo.remote(td)
+
+    # Check src_actor has the GPU object
+    ret_val_src = ray.get(src_actor.get_gpu_object.remote(gpu_ref.hex()))
+    assert ret_val_src is not None
+    assert isinstance(ret_val_src[0], TensorDict)
+    assert torch.equal(ret_val_src[0]["action"], td["action"])
+    assert torch.equal(ret_val_src[0]["reward"], td["reward"])
+
+    gpu_object_manager = ray._private.worker.global_worker.gpu_object_manager
+    gpu_object_manager.add_gpu_object_ref(gpu_ref, src_actor, TensorTransportEnum.GLOO)
+
+    # Trigger out-of-band tensor transfer from src_actor to dst_actor.
+    # The GPU object will be removed from src_actor's GPU object store
+    # because the current GC implementation garbage collects GPU objects
+    # whenever they are consumed once.
+    task_args = (gpu_ref,)
+    gpu_object_manager.trigger_out_of_band_tensor_transfer(dst_actor, task_args)
+    assert ray.get(src_actor.get_gpu_object.remote(gpu_ref.hex())) is None
+
+    # Check dst_actor has the GPU object
+    ret_val_dst = ray.get(dst_actor.get_gpu_object.remote(gpu_ref.hex()))
+    assert ret_val_dst is not None
+    assert len(ret_val_dst) == 1
+    assert torch.equal(ret_val_dst[0]["action"], td["action"])
+    assert torch.equal(ret_val_dst[0]["reward"], td["reward"])
 
 
 if __name__ == "__main__":

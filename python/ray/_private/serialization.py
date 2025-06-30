@@ -6,6 +6,7 @@ from typing import TYPE_CHECKING, Any, List, Optional, Tuple, Union
 
 if TYPE_CHECKING:
     import torch
+    from tensordict import TensorDict
 
 import google.protobuf.message
 
@@ -631,7 +632,7 @@ class SerializationContext:
 
     def _serialize_and_retrieve_tensors(
         self, value: Any
-    ) -> Tuple[MessagePackSerializedObject, List["torch.Tensor"]]:
+    ) -> Tuple[MessagePackSerializedObject, List[Union["torch.Tensor", "TensorDict"]]]:
         """
         Serialize `value` and return the serialized value and any tensors retrieved from `value`.
         This is only used for GPU objects.

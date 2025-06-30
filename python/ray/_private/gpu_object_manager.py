@@ -1,4 +1,4 @@
-from typing import TYPE_CHECKING, Any, Dict, List, NamedTuple, Optional, Tuple
+from typing import TYPE_CHECKING, Any, Dict, List, NamedTuple, Optional, Tuple, Union
 
 import ray
 from ray._private.custom_types import TensorTransportEnum
@@ -10,8 +10,16 @@ from ray.actor import ActorHandle
 # down normal worker startup time.
 util = None
 
-if TYPE_CHECKING:
+try:
     import torch
+except ImportError:
+    raise ImportError(
+        "`gpu_object_manager` requires PyTorch. "
+        "Please install torch with 'pip install torch' to use this feature."
+    )
+
+if TYPE_CHECKING:
+    from tensordict import TensorDict
 
     from ray._private import gpu_object_manager_util as util
 
@@ -43,17 +51,21 @@ class GPUObjectManager:
         # A dictionary that maps from an object ID to a list of tensors.
         #
         # Note: Currently, `gpu_object_store` is only supported for Ray Actors.
-        self.gpu_object_store: Dict[str, List["torch.Tensor"]] = {}
+        self.gpu_object_store: Dict[str, List[Union["torch.Tensor", "TensorDict"]]] = {}
         # A dictionary that maps from owned object's ID to GPUObjectMeta.
         self.managed_gpu_object_metadata: Dict[str, GPUObjectMeta] = {}
 
     def has_gpu_object(self, obj_id: str) -> bool:
         return obj_id in self.gpu_object_store
 
-    def get_gpu_object(self, obj_id: str) -> Optional[List["torch.Tensor"]]:
+    def get_gpu_object(
+        self, obj_id: str
+    ) -> Optional[List[Union["torch.Tensor", "TensorDict"]]]:
         return self.gpu_object_store[obj_id]
 
-    def add_gpu_object(self, obj_id: str, gpu_object: List["torch.Tensor"]):
+    def add_gpu_object(
+        self, obj_id: str, gpu_object: List[Union["torch.Tensor", "TensorDict"]]
+    ):
         self.gpu_object_store[obj_id] = gpu_object
 
     def remove_gpu_object(self, obj_id: str):
@@ -71,8 +83,17 @@ class GPUObjectManager:
             assert gpu_object_manager.has_gpu_object(
                 obj_id
             ), f"obj_id={obj_id} not found in GPU object store"
-            tensors = gpu_object_manager.get_gpu_object(obj_id)
-            return [(t.shape, t.dtype) for t in tensors]
+            gpu_objects = gpu_object_manager.get_gpu_object(obj_id)
+            meta = []
+            for gpu_object in gpu_objects:
+                if isinstance(gpu_object, torch.Tensor):
+                    meta.append((gpu_object.shape, gpu_object.dtype))
+                else:
+                    tensordict_meta = {}
+                    for key, tensor in gpu_object.items():
+                        tensordict_meta[key] = (tensor.shape, tensor.dtype)
+                    meta.append((tensordict_meta, gpu_object.batch_size))
+            return meta
 
         return src_actor.__ray_call__.remote(__ray_get_tensor_meta__, obj_id)
 

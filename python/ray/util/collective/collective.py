@@ -4,7 +4,6 @@ import os
 from typing import List
 
 import numpy as np
-
 import ray
 from ray.util.collective import types
 
@@ -763,6 +762,9 @@ def _check_single_tensor_input(tensor):
             return
     if types.torch_available():
         if isinstance(tensor, types.th.Tensor):
+            return
+    if types.tensordict_available():
+        if isinstance(tensor, types.td.TensorDict):
             return
     raise RuntimeError(
         "Unrecognized tensor type '{}'. Supported types are: "

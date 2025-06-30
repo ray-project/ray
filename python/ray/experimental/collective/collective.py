@@ -81,6 +81,7 @@ def _do_init_collective_group(
     # to use the created collective for communication between actors, instead of
     # the normal serialize -> object store -> deserialize codepath.
     TorchTensorType().register_custom_serializer()
+    TorchTensorType().register_custom_tensordict_serializer()
 
 
 def _do_destroy_collective_group(self, name):
