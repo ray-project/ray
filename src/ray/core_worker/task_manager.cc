@@ -974,6 +974,7 @@ bool TaskManager::RetryTaskIfPossible(const TaskID &task_id,
   {
     absl::MutexLock lock(&mu_);
     auto it = submissible_tasks_.find(task_id);
+    std::this_thread::sleep_for(std::chrono::milliseconds(500));
     RAY_CHECK(it != submissible_tasks_.end())
         << "Tried to retry task that was not pending " << task_id;
     RAY_CHECK(it->second.IsPending())
