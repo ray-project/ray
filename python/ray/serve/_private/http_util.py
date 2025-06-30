@@ -5,8 +5,19 @@ import logging
 import pickle
 import socket
 from collections import deque
+from copy import deepcopy
 from dataclasses import dataclass
-from typing import Any, Awaitable, Callable, List, Optional, Tuple, Type, Union
+from typing import (
+    Any,
+    AsyncGenerator,
+    Awaitable,
+    Callable,
+    List,
+    Optional,
+    Tuple,
+    Type,
+    Union,
+)
 
 import starlette
 import uvicorn
@@ -22,9 +33,19 @@ from uvicorn.lifespan.on import LifespanOn
 from ray._common.pydantic_compat import IS_PYDANTIC_2
 from ray.exceptions import RayActorError, RayTaskError
 from ray.serve._private.common import RequestMetadata
-from ray.serve._private.constants import SERVE_HTTP_REQUEST_ID_HEADER, SERVE_LOGGER_NAME
+from ray.serve._private.constants import (
+    RAY_SERVE_HTTP_KEEP_ALIVE_TIMEOUT_S,
+    RAY_SERVE_HTTP_PROXY_CALLBACK_IMPORT_PATH,
+    RAY_SERVE_REQUEST_PROCESSING_TIMEOUT_S,
+    SERVE_HTTP_REQUEST_ID_HEADER,
+    SERVE_LOGGER_NAME,
+)
 from ray.serve._private.proxy_request_response import ResponseStatus
-from ray.serve._private.utils import generate_request_id, serve_encoders
+from ray.serve._private.utils import (
+    call_function_from_import_path,
+    generate_request_id,
+    serve_encoders,
+)
 from ray.serve.config import HTTPOptions
 from ray.serve.exceptions import (
     BackPressureError,
@@ -254,6 +275,49 @@ class MessageQueue(Send):
         elif len(self._message_queue) == 0 and self._closed:
             raise StopAsyncIteration
 
+    async def fetch_messages_from_queue(
+        self, call_fut: asyncio.Future
+    ) -> AsyncGenerator[List[Any], None]:
+        """Repeatedly consume messages from the queue and yield them.
+
+        This is used to fetch queue messages in the system event loop in
+        a thread-safe manner.
+
+        Args:
+            call_fut: The async Future pointing to the task from the user
+                code event loop that is pushing messages onto the queue.
+
+        Yields:
+            List[Any]: Messages from the queue.
+        """
+        # Repeatedly consume messages from the queue.
+        wait_for_msg_task = None
+        try:
+            while True:
+                wait_for_msg_task = asyncio.create_task(self.wait_for_message())
+                done, _ = await asyncio.wait(
+                    [call_fut, wait_for_msg_task], return_when=asyncio.FIRST_COMPLETED
+                )
+
+                messages = self.get_messages_nowait()
+                if messages:
+                    yield messages
+
+                # Exit once `call_fut` has finished. In this case, all
+                # messages must have already been sent.
+                if call_fut in done:
+                    break
+
+            e = call_fut.exception()
+            if e is not None:
+                raise e from None
+        finally:
+            if not call_fut.done():
+                call_fut.cancel()
+
+            if wait_for_msg_task is not None and not wait_for_msg_task.done():
+                wait_for_msg_task.cancel()
+
 
 class ASGIReceiveProxy:
     """Proxies ASGI receive from an actor.
@@ -305,7 +369,16 @@ class ASGIReceiveProxy:
                 pickled_messages = await self._receive_asgi_messages(
                     self._request_metadata
                 )
-                for message in pickle.loads(pickled_messages):
+                if isinstance(pickled_messages, bytes):
+                    messages = pickle.loads(pickled_messages)
+                else:
+                    messages = (
+                        pickled_messages
+                        if isinstance(pickled_messages, list)
+                        else [pickled_messages]
+                    )
+
+                for message in messages:
                     self._queue.put_nowait(message)
 
                     if message["type"] in {"http.disconnect", "websocket.disconnect"}:
@@ -700,3 +773,38 @@ def send_http_response_on_exception(
         status.message,
         status_code=status.code,
     )
+
+
+def configure_http_options_with_defaults(http_options: HTTPOptions) -> HTTPOptions:
+    """Enhanced configuration with component-specific options."""
+
+    http_options = deepcopy(http_options)
+
+    # Apply environment defaults
+    if (RAY_SERVE_HTTP_KEEP_ALIVE_TIMEOUT_S or 0) > 0:
+        http_options.keep_alive_timeout_s = RAY_SERVE_HTTP_KEEP_ALIVE_TIMEOUT_S
+
+    # TODO: Deprecate SERVE_REQUEST_PROCESSING_TIMEOUT_S env var
+    http_options.request_timeout_s = (
+        http_options.request_timeout_s or RAY_SERVE_REQUEST_PROCESSING_TIMEOUT_S
+    )
+
+    http_options.middlewares = http_options.middlewares or []
+
+    # Add environment variable middleware
+    if RAY_SERVE_HTTP_PROXY_CALLBACK_IMPORT_PATH:
+        logger.info(
+            f"Calling user-provided callback from import path "
+            f"'{RAY_SERVE_HTTP_PROXY_CALLBACK_IMPORT_PATH}'."
+        )
+
+        # noinspection PyTypeChecker
+        http_options.middlewares.extend(
+            validate_http_proxy_callback_return(
+                call_function_from_import_path(
+                    RAY_SERVE_HTTP_PROXY_CALLBACK_IMPORT_PATH
+                )
+            )
+        )
+
+    return http_options

@@ -418,27 +418,6 @@ CoreWorker::CoreWorker(CoreWorkerOptions options, const WorkerID &worker_id)
   task_event_buffer_ = std::make_unique<worker::TaskEventBufferImpl>(
       std::make_shared<gcs::GcsClient>(options_.gcs_options));
 
-  // Initialize task receivers.
-  if (options_.worker_type == WorkerType::WORKER || options_.is_local_mode) {
-    RAY_CHECK(options_.task_execution_callback != nullptr);
-    auto execute_task = std::bind(&CoreWorker::ExecuteTask,
-                                  this,
-                                  std::placeholders::_1,
-                                  std::placeholders::_2,
-                                  std::placeholders::_3,
-                                  std::placeholders::_4,
-                                  std::placeholders::_5,
-                                  std::placeholders::_6,
-                                  std::placeholders::_7,
-                                  std::placeholders::_8);
-    task_receiver_ = std::make_unique<TaskReceiver>(
-        task_execution_service_,
-        *task_event_buffer_,
-        execute_task,
-        options_.initialize_thread_callback,
-        [this] { return local_raylet_client_->ActorCreationTaskDone(); });
-  }
-
   // Initialize raylet client.
   // NOTE(edoakes): the core_worker_server_ must be running before registering with
   // the raylet, as the raylet will start sending some RPC messages immediately.
@@ -520,6 +499,29 @@ CoreWorker::CoreWorker(CoreWorkerOptions options, const WorkerID &worker_id)
   local_raylet_client_ = std::make_shared<raylet::RayletClient>(
       std::move(raylet_conn), std::move(grpc_client), GetWorkerID());
   connected_ = true;
+
+  // Initialize task receivers.
+  if (options_.worker_type == WorkerType::WORKER || options_.is_local_mode) {
+    RAY_CHECK(options_.task_execution_callback != nullptr);
+    auto execute_task = std::bind(&CoreWorker::ExecuteTask,
+                                  this,
+                                  std::placeholders::_1,
+                                  std::placeholders::_2,
+                                  std::placeholders::_3,
+                                  std::placeholders::_4,
+                                  std::placeholders::_5,
+                                  std::placeholders::_6,
+                                  std::placeholders::_7,
+                                  std::placeholders::_8);
+    task_argument_waiter_ = std::make_unique<DependencyWaiterImpl>(*local_raylet_client_);
+    task_receiver_ = std::make_unique<TaskReceiver>(
+        task_execution_service_,
+        *task_event_buffer_,
+        execute_task,
+        *task_argument_waiter_,
+        options_.initialize_thread_callback,
+        [this] { return local_raylet_client_->ActorCreationTaskDone(); });
+  }
 
   // Start RPC server after all the task receivers are properly initialized and we have
   // our assigned port from the raylet.
@@ -851,13 +853,6 @@ CoreWorker::CoreWorker(CoreWorkerOptions options, const WorkerID &worker_id)
                                        core_worker_client_pool_,
                                        rpc_address_);
 
-  // Unfortunately the raylet client has to be constructed after the receivers.
-  if (task_receiver_ != nullptr) {
-    task_argument_waiter_ = std::make_unique<DependencyWaiterImpl>(*local_raylet_client_);
-    task_receiver_->Init(
-        core_worker_client_pool_, rpc_address_, task_argument_waiter_.get());
-  }
-
   actor_manager_ = std::make_unique<ActorManager>(
       gcs_client_, *actor_task_submitter_, *reference_counter_);
 
@@ -1177,13 +1172,6 @@ void CoreWorker::Exit(
     RAY_CHECK_NE(detail, "");
     exiting_detail_ = std::optional<std::string>{detail};
   }
-  // Release the resources early in case draining takes a long time.
-  auto status = local_raylet_client_->NotifyDirectCallTaskBlocked();
-  if (!status.ok()) {
-    RAY_LOG(WARNING)
-        << "Failed to notify Raylet. It is either the raylet is already dead or the "
-           "raylet disconnects the client because it kills this worker.";
-  }
 
   // Callback to shutdown.
   auto shutdown = [this, exit_type, detail, creation_task_exception_pb_bytes]() {
@@ -1217,6 +1205,14 @@ void CoreWorker::Exit(
           // finish. Note that if tasks have been posted to the thread pools but not
           // started yet, they will not be executed.
           task_receiver_->Stop();
+
+          // Release resources only after tasks have stopped executing.
+          auto status = local_raylet_client_->NotifyDirectCallTaskBlocked();
+          if (!status.ok()) {
+            RAY_LOG(WARNING)
+                << "Failed to notify Raylet. The raylet may have already shut down or "
+                << "the connection was lost.";
+          }
 
           bool not_actor_task = false;
           {
