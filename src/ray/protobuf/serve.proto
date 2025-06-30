@@ -107,7 +107,7 @@ message RouterConfig {
   // Timeout after which a replica started a record routing stats without a response.
   double request_routing_stats_timeout_s = 4;
 
-  // kwargs which will be passed to the router class' __init__ method
+  // kwargs which will be passed to the router class' initialize_state method
   bytes request_router_kwargs = 5;
 }
 //[End] ROUTING CONFIG
