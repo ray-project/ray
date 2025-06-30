@@ -660,12 +660,13 @@ async def test_http_handler(callable: Callable, monkeypatch):
     result_list = []
 
     request_metadata = _make_request_metadata(is_http_request=True, is_streaming=True)
-    await user_callable_wrapper._call_http_entrypoint(
+    async for result in user_callable_wrapper.call_http_entrypoint(
         request_metadata,
         (http_request,),
         dict(),
-        generator_result_callback=result_list.append,
-    )
+        lambda *args: None,
+    ):
+        result_list.extend(pickle.loads(result))
 
     assert result_list[0]["type"] == "http.response.start"
     assert result_list[0]["status"] == 200
