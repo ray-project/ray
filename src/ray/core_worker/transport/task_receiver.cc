@@ -142,7 +142,7 @@ void TaskReceiver::HandleTask(rpc::PushTaskRequest request,
       }
 
       if (task_spec.IsActorCreationTask()) {
-        if (task_spec.IsAsyncioActor()) {
+        if (is_asyncio_) {
           fiber_state_manager_ = std::make_shared<ConcurrencyGroupManager<FiberState>>(
               task_spec.ConcurrencyGroups(),
               fiber_max_concurrency_,
@@ -216,28 +216,23 @@ void TaskReceiver::HandleTask(rpc::PushTaskRequest request,
       if (execute_out_of_order_) {
         it = actor_scheduling_queues_
                  .emplace(task_spec.CallerWorkerId(),
-                          std::unique_ptr<SchedulingQueue>(
-                              new OutOfOrderActorSchedulingQueue(task_execution_service_,
-                                                                 *waiter_,
-                                                                 task_event_buffer_,
-                                                                 pool_manager_,
-                                                                 fiber_state_manager_,
-                                                                 is_asyncio_,
-                                                                 fiber_max_concurrency_,
-                                                                 cg_it->second)))
+                          std::make_unique<OutOfOrderActorSchedulingQueue>(
+                              task_execution_service_,
+                              *waiter_,
+                              task_event_buffer_,
+                              pool_manager_,
+                              fiber_state_manager_,
+                              is_asyncio_,
+                              fiber_max_concurrency_,
+                              cg_it->second))
                  .first;
       } else {
         it = actor_scheduling_queues_
                  .emplace(task_spec.CallerWorkerId(),
-                          std::unique_ptr<SchedulingQueue>(
-                              new ActorSchedulingQueue(task_execution_service_,
-                                                       *waiter_,
-                                                       task_event_buffer_,
-                                                       pool_manager_,
-                                                       fiber_state_manager_,
-                                                       is_asyncio_,
-                                                       fiber_max_concurrency_,
-                                                       cg_it->second)))
+                          std::make_unique<ActorSchedulingQueue>(task_execution_service_,
+                                                                 *waiter_,
+                                                                 task_event_buffer_,
+                                                                 pool_manager_))
                  .first;
       }
     }
@@ -297,6 +292,10 @@ void TaskReceiver::SetupActor(bool is_asyncio,
                               bool execute_out_of_order) {
   RAY_CHECK(fiber_max_concurrency_ == 0)
       << "SetupActor should only be called at most once.";
+  // Note: It's possible to have execute_out_of_order as false but max_concurrency > 1,
+  // from the C++ / Java API's.
+  RAY_CHECK(is_asyncio ? execute_out_of_order : true)
+      << "execute_out_of_order must be true if is_asyncio is true";
   is_asyncio_ = is_asyncio;
   fiber_max_concurrency_ = fiber_max_concurrency;
   execute_out_of_order_ = execute_out_of_order;
