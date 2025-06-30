@@ -379,7 +379,7 @@ def _generate_transform_fn_for_map_batches(
     if inspect.iscoroutinefunction(fn):
         # UDF is a callable class with async generator `__call__` method.
         transform_fn = _generate_transform_fn_for_async_map(
-            fn, _validate_batch_output, max_queue_size=16
+            fn, _validate_batch_output, max_queue_size=4,
         )
 
     else:
@@ -393,7 +393,7 @@ def _generate_transform_fn_for_map_batches(
                         not isinstance(batch, collections.abc.Mapping)
                         and BlockAccessor.for_block(batch).num_rows() == 0
                     ):
-                        # For empty input blocks, we directly ouptut them without
+                        # For empty input blocks, we directly output them without
                         # calling the UDF.
                         # TODO(hchen): This workaround is because some all-to-all
                         # operators output empty blocks with no schema.
@@ -525,7 +525,7 @@ def _generate_transform_fn_for_flat_map(
     if inspect.iscoroutinefunction(fn):
         # UDF is a callable class with async generator `__call__` method.
         transform_fn = _generate_transform_fn_for_async_map(
-            fn, _validate_row_output, max_queue_size=256
+            fn, _validate_row_output, max_queue_size=16
         )
 
     else:
