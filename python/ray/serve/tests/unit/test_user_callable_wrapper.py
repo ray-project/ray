@@ -164,7 +164,7 @@ async def test_calling_methods_before_initialize(
 @pytest.mark.parametrize("run_sync_methods_in_threadpool", [False, True])
 @pytest.mark.asyncio
 async def test_basic_class_callable(
-    run_sync_methods_in_threadpool: bool, run_user_code_in_separate_thread: bool
+    run_user_code_in_separate_thread: bool, run_sync_methods_in_threadpool: bool
 ):
     user_callable_wrapper = _make_user_callable_wrapper(
         run_sync_methods_in_threadpool=run_sync_methods_in_threadpool,
