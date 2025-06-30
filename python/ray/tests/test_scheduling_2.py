@@ -660,9 +660,7 @@ def test_demand_report_when_scale_up(autoscaler_v2, shutdown_only):
     def h():
         time.sleep(10000)
 
-    tasks = [f.remote() for _ in range(500)].extend(  # noqa: F841
-        [g.remote() for _ in range(500)]
-    )
+    tasks = [f.remote() for _ in range(500)] + [g.remote() for _ in range(500)]  # noqa: F841
 
     global_state_accessor = make_global_state_accessor(info)
 
@@ -682,6 +680,9 @@ def test_demand_report_when_scale_up(autoscaler_v2, shutdown_only):
             aggregate_resource_load[0].num_ready_requests_queued,
             aggregate_resource_load[0].shape,
         )
+        # The expected backlog sum is 998, which is derived from the total number of tasks
+        # (1000) minus the number of active workers (2). This ensures the test validates
+        # the correct backlog size and queued requests.
         if backlog_size + num_ready_requests_queued != 998:
             return False
 
