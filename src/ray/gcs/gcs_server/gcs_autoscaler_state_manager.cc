@@ -251,7 +251,7 @@ void GcsAutoscalerStateManager::GetPendingGangResourceRequests(
           auto *proto_constraint = proto_selector->add_label_constraints();
           proto_constraint->set_label_key(constraint.GetLabelKey());
           proto_constraint->set_operator_(static_cast<rpc::autoscaler::LabelOperator>(
-              constraint.GetOperator()));  // Convert enum class -> proto enum
+              constraint.GetOperator()));
           for (const auto &val : constraint.GetLabelValues()) {
             proto_constraint->add_label_values(val);
           }
@@ -338,8 +338,26 @@ void GcsAutoscalerStateManager::GetPendingResourceRequests(
       auto req = pending_req->mutable_request();
       req->mutable_resources_bundle()->insert(shape.begin(), shape.end());
 
+      // Add label selectors to ResourceRequest
       for (const auto &selector : demand.label_selectors()) {
-        req->add_label_selectors()->CopyFrom(selector);
+        // Parse selector key, operator, and values from string map
+        ray::LabelSelector parsed_selector(selector.label_selector_dict());
+
+        // Pass label selector information to format expected by autoscaler
+        rpc::autoscaler::LabelSelector label_selector;
+        for (const auto &constraint : parsed_selector.GetConstraints()) {
+          auto *c = label_selector.add_label_constraints();
+          c->set_label_key(constraint.GetLabelKey());
+
+          c->set_operator_(static_cast<rpc::autoscaler::LabelOperator>(
+              static_cast<int>(constraint.GetOperator())));
+
+          for (const auto &val : constraint.GetLabelValues()) {
+            c->add_label_values(val);
+          }
+        }
+
+        *req->add_label_selectors() = std::move(label_selector);
       }
     }
   }
