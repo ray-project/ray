@@ -388,14 +388,6 @@ def test_locality_aware_leasing_cached_objects(ray_start_cluster):
     assert ray.get(h.remote(f_obj1, f_obj2)) == worker2.unique_id
 
 
-@pytest.mark.skipif(
-    ray._private.client_mode_hook.is_client_mode_enabled,
-    reason=(
-        "fetch_local=False is not supported for Ray Client, which is needed to write "
-        "the tests in a deterministic way. "
-        "See https://github.com/ray-project/ray/issues/52401."
-    ),
-)
 def test_locality_aware_leasing_borrowed_objects(ray_start_cluster):
     """Test that a task runs where its dependencies are located for borrowed objects."""
     # This test ensures that a task will run where its task dependencies are
