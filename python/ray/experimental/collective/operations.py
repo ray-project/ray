@@ -14,6 +14,8 @@ from ray.experimental.util.types import (
     AllGatherOp,
     AllReduceOp,
     ReduceScatterOp,
+    BroadcastOp,
+    ReduceOperation,
     _CollectiveOp,
 )
 from ray.util.collective.types import ReduceOp as RayReduceOp
@@ -24,6 +26,8 @@ logger = logging.getLogger(__name__)
 def _bind(
     input_nodes: List["ray.dag.DAGNode"],
     op: _CollectiveOp,
+    *,
+    root_node: Optional["ray.dag.DAGNode"] = None,
     transport: Optional[Union[str, Communicator]] = None,
 ):
     """
@@ -36,10 +40,11 @@ def _bind(
     2. Each input node is from a different actor.
     3. If a custom transport is specified, its actor set matches the actor set
         of the input nodes.
-    4. All tensors have the same shape.
+    4. If a root node is specified, it must be an input node.
+    5. All tensors have the same shape.
 
-    Requirements 1-3 are checked in the `CollectiveGroup` constructor.
-    Requirement 4 is not checked yet.
+    Requirements 1-4 are checked in the `CollectiveGroup` constructor.
+    Requirement 5 is not checked yet.
 
     Args:
         input_nodes: A list of DAG nodes.
@@ -52,7 +57,7 @@ def _bind(
     """
     if transport is None:
         transport = TorchTensorType.NCCL
-    collective_op = _CollectiveOperation(input_nodes, op, transport)
+    collective_op = _CollectiveOperation(input_nodes, op, root_node, transport)
     collective_output_nodes: List[CollectiveOutputNode] = []
 
     actor_handle: Optional["ray.actor.ActorHandle"] = input_nodes[0]._get_actor_handle()
@@ -64,6 +69,10 @@ def _bind(
         method_name = f"reducescatter.{op.reduceOp}"
     elif isinstance(op, AllGatherOp):
         method_name = "allgather"
+    elif isinstance(op, BroadcastOp):
+        method_name = "broadcast"
+    elif isinstance(op, ReduceOperation):
+        method_name = f"reduce.{op.reduceOp}"
     else:
         raise ValueError(f"Expected a collective operation, but found {op}")
 
@@ -93,7 +102,7 @@ class AllGatherWrapper:
         input_nodes: List["ray.dag.DAGNode"],
         transport: Optional[Union[str, Communicator]] = None,
     ) -> List[CollectiveOutputNode]:
-        return _bind(input_nodes, AllGatherOp(), transport)
+        return _bind(input_nodes, AllGatherOp(), transport=transport)
 
     def __call__(
         self,
@@ -118,7 +127,7 @@ class AllReduceWrapper:
         if not isinstance(op, ReduceOp):
             raise ValueError(f"Unexpected operation: {op}")
 
-        return _bind(input_nodes, AllReduceOp(reduceOp=op), transport)
+        return _bind(input_nodes, AllReduceOp(reduceOp=op), transport=transport)
 
     def __call__(
         self,
@@ -143,7 +152,7 @@ class ReduceScatterWrapper:
         if not isinstance(op, ReduceOp):
             raise ValueError(f"Unexpected operation: {op}")
 
-        return _bind(input_nodes, ReduceScatterOp(reduceOp=op), transport)
+        return _bind(input_nodes, ReduceScatterOp(reduceOp=op), transport=transport)
 
     def __call__(
         self,
@@ -156,6 +165,64 @@ class ReduceScatterWrapper:
         return reducescatter(tensor, group_name, op)
 
 
+class BroadcastWrapper:
+    """Wrapper for NCCL broadcast."""
+
+    def bind(
+        self,
+        root_node: "ray.dag.DAGNode",
+        input_nodes: List["ray.dag.DAGNode"],
+        transport: Optional[Union[str, Communicator]] = None,
+    ) -> List[CollectiveOutputNode]:
+        return _bind(
+            input_nodes, BroadcastOp(), root_node=root_node, transport=transport
+        )
+
+    def __call__(
+        self,
+        tensor,
+        src_rank: int,
+        group_name: str = "default",
+    ):
+        from ray.util.collective.collective import broadcast
+
+        return broadcast(tensor, src_rank, group_name)
+
+
+class ReduceWrapper:
+    """Wrapper for NCCL reduce."""
+
+    def bind(
+        self,
+        root_node: "ray.dag.DAGNode",
+        input_nodes: List["ray.dag.DAGNode"],
+        op: ReduceOp = ReduceOp.SUM,
+        transport: Optional[Union[str, Communicator]] = None,
+    ) -> List[CollectiveOutputNode]:
+        if not isinstance(op, ReduceOp):
+            raise ValueError(f"Unexpected operation: {op}")
+
+        return _bind(
+            input_nodes,
+            ReduceOperation(reduceOp=op),
+            root_node=root_node,
+            transport=transport,
+        )
+
+    def __call__(
+        self,
+        tensor,
+        dst_rank: int,
+        group_name: str = "default",
+        op: RayReduceOp = RayReduceOp.SUM,
+    ):
+        from ray.util.collective.collective import reduce
+
+        return reduce(tensor, dst_rank, group_name, op)
+
+
 allgather = AllGatherWrapper()
 allreduce = AllReduceWrapper()
 reducescatter = ReduceScatterWrapper()
+broadcast = BroadcastWrapper()
+reduce = ReduceWrapper()
