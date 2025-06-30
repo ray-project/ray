@@ -125,9 +125,14 @@ enum class RayLogLevel {
   FATAL = 3
 };
 
-template<typename T>
-bool SleepAndCheck(T&& condition) {
-  std::this_thread::sleep_for(std::chrono::seconds(2));
+template <typename T>
+inline bool SleepAndCheck(T &&condition) {
+  for (int i = 0; i < 5; ++i) {
+    std::this_thread::sleep_for(std::chrono::milliseconds(100));
+    if (!static_cast<bool>(condition)) {
+      return false;
+    }
+  }
   return static_cast<bool>(condition);
 }
 
@@ -152,7 +157,8 @@ bool SleepAndCheck(T&& condition) {
   : ::ray::Voidify() & (::ray::RayLog(__FILE__, __LINE__, ray::RayLogLevel::FATAL) \
                         << " Check failed: " display " ")
 
-#define RAY_CHECK(condition) RAY_CHECK_WITH_DISPLAY(SleepAndCheck(condition), #condition)
+#define RAY_CHECK(condition) \
+  RAY_CHECK_WITH_DISPLAY(ray::SleepAndCheck(condition), #condition)
 
 #ifdef NDEBUG
 
