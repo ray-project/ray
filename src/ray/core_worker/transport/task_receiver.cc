@@ -19,23 +19,12 @@
 #include <utility>
 #include <vector>
 
-#include "ray/common/task/task.h"
-
 namespace ray {
 namespace core {
-
-void TaskReceiver::Init(std::shared_ptr<rpc::CoreWorkerClientPool> client_pool,
-                        rpc::Address rpc_address,
-                        DependencyWaiter *dependency_waiter) {
-  waiter_ = dependency_waiter;
-  rpc_address_ = std::move(rpc_address);
-  client_pool_ = std::move(client_pool);
-}
 
 void TaskReceiver::HandleTask(rpc::PushTaskRequest request,
                               rpc::PushTaskReply *reply,
                               rpc::SendReplyCallback send_reply_callback) {
-  RAY_CHECK(waiter_ != nullptr) << "Must call init() prior to use";
   TaskSpecification task_spec(std::move(*request.mutable_task_spec()));
 
   if (task_spec.IsActorCreationTask()) {
@@ -142,9 +131,10 @@ void TaskReceiver::HandleTask(rpc::PushTaskRequest request,
       }
 
       if (task_spec.IsActorCreationTask()) {
+        concurrency_groups_cache_ = task_spec.ConcurrencyGroups();
         if (task_spec.IsAsyncioActor()) {
           fiber_state_manager_ = std::make_shared<ConcurrencyGroupManager<FiberState>>(
-              task_spec.ConcurrencyGroups(),
+              concurrency_groups_cache_,
               fiber_max_concurrency_,
               initialize_thread_callback_);
         } else {
@@ -152,12 +142,11 @@ void TaskReceiver::HandleTask(rpc::PushTaskRequest request,
           // for BoundedExecutor will never be used, so we don't need to initialize it.
           const int default_max_concurrency = task_spec.MaxActorConcurrency();
           pool_manager_ = std::make_shared<ConcurrencyGroupManager<BoundedExecutor>>(
-              task_spec.ConcurrencyGroups(),
+              concurrency_groups_cache_,
               default_max_concurrency,
               initialize_thread_callback_);
         }
-        concurrency_groups_cache_[task_spec.TaskId().ActorId()] =
-            task_spec.ConcurrencyGroups();
+
         // Tell raylet that an actor creation task has finished execution, so that
         // raylet can publish actor creation event to GCS, and mark this worker as
         // actor, thus if this worker dies later raylet will restart the actor.
@@ -211,33 +200,32 @@ void TaskReceiver::HandleTask(rpc::PushTaskRequest request,
   if (task_spec.IsActorTask()) {
     auto it = actor_scheduling_queues_.find(task_spec.CallerWorkerId());
     if (it == actor_scheduling_queues_.end()) {
-      auto cg_it = concurrency_groups_cache_.find(task_spec.ActorId());
-      RAY_CHECK(cg_it != concurrency_groups_cache_.end());
       if (execute_out_of_order_) {
         it = actor_scheduling_queues_
-                 .emplace(task_spec.CallerWorkerId(),
-                          std::unique_ptr<SchedulingQueue>(
-                              new OutOfOrderActorSchedulingQueue(task_execution_service_,
-                                                                 *waiter_,
-                                                                 task_event_buffer_,
-                                                                 pool_manager_,
-                                                                 fiber_state_manager_,
-                                                                 is_asyncio_,
-                                                                 fiber_max_concurrency_,
-                                                                 cg_it->second)))
+                 .emplace(
+                     task_spec.CallerWorkerId(),
+                     std::unique_ptr<SchedulingQueue>(
+                         new OutOfOrderActorSchedulingQueue(task_execution_service_,
+                                                            waiter_,
+                                                            task_event_buffer_,
+                                                            pool_manager_,
+                                                            fiber_state_manager_,
+                                                            is_asyncio_,
+                                                            fiber_max_concurrency_,
+                                                            concurrency_groups_cache_)))
                  .first;
       } else {
         it = actor_scheduling_queues_
                  .emplace(task_spec.CallerWorkerId(),
                           std::unique_ptr<SchedulingQueue>(
                               new ActorSchedulingQueue(task_execution_service_,
-                                                       *waiter_,
+                                                       waiter_,
                                                        task_event_buffer_,
                                                        pool_manager_,
                                                        fiber_state_manager_,
                                                        is_asyncio_,
                                                        fiber_max_concurrency_,
-                                                       cg_it->second)))
+                                                       concurrency_groups_cache_)))
                  .first;
       }
     }
