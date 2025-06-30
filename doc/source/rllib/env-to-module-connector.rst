@@ -8,7 +8,7 @@
 Env-to-module Pipelines
 =======================
 
-One env-to-module pipeline resides on each :py:class:`~ray.rllib.env.env_runner.EnvRunner` (see figure below) and is responsible
+One env-to-module pipeline resides on each :py:class:`~ray.rllib.env.env_runner.EnvRunner` and is responsible
 for handling the data flow from the `gymnasium.Env <https://gymnasium.farama.org/api/env/>`__ to
 the :py:class:`~ray.rllib.core.rl_module.rl_module.RLModule`.
 
@@ -17,33 +17,32 @@ the :py:class:`~ray.rllib.core.rl_module.rl_module.RLModule`.
     :align: left
 
     **EnvRunner ConnectorV2 Pipelines**: Both env-to-module and module-to-env pipelines are located on the :py:class:`~ray.rllib.env.env_runner.EnvRunner`
-    workers. The env-to-module pipeline sits between the RL environment (`gymnasium.Env <https://gymnasium.farama.org/api/env/>`__) and the
-    :py:class:`~ray.rllib.core.rl_module.rl_module.RLModule`, translating ongoing episodes into batches for the model's `forward_...()` methods.
-    The module-to-env pipeline serves the other direction, converting the output of the :py:class:`~ray.rllib.core.rl_module.rl_module.RLModule`
-    (action logits, action distribution parameters, etc..) to actual actions understandable by the `gymnasium.Env <https://gymnasium.farama.org/api/env/>`__
-    and used in its next `step()` call.
+    workers. The env-to-module pipeline sits between the RL environment, a `gymnasium.Env <https://gymnasium.farama.org/api/env/>`__, and the
+    :py:class:`~ray.rllib.core.rl_module.rl_module.RLModule`, and translates ongoing episodes into batches for the model's `forward_...()` methods.
+    The module-to-env pipeline serves the other direction, converting the output of the :py:class:`~ray.rllib.core.rl_module.rl_module.RLModule`, such as
+    action logits and action distribution parameters, to actual actions understandable by the `gymnasium.Env <https://gymnasium.farama.org/api/env/>`__
+    and used in the env's next `step()` call.
 
 The env-to-module pipeline, when called, performs translations from a list of ongoing :ref:`Episode objects <single-agent-episode-docs>` to an
-RLModule-readable tensor batch and RLlib passes the generated batch as the first argument into the
+RLModule-readable tensor batch and RLlib passes this generated batch as the first argument into the
 :py:meth:`~ray.rllib.core.rl_module.rl_module.RLModule.forward_inference` or :py:meth:`~ray.rllib.core.rl_module.rl_module.RLModule.forward_exploration`
 methods of the :py:class:`~ray.rllib.core.rl_module.rl_module.RLModule`, depending on your exploration settings.
 
 .. hint::
 
-    Set `config.exploration(explore=True)` in your :py:class:`~ray.rllib.algorithms.algorithm_config.AlgorithmConfig` to make sure the
-    :py:meth:`~ray.rllib.core.rl_module.rl_module.RLModule.forward_exploration` method is called with the connector's output.
-    Otherwise, the :py:class:`~ray.rllib.env.env_runner.EnvRunner` calls :py:meth:`~ray.rllib.core.rl_module.rl_module.RLModule.forward_inference`.
-    Note also that usually these two methods only differ in that actions are sampled when `explore=True` and
-    greedily picked when `explore=False`. However, the exact behavior in each case depends on your :ref:`RLModule's implementation <rlmodule-guide>`.
+    Set `config.exploration(explore=True)` in your :py:class:`~ray.rllib.algorithms.algorithm_config.AlgorithmConfig` to have RLlib call the
+    :py:meth:`~ray.rllib.core.rl_module.rl_module.RLModule.forward_exploration` method with the connector's output.
+    Otherwise, RLlib calls :py:meth:`~ray.rllib.core.rl_module.rl_module.RLModule.forward_inference`.
+    Note also that normally these two methods only differ in that actions are sampled when ``explore=True`` and
+    greedily picked when ``explore=False``. However, the exact behavior in each case depends on your :ref:`RLModule's implementation <rlmodule-guide>`.
 
 
 Default env-to-module behavior
 ------------------------------
 
-**Default Env-to-Module Behavior:** By default an env-to-module pipeline is populated with the following built-in connector pieces
-performing these tasks:
+**Default Env-to-Module Behavior:** By default an env-to-module pipeline is populated with the following built-in connector pieces:
 
-* :py:class:`~ray.rllib.connectors.common.add_observations_from_episodes_to_batch.AddObservationsFromEpisodesToBatch`: Places the most recent observation from each ongoing episode into the batch. Note that if you have a vector of `N` environments per `EnvRunner`, your batch size is also `N`.
+* :py:class:`~ray.rllib.connectors.common.add_observations_from_episodes_to_batch.AddObservationsFromEpisodesToBatch`: Places the most recent observation from each ongoing episode into the batch. Note that if you have a vector of ``N`` environments per :py:class:`~ray.rllib.env.env_runner.EnvRunner`, your batch size is also ``N``.
 * *Relevant for stateful models only:* :py:class:`~ray.rllib.connectors.common.add_time_dim_to_batch_and_zero_pad.AddTimeDimToBatchAndZeroPad`: If the :py:class:`~ray.rllib.core.rl_module.rl_module.RLModule` is a stateful one, adds a single timestep, second axis to all data to make it sequential.
 * *Relevant for stateful models only:* :py:class:`~ray.rllib.connectors.common.add_states_from_episodes_to_batch.AddStatesFromEpisodesToBatch`: If the :py:class:`~ray.rllib.core.rl_module.rl_module.RLModule` is a stateful one, places the most recent state outputs of the module as new state inputs into the batch.
 * *For multi-agent only:* :py:class:`~ray.rllib.connectors.common.agent_to_module_mapping.AgentToModuleMapping`: Maps per-agent data to the respective per-module data depending on your defined agent-to-module mapping function.
@@ -58,7 +57,7 @@ Constructing an env-to-module connector
 ---------------------------------------
 
 Normally, you wouldn't have to construct the env-to-module connector pipeline yourself. RLlib's :py:class:`~ray.rllib.env.env_runner.EnvRunner`
-actors already take care of this. However, if you would like to test or debug either the default pipeline or your custom ones, you can
+actors initially perform this operation. However, if you would like to test or debug either the default pipeline or a custom one,
 use the following code snippet as a starting point:
 
 .. testcode::
@@ -90,12 +89,12 @@ use the following code snippet as a starting point:
         },
     )
 
-To test the actual behavior or the created pipeline, look at the following code snippets,
+To test the actual behavior or the created pipeline, look at these code snippets
 for stateless- and stateful :py:class:`~ray.rllib.core.rl_module.rl_module.RLModule` cases:
 
 .. tab-set::
 
-    .. tab-item:: Stateless RLModules
+    .. tab-item:: Stateless RLModule
 
         .. testcode::
 
@@ -130,11 +129,20 @@ for stateless- and stateful :py:class:`~ray.rllib.core.rl_module.rl_module.RLMod
             print(batch)
 
 
-    .. tab-item:: RNN/Stateful RLModules
+    .. tab-item:: Stateful RLModule (RNN)
 
         .. testcode::
 
+            from ray.rllib.core.rl_module.default_model_config import DefaultModelConfig
             from ray.rllib.env.single_agent_episode import SingleAgentEpisode
+
+            # Alter the config to use the default LSTM model of RLlib.
+            config.rl_module(model_config=DefaultModelConfig(use_lstm=True))
+
+            # For stateful RLModules, we do need to pass in the RLModule to every call to the
+            # connector. so construct an instance here.
+            rl_module_spec = config.get_rl_module_spec(env=env)
+            rl_module = rl_module_spec.build()
 
             # Create a SingleAgentEpisode instance. You pass this to the connector pipeline
             # as input.
@@ -167,13 +175,29 @@ The batch should look similar to this:
             [ 0.0292,  0.0259, -0.0322, -0.0004]])}
 
 Or in the stateful case, the ``STATE_IN`` columns should also be set.
-
+Note that because of the LSTM layer used, the internal state of the module consists
+of two components, ``c`` and ``h``.
 
 .. code-block:: txt
 
-    {'obs': tensor([[ 0.0212, -0.1996, -0.0414,  0.2848],
-            [ 0.0292,  0.0259, -0.0322, -0.0004]])}
+    {
+        'obs': tensor(
+            [[ 0.0212, -0.1996, -0.0414,  0.2848],
+            [ 0.0292,  0.0259, -0.0322, -0.0004]]
+        ),
+        'state_in': {
+            'h': tensor([[[0., 0., .., 0.]]]),
+            'c': tensor([[[0., 0., ... 0.]]]),
+        },
+    }
 
+.. hint::
+
+    You are free to design the internal states of your custom :py:class:`~ray.rllib.core.rl_module.rl_module.RLModule` classes
+    however you like. You only need to override the :py:meth:`` method and make sure you return a new state of any nested structure and
+    shape from your `forward_..()` methods under the fixed ``state_out`` key.
+    See `here for an example <https://github.com/ray-project/ray/blob/master/rllib/examples/rl_modules/classes/lstm_containing_rlm.py>`__
+    of an RLModule class with a custom LSTM layer in it.
 
 
 Configuring custom env-to-module connectors
@@ -192,10 +216,10 @@ Note that the structure of the `spaces` argument is expected to be:
 .. code-block:: python
 
     spaces = {
-        "__env__": ([env obs. space], [env action space]),  # <- may be vectorized
-        "__env_single__": ([env obs. space], [env action space]),  # <- never vectorized!
-        "[module ID, e.g. 'default_policy']": ([module obs space], [module action space]),
-        ...  # <- more modules in the multi-agent case
+        "__env__": ([env observation space], [env action space]),  # <- may be vectorized
+        "__env_single__": ([env observation space], [env action space]),  # <- never vectorized!
+        "[module ID, e.g. 'default_policy']": ([module observation space], [module action space]),
+        ...  # <- more modules in multi-agent case
     }
 
 For example, to prepend a custom ConnectorV2 piece to the env-to-module pipeline, you can do this in your config:
@@ -233,8 +257,9 @@ Observation Preprocessors
 
 The simplest way of customizing an env-to-module pipeline is to write an
 :py:class:`~ray.rllib.connectors.env_to_module.observation_preprocessor.ObservationPreprocessor` and plug
-it into the :py:class:`~ray.rllib.algorithms.algorithm_config.AlgorithmConfig`. All you have to do in this case is implement
-two methods:
+it into the :py:class:`~ray.rllib.algorithms.algorithm_config.AlgorithmConfig`. You only have to subclass then from
+:py:class:`~ray.rllib.connectors.env_to_module.observation_preprocessor.ObservationPreprocessor`
+and override two methods:
 
 .. testcode::
 
@@ -245,7 +270,8 @@ two methods:
 
 
     class OneHot(ObservationPreprocessor):
-        # Converts int observations (Discrete) into one-hot tensors (Box).
+        """Converts int observations (Discrete) into one-hot tensors (Box)."""
+
         def recompute_output_observation_space(self, in_obs_space, in_act_space):
             # Based on the input observation space (), return the output observation
             # space. Implementing this method is crucial for the pipeline to know its output
@@ -261,8 +287,8 @@ two methods:
             return new_obs
 
 
-Now that the preprocessor is written, you can plug it into your :py:class:`~ray.rllib.algorithms.algorithm_config.AlgorithmConfig`
-object and run an experiment with a Discrete observation env, where each observation is an integer, for
+Now that you defined your preprocessor, you can plug it into your :py:class:`~ray.rllib.algorithms.algorithm_config.AlgorithmConfig`
+object and run an experiment with a Discrete observation env, where observations are integers, for
 example `FrozenLake-v1 <https://gymnasium.farama.org/environments/toy_text/frozen_lake/>`__:
 
 
@@ -281,15 +307,62 @@ example `FrozenLake-v1 <https://gymnasium.farama.org/environments/toy_text/froze
         .environment("FrozenLake-v1", env_config={"desc": ["SF", "FG"]})
 
         # Plug your custom connector piece into the env-to-module pipeline.
-        .env_runners(env_to_module_connector=lambda env: OneHot())
+        .env_runners(
+            env_to_module_connector=(
+                lambda env=None, spaces=None, device=None: OneHot()
+            ),
+        )
     )
     algo = config.build()
     # Train one iteration.
     print(algo.train())
 
 
-More complex custom connector examples
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Adding recent rewards to the batch
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Assume you wrote a custom :ref:`RLModule <rlmodule-guide>` that requires to see the last
+three received rewards as input in calls to any of its `forward_..()` methods.
+
+* Through a custom Preprocessor that merges the reward information with the observations and thereby creates new observations.
+* Through adding a new column to the forward batch, for example ``past_rewards`` and properly putting the last three rewards as a ``(3,)``-shaped tensor into this new column.
+
+The solution you should chose depends on the implementation of your :py:class:`~ray.rllib.core.rl_module.rl_module.RLModule`.
+If your RLModule knows how to extract the ``past_rewards`` column from the input and feed it into its layers
+
+
+
+.. tab-set::
+
+    .. tab-item:: Preprocessor solution
+
+        .. testcode::
+
+            import gymnasium as gym
+            import numpy as np
+
+            from ray.rllib.connectors.env_to_module.observation_preprocessor import ObservationPreprocessor
+
+
+            class AddPast3Rewards(ObservationPreprocessor):
+                """Extracts last 3 rewards from episode and concats them to observation tensor."""
+
+                def recompute_output_observation_space(self, in_obs_space, in_act_space):
+                    # Based on the input observation space (), return the output observation
+                    # space. Implementing this method is crucial for the pipeline to know its output
+                    # spaces, which are an important piece of information to construct the succeeding
+                    # RLModule.
+
+                    assert isinstance(in_obs_space, gym.spaces.Box) and len(in_obs_space.shape) == 1
+                    return gym.spaces.Box(-100.0, 100.0, (in_obs_space.shape[0] + 3,), np.float32)
+
+                def preprocess(self, observation):
+
+
+    .. tab-item:: New column solution
+
+        .. testcode::
 
 
 
@@ -300,11 +373,9 @@ Writing more complex custom ConnectorV2s
 ----------------------------------------
 
 Besides simply transforming one observation at a time in a preprocessor-style setup as shown preceding,
-here are four more examples showcasing more complex customizations of the different :py:class:`~ray.rllib.connectors.connector_v2.ConnectorV2` pipelines:
+here are two more examples showcasing more complex customizations of the different :py:class:`~ray.rllib.connectors.connector_v2.ConnectorV2` pipelines:
 
-* How to add rewards and or actions to the batch.
 * How to stack the N most recent observations.
-* How to manipulate the action logits coming from the :py:class:`~ray.rllib.core.rl_module.rl_module.RLModule`.
 
 
 

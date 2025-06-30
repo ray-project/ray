@@ -1,4 +1,8 @@
 
+#TODO (sven) weave this into this page (from
+* How to manipulate the action logits coming from the :py:class:`~ray.rllib.core.rl_module.rl_module.RLModule`.
+
+
 .. _module-to-env-pipeline-docs:
 
 Module-to-env Pipeline
