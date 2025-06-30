@@ -1,4 +1,5 @@
 import ray
+import pytest
 from ray._common.test_utils import Collector
 
 
