@@ -82,36 +82,14 @@ V1_TOO_LONG_PATTERN = re.compile(
     r".* (\d+).* is longer than the maximum model length of (\d+).*"
 )
 
-
-def _get_async_engine_args(llm_config: LLMConfig) -> "AsyncEngineArgs":
-    engine_config = llm_config.get_engine_config()
-
-    # This `model` is the local path on disk, or the hf model id.
-    # If it is the hf_model_id, vLLM automatically downloads the correct model from HF.
-    # We want this to be the local path on the disk when we already downloaded the
-    # model artifacts from a remote storage during node initialization,
-    # so vLLM will not require HF token for it and try to download it again.
-    model = engine_config.actual_hf_model_id
-    if isinstance(llm_config.model_loading_config.model_source, str):
-        model = llm_config.model_loading_config.model_source
-
-    return vllm.engine.arg_utils.AsyncEngineArgs(
-        **{
-            "model": model,
-            "distributed_executor_backend": "ray",
-            "guided_decoding_backend": RAYLLM_GUIDED_DECODING_BACKEND,
-            "disable_log_stats": False,
-            **engine_config.get_initialization_kwargs(),
-        }
-    )
-
-
 def _get_vllm_engine_config(
     llm_config: LLMConfig,
 ) -> Tuple["AsyncEngineArgs", "VllmConfig"]:
-    async_engine_args = _get_async_engine_args(llm_config)
-    vllm_config = async_engine_args.create_engine_config()
-    return async_engine_args, vllm_config
+    engine_config = llm_config.get_engine_config()
+    async_engine_args = vllm.engine.arg_utils.AsyncEngineArgs(**engine_config.engine_kwargs)
+    print(f"[Kourosh] async_engine_args: {engine_config.engine_kwargs}")
+    vllm_engine_config = async_engine_args.create_engine_config()
+    return async_engine_args, vllm_engine_config
 
 
 def _clear_current_platform_cache():
@@ -166,11 +144,7 @@ class VLLMEngine(LLMEngine):
         # This is critical for models with trust_remote_code=True to avoid pickle errors.
         init_hf_modules()
 
-        # filter out the llm_config.engine_kwargs to those that belong to FrontendArgs and engine_args and decouple them.
         self.llm_config = llm_config
-        self._engine_config = llm_config.get_engine_config()
-        self._vllm_frontend_args = FrontendArgs(**self._engine_config.frontend_kwargs)
-        self._vllm_engine_args = AsyncEngineArgs(**self._engine_config.engine_kwargs)
 
 
         if vllm is None:
@@ -223,7 +197,7 @@ class VLLMEngine(LLMEngine):
         self._oai_serving_embedding = None
 
     @staticmethod
-    async def initialize_node(llm_config: LLMConfig) -> InitializeNodeOutput:
+    async def _initialize_node(llm_config: LLMConfig) -> InitializeNodeOutput:
         """Run the node initializer.
 
         This is separate from `start` so it can run concurrently while starting the engine actor.
@@ -245,8 +219,20 @@ class VLLMEngine(LLMEngine):
             return
 
         from vllm.entrypoints.openai.api_server import init_app_state
+        
+        
+        node_initialization = await self._initialize_node(self.llm_config)
+        (
+            vllm_engine_args,
+            vllm_frontend_args,
+            vllm_engine_config,
+        ) = self._prepare_engine_config(node_initialization)
 
-        self._engine_client, vllm_config = await self._start_engine_client()
+        self._engine_client = self._start_async_llm_engine(
+            vllm_engine_args,
+            vllm_engine_config,
+            node_initialization.placement_group,
+        )
 
         from starlette.datastructures import State
         
@@ -261,11 +247,11 @@ class VLLMEngine(LLMEngine):
                 raise AttributeError(f"Attribute {name} not found in {self.classes}")
 
         state = State()
-        args = _Namespace(self._vllm_engine_args, self._vllm_frontend_args)
+        args = _Namespace(vllm_engine_args, vllm_frontend_args)
 
         await init_app_state(
             engine_client=self._engine_client,
-            vllm_config=vllm_config,
+            vllm_config=vllm_engine_config,
             state=state,
             args=args,
         )
@@ -294,34 +280,20 @@ class VLLMEngine(LLMEngine):
         if not hasattr(self._oai_serving_chat, "create_chat_completion"):
             raise ValueError("oai_serving_chat must have a create_chat_completion attribute")
         
-    async def _start_engine_client(self) -> Tuple["EngineClient", "VllmConfig"]:
-        (
-            engine_args,
-            vllm_config,
-            node_initialization,
-        ) = await self._prepare_engine_config()
 
-        engine_client = self._start_async_llm_engine(
-            engine_args,
-            vllm_config,
-            node_initialization.placement_group,
-        )
-        return engine_client, vllm_config
-
-    async def _prepare_engine_config(self):
-        """
-        Prepare the engine config to start the engine.
+    def _prepare_engine_config(self, node_initialization: InitializeNodeOutput):
+        """Prepare the engine config to start the engine.
 
         Returns:
-            engine_args: The engine arguments.
-            engine_config: The engine configuration.
-            node_initialization: The node initialization.
+            engine_args: The vLLM's internal engine arguments that is flattened.
+            frontend_args: The vLLM's internal frontend arguments that is 
+                flattened.
+            engine_config: The vLLM's internal engine config that is nested.
         """
-        # Initialize node and return all configurations
-        # TODO: NEEDED for Mistral models
-        node_initialization = await self.initialize_node(self.llm_config)
+        
+        engine_config: VLLMEngineConfig = self.llm_config.get_engine_config()
 
-        if self._engine_config.use_gpu:
+        if engine_config.use_gpu:
             # Create engine config on a task with access to GPU,
             # as GPU capability may be queried.
             ref = (
@@ -338,11 +310,12 @@ class VLLMEngine(LLMEngine):
                 )
                 .remote(self.llm_config)
             )
-            engine_args, vllm_config = ray.get(ref)
+            vllm_engine_args, vllm_engine_config = ray.get(ref)
         else:
-            engine_args, vllm_config = _get_vllm_engine_config(self.llm_config)
+            vllm_engine_args, vllm_engine_config = _get_vllm_engine_config(self.llm_config)
 
-        return engine_args, vllm_config, node_initialization
+        vllm_frontend_args = FrontendArgs(**engine_config.frontend_kwargs)
+        return vllm_engine_args, vllm_frontend_args, vllm_engine_config
 
 
     def _start_async_llm_engine(
