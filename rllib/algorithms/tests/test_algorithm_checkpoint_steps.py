@@ -22,6 +22,20 @@ if TYPE_CHECKING:
 
 ENV_STEPS_PER_ITERATION = 10
 NUM_ENV_STEPS_IN_CALLBACK_LIFETIME = "num_env_steps_in_callback"
+NUM_ENV_RUNNERS = 5
+
+expected_results = {
+    NUM_ENV_STEPS_IN_CALLBACK_LIFETIME: {
+        "step_1": ENV_STEPS_PER_ITERATION,
+        "step_2": ENV_STEPS_PER_ITERATION * 2,
+        "step_3": ENV_STEPS_PER_ITERATION * 3,
+    },
+    NUM_ENV_STEPS_SAMPLED_LIFETIME: {
+        "step_1": ENV_STEPS_PER_ITERATION,
+        "step_2": ENV_STEPS_PER_ITERATION * 2,
+        "step_3": ENV_STEPS_PER_ITERATION * 3,
+    },
+}
 
 
 class TestAlgorithmCheckpointStepsAfterRestore(unittest.TestCase):
@@ -64,7 +78,7 @@ class TestAlgorithmCheckpointStepsAfterRestore(unittest.TestCase):
             num_env_runners=0,
         ).build_algo()
         algo_1_runner = config.env_runners(
-            num_env_runners=1,
+            num_env_runners=NUM_ENV_RUNNERS,
         ).build_algo()
         self._test_algo_checkpointing(
             algo_0_runner,
@@ -85,7 +99,7 @@ class TestAlgorithmCheckpointStepsAfterRestore(unittest.TestCase):
             and algo_1_runner.metrics
         )
         self.assertEqual(algo_0_runner.config.num_env_runners, 0)
-        self.assertEqual(algo_1_runner.config.num_env_runners, 1)
+        self.assertEqual(algo_1_runner.config.num_env_runners, NUM_ENV_RUNNERS)
         # --- Step 1 ---
         _result_algo_0_step1 = algo_0_runner.step()
         _result_algo_1_step1 = algo_1_runner.step()
@@ -115,7 +129,7 @@ class TestAlgorithmCheckpointStepsAfterRestore(unittest.TestCase):
                     )
                     self.assertEqual(
                         result_algo_0_step2[ENV_RUNNER_RESULTS][metric],
-                        ENV_STEPS_PER_ITERATION * 2,
+                        expected_results[metric]["step_2"],
                     )
             # Save Step 2
             algo_0_runner.save_checkpoint(checkpoint_0_step2)
@@ -132,7 +146,7 @@ class TestAlgorithmCheckpointStepsAfterRestore(unittest.TestCase):
                     )
                     self.assertEqual(
                         result_algo_0_step3[ENV_RUNNER_RESULTS][metric],
-                        ENV_STEPS_PER_ITERATION * 3,
+                        expected_results[metric]["step_3"],
                     )
             # Load Step 1
             algo_0_runner_restored = PPO.from_checkpoint(checkpoint_0_step1)
@@ -148,13 +162,13 @@ class TestAlgorithmCheckpointStepsAfterRestore(unittest.TestCase):
                         algo_0_runner_restored.metrics.peek(
                             (ENV_RUNNER_RESULTS, metric)
                         ),
-                        ENV_STEPS_PER_ITERATION,
+                        expected_results[metric]["step_1"],
                     )
                     self.assertEqual(
                         algo_1_runner_restored.metrics.peek(
                             (ENV_RUNNER_RESULTS, metric)
                         ),
-                        ENV_STEPS_PER_ITERATION,
+                        expected_results[metric]["step_1"],
                     )
             tree.assert_same_structure(
                 algo_0_runner_restored.metrics, algo_1_runner_restored.metrics
@@ -173,13 +187,14 @@ class TestAlgorithmCheckpointStepsAfterRestore(unittest.TestCase):
                         algo_0_runner_restored.metrics.peek(
                             (ENV_RUNNER_RESULTS, metric)
                         ),
-                        ENV_STEPS_PER_ITERATION * 2,
+                        expected_results[metric]["step_2"],
                     )
                     self.assertEqual(
                         algo_1_runner_restored.metrics.peek(
                             (ENV_RUNNER_RESULTS, metric)
                         ),
-                        ENV_STEPS_PER_ITERATION * 2,
+                        expected_results[metric]["step_2"],
+                        f"Expected {metric} to be {expected_results[metric]['step_2']}",
                     )
 
             for metric in metrics:
@@ -208,11 +223,11 @@ class TestAlgorithmCheckpointStepsAfterRestore(unittest.TestCase):
                 ):
                     self.assertEqual(
                         algo_0_restored_x2.metrics.peek((ENV_RUNNER_RESULTS, metric)),
-                        ENV_STEPS_PER_ITERATION * 2,
+                        expected_results[metric]["step_2"],
                     )
                     self.assertEqual(
                         algo_1_restored_x2.metrics.peek((ENV_RUNNER_RESULTS, metric)),
-                        ENV_STEPS_PER_ITERATION * 2,
+                        expected_results[metric]["step_2"],
                     )
             # Step 3 from restored and restored x2
             result_algo0_step3_restored = algo_0_runner_restored.step()

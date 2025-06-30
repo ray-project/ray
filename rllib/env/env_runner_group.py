@@ -538,12 +538,26 @@ class EnvRunnerGroup:
         if env_runner_metrics:
             # Note: env_runner_states[NUM_ENV_STEPS_SAMPLED_LIFETIME] takes higher priority
             # can split the total env_steps_sampled.
+            for stat in env_runner_metrics["stats"].values():
+                # If reduce is sum distribute among env_runners
+                # NOTE: needs to be compatible with stats.merge_stats
+                if stat["reduce"] == "sum" and stat["clear_on_reduce"] is False:
+                    if stat["window"] in (None, float("inf")):
+                        stat["_hist"] = [
+                            [v // (config.num_env_runners or 1)]
+                            for h in stat["_hist"]
+                            for v in h
+                        ]
+                    stat["values"] = [
+                        v // (config.num_env_runners or 1) for v in stat["values"]
+                    ]
             env_runner_states[COMPONENT_METRICS_LOGGER] = env_runner_metrics
 
         # Sanity check that metrics and env_runner_metrics aligns
         # TODO: Remove when this is tested accordingly
         if (
             env_steps_sampled is not None
+            and env_runner_metrics is not None
             and NUM_ENV_STEPS_SAMPLED_LIFETIME in env_runner_metrics
         ):
             # TODO: Change into error or warning
