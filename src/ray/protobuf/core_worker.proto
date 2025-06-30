@@ -579,8 +579,7 @@ service CoreWorkerService {
   rpc NumPendingTasks(NumPendingTasksRequest) returns (NumPendingTasksReply);
 
   // Free GPU object from in-actor GPU object store.
-  rpc FreeActorObject(FreeActorObjectRequest)
-      returns (FreeActorObjectReply);
+  rpc FreeActorObject(FreeActorObjectRequest) returns (FreeActorObjectReply);
 
   // Registers a mutable object reader for compiled graphs.
   // Failure: TODO: Needs failure behavior.
