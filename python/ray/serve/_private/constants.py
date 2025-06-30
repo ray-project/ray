@@ -458,5 +458,5 @@ REQUEST_ROUTING_STATS_METHOD = "record_routing_stats"
 
 # Feature flag to run user code in a separate event loop.
 RAY_SERVE_RUN_USER_CODE_IN_SEPARATE_THREAD = (
-    os.environ.get("RAY_SERVE_RUN_USER_CODE_IN_SEPARATE_THREAD", "0") == "1"
+    os.environ.get("RAY_SERVE_RUN_USER_CODE_IN_SEPARATE_THREAD", "1") == "1"
 )
