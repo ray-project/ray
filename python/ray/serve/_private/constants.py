@@ -20,7 +20,7 @@ DEFAULT_HTTP_HOST = os.environ.get("RAY_SERVE_DEFAULT_HTTP_HOST", "127.0.0.1")
 DEFAULT_HTTP_PORT = int(os.environ.get("RAY_SERVE_DEFAULT_HTTP_PORT", 8000))
 
 #: Uvicorn timeout_keep_alive Config
-DEFAULT_UVICORN_KEEP_ALIVE_TIMEOUT_S = 5
+DEFAULT_UVICORN_KEEP_ALIVE_TIMEOUT_S = 90
 
 #: gRPC Port
 DEFAULT_GRPC_PORT = int(os.environ.get("RAY_SERVE_DEFAULT_GRPC_PORT", 9000))
@@ -253,6 +253,16 @@ SERVE_LOG_UNWANTED_ATTRS = {
     "task_id",
     "job_id",
 }
+
+RAY_SERVE_HTTP_KEEP_ALIVE_TIMEOUT_S = int(
+    os.environ.get("RAY_SERVE_HTTP_KEEP_ALIVE_TIMEOUT_S", 0)
+)
+
+RAY_SERVE_REQUEST_PROCESSING_TIMEOUT_S = (
+    float(os.environ.get("RAY_SERVE_REQUEST_PROCESSING_TIMEOUT_S", 0))
+    or float(os.environ.get("SERVE_REQUEST_PROCESSING_TIMEOUT_S", 0))
+    or None
+)
 
 SERVE_LOG_EXTRA_FIELDS = "ray_serve_extra_fields"
 

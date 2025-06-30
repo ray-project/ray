@@ -1457,6 +1457,96 @@ class TestReconciler:
         statuses = {instance.status for instance in instances.values()}
         assert statuses == {Instance.RAY_RUNNING, Instance.ALLOCATED}
 
+    @staticmethod
+    def test_reconcile_max_worker_nodes_limit_triggers_termination(setup):
+        instance_manager, instance_storage, _ = setup
+
+        instances = [
+            create_instance(
+                "head",
+                status=Instance.RAY_RUNNING,
+                node_kind=NodeKind.HEAD,
+                cloud_instance_id="c-head",
+                ray_node_id=binary_to_hex(b"r-head"),
+            ),
+            create_instance(
+                "i-0",
+                status=Instance.ALLOCATED,
+                instance_type="type-1",
+                cloud_instance_id="c-0",
+                ray_node_id=binary_to_hex(b"r-0"),
+            ),
+            create_instance(
+                "i-1",
+                status=Instance.ALLOCATED,
+                instance_type="type-1",
+                cloud_instance_id="c-1",
+                ray_node_id=binary_to_hex(b"r-1"),
+            ),
+        ]
+        TestReconciler._add_instances(instance_storage, instances)
+
+        # Empty list of Ray nodes - i.e. when instances are pending but not scheduled
+        ray_nodes = []
+
+        # Cloud instances corresponding to the 3 IM instances
+        cloud_instances = {
+            "c-head": CloudInstance("c-head", "head", True, NodeKind.HEAD),
+            "c-0": CloudInstance("c-0", "type-1", True, NodeKind.WORKER),
+            "c-1": CloudInstance("c-1", "type-1", True, NodeKind.WORKER),
+        }
+
+        # Scheduler should add both workers to to_terminate due to max nodes
+        mock_scheduler = MockScheduler(
+            to_launch=[],
+            to_terminate=[
+                TerminationRequest(
+                    id="t0",
+                    ray_node_id="r-0",
+                    instance_id="i-0",
+                    instance_status=Instance.ALLOCATED,
+                    cause=TerminationRequest.Cause.MAX_NUM_NODE_PER_TYPE,
+                ),
+                TerminationRequest(
+                    id="t1",
+                    ray_node_id="r-1",
+                    instance_id="i-1",
+                    instance_status=Instance.ALLOCATED,
+                    cause=TerminationRequest.Cause.MAX_NUM_NODE_PER_TYPE,
+                ),
+            ],
+        )
+
+        Reconciler.reconcile(
+            instance_manager=instance_manager,
+            scheduler=mock_scheduler,
+            cloud_provider=MagicMock(),
+            ray_cluster_resource_state=ClusterResourceState(
+                node_states=ray_nodes,
+                cluster_resource_state_version=1,
+            ),
+            non_terminated_cloud_instances=cloud_instances,
+            cloud_provider_errors=[],
+            ray_install_errors=[],
+            autoscaling_config=MockAutoscalingConfig(
+                configs={
+                    "node_type_configs": {
+                        "type-1": {
+                            "name": "type-1",
+                            "resources": {"CPU": 1},
+                            "min_worker_nodes": 0,
+                            "max_worker_nodes": 0,
+                        }
+                    },
+                }
+            ),
+        )
+
+        instances, _ = instance_storage.get_instances()
+
+        assert instances["i-0"].status == Instance.TERMINATING
+        assert instances["i-1"].status == Instance.TERMINATING
+
 
 if __name__ == "__main__":
     if os.environ.get("PARALLEL_CI"):
