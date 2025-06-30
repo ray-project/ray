@@ -256,9 +256,9 @@ Observation Preprocessors
 ~~~~~~~~~~~~~~~~~~~~~~~~~
 
 The simplest way of customizing an env-to-module pipeline is to write an
-:py:class:`~ray.rllib.connectors.env_to_module.observation_preprocessor.ObservationPreprocessor` and plug
+:py:class:`~ray.rllib.connectors.env_to_module.observation_preprocessor.SingleAgentObservationPreprocessor` and plug
 it into the :py:class:`~ray.rllib.algorithms.algorithm_config.AlgorithmConfig`. You only have to subclass then from
-:py:class:`~ray.rllib.connectors.env_to_module.observation_preprocessor.ObservationPreprocessor`
+:py:class:`~ray.rllib.connectors.env_to_module.observation_preprocessor.SingleAgentObservationPreprocessor`
 and override two methods:
 
 .. testcode::
@@ -266,10 +266,10 @@ and override two methods:
     import gymnasium as gym
     import numpy as np
 
-    from ray.rllib.connectors.env_to_module.observation_preprocessor import ObservationPreprocessor
+    from ray.rllib.connectors.env_to_module.observation_preprocessor import SingleAgentObservationPreprocessor
 
 
-    class OneHot(ObservationPreprocessor):
+    class OneHot(SingleAgentObservationPreprocessor):
         """Converts int observations (Discrete) into one-hot tensors (Box)."""
 
         def recompute_output_observation_space(self, in_obs_space, in_act_space):
@@ -279,7 +279,7 @@ and override two methods:
             # RLModule.
             return gym.spaces.Box(0.0, 1.0, (in_obs_space.n,), np.float32)
 
-        def preprocess(self, observation):
+        def preprocess(self, observation, episode):
             # Convert an input observation (int) into a one-hot (float) tensor.
             # Note that 99% of all connectors in RLlib operator in the "numpy space".
             new_obs = np.zeros(shape=self.observation_space.shape, dtype=np.float32)
@@ -318,53 +318,65 @@ example `FrozenLake-v1 <https://gymnasium.farama.org/environments/toy_text/froze
     print(algo.train())
 
 
-
 Adding recent rewards to the batch
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-Assume you wrote a custom :ref:`RLModule <rlmodule-guide>` that requires to see the last
-three received rewards as input in calls to any of its `forward_..()` methods.
+Assume you wrote a custom :ref:`RLModule <rlmodule-guide>` that requires the last three received
+rewards as input in the calls to any of its `forward_..()` methods.
 
-* Through a custom Preprocessor that merges the reward information with the observations and thereby creates new observations.
-* Through adding a new column to the forward batch, for example ``past_rewards`` and properly putting the last three rewards as a ``(3,)``-shaped tensor into this new column.
+You can use the same :py:class:`~ray.rllib.connectors.env_to_module.observation_preprocessor.SingleAgentObservationPreprocessor`
+to achieve this.
 
-The solution you should chose depends on the implementation of your :py:class:`~ray.rllib.core.rl_module.rl_module.RLModule`.
-If your RLModule knows how to extract the ``past_rewards`` column from the input and feed it into its layers
-
-
-
-.. tab-set::
-
-    .. tab-item:: Preprocessor solution
-
-        .. testcode::
-
-            import gymnasium as gym
-            import numpy as np
-
-            from ray.rllib.connectors.env_to_module.observation_preprocessor import ObservationPreprocessor
+In the following example, you'll extract the last three rewards from the ongoing episode and concatenate
+them to the actual observation to form a new observation tensor. Note that you also have to change
+the observation space returned by the connector, since there are now three more values in each
+observation:
 
 
-            class AddPast3Rewards(ObservationPreprocessor):
-                """Extracts last 3 rewards from episode and concats them to observation tensor."""
+.. testcode::
 
-                def recompute_output_observation_space(self, in_obs_space, in_act_space):
-                    # Based on the input observation space (), return the output observation
-                    # space. Implementing this method is crucial for the pipeline to know its output
-                    # spaces, which are an important piece of information to construct the succeeding
-                    # RLModule.
+    import gymnasium as gym
+    import numpy as np
 
-                    assert isinstance(in_obs_space, gym.spaces.Box) and len(in_obs_space.shape) == 1
-                    return gym.spaces.Box(-100.0, 100.0, (in_obs_space.shape[0] + 3,), np.float32)
-
-                def preprocess(self, observation):
+    from ray.rllib.connectors.env_to_module.observation_preprocessor import SingleAgentObservationPreprocessor
 
 
-    .. tab-item:: New column solution
+    class AddPast3Rewards(SingleAgentObservationPreprocessor):
+        """Extracts last 3 rewards from episode and concatenates them to the observation tensor."""
 
-        .. testcode::
+        def recompute_output_observation_space(self, in_obs_space, in_act_space):
+            # Based on the input observation space (), return the output observation
+            # space. Implementing this method is crucial for the pipeline to know its output
+            # spaces, which are an important piece of information to construct the succeeding
+            # RLModule.
+
+            assert isinstance(in_obs_space, gym.spaces.Box) and len(in_obs_space.shape) == 1
+            return gym.spaces.Box(-100.0, 100.0, (in_obs_space.shape[0] + 3,), np.float32)
+
+        def preprocess(self, observation, episode):
+            # Extract the last 3 rewards from the ongoing episode using a python `slice` object.
+            # Alternatively, you can also pass in a list of indices, [-3, -2, -1].
+            past_3_rewards = episode.get_rewards(indices=slice(-3, None))
+
+            # Concatenate the rewards to the actual observation.
+            new_observation = np.concatenate([
+                observation, np.array(past_3_rewards, np.float32)
+            ])
+
+            # Return the new observation.
+            return new_observation
 
 
+Note that the preceding example should work without any further action required on your model,
+whether it's a custom one or provided by RLlib, as long as it determines its input layer's size
+by the shape of the observation space. The connector pipeline correctly captures the observation
+space change, from the environment's 1D-Box to the reward-enhanced, larger 1D-Box and
+passes this new observation space to your RLModule's :py:meth:`~ray.rllib.core.rl_module.rl_module.setup`
+method.
+
+
+Multi-agent observation preprocessors
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 
 
