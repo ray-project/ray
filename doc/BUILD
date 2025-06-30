@@ -483,10 +483,7 @@ doctest(
             "source/data/transforming-data.rst",
             # These tests are currently failing.
             "source/data/loading-data.rst",
-            "source/data/data-internals.rst",
             "source/data/inspecting-data.rst",
-            "source/data/loading-data.rst",
-            "source/data/performance-tips.rst",
             "source/data/saving-data.rst",
             "source/data/working-with-images.rst",
             "source/data/working-with-llms.rst",
