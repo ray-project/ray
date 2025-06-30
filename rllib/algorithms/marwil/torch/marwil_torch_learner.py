@@ -9,7 +9,6 @@ from ray.rllib.algorithms.marwil.marwil_learner import (
 from ray.rllib.core.columns import Columns
 from ray.rllib.core.learner.learner import POLICY_LOSS_KEY, VF_LOSS_KEY
 from ray.rllib.core.learner.torch.torch_learner import TorchLearner
-from ray.rllib.evaluation.postprocessing import Postprocessing
 from ray.rllib.utils.framework import try_import_torch
 from ray.rllib.utils.torch_utils import explained_variance
 from ray.rllib.utils.typing import TensorType
@@ -126,7 +125,7 @@ class MARWILTorchLearner(MARWILLearner, TorchLearner):
                     POLICY_LOSS_KEY: policy_loss,
                     VF_LOSS_KEY: mean_vf_loss,
                     LEARNER_RESULTS_VF_EXPLAINED_VAR_KEY: explained_variance(
-                        batch[Postprocessing.VALUE_TARGETS], value_fn_out
+                        batch[Columns.VALUE_TARGETS], value_fn_out
                     ),
                     LEARNER_RESULTS_MOVING_AVG_SQD_ADV_NORM_KEY: ma_sqd_adv_norms,
                 },
