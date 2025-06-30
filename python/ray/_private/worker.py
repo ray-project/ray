@@ -2633,10 +2633,6 @@ def disconnect(exiting_interpreter=False):
     # tests.
     worker = global_worker
     if worker.connected:
-        # Shutdown GPU object manager before disconnecting
-        if worker._gpu_object_manager is not None:
-            worker._gpu_object_manager.shutdown()
-
         # Shutdown all of the threads that we've started. TODO(rkn): This
         # should be handled cleanly in the worker object's destructor and not
         # in this disconnect method.
