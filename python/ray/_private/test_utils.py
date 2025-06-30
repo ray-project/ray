@@ -740,18 +740,6 @@ def generate_system_config_map(**kwargs):
     return ray_kwargs
 
 
-@ray.remote
-class Collector:
-    def __init__(self):
-        self.items = []
-
-    def add(self, item):
-        self.items.append(item)
-
-    def get(self):
-        return self.items
-
-
 def same_elements(elems_a, elems_b):
     """Checks if two iterables (such as lists) contain the same elements. Elements
     do not have to be hashable (this allows us to compare sets of dicts for
