@@ -77,6 +77,7 @@ class DifferentiableLearnerConfig:
             BatchIndividualItems,
             LearnerConnectorPipeline,
             NumpyToTensor,
+            RemapModuleToColumns,
         )
 
         custom_connectors = []
@@ -133,6 +134,8 @@ class DifferentiableLearnerConfig:
                         agent_to_module_mapping_fn=self.policy_mapping_fn,
                     )
                 )
+            else:
+                pipeline.append(RemapModuleToColumns())
             # Batch all data.
             pipeline.append(BatchIndividualItems(multi_agent=self.is_multi_agent))
             # Convert to Tensors.

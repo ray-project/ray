@@ -4,7 +4,7 @@ import gymnasium as gym
 import numpy as np
 import tree  # pip install dm_tree
 
-from ray.rllib.connectors.connector_v2 import ConnectorV2
+from ray.rllib.connectors.connector_v2 import ConnectorV2, ConnectorV2BatchFormats
 from ray.rllib.core import DEFAULT_MODULE_ID
 from ray.rllib.core.columns import Columns
 from ray.rllib.core.rl_module.multi_rl_module import MultiRLModule
@@ -35,6 +35,7 @@ class AddTimeDimToBatchAndZeroPad(ConnectorV2):
         AddObservationsFromEpisodesToBatch,
         AddTimeDimToBatchAndZeroPad,
         AddStatesFromEpisodesToBatch,
+        RemapModuleToColumns,  # only in single-agent setups!
         AgentToModuleMapping,  # only in multi-agent setups!
         BatchIndividualItems,
         NumpyToTensor,
@@ -46,6 +47,7 @@ class AddTimeDimToBatchAndZeroPad(ConnectorV2):
         AddColumnsFromEpisodesToTrainBatch,
         AddTimeDimToBatchAndZeroPad,
         AddStatesFromEpisodesToBatch,
+        RemapModuleToColumns,  # only in single-agent setups!
         AgentToModuleMapping,  # only in multi-agent setups!
         BatchIndividualItems,
         NumpyToTensor,
@@ -146,6 +148,21 @@ class AddTimeDimToBatchAndZeroPad(ConnectorV2):
         check(output_batch[Columns.OBS], {(episode.id_,): [[0, 1, 2], [3, 0, 0]]})
     """
 
+    # Incoming batches have the format:
+    # [column name] -> [(episodeID, agentID, moduleID)-tuple] -> [.. individual items]
+    # For more details on the various possible batch formats, see the
+    # `ray.rllib.connectors.connector_v2.ConnectorV2BatchFormats` Enum.
+    INPUT_BATCH_FORMAT = (
+        ConnectorV2BatchFormats.BATCH_FORMAT_COLUMN_TO_EPISODE_TO_INDIVIDUAL_ITEMS
+    )
+    # Returned batches have the format:
+    # [column name] -> [(episodeID, agentID, moduleID)-tuple] -> [.. individual items]
+    # For more details on the various possible batch formats, see the
+    # `ray.rllib.connectors.connector_v2.ConnectorV2BatchFormats` Enum.
+    OUTPUT_BATCH_FORMAT = (
+        ConnectorV2BatchFormats.BATCH_FORMAT_COLUMN_TO_EPISODE_TO_INDIVIDUAL_ITEMS
+    )
+
     def __init__(
         self,
         input_observation_space: Optional[gym.Space] = None,
@@ -212,7 +229,7 @@ class AddTimeDimToBatchAndZeroPad(ConnectorV2):
                 )
             shared_data["_added_single_ts_time_rank"] = True
         else:
-            # Before adding STATE_IN to the `data`, zero-pad existing data and batch
+            # Before adding STATE_IN to the `batch`, zero-pad existing data and batch
             # into max_seq_len chunks.
             for column, column_data in batch.copy().items():
                 # Do not zero-pad INFOS column.
@@ -265,7 +282,7 @@ class AddTimeDimToBatchAndZeroPad(ConnectorV2):
                 max_seq_len = sa_module.model_config["max_seq_len"]
 
                 # Also, create the loss mask (b/c of our now possibly zero-padded data)
-                # as well as the seq_lens array and add these to `data` as well.
+                # as well as the seq_lens array and add these to `batch` as well.
                 mask, seq_lens = create_mask_and_seq_lens(len(sa_episode), max_seq_len)
                 self.add_n_batch_items(
                     batch=batch,
