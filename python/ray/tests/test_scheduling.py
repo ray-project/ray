@@ -282,29 +282,25 @@ def test_spread_scheduling_overrides_locality_aware_scheduling(ray_start_cluster
     ray.init(address=cluster.address)
     worker_node = cluster.add_node()
     cluster.wait_for_nodes()
-    signal = SignalActor.remote()
 
-    @ray.remote(
-        num_cpus=0,
+    @ray.remote(num_cpus=0)
+    def get_node_id() -> str:
+        return ray.get_runtime_context().get_node_id()
+
+    worker_node_ref = get_node_id.options(
         scheduling_strategy=NodeAffinitySchedulingStrategy(
             worker_node.node_id, soft=False
         ),
-    )
-    def pinned_to_worker() -> str:
-        return ray.get_runtime_context().get_node_id()
+    ).remote()
 
     @ray.remote(num_cpus=0, scheduling_strategy="SPREAD")
     def spread(*args) -> str:
-        ray.get(signal.wait.remote())
         return ray.get_runtime_context().get_node_id()
 
-    # Run two `spread` tasks in parallel (ensure they run in parallel using signal).
-    # Despite their dependency being on the worker node, one should run on each node
-    # due to the SPREAD policy.
-    worker_node_obj_ref = pinned_to_worker.remote()
-    refs = [spread.remote(worker_node_obj_ref) for _ in range(2)]
-    wait_for_condition(lambda: ray.get(signal.cur_num_waiters.remote()) == 2)
-    ray.get(signal.send.remote())
+    # Run two `SPREAD` tasks.
+    # Despite their shared dependency being on the worker node, one should run on each
+    # node due to the SPREAD policy.
+    refs = [spread.remote(worker_node_ref) for _ in range(2)]
     assert set(ray.get(refs)) == {head_node.node_id, worker_node.node_id}
 
 
