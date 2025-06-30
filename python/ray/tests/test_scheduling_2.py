@@ -660,7 +660,9 @@ def test_demand_report_when_scale_up(autoscaler_v2, shutdown_only):
     def h():
         time.sleep(10000)
 
-    tasks = [f.remote() for _ in range(500)] + [g.remote() for _ in range(500)]  # noqa: F841
+    tasks = [f.remote() for _ in range(500)] + [
+        g.remote() for _ in range(500)
+    ]  # noqa: F841
 
     global_state_accessor = make_global_state_accessor(info)
 
