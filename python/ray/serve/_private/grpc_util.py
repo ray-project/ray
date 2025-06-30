@@ -126,7 +126,7 @@ def get_grpc_response_status(
         if isinstance(exc, RayTaskError):
             logger.warning(f"Request failed: {exc}", extra={"log_to_stderr": False})
         return ResponseStatus(
-            code=grpc.StatusCode.UNAVAILABLE,
+            code=grpc.StatusCode.RESOURCE_EXHAUSTED,
             is_error=True,
             message=exc.message,
         )
