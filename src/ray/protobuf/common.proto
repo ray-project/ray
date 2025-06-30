@@ -257,8 +257,8 @@ enum ErrorType {
   // after some retries.
   ACTOR_UNAVAILABLE = 25;
   // An executing generator needed to be resubmitted because an object that dependended on
-  // an intermediate value needed to be recovered. Cancelling the task is future TODO.
-  GENERATOR_TASK_CANCELLED_FOR_OBJECT_RECONSTRUCTION = 26;
+  // an intermediate value needed to be recovered.
+  GENERATOR_TASK_FAILED_FOR_OBJECT_RECONSTRUCTION = 26;
 }
 
 // The user error information.

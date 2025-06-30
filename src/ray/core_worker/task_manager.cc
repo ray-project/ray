@@ -435,7 +435,7 @@ void TaskManager::MarkGeneratorFailedAndResubmit(const TaskID &task_id) {
 
     rpc::RayErrorInfo error_info;
     error_info.set_error_type(
-        rpc::ErrorType::GENERATOR_TASK_CANCELLED_FOR_OBJECT_RECONSTRUCTION);
+        rpc::ErrorType::GENERATOR_TASK_FAILED_FOR_OBJECT_RECONSTRUCTION);
     SetTaskStatus(task_entry,
                   rpc::TaskStatus::FAILED,
                   worker::TaskStatusEvent::TaskStateUpdate(error_info));
