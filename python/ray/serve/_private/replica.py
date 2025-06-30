@@ -1224,7 +1224,8 @@ class UserCallableWrapper:
         """Decorator to run a coroutine method on the user code event loop.
 
         The method will be modified to be a sync function that returns a
-        `asyncio.Future`.
+        `asyncio.Future` if user code is running in a separate event loop.
+        Otherwise, it will return the coroutine directly.
         """
         assert inspect.iscoroutinefunction(
             f
@@ -1240,7 +1241,7 @@ class UserCallableWrapper:
 
                 return asyncio.wrap_future(fut)
             else:
-                return asyncio.create_task(coro)
+                return coro
 
         return wrapper
 
@@ -1594,24 +1595,20 @@ class UserCallableWrapper:
         system_event_loop = asyncio.get_running_loop()
         user_method_info = self.get_user_method_info(request_metadata.call_method)
 
+        async def enq(item: Any):
+            system_event_loop.call_soon_threadsafe(result_queue.put_nowait, item)
+
         if self._run_user_code_in_separate_thread:
-
-            async def enq(item: Any):
-                system_event_loop.call_soon_threadsafe(result_queue.put_nowait, item)
-
+            call_future = self._call_http_entrypoint(
+                user_method_info, scope, receive, enq
+            )
         else:
-
-            async def enq(item: Any):
-                result_queue.put_nowait(item)
-
-        call_user_method_future = self._call_http_entrypoint(
-            user_method_info, scope, receive, enq
-        )
+            call_future = asyncio.create_task(
+                self._call_http_entrypoint(user_method_info, scope, receive, enq)
+            )
 
         first_message_peeked = False
-        async for messages in result_queue.fetch_messages_from_queue(
-            call_user_method_future
-        ):
+        async for messages in result_queue.fetch_messages_from_queue(call_future):
             # HTTP (ASGI) messages are only consumed by the proxy so batch them
             # and use vanilla pickle (we know it's safe because these messages
             # only contain primitive Python types).
@@ -1726,16 +1723,24 @@ class UserCallableWrapper:
         def _enqueue_thread_safe(item: Any):
             system_event_loop.call_soon_threadsafe(result_queue.put_nowait, item)
 
-        call_user_method_future = self._call_user_generator(
-            request_metadata,
-            request_args,
-            request_kwargs,
-            generator_result_callback=_enqueue_thread_safe,
-        )
+        if self._run_user_code_in_separate_thread:
+            call_future = self._call_user_generator(
+                request_metadata,
+                request_args,
+                request_kwargs,
+                generator_result_callback=_enqueue_thread_safe,
+            )
+        else:
+            call_future = asyncio.create_task(
+                self._call_user_generator(
+                    request_metadata,
+                    request_args,
+                    request_kwargs,
+                    generator_result_callback=_enqueue_thread_safe,
+                )
+            )
 
-        async for messages in result_queue.fetch_messages_from_queue(
-            call_user_method_future
-        ):
+        async for messages in result_queue.fetch_messages_from_queue(call_future):
             for msg in messages:
                 yield msg
 
