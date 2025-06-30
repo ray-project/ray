@@ -214,72 +214,71 @@ class ParquetDatasink(_FileDatasink):
         # directory unless files need to be closed to respect max_open_files
         max_rows_per_file = self.max_rows_per_file if self.max_rows_per_file else 0
 
-        chunked_tables: List["pyarrow.Table"] = []
+        # ---------------------------------------------------------------------------
+        # Split each PyArrow table into chunks that respect {min,max}_rows_per_file
+        # and the target block size detected by _get_max_chunk_size().
+        # ---------------------------------------------------------------------------
+        chunked_tables: List[pyarrow.Table] = []
+        max_rows_per_file, min_rows_per_file = (
+            self.max_rows_per_file,
+            self.min_rows_per_file,
+        )
+
         for table in tables:
-            estimated_max_rows = _get_max_chunk_size(
-                table, self._data_context.target_max_block_size
-            )
-            total_rows = table.num_rows
-            if total_rows == 0:
+            total = table.num_rows
+            if total == 0:
                 continue
 
-            if estimated_max_rows is None:
-                estimated_max_rows = total_rows
+            block_size = (
+                _get_max_chunk_size(table, self._data_context.target_max_block_size)
+                or total
+            )
 
             offset = 0
-            while offset < total_rows:
-                remaining_rows = total_rows - offset
+            while offset < total:
+                remaining = total - offset
 
-                if self.max_rows_per_file is None and self.min_rows_per_file is None:
-                    chunk_size = min(estimated_max_rows, remaining_rows)
-                elif (
-                    self.max_rows_per_file is None
-                    and self.min_rows_per_file is not None
-                ):
-                    chunk_size = min(
-                        remaining_rows,
-                        max(
-                            self.min_rows_per_file,
-                            min(remaining_rows, estimated_max_rows),
-                        ),
-                    )
+                # --- derive upper & lower bounds for this slice --------------------
+                upper = (
+                    remaining
+                    if max_rows_per_file is None
+                    else min(remaining, max_rows_per_file)
+                )
+                lower = 0 if min_rows_per_file is None else min_rows_per_file
 
-                else:
-                    if self.min_rows_per_file is not None:
-                        chunk_size = min(
-                            self.max_rows_per_file,
-                            max(self.min_rows_per_file, estimated_max_rows),
-                            remaining_rows,
-                        )
+                # --- pick a size that obeys bounds & still fits --------------------
+                chunk = min(block_size, upper)
+                chunk = max(chunk, lower)
+                chunk = min(chunk, upper)
+                if chunk <= 0:
+                    chunk = remaining
 
-                    else:
-                        chunk_size = min(
-                            self.max_rows_per_file, estimated_max_rows, remaining_rows
-                        )
-
-                if chunk_size <= 0:
-                    chunk_size = remaining_rows
-
-                chunked_tables.append(table.slice(offset, chunk_size))
-                offset += chunk_size
+                chunked_tables.append(table.slice(offset, chunk))
+                offset += chunk
 
         if chunked_tables:
             tables = chunked_tables
 
-        if row_group_size is not None:
-            if (
-                self.max_rows_per_file
-                and self.max_rows_per_file > 0
-                and row_group_size > self.max_rows_per_file
-            ):
-                row_group_size = self.max_rows_per_file
-            min_rows_per_group = max_rows_per_group = row_group_size
-        else:
+        # ---------------------------------------------------------------------------
+        # Row‑group sizing for Parquet output.
+        # ---------------------------------------------------------------------------
+        if row_group_size is None:
+            # Defaults set by pyarrow.
+            max_rows_per_group = 1_024 * 1_024
+            if max_rows_per_file and max_rows_per_file > 0:
+                max_rows_per_group = min(max_rows_per_group, max_rows_per_file)
             min_rows_per_group = 0
-            max_rows_per_group = 1024 * 1024
-            if self.max_rows_per_file and self.max_rows_per_file > 0:
-                max_rows_per_group = min(max_rows_per_group, self.max_rows_per_file)
+        else:
+            # User supplied a group size → make it obey max_rows_per_file.
+            if (
+                max_rows_per_file
+                and max_rows_per_file > 0
+                and row_group_size > max_rows_per_file
+            ):
+                row_group_size = max_rows_per_file
+            min_rows_per_group = max_rows_per_group = row_group_size
 
+        # Final invariant: min ≤ max.
         if min_rows_per_group > max_rows_per_group:
             min_rows_per_group = max_rows_per_group
 
