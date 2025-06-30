@@ -1087,11 +1087,11 @@ TEST_F(GcsAutoscalerStateManagerTest,
   auto *bundle1 = pg_data->add_bundles();
   (*bundle1->mutable_unit_resources())["CPU"] = 2;
   (*bundle1->mutable_unit_resources())["GPU"] = 1;
-  (*bundle1->mutable_label_selector())["accelerator"] = "A100";
+  (*bundle1->mutable_label_selector())["accelerator"] = "in(A100,B200)";
 
   auto *bundle2 = pg_data->add_bundles();
   (*bundle2->mutable_unit_resources())["CPU"] = 4;
-  (*bundle2->mutable_label_selector())["accelerator"] = "TPU";
+  (*bundle2->mutable_label_selector())["accelerator"] = "!in(TPU)";
 
   EXPECT_CALL(*gcs_placement_group_manager_, GetPlacementGroupLoad)
       .WillOnce(Return(std::make_shared<rpc::PlacementGroupLoad>(std::move(load))));
@@ -1115,10 +1115,13 @@ TEST_F(GcsAutoscalerStateManagerTest,
   const auto &c2 = r2.label_selectors(0).label_constraints(0);
 
   EXPECT_EQ(c1.label_key(), "accelerator");
-  ASSERT_EQ(c1.label_values_size(), 1);
-  EXPECT_EQ(c1.label_values(0), "A100");
+  EXPECT_EQ(c1.operator_(), rpc::autoscaler::LabelOperator::LABEL_OPERATOR_IN);
+  ASSERT_EQ(c1.label_values_size(), 2);
+  EXPECT_THAT(absl::flat_hash_set<std::string>(c1.label_values().begin(), c1.label_values().end()),
+              ::testing::UnorderedElementsAre("A100", "B200"));
 
   EXPECT_EQ(c2.label_key(), "accelerator");
+  EXPECT_EQ(c2.operator_(), rpc::autoscaler::LabelOperator::LABEL_OPERATOR_NOT_IN);
   ASSERT_EQ(c2.label_values_size(), 1);
   EXPECT_EQ(c2.label_values(0), "TPU");
 }
