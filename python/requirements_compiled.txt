@@ -789,6 +789,7 @@ importlib-metadata==6.11.0
     #   mlflow-skinny
     #   myst-nb
     #   opentelemetry-api
+    #   pytest-virtualenv
 importlib-resources==5.13.0
     # via
     #   etils
@@ -1743,7 +1744,7 @@ pytest-sugar==0.9.5
     # via -r python/requirements/test-requirements.txt
 pytest-timeout==2.1.0
     # via -r python/requirements/test-requirements.txt
-pytest-virtualenv==1.7.0 ; python_version < "3.12"
+pytest-virtualenv==1.8.1 ; python_version < "3.12"
     # via -r python/requirements/test-requirements.txt
 python-box==6.1.0
     # via comet-ml
