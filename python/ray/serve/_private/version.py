@@ -186,6 +186,11 @@ class DeploymentVersion:
                 elif isinstance(reconfigure_dict[option_name], BaseModel):
                     reconfigure_dict[option_name] = reconfigure_dict[option_name].dict()
 
+        # Can't serialize bytes. The request router class is already
+        # included in the serialized config as request_router_class.
+        if "router_config" in reconfigure_dict:
+            del reconfigure_dict["router_config"]["serialized_request_router_cls"]
+
         if (
             isinstance(self.deployment_config.user_config, bytes)
             and "user_config" in reconfigure_dict

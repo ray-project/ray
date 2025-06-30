@@ -7,12 +7,15 @@ import ray
 from ray import serve
 from ray._common.test_utils import wait_for_condition
 from ray.serve._private.common import ReplicaID
+from ray.serve.config import RouterConfig
 from ray.serve.context import _get_internal_replica_context
 from ray.serve.handle import DeploymentHandle
 
 
 @serve.deployment(
-    request_routing_stats_period_s=0.1, request_routing_stats_timeout_s=0.1
+    router_config=RouterConfig(
+        request_routing_stats_period_s=0.1, request_routing_stats_timeout_s=0.1
+    )
 )
 class Patient:
     def __init__(self):

@@ -28,6 +28,7 @@ from ray.serve._private.request_router.request_router import (
     RequestRouter,
 )
 from ray.serve._private.test_utils import get_application_url
+from ray.serve.config import RouterConfig
 from ray.serve.deployment import Application
 from ray.serve.exceptions import RayServeException
 from ray.serve.handle import DeploymentHandle
@@ -81,7 +82,7 @@ class FakeRequestRouter(RequestRouter):
         return [candidate_replicas]
 
 
-@serve.deployment(request_router_class=FakeRequestRouter)
+@serve.deployment(router_config=RouterConfig(request_router_class=FakeRequestRouter))
 class AppWithCustomRequestRouter:
     def __call__(self) -> str:
         return "Hello, world!"
