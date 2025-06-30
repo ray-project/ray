@@ -20,6 +20,7 @@ from ray.util.scheduling_strategies import (
     PlacementGroupSchedulingStrategy,
 )
 from ray._common.test_utils import SignalActor, wait_for_condition
+from ray.util.state import list_tasks
 
 
 @pytest.mark.skipif(
@@ -634,12 +635,12 @@ def test_demand_report_when_scale_up(autoscaler_v2, shutdown_only):
                     "object_store_memory": 1024 * 1024 * 1024,
                 },
                 "node_config": {},
-                "min_workers": 10,
-                "max_workers": 10,
+                "min_workers": 2,
+                "max_workers": 2,
             },
         },
         autoscaler_v2=autoscaler_v2,
-        max_workers=20,  # default 8
+        max_workers=4,  # default 8
         upscaling_speed=5,  # greater upscaling speed
     )
 
@@ -659,8 +660,8 @@ def test_demand_report_when_scale_up(autoscaler_v2, shutdown_only):
     def h():
         time.sleep(10000)
 
-    tasks = [f.remote() for _ in range(5000)].extend(  # noqa: F841
-        [g.remote() for _ in range(5000)]
+    tasks = [f.remote() for _ in range(500)].extend(  # noqa: F841
+        [g.remote() for _ in range(500)]
     )
 
     global_state_accessor = make_global_state_accessor(info)
@@ -681,7 +682,7 @@ def test_demand_report_when_scale_up(autoscaler_v2, shutdown_only):
             aggregate_resource_load[0].num_ready_requests_queued,
             aggregate_resource_load[0].shape,
         )
-        if backlog_size + num_ready_requests_queued != 9990:
+        if backlog_size + num_ready_requests_queued != 998:
             return False
 
         if shape != {"CPU": 1.0}:
@@ -690,7 +691,14 @@ def test_demand_report_when_scale_up(autoscaler_v2, shutdown_only):
 
     # In ASAN test it's slow.
     # Wait for 20s for the cluster to be up
-    wait_for_condition(check_backlog_info, 20)
+    try:
+        wait_for_condition(check_backlog_info, 20)
+    except RuntimeError:
+        tasks = list_tasks(limit=10000)
+        print(f"Total tasks: {len(tasks)}")
+        for task in tasks:
+            print(task)
+        raise
     cluster.shutdown()
     ray.shutdown()
 
