@@ -470,10 +470,7 @@ class ReplicaBase(ABC):
         request, returns the existing route from the request metadata.
         """
         route = request_metadata.route
-        if (
-            request_metadata.is_http_request
-            and self._user_callable_asgi_app is not None
-        ):
+        if self._user_callable_asgi_app is not None:
             req: StreamingHTTPRequest = request_args[0]
             try:
                 matched_route = get_asgi_route_name(
@@ -494,23 +491,9 @@ class ReplicaBase(ABC):
 
         return route
 
-    def _maybe_get_http_method(
-        self, request_metadata: RequestMetadata, request_args: Tuple[Any]
-    ) -> Optional[str]:
-        """Get the HTTP method to be used in logs & metrics.
-
-        If this is not an HTTP request, returns None.
-        """
-        if request_metadata.is_http_request:
-            req: StreamingHTTPRequest = request_args[0]
-            # WebSocket messages don't have a 'method' field.
-            return req.asgi_scope.get("method", "WS")
-
-        return None
-
     @contextmanager
     def _handle_errors_and_metrics(
-        self, request_metadata: RequestMetadata, request_args: Tuple[Any]
+        self, request_metadata: RequestMetadata
     ) -> Generator[StatusCodeCallback, None, None]:
         start_time = time.time()
         user_exception = None
@@ -536,7 +519,7 @@ class ReplicaBase(ABC):
 
         latency_ms = (time.time() - start_time) * 1000
         self._record_errors_and_metrics(
-            user_exception, status_code, latency_ms, request_metadata, request_args
+            user_exception, status_code, latency_ms, request_metadata
         )
 
         if user_exception is not None:
@@ -548,9 +531,8 @@ class ReplicaBase(ABC):
         status_code: Optional[str],
         latency_ms: float,
         request_metadata: RequestMetadata,
-        request_args: Tuple[Any],
     ):
-        http_method = self._maybe_get_http_method(request_metadata, request_args)
+        http_method = request_metadata._http_method
         http_route = request_metadata.route
         call_method = request_metadata.call_method
         if user_exception is None:
@@ -593,6 +575,11 @@ class ReplicaBase(ABC):
                 scope, request_metadata, request.receive_asgi_messages
             )
 
+            request_metadata._http_method = scope.get("method", "WS")
+            request_metadata.route = self._maybe_get_http_route(
+                request_metadata, request_args
+            )
+
             request_args = (scope, receive)
         elif request_metadata.is_grpc_request:
             assert len(request_args) == 1 and isinstance(request_args[0], gRPCRequest)
@@ -616,7 +603,7 @@ class ReplicaBase(ABC):
         request_args, request_kwargs = self._unpack_proxy_args(
             request_metadata, request_args, request_kwargs
         )
-        async with self._wrap_user_method_call(request_metadata, request_args):
+        async with self._wrap_user_method_call(request_metadata):
             return await self._user_callable_wrapper.call_user_method(
                 request_metadata, request_args, request_kwargs
             )
@@ -629,7 +616,7 @@ class ReplicaBase(ABC):
             request_metadata, request_args, request_kwargs
         )
         async with self._wrap_user_method_call(
-            request_metadata, request_args
+            request_metadata
         ) as status_code_callback:
             if request_metadata.is_http_request:
                 scope, receive = request_args
@@ -666,7 +653,7 @@ class ReplicaBase(ABC):
             request_metadata, request_args, request_kwargs
         )
         async with self._wrap_user_method_call(
-            request_metadata, request_args
+            request_metadata
         ) as status_code_callback:
             yield ReplicaQueueLengthInfo(
                 accepted=True,
@@ -781,7 +768,7 @@ class ReplicaBase(ABC):
     @abstractmethod
     @asynccontextmanager
     async def _wrap_user_method_call(
-        self, request_metadata: RequestMetadata, request_args: Tuple[Any]
+        self, request_metadata: RequestMetadata
     ) -> Generator[StatusCodeCallback, None, None]:
         pass
 
@@ -895,7 +882,7 @@ class Replica(ReplicaBase):
 
     @asynccontextmanager
     async def _wrap_user_method_call(
-        self, request_metadata: RequestMetadata, request_args: Tuple[Any]
+        self, request_metadata: RequestMetadata
     ) -> AsyncGenerator[StatusCodeCallback, None]:
         """Context manager that wraps user method calls.
 
@@ -904,9 +891,6 @@ class Replica(ReplicaBase):
         3) Records per-request metrics via the metrics manager.
         """
         async with self._start_request():
-            request_metadata.route = self._maybe_get_http_route(
-                request_metadata, request_args
-            )
             ray.serve.context._serve_request_context.set(
                 ray.serve.context._RequestContext(
                     route=request_metadata.route,
@@ -919,7 +903,7 @@ class Replica(ReplicaBase):
             )
 
             with self._handle_errors_and_metrics(
-                request_metadata, request_args
+                request_metadata
             ) as status_code_callback:
                 yield status_code_callback
 
