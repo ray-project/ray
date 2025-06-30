@@ -1589,20 +1589,24 @@ class UserCallableWrapper:
         receive: Receive,
     ) -> Any:
         result_queue = MessageQueue()
-
-        # `asyncio.Event`s are not thread safe, so `call_soon_threadsafe` must be
-        # used to interact with the result queue from the user callable thread.
-        system_event_loop = asyncio.get_running_loop()
         user_method_info = self.get_user_method_info(request_metadata.call_method)
 
-        async def enq(item: Any):
-            system_event_loop.call_soon_threadsafe(result_queue.put_nowait, item)
-
         if self._run_user_code_in_separate_thread:
+            # `asyncio.Event`s are not thread safe, so `call_soon_threadsafe` must be
+            # used to interact with the result queue from the user callable thread.
+            system_event_loop = asyncio.get_running_loop()
+
+            async def enq(item: Any):
+                system_event_loop.call_soon_threadsafe(result_queue.put_nowait, item)
+
             call_future = self._call_http_entrypoint(
                 user_method_info, scope, receive, enq
             )
         else:
+
+            async def enq(item: Any):
+                result_queue.put_nowait(item)
+
             call_future = asyncio.create_task(
                 self._call_http_entrypoint(user_method_info, scope, receive, enq)
             )
@@ -1714,35 +1718,35 @@ class UserCallableWrapper:
         The user method is called in an asyncio `Task` and places its results on a
         `result_queue`. This method pulls and yields from the `result_queue`.
         """
-        result_queue = MessageQueue()
+        if (
+            not self._run_user_code_in_separate_thread
+            and not self._run_sync_methods_in_threadpool
+        ):
+            gen = await self._call_user_generator(
+                request_metadata, request_args, request_kwargs
+            )
+            async for result in gen:
+                yield result
+        else:
+            result_queue = MessageQueue()
 
-        # `asyncio.Event`s are not thread safe, so `call_soon_threadsafe` must be
-        # used to interact with the result queue from the user callable thread.
-        system_event_loop = asyncio.get_running_loop()
+            # `asyncio.Event`s are not thread safe, so `call_soon_threadsafe` must be
+            # used to interact with the result queue from the user callable thread.
+            system_event_loop = asyncio.get_running_loop()
 
-        def _enqueue_thread_safe(item: Any):
-            system_event_loop.call_soon_threadsafe(result_queue.put_nowait, item)
+            def _enqueue_thread_safe(item: Any):
+                system_event_loop.call_soon_threadsafe(result_queue.put_nowait, item)
 
-        if self._run_user_code_in_separate_thread:
             call_future = self._call_user_generator(
                 request_metadata,
                 request_args,
                 request_kwargs,
-                generator_result_callback=_enqueue_thread_safe,
-            )
-        else:
-            call_future = asyncio.create_task(
-                self._call_user_generator(
-                    request_metadata,
-                    request_args,
-                    request_kwargs,
-                    generator_result_callback=_enqueue_thread_safe,
-                )
+                enq=_enqueue_thread_safe,
             )
 
-        async for messages in result_queue.fetch_messages_from_queue(call_future):
-            for msg in messages:
-                yield msg
+            async for messages in result_queue.fetch_messages_from_queue(call_future):
+                for msg in messages:
+                    yield msg
 
     @_run_user_code
     async def _call_user_generator(
@@ -1751,8 +1755,8 @@ class UserCallableWrapper:
         request_args: Tuple[Any],
         request_kwargs: Dict[str, Any],
         *,
-        generator_result_callback: Optional[Callable] = None,
-    ) -> Any:
+        enq: Optional[Callable] = None,
+    ) -> Optional[AsyncGenerator[Any, None]]:
         """Call a user generator.
 
         The `generator_result_callback` is used to communicate the results of generator
@@ -1763,28 +1767,42 @@ class UserCallableWrapper:
         """
         self._raise_if_not_initialized("_call_user_generator")
 
+        user_method_info = self.get_user_method_info(request_metadata.call_method)
         logger.info(
-            f"Started executing request to method '{request_metadata.call_method}'.",
+            f"Started executing request to method '{user_method_info.name}'.",
             extra={"log_to_stderr": False, "serve_access_log": True},
         )
 
-        user_method_info = self.get_user_method_info(request_metadata.call_method)
-        result, sync_gen_consumed = await self._call_func_or_gen(
-            user_method_info.callable,
-            args=request_args,
-            kwargs=request_kwargs,
-            is_streaming=True,
-            generator_result_callback=generator_result_callback,
-        )
-        return await self._handle_user_method_result(
-            result,
-            user_method_info,
-            is_streaming=True,
-            is_http_request=False,
-            sync_gen_consumed=sync_gen_consumed,
-            generator_result_callback=generator_result_callback,
-            asgi_args=None,
-        )
+        async def _call_generator() -> AsyncGenerator[Any, None]:
+            gen, sync_gen_consumed = await self._call_func_or_gen(
+                user_method_info.callable,
+                args=request_args,
+                kwargs=request_kwargs,
+                is_streaming=True,
+                generator_result_callback=enq,
+            )
+
+            if inspect.isgenerator(gen):
+                for result in gen:
+                    yield result
+            elif inspect.isasyncgen(gen):
+                async for result in gen:
+                    yield result
+            elif not sync_gen_consumed:
+                raise TypeError(
+                    f"Called method '{user_method_info.name}' with "
+                    "`handle.options(stream=True)` but it did not return a generator."
+                )
+
+        if enq:
+
+            async def gen_coro_wrapper():
+                async for result in _call_generator():
+                    enq(result)
+
+            await gen_coro_wrapper()
+        else:
+            return _call_generator()
 
     @_run_user_code
     async def call_user_method(
