@@ -1014,6 +1014,12 @@ CoreWorker::CoreWorker(CoreWorkerOptions options, const WorkerID &worker_id)
 
 CoreWorker::~CoreWorker() { RAY_LOG(INFO) << "Core worker is destructed"; }
 
+void CoreWorker::DecrementGPUObjectRefCount(const std::vector<ObjectID> &object_ids) {
+  // TODO(kevin85421): Update memory store?
+  reference_counter_->RemoveSubmittedTaskReferences(
+      object_ids, /*release_lineage=*/true, nullptr);
+}
+
 void CoreWorker::Shutdown() {
   // Ensure that the shutdown logic runs at most once.
   bool expected = false;
@@ -4956,11 +4962,8 @@ void CoreWorker::HandlePlasmaObjectReady(rpc::PlasmaObjectReadyRequest request,
 void CoreWorker::HandleFreeActorObject(rpc::FreeActorObjectRequest request,
                                        rpc::FreeActorObjectReply *reply,
                                        rpc::SendReplyCallback send_reply_callback) {
-  RAY_LOG(INFO) << "HandleFreeActorObject " << ObjectID::FromBinary(request.object_id());
-  // TODO(kevin85421): Call Python callback to clean up the GPU object.
   ObjectID object_id = ObjectID::FromBinary(request.object_id());
   options_.free_actor_object_callback(object_id);
-  RAY_LOG(INFO) << "HandleFreeActorObject done";
   send_reply_callback(Status::OK(), nullptr, nullptr);
 }
 

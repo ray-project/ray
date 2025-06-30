@@ -38,9 +38,12 @@ def tensor_transport_to_collective_backend(
 def __ray_send__(self, communicator_name: str, obj_id: str, dst_rank: int):
     """Helper function that runs on the src actor to send tensors to the dst actor."""
     gpu_object_manager = global_worker.gpu_object_manager
+    import time
+
+    print(f"__ray_send__ time: {time.time()}, obj_id: {obj_id}")
     assert gpu_object_manager.has_gpu_object(
         obj_id
-    ), f"obj_id={obj_id} not found in GPU object store"
+    ), f"__ray_send__ obj_id={obj_id} not found in GPU object store"
     tensors = gpu_object_manager.get_gpu_object(obj_id)
 
     backend = collective.get_group_handle(communicator_name).backend()
@@ -84,6 +87,6 @@ def __ray_fetch_gpu_object__(self, obj_id: str):
     gpu_object_manager = global_worker.gpu_object_manager
     assert gpu_object_manager.has_gpu_object(
         obj_id
-    ), f"obj_id={obj_id} not found in GPU object store"
+    ), f"__ray_fetch_gpu_object__ obj_id={obj_id} not found in GPU object store"
     tensors = gpu_object_manager.get_gpu_object(obj_id)
     return tensors

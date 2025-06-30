@@ -52,6 +52,7 @@ void InlineDependencies(
             // the GPU object from the in-actor GPU object store using the object ID as
             // the key.
             mutable_arg->clear_object_ref();
+            inlined_dependency_ids->push_back(id);
           }
           mutable_arg->set_is_inlined(true);
           if (it->second->HasData()) {
@@ -66,7 +67,7 @@ void InlineDependencies(
             mutable_arg->add_nested_inlined_refs()->CopyFrom(nested_ref);
             contained_ids->push_back(ObjectID::FromBinary(nested_ref.object_id()));
           }
-          inlined_dependency_ids->push_back(id);
+          // inlined_dependency_ids->push_back(id);
         }
         found++;
       }

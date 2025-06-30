@@ -32,6 +32,31 @@ class GPUTestActor:
         return len(gpu_object_manager.gpu_object_store)
 
 
+def test_gc_gpu_object(ray_start_regular):
+    world_size = 2
+    actors = [GPUTestActor.remote() for _ in range(world_size)]
+    create_collective_group(actors, backend="torch_gloo")
+
+    small_tensor = torch.randn((1,))
+    sender = actors[0]
+    receiver = actors[1]
+
+    ref = sender.echo.remote(small_tensor)
+    ref = receiver.double.remote(ref)
+    assert ray.get(ref) == pytest.approx(small_tensor * 2)
+
+    wait_for_condition(
+        lambda: ray.get(sender.get_gpu_object_store_size.remote()) == 0,
+        timeout=10,
+        retry_interval_ms=100,
+    )
+    wait_for_condition(
+        lambda: ray.get(receiver.get_gpu_object_store_size.remote()) == 0,
+        timeout=10,
+        retry_interval_ms=100,
+    )
+
+
 def test_inter_actor_gpu_tensor_transfer(ray_start_regular):
     world_size = 2
     actors = [GPUTestActor.remote() for _ in range(world_size)]
@@ -175,38 +200,6 @@ def test_fetch_gpu_object_to_driver(ray_start_regular):
     assert torch.equal(result[0], tensor1)
     assert torch.equal(result[1], tensor2)
     assert result[2] == 7
-
-
-def test_gc_gpu_object(ray_start_regular):
-    world_size = 2
-    actors = [GPUTestActor.remote() for _ in range(world_size)]
-    create_collective_group(actors, backend="torch_gloo")
-
-    small_tensor = torch.randn((1,))
-    sender = actors[0]
-    receiver = actors[1]
-
-    ref = sender.echo.remote(small_tensor)
-
-    assert ray.get(sender.get_gpu_object_store_size.remote()) == 1
-    assert ray.get(receiver.get_gpu_object_store_size.remote()) == 0
-
-    result = receiver.double.remote(ref)
-    assert ray.get(result) == pytest.approx(small_tensor * 2)
-
-    del ref
-    del result
-
-    wait_for_condition(
-        lambda: ray.get(sender.get_gpu_object_store_size.remote()) == 0,
-        timeout=10,
-        retry_interval_ms=100,
-    )
-    wait_for_condition(
-        lambda: ray.get(receiver.get_gpu_object_store_size.remote()) == 0,
-        timeout=10,
-        retry_interval_ms=100,
-    )
 
 
 def test_invalid_tensor_transport(ray_start_regular):

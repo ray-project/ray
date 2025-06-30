@@ -140,6 +140,9 @@ cdef extern from "ray/common/id.h" namespace "ray" nogil:
         CObjectID FromRandom()
 
         @staticmethod
+        CObjectID FromHex(const c_string &hex_str)
+
+        @staticmethod
         const CObjectID Nil()
 
         @staticmethod

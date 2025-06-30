@@ -857,6 +857,8 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
       const std::string &call_site = "",
       const TaskID current_task_id = TaskID::Nil());
 
+  void DecrementGPUObjectRefCount(const std::vector<ObjectID> &object_ids);
+
   /// Create an actor.
   ///
   /// \param[in] caller_id ID of the task submitter.

@@ -184,6 +184,7 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
             const CObjectID &generator_id,
             const CAddress &caller_address)
         void AsyncDelObjectRefStream(const CObjectID &generator_id)
+        void DecrementGPUObjectRefCount(const c_vector[CObjectID] &object_ids)
         CRayStatus TryReadObjectRefStream(
             const CObjectID &generator_id,
             CObjectReference *object_ref_out)
