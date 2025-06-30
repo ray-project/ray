@@ -28,6 +28,18 @@ from ray.util.accelerators.accelerators import (
     GOOGLE_TPU_V5P,
     GOOGLE_TPU_V5LITEPOD,
     GOOGLE_TPU_V6E,
+    APPLE_M1,
+    APPLE_M1_PRO,
+    APPLE_M1_MAX,
+    APPLE_M1_ULTRA,
+    APPLE_M2,
+    APPLE_M2_PRO,
+    APPLE_M2_MAX,
+    APPLE_M2_ULTRA,
+    APPLE_M3,
+    APPLE_M3_PRO,
+    APPLE_M3_MAX,
+    APPLE_SILICON,
 )
 
 __all__ = [
@@ -60,6 +72,18 @@ __all__ = [
     "GOOGLE_TPU_V5P",
     "GOOGLE_TPU_V5LITEPOD",
     "GOOGLE_TPU_V6E",
+    "APPLE_M1",
+    "APPLE_M1_PRO",
+    "APPLE_M1_MAX",
+    "APPLE_M1_ULTRA",
+    "APPLE_M2",
+    "APPLE_M2_PRO",
+    "APPLE_M2_MAX",
+    "APPLE_M2_ULTRA",
+    "APPLE_M3",
+    "APPLE_M3_PRO",
+    "APPLE_M3_MAX",
+    "APPLE_SILICON",
     # Deprecated
     "NVIDIA_TESLA_A100",
 ]
