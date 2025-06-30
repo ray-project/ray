@@ -12,7 +12,7 @@ ray.init()
 enable_dask_on_ray()
 
 d_arr = da.ones(100)
-print(dask.base.collections_to_dsk([d_arr]))
+print(dask.base.collections_to_expr([d_arr]))
 # {('ones-c345e6f8436ff9bcd68ddf25287d27f3',
 #   0): (functools.partial(<function _broadcast_trick_inner at 0x7f27f1a71f80>,
 #   dtype=dtype('float64')), (5,))}
@@ -23,7 +23,7 @@ d_arr_p = d_arr.persist()
 
 # Notice that the Ray ObjectRef is inlined. The dask.ones() task has
 # been submitted to and is running on the Ray cluster.
-dask.base.collections_to_dsk([d_arr_p])
+dask.base.collections_to_expr([d_arr_p])
 # {('ones-c345e6f8436ff9bcd68ddf25287d27f3',
 #   0): ObjectRef(8b4e50dc1ddac855ffffffffffffffffffffffff0100000001000000)}
 
