@@ -94,26 +94,18 @@ def test_hybrid_policy(ray_start_cluster):
 
     # Submit 1 * PER_NODE_HYBRID_THRESHOLD tasks.
     # They should all be packed on the local node.
-    print("[1.0] Submitting batch of tasks.")
     refs = [get_node_id.remote() for _ in range(PER_NODE_HYBRID_THRESHOLD)]
-    print("[1.1] Acquire block_driver semaphore.")
     ray.get([block_driver.acquire.remote() for _ in refs], timeout=20)
-    print("[1.2] Release block_task semaphore.")
     ray.get([block_task.release.remote() for _ in refs], timeout=20)
-    print("[1.3] Get refs.")
     nodes = ray.get(refs, timeout=20)
     assert len(set(nodes)) == 1
 
     # Submit 2 * PER_NODE_HYBRID_THRESHOLD tasks.
     # The first PER_NODE_HYBRID_THRESHOLD tasks should be packed on the local node, then
     # the second PER_NODE_HYBRID_THRESHOLD tasks should be packed on the remote node.
-    print("[2.0] Submitting batch of tasks.")
     refs = [get_node_id.remote() for _ in range(int(PER_NODE_HYBRID_THRESHOLD * 2))]
-    print("[2.1] Acquire block_driver semaphore.")
     ray.get([block_driver.acquire.remote() for _ in refs], timeout=20)
-    print("[2.2] Release block_task semaphore.")
     ray.get([block_task.release.remote() for _ in refs], timeout=20)
-    print("[2.3] Get refs.")
     counter = collections.Counter(ray.get(refs, timeout=20))
     assert all(v == PER_NODE_HYBRID_THRESHOLD for v in counter.values()), counter
 
@@ -121,13 +113,9 @@ def test_hybrid_policy(ray_start_cluster):
     # Once all nodes are past the hybrid threshold we round robin.
     # TODO(wuisawesome): Ideally we could schedule less than 20 nodes here, but the
     # policy is imperfect if a resource report interrupts the process.
-    print("[3.0] Submitting batch of tasks.")
     refs = [get_node_id.remote() for _ in range(int(NUM_CPUS_PER_NODE * NUM_NODES))]
-    print("[3.1] Acquire block_driver semaphore.")
     ray.get([block_driver.acquire.remote() for _ in refs], timeout=20)
-    print("[3.2] Release block_task semaphore.")
     ray.get([block_task.release.remote() for _ in refs], timeout=20)
-    print("[3.3] Get refs.")
     counter = collections.Counter(ray.get(refs, timeout=20))
     assert all(v == NUM_CPUS_PER_NODE for v in counter.values()), counter
 
