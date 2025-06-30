@@ -29,7 +29,7 @@ import starlette.responses
 from anyio import to_thread
 from fastapi import Request
 from starlette.applications import Starlette
-from starlette.types import ASGIApp, Message
+from starlette.types import ASGIApp, Receive, Scope, Send
 
 import ray
 from ray import cloudpickle
@@ -577,9 +577,45 @@ class ReplicaBase(ABC):
             was_error=user_exception is not None,
         )
 
+    def _unpack_proxy_args(
+        self,
+        request_metadata: RequestMetadata,
+        request_args: Tuple[Any],
+        request_kwargs: Dict[str, Any],
+    ):
+        if request_metadata.is_http_request:
+            assert len(request_args) == 1 and isinstance(
+                request_args[0], StreamingHTTPRequest
+            )
+            request: StreamingHTTPRequest = request_args[0]
+            scope = request.asgi_scope
+            receive = ASGIReceiveProxy(
+                scope, request_metadata, request.receive_asgi_messages
+            )
+
+            request_args = (scope, receive)
+        elif request_metadata.is_grpc_request:
+            assert len(request_args) == 1 and isinstance(request_args[0], gRPCRequest)
+            request: gRPCRequest = request_args[0]
+
+            method_info = self._user_callable_wrapper.get_user_method_info(
+                request_metadata.call_method
+            )
+            request_args = (request.user_request_proto,)
+            request_kwargs = (
+                {GRPC_CONTEXT_ARG_NAME: request_metadata.grpc_context}
+                if method_info.takes_grpc_context_kwarg
+                else {}
+            )
+
+        return request_args, request_kwargs
+
     async def handle_request(
         self, request_metadata: RequestMetadata, *request_args, **request_kwargs
     ) -> Tuple[bytes, Any]:
+        request_args, request_kwargs = self._unpack_proxy_args(
+            request_metadata, request_args, request_kwargs
+        )
         async with self._wrap_user_method_call(request_metadata, request_args):
             return await self._user_callable_wrapper.call_user_method(
                 request_metadata, request_args, request_kwargs
@@ -589,15 +625,19 @@ class ReplicaBase(ABC):
         self, request_metadata: RequestMetadata, *request_args, **request_kwargs
     ) -> AsyncGenerator[Any, None]:
         """Generator that is the entrypoint for all `stream=True` handle calls."""
+        request_args, request_kwargs = self._unpack_proxy_args(
+            request_metadata, request_args, request_kwargs
+        )
         async with self._wrap_user_method_call(
             request_metadata, request_args
         ) as status_code_callback:
             if request_metadata.is_http_request:
+                scope, receive = request_args
                 async for result in self._user_callable_wrapper.call_http_entrypoint(
                     request_metadata,
-                    request_args,
-                    request_kwargs,
-                    status_code_callback=status_code_callback,
+                    status_code_callback,
+                    scope,
+                    receive,
                 ):
                     yield result
             else:
@@ -622,6 +662,9 @@ class ReplicaBase(ABC):
             yield ReplicaQueueLengthInfo(False, self.get_num_ongoing_requests())
             return
 
+        request_args, request_kwargs = self._unpack_proxy_args(
+            request_metadata, request_args, request_kwargs
+        )
         async with self._wrap_user_method_call(
             request_metadata, request_args
         ) as status_code_callback:
@@ -633,11 +676,12 @@ class ReplicaBase(ABC):
             )
 
             if request_metadata.is_http_request:
+                scope, receive = request_args
                 async for result in self._user_callable_wrapper.call_http_entrypoint(
                     request_metadata,
-                    request_args,
-                    request_kwargs,
-                    status_code_callback=status_code_callback,
+                    status_code_callback,
+                    scope,
+                    receive,
                 ):
                     yield result
             elif request_metadata.is_streaming:
@@ -1206,7 +1250,7 @@ class UserCallableWrapper:
         # be run on the user code event loop.
         to_thread.current_default_thread_limiter().total_tokens = limit
 
-    def _get_user_method_info(self, method_name: str) -> UserMethodInfo:
+    def get_user_method_info(self, method_name: str) -> UserMethodInfo:
         """Get UserMethodInfo for the provided call method name.
 
         This method is cached to avoid repeated expensive calls to `inspect.signature`.
@@ -1475,25 +1519,6 @@ class UserCallableWrapper:
                 args=(user_config,),
             )
 
-    def _prepare_args_for_grpc_request(
-        self,
-        request: gRPCRequest,
-        request_metadata: RequestMetadata,
-        user_method_info: UserMethodInfo,
-    ) -> Tuple[Tuple[Any], Dict[str, Any]]:
-        """Prepare args and kwargs for a user method handling a gRPC request.
-
-        The sole argument is always the user request proto.
-
-        If the method has a "context" kwarg, we pass the gRPC context, else no kwargs.
-        """
-        request_kwargs = (
-            {GRPC_CONTEXT_ARG_NAME: request_metadata.grpc_context}
-            if user_method_info.takes_grpc_context_kwarg
-            else {}
-        )
-        return (request.user_request_proto,), request_kwargs
-
     async def _handle_user_method_result(
         self,
         result: Any,
@@ -1558,9 +1583,9 @@ class UserCallableWrapper:
     async def call_http_entrypoint(
         self,
         request_metadata: RequestMetadata,
-        request_args: Tuple[Any],
-        request_kwargs: Dict[str, Any],
         status_code_callback: StatusCodeCallback,
+        scope: Scope,
+        receive: Receive,
     ) -> Any:
         result_queue = MessageQueue()
 
@@ -1568,24 +1593,12 @@ class UserCallableWrapper:
         # used to interact with the result queue from the user callable thread.
         system_event_loop = asyncio.get_running_loop()
 
-        def _enqueue_thread_safe(item: Any):
+        async def enq(item: Any):
             system_event_loop.call_soon_threadsafe(result_queue.put_nowait, item)
 
-        assert len(request_args) == 1 and isinstance(
-            request_args[0], StreamingHTTPRequest
-        )
-        request: StreamingHTTPRequest = request_args[0]
-        scope = request.asgi_scope
-        receive = ASGIReceiveProxy(
-            scope, request_metadata, request.receive_asgi_messages
-        )
-
-        async def send(message: Message):
-            return _enqueue_thread_safe(message)
-
-        user_method_info = self._get_user_method_info(request_metadata.call_method)
+        user_method_info = self.get_user_method_info(request_metadata.call_method)
         call_user_method_future = self._call_http_entrypoint(
-            user_method_info, scope, receive, send
+            user_method_info, scope, receive, enq
         )
         first_message_peeked = False
         async for messages in result_queue.fetch_messages_from_queue(
@@ -1608,7 +1621,11 @@ class UserCallableWrapper:
 
     @_run_user_code
     async def _call_http_entrypoint(
-        self, user_method_info: UserMethodInfo, scope, receive, send
+        self,
+        user_method_info: UserMethodInfo,
+        scope: Scope,
+        receive: Receive,
+        send: Send,
     ) -> Any:
         """Call an HTTP entrypoint.
 
@@ -1636,9 +1653,7 @@ class UserCallableWrapper:
 
         receive_task = None
         try:
-            receive_task = self._user_code_event_loop.create_task(
-                receive.fetch_until_disconnect()
-            )
+            receive_task = asyncio.create_task(receive.fetch_until_disconnect())
             result, sync_gen_consumed = await self._call_func_or_gen(
                 user_method_info.callable,
                 args=request_args,
@@ -1740,13 +1755,7 @@ class UserCallableWrapper:
             extra={"log_to_stderr": False, "serve_access_log": True},
         )
 
-        user_method_info = self._get_user_method_info(request_metadata.call_method)
-        if request_metadata.is_grpc_request:
-            assert len(request_args) == 1 and isinstance(request_args[0], gRPCRequest)
-            request_args, request_kwargs = self._prepare_args_for_grpc_request(
-                request_args[0], request_metadata, user_method_info
-            )
-
+        user_method_info = self.get_user_method_info(request_metadata.call_method)
         result, sync_gen_consumed = await self._call_func_or_gen(
             user_method_info.callable,
             args=request_args,
@@ -1783,13 +1792,7 @@ class UserCallableWrapper:
             extra={"log_to_stderr": False, "serve_access_log": True},
         )
 
-        user_method_info = self._get_user_method_info(request_metadata.call_method)
-        if request_metadata.is_grpc_request:
-            assert len(request_args) == 1 and isinstance(request_args[0], gRPCRequest)
-            request_args, request_kwargs = self._prepare_args_for_grpc_request(
-                request_args[0], request_metadata, user_method_info
-            )
-
+        user_method_info = self.get_user_method_info(request_metadata.call_method)
         result, _ = await self._call_func_or_gen(
             user_method_info.callable,
             args=request_args,
