@@ -179,6 +179,7 @@ def simulate_s3_bucket(
     server.stop()
     os.environ = old_env
 
+
 @ray.remote
 class Collector:
     def __init__(self):
