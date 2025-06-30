@@ -311,8 +311,10 @@ def test_no_memory_leak(concurrency):
     )
 
     ds = ray.data.range(120)
+
     def map_id_to_val_in_test_no_memory_leak(x):
         return {"id": x["id"], "val": x["id"] + 5}
+
     ds = ds.map(map_id_to_val_in_test_no_memory_leak)
     ds = processor(ds)
     ds = ds.materialize()
