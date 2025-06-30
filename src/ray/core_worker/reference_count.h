@@ -595,15 +595,6 @@ class ReferenceCounter : public ReferenceCounterInterface,
   /// Get the tensor transport for the given object.
   std::optional<rpc::TensorTransport> GetTensorTransport(const ObjectID &object_id) const;
 
-  /// Remove references for the provided object IDs that correspond to them
-  /// being dependencies to a submitted task. This should be called when
-  /// inlined dependencies are inlined or when the task finishes for plasma
-  /// dependencies.
-  void RemoveSubmittedTaskReferences(const std::vector<ObjectID> &argument_ids,
-                                     bool release_lineage,
-                                     std::vector<ObjectID> *deleted)
-      ABSL_EXCLUSIVE_LOCKS_REQUIRED(mutex_);
-
  private:
   /// Contains information related to nested object refs only.
   struct NestedReferenceCount {
@@ -896,6 +887,15 @@ class ReferenceCounter : public ReferenceCounterInterface,
   /// ObjectReferenceCount. Consumes the input proto table.
   static void ReferenceTableToProto(ReferenceProtoTable &table,
                                     ReferenceTableProto *proto);
+
+  /// Remove references for the provided object IDs that correspond to them
+  /// being dependencies to a submitted task. This should be called when
+  /// inlined dependencies are inlined or when the task finishes for plasma
+  /// dependencies.
+  void RemoveSubmittedTaskReferences(const std::vector<ObjectID> &argument_ids,
+                                     bool release_lineage,
+                                     std::vector<ObjectID> *deleted)
+      ABSL_EXCLUSIVE_LOCKS_REQUIRED(mutex_);
 
   /// Helper method to mark that this ObjectID contains another ObjectID(s).
   ///

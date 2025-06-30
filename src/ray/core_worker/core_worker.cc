@@ -1014,12 +1014,6 @@ CoreWorker::CoreWorker(CoreWorkerOptions options, const WorkerID &worker_id)
 
 CoreWorker::~CoreWorker() { RAY_LOG(INFO) << "Core worker is destructed"; }
 
-void CoreWorker::DecrementGPUObjectRefCount(const std::vector<ObjectID> &object_ids) {
-  // TODO(kevin85421): Update memory store?
-  reference_counter_->RemoveSubmittedTaskReferences(
-      object_ids, /*release_lineage=*/true, nullptr);
-}
-
 void CoreWorker::Shutdown() {
   // Ensure that the shutdown logic runs at most once.
   bool expected = false;

@@ -3591,16 +3591,6 @@ cdef class CoreWorker:
     def get_memory_store_size(self):
         return CCoreWorkerProcess.GetCoreWorker().GetMemoryStoreSize()
 
-    def decrement_gpu_object_ref_count(self, object_ids):
-        cdef:
-            c_vector[CObjectID] c_object_ids
-
-        for object_id in object_ids:
-            c_object_ids.push_back(CObjectID.FromHex(object_id))
-
-        with nogil:
-            CCoreWorkerProcess.GetCoreWorker().DecrementGPUObjectRefCount(c_object_ids)
-
     cdef python_label_match_expressions_to_c(
             self, python_expressions,
             CLabelMatchExpressions *c_expressions):
