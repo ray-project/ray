@@ -59,6 +59,7 @@
 #include <optional>
 #include <sstream>
 #include <string>
+#include <thread>
 #include <vector>
 
 #include "ray/util/macros.h"
@@ -124,6 +125,12 @@ enum class RayLogLevel {
   FATAL = 3
 };
 
+template<typename T>
+bool SleepAndCheck(T&& condition) {
+  std::this_thread::sleep_for(std::chrono::seconds(2));
+  return static_cast<bool>(condition);
+}
+
 #define RAY_LOG_INTERNAL(level) ::ray::RayLog(__FILE__, __LINE__, level)
 
 #define RAY_LOG_ENABLED(level) ray::RayLog::IsLevelEnabled(ray::RayLogLevel::level)
@@ -145,7 +152,7 @@ enum class RayLogLevel {
   : ::ray::Voidify() & (::ray::RayLog(__FILE__, __LINE__, ray::RayLogLevel::FATAL) \
                         << " Check failed: " display " ")
 
-#define RAY_CHECK(condition) RAY_CHECK_WITH_DISPLAY(condition, #condition)
+#define RAY_CHECK(condition) RAY_CHECK_WITH_DISPLAY(SleepAndCheck(condition), #condition)
 
 #ifdef NDEBUG
 
