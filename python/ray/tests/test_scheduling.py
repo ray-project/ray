@@ -388,10 +388,16 @@ def test_locality_aware_leasing_cached_objects(ray_start_cluster):
     assert ray.get(h.remote(f_obj1, f_obj2)) == worker2.unique_id
 
 
+@pytest.mark.skipif(
+    ray._private.client_mode_hook.is_client_mode_enabled,
+    reason=(
+        "fetch_local=False is not supported for Ray Client, which is needed to write "
+        "the tests in a deterministic way. "
+        "See https://github.com/ray-project/ray/issues/52401."
+    ),
+)
 def test_locality_aware_leasing_borrowed_objects(ray_start_cluster):
     """Test that a task runs where its dependencies are located for borrowed objects."""
-    is_ray_client_test = ray._private.client_mode_hook.is_client_mode_enabled
-
     # This test ensures that a task will run where its task dependencies are
     # located, even when those objects are borrowed.
     cluster = ray_start_cluster
@@ -413,9 +419,6 @@ def test_locality_aware_leasing_borrowed_objects(ray_start_cluster):
     @ray.remote(num_cpus=0)
     def borrower(o: List[ray.ObjectRef]) -> str:
         obj_ref = o[0]
-        if is_ray_client_test:
-            ray.wait([obj_ref], fetch_local=False)
-
         return ray.get(get_node_id.remote(obj_ref))
 
     # The result of worker_node_ref will be pinned on the worker node.
@@ -427,11 +430,7 @@ def test_locality_aware_leasing_borrowed_objects(ray_start_cluster):
 
     # Ensure the owner has object info prior to scheduling the task so the object info
     # will be inlined to the borrower.
-    # NOTE(edoakes): Ray Client does not respect `fetch_local=False`, so this pulls the
-    # object to the head node. We instead test a slightly weaker condition by moving the
-    # `ray.wait` call to resolve the location inside of the borrower task (see above).
-    if not is_ray_client_test:
-        ray.wait([worker_node_ref], fetch_local=False)
+    ray.wait([worker_node_ref], fetch_local=False)
 
     # Run a borrower task on the head node. From within the borrower task, we launch
     # another task. That inner task should run on the worker node based on locality.
