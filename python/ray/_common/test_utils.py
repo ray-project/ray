@@ -178,15 +178,3 @@ def simulate_s3_bucket(
     yield url
     server.stop()
     os.environ = old_env
-
-
-@ray.remote
-class Collector:
-    def __init__(self):
-        self.items = []
-
-    def add(self, item):
-        self.items.append(item)
-
-    def get(self):
-        return self.items
