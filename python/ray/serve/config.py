@@ -44,34 +44,43 @@ class RouterConfig(BaseModel):
         if user passed a callable.
     """
 
-    # Cloudpickled request router class.
-    serialized_request_router_cls: bytes = Field(default=b"")
+    serialized_request_router_cls: bytes = Field(
+        default=b"", description="Cloudpickled request router class."
+    )
 
-    # The class of the request router used for this
-    # deployment. This can be a string or a class. All the deployment
-    # handle created for this deployment will use the routing policy
-    # defined by the request router. Default to Serve's PowerOfTwoChoicesRequestRouter.
     request_router_class: Union[str, Callable] = Field(
-        default=DEFAULT_REQUEST_ROUTER_PATH
+        default=DEFAULT_REQUEST_ROUTER_PATH,
+        description=(
+            "The class of the request router used for this deployment. This can be "
+            "a string or a class. All the deployment handle created for this "
+            "deployment will use the routing policy defined by the request router. "
+            "Default to Serve's PowerOfTwoChoicesRequestRouter."
+        ),
     )
-    # Keyword arguments that will be passed to the
-    # request router class initialize_state method.
-    request_router_kwargs: Dict[str, Any] = Field(default_factory=dict)
-
-    # Duration between record scheduling stats
-    # calls for the replica. Defaults to 10s. The health check is by default a
-    # no-op Actor call to the replica, but you can define your own request
-    # scheduling stats using the "record_scheduling_stats" method in your
-    # deployment.
-    request_routing_stats_period_s: PositiveFloat = (
-        DEFAULT_REQUEST_ROUTING_STATS_PERIOD_S
+    request_router_kwargs: Dict[str, Any] = Field(
+        default_factory=dict,
+        description=(
+            "Keyword arguments that will be passed to the request router class "
+            "initialize_state method."
+        ),
     )
 
-    # Duration in seconds, that replicas wait for
-    # a request scheduling stats method to return before considering it as failed.
-    # Defaults to 30s.
-    request_routing_stats_timeout_s: PositiveFloat = (
-        DEFAULT_REQUEST_ROUTING_STATS_TIMEOUT_S
+    request_routing_stats_period_s: PositiveFloat = Field(
+        default=DEFAULT_REQUEST_ROUTING_STATS_PERIOD_S,
+        description=(
+            "Duration between record scheduling stats calls for the replica. "
+            "Defaults to 10s. The health check is by default a no-op Actor call "
+            "to the replica, but you can define your own request scheduling stats "
+            "using the 'record_scheduling_stats' method in your deployment."
+        ),
+    )
+
+    request_routing_stats_timeout_s: PositiveFloat = Field(
+        default=DEFAULT_REQUEST_ROUTING_STATS_TIMEOUT_S,
+        description=(
+            "Duration in seconds, that replicas wait for a request scheduling "
+            "stats method to return before considering it as failed. Defaults to 30s."
+        ),
     )
 
     @validator("request_router_kwargs", always=True)
@@ -130,13 +139,17 @@ class AutoscalingConfig(BaseModel):
 
     target_ongoing_requests: PositiveFloat = DEFAULT_TARGET_ONGOING_REQUESTS
 
-    # How often to scrape for metrics
-    metrics_interval_s: PositiveFloat = 10.0
-    # Time window to average over for metrics.
-    look_back_period_s: PositiveFloat = 30.0
+    metrics_interval_s: PositiveFloat = Field(
+        default=10.0, description="How often to scrape for metrics."
+    )
+    look_back_period_s: PositiveFloat = Field(
+        default=30.0, description="Time window to average over for metrics."
+    )
 
-    # DEPRECATED
-    smoothing_factor: PositiveFloat = 1.0
+    smoothing_factor: PositiveFloat = Field(
+        default=1.0,
+        description="[DEPRECATED] Smoothing factor for autoscaling decisions.",
+    )
     # DEPRECATED: replaced by `downscaling_factor`
     upscale_smoothing_factor: Optional[PositiveFloat] = Field(
         default=None, description="[DEPRECATED] Please use `upscaling_factor` instead."
@@ -147,16 +160,23 @@ class AutoscalingConfig(BaseModel):
         description="[DEPRECATED] Please use `downscaling_factor` instead.",
     )
 
-    # Multiplicative "gain" factor to limit scaling decisions
-    upscaling_factor: Optional[PositiveFloat] = None
-    downscaling_factor: Optional[PositiveFloat] = None
+    upscaling_factor: Optional[PositiveFloat] = Field(
+        default=None,
+        description='Multiplicative "gain" factor to limit upscaling decisions.',
+    )
+    downscaling_factor: Optional[PositiveFloat] = Field(
+        default=None,
+        description='Multiplicative "gain" factor to limit downscaling decisions.',
+    )
 
     # How frequently to make autoscaling decisions
     # loop_period_s: float = CONTROL_LOOP_PERIOD_S
-    # How long to wait before scaling down replicas
-    downscale_delay_s: NonNegativeFloat = 600.0
-    # How long to wait before scaling up replicas
-    upscale_delay_s: NonNegativeFloat = 30.0
+    downscale_delay_s: NonNegativeFloat = Field(
+        default=600.0, description="How long to wait before scaling down replicas."
+    )
+    upscale_delay_s: NonNegativeFloat = Field(
+        default=30.0, description="How long to wait before scaling up replicas."
+    )
 
     # Cloudpickled policy definition.
     _serialized_policy_def: bytes = PrivateAttr(default=b"")

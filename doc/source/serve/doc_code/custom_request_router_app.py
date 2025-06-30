@@ -35,6 +35,7 @@ from collections import defaultdict
 from ray import serve
 from ray.serve.context import _get_internal_replica_context
 from typing import Any, Dict
+from ray.serve.config import RouterConfig
 
 
 def _time_ms() -> int:
@@ -42,7 +43,9 @@ def _time_ms() -> int:
 
 
 @serve.deployment(
-    request_router_class="custom_request_router:ThroughputAwareRequestRouter",
+    router_config=RouterConfig(
+        request_router_class="custom_request_router:ThroughputAwareRequestRouter",
+    ),
     num_replicas=3,
     request_routing_stats_period_s=1,
     request_routing_stats_timeout_s=1,
