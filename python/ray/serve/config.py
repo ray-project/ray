@@ -55,7 +55,7 @@ class RouterConfig(BaseModel):
         default=DEFAULT_REQUEST_ROUTER_PATH
     )
     # Keyword arguments that will be passed to the
-    # request router class __init__ method.
+    # request router class initialize_state method.
     request_router_kwargs: Dict[str, Any] = Field(default_factory=dict)
 
     # Duration between record scheduling stats

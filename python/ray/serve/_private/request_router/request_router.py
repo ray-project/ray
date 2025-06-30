@@ -535,9 +535,9 @@ class RequestRouter(ABC):
         self.num_routing_tasks_in_backoff_gauge.set(self.num_routing_tasks_in_backoff)
 
     def initialize_state(self, **kwargs):
-        """Initialize the state of the request router.
-        Called at the end of RequestRouter.__init__ with request_router_kwargs
-        from DeploymentConfig .
+        """
+        Initialize the state of the request router. Called by framework with the
+        contents of RequestRouter.request_router_kwargs
         """
         pass
 
