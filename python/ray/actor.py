@@ -86,7 +86,7 @@ _T8 = TypeVar("_T8")
 _T9 = TypeVar("_T9")
 
 
-class RemoteMethodNoArgs(Generic[_Ret]):
+class _RemoteMethodNoArgs(Generic[_Ret]):
     def remote(self) -> "ObjectRef[_Ret]":
         ...
 
@@ -94,7 +94,7 @@ class RemoteMethodNoArgs(Generic[_Ret]):
         ...
 
 
-class RemoteMethod0(Generic[_Ret, _T0]):
+class _RemoteMethod0(Generic[_Ret, _T0]):
     def remote(self, __arg0: "Union[_T0, ObjectRef[_T0]]") -> "ObjectRef[_Ret]":
         ...
 
@@ -102,7 +102,7 @@ class RemoteMethod0(Generic[_Ret, _T0]):
         ...
 
 
-class RemoteMethod1(Generic[_Ret, _T0, _T1]):
+class _RemoteMethod1(Generic[_Ret, _T0, _T1]):
     def remote(
         self, __arg0: "Union[_T0, ObjectRef[_T0]]", __arg1: "Union[_T1, ObjectRef[_T1]]"
     ) -> "ObjectRef[_Ret]":
@@ -112,7 +112,7 @@ class RemoteMethod1(Generic[_Ret, _T0, _T1]):
         ...
 
 
-class RemoteMethod2(Generic[_Ret, _T0, _T1, _T2]):
+class _RemoteMethod2(Generic[_Ret, _T0, _T1, _T2]):
     def remote(
         self,
         __arg0: "Union[_T0, ObjectRef[_T0]]",
@@ -125,7 +125,7 @@ class RemoteMethod2(Generic[_Ret, _T0, _T1, _T2]):
         ...
 
 
-class RemoteMethod3(Generic[_Ret, _T0, _T1, _T2, _T3]):
+class _RemoteMethod3(Generic[_Ret, _T0, _T1, _T2, _T3]):
     def remote(
         self,
         __arg0: "Union[_T0, ObjectRef[_T0]]",
@@ -139,7 +139,7 @@ class RemoteMethod3(Generic[_Ret, _T0, _T1, _T2, _T3]):
         ...
 
 
-class RemoteMethod4(Generic[_Ret, _T0, _T1, _T2, _T3, _T4]):
+class _RemoteMethod4(Generic[_Ret, _T0, _T1, _T2, _T3, _T4]):
     def remote(
         self,
         __arg0: "Union[_T0, ObjectRef[_T0]]",
@@ -156,7 +156,7 @@ class RemoteMethod4(Generic[_Ret, _T0, _T1, _T2, _T3, _T4]):
         ...
 
 
-class RemoteMethod5(Generic[_Ret, _T0, _T1, _T2, _T3, _T4, _T5]):
+class _RemoteMethod5(Generic[_Ret, _T0, _T1, _T2, _T3, _T4, _T5]):
     def remote(
         self,
         __arg0: "Union[_T0, ObjectRef[_T0]]",
@@ -180,7 +180,7 @@ class RemoteMethod5(Generic[_Ret, _T0, _T1, _T2, _T3, _T4, _T5]):
         ...
 
 
-class RemoteMethod6(Generic[_Ret, _T0, _T1, _T2, _T3, _T4, _T5, _T6]):
+class _RemoteMethod6(Generic[_Ret, _T0, _T1, _T2, _T3, _T4, _T5, _T6]):
     def remote(
         self,
         __arg0: "Union[_T0, ObjectRef[_T0]]",
@@ -206,7 +206,7 @@ class RemoteMethod6(Generic[_Ret, _T0, _T1, _T2, _T3, _T4, _T5, _T6]):
         ...
 
 
-class RemoteMethod7(Generic[_Ret, _T0, _T1, _T2, _T3, _T4, _T5, _T6, _T7]):
+class _RemoteMethod7(Generic[_Ret, _T0, _T1, _T2, _T3, _T4, _T5, _T6, _T7]):
     def remote(
         self,
         __arg0: "Union[_T0, ObjectRef[_T0]]",
@@ -234,7 +234,7 @@ class RemoteMethod7(Generic[_Ret, _T0, _T1, _T2, _T3, _T4, _T5, _T6, _T7]):
         ...
 
 
-class RemoteMethod8(Generic[_Ret, _T0, _T1, _T2, _T3, _T4, _T5, _T6, _T7, _T8]):
+class _RemoteMethod8(Generic[_Ret, _T0, _T1, _T2, _T3, _T4, _T5, _T6, _T7, _T8]):
     def remote(
         self,
         __arg0: "Union[_T0, ObjectRef[_T0]]",
@@ -264,7 +264,7 @@ class RemoteMethod8(Generic[_Ret, _T0, _T1, _T2, _T3, _T4, _T5, _T6, _T7, _T8]):
         ...
 
 
-class RemoteMethod9(Generic[_Ret, _T0, _T1, _T2, _T3, _T4, _T5, _T6, _T7, _T8, _T9]):
+class _RemoteMethod9(Generic[_Ret, _T0, _T1, _T2, _T3, _T4, _T5, _T6, _T7, _T8, _T9]):
     def remote(
         self,
         __arg0: "Union[_T0, ObjectRef[_T0]]",
@@ -299,77 +299,77 @@ class RemoteMethod9(Generic[_Ret, _T0, _T1, _T2, _T3, _T4, _T5, _T6, _T7, _T8, _
 @overload
 def method(
     __method: Callable[[Any], _Ret],
-) -> RemoteMethodNoArgs[_Ret]:
+) -> _RemoteMethodNoArgs[_Ret]:
     ...
 
 
 @overload
 def method(
     __method: Callable[[Any, _T0], _Ret],
-) -> RemoteMethod0[_Ret, _T0]:
+) -> _RemoteMethod0[_Ret, _T0]:
     ...
 
 
 @overload
 def method(
     __method: Callable[[Any, _T0, _T1], _Ret],
-) -> RemoteMethod1[_Ret, _T0, _T1]:
+) -> _RemoteMethod1[_Ret, _T0, _T1]:
     ...
 
 
 @overload
 def method(
     __method: Callable[[Any, _T0, _T1, _T2], _Ret],
-) -> RemoteMethod2[_Ret, _T0, _T1, _T2]:
+) -> _RemoteMethod2[_Ret, _T0, _T1, _T2]:
     ...
 
 
 @overload
 def method(
     __method: Callable[[Any, _T0, _T1, _T2, _T3], _Ret],
-) -> RemoteMethod3[_Ret, _T0, _T1, _T2, _T3]:
+) -> _RemoteMethod3[_Ret, _T0, _T1, _T2, _T3]:
     ...
 
 
 @overload
 def method(
     __method: Callable[[Any, _T0, _T1, _T2, _T3, _T4], _Ret],
-) -> RemoteMethod4[_Ret, _T0, _T1, _T2, _T3, _T4]:
+) -> _RemoteMethod4[_Ret, _T0, _T1, _T2, _T3, _T4]:
     ...
 
 
 @overload
 def method(
     __method: Callable[[Any, _T0, _T1, _T2, _T3, _T4, _T5], _Ret],
-) -> RemoteMethod5[_Ret, _T0, _T1, _T2, _T3, _T4, _T5]:
+) -> _RemoteMethod5[_Ret, _T0, _T1, _T2, _T3, _T4, _T5]:
     ...
 
 
 @overload
 def method(
     __method: Callable[[Any, _T0, _T1, _T2, _T3, _T4, _T5, _T6], _Ret],
-) -> RemoteMethod6[_Ret, _T0, _T1, _T2, _T3, _T4, _T5, _T6]:
+) -> _RemoteMethod6[_Ret, _T0, _T1, _T2, _T3, _T4, _T5, _T6]:
     ...
 
 
 @overload
 def method(
     __method: Callable[[Any, _T0, _T1, _T2, _T3, _T4, _T5, _T6, _T7], _Ret],
-) -> RemoteMethod7[_Ret, _T0, _T1, _T2, _T3, _T4, _T5, _T6, _T7]:
+) -> _RemoteMethod7[_Ret, _T0, _T1, _T2, _T3, _T4, _T5, _T6, _T7]:
     ...
 
 
 @overload
 def method(
     __method: Callable[[Any, _T0, _T1, _T2, _T3, _T4, _T5, _T6, _T7, _T8], _Ret],
-) -> RemoteMethod8[_Ret, _T0, _T1, _T2, _T3, _T4, _T5, _T6, _T7, _T8]:
+) -> _RemoteMethod8[_Ret, _T0, _T1, _T2, _T3, _T4, _T5, _T6, _T7, _T8]:
     ...
 
 
 @overload
 def method(
     __method: Callable[[Any, _T0, _T1, _T2, _T3, _T4, _T5, _T6, _T7, _T8, _T9], _Ret],
-) -> RemoteMethod9[_Ret, _T0, _T1, _T2, _T3, _T4, _T5, _T6, _T7, _T8, _T9]:
+) -> _RemoteMethod9[_Ret, _T0, _T1, _T2, _T3, _T4, _T5, _T6, _T7, _T8, _T9]:
     ...
 
 
