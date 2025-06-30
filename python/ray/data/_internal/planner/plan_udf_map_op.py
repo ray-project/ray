@@ -379,7 +379,9 @@ def _generate_transform_fn_for_map_batches(
     if inspect.iscoroutinefunction(fn):
         # UDF is a callable class with async generator `__call__` method.
         transform_fn = _generate_transform_fn_for_async_map(
-            fn, _validate_batch_output, max_queue_size=4,
+            fn,
+            _validate_batch_output,
+            max_queue_size=4,
         )
 
     else:
