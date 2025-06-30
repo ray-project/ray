@@ -1347,6 +1347,7 @@ TEST_F(GcsActorManagerTest, TestKillActorWhenActorIsCreating) {
       &reply,
       /*send_reply_callback*/
       [](Status status, std::function<void()> success, std::function<void()> failure) {});
+  io_service_.run_one();
 
   // Make sure the `KillActor` rpc is send.
   ASSERT_EQ(worker_client_->killed_actors_.size(), 1);
@@ -1475,6 +1476,8 @@ TEST_F(GcsActorManagerTest, TestRestartPermanentlyDeadActorForLineageReconstruct
       actor->GetActorID(),
       /*num_restarts_due_to_lineage_reconstruction=*/0);
   ASSERT_EQ(reply.status().code(), static_cast<int>(StatusCode::Invalid));
+  io_service_.run_one();
+  io_service_.run_one();
 }
 
 TEST_F(GcsActorManagerTest, TestIdempotencyOfRestartActorForLineageReconstruction) {
@@ -1606,6 +1609,7 @@ TEST_F(GcsActorManagerTest, TestDestroyActorWhenActorIsCreating) {
       &reply,
       /*send_reply_callback*/
       [](Status status, std::function<void()> success, std::function<void()> failure) {});
+  io_service_.run_one();
   io_service_.run_one();
 
   // Make sure the `KillActor` rpc is send.
