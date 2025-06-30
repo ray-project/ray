@@ -43,8 +43,7 @@ public class ActorCreationOptions extends BaseTaskOptions {
       String serializedRuntimeEnv,
       String namespace,
       int maxPendingCalls,
-      boolean isAsync,
-      boolean executeOutOfOrder) {
+      boolean isAsync) {
     super(resources);
     this.name = name;
     this.lifetime = lifetime;
@@ -59,7 +58,7 @@ public class ActorCreationOptions extends BaseTaskOptions {
     this.namespace = namespace;
     this.maxPendingCalls = maxPendingCalls;
     this.isAsync = isAsync;
-    this.executeOutOfOrder = executeOutOfOrder;
+    this.executeOutOfOrder = isAsync;
   }
 
   /** The inner class for building ActorCreationOptions. */
@@ -78,7 +77,6 @@ public class ActorCreationOptions extends BaseTaskOptions {
     private String namespace = null;
     private int maxPendingCalls = -1;
     private boolean isAsync = false;
-    private boolean executeOutOfOrder = false;
 
     /**
      * Set the actor name of a named actor. This named actor is accessible in this namespace by this
@@ -209,9 +207,6 @@ public class ActorCreationOptions extends BaseTaskOptions {
      */
     public Builder setAsync(boolean isAsync) {
       this.isAsync = isAsync;
-      if (isAsync) {
-        this.executeOutOfOrder = true;
-      }
       return this;
     }
 
@@ -243,8 +238,7 @@ public class ActorCreationOptions extends BaseTaskOptions {
           runtimeEnv != null ? runtimeEnv.serializeToRuntimeEnvInfo() : "",
           namespace,
           maxPendingCalls,
-          isAsync,
-          executeOutOfOrder);
+          isAsync);
     }
 
     /** Set the concurrency groups for this actor. */
