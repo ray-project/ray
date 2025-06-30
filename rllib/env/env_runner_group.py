@@ -23,6 +23,7 @@ from ray.exceptions import RayActorError
 from ray.rllib.core import (
     COMPONENT_ENV_TO_MODULE_CONNECTOR,
     COMPONENT_LEARNER,
+    COMPONENT_METRICS_LOGGER,
     COMPONENT_MODULE_TO_ENV_CONNECTOR,
     COMPONENT_RL_MODULE,
 )
@@ -380,6 +381,7 @@ class EnvRunnerGroup:
         env_runner_indices_to_update: Optional[List[int]] = None,
         env_to_module=None,
         module_to_env=None,
+        env_runner_metrics: Optional[Dict[str, Any]] = None,
     ) -> None:
         """Synchronizes the connectors of this EnvRunnerGroup's EnvRunners.
 
@@ -438,6 +440,11 @@ class EnvRunnerGroup:
                         else {}
                     ),
                     **(rl_module_state or {}),
+                    **(
+                        {COMPONENT_METRICS_LOGGER: env_runner_metrics}
+                        if env_runner_metrics
+                        else {}
+                    ),
                 }
             )
             return
@@ -524,6 +531,25 @@ class EnvRunnerGroup:
         # count from it).
         if env_steps_sampled is not None:
             env_runner_states[NUM_ENV_STEPS_SAMPLED_LIFETIME] = env_steps_sampled // (
+                config.num_env_runners or 1
+            )
+
+        # Update metrics:
+        if env_runner_metrics:
+            # Note: env_runner_states[NUM_ENV_STEPS_SAMPLED_LIFETIME] takes higher priority
+            # can split the total env_steps_sampled.
+            env_runner_states[COMPONENT_METRICS_LOGGER] = env_runner_metrics
+
+        # Sanity check that metrics and env_runner_metrics aligns
+        # TODO: Remove when this is tested accordingly
+        if (
+            env_steps_sampled is not None
+            and NUM_ENV_STEPS_SAMPLED_LIFETIME in env_runner_metrics
+        ):
+            # TODO: Change into error or warning
+            assert env_runner_states[
+                NUM_ENV_STEPS_SAMPLED_LIFETIME
+            ] == env_runner_metrics[NUM_ENV_STEPS_SAMPLED_LIFETIME] // (
                 config.num_env_runners or 1
             )
 

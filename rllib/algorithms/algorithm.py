@@ -1865,6 +1865,7 @@ class Algorithm(Checkpointable, Trainable):
                 rl_module_state=rl_module_state,
                 env_to_module=self.env_to_module_connector,
                 module_to_env=self.module_to_env_connector,
+                env_runner_metrics=self.metrics.get_state(key=ENV_RUNNER_RESULTS),
             )
         elif self.eval_env_runner_group:
             self.eval_env_runner_group.sync_env_runner_states(
@@ -1875,6 +1876,7 @@ class Algorithm(Checkpointable, Trainable):
                 rl_module_state=rl_module_state,
                 env_to_module=self.env_to_module_connector,
                 module_to_env=self.module_to_env_connector,
+                env_runner_metrics=self.metrics.get_state(key=ENV_RUNNER_RESULTS),
             )
 
     @OverrideToImplementCustomLogic
