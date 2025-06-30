@@ -28,6 +28,7 @@ from ray.data._internal.execution.interfaces.execution_options import (
 from ray.data._internal.execution.interfaces.op_runtime_metrics import OpRuntimeMetrics
 from ray.data._internal.logical.interfaces import LogicalOperator, Operator
 from ray.data._internal.output_buffer import OutputBlockSizeOption
+from ray.data._internal.progress_bar import ProgressBar
 from ray.data._internal.stats import StatsDict, Timer
 from ray.data.context import DataContext
 
@@ -689,9 +690,112 @@ class PhysicalOperator(Operator):
                     # In all cases, we swallow the exception.
                     pass
 
+    def upstream_op_num_outputs(self):
+        upstream_op_num_outputs = sum(
+            op.num_outputs_total() or 0 for op in self.input_dependencies
+        )
+        return upstream_op_num_outputs
+
 
 class ReportsExtraResourceUsage(abc.ABC):
     @abc.abstractmethod
     def extra_resource_usage(self: PhysicalOperator) -> ExecutionResources:
         """Returns resources used by this operator beyond standard accounting."""
         ...
+
+
+class WithSubProgressBarMixin:
+    def init_sub_progress_bars(self, sub_progress_bar_names: List[Optional[str]]):
+        """Initialize the sub progress bar mixin."""
+        self._sub_progress_bar_names: Optional[List[str]] = sub_progress_bar_names
+        self._sub_progress_bar_dict: Optional[Dict[str, ProgressBar]] = None
+        self._metric_dict: Dict[str, OpRuntimeMetrics] = {}
+        if sub_progress_bar_names is not None:
+            for name in self._sub_progress_bar_names:
+                self._metric_dict[name] = OpRuntimeMetrics(self)
+
+    def _key(self, key: Union[str, int]) -> str:
+        """Convert the key to a string."""
+        if isinstance(key, int):
+            return self._sub_progress_bar_names[key]
+        return key
+
+    def sub_progress_bar(self, key: Union[str, int]) -> Optional[ProgressBar]:
+        """Return the sub progress bar with the given name, or None if not found."""
+        if self._sub_progress_bar_dict is not None:
+            key = self._key(key)
+            return self._sub_progress_bar_dict.get(key)
+        return None
+
+    def get_metrics(self, key: Union[str, int]) -> Optional[OpRuntimeMetrics]:
+        key = self._key(key)
+        return self._metric_dict.get(key)
+
+    def start_sub_progress_bars(self, position: int) -> int:
+        """Display all sub progres bars in the termainl, and return the number of bars."""
+        if self._sub_progress_bar_names is not None:
+            self._sub_progress_bar_dict = {}
+            for name in self._sub_progress_bar_names:
+                progress_bar = ProgressBar(
+                    name,
+                    self.num_output_rows_total() or 1,
+                    unit="row",
+                    position=position,
+                )
+                # NOTE: call `set_description` to trigger the initial print of progress
+                # bar on console.
+                progress_bar.set_description(f"  *- {name}")
+                self._sub_progress_bar_dict[name] = progress_bar
+                position += 1
+            return len(self._sub_progress_bar_dict)
+        else:
+            return 0
+
+    def close_sub_progress_bars(self):
+        """Close all internal sub progress bars."""
+        if self._sub_progress_bar_dict is not None:
+            for sub_bar in self._sub_progress_bar_dict.values():
+                sub_bar.close()
+
+
+def update_task_output_stats(
+    num_tasks_submitted: int,
+    upstream_op_num_outputs: int,
+    metrics: OpRuntimeMetrics,
+    total_num_tasks: Optional[int] = None,
+) -> Tuple[int, int, int]:
+    """This method is trying to estimate total number of blocks/rows based on
+    - How many outputs produced by the input deps
+    - How many blocks/rows produced by tasks of this operator
+    """
+
+    if (
+        upstream_op_num_outputs > 0
+        and metrics.num_inputs_received > 0
+        and metrics.num_tasks_finished > 0
+    ):
+        estimated_num_tasks = total_num_tasks
+        if estimated_num_tasks is None:
+            estimated_num_tasks = (
+                upstream_op_num_outputs
+                / metrics.num_inputs_received
+                * num_tasks_submitted
+            )
+
+        estimated_num_output_bundles = round(
+            estimated_num_tasks
+            * metrics.num_outputs_of_finished_tasks
+            / metrics.num_tasks_finished
+        )
+        estimated_output_num_rows = round(
+            estimated_num_tasks
+            * metrics.rows_task_outputs_generated
+            / metrics.num_tasks_finished
+        )
+        return (
+            estimated_num_tasks,
+            estimated_num_output_bundles,
+            estimated_output_num_rows,
+        )
+
+    return (0, 0, 0)
