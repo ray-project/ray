@@ -11,8 +11,8 @@ from typing import Any, AsyncIterator, Dict, Optional, Union
 import ray
 import ray._private.ray_constants as ray_constants
 from ray._common.utils import run_background_task
-from ray._private.event.event_logger import get_event_logger
 from ray._private.accelerators.nvidia_gpu import NOSET_CUDA_VISIBLE_DEVICES_ENV_VAR
+from ray._private.event.event_logger import get_event_logger
 from ray._raylet import GcsClient
 from ray.actor import ActorHandle
 from ray.core.generated.event_pb2 import Event
@@ -541,6 +541,9 @@ class JobManager:
                     runtime_env, submission_id, resources_specified
                 ),
                 namespace=SUPERVISOR_ACTOR_RAY_NAMESPACE,
+                # Don't pollute task events with system actor tasks that users don't
+                # know about.
+                enable_task_events=False,
             ).remote(
                 submission_id,
                 entrypoint,

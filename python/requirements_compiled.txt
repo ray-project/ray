@@ -187,8 +187,6 @@ backoff==1.10.0
     #   segment-analytics-python
 base58==2.0.1
     # via aimrecords
-bash-kernel==0.10.0
-    # via -r python/requirements/test-requirements.txt
 bayesian-optimization==1.4.3
     # via
     #   -r python/requirements/ml/tune-requirements.txt
@@ -344,15 +342,13 @@ contextlib2==21.6.0
     #   pytest-shutil
 contourpy==1.1.1
     # via matplotlib
-coverage==7.6.12
-    # via nbval
 cramjam==2.8.3
     # via python-snappy
 crc32c==2.3
     # via -r python/requirements/ml/data-requirements.txt
 crcmod==1.7
     # via gsutil
-cryptography==44.0.3
+cryptography==44.0.3 ; sys_platform != "darwin"
     # via
     #   -r python/requirements/test-requirements.txt
     #   adal
@@ -409,7 +405,7 @@ defusedxml==0.7.1
     #   semgrep
 delta-sharing==1.0.5
     # via -r python/requirements/ml/data-test-requirements.txt
-deltalake==0.18.2
+deltalake==0.9.0
     # via -r python/requirements/ml/data-test-requirements.txt
 deprecated==1.2.18
     # via
@@ -524,8 +520,6 @@ filelock==3.17.0
     #   torch
     #   transformers
     #   virtualenv
-filetype==1.2.0
-    # via bash-kernel
 flask==2.1.3
     # via
     #   -r python/requirements/test-requirements.txt
@@ -540,7 +534,6 @@ flatbuffers==23.5.26
     # via
     #   onnxruntime
     #   tensorflow
-    #   tf2onnx
 fonttools==4.45.1
     # via matplotlib
 fqdn==1.5.1
@@ -693,7 +686,6 @@ grpcio==1.66.2 ; sys_platform != "darwin"
     #   grpcio-tools
     #   mlagents-envs
     #   opencensus-proto
-    #   opentelemetry-exporter-opencensus
     #   opentelemetry-exporter-otlp-proto-grpc
     #   tensorboard
     #   tensorflow
@@ -712,7 +704,7 @@ gymnasium==1.0.0
     #   pettingzoo
     #   shimmy
     #   supersuit
-h11==0.14.0
+h11==0.16.0
     # via
     #   -r python/requirements/test-requirements.txt
     #   httpcore
@@ -731,7 +723,7 @@ holidays==0.39
     #   prophet
 hpbandster==0.7.4 ; python_version < "3.12"
     # via -r python/requirements/ml/tune-requirements.txt
-httpcore==1.0.7
+httpcore==1.0.9
     # via
     #   -r python/requirements/test-requirements.txt
     #   httpx
@@ -806,10 +798,8 @@ iniconfig==2.0.0
     # via pytest
 ipykernel==6.27.1
     # via
-    #   bash-kernel
     #   myst-nb
     #   nbclassic
-    #   nbval
     #   notebook
 ipython==8.12.3
     # via
@@ -925,7 +915,6 @@ jupyter-client==7.3.4
     #   jupyter-server
     #   nbclassic
     #   nbclient
-    #   nbval
     #   notebook
 jupyter-core==5.5.0
     # via
@@ -1165,10 +1154,7 @@ nbformat==5.9.2
     #   nbclassic
     #   nbclient
     #   nbconvert
-    #   nbval
     #   notebook
-nbval==0.11.0
-    # via -r python/requirements/test-requirements.txt
 nest-asyncio==1.5.8
     # via
     #   ipykernel
@@ -1284,7 +1270,6 @@ numpy==1.26.4
     #   tensorflow
     #   tensorflow-datasets
     #   tensorflow-probability
-    #   tf2onnx
     #   tifffile
     #   tinyscaler
     #   torch-geometric
@@ -1307,9 +1292,7 @@ oauth2client==4.1.3
 oauthlib==3.2.2
     # via requests-oauthlib
 onnx==1.15.0 ; sys_platform != "darwin" or platform_machine != "arm64"
-    # via
-    #   -r python/requirements/ml/rllib-requirements.txt
-    #   tf2onnx
+    # via -r python/requirements/ml/rllib-requirements.txt
 onnxruntime==1.18.0 ; sys_platform != "darwin" or platform_machine != "arm64"
     # via -r python/requirements/ml/rllib-requirements.txt
 open-spiel==1.4
@@ -1325,7 +1308,7 @@ opencensus==0.11.3
 opencensus-context==0.1.3
     # via opencensus
 opencensus-proto==0.1.0
-    # via opentelemetry-exporter-opencensus
+    # via -r python/requirements/test-requirements.txt
 opencv-python-headless==4.9.0.80
     # via -r python/requirements/ml/rllib-test-requirements.txt
 openpyxl==3.0.10
@@ -1336,13 +1319,11 @@ opentelemetry-api==1.26.0
     #   -r python/requirements/cloud-requirements.txt
     #   -r python/requirements/test-requirements.txt
     #   mlflow-skinny
-    #   opentelemetry-exporter-opencensus
     #   opentelemetry-exporter-otlp-proto-grpc
     #   opentelemetry-exporter-otlp-proto-http
+    #   opentelemetry-exporter-prometheus
     #   opentelemetry-sdk
     #   opentelemetry-semantic-conventions
-opentelemetry-exporter-opencensus==0.47b0
-    # via -r python/requirements/test-requirements.txt
 opentelemetry-exporter-otlp==1.26.0
     # via
     #   -r python/requirements.txt
@@ -1356,6 +1337,8 @@ opentelemetry-exporter-otlp-proto-grpc==1.26.0
     # via opentelemetry-exporter-otlp
 opentelemetry-exporter-otlp-proto-http==1.26.0
     # via opentelemetry-exporter-otlp
+opentelemetry-exporter-prometheus==0.47b0
+    # via -r python/requirements.txt
 opentelemetry-proto==1.26.0
     # via
     #   opentelemetry-exporter-otlp-proto-common
@@ -1367,9 +1350,9 @@ opentelemetry-sdk==1.26.0
     #   -r python/requirements/cloud-requirements.txt
     #   -r python/requirements/test-requirements.txt
     #   mlflow-skinny
-    #   opentelemetry-exporter-opencensus
     #   opentelemetry-exporter-otlp-proto-grpc
     #   opentelemetry-exporter-otlp-proto-http
+    #   opentelemetry-exporter-prometheus
 opentelemetry-semantic-conventions==0.47b0
     # via opentelemetry-sdk
 opt-einsum==3.3.0
@@ -1486,7 +1469,6 @@ pettingzoo==1.24.3
 pexpect==4.8.0
     # via
     #   -r python/requirements/test-requirements.txt
-    #   bash-kernel
     #   ipython
 pickleshare==0.7.5
     # via ipython
@@ -1528,6 +1510,7 @@ prometheus-client==0.19.0
     #   jupyter-server
     #   nbclassic
     #   notebook
+    #   opentelemetry-exporter-prometheus
 promise==2.3
     # via tensorflow-datasets
 prompt-toolkit==3.0.41
@@ -1556,7 +1539,6 @@ protobuf==3.20.3
     #   mlflow-skinny
     #   onnx
     #   onnxruntime
-    #   opentelemetry-exporter-opencensus
     #   opentelemetry-proto
     #   proto-plus
     #   ray
@@ -1566,7 +1548,6 @@ protobuf==3.20.3
     #   tensorflow
     #   tensorflow-datasets
     #   tensorflow-metadata
-    #   tf2onnx
     #   wandb
 proxy-py==2.4.3
     # via -r python/requirements/test-requirements.txt
@@ -1617,7 +1598,6 @@ pyarrow==14.0.2
 pyarrow-hotfix==0.7
     # via
     #   datasets
-    #   deltalake
     #   hudi
 pyasn1==0.5.1
     # via
@@ -1722,7 +1702,6 @@ pyspark==3.4.1
 pytest==7.4.4
     # via
     #   -r python/requirements/test-requirements.txt
-    #   nbval
     #   pytest-aiohttp
     #   pytest-asyncio
     #   pytest-docker-tools
@@ -1750,7 +1729,7 @@ pytest-fixture-config==1.7.0
     # via pytest-virtualenv
 pytest-forked==1.4.0
     # via -r python/requirements/test-requirements.txt
-pytest-httpserver==1.0.6
+pytest-httpserver==1.1.3
     # via -r python/requirements/test-requirements.txt
 pytest-lazy-fixtures==1.1.2
     # via -r python/requirements/test-requirements.txt
@@ -1865,7 +1844,7 @@ pyzmq==26.0.3
     #   notebook
 qpd==0.4.4
     # via fugue
-raydp==1.7.0b20231020.dev0
+raydp==1.7.0b20250423.dev0
     # via -r python/requirements/ml/data-test-requirements.txt
 redis==4.4.2
     # via -r python/requirements/test-requirements.txt
@@ -1921,7 +1900,6 @@ requests==2.32.3
     #   sphinx
     #   tensorboard
     #   tensorflow-datasets
-    #   tf2onnx
     #   torch-geometric
     #   torchtext
     #   transformers
@@ -2051,7 +2029,7 @@ serpent==1.41
     # via
     #   hpbandster
     #   pyro4
-setproctitle==1.3.3
+setproctitle==1.3.6
     # via wandb
 shellcheck-py==0.7.1.1
     # via -r python/requirements/lint-requirements.txt
@@ -2102,7 +2080,6 @@ six==1.16.0
     #   tensorboard
     #   tensorflow
     #   tensorflow-probability
-    #   tf2onnx
     #   triad
     #   vapi-runtime
 smart-open==6.2.0
@@ -2245,8 +2222,6 @@ terminado==0.18.1
     #   notebook
 testfixtures==7.0.0
     # via -r python/requirements/test-requirements.txt
-tf2onnx==1.15.1 ; sys_platform != "darwin" or platform_machine != "arm64"
-    # via -r python/requirements/ml/rllib-requirements.txt
 threadpoolctl==3.1.0
     # via
     #   -r python/requirements/test-requirements.txt

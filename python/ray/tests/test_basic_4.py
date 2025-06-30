@@ -1,17 +1,17 @@
 # coding: utf-8
 import logging
+import os
 import subprocess
 import sys
 import time
 from pathlib import Path
-import os
+from unittest import mock
 
 import pytest
-from unittest import mock
 
 import ray
 import ray.cluster_utils
-from ray._private.test_utils import wait_for_condition
+from ray._common.test_utils import wait_for_condition
 from ray.autoscaler._private.constants import RAY_PROCESSES
 
 import psutil
@@ -263,9 +263,4 @@ def test_fair_queueing(shutdown_only):
 
 
 if __name__ == "__main__":
-    import os
-
-    if os.environ.get("PARALLEL_CI"):
-        sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))
-    else:
-        sys.exit(pytest.main(["-sv", __file__]))
+    sys.exit(pytest.main(["-sv", __file__]))

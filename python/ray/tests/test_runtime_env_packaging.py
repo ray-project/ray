@@ -54,10 +54,9 @@ ARCHIVE_NAME = "archive.zip"
 # This package contains a subdirectory called `test_module`.
 # Calling `test_module.one()` should return `2`.
 # If you find that confusing, take it up with @jiaodong...
-HTTPS_PACKAGE_URI = "https://github.com/shrekris-anyscale/test_module/archive/HEAD.zip"
+HTTPS_PACKAGE_URI = "https://github.com/shrekris-anyscale/test_module/archive/a885b80879665a49d5cd4c3ebd33bb6f865644e5.zip"
 S3_PACKAGE_URI = "s3://runtime-env-test/test_runtime_env.zip"
 S3_WHL_PACKAGE_URI = "s3://runtime-env-test/test_module-0.0.1-py3-none-any.whl"
-GS_PACKAGE_URI = "gs://public-runtime-env-test/test_module.zip"
 
 
 def random_string(size: int = 10):
@@ -850,7 +849,4 @@ def test_get_local_dir_from_uri():
 
 
 if __name__ == "__main__":
-    if os.environ.get("PARALLEL_CI"):
-        sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))
-    else:
-        sys.exit(pytest.main(["-sv", __file__]))
+    sys.exit(pytest.main(["-sv", __file__]))

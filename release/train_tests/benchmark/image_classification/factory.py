@@ -1,18 +1,20 @@
 # Standard library imports
 import logging
 import time
-from typing import Dict, Tuple, Iterator, Generator, Optional, Union, Type
+from typing import Dict, Tuple, Iterator, Generator, Optional, Union
 
 # Third-party imports
 import torch
+import torchvision
 import pyarrow
 import ray
 import ray.data
 import ray.train
-from ray.data.iterator import ArrowBatchCollateFn
+from ray.data.collate_fn import ArrowBatchCollateFn, CollateFn
 
 # Local imports
-from config import BenchmarkConfig
+from benchmark_factory import BenchmarkFactory
+from config import BenchmarkConfig, DataloaderType, ImageClassificationConfig
 from dataloader_factory import BaseDataLoaderFactory
 from torch_dataloader_factory import TorchDataLoaderFactory
 from ray_dataloader_factory import RayDataLoaderFactory
@@ -86,33 +88,14 @@ class ImageClassificationTorchDataLoaderFactory(TorchDataLoaderFactory):
         total_workers = self.benchmark_config.num_workers * num_workers
 
         limit_training_rows_per_worker = self._calculate_rows_per_worker(
-            self.benchmark_config.limit_training_rows, total_workers
+            self.get_dataloader_config().limit_training_rows, total_workers
         )
 
         limit_validation_rows_per_worker = self._calculate_rows_per_worker(
-            self.benchmark_config.limit_validation_rows, total_workers
+            self.get_dataloader_config().limit_validation_rows, total_workers
         )
 
         return limit_training_rows_per_worker, limit_validation_rows_per_worker
-
-    def _get_total_row_limits(self) -> Tuple[Optional[int], Optional[int]]:
-        """Get total row limits for training and validation.
-
-        Returns:
-            Tuple of (total_training_rows, total_validation_rows)
-        """
-        total_training_rows = (
-            self.benchmark_config.limit_training_rows
-            if self.benchmark_config.limit_training_rows is not None
-            else None
-        )
-        total_validation_rows = (
-            self.benchmark_config.limit_validation_rows
-            if self.benchmark_config.limit_validation_rows is not None
-            else None
-        )
-
-        return total_training_rows, total_validation_rows
 
     def create_batch_iterator(
         self, dataloader: torch.utils.data.DataLoader, device: torch.device
@@ -232,8 +215,8 @@ class ImageClassificationRayDataLoaderFactory(RayDataLoaderFactory):
     def __init__(self, benchmark_config: BenchmarkConfig):
         super().__init__(benchmark_config)
 
-    def _get_collate_fn_cls(self) -> Type[ArrowBatchCollateFn]:
-        return CustomArrowCollateFn
+    def _get_collate_fn(self) -> Optional[CollateFn]:
+        return CustomArrowCollateFn(device=ray.train.torch.get_device())
 
 
 class ImageClassificationMockDataLoaderFactory(BaseDataLoaderFactory):
@@ -268,3 +251,88 @@ class ImageClassificationMockDataLoaderFactory(BaseDataLoaderFactory):
         return mock_dataloader(
             num_batches=512, batch_size=dataloader_config.validation_batch_size
         )
+
+
+def get_imagenet_data_dirs(task_config: ImageClassificationConfig) -> Dict[str, str]:
+    """Returns a dict with the root imagenet dataset directories for train/val/test,
+    corresponding to the data format and local/s3 dataset location."""
+    from image_classification.imagenet import IMAGENET_LOCALFS_SPLIT_DIRS
+    from image_classification.jpeg.imagenet import (
+        IMAGENET_JPEG_SPLIT_S3_DIRS,
+    )
+    from image_classification.parquet.imagenet import (
+        IMAGENET_PARQUET_SPLIT_S3_DIRS,
+    )
+
+    data_format = task_config.image_classification_data_format
+
+    if task_config.image_classification_local_dataset:
+        return IMAGENET_LOCALFS_SPLIT_DIRS
+
+    if data_format == ImageClassificationConfig.ImageFormat.JPEG:
+        return IMAGENET_JPEG_SPLIT_S3_DIRS
+    elif data_format == ImageClassificationConfig.ImageFormat.PARQUET:
+        return IMAGENET_PARQUET_SPLIT_S3_DIRS
+    else:
+        raise ValueError(f"Unknown data format: {data_format}")
+
+
+class ImageClassificationFactory(BenchmarkFactory):
+    def get_dataloader_factory(self) -> BaseDataLoaderFactory:
+        dataloader_type = self.benchmark_config.dataloader_type
+        task_config = self.benchmark_config.task_config
+        assert isinstance(task_config, ImageClassificationConfig)
+
+        data_dirs = get_imagenet_data_dirs(task_config)
+
+        data_format = task_config.image_classification_data_format
+
+        if dataloader_type == DataloaderType.MOCK:
+            return ImageClassificationMockDataLoaderFactory(self.benchmark_config)
+
+        elif dataloader_type == DataloaderType.RAY_DATA:
+            if data_format == ImageClassificationConfig.ImageFormat.JPEG:
+                from image_classification.jpeg.factory import (
+                    ImageClassificationJpegRayDataLoaderFactory,
+                )
+
+                return ImageClassificationJpegRayDataLoaderFactory(
+                    self.benchmark_config, data_dirs
+                )
+            elif data_format == ImageClassificationConfig.ImageFormat.PARQUET:
+                from image_classification.parquet.factory import (
+                    ImageClassificationParquetRayDataLoaderFactory,
+                )
+
+                return ImageClassificationParquetRayDataLoaderFactory(
+                    self.benchmark_config, data_dirs
+                )
+
+        elif dataloader_type == DataloaderType.TORCH:
+            if data_format == ImageClassificationConfig.ImageFormat.JPEG:
+                from image_classification.jpeg.factory import (
+                    ImageClassificationJpegTorchDataLoaderFactory,
+                )
+
+                return ImageClassificationJpegTorchDataLoaderFactory(
+                    self.benchmark_config, data_dirs
+                )
+            elif data_format == ImageClassificationConfig.ImageFormat.PARQUET:
+                from image_classification.parquet.factory import (
+                    ImageClassificationParquetTorchDataLoaderFactory,
+                )
+
+                return ImageClassificationParquetTorchDataLoaderFactory(
+                    self.benchmark_config, data_dirs
+                )
+
+        raise ValueError(
+            f"Invalid dataloader configuration: {dataloader_type}\n"
+            f"{task_config}\n{self.benchmark_config.dataloader_config}"
+        )
+
+    def get_model(self) -> torch.nn.Module:
+        return torchvision.models.resnet50(weights=None)
+
+    def get_loss_fn(self) -> torch.nn.Module:
+        return torch.nn.CrossEntropyLoss()

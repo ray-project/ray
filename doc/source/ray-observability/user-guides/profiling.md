@@ -118,7 +118,7 @@ You can find the `"default"` config in [nsight.py](https://github.com/ray-projec
 
 #### Custom options
 
-You can also add [custom options](https://docs.nvidia.com/nsight-systems/UserGuide/index.html#cli-profile-command-switch-options) for Nsight System Profiler by specifying a dictionary of option values, which overwrites the `default` config, however, Ray preserves the the `--output` option of the default config.
+You can also add [custom options](https://docs.nvidia.com/nsight-systems/UserGuide/index.html#cli-profile-command-switch-options) for Nsight System Profiler by specifying a dictionary of option values, which overwrites the `default` config, however, Ray preserves the `--output` option of the default config.
 
 
 ```python

@@ -143,7 +143,8 @@ class StreamingExecutor(Executor, threading.Thread):
         self._autoscaler = create_autoscaler(
             self._topology,
             self._resource_manager,
-            self._dataset_id,
+            config=self._data_context.autoscaling_config,
+            execution_id=self._dataset_id,
         )
 
         self._has_op_completed = {op: False for op in self._topology}
@@ -157,6 +158,7 @@ class StreamingExecutor(Executor, threading.Thread):
             self._dataset_id,
             self._get_operator_tags(),
             TopologyMetadata.create_topology_metadata(dag, op_to_id),
+            self._data_context,
         )
         for callback in get_execution_callbacks(self._data_context):
             callback.before_execution_starts(self)
@@ -485,7 +487,7 @@ class StreamingExecutor(Executor, threading.Thread):
 def _validate_dag(dag: PhysicalOperator, limits: ExecutionResources) -> None:
     """Raises an exception on invalid DAGs.
 
-    It checks if the the sum of min actor pool sizes are larger than the resource
+    It checks if the sum of min actor pool sizes are larger than the resource
     limit, as well as other unsupported resource configurations.
 
     This should be called prior to creating the topology from the DAG.

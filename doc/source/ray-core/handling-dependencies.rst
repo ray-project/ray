@@ -316,16 +316,6 @@ packages. It also allows you to lock package versions using `uv lock`.
 For more details, see the `UV scripts documentation <https://docs.astral.sh/uv/guides/scripts/>`_ as
 well as `our blog post <https://www.anyscale.com/blog/uv-ray-pain-free-python-dependencies-in-clusters>`_.
 
-.. note::
-
-  Because this is a new feature, you currently need to set a feature flag:
-
-  .. code-block:: shell
-
-    export RAY_RUNTIME_ENV_HOOK=ray._private.runtime_env.uv_runtime_env_hook.hook
-
-  We plan to make it the default after collecting more feedback, and adapting the behavior if necessary.
-
 Create a file `pyproject.toml` in your working directory like the following:
 
 .. code-block:: toml
@@ -415,6 +405,50 @@ your programs:
   like bazel, a profiler, or a debugger. In these cases, you can explicitly specify the executable the worker should
   run in via `py_executable`. It could even be a shell script that is stored in `working_dir` if you are trying to wrap
   multiple processes in more complex ways.
+
+.. note::
+
+  The uv environment is inherited by all children tasks and actors. If you want to mix environments, for example, `pip`
+  runtime environments with `uv run`, you need to set the Python executable back to an executable
+  that's not running in the isolated uv environment like the following:
+
+  .. code-block:: toml
+
+    [project]
+
+    name = "test"
+
+    version = "0.1"
+
+    dependencies = [
+      "emoji",
+      "ray",
+      "pip",
+      "virtualenv",
+    ]
+
+  .. testcode::
+    :skipif: True
+
+    import ray
+
+    @ray.remote(runtime_env={"pip": ["wikipedia"], "py_executable": "python"})
+    def f():
+        import wikipedia
+        return wikipedia.summary("Wikipedia")
+
+    @ray.remote
+    def g():
+        import emoji
+        return emoji.emojize('Python is :thumbs_up:')
+
+    print(ray.get(f.remote()))
+    print(ray.get(g.remote()))
+
+
+  While the above pattern can be useful for supporting legacy applications, the Ray Team recommends
+  also using uv for tracking nested environments. You can use this approach by creating a separate
+  `pyproject.toml` containing the dependencies of the nested environment.
 
 
 Library Development

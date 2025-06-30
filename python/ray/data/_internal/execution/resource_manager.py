@@ -10,7 +10,10 @@ from ray.data._internal.execution.interfaces.execution_options import (
     ExecutionOptions,
     ExecutionResources,
 )
-from ray.data._internal.execution.interfaces.physical_operator import PhysicalOperator
+from ray.data._internal.execution.interfaces.physical_operator import (
+    PhysicalOperator,
+    ReportsExtraResourceUsage,
+)
 from ray.data._internal.execution.operators.base_physical_operator import (
     AllToAllOperator,
 )
@@ -18,6 +21,7 @@ from ray.data._internal.execution.operators.input_data_buffer import InputDataBu
 from ray.data._internal.execution.operators.zip_operator import ZipOperator
 from ray.data._internal.execution.util import memory_string
 from ray.data.context import DataContext
+from ray.util.debug import log_once
 
 if TYPE_CHECKING:
     from ray.data._internal.execution.streaming_executor_state import OpState, Topology
@@ -101,6 +105,37 @@ class ResourceManager:
             )
         )
 
+        self._warn_about_object_store_memory_if_needed()
+
+    def _warn_about_object_store_memory_if_needed(self):
+        """Warn if object store memory is configured below 50% of total memory."""
+        import ray
+        from ray.data.context import WARN_PREFIX
+        from ray.util.debug import log_once
+
+        if not ray.is_initialized():
+            return
+
+        cluster_resources = ray.cluster_resources()
+        total_memory = cluster_resources.get("memory", 0)
+        object_store_memory = cluster_resources.get("object_store_memory", 0)
+
+        # Check if we have actual numeric values (not mocks or None)
+        if total_memory > 0:
+            object_store_fraction = object_store_memory / total_memory
+
+            if object_store_fraction < 0.5 and log_once(
+                "ray_data_object_store_memory_warning"
+            ):
+                logger.warning(
+                    f"{WARN_PREFIX} Ray's object store is configured to use only "
+                    f"{object_store_fraction:.1%} of available memory ({object_store_memory/1e9:.1f}GB "
+                    f"out of {total_memory/1e9:.1f}GB total). For optimal Ray Data performance, "
+                    f"we recommend setting the object store to at least 50% of available memory. "
+                    f"You can do this by setting the 'object_store_memory' parameter when calling "
+                    f"ray.init() or by setting the RAY_DEFAULT_OBJECT_STORE_MEMORY_PROPORTION environment variable."
+                )
+
     def _estimate_object_store_memory(
         self, op: "PhysicalOperator", state: "OpState"
     ) -> int:
@@ -160,6 +195,10 @@ class ResourceManager:
             op_running_usage.object_store_memory = self._estimate_object_store_memory(
                 op, state
             )
+
+            if isinstance(op, ReportsExtraResourceUsage):
+                op_usage.add(op.extra_resource_usage())
+
             self._op_usages[op] = op_usage
             self._op_running_usages[op] = op_running_usage
             self._op_pending_usages[op] = op_pending_usage
@@ -484,11 +523,13 @@ class ReservationOpResourceAllocator(OpResourceAllocator):
                 reserved_for_tasks = ExecutionResources(
                     0, 0, min_resource_usage.object_store_memory
                 )
-                if index == 0:
+                # Add `id(self)` to the log_once key so that it will be logged once
+                # per execution.
+                if index == 0 and log_once(f"low_resource_warning_{id(self)}"):
                     # Log a warning if even the first operator cannot reserve
                     # the minimum resources.
                     logger.warning(
-                        f"Cluster resource are not engough to run any task from {op}."
+                        f"Cluster resources are not engough to run any task from {op}."
                         " The job may hang forever unless the cluster scales up."
                     )
 
@@ -659,7 +700,7 @@ class ReservationOpResourceAllocator(OpResourceAllocator):
             self._op_budgets[op].gpu = float("inf")
 
         # A materializing operator like `AllToAllOperator` waits for all its input
-        # operator’s outputs before processing data. This often forces the input
+        # operator's outputs before processing data. This often forces the input
         # operator to exceed its object store memory budget. To prevent deadlock, we
         # disable object store memory backpressure for the input operator.
         for op in eligible_ops:

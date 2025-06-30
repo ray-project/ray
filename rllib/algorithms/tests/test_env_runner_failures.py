@@ -350,7 +350,9 @@ class TestWorkerFailures(unittest.TestCase):
         # Test the case where all workers fail (w/o recovery).
         self._do_test_failing_fatal(
             PPOConfig().env_runners(
-                env_to_module_connector=lambda env: FlattenObservations(),
+                env_to_module_connector=(
+                    lambda env, spaces, device: FlattenObservations()
+                ),
             )
         )
 

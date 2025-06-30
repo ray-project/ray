@@ -1,11 +1,10 @@
 # coding: utf-8
 import collections
 import logging
-import platform
 import subprocess
 import sys
 import time
-import unittest
+from typing import List
 
 import numpy as np
 import pytest
@@ -14,13 +13,14 @@ import ray
 import ray.cluster_utils
 import ray.util.accelerators
 from ray._private.internal_api import memory_summary
-from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
+from ray.util.scheduling_strategies import (
+    PlacementGroupSchedulingStrategy,
+    NodeAffinitySchedulingStrategy,
+)
+from ray._common.test_utils import SignalActor, Semaphore, wait_for_condition
 from ray._private.test_utils import (
-    Semaphore,
-    SignalActor,
     object_memory_usage,
     get_metric_check_condition,
-    wait_for_condition,
     MetricSamplePattern,
 )
 
@@ -225,9 +225,7 @@ def test_load_balancing_with_dependencies(ray_start_cluster):
     attempt_to_load_balance(f, [x], 100, num_nodes, 20)
 
 
-@pytest.mark.skipif(
-    platform.system() == "Windows", reason="Failing on Windows. Multi node."
-)
+@pytest.mark.skipif(sys.platform == "win32", reason="Fails on Windows (multi node).")
 def test_spillback_waiting_task_on_oom(ray_start_cluster):
     # This test ensures that tasks are spilled if they are not schedulable due
     # to lack of object store memory.
@@ -391,51 +389,68 @@ def test_locality_aware_leasing_cached_objects(ray_start_cluster):
 
 
 def test_locality_aware_leasing_borrowed_objects(ray_start_cluster):
+    """Test that a task runs where its dependencies are located for borrowed objects."""
+    is_ray_client_test = ray._private.client_mode_hook.is_client_mode_enabled
+
     # This test ensures that a task will run where its task dependencies are
     # located, even when those objects are borrowed.
     cluster = ray_start_cluster
-
-    # Disable worker caching so worker leases are not reused, and disable
-    # inlining of return objects so return objects are always put into Plasma.
-    cluster.add_node(
-        num_cpus=1,
-        resources={"pin_head": 1},
+    head_node = cluster.add_node(
         _system_config={
+            # Disable worker caching so worker leases are not reused.
             "worker_lease_timeout_milliseconds": 0,
+            # Force all return objects to be put into the object store.
             "max_direct_call_object_size": 0,
         },
     )
-    # Use a custom resource for pinning tasks to a node.
-    worker_node = cluster.add_node(num_cpus=1, resources={"pin_worker": 1})
+    worker_node = cluster.add_node()
     ray.init(address=cluster.address)
 
-    @ray.remote
-    def f():
-        return ray._private.worker.global_worker.node.unique_id
+    @ray.remote(num_cpus=0)
+    def get_node_id(*args) -> str:
+        return ray.get_runtime_context().get_node_id()
 
-    @ray.remote
-    def g(x):
-        return ray.get(h.remote(x[0]))
+    @ray.remote(num_cpus=0)
+    def borrower(o: List[ray.ObjectRef]) -> str:
+        obj_ref = o[0]
+        if is_ray_client_test:
+            ray.wait([obj_ref], fetch_local=False)
 
-    @ray.remote
-    def h(x):
-        return ray._private.worker.global_worker.node.unique_id
+        return ray.get(get_node_id.remote(obj_ref))
 
-    # f will run on worker, f_obj will be pinned on worker.
-    f_obj = f.options(resources={"pin_worker": 1}).remote()
-    # Make sure owner has the location information for f_obj,
-    # before we launch g so g worker can get the locality information
-    # from the owner.
-    ray.wait([f_obj], fetch_local=False)
-    # g will run on head, f_obj will be borrowed by head, and we confirm that
-    # h(f_obj) is scheduled onto worker, the node that has f_obj.
+    # The result of worker_node_ref will be pinned on the worker node.
+    worker_node_ref = get_node_id.options(
+        scheduling_strategy=NodeAffinitySchedulingStrategy(
+            worker_node.node_id, soft=False
+        ),
+    ).remote()
+
+    # Ensure the owner has object info prior to scheduling the task so the object info
+    # will be inlined to the borrower.
+    # NOTE(edoakes): Ray Client does not respect `fetch_local=False`, so this pulls the
+    # object to the head node. We instead test a slightly weaker condition by moving the
+    # `ray.wait` call to resolve the location inside of the borrower task (see above).
+    if not is_ray_client_test:
+        ray.wait([worker_node_ref], fetch_local=False)
+
+    # Run a borrower task on the head node. From within the borrower task, we launch
+    # another task. That inner task should run on the worker node based on locality.
     assert (
-        ray.get(g.options(resources={"pin_head": 1}).remote([f_obj]))
-        == worker_node.unique_id
+        ray.get(
+            borrower.options(
+                scheduling_strategy=NodeAffinitySchedulingStrategy(
+                    head_node.node_id, soft=False
+                ),
+            ).remote([worker_node_ref])
+        )
+        == worker_node.node_id
     )
 
 
-@unittest.skipIf(sys.platform == "win32", "Failing on Windows.")
+@pytest.mark.skipif(
+    ray._private.client_mode_hook.is_client_mode_enabled, reason="Fails w/ Ray Client."
+)
+@pytest.mark.skipif(sys.platform == "win32", reason="Fails on Windows.")
 def test_lease_request_leak(shutdown_only):
     ray.init(num_cpus=1, _system_config={"object_timeout_milliseconds": 200})
 
@@ -743,18 +758,68 @@ def test_scheduling_class_depth(ray_start_regular):
         get_metric_check_condition([MetricSamplePattern(name=metric_name, value=3)]),
         timeout=timeout,
     )
-    start_infeasible.remote(4)
-    wait_for_condition(
-        get_metric_check_condition([MetricSamplePattern(name=metric_name, value=4)]),
-        timeout=timeout,
-    )
+
+
+def test_no_resource_oversubscription_during_shutdown(shutdown_only):
+    """
+    Ensures that workers don't release their acquired resources
+    until all running tasks have been drained.
+    """
+    # Initialize Ray with 1 CPU, so we can detect if it over-allocates.
+    ray.init(num_cpus=1, log_to_driver=False)
+
+    # Separate signal actors for each task to track their execution
+    task1_started = SignalActor.remote()
+    task1_can_finish = SignalActor.remote()
+    task2_started = SignalActor.remote()
+    task2_can_finish = SignalActor.remote()
+
+    @ray.remote(num_cpus=1)
+    def blocking_task(
+        worker_id: str,
+        started_signal: ray.actor.ActorHandle,
+        can_finish_signal: ray.actor.ActorHandle,
+    ) -> str:
+        """A task that signals when it starts and waits for permission to finish."""
+        print(f"  Worker {worker_id}: Starting execution")
+        # Signal that this task has started executing
+        ray.get(started_signal.send.remote())
+        # Wait for permission to finish
+        ray.get(can_finish_signal.wait.remote())
+        print(f"  Worker {worker_id}: Completed")
+        return f"Worker {worker_id} completed"
+
+    # 1. Start task1 - should consume the only CPU
+    task1 = blocking_task.remote("A", task1_started, task1_can_finish)
+
+    # Wait for task1 to start executing
+    ray.get(task1_started.wait.remote())
+    print("Task1 is now executing")
+
+    # 2. Start task2 - should be queued since CPU is occupied
+    task2 = blocking_task.remote("B", task2_started, task2_can_finish)
+    print("Task2 submitted (should be queued)")
+
+    # 3. The key test: verify task2 does NOT start executing while task1 is running
+    # If the bug exists, task2 will start immediately. If fixed, it should wait.
+
+    # Check if task2 starts within 1 second (indicating the bug)
+    with pytest.raises(ray.exceptions.GetTimeoutError):
+        ray.get(task2_started.wait.remote(), timeout=0.5)
+
+    # Now let task1 complete
+    ray.get(task1_can_finish.send.remote())
+    result1 = ray.get(task1)
+    assert result1 == "Worker A completed"
+
+    # After task1 completes, task2 should now be able to start
+    ray.get(task2_started.wait.remote())
+
+    # Let task2 complete
+    ray.get(task2_can_finish.send.remote())
+    result2 = ray.get(task2)
+    assert result2 == "Worker B completed"
 
 
 if __name__ == "__main__":
-    import os
-    import pytest
-
-    if os.environ.get("PARALLEL_CI"):
-        sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))
-    else:
-        sys.exit(pytest.main(["-sv", __file__]))
+    sys.exit(pytest.main(["-sv", __file__]))

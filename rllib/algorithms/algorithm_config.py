@@ -81,8 +81,7 @@ from ray.tune.registry import get_trainable_cls
 from ray.tune.result import TRIAL_INFO
 from ray.tune.tune import _Config
 from ray.util import log_once
-
-Space = gym.Space
+from ray.util.placement_group import PlacementGroup
 
 
 if TYPE_CHECKING:
@@ -1022,7 +1021,24 @@ class AlgorithmConfig(_Config):
         # Create an env-to-module connector pipeline (including RLlib's default
         # env->module connector piece) and return it.
         if self._env_to_module_connector is not None:
-            val_ = self._env_to_module_connector(env)
+            try:
+                val_ = self._env_to_module_connector(env, spaces, device)
+            # Try deprecated signature, if necessary.
+            except TypeError as e:
+                if "positional argument" in e.args[0]:
+                    if log_once("env-to-module-wrong-signature"):
+                        logger.error(
+                            "Your `config.env_to_module_connector` function seems to "
+                            "have a wrong or outdated signature! It should be: "
+                            "`def myfunc(env, spaces, device): ...`, where any of "
+                            "these arguments are optional and may be None.\n"
+                            "`env` is the (vectorized) gym env.\n"
+                            "`spaces` is a dict of structure `{'__env__': (["
+                            "vectorized env obs. space, vectorized env act. space]),"
+                            "'__env_single__': ([env obs. space, env act. space])}`.\n"
+                            "`device` is a (torch) device.\n"
+                        )
+                    val_ = self._env_to_module_connector(env)
 
             # ConnectorV2 (piece or pipeline).
             if isinstance(val_, ConnectorV2):
@@ -1110,7 +1126,23 @@ class AlgorithmConfig(_Config):
         # Create a module-to-env connector pipeline (including RLlib's default
         # module->env connector piece) and return it.
         if self._module_to_env_connector is not None:
-            val_ = self._module_to_env_connector(env)
+            try:
+                val_ = self._module_to_env_connector(env, spaces)
+            # Try deprecated signature, if necessary.
+            except TypeError as e:
+                if "positional argument" in e.args[0]:
+                    if log_once("module-to-env-wrong-signature"):
+                        logger.error(
+                            "Your `config.module_to_env_connector` function seems to "
+                            "have a wrong or outdated signature! It should be: "
+                            "`def myfunc(env, spaces): ...`, where any of "
+                            "these arguments are optional and may be None.\n"
+                            "`env` is the (vectorized) gym env.\n"
+                            "`spaces` is a dict of structure `{'__env__': (["
+                            "vectorized env obs. space, vectorized env act. space]),"
+                            "'__env_single__': ([env obs. space, env act. space])}`.\n"
+                        )
+                    val_ = self._module_to_env_connector(env)
 
             # ConnectorV2 (piece or pipeline).
             if isinstance(val_, ConnectorV2):
@@ -1272,6 +1304,7 @@ class AlgorithmConfig(_Config):
         env: Optional[EnvType] = None,
         spaces: Optional[Dict[ModuleID, Tuple[gym.Space, gym.Space]]] = None,
         rl_module_spec: Optional[RLModuleSpecType] = None,
+        placement_group: Optional["PlacementGroup"] = None,
     ) -> "LearnerGroup":
         """Builds and returns a new LearnerGroup object based on settings in `self`.
 
@@ -1303,7 +1336,11 @@ class AlgorithmConfig(_Config):
             rl_module_spec = self.get_multi_rl_module_spec(env=env, spaces=spaces)
 
         # Construct the actual LearnerGroup.
-        learner_group = LearnerGroup(config=self.copy(), module_spec=rl_module_spec)
+        learner_group = LearnerGroup(
+            config=self.copy(),
+            module_spec=rl_module_spec,
+            placement_group=placement_group,
+        )
 
         return learner_group
 
@@ -1699,8 +1736,8 @@ class AlgorithmConfig(_Config):
         env: Optional[Union[str, EnvType]] = NotProvided,
         *,
         env_config: Optional[EnvConfigDict] = NotProvided,
-        observation_space: Optional[gym.spaces.Space] = NotProvided,
-        action_space: Optional[gym.spaces.Space] = NotProvided,
+        observation_space: Optional[gym.Space] = NotProvided,
+        action_space: Optional[gym.Space] = NotProvided,
         render_env: Optional[bool] = NotProvided,
         clip_rewards: Optional[Union[bool, float]] = NotProvided,
         normalize_actions: Optional[bool] = NotProvided,
@@ -3179,7 +3216,7 @@ class AlgorithmConfig(_Config):
                 purposes: (a) to store intermediate data in memory, and (b) to ensure
                 that RLlib samples exactly `train_batch_size_per_learner` experiences
                 per batch. The default is RLlib's `EpisodeReplayBuffer`.
-            prelearner_buffer_kwargs: Optional keyword arguments for intializing the
+            prelearner_buffer_kwargs: Optional keyword arguments for initializing the
                 `EpisodeReplayBuffer`. In most cases this value is simply the `capacity`
                 for the default buffer that RLlib uses (`EpisodeReplayBuffer`), but it
                 may differ if the `prelearner_buffer_class` uses a custom buffer.
@@ -4312,10 +4349,10 @@ class AlgorithmConfig(_Config):
     def get_rl_module_spec(
         self,
         env: Optional[EnvType] = None,
-        spaces: Optional[Dict[str, gym.Space]] = None,
+        spaces: Optional[Dict[str, Tuple[gym.Space, gym.Space]]] = None,
         inference_only: Optional[bool] = None,
     ) -> RLModuleSpec:
-        """Returns the RLModuleSpec based on the given env/spaces.
+        """Returns the RLModuleSpec based on the given env/spaces and this config.
 
         Args:
             env: An optional environment instance, from which to infer the observation-
@@ -4326,10 +4363,10 @@ class AlgorithmConfig(_Config):
             spaces: Optional dict mapping ModuleIDs to 2-tuples of observation- and
                 action space that should be used for the respective RLModule.
                 These spaces are usually provided by an already instantiated remote
-                EnvRunner (call `EnvRunner.get_spaces()`). If not provided, tries
-                to infer from `env`, otherwise from `self.observation_space` and
-                `self.action_space`. Raises an error, if no information on spaces can be
-                inferred.
+                EnvRunner (call `EnvRunner.get_spaces()` to receive this dict). If not
+                provided, RLlib tries to infer this from `env`, if provided, otherwise
+                from `self.observation_space` and `self.action_space`. Raises an error,
+                if no information on spaces can be inferred.
             inference_only: If `True`, the returned module spec is used in an
                 inference-only setting (sampling) and the RLModule can thus be built in
                 its light version (if available). For example, the `inference_only`
@@ -4386,7 +4423,7 @@ class AlgorithmConfig(_Config):
         self,
         *,
         env: Optional[EnvType] = None,
-        spaces: Optional[Dict[PolicyID, Tuple[Space, Space]]] = None,
+        spaces: Optional[Dict[PolicyID, Tuple[gym.Space, gym.Space]]] = None,
         inference_only: bool = False,
         # @HybridAPIStack
         policy_dict: Optional[Dict[str, PolicySpec]] = None,
@@ -4473,7 +4510,7 @@ class AlgorithmConfig(_Config):
 
                 # The individual (single-agent) module specs have not been configured
                 # via this AlgorithmConfig object -> Use provided single-agent spec or
-                # the the default spec (which is also a RLModuleSpec in this
+                # the default spec (which is also a RLModuleSpec in this
                 # case).
                 else:
                     single_agent_spec = (
@@ -4555,10 +4592,6 @@ class AlgorithmConfig(_Config):
                 multi_rl_module_spec.remove_modules(module_id)
                 continue
 
-            policy_spec = policy_dict.get(module_id)
-            if policy_spec is None:
-                policy_spec = policy_dict[DEFAULT_MODULE_ID]
-
             if module_spec.module_class is None:
                 if isinstance(default_rl_module_spec, RLModuleSpec):
                     module_spec.module_class = default_rl_module_spec.module_class
@@ -4602,10 +4635,18 @@ class AlgorithmConfig(_Config):
                     )
             # TODO (sven): Find a good way to pack module specific parameters from
             # the algorithms into the `model_config_dict`.
-            if module_spec.observation_space is None:
-                module_spec.observation_space = policy_spec.observation_space
-            if module_spec.action_space is None:
-                module_spec.action_space = policy_spec.action_space
+            if (
+                module_spec.observation_space is None
+                or module_spec.action_space is None
+            ):
+                policy_spec = policy_dict.get(
+                    module_id, policy_dict.get(DEFAULT_MODULE_ID)
+                )
+                if policy_spec is not None:
+                    if module_spec.observation_space is None:
+                        module_spec.observation_space = policy_spec.observation_space
+                    if module_spec.action_space is None:
+                        module_spec.action_space = policy_spec.action_space
             # In case the `RLModuleSpec` does not have a model config dict, we use the
             # the one defined by the auto keys and the `model_config_dict` arguments in
             # `self.rl_module()`.
@@ -5447,7 +5488,7 @@ class AlgorithmConfig(_Config):
         *,
         policies: Optional[MultiAgentPolicyConfigDict] = None,
         env: Optional[EnvType] = None,
-        spaces: Optional[Dict[PolicyID, Tuple[Space, Space]]] = None,
+        spaces: Optional[Dict[PolicyID, Tuple[gym.Space, gym.Space]]] = None,
         default_policy_class: Optional[Type[Policy]] = None,
     ) -> Tuple[MultiAgentPolicyConfigDict, Callable[[PolicyID, SampleBatchType], bool]]:
         r"""Compiles complete multi-agent config (dict) from the information in `self`.

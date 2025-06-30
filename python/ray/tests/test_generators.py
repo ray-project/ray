@@ -11,7 +11,7 @@ from ray.util.client.ray_client_helpers import (
 )
 from ray._private.client_mode_hook import enable_client_mode
 from ray.tests.conftest import call_ray_start_context
-from ray._private.test_utils import (
+from ray._common.test_utils import (
     wait_for_condition,
 )
 
@@ -803,9 +803,5 @@ def test_ray_client(call_ray_start_shared, store_in_plasma):
 
 
 if __name__ == "__main__":
-    import os
 
-    if os.environ.get("PARALLEL_CI"):
-        sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))
-    else:
-        sys.exit(pytest.main(["-sv", __file__]))
+    sys.exit(pytest.main(["-sv", __file__]))

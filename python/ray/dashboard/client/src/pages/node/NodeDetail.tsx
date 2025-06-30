@@ -118,7 +118,7 @@ const NodeDetailPage = () => {
                 {memoryConverter(nodeDetail?.networkSpeed[0])}/s
               </Grid>
               <Grid item xs>
-                <Box sx={{ fontWeight: "bold" }}>Recieved Tps</Box>{" "}
+                <Box sx={{ fontWeight: "bold" }}>Received Tps</Box>{" "}
                 {memoryConverter(nodeDetail?.networkSpeed[1])}/s
               </Grid>
             </Grid>

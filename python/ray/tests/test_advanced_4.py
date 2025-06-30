@@ -1,15 +1,16 @@
+import os
 import subprocess
 import sys
+from unittest.mock import patch
 
 import pytest
 
 import ray
 from ray._private.test_utils import (
-    Semaphore,
     client_test_enabled,
-    wait_for_condition,
     get_gcs_memory_used,
 )
+from ray._common.test_utils import Semaphore, wait_for_condition
 from ray.experimental.internal_kv import _internal_kv_list
 
 
@@ -67,7 +68,7 @@ def test_jemalloc_env_var_propagate():
     When the shared library is specified
     """
     library_path = "/abc"
-    expected = {"LD_PRELOAD": library_path, "RAY_LD_PRELOAD": "1"}
+    expected = {"LD_PRELOAD": library_path, "RAY_LD_PRELOAD_ON_WORKERS": "0"}
     actual = ray._private.services.propagate_jemalloc_env_var(
         jemalloc_path=library_path,
         jemalloc_conf="",
@@ -85,14 +86,15 @@ def test_jemalloc_env_var_propagate():
             process_type=gcs_ptype,
         )
 
-    # When comps don't match the process_type, it should return an empty dict.
-    expected = {}
+    # When comps don't match the process_type, it should not contain MALLOC_CONF.
     actual = ray._private.services.propagate_jemalloc_env_var(
         jemalloc_path=library_path,
         jemalloc_conf="",
         jemalloc_comps=[ray._private.ray_constants.PROCESS_TYPE_RAYLET],
         process_type=gcs_ptype,
     )
+    assert "MALLOC_CONF" not in actual
+
     """
     When the malloc config is specified
     """
@@ -101,13 +103,31 @@ def test_jemalloc_env_var_propagate():
     expected = {
         "LD_PRELOAD": library_path,
         "MALLOC_CONF": malloc_conf,
-        "RAY_LD_PRELOAD": "1",
+        "RAY_LD_PRELOAD_ON_WORKERS": "0",
     }
     actual = ray._private.services.propagate_jemalloc_env_var(
         jemalloc_path=library_path,
         jemalloc_conf=malloc_conf,
         jemalloc_comps=[ray._private.ray_constants.PROCESS_TYPE_GCS_SERVER],
         process_type=gcs_ptype,
+    )
+    assert actual == expected
+
+
+@patch.dict(os.environ, {"RAY_LD_PRELOAD_ON_WORKERS": "1"})
+def test_enable_jemallc_for_workers():
+    library_path = "/abc"
+    malloc_conf = "a,b,c"
+    expected = {
+        "LD_PRELOAD": library_path,
+        "MALLOC_CONF": malloc_conf,
+        "RAY_LD_PRELOAD_ON_WORKERS": "1",
+    }
+    actual = ray._private.services.propagate_jemalloc_env_var(
+        jemalloc_path=library_path,
+        jemalloc_conf=malloc_conf,
+        jemalloc_comps=[ray._private.ray_constants.PROCESS_TYPE_WORKER],
+        process_type=ray._private.ray_constants.PROCESS_TYPE_WORKER,
     )
     assert actual == expected
 
@@ -267,10 +287,4 @@ def test_function_table_gc_actor(call_ray_start):
 
 
 if __name__ == "__main__":
-    import os
-    import pytest
-
-    if os.environ.get("PARALLEL_CI"):
-        sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))
-    else:
-        sys.exit(pytest.main(["-sv", __file__]))
+    sys.exit(pytest.main(["-sv", __file__]))
