@@ -1,6 +1,7 @@
 import sys
 from concurrent.futures import FIRST_COMPLETED, ThreadPoolExecutor, wait
 from typing import Tuple
+from urllib.parse import urljoin
 
 import grpc
 import httpx
@@ -68,6 +69,7 @@ def test_http_backpressure(serve_instance):
 
     @ray.remote(num_cpus=0)
     def do_request(msg: str) -> Tuple[int, str]:
+        application_url = get_application_url()
         r = httpx.request("GET", application_url, json={"msg": msg}, timeout=30.0)
         return r.status_code, r.text
 
