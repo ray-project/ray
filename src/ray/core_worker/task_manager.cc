@@ -1193,9 +1193,13 @@ void TaskManager::RemoveFinishedTaskReferences(
     if (spec.ArgByRef(i)) {
       plasma_dependencies.push_back(spec.ArgObjectId(i));
     } else {
-      const auto &inlined_refs = spec.ArgInlinedRefs(i);
-      for (const auto &inlined_ref : inlined_refs) {
-        plasma_dependencies.push_back(ObjectID::FromBinary(inlined_ref.object_id()));
+      if (spec.IsInlinedGPUObject(i)) {
+        plasma_dependencies.push_back(spec.ArgObjectId(i));
+      } else {
+        const auto &inlined_refs = spec.ArgInlinedRefs(i);
+        for (const auto &inlined_ref : inlined_refs) {
+          plasma_dependencies.push_back(ObjectID::FromBinary(inlined_ref.object_id()));
+        }
       }
     }
   }

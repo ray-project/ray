@@ -50,6 +50,7 @@ class GPUObjectRefCountUpdater:
         self._shutdown = False
 
     def add_obj_ref(self, obj_ref: ObjectRef, obj_id: str):
+        return
         if not hasattr(self, "_thread"):
             self._condition = threading.Condition()
             self._thread = threading.Thread(target=self._run)

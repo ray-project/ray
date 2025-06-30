@@ -386,6 +386,11 @@ std::vector<rpc::ObjectReference> TaskSpecification::GetDependencies() const {
   return dependencies;
 }
 
+bool TaskSpecification::IsInlinedGPUObject(size_t arg_index) const {
+  auto &arg = message_->args(arg_index);
+  return arg.is_inlined() && arg.has_object_ref();
+}
+
 const ResourceSet &TaskSpecification::GetRequiredPlacementResources() const {
   return *required_placement_resources_;
 }
