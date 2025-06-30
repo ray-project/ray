@@ -146,15 +146,7 @@ def _clear_current_platform_cache():
         current_platform.get_device_capability.cache_clear()
 
 
-class CustomNamespace:
-    def __init__(self, *args):
-        self.classes = args
 
-    def __getattr__(self, name):
-        for cls in self.classes:
-            if hasattr(cls, name):
-                return getattr(cls, name)
-        raise AttributeError(f"Attribute {name} not found in {self.classes}")
 
 
 class VLLMEngine(LLMEngine):
@@ -174,12 +166,12 @@ class VLLMEngine(LLMEngine):
         # This is critical for models with trust_remote_code=True to avoid pickle errors.
         init_hf_modules()
 
-        # filter out the llm_config.engine_kwargs to those that belong to FrontendArgs and pop them over.
-        engine_config = llm_config.get_engine_config()
-        self.frontend_args = FrontendArgs(**engine_config.frontend_kwargs)
-        self.engine_args = AsyncEngineArgs(**engine_config.engine_kwargs)
+        # filter out the llm_config.engine_kwargs to those that belong to FrontendArgs and engine_args and decouple them.
+        self.llm_config = llm_config
+        self._engine_config = llm_config.get_engine_config()
+        self._vllm_frontend_args = FrontendArgs(**self._engine_config.frontend_kwargs)
+        self._vllm_engine_args = AsyncEngineArgs(**self._engine_config.engine_kwargs)
 
-        self.namespace_args = CustomNamespace(self.engine_args, self.frontend_args)
 
         if vllm is None:
             raise ImportError(
@@ -219,25 +211,10 @@ class VLLMEngine(LLMEngine):
             kv_transfer_config.engine_id = "-".join([engine_id, host, str(port)])
 
 
-        self.llm_config = llm_config
-        self.engine_config = VLLMEngineConfig.from_llm_config(llm_config)
-
+        # TODO (Kourosh): What do we do with this stats tracker? 
         self._stats = VLLMEngineStatTracker()
-        self.running = False
-        self.model_config: "ModelConfig" = None
-        # self.engine = None
-        self.vllm_config: "VllmConfig" = None
+        self._running = False
 
-        # # Chat template content format (openai or string)
-        # self._resolved_content_format = None
-        # # Also need local instance of the tokenizer to manage prompt formatting.
-        # self._tokenizer = None
-
-        # self._tokenizer_executor = ThreadPoolExecutor(max_workers=1)
-        # self._atokenize = vllm.utils.make_async(
-        #     self._tokenize, executor=self._tokenizer_executor
-        # )
-        
         # vLLM Integration points. Will be set through .start()
         self._engine_client = None
         self._oai_models = None
@@ -262,56 +239,74 @@ class VLLMEngine(LLMEngine):
         If the engine is already running, do nothing.
         """
         
-        if self.running:
+        if self._running:
             # The engine is already running!
             logger.info("Skipping engine restart because the engine is already running")
             return
 
         from vllm.entrypoints.openai.api_server import init_app_state
 
-        self._engine_client = await self._start_engine_client()
+        self._engine_client, vllm_config = await self._start_engine_client()
 
         from starlette.datastructures import State
+        
+        class _Namespace:
+            def __init__(self, *args):
+                self.classes = args
+
+            def __getattr__(self, name):
+                for cls in self.classes:
+                    if hasattr(cls, name):
+                        return getattr(cls, name)
+                raise AttributeError(f"Attribute {name} not found in {self.classes}")
 
         state = State()
+        args = _Namespace(self._vllm_engine_args, self._vllm_frontend_args)
 
         await init_app_state(
             engine_client=self._engine_client,
-            vllm_config=self.vllm_config,
+            vllm_config=vllm_config,
             state=state,
-            args=self.namespace_args,
+            args=args,
         )
 
-        self._validate_openai_serving_models(state.openai_serving_models)
         self._oai_models = state.openai_serving_models
-        
         self._oai_serving_chat = state.openai_serving_chat
         self._oai_serving_completion = state.openai_serving_completion
         self._oai_serving_embedding = state.openai_serving_embedding
+        
+        self._validate_openai_serving_models()
+        self._validate_openai_serving_chat()
+        
 
-        self.running = True
+        self._running = True
 
         logger.info("Started vLLM engine.")
 
-    def _validate_openai_serving_models(self, models):
-        if not hasattr(models, "lora_requests"):
+    def _validate_openai_serving_models(self):
+        if not hasattr(self._oai_models, "lora_requests"):
             raise ValueError("oai_models must have a lora_requests attribute")
         
-        if not hasattr(models, "load_lora_adapter"):
+        if not hasattr(self._oai_models, "load_lora_adapter"):
             raise ValueError("oai_models must have a load_lora_adapter attribute")
         
-    async def _start_engine_client(self) -> "EngineClient":
+    def _validate_openai_serving_chat(self):
+        if not hasattr(self._oai_serving_chat, "create_chat_completion"):
+            raise ValueError("oai_serving_chat must have a create_chat_completion attribute")
+        
+    async def _start_engine_client(self) -> Tuple["EngineClient", "VllmConfig"]:
         (
             engine_args,
-            engine_config,
+            vllm_config,
             node_initialization,
         ) = await self._prepare_engine_config()
 
-        return self._start_async_llm_engine(
+        engine_client = self._start_async_llm_engine(
             engine_args,
-            engine_config,
+            vllm_config,
             node_initialization.placement_group,
         )
+        return engine_client, vllm_config
 
     async def _prepare_engine_config(self):
         """
@@ -326,7 +321,7 @@ class VLLMEngine(LLMEngine):
         # TODO: NEEDED for Mistral models
         node_initialization = await self.initialize_node(self.llm_config)
 
-        if self.engine_config.use_gpu:
+        if self._engine_config.use_gpu:
             # Create engine config on a task with access to GPU,
             # as GPU capability may be queried.
             ref = (
@@ -343,14 +338,11 @@ class VLLMEngine(LLMEngine):
                 )
                 .remote(self.llm_config)
             )
-            engine_args, engine_config = ray.get(ref)
+            engine_args, vllm_config = ray.get(ref)
         else:
-            engine_args, engine_config = _get_vllm_engine_config(self.llm_config)
+            engine_args, vllm_config = _get_vllm_engine_config(self.llm_config)
 
-        # Note (genesu): vllm_config is used to extract the scheduler config for
-        # computing the correct prompt limit.
-        self.vllm_config = engine_config
-        return engine_args, engine_config, node_initialization
+        return engine_args, vllm_config, node_initialization
 
 
     def _start_async_llm_engine(
@@ -505,7 +497,7 @@ class VLLMEngine(LLMEngine):
                 yield response
         else:
             logger.info(
-                f"[Kourosh] non streaming response received, chat_response: {chat_response}"
+                f"[Kourosh] non streaming response received, type: {type(chat_response)}, chat_response: {chat_response}"
             )
             if isinstance(chat_response, ErrorResponse):
                 yield PatchedErrorResponse(
@@ -790,103 +782,103 @@ class VLLMEngine(LLMEngine):
         if sampling_params.logprobs is not None:
             usage_counters[ArgUsage.LOGPROBS].inc()
 
-    def _parse_sampling_params(
-        self, sampling_params: VLLMSamplingParams
-    ) -> "VLLMInternalSamplingParams":
-        """Parse the vllm sampling parameters from the prompt.
-        This function is used to parse the sampling parameters from the prompt.
-        It also collects the usage metrics for the sampling parameters.
-        Args:
-            sampling_params: The sampling parameters defined in ray.serve.llm.
-        Returns:
-            vllm.SamplingParams, The parsed sampling parameters.
-        """
-        self._collect_usage_metrics(sampling_params)
-        try:
-            if self.model_config is None:
-                raise RuntimeError(
-                    "VLLMEngine.model_config not set. Maybe VLLMEngine.start() was not called?"
-                )
+    # def _parse_sampling_params(
+    #     self, sampling_params: VLLMSamplingParams
+    # ) -> "VLLMInternalSamplingParams":
+    #     """Parse the vllm sampling parameters from the prompt.
+    #     This function is used to parse the sampling parameters from the prompt.
+    #     It also collects the usage metrics for the sampling parameters.
+    #     Args:
+    #         sampling_params: The sampling parameters defined in ray.serve.llm.
+    #     Returns:
+    #         vllm.SamplingParams, The parsed sampling parameters.
+    #     """
+    #     self._collect_usage_metrics(sampling_params)
+    #     try:
+    #         if self.model_config is None:
+    #             raise RuntimeError(
+    #                 "VLLMEngine.model_config not set. Maybe VLLMEngine.start() was not called?"
+    #             )
 
-            log_probs = None
-            if sampling_params.logprobs:
-                max_logprobs = getattr(self.model_config, "max_logprobs", 0)
-                max_logprobs = min(MAX_NUM_TOPLOGPROBS_ALLOWED, max_logprobs)
-                if max_logprobs == 0:
-                    raise ValueError("This model doesn't support outputting logprobs.")
-                if sampling_params.top_logprobs:
-                    if not (
-                        MIN_NUM_TOPLOGPROBS_ALLOWED
-                        <= sampling_params.top_logprobs
-                        <= max_logprobs
-                    ):
-                        raise ValueError(
-                            f"top_logprobs must be between {MIN_NUM_TOPLOGPROBS_ALLOWED} "
-                            f"and {max_logprobs}. Got {sampling_params.top_logprobs}."
-                        )
-                    log_probs = sampling_params.top_logprobs
-                else:
-                    log_probs = 1
-            else:
-                if sampling_params.top_logprobs:
-                    raise ValueError(
-                        "if top_logprobs is specified, logprobs must be set to `True`"
-                    )
+    #         log_probs = None
+    #         if sampling_params.logprobs:
+    #             max_logprobs = getattr(self.model_config, "max_logprobs", 0)
+    #             max_logprobs = min(MAX_NUM_TOPLOGPROBS_ALLOWED, max_logprobs)
+    #             if max_logprobs == 0:
+    #                 raise ValueError("This model doesn't support outputting logprobs.")
+    #             if sampling_params.top_logprobs:
+    #                 if not (
+    #                     MIN_NUM_TOPLOGPROBS_ALLOWED
+    #                     <= sampling_params.top_logprobs
+    #                     <= max_logprobs
+    #                 ):
+    #                     raise ValueError(
+    #                         f"top_logprobs must be between {MIN_NUM_TOPLOGPROBS_ALLOWED} "
+    #                         f"and {max_logprobs}. Got {sampling_params.top_logprobs}."
+    #                     )
+    #                 log_probs = sampling_params.top_logprobs
+    #             else:
+    #                 log_probs = 1
+    #         else:
+    #             if sampling_params.top_logprobs:
+    #                 raise ValueError(
+    #                     "if top_logprobs is specified, logprobs must be set to `True`"
+    #                 )
 
-            kwargs = dict(
-                n=1,
-                best_of=sampling_params.best_of,
-                presence_penalty=0.0,
-                frequency_penalty=0.0,
-                repetition_penalty=1.0,
-                temperature=1.0,
-                top_p=1.0,
-                top_k=-1,
-                stop=sampling_params.stop,
-                stop_token_ids=sampling_params.stop_tokens,
-                ignore_eos=False,
-                # vLLM will cancel internally if input+output>max_tokens
-                max_tokens=self.model_config.max_model_len,
-                logprobs=log_probs,
-            )
-            if sampling_params.presence_penalty is not None:
-                kwargs["presence_penalty"] = sampling_params.presence_penalty
-            if sampling_params.frequency_penalty is not None:
-                kwargs["frequency_penalty"] = sampling_params.frequency_penalty
-            if sampling_params.repetition_penalty is not None:
-                kwargs["repetition_penalty"] = sampling_params.repetition_penalty
-            if sampling_params.temperature is not None:
-                kwargs["temperature"] = sampling_params.temperature
-            if sampling_params.top_p is not None:
-                kwargs["top_p"] = sampling_params.top_p
-            if sampling_params.top_k is not None:
-                kwargs["top_k"] = sampling_params.top_k
-            if sampling_params.ignore_eos is not None:
-                kwargs["ignore_eos"] = sampling_params.ignore_eos
-            if sampling_params.max_tokens is not None:
-                kwargs["max_tokens"] = sampling_params.max_tokens
-            # If we set it to None, vLLM will throw an exception
-            # as that is not the default value. Omitting it
-            # will allow vLLM to generate a new seed internally,
-            # as expected.
-            if sampling_params.seed is not None:
-                kwargs["seed"] = sampling_params.seed
-            if sampling_params.response_format is not None:
-                kwargs[
-                    "guided_decoding"
-                ] = sampling_params.response_format.to_guided_decoding_params(
-                    backend=RAYLLM_GUIDED_DECODING_BACKEND
-                )
-            if sampling_params.kv_transfer_params is not None:
-                kwargs["extra_args"] = {
-                    KV_TRANSFER_PARAMS_KEY: sampling_params.kv_transfer_params
-                }
+    #         kwargs = dict(
+    #             n=1,
+    #             best_of=sampling_params.best_of,
+    #             presence_penalty=0.0,
+    #             frequency_penalty=0.0,
+    #             repetition_penalty=1.0,
+    #             temperature=1.0,
+    #             top_p=1.0,
+    #             top_k=-1,
+    #             stop=sampling_params.stop,
+    #             stop_token_ids=sampling_params.stop_tokens,
+    #             ignore_eos=False,
+    #             # vLLM will cancel internally if input+output>max_tokens
+    #             max_tokens=self.model_config.max_model_len,
+    #             logprobs=log_probs,
+    #         )
+    #         if sampling_params.presence_penalty is not None:
+    #             kwargs["presence_penalty"] = sampling_params.presence_penalty
+    #         if sampling_params.frequency_penalty is not None:
+    #             kwargs["frequency_penalty"] = sampling_params.frequency_penalty
+    #         if sampling_params.repetition_penalty is not None:
+    #             kwargs["repetition_penalty"] = sampling_params.repetition_penalty
+    #         if sampling_params.temperature is not None:
+    #             kwargs["temperature"] = sampling_params.temperature
+    #         if sampling_params.top_p is not None:
+    #             kwargs["top_p"] = sampling_params.top_p
+    #         if sampling_params.top_k is not None:
+    #             kwargs["top_k"] = sampling_params.top_k
+    #         if sampling_params.ignore_eos is not None:
+    #             kwargs["ignore_eos"] = sampling_params.ignore_eos
+    #         if sampling_params.max_tokens is not None:
+    #             kwargs["max_tokens"] = sampling_params.max_tokens
+    #         # If we set it to None, vLLM will throw an exception
+    #         # as that is not the default value. Omitting it
+    #         # will allow vLLM to generate a new seed internally,
+    #         # as expected.
+    #         if sampling_params.seed is not None:
+    #             kwargs["seed"] = sampling_params.seed
+    #         if sampling_params.response_format is not None:
+    #             kwargs[
+    #                 "guided_decoding"
+    #             ] = sampling_params.response_format.to_guided_decoding_params(
+    #                 backend=RAYLLM_GUIDED_DECODING_BACKEND
+    #             )
+    #         if sampling_params.kv_transfer_params is not None:
+    #             kwargs["extra_args"] = {
+    #                 KV_TRANSFER_PARAMS_KEY: sampling_params.kv_transfer_params
+    #             }
 
-            return vllm.SamplingParams(**kwargs)
-        except Exception as e:
-            # Wrap the error in ValidationError so the status code
-            # returned to the user is correct.
-            raise ValidationError(str(e)) from e
+    #         return vllm.SamplingParams(**kwargs)
+    #     except Exception as e:
+    #         # Wrap the error in ValidationError so the status code
+    #         # returned to the user is correct.
+    #         raise ValidationError(str(e)) from e
 
     @staticmethod
     def _extract_logprobs(
