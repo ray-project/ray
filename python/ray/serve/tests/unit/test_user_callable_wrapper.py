@@ -176,9 +176,10 @@ async def test_basic_class_callable(
     # Call non-generator method with is_streaming.
     request_metadata = _make_request_metadata(is_streaming=True)
     with pytest.raises(TypeError, match="did not return a generator."):
-        await user_callable_wrapper._call_user_generator(
+        async for _ in user_callable_wrapper.call_user_generator(
             request_metadata, tuple(), dict()
-        )
+        ):
+            pass
 
     # Test calling default sync `__call__` method.
     request_metadata = _make_request_metadata()
@@ -207,9 +208,10 @@ async def test_basic_class_callable(
         call_method="call_async", is_streaming=True
     )
     with pytest.raises(TypeError, match="did not return a generator."):
-        await user_callable_wrapper._call_user_generator(
+        async for _ in user_callable_wrapper.call_user_generator(
             request_metadata, tuple(), dict()
-        )
+        ):
+            pass
 
     # Test calling `call_async` method.
     request_metadata = _make_request_metadata(call_method="call_async")
@@ -266,20 +268,21 @@ async def test_basic_class_callable_generators(
     request_metadata = _make_request_metadata(
         call_method="call_generator", is_streaming=True
     )
-    await user_callable_wrapper._call_user_generator(
-        request_metadata, (10,), dict(), generator_result_callback=result_list.append
-    )
+    async for result in user_callable_wrapper.call_user_generator(
+        request_metadata, (10,), dict()
+    ):
+        result_list.append(result)
     assert result_list == list(range(10))
     result_list.clear()
 
     # Call sync generator raising exception.
     with pytest.raises(RuntimeError, match="uh-oh"):
-        await user_callable_wrapper._call_user_generator(
+        async for result in user_callable_wrapper.call_user_generator(
             request_metadata,
             (10,),
             {"raise_exception": True},
-            generator_result_callback=result_list.append,
-        )
+        ):
+            result_list.append(result)
     assert result_list == [0]
     result_list.clear()
 
@@ -300,20 +303,21 @@ async def test_basic_class_callable_generators(
     request_metadata = _make_request_metadata(
         call_method="call_async_generator", is_streaming=True
     )
-    await user_callable_wrapper._call_user_generator(
-        request_metadata, (10,), dict(), generator_result_callback=result_list.append
-    )
+    async for result in user_callable_wrapper.call_user_generator(
+        request_metadata, (10,), dict()
+    ):
+        result_list.append(result)
     assert result_list == list(range(10))
     result_list.clear()
 
     # Call async generator raising exception.
     with pytest.raises(RuntimeError, match="uh-oh"):
-        await user_callable_wrapper._call_user_generator(
+        async for result in user_callable_wrapper.call_user_generator(
             request_metadata,
             (10,),
             {"raise_exception": True},
-            generator_result_callback=result_list.append,
-        )
+        ):
+            result_list.append(result)
     assert result_list == [0]
 
 
@@ -336,9 +340,10 @@ async def test_basic_function_callable(
     # Call non-generator function with is_streaming.
     request_metadata = _make_request_metadata(is_streaming=True)
     with pytest.raises(TypeError, match="did not return a generator."):
-        await user_callable_wrapper._call_user_generator(
+        async for _ in user_callable_wrapper.call_user_generator(
             request_metadata, tuple(), dict()
-        )
+        ):
+            pass
 
     request_metadata = _make_request_metadata()
     assert (
@@ -393,20 +398,21 @@ async def test_basic_function_callable_generators(
     request_metadata = _make_request_metadata(
         call_method="call_generator", is_streaming=True
     )
-    await user_callable_wrapper._call_user_generator(
-        request_metadata, (10,), dict(), generator_result_callback=result_list.append
-    )
+    async for result in user_callable_wrapper.call_user_generator(
+        request_metadata, (10,), dict()
+    ):
+        result_list.append(result)
     assert result_list == list(range(10))
     result_list.clear()
 
     # Call generator function raising exception.
     with pytest.raises(RuntimeError, match="uh-oh"):
-        await user_callable_wrapper._call_user_generator(
+        async for result in user_callable_wrapper.call_user_generator(
             request_metadata,
             (10,),
             {"raise_exception": True},
-            generator_result_callback=result_list.append,
-        )
+        ):
+            result_list.append(result)
     assert result_list == [0]
 
 
@@ -516,12 +522,12 @@ async def test_grpc_streaming_request(
     request_metadata = _make_request_metadata(
         call_method="stream", is_grpc_request=True, is_streaming=True
     )
-    await user_callable_wrapper._call_user_generator(
+    async for result in user_callable_wrapper.call_user_generator(
         request_metadata,
         (serve_pb2.UserDefinedResponse(greeting="world"),),
         dict(),
-        generator_result_callback=result_list.append,
-    )
+    ):
+        result_list.append(result)
 
     assert len(result_list) == 10
     for i, result in enumerate(result_list):
