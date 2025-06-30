@@ -146,44 +146,6 @@ def _clear_current_platform_cache():
         current_platform.get_device_capability.cache_clear()
 
 
-class _EngineBackgroundProcess:
-    def __init__(self, ipc_path, engine_args, engine_config):
-        from vllm.engine.multiprocessing.engine import MQLLMEngine
-
-        # Adapted from vllm.engine.multiprocessing.engine.MQLLMEngine.from_engine_args
-        vllm.plugins.load_general_plugins()
-
-        # Note (genesu): There is a bug in vllm 0.7.2 forced the use of uni processing
-        # executor when world_size is 1. This is a bug in vllm 0.7.2 and
-        # is fixed by https://github.com/vllm-project/vllm/pull/12934 which is shipped
-        # with vllm 0.7.3. However, in Ray's llm package, we will enforce the use of
-        # ray distributed executor for all cases so it's always compatible with Ray.
-        from vllm.executor.ray_distributed_executor import RayDistributedExecutor
-
-        # Clear the cache of the current platform.
-        _clear_current_platform_cache()
-
-        self.engine = MQLLMEngine(
-            ipc_path=ipc_path,
-            use_async_sockets=engine_config.model_config.use_async_output_proc,
-            vllm_config=engine_config,
-            executor_class=RayDistributedExecutor,
-            log_requests=not engine_args.disable_log_requests,
-            log_stats=not engine_args.disable_log_stats,
-            usage_context=vllm.usage.usage_lib.UsageContext.API_SERVER,
-        )
-        self._error = None
-
-    def start(self):
-        try:
-            self.engine.start()
-        except Exception as e:
-            self._error = e
-
-    def get_error(self):
-        return self._error
-
-
 class CustomNamespace:
     def __init__(self, *args):
         self.classes = args
@@ -206,6 +168,7 @@ class VLLMEngine(LLMEngine):
             llm_config: The llm configuration for this engine
         """
         super().__init__(llm_config)
+
         
         # Ensure transformers_modules is initialized early in worker processes.
         # This is critical for models with trust_remote_code=True to avoid pickle errors.
@@ -222,12 +185,14 @@ class VLLMEngine(LLMEngine):
             raise ImportError(
                 "vLLM is not installed. Please install it with `pip install ray[llm]`."
             )
+            
+        if not vllm.envs.VLLM_USE_V1:
+            raise ValueError("vLLM v0 is getting fully deprecated. As a result in Ray Serve LLM only v1 is supported.")
 
+        # TODO (Kourosh): This validation logic belongs to the PDProxy module.
         # Pick a random port in P/D case.
         kv_transfer_config = llm_config.engine_kwargs.get("kv_transfer_config", None)
         if kv_transfer_config is not None:
-            if not vllm.envs.VLLM_USE_V1:
-                logger.warning("Ray Serve LLM only supports P/D with v1 vLLM engine.")
             connector_type = getattr(kv_transfer_config, "kv_connector", "")
             if connector_type != "NixlConnector":
                 raise ValueError("Only NixlConnector is supported for kv transfer.")
@@ -253,27 +218,32 @@ class VLLMEngine(LLMEngine):
             port = vllm.envs.VLLM_NIXL_SIDE_CHANNEL_PORT
             kv_transfer_config.engine_id = "-".join([engine_id, host, str(port)])
 
-        assert isinstance(
-            llm_config, LLMConfig
-        ), f"Got invalid config {llm_config} of type {type(llm_config)}"
+
         self.llm_config = llm_config
         self.engine_config = VLLMEngineConfig.from_llm_config(llm_config)
 
         self._stats = VLLMEngineStatTracker()
         self.running = False
         self.model_config: "ModelConfig" = None
-        self.engine = None
+        # self.engine = None
         self.vllm_config: "VllmConfig" = None
 
-        # Chat template content format (openai or string)
-        self._resolved_content_format = None
-        # Also need local instance of the tokenizer to manage prompt formatting.
-        self._tokenizer = None
+        # # Chat template content format (openai or string)
+        # self._resolved_content_format = None
+        # # Also need local instance of the tokenizer to manage prompt formatting.
+        # self._tokenizer = None
 
-        self._tokenizer_executor = ThreadPoolExecutor(max_workers=1)
-        self._atokenize = vllm.utils.make_async(
-            self._tokenize, executor=self._tokenizer_executor
-        )
+        # self._tokenizer_executor = ThreadPoolExecutor(max_workers=1)
+        # self._atokenize = vllm.utils.make_async(
+        #     self._tokenize, executor=self._tokenizer_executor
+        # )
+        
+        # vLLM Integration points. Will be set through .start()
+        self._engine_client = None
+        self._oai_models = None
+        self._oai_serving_chat = None
+        self._oai_serving_completion = None
+        self._oai_serving_embedding = None
 
     @staticmethod
     async def initialize_node(llm_config: LLMConfig) -> InitializeNodeOutput:
@@ -285,113 +255,67 @@ class VLLMEngine(LLMEngine):
         """
         return await initialize_node_util(llm_config)
 
-    def _tokenize(
-        self, prompt_text: str, add_special_tokens: bool = False
-    ) -> List[int]:
-        encoded = self._tokenizer(prompt_text, add_special_tokens=add_special_tokens)
-        return encoded.input_ids
 
     async def start(self):
         """Start the vLLM engine.
 
         If the engine is already running, do nothing.
         """
-        # from vllm.entrypoints.chat_utils import (
-        #     resolve_chat_template_content_format as _resolve_chat_template_content_format,
-        # )
-
-        # if self.running:
-        #     # The engine is already running!
-        #     logger.info("Skipping engine restart because the engine is already running")
-        #     return
-
-        # self.engine = await self._start_engine()
-        # self.running = True
-        # self.model_config = await self.engine.get_model_config()
-
-        # self._tokenizer = await self.engine.get_tokenizer()
-
-        # def resolve_chat_template_content_format(model_config, **kwargs):
-        #     try:
-        #         return _resolve_chat_template_content_format(
-        #             model_config=model_config, **kwargs
-        #         )
-        #     except TypeError:
-        #         # Legacy API before vLLM 0.9.0.
-        #         # TODO(#52975): Remove this try-except once vLLM <0.9.0 is no longer supported.
-        #         return _resolve_chat_template_content_format(
-        #             trust_remote_code=model_config.trust_remote_code, **kwargs
-        #         )
-
-        # self._resolved_content_format = resolve_chat_template_content_format(
-        #     model_config=self.model_config,
-        #     # Use HF to get the chat template so set it to None here.
-        #     chat_template=None,
-        #     # Default to None, change when it's needed.
-        #     # vLLM does not have a high level API to support all of this.
-        #     tools=None,
-        #     # Let vLLM decide the content format.
-        #     given_format="auto",
-        #     tokenizer=self._tokenizer,
-        # )
+        
+        if self.running:
+            # The engine is already running!
+            logger.info("Skipping engine restart because the engine is already running")
+            return
 
         from vllm.entrypoints.openai.api_server import init_app_state
 
-        self.engine = await self._start_engine()
+        self._engine_client = await self._start_engine_client()
 
         from starlette.datastructures import State
 
         state = State()
 
         await init_app_state(
-            engine_client=self.engine,
+            engine_client=self._engine_client,
             vllm_config=self.vllm_config,
             state=state,
             args=self.namespace_args,
         )
 
-        self.oai_models = state.openai_serving_models
-        self.oai_serving_chat = state.openai_serving_chat
-        self.oai_serving_completion = state.openai_serving_completion
-        self.oai_serving_embedding = state.openai_serving_embedding
+        self._validate_openai_serving_models(state.openai_serving_models)
+        self._oai_models = state.openai_serving_models
+        
+        self._oai_serving_chat = state.openai_serving_chat
+        self._oai_serving_completion = state.openai_serving_completion
+        self._oai_serving_embedding = state.openai_serving_embedding
 
         self.running = True
 
         logger.info("Started vLLM engine.")
 
-    async def _start_engine(self) -> "EngineClient":
-        from vllm import envs
+    def _validate_openai_serving_models(self, models):
+        if not hasattr(models, "lora_requests"):
+            raise ValueError("oai_models must have a lora_requests attribute")
+        
+        if not hasattr(models, "load_lora_adapter"):
+            raise ValueError("oai_models must have a load_lora_adapter attribute")
+        
+    async def _start_engine_client(self) -> "EngineClient":
+        (
+            engine_args,
+            engine_config,
+            node_initialization,
+        ) = await self._prepare_engine_config()
 
-        # Since vLLM 0.8.0, the logic to determine v0/v1 engine is as follows:
-        # 1. If VLLM_USE_V1 is not set, then it tries to use v1 engine. However,
-        #    if any feature specified in the engine config is not supported, then
-        #    it falls back to v0. Note that launching vLLM on a non-main thread
-        #    is an experimental feature, so vLLM will fall back to v0 in this case.
-        # 2. If VLLM_USE_V1 is set to 1, then it will use v1 engine even with
-        #    experimental features (such as launching vLLM on a non-main thread).
-        # 3. If VLLM_USE_V1 is set to 0, force using v0 engine.
-        # In Ray Serve LLM, we forbid case 1 because we have to know exactly which engine is used.
-        if not envs.is_set("VLLM_USE_V1"):
-            logger.warning(
-                "VLLM_USE_V1 environment variable is not set, using vLLM v0 as default. "
-                "Later we may switch default to use v1 once vLLM v1 is mature."
-            )
-            envs.set_vllm_use_v1(False)
+        return self._start_async_llm_engine(
+            engine_args,
+            engine_config,
+            node_initialization.placement_group,
+        )
 
-        if not envs.VLLM_USE_V1:
-            if self.llm_config.log_engine_metrics:
-                raise ValueError("V1 vLLM Engine is required to log engine metrics")
-
-            return await self._start_engine_v0()
-
-        return await self._start_engine_v1()
-
-    async def _prepare_engine_config(self, use_v1: bool):
+    async def _prepare_engine_config(self):
         """
         Prepare the engine config to start the engine.
-
-        Args:
-            use_v1: Whether to use vLLM V1 engine.
 
         Returns:
             engine_args: The engine arguments.
@@ -428,133 +352,18 @@ class VLLMEngine(LLMEngine):
         self.vllm_config = engine_config
         return engine_args, engine_config, node_initialization
 
-    async def _start_engine_v1(self) -> "EngineClient":
-        """Start the vLLM v1 engine. Note that we only use _get_async_engine_args
-        to get the engine args and don't use _get_vllm_engine_config, because
-        we integrate vLLM v1 using the highest-level async engine API.
-        TODO: Refactor vLLM v0 integration to use the same async engine API
-        to simplify the code.
-        """
-        (
-            engine_args,
-            engine_config,
-            node_initialization,
-        ) = await self._prepare_engine_config(use_v1=True)
-
-        return self._start_async_llm_engine(
-            engine_args,
-            engine_config,
-            node_initialization.placement_group,
-            use_v1=True,
-        )
-
-    async def _start_engine_v0(self) -> "EngineClient":
-        from vllm.engine.multiprocessing.client import MQLLMEngineClient
-
-        (
-            engine_args,
-            engine_config,
-            node_initialization,
-        ) = await self._prepare_engine_config(use_v1=False)
-
-        if MQLLMEngineClient.is_unsupported_config(engine_config):
-            # If the engine is not supported, we fall back to the legacy async engine.
-            #
-            # Note (genesu): as of 2025-02-11, this code path is only triggered when
-            # pipeline parallelism is > 1. And this is due to the vllm mq engine have
-            # not implemented the pipeline parallelism yet.
-            return self._start_async_llm_engine(
-                engine_args,
-                engine_config,
-                node_initialization.placement_group,
-                use_v1=False,
-            )
-
-        return await self._start_mq_engine(
-            engine_args, engine_config, node_initialization.placement_group
-        )
-
-    async def _start_mq_engine(
-        self,
-        engine_args: "AsyncEngineArgs",
-        engine_config: "VllmConfig",
-        placement_group: PlacementGroup,
-    ) -> "EngineClient":
-        from vllm.engine.multiprocessing.client import MQLLMEngineClient
-
-        ipc_path = vllm.utils.get_open_zmq_ipc_path()
-
-        BackgroundCls = ray.remote(
-            num_cpus=0,
-            scheduling_strategy=PlacementGroupSchedulingStrategy(
-                placement_group=placement_group,
-                placement_group_capture_child_tasks=True,
-            ),
-            runtime_env=dict(
-                env_vars=dict(
-                    VLLM_USE_V1="0",
-                ),
-            ),
-        )(_EngineBackgroundProcess)
-        # Run the process in the background
-        process_ref = BackgroundCls.remote(ipc_path, engine_args, engine_config)
-        process_ref.start.remote()
-        engine_client = MQLLMEngineClient(
-            ipc_path=ipc_path,
-            engine_config=engine_config,
-            engine_pid=os.getpid(),
-        )
-
-        logger.info("[STATUS] Getting the server ready ...")
-        while True:
-            try:
-                await engine_client.setup()
-                break
-            except TimeoutError:
-                # A timeout is raised if client cannot connect to the background process.
-                # This could be due to one of the following reasons:
-                # 1. The engine has died during construction of the actor: In this case
-                # get() on any of its methods will raise an ActorDiedError which should
-                # be re-raised
-                # 2. The engine is just not up yet (downloading the model, sharding, etc.)
-                # In this case, we should just wait.
-                # 3. Something in the .start() has caused the engine to fail: In this
-                # case the exception is caught and get_error will return the error
-                # which should be re-raised.
-                logger.info("[STATUS] Waiting for engine process ...")
-                try:
-                    # Wait 1 second to get any potential error raised in the engine loop
-                    err = ray.get(process_ref.get_error.remote(), timeout=1)
-                    if err:
-                        raise RuntimeError("Background Engine loop is dead.") from err
-                except ray.exceptions.GetTimeoutError:
-                    # If it times out then the background loop is keeping it busy
-                    pass
-                except ray.exceptions.ActorDiedError as e:
-                    logger.error("[ERROR] Actor died.")
-                    raise RuntimeError("Background Engine loop is dead.") from e
-
-        logger.info("[STATUS] Server is ready.")
-
-        return engine_client
 
     def _start_async_llm_engine(
         self,
         engine_args: "AsyncEngineArgs",
         vllm_config: "VllmConfig",
         placement_group: PlacementGroup,
-        use_v1: bool = False,
     ) -> "EngineClient":
         """Creates an async LLM engine from the engine arguments."""
         from vllm.v1.executor.abstract import Executor
+        from vllm.v1.engine.async_llm import AsyncLLM
 
-        # vllm_config.parallel_config.placement_group = placement_group
-
-        if use_v1:
-            from vllm.v1.engine.async_llm import AsyncLLM as AsyncLLMEngine
-        else:
-            from vllm.engine.async_llm_engine import AsyncLLMEngine
-
+        vllm_config.parallel_config.placement_group = placement_group
         _clear_current_platform_cache()
 
         custom_stat_loggers = None
@@ -563,13 +372,13 @@ class VLLMEngine(LLMEngine):
                 RayPrometheusStatLogger,
             )
 
-            # V1 AsyncLLMEngine does not yet support add_logger
+            # V1 AsyncLLM does not yet support add_logger
             # For now, assume folks enabling log_engine_metrics do not require LoggingStatLogger, PrometheusStatLogger
             custom_stat_loggers = [RayPrometheusStatLogger]
 
         executor_class = Executor.get_class(vllm_config)
         logger.info(f"Using executor class: {executor_class}")
-        engine = AsyncLLMEngine(
+        engine = AsyncLLM(
             vllm_config=vllm_config,
             executor_class=executor_class,
             log_stats=not engine_args.disable_log_stats,
@@ -581,27 +390,20 @@ class VLLMEngine(LLMEngine):
     async def resolve_lora(self, disk_lora_model: DiskMultiplexConfig):
         from vllm.entrypoints.openai.protocol import LoadLoRAAdapterRequest
 
-        # lora_add_response = await self.oai_models.load_lora_adapter(
-        #     request=LoadLoRAAdapterRequest(
-        #         lora_name=disk_lora_model.model_id,
-        #         lora_path=disk_lora_model.local_path,
-        #     )
-        # )
-
         if disk_lora_model.model_id in self.oai_models.lora_requests:
-            return self.oai_models.lora_requests[disk_lora_model.model_id]
-        else:
-            lora_request = await self.oai_models.load_lora_adapter(
-                request=LoadLoRAAdapterRequest(
-                    lora_name=disk_lora_model.model_id,
-                    lora_path=disk_lora_model.local_path,
-                )
+            # Lora is already loaded, return
+            return
+        
+        lora_request = await self.oai_models.load_lora_adapter(
+            request=LoadLoRAAdapterRequest(
+                lora_name=disk_lora_model.model_id,
+                lora_path=disk_lora_model.local_path,
             )
+        )
 
-            if isinstance(lora_request, ErrorResponse):
-                raise ValueError(f"Failed to load lora model: {lora_request.message}")
+        if isinstance(lora_request, ErrorResponse):
+            raise ValueError(f"Failed to load lora model: {lora_request.message}")
 
-        return lora_request
 
     # async def prepare_request(
     #     self,
@@ -688,7 +490,7 @@ class VLLMEngine(LLMEngine):
         """
 
         try:
-            chat_response = await self.oai_serving_chat.create_chat_completion(request)
+            chat_response = await self._oai_serving_chat.create_chat_completion(request)
         except Exception as e:
             logger.error(f"[Kourosh] error in chat: {e}")
             yield PatchedErrorResponse(
@@ -919,7 +721,7 @@ class VLLMEngine(LLMEngine):
 
         for i, prompt in enumerate(prompts):
             request_id = f"{vllm_embedding_request.request_id}-{i}"
-            gen: AsyncGenerator["PoolingRequestOutput", None] = self.engine.encode(
+            gen: AsyncGenerator["PoolingRequestOutput", None] = self._engine_client.encode(
                 prompt=vllm.inputs.TextPrompt(
                     prompt=prompt,
                 ),
@@ -944,11 +746,11 @@ class VLLMEngine(LLMEngine):
         return embedding_data, total_prompt_tokens
 
     async def check_health(self) -> None:
-        if not hasattr(self.engine, "check_health"):
-            raise RuntimeError(f"{type(self.engine)} does not support health check.")
+        if not hasattr(self._engine_client, "check_health"):
+            raise RuntimeError(f"{type(self._engine_client)} does not support health check.")
 
         try:
-            await self.engine.check_health()
+            await self._engine_client.check_health()
         except BaseException as e:
             logger.error("Healthcheck failed. The replica will be restarted")
             raise e from None

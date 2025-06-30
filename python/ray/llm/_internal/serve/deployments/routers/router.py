@@ -413,6 +413,7 @@ class LLMRouter:
             # In case of streaming we need to iterate over the chunks and yield them
             openai_stream_generator = _openai_json_wrapper(gen)
 
+            print("Hitting streaming response")
             return StreamingResponse(
                 openai_stream_generator, media_type="text/event-stream"
             )
