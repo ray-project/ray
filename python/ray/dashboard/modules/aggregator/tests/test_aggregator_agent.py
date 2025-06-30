@@ -73,8 +73,8 @@ def test_aggregator_agent_receive_publish_events_normally(
 
     httpserver.expect_request("/", method="POST").respond_with_data("", status=200)
 
-    now = time.time_ns()
-    seconds, nanos = divmod(now, 10**9)
+    test_time = 1751302230130457542
+    seconds, nanos = divmod(test_time, 10**9)
     timestamp = Timestamp(seconds=seconds, nanos=nanos)
 
     request = AddEventRequest(
@@ -110,7 +110,7 @@ def test_aggregator_agent_receive_publish_events_normally(
     assert req_json[0]["eventType"] == "TASK_DEFINITION_EVENT"
     assert req_json[0]["severity"] == "INFO"
     assert req_json[0]["message"] == "hello"
-    assert req_json[0]["timestamp"] == _format_timestamp_ns(now)
+    assert req_json[0]["timestamp"] == _format_timestamp_ns(test_time)
 
 
 @pytest.mark.parametrize(
