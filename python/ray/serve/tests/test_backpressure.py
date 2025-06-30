@@ -238,8 +238,8 @@ def test_model_composition_backpressure_with_fastapi(serve_instance, request_typ
 
     def send_request():
         url_map = {
-            "async_non_gen": f"{get_application_url()}/async_non_gen",
-            "sync_non_gen": f"{get_application_url()}/sync_non_gen",
+            "async_non_gen": urljoin(get_application_url(), "async_non_gen"),
+            "sync_non_gen": urljoin(get_application_url(), "sync_non_gen"),
         }
         resp = httpx.get(url_map[request_type])
         return resp
