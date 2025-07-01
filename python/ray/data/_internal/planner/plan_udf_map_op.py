@@ -4,17 +4,14 @@ import inspect
 import logging
 import queue
 import typing
-from asyncio import Semaphore
 from collections import deque
 from threading import Thread
 from types import GeneratorType
-from typing import Any, Callable, Iterable, List, Optional, Iterator, \
-    AsyncGenerator, Generator, Coroutine, Collection, MutableSequence
+from typing import Any, Callable, Iterable, Iterator, List, Optional
 
 import numpy as np
 import pandas as pd
 import pyarrow as pa
-from anyscale.shared_anyscale_utils.utils.asyncio import gather_in_batches
 
 import ray
 from ray._common.utils import get_or_create_event_loop
@@ -560,6 +557,7 @@ _SENTINEL = object()
 T = typing.TypeVar("T")
 U = typing.TypeVar("U")
 
+
 def _generate_transform_fn_for_async_map(
     fn: UserDefinedFunction,
     validate_fn: Callable,
@@ -571,12 +569,16 @@ def _generate_transform_fn_for_async_map(
     ctx = DataContext.get_current()
 
     if inspect.iscoroutinefunction(fn):
+
         async def _apply_udf(item: T) -> List[U]:
             return [await fn(item)]
+
     elif inspect.isasyncgenfunction(fn):
+
         async def _apply_udf(item: T) -> List[U]:
             res = fn(item)
             return [out async for out in res]
+
     else:
         raise ValueError(f"Expected a coroutine function, got {fn}")
 
@@ -595,9 +597,7 @@ def _generate_transform_fn_for_async_map(
                 while len(cur_tasks) < max_concurrent_batches and not consumed:
                     try:
                         item = next(it)
-                        cur_tasks.append(
-                            loop.create_task(_apply_udf(item))
-                        )
+                        cur_tasks.append(loop.create_task(_apply_udf(item)))
                     except StopIteration:
                         consumed = True
                         break
@@ -610,8 +610,7 @@ def _generate_transform_fn_for_async_map(
                     next_tasks = [cur_tasks.popleft()]
                 else:
                     done, pending = await asyncio.wait(
-                        cur_tasks,
-                        return_when=asyncio.FIRST_COMPLETED
+                        cur_tasks, return_when=asyncio.FIRST_COMPLETED
                     )
 
                     next_tasks = done
@@ -634,10 +633,7 @@ def _generate_transform_fn_for_async_map(
 
         loop = ray.data._map_actor_context.udf_map_asyncio_loop
 
-        asyncio.run_coroutine_threadsafe(
-            _process_all(iter(batch_iter), outputs),
-            loop
-        )
+        asyncio.run_coroutine_threadsafe(_process_all(iter(batch_iter), outputs), loop)
 
         while True:
             items = outputs.get()

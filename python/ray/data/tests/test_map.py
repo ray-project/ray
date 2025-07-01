@@ -7,7 +7,7 @@ import random
 import threading
 import time
 from asyncio import AbstractEventLoop
-from typing import Iterator, Literal, Any, AsyncGenerator
+from typing import Iterator, Literal
 from unittest.mock import Mock, patch
 
 import numpy as np
@@ -29,8 +29,10 @@ from ray.data._internal.execution.interfaces.ref_bundle import (
     _ref_bundles_iterator_to_block_refs_list,
 )
 from ray.data._internal.execution.operators.actor_pool_map_operator import _MapWorker
-from ray.data._internal.planner.plan_udf_map_op import \
-    _generate_transform_fn_for_async_map, _MapActorContext
+from ray.data._internal.planner.plan_udf_map_op import (
+    _generate_transform_fn_for_async_map,
+    _MapActorContext,
+)
 from ray.data.context import DataContext
 from ray.data.exceptions import UserCodeException
 from ray.data.tests.conftest import *  # noqa
@@ -1867,7 +1869,6 @@ def test_map_batches_async_generator_fast_yield(shutdown_only):
 
 
 class TestGenerateTransformFnForAsyncMap:
-
     @pytest.fixture
     def mock_actor_async_ctx(self):
         _map_actor_ctx = _MapActorContext(Mock(), Mock(), is_async=True)
@@ -1875,7 +1876,7 @@ class TestGenerateTransformFnForAsyncMap:
         loop: AbstractEventLoop = _map_actor_ctx.udf_map_asyncio_loop
         assert loop is not None
 
-        with patch('ray.data._map_actor_context', _map_actor_ctx):
+        with patch("ray.data._map_actor_context", _map_actor_ctx):
 
             yield _map_actor_ctx
 
@@ -1884,26 +1885,33 @@ class TestGenerateTransformFnForAsyncMap:
 
     def test_non_coroutine_function_assertion(self):
         """Test that non-coroutine function raises assertion error."""
+
         def sync_fn(x):
             return x
 
         validate_fn = Mock()
 
         with pytest.raises(ValueError, match="Expected a coroutine function"):
-            _generate_transform_fn_for_async_map(sync_fn, validate_fn, max_concurrent_batches=1)
+            _generate_transform_fn_for_async_map(
+                sync_fn, validate_fn, max_concurrent_batches=1
+            )
 
     def test_zero_max_concurrent_batches_assertion(self):
         """Test that zero max_concurrent_batches raises assertion error."""
+
         async def async_fn(x):
             yield x
 
         validate_fn = Mock()
 
         with pytest.raises(AssertionError):
-            _generate_transform_fn_for_async_map(async_fn, validate_fn, max_concurrent_batches=0)
+            _generate_transform_fn_for_async_map(
+                async_fn, validate_fn, max_concurrent_batches=0
+            )
 
     def test_empty_input(self, mock_actor_async_ctx):
         """Test with empty input iterator."""
+
         async def async_fn(x):
             yield x
 
@@ -1919,24 +1927,30 @@ class TestGenerateTransformFnForAsyncMap:
 
     @pytest.mark.parametrize("udf_kind", ["coroutine", "async_gen"])
     @pytest.mark.parametrize("preserve_order", [True, False])
-    def test_basic_async_processing(self, udf_kind, preserve_order, mock_actor_async_ctx, restore_data_context):
+    def test_basic_async_processing(
+        self, udf_kind, preserve_order, mock_actor_async_ctx, restore_data_context
+    ):
         """Test basic async processing with order preservation."""
 
         ctx = restore_data_context
         ctx.execution_options.preserve_order = preserve_order
 
         if udf_kind == "async_gen":
+
             async def async_fn(x):
                 # Randomly slow-down UDFs (capped by 5ms)
                 delay = random.randint(0, 5) / 1000
                 await asyncio.sleep(delay)
                 yield x
+
         elif udf_kind == "coroutine":
+
             async def async_fn(x):
                 # Randomly slow-down UDFs (capped by 5ms)
                 delay = random.randint(0, 5) / 1000
                 await asyncio.sleep(delay)
                 return x
+
         else:
             pytest.fail(f"Unrecognized udf_kind ({udf_kind})")
 
@@ -1958,8 +1972,15 @@ class TestGenerateTransformFnForAsyncMap:
 
     @pytest.mark.parametrize("result_len", [0, 5])
     @pytest.mark.parametrize("preserve_order", [True, False])
-    def test_basic_async_processing_with_iterator(self, result_len: int, preserve_order: bool, mock_actor_async_ctx, restore_data_context):
+    def test_basic_async_processing_with_iterator(
+        self,
+        result_len: int,
+        preserve_order: bool,
+        mock_actor_async_ctx,
+        restore_data_context,
+    ):
         """Test UDF that yields multiple items per input."""
+
         async def multi_yield_fn(x):
             for i in range(result_len):
                 yield f"processed_{x}_{i}"
@@ -1977,11 +1998,7 @@ class TestGenerateTransformFnForAsyncMap:
         input_seq = [1, 2]
 
         # NOTE: Outputs are expected to match input sequence ordering
-        expected = [
-            f"processed_{x}_{i}"
-            for x in input_seq
-            for i in range(result_len)
-        ]
+        expected = [f"processed_{x}_{i}" for x in input_seq for i in range(result_len)]
 
         if preserve_order:
             assert list(transform_fn(input_seq, task_context)) == expected
@@ -1989,7 +2006,9 @@ class TestGenerateTransformFnForAsyncMap:
             assert set(transform_fn(input_seq, task_context)) == set(expected)
 
     @pytest.mark.parametrize("preserve_order", [True, False])
-    def test_concurrency_limiting(self, preserve_order, mock_actor_async_ctx, restore_data_context):
+    def test_concurrency_limiting(
+        self, preserve_order, mock_actor_async_ctx, restore_data_context
+    ):
         """Test that concurrency is properly limited."""
         max_concurrency = 10
 
@@ -2025,7 +2044,13 @@ class TestGenerateTransformFnForAsyncMap:
 
     @pytest.mark.parametrize("preserve_order", [True, False])
     @pytest.mark.parametrize("failure_kind", ["udf", "validation"])
-    def test_exception_in_udf(self, preserve_order: bool, failure_kind: str, mock_actor_async_ctx, restore_data_context):
+    def test_exception_in_udf(
+        self,
+        preserve_order: bool,
+        failure_kind: str,
+        mock_actor_async_ctx,
+        restore_data_context,
+    ):
         """Test exception handling in UDF."""
 
         restore_data_context.execution_options.preserve_order = preserve_order
@@ -2057,6 +2082,7 @@ class TestGenerateTransformFnForAsyncMap:
 
         with pytest.raises(ValueError, match=expected_exception_msg):
             list(transform_fn([1, 2, 3], task_context))
+
 
 @pytest.mark.parametrize("fn_type", ["func", "class"])
 def test_map_operator_warns_on_few_inputs(
