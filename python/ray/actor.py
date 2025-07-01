@@ -14,8 +14,13 @@ from typing import (
     Callable,
     overload,
 )
-from typing_extensions import ParamSpec
-from typing_extensions import Concatenate
+
+try:
+    from typing import ParamSpec
+    from typing import Concatenate
+except ImportError:
+    from typing_extensions import ParamSpec
+    from typing_extensions import Concatenate
 
 import ray._private.ray_constants as ray_constants
 import ray._private.signature as signature
