@@ -1888,32 +1888,25 @@ class Algorithm(Checkpointable, Trainable):
             A list of EnvRunner indices that have been restored during the call of
             this method.
         """
-        # If `env_runner_group` is None, or
-        # 1. `env_runner_group` (EnvRunnerGroup) does not have a local worker, and
-        # 2. `self.env_runner_group` (EnvRunnerGroup used for training) does not have a
-        # local EnvRunner -> we don't have an EnvRunner to get state from, so we can't
-        # recover remote EnvRunner actors in this case.
-        if not env_runner_group or (
-            not env_runner_group.local_env_runner and not self.env_runner
-        ):
-            return []
-
         # This is really cheap, since probe_unhealthy_env_runners() is a no-op
         # if there are no unhealthy workers.
-        restored = env_runner_group.probe_unhealthy_env_runners()
+        restored = None
+        if self.config.is_online:
+            restored = env_runner_group.probe_unhealthy_env_runners()
 
-        if restored:
-            # Count the restored workers.
-            self._counters["total_num_restored_workers"] += len(restored)
+        if not restored:
+            return []
 
-            from_env_runner = env_runner_group.local_env_runner or self.env_runner
-            # Get the state of the correct (reference) worker. For example the local
-            # worker of an EnvRunnerGroup.
+        # Count the restored workers.
+        self._counters["total_num_restored_workers"] += len(restored)
+
+        from_env_runner = env_runner_group.local_env_runner or self.env_runner
+
+        # Sync from local EnvRunner, if it exists.
+        if from_env_runner is not None:
+            # Get the state of the EnvRunner.
             state = from_env_runner.get_state()
             state_ref = ray.put(state)
-
-            def _sync_env_runner(er):
-                er.set_state(ray.get(state_ref))
 
             # Take out (old) connector states from local worker's state.
             if not self.config.enable_env_runner_and_connector_v2:
@@ -1926,30 +1919,58 @@ class Algorithm(Checkpointable, Trainable):
                     from_env_runner.module
                 )
 
-                def _sync_env_runner(er):  # noqa
-                    # Remove modules, if necessary.
-                    for module_id, module in er.module._rl_modules.copy().items():
-                        if module_id not in multi_rl_module_spec.rl_module_specs:
-                            er.module.remove_module(
-                                module_id, raise_err_if_not_found=True
-                            )
-                    # Add modules, if necessary.
-                    for mid, mod_spec in multi_rl_module_spec.rl_module_specs.items():
-                        if mid not in er.module:
-                            er.module.add_module(mid, mod_spec.build(), override=False)
-                    # Now that the MultiRLModule is fixed, update the state.
-                    er.set_state(ray.get(state_ref))
-
-            # By default, entire local EnvRunner state is synced after restoration
-            # to bring the previously failed EnvRunner up to date.
-            env_runner_group.foreach_env_runner(
-                func=_sync_env_runner,
-                remote_worker_ids=restored,
-                # Don't update the local EnvRunner, b/c it's the one we are synching
-                # from.
-                local_env_runner=False,
-                timeout_seconds=self.config.env_runner_restore_timeout_s,
+        # Otherwise, sync from another EnvRunner that's still healthy.
+        else:
+            multi_rl_module_spec = (
+                self.learner_group.foreach_learner(
+                    lambda learner: MultiRLModuleSpec.from_module(learner.module)
+                )
+                .result_or_errors[0]
+                .get()
             )
+
+            # Sync the weights from the learner group to the EnvRunners.
+            state = self.learner_group.get_state(
+                components=COMPONENT_LEARNER + "/" + COMPONENT_RL_MODULE,
+                inference_only=True,
+            )[COMPONENT_LEARNER]
+            state[
+                COMPONENT_ENV_TO_MODULE_CONNECTOR
+            ] = self.env_to_module_connector.get_state()
+            state[
+                COMPONENT_MODULE_TO_ENV_CONNECTOR
+            ] = self.module_to_env_connector.get_state()
+            state[NUM_ENV_STEPS_SAMPLED_LIFETIME] = self.metrics.peek(
+                (ENV_RUNNER_RESULTS, NUM_ENV_STEPS_SAMPLED_LIFETIME), default=0
+            )
+            state_ref = ray.put(state)
+
+        def _sync_env_runner(er):  # noqa
+            # Remove modules (new API stack only), if necessary.
+            if (
+                er.config.enable_env_runner_and_connector_v2
+                and er.config.is_multi_agent
+            ):
+                for module_id, module in er.module._rl_modules.copy().items():
+                    if module_id not in multi_rl_module_spec.rl_module_specs:
+                        er.module.remove_module(module_id, raise_err_if_not_found=True)
+                # Add modules, if necessary.
+                for mid, mod_spec in multi_rl_module_spec.rl_module_specs.items():
+                    if mid not in er.module:
+                        er.module.add_module(mid, mod_spec.build(), override=False)
+            # Now that the MultiRLModule is fixed, update the state.
+            er.set_state(ray.get(state_ref))
+
+        # By default, entire local EnvRunner state is synced after restoration
+        # to bring the previously failed EnvRunner up to date.
+        env_runner_group.foreach_env_runner(
+            func=_sync_env_runner,
+            remote_worker_ids=restored,
+            # Don't update the local EnvRunner, b/c it's the one we are synching
+            # from.
+            local_env_runner=False,
+            timeout_seconds=self.config.env_runner_restore_timeout_s,
+        )
 
         return restored
 
