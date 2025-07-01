@@ -659,6 +659,8 @@ def _generate_transform_fn_for_async_map(
     ctx = DataContext.get_current()
 
     async def _process_all(it: Iterator[T], output_queue: queue.Queue) -> None:
+        loop = asyncio.get_running_loop()
+
         consumed = False
         # NOTE: To preserve the iteration ordering to that of the input sequence
         #       we rely on deque to keep track of running tasks
