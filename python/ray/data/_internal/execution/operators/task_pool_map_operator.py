@@ -29,7 +29,6 @@ class TaskPoolMapOperator(MapOperator):
         map_task_kwargs: Optional[Dict[str, Any]] = None,
         ray_remote_args_fn: Optional[Callable[[], Dict[str, Any]]] = None,
         ray_remote_args: Optional[Dict[str, Any]] = None,
-        shared_key: Optional[str] = None,
     ):
         """Create an TaskPoolMapOperator instance.
 
@@ -55,7 +54,6 @@ class TaskPoolMapOperator(MapOperator):
                 always override the args in ``ray_remote_args``. Note: this is an
                 advanced, experimental feature.
             ray_remote_args: Customize the :func:`ray.remote` args for this op's tasks.
-            shared_key: Optional key for sharing this operator across executions.
         """
         super().__init__(
             map_transformer,
@@ -68,7 +66,6 @@ class TaskPoolMapOperator(MapOperator):
             map_task_kwargs,
             ray_remote_args_fn,
             ray_remote_args,
-            shared_key,
         )
         self._concurrency = concurrency
 

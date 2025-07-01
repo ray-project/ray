@@ -243,6 +243,129 @@ def test_vision_model(gpu_type, model_smolvlm_256m):
     assert all("resp" in out for out in outs)
 
 
+def test_multi_turn_shared_engine(gpu_type, model_opt_125m):
+    """Test multi-turn conversation using a shared vLLM engine."""
+    # OPT models don't have chat template, so we use ChatML template
+    # here to demonstrate the usage of custom chat template.
+    chat_template = """
+{% if messages[0]['role'] == 'system' %}
+    {% set offset = 1 %}
+{% else %}
+    {% set offset = 0 %}
+{% endif %}
+
+{{ bos_token }}
+{% for message in messages %}
+    {% if (message['role'] == 'user') != (loop.index0 % 2 == offset) %}
+        {{ raise_exception('Conversation roles must alternate user/assistant/user/assistant/...') }}
+    {% endif %}
+
+    {{ '<|im_start|>' + message['role'] + '\n' + message['content'] | trim + '<|im_end|>\n' }}
+{% endfor %}
+
+{% if add_generation_prompt %}
+    {{ '<|im_start|>assistant\n' }}
+{% endif %}
+    """
+
+    shared_engine_key = "shared_engine_key"
+
+    processor_config_1 = vLLMEngineProcessorConfig(
+        model_source=model_opt_125m,
+        engine_kwargs=dict(
+            enable_prefix_caching=False,
+            enable_chunked_prefill=True,
+            max_num_batched_tokens=2048,
+            max_model_len=2048,
+            # Skip CUDA graph capturing to reduce startup time.
+            enforce_eager=True,
+        ),
+        batch_size=16,
+        accelerator_type=gpu_type,
+        concurrency=1,
+        apply_chat_template=True,
+        chat_template=chat_template,
+        tokenize=True,
+        detokenize=True,
+        shared_engine_key=shared_engine_key,
+    )
+
+    processor_config_2 = vLLMEngineProcessorConfig(
+        model_source=model_opt_125m,
+        engine_kwargs=dict(
+            enable_prefix_caching=False,
+            enable_chunked_prefill=True,
+            max_num_batched_tokens=2048,
+            max_model_len=2048,
+            enforce_eager=True,
+        ),
+        batch_size=16,
+        accelerator_type=gpu_type,
+        concurrency=1,
+        apply_chat_template=True,
+        chat_template=chat_template,
+        tokenize=True,
+        detokenize=True,
+        shared_engine_key=shared_engine_key,
+    )
+
+    processor1 = ProcessorBuilder.build(
+        processor_config_1,
+        preprocess=lambda row: dict(
+            messages=[
+                {"role": "system", "content": "You are a calculator"},
+                {"role": "user", "content": f"{row['id']} ** 3 = ?"},
+            ],
+            sampling_params=dict(
+                temperature=0.3,
+                max_tokens=50,
+                detokenize=False,
+            ),
+        ),
+        postprocess=lambda row: {
+            "resp1": row["generated_text"],
+            **row,
+        },
+    )
+
+    processor2 = ProcessorBuilder.build(
+        processor_config_2,
+        preprocess=lambda row: dict(
+            messages=[
+                {"role": "system", "content": "You are a calculator"},
+                {"role": "user", "content": f"{row['id']} ** 3 = ?"},
+                {"role": "assistant", "content": row["resp1"]},
+                {"role": "user", "content": "What is this number minus 2?"},
+            ],
+            sampling_params=dict(
+                temperature=0.3,
+                max_tokens=50,
+                detokenize=False,
+            ),
+        ),
+        postprocess=lambda row: {
+            "resp2": row["generated_text"],
+            **row,
+        },
+    )
+
+    ds = ray.data.range(60)
+    ds = ds.map(lambda x: {"id": x["id"], "val": x["id"] + 5})
+
+    # First conversation turn. Materialize here to break the lineage so that
+    # the second turn does *not* depend on the logical operators of the first
+    # turn. This avoids cycles in the execution plan when the same vLLM engine
+    # is reused across processors.
+    ds_turn1 = processor1(ds).materialize()
+    ds_turn2 = processor2(ds_turn1).materialize()
+
+    outs = ds_turn2.take_all()
+    print(outs)
+    assert len(outs) == 60
+    assert all("resp1" in out for out in outs)
+    assert all("resp2" in out for out in outs)
+
+
 class TestVLLMEngineProcessorConfig:
     @pytest.mark.parametrize(
         "experimental_config",

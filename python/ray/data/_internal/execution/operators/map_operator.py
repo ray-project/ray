@@ -214,7 +214,6 @@ class MapOperator(OneToOneOperator, InternalQueueOperatorMixin, ABC):
         if compute_strategy is None:
             compute_strategy = TaskPoolStrategy()
 
-        # Create new operator based on compute strategy
         if isinstance(compute_strategy, TaskPoolStrategy):
             if shared_key is not None:
                 logger.warning(
