@@ -603,7 +603,7 @@ def _generate_transform_fn_for_async_map(
                     break
 
                 if ctx.execution_options.preserve_order:
-                    next_tasks = [cur_tasks.pop(0)]
+                    next_tasks = [cur_tasks.popleft()]
                 else:
                     done, pending = await asyncio.wait(
                         cur_tasks,
