@@ -3842,7 +3842,7 @@ cdef class CoreWorker:
                         c_scheduling_strategy,
                         serialized_runtime_env_info,
                         c_concurrency_groups,
-                        # execute out of order for
+                        # execute_out_of_order for
                         # async or threaded actors.
                         is_asyncio or max_concurrency > 1,
                         max_pending_calls,
