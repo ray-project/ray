@@ -266,14 +266,14 @@ class SerializationContext:
 
         Args:
             data: The data to deserialize.
-            object_id: The object ID to use as the key for the in-actor object store
-                to retrieve tensors.
             tensor_transport: The tensor transport to use. If not equal to OBJECT_STORE,
                 it means that any tensors in the object are sent out-of-band
                 instead of through the object store. In this case, we need to
                 retrieve the tensors from the in-actor object store. Then, we
                 deserialize `data` with the retrieved tensors in the
                 serialization context.
+            object_id: The object ID to use as the key for the in-actor object store
+                to retrieve tensors.
 
         Returns:
             Any: The deserialized object.
