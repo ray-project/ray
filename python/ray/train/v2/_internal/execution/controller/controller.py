@@ -3,7 +3,7 @@ import logging
 import os
 import uuid
 from dataclasses import dataclass
-from typing import Callable, List, Optional
+from typing import Callable, List, Optional, Union
 
 import pandas as pd
 
@@ -58,6 +58,10 @@ from ray.train.v2._internal.execution.storage import StorageContext
 from ray.train.v2._internal.execution.worker_group import (
     WorkerGroup,
     WorkerGroupPollStatus,
+)
+from ray.train.v2._internal.execution.worker_group.state import (
+    PolicyHandledStatus,
+    WorkerGroupResizeStatus,
 )
 from ray.train.v2._internal.execution.worker_group.worker_group import (
     WorkerGroupContext,
@@ -181,15 +185,17 @@ class TrainController:
         if self._worker_group:
             self._shutdown_worker_group()
 
-        worker_group_started = self._start_worker_group(
+        resize_status = self._start_worker_group(
             num_workers=decision.num_workers,
             resources_per_worker=decision.resources_per_worker,
         )
 
-        if worker_group_started:
-            next_state = RunningState()
+        if resize_status.has_errors:
+            # For startup failures, always restart (matching original behavior)
+            failure_decision = FailureDecision.RESTART
+            return self._execute_failure_decision(failure_decision, resize_status)
         else:
-            next_state = ReschedulingState()
+            next_state = RunningState()
 
         return TrainControllerLoopIterationResult(
             run_attempt_id=self._get_run_attempt_id(),
@@ -200,10 +206,10 @@ class TrainController:
     def _execute_failure_decision(
         self,
         failure_decision: FailureDecision,
-        worker_group_status: WorkerGroupPollStatus,
+        status: PolicyHandledStatus,
     ) -> TrainControllerLoopIterationResult:
         """Executes failure handling decisions (ex: restart, terminate)."""
-        assert worker_group_status.errors
+        assert status.has_errors
 
         controller_state = self.get_state()
 
@@ -219,15 +225,18 @@ class TrainController:
                 next_state=RunningState(),
             )
 
-        errors_str = worker_group_status.get_error_string()
+        errors_str = status.get_error_string()
+        error_details = status.get_error_details()
+        worker_failures = error_details.get("worker_errors", {})
         training_failed_error = TrainingFailedError(
-            error_message=errors_str, worker_failures=worker_group_status.errors
+            error_message=errors_str, worker_failures=worker_failures
         )
 
         if failure_decision == FailureDecision.RESTART:
+            num_failures = error_details.get("num_failed_workers", 1)
             logger.error(
                 "Restarting training worker group after encountering "
-                f"failures on {len(worker_group_status.errors)} worker(s):\n"
+                f"failures on {num_failures} worker(s):\n"
                 f"{errors_str}"
             )
             next_state = RestartingState(training_failed_error=training_failed_error)
@@ -240,7 +249,7 @@ class TrainController:
         elif failure_decision == FailureDecision.RAISE:
             logger.error(
                 "Terminating training worker group after encountering "
-                f"failure(s) on {len(worker_group_status.errors)} worker(s):\n"
+                f"failure(s) on {num_failures} worker(s):\n"
                 f"{errors_str}"
             )
             next_state = ErroredState(training_failed_error=training_failed_error)
@@ -266,7 +275,7 @@ class TrainController:
         self._latest_poll_time = time_monotonic()
         return status
 
-    def _start_worker_group(self, num_workers: int, resources_per_worker: dict) -> bool:
+    def _start_worker_group(self, num_workers: int, resources_per_worker: dict) -> WorkerGroupResizeStatus:
         """Start the worker group and launch the train function.
 
         Returns:
@@ -295,10 +304,14 @@ class TrainController:
             # TODO: Should this logic go through the failure policy?
             # The current logic will always try recovering unconditionally
             # on startup errors without a retry limit.
-            return False
+            return WorkerGroupResizeStatus(
+                error=True,
+                error_message=str(e),
+                exception=e
+            )
 
         # TODO: Consider starting the worker group asynchronously.
-        return True
+        return WorkerGroupResizeStatus(error=False)
 
     def _start(self):
         for callback in self._controller_callbacks:
