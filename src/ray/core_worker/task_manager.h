@@ -180,7 +180,7 @@ class TaskManager : public TaskFinisherInterface, public TaskResubmissionInterfa
       ReferenceCounter &reference_counter,
       PutInLocalPlasmaCallback put_in_local_plasma_callback,
       RetryTaskCallback retry_task_callback,
-              std::function<bool(const TaskSpecification &spec)> queue_generator_resubmit,
+      std::function<bool(const TaskSpecification &spec)> queue_generator_resubmit,
       PushErrorCallback push_error_callback,
       int64_t max_lineage_bytes,
       worker::TaskEventBuffer &task_event_buffer,

@@ -41,9 +41,13 @@ def test_gc_gpu_object(ray_start_regular):
     sender = actors[0]
     receiver = actors[1]
 
-    ref = sender.echo.remote(small_tensor)
-    ref = receiver.double.remote(ref)
-    assert ray.get(ref) == pytest.approx(small_tensor * 2)
+    ref1 = sender.echo.remote(small_tensor)
+    ref2 = receiver.double.remote(ref1)
+    ref3 = receiver.double.remote(ref1)
+    assert ray.get(ref2) == pytest.approx(small_tensor * 2)
+    assert ray.get(ref3) == pytest.approx(small_tensor * 2)
+
+    del ref1
 
     wait_for_condition(
         lambda: ray.get(sender.get_gpu_object_store_size.remote()) == 0,
