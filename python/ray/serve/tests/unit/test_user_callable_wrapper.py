@@ -15,9 +15,8 @@ from ray.serve._private.common import (
     DeploymentID,
     RequestMetadata,
     RequestProtocol,
-    StreamingHTTPRequest,
-    gRPCRequest,
 )
+from ray.serve._private.http_util import ASGIReceiveProxy
 from ray.serve._private.replica import UserCallableWrapper
 from ray.serve.generated import serve_pb2
 
@@ -163,7 +162,7 @@ async def test_basic_class_callable(run_sync_methods_in_threadpool: bool):
     # Call non-generator method with is_streaming.
     request_metadata = _make_request_metadata(is_streaming=True)
     with pytest.raises(TypeError, match="did not return a generator."):
-        await user_callable_wrapper.call_user_generator(
+        await user_callable_wrapper._call_user_generator(
             request_metadata, tuple(), dict()
         )
 
@@ -194,7 +193,7 @@ async def test_basic_class_callable(run_sync_methods_in_threadpool: bool):
         call_method="call_async", is_streaming=True
     )
     with pytest.raises(TypeError, match="did not return a generator."):
-        await user_callable_wrapper.call_user_generator(
+        await user_callable_wrapper._call_user_generator(
             request_metadata, tuple(), dict()
         )
 
@@ -249,7 +248,7 @@ async def test_basic_class_callable_generators(run_sync_methods_in_threadpool: b
     request_metadata = _make_request_metadata(
         call_method="call_generator", is_streaming=True
     )
-    await user_callable_wrapper.call_user_generator(
+    await user_callable_wrapper._call_user_generator(
         request_metadata, (10,), dict(), generator_result_callback=result_list.append
     )
     assert result_list == list(range(10))
@@ -257,7 +256,7 @@ async def test_basic_class_callable_generators(run_sync_methods_in_threadpool: b
 
     # Call sync generator raising exception.
     with pytest.raises(RuntimeError, match="uh-oh"):
-        await user_callable_wrapper.call_user_generator(
+        await user_callable_wrapper._call_user_generator(
             request_metadata,
             (10,),
             {"raise_exception": True},
@@ -283,7 +282,7 @@ async def test_basic_class_callable_generators(run_sync_methods_in_threadpool: b
     request_metadata = _make_request_metadata(
         call_method="call_async_generator", is_streaming=True
     )
-    await user_callable_wrapper.call_user_generator(
+    await user_callable_wrapper._call_user_generator(
         request_metadata, (10,), dict(), generator_result_callback=result_list.append
     )
     assert result_list == list(range(10))
@@ -291,7 +290,7 @@ async def test_basic_class_callable_generators(run_sync_methods_in_threadpool: b
 
     # Call async generator raising exception.
     with pytest.raises(RuntimeError, match="uh-oh"):
-        await user_callable_wrapper.call_user_generator(
+        await user_callable_wrapper._call_user_generator(
             request_metadata,
             (10,),
             {"raise_exception": True},
@@ -314,7 +313,7 @@ async def test_basic_function_callable(
     # Call non-generator function with is_streaming.
     request_metadata = _make_request_metadata(is_streaming=True)
     with pytest.raises(TypeError, match="did not return a generator."):
-        await user_callable_wrapper.call_user_generator(
+        await user_callable_wrapper._call_user_generator(
             request_metadata, tuple(), dict()
         )
 
@@ -366,7 +365,7 @@ async def test_basic_function_callable_generators(
     request_metadata = _make_request_metadata(
         call_method="call_generator", is_streaming=True
     )
-    await user_callable_wrapper.call_user_generator(
+    await user_callable_wrapper._call_user_generator(
         request_metadata, (10,), dict(), generator_result_callback=result_list.append
     )
     assert result_list == list(range(10))
@@ -374,7 +373,7 @@ async def test_basic_function_callable_generators(
 
     # Call generator function raising exception.
     with pytest.raises(RuntimeError, match="uh-oh"):
-        await user_callable_wrapper.call_user_generator(
+        await user_callable_wrapper._call_user_generator(
             request_metadata,
             (10,),
             {"raise_exception": True},
@@ -554,10 +553,9 @@ async def test_grpc_unary_request(run_sync_methods_in_threadpool: bool):
     )
     await user_callable_wrapper.initialize_callable()
 
-    grpc_request = gRPCRequest(serve_pb2.UserDefinedResponse(greeting="world"))
     request_metadata = _make_request_metadata(call_method="greet", is_grpc_request=True)
     result = await user_callable_wrapper.call_user_method(
-        request_metadata, (grpc_request,), dict()
+        request_metadata, (serve_pb2.UserDefinedResponse(greeting="world"),), dict()
     )
     assert isinstance(result, serve_pb2.UserDefinedResponse)
     assert result.greeting == "Hello world!"
@@ -571,16 +569,14 @@ async def test_grpc_streaming_request(run_sync_methods_in_threadpool: bool):
     )
     user_callable_wrapper.initialize_callable()
 
-    grpc_request = gRPCRequest(serve_pb2.UserDefinedResponse(greeting="world"))
-
     result_list = []
 
     request_metadata = _make_request_metadata(
         call_method="stream", is_grpc_request=True, is_streaming=True
     )
-    await user_callable_wrapper.call_user_generator(
+    await user_callable_wrapper._call_user_generator(
         request_metadata,
-        (grpc_request,),
+        (serve_pb2.UserDefinedResponse(greeting="world"),),
         dict(),
         generator_result_callback=result_list.append,
     )
@@ -652,20 +648,16 @@ async def test_http_handler(callable: Callable, monkeypatch):
     async def receive_asgi_messages(_: str):
         return pickle.dumps(asgi_messages)
 
-    http_request = StreamingHTTPRequest(
-        asgi_scope=asgi_scope,
-        receive_asgi_messages=receive_asgi_messages,
-    )
-
     result_list = []
 
     request_metadata = _make_request_metadata(is_http_request=True, is_streaming=True)
-    await user_callable_wrapper.call_http_entrypoint(
+    async for result in user_callable_wrapper.call_http_entrypoint(
         request_metadata,
-        (http_request,),
-        dict(),
-        generator_result_callback=result_list.append,
-    )
+        lambda *args: None,
+        asgi_scope,
+        ASGIReceiveProxy(asgi_scope, request_metadata, receive_asgi_messages),
+    ):
+        result_list.extend(pickle.loads(result))
 
     assert result_list[0]["type"] == "http.response.start"
     assert result_list[0]["status"] == 200
