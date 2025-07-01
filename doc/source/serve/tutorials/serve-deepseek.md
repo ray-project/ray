@@ -162,12 +162,23 @@ curl -X POST http://localhost:8000/v1/chat/completions \
 :::
 ::::
 
+## Deploying with KubeRay
+
+Create a KubeRay cluster using the {ref}`Ray Serve LLM KubeRay guide <kuberay-rayservice-llm-example>` with sufficient GPU resources for DeepSeek R1. For example, two 8xH100 nodes.
+
+Deploy DeepSeek-R1 as a RayService with the following configuration file:
+::::{tab-set}
+:::{tab-item} Request
+```bash
+kubectl apply -f https://raw.githubusercontent.com/ray-project/kuberay/master/ray-operator/config/samples/ray-service.deepseek.yaml
+```
+:::
+
 ## Troubleshooting
 
 ### Multi-Node GPU Issues
 
-Since DeepSeek requires multi-node GPU deployment (typically 2 nodes of 8xH100 or 1 node of 8xH200), 
-you may encounter issues specific to multi-node GPU serving. Common problems include:
+Since DeepSeek typically requires multi-node GPU deployment, you may encounter issues specific to multi-node GPU serving. Common problems include:
 
 * **NCCL initialization failures**: Especially on H100 instances due to outdated `aws-ofi-plugin` versions
 * **Pipeline parallelism hangs**: When `pipeline_parallel_size > 1`, the model serving may hang due to resource conflicts
