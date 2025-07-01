@@ -617,6 +617,10 @@ def _generate_transform_fn_for_async_map(
                     output_queue.put(await next_task)
 
         except BaseException as e:
+            for cur_task in cur_tasks:
+                if not cur_task.done():
+                    cur_task.cancel()
+
             sentinel = e
         finally:
             output_queue.put(sentinel)
