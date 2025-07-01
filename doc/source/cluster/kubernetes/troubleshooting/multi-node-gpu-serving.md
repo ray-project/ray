@@ -1,3 +1,5 @@
+(kuberay-multi-node-gpu-troubleshooting)=
+
 # Troubleshooting Multi-Node GPU Serving on KubeRay
 
 This guide helps you diagnose and resolve common issues when deploying multi-node GPU workloads on KubeRay, particularly for large language model (LLM) serving with vLLM.
@@ -11,30 +13,16 @@ When encountering issues with multi-node GPU serving, use this systematic approa
    - Standalone vLLM server on KubeRay
    - Ray Serve LLM deployment on KubeRay
 
-2. **Vary hardware configurations**: Test with different GPU types (A100s vs H100s) to identify hardware-specific issues
+2. **Vary hardware configurations**: Test with different GPU types (for example A100s vs H100s) to identify hardware-specific issues
 
 3. **Use minimal reproducers**: Create simplified test cases that isolate specific components (NCCL, model loading, etc.)
 
 ## Common Issues and Solutions
 
-### 1. Pickle Serialization Errors
+### 1. Head Pod Scheduled on GPU Node
 
 **Symptoms:**
-```bash
-_pickle.PicklingError: Can't pickle <class 'transformers_modules.deepseek-ai.DeepSeek-...
-```
-
-**Description:** This error occurs during model serialization, often introduced during vLLM version updates or when working with certain model architectures.
-
-**Solution:**
-- Check vLLM version compatibility with your model
-- Consider using alternative serialization methods if available
-- This issue affects both Anyscale and KubeRay environments
-
-### 2. Head Pod Scheduled on GPU Node
-
-**Symptoms:**
-- `ray status` shows duplicate GPU resources (e.g., 24 GPUs when cluster only has 16 GPUs)
+- `ray status` shows duplicate GPU resources, for example, 24 GPUs when cluster only has 16 GPUs
 - Model serving hangs when using pipeline parallelism (PP > 1)
 - Resource allocation conflicts
 
@@ -56,7 +44,7 @@ spec:
     # ... other head group configuration
 ```
 
-### 3. AWS OFI Plugin Version Issues (H100-specific)
+### 2. AWS OFI Plugin Version Issues (H100-specific)
 
 **Symptoms:**
 - NCCL initialization failures on H100 instances
@@ -72,19 +60,24 @@ spec:
 
 **Solution:**
 - Update to a newer container image with updated `aws-ofi-plugin`
-- Use the NCCL debugging script below to verify NCCL functionality
+- Use the NCCL debugging script below to verify NCCL functions as expected
 - Consider hardware-specific configuration adjustments
 
-### 4. vLLM FlashMLA Crashes
+## Next Steps
 
-**Symptoms:**
-- Crashes during model initialization with FlashMLA attention
-- Model-specific failures
+If you continue to experience issues after following this guide:
 
-**Solution:**
-- Check vLLM version compatibility with your specific model architecture
-- Consider alternative attention implementations if available
-- Report the issue to the vLLM project with reproduction steps
+1. **Collect diagnostic information**: Run the NCCL debugging script below and save the output
+2. **Check compatibility**: Verify Ray, vLLM, PyTorch, and CUDA versions are compatible
+3. **Review logs**: Examine Ray cluster logs and worker pod logs for additional error details
+4. **Hardware verification**: Test with different GPU types if possible
+5. **Community support**: Share your findings with the Ray and vLLM communities for additional help
+
+## Additional Resources
+
+- [Ray Multi-Node GPU Guide](https://docs.ray.io/en/latest/cluster/kubernetes/user-guides/gpu.html)
+- [vLLM Distributed Serving Documentation](https://docs.vllm.ai/en/latest/serving/distributed_serving.html)
+- [NCCL Troubleshooting Guide](https://docs.nvidia.com/deeplearning/nccl/user-guide/docs/troubleshooting.html)
 
 ## NCCL Debugging Script
 
@@ -97,7 +90,7 @@ NCCL Diagnostic Script for Multi-Node GPU Serving
 
 This script helps identify NCCL configuration issues that can cause
 multi-node GPU serving failures. Run this on each node to verify
-NCCL functionality before deploying distributed workloads.
+NCCL function before deploying distributed workloads.
 
 Usage: python3 multi-node-nccl-check.py
 """
@@ -150,7 +143,7 @@ def check_cuda_availability():
     return True
 
 def test_individual_gpus():
-    """Test each GPU individually for basic functionality."""
+    """Test that each GPU is working individually."""
     log("\n=== Individual GPU Tests ===")
     
     for gpu_id in range(torch.cuda.device_count()):
@@ -258,18 +251,3 @@ def main():
 if __name__ == "__main__":
     main()
 
-## Next Steps
-
-If you continue to experience issues after following this guide:
-
-1. **Collect diagnostic information**: Run the NCCL debugging script and save the output
-2. **Check compatibility**: Verify vLLM, PyTorch, and CUDA versions are compatible
-3. **Review logs**: Examine Ray cluster logs and worker pod logs for additional error details
-4. **Hardware verification**: Test with different GPU types if possible
-5. **Community support**: Share your findings with the Ray and vLLM communities for additional help
-
-## Additional Resources
-
-- [Ray Multi-Node GPU Guide](https://docs.ray.io/en/latest/cluster/kubernetes/user-guides/gpu.html)
-- [vLLM Distributed Serving Documentation](https://docs.vllm.ai/en/latest/serving/distributed_serving.html)
-- [NCCL Troubleshooting Guide](https://docs.nvidia.com/deeplearning/nccl/user-guide/docs/troubleshooting.html)
