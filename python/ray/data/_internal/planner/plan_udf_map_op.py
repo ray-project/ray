@@ -673,7 +673,7 @@ def _generate_transform_fn_for_async_map(
                 while len(cur_tasks) < max_concurrent_batches and not consumed:
                     try:
                         item = next(it)
-                        cur_tasks.extend(loop.create_task(fn(item)))
+                        cur_tasks.append(loop.create_task(fn(item)))
                     except StopIteration:
                         consumed = True
                         break
