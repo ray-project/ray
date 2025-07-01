@@ -124,7 +124,7 @@ class VLLMEngine(LLMEngine):
             )
             
         if not vllm.envs.VLLM_USE_V1:
-            raise ValueError("vLLM v0 is getting fully deprecated. As a result in Ray Serve LLM only v1 is supported.")
+            logger.warning("vLLM v0 is getting fully deprecated. As a result in Ray Serve LLM only v1 is supported. Only when you know what you are doing, you can set VLLM_USE_V1=0")
 
         # TODO (Kourosh): This validation logic belongs to the PDProxy module.
         # Pick a random port in P/D case.
@@ -270,9 +270,6 @@ class VLLMEngine(LLMEngine):
 
     def _start_async_llm_engine_v0(self, engine_args: "AsyncEngineArgs", vllm_config: "VllmConfig", placement_group: PlacementGroup) -> "EngineClient":
         
-        from vllm import envs
-        envs.set_vllm_use_v1(False)
-        
         from vllm.executor.ray_distributed_executor import RayDistributedExecutor
         from vllm.engine.async_llm_engine import AsyncLLMEngine
         vllm_config.parallel_config.placement_group = placement_group
@@ -297,7 +294,7 @@ class VLLMEngine(LLMEngine):
         """Creates an async LLM engine from the engine arguments."""
         
         # NOTE: This is a temporary solution untill vLLM v1 supports embeddings.
-        if self.llm_config.experimental_configs.get("enable_embeddings", False):
+        if not vllm.envs.VLLM_USE_V1:
             return self._start_async_llm_engine_v0(engine_args, vllm_config, placement_group)
         
         from vllm.v1.executor.abstract import Executor
