@@ -3,9 +3,12 @@ import itertools
 import logging
 import math
 import os
+import random
 import threading
 import time
-from typing import Iterator, Literal
+from asyncio import AbstractEventLoop
+from typing import Iterator, Literal, Any, AsyncGenerator
+from unittest.mock import Mock, patch
 
 import numpy as np
 import pandas as pd
@@ -26,6 +29,8 @@ from ray.data._internal.execution.interfaces.ref_bundle import (
     _ref_bundles_iterator_to_block_refs_list,
 )
 from ray.data._internal.execution.operators.actor_pool_map_operator import _MapWorker
+from ray.data._internal.planner.plan_udf_map_op import \
+    _generate_transform_fn_for_async_map, _MapActorContext
 from ray.data.context import DataContext
 from ray.data.exceptions import UserCodeException
 from ray.data.tests.conftest import *  # noqa
@@ -1859,6 +1864,204 @@ def test_map_batches_async_generator_fast_yield(shutdown_only):
     # Because all tasks are submitted almost simultaneously,
     # the output order may be different compared to the original input.
     assert len(output) == len(expected_output), (len(output), len(expected_output))
+
+
+
+class TestGenerateTransformFnForAsyncMap:
+
+    @pytest.fixture
+    def mock_actor_async_ctx(self):
+        _map_actor_ctx = _MapActorContext(Mock(), Mock(), is_async=True)
+
+        loop: AbstractEventLoop = _map_actor_ctx.udf_map_asyncio_loop
+        assert loop is not None
+
+        with patch('ray.data._map_actor_context', _map_actor_ctx):
+
+            yield _map_actor_ctx
+
+            loop.call_soon_threadsafe(loop.stop)
+            _map_actor_ctx.udf_map_asyncio_thread.join()
+
+    def test_non_coroutine_function_assertion(self):
+        """Test that non-coroutine function raises assertion error."""
+        def sync_fn(x):
+            return x
+
+        validate_fn = Mock()
+
+        with pytest.raises(AssertionError, match="Expected a coroutine function"):
+            _generate_transform_fn_for_async_map(sync_fn, validate_fn, max_concurrent_batches=1)
+
+    def test_zero_max_concurrent_batches_assertion(self):
+        """Test that zero max_concurrent_batches raises assertion error."""
+        async def async_fn(x):
+            async for item in [x]:
+                yield item
+
+        validate_fn = Mock()
+
+        with pytest.raises(AssertionError):
+            _generate_transform_fn_for_async_map(async_fn, validate_fn, max_concurrent_batches=0)
+
+    def test_empty_input(self):
+        """Test with empty input iterator."""
+        async def async_fn(x):
+            yield f"processed_{x}"
+
+        validate_fn = Mock()
+
+        transform_fn = _generate_transform_fn_for_async_map(
+            async_fn, validate_fn, max_concurrent_batches=2
+        )
+
+        task_context = Mock()
+        assert list(transform_fn([], task_context)) == []
+        validate_fn.assert_not_called()
+
+    def test_basic_async_processing_preserve_order(self, mock_actor_async_ctx, restore_data_context):
+        """Test basic async processing with order preservation."""
+
+        ctx = restore_data_context
+        ctx.execution_options.preserve_order = True
+
+        async def async_fn(x):
+            await asyncio.sleep(0.01)
+            yield x
+
+        validate_fn = Mock()
+
+        transform_fn = _generate_transform_fn_for_async_map(
+            async_fn, validate_fn, max_concurrent_batches=2
+        )
+
+        task_context = Mock()
+        result = list(transform_fn(range(10_000), task_context))
+
+        assert result == list(range(10_000))
+        assert validate_fn.call_count == 10_000
+
+    def test_basic_async_processing_no_preserve_order(self, mock_actor_async_ctx, restore_data_context):
+        """Test basic async processing without order preservation."""
+
+        ctx = restore_data_context
+        ctx.execution_options.preserve_order = False
+
+        async def async_fn(x):
+            # Randomly slow-down UDFs
+            await asyncio.sleep(random.randint(0, 5) / 100)
+            yield x
+
+        validate_fn = Mock()
+
+        transform_fn = _generate_transform_fn_for_async_map(
+            async_fn, validate_fn, max_concurrent_batches=3
+        )
+
+        task_context = Mock()
+        result = list(transform_fn(range(10_000), task_context))
+
+        # Order might not be preserved, but all items should be there
+        assert set(result) == set(range(10_000))
+        assert validate_fn.call_count == 10_000
+
+    @pytest.mark.parametrize("preserve_order", [True, False])
+    def test_concurrency_limiting(self, preserve_order, mock_actor_async_ctx, restore_data_context):
+        """Test that concurrency is properly limited."""
+        max_concurrency = 10
+
+        concurrent_task_counter = 0
+
+        restore_data_context.execution_options.preserve_order = preserve_order
+
+        async def async_fn(x):
+            # NOTE: This is safe, since event-loop is single-threaded
+            nonlocal concurrent_task_counter
+            concurrent_task_counter += 1
+
+            assert concurrent_task_counter <= max_concurrency
+
+            print(f">>> [DBG] async_fn: {concurrent_task_counter}")
+
+            yield x
+
+            # NOTE: We're doing sleep here to interrupt the task and yield
+            #       event loop to the next one (otherwise tasks will simply be
+            #       completed sequentially)
+            await asyncio.sleep(0)
+
+            concurrent_task_counter -= 1
+
+        validate_fn = Mock()
+
+        transform_fn = _generate_transform_fn_for_async_map(
+            async_fn, validate_fn, max_concurrent_batches=max_concurrency
+        )
+
+        task_context = Mock()
+        result = list(transform_fn(range(10_000), task_context))
+        assert len(result) == 10_000
+
+    @pytest.mark.parametrize("preserve_order", [True, False])
+    @pytest.mark.parametrize("failure_kind", ["udf", "validation"])
+    def test_exception_in_udf(self, preserve_order: bool, failure_kind: str, mock_actor_async_ctx, restore_data_context):
+        """Test exception handling in UDF."""
+
+        restore_data_context.execution_options.preserve_order = preserve_order
+
+        udf_failure_msg = "UDF failure"
+        validation_failure_msg = "Validation failure"
+
+        async def failing_async_fn(x):
+            if failure_kind == "udf" and x == 2:
+                raise ValueError(udf_failure_msg)
+            yield x
+
+        def validate_fn(x):
+            if failure_kind == "validation" and x == 2:
+                raise ValueError(validation_failure_msg)
+
+        transform_fn = _generate_transform_fn_for_async_map(
+            failing_async_fn, validate_fn, max_concurrent_batches=2
+        )
+
+        task_context = Mock()
+
+        if failure_kind == "udf":
+            expected_exception_msg = udf_failure_msg
+        elif failure_kind == "validation":
+            expected_exception_msg = validation_failure_msg
+        else:
+            pytest.fail(f"Unexpected failure type ({failure_kind})")
+
+        with pytest.raises(ValueError, match=expected_exception_msg):
+            list(transform_fn([1, 2, 3], task_context))
+
+    @pytest.mark.asyncio
+    async def test_multiple_yields_per_item(self):
+        """Test UDF that yields multiple items per input."""
+        async def multi_yield_fn(x):
+            for i in range(2):
+                yield f"processed_{x}_{i}"
+
+        validate_fn = Mock()
+
+        with patch('ray.data.context.DataContext.get_current') as mock_context:
+            mock_context.return_value.execution_options.preserve_order = True
+
+            transform_fn = _generate_transform_fn_for_async_map(
+                multi_yield_fn, validate_fn, max_concurrent_batches=2
+            )
+
+            with patch('ray.data._map_actor_context.udf_map_asyncio_loop') as mock_loop:
+                mock_loop.run_until_complete = asyncio.run
+
+                task_context = Mock()
+                result = list(transform_fn([1, 2], task_context))
+
+                expected = ["processed_1_0", "processed_1_1", "processed_2_0", "processed_2_1"]
+                assert result == expected
+                assert validate_fn.call_count == 4
 
 
 @pytest.mark.parametrize("fn_type", ["func", "class"])
