@@ -434,7 +434,7 @@ def _generate_transform_fn_for_map_batches(
     return transform_fn
 
 
-def _generate_transform_fn_for_async_map(
+def _generate_transform_fn_for_async_map_x(
     fn: UserDefinedFunction,
     validate_fn: Callable,
     *,
@@ -647,15 +647,15 @@ _SENTINEL = object()
 T = typing.TypeVar("T")
 U = typing.TypeVar("U")
 
-def _generate_transform_for_async_udf(
+def _generate_transform_fn_for_async_map(
     fn: UserDefinedFunction,
     validate_fn: Callable,
     *,
     max_concurrent_batches: int,
 ) -> MapTransformCallable:
     assert inspect.iscoroutinefunction(fn), f"Expected a coroutine function, got {fn}"
+    assert max_concurrent_batches > 0
 
-    loop = ray.data._map_actor_context.udf_map_asyncio_loop
     ctx = DataContext.get_current()
 
     async def _process_all(it: Iterator[T], output_queue: queue.Queue) -> None:
@@ -705,6 +705,8 @@ def _generate_transform_for_async_udf(
 
     def _transform(batch_iter: Iterable[T], task_context: TaskContext) -> Iterable[U]:
         outputs = queue.Queue(maxsize=max_concurrent_batches)
+
+        loop = ray.data._map_actor_context.udf_map_asyncio_loop
 
         asyncio.run_coroutine_threadsafe(
             _process_all(iter(batch_iter), outputs),
