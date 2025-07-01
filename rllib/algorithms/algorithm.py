@@ -872,7 +872,7 @@ class Algorithm(Checkpointable, Trainable):
                 self.offline_eval_runner_group: OfflineEvaluationRunnerGroup = OfflineEvaluationRunnerGroup(
                     config=self.evaluation_config,
                     # Do not create a local runner such that the dataset can be split.
-                    local_runner=False,
+                    local_runner=self.config.num_offline_eval_runners == 0,
                     # Provide the `RLModule`'s state for the `OfflinePreLearner`s.
                     module_state=rl_module_state[COMPONENT_RL_MODULE],
                     module_spec=module_spec,
@@ -1134,10 +1134,13 @@ class Algorithm(Checkpointable, Trainable):
         )
 
         # Evaluate with fixed duration.
-        self._evaluate_offline_with_fixed_duration()
+        if self.offline_eval_runner_group.num_healthy_remote_runners > 0:
+            self._evaluate_offline_with_fixed_duration()
+        else:
+            self._evaluate_offline_on_local_runner()
         # Reduce the evaluation results.
         eval_results = self.metrics.peek(
-            ("EVALUATION_RESULTS", "OFFLINE_EVAL_RUNNER_RESULTS"), default={}
+            (EVALUATION_RESULTS, OFFLINE_EVAL_RUNNER_RESULTS), default={}
         )
 
         # Trigger `on_evaluate_offline_end` callback.
@@ -1153,7 +1156,7 @@ class Algorithm(Checkpointable, Trainable):
         )
 
         # Also return the results here for convenience.
-        return {EVALUATION_RESULTS: {OFFLINE_EVAL_RUNNER_RESULTS: eval_results}}
+        return {OFFLINE_EVAL_RUNNER_RESULTS: eval_results}
 
     @PublicAPI
     def evaluate(
@@ -1362,6 +1365,23 @@ class Algorithm(Checkpointable, Trainable):
             )
 
         return eval_results, env_steps, agent_steps
+
+    def _evaluate_offline_on_local_runner(self):
+        # How many episodes/timesteps do we need to run?
+        unit = "batches"
+        duration = (
+            self.config.offline_evaluation_duration
+            * self.config.dataset_num_iters_per_eval_runner
+        )
+
+        logger.info(f"Evaluating current state of {self} for {duration} {unit}.")
+
+        results = self.offline_eval_runner_group.local_runner.run()
+
+        self.metrics.aggregate(
+            [results],
+            key=(EVALUATION_RESULTS, OFFLINE_EVAL_RUNNER_RESULTS),
+        )
 
     def _evaluate_on_local_env_runner(self, env_runner):
         if hasattr(env_runner, "input_reader") and env_runner.input_reader is None:
@@ -1651,6 +1671,8 @@ class Algorithm(Checkpointable, Trainable):
                 if iter != self.iteration:
                     continue
                 all_metrics.append(met)
+                # Note, the `dataset_num_iters_per_eval_runner` must be smaller than
+                # `offline_evaluation_duration` // `num_offline_eval_runners`.
                 num_units_done += (
                     met[ALL_MODULES][DATASET_NUM_ITERS_EVALUATED].peek()
                     if DATASET_NUM_ITERS_EVALUATED in met[ALL_MODULES]
