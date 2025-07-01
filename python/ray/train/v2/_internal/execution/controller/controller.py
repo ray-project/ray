@@ -190,7 +190,7 @@ class TrainController:
             resources_per_worker=decision.resources_per_worker,
         )
 
-        if resize_status.has_errors:
+        if resize_status.errors:
             # For startup failures, always restart (matching original behavior)
             failure_decision = FailureDecision.RESTART
             return self._execute_failure_decision(failure_decision, resize_status)
@@ -206,10 +206,10 @@ class TrainController:
     def _execute_failure_decision(
         self,
         failure_decision: FailureDecision,
-        status: PolicyHandledStatus,
+        worker_group_status: PolicyHandledStatus,
     ) -> TrainControllerLoopIterationResult:
         """Executes failure handling decisions (ex: restart, terminate)."""
-        assert status.has_errors
+        assert worker_group_status.errors
 
         controller_state = self.get_state()
 
@@ -225,20 +225,13 @@ class TrainController:
                 next_state=RunningState(),
             )
 
-        errors_str = status.get_error_string()
-        error_details = status.get_error_details()
-        worker_failures = error_details.get("worker_errors", {})
+        errors_str = worker_group_status.get_error_string()
         training_failed_error = TrainingFailedError(
-            error_message=errors_str, worker_failures=worker_failures
+            error_message=errors_str, worker_failures=worker_group_status.errors
         )
 
         if failure_decision == FailureDecision.RESTART:
-            num_failures = error_details.get("num_failed_workers", 1)
-            logger.error(
-                "Restarting training worker group after encountering "
-                f"failures on {num_failures} worker(s):\n"
-                f"{errors_str}"
-            )
+            logger.error(worker_group_status.get_restart_error_string())
             next_state = RestartingState(training_failed_error=training_failed_error)
             return TrainControllerLoopIterationResult(
                 run_attempt_id=self._get_run_attempt_id(),
@@ -247,11 +240,8 @@ class TrainController:
                 training_failed_error=training_failed_error,
             )
         elif failure_decision == FailureDecision.RAISE:
-            logger.error(
-                "Terminating training worker group after encountering "
-                f"failure(s) on {num_failures} worker(s):\n"
-                f"{errors_str}"
-            )
+            logger.error(worker_group_status.get_raise_error_string())
+            
             next_state = ErroredState(training_failed_error=training_failed_error)
             return TrainControllerLoopIterationResult(
                 run_attempt_id=self._get_run_attempt_id(),
@@ -301,17 +291,11 @@ class TrainController:
                 f"The previous launch attempt encountered the following failure:\n{e}"
             )
 
-            # TODO: Should this logic go through the failure policy?
-            # The current logic will always try recovering unconditionally
-            # on startup errors without a retry limit.
             return WorkerGroupResizeStatus(
-                error=True,
-                error_message=str(e),
-                exception=e
+                error=e,
             )
 
-        # TODO: Consider starting the worker group asynchronously.
-        return WorkerGroupResizeStatus(error=False)
+        return WorkerGroupResizeStatus(error=None)
 
     def _start(self):
         for callback in self._controller_callbacks:
