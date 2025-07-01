@@ -422,7 +422,8 @@ def test_node_affinity_scheduling_strategy_soft_spill_on_unavailable(ray_start_c
 
     # NOTE: need to include custom resource because CPUs are released during `ray.get`.
     @ray.remote(
-        num_cpus=1, resources={"custom": 1},
+        num_cpus=1,
+        resources={"custom": 1},
     )
     def get_node_id() -> str:
         ray.get(signal.wait.remote())
@@ -432,7 +433,8 @@ def test_node_affinity_scheduling_strategy_soft_spill_on_unavailable(ray_start_c
     # It should be placed on the worker node and occupy the resources.
     worker_node_ref = get_node_id.options(
         scheduling_strategy=NodeAffinitySchedulingStrategy(
-            worker_node.node_id, soft=False,
+            worker_node.node_id,
+            soft=False,
         ),
     ).remote()
 
@@ -442,7 +444,9 @@ def test_node_affinity_scheduling_strategy_soft_spill_on_unavailable(ray_start_c
     # It should be spilled to the head node.
     head_node_ref = get_node_id.options(
         scheduling_strategy=NodeAffinitySchedulingStrategy(
-            worker_node.node_id, soft=True, _spill_on_unavailable=True,
+            worker_node.node_id,
+            soft=True,
+            _spill_on_unavailable=True,
         ),
     ).remote()
     ray.get(signal.send.remote())
