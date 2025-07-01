@@ -41,7 +41,8 @@ void InlineDependencies(
         if (!it->second->IsInPlasmaError()) {
           // The object has not been promoted to plasma. Inline the object by
           // replacing it with the raw value.
-          rpc::TensorTransport transport = tensor_transport_getter(id).value_or(rpc::TensorTransport::OBJECT_STORE);
+          rpc::TensorTransport transport =
+              tensor_transport_getter(id).value_or(rpc::TensorTransport::OBJECT_STORE);
           if (transport == rpc::TensorTransport::OBJECT_STORE) {
             // Clear the object reference if the object is transferred via the object
             // store. If we don't clear the object reference, tasks with a large number of

@@ -24,35 +24,6 @@ class GPUObjectMeta(NamedTuple):
     tensor_meta: List[Tuple["torch.Size", "torch.dtype"]]
 
 
-def __ray_get_tensor_meta__(self, obj_id: str):
-    """Helper function that runs on the src actor to get the tensor metadata."""
-    from ray._private.worker import global_worker
-
-    gpu_object_store = global_worker.gpu_object_manager.gpu_object_store
-    # NOTE: We do not specify a timeout here because the user task that returns
-    # it could take arbitrarily long and we don't want to trigger a spurious
-    # timeout.
-    gpu_object_store.wait_object(obj_id)
-    tensors = gpu_object_store.get_object(obj_id)
-    return [(t.shape, t.dtype) for t in tensors]
-
-
-def __ray_fetch_gpu_object__(self, obj_id: str):
-    """Helper function that runs on the src actor to fetch tensors from the GPU object store via the object store."""
-    from ray._private.worker import global_worker
-
-    gpu_object_store = global_worker.gpu_object_manager.gpu_object_store
-    assert gpu_object_store.has_object(
-        obj_id
-    ), f"obj_id={obj_id} not found in GPU object store"
-    tensors = gpu_object_store.get_object(obj_id)
-    # TODO(kevin85421): The current garbage collection implementation for the
-    # in-actor object store is naive. We garbage collect each object after it
-    # is consumed once.
-    gpu_object_store.pop_object(obj_id)
-    return tensors
-
-
 class GPUObjectManager:
     def __init__(self):
         # A dictionary that maps from owned object's ID to GPUObjectMeta.
@@ -80,10 +51,10 @@ class GPUObjectManager:
                 self._gpu_object_store = GPUObjectStore(self.gpu_object_store_lock)
         return self._gpu_object_store
 
-
     def _get_tensor_meta(
         self, src_actor: "ray.actor.ActorHandle", obj_id: str
     ) -> ObjectRef:
+        from ray.experimental.gpu_object_manager.gpu_object_store import __ray_get_tensor_meta__
         # Submit a Ray actor task to the source actor to get the tensor metadata.
         # The metadata is a list of tuples, where each tuple contains the shape and dtype
         # of a tensor in the GPU object store. This function returns an ObjectRef that
@@ -190,6 +161,7 @@ class GPUObjectManager:
         Returns:
             None
         """
+        from ray.experimental.gpu_object_manager.gpu_object_store import __ray_fetch_gpu_object__
 
         if self.gpu_object_store.has_object(obj_id):
             return

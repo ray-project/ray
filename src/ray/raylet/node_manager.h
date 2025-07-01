@@ -135,15 +135,15 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
       const NodeID &self_node_id,
       std::string self_node_name,
       const NodeManagerConfig &config,
-      std::shared_ptr<gcs::GcsClient> gcs_client,
+      gcs::GcsClient &gcs_client,
       rpc::ClientCallManager &client_call_manager,
       rpc::CoreWorkerClientPool &worker_rpc_pool,
-      std::shared_ptr<pubsub::SubscriberInterface> core_worker_subscriber,
-      std::shared_ptr<ClusterResourceScheduler> cluster_resource_scheduler,
-      std::shared_ptr<ILocalTaskManager> local_task_manager,
-      std::shared_ptr<ClusterTaskManagerInterface> cluster_task_manager,
-      std::shared_ptr<IObjectDirectory> object_directory,
-      std::shared_ptr<ObjectManagerInterface> object_manager,
+      pubsub::SubscriberInterface &core_worker_subscriber,
+      ClusterResourceScheduler &cluster_resource_scheduler,
+      ILocalTaskManager &local_task_manager,
+      ClusterTaskManagerInterface &cluster_task_manager,
+      IObjectDirectory &object_directory,
+      ObjectManagerInterface &object_manager,
       LocalObjectManager &local_object_manager,
       DependencyManager &dependency_manager,
       WorkerPoolInterface &worker_pool,
@@ -200,7 +200,7 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
   std::optional<syncer::RaySyncMessage> CreateSyncMessage(
       int64_t after_version, syncer::MessageType message_type) const override;
 
-  int GetObjectManagerPort() const { return object_manager_->GetServerPort(); }
+  int GetObjectManagerPort() const { return object_manager_.GetServerPort(); }
 
   LocalObjectManager &GetLocalObjectManager() { return local_object_manager_; }
 
@@ -267,7 +267,7 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
 
   /// Get the local drain request.
   std::optional<rpc::DrainRayletRequest> GetLocalDrainRequest() const {
-    return cluster_resource_scheduler_->GetLocalResourceManager().GetLocalDrainRequest();
+    return cluster_resource_scheduler_.GetLocalResourceManager().GetLocalDrainRequest();
   }
 
  private:
@@ -284,7 +284,7 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
 
   void SetIdleIfLeaseEmpty() {
     if (leased_workers_.empty()) {
-      cluster_resource_scheduler_->GetLocalResourceManager().SetIdleFootprint(
+      cluster_resource_scheduler_.GetLocalResourceManager().SetIdleFootprint(
           WorkFootprint::NODE_WORKERS);
     }
   }
@@ -777,7 +777,7 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
   std::string self_node_name_;
   instrumented_io_context &io_service_;
   /// A client connection to the GCS.
-  std::shared_ptr<gcs::GcsClient> gcs_client_;
+  gcs::GcsClient &gcs_client_;
   /// The function to shutdown raylet gracefully.
   std::function<void(const rpc::NodeDeathInfo &)> shutdown_raylet_gracefully_;
   /// A pool of workers.
@@ -789,12 +789,12 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
   rpc::CoreWorkerClientPool &worker_rpc_pool_;
   /// The raylet client to initiate the pubsub to core workers (owners).
   /// It is used to subscribe objects to evict.
-  std::shared_ptr<pubsub::SubscriberInterface> core_worker_subscriber_;
+  pubsub::SubscriberInterface &core_worker_subscriber_;
   /// The object table. This is shared between the object manager and node
   /// manager.
-  std::shared_ptr<IObjectDirectory> object_directory_;
+  IObjectDirectory &object_directory_;
   /// Manages client requests for object transfers and availability.
-  std::shared_ptr<ObjectManagerInterface> object_manager_;
+  ObjectManagerInterface &object_manager_;
   /// A Plasma object store client. This is used for creating new objects in
   /// the object store (e.g., for actor tasks that can't be run because the
   /// actor died) and to pin objects that are in scope in the cluster.
@@ -877,9 +877,9 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
   /// responsible for maintaining a view of the cluster state w.r.t resource
   /// usage. ClusterTaskManager is responsible for queuing, spilling back, and
   /// dispatching tasks.
-  std::shared_ptr<ClusterResourceScheduler> cluster_resource_scheduler_;
-  std::shared_ptr<ILocalTaskManager> local_task_manager_;
-  std::shared_ptr<ClusterTaskManagerInterface> cluster_task_manager_;
+  ClusterResourceScheduler &cluster_resource_scheduler_;
+  ILocalTaskManager &local_task_manager_;
+  ClusterTaskManagerInterface &cluster_task_manager_;
 
   absl::flat_hash_map<ObjectID, std::unique_ptr<RayObject>> pinned_objects_;
 
@@ -920,7 +920,7 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
   uint64_t metrics_num_task_spilled_back_;
 
   /// Managers all bundle-related operations.
-  std::shared_ptr<PlacementGroupResourceManager> placement_group_resource_manager_;
+  std::unique_ptr<PlacementGroupResourceManager> placement_group_resource_manager_;
 
   /// Next resource broadcast seq no. Non-incrementing sequence numbers
   /// indicate network issues (dropped/duplicated/ooo packets, etc).

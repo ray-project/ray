@@ -22,8 +22,8 @@ class GPUTestActor:
         gpu_object_store = (
             ray._private.worker.global_worker.gpu_object_manager.gpu_object_store
         )
-        if gpu_object_store.has_gpu_object(obj_id):
-            gpu_object = gpu_object_store.get_gpu_object(obj_id)
+        if gpu_object_store.has_object(obj_id):
+            gpu_object = gpu_object_store.get_object(obj_id)
             return gpu_object
         return None
 

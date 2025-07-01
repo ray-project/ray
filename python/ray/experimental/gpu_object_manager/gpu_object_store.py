@@ -86,6 +86,19 @@ def __ray_recv__(
     gpu_object_store.add_object(obj_id, tensors)
 
 
+def __ray_get_tensor_meta__(self, obj_id: str):
+    """Helper function that runs on the src actor to get the tensor metadata."""
+    from ray._private.worker import global_worker
+
+    gpu_object_store = global_worker.gpu_object_manager.gpu_object_store
+    # NOTE: We do not specify a timeout here because the user task that returns
+    # it could take arbitrarily long and we don't want to trigger a spurious
+    # timeout.
+    gpu_object_store.wait_object(obj_id)
+    tensors = gpu_object_store.get_object(obj_id)
+    return [(t.shape, t.dtype) for t in tensors]
+
+
 def __ray_fetch_gpu_object__(self, obj_id: str):
     """Helper function that runs on the src actor to fetch tensors from the GPU object store via the object store."""
     from ray._private.worker import global_worker
