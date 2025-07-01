@@ -4288,7 +4288,7 @@
     long_running: false
     script: pytest -vs test_llm_serve_correctness.py
 
-- name: llm_serve_integration
+- name: llm_serve_vllm_integration_tests
   frequency: nightly
   python: "3.11"
   group: llm-serve
@@ -4307,7 +4307,7 @@
   run:
     timeout: 3600
     long_running: false
-    script: pytest -vs test_llm_serve_integration.py
+    script: pytest -vs test_llm_serve_integration.py test_llm_serve_fault_tolerance.py
 
 - name: llm_serve_llama_3dot1_8B_quantized_tp1_1p1d
   frequency: nightly

@@ -263,7 +263,7 @@ class GcsServer {
   /// [gcs_placement_group_scheduler_] depends on [raylet_client_pool_].
   std::unique_ptr<GcsPlacementGroupScheduler> gcs_placement_group_scheduler_;
   /// Function table manager.
-  std::unique_ptr<GcsFunctionManager> function_manager_;
+  std::unique_ptr<GCSFunctionManager> function_manager_;
   /// Stores references to URIs stored by the GCS for runtime envs.
   std::unique_ptr<ray::RuntimeEnvManager> runtime_env_manager_;
   /// Global KV storage handler.
