@@ -1,7 +1,7 @@
 import asyncio
 import os
 from abc import ABC, abstractmethod
-from typing import Any, AsyncGenerator, Dict, Optional, Type, Union
+from typing import Any, Dict, Optional, Type
 
 # Third-party imports
 from ray import serve
@@ -16,51 +16,23 @@ from ray.llm._internal.serve.configs.constants import (
     RAYLLM_VLLM_ENGINE_CLS_ENV,
 )
 from ray.llm._internal.serve.configs.openai_api_models import (
-    ChatCompletionLogProb,
-    ChatCompletionLogProbs,
-    ChatCompletionLogProbsContent,
-    # ChatCompletionRequest,
-    ChatCompletionResponse,
-    ChatCompletionResponseChoice,
-    ChatCompletionResponseStreamChoice,
-    ChatCompletionStreamResponse,
-    ChatMessage,
+    ChatCompletionRequest,
     CompletionRequest,
-    CompletionResponse,
-    CompletionResponseChoice,
-    CompletionResponseStreamChoice,
-    CompletionStreamResponse,
-    DeltaMessage,
     EmbeddingRequest,
-    EmbeddingResponse,
-    EmbeddingResponseData,
     LLMChatResponse,
     LLMCompletionsResponse,
     LLMEmbeddingsResponse,
-    UsageInfo,
 )
-from vllm.entrypoints.openai.protocol import ChatCompletionRequest
-from ray.llm._internal.serve.configs.prompt_formats import Message, Prompt
 from ray.llm._internal.serve.configs.server_models import (
-    DiskMultiplexConfig,
     LLMConfig,
-    LLMRawResponse,
 )
 from ray.llm._internal.serve.deployments.llm.llm_engine import LLMEngine
-from ray.llm._internal.serve.deployments.llm.multiplex.lora_model_loader import (
-    LoraModelLoader,
-)
 from ray.llm._internal.serve.deployments.llm.vllm.vllm_engine import VLLMEngine
 from ray.llm._internal.serve.deployments.llm.vllm.vllm_models import (
     VLLMEmbeddingRequest,
 )
 from ray.llm._internal.serve.deployments.utils.batcher import OpenAIResponseBatcher
-from ray.llm._internal.serve.deployments.utils.error_handling_utils import (
-    StreamingErrorHandler,
-)
 from ray.llm._internal.serve.deployments.utils.server_utils import (
-    get_model_request_id,
-    get_response_for_error,
     get_serve_request_id,
 )
 from ray.llm._internal.serve.observability.logging import get_logger
@@ -108,303 +80,6 @@ class _LLMServerBase(ABC):
     # TODO (Kourosh): This does not belong here. 
     async def llm_config(self) -> Optional[LLMConfig]:
         return None
-
-
-class ResponsePostprocessor:
-    """Processes raw LLM responses into OpenAI-compatible formats.
-
-    This class handles:
-    1. Error handling for the response stream
-    2. Converting LLMRawResponse to Chat/Completion API formats
-    3. Supporting both streaming and non-streaming responses
-    """
-
-    def __init__(self):
-        self.metrics_wrapper = StreamingErrorHandler()
-
-    async def handle_failure(
-        self, model: str, gen: AsyncGenerator[LLMRawResponse, None]
-    ) -> AsyncGenerator[LLMRawResponse, None]:
-        async for llm_response in self.metrics_wrapper.handle_failure(model, gen):
-            yield llm_response
-
-    @staticmethod
-    async def merge_stream(
-        response_stream: AsyncGenerator[LLMRawResponse, None]
-    ) -> LLMRawResponse:
-        responses = [resp async for resp in response_stream]
-        return LLMRawResponse.merge_stream(*responses)
-
-    async def process_chat(
-        self, model: str, gen: AsyncGenerator[LLMRawResponse, None], stream: bool
-    ) -> LLMChatResponse:
-        """Process raw LLM responses into chat completion format."""
-        gen = self.handle_failure(model=model, gen=gen)
-        request_id = get_serve_request_id()
-        completion_id = get_model_request_id(model)
-
-        if stream:
-            # Stream processing - preserve batching from generator
-            yielded_role = False
-            all_results = []
-            try:
-                async for batched_results in gen:
-
-                    for result in batched_results.unpack():
-                        all_results.append(result)
-
-                        # Handle errors
-                        if result.error:
-                            logger.error(f"{result.error}")
-                            # Drop finish reason as OpenAI doesn't expect it for errors
-                            result.finish_reason = None
-                            all_results.pop()
-                            yield result.error
-                            return
-
-                        finish_reason = result.finish_reason
-
-                        # Send role message first
-                        if not yielded_role:
-                            yield ChatCompletionStreamResponse(
-                                id=completion_id,
-                                model=model,
-                                choices=[
-                                    ChatCompletionResponseStreamChoice(
-                                        delta=DeltaMessage(role="assistant"),
-                                        index=0,
-                                        finish_reason=None,
-                                        logprobs=ChatCompletionLogProbs(content=[]),
-                                    )
-                                ],
-                                usage=None,
-                            )
-                            yielded_role = True
-
-                        # Process logprobs if present
-                        logprobs = None
-                        if result.logprobs:
-                            logprobs = ChatCompletionLogProbs(
-                                content=[
-                                    ChatCompletionLogProbsContent(
-                                        token=logprobs.token,
-                                        logprob=logprobs.logprob,
-                                        bytes=logprobs.bytes,
-                                        top_logprobs=[
-                                            ChatCompletionLogProb(
-                                                token=logprob.token,
-                                                logprob=logprob.logprob,
-                                                bytes=logprob.bytes,
-                                            )
-                                            for logprob in logprobs.top_logprobs
-                                        ],
-                                    )
-                                    for logprobs in result.logprobs
-                                ]
-                            )
-
-                        yield ChatCompletionStreamResponse(
-                            id=completion_id,
-                            model=model,
-                            choices=[
-                                ChatCompletionResponseStreamChoice(
-                                    delta=DeltaMessage(
-                                        content=result.generated_text or ""
-                                    ),
-                                    index=0,
-                                    finish_reason=None,
-                                    logprobs=logprobs,
-                                )
-                            ],
-                            usage=None,
-                        )
-
-                # Send final message with finish_reason if there were any results
-                # TODO (Kourosh): Doing this much for the last token
-                # (usage token) might add extra overhead to ITL of the last token.
-                # We should find a better way to do this.
-                if all_results:
-                    merged_results = LLMRawResponse.merge_stream(*all_results)
-                    finish_reason = merged_results.finish_reason
-                    usage = UsageInfo(
-                        prompt_tokens=merged_results.num_input_tokens or 0,
-                        completion_tokens=merged_results.num_generated_tokens or 0,
-                        total_tokens=(merged_results.num_input_tokens or 0)
-                        + (merged_results.num_generated_tokens or 0),
-                    )
-
-                    yield ChatCompletionStreamResponse(
-                        id=completion_id,
-                        model=model,
-                        choices=[
-                            ChatCompletionResponseStreamChoice(
-                                delta=DeltaMessage(),
-                                index=0,
-                                finish_reason=finish_reason,
-                            )
-                        ],
-                        usage=usage,
-                    )
-            except Exception as e:
-                logger.error(
-                    f"Failed while handling chat-completions for request ({request_id}): {repr(e)}",
-                    exc_info=e,
-                )
-                yield get_response_for_error(e, request_id).error
-        else:
-            # Non-streaming processing - merge and return a single response
-            try:
-                results: LLMRawResponse = await self.merge_stream(gen)
-                if results.error:
-                    yield results.error
-                    return
-
-                logprobs = None
-                if results.logprobs:
-                    logprobs = ChatCompletionLogProbs(
-                        content=[
-                            ChatCompletionLogProbsContent(
-                                token=logprobs.token,
-                                logprob=logprobs.logprob,
-                                bytes=logprobs.bytes,
-                                top_logprobs=[
-                                    ChatCompletionLogProb(
-                                        token=logprob.token,
-                                        logprob=logprob.logprob,
-                                        bytes=logprob.bytes,
-                                    )
-                                    for logprob in logprobs.top_logprobs
-                                ],
-                            )
-                            for logprobs in results.logprobs
-                        ]
-                    )
-
-                yield ChatCompletionResponse(
-                    id=completion_id,
-                    model=model,
-                    choices=[
-                        ChatCompletionResponseChoice(
-                            message=ChatMessage(
-                                role="assistant",
-                                content=results.generated_text or "",
-                            ),
-                            index=0,
-                            finish_reason=results.finish_reason,
-                            logprobs=logprobs,
-                        )
-                    ],
-                    usage=UsageInfo(
-                        prompt_tokens=results.num_input_tokens or 0,
-                        completion_tokens=results.num_generated_tokens or 0,
-                        total_tokens=(results.num_input_tokens or 0)
-                        + (results.num_generated_tokens or 0),
-                    ),
-                )
-            except Exception as e:
-                logger.error(
-                    f"Failed while handling chat-completions for request ({request_id}): {repr(e)}",
-                    exc_info=e,
-                )
-                yield get_response_for_error(e, request_id).error
-
-    async def process_completions(
-        self, model: str, gen: AsyncGenerator[LLMRawResponse, None], stream: bool
-    ) -> LLMCompletionsResponse:
-        """Process raw LLM responses into completions format."""
-        gen = self.handle_failure(model=model, gen=gen)
-        request_id = get_serve_request_id()
-        completion_id = get_model_request_id(model)
-
-        if stream:
-            # Stream processing - preserve batching from generator
-            all_results = []
-            try:
-                async for batched_results in gen:
-
-                    for result in batched_results.unpack():
-                        all_results.append(result)
-
-                        # Handle errors
-                        if result.error:
-                            # Drop finish reason as OpenAI doesn't expect it for errors
-                            result.finish_reason = None
-                            logger.error(
-                                f"Reporting back an error: {result.error}",
-                                extra={
-                                    "ray_serve_extra_fields": {"response": str(result)}
-                                },
-                            )
-                            all_results.pop()
-                            yield result.error
-                            return
-
-                        # Calculate usage if finished
-                        usage = None
-                        if result.finish_reason:
-                            merged_results = LLMRawResponse.merge_stream(*all_results)
-                            usage = UsageInfo(
-                                prompt_tokens=merged_results.num_input_tokens or 0,
-                                completion_tokens=merged_results.num_generated_tokens
-                                or 0,
-                                total_tokens=(merged_results.num_input_tokens or 0)
-                                + (merged_results.num_generated_tokens or 0),
-                            )
-
-                        chunk = CompletionStreamResponse(
-                            id=completion_id,
-                            model=model,
-                            choices=[
-                                CompletionResponseStreamChoice(
-                                    text=result.generated_text or "",
-                                    index=0,
-                                    logprobs={},
-                                    finish_reason=result.finish_reason,
-                                )
-                            ],
-                            usage=usage,
-                        )
-
-                        yield chunk
-
-            except Exception as e:
-                logger.error(
-                    f"Failed while handling completions for request ({request_id}): {repr(e)}",
-                    exc_info=e,
-                )
-                yield get_response_for_error(e, request_id).error
-        else:
-            # Non-streaming processing - merge and return a single response
-            try:
-                results: LLMRawResponse = await self.merge_stream(gen)
-                if results.error:
-                    yield results.error
-                    return
-
-                yield CompletionResponse(
-                    id=completion_id,
-                    model=model,
-                    choices=[
-                        CompletionResponseChoice(
-                            text=results.generated_text or "",
-                            index=0,
-                            logprobs={},
-                            finish_reason=results.finish_reason,
-                        )
-                    ],
-                    usage=UsageInfo(
-                        prompt_tokens=results.num_input_tokens or 0,
-                        completion_tokens=results.num_generated_tokens or 0,
-                        total_tokens=(results.num_input_tokens or 0)
-                        + (results.num_generated_tokens or 0),
-                    ),
-                )
-            except Exception as e:
-                logger.error(
-                    f"Failed while handling completions for request ({request_id}): {repr(e)}",
-                    exc_info=e,
-                )
-                yield get_response_for_error(e, request_id).error
 
 
 class LLMServer(_LLMServerBase):
@@ -595,7 +270,7 @@ class LLMServer(_LLMServerBase):
     
     @classmethod
     def as_deployment(
-        cls, deployment_options: Dict[str, Any] = None
+        cls, deployment_options: Optional[Dict[str, Any]] = None
     ) -> serve.Deployment:
         """Convert the LLMServer to a Ray Serve deployment.
 

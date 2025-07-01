@@ -30,9 +30,9 @@ from ray.llm._internal.serve.configs.constants import (
     ROUTER_TO_MODEL_REPLICA_RATIO,
 )
 from ray.llm._internal.serve.configs.openai_api_models import (
-    # ChatCompletionRequest,
-    # ChatCompletionResponse,
-    # ChatCompletionStreamResponse,
+    ChatCompletionRequest,
+    ChatCompletionResponse,
+    ChatCompletionStreamResponse,
     CompletionRequest,
     CompletionResponse,
     CompletionStreamResponse,
@@ -43,19 +43,13 @@ from ray.llm._internal.serve.configs.openai_api_models import (
     LLMEmbeddingsResponse,
     OpenAIHTTPException,
     to_model_metadata,
-)
-from vllm.entrypoints.openai.protocol import (
-    ChatCompletionRequest,
-    ChatCompletionResponse,
-    ChatCompletionStreamResponse,
-)
-from ray.llm._internal.serve.configs.openai_api_models_patch import (
     ErrorResponse,
+    ModelCard,
+    ModelList
 )
+
 from ray.llm._internal.serve.configs.server_models import (
-    LLMConfig,
-    Model,
-    ModelData,
+    LLMConfig
 )
 from ray.llm._internal.serve.deployments.llm.multiplex.utils import (
     get_base_model_id,
@@ -304,12 +298,9 @@ class LLMRouter:
         model_handle = self._get_configured_serve_handle(model)
 
         async for response in getattr(model_handle, call_method).remote(body):
-            logger.info(
-                f"[Kourosh] in router._get_response, response_type: {type(response)}, response: {response}"
-            )
             yield response
 
-    async def model(self, model_id: str) -> Optional[ModelData]:
+    async def model(self, model_id: str) -> Optional[ModelCard]:
         if model_id in self._llm_configs:
             return to_model_metadata(model_id, self._llm_configs[model_id])
 
@@ -335,8 +326,8 @@ class LLMRouter:
                     "Check that adapter config file exists in cloud bucket."
                 )
 
-    @fastapi_router_app.get("/v1/models", response_model=Model)
-    async def models(self) -> Model:
+    @fastapi_router_app.get("/v1/models", response_model=ModelList)
+    async def models(self) -> ModelList:
         """OpenAI API-compliant endpoint to get all rayllm models."""
         all_models = dict()
         for base_model_id, llm_config in self._llm_configs.items():
@@ -354,11 +345,11 @@ class LLMRouter:
                     if model_data is not None:
                         all_models[lora_id] = model_data
 
-        return Model(data=list(all_models.values()))
+        return ModelList(data=list(all_models.values()))
 
     # :path allows us to have slashes in the model name
-    @fastapi_router_app.get("/v1/models/{model:path}", response_model=ModelData)
-    async def model_data(self, model: str) -> ModelData:
+    @fastapi_router_app.get("/v1/models/{model:path}", response_model=ModelCard)
+    async def model_data(self, model: str) -> ModelCard:
         """OpenAI API-compliant endpoint to get one rayllm model.
 
         :param model: The model ID (e.g. "amazon/LightGPT")
@@ -394,9 +385,6 @@ class LLMRouter:
                 first_chunk = initial_response
 
             if isinstance(first_chunk, ErrorResponse):
-                logger.info(
-                    f"[Kourosh] error encountered in first_chunk: {first_chunk}"
-                )
                 raise OpenAIHTTPException(
                     message=first_chunk.message,
                     status_code=first_chunk.code,
@@ -405,15 +393,11 @@ class LLMRouter:
 
             if isinstance(first_chunk, NoneStreamingResponseType):
                 # Not streaming, first chunk should be a single response
-                logger.info(
-                    f"[Kourosh] non streaming response received, first_chunk: {first_chunk}"
-                )
                 return JSONResponse(content=first_chunk.model_dump())
 
             # In case of streaming we need to iterate over the chunks and yield them
             openai_stream_generator = _openai_json_wrapper(gen)
 
-            print("Hitting streaming response")
             return StreamingResponse(
                 openai_stream_generator, media_type="text/event-stream"
             )
