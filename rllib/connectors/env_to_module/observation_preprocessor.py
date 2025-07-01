@@ -167,9 +167,6 @@ class MultiAgentObservationPreprocessor(ConnectorV2, abc.ABC):
                     at_indices=-1,
                     new_data=obs,
                 )
-                ma_episode.agent_episodes[
-                    agent_id
-                ].observation_space = self.observation_space[agent_id]
             #  We set the Episode's observation space to ours so that we can safely
             #  set the last obs to the new value (without causing a space mismatch
             #  error).
