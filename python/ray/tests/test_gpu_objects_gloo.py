@@ -7,7 +7,7 @@ from ray.experimental.collective import create_collective_group
 from ray._private.custom_types import TensorTransportEnum
 
 
-@ray.remote(concurrency_groups={"_ray_system": 1})
+@ray.remote(enable_tensor_transport=True)
 class GPUTestActor:
     @ray.method(tensor_transport="gloo")
     def echo(self, data):
