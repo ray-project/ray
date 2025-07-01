@@ -88,6 +88,7 @@ class TensorflowTrainer(DataParallelTrainer):
         import os
         import tempfile
         import tensorflow as tf
+        import numpy as np
 
         import ray
         from ray import train
@@ -129,7 +130,7 @@ class TensorflowTrainer(DataParallelTrainer):
                     checkpoint=checkpoint,
                 )
 
-        train_dataset = ray.data.from_items([{"x": x, "y": x + 1} for x in range(32)])
+        train_dataset = ray.data.from_items([{"x": np.array([x], dtype=np.float32), "y": x + 1} for x in range(32)])
         trainer = TensorflowTrainer(
             train_loop_per_worker=train_loop_per_worker,
             scaling_config=ScalingConfig(num_workers=3, use_gpu=True),

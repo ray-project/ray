@@ -181,7 +181,7 @@ Status ActorTaskSubmitter::SubmitTask(TaskSpecification task_spec) {
     RAY_CHECK(queue != client_queues_.end());
     if (queue->second.state == rpc::ActorTableData::DEAD &&
         queue->second.is_restartable && queue->second.owned) {
-      RestartActor(actor_id);
+      RestartActorForLineageReconstruction(actor_id);
     }
     if (queue->second.state != rpc::ActorTableData::DEAD) {
       // We must fix the send order prior to resolving dependencies, which may
@@ -270,13 +270,13 @@ void ActorTaskSubmitter::DisconnectRpcClient(ClientQueue &queue) {
   queue.worker_id.clear();
 }
 
-void ActorTaskSubmitter::FailInflightTasks(
+void ActorTaskSubmitter::FailInflightTasksOnRestart(
     const absl::flat_hash_map<TaskAttempt, rpc::ClientCallback<rpc::PushTaskReply>>
         &inflight_task_callbacks) {
   // NOTE(kfstorm): We invoke the callbacks with a bad status to act like there's a
   // network issue. We don't call `task_finisher_.FailOrRetryPendingTask` directly because
   // there's much more work to do in the callback.
-  auto status = Status::IOError("Fail all inflight tasks due to actor state change.");
+  auto status = Status::IOError("The actor was restarted");
   for (const auto &[_, callback] : inflight_task_callbacks) {
     callback(status, rpc::PushTaskReply());
   }
@@ -335,10 +335,10 @@ void ActorTaskSubmitter::ConnectActor(const ActorID &actor_id,
   }
 
   // NOTE(kfstorm): We need to make sure the lock is released before invoking callbacks.
-  FailInflightTasks(inflight_task_callbacks);
+  FailInflightTasksOnRestart(inflight_task_callbacks);
 }
 
-void ActorTaskSubmitter::RestartActor(const ActorID &actor_id) {
+void ActorTaskSubmitter::RestartActorForLineageReconstruction(const ActorID &actor_id) {
   RAY_LOG(INFO).WithField(actor_id) << "Reconstructing actor";
   auto queue = client_queues_.find(actor_id);
   RAY_CHECK(queue != client_queues_.end());
@@ -346,7 +346,7 @@ void ActorTaskSubmitter::RestartActor(const ActorID &actor_id) {
   RAY_CHECK(queue->second.is_restartable) << "This actor is no longer restartable";
   queue->second.state = rpc::ActorTableData::RESTARTING;
   queue->second.num_restarts_due_to_lineage_reconstructions += 1;
-  RAY_CHECK_OK(actor_creator_.AsyncRestartActor(
+  RAY_CHECK_OK(actor_creator_.AsyncRestartActorForLineageReconstruction(
       actor_id,
       queue->second.num_restarts_due_to_lineage_reconstructions,
       [this,
@@ -410,7 +410,7 @@ void ActorTaskSubmitter::DisconnectActor(const ActorID &actor_id,
         RAY_CHECK(inflight_task_callbacks.empty());
         if (!queue->second.actor_submit_queue->Empty()) {
           // There are pending lineage reconstruction tasks.
-          RestartActor(actor_id);
+          RestartActorForLineageReconstruction(actor_id);
         }
       } else {
         // If there are pending requests, treat the pending tasks as failed.
@@ -467,7 +467,7 @@ void ActorTaskSubmitter::DisconnectActor(const ActorID &actor_id,
     }
   }
   // NOTE(kfstorm): We need to make sure the lock is released before invoking callbacks.
-  FailInflightTasks(inflight_task_callbacks);
+  FailInflightTasksOnRestart(inflight_task_callbacks);
 }
 
 void ActorTaskSubmitter::FailTaskWithError(const PendingTaskWaitingForDeathInfo &task) {
@@ -634,6 +634,25 @@ void ActorTaskSubmitter::HandlePushTaskReply(const Status &status,
                                              const TaskSpecification &task_spec) {
   const auto task_id = task_spec.TaskId();
   const auto actor_id = task_spec.ActorId();
+
+  bool resubmit_generator = false;
+  {
+    absl::MutexLock lock(&mu_);
+    // If the generator was queued up for resubmission for object recovery,
+    // resubmit as long as we get a valid reply.
+    resubmit_generator = generators_to_resubmit_.erase(task_id) > 0 && status.ok();
+    if (resubmit_generator) {
+      auto queue_pair = client_queues_.find(actor_id);
+      RAY_CHECK(queue_pair != client_queues_.end());
+      auto &queue = queue_pair->second;
+      queue.cur_pending_calls--;
+    }
+  }
+  if (resubmit_generator) {
+    GetTaskFinisherWithoutMu().MarkGeneratorFailedAndResubmit(task_id);
+    return;
+  }
+
   const bool is_retryable_exception = status.ok() && reply.is_retryable_error();
   /// Whether or not we will retry this actor task.
   auto will_retry = false;
@@ -865,6 +884,8 @@ Status ActorTaskSubmitter::CancelTask(TaskSpecification task_spec, bool recursiv
   {
     absl::MutexLock lock(&mu_);
 
+    generators_to_resubmit_.erase(task_id);
+
     auto queue = client_queues_.find(actor_id);
     RAY_CHECK(queue != client_queues_.end());
     if (queue->second.state == rpc::ActorTableData::DEAD) {
@@ -923,10 +944,10 @@ Status ActorTaskSubmitter::CancelTask(TaskSpecification task_spec, bool recursiv
 
     const auto &client = queue->second.rpc_client;
     auto request = rpc::CancelTaskRequest();
-    request.set_intended_task_id(task_spec.TaskId().Binary());
+    request.set_intended_task_id(task_spec.TaskIdBinary());
     request.set_force_kill(force_kill);
     request.set_recursive(recursive);
-    request.set_caller_worker_id(task_spec.CallerWorkerId().Binary());
+    request.set_caller_worker_id(task_spec.CallerWorkerIdBinary());
     client->CancelTask(request,
                        [this, task_spec = std::move(task_spec), recursive, task_id](
                            const Status &status, const rpc::CancelTaskReply &reply) {
@@ -953,6 +974,14 @@ Status ActorTaskSubmitter::CancelTask(TaskSpecification task_spec, bool recursiv
   // If we want to have a better guarantee in the cancelation result
   // we should make it synchronos, but that can regress the performance.
   return Status::OK();
+}
+
+bool ActorTaskSubmitter::QueueGeneratorForResubmit(const TaskSpecification &spec) {
+  // TODO(dayshah): Needs to integrate with the cancellation logic - what if task was
+  // cancelled before this?
+  absl::MutexLock lock(&mu_);
+  generators_to_resubmit_.insert(spec.TaskId());
+  return true;
 }
 
 }  // namespace core

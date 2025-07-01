@@ -47,12 +47,12 @@ from ray.data._internal.execution.operators.map_transformer import (
 )
 from ray.data._internal.execution.util import memory_string
 from ray.data._internal.stats import StatsDict
-from ray.data._internal.util import MemoryProfiler
+from ray.data._internal.util import MemoryProfiler, unify_ref_bundles_schema
 from ray.data.block import (
     Block,
     BlockAccessor,
     BlockExecStats,
-    BlockMetadata,
+    BlockMetadataWithSchema,
     BlockStats,
     to_stats,
 )
@@ -83,15 +83,19 @@ class MapOperator(OneToOneOperator, InternalQueueOperatorMixin, ABC):
         target_max_block_size: Optional[int],
         min_rows_per_bundle: Optional[int],
         supports_fusion: bool,
+        map_task_kwargs: Optional[Dict[str, Any]],
         ray_remote_args_fn: Optional[Callable[[], Dict[str, Any]]],
         ray_remote_args: Optional[Dict[str, Any]],
     ):
         # NOTE: This constructor should not be called directly; use MapOperator.create()
         # instead.
         # NOTE: This constructor must be called by subclasses.
+        if map_task_kwargs is None:
+            map_task_kwargs = {}
 
         self._map_transformer = map_transformer
         self._supports_fusion = supports_fusion
+        self._map_task_kwargs = map_task_kwargs
         self._ray_remote_args = _canonicalize_ray_remote_args(ray_remote_args or {})
         self._ray_remote_args_fn = ray_remote_args_fn
         self._ray_remote_args_factory_actor_locality = None
@@ -133,7 +137,7 @@ class MapOperator(OneToOneOperator, InternalQueueOperatorMixin, ABC):
         Subclasses should pass the returned kwargs to the map tasks.
         In the map tasks, the kwargs can be accessible via `TaskContext.kwargs`.
         """
-        kwargs = {}
+        kwargs = self._map_task_kwargs.copy()
         for fn in self._map_task_kwargs_fns:
             kwargs.update(fn())
         return kwargs
@@ -169,6 +173,7 @@ class MapOperator(OneToOneOperator, InternalQueueOperatorMixin, ABC):
         compute_strategy: Optional[ComputeStrategy] = None,
         min_rows_per_bundle: Optional[int] = None,
         supports_fusion: bool = True,
+        map_task_kwargs: Optional[Dict[str, Any]] = None,
         ray_remote_args_fn: Optional[Callable[[], Dict[str, Any]]] = None,
         ray_remote_args: Optional[Dict[str, Any]] = None,
     ) -> "MapOperator":
@@ -192,6 +197,8 @@ class MapOperator(OneToOneOperator, InternalQueueOperatorMixin, ABC):
                 important for the performance of GPU-accelerated transform functions.
                 The actual rows passed may be less if the dataset is small.
             supports_fusion: Whether this operator supports fusion with other operators.
+            map_task_kwargs: A dictionary of kwargs to pass to the map task. You can
+                access these kwargs through the `TaskContext.kwargs` dictionary.
             ray_remote_args_fn: A function that returns a dictionary of remote args
                 passed to each map worker. The purpose of this argument is to generate
                 dynamic arguments for each actor/task, and will be called each time
@@ -217,6 +224,7 @@ class MapOperator(OneToOneOperator, InternalQueueOperatorMixin, ABC):
                 min_rows_per_bundle=min_rows_per_bundle,
                 concurrency=compute_strategy.size,
                 supports_fusion=supports_fusion,
+                map_task_kwargs=map_task_kwargs,
                 ray_remote_args_fn=ray_remote_args_fn,
                 ray_remote_args=ray_remote_args,
             )
@@ -234,6 +242,7 @@ class MapOperator(OneToOneOperator, InternalQueueOperatorMixin, ABC):
                 name=name,
                 min_rows_per_bundle=min_rows_per_bundle,
                 supports_fusion=supports_fusion,
+                map_task_kwargs=map_task_kwargs,
                 ray_remote_args_fn=ray_remote_args_fn,
                 ray_remote_args=ray_remote_args,
             )
@@ -381,7 +390,10 @@ class MapOperator(OneToOneOperator, InternalQueueOperatorMixin, ABC):
         self._next_data_task_idx += 1
         self._metrics.on_task_submitted(task_index, inputs)
 
-        def _output_ready_callback(task_index, output: RefBundle):
+        def _output_ready_callback(
+            task_index,
+            output: RefBundle,
+        ):
             # Since output is streamed, it should only contain one block.
             assert len(output) == 1
             self._metrics.on_task_output_generated(task_index, output)
@@ -526,7 +538,7 @@ def _map_task(
     ctx: TaskContext,
     *blocks: Block,
     **kwargs: Dict[str, Any],
-) -> Iterator[Union[Block, List[BlockMetadata]]]:
+) -> Iterator[Union[Block, "BlockMetadataWithSchema"]]:
     """Remote function for a single operator task.
 
     Args:
@@ -538,6 +550,8 @@ def _map_task(
         A generator of blocks, followed by the list of BlockMetadata for the blocks
         as the last generator return.
     """
+    from ray.data.block import BlockMetadataWithSchema
+
     logger.debug(
         "Executing map task of operator %s with task index %d",
         ctx.op_name,
@@ -552,12 +566,14 @@ def _map_task(
         for b_out in map_transformer.apply_transform(iter(blocks), ctx):
             # TODO(Clark): Add input file propagation from input blocks.
             m_out = BlockAccessor.for_block(b_out).get_metadata()
+            s_out = BlockAccessor.for_block(b_out).schema()
             m_out.exec_stats = stats.build()
             m_out.exec_stats.udf_time_s = map_transformer.udf_time()
             m_out.exec_stats.task_idx = ctx.task_idx
             m_out.exec_stats.max_uss_bytes = profiler.estimate_max_uss()
+            meta_with_schema = BlockMetadataWithSchema(metadata=m_out, schema=s_out)
             yield b_out
-            yield m_out
+            yield meta_with_schema
             stats = BlockExecStats.builder()
             profiler.reset()
 
@@ -662,7 +678,8 @@ def _merge_ref_bundles(*bundles: RefBundle) -> RefBundle:
         )
     )
     owns_blocks = all(bundle.owns_blocks for bundle in bundles if bundle is not None)
-    return RefBundle(blocks, owns_blocks)
+    schema = unify_ref_bundles_schema(bundles)
+    return RefBundle(blocks, owns_blocks=owns_blocks, schema=schema)
 
 
 class _OutputQueue(ABC):

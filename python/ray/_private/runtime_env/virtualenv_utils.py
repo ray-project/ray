@@ -1,10 +1,11 @@
 """Utils to detect runtime environment."""
 
-import sys
-from ray._private.runtime_env.utils import check_output_cmd
 import logging
 import os
+import sys
 from typing import List
+
+from ray._private.runtime_env.utils import check_output_cmd
 
 _WIN32 = os.name == "nt"
 

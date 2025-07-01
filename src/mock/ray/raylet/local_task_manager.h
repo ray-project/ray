@@ -48,13 +48,28 @@ class MockLocalTaskManager : public ILocalTaskManager {
                int64_t backlog_size),
               (override));
   MOCK_METHOD(void, ClearWorkerBacklog, (const WorkerID &worker_id), (override));
-  MOCK_METHOD(bool,
+  MOCK_METHOD(const RayTask *,
               AnyPendingTasksForResourceAcquisition,
-              (RayTask * example,
-               bool *any_pending,
-               int *num_pending_actor_creation,
-               int *num_pending_tasks),
+              (int *num_pending_actor_creation, int *num_pending_tasks),
               (const, override));
+  MOCK_METHOD(void,
+              TaskFinished,
+              (std::shared_ptr<WorkerInterface> worker, RayTask *task),
+              (override));
+  MOCK_METHOD(void, TasksUnblocked, (const std::vector<TaskID> &ready_ids), (override));
+  MOCK_METHOD(void,
+              ReleaseWorkerResources,
+              (std::shared_ptr<WorkerInterface> worker),
+              (override));
+  MOCK_METHOD(bool,
+              ReleaseCpuResourcesFromBlockedWorker,
+              (std::shared_ptr<WorkerInterface> worker),
+              (override));
+  MOCK_METHOD(bool,
+              ReturnCpuResourcesToUnblockedWorker,
+              (std::shared_ptr<WorkerInterface> worker),
+              (override));
+  MOCK_METHOD(ResourceSet, CalcNormalTaskResources, (), (const, override));
   MOCK_METHOD(void, RecordMetrics, (), (const, override));
   MOCK_METHOD(void, DebugStr, (std::stringstream & buffer), (const, override));
   MOCK_METHOD(size_t, GetNumTaskSpilled, (), (const, override));

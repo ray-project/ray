@@ -1,4 +1,4 @@
-import gc
+import base64
 import os
 import sys
 import types
@@ -9,7 +9,7 @@ import numpy as np
 import pandas as pd
 import pyarrow as pa
 import pytest
-from pyarrow import parquet as pq
+from pyarrow import ArrowInvalid
 
 import ray
 from ray._private.test_utils import run_string_as_driver
@@ -21,6 +21,7 @@ from ray.data._internal.arrow_block import (
     ArrowBlockAccessor,
     ArrowBlockBuilder,
     ArrowBlockColumnAccessor,
+    _get_max_chunk_size,
 )
 from ray.data._internal.arrow_ops.transform_pyarrow import combine_chunked_array
 from ray.data._internal.util import GiB, MiB
@@ -147,39 +148,6 @@ class TestArrowBlockColumnAccessor:
 
 
 @pytest.fixture(scope="module")
-def parquet_dataset_single_column_gt_2gb():
-    chunk_size = 256 * MiB
-    num_chunks = 10
-
-    total_column_size = chunk_size * 10  # ~2.5 GiB
-
-    with TemporaryDirectory() as tmp_dir:
-        dataset_path = f"{tmp_dir}/large_parquet_chunk_{chunk_size}"
-
-        # Create directory
-        os.mkdir(dataset_path)
-
-        for i in range(num_chunks):
-            chunk = b"a" * chunk_size
-
-            d = {"id": [i], "bin": [chunk]}
-            t = pa.Table.from_pydict(d)
-
-            print(f">>> Table schema: {t.schema} (size={sys.getsizeof(t)})")
-
-            filepath = f"{dataset_path}/chunk_{i}.parquet"
-            pq.write_table(t, filepath)
-
-            print(f">>> Created a chunk #{i}")
-
-        print(f">>> Created dataset at {dataset_path}")
-
-        yield dataset_path, num_chunks, total_column_size
-
-        print(f">>> Cleaning up dataset at {dataset_path}")
-
-
-@pytest.fixture(scope="module")
 def binary_dataset_single_file_gt_2gb():
     total_size = int(2.1 * GiB)
     chunk_size = 256 * MiB
@@ -243,65 +211,6 @@ def test_single_row_gt_2gb(
 
 
 @pytest.mark.parametrize(
-    "op",
-    [
-        "map",
-        "map_batches",
-    ],
-)
-def test_arrow_batch_gt_2gb(
-    ray_start_regular,
-    parquet_dataset_single_column_gt_2gb,
-    restore_data_context,
-    op,
-):
-    # Disable (automatic) fallback to `ArrowPythonObjectType` extension type
-    DataContext.get_current().enable_fallback_to_arrow_object_ext_type = False
-
-    dataset_path, num_rows, total_column_size = parquet_dataset_single_column_gt_2gb
-
-    def _id(x):
-        return x
-
-    ds = ray.data.read_parquet(dataset_path)
-
-    if op == "map":
-        ds = ds.map(_id)
-    elif op == "map_batches":
-        # Combine all rows into a single batch using `map_batches` coercing to
-        # numpy format
-        ds = ds.map_batches(
-            _id,
-            batch_format="numpy",
-            batch_size=num_rows,
-            zero_copy_batch=False,
-        )
-
-    batch = ds.take_batch()
-
-    total_binary_column_size = sum([len(b) for b in batch["bin"]])
-
-    print(
-        f">>> Batch:\n"
-        f"------\n"
-        "Column: 'id'\n"
-        f"Values: {batch['id']}\n"
-        f"------\n"
-        "Column: 'bin'\n"
-        f"Total: {total_binary_column_size / GiB} GiB\n"
-        f"Values: {[str(v)[:3] + ' x ' + str(len(v)) for v in batch['bin']]}\n"
-    )
-
-    assert total_binary_column_size == total_column_size
-
-    # Clean up refs
-    del batch
-    del ds
-    # Force GC to free up object store memory
-    gc.collect()
-
-
-@pytest.mark.parametrize(
     "input_,expected_output",
     [
         # Empty chunked array
@@ -360,8 +269,9 @@ def test_combine_chunked_array_small(
     expected_output.equals(result)
 
 
-def test_combine_chunked_array_large():
-    """Verifies `combine_chunked_array` on arrays > 2 GiB"""
+def test_combine_chunked_fixed_width_array_large():
+    """Verifies `combine_chunked_array` on fixed-width arrays > 2 GiB, produces
+    single contiguous PA Array"""
 
     # 144 MiB
     ones_1gb = np.ones(shape=(550, 128, 128, 4), dtype=np.int32()).ravel()
@@ -378,13 +288,55 @@ def test_combine_chunked_array_large():
 
     result = combine_chunked_array(input_)
 
-    assert isinstance(result, pa.ChunkedArray)
-    assert len(result.chunks) == 2
+    assert isinstance(result, pa.Int32Array)
 
-    # Should re-combine first provided 14 chunks into 1
-    assert result.chunks[0].nbytes == sum([c.nbytes for c in input_.chunks[:14]])
-    # Remaining 2 go into the second one
-    assert result.chunks[1].nbytes == sum([c.nbytes for c in input_.chunks[14:]])
+
+@pytest.mark.parametrize(
+    "array_type,input_factory",
+    [
+        (
+            pa.binary(),
+            lambda num_bytes: np.arange(num_bytes, dtype=np.uint8).tobytes(),
+        ),
+        (
+            pa.string(),
+            lambda num_bytes: base64.encodebytes(
+                np.arange(num_bytes, dtype=np.int8).tobytes()
+            ).decode("ascii"),
+        ),
+        (pa.list_(pa.uint8()), lambda num_bytes: np.arange(num_bytes, dtype=np.uint8)),
+    ],
+)
+def test_combine_chunked_variable_width_array_large(array_type, input_factory):
+    """Verifies `combine_chunked_array` on variable-width arrays > 2 GiB,
+    safely produces new ChunkedArray with provided chunks recombined into
+    larger ones up to INT32_MAX in size"""
+
+    one_half_gb_arr = pa.array([input_factory(GiB / 2)], type=array_type)
+    chunked_arr = pa.chunked_array(
+        [one_half_gb_arr, one_half_gb_arr, one_half_gb_arr, one_half_gb_arr]
+    )
+
+    # 2 GiB + offsets (4 x int32)
+    num_bytes = chunked_arr.nbytes
+    expected_num_bytes = 4 * one_half_gb_arr.nbytes
+
+    num_chunks = len(chunked_arr.chunks)
+    assert num_chunks == 4
+    assert num_bytes == expected_num_bytes
+
+    # Assert attempt to combine directly fails
+    with pytest.raises(ArrowInvalid):
+        chunked_arr.combine_chunks()
+
+    # Safe combination succeeds by avoiding overflowing combination
+    combined = combine_chunked_array(chunked_arr)
+
+    num_bytes = combined.nbytes
+
+    num_chunks = len(combined.chunks)
+    assert num_chunks == 2
+    assert num_bytes == expected_num_bytes
 
 
 @pytest.mark.parametrize(
@@ -518,6 +470,32 @@ def test_build_block_with_null_column(ray_start_regular_shared):
     assert np.array_equal(rows[1]["array"], np.zeros((2, 2)))
 
 
+def test_add_rows_with_different_column_names():
+    builder = ArrowBlockBuilder()
+
+    builder.add({"col1": "spam"})
+    builder.add({"col2": "foo"})
+    block = builder.build()
+
+    expected_table = pa.Table.from_pydict(
+        {"col1": ["spam", None], "col2": [None, "foo"]}
+    )
+    assert block.equals(expected_table)
+
+
+def test_add_blocks_with_different_column_names():
+    builder = ArrowBlockBuilder()
+
+    builder.add_block(pa.Table.from_pydict({"col1": ["spam"]}))
+    builder.add_block(pa.Table.from_pydict({"col2": ["foo"]}))
+    block = builder.build()
+
+    expected_table = pa.Table.from_pydict(
+        {"col1": ["spam", None], "col2": [None, "foo"]}
+    )
+    assert block.equals(expected_table)
+
+
 def test_arrow_block_timestamp_ns(ray_start_regular_shared):
     # Input data with nanosecond precision timestamps
     data_rows = [
@@ -558,6 +536,21 @@ def test_arrow_nan_element():
     ds = ds.filter(lambda v: np.isnan(v["item"]))
     result = ds.take_all()
     assert result[0]["count()"] == 2
+
+
+@pytest.mark.parametrize(
+    "table_data,max_chunk_size_bytes,expected",
+    [
+        ({"a": []}, 100, None),
+        ({"a": list(range(100))}, 10, 1),
+        ({"a": list(range(100))}, 25, 3),
+        ({"a": list(range(100))}, 50, 6),
+        ({"a": list(range(100))}, 100, 12),
+    ],
+)
+def test_arrow_block_max_chunk_size(table_data, max_chunk_size_bytes, expected):
+    table = pa.table(table_data)
+    assert _get_max_chunk_size(table, max_chunk_size_bytes) == expected
 
 
 if __name__ == "__main__":

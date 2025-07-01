@@ -507,7 +507,9 @@ class ApplicationState:
                     self._target_state.deployment_infos,
                     config,
                 )
-                self._check_routes(overrided_infos)
+                self._route_prefix, self._docs_path = self._check_routes(
+                    overrided_infos
+                )
                 self._set_target_state(
                     # Code version doesn't change.
                     code_version=self._target_state.code_version,
@@ -1238,7 +1240,8 @@ def override_deployment_info(
         deployment_name = options["name"]
         if deployment_name not in deployment_infos:
             raise ValueError(
-                f"Got config override for nonexistent deployment '{deployment_name}'"
+                f"Deployment '{deployment_name}' does not exist. "
+                f"Available: {list(deployment_infos.keys())}"
             )
 
         info = deployment_infos[deployment_name]

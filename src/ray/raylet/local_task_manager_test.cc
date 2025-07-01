@@ -42,28 +42,36 @@ class MockWorkerPool : public WorkerPoolInterface {
  public:
   MockWorkerPool() : num_pops(0) {}
 
-  void PopWorker(const TaskSpecification &task_spec, const PopWorkerCallback &callback) {
+  void PopWorker(const TaskSpecification &task_spec,
+                 const PopWorkerCallback &callback) override {
     num_pops++;
     const int runtime_env_hash = task_spec.GetRuntimeEnvHash();
     callbacks[runtime_env_hash].push_back(callback);
   }
 
-  void PushWorker(const std::shared_ptr<WorkerInterface> &worker) {
+  void PushWorker(const std::shared_ptr<WorkerInterface> &worker) override {
     workers.push_front(worker);
   }
 
-  const std::vector<std::shared_ptr<WorkerInterface>> GetAllRegisteredWorkers(
-      bool filter_dead_workers, bool filter_io_workers) const {
+  std::vector<std::shared_ptr<WorkerInterface>> GetAllRegisteredWorkers(
+      bool filter_dead_workers, bool filter_io_workers) const override {
     RAY_CHECK(false) << "Not used.";
     return {};
   }
 
-  std::shared_ptr<WorkerInterface> GetRegisteredWorker(const WorkerID &worker_id) const {
+  bool IsWorkerAvailableForScheduling() const override {
+    RAY_CHECK(false) << "Not used.";
+    return false;
+  }
+
+  std::shared_ptr<WorkerInterface> GetRegisteredWorker(
+      const WorkerID &worker_id) const override {
     RAY_CHECK(false) << "Not used.";
     return nullptr;
   };
 
-  std::shared_ptr<WorkerInterface> GetRegisteredDriver(const WorkerID &worker_id) const {
+  std::shared_ptr<WorkerInterface> GetRegisteredDriver(
+      const WorkerID &worker_id) const override {
     RAY_CHECK(false) << "Not used.";
     return nullptr;
   }
@@ -121,10 +129,132 @@ class MockWorkerPool : public WorkerPoolInterface {
     return 0;
   }
 
+  std::shared_ptr<WorkerInterface> GetRegisteredWorker(
+      const std::shared_ptr<ClientConnection> &connection) const override {
+    RAY_CHECK(false) << "Not used.";
+    return nullptr;
+  }
+
+  std::shared_ptr<WorkerInterface> GetRegisteredDriver(
+      const std::shared_ptr<ClientConnection> &connection) const override {
+    RAY_CHECK(false) << "Not used.";
+    return nullptr;
+  }
+
+  void HandleJobStarted(const JobID &job_id, const rpc::JobConfig &job_config) override {
+    RAY_CHECK(false) << "Not used.";
+  }
+
+  void HandleJobFinished(const JobID &job_id) override {
+    RAY_CHECK(false) << "Not used.";
+  }
+
+  void Start() override { RAY_CHECK(false) << "Not used."; }
+
+  void SetNodeManagerPort(int node_manager_port) override {
+    RAY_CHECK(false) << "Not used.";
+  }
+
+  void SetRuntimeEnvAgentClient(
+      std::unique_ptr<RuntimeEnvAgentClient> runtime_env_agent_client) override {
+    RAY_CHECK(false) << "Not used.";
+  }
+
+  std::vector<std::shared_ptr<WorkerInterface>> GetAllRegisteredDrivers(
+      bool filter_dead_drivers) const override {
+    RAY_CHECK(false) << "Not used.";
+    return {};
+  }
+
+  Status RegisterDriver(const std::shared_ptr<WorkerInterface> &worker,
+                        const rpc::JobConfig &job_config,
+                        std::function<void(Status, int)> send_reply_callback) override {
+    RAY_CHECK(false) << "Not used.";
+    return Status::Invalid("Not used.");
+  }
+
+  Status RegisterWorker(const std::shared_ptr<WorkerInterface> &worker,
+                        pid_t pid,
+                        StartupToken worker_startup_token,
+                        std::function<void(Status, int)> send_reply_callback) override {
+    RAY_CHECK(false) << "Not used.";
+    return Status::Invalid("Not used.");
+  }
+
+  Status RegisterWorker(const std::shared_ptr<WorkerInterface> &worker,
+                        pid_t pid,
+                        StartupToken worker_startup_token) override {
+    RAY_CHECK(false) << "Not used.";
+    return Status::Invalid("Not used.");
+  }
+
+  boost::optional<const rpc::JobConfig &> GetJobConfig(
+      const JobID &job_id) const override {
+    RAY_CHECK(false) << "Not used.";
+    return boost::none;
+  }
+
+  void OnWorkerStarted(const std::shared_ptr<WorkerInterface> &worker) override {
+    RAY_CHECK(false) << "Not used.";
+  }
+
+  void PushSpillWorker(const std::shared_ptr<WorkerInterface> &worker) override {
+    RAY_CHECK(false) << "Not used.";
+  }
+
+  void PushRestoreWorker(const std::shared_ptr<WorkerInterface> &worker) override {
+    RAY_CHECK(false) << "Not used.";
+  }
+
+  void DisconnectWorker(const std::shared_ptr<WorkerInterface> &worker,
+                        rpc::WorkerExitType disconnect_type) override {
+    RAY_CHECK(false) << "Not used.";
+  }
+
+  void DisconnectDriver(const std::shared_ptr<WorkerInterface> &driver) override {
+    RAY_CHECK(false) << "Not used.";
+  }
+
+  void PrestartWorkers(const TaskSpecification &task_spec,
+                       int64_t backlog_size) override {
+    RAY_CHECK(false) << "Not used.";
+  }
+
+  void StartNewWorker(
+      const std::shared_ptr<PopWorkerRequest> &pop_worker_request) override {
+    RAY_CHECK(false) << "Not used.";
+  }
+
+  std::string DebugString() const override {
+    RAY_CHECK(false) << "Not used.";
+    return "";
+  }
+
+  void PopSpillWorker(
+      std::function<void(std::shared_ptr<WorkerInterface>)> callback) override {
+    RAY_CHECK(false) << "Not used.";
+  }
+
+  void PopRestoreWorker(
+      std::function<void(std::shared_ptr<WorkerInterface>)> callback) override {
+    RAY_CHECK(false) << "Not used.";
+  }
+
+  void PushDeleteWorker(const std::shared_ptr<WorkerInterface> &worker) override {
+    RAY_CHECK(false) << "Not used.";
+  }
+
+  void PopDeleteWorker(
+      std::function<void(std::shared_ptr<WorkerInterface>)> callback) override {
+    RAY_CHECK(false) << "Not used.";
+  }
+
   std::list<std::shared_ptr<WorkerInterface>> workers;
   absl::flat_hash_map<int, std::list<PopWorkerCallback>> callbacks;
   int num_pops;
 };
+
+namespace {
 
 std::shared_ptr<ClusterResourceScheduler> CreateSingleNodeScheduler(
     const std::string &id, double num_cpus, gcs::GcsClient &gcs_client) {
@@ -143,7 +273,8 @@ std::shared_ptr<ClusterResourceScheduler> CreateSingleNodeScheduler(
 }
 
 RayTask CreateTask(const std::unordered_map<std::string, double> &required_resources,
-                   const std::string &task_name = "default") {
+                   const std::string &task_name = "default",
+                   const std::vector<std::unique_ptr<TaskArg>> &args = {}) {
   TaskSpecBuilder spec_builder;
   TaskID id = RandomTaskId();
   JobID job_id = RandomJobId();
@@ -173,8 +304,14 @@ RayTask CreateTask(const std::unordered_map<std::string, double> &required_resou
 
   spec_builder.SetNormalTaskSpec(0, false, "", rpc::SchedulingStrategy(), ActorID::Nil());
 
+  for (const auto &arg : args) {
+    spec_builder.AddArg(*arg);
+  }
+
   return RayTask(std::move(spec_builder).ConsumeAndBuild());
 }
+
+}  // namespace
 
 class LocalTaskManagerTest : public ::testing::Test {
  public:
@@ -245,8 +382,6 @@ class LocalTaskManagerTest : public ::testing::Test {
 };
 
 TEST_F(LocalTaskManagerTest, TestTaskDispatchingOrder) {
-  RAY_LOG(INFO) << "Starting TestTaskDispatchingOrder";
-
   // Initial setup: 3 CPUs available.
   std::shared_ptr<MockWorker> worker1 =
       std::make_shared<MockWorker>(WorkerID::FromRandom(), 0);
@@ -262,28 +397,12 @@ TEST_F(LocalTaskManagerTest, TestTaskDispatchingOrder) {
   auto task_f1 = CreateTask({{ray::kCPU_ResourceLabel, 1}}, "f");
   auto task_f2 = CreateTask({{ray::kCPU_ResourceLabel, 1}}, "f");
   rpc::RequestWorkerLeaseReply reply;
-  bool callback_occurred = false;
-  bool *callback_occurred_ptr = &callback_occurred;
-  auto callback = [callback_occurred_ptr](
-                      Status, std::function<void()>, std::function<void()>) {
-    *callback_occurred_ptr = true;
-  };
   local_task_manager_->WaitForTaskArgsRequests(std::make_shared<internal::Work>(
-      task_f1,
-      false,
-      false,
-      &reply,
-      [callback] { callback(Status::OK(), nullptr, nullptr); },
-      internal::WorkStatus::WAITING));
+      task_f1, false, false, &reply, [] {}, internal::WorkStatus::WAITING));
   local_task_manager_->ScheduleAndDispatchTasks();
   pool_.TriggerCallbacks();
   local_task_manager_->WaitForTaskArgsRequests(std::make_shared<internal::Work>(
-      task_f2,
-      false,
-      false,
-      &reply,
-      [callback] { callback(Status::OK(), nullptr, nullptr); },
-      internal::WorkStatus::WAITING));
+      task_f2, false, false, &reply, [] {}, internal::WorkStatus::WAITING));
   local_task_manager_->ScheduleAndDispatchTasks();
   pool_.TriggerCallbacks();
 
@@ -293,38 +412,68 @@ TEST_F(LocalTaskManagerTest, TestTaskDispatchingOrder) {
   auto task_f5 = CreateTask({{ray::kCPU_ResourceLabel, 1}}, "f");
   auto task_g1 = CreateTask({{ray::kCPU_ResourceLabel, 1}}, "g");
   local_task_manager_->WaitForTaskArgsRequests(std::make_shared<internal::Work>(
-      task_f3,
-      false,
-      false,
-      &reply,
-      [callback] { callback(Status::OK(), nullptr, nullptr); },
-      internal::WorkStatus::WAITING));
+      task_f3, false, false, &reply, [] {}, internal::WorkStatus::WAITING));
   local_task_manager_->WaitForTaskArgsRequests(std::make_shared<internal::Work>(
-      task_f4,
-      false,
-      false,
-      &reply,
-      [callback] { callback(Status::OK(), nullptr, nullptr); },
-      internal::WorkStatus::WAITING));
+      task_f4, false, false, &reply, [] {}, internal::WorkStatus::WAITING));
   local_task_manager_->WaitForTaskArgsRequests(std::make_shared<internal::Work>(
-      task_f5,
-      false,
-      false,
-      &reply,
-      [callback] { callback(Status::OK(), nullptr, nullptr); },
-      internal::WorkStatus::WAITING));
+      task_f5, false, false, &reply, [] {}, internal::WorkStatus::WAITING));
   local_task_manager_->WaitForTaskArgsRequests(std::make_shared<internal::Work>(
-      task_g1,
-      false,
-      false,
-      &reply,
-      [callback] { callback(Status::OK(), nullptr, nullptr); },
-      internal::WorkStatus::WAITING));
+      task_g1, false, false, &reply, [] {}, internal::WorkStatus::WAITING));
   local_task_manager_->ScheduleAndDispatchTasks();
   pool_.TriggerCallbacks();
   auto tasks_to_dispatch_ = local_task_manager_->GetTaskToDispatch();
   // Only task f in queue now as g is dispatched.
   ASSERT_EQ(tasks_to_dispatch_.size(), 1);
+}
+
+TEST_F(LocalTaskManagerTest, TestNoLeakOnImpossibleInfeasibleTask) {
+  // Note that ideally it shouldn't be possible for an infeasible task to
+  // be in the local task manager when ScheduleAndDispatchTasks happens.
+  // See https://github.com/ray-project/ray/pull/52295 for reasons why added this.
+
+  std::shared_ptr<MockWorker> worker1 =
+      std::make_shared<MockWorker>(WorkerID::FromRandom(), 0);
+  std::shared_ptr<MockWorker> worker2 =
+      std::make_shared<MockWorker>(WorkerID::FromRandom(), 0);
+  pool_.PushWorker(std::static_pointer_cast<WorkerInterface>(worker1));
+
+  // Create 2 tasks that requires 3 CPU's each and are waiting on an arg.
+  auto arg_id = ObjectID::FromRandom();
+  std::vector<std::unique_ptr<TaskArg>> args;
+  args.push_back(
+      std::make_unique<TaskArgByReference>(arg_id, rpc::Address{}, "call_site"));
+  auto task1 = CreateTask({{kCPU_ResourceLabel, 3}}, "f", args);
+  auto task2 = CreateTask({{kCPU_ResourceLabel, 3}}, "f2", args);
+
+  EXPECT_CALL(object_manager_, Pull(_, _, _))
+      .WillOnce(::testing::Return(1))
+      .WillOnce(::testing::Return(2));
+
+  // Submit the tasks to the local task manager.
+  int num_callbacks_called = 0;
+  auto callback = [&num_callbacks_called]() { ++num_callbacks_called; };
+  rpc::RequestWorkerLeaseReply reply1;
+  local_task_manager_->QueueAndScheduleTask(std::make_shared<internal::Work>(
+      task1, false, false, &reply1, callback, internal::WorkStatus::WAITING));
+  rpc::RequestWorkerLeaseReply reply2;
+  local_task_manager_->QueueAndScheduleTask(std::make_shared<internal::Work>(
+      task2, false, false, &reply2, callback, internal::WorkStatus::WAITING));
+
+  // Node no longer has cpu.
+  scheduler_->GetLocalResourceManager().DeleteLocalResource(
+      scheduling::ResourceID::CPU());
+
+  // Simulate arg becoming local.
+  local_task_manager_->TasksUnblocked(
+      {task1.GetTaskSpecification().TaskId(), task2.GetTaskSpecification().TaskId()});
+
+  // Assert that the the correct rpc replies were sent back and the dispatch map is empty.
+  ASSERT_EQ(reply1.failure_type(),
+            rpc::RequestWorkerLeaseReply::SCHEDULING_CANCELLED_UNSCHEDULABLE);
+  ASSERT_EQ(reply2.failure_type(),
+            rpc::RequestWorkerLeaseReply::SCHEDULING_CANCELLED_UNSCHEDULABLE);
+  ASSERT_EQ(num_callbacks_called, 2);
+  ASSERT_EQ(local_task_manager_->GetTaskToDispatch().size(), 0);
 }
 
 int main(int argc, char **argv) {

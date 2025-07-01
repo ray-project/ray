@@ -78,12 +78,13 @@ class ActorTaskSubmitter : public ActorTaskSubmitterInterface {
                      CoreWorkerMemoryStore &store,
                      TaskFinisherInterface &task_finisher,
                      ActorCreatorInterface &actor_creator,
+                     const TensorTransportGetter &tensor_transport_getter,
                      std::function<void(const ActorID &, int64_t)> warn_excess_queueing,
                      instrumented_io_context &io_service,
                      std::shared_ptr<ReferenceCounterInterface> reference_counter)
       : core_worker_client_pool_(core_worker_client_pool),
         actor_creator_(actor_creator),
-        resolver_(store, task_finisher, actor_creator),
+        resolver_(store, task_finisher, actor_creator, tensor_transport_getter),
         task_finisher_(task_finisher),
         warn_excess_queueing_(warn_excess_queueing),
         io_service_(io_service),
@@ -249,6 +250,11 @@ class ActorTaskSubmitter : public ActorTaskSubmitterInterface {
   /// Retry the CancelTask in milliseconds.
   void RetryCancelTask(TaskSpecification task_spec, bool recursive, int64_t milliseconds);
 
+  /// Queue the streaming generator up for resubmission.
+  /// \return true if the task is still executing and the submitter agrees to resubmit
+  /// when it finishes. false case is a TODO.
+  bool QueueGeneratorForResubmit(const TaskSpecification &spec);
+
  private:
   struct PendingTaskWaitingForDeathInfo {
     int64_t deadline_ms;
@@ -400,13 +406,16 @@ class ActorTaskSubmitter : public ActorTaskSubmitterInterface {
   /// Disconnect the RPC client for an actor.
   void DisconnectRpcClient(ClientQueue &queue) ABSL_EXCLUSIVE_LOCKS_REQUIRED(mu_);
 
-  /// Fail all in-flight tasks.
-  void FailInflightTasks(
+  /// Mark all in-flight tasks as failed if the actor was restarted. This will cause the
+  /// tasks to be retried as usual.
+  void FailInflightTasksOnRestart(
       const absl::flat_hash_map<TaskAttempt, rpc::ClientCallback<rpc::PushTaskReply>>
           &inflight_task_callbacks) ABSL_LOCKS_EXCLUDED(mu_);
 
-  /// Restart the actor from DEAD by sending a RestartActor rpc to GCS.
-  void RestartActor(const ActorID &actor_id) ABSL_EXCLUSIVE_LOCKS_REQUIRED(mu_);
+  /// Restart the actor from DEAD by sending a RestartActorForLineageReconstruction rpc to
+  /// GCS.
+  void RestartActorForLineageReconstruction(const ActorID &actor_id)
+      ABSL_EXCLUSIVE_LOCKS_REQUIRED(mu_);
 
   void NotifyGCSWhenActorOutOfScope(const ActorID &actor_id,
                                     uint64_t num_restarts_due_to_lineage_reconstructions);
@@ -420,6 +429,9 @@ class ActorTaskSubmitter : public ActorTaskSubmitterInterface {
   mutable absl::Mutex mu_;
 
   absl::flat_hash_map<ActorID, ClientQueue> client_queues_ ABSL_GUARDED_BY(mu_);
+
+  // Generators that are currently running and need to be resubmitted.
+  absl::flat_hash_set<TaskID> generators_to_resubmit_ ABSL_GUARDED_BY(mu_);
 
   /// Resolve object dependencies.
   LocalDependencyResolver resolver_;

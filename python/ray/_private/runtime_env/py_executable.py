@@ -1,5 +1,4 @@
 import logging
-
 from typing import List, Optional
 
 from ray._private.runtime_env.context import RuntimeEnvContext
