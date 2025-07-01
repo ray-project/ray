@@ -181,7 +181,7 @@ class HttpServerDashboardHead:
             # A best effort test for browser traffic. All common browsers
             # start with Mozilla at the time of writing.
             dashboard_optional_utils.is_browser_request(request)
-            and request.method in [hdrs.METH_POST, hdrs.METH_PUT]
+            and request.method in [hdrs.METH_PUT]
         ):
             return aiohttp.web.Response(
                 status=405, text="Method Not Allowed for browser traffic."

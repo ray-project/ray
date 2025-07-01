@@ -2531,3 +2531,5 @@ zstandard==0.23.0
 # pip
 # ray
 # setuptools
+
+flow-insight>=1.0.0

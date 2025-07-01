@@ -10,14 +10,7 @@ type RouteParams = {
 const FlowInsightPage = () => {
   const { jobId } = useParams<RouteParams>();
 
-  return (
-    <FlowInsight
-      baseUrl="/"
-      jobId={jobId}
-      initialViewType="logical"
-      autoRefresh={false}
-    />
-  );
+  return <FlowInsight baseUrl="/insight" flowId={jobId} />;
 };
 
 export default FlowInsightPage;

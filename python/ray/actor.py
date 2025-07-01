@@ -221,8 +221,15 @@ class ActorMethod:
         actor = self._actor_ref()
         callee_class = None
         if actor is not None:
+            actor_name = ray.state.actors(actor_id=actor._ray_actor_id.hex()).get(
+                "Name", ""
+            )
             callee_class = (
-                actor._ray_actor_creation_function_descriptor.class_name.split(".")[-1],
+                actor_name
+                if actor_name != ""
+                else actor._ray_actor_creation_function_descriptor.class_name.split(
+                    "."
+                )[-1],
                 actor._ray_actor_id.hex(),
             )
         return callee_class, callee_func
@@ -1297,10 +1304,17 @@ class ActorClass:
         callee_func = "__init__"
         callee_class = None
         if actor_handle is not None:
+            actor_name = ray.state.actors(
+                actor_id=actor_handle._ray_actor_id.hex()
+            ).get("Name", "")
             callee_class = (
-                actor_handle._ray_actor_creation_function_descriptor.class_name.split(
+                actor_name
+                if actor_name != ""
+                else actor_handle._ray_actor_creation_function_descriptor.class_name.split(
                     "."
-                )[-1],
+                )[
+                    -1
+                ],
                 actor_handle._ray_actor_id.hex(),
             )
         return callee_class, callee_func
