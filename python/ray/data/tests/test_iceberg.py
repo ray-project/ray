@@ -264,18 +264,20 @@ def test_write_basic():
 )
 def test_write_concurrency():
     import pandas as pd
+    import numpy as np
 
     sql_catalog = pyi_catalog.load_catalog(**_CATALOG_KWARGS)
     table = sql_catalog.load_table(f"{_DB_NAME}.{_TABLE_NAME}")
     table.delete()
 
-    data = [
-        {"col_a": 1, "col_b": 1},
-        {"col_a": 2, "col_b": 2},
-        {"col_a": 3, "col_b": 3},
-        {"col_a": 4, "col_b": 4},
-    ]
-    write_ds = ray.data.from_pandas(pd.DataFrame(data)).repartition(2)
+    data = pd.DataFrame(
+        {
+            "col_a": np.array([1, 2, 3, 4], dtype=np.int32),
+            "col_b": ["1", "2", "3", "4"],
+            "col_c": np.array([1, 2, 3, 4], dtype=np.int32),
+        }
+    )
+    write_ds = ray.data.from_pandas(data).repartition(2)
     write_ds.write_iceberg(
         table_identifier=f"{_DB_NAME}.{_TABLE_NAME}",
         catalog_kwargs=_CATALOG_KWARGS.copy(),
