@@ -771,8 +771,13 @@ class ReferenceCounter : public ReferenceCounterInterface,
     /// counting is enabled, then some raylet must be pinning the object value.
     /// This is the address of that raylet.
     std::optional<NodeID> pinned_at_raylet_id;
+    /// TODO(kevin85421): Currently, not all `Reference` constructors receive
+    /// `tensor_transport`. For example, borrowed objects do not set
+    /// `tensor_transport`. We should therefore use this field carefully
+    /// until it is passed to all `Reference` constructors.
+    ///
     /// The transport used for the object.
-    rpc::TensorTransport tensor_transport;
+    rpc::TensorTransport tensor_transport = rpc::TensorTransport::OBJECT_STORE;
     /// Whether we own the object. If we own the object, then we are
     /// responsible for tracking the state of the task that creates the object
     /// (see task_manager.h).
