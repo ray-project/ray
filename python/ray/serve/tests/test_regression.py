@@ -245,7 +245,7 @@ def test_uvicorn_duplicate_headers(serve_instance):
 
 
 @pytest.mark.skipif(
-    RAY_SERVE_RUN_USER_CODE_IN_SEPARATE_THREAD,
+    not RAY_SERVE_RUN_USER_CODE_IN_SEPARATE_THREAD,
     reason="Health check will block if user code is running in the main event loop",
 )
 def test_healthcheck_timeout(serve_instance):
