@@ -1,4 +1,4 @@
-.. image:: https://github.com/ray-project/ray/raw/master/doc/source/images/ray_header_logo.png
+THIS SHOULD BE A LINTER ERROR.. image:: https://github.com/ray-project/ray/raw/master/doc/source/images/ray_header_logo.png
 
 .. image:: https://readthedocs.org/projects/ray/badge/?version=master
     :target: http://docs.ray.io/en/master/?badge=master
