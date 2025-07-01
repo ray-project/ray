@@ -101,6 +101,28 @@ py_test_module_list(
     ],
 )
 
+# Medium tests with direct ingress enabled
+py_test_module_list(
+    size = "medium",
+    env = {
+        "ANYSCALE_RAY_SERVE_ENABLE_DIRECT_INGRESS": "1",
+        "ANYSCALE_RAY_SERVE_DIRECT_INGRESS_MIN_DRAINING_PERIOD_S": "0.01",
+    },
+    files = [
+        "test_logging.py",
+    ],
+    tags = [
+        "direct_ingress",
+        "exclusive",
+        "team:serve",
+    ],
+    deps = [
+        ":common",
+        ":conftest",
+        "//python/ray/serve:serve_lib",
+    ],
+)
+
 # Medium tests, don't run on windows.
 py_test_module_list(
     size = "medium",
