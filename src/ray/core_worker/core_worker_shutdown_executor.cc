@@ -14,17 +14,25 @@
 
 #include "ray/core_worker/core_worker_shutdown_executor.h"
 
+#include <memory>
+#include <string>
+#include <utility>
+
+#include "ray/core_worker/core_worker.h"
+
 namespace ray {
+
 namespace core {
 
-CoreWorkerShutdownExecutor::CoreWorkerShutdownExecutor(CoreWorker* core_worker)
+CoreWorkerShutdownExecutor::CoreWorkerShutdownExecutor(CoreWorker *core_worker)
     : core_worker_(core_worker) {
-  // Note: core_worker_ is used as an opaque pointer - methods will be called via interface
+  // Note: core_worker_ is used as an opaque pointer - methods will be called via
+  // interface
 }
 
 void CoreWorkerShutdownExecutor::ExecuteGracefulShutdown(
-    const std::string& detail, std::chrono::milliseconds timeout_ms) {
-  RAY_LOG(INFO) << "Executing graceful shutdown: " << detail 
+    const std::string &detail, std::chrono::milliseconds timeout_ms) {
+  RAY_LOG(INFO) << "Executing graceful shutdown: " << detail
                 << " (timeout: " << timeout_ms.count() << "ms)";
 
   // Preserve current CoreWorker::Shutdown() behavior
@@ -65,7 +73,7 @@ void CoreWorkerShutdownExecutor::ExecuteGracefulShutdown(
   RAY_LOG(INFO) << "Core worker ready to be deallocated.";
 }
 
-void CoreWorkerShutdownExecutor::ExecuteForceShutdown(const std::string& detail) {
+void CoreWorkerShutdownExecutor::ExecuteForceShutdown(const std::string &detail) {
   RAY_LOG(WARNING) << "Executing force shutdown: " << detail;
 
   // Preserve current CoreWorker::ForceExit() behavior
@@ -74,10 +82,9 @@ void CoreWorkerShutdownExecutor::ExecuteForceShutdown(const std::string& detail)
   QuickExit();
 }
 
-void CoreWorkerShutdownExecutor::ExecuteWorkerExit(
-    const std::string& exit_type,
-    const std::string& detail,
-    std::chrono::milliseconds timeout_ms) {
+void CoreWorkerShutdownExecutor::ExecuteWorkerExit(const std::string &exit_type,
+                                                   const std::string &detail,
+                                                   std::chrono::milliseconds timeout_ms) {
   RAY_LOG(INFO) << "Executing worker exit: " << exit_type << " - " << detail
                 << " (timeout: " << timeout_ms.count() << "ms)";
 
@@ -105,7 +112,8 @@ void CoreWorkerShutdownExecutor::ExecuteWorkerExit(
           // Disconnect should be put close to Shutdown
           // https://github.com/ray-project/ray/pull/34883
           DisconnectFromServices(rpc::WorkerExitType_Name(worker_exit_type), detail);
-          ExecuteGracefulShutdown("Post-exit graceful shutdown", std::chrono::milliseconds{30000});
+          ExecuteGracefulShutdown("Post-exit graceful shutdown",
+                                  std::chrono::milliseconds{30000});
         },
         "CoreWorker.Shutdown");
   };
@@ -172,18 +180,15 @@ void CoreWorkerShutdownExecutor::ExecuteWorkerExit(
   core_worker_->task_manager_->DrainAndShutdown(drain_references_callback);
 }
 
-void CoreWorkerShutdownExecutor::ExecuteHandleExit(
-    const std::string& exit_type,
-    const std::string& detail,
-    std::chrono::milliseconds timeout_ms) {
+void CoreWorkerShutdownExecutor::ExecuteHandleExit(const std::string &exit_type,
+                                                   const std::string &detail,
+                                                   std::chrono::milliseconds timeout_ms) {
   RAY_LOG(INFO) << "Executing handle exit: " << exit_type << " - " << detail
                 << " (timeout: " << timeout_ms.count() << "ms)";
 
-  // Preserve current CoreWorker::HandleExit() behavior with idle checking
-  rpc::WorkerExitType worker_exit_type = rpc::WorkerExitType::INTENDED_USER_EXIT;
-  if (exit_type == "INTENDED_SYSTEM_EXIT") {
-    worker_exit_type = rpc::WorkerExitType::INTENDED_SYSTEM_EXIT;
-  }
+  // Preserve current CoreWorker::HandleExit() behavior with idle checking; we no
+  // longer need the concrete rpc::WorkerExitType value here because
+  // ExecuteWorkerExit() accepts the string representation directly.
 
   // Check if worker should exit based on idle state
   if (ShouldWorkerExit()) {
@@ -193,7 +198,7 @@ void CoreWorkerShutdownExecutor::ExecuteHandleExit(
       // Default timeout logic from original HandleExit
       actual_timeout = std::chrono::milliseconds{10000};  // 10s default
     }
-    
+
     ExecuteWorkerExit(exit_type, detail, actual_timeout);
   } else {
     RAY_LOG(INFO) << "Worker not idle, ignoring exit request: " << detail;
@@ -244,15 +249,15 @@ bool CoreWorkerShutdownExecutor::ShouldWorkerExit() const {
   return true;
 }
 
-void CoreWorkerShutdownExecutor::DisconnectFromServices(
-    const std::string& exit_type, const std::string& detail) {
+void CoreWorkerShutdownExecutor::DisconnectFromServices(const std::string &exit_type,
+                                                        const std::string &detail) {
   // Preserve current CoreWorker::Disconnect() behavior
-  
+
   // Force stats export before exiting the worker.
   core_worker_->RecordMetrics();
 
   // Driver exiting.
-  if (core_worker_->options_.worker_type == WorkerType::DRIVER && 
+  if (core_worker_->options_.worker_type == WorkerType::DRIVER &&
       core_worker_->task_event_buffer_->Enabled() &&
       !RayConfig::instance().task_events_skip_driver_for_test()) {
     auto task_event = std::make_unique<worker::TaskStatusEvent>(
@@ -273,7 +278,7 @@ void CoreWorkerShutdownExecutor::DisconnectFromServices(
       if (exit_type == "INTENDED_SYSTEM_EXIT") {
         worker_exit_type = rpc::WorkerExitType::INTENDED_SYSTEM_EXIT;
       }
-      
+
       Status status = core_worker_->local_raylet_client_->Disconnect(
           worker_exit_type, detail, nullptr);
       if (status.ok()) {
@@ -290,6 +295,5 @@ void CoreWorkerShutdownExecutor::QuickExit() {
   RAY_LOG(WARNING) << "Quick exit - terminating process immediately";
   std::quick_exit(1);
 }
-
 }  // namespace core
-}  // namespace ray 
+}  // namespace ray
