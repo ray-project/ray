@@ -3,6 +3,7 @@ import collections
 import inspect
 import logging
 import queue
+from asyncio import Semaphore
 from threading import Thread
 from types import GeneratorType
 from typing import Any, Callable, Iterable, List, Optional
@@ -10,6 +11,7 @@ from typing import Any, Callable, Iterable, List, Optional
 import numpy as np
 import pandas as pd
 import pyarrow as pa
+from anyscale.shared_anyscale_utils.utils.asyncio import gather_in_batches
 
 import ray
 from ray._common.utils import get_or_create_event_loop
@@ -381,7 +383,7 @@ def _generate_transform_fn_for_map_batches(
         transform_fn = _generate_transform_fn_for_async_map(
             fn,
             _validate_batch_output,
-            max_queue_size=4,
+            max_concurrent_batches=4,
         )
 
     else:
@@ -433,12 +435,12 @@ def _generate_transform_fn_for_async_map(
     fn: UserDefinedFunction,
     validate_fn: Callable,
     *,
-    max_queue_size: int,
+    max_concurrent_batches: int,
 ) -> MapTransformCallable:
     # Generates a transform function for asynchronous mapping of items (either batches or rows)
     # using a user-defined function (UDF). This consolidated function handles both asynchronous
     # batch processing and asynchronous flat mapping (e.g., rows) based on the provided UDF.
-    def transform_fn(input_iterable: Iterable, _: TaskContext) -> Iterable:
+    def transform_fn(input_batch_iterable: Iterable[DataBatch], _: TaskContext) -> Iterable[DataBatch]:
         # Use a queue to store outputs from async generator calls.
         # We will put output items into this queue from async
         # generators, and in the main event loop, yield them from
@@ -446,7 +448,7 @@ def _generate_transform_fn_for_async_map(
         #
         # NOTE: We limit queue size to make sure we balance producer (async task)
         #       filling it in against consumer (Ray Task) yielding from it
-        output_item_queue = queue.Queue(maxsize=max_queue_size)
+        output_item_queue = queue.Queue()
         # Sentinel object to signal the end of the async generator.
         sentinel = object()
 
@@ -464,16 +466,32 @@ def _generate_transform_fn_for_async_map(
 
         async def process_all_items():
             try:
-                loop = ray.data._map_actor_context.udf_map_asyncio_loop
-                tasks = [loop.create_task(process_item(x)) for x in input_iterable]
+                futures = []
+
+                # We're leveraging Semaphore to limit batch-level concurrency
+                # w/in an async UDF. Without it, iterator yielding batches
+                # will be fully unrolled and the number of tasks running will be
+                # equal to the number of batches w/in a block which could be substantial
+                semaphore = asyncio.Semaphore(max_concurrent_batches)
+
+                for batch in input_batch_iterable:
+                    # Acquire semaphore
+                    semaphore.acquire()
+
+                    f = asyncio.ensure_future(process_item(batch))
+                    # Release on task completion
+                    f.add_done_callback(lambda _: semaphore.release())
+
+                    futures.append(f)
 
                 ctx = ray.data.DataContext.get_current()
+                # TODO this is incorrect
                 if ctx.execution_options.preserve_order:
-                    for task in tasks:
-                        await task
+                    for f in futures:
+                        await f
                 else:
-                    for task in asyncio.as_completed(tasks):
-                        await task
+                    for f in asyncio.as_completed(futures):
+                        await f
             finally:
                 output_item_queue.put(sentinel)
 
@@ -527,7 +545,7 @@ def _generate_transform_fn_for_flat_map(
     if inspect.iscoroutinefunction(fn):
         # UDF is a callable class with async generator `__call__` method.
         transform_fn = _generate_transform_fn_for_async_map(
-            fn, _validate_row_output, max_queue_size=16
+            fn, _validate_row_output, max_concurrent_batches=16
         )
 
     else:
