@@ -258,6 +258,78 @@ def test_write_basic():
     assert orig_table_p.equals(table_p)
 
 
+@pytest.mark.skipif(
+    get_pyarrow_version() < parse_version("14.0.0"),
+    reason="PyIceberg 0.7.0 fails on pyarrow <= 14.0.0",
+)
+def test_write_iceberg_concurrency_issue():
+    """Test case to reproduce the issue where data gets lost when writing with concurrency.
+
+    This reproduces the issue described in GitHub issue #52967 where using
+    repartition(2) and concurrency=2 results in data loss.
+    """
+    import numpy as np
+    import pandas as pd
+
+    # Create test data that matches the existing table schema with correct types
+    # The table expects int32, not int64
+    test_data = pd.DataFrame(
+        {
+            "col_a": np.array([1, 2, 3, 4], dtype=np.int32),
+            "col_b": ["1", "2", "3", "4"],
+            "col_c": np.array(
+                [0, 0, 0, 0], dtype=np.int32
+            ),  # Use int32 to match schema
+        }
+    )
+
+    # Clear the table first
+    sql_catalog = pyi_catalog.load_catalog(**_CATALOG_KWARGS)
+    table = sql_catalog.load_table(f"{_DB_NAME}.{_TABLE_NAME}")
+    table.delete()
+
+    # Create dataset and write with repartition(2) and concurrency=2 as in the issue
+    ds = ray.data.from_pandas(test_data).repartition(2)
+
+    print(f"Original dataset has {ds.count()} rows")
+    print("Writing with repartition(2) and concurrency=2...")
+
+    ds.write_iceberg(
+        table_identifier=f"{_DB_NAME}.{_TABLE_NAME}",
+        catalog_kwargs=_CATALOG_KWARGS.copy(),
+        concurrency=2,
+    )
+
+    # Read back the data with selected_fields as in the issue
+    result_ds = ray.data.read_iceberg(
+        table_identifier=f"{_DB_NAME}.{_TABLE_NAME}",
+        catalog_kwargs=_CATALOG_KWARGS.copy(),
+        selected_fields=("col_a",),
+    )
+
+    # Convert to pandas for easier comparison
+    result_df = result_ds.to_pandas().sort_values("col_a").reset_index(drop=True)
+    expected_df = pd.DataFrame({"col_a": [1, 2, 3, 4]})
+
+    print("Expected data:")
+    print(expected_df)
+    print("Actual result:")
+    print(result_df)
+    print(f"Expected 4 rows, got {len(result_df)} rows")
+
+    # This should pass but may fail due to the concurrency issue
+    # The issue reports that rows 3,4 disappear, leaving only 1,2
+    assert (
+        len(result_df) == 4
+    ), f"Expected 4 rows but got {len(result_df)} - this indicates data loss due to concurrency issue!"
+    assert result_df["col_a"].tolist() == [
+        1,
+        2,
+        3,
+        4,
+    ], f"Expected [1,2,3,4] but got {result_df['col_a'].tolist()}"
+
+
 if __name__ == "__main__":
     import sys
 
