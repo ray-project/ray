@@ -174,12 +174,12 @@ class AutoscalingConfig:
         validate_config(self._configs)
         if skip_content_hash:
             return
-        self._calculate_hashes()
+        self.calculate_hashes()
         self._sync_continuously = self._configs.get(
             "generate_file_mounts_contents_hash", True
         )
 
-    def _calculate_hashes(self) -> None:
+    def calculate_hashes(self) -> None:
         logger.info("Calculating hashes for file mounts and ray commands.")
         self._runtime_hash, self._file_mounts_contents_hash = hash_runtime_conf(
             self._configs.get("file_mounts", {}),
@@ -388,7 +388,7 @@ class AutoscalingConfig:
 
     def disable_node_updaters(self) -> bool:
         provider_config = self._configs.get("provider", {})
-        return provider_config.get(DISABLE_NODE_UPDATERS_KEY, True)
+        return provider_config.get(DISABLE_NODE_UPDATERS_KEY, False)
 
     def get_idle_timeout_s(self) -> Optional[float]:
         """
