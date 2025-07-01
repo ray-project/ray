@@ -258,6 +258,37 @@ def test_write_basic():
     assert orig_table_p.equals(table_p)
 
 
+@pytest.mark.skipif(
+    get_pyarrow_version() < parse_version("14.0.0"),
+    reason="PyIceberg 0.7.0 fails on pyarrow <= 14.0.0",
+)
+def test_write_with_multi_task():
+
+    sql_catalog = pyi_catalog.load_catalog(**_CATALOG_KWARGS)
+    table = sql_catalog.load_table(f"{_DB_NAME}.{_TABLE_NAME}")
+    table.delete()
+
+    ds = ray.data.from_arrow(create_pa_table())
+    ds.repartition(num_blocks=2).write_iceberg(
+        table_identifier=f"{_DB_NAME}.{_TABLE_NAME}",
+        catalog_kwargs=_CATALOG_KWARGS.copy(),
+    )
+
+    # Read the raw table from PyIceberg after writing
+    table = sql_catalog.load_table(f"{_DB_NAME}.{_TABLE_NAME}")
+    orig_table_p = (
+        table.scan()
+        .to_pandas()
+        .sort_values(["col_a", "col_b", "col_c"])
+        .reset_index(drop=True)
+    )
+
+    table_p = (
+        ds.to_pandas().sort_values(["col_a", "col_b", "col_c"]).reset_index(drop=True)
+    )
+    assert orig_table_p.equals(table_p)
+
+
 if __name__ == "__main__":
     import sys
 
