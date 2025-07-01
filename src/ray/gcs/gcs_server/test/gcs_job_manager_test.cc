@@ -50,7 +50,7 @@ class GcsJobManagerTest : public ::testing::Test {
     gcs_table_storage_ = std::make_shared<gcs::GcsTableStorage>(store_client_);
     kv_ = std::make_unique<gcs::MockInternalKVInterface>();
     fake_kv_ = std::make_unique<gcs::FakeInternalKVInterface>();
-    function_manager_ = std::make_unique<gcs::GcsFunctionManager>(*kv_, io_service_);
+    function_manager_ = std::make_unique<gcs::GCSFunctionManager>(*kv_, io_service_);
 
     // Mock client pool which abuses the "address" argument to return a
     // CoreWorkerClient whose number of running tasks equal to the address port. This is
@@ -80,7 +80,7 @@ class GcsJobManagerTest : public ::testing::Test {
   std::shared_ptr<gcs::StoreClient> store_client_;
   std::shared_ptr<gcs::GcsTableStorage> gcs_table_storage_;
   std::shared_ptr<gcs::GcsPublisher> gcs_publisher_;
-  std::unique_ptr<gcs::GcsFunctionManager> function_manager_;
+  std::unique_ptr<gcs::GCSFunctionManager> function_manager_;
   std::unique_ptr<gcs::MockInternalKVInterface> kv_;
   std::unique_ptr<gcs::FakeInternalKVInterface> fake_kv_;
   std::unique_ptr<rpc::CoreWorkerClientPool> worker_client_pool_;
@@ -606,6 +606,96 @@ TEST_F(GcsJobManagerTest, TestPreserveDriverInfo) {
   ASSERT_EQ(data.driver_address().ip_address(), "10.0.0.1");
   ASSERT_EQ(data.driver_ip_address(), "10.0.0.1");
   ASSERT_EQ(data.driver_pid(), 8264);
+}
+
+TEST_F(GcsJobManagerTest, TestMarkJobFinishedIdempotency) {
+  // Test that MarkJobFinished can be called multiple times with the same job ID
+  // without crashing, simulating network retries.
+  gcs::GcsJobManager gcs_job_manager(*gcs_table_storage_,
+                                     *gcs_publisher_,
+                                     runtime_env_manager_,
+                                     *function_manager_,
+                                     *fake_kv_,
+                                     io_service_,
+                                     *worker_client_pool_);
+
+  auto job_id = JobID::FromInt(1);
+  gcs::GcsInitData gcs_init_data(*gcs_table_storage_);
+  gcs_job_manager.Initialize(/*init_data=*/gcs_init_data);
+
+  // Add a job first
+  auto add_job_request = Mocker::GenAddJobRequest(job_id, "namespace");
+  rpc::AddJobReply add_job_reply;
+  std::promise<bool> add_promise;
+  gcs_job_manager.HandleAddJob(
+      *add_job_request,
+      &add_job_reply,
+      [&add_promise](Status, std::function<void()>, std::function<void()>) {
+        add_promise.set_value(true);
+      });
+  add_promise.get_future().get();
+
+  // Call MarkJobFinished multiple times to simulate retry scenarios
+  rpc::MarkJobFinishedRequest job_finished_request;
+  job_finished_request.set_job_id(job_id.Binary());
+
+  // First call - should succeed
+  {
+    rpc::MarkJobFinishedReply job_finished_reply;
+    std::promise<bool> promise;
+    gcs_job_manager.HandleMarkJobFinished(
+        job_finished_request,
+        &job_finished_reply,
+        [&promise](Status status, std::function<void()>, std::function<void()>) {
+          EXPECT_TRUE(status.ok());
+          promise.set_value(true);
+        });
+    promise.get_future().get();
+  }
+
+  // Second call - should handle gracefully (idempotent)
+  {
+    rpc::MarkJobFinishedReply job_finished_reply;
+    std::promise<bool> promise;
+    gcs_job_manager.HandleMarkJobFinished(
+        job_finished_request,
+        &job_finished_reply,
+        [&promise](Status status, std::function<void()>, std::function<void()>) {
+          EXPECT_TRUE(status.ok());
+          promise.set_value(true);
+        });
+    promise.get_future().get();
+  }
+
+  // Third call - should still handle gracefully
+  {
+    rpc::MarkJobFinishedReply job_finished_reply;
+    std::promise<bool> promise;
+    gcs_job_manager.HandleMarkJobFinished(
+        job_finished_request,
+        &job_finished_reply,
+        [&promise](Status status, std::function<void()>, std::function<void()>) {
+          EXPECT_TRUE(status.ok());
+          promise.set_value(true);
+        });
+    promise.get_future().get();
+  }
+
+  // Verify job is still marked as finished correctly
+  rpc::GetAllJobInfoRequest all_job_info_request;
+  rpc::GetAllJobInfoReply all_job_info_reply;
+  std::promise<bool> get_promise;
+  gcs_job_manager.HandleGetAllJobInfo(
+      all_job_info_request,
+      &all_job_info_reply,
+      [&get_promise](Status, std::function<void()>, std::function<void()>) {
+        get_promise.set_value(true);
+      });
+  get_promise.get_future().get();
+
+  ASSERT_EQ(all_job_info_reply.job_info_list_size(), 1);
+  auto job_table_data = all_job_info_reply.job_info_list(0);
+  ASSERT_TRUE(job_table_data.is_dead());
 }
 
 TEST_F(GcsJobManagerTest, TestNodeFailure) {

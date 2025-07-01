@@ -1,4 +1,7 @@
+import asyncio
 import logging
+import signal
+import sys
 from typing import Any, Callable, Dict, List, Optional, Union
 
 import ray
@@ -195,12 +198,33 @@ class DataParallelTrainer:
             )(TrainController)
 
             controller = controller_actor_cls.remote(**controller_init_kwargs)
+
+            self._register_sigint_handler(controller)
+
             ray.get(controller.run.remote())
             return ray.get(controller.get_result.remote())
         else:
             controller = TrainController(**controller_init_kwargs)
-            controller.run()
+            asyncio.run(controller.run())
             return controller.get_result()
+
+    def _register_sigint_handler(self, controller: TrainController):
+        """Register SIGINT handler so user Ctrl C gracefully aborts run."""
+
+        def sigint_handler(signum, frame):
+            try:
+                logger.info(
+                    "Received SIGINT. Gracefully aborting the training run — this "
+                    "may take a few seconds. To forcefully abort immediately, you "
+                    "can send a different signal, such as SIGKILL."
+                )
+                ray.get(controller.abort.remote())
+            except ray.exceptions.ActorDiedError:
+                # We catch the error and exit 0 to indicate graceful termination.
+                # However, for some reason the process still exits with 1.
+                sys.exit(0)
+
+        signal.signal(signal.SIGINT, sigint_handler)
 
     @classmethod
     @Deprecated
