@@ -2,18 +2,18 @@ from __future__ import annotations
 
 import tempfile
 import unittest
+from collections import defaultdict
+from typing import TYPE_CHECKING
 
 import tree
-
-import ray
-from ray.rllib.algorithms.ppo import PPOConfig, PPO
+from ray.rllib.algorithms.ppo import PPO, PPOConfig
 from ray.rllib.utils.metrics import (
     ENV_RUNNER_RESULTS,
-    NUM_ENV_STEPS_SAMPLED_LIFETIME,
     NUM_ENV_STEPS_SAMPLED,
+    NUM_ENV_STEPS_SAMPLED_LIFETIME,
 )
 
-from typing import TYPE_CHECKING
+import ray
 
 if TYPE_CHECKING:
     from ray.rllib.algorithms import Algorithm
@@ -21,33 +21,37 @@ if TYPE_CHECKING:
 
 
 ENV_STEPS_PER_ITERATION = 10
-NUM_ENV_STEPS_IN_CALLBACK_LIFETIME = "num_env_steps_in_callback"
-NUM_ENV_RUNNERS = 5
+NUM_ENV_STEPS_IN_CALLBACK_LIFETIME = "num_env_steps_in_callback_lifetime"
+A_MEAN_VALUE = "a_mean_value"
+NUM_ENV_RUNNERS = 3
 
 expected_results = {
     NUM_ENV_STEPS_IN_CALLBACK_LIFETIME: {
         "step_1": ENV_STEPS_PER_ITERATION,
         "step_2": ENV_STEPS_PER_ITERATION * 2,
         "step_3": ENV_STEPS_PER_ITERATION * 3,
+        "step_10": ENV_STEPS_PER_ITERATION * 10,
     },
     NUM_ENV_STEPS_SAMPLED_LIFETIME: {
         "step_1": ENV_STEPS_PER_ITERATION,
         "step_2": ENV_STEPS_PER_ITERATION * 2,
         "step_3": ENV_STEPS_PER_ITERATION * 3,
+        "step_10": ENV_STEPS_PER_ITERATION * 10,
     },
+    A_MEAN_VALUE: defaultdict(lambda: ENV_STEPS_PER_ITERATION),
 }
 
 
 class TestAlgorithmCheckpointStepsAfterRestore(unittest.TestCase):
     @classmethod
     def setUpClass(cls) -> None:
-        ray.init(num_cpus=NUM_ENV_RUNNERS)
+        ray.init(num_cpus=NUM_ENV_RUNNERS, include_dashboard=False)
 
     @classmethod
     def tearDownClass(cls) -> None:
         ray.shutdown()
 
-    def test_metrics_after_checkpoint(self):
+    def setup_algos(self):
         """NOTE: This test needs a patch in ray earliest coming with 2.47.2+"""
         config = PPOConfig()
         config.training(
@@ -72,6 +76,11 @@ class TestAlgorithmCheckpointStepsAfterRestore(unittest.TestCase):
                 reduce="sum",
                 clear_on_reduce=False,
             )
+            metrics_logger.log_value(
+                A_MEAN_VALUE,
+                ENV_STEPS_PER_ITERATION,
+                reduce="mean",
+            )
 
         config.callbacks(on_sample_end=log_custom_metric)
         algo_0_runner = config.env_runners(
@@ -80,12 +89,17 @@ class TestAlgorithmCheckpointStepsAfterRestore(unittest.TestCase):
         algo_1_runner = config.env_runners(
             num_env_runners=NUM_ENV_RUNNERS,
         ).build_algo()
+        return algo_0_runner, algo_1_runner
+
+    def test_metrics_after_checkpoint(self):
+        algo_0_runner, algo_1_runner = self.setup_algos()
         self._test_algo_checkpointing(
             algo_0_runner,
             algo_1_runner,
             metrics=[
                 NUM_ENV_STEPS_SAMPLED_LIFETIME,
                 NUM_ENV_STEPS_IN_CALLBACK_LIFETIME,
+                A_MEAN_VALUE,
             ],
         )
 
@@ -178,7 +192,7 @@ class TestAlgorithmCheckpointStepsAfterRestore(unittest.TestCase):
                 algo_0_runner_restored.metrics, algo_1_runner_restored.metrics
             )
 
-            # --- Step 2 from restored & checkpoint ---
+            # --- Step 2 from restored ---
             result_algo0_step2_restored = algo_0_runner_restored.step()
             result_algo1_step2_restored = algo_1_runner_restored.step()
             # Check if metric was updated
@@ -192,6 +206,7 @@ class TestAlgorithmCheckpointStepsAfterRestore(unittest.TestCase):
                             (ENV_RUNNER_RESULTS, metric)
                         ),
                         expected_results[metric]["step_2"],
+                        f"Expected {metric} to be {expected_results[metric]['step_2']}",
                     )
                     self.assertEqual(
                         algo_1_runner_restored.metrics.peek(
@@ -274,9 +289,51 @@ class TestAlgorithmCheckpointStepsAfterRestore(unittest.TestCase):
                             result_algo1_step3_restored_x2[ENV_RUNNER_RESULTS][metric],
                         )
 
+    def test_steps_after_later_reload(self):
+        """Assure that reload does not reset metrics."""
+        algo_0_runner, algo_1_runner = self.setup_algos()
+        for algo in (algo_0_runner, algo_1_runner):
+            with self.subTest(num_env_runners=algo.config.num_env_runners):
+                for _ in range(9):
+                    algo.step()
+                with tempfile.TemporaryDirectory(
+                    prefix=".ckpt_1_"
+                ) as checkpoint_1_step3:
+                    algo.save_checkpoint(checkpoint_1_step3)
+                    result_algo_1_step_10 = algo.step()  # Step 10
+                    for metric in (
+                        NUM_ENV_STEPS_SAMPLED_LIFETIME,
+                        NUM_ENV_STEPS_IN_CALLBACK_LIFETIME,
+                        A_MEAN_VALUE,
+                    ):
+                        self.assertEqual(
+                            result_algo_1_step_10[ENV_RUNNER_RESULTS][metric],
+                            expected_results[metric]["step_10"],
+                        )
+                    # Stop algo 1
+                    algo.stop()
+                    # Reload algo 1
+                    algo_restored = PPO.from_checkpoint(checkpoint_1_step3)
+                    assert algo_restored.metrics
+                    # Step 4 from restored
+                    result_algo_1_restored_step_10 = algo_restored.step()
+                    for metric in (
+                        NUM_ENV_STEPS_SAMPLED_LIFETIME,
+                        NUM_ENV_STEPS_IN_CALLBACK_LIFETIME,
+                        A_MEAN_VALUE,
+                    ):
+                        with self.subTest(f"{metric} after step 10", metric=metric):
+                            self.assertEqual(
+                                result_algo_1_restored_step_10[ENV_RUNNER_RESULTS][
+                                    metric
+                                ],
+                                expected_results[metric]["step_10"],
+                            )
+
 
 if __name__ == "__main__":
     import sys
+
     import pytest
 
     sys.exit(pytest.main(["-v", __file__]))
