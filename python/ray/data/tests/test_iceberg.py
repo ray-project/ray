@@ -263,6 +263,8 @@ def test_write_basic():
     reason="PyIceberg 0.7.0 fails on pyarrow <= 14.0.0",
 )
 def test_write_concurrency():
+
+    import numpy as np
     import pandas as pd
     import numpy as np
 
