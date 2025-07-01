@@ -478,7 +478,7 @@ def _generate_transform_fn_for_async_map(
 
                 for batch in input_batch_iterable:
                     # Acquire semaphore
-                    semaphore.acquire()
+                    await semaphore.acquire()
 
                     f = asyncio.ensure_future(process_item(batch))
                     # Release on task completion
