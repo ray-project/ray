@@ -1,3 +1,4 @@
+import gymnasium as gym
 from typing import Any, Dict
 
 from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
@@ -28,7 +29,6 @@ from ray.rllib.utils.annotations import override
 from ray.rllib.utils.framework import try_import_torch
 from ray.rllib.utils.metrics import ALL_MODULES, TD_ERROR_KEY
 from ray.rllib.utils.typing import ModuleID, ParamDict, TensorType
-import gymnasium as gym
 
 torch, nn = try_import_torch()
 
