@@ -582,7 +582,7 @@ def _generate_transform_fn_for_async_map(
         consumed = False
         # NOTE: To preserve the iteration ordering to that of the input sequence
         #       we rely on deque to keep track of running tasks
-        cur_tasks: MutableSequence[asyncio.Task] = deque()
+        cur_tasks = deque()
 
         sentinel = _SENTINEL
 
@@ -613,8 +613,8 @@ def _generate_transform_fn_for_async_map(
                     next_tasks = done
                     cur_tasks = deque(pending)
 
-                for t in next_tasks:
-                    output_queue.put(await t)
+                for next_task in next_tasks:
+                    output_queue.put(await next_task)
 
         except BaseException as e:
             sentinel = e
