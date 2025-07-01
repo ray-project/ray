@@ -3,10 +3,13 @@ import collections
 import inspect
 import logging
 import queue
+import typing
 from asyncio import Semaphore
+from collections import deque
 from threading import Thread
 from types import GeneratorType
-from typing import Any, Callable, Iterable, List, Optional
+from typing import Any, Callable, Iterable, List, Optional, Iterator, \
+    AsyncGenerator, Generator, Coroutine, Collection, MutableSequence
 
 import numpy as np
 import pandas as pd
@@ -637,3 +640,76 @@ def _create_map_transformer_for_block_based_map_op(
         BuildOutputBlocksMapTransformFn.for_blocks(),
     ]
     return MapTransformer(transform_fns, init_fn=init_fn)
+
+
+_SENTINEL = object()
+
+T = typing.TypeVar("T")
+U = typing.TypeVar("U")
+
+def _generate_transform_for_async_udf(
+    fn: UserDefinedFunction,
+    validate_fn: Callable,
+    *,
+    max_concurrent_batches: int,
+) -> MapTransformCallable:
+    assert inspect.iscoroutinefunction(fn), f"Expected a coroutine function, got {fn}"
+
+    loop = ray.data._map_actor_context.udf_map_asyncio_loop
+    ctx = DataContext.get_current()
+
+    async def _process_all(it: Iterator[T], output_queue: queue.Queue) -> None:
+        consumed = False
+        # NOTE: To preserve the iteration ordering to that of the input sequence
+        #       we rely on deque to keep track of running tasks
+        cur_tasks: MutableSequence[asyncio.Task] = (
+            deque()
+            if ctx.execution_options.preserve_order
+            else set()
+        )
+
+        while True:
+            while len(cur_tasks) < max_concurrent_batches and not consumed:
+                try:
+                    item = next(it)
+                    cur_tasks.append(loop.create_task(fn(item)))
+                except StopIteration:
+                    consumed = True
+                    break
+
+            # Check if any running tasks remaining
+            if not cur_tasks:
+                break
+
+            if ctx.execution_options.preserve_order:
+                next_tasks = [cur_tasks.pop(0)]
+            else:
+                done, pending = await asyncio.wait(
+                    cur_tasks,
+                    return_when=asyncio.FIRST_COMPLETED
+                )
+
+                next_tasks = done
+                cur_tasks = pending
+
+            for t in next_tasks:
+                output_queue.put(await t)
+
+    def _transform(batch_iter: Iterable[T], task_context: TaskContext) -> Iterable[U]:
+        outputs = queue.Queue(maxsize=max_concurrent_batches)
+
+        asyncio.run_coroutine_threadsafe(
+            _process_all(iter(batch_iter), outputs),
+            loop
+        )
+
+        while True:
+            items = outputs.get()
+            if items is _SENTINEL:
+                break
+            elif isinstance(items, BaseException):
+                raise items
+            else:
+                yield from items
+
+    return _transform
