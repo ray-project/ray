@@ -694,7 +694,8 @@ def _generate_transform_fn_for_async_map(
                     cur_tasks = deque(pending)
 
                 for t in next_tasks:
-                    output_queue.put(await t)
+                    res = await t
+                    output_queue.put([out async for out in res])
 
         except BaseException as e:
             sentinel = e
