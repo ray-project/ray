@@ -1,6 +1,17 @@
 import inspect
 import logging
-from typing import Any, Dict, List, Literal, Optional, Tuple, Union, TYPE_CHECKING
+from typing import (
+    Any,
+    Dict,
+    List,
+    Literal,
+    Optional,
+    Tuple,
+    Union,
+    TYPE_CHECKING,
+    TypeVar,
+    Generic,
+)
 
 import ray._private.ray_constants as ray_constants
 import ray._private.signature as signature
@@ -40,11 +51,8 @@ from ray.util.tracing.tracing_helper import (
     _tracing_actor_method_invocation,
 )
 from ray._private.custom_types import (
-    TENSOR_TRANSPORT,
-    TypeTensorTransport,
-    TypeTensorTransportEnum,
+    TensorTransportEnum,
 )
-from ray.core.generated.common_pb2 import TensorTransport, OBJECT_STORE
 
 if TYPE_CHECKING:
     pass
@@ -53,6 +61,12 @@ logger = logging.getLogger(__name__)
 
 # Hook to call with (actor, resources, strategy) on each local actor creation.
 _actor_launch_hook = None
+
+# TypeVar for generic ActorHandle
+T = TypeVar("T")
+
+# return type of ActorClass[T].remote()
+ActorProxy = Union["ActorHandle[T]", type[T]]
 
 
 @PublicAPI
@@ -74,7 +88,37 @@ def method(*args, **kwargs):
 
     Args:
         num_returns: The number of object refs that should be returned by
-            invocations of this actor method.
+            invocations of this actor method. The default value is 1 for a
+            normal actor task and "streaming" for an actor generator task (a
+            function that yields objects instead of returning them).
+        max_task_retries: How many times to retry an actor task if the task
+            fails due to a runtime error, e.g., the actor has died. The
+            default value is 0. If set to -1, the system will retry the
+            failed task until the task succeeds, or the actor has reached
+            its max_restarts limit. If set to `n > 0`, the system will retry
+            the failed task up to n times, after which the task will throw a
+            `RayActorError` exception upon :obj:`ray.get`.  Note that Python
+            exceptions may trigger retries
+            *only if* `retry_exceptions` is set for the method, in that case
+            when `max_task_retries` runs out the task will rethrow the
+            exception from the task. You can override this number with the
+            method's `max_task_retries` option in `@ray.method` decorator or
+            in `.option()`.
+        retry_exceptions: Boolean of whether to retry all Python
+            exceptions, or a list of allowlist exceptions to retry. The default
+            value is False (only retry tasks upon system failures and if
+            max_task_retries is set)
+        concurrency_group: The name of the concurrency group
+            to use for the actor method. By default, the actor is
+            single-threaded and runs all actor tasks on the same thread.
+            See :ref:`Defining Concurrency Groups <defining-concurrency-groups>`.
+        tensor_transport: [Experimental] The tensor transport protocol to
+            use for the actor method. The valid values are "OBJECT_STORE"
+            (default), "NCCL", or "GLOO" (case-insensitive). torch.Tensors
+            returned by this task will be sent to other tasks using the
+            specified transport. NCCL and GLOO transports require first creating
+            a collective with the involved actors using
+            `ray.experimental.collective.create_collective_group`.
     """
     valid_kwargs = [
         "num_returns",
@@ -114,13 +158,8 @@ def method(*args, **kwargs):
         if "enable_task_events" in kwargs and kwargs["enable_task_events"] is not None:
             method.__ray_enable_task_events__ = kwargs["enable_task_events"]
         if "tensor_transport" in kwargs:
-            tensor_transport_str = kwargs["tensor_transport"].upper()
-            if tensor_transport_str not in TENSOR_TRANSPORT:
-                raise ValueError(
-                    f"Invalid tensor transport {tensor_transport_str}, must be one of {TENSOR_TRANSPORT}."
-                )
-            method.__ray_tensor_transport__ = TensorTransport.Value(
-                tensor_transport_str
+            method.__ray_tensor_transport__ = TensorTransportEnum.from_str(
+                kwargs["tensor_transport"]
             )
         return method
 
@@ -148,7 +187,7 @@ class _ActorMethodMetadata:
         enable_task_events: bool,
         decorator: Optional[Any] = None,
         signature: Optional[List[inspect.Parameter]] = None,
-        tensor_transport: Optional[TypeTensorTransportEnum] = None,
+        tensor_transport: Optional[TensorTransportEnum] = None,
     ):
         """Initialize an _ActorMethodMetadata.
 
@@ -226,7 +265,7 @@ class ActorMethod:
         enable_task_events: bool,
         decorator=None,
         signature: Optional[List[inspect.Parameter]] = None,
-        tensor_transport: Optional[TypeTensorTransportEnum] = None,
+        tensor_transport: Optional[TensorTransportEnum] = None,
     ):
         """Initialize an ActorMethod.
 
@@ -251,7 +290,6 @@ class ActorMethod:
             signature: The signature of the actor method. It is None only when cross
                 language feature is used.
             tensor_transport: The tensor transport protocol to use for the actor method.
-                The valid values are OBJECT_STORE (default), NCCL, or GLOO, and they are case-insensitive.
         """
         self._actor = actor
         self._method_name = method_name
@@ -279,9 +317,9 @@ class ActorMethod:
 
         # If the task call doesn't specify a tensor transport option, use `_tensor_transport`
         # as the default transport for this actor method.
-        self._tensor_transport: TypeTensorTransportEnum = (
-            tensor_transport or OBJECT_STORE
-        )
+        if tensor_transport is None:
+            tensor_transport = TensorTransportEnum.OBJECT_STORE
+        self._tensor_transport = tensor_transport
 
     def __call__(self, *args, **kwargs):
         raise TypeError(
@@ -424,7 +462,7 @@ class ActorMethod:
         concurrency_group=None,
         _generator_backpressure_num_objects=None,
         enable_task_events=None,
-        tensor_transport: Optional[TypeTensorTransport] = None,
+        tensor_transport_name: Optional[str] = None,
     ):
         if num_returns is None:
             num_returns = self._num_returns
@@ -440,15 +478,17 @@ class ActorMethod:
             _generator_backpressure_num_objects = (
                 self._generator_backpressure_num_objects
             )
-        if tensor_transport is None:
-            tensor_transport = self._tensor_transport
+
+        if tensor_transport_name is not None:
+            tensor_transport = TensorTransportEnum.from_str(tensor_transport_name)
         else:
-            if tensor_transport not in TENSOR_TRANSPORT:
-                raise ValueError(
-                    f"Invalid tensor transport {tensor_transport}, must be one of {TENSOR_TRANSPORT}"
-                )
-            # Convert `tensor_transport` from string to enum.
-            tensor_transport = TensorTransport.Value(tensor_transport)
+            tensor_transport = self._tensor_transport
+        if tensor_transport != TensorTransportEnum.OBJECT_STORE and num_returns != 1:
+            raise ValueError(
+                f"Currently, methods with tensor_transport={tensor_transport.name} only support 1 return value. "
+                "Please make sure the actor method is decorated with `@ray.method(num_returns=1)` (the default)."
+            )
+
         args = args or []
         kwargs = kwargs or {}
 
@@ -484,15 +524,11 @@ class ActorMethod:
             invocation = self._decorator(invocation)
 
         obj_ref = invocation(args, kwargs)
-        if tensor_transport != OBJECT_STORE:
-            if num_returns != 1:
-                raise ValueError(
-                    f"Currently, methods with tensor_transport={TensorTransport.Name(tensor_transport)} only support 1 return value. "
-                    "Please make sure the actor method returns a single object."
-                )
-
+        if tensor_transport != TensorTransportEnum.OBJECT_STORE:
             gpu_object_manager = ray._private.worker.global_worker.gpu_object_manager
-            gpu_object_manager.add_gpu_object_ref(obj_ref, self._actor)
+            gpu_object_manager.add_gpu_object_ref(
+                obj_ref, self._actor, tensor_transport
+            )
 
         return obj_ref
 
@@ -581,7 +617,7 @@ class _ActorClassMethodMetadata(object):
         self.enable_task_events = {}
         self.generator_backpressure_num_objects = {}
         self.concurrency_group_for_methods = {}
-        self.method_name_to_tensor_transport: Dict[str, TypeTensorTransportEnum] = {}
+        self.method_name_to_tensor_transport: Dict[str, TensorTransportEnum] = {}
 
         for method_name, method in actor_methods:
             # Whether or not this method requires binding of its first
@@ -742,7 +778,7 @@ def _process_option_dict(actor_options):
 
 
 @PublicAPI
-class ActorClass:
+class ActorClass(Generic[T]):
     """An actor class.
 
     This is a decorated class. It can be used to create actors.
@@ -882,7 +918,7 @@ class ActorClass:
             self._default_options["runtime_env"] = self.__ray_metadata__.runtime_env
         return self
 
-    def remote(self, *args, **kwargs):
+    def remote(self, *args, **kwargs) -> ActorProxy[T]:
         """Create an actor.
 
         Args:
@@ -924,18 +960,19 @@ class ActorClass:
                 which indicates that the actor doesn't need to be restarted.
                 A value of -1 indicates that an actor should be restarted
                 indefinitely.
-            max_task_retries: How many times to
-                retry an actor task if the task fails due to a runtime error,
-                e.g., the actor has died. If set to -1, the system will
-                retry the failed task until the task succeeds, or the actor
-                has reached its max_restarts limit. If set to `n > 0`, the
-                system will retry the failed task up to n times, after which the
-                task will throw a `RayActorError` exception upon :obj:`ray.get`.
-                Note that Python exceptions may trigger retries *only if*
-                `retry_exceptions` is set for the method, in that case when
-                `max_task_retries` runs out the task will rethrow the exception from
-                the task. You can override this number with the method's
-                `max_task_retries` option in `@ray.method` decorator or in `.option()`.
+            max_task_retries: How many times to retry an actor task if the task
+                fails due to a runtime error, e.g., the actor has died. The
+                default value is 0. If set to -1, the system will retry the
+                failed task until the task succeeds, or the actor has reached
+                its max_restarts limit. If set to `n > 0`, the system will retry
+                the failed task up to n times, after which the task will throw a
+                `RayActorError` exception upon :obj:`ray.get`.  Note that Python
+                exceptions may trigger retries
+                *only if* `retry_exceptions` is set for the method, in that case
+                when `max_task_retries` runs out the task will rethrow the
+                exception from the task. You can override this number with the
+                method's `max_task_retries` option in `@ray.method` decorator or
+                in `.option()`.
             max_pending_calls: Set the max number of pending calls
                 allowed on the actor handle. When this value is exceeded,
                 PendingCallsLimitExceeded will be raised for further tasks.
@@ -1032,7 +1069,7 @@ class ActorClass:
 
     @wrap_auto_init
     @_tracing_actor_creation
-    def _remote(self, args=None, kwargs=None, **actor_options):
+    def _remote(self, args=None, kwargs=None, **actor_options) -> ActorProxy[T]:
         """Create an actor.
 
         This method allows more flexibility than the remote method because
@@ -1414,7 +1451,7 @@ class ActorClass:
 
 
 @PublicAPI
-class ActorHandle:
+class ActorHandle(Generic[T]):
     """A handle to an actor.
 
     The fields in this class are prefixed with _ray_ to hide them from the user
@@ -1481,7 +1518,7 @@ class ActorHandle:
         method_retry_exceptions: Dict[str, Union[bool, list, tuple]],
         method_generator_backpressure_num_objects: Dict[str, int],
         method_enable_task_events: Dict[str, bool],
-        method_name_to_tensor_transport: Dict[str, TypeTensorTransportEnum],
+        method_name_to_tensor_transport: Dict[str, TensorTransportEnum],
         actor_method_cpus: int,
         actor_creation_function_descriptor,
         cluster_and_job,
@@ -1611,7 +1648,7 @@ class ActorHandle:
         concurrency_group_name: Optional[str] = None,
         generator_backpressure_num_objects: Optional[int] = None,
         enable_task_events: Optional[bool] = None,
-        tensor_transport: TypeTensorTransportEnum = OBJECT_STORE,
+        tensor_transport: Optional[TensorTransportEnum] = None,
     ):
         """Method execution stub for an actor handle.
 
@@ -1635,7 +1672,6 @@ class ActorHandle:
             enable_task_events: True if tracing is enabled, i.e., task events from
                 the actor should be reported.
             tensor_transport: The tensor transport protocol to use for the actor method.
-                The valid values are OBJECT_STORE (default), NCCL, or GLOO, and they are case-insensitive.
 
         Returns:
             object_refs: A list of object refs returned by the remote actor
@@ -1704,7 +1740,7 @@ class ActorHandle:
             concurrency_group_name if concurrency_group_name is not None else b"",
             generator_backpressure_num_objects,
             enable_task_events,
-            tensor_transport,
+            tensor_transport.value,
         )
 
         if num_returns == STREAMING_GENERATOR_RETURN:

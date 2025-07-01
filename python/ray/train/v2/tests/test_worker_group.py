@@ -19,7 +19,7 @@ from ray.train.v2._internal.exceptions import (
     WorkerHealthCheckTimeoutError,
 )
 from ray.train.v2._internal.execution.callback import WorkerGroupCallback
-from ray.train.v2._internal.execution.context import TrainRunContext, get_train_context
+from ray.train.v2._internal.execution.context import get_train_context
 from ray.train.v2._internal.execution.worker_group import (
     ActorMetadata,
     RayTrainWorker,
@@ -28,7 +28,7 @@ from ray.train.v2._internal.execution.worker_group import (
     WorkerGroupContext,
 )
 from ray.train.v2.api.config import RunConfig
-from ray.train.v2.tests.util import DummyObjectRefWrapper
+from ray.train.v2.tests.util import DummyObjectRefWrapper, create_dummy_run_context
 
 
 @pytest.fixture(autouse=True, scope="module")
@@ -40,7 +40,7 @@ def ray_start_4_cpus():
 
 def _default_inactive_worker_group(**kwargs):
     default_config = {
-        "train_run_context": TrainRunContext(RunConfig()),
+        "train_run_context": create_dummy_run_context(),
         "worker_group_context": _default_worker_group_context(),
     }
     default_config.update(kwargs)
@@ -61,10 +61,9 @@ def _default_worker_group_context(**kwargs):
 
 def test_worker_group_create():
     """Test WorkerGroup.create() factory method."""
-    train_run_context = TrainRunContext(run_config=RunConfig())
 
     worker_group = WorkerGroup.create(
-        train_run_context=train_run_context,
+        train_run_context=create_dummy_run_context(),
         worker_group_context=_default_worker_group_context(),
     )
 
@@ -85,9 +84,9 @@ def test_worker_group_create():
 )
 def test_worker_group_create_with_runtime_env(runtime_env):
     """Test WorkerGroup.create() factory method with a custom runtime environment."""
-    train_run_context = TrainRunContext(
-        run_config=RunConfig(worker_runtime_env=runtime_env)
-    )
+
+    run_config = RunConfig(worker_runtime_env=runtime_env)
+    train_run_context = create_dummy_run_context(run_config=run_config)
 
     worker_group_context = _default_worker_group_context()
 
@@ -384,8 +383,8 @@ def test_local_rank_assignment():
 def test_setup_worker_group(tmp_path):
     num_workers = 4
     worker_group = WorkerGroup(
-        train_run_context=TrainRunContext(
-            RunConfig(name="test", storage_path=str(tmp_path))
+        train_run_context=create_dummy_run_context(
+            run_config=RunConfig(name="test", storage_path=str(tmp_path))
         ),
         worker_group_context=_default_worker_group_context(num_workers=num_workers),
     )
@@ -441,6 +440,7 @@ def test_worker_group_callback():
             self.training_start_hook_called = False
             self.shutdown_hook_called = False
             self.poll_status_hook_called = False
+            self.abort_hook_called = False
 
         def after_worker_group_start(self, worker_group):
             self.start_hook_called = True
@@ -465,6 +465,23 @@ def test_worker_group_callback():
     assert hooks.poll_status_hook_called
     wg.shutdown()
     assert hooks.shutdown_hook_called
+
+
+def test_worker_group_abort():
+    class AssertCallback(WorkerGroupCallback):
+        def __init__(self):
+            self.abort_hook_called = False
+
+        def before_worker_group_abort(self, worker_group_context):
+            self.abort_hook_called = True
+
+    hooks = AssertCallback()
+    wg = _default_inactive_worker_group(callbacks=[hooks])
+
+    wg._start()
+    wg.abort()
+    assert hooks.abort_hook_called
+    wg.shutdown()
 
 
 def test_worker_log_file_paths():
