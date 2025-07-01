@@ -264,7 +264,6 @@ def test_write_basic():
 )
 def test_write_concurrency():
 
-    import numpy as np
     import pandas as pd
     import numpy as np
 
