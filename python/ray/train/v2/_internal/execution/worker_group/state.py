@@ -1,6 +1,7 @@
 import logging
+from abc import ABC, abstractmethod
 from dataclasses import dataclass
-from typing import List
+from typing import Dict,List, Optional, Protocol
 
 import ray
 from ray.actor import ActorHandle
@@ -10,6 +11,28 @@ from ray.train.v2._internal.util import time_monotonic
 from ray.util.placement_group import PlacementGroup, remove_placement_group
 
 logger = logging.getLogger(__name__)
+
+
+class PolicyHandledStatus(Protocol):
+    """Protocol for status objects that can be handled by failure policies.
+    
+    This provides a common interface for both runtime worker failures 
+    (WorkerGroupPollStatus) and startup failures (WorkerGroupResizeStatus).
+    """
+
+    @property
+    @abstractmethod
+    def errors(self) -> Dict[int, Exception]:
+        ...
+
+    @property
+    @abstractmethod
+    def finished(self) -> bool:
+        ...
+
+    @abstractmethod
+    def get_error_string(self) -> dict:
+        ...
 
 
 @dataclass(frozen=True)
@@ -133,3 +156,28 @@ def _shutdown_sync_actor(sync_actor: SynchronizationActor):
 
 def _shutdown_placement_group(placement_group: PlacementGroup):
     remove_placement_group(placement_group)
+
+
+@dataclass(frozen=True)
+class WorkerGroupResizeStatus (PolicyHandledStatus):
+    """Status of a worker group resize operation.
+
+    Attributes:
+        error: The error that occurred during the resize operation.
+    """
+
+    error: Optional[Exception] = None
+
+    @property
+    def errors(self) -> Dict[int, Exception]:
+        if self.error:
+            return {0: self.error}
+        return {}
+
+    # Currently the resize operation is synchronous, so it is either finished or not.
+    @property
+    def finished(self) -> bool:
+        return self.error is None
+
+    def get_error_string(self) -> str:
+        return f"{self.error}"
