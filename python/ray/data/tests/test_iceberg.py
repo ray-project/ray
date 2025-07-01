@@ -261,7 +261,7 @@ def test_write_basic():
 @pytest.mark.skipif(
     get_pyarrow_version() < parse_version("14.0.0"),
     reason="PyIceberg 0.7.0 fails on pyarrow <= 14.0.0",
-    )
+)
 def test_write_concurrency():
     import pandas as pd
 
