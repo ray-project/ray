@@ -658,6 +658,10 @@ def _generate_transform_fn_for_async_map(
 
     ctx = DataContext.get_current()
 
+    async def _apply_udf(item: T) -> List[U]:
+        res = await fn(item)
+        return [out async for out in res]
+
     async def _process_all(it: Iterator[T], output_queue: queue.Queue) -> None:
         loop = asyncio.get_running_loop()
 
@@ -673,7 +677,9 @@ def _generate_transform_fn_for_async_map(
                 while len(cur_tasks) < max_concurrent_batches and not consumed:
                     try:
                         item = next(it)
-                        cur_tasks.append(loop.create_task(fn(item)))
+                        cur_tasks.append(
+                            loop.create_task(_apply_udf(item))
+                        )
                     except StopIteration:
                         consumed = True
                         break
@@ -694,8 +700,7 @@ def _generate_transform_fn_for_async_map(
                     cur_tasks = deque(pending)
 
                 for t in next_tasks:
-                    res = await t
-                    output_queue.put([out async for out in res])
+                    output_queue.put(await t)
 
         except BaseException as e:
             sentinel = e
