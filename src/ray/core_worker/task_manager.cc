@@ -272,9 +272,33 @@ std::vector<rpc::ObjectReference> TaskManager::AddPendingTask(
 
     return_ids.push_back(return_id);
     rpc::ObjectReference ref;
-    ref.set_object_id(spec.ReturnId(i).Binary());
+    auto object_id = spec.ReturnId(i);
+    ref.set_object_id(object_id.Binary());
     ref.mutable_owner_address()->CopyFrom(caller_address);
     ref.set_call_site(call_site);
+
+    // Register the callback to free the GPU object when it is out of scope.
+    auto tensor_transport = reference_counter_.GetTensorTransport(object_id);
+    if (tensor_transport.value_or(rpc::TensorTransport::OBJECT_STORE) !=
+        rpc::TensorTransport::OBJECT_STORE) {
+      reference_counter_.AddObjectOutOfScopeOrFreedCallback(
+          object_id, [this](const ObjectID &object_id) {
+            auto actor_id = ObjectID::ToActorID(object_id);
+            auto rpc_client = get_actor_rpc_client_callback_(actor_id);
+            auto request = rpc::FreeActorObjectRequest();
+            request.set_object_id(object_id.Binary());
+            rpc_client->FreeActorObject(
+                request,
+                [object_id, actor_id](Status status,
+                                      const rpc::FreeActorObjectReply &reply) {
+                  if (!status.ok()) {
+                    RAY_LOG(ERROR).WithField(object_id).WithField(actor_id)
+                        << "Failed to free actor object: " << status;
+                  }
+                });
+          });
+    }
+
     returned_refs.push_back(std::move(ref));
   }
 
@@ -548,27 +572,6 @@ bool TaskManager::HandleTaskReturn(const ObjectID &object_id,
     } else {
       direct_return = in_memory_store_.Put(object, object_id);
     }
-  }
-
-  auto tensor_transport = reference_counter_.GetTensorTransport(object_id);
-  if (tensor_transport.value_or(rpc::TensorTransport::OBJECT_STORE) !=
-      rpc::TensorTransport::OBJECT_STORE) {
-    reference_counter_.AddObjectOutOfScopeOrFreedCallback(
-        object_id, [this](const ObjectID &object_id) {
-          auto actor_id = ObjectID::ToActorID(object_id);
-          auto rpc_client = get_actor_rpc_client_callback_(actor_id);
-          auto request = rpc::FreeActorObjectRequest();
-          request.set_object_id(object_id.Binary());
-          rpc_client->FreeActorObject(
-              request,
-              [object_id, actor_id](Status status,
-                                    const rpc::FreeActorObjectReply &reply) {
-                if (!status.ok()) {
-                  RAY_LOG(ERROR).WithField(object_id).WithField(actor_id)
-                      << "Failed to free actor object: " << status;
-                }
-              });
-        });
   }
 
   rpc::Address owner_address;
