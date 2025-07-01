@@ -1367,21 +1367,6 @@ class Algorithm(Checkpointable, Trainable):
         return eval_results, env_steps, agent_steps
 
     def _evaluate_offline_on_local_runner(self):
-        # if hasattr(env_runner, "input_reader") and env_runner.input_reader is None:
-        #     raise ValueError(
-        #         "Can't evaluate on a local worker if this local worker does not have "
-        #         "an environment!\nTry one of the following:"
-        #         "\n1) Set `evaluation_interval` > 0 to force creating a separate "
-        #         "evaluation EnvRunnerGroup.\n2) Set `create_local_env_runner=True` to "
-        #         "force the local (non-eval) EnvRunner to have an environment to "
-        #         "evaluate on."
-        #     )
-        # elif self.config.evaluation_parallel_to_training:
-        #     raise ValueError(
-        #         "Cannot run on local evaluation worker parallel to training! Try "
-        #         "setting `evaluation_parallel_to_training=False`."
-        #     )
-
         # How many episodes/timesteps do we need to run?
         unit = "batches"
         duration = (
