@@ -726,6 +726,9 @@ message TaskArg {
   // `is_inlined` is true if the argument is an ObjectRef, but it is small enough
   // to be inlined in the task spec instead of being pushed to the object store.
   bool is_inlined = 5;
+  // The tensor transport to use for this object. If not specified, then use the
+  // default object store.
+  optional TensorTransport tensor_transport = 6;
 }
 
 message ReturnObject {
