@@ -35,7 +35,13 @@ class GPUTestActor:
 @pytest.mark.parametrize("data_size_bytes", [100, 1000 * 1000])
 def test_gc_gpu_object(ray_start_regular, data_size_bytes):
     """
-    The object is small enough to be inlined.
+    This test covers different code paths for reference counting
+    by controlling the size of the CPU data to be inlined or not.
+
+    For small data, GPU objects are inlined, but the actual data lives
+    on the remote actor. Therefore, if we decrement the reference count
+    upon inlining, we may cause the tensors on the sender actor to be
+    freed before transferring to the receiver actor.
     """
     world_size = 2
     actors = [GPUTestActor.remote() for _ in range(world_size)]
