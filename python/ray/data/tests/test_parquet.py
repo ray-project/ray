@@ -1652,6 +1652,439 @@ def test_parquet_row_group_size_002(ray_start_regular_shared, tmp_path):
     assert ds.fragments[0].num_row_groups == 10
 
 
+@pytest.mark.parametrize("override_enabled", [True, False])
+def test_override_target_max_block_size_context_manager_basic(
+    ray_start_regular_shared, tmp_path, override_enabled
+):
+    """Test the _override_target_max_block_size_context context manager with different settings."""
+    from ray.data._internal.datasource.parquet_datasource import ParquetDatasource
+    from ray.data.read_api import _override_target_max_block_size_context
+
+    # Create test data
+    df = pd.DataFrame({"test": range(1000), "data": ["x" * 100] * 1000})
+    table = pa.Table.from_pandas(df)
+    path = os.path.join(tmp_path, "test.parquet")
+    pq.write_table(table, path)
+
+    datasource = ParquetDatasource(path)
+    ctx = DataContext.get_current()
+    original_target_max_block_size = ctx.target_max_block_size
+
+    with _override_target_max_block_size_context(
+        override_target_max_block_size=override_enabled,
+        override_num_blocks=4,
+        datasource_or_legacy_reader=datasource,
+    ):
+        current_target_max_block_size = ctx.target_max_block_size
+        if override_enabled:
+            # Should be different when override is enabled
+            assert current_target_max_block_size != original_target_max_block_size
+            assert current_target_max_block_size > 0
+        else:
+            # Should remain the same when override is disabled
+            assert current_target_max_block_size == original_target_max_block_size
+
+    # Verify restoration in both cases
+    assert ctx.target_max_block_size == original_target_max_block_size
+
+
+@pytest.mark.parametrize("override_num_blocks", [None, 1, 2, 4, 8])
+def test_override_target_max_block_size_validation(
+    ray_start_regular_shared, tmp_path, override_num_blocks
+):
+    """Test validation of override_target_max_block_size parameter with different block counts."""
+    from ray.data._internal.datasource.parquet_datasource import ParquetDatasource
+    from ray.data.read_api import _override_target_max_block_size_context
+
+    # Create test data
+    df = pd.DataFrame({"test": range(100)})
+    table = pa.Table.from_pandas(df)
+    path = os.path.join(tmp_path, "test.parquet")
+    pq.write_table(table, path)
+
+    datasource = ParquetDatasource(path)
+
+    if override_num_blocks is None:
+        # Should raise ValueError when override_num_blocks is None
+        with pytest.raises(ValueError, match="override_num_blocks must be specified"):
+            with _override_target_max_block_size_context(
+                override_target_max_block_size=True,
+                override_num_blocks=override_num_blocks,
+                datasource_or_legacy_reader=datasource,
+            ):
+                pass
+    else:
+        # Should work fine with valid override_num_blocks
+        ctx = DataContext.get_current()
+        original_target_max_block_size = ctx.target_max_block_size
+
+        with _override_target_max_block_size_context(
+            override_target_max_block_size=True,
+            override_num_blocks=override_num_blocks,
+            datasource_or_legacy_reader=datasource,
+        ):
+            # Should change the target_max_block_size
+            assert ctx.target_max_block_size != original_target_max_block_size
+
+        # Should restore original value
+        assert ctx.target_max_block_size == original_target_max_block_size
+
+
+@pytest.mark.parametrize("override_num_blocks", [2, 4, 8, 16])
+def test_override_target_max_block_size_calculation(
+    ray_start_regular_shared, tmp_path, override_num_blocks
+):
+    """Test that target_max_block_size is calculated correctly for different block counts."""
+    # Create test data with predictable size
+    df = pd.DataFrame(
+        {
+            "id": range(1000),
+            "data": ["a" * 100] * 1000,  # Each row ~108 bytes, total ~108KB
+        }
+    )
+    table = pa.Table.from_pandas(df)
+    path = os.path.join(tmp_path, "test.parquet")
+    pq.write_table(table, path)
+
+    from ray.data._internal.datasource.parquet_datasource import ParquetDatasource
+    from ray.data.read_api import _override_target_max_block_size_context
+
+    datasource = ParquetDatasource(path)
+    ctx = DataContext.get_current()
+    original_target_max_block_size = ctx.target_max_block_size
+
+    with _override_target_max_block_size_context(
+        override_target_max_block_size=True,
+        override_num_blocks=override_num_blocks,
+        datasource_or_legacy_reader=datasource,
+    ):
+        current_target_max_block_size = ctx.target_max_block_size
+
+        # Verify the calculation: target_max_block_size should be roughly
+        # estimated_data_size / override_num_blocks
+        estimated_data_size = datasource.estimate_inmemory_data_size()
+        if (
+            estimated_data_size
+            and not np.isnan(estimated_data_size)
+            and estimated_data_size > 0
+        ):
+            expected_target_max_block_size = max(
+                1, int(estimated_data_size / override_num_blocks)
+            )
+            assert current_target_max_block_size == expected_target_max_block_size
+
+        # Should be different from original
+        assert current_target_max_block_size != original_target_max_block_size
+        assert current_target_max_block_size > 0
+
+    # Verify restoration
+    assert ctx.target_max_block_size == original_target_max_block_size
+
+
+@pytest.mark.parametrize("data_size_multiplier", [1, 10, 100])
+def test_override_target_max_block_size_different_data_sizes(
+    ray_start_regular_shared, tmp_path, data_size_multiplier
+):
+    """Test override_target_max_block_size with different data sizes."""
+    from ray.data._internal.datasource.parquet_datasource import ParquetDatasource
+    from ray.data.read_api import _override_target_max_block_size_context
+
+    # Create datasets of different sizes
+    num_rows = 100 * data_size_multiplier
+    data_length = 50 * data_size_multiplier
+
+    df = pd.DataFrame(
+        {
+            "id": range(num_rows),
+            "data": ["x" * data_length] * num_rows,
+        }
+    )
+    table = pa.Table.from_pandas(df)
+    path = os.path.join(tmp_path, f"test_{data_size_multiplier}.parquet")
+    pq.write_table(table, path)
+
+    datasource = ParquetDatasource(path)
+    ctx = DataContext.get_current()
+    original_target_max_block_size = ctx.target_max_block_size
+
+    with _override_target_max_block_size_context(
+        override_target_max_block_size=True,
+        override_num_blocks=4,
+        datasource_or_legacy_reader=datasource,
+    ):
+        current_target_max_block_size = ctx.target_max_block_size
+
+        # Larger datasets should result in larger target_max_block_size values
+        assert current_target_max_block_size != original_target_max_block_size
+        assert current_target_max_block_size > 0
+
+        # The target_max_block_size should scale with data size
+        estimated_data_size = datasource.estimate_inmemory_data_size()
+        if (
+            estimated_data_size
+            and not np.isnan(estimated_data_size)
+            and estimated_data_size > 0
+        ):
+            expected_size = max(1, int(estimated_data_size / 4))
+            assert current_target_max_block_size == expected_size
+
+    # Verify restoration
+    assert ctx.target_max_block_size == original_target_max_block_size
+
+
+@pytest.mark.parametrize("has_override_num_blocks", [True, False])
+def test_override_target_max_block_size_read_parquet_validation(
+    ray_start_regular_shared, tmp_path, has_override_num_blocks
+):
+    """Test parameter validation in read_parquet function."""
+    # Create test data
+    df = pd.DataFrame({"test": range(100)})
+    table = pa.Table.from_pandas(df)
+    path = os.path.join(tmp_path, "test.parquet")
+    pq.write_table(table, path)
+
+    if has_override_num_blocks:
+        # Should work fine when override_num_blocks is provided
+        ds = ray.data.read_parquet(
+            path,
+            override_num_blocks=4,
+            override_target_max_block_size=True,
+        )
+        assert ds.count() == 100
+    else:
+        # Should raise ValueError when override_num_blocks is not provided
+        with pytest.raises(ValueError, match="override_num_blocks must be specified"):
+            ds = ray.data.read_parquet(
+                path,
+                override_target_max_block_size=True,
+            )
+            ds.count()  # Force execution
+
+
+# @pytest.mark.parametrize("thread_count", [1, 3, 5])
+# def test_override_target_max_block_size_thread_safety(
+#     ray_start_regular_shared, tmp_path, thread_count
+# ):
+#     """Test thread safety with different numbers of concurrent threads."""
+#     import threading
+
+#     # Create test data
+#     df = pd.DataFrame(
+#         {
+#             "thread_id": range(500),
+#             "data": ["thread_test"] * 500,
+#         }
+#     )
+#     table = pa.Table.from_pandas(df)
+#     path = os.path.join(tmp_path, "thread_test.parquet")
+#     pq.write_table(table, path)
+
+#     ctx = DataContext.get_current()
+#     original_target_max_block_size = ctx.target_max_block_size
+
+#     results = []
+#     errors = []
+#     context_values = []
+
+#     def read_with_override(thread_id):
+#         try:
+#             # Each thread uses different override_num_blocks
+#             override_blocks = 2 + (thread_id % 3)  # 2, 3, or 4 blocks
+
+#             ds = ray.data.read_parquet(
+#                 path,
+#                 override_num_blocks=override_blocks,
+#                 override_target_max_block_size=True,
+#             )
+#             count = ds.count()
+#             results.append((thread_id, count))
+
+#             # Check that context is properly restored after each read
+#             current_target_max_block_size = (
+#                 DataContext.get_current().target_max_block_size
+#             )
+#             context_values.append(current_target_max_block_size)
+
+#         except Exception as e:
+#             errors.append((thread_id, e))
+
+#     # Run multiple threads concurrently
+#     threads = []
+#     for i in range(thread_count):
+#         thread = threading.Thread(target=read_with_override, args=(i,))
+#         threads.append(thread)
+#         thread.start()
+
+#     # Wait for all threads to complete
+#     for thread in threads:
+#         thread.join()
+
+#     # Verify all threads succeeded
+#     assert len(errors) == 0, f"Errors occurred: {errors}"
+#     assert len(results) == thread_count
+#     assert all(count == 500 for _, count in results)
+
+#     # Verify that all context values are restored to original
+#     assert all(val == original_target_max_block_size for val in context_values)
+
+#     # Verify final context state
+#     assert ctx.target_max_block_size == original_target_max_block_size
+
+
+@pytest.mark.parametrize("data_size_estimate", [None, 0, float("nan"), 1000000])
+def test_override_target_max_block_size_edge_cases(
+    ray_start_regular_shared, data_size_estimate
+):
+    """Test behavior with different data size estimate edge cases."""
+    from ray.data.read_api import _override_target_max_block_size_context
+
+    # Create a mock datasource with controlled data size estimation
+    class MockDatasource:
+        def __init__(self, size_estimate):
+            self.size_estimate = size_estimate
+
+        def estimate_inmemory_data_size(self):
+            return self.size_estimate
+
+    mock_datasource = MockDatasource(data_size_estimate)
+
+    ctx = DataContext.get_current()
+    original_target_max_block_size = ctx.target_max_block_size
+
+    with _override_target_max_block_size_context(
+        override_target_max_block_size=True,
+        override_num_blocks=4,
+        datasource_or_legacy_reader=mock_datasource,
+    ):
+        current_target_max_block_size = ctx.target_max_block_size
+
+        if (
+            data_size_estimate is not None
+            and not np.isnan(data_size_estimate)
+            and data_size_estimate > 0
+        ):
+            # Should calculate new target_max_block_size
+            expected_size = max(1, int(data_size_estimate / 4))
+            assert current_target_max_block_size == expected_size
+            assert current_target_max_block_size != original_target_max_block_size
+        else:
+            # Should remain unchanged for invalid estimates
+            assert current_target_max_block_size == original_target_max_block_size
+
+    # Verify restoration
+    assert ctx.target_max_block_size == original_target_max_block_size
+
+
+@pytest.mark.parametrize(
+    "override_num_blocks,expected_blocks", [(1, 1), (4, 4), (8, 8), (16, 16)]
+)
+def test_override_target_max_block_size_integration(
+    ray_start_regular_shared, tmp_path, override_num_blocks, expected_blocks
+):
+    """Integration test with actual reads using different block counts."""
+    # Create test data
+    df = pd.DataFrame(
+        {
+            "id": range(2000),
+            "category": ["A", "B", "C", "D"] * 500,
+            "value": np.random.rand(2000),
+            "description": ["test_data_" + str(i) for i in range(2000)],
+        }
+    )
+    table = pa.Table.from_pandas(df)
+    path = os.path.join(tmp_path, "integration_test.parquet")
+    pq.write_table(table, path)
+
+    ctx = DataContext.get_current()
+    original_target_max_block_size = ctx.target_max_block_size
+
+    # Read with override_target_max_block_size=True
+    ds = ray.data.read_parquet(
+        path,
+        override_num_blocks=override_num_blocks,
+        override_target_max_block_size=True,
+    )
+
+    # Verify data integrity
+    count = ds.count()
+    assert count == 2000
+
+    sample = ds.take(10)
+    assert len(sample) == 10
+    assert all(
+        "id" in row and "category" in row and "value" in row and "description" in row
+        for row in sample
+    )
+
+    # Verify context is restored
+    assert ctx.target_max_block_size == original_target_max_block_size
+
+
+def test_override_target_max_block_size_actual_change_during_read(
+    ray_start_regular_shared, tmp_path
+):
+    """Test that target_max_block_size actually changes during the read operation."""
+    # Create test data with known size
+    df = pd.DataFrame(
+        {
+            "id": range(5000),
+            "data": ["x" * 200] * 5000,  # Each row is ~200 bytes, total ~1MB
+        }
+    )
+    table = pa.Table.from_pandas(df)
+    path = os.path.join(tmp_path, "test.parquet")
+    pq.write_table(table, path)
+
+    ctx = DataContext.get_current()
+    original_target_max_block_size = ctx.target_max_block_size
+
+    # Track target_max_block_size changes during read
+    target_max_block_sizes = []
+
+    # Save originals from both the util module and the alias imported into
+    # ray.data.read_api so every call path is patched.
+    original_autodetect_util = ray.data._internal.util._autodetect_parallelism
+    import ray.data.read_api as read_api
+
+    original_autodetect_read_api = read_api._autodetect_parallelism
+
+    def capture_autodetect(*args, **kwargs):
+        # Record the current value so we can assert it was modified.
+        current_ctx = DataContext.get_current()
+        target_max_block_sizes.append(current_ctx.target_max_block_size)
+        # Delegate to the real implementation.
+        return original_autodetect_util(*args, **kwargs)
+
+    # Patch both references.
+    ray.data._internal.util._autodetect_parallelism = capture_autodetect
+    read_api._autodetect_parallelism = capture_autodetect
+
+    try:
+        # Read with override_target_max_block_size=True
+        ds = ray.data.read_parquet(
+            path,
+            override_num_blocks=8,
+            override_target_max_block_size=True,
+        )
+
+        # Force execution to trigger the read
+        ds.count()
+
+        # Verify that target_max_block_size was changed during read
+        assert len(target_max_block_sizes) > 0
+        changed_target_max_block_size = target_max_block_sizes[0]
+        assert changed_target_max_block_size != original_target_max_block_size
+        assert changed_target_max_block_size > 0
+
+    finally:
+        # Restore the original functions
+        ray.data._internal.util._autodetect_parallelism = original_autodetect_util
+        read_api._autodetect_parallelism = original_autodetect_read_api
+
+    # Verify that target_max_block_size is restored after read
+    assert ctx.target_max_block_size == original_target_max_block_size
+
+
 if __name__ == "__main__":
     import sys
 

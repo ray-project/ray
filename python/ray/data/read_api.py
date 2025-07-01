@@ -1,4 +1,5 @@
 import collections
+import contextlib
 import logging
 import os
 import warnings
@@ -345,6 +346,59 @@ def range_tensor(
     )
 
 
+@contextlib.contextmanager
+def _override_target_max_block_size_context(
+    override_target_max_block_size: bool,
+    override_num_blocks: Optional[int],
+    datasource_or_legacy_reader: Optional[Union[Datasource, Reader]] = None,
+):
+    """Context manager to temporarily override target_max_block_size in DataContext.
+
+    Args:
+        override_target_max_block_size: Whether to enable the override.
+        override_num_blocks: The number of output blocks to use for calculation.
+        datasource_or_legacy_reader: The datasource to estimate data size from.
+    """
+    if not override_target_max_block_size:
+        yield
+        return
+
+    if override_num_blocks is None:
+        raise ValueError(
+            "override_num_blocks must be specified when override_target_max_block_size is True"
+        )
+
+    ctx = DataContext.get_current()
+    original_target_max_block_size = ctx.target_max_block_size
+
+    try:
+        # Estimate data size if available
+        if datasource_or_legacy_reader:
+            estimated_data_size = (
+                datasource_or_legacy_reader.estimate_inmemory_data_size()
+            )
+            if (
+                estimated_data_size is not None
+                and not np.isnan(estimated_data_size)
+                and estimated_data_size > 0
+            ):
+                # Calculate new target_max_block_size based on estimated data size and desired number of blocks
+                new_target_max_block_size = max(
+                    1, int(estimated_data_size / override_num_blocks)
+                )
+                ctx.target_max_block_size = new_target_max_block_size
+                logger.debug(
+                    f"Temporarily overriding target_max_block_size from {original_target_max_block_size} "
+                    f"to {new_target_max_block_size} bytes based on estimated data size {estimated_data_size} "
+                    f"and override_num_blocks {override_num_blocks}"
+                )
+
+        yield
+    finally:
+        # Restore original value
+        ctx.target_max_block_size = original_target_max_block_size
+
+
 @PublicAPI
 @wrap_auto_init
 def read_datasource(
@@ -354,6 +408,7 @@ def read_datasource(
     ray_remote_args: Dict[str, Any] = None,
     concurrency: Optional[int] = None,
     override_num_blocks: Optional[int] = None,
+    override_target_max_block_size: bool = False,
     **read_args,
 ) -> Dataset:
     """Read a stream from a custom :class:`~ray.data.Datasource`.
@@ -370,6 +425,9 @@ def read_datasource(
             By default, the number of output blocks is dynamically decided based on
             input data size and available resources. You shouldn't manually set this
             value in most cases.
+        override_target_max_block_size: If True, override the DataContext's
+            target_max_block_size setting based on estimated data size and
+            override_num_blocks. This requires override_num_blocks to be specified.
         read_args: Additional kwargs to pass to the :class:`~ray.data.Datasource`
             implementation.
 
@@ -398,41 +456,46 @@ def read_datasource(
         read_args,
     )
 
-    cur_pg = ray.util.get_current_placement_group()
-    requested_parallelism, _, inmemory_size = _autodetect_parallelism(
-        parallelism,
-        ctx.target_max_block_size,
-        DataContext.get_current(),
+    with _override_target_max_block_size_context(
+        override_target_max_block_size,
+        override_num_blocks,
         datasource_or_legacy_reader,
-        placement_group=cur_pg,
-    )
+    ):
+        cur_pg = ray.util.get_current_placement_group()
+        requested_parallelism, _, inmemory_size = _autodetect_parallelism(
+            parallelism,
+            ctx.target_max_block_size,
+            DataContext.get_current(),
+            datasource_or_legacy_reader,
+            placement_group=cur_pg,
+        )
 
-    # TODO(hchen/chengsu): Remove the duplicated get_read_tasks call here after
-    # removing LazyBlockList code path.
-    read_tasks = datasource_or_legacy_reader.get_read_tasks(requested_parallelism)
+        # TODO(hchen/chengsu): Remove the duplicated get_read_tasks call here after
+        # removing LazyBlockList code path.
+        read_tasks = datasource_or_legacy_reader.get_read_tasks(requested_parallelism)
 
-    stats = DatasetStats(
-        metadata={"Read": [read_task.metadata for read_task in read_tasks]},
-        parent=None,
-    )
-    read_op = Read(
-        datasource,
-        datasource_or_legacy_reader,
-        parallelism,
-        inmemory_size,
-        len(read_tasks) if read_tasks else 0,
-        ray_remote_args,
-        concurrency,
-    )
-    execution_plan = ExecutionPlan(
-        stats,
-        DataContext.get_current().copy(),
-    )
-    logical_plan = LogicalPlan(read_op, execution_plan._context)
-    return Dataset(
-        plan=execution_plan,
-        logical_plan=logical_plan,
-    )
+        stats = DatasetStats(
+            metadata={"Read": [read_task.metadata for read_task in read_tasks]},
+            parent=None,
+        )
+        read_op = Read(
+            datasource,
+            datasource_or_legacy_reader,
+            parallelism,
+            inmemory_size,
+            len(read_tasks) if read_tasks else 0,
+            ray_remote_args,
+            concurrency,
+        )
+        execution_plan = ExecutionPlan(
+            stats,
+            DataContext.get_current().copy(),
+        )
+        logical_plan = LogicalPlan(read_op, execution_plan._context)
+        return Dataset(
+            plan=execution_plan,
+            logical_plan=logical_plan,
+        )
 
 
 @PublicAPI(stability="alpha")
@@ -449,6 +512,7 @@ def read_audio(
     shuffle: Union[Literal["files"], None] = None,
     concurrency: Optional[int] = None,
     override_num_blocks: Optional[int] = None,
+    override_target_max_block_size: bool = False,
     ray_remote_args: Optional[Dict[str, Any]] = None,
 ):
     """Creates a :class:`~ray.data.Dataset` from audio files.
@@ -499,6 +563,9 @@ def read_audio(
             input data size and available resources. You shouldn't manually set this
             value in most cases.
         ray_remote_args: kwargs passed to :meth:`~ray.remote` in the read tasks.
+        override_target_max_block_size: If True, override the DataContext's
+            target_max_block_size setting based on estimated data size and
+            override_num_blocks. This requires override_num_blocks to be specified.
 
     Returns:
         A :class:`~ray.data.Dataset` containing audio amplitudes and associated
@@ -521,6 +588,7 @@ def read_audio(
         ray_remote_args=ray_remote_args,
         concurrency=concurrency,
         override_num_blocks=override_num_blocks,
+        override_target_max_block_size=override_target_max_block_size,
     )
 
 
@@ -625,6 +693,7 @@ def read_mongo(
     ray_remote_args: Dict[str, Any] = None,
     concurrency: Optional[int] = None,
     override_num_blocks: Optional[int] = None,
+    override_target_max_block_size: bool = False,
     **mongo_args,
 ) -> Dataset:
     """Create a :class:`~ray.data.Dataset` from a MongoDB database.
@@ -688,6 +757,9 @@ def read_mongo(
             .readthedocs.io/en/latest/api/api.html#pymongoarrow.api\
             aggregate_arrow_all>`_ in pymongoarrow in producing
             Arrow-formatted results.
+        override_target_max_block_size: If True, override the DataContext's
+            target_max_block_size setting based on estimated data size and
+            override_num_blocks. This requires override_num_blocks to be specified.
 
     Returns:
         :class:`~ray.data.Dataset` producing rows from the results of executing the pipeline on the specified MongoDB collection.
@@ -710,6 +782,7 @@ def read_mongo(
         ray_remote_args=ray_remote_args,
         concurrency=concurrency,
         override_num_blocks=override_num_blocks,
+        override_target_max_block_size=override_target_max_block_size,
     )
 
 
@@ -723,6 +796,7 @@ def read_bigquery(
     ray_remote_args: Dict[str, Any] = None,
     concurrency: Optional[int] = None,
     override_num_blocks: Optional[int] = None,
+    override_target_max_block_size: bool = False,
 ) -> Dataset:
     """Create a dataset from BigQuery.
 
@@ -773,6 +847,9 @@ def read_bigquery(
             By default, the number of output blocks is dynamically decided based on
             input data size and available resources. You shouldn't manually set this
             value in most cases.
+        override_target_max_block_size: If True, override the DataContext's
+            target_max_block_size setting based on estimated data size and
+            override_num_blocks. This requires override_num_blocks to be specified.
 
     Returns:
         Dataset producing rows from the results of executing the query (or reading the entire dataset)
@@ -785,6 +862,7 @@ def read_bigquery(
         ray_remote_args=ray_remote_args,
         concurrency=concurrency,
         override_num_blocks=override_num_blocks,
+        override_target_max_block_size=override_target_max_block_size,
     )
 
 
@@ -805,6 +883,7 @@ def read_parquet(
     file_extensions: Optional[List[str]] = None,
     concurrency: Optional[int] = None,
     override_num_blocks: Optional[int] = None,
+    override_target_max_block_size: bool = False,
     **arrow_parquet_args,
 ) -> Dataset:
     """Creates a :class:`~ray.data.Dataset` from parquet files.
@@ -925,6 +1004,9 @@ def read_parquet(
             By default, the number of output blocks is dynamically decided based on
             input data size and available resources. You shouldn't manually set this
             value in most cases.
+        override_target_max_block_size: If True, override the DataContext's
+            target_max_block_size setting based on estimated data size and
+            override_num_blocks. This requires override_num_blocks to be specified.
 
     Returns:
         :class:`~ray.data.Dataset` producing records read from the specified parquet
@@ -964,6 +1046,7 @@ def read_parquet(
         ray_remote_args=ray_remote_args,
         concurrency=concurrency,
         override_num_blocks=override_num_blocks,
+        override_target_max_block_size=override_target_max_block_size,
     )
 
 
@@ -986,6 +1069,7 @@ def read_images(
     file_extensions: Optional[List[str]] = ImageDatasource._FILE_EXTENSIONS,
     concurrency: Optional[int] = None,
     override_num_blocks: Optional[int] = None,
+    override_target_max_block_size: bool = False,
 ) -> Dataset:
     """Creates a :class:`~ray.data.Dataset` from image files.
 
@@ -1086,6 +1170,9 @@ def read_images(
             By default, the number of output blocks is dynamically decided based on
             input data size and available resources. You shouldn't manually set this
             value in most cases.
+        override_target_max_block_size: If True, override the DataContext's
+            target_max_block_size setting based on estimated data size and
+            override_num_blocks. This requires override_num_blocks to be specified.
 
     Returns:
         A :class:`~ray.data.Dataset` producing tensors that represent the images at
@@ -1121,6 +1208,7 @@ def read_images(
         ray_remote_args=ray_remote_args,
         concurrency=concurrency,
         override_num_blocks=override_num_blocks,
+        override_target_max_block_size=override_target_max_block_size,
     )
 
 
@@ -1141,6 +1229,7 @@ def read_parquet_bulk(
     file_extensions: Optional[List[str]] = ParquetBulkDatasource._FILE_EXTENSIONS,
     concurrency: Optional[int] = None,
     override_num_blocks: Optional[int] = None,
+    override_target_max_block_size: bool = False,
     **arrow_parquet_args,
 ) -> Dataset:
     """Create :class:`~ray.data.Dataset` from parquet files without reading metadata.
@@ -1221,6 +1310,9 @@ def read_parquet_bulk(
             By default, the number of output blocks is dynamically decided based on
             input data size and available resources. You shouldn't manually set this
             value in most cases.
+        override_target_max_block_size: If True, override the DataContext's
+            target_max_block_size setting based on estimated data size and
+            override_num_blocks. This requires override_num_blocks to be specified.
 
     Returns:
        :class:`~ray.data.Dataset` producing records read from the specified paths.
@@ -1259,6 +1351,7 @@ def read_parquet_bulk(
         ray_remote_args=ray_remote_args,
         concurrency=concurrency,
         override_num_blocks=override_num_blocks,
+        override_target_max_block_size=override_target_max_block_size,
     )
 
 
@@ -1280,6 +1373,7 @@ def read_json(
     file_extensions: Optional[List[str]] = JSONDatasource._FILE_EXTENSIONS,
     concurrency: Optional[int] = None,
     override_num_blocks: Optional[int] = None,
+    override_target_max_block_size: bool = False,
     **arrow_json_args,
 ) -> Dataset:
     """Creates a :class:`~ray.data.Dataset` from JSON and JSONL files.
@@ -1380,6 +1474,9 @@ def read_json(
             By default, the number of output blocks is dynamically decided based on
             input data size and available resources. You shouldn't manually set this
             value in most cases.
+        override_target_max_block_size: If True, override the DataContext's
+            target_max_block_size setting based on estimated data size and
+            override_num_blocks. This requires override_num_blocks to be specified.
 
     Returns:
         :class:`~ray.data.Dataset` producing records read from the specified paths.
@@ -1419,6 +1516,7 @@ def read_json(
         ray_remote_args=ray_remote_args,
         concurrency=concurrency,
         override_num_blocks=override_num_blocks,
+        override_target_max_block_size=override_target_max_block_size,
     )
 
 
@@ -1439,6 +1537,7 @@ def read_csv(
     file_extensions: Optional[List[str]] = None,
     concurrency: Optional[int] = None,
     override_num_blocks: Optional[int] = None,
+    override_target_max_block_size: bool = False,
     **arrow_csv_args,
 ) -> Dataset:
     """Creates a :class:`~ray.data.Dataset` from CSV files.
@@ -1560,6 +1659,9 @@ def read_csv(
             By default, the number of output blocks is dynamically decided based on
             input data size and available resources. You shouldn't manually set this
             value in most cases.
+        override_target_max_block_size: If True, override the DataContext's
+            target_max_block_size setting based on estimated data size and
+            override_num_blocks. This requires override_num_blocks to be specified.
 
     Returns:
         :class:`~ray.data.Dataset` producing records read from the specified paths.
@@ -1588,6 +1690,7 @@ def read_csv(
         ray_remote_args=ray_remote_args,
         concurrency=concurrency,
         override_num_blocks=override_num_blocks,
+        override_target_max_block_size=override_target_max_block_size,
     )
 
 
@@ -1610,6 +1713,7 @@ def read_text(
     file_extensions: Optional[List[str]] = None,
     concurrency: Optional[int] = None,
     override_num_blocks: Optional[int] = None,
+    override_target_max_block_size: bool = False,
 ) -> Dataset:
     """Create a :class:`~ray.data.Dataset` from lines stored in text files.
 
@@ -1675,6 +1779,9 @@ def read_text(
             By default, the number of output blocks is dynamically decided based on
             input data size and available resources. You shouldn't manually set this
             value in most cases.
+        override_target_max_block_size: If True, override the DataContext's
+            target_max_block_size setting based on estimated data size and
+            override_num_blocks. This requires override_num_blocks to be specified.
 
     Returns:
         :class:`~ray.data.Dataset` producing lines of text read from the specified
@@ -1705,6 +1812,7 @@ def read_text(
         ray_remote_args=ray_remote_args,
         concurrency=concurrency,
         override_num_blocks=override_num_blocks,
+        override_target_max_block_size=override_target_max_block_size,
     )
 
 
@@ -1725,6 +1833,7 @@ def read_avro(
     file_extensions: Optional[List[str]] = None,
     concurrency: Optional[int] = None,
     override_num_blocks: Optional[int] = None,
+    override_target_max_block_size: bool = False,
 ) -> Dataset:
     """Create a :class:`~ray.data.Dataset` from records stored in Avro files.
 
@@ -1787,6 +1896,9 @@ def read_avro(
             By default, the number of output blocks is dynamically decided based on
             input data size and available resources. You shouldn't manually set this
             value in most cases.
+        override_target_max_block_size: If True, override the DataContext's
+            target_max_block_size setting based on estimated data size and
+            override_num_blocks. This requires override_num_blocks to be specified.
 
     Returns:
         :class:`~ray.data.Dataset` holding records from the Avro files.
@@ -1814,6 +1926,7 @@ def read_avro(
         ray_remote_args=ray_remote_args,
         concurrency=concurrency,
         override_num_blocks=override_num_blocks,
+        override_target_max_block_size=override_target_max_block_size,
     )
 
 
@@ -1833,6 +1946,7 @@ def read_numpy(
     file_extensions: Optional[List[str]] = NumpyDatasource._FILE_EXTENSIONS,
     concurrency: Optional[int] = None,
     override_num_blocks: Optional[int] = None,
+    override_target_max_block_size: bool = False,
     **numpy_load_args,
 ) -> Dataset:
     """Create an Arrow dataset from numpy files.
@@ -1888,6 +2002,9 @@ def read_numpy(
             By default, the number of output blocks is dynamically decided based on
             input data size and available resources. You shouldn't manually set this
             value in most cases.
+        override_target_max_block_size: If True, override the DataContext's
+            target_max_block_size setting based on estimated data size and
+            override_num_blocks. This requires override_num_blocks to be specified.
 
     Returns:
         Dataset holding Tensor records read from the specified paths.
@@ -1915,6 +2032,7 @@ def read_numpy(
         parallelism=parallelism,
         concurrency=concurrency,
         override_num_blocks=override_num_blocks,
+        override_target_max_block_size=override_target_max_block_size,
     )
 
 
@@ -1935,6 +2053,7 @@ def read_tfrecords(
     file_extensions: Optional[List[str]] = None,
     concurrency: Optional[int] = None,
     override_num_blocks: Optional[int] = None,
+    override_target_max_block_size: bool = False,
     tfx_read_options: Optional["TFXReadOptions"] = None,
 ) -> Dataset:
     """Create a :class:`~ray.data.Dataset` from TFRecord files that contain
@@ -2015,6 +2134,9 @@ def read_tfrecords(
             By default, the number of output blocks is dynamically decided based on
             input data size and available resources. You shouldn't manually set this
             value in most cases.
+        override_target_max_block_size: If True, override the DataContext's
+            target_max_block_size setting based on estimated data size and
+            override_num_blocks. This requires override_num_blocks to be specified.
         tfx_read_options: Specifies read options when reading TFRecord files with TFX.
             When no options are provided, the default version without tfx-bsl will
             be used to read the tfrecords.
@@ -2065,6 +2187,7 @@ def read_tfrecords(
         ray_remote_args=ray_remote_args,
         concurrency=concurrency,
         override_num_blocks=override_num_blocks,
+        override_target_max_block_size=override_target_max_block_size,
     )
 
     if (
@@ -2102,6 +2225,7 @@ def read_webdataset(
     concurrency: Optional[int] = None,
     override_num_blocks: Optional[int] = None,
     expand_json: bool = False,
+    override_target_max_block_size: bool = False,
 ) -> Dataset:
     """Create a :class:`~ray.data.Dataset` from
     `WebDataset <https://github.com/webdataset/webdataset>`_ files.
@@ -2143,6 +2267,9 @@ def read_webdataset(
             value in most cases.
         expand_json: If ``True``, expand JSON objects into individual samples.
             Defaults to ``False``.
+        override_target_max_block_size: If True, override the DataContext's
+            target_max_block_size setting based on estimated data size and
+            override_num_blocks. This requires override_num_blocks to be specified.
 
     Returns:
         A :class:`~ray.data.Dataset` that contains the example features.
@@ -2178,6 +2305,7 @@ def read_webdataset(
         parallelism=parallelism,
         concurrency=concurrency,
         override_num_blocks=override_num_blocks,
+        override_target_max_block_size=override_target_max_block_size,
     )
 
 
@@ -2198,6 +2326,7 @@ def read_binary_files(
     file_extensions: Optional[List[str]] = None,
     concurrency: Optional[int] = None,
     override_num_blocks: Optional[int] = None,
+    override_target_max_block_size: bool = False,
 ) -> Dataset:
     """Create a :class:`~ray.data.Dataset` from binary files of arbitrary contents.
 
@@ -2268,6 +2397,9 @@ def read_binary_files(
             By default, the number of output blocks is dynamically decided based on
             input data size and available resources. You shouldn't manually set this
             value in most cases.
+        override_target_max_block_size: If True, override the DataContext's
+            target_max_block_size setting based on estimated data size and
+            override_num_blocks. This requires override_num_blocks to be specified.
 
     Returns:
         :class:`~ray.data.Dataset` producing rows read from the specified paths.
@@ -2295,6 +2427,7 @@ def read_binary_files(
         ray_remote_args=ray_remote_args,
         concurrency=concurrency,
         override_num_blocks=override_num_blocks,
+        override_target_max_block_size=override_target_max_block_size,
     )
 
 
@@ -2309,6 +2442,7 @@ def read_sql(
     ray_remote_args: Optional[Dict[str, Any]] = None,
     concurrency: Optional[int] = None,
     override_num_blocks: Optional[int] = None,
+    override_target_max_block_size: bool = False,
 ) -> Dataset:
     """Read from a database that provides a
     `Python DB API2-compliant <https://peps.python.org/pep-0249/>`_ connector.
@@ -2392,6 +2526,9 @@ def read_sql(
             By default, the number of output blocks is dynamically decided based on
             input data size and available resources. You shouldn't manually set this
             value in most cases.
+        override_target_max_block_size: If True, override the DataContext's
+            target_max_block_size setting based on estimated data size and
+            override_num_blocks. This requires override_num_blocks to be specified.
 
     Returns:
         A :class:`Dataset` containing the queried data.
@@ -2417,6 +2554,7 @@ def read_sql(
         ray_remote_args=ray_remote_args,
         concurrency=concurrency,
         override_num_blocks=override_num_blocks,
+        override_target_max_block_size=override_target_max_block_size,
     )
 
 
@@ -2432,6 +2570,7 @@ def read_databricks_tables(
     ray_remote_args: Optional[Dict[str, Any]] = None,
     concurrency: Optional[int] = None,
     override_num_blocks: Optional[int] = None,
+    override_target_max_block_size: bool = False,
 ) -> Dataset:
     """Read a Databricks unity catalog table or Databricks SQL execution result.
 
@@ -2488,6 +2627,9 @@ def read_databricks_tables(
             By default, the number of output blocks is dynamically decided based on
             input data size and available resources. You shouldn't manually set this
             value in most cases.
+        override_target_max_block_size: If True, override the DataContext's
+            target_max_block_size setting based on estimated data size and
+            override_num_blocks. This requires override_num_blocks to be specified.
 
     Returns:
         A :class:`Dataset` containing the queried data.
@@ -2567,6 +2709,7 @@ def read_databricks_tables(
         ray_remote_args=ray_remote_args,
         concurrency=concurrency,
         override_num_blocks=override_num_blocks,
+        override_target_max_block_size=override_target_max_block_size,
     )
 
 
@@ -2578,6 +2721,7 @@ def read_hudi(
     ray_remote_args: Optional[Dict[str, Any]] = None,
     concurrency: Optional[int] = None,
     override_num_blocks: Optional[int] = None,
+    override_target_max_block_size: bool = False,
 ) -> Dataset:
     """
     Create a :class:`~ray.data.Dataset` from an
@@ -2605,6 +2749,9 @@ def read_hudi(
             By default, the number of output blocks is dynamically decided based on
             input data size and available resources. You shouldn't manually set this
             value in most cases.
+        override_target_max_block_size: If True, override the DataContext's
+            target_max_block_size setting based on estimated data size and
+            override_num_blocks. This requires override_num_blocks to be specified.
 
     Returns:
         A :class:`~ray.data.Dataset` producing records read from the Hudi table.
@@ -2619,6 +2766,7 @@ def read_hudi(
         ray_remote_args=ray_remote_args,
         concurrency=concurrency,
         override_num_blocks=override_num_blocks,
+        override_target_max_block_size=override_target_max_block_size,
     )
 
 
@@ -2728,6 +2876,7 @@ def from_modin(df: "modin.pandas.dataframe.DataFrame") -> MaterializedDataset:
 def from_pandas(
     dfs: Union["pandas.DataFrame", List["pandas.DataFrame"]],
     override_num_blocks: Optional[int] = None,
+    override_target_max_block_size: bool = False,
 ) -> MaterializedDataset:
     """Create a :class:`~ray.data.Dataset` from a list of pandas dataframes.
 
@@ -2749,6 +2898,9 @@ def from_pandas(
             By default, the number of output blocks is dynamically decided based on
             input data size and available resources. You shouldn't manually set this
             value in most cases.
+        override_target_max_block_size: If True, override the DataContext's
+            target_max_block_size setting based on estimated data size and
+            override_num_blocks. This requires override_num_blocks to be specified.
 
     Returns:
         :class:`~ray.data.Dataset` holding data read from the dataframes.
@@ -2951,6 +3103,7 @@ def from_arrow(
     tables: Union["pyarrow.Table", bytes, List[Union["pyarrow.Table", bytes]]],
     *,
     override_num_blocks: Optional[int] = None,
+    override_target_max_block_size: bool = False,
 ) -> MaterializedDataset:
     """Create a :class:`~ray.data.Dataset` from a list of PyArrow tables.
 
@@ -2974,6 +3127,9 @@ def from_arrow(
             By default, the number of output blocks is dynamically decided based on
             input data size and available resources. You shouldn't manually set this
             value in most cases.
+        override_target_max_block_size: If True, override the DataContext's
+            target_max_block_size setting based on estimated data size and
+            override_num_blocks. This requires override_num_blocks to be specified.
 
     Returns:
         :class:`~ray.data.Dataset` holding data from the PyArrow tables.
@@ -3077,6 +3233,7 @@ def read_delta_sharing_tables(
     ray_remote_args: Optional[Dict[str, Any]] = None,
     concurrency: Optional[int] = None,
     override_num_blocks: Optional[int] = None,
+    override_target_max_block_size: bool = False,
 ) -> Dataset:
     """
     Read data from a Delta Sharing table.
@@ -3126,6 +3283,9 @@ def read_delta_sharing_tables(
             By default, the number of output blocks is dynamically decided based on
             input data size and available resources. You shouldn't manually set this
             value in most cases.
+        override_target_max_block_size: If True, override the DataContext's
+            target_max_block_size setting based on estimated data size and
+            override_num_blocks. This requires override_num_blocks to be specified.
 
     Returns:
         A :class:`Dataset` containing the queried data.
@@ -3149,6 +3309,7 @@ def read_delta_sharing_tables(
         ray_remote_args=ray_remote_args,
         concurrency=concurrency,
         override_num_blocks=override_num_blocks,
+        override_target_max_block_size=override_target_max_block_size,
     )
 
 
@@ -3158,6 +3319,7 @@ def from_spark(
     *,
     parallelism: Optional[int] = None,
     override_num_blocks: Optional[int] = None,
+    override_target_max_block_size: bool = False,
 ) -> MaterializedDataset:
     """Create a :class:`~ray.data.Dataset` from a
     `Spark DataFrame <https://spark.apache.org/docs/latest/api/python/reference/pyspark.sql/api/pyspark.sql.DataFrame.html>`_.
@@ -3169,6 +3331,9 @@ def from_spark(
             By default, the number of output blocks is dynamically decided based on
             input data size and available resources. You shouldn't manually set this
             value in most cases.
+        override_target_max_block_size: If True, override the DataContext's
+            target_max_block_size setting based on estimated data size and
+            override_num_blocks. This requires override_num_blocks to be specified.
 
     Returns:
         A :class:`~ray.data.MaterializedDataset` holding rows read from the DataFrame.
@@ -3185,6 +3350,7 @@ def from_huggingface(
     parallelism: int = -1,
     concurrency: Optional[int] = None,
     override_num_blocks: Optional[int] = None,
+    override_target_max_block_size: bool = False,
 ) -> Union[MaterializedDataset, Dataset]:
     """Create a :class:`~ray.data.MaterializedDataset` from a
     `Hugging Face Datasets Dataset <https://huggingface.co/docs/datasets/package_reference/main_classes#datasets.Dataset/>`_
@@ -3242,6 +3408,9 @@ def from_huggingface(
             By default, the number of output blocks is dynamically decided based on
             input data size and available resources. You shouldn't manually set this
             value in most cases.
+        override_target_max_block_size: If True, override the DataContext's
+            target_max_block_size setting based on estimated data size and
+            override_num_blocks. This requires override_num_blocks to be specified.
 
     Returns:
         A :class:`~ray.data.Dataset` holding rows from the `Hugging Face Datasets Dataset`_.
@@ -3300,6 +3469,7 @@ def from_huggingface(
                     ray_remote_args={
                         "retry_exceptions": [FileNotFoundError, ClientResponseError]
                     },
+                    override_target_max_block_size=override_target_max_block_size,
                 )
 
         except (FileNotFoundError, ClientResponseError):
@@ -3315,6 +3485,7 @@ def from_huggingface(
             parallelism=parallelism,
             concurrency=concurrency,
             override_num_blocks=override_num_blocks,
+            override_target_max_block_size=override_target_max_block_size,
         )
     if isinstance(dataset, datasets.Dataset):
         # To get the resulting Arrow table from a Hugging Face Dataset after
@@ -3467,6 +3638,7 @@ def read_iceberg(
     catalog_kwargs: Optional[Dict[str, str]] = None,
     ray_remote_args: Optional[Dict[str, Any]] = None,
     override_num_blocks: Optional[int] = None,
+    override_target_max_block_size: bool = False,
 ) -> Dataset:
     """Create a :class:`~ray.data.Dataset` from an Iceberg table.
 
@@ -3515,6 +3687,9 @@ def read_iceberg(
             input data size and available resources, and capped at the number of
             physical files to be read. You shouldn't manually set this value in most
             cases.
+        override_target_max_block_size: If True, override the DataContext's
+            target_max_block_size setting based on estimated data size and
+            override_num_blocks. This requires override_num_blocks to be specified.
 
     Returns:
         :class:`~ray.data.Dataset` with rows from the Iceberg table.
@@ -3535,6 +3710,7 @@ def read_iceberg(
         parallelism=parallelism,
         override_num_blocks=override_num_blocks,
         ray_remote_args=ray_remote_args,
+        override_target_max_block_size=override_target_max_block_size,
     )
 
     return dataset
@@ -3551,6 +3727,7 @@ def read_lance(
     ray_remote_args: Optional[Dict[str, Any]] = None,
     concurrency: Optional[int] = None,
     override_num_blocks: Optional[int] = None,
+    override_target_max_block_size: bool = False,
 ) -> Dataset:
     """
     Create a :class:`~ray.data.Dataset` from a
@@ -3587,6 +3764,9 @@ def read_lance(
             By default, the number of output blocks is dynamically decided based on
             input data size and available resources. You shouldn't manually set this
             value in most cases.
+        override_target_max_block_size: If True, override the DataContext's
+            target_max_block_size setting based on estimated data size and
+            override_num_blocks. This requires override_num_blocks to be specified.
 
     Returns:
         A :class:`~ray.data.Dataset` producing records read from the Lance dataset.
@@ -3604,6 +3784,7 @@ def read_lance(
         ray_remote_args=ray_remote_args,
         concurrency=concurrency,
         override_num_blocks=override_num_blocks,
+        override_target_max_block_size=override_target_max_block_size,
     )
 
 
@@ -3620,6 +3801,7 @@ def read_clickhouse(
     ray_remote_args: Optional[Dict[str, Any]] = None,
     concurrency: Optional[int] = None,
     override_num_blocks: Optional[int] = None,
+    override_target_max_block_size: bool = False,
 ) -> Dataset:
     """
     Create a :class:`~ray.data.Dataset` from a ClickHouse table or view.
@@ -3667,6 +3849,9 @@ def read_clickhouse(
             By default, the number of output blocks is dynamically decided based on
             input data size and available resources. You shouldn't manually set this
             value in most cases.
+        override_target_max_block_size: If True, override the DataContext's
+            target_max_block_size setting based on estimated data size and
+            override_num_blocks. This requires override_num_blocks to be specified.
 
     Returns:
         A :class:`~ray.data.Dataset` producing records read from the ClickHouse table or view.
@@ -3686,6 +3871,7 @@ def read_clickhouse(
         ray_remote_args=ray_remote_args,
         concurrency=concurrency,
         override_num_blocks=override_num_blocks,
+        override_target_max_block_size=override_target_max_block_size,
     )
 
 
@@ -3698,6 +3884,7 @@ def read_unity_catalog(
     data_format: Optional[str] = None,
     region: Optional[str] = None,
     reader_kwargs: Optional[dict],
+    override_target_max_block_size: bool = False,
 ) -> Dataset:
     """
     Loads a Unity Catalog table or files into a Ray Dataset using Databricks Unity Catalog credential vending,
