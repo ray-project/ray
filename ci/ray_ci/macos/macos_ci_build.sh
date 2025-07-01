@@ -13,14 +13,17 @@ export DL="1"
 export TORCH_VERSION=2.0.1
 export TORCHVISION_VERSION=0.15.2
 
+
 build() {
   # Cleanup environments
   rm -rf /tmp/bazel_event_logs
   # shellcheck disable=SC2317
-  cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }
+  cleanup() { if [[ "${BUILDKITE_PULL_REQUEST}" = "false" ]]; then ./ci/build/upload_build_info.sh; fi }
   trap cleanup EXIT
   (which bazel && bazel clean) || true
-  brew install pkg-config nvm node || true
+  if [[ "$(uname -m)" == "arm64" ]]; then
+    brew install pkg-config nvm node || true
+  fi
   # TODO(simon): make sure to change both PR and wheel builds
   # Special setup for jar builds (will be installed to the machine instead)
   # - brew remove --force java & brew uninstall --force java & rm -rf /usr/local/Homebrew/Library/Taps/homebrew/homebrew-cask
@@ -32,23 +35,10 @@ build() {
   export UPLOAD_WHEELS_AS_ARTIFACTS=1
   export MAC_WHEELS=1
   export MAC_JARS=1
-  export MINIMAL_INSTALL=1
   export RAY_INSTALL_JAVA=1
   export RAY_ENABLE_WINDOWS_OR_OSX_CLUSTER=1
   . ./ci/ci.sh init && source ~/.zshenv
   source ~/.zshrc
-
-  # When building on x86_64, we need to remove homebrew installed header files from the system
-  # to avoid conflicts with the one in the build environment.
-  #
-  # Brew links openssl to /usr/local/include/openssl, and recent MacOS's toolchain will always
-  # pick them up.
-  #
-  # This is not required for arm64, because brew is installed in /opt/homebrew/
-  if [[ "$(uname -m)" == "x86_64" ]]; then
-    rm -rf /usr/local/include/*
-  fi
-
   ./ci/ci.sh build_wheels_and_jars
   # Test wheels
   ./ci/ci.sh test_macos_wheels
@@ -56,8 +46,7 @@ build() {
   bash ./java/build-jar-multiplatform.sh darwin
   # Upload the wheels and jars
   # We don't want to push on PRs, in fact, the copy_files will fail because unauthenticated.
-  if [ "$BUILDKITE_PULL_REQUEST" != "false" ]; then exit 0; fi
-  python -m pip install -q docker aws_requests_auth boto3
+  if [[ "$BUILDKITE_PULL_REQUEST" != "false" ]]; then exit 0; fi
   # Upload to branch directory.
   bazel run .buildkite:copy_files -- --destination branch_wheels --path "${PWD}/.whl"
   bazel run .buildkite:copy_files -- --destination branch_jars --path "${PWD}/.jar/darwin"

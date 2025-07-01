@@ -61,7 +61,7 @@ for CUDA_CODE in cpu cu121 cu128; do
 
 	# Third, extract the ray base dependencies from ray base test dependencies.
 	# TODO(aslonnie): This should be used for installing ray in the container images.
-	echo "--- Compile ray base test dependencies"
+	echo "--- Compile ray base dependencies"
 	"${UV_PIP_COMPILE[@]}" \
 		-c "python/requirements_compiled_ray_test_${PYTHON_CUDA_CODE}.txt" \
 		"python/requirements.txt" \
