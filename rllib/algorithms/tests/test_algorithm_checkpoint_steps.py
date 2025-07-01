@@ -41,7 +41,7 @@ expected_results = {
 class TestAlgorithmCheckpointStepsAfterRestore(unittest.TestCase):
     @classmethod
     def setUpClass(cls) -> None:
-        ray.init()
+        ray.init(num_cpus=NUM_ENV_RUNNERS)
 
     @classmethod
     def tearDownClass(cls) -> None:
@@ -138,6 +138,10 @@ class TestAlgorithmCheckpointStepsAfterRestore(unittest.TestCase):
             # --- Step 3 ---
             result_algo_0_step3 = algo_0_runner.step()
             result_algo_1_step3 = algo_1_runner.step()
+            algo_1_runner.stop()  # free resources
+            algo_0_runner.stop()
+            del algo_0_runner
+            del algo_1_runner
             for metric in metrics:
                 with self.subTest(f"{metric} after step 3", metric=metric):
                     self.assertEqual(
@@ -214,6 +218,14 @@ class TestAlgorithmCheckpointStepsAfterRestore(unittest.TestCase):
             # Test after restoring a second time
             algo_0_runner_restored.save_checkpoint(checkpoint_0_step2_restored)
             algo_1_runner_restored.save_checkpoint(checkpoint_1_step2_restored)
+            # Step 3 from restored
+            result_algo0_step3_restored = algo_0_runner_restored.step()
+            result_algo1_step3_restored = algo_1_runner_restored.step()
+            algo_0_runner_restored.stop()
+            algo_1_runner_restored.stop()  # free resources
+            del algo_1_runner_restored
+            del algo_0_runner_restored
+            # Load and check restored x2
             algo_0_restored_x2 = PPO.from_checkpoint(checkpoint_0_step2_restored)
             algo_1_restored_x2 = PPO.from_checkpoint(checkpoint_1_step2_restored)
             assert algo_0_restored_x2.metrics and algo_1_restored_x2.metrics
@@ -229,9 +241,6 @@ class TestAlgorithmCheckpointStepsAfterRestore(unittest.TestCase):
                         algo_1_restored_x2.metrics.peek((ENV_RUNNER_RESULTS, metric)),
                         expected_results[metric]["step_2"],
                     )
-            # Step 3 from restored and restored x2
-            result_algo0_step3_restored = algo_0_runner_restored.step()
-            result_algo1_step3_restored = algo_1_runner_restored.step()
             result_algo0_step3_restored_x2 = algo_0_restored_x2.step()
             result_algo1_step3_restored_x2 = algo_1_restored_x2.step()
 
