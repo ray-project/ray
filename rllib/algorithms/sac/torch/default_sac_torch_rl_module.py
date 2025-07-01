@@ -1,6 +1,6 @@
+import gymnasium as gym
 from typing import Any, Dict
 
-import gymnasium as gym
 from ray.rllib.algorithms.sac.default_sac_rl_module import DefaultSACRLModule
 from ray.rllib.algorithms.sac.sac_catalog import SACCatalog
 from ray.rllib.algorithms.sac.sac_learner import (
@@ -43,29 +43,8 @@ class DefaultSACTorchRLModule(TorchRLModule, DefaultSACRLModule):
         pi_encoder_outs = self.pi_encoder(batch)
 
         # Pi head.
-        if isinstance(self.action_space, gym.spaces.Discrete):
-            # For discrete action spaces, we return the logits for each action.
-            output[Columns.ACTIONS] = self.pi(pi_encoder_outs[ENCODER_OUT])
-        elif isinstance(self.action_space, gym.spaces.Box):
-            output[Columns.ACTION_DIST_INPUTS] = self.pi(pi_encoder_outs[ENCODER_OUT])
-        else:
-            raise ValueError(
-                f"Unsupported action space type: {type(self.action_space)}. "
-                "Only discrete and continuous action spaces are supported."
-            )
-
-        return output
-
-    @override(RLModule)
-    def _forward_exploration(self, batch: Dict, **kwargs) -> Dict[str, Any]:
-        output = self._forward_inference(batch)
-        # TODO (KIY): This is bad. This should get the action_dist from the catalog.
-        if isinstance(self.action_space, gym.spaces.Discrete):
-            # For discrete action spaces, we return the logits for each action.
-            action_probs = output[Columns.ACTIONS]
-            distribution = torch.distributions.Categorical(probs=action_probs)
-            action_sample = distribution.sample()
-            output[Columns.ACTIONS] = action_sample
+        # assume action space is either discrete or continuous.
+        output[Columns.ACTION_DIST_INPUTS] = self.pi(pi_encoder_outs[ENCODER_OUT])
 
         return output
 
@@ -264,11 +243,11 @@ class DefaultSACTorchRLModule(TorchRLModule, DefaultSACRLModule):
                 and actions under the key `Columns.OBS`.
             encoder: An `Encoder` model for the Q state-action encoder.
             head: A `Model` for the Q head.
-            squeeze: If True, squeezes the last dimension of the output if it is 1. Used during continuous action space
+            squeeze: If True, squeezes the last dimension of the output if it is 1. Used for continuous action spaces.
 
         Returns:
-            The estimated Q-value for continuous action space, or Q-values for discrete action space.
-            Each with shape (B, 1) or (B, action_dim) respectively.
+            The estimated Q-value for the input action for continuous action spaces.
+            Or the Q-values for all actions for discrete action spaces.
         """
         # Construct batch. Note, we need to feed observations and actions.
         if isinstance(self.action_space, gym.spaces.Box):
