@@ -1596,19 +1596,19 @@ class UserCallableWrapper:
             # used to interact with the result queue from the user callable thread.
             system_event_loop = asyncio.get_running_loop()
 
-            async def enq(item: Any):
+            async def enqueue(item: Any):
                 system_event_loop.call_soon_threadsafe(result_queue.put_nowait, item)
 
             call_future = self._call_http_entrypoint(
-                user_method_info, scope, receive, enq
+                user_method_info, scope, receive, enqueue
             )
         else:
 
-            async def enq(item: Any):
+            async def enqueue(item: Any):
                 result_queue.put_nowait(item)
 
             call_future = asyncio.create_task(
-                self._call_http_entrypoint(user_method_info, scope, receive, enq)
+                self._call_http_entrypoint(user_method_info, scope, receive, enqueue)
             )
 
         first_message_peeked = False
@@ -1738,7 +1738,7 @@ class UserCallableWrapper:
                 request_metadata,
                 request_args,
                 request_kwargs,
-                enq=_enqueue_thread_safe,
+                enqueue=_enqueue_thread_safe,
             )
 
             async for messages in result_queue.fetch_messages_from_queue(call_future):
@@ -1752,7 +1752,7 @@ class UserCallableWrapper:
         request_args: Tuple[Any],
         request_kwargs: Dict[str, Any],
         *,
-        enq: Optional[Callable] = None,
+        enqueue: Optional[Callable] = None,
     ) -> Optional[AsyncGenerator[Any, None]]:
         """Call a user generator.
 
@@ -1802,20 +1802,20 @@ class UserCallableWrapper:
             gen = callable(*request_args, **request_kwargs)
             if inspect.isgenerator(gen):
                 for result in gen:
-                    enq(result)
+                    enqueue(result)
             else:
                 raise TypeError(
                     f"Called method '{user_method_info.name}' with "
                     "`handle.options(stream=True)` but it did not return a generator."
                 )
 
-        if enq and is_sync_method and self._run_sync_methods_in_threadpool:
+        if enqueue and is_sync_method and self._run_sync_methods_in_threadpool:
             await to_thread.run_sync(_call_generator_sync)
-        elif enq:
+        elif enqueue:
 
             async def gen_coro_wrapper():
                 async for result in _call_generator_async():
-                    enq(result)
+                    enqueue(result)
 
             await gen_coro_wrapper()
         else:
