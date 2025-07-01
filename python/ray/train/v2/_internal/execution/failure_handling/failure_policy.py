@@ -1,7 +1,7 @@
 import abc
 from enum import Enum
 
-from ray.train.v2._internal.execution.worker_group import WorkerGroupPollStatus
+from ray.train.v2._internal.execution.worker_group import PolicyHandledStatus
 from ray.train.v2.api.config import FailureConfig
 
 
@@ -22,6 +22,6 @@ class FailurePolicy(abc.ABC):
 
     @abc.abstractmethod
     def make_decision(
-        self, worker_group_status: WorkerGroupPollStatus
+        self, worker_group_status: PolicyHandledStatus
     ) -> FailureDecision:
         raise NotImplementedError

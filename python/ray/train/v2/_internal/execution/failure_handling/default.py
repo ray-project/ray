@@ -5,7 +5,7 @@ from ray.train.v2._internal.execution.failure_handling import (
     FailureDecision,
     FailurePolicy,
 )
-from ray.train.v2._internal.execution.worker_group import WorkerGroupPollStatus
+from ray.train.v2._internal.execution.worker_group import PolicyHandledStatus
 
 logger = logging.getLogger(__name__)
 
@@ -16,7 +16,7 @@ class DefaultFailurePolicy(FailurePolicy):
         self._total_failures = 0
 
     def make_decision(
-        self, worker_group_status: WorkerGroupPollStatus
+        self, worker_group_status: PolicyHandledStatus
     ) -> FailureDecision:
         if not worker_group_status.errors:
             return FailureDecision.NOOP

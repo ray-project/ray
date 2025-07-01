@@ -3,6 +3,7 @@ from typing import Dict, Optional
 
 from ray.train._internal.session import _TrainingResult
 from ray.types import ObjectRef
+from ray.train.v2._internal.execution.worker_group.state import PolicyHandledStatus
 
 
 @dataclass
@@ -13,7 +14,7 @@ class WorkerStatus:
 
 
 @dataclass(frozen=True)
-class WorkerGroupPollStatus:
+class WorkerGroupPollStatus(PolicyHandledStatus):
     worker_statuses: Dict[int, WorkerStatus]
 
     @property
