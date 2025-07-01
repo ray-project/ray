@@ -387,7 +387,7 @@ def method(
     retry_exceptions: Optional[Union[bool, list, tuple]] = None,
     _generator_backpressure_num_objects: Optional[int] = None,
     enable_task_events: Optional[bool] = None,
-    tensor_transport: Optional[str] = None,
+    tensor_transport: Optional[TensorTransportEnum] = None,
 ) -> Callable[[Callable[Concatenate[Any, _P], _Ret]], Any]:
     ...
 
