@@ -28,84 +28,93 @@ namespace ray {
 
 namespace raylet {
 
-void LocalObjectManager::PinObjectsAndWaitForFree(
-    const std::vector<ObjectID> &object_ids,
-    std::vector<std::unique_ptr<RayObject>> &&objects,
-    const rpc::Address &owner_address,
-    const ObjectID &generator_id) {
-  for (size_t i = 0; i < object_ids.size(); i++) {
-    const auto &object_id = object_ids[i];
-    auto &object = objects[i];
-    if (object == nullptr) {
-      RAY_LOG(ERROR) << "Plasma object " << object_id
-                     << " was evicted before the raylet could pin it.";
-      continue;
-    }
-
-    const auto inserted = local_objects_.emplace(
-        object_id, LocalObjectInfo(owner_address, generator_id, object->GetSize()));
-    if (inserted.second) {
-      // This is the first time we're pinning this object.
-      RAY_LOG(DEBUG) << "Pinning object " << object_id;
-      pinned_objects_size_ += object->GetSize();
-      pinned_objects_.emplace(object_id, std::move(object));
-    } else {
-      auto original_worker_id =
-          WorkerID::FromBinary(inserted.first->second.owner_address.worker_id());
-      auto new_worker_id = WorkerID::FromBinary(owner_address.worker_id());
-      if (original_worker_id != new_worker_id) {
-        // TODO(swang): Handle this case. We should use the new owner address
-        // and object copy.
-        RAY_LOG(WARNING)
-            << "Received PinObjects request from a different owner " << new_worker_id
-            << " from the original " << original_worker_id << ". Object " << object_id
-            << " may get freed while the new owner still has the object in scope.";
-      }
-      continue;
-    }
-
-    // Create a object eviction subscription message.
-    auto wait_request = std::make_unique<rpc::WorkerObjectEvictionSubMessage>();
-    wait_request->set_object_id(object_id.Binary());
-    wait_request->set_intended_worker_id(owner_address.worker_id());
-    if (!generator_id.IsNil()) {
-      wait_request->set_generator_id(generator_id.Binary());
-    }
-    rpc::Address subscriber_address;
-    subscriber_address.set_raylet_id(self_node_id_.Binary());
-    subscriber_address.set_ip_address(self_node_address_);
-    subscriber_address.set_port(self_node_port_);
-    wait_request->mutable_subscriber_address()->CopyFrom(subscriber_address);
-
-    // If the subscription succeeds, register the subscription callback.
-    // Callback is invoked when the owner publishes the object to evict.
-    auto subscription_callback = [this, owner_address](const rpc::PubMessage &msg) {
-      RAY_CHECK(msg.has_worker_object_eviction_message());
-      const auto &object_eviction_msg = msg.worker_object_eviction_message();
-      const auto object_id = ObjectID::FromBinary(object_eviction_msg.object_id());
-      ReleaseFreedObject(object_id);
-      core_worker_subscriber_->Unsubscribe(
-          rpc::ChannelType::WORKER_OBJECT_EVICTION, owner_address, object_id.Binary());
-    };
-
-    // Callback that is invoked when the owner of the object id is dead.
-    auto owner_dead_callback = [this, owner_address](const std::string &object_id_binary,
-                                                     const Status &) {
-      const auto object_id = ObjectID::FromBinary(object_id_binary);
-      ReleaseFreedObject(object_id);
-    };
-
-    auto sub_message = std::make_unique<rpc::SubMessage>();
-    sub_message->mutable_worker_object_eviction_message()->Swap(wait_request.get());
-
-    RAY_CHECK(core_worker_subscriber_->Subscribe(std::move(sub_message),
-                                                 rpc::ChannelType::WORKER_OBJECT_EVICTION,
-                                                 owner_address,
-                                                 object_id.Binary(),
-                                                 /*subscribe_done_callback=*/nullptr,
-                                                 subscription_callback,
-                                                 owner_dead_callback));
+Status LocalObjectManager::PinObjectAndWaitForFree(const ObjectID &object_id_to_pin,
+                                                   std::unique_ptr<RayObject> object,
+                                                   const rpc::Address &owner_address,
+                                                   const ObjectID &generator_id) {
+  if (!object) {
+    std::ostringstream ss;
+    ss << "Plasma object " << object_id_to_pin
+       << " was evicted before the raylet could pin it.";
+    return Status::InvalidArgument(ss.str());
   }
+
+  if (objects_pending_deletion_.find(object_id_to_pin) !=
+      objects_pending_deletion_.end()) {
+    std::ostringstream ss;
+    ss << "Plasma object " << object_id_to_pin
+       << " cannot be pinned because it's already marked for deletion.";
+    return Status::InvalidArgument(ss.str());
+  }
+
+  const auto inserted = local_objects_.emplace(
+      object_id_to_pin, LocalObjectInfo(owner_address, generator_id, object->GetSize()));
+
+  // This is the first time we're pinning this object.
+  if (inserted.second) {
+    pinned_objects_size_ += object->GetSize();
+    pinned_objects_.emplace(object_id_to_pin, std::move(object));
+    RAY_LOG(DEBUG).WithField(object_id_to_pin)
+        << "Pinning object for the first time " << pinned_objects_size_;
+  } else {
+    auto original_worker_id =
+        WorkerID::FromBinary(inserted.first->second.owner_address.worker_id());
+    auto new_worker_id = WorkerID::FromBinary(owner_address.worker_id());
+    if (original_worker_id != new_worker_id) {
+      // TODO(swang): Handle this case. We should use the new owner address
+      // and object copy.
+      RAY_LOG(WARNING).WithField(object_id_to_pin)
+          << "Received PinObjects request from a different owner " << new_worker_id
+          << " from the original " << original_worker_id << ". Object "
+          << " may get freed while the new owner still has the object in scope.";
+    }
+    // The object was already pinned. We do not need to subscribe to the eviction
+    // notification.
+    return Status::OK();
+  }
+
+  // Create a object eviction subscription message.
+  auto wait_request = std::make_unique<rpc::WorkerObjectEvictionSubMessage>();
+  wait_request->set_object_id(object_id_to_pin.Binary());
+  wait_request->set_intended_worker_id(owner_address.worker_id());
+  if (!generator_id.IsNil()) {
+    wait_request->set_generator_id(generator_id.Binary());
+  }
+  rpc::Address subscriber_address;
+  subscriber_address.set_raylet_id(self_node_id_.Binary());
+  subscriber_address.set_ip_address(self_node_address_);
+  subscriber_address.set_port(self_node_port_);
+  wait_request->mutable_subscriber_address()->CopyFrom(subscriber_address);
+
+  // If the subscription succeeds, register the subscription callback.
+  // Callback is invoked when the owner publishes the object to evict.
+  auto subscription_callback = [this, owner_address](const rpc::PubMessage &msg) {
+    RAY_CHECK(msg.has_worker_object_eviction_message());
+    const auto &object_eviction_msg = msg.worker_object_eviction_message();
+    const auto object_id = ObjectID::FromBinary(object_eviction_msg.object_id());
+    ReleaseFreedObject(object_id);
+    core_worker_subscriber_->Unsubscribe(
+        rpc::ChannelType::WORKER_OBJECT_EVICTION, owner_address, object_id.Binary());
+  };
+
+  // Callback that is invoked when the owner of the object id is dead.
+  auto owner_dead_callback = [this, owner_address](const std::string &object_id_binary,
+                                                   const Status &) {
+    const auto object_id = ObjectID::FromBinary(object_id_binary);
+    ReleaseFreedObject(object_id);
+  };
+
+  auto sub_message = std::make_unique<rpc::SubMessage>();
+  sub_message->mutable_worker_object_eviction_message()->Swap(wait_request.get());
+
+  RAY_CHECK(core_worker_subscriber_->Subscribe(std::move(sub_message),
+                                               rpc::ChannelType::WORKER_OBJECT_EVICTION,
+                                               owner_address,
+                                               object_id_to_pin.Binary(),
+                                               /*subscribe_done_callback=*/nullptr,
+                                               subscription_callback,
+                                               owner_dead_callback));
+  return Status::OK();
 }
 
 void LocalObjectManager::ReleaseFreedObject(const ObjectID &object_id) {
@@ -151,8 +160,8 @@ void LocalObjectManager::FlushFreeObjects() {
   if (!objects_pending_deletion_.empty()) {
     RAY_LOG(DEBUG) << "Freeing " << objects_pending_deletion_.size()
                    << " out-of-scope objects";
-    // TODO(irabbani): CORE-1640 will modify as much as the plasma API as is
-    // reasonable to remove usage of vectors in favor of sets.
+    // TODO(irabbani): https://github.com/ray-project/ray/issues/54215 will modify as much
+    // as the plasma API as is reasonable to remove usage of vectors in favor of sets.
     std::vector<ObjectID> objects_to_delete(objects_pending_deletion_.begin(),
                                             objects_pending_deletion_.end());
     on_objects_freed_(objects_to_delete);
@@ -160,10 +169,6 @@ void LocalObjectManager::FlushFreeObjects() {
   }
   ProcessSpilledObjectsDeleteQueue(free_objects_batch_size_);
   last_free_objects_at_ms_ = current_time_ms();
-}
-
-bool LocalObjectManager::ObjectPendingDeletion(const ObjectID &object_id) {
-  return objects_pending_deletion_.find(object_id) != objects_pending_deletion_.end();
 }
 
 void LocalObjectManager::SpillObjectUptoMaxThroughput() {
