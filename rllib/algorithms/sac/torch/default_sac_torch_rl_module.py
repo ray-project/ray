@@ -49,6 +49,10 @@ class DefaultSACTorchRLModule(TorchRLModule, DefaultSACRLModule):
         return output
 
     @override(RLModule)
+    def _forward_exploration(self, batch: Dict, **kwargs) -> Dict[str, Any]:
+        return self._forward_inference(batch)
+
+    @override(RLModule)
     def _forward_train(self, batch: Dict) -> Dict[str, Any]:
         if self.inference_only:
             raise RuntimeError(
@@ -75,7 +79,12 @@ class DefaultSACTorchRLModule(TorchRLModule, DefaultSACRLModule):
         ## calculate values for the Q target ##
         # Also encode the next observations (and next actions for the Q net).
         pi_encoder_next_outs = self.pi_encoder(batch_next)
-        action_probs_next = self.pi(pi_encoder_next_outs[ENCODER_OUT])
+        action_logits_next = self.pi(pi_encoder_next_outs[ENCODER_OUT])
+        # TODO(inyoung): get the action dist class and use that. But currently TorchCategorical
+        # does not get the prob value of the actual torch distribution. So we use softmax directly
+        # for now.
+        action_probs_next = torch.nn.functional.softmax(action_logits_next, dim=-1)
+
         output[ACTION_PROBS_NEXT] = action_probs_next
         output[ACTION_LOG_PROBS_NEXT] = action_probs_next.log()
 
@@ -96,7 +105,8 @@ class DefaultSACTorchRLModule(TorchRLModule, DefaultSACRLModule):
 
         ## calculate values for gradient ##
         pi_encoder_outs = self.pi_encoder(batch_curr)
-        action_probs = self.pi(pi_encoder_outs[ENCODER_OUT])
+        action_logits = self.pi(pi_encoder_outs[ENCODER_OUT])
+        action_probs = torch.nn.functional.softmax(action_logits, dim=-1)
         output[ACTION_PROBS] = action_probs
         output[ACTION_LOG_PROBS] = action_probs.log()
 
