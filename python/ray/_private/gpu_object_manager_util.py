@@ -75,11 +75,32 @@ def __ray_recv__(
 
     gpu_object_manager = global_worker.gpu_object_manager
     tensors = []
+    tensor_meta, serialized_descs, nixl_agent_meta = tensor_meta
     for meta in tensor_meta:
         shape, dtype = meta
         tensor = torch.zeros(shape, dtype=dtype, device=device)
-        collective.recv(tensor, src_rank, group_name=communicator_name)
+        #collective.recv(tensor, src_rank, group_name=communicator_name)
         tensors.append(tensor)
+
+    nixl_agent = gpu_object_manager.init_nixl_agent()
+    remote_descs = nixl_agent.deserialize_descs(serialized_descs)
+    local_descs = nixl_agent.register_memory(tensors)
+    remote_name = nixl_agent.add_remote_agent(nixl_agent_meta)
+
+    xfer_handle = nixl_agent.initialize_xfer("READ", local_descs.trim(), remote_descs, remote_name, b"UUID1")
+
+    state = nixl_agent.transfer(xfer_handle)
+    if state == "ERR":
+        print("Posting transfer failed.")
+        assert False
+    while True:
+        state = nixl_agent.check_xfer_state(xfer_handle)
+        if state == "ERR":
+            print("Transfer got to Error state.")
+            assert False
+        elif state == "DONE":
+            break
+
     gpu_object_manager.add_gpu_object(obj_id, tensors)
 
 
