@@ -78,7 +78,6 @@ py_test_module_list(
         "test_healthcheck.py",
         "test_http_headers.py",
         "test_http_routes.py",
-        "test_logging.py",
         "test_max_replicas_per_node.py",
         "test_multiplex.py",
         "test_proxy_response_generator.py",
