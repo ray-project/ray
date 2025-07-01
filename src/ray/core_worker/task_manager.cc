@@ -474,22 +474,13 @@ bool TaskManager::IsTaskSubmissible(const TaskID &task_id) const {
   return submissible_tasks_.contains(task_id);
 }
 
-bool TaskManager::IsTaskPending(const TaskID &task_id) const {
-  absl::MutexLock lock(&mu_);
-  const auto it = submissible_tasks_.find(task_id);
-  if (it == submissible_tasks_.end()) {
-    return false;
-  }
-  return it->second.IsPending();
-}
-
 bool TaskManager::IsTaskWaitingForExecution(const TaskID &task_id) const {
   absl::MutexLock lock(&mu_);
   const auto it = submissible_tasks_.find(task_id);
   if (it == submissible_tasks_.end()) {
     return false;
   }
-  return it->second.IsWaitingForExecution();
+  return it->second.GetStatus() == rpc::TaskStatus::SUBMITTED_TO_WORKER;
 }
 
 size_t TaskManager::NumSubmissibleTasks() const {
@@ -1344,7 +1335,7 @@ int64_t TaskManager::RemoveLineageReference(const ObjectID &object_id,
   return total_lineage_footprint_bytes_ - total_lineage_footprint_bytes_prev;
 }
 
-bool TaskManager::MarkTaskCanceled(const TaskID &task_id) {
+bool TaskManager::MarkTaskCanceledAndCheckPending(const TaskID &task_id) {
   ObjectID generator_id = TaskGeneratorId(task_id);
   if (!generator_id.IsNil()) {
     // Pass -1 because the task has been cancelled, so we should just end the
@@ -1355,13 +1346,18 @@ bool TaskManager::MarkTaskCanceled(const TaskID &task_id) {
     MarkEndOfStream(generator_id, /*end_of_stream_index=*/-1);
   }
 
+  // If the task is not in submissible_tasks_ and if the status is not FINISHED and not
+  // FAILED, it has to be pending.
   absl::MutexLock lock(&mu_);
   auto it = submissible_tasks_.find(task_id);
-  if (it != submissible_tasks_.end()) {
-    it->second.num_retries_left = 0;
-    it->second.num_oom_retries_left = 0;
+  if (it == submissible_tasks_.end()) {
+    return false;
   }
-  return it != submissible_tasks_.end();
+  auto &task_entry = it->second;
+  task_entry.num_retries_left = 0;
+  task_entry.num_oom_retries_left = 0;
+  return task_entry.GetStatus() != rpc::TaskStatus::FINISHED &&
+         task_entry.GetStatus() != rpc::TaskStatus::FAILED;
 }
 
 absl::flat_hash_set<ObjectID> TaskManager::GetTaskReturnObjectsToStoreInPlasma(

@@ -62,11 +62,9 @@ class TaskFinisherInterface {
 
   virtual void MarkDependenciesResolved(const TaskID &task_id) = 0;
 
-  virtual bool MarkTaskCanceled(const TaskID &task_id) = 0;
+  virtual bool MarkTaskCanceledAndCheckPending(const TaskID &task_id) = 0;
 
   virtual std::optional<TaskSpecification> GetTaskSpec(const TaskID &task_id) const = 0;
-
-  virtual bool IsTaskPending(const TaskID &task_id) const = 0;
 
   virtual void MarkGeneratorFailedAndResubmit(const TaskID &task_id) = 0;
 };

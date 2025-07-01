@@ -710,13 +710,17 @@ Status NormalTaskSubmitter::CancelTask(TaskSpecification task_spec,
       task_spec.IsActorCreationTask() ? task_spec.ActorCreationId() : ActorID::Nil(),
       task_spec.GetRuntimeEnvHash());
   std::shared_ptr<rpc::CoreWorkerClientInterface> client = nullptr;
+  bool task_not_pending = false;
+  if (!task_finisher_.MarkTaskCanceledAndCheckPending(task_spec.TaskId())) {
+    task_not_pending = true;
+  }
   {
     absl::MutexLock lock(&mu_);
     generators_to_resubmit_.erase(task_spec.TaskId());
 
-    if (cancelled_tasks_.find(task_spec.TaskId()) != cancelled_tasks_.end() ||
-        !task_finisher_.MarkTaskCanceled(task_spec.TaskId()) ||
-        !task_finisher_.IsTaskPending(task_spec.TaskId())) {
+    if (cancelled_tasks_.contains(task_spec.TaskId()) || task_not_pending) {
+      // If we're already in the process of cancelling this task or the task is not
+      // pending (it's FINISHED or FAILED).
       return Status::OK();
     }
 

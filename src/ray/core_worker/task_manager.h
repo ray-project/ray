@@ -510,8 +510,8 @@ class TaskManager : public TaskFinisherInterface, public TaskResubmissionInterfa
   /// Set number of retries to zero for a task that is being canceled.
   ///
   /// \param[in] task_id to cancel.
-  /// \return Whether the task was pending and was marked for cancellation.
-  bool MarkTaskCanceled(const TaskID &task_id) override;
+  /// \return Whether the task was pending.
+  bool MarkTaskCanceledAndCheckPending(const TaskID &task_id) override;
 
   /// Return the spec for a pending task.
   std::optional<TaskSpecification> GetTaskSpec(const TaskID &task_id) const override;
@@ -524,12 +524,6 @@ class TaskManager : public TaskFinisherInterface, public TaskResubmissionInterfa
   /// \param[in] task_id ID of the task to query.
   /// \return Whether the task can be submitted for execution.
   bool IsTaskSubmissible(const TaskID &task_id) const;
-
-  /// Return whether the task is pending.
-  ///
-  /// \param[in] task_id ID of the task to query.
-  /// \return Whether the task is pending.
-  bool IsTaskPending(const TaskID &task_id) const override;
 
   /// Return whether the task is scheduled adn waiting for execution.
   ///
@@ -633,10 +627,6 @@ class TaskManager : public TaskFinisherInterface, public TaskResubmissionInterfa
     bool IsPending() const {
       return GetStatus() != rpc::TaskStatus::FINISHED &&
              GetStatus() != rpc::TaskStatus::FAILED;
-    }
-
-    bool IsWaitingForExecution() const {
-      return GetStatus() == rpc::TaskStatus::SUBMITTED_TO_WORKER;
     }
 
     /// The task spec. This is pinned as long as the following are true:

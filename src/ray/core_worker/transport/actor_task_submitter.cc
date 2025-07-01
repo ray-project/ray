@@ -144,7 +144,7 @@ Status ActorTaskSubmitter::SubmitActorCreationTask(TaskSpecification task_spec) 
             if (status.IsSchedulingCancelled()) {
               RAY_LOG(DEBUG).WithField(actor_id).WithField(task_id)
                   << "Actor creation cancelled";
-              task_finisher_.MarkTaskCanceled(task_id);
+              task_finisher_.MarkTaskCanceledAndCheckPending(task_id);
               if (reply.has_death_cause()) {
                 ray_error_info.mutable_actor_died_error()->CopyFrom(reply.death_cause());
               }
@@ -234,7 +234,7 @@ Status ActorTaskSubmitter::SubmitTask(TaskSpecification task_spec) {
         "ActorTaskSubmitter::SubmitTask");
   } else {
     // Do not hold the lock while calling into task_finisher_.
-    task_finisher_.MarkTaskCanceled(task_id);
+    task_finisher_.MarkTaskCanceledAndCheckPending(task_id);
     rpc::ErrorType error_type;
     rpc::RayErrorInfo error_info;
     {
@@ -442,7 +442,7 @@ void ActorTaskSubmitter::DisconnectActor(const ActorID &actor_id,
     for (auto &task_id : task_ids_to_fail) {
       // No need to increment the number of completed tasks since the actor is
       // dead.
-      task_finisher_.MarkTaskCanceled(task_id);
+      task_finisher_.MarkTaskCanceledAndCheckPending(task_id);
       // This task may have been waiting for dependency resolution, so cancel
       // this first.
       resolver_.CancelDependencyResolution(task_id);
@@ -874,8 +874,7 @@ Status ActorTaskSubmitter::CancelTask(TaskSpecification task_spec, bool recursiv
 
   // Shouldn't hold a lock while accessing task_finisher_.
   // Task is already canceled or finished.
-  if (!GetTaskFinisherWithoutMu().MarkTaskCanceled(task_id) ||
-      !GetTaskFinisherWithoutMu().IsTaskPending(task_id)) {
+  if (!GetTaskFinisherWithoutMu().MarkTaskCanceledAndCheckPending(task_id)) {
     RAY_LOG(DEBUG).WithField(task_id) << "Task is already finished or canceled";
     return Status::OK();
   }

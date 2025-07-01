@@ -201,8 +201,6 @@ class MockTaskFinisher : public TaskFinisherInterface {
                                    const NodeID &node_id,
                                    const WorkerID &worker_id) override {}
 
-  bool IsTaskPending(const TaskID &task_id) const override { return true; }
-
   void MarkGeneratorFailedAndResubmit(const TaskID &task_id) override {
     num_generator_failed_and_resubmitted++;
   }

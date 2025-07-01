@@ -47,7 +47,7 @@ class MockTaskFinisherInterface : public TaskFinisherInterface {
               (const std::vector<ObjectID> &inlined_dependency_ids,
                const std::vector<ObjectID> &contained_ids),
               (override));
-  MOCK_METHOD(bool, MarkTaskCanceled, (const TaskID &task_id), (override));
+  MOCK_METHOD(bool, MarkTaskCanceledAndCheckPending, (const TaskID &task_id), (override));
   MOCK_METHOD(std::optional<TaskSpecification>,
               GetTaskSpec,
               (const TaskID &task_id),
@@ -61,7 +61,6 @@ class MockTaskFinisherInterface : public TaskFinisherInterface {
               MarkTaskWaitingForExecution,
               (const TaskID &task_id, const NodeID &node_id, const WorkerID &worker_id),
               (override));
-  MOCK_METHOD(bool, IsTaskPending, (const TaskID &task_id), (const, override));
   MOCK_METHOD(void, MarkGeneratorFailedAndResubmit, (const TaskID &task_id), (override));
 };
 
