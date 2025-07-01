@@ -1783,6 +1783,8 @@ class UserCallableWrapper:
 
         async def _call_generator_async() -> AsyncGenerator[Any, None]:
             gen = callable(*request_args, **request_kwargs)
+            if inspect.iscoroutine(gen):
+                gen = await gen
 
             if inspect.isgenerator(gen):
                 for result in gen:
