@@ -144,6 +144,7 @@ class ProtocolsProvider:
 
             def open_file(uri, mode, *, transport_params=None):
                 return open(uri, mode)
+
         elif protocol == "s3":
             open_file, tp = cls._handle_s3_protocol()
         elif protocol == "gs":
