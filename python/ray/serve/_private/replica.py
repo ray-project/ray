@@ -1718,10 +1718,7 @@ class UserCallableWrapper:
         The user method is called in an asyncio `Task` and places its results on a
         `result_queue`. This method pulls and yields from the `result_queue`.
         """
-        if (
-            not self._run_user_code_in_separate_thread
-            and not self._run_sync_methods_in_threadpool
-        ):
+        if not self._run_user_code_in_separate_thread:
             gen = await self._call_user_generator(
                 request_metadata, request_args, request_kwargs
             )
@@ -1767,20 +1764,25 @@ class UserCallableWrapper:
         """
         self._raise_if_not_initialized("_call_user_generator")
 
+        request_args = request_args if request_args is not None else tuple()
+        request_kwargs = request_kwargs if request_kwargs is not None else dict()
+
         user_method_info = self.get_user_method_info(request_metadata.call_method)
+        callable = user_method_info.callable
+        is_sync_method = (
+            inspect.isfunction(callable) or inspect.ismethod(callable)
+        ) and not (
+            inspect.iscoroutinefunction(callable)
+            or inspect.isasyncgenfunction(callable)
+        )
+
         logger.info(
             f"Started executing request to method '{user_method_info.name}'.",
             extra={"log_to_stderr": False, "serve_access_log": True},
         )
 
-        async def _call_generator() -> AsyncGenerator[Any, None]:
-            gen, sync_gen_consumed = await self._call_func_or_gen(
-                user_method_info.callable,
-                args=request_args,
-                kwargs=request_kwargs,
-                is_streaming=True,
-                generator_result_callback=enq,
-            )
+        async def _call_generator_async() -> AsyncGenerator[Any, None]:
+            gen = callable(*request_args, **request_kwargs)
 
             if inspect.isgenerator(gen):
                 for result in gen:
@@ -1788,21 +1790,34 @@ class UserCallableWrapper:
             elif inspect.isasyncgen(gen):
                 async for result in gen:
                     yield result
-            elif not sync_gen_consumed:
+            else:
                 raise TypeError(
                     f"Called method '{user_method_info.name}' with "
                     "`handle.options(stream=True)` but it did not return a generator."
                 )
 
-        if enq:
+        def _call_generator_sync():
+            gen = callable(*request_args, **request_kwargs)
+            if inspect.isgenerator(gen):
+                for result in gen:
+                    enq(result)
+            else:
+                raise TypeError(
+                    f"Called method '{user_method_info.name}' with "
+                    "`handle.options(stream=True)` but it did not return a generator."
+                )
+
+        if enq and is_sync_method and self._run_sync_methods_in_threadpool:
+            await to_thread.run_sync(_call_generator_sync)
+        elif enq:
 
             async def gen_coro_wrapper():
-                async for result in _call_generator():
+                async for result in _call_generator_async():
                     enq(result)
 
             await gen_coro_wrapper()
         else:
-            return _call_generator()
+            return _call_generator_async()
 
     @_run_user_code
     async def call_user_method(
