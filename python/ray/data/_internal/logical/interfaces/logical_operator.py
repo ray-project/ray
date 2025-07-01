@@ -4,7 +4,7 @@ from .operator import Operator
 from ray.data.block import BlockMetadata
 
 if TYPE_CHECKING:
-    from ray.data._internal.execution.interfaces import RefBundle
+    from ray.data.block import Schema
 
 
 class LogicalOperator(Operator):
@@ -65,17 +65,17 @@ class LogicalOperator(Operator):
         """This Dict must be serializable"""
         return vars(self)
 
-    def output_data(self) -> Optional[List["RefBundle"]]:
-        """The output data of this operator, or ``None`` if not known."""
+    def infer_schema(self) -> Optional["Schema"]:
+        """Returns the inferred schema of the output blocks."""
         return None
 
-    def aggregate_output_metadata(self) -> BlockMetadata:
+    def infer_metadata(self) -> "BlockMetadata":
         """A ``BlockMetadata`` that represents the aggregate metadata of the outputs.
 
         This method is used by methods like :meth:`~ray.data.Dataset.schema` to
         efficiently return metadata.
         """
-        return BlockMetadata(None, None, None, None, None)
+        return BlockMetadata(None, None, None, None)
 
     def is_lineage_serializable(self) -> bool:
         """Returns whether the lineage of this operator can be serialized.
@@ -86,7 +86,3 @@ class LogicalOperator(Operator):
         objects aren't available on the deserialized machine.
         """
         return True
-
-    @classmethod
-    def is_read_op(cls):
-        return False

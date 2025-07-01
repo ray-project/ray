@@ -32,6 +32,7 @@ from ray.llm._internal.common.utils.cloud_utils import (
     CloudMirrorConfig,
     is_remote_path,
 )
+from ray.llm._internal.common.utils.import_utils import try_import
 from ray.llm._internal.serve.configs.constants import (
     DEFAULT_MULTIPLEX_DOWNLOAD_TIMEOUT_S,
     DEFAULT_MULTIPLEX_DOWNLOAD_TRIES,
@@ -48,7 +49,6 @@ from ray.llm._internal.serve.configs.prompt_formats import (
     Prompt,
 )
 from ray.llm._internal.serve.observability.logging import get_logger
-from ray.llm._internal.utils import try_import
 from ray.serve._private.config import DeploymentConfig
 
 transformers = try_import("transformers")
@@ -396,14 +396,8 @@ class LLMConfig(BaseModelExtended):
                 "Use scaling_config to configure replica placement group."
             )
 
-        # TODO (Kourosh): There is some test code leakage happening here that should be removed.
         try:
-            # resources.mock_resource is a special key we used in tests to skip placement
-            # group on the gpu nodes.
-            if "mock_resource" in ray_actor_options.get("resources", {}):
-                bundles = []
-            else:
-                bundles = engine_config.placement_bundles
+            bundles = engine_config.placement_bundles
         except ValueError:
             # May happen if all bundles are empty.
             bundles = []
