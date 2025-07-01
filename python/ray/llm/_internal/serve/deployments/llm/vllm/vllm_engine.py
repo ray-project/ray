@@ -214,9 +214,7 @@ class VLLMEngine(LLMEngine):
         self._oai_serving_completion = state.openai_serving_completion
         self._oai_serving_embedding = state.openai_serving_embedding
         
-        self._validate_openai_serving_models()
-        self._validate_openai_serving_chat()
-        
+        self._validate_openai_serving_models()        
 
         self._running = True
 
@@ -270,6 +268,25 @@ class VLLMEngine(LLMEngine):
         vllm_frontend_args = FrontendArgs(**engine_config.frontend_kwargs)
         return vllm_engine_args, vllm_frontend_args, vllm_engine_config
 
+    def _start_async_llm_engine_v0(self, engine_args: "AsyncEngineArgs", vllm_config: "VllmConfig", placement_group: PlacementGroup) -> "EngineClient":
+        
+        from vllm import envs
+        envs.set_vllm_use_v1(False)
+        
+        from vllm.executor.ray_distributed_executor import RayDistributedExecutor
+        from vllm.engine.async_llm_engine import AsyncLLMEngine
+        vllm_config.parallel_config.placement_group = placement_group
+        
+        _clear_current_platform_cache()
+        
+        engine = AsyncLLMEngine(
+            vllm_config=vllm_config,
+            executor_class=RayDistributedExecutor,
+            log_stats=not engine_args.disable_log_stats,
+        )
+        
+        return engine
+        
 
     def _start_async_llm_engine(
         self,
@@ -278,6 +295,11 @@ class VLLMEngine(LLMEngine):
         placement_group: PlacementGroup,
     ) -> "EngineClient":
         """Creates an async LLM engine from the engine arguments."""
+        
+        # NOTE: This is a temporary solution untill vLLM v1 supports embeddings.
+        if self.llm_config.experimental_configs.get("enable_embeddings", False):
+            return self._start_async_llm_engine_v0(engine_args, vllm_config, placement_group)
+        
         from vllm.v1.executor.abstract import Executor
         from vllm.v1.engine.async_llm import AsyncLLM
 
@@ -340,6 +362,7 @@ class VLLMEngine(LLMEngine):
         yield a HTTPException object
         """
 
+        self._validate_openai_serving_chat()
 
         chat_response = await self._oai_serving_chat.create_chat_completion(request)
 
