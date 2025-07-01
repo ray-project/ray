@@ -573,7 +573,7 @@ def _generate_transform_fn_for_async_map(
     ctx = DataContext.get_current()
 
     async def _apply_udf(item: T) -> List[U]:
-        res = await fn(item)
+        res = fn(item)
         return [out async for out in res]
 
     async def _process_all(it: Iterator[T], output_queue: queue.Queue) -> None:
