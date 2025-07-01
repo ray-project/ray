@@ -15,7 +15,7 @@ import dask
 from dask.core import istask, ishashable
 
 try:
-    from dask._task_spec import Task, Alias, TaskRef, convert_legacy_graph
+    from dask._task_spec import Task, Alias, DataNode, TaskRef, convert_legacy_graph
 except ImportError:
     warnings.warn(
         "Dask on Ray is available only on dask>=2024.11.0, "
@@ -456,10 +456,26 @@ def dask_task_wrapper(
             for cb in ray_pretask_cbs
         ]
     (repacked_deps,) = repack(arg_object_refs)
-    # De-reference the top-level arguments.
-    task.args = tuple(
-        ray.get(x) if isinstance(x, ray.ObjectRef) else x for x in task.args
-    )
+    # De-reference the potentially nested arguments recursively.
+    def _dereference_args(x):
+        if isinstance(x, Task):
+            x.args = _dereference_args(x.args)
+            return x
+        elif isinstance(x, Mapping):
+            return {k: _dereference_args(v) for k, v in x.items()}
+        elif isinstance(x, tuple):
+            return tuple(_dereference_args(x) for x in x)
+        elif isinstance(x, ray.ObjectRef):
+            return ray.get(x)
+        elif isinstance(x, DataNode):
+            if isinstance(x.value, ray.ObjectRef):
+                value = ray.get(x.value)
+                return DataNode(key=x.key, value=value)
+            return x
+        else:
+            return x
+
+    task = _dereference_args(task)
     result = task(repacked_deps)
 
     if ray_posttask_cbs is not None:
