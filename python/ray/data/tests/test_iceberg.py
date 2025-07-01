@@ -264,8 +264,8 @@ def test_write_basic():
 )
 def test_write_concurrency():
 
-    import pandas as pd
     import numpy as np
+    import pandas as pd
 
     sql_catalog = pyi_catalog.load_catalog(**_CATALOG_KWARGS)
     table = sql_catalog.load_table(f"{_DB_NAME}.{_TABLE_NAME}")
