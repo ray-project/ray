@@ -668,32 +668,40 @@ def _generate_transform_for_async_udf(
             else set()
         )
 
-        while True:
-            while len(cur_tasks) < max_concurrent_batches and not consumed:
-                try:
-                    item = next(it)
-                    cur_tasks.append(loop.create_task(fn(item)))
-                except StopIteration:
-                    consumed = True
+        sentinel = _SENTINEL
+
+        try:
+            while True:
+                while len(cur_tasks) < max_concurrent_batches and not consumed:
+                    try:
+                        item = next(it)
+                        cur_tasks.append(loop.create_task(fn(item)))
+                    except StopIteration:
+                        consumed = True
+                        break
+
+                # Check if any running tasks remaining
+                if not cur_tasks:
                     break
 
-            # Check if any running tasks remaining
-            if not cur_tasks:
-                break
+                if ctx.execution_options.preserve_order:
+                    next_tasks = [cur_tasks.pop(0)]
+                else:
+                    done, pending = await asyncio.wait(
+                        cur_tasks,
+                        return_when=asyncio.FIRST_COMPLETED
+                    )
 
-            if ctx.execution_options.preserve_order:
-                next_tasks = [cur_tasks.pop(0)]
-            else:
-                done, pending = await asyncio.wait(
-                    cur_tasks,
-                    return_when=asyncio.FIRST_COMPLETED
-                )
+                    next_tasks = done
+                    cur_tasks = pending
 
-                next_tasks = done
-                cur_tasks = pending
+                for t in next_tasks:
+                    output_queue.put(await t)
 
-            for t in next_tasks:
-                output_queue.put(await t)
+        except BaseException as e:
+            sentinel = e
+        finally:
+            output_queue.put(sentinel)
 
     def _transform(batch_iter: Iterable[T], task_context: TaskContext) -> Iterable[U]:
         outputs = queue.Queue(maxsize=max_concurrent_batches)
