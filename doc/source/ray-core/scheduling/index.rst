@@ -5,6 +5,14 @@ Scheduling
 
 For each task or actor, Ray will choose a node to run it and the scheduling decision is based on the following factors.
 
+
+Labels
+------
+
+Labels provide a simplified solution for controlling scheduling for tasks, actors, and placement group bundles using default and custom labels.
+
+See :doc:`./labels.md`.
+
 .. _ray-scheduling-resources:
 
 Resources
@@ -127,6 +135,7 @@ More about Ray Scheduling
 .. toctree::
     :maxdepth: 1
 
+    labels
     resources
     accelerators
     placement-group
