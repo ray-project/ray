@@ -410,37 +410,45 @@ def test_node_affinity_scheduling_strategy(monkeypatch, ray_start_cluster):
         ray.get(actor.get_node_id.remote())
 
 
-def test_node_affinity_scheduling_strategy_spill_on_unavailable(ray_start_cluster):
+def test_node_affinity_scheduling_strategy_soft_spill_on_unavailable(ray_start_cluster):
     cluster = ray_start_cluster
-    cluster.add_node(num_cpus=3)
-    ray.init(address=cluster.address)
-    cluster.add_node(num_cpus=3)
+    head_node = cluster.add_node(num_cpus=1, resources={"custom": 1})
+    worker_node = cluster.add_node(num_cpus=1, resources={"custom": 1})
     cluster.wait_for_nodes()
 
-    @ray.remote
-    def get_node_id_task(sleep_s=0):
-        time.sleep(sleep_s)
+    ray.init(address=cluster.address)
+
+    signal = SignalActor.remote()
+
+    # NOTE: need to include custom resource because CPUs are released during `ray.get`.
+    @ray.remote(
+        num_cpus=1, resources={"custom": 1},
+    )
+    def get_node_id() -> str:
+        ray.get(signal.wait.remote())
         return ray.get_runtime_context().get_node_id()
 
-    target_node_id = ray.get(get_node_id_task.remote())
-
-    _ = [
-        get_node_id_task.options(
-            scheduling_strategy=NodeAffinitySchedulingStrategy(
-                target_node_id, soft=False
-            )
-        ).remote(1000)
-        for _ in range(3)
-    ]
-
-    soft_ref = get_node_id_task.options(
+    # Submit a first task that has affinity to the worker node.
+    # It should be placed on the worker node and occupy the resources.
+    worker_node_ref = get_node_id.options(
         scheduling_strategy=NodeAffinitySchedulingStrategy(
-            target_node_id, soft=True, _spill_on_unavailable=True
-        )
+            worker_node.node_id, soft=False,
+        ),
     ).remote()
 
-    soft_node_id = ray.get(soft_ref, timeout=3)
-    assert target_node_id != soft_node_id
+    wait_for_condition(lambda: ray.get(signal.cur_num_waiters.remote()) == 1)
+
+    # Submit a second task that has soft affinity to the worker node.
+    # It should be spilled to the head node.
+    head_node_ref = get_node_id.options(
+        scheduling_strategy=NodeAffinitySchedulingStrategy(
+            worker_node.node_id, soft=True, _spill_on_unavailable=True,
+        ),
+    ).remote()
+    ray.get(signal.send.remote())
+
+    assert ray.get(head_node_ref, timeout=10) == head_node.node_id
+    assert ray.get(worker_node_ref, timeout=10) == worker_node.node_id
 
 
 def test_node_affinity_scheduling_strategy_fail_on_unavailable(ray_start_cluster):
