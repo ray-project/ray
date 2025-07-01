@@ -1,7 +1,7 @@
 import yaml
 from dataclasses import dataclass, field
 from typing import List, Dict, Optional
-
+import os
 
 @dataclass
 class Depset:
@@ -23,18 +23,28 @@ class Config:
 
     @staticmethod
     def from_dict(data: dict) -> "Config":
+        workspace_dir = os.environ.get("BUILD_WORKSPACE_DIRECTORY")
+        if workspace_dir:
+            print(f"BUILD_WORKSPACE_DIRECTORY: {workspace_dir}")
+            current_directory = workspace_dir
+            print(f"Using Bazel workspace directory: {current_directory}")
+        else:
+            current_directory = os.getcwd()
+            print(f"Using current directory: {current_directory}")
+
         raw_depsets = data.get("depsets", {})
         depsets = {
             name: Depset(
                 name=name,
-                requirements=values.get("requirements", []),
-                constraints=values.get("constraints", []),
+                requirements=[os.path.join(current_directory, requirement) for requirement in values.get("requirements", [])],
+                constraints=[os.path.join(current_directory, constraint) for constraint in values.get("constraints", [])],
                 operation=values.get("operation", "compile"),
-                output=values.get("output"),
+                output=os.path.join(current_directory, values.get("output")),
                 flags=values.get("flags", []),
                 depset=values.get("depset", []),
                 packages=values.get("packages", []),
-                depsets=values.get("depsets", [])
+                depsets=values.get("depsets", []),
+                degree=values.get("degree", None)
             )
             for name, values in raw_depsets.items()
         }
