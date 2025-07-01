@@ -410,38 +410,3 @@ class VLLMEngine(LLMEngine):
         except BaseException as e:
             logger.error("Healthcheck failed. The replica will be restarted")
             raise e from None
-
-    @staticmethod
-    def _collect_usage_metrics(sampling_params: VLLMSamplingParams) -> None:
-        if sampling_params.best_of is not None:
-            usage_counters[ArgUsage.BEST_OF].inc()
-
-        if sampling_params.presence_penalty is not None:
-            usage_counters[ArgUsage.PRESENCE_PENALTY].inc()
-
-        if sampling_params.frequency_penalty is not None:
-            usage_counters[ArgUsage.FREQUENCY_PENALTY].inc()
-
-        if (
-            sampling_params.presence_penalty is not None
-            and sampling_params.frequency_penalty is not None
-        ):
-            usage_counters[ArgUsage.PRESENCE_AND_FREQUENCY_PENALTY].inc()
-
-        if sampling_params.temperature is not None:
-            usage_counters[ArgUsage.TEMPERATURE].inc()
-
-        if sampling_params.top_p is not None:
-            usage_counters[ArgUsage.TOP_P].inc()
-
-        if sampling_params.top_k is not None:
-            usage_counters[ArgUsage.TOP_K].inc()
-
-        if sampling_params.stop is not None:
-            usage_counters[ArgUsage.STOP].inc()
-
-        if sampling_params.max_tokens is not None:
-            usage_counters[ArgUsage.MAX_TOKENS].inc()
-
-        if sampling_params.logprobs is not None:
-            usage_counters[ArgUsage.LOGPROBS].inc()
