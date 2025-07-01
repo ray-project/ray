@@ -707,9 +707,11 @@ def _generate_transform_for_async_udf(
             items = outputs.get()
             if items is _SENTINEL:
                 break
-            elif isinstance(items, BaseException):
+            elif isinstance(items, Exception):
                 raise items
             else:
-                yield from items
+                for item in items:
+                    validate_fn(item)
+                    yield item
 
     return _transform
