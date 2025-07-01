@@ -32,7 +32,8 @@ class GPUTestActor:
         return len(gpu_object_manager.gpu_object_store)
 
 
-def test_gc_gpu_object(ray_start_regular):
+@pytest.mark.parametrize("data_size_bytes", [100, 1000 * 1000])
+def test_gc_gpu_object(ray_start_regular, data_size_bytes):
     """
     The object is small enough to be inlined.
     """
@@ -41,56 +42,32 @@ def test_gc_gpu_object(ray_start_regular):
     create_collective_group(actors, backend="torch_gloo")
 
     small_tensor = torch.randn((1,))
+    cpu_data = b"1" * data_size_bytes
+    data = [small_tensor, cpu_data]
     sender = actors[0]
     receiver = actors[1]
 
-    ref1 = sender.echo.remote(small_tensor)
+    ref1 = sender.echo.remote(data)
     ref2 = receiver.double.remote(ref1)
     ref3 = receiver.double.remote(ref1)
-    assert ray.get(ref2) == pytest.approx(small_tensor * 2)
-    assert ray.get(ref3) == pytest.approx(small_tensor * 2)
+
+    result = ray.get(ref2)
+    assert result[0] == pytest.approx(small_tensor * 2)
+    assert result[1] == cpu_data * 2
+    result = ray.get(ref3)
+    assert result[0] == pytest.approx(small_tensor * 2)
+    assert result[1] == cpu_data * 2
+
+    wait_for_condition(
+        lambda: ray.get(receiver.get_num_gpu_objects.remote()) == 0,
+        timeout=10,
+        retry_interval_ms=100,
+    )
 
     del ref1
 
     wait_for_condition(
         lambda: ray.get(sender.get_num_gpu_objects.remote()) == 0,
-        timeout=10,
-        retry_interval_ms=100,
-    )
-    wait_for_condition(
-        lambda: ray.get(receiver.get_num_gpu_objects.remote()) == 0,
-        timeout=10,
-        retry_interval_ms=100,
-    )
-
-
-def test_gc_gpu_large_object(ray_start_regular):
-    """
-    The object is too large to be inlined.
-    """
-    world_size = 2
-    actors = [GPUTestActor.remote() for _ in range(world_size)]
-    create_collective_group(actors, backend="torch_gloo")
-
-    tensor = torch.randn((1,))
-    cpu_data = b"1" * 1024 * 1024
-    data = [tensor, cpu_data]
-
-    sender, receiver = actors[0], actors[1]
-    ref = sender.echo.remote(data)
-    ref = receiver.double.remote(ref)
-    result = ray.get(ref)
-
-    assert result[0] == pytest.approx(tensor * 2)
-    assert result[1] == cpu_data * 2
-
-    wait_for_condition(
-        lambda: ray.get(sender.get_num_gpu_objects.remote()) == 0,
-        timeout=10,
-        retry_interval_ms=100,
-    )
-    wait_for_condition(
-        lambda: ray.get(receiver.get_num_gpu_objects.remote()) == 0,
         timeout=10,
         retry_interval_ms=100,
     )
