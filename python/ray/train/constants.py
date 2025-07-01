@@ -112,6 +112,9 @@ RAY_TRAIN_COUNT_PREEMPTION_AS_FAILURE = "RAY_TRAIN_COUNT_PREEMPTION_AS_FAILURE"
 # Defaults to 0
 RAY_TRAIN_ENABLE_STATE_TRACKING = "RAY_TRAIN_ENABLE_STATE_TRACKING"
 
+# Environment variable for Train execution callbacks
+RAY_TRAIN_CALLBACKS_ENV_VAR = "RAY_TRAIN_CALLBACKS"
+
 
 # NOTE: When adding a new environment variable, please track it in this list.
 TRAIN_ENV_VARS = {
@@ -123,6 +126,7 @@ TRAIN_ENV_VARS = {
     RAY_CHDIR_TO_TRIAL_DIR,
     RAY_TRAIN_COUNT_PREEMPTION_AS_FAILURE,
     RAY_TRAIN_ENABLE_STATE_TRACKING,
+    RAY_TRAIN_CALLBACKS_ENV_VAR,
 }
 
 # Key for AIR Checkpoint metadata in TrainingResult metadata
