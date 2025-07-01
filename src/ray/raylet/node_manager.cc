@@ -42,6 +42,7 @@
 #include "ray/gcs/pb_util.h"
 #include "ray/object_manager/ownership_object_directory.h"
 #include "ray/raylet/format/node_manager_generated.h"
+#include "ray/raylet/local_object_manager_interface.h"
 #include "ray/raylet/scheduling/cluster_task_manager.h"
 #include "ray/raylet/worker_killing_policy.h"
 #include "ray/raylet/worker_pool.h"
@@ -121,7 +122,7 @@ NodeManager::NodeManager(
     ClusterTaskManagerInterface &cluster_task_manager,
     IObjectDirectory &object_directory,
     ObjectManagerInterface &object_manager,
-    LocalObjectManager &local_object_manager,
+    LocalObjectManagerInterface &local_object_manager,
     DependencyManager &dependency_manager,
     WorkerPoolInterface &worker_pool,
     absl::flat_hash_map<WorkerID, std::shared_ptr<WorkerInterface>> &leased_workers,
@@ -2490,11 +2491,16 @@ void NodeManager::HandlePinObjectIDs(rpc::PinObjectIDsRequest request,
     auto object_id_it = object_ids.begin();
     auto result_it = results.begin();
     while (object_id_it != object_ids.end()) {
-      if (*result_it == nullptr) {
+      // Note: It is safe to call ObjectPendingDeletion here because the asynchronous
+      // deletion can only happen on the same thread as the call to HandlePinObjectIDs.
+      // Therefore, a new object cannot be marked for deletion while this function is
+      // executing.
+      if (*result_it == nullptr ||
+          local_object_manager_.ObjectPendingDeletion(*object_id_it)) {
         RAY_LOG(DEBUG).WithField(*object_id_it)
             << "Failed to get object in the object store. This should only happen when "
-               "the owner tries to pin a "
-            << "secondary copy and it's evicted in the meantime";
+               "the owner tries to pin an object and it's already been deleted or is "
+               "marked for deletion.";
         object_id_it = object_ids.erase(object_id_it);
         result_it = results.erase(result_it);
         reply->add_successes(false);
