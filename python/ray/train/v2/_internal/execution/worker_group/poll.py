@@ -36,6 +36,18 @@ class WorkerGroupPollStatus(PolicyHandledStatus):
             f"[Rank {world_rank}]\n{error}" for world_rank, error in self.errors.items()
         )
 
+    def get_restart_error_string(self) -> str:
+        return f"Restarting training worker group after encountering " \
+                f"failures on {len(self.errors)} worker(s):\n" \
+                f"{self.get_error_string()}"
+
+    def get_raise_error_string(self) -> str:
+        return (
+            f"Terminating training worker group after encountering "
+            f"failure(s) on {len(self.errors)} worker(s):\n"
+            f"{self.get_error_string()}"
+        )
+
 
 @dataclass(frozen=True)
 class PollTask:

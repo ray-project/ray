@@ -31,7 +31,15 @@ class PolicyHandledStatus(Protocol):
         ...
 
     @abstractmethod
-    def get_error_string(self) -> dict:
+    def get_error_string(self) -> str:
+        ...
+
+    @abstractmethod
+    def get_restart_error_string(self) -> str:
+        ...
+
+    @abstractmethod
+    def get_raise_error_string(self) -> str:
         ...
 
 
@@ -181,3 +189,9 @@ class WorkerGroupResizeStatus (PolicyHandledStatus):
 
     def get_error_string(self) -> str:
         return f"{self.error}"
+
+    def get_restart_error_string(self) -> str:
+        return f"Restarting worker group after encountering error during resize stage:\n {self.error}"
+
+    def get_raise_error_string(self) -> str:
+        return f"Terminating training worker group after encountering error during resize stage:\n {self.error}"
