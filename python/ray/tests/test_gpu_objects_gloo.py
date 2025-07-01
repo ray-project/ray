@@ -27,7 +27,7 @@ class GPUTestActor:
             return gpu_object
         return None
 
-    def get_gpu_object_store_size(self):
+    def get_num_gpu_objects(self):
         gpu_object_manager = ray._private.worker.global_worker.gpu_object_manager
         return len(gpu_object_manager.gpu_object_store)
 
@@ -53,12 +53,12 @@ def test_gc_gpu_object(ray_start_regular):
     del ref1
 
     wait_for_condition(
-        lambda: ray.get(sender.get_gpu_object_store_size.remote()) == 0,
+        lambda: ray.get(sender.get_num_gpu_objects.remote()) == 0,
         timeout=10,
         retry_interval_ms=100,
     )
     wait_for_condition(
-        lambda: ray.get(receiver.get_gpu_object_store_size.remote()) == 0,
+        lambda: ray.get(receiver.get_num_gpu_objects.remote()) == 0,
         timeout=10,
         retry_interval_ms=100,
     )
@@ -85,12 +85,12 @@ def test_gc_gpu_large_object(ray_start_regular):
     assert result[1] == cpu_data * 2
 
     wait_for_condition(
-        lambda: ray.get(sender.get_gpu_object_store_size.remote()) == 0,
+        lambda: ray.get(sender.get_num_gpu_objects.remote()) == 0,
         timeout=10,
         retry_interval_ms=100,
     )
     wait_for_condition(
-        lambda: ray.get(receiver.get_gpu_object_store_size.remote()) == 0,
+        lambda: ray.get(receiver.get_num_gpu_objects.remote()) == 0,
         timeout=10,
         retry_interval_ms=100,
     )
