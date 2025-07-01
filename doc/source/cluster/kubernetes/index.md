@@ -49,6 +49,10 @@ KuberRay provides an open source, Kubernetes-native way to manage Ray clusters.
 
 Each Ray cluster consists of a head node pod and a collection of worker node pods. Optional autoscaling support allows the KubeRay operator to size your Ray clusters according to the requirements of your Ray workload, adding and removing Ray pods as needed. KubeRay supports heterogenous compute nodes (including GPUs) as well as running multiple Ray clusters with different Ray versions in the same Kubernetes cluster.
 
+See [Considerations for Building a Ray ML Platform](considerations-build-ml-platform) when choosing an operator (self-managed vs managed service)
+
+## Kuberay Overview
+
 ```{eval-rst}
 .. image:: images/ray_on_kubernetes.png
     :align: center
