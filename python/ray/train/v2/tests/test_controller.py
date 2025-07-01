@@ -89,6 +89,7 @@ async def test_resize():
     scaling_policy.queue_recovery_decision(
         ResizeDecision(num_workers=1, resources_per_worker={})
     )
+
     await controller._run_control_loop_iteration()
     assert isinstance(controller.get_state(), SchedulingState)
     assert controller.get_worker_group() is None
