@@ -1,5 +1,5 @@
 from .poll import WorkerGroupPollStatus, WorkerStatus
-from .state import WorkerGroupState, WorkerGroupStateBuilder
+from .state import WorkerGroupState, WorkerGroupStateBuilder, WorkerGroupResizeStatus
 from .worker import ActorMetadata, RayTrainWorker, Worker
 from .worker_group import WorkerGroup, WorkerGroupContext
 
@@ -12,5 +12,6 @@ __all__ = [
     "WorkerGroupPollStatus",
     "WorkerGroupState",
     "WorkerGroupStateBuilder",
+    "WorkerGroupResizeStatus",
     "WorkerStatus",
 ]

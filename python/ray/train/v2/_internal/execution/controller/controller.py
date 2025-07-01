@@ -58,6 +58,7 @@ from ray.train.v2._internal.execution.storage import StorageContext
 from ray.train.v2._internal.execution.worker_group import (
     WorkerGroup,
     WorkerGroupPollStatus,
+    WorkerGroupResizeStatus,
 )
 from ray.train.v2._internal.execution.worker_group.worker_group import (
     WorkerGroupContext,
@@ -110,6 +111,7 @@ class TrainController:
         train_run_context: TrainRunContext,
         scaling_policy: ScalingPolicy,
         failure_policy: FailurePolicy,
+        worker_group_resize_failure_policy: WorkerGroupResizeFailurePolicy,
         callbacks: Optional[List[RayTrainCallback]] = None,
     ):
         self._train_run_context = train_run_context
@@ -121,6 +123,7 @@ class TrainController:
         self._train_fn_ref = train_fn_ref
         self._scaling_policy = scaling_policy
         self._failure_policy = failure_policy
+        self._worker_group_resize_failure_policy = worker_group_resize_failure_policy
         self._run_config = self._train_run_context.run_config
         self._callbacks = callbacks or []
         self._storage_context = StorageContext(
@@ -168,7 +171,7 @@ class TrainController:
 
     def _execute_resize_decision(
         self, decision: ResizeDecision
-    ) -> TrainControllerLoopIterationResult:
+    ) -> WorkerGroupResizeStatus:
         """Executes resize decisions."""
 
         for callback in self._controller_callbacks:
@@ -177,20 +180,9 @@ class TrainController:
         if self._worker_group:
             self._shutdown_worker_group()
 
-        worker_group_started = self._start_worker_group(
+        return self._start_worker_group(
             num_workers=decision.num_workers,
             resources_per_worker=decision.resources_per_worker,
-        )
-
-        if worker_group_started:
-            next_state = RunningState()
-        else:
-            next_state = ReschedulingState()
-
-        return TrainControllerLoopIterationResult(
-            run_attempt_id=self._get_run_attempt_id(),
-            previous_state=self._state,
-            next_state=next_state,
         )
 
     def _execute_failure_decision(
@@ -262,7 +254,7 @@ class TrainController:
         self._latest_poll_time = time_monotonic()
         return status
 
-    def _start_worker_group(self, num_workers: int, resources_per_worker: dict) -> bool:
+    def _start_worker_group(self, num_workers: int, resources_per_worker: dict) -> WorkerGroupResizeStatus:
         """Start the worker group and launch the train function.
 
         Returns:
@@ -304,10 +296,10 @@ class TrainController:
             # TODO: Should this logic go through the failure policy?
             # The current logic will always try recovering unconditionally
             # on startup errors without a retry limit.
-            return False
+            return WorkerGroupResizeStatus(error=True)
 
         # TODO: Consider starting the worker group asynchronously.
-        return True
+        return WorkerGroupResizeStatus(error=False)
 
     def _start(self):
         for callback in self._controller_callbacks:
@@ -391,7 +383,16 @@ class TrainController:
             )
         elif isinstance(controller_state, SchedulingState):
             assert isinstance(controller_state.scaling_decision, ResizeDecision)
-            return self._execute_resize_decision(controller_state.scaling_decision)
+            resize_status = self._execute_resize_decision(controller_state.scaling_decision)
+            if resize_status.error:
+                failure_decision = self._worker_group_resize_failure_policy.make_decision(resize_status)
+                return self._execute_failure_decision(failure_decision, resize_status)
+            else:
+                return TrainControllerLoopIterationResult(
+                    run_attempt_id=self._get_run_attempt_id(),
+                    previous_state=controller_state,
+                    next_state=RunningState(),
+                )
         elif isinstance(controller_state, RunningState):
             worker_group_status = await self._poll_workers()
 

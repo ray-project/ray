@@ -133,3 +133,14 @@ def _shutdown_sync_actor(sync_actor: SynchronizationActor):
 
 def _shutdown_placement_group(placement_group: PlacementGroup):
     remove_placement_group(placement_group)
+
+
+@dataclass(frozen=True)
+class WorkerGroupResizeStatus:
+    """Status of a worker group resize operation.
+    
+    Attributes:
+        error: Whether the resize operation encountered an error.
+    """
+
+    error: bool
