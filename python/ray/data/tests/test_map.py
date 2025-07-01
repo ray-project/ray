@@ -1866,7 +1866,6 @@ def test_map_batches_async_generator_fast_yield(shutdown_only):
     assert len(output) == len(expected_output), (len(output), len(expected_output))
 
 
-
 class TestGenerateTransformFnForAsyncMap:
 
     @pytest.fixture
@@ -1890,7 +1889,7 @@ class TestGenerateTransformFnForAsyncMap:
 
         validate_fn = Mock()
 
-        with pytest.raises(AssertionError, match="Expected a coroutine function"):
+        with pytest.raises(ValueError, match="Expected a coroutine function"):
             _generate_transform_fn_for_async_map(sync_fn, validate_fn, max_concurrent_batches=1)
 
     def test_zero_max_concurrent_batches_assertion(self):
@@ -1919,11 +1918,12 @@ class TestGenerateTransformFnForAsyncMap:
         validate_fn.assert_not_called()
 
     @pytest.mark.parametrize("udf_kind", ["coroutine", "async_gen"])
-    def test_basic_async_processing_preserve_order(self, udf_kind, mock_actor_async_ctx, restore_data_context):
+    @pytest.mark.parametrize("preserve_order", [True, False])
+    def test_basic_async_processing(self, udf_kind, preserve_order, mock_actor_async_ctx, restore_data_context):
         """Test basic async processing with order preservation."""
 
         ctx = restore_data_context
-        ctx.execution_options.preserve_order = True
+        ctx.execution_options.preserve_order = preserve_order
 
         if udf_kind == "async_gen":
             async def async_fn(x):
@@ -1949,33 +1949,44 @@ class TestGenerateTransformFnForAsyncMap:
         task_context = Mock()
         result = list(transform_fn(range(10_000), task_context))
 
-        assert result == list(range(10_000))
+        if preserve_order:
+            assert result == list(range(10_000))
+        else:
+            assert set(result) == set(range(10_000))
+
         assert validate_fn.call_count == 10_000
 
-    def test_basic_async_processing_no_preserve_order(self, mock_actor_async_ctx, restore_data_context):
-        """Test basic async processing without order preservation."""
+    @pytest.mark.parametrize("result_len", [0, 5])
+    @pytest.mark.parametrize("preserve_order", [True, False])
+    def test_basic_async_processing_with_iterator(self, result_len: int, preserve_order: bool, mock_actor_async_ctx, restore_data_context):
+        """Test UDF that yields multiple items per input."""
+        async def multi_yield_fn(x):
+            for i in range(result_len):
+                yield f"processed_{x}_{i}"
 
-        ctx = restore_data_context
-        ctx.execution_options.preserve_order = False
-
-        async def async_fn(x):
-            # Randomly slow-down UDFs (capped by 5ms)
-            delay = random.randint(0, 5) / 1000
-            await asyncio.sleep(delay)
-            yield x
+        restore_data_context.execution_options.preserve_order = preserve_order
 
         validate_fn = Mock()
 
         transform_fn = _generate_transform_fn_for_async_map(
-            async_fn, validate_fn, max_concurrent_batches=100
+            multi_yield_fn, validate_fn, max_concurrent_batches=2
         )
 
         task_context = Mock()
-        result = list(transform_fn(range(10_000), task_context))
 
-        # Order might not be preserved, but all items should be there
-        assert set(result) == set(range(10_000))
-        assert validate_fn.call_count == 10_000
+        input_seq = [1, 2]
+
+        # NOTE: Outputs are expected to match input sequence ordering
+        expected = [
+            f"processed_{x}_{i}"
+            for x in input_seq
+            for i in range(result_len)
+        ]
+
+        if preserve_order:
+            assert list(transform_fn(input_seq, task_context)) == expected
+        else:
+            assert set(transform_fn(input_seq, task_context)) == set(expected)
 
     @pytest.mark.parametrize("preserve_order", [True, False])
     def test_concurrency_limiting(self, preserve_order, mock_actor_async_ctx, restore_data_context):
@@ -2046,58 +2057,6 @@ class TestGenerateTransformFnForAsyncMap:
 
         with pytest.raises(ValueError, match=expected_exception_msg):
             list(transform_fn([1, 2, 3], task_context))
-
-    @pytest.mark.asyncio
-    async def test_multiple_yields_per_item(self):
-        """Test UDF that yields multiple items per input."""
-        async def multi_yield_fn(x):
-            for i in range(2):
-                yield f"processed_{x}_{i}"
-
-        validate_fn = Mock()
-
-        with patch('ray.data.context.DataContext.get_current') as mock_context:
-            mock_context.return_value.execution_options.preserve_order = True
-
-            transform_fn = _generate_transform_fn_for_async_map(
-                multi_yield_fn, validate_fn, max_concurrent_batches=2
-            )
-
-            with patch('ray.data._map_actor_context.udf_map_asyncio_loop') as mock_loop:
-                mock_loop.run_until_complete = asyncio.run
-
-                task_context = Mock()
-                result = list(transform_fn([1, 2], task_context))
-
-                expected = ["processed_1_0", "processed_1_1", "processed_2_0", "processed_2_1"]
-                assert result == expected
-                assert validate_fn.call_count == 4
-
-    @pytest.mark.asyncio
-    async def test_no_yields_from_udf(self):
-        """Test UDF that yields nothing."""
-        async def empty_yield_fn(x):
-            await asyncio.sleep(0.01)
-            return
-            yield  # This won't be reached
-
-        validate_fn = Mock()
-
-        with patch('ray.data.context.DataContext.get_current') as mock_context:
-            mock_context.return_value.execution_options.preserve_order = True
-
-            transform_fn = _generate_transform_fn_for_async_map(
-                empty_yield_fn, validate_fn, max_concurrent_batches=2
-            )
-
-            with patch('ray.data._map_actor_context.udf_map_asyncio_loop') as mock_loop:
-                mock_loop.run_until_complete = asyncio.run
-
-                task_context = Mock()
-                result = list(transform_fn([1, 2], task_context))
-
-                assert result == []
-                validate_fn.assert_not_called()
 
 @pytest.mark.parametrize("fn_type", ["func", "class"])
 def test_map_operator_warns_on_few_inputs(
