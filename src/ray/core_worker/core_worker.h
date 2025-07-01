@@ -35,7 +35,6 @@
 #include "ray/core_worker/context.h"
 #include "ray/core_worker/core_worker_options.h"
 #include "ray/core_worker/core_worker_process.h"
-#include "ray/core_worker/shutdown_coordinator.h"
 #include "ray/core_worker/experimental_mutable_object_manager.h"
 #include "ray/core_worker/experimental_mutable_object_provider.h"
 #include "ray/core_worker/future_resolver.h"
@@ -43,6 +42,7 @@
 #include "ray/core_worker/object_recovery_manager.h"
 #include "ray/core_worker/profile_event.h"
 #include "ray/core_worker/reference_count.h"
+#include "ray/core_worker/shutdown_coordinator.h"
 #include "ray/core_worker/store_provider/memory_store/memory_store.h"
 #include "ray/core_worker/store_provider/plasma_store_provider.h"
 #include "ray/core_worker/task_event_buffer.h"
@@ -1968,6 +1968,10 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// Maps serialized runtime env info to **immutable** deserialized protobuf.
   mutable utils::container::ThreadSafeSharedLruCache<std::string, rpc::RuntimeEnvInfo>
       runtime_env_json_serialization_cache_;
+
+  // Grant CoreWorkerShutdownExecutor access to CoreWorker internals for orchestrating
+  // the shutdown procedure without exposing additional public APIs.
+  friend class CoreWorkerShutdownExecutor;
 };
 
 // Lease request rate-limiter based on cluster node size.

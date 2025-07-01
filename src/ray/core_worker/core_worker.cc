@@ -13,8 +13,6 @@
 // limitations under the License.
 
 #include "ray/core_worker/core_worker.h"
-#include "ray/core_worker/shutdown_coordinator.h"
-#include "ray/core_worker/core_worker_shutdown_executor.h"
 
 #include <algorithm>
 #include <future>
@@ -24,6 +22,9 @@
 #include <unordered_map>
 #include <utility>
 #include <vector>
+
+#include "ray/core_worker/core_worker_shutdown_executor.h"
+#include "ray/core_worker/shutdown_coordinator.h"
 
 #ifndef _WIN32
 #include <unistd.h>
@@ -1017,10 +1018,11 @@ CoreWorker::CoreWorker(CoreWorkerOptions options, const WorkerID &worker_id)
   // Initialize shutdown coordinator last - after all services are ready
   // Create concrete shutdown executor that implements real shutdown operations
   auto shutdown_executor = std::make_shared<CoreWorkerShutdownExecutor>(this);
-  shutdown_coordinator_ = std::make_shared<ShutdownCoordinator>(
-      shutdown_executor, options_.worker_type);
-  
-  RAY_LOG(DEBUG) << "Initialized unified shutdown coordinator with concrete executor for worker type: " 
+  shutdown_coordinator_ =
+      std::make_shared<ShutdownCoordinator>(shutdown_executor, options_.worker_type);
+
+  RAY_LOG(DEBUG) << "Initialized unified shutdown coordinator with concrete executor for "
+                    "worker type: "
                  << WorkerTypeString(options_.worker_type);
 }  // NOLINT(readability/fn_size)
 
@@ -1029,13 +1031,11 @@ CoreWorker::~CoreWorker() { RAY_LOG(INFO) << "Core worker is destructed"; }
 void CoreWorker::Shutdown() {
   // PURE COORDINATOR DELEGATION - No coordination without control!
   // The coordinator will execute the actual shutdown sequence via dependencies
-  shutdown_coordinator_->RequestShutdown(
-      false,  // graceful shutdown
-      ShutdownReason::kIntentionalShutdown,
-      "CoreWorker::Shutdown() called",
-      std::chrono::milliseconds{60000},  // 60s timeout
-      true    // force on timeout
-  );
+  shutdown_coordinator_->RequestShutdown(false,  // graceful shutdown
+                                         ShutdownReason::kIntentionalShutdown,
+                                         "CoreWorker::Shutdown() called",
+                                         std::chrono::milliseconds{60000},  // 60s timeout
+                                         true /* force on timeout */);
 }
 
 void CoreWorker::ConnectToRayletInternal() {
@@ -1148,12 +1148,12 @@ void CoreWorker::Exit(
   // Convert WorkerExitType to ShutdownReason
   ShutdownReason reason = [exit_type]() {
     switch (exit_type) {
-      case rpc::WorkerExitType::INTENDED_SYSTEM_EXIT:
-        return ShutdownReason::kIntentionalShutdown;
-      case rpc::WorkerExitType::INTENDED_USER_EXIT:
-        return ShutdownReason::kGracefulExit;
-      default:
-        return ShutdownReason::kUnexpectedError;
+    case rpc::WorkerExitType::INTENDED_SYSTEM_EXIT:
+      return ShutdownReason::kIntentionalShutdown;
+    case rpc::WorkerExitType::INTENDED_USER_EXIT:
+      return ShutdownReason::kGracefulExit;
+    default:
+      return ShutdownReason::kUnexpectedError;
     }
   }();
 
@@ -1163,8 +1163,7 @@ void CoreWorker::Exit(
       reason,
       detail,
       std::chrono::milliseconds{45000},  // 45s timeout for task draining
-      true    // force on timeout
-  );
+      true /* force on timeout */);
 }
 
 void CoreWorker::ForceExit(const rpc::WorkerExitType exit_type,
@@ -1173,23 +1172,22 @@ void CoreWorker::ForceExit(const rpc::WorkerExitType exit_type,
   // Convert WorkerExitType to ShutdownReason
   ShutdownReason reason = [exit_type]() {
     switch (exit_type) {
-      case rpc::WorkerExitType::INTENDED_SYSTEM_EXIT:
-        return ShutdownReason::kForcedExit;
-      case rpc::WorkerExitType::INTENDED_USER_EXIT:
-        return ShutdownReason::kForcedExit;
-      default:
-        return ShutdownReason::kUnexpectedError;
+    case rpc::WorkerExitType::INTENDED_SYSTEM_EXIT:
+      return ShutdownReason::kForcedExit;
+    case rpc::WorkerExitType::INTENDED_USER_EXIT:
+      return ShutdownReason::kForcedExit;
+    default:
+      return ShutdownReason::kUnexpectedError;
     }
   }();
 
   // The coordinator will execute the actual force exit sequence via dependencies
   shutdown_coordinator_->RequestShutdown(
-      true,   // force shutdown
+      true,  // force shutdown
       reason,
       detail,
       std::chrono::milliseconds{0},  // no timeout for force
-      false   // irrelevant when force=true
-  );
+      false);
 }
 
 void CoreWorker::RunIOService() {
@@ -3159,7 +3157,7 @@ void CoreWorker::RunTaskExecutionLoop() {
         "CoreWorker.CheckSignal");
   }
   task_execution_service_.run();
-  RAY_CHECK(is_shutdown_)
+  RAY_CHECK(shutdown_coordinator_ && shutdown_coordinator_->IsShutdown())
       << "Task execution loop was terminated without calling shutdown API.";
 }
 
@@ -4728,12 +4726,12 @@ void CoreWorker::HandleExit(rpc::ExitRequest request,
         if (!will_exit) {
           return;  // Don't exit if not idle and not forced
         }
-        
+
         // Use shutdown coordinator for unified exit handling
         ShutdownReason reason;
         std::string detail;
         std::chrono::milliseconds timeout{10000};  // 10s default
-        
+
         if (force_exit) {
           reason = ShutdownReason::kForcedExit;
           detail = "Worker force exits because its job has finished";
@@ -4743,15 +4741,13 @@ void CoreWorker::HandleExit(rpc::ExitRequest request,
           detail = "Worker exits because it was idle for a long time";
           timeout = std::chrono::milliseconds{15000};  // 15s for idle exit
         }
-        
+
         // Request shutdown through coordinator
-        shutdown_coordinator_->RequestShutdown(
-            force_exit,  // force flag from request
-            reason,
-            detail,
-            timeout,
-            true  // force on timeout
-        );
+        shutdown_coordinator_->RequestShutdown(force_exit,  // force flag from request
+                                               reason,
+                                               detail,
+                                               timeout,
+                                               true /* force on timeout */);
       },
       // Fallback on RPC failure - still attempt shutdown
       [this]() {
@@ -4760,8 +4756,7 @@ void CoreWorker::HandleExit(rpc::ExitRequest request,
             ShutdownReason::kIdleTimeout,
             "Worker exits due to RPC failure during idle exit",
             std::chrono::milliseconds{10000},
-            true
-        );
+            true);
       });
 }
 

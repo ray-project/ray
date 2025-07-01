@@ -1,14 +1,18 @@
-load("//bazel:ray.bzl", "ray_cc_library", "ray_cc_test")
+load("//bazel:ray.bzl", "ray_cc_library")
 
 ray_cc_library(
     name = "core_worker_lib",
     srcs = [
         "core_worker.cc",
         "core_worker_process.cc",
+        "core_worker_shutdown_executor.cc",
+        "shutdown_coordinator.cc",
     ],
     hdrs = [
         "core_worker.h",
         "core_worker_process.h",
+        "core_worker_shutdown_executor.h",
+        "shutdown_coordinator.h",
     ],
     deps = [
         ":actor_handle",
@@ -26,8 +30,6 @@ ray_cc_library(
         ":plasma_store_provider",
         ":profile_event",
         ":reference_count",
-        ":shutdown_coordinator",
-        ":core_worker_shutdown_executor",
         ":task_event_buffer",
         ":task_receiver",
         "//src/ray/raylet_client:raylet_client_lib",
@@ -98,44 +100,6 @@ ray_cc_library(
         "//src/ray/protobuf:worker_cc_proto",
     ],
 )
-
-ray_cc_library(
-    name = "shutdown_coordinator",
-    srcs = ["shutdown_coordinator.cc"],
-    hdrs = ["shutdown_coordinator.h"],
-    deps = [
-        ":core_worker_common",
-        "//src/ray/common:status",
-        "@com_google_absl//absl/synchronization",
-    ],
-)
-
-ray_cc_library(
-    name = "core_worker_shutdown_executor",
-    srcs = ["core_worker_shutdown_executor.cc"],
-    hdrs = ["core_worker_shutdown_executor.h"],
-    deps = [
-        ":shutdown_coordinator",
-        "//src/ray/common:ray_config",
-        "//src/ray/util:process",
-        "@com_google_absl//absl/strings",
-    ],
-)
-
-
-
-# Test target removed temporarily - test file doesn't exist yet
-# ray_cc_test(
-#     name = "shutdown_coordinator_test",
-#     size = "small",
-#     srcs = ["test/shutdown_coordinator_test.cc"],
-#     deps = [
-#         ":shutdown_coordinator",
-#         "@com_google_googletest//:gtest_main",
-#     ],
-# )
-
-
 
 ray_cc_library(
     name = "core_worker_common",

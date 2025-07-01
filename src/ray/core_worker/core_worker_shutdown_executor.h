@@ -14,12 +14,14 @@
 
 #pragma once
 
+#include <string>
+
 #include "ray/core_worker/shutdown_coordinator.h"
 
 namespace ray {
+
 namespace core {
 
-// Forward declarations for CoreWorker components
 class CoreWorker;
 
 /// Concrete implementation of ShutdownDependencies that executes actual
@@ -28,26 +30,26 @@ class CoreWorkerShutdownExecutor : public ShutdownDependencies {
  public:
   /// Constructor with CoreWorker reference for accessing internals
   /// \param core_worker Reference to the CoreWorker instance
-  explicit CoreWorkerShutdownExecutor(CoreWorker* core_worker);
+  explicit CoreWorkerShutdownExecutor(CoreWorker *core_worker);
 
   ~CoreWorkerShutdownExecutor() override = default;
 
   /// Execute complete graceful shutdown sequence
-  void ExecuteGracefulShutdown(const std::string& detail, 
-                              std::chrono::milliseconds timeout_ms) override;
+  void ExecuteGracefulShutdown(const std::string &detail,
+                               std::chrono::milliseconds timeout_ms) override;
 
-  /// Execute complete force shutdown sequence  
-  void ExecuteForceShutdown(const std::string& detail) override;
+  /// Execute complete force shutdown sequence
+  void ExecuteForceShutdown(const std::string &detail) override;
 
   /// Execute worker exit sequence with task draining
-  void ExecuteWorkerExit(const std::string& exit_type,
-                        const std::string& detail,
-                        std::chrono::milliseconds timeout_ms) override;
+  void ExecuteWorkerExit(const std::string &exit_type,
+                         const std::string &detail,
+                         std::chrono::milliseconds timeout_ms) override;
 
   /// Execute handle exit sequence with idle checking
-  void ExecuteHandleExit(const std::string& exit_type,
-                        const std::string& detail,
-                        std::chrono::milliseconds timeout_ms) override;
+  void ExecuteHandleExit(const std::string &exit_type,
+                         const std::string &detail,
+                         std::chrono::milliseconds timeout_ms) override;
 
   /// Kill child processes immediately
   void KillChildProcesses() override;
@@ -57,15 +59,14 @@ class CoreWorkerShutdownExecutor : public ShutdownDependencies {
 
  private:
   /// Reference to CoreWorker for accessing shutdown operations
-  CoreWorker* core_worker_;
+  CoreWorker *core_worker_;
 
   /// Common shutdown sequence operations
   void ExecuteCommonShutdownSequence(bool force);
   void DrainTasks(std::chrono::milliseconds timeout_ms);
-  void DisconnectFromServices(const std::string& exit_type, const std::string& detail);
+  void DisconnectFromServices(const std::string &exit_type, const std::string &detail);
   void ShutdownIoServices();
   void QuickExit();
 };
-
 }  // namespace core
-}  // namespace ray 
+}  // namespace ray
