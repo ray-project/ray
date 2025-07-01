@@ -33,6 +33,9 @@ class GPUTestActor:
 
 
 def test_gc_gpu_object(ray_start_regular):
+    """
+    The object is small enough to be inlined.
+    """
     world_size = 2
     actors = [GPUTestActor.remote() for _ in range(world_size)]
     create_collective_group(actors, backend="torch_gloo")
@@ -62,6 +65,9 @@ def test_gc_gpu_object(ray_start_regular):
 
 
 def test_gc_gpu_large_object(ray_start_regular):
+    """
+    The object is too large to be inlined.
+    """
     world_size = 2
     actors = [GPUTestActor.remote() for _ in range(world_size)]
     create_collective_group(actors, backend="torch_gloo")
