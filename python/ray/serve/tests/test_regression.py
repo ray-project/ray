@@ -11,6 +11,7 @@ from fastapi.responses import JSONResponse
 import ray
 from ray import serve
 from ray._common.test_utils import SignalActor
+from ray.serve._private.constants import RAY_SERVE_RUN_USER_CODE_IN_SEPARATE_THREAD
 from ray.serve.context import _get_global_client
 from ray.serve.handle import DeploymentHandle
 
@@ -243,6 +244,10 @@ def test_uvicorn_duplicate_headers(serve_instance):
     assert resp.headers["content-length"] == "9"
 
 
+@pytest.mark.skipif(
+    not RAY_SERVE_RUN_USER_CODE_IN_SEPARATE_THREAD,
+    reason="Health check will block if user code is running in the main event loop",
+)
 def test_healthcheck_timeout(serve_instance):
     # https://github.com/ray-project/ray/issues/24554
 
