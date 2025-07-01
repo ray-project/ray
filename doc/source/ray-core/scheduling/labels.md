@@ -4,7 +4,7 @@ description: "Learn about using labels to control how Ray schedules tasks, actor
 
 # Use labels to control scheduling
 
-In Ray version 2.48.0 and above, you can use labels to control scheduling for KubeRay.
+In Ray version 2.48.0 and above, you can use labels to control scheduling for KubeRay. Labels are supported as an alpha feature.
 
 This page provides a conceptual overview and usage instructions for labels. Labels are key-value pairs that provide a human-readable configuration for users to control how Ray schedules tasks, actors, and placement group bundles to specific nodes.
 
