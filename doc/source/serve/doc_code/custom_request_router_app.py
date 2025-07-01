@@ -2,8 +2,12 @@
 
 # __begin_deploy_app_with_uniform_request_router__
 from ray import serve
-from ray.serve.context import _get_internal_replica_context
 from ray.serve.request_router import ReplicaID
+import time
+from collections import defaultdict
+from ray.serve.context import _get_internal_replica_context
+from typing import Any, Dict
+from ray.serve.config import RouterConfig
 
 
 @serve.deployment(
@@ -32,14 +36,6 @@ print(f"Response from UniformRequestRouterApp: {response}")
 
 
 # __begin_deploy_app_with_throughput_aware_request_router__
-import time
-from collections import defaultdict
-from ray import serve
-from ray.serve.context import _get_internal_replica_context
-from typing import Any, Dict
-from ray.serve.config import RouterConfig
-
-
 def _time_ms() -> int:
     return int(time.time() * 1000)
 
