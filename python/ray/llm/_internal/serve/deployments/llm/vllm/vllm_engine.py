@@ -2,6 +2,9 @@ import os
 import re
 import time
 import uuid
+import argparse
+from starlette.datastructures import State
+
 from concurrent.futures.thread import ThreadPoolExecutor
 from typing import TYPE_CHECKING, AsyncGenerator, List, Optional, Tuple
 
@@ -233,20 +236,12 @@ class VLLMEngine(LLMEngine):
             node_initialization.placement_group,
         )
 
-        from starlette.datastructures import State
         
-        class _Namespace:
-            def __init__(self, *args):
-                self.classes = args
-
-            def __getattr__(self, name):
-                for cls in self.classes:
-                    if hasattr(cls, name):
-                        return getattr(cls, name)
-                raise AttributeError(f"Attribute {name} not found in {self.classes}")
-
         state = State()
-        args = _Namespace(vllm_engine_args, vllm_frontend_args)
+        args = argparse.Namespace(
+            **vllm_frontend_args.__dict__, 
+            **vllm_engine_args.__dict__,
+        )
 
         await init_app_state(
             engine_client=self._engine_client,
