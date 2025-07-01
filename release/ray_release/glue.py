@@ -1,4 +1,6 @@
 import os
+import random
+import string
 import time
 import traceback
 from typing import Optional, List, Tuple
@@ -437,7 +439,9 @@ def run_release_test_kuberay(
     retcode, duration = kuberay_job_manager.run_and_wait(
         job_name=test["name"].replace(".", "-").replace("_", "-")
         + "-"
-        + time.strftime("%Y%m%d%H%M"),
+        + time.strftime("%Y%m%d%H%M")
+        + "-"
+        + "".join(random.choices(string.ascii_letters, k=4)),
         image=test.get_anyscale_byod_image(),
         cmd_to_run=test["run"]["script"],
         env_vars=test.get_byod_runtime_env(),
