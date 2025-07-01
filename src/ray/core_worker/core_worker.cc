@@ -726,6 +726,12 @@ CoreWorker::CoreWorker(CoreWorkerOptions options, const WorkerID &worker_id)
           }
         }
       },
+      /*queue_generator_resubmit=*/
+      [this](const TaskSpecification &spec) {
+        return spec.IsActorTask()
+                   ? this->actor_task_submitter_->QueueGeneratorForResubmit(spec)
+                   : this->normal_task_submitter_->QueueGeneratorForResubmit(spec);
+      },
       push_error_callback,
       RayConfig::instance().max_lineage_bytes(),
       *task_event_buffer_);
