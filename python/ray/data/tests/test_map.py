@@ -1896,8 +1896,7 @@ class TestGenerateTransformFnForAsyncMap:
     def test_zero_max_concurrent_batches_assertion(self):
         """Test that zero max_concurrent_batches raises assertion error."""
         async def async_fn(x):
-            async for item in [x]:
-                yield item
+            yield x
 
         validate_fn = Mock()
 
@@ -1907,7 +1906,7 @@ class TestGenerateTransformFnForAsyncMap:
     def test_empty_input(self, mock_actor_async_ctx):
         """Test with empty input iterator."""
         async def async_fn(x):
-            yield f"processed_{x}"
+            yield x
 
         validate_fn = Mock()
 
@@ -1919,17 +1918,27 @@ class TestGenerateTransformFnForAsyncMap:
         assert list(transform_fn([], task_context)) == []
         validate_fn.assert_not_called()
 
-    def test_basic_async_processing_preserve_order(self, mock_actor_async_ctx, restore_data_context):
+    @pytest.mark.parametrize("udf_kind", ["coroutine", "async_gen"])
+    def test_basic_async_processing_preserve_order(self, udf_kind, mock_actor_async_ctx, restore_data_context):
         """Test basic async processing with order preservation."""
 
         ctx = restore_data_context
         ctx.execution_options.preserve_order = True
 
-        async def async_fn(x):
-            # Randomly slow-down UDFs (capped by 5ms)
-            delay = random.randint(0, 5) / 1000
-            await asyncio.sleep(delay)
-            yield x
+        if udf_kind == "async_gen":
+            async def async_fn(x):
+                # Randomly slow-down UDFs (capped by 5ms)
+                delay = random.randint(0, 5) / 1000
+                await asyncio.sleep(delay)
+                yield x
+        elif udf_kind == "coroutine":
+            async def async_fn(x):
+                # Randomly slow-down UDFs (capped by 5ms)
+                delay = random.randint(0, 5) / 1000
+                await asyncio.sleep(delay)
+                return x
+        else:
+            pytest.fail(f"Unrecognized udf_kind ({udf_kind})")
 
         validate_fn = Mock()
 

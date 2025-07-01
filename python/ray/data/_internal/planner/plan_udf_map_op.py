@@ -568,13 +568,17 @@ def _generate_transform_fn_for_async_map(
 ) -> MapTransformCallable:
     assert max_concurrent_batches > 0, "Max concurrent batches must be positive"
 
-    assert inspect.iscoroutinefunction(fn) or inspect.isasyncgenfunction(fn), f"Expected a coroutine function, got {fn}"
-
     ctx = DataContext.get_current()
 
-    async def _apply_udf(item: T) -> List[U]:
-        res = fn(item)
-        return [out async for out in res]
+    if inspect.iscoroutinefunction(fn):
+        async def _apply_udf(item: T) -> List[U]:
+            return [await fn(item)]
+    elif inspect.isasyncgenfunction(fn):
+        async def _apply_udf(item: T) -> List[U]:
+            res = fn(item)
+            return [out async for out in res]
+    else:
+        raise ValueError(f"Expected a coroutine function, got {fn}")
 
     async def _process_all(it: Iterator[T], output_queue: queue.Queue) -> None:
         loop = asyncio.get_running_loop()
