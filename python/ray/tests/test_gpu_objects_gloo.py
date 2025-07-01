@@ -105,8 +105,11 @@ def test_multiple_tensors(ray_start_regular):
 
     tensor1 = torch.randn((1,))
     tensor2 = torch.randn((2,))
+    td = TensorDict(
+        {"action": torch.randn((2,)), "reward": torch.randn((2,))}, batch_size=[2]
+    )
     cpu_data = random.randint(0, 100)
-    data = [tensor1, tensor2, cpu_data]
+    data = [tensor1, tensor2, td, cpu_data]
 
     sender, receiver = actors[0], actors[1]
     ref = sender.echo.remote(data)
@@ -115,7 +118,9 @@ def test_multiple_tensors(ray_start_regular):
 
     assert result[0] == pytest.approx(tensor1 * 2)
     assert result[1] == pytest.approx(tensor2 * 2)
-    assert result[2] == cpu_data * 2
+    assert result[2]["action"] == pytest.approx(td["action"] * 2)
+    assert result[2]["reward"] == pytest.approx(td["reward"] * 2)
+    assert result[3] == cpu_data * 2
 
 
 def test_trigger_out_of_band_tensor_transfer(ray_start_regular):
