@@ -1,5 +1,6 @@
 import os
 import ray
+import ray._common.test_utils
 import ray._private.test_utils as test_utils
 import time
 import tqdm
@@ -40,7 +41,7 @@ def no_resource_leaks():
 
 addr = ray.init(address="auto")
 
-test_utils.wait_for_condition(no_resource_leaks)
+ray._common.test_utils.wait_for_condition(no_resource_leaks)
 monitor_actor = test_utils.monitor_memory_usage()
 dashboard_test = DashboardTestAtScale(addr)
 
@@ -55,7 +56,7 @@ print(f"Peak memory usage per processes:\n {usage}")
 del monitor_actor
 
 # Get the dashboard result
-test_utils.wait_for_condition(no_resource_leaks)
+ray._common.test_utils.wait_for_condition(no_resource_leaks)
 
 rate = MAX_ACTORS_IN_CLUSTER / (end_time - start_time)
 try:
