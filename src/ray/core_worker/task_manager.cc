@@ -551,8 +551,8 @@ bool TaskManager::HandleTaskReturn(const ObjectID &object_id,
   }
 
   auto tensor_transport = reference_counter_.GetTensorTransport(object_id);
-  if (tensor_transport != absl::nullopt &&
-      tensor_transport != rpc::TensorTransport::OBJECT_STORE) {
+  if (tensor_transport.value_or(rpc::TensorTransport::OBJECT_STORE) !=
+      rpc::TensorTransport::OBJECT_STORE) {
     reference_counter_.AddObjectOutOfScopeOrFreedCallback(
         object_id, [this](const ObjectID &object_id) {
           auto actor_id = ObjectID::ToActorID(object_id);
@@ -560,8 +560,13 @@ bool TaskManager::HandleTaskReturn(const ObjectID &object_id,
           auto request = rpc::FreeActorObjectRequest();
           request.set_object_id(object_id.Binary());
           rpc_client->FreeActorObject(
-              request, [](Status status, const rpc::FreeActorObjectReply &reply) {
-                RAY_CHECK(status.ok());
+              request,
+              [object_id, actor_id](Status status,
+                                    const rpc::FreeActorObjectReply &reply) {
+                if (!status.ok()) {
+                  RAY_LOG(ERROR).WithField(object_id).WithField(actor_id)
+                      << "Failed to free actor object: " << status;
+                }
               });
         });
   }
