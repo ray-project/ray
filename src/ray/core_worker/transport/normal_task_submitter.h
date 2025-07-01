@@ -127,6 +127,12 @@ class NormalTaskSubmitter {
                           const rpc::Address &worker_addr,
                           bool force_kill,
                           bool recursive);
+
+  /// Queue the streaming generator up for resubmission.
+  /// \return true if the task is still executing and the submitter agrees to resubmit
+  /// when it finishes. false if the user cancelled the task.
+  bool QueueGeneratorForResubmit(const TaskSpecification &spec);
+
   /// Check that the scheduling_key_entries_ hashmap is empty by calling the private
   /// CheckNoSchedulingKeyEntries function after acquiring the lock.
   bool CheckNoSchedulingKeyEntriesPublic() {
@@ -372,11 +378,14 @@ class NormalTaskSubmitter {
   // Keeps track of where currently executing tasks are being run.
   absl::flat_hash_map<TaskID, rpc::Address> executing_tasks_ ABSL_GUARDED_BY(mu_);
 
+  // Generators that are currently running and need to be resubmitted.
+  absl::flat_hash_set<TaskID> generators_to_resubmit_ ABSL_GUARDED_BY(mu_);
+
   // Ratelimiter controls the num of pending lease requests.
   std::shared_ptr<LeaseRequestRateLimiter> lease_request_rate_limiter_;
 
   // Retries cancelation requests if they were not successful.
-  std::optional<boost::asio::steady_timer> cancel_retry_timer_;
+  std::optional<boost::asio::steady_timer> cancel_retry_timer_ ABSL_GUARDED_BY(mu_);
 
   std::atomic<int64_t> num_tasks_submitted_ = 0;
   int64_t num_leases_requested_ ABSL_GUARDED_BY(mu_) = 0;

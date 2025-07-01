@@ -70,6 +70,7 @@ def make_local_deployment_handle(
         deployment.init_kwargs,
         deployment_id=deployment_id,
         run_sync_methods_in_threadpool=RAY_SERVE_RUN_SYNC_IN_THREADPOOL,
+        run_user_code_in_separate_thread=True,
         local_testing_mode=True,
     )
     try:
