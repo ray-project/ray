@@ -544,9 +544,8 @@ class EnvRunnerGroup:
                 if stat["reduce"] == "sum" and stat["clear_on_reduce"] is False:
                     if stat["window"] in (None, float("inf")):
                         stat["_hist"] = [
-                            [v // (config.num_env_runners or 1)]
+                            [v // (config.num_env_runners or 1) for v in h]
                             for h in stat["_hist"]
-                            for v in h
                         ]
                     stat["values"] = [
                         v // (config.num_env_runners or 1) for v in stat["values"]
