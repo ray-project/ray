@@ -1679,6 +1679,86 @@ py_test(
 )
 
 # SAC
+# MountainCar
+py_test(
+    name = "learning_tests_mountaincar_sac",
+    size = "large",
+    srcs = ["tuned_examples/sac/mountaincar_sac.py"],
+    args = [
+        "--as-test",
+        "--enable-new-api-stack",
+    ],
+    main = "tuned_examples/sac/mountaincar_sac.py",
+    tags = [
+        "exclusive",
+        "learning_tests",
+        "learning_tests_discrete",
+        "team:rllib",
+        "torch_only",
+    ],
+)
+
+py_test(
+    name = "learning_tests_mountaincar_sac_gpu",
+    size = "large",
+    srcs = ["tuned_examples/sac/mountaincar_sac.py"],
+    args = [
+        "--as-test",
+        "--enable-new-api-stack",
+        "--num-learners=1",
+        "--num-gpus-per-learner=1",
+    ],
+    main = "tuned_examples/sac/mountaincar_sac.py",
+    tags = [
+        "exclusive",
+        "gpu",
+        "learning_tests",
+        "learning_tests_discrete",
+        "team:rllib",
+        "torch_only",
+    ],
+)
+
+py_test(
+    name = "learning_tests_mountaincar_sac_multi_cpu",
+    size = "large",
+    srcs = ["tuned_examples/sac/mountaincar_sac.py"],
+    args = [
+        "--as-test",
+        "--enable-new-api-stack",
+        "--num-learners=2",
+    ],
+    main = "tuned_examples/sac/mountaincar_sac.py",
+    tags = [
+        "exclusive",
+        "learning_tests",
+        "learning_tests_discrete",
+        "team:rllib",
+        "torch_only",
+    ],
+)
+
+py_test(
+    name = "learning_tests_mountaincar_sac_multi_gpu",
+    size = "large",
+    srcs = ["tuned_examples/sac/mountaincar_sac.py"],
+    args = [
+        "--as-test",
+        "--enable-new-api-stack",
+        "--num-learners=2",
+        "--num-gpus-per-learner=1",
+    ],
+    main = "tuned_examples/sac/mountaincar_sac.py",
+    tags = [
+        "exclusive",
+        "learning_tests",
+        "learning_tests_discrete",
+        "multi_gpu",
+        "team:rllib",
+        "torch_only",
+    ],
+)
+
 # Pendulum
 py_test(
     name = "learning_tests_pendulum_sac",
