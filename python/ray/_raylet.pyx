@@ -67,6 +67,7 @@ from libcpp.unordered_map cimport unordered_map
 from libcpp.vector cimport vector as c_vector
 from libcpp.pair cimport pair as c_pair
 
+from cpython.object cimport PyTypeObject
 from cython.operator import dereference, postincrement
 from cpython.pystate cimport (
     PyGILState_Ensure,
@@ -281,6 +282,7 @@ async_task_name = contextvars.ContextVar('async_task_name', default=None)
 async_task_function_name = contextvars.ContextVar('async_task_function_name',
                                                   default=None)
 
+@PublicAPI
 class ObjectRefGenerator:
     """A generator to obtain object references
     from a task in a streaming manner.
@@ -560,6 +562,16 @@ class ObjectRefGenerator:
         raise TypeError(
             "You cannot return or pass a generator to other task. "
             "Serializing a ObjectRefGenerator is not allowed.")
+
+
+# Update the type names of the extension type so they are
+# ray.{ObjectRef, ObjectRefGenerator} instead of ray._raylet.*
+# For ObjectRefGenerator that can be done directly since it is
+# a full Python class. For ObjectRef we need to update the
+# tp_name since it is a C extension class and not a full class.
+cdef PyTypeObject* object_ref_py_type = <PyTypeObject*>ObjectRef
+object_ref_py_type.tp_name = "ray.ObjectRef"
+ObjectRefGenerator.__module__ = "ray"
 
 
 # For backward compatibility.
@@ -3161,9 +3173,6 @@ cdef class CoreWorker:
     def set_actor_repr_name(self, repr_name):
         CCoreWorkerProcess.GetCoreWorker().SetActorReprName(repr_name)
 
-    def get_plasma_event_handler(self):
-        return self.plasma_event_handler
-
     def get_objects(self, object_refs, int64_t timeout_ms=-1):
         cdef:
             c_vector[shared_ptr[CRayObject]] results
@@ -3833,7 +3842,7 @@ cdef class CoreWorker:
                         c_scheduling_strategy,
                         serialized_runtime_env_info,
                         c_concurrency_groups,
-                        # execute out of order for
+                        # execute_out_of_order for
                         # async or threaded actors.
                         is_asyncio or max_concurrency > 1,
                         max_pending_calls,

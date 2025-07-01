@@ -390,7 +390,6 @@ class ExecutionPlan:
 
     def input_files(self) -> Optional[List[str]]:
         """Get the input files of the dataset, if available."""
-        # TODO(justin): Remove Input Files from metadata.
         return self._logical_plan.dag.infer_metadata().input_files
 
     def meta_count(self) -> Optional[int]:
