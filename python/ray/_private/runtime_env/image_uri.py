@@ -1,44 +1,57 @@
+import asyncio
 import logging
 import os
+import tempfile
 from typing import List, Optional
 
 from ray._private.runtime_env.context import RuntimeEnvContext
 from ray._private.runtime_env.plugin import RuntimeEnvPlugin
-from ray._private.runtime_env.utils import check_output_cmd
 
 default_logger = logging.getLogger(__name__)
 
 
 async def _create_impl(image_uri: str, logger: logging.Logger):
-    # Pull image if it doesn't exist
-    # Also get path to `default_worker.py` inside the image.
-    pull_image_cmd = [
-        "podman",
-        "run",
-        "--quiet",
-        "--rm",
-        image_uri,
-        "python",
-        "-c",
-        (
-            "import ray._private.workers.default_worker as default_worker; "
-            "print(default_worker.__file__)"
-        ),
-    ]
-    logger.info("Pulling image %s", image_uri)
-    output = await check_output_cmd(pull_image_cmd, logger=logger)
+    with tempfile.TemporaryDirectory() as tmpdir:
+        result_file = os.path.join(tmpdir, "worker_path.txt")
 
-    lines = output.strip().split("\n")
-    worker_path = lines[-1].strip()
+        cmd = [
+            "podman",
+            "run",
+            "--rm",
+            "-v",
+            f"{tmpdir}:/shared:Z",
+            image_uri,
+            "sh",
+            "-c",
+            'python -c "import ray._private.workers.default_worker as dw; print(dw.__file__)" > /shared/worker_path.txt',
+        ]
 
-    if not worker_path.endswith(".py"):
-        logger.error(
-            f"Invalid worker path extracted: {worker_path} from output: {output}"
+        logger.info("Pulling image %s", image_uri)
+
+        process = await asyncio.create_subprocess_exec(
+            *cmd, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE
         )
-        raise ValueError("Failed to extract valid worker path from podman output")
 
-    logger.info(f"Extracted worker path: {worker_path}")
-    return worker_path
+        _, stderr = await process.communicate()
+
+        if process.returncode != 0:
+            logger.error(f"Podman failed: {stderr.decode()}")
+            raise RuntimeError(
+                f"Podman command failed with return code {process.returncode}"
+            )
+
+        if not os.path.exists(result_file):
+            raise FileNotFoundError("Worker path file not created")
+
+        with open(result_file, "r") as f:
+            worker_path = f.read().strip()
+
+        if not worker_path.endswith(".py"):
+            logger.error(f"Invalid worker path: {worker_path}")
+            raise ValueError("Invalid worker path extracted")
+
+        logger.info(f"Extracted worker path: {worker_path}")
+        return worker_path
 
 
 def _modify_context_impl(
