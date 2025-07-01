@@ -306,6 +306,10 @@ class MessageQueue(Send):
                 # Exit once `call_fut` has finished. In this case, all
                 # messages must have already been sent.
                 if call_fut in done:
+                    # Optimization for if the user method returns a raw value.
+                    if call_fut.result() is not None:
+                        yield convert_object_to_asgi_messages(call_fut.result())
+
                     break
 
             e = call_fut.exception()

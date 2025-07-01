@@ -1145,16 +1145,17 @@ class UserMethodInfo:
     is_asgi_app: bool
     takes_any_args: bool
     takes_grpc_context_kwarg: bool
+    is_sync_method: bool
 
     @classmethod
-    def from_callable(cls, c: Callable, *, is_asgi_app: bool) -> "UserMethodInfo":
+    def from_callable(cls, c: Callable, **kwargs) -> "UserMethodInfo":
         params = inspect.signature(c).parameters
         return cls(
             callable=c,
             name=c.__name__,
-            is_asgi_app=is_asgi_app,
             takes_any_args=len(params) > 0,
             takes_grpc_context_kwarg=GRPC_CONTEXT_ARG_NAME in params,
+            **kwargs,
         )
 
 
@@ -1283,6 +1284,13 @@ class UserCallableWrapper:
         info = UserMethodInfo.from_callable(
             user_method,
             is_asgi_app=isinstance(self._callable, ASGIAppReplicaWrapper),
+            is_sync_method=(
+                inspect.isfunction(user_method) or inspect.ismethod(user_method)
+            )
+            and not (
+                inspect.iscoroutinefunction(user_method)
+                or inspect.isasyncgenfunction(user_method)
+            ),
         )
         self._cached_user_method_info[method_name] = info
         return info
@@ -1650,40 +1658,60 @@ class UserCallableWrapper:
             extra={"log_to_stderr": False, "serve_access_log": True},
         )
 
-        if user_method_info.is_asgi_app:
-            request_args = (scope, receive, send)
-        elif not user_method_info.takes_any_args:
-            # Edge case to support empty HTTP handlers: don't pass the Request
-            # argument if the callable has no parameters.
-            request_args = tuple()
-        else:
-            # Non-FastAPI HTTP handlers take only the starlette `Request`.
-            request_args = (starlette.requests.Request(scope, receive, send),)
-
         receive_task = None
         try:
             receive_task = asyncio.create_task(receive.fetch_until_disconnect())
-            result, sync_gen_consumed = await self._call_func_or_gen(
-                user_method_info.callable,
-                args=request_args,
-                kwargs={},
-                is_streaming=True,
-                generator_result_callback=send,
-            )
-            final_result = await self._handle_user_method_result(
-                result,
-                user_method_info,
-                is_streaming=True,
-                is_http_request=True,
-                sync_gen_consumed=sync_gen_consumed,
-                generator_result_callback=send,
-                asgi_args=ASGIArgs(scope, receive, send),
-            )
+            callable = user_method_info.callable
+            # If the callable is an ASGI app (i.e. a FastAPI app), we can call it
+            # directly with (scope, receive, send) and return.
+            if user_method_info.is_asgi_app:
+                await callable(scope, receive, send)
+                return
+
+            if not user_method_info.takes_any_args:
+                # Edge case to support empty HTTP handlers: don't pass the Request
+                # argument if the callable has no parameters.
+                request_args = tuple()
+            else:
+                # Non-FastAPI HTTP handlers take only the starlette `Request`.
+                request_args = (starlette.requests.Request(scope, receive, send),)
+
+            if user_method_info.is_sync_method and self._run_sync_methods_in_threadpool:
+                # NOTE(edoakes): we use anyio.to_thread here because it's what Starlette
+                # uses (and therefore FastAPI too). The max size of the threadpool is
+                # set to max_ongoing_requests in the replica wrapper.
+                # anyio.to_thread propagates ContextVars to the worker thread automatically.
+                result = await to_thread.run_sync(callable, *request_args)
+            else:
+                result = callable(*request_args)
+                if inspect.iscoroutine(result):
+                    result = await result
+
+            # The result is one of the following:
+            # 1. A starlette.responses.StreamingResponse object.
+            #    In this case, the user code is streaming back chunks of data, and we
+            #    call the `StreamingResponse` object with (scope, receive, send)
+            #    directly. Doing so will invoke the `send` function automatically.
+            #
+            # 2. A starlette.responses.Response object.
+            #    In this case, the user code is returning a single result, and we
+            #    also call the `Response` object with (scope, receive, send).
+            #    directly. Doing so will invoke the `send` function automatically.
+            #
+            # 3. A raw value.
+            #    In this case, the user code is returning a single result,
+            #    and we need to support this case by serializing the result to ASGI
+            #    messages.
+            if isinstance(result, starlette.responses.Response):
+                await result(scope, receive, send)
+            else:
+                # This is case (3). Since we know for sure that the result is not
+                # streaming, we can optimize by returning the result directly and
+                # skipping the message queue.
+                return result
 
             if receive_task is not None and not receive_task.done():
                 receive_task.cancel()
-
-            return final_result
         except Exception as e:
             if not user_method_info.is_asgi_app:
                 response = self.handle_exception(e)
@@ -1769,12 +1797,6 @@ class UserCallableWrapper:
 
         user_method_info = self.get_user_method_info(request_metadata.call_method)
         callable = user_method_info.callable
-        is_sync_method = (
-            inspect.isfunction(callable) or inspect.ismethod(callable)
-        ) and not (
-            inspect.iscoroutinefunction(callable)
-            or inspect.isasyncgenfunction(callable)
-        )
 
         logger.info(
             f"Started executing request to method '{user_method_info.name}'.",
@@ -1809,7 +1831,11 @@ class UserCallableWrapper:
                     "`handle.options(stream=True)` but it did not return a generator."
                 )
 
-        if enqueue and is_sync_method and self._run_sync_methods_in_threadpool:
+        if (
+            enqueue is not None
+            and user_method_info.is_sync_method
+            and self._run_sync_methods_in_threadpool
+        ):
             await to_thread.run_sync(_call_generator_sync)
         elif enqueue:
 
