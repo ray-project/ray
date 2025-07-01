@@ -1,6 +1,7 @@
 from collections import defaultdict, deque
 import time
 import copy
+import math
 import threading
 import heapq
 from typing import Any, Dict, List, Union, Optional, Tuple
@@ -994,7 +995,8 @@ def merge_stats(base_stats: Optional[Stats], incoming_stats: List[Stats]) -> Sta
         ):
             for stat in incoming_stats:
                 reduce_by = stat.get_reduce_history()[-2][0]
-                base_stats.values[-1] -= reduce_by
+                if not math.isnan(reduce_by):
+                    base_stats.values[-1] -= reduce_by
     else:
         # Nothing to be merged
         return base_stats
