@@ -9,10 +9,12 @@ class FailureDecision(Enum):
     RESTART = "RESTART"
     RAISE = "RAISE"
     NOOP = "NOOP"
+    RESCHEDULE = "RESCHEDULE"
 
 
 class FailurePolicy(abc.ABC):
     """A policy that determines how to handle user and system failures.
+    FailurePolicy will handle the resize failure and worker group poll failure.
 
     This can be used to implement fault tolerance and error recovery.
     """

@@ -6,6 +6,7 @@ from ray.train.v2._internal.execution.failure_handling import (
     FailurePolicy,
 )
 from ray.train.v2._internal.execution.worker_group import PolicyHandledStatus
+from ray.train.v2._internal.execution.worker_group.state import WorkerGroupResizeStatus
 
 logger = logging.getLogger(__name__)
 
@@ -22,6 +23,14 @@ class DefaultFailurePolicy(FailurePolicy):
             return FailureDecision.NOOP
 
         self._total_failures += 1
+
+        # TODO: add a limit for reschedule.
+        if isinstance(worker_group_status, WorkerGroupResizeStatus):
+            logger.info(
+                "Deciding to reschedule. For now resize failure will reschedule infinite times."
+                f"Encountered {self._total_failures} failures so far."
+            )
+            return FailureDecision.RESCHEDULE
 
         if self.failure_config.max_failures == -1:
             logger.info(
