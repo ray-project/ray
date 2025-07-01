@@ -1,10 +1,10 @@
 depsets:
-  ray_vllm:
+  ray_vllm_depset:
     requirements:
-      - /Users/elliot.barnwell/repos/ray/python/requirements.txt
+      - python/requirements_copy.txt
     constraints:
-      - /Users/elliot.barnwell/repos/ray/python/requirements_compiled.txt
-    output: requirements_vllm
+      - python/requirements_compiled.txt
+    output: python/requirements_vllm.txt
     operation: compile
     flags:
       - --strip-extras
@@ -15,4 +15,30 @@ depsets:
       - --emit-index-url
       - --emit-find-links
       - --prerelease=allow
+  
+  subset_vllm_depset:
+    operation: subset
+    depset: ray_vllm_depset
+    packages:
+      - rpds-py
+      - referencing
+      - requests # can be defined in a file
+    output: python/requirements_subset_vllm.txt
 
+  expand_vllm_depset_v2:
+    operation: expand
+    depsets: 
+     - ray_vllm_depset
+    constraints:
+      - /Users/elliot.barnwell/repos/ray/python/requirements_compiled.txt
+    output: python/requirements_expand_vllm.txt
+  
+  # ray_vllm_relaxed_depset: # becomes a requirements file (no verisons)
+  #   operation: relax
+  #   depset: expand_vllm_depset
+  #   degree: 2 # only support degree 1 or 0
+  #   ignore:
+  #   output: /Users/elliot.barnwell/repos/ray/python/requirements_ray_vllm_relaxed.txt
+
+
+    # different pyarrow versions for the data tests

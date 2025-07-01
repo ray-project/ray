@@ -71,19 +71,6 @@ class DependencySetManager:
                 for dep in depset.dependencies:
                     f.write(f"{str(dep)}\n")
 
-    def create_depset(self, requirements: str, name: str) -> DepSet:
-        if name in self.depsets:
-            raise ValueError(f"Dependency set {name} already exists")
-
-        # Copy the requirements file to our storage location
-        output_path = self.storage_path / f"{name}.txt"
-        with open(requirements) as src, open(output_path, "w") as dst:
-            dst.write(src.read())
-
-        depset = DepSet(str(output_path))
-        self.depsets[name] = depset
-        return depset
-
     def list_depsets(self) -> List[str]:
         return self.depsets.keys()
 
@@ -101,7 +88,9 @@ class DependencySetManager:
         with open(file_path, "r") as f:
             config = yaml.safe_load(f)
         return config
-
+    def add_depset(self, name: str, output: str):
+        self.depsets[name] = DepSet(output)
+        self.depsets[name].to_file(self.storage_path / f"{name}.txt")
     # def process_flags(
     #     self,
     #     unsafe_packages: tuple,
@@ -157,6 +146,7 @@ class DependencySetManager:
         requirements: List[str],
         args: List[str],
         name: str,
+        output: str = None,
     ):
         if constraints:
             for constraint in constraints:
@@ -164,47 +154,37 @@ class DependencySetManager:
         if requirements:
             for requirement in requirements:
                 args.append(requirement)
-        args.extend(["-o", f"{self.storage_path}/{name}.txt"])
-        return self.exec_uv__cmd("compile", args)
+        args.extend(["-o", f"{output}"])
+        self.exec_uv__cmd("compile", args)
+        self.add_depset(name, output)
+        click.echo(f"length of dag: {len(self.depsets[name].dep_dag.graph.keys())}")
 
-    def subset_depset(self, source: str, packages: List[str], name: str):
-        source_depset = self.depsets[source]
-        output_file = f"{name}.txt"
-        new_depset = DepSet(output_file)
-        for dep in source_depset.dependencies:
-            if dep.name in packages:
-                new_depset.dependencies.append(dep)
-
-        self.create_depset(output_file, name)
-        return self.get_depset(name)
+    def write_depset(self, depset: DepSet, output: str):
+        with open(output, "w") as f:
+            for dep in depset.dependencies:
+                f.write(f"{dep}\n")
 
     def expand_depset(
         self,
-        sources: List[str],
+        source_depsets: List[str],
         constraints: List[str],
         args: List[str],
         name: str,
+        output: str = None,
     ):
+        #source_depsets_objs = [self.depsets[source] for source in source_depsets]
         if constraints:
             for constraint in constraints:
                 args.extend(["-c", constraint])
         # Add each requirements file as a separate argument
-        for source in sources:
+        for source in source_depsets:
             args.append(self.depsets[source].requirements_fp)
-        args.extend(["-o", f"{self.storage_path}/{name}.txt"])
-        return self.exec_uv__cmd("compile", args)
-
-    def build_dag(self, source: str):
-        source_depset = self.depsets[source]
-        with open(f"{source}_deps.txt", "w") as f:
-            for dep in source_depset.dependencies:
-                f.write(f"{dep}\n")
-
-        source_depset.dep_dag = parse_compiled_requirements(
-            source_depset.requirements_fp
-        )
-        with open(f"{source}_dag.txt", "w") as f:
-            f.write(str(source_depset.dep_dag))
+        args.extend(["-o", f"{output}"])
+        self.exec_uv__cmd("compile", args)
+        click.echo(f"keys: {self.depsets.keys()}")
+        #click.echo(f"length of dag: {len(self.depsets[name].dep_dag.graph.keys())}")
+        click.echo(f"name: {name}")
+        #self.add_depset(name, output)
 
     def relax_depset(self, source: str, degree: int, name: str):
         source_depset = self.depsets[source]
@@ -271,53 +251,23 @@ def cli(ctx, verbose, debug):
 
 
 @cli.command()
-@click.option(
-    "--requirements",
-    "-r",
-    type=str,
-    help="filepath for requirements file"
-)
-@click.argument("name")
-def init(requirements: str, name: str):
-    """Initialize a new dependency set from a requirements file."""
-    try:
-        manager = DependencySetManager()
-        resolved_requirements = resolve_paths(requirements)
-        depset = manager.create_depset(resolved_requirements[0], name)
-        click.echo(
-            f"Created dependency set {name} with {len(depset.dependencies)} dependencies"
-        )
-    except ValueError as e:
-        click.echo(f"Error: {str(e)}", err=True)
-
-@cli.command()
 @click.argument("file_path")
 def load(file_path: str):
     """Load a dependency sets from a config file."""
     config = load_config(file_path)
     click.echo("Generated dependency sets from config file:")
-    for depset, depconfig in config.depsets.items():
-        click.echo(f"- {depset}")
+    for _, depconfig in config.depsets.items():
         execute_config(depconfig.operation, depconfig)
-        # operation_map[depconfig.operation](depconfig)
 
 def execute_config(func_name: str, config: Config):
     if func_name == "compile":
-        compile(constraints=config.constraints, requirements=config.requirements, args=config.flags, name=config.name) #output=config.output,
+        compile(constraints=config.constraints, requirements=config.requirements, args=config.flags, name=config.name, output=config.output)
     elif func_name == "relax":
         relax(config.name, config.degree)
-    # elif func_name == "relax":
-    #     relax(func_name)
-    # elif func_name == "py_version":
-    #     py_version(func_name)
-    # elif func_name == "subset":
-    #     subset(func_name)
-    # elif func_name == "expand":
-    #     expand(func_name)
-    # elif func_name == "delete":
-    #     delete(func_name)
-    # elif func_name == "show":
-    #     show(func_name)
+    elif func_name == "subset":
+        subset(config.depset, config.packages, config.name, config.output)
+    elif func_name == "expand":
+        expand(config.depsets, config.constraints, config.flags, config.name, config.output)
 
 @cli.command()
 def list():
@@ -367,6 +317,7 @@ def compile(
     requirements: List[str],
     args: List[str],
     name: str,
+    output: str = None,
 ):
     """Compile a dependency set."""
     try:
@@ -376,114 +327,57 @@ def compile(
             requirements=requirements,
             args=args,
             name=name,
+            output=output,
         )
         click.echo(f"Compiled dependency set {name}")
-        manager.build_dag(name)
         click.echo(f"Built dag for {name}")
     except ValueError as e:
         click.echo(f"Error: {str(e)}", err=True)
 
 
-# @cli.command()
-# @click.option("--sources", "-s", type=str, help="comma separated list of names of source depset")
-# @click.option("--packages", "-p", type=str, help="filename for min package deps file")
-# @click.argument("name")
-# def subset(sources: str, packages: str, name: str):
-#     """Subset a dependency set."""
-#     try:
-#         manager = DependencySetManager()
-#         resolved_packages = resolve_paths(packages)
+def subset(source_depset_name: str, packages: List[str], name: str, output: str = None):
+    """Subset a dependency set."""
+    try:
+        manager = DependencySetManager()
+        # Get the source depset
+        source_depset = manager.get_depset(source_depset_name)
+        if not source_depset:
+            click.echo(f"Error: Source depset '{source_depset_name}' not found", err=True)
+            return
+        click.echo(f"length of dag: {len(source_depset.dep_dag.graph.keys())}")
+        # Extract subgraph with all dependencies of mentioned packages
+        subgraph = source_depset.dep_dag.extract_subgraph_with_dependencies(packages)
 
-#         # Read packages from each resolved package file
-#         all_packages = []
-#         for package_file in resolved_packages:
-#             with open(package_file, "r") as f:
-#                 file_packages = f.read().splitlines()
-#                 all_packages.extend(file_packages)
-#                 click.echo(f"Loaded {len(file_packages)} packages from {package_file}")
+        subgraph.to_requirements_txt(output)
 
-#         new_depset = manager.subset_depset(sources, all_packages, name)
-#         click.echo(
-#             f"Created subset {name} from {sources} with {len(new_depset.dependencies)} dependencies"
-#         )
-#     except ValueError as e:
-#         click.echo(f"Error: {str(e)}", err=True)
+        # Add to manager
+        manager.add_depset(name, output)
+
+        click.echo(f"Created subset '{name}' from '{source_depset_name}'")
+        click.echo(f"Subgraph contains {len(subgraph.get_all_nodes())} packages total")
+
+    except ValueError as e:
+        click.echo(f"Error: {str(e)}", err=True)
 
 
-@cli.command()
-@click.option(
-    "--sources", "-s", type=str, help="comma separated list of absolute filepaths for source depset(s)"
-)
-@click.option(
-    "--constraints",
-    "-c",
-    type=str,
-    help="comma separated list of absolute filepaths for constraint(s) file(s)",
-)
-@click.option("--generate-hashes", is_flag=True, help="generate hashes")
-@click.option("--strip-extras", is_flag=True, help="strip extras")
-@click.option(
-    "--unsafe-package",
-    multiple=True,
-    default=("ray", "grpcio-tools", "setuptools"),
-    help="unsafe package (can be used multiple times)",
-)
-@click.option(
-    "--index-url", type=str, default="https://pypi.org/simple", help="index url"
-)
-@click.option(
-    "--extra-index-url",
-    type=str,
-    default="https://download.pytorch.org/whl/cpu",
-    help="extra index url",
-)
-@click.option(
-    "--find-links",
-    type=str,
-    default="https://data.pyg.org/whl/torch-2.5.1+cpu.html",
-    help="find links",
-)
-@click.option(
-    "--index-strategy", type=str, default="unsafe-best-match", help="index strategy"
-)
-@click.option("--no-strip-markers", is_flag=True, help="no strip markers")
-@click.option("--emit-index-url", is_flag=True, help="emit index url")
-@click.option("--emit-find-links", is_flag=True, help="emit find links")
-@click.option("--no-header", is_flag=True, help="no header")
-@click.option("--no-cache", is_flag=True, help="no header")
-@click.option("--python-version", type=str, default="3.11", help="python version")
-@click.option("--prerelease", type=str, default="allow", help="include prerelease packages")
-@click.argument("name")
 def expand(
-    sources: str,
-    constraints: str,
-    generate_hashes: bool,
-    strip_extras: bool,
-    unsafe_package: tuple,
-    index_url: str,
-    extra_index_url: str,
-    find_links: str,
-    index_strategy: str,
-    no_strip_markers: bool,
-    emit_index_url: bool,
-    emit_find_links: bool,
-    no_header: bool,
-    no_cache: bool,
-    python_version: str,
-    prerelease: str,
+    source_depsets: List[str],
+    constraints: List[str],
+    args: List[str],
     name: str,
+    output: str = None,
 ):
     """Expand a dependency set."""
     try:
         manager = DependencySetManager()
-        args = manager.process_flags(unsafe_package, index_url, extra_index_url, find_links, generate_hashes, no_header, no_cache, index_strategy, strip_extras, no_strip_markers, emit_index_url, emit_find_links, python_version, prerelease)
         manager.expand_depset(
-            sources.split(","),
-            resolve_paths(constraints),
+            source_depsets,
+            constraints,
             args,
             name,
+            output,
         )
-        click.echo(f"Expanded {name} from {sources}")
+        click.echo(f"Expanded {name} from {source_depsets}")
     except ValueError as e:
         click.echo(f"Error: {str(e)}", err=True)
 
@@ -496,8 +390,6 @@ def relax(source: str, degree: int, name: str):
     """Relax a dependency set by selectively keeping and removing constraints"""
     try:
         manager = DependencySetManager()
-        manager.build_dag(source)
-        click.echo(f"Built dag for {source}")
         manager.relax_depset(source, degree, name)
         click.echo(
             f"Relaxed depset: {name} to the {degree} degree. Output written to {name}.txt"
@@ -548,6 +440,104 @@ def py_version(source: str, version: str, name: str, flags: str = ""):
 #     "show": show,
 #     "list": list,
 # }
+
+@cli.command()
+@click.option("--depset", "-d", type=str, help="name of source depset")
+@click.option("--packages", "-p", type=str, help="comma-separated list of packages to extract")
+@click.option("--output", "-o", type=str, help="output file path")
+@click.argument("name")
+def extract_subgraph(depset: str, packages: str, output: str, name: str):
+    """Extract a subgraph containing specified packages and their dependencies."""
+    try:
+        manager = DependencySetManager()
+        
+        # Get the source depset
+        source_depset = manager.get_depset(depset)
+        if not source_depset:
+            click.echo(f"Error: Source depset '{depset}' not found", err=True)
+            return
+        
+        # Parse packages list
+        package_list = [pkg.strip() for pkg in packages.split(",") if pkg.strip()]
+        
+        # Extract subgraph with all dependencies
+        subgraph_with_deps = source_depset.dep_dag.extract_subgraph_with_dependencies(package_list)
+        
+        # Extract subgraph with only mentioned packages
+        subgraph_only_mentioned = source_depset.dep_dag.extract_subgraph_only_mentioned(package_list)
+        
+        click.echo(f"Subgraph with all dependencies:")
+        click.echo(f"  Nodes: {len(subgraph_with_deps.get_all_nodes())}")
+        click.echo(f"  Graph: {subgraph_with_deps}")
+        
+        click.echo(f"\nSubgraph with only mentioned packages:")
+        click.echo(f"  Nodes: {len(subgraph_only_mentioned.get_all_nodes())}")  
+        click.echo(f"  Graph: {subgraph_only_mentioned}")
+        
+        # If output specified, write the full dependency subgraph
+        if output:
+            subgraph_packages = set(subgraph_with_deps.get_all_nodes())
+            filtered_deps = [
+                dep for dep in source_depset.dependencies 
+                if dep.name in subgraph_packages
+            ]
+            
+            with open(output, "w") as f:
+                for dep in filtered_deps:
+                    f.write(f"{dep}\n")
+                    
+            click.echo(f"\nWrote {len(filtered_deps)} dependencies to {output}")
+        
+    except Exception as e:
+        click.echo(f"Error: {str(e)}", err=True)
+
+
+@cli.command()
+@click.option("--depset", "-d", type=str, required=True, help="name of source depset")
+@click.option("--output", "-o", type=str, help="output requirements.txt file")
+@click.option("--packages", "-p", type=str, help="comma-separated list of packages to include (optional)")
+@click.option("--with-versions", is_flag=True, help="include version constraints")
+def flatten(depset: str, output: str, packages: str, with_versions: bool):
+    """Flatten a dependency graph into a requirements list."""
+    try:
+        manager = DependencySetManager()
+        
+        # Get the source depset
+        source_depset = manager.get_depset(depset)
+        if not source_depset:
+            click.echo(f"Error: Source depset '{depset}' not found", err=True)
+            return
+        
+        # If specific packages are mentioned, extract subgraph first
+        if packages:
+            package_list = [pkg.strip() for pkg in packages.split(",") if pkg.strip()]
+            subgraph = source_depset.dep_dag.extract_subgraph_with_dependencies(package_list)
+            click.echo(f"Extracted subgraph for packages: {', '.join(package_list)}")
+        else:
+            subgraph = source_depset.dep_dag
+            click.echo("Using full dependency graph")
+        
+        # Flatten to requirements
+        if with_versions:
+            requirements = subgraph.flatten_to_requirements_with_versions(source_depset)
+        else:
+            requirements = subgraph.flatten_to_requirements()
+        
+        # Output results
+        click.echo(f"\nFlattened requirements ({len(requirements)} packages):")
+        for req in requirements:
+            click.echo(f"  {req}")
+        
+        # Write to file if specified
+        if output:
+            if with_versions:
+                count = subgraph.to_requirements_txt(output, source_depset)
+            else:
+                count = subgraph.to_requirements_txt(output)
+            click.echo(f"\nWrote {count} requirements to {output}")
+        
+    except Exception as e:
+        click.echo(f"Error: {str(e)}", err=True)
 
 if __name__ == "__main__":
     cli()
