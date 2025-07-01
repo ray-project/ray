@@ -28,7 +28,7 @@ class Collector:
         return self.items
 
 
-def test_collector_class():
+def test_collector_class(serve_instance):
     collector = Collector.remote()
 
     random_items = ["this", "is", 1, "demo", "string"]
