@@ -566,8 +566,9 @@ def _generate_transform_fn_for_async_map(
     *,
     max_concurrent_batches: int,
 ) -> MapTransformCallable:
-    assert inspect.iscoroutinefunction(fn), f"Expected a coroutine function, got {fn}"
-    assert max_concurrent_batches > 0
+    assert max_concurrent_batches > 0, "Max concurrent batches must be positive"
+
+    assert inspect.iscoroutinefunction(fn) or inspect.isasyncgenfunction(fn), f"Expected a coroutine function, got {fn}"
 
     ctx = DataContext.get_current()
 
