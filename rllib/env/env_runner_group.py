@@ -553,20 +553,6 @@ class EnvRunnerGroup:
                     ]
             env_runner_states[COMPONENT_METRICS_LOGGER] = env_runner_metrics
 
-        # Sanity check that metrics and env_runner_metrics aligns
-        # TODO: Remove when this is tested accordingly
-        if (
-            env_steps_sampled is not None
-            and env_runner_metrics is not None
-            and NUM_ENV_STEPS_SAMPLED_LIFETIME in env_runner_metrics
-        ):
-            # TODO: Change into error or warning
-            assert env_runner_states[
-                NUM_ENV_STEPS_SAMPLED_LIFETIME
-            ] == env_runner_metrics[NUM_ENV_STEPS_SAMPLED_LIFETIME] // (
-                config.num_env_runners or 1
-            )
-
         # If we do NOT want remote EnvRunners to get their Connector states updated,
         # only update the local worker here (with all state components, except the model
         # weights) and then remove the connector components.
