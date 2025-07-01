@@ -29,7 +29,7 @@ class GPUTestActor:
         return None
 
 
-def test_inter_actor_gpu_tensor_transfer(ray_start_regular):
+def test_p2p(ray_start_regular):
     world_size = 2
     actors = [GPUTestActor.remote() for _ in range(world_size)]
     create_collective_group(actors, backend="torch_gloo")

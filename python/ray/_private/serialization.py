@@ -259,22 +259,21 @@ class SerializationContext:
     def _deserialize_pickle5_data(
         self,
         data: Any,
+        tensor_transport: TensorTransportEnum,
         object_id: Optional[str] = None,
-        tensor_transport: Optional[
-            TensorTransportEnum
-        ] = TensorTransportEnum.OBJECT_STORE,
     ) -> Any:
         """
-        If `object_id` exists in `in_actor_object_store`, it means that tensors are sent
-        out-of-band instead of through the object store. In this case, we need to retrieve
-        the tensors from the in-actor object store. Then, we deserialize `data` with the
-        retrieved tensors in the serialization context.
 
         Args:
             data: The data to deserialize.
             object_id: The object ID to use as the key for the in-actor object store
                 to retrieve tensors.
-            tensor_transport: The tensor transport to use.
+            tensor_transport: The tensor transport to use. If not equal to OBJECT_STORE,
+                it means that any tensors in the object are sent out-of-band
+                instead of through the object store. In this case, we need to
+                retrieve the tensors from the in-actor object store. Then, we
+                deserialize `data` with the retrieved tensors in the
+                serialization context.
 
         Returns:
             Any: The deserialized object.
@@ -287,12 +286,10 @@ class SerializationContext:
         if enable_gpu_objects:
             gpu_object_manager = ray._private.worker.global_worker.gpu_object_manager
             if not gpu_object_manager.gpu_object_store.has_gpu_object(object_id):
-                if gpu_object_manager.is_managed_gpu_object(object_id):
-                    gpu_object_manager.fetch_gpu_object(object_id)
-                else:
-                    raise RuntimeError(
-                        f"obj_id={object_id} not found in GPU object store"
-                    )
+                assert gpu_object_manager.is_managed_gpu_object(
+                    object_id
+                ), f"obj_id={object_id} not found in GPU object store. This error is unexpected. Please report this issue on GitHub: https://github.com/ray-project/ray/issues/new/choose"
+                gpu_object_manager.fetch_gpu_object(object_id)
             tensors = gpu_object_manager.gpu_object_store.get_gpu_object(object_id)
             ctx.reset_out_of_band_tensors(tensors)
             # TODO(kevin85421): The current garbage collection implementation for the in-actor object store
@@ -326,7 +323,7 @@ class SerializationContext:
 
         if metadata_fields[0] == ray_constants.OBJECT_METADATA_TYPE_PYTHON:
             python_objects = self._deserialize_pickle5_data(
-                pickle5_data, object_id, tensor_transport
+                pickle5_data, tensor_transport, object_id
             )
         else:
             python_objects = []
@@ -366,13 +363,14 @@ class SerializationContext:
             )
 
     def _deserialize_object(
-        self, data, metadata, object_ref, tensor_transport_value: Optional[int] = None
+        self,
+        data,
+        metadata,
+        object_ref,
+        tensor_transport: Optional[TensorTransportEnum],
     ):
-        tensor_transport = TensorTransportEnum(
-            tensor_transport_value
-            if tensor_transport_value is not None
-            else TensorTransportEnum.OBJECT_STORE.value
-        )
+        if tensor_transport is None:
+            tensor_transport = TensorTransportEnum.OBJECT_STORE
         if metadata:
             metadata_fields = metadata.split(b",")
             if metadata_fields[0] in [
