@@ -151,7 +151,11 @@ class TaskManagerTest : public ::testing::Test {
                const std::string &error_message,
                double timestamp) { return Status::OK(); },
             max_lineage_bytes,
-            *task_event_buffer_mock_.get()) {}
+            *task_event_buffer_mock_.get(),
+            [](const ActorID &actor_id)
+                -> std::shared_ptr<ray::rpc::CoreWorkerClientInterface> {
+              return nullptr;
+            }) {}
 
   virtual void TearDown() { AssertNoLeaks(); }
 
