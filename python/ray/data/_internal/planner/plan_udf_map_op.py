@@ -664,11 +664,7 @@ def _generate_transform_fn_for_async_map(
         consumed = False
         # NOTE: To preserve the iteration ordering to that of the input sequence
         #       we rely on deque to keep track of running tasks
-        cur_tasks: MutableSequence[asyncio.Task] = (
-            deque()
-            if ctx.execution_options.preserve_order
-            else set()
-        )
+        cur_tasks: MutableSequence[asyncio.Task] = deque()
 
         sentinel = _SENTINEL
 
@@ -677,7 +673,7 @@ def _generate_transform_fn_for_async_map(
                 while len(cur_tasks) < max_concurrent_batches and not consumed:
                     try:
                         item = next(it)
-                        cur_tasks.append(loop.create_task(fn(item)))
+                        cur_tasks.extend(loop.create_task(fn(item)))
                     except StopIteration:
                         consumed = True
                         break
@@ -695,7 +691,7 @@ def _generate_transform_fn_for_async_map(
                     )
 
                     next_tasks = done
-                    cur_tasks = pending
+                    cur_tasks = deque(pending)
 
                 for t in next_tasks:
                     output_queue.put(await t)
