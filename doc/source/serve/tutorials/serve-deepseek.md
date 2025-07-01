@@ -167,12 +167,10 @@ curl -X POST http://localhost:8000/v1/chat/completions \
 Create a KubeRay cluster using the {ref}`Ray Serve LLM KubeRay guide <kuberay-rayservice-llm-example>` with sufficient GPU resources for DeepSeek R1. For example, two 8xH100 nodes.
 
 Deploy DeepSeek-R1 as a RayService with the following configuration file:
-::::{tab-set}
-:::{tab-item} Request
+
 ```bash
 kubectl apply -f https://raw.githubusercontent.com/ray-project/kuberay/master/ray-operator/config/samples/ray-service.deepseek.yaml
 ```
-:::
 
 ## Troubleshooting
 
