@@ -53,9 +53,10 @@ void InlineDependencies(
             // the key.
             mutable_arg->clear_object_ref();
             // We only push the object ID of the non-GPU object to the inlined dependency
-            // IDs to avoid the reference count being updated immediately and causing the
-            // tensors on the sender actor to be freed before transferring to the receiver
-            // actor.
+            // IDs to avoid the reference count being updated immediately. GPU objects are
+            // inlined, but the actual data lives on the remote actor. Therefore, if we
+            // decrement the reference count upon inlining, we may cause the tensors on
+            // the sender actor to be freed before transferring to the receiver actor.
             inlined_dependency_ids->push_back(id);
           }
           mutable_arg->set_is_inlined(true);
