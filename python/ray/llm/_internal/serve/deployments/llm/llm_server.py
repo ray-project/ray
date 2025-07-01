@@ -1,7 +1,7 @@
 import asyncio
 import os
 from abc import ABC, abstractmethod
-from typing import Any, Dict, Optional, Type
+from typing import Any, Dict, Optional, Type, Union, AsyncGenerator
 
 # Third-party imports
 from ray import serve
@@ -19,6 +19,7 @@ from ray.llm._internal.serve.configs.openai_api_models import (
     ChatCompletionRequest,
     CompletionRequest,
     EmbeddingRequest,
+    EmbeddingResponse,
     LLMChatResponse,
     LLMCompletionsResponse,
     LLMEmbeddingsResponse,
@@ -28,9 +29,6 @@ from ray.llm._internal.serve.configs.server_models import (
 )
 from ray.llm._internal.serve.deployments.llm.llm_engine import LLMEngine
 from ray.llm._internal.serve.deployments.llm.vllm.vllm_engine import VLLMEngine
-from ray.llm._internal.serve.deployments.llm.vllm.vllm_models import (
-    VLLMEmbeddingRequest,
-)
 from ray.llm._internal.serve.deployments.utils.batcher import OpenAIResponseBatcher
 from ray.llm._internal.serve.deployments.utils.server_utils import (
     get_serve_request_id,
@@ -39,6 +37,7 @@ from ray.llm._internal.serve.observability.logging import get_logger
 from ray.llm._internal.serve.observability.usage_telemetry.usage import (
     push_telemetry_report_for_all_models,
 )
+
 
 logger = get_logger(__name__)
 
@@ -149,6 +148,12 @@ class LLMServer(_LLMServerBase):
             stream_batching_interval_ms = MODEL_RESPONSE_BATCH_TIMEOUT_MS
         return stream_batching_interval_ms if stream else None
     
+    async def _maybe_add_request_id_to_request(self, request: Union[ChatCompletionRequest, CompletionRequest, EmbeddingRequest]):
+        """Add the request id to the request."""
+        request_id = get_serve_request_id()
+        if request_id:
+            request.request_id = request_id
+        
     
     async def _maybe_resolve_lora_from_multiplex(self) -> None:
         """Handle the lora model for the request."""
@@ -166,6 +171,19 @@ class LLMServer(_LLMServerBase):
             interval_ms=self._get_batch_interval_ms(),
         ).stream()
         
+        
+    async def _run_request(self, request, *, engine_method: str, batch_output_stream: bool = False) -> AsyncGenerator[Any, None]:
+        """Run the stream flow for the request."""
+        await self._maybe_add_request_id_to_request(request)
+        await self._maybe_resolve_lora_from_multiplex()
+        if batch_output_stream:
+            stream = self._batch_output_stream(
+                getattr(self.engine, engine_method)(request)
+            )
+        else:
+            stream = getattr(self.engine, engine_method)(request)
+        
+        return stream
 
     async def chat(self, request: ChatCompletionRequest):
         """Runs a chat request to the LLM engine and returns the response.
@@ -176,13 +194,7 @@ class LLMServer(_LLMServerBase):
         Returns:
             A LLMChatResponse object.
         """
-        await self._maybe_resolve_lora_from_multiplex()
-        stream = self._batch_output_stream(
-            self.engine.chat(request)
-        )
-
-        async for chunk in stream:
-            yield chunk
+        return await self._run_request(request, engine_method="chat", batch_output_stream=True)
 
     async def completions(self, request: CompletionRequest) -> LLMCompletionsResponse:
         """Runs a completion request to the LLM engine and returns the response.
@@ -193,14 +205,7 @@ class LLMServer(_LLMServerBase):
         Returns:
             A LLMCompletionsResponse object.
         """
-        await self._maybe_resolve_lora_from_multiplex()
-        response_generator = self._batch_output_stream(
-            request, 
-            self.engine.completions(request)
-        )
-
-        async for response in response_generator:
-            yield response
+        return await self._run_request(request, engine_method="completions", batch_output_stream=True)
             
 
     async def check_health(self) -> None:
@@ -225,45 +230,8 @@ class LLMServer(_LLMServerBase):
         Returns:
             A LLMEmbeddingsResponse object.
         """
-        request_id = get_serve_request_id()
-        try:
-            multiplexed_model_id = serve.get_multiplexed_model_id()
-
-            if multiplexed_model_id:
-                assert (
-                    self._llm_config.lora_config is not None
-                ), "Must setup lora config for multiplexed requests."
-                disk_lora_model = await self._disk_lora_model(multiplexed_model_id)
-            else:
-                disk_lora_model = None
-
-            request_params = {
-                "request_id": request_id,
-                "prompt": request.input,
-                "encoding_format": request.encoding_format,
-                "disk_multiplex_config": disk_lora_model,
-                "serve_request_context": serve.context._serve_request_context.get(),
-            }
-            vllm_request = VLLMEmbeddingRequest(**request_params)
-            embedding_data, total_tokens = await self.engine.embed(vllm_request)
-
-            data = [
-                EmbeddingResponseData(
-                    object="embedding", index=index, embedding=embedding
-                )
-                for index, embedding in enumerate(embedding_data)
-            ]
-
-            usage = UsageInfo(prompt_tokens=total_tokens, total_tokens=total_tokens)
-
-            yield EmbeddingResponse(
-                model=self._llm_config.model_id, data=data, usage=usage, object="list"
-            )
-        except Exception as e:
-            logger.error(
-                f"Failed while handling embeddings for request ({request_id}): {repr(e)}",
-                exc_info=e,
-            )
+        # NOTE: Embeddings does not need batching.
+        return await self._run_request(request, engine_method="embeddings", batch_output_stream=False)
 
     async def llm_config(self) -> Optional[LLMConfig]:
         return self._llm_config

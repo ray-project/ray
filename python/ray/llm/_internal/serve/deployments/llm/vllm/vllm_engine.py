@@ -3,16 +3,25 @@ import uuid
 import argparse
 from starlette.datastructures import State
 
-from typing import TYPE_CHECKING, AsyncGenerator, List, Tuple
+from typing import TYPE_CHECKING, AsyncGenerator, List, Tuple, Union
 
 import ray
 from ray.llm._internal.common.utils.import_utils import try_import
 from ray.llm._internal.serve.configs.constants import (
     RAYLLM_ENABLE_REQUEST_PROMPT_LOGS,
 )
+from ray.llm._internal.serve.configs.openai_api_models import (
+    CompletionRequest,
+    CompletionResponse,
+    ChatCompletionRequest,
+    ChatCompletionResponse,
+    EmbeddingRequest,
+    EmbeddingResponse,
+    ErrorResponse,
+)
+    
 from ray.llm._internal.serve.configs.server_models import (
     DiskMultiplexConfig,
-    GenerationRequest,
     LLMConfig,
 )
 from transformers.dynamic_module_utils import init_hf_modules
@@ -299,11 +308,11 @@ class VLLMEngine(LLMEngine):
     async def resolve_lora(self, disk_lora_model: DiskMultiplexConfig):
         from vllm.entrypoints.openai.protocol import LoadLoRAAdapterRequest
 
-        if disk_lora_model.model_id in self.oai_models.lora_requests:
+        if disk_lora_model.model_id in self._oai_models.lora_requests:
             # Lora is already loaded, return
             return
         
-        lora_request = await self.oai_models.load_lora_adapter(
+        lora_request = await self._oai_models.load_lora_adapter(
             request=LoadLoRAAdapterRequest(
                 lora_name=disk_lora_model.model_id,
                 lora_path=disk_lora_model.local_path,
@@ -314,8 +323,8 @@ class VLLMEngine(LLMEngine):
             raise ValueError(f"Failed to load lora model: {lora_request.message}")
 
     async def chat(
-        self, request: GenerationRequest
-    ) -> AsyncGenerator[str, None]:
+        self, request: ChatCompletionRequest
+    ) -> AsyncGenerator[Union[str, ChatCompletionResponse, ErrorResponse], None]:
         """
         
         input: Take a genric free form input type and cast it to the target engine request type inside the engine.
@@ -349,53 +358,63 @@ class VLLMEngine(LLMEngine):
 
 
     async def completions(
-        self, request
-    ):
-        raise NotImplementedError("Completions are not supported yet")
-    
-    async def embeddings(
-        self, vllm_embedding_request: VLLMEmbeddingRequest
-    ) -> Tuple[List[List[float]], int]:
-        """Return (embeddings, num_prompt_tokens)"""
+        self, request: CompletionRequest
+    ) -> AsyncGenerator[Union[str, CompletionResponse, ErrorResponse], None]:
+        """
+        
+        input: Take a generic free form input type and cast it to the target engine request type inside the engine.
+        
+        output: 
+        - stream: True --> for each chunk, yield a string representing data: <json_str>\n\n
+        - stream: False --> yield only one string representing the response <json_str>
 
-        num_prompts = len(vllm_embedding_request.prompt)
-        if RAYLLM_ENABLE_REQUEST_PROMPT_LOGS:
+        Error:
+        option A:
+        when request hits an error, raise an HTTPException(msg, code, type)
+        option B:
+        yield a HTTPException object
+        """
+
+        if self._oai_serving_completion is None:
+            raise RuntimeError("Completion service is not available. Make sure the engine is started and supports completions.")
+
+        completion_response = await self._oai_serving_completion.create_completion(request)
+
+        if isinstance(completion_response, AsyncGenerator):
+            async for response in completion_response:
+                if not isinstance(response, str):
+                    raise ValueError(f"Expected create_completion to return a stream of strings, got and item with type {type(response)}")
+                yield response
+        else:
             logger.info(
-                f"Encoding request {vllm_embedding_request.request_id} started. "
-                f"Num prompts: {num_prompts}"
+                f"[Kourosh] non streaming response received, type: {type(completion_response)}, completion_response: {completion_response}"
             )
+            if isinstance(completion_response, VLLMErrorResponse):
+                yield ErrorResponse(**completion_response.model_dump())
+            else:
+                yield CompletionResponse(**completion_response.model_dump())
 
-        generators: List[AsyncGenerator["PoolingRequestOutput", None]] = []
+    async def embeddings(
+        self, request: EmbeddingRequest
+    ) -> AsyncGenerator[Union[EmbeddingResponse, ErrorResponse], None]:
+        """Generate embeddings using vLLM's OpenAI-compatible API.
 
-        prompts = vllm_embedding_request.prompt
-        if isinstance(prompts, str):
-            prompts = [prompts]
+        Args:
+            request: An EmbeddingRequest object.
 
-        for i, prompt in enumerate(prompts):
-            request_id = f"{vllm_embedding_request.request_id}-{i}"
-            gen: AsyncGenerator["PoolingRequestOutput", None] = self._engine_client.encode(
-                prompt=vllm.inputs.TextPrompt(
-                    prompt=prompt,
-                ),
-                pooling_params=vllm.pooling_params.PoolingParams(),
-                request_id=request_id,
-                lora_request=vllm_embedding_request.lora_request,  # type: ignore
-            )
-            generators.append(gen)
-
-        embedding_data = []
-        total_prompt_tokens = 0
-
-        for gen in generators:
-            async for result in gen:
-                embedding = result.outputs.embedding
-                if vllm_embedding_request.encoding_format == "base64":
-                    embedding = floats_to_base64(embedding)
-
-                embedding_data.append(embedding)
-                total_prompt_tokens += len(result.prompt_token_ids)
-
-        return embedding_data, total_prompt_tokens
+        Yields:
+            An EmbeddingResponse or ErrorResponse object.
+        """
+        
+        if self._oai_serving_embedding is None:
+            raise RuntimeError("Embedding service is not available. Make sure the engine is started and supports embeddings.")
+        
+        embedding_response = await self._oai_serving_embedding.create_embedding(request)
+        
+        if isinstance(embedding_response, VLLMErrorResponse):
+            yield ErrorResponse(**embedding_response.model_dump())
+        else:
+            yield EmbeddingResponse(**embedding_response.model_dump())
 
     async def check_health(self) -> None:
         if not hasattr(self._engine_client, "check_health"):
