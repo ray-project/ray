@@ -1,8 +1,9 @@
 import sys
+from unittest.mock import MagicMock, patch
 
 import pytest
-from unittest.mock import patch, MagicMock
-from ray.llm._internal.batch.stages.tokenize_stage import TokenizeUDF, DetokenizeUDF
+
+from ray.llm._internal.batch.stages.tokenize_stage import DetokenizeUDF, TokenizeUDF
 
 
 @pytest.fixture

@@ -11,11 +11,12 @@ from typing import Any, Dict, List, Optional
 
 import ray
 import ray._private.ray_constants as ray_constants
+from ray._private.accelerators.nvidia_gpu import NOSET_CUDA_VISIBLE_DEVICES_ENV_VAR
 from ray._private.ray_logging.filters import CoreContextFilter
 from ray._private.ray_logging.formatters import JSONFormatter, TextFormatter
 from ray._private.runtime_env.constants import RAY_JOB_CONFIG_JSON_ENV_VAR
 from ray._private.utils import remove_ray_internal_flags_from_env
-from ray._private.accelerators.nvidia_gpu import NOSET_CUDA_VISIBLE_DEVICES_ENV_VAR
+from ray._raylet import GcsClient
 from ray.actor import ActorHandle
 from ray.dashboard.modules.job.common import (
     JOB_ID_METADATA_KEY,
@@ -24,7 +25,6 @@ from ray.dashboard.modules.job.common import (
 )
 from ray.dashboard.modules.job.job_log_storage_client import JobLogStorageClient
 from ray.job_submission import JobStatus
-from ray._raylet import GcsClient
 
 import psutil
 

@@ -8,10 +8,10 @@ import time
 import uuid
 from enum import Enum
 from functools import partial
-from pydantic import BaseModel, Field, root_validator
-from typing import Any, Dict, AsyncIterator, Optional, List, Tuple, Type
+from typing import Any, AsyncIterator, Dict, List, Optional, Tuple, Type
 
 import numpy as np
+from pydantic import BaseModel, Field, root_validator
 
 import ray
 from ray.llm._internal.batch.stages.base import (
@@ -21,12 +21,11 @@ from ray.llm._internal.batch.stages.base import (
 from ray.llm._internal.batch.stages.common import maybe_convert_ndarray_to_list
 from ray.llm._internal.common.utils.cloud_utils import is_remote_path
 from ray.llm._internal.common.utils.download_utils import (
+    NodeModelDownloadable,
     download_lora_adapter,
     download_model_files,
-    NodeModelDownloadable,
 )
 from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
-
 
 logger = logging.getLogger(__name__)
 

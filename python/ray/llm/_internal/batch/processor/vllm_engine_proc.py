@@ -1,40 +1,36 @@
 """The vLLM engine processor."""
 
 from typing import Any, Dict, Optional
+
+import transformers
 from pydantic import Field, root_validator
 
 import ray
 from ray.data.block import UserDefinedFunction
-from ray.data._internal.execution.operators.actor_pool_map_operator import (
-    DEFAULT_MAX_TASKS_IN_FLIGHT,
+from ray.llm._internal.batch.observability.usage_telemetry.usage import (
+    BatchModelTelemetry,
+    TelemetryAgent,
+    get_or_create_telemetry_agent,
 )
 from ray.llm._internal.batch.processor.base import (
-    Processor,
+    DEFAULT_MAX_TASKS_IN_FLIGHT,
     OfflineProcessorConfig,
+    Processor,
     ProcessorBuilder,
 )
 from ray.llm._internal.batch.stages import (
-    vLLMEngineStage,
     ChatTemplateStage,
+    DetokenizeStage,
     PrepareImageStage,
     TokenizeStage,
-    DetokenizeStage,
+    vLLMEngineStage,
 )
 from ray.llm._internal.batch.stages.vllm_engine_stage import vLLMTaskType
-from ray.llm._internal.batch.observability.usage_telemetry.usage import (
-    TelemetryAgent,
-    BatchModelTelemetry,
-)
 from ray.llm._internal.common.observability.telemetry_utils import DEFAULT_GPU_TYPE
 from ray.llm._internal.common.utils.download_utils import (
-    download_model_files,
     NodeModelDownloadable,
+    download_model_files,
 )
-from ray.llm._internal.batch.observability.usage_telemetry.usage import (
-    get_or_create_telemetry_agent,
-)
-
-import transformers
 
 DEFAULT_MODEL_ARCHITECTURE = "UNKNOWN_MODEL_ARCHITECTURE"
 
@@ -165,7 +161,7 @@ def build_vllm_engine_processor(
                     min_size=config.concurrency,
                     max_size=config.concurrency,
                     max_tasks_in_flight_per_actor=max(
-                        DEFAULT_MAX_TASKS_IN_FLIGHT, config.max_concurrent_batches
+                        config.max_concurrent_batches, DEFAULT_MAX_TASKS_IN_FLIGHT
                     ),
                 ),
                 # The number of running batches "per actor" in Ray Core level.
@@ -204,7 +200,9 @@ def build_vllm_engine_processor(
         model_path,
         trust_remote_code=config.engine_kwargs.get("trust_remote_code", False),
     )
-    architecture = getattr(hf_config, "architectures", [DEFAULT_MODEL_ARCHITECTURE])[0]
+
+    architectures = getattr(hf_config, "architectures", [])
+    architecture = architectures[0] if architectures else DEFAULT_MODEL_ARCHITECTURE
 
     telemetry_agent = get_or_create_telemetry_agent()
     telemetry_agent.push_telemetry_report(

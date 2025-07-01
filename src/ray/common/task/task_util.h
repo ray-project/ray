@@ -141,7 +141,8 @@ class TaskSpecBuilder {
       const std::string &concurrency_group_name = "",
       bool enable_task_events = true,
       const std::unordered_map<std::string, std::string> &labels = {},
-      const std::unordered_map<std::string, std::string> &label_selector = {}) {
+      const std::unordered_map<std::string, std::string> &label_selector = {},
+      const rpc::TensorTransport &tensor_transport = rpc::TensorTransport::OBJECT_STORE) {
     message_->set_type(TaskType::NORMAL_TASK);
     message_->set_name(name);
     message_->set_language(language);
@@ -175,6 +176,7 @@ class TaskSpecBuilder {
     message_->mutable_labels()->insert(labels.begin(), labels.end());
     message_->mutable_label_selector()->insert(label_selector.begin(),
                                                label_selector.end());
+    message_->set_tensor_transport(tensor_transport);
     return *this;
   }
 
