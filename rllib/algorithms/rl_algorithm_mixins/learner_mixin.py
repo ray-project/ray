@@ -49,7 +49,7 @@ class LearnerMixin(abc.ABC):
 
     def _provide_sync_state(self, state: Any, **kwargs):
         """Abstract method to receive a state from the Learner(s)."""
-        return super()._provide_sync_state(state, **kwargs)
+        return state
 
     abc.abstractmethod
 
