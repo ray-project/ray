@@ -1265,6 +1265,8 @@ void TaskManager::RemoveFinishedTaskReferences(
       plasma_dependencies.push_back(spec.ArgObjectId(i));
     } else {
       if (spec.IsInlinedGPUObject(i)) {
+        // GPU object's ref count cannot be updated immediately when it is inlined.
+        // Instead, we update the ref count here after the task finishes.
         plasma_dependencies.push_back(spec.ArgObjectId(i));
       } else {
         const auto &inlined_refs = spec.ArgInlinedRefs(i);

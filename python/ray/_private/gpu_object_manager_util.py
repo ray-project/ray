@@ -38,9 +38,6 @@ def tensor_transport_to_collective_backend(
 def __ray_send__(self, communicator_name: str, obj_id: str, dst_rank: int):
     """Helper function that runs on the src actor to send tensors to the dst actor."""
     gpu_object_manager = global_worker.gpu_object_manager
-    import time
-
-    print(f"__ray_send__ time: {time.time()}, obj_id: {obj_id}")
     assert gpu_object_manager.has_gpu_object(
         obj_id
     ), f"__ray_send__ obj_id={obj_id} not found in GPU object store"

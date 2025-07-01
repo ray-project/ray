@@ -54,15 +54,9 @@ class GPUObjectManager:
         return self.gpu_object_store[obj_id]
 
     def add_gpu_object(self, obj_id: str, gpu_object: List["torch.Tensor"]):
-        import time
-
-        print(f"add_gpu_object, time: {time.time()}, obj_id: {obj_id}")
         self.gpu_object_store[obj_id] = gpu_object
 
     def remove_gpu_object(self, obj_id: str):
-        import time
-
-        print(f"remove_gpu_object, time: {time.time()}, obj_id: {obj_id}")
         del self.gpu_object_store[obj_id]
 
     def _get_tensor_meta(self, src_actor: ActorHandle, obj_id: str) -> ObjectRef:
