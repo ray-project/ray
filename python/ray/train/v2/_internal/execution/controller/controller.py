@@ -195,13 +195,11 @@ class TrainController:
             failure_decision = self._failure_policy.make_decision(resize_status)
             return self._execute_failure_decision(failure_decision, resize_status)
         else:
-            next_state = RunningState()
-
-        return TrainControllerLoopIterationResult(
-            run_attempt_id=self._get_run_attempt_id(),
-            previous_state=self._state,
-            next_state=next_state,
-        )
+            return TrainControllerLoopIterationResult(
+                run_attempt_id=self._get_run_attempt_id(),
+                previous_state=self._state,
+                next_state=RunningState(),
+            )
 
     def _execute_failure_decision(
         self,
