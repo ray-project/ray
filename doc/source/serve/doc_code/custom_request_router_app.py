@@ -7,7 +7,9 @@ from ray.serve.request_router import ReplicaID
 
 
 @serve.deployment(
-    request_router_class="custom_request_router:UniformRequestRouter",
+    router_config=RouterConfig(
+        request_router_class="custom_request_router:UniformRequestRouter",
+    ),
     num_replicas=10,
     ray_actor_options={"num_cpus": 0},
 )
