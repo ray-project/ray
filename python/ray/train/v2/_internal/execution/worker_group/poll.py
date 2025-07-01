@@ -2,8 +2,8 @@ from dataclasses import dataclass
 from typing import Dict, Optional
 
 from ray.train._internal.session import _TrainingResult
+from ray.train.v2._internal.execution.worker_group.protocol import PolicyHandledStatus
 from ray.types import ObjectRef
-from ray.train.v2._internal.execution.worker_group.state import PolicyHandledStatus
 
 
 @dataclass
@@ -27,7 +27,7 @@ class WorkerGroupPollStatus(PolicyHandledStatus):
 
     @property
     def finished(self) -> bool:
-        return self.worker_statuses and all(
+        return bool(self.worker_statuses) and all(
             not status.running for status in self.worker_statuses.values()
         )
 
@@ -37,9 +37,11 @@ class WorkerGroupPollStatus(PolicyHandledStatus):
         )
 
     def get_restart_error_string(self) -> str:
-        return f"Restarting training worker group after encountering " \
-                f"failures on {len(self.errors)} worker(s):\n" \
-                f"{self.get_error_string()}"
+        return (
+            f"Restarting training worker group after encountering "
+            f"failures on {len(self.errors)} worker(s):\n"
+            f"{self.get_error_string()}"
+        )
 
     def get_raise_error_string(self) -> str:
         return (
