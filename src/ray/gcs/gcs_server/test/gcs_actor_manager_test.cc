@@ -192,19 +192,6 @@ class GcsActorManagerTest : public ::testing::Test {
     gcs_actor_manager_->OnNodeDead(node_info, "127.0.0.1");
   }
 
-  rpc::RestartActorForLineageReconstructionReply RestartActorForLineageReconstruction(
-      const ActorID &actor_id, size_t num_restarts_due_to_lineage_reconstruction) {
-    rpc::RestartActorForLineageReconstructionRequest request;
-    request.set_actor_id(actor_id.Binary());
-    request.set_num_restarts_due_to_lineage_reconstruction(
-        num_restarts_due_to_lineage_reconstruction);
-    rpc::RestartActorForLineageReconstructionReply reply;
-    gcs_actor_manager_->HandleRestartActorForLineageReconstruction(
-        request, &reply, [](auto status, auto success_callback, auto failure_callback) {
-        });
-    return reply;
-  }
-
   void ReportActorOutOfScope(const ActorID &actor_id,
                              size_t num_restarts_due_to_lineage_reconstrcution) {
     rpc::ReportActorOutOfScopeRequest request;
@@ -1347,6 +1334,7 @@ TEST_F(GcsActorManagerTest, TestKillActorWhenActorIsCreating) {
       &reply,
       /*send_reply_callback*/
       [](Status status, std::function<void()> success, std::function<void()> failure) {});
+  io_service_.run_one();
 
   // Make sure the `KillActor` rpc is send.
   ASSERT_EQ(worker_client_->killed_actors_.size(), 1);
@@ -1411,8 +1399,14 @@ TEST_F(GcsActorManagerTest, TestRestartActorForLineageReconstruction) {
   ASSERT_EQ(actor->GetState(), rpc::ActorTableData::DEAD);
 
   // Restart the actor due to linage reconstruction.
-  RestartActorForLineageReconstruction(actor->GetActorID(),
-                                       /*num_restarts_due_to_lineage_reconstruction=*/1);
+  rpc::RestartActorForLineageReconstructionRequest request;
+  request.set_actor_id(actor->GetActorID().Binary());
+  request.set_num_restarts_due_to_lineage_reconstruction(
+      /*num_restarts_due_to_lineage_reconstruction=*/1);
+  rpc::RestartActorForLineageReconstructionReply reply;
+  gcs_actor_manager_->HandleRestartActorForLineageReconstruction(
+      request, &reply, [](auto, auto, auto) {});
+  io_service_.run_one();
   ASSERT_EQ(actor->GetState(), rpc::ActorTableData::RESTARTING);
 
   // Add node and check that the actor is restarted.
@@ -1423,7 +1417,6 @@ TEST_F(GcsActorManagerTest, TestRestartActorForLineageReconstruction) {
   address.set_raylet_id(node_id3.Binary());
   actor->UpdateAddress(address);
   gcs_actor_manager_->OnActorCreationSuccess(actor, rpc::PushTaskReply());
-  io_service_.run_one();
   io_service_.run_one();
   ASSERT_EQ(created_actors.size(), 1);
   ASSERT_EQ(actor->GetState(), rpc::ActorTableData::ALIVE);
@@ -1466,15 +1459,26 @@ TEST_F(GcsActorManagerTest, TestRestartPermanentlyDeadActorForLineageReconstruct
   ASSERT_EQ(actor->GetState(), rpc::ActorTableData::DEAD);
 
   // Restart on an invalid or permanently dead actor should fail.
-  auto reply = RestartActorForLineageReconstruction(
-      ActorID::Of(actor->GetActorID().JobId(), RandomTaskId(), 0),
+  rpc::RestartActorForLineageReconstructionRequest request;
+  request.set_actor_id(
+      ActorID::Of(actor->GetActorID().JobId(), RandomTaskId(), 0).Binary());
+  request.set_num_restarts_due_to_lineage_reconstruction(
       /*num_restarts_due_to_lineage_reconstruction=*/0);
+  rpc::RestartActorForLineageReconstructionReply reply;
+  gcs_actor_manager_->HandleRestartActorForLineageReconstruction(
+      request, &reply, [](auto, auto, auto) {});
+  io_service_.run_one();
+  io_service_.run_one();
   ASSERT_EQ(reply.status().code(), static_cast<int>(StatusCode::Invalid));
 
-  reply = RestartActorForLineageReconstruction(
-      actor->GetActorID(),
+  rpc::RestartActorForLineageReconstructionRequest request2;
+  request2.set_actor_id(actor->GetActorID().Binary());
+  request2.set_num_restarts_due_to_lineage_reconstruction(
       /*num_restarts_due_to_lineage_reconstruction=*/0);
-  ASSERT_EQ(reply.status().code(), static_cast<int>(StatusCode::Invalid));
+  rpc::RestartActorForLineageReconstructionReply reply2;
+  gcs_actor_manager_->HandleRestartActorForLineageReconstruction(
+      request2, &reply2, [](auto, auto, auto) {});
+  ASSERT_EQ(reply2.status().code(), static_cast<int>(StatusCode::Invalid));
 }
 
 TEST_F(GcsActorManagerTest, TestIdempotencyOfRestartActorForLineageReconstruction) {
@@ -1557,10 +1561,13 @@ TEST_F(GcsActorManagerTest, TestIdempotencyOfRestartActorForLineageReconstructio
   // reply is lost and the caller resends the same request. The second
   // RestartActorForLineageReconstruction rpc should be directly replied without
   // triggering another restart of the actor.
-  auto reply = RestartActorForLineageReconstruction(
-      actor->GetActorID(),
-      /*num_restarts_due_to_lineage_reconstruction=*/1);
-  ASSERT_EQ(reply.status().code(), static_cast<int>(StatusCode::OK));
+  rpc::RestartActorForLineageReconstructionRequest request3;
+  request3.set_actor_id(actor->GetActorID().Binary());
+  request3.set_num_restarts_due_to_lineage_reconstruction(1);
+  rpc::RestartActorForLineageReconstructionReply reply3;
+  gcs_actor_manager_->HandleRestartActorForLineageReconstruction(
+      request3, &reply3, [](auto, auto, auto) {});
+  ASSERT_EQ(reply3.status().code(), static_cast<int>(StatusCode::OK));
   // Make sure the actor is not restarted again.
   ASSERT_EQ(actor->GetState(), rpc::ActorTableData::ALIVE);
   ASSERT_EQ(actor->GetActorTableData().num_restarts(), 1);
@@ -1606,6 +1613,7 @@ TEST_F(GcsActorManagerTest, TestDestroyActorWhenActorIsCreating) {
       &reply,
       /*send_reply_callback*/
       [](Status status, std::function<void()> success, std::function<void()> failure) {});
+  io_service_.run_one();
   io_service_.run_one();
 
   // Make sure the `KillActor` rpc is send.

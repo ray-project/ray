@@ -225,7 +225,6 @@ ray_cc_test(
         "gcs_actor_manager_test.cc",
     ],
     tags = [
-        "no_tsan",
         "team:core",
     ],
     deps = [
