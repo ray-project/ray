@@ -1904,7 +1904,7 @@ class TestGenerateTransformFnForAsyncMap:
         with pytest.raises(AssertionError):
             _generate_transform_fn_for_async_map(async_fn, validate_fn, max_concurrent_batches=0)
 
-    def test_empty_input(self):
+    def test_empty_input(self, mock_actor_async_ctx):
         """Test with empty input iterator."""
         async def async_fn(x):
             yield f"processed_{x}"
@@ -1926,13 +1926,15 @@ class TestGenerateTransformFnForAsyncMap:
         ctx.execution_options.preserve_order = True
 
         async def async_fn(x):
-            await asyncio.sleep(0.01)
+            # Randomly slow-down UDFs (capped by 5ms)
+            delay = random.randint(0, 5) / 1000
+            await asyncio.sleep(delay)
             yield x
 
         validate_fn = Mock()
 
         transform_fn = _generate_transform_fn_for_async_map(
-            async_fn, validate_fn, max_concurrent_batches=2
+            async_fn, validate_fn, max_concurrent_batches=100
         )
 
         task_context = Mock()
@@ -1948,14 +1950,15 @@ class TestGenerateTransformFnForAsyncMap:
         ctx.execution_options.preserve_order = False
 
         async def async_fn(x):
-            # Randomly slow-down UDFs
-            await asyncio.sleep(random.randint(0, 5) / 100)
+            # Randomly slow-down UDFs (capped by 5ms)
+            delay = random.randint(0, 5) / 1000
+            await asyncio.sleep(delay)
             yield x
 
         validate_fn = Mock()
 
         transform_fn = _generate_transform_fn_for_async_map(
-            async_fn, validate_fn, max_concurrent_batches=3
+            async_fn, validate_fn, max_concurrent_batches=100
         )
 
         task_context = Mock()
@@ -1981,14 +1984,12 @@ class TestGenerateTransformFnForAsyncMap:
 
             assert concurrent_task_counter <= max_concurrency
 
-            print(f">>> [DBG] async_fn: {concurrent_task_counter}")
-
             yield x
 
             # NOTE: We're doing sleep here to interrupt the task and yield
             #       event loop to the next one (otherwise tasks will simply be
             #       completed sequentially)
-            await asyncio.sleep(0)
+            await asyncio.sleep(0.001)
 
             concurrent_task_counter -= 1
 
@@ -2063,6 +2064,31 @@ class TestGenerateTransformFnForAsyncMap:
                 assert result == expected
                 assert validate_fn.call_count == 4
 
+    @pytest.mark.asyncio
+    async def test_no_yields_from_udf(self):
+        """Test UDF that yields nothing."""
+        async def empty_yield_fn(x):
+            await asyncio.sleep(0.01)
+            return
+            yield  # This won't be reached
+
+        validate_fn = Mock()
+
+        with patch('ray.data.context.DataContext.get_current') as mock_context:
+            mock_context.return_value.execution_options.preserve_order = True
+
+            transform_fn = _generate_transform_fn_for_async_map(
+                empty_yield_fn, validate_fn, max_concurrent_batches=2
+            )
+
+            with patch('ray.data._map_actor_context.udf_map_asyncio_loop') as mock_loop:
+                mock_loop.run_until_complete = asyncio.run
+
+                task_context = Mock()
+                result = list(transform_fn([1, 2], task_context))
+
+                assert result == []
+                validate_fn.assert_not_called()
 
 @pytest.mark.parametrize("fn_type", ["func", "class"])
 def test_map_operator_warns_on_few_inputs(
