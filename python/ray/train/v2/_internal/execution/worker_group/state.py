@@ -1,46 +1,16 @@
 import logging
-from abc import ABC, abstractmethod
 from dataclasses import dataclass
-from typing import Dict,List, Optional, Protocol
+from typing import Dict, List, Optional
 
 import ray
 from ray.actor import ActorHandle
 from ray.train.v2._internal.execution.checkpoint.sync_actor import SynchronizationActor
+from ray.train.v2._internal.execution.worker_group.protocol import PolicyHandledStatus
 from ray.train.v2._internal.execution.worker_group.worker import Worker
 from ray.train.v2._internal.util import time_monotonic
 from ray.util.placement_group import PlacementGroup, remove_placement_group
 
 logger = logging.getLogger(__name__)
-
-
-class PolicyHandledStatus(Protocol):
-    """Protocol for status objects that can be handled by failure policies.
-    
-    This provides a common interface for both runtime worker failures 
-    (WorkerGroupPollStatus) and startup failures (WorkerGroupResizeStatus).
-    """
-
-    @property
-    @abstractmethod
-    def errors(self) -> Dict[int, Exception]:
-        ...
-
-    @property
-    @abstractmethod
-    def finished(self) -> bool:
-        ...
-
-    @abstractmethod
-    def get_error_string(self) -> str:
-        ...
-
-    @abstractmethod
-    def get_restart_error_string(self) -> str:
-        ...
-
-    @abstractmethod
-    def get_raise_error_string(self) -> str:
-        ...
 
 
 @dataclass(frozen=True)
@@ -167,7 +137,7 @@ def _shutdown_placement_group(placement_group: PlacementGroup):
 
 
 @dataclass(frozen=True)
-class WorkerGroupResizeStatus (PolicyHandledStatus):
+class WorkerGroupResizeStatus(PolicyHandledStatus):
     """Status of a worker group resize operation.
 
     Attributes:
