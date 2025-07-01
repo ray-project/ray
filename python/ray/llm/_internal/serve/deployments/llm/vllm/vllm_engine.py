@@ -19,14 +19,11 @@ from transformers.dynamic_module_utils import init_hf_modules
 
 from ray.llm._internal.serve.deployments.llm.llm_engine import LLMEngine
 from ray.llm._internal.serve.deployments.llm.vllm.vllm_engine_stats import (
-    ArgUsage,
     VLLMEngineStatTracker,
-    usage_counters,
 )
 from ray.llm._internal.serve.deployments.llm.vllm.vllm_models import (
     VLLMEmbeddingRequest,
     VLLMEngineConfig,
-    VLLMSamplingParams,
 )
 from ray.llm._internal.serve.deployments.utils.node_initialization_utils import (
     InitializeNodeOutput,
@@ -34,7 +31,6 @@ from ray.llm._internal.serve.deployments.utils.node_initialization_utils import 
 )
 from ray.llm._internal.serve.deployments.utils.server_utils import floats_to_base64
 from ray.llm._internal.serve.observability.logging import get_logger
-from ray.util import metrics
 from ray.util.placement_group import PlacementGroup
 from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
 from vllm.entrypoints.openai.cli_args import FrontendArgs
