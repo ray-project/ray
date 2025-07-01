@@ -61,6 +61,35 @@ def test_gc_gpu_object(ray_start_regular):
     )
 
 
+def test_gc_gpu_large_object(ray_start_regular):
+    world_size = 2
+    actors = [GPUTestActor.remote() for _ in range(world_size)]
+    create_collective_group(actors, backend="torch_gloo")
+
+    tensor = torch.randn((1,))
+    cpu_data = b"1" * 1024 * 1024
+    data = [tensor, cpu_data]
+
+    sender, receiver = actors[0], actors[1]
+    ref = sender.echo.remote(data)
+    ref = receiver.double.remote(ref)
+    result = ray.get(ref)
+
+    assert result[0] == pytest.approx(tensor * 2)
+    assert result[1] == cpu_data * 2
+
+    wait_for_condition(
+        lambda: ray.get(sender.get_gpu_object_store_size.remote()) == 0,
+        timeout=10,
+        retry_interval_ms=100,
+    )
+    wait_for_condition(
+        lambda: ray.get(receiver.get_gpu_object_store_size.remote()) == 0,
+        timeout=10,
+        retry_interval_ms=100,
+    )
+
+
 def test_inter_actor_gpu_tensor_transfer(ray_start_regular):
     world_size = 2
     actors = [GPUTestActor.remote() for _ in range(world_size)]
