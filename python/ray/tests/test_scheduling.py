@@ -101,6 +101,16 @@ def test_hybrid_policy_threshold(ray_start_cluster):
     nodes = ray.get(refs, timeout=20)
     assert len(set(nodes)) == 1
 
+    def _all_resources_available() -> bool:
+        r = ray.available_resources()
+        total_cpus = NUM_CPUS_PER_NODE * NUM_NODES
+        return (
+            r.get("CPU", 0) == total_cpus,
+            r.get("custom", 0) == total_cpus,
+        )
+
+    wait_for_condition(_all_resources_available)
+
     # Submit 2 * PER_NODE_HYBRID_THRESHOLD tasks.
     # The first PER_NODE_HYBRID_THRESHOLD tasks should be packed on the local node, then
     # the second PER_NODE_HYBRID_THRESHOLD tasks should be packed on the remote node.
