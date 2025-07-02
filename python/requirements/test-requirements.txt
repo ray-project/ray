@@ -54,7 +54,7 @@ pytest-rerunfailures==11.1.2
 pytest-sugar==0.9.5
 pytest-lazy-fixtures==1.1.2
 pytest-timeout==2.1.0
-pytest-virtualenv==1.7.0; python_version < "3.12"
+pytest-virtualenv==1.8.1; python_version < "3.12"
 pytest-sphinx @ git+https://github.com/ray-project/pytest-sphinx
 pytest-mock==3.14.0
 redis==4.4.2

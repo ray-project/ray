@@ -304,7 +304,7 @@ The above exception was the direct cause of the following exception:
 
 Traceback (most recent call last):
   File "FILE", line ZZ, in deserialize_objects
-    obj = self._deserialize_object(data, metadata, object_ref)
+    obj = self._deserialize_object(
   File "FILE", line ZZ, in _deserialize_object
     return RayError.from_bytes(obj)
   File "FILE", line ZZ, in from_bytes
