@@ -1136,30 +1136,11 @@ class Learner(Checkpointable):
                     "Learner.update(data_iterators=..) requires `num_iters` kwarg!"
                 )
 
-            def _collate_fn(_batch: Dict[str, numpy.ndarray]) -> MultiAgentBatch:
-                _batch = unflatten_dict(_batch)
-                _batch = MultiAgentBatch(
-                    {
-                        module_id: SampleBatch(module_data)
-                        for module_id, module_data in _batch.items()
-                    },
-                    env_steps=sum(
-                        len(next(iter(module_data.values())))
-                        for module_data in _batch.values()
-                    ),
-                )
-                _batch = self._convert_batch_type(_batch, to_device=False)
-                return self._set_slicing_by_batch_id(_batch, value=True)
-
-            def _finalize_fn(batch: MultiAgentBatch) -> MultiAgentBatch:
-                return self._convert_batch_type(batch, to_device=True, use_stream=True)
-
             if not self.iterator:
                 # This iterator holds a `ray.data.DataIterator` and manages it state.
                 self.iterator = MiniBatchRayDataIterator(
                     iterator=training_data.data_iterators[0],
-                    collate_fn=_collate_fn,
-                    finalize_fn=_finalize_fn,
+                    device=self.device,
                     minibatch_size=minibatch_size,
                     num_iters=num_iters,
                     **kwargs,
