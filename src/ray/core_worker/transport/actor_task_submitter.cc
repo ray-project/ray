@@ -634,6 +634,25 @@ void ActorTaskSubmitter::HandlePushTaskReply(const Status &status,
                                              const TaskSpecification &task_spec) {
   const auto task_id = task_spec.TaskId();
   const auto actor_id = task_spec.ActorId();
+
+  bool resubmit_generator = false;
+  {
+    absl::MutexLock lock(&mu_);
+    // If the generator was queued up for resubmission for object recovery,
+    // resubmit as long as we get a valid reply.
+    resubmit_generator = generators_to_resubmit_.erase(task_id) > 0 && status.ok();
+    if (resubmit_generator) {
+      auto queue_pair = client_queues_.find(actor_id);
+      RAY_CHECK(queue_pair != client_queues_.end());
+      auto &queue = queue_pair->second;
+      queue.cur_pending_calls--;
+    }
+  }
+  if (resubmit_generator) {
+    GetTaskFinisherWithoutMu().MarkGeneratorFailedAndResubmit(task_id);
+    return;
+  }
+
   const bool is_retryable_exception = status.ok() && reply.is_retryable_error();
   /// Whether or not we will retry this actor task.
   auto will_retry = false;
@@ -865,6 +884,8 @@ Status ActorTaskSubmitter::CancelTask(TaskSpecification task_spec, bool recursiv
   {
     absl::MutexLock lock(&mu_);
 
+    generators_to_resubmit_.erase(task_id);
+
     auto queue = client_queues_.find(actor_id);
     RAY_CHECK(queue != client_queues_.end());
     if (queue->second.state == rpc::ActorTableData::DEAD) {
@@ -953,6 +974,14 @@ Status ActorTaskSubmitter::CancelTask(TaskSpecification task_spec, bool recursiv
   // If we want to have a better guarantee in the cancelation result
   // we should make it synchronos, but that can regress the performance.
   return Status::OK();
+}
+
+bool ActorTaskSubmitter::QueueGeneratorForResubmit(const TaskSpecification &spec) {
+  // TODO(dayshah): Needs to integrate with the cancellation logic - what if task was
+  // cancelled before this?
+  absl::MutexLock lock(&mu_);
+  generators_to_resubmit_.insert(spec.TaskId());
+  return true;
 }
 
 }  // namespace core

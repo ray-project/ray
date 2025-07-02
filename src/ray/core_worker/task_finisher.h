@@ -67,6 +67,8 @@ class TaskFinisherInterface {
   virtual std::optional<TaskSpecification> GetTaskSpec(const TaskID &task_id) const = 0;
 
   virtual bool IsTaskPending(const TaskID &task_id) const = 0;
+
+  virtual void MarkGeneratorFailedAndResubmit(const TaskID &task_id) = 0;
 };
 
 }  // namespace core
