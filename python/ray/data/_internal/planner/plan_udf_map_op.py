@@ -168,7 +168,7 @@ def plan_filter_op(
             except Exception as e:
                 _handle_debugger_exception(e, block)
 
-        transform_fn = _generate_transform_fn_for_map_batches(filter_batch_fn)
+        transform_fn = _generate_transform_fn_for_map_batches(data_context, filter_batch_fn)
         map_transformer = _create_map_transformer_for_map_batches_op(
             transform_fn,
             batch_size=None,
@@ -210,7 +210,7 @@ def plan_udf_map_op(
     fn, init_fn = _wrap_debugger_breakpoint_fn(op)
 
     if isinstance(op, MapBatches):
-        transform_fn = _generate_transform_fn_for_map_batches(fn)
+        transform_fn = _generate_transform_fn_for_map_batches(data_context, fn)
         map_transformer = _create_map_transformer_for_map_batches_op(
             transform_fn,
             op._batch_size,
@@ -220,9 +220,9 @@ def plan_udf_map_op(
         )
     else:
         if isinstance(op, MapRows):
-            transform_fn = _generate_transform_fn_for_map_rows(fn)
+            transform_fn = _generate_transform_fn_for_map_rows(data_context, fn)
         elif isinstance(op, FlatMap):
-            transform_fn = _generate_transform_fn_for_flat_map(fn)
+            transform_fn = _generate_transform_fn_for_flat_map(data_context, fn)
         else:
             raise ValueError(f"Found unknown logical operator during planning: {op}")
 
@@ -393,14 +393,16 @@ def _validate_batch_output(batch: Block) -> None:
 
 
 def _generate_transform_fn_for_map_batches(
+    ctx: DataContext,
     fn: UserDefinedFunction,
 ) -> MapTransformCallable[DataBatch, DataBatch]:
     if _is_async_udf(fn):
         # UDF is a callable class with async generator `__call__` method.
         transform_fn = _generate_transform_fn_for_async_map(
+            ctx,
             fn,
             _validate_batch_output,
-            max_concurrent_batches=4,
+            max_concurrency=4,
         )
 
     else:
@@ -485,12 +487,13 @@ def _generate_transform_fn_for_map_rows(
 
 
 def _generate_transform_fn_for_flat_map(
+    ctx: DataContext,
     fn: UserDefinedFunction,
 ) -> MapTransformCallable[Row, Row]:
     if _is_async_udf(fn):
         # UDF is a callable class with async generator `__call__` method.
         transform_fn = _generate_transform_fn_for_async_map(
-            fn, _validate_row_output, max_concurrent_batches=16
+            ctx, fn, _validate_row_output, max_concurrency=16
         )
 
     else:
@@ -589,14 +592,13 @@ U = typing.TypeVar("U")
 
 
 def _generate_transform_fn_for_async_map(
+    ctx: DataContext,
     fn: UserDefinedFunction,
     validate_fn: Callable,
     *,
-    max_concurrent_batches: int,
+    max_concurrency: int,
 ) -> MapTransformCallable:
-    assert max_concurrent_batches > 0, "Max concurrent batches must be positive"
-
-    ctx = DataContext.get_current()
+    assert max_concurrency > 0, "Max concurrency must be positive"
 
     if inspect.isasyncgenfunction(fn):
 
@@ -627,7 +629,7 @@ def _generate_transform_fn_for_async_map(
 
         try:
             while True:
-                while len(cur_tasks) < max_concurrent_batches and not consumed:
+                while len(cur_tasks) < max_concurrency and not consumed:
                     try:
                         item = next(it)
                         cur_tasks.append(loop.create_task(_apply_udf(item)))
@@ -662,7 +664,7 @@ def _generate_transform_fn_for_async_map(
             output_queue.put(sentinel)
 
     def _transform(batch_iter: Iterable[T], task_context: TaskContext) -> Iterable[U]:
-        outputs = queue.Queue(maxsize=max_concurrent_batches)
+        outputs = queue.Queue(maxsize=max_concurrency)
 
         loop = ray.data._map_actor_context.udf_map_asyncio_loop
 
