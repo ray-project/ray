@@ -268,25 +268,26 @@ def test_write_with_multi_task():
     table = sql_catalog.load_table(f"{_DB_NAME}.{_TABLE_NAME}")
     table.delete()
 
-    ds = ray.data.from_arrow(create_pa_table())
-    ds.repartition(num_blocks=2).write_iceberg(
+    source_data = create_pa_table()
+    ds = ray.data.from_arrow(source_data)
+    ds.write_iceberg(
+        table_identifier=f"{_DB_NAME}.{_TABLE_NAME}",
+        catalog_kwargs=_CATALOG_KWARGS.copy(),
+        concurrency=2,
+    )
+
+    # Read the raw table from PyIceberg after writing
+    result_ds = ray.data.read_iceberg(
         table_identifier=f"{_DB_NAME}.{_TABLE_NAME}",
         catalog_kwargs=_CATALOG_KWARGS.copy(),
     )
 
-    # Read the raw table from PyIceberg after writing
-    table = sql_catalog.load_table(f"{_DB_NAME}.{_TABLE_NAME}")
-    orig_table_p = (
-        table.scan()
-        .to_pandas()
-        .sort_values(["col_a", "col_b", "col_c"])
-        .reset_index(drop=True)
-    )
+    result_table = result_ds.to_pandas()
+    result_table = result_table.sort_values(["col_a", "col_b", "col_c"]).reset_index(drop=True)
+    expected_table = source_data.to_pandas()
+    expected_table = expected_table.sort_values(["col_a", "col_b", "col_c"]).reset_index(drop=True)
 
-    table_p = (
-        ds.to_pandas().sort_values(["col_a", "col_b", "col_c"]).reset_index(drop=True)
-    )
-    assert orig_table_p.equals(table_p)
+    assert result_table.equals(expected_table)
 
 
 if __name__ == "__main__":
