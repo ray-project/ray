@@ -18,8 +18,7 @@ class GPUTestActor:
         if isinstance(data, list):
             return [self.double(d) for d in data]
         if isinstance(data, TensorDict):
-            ret = data.apply(lambda x: x * 2)
-            return ret
+            return data.apply(lambda x: x * 2)
         return data * 2
 
     def get_gpu_object(self, obj_id: str):
