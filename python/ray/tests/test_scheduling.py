@@ -96,14 +96,14 @@ def test_hybrid_policy(ray_start_cluster):
         return ray.get_runtime_context().get_node_id()
 
     # Below the hybrid threshold we pack on the local node first.
-    refs = [get_node.remote() for _ in range(5)]
+    refs = [get_node_id.remote() for _ in range(5)]
     ray.get([block_driver.acquire.remote() for _ in refs], timeout=20)
     ray.get([block_task.release.remote() for _ in refs], timeout=20)
     nodes = ray.get(refs, timeout=20)
     assert len(set(nodes)) == 1
 
     # We pack the second node to the hybrid threshold.
-    refs = [get_node.remote() for _ in range(10)]
+    refs = [get_node_id.remote() for _ in range(10)]
     ray.get([block_driver.acquire.remote() for _ in refs], timeout=20)
     ray.get([block_task.release.remote() for _ in refs], timeout=20)
     nodes = ray.get(refs, timeout=20)
@@ -115,7 +115,7 @@ def test_hybrid_policy(ray_start_cluster):
     # Once all nodes are past the hybrid threshold we round robin.
     # TODO (Alex): Ideally we could schedule less than 20 nodes here, but the
     # policy is imperfect if a resource report interrupts the process.
-    refs = [get_node.remote() for _ in range(20)]
+    refs = [get_node_id.remote() for _ in range(20)]
     ray.get([block_driver.acquire.remote() for _ in refs], timeout=20)
     ray.get([block_task.release.remote() for _ in refs], timeout=20)
     nodes = ray.get(refs, timeout=20)
