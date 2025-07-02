@@ -181,6 +181,4 @@ Since DeepSeek typically requires multi-node GPU deployment, you may encounter i
 * **NCCL initialization failures**: Especially on H100 instances due to outdated `aws-ofi-plugin` versions
 * **Pipeline parallelism hangs**: When `pipeline_parallel_size > 1`, the model serving may hang due to resource conflicts
 
-For comprehensive troubleshooting of multi-node GPU serving issues, refer to the 
-{ref}`Troubleshooting multi-node GPU serving on KubeRay <kuberay-multi-node-gpu-troubleshooting>`.
-
+For comprehensive troubleshooting of multi-node GPU serving issues, refer to {ref}`Troubleshooting multi-node GPU serving on KubeRay <kuberay-multi-node-gpu-troubleshooting>`.
