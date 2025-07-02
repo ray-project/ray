@@ -1,6 +1,6 @@
 from .poll import WorkerGroupPollStatus, WorkerStatus
 from .protocol import PolicyHandledStatus
-from .state import WorkerGroupState, WorkerGroupStateBuilder
+from .state import WorkerGroupResizeStatus, WorkerGroupState, WorkerGroupStateBuilder
 from .worker import ActorMetadata, RayTrainWorker, Worker
 from .worker_group import WorkerGroup, WorkerGroupContext
 
@@ -15,4 +15,5 @@ __all__ = [
     "WorkerGroupStateBuilder",
     "WorkerStatus",
     "PolicyHandledStatus",
+    "WorkerGroupResizeStatus",
 ]
