@@ -2,11 +2,21 @@ import sys
 from typing import Optional
 
 import pytest
+from unittest.mock import patch
 
 from ray.llm.tests.serve.mocks.mock_vllm_engine import MockVLLMEngine
 from ray.llm.tests.serve.utils.testing_utils import LLMResponseValidator
+from ray import serve
+from ray.llm._internal.serve.deployments.llm.llm_server import LLMServer
 
 
+@pytest.fixture
+def serve_handle(mock_llm_config):
+        app = serve.deployment(LLMServer).bind(mock_llm_config, engine_cls=MockVLLMEngine)        
+        handle = serve.run(app)
+        handle = handle.options(stream=True)
+        yield handle
+        serve.shutdown()
 
 class TestLLMServer:
 
@@ -128,6 +138,25 @@ class TestLLMServer:
         server = await create_server(mock_llm_config, engine_cls=MockVLLMEngine)
         llm_config = await server.llm_config()
         assert isinstance(llm_config, type(mock_llm_config))
+
+    @pytest.mark.parametrize("stream", [False])
+    @pytest.mark.parametrize("max_tokens", [5])
+    @pytest.mark.asyncio
+    async def test_request_id_handling(self, serve_handle, mock_llm_config, mock_chat_request, stream: bool, max_tokens: int):
+        """Test that the request id is handled correctly."""
+        
+        # Create a chat completion request
+        # We should patch get_server_request_id to return a test_request_id
+        serve.context._serve_request_context.set(
+            serve.context._RequestContext(**{"request_id": "test_request_id"})
+        )
+        # Get the response
+        chunks = []
+        async for chunk in serve_handle.chat.remote(mock_chat_request):
+            chunks.append(chunk)
+            
+        assert len(chunks) == 1
+        assert chunks[0].id == "test_request_id"
 
 
 

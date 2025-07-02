@@ -26,6 +26,9 @@ from ray.llm._internal.serve.configs.openai_api_models import (
     LLMCompletionsResponse,
     LLMEmbeddingsResponse,
 )
+from ray.llm._internal.serve.deployments.llm.multiplex.lora_model_loader import (
+    LoraModelLoader,
+)
 from ray.llm._internal.serve.configs.server_models import (
     LLMConfig,
 )
@@ -35,6 +38,7 @@ from ray.llm._internal.serve.deployments.utils.batcher import OpenAIResponseBatc
 from ray.llm._internal.serve.deployments.utils.server_utils import (
     get_serve_request_id,
 )
+from ray.llm._internal.serve.configs.server_models import DiskMultiplexConfig
 from ray.llm._internal.serve.observability.logging import get_logger
 from ray.llm._internal.serve.observability.usage_telemetry.usage import (
     push_telemetry_report_for_all_models,
@@ -86,9 +90,12 @@ class _LLMServerBase(ABC):
 class LLMServer(_LLMServerBase):
     """This is a shm layer to decouple the LLM engine from the ingress deployment.
     
-    It has a very similar API as the engine. Almost all of the abstractions are implemented by the engine. This class just a little bit more logic on top, e.g.:
-    1. Logic for serve multiplexing, etc.
-    2. Telemetry reporting 
+    It has a very similar API as the engine. Almost all of the abstractions are implemented by the engine. This class just a little bit more logic on top:
+    
+    1. Logic for serve multiplexing (e.g. LoRA loading).
+    2. Request id handing from serve context.
+    3. Batching in case of streaming (only for chat and completions).
+    4. Telemetry reporting.
     """
     _default_engine_cls = VLLMEngine
 
@@ -116,7 +123,31 @@ class LLMServer(_LLMServerBase):
         if self._engine_cls is not None:
             self.engine = self._engine_cls(self._llm_config)
             await asyncio.wait_for(self._start_engine(), timeout=ENGINE_START_TIMEOUT_S)
+            
+        self._init_multiplex_loader()
 
+
+    def _init_multiplex_loader(self):
+        """Initialize the multiplex loader."""
+        
+        mx_config = self._llm_config.multiplex_config()
+        self._load_model = lambda lora_model_id: None
+        
+        if mx_config is not None:
+            model_downloader = LoraModelLoader(
+                download_timeout_s=mx_config.download_timeout_s,
+                max_tries=mx_config.max_download_tries,
+            )
+            
+            async def _load_model(lora_model_id: str) -> DiskMultiplexConfig:
+                return await model_downloader.load_model(
+                    lora_model_id=lora_model_id,
+                    llm_config=self._llm_config,
+                )
+            
+            self._load_model = serve.multiplexed(max_num_models_per_replica=mx_config.max_num_models_per_replica)(_load_model)
+        
+        
 
     def _get_default_engine_class(self) -> Type[LLMEngine]:
         """Helper to load the engine class from the environment variable.
@@ -155,16 +186,15 @@ class LLMServer(_LLMServerBase):
         request_id = get_serve_request_id()
         if request_id:
             request.request_id = request_id
-        
+    
     
     async def _maybe_resolve_lora_from_multiplex(self) -> None:
         """Handle the lora model for the request."""
         multiplexed_model_id = serve.get_multiplexed_model_id()
         if multiplexed_model_id:
-            assert (
-                self._llm_config.lora_config is not None
-            ), "Must setup lora config for multiplexed requests."
-            disk_lora_model = await self._disk_lora_model(multiplexed_model_id)
+            if self._llm_config.lora_config is None:
+                raise ValueError("Must setup lora config for multiplexed requests.")
+            disk_lora_model = await self._load_model(multiplexed_model_id)
             await self.engine.resolve_lora(disk_lora_model)
             
     def _batch_output_stream(self, generator):

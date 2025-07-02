@@ -123,9 +123,9 @@ class MockVLLMEngine(LLMEngine):
     ) -> AsyncGenerator[Union[str, ChatCompletionResponse], None]:
         """Generate mock chat completion response."""
         
+        request_id = request.request_id or f"chatcmpl-{random.randint(1000, 9999)}"
         if request.stream:
             # Streaming response - return SSE formatted strings
-            request_id = f"chatcmpl-{random.randint(1000, 9999)}"
             created_time = int(asyncio.get_event_loop().time())
             model_name = getattr(request, 'model', 'mock-model')
             
@@ -173,7 +173,7 @@ class MockVLLMEngine(LLMEngine):
             }
             
             response = ChatCompletionResponse(
-                id=f"chatcmpl-{random.randint(1000, 9999)}",
+                id=request_id,
                 object="chat.completion",
                 created=int(asyncio.get_event_loop().time()),
                 model=getattr(request, 'model', 'mock-model'),
@@ -195,9 +195,9 @@ class MockVLLMEngine(LLMEngine):
     ) -> AsyncGenerator[Union[str, CompletionResponse], None]:
         """Generate mock completion response."""
         
+        request_id = request.request_id or f"cmpl-{random.randint(1000, 9999)}"
         if request.stream:
             # Streaming response - return SSE formatted strings
-            request_id = f"cmpl-{random.randint(1000, 9999)}"
             created_time = int(asyncio.get_event_loop().time())
             model_name = getattr(request, 'model', 'mock-model')
             
@@ -238,7 +238,7 @@ class MockVLLMEngine(LLMEngine):
             }
             
             response = CompletionResponse(
-                id=f"cmpl-{random.randint(1000, 9999)}",
+                id=request_id,
                 object="text_completion",
                 created=int(asyncio.get_event_loop().time()),
                 model=getattr(request, 'model', 'mock-model'),
