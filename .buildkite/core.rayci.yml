@@ -376,7 +376,6 @@ steps:
     tags:
       - python
       - flaky
-      - skip-on-premerge
     instance_type: large
     soft_fail: true
     commands:
