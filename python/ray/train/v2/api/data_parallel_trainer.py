@@ -1,5 +1,7 @@
 import asyncio
+import importlib
 import logging
+import os
 import signal
 import sys
 from typing import Any, Callable, Dict, List, Optional, Union
@@ -20,7 +22,11 @@ from ray.train.base_trainer import (
     _RESUME_FROM_CHECKPOINT_DEPRECATION_WARNING,
     _TRAINER_RESTORE_DEPRECATION_WARNING,
 )
-from ray.train.constants import RAY_CHDIR_TO_TRIAL_DIR, RAY_TRAIN_ENABLE_STATE_TRACKING
+from ray.train.constants import (
+    RAY_CHDIR_TO_TRIAL_DIR,
+    RAY_TRAIN_ENABLE_STATE_TRACKING,
+    RAY_TRAIN_CALLBACKS_ENV_VAR,
+)
 from ray.train.context import _GET_METADATA_DEPRECATION_MESSAGE
 from ray.train.v2._internal.callbacks import (
     AcceleratorSetupCallback,
@@ -181,6 +187,54 @@ class DataParallelTrainer:
         callbacks.extend(
             [cb for cb in self.run_config.callbacks if not isinstance(cb, UserCallback)]
         )
+        # Extend with callbacks loaded from the environment variable.
+        callbacks.extend(self._load_callbacks_from_env())
+        return callbacks
+
+    def _load_callbacks_from_env(self) -> List[RayTrainCallback]:
+        """Load callbacks from environment variable.
+
+        Parses the RAY_TRAIN_CALLBACKS_ENV_VAR environment variable to load
+        callback classes. Each callback path should be in the format
+        'module.path.ClassName' and separated by commas.
+
+        Returns:
+            List of loaded RayTrainCallback instances.
+        """
+        callbacks_str = os.environ.get(RAY_TRAIN_CALLBACKS_ENV_VAR, "")
+        if not callbacks_str:
+            return []
+
+        callbacks = []
+        for callback_path in callbacks_str.split(","):
+            callback_path = callback_path.strip()
+            if not callback_path:
+                continue
+
+            try:
+                module_path, class_name = callback_path.rsplit(".", 1)
+                module = importlib.import_module(module_path)
+                callback_class = getattr(module, class_name)
+
+                # Instantiate the callback if it's a class
+                if isinstance(callback_class, type):
+                    callback_instance = callback_class()
+                else:
+                    callback_instance = callback_class
+
+                if not isinstance(callback_instance, RayTrainCallback):
+                    logger.warning(
+                        f"Callback '{callback_path}' is not a RayTrainCallback instance. Skipping."
+                    )
+                    continue
+
+                callbacks.append(callback_instance)
+                logger.debug(f"Successfully loaded callback: {callback_path}")
+
+            except (ImportError, AttributeError, ValueError) as e:
+                logger.warning(f"Failed to load callback from '{callback_path}': {e}")
+                continue
+
         return callbacks
 
     def _initialize_and_run_controller(self, **controller_init_kwargs) -> Result:

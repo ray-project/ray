@@ -3,6 +3,7 @@ import logging
 import pytest
 
 import ray
+from ray.tests.conftest import propagate_logs  # noqa
 
 
 @pytest.fixture()

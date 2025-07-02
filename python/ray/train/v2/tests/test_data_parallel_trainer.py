@@ -1,6 +1,8 @@
 import os
 import tempfile
 from pathlib import Path
+import logging
+from unittest.mock import patch, MagicMock
 
 import pyarrow.fs
 import pytest
@@ -8,14 +10,43 @@ import pytest
 import ray
 from ray.train import BackendConfig, Checkpoint, RunConfig, ScalingConfig, UserCallback
 from ray.train.backend import Backend
-from ray.train.constants import RAY_CHDIR_TO_TRIAL_DIR, _get_ray_train_session_dir
+from ray.train.constants import (
+    RAY_CHDIR_TO_TRIAL_DIR,
+    RAY_TRAIN_CALLBACKS_ENV_VAR,
+    _get_ray_train_session_dir,
+)
 from ray.train.tests.util import create_dict_checkpoint
 from ray.train.v2._internal.constants import is_v2_enabled
 from ray.train.v2.api.data_parallel_trainer import DataParallelTrainer
 from ray.train.v2.api.exceptions import TrainingFailedError
 from ray.train.v2.api.result import Result
+from ray.train.v2.api.callback import RayTrainCallback
 
 assert is_v2_enabled()
+
+
+# Test callback classes for the _load_callbacks_from_env method tests
+class ValidTestCallback(RayTrainCallback):
+    """A valid test callback that inherits from RayTrainCallback."""
+
+    def __init__(self):
+        super().__init__()
+        self.called = True
+
+
+class AnotherValidTestCallback(RayTrainCallback):
+    """Another valid test callback that inherits from RayTrainCallback."""
+
+    def __init__(self):
+        super().__init__()
+        self.name = "another_callback"
+
+
+class InvalidTestCallback:
+    """An invalid test callback that does not inherit from RayTrainCallback."""
+
+    def __init__(self):
+        self.invalid = True
 
 
 @pytest.fixture(scope="module", autouse=True)
@@ -208,6 +239,267 @@ def test_user_callback(tmp_path):
     # The error should NOT be an assertion error from the user callback.
     with pytest.raises(TrainingFailedError):
         trainer.fit()
+
+
+class TestLoadCallbacksFromEnv:
+    """Test suite for the _load_callbacks_from_env method."""
+
+    @pytest.fixture
+    def mock_trainer(self):
+        """Create a DataParallelTrainer instance for testing."""
+        return DataParallelTrainer(
+            lambda: None,
+            scaling_config=ScalingConfig(num_workers=1),
+        )
+
+    def test_empty_environment_variable(self, mock_trainer, monkeypatch):
+        """Test behavior when RAY_TRAIN_CALLBACKS environment variable is empty."""
+        monkeypatch.delenv(RAY_TRAIN_CALLBACKS_ENV_VAR, raising=False)
+
+        callbacks = mock_trainer._load_callbacks_from_env()
+
+        assert callbacks == []
+
+    def test_whitespace_only_environment_variable(self, mock_trainer, monkeypatch):
+        """Test behavior when RAY_TRAIN_CALLBACKS contains only whitespace."""
+        monkeypatch.setenv(RAY_TRAIN_CALLBACKS_ENV_VAR, "   ")
+
+        callbacks = mock_trainer._load_callbacks_from_env()
+
+        assert callbacks == []
+
+    def test_valid_single_callback(self, mock_trainer, monkeypatch):
+        """Test loading a single valid callback."""
+        callback_path = "test_data_parallel_trainer.ValidTestCallback"
+        monkeypatch.setenv(RAY_TRAIN_CALLBACKS_ENV_VAR, callback_path)
+
+        callbacks = mock_trainer._load_callbacks_from_env()
+
+        assert len(callbacks) == 1
+        assert isinstance(callbacks[0], ValidTestCallback)
+        assert callbacks[0].called is True
+
+    def test_valid_multiple_callbacks(self, mock_trainer, monkeypatch):
+        """Test loading multiple valid callbacks."""
+        callback_paths = (
+            "test_data_parallel_trainer.ValidTestCallback,"
+            "test_data_parallel_trainer.AnotherValidTestCallback"
+        )
+        monkeypatch.setenv(RAY_TRAIN_CALLBACKS_ENV_VAR, callback_paths)
+
+        callbacks = mock_trainer._load_callbacks_from_env()
+
+        assert len(callbacks) == 2
+        assert isinstance(callbacks[0], ValidTestCallback)
+        assert isinstance(callbacks[1], AnotherValidTestCallback)
+        assert callbacks[0].called is True
+        assert callbacks[1].name == "another_callback"
+
+    def test_callbacks_with_extra_whitespace(self, mock_trainer, monkeypatch):
+        """Test loading callbacks with extra whitespace in the environment variable."""
+        callback_paths = (
+            "  test_data_parallel_trainer.ValidTestCallback  ,  "
+            "  test_data_parallel_trainer.AnotherValidTestCallback  "
+        )
+        monkeypatch.setenv(RAY_TRAIN_CALLBACKS_ENV_VAR, callback_paths)
+
+        callbacks = mock_trainer._load_callbacks_from_env()
+
+        assert len(callbacks) == 2
+        assert isinstance(callbacks[0], ValidTestCallback)
+        assert isinstance(callbacks[1], AnotherValidTestCallback)
+
+    def test_empty_callback_path_in_list(self, mock_trainer, monkeypatch):
+        """Test behavior when one of the comma-separated values is empty."""
+        callback_paths = (
+            "test_data_parallel_trainer.ValidTestCallback,,"
+            "test_data_parallel_trainer.AnotherValidTestCallback"
+        )
+        monkeypatch.setenv(RAY_TRAIN_CALLBACKS_ENV_VAR, callback_paths)
+
+        callbacks = mock_trainer._load_callbacks_from_env()
+
+        assert len(callbacks) == 2
+        assert isinstance(callbacks[0], ValidTestCallback)
+        assert isinstance(callbacks[1], AnotherValidTestCallback)
+
+    def test_nonexistent_module(
+        self, mock_trainer, monkeypatch, caplog, propagate_logs
+    ):
+        """Test behavior when trying to import a non-existent module."""
+        callback_path = "nonexistent.module.SomeCallback"
+        monkeypatch.setenv(RAY_TRAIN_CALLBACKS_ENV_VAR, callback_path)
+
+        with caplog.at_level(
+            logging.WARNING, logger="ray.train.v2.api.data_parallel_trainer"
+        ):
+            callbacks = mock_trainer._load_callbacks_from_env()
+
+        assert callbacks == []
+        assert (
+            "Failed to load callback from 'nonexistent.module.SomeCallback'"
+            in caplog.text
+        )
+
+    def test_nonexistent_class_name(
+        self, mock_trainer, monkeypatch, caplog, propagate_logs
+    ):
+        """Test behavior when trying to access a non-existent class in an existing module."""
+        callback_path = "test_data_parallel_trainer.NonExistentCallback"
+        monkeypatch.setenv(RAY_TRAIN_CALLBACKS_ENV_VAR, callback_path)
+
+        with caplog.at_level(
+            logging.WARNING, logger="ray.train.v2.api.data_parallel_trainer"
+        ):
+            callbacks = mock_trainer._load_callbacks_from_env()
+
+        assert callbacks == []
+        assert "Failed to load callback from" in caplog.text
+        assert "NonExistentCallback" in caplog.text
+
+    def test_invalid_callback_type(
+        self, mock_trainer, monkeypatch, caplog, propagate_logs
+    ):
+        """Test behavior when callback class does not inherit from RayTrainCallback."""
+        callback_path = "test_data_parallel_trainer.InvalidTestCallback"
+        monkeypatch.setenv(RAY_TRAIN_CALLBACKS_ENV_VAR, callback_path)
+
+        with caplog.at_level(
+            logging.WARNING, logger="ray.train.v2.api.data_parallel_trainer"
+        ):
+            callbacks = mock_trainer._load_callbacks_from_env()
+
+        assert callbacks == []
+        assert "is not a RayTrainCallback instance. Skipping." in caplog.text
+
+    def test_mixed_valid_and_invalid_callbacks(
+        self, mock_trainer, monkeypatch, caplog, propagate_logs
+    ):
+        """Test behavior with a mix of valid and invalid callbacks."""
+        callback_paths = (
+            "test_data_parallel_trainer.ValidTestCallback,"
+            "test_data_parallel_trainer.InvalidTestCallback,"
+            "nonexistent.module.SomeCallback,"
+            "test_data_parallel_trainer.AnotherValidTestCallback"
+        )
+        monkeypatch.setenv(RAY_TRAIN_CALLBACKS_ENV_VAR, callback_paths)
+
+        with caplog.at_level(
+            logging.WARNING, logger="ray.train.v2.api.data_parallel_trainer"
+        ):
+            callbacks = mock_trainer._load_callbacks_from_env()
+
+        # Only valid callbacks should be loaded
+        assert len(callbacks) == 2
+        assert isinstance(callbacks[0], ValidTestCallback)
+        assert isinstance(callbacks[1], AnotherValidTestCallback)
+
+        # Warnings should be logged for invalid callbacks
+        assert "is not a RayTrainCallback instance. Skipping." in caplog.text
+        assert (
+            "Failed to load callback from 'nonexistent.module.SomeCallback'"
+            in caplog.text
+        )
+
+    def test_callback_instantiation_error(
+        self, mock_trainer, monkeypatch, caplog, propagate_logs
+    ):
+        """Test behavior when callback instantiation fails."""
+        # Create a mock that raises an exception during instantiation
+        with patch("importlib.import_module") as mock_import:
+            mock_module = MagicMock()
+
+            # Create a class that raises an exception when instantiated
+            class FailingCallback(RayTrainCallback):
+                def __init__(self):
+                    raise ValueError("Instantiation failed")
+
+            mock_module.FailingCallback = FailingCallback
+            mock_import.return_value = mock_module
+
+            callback_path = "some.module.FailingCallback"
+            monkeypatch.setenv(RAY_TRAIN_CALLBACKS_ENV_VAR, callback_path)
+
+            with caplog.at_level(
+                logging.WARNING, logger="ray.train.v2.api.data_parallel_trainer"
+            ):
+                callbacks = mock_trainer._load_callbacks_from_env()
+
+            assert callbacks == []
+            assert (
+                "Failed to load callback from 'some.module.FailingCallback'"
+                in caplog.text
+            )
+
+    @patch("ray.train.v2.api.data_parallel_trainer.logger")
+    def test_successful_callback_debug_logging(
+        self, mock_logger, mock_trainer, monkeypatch
+    ):
+        """Test that debug messages are logged for successfully loaded callbacks."""
+        callback_path = "test_data_parallel_trainer.ValidTestCallback"
+        monkeypatch.setenv(RAY_TRAIN_CALLBACKS_ENV_VAR, callback_path)
+
+        callbacks = mock_trainer._load_callbacks_from_env()
+
+        assert len(callbacks) == 1
+        mock_logger.debug.assert_called_with(
+            f"Successfully loaded callback: {callback_path}"
+        )
+
+    def test_callback_class_vs_instance_handling(self, mock_trainer, monkeypatch):
+        """Test that the method correctly handles both class objects and instances."""
+        # This test verifies the isinstance(callback_class, type) check
+        callback_path = "test_data_parallel_trainer.ValidTestCallback"
+        monkeypatch.setenv(RAY_TRAIN_CALLBACKS_ENV_VAR, callback_path)
+
+        callbacks = mock_trainer._load_callbacks_from_env()
+
+        assert len(callbacks) == 1
+        assert isinstance(callbacks[0], ValidTestCallback)
+        # Verify it was instantiated (has the property set in __init__)
+        assert callbacks[0].called is True
+
+    def test_rsplit_behavior_with_multiple_dots(self, mock_trainer, monkeypatch):
+        """Test that rsplit with maxsplit=1 correctly handles modules with multiple dots."""
+        # Create a nested module structure for testing
+        callback_path = "test_data_parallel_trainer.ValidTestCallback"
+        monkeypatch.setenv(RAY_TRAIN_CALLBACKS_ENV_VAR, callback_path)
+
+        callbacks = mock_trainer._load_callbacks_from_env()
+
+        assert len(callbacks) == 1
+        assert isinstance(callbacks[0], ValidTestCallback)
+
+    def test_environment_variable_case_sensitivity(self, mock_trainer, monkeypatch):
+        """Test that the environment variable name is case sensitive."""
+        # Set a different case version of the env var
+        monkeypatch.setenv("ray_train_callbacks", "some.callback.Path")
+        # Ensure the correct env var is not set
+        monkeypatch.delenv(RAY_TRAIN_CALLBACKS_ENV_VAR, raising=False)
+
+        callbacks = mock_trainer._load_callbacks_from_env()
+
+        assert callbacks == []
+
+    def test_callback_path_trailing_comma(self, mock_trainer, monkeypatch):
+        """Test behavior when callback path list ends with a comma."""
+        callback_paths = "test_data_parallel_trainer.ValidTestCallback,"
+        monkeypatch.setenv(RAY_TRAIN_CALLBACKS_ENV_VAR, callback_paths)
+
+        callbacks = mock_trainer._load_callbacks_from_env()
+
+        assert len(callbacks) == 1
+        assert isinstance(callbacks[0], ValidTestCallback)
+
+    def test_callback_path_leading_comma(self, mock_trainer, monkeypatch):
+        """Test behavior when callback path list starts with a comma."""
+        callback_paths = ",test_data_parallel_trainer.ValidTestCallback"
+        monkeypatch.setenv(RAY_TRAIN_CALLBACKS_ENV_VAR, callback_paths)
+
+        callbacks = mock_trainer._load_callbacks_from_env()
+
+        assert len(callbacks) == 1
+        assert isinstance(callbacks[0], ValidTestCallback)
 
 
 if __name__ == "__main__":
