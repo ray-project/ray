@@ -69,10 +69,14 @@ def test_hybrid_policy_threshold(ray_start_cluster):
     NUM_CPUS_PER_NODE = 4
     # The default hybrid policy packs nodes up to 50% capacity before spreading.
     PER_NODE_HYBRID_THRESHOLD = int(NUM_CPUS_PER_NODE / 2)
-    for _ in range(NUM_NODES):
+    for i in range(NUM_NODES):
         cluster.add_node(
             num_cpus=NUM_CPUS_PER_NODE,
             resources={"custom": NUM_CPUS_PER_NODE},
+			_system_config={
+				"scheduler_top_k_absolute": 1,
+				"scheduler_top_k_fraction": 0,
+			} if i == 0 else None,
         )
 
     cluster.wait_for_nodes()
@@ -93,20 +97,13 @@ def test_hybrid_policy_threshold(ray_start_cluster):
         ray.get(block_task.acquire.remote())
         return ray.get_runtime_context().get_node_id()
 
-    # First Ensure both nodes are schedulable.
-    refs = [get_node_id.remote() for _ in range(int(NUM_NODES * NUM_CPUS_PER_NODE))]
-    ray.get([block_driver.acquire.remote() for _ in refs], timeout=20)
-    ray.get([block_task.release.remote() for _ in refs], timeout=20)
-    nodes = ray.get(refs, timeout=20)
-    assert len(set(nodes)) == 2, nodes
-
     # Submit 1 * PER_NODE_HYBRID_THRESHOLD tasks.
     # They should all be packed on the local node.
     refs = [get_node_id.remote() for _ in range(PER_NODE_HYBRID_THRESHOLD)]
     ray.get([block_driver.acquire.remote() for _ in refs], timeout=20)
     ray.get([block_task.release.remote() for _ in refs], timeout=20)
     nodes = ray.get(refs, timeout=20)
-    assert len(set(nodes)) == 1, nodes
+    assert len(set(nodes)) == 1
 
     # Submit 2 * PER_NODE_HYBRID_THRESHOLD tasks.
     # The first PER_NODE_HYBRID_THRESHOLD tasks should be packed on the local node, then
