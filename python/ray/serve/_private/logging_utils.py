@@ -137,20 +137,23 @@ class ServeFormatter(TextFormatter):
         # Pre-compute format strings and formatters for performance
         self._precompute_formatters()
 
-    def _precompute_formatters(self):
-        """Pre-compute common format strings and their formatters."""
-        # Base format without request ID
-        base_attrs = [f"%({k})s" for k in self.additional_log_standard_attrs]
-        base_attrs.append(SERVE_LOG_RECORD_FORMAT[SERVE_LOG_MESSAGE])
-        self.base_format = self.component_log_fmt + " ".join(base_attrs)
-        self.base_formatter = logging.Formatter(self.base_format)
+    def set_additional_log_standard_attrs(self, *args, **kwargs):
+        super().set_additional_log_standard_attrs(*args, **kwargs)
+        self._precompute_formatters()
 
-        # Format with request ID
-        request_attrs = [SERVE_LOG_RECORD_FORMAT[SERVE_LOG_REQUEST_ID]]
-        request_attrs.extend([f"%({k})s" for k in self.additional_log_standard_attrs])
-        request_attrs.append(SERVE_LOG_RECORD_FORMAT[SERVE_LOG_MESSAGE])
-        self.request_format = self.component_log_fmt + " ".join(request_attrs)
-        self.request_formatter = logging.Formatter(self.request_format)
+    def _precompute_formatters(self):
+        self.base_formatter = self._create_formatter([])
+        self.request_formatter = self._create_formatter(
+            [SERVE_LOG_RECORD_FORMAT[SERVE_LOG_REQUEST_ID]]
+        )
+
+    def _create_formatter(self, initial_attrs: list) -> logging.Formatter:
+        attrs = initial_attrs.copy()
+        attrs.extend([f"%({k})s" for k in self.additional_log_standard_attrs])
+        attrs.append(SERVE_LOG_RECORD_FORMAT[SERVE_LOG_MESSAGE])
+
+        format_string = self.component_log_fmt + " ".join(attrs)
+        return logging.Formatter(format_string)
 
     def format(self, record: logging.LogRecord) -> str:
         """Format the log record into the format string.
