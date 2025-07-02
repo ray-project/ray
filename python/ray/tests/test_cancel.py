@@ -4,6 +4,8 @@ import sys
 import threading
 import _thread
 import time
+import numpy as np
+from typing import List
 
 import pytest
 
@@ -15,6 +17,7 @@ from ray.exceptions import (
     WorkerCrashedError,
     ObjectLostError,
 )
+from ray.types import ObjectRef
 from ray._private.utils import DeferSigint
 from ray._common.test_utils import SignalActor
 from ray._common.test_utils import wait_for_condition
@@ -730,6 +733,54 @@ def test_recursive_cancel_error_messages(shutdown_only, capsys):
             break
 
     assert found_total_msg
+
+
+def test_ray_task_cancel_and_retry_race_condition(ray_start_cluster):
+    """
+    This test is to verify that when a task is cancelled, the retry task will fail
+    probably with a TaskCancelledError and is not crashing.
+
+    The test is to:
+    1. Start a ray cluster with one head node and one worker node.
+    2. Submit a task to the worker node to generate an object big enough to store in the object store.
+    3. Cancel the task.
+    4. Remove the worker node.
+    5. Add a new worker node.
+    6. Force a retry task to be scheduled on the new worker node to reconstruct the big object.
+    7. Verify that the retry task fails with a TaskCancelledError.
+    """
+    cluster = ray_start_cluster
+    # Add a head node with 0 CPU.
+    cluster.add_node(num_cpus=0)
+    ray.init(address=cluster.address)
+    # Add one worker node.
+    worker_node = cluster.add_node(num_cpus=2)
+    cluster.wait_for_nodes()
+
+    @ray.remote(num_cpus=2)
+    def producer() -> np.ndarray:
+        return np.zeros(1024 * 1000)
+
+    @ray.remote(num_cpus=2)
+    def consumer(object_refs: List[ObjectRef[np.ndarray]]) -> np.ndarray:
+        return ray.get(object_refs[0])
+
+    # Generate the big object in the object store of the worker node, then kill the worker
+    # node. This causes the object to be lost.
+    producer_ref = producer.remote()
+    ray.wait([producer_ref], fetch_local=False)
+    ray.cancel(producer_ref)
+    cluster.remove_node(worker_node)
+
+    # Add a new worker node. Run another task that depends on the previously lost big
+    # object. This will force a retry task to be scheduled on the new worker node.
+    cluster.add_node(num_cpus=2)
+    cluster.wait_for_nodes()
+
+    # Test that the retry task fails with a TaskCancelledError because it was previously
+    # cancelled.
+    with pytest.raises(TaskCancelledError):
+        ray.get(consumer.remote([producer_ref]))
 
 
 if __name__ == "__main__":
