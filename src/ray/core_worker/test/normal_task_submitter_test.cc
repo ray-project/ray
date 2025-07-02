@@ -1961,32 +1961,7 @@ TEST_F(NormalTaskSubmitterFTest, TestKillResolvingTask) {
   ASSERT_TRUE(submitter.CheckNoSchedulingKeyEntriesPublic());
 }
 
-TEST(NormalTaskSubmitterTest, TestQueueGeneratorForResubmit) {
-  rpc::Address address;
-  auto raylet_client = std::make_shared<MockRayletClient>();
-  auto worker_client = std::make_shared<MockWorkerClient>();
-  auto store = DefaultCoreWorkerMemoryStoreWithThread::CreateShared();
-  auto client_pool = std::make_shared<rpc::CoreWorkerClientPool>(
-      [&](const rpc::Address &addr) { return worker_client; });
-  auto task_finisher = std::make_unique<MockTaskFinisher>();
-  auto actor_creator = std::make_shared<MockActorCreator>();
-  auto lease_policy = std::make_unique<MockLeasePolicy>();
-  NormalTaskSubmitter submitter(
-      address,
-      raylet_client,
-      client_pool,
-      nullptr,
-      std::move(lease_policy),
-      store,
-      *task_finisher,
-      NodeID::Nil(),
-      WorkerType::WORKER,
-      kLongTimeout,
-      actor_creator,
-      JobID::Nil(),
-      kOneRateLimiter,
-      [](const ObjectID &object_id) { return rpc::TensorTransport::OBJECT_STORE; });
-
+TEST_F(NormalTaskSubmitterFTest, TestQueueGeneratorForResubmit) {
   // Executing generator -> Resubmit queued -> execution finishes -> resubmit happens.
   TaskSpecification task = BuildEmptyTaskSpec();
   ASSERT_TRUE(submitter.SubmitTask(task).ok());
@@ -1998,32 +1973,7 @@ TEST(NormalTaskSubmitterTest, TestQueueGeneratorForResubmit) {
   ASSERT_EQ(task_finisher->num_generator_failed_and_resubmitted, 1);
 }
 
-TEST(NormalTaskSubmitterTest, TestCancelBeforeAfterQueueGeneratorForResubmit) {
-  rpc::Address address;
-  auto raylet_client = std::make_shared<MockRayletClient>();
-  auto worker_client = std::make_shared<MockWorkerClient>();
-  auto store = DefaultCoreWorkerMemoryStoreWithThread::CreateShared();
-  auto client_pool = std::make_shared<rpc::CoreWorkerClientPool>(
-      [&](const rpc::Address &addr) { return worker_client; });
-  auto task_finisher = std::make_unique<MockTaskFinisher>();
-  auto actor_creator = std::make_shared<MockActorCreator>();
-  auto lease_policy = std::make_unique<MockLeasePolicy>();
-  NormalTaskSubmitter submitter(
-      address,
-      raylet_client,
-      client_pool,
-      nullptr,
-      std::move(lease_policy),
-      store,
-      *task_finisher,
-      NodeID::Nil(),
-      WorkerType::WORKER,
-      kLongTimeout,
-      actor_creator,
-      JobID::Nil(),
-      kOneRateLimiter,
-      [](const ObjectID &object_id) { return rpc::TensorTransport::OBJECT_STORE; });
-
+TEST_F(NormalTaskSubmitterFTest, TestCancelBeforeAfterQueueGeneratorForResubmit) {
   // Cancel -> failed queue generator for resubmit -> cancel reply -> successful queue for
   // resubmit -> push task reply -> honor the cancel not the queued resubmit.
   TaskSpecification task = BuildEmptyTaskSpec();
