@@ -76,20 +76,24 @@ typedef int SchedulingClass;
 struct SchedulingClassDescriptor {
  public:
   explicit SchedulingClassDescriptor(ResourceSet rs,
+                                     LabelSelector ls,
                                      FunctionDescriptor fd,
                                      int64_t d,
                                      rpc::SchedulingStrategy scheduling_strategy)
       : resource_set(std::move(rs)),
+        label_selector(std::move(ls)),
         function_descriptor(std::move(fd)),
         depth(d),
         scheduling_strategy(std::move(scheduling_strategy)) {}
   ResourceSet resource_set;
+  LabelSelector label_selector;
   FunctionDescriptor function_descriptor;
   int64_t depth;
   rpc::SchedulingStrategy scheduling_strategy;
 
   bool operator==(const SchedulingClassDescriptor &other) const {
     return depth == other.depth && resource_set == other.resource_set &&
+           label_selector == other.label_selector &&
            function_descriptor == other.function_descriptor &&
            scheduling_strategy == other.scheduling_strategy;
   }
@@ -105,7 +109,21 @@ struct SchedulingClassDescriptor {
     for (const auto &pair : resource_set.GetResourceMap()) {
       buffer << pair.first << " : " << pair.second << ", ";
     }
+    buffer << "}";
+
+    buffer << "label_selector={";
+    for (const auto &constraint : label_selector.GetConstraints()) {
+      buffer << constraint.GetLabelKey() << " "
+             << (constraint.GetOperator() == ray::LabelSelectorOperator::LABEL_IN ? "in"
+                                                                                  : "!in")
+             << " (";
+      for (const auto &val : constraint.GetLabelValues()) {
+        buffer << val << ", ";
+      }
+      buffer << "), ";
+    }
     buffer << "}}";
+
     return buffer.str();
   }
 

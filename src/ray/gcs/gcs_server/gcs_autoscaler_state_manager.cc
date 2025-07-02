@@ -22,6 +22,7 @@
 #include "ray/gcs/gcs_server/gcs_actor_manager.h"
 #include "ray/gcs/gcs_server/gcs_node_manager.h"
 #include "ray/gcs/gcs_server/gcs_placement_group_mgr.h"
+#include "ray/gcs/gcs_server/state_util.h"
 #include "ray/gcs/pb_util.h"
 
 namespace ray {
@@ -245,17 +246,7 @@ void GcsAutoscalerStateManager::GetPendingGangResourceRequests(
       // Parse label selector map into LabelSelector proto in ResourceRequest
       if (!bundle.label_selector().empty()) {
         ray::LabelSelector selector(bundle.label_selector());
-
-        auto *proto_selector = bundle_resource_req->add_label_selectors();
-        for (const auto &constraint : selector.GetConstraints()) {
-          auto *proto_constraint = proto_selector->add_label_constraints();
-          proto_constraint->set_label_key(constraint.GetLabelKey());
-          proto_constraint->set_operator_(static_cast<rpc::autoscaler::LabelOperator>(
-              constraint.GetOperator()));
-          for (const auto &val : constraint.GetLabelValues()) {
-            proto_constraint->add_label_values(val);
-          }
-        }
+        selector.ToProto(bundle_resource_req->add_label_selectors());
       }
 
       // Add the placement constraint.
@@ -287,6 +278,8 @@ void GcsAutoscalerStateManager::OnNodeAdd(const rpc::GcsNodeInfo &node) {
   // autoscaler reports). Temporary underreporting when node is added is fine.
   (*node_info->second.second.mutable_resources_total()) = node.resources_total();
   (*node_info->second.second.mutable_resources_available()) = node.resources_total();
+  // Populate node labels.
+  (*node_info->second.second.mutable_labels()) = node.labels();
 }
 
 void GcsAutoscalerStateManager::UpdateResourceLoadAndUsage(rpc::ResourcesData data) {
@@ -305,11 +298,10 @@ void GcsAutoscalerStateManager::UpdateResourceLoadAndUsage(rpc::ResourcesData da
   iter->second.first = absl::Now();
 }
 
-absl::flat_hash_map<google::protobuf::Map<std::string, double>, rpc::ResourceDemand>
+absl::flat_hash_map<ray::gcs::ResourceDemandKey, rpc::ResourceDemand>
 GcsAutoscalerStateManager::GetAggregatedResourceLoad() const {
   RAY_CHECK(thread_checker_.IsOnSameThread());
-  absl::flat_hash_map<google::protobuf::Map<std::string, double>, rpc::ResourceDemand>
-      aggregate_load;
+  absl::flat_hash_map<ray::gcs::ResourceDemandKey, rpc::ResourceDemand> aggregate_load;
   for (const auto &info : node_resource_info_) {
     gcs::FillAggregateLoad(info.second.second, &aggregate_load);
   }
@@ -329,7 +321,10 @@ void GcsAutoscalerStateManager::GetPendingResourceRequests(
     rpc::autoscaler::ClusterResourceState *state) {
   RAY_CHECK(thread_checker_.IsOnSameThread());
   auto aggregate_load = GetAggregatedResourceLoad();
-  for (const auto &[shape, demand] : aggregate_load) {
+  for (const auto &[key, demand] : aggregate_load) {
+    const auto &shape = key.shape;
+    const auto &label_selectors = key.label_selectors;
+
     auto num_pending = demand.num_infeasible_requests_queued() + demand.backlog_size() +
                        demand.num_ready_requests_queued();
     if (num_pending > 0) {
@@ -339,25 +334,8 @@ void GcsAutoscalerStateManager::GetPendingResourceRequests(
       req->mutable_resources_bundle()->insert(shape.begin(), shape.end());
 
       // Add label selectors to ResourceRequest
-      for (const auto &selector : demand.label_selectors()) {
-        // Parse selector key, operator, and values from string map
-        ray::LabelSelector parsed_selector(selector.label_selector_dict());
-
-        // Pass label selector information to format expected by autoscaler
-        rpc::autoscaler::LabelSelector label_selector;
-        for (const auto &constraint : parsed_selector.GetConstraints()) {
-          auto *c = label_selector.add_label_constraints();
-          c->set_label_key(constraint.GetLabelKey());
-
-          c->set_operator_(static_cast<rpc::autoscaler::LabelOperator>(
-              static_cast<int>(constraint.GetOperator())));
-
-          for (const auto &val : constraint.GetLabelValues()) {
-            c->add_label_values(val);
-          }
-        }
-
-        *req->add_label_selectors() = std::move(label_selector);
+      for (const auto &selector : label_selectors) {
+        *req->add_label_selectors() = selector;
       }
     }
   }
@@ -437,7 +415,7 @@ void GcsAutoscalerStateManager::GetNodeStates(
       node_state_proto->mutable_dynamic_labels()->insert(
           {FormatPlacementGroupLabelName(pg_id.Hex()), ""});
     }
-    // Add Ray node labels to dynamic labels
+    // Add Ray node labels.
     const auto &node_labels = gcs_node_info.labels();
     node_state_proto->mutable_labels()->insert(node_labels.begin(), node_labels.end());
   };
@@ -534,14 +512,14 @@ std::string GcsAutoscalerStateManager::DebugString() const {
          << last_cluster_resource_state_version_ << "\n- pending demands:\n";
 
   auto aggregate_load = GetAggregatedResourceLoad();
-  for (const auto &[shape, demand] : aggregate_load) {
+  for (const auto &[key, demand] : aggregate_load) {
     auto num_pending = demand.num_infeasible_requests_queued() + demand.backlog_size() +
                        demand.num_ready_requests_queued();
 
     stream << "\t{";
     if (num_pending > 0) {
-      for (const auto &[resource, quantity] : shape) {
-        stream << resource << ": " << quantity << ", ";
+      for (const auto &entry : key.shape) {
+        stream << entry.first << ": " << entry.second << ", ";
       }
     }
     stream << "} * " << num_pending << "\n";

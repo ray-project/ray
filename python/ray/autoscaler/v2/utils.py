@@ -35,8 +35,6 @@ from ray.core.generated.autoscaler_pb2 import (
     AutoscalingState,
     ClusterResourceState,
     GetClusterStatusReply,
-    LabelConstraint,
-    LabelSelector,
     NodeState,
     NodeStatus,
     PlacementConstraint,
@@ -44,6 +42,10 @@ from ray.core.generated.autoscaler_pb2 import (
 )
 from ray.core.generated.autoscaler_pb2 import (
     ResourceRequestByCount as ResourceRequestByCountProto,
+)
+from ray.core.generated.common_pb2 import (
+    LabelSelectorConstraint,
+    LabelSelector,
 )
 from ray.experimental.internal_kv import internal_kv_get_gcs_client
 
@@ -238,7 +240,7 @@ class ResourceRequestUtil(ProtobufUtil):
                 selector_proto = LabelSelector()
                 for label_key, operator_enum, label_values in selector:
                     selector_proto.label_constraints.append(
-                        LabelConstraint(
+                        LabelSelectorConstraint(
                             label_key=label_key,
                             operator=operator_enum,
                             label_values=label_values,
