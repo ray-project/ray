@@ -712,11 +712,17 @@ Status NormalTaskSubmitter::CancelTask(TaskSpecification task_spec,
   std::shared_ptr<rpc::CoreWorkerClientInterface> client = nullptr;
   {
     absl::MutexLock lock(&mu_);
-    generators_to_resubmit_.erase(task_spec.TaskId());
+    auto task_id = task_spec.TaskId();
+    generators_to_resubmit_.erase(task_id);
 
-    if (cancelled_tasks_.find(task_spec.TaskId()) != cancelled_tasks_.end() ||
-        !task_finisher_.MarkTaskCanceled(task_spec.TaskId()) ||
-        !task_finisher_.IsTaskPending(task_spec.TaskId())) {
+    if (cancelled_tasks_.contains(task_id)) {
+      // The task cancel is already in progress. We don't need to do anything.
+      return Status::OK();
+    }
+
+    task_finisher_.MarkTaskCanceled(task_id);
+    if (!task_finisher_.IsTaskPending(task_id)) {
+      // The task is finished or failed so marking the task as cancelled is sufficient.
       return Status::OK();
     }
 

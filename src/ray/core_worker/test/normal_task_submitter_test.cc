@@ -188,7 +188,7 @@ class MockTaskFinisher : public TaskFinisherInterface {
     num_contained_ids += contained_ids.size();
   }
 
-  bool MarkTaskCanceled(const TaskID &task_id) override { return true; }
+  void MarkTaskCanceled(const TaskID &task_id) override {}
 
   std::optional<TaskSpecification> GetTaskSpec(const TaskID &task_id) const override {
     TaskSpecification task = BuildEmptyTaskSpec();
