@@ -404,6 +404,9 @@ class EnvRunnerGroup:
             env_runner_indices_to_update: The indices of those EnvRunners to update
                 with the merged state. Use None (default) to update all remote
                 EnvRunners.
+            env_runner_metrics: The states dict of a `MetricsLogger` to sync with
+                the remote EnvRunners if `update_worker_filter_stats` is True
+                in `config`.
         """
         from_worker = from_worker or self.local_env_runner
 
@@ -536,11 +539,13 @@ class EnvRunnerGroup:
 
         # Update metrics:
         if env_runner_metrics:
-            # Note: env_runner_states[NUM_ENV_STEPS_SAMPLED_LIFETIME] takes higher priority
-            # can split the total env_steps_sampled.
+            # env_runner_states[NUM_ENV_STEPS_SAMPLED_LIFETIME] should be included here
+            # and can be deprecated in the future.
+            # Divide reduce="sum" metrics by the number of env runners (such that each
+            # EnvRunner knows (roughly) its own(!) count and can infer the global
+            # count from it).
             for stat in env_runner_metrics["stats"].values():
-                # If reduce is sum distribute among env_runners
-                # NOTE: needs to be compatible with stats.merge_stats
+                # NOTE: the hist reduction needs to be compatible with stats.merge_stats
                 if stat["reduce"] == "sum" and stat["clear_on_reduce"] is False:
                     if stat["window"] in (None, float("inf")):
                         stat["_hist"] = [

@@ -45,6 +45,7 @@ expected_results = {
 class TestAlgorithmCheckpointStepsAfterRestore(unittest.TestCase):
     @classmethod
     def setUpClass(cls) -> None:
+        # Remember to call algo.stop() to keep the needed cores at a minimum.
         ray.init(num_cpus=NUM_ENV_RUNNERS, include_dashboard=False)
 
     @classmethod
@@ -230,17 +231,18 @@ class TestAlgorithmCheckpointStepsAfterRestore(unittest.TestCase):
                             result_algo_1_step2[ENV_RUNNER_RESULTS][metric],
                             result_algo1_step2_restored[ENV_RUNNER_RESULTS][metric],
                         )
-            # Test after restoring a second time
+            # Save a second time after step 2
             algo_0_runner_restored.save_checkpoint(checkpoint_0_step2_restored)
             algo_1_runner_restored.save_checkpoint(checkpoint_1_step2_restored)
-            # Step 3 from restored
+            # --- Step 3 from restored ---
             result_algo0_step3_restored = algo_0_runner_restored.step()
             result_algo1_step3_restored = algo_1_runner_restored.step()
             algo_0_runner_restored.stop()
             algo_1_runner_restored.stop()  # free resources
             del algo_1_runner_restored
             del algo_0_runner_restored
-            # Load and check restored x2
+
+            # Load and check restored when restored a second time
             algo_0_restored_x2 = PPO.from_checkpoint(checkpoint_0_step2_restored)
             algo_1_restored_x2 = PPO.from_checkpoint(checkpoint_1_step2_restored)
             assert algo_0_restored_x2.metrics and algo_1_restored_x2.metrics
@@ -259,7 +261,7 @@ class TestAlgorithmCheckpointStepsAfterRestore(unittest.TestCase):
             result_algo0_step3_restored_x2 = algo_0_restored_x2.step()
             result_algo1_step3_restored_x2 = algo_1_restored_x2.step()
 
-            # Test that all results after step 3 are have 300 steps
+            # Test that all results after step 3
             for metric in metrics:
                 with self.subTest(
                     f"(Checkpointed) {metric} after step 3", metric=metric
