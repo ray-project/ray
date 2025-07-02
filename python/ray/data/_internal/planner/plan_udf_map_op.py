@@ -273,6 +273,7 @@ def _wrap_debugger_breakpoint_fn(op: AbstractUDFMap):
                 )
 
         if inspect.iscoroutinefunction(udf.__call__):
+
             async def _debugger_breakpoint_wrapped_fn(item: Any) -> Any:
                 assert ray.data._map_actor_context is not None
                 assert ray.data._map_actor_context.is_async
@@ -588,16 +589,19 @@ def _generate_transform_fn_for_async_map(
 
     ctx = DataContext.get_current()
 
-    if inspect.iscoroutinefunction(fn):
+    if inspect.isasyncgenfunction(fn):
 
         async def _apply_udf(item: T) -> List[U]:
-            return [await fn(item)]
+            gen = fn(item)
+            # NOTE: Async generator is unrolled inside the task to maintain
+            #       requested concurrency level (`max_concurrent_batches`)
+            return [out async for out in gen]
 
-    elif inspect.isasyncgenfunction(fn):
+    elif inspect.iscoroutinefunction(fn):
 
         async def _apply_udf(item: T) -> List[U]:
-            res = fn(item)
-            return [out async for out in res]
+            res = await fn(item)
+            return [res]
 
     else:
         raise ValueError(f"Expected a coroutine function, got {fn}")
