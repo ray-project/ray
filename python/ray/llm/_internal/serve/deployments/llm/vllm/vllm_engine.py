@@ -54,11 +54,16 @@ from ray.llm._internal.serve.observability.metrics.utils import (
 from ray.util import metrics
 from ray.util.placement_group import PlacementGroup
 from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
+from vllm.entrypoints.openai.cli_args import FrontendArgs
+from vllm.engine.arg_utils import AsyncEngineArgs
+from vllm.entrypoints.openai.protocol import ErrorResponse
+from ray.llm._internal.serve.configs.openai_api_models_patch import (
+    ErrorResponse as PatchedErrorResponse,
+)
 
 if TYPE_CHECKING:
     from vllm import SamplingParams as VLLMInternalSamplingParams
     from vllm.config import ModelConfig, VllmConfig
-    from vllm.engine.arg_utils import AsyncEngineArgs
     from vllm.engine.protocol import EngineClient
     from vllm.outputs import PoolingRequestOutput, RequestOutput
 
@@ -177,6 +182,17 @@ class _EngineBackgroundProcess:
         return self._error
 
 
+class CustomNamespace:
+    def __init__(self, *args):
+        self.classes = args
+
+    def __getattr__(self, name):
+        for cls in self.classes:
+            if hasattr(cls, name):
+                return getattr(cls, name)
+        raise AttributeError(f"Attribute {name} not found in {self.classes}")
+
+
 class VLLMEngine(LLMEngine):
     def __init__(
         self,
@@ -188,6 +204,13 @@ class VLLMEngine(LLMEngine):
             llm_config: The llm configuration for this engine
         """
         super().__init__(llm_config)
+
+        # filter out the llm_config.engine_kwargs to those that belong to FrontendArgs and pop them over.
+        engine_config = llm_config.get_engine_config()
+        self.frontend_args = FrontendArgs(**engine_config.frontend_kwargs)
+        self.engine_args = AsyncEngineArgs(**engine_config.engine_kwargs)
+
+        self.namespace_args = CustomNamespace(self.engine_args, self.frontend_args)
 
         if vllm is None:
             raise ImportError(
@@ -267,44 +290,66 @@ class VLLMEngine(LLMEngine):
 
         If the engine is already running, do nothing.
         """
-        from vllm.entrypoints.chat_utils import (
-            resolve_chat_template_content_format as _resolve_chat_template_content_format,
-        )
+        # from vllm.entrypoints.chat_utils import (
+        #     resolve_chat_template_content_format as _resolve_chat_template_content_format,
+        # )
 
-        if self.running:
-            # The engine is already running!
-            logger.info("Skipping engine restart because the engine is already running")
-            return
+        # if self.running:
+        #     # The engine is already running!
+        #     logger.info("Skipping engine restart because the engine is already running")
+        #     return
+
+        # self.engine = await self._start_engine()
+        # self.running = True
+        # self.model_config = await self.engine.get_model_config()
+
+        # self._tokenizer = await self.engine.get_tokenizer()
+
+        # def resolve_chat_template_content_format(model_config, **kwargs):
+        #     try:
+        #         return _resolve_chat_template_content_format(
+        #             model_config=model_config, **kwargs
+        #         )
+        #     except TypeError:
+        #         # Legacy API before vLLM 0.9.0.
+        #         # TODO(#52975): Remove this try-except once vLLM <0.9.0 is no longer supported.
+        #         return _resolve_chat_template_content_format(
+        #             trust_remote_code=model_config.trust_remote_code, **kwargs
+        #         )
+
+        # self._resolved_content_format = resolve_chat_template_content_format(
+        #     model_config=self.model_config,
+        #     # Use HF to get the chat template so set it to None here.
+        #     chat_template=None,
+        #     # Default to None, change when it's needed.
+        #     # vLLM does not have a high level API to support all of this.
+        #     tools=None,
+        #     # Let vLLM decide the content format.
+        #     given_format="auto",
+        #     tokenizer=self._tokenizer,
+        # )
+
+        from vllm.entrypoints.openai.api_server import init_app_state
 
         self.engine = await self._start_engine()
-        self.running = True
-        self.model_config = await self.engine.get_model_config()
 
-        self._tokenizer = await self.engine.get_tokenizer()
+        from starlette.datastructures import State
 
-        def resolve_chat_template_content_format(model_config, **kwargs):
-            try:
-                return _resolve_chat_template_content_format(
-                    model_config=model_config, **kwargs
-                )
-            except TypeError:
-                # Legacy API before vLLM 0.9.0.
-                # TODO(#52975): Remove this try-except once vLLM <0.9.0 is no longer supported.
-                return _resolve_chat_template_content_format(
-                    trust_remote_code=model_config.trust_remote_code, **kwargs
-                )
+        state = State()
 
-        self._resolved_content_format = resolve_chat_template_content_format(
-            model_config=self.model_config,
-            # Use HF to get the chat template so set it to None here.
-            chat_template=None,
-            # Default to None, change when it's needed.
-            # vLLM does not have a high level API to support all of this.
-            tools=None,
-            # Let vLLM decide the content format.
-            given_format="auto",
-            tokenizer=self._tokenizer,
+        await init_app_state(
+            engine_client=self.engine,
+            vllm_config=self.vllm_config,
+            state=state,
+            args=self.namespace_args,
         )
+
+        self.oai_models = state.openai_serving_models
+        self.oai_serving_chat = state.openai_serving_chat
+        self.oai_serving_completion = state.openai_serving_completion
+        self.oai_serving_embedding = state.openai_serving_embedding
+
+        self.running = True
 
         logger.info("Started vLLM engine.")
 
@@ -348,6 +393,7 @@ class VLLMEngine(LLMEngine):
             node_initialization: The node initialization.
         """
         # Initialize node and return all configurations
+        # TODO: NEEDED for Mistral models
         node_initialization = await self.initialize_node(self.llm_config)
 
         if self.engine_config.use_gpu:
@@ -498,6 +544,11 @@ class VLLMEngine(LLMEngine):
 
         vllm_config.parallel_config.placement_group = placement_group
 
+        if use_v1:
+            from vllm.v1.engine.async_llm import AsyncLLM as AsyncLLMEngine
+        else:
+            from vllm.engine.async_llm_engine import AsyncLLMEngine
+
         _clear_current_platform_cache()
 
         custom_stat_loggers = None
@@ -512,7 +563,7 @@ class VLLMEngine(LLMEngine):
 
         executor_class = Executor.get_class(vllm_config)
         logger.info(f"Using executor class: {executor_class}")
-        engine = vllm.engine.async_llm_engine.AsyncLLMEngine(
+        engine = AsyncLLMEngine(
             vllm_config=vllm_config,
             executor_class=executor_class,
             log_stats=not engine_args.disable_log_stats,
@@ -520,6 +571,31 @@ class VLLMEngine(LLMEngine):
         )
 
         return engine
+
+    async def resolve_lora(self, disk_lora_model: DiskMultiplexConfig):
+        from vllm.entrypoints.openai.protocol import LoadLoRAAdapterRequest
+
+        # lora_add_response = await self.oai_models.load_lora_adapter(
+        #     request=LoadLoRAAdapterRequest(
+        #         lora_name=disk_lora_model.model_id,
+        #         lora_path=disk_lora_model.local_path,
+        #     )
+        # )
+
+        if disk_lora_model.model_id in self.oai_models.lora_requests:
+            return self.oai_models.lora_requests[disk_lora_model.model_id]
+        else:
+            lora_request = await self.oai_models.load_lora_adapter(
+                request=LoadLoRAAdapterRequest(
+                    lora_name=disk_lora_model.model_id,
+                    lora_path=disk_lora_model.local_path,
+                )
+            )
+
+            if isinstance(lora_request, ErrorResponse):
+                raise ValueError(f"Failed to load lora model: {lora_request.message}")
+
+        return lora_request
 
     async def prepare_request(
         self,
@@ -586,6 +662,29 @@ class VLLMEngine(LLMEngine):
 
         vllm_request = VLLMGenerationRequest(**request_params)
         return vllm_request
+
+    async def chat(
+        self, request: GenerationRequest
+    ) -> AsyncGenerator[LLMRawResponse, None]:
+
+        chat_response = await self.oai_serving_chat.create_chat_completion(request)
+
+        if isinstance(chat_response, AsyncGenerator):
+            async for response in chat_response:
+                yield response
+        else:
+            logger.info(
+                f"[Kourosh] non streaming response received, chat_response: {chat_response}"
+            )
+            if isinstance(chat_response, ErrorResponse):
+                yield PatchedErrorResponse(
+                    message=chat_response.message,
+                    internal_message=chat_response.message,
+                    type=chat_response.type,
+                    code=chat_response.code,
+                )
+            else:
+                yield chat_response
 
     async def generate(
         self, request: GenerationRequest

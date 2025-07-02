@@ -19,7 +19,7 @@ from ray.llm._internal.serve.configs.openai_api_models import (
     ChatCompletionLogProb,
     ChatCompletionLogProbs,
     ChatCompletionLogProbsContent,
-    ChatCompletionRequest,
+    # ChatCompletionRequest,
     ChatCompletionResponse,
     ChatCompletionResponseChoice,
     ChatCompletionResponseStreamChoice,
@@ -39,6 +39,7 @@ from ray.llm._internal.serve.configs.openai_api_models import (
     LLMEmbeddingsResponse,
     UsageInfo,
 )
+from vllm.entrypoints.openai.protocol import ChatCompletionRequest
 from ray.llm._internal.serve.configs.prompt_formats import Message, Prompt
 from ray.llm._internal.serve.configs.server_models import (
     DiskMultiplexConfig,
@@ -582,7 +583,31 @@ class LLMServer(_LLMServerBase):
         Returns:
             A LLMChatResponse object.
         """
-        return self._process_llm_request(request, is_chat=True)
+
+        multiplexed_model_id = serve.get_multiplexed_model_id()
+
+        if multiplexed_model_id:
+            assert (
+                self._llm_config.lora_config is not None
+            ), "Must setup lora config for multiplexed requests."
+            disk_lora_model = await self._disk_lora_model(multiplexed_model_id)
+            await self.engine.resolve_lora(disk_lora_model)
+
+
+        if request.stream:
+            # 4. Apply batching with appropriate interval in case of streaming
+            response_generator = OpenAIResponseBatcher(
+                self.engine.chat(request),
+                interval_ms=self._get_batch_interval_ms(),
+            ).stream()
+        else:
+            response_generator = self.engine.chat(request)
+
+        async for response in response_generator:
+            logger.info(
+                f"[Kourosh] in llm_server.chat, response_type: {type(response)} response: {response}"
+            )
+            yield response
 
     async def completions(self, request: CompletionRequest) -> LLMCompletionsResponse:
         """Runs a completion request to the LLM engine and returns the response.
