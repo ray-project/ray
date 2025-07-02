@@ -272,12 +272,9 @@ class ActorTaskSubmitter : public ActorTaskSubmitterInterface {
           status(std::move(status)),
           timeout_error_info(std::move(timeout_error_info)) {}
   };
+
   /// A helper function to get task finisher without holding mu_
-  /// We should use this function when access
-  /// - FailOrRetryPendingTask
-  /// - FailPendingTask
-  TaskFinisherInterface &GetTaskFinisherWithoutMu() {
-    mu_.AssertNotHeld();
+  TaskFinisherInterface &TaskFinisher() ABSL_LOCKS_EXCLUDED(mu_) {
     return task_finisher_;
   }
 
