@@ -26,7 +26,8 @@ class DefaultFailurePolicy(FailurePolicy):
         if isinstance(worker_group_status, WorkerGroupResizeStatus):
             self._resize_failure_count += 1
             if (
-                self.failure_config.resize_failure_limit != -1
+                hasattr(self.failure_config, "resize_failure_limit")
+                and self.failure_config.resize_failure_limit != -1
                 and self._resize_failure_count
                 > self.failure_config.resize_failure_limit
             ):
