@@ -1,12 +1,12 @@
-from abc import abstractmethod
-from typing import Dict, Protocol
+from abc import ABC, abstractmethod
+from typing import Dict
 
 
-class PolicyHandledStatus(Protocol):
+class WorkerGroupStatus(ABC):
     """Protocol for status objects that can be handled by failure policies.
 
     This provides a common interface for both runtime worker failures
-    (WorkerGroupPollStatus) and startup failures (WorkerGroupResizeStatus).
+    (WorkerGroupPollStatus) and scheduling failures (WorkerGroupSchedulingStatus).
     """
 
     @property
@@ -17,6 +17,10 @@ class PolicyHandledStatus(Protocol):
     @property
     @abstractmethod
     def finished(self) -> bool:
+        """For WorkerGroupPollStatus, this is True if all workers are finished.
+        For WorkerGroupSchedulingStatus, this is always True because the scheduling operation
+        is synchronous.
+        """
         ...
 
     @abstractmethod

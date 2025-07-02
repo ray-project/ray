@@ -60,8 +60,8 @@ from ray.train.v2._internal.execution.worker_group import (
     WorkerGroupPollStatus,
 )
 from ray.train.v2._internal.execution.worker_group.state import (
-    PolicyHandledStatus,
-    WorkerGroupResizeStatus,
+    WorkerGroupSchedulingStatus,
+    WorkerGroupStatus,
 )
 from ray.train.v2._internal.execution.worker_group.worker_group import (
     WorkerGroupContext,
@@ -185,14 +185,14 @@ class TrainController:
         if self._worker_group:
             self._shutdown_worker_group()
 
-        resize_status = self._start_worker_group(
+        scheduling_status = self._start_worker_group(
             num_workers=decision.num_workers,
             resources_per_worker=decision.resources_per_worker,
         )
 
-        if resize_status.errors:
-            failure_decision = self._failure_policy.make_decision(resize_status)
-            return self._execute_failure_decision(failure_decision, resize_status)
+        if scheduling_status.errors:
+            failure_decision = self._failure_policy.make_decision(scheduling_status)
+            return self._execute_failure_decision(failure_decision, scheduling_status)
         else:
             return TrainControllerLoopIterationResult(
                 run_attempt_id=self._get_run_attempt_id(),
@@ -203,7 +203,7 @@ class TrainController:
     def _execute_failure_decision(
         self,
         failure_decision: FailureDecision,
-        worker_group_status: PolicyHandledStatus,
+        worker_group_status: WorkerGroupStatus,
     ) -> TrainControllerLoopIterationResult:
         """Executes failure handling decisions (ex: restart, terminate)."""
         assert worker_group_status.errors
@@ -226,23 +226,16 @@ class TrainController:
         training_failed_error = TrainingFailedError(
             error_message=errors_str, worker_failures=worker_group_status.errors
         )
-        if failure_decision == FailureDecision.RESCHEDULE:
-            assert isinstance(worker_group_status, WorkerGroupResizeStatus)
+        if failure_decision == FailureDecision.RETRY:
             return TrainControllerLoopIterationResult(
                 run_attempt_id=self._get_run_attempt_id(),
                 previous_state=controller_state,
-                next_state=ReschedulingState(),
-            )
-
-        elif failure_decision == FailureDecision.RESTART:
-            logger.error(worker_group_status.get_restart_error_string())
-            next_state = RestartingState(training_failed_error=training_failed_error)
-            return TrainControllerLoopIterationResult(
-                run_attempt_id=self._get_run_attempt_id(),
-                previous_state=controller_state,
-                next_state=next_state,
+                next_state=ReschedulingState()
+                if isinstance(controller_state, SchedulingState)
+                else RestartingState(training_failed_error=training_failed_error),
                 training_failed_error=training_failed_error,
             )
+
         elif failure_decision == FailureDecision.RAISE:
             logger.error(worker_group_status.get_raise_error_string())
 
@@ -271,7 +264,7 @@ class TrainController:
 
     def _start_worker_group(
         self, num_workers: int, resources_per_worker: dict
-    ) -> WorkerGroupResizeStatus:
+    ) -> WorkerGroupSchedulingStatus:
         """Start the worker group and launch the train function.
 
         Returns:
@@ -297,11 +290,11 @@ class TrainController:
                 f"The previous launch attempt encountered the following failure:\n{e}"
             )
 
-            return WorkerGroupResizeStatus(
+            return WorkerGroupSchedulingStatus(
                 error=e,
             )
 
-        return WorkerGroupResizeStatus(error=None)
+        return WorkerGroupSchedulingStatus(error=None)
 
     def _start(self):
         for callback in self._controller_callbacks:
