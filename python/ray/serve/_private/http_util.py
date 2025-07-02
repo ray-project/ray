@@ -308,7 +308,7 @@ class MessageQueue(Send):
                 if call_fut in done:
                     # Optimization for if the user method returns a raw value.
                     if call_fut.result() is not None:
-                        yield convert_object_to_asgi_messages(call_fut.result())
+                        yield call_fut.result()
 
                     break
 

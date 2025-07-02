@@ -68,6 +68,7 @@ from ray.serve._private.default_impl import (
     create_replica_metrics_manager,
 )
 from ray.serve._private.http_util import (
+    convert_object_to_asgi_messages,
     ASGIAppReplicaWrapper,
     ASGIArgs,
     ASGIReceiveProxy,
@@ -1708,7 +1709,7 @@ class UserCallableWrapper:
                 # This is case (3). Since we know for sure that the result is not
                 # streaming, we can optimize by returning the result directly and
                 # skipping the message queue.
-                return result
+                return convert_object_to_asgi_messages(result)
 
             if receive_task is not None and not receive_task.done():
                 receive_task.cancel()
