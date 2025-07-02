@@ -21,7 +21,13 @@ def test_get_locations_empty_list(ray_start_regular):
 
 def test_get_locations_timeout(ray_start_regular):
     sizes = [100, 1000]
-    obj_refs = [ray.put(np.zeros(s, dtype=np.uint8)) for s in sizes]
+
+    # Object owner can't be the driver, because it wouldn't timeout because no remote rpc to get locations will be made.
+    @ray.remote
+    def put_object_and_return_ref():
+        return [ray.put(np.zeros(s, dtype=np.uint8)) for s in sizes]
+
+    obj_refs = put_object_and_return_ref.remote()
     ray.wait(obj_refs)
     timeout_ms = 0
     with pytest.raises(ray.exceptions.GetTimeoutError):
