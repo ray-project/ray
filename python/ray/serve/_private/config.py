@@ -248,10 +248,22 @@ class DeploymentConfig(BaseModel):
                 **data["autoscaling_config"]
             )
         if data.get("router_config"):
-            if data.get("router_config").get("request_router_kwargs") is not None:
-                if self.needs_pickle():
+            router_kwargs = data.get("router_config").get("request_router_kwargs")
+            if router_kwargs is not None:
+                if self.deployment_language == DeploymentLanguage.JAVA:
+                    # Java deployments don't support router kwargs
+                    if isinstance(router_kwargs, dict) and not router_kwargs:
+                        # Empty dict -> empty bytes for protobuf compatibility
+                        data["router_config"]["request_router_kwargs"] = b""
+                    elif router_kwargs:
+                        raise ValueError(
+                            "request_router_kwargs is not supported for Java deployments. "
+                            f"Got: {router_kwargs}"
+                        )
+                elif self.needs_pickle():
+                    # Python deployments: pickle the router kwargs
                     data["router_config"]["request_router_kwargs"] = cloudpickle.dumps(
-                        data["router_config"]["request_router_kwargs"]
+                        router_kwargs
                     )
             data["router_config"] = RouterConfigProto(**data["router_config"])
         if data.get("logging_config"):
