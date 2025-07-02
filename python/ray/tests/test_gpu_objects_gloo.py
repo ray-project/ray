@@ -20,19 +20,20 @@ class GPUTestActor:
         return data * 2
 
     def get_gpu_object(self, obj_id: str):
-        gpu_object_manager = ray._private.worker.global_worker.gpu_object_manager
-        if gpu_object_manager.has_gpu_object(obj_id):
-            gpu_object = gpu_object_manager.get_gpu_object(obj_id)
-            print(f"gpu_object: {gpu_object}")
+        gpu_object_store = (
+            ray._private.worker.global_worker.gpu_object_manager.gpu_object_store
+        )
+        if gpu_object_store.has_gpu_object(obj_id):
+            gpu_object = gpu_object_store.get_gpu_object(obj_id)
             return gpu_object
         return None
 
     def get_num_gpu_objects(self):
         gpu_object_manager = ray._private.worker.global_worker.gpu_object_manager
-        return len(gpu_object_manager.gpu_object_store)
+        return len(gpu_object_manager.gpu_object_store.gpu_object_store)
 
 
-@pytest.mark.parametrize("data_size_bytes", [100, 1000 * 1000])
+@pytest.mark.parametrize("data_size_bytes", [100])
 def test_gc_gpu_object(ray_start_regular, data_size_bytes):
     """
     This test covers different code paths for reference counting

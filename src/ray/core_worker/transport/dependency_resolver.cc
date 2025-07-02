@@ -41,7 +41,9 @@ void InlineDependencies(
         if (!it->second->IsInPlasmaError()) {
           // The object has not been promoted to plasma. Inline the object by
           // replacing it with the raw value.
-          if (tensor_transport_getter(id) == rpc::TensorTransport::OBJECT_STORE) {
+          rpc::TensorTransport transport =
+              tensor_transport_getter(id).value_or(rpc::TensorTransport::OBJECT_STORE);
+          if (transport == rpc::TensorTransport::OBJECT_STORE) {
             // Clear the object reference if the object is transferred via the object
             // store. If we don't clear the object reference, tasks with a large number of
             // arguments will experience performance degradation due to higher
@@ -58,7 +60,10 @@ void InlineDependencies(
             // decrement the reference count upon inlining, we may cause the tensors on
             // the sender actor to be freed before transferring to the receiver actor.
             inlined_dependency_ids->push_back(id);
+          } else {
+            mutable_arg->set_tensor_transport(transport);
           }
+
           mutable_arg->set_is_inlined(true);
           if (it->second->HasData()) {
             const auto &data = it->second->GetData();
