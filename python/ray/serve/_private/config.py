@@ -248,23 +248,20 @@ class DeploymentConfig(BaseModel):
                 **data["autoscaling_config"]
             )
         if data.get("router_config"):
-            router_kwargs = data.get("router_config").get("request_router_kwargs")
-            if router_kwargs is not None and isinstance(router_kwargs, dict):
+            router_kwargs = data["router_config"].get("request_router_kwargs")
+            if router_kwargs is not None:
                 if not router_kwargs:
                     data["router_config"]["request_router_kwargs"] = b""
                 elif self.needs_pickle():
-                    # Only Python->Python deployments support non-empty router kwargs
+                    # Protobuf requires bytes, so we need to pickle
                     data["router_config"]["request_router_kwargs"] = cloudpickle.dumps(
                         router_kwargs
                     )
                 else:
-                    # All other cases: non-empty router kwargs not supported
-                    error_msg = "Non-empty request_router_kwargs not supported for "
-                    if self.deployment_language == DeploymentLanguage.JAVA:
-                        error_msg += "Java deployments"
-                    else:
-                        error_msg += "cross-language deployments"
-                    raise ValueError(f"{error_msg}. Got: {router_kwargs}")
+                    raise ValueError(
+                        "Non-empty request_router_kwargs not supported"
+                        f"for cross-language deployments. Got: {router_kwargs}"
+                    )
             data["router_config"] = RouterConfigProto(**data["router_config"])
         if data.get("logging_config"):
             if "encoding" in data["logging_config"]:
