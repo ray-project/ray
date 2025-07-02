@@ -73,10 +73,12 @@ def test_hybrid_policy_threshold(ray_start_cluster):
         cluster.add_node(
             num_cpus=NUM_CPUS_PER_NODE,
             resources={"custom": NUM_CPUS_PER_NODE},
-			_system_config={
-				"scheduler_top_k_absolute": 1,
-				"scheduler_top_k_fraction": 0,
-			} if i == 0 else None,
+            _system_config={
+                "scheduler_top_k_absolute": 1,
+                "scheduler_top_k_fraction": 0,
+            }
+            if i == 0
+            else None,
         )
 
     cluster.wait_for_nodes()
