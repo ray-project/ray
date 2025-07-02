@@ -23,6 +23,8 @@ class DependencySetManager:
         return self.depsets.keys()
 
     def get_depset(self, name: str) -> Optional[DepSet]:
+        if name not in self.depsets:
+            raise ValueError(f"Dependency set {name} does not exist")
         return self.depsets.get(name)
 
     def delete_depset(self, name: str):
@@ -34,7 +36,6 @@ class DependencySetManager:
         del self.depsets[name]
 
     def add_depset(self, name: str, output: str):
-        click.echo(f"adding depset: {name} from {output}")
         self.depsets[name] = DepSet(output)
         self.depsets[name].to_file(self.storage_path / f"{name}.txt")
 
@@ -47,15 +48,11 @@ class DependencySetManager:
         return status.stdout
 
 @click.group(name="depsets")
-@click.option("--verbose", "-v", is_flag=True, help="Enable verbose output")
-@click.option("--debug", is_flag=True, help="Enable debug output")
 @click.pass_context
-def cli(ctx, verbose, debug):
+def cli(ctx):
     """Manage Python dependency sets."""
     # Store flags in context for subcommands
     ctx.ensure_object(dict)
-    ctx.obj["verbose"] = verbose
-    ctx.obj["debug"] = debug
 
 
 @cli.command()
@@ -63,17 +60,14 @@ def cli(ctx, verbose, debug):
 def load(file_path: str):
     """Load a dependency sets from a config file."""
     config = load_config(file_path)
-    click.echo("Generated dependency sets from config file:")
     for _, depconfig in config.depsets.items():
         execute_config(depconfig.operation, depconfig)
 
 def execute_config(func_name: str, config: Config):
     if func_name == "compile":
         compile(constraints=config.constraints, requirements=config.requirements, args=config.flags, name=config.name, output=config.output)
-    elif func_name == "relax":
-        relax(config.depset, config.degree, config.name, config.output)
     elif func_name == "subset":
-        subset(config.depset, config.packages, config.name, config.output)
+        subset(config.depset, config.requirements, config.name, config.output)
     elif func_name == "expand":
         expand(config.depsets, config.constraints, config.flags, config.name, config.output)
 
@@ -134,35 +128,26 @@ def compile(
         args.extend(["-o", f"{output}"])
         manager.exec_uv__cmd("compile", args)
         manager.add_depset(name, output)
-        click.echo(f"DAG: {manager.depsets[name].dep_dag}")
     except ValueError as e:
         click.echo(f"Error: {str(e)}", err=True)
 
 
-def subset(source_depset_name: str, packages: List[str], name: str, output: str = None):
+def subset(source_depset_name: str, requirements: List[str], name: str, output: str = None):
     """Subset a dependency set."""
     try:
         manager = DependencySetManager()
-        # Get the source depset
         source_depset = manager.get_depset(source_depset_name)
-        if not source_depset:
-            click.echo(f"Error: Source depset '{source_depset_name}' not found", err=True)
-            return
-        click.echo(f"length of dag: {len(source_depset.dep_dag.graph.keys())}")
-        click.echo(f"source dag: {source_depset.dep_dag}")
-        # Extract subgraph with all dependencies of mentioned packages
-        subgraph = source_depset.dep_dag.extract_subgraph_with_dependencies(packages)
-        # add left over packages to the subgraph
-        for package in packages:
-            subgraph.add_node(package)
-        subgraph.to_requirements_txt(output)
-        click.echo(f"DAG: {subgraph}")
-        # Add to manager
+        args = []
+        # Build args for uv pip compile
+        if source_depset_name:
+            args.extend(["-c", source_depset.requirements_fp])
+        # Add each requirements file as a separate argument
+        for requirement in requirements:
+            args.append(requirement)
+        args.extend(["-o", f"{output}"])
+        manager.exec_uv__cmd("compile", args)
         manager.add_depset(name, output)
-
-        click.echo(f"Created subset '{name}' from '{source_depset_name}'")
-        click.echo(f"Subgraph contains {len(subgraph.get_all_nodes())} packages total")
-
+        click.echo(f"subset {name} depset from {source_depset_name}")
     except ValueError as e:
         click.echo(f"Error: {str(e)}", err=True)
 
@@ -187,26 +172,7 @@ def expand(
         args.extend(["-o", f"{output}"])
         manager.exec_uv__cmd("compile", args)
         manager.add_depset(name, output)
-        click.echo(f"DAG: {manager.depsets[name].dep_dag}")
         click.echo(f"Expanded {name} from {source_depset_names}")
-    except ValueError as e:
-        click.echo(f"Error: {str(e)}", err=True)
-
-def relax(source_depset_name: str, degree: int, name: str, output: str = None):
-    """Relax a dependency set by selectively keeping and removing constraints"""
-    try:
-        manager = DependencySetManager()
-        source_depset = manager.get_depset(source_depset_name)
-        if not source_depset:
-            click.echo(f"Error: Source depset '{source_depset_name}' not found", err=True)
-            return
-        n_degree_deps = source_depset.dep_dag.relax(degree)
-        n_degree_deps.to_requirements_txt(output)
-        manager.add_depset(name, output)
-        click.echo(f"DAG: {manager.depsets[name].dep_dag}")
-        click.echo(
-            f"Relaxed depset: {name} to the {degree} degree. Output written to {output}"
-        )
     except ValueError as e:
         click.echo(f"Error: {str(e)}", err=True)
 

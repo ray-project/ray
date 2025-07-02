@@ -1,11 +1,31 @@
 depsets:
-  ray_vllm_depset:
+  ray_base_test_depset:
     requirements:
-      - python/requirements_copy.txt
+      - python/requirements.txt
+      - python/requirements/cloud-requirements.txt
+      - python/requirements/base-test-requirements.txt
     constraints:
-      - python/requirements_compiled.txt
-    output: python/requirements_vllm.txt
+      - python/requirements_compiled_test.txt
+    output: python/requirements_compiled_ray_test_py311_cpu.txt
     operation: compile
+    flags:
+      - --strip-extras
+      - --python-version=3.11
+      - --no-strip-markers
+      - --emit-index-url
+      - --emit-find-links
+      - --unsafe-package ray
+      - --unsafe-package grpcio-tools
+      - --unsafe-package setuptools
+      - --index-url "https://pypi.org/simple"
+      - --extra-index-url "https://download.pytorch.org/whl/cpu"
+      - --index-strategy unsafe-best-match
+  
+  general_depset:
+    operation: compile
+    requirements:
+      - python/requirements.txt
+    output: python/requirements_compiled_general_py311_cpu.txt
     flags:
       - --strip-extras
       - --no-header
@@ -15,36 +35,143 @@ depsets:
       - --emit-index-url
       - --emit-find-links
       - --prerelease=allow
-  
-  subset_vllm_depset:
-    operation: subset
-    depset: ray_vllm_depset
-    packages:
-      - rpds-py
-      - referencing
-      - requests # can be defined in a file
-    output: python/requirements_subset_vllm.txt
+      - --unsafe-package ray
+      - --unsafe-package grpcio-tools
+      - --unsafe-package setuptools
+      - --index-url "https://pypi.org/simple"
+      - --extra-index-url "https://download.pytorch.org/whl/cpu"
+      - --index-strategy unsafe-best-match
 
-  expand_vllm_depset_py39:
-    operation: expand
-    depsets: 
-     - ray_vllm_depset
-    constraints:
-      - python/requirements_compiled.txt
-    output: python/requirements_expand_vllm_py39.txt
+  cloud_depset:
+    operation: compile
+    requirements:
+      - python/requirements/cloud-requirements.txt
+    output: python/requirements_compiled_cloud_req_py311_cpu.txt
     flags:
       - --strip-extras
-      - --generate-hashes
       - --no-header
       - --no-cache
-      - --python-version=3.9
+      - --python-version=3.11
       - --no-strip-markers
       - --emit-index-url
       - --emit-find-links
       - --prerelease=allow
+      - --unsafe-package ray
+      - --unsafe-package grpcio-tools
+      - --unsafe-package setuptools
+      - --index-url "https://pypi.org/simple"
+      - --extra-index-url "https://download.pytorch.org/whl/cpu"
+      - --index-strategy unsafe-best-match
 
-  ray_vllm_relaxed_depset: # becomes a requirements file (no verisons)
-    operation: relax
-    depset: expand_vllm_depset_py39
-    degree: 0 # only support degree 1 or 0
-    output: python/requirements_ray_vllm_relaxed.txt
+  base_test_depset:
+    operation: compile
+    requirements:
+      - python/requirements/base-test-requirements.txt
+    output: python/requirements_compiled_base_test_py311_cpu.txt
+    flags:
+      - --strip-extras
+      - --no-header
+      - --no-cache
+      - --python-version=3.11
+      - --no-strip-markers
+      - --emit-index-url
+      - --emit-find-links
+      - --prerelease=allow
+      - --unsafe-package ray
+      - --unsafe-package grpcio-tools
+      - --unsafe-package setuptools
+      - --index-url "https://pypi.org/simple"
+      - --extra-index-url "https://download.pytorch.org/whl/cpu"
+      - --index-strategy unsafe-best-match
+
+  llm_depset:
+    operation: compile
+    requirements:
+      - python/requirements/llm/llm-requirements.txt
+    output: python/requirements_compiled_llm_py311_cpu.txt
+    flags:
+      - --strip-extras
+      - --no-header
+      - --no-cache
+      - --python-version=3.11
+      - --no-strip-markers
+      - --emit-index-url
+      - --emit-find-links
+      - --prerelease=allow
+      - --unsafe-package ray
+      - --unsafe-package grpcio-tools
+      - --unsafe-package setuptools
+      - --index-url "https://pypi.org/simple"
+      - --extra-index-url "https://download.pytorch.org/whl/cpu"
+      - --index-strategy unsafe-best-match
+
+  llm_test_depset:
+    operation: compile
+    requirements:
+      - python/requirements/llm/llm-test-requirements.txt
+    output: python/requirements_compiled_llm_test_py311_cpu.txt
+    flags:
+      - --strip-extras
+      - --no-header
+      - --no-cache
+      - --python-version=3.11
+      - --no-strip-markers
+      - --emit-index-url
+      - --emit-find-links
+      - --prerelease=allow
+      - --unsafe-package ray
+      - --unsafe-package grpcio-tools
+      - --unsafe-package setuptools
+      - --index-url "https://pypi.org/simple"
+      - --extra-index-url "https://download.pytorch.org/whl/cpu"
+      - --index-strategy unsafe-best-match
+
+  compiled_ray_llm_test_depset:
+    operation: expand
+    depsets: 
+      - general_depset
+      - cloud_depset
+      - base_test_depset
+      - llm_depset
+      - llm_test_depset
+    constraints:
+      - python/requirements_compiled.txt
+    output: python/requirements_compiled_rayllm_test_py311_cpu.txt
+    flags:
+      - --strip-extras
+      - --no-header
+      - --no-cache
+      - --python-version=3.11
+      - --no-strip-markers
+      - --emit-index-url
+      - --emit-find-links
+      - --prerelease=allow
+      - --unsafe-package ray
+      - --unsafe-package grpcio-tools
+      - --unsafe-package setuptools
+      - --index-url "https://pypi.org/simple"
+      - --extra-index-url "https://download.pytorch.org/whl/cpu"
+      - --index-strategy unsafe-best-match
+
+  compiled_ray_depset:
+    operation: subset
+    depsets: 
+      - ray_base_test_depset
+    requirements:
+      - python/requirements.txt
+    output: python/requirements_compiled_ray_py311_cpu.txt
+    flags:
+      - --strip-extras
+      - --no-header
+      - --no-cache
+      - --python-version=3.11
+      - --no-strip-markers
+      - --emit-index-url
+      - --emit-find-links
+      - --prerelease=allow
+      - --unsafe-package ray
+      - --unsafe-package grpcio-tools
+      - --unsafe-package setuptools
+      - --index-url "https://pypi.org/simple"
+      - --extra-index-url "https://download.pytorch.org/whl/cpu"
+      - --index-strategy unsafe-best-match
