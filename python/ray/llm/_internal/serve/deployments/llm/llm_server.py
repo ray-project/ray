@@ -104,6 +104,7 @@ class LLMServer(_LLMServerBase):
         llm_config: LLMConfig,
         *,
         engine_cls: Optional[Type[LLMEngine]] = None,
+        model_downloader: Optional[Type[LoraModelLoader]] = None,
     ):
         """Constructor of LLMServer.
 
@@ -114,6 +115,8 @@ class LLMServer(_LLMServerBase):
             llm_config: LLMConfig for the model.
             engine_cls: Dependency injection for the vllm engine class.
                 Defaults to `VLLMEngine`.
+            model_downloader: Dependency injection for the model downloader.
+                Defaults to `LoraModelLoader`.
         """
         await super().__init__()
         self._llm_config = llm_config
@@ -124,17 +127,17 @@ class LLMServer(_LLMServerBase):
             self.engine = self._engine_cls(self._llm_config)
             await asyncio.wait_for(self._start_engine(), timeout=ENGINE_START_TIMEOUT_S)
             
-        self._init_multiplex_loader()
+        self._init_multiplex_loader(model_downloader)
 
 
-    def _init_multiplex_loader(self):
+    def _init_multiplex_loader(self, model_downloader_cls: Optional[Type[LoraModelLoader]] = None):
         """Initialize the multiplex loader."""
         
+        model_downloader_cls = model_downloader_cls or LoraModelLoader
         mx_config = self._llm_config.multiplex_config()
-        self._load_model = lambda lora_model_id: None
         
         if mx_config is not None:
-            model_downloader = LoraModelLoader(
+            model_downloader = model_downloader_cls(
                 download_timeout_s=mx_config.download_timeout_s,
                 max_tries=mx_config.max_download_tries,
             )
@@ -146,6 +149,11 @@ class LLMServer(_LLMServerBase):
                 )
             
             self._load_model = serve.multiplexed(max_num_models_per_replica=mx_config.max_num_models_per_replica)(_load_model)
+        else:
+            async def _load_model(lora_model_id: str) -> DiskMultiplexConfig:
+                raise ValueError("LoRA config is not set in the LLMConfig")
+            
+            self._load_model = _load_model
         
         
 

@@ -1,4 +1,7 @@
-"""Shared testing utilities for Ray LLM serve tests."""
+"""Shared testing utilities for Ray LLM serve tests.
+
+This is written with assumptions around how mocks for testing are expected to behave.
+"""
 
 import json
 import re
@@ -15,18 +18,22 @@ class LLMResponseValidator:
     """Reusable validation logic for LLM responses."""
     
     @staticmethod
-    def get_expected_content(api_type: str, max_tokens: int) -> str:
+    def get_expected_content(api_type: str, max_tokens: int, lora_model_id: str = "") -> str:
         """Get expected content based on API type."""
-        return " ".join(f"test_{i}" for i in range(max_tokens))
+        expected_content = " ".join(f"test_{i}" for i in range(max_tokens))
+        if lora_model_id:
+            expected_content = f"[lora_model] {lora_model_id}: {expected_content}"
+        return expected_content
 
     @staticmethod
     def validate_non_streaming_response(
         response: Union[ChatCompletionResponse, CompletionResponse], 
         api_type: str, 
-        max_tokens: int
+        max_tokens: int,
+        lora_model_id: str = ""
     ):
         """Validate non-streaming responses."""
-        expected_content = LLMResponseValidator.get_expected_content(api_type, max_tokens)
+        expected_content = LLMResponseValidator.get_expected_content(api_type, max_tokens, lora_model_id)
         
         if api_type == "chat":
             assert isinstance(response, ChatCompletionResponse)
@@ -39,7 +46,8 @@ class LLMResponseValidator:
     def validate_streaming_chunks(
         chunks: List[str], 
         api_type: str, 
-        max_tokens: int
+        max_tokens: int,
+        lora_model_id: str = ""
     ):
         """Validate streaming response chunks."""
         # Should have max_tokens + 1 chunks (tokens + [DONE])
@@ -52,16 +60,20 @@ class LLMResponseValidator:
             assert match is not None
             chunk_data = json.loads(match.group(1))
             
+            expected_chunk = f"test_{chunk_iter}"
+            if lora_model_id and chunk_iter == 0:
+                expected_chunk = f"[lora_model] {lora_model_id}: {expected_chunk}"
+                
             if api_type == "chat":
                 delta = chunk_data["choices"][0]["delta"]
                 if chunk_iter == 0:
                     assert delta["role"] == "assistant"
                 else:
                     assert delta["role"] is None
-                assert delta["content"].strip() == f"test_{chunk_iter}"
+                assert delta["content"].strip() == expected_chunk
             elif api_type == "completion":
                 text = chunk_data["choices"][0]["text"]
-                assert text.strip() == f"test_{chunk_iter}"
+                assert text.strip() == expected_chunk
 
     @staticmethod
     def validate_embedding_response(

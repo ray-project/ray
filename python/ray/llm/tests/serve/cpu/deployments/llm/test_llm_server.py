@@ -2,21 +2,43 @@ import sys
 from typing import Optional
 
 import pytest
-from unittest.mock import patch
 
-from ray.llm.tests.serve.mocks.mock_vllm_engine import MockVLLMEngine
+from ray.llm.tests.serve.mocks.mock_vllm_engine import MockVLLMEngine, FakeLoraModelLoader
 from ray.llm.tests.serve.utils.testing_utils import LLMResponseValidator
 from ray import serve
 from ray.llm._internal.serve.deployments.llm.llm_server import LLMServer
-
+from ray.llm._internal.serve.configs.server_models import LoraConfig
 
 @pytest.fixture
 def serve_handle(mock_llm_config):
-        app = serve.deployment(LLMServer).bind(mock_llm_config, engine_cls=MockVLLMEngine)        
-        handle = serve.run(app)
-        handle = handle.options(stream=True)
-        yield handle
-        serve.shutdown()
+
+    app = serve.deployment(LLMServer).bind(mock_llm_config, engine_cls=MockVLLMEngine)        
+    handle = serve.run(app)
+    # We set stream=True because the interfaces are async generators regardless 
+    # of the stream flag on request.
+    handle = handle.options(stream=True)
+    yield handle
+    serve.shutdown()
+        
+@pytest.fixture
+def multiplexed_serve_handle(mock_llm_config, stream_batching_interval_ms):
+    mock_llm_config.experimental_configs = {
+        "stream_batching_interval_ms": stream_batching_interval_ms,
+    }
+    mock_llm_config.lora_config = LoraConfig(
+        dynamic_lora_loading_path="s3://my/s3/path_here",
+        download_timeout_s=60,
+        max_download_tries=3,
+    )
+    app = serve.deployment(LLMServer).bind(
+        mock_llm_config, 
+        engine_cls=MockVLLMEngine,
+        model_downloader=FakeLoraModelLoader,
+    )        
+    handle = serve.run(app)
+    handle = handle.options(stream=True, multiplexed_model_id="test_model_id")
+    yield handle
+    serve.shutdown()
 
 class TestLLMServer:
 
@@ -157,6 +179,64 @@ class TestLLMServer:
             
         assert len(chunks) == 1
         assert chunks[0].id == "test_request_id"
+        
+        
+    @pytest.mark.parametrize("api_type", ["chat", "completion"])
+    @pytest.mark.parametrize("stream", [False, True])
+    @pytest.mark.parametrize("max_tokens", [5])
+    @pytest.mark.parametrize("stream_batching_interval_ms", [0, 10000])
+    @pytest.mark.asyncio
+    async def test_multiplexed_request_handling(
+        self, 
+        multiplexed_serve_handle,
+        mock_chat_request, 
+        mock_completion_request, 
+        api_type: str, 
+        stream: bool, 
+        max_tokens: int,
+        stream_batching_interval_ms: int
+    ):
+        """Unified test for multiplexed (LoRA) requests - both chat and completion APIs, streaming and non-streaming."""
+        
+        # Create request based on API type and set model ID for multiplexing
+        if api_type == "chat":
+            request = mock_chat_request
+            batched_chunks = multiplexed_serve_handle.chat.remote(request)
+        elif api_type == "completion":
+            request = mock_completion_request
+            batched_chunks = multiplexed_serve_handle.completions.remote(request)
+
+        request.model = "test_model_id"
+        print(f"\n\n_____ MULTIPLEXED {api_type.upper()} ({'STREAMING' if stream else 'NON-STREAMING'}) max_tokens={max_tokens} batching_interval_ms={stream_batching_interval_ms} _____\n\n")  
+        
+        if stream:
+            # Collect responses from the stream
+            chunks = []
+            async for batch in batched_chunks:
+                if isinstance(batch, list):
+                    chunks.extend(batch)
+                else:
+                    chunks.append(batch)
+
+            # Check that we got responses
+            assert len(chunks) > 0
+
+            # Validate streaming response with LoRA model ID
+            LLMResponseValidator.validate_streaming_chunks(chunks, api_type, max_tokens, lora_model_id=request.model)
+        else:
+            # Collect non-streaming response
+            chunks = []
+            async for batch in batched_chunks:
+                if isinstance(batch, list):
+                    chunks.extend(batch)
+                else:
+                    chunks.append(batch)
+
+            # Check that we got one response
+            assert len(chunks) == 1
+            
+            # Validate non-streaming response with LoRA model ID
+            LLMResponseValidator.validate_non_streaming_response(chunks[0], api_type, max_tokens, lora_model_id=request.model)
 
 
 

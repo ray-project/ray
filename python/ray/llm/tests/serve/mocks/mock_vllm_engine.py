@@ -18,10 +18,14 @@ from ray.llm._internal.serve.configs.server_models import (
     LLMConfig,
 )
 from ray.llm._internal.serve.deployments.llm.llm_engine import LLMEngine
+from ray.llm._internal.serve.deployments.llm.multiplex.lora_model_loader import LoraModelLoader
 
 
 class MockVLLMEngine(LLMEngine):
-    """Mock vLLM Engine that generates fake text responses."""
+    """Mock vLLM Engine that generates fake text responses.
+    
+    - In case of LoRA it generates a prefix with the model name in the text part of the response.    
+    """
 
     def __init__(self, llm_config: LLMConfig):
         """Create a mock vLLM Engine.
@@ -31,7 +35,7 @@ class MockVLLMEngine(LLMEngine):
         """
         self.llm_config = llm_config
         self.started = False
-        self._current_lora_model: Optional[DiskMultiplexConfig] = None
+        self._current_lora_model: Dict[str, DiskMultiplexConfig] = {}
 
     async def start(self):
         """Start the mock engine."""
@@ -39,7 +43,7 @@ class MockVLLMEngine(LLMEngine):
 
     async def resolve_lora(self, lora_model: DiskMultiplexConfig):
         """Resolve/load a LoRA model."""
-        self._current_lora_model = lora_model
+        self._current_lora_model[lora_model.model_id] = lora_model
 
     async def check_health(self) -> None:
         """Check the health of the mock engine."""
@@ -124,13 +128,17 @@ class MockVLLMEngine(LLMEngine):
         """Generate mock chat completion response."""
         
         request_id = request.request_id or f"chatcmpl-{random.randint(1000, 9999)}"
+        lora_prefix = "" if request.model not in self._current_lora_model else f"[lora_model] {request.model}: "
         if request.stream:
             # Streaming response - return SSE formatted strings
             created_time = int(asyncio.get_event_loop().time())
             model_name = getattr(request, 'model', 'mock-model')
             
             for i in range(max_tokens):
-                token = f"test_{i} "
+                if i == 0:
+                    token = f"{lora_prefix}test_{i} "
+                else:
+                    token = f"test_{i} "
                 if i == max_tokens - 1:
                     # no space for the last token
                     token = f"test_{i}"
@@ -162,6 +170,7 @@ class MockVLLMEngine(LLMEngine):
         else:
             # Non-streaming response - return response object
             generated_text = " ".join([f"test_{i}" for i in range(max_tokens)])
+            generated_text = f"{lora_prefix}{generated_text}"
             
             choice = {
                 "index": 0,
@@ -196,13 +205,17 @@ class MockVLLMEngine(LLMEngine):
         """Generate mock completion response."""
         
         request_id = request.request_id or f"cmpl-{random.randint(1000, 9999)}"
+        lora_prefix = "" if request.model not in self._current_lora_model else f"[lora_model] {request.model}: "
         if request.stream:
             # Streaming response - return SSE formatted strings
             created_time = int(asyncio.get_event_loop().time())
             model_name = getattr(request, 'model', 'mock-model')
-            
+    
             for i in range(max_tokens):
-                token = f"test_{i} "
+                if i == 0:
+                    token = f"{lora_prefix}test_{i} "
+                else:
+                    token = f"test_{i} "
                 if i == max_tokens - 1:
                     # no space for the last token
                     token = f"test_{i}"
@@ -230,6 +243,7 @@ class MockVLLMEngine(LLMEngine):
         else:
             # Non-streaming response - return response object
             generated_text = " ".join([f"test_{i}" for i in range(max_tokens)])
+            generated_text = f"{lora_prefix}{generated_text}"
             
             choice = {
                 "index": 0,
@@ -665,17 +679,17 @@ class MockVLLMEngine(LLMEngine):
 #             yield response
 
 
-# class FakeLoraModelLoader:
-#     """Fake LoRA model loader for testing."""
+class FakeLoraModelLoader(LoraModelLoader):
+    """Fake LoRA model loader for testing."""
 
-#     async def load_model(self, lora_model_id: str, llm_config: LLMConfig) -> DiskMultiplexConfig:
-#         """Load a fake LoRA model."""
-#         return DiskMultiplexConfig(
-#             model_id=lora_model_id,
-#             max_total_tokens=llm_config.max_request_context_length,
-#             local_path="/fake/local/path",
-#             lora_assigned_int_id=random.randint(1, 100),
-#         )
+    async def load_model(self, lora_model_id: str, llm_config: LLMConfig) -> DiskMultiplexConfig:
+        """Load a fake LoRA model."""
+        return DiskMultiplexConfig(
+            model_id=lora_model_id,
+            max_total_tokens=llm_config.max_request_context_length,
+            local_path="/fake/local/path",
+            lora_assigned_int_id=random.randint(1, 100),
+        )
 
 
 # # Utility functions for JSON generation and validation
