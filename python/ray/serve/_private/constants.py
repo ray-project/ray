@@ -465,7 +465,7 @@ RAY_SERVE_RUN_USER_CODE_IN_SEPARATE_THREAD = (
 
 # The default buffer size for request path logs. Setting to 1 will ensure
 # logs are flushed to file handler immediately, otherwise it will be buffered
-# and flushed to file handler when the buffer is full or when there is an log
+# and flushed to file handler when the buffer is full or when there is a log
 # line with level ERROR.
 RAY_SERVE_REQUEST_PATH_LOG_BUFFER_SIZE = int(
     os.environ.get("RAY_SERVE_REQUEST_PATH_LOG_BUFFER_SIZE", "1")

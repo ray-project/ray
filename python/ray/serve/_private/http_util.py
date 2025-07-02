@@ -562,7 +562,7 @@ class ASGIAppReplicaWrapper:
 
         # Use uvicorn's lifespan handling code to properly deal with
         # startup and shutdown event.
-        # if log_config is not None, uvicorn will use the default logger.
+        # If log_config is not None, uvicorn will use the default logger.
         # and that interferes with our logging setup.
         self._serve_asgi_lifespan = LifespanOn(
             Config(
