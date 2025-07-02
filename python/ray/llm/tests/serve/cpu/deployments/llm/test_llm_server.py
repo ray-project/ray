@@ -10,7 +10,10 @@ from ray.llm._internal.serve.deployments.llm.llm_server import LLMServer
 from ray.llm._internal.serve.configs.server_models import LoraConfig
 
 @pytest.fixture
-def serve_handle(mock_llm_config):
+def serve_handle(mock_llm_config, stream_batching_interval_ms = 0):
+    mock_llm_config.experimental_configs = {
+        "stream_batching_interval_ms": stream_batching_interval_ms,
+    }
 
     app = serve.deployment(LLMServer).bind(mock_llm_config, engine_cls=MockVLLMEngine)        
     handle = serve.run(app)
@@ -19,9 +22,10 @@ def serve_handle(mock_llm_config):
     handle = handle.options(stream=True)
     yield handle
     serve.shutdown()
+
         
 @pytest.fixture
-def multiplexed_serve_handle(mock_llm_config, stream_batching_interval_ms):
+def multiplexed_serve_handle(mock_llm_config, stream_batching_interval_ms = 0):
     mock_llm_config.experimental_configs = {
         "stream_batching_interval_ms": stream_batching_interval_ms,
     }
@@ -45,37 +49,30 @@ class TestLLMServer:
     @pytest.mark.parametrize("api_type", ["chat", "completion"])
     @pytest.mark.parametrize("stream", [False, True])
     @pytest.mark.parametrize("max_tokens", [5])
-    @pytest.mark.parametrize("batching_interval_ms", [0, 10000])
+    @pytest.mark.parametrize("stream_batching_interval_ms", [0, 10000])
     @pytest.mark.asyncio
     async def test_unified_llm_server(
         self, 
-        create_server, 
+        serve_handle, 
         mock_llm_config,
         mock_chat_request,
         mock_completion_request,
         api_type: str, 
         stream: bool,
         max_tokens: int,
-        batching_interval_ms: int
+        stream_batching_interval_ms: int
     ):
         """Unified test for both chat and completion APIs, streaming and non-streaming."""
-        # Override the batching interval config (only matters for streaming)
-        if stream:
-            mock_llm_config.experimental_configs = {
-                "stream_batching_interval_ms": batching_interval_ms,
-            }
-
-        server = await create_server(mock_llm_config, engine_cls=MockVLLMEngine)
         
         # Create request based on API type
         if api_type == "chat":
             request = mock_chat_request
-            batched_chunks = await server.chat(request)
+            batched_chunks = serve_handle.chat.remote(request)
         elif api_type == "completion":
             request = mock_completion_request
-            batched_chunks = await server.completions(request)
+            batched_chunks = serve_handle.completions.remote(request)
         
-        print(f"\n\n_____ {api_type.upper()} ({'STREAMING' if stream else 'NON-STREAMING'}) max_tokens={max_tokens} batching_interval_ms={batching_interval_ms} _____\n\n")
+        print(f"\n\n_____ {api_type.upper()} ({'STREAMING' if stream else 'NON-STREAMING'}) max_tokens={max_tokens} batching_interval_ms={stream_batching_interval_ms} _____\n\n")
         
         if stream:
             # Collect responses from the stream
@@ -104,13 +101,13 @@ class TestLLMServer:
     @pytest.mark.asyncio 
     async def test_embedding_llm_server(
         self, 
-        create_server,
+        serve_handle,
         mock_llm_config, 
         mock_embedding_request, 
         dimensions: Optional[int]
     ):
         """Test embedding API from LLMServer perspective."""
-        server = await create_server(mock_llm_config, engine_cls=MockVLLMEngine)
+        
         
         # Create embedding request
         request = mock_embedding_request
@@ -118,7 +115,7 @@ class TestLLMServer:
         print(f"\n\n_____ EMBEDDING SERVER dimensions={dimensions} _____\n\n")
         
         # Get the response
-        batched_chunks = await server.embeddings(request)
+        batched_chunks = serve_handle.embeddings.remote(request)
         
         # Collect responses (should be just one)
         chunks = []
