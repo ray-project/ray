@@ -66,13 +66,13 @@ def test_hybrid_policy_threshold(ray_start_cluster):
     cluster = ray_start_cluster
 
     NUM_NODES = 2
-    NUM_CPUS_PER_NODE = 4
+    NUM_CPUS_PER_NODE = 10
     # The default hybrid policy packs nodes up to 50% capacity before spreading.
     PER_NODE_HYBRID_THRESHOLD = int(NUM_CPUS_PER_NODE / 2)
     for i in range(NUM_NODES):
         cluster.add_node(
             num_cpus=NUM_CPUS_PER_NODE,
-            memory=NUM_CPUS_PER_NODE,
+            resources={"custom": NUM_CPUS_PER_NODE},
         )
 
     cluster.wait_for_nodes()
@@ -87,7 +87,7 @@ def test_hybrid_policy_threshold(ray_start_cluster):
 
     # Add the custom resource because the CPU will be released when the task is
     # blocked calling `ray.get()`.
-    @ray.remote(num_cpus=1, memory=1)
+    @ray.remote(num_cpus=1, resources={"custom": 1})
     def get_node_id() -> str:
         ray.get(block_driver.release.remote())
         ray.get(block_task.acquire.remote())
