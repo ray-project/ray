@@ -140,8 +140,9 @@ class GeneralAdvantageEstimation(ConnectorV2):
             assert module_value_targets.shape[0] == sum(episode_lens)
 
             module_advantages = module_value_targets - module_vf_preds
-            # Drop vf-preds, not needed in loss. Note that in the PPORLModule, vf-preds
-            # are recomputed with each `forward_train` call anyway.
+            # Drop vf-preds, not needed in loss. Note that in the DefaultPPORLModule,
+            # vf-preds are recomputed with each `forward_train` call anyway to compute
+            # the vf loss.
             # Standardize advantages (used for more stable and better weighted
             # policy gradient computations).
             module_advantages = (module_advantages - module_advantages.mean()) / max(

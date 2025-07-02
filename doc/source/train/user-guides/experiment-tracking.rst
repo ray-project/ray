@@ -4,11 +4,6 @@
 Experiment Tracking
 ===================
 
-.. note::
-    This guide is relevant for all trainers in which you define a custom training loop.
-    This includes :class:`TorchTrainer <ray.train.torch.TorchTrainer>` and
-    :class:`TensorflowTrainer <ray.train.tensorflow.TensorflowTrainer>`.
-
 Most experiment tracking libraries work out-of-the-box with Ray Train.
 This guide provides instructions on how to set up the code so that your favorite experiment tracking libraries
 can work for distributed training with Ray Train. The end of the guide has common errors to aid in debugging
@@ -253,27 +248,6 @@ Refer to the tracking libraries' documentation for semantics.
 
     When performing **fault-tolerant training** with auto-restoration, use a
     consistent ID to configure all tracking runs that logically belong to the same training run.
-    One way to acquire an unique ID is with the following method:
-    :meth:`ray.train.get_context().get_trial_id() <ray.train.context.TrainContext.get_trial_id>`.
-
-    .. testcode::
-        :skipif: True
-
-        import ray
-        from ray.train import ScalingConfig, RunConfig, FailureConfig
-        from ray.train.torch import TorchTrainer
-
-        def train_func():
-            if ray.train.get_context().get_world_rank() == 0:
-                wandb.init(id=ray.train.get_context().get_trial_id())
-            ...
-
-        trainer = TorchTrainer(
-            train_func,
-            run_config=RunConfig(failure_config=FailureConfig(max_failures=3))
-        )
-
-        trainer.fit()
 
 
 Step 3: Log metrics

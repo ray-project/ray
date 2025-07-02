@@ -15,7 +15,11 @@
 #pragma once
 #include <gtest/gtest_prod.h>
 
+#include <memory>
 #include <queue>
+#include <string>
+#include <utility>
+#include <vector>
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
@@ -103,7 +107,7 @@ class GcsActorSchedulerInterface {
 
   virtual std::string DebugString() const = 0;
 
-  virtual ~GcsActorSchedulerInterface() {}
+  virtual ~GcsActorSchedulerInterface() = default;
 };
 
 /// GcsActorScheduler is responsible for scheduling actors registered to GcsActorManager.
@@ -123,8 +127,7 @@ class GcsActorScheduler : public GcsActorSchedulerInterface {
   /// created on the worker successfully.
   /// \param raylet_client_pool Raylet client pool to
   /// construct connections to raylets.
-  /// \param client_factory Factory to create remote
-  /// core worker client, default factory will be used if not set.
+  /// \param worker_client_pool Pool to manage connections to core worker clients.
   explicit GcsActorScheduler(
       instrumented_io_context &io_context,
       GcsActorTable &gcs_actor_table,
@@ -133,9 +136,10 @@ class GcsActorScheduler : public GcsActorSchedulerInterface {
       GcsActorSchedulerFailureCallback schedule_failure_handler,
       GcsActorSchedulerSuccessCallback schedule_success_handler,
       rpc::NodeManagerClientPool &raylet_client_pool,
-      rpc::CoreWorkerClientFactoryFn client_factory = nullptr,
+      rpc::CoreWorkerClientPool &worker_client_pool,
       std::function<void(const NodeID &, const rpc::ResourcesData &)>
           normal_task_resources_changed_callback = nullptr);
+
   ~GcsActorScheduler() override = default;
 
   /// Schedule the specified actor.
@@ -296,7 +300,7 @@ class GcsActorScheduler : public GcsActorSchedulerInterface {
                                      const rpc::RequestWorkerLeaseReply &reply);
 
   /// A rejected rely means resources were preempted by normal tasks. Then
-  /// update the the cluster resource view and reschedule immediately.
+  /// update the cluster resource view and reschedule immediately.
   void HandleWorkerLeaseRejectedReply(std::shared_ptr<GcsActor> actor,
                                       const rpc::RequestWorkerLeaseReply &reply);
 
@@ -386,8 +390,8 @@ class GcsActorScheduler : public GcsActorSchedulerInterface {
   absl::flat_hash_set<NodeID> nodes_of_releasing_unused_workers_;
   /// The cached raylet clients used to communicate with raylet.
   rpc::NodeManagerClientPool &raylet_client_pool_;
-  /// The cached core worker clients which are used to communicate with leased worker.
-  rpc::CoreWorkerClientPool core_worker_clients_;
+  /// Core worker client pool shared by the GCS.
+  rpc::CoreWorkerClientPool &worker_client_pool_;
 
   /// The resource changed listeners.
   std::vector<std::function<void()>> resource_changed_listeners_;
@@ -419,19 +423,22 @@ class GcsActorScheduler : public GcsActorSchedulerInterface {
   FRIEND_TEST(GcsActorSchedulerTest, TestSpillback);
   FRIEND_TEST(GcsActorSchedulerTest, TestReschedule);
   FRIEND_TEST(GcsActorSchedulerTest, TestReleaseUnusedActorWorkers);
-  FRIEND_TEST(GcsActorSchedulerTest, TestScheduleFailedWithZeroNodeByGcs);
-  FRIEND_TEST(GcsActorSchedulerTest, TestNotEnoughClusterResources);
-  FRIEND_TEST(GcsActorSchedulerTest, TestScheduleAndDestroyOneActor);
-  FRIEND_TEST(GcsActorSchedulerTest, TestBalancedSchedule);
-  FRIEND_TEST(GcsActorSchedulerTest, TestRejectedRequestWorkerLeaseReply);
-  FRIEND_TEST(GcsActorSchedulerTest, TestScheduleRetryWhenLeasingByGcs);
-  FRIEND_TEST(GcsActorSchedulerTest, TestScheduleRetryWhenCreatingByGcs);
-  FRIEND_TEST(GcsActorSchedulerTest, TestNodeFailedWhenLeasingByGcs);
-  FRIEND_TEST(GcsActorSchedulerTest, TestLeasingCancelledWhenLeasingByGcs);
-  FRIEND_TEST(GcsActorSchedulerTest, TestNodeFailedWhenCreatingByGcs);
-  FRIEND_TEST(GcsActorSchedulerTest, TestWorkerFailedWhenCreatingByGcs);
-  FRIEND_TEST(GcsActorSchedulerTest, TestRescheduleByGcs);
-  FRIEND_TEST(GcsActorSchedulerTest, TestReleaseUnusedActorWorkersByGcs);
+  FRIEND_TEST(GcsActorSchedulerTestWithGcsScheduling,
+              TestScheduleFailedWithZeroNodeByGcs);
+  FRIEND_TEST(GcsActorSchedulerTestWithGcsScheduling, TestNotEnoughClusterResources);
+  FRIEND_TEST(GcsActorSchedulerTestWithGcsScheduling, TestScheduleAndDestroyOneActor);
+  FRIEND_TEST(GcsActorSchedulerTestWithGcsScheduling, TestBalancedSchedule);
+  FRIEND_TEST(GcsActorSchedulerTestWithGcsScheduling,
+              TestRejectedRequestWorkerLeaseReply);
+  FRIEND_TEST(GcsActorSchedulerTestWithGcsScheduling, TestScheduleRetryWhenLeasingByGcs);
+  FRIEND_TEST(GcsActorSchedulerTestWithGcsScheduling, TestScheduleRetryWhenCreatingByGcs);
+  FRIEND_TEST(GcsActorSchedulerTestWithGcsScheduling, TestNodeFailedWhenLeasingByGcs);
+  FRIEND_TEST(GcsActorSchedulerTestWithGcsScheduling,
+              TestLeasingCancelledWhenLeasingByGcs);
+  FRIEND_TEST(GcsActorSchedulerTestWithGcsScheduling, TestNodeFailedWhenCreatingByGcs);
+  FRIEND_TEST(GcsActorSchedulerTestWithGcsScheduling, TestWorkerFailedWhenCreatingByGcs);
+  FRIEND_TEST(GcsActorSchedulerTestWithGcsScheduling, TestRescheduleByGcs);
+  FRIEND_TEST(GcsActorSchedulerTestWithGcsScheduling, TestReleaseUnusedActorWorkersByGcs);
 
   friend class GcsActorSchedulerMockTest;
   FRIEND_TEST(GcsActorSchedulerMockTest, KillWorkerLeak1);

@@ -54,7 +54,7 @@ def get_agent_connectors_from_config(
     clip_rewards = __clip_rewards(config)
     if clip_rewards is True:
         connectors.append(ClipRewardAgentConnector(ctx, sign=True))
-    elif type(clip_rewards) == float:
+    elif type(clip_rewards) is float:
         connectors.append(ClipRewardAgentConnector(ctx, limit=abs(clip_rewards)))
 
     if __preprocessing_enabled(config):

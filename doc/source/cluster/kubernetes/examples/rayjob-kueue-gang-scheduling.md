@@ -216,7 +216,7 @@ NAME                                                      ACCEPTED   PROVISIONED
 rayjob-pytorch-text-classifier-nv77q-e95ec-rayjob-gpu-1   True       False         False    22s
 ```
 
-Note the two coloumns in the output: `ACCEPTED` and `PROVISIONED`.
+Note the two columns in the output: `ACCEPTED` and `PROVISIONED`.
 `ACCEPTED=True` means that Kueue and the Kubernetes node autoscaler have acknowledged the request.
 `PROVISIONED=True` means that the Kubernetes node autoscaler has completed provisioning nodes.
 Once both of these conditions are true, the ProvisioningRequest is satisfied.

@@ -25,30 +25,38 @@ Checks: >
   abseil-*,
   bugprone-*,
   -bugprone-macro-parentheses,
+  -bugprone-easily-swappable-parameters,
+  -bugprone-narrowing-conversions,
+  -bugprone-implicit-widening-of-multiplication-result,
+  cert-*,
+  cppcoreguidelines-*,
+  -cppcoreguidelines-non-private-member-variables-in-classes,
+  -cppcoreguidelines-narrowing-conversions,
+  -cppcoreguidelines-avoid-magic-numbers,
+  -cppcoreguidelines-avoid-do-while,
   google-*,
   -google-readability-todo,
+  -google-default-arguments,
   misc-*,
   -misc-non-private-member-variables-in-classes,
   -misc-unused-parameters,
+  -misc-include-cleaner,
+  -misc-const-correctness,
   modernize-*,
-  -modernize-avoid-c-arrays,
   -modernize-concat-nested-namespaces,
-  -modernize-pass-by-value,
   -modernize-return-braced-init-list,
-  -modernize-use-emplace,
   -modernize-use-nodiscard,
   -modernize-use-trailing-return-type,
   -modernize-avoid-bind,
   -modernize-loop-convert,
-  -modernize-replace-disallow-copy-and-assign-macro,
-  -modernize-make-unique,
-  -modernize-make-shared,
-  -modernize-use-override,
   performance-*,
   readability-braces-around-statements,
   readability-const-return-type,
+  readability-container-contains,
+  readability-container-data-pointer,
   readability-container-size-empty,
   readability-delete-null-pointer,
+  readability-duplicate-include,
   readability-implicit-bool-conversion,
   readability-make-member-function-const,
   readability-misleading-indentation,
@@ -56,6 +64,7 @@ Checks: >
   readability-named-parameter,
   readability-non-const-parameter,
   readability-redundant-*,
+  -readability-redundant-access-specifiers,
   readability-static-definition-in-anonymous-namespace,
   readability-string-compare,
   readability-suspicious-call-argument,
@@ -65,6 +74,12 @@ CheckOptions:
   - key:   bugprone-narrowing-conversions.IgnoreConversionFromTypes
     value: 'size_t;ptrdiff_t;size_type;difference_type'
   - key:   bugprone-narrowing-conversions.WarnOnEquivalentBitWidth
+    value: 'false'
+  - key: cppcoreguidelines-special-member-functions.AllowMissingMoveFunctionsWhenCopyIsDeleted
+    value: 'true'
+  - key: cppcoreguidelines-special-member-functions.AllowSoleDefaultDtor
+    value: 'true'
+  - key: performance-move-const-arg.CheckTriviallyCopyableMove
     value: 'false'
 
 # Turn all the warnings from the checks above into errors.

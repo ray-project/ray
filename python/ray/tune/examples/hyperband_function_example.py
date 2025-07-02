@@ -8,14 +8,14 @@ import tempfile
 import numpy as np
 
 import ray
-from ray import train, tune
-from ray.train import Checkpoint
+from ray import tune
+from ray.tune import Checkpoint
 from ray.tune.schedulers import HyperBandScheduler
 
 
 def train_func(config):
     step = 0
-    checkpoint = train.get_checkpoint()
+    checkpoint = tune.get_checkpoint()
     if checkpoint:
         with checkpoint.as_directory() as checkpoint_dir:
             with open(os.path.join(checkpoint_dir, "checkpoint.json")) as f:
@@ -38,7 +38,7 @@ def train_func(config):
 
             # Here we use `episode_reward_mean`, but you can also report other
             # objectives such as loss or accuracy.
-            train.report({"episode_reward_mean": v}, checkpoint=checkpoint)
+            tune.report({"episode_reward_mean": v}, checkpoint=checkpoint)
 
 
 if __name__ == "__main__":
@@ -57,10 +57,10 @@ if __name__ == "__main__":
 
     tuner = tune.Tuner(
         train_func,
-        run_config=train.RunConfig(
+        run_config=tune.RunConfig(
             name="hyperband_test",
             stop={"training_iteration": 10 if args.smoke_test else 99999},
-            failure_config=train.FailureConfig(
+            failure_config=tune.FailureConfig(
                 fail_fast=True,
             ),
         ),

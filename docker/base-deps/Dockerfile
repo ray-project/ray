@@ -70,16 +70,16 @@ RUN <<EOF
 
 set -euo pipefail
 
-# Install miniconda
+# Install miniforge
 wget --quiet \
-    "https://repo.anaconda.com/miniconda/Miniconda3-py311_24.4.0-0-Linux-${HOSTTYPE}.sh" \
-    -O /tmp/miniconda.sh
+    "https://github.com/conda-forge/miniforge/releases/download/24.11.3-0/Miniforge3-24.11.3-0-Linux-${HOSTTYPE}.sh" \
+    -O /tmp/miniforge.sh
 
-/bin/bash /tmp/miniconda.sh -b -u -p $HOME/anaconda3
+/bin/bash /tmp/miniforge.sh -b -u -p $HOME/anaconda3
 
 $HOME/anaconda3/bin/conda init
-echo 'export PATH=$HOME/anaconda3/bin:$PATH' >> /home/ray/.bashrc
-rm /tmp/miniconda.sh
+echo 'export PATH=$HOME/anaconda3/bin:$PATH' >> $HOME/.bashrc
+rm /tmp/miniforge.sh
 $HOME/anaconda3/bin/conda install -y libgcc-ng python=$PYTHON_VERSION
 $HOME/anaconda3/bin/conda install -y -c conda-forge libffi=3.4.2
 $HOME/anaconda3/bin/conda clean -y --all
@@ -105,13 +105,22 @@ if [[ "$AUTOSCALER" == "autoscaler" ]]; then
     )
 fi
 
-$HOME/anaconda3/bin/pip install --no-cache-dir \
+# Install uv
+wget -qO- https://astral.sh/uv/install.sh | sudo env UV_UNMANAGED_INSTALL="/usr/local/bin" sh
+
+# Set up Conda as system Python
+export PATH=$HOME/anaconda3/bin:$PATH
+
+# Some packages are on PyPI as well as other indices, but the latter
+# (unhelpfully) take precedence. We use `--index-strategy unsafe-best-match`
+# to ensure that the best match is chosen from the available indices.
+uv pip install --system --no-cache-dir --index-strategy unsafe-best-match \
     -c $HOME/requirements_compiled.txt \
     "${PIP_PKGS[@]}"
 
 # To avoid the following error on Jenkins:
 # AttributeError: 'numpy.ufunc' object has no attribute '__module__'
-$HOME/anaconda3/bin/pip uninstall -y dask
+uv pip uninstall --system dask
 
 # We install cmake temporarily to get psutil
 sudo apt-get autoremove -y cmake zlib1g-dev

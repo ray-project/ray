@@ -1,9 +1,13 @@
-from typing import Any, Dict, List, Optional, Tuple
+import time
+from typing import Any, Dict, List, Optional
 
 from ray.data._internal.execution.interfaces import (
     AllToAllTransformFn,
     RefBundle,
     TaskContext,
+)
+from ray.data._internal.execution.interfaces.transform_fn import (
+    AllToAllTransformFnResult,
 )
 from ray.data._internal.execution.operators.map_transformer import MapTransformer
 from ray.data._internal.planner.exchange.pull_based_shuffle_task_scheduler import (
@@ -13,11 +17,12 @@ from ray.data._internal.planner.exchange.push_based_shuffle_task_scheduler impor
     PushBasedShuffleTaskScheduler,
 )
 from ray.data._internal.planner.exchange.shuffle_task_spec import ShuffleTaskSpec
-from ray.data._internal.stats import StatsDict
-from ray.data.context import DataContext
+from ray.data.context import DataContext, ShuffleStrategy
+from ray.util.common import INT32_MAX
 
 
 def generate_random_shuffle_fn(
+    data_context: DataContext,
     seed: Optional[int],
     num_outputs: Optional[int] = None,
     ray_remote_args: Optional[Dict[str, Any]] = None,
@@ -25,10 +30,14 @@ def generate_random_shuffle_fn(
 ) -> AllToAllTransformFn:
     """Generate function to randomly shuffle each records of blocks."""
 
+    # If no seed has been specified, pin timestamp based one
+    # so that task could be safely retried (w/o changing their output)
+    seed = seed if seed is not None else (time.time_ns() % INT32_MAX)
+
     def fn(
         refs: List[RefBundle],
         ctx: TaskContext,
-    ) -> Tuple[List[RefBundle], StatsDict]:
+    ) -> AllToAllTransformFnResult:
         num_input_blocks = sum(len(r.blocks) for r in refs)
 
         # If map_transformer is specified (e.g. from fusing
@@ -61,7 +70,7 @@ def generate_random_shuffle_fn(
             upstream_map_fn=upstream_map_fn,
         )
 
-        if DataContext.get_current().use_push_based_shuffle:
+        if data_context.shuffle_strategy == ShuffleStrategy.SORT_SHUFFLE_PUSH_BASED:
             if num_outputs is not None:
                 raise NotImplementedError(
                     "Push-based shuffle doesn't support setting num_blocks yet."

@@ -14,6 +14,8 @@
 
 #include "ray/gcs/redis_client.h"
 
+#include <memory>
+
 #include "ray/common/ray_config.h"
 #include "ray/gcs/redis_context.h"
 
@@ -33,7 +35,7 @@ Status RedisClient::Connect(instrumented_io_context &io_service) {
     return Status::Invalid("Redis server address is invalid!");
   }
 
-  primary_context_ = std::make_shared<RedisContext>(io_service);
+  primary_context_ = std::make_unique<RedisContext>(io_service);
 
   RAY_CHECK_OK(primary_context_->Connect(options_.server_ip_,
                                          options_.server_port_,

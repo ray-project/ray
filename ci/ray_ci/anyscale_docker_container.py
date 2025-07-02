@@ -45,7 +45,12 @@ class AnyscaleDockerContainer(DockerContainer):
         return self.upload
 
     def _get_requirement_file(self) -> str:
-        prefix = "requirements" if self.image_type == "ray" else "requirements_ml"
+        if self.image_type == "ray-ml":
+            prefix = "requirements_ml"
+        elif self.image_type == "ray-llm":
+            prefix = "requirements_llm"
+        else:
+            prefix = "requirements"
         postfix = self.python_version
 
         return f"{prefix}_byod_{postfix}.txt"

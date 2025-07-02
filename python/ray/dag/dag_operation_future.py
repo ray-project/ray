@@ -1,10 +1,8 @@
 from abc import ABC, abstractmethod
-from typing import TYPE_CHECKING, Any, Generic, Optional, TypeVar
+from typing import Any, Generic, TypeVar, Dict
 from ray.util.annotations import DeveloperAPI
+from ray.experimental.channel.accelerator_context import AcceleratorContext
 
-
-if TYPE_CHECKING:
-    import cupy as cp
 
 T = TypeVar("T")
 
@@ -65,31 +63,82 @@ class GPUFuture(DAGOperationFuture[Any]):
     The `wait()` does not block CPU.
     """
 
-    def __init__(self, buf: Any, stream: Optional["cp.cuda.Stream"] = None):
+    # Caching GPU futures ensures CUDA events associated with futures are properly
+    # destroyed instead of relying on garbage collection. The CUDA event contained
+    # in a GPU future is destroyed right before removing the future from the cache.
+    # The dictionary key is the future ID, which is the task idx of the dag operation
+    # that produced the future. When a future is created, it is immediately added to
+    # the cache. When a future has been waited on, it is removed from the cache.
+    # When adding a future, if its ID is already a key in the cache, the old future
+    # is removed. This can happen when an exception is thrown in a previous execution
+    # of the dag, in which case the old future is never waited on.
+    # Upon dag teardown, all pending futures produced by the dag are removed.
+    gpu_futures: Dict[int, "GPUFuture"] = {}
+
+    @staticmethod
+    def add_gpu_future(fut_id: int, fut: "GPUFuture") -> None:
+        """
+        Cache the GPU future.
+        Args:
+            fut_id: GPU future ID.
+            fut: GPU future to be cached.
+        """
+        if fut_id in GPUFuture.gpu_futures:
+            # The old future was not waited on because of an execution exception.
+            GPUFuture.gpu_futures.pop(fut_id).destroy_event()
+        GPUFuture.gpu_futures[fut_id] = fut
+
+    @staticmethod
+    def remove_gpu_future(fut_id: int) -> None:
+        """
+        Remove the cached GPU future and destroy its CUDA event.
+        Args:
+            fut_id: GPU future ID.
+        """
+        if fut_id in GPUFuture.gpu_futures:
+            GPUFuture.gpu_futures.pop(fut_id).destroy_event()
+
+    def __init__(self, buf: Any, fut_id: int, stream: Any = None):
         """
         Initialize a GPU future on the given stream.
 
         Args:
             buf: The buffer to return when the future is resolved.
-            stream: The CUDA stream to record the event on, this event is waited
+            fut_id: The future ID to cache the future.
+            stream: The torch stream to record the event on, this event is waited
                 on when the future is resolved. If None, the current stream is used.
         """
-        import cupy as cp
-
         if stream is None:
-            stream = cp.cuda.get_current_stream()
+            stream = AcceleratorContext.get().current_stream()
 
         self._buf = buf
-        self._event = cp.cuda.Event()
+        self._event = AcceleratorContext.get().create_event()
         self._event.record(stream)
+        self._fut_id = fut_id
+        self._waited: bool = False
+
+        # Cache the GPU future such that its CUDA event is properly destroyed.
+        GPUFuture.add_gpu_future(fut_id, self)
 
     def wait(self) -> Any:
         """
         Wait for the future on the current CUDA stream and return the result from
         the GPU operation. This operation does not block CPU.
         """
-        import cupy as cp
+        current_stream = AcceleratorContext.get().current_stream()
+        if not self._waited:
+            self._waited = True
+            current_stream.wait_event(self._event)
+            # Destroy the CUDA event after it is waited on.
+            GPUFuture.remove_gpu_future(self._fut_id)
 
-        current_stream = cp.cuda.get_current_stream()
-        current_stream.wait_event(self._event)
         return self._buf
+
+    def destroy_event(self) -> None:
+        """
+        Destroy the CUDA event associated with this future.
+        """
+        if self._event is None:
+            return
+
+        self._event = None

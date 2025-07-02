@@ -11,7 +11,7 @@ sys.path.append(os.path.join(file_parent, "../"))
 
 import bazel_sharding  # noqa: E402
 
-WORKSPACE_KEY = "workspace"
+WORKSPACE_KEY = "work"
 
 
 def _prefix_rules(rules):
@@ -30,23 +30,28 @@ all_rules = size_rules + timeout_rules + manual_rules + size_and_timeout_rules
 @pytest.fixture
 def mock_build_dir():
     """Create a mock bazel workspace"""
-    tmpdir = tempfile.mkdtemp()
-    with open(os.path.join(tmpdir, "WORKSPACE"), "w") as f:
-        f.write(
-            """
-workspace(name = "fake_workspace")
-            """
+    with tempfile.TemporaryDirectory() as tmpdir, tempfile.TemporaryDirectory() as tmphome:
+        with open(os.path.join(tmpdir, "WORKSPACE"), "w") as f:
+            f.write('workspace(name = "fake_workspace")\n')
+        with open(os.path.join(tmpdir, ".bazelversion"), "w") as f:
+            f.write("6.5.0\n")
+
+        os.makedirs(os.path.join(tmpdir, WORKSPACE_KEY), exist_ok=True)
+
+        shutil.copyfile(
+            os.path.join(file_parent, "mock_BUILD"),
+            os.path.join(tmpdir, WORKSPACE_KEY, "BUILD"),
         )
-    os.makedirs(os.path.join(tmpdir, WORKSPACE_KEY), exist_ok=True)
-    shutil.copyfile(
-        os.path.join(file_parent, "mock_BUILD"),
-        os.path.join(tmpdir, WORKSPACE_KEY, "BUILD"),
-    )
-    cwd = os.getcwd()
-    os.chdir(os.path.join(tmpdir, WORKSPACE_KEY))
-    yield
-    os.chdir(cwd)
-    shutil.rmtree(tmpdir, ignore_errors=True)
+        cwd = os.getcwd()
+        os.chdir(os.path.join(tmpdir, WORKSPACE_KEY))
+        original_home = os.environ.get("HOME")
+        os.environ["HOME"] = tmphome
+        yield
+        if original_home is None:
+            del os.environ["HOME"]
+        else:
+            os.environ["HOME"] = original_home
+        os.chdir(cwd)
 
 
 def test_actual_timeouts(mock_build_dir):

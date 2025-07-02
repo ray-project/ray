@@ -12,15 +12,15 @@ where agent's actions take various times and thus time steps are not
 equidistant (https://docdro.id/400TvlR)
 """
 
-from ray.rllib.algorithms.callbacks import DefaultCallbacks
+from ray.rllib.callbacks.callbacks import RLlibCallback
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.evaluation.postprocessing import Postprocessing
 from ray.rllib.utils.annotations import override
 import numpy as np
 
 
-class MyCallbacks(DefaultCallbacks):
-    @override(DefaultCallbacks)
+class MyCallbacks(RLlibCallback):
+    @override(RLlibCallback)
     def on_postprocess_trajectory(
         self,
         *,

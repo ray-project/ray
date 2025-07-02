@@ -26,7 +26,7 @@ ppo-breakoutnoframeskip-v5:
         num_workers: 30
         # Run without Learner- and RLModule API (new stack).
         _enable_new_api_stack: false
-        num_envs_per_worker: 1
+        num_envs_per_env_runner: 1
         batch_mode: truncate_episodes
         observation_filter: NoFilter
         model:

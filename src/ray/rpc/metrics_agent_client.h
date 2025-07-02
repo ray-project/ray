@@ -16,6 +16,8 @@
 
 #include <grpcpp/grpcpp.h>
 
+#include <memory>
+#include <string>
 #include <thread>
 
 #include "ray/common/status.h"
@@ -49,7 +51,7 @@ class MetricsAgentClientImpl : public MetricsAgentClient {
   MetricsAgentClientImpl(const std::string &address,
                          const int port,
                          instrumented_io_context &io_service)
-      : client_call_manager_(io_service) {
+      : client_call_manager_(io_service, /*record_stats=*/true) {
     RAY_LOG(DEBUG) << "Initiate the metrics client of address:" << address
                    << " port:" << port;
     grpc_client_ = std::make_unique<GrpcClient<ReporterService>>(

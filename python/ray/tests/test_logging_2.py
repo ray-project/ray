@@ -1,18 +1,14 @@
 import logging.config
 import pytest
 import ray
-import os
 import logging
 import sys
 import json
-import time
 
 from ray._private.ray_logging.filters import CoreContextFilter
 from ray._private.ray_logging.formatters import JSONFormatter, TextFormatter
-from ray.job_config import LoggingConfig
+from ray._private.ray_logging.logging_config import LoggingConfig
 from ray._private.test_utils import run_string_as_driver
-
-from unittest.mock import patch
 
 
 class TestCoreContextFilter:
@@ -24,6 +20,7 @@ class TestCoreContextFilter:
         # Ray is not initialized so no context
         for attr in log_context:
             assert not hasattr(record, attr)
+        assert hasattr(record, "_ray_timestamp_ns")
 
         ray.init()
         record = logging.makeLogRecord({})
@@ -40,6 +37,7 @@ class TestCoreContextFilter:
         # This is not a worker process, so actor_id and task_id should not exist.
         for attr in ["actor_id", "task_id"]:
             assert not hasattr(record, attr)
+        assert hasattr(record, "_ray_timestamp_ns")
 
     def test_task_process(self, shutdown_only):
         @ray.remote
@@ -62,6 +60,7 @@ class TestCoreContextFilter:
                 assert getattr(record, attr) == expected_values[attr]
             assert not hasattr(record, "actor_id")
             assert not hasattr(record, "actor_name")
+            assert hasattr(record, "_ray_timestamp_ns")
 
         obj_ref = f.remote()
         ray.get(obj_ref)
@@ -88,6 +87,7 @@ class TestCoreContextFilter:
                 for attr in should_exist:
                     assert hasattr(record, attr)
                     assert getattr(record, attr) == expected_values[attr]
+                assert hasattr(record, "_ray_timestamp_ns")
 
         actor = A.remote()
         ray.get(actor.f.remote())
@@ -106,6 +106,7 @@ class TestJSONFormatter:
             "message",
             "filename",
             "lineno",
+            "timestamp_ns",
         ]
         for key in should_exist:
             assert key in record_dict
@@ -128,6 +129,7 @@ class TestJSONFormatter:
             "filename",
             "lineno",
             "exc_text",
+            "timestamp_ns",
         ]
         for key in should_exist:
             assert key in record_dict
@@ -146,6 +148,7 @@ class TestJSONFormatter:
             "filename",
             "lineno",
             "user",
+            "timestamp_ns",
         ]
         for key in should_exist:
             assert key in record_dict
@@ -174,6 +177,7 @@ class TestJSONFormatter:
             "lineno",
             "key1",
             "key2",
+            "timestamp_ns",
         ]
         for key in should_exist:
             assert key in record_dict
@@ -182,6 +186,26 @@ class TestJSONFormatter:
         assert "ray_serve_extra_fields" not in record_dict
         assert len(record_dict) == len(should_exist)
         assert "exc_text" not in record_dict
+
+    def test_record_with_valid_additional_log_standard_attrs(self, shutdown_only):
+        formatter = JSONFormatter()
+        formatter.set_additional_log_standard_attrs(["name"])
+        record = logging.makeLogRecord({})
+        formatted = formatter.format(record)
+
+        record_dict = json.loads(formatted)
+        should_exist = [
+            "asctime",
+            "levelname",
+            "message",
+            "filename",
+            "lineno",
+            "timestamp_ns",
+            "name",
+        ]
+        for key in should_exist:
+            assert key in record_dict
+        assert len(record_dict) == len(should_exist)
 
 
 class TestTextFormatter:
@@ -206,10 +230,22 @@ class TestTextFormatter:
         for s in ["INFO", "Test message", "test.py:1000", "--"]:
             assert s in formatted
 
+    def test_record_with_valid_additional_log_standard_attrs(self, shutdown_only):
+        formatter = TextFormatter()
+        formatter.set_additional_log_standard_attrs(["name"])
+        record = logging.makeLogRecord({})
+        formatted = formatter.format(record)
+        assert "name=" in formatted
+
 
 def test_invalid_encoding():
     with pytest.raises(ValueError):
         LoggingConfig(encoding="INVALID")
+
+
+def test_invalid_additional_log_standard_attrs():
+    with pytest.raises(ValueError):
+        LoggingConfig(additional_log_standard_attrs=["invalid"])
 
 
 class TestTextModeE2E:
@@ -219,7 +255,7 @@ import ray
 import logging
 
 ray.init(
-    logging_config=ray.LoggingConfig(encoding="TEXT")
+    logging_config=ray.LoggingConfig(encoding="TEXT", additional_log_standard_attrs=["name"])
 )
 
 @ray.remote
@@ -239,6 +275,7 @@ ray.get(obj_ref)
             "task_id",
             "INFO",
             "This is a Ray task",
+            "name=",
         ]
         for s in should_exist:
             assert s in stderr
@@ -250,7 +287,7 @@ import ray
 import logging
 
 ray.init(
-    logging_config=ray.LoggingConfig(encoding="TEXT")
+    logging_config=ray.LoggingConfig(encoding="TEXT", additional_log_standard_attrs=["name"])
 )
 
 @ray.remote
@@ -275,6 +312,7 @@ ray.get(actor_instance.print_message.remote())
             "task_id",
             "INFO",
             "This is a Ray actor",
+            "name=",
         ]
         for s in should_exist:
             assert s in stderr
@@ -285,7 +323,7 @@ import ray
 import logging
 
 ray.init(
-    logging_config=ray.LoggingConfig(encoding="TEXT")
+    logging_config=ray.LoggingConfig(encoding="TEXT", additional_log_standard_attrs=["name"])
 )
 
 logger = logging.getLogger()
@@ -299,6 +337,7 @@ logger.info("This is a Ray driver")
             "node_id",
             "INFO",
             "This is a Ray driver",
+            "name=",
         ]
         for s in should_exist:
             assert s in stderr
@@ -409,42 +448,6 @@ def test_structured_logging_with_working_dir(tmp_path, shutdown_only):
     )
 
 
-class TestSetupLogRecordFactory:
-    @pytest.fixture
-    def log_record_factory(self):
-        orig_factory = logging.getLogRecordFactory()
-        yield
-        logging.setLogRecordFactory(orig_factory)
-
-    def test_setup_log_record_factory(self, log_record_factory):
-        logging_config = LoggingConfig()
-        logging_config._setup_log_record_factory()
-
-        ct = time.time_ns()
-        with patch("time.time_ns") as patched_ns:
-            patched_ns.return_value = ct
-            record = logging.makeLogRecord({})
-            assert record.__dict__["timestamp_ns"] == ct
-
-    def test_setup_log_record_factory_already_set(self, log_record_factory):
-        def existing_factory(*args, **kwargs):
-            record = logging.LogRecord(*args, **kwargs)
-            record.__dict__["existing_factory"] = True
-            return record
-
-        logging.setLogRecordFactory(existing_factory)
-
-        logging_config = LoggingConfig()
-        logging_config._setup_log_record_factory()
-
-        ct = time.time_ns()
-        with patch("time.time_ns") as patched_ns:
-            patched_ns.return_value = ct
-            record = logging.makeLogRecord({})
-            assert record.__dict__["timestamp_ns"] == ct
-            assert record.__dict__["existing_factory"]
-
-
 def test_text_mode_no_prefix(shutdown_only):
     """
     If logging_config is set, remove the prefix that contains
@@ -491,7 +494,4 @@ assert old_test_logger.getEffectiveLevel() == logging.DEBUG
 
 
 if __name__ == "__main__":
-    if os.environ.get("PARALLEL_CI"):
-        sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))
-    else:
-        sys.exit(pytest.main(["-sv", __file__]))
+    sys.exit(pytest.main(["-sv", __file__]))

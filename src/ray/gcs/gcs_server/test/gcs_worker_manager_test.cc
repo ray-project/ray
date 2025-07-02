@@ -14,8 +14,14 @@
 
 #include "ray/gcs/gcs_server/gcs_worker_manager.h"
 
+#include <gtest/gtest.h>
+
+#include <memory>
+#include <vector>
+
+#include "ray/util/process.h"
+
 // clang-format off
-#include "gtest/gtest.h"
 #include "ray/common/asio/instrumented_io_context.h"
 #include "ray/gcs/gcs_server/test/gcs_server_test_util.h"
 #include "ray/gcs/test/gcs_test_util.h"
@@ -24,16 +30,16 @@
 #include "src/ray/protobuf/common.pb.h"
 #include "ray/gcs/gcs_server/store_client_kv.h"
 // clang-format on
-using namespace ::testing;
-using namespace ray::gcs;
-using namespace ray;
+using namespace ::testing;  // NOLINT
+using namespace ray::gcs;   // NOLINT
+using namespace ray;        // NOLINT
 
 class GcsWorkerManagerTest : public Test {
  public:
   GcsWorkerManagerTest() {
     gcs_publisher_ =
         std::make_shared<GcsPublisher>(std::make_unique<ray::pubsub::MockPublisher>());
-    gcs_table_storage_ = std::make_shared<gcs::InMemoryGcsTableStorage>(io_service_);
+    gcs_table_storage_ = std::make_shared<gcs::InMemoryGcsTableStorage>();
   }
 
   void SetUp() override {
@@ -41,12 +47,12 @@ class GcsWorkerManagerTest : public Test {
     // Alternatively, we can manually run io service. In this test, we chose to
     // start a new thread as other GCS tests do.
     thread_io_service_ = std::make_unique<std::thread>([this] {
-      std::unique_ptr<boost::asio::io_service::work> work(
-          new boost::asio::io_service::work(io_service_));
+      boost::asio::executor_work_guard<boost::asio::io_context::executor_type> work(
+          io_service_.get_executor());
       io_service_.run();
     });
-    worker_manager_ =
-        std::make_shared<gcs::GcsWorkerManager>(*gcs_table_storage_, *gcs_publisher_);
+    worker_manager_ = std::make_shared<gcs::GcsWorkerManager>(
+        *gcs_table_storage_, io_service_, *gcs_publisher_);
   }
 
   void TearDown() override {

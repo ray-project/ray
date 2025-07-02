@@ -13,7 +13,6 @@
 // limitations under the License.
 
 syntax = "proto3";
-option cc_enable_arenas = true;
 package ray.rpc.syncer;
 
 enum MessageType {

@@ -14,46 +14,26 @@
 
 #include "ray/core_worker/transport/actor_scheduling_queue.h"
 
+#include <algorithm>
+#include <memory>
+#include <utility>
+#include <vector>
+
 namespace ray {
 namespace core {
 
 ActorSchedulingQueue::ActorSchedulingQueue(
-    instrumented_io_context &main_io_service,
+    instrumented_io_context &task_execution_service,
     DependencyWaiter &waiter,
     worker::TaskEventBuffer &task_event_buffer,
-    std::shared_ptr<ConcurrencyGroupManager<BoundedExecutor>> pool_manager,
-    std::shared_ptr<ConcurrencyGroupManager<FiberState>> fiber_state_manager,
-    bool is_asyncio,
-    int fiber_max_concurrency,
-    const std::vector<ConcurrencyGroup> &concurrency_groups,
-    int64_t reorder_wait_seconds)
-    : reorder_wait_seconds_(reorder_wait_seconds),
-      wait_timer_(main_io_service),
-      main_thread_id_(boost::this_thread::get_id()),
+    std::shared_ptr<ConcurrencyGroupManager<BoundedExecutor>> pool_manager)
+    : wait_timer_(task_execution_service),
+      main_thread_id_(std::this_thread::get_id()),
       waiter_(waiter),
       task_event_buffer_(task_event_buffer),
-      pool_manager_(pool_manager),
-      fiber_state_manager_(fiber_state_manager),
-      is_asyncio_(is_asyncio) {
-  if (is_asyncio_) {
-    std::stringstream ss;
-    ss << "Setting actor as asyncio with max_concurrency=" << fiber_max_concurrency
-       << ", and defined concurrency groups are:" << std::endl;
-    for (const auto &concurrency_group : concurrency_groups) {
-      ss << "\t" << concurrency_group.name << " : " << concurrency_group.max_concurrency;
-    }
-    RAY_LOG(DEBUG) << ss.str();
-  }
-}
+      pool_manager_(std::move(pool_manager)) {}
 
-void ActorSchedulingQueue::Stop() {
-  if (pool_manager_) {
-    pool_manager_->Stop();
-  }
-  if (fiber_state_manager_) {
-    fiber_state_manager_->Stop();
-  }
-}
+void ActorSchedulingQueue::Stop() { pool_manager_->Stop(); }
 
 bool ActorSchedulingQueue::TaskQueueEmpty() const {
   RAY_CHECK(false) << "TaskQueueEmpty() not implemented for actor queues";
@@ -81,10 +61,10 @@ void ActorSchedulingQueue::Add(
   // A seq_no of -1 means no ordering constraint. Actor tasks must be executed in order.
   RAY_CHECK(seq_no != -1);
 
-  RAY_CHECK(boost::this_thread::get_id() == main_thread_id_);
+  RAY_CHECK(std::this_thread::get_id() == main_thread_id_);
   if (client_processed_up_to >= next_seq_no_) {
-    RAY_LOG(ERROR) << "client skipping requests " << next_seq_no_ << " to "
-                   << client_processed_up_to;
+    RAY_LOG(INFO) << "client skipping requests " << next_seq_no_ << " to "
+                  << client_processed_up_to;
     next_seq_no_ = client_processed_up_to + 1;
   }
   RAY_LOG(DEBUG) << "Enqueue " << seq_no << " cur seqno " << next_seq_no_;
@@ -108,7 +88,7 @@ void ActorSchedulingQueue::Add(
         rpc::TaskStatus::PENDING_ACTOR_TASK_ARGS_FETCH,
         /* include_task_info */ false));
     waiter_.Wait(dependencies, [seq_no, this]() {
-      RAY_CHECK(boost::this_thread::get_id() == main_thread_id_);
+      RAY_CHECK(std::this_thread::get_id() == main_thread_id_);
       auto it = pending_actor_tasks_.find(seq_no);
       if (it != pending_actor_tasks_.end()) {
         const TaskSpecification &task_spec = it->second.TaskSpec();
@@ -172,25 +152,15 @@ void ActorSchedulingQueue::ScheduleRequests() {
     auto request = head->second;
     auto task_id = head->second.TaskID();
 
-    if (is_asyncio_) {
-      // Process async actor task.
-      auto fiber = fiber_state_manager_->GetExecutor(request.ConcurrencyGroupName(),
-                                                     request.FunctionDescriptor());
-      fiber->EnqueueFiber([this, request, task_id]() mutable {
+    // Process actor tasks.
+    auto pool = pool_manager_->GetExecutor(request.ConcurrencyGroupName(),
+                                           request.FunctionDescriptor());
+    if (pool == nullptr) {
+      AcceptRequestOrRejectIfCanceled(task_id, request);
+    } else {
+      pool->Post([this, request, task_id]() mutable {
         AcceptRequestOrRejectIfCanceled(task_id, request);
       });
-    } else {
-      // Process actor tasks.
-      RAY_CHECK(pool_manager_ != nullptr);
-      auto pool = pool_manager_->GetExecutor(request.ConcurrencyGroupName(),
-                                             request.FunctionDescriptor());
-      if (pool == nullptr) {
-        AcceptRequestOrRejectIfCanceled(task_id, request);
-      } else {
-        pool->Post([this, request, task_id]() mutable {
-          AcceptRequestOrRejectIfCanceled(task_id, request);
-        });
-      }
     }
     pending_actor_tasks_.erase(head);
     next_seq_no_++;
@@ -216,7 +186,7 @@ void ActorSchedulingQueue::ScheduleRequests() {
 
 /// Called when we time out waiting for an earlier task to show up.
 void ActorSchedulingQueue::OnSequencingWaitTimeout() {
-  RAY_CHECK(boost::this_thread::get_id() == main_thread_id_);
+  RAY_CHECK(std::this_thread::get_id() == main_thread_id_);
   RAY_LOG(ERROR) << "timed out waiting for " << next_seq_no_
                  << ", cancelling all queued tasks";
   while (!pending_actor_tasks_.empty()) {

@@ -100,7 +100,7 @@ if __name__ == "__main__":
                 # `RLModule`. The environment will wrap this space into a
                 # `gym.spaces.Dict` together with an 'action_mask' that signals the
                 # `RLModule` to adapt the action distribution inputs for the underlying
-                # `PPORLModule`.
+                # `DefaultPPORLModule`.
                 "observation_space": Box(-1.0, 1.0, (5,)),
             },
         )

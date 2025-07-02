@@ -35,7 +35,6 @@ class ImageOfflinePreLearner(OfflinePreLearner):
         self,
         config: "AlgorithmConfig",
         learner: Union[Learner, List[ActorHandle]],
-        locality_hints: Optional[List[str]] = None,
         spaces: Optional[Tuple[gym.Space, gym.Space]] = None,
         module_spec: Optional[MultiRLModuleSpec] = None,
         module_state: Optional[Dict[ModuleID, Any]] = None,
@@ -65,7 +64,7 @@ class ImageOfflinePreLearner(OfflinePreLearner):
         is_multi_agent: bool,
         batch: Dict[str, Union[list, np.ndarray]],
         schema: Dict[str, str] = SCHEMA,
-        finalize: bool = False,
+        to_numpy: bool = False,
         input_compress_columns: Optional[List[str]] = None,
         observation_space: gym.Space = None,
         action_space: gym.Space = None,
@@ -92,10 +91,9 @@ class ImageOfflinePreLearner(OfflinePreLearner):
                 t_started=0,
             )
 
-            # Finalize, if necessary. Note, some connectors
-            # need finalized episodes.
-            if finalize:
-                episode.finalize()
+            # Numpy'ize, if necessary.
+            if to_numpy:
+                episode.to_numpy()
 
             # Store the episode in the container.
             episodes.append(episode)

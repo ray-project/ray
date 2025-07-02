@@ -45,9 +45,9 @@ void RuntimeEnvManager::AddURIReference(const std::string &hex_id,
 
 const std::vector<std::string> &RuntimeEnvManager::GetReferences(
     const std::string &hex_id) const {
-  static const std::vector<std::string> _default;
+  static const std::vector<std::string> kDefaultRef;
   auto it = id_to_uris_.find(hex_id);
-  return it == id_to_uris_.end() ? _default : it->second;
+  return it == id_to_uris_.end() ? kDefaultRef : it->second;
 }
 
 void RuntimeEnvManager::RemoveURIReference(const std::string &hex_id) {

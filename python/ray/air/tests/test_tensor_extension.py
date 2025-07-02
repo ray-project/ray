@@ -6,7 +6,7 @@ import pyarrow as pa
 import pytest
 from packaging.version import parse as parse_version
 
-from ray._private.utils import _get_pyarrow_version
+from ray._private.arrow_utils import get_pyarrow_version
 from ray.air.util.tensor_extensions.arrow import (
     ArrowConversionError,
     ArrowTensorArray,
@@ -517,7 +517,7 @@ def test_arrow_tensor_array_getitem(chunked, restore_data_context, tensor_format
     if chunked:
         t_arr = pa.chunked_array(t_arr)
 
-    pyarrow_version = parse_version(_get_pyarrow_version())
+    pyarrow_version = get_pyarrow_version()
     if (
         chunked
         and pyarrow_version >= parse_version("8.0.0")
@@ -589,7 +589,7 @@ def test_arrow_variable_shaped_tensor_array_getitem(
     if chunked:
         t_arr = pa.chunked_array(t_arr)
 
-    pyarrow_version = parse_version(_get_pyarrow_version())
+    pyarrow_version = get_pyarrow_version()
     if (
         chunked
         and pyarrow_version >= parse_version("8.0.0")

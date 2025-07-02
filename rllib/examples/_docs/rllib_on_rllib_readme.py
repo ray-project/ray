@@ -46,7 +46,7 @@ class ParrotEnv(gym.Env):
 
         Returns: New observation, reward, done-flag, info-dict (empty).
         """
-        # Set `done` and `truncated` flags after 10 steps.
+        # Set `terminated` and `truncated` flags to True after 10 steps.
         self.episode_len += 1
         terminated = truncated = self.episode_len >= 10
         # r = -abs(obs - action)
@@ -60,9 +60,9 @@ class ParrotEnv(gym.Env):
 # act in the above environment.
 config = (
     PPOConfig().environment(
-        # Env class to use (here: our gym.Env sub-class from above).
+        # Env class to use (your gym.Env subclass from above).
         env=ParrotEnv,
-        # Config dict to be passed to our custom env's constructor.
+        # Config dict to be passed to your custom env's constructor.
         env_config={"parrot_shriek_range": gym.spaces.Box(-5.0, 5.0, (1,))},
     )
     # Parallelize environment rollouts.

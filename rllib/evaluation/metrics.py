@@ -110,7 +110,7 @@ def collect_episodes(
     # This will drop get_metrics() calls that are too slow.
     # We can potentially make this an asynchronous call if this turns
     # out to be a problem.
-    metric_lists = workers.foreach_worker(
+    metric_lists = workers.foreach_env_runner(
         lambda w: w.get_metrics(),
         local_env_runner=True,
         remote_worker_ids=remote_worker_ids,

@@ -9,7 +9,8 @@ import time
 import numpy as np
 
 import ray
-from ray._private.test_utils import monitor_memory_usage, wait_for_condition
+from ray._common.test_utils import wait_for_condition
+from ray._private.test_utils import monitor_memory_usage
 from ray.data._internal.progress_bar import ProgressBar
 from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
 
@@ -205,7 +206,7 @@ def main():
     node_killer.run.remote()
     workload(total_num_cpus, args.smoke)
     print(f"Runtime when there are many failures: {time.time() - start}")
-    print(f"Total node failures: " f"{ray.get(node_killer.get_total_killed.remote())}")
+    print(f"Total node failures: {ray.get(node_killer.get_total_killed.remote())}")
     node_killer.stop_run.remote()
     used_gb, usage = ray.get(monitor_actor.get_peak_memory_info.remote())
     print("Memory usage with failures.")

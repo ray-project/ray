@@ -44,7 +44,7 @@ config = (
         },
         clip_rewards=True,
     )
-    .rollouts(env_to_module_connector=_make_env_to_module_connector)
+    .env_runners(env_to_module_connector=_make_env_to_module_connector)
     .training(
         learner_connector=_make_learner_connector,
         lambda_=0.95,

@@ -28,6 +28,7 @@ pip --no-cache-dir install -U -r requirements.txt
 pip --no-cache-dir install -U \
            -c requirements.txt \
            -c requirements_compiled.txt \
+           -r dl-cpu-requirements.txt \
            -r core-requirements.txt \
            -r data-requirements.txt \
            -r rllib-requirements.txt \

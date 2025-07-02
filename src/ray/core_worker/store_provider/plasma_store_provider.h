@@ -14,6 +14,11 @@
 
 #pragma once
 
+#include <memory>
+#include <string>
+#include <utility>
+#include <vector>
+
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "ray/common/buffer.h"
@@ -90,7 +95,7 @@ class CoreWorkerPlasmaStoreProvider {
   CoreWorkerPlasmaStoreProvider(
       const std::string &store_socket,
       const std::shared_ptr<raylet::RayletClient> raylet_client,
-      const std::shared_ptr<ReferenceCounter> reference_counter,
+      ReferenceCounter &reference_counter,
       std::function<Status()> check_signals,
       bool warmup,
       std::function<std::string()> get_current_call_site = nullptr);
@@ -236,7 +241,7 @@ class CoreWorkerPlasmaStoreProvider {
   const std::shared_ptr<raylet::RayletClient> raylet_client_;
   std::shared_ptr<plasma::PlasmaClient> store_client_;
   /// Used to look up a plasma object's owner.
-  const std::shared_ptr<ReferenceCounter> reference_counter_;
+  ReferenceCounter &reference_counter_;
   std::function<Status()> check_signals_;
   std::function<std::string()> get_current_call_site_;
   uint32_t object_store_full_delay_ms_;

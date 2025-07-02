@@ -27,7 +27,7 @@ def test_zip(ray_start_regular_shared):
 
 @pytest.mark.parametrize(
     "num_blocks1,num_blocks2",
-    list(itertools.combinations_with_replacement(range(1, 12), 2)),
+    list(itertools.combinations_with_replacement([1, 2, 4, 16], 2)),
 )
 def test_zip_different_num_blocks_combinations(
     ray_start_regular_shared, num_blocks1, num_blocks2

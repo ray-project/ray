@@ -1,8 +1,27 @@
+// Copyright 2025 The Ray Authors.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//  http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
 #include "ray/object_manager/plasma/connection.h"
 
 #ifndef _WIN32
 #include "ray/object_manager/plasma/fling.h"
 #endif
+#include <memory>
+#include <string>
+#include <utility>
+#include <vector>
+
 #include "ray/object_manager/plasma/plasma_generated.h"
 #include "ray/object_manager/plasma/protocol.h"
 #include "ray/util/logging.h"
@@ -50,23 +69,26 @@ static const std::vector<std::string> object_store_message_enum =
                       static_cast<int>(MessageType::MAX));
 }  // namespace
 
-Client::Client(ray::MessageHandler &message_handler, ray::local_stream_socket &&socket)
-    : ray::ClientConnection(message_handler,
+Client::Client(PrivateTag,
+               ray::MessageHandler message_handler,
+               ray::ConnectionErrorHandler connection_error_handler,
+               ray::local_stream_socket &&socket)
+    : ray::ClientConnection(std::move(message_handler),
+                            std::move(connection_error_handler),
                             std::move(socket),
                             "worker",
-                            object_store_message_enum,
-                            static_cast<int64_t>(MessageType::PlasmaDisconnectClient)) {}
+                            object_store_message_enum) {}
 
-std::shared_ptr<Client> Client::Create(PlasmaStoreMessageHandler message_handler,
-                                       ray::local_stream_socket &&socket) {
+std::shared_ptr<Client> Client::Create(
+    PlasmaStoreMessageHandler message_handler,
+    PlasmaStoreConnectionErrorHandler connection_error_handler,
+    ray::local_stream_socket &&socket) {
   ray::MessageHandler ray_message_handler =
       [message_handler](std::shared_ptr<ray::ClientConnection> client,
                         int64_t message_type,
                         const std::vector<uint8_t> &message) {
         Status s = message_handler(
-            std::static_pointer_cast<Client>(client->shared_ClientConnection_from_this()),
-            (MessageType)message_type,
-            message);
+            std::static_pointer_cast<Client>(client), (MessageType)message_type, message);
         if (!s.ok()) {
           if (!s.IsDisconnected()) {
             RAY_LOG(ERROR) << "Fail to process client message. " << s.ToString();
@@ -76,10 +98,15 @@ std::shared_ptr<Client> Client::Create(PlasmaStoreMessageHandler message_handler
           client->ProcessMessages();
         }
       };
-  std::shared_ptr<Client> self(new Client(ray_message_handler, std::move(socket)));
-  // Let our manager process our new connection.
-  self->ProcessMessages();
-  return self;
+
+  ray::ConnectionErrorHandler ray_connection_error_handler =
+      [connection_error_handler](std::shared_ptr<ray::ClientConnection> client,
+                                 const boost::system::error_code &error) {
+        connection_error_handler(std::static_pointer_cast<Client>(client), error);
+      };
+
+  return std::make_shared<Client>(
+      PrivateTag{}, ray_message_handler, ray_connection_error_handler, std::move(socket));
 }
 
 Status Client::SendFd(MEMFD_TYPE fd) {
@@ -143,7 +170,11 @@ Status Client::SendFd(MEMFD_TYPE fd) {
 }
 
 StoreConn::StoreConn(ray::local_stream_socket &&socket)
-    : ray::ServerConnection(std::move(socket)) {}
+    : ray::ServerConnection(std::move(socket)), exit_on_connection_failure_(false) {}
+
+StoreConn::StoreConn(ray::local_stream_socket &&socket, bool exit_on_connection_failure)
+    : ray::ServerConnection(std::move(socket)),
+      exit_on_connection_failure_(exit_on_connection_failure) {}
 
 Status StoreConn::RecvFd(MEMFD_TYPE_NON_UNIQUE *fd) {
 #ifdef _WIN32
@@ -165,4 +196,28 @@ Status StoreConn::RecvFd(MEMFD_TYPE_NON_UNIQUE *fd) {
   return Status::OK();
 }
 
+ray::Status StoreConn::WriteBuffer(const std::vector<boost::asio::const_buffer> &buffer) {
+  auto status = ray::ServerConnection::WriteBuffer(buffer);
+  ExitIfErrorStatus(status);
+  return status;
+}
+
+ray::Status StoreConn::ReadBuffer(
+    const std::vector<boost::asio::mutable_buffer> &buffer) {
+  auto status = ray::ServerConnection::ReadBuffer(buffer);
+  ExitIfErrorStatus(status);
+  return status;
+}
+
+void StoreConn::ExitIfErrorStatus(const ray::Status &status) {
+  if (!status.ok() && exit_on_connection_failure_) {
+    RAY_LOG(WARNING) << "The connection to the plasma store is failed. Terminate the "
+                     << "process. Status: " << status;
+    ray::QuickExit();
+    RAY_LOG(FATAL)
+        << "Accessing unreachable code. This line should never be reached "
+        << "after quick process exit due to plasma store connection failure. Please "
+           "create a github issue at https://github.com/ray-project/ray.";
+  }
+}
 }  // namespace plasma

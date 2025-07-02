@@ -26,8 +26,8 @@ import numpy as np
 import os
 
 import ray
-from ray import air, tune
-from ray.air.constants import TRAINING_ITERATION
+from ray import tune
+from ray.tune.result import TRAINING_ITERATION
 from ray.rllib.algorithms.ppo.ppo import PPO, PPOConfig
 from ray.rllib.algorithms.ppo.ppo_tf_policy import (
     PPOTF1Policy,
@@ -35,7 +35,7 @@ from ray.rllib.algorithms.ppo.ppo_tf_policy import (
 )
 from ray.rllib.algorithms.ppo.ppo_torch_policy import PPOTorchPolicy
 from ray.rllib.evaluation.postprocessing import compute_advantages, Postprocessing
-from ray.rllib.examples.envs.classes.two_step_game import TwoStepGame
+from ray.rllib.examples.envs.classes.multi_agent.two_step_game import TwoStepGame
 from ray.rllib.examples._old_api_stack.models.centralized_critic_models import (
     CentralizedCriticModel,
     TorchCentralizedCriticModel,
@@ -311,7 +311,7 @@ if __name__ == "__main__":
     tuner = tune.Tuner(
         CentralizedCritic,
         param_space=config.to_dict(),
-        run_config=air.RunConfig(stop=stop, verbose=1),
+        run_config=tune.RunConfig(stop=stop, verbose=1),
     )
     results = tuner.fit()
 

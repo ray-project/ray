@@ -1,5 +1,5 @@
 #!/bin/bash
-# This script is used to build an extra layer on top of the base anyscale/ray image 
+# This script is used to build an extra layer on top of the base anyscale/ray image
 # to run the air_example_vicuna_13b_lightning_deepspeed_finetuning test.
 
 set -exo pipefail

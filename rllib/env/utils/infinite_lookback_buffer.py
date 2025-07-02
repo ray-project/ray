@@ -123,7 +123,10 @@ class InfiniteLookbackBuffer:
             #  probably rather do: `tree.map_structure(..., self.data,
             #  tree.map_structure(lambda *s: np.array(*s), *items)`)??
             self.data = tree.map_structure(
-                lambda d, i: np.concatenate([d, i], axis=0), self.data, np.array(items)
+                lambda d, i: np.concatenate([d, i], axis=0),
+                self.data,
+                # Note, we could have dictionaries here.
+                np.array(items) if isinstance(items, list) else items,
             )
         else:
             for item in items:
@@ -533,9 +536,18 @@ class InfiniteLookbackBuffer:
     ):
         data_to_use = self.data
         if _ignore_last_ts:
-            data_to_use = self.data[:-1]
+            if self.finalized:
+                data_to_use = tree.map_structure(lambda s: s[:-1], self.data)
+            else:
+                data_to_use = self.data[:-1]
         if _add_last_ts_value is not None:
-            data_to_use = np.append(data_to_use.copy(), _add_last_ts_value)
+            if self.finalized:
+                data_to_use = tree.map_structure(
+                    lambda s, last: np.append(s, last), data_to_use, _add_last_ts_value
+                )
+            else:
+                data_to_use = data_to_use.copy()
+                data_to_use.append(_add_last_ts_value)
 
         # If index >= 0 -> Ignore lookback buffer.
         # Otherwise, include lookback buffer.

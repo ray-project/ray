@@ -187,7 +187,7 @@ class ModelV2ToRLModule(TorchRLModule, ValueFunctionAPI):
     def get_initial_state(self):
         """Converts the initial state list of ModelV2 into a dict (new API stack)."""
         init_state_list = self._model_v2.get_initial_state()
-        return {i: s for i, s in enumerate(init_state_list)}
+        return dict(enumerate(init_state_list))
 
     def _translate_dist_class(self, old_dist_class):
         map_ = {

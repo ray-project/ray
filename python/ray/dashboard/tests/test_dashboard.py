@@ -14,6 +14,7 @@ from unittest.mock import MagicMock
 from urllib.parse import quote_plus
 
 import pytest
+from ray._common.test_utils import wait_for_condition
 import requests
 from click.testing import CliRunner
 from requests.exceptions import ConnectionError, HTTPError
@@ -23,6 +24,7 @@ import ray.dashboard.consts as dashboard_consts
 import ray.dashboard.modules
 import ray.dashboard.utils as dashboard_utils
 import ray.scripts.scripts as scripts
+from ray._common.utils import get_or_create_event_loop
 from ray._private import ray_constants
 from ray._private.ray_constants import (
     DEBUG_AUTOSCALING_ERROR,
@@ -34,11 +36,9 @@ from ray._private.test_utils import (
     get_error_message,
     init_error_pubsub,
     run_string_as_driver,
-    wait_for_condition,
     wait_until_server_available,
     wait_until_succeeded_without_exception,
 )
-from ray._private.utils import get_or_create_event_loop
 from ray.core.generated import common_pb2
 from ray.dashboard import dashboard
 from ray.dashboard.head import DashboardHead
@@ -56,6 +56,7 @@ try:
     import ray.dashboard.optional_utils as dashboard_optional_utils
 
     head_routes = dashboard_optional_utils.DashboardHeadRouteTable
+    from ray.dashboard.subprocesses.module import SubprocessModule
 except Exception:
     pass
 
@@ -123,7 +124,6 @@ def test_basic(ray_start_regular):
 
     all_processes = ray._private.worker._global_node.all_processes
     assert ray_constants.PROCESS_TYPE_DASHBOARD in all_processes
-    assert ray_constants.PROCESS_TYPE_REPORTER not in all_processes
     dashboard_proc_info = all_processes[ray_constants.PROCESS_TYPE_DASHBOARD][0]
     dashboard_proc = psutil.Process(dashboard_proc_info.process.pid)
     assert dashboard_proc.status() in [
@@ -148,16 +148,11 @@ def test_basic(ray_start_regular):
         ray_constants.DASHBOARD_ADDRESS, namespace=ray_constants.KV_NAMESPACE_DASHBOARD
     )
     assert dashboard_address is not None
-    dashboard_rpc_address = ray.experimental.internal_kv._internal_kv_get(
-        dashboard_consts.DASHBOARD_RPC_ADDRESS,
-        namespace=ray_constants.KV_NAMESPACE_DASHBOARD,
-    )
-    assert dashboard_rpc_address is not None
-    key = f"{dashboard_consts.DASHBOARD_AGENT_PORT_PREFIX}{node_id}"
-    agent_ports = ray.experimental.internal_kv._internal_kv_get(
+    key = f"{dashboard_consts.DASHBOARD_AGENT_ADDR_NODE_ID_PREFIX}{node_id}"
+    agent_addr = ray.experimental.internal_kv._internal_kv_get(
         key, namespace=ray_constants.KV_NAMESPACE_DASHBOARD
     )
-    assert agent_ports is not None
+    assert agent_addr is not None
 
 
 @pytest.mark.skipif(
@@ -381,14 +376,18 @@ def test_http_get(enable_test_module, ray_start_with_dashboard):
                 logger.info("failed response: %s", response.text)
                 raise ex
             assert dump_info["result"] is True
-            dump_data = dump_info["data"]
-            assert len(dump_data["agents"]) == 1
-            node_id, ports = next(iter(dump_data["agents"].items()))
-            ip = ray_start_with_dashboard["node_ip_address"]
-            http_port, grpc_port = ports
+
+            # Get agent ip and http port
+            node_id_hex = ray_start_with_dashboard["node_id"]
+            agent_addr = ray.experimental.internal_kv._internal_kv_get(
+                f"{dashboard_consts.DASHBOARD_AGENT_ADDR_NODE_ID_PREFIX}{node_id_hex}",
+                namespace=ray_constants.KV_NAMESPACE_DASHBOARD,
+            )
+            assert agent_addr is not None
+            node_ip, http_port, _ = json.loads(agent_addr)
 
             response = requests.get(
-                f"http://{ip}:{http_port}"
+                f"http://{node_ip}:{http_port}"
                 f"/test/http_get_from_agent?url={quote_plus(target_url)}"
             )
             response.raise_for_status()
@@ -627,41 +626,39 @@ def test_aiohttp_cache(enable_test_module, ray_start_with_dashboard):
     webui_url = ray_start_with_dashboard["webui_url"]
     webui_url = format_web_url(webui_url)
 
-    timeout_seconds = 5
-    start_time = time.time()
-    value1_timestamps = []
-    while True:
-        time.sleep(1)
-        try:
-            for x in range(10):
-                response = requests.get(webui_url + "/test/aiohttp_cache/t1?value=1")
-                response.raise_for_status()
-                timestamp = response.json()["data"]["timestamp"]
-                value1_timestamps.append(timestamp)
-            assert len(collections.Counter(value1_timestamps)) > 1
-            break
-        except (AssertionError, requests.exceptions.ConnectionError) as e:
-            logger.info("Retry because of %s", e)
-        finally:
-            if time.time() > start_time + timeout_seconds:
-                raise Exception("Timed out while testing.")
+    timestamps = set()
+    for _ in range(10):
+        response = requests.get(webui_url + "/test/aiohttp_cache/t1?value=1")
+        response.raise_for_status()
+        timestamp = response.json()["data"]["timestamp"]
+        timestamps.add(timestamp)
+    assert len(timestamps) == 1
 
-    sub_path_timestamps = []
+    timestamps.clear()
+    for x in range(10):
+        response = requests.get(webui_url + "/test/aiohttp_cache/t1?value=1&nocache=1")
+        response.raise_for_status()
+        timestamp = response.json()["data"]["timestamp"]
+        timestamps.add(timestamp)
+    assert len(timestamps) == 10
+
+    timestamps.clear()
     for x in range(10):
         response = requests.get(webui_url + f"/test/aiohttp_cache/tt{x}?value=1")
         response.raise_for_status()
         timestamp = response.json()["data"]["timestamp"]
-        sub_path_timestamps.append(timestamp)
-    assert len(collections.Counter(sub_path_timestamps)) == 10
+        timestamps.add(timestamp)
+    assert len(timestamps) == 10
 
-    volatile_value_timestamps = []
+    timestamps.clear()
     for x in range(10):
         response = requests.get(webui_url + f"/test/aiohttp_cache/tt?value={x}")
         response.raise_for_status()
         timestamp = response.json()["data"]["timestamp"]
-        volatile_value_timestamps.append(timestamp)
-    assert len(collections.Counter(volatile_value_timestamps)) == 10
+        timestamps.add(timestamp)
+    assert len(timestamps) == 10
 
+    timestamps.clear()
     response = requests.get(webui_url + "/test/aiohttp_cache/raise_exception")
     with pytest.raises(Exception):
         response.raise_for_status()
@@ -669,23 +666,23 @@ def test_aiohttp_cache(enable_test_module, ray_start_with_dashboard):
     assert result["result"] is False
     assert "KeyError" in result["msg"]
 
-    volatile_value_timestamps = []
+    timestamps.clear()
     for x in range(10):
         response = requests.get(webui_url + f"/test/aiohttp_cache_lru/tt{x % 4}")
         response.raise_for_status()
         timestamp = response.json()["data"]["timestamp"]
-        volatile_value_timestamps.append(timestamp)
-    assert len(collections.Counter(volatile_value_timestamps)) == 4
+        timestamps.add(timestamp)
+    assert len(timestamps) == 4
 
-    volatile_value_timestamps = []
+    timestamps.clear()
     data = collections.defaultdict(set)
     for x in [0, 1, 2, 3, 4, 5, 2, 1, 0, 3]:
         response = requests.get(webui_url + f"/test/aiohttp_cache_lru/t1?value={x}")
         response.raise_for_status()
         timestamp = response.json()["data"]["timestamp"]
         data[x].add(timestamp)
-        volatile_value_timestamps.append(timestamp)
-    assert len(collections.Counter(volatile_value_timestamps)) == 8
+        timestamps.add(timestamp)
+    assert len(timestamps) == 8
     assert len(data[3]) == 2
     assert len(data[0]) == 2
 
@@ -787,7 +784,7 @@ def test_immutable_types():
     d["list"][0] = {str(i): i for i in range(1000)}
     d["dict"] = {str(i): i for i in range(1000)}
     immutable_dict = dashboard_utils.make_immutable(d)
-    assert type(immutable_dict) == dashboard_utils.ImmutableDict
+    assert type(immutable_dict) is dashboard_utils.ImmutableDict
     assert immutable_dict == dashboard_utils.ImmutableDict(d)
     assert immutable_dict == d
     assert dashboard_utils.ImmutableDict(immutable_dict) == immutable_dict
@@ -799,17 +796,21 @@ def test_immutable_types():
     assert "512" in d["dict"]
 
     # Test type conversion
-    assert type(dict(immutable_dict)["list"]) == dashboard_utils.ImmutableList
-    assert type(list(immutable_dict["list"])[0]) == dashboard_utils.ImmutableDict
+    assert type(dict(immutable_dict)["list"]) is dashboard_utils.ImmutableList
+    assert type(list(immutable_dict["list"])[0]) is dashboard_utils.ImmutableDict
 
     # Test json dumps / loads
-    json_str = json.dumps(immutable_dict, cls=dashboard_optional_utils.CustomEncoder)
+    json_str = json.dumps(immutable_dict, cls=dashboard_utils.CustomEncoder)
     deserialized_immutable_dict = json.loads(json_str)
-    assert type(deserialized_immutable_dict) == dict
-    assert type(deserialized_immutable_dict["list"]) == list
+    assert type(deserialized_immutable_dict) is dict
+    assert type(deserialized_immutable_dict["list"]) is list
     assert immutable_dict.mutable() == deserialized_immutable_dict
-    dashboard_optional_utils.rest_response(True, "OK", data=immutable_dict)
-    dashboard_optional_utils.rest_response(True, "OK", **immutable_dict)
+    dashboard_optional_utils.rest_response(
+        dashboard_utils.HTTPStatusCode.OK, "OK", data=immutable_dict
+    )
+    dashboard_optional_utils.rest_response(
+        dashboard_utils.HTTPStatusCode.OK, "OK", **immutable_dict
+    )
 
     # Test copy
     copy_of_immutable = copy.copy(immutable_dict)
@@ -819,12 +820,12 @@ def test_immutable_types():
 
     # Test get default immutable
     immutable_default_value = immutable_dict.get("not exist list", [1, 2])
-    assert type(immutable_default_value) == dashboard_utils.ImmutableList
+    assert type(immutable_default_value) is dashboard_utils.ImmutableList
 
     # Test recursive immutable
-    assert type(immutable_dict["list"]) == dashboard_utils.ImmutableList
-    assert type(immutable_dict["dict"]) == dashboard_utils.ImmutableDict
-    assert type(immutable_dict["list"][0]) == dashboard_utils.ImmutableDict
+    assert type(immutable_dict["list"]) is dashboard_utils.ImmutableList
+    assert type(immutable_dict["dict"]) is dashboard_utils.ImmutableDict
+    assert type(immutable_dict["list"][0]) is dashboard_utils.ImmutableDict
 
     # Test exception
     with pytest.raises(TypeError):
@@ -1072,17 +1073,6 @@ def test_agent_does_not_depend_on_serve(shutdown_only):
 def test_agent_port_conflict(shutdown_only):
     ray.shutdown()
 
-    # start ray and test agent works.
-    ray.init(include_dashboard=True)
-
-    node = ray._private.worker._global_node
-    agent_url = node.node_ip_address + ":" + str(node.dashboard_agent_listen_port)
-    wait_for_condition(
-        lambda: requests.get(f"http://{agent_url}/api/serve/applications/").status_code
-        == 200
-    )
-    ray.shutdown()
-
     # ocuppy the port with a socket.
     s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
 
@@ -1107,23 +1097,6 @@ def test_agent_port_conflict(shutdown_only):
 
     check_agent_register(raylet_proc, agent_pid)
 
-    # Release the port from socket.
-    s.close()
-
-    agent_url = node.node_ip_address + ":" + str(node.dashboard_agent_listen_port)
-
-    # Check that Serve-dependent features fail.
-    try:
-        wait_for_condition(
-            lambda: requests.get(
-                f"http://{agent_url}/api/serve/applications/"
-            ).status_code
-            == 200
-        )
-        assert False
-    except Exception as e:
-        assert e is not None
-
 
 @pytest.mark.skipif(
     os.environ.get("RAY_MINIMAL") != "1",
@@ -1147,7 +1120,8 @@ def test_dashboard_requests_fail_on_missing_deps(ray_start_regular):
     os.environ.get("RAY_DEFAULT") != "1",
     reason="This test only works for default installation.",
 )
-def test_dashboard_module_load(tmpdir):
+@pytest.mark.asyncio
+async def test_dashboard_module_load(tmpdir):
     """Verify if the head module can load only selected modules."""
     head = DashboardHead(
         http_host="127.0.0.1",
@@ -1156,8 +1130,12 @@ def test_dashboard_module_load(tmpdir):
         node_ip_address="127.0.0.1",
         gcs_address="127.0.0.1:6379",
         cluster_id_hex=ray.ClusterID.from_random().hex(),
-        grpc_port=0,
         log_dir=str(tmpdir),
+        logging_level=ray_constants.LOGGER_LEVEL,
+        logging_format=ray_constants.LOGGER_FORMAT,
+        logging_filename=dashboard_consts.DASHBOARD_LOG_FILENAME,
+        logging_rotate_bytes=ray_constants.LOGGING_ROTATE_BYTES,
+        logging_rotate_backup_count=ray_constants.LOGGING_ROTATE_BACKUP_COUNT,
         temp_dir=str(tmpdir),
         session_dir=str(tmpdir),
         minimal=False,
@@ -1166,25 +1144,34 @@ def test_dashboard_module_load(tmpdir):
 
     # Test basic.
     loaded_modules_expected = {"UsageStatsHead", "JobHead"}
-    loaded_modules = head._load_modules(modules_to_load=loaded_modules_expected)
-    loaded_modules_actual = {type(m).__name__ for m in loaded_modules}
-    assert loaded_modules_actual == loaded_modules_expected
+    dashboard_head_modules, subprocess_module_handles = head._load_modules(
+        modules_to_load=loaded_modules_expected
+    )
+    assert {type(m).__name__ for m in dashboard_head_modules} == loaded_modules_expected
+    assert len(subprocess_module_handles) == 0
 
     # Test modules that don't exist.
     loaded_modules_expected = {"StateHea"}
     with pytest.raises(AssertionError):
-        loaded_modules = head._load_modules(modules_to_load=loaded_modules_expected)
+        head._load_modules(modules_to_load=loaded_modules_expected)
 
     # Test the base case.
     # It is needed to pass assertion check from one of modules.
     gcs_client = MagicMock()
     _initialize_internal_kv(gcs_client)
-    loaded_modules_expected = {
+    loaded_dashboard_head_modules_expected = {
         m.__name__ for m in dashboard_utils.get_all_modules(DashboardHeadModule)
     }
-    loaded_modules = head._load_modules()
-    loaded_modules_actual = {type(m).__name__ for m in loaded_modules}
-    assert loaded_modules_actual == loaded_modules_expected
+    loaded_subprocess_module_handles_expected = {
+        m.__name__ for m in dashboard_utils.get_all_modules(SubprocessModule)
+    }
+    dashboard_head_modules, subprocess_module_handles = head._load_modules()
+    assert {
+        type(m).__name__ for m in dashboard_head_modules
+    } == loaded_dashboard_head_modules_expected
+    assert {
+        m.module_cls.__name__ for m in subprocess_module_handles
+    } == loaded_subprocess_module_handles_expected
 
 
 @pytest.mark.skipif(

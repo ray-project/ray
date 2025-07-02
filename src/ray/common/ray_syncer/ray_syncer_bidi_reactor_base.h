@@ -177,15 +177,21 @@ class RaySyncerBidiReactorBase : public RaySyncerBidiReactor, public T {
           if (*disconnected) {
             return;
           }
-          if (ok) {
-            RAY_CHECK(!msg->node_id().empty());
-            ReceiveUpdate(std::move(msg));
-            StartPull();
-          } else {
+
+          if (!ok) {
             RAY_LOG_EVERY_MS(INFO, 1000) << "Failed to read the message from: "
                                          << NodeID::FromBinary(GetRemoteNodeID());
             Disconnect();
+            return;
           }
+
+          // Successful rpc completion callback.
+          RAY_CHECK(!msg->node_id().empty());
+          if (on_rpc_completion_) {
+            on_rpc_completion_(NodeID::FromBinary(remote_node_id_));
+          }
+          ReceiveUpdate(std::move(msg));
+          StartPull();
         },
         "");
   }
@@ -219,7 +225,7 @@ class RaySyncerBidiReactorBase : public RaySyncerBidiReactor, public T {
       sending_buffer_;
 
   /// Keep track of the versions of components in the remote node.
-  /// This field will be udpated when messages are received or sent.
+  /// This field will be updated when messages are received or sent.
   /// We'll filter the received or sent messages when the message is stale.
   absl::flat_hash_map<std::string, std::array<int64_t, kComponentArraySize>>
       node_versions_;

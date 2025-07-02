@@ -96,7 +96,7 @@ from ray.util.iter import ParallelIteratorWorker
 
 if TYPE_CHECKING:
     from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
-    from ray.rllib.algorithms.callbacks import DefaultCallbacks  # noqa
+    from ray.rllib.callbacks.callbacks import RLlibCallback
 
 tf1, tf, tfv = try_import_tf()
 torch, _ = try_import_torch()
@@ -326,7 +326,7 @@ class RolloutWorker(ParallelIteratorWorker, EnvRunner):
         )
         self.env_context = env_context
         self.config: AlgorithmConfig = config
-        self.callbacks: DefaultCallbacks = self.config.callbacks_class()
+        self.callbacks: RLlibCallback = self.config.callbacks_class()
         self.recreated_worker: bool = recreated_worker
 
         # Setup current policy_mapping_fn. Start with the one from the config, which
@@ -388,7 +388,7 @@ class RolloutWorker(ParallelIteratorWorker, EnvRunner):
         if not (
             self.worker_index == 0
             and self.num_workers > 0
-            and not self.config.create_env_on_local_worker
+            and not self.config.create_local_env_runner
         ):
             # Run the `env_creator` function passing the EnvContext.
             self.env = env_creator(copy.deepcopy(self.env_context))
@@ -525,7 +525,7 @@ class RolloutWorker(ParallelIteratorWorker, EnvRunner):
                 pol._update_model_view_requirements_from_init_state()
 
         if (
-            self.config.is_multi_agent()
+            self.config.is_multi_agent
             and self.env is not None
             and not isinstance(
                 self.env,
@@ -664,7 +664,7 @@ class RolloutWorker(ParallelIteratorWorker, EnvRunner):
             raise ValueError(
                 "RolloutWorker has no `input_reader` object! "
                 "Cannot call `sample()`. You can try setting "
-                "`create_env_on_driver` to True."
+                "`create_local_env_runner` to True."
             )
 
         if log_once("sample_start"):

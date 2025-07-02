@@ -11,13 +11,12 @@ You can utilize these search algorithms as follows:
 
 .. code-block:: python
 
-    from ray import train, tune
-    from ray.train import RunConfig
+    from ray import tune
     from ray.tune.search.optuna import OptunaSearch
 
     def train_fn(config):
         # This objective function is just for demonstration purposes
-        train.report({"loss": config["param"]})
+        tune.report({"loss": config["param"]})
 
     tuner = tune.Tuner(
         train_fn,
@@ -82,7 +81,7 @@ identifier:
             num_samples=5,
             search_alg=search_alg,
         ),
-        run_config=RunConfig(
+        run_config=tune.RunConfig(
             name="my-experiment-1",
             storage_path="~/my_results",
         )

@@ -10,7 +10,7 @@ from ray.rllib.utils.metrics import (
     NUM_ENV_STEPS_SAMPLED_LIFETIME,
 )
 from ray.tune import Stopper
-from ray import train, tune
+from ray import tune
 
 # Might need `gymnasium[atari, other]` to be installed.
 
@@ -247,16 +247,12 @@ for env in benchmark_envs.keys():
     )
 
 
-def _make_env_to_module_connector(env):
-    return FrameStackingEnvToModule(
-        num_frames=4,
-    )
+def _make_env_to_module_connector(env, spaces, device):
+    return FrameStackingEnvToModule(num_frames=4)
 
 
 def _make_learner_connector(input_observation_space, input_action_space):
-    return FrameStackingLearner(
-        num_frames=4,
-    )
+    return FrameStackingLearner(num_frames=4)
 
 
 # Define a `tune.Stopper` that stops the training if the benchmark is reached
@@ -359,7 +355,7 @@ config = (
 tuner = tune.Tuner(
     "DQN",
     param_space=config,
-    run_config=train.RunConfig(
+    run_config=tune.RunConfig(
         stop=BenchmarkStopper(benchmark_envs=benchmark_envs),
         name="benchmark_dqn_atari",
     ),

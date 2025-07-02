@@ -1,0 +1,83 @@
+[project]
+requires-python = ">=3.9"
+
+[tool.ruff]
+line-length = 88
+extend-exclude = [
+    "python/ray/thirdparty_files/",
+    "python/ray/_private/thirdparty/",
+    "python/ray/_private/runtime_env/agent/thirdparty_files/",
+    "python/build/",
+    "python/ray/workflow/tests/mock_server.py",
+    "python/ray/serve/tests/test_config_files/syntax_error.py",
+]
+
+[tool.ruff.lint]
+extend-select = ["I", "B", "Q", "C4", "W"]
+ignore = [
+    "B003",
+    "B005",
+    "B007",
+    "B008",
+    "B011",
+    "B012",
+    "B015",
+    "B017",
+    "B028",
+    "C408",
+    "C417",
+    "E741",
+    # TODO(MortalHappiness): Remove the following rules from the ignore list
+    # The above are rules ignored originally in flake8
+    # The following are rules ignored in ruff
+    "B023",
+    "B024",
+    "B026",
+    "B027",
+    "B904",
+    "C419",
+    # Below are auto-fixable rules
+    "I001",
+]
+
+[tool.ruff.lint.flake8-quotes]
+avoid-escape = false
+
+[tool.ruff.lint.isort]
+combine-as-imports = true
+section-order = ["future", "standard-library", "third-party", "first-party", "local-folder", "afterray"]
+known-local-folder = ["ray"]
+known-third-party = ["grpc"]
+
+[tool.ruff.lint.isort.sections]
+afterray = ["psutil", "setproctitle"]
+
+# Some of the directories need to be kept in the blacklist for isort ("I" rule):
+# python/ray/cloudpickle/*
+# doc/*
+# python/ray/__init__.py
+# python/ray/setup-dev.py
+# For the rest we will gradually remove them from the blacklist as we
+# reformat the code to follow the style guide.
+[tool.ruff.lint.per-file-ignores]
+"doc/*" = ["I"]
+"python/ray/__init__.py" = ["I"]
+"python/ray/setup-dev.py" = ["I"]
+"python/ray/cloudpickle/*" = ["I"]
+"python/ray/dag/*.py" = ["I"]
+"ci/*" = ["I"]
+"python/ray/includes/*" = ["I"]
+"python/ray/internal/*" = ["I"]
+"python/ray/ray_operator/*" = ["I"]
+"python/ray/scripts/*" = ["I"]
+"python/ray/serve/generated/serve_pb2.py" = ["I"]
+"python/ray/streaming/*" = ["I"]
+"python/ray/tests/*" = ["I"]
+"python/ray/util/*" = ["I"]
+"python/ray/workers/*" = ["I"]
+"python/ray/workflow/*" = ["I"]
+"rllib/*" = ["I"]
+"release/*" = ["I"]
+
+# TODO(matthewdeng): Remove this line
+"python/ray/tune/__init__.py" = ["I"]

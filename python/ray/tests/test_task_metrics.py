@@ -1,19 +1,18 @@
-from collections import defaultdict
-import sys
-import os
 import copy
 import multiprocessing
+import sys
+from collections import defaultdict
 
 import pytest
 
 import ray
-
+from ray._common.test_utils import wait_for_condition
 from ray._private.metrics_agent import RAY_WORKER_TIMEOUT_S
 from ray._private.test_utils import (
     raw_metrics,
     run_string_as_driver,
     run_string_as_driver_nonblocking,
-    wait_for_condition,
+    wait_for_assertion,
 )
 
 
@@ -154,8 +153,14 @@ ray.get(w)
         "RUNNING_IN_RAY_GET": 1.0,
         "PENDING_NODE_ASSIGNMENT": 8.0,
     }
-    wait_for_condition(
-        lambda: tasks_by_state(info) == expected, timeout=20, retry_interval_ms=2000
+
+    def check_task_state():
+        assert tasks_by_state(info) == expected
+
+    wait_for_assertion(
+        check_task_state,
+        timeout=20,
+        retry_interval_ms=2000,
     )
     assert tasks_by_name_and_state(info) == {
         ("wrapper", "RUNNING_IN_RAY_GET"): 1.0,
@@ -192,8 +197,14 @@ ray.get(w)
         "RUNNING_IN_RAY_WAIT": 1.0,
         "PENDING_NODE_ASSIGNMENT": 8.0,
     }
-    wait_for_condition(
-        lambda: tasks_by_state(info) == expected, timeout=20, retry_interval_ms=2000
+
+    def check_task_state():
+        assert tasks_by_state(info) == expected
+
+    wait_for_assertion(
+        check_task_state,
+        timeout=20,
+        retry_interval_ms=2000,
     )
     assert tasks_by_name_and_state(info) == {
         ("wrapper", "RUNNING_IN_RAY_WAIT"): 1.0,
@@ -705,9 +716,4 @@ time.sleep(999)
 
 
 if __name__ == "__main__":
-    import sys
-
-    if os.environ.get("PARALLEL_CI"):
-        sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))
-    else:
-        sys.exit(pytest.main(["-sv", __file__]))
+    sys.exit(pytest.main(["-sv", __file__]))

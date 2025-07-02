@@ -17,11 +17,11 @@
 
 #pragma once
 
-#include <inttypes.h>
-#include <stddef.h>
+#include <cinttypes>
+#include <cstddef>
 
 #include "absl/container/flat_hash_map.h"
-#include "ray/object_manager/plasma/compat.h"
+#include "ray/util/compat.h"
 
 namespace plasma {
 

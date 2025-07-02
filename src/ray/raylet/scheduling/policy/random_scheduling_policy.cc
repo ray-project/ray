@@ -16,9 +16,6 @@
 
 #include <functional>
 
-#include "ray/util/container_util.h"
-#include "ray/util/util.h"
-
 namespace ray {
 
 namespace raylet_scheduling_policy {

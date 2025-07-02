@@ -126,6 +126,7 @@ scripts/nodes.txt
 .idea/**/tasks.xml
 .idea/dictionaries
 .llvm-local.bazelrc
+.aider*
 
 # Sensitive or high-churn files:
 .idea/**/dataSources/
@@ -180,6 +181,7 @@ java/**/pom.xml
 # python virtual env
 venv
 .venv
+.conda
 
 # pyenv version file
 .python-version

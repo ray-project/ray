@@ -146,7 +146,7 @@ const std::string ResourceSet::DebugString() const {
       buffer << ", ";
     }
     first = false;
-    buffer << id.Binary() << ": " << quantity;
+    buffer << id.Binary() << ": " << quantity.Double();
   }
   buffer << "}";
   return buffer.str();

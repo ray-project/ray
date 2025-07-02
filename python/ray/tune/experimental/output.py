@@ -25,7 +25,7 @@ from ray._private.thirdparty.tabulate.tabulate import (
 )
 from ray.air._internal.usage import AirEntrypoint
 from ray.air.constants import TRAINING_ITERATION
-from ray.train import Checkpoint
+from ray.tune import Checkpoint
 from ray.tune.callback import Callback
 from ray.tune.experiment.trial import Trial
 from ray.tune.result import (

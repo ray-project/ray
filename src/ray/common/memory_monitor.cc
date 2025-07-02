@@ -19,6 +19,7 @@
 #include <fstream>  // std::ifstream
 #include <tuple>
 
+#include "absl/strings/str_format.h"
 #include "ray/common/ray_config.h"
 #include "ray/util/logging.h"
 #include "ray/util/process.h"
@@ -34,7 +35,7 @@ MemoryMonitor::MemoryMonitor(instrumented_io_context &io_service,
     : usage_threshold_(usage_threshold),
       min_memory_free_bytes_(min_memory_free_bytes),
       monitor_callback_(monitor_callback),
-      runner_(io_service) {
+      runner_(PeriodicalRunner::Create(io_service)) {
   RAY_CHECK(monitor_callback_ != nullptr);
   RAY_CHECK_GE(usage_threshold_, 0);
   RAY_CHECK_LE(usage_threshold_, 1);
@@ -46,9 +47,9 @@ MemoryMonitor::MemoryMonitor(instrumented_io_context &io_service,
     computed_threshold_fraction_ = float(computed_threshold_bytes_) / total_memory_bytes;
     RAY_LOG(INFO) << "MemoryMonitor initialized with usage threshold at "
                   << computed_threshold_bytes_ << " bytes ("
-                  << FormatFloat(computed_threshold_fraction_, 2)
+                  << absl::StrFormat("%.2f", computed_threshold_fraction_)
                   << " system memory), total system memory bytes: " << total_memory_bytes;
-    runner_.RunFnPeriodically(
+    runner_->RunFnPeriodically(
         [this] {
           auto [used_memory_bytes, total_memory_bytes] = GetMemoryBytes();
           MemorySnapshot system_memory;
@@ -408,8 +409,8 @@ const std::string MemoryMonitor::TopNMemoryDebugString(uint32_t top_n,
   for (std::tuple<pid_t, int64_t> entry : pid_to_memory_usage) {
     auto [pid, memory_used_bytes] = entry;
     auto pid_string = std::to_string(pid);
-    auto memory_usage_gb =
-        FormatFloat(static_cast<float>(memory_used_bytes) / 1024 / 1024 / 1024, 2);
+    auto memory_usage_gb = absl::StrFormat(
+        "%.2f", static_cast<float>(memory_used_bytes) / 1024 / 1024 / 1024);
     auto commandline = MemoryMonitor::TruncateString(
         MemoryMonitor::GetCommandLineForPid(pid, proc_dir), 100);
     debug_string += "\n" + pid_string + "\t" + memory_usage_gb + "\t" + commandline;

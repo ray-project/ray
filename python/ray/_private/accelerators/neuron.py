@@ -1,9 +1,9 @@
-import os
-import sys
 import json
 import logging
+import os
 import subprocess
-from typing import Optional, List, Tuple
+import sys
+from typing import List, Optional, Tuple
 
 from ray._private.accelerators.accelerator import AcceleratorManager
 

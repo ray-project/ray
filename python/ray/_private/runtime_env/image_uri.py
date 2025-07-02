@@ -108,6 +108,10 @@ class ImageURIPlugin(RuntimeEnvPlugin):
 
     name = "image_uri"
 
+    @staticmethod
+    def get_compatible_keys():
+        return {"image_uri", "config", "env_vars"}
+
     def __init__(self, ray_tmp_dir: str):
         self._ray_tmp_dir = ray_tmp_dir
 

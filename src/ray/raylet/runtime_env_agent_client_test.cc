@@ -13,6 +13,7 @@
 // limitations under the License.
 #include "ray/raylet/runtime_env_agent_client.h"
 
+#include <algorithm>
 #include <boost/asio.hpp>
 #include <boost/beast/core.hpp>
 #include <boost/beast/http.hpp>
@@ -24,6 +25,7 @@
 #include <string>
 #include <thread>
 #include <unordered_map>
+#include <utility>
 
 #include "gtest/gtest.h"
 #include "ray/common/asio/asio_util.h"
@@ -39,7 +41,7 @@ using tcp = boost::asio::ip::tcp;
 using boost::asio::ip::port_type;
 
 port_type GetFreePort() {
-  boost::asio::io_service io_service;
+  boost::asio::io_context io_service;
   boost::asio::ip::tcp::acceptor acceptor(io_service);
   boost::asio::ip::tcp::endpoint endpoint;
 

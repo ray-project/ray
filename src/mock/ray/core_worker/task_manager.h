@@ -48,7 +48,7 @@ class MockTaskFinisherInterface : public TaskFinisherInterface {
                const std::vector<ObjectID> &contained_ids),
               (override));
   MOCK_METHOD(bool, MarkTaskCanceled, (const TaskID &task_id), (override));
-  MOCK_METHOD(absl::optional<TaskSpecification>,
+  MOCK_METHOD(std::optional<TaskSpecification>,
               GetTaskSpec,
               (const TaskID &task_id),
               (const, override));
@@ -62,6 +62,7 @@ class MockTaskFinisherInterface : public TaskFinisherInterface {
               (const TaskID &task_id, const NodeID &node_id, const WorkerID &worker_id),
               (override));
   MOCK_METHOD(bool, IsTaskPending, (const TaskID &task_id), (const, override));
+  MOCK_METHOD(void, MarkGeneratorFailedAndResubmit, (const TaskID &task_id), (override));
 };
 
 }  // namespace core

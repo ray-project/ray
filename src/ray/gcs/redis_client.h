@@ -15,6 +15,7 @@
 #pragma once
 
 #include <map>
+#include <memory>
 #include <string>
 
 #include "ray/common/asio/instrumented_io_context.h"
@@ -55,7 +56,7 @@ class RedisClientOptions {
 /// This class is used to send commands to Redis.
 class RedisClient {
  public:
-  RedisClient(const RedisClientOptions &options);
+  explicit RedisClient(const RedisClientOptions &options);
 
   /// Connect to Redis. Non-thread safe.
   /// Call this function before calling other functions.
@@ -69,7 +70,7 @@ class RedisClient {
   /// Disconnect with Redis. Non-thread safe.
   void Disconnect();
 
-  std::shared_ptr<RedisContext> GetPrimaryContext() { return primary_context_; }
+  RedisContext *GetPrimaryContext() { return primary_context_.get(); }
 
  protected:
   RedisClientOptions options_;
@@ -78,7 +79,7 @@ class RedisClient {
   bool is_connected_{false};
 
   // The following context writes everything to the primary shard
-  std::shared_ptr<RedisContext> primary_context_;
+  std::unique_ptr<RedisContext> primary_context_;
 };
 }  // namespace gcs
 }  // namespace ray

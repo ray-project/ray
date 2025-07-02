@@ -215,29 +215,6 @@ calling :func:`~ray.data.Dataset.select_columns`, since column selection is push
 
     Dataset(num_rows=150, schema={sepal.length: double, variety: string})
 
-.. _parquet_row_pruning:
-
-Parquet row pruning (filter pushdown)
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-Similar to Parquet column pruning, you can pass in a filter to :func:`ray.data.read_parquet` (filter pushdown)
-which is applied at the file scan so only rows that match the filter predicate
-are returned. This can be used in conjunction with column pruning when appropriate to get the benefits of both.
-
-.. testcode::
-
-    import ray
-    # Only read rows with `sepal.length` greater than 5.0.
-    # The row count will be less than the total number of rows (150) in the full dataset.
-    ray.data.read_parquet(
-        "s3://anonymous@ray-example-data/iris.parquet",
-        filter=pyarrow.dataset.field("sepal.length") > 5.0,
-    ).count()
-
-.. testoutput::
-
-    118
-
 
 .. _data_memory:
 
@@ -360,7 +337,7 @@ Handling too-small blocks
 ~~~~~~~~~~~~~~~~~~~~~~~~~
 
 When different operators of your Dataset produce different-sized outputs, you may end up with very small blocks, which can hurt performance and even cause crashes from excessive metadata.
-Use :meth:`ds.stats() <ray.data.Dataset.stats>` to check that each operator's output blocks are each at least 1 MB and ideally 100 MB.
+Use :meth:`ds.stats() <ray.data.Dataset.stats>` to check that each operator's output blocks are each at least 1 MB and ideally >100 MB.
 
 If your blocks are smaller than this, consider repartitioning into larger blocks.
 There are two ways to do this:

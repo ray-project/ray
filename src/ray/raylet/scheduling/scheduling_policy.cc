@@ -14,9 +14,10 @@
 
 #include "ray/raylet/scheduling/scheduling_policy.h"
 
+#include <algorithm>
 #include <functional>
-
-#include "ray/util/container_util.h"
+#include <utility>
+#include <vector>
 
 namespace ray {
 

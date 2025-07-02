@@ -1,5 +1,4 @@
 from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
-from ray.rllib.algorithms.bc.bc_catalog import BCCatalog
 from ray.rllib.algorithms.marwil.marwil import MARWIL, MARWILConfig
 from ray.rllib.core.rl_module.rl_module import RLModuleSpec
 from ray.rllib.utils.annotations import override
@@ -70,12 +69,11 @@ class BCConfig(MARWILConfig):
     @override(AlgorithmConfig)
     def get_default_rl_module_spec(self) -> RLModuleSpecType:
         if self.framework_str == "torch":
-            from ray.rllib.algorithms.bc.torch.bc_torch_rl_module import BCTorchRLModule
-
-            return RLModuleSpec(
-                module_class=BCTorchRLModule,
-                catalog_class=BCCatalog,
+            from ray.rllib.algorithms.bc.torch.default_bc_torch_rl_module import (
+                DefaultBCTorchRLModule,
             )
+
+            return RLModuleSpec(module_class=DefaultBCTorchRLModule)
         else:
             raise ValueError(
                 f"The framework {self.framework_str} is not supported. "
@@ -99,6 +97,14 @@ class BCConfig(MARWILConfig):
         pipeline.remove("AddOneTsToEpisodesAndTruncate")
         pipeline.remove("GeneralAdvantageEstimation")
 
+        # In case we run multiple updates per RLlib training step in the `Learner` or
+        # when training on GPU conversion to tensors is managed in batch prefetching.
+        if self.num_gpus_per_learner > 0 or (
+            self.dataset_num_iters_per_learner
+            and self.dataset_num_iters_per_learner > 1
+        ):
+            pipeline.remove("NumpyToTensor")
+
         return pipeline
 
     @override(MARWILConfig)
@@ -107,7 +113,7 @@ class BCConfig(MARWILConfig):
         super().validate()
 
         if self.beta != 0.0:
-            raise ValueError("For behavioral cloning, `beta` parameter must be 0.0!")
+            self._value_error("For behavioral cloning, `beta` parameter must be 0.0!")
 
 
 class BC(MARWIL):

@@ -19,6 +19,7 @@
 #include <boost/asio.hpp>
 #include <boost/asio/error.hpp>
 #include <boost/bind/bind.hpp>
+#include <memory>
 #include <mutex>
 
 #include "ray/common/asio/instrumented_io_context.h"

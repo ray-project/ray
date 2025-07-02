@@ -1,3 +1,5 @@
+load("@rules_python//python:defs.bzl", "py_library")
+
 # --------------------------------------------------------------------
 # Tests from the python/ray/autoscaler/v2/tests directory.
 # Covers all tests starting with `test_`.

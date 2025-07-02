@@ -9,7 +9,7 @@ parser = add_rllib_example_script_args(
 )
 parser.set_defaults(
     enable_new_api_stack=True,
-    num_env_runners=3,
+    num_env_runners=5,
 )
 # Use `parser` to add your own custom command line options to this script
 # and (if needed) use their values to set up `config` below.
@@ -22,7 +22,7 @@ config = (
     # TODO (sven): Need to fix the MeanStdFilter(). It seems to cause NaNs when
     #  training.
     # .env_runners(
-    #    env_to_module_connector=lambda env: MeanStdFilter(),
+    #    env_to_module_connector=lambda env, spaces, device: MeanStdFilter(),
     # )
     .training(
         learner_queue_size=1,

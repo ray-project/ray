@@ -12,6 +12,11 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+#pragma once
+
+#include "gmock/gmock.h"
+#include "ray/rpc/worker/core_worker_client.h"
+
 namespace ray {
 namespace rpc {
 
@@ -36,9 +41,9 @@ class MockCoreWorkerClientInterface : public ray::pubsub::MockSubscriberClientIn
                int64_t timeout_ms),
               (override));
   MOCK_METHOD(void,
-              DirectActorCallArgWaitComplete,
-              (const DirectActorCallArgWaitCompleteRequest &request,
-               const ClientCallback<DirectActorCallArgWaitCompleteReply> &callback),
+              ActorCallArgWaitComplete,
+              (const ActorCallArgWaitCompleteRequest &request,
+               const ClientCallback<ActorCallArgWaitCompleteReply> &callback),
               (override));
   MOCK_METHOD(void,
               GetObjectStatus,
@@ -124,7 +129,6 @@ class MockCoreWorkerClientInterface : public ray::pubsub::MockSubscriberClientIn
               (const AssignObjectOwnerRequest &request,
                const ClientCallback<AssignObjectOwnerReply> &callback),
               (override));
-  MOCK_METHOD(int64_t, ClientProcessedUpToSeqno, (), (override));
 };
 
 class MockCoreWorkerClientConfigurableRunningTasks

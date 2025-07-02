@@ -1,0 +1,19 @@
+load("//bazel:ray.bzl", "ray_cc_library")
+
+ray_cc_library(
+    name = "setproctitle",
+    srcs = glob(["spt*.c"]) + select({
+       "@platforms//os:macos": ["darwin_set_process_name.c"],
+       "//conditions:default": [],
+    }),
+    hdrs = glob(["spt*.h"]) + ["c.h"] + select({
+       "@platforms//os:macos": ["darwin_set_process_name.h"],
+       "//conditions:default": [],
+    }),
+    deps = ["@local_config_python//:python_headers"],
+    local_defines = select({
+        "@platforms//os:linux": ["HAVE_SYS_PRCTL_H"],
+        "@platforms//os:macos": ["__darwin__"],
+        "//conditions:default": [],
+    }),
+)

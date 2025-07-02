@@ -19,7 +19,6 @@ from ray.core.generated.common_pb2 import (
 )
 from ray.util.annotations import DeveloperAPI, PublicAPI
 
-import setproctitle
 
 logger = logging.getLogger(__name__)
 
@@ -121,7 +120,7 @@ class RayTaskError(RayError):
         if proctitle:
             self.proctitle = proctitle
         else:
-            self.proctitle = setproctitle.getproctitle()
+            self.proctitle = ray._raylet.getproctitle()
         self.pid = pid or os.getpid()
         self.ip = ip or ray.util.get_node_ip_address()
         self.function_name = function_name
@@ -373,9 +372,9 @@ class ActorDiedError(RayActorError):
         cause: The cause of the actor error. `RayTaskError` type means
             the actor has died because of an exception within `__init__`.
             `ActorDiedErrorContext` means the actor has died because of
-            unexepected system error. None means the cause is not known.
-            Theoretically, this should not happen,
-            but it is there as a safety check.
+            an unexpected system error. None means the cause isn't known.
+            Theoretically, this shouldn't happen,
+            but it's there as a safety check.
     """
 
     BASE_ERROR_MSG = "The actor died unexpectedly before finishing this task."
@@ -445,8 +444,8 @@ class ActorUnavailableError(RayActorError):
     def __init__(self, error_message: str, actor_id: Optional[bytes]):
         actor_id = ActorID(actor_id).hex() if actor_id is not None else None
         error_msg = (
-            f"The actor {actor_id} is unavailable: {error_message}. The task may or may"
-            "not have been executed on the actor."
+            f"The actor {actor_id} is unavailable: {error_message}. The task may or "
+            "may not have been executed on the actor."
         )
         actor_init_failed = False
         preempted = False
@@ -889,14 +888,14 @@ class RayChannelError(RaySystemError):
 
 @PublicAPI(stability="alpha")
 class RayChannelTimeoutError(RayChannelError, TimeoutError):
-    """Raised when the accelerated DAG channel operation times out."""
+    """Raised when the Compiled Graph channel operation times out."""
 
     pass
 
 
 @PublicAPI(stability="alpha")
-class RayAdagCapacityExceeded(RaySystemError):
-    """Raised when the accelerated DAG channel's buffer is at max capacity"""
+class RayCgraphCapacityExceeded(RaySystemError):
+    """Raised when the Compiled Graph channel's buffer is at max capacity"""
 
     pass
 
@@ -929,5 +928,5 @@ RAY_EXCEPTION_TYPES = [
     RayChannelError,
     RayChannelTimeoutError,
     OufOfBandObjectRefSerializationException,
-    RayAdagCapacityExceeded,
+    RayCgraphCapacityExceeded,
 ]

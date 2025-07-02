@@ -1,4 +1,4 @@
-from typing import List
+from typing import List, Optional
 
 import numpy as np
 import pandas as pd
@@ -35,15 +35,29 @@ class PowerTransformer(Preprocessor):
         method: A string representing which transformation to apply. Supports
             ``"yeo-johnson"`` and ``"box-cox"``. If you choose ``"box-cox"``, your data
             needs to be positive. Defaults to ``"yeo-johnson"``.
+        output_columns: The names of the transformed columns. If None, the transformed
+            columns will be the same as the input columns. If not None, the length of
+            ``output_columns`` must match the length of ``columns``, othwerwise an error
+            will be raised.
     """  # noqa: E501
 
     _valid_methods = ["yeo-johnson", "box-cox"]
     _is_fittable = False
 
-    def __init__(self, columns: List[str], power: float, method: str = "yeo-johnson"):
+    def __init__(
+        self,
+        columns: List[str],
+        power: float,
+        method: str = "yeo-johnson",
+        *,
+        output_columns: Optional[List[str]] = None,
+    ):
         self.columns = columns
         self.method = method
         self.power = power
+        self.output_columns = Preprocessor._derive_and_validate_output_columns(
+            columns, output_columns
+        )
 
         if method not in self._valid_methods:
             raise ValueError(
@@ -76,13 +90,12 @@ class PowerTransformer(Preprocessor):
                 else:
                     return np.log(s)
 
-        df.loc[:, self.columns] = df.loc[:, self.columns].transform(
-            column_power_transformer
-        )
+        df[self.output_columns] = df[self.columns].transform(column_power_transformer)
         return df
 
     def __repr__(self):
         return (
             f"{self.__class__.__name__}(columns={self.columns!r}, "
-            f"power={self.power!r}, method={self.method!r})"
+            f"power={self.power!r}, method={self.method!r}, "
+            f"output_columns={self.output_columns!r})"
         )

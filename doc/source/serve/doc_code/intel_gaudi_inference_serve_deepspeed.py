@@ -1,7 +1,8 @@
 # __worker_def_start__
 import tempfile
 from typing import Dict, Any
-from starlette.responses import Request, StreamingResponse
+from starlette.requests import Request
+from starlette.responses import StreamingResponse
 
 import torch
 from transformers import TextStreamer

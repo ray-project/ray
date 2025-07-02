@@ -1,9 +1,12 @@
-from typing import List, Optional, Tuple, Union
+from typing import List, Optional, Union
 
 from ray.data._internal.execution.interfaces import (
     AllToAllTransformFn,
     RefBundle,
     TaskContext,
+)
+from ray.data._internal.execution.interfaces.transform_fn import (
+    AllToAllTransformFnResult,
 )
 from ray.data._internal.planner.exchange.aggregate_task_spec import (
     SortAggregateTaskSpec,
@@ -15,28 +18,33 @@ from ray.data._internal.planner.exchange.push_based_shuffle_task_scheduler impor
     PushBasedShuffleTaskScheduler,
 )
 from ray.data._internal.planner.exchange.sort_task_spec import SortKey, SortTaskSpec
-from ray.data._internal.stats import StatsDict
-from ray.data._internal.util import unify_block_metadata_schema
+from ray.data._internal.util import unify_ref_bundles_schema
 from ray.data.aggregate import AggregateFn
-from ray.data.context import DataContext
+from ray.data.context import DataContext, ShuffleStrategy
 
 
 def generate_aggregate_fn(
     key: Optional[Union[str, List[str]]],
     aggs: List[AggregateFn],
     batch_format: str,
+    data_context: DataContext,
     _debug_limit_shuffle_execution_to_num_blocks: Optional[int] = None,
 ) -> AllToAllTransformFn:
     """Generate function to aggregate blocks by the specified key column or key
     function.
     """
+    assert data_context.shuffle_strategy in [
+        ShuffleStrategy.SORT_SHUFFLE_PULL_BASED,
+        ShuffleStrategy.SORT_SHUFFLE_PUSH_BASED,
+    ]
+
     if len(aggs) == 0:
         raise ValueError("Aggregate requires at least one aggregation")
 
     def fn(
         refs: List[RefBundle],
         ctx: TaskContext,
-    ) -> Tuple[List[RefBundle], StatsDict]:
+    ) -> AllToAllTransformFnResult:
         blocks = []
         metadata = []
         for ref_bundle in refs:
@@ -44,7 +52,7 @@ def generate_aggregate_fn(
             metadata.extend(ref_bundle.metadata)
         if len(blocks) == 0:
             return (blocks, {})
-        unified_schema = unify_block_metadata_schema(metadata)
+        unified_schema = unify_ref_bundles_schema(refs)
         for agg_fn in aggs:
             agg_fn._validate(unified_schema)
 
@@ -72,10 +80,15 @@ def generate_aggregate_fn(
             aggs=aggs,
             batch_format=batch_format,
         )
-        if DataContext.get_current().use_push_based_shuffle:
+
+        if data_context.shuffle_strategy == ShuffleStrategy.SORT_SHUFFLE_PUSH_BASED:
             scheduler = PushBasedShuffleTaskScheduler(agg_spec)
-        else:
+        elif data_context.shuffle_strategy == ShuffleStrategy.SORT_SHUFFLE_PULL_BASED:
             scheduler = PullBasedShuffleTaskScheduler(agg_spec)
+        else:
+            raise ValueError(
+                f"Invalid shuffle strategy '{data_context.shuffle_strategy}'"
+            )
 
         return scheduler.execute(
             refs,

@@ -14,8 +14,8 @@ def get_ppo_batch_for_env(env: Union[str, gym.Env], batch_size):
 
     Args:
         env: The environment to create a sample batch for. If a string is given,
-        it is assumed to be a gym environment ID.
-        batch_size: The batch size to use.
+            it is assumed to be a gym environment ID.
+            batch_size: The batch size to use.
 
     Returns:
         A sample batch for the given environment.

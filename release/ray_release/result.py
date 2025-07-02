@@ -32,7 +32,6 @@ class Result:
     smoke_test: bool = False
 
     buildkite_url: Optional[str] = None
-    wheels_url: Optional[str] = None
     cluster_url: Optional[str] = None
 
     # Anyscale Jobs specific

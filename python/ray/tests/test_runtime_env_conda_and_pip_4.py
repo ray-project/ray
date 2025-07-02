@@ -12,17 +12,13 @@ if not os.environ.get("CI"):
     os.environ["RAY_RUNTIME_ENV_LOCAL_DEV_MODE"] = "1"
 
 
-def test_in_virtualenv(start_cluster):
+def test_in_virtualenv(ray_start_regular_shared):
     assert (
         virtualenv_utils.is_in_virtualenv() is False
         and "IN_VIRTUALENV" not in os.environ
     ) or (virtualenv_utils.is_in_virtualenv() is True and "IN_VIRTUALENV" in os.environ)
-    cluster, address = start_cluster
-    runtime_env = {"pip": ["pip-install-test==0.5"]}
 
-    ray.init(address, runtime_env=runtime_env)
-
-    @ray.remote
+    @ray.remote(runtime_env={"pip": ["pip-install-test==0.5"]})
     def f():
         import pip_install_test  # noqa: F401
 
@@ -33,102 +29,58 @@ def test_in_virtualenv(start_cluster):
     assert ray.get(f.remote())
 
 
-def test_multiple_pip_installs(start_cluster, monkeypatch):
+@pytest.mark.skipif(
+    sys.platform == "win32", reason="python.exe in use during deletion."
+)
+def test_multiple_pip_installs(ray_start_regular_shared):
     """Test that multiple pip installs don't interfere with each other."""
-    monkeypatch.setenv("RUNTIME_ENV_RETRY_TIMES", "0")
-    cluster, address = start_cluster
-
-    if sys.platform == "win32" and "ray" not in address:
-        pytest.skip(
-            "Failing on windows, as python.exe is in use during deletion attempt."
-        )
-
-    ray.init(
-        address,
-        runtime_env={
-            "pip": ["pip-install-test"],
-            "env_vars": {"TEST_VAR_1": "test_1"},
-        },
-    )
 
     @ray.remote
     def f():
-        return True
+        return os.environ["TEST_VAR"]
 
-    @ray.remote(
-        runtime_env={
-            "pip": ["pip-install-test"],
-            "env_vars": {"TEST_VAR_2": "test_2"},
-        }
+    assert ray.get(
+        [
+            f.options(
+                runtime_env={
+                    "pip": ["pip-install-test"],
+                    "env_vars": {"TEST_VAR": "1"},
+                }
+            ).remote(),
+            f.options(
+                runtime_env={
+                    "pip": ["pip-install-test"],
+                    "env_vars": {"TEST_VAR": "2"},
+                }
+            ).remote(),
+        ]
+    ) == ["1", "2"]
+
+
+@pytest.mark.skipif(
+    os.environ.get("CI") and sys.platform != "linux",
+    reason="Requires PR wheels built in CI, so only run on linux CI machines.",
+)
+def test_pip_ray_is_overwritten(ray_start_regular_shared):
+    @ray.remote
+    def f():
+        import pip_install_test  # noqa: F401
+
+    # Test an unconstrained "ray" dependency (should work).
+    ray.get(f.options(runtime_env={"pip": ["pip-install-test==0.5", "ray"]}).remote())
+
+    # Test a constrained "ray" dependency that matches the env (should work).
+    ray.get(
+        f.options(runtime_env={"pip": ["pip-install-test==0.5", "ray>=2.0"]}).remote()
     )
-    def f2():
-        return True
 
-    @ray.remote(
-        runtime_env={
-            "pip": ["pip-install-test"],
-            "env_vars": {"TEST_VAR_3": "test_3"},
-        }
-    )
-    def f3():
-        return True
-
-    assert all(ray.get([f.remote(), f2.remote(), f3.remote()]))
-
-
-class TestGC:
-    @pytest.mark.skipif(
-        os.environ.get("CI") and sys.platform != "linux",
-        reason="Requires PR wheels built in CI, so only run on linux CI machines.",
-    )
-    @pytest.mark.parametrize("field", ["pip"])
-    def test_pip_ray_is_overwritten(self, start_cluster, field):
-        cluster, address = start_cluster
-
-        # It should be OK to install packages with ray dependency.
-        ray.init(address, runtime_env={"pip": ["pip-install-test==0.5", "ray"]})
-
-        @ray.remote
-        def f():
-            import pip_install_test  # noqa: F401
-
-            return True
-
-        # Ensure that the runtime env has been installed.
-        assert ray.get(f.remote())
-
-        ray.shutdown()
-
-        # It should be OK if cluster ray meets the installing ray version.
-        ray.init(address, runtime_env={"pip": ["pip-install-test==0.5", "ray>=1.12.0"]})
-
-        @ray.remote
-        def f():
-            import pip_install_test  # noqa: F401
-
-            return True
-
-        # Ensure that the runtime env has been installed.
-        assert ray.get(f.remote())
-
-        ray.shutdown()
-
-        # It will raise exceptions if ray is overwritten.
-        with pytest.raises(Exception):
-            ray.init(
-                address, runtime_env={"pip": ["pip-install-test==0.5", "ray<=1.6.0"]}
-            )
-
-            @ray.remote
-            def f():
-                import pip_install_test  # noqa: F401
-
-                return True
-
-            # Ensure that the runtime env has been installed.
-            assert ray.get(f.remote())
-
-        ray.shutdown()
+    # Test a constrained "ray" dependency that doesn't match the env (shouldn't work).
+    with pytest.raises(Exception):
+        ray.get(
+            f.options(
+                runtime_env={"pip": ["pip-install-test==0.5", "ray<2.0"]}
+            ).remote()
+        )
 
 
 # pytest-virtualenv doesn't support Python 3.12 as of now, see more details here:
@@ -158,7 +110,7 @@ def test_run_in_virtualenv(cloned_virtualenv):
 @pytest.mark.skipif(
     "IN_VIRTUALENV" in os.environ, reason="Pip option not supported in virtual env."
 )
-def test_runtime_env_with_pip_config(start_cluster):
+def test_runtime_env_with_pip_config(ray_start_regular_shared):
     @ray.remote(
         runtime_env={
             "pip": {"packages": ["pip-install-test==0.5"], "pip_version": "==24.1.2"}
@@ -173,7 +125,4 @@ def test_runtime_env_with_pip_config(start_cluster):
 
 
 if __name__ == "__main__":
-    if os.environ.get("PARALLEL_CI"):
-        sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))
-    else:
-        sys.exit(pytest.main(["-sv", __file__]))
+    sys.exit(pytest.main(["-sv", __file__]))

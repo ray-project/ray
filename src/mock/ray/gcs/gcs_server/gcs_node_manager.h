@@ -21,6 +21,7 @@ class MockGcsNodeManager : public GcsNodeManager {
   MockGcsNodeManager()
       : GcsNodeManager(/*gcs_publisher=*/nullptr,
                        /*gcs_table_storage=*/nullptr,
+                       /*io_context=*/mocked_io_context_not_used_,
                        /*raylet_client_pool=*/nullptr,
                        /*cluster_id=*/ClusterID::Nil()) {}
   MOCK_METHOD(void,
@@ -42,6 +43,8 @@ class MockGcsNodeManager : public GcsNodeManager {
                rpc::SendReplyCallback send_reply_callback),
               (override));
   MOCK_METHOD(void, DrainNode, (const NodeID &node_id), (override));
+
+  instrumented_io_context mocked_io_context_not_used_;
 };
 
 }  // namespace gcs

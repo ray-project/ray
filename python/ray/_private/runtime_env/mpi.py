@@ -1,9 +1,10 @@
 import logging
 import os
+import subprocess
 from typing import List, Optional
+
 from ray._private.runtime_env.context import RuntimeEnvContext
 from ray._private.runtime_env.plugin import RuntimeEnvPlugin
-import subprocess
 
 default_logger = logging.getLogger(__name__)
 
@@ -39,20 +40,24 @@ def mpi_init():
 
 
 class MPIPlugin(RuntimeEnvPlugin):
-    """This plugin enable a MPI cluster to run on top of ray.
+    """Plugin for enabling MPI cluster functionality in runtime environments.
 
-    To use this, "mpi" need to be added to the runtime env like following
+    This plugin enables an MPI cluster to run on top of Ray. It handles the setup
+    and configuration of MPI processes for distributed computing tasks.
 
-    @ray.remote(
-        runtime_env={
-            "mpi": {
-                "args": ["-n", "4"],
-                "worker_entry": worker_entry,
+    To use this plugin, add "mpi" to the runtime environment configuration:
+
+    Example:
+        @ray.remote(
+            runtime_env={
+                "mpi": {
+                    "args": ["-n", "4"],
+                    "worker_entry": worker_entry,
+                }
             }
-        }
-    )
-    def calc_pi():
-      ...
+        )
+        def calc_pi():
+            ...
 
     Here worker_entry should be function for the MPI worker to run.
     For example, it should be `'py_module.worker_func'`. The module should be able to

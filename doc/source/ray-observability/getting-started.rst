@@ -362,7 +362,7 @@ For Actors, you can also see the system logs for the corresponding Worker proces
 
 .. note::
 
-    Logs of aysnchronous Actor Tasks or threaded Actor Tasks (concurrency>1) are only available as part of the Actor logs. Follow the instruction in the Dashboard to view the Actor logs.
+    Logs of asynchronous Actor Tasks or threaded Actor Tasks (concurrency>1) are only available as part of the Actor logs. Follow the instruction in the Dashboard to view the Actor logs.
 
 **Task and Actor errors**
 

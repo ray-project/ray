@@ -5,13 +5,14 @@ from ray.experimental.channel.common import (  # noqa: F401
     ChannelContext,
     ChannelInterface,
     ChannelOutputType,
-    RayDAGArgs,
+    CompiledDAGArgs,
     ReaderInterface,
     SynchronousReader,
     SynchronousWriter,
     WriterInterface,
 )
-from ray.experimental.channel.gpu_communicator import GPUCommunicator
+from ray.experimental.channel.communicator import Communicator
+from ray.experimental.channel.cpu_communicator import CPUCommunicator
 from ray.experimental.channel.intra_process_channel import IntraProcessChannel
 from ray.experimental.channel.shared_memory_channel import (
     BufferedSharedMemoryChannel,
@@ -25,7 +26,8 @@ __all__ = [
     "AwaitableBackgroundWriter",
     "CachedChannel",
     "Channel",
-    "GPUCommunicator",
+    "Communicator",
+    "CPUCommunicator",
     "ReaderInterface",
     "SynchronousReader",
     "SynchronousWriter",
@@ -35,5 +37,5 @@ __all__ = [
     "IntraProcessChannel",
     "CompositeChannel",
     "BufferedSharedMemoryChannel",
-    "RayDAGArgs",
+    "CompiledDAGArgs",
 ]

@@ -29,7 +29,7 @@ PR Review Process
 For contributors who are in the ray-project organization:
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-- When you first create a PR, add an reviewer to the `assignee` section.
+- When you first create a PR, add a reviewer to the `assignee` section.
 - Assignees will review your PR and add `@author-action-required` label if further actions are required.
 - Address their comments and remove `@author-action-required` label from the PR.
 - Repeat this process until assignees approve your PR.

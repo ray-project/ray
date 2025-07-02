@@ -9,6 +9,7 @@ class GlobalConfig(TypedDict):
     byod_ray_ecr: str
     byod_ray_cr_repo: str
     byod_ray_ml_cr_repo: str
+    byod_ray_llm_cr_repo: str
     byod_ecr: str
     byod_aws_cr: str
     byod_gcp_cr: str
@@ -57,6 +58,10 @@ def _init_global_config(config_file: str):
         byod_ray_ml_cr_repo=(
             config_content.get("byod", {}).get("ray_ml_cr_repo")
             or config_content.get("release_byod", {}).get("ray_ml_cr_repo")
+        ),
+        byod_ray_llm_cr_repo=(
+            config_content.get("byod", {}).get("ray_llm_cr_repo")
+            or config_content.get("release_byod", {}).get("ray_llm_cr_repo")
         ),
         byod_ecr=(
             config_content.get("byod", {}).get("byod_ecr")

@@ -19,7 +19,7 @@ class Write(AbstractMap):
     ):
         if isinstance(datasink_or_legacy_datasource, Datasink):
             min_rows_per_bundled_input = (
-                datasink_or_legacy_datasource.num_rows_per_write
+                datasink_or_legacy_datasource.min_rows_per_write
             )
         else:
             min_rows_per_bundled_input = None

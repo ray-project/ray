@@ -27,6 +27,10 @@ void BundleSpecification::ComputeResources() {
   } else {
     unit_resource_ = std::make_shared<ResourceRequest>(ResourceMapToResourceRequest(
         unit_resource, /*requires_object_store_memory=*/false));
+
+    // Set LabelSelector required for scheduling this bundle if specified.
+    // Parses string map from proto to LabelSelector data type.
+    unit_resource_->SetLabelSelector(LabelSelector(message_->label_selector()));
   }
 
   // Generate placement group bundle labels.
@@ -136,6 +140,23 @@ std::string GetOriginalResourceNameFromWildcardResource(const std::string &resou
     RAY_CHECK(data->bundle_index == -1);
     return data->original_resource;
   }
+}
+
+bool IsCPUOrPlacementGroupCPUResource(ResourceID resource_id) {
+  // Check whether the resource is CPU resource or CPU resource inside PG.
+  if (resource_id == ResourceID::CPU()) {
+    return true;
+  }
+
+  auto possible_pg_resource = ParsePgFormattedResource(resource_id.Binary(),
+                                                       /*for_wildcard_resource*/ true,
+                                                       /*for_indexed_resource*/ true);
+  if (possible_pg_resource.has_value() &&
+      possible_pg_resource->original_resource == ResourceID::CPU().Binary()) {
+    return true;
+  }
+
+  return false;
 }
 
 std::optional<PgFormattedResourceData> ParsePgFormattedResource(

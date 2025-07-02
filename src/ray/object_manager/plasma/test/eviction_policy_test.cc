@@ -14,12 +14,16 @@
 
 #include "ray/object_manager/plasma/eviction_policy.h"
 
+#include <vector>
+
 #include "gmock/gmock.h"
 #include "gtest/gtest.h"
 #include "ray/object_manager/plasma/object_store.h"
 
-using namespace ray;
-using namespace testing;
+using ray::ObjectID;
+using testing::_;
+using testing::Return;
+using testing::Test;
 
 namespace plasma {
 TEST(LRUCacheTest, Test) {
@@ -78,8 +82,8 @@ TEST(LRUCacheTest, Test) {
 
 class MockAllocator : public IAllocator {
  public:
-  MOCK_METHOD1(Allocate, absl::optional<Allocation>(size_t bytes));
-  MOCK_METHOD1(FallbackAllocate, absl::optional<Allocation>(size_t bytes));
+  MOCK_METHOD1(Allocate, std::optional<Allocation>(size_t bytes));
+  MOCK_METHOD1(FallbackAllocate, std::optional<Allocation>(size_t bytes));
   MOCK_METHOD1(Free, void(Allocation));
   MOCK_CONST_METHOD0(GetFootprintLimit, int64_t());
   MOCK_CONST_METHOD0(Allocated, int64_t());

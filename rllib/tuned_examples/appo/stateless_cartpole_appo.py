@@ -22,7 +22,7 @@ config = (
     # TODO (sven): Need to fix the MeanStdFilter(). It seems to cause NaNs when
     #  training.
     # .env_runners(
-    #    env_to_module_connector=lambda env: MeanStdFilter(),
+    #    env_to_module_connector=lambda env, spaces, device: MeanStdFilter(),
     # )
     .training(
         lr=0.0005 * ((args.num_learners or 1) ** 0.5),

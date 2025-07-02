@@ -1,15 +1,20 @@
 import abc
 import logging
-from typing import Any, Dict, Tuple, TYPE_CHECKING
+from typing import Any, Dict, Optional, Tuple, TYPE_CHECKING
 
 import gymnasium as gym
 import tree  # pip install dm_tree
 
+import ray
+from ray.rllib.core import COMPONENT_RL_MODULE
 from ray.rllib.utils.actor_manager import FaultAwareApply
+from ray.rllib.utils.debug import update_global_seed_if_necessary
 from ray.rllib.utils.framework import try_import_tf
+from ray.rllib.utils.metrics import ENV_RESET_TIMER, ENV_STEP_TIMER
+from ray.rllib.utils.metrics.metrics_logger import MetricsLogger
 from ray.rllib.utils.torch_utils import convert_to_torch_tensor
-from ray.rllib.utils.typing import TensorType
-from ray.util.annotations import PublicAPI
+from ray.rllib.utils.typing import StateDict, TensorType
+from ray.util.annotations import PublicAPI, DeveloperAPI
 
 if TYPE_CHECKING:
     from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
@@ -49,10 +54,19 @@ class EnvRunner(FaultAwareApply, metaclass=abc.ABCMeta):
             config: The AlgorithmConfig to use to setup this EnvRunner.
             **kwargs: Forward compatibility kwargs.
         """
-        self.config = config.copy(copy_frozen=False)
-        self.env = None
+        self.config: AlgorithmConfig = config.copy(copy_frozen=False)
 
-        super().__init__(**kwargs)
+        # Get the worker index on which this instance is running.
+
+        # TODO (sven): We should make these c'tor named args.
+        self.worker_index: int = kwargs.get("worker_index")
+        self.num_workers: int = kwargs.get("num_workers", self.config.num_env_runners)
+
+        self.env = None
+        # Create a MetricsLogger object for logging custom stats.
+        self.metrics: MetricsLogger = MetricsLogger()
+
+        super().__init__()
 
         # This eager check is necessary for certain all-framework tests
         # that use tf's eager_mode() context generator.
@@ -62,6 +76,22 @@ class EnvRunner(FaultAwareApply, metaclass=abc.ABCMeta):
             and not tf1.executing_eagerly()
         ):
             tf1.enable_eager_execution()
+
+        # Determine actual seed for this particular worker based on worker index AND
+        # whether it's an eval worker.
+        self._seed: Optional[int] = None
+        if self.config.seed is not None:
+            self._seed = int(
+                self.config.seed
+                + (self.worker_index or 0)
+                # Eval workers get a +1M seed.
+                + (1e6 * self.config.in_evaluation)
+            )
+        # Seed everything (random, numpy, torch, tf), if `seed` is provided.
+        update_global_seed_if_necessary(
+            framework=self.config.framework_str,
+            seed=self._seed,
+        )
 
     @abc.abstractmethod
     def assert_healthy(self):
@@ -120,6 +150,24 @@ class EnvRunner(FaultAwareApply, metaclass=abc.ABCMeta):
         """
         pass
 
+    @DeveloperAPI
+    def sample_get_state_and_metrics(
+        self,
+    ) -> Tuple[ray.ObjectRef, StateDict, StateDict]:
+        """Convenience method for fast, async algorithms.
+
+        Use this in Algorithms that need to sample Episode lists as ray.ObjectRef, but
+        also require (in the same remote call) the metrics and the EnvRunner states,
+        except for the module weights.
+        """
+        _episodes = self.sample()
+        # Get the EnvRunner's connector states.
+        _connector_states = self.get_state(not_components=COMPONENT_RL_MODULE)
+        _metrics = self.get_metrics()
+        # Return episode lists by reference so we don't have to send them to the
+        # main algo process, but to the Aggregator- or Learner actors directly.
+        return ray.put(_episodes), _connector_states, _metrics
+
     @abc.abstractmethod
     def get_spaces(self) -> Dict[str, Tuple[gym.Space, gym.Space]]:
         """Returns a dict mapping ModuleIDs to 2-tuples of obs- and action space."""
@@ -136,11 +184,30 @@ class EnvRunner(FaultAwareApply, metaclass=abc.ABCMeta):
         """If this Actor is deleted, clears all resources used by it."""
         pass
 
-    def _try_env_reset(self):
-        """Tries resetting the env and - if an error orrurs - handles it gracefully."""
+    def _try_env_reset(
+        self,
+        *,
+        seed: Optional[int] = None,
+        options: Optional[dict] = None,
+    ) -> Tuple[Any, Any]:
+        """Tries resetting the env and - if an error occurs - handles it gracefully.
+
+        Args:
+            seed: An optional seed (int) to be passed to the Env.reset() call.
+            options: An optional options-dict to be passed to the Env.reset() call.
+
+        Returns:
+            The results of calling `Env.reset()`, which is a tuple of observations and
+            info dicts.
+
+        Raises:
+            Exception: In case `config.restart_failed_sub_environments` is False and
+                `Env.reset()` resulted in an error.
+        """
         # Try to reset.
         try:
-            obs, infos = self.env.reset()
+            with self.metrics.log_time(ENV_RESET_TIMER):
+                obs, infos = self.env.reset(seed=seed, options=options)
             # Everything ok -> return.
             return obs, infos
         # Error.
@@ -154,14 +221,15 @@ class EnvRunner(FaultAwareApply, metaclass=abc.ABCMeta):
                 )
                 # Recreate the env and simply try again.
                 self.make_env()
-                return self._try_env_reset()
+                return self._try_env_reset(seed=seed, options=options)
             else:
                 raise e
 
     def _try_env_step(self, actions):
         """Tries stepping the env and - if an error orrurs - handles it gracefully."""
         try:
-            results = self.env.step(actions)
+            with self.metrics.log_time(ENV_STEP_TIMER):
+                results = self.env.step(actions)
             return results
         except Exception as e:
             if self.config.restart_failed_sub_environments:

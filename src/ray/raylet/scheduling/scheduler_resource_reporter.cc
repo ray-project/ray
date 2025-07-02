@@ -19,6 +19,8 @@
 #include <boost/range/adaptor/filtered.hpp>
 #include <boost/range/adaptor/transformed.hpp>
 #include <boost/range/join.hpp>
+#include <deque>
+#include <utility>
 
 namespace ray {
 namespace raylet {
@@ -69,7 +71,7 @@ void SchedulerResourceReporter::FillResourceUsage(rpc::ResourcesData &data) cons
     for (auto [scheduling_class, count] : range) {
       if (num_reported++ >= max_resource_shapes_per_load_report_ &&
           max_resource_shapes_per_load_report_ >= 0) {
-        // TODO (Alex): It's possible that we skip a different scheduling key which
+        // TODO(Alex): It's possible that we skip a different scheduling key which
         // contains the same resources.
         skipped_requests++;
         break;
@@ -154,9 +156,9 @@ void SchedulerResourceReporter::FillResourceUsage(rpc::ResourcesData &data) cons
   fill_resource_usage_helper(backlog_tracker_range, false);
 
   if (skipped_requests > 0) {
-    RAY_LOG(INFO) << "More than " << max_resource_shapes_per_load_report_
-                  << " scheduling classes. Some resource loads may not be reported to "
-                     "the autoscaler.";
+    RAY_LOG(WARNING) << "There are more than " << max_resource_shapes_per_load_report_
+                     << " scheduling classes. Some resource loads may not be reported to "
+                        "the autoscaler.";
   }
 }
 

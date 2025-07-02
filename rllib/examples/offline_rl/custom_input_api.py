@@ -16,8 +16,7 @@ import argparse
 import os
 
 import ray
-from ray import air, tune
-from ray.air.constants import TRAINING_ITERATION
+from ray import tune
 from ray.rllib.offline import JsonReader, ShuffledInput, IOContext, InputReader
 from ray.rllib.utils.metrics import (
     ENV_RUNNER_RESULTS,
@@ -25,6 +24,7 @@ from ray.rllib.utils.metrics import (
     EVALUATION_RESULTS,
 )
 from ray.tune.registry import get_trainable_cls, register_input
+from ray.tune.result import TRAINING_ITERATION
 
 parser = argparse.ArgumentParser()
 parser.add_argument(
@@ -129,6 +129,6 @@ if __name__ == "__main__":
     }
 
     tuner = tune.Tuner(
-        args.run, param_space=config, run_config=air.RunConfig(stop=stop, verbose=1)
+        args.run, param_space=config, run_config=tune.RunConfig(stop=stop, verbose=1)
     )
     tuner.fit()

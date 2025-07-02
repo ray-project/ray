@@ -13,7 +13,7 @@ from ray.tests.spark.test_basic import (
     _RAY_ON_SPARK_WORKER_SHARED_MEMORY_BYTES,
 )
 from ray.util.spark.utils import _calc_mem_per_ray_worker_node
-from ray._private.test_utils import wait_for_condition
+from ray._common.test_utils import wait_for_condition
 
 import ray
 
@@ -224,7 +224,4 @@ class TestBasicSparkGPUCluster(RayOnSparkGPUClusterTestBase):
 
 
 if __name__ == "__main__":
-    if os.environ.get("PARALLEL_CI"):
-        sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))
-    else:
-        sys.exit(pytest.main(["-sv", __file__]))
+    sys.exit(pytest.main(["-sv", __file__]))

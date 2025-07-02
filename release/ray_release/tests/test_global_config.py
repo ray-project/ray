@@ -15,6 +15,7 @@ byod:
   ray_cr_repo: ray
 release_byod:
   ray_ml_cr_repo: ray-ml
+  ray_llm_cr_repo: ray-llm
   byod_ecr: 029272617770.dkr.ecr.us-west-2.amazonaws.com
   aws_cr: 029272617770.dkr.ecr.us-west-2.amazonaws.com
   gcp_cr: us-west1-docker.pkg.dev/anyscale-oss-ci
@@ -52,6 +53,9 @@ def test_init_global_config() -> None:
         )
         assert config["state_machine_pr_aws_bucket"] == "ray-ci-pr-results"
         assert config["state_machine_disabled"] is True
+        assert config["byod_ray_cr_repo"] == "ray"
+        assert config["byod_ray_ml_cr_repo"] == "ray-ml"
+        assert config["byod_ray_llm_cr_repo"] == "ray-llm"
 
 
 if __name__ == "__main__":

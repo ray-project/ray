@@ -1,7 +1,7 @@
-import os
 import glob
 import logging
-from typing import Optional, List, Tuple
+import os
+from typing import List, Optional, Tuple
 
 from ray._private.accelerators.accelerator import AcceleratorManager
 

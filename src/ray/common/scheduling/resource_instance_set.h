@@ -152,7 +152,7 @@ class NodeResourceInstanceSet {
   ///
   /// The function assumes and also verifies that (1) the resource_id exists in the
   /// node; (2) the available resources with resource_id on the node can satisfy the
-  /// provided ref_allocation.
+  /// provided ref_allocation (with the exception of CPU resources which can go negative).
   ///
   /// \param ref_allocation: The reference allocation used to allocate the resource_id
   /// \param resource_id: The id of the resource to be allocated

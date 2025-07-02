@@ -1,18 +1,19 @@
 # coding: utf-8
 import pickle
 import logging
-import os
 import sys
 import time
 import traceback
 
 import numpy as np
 import pytest
+import torch
 
 import ray
 import ray.cluster_utils
 import ray.exceptions
 import ray.experimental.channel as ray_channel
+from ray.experimental.channel.torch_tensor_type import TorchTensorType
 from ray.exceptions import RayChannelError, RayChannelTimeoutError
 from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
 from ray.dag.compiled_dag_node import CompiledDAG
@@ -1407,8 +1408,19 @@ def test_buffered_channel(shutdown_only):
         )
 
 
+def test_torch_dtype():
+    typ = TorchTensorType()
+    typ.register_custom_serializer()
+
+    t = torch.randn(5, 5, dtype=torch.bfloat16)
+    with pytest.raises(TypeError):
+        t.numpy()
+
+    ref = ray.put(t)
+    t_out = ray.get(ref)
+    assert (t == t_out).all()
+    assert t_out.dtype == t.dtype
+
+
 if __name__ == "__main__":
-    if os.environ.get("PARALLEL_CI"):
-        sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))
-    else:
-        sys.exit(pytest.main(["-sv", __file__]))
+    sys.exit(pytest.main(["-sv", __file__]))

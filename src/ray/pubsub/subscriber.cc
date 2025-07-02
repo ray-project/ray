@@ -14,6 +14,11 @@
 
 #include "ray/pubsub/subscriber.h"
 
+#include <memory>
+#include <string>
+#include <utility>
+#include <vector>
+
 namespace ray {
 
 namespace pubsub {
@@ -374,9 +379,9 @@ void Subscriber::HandleLongPollingResponse(const rpc::Address &publisher_address
 
   if (!status.ok()) {
     // If status is not okay, we treat that the publisher is dead.
-    RAY_LOG(DEBUG) << "A worker is dead. subscription_failure_callback will be invoked. "
-                      "Publisher id: "
-                   << publisher_id;
+    RAY_LOG(INFO) << "A worker is dead. subscription_failure_callback will be invoked. "
+                     "Publisher id: "
+                  << publisher_id;
 
     for (const auto &channel_it : channels_) {
       channel_it.second->HandlePublisherFailure(publisher_address, status);

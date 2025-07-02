@@ -16,8 +16,13 @@
 
 #include <gtest/gtest_prod.h>
 
+#include <algorithm>
 #include <boost/container_hash/hash.hpp>
+#include <memory>
+#include <string>
 #include <unordered_map>
+#include <utility>
+#include <vector>
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/time/time.h"

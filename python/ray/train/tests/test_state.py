@@ -8,6 +8,7 @@ import ray
 from ray.cluster_utils import Cluster
 from ray.train import RunConfig, ScalingConfig
 from ray.train._internal.state.schema import (
+    ActorStatusEnum,
     RunStatusEnum,
     TrainDatasetInfo,
     TrainRunInfo,
@@ -50,6 +51,7 @@ RUN_INFO_JSON_SAMPLE = """{
     "run_status": "RUNNING",
     "status_detail": "",
     "end_time_ms": null,
+    "resources": [{"CPU": 1}, {"CPU": 1}],
     "workers": [
         {
         "actor_id": "3d86c25634a71832dac32c8802000000",
@@ -60,7 +62,8 @@ RUN_INFO_JSON_SAMPLE = """{
         "node_ip": "10.0.208.100",
         "pid": 76071,
         "gpu_ids": [0],
-        "status": null
+        "status": "ALIVE",
+        "resources": {"CPU": 1}
         },
         {
         "actor_id": "8f162dd8365346d1b5c98ebd7338c4f9",
@@ -71,7 +74,8 @@ RUN_INFO_JSON_SAMPLE = """{
         "node_ip": "10.0.208.100",
         "pid": 76072,
         "gpu_ids": [1],
-        "status": null
+        "status": "ALIVE",
+        "resources": {"CPU": 1}
         }
     ],
     "datasets": [
@@ -98,6 +102,8 @@ def _get_run_info_sample(run_id=None, run_name=None) -> TrainRunInfo:
         node_ip="10.0.208.100",
         pid=76071,
         gpu_ids=[0],
+        status=ActorStatusEnum.ALIVE,
+        resources={"CPU": 1},
     )
 
     worker_info_1 = TrainWorkerInfo(
@@ -109,6 +115,8 @@ def _get_run_info_sample(run_id=None, run_name=None) -> TrainRunInfo:
         node_ip="10.0.208.100",
         pid=76072,
         gpu_ids=[1],
+        status=ActorStatusEnum.ALIVE,
+        resources={"CPU": 1},
     )
 
     run_info = TrainRunInfo(
@@ -121,6 +129,7 @@ def _get_run_info_sample(run_id=None, run_name=None) -> TrainRunInfo:
         start_time_ms=1717448423000,
         run_status=RunStatusEnum.RUNNING,
         status_detail="",
+        resources=[{"CPU": 1}, {"CPU": 1}],
     )
     return run_info
 
@@ -182,6 +191,7 @@ def test_state_manager(ray_start_gpu_cluster):
         worker_group=worker_group,
         start_time_ms=int(time.time() * 1000),
         run_status=RunStatusEnum.RUNNING,
+        resources=[{"CPU": 1}, {"CPU": 1}],
     )
 
     # Register 100 runs with 10 TrainRunStateManagers
@@ -202,6 +212,7 @@ def test_state_manager(ray_start_gpu_cluster):
                 worker_group=worker_group,
                 start_time_ms=int(time.time() * 1000),
                 run_status=RunStatusEnum.RUNNING,
+                resources=[{"CPU": 1}, {"CPU": 1}],
             )
 
     runs = ray.get(state_actor.get_all_train_runs.remote())
@@ -281,7 +292,8 @@ def test_track_e2e_training(ray_start_gpu_cluster, gpus_per_worker):
     # Check Datasets
     for dataset_info in run.datasets:
         dataset = datasets[dataset_info.name]
-        assert dataset_info.dataset_name == dataset._plan._dataset_name
+        # DataConfig will automatically set the dataset_name to the key of the dataset dict.
+        assert dataset_info.dataset_name == dataset_info.name
         assert dataset_info.dataset_uuid == dataset._plan._dataset_uuid
 
 

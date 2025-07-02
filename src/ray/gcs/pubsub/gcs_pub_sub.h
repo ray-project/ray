@@ -14,9 +14,13 @@
 
 #pragma once
 
+#include <deque>
+#include <memory>
 #include <optional>
 #include <string>
 #include <string_view>
+#include <utility>
+#include <vector>
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/synchronization/mutex.h"
@@ -39,7 +43,7 @@ class GcsPublisher {
   /// Initializes GcsPublisher with GCS based publishers.
   /// Publish*() member functions below would be incrementally converted to use the GCS
   /// based publisher, if available.
-  GcsPublisher(std::unique_ptr<pubsub::Publisher> publisher)
+  explicit GcsPublisher(std::unique_ptr<pubsub::Publisher> publisher)
       : publisher_(std::move(publisher)) {
     RAY_CHECK(publisher_);
   }
@@ -63,7 +67,7 @@ class GcsPublisher {
                       rpc::ActorTableData message,
                       const StatusCallback &done);
 
-  // TODO (dayshah): Look at possibility of moving all of these rpc messages
+  // TODO(dayshah): Look at possibility of moving all of these rpc messages
 
   Status PublishJob(const JobID &id,
                     const rpc::JobTableData &message,
@@ -99,7 +103,7 @@ class GcsPublisher {
 class GcsSubscriber {
  public:
   /// Initializes GcsSubscriber with GCS based GcsSubscribers.
-  // TODO: Support restarted GCS publisher, at the same or a different address.
+  // TODO(mwtian): Support restarted GCS publisher, at the same or a different address.
   GcsSubscriber(const rpc::Address &gcs_address,
                 std::unique_ptr<pubsub::Subscriber> subscriber)
       : gcs_address_(gcs_address), subscriber_(std::move(subscriber)) {}
@@ -132,35 +136,6 @@ class GcsSubscriber {
  private:
   const rpc::Address gcs_address_;
   const std::unique_ptr<pubsub::SubscriberInterface> subscriber_;
-};
-
-// This client is only supposed to be used from Cython / Python
-class RAY_EXPORT PythonGcsPublisher {
- public:
-  explicit PythonGcsPublisher(const std::string &gcs_address);
-
-  /// Connect to the publisher service of the GCS.
-  /// This function must be called before calling other functions.
-  ///
-  /// \return Status
-  Status Connect();
-
-  /// Publish error information to GCS.
-  Status PublishError(const std::string &key_id,
-                      const rpc::ErrorTableData &data,
-                      int64_t num_retries);
-
-  /// Publish logs to GCS.
-  Status PublishLogs(const std::string &key_id, const rpc::LogBatch &log_batch);
-
- private:
-  Status DoPublishWithRetries(const rpc::GcsPublishRequest &request,
-                              int64_t num_retries,
-                              int64_t timeout_ms);
-  std::unique_ptr<rpc::InternalPubSubGcsService::Stub> pubsub_stub_;
-  std::shared_ptr<grpc::Channel> channel_;
-  std::string gcs_address_;
-  int gcs_port_;
 };
 
 // This client is only supposed to be used from Cython / Python

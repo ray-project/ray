@@ -68,7 +68,7 @@ Compare a PyTorch training script with and without Ray Train.
             optimizer = Adam(model.parameters(), lr=0.001)
 
             # Data
-            transform = Compose([ToTensor(), Normalize((0.5,), (0.5,))])
+            transform = Compose([ToTensor(), Normalize((0.28604,), (0.32025,))])
             train_data = FashionMNIST(root='./data', train=True, download=True, transform=transform)
             train_loader = DataLoader(train_data, batch_size=128, shuffle=True)
 
@@ -121,7 +121,7 @@ Compare a PyTorch training script with and without Ray Train.
                 optimizer = Adam(model.parameters(), lr=0.001)
 
                 # Data
-                transform = Compose([ToTensor(), Normalize((0.5,), (0.5,))])
+                transform = Compose([ToTensor(), Normalize((0.28604,), (0.32025,))])
                 data_dir = os.path.join(tempfile.gettempdir(), "data")
                 train_data = FashionMNIST(root=data_dir, train=True, download=True, transform=transform)
                 train_loader = DataLoader(train_data, batch_size=128, shuffle=True)
