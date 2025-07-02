@@ -176,7 +176,7 @@ def plan_filter_op(
             zero_copy_batch=True,
         )
     else:
-        filter_fn, init_fn = _parse_op_fn(op)
+        filter_fn, init_fn = _wrap_debugger_breakpoint_fn(op)
         transform_fn = _generate_transform_fn_for_filter(filter_fn)
         map_transformer = _create_map_transformer_for_row_based_map_op(
             transform_fn, init_fn
@@ -207,7 +207,7 @@ def plan_udf_map_op(
     input_physical_dag = physical_children[0]
 
     compute = get_compute(op._compute)
-    fn, init_fn = _parse_op_fn(op)
+    fn, init_fn = _wrap_debugger_breakpoint_fn(op)
 
     if isinstance(op, MapBatches):
         transform_fn = _generate_transform_fn_for_map_batches(fn)
@@ -243,44 +243,43 @@ def plan_udf_map_op(
     )
 
 
-def _parse_op_fn(op: AbstractUDFMap):
+def _wrap_debugger_breakpoint_fn(op: AbstractUDFMap):
     # Note, it's important to define these standalone variables.
-    # So the parsed functions won't need to caputure the entire operator, which may not
+    # So the parsed functions won't need to capture the entire operator, which may not
     # be serializable.
-    op_fn = op._fn
+    udf = op._fn
     fn_args = op._fn_args or ()
     fn_kwargs = op._fn_kwargs or {}
 
-    if isinstance(op._fn, CallableClass):
+    if isinstance(udf, CallableClass):
         fn_constructor_args = op._fn_constructor_args or ()
         fn_constructor_kwargs = op._fn_constructor_kwargs or {}
 
-        is_async_gen = inspect.isasyncgenfunction(op._fn.__call__)
+        is_async_gen = inspect.isasyncgenfunction(udf.__call__)
+        is_async_coro = inspect.iscoroutinefunction(udf.__call__)
 
-        # TODO(scottjlee): (1) support non-generator async functions
-        # (2) make the map actor async
-        if not is_async_gen:
-            op_fn = make_callable_class_concurrent(op_fn)
+        # TODO this constrains concurrency to ALWAYS single thread (remove)
+        if not _is_async_udf(udf):
+            udf = make_callable_class_concurrent(udf)
 
         def init_fn():
             if ray.data._map_actor_context is None:
                 ray.data._map_actor_context = _MapActorContext(
-                    udf_map_cls=op_fn,
-                    udf_map_fn=op_fn(
+                    udf_map_cls=udf,
+                    udf_map_fn=udf(
                         *fn_constructor_args,
                         **fn_constructor_kwargs,
                     ),
                     is_async=is_async_gen,
                 )
 
-        if is_async_gen:
-
-            async def fn(item: Any) -> Any:
+        if is_async_coro:
+            async def _debugger_breakpoint_wrapped_fn(item: Any) -> Any:
                 assert ray.data._map_actor_context is not None
                 assert ray.data._map_actor_context.is_async
 
                 try:
-                    return ray.data._map_actor_context.udf_map_fn(
+                    return await ray.data._map_actor_context.udf_map_fn(
                         item,
                         *fn_args,
                         **fn_kwargs,
@@ -288,9 +287,29 @@ def _parse_op_fn(op: AbstractUDFMap):
                 except Exception as e:
                     _handle_debugger_exception(e, item)
 
+        if is_async_gen:
+
+            async def _debugger_breakpoint_wrapped_fn(item: Any) -> Any:
+                assert ray.data._map_actor_context is not None
+                assert ray.data._map_actor_context.is_async
+
+                try:
+                    gen = ray.data._map_actor_context.udf_map_fn(
+                        item,
+                        *fn_args,
+                        **fn_kwargs,
+                    )
+
+                    print(f">>> [DBG] _debugger_breakpoint_wrapped_fn: {gen}")
+
+                    async for res in gen:
+                        yield res
+                except Exception as e:
+                    _handle_debugger_exception(e, item)
+
         else:
 
-            def fn(item: Any) -> Any:
+            def _debugger_breakpoint_wrapped_fn(item: Any) -> Any:
                 assert ray.data._map_actor_context is not None
                 assert not ray.data._map_actor_context.is_async
                 try:
@@ -304,16 +323,16 @@ def _parse_op_fn(op: AbstractUDFMap):
 
     else:
 
-        def fn(item: Any) -> Any:
+        def _debugger_breakpoint_wrapped_fn(item: Any) -> Any:
             try:
-                return op_fn(item, *fn_args, **fn_kwargs)
+                return udf(item, *fn_args, **fn_kwargs)
             except Exception as e:
                 _handle_debugger_exception(e, item)
 
         def init_fn():
             pass
 
-    return fn, init_fn
+    return _debugger_breakpoint_wrapped_fn, init_fn
 
 
 def _handle_debugger_exception(e: Exception, item: Any = None):
@@ -378,7 +397,7 @@ def _validate_batch_output(batch: Block) -> None:
 def _generate_transform_fn_for_map_batches(
     fn: UserDefinedFunction,
 ) -> MapTransformCallable[DataBatch, DataBatch]:
-    if inspect.iscoroutinefunction(fn):
+    if _is_async_udf(fn):
         # UDF is a callable class with async generator `__call__` method.
         transform_fn = _generate_transform_fn_for_async_map(
             fn,
@@ -429,6 +448,10 @@ def _generate_transform_fn_for_map_batches(
                         yield out_batch
 
     return transform_fn
+
+
+def _is_async_udf(fn: UserDefinedFunction) -> bool:
+    return inspect.iscoroutinefunction(fn) or inspect.isasyncgenfunction(fn)
 
 
 def _validate_row_output(item):
