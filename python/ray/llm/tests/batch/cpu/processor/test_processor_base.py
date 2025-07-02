@@ -193,9 +193,12 @@ class TestProcessorConfig:
 
         with pytest.raises(pydantic.ValidationError, match="should be a valid integer"):
             config = vLLMEngineProcessorConfig(
+                model_source="unsloth/Llama-3.2-1B-Instruct",
                 concurrency=(1, 2),
             )
-        config = vLLMEngineProcessorConfig()
+        config = vLLMEngineProcessorConfig(
+            model_source="unsloth/Llama-3.2-1B-Instruct",
+        )
         assert config.concurrency == 1
 
 
