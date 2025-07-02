@@ -57,9 +57,17 @@ from ray.util.rpdb import _is_ray_debugger_post_mortem_enabled
 logger = logging.getLogger(__name__)
 
 
+# Controls default max-concurrency setting for async row-based UDFs
+DEFAULT_ASYNC_ROW_UDF_MAX_CONCURRENCY = env_integer(
+    "RAY_DATA_DEFAULT_ASYNC_ROW_UDF_MAX_CONCURRENCY", 16
+)
 
-ASYNC_ROW_UDF_MAX_CONCURRENCY = env_integer(
-    "RAY_DATA_ASYNC_ROW_UDF_MAX_CONCURRENCY", 16
+# Controls default max-concurrency setting for async batch-based UDFs
+#
+# NOTE: This setting will be overridden by provided `max_concurrency` setting
+#       inside Ray Core remote args for the corresponding operator
+DEFAULT_ASYNC_BATCH_UDF_MAX_CONCURRENCY = env_integer(
+    "RAY_DATA_DEFAULT_ASYNC_BATCH_UDF_MAX_CONCURRENCY", 2
 )
 
 
@@ -217,7 +225,11 @@ def plan_udf_map_op(
     fn, init_fn = _wrap_debugger_breakpoint_fn(op)
 
     if isinstance(op, MapBatches):
-        transform_fn = _generate_transform_fn_for_map_batches(data_context, fn)
+        transform_fn = _generate_transform_fn_for_map_batches(
+            data_context,
+            fn,
+            ray_remote_args=op._ray_remote_args
+        )
         map_transformer = _create_map_transformer_for_map_batches_op(
             transform_fn,
             op._batch_size,
@@ -402,14 +414,18 @@ def _validate_batch_output(batch: Block) -> None:
 def _generate_transform_fn_for_map_batches(
     ctx: DataContext,
     fn: UserDefinedFunction,
+    *,
+    ray_remote_args: Optional[typing.Dict[str, Any]] = None
 ) -> MapTransformCallable[DataBatch, DataBatch]:
     if _is_async_udf(fn):
+        max_concurrency = (ray_remote_args or {}).get("max_concurrency")
+
         # UDF is a callable class with async generator `__call__` method.
         transform_fn = _generate_transform_fn_for_async_map(
             ctx,
             fn,
             _validate_batch_output,
-            max_concurrency=4,
+            max_concurrency=max_concurrency or DEFAULT_ASYNC_BATCH_UDF_MAX_CONCURRENCY,
         )
 
     else:
@@ -483,7 +499,7 @@ def _generate_transform_fn_for_map_rows(
             fn,
             _validate_row_output,
             # NOTE: UDF concurrency is limited
-            max_concurrency=ASYNC_ROW_UDF_MAX_CONCURRENCY
+            max_concurrency=DEFAULT_ASYNC_ROW_UDF_MAX_CONCURRENCY
         )
 
     else:
@@ -499,14 +515,14 @@ def _generate_transform_fn_for_map_rows(
 def _generate_transform_fn_for_flat_map(
     ctx: DataContext,
     fn: UserDefinedFunction,
-) -> MapTransformCallable[Row, Row]:
+) -> MapTransformCallable[Row, Iterable[Row]]:
     if _is_async_udf(fn):
         # UDF is a callable class with async generator `__call__` method.
         transform_fn = _generate_transform_fn_for_async_map(
             ctx,
             fn,
             _validate_row_output,
-            max_concurrency=ASYNC_ROW_UDF_MAX_CONCURRENCY
+            max_concurrency=DEFAULT_ASYNC_ROW_UDF_MAX_CONCURRENCY
         )
 
     else:
