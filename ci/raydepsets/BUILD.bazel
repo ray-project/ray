@@ -17,8 +17,7 @@ py_library(
 py_binary(
     name = "raydepsets",
     srcs = ["raydepsets.py"],
-    deps = [":raydepsets_lib"],
-    main = "raydepsets.py",
+    deps = [":depsets_lib"],
     visibility = ["//visibility:public"],
     exec_compatible_with = ["//:hermetic_python"],
 )
