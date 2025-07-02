@@ -115,6 +115,7 @@ class ServeFormatter(TextFormatter):
     """Serve Logging Formatter
 
     The formatter will generate the log format on the fly based on the field of record.
+    Optimized to pre-compute format strings and formatters for better performance.
     """
 
     COMPONENT_LOG_FMT = f"%({SERVE_LOG_LEVEL_NAME})s %({SERVE_LOG_TIME})s {{{SERVE_LOG_COMPONENT}}} {{{SERVE_LOG_COMPONENT_ID}}} "  # noqa:E501
@@ -133,6 +134,27 @@ class ServeFormatter(TextFormatter):
             component_name=component_name, component_id=component_id
         )
 
+        # Pre-compute format strings and formatters for performance
+        self._precompute_formatters()
+
+    def set_additional_log_standard_attrs(self, *args, **kwargs):
+        super().set_additional_log_standard_attrs(*args, **kwargs)
+        self._precompute_formatters()
+
+    def _precompute_formatters(self):
+        self.base_formatter = self._create_formatter([])
+        self.request_formatter = self._create_formatter(
+            [SERVE_LOG_RECORD_FORMAT[SERVE_LOG_REQUEST_ID]]
+        )
+
+    def _create_formatter(self, initial_attrs: list) -> logging.Formatter:
+        attrs = initial_attrs.copy()
+        attrs.extend([f"%({k})s" for k in self.additional_log_standard_attrs])
+        attrs.append(SERVE_LOG_RECORD_FORMAT[SERVE_LOG_MESSAGE])
+
+        format_string = self.component_log_fmt + " ".join(attrs)
+        return logging.Formatter(format_string)
+
     def format(self, record: logging.LogRecord) -> str:
         """Format the log record into the format string.
 
@@ -141,20 +163,11 @@ class ServeFormatter(TextFormatter):
             Returns:
                 The formatted log record in string format.
         """
-        record_format = self.component_log_fmt
-        record_formats_attrs = []
+        # Use pre-computed formatters for better performance
         if SERVE_LOG_REQUEST_ID in record.__dict__:
-            record_formats_attrs.append(SERVE_LOG_RECORD_FORMAT[SERVE_LOG_REQUEST_ID])
-        record_formats_attrs.extend(
-            [f"%({k})s" for k in self.additional_log_standard_attrs]
-        )
-        record_formats_attrs.append(SERVE_LOG_RECORD_FORMAT[SERVE_LOG_MESSAGE])
-        record_format += " ".join(record_formats_attrs)
-        # create a formatter using the format string
-        formatter = logging.Formatter(record_format)
-
-        # format the log record using the formatter
-        return formatter.format(record)
+            return self.request_formatter.format(record)
+        else:
+            return self.base_formatter.format(record)
 
 
 def access_log_msg(*, method: str, route: str, status: str, latency_ms: float):
@@ -187,8 +200,8 @@ def get_component_logger_file_path() -> Optional[str]:
     """
     logger = logging.getLogger(SERVE_LOGGER_NAME)
     for handler in logger.handlers:
-        if isinstance(handler, logging.handlers.RotatingFileHandler):
-            absolute_path = handler.baseFilename
+        if isinstance(handler, logging.handlers.MemoryHandler):
+            absolute_path = handler.target.baseFilename
             ray_logs_dir = ray._private.worker._global_node.get_logs_dir_path()
             if absolute_path.startswith(ray_logs_dir):
                 return absolute_path[len(ray_logs_dir) :]
@@ -284,6 +297,7 @@ def configure_component_logger(
     max_bytes: Optional[int] = None,
     backup_count: Optional[int] = None,
     stream_handler_only: bool = False,
+    buffer_size: int = 1,
 ):
     """Configure a logger to be used by a Serve component.
 
@@ -373,7 +387,17 @@ def configure_component_logger(
         sys.stdout = StreamToLogger(logger, logging.INFO, sys.stdout)
         sys.stderr = StreamToLogger(logger, logging.INFO, sys.stderr)
 
-    logger.addHandler(file_handler)
+    # Create a memory handler that buffers log records and flushes to file handler
+    # Buffer capacity: buffer_size records
+    # Flush triggers: buffer full, ERROR messages, or explicit flush
+    memory_handler = logging.handlers.MemoryHandler(
+        capacity=buffer_size,
+        target=file_handler,
+        flushLevel=logging.ERROR,  # Auto-flush on ERROR/CRITICAL
+    )
+
+    # Add the memory handler instead of the file handler directly
+    logger.addHandler(memory_handler)
 
 
 def configure_default_serve_logger():
