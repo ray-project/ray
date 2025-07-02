@@ -1,12 +1,14 @@
 import pytest
 
 from ray.train import FailureConfig
+from ray.train.v2._internal.exceptions import WorkerGroupStartupTimeoutError
 from ray.train.v2._internal.execution.failure_handling import (
     FailureDecision,
     create_failure_policy,
 )
 from ray.train.v2._internal.execution.worker_group import (
     WorkerGroupPollStatus,
+    WorkerGroupResizeStatus,
     WorkerStatus,
 )
 
@@ -19,6 +21,12 @@ def _worker_group_status_from_errors(errors):
     )
 
 
+def _worker_group_resize_status_from_errors():
+    return WorkerGroupResizeStatus(
+        error=WorkerGroupStartupTimeoutError(0),
+    )
+
+
 @pytest.mark.parametrize("max_failures", [0, 1, 10])
 def test_max_failures(max_failures):
     policy = create_failure_policy(FailureConfig(max_failures=max_failures))
@@ -28,6 +36,12 @@ def test_max_failures(max_failures):
     for _ in range(max_failures):
         assert policy.make_decision(status) == FailureDecision.RESTART
     assert policy.make_decision(status) == FailureDecision.RAISE
+
+
+def test_reschedule():
+    policy = create_failure_policy(FailureConfig(max_failures=0))
+    status = _worker_group_resize_status_from_errors()
+    assert policy.make_decision(status) == FailureDecision.RESCHEDULE
 
 
 def test_infinite_retry():
