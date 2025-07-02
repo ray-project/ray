@@ -418,27 +418,6 @@ CoreWorker::CoreWorker(CoreWorkerOptions options, const WorkerID &worker_id)
   task_event_buffer_ = std::make_unique<worker::TaskEventBufferImpl>(
       std::make_shared<gcs::GcsClient>(options_.gcs_options));
 
-  // Initialize task receivers.
-  if (options_.worker_type == WorkerType::WORKER || options_.is_local_mode) {
-    RAY_CHECK(options_.task_execution_callback != nullptr);
-    auto execute_task = std::bind(&CoreWorker::ExecuteTask,
-                                  this,
-                                  std::placeholders::_1,
-                                  std::placeholders::_2,
-                                  std::placeholders::_3,
-                                  std::placeholders::_4,
-                                  std::placeholders::_5,
-                                  std::placeholders::_6,
-                                  std::placeholders::_7,
-                                  std::placeholders::_8);
-    task_receiver_ = std::make_unique<TaskReceiver>(
-        task_execution_service_,
-        *task_event_buffer_,
-        execute_task,
-        options_.initialize_thread_callback,
-        [this] { return local_raylet_client_->ActorCreationTaskDone(); });
-  }
-
   // Initialize raylet client.
   // NOTE(edoakes): the core_worker_server_ must be running before registering with
   // the raylet, as the raylet will start sending some RPC messages immediately.
@@ -520,6 +499,29 @@ CoreWorker::CoreWorker(CoreWorkerOptions options, const WorkerID &worker_id)
   local_raylet_client_ = std::make_shared<raylet::RayletClient>(
       std::move(raylet_conn), std::move(grpc_client), GetWorkerID());
   connected_ = true;
+
+  // Initialize task receivers.
+  if (options_.worker_type == WorkerType::WORKER || options_.is_local_mode) {
+    RAY_CHECK(options_.task_execution_callback != nullptr);
+    auto execute_task = std::bind(&CoreWorker::ExecuteTask,
+                                  this,
+                                  std::placeholders::_1,
+                                  std::placeholders::_2,
+                                  std::placeholders::_3,
+                                  std::placeholders::_4,
+                                  std::placeholders::_5,
+                                  std::placeholders::_6,
+                                  std::placeholders::_7,
+                                  std::placeholders::_8);
+    task_argument_waiter_ = std::make_unique<DependencyWaiterImpl>(*local_raylet_client_);
+    task_receiver_ = std::make_unique<TaskReceiver>(
+        task_execution_service_,
+        *task_event_buffer_,
+        execute_task,
+        *task_argument_waiter_,
+        options_.initialize_thread_callback,
+        [this] { return local_raylet_client_->ActorCreationTaskDone(); });
+  }
 
   // Start RPC server after all the task receivers are properly initialized and we have
   // our assigned port from the raylet.
@@ -724,6 +726,12 @@ CoreWorker::CoreWorker(CoreWorkerOptions options, const WorkerID &worker_id)
           }
         }
       },
+      /*queue_generator_resubmit=*/
+      [this](const TaskSpecification &spec) {
+        return spec.IsActorTask()
+                   ? this->actor_task_submitter_->QueueGeneratorForResubmit(spec)
+                   : this->normal_task_submitter_->QueueGeneratorForResubmit(spec);
+      },
       push_error_callback,
       RayConfig::instance().max_lineage_bytes(),
       *task_event_buffer_);
@@ -850,13 +858,6 @@ CoreWorker::CoreWorker(CoreWorkerOptions options, const WorkerID &worker_id)
                                        std::move(report_locality_data_callback),
                                        core_worker_client_pool_,
                                        rpc_address_);
-
-  // Unfortunately the raylet client has to be constructed after the receivers.
-  if (task_receiver_ != nullptr) {
-    task_argument_waiter_ = std::make_unique<DependencyWaiterImpl>(*local_raylet_client_);
-    task_receiver_->Init(
-        core_worker_client_pool_, rpc_address_, task_argument_waiter_.get());
-  }
 
   actor_manager_ = std::make_unique<ActorManager>(
       gcs_client_, *actor_task_submitter_, *reference_counter_);
@@ -3838,8 +3839,12 @@ Status CoreWorker::GetAndPinArgsForExecutor(const TaskSpecification &task,
       // Python workers need this copy to pass test case
       // test_inline_arg_memory_corruption.
       bool copy_data = options_.language == Language::PYTHON;
-      args->push_back(std::make_shared<RayObject>(
-          std::move(data), std::move(metadata), task.ArgInlinedRefs(i), copy_data));
+      rpc::TensorTransport tensor_transport = task.ArgTensorTransport(i);
+      args->push_back(std::make_shared<RayObject>(std::move(data),
+                                                  std::move(metadata),
+                                                  task.ArgInlinedRefs(i),
+                                                  copy_data,
+                                                  tensor_transport));
       auto &arg_ref = arg_refs->emplace_back();
       arg_ref.set_object_id(task.ArgObjectIdBinary(i));
       // The task borrows all ObjectIDs that were serialized in the inlined

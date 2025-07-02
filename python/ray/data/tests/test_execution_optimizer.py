@@ -815,24 +815,6 @@ def test_zip_e2e(ray_start_regular_shared_2_cpus, num_blocks1, num_blocks2):
     _check_usage_record(["ReadRange", "Zip"])
 
 
-def test_from_dask_e2e(ray_start_regular_shared_2_cpus):
-    import dask.dataframe as dd
-
-    df = pd.DataFrame({"one": list(range(100)), "two": list(range(100))})
-    ddf = dd.from_pandas(df, npartitions=10)
-    ds = ray.data.from_dask(ddf)
-    # `ds.take_all()` triggers execution with new backend, which is
-    # needed for checking operator usage below.
-    assert len(ds.take_all()) == len(df)
-    dfds = ds.to_pandas()
-    assert df.equals(dfds)
-
-    # Underlying implementation uses `FromPandas` operator
-    assert "FromPandas" in ds.stats()
-    assert ds._plan._logical_plan.dag.name == "FromPandas"
-    _check_usage_record(["FromPandas"])
-
-
 def test_from_modin_e2e(ray_start_regular_shared_2_cpus):
     import modin.pandas as mopd
 

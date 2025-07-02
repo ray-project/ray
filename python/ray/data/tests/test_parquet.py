@@ -1020,6 +1020,94 @@ def test_parquet_write_append_save_mode(ray_start_regular_shared, local_path):
         assert count_of_files == 2
 
 
+@pytest.mark.parametrize(
+    "filename_template,should_raise_error",
+    [
+        # Case 1: No UUID, no extension - should raise error in append mode
+        ("myfile", True),
+        # Case 2: No UUID, has extension - should raise error in append mode
+        ("myfile.parquet", True),
+        # Case 3: No UUID, different extension - should raise error in append mode
+        ("myfile.txt", True),
+        # Case 4: Already has UUID - should not raise error
+        ("myfile_{write_uuid}", False),
+        # Case 5: Already has UUID with extension - should not raise error
+        ("myfile_{write_uuid}.parquet", False),
+        # Case 6: Templated filename without UUID - should raise error in append mode
+        ("myfile-{i}", True),
+        # Case 7: Templated filename with extension but no UUID - should raise error in append mode
+        ("myfile-{i}.parquet", True),
+        # Case 8: Templated filename with UUID already present - should not raise error
+        ("myfile_{write_uuid}-{i}.parquet", False),
+    ],
+    ids=[
+        "no_uuid_no_ext",
+        "no_uuid_with_parquet_ext",
+        "no_uuid_with_other_ext",
+        "has_uuid_no_ext",
+        "has_uuid_with_ext",
+        "templated_no_uuid_no_ext",
+        "templated_no_uuid_with_ext",
+        "templated_has_uuid",
+    ],
+)
+def test_parquet_write_uuid_handling_with_custom_filename_provider(
+    ray_start_regular_shared, tmp_path, filename_template, should_raise_error
+):
+    """Test that write_parquet correctly handles UUID validation in filenames when using custom filename providers in append mode."""
+    import re
+
+    from ray.data.datasource.filename_provider import FilenameProvider
+
+    class CustomFilenameProvider(FilenameProvider):
+        def __init__(self, filename_template, should_include_uuid):
+            self.filename_template = filename_template
+            self.should_include_uuid = should_include_uuid
+
+        def get_filename_for_block(self, block, write_uuid, task_index, block_index):
+            if self.should_include_uuid:
+                # Replace {write_uuid} placeholder with actual write_uuid
+                return self.filename_template.format(write_uuid=write_uuid, i="{i}")
+            else:
+                # Don't include UUID - this simulates the problematic case
+                return self.filename_template
+
+    # Create a simple dataset
+    ds = ray.data.range(10).repartition(1)
+
+    # Create custom filename provider
+    custom_provider = CustomFilenameProvider(filename_template, not should_raise_error)
+
+    if should_raise_error:
+        # Should raise ValueError when UUID is missing in append mode
+        # Updated regex to match the actual error message
+        with pytest.raises(
+            ValueError,
+            match=r"Write UUID.*missing from filename template.*This could result in files being overwritten.*Modify your FileNameProvider implementation",
+        ):
+            ds.write_parquet(tmp_path, filename_provider=custom_provider, mode="append")
+    else:
+        # Should succeed when UUID is present
+        ds.write_parquet(tmp_path, filename_provider=custom_provider, mode="append")
+
+        # Check that files were created
+        written_files = os.listdir(tmp_path)
+        assert len(written_files) == 1
+
+        written_file = written_files[0]
+
+        # Verify UUID is present in filename (should be the actual write_uuid)
+        uuid_pattern = r"[a-f0-9]{32}"  # 32 hex characters (UUID without dashes)
+        assert re.search(
+            uuid_pattern, written_file
+        ), f"File '{written_file}' should contain UUID"
+
+        # Verify the content is correct by reading back
+        ds_read = ray.data.read_parquet(tmp_path)
+        assert ds_read.count() == 10
+        assert sorted([row["id"] for row in ds_read.take_all()]) == list(range(10))
+
+
 def test_parquet_write_overwrite_save_mode(ray_start_regular_shared, local_path):
     data_path = local_path
     path = os.path.join(data_path, "test_parquet_dir")

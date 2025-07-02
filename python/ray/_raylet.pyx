@@ -33,6 +33,7 @@ from typing import (
     Optional,
     Tuple,
     Union,
+    NamedTuple,
 )
 
 import contextvars
@@ -230,6 +231,7 @@ from ray._common.utils import decode
 from ray._private.utils import DeferSigint
 from ray._private.object_ref_generator import DynamicObjectRefGenerator
 from ray.util.annotations import PublicAPI
+from ray._private.custom_types import TensorTransportEnum
 
 cimport cpython
 
@@ -586,14 +588,22 @@ cdef c_bool is_plasma_object(shared_ptr[CRayObject] obj):
     return False
 
 
-cdef RayObjectsToDataMetadataPairs(
+class SerializedRayObject(NamedTuple):
+    data: Optional[Buffer]
+    metadata: Optional[Buffer]
+    # If set to None, use the default object store transport. Data will be
+    # either inlined in `data` or found in the plasma object store.
+    tensor_transport: Optional[TensorTransportEnum]
+
+
+cdef RayObjectsToSerializedRayObjects(
         const c_vector[shared_ptr[CRayObject]] objects):
-    data_metadata_pairs = []
+    serialized_ray_objects = []
     for i in range(objects.size()):
         # core_worker will return a nullptr for objects that couldn't be
         # retrieved from the store or if an object was an exception.
         if not objects[i].get():
-            data_metadata_pairs.append((None, None))
+            serialized_ray_objects.append(SerializedRayObject(None, None, None))
         else:
             data = None
             metadata = None
@@ -602,8 +612,9 @@ cdef RayObjectsToDataMetadataPairs(
             if objects[i].get().HasMetadata():
                 metadata = Buffer.make(
                     objects[i].get().GetMetadata()).to_pybytes()
-            data_metadata_pairs.append((data, metadata))
-    return data_metadata_pairs
+            tensor_transport = TensorTransportEnum(<int>(objects[i].get().GetTensorTransport()))
+            serialized_ray_objects.append(SerializedRayObject(data, metadata, tensor_transport))
+    return serialized_ray_objects
 
 
 cdef VectorToObjectRefs(const c_vector[CObjectReference] &object_refs,
@@ -1861,7 +1872,7 @@ cdef void execute_task(
                 if c_args.empty():
                     args, kwargs = [], {}
                 else:
-                    metadata_pairs = RayObjectsToDataMetadataPairs(c_args)
+                    metadata_pairs = RayObjectsToSerializedRayObjects(c_args)
                     object_refs = VectorToObjectRefs(
                             c_arg_refs,
                             skip_adding_local_ref=False)
@@ -2606,7 +2617,7 @@ cdef void unhandled_exception_handler(const CRayObject& error) nogil:
             metadata = Buffer.make(error.GetMetadata()).to_pybytes()
         # TODO(ekl) why does passing a ObjectRef.nil() lead to shutdown errors?
         object_ids = [None]
-        worker.raise_errors([(data, metadata)], object_ids)
+        worker.raise_errors([SerializedRayObject(data, metadata, TensorTransportEnum.OBJECT_STORE)], object_ids)
 
 
 def maybe_initialize_job_config():
@@ -3182,7 +3193,7 @@ cdef class CoreWorker:
                 c_object_ids, timeout_ms, results)
         check_status(op_status)
 
-        return RayObjectsToDataMetadataPairs(results)
+        return RayObjectsToSerializedRayObjects(results)
 
     def get_if_local(self, object_refs):
         """Get objects from local plasma store directly
@@ -3194,7 +3205,7 @@ cdef class CoreWorker:
             check_status(
                 CCoreWorkerProcess.GetCoreWorker().GetIfLocal(
                     c_object_ids, &results))
-        return RayObjectsToDataMetadataPairs(results)
+        return RayObjectsToSerializedRayObjects(results)
 
     def object_exists(self, ObjectRef object_ref, memory_store_only=False):
         cdef:
@@ -3842,7 +3853,7 @@ cdef class CoreWorker:
                         c_scheduling_strategy,
                         serialized_runtime_env_info,
                         c_concurrency_groups,
-                        # execute out of order for
+                        # execute_out_of_order for
                         # async or threaded actors.
                         is_asyncio or max_concurrency > 1,
                         max_pending_calls,
@@ -4925,11 +4936,11 @@ cdef void async_callback(shared_ptr[CRayObject] obj,
         # Object is retrieved from in memory store.
         # Here we go through the code path used to deserialize objects.
         objects_to_deserialize.push_back(obj)
-        data_metadata_pairs = RayObjectsToDataMetadataPairs(
+        serialized_ray_objects = RayObjectsToSerializedRayObjects(
             objects_to_deserialize)
         ids_to_deserialize = [ObjectRef(object_ref.Binary())]
         result = ray._private.worker.global_worker.deserialize_objects(
-            data_metadata_pairs, ids_to_deserialize)[0]
+            serialized_ray_objects, ids_to_deserialize)[0]
 
         user_callback = <object>user_callback_ptr
         user_callback(result)

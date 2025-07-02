@@ -96,9 +96,6 @@ RAY_CONFIG(uint64_t, task_oom_retries, -1)
 /// retriable_fifo
 RAY_CONFIG(std::string, worker_killing_policy, "group_by_owner")
 
-/// If the raylet fails to get agent info, we will retry after this interval.
-RAY_CONFIG(uint64_t, raylet_get_agent_info_interval_ms, 1)
-
 /// Whether to report placement or regular resource usage for an actor.
 /// Reporting placement may cause the autoscaler to overestimate the resources
 /// required of the cluster, but reporting regular resource may lead to no
@@ -140,11 +137,6 @@ RAY_CONFIG(size_t, free_objects_batch_size, 100)
 /// will attempt to reconstruct the object from its lineage if the object is
 /// lost.
 RAY_CONFIG(bool, lineage_pinning_enabled, true)
-
-/// Objects that require recovery are added to a local cache. This is the
-/// duration between attempts to flush and recover the objects in the local
-/// cache.
-RAY_CONFIG(int64_t, reconstruct_objects_period_milliseconds, 100)
 
 /// Maximum amount of lineage to keep in bytes. This includes the specs of all
 /// tasks that have previously already finished but that may be retried again.
@@ -451,14 +443,6 @@ RAY_CONFIG(int32_t, grpc_client_check_connection_status_interval_milliseconds, 1
 /// Refer to https://tinyurl.com/n6kvsp87 for more details
 RAY_CONFIG(int64_t, ray_syncer_message_refresh_interval_ms, 3000)
 
-/// The queuing buffer of ray syncer. This indicates how many concurrent
-/// requests can run in flight for syncing.
-RAY_CONFIG(int64_t, ray_syncer_polling_buffer, 5)
-
-/// The interval at which the gcs client will check if the address of gcs service has
-/// changed. When the address changed, we will resubscribe again.
-RAY_CONFIG(uint64_t, gcs_service_address_check_interval_milliseconds, 1000)
-
 /// The batch size for metrics export.
 /// Normally each time-series << 1Kb. Batch size of 10_000 means expected payload
 /// will be under 10Mb.
@@ -486,10 +470,6 @@ RAY_CONFIG(int64_t, task_events_max_num_task_in_gcs, 100000)
 RAY_CONFIG(int64_t,
            task_events_max_dropped_task_attempts_tracked_per_job_in_gcs,
            1 * 1000 * 1000)
-
-/// The threshold in seconds for actively GCing the dropped task attempts. If a task
-/// attempt wasn't being reported to GCS for more than this threshold, it will be GCed.
-RAY_CONFIG(int64_t, task_events_dropped_task_attempts_gc_threshold_s, 15 * 60)
 
 /// Max number of task status events stored on
 /// workers. Events will be evicted based on a FIFO order.
@@ -784,14 +764,6 @@ RAY_CONFIG(uint64_t, resource_broadcast_batch_size, 512)
 // Maximum ray sync message batch size in bytes (1MB by default) between nodes.
 RAY_CONFIG(uint64_t, max_sync_message_batch_bytes, 1 * 1024 * 1024)
 
-// When enabled, workers will not be re-used across tasks requesting different
-// resources (e.g., CPU vs GPU).
-RAY_CONFIG(bool, isolate_workers_across_resource_types, true)
-
-// When enabled, workers will not be re-used across tasks of different types
-// (i.e., Actor vs normal tasks).
-RAY_CONFIG(bool, isolate_workers_across_task_types, true)
-
 /// ServerCall instance number of each RPC service handler
 ///
 /// NOTE: Default value is temporarily pegged at `gcs_server_rpc_server_thread_num * 100`
@@ -927,11 +899,6 @@ RAY_CONFIG(bool, enable_autoscaler_v2, false)
 // Python GCS client number of reconnection retry and timeout.
 RAY_CONFIG(int64_t, nums_py_gcs_reconnect_retry, 5)
 RAY_CONFIG(int64_t, py_gcs_connect_timeout_s, 30)
-
-// Whether to reap actor death reason from GCS.
-// Costs an extra RPC.
-// TODO(vitsai): Remove this flag
-RAY_CONFIG(bool, enable_reap_actor_death, true)
 
 // The number of grpc clients between object managers.
 RAY_CONFIG(int, object_manager_client_connection_num, 4)

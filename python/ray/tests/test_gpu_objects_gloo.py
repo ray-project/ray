@@ -19,15 +19,17 @@ class GPUTestActor:
         return data * 2
 
     def get_gpu_object(self, obj_id: str):
-        gpu_object_manager = ray._private.worker.global_worker.gpu_object_manager
-        if gpu_object_manager.has_gpu_object(obj_id):
-            gpu_object = gpu_object_manager.get_gpu_object(obj_id)
+        gpu_object_store = (
+            ray._private.worker.global_worker.gpu_object_manager.gpu_object_store
+        )
+        if gpu_object_store.has_gpu_object(obj_id):
+            gpu_object = gpu_object_store.get_gpu_object(obj_id)
             print(f"gpu_object: {gpu_object}")
             return gpu_object
         return None
 
 
-def test_inter_actor_gpu_tensor_transfer(ray_start_regular):
+def test_p2p(ray_start_regular):
     world_size = 2
     actors = [GPUTestActor.remote() for _ in range(world_size)]
     create_collective_group(actors, backend="torch_gloo")

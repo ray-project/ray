@@ -62,22 +62,19 @@ def test_load_balancing(ray_start_cluster):
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="Times out on Windows")
-def test_hybrid_policy(ray_start_cluster):
+def test_hybrid_policy_threshold(ray_start_cluster):
     cluster = ray_start_cluster
 
-    num_cpus = 10
-    cluster.add_node(
-        num_cpus=num_cpus,
-        memory=num_cpus,
-        _system_config={
-            "scheduler_top_k_absolute": 1,
-            "scheduler_top_k_fraction": 0,
-        },
-    )
-    cluster.add_node(
-        num_cpus=num_cpus,
-        memory=num_cpus,
-    )
+    NUM_NODES = 2
+    NUM_CPUS_PER_NODE = 4
+    # The default hybrid policy packs nodes up to 50% capacity before spreading.
+    PER_NODE_HYBRID_THRESHOLD = int(NUM_CPUS_PER_NODE / 2)
+    for _ in range(NUM_NODES):
+        cluster.add_node(
+            num_cpus=NUM_CPUS_PER_NODE,
+            resources={"custom": NUM_CPUS_PER_NODE},
+        )
+
     cluster.wait_for_nodes()
     ray.init(address=cluster.address)
 
@@ -88,41 +85,30 @@ def test_hybrid_policy(ray_start_cluster):
     # until all are running.
     block_driver = Semaphore.remote(0)
 
-    # Add the memory resource because the cpu will be released in the ray.get
-    @ray.remote(num_cpus=1, memory=1)
-    def get_node():
+    # Add the custom resource because the CPU will be released when the task is
+    # blocked calling `ray.get()`.
+    @ray.remote(num_cpus=1, resources={"custom": 1})
+    def get_node_id() -> str:
         ray.get(block_driver.release.remote())
         ray.get(block_task.acquire.remote())
-        return ray._private.worker.global_worker.current_node_id
+        return ray.get_runtime_context().get_node_id()
 
-    # Below the hybrid threshold we pack on the local node first.
-    refs = [get_node.remote() for _ in range(5)]
-    ray.get([block_driver.acquire.remote() for _ in refs])
-    ray.get([block_task.release.remote() for _ in refs])
-    nodes = ray.get(refs)
+    # Submit 1 * PER_NODE_HYBRID_THRESHOLD tasks.
+    # They should all be packed on the local node.
+    refs = [get_node_id.remote() for _ in range(PER_NODE_HYBRID_THRESHOLD)]
+    ray.get([block_driver.acquire.remote() for _ in refs], timeout=20)
+    ray.get([block_task.release.remote() for _ in refs], timeout=20)
+    nodes = ray.get(refs, timeout=20)
     assert len(set(nodes)) == 1
 
-    # We pack the second node to the hybrid threshold.
-    refs = [get_node.remote() for _ in range(10)]
-    ray.get([block_driver.acquire.remote() for _ in refs])
-    ray.get([block_task.release.remote() for _ in refs])
-    nodes = ray.get(refs)
-    counter = collections.Counter(nodes)
-    for node_id in counter:
-        print(f"{node_id}: {counter[node_id]}")
-        assert counter[node_id] == 5
-
-    # Once all nodes are past the hybrid threshold we round robin.
-    # TODO (Alex): Ideally we could schedule less than 20 nodes here, but the
-    # policy is imperfect if a resource report interrupts the process.
-    refs = [get_node.remote() for _ in range(20)]
-    ray.get([block_driver.acquire.remote() for _ in refs])
-    ray.get([block_task.release.remote() for _ in refs])
-    nodes = ray.get(refs)
-    counter = collections.Counter(nodes)
-    for node_id in counter:
-        print(f"{node_id}: {counter[node_id]}")
-        assert counter[node_id] == 10, counter
+    # Submit 2 * PER_NODE_HYBRID_THRESHOLD tasks.
+    # The first PER_NODE_HYBRID_THRESHOLD tasks should be packed on the local node, then
+    # the second PER_NODE_HYBRID_THRESHOLD tasks should be packed on the remote node.
+    refs = [get_node_id.remote() for _ in range(int(PER_NODE_HYBRID_THRESHOLD * 2))]
+    ray.get([block_driver.acquire.remote() for _ in refs], timeout=20)
+    ray.get([block_task.release.remote() for _ in refs], timeout=20)
+    counter = collections.Counter(ray.get(refs, timeout=20))
+    assert all(v == PER_NODE_HYBRID_THRESHOLD for v in counter.values()), counter
 
 
 def test_legacy_spillback_distribution(ray_start_cluster):
@@ -390,8 +376,6 @@ def test_locality_aware_leasing_cached_objects(ray_start_cluster):
 
 def test_locality_aware_leasing_borrowed_objects(ray_start_cluster):
     """Test that a task runs where its dependencies are located for borrowed objects."""
-    is_ray_client_test = ray._private.client_mode_hook.is_client_mode_enabled
-
     # This test ensures that a task will run where its task dependencies are
     # located, even when those objects are borrowed.
     cluster = ray_start_cluster
@@ -413,9 +397,6 @@ def test_locality_aware_leasing_borrowed_objects(ray_start_cluster):
     @ray.remote(num_cpus=0)
     def borrower(o: List[ray.ObjectRef]) -> str:
         obj_ref = o[0]
-        if is_ray_client_test:
-            ray.wait([obj_ref], fetch_local=False)
-
         return ray.get(get_node_id.remote(obj_ref))
 
     # The result of worker_node_ref will be pinned on the worker node.
@@ -425,16 +406,8 @@ def test_locality_aware_leasing_borrowed_objects(ray_start_cluster):
         ),
     ).remote()
 
-    # Ensure the owner has object info prior to scheduling the task so the object info
-    # will be inlined to the borrower.
-    # NOTE(edoakes): Ray Client does not respect `fetch_local=False`, so this pulls the
-    # object to the head node. We instead test a slightly weaker condition by moving the
-    # `ray.wait` call to resolve the location inside of the borrower task (see above).
-    if not is_ray_client_test:
-        ray.wait([worker_node_ref], fetch_local=False)
-
     # Run a borrower task on the head node. From within the borrower task, we launch
-    # another task. That inner task should run on the worker node based on locality.
+    # another task. The inner task should run on the worker node based on locality.
     assert (
         ray.get(
             borrower.options(
