@@ -88,9 +88,11 @@ def test_log_rotation_config(monkeypatch, ray_shutdown):
             handlers = logger.handlers
             res = {}
             for handler in handlers:
-                if isinstance(handler, logging.handlers.RotatingFileHandler):
-                    res["max_bytes"] = handler.maxBytes
-                    res["backup_count"] = handler.backupCount
+                if isinstance(handler, logging.handlers.MemoryHandler):
+                    target = handler.target
+                    assert isinstance(target, logging.handlers.RotatingFileHandler)
+                    res["max_bytes"] = target.maxBytes
+                    res["backup_count"] = target.backupCount
             return res
 
     handle = serve.run(Handle.bind())
@@ -139,6 +141,7 @@ def test_http_access_log(serve_instance):
             fail: bool = False,
         ):
             s = f.getvalue()
+            print(s)
             return all(
                 [
                     name in s,
