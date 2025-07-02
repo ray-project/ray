@@ -190,7 +190,6 @@ class ParquetDatasink(_FileDatasink):
     ) -> None:
         import pyarrow.dataset as ds
 
-
         # Make every incoming batch conform to the final schema *before* writing
         for idx, table in enumerate(tables):
             if output_schema and not table.schema.equals(output_schema):
