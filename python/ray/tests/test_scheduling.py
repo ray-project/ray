@@ -85,7 +85,7 @@ def test_hybrid_policy_threshold(ray_start_cluster):
     # until all are running.
     block_driver = Semaphore.remote(0)
 
-    # Add the custom resource because the CPU will be released when the task is
+    # Add the `memory` resource because the CPU will be released when the task is
     # blocked calling `ray.get()`.
     @ray.remote(num_cpus=1, memory=1)
     def get_node_id() -> str:
