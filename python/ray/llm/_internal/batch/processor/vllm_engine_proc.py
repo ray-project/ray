@@ -90,12 +90,10 @@ def build_vllm_engine_processor(
     if isinstance(config.concurrency, int):
         # For CPU-only stages, we leverage auto-scaling to recycle resources.
         processor_concurrency = (1, config.concurrency)
-    elif isinstance(config.concurrency, tuple):
-        processor_concurrency = config.concurrency
     else:
         raise ValueError(
-            "``concurrency`` is expected to be set as an integer or a "
-            f"tuple of integers, but got: {config.concurrency}."
+            "``concurrency`` is expected to be set as an integer,"
+            f" but got: {config.concurrency}."
         )
 
     if config.has_image:
@@ -161,12 +159,8 @@ def build_vllm_engine_processor(
                 compute=ray.data.ActorPoolStrategy(
                     # vLLM start up time is significant, so if user give fixed
                     # concurrency, start all instances without auto-scaling.
-                    min_size=(
-                        config.concurrency
-                        if isinstance(config.concurrency, int)
-                        else processor_concurrency[0]
-                    ),
-                    max_size=processor_concurrency[1],
+                    min_size=config.concurrency,
+                    max_size=config.concurrency,
                     max_tasks_in_flight_per_actor=max(
                         config.max_concurrent_batches, DEFAULT_MAX_TASKS_IN_FLIGHT
                     ),

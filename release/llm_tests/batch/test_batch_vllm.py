@@ -58,7 +58,7 @@ def test_chat_template_with_vllm():
     "tp_size,pp_size,concurrency",
     [
         (2, 1, 2),  # TP=2, concurrency=2
-        (1, 2, (1, 2)),  # PP=2, concurrency=2
+        (1, 2, 2),  # PP=2, concurrency=2
     ],
 )
 def test_vllm_llama_parallel(tp_size, pp_size, concurrency):

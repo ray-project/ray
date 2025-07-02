@@ -10,6 +10,7 @@ from ray.llm._internal.batch.processor.base import (
     ProcessorConfig,
 )
 from ray.llm._internal.batch.stages.base import StatefulStage, StatefulStageUDF
+from ray.llm._internal.batch.processor import vLLMEngineProcessorConfig
 
 
 def test_empty_processor():
@@ -184,6 +185,17 @@ def test_builder():
     assert (
         processor.get_stage_by_name("DummyStage").map_batches_kwargs["concurrency"] == 2
     )
+
+
+class TestProcessorConfig:
+    def test_valid_concurrency(self):
+
+        with pytest.raises(ValueError, match="expected to be set as an integer"):
+            config = vLLMEngineProcessorConfig(
+                concurrency=(1, 2),
+            )
+        config = vLLMEngineProcessorConfig()
+        assert config.concurrency == 1
 
 
 if __name__ == "__main__":
