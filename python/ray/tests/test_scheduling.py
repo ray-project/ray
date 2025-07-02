@@ -72,13 +72,7 @@ def test_hybrid_policy_threshold(ray_start_cluster):
     for i in range(NUM_NODES):
         cluster.add_node(
             num_cpus=NUM_CPUS_PER_NODE,
-            resources={"custom": NUM_CPUS_PER_NODE},
-            _system_config={
-                "scheduler_top_k_absolute": 1,
-                "scheduler_top_k_fraction": 0,
-            }
-            if i == 0
-            else None,
+            memory=NUM_CPUS_PER_NODE,
         )
 
     cluster.wait_for_nodes()
@@ -93,7 +87,7 @@ def test_hybrid_policy_threshold(ray_start_cluster):
 
     # Add the custom resource because the CPU will be released when the task is
     # blocked calling `ray.get()`.
-    @ray.remote(num_cpus=1, resources={"custom": 1})
+    @ray.remote(num_cpus=1, memory=1)
     def get_node_id() -> str:
         ray.get(block_driver.release.remote())
         ray.get(block_task.acquire.remote())
