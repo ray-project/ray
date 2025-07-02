@@ -34,6 +34,7 @@ rllib.connectors.env_to_module.observation_preprocessor.SingleAgentObservationPr
 ------------------------------------------------------------------------------------------
 
 .. autoclass:: ray.rllib.connectors.env_to_module.observation_preprocessor.SingleAgentObservationPreprocessor
+
     .. automethod:: recompute_output_observation_space
     .. automethod:: preprocess
 
@@ -42,5 +43,6 @@ rllib.connectors.env_to_module.observation_preprocessor.MultiAgentObservationPre
 -----------------------------------------------------------------------------------------
 
 .. autoclass:: ray.rllib.connectors.env_to_module.observation_preprocessor.MultiAgentObservationPreprocessor
+
     .. automethod:: recompute_output_observation_space
     .. automethod:: preprocess
