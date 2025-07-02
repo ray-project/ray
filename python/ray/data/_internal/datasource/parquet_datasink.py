@@ -16,6 +16,7 @@ if TYPE_CHECKING:
 
 WRITE_FILE_MAX_ATTEMPTS = 10
 WRITE_FILE_RETRY_MAX_BACKOFF_SECONDS = 32
+ARROW_DEFAULT_MAX_GROUP_SIZE = 1_024 * 1_024
 
 # Map Ray Data's SaveMode to pyarrow's existing_data_behavior property which is exposed via the
 # `pyarrow.dataset.write_dataset` function.
@@ -189,7 +190,6 @@ class ParquetDatasink(_FileDatasink):
     ) -> None:
         import pyarrow.dataset as ds
 
-        from ray.data._internal.arrow_block import _get_max_chunk_size
 
         # Make every incoming batch conform to the final schema *before* writing
         for idx, table in enumerate(tables):
@@ -218,28 +218,13 @@ class ParquetDatasink(_FileDatasink):
         # Split each PyArrow table into chunks that respect {min,max}_rows_per_file
         # and the target block size detected by _get_max_chunk_size().
         # ---------------------------------------------------------------------------
-        # ── Derive a *global* block‑row budget from all incoming batches ───
-        #      (smallest estimate is safest, avoids blowing RAM on large columns)
         min_rows_per_file = self.min_rows_per_file  # can be None
-        min_block_rows: Optional[int] = None
-        for tbl in tables:
-            estimated_block_size = _get_max_chunk_size(
-                tbl, self._data_context.target_max_block_size
-            )
-            if estimated_block_size:
-                min_block_rows = (
-                    estimated_block_size
-                    if min_block_rows is None
-                    else min(min_block_rows, estimated_block_size)
-                )
-        if min_block_rows is None:
-            min_block_rows = 1_024 * 1_024  # fall back to Arrow default
 
         # ── Decide row‑group sizing so each *file* lands within the         ─
-        #   [min_rows_per_file, max_rows_per_file] band *and* respects RAM.  ─
+        #   [min_rows_per_file, max_rows_per_file] band  ─
         if row_group_size is None:
             min_rows_per_group = min_rows_per_file or 0
-            max_rows_per_group = min_block_rows
+            max_rows_per_group = ARROW_DEFAULT_MAX_GROUP_SIZE
             if max_rows_per_file > 0:
                 max_rows_per_group = min(max_rows_per_group, max_rows_per_file)
         else:
@@ -248,7 +233,7 @@ class ParquetDatasink(_FileDatasink):
                 row_group_size = max(row_group_size, min_rows_per_file)
             if max_rows_per_file > 0:
                 row_group_size = min(row_group_size, max_rows_per_file)
-            row_group_size = min(row_group_size, min_block_rows)
+            row_group_size = min(row_group_size, ARROW_DEFAULT_MAX_GROUP_SIZE)
             min_rows_per_group = max_rows_per_group = row_group_size
 
         if min_rows_per_group > max_rows_per_group:
