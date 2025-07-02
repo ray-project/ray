@@ -9,10 +9,11 @@ from dependencies.config import load_config, Config
 
 
 class DependencySetManager:
-    def __init__(self, storage_path: Path = Path.home() / ".depsets"):
+    def __init__(self, storage_path: Path = Path.home() / ".depsets", config_path: Path = Path(__file__).parent / "depset.config.yaml"):
         self.storage_path = storage_path
         self.storage_path.mkdir(exist_ok=True)
         self.depsets: Dict[str, DepSet] = {}
+        self.config = load_config(config_path)
         self._load()
 
     def _load(self):
@@ -40,7 +41,7 @@ class DependencySetManager:
         self.depsets[name] = DepSet(output)
         self.depsets[name].to_file(self.storage_path / f"{name}.txt")
 
-    def exec_uv__cmd(self, cmd: str, args: List[str]) -> str:
+    def exec_uv_cmd(self, cmd: str, args: List[str]) -> str:
         cmd = f"uv pip {cmd} {' '.join(args)}"
         click.echo(f"Executing command: {cmd}")
         status = subprocess.run(cmd, shell=True)
@@ -58,11 +59,11 @@ def cli(ctx):
 
 
 @cli.command()
-@click.argument("file_path")
-def load(file_path: str):
+@click.argument("config_path")
+def load(config_path: str):
     """Load a dependency sets from a config file."""
-    config = load_config(file_path)
-    for _, depconfig in config.depsets.items():
+    manager = DependencySetManager(config_path=config_path)
+    for _, depconfig in manager.config.depsets.items():
         execute_config(depconfig.operation, depconfig)
 
 
@@ -91,23 +92,6 @@ def list():
     click.echo("Available dependency sets:")
     for depset in depsets:
         click.echo(f"- {depset}")
-
-
-@cli.command()
-@click.argument("name")
-def show(name: str):
-    """Show details of a specific dependency set."""
-    manager = DependencySetManager()
-    depset = manager.get_depset(name)
-    if not depset:
-        click.echo(f"Error: Dependency set {name} not found.", err=True)
-        return
-    click.echo(f"Dependency set from: {depset.requirements_fp}")
-    click.echo(f"# of dependencies: {len(depset.dependencies)}")
-    click.echo("Dependencies:")
-    for dep in sorted(depset.dependencies, key=lambda x: x.name):
-        click.echo(f"- {dep}")
-
 
 @cli.command()
 @click.argument("name")
@@ -139,7 +123,7 @@ def compile(
             for requirement in requirements:
                 args.append(requirement)
         args.extend(["-o", f"{output}"])
-        manager.exec_uv__cmd("compile", args)
+        manager.exec_uv_cmd("compile", args)
         manager.add_depset(name, output)
     except ValueError as e:
         click.echo(f"Error: {str(e)}", err=True)
@@ -160,7 +144,7 @@ def subset(
         for requirement in requirements:
             args.append(requirement)
         args.extend(["-o", f"{output}"])
-        manager.exec_uv__cmd("compile", args)
+        manager.exec_uv_cmd("compile", args)
         manager.add_depset(name, output)
         click.echo(f"subset {name} depset from {source_depset_name}")
     except ValueError as e:
@@ -185,7 +169,7 @@ def expand(
         for source in source_depset_names:
             args.append(manager.depsets[source].requirements_fp)
         args.extend(["-o", f"{output}"])
-        manager.exec_uv__cmd("compile", args)
+        manager.exec_uv_cmd("compile", args)
         manager.add_depset(name, output)
         click.echo(f"Expanded {name} from {source_depset_names}")
     except ValueError as e:
