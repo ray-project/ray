@@ -37,6 +37,59 @@ UNSUPPORTED_OPEN_STREAM_ARGS = {"path", "buffer", "metadata"}
 logger = logging.getLogger(__name__)
 
 
+def choose_row_group_limits(
+    row_group_size: Optional[int],
+    min_rows_per_file: Optional[int] = None,
+    max_rows_per_file: Optional[int] = None,
+) -> tuple[int, int, int]:
+    """
+    Decide the (min_rows_per_group, max_rows_per_group, max_rows_per_file) for each **row group** so that every *file*
+    ends up within the caller’s [min_rows_per_file, max_rows_per_file] window.
+
+    Returns
+    -------
+    (min_rows_per_group, max_rows_per_group, max_rows_per_file)
+    """
+
+    ### From Pyarrow docs:
+    # max_rows_per_file : int, default 0
+    # Maximum number of rows per file. If greater than 0 then this will
+    # limit how many rows are placed in any single file. Otherwise there
+    # will be no limit and one file will be created in each output
+    # directory unless files need to be closed to respect max_open_files
+    max_rows_per_file = max_rows_per_file or 0
+
+    lower = min_rows_per_file or 0
+    # the upper limit must be a positive number/non-zero
+    upper = min(
+        max_rows_per_file or ARROW_DEFAULT_MAX_GROUP_SIZE, ARROW_DEFAULT_MAX_GROUP_SIZE
+    )
+
+    def clamp(value: int) -> int:
+        """Clamp *value* to [lower, upper], ignoring zero (unbounded) limits,
+        then respect the Arrow hard cap."""
+        return max(lower, min(value, upper))
+
+    if row_group_size is None:
+        min_row_group_size, max_row_group_size = lower, upper
+    else:
+        # Fixed-sized groups (post clamping to the [lower, upper] range)
+        clamped_group_size = clamp(row_group_size)
+        min_row_group_size = max_row_group_size = clamped_group_size
+
+    # Never let the lower bound exceed the upper
+    if min_row_group_size > max_row_group_size:
+        logger.warning(
+            "min_rows_per_group (%d) is greater than max_rows_per_group (%d). "
+            "This will result in a single row group per file.",
+            min_row_group_size,
+            max_row_group_size,
+        )
+        min_row_group_size = max_row_group_size
+
+    return min_row_group_size, max_row_group_size, max_rows_per_file
+
+
 class ParquetDatasink(_FileDatasink):
     def __init__(
         self,
@@ -197,46 +250,21 @@ class ParquetDatasink(_FileDatasink):
             tables[idx] = table
 
         row_group_size = write_kwargs.pop("row_group_size", None)
+        (
+            min_rows_per_group,
+            max_rows_per_group,
+            max_rows_per_file,
+        ) = choose_row_group_limits(
+            row_group_size,
+            min_rows_per_file=self.min_rows_per_file,
+            max_rows_per_file=self.max_rows_per_file,
+        )
 
         existing_data_behavior = EXISTING_DATA_BEHAVIOR_MAP.get(
             self.mode, "overwrite_or_ignore"
         )
 
         basename_template = self._get_basename_template(filename, write_uuid)
-
-        # Default to 0 set by pyarrow.dataset.write_dataset
-        ### From docs:
-        # max_rows_per_file : int, default 0
-        # Maximum number of rows per file. If greater than 0 then this will
-        # limit how many rows are placed in any single file. Otherwise there
-        # will be no limit and one file will be created in each output
-        # directory unless files need to be closed to respect max_open_files
-        max_rows_per_file = self.max_rows_per_file or 0
-
-        # ---------------------------------------------------------------------------
-        # Split each PyArrow table into chunks that respect {min,max}_rows_per_file
-        # and the target block size detected by _get_max_chunk_size().
-        # ---------------------------------------------------------------------------
-        min_rows_per_file = self.min_rows_per_file  # can be None
-
-        # ── Decide row‑group sizing so each *file* lands within the         ─
-        #   [min_rows_per_file, max_rows_per_file] band  ─
-        if row_group_size is None:
-            min_rows_per_group = min_rows_per_file or 0
-            max_rows_per_group = ARROW_DEFAULT_MAX_GROUP_SIZE
-            if max_rows_per_file > 0:
-                max_rows_per_group = min(max_rows_per_group, max_rows_per_file)
-        else:
-            # Clamp caller’s request into all three bounds.
-            if min_rows_per_file:
-                row_group_size = max(row_group_size, min_rows_per_file)
-            if max_rows_per_file > 0:
-                row_group_size = min(row_group_size, max_rows_per_file)
-            row_group_size = min(row_group_size, ARROW_DEFAULT_MAX_GROUP_SIZE)
-            min_rows_per_group = max_rows_per_group = row_group_size
-
-        if min_rows_per_group > max_rows_per_group:
-            min_rows_per_group = max_rows_per_group
 
         ds.write_dataset(
             data=tables,
