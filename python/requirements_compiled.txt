@@ -1734,10 +1734,8 @@ pytest-repeat==0.9.3
     # via -r python/requirements/ml/data-test-requirements.txt
 pytest-rerunfailures==11.1.2
     # via -r python/requirements/test-requirements.txt
-pytest-shutil==1.8.1 ; python_version < "3.12"
-    # via
-    #   -r python/requirements/test-requirements.txt
-    #   pytest-virtualenv
+pytest-shutil==1.8.1
+    # via pytest-virtualenv
 pytest-sphinx @ git+https://github.com/ray-project/pytest-sphinx
     # via -r python/requirements/test-requirements.txt
 pytest-sugar==0.9.5
