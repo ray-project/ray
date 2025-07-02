@@ -101,7 +101,7 @@ def test_log_rotation_config(monkeypatch, ray_shutdown):
 
 
 @pytest.mark.parametrize("log_format", ["TEXT", "JSON"])
-def test_http_access_log(serve_instance, log_format):
+def test_http_access_log_in_stderr(serve_instance, log_format):
     name = "deployment_name"
 
     fastapi_app = FastAPI()
@@ -159,7 +159,11 @@ def test_http_access_log(serve_instance, log_format):
         assert r.status_code == 200
         replica_id = ReplicaID(unique_id=r.text, deployment_id=DeploymentID(name=name))
         wait_for_condition(
-            check_log, replica_id=replica_id, method="GET", route="/", status_code="200"
+            check_log,
+            replica_id=replica_id,
+            method="GET",
+            route="/",
+            status_code="200",
         )
 
         r = httpx.post(f"{url}")
@@ -192,6 +196,222 @@ def test_http_access_log(serve_instance, log_format):
             status_code="500",
             fail=True,
         )
+
+
+@pytest.mark.parametrize("log_format", ["TEXT", "JSON"])
+def test_http_access_log_in_logs_file(serve_instance, log_format):
+    name = "deployment_name"
+    fastapi_app = FastAPI()
+
+    @serve.deployment(name=name)
+    @serve.ingress(fastapi_app)
+    class Handler:
+        def __init__(self):
+            self._replica_unique_id = serve.get_replica_context().replica_id.unique_id
+
+        def _get_context_info(self):
+            """Get context information for matching with logs"""
+            request_context = ray.serve.context._get_serve_request_context()
+            return {
+                "replica": self._replica_unique_id,
+                "request_id": request_context.request_id,
+                "worker_id": ray.get_runtime_context().get_worker_id(),
+                "node_id": ray.get_runtime_context().get_node_id(),
+                "actor_id": ray.get_runtime_context().get_actor_id(),
+            }
+
+        @fastapi_app.get("/")
+        def get_root(self):
+            return self._get_context_info()
+
+        @fastapi_app.post("/")
+        def post_root(self):
+            return self._get_context_info()
+
+        @fastapi_app.get("/{status}")
+        def template(self, status: str):
+            context_info = self._get_context_info()
+            context_info["status_code"] = int(status)
+            return PlainTextResponse(
+                content=json.dumps(context_info),
+                status_code=int(status),
+                media_type="application/json",
+            )
+
+        @fastapi_app.put("/fail")
+        def fail(self):
+            error_response = {"error": "OOPS!", "context": self._get_context_info()}
+            return PlainTextResponse(
+                content=json.dumps(error_response),
+                status_code=500,
+                media_type="application/json",
+            )
+
+    serve.run(Handler.bind(), logging_config={"encoding": log_format})
+
+    # Get log file information
+    client = _get_global_client()
+    serve_log_dir = get_serve_logs_dir()
+    replicas = ray.get(
+        client._controller.get_deployment_details.remote("default", name)
+    ).replicas
+    replica_id = replicas[0].replica_id
+    replica_log_file_name = f"replica_default_{name}_{replica_id}.log"
+    log_file_path = os.path.join(serve_log_dir, replica_log_file_name)
+
+    url = get_application_url(use_localhost=True)
+
+    # Define the HTTP calls to make
+    http_calls = [
+        {
+            "method": "GET",
+            "url": f"{url}",
+            "expected_status": 200,
+            "expected_route": "/",
+        },
+        {
+            "method": "POST",
+            "url": f"{url}",
+            "expected_status": 200,
+            "expected_route": "/",
+        },
+        {
+            "method": "GET",
+            "url": f"{url}/350",
+            "expected_status": 350,
+            "expected_route": "/{status}",
+        },
+        {
+            "method": "PUT",
+            "url": f"{url}/fail",
+            "expected_status": 500,
+            "expected_route": "/fail",
+        },
+    ]
+
+    def get_file_end_position(file_path):
+        """Get the current end position of the file"""
+        try:
+            with open(file_path, "r") as f:
+                f.seek(0, 2)  # Seek to end of file
+                return f.tell()
+        except FileNotFoundError:
+            return 0
+
+    def get_new_lines_from_position(file_path, start_position):
+        """Get new lines added to the file since start_position"""
+        try:
+            with open(file_path, "r") as f:
+                f.seek(start_position)
+                new_content = f.read()
+                return new_content.splitlines() if new_content else []
+        except FileNotFoundError:
+            return []
+
+    def verify_http_response_in_logs(
+        response, new_log_lines, call_info, log_format, context_info=None
+    ):
+        """Verify that the HTTP response matches the new log entries"""
+        if not new_log_lines:
+            print("No new log lines found")
+            return False
+
+        match_found = False
+        if log_format == "JSON":
+            for line in new_log_lines:
+                if line.strip():
+                    try:
+                        log_data = json.loads(line.strip())
+                        message = log_data.get("message", "")
+
+                        if all(
+                            [
+                                f"default_{name}" == log_data.get("deployment"),
+                                f"{call_info['method']} {call_info['expected_route']} {call_info['expected_status']}"
+                                in message,
+                                "ms" in message,
+                                (
+                                    context_info is not None
+                                    and log_data.get("request_id")
+                                    == context_info["request_id"]
+                                    and log_data.get("worker_id")
+                                    == context_info["worker_id"]
+                                    and log_data.get("node_id")
+                                    == context_info["node_id"]
+                                    and log_data.get("replica")
+                                    == context_info["replica"]
+                                ),
+                            ]
+                        ):
+                            match_found = True
+                            break
+
+                    except json.JSONDecodeError:
+                        continue
+        else:
+            for line in new_log_lines:
+                if all(
+                    [
+                        name in line,
+                        f"default_{name} {replica_id}" in line,
+                        f"-- {call_info['method']} {call_info['expected_route']} {call_info['expected_status']}"
+                        in line,
+                        "ms" in line,
+                    ]
+                ):
+                    match_found = True
+                    break
+
+        return match_found
+
+    # Process each HTTP call individually
+    for i, call_info in enumerate(http_calls):
+        # Step 1: Get current file end position
+        start_position = get_file_end_position(log_file_path)
+
+        # Step 2: Make HTTP call
+        if call_info["method"] == "GET":
+            response = httpx.get(call_info["url"])
+        elif call_info["method"] == "POST":
+            response = httpx.post(call_info["url"])
+        elif call_info["method"] == "PUT":
+            response = httpx.put(call_info["url"])
+        else:
+            raise ValueError(f"Unsupported HTTP method: {call_info['method']}")
+
+        # Verify response status
+        assert (
+            response.status_code == call_info["expected_status"]
+        ), f"Expected status {call_info['expected_status']}, got {response.status_code}"
+
+        # Extract context information from response
+        context_info = None
+        try:
+            response_data = response.json()
+            print(f"Extracted response data: {response_data}")
+
+            # For all routes apart from `/` endpoint, context info is nested under "context" key
+            if call_info["expected_route"] != "/" and "context" in response_data:
+                context_info = response_data["context"]
+            elif "replica_id" in response_data or "request_id" in response_data:
+                context_info = response_data
+        except Exception as e:
+            print(
+                f"Could not extract context info from response, response content: {response.text}, error: {e}"
+            )
+
+        # Step 3: Wait a bit for logs to be written, then get new lines
+        time.sleep(1)
+        new_log_lines = get_new_lines_from_position(log_file_path, start_position)
+
+        # Step 4: Verify HTTP response matches new log lines
+        match_found = verify_http_response_in_logs(
+            response, new_log_lines, call_info, log_format, context_info
+        )
+
+        assert (
+            match_found
+        ), f"No matching log entry found for {call_info['method']} {call_info['expected_route']}"
 
 
 def test_handle_access_log(serve_instance):

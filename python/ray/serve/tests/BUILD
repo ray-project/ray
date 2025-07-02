@@ -78,6 +78,7 @@ py_test_module_list(
         "test_healthcheck.py",
         "test_http_headers.py",
         "test_http_routes.py",
+        "test_logging.py",
         "test_max_replicas_per_node.py",
         "test_multiplex.py",
         "test_proxy_response_generator.py",
@@ -90,28 +91,6 @@ py_test_module_list(
         "test_telemetry.py",
     ],
     tags = [
-        "exclusive",
-        "team:serve",
-    ],
-    deps = [
-        ":common",
-        ":conftest",
-        "//python/ray/serve:serve_lib",
-    ],
-)
-
-# Medium tests with direct ingress enabled
-py_test_module_list(
-    size = "medium",
-    env = {
-        "ANYSCALE_RAY_SERVE_ENABLE_DIRECT_INGRESS": "1",
-        "ANYSCALE_RAY_SERVE_DIRECT_INGRESS_MIN_DRAINING_PERIOD_S": "0.01",
-    },
-    files = [
-        "test_logging.py",
-    ],
-    tags = [
-        "direct_ingress",
         "exclusive",
         "team:serve",
     ],
