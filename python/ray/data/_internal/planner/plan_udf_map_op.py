@@ -710,26 +710,24 @@ def _generate_transform_fn_for_async_map(
 
             sentinel = e
         finally:
-            assert len(cur_task_map) == 0
-
-            print(f">>> [DBG] _schedule: {sentinel=}")
-
-            completed_tasks_queue.put_nowait((sentinel, None))
+            assert len(cur_task_map) == 0, f"{cur_task_map}"
+            await completed_tasks_queue.put((sentinel, None))
 
     async def _consume(completed_tasks_queue: asyncio.Queue, output_queue: queue.Queue) -> None:
         completed_task_map: Dict[int, asyncio.Task] = dict()
         next_idx = 0
-
-        sentinel = None
+        completed_scheduling = False
 
         try:
-            while True:
+            while not completed_scheduling:
                 task, idx = await completed_tasks_queue.get()
 
                 if isinstance(task, Exception):
                     raise task
+                elif task is _SENTINEL:
+                    completed_scheduling = True
                 else:
-                    completed_task_map[task] = idx
+                    completed_task_map[idx] = task
 
                 while next_idx in completed_task_map:
                     next_task = completed_task_map.pop(next_idx)
@@ -742,12 +740,13 @@ def _generate_transform_fn_for_async_map(
 
                     next_idx += 1
 
-        except Exception as e:
+            assert len(completed_task_map) == 0, f"{next_idx=}, {completed_task_map.keys()=}"
+            sentinel = _SENTINEL
+
+        except BaseException as e:
             sentinel = e
         finally:
-            print(f">>> [DBG] _consume: {sentinel=}")
-
-            output_queue.put_nowait(sentinel)
+            output_queue.put(sentinel)
 
     def _transform(batch_iter: Iterable[T], task_context: TaskContext) -> Iterable[U]:
         task_completion_queue = asyncio.Queue(maxsize=max_concurrency)
