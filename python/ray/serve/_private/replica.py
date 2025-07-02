@@ -622,13 +622,13 @@ class ReplicaBase(ABC):
         ) as status_code_callback:
             if request_metadata.is_http_request:
                 scope, receive = request_args
-                async for result in self._user_callable_wrapper.call_http_entrypoint(
+                async for messages in self._user_callable_wrapper.call_http_entrypoint(
                     request_metadata,
                     status_code_callback,
                     scope,
                     receive,
                 ):
-                    yield result
+                    yield pickle.dumps(messages)
             else:
                 async for result in self._user_callable_wrapper.call_user_generator(
                     request_metadata,
@@ -666,13 +666,13 @@ class ReplicaBase(ABC):
 
             if request_metadata.is_http_request:
                 scope, receive = request_args
-                async for result in self._user_callable_wrapper.call_http_entrypoint(
+                async for messages in self._user_callable_wrapper.call_http_entrypoint(
                     request_metadata,
                     status_code_callback,
                     scope,
                     receive,
                 ):
-                    yield result
+                    yield pickle.dumps(messages)
             elif request_metadata.is_streaming:
                 async for result in self._user_callable_wrapper.call_user_generator(
                     request_metadata,
@@ -803,14 +803,7 @@ class ReplicaBase(ABC):
                 )
                 break
 
-    async def perform_graceful_shutdown(self):
-        self._shutting_down = True
-
-        # If the replica was never initialized it never served traffic, so we
-        # can skip the wait period.
-        if self._user_callable_initialized:
-            await self._drain_ongoing_requests()
-
+    async def shutdown(self):
         try:
             await self._user_callable_wrapper.call_destructor()
         except:  # noqa: E722
@@ -825,6 +818,16 @@ class ReplicaBase(ABC):
                 logger.exception("__del__ raised an exception.")
 
         await self._metrics_manager.shutdown()
+
+    async def perform_graceful_shutdown(self):
+        self._shutting_down = True
+
+        # If the replica was never initialized it never served traffic, so we
+        # can skip the wait period.
+        if self._user_callable_initialized:
+            await self._drain_ongoing_requests()
+
+        await self.shutdown()
 
     async def check_health(self):
         try:
@@ -937,7 +940,6 @@ class ReplicaActor:
         deployment_def = cloudpickle.loads(serialized_deployment_def)
         if isinstance(deployment_def, str):
             deployment_def = _load_deployment_def_from_import_path(deployment_def)
-
         self._replica_impl: ReplicaBase = create_replica_impl(
             replica_id=replica_id,
             deployment_def=deployment_def,
@@ -1626,7 +1628,7 @@ class UserCallableWrapper:
                     # field. Other response types like WebSockets may not.
                     status_code_callback(str(msg["status"]))
 
-            yield pickle.dumps(messages)
+            yield messages
 
     @_run_user_code
     async def _call_http_entrypoint(

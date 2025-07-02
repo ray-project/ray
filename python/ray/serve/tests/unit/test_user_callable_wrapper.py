@@ -610,7 +610,7 @@ async def test_http_handler(
         asgi_scope,
         ASGIReceiveProxy(asgi_scope, request_metadata, receive_asgi_messages),
     ):
-        result_list.extend(pickle.loads(result))
+        result_list.extend(result)
 
     assert result_list[0]["type"] == "http.response.start"
     assert result_list[0]["status"] == 200
