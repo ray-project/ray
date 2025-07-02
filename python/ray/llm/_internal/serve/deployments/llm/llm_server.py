@@ -3,11 +3,9 @@ import os
 from abc import ABC, abstractmethod
 from typing import Any, Dict, Optional, Type, Union, AsyncGenerator, List
 
-# Third-party imports
 from ray import serve
 from ray._common.utils import import_attr
 
-# Local imports
 from ray.llm._internal.serve.configs.constants import (
     DEFAULT_HEALTH_CHECK_PERIOD_S,
     DEFAULT_HEALTH_CHECK_TIMEOUT_S,
@@ -24,7 +22,6 @@ from ray.llm._internal.serve.configs.openai_api_models import (
     EmbeddingResponse,
     LLMChatResponse,
     LLMCompletionsResponse,
-    LLMEmbeddingsResponse,
 )
 from ray.llm._internal.serve.deployments.llm.multiplex.lora_model_loader import (
     LoraModelLoader,

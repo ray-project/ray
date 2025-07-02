@@ -15,21 +15,9 @@ We have the following Mocks:
 
 from ray.llm.tests.serve.mocks.mock_vllm_engine import MockVLLMEngine
 from ray.llm.tests.serve.utils.testing_utils import LLMResponseValidator
-from ray.serve.llm import LLMConfig, ModelLoadingConfig
-from ray.llm._internal.serve.configs.openai_api_models import (
-    ChatCompletionRequest, 
-    ChatCompletionResponse,
-    CompletionRequest,
-    CompletionResponse,
-    EmbeddingCompletionRequest,
-    EmbeddingResponse
-)
+
 import pytest
-from typing import AsyncGenerator, Optional
-
-
-
-
+from typing import Optional
 
 
 class TestMockLLMEngine:

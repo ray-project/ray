@@ -8,7 +8,7 @@ from fastapi import HTTPException
 from ray import serve
 from ray.llm._internal.serve.configs.openai_api_models import ModelCard
 from ray.llm._internal.serve.deployments.llm.llm_server import LLMDeployment
-from ray.llm.tests.serve.mocks.mock_vllm_engine import MockMultiplexEngine
+from ray.llm.tests.serve.mocks.mock_vllm_engine import MockVLLMEngine
 from ray.serve.handle import DeploymentHandle
 from ray.serve.llm import LLMConfig, LLMRouter, LoraConfig
 
@@ -57,7 +57,7 @@ def get_mocked_llm_deployments(llm_configs) -> List[DeploymentHandle]:
         llm_deployments.append(
             deployment.bind(
                 llm_config=llm_config,
-                engine_cls=MockMultiplexEngine,
+                engine_cls=MockVLLMEngine,
             )
         )
     return llm_deployments
@@ -100,7 +100,7 @@ async def test_lora_get_model(shutdown_ray_and_serve, disable_placement_bundles)
     assert isinstance(base_model_config, ModelCard)
     base_model_data = base_model_config.model_dump()
     assert base_model_data["id"] == base_model_id
-    base_model_config = base_model_data["rayllm_metadata"]
+    base_model_config = base_model_data["metadata"]
 
     # Case 3: model has a multiplex config in the cloud.
     llm_config = VLLM_APP.model_copy(deep=True)
@@ -125,7 +125,7 @@ async def test_lora_get_model(shutdown_ray_and_serve, disable_placement_bundles)
     assert isinstance(lora_model_config, ModelCard)
     lora_model_data = lora_model_config.model_dump()
     assert lora_model_data["id"] == lora_model
-    lora_metadata = lora_model_data["rayllm_metadata"]
+    lora_metadata = lora_model_data["metadata"]
     assert lora_metadata["model_id"] == lora_model
     assert lora_metadata["base_model_id"] == base_model_id
     assert lora_metadata["max_request_context_length"] == 4096
