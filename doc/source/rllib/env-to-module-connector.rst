@@ -42,7 +42,7 @@ methods of the :py:class:`~ray.rllib.core.rl_module.rl_module.RLModule`, dependi
 Default env-to-module behavior
 ------------------------------
 
-**Default Env-to-Module Behavior:** By default an env-to-module pipeline is populated with the following built-in connector pieces:
+**Default Env-to-Module Behavior:** By default RLlib populates an env-to-module pipeline with the following built-in connector pieces:
 
 * :py:class:`~ray.rllib.connectors.common.add_observations_from_episodes_to_batch.AddObservationsFromEpisodesToBatch`: Places the most recent observation from each ongoing episode into the batch. Note that if you have a vector of ``N`` environments per :py:class:`~ray.rllib.env.env_runner.EnvRunner`, your batch size is also ``N``.
 * *Relevant for stateful models only:* :py:class:`~ray.rllib.connectors.common.add_time_dim_to_batch_and_zero_pad.AddTimeDimToBatchAndZeroPad`: If the :py:class:`~ray.rllib.core.rl_module.rl_module.RLModule` is a stateful one, adds a single timestep, second axis to all data to make it sequential.
@@ -176,7 +176,7 @@ The batch should look similar to this:
     {'obs': tensor([[ 0.0212, -0.1996, -0.0414,  0.2848],
             [ 0.0292,  0.0259, -0.0322, -0.0004]])}
 
-Or in the stateful case, the ``STATE_IN`` columns should also be set.
+In the stateful case, you can also expect the ``STATE_IN`` columns to be present.
 Note that because of the LSTM layer used, the internal state of the module consists
 of two components, ``c`` and ``h``.
 
@@ -213,7 +213,7 @@ RLlib prepends the provided :py:class:`~ray.rllib.connectors.connector_v2.Connec
 unless you set `add_default_connectors_to_env_to_module_pipeline=False` in your config, in which case RLlib exclusively uses the provided
 :py:class:`~ray.rllib.connectors.connector_v2.ConnectorV2` pieces without any automatically added default behavior.
 
-Note that the structure of the `spaces` argument is expected to be:
+Note that RLlib expects the structure of the `spaces` argument to be:
 
 .. code-block:: python
 
@@ -256,11 +256,13 @@ before the previously described default connector pieces that RLlib provides aut
 
 
 .. figure:: images/connector_v2/custom_pieces_in_env_to_module_pipeline.svg
-    :width: 800
+    :width: 1000
     :align: left
 
     **Inserting custom ConnectorV2 pieces into the env-to-module pipeline**: RLlib inserts custom connector pieces, such
-    as observation preprocessors, before the default pieces.
+    as observation preprocessors, before the default pieces. This way, if your custom connectors alter the input episodes
+    in any way, for example by changing the observations as in an :ref:`ObservationPreprocessor <observation-preprocessors>`,
+    the tailing default pieces automatically add these changed observations to the batch.
 
 
 .. _observation-preprocessors:
@@ -292,7 +294,7 @@ and point your config to the new class:
 
         def preprocess(self, observation, episode):
             # Convert an input observation (int) into a one-hot (float) tensor.
-            # Note that 99% of all connectors in RLlib operator in the "numpy space".
+            # Note that 99% of all connectors in RLlib operate on NumPy arrays.
             new_obs = np.zeros(shape=self.observation_space.shape, dtype=np.float32)
             new_obs[observation] = 1.0
             return new_obs
@@ -400,8 +402,8 @@ In multi-agent setups, you have two options for preprocessing your agents' indiv
 through customizing your env-to-module pipeline:
 
 1) Agent-by-agent: Using the same API as in the previous examples (:py:class:`~ray.rllib.connectors.env_to_module.observation_preprocessor.SingleAgentObservationPreprocessor`),
-   you can apply a single preprocessing logic across all agents. However, in case you need distinct preprocessing
-   logics by ``AgentID``, lookup the agent information from the provided ``episode`` argument in the
+   you can apply a single preprocessing logic across all agents. However, in case you need one distinct preprocessing
+   logic per ``AgentID``, lookup the agent information from the provided ``episode`` argument in the
    :py:meth:`~ray.rllib.connectors.env_to_module.observation_preprocessor.SingleAgentObservationPreprocessor.preprocess` method:
 
    .. testcode::
