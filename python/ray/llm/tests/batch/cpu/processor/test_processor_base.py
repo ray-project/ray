@@ -1,6 +1,7 @@
 import sys
 from typing import Any, AsyncIterator, Dict, List, Type
 
+import pydantic
 import pytest
 
 import ray
@@ -190,7 +191,7 @@ def test_builder():
 class TestProcessorConfig:
     def test_valid_concurrency(self):
 
-        with pytest.raises(ValueError, match="expected to be set as an integer"):
+        with pytest.raises(pydantic.ValidationError, match="should be a valid integer"):
             config = vLLMEngineProcessorConfig(
                 concurrency=(1, 2),
             )
