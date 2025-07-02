@@ -9,19 +9,19 @@ if [[ ! -e /usr/bin/nproc ]]; then
 fi
 
 # Install ray cpp dependencies.
-yum -y install unzip zip sudo openssl xz
+sudo yum -y install unzip zip sudo openssl xz
 if [[ "${HOSTTYPE-}" == "x86_64" ]]; then
-  yum -y install libasan-4.8.5-44.el7.x86_64 libubsan-7.3.1-5.10.el7.x86_64 \
+  sudo yum -y install libasan-4.8.5-44.el7.x86_64 libubsan-7.3.1-5.10.el7.x86_64 \
     devtoolset-8-libasan-devel.x86_64
 fi
 
 # Install ray java dependencies.
 if [[ "${RAY_INSTALL_JAVA}" == "1" ]]; then
-  yum -y install java-1.8.0-openjdk java-1.8.0-openjdk-devel maven
-  java -version
-  JAVA_BIN="$(readlink -f "$(command -v java)")"
-  echo "java_bin path ${JAVA_BIN}"
-  export JAVA_HOME="${JAVA_BIN%jre/bin/java}"
+  sudo yum -y install java-1.8.0-openjdk java-1.8.0-openjdk-devel maven
+  sudo java -version
+  sudo JAVA_BIN="$(readlink -f "$(command -v java)")"
+  sudo echo "java_bin path ${JAVA_BIN}"
+  sudo export JAVA_HOME="${JAVA_BIN%jre/bin/java}"
 fi
 
 # Install ray dashboard dependencies.
@@ -34,7 +34,7 @@ nvm use "$NODE_VERSION"
 
 # Install bazel
 npm install -g @bazel/bazelisk
-ln -sf "$(which bazelisk)" /usr/local/bin/bazel
+ln -sf "$(which bazelisk)" /tmp/bazel
 
 {
   echo "build --config=ci"
