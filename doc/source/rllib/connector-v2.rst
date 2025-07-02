@@ -2,7 +2,7 @@
 
 .. _connector-v2-docs:
 
-ConnectorV2 and ConnectorV2 Pipelines
+ConnectorV2 and ConnectorV2 pipelines
 =====================================
 
 .. toctree::
@@ -59,7 +59,7 @@ Also, the Learner pipeline operates on the same episodes that have already passe
 and thus might have undergone changes.
 
 
-Three ConnectorV2 Pipeline Types
+Three ConnectorV2 pipeline types
 --------------------------------
 
 There are three different types of connector pipelines in RLlib:

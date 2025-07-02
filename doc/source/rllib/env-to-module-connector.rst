@@ -5,7 +5,7 @@
 
 .. _env-to-module-pipeline-docs:
 
-Env-to-module Pipelines
+Env-to-module pipelines
 =======================
 
 One env-to-module pipeline resides on each :py:class:`~ray.rllib.env.env_runner.EnvRunner` and is responsible
@@ -265,7 +265,7 @@ before the previously described default connector pieces that RLlib provides aut
 
 .. _observation-preprocessors:
 
-Observation Preprocessors
+Observation preprocessors
 ~~~~~~~~~~~~~~~~~~~~~~~~~
 
 The simplest way of customizing an env-to-module pipeline is to write your own

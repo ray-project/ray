@@ -1,12 +1,14 @@
 .. include:: /_includes/rllib/we_are_hiring.rst
 
-.. include:: /_includes/rllib/new_api_stack.rst
-
 
 .. _connector-v2-reference-docs:
 
 ConnectorV2 API
 ===============
+
+.. include:: /_includes/rllib/new_api_stack.rst
+
+.. currentmodule:: ray.rllib.connectors.connector_v2
 
 rllib.connectors.connector_v2.ConnectorV2
 -----------------------------------------
@@ -25,6 +27,8 @@ rllib.connectors.connector_pipeline_v2.ConnectorPipelineV2
 
 Observation preprocessors
 =========================
+
+.. currentmodule:: ray.rllib.connectors.env_to_module.observation_preprocessor
 
 rllib.connectors.env_to_module.observation_preprocessor.SingleAgentObservationPreprocessor
 ------------------------------------------------------------------------------------------
