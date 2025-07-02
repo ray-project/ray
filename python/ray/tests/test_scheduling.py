@@ -72,7 +72,7 @@ def test_hybrid_policy_threshold(ray_start_cluster):
     for _ in range(NUM_NODES):
         cluster.add_node(
             num_cpus=NUM_CPUS_PER_NODE,
-            resources={"custom": NUM_CPUS_PER_NODE},
+            memory=NUM_CPUS_PER_NODE,
         )
 
     cluster.wait_for_nodes()
@@ -85,9 +85,11 @@ def test_hybrid_policy_threshold(ray_start_cluster):
     # until all are running.
     block_driver = Semaphore.remote(0)
 
-    # Add the custom resource because the CPU will be released when the task is
+    # Add the `memory` resource because the CPU will be released when the task is
     # blocked calling `ray.get()`.
-    @ray.remote(num_cpus=1, resources={"custom": 1})
+    # NOTE(edoakes): this needs to be `memory`, not a custom resource.
+    # See: https://github.com/ray-project/ray/pull/54271.
+    @ray.remote(num_cpus=1, memory=1)
     def get_node_id() -> str:
         ray.get(block_driver.release.remote())
         ray.get(block_task.acquire.remote())
