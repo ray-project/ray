@@ -5,7 +5,7 @@ depsets:
       - python/requirements/cloud-requirements.txt
       - python/requirements/base-test-requirements.txt
     constraints:
-      - python/requirements_compiled_test.txt
+      - python/requirements_compiled.txt
     output: python/requirements_compiled_ray_test_py311_cpu.txt
     operation: compile
     flags:
