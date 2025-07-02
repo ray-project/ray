@@ -1926,9 +1926,7 @@ class TestGenerateTransformFnForAsyncMap:
         validate_fn.assert_not_called()
 
     @pytest.mark.parametrize("udf_kind", ["coroutine", "async_gen"])
-    def test_basic_async_processing(
-        self, udf_kind, mock_actor_async_ctx
-    ):
+    def test_basic_async_processing(self, udf_kind, mock_actor_async_ctx):
         """Test basic async processing with order preservation."""
 
         if udf_kind == "async_gen":
@@ -1991,9 +1989,7 @@ class TestGenerateTransformFnForAsyncMap:
 
         assert list(transform_fn(input_seq, task_context)) == expected
 
-    def test_concurrency_limiting(
-        self, mock_actor_async_ctx, restore_data_context
-    ):
+    def test_concurrency_limiting(self, mock_actor_async_ctx, restore_data_context):
         """Test that concurrency is properly limited."""
         max_concurrency = 10
 

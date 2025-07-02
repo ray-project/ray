@@ -5,8 +5,7 @@ import logging
 import queue
 from threading import Thread
 from types import GeneratorType
-from typing import Any, Callable, Iterable, Iterator, List, Optional, Dict, \
-    TypeVar
+from typing import Any, Callable, Dict, Iterable, Iterator, List, Optional, TypeVar
 
 import numpy as np
 import pandas as pd
@@ -182,7 +181,9 @@ def plan_filter_op(
             except Exception as e:
                 _handle_debugger_exception(e, block)
 
-        transform_fn = _generate_transform_fn_for_map_batches(data_context, filter_batch_fn)
+        transform_fn = _generate_transform_fn_for_map_batches(
+            data_context, filter_batch_fn
+        )
         map_transformer = _create_map_transformer_for_map_batches_op(
             transform_fn,
             batch_size=None,
@@ -225,9 +226,7 @@ def plan_udf_map_op(
 
     if isinstance(op, MapBatches):
         transform_fn = _generate_transform_fn_for_map_batches(
-            data_context,
-            fn,
-            ray_remote_args=op._ray_remote_args
+            data_context, fn, ray_remote_args=op._ray_remote_args
         )
         map_transformer = _create_map_transformer_for_map_batches_op(
             transform_fn,
@@ -414,7 +413,7 @@ def _generate_transform_fn_for_map_batches(
     ctx: DataContext,
     fn: UserDefinedFunction,
     *,
-    ray_remote_args: Optional[Dict[str, Any]] = None
+    ray_remote_args: Optional[Dict[str, Any]] = None,
 ) -> MapTransformCallable[DataBatch, DataBatch]:
     if _is_async_udf(fn):
         max_concurrency = (ray_remote_args or {}).get("max_concurrency")
@@ -497,10 +496,11 @@ def _generate_transform_fn_for_map_rows(
             fn,
             _validate_row_output,
             # NOTE: UDF concurrency is limited
-            max_concurrency=DEFAULT_ASYNC_ROW_UDF_MAX_CONCURRENCY
+            max_concurrency=DEFAULT_ASYNC_ROW_UDF_MAX_CONCURRENCY,
         )
 
     else:
+
         def transform_fn(rows: Iterable[Row], _: TaskContext) -> Iterable[Row]:
             for row in rows:
                 out_row = fn(row)
@@ -520,7 +520,7 @@ def _generate_transform_fn_for_flat_map(
             ctx,
             fn,
             _validate_row_output,
-            max_concurrency=DEFAULT_ASYNC_ROW_UDF_MAX_CONCURRENCY
+            max_concurrency=DEFAULT_ASYNC_ROW_UDF_MAX_CONCURRENCY,
         )
 
     else:
@@ -697,9 +697,7 @@ def _generate_transform_fn_for_async_map(
                     # NOTE: Once completed tasks queue fills up, this will block
                     #       therefore serving as back-pressure for scheduling tasks
                     #       preventing it from scheduling new tasks
-                    await completed_tasks_queue.put(
-                        (task, cur_task_map[task])
-                    )
+                    await completed_tasks_queue.put((task, cur_task_map[task]))
 
                     cur_task_map.pop(task)
 
@@ -713,7 +711,9 @@ def _generate_transform_fn_for_async_map(
             assert len(cur_task_map) == 0, f"{cur_task_map}"
             await completed_tasks_queue.put((sentinel, None))
 
-    async def _consume(completed_tasks_queue: asyncio.Queue, output_queue: queue.Queue) -> None:
+    async def _consume(
+        completed_tasks_queue: asyncio.Queue, output_queue: queue.Queue
+    ) -> None:
         completed_task_map: Dict[int, asyncio.Task] = dict()
         next_idx = 0
         completed_scheduling = False
@@ -740,7 +740,9 @@ def _generate_transform_fn_for_async_map(
 
                     next_idx += 1
 
-            assert len(completed_task_map) == 0, f"{next_idx=}, {completed_task_map.keys()=}"
+            assert (
+                len(completed_task_map) == 0
+            ), f"{next_idx=}, {completed_task_map.keys()=}"
             sentinel = _SENTINEL
 
         except BaseException as e:
@@ -754,8 +756,12 @@ def _generate_transform_fn_for_async_map(
 
         loop = ray.data._map_actor_context.udf_map_asyncio_loop
 
-        asyncio.run_coroutine_threadsafe(_schedule(iter(batch_iter), task_completion_queue), loop)
-        asyncio.run_coroutine_threadsafe(_consume(task_completion_queue, output_queue), loop)
+        asyncio.run_coroutine_threadsafe(
+            _schedule(iter(batch_iter), task_completion_queue), loop
+        )
+        asyncio.run_coroutine_threadsafe(
+            _consume(task_completion_queue, output_queue), loop
+        )
 
         while True:
             items = output_queue.get()
