@@ -2,7 +2,7 @@
 
 .. _connector-v2-docs:
 
-ConnectorV2 and ConnectorV2 Pipelines
+ConnectorV2 and ConnectorV2 pipelines
 =====================================
 
 .. toctree::
@@ -77,7 +77,7 @@ Also, the Learner pipeline operates on the same episodes that have already passe
 and thus might have undergone changes.
 
 
-Three ConnectorV2 Pipeline Types
+Three ConnectorV2 pipeline types
 --------------------------------
 
 There are three different types of connector pipelines in RLlib:
@@ -112,6 +112,16 @@ The three pipeline types are discussed in more detail on the succeeding pages, h
 * All connector pieces and -pipelines are Python callables, overriding the :py:meth:`~ray.rllib.connectors.connector_v2.ConnectorV2.__call__` method.
 * The call signatures are uniform across the different pipeline types. The main arguments are the list of episodes, the batch to-be-built, and the :py:class:`~ray.rllib.core.rl_module.rl_module.RLModule` instance. See the :py:meth:`~ray.rllib.connectors.connector_v2.ConnectorV2.__call__` method for more details.
 * All connector pipelines can read from and write to the provided list of episodes as well as the batch and thereby perform data transforms as required.
+
+
+Batch formats and construction phases
+-------------------------------------
+
+When you push a list of input episodes through a connector pipeline, the batch that the pipeline constructs undergoes different formats and
+phases. The following applies to all :ref:`env-to-module <env-to-module-pipeline-docs>` and :ref:`learner connector <learner-pipeline-docs>`
+pipelines.
+
+1) The batch is empty
 
 
 
