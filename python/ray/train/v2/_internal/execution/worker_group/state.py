@@ -5,7 +5,7 @@ from typing import Dict, List, Optional
 import ray
 from ray.actor import ActorHandle
 from ray.train.v2._internal.execution.checkpoint.sync_actor import SynchronizationActor
-from ray.train.v2._internal.execution.worker_group.protocol import PolicyHandledStatus
+from ray.train.v2._internal.execution.worker_group.protocol import WorkerGroupStatus
 from ray.train.v2._internal.execution.worker_group.worker import Worker
 from ray.train.v2._internal.util import time_monotonic
 from ray.util.placement_group import PlacementGroup, remove_placement_group
@@ -137,7 +137,7 @@ def _shutdown_placement_group(placement_group: PlacementGroup):
 
 
 @dataclass(frozen=True)
-class WorkerGroupResizeStatus(PolicyHandledStatus):
+class WorkerGroupSchedulingStatus(WorkerGroupStatus):
     """Status of a worker group resize operation.
 
     Attributes:
@@ -152,10 +152,10 @@ class WorkerGroupResizeStatus(PolicyHandledStatus):
             return {0: self.error}
         return {}
 
-    # Currently the resize operation is synchronous, so it is either finished or not.
+    # Currently the scheduling operation is synchronous, so it is either finished or not.
     @property
     def finished(self) -> bool:
-        return self.error is None
+        return True
 
     def get_error_string(self) -> str:
         return f"{self.error}"

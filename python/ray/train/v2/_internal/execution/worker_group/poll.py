@@ -2,7 +2,7 @@ from dataclasses import dataclass
 from typing import Dict, Optional
 
 from ray.train._internal.session import _TrainingResult
-from ray.train.v2._internal.execution.worker_group.protocol import PolicyHandledStatus
+from ray.train.v2._internal.execution.worker_group.protocol import WorkerGroupStatus
 from ray.types import ObjectRef
 
 
@@ -14,7 +14,7 @@ class WorkerStatus:
 
 
 @dataclass(frozen=True)
-class WorkerGroupPollStatus(PolicyHandledStatus):
+class WorkerGroupPollStatus(WorkerGroupStatus):
     worker_statuses: Dict[int, WorkerStatus]
 
     @property
