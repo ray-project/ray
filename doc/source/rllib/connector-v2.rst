@@ -28,7 +28,7 @@ ConnectorV2 and ConnectorV2 Pipelines
         :img-top: /rllib/images/connector_v2/env_to_module_connector.svg
         :class-img-top: pt-2 w-75 d-block mx-auto fixed-height-img
 
-        .. button-ref:: env-to-module-connector-docs
+        .. button-ref:: env-to-module-pipeline-docs
 
             Env-to-module pipelines
 
@@ -64,7 +64,7 @@ Three ConnectorV2 Pipeline Types
 
 There are three different types of connector pipelines in RLlib:
 
-1) :ref:`Env-to-module pipeline <env-to-module-connector-docs>`, which creates tensor batches for action computing forward passes.
+1) :ref:`Env-to-module pipeline <env-to-module-pipeline-docs>`, which creates tensor batches for action computing forward passes.
 2) Module-to-env pipeline, which translates a model's output into RL environment actions.
 3) Learner connector pipeline, which creates the train batch for a model update.
 

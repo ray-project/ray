@@ -37,6 +37,8 @@ methods of the :py:class:`~ray.rllib.core.rl_module.rl_module.RLModule`, dependi
     greedily picked when ``explore=False``. However, the exact behavior in each case depends on your :ref:`RLModule's implementation <rlmodule-guide>`.
 
 
+.. _default-env-to-module-pipeline:
+
 Default env-to-module behavior
 ------------------------------
 
@@ -169,7 +171,7 @@ You can see that the pipeline extracted the two current observations from the tw
 running episodes and placed them under the "obs" column into the forward batch.
 The batch should look similar to this:
 
-.. code-block:: txt
+.. code-block:: text
 
     {'obs': tensor([[ 0.0212, -0.1996, -0.0414,  0.2848],
             [ 0.0292,  0.0259, -0.0322, -0.0004]])}
@@ -178,7 +180,7 @@ Or in the stateful case, the ``STATE_IN`` columns should also be set.
 Note that because of the LSTM layer used, the internal state of the module consists
 of two components, ``c`` and ``h``.
 
-.. code-block:: txt
+.. code-block:: text
 
     {
         'obs': tensor(
@@ -387,7 +389,7 @@ Note that the preceding example should work without any further action required 
 whether it's a custom one or a default one provided by RLlib, as long as the model determines its input layer's
 size through the observation space. The connector pipeline correctly captures the observation
 space changes, from the environment's 1D-Box to the reward-enhanced, larger 1D-Box and
-passes this new observation space to your RLModule's :py:meth:`~ray.rllib.core.rl_module.rl_module.setup`
+passes this new observation space to your RLModule's :py:meth:`~ray.rllib.core.rl_module.rl_module.RLModule.setup`
 method.
 
 
@@ -499,7 +501,7 @@ write a custom connector piece following this example here:
 
 
 .. testcode::
-    :hidden:
+    :hide:
 
     config = (
         PPOConfig()
