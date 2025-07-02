@@ -155,11 +155,10 @@ class Worker : public std::enable_shared_from_this<Worker>, public WorkerInterfa
   rpc::WorkerType GetWorkerType() const;
   void MarkDead();
   bool IsDead() const;
-  /// Kill the worker.
-  /// \param io_service for scheduling the graceful period timer.
-  /// \param force true to kill immediately, false to give time for the worker to
-  /// clean up and exit gracefully.
-  /// \return Void.
+  /// Kill the worker. This is idempotent, that is, no effect starting from the second
+  /// call. \param io_service for scheduling the graceful period timer. \param force true
+  /// to kill immediately, false to give time for the worker to clean up and exit
+  /// gracefully. \return Void.
   void Kill(instrumented_io_context &io_service, bool force = false);
   void MarkBlocked();
   void MarkUnblocked();
@@ -304,6 +303,8 @@ class Worker : public std::enable_shared_from_this<Worker>, public WorkerInterfa
   BundleID bundle_id_;
   /// Whether the worker is dead.
   bool dead_;
+  /// Whether the worker is killed by the Kill method.
+  bool killed_;
   /// Whether the worker is blocked. Workers become blocked in a `ray.get`, if
   /// they require a data dependency while executing a task.
   bool blocked_;

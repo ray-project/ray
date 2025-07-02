@@ -49,6 +49,7 @@ Worker::Worker(const JobID &job_id,
       runtime_env_hash_(runtime_env_hash),
       bundle_id_(std::make_pair(PlacementGroupID::Nil(), -1)),
       dead_(false),
+      killed_(false),
       blocked_(false),
       client_call_manager_(client_call_manager) {}
 
@@ -59,6 +60,10 @@ void Worker::MarkDead() { dead_ = true; }
 bool Worker::IsDead() const { return dead_; }
 
 void Worker::Kill(instrumented_io_context &io_service, bool force) {
+  if (killed_) {  // TODO(rueian): could we just reuse the dead_ flag?
+    return;       // If the worker is already killed by this Kill method, do nothing.
+  }
+  killed_ = true;
   const auto worker = shared_from_this();
   if (force) {
     worker->GetProcess().Kill();
