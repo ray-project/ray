@@ -35,7 +35,6 @@ class RayInstaller(object):
         TODO:(rickyx): This runs in another thread, and errors are silently
         ignored. We should propagate the error to the main thread.
         """
-        self._config.calculate_hashes()
         setup_commands = self._config.get_worker_setup_commands(instance.instance_type)
         ray_start_commands = self._config.get_worker_start_ray_commands()
         docker_config = self._config.get_docker_config(instance.instance_type)

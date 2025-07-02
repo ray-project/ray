@@ -174,12 +174,12 @@ class AutoscalingConfig:
         validate_config(self._configs)
         if skip_content_hash:
             return
-        self.calculate_hashes()
+        self._calculate_hashes()
         self._sync_continuously = self._configs.get(
             "generate_file_mounts_contents_hash", True
         )
 
-    def calculate_hashes(self) -> None:
+    def _calculate_hashes(self) -> None:
         logger.info("Calculating hashes for file mounts and ray commands.")
         self._runtime_hash, self._file_mounts_contents_hash = hash_runtime_conf(
             self._configs.get("file_mounts", {}),
@@ -435,10 +435,14 @@ class AutoscalingConfig:
 
     @property
     def runtime_hash(self) -> str:
+        if not hasattr(self, "_runtime_hash"):
+            self._calculate_hashes()
         return self._runtime_hash
 
     @property
     def file_mounts_contents_hash(self) -> str:
+        if not hasattr(self, "_file_mounts_contents_hash"):
+            self._calculate_hashes()
         return self._file_mounts_contents_hash
 
 
