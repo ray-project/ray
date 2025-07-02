@@ -435,7 +435,7 @@ def run_release_test_kuberay(
     working_dir_upload_path = upload_working_dir(get_working_dir(test))
 
     command_timeout = int(test["run"].get("timeout", DEFAULT_COMMAND_TIMEOUT))
-    job_name_hash = hashlib.sha256(test["name"].encode()).hexdigest()[:8]
+    job_name_hash = hashlib.sha256(test["name"].encode()).hexdigest()[:16]
     kuberay_job_manager = KubeRayJobManager()
     retcode, duration = kuberay_job_manager.run_and_wait(
         job_name=job_name_hash,
