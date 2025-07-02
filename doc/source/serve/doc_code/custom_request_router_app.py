@@ -43,10 +43,10 @@ def _time_ms() -> int:
 @serve.deployment(
     router_config=RouterConfig(
         request_router_class="custom_request_router:ThroughputAwareRequestRouter",
+        request_routing_stats_period_s=1,
+        request_routing_stats_timeout_s=1,
     ),
     num_replicas=3,
-    request_routing_stats_period_s=1,
-    request_routing_stats_timeout_s=1,
     ray_actor_options={"num_cpus": 0},
 )
 class ThroughputAwareRequestRouterApp:
