@@ -48,17 +48,12 @@ class Config:
 def get_current_directory() -> str:
     workspace_dir = os.environ.get("BUILD_WORKSPACE_DIRECTORY")
     if workspace_dir:
-        print(f"BUILD_WORKSPACE_DIRECTORY: {workspace_dir}")
         current_directory = workspace_dir
-        print(f"Using Bazel workspace directory: {current_directory}")
     else:
         current_directory = os.getcwd()
-        print(f"Using current directory: {current_directory}")
     return current_directory
 
 def load_config(path: str) -> Config:
-
-    print(f"testing: {get_current_directory()}")
     with open(os.path.join(get_current_directory(), path) , "r") as f:
         data = yaml.safe_load(f)
         return Config.from_dict(data)
