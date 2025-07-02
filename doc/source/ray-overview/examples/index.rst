@@ -14,3 +14,4 @@ Examples
    ./e2e-timeseries/index.rst
    ./object-detection/index.rst
    ./e2e-rag/index.rst
+   ./mcp-ray-serve/index.rst
