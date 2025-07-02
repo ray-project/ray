@@ -100,6 +100,7 @@ class ActorTaskSubmitterTest : public ::testing::TestWithParam<bool> {
             *store_,
             *task_finisher_,
             actor_creator_,
+            [](const ObjectID &object_id) { return rpc::TensorTransport::OBJECT_STORE; },
             [this](const ActorID &actor_id, int64_t num_queued) {
               last_queue_warning_ = num_queued;
             },
@@ -672,12 +673,12 @@ TEST_P(ActorTaskSubmitterTest, TestActorRestartFailInflightTasks) {
   // Submit retries for task2 and task3.
   auto task2_second_attempt = CreateActorTaskHelper(actor_id, caller_worker_id, 3);
   task2_second_attempt.GetMutableMessage().set_task_id(
-      task2_first_attempt.TaskId().Binary());
+      task2_first_attempt.TaskIdBinary());
   task2_second_attempt.GetMutableMessage().set_attempt_number(
       task2_first_attempt.AttemptNumber() + 1);
   auto task3_second_attempt = CreateActorTaskHelper(actor_id, caller_worker_id, 4);
   task3_second_attempt.GetMutableMessage().set_task_id(
-      task3_first_attempt.TaskId().Binary());
+      task3_first_attempt.TaskIdBinary());
   task3_second_attempt.GetMutableMessage().set_attempt_number(
       task3_first_attempt.AttemptNumber() + 1);
   ASSERT_TRUE(submitter_.SubmitTask(task2_second_attempt).ok());
@@ -821,6 +822,30 @@ TEST_P(ActorTaskSubmitterTest, TestPendingTasks) {
     ASSERT_TRUE(worker_client_->ReplyPushTask(task.GetTaskAttempt(), Status::OK()));
   }
   ASSERT_FALSE(submitter_.PendingTasksFull(actor_id));
+}
+
+TEST_P(ActorTaskSubmitterTest, TestActorRestartResubmit) {
+  auto execute_out_of_order = GetParam();
+  rpc::Address addr;
+  auto worker_id = WorkerID::FromRandom();
+  addr.set_worker_id(worker_id.Binary());
+  ActorID actor_id = ActorID::Of(JobID::FromInt(0), TaskID::Nil(), 0);
+  submitter_.AddActorQueueIfNotExists(actor_id,
+                                      -1,
+                                      execute_out_of_order,
+                                      /*fail_if_actor_unreachable*/ true,
+                                      /*owned*/ false);
+
+  // Generator is pushed to worker -> generator queued for resubmit -> comes back from
+  // worker -> resubmit happens.
+  auto task1 = CreateActorTaskHelper(actor_id, worker_id, 0);
+  ASSERT_TRUE(submitter_.SubmitTask(task1).ok());
+  io_context.run_one();
+  submitter_.ConnectActor(actor_id, addr, 0);
+  ASSERT_EQ(worker_client_->callbacks.size(), 1);
+  ASSERT_TRUE(submitter_.QueueGeneratorForResubmit(task1));
+  EXPECT_CALL(*task_finisher_, MarkGeneratorFailedAndResubmit(task1.TaskId())).Times(1);
+  worker_client_->ReplyPushTask(task1.GetTaskAttempt(), Status::OK());
 }
 
 INSTANTIATE_TEST_SUITE_P(ExecuteOutOfOrder,

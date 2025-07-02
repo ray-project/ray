@@ -262,6 +262,7 @@ class MetricsLogger:
         reduce: Optional[str] = "mean",
         window: Optional[Union[int, float]] = None,
         ema_coeff: Optional[float] = None,
+        percentiles: Union[List[int], bool] = False,
         clear_on_reduce: bool = False,
         with_throughput: bool = False,
         throughput_ema_coeff: Optional[float] = None,
@@ -357,6 +358,13 @@ class MetricsLogger:
                 `reduce` must be "mean".
                 The reduction formula for EMA is:
                 EMA(t1) = (1.0 - ema_coeff) * EMA(t0) + ema_coeff * new_value
+            percentiles: If reduce is `None`, we can compute the percentiles of the
+                values list given by `percentiles`. Defaults to [0, 0.5, 0.75, 0.9, 0.95,
+                0.99, 1] if set to True. When using percentiles, a window must be provided.
+                This window should be chosen carefully. RLlib computes exact percentiles and
+                the computational complexity is O(m*n*log(n/m)) where n is the window size
+                and m is the number of parallel metrics loggers involved (for example,
+                m EnvRunners).
             clear_on_reduce: If True, all values under `key` will be emptied after
                 `self.reduce()` is called. Setting this to True is useful for cases,
                 in which the internal values list would otherwise grow indefinitely,
@@ -400,6 +408,7 @@ class MetricsLogger:
                         Stats(
                             value,
                             reduce=reduce,
+                            percentiles=percentiles,
                             window=window,
                             ema_coeff=ema_coeff,
                             clear_on_reduce=clear_on_reduce,
@@ -447,6 +456,15 @@ class MetricsLogger:
                         f"but got argument window={window} while the existing Stats object {key} "
                         f"has window={stats._window}."
                     )
+                if percentiles != getattr(stats, "_percentiles", False) and log_once(
+                    f"percentiles_warning_{key}"
+                ):
+                    logger.warning(
+                        "percentiles should be the same for all logged values under the same key, "
+                        f"but got argument percentiles={percentiles} while the existing Stats object {key} "
+                        f"has percentiles={getattr(stats, '_percentiles', False)}."
+                    )
+
                 if (
                     reduce_per_index_on_aggregate
                     != stats._reduce_per_index_on_aggregate
@@ -458,7 +476,6 @@ class MetricsLogger:
                         f"has reduce_per_index_on_aggregate={stats._reduce_per_index_on_aggregate}."
                     )
 
-                # Otherwise, we just push the value into self's `Stats`.
                 stats.push(value)
 
     def log_dict(
@@ -469,6 +486,7 @@ class MetricsLogger:
         reduce: Optional[str] = "mean",
         window: Optional[Union[int, float]] = None,
         ema_coeff: Optional[float] = None,
+        percentiles: Union[List[int], bool] = False,
         clear_on_reduce: bool = False,
         with_throughput: bool = False,
         throughput_ema_coeff: Optional[float] = None,
@@ -550,6 +568,13 @@ class MetricsLogger:
                 `reduce` must be "mean".
                 The reduction formula for EMA is:
                 EMA(t1) = (1.0 - ema_coeff) * EMA(t0) + ema_coeff * new_value
+            percentiles: If reduce is `None`, we can compute the percentiles of the
+                values list given by `percentiles`. Defaults to [0, 0.5, 0.75, 0.9, 0.95,
+                0.99, 1] if set to True. When using percentiles, a window must be provided.
+                This window should be chosen carefully. RLlib computes exact percentiles and
+                the computational complexity is O(m*n*log(n/m)) where n is the window size
+                and m is the number of parallel metrics loggers involved (for example,
+                m EnvRunners).
             clear_on_reduce: If True, all values under `key` will be emptied after
                 `self.reduce()` is called. Setting this to True is useful for cases,
                 in which the internal values list would otherwise grow indefinitely,
@@ -592,6 +617,7 @@ class MetricsLogger:
                 reduce=reduce,
                 window=window,
                 ema_coeff=ema_coeff,
+                percentiles=percentiles,
                 clear_on_reduce=clear_on_reduce,
                 with_throughput=with_throughput,
                 throughput_ema_coeff=throughput_ema_coeff,
@@ -803,6 +829,7 @@ class MetricsLogger:
         reduce: str = "mean",
         window: Optional[Union[int, float]] = None,
         ema_coeff: Optional[float] = None,
+        percentiles: Union[List[int], bool] = False,
         clear_on_reduce: bool = False,
         with_throughput: bool = False,
         throughput_ema_coeff: float = 0.05,
@@ -856,6 +883,13 @@ class MetricsLogger:
                 `reduce` must be "mean".
                 The reduction formula for EMA is:
                 EMA(t1) = (1.0 - ema_coeff) * EMA(t0) + ema_coeff * new_value
+            percentiles: If reduce is `None`, we can compute the percentiles of the
+                values list given by `percentiles`. Defaults to [0, 0.5, 0.75, 0.9, 0.95,
+                0.99, 1] if set to True. When using percentiles, a window must be provided.
+                This window should be chosen carefully. RLlib computes exact percentiles and
+                the computational complexity is O(m*n*log(n/m)) where n is the window size
+                and m is the number of parallel metrics loggers involved (for example,
+                m EnvRunners).
             clear_on_reduce: If True, all values under `key` will be emptied after
                 `self.reduce()` is called. Setting this to True is useful for cases,
                 in which the internal values list would otherwise grow indefinitely,
@@ -891,6 +925,7 @@ class MetricsLogger:
                 Stats(
                     init_values=None,
                     reduce=reduce,
+                    percentiles=percentiles,
                     window=window,
                     ema_coeff=ema_coeff,
                     clear_on_reduce=clear_on_reduce,
@@ -1002,6 +1037,7 @@ class MetricsLogger:
         reduce: Optional[str] = "mean",
         window: Optional[Union[int, float]] = None,
         ema_coeff: Optional[float] = None,
+        percentiles: Union[List[int], bool] = False,
         clear_on_reduce: bool = False,
         with_throughput: bool = False,
         throughput_ema_coeff: float = 0.05,
@@ -1037,6 +1073,13 @@ class MetricsLogger:
                 The reduction formula for EMA is:
                 EMA(t1) = (1.0 - ema_coeff) * EMA(t0) + ema_coeff * new_value
                 Note that this is only applied if `key` does not exist in `self` yet.
+            percentiles: If reduce is `None`, we can compute the percentiles of the
+                values list given by `percentiles`. Defaults to [0, 0.5, 0.75, 0.9, 0.95,
+                0.99, 1] if set to True. When using percentiles, a window must be provided.
+                This window should be chosen carefully. RLlib computes exact percentiles and
+                the computational complexity is O(m*n*log(n/m)) where n is the window size
+                and m is the number of parallel metrics loggers involved (for example,
+                m EnvRunners).
             clear_on_reduce: If True, all values under `key` will be emptied after
                 `self.reduce()` is called. Setting this to True is useful for cases,
                 in which the internal values list would otherwise grow indefinitely,
@@ -1076,6 +1119,7 @@ class MetricsLogger:
                 reduce=reduce,
                 window=window,
                 ema_coeff=ema_coeff,
+                percentiles=percentiles,
                 clear_on_reduce=clear_on_reduce,
                 with_throughput=with_throughput,
                 throughput_ema_coeff=throughput_ema_coeff,

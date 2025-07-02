@@ -75,4 +75,6 @@ message ExportActorData {
   string repr_name = 14;
   // The key-value labels for task and actor.
   map<string, string> labels = 15;
+  // The label selector for the actor.
+  map<string, string> label_selector = 16;
 }

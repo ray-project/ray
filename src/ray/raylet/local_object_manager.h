@@ -18,6 +18,7 @@
 #include <memory>
 #include <queue>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "ray/common/id.h"
@@ -26,9 +27,9 @@
 #include "ray/object_manager/common.h"
 #include "ray/object_manager/object_directory.h"
 #include "ray/pubsub/subscriber.h"
+#include "ray/raylet/local_object_manager_interface.h"
 #include "ray/raylet/worker_pool.h"
 #include "ray/rpc/worker/core_worker_client_pool.h"
-#include "src/ray/protobuf/node_manager.pb.h"
 
 namespace ray {
 
@@ -39,7 +40,7 @@ inline constexpr int64_t kDefaultSpilledObjectDeleteRetries = 3;
 
 /// This class implements memory management for primary objects, objects that
 /// have been freed, and objects that have been spilled.
-class LocalObjectManager {
+class LocalObjectManager : public LocalObjectManagerInterface {
  public:
   LocalObjectManager(
       const NodeID &node_id,
@@ -58,19 +59,19 @@ class LocalObjectManager {
       pubsub::SubscriberInterface *core_worker_subscriber,
       IObjectDirectory *object_directory)
       : self_node_id_(node_id),
-        self_node_address_(self_node_address),
+        self_node_address_(std::move(self_node_address)),
         self_node_port_(self_node_port),
         io_service_(io_service),
         free_objects_period_ms_(free_objects_period_ms),
         free_objects_batch_size_(free_objects_batch_size),
         io_worker_pool_(io_worker_pool),
         owner_client_pool_(owner_client_pool),
-        on_objects_freed_(on_objects_freed),
+        on_objects_freed_(std::move(on_objects_freed)),
         last_free_objects_at_ms_(current_time_ms()),
         min_spilling_size_(RayConfig::instance().min_spilling_size()),
         num_active_workers_(0),
         max_active_workers_(max_io_workers),
-        is_plasma_object_spillable_(is_plasma_object_spillable),
+        is_plasma_object_spillable_(std::move(is_plasma_object_spillable)),
         is_external_storage_type_fs_(is_external_storage_type_fs),
         max_fused_object_count_(max_fused_object_count),
         next_spill_error_log_bytes_(RayConfig::instance().verbose_spill_logs()),
@@ -95,12 +96,12 @@ class LocalObjectManager {
   void PinObjectsAndWaitForFree(const std::vector<ObjectID> &object_ids,
                                 std::vector<std::unique_ptr<RayObject>> &&objects,
                                 const rpc::Address &owner_address,
-                                const ObjectID &generator_id = ObjectID::Nil());
+                                const ObjectID &generator_id = ObjectID::Nil()) override;
 
   /// Spill objects as much as possible as fast as possible up to the max throughput.
   ///
   /// \return True if spilling is in progress.
-  void SpillObjectUptoMaxThroughput();
+  void SpillObjectUptoMaxThroughput() override;
 
   /// TODO(dayshah): This function is only used for testing, we should remove and just
   /// keep SpillObjectsInternal.
@@ -110,7 +111,7 @@ class LocalObjectManager {
   /// \param callback A callback to call once the objects have been spilled, or
   /// there is an error.
   void SpillObjects(const std::vector<ObjectID> &objects_ids,
-                    std::function<void(const ray::Status &)> callback);
+                    std::function<void(const ray::Status &)> callback) override;
 
   /// Restore a spilled object from external storage back into local memory.
   /// Note: This is no-op if the same restoration request is in flight or the requested
@@ -121,14 +122,19 @@ class LocalObjectManager {
   /// \param object_url The URL where the object is spilled.
   /// \param callback A callback to call when the restoration is done.
   /// Status will contain the error during restoration, if any.
-  void AsyncRestoreSpilledObject(const ObjectID &object_id,
-                                 int64_t object_size,
-                                 const std::string &object_url,
-                                 std::function<void(const ray::Status &)> callback);
+  void AsyncRestoreSpilledObject(
+      const ObjectID &object_id,
+      int64_t object_size,
+      const std::string &object_url,
+      std::function<void(const ray::Status &)> callback) override;
 
   /// Clear any freed objects. This will trigger the callback for freed
   /// objects.
-  void FlushFreeObjects();
+  void FlushFreeObjects() override;
+
+  /// Returns true if the object has been marked for deletion through the
+  /// eviction notification.
+  bool ObjectPendingDeletion(const ObjectID &object_id) override;
 
   /// Judge if objects are deletable from pending_delete_queue and delete them if
   /// necessary.
@@ -138,7 +144,7 @@ class LocalObjectManager {
   ///
   /// \param max_batch_size Maximum number of objects that can be deleted by one
   /// invocation.
-  void ProcessSpilledObjectsDeleteQueue(uint32_t max_batch_size);
+  void ProcessSpilledObjectsDeleteQueue(uint32_t max_batch_size) override;
 
   /// Return True if spilling is in progress.
   /// This is a narrow interface that is accessed by plasma store.
@@ -147,31 +153,31 @@ class LocalObjectManager {
   /// which is against the general raylet design.
   ///
   /// \return True if spilling is still in progress. False otherwise.
-  bool IsSpillingInProgress();
+  bool IsSpillingInProgress() override;
 
   /// Populate object store stats.
   ///
   /// \param reply Output parameter.
-  void FillObjectStoreStats(rpc::GetNodeStatsReply *reply) const;
+  void FillObjectStoreStats(rpc::GetNodeStatsReply *reply) const override;
 
   /// Record object spilling stats to metrics.
-  void RecordMetrics() const;
+  void RecordMetrics() const override;
 
   /// Return the spilled object URL if the object is spilled locally,
   /// or the empty string otherwise.
   /// If the external storage is cloud, this will always return an empty string.
   /// In that case, the URL is supposed to be obtained by the object directory.
-  std::string GetLocalSpilledObjectURL(const ObjectID &object_id);
+  std::string GetLocalSpilledObjectURL(const ObjectID &object_id) override;
 
   /// Get the current bytes used by primary object copies. This number includes
   /// bytes used by objects currently being spilled.
-  int64_t GetPrimaryBytes() const;
+  int64_t GetPrimaryBytes() const override;
 
   /// Returns true if we have objects spilled to the local
   /// filesystem.
-  bool HasLocallySpilledObjects() const;
+  bool HasLocallySpilledObjects() const override;
 
-  std::string DebugString() const;
+  std::string DebugString() const override;
 
  private:
   struct LocalObjectInfo {
@@ -284,7 +290,7 @@ class LocalObjectManager {
   /// from plasma. The cache is flushed when it reaches the
   /// free_objects_batch_size, or if objects have been in the cache for longer
   /// than the config's free_objects_period, whichever occurs first.
-  std::vector<ObjectID> objects_to_free_;
+  absl::flat_hash_set<ObjectID> objects_pending_deletion_;
 
   /// The total size of the objects that are currently being
   /// spilled from this node, in bytes.
