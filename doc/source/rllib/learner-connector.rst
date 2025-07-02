@@ -1,3 +1,106 @@
+TODO (sven): weave this in here from env-to-module. It should go here as it requires a learner connector equivalent piece.
+
+Stacking the N most recent observations
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+If you would like to write a custom env-to-module connector that stacks the `N` most recent observations and feeds
+this stack of observations into your RLModule (for example in an attention/transformer architecture), you can
+achieve this, too, by subclassing `ConnectorV2` and overriding the `__call__` method.
+
+However, in this case, the implementation shouldn't write back the stacked observations into the episode
+(as updated observation), because doing so would make the next call to the same ConnectorV2 piece to look back onto
+an already stacked previous observation. Instead, you should manipulate the `batch` directly, as in this example:
+
+
+.. testcode::
+
+    import gymnasium as gym
+    import numpy as np
+    from ray.rllib.connectors.connector_v2 import ConnectorV2
+    from ray.rllib.core.columns import Columns
+
+
+    class StackLast10Observations(ConnectorV2):
+
+        def recompute_output_observation_space(self, in_obs_space, in_act_space):
+            # Assume the input observation space is a Box of shape (N,).
+            assert (
+                isinstance(input_observation_space, gym.spaces.Box)
+                and len(input_observation_space.shape) == 1
+            )
+
+            # This connector concatenates the last 10 observations at axis=0, so the
+            # output space has a shape of (10*N,).
+            return gym.spaces.Box(
+                low=input_observation_space.low,
+                high=input_observation_space.high,
+                shape=(input_observation_space.shape[0] * 10,),
+                dtype=input_observation_space.dtype,
+            )
+
+        def __call__(self, *, rl_module, batch, episodes, **kwargs):
+            # Assume that the input `batch` is empty. Note that this may not be the case
+            # if you have other custom connector pieces before this one.
+            assert not batch
+
+            # Loop through all (single-agent) episodes.
+            for single_agent_episode in self.single_agent_episode_iterator(episodes):
+                # Get the 10 most recent observations from the episodes.
+                last_10_obs = single_agent_episode.get_observations(
+                    indices=[-10, -9, -8, -7, -6, -5, -4, -3, -2, -1], fill=0.0
+                )
+                # Concatenate the two observations.
+                new_obs = np.concatenate(last_10_obs, axis=0)
+
+                # Add the new observation to the `batch` using the
+                # `ConnectorV2.add_batch_item()` utility.
+                self.add_batch_item(
+                    batch=batch,
+                    column=Columns.OBS,
+                    item_to_add=new_obs,
+                    single_agent_episode=single_agent_episode,
+                )
+
+                # Note that we do not write the stacked observations back into the episode
+                # as this would interfere with the next call of this same connector (it
+                # would try to stack already stacked observations and thus produce a shape error).
+
+            # Return batch (with stacked observations).
+            return batch
+
+
+Since the returned `batch` in the preceding env-to-module piece is discarded after the model forward pass
+and not stored in the episodes, you have to make sure to perform the framestacking again on the Learner
+side of things.
+
+
+.. tip::
+    There are already off-the-shelf ConnectorV2 pieces available to you. These perform the task of
+    stacking the last `N` observations in both the env-to-module and Learner pipelines:
+
+    .. code-block:: python
+
+        from ray.rllib.connectors.common.frame_stacking import FrameStacking
+
+        # Framestacking on the EnvRunner side.
+        config.env_runners(
+            env_to_module_connector=lambda env, spaces, device: FrameStacking(num_frames=N),
+        )
+        # Then again on the Learner side.
+        config.training(
+            learner_connector=lambda obs_space, act_space: FrameStacking(num_frames=N, as_learner_conector=True),
+        )
+
+
+END (sven)
+
+
+
+
+
+
+
+
 
 .. _learner-pipeline-docs:
 

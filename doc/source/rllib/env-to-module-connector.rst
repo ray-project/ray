@@ -200,8 +200,8 @@ of two components, ``c`` and ``h``.
     of an RLModule class with a custom LSTM layer in it.
 
 
-Configuring custom env-to-module connectors
--------------------------------------------
+Writing custom env-to-module connectors
+---------------------------------------
 
 You can customize the default env-to-module pipeline that RLlib creates through specifying a function in your
 :py:class:`~ray.rllib.algorithms.algorithm_config.AlgorithmConfig`, which takes an optional RL environment object (`env`) and an optional `spaces`
@@ -230,7 +230,7 @@ For example, to prepend a custom ConnectorV2 piece to the env-to-module pipeline
     # Your builder function must accept an optional `gymnasium.Env` and an optional `spaces` dict
     # as arguments.
     config.env_runners(
-        env_to_module_connector=lambda env=None, spaces=None: MyEnvToModuleConnector(..),
+        env_to_module_connector=lambda env, spaces, device: MyEnvToModuleConnector(..),
     )
 
 
@@ -242,12 +242,23 @@ If you want to add multiple custom pieces to the pipeline, return them as a list
     # Return a list of connector pieces to make RLlib add all of them to your
     # env-to-module pipeline.
     config.env_runners(
-        env_to_module_connector=lambda env=None, spaces=None: [
+        env_to_module_connector=lambda env, spaces, device: [
             MyEnvToModuleConnector(..),
             MyOtherEnvToModuleConnector(..),
             AndOneMoreConnector(..),
         ],
     )
+
+RLlib adds the connector pieces returned by your function to the beginning of the env-to-module pipeline,
+before the previously described default connector pieces that RLlib provides automatically:
+
+
+.. figure:: images/connector_v2/custom_pieces_in_env_to_module_pipeline.svg
+    :width: 800
+    :align: left
+
+    **Inserting custom ConnectorV2 pieces into the env-to-module pipeline**: RLlib inserts custom connector pieces, such
+    as observation preprocessors, before the default pieces.
 
 
 .. _observation-preprocessors:
@@ -255,11 +266,9 @@ If you want to add multiple custom pieces to the pipeline, return them as a list
 Observation Preprocessors
 ~~~~~~~~~~~~~~~~~~~~~~~~~
 
-The simplest way of customizing an env-to-module pipeline is to write an
-:py:class:`~ray.rllib.connectors.env_to_module.observation_preprocessor.SingleAgentObservationPreprocessor` and plug
-it into the :py:class:`~ray.rllib.algorithms.algorithm_config.AlgorithmConfig`. You only have to subclass then from
-:py:class:`~ray.rllib.connectors.env_to_module.observation_preprocessor.SingleAgentObservationPreprocessor`
-and override two methods:
+The simplest way of customizing an env-to-module pipeline is to write your own
+:py:class:`~ray.rllib.connectors.env_to_module.observation_preprocessor.SingleAgentObservationPreprocessor` subclass, implement two methods,
+and point your config to the new class:
 
 .. testcode::
 
@@ -269,7 +278,7 @@ and override two methods:
     from ray.rllib.connectors.env_to_module.observation_preprocessor import SingleAgentObservationPreprocessor
 
 
-    class OneHot(SingleAgentObservationPreprocessor):
+    class IntObservationToOneHotTensor(SingleAgentObservationPreprocessor):
         """Converts int observations (Discrete) into one-hot tensors (Box)."""
 
         def recompute_output_observation_space(self, in_obs_space, in_act_space):
@@ -287,9 +296,14 @@ and override two methods:
             return new_obs
 
 
-Now that you defined your preprocessor, you can plug it into your :py:class:`~ray.rllib.algorithms.algorithm_config.AlgorithmConfig`
-object and run an experiment with a Discrete observation env, where observations are integers, for
-example `FrozenLake-v1 <https://gymnasium.farama.org/environments/toy_text/frozen_lake/>`__:
+Note that any observation preprocessor actually changes the underlying episodes object in place, but and doesn't contribute anything to
+the batch under construction. Because RLlib always inserts any user defined preprocessor (and other custom
+:py:class:`~ray.rllib.connectors.connector_v2.ConnectorV2`
+pieces) before the default pieces, the :py:class:`~ray.rllib.connectors.common.add_observations_from_episodes_to_batch.AddObservationsFromEpisodesToBatch`
+default piece then automatically takes care of adding the preprocessed and updated observation from the episode to the batch:
+
+Now you can use the custom preprocessor in environments with integer observations, for example the
+`FrozenLake <https://gymnasium.farama.org/environments/toy_text/frozen_lake/>`__ RL environment:
 
 
 .. testcode::
@@ -309,7 +323,7 @@ example `FrozenLake-v1 <https://gymnasium.farama.org/environments/toy_text/froze
         # Plug your custom connector piece into the env-to-module pipeline.
         .env_runners(
             env_to_module_connector=(
-                lambda env=None, spaces=None, device=None: OneHot()
+                lambda env, spaces, device: IntObservationToOneHotTensor()
             ),
         )
     )
@@ -318,6 +332,8 @@ example `FrozenLake-v1 <https://gymnasium.farama.org/environments/toy_text/froze
     print(algo.train())
 
 
+.. _observation-preprocessors-adding-rewards-to-obs:
+
 Adding recent rewards to the batch
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
@@ -325,12 +341,12 @@ Assume you wrote a custom :ref:`RLModule <rlmodule-guide>` that requires the las
 rewards as input in the calls to any of its `forward_..()` methods.
 
 You can use the same :py:class:`~ray.rllib.connectors.env_to_module.observation_preprocessor.SingleAgentObservationPreprocessor`
-to achieve this.
+API to achieve this.
 
-In the following example, you'll extract the last three rewards from the ongoing episode and concatenate
-them to the actual observation to form a new observation tensor. Note that you also have to change
-the observation space returned by the connector, since there are now three more values in each
-observation:
+In the following example, you extract the last three rewards from the ongoing episode and concatenate
+them with the observation to form a new observation tensor.
+Note that you also have to change the observation space returned by the connector, since
+there are now three more values in each observation:
 
 
 .. testcode::
@@ -368,119 +384,153 @@ observation:
 
 
 Note that the preceding example should work without any further action required on your model,
-whether it's a custom one or provided by RLlib, as long as it determines its input layer's size
-by the shape of the observation space. The connector pipeline correctly captures the observation
-space change, from the environment's 1D-Box to the reward-enhanced, larger 1D-Box and
+whether it's a custom one or a default one provided by RLlib, as long as the model determines its input layer's
+size through the observation space. The connector pipeline correctly captures the observation
+space changes, from the environment's 1D-Box to the reward-enhanced, larger 1D-Box and
 passes this new observation space to your RLModule's :py:meth:`~ray.rllib.core.rl_module.rl_module.setup`
 method.
 
 
-Multi-agent observation preprocessors
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+Preprocessing observations in multi-agent setups
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+In multi-agent setups, you have two options for preprocessing your agents' individual observations
+through customizing your env-to-module pipeline:
+
+1) Agent-by-agent: Using the same API as in the previous examples (:py:class:`~ray.rllib.connectors.env_to_module.observation_preprocessor.SingleAgentObservationPreprocessor`),
+   you can apply a single preprocessing logic across all agents. However, in case you need distinct preprocessing
+   logics by ``AgentID``, lookup the agent information from the provided ``episode`` argument in the
+   :py:meth:`~ray.rllib.connectors.env_to_module.observation_preprocessor.SingleAgentObservationPreprocessor.preprocess` method:
+
+   .. testcode::
+        :skipif: True
+
+        def recompute_output_observation_space(self, in_obs_space, in_act_space):
+            # `in_obs_space` is a `Dict` space, mapping agent IDs to individual agents' spaces.
+            # Alter this dict according to which agents you want to preprocess observations for
+            # and return the new `Dict` space.
+
+            # For example:
+            return gym.spaces.Dict({
+                "some_agent_id": [obs space],
+                "other_agent_id": [another obs space],
+                ...
+            })
+
+        def preprocess(self, observation, episode):
+
+            # Skip preprocessing for certain agent ID(s).
+            if episode.agent_id != "some_agent_id":
+                return observation
+
+            # Preprocess other agents' observations.
+            ...
+
+1) Multi-agent preprocessor with access to the entire multi-agent observation dict: Alternatively, you can subclass the
+   :py:class:`~ray.rllib.connectors.env_to_module.observation_preprocessor.MultiAgentObservationPreprocessor` API and
+   override the same two methods, ``recompute_output_observation_space`` and ``preprocess``.
+
+   See here for a `2-agent observation preprocessor example <https://github.com/ray-project/ray/blob/master/rllib/examples/connectors/multi_agent_observation_preprocessor.py>`__
+   showing how to enhance each agents' observations through adding information from the respective other agent to the observations.
+
+   Use :py:class:`~ray.rllib.connectors.env_to_module.observation_preprocessor.MultiAgentObservationPreprocessor` whenever you need to
+   preprocess observations of an agent by lookup information from other agents, for example their own observations, but also rewards and
+   previous actions.
 
 
+Adding new columns to the batch
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
+So far, you have altered the observations in the input episodes, either by
+:ref:`manipulating them directly <observation-preprocessors>` or
+:ref:`adding additional information like rewards to them <observation-preprocessors-adding-rewards-to-obs>`.
 
-Writing more complex custom ConnectorV2s
-----------------------------------------
-
-Besides simply transforming one observation at a time in a preprocessor-style setup as shown preceding,
-here are two more examples showcasing more complex customizations of the different :py:class:`~ray.rllib.connectors.connector_v2.ConnectorV2` pipelines:
-
-* How to stack the N most recent observations.
-
-
-
-
-Stacking the N most recent observations
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-If you would like to write a custom env-to-module connector that stacks the `N` most recent observations and feeds
-this stack of observations into your RLModule (for example in an attention/transformer architecture), you can
-achieve this, too, by subclassing `ConnectorV2` and overriding the `__call__` method.
-
-However, in this case, the implementation shouldn't write back the stacked observations into the episode
-(as updated observation), because doing so would make the next call to the same ConnectorV2 piece to look back onto
-an already stacked previous observation. Instead, you should manipulate the `batch` directly, as in this example:
-
+RLlib's default env-to-module connectors add the observations found in the episodes to the batch under the ``obs`` column.
+If you would like to create a new column in the batch, you can subclass :py:class:`~ray.rllib.connectors.connector_v2.ConnectorV2` directly
+and implement its :py:meth:`~ray.rllib.connectors.connector_v2.ConnectorV2.__call__` method. This way, if you have an
+:py:class:`~ray.rllib.core.rl_module.rl_module.RLModule` that requires certain custom columns to be present in the input batch,
+write a custom connector piece following this example here:
 
 .. testcode::
 
-    import gymnasium as gym
     import numpy as np
     from ray.rllib.connectors.connector_v2 import ConnectorV2
-    from ray.rllib.core.columns import Columns
 
+    class AddNewColumnToBatch(ConnectorV2):
 
-    class StackLast10Observations(ConnectorV2):
+        def __init__(
+            self,
+            input_observation_space=None,
+            input_action_space=None,
+            *,
+            col_name: str = "last_3_rewards_mean",
+        ):
+            super().__init__(input_observation_space, input_action_space)
 
-        def recompute_output_observation_space(self, in_obs_space, in_act_space):
-            # Assume the input observation space is a Box of shape (N,).
-            assert (
-                isinstance(input_observation_space, gym.spaces.Box)
-                and len(input_observation_space.shape) == 1
-            )
+            self.col_name = col_name
 
-            # This connector concatenates the last 10 observations at axis=0, so the
-            # output space has a shape of (10*N,).
-            return gym.spaces.Box(
-                low=input_observation_space.low,
-                high=input_observation_space.high,
-                shape=(input_observation_space.shape[0] * 10,),
-                dtype=input_observation_space.dtype,
-            )
+        def __call__(self, *, episodes, batch, rl_module, explore, shared_data, **kwargs):
 
-        def __call__(self, *, rl_module, batch, episodes, **kwargs):
-            # Assume that the input `batch` is empty. Note that this may not be the case
-            # if you have other custom connector pieces before this one.
-            assert not batch
+            # Use the convenience `single_agent_episode_iterator` to loop through given episodes.
+            # Even if `episodes` are a list of MultiAgentEpisodes, RLlib splits them up into
+            # their single-agent subcomponents.
 
-            # Loop through all (single-agent) episodes.
-            for single_agent_episode in self.single_agent_episode_iterator(episodes):
-                # Get the 10 most recent observations from the episodes.
-                last_10_obs = single_agent_episode.get_observations(
-                    indices=[-10, -9, -8, -7, -6, -5, -4, -3, -2, -1], fill=0.0
+            for sa_episode in self.single_agent_episode_iterator(episodes):
+
+                # Compute some example new-data item for your `batch` (to be added
+                # under a new column).
+                # Here, we compile the average over the last 3 rewards.
+                last_3_rewards = sa_episode.get_rewards(
+                    indices=[-3, -2, -1],
+                    fill=0.0,  # at beginning of episode, fill with 0s
                 )
-                # Concatenate the two observations.
-                new_obs = np.concatenate(last_10_obs, axis=0)
-
-                # Add the new observation to the `batch` using the
-                # `ConnectorV2.add_batch_item()` utility.
+                new_data_item = np.mean(last_3_rewards)
+                # Use the convenience utility: `add_item_to_batch` to add a new value to
+                # a new or existing column.
                 self.add_batch_item(
                     batch=batch,
-                    column=Columns.OBS,
-                    item_to_add=new_obs,
-                    single_agent_episode=single_agent_episode,
+                    column=self.col_name,
+                    item_to_add=new_data_item,
+                    single_agent_episode=sa_episode,
                 )
 
-                # Note that we do not write the stacked observations back into the episode
-                # as this would interfere with the next call of this same connector (it
-                # would try to stack already stacked observations and thus produce a shape error).
-
-            # Return batch (with stacked observations).
+            # Return the altered batch (with the new column in it).
             return batch
 
 
-Now since the returned `batch` in the preceding env-to-module piece is discarded after the model forward pass
-(and not stored in the episodes), we have to make sure to perform the framestacking again on the Learner
-side of things.
+.. testcode::
+    :hidden:
 
-
-.. tip::
-    There are already off-the-shelf ConnectorV2 pieces available to you. These perform the task of
-    stacking the last `N` observations in both the env-to-module and Learner pipelines:
-
-    .. code-block:: python
-
-        from ray.rllib.connectors.common.frame_stacking import FrameStacking
-
-        # Framestacking on the EnvRunner side.
-        config.env_runners(
-            env_to_module_connector=lambda env: FrameStacking(num_frames=N),
+    config = (
+        PPOConfig()
+        .environment("CartPole-v1")
+        .env_runners(
+            env_to_module_connector=lambda env, spaces, device: AddNewColumnToBatch()
         )
-        # Then again on the Learner side.
-        config.training(
-            learner_connector=lambda obs_space, act_space: FrameStacking(num_frames=N, as_learner_conector=True),
-        )
+    )
+    env = gym.make("CartPole-v1")
+    env_to_module = config.build_env_to_module_connector(env=env, spaces=None)
+    episode = SingleAgentEpisode()
+    obs, _ = env.reset()
+    episode.add_env_reset(observation=obs)
+    action = 0
+    obs, _, _, _, _ = env.step(action)
+    episode.add_env_step(observation=obs, action=action, reward=1.0)
+    batch = {}
+    batch = env_to_module(
+        episodes=[episode],
+        batch=batch,
+        rl_module=None,  # in stateless case, RLModule is not strictly required
+        explore=True,
+    )
+    # Print out the resulting batch.
+    print(batch)
 
 
+You should see the new column in the batch, after running through this connector piece.
+
+Note, though, that if your :py:class:`~ray.rllib.core.rl_module.rl_module.RLModule` also requires the new information
+in the train batch, you would also need to add the same custom connector piece to your Algorithm's
+:py:class:`~ray.rllib.connectors.learner.learner_connector_pipeline.LearnerConnectorPipeline`.
+
+See :ref:`this page here for more details on how to customize the Learner connector pipeline <learner-pipeline-docs>`.

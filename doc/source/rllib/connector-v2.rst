@@ -114,6 +114,9 @@ The three pipeline types are discussed in more detail on the succeeding pages, h
 * All connector pipelines can read from and write to the provided list of episodes as well as the batch and thereby perform data transforms as required.
 
 
+
+
+
 .. Debugging ConnectorV2 Pipelines
 .. ===============================
 
