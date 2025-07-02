@@ -1893,7 +1893,7 @@ class TestGenerateTransformFnForAsyncMap:
 
         with pytest.raises(ValueError, match="Expected a coroutine function"):
             _generate_transform_fn_for_async_map(
-                sync_fn, validate_fn, max_concurrent_batches=1
+                sync_fn, validate_fn, max_concurrency=1
             )
 
     def test_zero_max_concurrent_batches_assertion(self):
@@ -1906,7 +1906,7 @@ class TestGenerateTransformFnForAsyncMap:
 
         with pytest.raises(AssertionError):
             _generate_transform_fn_for_async_map(
-                async_fn, validate_fn, max_concurrent_batches=0
+                async_fn, validate_fn, max_concurrency=0
             )
 
     def test_empty_input(self, mock_actor_async_ctx):
@@ -1918,7 +1918,7 @@ class TestGenerateTransformFnForAsyncMap:
         validate_fn = Mock()
 
         transform_fn = _generate_transform_fn_for_async_map(
-            async_fn, validate_fn, max_concurrent_batches=2
+            async_fn, validate_fn, max_concurrency=2
         )
 
         task_context = Mock()
@@ -1957,18 +1957,20 @@ class TestGenerateTransformFnForAsyncMap:
         validate_fn = Mock()
 
         transform_fn = _generate_transform_fn_for_async_map(
-            async_fn, validate_fn, max_concurrent_batches=100
+            async_fn, validate_fn, max_concurrency=100
         )
 
+        N = 10_000
+
         task_context = Mock()
-        result = list(transform_fn(range(10_000), task_context))
+        result = list(transform_fn(range(N), task_context))
 
         if preserve_order:
-            assert result == list(range(10_000))
+            assert result == list(range(N))
         else:
-            assert set(result) == set(range(10_000))
+            assert set(result) == set(range(N))
 
-        assert validate_fn.call_count == 10_000
+        assert validate_fn.call_count == N
 
     @pytest.mark.parametrize("result_len", [0, 5])
     @pytest.mark.parametrize("preserve_order", [True, False])
@@ -1990,7 +1992,7 @@ class TestGenerateTransformFnForAsyncMap:
         validate_fn = Mock()
 
         transform_fn = _generate_transform_fn_for_async_map(
-            multi_yield_fn, validate_fn, max_concurrent_batches=2
+            multi_yield_fn, validate_fn, max_concurrency=2
         )
 
         task_context = Mock()
@@ -2035,7 +2037,7 @@ class TestGenerateTransformFnForAsyncMap:
         validate_fn = Mock()
 
         transform_fn = _generate_transform_fn_for_async_map(
-            async_fn, validate_fn, max_concurrent_batches=max_concurrency
+            async_fn, validate_fn, max_concurrency=max_concurrency
         )
 
         task_context = Mock()
@@ -2068,7 +2070,7 @@ class TestGenerateTransformFnForAsyncMap:
                 raise ValueError(validation_failure_msg)
 
         transform_fn = _generate_transform_fn_for_async_map(
-            failing_async_fn, validate_fn, max_concurrent_batches=2
+            failing_async_fn, validate_fn, max_concurrency=2
         )
 
         task_context = Mock()
