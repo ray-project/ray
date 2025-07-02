@@ -449,6 +449,9 @@ class Worker:
         self.actors = {}
         # GPU object manager to manage GPU object lifecycles, including coordinating out-of-band
         # tensor transfers between actors, storing and retrieving GPU objects, and garbage collection.
+        # We create the GPU object manager lazily, if a user specifies a
+        # non-default tensor_transport, to avoid circular import and because it
+        # imports third-party dependencies like PyTorch.
         self._gpu_object_manager = None
         # When the worker is constructed. Record the original value of the
         # (CUDA_VISIBLE_DEVICES, ONEAPI_DEVICE_SELECTOR, HIP_VISIBLE_DEVICES,
@@ -500,10 +503,12 @@ class Worker:
         self._is_connected: bool = False
 
     @property
-    def gpu_object_manager(self) -> "ray._private.gpu_object_manager.GPUObjectManager":
+    def gpu_object_manager(self) -> "ray.experimental.GPUObjectManager":
         if self._gpu_object_manager is None:
-            # Initialize lazily to avoid circular import.
-            from ray._private.gpu_object_manager import GPUObjectManager
+            # We create the GPU object manager lazily, if a user specifies a
+            # non-default tensor_transport, to avoid circular import and because it
+            # imports third-party dependencies like PyTorch.
+            from ray.experimental import GPUObjectManager
 
             self._gpu_object_manager = GPUObjectManager()
         return self._gpu_object_manager
@@ -866,21 +871,21 @@ class Worker:
             skip_adding_local_ref=True,
         )
 
-    def raise_errors(self, data_metadata_pairs, object_refs):
-        out = self.deserialize_objects(data_metadata_pairs, object_refs)
+    def raise_errors(self, serialized_objects, object_refs):
+        out = self.deserialize_objects(serialized_objects, object_refs)
         if "RAY_IGNORE_UNHANDLED_ERRORS" in os.environ:
             return
         for e in out:
             _unhandled_error_handler(e)
 
-    def deserialize_objects(self, data_metadata_pairs, object_refs):
+    def deserialize_objects(self, serialized_objects, object_refs):
         # Function actor manager or the import thread may call pickle.loads
         # at the same time which can lead to failed imports
         # TODO: We may be better off locking on all imports or injecting a lock
         # into pickle.loads (https://github.com/ray-project/ray/issues/16304)
         with self.function_actor_manager.lock:
             context = self.get_serialization_context()
-            return context.deserialize_objects(data_metadata_pairs, object_refs)
+            return context.deserialize_objects(serialized_objects, object_refs)
 
     def get_objects(
         self,
@@ -888,7 +893,7 @@ class Worker:
         timeout: Optional[float] = None,
         return_exceptions: bool = False,
         skip_deserialization: bool = False,
-    ):
+    ) -> Tuple[List[serialization.SerializedRayObject], bytes]:
         """Get the values in the object store associated with the IDs.
 
         Return the values from the local object store for object_refs. This
@@ -922,15 +927,15 @@ class Worker:
         timeout_ms = (
             int(timeout * 1000) if timeout is not None and timeout != -1 else -1
         )
-        data_metadata_pairs: List[
-            Tuple[ray._raylet.Buffer, bytes]
+        serialized_objects: List[
+            serialization.SerializedRayObject
         ] = self.core_worker.get_objects(
             object_refs,
             timeout_ms,
         )
 
         debugger_breakpoint = b""
-        for data, metadata in data_metadata_pairs:
+        for data, metadata, _ in serialized_objects:
             if metadata:
                 metadata_fields = metadata.split(b",")
                 if len(metadata_fields) >= 2 and metadata_fields[1].startswith(
@@ -942,7 +947,7 @@ class Worker:
         if skip_deserialization:
             return None, debugger_breakpoint
 
-        values = self.deserialize_objects(data_metadata_pairs, object_refs)
+        values = self.deserialize_objects(serialized_objects, object_refs)
         if not return_exceptions:
             # Raise exceptions instead of returning them to the user.
             for i, value in enumerate(values):
