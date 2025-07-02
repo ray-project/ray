@@ -44,6 +44,7 @@ class TestOfflineData(unittest.TestCase):
             )
             .evaluation(
                 num_offline_eval_runners=2,
+                offline_evaluation_type="eval_loss",
                 offline_eval_batch_size_per_runner=256,
             )
         )
