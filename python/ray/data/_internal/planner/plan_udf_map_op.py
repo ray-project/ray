@@ -464,13 +464,22 @@ def _validate_row_output(item):
 
 
 def _generate_transform_fn_for_map_rows(
+    ctx: DataContext,
     fn: UserDefinedFunction,
 ) -> MapTransformCallable[Row, Row]:
-    def transform_fn(rows: Iterable[Row], _: TaskContext) -> Iterable[Row]:
-        for row in rows:
-            out_row = fn(row)
-            _validate_row_output(out_row)
-            yield out_row
+
+    if _is_async_udf(fn):
+        # UDF is a callable class with async generator `__call__` method.
+        transform_fn = _generate_transform_fn_for_async_map(
+            ctx, fn, _validate_row_output, max_concurrency=16
+        )
+
+    else:
+        def transform_fn(rows: Iterable[Row], _: TaskContext) -> Iterable[Row]:
+            for row in rows:
+                out_row = fn(row)
+                _validate_row_output(out_row)
+                yield out_row
 
     return transform_fn
 
