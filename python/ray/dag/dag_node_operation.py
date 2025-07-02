@@ -142,7 +142,7 @@ class _DAGOperationGraphNode:
         higher priority is considered "less than" the other node.
         """
         if self.is_accelerator_op != other.is_accelerator_op:
-            # When one node is a accelerator operation and the other is not,
+            # When one node is an accelerator operation and the other is not,
             # prioritize the accelerator operation.
             return self.is_accelerator_op
         else:
@@ -179,9 +179,9 @@ class _DAGOperationGraphNode:
     @property
     def is_ready(self) -> bool:
         """
-        If a node is not a accelerator operation, it is ready when it has a zero
+        If a node is not an accelerator operation, it is ready when it has a zero
         in-degree.
-        If it is a accelerator operation, it is ready when all the nodes in the
+        If it is an accelerator operation, it is ready when all the nodes in the
         operation have zero in-degrees.
         """
         return self.in_degree == 0 and (
@@ -195,7 +195,7 @@ class _DAGOperationGraphNode:
     @property
     def is_accelerator_read(self) -> bool:
         """
-        A node is a accelerator read if it is a read node and requires accelerator.
+        A node is an accelerator read if it is a read node and requires accelerator.
         """
         return (
             self.operation.type == _DAGNodeOperationType.READ
@@ -205,7 +205,7 @@ class _DAGOperationGraphNode:
     @property
     def is_accelerator_compute(self) -> bool:
         """
-        A node is a accelerator compute if it is a compute node and requires accelerator.
+        A node is an accelerator compute if it is a compute node and requires accelerator.
         """
         return (
             self.operation.type == _DAGNodeOperationType.COMPUTE
@@ -215,7 +215,7 @@ class _DAGOperationGraphNode:
     @property
     def is_accelerator_write(self) -> bool:
         """
-        A node is a accelerator write if it is a write node and requires accelerator.
+        A node is an accelerator write if it is a write node and requires accelerator.
         """
         return (
             self.operation.type == _DAGNodeOperationType.WRITE
@@ -335,18 +335,18 @@ def _select_next_nodes(
     For the implementation details, we maintain a priority queue for each actor,
     where the head of the priority queue is the node with the smallest `exec_task_idx`.
     When a node has a zero in-degree, it is added to the corresponding actor's
-    priority queue. For a node other than a accelerator collective node, it is ready to be
-    executed if it has a zero in-degree. For a accelerator collective node, it is ready to
+    priority queue. For a node other than an accelerator collective node, it is ready to be
+    executed if it has a zero in-degree. For an accelerator collective node, it is ready to
     be executed when all the nodes in its collective operation have zero in-degrees.
 
-    If a node is a accelerator collective node, it updates the `ready_collective_nodes` of
+    If a node is an accelerator collective node, it updates the `ready_collective_nodes` of
     all the nodes in its collective operation. Unless all the nodes in its collective
     group have zero in-degrees, this node is removed from the candidate list.
     Eventually, exactly one accelerator collective node from its collective operation is
     selected from the candidate list.
 
-    If the selected node is a accelerator write node, select all the downstream accelerator
-    read nodes. If the selected node is a accelerator collective node, select all the accelerator
+    If the selected node is an accelerator write node, select all the downstream accelerator
+    read nodes. If the selected node is an accelerator collective node, select all the accelerator
     compute nodes in its collective operation.
 
     Args:
@@ -744,10 +744,10 @@ def _generate_actor_to_execution_schedule(
     # Use topological sort algorithm to generate the execution schedule.
     while True:
         # Select a list of nodes to be executed. There are three cases:
-        # 1. If a selected node is not a accelerator operation, only itself is returned.
-        # 2. If a selected node is a accelerator write operation, the corresponding accelerator
+        # 1. If a selected node is not an accelerator operation, only itself is returned.
+        # 2. If a selected node is an accelerator write operation, the corresponding accelerator
         #    read operations are also returned.
-        # 3. If a selected node is a accelerator collective operation, all the nodes in
+        # 3. If a selected node is an accelerator collective operation, all the nodes in
         #    its collective operation are returned.
         nodes = _select_next_nodes(actor_to_candidates, graph)
         if nodes is None:
@@ -829,7 +829,7 @@ def _generate_overlapped_execution_schedule(
                         or overlapped_schedule[j].operation.type
                         == _DAGNodeOperationType.WRITE
                     ) and overlapped_schedule[j].requires_accelerator:
-                        # Found a accelerator read/write operation, skip the overlap
+                        # Found an accelerator read/write operation, skip the overlap
                         # optimization to keep relative order of accelerator operations
                         break
     return actor_to_overlapped_schedule

@@ -723,7 +723,7 @@ class ExecutableTask:
             resolved_inputs.append(task_input.resolve(input_data))
 
         if self.collective_op is not None:
-            # Run a accelerator collective operation.
+            # Run an accelerator collective operation.
             method = self.collective_op.execute
         else:
             # Run an actor method.

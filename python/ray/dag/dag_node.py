@@ -151,12 +151,18 @@ class DAGNode(DAGNodeBase):
         Configure the torch tensor transport for this node.
 
         Args:
-            transport: "nccl" means that tensors will be passed via NCCL.
-                "shm" means that tensors will be passed via host shared memory and gRPC.
-                "accelerator" means that tensors are communicated using accelerator-specific backends.
-                "auto" (default) means that tensor transport will be
-                automatically determined based on the sender and receiver,
-                either through NCCL or host memory.
+            transport: Specifies the tensor transport mechanism.
+                - "accelerator": Tensors are communicated using accelerator-specific backends
+                (e.g., NCCL, XLA, or vendor-provided transport). This is the recommended option
+                for most use cases, as it supports extensibility and future hardware backends.
+                - "nccl": Tensors are passed explicitly via NCCL. This option is kept for
+                backwards compatibility and may be removed in the future. Use "accelerator"
+                instead unless you have legacy requirements.
+                - "shm": Tensors are passed via host shared memory and gRPC. Typically used
+                when accelerator-based transport is unavailable or not suitable.
+                - "auto" (default): The system automatically selects the appropriate transport
+                mechanism based on the sender and receiver, usually preferring accelerator-based
+                transport when available.
             device: The target device to use for the tensor transport.
                 "default": The tensor will maintain its original device placement from the sender
                 "cpu": The tensor will be explicitly moved to CPU device in the receiver

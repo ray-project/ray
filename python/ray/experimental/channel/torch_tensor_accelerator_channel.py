@@ -403,39 +403,39 @@ class _TorchTensorAcceleratorChannel(ChannelInterface):
         ctx = ChannelContext.get_current()
         assert isinstance(
             typ.communicator_id, str
-        ), f"communicator group ID ({typ.communicator_id}) must be a str."
+        ), f"accelerator group ID ({typ.communicator_id}) must be a str."
         self._typ = typ
 
         self._static_shape = typ.static_shape
 
-        assert self._typ.communicator_id is not None, "No communicator group specified."
-        self._comm_group_id: str = self._typ.communicator_id
+        assert self._typ.communicator_id is not None, "No accelerator group specified."
+        self._accelerator_group_id: str = self._typ.communicator_id
 
         # If the communicators does not contain the group_id, it means the current
         # process is the driver, and there’s no need to fetch the comm_group.
         if self._typ.communicator_id in ctx.communicators:
-            self._comm_group: "Communicator" = ctx.communicators[
+            self._accelerator_group: "Communicator" = ctx.communicators[
                 self._typ.communicator_id
             ]
             assert (
-                self._comm_group is not None
-            ), "ChannelContext.comm_group is not initialized."
+                self._accelerator_group is not None
+            ), "ChannelContext.accelerator_group is not initialized."
 
-            self._writer_rank = self._comm_group.get_rank(self._writer)
+            self._writer_rank = self._accelerator_group.get_rank(self._writer)
             self._reader_ranks = [
-                self._comm_group.get_rank(reader)
+                self._accelerator_group.get_rank(reader)
                 for reader, _ in self._reader_and_node_list
             ]
 
             if (
                 self._writer_rank is not None
-                and self._writer_rank == self._comm_group.get_self_rank()
+                and self._writer_rank == self._accelerator_group.get_self_rank()
             ):
                 self._writer_registered = True
 
             if (
                 self._reader_ranks
-                and self._comm_group.get_self_rank() in self._reader_ranks
+                and self._accelerator_group.get_self_rank() in self._reader_ranks
             ):
                 self._reader_registered = True
 
@@ -458,13 +458,13 @@ class _TorchTensorAcceleratorChannel(ChannelInterface):
             )
 
     def ensure_registered_as_writer(self):
-        assert self._comm_group is not None, "Actor is not part of a comm group"
+        assert self._accelerator_group is not None, "Actor is not part of an accelerator group"
         assert self._writer_registered
         ctx = ChannelContext.get_current()
         assert ctx.torch_device.type != "cpu"
 
     def ensure_registered_as_reader(self) -> bool:
-        assert self._comm_group is not None, "Actor is not part of a comm group"
+        assert self._accelerator_group is not None, "Actor is not part of an accelerator group"
         assert self._reader_registered
         ctx = ChannelContext.get_current()
         assert ctx.torch_device.type != "cpu"
@@ -583,7 +583,7 @@ class _TorchTensorAcceleratorChannel(ChannelInterface):
             # TODO: If there are multiple readers, can replace with a
             # broadcast.
             for rank in self._reader_ranks:
-                self._comm_group.send(tensor, rank)
+                self._accelerator_group.send(tensor, rank)
 
     def _get_recv_tensors_metadata(
         self, timeout: Optional[float] = None
@@ -628,7 +628,7 @@ class _TorchTensorAcceleratorChannel(ChannelInterface):
 
         bufs: List["torch.Tensor"] = []
         for meta in meta_list:
-            buf = self._comm_group.recv(
+            buf = self._accelerator_group.recv(
                 meta.shape, meta.dtype, self._writer_rank, _torch_zeros_allocator
             )
             bufs.append(buf)
@@ -639,10 +639,10 @@ class _TorchTensorAcceleratorChannel(ChannelInterface):
     def close(self) -> None:
         self._meta_channel.close()
 
-        self._comm_group.destroy()
+        self._accelerator_group.destroy()
         ctx = ChannelContext.get_current()
-        if self._comm_group_id in ctx.communicators:
-            del ctx.communicators[self._comm_group_id]
+        if self._accelerator_group_id in ctx.communicators:
+            del ctx.communicators[self._accelerator_group_id]
 
 
 def _do_init_communicator(

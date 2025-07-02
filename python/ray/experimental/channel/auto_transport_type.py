@@ -11,7 +11,7 @@ class AutoTransportType(ChannelOutputType):
     Type hint for automatic transport selection for tensors.
 
     With this type hint Compiled Graphs automatically decide the best transport
-    to use (e.g., Accellerator or shared memory) based on the node locations and
+    to use (e.g., accellerator or shared memory) based on the node locations and
     GPU IDs of the readers and writers.
     """
 
