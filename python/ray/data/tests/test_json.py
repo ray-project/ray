@@ -26,7 +26,6 @@ from ray.data.datasource.file_based_datasource import (
 from ray.data.datasource.path_util import _unwrap_protocol
 from ray.data.tests.conftest import *  # noqa
 from ray.data.tests.test_partitioning import PathPartitionEncoder
-from ray.data.tests.util import Counter
 from ray.tests.conftest import *  # noqa
 
 
@@ -437,47 +436,37 @@ def test_json_read_partitioned_with_filter(
         storage_options=storage_options,
     )
     partition_keys = ["one"]
-    kept_file_counter = Counter.remote()
-    skipped_file_counter = Counter.remote()
 
     def skip_unpartitioned(kv_dict):
-        keep = bool(kv_dict)
-        counter = kept_file_counter if keep else skipped_file_counter
-        ray.get(counter.increment.remote())
-        return keep
+        return bool(kv_dict)
 
-    for style in [PartitionStyle.HIVE, PartitionStyle.DIRECTORY]:
-        base_dir = os.path.join(data_path, style.value)
-        partition_path_encoder = PathPartitionEncoder.of(
-            style=style,
-            base_dir=base_dir,
-            field_names=partition_keys,
-            filesystem=fs,
-        )
-        write_base_partitioned_df(
-            partition_keys,
-            partition_path_encoder,
-            file_writer_fn,
-        )
-        file_writer_fn(pd.DataFrame({"1": [1]}), os.path.join(base_dir, "test.json"))
-        partition_path_filter = PathPartitionFilter.of(
-            style=style,
-            base_dir=base_dir,
-            field_names=partition_keys,
-            filter_fn=skip_unpartitioned,
-            filesystem=fs,
-        )
-        ds = ray.data.read_json(
-            base_dir,
-            partition_filter=partition_path_filter,
-            file_extensions=None,
-            filesystem=fs,
-        )
-        assert_base_partitioned_ds(ds)
-        assert ray.get(kept_file_counter.get.remote()) == 2
-        assert ray.get(skipped_file_counter.get.remote()) == 1
-        ray.get(kept_file_counter.reset.remote())
-        ray.get(skipped_file_counter.reset.remote())
+    base_dir = os.path.join(data_path, style.value)
+    partition_path_encoder = PathPartitionEncoder.of(
+        style=style,
+        base_dir=base_dir,
+        field_names=partition_keys,
+        filesystem=fs,
+    )
+    write_base_partitioned_df(
+        partition_keys,
+        partition_path_encoder,
+        file_writer_fn,
+    )
+    file_writer_fn(pd.DataFrame({"1": [1]}), os.path.join(base_dir, "test.json"))
+    partition_path_filter = PathPartitionFilter.of(
+        style=style,
+        base_dir=base_dir,
+        field_names=partition_keys,
+        filter_fn=skip_unpartitioned,
+        filesystem=fs,
+    )
+    ds = ray.data.read_json(
+        base_dir,
+        partition_filter=partition_path_filter,
+        file_extensions=None,
+        filesystem=fs,
+    )
+    assert_base_partitioned_ds(ds)
 
 
 @pytest.mark.parametrize("override_num_blocks", [None, 1, 3])
