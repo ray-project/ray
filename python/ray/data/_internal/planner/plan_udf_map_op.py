@@ -255,11 +255,10 @@ def _wrap_debugger_breakpoint_fn(op: AbstractUDFMap):
         fn_constructor_args = op._fn_constructor_args or ()
         fn_constructor_kwargs = op._fn_constructor_kwargs or {}
 
-        is_async_gen = inspect.isasyncgenfunction(udf.__call__)
-        is_async_coro = inspect.iscoroutinefunction(udf.__call__)
+        is_async_udf = _is_async_udf(udf)
 
         # TODO this constrains concurrency to ALWAYS single thread (remove)
-        if not _is_async_udf(udf):
+        if not is_async_udf:
             udf = make_callable_class_concurrent(udf)
 
         def init_fn():
@@ -270,10 +269,10 @@ def _wrap_debugger_breakpoint_fn(op: AbstractUDFMap):
                         *fn_constructor_args,
                         **fn_constructor_kwargs,
                     ),
-                    is_async=is_async_gen,
+                    is_async=is_async_udf,
                 )
 
-        if is_async_coro:
+        if inspect.iscoroutinefunction(udf.__call__):
             async def _debugger_breakpoint_wrapped_fn(item: Any) -> Any:
                 assert ray.data._map_actor_context is not None
                 assert ray.data._map_actor_context.is_async
@@ -287,7 +286,7 @@ def _wrap_debugger_breakpoint_fn(op: AbstractUDFMap):
                 except Exception as e:
                     _handle_debugger_exception(e, item)
 
-        if is_async_gen:
+        if inspect.isasyncgenfunction(udf.__call__):
 
             async def _debugger_breakpoint_wrapped_fn(item: Any) -> Any:
                 assert ray.data._map_actor_context is not None
@@ -299,8 +298,6 @@ def _wrap_debugger_breakpoint_fn(op: AbstractUDFMap):
                         *fn_args,
                         **fn_kwargs,
                     )
-
-                    print(f">>> [DBG] _debugger_breakpoint_wrapped_fn: {gen}")
 
                     async for res in gen:
                         yield res
@@ -480,7 +477,7 @@ def _generate_transform_fn_for_map_rows(
 def _generate_transform_fn_for_flat_map(
     fn: UserDefinedFunction,
 ) -> MapTransformCallable[Row, Row]:
-    if inspect.iscoroutinefunction(fn):
+    if _is_async_udf(fn):
         # UDF is a callable class with async generator `__call__` method.
         transform_fn = _generate_transform_fn_for_async_map(
             fn, _validate_row_output, max_concurrent_batches=16
@@ -665,6 +662,11 @@ def _generate_transform_fn_for_async_map(
             elif isinstance(items, Exception):
                 raise items
             else:
+                # NOTE: Sequences from individual UDFs are combined into a single
+                #       sequence here, as compared to letting individual UDFs to
+                #       add into the output queue to guarantee *deterministic* ordering
+                #       (necessary for Ray Data to be able to guarantee task retries
+                #       producing the same results)
                 for item in items:
                     validate_fn(item)
                     yield item
