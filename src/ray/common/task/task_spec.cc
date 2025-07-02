@@ -394,10 +394,8 @@ std::vector<rpc::ObjectReference> TaskSpecification::GetDependencies() const {
 }
 
 bool TaskSpecification::IsInlinedGPUObject(size_t arg_index) const {
-  // TODO(kevin85421): We should consider introducing a new field to indicate
-  // whether the object is a GPU object in the future.
-  auto &arg = message_->args(arg_index);
-  return arg.is_inlined() && arg.has_object_ref();
+  return message_->args(arg_index).is_inlined() &&
+         ArgTensorTransport(arg_index) != rpc::TensorTransport::OBJECT_STORE;
 }
 
 const ResourceSet &TaskSpecification::GetRequiredPlacementResources() const {
