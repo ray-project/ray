@@ -1926,14 +1926,10 @@ class TestGenerateTransformFnForAsyncMap:
         validate_fn.assert_not_called()
 
     @pytest.mark.parametrize("udf_kind", ["coroutine", "async_gen"])
-    @pytest.mark.parametrize("preserve_order", [True, False])
     def test_basic_async_processing(
-        self, udf_kind, preserve_order, mock_actor_async_ctx, restore_data_context
+        self, udf_kind, mock_actor_async_ctx
     ):
         """Test basic async processing with order preservation."""
-
-        ctx = restore_data_context
-        ctx.execution_options.preserve_order = preserve_order
 
         if udf_kind == "async_gen":
 
@@ -1965,29 +1961,20 @@ class TestGenerateTransformFnForAsyncMap:
         task_context = Mock()
         result = list(transform_fn(range(N), task_context))
 
-        if preserve_order:
-            assert result == list(range(N))
-        else:
-            assert set(result) == set(range(N))
-
+        assert result == list(range(N))
         assert validate_fn.call_count == N
 
     @pytest.mark.parametrize("result_len", [0, 5])
-    @pytest.mark.parametrize("preserve_order", [True, False])
     def test_basic_async_processing_with_iterator(
         self,
         result_len: int,
-        preserve_order: bool,
         mock_actor_async_ctx,
-        restore_data_context,
     ):
         """Test UDF that yields multiple items per input."""
 
         async def multi_yield_fn(x):
             for i in range(result_len):
                 yield f"processed_{x}_{i}"
-
-        restore_data_context.execution_options.preserve_order = preserve_order
 
         validate_fn = Mock()
 
@@ -2002,21 +1989,15 @@ class TestGenerateTransformFnForAsyncMap:
         # NOTE: Outputs are expected to match input sequence ordering
         expected = [f"processed_{x}_{i}" for x in input_seq for i in range(result_len)]
 
-        if preserve_order:
-            assert list(transform_fn(input_seq, task_context)) == expected
-        else:
-            assert set(transform_fn(input_seq, task_context)) == set(expected)
+        assert list(transform_fn(input_seq, task_context)) == expected
 
-    @pytest.mark.parametrize("preserve_order", [True, False])
     def test_concurrency_limiting(
-        self, preserve_order, mock_actor_async_ctx, restore_data_context
+        self, mock_actor_async_ctx, restore_data_context
     ):
         """Test that concurrency is properly limited."""
         max_concurrency = 10
 
         concurrent_task_counter = 0
-
-        restore_data_context.execution_options.preserve_order = preserve_order
 
         async def async_fn(x):
             # NOTE: This is safe, since event-loop is single-threaded
@@ -2044,18 +2025,13 @@ class TestGenerateTransformFnForAsyncMap:
         result = list(transform_fn(range(10_000), task_context))
         assert len(result) == 10_000
 
-    @pytest.mark.parametrize("preserve_order", [True, False])
     @pytest.mark.parametrize("failure_kind", ["udf", "validation"])
     def test_exception_in_udf(
         self,
-        preserve_order: bool,
         failure_kind: str,
         mock_actor_async_ctx,
-        restore_data_context,
     ):
         """Test exception handling in UDF."""
-
-        restore_data_context.execution_options.preserve_order = preserve_order
 
         udf_failure_msg = "UDF failure"
         validation_failure_msg = "Validation failure"
