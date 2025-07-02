@@ -881,5 +881,13 @@ class TaskManager : public TaskFinisherInterface, public TaskResubmissionInterfa
   friend class TaskManagerTest;
 };
 
+/// Extract plasma dependencies from a task specification.
+/// This includes arguments passed by reference, inlined GPU objects,
+/// inlined references, and actor creation dummy object IDs.
+///
+/// \param[in] spec The task specification to extract dependencies from.
+/// \return Vector of ObjectIDs representing plasma dependencies.
+std::vector<ObjectID> ExtractPlasmaDependencies(const TaskSpecification &spec);
+
 }  // namespace core
 }  // namespace ray

@@ -208,6 +208,11 @@ class TaskManagerLineageTest : public TaskManagerTest {
   TaskManagerLineageTest() : TaskManagerTest(true, /*max_lineage_bytes=*/10000) {}
 };
 
+class TestExtractPlasmaDependencies : public ::testing::Test {
+ public:
+  TestExtractPlasmaDependencies() {}
+};
+
 TEST_F(TaskManagerTest, TestTaskSuccess) {
   rpc::Address caller_address;
   ObjectID dep1 = ObjectID::FromRandom();
@@ -2517,6 +2522,106 @@ TEST_F(TaskManagerLineageTest, RecoverIntermediateObjectInStreamingGenerator) {
   CompletePendingStreamingTask(spec2, caller_address, 0);
 }
 
+void CheckObjectIDInDependencies(std::vector<ObjectID> dependencies,
+                                 int expected_size,
+                                 std::vector<ObjectID> object_ids) {
+  ASSERT_EQ(dependencies.size(), expected_size);
+  for (const auto &object_id : object_ids) {
+    ASSERT_TRUE(std::find(dependencies.begin(), dependencies.end(), object_id) !=
+                dependencies.end());
+  }
+}
+
+void AddInlinedArgWithNestedReferences(TaskSpecification &spec,
+                                       std::vector<ObjectID> nested_refs) {
+  auto *arg = spec.GetMutableMessage().add_args();
+  arg->set_is_inlined(true);
+  for (const auto &ref : nested_refs) {
+    auto *nested_ref = arg->add_nested_inlined_refs();
+    nested_ref->set_object_id(ref.Binary());
+  }
+}
+
+void AddInlinedArg(TaskSpecification &spec,
+                   ObjectID object_id,
+                   bool is_gpu_object = false) {
+  auto *arg = spec.GetMutableMessage().add_args();
+  arg->set_is_inlined(true);
+  if (is_gpu_object) {
+    arg->set_tensor_transport(rpc::TensorTransport::NCCL);
+    arg->mutable_object_ref()->set_object_id(object_id.Binary());
+  }
+}
+
+TEST_F(TestExtractPlasmaDependencies, NoArguments) {
+  auto spec = CreateTaskHelper(1, {});
+  auto dependencies = ExtractPlasmaDependencies(spec);
+  CheckObjectIDInDependencies(dependencies, 0, {});
+}
+
+TEST_F(TestExtractPlasmaDependencies, PassedByReference) {
+  ObjectID arg1 = ObjectID::FromRandom();
+  ObjectID arg2 = ObjectID::FromRandom();
+  auto spec = CreateTaskHelper(1, {arg1, arg2});
+  auto dependencies = ExtractPlasmaDependencies(spec);
+  CheckObjectIDInDependencies(dependencies, 2, {arg1, arg2});
+}
+
+TEST_F(TestExtractPlasmaDependencies, InlinedArgumentsWithNestedReferences) {
+  ObjectID nested_ref1 = ObjectID::FromRandom();
+  ObjectID nested_ref2 = ObjectID::FromRandom();
+
+  TaskSpecification spec;
+  AddInlinedArgWithNestedReferences(spec, {nested_ref1, nested_ref2});
+
+  auto dependencies = ExtractPlasmaDependencies(spec);
+  CheckObjectIDInDependencies(dependencies, 2, {nested_ref1, nested_ref2});
+}
+
+TEST_F(TestExtractPlasmaDependencies, InlinedGPUObject) {
+  ObjectID gpu_object_id = ObjectID::FromRandom();
+  TaskSpecification spec;
+  AddInlinedArg(spec, gpu_object_id, /*is_gpu_object=*/true);
+  auto dependencies = ExtractPlasmaDependencies(spec);
+  CheckObjectIDInDependencies(dependencies, 1, {gpu_object_id});
+}
+
+TEST_F(TestExtractPlasmaDependencies, InlinedObject) {
+  ObjectID object_id = ObjectID::FromRandom();
+  TaskSpecification spec;
+  AddInlinedArg(spec, object_id);
+  auto dependencies = ExtractPlasmaDependencies(spec);
+  CheckObjectIDInDependencies(dependencies, 0, {});
+}
+
+TEST_F(TestExtractPlasmaDependencies, ActorTask) {
+  ObjectID arg1 = ObjectID::FromRandom();
+
+  auto spec = CreateTaskHelper(1, {arg1});
+  spec.GetMutableMessage().set_type(TaskType::ACTOR_TASK);
+
+  ObjectID actor_creation_dummy_id = spec.ActorCreationDummyObjectId();
+
+  auto dependencies = ExtractPlasmaDependencies(spec);
+  CheckObjectIDInDependencies(dependencies, 2, {arg1, actor_creation_dummy_id});
+}
+
+TEST_F(TestExtractPlasmaDependencies, MixedCase) {
+  ObjectID ref_arg = ObjectID::FromRandom();
+  ObjectID nested_ref1 = ObjectID::FromRandom();
+  ObjectID nested_ref2 = ObjectID::FromRandom();
+  ObjectID inlined_arg = ObjectID::FromRandom();
+  ObjectID gpu_object_id = ObjectID::FromRandom();
+
+  auto spec = CreateTaskHelper(1, {ref_arg});
+  AddInlinedArgWithNestedReferences(spec, {nested_ref1, nested_ref2});
+  AddInlinedArg(spec, inlined_arg);
+  AddInlinedArg(spec, gpu_object_id, /*is_gpu_object=*/true);
+
+  auto dependencies = ExtractPlasmaDependencies(spec);
+  CheckObjectIDInDependencies(
+      dependencies, 4, {ref_arg, nested_ref1, nested_ref2, gpu_object_id});
+}
 }  // namespace core
 }  // namespace ray
 
