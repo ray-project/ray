@@ -4,13 +4,13 @@ from typing import Any, AsyncIterator, Dict, List, Type
 import pytest
 
 import ray
+from ray.llm._internal.batch.processor import vLLMEngineProcessorConfig
 from ray.llm._internal.batch.processor.base import (
     Processor,
     ProcessorBuilder,
     ProcessorConfig,
 )
 from ray.llm._internal.batch.stages.base import StatefulStage, StatefulStageUDF
-from ray.llm._internal.batch.processor import vLLMEngineProcessorConfig
 
 
 def test_empty_processor():
