@@ -68,12 +68,12 @@ from ray.serve._private.default_impl import (
     create_replica_metrics_manager,
 )
 from ray.serve._private.http_util import (
-    convert_object_to_asgi_messages,
     ASGIAppReplicaWrapper,
     ASGIArgs,
     ASGIReceiveProxy,
     MessageQueue,
     Response,
+    convert_object_to_asgi_messages,
 )
 from ray.serve._private.logging_utils import (
     access_log_msg,
