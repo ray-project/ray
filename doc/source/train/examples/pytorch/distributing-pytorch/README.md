@@ -1,5 +1,9 @@
 # Distributing your PyTorch Training Code with Ray Train and Ray Data
 
+<a href="https://console.anyscale.com/template-preview/distributing-pytorch?render_flow=ray&utm_source=ray_docs&utm_medium=docs&utm_campaign=distributing-pytorch">
+    <img src="https://raw.githubusercontent.com/ray-project/ray/c34b74c22a9390aa89baf80815ede59397786d2e/doc/source/_static/img/run-on-anyscale.svg" alt="Run on Anyscale">
+</a>
+
 **Time to complete**: 10 min
 
 This template shows you how to distribute your PyTorch training code with Ray Train and Ray Data, getting performance and usability improvements along the way.
