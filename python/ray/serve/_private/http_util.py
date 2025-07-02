@@ -562,7 +562,17 @@ class ASGIAppReplicaWrapper:
 
         # Use uvicorn's lifespan handling code to properly deal with
         # startup and shutdown event.
-        self._serve_asgi_lifespan = LifespanOn(Config(self._asgi_app, lifespan="on"))
+        # If log_config is not None, uvicorn will use the default logger.
+        # and that interferes with our logging setup.
+        self._serve_asgi_lifespan = LifespanOn(
+            Config(
+                self._asgi_app,
+                lifespan="on",
+                log_level=None,
+                log_config=None,
+                access_log=False,
+            )
+        )
 
         # Replace uvicorn logger with our own.
         self._serve_asgi_lifespan.logger = logger
@@ -722,7 +732,8 @@ async def start_asgi_http_server(
             loop=event_loop,
             lifespan="off",
             access_log=False,
-            log_level="warning",
+            log_level=None,
+            log_config=None,
         )
     )
 
