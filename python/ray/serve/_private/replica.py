@@ -622,13 +622,13 @@ class ReplicaBase(ABC):
         ) as status_code_callback:
             if request_metadata.is_http_request:
                 scope, receive = request_args
-                async for result in self._user_callable_wrapper.call_http_entrypoint(
+                async for messages in self._user_callable_wrapper.call_http_entrypoint(
                     request_metadata,
                     status_code_callback,
                     scope,
                     receive,
                 ):
-                    yield result
+                    yield pickle.dumps(messages)
             else:
                 async for result in self._user_callable_wrapper.call_user_generator(
                     request_metadata,
@@ -666,13 +666,13 @@ class ReplicaBase(ABC):
 
             if request_metadata.is_http_request:
                 scope, receive = request_args
-                async for result in self._user_callable_wrapper.call_http_entrypoint(
+                async for messages in self._user_callable_wrapper.call_http_entrypoint(
                     request_metadata,
                     status_code_callback,
                     scope,
                     receive,
                 ):
-                    yield result
+                    yield pickle.dumps(messages)
             elif request_metadata.is_streaming:
                 async for result in self._user_callable_wrapper.call_user_generator(
                     request_metadata,
@@ -1626,7 +1626,7 @@ class UserCallableWrapper:
                     # field. Other response types like WebSockets may not.
                     status_code_callback(str(msg["status"]))
 
-            yield pickle.dumps(messages)
+            yield messages
 
     @_run_user_code
     async def _call_http_entrypoint(
