@@ -226,13 +226,13 @@ class DataParallelTrainer:
                     "Forcefully aborting the training run."
                 )
                 sys.exit(0)
-            try:
-                ray.get(controller.abort.remote())
-            except ray.exceptions.ActorDiedError:
-                logger.info("Gracefully aborted the training run.")
-                # We catch the error and exit 0 to indicate graceful termination.
-                # However, for some reason the process still exits with 1.
-                sys.exit(0)
+            if sigint_count <= 1:
+                try:
+                    ray.get(controller.abort.remote())
+                except ray.exceptions.ActorDiedError:
+                    # We catch the error and exit 0 to indicate graceful termination.
+                    # However, for some reason the process still exits with 1.
+                    sys.exit(0)
 
         signal.signal(signal.SIGINT, sigint_handler)
 
