@@ -7,6 +7,7 @@ from dependencies.depset import DepSet
 import subprocess
 from dependencies.config import load_config, Config
 
+
 class DependencySetManager:
     def __init__(self, storage_path: Path = Path.home() / ".depsets"):
         self.storage_path = storage_path
@@ -47,6 +48,7 @@ class DependencySetManager:
             raise Exception(f"Failed to execute command: {cmd}")
         return status.stdout
 
+
 @click.group(name="depsets")
 @click.pass_context
 def cli(ctx):
@@ -63,13 +65,23 @@ def load(file_path: str):
     for _, depconfig in config.depsets.items():
         execute_config(depconfig.operation, depconfig)
 
+
 def execute_config(func_name: str, config: Config):
     if func_name == "compile":
-        compile(constraints=config.constraints, requirements=config.requirements, args=config.flags, name=config.name, output=config.output)
+        compile(
+            constraints=config.constraints,
+            requirements=config.requirements,
+            args=config.flags,
+            name=config.name,
+            output=config.output,
+        )
     elif func_name == "subset":
         subset(config.depset, config.requirements, config.name, config.output)
     elif func_name == "expand":
-        expand(config.depsets, config.constraints, config.flags, config.name, config.output)
+        expand(
+            config.depsets, config.constraints, config.flags, config.name, config.output
+        )
+
 
 @cli.command()
 def list():
@@ -108,6 +120,7 @@ def delete(name: str):
     except ValueError as e:
         click.echo(f"Error: {str(e)}", err=True)
 
+
 def compile(
     constraints: List[str],
     requirements: List[str],
@@ -132,7 +145,9 @@ def compile(
         click.echo(f"Error: {str(e)}", err=True)
 
 
-def subset(source_depset_name: str, requirements: List[str], name: str, output: str = None):
+def subset(
+    source_depset_name: str, requirements: List[str], name: str, output: str = None
+):
     """Subset a dependency set."""
     try:
         manager = DependencySetManager()
@@ -175,6 +190,7 @@ def expand(
         click.echo(f"Expanded {name} from {source_depset_names}")
     except ValueError as e:
         click.echo(f"Error: {str(e)}", err=True)
+
 
 if __name__ == "__main__":
     cli()

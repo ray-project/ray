@@ -6,6 +6,7 @@ import re
 import click
 from typing import Set
 
+
 class Dep:
     def __init__(self, name: str, constraints: List[str], version: str):
         self.name = name

@@ -3,6 +3,7 @@ from dataclasses import dataclass, field
 from typing import List, Dict, Optional
 import os
 
+
 @dataclass
 class Depset:
     name: str
@@ -28,22 +29,27 @@ class Config:
         depsets = {
             name: Depset(
                 name=name,
-                requirements=[os.path.join(current_directory, requirement) for requirement in values.get("requirements", [])],
-                constraints=[os.path.join(current_directory, constraint) for constraint in values.get("constraints", [])],
+                requirements=[
+                    os.path.join(current_directory, requirement)
+                    for requirement in values.get("requirements", [])
+                ],
+                constraints=[
+                    os.path.join(current_directory, constraint)
+                    for constraint in values.get("constraints", [])
+                ],
                 operation=values.get("operation", "compile"),
                 output=os.path.join(current_directory, values.get("output")),
                 flags=values.get("flags", []),
                 depset=values.get("depset", []),
                 packages=values.get("packages", []),
                 depsets=values.get("depsets", []),
-                degree=values.get("degree", None)
+                degree=values.get("degree", None),
             )
             for name, values in raw_depsets.items()
         }
 
-        return Config(
-            depsets=depsets
-        )
+        return Config(depsets=depsets)
+
 
 def get_current_directory() -> str:
     workspace_dir = os.environ.get("BUILD_WORKSPACE_DIRECTORY")
@@ -53,7 +59,8 @@ def get_current_directory() -> str:
         current_directory = os.getcwd()
     return current_directory
 
+
 def load_config(path: str) -> Config:
-    with open(os.path.join(get_current_directory(), path) , "r") as f:
+    with open(os.path.join(get_current_directory(), path), "r") as f:
         data = yaml.safe_load(f)
         return Config.from_dict(data)
