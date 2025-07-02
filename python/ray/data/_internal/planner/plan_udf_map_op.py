@@ -15,6 +15,7 @@ import pyarrow as pa
 
 import ray
 from ray._common.utils import get_or_create_event_loop
+from ray._private.ray_constants import env_integer
 from ray.data._internal.compute import get_compute
 from ray.data._internal.execution.interfaces import PhysicalOperator
 from ray.data._internal.execution.interfaces.task_context import TaskContext
@@ -54,6 +55,12 @@ from ray.data.exceptions import UserCodeException
 from ray.util.rpdb import _is_ray_debugger_post_mortem_enabled
 
 logger = logging.getLogger(__name__)
+
+
+
+ASYNC_ROW_UDF_MAX_CONCURRENCY = env_integer(
+    "RAY_DATA_ASYNC_ROW_UDF_MAX_CONCURRENCY", 16
+)
 
 
 class _MapActorContext:
@@ -471,9 +478,12 @@ def _generate_transform_fn_for_map_rows(
 ) -> MapTransformCallable[Row, Row]:
 
     if _is_async_udf(fn):
-        # UDF is a callable class with async generator `__call__` method.
         transform_fn = _generate_transform_fn_for_async_map(
-            ctx, fn, _validate_row_output, max_concurrency=16
+            ctx,
+            fn,
+            _validate_row_output,
+            # NOTE: UDF concurrency is limited
+            max_concurrency=ASYNC_ROW_UDF_MAX_CONCURRENCY
         )
 
     else:
@@ -493,7 +503,10 @@ def _generate_transform_fn_for_flat_map(
     if _is_async_udf(fn):
         # UDF is a callable class with async generator `__call__` method.
         transform_fn = _generate_transform_fn_for_async_map(
-            ctx, fn, _validate_row_output, max_concurrency=16
+            ctx,
+            fn,
+            _validate_row_output,
+            max_concurrency=ASYNC_ROW_UDF_MAX_CONCURRENCY
         )
 
     else:
