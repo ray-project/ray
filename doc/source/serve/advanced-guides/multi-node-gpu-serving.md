@@ -1,4 +1,4 @@
-(kuberay-multi-node-gpu-troubleshooting)=
+(multi-node-gpu-troubleshooting)=
 
 # Troubleshoot multi-node GPU serving on KubeRay
 
