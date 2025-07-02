@@ -2,6 +2,7 @@ import sys
 from typing import Optional
 
 import pytest
+from unittest.mock import patch
 
 from ray.llm.tests.serve.mocks.mock_vllm_engine import MockVLLMEngine, FakeLoraModelLoader
 from ray.llm.tests.serve.utils.testing_utils import LLMResponseValidator
@@ -234,6 +235,15 @@ class TestLLMServer:
             
             # Validate non-streaming response with LoRA model ID
             LLMResponseValidator.validate_non_streaming_response(chunks[0], api_type, max_tokens, lora_model_id=request.model)
+            
+    
+    @pytest.mark.asyncio
+    async def test_push_telemetry(self, create_server, mock_llm_config):
+        """Test that the telemetry push is called properly."""
+        with patch("ray.llm._internal.serve.deployments.llm.llm_server.push_telemetry_report_for_all_models") as mock_push_telemetry:
+            await create_server(mock_llm_config, engine_cls=MockVLLMEngine)
+            mock_push_telemetry.assert_called_once()
+        
 
 
 

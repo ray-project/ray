@@ -182,12 +182,22 @@ class VLLMEngine(LLMEngine):
         from vllm.entrypoints.openai.api_server import init_app_state
         
         
-        node_initialization = await initialize_node(self.llm_config)
+        node_initialization = await initialize_node(self.llm_config)        
+        
         (
             vllm_engine_args,
             vllm_frontend_args,
             vllm_engine_config,
         ) = self._prepare_engine_config(node_initialization)
+
+        # Apply checkpoint info to the llm_config. 
+        # This is needed for capturing model capabilities 
+        # (e.g. supports vision, etc.) on the llm_config.
+        config = self.llm_config.get_engine_config()    
+        self.llm_config.apply_checkpoint_info(
+            config.actual_hf_model_id,
+            trust_remote_code=config.trust_remote_code,
+        )
 
         self._engine_client = self._start_async_llm_engine(
             vllm_engine_args,

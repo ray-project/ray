@@ -242,7 +242,7 @@ class LLMConfig(BaseModelExtended):
     )
 
     _supports_vision: bool = PrivateAttr(False)
-    _model_architecture: str = PrivateAttr("")
+    _model_architecture: str = PrivateAttr("UNSPECIFIED")
     _engine_config: EngineConfigType = PrivateAttr(None)
 
     def _infer_supports_vision(self, model_id_or_path: str) -> None:
