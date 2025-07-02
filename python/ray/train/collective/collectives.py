@@ -54,8 +54,8 @@ def broadcast_from_rank_zero(data: T) -> T:
     """
     # Validate data.
     if data is not None:
-        data_bytes = pickle.dumps(data)
-        if len(data_bytes) > _MAX_BROADCAST_SIZE_BYTES:
+        data_bytes = len(pickle.dumps(data))
+        if data_bytes > _MAX_BROADCAST_SIZE_BYTES:
             raise ValueError(
                 f"Data size {len(data_bytes)} bytes exceeds the maximum broadcast "
                 f"size of {_MAX_BROADCAST_SIZE_BYTES} bytes"
@@ -69,7 +69,7 @@ def broadcast_from_rank_zero(data: T) -> T:
             world_rank=train_context.get_world_rank(),
             world_size=train_context.get_world_size(),
             data=data,
-            barrier_method="ray.train.collective.broadcast_from_rank_zero",
+            caller_method_name="ray.train.collective.broadcast_from_rank_zero",
         )
     )
 
@@ -106,6 +106,6 @@ def barrier() -> None:
             world_rank=train_context.get_world_rank(),
             world_size=train_context.get_world_size(),
             data=None,
-            barrier_method="ray.train.collective.barrier",
+            caller_method_name="ray.train.collective.barrier",
         )
     )

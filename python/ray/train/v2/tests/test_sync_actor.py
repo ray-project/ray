@@ -28,7 +28,7 @@ def test_broadcast_from_rank_0(world_size):
                 world_rank=rank,
                 world_size=world_size,
                 data=f"data-{rank}",
-                barrier_method="broadcast_from_rank_zero",
+                caller_method_name="broadcast_from_rank_zero",
             )
         )
     # Ensure that all workers have the same consensus data same as rank 0
@@ -54,7 +54,7 @@ def test_hang():
                 world_rank=rank,
                 world_size=10,
                 data=f"data-{rank}",
-                barrier_method="broadcast_from_rank_zero",
+                caller_method_name="broadcast_from_rank_zero",
             )
         )
     # Ensure that the workers are blocked and raise BroadcastCollectiveTimeoutError
@@ -79,7 +79,7 @@ def test_world_size_mismatch():
                 world_rank=rank,
                 world_size=10,
                 data=f"data-{rank}",
-                barrier_method="broadcast_from_rank_zero",
+                caller_method_name="broadcast_from_rank_zero",
             )
         )
 
@@ -89,7 +89,7 @@ def test_world_size_mismatch():
         world_rank=9,
         world_size=11,
         data="data-9",
-        barrier_method="broadcast_from_rank_zero",
+        caller_method_name="broadcast_from_rank_zero",
     )
     with pytest.raises(ValueError, match="same world size"):
         ray.get(mismatch_task)
