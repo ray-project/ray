@@ -73,7 +73,6 @@ from ray.serve._private.http_util import (
     ASGIReceiveProxy,
     MessageQueue,
     Response,
-    convert_object_to_asgi_messages,
 )
 from ray.serve._private.logging_utils import (
     access_log_msg,
@@ -1703,13 +1702,9 @@ class UserCallableWrapper:
             #    In this case, the user code is returning a single result,
             #    and we need to support this case by serializing the result to ASGI
             #    messages.
-            if isinstance(result, starlette.responses.Response):
-                await result(scope, receive, send)
-            else:
-                # This is case (3). Since we know for sure that the result is not
-                # streaming, we can optimize by returning the result directly and
-                # skipping the message queue.
-                return convert_object_to_asgi_messages(result)
+            await self._send_user_result_over_asgi(
+                result, ASGIArgs(scope, receive, send)
+            )
 
             if receive_task is not None and not receive_task.done():
                 receive_task.cancel()
