@@ -1,6 +1,6 @@
 (kuberay-multi-node-gpu-troubleshooting)=
 
-# Troubleshooting Multi-Node GPU Serving on KubeRay
+# Troubleshoot multi-node GPU serving on KubeRay
 
 This guide helps you diagnose and resolve common issues when deploying multi-node GPU workloads on KubeRay, particularly for large language model (LLM) serving with vLLM.
 
