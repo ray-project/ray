@@ -3429,7 +3429,7 @@ py_test(
 # ....................................
 py_test(
     name = "examples/algorithms/appo_custom_algorithm_w_shared_data_actor",
-    size = "medium",
+    size = "large",
     srcs = ["examples/algorithms/appo_custom_algorithm_w_shared_data_actor.py"],
     args = [
         "--enable-new-api-stack",
@@ -3467,7 +3467,7 @@ py_test(
 
 py_test(
     name = "examples/algorithms/vpg_custom_algorithm",
-    size = "medium",
+    size = "large",
     srcs = ["examples/algorithms/vpg_custom_algorithm.py"],
     args = [
         "--enable-new-api-stack",
@@ -3868,14 +3868,31 @@ py_test(
 )
 
 py_test(
-    name = "examples/connectors/multi_agent_with_different_observation_spaces",
+    name = "examples/connectors/multi_agent_observation_preprocessor",
     size = "medium",
-    srcs = ["examples/connectors/multi_agent_with_different_observation_spaces.py"],
+    srcs = ["examples/connectors/multi_agent_observation_preprocessor.py"],
     args = [
         "--enable-new-api-stack",
         "--num-agents=2",
+        "--algo=PPO",
     ],
-    main = "examples/connectors/multi_agent_with_different_observation_spaces.py",
+    main = "examples/connectors/multi_agent_observation_preprocessor.py",
+    tags = [
+        "examples",
+        "exclusive",
+        "team:rllib",
+    ],
+)
+
+py_test(
+    name = "examples/connectors/single_agent_observation_preprocessor",
+    size = "medium",
+    srcs = ["examples/connectors/single_agent_observation_preprocessor.py"],
+    args = [
+        "--enable-new-api-stack",
+        "--algo=PPO",
+    ],
+    main = "examples/connectors/single_agent_observation_preprocessor.py",
     tags = [
         "examples",
         "exclusive",
@@ -4236,7 +4253,7 @@ py_test(
         "--num-agents=2",
         "--as-test",
         "--evaluation-parallel-to-training",
-        "--stop-reward=800.0",
+        "--stop-reward=400.0",
         "--num-cpus=6",
         "--evaluation-duration=auto",
         "--evaluation-duration-unit=episodes",

@@ -39,16 +39,9 @@ both in the usual template (layout.html) as well as (index.html). -->
 <script src="https://deer.ray.io/script.js" data-site="WYYANYOS" defer></script>
 <!-- / Fathom -->
 
-<!-- Initialize gtag function for GTM compatibility -->
+<!-- Initialize dataLayer before GTM -->
 <script>
   window.dataLayer = window.dataLayer || [];
-  function gtag(){
-    dataLayer.push(arguments);
-  }
-  window.gtag = gtag;
-
-  gtag('js', new Date()); // stamp the pageview
-  gtag('config', 'G-0LCWHW1N3S');
 </script>
 
 <!-- Google Tag Manager -->
