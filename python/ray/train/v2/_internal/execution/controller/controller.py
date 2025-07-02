@@ -191,7 +191,6 @@ class TrainController:
         )
 
         if resize_status.errors:
-            # For startup failures, always restart (matching original behavior)
             failure_decision = self._failure_policy.make_decision(resize_status)
             return self._execute_failure_decision(failure_decision, resize_status)
         else:
