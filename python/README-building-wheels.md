@@ -9,12 +9,7 @@ produce .whl files owned by root.
 Inside the root directory (i.e., one level above this python directory), run
 
 ```
-docker run -ti --rm \
-    -e BUILDKITE_COMMIT="$(git rev-parse HEAD)" \
-    -e BUILD_ONE_PYTHON_ONLY=py39 \
-    -w /ray -v "$(pwd)":/ray \
-    quay.io/pypa/manylinux2014_x86_64:2024-07-02-9ac04ee \
-    /ray/python/build-wheel-manylinux2014.sh
+bash build-docker-linux-x86_64.sh
 ```
 
 The Python 3.9 wheel files will be placed in the `.whl` directory.
