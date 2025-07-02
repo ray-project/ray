@@ -4,31 +4,35 @@
 
 This guide helps you diagnose and resolve common issues when deploying multi-node GPU workloads on KubeRay, particularly for large language model (LLM) serving with vLLM.
 
-## Debugging Strategy
+## Debugging strategy
 
 When encountering issues with multi-node GPU serving, use this systematic approach to isolate the problem:
 
-1. **Test on different platforms**: Compare behavior between:
+1. **Test on different platforms**
+Compare behavior between:
    - Single node without KubeRay
    - Standalone vLLM server on KubeRay
    - Ray Serve LLM deployment on KubeRay
 
-2. **Vary hardware configurations**: Test with different GPU types (for example A100s vs H100s) to identify hardware-specific issues
+2. **Vary hardware configurations**
+Test with different GPU types—for example, A100s vs H100s—to identify hardware-specific issues
 
-3. **Use minimal reproducers**: Create simplified test cases that isolate specific components (NCCL, model loading, etc.)
+3. **Use minimal reproducers**
+Create simplified test cases that isolate specific components (NCCL, model loading, etc.)
 
-## Common Issues and Solutions
+## Common issues and solutions
 
-### 1. Head Pod Scheduled on GPU Node
+### 1. Head pod scheduled on GPU node
 
-**Symptoms:**
+**Symptoms**
 - `ray status` shows duplicate GPU resources, for example, 24 GPUs when cluster only has 16 GPUs
 - Model serving hangs when using pipeline parallelism (PP > 1)
 - Resource allocation conflicts
 
-**Root Cause:** The Ray head pod is incorrectly scheduled on a GPU worker node, causing resource accounting issues.
+**Root Cause** 
+The Ray head pod is incorrectly scheduled on a GPU worker node, causing resource accounting issues.
 
-**Solution:**
+**Solution**
 Configure the head pod to use zero GPUs in your RayCluster specification:
 
 ```yaml
@@ -40,30 +44,31 @@ spec:
   headGroupSpec:
     rayStartParams:
       num-cpus: "0"
-      num-gpus: "0"  # Ensure head pod doesn't claim GPU resources
+      num-gpus: "0"  # Ensure head pod doesn't claim GPU resources.
     # ... other head group configuration
 ```
 
-### 2. AWS OFI Plugin Version Issues (H100-specific)
+### 2. AWS OFI plugin version issues (H100-specific)
 
-**Symptoms:**
+**Symptoms**
 - NCCL initialization failures on H100 instances
 - Works fine on A100 but fails on H100 with identical configuration
 - Malformed topology files
 
-**Root Cause:** Outdated `aws-ofi-plugin` in container images causes NCCL topology detection to fail on H100 instances.
+**Root Cause** 
+Outdated `aws-ofi-plugin` in container images causes NCCL topology detection to fail on H100 instances.
 
-**Related Issues:**
+**Related issues**
 - [NVIDIA NCCL Issue #1726](https://github.com/NVIDIA/nccl/issues/1726)
 - [vLLM Issue #18997](https://github.com/vllm-project/vllm/issues/18997)
 - [AWS OFI NCCL Fix](https://github.com/aws/aws-ofi-nccl/pull/916)
 
-**Solution:**
-- Update to a newer container image with updated `aws-ofi-plugin`
+**Solution**
+- Update to a newer container image with an updated `aws-ofi-plugin`
 - Use the NCCL debugging script below to verify NCCL functions as expected
 - Consider hardware-specific configuration adjustments
 
-## Next Steps
+## Further troubleshooting
 
 If you continue to experience issues after following this guide:
 
@@ -73,13 +78,13 @@ If you continue to experience issues after following this guide:
 4. **Hardware verification**: Test with different GPU types if possible
 5. **Community support**: Share your findings with the Ray and vLLM communities for additional help
 
-## Additional Resources
+## Additional resources
 
 - [Ray Multi-Node GPU Guide](https://docs.ray.io/en/latest/cluster/kubernetes/user-guides/gpu.html)
 - [vLLM Distributed Serving Documentation](https://docs.vllm.ai/en/latest/serving/distributed_serving.html)
 - [NCCL Troubleshooting Guide](https://docs.nvidia.com/deeplearning/nccl/user-guide/docs/troubleshooting.html)
 
-## NCCL Debugging Script
+## NCCL debugging script
 
 Use this diagnostic script to identify NCCL-related issues in your multi-node GPU setup:
 
@@ -89,7 +94,7 @@ Use this diagnostic script to identify NCCL-related issues in your multi-node GP
 NCCL Diagnostic Script for Multi-Node GPU Serving
 
 This script helps identify NCCL configuration issues that can cause
-multi-node GPU serving failures. Run this on each node to verify
+multi-node GPU serving failures. Run this script on each node to verify
 NCCL function before deploying distributed workloads.
 
 Usage: python3 multi-node-nccl-check.py
@@ -111,7 +116,7 @@ def print_environment_info():
     log(f"Hostname: {socket.gethostname()}")
     log(f"CUDA_VISIBLE_DEVICES: {os.environ.get('CUDA_VISIBLE_DEVICES', 'not set')}")
     
-    # Print all NCCL-related environment variables
+    # Print all NCCL-related environment variables.
     nccl_vars = [var for var in os.environ.keys() if var.startswith('NCCL_')]
     if nccl_vars:
         log("NCCL Environment Variables:")
@@ -132,7 +137,7 @@ def check_cuda_availability():
     log(f"CUDA device count: {device_count}")
     log(f"PyTorch version: {torch.__version__}")
     
-    # Check NCCL availability in PyTorch
+    # Check NCCL availability in PyTorch.
     try:
         import torch.distributed as dist
         if hasattr(torch.distributed, 'nccl'):
@@ -155,18 +160,18 @@ def test_individual_gpus():
             
             log(f"Device {device}: {torch.cuda.get_device_name(device)}")
             
-            # Print device properties
+            # Print device properties.
             props = torch.cuda.get_device_properties(device)
             log(f"  Compute capability: {props.major}.{props.minor}")
             log(f"  Total memory: {props.total_memory / 1024**3:.2f} GB")
             
-            # Test basic CUDA operations
+            # Test basic CUDA operations.
             log("  Testing basic CUDA operations...")
             tensor = torch.ones(1000, device=f'cuda:{gpu_id}')
             result = tensor.sum()
             log(f"  Basic CUDA test passed: sum = {result.item()}")
             
-            # Test cross-GPU operations if multiple GPUs available
+            # Test cross-GPU operations if multiple GPUs are available.
             if torch.cuda.device_count() > 1:
                 log("  Testing cross-GPU operations...")
                 try:
@@ -177,7 +182,7 @@ def test_individual_gpus():
                 except Exception as e:
                     log(f"  Cross-GPU copy failed: {e}")
             
-            # Test memory allocation
+            # Test memory allocation.
             log("  Testing large memory allocations...")
             try:
                 large_tensor = torch.zeros(1000, 1000, device=f'cuda:{gpu_id}')
@@ -198,7 +203,7 @@ def test_nccl_initialization():
     try:
         import torch.distributed as dist
         
-        # Set up single-process NCCL environment
+        # Set up single-process NCCL environment.
         os.environ['MASTER_ADDR'] = 'localhost'
         os.environ['MASTER_PORT'] = '29500'
         os.environ['RANK'] = '0'
@@ -213,7 +218,7 @@ def test_nccl_initialization():
         
         log("Single-process NCCL initialization successful!")
         
-        # Test basic NCCL operation
+        # Test basic NCCL operation.
         if torch.cuda.is_available():
             device = torch.cuda.current_device()
             tensor = torch.ones(10, device=device)

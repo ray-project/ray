@@ -182,5 +182,5 @@ Since DeepSeek typically requires multi-node GPU deployment, you may encounter i
 * **Pipeline parallelism hangs**: When `pipeline_parallel_size > 1`, the model serving may hang due to resource conflicts
 
 For comprehensive troubleshooting of multi-node GPU serving issues, refer to the 
-{ref}`Multi-Node GPU Serving Troubleshooting Guide <kuberay-multi-node-gpu-troubleshooting>`.
+{ref}`Troubleshooting multi-node GPU serving on KubeRay <kuberay-multi-node-gpu-troubleshooting>`.
 
