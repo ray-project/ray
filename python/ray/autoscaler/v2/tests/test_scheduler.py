@@ -22,10 +22,10 @@ from ray.autoscaler.v2.scheduler import (
 from ray.autoscaler.v2.schema import AutoscalerInstance, NodeType
 from ray.autoscaler.v2.tests.util import MockEventLogger, make_autoscaler_instance
 from ray.autoscaler.v2.utils import ResourceRequestUtil
+from ray.core.generated.common_pb2 import LabelSelectorOperator
 from ray.core.generated.autoscaler_pb2 import (
     ClusterResourceConstraint,
     GangResourceRequest,
-    LabelOperator,
     NodeState,
     NodeStatus,
     ResourceRequest,
@@ -2383,7 +2383,9 @@ def test_schedule_node_with_matching_labels():
     # No new nodes should be launched if the existing node satisfies the request.
     resource_request = ResourceRequestUtil.make(
         {"CPU": 1},
-        label_selectors=[[("accelerator", LabelOperator.LABEL_OPERATOR_IN, ["A100"])]],
+        label_selectors=[
+            [("accelerator", LabelSelectorOperator.LABEL_OPERATOR_IN, ["A100"])]
+        ],
     )
 
     request = sched_request(
@@ -2423,7 +2425,9 @@ def test_scale_up_node_to_satisfy_labels():
     # Request: want a node with label "accelerator: A100"
     resource_request = ResourceRequestUtil.make(
         {"CPU": 1},
-        label_selectors=[[("accelerator", LabelOperator.LABEL_OPERATOR_IN, ["A100"])]],
+        label_selectors=[
+            [("accelerator", LabelSelectorOperator.LABEL_OPERATOR_IN, ["A100"])]
+        ],
     )
 
     request = sched_request(
@@ -2465,12 +2469,16 @@ def test_pg_with_bundle_infeasible_label_selectors():
     gpu_request = ResourceRequestUtil.make(
         {"CPU": 2, "GPU": 1},
         constraints=[(AFFINITY, "pg-1", "")],
-        label_selectors=[[("accelerator", LabelOperator.LABEL_OPERATOR_IN, ["A100"])]],
+        label_selectors=[
+            [("accelerator", LabelSelectorOperator.LABEL_OPERATOR_IN, ["A100"])]
+        ],
     )
     tpu_request = ResourceRequestUtil.make(
         {"CPU": 2},
         constraints=[(AFFINITY, "pg-1", "")],
-        label_selectors=[[("accelerator", LabelOperator.LABEL_OPERATOR_IN, ["TPU"])]],
+        label_selectors=[
+            [("accelerator", LabelSelectorOperator.LABEL_OPERATOR_IN, ["TPU"])]
+        ],
     )
 
     request = sched_request(
@@ -2487,7 +2495,9 @@ def test_pg_with_bundle_infeasible_label_selectors():
     infeasbile_gpu_request = ResourceRequestUtil.make(
         {"CPU": 3, "GPU": 1},
         constraints=[(AFFINITY, "pg-2", "")],
-        label_selectors=[[("accelerator", LabelOperator.LABEL_OPERATOR_IN, ["A100"])]],
+        label_selectors=[
+            [("accelerator", LabelSelectorOperator.LABEL_OPERATOR_IN, ["A100"])]
+        ],
     )
 
     request = sched_request(

@@ -1020,10 +1020,20 @@ TEST_F(GcsAutoscalerStateManagerTest, TestGetPendingResourceRequestsWithLabelSel
   // Add label selector to ResourceDemand
   {
     rpc::LabelSelector selector;
-    (*selector.mutable_label_selector_dict())["accelerator-type"] = "TPU";
-    (*selector.mutable_label_selector_dict())["node-group"] = "!gpu-group";
-    (*selector.mutable_label_selector_dict())["market-type"] = "in(spot)";
-    (*selector.mutable_label_selector_dict())["region"] = "!in(us-west4)";
+
+    auto add_constraint = [&](const std::string &key,
+                              rpc::LabelSelectorOperator op,
+                              const std::string &value) {
+      auto *constraint = selector.add_label_constraints();
+      constraint->set_label_key(key);
+      constraint->set_operator_(op);
+      constraint->add_label_values(value);
+    };
+
+    add_constraint("accelerator-type", rpc::LABEL_OPERATOR_IN, "TPU");
+    add_constraint("node-group", rpc::LABEL_OPERATOR_NOT_IN, "gpu-group");
+    add_constraint("market-type", rpc::LABEL_OPERATOR_IN, "spot");
+    add_constraint("region", rpc::LABEL_OPERATOR_NOT_IN, "us-west4");
 
     // Simulate an infeasible request with a label selector
     UpdateResourceLoads(node->node_id(),
@@ -1043,13 +1053,12 @@ TEST_F(GcsAutoscalerStateManagerTest, TestGetPendingResourceRequestsWithLabelSel
     ASSERT_EQ(req.count(), 1);
     CheckResourceRequest(req.request(), {{"CPU", 2}});
 
-    std::unordered_map<std::string,
-                       std::pair<rpc::autoscaler::LabelOperator, std::string>>
+    std::unordered_map<std::string, std::pair<rpc::LabelSelectorOperator, std::string>>
         expected_vals = {
-            {"accelerator-type", {rpc::autoscaler::LABEL_OPERATOR_IN, "TPU"}},
-            {"node-group", {rpc::autoscaler::LABEL_OPERATOR_NOT_IN, "gpu-group"}},
-            {"market-type", {rpc::autoscaler::LABEL_OPERATOR_IN, "spot"}},
-            {"region", {rpc::autoscaler::LABEL_OPERATOR_NOT_IN, "us-west4"}},
+            {"accelerator-type", {rpc::LABEL_OPERATOR_IN, "TPU"}},
+            {"node-group", {rpc::LABEL_OPERATOR_NOT_IN, "gpu-group"}},
+            {"market-type", {rpc::LABEL_OPERATOR_IN, "spot"}},
+            {"region", {rpc::LABEL_OPERATOR_NOT_IN, "us-west4"}},
         };
 
     ASSERT_EQ(req.request().label_selectors_size(), 1);
@@ -1058,13 +1067,9 @@ TEST_F(GcsAutoscalerStateManagerTest, TestGetPendingResourceRequestsWithLabelSel
 
     for (const auto &constraint : parsed_selector.label_constraints()) {
       const auto it = expected_vals.find(constraint.label_key());
-      if (it == expected_vals.end()) {
-        FAIL() << "Unexpected label key: " << constraint.label_key();
-      }
-
-      if (constraint.operator_() != it->second.first) {
-        FAIL() << "Mismatched operator for " << constraint.label_key();
-      }
+      ASSERT_NE(it, expected_vals.end())
+          << "Unexpected label key: " << constraint.label_key();
+      ASSERT_EQ(constraint.operator_(), it->second.first);
       ASSERT_EQ(constraint.label_values_size(), 1);
       ASSERT_EQ(constraint.label_values(0), it->second.second);
     }
@@ -1115,13 +1120,14 @@ TEST_F(GcsAutoscalerStateManagerTest,
   const auto &c2 = r2.label_selectors(0).label_constraints(0);
 
   EXPECT_EQ(c1.label_key(), "accelerator");
-  EXPECT_EQ(c1.operator_(), rpc::autoscaler::LabelOperator::LABEL_OPERATOR_IN);
+  EXPECT_EQ(c1.operator_(), rpc::LabelSelectorOperator::LABEL_OPERATOR_IN);
   ASSERT_EQ(c1.label_values_size(), 2);
-  EXPECT_THAT(absl::flat_hash_set<std::string>(c1.label_values().begin(), c1.label_values().end()),
+  EXPECT_THAT(absl::flat_hash_set<std::string>(c1.label_values().begin(),
+                                               c1.label_values().end()),
               ::testing::UnorderedElementsAre("A100", "B200"));
 
   EXPECT_EQ(c2.label_key(), "accelerator");
-  EXPECT_EQ(c2.operator_(), rpc::autoscaler::LabelOperator::LABEL_OPERATOR_NOT_IN);
+  EXPECT_EQ(c2.operator_(), rpc::LabelSelectorOperator::LABEL_OPERATOR_NOT_IN);
   ASSERT_EQ(c2.label_values_size(), 1);
   EXPECT_EQ(c2.label_values(0), "TPU");
 }

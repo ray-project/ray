@@ -328,7 +328,7 @@ struct Mocker {
       int64_t num_ready_queued,
       int64_t num_infeasible,
       int64_t num_backlog,
-      const std::vector<rpc::LabelSelector> &label_selectors = {}) {
+      const std::vector<ray::rpc::LabelSelector> &label_selectors = {}) {
     rpc::ResourceDemand resource_demand;
     for (const auto &resource : resource_demands) {
       (*resource_demand.mutable_shape())[resource.first] = resource.second;
