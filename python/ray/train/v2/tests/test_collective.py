@@ -2,6 +2,7 @@ import pytest
 
 import ray
 import ray.train.collective
+from ray.train.collective import collectives
 from ray.train.v2.api.data_parallel_trainer import DataParallelTrainer
 
 
@@ -42,6 +43,12 @@ def test_broadcast_from_rank_zero(ray_start_4_cpus):
         scaling_config=ray.train.ScalingConfig(num_workers=2),
     )
     trainer.fit()
+
+
+def test_broadcast_from_rank_zero_data_too_big(ray_start_4_cpus, monkeypatch):
+    monkeypatch.setattr(collectives, "_MAX_BROADCAST_SIZE_BYTES", 0)
+    with pytest.raises(ValueError):
+        ray.train.collective.broadcast_from_rank_zero({"key": "value"})
 
 
 if __name__ == "__main__":

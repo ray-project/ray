@@ -57,7 +57,7 @@ def broadcast_from_rank_zero(data: T) -> T:
         data_bytes = len(pickle.dumps(data))
         if data_bytes > _MAX_BROADCAST_SIZE_BYTES:
             raise ValueError(
-                f"Data size {len(data_bytes)} bytes exceeds the maximum broadcast "
+                f"Data size {data_bytes} bytes exceeds the maximum broadcast "
                 f"size of {_MAX_BROADCAST_SIZE_BYTES} bytes"
             )
 
