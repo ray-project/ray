@@ -90,23 +90,23 @@ def test_hybrid_policy(ray_start_cluster):
 
     # Add the memory resource because the cpu will be released in the ray.get
     @ray.remote(num_cpus=1, memory=1)
-    def get_node():
+    def get_node_id() -> str:
         ray.get(block_driver.release.remote())
         ray.get(block_task.acquire.remote())
-        return ray._private.worker.global_worker.current_node_id
+        return ray.get_runtime_context().get_node_id()
 
     # Below the hybrid threshold we pack on the local node first.
     refs = [get_node.remote() for _ in range(5)]
-    ray.get([block_driver.acquire.remote() for _ in refs])
-    ray.get([block_task.release.remote() for _ in refs])
-    nodes = ray.get(refs)
+    ray.get([block_driver.acquire.remote() for _ in refs], timeout=20)
+    ray.get([block_task.release.remote() for _ in refs], timeout=20)
+    nodes = ray.get(refs, timeout=20)
     assert len(set(nodes)) == 1
 
     # We pack the second node to the hybrid threshold.
     refs = [get_node.remote() for _ in range(10)]
-    ray.get([block_driver.acquire.remote() for _ in refs])
-    ray.get([block_task.release.remote() for _ in refs])
-    nodes = ray.get(refs)
+    ray.get([block_driver.acquire.remote() for _ in refs], timeout=20)
+    ray.get([block_task.release.remote() for _ in refs], timeout=20)
+    nodes = ray.get(refs, timeout=20)
     counter = collections.Counter(nodes)
     for node_id in counter:
         print(f"{node_id}: {counter[node_id]}")
@@ -116,9 +116,9 @@ def test_hybrid_policy(ray_start_cluster):
     # TODO (Alex): Ideally we could schedule less than 20 nodes here, but the
     # policy is imperfect if a resource report interrupts the process.
     refs = [get_node.remote() for _ in range(20)]
-    ray.get([block_driver.acquire.remote() for _ in refs])
-    ray.get([block_task.release.remote() for _ in refs])
-    nodes = ray.get(refs)
+    ray.get([block_driver.acquire.remote() for _ in refs], timeout=20)
+    ray.get([block_task.release.remote() for _ in refs], timeout=20)
+    nodes = ray.get(refs, timeout=20)
     counter = collections.Counter(nodes)
     for node_id in counter:
         print(f"{node_id}: {counter[node_id]}")
