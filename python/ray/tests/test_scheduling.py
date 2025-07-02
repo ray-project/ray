@@ -69,7 +69,7 @@ def test_hybrid_policy_threshold(ray_start_cluster):
     NUM_CPUS_PER_NODE = 4
     # The default hybrid policy packs nodes up to 50% capacity before spreading.
     PER_NODE_HYBRID_THRESHOLD = int(NUM_CPUS_PER_NODE / 2)
-    for i in range(NUM_NODES):
+    for _ in range(NUM_NODES):
         cluster.add_node(
             num_cpus=NUM_CPUS_PER_NODE,
             memory=NUM_CPUS_PER_NODE,
