@@ -188,7 +188,9 @@ class MockTaskFinisher : public TaskFinisherInterface {
     num_contained_ids += contained_ids.size();
   }
 
-  void MarkTaskCanceled(const TaskID &task_id) override {}
+  void MarkTaskCanceled(const TaskID &task_id) override {
+    cancelled_tasks_.insert(task_id);
+  }
 
   std::optional<TaskSpecification> GetTaskSpec(const TaskID &task_id) const override {
     TaskSpecification task = BuildEmptyTaskSpec();
@@ -203,7 +205,9 @@ class MockTaskFinisher : public TaskFinisherInterface {
 
   bool IsTaskPending(const TaskID &task_id) const override { return true; }
 
-  bool IsTaskCanceled(const TaskID &task_id) const override { return false; }
+  bool IsTaskCanceled(const TaskID &task_id) const override {
+    return cancelled_tasks_.contains(task_id);
+  }
 
   void MarkGeneratorFailedAndResubmit(const TaskID &task_id) override {
     num_generator_failed_and_resubmitted++;
@@ -216,6 +220,9 @@ class MockTaskFinisher : public TaskFinisherInterface {
   int num_task_retries_attempted = 0;
   int num_fail_pending_task_calls = 0;
   int num_generator_failed_and_resubmitted = 0;
+
+ private:
+  absl::flat_hash_set<TaskID> cancelled_tasks_;
 };
 
 class MockRayletClient : public WorkerLeaseInterface {
@@ -2319,7 +2326,7 @@ TEST(NormalTaskSubmitterTest, TestCancelBeforeAfterQueueGeneratorForResubmit) {
   ASSERT_TRUE(submitter.CancelTask(task, /*force_kill=*/false, /*recursive=*/true).ok());
   ASSERT_FALSE(submitter.QueueGeneratorForResubmit(task));
   worker_client->ReplyCancelTask();
-  ASSERT_TRUE(submitter.QueueGeneratorForResubmit(task));
+  ASSERT_FALSE(submitter.QueueGeneratorForResubmit(task));
   ASSERT_TRUE(worker_client->ReplyPushTask(Status::OK(),
                                            /*exit=*/false,
                                            /*is_retryable_error=*/false,

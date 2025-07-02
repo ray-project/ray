@@ -109,7 +109,9 @@ class MockTaskFinisher : public TaskFinisherInterface {
     num_contained_ids += contained_ids.size();
   }
 
-  void MarkTaskCanceled(const TaskID &task_id) override {}
+  void MarkTaskCanceled(const TaskID &task_id) override {
+    cancelled_tasks_.insert(task_id);
+  }
 
   std::optional<TaskSpecification> GetTaskSpec(const TaskID &task_id) const override {
     TaskSpecification task = BuildEmptyTaskSpec();
@@ -124,7 +126,9 @@ class MockTaskFinisher : public TaskFinisherInterface {
 
   bool IsTaskPending(const TaskID &task_id) const override { return true; }
 
-  bool IsTaskCanceled(const TaskID &task_id) const override { return false; }
+  bool IsTaskCanceled(const TaskID &task_id) const override {
+    return cancelled_tasks_.contains(task_id);
+  }
 
   void MarkGeneratorFailedAndResubmit(const TaskID &task_id) override {}
 
@@ -134,6 +138,9 @@ class MockTaskFinisher : public TaskFinisherInterface {
   int num_contained_ids = 0;
   int num_task_retries_attempted = 0;
   int num_fail_pending_task_calls = 0;
+
+ private:
+  absl::flat_hash_set<TaskID> cancelled_tasks_;
 };
 
 class MockActorCreator : public ActorCreatorInterface {

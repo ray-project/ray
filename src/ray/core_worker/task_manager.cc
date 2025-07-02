@@ -494,7 +494,7 @@ bool TaskManager::IsTaskCanceled(const TaskID &task_id) const {
   const auto it = submissible_tasks_.find(task_id);
   if (it == submissible_tasks_.end()) {
     // If the task is no longer in the submissible tasks map, it has the same semantic
-    // as being cancelled (because it can never be submitted for execution again).
+    // as being canceled (because it can never be submitted for execution again).
     return true;
   }
   return it->second.is_canceled;
