@@ -532,5 +532,3 @@ You should see the new column in the batch, after running through this connector
 Note, though, that if your :py:class:`~ray.rllib.core.rl_module.rl_module.RLModule` also requires the new information
 in the train batch, you would also need to add the same custom connector piece to your Algorithm's
 :py:class:`~ray.rllib.connectors.learner.learner_connector_pipeline.LearnerConnectorPipeline`.
-
-See :ref:`this page here for more details on how to customize the Learner connector pipeline <learner-pipeline-docs>`.

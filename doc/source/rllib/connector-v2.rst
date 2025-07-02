@@ -9,8 +9,6 @@ ConnectorV2 and ConnectorV2 Pipelines
     :hidden:
 
     env-to-module-connector
-    module-to-env-connector
-    learner-connector
 
 .. include:: /_includes/rllib/new_api_stack.rst
 
@@ -33,22 +31,6 @@ ConnectorV2 and ConnectorV2 Pipelines
         .. button-ref:: env-to-module-connector-docs
 
             Env-to-module pipelines
-
-    .. grid-item-card::
-        :img-top: /rllib/images/connector_v2/module_to_env_connector.svg
-        :class-img-top: pt-2 w-75 d-block mx-auto fixed-height-img
-
-        .. button-ref:: module-to-env-connector-docs
-
-            Module-to-env pipelines
-
-    .. grid-item-card::
-        :img-top: /rllib/images/connector_v2/learner_connector.svg
-        :class-img-top: pt-2 w-75 d-block mx-auto fixed-height-img
-
-        .. button-ref:: learner-connector-docs
-
-            Learner connector pipelines
 
 
 RLlib stores and transports all trajectory data in the form of :py:class:`~ray.rllib.env.single_agent_episode.SingleAgentEpisode`
@@ -83,8 +65,8 @@ Three ConnectorV2 Pipeline Types
 There are three different types of connector pipelines in RLlib:
 
 1) :ref:`Env-to-module pipeline <env-to-module-connector-docs>`, which creates tensor batches for action computing forward passes.
-2) :ref:`Module-to-env pipeline <module-to-env-pipeline-docs>`, which translates a model's output into RL environment actions.
-3) :ref:`Learner connector pipeline <learner-pipeline-docs>`, which creates the train batch for a model update.
+2) Module-to-env pipeline, which translates a model's output into RL environment actions.
+3) Learner connector pipeline, which creates the train batch for a model update.
 
 The :py:class:`~ray.rllib.connectors.connector_v2.ConnectorV2` API is an extremely powerful tool for
 customizing your RLlib experiments and algorithms. It allows you to take full control over accessing, changing, and re-assembling
