@@ -355,10 +355,11 @@ py_test_run_all_subdirectory(
 
 py_test_run_all_subdirectory(
     size = "large",
-    include = ["source/ray-more-libs/doc_code/*.py"],
+    include = ["source/ray-more-libs/doc_code/dask_on_ray_*.py"],
     exclude = [],
     extra_srcs = [],
     tags = [
+        "dask",
         "exclusive",
         "team:data",
     ],
@@ -447,8 +448,6 @@ doctest(
             "source/train/**/*.rst",
             "source/tune/**/*.md",
             "source/tune/**/*.rst",
-            "source/workflows/**/*.md",
-            "source/workflows/**/*.rst",
         ],
     ),
     tags = ["team:none"],
@@ -591,17 +590,6 @@ doctest(
         "source/tune/**/*.rst",
     ],
     tags = ["team:ml"],
-)
-
-doctest(
-    name = "doctest[workflow]",
-    files = glob(
-        include = [
-            "source/workflows/**/*.md",
-            "source/workflows/**/*.rst",
-        ],
-    ),
-    tags = ["team:core"],
 )
 
 filegroup(

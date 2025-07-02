@@ -3,7 +3,7 @@ froms: ["cr.ray.io/rayproject/ray-py$PYTHON_VERSION-cu$CUDA_VERSION-base"]
 dockerfile: docker/ray-llm/Dockerfile
 srcs:
   - python/requirements.txt
-  - python/requirements_compiled_rayllm_py311_cu124.txt
+  - python/requirements_compiled_rayllm_py311_cu128.txt
 build_args:
   - BASE_IMAGE=cr.ray.io/rayproject/ray-py$PYTHON_VERSION-cu$CUDA_VERSION-base
 tags:

@@ -14,12 +14,11 @@ import ray
 import ray._private.ray_constants as ray_constants
 import ray.experimental.internal_kv as internal_kv
 from ray import NodeID
-from ray._common.test_utils import SignalActor
+from ray._common.test_utils import SignalActor, wait_for_condition
 from ray._private.test_utils import (
     get_error_message,
     init_error_pubsub,
     run_string_as_driver,
-    wait_for_condition,
     kill_raylet,
 )
 from ray.cluster_utils import Cluster, cluster_not_supported
