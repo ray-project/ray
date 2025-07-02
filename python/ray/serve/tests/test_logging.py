@@ -298,15 +298,24 @@ def test_http_access_log_in_logs_file(serve_instance, log_format):
         except FileNotFoundError:
             return 0
 
-    def get_new_lines_from_position(file_path, start_position):
-        """Get new lines added to the file since start_position"""
-        try:
-            with open(file_path, "r") as f:
-                f.seek(start_position)
-                new_content = f.read()
-                return new_content.splitlines() if new_content else []
-        except FileNotFoundError:
-            return []
+    def create_line_checker(file_path, start_pos):
+        """Create a function that checks for new lines and captures them"""
+        captured_lines = {"lines": []}
+
+        def check_for_new_lines():
+            """Get new lines added to the file since start_position and return if any exist"""
+            try:
+                with open(file_path, "r") as f:
+                    f.seek(start_pos)
+                    new_content = f.read()
+                    lines = new_content.splitlines() if new_content else []
+                    captured_lines["lines"] = lines
+            except FileNotFoundError:
+                captured_lines["lines"] = []
+
+            return len(captured_lines["lines"]) > 0
+
+        return check_for_new_lines, captured_lines
 
     def verify_http_response_in_logs(
         response, new_log_lines, call_info, log_format, context_info=None
@@ -401,8 +410,11 @@ def test_http_access_log_in_logs_file(serve_instance, log_format):
             )
 
         # Step 3: Wait a bit for logs to be written, then get new lines
-        time.sleep(1)
-        new_log_lines = get_new_lines_from_position(log_file_path, start_position)
+        line_checker, captured_lines = create_line_checker(
+            log_file_path, start_position
+        )
+        wait_for_condition(line_checker)
+        new_log_lines = captured_lines["lines"]
 
         # Step 4: Verify HTTP response matches new log lines
         match_found = verify_http_response_in_logs(
@@ -712,7 +724,7 @@ def test_extra_field(serve_and_ray_shutdown, raise_error):
     serve.run(fn.bind(), name="app1", route_prefix="/fn")
     url = get_application_url(app_name="app1", use_localhost=True)
 
-    resp = httpx.get(f"{url}/fn")
+    resp = httpx.get(f"{url}")
     if raise_error:
         resp.status_code == 500
     else:
@@ -954,7 +966,7 @@ class TestLoggingAPI:
         )
         url = get_application_url(app_name="app2", use_localhost=True)
 
-        resp = httpx.get(f"{url}/app2").json()
+        resp = httpx.get(f"{url}").json()
         check_log_file(resp["log_file"], [".*model_info_level.*"])
         # Make sure 'model_debug_level' log content does not exist.
         with pytest.raises(AssertionError):
