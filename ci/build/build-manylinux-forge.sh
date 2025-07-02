@@ -21,7 +21,7 @@ if [[ "${RAY_INSTALL_JAVA}" == "1" ]]; then
   sudo java -version
   sudo JAVA_BIN="$(readlink -f "$(command -v java)")"
   sudo echo "java_bin path ${JAVA_BIN}"
-  sudo export JAVA_HOME="${JAVA_BIN%jre/bin/java}"
+  export JAVA_HOME="${JAVA_BIN%jre/bin/java}"
 fi
 
 # Install ray dashboard dependencies.

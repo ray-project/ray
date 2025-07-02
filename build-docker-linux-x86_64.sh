@@ -9,8 +9,8 @@ IMAGE_NAME="ray-builder-amd64"
 
 # Step 1: Build the Docker image
 docker buildx build \
-  --build-arg HOST_UID=$HOST_UID \
-  --build-arg HOST_GID=$HOST_GID \
+  --build-arg HOST_UID="$HOST_UID" \
+  --build-arg HOST_GID="$HOST_GID" \
   -t $IMAGE_NAME - <<EOF
 FROM quay.io/pypa/manylinux2014_x86_64:2024-07-02-9ac04ee
 
