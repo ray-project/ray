@@ -1,7 +1,7 @@
 import asyncio
 import os
 from abc import ABC, abstractmethod
-from typing import Any, Dict, Optional, Type, Union, AsyncGenerator
+from typing import Any, Dict, Optional, Type, Union, AsyncGenerator, List
 
 # Third-party imports
 from ray import serve
@@ -17,7 +17,9 @@ from ray.llm._internal.serve.configs.constants import (
 )
 from ray.llm._internal.serve.configs.openai_api_models import (
     ChatCompletionRequest,
+    ChatCompletionResponse,
     CompletionRequest,
+    CompletionResponse,
     EmbeddingRequest,
     EmbeddingResponse,
     LLMChatResponse,
@@ -172,11 +174,22 @@ class LLMServer(_LLMServerBase):
         ).stream()
         
         
-    async def _run_request(self, request, *, engine_method: str, batch_output_stream: bool = False) -> AsyncGenerator[Any, None]:
-        """Run the stream flow for the request."""
+    async def _run_request(self, request: Union[ChatCompletionRequest, CompletionRequest, EmbeddingRequest], *, engine_method: str, batch_output_stream: bool = False) -> AsyncGenerator[Any, None]:
+        """Run the engine method on the request + perform batching when stream=True.
+        
+        Args:
+            request: The request to run.
+            engine_method: The method to call on the engine.
+            batch_output_stream: Whether to batch the output stream.
+        
+        Returns:
+            An AsyncGenerator of the response. If stream is True and batching is enabled, then the generator will yield a list of streaming responses (strings of the format data: {response_json}\n\n). Otherwise, it will yield the non-streaming response from engine directly. 
+        """
         await self._maybe_add_request_id_to_request(request)
         await self._maybe_resolve_lora_from_multiplex()
-        if batch_output_stream:
+        
+        is_stream = hasattr(request, "stream") and request.stream
+        if is_stream and batch_output_stream:
             stream = self._batch_output_stream(
                 getattr(self.engine, engine_method)(request)
             )
@@ -185,28 +198,44 @@ class LLMServer(_LLMServerBase):
         
         return stream
 
-    async def chat(self, request: ChatCompletionRequest):
+    async def chat(self, request: ChatCompletionRequest) -> \
+        AsyncGenerator[Union[List[str], ChatCompletionResponse], None]:
         """Runs a chat request to the LLM engine and returns the response.
 
         Args:
             request: A ChatCompletionRequest object.
 
         Returns:
-            A LLMChatResponse object.
+            An AsyncGenerator of the response. If stream is True and batching is enabled, then the generator will yield a list of chat streaming responses (strings of the format data: {response_json}\n\n). Otherwise, it will yield the ChatCompletionResponse object directly.
         """
         return await self._run_request(request, engine_method="chat", batch_output_stream=True)
 
-    async def completions(self, request: CompletionRequest) -> LLMCompletionsResponse:
+    async def completions(self, request: CompletionRequest) -> \
+        AsyncGenerator[Union[List[str], CompletionResponse], None]:
         """Runs a completion request to the LLM engine and returns the response.
 
         Args:
             request: A CompletionRequest object.
 
         Returns:
-            A LLMCompletionsResponse object.
+            An AsyncGenerator of the response. If stream is True and batching is enabled, then the generator will yield a list of completion streaming responses (strings of the format data: {response_json}\n\n). Otherwise, it will yield the CompletionResponse object directly.
         """
         return await self._run_request(request, engine_method="completions", batch_output_stream=True)
-            
+
+
+    async def embeddings(self, request: EmbeddingRequest) -> AsyncGenerator[EmbeddingResponse, None]:
+        """Runs an embeddings request to the engine and returns the response.
+        
+        Returns an AsyncGenerator over the EmbeddingResponse object. This is so that the caller can have a consistent interface across all the methods of chat, completions, and embeddings.
+
+        Args:
+            request: An EmbeddingRequest object.
+
+        Returns:
+            An AsyncGenerator over the EmbeddingResponse object.
+        """
+        # NOTE: Embeddings does not need batching.
+        return await self._run_request(request, engine_method="embeddings", batch_output_stream=False) 
 
     async def check_health(self) -> None:
         """
@@ -221,17 +250,6 @@ class LLMServer(_LLMServerBase):
             logger.error("Engine health check failed in LLMServer.check_health: %s", e)
             raise e
 
-    async def embeddings(self, request: EmbeddingRequest) -> LLMEmbeddingsResponse:
-        """Runs an embeddings request to the vllm engine, and return the response.
-
-        Args:
-            request: An EmbeddingRequest object.
-
-        Returns:
-            A LLMEmbeddingsResponse object.
-        """
-        # NOTE: Embeddings does not need batching.
-        return await self._run_request(request, engine_method="embeddings", batch_output_stream=False)
 
     async def llm_config(self) -> Optional[LLMConfig]:
         return self._llm_config

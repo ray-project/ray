@@ -6,9 +6,9 @@ import pytest
 from fastapi import HTTPException
 
 from ray import serve
-from ray.llm._internal.serve.configs.server_models import ModelData
+from ray.llm._internal.serve.configs.openai_api_models import ModelCard
 from ray.llm._internal.serve.deployments.llm.llm_server import LLMDeployment
-from ray.llm.tests.serve.mocks.mock_vllm_engine import MockEchoVLLMEngine
+from ray.llm.tests.serve.mocks.mock_vllm_engine import MockMultiplexEngine
 from ray.serve.handle import DeploymentHandle
 from ray.serve.llm import LLMConfig, LLMRouter, LoraConfig
 
@@ -57,7 +57,7 @@ def get_mocked_llm_deployments(llm_configs) -> List[DeploymentHandle]:
         llm_deployments.append(
             deployment.bind(
                 llm_config=llm_config,
-                engine_cls=MockEchoVLLMEngine,
+                engine_cls=MockMultiplexEngine,
             )
         )
     return llm_deployments
@@ -97,7 +97,7 @@ async def test_lora_get_model(shutdown_ray_and_serve, disable_placement_bundles)
 
     # Case 2: Model has only the base model config.
     base_model_config = await router_handle.model.remote(base_model_id)
-    assert isinstance(base_model_config, ModelData)
+    assert isinstance(base_model_config, ModelCard)
     base_model_data = base_model_config.model_dump()
     assert base_model_data["id"] == base_model_id
     base_model_config = base_model_data["rayllm_metadata"]
@@ -122,7 +122,7 @@ async def test_lora_get_model(shutdown_ray_and_serve, disable_placement_bundles)
     router_handle = serve.run(router_deployment)
 
     lora_model_config = await router_handle.model.remote(lora_model)
-    assert isinstance(lora_model_config, ModelData)
+    assert isinstance(lora_model_config, ModelCard)
     lora_model_data = lora_model_config.model_dump()
     assert lora_model_data["id"] == lora_model
     lora_metadata = lora_model_data["rayllm_metadata"]
