@@ -87,6 +87,8 @@ def test_hybrid_policy_threshold(ray_start_cluster):
 
     # Add the `memory` resource because the CPU will be released when the task is
     # blocked calling `ray.get()`.
+    # NOTE(edoakes): this needs to be `memory`, not a custom resource.
+    # See: https://github.com/ray-project/ray/pull/54271.
     @ray.remote(num_cpus=1, memory=1)
     def get_node_id() -> str:
         ray.get(block_driver.release.remote())
