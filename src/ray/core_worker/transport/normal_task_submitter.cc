@@ -44,9 +44,8 @@ Status NormalTaskSubmitter::SubmitTask(TaskSpecification task_spec) {
     RAY_LOG(DEBUG) << "Task dependencies resolved " << task_spec.TaskId();
 
     absl::MutexLock lock(&mu_);
-    auto task_iter = cancelled_tasks_.find(task_spec.TaskId());
-    if (task_iter != cancelled_tasks_.end()) {
-      cancelled_tasks_.erase(task_iter);
+    if (task_finisher_.IsTaskCanceled(task_spec.TaskId())) {
+      RAY_LOG(DEBUG) << "Task is cancelled. Skipping task submission.";
       return;
     }
 
@@ -715,7 +714,7 @@ Status NormalTaskSubmitter::CancelTask(TaskSpecification task_spec,
     auto task_id = task_spec.TaskId();
     generators_to_resubmit_.erase(task_id);
 
-    if (cancelled_tasks_.contains(task_id)) {
+    if (task_finisher_.IsTaskCanceled(task_id)) {
       // The task cancel is already in progress. We don't need to do anything.
       return Status::OK();
     }
@@ -742,9 +741,6 @@ Status NormalTaskSubmitter::CancelTask(TaskSpecification task_spec,
       }
     }
 
-    // This will get removed either when the RPC call to cancel is returned
-    // or when all dependencies are resolved.
-    RAY_CHECK(cancelled_tasks_.emplace(task_spec.TaskId()).second);
     auto rpc_client = executing_tasks_.find(task_spec.TaskId());
 
     if (rpc_client == executing_tasks_.end()) {
@@ -779,7 +775,6 @@ Status NormalTaskSubmitter::CancelTask(TaskSpecification task_spec,
         absl::MutexLock lock(&mu_);
         RAY_LOG(DEBUG) << "CancelTask RPC response received for " << task_spec.TaskId()
                        << " with status " << status.ToString();
-        cancelled_tasks_.erase(task_spec.TaskId());
 
         // Retry is not attempted if !status.ok() because force-kill may kill the worker
         // before the reply is sent.
@@ -831,7 +826,7 @@ Status NormalTaskSubmitter::CancelRemoteTask(const ObjectID &object_id,
 
 bool NormalTaskSubmitter::QueueGeneratorForResubmit(const TaskSpecification &spec) {
   absl::MutexLock lock(&mu_);
-  if (cancelled_tasks_.contains(spec.TaskId())) {
+  if (task_finisher_.IsTaskCanceled(spec.TaskId())) {
     // The user cancelled the task.
     return false;
   }

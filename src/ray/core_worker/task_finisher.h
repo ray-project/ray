@@ -68,6 +68,8 @@ class TaskFinisherInterface {
 
   virtual bool IsTaskPending(const TaskID &task_id) const = 0;
 
+  virtual bool IsTaskCanceled(const TaskID &task_id) const = 0;
+
   virtual void MarkGeneratorFailedAndResubmit(const TaskID &task_id) = 0;
 };
 

@@ -530,6 +530,12 @@ class TaskManager : public TaskFinisherInterface, public TaskResubmissionInterfa
   /// \return Whether the task is pending.
   bool IsTaskPending(const TaskID &task_id) const override;
 
+  /// Return whether the task is cancelled (can never be submitted for execution again).
+  ///
+  /// \param[in] task_id ID of the task to query.
+  /// \return Whether the task is cancelled.
+  bool IsTaskCanceled(const TaskID &task_id) const override;
+
   /// Return whether the task is scheduled adn waiting for execution.
   ///
   /// \param[in] task_id ID of the task to query.
