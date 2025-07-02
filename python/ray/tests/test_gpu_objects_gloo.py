@@ -80,6 +80,43 @@ def test_gc_gpu_object(ray_start_regular, data_size_bytes):
     )
 
 
+@pytest.mark.parametrize("data_size_bytes", [100])
+def test_gc_del_ref_before_recv_finish(ray_start_regular, data_size_bytes):
+    """
+    This test deletes the ObjectRef of the GPU object before calling
+    `ray.get` to ensure the receiver finishes receiving the GPU object.
+    """
+    world_size = 2
+    actors = [GPUTestActor.remote() for _ in range(world_size)]
+    create_collective_group(actors, backend="torch_gloo")
+
+    small_tensor = torch.randn((1,))
+    cpu_data = b"1" * data_size_bytes
+    data = [small_tensor, cpu_data]
+    sender = actors[0]
+    receiver = actors[1]
+
+    ref1 = sender.echo.remote(data)
+    ref2 = receiver.double.remote(ref1)
+
+    del ref1
+
+    result = ray.get(ref2)
+    assert result[0] == pytest.approx(small_tensor * 2)
+    assert result[1] == cpu_data * 2
+
+    wait_for_condition(
+        lambda: ray.get(receiver.get_num_gpu_objects.remote()) == 0,
+        timeout=10,
+        retry_interval_ms=100,
+    )
+    wait_for_condition(
+        lambda: ray.get(sender.get_num_gpu_objects.remote()) == 0,
+        timeout=10,
+        retry_interval_ms=100,
+    )
+
+
 def test_p2p(ray_start_regular):
     world_size = 2
     actors = [GPUTestActor.remote() for _ in range(world_size)]
