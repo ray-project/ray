@@ -3,11 +3,10 @@ import collections
 import inspect
 import logging
 import queue
-import typing
-from collections import deque
 from threading import Thread
 from types import GeneratorType
-from typing import Any, Callable, Iterable, Iterator, List, Optional
+from typing import Any, Callable, Iterable, Iterator, List, Optional, Dict, \
+    TypeVar
 
 import numpy as np
 import pandas as pd
@@ -415,12 +414,11 @@ def _generate_transform_fn_for_map_batches(
     ctx: DataContext,
     fn: UserDefinedFunction,
     *,
-    ray_remote_args: Optional[typing.Dict[str, Any]] = None
+    ray_remote_args: Optional[Dict[str, Any]] = None
 ) -> MapTransformCallable[DataBatch, DataBatch]:
     if _is_async_udf(fn):
         max_concurrency = (ray_remote_args or {}).get("max_concurrency")
 
-        # UDF is a callable class with async generator `__call__` method.
         transform_fn = _generate_transform_fn_for_async_map(
             ctx,
             fn,
@@ -616,12 +614,11 @@ def _create_map_transformer_for_block_based_map_op(
 
 _SENTINEL = object()
 
-T = typing.TypeVar("T")
-U = typing.TypeVar("U")
+T = TypeVar("T")
+U = TypeVar("U")
 
 
 def _generate_transform_fn_for_async_map(
-    ctx: DataContext,
     fn: UserDefinedFunction,
     validate_fn: Callable,
     *,
@@ -646,61 +643,123 @@ def _generate_transform_fn_for_async_map(
     else:
         raise ValueError(f"Expected a coroutine function, got {fn}")
 
-    async def _process_all(it: Iterator[T], output_queue: queue.Queue) -> None:
+    # Goals of the algorithm applying async UDF application to the provided iterator
+    # are following:
+    #
+    #   - No more than `max_concurrency` async tasks are running
+    #     at any given moment
+    #   - Slow consumption from the output queue should result in
+    #     the processing to get back-pressured (so that output queue
+    #     doesn't grow unbounded)
+    #   - Order of the items (rows/batches) produced by this method
+    #     *must be* deterministic (though is not guaranteed to be specified
+    #     if max_concurrency > 1)
+    #
+    # And to achieve that, :
+    #   - TODO fill in
+
+    async def _schedule(it: Iterator[T], completed_tasks_queue: asyncio.Queue) -> None:
         loop = asyncio.get_running_loop()
 
-        consumed = False
         # NOTE: To preserve the iteration ordering to that of the input sequence
         #       we rely on deque to keep track of running tasks
-        cur_tasks = deque()
+        cur_task_map: Dict[asyncio.Task, int] = dict()
+        consumed = False
 
         sentinel = _SENTINEL
+        enumerated_it = enumerate(it)
 
         try:
             while True:
-                while len(cur_tasks) < max_concurrency and not consumed:
+                while len(cur_task_map) < max_concurrency and not consumed:
                     try:
-                        item = next(it)
-                        cur_tasks.append(loop.create_task(_apply_udf(item)))
+                        idx, item = next(enumerated_it)
+                        # Launch async task while keeping track of its
+                        # index in the enumerated sequence
+                        task = loop.create_task(_apply_udf(item))
+                        cur_task_map[task] = idx
                     except StopIteration:
                         consumed = True
                         break
 
                 # Check if any running tasks remaining
-                if not cur_tasks:
+                if not cur_task_map:
                     break
 
-                if ctx.execution_options.preserve_order:
-                    next_tasks = [cur_tasks.popleft()]
-                else:
-                    done, pending = await asyncio.wait(
-                        cur_tasks, return_when=asyncio.FIRST_COMPLETED
+                done, pending = await asyncio.wait(
+                    cur_task_map.keys(), return_when=asyncio.FIRST_COMPLETED
+                )
+
+                for task in done:
+                    # Report completed tasks along w/ its corresponding
+                    # index in the input sequence
+                    #
+                    # NOTE: Once completed tasks queue fills up, this will block
+                    #       therefore serving as back-pressure for scheduling tasks
+                    #       preventing it from scheduling new tasks
+                    await completed_tasks_queue.put(
+                        (task, cur_task_map[task])
                     )
 
-                    next_tasks = done
-                    cur_tasks = deque(pending)
-
-                for next_task in next_tasks:
-                    output_queue.put(await next_task)
+                    cur_task_map.pop(task)
 
         except BaseException as e:
-            for cur_task in cur_tasks:
+            for cur_task in cur_task_map:
                 if not cur_task.done():
                     cur_task.cancel()
 
             sentinel = e
         finally:
-            output_queue.put(sentinel)
+            assert len(cur_task_map) == 0
+
+            print(f">>> [DBG] _schedule: {sentinel=}")
+
+            completed_tasks_queue.put_nowait((sentinel, None))
+
+    async def _consume(completed_tasks_queue: asyncio.Queue, output_queue: queue.Queue) -> None:
+        completed_task_map: Dict[int, asyncio.Task] = dict()
+        next_idx = 0
+
+        sentinel = None
+
+        try:
+            while True:
+                task, idx = await completed_tasks_queue.get()
+
+                if isinstance(task, Exception):
+                    raise task
+                else:
+                    completed_task_map[task] = idx
+
+                while next_idx in completed_task_map:
+                    next_task = completed_task_map.pop(next_idx)
+
+                    # NOTE: Once output queue fills up, this will block
+                    #       therefore serving as back-pressure for scheduling tasks
+                    #       preventing it from scheduling new tasks.
+                    # NOTE: This will block the whole event-loop not just this task
+                    output_queue.put(await next_task)
+
+                    next_idx += 1
+
+        except Exception as e:
+            sentinel = e
+        finally:
+            print(f">>> [DBG] _consume: {sentinel=}")
+
+            output_queue.put_nowait(sentinel)
 
     def _transform(batch_iter: Iterable[T], task_context: TaskContext) -> Iterable[U]:
-        outputs = queue.Queue(maxsize=max_concurrency)
+        task_completion_queue = asyncio.Queue(maxsize=max_concurrency)
+        output_queue = queue.Queue(maxsize=max_concurrency)
 
         loop = ray.data._map_actor_context.udf_map_asyncio_loop
 
-        asyncio.run_coroutine_threadsafe(_process_all(iter(batch_iter), outputs), loop)
+        asyncio.run_coroutine_threadsafe(_schedule(iter(batch_iter), task_completion_queue), loop)
+        asyncio.run_coroutine_threadsafe(_consume(task_completion_queue, output_queue), loop)
 
         while True:
-            items = outputs.get()
+            items = output_queue.get()
             if items is _SENTINEL:
                 break
             elif isinstance(items, Exception):
