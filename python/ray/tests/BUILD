@@ -1283,7 +1283,7 @@ py_test(
 )
 
 py_test_module_list(
-    size = "large",
+    size = "enormous",
     env = {
         "RAY_DEBUG_MODE": "1",
     },

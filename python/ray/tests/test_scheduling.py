@@ -27,10 +27,6 @@ from ray._private.test_utils import (
 
 logger = logging.getLogger(__name__)
 
-# Add pytest timeout for debug mode - similar to test_object_spilling.py
-# Increased timeout for debug mode builds which run significantly slower
-pytestmark = [pytest.mark.timeout(1800 if os.getenv("RAY_DEBUG_MODE") == "1" else 600)]
-
 # Debug mode aware timeouts - similar to test_object_spilling_2.py
 DEFAULT_TIMEOUT = 30
 DEBUG_MODE_TIMEOUT_MULTIPLIER = 2
