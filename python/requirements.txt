@@ -19,8 +19,8 @@ requests
 watchfiles
 
 # Python version-specific requirements
-grpcio == 1.54.2; sys_platform == "darwin"
-grpcio >= 1.54.2; sys_platform != "darwin"
+grpcio == 1.66.1; sys_platform == "darwin"
+grpcio >= 1.56.2; sys_platform != "darwin"
 numpy>=1.20
 
 # pyarrow 18 causes macos build failures.

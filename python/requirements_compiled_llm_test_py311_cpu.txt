@@ -1,0 +1,233 @@
+--index-url https://pypi.org/simple
+--extra-index-url https://download.pytorch.org/whl/cpu
+
+aiohappyeyeballs==2.6.1
+    # via aiohttp
+aiohttp==3.12.13
+    # via -r python/requirements/llm/llm-test-requirements.txt
+aiosignal==1.3.2
+    # via aiohttp
+alabaster==0.7.16
+    # via sphinx
+annotated-types==0.7.0
+    # via pydantic
+anyio==4.9.0
+    # via httpx
+attrs==25.3.0
+    # via
+    #   aiohttp
+    #   jsonschema
+    #   referencing
+babel==2.17.0
+    # via sphinx
+backoff==2.2.1
+    # via -r python/requirements/llm/llm-test-requirements.txt
+certifi==2025.6.15
+    # via
+    #   httpcore
+    #   httpx
+    #   requests
+charset-normalizer==3.4.2
+    # via requests
+docutils==0.19
+    # via sphinx
+fastjsonschema==2.21.1
+    # via nbformat
+filelock==3.18.0
+    # via
+    #   huggingface-hub
+    #   torch
+    #   transformers
+frozenlist==1.7.0
+    # via
+    #   aiohttp
+    #   aiosignal
+fsspec==2025.5.1
+    # via
+    #   huggingface-hub
+    #   torch
+h11==0.16.0
+    # via httpcore
+hf-xet==1.1.5 ; platform_machine == 'aarch64' or platform_machine == 'amd64' or platform_machine == 'arm64' or platform_machine == 'x86_64'
+    # via huggingface-hub
+httpcore==1.0.9
+    # via httpx
+httpx==0.28.1
+    # via -r python/requirements/llm/llm-test-requirements.txt
+huggingface-hub==0.33.1
+    # via
+    #   tokenizers
+    #   transformers
+idna==3.10
+    # via
+    #   anyio
+    #   httpx
+    #   requests
+    #   yarl
+imagesize==1.4.1
+    # via sphinx
+iniconfig==2.1.0
+    # via pytest
+jinja2==3.1.6
+    # via
+    #   mlx-lm
+    #   sphinx
+    #   torch
+jsonschema==4.24.0
+    # via nbformat
+jsonschema-specifications==2025.4.1
+    # via jsonschema
+jupyter-core==5.8.1
+    # via nbformat
+jupytext==1.17.2
+    # via -r python/requirements/llm/llm-test-requirements.txt
+markdown-it-py==3.0.0
+    # via
+    #   jupytext
+    #   mdit-py-plugins
+markupsafe==3.0.2
+    # via jinja2
+mdit-py-plugins==0.4.2
+    # via jupytext
+mdurl==0.1.2
+    # via markdown-it-py
+mlx==0.26.2 ; platform_machine == 'arm64' and sys_platform == 'darwin'
+    # via mlx-lm
+mlx-lm==0.25.3 ; platform_machine == 'arm64' and sys_platform == 'darwin'
+    # via xgrammar
+mpmath==1.3.0
+    # via sympy
+multidict==6.6.3
+    # via
+    #   aiohttp
+    #   yarl
+nbformat==5.10.4
+    # via jupytext
+networkx==3.5
+    # via torch
+ninja==1.11.1.4
+    # via xgrammar
+numpy==2.3.1
+    # via
+    #   mlx-lm
+    #   transformers
+nvidia-ml-py==12.575.51
+    # via pynvml
+packaging==25.0
+    # via
+    #   huggingface-hub
+    #   jupytext
+    #   pytest
+    #   sphinx
+    #   transformers
+pillow==11.3.0
+    # via -r python/requirements/llm/llm-test-requirements.txt
+platformdirs==4.3.8
+    # via jupyter-core
+pluggy==1.6.0
+    # via pytest
+propcache==0.3.2
+    # via
+    #   aiohttp
+    #   yarl
+protobuf==6.31.1 ; platform_machine == 'arm64' and sys_platform == 'darwin'
+    # via
+    #   mlx-lm
+    #   transformers
+pydantic==2.11.7
+    # via xgrammar
+pydantic-core==2.33.2
+    # via pydantic
+pygments==2.19.2
+    # via
+    #   pytest
+    #   sphinx
+pynvml==12.0.0
+    # via -r python/requirements/llm/llm-test-requirements.txt
+pytest==8.4.1
+    # via -r python/requirements/llm/llm-test-requirements.txt
+pyyaml==6.0.2
+    # via
+    #   huggingface-hub
+    #   jupytext
+    #   mlx-lm
+    #   transformers
+referencing==0.36.2
+    # via
+    #   jsonschema
+    #   jsonschema-specifications
+regex==2024.11.6
+    # via
+    #   tiktoken
+    #   transformers
+requests==2.32.4
+    # via
+    #   huggingface-hub
+    #   sphinx
+    #   tiktoken
+    #   transformers
+rpds-py==0.26.0
+    # via
+    #   jsonschema
+    #   referencing
+safetensors==0.6.0rc0
+    # via transformers
+sentencepiece==0.2.0
+    # via
+    #   transformers
+    #   xgrammar
+sniffio==1.3.1
+    # via anyio
+snowballstemmer==3.0.1
+    # via sphinx
+sphinx==6.2.1
+    # via -r python/requirements/llm/llm-test-requirements.txt
+sphinxcontrib-applehelp==2.0.0
+    # via sphinx
+sphinxcontrib-devhelp==2.0.0
+    # via sphinx
+sphinxcontrib-htmlhelp==2.1.0
+    # via sphinx
+sphinxcontrib-jsmath==1.0.1
+    # via sphinx
+sphinxcontrib-qthelp==2.0.0
+    # via sphinx
+sphinxcontrib-serializinghtml==2.0.0
+    # via sphinx
+sympy==1.14.0
+    # via torch
+tiktoken==0.9.0
+    # via xgrammar
+tokenizers==0.21.2
+    # via transformers
+torch==2.7.1
+    # via xgrammar
+tqdm==4.67.1
+    # via
+    #   huggingface-hub
+    #   transformers
+traitlets==5.14.3
+    # via
+    #   jupyter-core
+    #   nbformat
+transformers==4.53.0
+    # via
+    #   mlx-lm
+    #   xgrammar
+typing-extensions==4.14.0
+    # via
+    #   anyio
+    #   huggingface-hub
+    #   pydantic
+    #   pydantic-core
+    #   referencing
+    #   torch
+    #   typing-inspection
+typing-inspection==0.4.1
+    # via pydantic
+urllib3==2.5.0
+    # via requests
+xgrammar==0.1.19
+    # via -r python/requirements/llm/llm-test-requirements.txt
+yarl==1.20.1
+    # via aiohttp
