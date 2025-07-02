@@ -23,6 +23,9 @@ import ray
 import ray._private.ray_constants as ray_constants
 import ray._private.services
 from ray._common.utils import try_to_create_directory
+from ray._private.accelerators.accelerator_utils import (
+    get_first_detectable_accelerator_type,
+)
 from ray._private.resource_isolation_config import ResourceIsolationConfig
 from ray._private.resource_spec import ResourceSpec
 from ray._private.services import get_address, serialize_config
@@ -1270,6 +1273,11 @@ class Node:
             create_out=True,
             create_err=True,
         )
+        # Add default labels to Ray node labels, with labels passed in
+        # from `--labels` taking precedence.
+        default_labels = self._get_default_ray_node_labels()
+        node_labels = {**default_labels, **self._get_node_labels()}
+
         process_info = ray._private.services.start_raylet(
             self.redis_address,
             self.gcs_address,
@@ -1318,7 +1326,7 @@ class Node:
             env_updates=self._ray_params.env_vars,
             node_name=self._ray_params.node_name,
             webui=self._webui_url,
-            labels=self.node_labels,
+            labels=node_labels,
             resource_isolation_config=self.resource_isolation_config,
         )
         assert ray_constants.PROCESS_TYPE_RAYLET not in self.all_processes
@@ -1916,3 +1924,37 @@ class Node:
             # so we truncate it to the first 50 characters
             # to avoid any issues.
             record_hardware_usage(cpu_model_name[:50])
+
+    # _get_default_ray_node_labels is a helper function to return a dictionary with
+    # default ray.io/ labels set for this node.
+    def _get_default_ray_node_labels(self):
+        default_labels = {}
+        resource_spec = self.get_resource_spec()
+
+        # Get environment variables populated from K8s Pod Spec
+        node_group = os.environ.get(ray._raylet.NODE_TYPE_NAME_ENV, "")
+        market_type = os.environ.get(ray._raylet.NODE_MARKET_TYPE_ENV, "")
+        availability_region = os.environ.get(ray._raylet.NODE_REGION_ENV, "")
+        availability_zone = os.environ.get(ray._raylet.NODE_ZONE_ENV, "")
+
+        # Map environment variables to default ray node labels
+        if market_type:
+            default_labels[ray._raylet.RAY_NODE_MARKET_TYPE_KEY] = market_type
+        if node_group:
+            default_labels[ray._raylet.RAY_NODE_GROUP_KEY] = node_group
+        if availability_zone:
+            default_labels[ray._raylet.RAY_NODE_ZONE_KEY] = availability_zone
+        if availability_region:
+            default_labels[ray._raylet.RAY_NODE_REGION_KEY] = availability_region
+
+        # Get accelerator type from AcceleratorManager
+        if resource_spec.resolved():
+            accelerator_type = get_first_detectable_accelerator_type(
+                resource_spec.resources or {}
+            )
+            if accelerator_type:
+                default_labels[
+                    ray._raylet.RAY_NODE_ACCELERATOR_TYPE_KEY
+                ] = accelerator_type
+
+        return default_labels
