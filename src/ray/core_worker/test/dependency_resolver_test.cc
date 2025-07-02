@@ -124,6 +124,8 @@ class MockTaskFinisher : public TaskFinisherInterface {
 
   bool IsTaskPending(const TaskID &task_id) const override { return true; }
 
+  bool IsTaskCanceled(const TaskID &task_id) const override { return false; }
+
   void MarkGeneratorFailedAndResubmit(const TaskID &task_id) override {}
 
   int num_tasks_complete = 0;
