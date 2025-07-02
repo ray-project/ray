@@ -458,13 +458,17 @@ class _TorchTensorAcceleratorChannel(ChannelInterface):
             )
 
     def ensure_registered_as_writer(self):
-        assert self._accelerator_group is not None, "Actor is not part of an accelerator group"
+        assert (
+            self._accelerator_group is not None
+        ), "Actor is not part of an accelerator group"
         assert self._writer_registered
         ctx = ChannelContext.get_current()
         assert ctx.torch_device.type != "cpu"
 
     def ensure_registered_as_reader(self) -> bool:
-        assert self._accelerator_group is not None, "Actor is not part of an accelerator group"
+        assert (
+            self._accelerator_group is not None
+        ), "Actor is not part of an accelerator group"
         assert self._reader_registered
         ctx = ChannelContext.get_current()
         assert ctx.torch_device.type != "cpu"
