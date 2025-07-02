@@ -38,7 +38,7 @@ const BundleResourceRequirements = ({
           code={JSON.stringify(resources, undefined, 2)}
         />
       ) : (
-        "{}"
+        "[]"
       )}
     </React.Fragment>
   );
@@ -59,7 +59,7 @@ const LabelSelector = ({
           code={JSON.stringify(labelSelector, undefined, 2)}
         />
       ) : (
-        "{}"
+        "[]"
       )}
     </React.Fragment>
   );
