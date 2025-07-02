@@ -141,7 +141,6 @@ def test_http_access_log(serve_instance):
             fail: bool = False,
         ):
             s = f.getvalue()
-            print(s)
             return all(
                 [
                     name in s,
@@ -251,7 +250,10 @@ def test_user_logs(serve_instance):
     def fn(*args):
         logger.info(stderr_msg)
         logger.info(log_file_msg, extra={"log_to_stderr": False})
-        return serve.get_replica_context().replica_id, logger.handlers[1].baseFilename
+        return (
+            serve.get_replica_context().replica_id,
+            logger.handlers[1].target.baseFilename,
+        )
 
     handle = serve.run(fn.bind())
 
@@ -349,7 +351,7 @@ def test_context_information_in_logging(serve_and_ray_shutdown, json_log_format)
             "request_id": request_context.request_id,
             "route": request_context.route,
             "app_name": request_context.app_name,
-            "log_file": logger.handlers[1].baseFilename,
+            "log_file": logger.handlers[1].target.baseFilename,
             "replica": serve.get_replica_context().replica_id.unique_id,
             "actor_id": ray.get_runtime_context().get_actor_id(),
             "worker_id": ray.get_runtime_context().get_worker_id(),
@@ -370,7 +372,7 @@ def test_context_information_in_logging(serve_and_ray_shutdown, json_log_format)
                 "request_id": request_context.request_id,
                 "route": request_context.route,
                 "app_name": request_context.app_name,
-                "log_file": logger.handlers[1].baseFilename,
+                "log_file": logger.handlers[1].target.baseFilename,
                 "replica": serve.get_replica_context().replica_id.unique_id,
                 "actor_id": ray.get_runtime_context().get_actor_id(),
                 "worker_id": ray.get_runtime_context().get_worker_id(),
@@ -481,7 +483,7 @@ def test_extra_field(serve_and_ray_shutdown, raise_error):
                 extra={"k1": "my_v1", SERVE_LOG_EXTRA_FIELDS: {"k2": "my_v2"}},
             )
         return {
-            "log_file": logger.handlers[1].baseFilename,
+            "log_file": logger.handlers[1].target.baseFilename,
         }
 
     serve.run(fn.bind(), name="app1", route_prefix="/fn")
@@ -542,7 +544,7 @@ class TestLoggingAPI:
         class Model:
             def __call__(self, req: starlette.requests.Request):
                 return {
-                    "log_file": logger.handlers[1].baseFilename,
+                    "log_file": logger.handlers[1].target.baseFilename,
                     "replica": serve.get_replica_context().replica_id.unique_id,
                 }
 
@@ -565,7 +567,7 @@ class TestLoggingAPI:
                 logger.info("model_info_level")
                 logger.debug("model_debug_level")
                 return {
-                    "log_file": logger.handlers[1].baseFilename,
+                    "log_file": logger.handlers[1].target.baseFilename,
                 }
 
         serve.run(Model.bind())
@@ -589,9 +591,14 @@ class TestLoggingAPI:
         class Model:
             def __call__(self, req: starlette.requests.Request):
                 logger.info("model_info_level")
-                return {
-                    "logs_path": logger.handlers[1].baseFilename,
-                }
+                for handler in logger.handlers:
+                    if isinstance(handler, logging.handlers.MemoryHandler):
+                        target = handler.target
+                        assert isinstance(target, logging.handlers.RotatingFileHandler)
+                        return {
+                            "logs_path": target.baseFilename,
+                        }
+                raise AssertionError("No memory handler found")
 
         serve.run(Model.bind())
         resp = httpx.get("http://127.0.0.1:8000/").json()
@@ -629,7 +636,7 @@ class TestLoggingAPI:
                 logger.info("model_info_level")
                 logger.info("model_not_show", extra={"serve_access_log": True})
                 return {
-                    "logs_path": logger.handlers[1].baseFilename,
+                    "logs_path": logger.handlers[1].target.baseFilename,
                 }
 
         serve.run(Model.bind())
@@ -663,7 +670,7 @@ class TestLoggingAPI:
                 logger.info("model_info_level")
                 logger.info("model_not_show", extra={"serve_access_log": True})
                 return {
-                    "logs_path": logger.handlers[1].baseFilename,
+                    "logs_path": logger.handlers[1].target.baseFilename,
                 }
 
         serve.run(Model.bind())
@@ -684,7 +691,7 @@ class TestLoggingAPI:
                 logger.info("model_info_level")
                 logger.debug("model_debug_level")
                 return {
-                    "log_file": logger.handlers[1].baseFilename,
+                    "log_file": logger.handlers[1].target.baseFilename,
                 }
 
         serve.run(Model.bind(), logging_config={"log_level": "DEBUG"})
@@ -702,7 +709,7 @@ class TestLoggingAPI:
                 logger.info("model_info_level")
                 logger.debug("model_debug_level")
                 return {
-                    "log_file": logger.handlers[1].baseFilename,
+                    "log_file": logger.handlers[1].target.baseFilename,
                 }
 
         serve.run(
