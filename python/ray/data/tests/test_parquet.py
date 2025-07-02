@@ -2007,7 +2007,7 @@ def test_choose_row_group_limits_warning_scenarios():
     from ray.data._internal.datasource.parquet_datasink import choose_row_group_limits
 
     # Test case that should trigger a warning: min exceeds Arrow cap, max is small
-    with pytest.warns(None) as warning_list:
+    with pytest.warns(None) as _:
         (
             min_rows_per_group,
             max_rows_per_group,
