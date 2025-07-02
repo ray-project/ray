@@ -1146,8 +1146,8 @@ class ProxyActor:
         """Get the logging configuration (for testing purposes)."""
         log_file_path = None
         for handler in logger.handlers:
-            if isinstance(handler, logging.handlers.RotatingFileHandler):
-                log_file_path = handler.baseFilename
+            if isinstance(handler, logging.handlers.MemoryHandler):
+                log_file_path = handler.target.baseFilename
         return log_file_path
 
     def _dump_ingress_replicas_for_testing(self, route: str) -> Set[ReplicaID]:

@@ -834,11 +834,11 @@ def test_configure_component_logger_with_log_encoding_env_text(log_encoding):
         )
 
         for handler in logger.handlers:
-            if isinstance(handler, logging.handlers.RotatingFileHandler):
+            if isinstance(handler, logging.handlers.MemoryHandler):
                 if expected_encoding == EncodingType.JSON:
-                    assert isinstance(handler.formatter, JSONFormatter)
+                    assert isinstance(handler.target.formatter, JSONFormatter)
                 else:
-                    assert isinstance(handler.formatter, ServeFormatter)
+                    assert isinstance(handler.target.formatter, ServeFormatter)
 
         # Clean up logger handlers
         logger.handlers.clear()

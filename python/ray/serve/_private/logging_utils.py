@@ -200,8 +200,8 @@ def get_component_logger_file_path() -> Optional[str]:
     """
     logger = logging.getLogger(SERVE_LOGGER_NAME)
     for handler in logger.handlers:
-        if isinstance(handler, logging.handlers.RotatingFileHandler):
-            absolute_path = handler.baseFilename
+        if isinstance(handler, logging.handlers.MemoryHandler):
+            absolute_path = handler.target.baseFilename
             ray_logs_dir = ray._private.worker._global_node.get_logs_dir_path()
             if absolute_path.startswith(ray_logs_dir):
                 return absolute_path[len(ray_logs_dir) :]
