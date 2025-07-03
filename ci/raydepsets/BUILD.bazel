@@ -4,13 +4,10 @@ py_library(
     name = "raydepsets_lib",
     srcs = [
         "cli.py",
-        "config.py",
-        "depset.py",
     ],
     visibility = ["//visibility:public"],
     deps = [
         ci_require("click"),
-        ci_require("pyyaml"),
     ],
 )
 
