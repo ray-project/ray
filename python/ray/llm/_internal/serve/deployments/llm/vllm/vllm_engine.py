@@ -389,6 +389,16 @@ class VLLMEngine(LLMEngine):
             node_initialization,
         ) = await self._prepare_engine_config(use_v1=True)
 
+        from vllm.config import KVEventsConfig
+
+        import ray.serve
+
+        engine_config.kv_events_config = KVEventsConfig(
+            enable_kv_cache_events=True,
+            publisher="zmq",
+            topic=ray.serve.get_replica_context().replica_id.unique_id,
+        )
+
         return self._start_async_llm_engine(
             engine_args,
             engine_config,
