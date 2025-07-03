@@ -268,10 +268,11 @@ def _wrap_debugger_breakpoint_fn(op: AbstractUDFMap):
         fn_constructor_args = op._fn_constructor_args or ()
         fn_constructor_kwargs = op._fn_constructor_kwargs or {}
 
-        is_async_udf = _is_async_udf(udf)
+        is_async_udf = _is_async_udf(udf.__call__)
 
-        # TODO this constrains concurrency to ALWAYS single thread (remove)
         if not is_async_udf:
+            # TODO(ak) this constrains concurrency for user UDFs to run in a single
+            #          thread irrespective of max_concurrency. Remove
             udf = make_callable_class_concurrent(udf)
 
         def init_fn():
