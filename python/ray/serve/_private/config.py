@@ -118,10 +118,6 @@ class DeploymentConfig(BaseModel):
         health_check_timeout_s: Timeout that the controller waits for a
             response from the replica's health check before marking it
             unhealthy.
-        request_routing_stats_period_s: Frequency at which the controller
-            record request routing stats.
-        request_routing_stats_timeout_s: Timeout that the controller waits
-            for a response from the replica's record routing stats call.
         autoscaling_config: Autoscaling configuration.
         logging_config: Configuration for deployment logs.
         user_configured_option_names: The names of options manually
