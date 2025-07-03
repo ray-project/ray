@@ -1,6 +1,7 @@
 import pytest
 import sys
 
+
 def test_cli():
     pass
 
