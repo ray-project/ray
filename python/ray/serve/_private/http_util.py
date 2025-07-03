@@ -7,7 +7,17 @@ import socket
 from collections import deque
 from copy import deepcopy
 from dataclasses import dataclass
-from typing import Any, Awaitable, Callable, List, Optional, Tuple, Type, Union
+from typing import (
+    Any,
+    AsyncGenerator,
+    Awaitable,
+    Callable,
+    List,
+    Optional,
+    Tuple,
+    Type,
+    Union,
+)
 
 import starlette
 import uvicorn
@@ -265,6 +275,49 @@ class MessageQueue(Send):
         elif len(self._message_queue) == 0 and self._closed:
             raise StopAsyncIteration
 
+    async def fetch_messages_from_queue(
+        self, call_fut: asyncio.Future
+    ) -> AsyncGenerator[List[Any], None]:
+        """Repeatedly consume messages from the queue and yield them.
+
+        This is used to fetch queue messages in the system event loop in
+        a thread-safe manner.
+
+        Args:
+            call_fut: The async Future pointing to the task from the user
+                code event loop that is pushing messages onto the queue.
+
+        Yields:
+            List[Any]: Messages from the queue.
+        """
+        # Repeatedly consume messages from the queue.
+        wait_for_msg_task = None
+        try:
+            while True:
+                wait_for_msg_task = asyncio.create_task(self.wait_for_message())
+                done, _ = await asyncio.wait(
+                    [call_fut, wait_for_msg_task], return_when=asyncio.FIRST_COMPLETED
+                )
+
+                messages = self.get_messages_nowait()
+                if messages:
+                    yield messages
+
+                # Exit once `call_fut` has finished. In this case, all
+                # messages must have already been sent.
+                if call_fut in done:
+                    break
+
+            e = call_fut.exception()
+            if e is not None:
+                raise e from None
+        finally:
+            if not call_fut.done():
+                call_fut.cancel()
+
+            if wait_for_msg_task is not None and not wait_for_msg_task.done():
+                wait_for_msg_task.cancel()
+
 
 class ASGIReceiveProxy:
     """Proxies ASGI receive from an actor.
@@ -280,7 +333,8 @@ class ASGIReceiveProxy:
         receive_asgi_messages: Callable[[RequestMetadata], Awaitable[bytes]],
     ):
         self._type = scope["type"]  # Either 'http' or 'websocket'.
-        self._queue = asyncio.Queue()
+        # Lazy init the queue to ensure it is created in the user code event loop.
+        self._queue = None
         self._request_metadata = request_metadata
         self._receive_asgi_messages = receive_asgi_messages
         self._disconnect_message = None
@@ -302,6 +356,13 @@ class ASGIReceiveProxy:
             }
         else:
             return {"type": "http.disconnect"}
+
+    @property
+    def queue(self) -> asyncio.Queue:
+        if self._queue is None:
+            self._queue = asyncio.Queue()
+
+        return self._queue
 
     async def fetch_until_disconnect(self):
         """Fetch messages repeatedly until a disconnect message is received.
@@ -326,7 +387,7 @@ class ASGIReceiveProxy:
                     )
 
                 for message in messages:
-                    self._queue.put_nowait(message)
+                    self.queue.put_nowait(message)
 
                     if message["type"] in {"http.disconnect", "websocket.disconnect"}:
                         self._disconnect_message = message
@@ -336,12 +397,12 @@ class ASGIReceiveProxy:
                 # (i.e., the user disconnects). This is expected behavior and we should
                 # not log an error: https://github.com/ray-project/ray/issues/43290.
                 message = self._get_default_disconnect_message()
-                self._queue.put_nowait(message)
+                self.queue.put_nowait(message)
                 self._disconnect_message = message
                 return
             except Exception as e:
                 # Raise unexpected exceptions in the next `__call__`.
-                self._queue.put_nowait(e)
+                self.queue.put_nowait(e)
                 return
 
     async def __call__(self) -> Message:
@@ -349,10 +410,10 @@ class ASGIReceiveProxy:
 
         This will repeatedly return a disconnect message once it's been received.
         """
-        if self._queue.empty() and self._disconnect_message is not None:
+        if self.queue.empty() and self._disconnect_message is not None:
             return self._disconnect_message
 
-        message = await self._queue.get()
+        message = await self.queue.get()
         if isinstance(message, Exception):
             raise message
 
