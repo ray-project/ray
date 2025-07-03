@@ -18,9 +18,9 @@ fi
 # Install ray java dependencies.
 if [[ "${RAY_INSTALL_JAVA}" == "1" ]]; then
   sudo yum -y install java-1.8.0-openjdk java-1.8.0-openjdk-devel maven
-  sudo java -version
-  sudo JAVA_BIN="$(readlink -f "$(command -v java)")"
-  sudo echo "java_bin path ${JAVA_BIN}"
+  java -version
+  JAVA_BIN="$(readlink -f "$(command -v java)")"
+  echo "java_bin path ${JAVA_BIN}"
   export JAVA_HOME="${JAVA_BIN%jre/bin/java}"
 fi
 
@@ -34,7 +34,8 @@ nvm use "$NODE_VERSION"
 
 # Install bazel
 npm install -g @bazel/bazelisk
-ln -sf "$(which bazelisk)" /tmp/bazel
+mkdir -p "$HOME"/bin
+ln -sf "$(which bazelisk)" "$HOME"/bin/bazel
 
 {
   echo "build --config=ci"
