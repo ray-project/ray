@@ -662,8 +662,6 @@ class RequestIdMiddleware:
         if request_id is None:
             request_id = generate_request_id()
             headers.append(SERVE_HTTP_REQUEST_ID_HEADER, request_id)
-        else:
-            request_id = headers[SERVE_HTTP_REQUEST_ID_HEADER]
 
         async def send_with_request_id(message: Message):
             if message["type"] == "http.response.start":
