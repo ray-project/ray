@@ -7,9 +7,7 @@ from typing import (
     List,
     Optional,
     Sequence,
-    Set,
     Tuple,
-    Type,
     TypeVar,
     Union,
 )
@@ -37,20 +35,9 @@ from ray.llm._internal.serve.configs.constants import (
     DEFAULT_MULTIPLEX_DOWNLOAD_TIMEOUT_S,
     DEFAULT_MULTIPLEX_DOWNLOAD_TRIES,
     ENABLE_WORKER_PROCESS_SETUP_HOOK,
-    MAX_NUM_STOPPING_SEQUENCES,
     MODEL_RESPONSE_BATCH_TIMEOUT_MS,
 )
-from ray.llm._internal.serve.configs.error_handling import TooManyStoppingSequences
-from ray.llm._internal.serve.configs.openai_api_models_patch import (
-    ErrorResponse,
-    ResponseFormatType,
-)
-from ray.llm._internal.serve.configs.openai_api_models import (
-    ModelCard,
-)
-from ray.llm._internal.serve.configs.prompt_formats import (
-    Prompt,
-)
+from ray.llm._internal.serve.configs.openai_api_models import ErrorResponse
 from ray.llm._internal.serve.observability.logging import get_logger
 from ray.serve._private.config import DeploymentConfig
 
@@ -844,100 +831,3 @@ def merge_dicts(base: Dict, overwrite: Dict) -> Dict:
         else:
             base[key] = overwrite[key]
     return base
-
-
-class SamplingParams(BaseModelExtended):
-    """Parameters for controlling text generation sampling.
-
-    Args:
-        max_tokens: The maximum number of tokens to generate. Defaults to inf.
-        temperature: What sampling temperature to use.
-        top_p: An alternative to sampling with temperature, called nucleus sampling.
-        n: How many completions to generate for each prompt.
-        logprobs: Include the log probabilities on the `logprobs` most likely
-            tokens, as well the chosen tokens.
-        top_logprobs: The number of logprobs to return. Defaults to 1. `logprobs`
-            must be set to `True` in order to use top_logprobs.
-        stop: Up to 4 sequences where the API will stop generating further tokens.
-            The returned text will not contain the stop sequence.
-        stop_tokens: Tokens to stop on (applied before detokenization).
-        presence_penalty: Number between -2.0 and 2.0.
-            Positive values penalize new tokens based on whether they appear in
-            the text so far, increasing the model's likelihood to talk about
-            new topics.
-        frequency_penalty: Number between -2.0 and 2.0. Positive values penalize
-            new tokens based on their existing frequency in the text so far,
-            decreasing the model's likelihood to repeat the same line verbatim.
-        best_of: Generates `best_of` completions server-side and returns the "best".
-        logit_bias: Modify the likelihood of specified tokens appearing in
-            the completion.
-        response_format: Format to return the final response in. Can be for ex:
-            response_format={"type": "json", "schema": "{...}"}
-    """
-
-    _ignored_fields: Set[str] = set()
-
-    max_tokens: Optional[int] = None
-    temperature: Optional[float] = None
-    top_p: Optional[float] = None
-    n: int = 1
-    logprobs: Optional[bool] = None
-    top_logprobs: Optional[int] = None
-    logit_bias: Optional[Dict[str, float]] = None
-    stop: Optional[List[str]] = None
-    stop_tokens: Optional[List[int]] = None
-    ignore_eos: Optional[bool] = None
-    presence_penalty: Optional[float] = None
-    frequency_penalty: Optional[float] = None
-    best_of: int = 1
-    response_format: Optional[ResponseFormatType] = None
-
-    def model_dump(self, **kwargs) -> Dict[str, Any]:
-        if kwargs.get("exclude", None) is None:
-            kwargs["exclude"] = self._ignored_fields
-        return super().model_dump(**kwargs)
-
-    @field_validator("stop", mode="before")
-    @classmethod
-    def validate_stopping_sequences(cls, values):
-        if not values:
-            return values
-
-        unique_val = sorted(set(values))
-
-        if len(unique_val) > MAX_NUM_STOPPING_SEQUENCES:
-            TooManyStoppingSequences(
-                len(unique_val), MAX_NUM_STOPPING_SEQUENCES
-            ).raise_exception()
-
-        return list(unique_val)
-
-    @field_validator("stop_tokens", mode="before")
-    @classmethod
-    def validate_stop_tokens(cls, values):
-        if not values:
-            return values
-        return sorted(set(values))
-
-    @classmethod
-    def _get_model_validate_kwargs(cls: Type[ModelT], prompt: Prompt) -> Dict[str, Any]:
-        generate_kwargs = prompt.parameters or {}
-        if not isinstance(generate_kwargs, dict):
-            generate_kwargs = generate_kwargs.model_dump(exclude_unset=True)
-
-        return generate_kwargs
-
-    @classmethod
-    def from_prompt(cls: Type[ModelT], prompt: Prompt) -> ModelT:
-        # Extract parameters object from prompt
-        generate_kwargs = cls._get_model_validate_kwargs(prompt)
-        return cls.model_validate(generate_kwargs)
-
-
-class GenerationRequest(BaseModelExtended):
-    prompt: Union[str, List[int], List[str]]
-    prompt_token_ids: Optional[List[int]] = None
-    request_id: Union[str, List[str]]
-    sampling_params: Optional[Union[SamplingParams, List[SamplingParams]]] = None
-    stream: bool = False
-    metadata: Optional[Dict[str, Any]] = None

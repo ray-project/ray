@@ -3,13 +3,10 @@ import uuid
 import argparse
 from starlette.datastructures import State
 
-from typing import TYPE_CHECKING, AsyncGenerator, List, Tuple, Union
+from typing import TYPE_CHECKING, AsyncGenerator, Tuple, Union
 
 import ray
 from ray.llm._internal.common.utils.import_utils import try_import
-from ray.llm._internal.serve.configs.constants import (
-    RAYLLM_ENABLE_REQUEST_PROMPT_LOGS,
-)
 from ray.llm._internal.serve.configs.openai_api_models import (
     CompletionRequest,
     CompletionResponse,
@@ -31,14 +28,12 @@ from ray.llm._internal.serve.deployments.llm.vllm.vllm_engine_stats import (
     VLLMEngineStatTracker,
 )
 from ray.llm._internal.serve.deployments.llm.vllm.vllm_models import (
-    VLLMEmbeddingRequest,
     VLLMEngineConfig,
 )
 from ray.llm._internal.serve.deployments.utils.node_initialization_utils import (
     InitializeNodeOutput,
     initialize_node,
 )
-from ray.llm._internal.serve.deployments.utils.server_utils import floats_to_base64
 from ray.llm._internal.serve.observability.logging import get_logger
 from ray.util.placement_group import PlacementGroup
 from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
@@ -50,7 +45,6 @@ from vllm.entrypoints.openai.protocol import ErrorResponse as VLLMErrorResponse
 if TYPE_CHECKING:
     from vllm.config import VllmConfig
     from vllm.engine.protocol import EngineClient
-    from vllm.outputs import PoolingRequestOutput
 
 vllm = try_import("vllm")
 logger = get_logger(__name__)

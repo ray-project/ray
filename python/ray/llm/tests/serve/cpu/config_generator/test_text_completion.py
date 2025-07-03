@@ -101,7 +101,7 @@ class TestTextCompletionModelConfig:
         model_config = populate_text_completion_model_config(input_model_config)
         self._assert_models(model_config, input_model_config)
 
-        serve_config = get_serve_config(input_model_config, "./file.yaml")
+        serve_config = get_serve_config("./file.yaml")
         assert len(serve_config["applications"][0]["args"]["llm_configs"]) == 1
 
     def _assert_models(

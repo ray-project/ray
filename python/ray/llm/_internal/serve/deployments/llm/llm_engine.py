@@ -1,12 +1,9 @@
 import abc
-from typing import AsyncGenerator, Optional, Any
+from typing import AsyncGenerator, Any
 
 from ray.llm._internal.serve.configs.server_models import (
     DiskMultiplexConfig,
-    GenerationRequest,
     LLMConfig,
-    LLMRawResponse,
-    Prompt,
 )
 
 
