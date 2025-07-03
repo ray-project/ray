@@ -1,18 +1,5 @@
-# End-to-end RAG deep dive
+# Distributed RAG pipeline
 
-
-```{toctree}
-:hidden:
-
-notebooks/01_(Optional)_Regular_Document_Processing_Pipeline
-notebooks/02_Scalable_RAG_Data_Ingestion_with_Ray_Data
-notebooks/03_Deploy_LLM_with_Ray_Serve
-notebooks/04_Build_Basic_RAG_Chatbot
-notebooks/05_Improve_RAG_with_Prompt_Engineering
-notebooks/06_(Optional)_Evaluate_RAG_with_Online_Inference
-notebooks/07_Evaluate_RAG_with_Ray_Data_LLM_Batch_inference
-
-```
 
 
 This tutorial covers end-to-end Retrieval-Augmented Generation (RAG) pipelines using [Ray](https://docs.ray.io/), from data ingestion and LLM deployment to prompt engineering, evaluation and scaling out all workloads in the application.
@@ -48,3 +35,16 @@ This tutorial covers end-to-end Retrieval-Augmented Generation (RAG) pipelines u
 
 > **Note:** Notebooks marked “(Optional)” cover complementary topics and can be skipped if you prefer to focus on the core RAG flow.
 
+
+```{toctree}
+:hidden:
+
+notebooks/01_(Optional)_Regular_Document_Processing_Pipeline
+notebooks/02_Scalable_RAG_Data_Ingestion_with_Ray_Data
+notebooks/03_Deploy_LLM_with_Ray_Serve
+notebooks/04_Build_Basic_RAG_Chatbot
+notebooks/05_Improve_RAG_with_Prompt_Engineering
+notebooks/06_(Optional)_Evaluate_RAG_with_Online_Inference
+notebooks/07_Evaluate_RAG_with_Ray_Data_LLM_Batch_inference
+
+```
