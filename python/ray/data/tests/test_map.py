@@ -1763,17 +1763,21 @@ def test_async_map_batches(shutdown_only, udf_kind):
             pass
 
         if udf_kind == "async_gen":
+
             async def __call__(self, batch):
                 for i in batch["id"]:
                     await asyncio.sleep((i % 5) / 100)
                     yield {"input": [i], "output": [2**i]}
+
         elif udf_kind == "coroutine":
+
             async def __call__(self, batch):
-                    await asyncio.sleep(random.randint(0, 5) / 100)
-                    return {
-                        "input": [i for i in batch["id"]],
-                        "output": [2**i for i in batch["id"]],
-                    }
+                await asyncio.sleep(random.randint(0, 5) / 100)
+                return {
+                    "input": [i for i in batch["id"]],
+                    "output": [2**i for i in batch["id"]],
+                }
+
         else:
             pytest.fail(f"Unknown udf_kind: {udf_kind}")
 
@@ -1794,30 +1798,35 @@ def test_async_map_batches(shutdown_only, udf_kind):
     )
 
 
-def test_flat_map_async_generator(shutdown_only):
-    async def fetch_data(id):
-        return {"id": id}
-
+@pytest.mark.parametrize("udf_kind", ["coroutine", "async_gen"])
+def test_async_flat_map(shutdown_only, udf_kind):
     class AsyncActor:
         def __init__(self):
             pass
 
-        async def __call__(self, row):
-            id = row["id"]
-            task1 = asyncio.create_task(fetch_data(id))
-            task2 = asyncio.create_task(fetch_data(id + 1))
-            print(f"yield task1: {id}")
-            yield await task1
-            print(f"sleep: {id}")
-            await asyncio.sleep(id % 5)
-            print(f"yield task2: {id}")
-            yield await task2
+        if udf_kind == "async_gen":
+
+            async def __call__(self, row):
+                id = row["id"]
+                yield {"id": id}
+                await asyncio.sleep(random.randint(0, 5) / 100)
+                yield {"id": id + 1}
+
+        elif udf_kind == "coroutine":
+
+            async def __call__(self, row):
+                id = row["id"]
+                await asyncio.sleep(random.randint(0, 5) / 100)
+                return [{"id": id}, {"id": id + 1}]
+
+        else:
+            pytest.fail(f"Unknown udf_kind: {udf_kind}")
 
     n = 10
     ds = ray.data.from_items([{"id": i} for i in range(0, n, 2)])
     ds = ds.flat_map(AsyncActor, concurrency=1, max_concurrency=2)
     output = ds.take_all()
-    assert sorted(extract_values("id", output)) == list(range(0, n)), output
+    assert sorted(extract_values("id", output)) == list(range(n))
 
 
 def test_map_batches_async_exception_propagation(shutdown_only):
