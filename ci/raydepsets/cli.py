@@ -3,9 +3,9 @@
 import click
 from pathlib import Path
 from typing import Dict, List, Optional
-from dependencies.depset import DepSet
+from depset import DepSet
 import subprocess
-from dependencies.config import load_config, Config
+from config import load_config, Config
 
 
 class DependencySetManager:
