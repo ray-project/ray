@@ -101,7 +101,7 @@ Take [kuberay#846](https://github.com/ray-project/kuberay/issues/846) as an exam
 (multi-node-gpu)=
 ## Multi-node GPU Deployments
 
-For comprehensive troubleshooting of multi-node GPU serving issues, refer to {ref}`Troubleshooting multi-node GPU serving on KubeRay <multi-node-gpu-troubleshooting>`.
+For comprehensive troubleshooting of multi-node GPU serving issues, refer to {ref}`Troubleshooting multi-node GPU serving on KubeRay <serve-multi-node-gpu-troubleshooting>`.
 
 (other-questions)=
 ## Other questions
