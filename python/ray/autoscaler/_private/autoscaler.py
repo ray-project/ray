@@ -1261,7 +1261,7 @@ class StandardAutoscaler:
             process_runner=self.process_runner,
             use_internal_ip=True,
             is_head_node=False,
-            docker_config=self.config.get("docker"),
+            docker_config=self._get_node_specific_docker_config(node_id),
             node_resources=self._node_resources(node_id),
             node_labels=self._node_labels(node_id),
             for_recovery=True,
