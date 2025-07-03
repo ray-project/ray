@@ -720,7 +720,7 @@ async def start_asgi_http_server(
 
     # Even though we set log_level=None, uvicorn adds MessageLoggerMiddleware
     # if log level for uvicorn.error is not set. And MessageLoggerMiddleware
-    # of no use to us.
+    # has no use to us.
     logging.getLogger("uvicorn.error").level = logging.CRITICAL
 
     # NOTE: We have to use lower level uvicorn Config and Server
