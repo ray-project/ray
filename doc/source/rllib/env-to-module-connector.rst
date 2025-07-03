@@ -42,11 +42,11 @@ methods of the :py:class:`~ray.rllib.core.rl_module.rl_module.RLModule`, dependi
 Default env-to-module behavior
 ------------------------------
 
-**Default Env-to-Module Behavior:** By default RLlib populates an env-to-module pipeline with the following built-in connector pieces:
+By default RLlib populates an env-to-module pipeline with the following built-in connector pieces:
 
-* :py:class:`~ray.rllib.connectors.common.add_observations_from_episodes_to_batch.AddObservationsFromEpisodesToBatch`: Places the most recent observation from each ongoing episode into the batch. Note that if you have a vector of ``N`` environments per :py:class:`~ray.rllib.env.env_runner.EnvRunner`, your batch size is also ``N``.
+* :py:class:`~ray.rllib.connectors.common.add_observations_from_episodes_to_batch.AddObservationsFromEpisodesToBatch`: Places the most recent observation from each ongoing episode into the batch. The column name is ``obs``. Note that if you have a vector of ``N`` environments per :py:class:`~ray.rllib.env.env_runner.EnvRunner`, your batch size is also ``N``.
 * *Relevant for stateful models only:* :py:class:`~ray.rllib.connectors.common.add_time_dim_to_batch_and_zero_pad.AddTimeDimToBatchAndZeroPad`: If the :py:class:`~ray.rllib.core.rl_module.rl_module.RLModule` is a stateful one, adds a single timestep, second axis to all data to make it sequential.
-* *Relevant for stateful models only:* :py:class:`~ray.rllib.connectors.common.add_states_from_episodes_to_batch.AddStatesFromEpisodesToBatch`: If the :py:class:`~ray.rllib.core.rl_module.rl_module.RLModule` is a stateful one, places the most recent state outputs of the module as new state inputs into the batch.
+* *Relevant for stateful models only:* :py:class:`~ray.rllib.connectors.common.add_states_from_episodes_to_batch.AddStatesFromEpisodesToBatch`: If the :py:class:`~ray.rllib.core.rl_module.rl_module.RLModule` is a stateful one, places the most recent state outputs of the module as new state inputs into the batch. The column name is ``state_in``.
 * *For multi-agent only:* :py:class:`~ray.rllib.connectors.common.agent_to_module_mapping.AgentToModuleMapping`: Maps per-agent data to the respective per-module data depending on your defined agent-to-module mapping function.
 * :py:class:`~ray.rllib.connectors.common.batch_individual_items.BatchIndividualItems`: Converts all data in the batch, which thus far are lists of individual items, into batched structures meaning NumPy arrays, whose zeroth axis is the batch axis.
 * :py:class:`~ray.rllib.connectors.common.numpy_to_tensor.NumpyToTensor`: Converts all NumPy arrays in the batch into framework specific tensors and moves these to the GPU, if required.
@@ -74,19 +74,24 @@ use the following code snippet as a starting point:
         PPOConfig()
         .environment("CartPole-v1")
     )
-    # Create the env to generate some episode data.
+    # Create an env to generate some episode data.
     env = gym.make("CartPole-v1")
 
     # Build the env-to-module connector through the config object.
     env_to_module = config.build_env_to_module_connector(env=env, spaces=None)
 
-    # Alternatively, in case there is no `env` object available,
-    # you should pass in the `spaces` argument:
+
+Alternatively, in case there is no ``env`` object available, you should pass in the ``spaces`` argument instead.
+:ref:`See here for the expected format of the spaces arg <env-to-module-connectors-structure-of-spaces-arg>`.
+
+.. testcode::
+
+    # No `env` available? Use `spaces` instead:
     env_to_module = config.build_env_to_module_connector(
-        env=None,  # no env available?
+        env=None,
         spaces={
-            # At minimum, pass in the single, non-vectorized observation- and
-            # action spaces:
+            # At minimum, pass in a 2-tuple of the single, non-vectorized
+            # observation- and action spaces:
             "__env_single__": (env.observation_space, env.action_space),
         },
     )
@@ -115,7 +120,7 @@ for stateless- and stateful :py:class:`~ray.rllib.core.rl_module.rl_module.RLMod
             action = 0
             obs, _, _, _, _ = env.step(action)
             episode1.add_env_step(observation=obs, action=action, reward=1.0)
-            # - episode 2 (just one timestep)
+            # - episode 2 (just do one timestep)
             obs, _ = env.reset()
             episode2.add_env_reset(observation=obs)
 
@@ -167,9 +172,9 @@ for stateless- and stateful :py:class:`~ray.rllib.core.rl_module.rl_module.RLMod
 
 
 
-You can see that the pipeline extracted the two current observations from the two
-running episodes and placed them under the "obs" column into the forward batch.
-The batch should look similar to this:
+You can see that the pipeline extracted the current observations from the two
+running episodes and placed them under the ``obs`` column into the forward batch.
+The batch has a size of 2, because we had 2 episodes, and should look similar to this:
 
 .. code-block:: text
 
@@ -177,8 +182,7 @@ The batch should look similar to this:
             [ 0.0292,  0.0259, -0.0322, -0.0004]])}
 
 In the stateful case, you can also expect the ``STATE_IN`` columns to be present.
-Note that because of the LSTM layer used, the internal state of the module consists
-of two components, ``c`` and ``h``.
+Note that because of the LSTM layer, the internal state of the module consists of two components, ``c`` and ``h``:
 
 .. code-block:: text
 
@@ -188,6 +192,8 @@ of two components, ``c`` and ``h``.
             [ 0.0292,  0.0259, -0.0322, -0.0004]]
         ),
         'state_in': {
+            # Note: The shape of each state tensor here is
+            # (B=2, [num LSTM-layers=1], [LSTM cell size]).
             'h': tensor([[[0., 0., .., 0.]]]),
             'c': tensor([[[0., 0., ... 0.]]]),
         },
@@ -212,6 +218,8 @@ RLlib prepends the provided :py:class:`~ray.rllib.connectors.connector_v2.Connec
 :ref:`default env-to-module pipeline <default-env-to-module-pipeline>` in the order returned,
 unless you set `add_default_connectors_to_env_to_module_pipeline=False` in your config, in which case RLlib exclusively uses the provided
 :py:class:`~ray.rllib.connectors.connector_v2.ConnectorV2` pieces without any automatically added default behavior.
+
+.. _env-to-module-connectors-structure-of-spaces-arg:
 
 Note that RLlib expects the structure of the `spaces` argument to be:
 
