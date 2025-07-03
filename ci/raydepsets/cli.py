@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 
 import click
+<<<<<<< HEAD
 from pathlib import Path
 from typing import Dict, List, Optional
 <<<<<<< HEAD
@@ -60,133 +61,15 @@ class DependencySetManager:
         if status.returncode != 0:
             raise Exception(f"Failed to execute command: {cmd}")
         return status.stdout
+=======
+>>>>>>> scafolding for raydepsets
 
 
 @click.group(name="depsets")
 @click.pass_context
 def cli(ctx):
     """Manage Python dependency sets."""
-    # Store flags in context for subcommands
-    ctx.ensure_object(dict)
-
-
-@cli.command()
-@click.argument("config_path")
-def load(config_path: str):
-    """Load a dependency sets from a config file."""
-    manager = DependencySetManager(config_path=config_path)
-    for _, depconfig in manager.config.depsets.items():
-        execute_config(depconfig.operation, depconfig)
-
-
-def execute_config(func_name: str, config: Config):
-    if func_name == "compile":
-        compile(
-            constraints=config.constraints,
-            requirements=config.requirements,
-            args=config.flags,
-            name=config.name,
-            output=config.output,
-        )
-    elif func_name == "subset":
-        subset(config.depset, config.requirements, config.name, config.output)
-    elif func_name == "expand":
-        expand(
-            config.depsets, config.constraints, config.flags, config.name, config.output
-        )
-
-
-@cli.command()
-def list():
-    """List all dependency sets."""
-    manager = DependencySetManager()
-    depsets = manager.list_depsets()
-    click.echo("Available dependency sets:")
-    for depset in depsets:
-        click.echo(f"- {depset}")
-
-@cli.command()
-@click.argument("name")
-def delete(name: str):
-    """Delete a dependency set."""
-    try:
-        manager = DependencySetManager()
-        manager.delete_depset(name)
-        click.echo(f"Deleted dependency set {name}")
-    except ValueError as e:
-        click.echo(f"Error: {str(e)}", err=True)
-
-
-def compile(
-    constraints: List[str],
-    requirements: List[str],
-    args: List[str],
-    name: str,
-    output: str = None,
-):
-    """Compile a dependency set."""
-    try:
-        manager = DependencySetManager()
-        # Build args for uv pip compile
-        if constraints:
-            for constraint in constraints:
-                args.extend(["-c", constraint])
-        if requirements:
-            for requirement in requirements:
-                args.append(requirement)
-        args.extend(["-o", f"{output}"])
-        manager.exec_uv_cmd("compile", args)
-        manager.add_depset(name, output)
-    except ValueError as e:
-        click.echo(f"Error: {str(e)}", err=True)
-
-
-def subset(
-    source_depset_name: str, requirements: List[str], name: str, output: str = None
-):
-    """Subset a dependency set."""
-    try:
-        manager = DependencySetManager()
-        source_depset = manager.get_depset(source_depset_name)
-        args = []
-        # Build args for uv pip compile
-        if source_depset_name:
-            args.extend(["-c", source_depset.requirements_fp])
-        # Add each requirements file as a separate argument
-        for requirement in requirements:
-            args.append(requirement)
-        args.extend(["-o", f"{output}"])
-        manager.exec_uv_cmd("compile", args)
-        manager.add_depset(name, output)
-        click.echo(f"subset {name} depset from {source_depset_name}")
-    except ValueError as e:
-        click.echo(f"Error: {str(e)}", err=True)
-
-
-def expand(
-    source_depset_names: List[str],
-    constraints: List[str],
-    args: List[str],
-    name: str,
-    output: str = None,
-):
-    """Expand a dependency set."""
-    try:
-        manager = DependencySetManager()
-        # Build args for uv pip compile
-        if constraints:
-            for constraint in constraints:
-                args.extend(["-c", constraint])
-        # Add each requirements file as a separate argument
-        for source in source_depset_names:
-            args.append(manager.depsets[source].requirements_fp)
-        args.extend(["-o", f"{output}"])
-        manager.exec_uv_cmd("compile", args)
-        manager.add_depset(name, output)
-        click.echo(f"Expanded {name} from {source_depset_names}")
-    except ValueError as e:
-        click.echo(f"Error: {str(e)}", err=True)
-
+    pass
 
 if __name__ == "__main__":
     cli()
