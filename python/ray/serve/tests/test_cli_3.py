@@ -444,20 +444,6 @@ class TestRun:
         0.1s, the deployment returns a success message.
         """
 
-        # Set up ray instance to perform 1 retries
-        # subprocess.check_output(["ray", "stop", "--force"])
-        # wait_for_condition(
-        #     check_ray_stop,
-        #     timeout=15,
-        # )
-        # subprocess.check_output(
-        #     ["ray", "start", "--head"],
-        # )
-        # wait_for_condition(
-        #     lambda: httpx.get("http://localhost:8265/api/ray/version").status_code == 200,
-        #     timeout=15,
-        # )
-
         config_file_name = os.path.join(
             os.path.dirname(__file__),
             "test_config_files",
@@ -481,13 +467,6 @@ class TestRun:
 
         p.send_signal(signal.SIGINT)
         p.wait()
-
-        # # Stop ray instance
-        # subprocess.check_output(["ray", "stop", "--force"])
-        # wait_for_condition(
-        #     check_ray_stop,
-        #     timeout=15,
-        # )
 
     @pytest.mark.skipif(
         sys.platform == "win32", reason="File path incorrect on Windows."

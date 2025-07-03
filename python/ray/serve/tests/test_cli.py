@@ -38,8 +38,6 @@ def check_http_response(expected_text: str, json: Optional[Dict] = None):
 @pytest.mark.skipif(sys.platform == "win32", reason="File path incorrect on Windows.")
 def test_deploy_basic(serve_instance):
     """Deploys some valid config files and checks that the deployments work."""
-    # ray.init(address="auto", namespace=SERVE_NAMESPACE)
-
     # Create absolute file names to YAML config files
     pizza_file_name = os.path.join(
         os.path.dirname(__file__), "test_config_files", "pizza.yaml"
@@ -111,14 +109,10 @@ def test_deploy_basic(serve_instance):
         assert_deployments_live(deployments)
         print("All deployments are live.\n")
 
-    # ray.shutdown()
-
 
 @pytest.mark.skipif(sys.platform == "win32", reason="File path incorrect on Windows.")
 def test_deploy_multi_app_basic(serve_instance):
     """Deploys some valid config files and checks that the deployments work."""
-    # ray.init(address="auto", namespace=SERVE_NAMESPACE)
-
     # Create absolute file names to YAML config files
     two_pizzas = os.path.join(
         os.path.dirname(__file__), "test_config_files", "two_pizzas.yaml"
@@ -206,8 +200,6 @@ def test_deploy_multi_app_basic(serve_instance):
         ]
         assert_deployments_live(deployment_names)
         print("All deployments are live.\n")
-
-    # ray.shutdown()
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="File path incorrect on Windows.")
@@ -343,8 +335,6 @@ def test_cli_without_config_deploy(serve_instance):
         return True
 
     wait_for_condition(check_cli)
-    # serve.shutdown()
-    # ray.shutdown()
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="File path incorrect on Windows.")
