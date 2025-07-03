@@ -1,4 +1,4 @@
-# Audio dataset curation with offline batch inference
+# Audio batch inference
 
 <div align="left">
 <a target="_blank" href="https://console.anyscale.com/"><img src="https://img.shields.io/badge/🚀 Run_on-Anyscale-9hf"></a>&nbsp;
@@ -208,7 +208,7 @@ judge_config = vLLMEngineProcessorConfig(
         "enable_chunked_prefill": True,
         "max_num_batched_tokens": 1028,
         "max_model_len": 4096,
-        "guided_decoding_backend": "auto",
+        "guided_decoding_backend": "xgrammar",
         "dtype": torch.float16,
     },
     concurrency=3,
