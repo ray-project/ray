@@ -4,9 +4,8 @@ import re
 import signal
 import subprocess
 import sys
-import time
 from tempfile import NamedTemporaryFile
-from typing import Pattern
+from typing import Dict, Optional, Pattern
 
 import grpc
 import httpx
@@ -15,10 +14,10 @@ import yaml
 
 import ray
 from ray import serve
-from ray._common.pydantic_compat import BaseModel
 from ray._common.test_utils import wait_for_condition
 from ray.serve._private.constants import SERVE_DEFAULT_APP_NAME, SERVE_NAMESPACE
 from ray.serve._private.test_utils import (
+    ping_endpoint,
     ping_fruit_stand,
     ping_grpc_another_method,
     ping_grpc_call_method,
@@ -28,25 +27,9 @@ from ray.serve._private.test_utils import (
     ping_grpc_streaming,
 )
 from ray.serve.generated import serve_pb2, serve_pb2_grpc
-from ray.serve.handle import DeploymentHandle
-from ray.serve.tests.common.remote_uris import (
-    TEST_DAG_PINNED_URI,
-    TEST_DEPLOY_GROUP_PINNED_URI,
-)
-from ray.serve.tests.conftest import check_ray_stop
-from ray.tests.conftest import tmp_working_dir  # noqa: F401, E501
 from ray.util.state import list_actors
 
 CONNECTION_ERROR_MSG = "connection error"
-
-
-def ping_endpoint(endpoint: str, params: str = ""):
-    endpoint = endpoint.lstrip("/")
-
-    try:
-        return httpx.get(f"http://localhost:8000/{endpoint}{params}").text
-    except httpx.HTTPError:
-        return CONNECTION_ERROR_MSG
 
 
 def check_app_status(app_name: str, expected_status: str):
@@ -60,55 +43,50 @@ def check_app_running(app_name: str):
     return check_app_status(app_name, "RUNNING")
 
 
-@pytest.mark.skipif(sys.platform == "win32", reason="File path incorrect on Windows.")
-def test_status_multi_app(ray_start_stop):
-    """Deploys a multi-app config file and checks their status."""
-    # Check that `serve status` works even if no Serve app is running
-    subprocess.check_output(["serve", "status"])
-    print("Confirmed `serve status` works when nothing has been deployed.")
+def check_http_response(expected_text: str, json: Optional[Dict] = None):
+    resp = httpx.post("http://localhost:8000/", json=json)
+    assert resp.text == expected_text
+    return True
 
-    # Deploy config
-    config_file_name = os.path.join(
-        os.path.dirname(__file__), "test_config_files", "pizza_world.yaml"
+
+def test_start_shutdown(ray_start_stop):
+    subprocess.check_output(["serve", "start"])
+    # deploy a simple app
+    import_path = "ray.serve.tests.test_config_files.arg_builders.build_echo_app"
+
+    deploy_response = subprocess.check_output(["serve", "deploy", import_path])
+    assert b"Sent deploy request successfully." in deploy_response
+
+    wait_for_condition(
+        check_http_response,
+        expected_text="DEFAULT",
+        timeout=15,
     )
-    subprocess.check_output(["serve", "deploy", config_file_name])
-    print("Deployed config successfully.")
 
-    def num_live_deployments():
-        status_response = subprocess.check_output(["serve", "status"])
-        status = yaml.safe_load(status_response)["applications"]
-        return len(status["app1"]["deployments"]) and len(status["app2"]["deployments"])
+    ret = subprocess.check_output(["serve", "shutdown", "-y"])
+    assert b"Sent shutdown request; applications will be deleted asynchronously" in ret
 
-    wait_for_condition(lambda: num_live_deployments() == 3, timeout=15)
-    print("All deployments are live.")
+    def check_no_apps():
+        status = subprocess.check_output(["serve", "status"])
+        return b"applications: {}" in status
 
-    status_response = subprocess.check_output(
-        ["serve", "status", "-a", "http://localhost:8265/"]
-    )
-    statuses = yaml.safe_load(status_response)["applications"]
+    wait_for_condition(check_no_apps, timeout=15)
 
-    expected_deployments_1 = {"f", "BasicDriver"}
-    expected_deployments_2 = {
-        "Multiplier",
-        "Adder",
-        "Router",
-    }
-    for deployment_name, deployment in statuses["app1"]["deployments"].items():
-        expected_deployments_1.remove(deployment_name)
-        assert deployment["status"] in {"HEALTHY", "UPDATING"}
-        assert "message" in deployment
-    for deployment_name, deployment in statuses["app2"]["deployments"].items():
-        expected_deployments_2.remove(deployment_name)
-        assert deployment["status"] in {"HEALTHY", "UPDATING"}
-        assert "message" in deployment
-    assert len(expected_deployments_1) == 0
-    assert len(expected_deployments_2) == 0
-    print("All expected deployments are present in the status output.")
+    # Test shutdown when no Serve instance is running
+    ret = subprocess.check_output(["serve", "shutdown", "-y"], stderr=subprocess.STDOUT)
+    assert b"No Serve instance found running" in ret
 
-    for status in statuses.values():
-        assert status["status"] in {"DEPLOYING", "RUNNING"}
-        assert time.time() > status["last_deployed_time_s"]
-    print("Verified status and deployment timestamp of both apps.")
+
+def test_start_shutdown_without_serve_running(ray_start_stop):
+    # Test shutdown when no Serve instance is running
+    ret = subprocess.check_output(["serve", "shutdown", "-y"], stderr=subprocess.STDOUT)
+    assert b"No Serve instance found running" in ret
+
+
+# def test_start_shutdown_without_ray_running():
+#     # Test shutdown when Ray is not running
+#     ret = subprocess.check_output(["serve", "shutdown", "-y"], stderr=subprocess.STDOUT)
+#     assert b"Unable to shutdown Serve on the cluster" in ret
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="File path incorrect on Windows.")
@@ -167,370 +145,34 @@ def test_shutdown(ray_start_stop):
         print("`serve config` and `serve status` print empty responses.\n")
 
 
-@serve.deployment
-def parrot(request):
-    return request.query_params["sound"]
-
-
-parrot_node = parrot.bind()
-
-
-@pytest.mark.parametrize("number_of_kill_signals", (1, 2))
 @pytest.mark.skipif(sys.platform == "win32", reason="File path incorrect on Windows.")
-def test_run_application(ray_start_stop, number_of_kill_signals):
-    """Deploys valid config file and import path via `serve run`."""
+def test_deploy_with_http_options(ray_start_stop):
+    """Deploys config with host and port options specified"""
 
-    # Deploy via config file
-    config_file_name = os.path.join(
-        os.path.dirname(__file__), "test_config_files", "arithmetic.yaml"
+    f1 = os.path.join(
+        os.path.dirname(__file__), "test_config_files", "basic_graph_http.yaml"
     )
+    success_message_fragment = b"Sent deploy request successfully."
 
-    print('Running config file "arithmetic.yaml".')
-    p = subprocess.Popen(["serve", "run", "--address=auto", config_file_name])
+    with open(f1, "r") as config_file:
+        config = yaml.safe_load(config_file)
+
+    deploy_response = subprocess.check_output(["serve", "deploy", f1])
+    assert success_message_fragment in deploy_response
+
     wait_for_condition(
-        lambda: httpx.post("http://localhost:8000/", json=["ADD", 0]).json() == 1,
+        lambda: httpx.post("http://localhost:8005/", json=None).text
+        == "wonderful world",
         timeout=15,
     )
-    wait_for_condition(
-        lambda: httpx.post("http://localhost:8000/", json=["SUB", 5]).json() == 3,
-        timeout=15,
-    )
-    print("Run successful! Deployments are live and reachable over HTTP. Killing run.")
 
-    for _ in range(number_of_kill_signals):
-        p.send_signal(signal.SIGINT)  # Equivalent to ctrl-C
-    p.wait()
-    with pytest.raises(httpx.HTTPError):
-        httpx.post("http://localhost:8000/", json=["ADD", 0]).json()
-    print("Kill successful! Deployments are not reachable over HTTP.")
+    # Config should contain matching host and port options
+    info_response = subprocess.check_output(["serve", "config"])
+    info = yaml.safe_load(info_response)
 
-    print('Running node at import path "ray.serve.tests.test_cli_2.parrot_node".')
-    # Deploy via import path
-    p = subprocess.Popen(
-        ["serve", "run", "--address=auto", "ray.serve.tests.test_cli_2.parrot_node"]
-    )
-    wait_for_condition(lambda: ping_endpoint("/", params="?sound=squawk") == "squawk")
-    print("Run successful! Deployment is live and reachable over HTTP. Killing run.")
-
-    p.send_signal(signal.SIGINT)  # Equivalent to ctrl-C
-    p.wait()
-    assert ping_endpoint("/", params="?sound=squawk") == CONNECTION_ERROR_MSG
-    print("Kill successful! Deployment is not reachable over HTTP.")
-
-
-@pytest.mark.skipif(sys.platform == "win32", reason="File path incorrect on Windows.")
-def test_run_multi_app(ray_start_stop):
-    """Deploys valid multi-app config file via `serve run`."""
-
-    # Deploy via config file
-    config_file_name = os.path.join(
-        os.path.dirname(__file__), "test_config_files", "pizza_world.yaml"
-    )
-
-    print('Running config file "pizza_world.yaml".')
-    p = subprocess.Popen(["serve", "run", "--address=auto", config_file_name])
-    wait_for_condition(
-        lambda: httpx.post("http://localhost:8000/app1").text == "wonderful world",
-        timeout=15,
-    )
-    print('Application "app1" is reachable over HTTP.')
-    wait_for_condition(
-        lambda: httpx.post("http://localhost:8000/app2", json=["ADD", 2]).text
-        == "12 pizzas please!",
-        timeout=15,
-    )
-    wait_for_condition(
-        lambda: httpx.post("http://localhost:8000/app2", json=["MUL", 2]).text
-        == "20 pizzas please!",
-        timeout=15,
-    )
-    print("Run successful! Deployments are live and reachable over HTTP. Killing run.")
-
-    p.send_signal(signal.SIGINT)  # Equivalent to ctrl-C
-    p.wait()
-    with pytest.raises(httpx.HTTPError):
-        _ = httpx.post("http://localhost:8000/app1").text
-    with pytest.raises(httpx.HTTPError):
-        _ = httpx.post("http://localhost:8000/app2", json=["ADD", 0]).text
-    print("Kill successful! Deployments are not reachable over HTTP.")
-
-
-@serve.deployment
-class Macaw:
-    def __init__(self, color, name="Mulligan", surname=None):
-        self.color = color
-        self.name = name
-        self.surname = surname
-
-    def __call__(self):
-        if self.surname is not None:
-            return f"{self.name} {self.surname} is {self.color}!"
-        else:
-            return f"{self.name} is {self.color}!"
-
-
-molly_macaw = Macaw.bind("green", name="Molly")
-
-
-@pytest.mark.skipif(sys.platform == "win32", reason="File path incorrect on Windows.")
-def test_run_deployment_node(ray_start_stop):
-    """Test `serve run` with bound args and kwargs."""
-
-    # Deploy via import path
-    p = subprocess.Popen(
-        [
-            "serve",
-            "run",
-            "--address=auto",
-            "ray.serve.tests.test_cli_2.molly_macaw",
-        ]
-    )
-    wait_for_condition(lambda: ping_endpoint("/") == "Molly is green!", timeout=10)
-    p.send_signal(signal.SIGINT)
-    p.wait()
-    assert ping_endpoint("/") == CONNECTION_ERROR_MSG
-
-
-@serve.deployment
-class Echo:
-    def __init__(self, message: str):
-        print("Echo message:", message)
-        self._message = message
-
-    def __call__(self, *args):
-        return self._message
-
-
-echo_app = Echo.bind("hello")
-
-
-def build_echo_app(args):
-    return Echo.bind(args.get("message", "DEFAULT"))
-
-
-class TypedArgs(BaseModel):
-    message: str = "DEFAULT"
-
-
-def build_echo_app_typed(args: TypedArgs):
-    return Echo.bind(args.message)
-
-
-@pytest.mark.skipif(sys.platform == "win32", reason="File path incorrect on Windows.")
-@pytest.mark.parametrize(
-    "import_path",
-    [
-        "ray.serve.tests.test_cli_2.build_echo_app",
-        "ray.serve.tests.test_cli_2.build_echo_app_typed",
-    ],
-)
-def test_run_builder_with_args(ray_start_stop, import_path: str):
-    """Test `serve run` with args passed into a builder function.
-
-    Tests both the untyped and typed args cases.
-    """
-    # First deploy without any arguments, should get default response.
-    p = subprocess.Popen(
-        [
-            "serve",
-            "run",
-            "--address=auto",
-            import_path,
-        ]
-    )
-    wait_for_condition(lambda: ping_endpoint("") == "DEFAULT", timeout=10)
-    p.send_signal(signal.SIGINT)
-    p.wait()
-    assert ping_endpoint("/") == CONNECTION_ERROR_MSG
-
-    # Now deploy passing a message as an argument, should get passed message.
-    p = subprocess.Popen(
-        [
-            "serve",
-            "run",
-            "--address=auto",
-            import_path,
-            "message=hello world",
-        ]
-    )
-    wait_for_condition(lambda: ping_endpoint("") == "hello world", timeout=10)
-
-    p.send_signal(signal.SIGINT)
-    p.wait()
-    assert ping_endpoint("/") == CONNECTION_ERROR_MSG
-
-
-@serve.deployment
-class MetalDetector:
-    def __call__(self, *args):
-        return os.environ.get("buried_item", "no dice")
-
-
-metal_detector_node = MetalDetector.bind()
-
-
-@pytest.mark.skipif(sys.platform == "win32", reason="File path incorrect on Windows.")
-def test_run_runtime_env(ray_start_stop):
-    """Test `serve run` with runtime_env passed in."""
-
-    # With import path
-    p = subprocess.Popen(
-        [
-            "serve",
-            "run",
-            "--address=auto",
-            "ray.serve.tests.test_cli_2.metal_detector_node",
-            "--runtime-env-json",
-            ('{"env_vars": {"buried_item": "lucky coin"} }'),
-        ]
-    )
-    wait_for_condition(
-        lambda: ping_endpoint("MetalDetector") == "lucky coin", timeout=10
-    )
-    p.send_signal(signal.SIGINT)
-    p.wait()
-
-    # With config
-    p = subprocess.Popen(
-        [
-            "serve",
-            "run",
-            "--address=auto",
-            os.path.join(
-                os.path.dirname(__file__),
-                "test_config_files",
-                "missing_runtime_env.yaml",
-            ),
-            "--runtime-env-json",
-            json.dumps(
-                {
-                    "py_modules": [TEST_DEPLOY_GROUP_PINNED_URI],
-                    "working_dir": "http://nonexistentlink-q490123950ni34t",
-                }
-            ),
-            "--working-dir",
-            TEST_DAG_PINNED_URI,
-        ]
-    )
-    wait_for_condition(lambda: ping_endpoint("") == "wonderful world", timeout=15)
-    p.send_signal(signal.SIGINT)
-    p.wait()
-
-
-@pytest.mark.skipif(sys.platform == "win32", reason="File path incorrect on Windows.")
-@pytest.mark.parametrize("config_file", ["basic_graph.yaml", "basic_multi.yaml"])
-def test_run_config_port1(ray_start_stop, config_file):
-    """Test that `serve run` defaults to port 8000."""
-    config_file_name = os.path.join(
-        os.path.dirname(__file__), "test_config_files", config_file
-    )
-    p = subprocess.Popen(["serve", "run", config_file_name])
-    wait_for_condition(
-        lambda: httpx.post("http://localhost:8000/").text == "wonderful world",
-        timeout=15,
-    )
-    p.send_signal(signal.SIGINT)
-    p.wait()
-
-
-@pytest.mark.skipif(sys.platform == "win32", reason="File path incorrect on Windows.")
-@pytest.mark.parametrize(
-    "config_file", ["basic_graph_http.yaml", "basic_multi_http.yaml"]
-)
-def test_run_config_port2(ray_start_stop, config_file):
-    """If config file specifies a port, the default port value should not be used."""
-    config_file_name = os.path.join(
-        os.path.dirname(__file__), "test_config_files", config_file
-    )
-    p = subprocess.Popen(["serve", "run", config_file_name])
-    wait_for_condition(
-        lambda: httpx.post("http://localhost:8005/").text == "wonderful world",
-        timeout=15,
-    )
-    p.send_signal(signal.SIGINT)
-    p.wait()
-
-
-@serve.deployment
-class ConstructorFailure:
-    def __init__(self):
-        raise RuntimeError("Intentionally failing.")
-
-
-constructor_failure_node = ConstructorFailure.bind()
-
-
-@pytest.mark.skipif(sys.platform == "win32", reason="File path incorrect on Windows.")
-def test_run_teardown(ray_start_stop):
-    """Consecutive serve runs should tear down controller so logs can always be seen."""
-    logs = subprocess.check_output(
-        ["serve", "run", "ray.serve.tests.test_cli_2.constructor_failure_node"],
-        stderr=subprocess.STDOUT,
-        timeout=30,
-    ).decode()
-    assert "Intentionally failing." in logs
-
-    logs = subprocess.check_output(
-        ["serve", "run", "ray.serve.tests.test_cli_2.constructor_failure_node"],
-        stderr=subprocess.STDOUT,
-        timeout=30,
-    ).decode()
-    assert "Intentionally failing." in logs
-
-
-@pytest.mark.skipif(sys.platform == "win32", reason="File path incorrect on Windows.")
-def test_run_route_prefix_and_name_default(ray_start_stop):
-    """Test `serve run` without route_prefix and name options."""
-
-    p = subprocess.Popen(["serve", "run", "ray.serve.tests.test_cli_2.echo_app"])
-
-    wait_for_condition(check_app_running, app_name=SERVE_DEFAULT_APP_NAME)
-    assert ping_endpoint("/") == "hello"
-    p.send_signal(signal.SIGINT)
-    p.wait()
-
-
-@pytest.mark.skipif(sys.platform == "win32", reason="File path incorrect on Windows.")
-def test_run_route_prefix_and_name_override(ray_start_stop):
-    """Test `serve run` with route prefix option."""
-
-    p = subprocess.Popen(
-        [
-            "serve",
-            "run",
-            "--route-prefix=/hello",
-            "--name=hello_app",
-            "ray.serve.tests.test_cli_2.echo_app",
-        ],
-    )
-
-    wait_for_condition(check_app_running, app_name="hello_app")
-    assert "Path '/' not found" in ping_endpoint("/")
-    assert ping_endpoint("/hello") == "hello"
-    p.send_signal(signal.SIGINT)
-    p.wait()
-
-
-@serve.deployment
-def global_f(*args):
-    return "wonderful world"
-
-
-@serve.deployment
-class NoArgDriver:
-    def __init__(self, h: DeploymentHandle):
-        self._h = h
-
-    async def __call__(self):
-        return await self._h.remote()
-
-
-TestBuildFNode = global_f.bind()
-TestBuildDagNode = NoArgDriver.bind(TestBuildFNode)
-
-
-TestApp1Node = global_f.options(name="app1").bind()
-TestApp2Node = NoArgDriver.options(name="app2").bind(global_f.bind())
+    # TODO(zcin): the assertion should just be `info == config` here but the output
+    # formatting removes a lot of info.
+    assert info == config["applications"][0]
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="File path incorrect on Windows.")
@@ -543,8 +185,8 @@ def test_build_multi_app(ray_start_stop):
             [
                 "serve",
                 "build",
-                "ray.serve.tests.test_cli_2.TestApp1Node",
-                "ray.serve.tests.test_cli_2.TestApp2Node",
+                "ray.serve.tests.test_cli_3.TestApp1Node",
+                "ray.serve.tests.test_cli_3.TestApp2Node",
                 "ray.serve.tests.test_config_files.grpc_deployment.g",
                 "--grpc-servicer-functions",
                 f"{grpc_servicer_func_root}.add_UserDefinedServiceServicer_to_server",
@@ -582,11 +224,6 @@ def test_build_multi_app(ray_start_stop):
             timeout=15,
         )
         print("Delete succeeded! Node is no longer reachable over HTTP.")
-
-
-k8sFNode = global_f.options(
-    num_replicas=2, ray_actor_options={"num_cpus": 2, "num_gpus": 1}
-).bind()
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="File path incorrect on Windows.")
@@ -629,6 +266,132 @@ def test_idempotence_after_controller_death(ray_start_stop, use_command: bool):
     )
     serve.shutdown()
     ray.shutdown()
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="File path incorrect on Windows.")
+def test_serving_request_through_grpc_proxy(ray_start_stop):
+    """Test serving request through gRPC proxy
+
+    When Serve runs with a gRPC deployment, the app should be deployed successfully,
+    both ListApplications and Healthz methods returning success response, and registered
+    gRPC methods are routing to the correct replica and return the correct response.
+    """
+    config_file = os.path.join(
+        os.path.dirname(__file__),
+        "test_config_files",
+        "deploy_grpc_app.yaml",
+    )
+
+    subprocess.check_output(["serve", "deploy", config_file], stderr=subprocess.STDOUT)
+
+    app1 = "app1"
+    app_names = [app1]
+
+    channel = grpc.insecure_channel("localhost:9000")
+
+    # Ensures ListApplications method succeeding.
+    wait_for_condition(
+        ping_grpc_list_applications, channel=channel, app_names=app_names
+    )
+
+    # Ensures Healthz method succeeding.
+    ping_grpc_healthz(channel)
+
+    # Ensures a custom defined method is responding correctly.
+    ping_grpc_call_method(channel, app1)
+
+    # Ensures another custom defined method is responding correctly.
+    ping_grpc_another_method(channel, app1)
+
+    # Ensures model multiplexing is responding correctly.
+    ping_grpc_model_multiplexing(channel, app1)
+
+    # Ensure Streaming method is responding correctly.
+    ping_grpc_streaming(channel, app1)
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="File path incorrect on Windows.")
+def test_grpc_proxy_model_composition(ray_start_stop):
+    """Test serving request through gRPC proxy
+
+    When Serve runs with a gRPC deployment, the app should be deployed successfully,
+    both ListApplications and Healthz methods returning success response, and model
+    composition should work correctly.
+    """
+    config_file = os.path.join(
+        os.path.dirname(__file__),
+        "test_config_files",
+        "deploy_grpc_model_composition.yaml",
+    )
+
+    subprocess.check_output(["serve", "deploy", config_file], stderr=subprocess.STDOUT)
+
+    app = "app1"
+    app_names = [app]
+
+    channel = grpc.insecure_channel("localhost:9000")
+
+    # Ensures ListApplications method succeeding.
+    wait_for_condition(
+        ping_grpc_list_applications, channel=channel, app_names=app_names
+    )
+
+    # Ensures Healthz method succeeding.
+    ping_grpc_healthz(channel)
+
+    # Ensure model composition is responding correctly.
+    ping_fruit_stand(channel, app)
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="File path incorrect on Windows.")
+def test_control_c_shutdown_serve_components(ray_start_stop):
+    """Test ctrl+c after `serve run` shuts down serve components."""
+
+    p = subprocess.Popen(["serve", "run", "ray.serve.tests.test_cli_3.echo_app"])
+
+    # Make sure Serve components are up and running
+    wait_for_condition(check_app_running, app_name=SERVE_DEFAULT_APP_NAME)
+    assert ping_endpoint("/-/healthz") == "success"
+    assert json.loads(ping_endpoint("/-/routes")) == {"/": "default"}
+    assert ping_endpoint("/") == "hello"
+
+    # Send ctrl+c to shutdown Serve components
+    p.send_signal(signal.SIGINT)
+    p.wait()
+
+    # Make sure Serve components are shutdown
+    status_response = subprocess.check_output(["serve", "status"])
+    status = yaml.safe_load(status_response)
+    assert status == {"applications": {}, "proxies": {}, "target_capacity": None}
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="File path incorrect on Windows.")
+@pytest.mark.parametrize(
+    "ray_start_stop_in_specific_directory",
+    [
+        os.path.join(os.path.dirname(__file__), "test_config_files"),
+    ],
+    indirect=True,
+)
+def test_deploy_with_access_to_current_directory(ray_start_stop_in_specific_directory):
+    """Test serve deploy using modules in the current directory succeeds.
+
+    There was an issue where dashboard client doesn't add the current directory to
+    the sys.path and failed to deploy a Serve app defined in the directory. This
+    test ensures that files in the current directory can be accessed and deployed.
+
+    See: https://github.com/ray-project/ray/issues/43889
+    """
+    # Deploy Serve application with a config in the current directory.
+    subprocess.check_output(["serve", "deploy", "use_current_working_directory.yaml"])
+
+    # Ensure serve deploy eventually succeeds.
+    def check_deploy_successfully():
+        status_response = subprocess.check_output(["serve", "status"])
+        assert b"RUNNING" in status_response
+        return True
+
+    wait_for_condition(check_deploy_successfully, timeout=5)
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="File path incorrect on Windows.")
@@ -727,244 +490,6 @@ class TestRayReinitialization:
             "need to call `ray.init` in your code when using `serve run`."
         )
         assert expected_warning_message not in logs
-
-
-@pytest.mark.skipif(sys.platform == "win32", reason="File path incorrect on Windows.")
-def test_run_config_request_timeout():
-    """Test running serve with request timeout in http_options.
-
-    The config file has 0.1s as the `request_timeout_s` in the `http_options`. First
-    case checks that when the query runs longer than the 0.1s, the deployment returns a
-    task failed message. The second case checks that when the query takes less than
-    0.1s, the deployment returns a success message.
-    """
-
-    # Set up ray instance to perform 1 retries
-    subprocess.check_output(["ray", "stop", "--force"])
-    wait_for_condition(
-        check_ray_stop,
-        timeout=15,
-    )
-    subprocess.check_output(
-        ["ray", "start", "--head"],
-    )
-    wait_for_condition(
-        lambda: httpx.get("http://localhost:8265/api/ray/version").status_code == 200,
-        timeout=15,
-    )
-
-    config_file_name = os.path.join(
-        os.path.dirname(__file__),
-        "test_config_files",
-        "http_option_request_timeout_s.yaml",
-    )
-    p = subprocess.Popen(["serve", "run", config_file_name])
-
-    # Ensure the http request is killed and failed when the deployment runs longer than
-    # the 0.1 request_timeout_s set in in the config yaml
-    wait_for_condition(
-        lambda: httpx.get("http://localhost:8000/app1?sleep_s=0.11").status_code == 408,
-    )
-
-    # Ensure the http request returned the correct response when the deployment runs
-    # shorter than the 0.1 request_timeout_s set up in the config yaml
-    wait_for_condition(
-        lambda: httpx.get("http://localhost:8000/app1?sleep_s=0.09").text
-        == "Task Succeeded!",
-    )
-
-    p.send_signal(signal.SIGINT)
-    p.wait()
-
-    # Stop ray instance
-    subprocess.check_output(["ray", "stop", "--force"])
-    wait_for_condition(
-        check_ray_stop,
-        timeout=15,
-    )
-
-
-@pytest.mark.skipif(sys.platform == "win32", reason="File path incorrect on Windows.")
-def test_deployment_contains_utils(ray_start_stop):
-    """Test when deployment contains utils module, it can be deployed successfully.
-
-    When the deployment contains utils module, running serve deploy should successfully
-    deployment the application and return the correct response.
-    """
-
-    config_file = os.path.join(
-        os.path.dirname(__file__),
-        "test_config_files",
-        "deployment_uses_utils_module.yaml",
-    )
-
-    subprocess.check_output(["serve", "deploy", config_file], stderr=subprocess.STDOUT)
-    wait_for_condition(
-        lambda: httpx.post("http://localhost:8000/").text == "hello_from_utils"
-    )
-
-
-@pytest.mark.skipif(sys.platform == "win32", reason="File path incorrect on Windows.")
-def test_run_reload_basic(ray_start_stop, tmp_path):
-    """Test `serve run` with reload."""
-
-    code_template = """
-from ray import serve
-
-@serve.deployment
-class MessageDeployment:
-    def __init__(self, msg):
-        {invalid_suffix}
-        self.msg = msg
-
-    def __call__(self):
-        return self.msg
-
-
-msg_app = MessageDeployment.bind("Hello {message}!")
-    """
-
-    def write_file(message: str, invalid_suffix: str = ""):
-        with open(os.path.join(tmp_path, "reload_serve.py"), "w") as f:
-            code = code_template.format(invalid_suffix=invalid_suffix, message=message)
-            print(f"Writing updated code:\n{code}")
-            f.write(code)
-            f.flush()
-
-    write_file("World")
-
-    p = subprocess.Popen(
-        [
-            "serve",
-            "run",
-            "--app-dir",
-            tmp_path,
-            "--reload",
-            "reload_serve:msg_app",
-        ]
-    )
-    wait_for_condition(lambda: ping_endpoint("") == "Hello World!", timeout=10)
-
-    # Sleep to ensure the `serve run` command is in the file watching loop when we
-    # write the change, else it won't be picked up.
-    time.sleep(5)
-
-    # Write the file: an update should be auto-triggered.
-    write_file("Updated")
-    wait_for_condition(lambda: ping_endpoint("") == "Hello Updated!", timeout=10)
-
-    # Ensure a bad change doesn't shut down serve and serve reports deploy failed.
-    write_file(message="update1", invalid_suffix="foobar")
-    wait_for_condition(
-        condition_predictor=check_app_status,
-        app_name="default",
-        expected_status="DEPLOY_FAILED",
-    )
-
-    # Ensure the following reload happens as expected.
-    write_file("Updated2")
-    wait_for_condition(lambda: ping_endpoint("") == "Hello Updated2!", timeout=10)
-
-    p.send_signal(signal.SIGINT)
-    p.wait()
-    assert ping_endpoint("") == CONNECTION_ERROR_MSG
-
-
-@pytest.mark.skipif(sys.platform == "win32", reason="File path incorrect on Windows.")
-def test_serving_request_through_grpc_proxy(ray_start_stop):
-    """Test serving request through gRPC proxy
-
-    When Serve runs with a gRPC deployment, the app should be deployed successfully,
-    both ListApplications and Healthz methods returning success response, and registered
-    gRPC methods are routing to the correct replica and return the correct response.
-    """
-    config_file = os.path.join(
-        os.path.dirname(__file__),
-        "test_config_files",
-        "deploy_grpc_app.yaml",
-    )
-
-    subprocess.check_output(["serve", "deploy", config_file], stderr=subprocess.STDOUT)
-
-    app1 = "app1"
-    app_names = [app1]
-
-    channel = grpc.insecure_channel("localhost:9000")
-
-    # Ensures ListApplications method succeeding.
-    wait_for_condition(
-        ping_grpc_list_applications, channel=channel, app_names=app_names
-    )
-
-    # Ensures Healthz method succeeding.
-    ping_grpc_healthz(channel)
-
-    # Ensures a custom defined method is responding correctly.
-    ping_grpc_call_method(channel, app1)
-
-    # Ensures another custom defined method is responding correctly.
-    ping_grpc_another_method(channel, app1)
-
-    # Ensures model multiplexing is responding correctly.
-    ping_grpc_model_multiplexing(channel, app1)
-
-    # Ensure Streaming method is responding correctly.
-    ping_grpc_streaming(channel, app1)
-
-
-@pytest.mark.skipif(sys.platform == "win32", reason="File path incorrect on Windows.")
-def test_grpc_proxy_model_composition(ray_start_stop):
-    """Test serving request through gRPC proxy
-
-    When Serve runs with a gRPC deployment, the app should be deployed successfully,
-    both ListApplications and Healthz methods returning success response, and model
-    composition should work correctly.
-    """
-    config_file = os.path.join(
-        os.path.dirname(__file__),
-        "test_config_files",
-        "deploy_grpc_model_composition.yaml",
-    )
-
-    subprocess.check_output(["serve", "deploy", config_file], stderr=subprocess.STDOUT)
-
-    app = "app1"
-    app_names = [app]
-
-    channel = grpc.insecure_channel("localhost:9000")
-
-    # Ensures ListApplications method succeeding.
-    wait_for_condition(
-        ping_grpc_list_applications, channel=channel, app_names=app_names
-    )
-
-    # Ensures Healthz method succeeding.
-    ping_grpc_healthz(channel)
-
-    # Ensure model composition is responding correctly.
-    ping_fruit_stand(channel, app)
-
-
-@pytest.mark.skipif(sys.platform == "win32", reason="File path incorrect on Windows.")
-def test_control_c_shutdown_serve_components(ray_start_stop):
-    """Test ctrl+c after `serve run` shuts down serve components."""
-
-    p = subprocess.Popen(["serve", "run", "ray.serve.tests.test_cli_2.echo_app"])
-
-    # Make sure Serve components are up and running
-    wait_for_condition(check_app_running, app_name=SERVE_DEFAULT_APP_NAME)
-    assert ping_endpoint("/-/healthz") == "success"
-    assert json.loads(ping_endpoint("/-/routes")) == {"/": "default"}
-    assert ping_endpoint("/") == "hello"
-
-    # Send ctrl+c to shutdown Serve components
-    p.send_signal(signal.SIGINT)
-    p.wait()
-
-    # Make sure Serve components are shutdown
-    status_response = subprocess.check_output(["serve", "status"])
-    status = yaml.safe_load(status_response)
-    assert status == {"applications": {}, "proxies": {}, "target_capacity": None}
 
 
 if __name__ == "__main__":

@@ -156,6 +156,7 @@ py_test_module_list(
     files = [
         "test_cli.py",
         "test_cli_2.py",
+        "test_cli_3.py",
     ],
     tags = [
         "exclusive",
