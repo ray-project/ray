@@ -438,7 +438,7 @@ def test_status_basic(serve_instance):
             "CONFIG_UPDATE_COMPLETED",
             "CONFIG_UPDATE_STARTED",
         }
-        assert status["replica_states"]["RUNNING"] in {0, 1}
+        assert status["replica_states"].get("RUNNING", 0) in {0, 1}
         assert "message" in status
     assert len(expected_deployments) == 0
 
