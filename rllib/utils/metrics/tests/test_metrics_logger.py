@@ -332,6 +332,24 @@ def test_peek_with_default(logger):
     check(ret, 1.0)  # Should return actual value, not default
 
 
+def test_no_reduction(logger):
+    """Test peek after reduce to ensure it returns the correct value."""
+    # Log some values
+    logger.log_value("test_reduce", 1, reduce=None, clear_on_reduce=True)
+
+    # Reduce and check the result
+    results = logger.reduce()
+    check(results["test_reduce"], [1])
+
+    # Peek after reduce should return the same value
+    peeked_value = logger.peek("test_reduce")
+    check(peeked_value, [])
+
+    # Test peeking without key
+    unspecific_peek = logger.peek()
+    check(unspecific_peek, {"test_reduce": float("nan")})
+
+
 def test_edge_cases(logger):
     """Test edge cases and error handling."""
     # Test invalid reduction method
