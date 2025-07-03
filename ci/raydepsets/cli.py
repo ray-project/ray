@@ -4,6 +4,7 @@ import click
 from pathlib import Path
 from typing import Dict, List, Optional
 <<<<<<< HEAD
+<<<<<<< HEAD
 from depset import DepSet
 import subprocess
 from config import load_config, Config
@@ -12,6 +13,11 @@ from dependencies.depset import DepSet
 import subprocess
 from dependencies.config import load_config, Config
 >>>>>>> refactoring
+=======
+from depset import DepSet
+import subprocess
+from config import load_config, Config
+>>>>>>> updating bazel file
 
 
 class DependencySetManager:
