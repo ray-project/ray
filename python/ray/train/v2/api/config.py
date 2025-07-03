@@ -1,16 +1,12 @@
 import logging
-import os
-import warnings
 from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING, List, Optional, Union
 
-from ray._private.thirdparty.tabulate.tabulate import tabulate
 from ray.air.config import (
     CheckpointConfig,
     FailureConfig as FailureConfigV1,
     ScalingConfig as ScalingConfigV1,
-    _repr_dataclass,
 )
 from ray.runtime_env import RuntimeEnv
 from ray.train.v2._internal.constants import _DEPRECATED
@@ -19,8 +15,7 @@ from ray.train.v2._internal.migration_utils import (
     TRAINER_RESOURCES_DEPRECATION_MESSAGE,
 )
 from ray.train.v2._internal.util import date_str
-from ray.util.annotations import PublicAPI, RayDeprecationWarning
-from ray.widgets import Template
+from ray.util.annotations import PublicAPI
 
 if TYPE_CHECKING:
     from ray.train import UserCallback
@@ -146,37 +141,11 @@ class RunConfig:
     progress_reporter: str = _DEPRECATED
     log_to_file: str = _DEPRECATED
 
-    # Deprecated
-    local_dir: Optional[str] = None
-
     def __post_init__(self):
         from ray.train.constants import DEFAULT_STORAGE_PATH
 
-        if self.local_dir is not None:
-            raise DeprecationWarning(
-                "The `RunConfig(local_dir)` argument is deprecated. "
-                "You should set the `RunConfig(storage_path)` instead."
-                "See the docs: https://docs.ray.io/en/latest/train/user-guides/"
-                "persistent-storage.html#setting-the-local-staging-directory"
-            )
-
         if self.storage_path is None:
             self.storage_path = DEFAULT_STORAGE_PATH
-
-            # TODO(justinvyu): [Deprecated]
-            ray_storage_uri: Optional[str] = os.environ.get("RAY_STORAGE")
-            if ray_storage_uri is not None:
-                logger.info(
-                    "Using configured Ray Storage URI as the `storage_path`: "
-                    f"{ray_storage_uri}"
-                )
-                warnings.warn(
-                    "The `RAY_STORAGE` environment variable is deprecated. "
-                    "Please use `RunConfig(storage_path)` instead.",
-                    RayDeprecationWarning,
-                    stacklevel=2,
-                )
-                self.storage_path = ray_storage_uri
 
         if not self.failure_config:
             self.failure_config = FailureConfig()
@@ -224,55 +193,3 @@ class RunConfig:
                 "See this issue for more context: "
                 "https://github.com/ray-project/ray/issues/49454"
             )
-
-    def __repr__(self):
-
-        return _repr_dataclass(
-            self,
-            default_values={
-                "failure_config": FailureConfig(),
-                "checkpoint_config": CheckpointConfig(),
-            },
-        )
-
-    def _repr_html_(self) -> str:
-        reprs = []
-        if self.failure_config is not None:
-            reprs.append(
-                Template("title_data_mini.html.j2").render(
-                    title="Failure Config", data=self.failure_config._repr_html_()
-                )
-            )
-        if self.checkpoint_config is not None:
-            reprs.append(
-                Template("title_data_mini.html.j2").render(
-                    title="Checkpoint Config", data=self.checkpoint_config._repr_html_()
-                )
-            )
-
-        # Create a divider between each displayed repr
-        subconfigs = [Template("divider.html.j2").render()] * (2 * len(reprs) - 1)
-        subconfigs[::2] = reprs
-
-        settings = Template("scrollableTable.html.j2").render(
-            table=tabulate(
-                {
-                    "Name": self.name,
-                    "Local results directory": self.local_dir,
-                    "Verbosity": self.verbose,
-                    "Log to file": self.log_to_file,
-                }.items(),
-                tablefmt="html",
-                headers=["Setting", "Value"],
-                showindex=False,
-            ),
-            max_height="300px",
-        )
-
-        return Template("title_data.html.j2").render(
-            title="RunConfig",
-            data=Template("run_config.html.j2").render(
-                subconfigs=subconfigs,
-                settings=settings,
-            ),
-        )
