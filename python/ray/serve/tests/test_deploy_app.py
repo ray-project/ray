@@ -11,7 +11,6 @@ import ray._private.state
 import ray.actor
 from ray import serve
 from ray._common.test_utils import SignalActor, wait_for_condition
-from ray.serve._private.client import ServeControllerClient
 from ray.serve._private.common import DeploymentID, DeploymentStatus
 from ray.serve._private.constants import SERVE_DEFAULT_APP_NAME, SERVE_NAMESPACE
 from ray.serve._private.test_utils import (
@@ -121,13 +120,17 @@ def check_multi_app():
     )
 
 
-def test_deploy_multi_app_basic(client: ServeControllerClient):
+def test_deploy_multi_app_basic(serve_instance):
+    client = serve_instance
+
     config = ServeDeploySchema.parse_obj(get_test_deploy_config())
     client.deploy_apps(config)
     check_multi_app()
 
 
-def test_deploy_multi_app_update_config(client: ServeControllerClient):
+def test_deploy_multi_app_update_config(serve_instance):
+    client = serve_instance
+
     config = get_test_deploy_config()
     client.deploy_apps(ServeDeploySchema.parse_obj(config))
     check_multi_app()
@@ -161,7 +164,9 @@ def test_deploy_multi_app_update_config(client: ServeControllerClient):
     )
 
 
-def test_deploy_multi_app_update_num_replicas(client: ServeControllerClient):
+def test_deploy_multi_app_update_num_replicas(serve_instance):
+    client = serve_instance
+
     config = get_test_deploy_config()
     client.deploy_apps(ServeDeploySchema.parse_obj(config))
     check_multi_app()
@@ -231,7 +236,9 @@ def test_deploy_multi_app_update_num_replicas(client: ServeControllerClient):
     assert len(updated_actors) == len(actors) + 8
 
 
-def test_deploy_multi_app_update_timestamp(client: ServeControllerClient):
+def test_deploy_multi_app_update_timestamp(serve_instance):
+    client = serve_instance
+
     assert "app1" not in serve.status().applications
     assert "app2" not in serve.status().applications
 
@@ -279,7 +286,9 @@ def test_deploy_multi_app_update_timestamp(client: ServeControllerClient):
     )
 
 
-def test_deploy_multi_app_overwrite_apps(client: ServeControllerClient):
+def test_deploy_multi_app_overwrite_apps(serve_instance):
+    client = serve_instance
+
     """Check that redeploying different apps with same names works as expected."""
 
     world_import_path = "ray.serve.tests.test_config_files.world.DagNode"
@@ -324,8 +333,9 @@ def test_deploy_multi_app_overwrite_apps(client: ServeControllerClient):
     )
 
 
-def test_deploy_multi_app_overwrite_apps2(client: ServeControllerClient):
+def test_deploy_multi_app_overwrite_apps2(serve_instance):
     """Check that deploying a new set of applications removes old ones."""
+    client = serve_instance
 
     world_import_path = "ray.serve.tests.test_config_files.world.DagNode"
     pizza_import_path = "ray.serve.tests.test_config_files.pizza.serve_dag"
@@ -403,8 +413,9 @@ def test_deploy_multi_app_overwrite_apps2(client: ServeControllerClient):
     )
 
 
-def test_deploy_multi_app_deployments_removed(client: ServeControllerClient):
+def test_deploy_multi_app_deployments_removed(serve_instance):
     """Test redeploying applications will remove old deployments."""
+    client = serve_instance
 
     world_import_path = "ray.serve.tests.test_config_files.world.DagNode"
     world_deployments = ["f", "BasicDriver"]
@@ -466,10 +477,9 @@ def test_deploy_multi_app_deployments_removed(client: ServeControllerClient):
     "field_to_update",
     ["import_path", "runtime_env", "ray_actor_options"],
 )
-def test_deploy_config_update_heavyweight(
-    client: ServeControllerClient, field_to_update: str
-):
+def test_deploy_config_update_heavyweight(serve_instance, field_to_update: str):
     """Check that replicas are torn down when code updates are made."""
+    client = serve_instance
     config_template = {
         "applications": [
             {
@@ -513,8 +523,9 @@ def test_deploy_config_update_heavyweight(
     assert pid1 not in pids
 
 
-def test_update_config_user_config(client: ServeControllerClient):
+def test_update_config_user_config(serve_instance):
     """Check that replicas stay alive when user config is updated."""
+    client = serve_instance
 
     config_template = {
         "import_path": "ray.serve.tests.test_config_files.pid.node",
@@ -546,8 +557,10 @@ def test_update_config_user_config(client: ServeControllerClient):
     wait_for_condition(check)
 
 
-def test_update_config_graceful_shutdown_timeout(client: ServeControllerClient):
+def test_update_config_graceful_shutdown_timeout(serve_instance):
     """Check that replicas stay alive when graceful_shutdown_timeout_s is updated"""
+    client = serve_instance
+
     config_template = {
         "import_path": "ray.serve.tests.test_config_files.pid.node",
         "deployments": [{"name": "f", "graceful_shutdown_timeout_s": 1000}],
@@ -582,8 +595,9 @@ def test_update_config_graceful_shutdown_timeout(client: ServeControllerClient):
     wait_for_condition(partial(check_deployments_dead, [DeploymentID(name="f")]))
 
 
-def test_update_config_max_ongoing_requests(client: ServeControllerClient):
+def test_update_config_max_ongoing_requests(serve_instance):
     """Check that replicas stay alive when max_ongoing_requests is updated."""
+    client = serve_instance
 
     signal = SignalActor.options(name="signal123").remote()
 
@@ -630,8 +644,9 @@ def test_update_config_max_ongoing_requests(client: ServeControllerClient):
     assert pids == {pid1}
 
 
-def test_update_config_health_check_period(client: ServeControllerClient):
+def test_update_config_health_check_period(serve_instance):
     """Check that replicas stay alive when max_ongoing_requests is updated."""
+    client = serve_instance
 
     config_template = {
         "import_path": "ray.serve.tests.test_config_files.pid.async_node",
@@ -668,8 +683,9 @@ def test_update_config_health_check_period(client: ServeControllerClient):
     assert pid1 == pid2
 
 
-def test_update_config_health_check_timeout(client: ServeControllerClient):
+def test_update_config_health_check_timeout(serve_instance):
     """Check that replicas stay alive when max_ongoing_requests is updated."""
+    client = serve_instance
 
     # Deploy with a very long initial health_check_timeout_s
     # Also set small health_check_period_s to make test run faster
@@ -713,7 +729,8 @@ def test_update_config_health_check_timeout(client: ServeControllerClient):
     )
 
 
-def test_update_autoscaling_config(client: ServeControllerClient):
+def test_update_autoscaling_config(serve_instance):
+    client = serve_instance
     signal = SignalActor.options(name="signal123").remote()
 
     config_template = {
@@ -763,8 +780,9 @@ def test_update_autoscaling_config(client: ServeControllerClient):
     print(time.ctime(), "Number of replicas dropped back down to 1.")
 
 
-def test_deploy_separate_runtime_envs(client: ServeControllerClient):
+def test_deploy_separate_runtime_envs(serve_instance):
     """Deploy two applications with separate runtime envs."""
+    client = serve_instance
 
     config_template = {
         "applications": [
@@ -802,8 +820,9 @@ def test_deploy_separate_runtime_envs(client: ServeControllerClient):
     )
 
 
-def test_deploy_multi_app_deleting(client: ServeControllerClient):
+def test_deploy_multi_app_deleting(serve_instance):
     """Test deleting an application by removing from config."""
+    client = serve_instance
 
     config = ServeDeploySchema.parse_obj(get_test_deploy_config())
     client.deploy_apps(config)
@@ -843,10 +862,11 @@ def test_deploy_multi_app_deleting(client: ServeControllerClient):
     assert info_valid
 
 
-def test_deploy_nonexistent_deployment(client: ServeControllerClient):
+def test_deploy_nonexistent_deployment(serve_instance):
     """Apply a config that lists a deployment that doesn't exist in the application.
     The error message should be descriptive.
     """
+    client = serve_instance
 
     config = ServeDeploySchema.parse_obj(get_test_deploy_config())
     # Change names to invalid names that don't contain "deployment" or "application"
@@ -868,7 +888,8 @@ def test_deploy_nonexistent_deployment(client: ServeControllerClient):
     wait_for_condition(check_app_message)
 
 
-def test_get_app_handle(client: ServeControllerClient):
+def test_get_app_handle(serve_instance):
+    client = serve_instance
     config = ServeDeploySchema.parse_obj(get_test_deploy_config())
     client.deploy_apps(config)
     check_multi_app()
