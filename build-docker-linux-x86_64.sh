@@ -28,10 +28,11 @@ EOF
 
 # Step 2: Run the container as non-root user
 docker run -ti --rm \
-    --user "$HOST_UID:$HOST_GID" \
+    -e HOST_UID=$(id -u) \
+    -e HOST_GID=$(id -g) \
     -e BUILDKITE_COMMIT="$(git rev-parse HEAD)" \
     -e BUILD_ONE_PYTHON_ONLY=py39 \
     -w /ray -v "$(pwd)":/ray \
     -e HOME=/tmp \
-    $IMAGE_NAME \
+    quay.io/pypa/manylinux2014_aarch64:2024-07-02-9ac04ee \
     /ray/python/build-wheel-manylinux2014.sh
