@@ -652,9 +652,29 @@ def _generate_transform_fn_for_async_map(
     #     *must be* deterministic (though is not guaranteed to be specified
     #     if max_concurrency > 1)
     #
-    # And to achieve that, :
-    #   - TODO fill in
-
+    # To achieve that, algorithm applying async UDF to elements of the provided sequence
+    # is structured like following:
+    #
+    #   - Task scheduling and subsequent results re-ordering are performed as
+    #     different stages (inside `_schedule` and `_report` methods respectively)
+    #
+    #   - Scheduling stage aim to schedule and run no more than `max_concurrency` tasks
+    #     at any given moment
+    #
+    #   - Once task completes it's added into task completion queue for its results to be
+    #     subsequently reported with deterministic ordering). Task completion queue is
+    #     capped at `maxsize=max_concurrency` elements to make sure scheduling stage is
+    #     throttled (and task completion queue isn't growing unbounded) in case when
+    #     reporting stage isn't able to keep up.
+    #
+    #   - Reporting stage dequeues completed tasks from completion queue, reorders
+    #     them (to *always* produce deterministic ordering) and adds its results into
+    #     output queue.
+    #
+    #   - Output queue is capped at `maxsize=max_concurrency` elements to make sure that
+    #     reporting stage is throttled (and output queue doesn't grow unbounded) in case
+    #     when consumer (Ray task itself) isn't able to keep up
+    #
     async def _schedule(it: Iterator[T], completed_tasks_queue: asyncio.Queue) -> None:
         loop = asyncio.get_running_loop()
 
