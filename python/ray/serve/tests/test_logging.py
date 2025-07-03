@@ -155,7 +155,7 @@ def test_http_access_log_in_stderr(serve_instance, log_format):
 
         url = get_application_url(use_localhost=True)
 
-        r = httpx.get(f"{url}")
+        r = httpx.get(url)
         assert r.status_code == 200
         replica_id = ReplicaID(unique_id=r.text, deployment_id=DeploymentID(name=name))
         wait_for_condition(
@@ -166,7 +166,7 @@ def test_http_access_log_in_stderr(serve_instance, log_format):
             status_code="200",
         )
 
-        r = httpx.post(f"{url}")
+        r = httpx.post(url)
         assert r.status_code == 200
         wait_for_condition(
             check_log,
@@ -265,13 +265,13 @@ def test_http_access_log_in_logs_file(serve_instance, log_format):
     http_calls = [
         {
             "method": "GET",
-            "url": f"{url}",
+            "url": url,
             "expected_status": 200,
             "expected_route": "/",
         },
         {
             "method": "POST",
-            "url": f"{url}",
+            "url": url,
             "expected_status": 200,
             "expected_route": "/",
         },
@@ -325,7 +325,6 @@ def test_http_access_log_in_logs_file(serve_instance, log_format):
             print("No new log lines found")
             return False
 
-        match_found = False
         if log_format == "JSON":
             for line in new_log_lines:
                 if line.strip():
@@ -352,8 +351,7 @@ def test_http_access_log_in_logs_file(serve_instance, log_format):
                                 ),
                             ]
                         ):
-                            match_found = True
-                            break
+                            return True
 
                     except json.JSONDecodeError:
                         continue
@@ -368,10 +366,9 @@ def test_http_access_log_in_logs_file(serve_instance, log_format):
                         "ms" in line,
                     ]
                 ):
-                    match_found = True
-                    break
+                    return True
 
-        return match_found
+        return False
 
     # Process each HTTP call individually
     for i, call_info in enumerate(http_calls):
@@ -395,25 +392,23 @@ def test_http_access_log_in_logs_file(serve_instance, log_format):
 
         # Extract context information from response
         context_info = None
-        try:
-            response_data = response.json()
-            print(f"Extracted response data: {response_data}")
+        response_data = response.json()
 
-            # For all routes apart from `/` endpoint, context info is nested under "context" key
-            if call_info["expected_route"] != "/" and "context" in response_data:
-                context_info = response_data["context"]
-            elif "replica_id" in response_data or "request_id" in response_data:
-                context_info = response_data
-        except Exception as e:
-            print(
-                f"Could not extract context info from response, response content: {response.text}, error: {e}"
+        # For all routes apart from `/` endpoint, context info is nested under "context" key
+        if call_info["expected_route"] == "/":
+            context_info = response_data
+        elif "context" in response_data:
+            context_info = response_data["context"]
+        else:
+            raise ValueError(
+                f"Could not extract context info from response: {response.text}"
             )
 
         # Step 3: Wait a bit for logs to be written, then get new lines
         line_checker, captured_lines = create_line_checker(
             log_file_path, start_position
         )
-        wait_for_condition(line_checker)
+        wait_for_condition(line_checker, retry_interval_ms=1000)
         new_log_lines = captured_lines["lines"]
 
         # Step 4: Verify HTTP response matches new log lines
@@ -558,7 +553,7 @@ def test_log_filenames_contain_only_posix_characters(serve_instance):
     serve.run(A.bind())
 
     url = get_application_url(use_localhost=True)
-    r = httpx.get(f"{url}")
+    r = httpx.get(url)
     r.raise_for_status()
     assert r.text == "hi"
 
@@ -622,8 +617,8 @@ def test_context_information_in_logging(serve_and_ray_shutdown, json_log_format)
 
     f = io.StringIO()
     with redirect_stderr(f):
-        resp = httpx.get(f"{url}").json()
-        resp2 = httpx.get(f"{url2}").json()
+        resp = httpx.get(url).json()
+        resp2 = httpx.get(url2).json()
 
         # Check the component log
         expected_log_infos = [
@@ -724,7 +719,7 @@ def test_extra_field(serve_and_ray_shutdown, raise_error):
     serve.run(fn.bind(), name="app1", route_prefix="/fn")
     url = get_application_url(app_name="app1", use_localhost=True)
 
-    resp = httpx.get(f"{url}")
+    resp = httpx.get(url)
     if raise_error:
         resp.status_code == 500
     else:
@@ -788,7 +783,7 @@ class TestLoggingAPI:
         serve.run(Model.bind())
         url = get_application_url(use_localhost=True)
 
-        resp = httpx.get(f"{url}").json()
+        resp = httpx.get(url).json()
 
         replica_id = resp["replica"].split("#")[-1]
         if encoding_type == "JSON":
@@ -812,7 +807,7 @@ class TestLoggingAPI:
         serve.run(Model.bind())
         url = get_application_url(use_localhost=True)
 
-        resp = httpx.get(f"{url}").json()
+        resp = httpx.get(url).json()
         expected_log_regex = [".*model_info_level.*"]
         check_log_file(resp["log_file"], expected_log_regex)
 
@@ -823,7 +818,7 @@ class TestLoggingAPI:
         serve.run(Model.options(logging_config={"log_level": "DEBUG"}).bind())
         url = get_application_url(use_localhost=True)
 
-        resp = httpx.get(f"{url}").json()
+        resp = httpx.get(url).json()
         expected_log_regex = [".*model_info_level.*", ".*model_debug_level.*"]
         check_log_file(resp["log_file"], expected_log_regex)
 
@@ -841,7 +836,7 @@ class TestLoggingAPI:
         serve.run(Model.bind())
         url = get_application_url(use_localhost=True)
 
-        resp = httpx.get(f"{url}").json()
+        resp = httpx.get(url).json()
 
         paths = resp["logs_path"].split("/")
         paths[-1] = "new_dir"
@@ -857,7 +852,7 @@ class TestLoggingAPI:
         )
         url = get_application_url(use_localhost=True)
 
-        resp = httpx.get(f"{url}").json()
+        resp = httpx.get(url).json()
         assert "new_dir" in resp["logs_path"]
 
         check_log_file(resp["logs_path"], [".*model_info_level.*"])
@@ -884,7 +879,7 @@ class TestLoggingAPI:
         serve.run(Model.bind())
         url = get_application_url(use_localhost=True)
 
-        resp = httpx.get(f"{url}")
+        resp = httpx.get(url)
         assert resp.status_code == 200
         resp = resp.json()
         check_log_file(resp["logs_path"], [".*model_info_level.*"])
@@ -919,7 +914,7 @@ class TestLoggingAPI:
         serve.run(Model.bind())
         url = get_application_url(use_localhost=True)
 
-        resp = httpx.get(f"{url}")
+        resp = httpx.get(url)
         assert resp.status_code == 200
         resp = resp.json()
         if encoding_type == "JSON":
@@ -941,7 +936,7 @@ class TestLoggingAPI:
         serve.run(Model.bind(), logging_config={"log_level": "DEBUG"})
         url = get_application_url(use_localhost=True)
 
-        resp = httpx.get(f"{url}").json()
+        resp = httpx.get(url).json()
         expected_log_regex = [".*model_info_level.*", ".*model_debug_level.*"]
         check_log_file(resp["log_file"], expected_log_regex)
 
@@ -966,7 +961,7 @@ class TestLoggingAPI:
         )
         url = get_application_url(app_name="app2", use_localhost=True)
 
-        resp = httpx.get(f"{url}").json()
+        resp = httpx.get(url).json()
         check_log_file(resp["log_file"], [".*model_info_level.*"])
         # Make sure 'model_debug_level' log content does not exist.
         with pytest.raises(AssertionError):
@@ -1123,7 +1118,7 @@ def test_logging_disable_stdout(serve_and_ray_shutdown, ray_instance, tmp_dir):
     serve.run(app)
     url = get_application_url(use_localhost=True)
 
-    httpx.get(f"{url}", timeout=None)
+    httpx.get(url, timeout=None)
 
     # Check if each of the logs exist in Serve's log files.
     from_serve_logger_check = False
@@ -1175,7 +1170,7 @@ def test_serve_logging_file_names(serve_and_ray_shutdown, ray_instance):
     serve.run(app, logging_config=logging_config)
     url = get_application_url(use_localhost=True)
 
-    r = httpx.get(f"{url}")
+    r = httpx.get(url)
     assert r.status_code == 200
 
     # Construct serve log file names.
