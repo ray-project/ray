@@ -20,7 +20,7 @@ fi
 # When building the wheel, we always set RAY_INSTALL_JAVA=0 because we
 # have already built the Java code above.
 
-export BAZEL_PATH=/tmp/bazel
+export BAZEL_PATH="$HOME"/bin/bazel
 
 # build ray wheel
 PATH="/opt/python/${PYTHON}/bin:$PATH" RAY_INSTALL_JAVA=0 \

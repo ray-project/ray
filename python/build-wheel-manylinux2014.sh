@@ -18,13 +18,11 @@ if [ "$EUID" -eq 0 ]; then
   # Give sudo access
   echo "builduser ALL=(ALL) NOPASSWD:ALL" >> /etc/sudoers
 
-  echo "Switching to builduser with args: $@"
-  exec sudo -u builduser bash "$0" "$@"
+  exec sudo -E -u builduser HOME=$HOME bash "$0" "$@"
 
   exit 0
 
 fi
-
 
 export RAY_INSTALL_JAVA="${RAY_INSTALL_JAVA:-0}"
 
