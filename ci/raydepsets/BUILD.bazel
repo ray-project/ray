@@ -25,5 +25,8 @@ py_test(
         ci_require("pytest"),
         ":raydepsets_lib",
     ],
-    tags = ["team:ci"],
+    tags = [
+        "ci_unit",
+        "team:ci",
+    ],
 )
