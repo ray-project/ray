@@ -1,7 +1,6 @@
 #!/usr/bin/env python3
 
 import click
-<<<<<<< HEAD
 from pathlib import Path
 from typing import Dict, List, Optional
 <<<<<<< HEAD
@@ -61,15 +60,80 @@ class DependencySetManager:
         if status.returncode != 0:
             raise Exception(f"Failed to execute command: {cmd}")
         return status.stdout
+<<<<<<< HEAD
 =======
 >>>>>>> scafolding for raydepsets
+=======
+>>>>>>> reducing raydepsets to compile operations
 
+    def execute_all(configs: List[Config]):
+        for config in configs:
+            if config.operation == "compile":
+                compile(
+                    constraints=config.constraints,
+                    requirements=config.requirements,
+                    args=config.flags,
+                    name=config.name,
+                    output=config.output,
+                )
+            elif config.operation == "subset":
+                subset(config.depset, config.requirements, config.name, config.output)
+            elif config.operation == "expand":
+                expand(
+                    config.depsets, config.constraints, config.flags, config.name, config.output
+                )
+
+    def execute_single(config: Config):
+        if config.operation == "compile":
+            compile(
+                constraints=config.constraints,
+                requirements=config.requirements,
+                args=config.flags,
+                name=config.name,
+                output=config.output,
+            )
 
 @click.group(name="depsets")
-@click.pass_context
-def cli(ctx):
+def cli():
     """Manage Python dependency sets."""
+<<<<<<< HEAD
     pass
+=======
+
+
+@cli.command()
+@click.argument("config_path")
+@click.option("--mode", type=click.Choice(["single-rule", "multi-rule"]), default="multi-rule")
+def load(config_path: str, mode: str = ""):
+    """Load a dependency sets from a config file."""
+    manager = DependencySetManager(config_path=config_path)
+    if mode == "single-rule":
+    for _, depconfig in manager.config.depsets.items():
+        execute_config(depconfig.operation, depconfig)
+
+def compile(
+    constraints: List[str],
+    requirements: List[str],
+    args: List[str],
+    name: str,
+    output: str = None,
+):
+    """Compile a dependency set."""
+    try:
+        manager = DependencySetManager()
+        # Build args for uv pip compile
+        if constraints:
+            for constraint in constraints:
+                args.extend(["-c", constraint])
+        if requirements:
+            for requirement in requirements:
+                args.append(requirement)
+        args.extend(["-o", f"{output}"])
+        manager.exec_uv_cmd("compile", args)
+        manager.add_depset(name, output)
+    except ValueError as e:
+        click.echo(f"Error: {str(e)}", err=True)
+>>>>>>> reducing raydepsets to compile operations
 
 if __name__ == "__main__":
     cli()

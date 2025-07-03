@@ -1,0 +1,10 @@
+depsets:
+  ray_base_test_depset:
+    requirements:
+      - python/requirements.txt
+      - python/requirements/cloud-requirements.txt
+      - python/requirements/base-test-requirements.txt
+    constraints:
+      - python/test/requirements_compiled_ray_test_py311_cpu.txt
+    output: python/test/requirements_compiled_ray_test_py311_cpu.txt
+    operation: compile
