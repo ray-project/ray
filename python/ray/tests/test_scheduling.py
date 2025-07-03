@@ -78,6 +78,7 @@ def test_hybrid_policy_threshold(ray_start_cluster):
     cluster.wait_for_nodes()
     ray.init(address=cluster.address)
 
+    # Use a SignalActor to ensure that the batches of tasks run in parallel.
     signal = SignalActor.remote()
 
     # Add the `memory` resource because the CPU will be released when the task is
