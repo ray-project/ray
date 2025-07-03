@@ -373,12 +373,16 @@ def test_flat_map(ray_start_regular_shared, udf_kind):
     ds = ray.data.range(3)
 
     if udf_kind == "gen":
+
         def _udf(item: dict) -> Iterator[int]:
             for _ in range(2):
                 yield {"id": item["id"] + 1}
+
     elif udf_kind == "func":
+
         def _udf(item: dict) -> dict:
             return [{"id": item["id"] + 1} for _ in range(2)]
+
     else:
         pytest.fail(f"Invalid udf_kind: {udf_kind}")
 
@@ -1774,7 +1778,7 @@ def test_async_map_batches(shutdown_only, udf_kind):
             async def __call__(self, batch):
                 await asyncio.sleep(random.randint(0, 5) / 100)
                 return {
-                    "input": [i for i in batch["id"]],
+                    "input": list(batch["id"]),
                     "output": [2**i for i in batch["id"]],
                 }
 
