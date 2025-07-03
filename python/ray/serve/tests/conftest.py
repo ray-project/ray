@@ -2,6 +2,7 @@ import os
 import random
 import subprocess
 import tempfile
+from contextlib import contextmanager
 from copy import deepcopy
 
 import httpx
@@ -10,6 +11,7 @@ import pytest
 import ray
 from ray import serve
 from ray._common.test_utils import SignalActor, wait_for_condition
+from ray._common.utils import reset_ray_address
 from ray._private.usage import usage_lib
 from ray.cluster_utils import AutoscalingCluster, Cluster
 from ray.serve._private.test_utils import (
@@ -18,12 +20,14 @@ from ray.serve._private.test_utils import (
     check_ray_stopped,
     start_telemetry_app,
 )
+from ray.serve.config import HTTPOptions, gRPCOptions
 from ray.serve.context import _get_global_client
 from ray.tests.conftest import propagate_logs, pytest_runtest_makereport  # noqa
 
 # https://tools.ietf.org/html/rfc6335#section-6
 MIN_DYNAMIC_PORT = 49152
 MAX_DYNAMIC_PORT = 65535
+TEST_METRICS_EXPORT_PORT = 9999
 
 TEST_GRPC_SERVICER_FUNCTIONS = [
     "ray.serve.generated.serve_pb2_grpc.add_UserDefinedServiceServicer_to_server",
@@ -36,9 +40,13 @@ if os.environ.get("RAY_SERVE_INTENTIONALLY_CRASH", False) == 1:
 
 @pytest.fixture
 def ray_shutdown():
+    serve.shutdown()
+    if ray.is_initialized():
+        ray.shutdown()
     yield
     serve.shutdown()
-    ray.shutdown()
+    if ray.is_initialized():
+        ray.shutdown()
 
 
 @pytest.fixture
@@ -81,6 +89,32 @@ def ray_start(scope="module"):
         yield f"localhost:{port}"
     finally:
         subprocess.check_output(["ray", "stop", "--force"])
+
+
+def _check_ray_stop():
+    try:
+        httpx.get("http://localhost:8265/api/ray/version")
+        return False
+    except Exception:
+        return True
+
+
+@contextmanager
+def start_and_shutdown_ray_cli():
+    subprocess.check_output(["ray", "stop", "--force"])
+    wait_for_condition(_check_ray_stop, timeout=15)
+    subprocess.check_output(["ray", "start", "--head"])
+
+    yield
+
+    subprocess.check_output(["ray", "stop", "--force"])
+    wait_for_condition(_check_ray_stop, timeout=15)
+
+
+@pytest.fixture(scope="module")
+def start_and_shutdown_ray_cli_module():
+    with start_and_shutdown_ray_cli():
+        yield
 
 
 @pytest.fixture
@@ -258,3 +292,36 @@ def manage_ray_with_telemetry(monkeypatch):
         # Shut down Ray cluster with CLI
         subprocess.check_output(["ray", "stop", "--force"])
         wait_for_condition(check_ray_stopped, timeout=5)
+
+
+@pytest.fixture
+def metrics_start_shutdown(request):
+    param = request.param if hasattr(request, "param") else None
+    request_timeout_s = param if param else None
+    """Fixture provides a fresh Ray cluster to prevent metrics state sharing."""
+    ray.init(
+        _metrics_export_port=TEST_METRICS_EXPORT_PORT,
+        _system_config={
+            "metrics_report_interval_ms": 100,
+            "task_retry_delay_ms": 50,
+        },
+    )
+    grpc_port = 9000
+    grpc_servicer_functions = [
+        "ray.serve.generated.serve_pb2_grpc.add_UserDefinedServiceServicer_to_server",
+        "ray.serve.generated.serve_pb2_grpc.add_FruitServiceServicer_to_server",
+    ]
+    yield serve.start(
+        grpc_options=gRPCOptions(
+            port=grpc_port,
+            grpc_servicer_functions=grpc_servicer_functions,
+            request_timeout_s=request_timeout_s,
+        ),
+        http_options=HTTPOptions(
+            host="0.0.0.0",
+            request_timeout_s=request_timeout_s,
+        ),
+    )
+    serve.shutdown()
+    ray.shutdown()
+    reset_ray_address()

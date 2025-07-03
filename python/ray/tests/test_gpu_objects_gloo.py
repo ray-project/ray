@@ -22,15 +22,17 @@ class GPUTestActor:
         return data * 2
 
     def get_gpu_object(self, obj_id: str):
-        gpu_object_manager = ray._private.worker.global_worker.gpu_object_manager
-        if gpu_object_manager.has_gpu_object(obj_id):
-            gpu_object = gpu_object_manager.get_gpu_object(obj_id)
+        gpu_object_store = (
+            ray._private.worker.global_worker.gpu_object_manager.gpu_object_store
+        )
+        if gpu_object_store.has_gpu_object(obj_id):
+            gpu_object = gpu_object_store.get_gpu_object(obj_id)
             print(f"gpu_object: {gpu_object}")
             return gpu_object
         return None
 
 
-def test_inter_actor_gpu_tensor_transfer(ray_start_regular):
+def test_p2p(ray_start_regular):
     world_size = 2
     actors = [GPUTestActor.remote() for _ in range(world_size)]
     create_collective_group(actors, backend="torch_gloo")
@@ -160,6 +162,32 @@ def test_trigger_out_of_band_tensor_transfer(ray_start_regular):
     assert ret_val_dst is not None
     assert len(ret_val_dst) == 1
     assert torch.equal(ret_val_dst[0], tensor)
+
+
+def test_fetch_gpu_object_to_driver(ray_start_regular):
+    actor = GPUTestActor.remote()
+    create_collective_group([actor], backend="torch_gloo")
+
+    tensor1 = torch.tensor([1, 2, 3])
+    tensor2 = torch.tensor([4, 5, 6])
+
+    # Case 1: Single tensor
+    ref = actor.echo.remote(tensor1)
+    assert torch.equal(ray.get(ref), tensor1)
+
+    # Case 2: Multiple tensors
+    ref = actor.echo.remote([tensor1, tensor2])
+    result = ray.get(ref)
+    assert torch.equal(result[0], tensor1)
+    assert torch.equal(result[1], tensor2)
+
+    # Case 3: Mixed CPU and GPU data
+    data = [tensor1, tensor2, 7]
+    ref = actor.echo.remote(data)
+    result = ray.get(ref)
+    assert torch.equal(result[0], tensor1)
+    assert torch.equal(result[1], tensor2)
+    assert result[2] == 7
 
 
 def test_invalid_tensor_transport(ray_start_regular):
