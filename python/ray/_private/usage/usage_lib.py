@@ -711,6 +711,10 @@ def get_cloud_from_metadata_requests() -> str:
         # ConnectionError is a superclass of ConnectTimeout
         except requests.exceptions.ConnectionError:
             pass
+        except Exception as e:
+            logger.info(
+                f"Unexpected exception when making cloud provider metadata request: {e}"
+            )
         return False
 
     # Make internal metadata requests to all 3 clouds
