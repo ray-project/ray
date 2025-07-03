@@ -518,6 +518,7 @@ def _generate_transform_fn_for_flat_map(
             fn,
             _validate_row_output,
             max_concurrency=DEFAULT_ASYNC_ROW_UDF_MAX_CONCURRENCY,
+            is_flat_map=True,
         )
 
     else:
@@ -620,6 +621,7 @@ def _generate_transform_fn_for_async_map(
     validate_fn: Callable,
     *,
     max_concurrency: int,
+    is_flat_map: bool = False,
 ) -> MapTransformCallable:
     assert max_concurrency > 0, "Max concurrency must be positive"
 
@@ -635,7 +637,7 @@ def _generate_transform_fn_for_async_map(
 
         async def _apply_udf(item: T) -> List[U]:
             res = await fn(item)
-            return [res]
+            return res if is_flat_map else [res]
 
     else:
         raise ValueError(f"Expected a coroutine function, got {fn}")
