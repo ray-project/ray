@@ -2870,6 +2870,12 @@
     - __suffix__: aws.py312
       frequency: weekly
       python: "3.12"
+    - __suffix__: aws.opentelemetry
+      cluster:
+        byod:
+          runtime_env:
+            - RAY_experimental_enable_open_telemetry_on_agent=1
+            - RAY_experimental_enable_open_telemetry_on_core=1
 
 - name: compiled_graphs
   group: core-daily-test
@@ -3128,6 +3134,12 @@
         cluster_compute: stress_tests/stress_tests_compute_gce.yaml
       smoke_test:
         frequency: manual
+    - __suffix__: aws.opentelemetry
+      cluster:
+        byod:
+          runtime_env:
+            - RAY_experimental_enable_open_telemetry_on_agent=1
+            - RAY_experimental_enable_open_telemetry_on_core=1
 
 - name: stress_test_dead_actors
   group: core-daily-test
