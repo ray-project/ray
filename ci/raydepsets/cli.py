@@ -9,5 +9,6 @@ def cli(ctx):
     """Manage Python dependency sets."""
     pass
 
+
 if __name__ == "__main__":
     cli()
