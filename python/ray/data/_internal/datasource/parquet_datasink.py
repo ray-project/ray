@@ -39,12 +39,11 @@ logger = logging.getLogger(__name__)
 
 def choose_row_group_limits(
     row_group_size: Optional[int],
-    min_rows_per_file: Optional[int] = None,
-    max_rows_per_file: Optional[int] = None,
+    min_rows_per_file: Optional[int],
+    max_rows_per_file: Optional[int],
 ) -> tuple[int, int, int]:
     """
-    Decide the (min_rows_per_group, max_rows_per_group, max_rows_per_file) for each **row group** so that every *file*
-    ends up within the caller’s [min_rows_per_file, max_rows_per_file] window.
+    Configure `min_rows_per_group`, `max_rows_per_group`, `max_rows_per_file` parameters of Pyarrow's `write_dataset` API based on Ray Data's configuration
 
     Returns
     -------
@@ -65,16 +64,26 @@ def choose_row_group_limits(
         max_rows_per_file or ARROW_DEFAULT_MAX_GROUP_SIZE, ARROW_DEFAULT_MAX_GROUP_SIZE
     )
 
-    def clamp(value: int) -> int:
-        """Clamp *value* to [lower, upper], ignoring zero (unbounded) limits,
-        then respect the Arrow hard cap."""
-        return max(lower, min(value, upper))
-
     if row_group_size is None:
+        # No explicit row group size provided. We are defaulting to
+        # either the caller's min_rows_per_file or max_rows_per_file limits
+        # or Arrow's defaults
         min_row_group_size, max_row_group_size = lower, upper
     else:
-        # Fixed-sized groups (post clamping to the [lower, upper] range)
-        clamped_group_size = clamp(row_group_size)
+        if row_group_size > upper:
+            logger.warning(
+                "Requested row_group_size (%d) is larger than the maximum allowed "
+                "by the caller's min_rows_per_file and max_rows_per_file limits. "
+                "Clamping to %d.",
+                row_group_size,
+                upper,
+            )
+        # Clamp the requested `row_group_size` so that it is
+        # * no smaller than `min_rows_per_file` (`lower`)
+        # * no larger than `max_rows_per_file` (or Arrow's default cap) (`upper`)
+        # This keeps each row-group within the per-file limits while staying
+        # as close as possible to the requested size.
+        clamped_group_size = max(lower, min(row_group_size, upper))
         min_row_group_size = max_row_group_size = clamped_group_size
 
     # Never let the lower bound exceed the upper
@@ -267,10 +276,6 @@ class ParquetDatasink(_FileDatasink):
             row_group_size,
             min_rows_per_file=self.min_rows_per_file,
             max_rows_per_file=self.max_rows_per_file,
-        )
-
-        existing_data_behavior = EXISTING_DATA_BEHAVIOR_MAP.get(
-            self.mode, "overwrite_or_ignore"
         )
 
         basename_template = self._get_basename_template(filename, write_uuid)
