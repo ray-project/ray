@@ -166,6 +166,9 @@ class SynchronizationActor:
         Returns:
             The data broadcasted from the worker with rank 0.
         """
+        # TODO: resolve https://github.com/ray-project/ray/pull/54066#discussion_r2180657435
+        # We couldn't reproduce the issue but the asyncio docs don't say it can't happen.
+
         # Ensures that all global states manipulation is done within the async context
         # manager which makes the condition variable awaiting and the counter
         # incrementing an atomic operation.

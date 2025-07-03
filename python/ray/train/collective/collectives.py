@@ -1,7 +1,8 @@
-import pickle
+import logging
 from typing import Optional, TypeVar
 
 import ray
+import ray.cloudpickle as pickle
 from ray.train.v2._internal.execution.context import get_train_context
 from ray.util.annotations import PublicAPI
 
@@ -10,6 +11,9 @@ from ray.util.annotations import PublicAPI
 _MAX_BROADCAST_SIZE_BYTES = 1000
 
 T = TypeVar("T", bound=Optional[object])
+
+
+logger = logging.getLogger(__file__)
 
 
 @PublicAPI(stability="alpha")
@@ -56,7 +60,7 @@ def broadcast_from_rank_zero(data: T) -> T:
     if data is not None:
         data_bytes = len(pickle.dumps(data))
         if data_bytes > _MAX_BROADCAST_SIZE_BYTES:
-            raise ValueError(
+            logger.warning(
                 f"Data size {data_bytes} bytes exceeds the maximum broadcast "
                 f"size of {_MAX_BROADCAST_SIZE_BYTES} bytes"
             )
