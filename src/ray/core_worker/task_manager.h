@@ -27,6 +27,7 @@
 #include "ray/core_worker/store_provider/memory_store/memory_store.h"
 #include "ray/core_worker/task_event_buffer.h"
 #include "ray/core_worker/task_finisher.h"
+#include "ray/core_worker/task_resubmission.h"
 #include "ray/stats/metric_defs.h"
 #include "ray/util/counter_map.h"
 #include "src/ray/protobuf/common.pb.h"
@@ -37,14 +38,6 @@ namespace ray {
 namespace core {
 
 class ActorManager;
-
-class TaskResubmissionInterface {
- public:
-  virtual std::optional<rpc::ErrorType> ResubmitTask(
-      const TaskID &task_id, std::vector<ObjectID> *task_deps) = 0;
-
-  virtual ~TaskResubmissionInterface() = default;
-};
 
 using TaskStatusCounter = CounterMap<std::tuple<std::string, rpc::TaskStatus, bool>>;
 using PutInLocalPlasmaCallback =
