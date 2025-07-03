@@ -81,6 +81,10 @@ class FakeRequestRouter(RequestRouter):
     ) -> List[List[RunningReplica]]:
         return [candidate_replicas]
 
+    def initialize_state(self, test_parameter: int = 0):
+        print("Called initialize_state in FakeRequestRouter")
+        self.test_parameter = test_parameter
+
 
 @serve.deployment(router_config=RouterConfig(request_router_class=FakeRequestRouter))
 class AppWithCustomRequestRouter:
@@ -1110,6 +1114,24 @@ def test_deploy_app_with_custom_request_router(serve_instance):
     deployment decorator."""
 
     handle = serve.run(AppWithCustomRequestRouter.bind())
+    assert handle.remote().result() == "Hello, world!"
+
+
+@serve.deployment(
+    router_config=RouterConfig(
+        request_router_class="ray.serve.tests.test_api.FakeRequestRouter",
+        request_router_kwargs=dict(test_parameter=4848),
+    )
+)
+class AppWithCustomRequestRouterAndKwargs:
+    def __call__(self) -> str:
+        return "Hello, world!"
+
+
+def test_custom_request_router_kwargs(serve_instance):
+    """Check that custom kwargs can be passed to the request router."""
+
+    handle = serve.run(AppWithCustomRequestRouterAndKwargs.bind())
     assert handle.remote().result() == "Hello, world!"
 
 
