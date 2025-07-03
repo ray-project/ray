@@ -183,7 +183,7 @@ class StatefulStageUDF:
 
         if not_outputed_rows:
             raise ValueError(f"The rows {not_outputed_rows} are not outputed.")
-        
+
         # Return all updated inputs in the original order
         yield {self.data_column: inputs}
 
