@@ -701,8 +701,6 @@ def get_cluster_status_to_report(gcs_client) -> ClusterStatusToReport:
 
 
 def get_cloud_from_metadata_requests() -> str:
-    import requests
-
     def cloud_metadata_request(url: str, headers: Optional[Dict[str, str]]) -> bool:
         try:
             res = requests.get(url, headers=headers, timeout=1)
@@ -710,6 +708,7 @@ def get_cloud_from_metadata_requests() -> str:
             # it's a machine on the cloud provider it should at least be reachable.
             if res.status_code != 404:
                 return True
+        # ConnectionError is a superclass of ConnectTimeout
         except requests.exceptions.ConnectionError:
             pass
         return False
@@ -811,6 +810,7 @@ def get_cluster_config_to_report(
             else:
                 result.cloud_provider = usage_constant.PROVIDER_KUBERNETES_GENERIC
 
+        # if kubernetes was not set as cloud_provider vs. was set before
         if result.cloud_provider is None:
             result.cloud_provider = get_cloud_from_metadata_requests()
         else:
