@@ -44,6 +44,7 @@ from ray.serve._private.grpc_util import (
 )
 from ray.serve._private.http_util import (
     MessageQueue,
+    configure_http_middlewares,
     convert_object_to_asgi_messages,
     get_http_response_status,
     receive_http_body,
@@ -1009,8 +1010,8 @@ class ProxyActor:
     def __init__(
         self,
         http_options: HTTPOptions,
+        grpc_options: gRPCOptions,
         *,
-        grpc_options: Optional[gRPCOptions] = None,
         node_id: NodeId,
         node_ip_address: str,
         logging_config: LoggingConfig,
@@ -1018,9 +1019,8 @@ class ProxyActor:
     ):  # noqa: F821
         self._node_id = node_id
         self._node_ip_address = node_ip_address
-        self._http_options = http_options
+        self._http_options = configure_http_middlewares(http_options)
         self._grpc_options = grpc_options
-
         grpc_enabled = is_grpc_enabled(self._grpc_options)
 
         event_loop = get_or_create_event_loop()

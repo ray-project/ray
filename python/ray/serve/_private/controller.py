@@ -36,9 +36,9 @@ from ray.serve._private.default_impl import create_cluster_node_info_cache
 from ray.serve._private.deployment_info import DeploymentInfo
 from ray.serve._private.deployment_state import DeploymentStateManager
 from ray.serve._private.endpoint_state import EndpointState
+from ray.serve._private.grpc_util import set_proxy_default_grpc_options
 from ray.serve._private.http_util import (
     configure_http_options_with_defaults,
-    set_proxy_default_grpc_options,
 )
 from ray.serve._private.logging_utils import (
     configure_component_cpu_profiler,

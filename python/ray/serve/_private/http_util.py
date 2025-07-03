@@ -46,7 +46,7 @@ from ray.serve._private.utils import (
     generate_request_id,
     serve_encoders,
 )
-from ray.serve.config import HTTPOptions, gRPCOptions
+from ray.serve.config import HTTPOptions
 from ray.serve.exceptions import (
     BackPressureError,
     DeploymentUnavailableError,
@@ -799,16 +799,6 @@ def send_http_response_on_exception(
     )
 
 
-def set_proxy_default_grpc_options(grpc_options) -> gRPCOptions:
-    grpc_options = deepcopy(grpc_options) or gRPCOptions()
-
-    grpc_options.request_timeout_s = (
-        grpc_options.request_timeout_s or RAY_SERVE_REQUEST_PROCESSING_TIMEOUT_S
-    )
-
-    return grpc_options
-
-
 def configure_http_options_with_defaults(http_options: HTTPOptions) -> HTTPOptions:
     """Enhanced configuration with component-specific options."""
 
@@ -819,11 +809,18 @@ def configure_http_options_with_defaults(http_options: HTTPOptions) -> HTTPOptio
         http_options.keep_alive_timeout_s = RAY_SERVE_HTTP_KEEP_ALIVE_TIMEOUT_S
 
     # TODO: Deprecate SERVE_REQUEST_PROCESSING_TIMEOUT_S env var
-    http_options.request_timeout_s = (
-        http_options.request_timeout_s or RAY_SERVE_REQUEST_PROCESSING_TIMEOUT_S
-    )
+    if http_options.request_timeout_s or RAY_SERVE_REQUEST_PROCESSING_TIMEOUT_S:
+        http_options.request_timeout_s = (
+            http_options.request_timeout_s or RAY_SERVE_REQUEST_PROCESSING_TIMEOUT_S
+        )
 
     http_options.middlewares = http_options.middlewares or []
+
+    return http_options
+
+
+def configure_http_middlewares(http_options: HTTPOptions) -> HTTPOptions:
+    http_options = deepcopy(http_options)
 
     # Add environment variable middleware
     if RAY_SERVE_HTTP_PROXY_CALLBACK_IMPORT_PATH:
