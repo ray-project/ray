@@ -5208,7 +5208,7 @@ class Dataset:
     @PublicAPI(api_group=IOC_API_GROUP)
     def to_daft(self) -> "daft.DataFrame":
         """Convert this :class:`~ray.data.Dataset` into a
-        `Daft DataFrame <https://docs.getdaft.io/en/stable/api/dataframe/>`_.
+        `Daft DataFrame <https://docs.daft.ai/en/stable/api/dataframe/>`_.
 
         This will convert all the data inside the Ray Dataset into a Daft DataFrame in a zero-copy way
         (using Arrow as the intermediate data format).
