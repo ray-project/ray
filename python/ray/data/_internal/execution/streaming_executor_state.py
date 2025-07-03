@@ -450,12 +450,11 @@ def process_completed_tasks(
             active_tasks[task.get_waitable()] = (state, task)
 
     max_bytes_to_read_per_op: Dict[OpState, int] = {}
-    if resource_manager.op_resource_allocator_enabled():
-        for op, state in topology.items():
-            max_bytes_to_read = resource_manager.max_task_output_bytes_to_read(op)
-            op._in_task_output_backpressure = max_bytes_to_read == 0
-            if max_bytes_to_read is not None:
-                max_bytes_to_read_per_op[state] = max_bytes_to_read
+    for op, state in topology.items():
+        max_bytes_to_read = resource_manager.max_task_output_bytes_to_read(op)
+        op._in_task_output_backpressure = max_bytes_to_read == 0
+        if max_bytes_to_read is not None:
+            max_bytes_to_read_per_op[state] = max_bytes_to_read
 
     # Process completed Ray tasks and notify operators.
     num_errored_blocks = 0
