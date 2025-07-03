@@ -1542,15 +1542,14 @@ def test_usages_stats_dashboard(monkeypatch, ray_start_cluster, reset_usage_stat
 
 
 def test_get_cloud_from_metadata_requests(monkeypatch):
-    def create_mock_response(
-        url: str, provider: str, error_providers: list[str] = None
-    ):
+    def create_mock_response(url: str, provider: str, error_providers: list[str]):
         # Create a mock response based on the URL.
         mock_response = Mock()
 
         if url == "http://metadata.google.internal/computeMetadata/v1":
             # GCP endpoint
             if "gcp" in error_providers:
+                print("raising")
                 raise requests.exceptions.ConnectionError()
             mock_response.status_code = 200 if provider == "gcp" else 404
         elif url == "http://169.254.169.254/latest/meta-data/":
@@ -1567,11 +1566,15 @@ def test_get_cloud_from_metadata_requests(monkeypatch):
         return mock_response
 
     with patch("requests.get") as mock_get:
-        mock_get.side_effect = lambda url, **kwargs: create_mock_response(url, "gcp")
+        mock_get.side_effect = lambda url, **kwargs: create_mock_response(
+            url, "gcp", []
+        )
         result = ray_usage_lib.get_cloud_from_metadata_requests()
         assert result == "gcp"
 
-        mock_get.side_effect = lambda url, **kwargs: create_mock_response(url, "aws")
+        mock_get.side_effect = lambda url, **kwargs: create_mock_response(
+            url, "aws", []
+        )
         result = ray_usage_lib.get_cloud_from_metadata_requests()
         assert result == "aws"
 
