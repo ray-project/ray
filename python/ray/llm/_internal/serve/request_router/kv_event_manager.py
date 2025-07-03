@@ -70,6 +70,26 @@ class KVEventManager:
         self.AllBlocksCleared = AllBlocksCleared
         self.KVEventBatch = KVEventBatch
 
+    def subscribe_to_replica_topic(self, replica_id: str):
+        """Subscribe to KV cache events for a specific replica.
+
+        Args:
+            replica_id: The replica ID to subscribe to events for
+        """
+        topic = replica_id
+        self.sub.setsockopt_string(zmq.SUBSCRIBE, topic)
+        print(f"Subscribed to topic: {topic}")
+
+    def unsubscribe_from_replica_topic(self, replica_id: str):
+        """Unsubscribe from KV cache events for a specific replica.
+
+        Args:
+            replica_id: The replica ID to unsubscribe from events for
+        """
+        topic = replica_id
+        self.sub.setsockopt_string(zmq.UNSUBSCRIBE, topic)
+        print(f"Unsubscribed from topic: {topic}")
+
     def process_event(self, event_batch):
         """Process a batch of KV cache events."""
         print(f"Received event batch at {event_batch.ts}:")
