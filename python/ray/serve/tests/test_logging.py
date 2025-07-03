@@ -232,10 +232,9 @@ def test_http_access_log_in_logs_file(serve_instance, log_format):
 
         @fastapi_app.get("/{status}")
         def template(self, status: str):
-            context_info = self._get_context_info()
-            context_info["status_code"] = int(status)
+            content_info = {"context": self._get_context_info()}
             return PlainTextResponse(
-                content=json.dumps(context_info),
+                content=json.dumps(content_info),
                 status_code=int(status),
                 media_type="application/json",
             )
