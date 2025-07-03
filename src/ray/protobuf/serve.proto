@@ -157,7 +157,7 @@ message DeploymentConfig {
   LoggingConfig logging_config = 14;
 
   // The deployment's routing configuration.
-  RequestRouterConfig router_config = 19;
+  RequestRouterConfig request_router_config = 19;
 }
 
 // Deployment language.
