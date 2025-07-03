@@ -49,7 +49,7 @@ def assert_no_leak(filter_refs=None):
 
 
 @pytest.mark.skip(
-    reason="This test is flaky on darwin as of https://github.com/ray-project/ray/pull/53999. See "
+    reason="This test is flaky on darwin as of https://github.com/ray-project/ray/pull/53999. See https://github.com/ray-project/ray/pull/54320 for context on when to stop skipping."
 )
 def test_reconstruction(ray_start_cluster):
     cluster = ray_start_cluster
