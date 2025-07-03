@@ -5,6 +5,9 @@ import pytest
 
 import ray
 from ray._common.utils import get_or_create_event_loop
+from ray.llm._internal.serve.request_router.prefix_aware.prefix_aware_router import (
+    PrefixAwarePow2ReplicaRouter,
+)
 from ray.llm._internal.serve.request_router.prefix_aware.prefix_tree import (
     PrefixTreeActor,
 )
@@ -14,9 +17,6 @@ from ray.serve._private.common import (
     RequestMetadata,
 )
 from ray.serve._private.request_router.common import PendingRequest
-from ray.serve._private.request_router.prefix_aware_router import (
-    PrefixAwarePow2ReplicaRouter,
-)
 from ray.serve._private.test_utils import MockTimer
 from ray.serve._private.utils import generate_request_id
 from ray.serve.tests.unit.test_pow_2_request_router import (
