@@ -1194,7 +1194,7 @@ class ServeInstanceDetails(BaseModel, extra=Extra.forbid):
                     # Remove internal fields from router_config if it exists
                     if "router_config" in deployment["deployment_config"]:
                         deployment["deployment_config"]["router_config"].pop(
-                            "serialized_request_router_cls", None
+                            "_serialized_request_router_cls", None
                         )
                     if "autoscaling_config" in deployment["deployment_config"]:
                         deployment["deployment_config"]["autoscaling_config"].pop(

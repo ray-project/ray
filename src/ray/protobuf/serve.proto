@@ -94,7 +94,7 @@ message LoggingConfig {
 //[Begin] ROUTING CONFIG
 message RequestRouterConfig {
   // Cloudpickled request router definition.
-  bytes serialized_request_router_cls = 1;
+  bytes _serialized_request_router_cls = 1;
 
   // The import path of the request router if user passed a string. It's the
   // concatenation of the request router module and the request router name

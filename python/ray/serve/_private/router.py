@@ -506,9 +506,8 @@ class AsyncioRouter:
                 prefer_local_node_routing=self._prefer_local_node_routing,
                 prefer_local_az_routing=RAY_SERVE_PROXY_PREFER_LOCAL_AZ_ROUTING,
                 self_availability_zone=self._availability_zone,
-                **(self._request_router_kwargs or {}),
             )
-            request_router.initialize_state(**(self._request_router_kwargs or {}))
+            request_router.initialize_state(**(self._request_router_kwargs))
 
             # Populate the running replicas if they are already available.
             if self._running_replicas is not None:

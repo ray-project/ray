@@ -72,9 +72,7 @@ class RequestRouterConfig(BaseModel):
             )
     """
 
-    serialized_request_router_cls: bytes = Field(
-        default=b"", description="Cloudpickled request router class."
-    )
+    _serialized_request_router_cls: bytes = PrivateAttr(default=b"")
 
     request_router_class: Union[str, Callable] = Field(
         default=DEFAULT_REQUEST_ROUTER_PATH,
@@ -131,7 +129,7 @@ class RequestRouterConfig(BaseModel):
 
         Import the request router if you pass it in as a string import path.
         Then cloudpickle the request router and set to
-        `serialized_request_router_cls`.
+        `_serialized_request_router_cls`.
         """
         request_router_class = values.get("request_router_class")
         if isinstance(request_router_class, Callable):
@@ -142,7 +140,7 @@ class RequestRouterConfig(BaseModel):
         request_router_path = request_router_class or DEFAULT_REQUEST_ROUTER_PATH
         request_router_class = import_attr(request_router_path)
 
-        values["serialized_request_router_cls"] = cloudpickle.dumps(
+        values["_serialized_request_router_cls"] = cloudpickle.dumps(
             request_router_class
         )
         values["request_router_class"] = request_router_path
@@ -150,10 +148,10 @@ class RequestRouterConfig(BaseModel):
 
     def get_request_router_class(self) -> Callable:
         """Deserialize the request router from cloudpickled bytes."""
-        return cloudpickle.loads(self.serialized_request_router_cls)
+        return cloudpickle.loads(self._serialized_request_router_cls)
 
 
-@PublicAPI(stability="stable")
+@PublicAPI(stability="alpha")
 class AutoscalingConfig(BaseModel):
     """Config for the Serve Autoscaler."""
 
