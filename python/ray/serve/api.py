@@ -42,7 +42,7 @@ from ray.serve.config import (
     DeploymentMode,
     HTTPOptions,
     ProxyLocation,
-    RouterConfig,
+    RequestRouterConfig,
     gRPCOptions,
 )
 from ray.serve.context import (
@@ -334,7 +334,7 @@ def deployment(
     health_check_period_s: Default[float] = DEFAULT.VALUE,
     health_check_timeout_s: Default[float] = DEFAULT.VALUE,
     logging_config: Default[Union[Dict, LoggingConfig, None]] = DEFAULT.VALUE,
-    router_config: Default[Union[Dict, RouterConfig, None]] = DEFAULT.VALUE,
+    router_config: Default[Union[Dict, RequestRouterConfig, None]] = DEFAULT.VALUE,
 ) -> Callable[[Callable], Deployment]:
     """Decorator that converts a Python class to a `Deployment`.
 

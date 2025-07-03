@@ -7,7 +7,7 @@ from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 from ray.serve._private.config import (
     DeploymentConfig,
     ReplicaConfig,
-    RouterConfig,
+    RequestRouterConfig,
     handle_num_replicas_auto,
 )
 from ray.serve._private.constants import SERVE_LOGGER_NAME
@@ -237,7 +237,7 @@ class Deployment:
         health_check_period_s: Default[float] = DEFAULT.VALUE,
         health_check_timeout_s: Default[float] = DEFAULT.VALUE,
         logging_config: Default[Union[Dict, LoggingConfig, None]] = DEFAULT.VALUE,
-        router_config: Default[Union[Dict, RouterConfig, None]] = DEFAULT.VALUE,
+        router_config: Default[Union[Dict, RequestRouterConfig, None]] = DEFAULT.VALUE,
         _init_args: Default[Tuple[Any]] = DEFAULT.VALUE,
         _init_kwargs: Default[Dict[Any, Any]] = DEFAULT.VALUE,
         _internal: bool = False,

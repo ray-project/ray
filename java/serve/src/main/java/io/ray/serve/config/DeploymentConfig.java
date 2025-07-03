@@ -54,7 +54,7 @@ public class DeploymentConfig implements Serializable {
 
   private AutoscalingConfig autoscalingConfig;
 
-  private RouterConfig routerConfig;
+  private RequestRouterConfig routerConfig;
 
   /** This flag is used to let replica know they are deplyed from a different language. */
   private Boolean isCrossLanguage = false;
@@ -173,11 +173,11 @@ public class DeploymentConfig implements Serializable {
     return this;
   }
 
-  public RouterConfig getRouterConfig() {
+  public RequestRouterConfig getRequestRouterConfig() {
     return routerConfig;
   }
 
-  public DeploymentConfig setRouterConfig(RouterConfig routerConfig) {
+  public DeploymentConfig setRequestRouterConfig(RequestRouterConfig routerConfig) {
     this.routerConfig = routerConfig;
     return this;
   }
@@ -242,7 +242,7 @@ public class DeploymentConfig implements Serializable {
       builder.setAutoscalingConfig(autoscalingConfig.toProto());
     }
     if (null != routerConfig) {
-      builder.setRouterConfig(routerConfig.toProto());
+      builder.setRequestRouterConfig(routerConfig.toProto());
     }
     return builder.build().toByteArray();
   }
@@ -265,7 +265,7 @@ public class DeploymentConfig implements Serializable {
       builder.setAutoscalingConfig(autoscalingConfig.toProto());
     }
     if (null != routerConfig) {
-      builder.setRouterConfig(routerConfig.toProto());
+      builder.setRequestRouterConfig(routerConfig.toProto());
     }
     return builder.build();
   }
