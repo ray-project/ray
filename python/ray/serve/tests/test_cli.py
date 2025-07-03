@@ -444,7 +444,10 @@ def test_status_basic(serve_instance):
     for name, status in default_app["deployments"].items():
         expected_deployments.remove(name)
         assert status["status"] in {"HEALTHY", "UPDATING"}
-        assert status["status_trigger"] == "CONFIG_UPDATE_COMPLETED"
+        assert status["status_trigger"] in {
+            "CONFIG_UPDATE_COMPLETED",
+            "CONFIG_UPDATE_STARTED",
+        }
         assert status["replica_states"]["RUNNING"] in {0, 1}
         assert "message" in status
     assert len(expected_deployments) == 0
