@@ -59,6 +59,10 @@ from ray.train.v2._internal.execution.worker_group import (
     WorkerGroup,
     WorkerGroupPollStatus,
 )
+from ray.train.v2._internal.execution.worker_group.state import (
+    WorkerGroupSchedulingStatus,
+    WorkerGroupStatus,
+)
 from ray.train.v2._internal.execution.worker_group.worker_group import (
     WorkerGroupContext,
 )
@@ -177,26 +181,25 @@ class TrainController:
         if self._worker_group:
             self._shutdown_worker_group()
 
-        worker_group_started = self._start_worker_group(
+        scheduling_status = self._start_worker_group(
             num_workers=decision.num_workers,
             resources_per_worker=decision.resources_per_worker,
         )
 
-        if worker_group_started:
-            next_state = RunningState()
+        if scheduling_status.errors:
+            failure_decision = self._failure_policy.make_decision(scheduling_status)
+            return self._execute_failure_decision(failure_decision, scheduling_status)
         else:
-            next_state = ReschedulingState()
-
-        return TrainControllerLoopIterationResult(
-            run_attempt_id=self._get_run_attempt_id(),
-            previous_state=self._state,
-            next_state=next_state,
-        )
+            return TrainControllerLoopIterationResult(
+                run_attempt_id=self._get_run_attempt_id(),
+                previous_state=self._state,
+                next_state=RunningState(),
+            )
 
     def _execute_failure_decision(
         self,
         failure_decision: FailureDecision,
-        worker_group_status: WorkerGroupPollStatus,
+        worker_group_status: WorkerGroupStatus,
     ) -> TrainControllerLoopIterationResult:
         """Executes failure handling decisions (ex: restart, terminate)."""
         assert worker_group_status.errors
@@ -219,26 +222,19 @@ class TrainController:
         training_failed_error = TrainingFailedError(
             error_message=errors_str, worker_failures=worker_group_status.errors
         )
-
-        if failure_decision == FailureDecision.RESTART:
-            logger.error(
-                "Restarting training worker group after encountering "
-                f"failures on {len(worker_group_status.errors)} worker(s):\n"
-                f"{errors_str}"
-            )
-            next_state = RestartingState(training_failed_error=training_failed_error)
+        if failure_decision == FailureDecision.RETRY:
             return TrainControllerLoopIterationResult(
                 run_attempt_id=self._get_run_attempt_id(),
                 previous_state=controller_state,
-                next_state=next_state,
+                next_state=ReschedulingState()
+                if isinstance(controller_state, SchedulingState)
+                else RestartingState(training_failed_error=training_failed_error),
                 training_failed_error=training_failed_error,
             )
+
         elif failure_decision == FailureDecision.RAISE:
-            logger.error(
-                "Terminating training worker group after encountering "
-                f"failure(s) on {len(worker_group_status.errors)} worker(s):\n"
-                f"{errors_str}"
-            )
+            logger.error(worker_group_status.get_raise_error_string())
+
             next_state = ErroredState(training_failed_error=training_failed_error)
             return TrainControllerLoopIterationResult(
                 run_attempt_id=self._get_run_attempt_id(),
@@ -262,7 +258,9 @@ class TrainController:
         self._latest_poll_time = time_monotonic()
         return status
 
-    def _start_worker_group(self, num_workers: int, resources_per_worker: dict) -> bool:
+    def _start_worker_group(
+        self, num_workers: int, resources_per_worker: dict
+    ) -> WorkerGroupSchedulingStatus:
         """Start the worker group and launch the train function.
 
         Returns:
@@ -301,13 +299,11 @@ class TrainController:
                 f"The previous launch attempt encountered the following failure:\n{e}"
             )
 
-            # TODO: Should this logic go through the failure policy?
-            # The current logic will always try recovering unconditionally
-            # on startup errors without a retry limit.
-            return False
+            return WorkerGroupSchedulingStatus(
+                error=e,
+            )
 
-        # TODO: Consider starting the worker group asynchronously.
-        return True
+        return WorkerGroupSchedulingStatus(error=None)
 
     def _start(self):
         for callback in self._controller_callbacks:

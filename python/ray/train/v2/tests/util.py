@@ -19,6 +19,7 @@ from ray.train.v2._internal.execution.worker_group import (
     WorkerGroupContext,
     WorkerGroupPollStatus,
     WorkerGroupState,
+    WorkerGroupStatus,
     WorkerStatus,
 )
 from ray.train.v2._internal.util import ObjectRefWrapper, time_monotonic
@@ -112,9 +113,7 @@ class MockFailurePolicy(FailurePolicy):
 
         super().__init__(failure_config)
 
-    def make_decision(
-        self, worker_group_status: WorkerGroupPollStatus
-    ) -> FailureDecision:
+    def make_decision(self, worker_group_status: WorkerGroupStatus) -> FailureDecision:
         if self._decision_queue:
             return self._decision_queue.pop(0)
         return FailureDecision.NOOP
