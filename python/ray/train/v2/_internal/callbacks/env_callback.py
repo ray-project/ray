@@ -27,13 +27,13 @@ def _initialize_env_callbacks() -> List[RayTrainCallback]:
             module = importlib.import_module(module_path)
             callback_cls = getattr(module, class_name)
             if not issubclass(callback_cls, RayTrainCallback):
-                raise ValueError(
+                raise TypeError(
                     f"Callback class '{callback_path}' must be a subclass of "
                     f"RayTrainCallback, got {type(callback_cls).__name__}"
                 )
             callback = callback_cls()
             callbacks.append(callback)
-        except (ImportError, AttributeError, ValueError) as e:
+        except (ImportError, AttributeError, ValueError, TypeError) as e:
             raise ValueError(f"Failed to import callback from '{callback_path}'") from e
 
     return callbacks

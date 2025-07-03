@@ -48,7 +48,7 @@ def test_env_callbacks_loading(mock_import, env_value, expected_callback_count):
     "env_value,original_error_type",
     [
         ("invalid_module", ValueError),
-        ("module.Class", ValueError),
+        ("module.Class", TypeError),
         ("module.NonExistentClass", AttributeError),
     ],
 )
