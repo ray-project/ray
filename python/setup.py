@@ -407,7 +407,7 @@ def is_invalid_windows_platform():
 
 # Calls Bazel in PATH, falling back to the standard user installation path
 # (~/bin/bazel) if it isn't found.
-def bazel_invoke(invoker, cmdline, *args, **kwargs):
+def _bazel_invoke(cmdline, *args, **kwargs):
     home = os.path.expanduser("~")
     first_candidate = os.getenv("BAZEL_PATH", "bazel")
     candidates = [first_candidate]
@@ -417,15 +417,13 @@ def bazel_invoke(invoker, cmdline, *args, **kwargs):
             candidates.append(mingw_dir + "/bin/bazel.exe")
     else:
         candidates.append(os.path.join(home, "bin", "bazel"))
-    result = None
     for i, cmd in enumerate(candidates):
         try:
-            result = invoker([cmd] + cmdline, *args, **kwargs)
+            subprocess.check_call([cmd] + cmdline, *args, **kwargs)
             break
         except IOError:
             if i >= len(candidates) - 1:
                 raise
-    return result
 
 
 def patch_isdir():
@@ -641,8 +639,7 @@ def build(build_python, build_java, build_cpp):
     if setup_spec.build_type == BuildType.TSAN:
         bazel_flags.append("--config=tsan")
 
-    return bazel_invoke(
-        subprocess.check_call,
+    _bazel_invoke(
         bazel_precmd_flags + ["build"] + bazel_flags + ["--"] + bazel_targets,
         env=bazel_env,
     )
