@@ -9,6 +9,7 @@ from copy import copy, deepcopy
 from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 
 import grpc
+import httpx
 import requests
 from starlette.requests import Request
 
@@ -422,6 +423,18 @@ def check_telemetry(
     print(report["extra_usage_tags"])
     assert tag.get_value_from_report(report) == expected
     return True
+
+
+CONNECTION_ERROR_MSG = "connection error"
+
+
+def ping_endpoint(endpoint: str, params: str = ""):
+    endpoint = endpoint.lstrip("/")
+
+    try:
+        return httpx.get(f"http://localhost:8000/{endpoint}{params}").text
+    except httpx.HTTPError:
+        return CONNECTION_ERROR_MSG
 
 
 def ping_grpc_list_applications(channel, app_names, test_draining=False):

@@ -507,11 +507,10 @@ class TaskManager : public TaskFinisherInterface, public TaskResubmissionInterfa
   void OnTaskDependenciesInlined(const std::vector<ObjectID> &inlined_dependency_ids,
                                  const std::vector<ObjectID> &contained_ids) override;
 
-  /// Set number of retries to zero for a task that is being canceled.
+  /// Set the task state to be canceled. Set the number of retries to zero.
   ///
   /// \param[in] task_id to cancel.
-  /// \return Whether the task was pending and was marked for cancellation.
-  bool MarkTaskCanceled(const TaskID &task_id) override;
+  void MarkTaskCanceled(const TaskID &task_id) override;
 
   /// Return the spec for a pending task.
   std::optional<TaskSpecification> GetTaskSpec(const TaskID &task_id) const override;
@@ -598,7 +597,8 @@ class TaskManager : public TaskFinisherInterface, public TaskResubmissionInterfa
         : spec(std::move(spec_arg)),
           num_retries_left(num_retries_left_arg),
           counter(&counter),
-          num_oom_retries_left(num_oom_retries_left) {
+          num_oom_retries_left(num_oom_retries_left),
+          is_canceled(false) {
       reconstructable_return_ids.reserve(num_returns);
       for (size_t i = 0; i < num_returns; i++) {
         reconstructable_return_ids.insert(spec.ReturnId(i));
@@ -659,8 +659,10 @@ class TaskManager : public TaskFinisherInterface, public TaskResubmissionInterfa
     // Number of times this task may be resubmitted if the task failed
     // due to out of memory failure.
     int32_t num_oom_retries_left;
+    // Whether the task has been marked for cancellation.
+    // Canceled tasks will never be retried.
+    bool is_canceled;
     // Objects returned by this task that are reconstructable. This is set
-
     // objects may be reconstructed by resubmitting the task. Once the task
     // finishes its first execution, then the objects that the task returned by
     // value are removed from this set because they can be inlined in any

@@ -13,6 +13,12 @@ Install the KubeRay kubectl plugin using one of the following methods:
 - Install using Krew kubectl plugin manager (recommended)
 - Download from GitHub releases
 
+```{admonition} Plugin since 1.4.0 may be incompatible with KubeRay before 1.4.0
+:class: warning
+Plugin versions since 1.4.0 may be incompatible with KubeRay versions before 1.4.0.
+Try to use the same plugin and KubeRay versions.
+```
+
 ### Install using the Krew kubectl plugin manager (recommended)
 
 1. Install [Krew](https://krew.sigs.k8s.io/docs/user-guide/setup/install/).
