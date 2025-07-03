@@ -53,6 +53,7 @@ from ray.serve._private.constants import (
     RAY_SERVE_COLLECT_AUTOSCALING_METRICS_ON_HANDLE,
     RAY_SERVE_METRICS_EXPORT_INTERVAL_MS,
     RAY_SERVE_REPLICA_AUTOSCALING_METRIC_RECORD_PERIOD_S,
+    RAY_SERVE_REQUEST_PATH_LOG_BUFFER_SIZE,
     RAY_SERVE_RUN_SYNC_IN_THREADPOOL,
     RAY_SERVE_RUN_SYNC_IN_THREADPOOL_WARNING,
     RAY_SERVE_RUN_USER_CODE_IN_SEPARATE_THREAD,
@@ -287,13 +288,13 @@ class ReplicaMetricsManager:
                 ),
             )
 
-    def inc_num_ongoing_requests(self) -> int:
+    def inc_num_ongoing_requests(self, request_metadata: RequestMetadata) -> int:
         """Increment the current total queue length of requests for this replica."""
         self._num_ongoing_requests += 1
         if not self._cached_metrics_enabled:
             self._num_ongoing_requests_gauge.set(self._num_ongoing_requests)
 
-    def dec_num_ongoing_requests(self) -> int:
+    def dec_num_ongoing_requests(self, request_metadata: RequestMetadata) -> int:
         """Decrement the current total queue length of requests for this replica."""
         self._num_ongoing_requests -= 1
         if not self._cached_metrics_enabled:
@@ -444,6 +445,7 @@ class ReplicaBase(ABC):
             component_name=self._component_name,
             component_id=self._component_id,
             logging_config=logging_config,
+            buffer_size=RAY_SERVE_REQUEST_PATH_LOG_BUFFER_SIZE,
         )
         configure_component_memory_profiler(
             component_type=ServeComponentType.REPLICA,
@@ -507,7 +509,7 @@ class ReplicaBase(ABC):
             status_code = s
 
         try:
-            self._metrics_manager.inc_num_ongoing_requests()
+            self._metrics_manager.inc_num_ongoing_requests(request_metadata)
             yield _status_code_callback
         except asyncio.CancelledError as e:
             user_exception = e
@@ -517,7 +519,7 @@ class ReplicaBase(ABC):
             logger.exception("Request failed.")
             self._on_request_failed(request_metadata, e)
         finally:
-            self._metrics_manager.dec_num_ongoing_requests()
+            self._metrics_manager.dec_num_ongoing_requests(request_metadata)
 
         latency_ms = (time.time() - start_time) * 1000
         self._record_errors_and_metrics(

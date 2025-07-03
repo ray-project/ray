@@ -29,6 +29,7 @@ from ray.serve._private.constants import (
     PROXY_MIN_DRAINING_PERIOD_S,
     RAY_SERVE_ENABLE_PROXY_GC_OPTIMIZATIONS,
     RAY_SERVE_PROXY_GC_THRESHOLD,
+    RAY_SERVE_REQUEST_PATH_LOG_BUFFER_SIZE,
     RAY_SERVE_REQUEST_PROCESSING_TIMEOUT_S,
     REQUEST_LATENCY_BUCKETS_MS,
     SERVE_CONTROLLER_NAME,
@@ -1056,6 +1057,7 @@ class ProxyActor:
             component_name="proxy",
             component_id=node_ip_address,
             logging_config=logging_config,
+            buffer_size=RAY_SERVE_REQUEST_PATH_LOG_BUFFER_SIZE,
         )
 
         startup_msg = f"Proxy starting on node {self._node_id} (HTTP port: {self._http_options.port}"
@@ -1144,8 +1146,8 @@ class ProxyActor:
         """Get the logging configuration (for testing purposes)."""
         log_file_path = None
         for handler in logger.handlers:
-            if isinstance(handler, logging.handlers.RotatingFileHandler):
-                log_file_path = handler.baseFilename
+            if isinstance(handler, logging.handlers.MemoryHandler):
+                log_file_path = handler.target.baseFilename
         return log_file_path
 
     def _dump_ingress_replicas_for_testing(self, route: str) -> Set[ReplicaID]:
