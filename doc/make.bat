@@ -35,6 +35,9 @@ if "%1" == "help" (
 	echo.  changes    to make an overview over all changed/added/deprecated items
 	echo.  xml        to make Docutils-native XML files
 	echo.  pseudoxml  to make pseudoxml-XML files for display purposes
+	echo.  apilist     to generate API documentation using pysymbol_llm
+	echo.  markdown   to make Markdown files using sphinx-markdown-builder
+	echo.  singlemarkdown   to make a single Markdown file using sphinx-markdown-builder
 	echo.  linkcheck  to check all external links for integrity
 	echo.  doctest    to run all doctests embedded in the documentation if enabled
 	echo.  coverage   to run coverage check of the documentation if enabled
@@ -257,6 +260,30 @@ if "%1" == "pseudoxml" (
 	if errorlevel 1 exit /b 1
 	echo.
 	echo.Build finished. The pseudo-XML files are in %BUILDDIR%/pseudoxml.
+	goto end
+)
+
+if "%1" == "markdown" (
+	%SPHINXBUILD% -b markdown %ALLSPHINXOPTS% %BUILDDIR%/markdown
+	if errorlevel 1 exit /b 1
+	echo.
+	echo.Markdown files have been generated in %BUILDDIR%/markdown.
+	goto end
+)
+
+if "%1" == "singlemarkdown" (
+	%SPHINXBUILD% -b singlemarkdown %ALLSPHINXOPTS% %BUILDDIR%/singlemarkdown
+	if errorlevel 1 exit /b 1
+	echo.
+	echo.Single Markdown file has been generated in %BUILDDIR%/singlemarkdown.
+	goto end
+)
+
+
+if "%1" == "apilist" (
+	echo Generating API documentation using pysymbol_llm
+	pysym2md --output_file apilist.txt ray
+	echo API documentation generated in apilist.txt
 	goto end
 )
 
