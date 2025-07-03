@@ -380,11 +380,6 @@ dask==2023.6.1 ; python_version < "3.12"
     #   distributed
 databricks-sdk==0.52.0
     # via mlflow-skinny
-datasets==2.19.1
-    # via
-    #   -r python/requirements/ml/data-test-requirements.txt
-    #   -r python/requirements/ml/train-requirements.txt
-    #   evaluate
 debugpy==1.8.0
     # via ipykernel
 decorator==5.1.1
