@@ -85,7 +85,7 @@ class NormalTaskSubmitter {
       LeaseClientFactoryFn lease_client_factory,
       std::unique_ptr<LeasePolicyInterface> lease_policy,
       std::shared_ptr<CoreWorkerMemoryStore> store,
-      TaskFinisherInterface &task_finisher,
+      TaskManagerInterface &task_manager,
       NodeID local_raylet_id,
       WorkerType worker_type,
       int64_t lease_timeout_ms,
@@ -98,8 +98,8 @@ class NormalTaskSubmitter {
         local_lease_client_(std::move(lease_client)),
         lease_client_factory_(std::move(lease_client_factory)),
         lease_policy_(std::move(lease_policy)),
-        resolver_(*store, task_finisher, *actor_creator, tensor_transport_getter),
-        task_finisher_(task_finisher),
+        resolver_(*store, task_manager, *actor_creator, tensor_transport_getter),
+        task_manager_(task_manager),
         lease_timeout_ms_(lease_timeout_ms),
         local_raylet_id_(local_raylet_id),
         worker_type_(worker_type),
@@ -267,7 +267,7 @@ class NormalTaskSubmitter {
   LocalDependencyResolver resolver_;
 
   /// Used to complete tasks.
-  TaskFinisherInterface &task_finisher_;
+  TaskManagerInterface &task_manager_;
 
   /// The timeout for worker leases; after this duration, workers will be returned
   /// to the raylet.

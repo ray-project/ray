@@ -76,7 +76,7 @@ class ActorTaskSubmitter : public ActorTaskSubmitterInterface {
  public:
   ActorTaskSubmitter(rpc::CoreWorkerClientPool &core_worker_client_pool,
                      CoreWorkerMemoryStore &store,
-                     TaskFinisherInterface &task_finisher,
+                     TaskManagerInterface &task_manager,
                      ActorCreatorInterface &actor_creator,
                      const TensorTransportGetter &tensor_transport_getter,
                      std::function<void(const ActorID &, int64_t)> warn_excess_queueing,
@@ -84,8 +84,8 @@ class ActorTaskSubmitter : public ActorTaskSubmitterInterface {
                      std::shared_ptr<ReferenceCounterInterface> reference_counter)
       : core_worker_client_pool_(core_worker_client_pool),
         actor_creator_(actor_creator),
-        resolver_(store, task_finisher, actor_creator, tensor_transport_getter),
-        task_finisher_(task_finisher),
+        resolver_(store, task_manager, actor_creator, tensor_transport_getter),
+        task_manager_(task_manager),
         warn_excess_queueing_(warn_excess_queueing),
         io_service_(io_service),
         reference_counter_(reference_counter) {
@@ -272,13 +272,13 @@ class ActorTaskSubmitter : public ActorTaskSubmitterInterface {
           status(std::move(status)),
           timeout_error_info(std::move(timeout_error_info)) {}
   };
-  /// A helper function to get task finisher without holding mu_
+  /// A helper function to get task manager without holding mu_
   /// We should use this function when access
   /// - FailOrRetryPendingTask
   /// - FailPendingTask
-  TaskFinisherInterface &GetTaskFinisherWithoutMu() {
+  TaskManagerInterface &GetTaskManagerWithoutMu() {
     mu_.AssertNotHeld();
-    return task_finisher_;
+    return task_manager_;
   }
 
   struct ClientQueue {
@@ -437,7 +437,7 @@ class ActorTaskSubmitter : public ActorTaskSubmitterInterface {
   LocalDependencyResolver resolver_;
 
   /// Used to complete tasks.
-  TaskFinisherInterface &task_finisher_;
+  TaskManagerInterface &task_manager_;
 
   /// Used to warn of excessive queueing.
   std::function<void(const ActorID &, uint64_t num_queued)> warn_excess_queueing_;

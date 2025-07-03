@@ -23,6 +23,7 @@
 
 #include "gtest/gtest.h"
 #include "mock/ray/core_worker/memory_store.h"
+#include "mock/ray/core_worker/task_manager_interface.h"
 #include "ray/common/task/task_spec.h"
 #include "ray/common/task/task_util.h"
 #include "ray/common/test_util.h"
@@ -69,9 +70,9 @@ TaskSpecification BuildEmptyTaskSpec() {
   return BuildTaskSpec(empty_resources, empty_descriptor);
 }
 
-class MockTaskFinisher : public TaskFinisherInterface {
+class MockTaskManager : public MockTaskManagerInterface {
  public:
-  MockTaskFinisher() {}
+  MockTaskManager() {}
 
   void CompletePendingTask(const TaskID &,
                            const rpc::PushTaskReply &,
@@ -183,26 +184,26 @@ class MockActorCreator : public ActorCreatorInterface {
 
 TEST(LocalDependencyResolverTest, TestNoDependencies) {
   auto store = DefaultCoreWorkerMemoryStoreWithThread::Create();
-  auto task_finisher = std::make_shared<MockTaskFinisher>();
+  auto task_manager = std::make_shared<MockTaskManager>();
   MockActorCreator actor_creator;
   LocalDependencyResolver resolver(
-      *store, *task_finisher, actor_creator, [](const ObjectID &object_id) {
+      *store, *task_manager, actor_creator, [](const ObjectID &object_id) {
         return rpc::TensorTransport::OBJECT_STORE;
       });
   TaskSpecification task;
   bool ok = false;
   resolver.ResolveDependencies(task, [&ok](Status) { ok = true; });
   ASSERT_TRUE(ok);
-  ASSERT_EQ(task_finisher->num_inlined_dependencies, 0);
+  ASSERT_EQ(task_manager->num_inlined_dependencies, 0);
 }
 
 TEST(LocalDependencyResolverTest, TestActorAndObjectDependencies1) {
   // Actor dependency resolved first.
   auto store = DefaultCoreWorkerMemoryStoreWithThread::Create();
-  auto task_finisher = std::make_shared<MockTaskFinisher>();
+  auto task_manager = std::make_shared<MockTaskManager>();
   MockActorCreator actor_creator;
   LocalDependencyResolver resolver(
-      *store, *task_finisher, actor_creator, [](const ObjectID &object_id) {
+      *store, *task_manager, actor_creator, [](const ObjectID &object_id) {
         return rpc::TensorTransport::OBJECT_STORE;
       });
   TaskSpecification task;
@@ -244,10 +245,10 @@ TEST(LocalDependencyResolverTest, TestActorAndObjectDependencies1) {
 TEST(LocalDependencyResolverTest, TestActorAndObjectDependencies2) {
   // Object dependency resolved first.
   auto store = DefaultCoreWorkerMemoryStoreWithThread::Create();
-  auto task_finisher = std::make_shared<MockTaskFinisher>();
+  auto task_manager = std::make_shared<MockTaskManager>();
   MockActorCreator actor_creator;
   LocalDependencyResolver resolver(
-      *store, *task_finisher, actor_creator, [](const ObjectID &object_id) {
+      *store, *task_manager, actor_creator, [](const ObjectID &object_id) {
         return rpc::TensorTransport::OBJECT_STORE;
       });
   TaskSpecification task;
@@ -288,10 +289,10 @@ TEST(LocalDependencyResolverTest, TestActorAndObjectDependencies2) {
 
 TEST(LocalDependencyResolverTest, TestHandlePlasmaPromotion) {
   auto store = DefaultCoreWorkerMemoryStoreWithThread::Create();
-  auto task_finisher = std::make_shared<MockTaskFinisher>();
+  auto task_manager = std::make_shared<MockTaskManager>();
   MockActorCreator actor_creator;
   LocalDependencyResolver resolver(
-      *store, *task_finisher, actor_creator, [](const ObjectID &object_id) {
+      *store, *task_manager, actor_creator, [](const ObjectID &object_id) {
         return rpc::TensorTransport::OBJECT_STORE;
       });
   ObjectID obj1 = ObjectID::FromRandom();
@@ -313,15 +314,15 @@ TEST(LocalDependencyResolverTest, TestHandlePlasmaPromotion) {
   ASSERT_TRUE(task.ArgByRef(0));
   // Checks that the object id is still a direct call id.
   ASSERT_EQ(resolver.NumPendingTasks(), 0);
-  ASSERT_EQ(task_finisher->num_inlined_dependencies, 0);
+  ASSERT_EQ(task_manager->num_inlined_dependencies, 0);
 }
 
 TEST(LocalDependencyResolverTest, TestInlineLocalDependencies) {
   auto store = DefaultCoreWorkerMemoryStoreWithThread::Create();
-  auto task_finisher = std::make_shared<MockTaskFinisher>();
+  auto task_manager = std::make_shared<MockTaskManager>();
   MockActorCreator actor_creator;
   LocalDependencyResolver resolver(
-      *store, *task_finisher, actor_creator, [](const ObjectID &object_id) {
+      *store, *task_manager, actor_creator, [](const ObjectID &object_id) {
         return rpc::TensorTransport::OBJECT_STORE;
       });
   ObjectID obj1 = ObjectID::FromRandom();
@@ -347,15 +348,15 @@ TEST(LocalDependencyResolverTest, TestInlineLocalDependencies) {
   ASSERT_NE(task.ArgData(0), nullptr);
   ASSERT_NE(task.ArgData(1), nullptr);
   ASSERT_EQ(resolver.NumPendingTasks(), 0);
-  ASSERT_EQ(task_finisher->num_inlined_dependencies, 2);
+  ASSERT_EQ(task_manager->num_inlined_dependencies, 2);
 }
 
 TEST(LocalDependencyResolverTest, TestInlinePendingDependencies) {
   auto store = DefaultCoreWorkerMemoryStoreWithThread::Create();
-  auto task_finisher = std::make_shared<MockTaskFinisher>();
+  auto task_manager = std::make_shared<MockTaskManager>();
   MockActorCreator actor_creator;
   LocalDependencyResolver resolver(
-      *store, *task_finisher, actor_creator, [](const ObjectID &object_id) {
+      *store, *task_manager, actor_creator, [](const ObjectID &object_id) {
         return rpc::TensorTransport::OBJECT_STORE;
       });
   ObjectID obj1 = ObjectID::FromRandom();
@@ -384,16 +385,16 @@ TEST(LocalDependencyResolverTest, TestInlinePendingDependencies) {
   ASSERT_NE(task.ArgData(0), nullptr);
   ASSERT_NE(task.ArgData(1), nullptr);
   ASSERT_EQ(resolver.NumPendingTasks(), 0);
-  ASSERT_EQ(task_finisher->num_inlined_dependencies, 2);
-  ASSERT_EQ(task_finisher->num_contained_ids, 0);
+  ASSERT_EQ(task_manager->num_inlined_dependencies, 2);
+  ASSERT_EQ(task_manager->num_contained_ids, 0);
 }
 
 TEST(LocalDependencyResolverTest, TestInlinedObjectIds) {
   auto store = DefaultCoreWorkerMemoryStoreWithThread::Create();
-  auto task_finisher = std::make_shared<MockTaskFinisher>();
+  auto task_manager = std::make_shared<MockTaskManager>();
   MockActorCreator actor_creator;
   LocalDependencyResolver resolver(
-      *store, *task_finisher, actor_creator, [](const ObjectID &object_id) {
+      *store, *task_manager, actor_creator, [](const ObjectID &object_id) {
         return rpc::TensorTransport::OBJECT_STORE;
       });
   ObjectID obj1 = ObjectID::FromRandom();
@@ -423,17 +424,17 @@ TEST(LocalDependencyResolverTest, TestInlinedObjectIds) {
   ASSERT_NE(task.ArgData(0), nullptr);
   ASSERT_NE(task.ArgData(1), nullptr);
   ASSERT_EQ(resolver.NumPendingTasks(), 0);
-  ASSERT_EQ(task_finisher->num_inlined_dependencies, 2);
-  ASSERT_EQ(task_finisher->num_contained_ids, 2);
+  ASSERT_EQ(task_manager->num_inlined_dependencies, 2);
+  ASSERT_EQ(task_manager->num_contained_ids, 2);
 }
 
 TEST(LocalDependencyResolverTest, TestCancelDependencyResolution) {
   InstrumentedIOContextWithThread io_context("TestCancelDependencyResolution");
   auto store = std::make_shared<CoreWorkerMemoryStore>(io_context.GetIoService());
-  auto task_finisher = std::make_shared<MockTaskFinisher>();
+  auto task_manager = std::make_shared<MockTaskManager>();
   MockActorCreator actor_creator;
   LocalDependencyResolver resolver(
-      *store, *task_finisher, actor_creator, [](const ObjectID &object_id) {
+      *store, *task_manager, actor_creator, [](const ObjectID &object_id) {
         return rpc::TensorTransport::OBJECT_STORE;
       });
   ObjectID obj1 = ObjectID::FromRandom();
@@ -454,7 +455,7 @@ TEST(LocalDependencyResolverTest, TestCancelDependencyResolution) {
   // Should not have inlined any dependencies.
   ASSERT_TRUE(task.ArgByRef(0));
   ASSERT_TRUE(task.ArgByRef(1));
-  ASSERT_EQ(task_finisher->num_inlined_dependencies, 0);
+  ASSERT_EQ(task_manager->num_inlined_dependencies, 0);
   // Check for leaks.
   ASSERT_EQ(resolver.NumPendingTasks(), 0);
 
@@ -465,10 +466,10 @@ TEST(LocalDependencyResolverTest, TestCancelDependencyResolution) {
 // called asynchronously in the event loop as a different task.
 TEST(LocalDependencyResolverTest, TestDependenciesAlreadyLocal) {
   auto store = DefaultCoreWorkerMemoryStoreWithThread::Create();
-  auto task_finisher = std::make_shared<MockTaskFinisher>();
+  auto task_manager = std::make_shared<MockTaskManager>();
   MockActorCreator actor_creator;
   LocalDependencyResolver resolver(
-      *store, *task_finisher, actor_creator, [](const ObjectID &object_id) {
+      *store, *task_manager, actor_creator, [](const ObjectID &object_id) {
         return rpc::TensorTransport::OBJECT_STORE;
       });
 
@@ -501,7 +502,7 @@ TEST(LocalDependencyResolverTest, TestMixedTensorTransport) {
   // should be inlined and the `object_ref` field should be cleared. If it is not cleared,
   // there will be performance regression in some edge cases.
   auto store = DefaultCoreWorkerMemoryStoreWithThread::Create();
-  auto task_finisher = std::make_shared<MockTaskFinisher>();
+  auto task_manager = std::make_shared<MockTaskManager>();
   MockActorCreator actor_creator;
 
   // `obj1` is a GPU object, and `obj2` is a normal object.
@@ -509,7 +510,7 @@ TEST(LocalDependencyResolverTest, TestMixedTensorTransport) {
   ObjectID obj2 = ObjectID::FromRandom();
 
   LocalDependencyResolver resolver(
-      *store, *task_finisher, actor_creator, [&](const ObjectID &object_id) {
+      *store, *task_manager, actor_creator, [&](const ObjectID &object_id) {
         if (object_id == obj1) {
           return rpc::TensorTransport::NCCL;
         }
@@ -536,7 +537,7 @@ TEST(LocalDependencyResolverTest, TestMixedTensorTransport) {
   ASSERT_TRUE(task.GetMutableMessage().args(1).is_inlined());
   ASSERT_FALSE(task.GetMutableMessage().args(1).has_object_ref());
 
-  ASSERT_EQ(task_finisher->num_inlined_dependencies, 2);
+  ASSERT_EQ(task_manager->num_inlined_dependencies, 2);
   ASSERT_EQ(resolver.NumPendingTasks(), 0);
 }
 
