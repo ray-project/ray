@@ -1,4 +1,4 @@
-import { render, screen, within } from "@testing-library/react";
+import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import React from "react";
 import { PlacementGroup, PlacementGroupState } from "../type/placementGroup";
@@ -261,8 +261,8 @@ describe("PlacementGroupTable", () => {
 
     // Check that empty bundles are handled gracefully
     expect(screen.getByText("pg-123456789")).toBeInTheDocument();
-    // Check that empty resources are handled - might be rendered as "{}" or not at all
-    const emptyResourceElements = screen.getAllByText("{}");
+    // Check that empty resources are handled - might be rendered as "[]" or not at all
+    const emptyResourceElements = screen.getAllByText("[]");
     expect(emptyResourceElements.length).toBeGreaterThan(0);
   });
 
