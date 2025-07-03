@@ -59,6 +59,9 @@ ENABLE_WORKER_STRUCTURED_LOGGING_ENV_VAR = "RAY_TRAIN_ENABLE_WORKER_STRUCTURED_L
 DEFAULT_ENABLE_CONTROLLER_LOGGING = "1"
 DEFAULT_ENABLE_WORKER_LOGGING = "1"
 
+# Environment variable for Train execution callbacks
+RAY_TRAIN_CALLBACKS_ENV_VAR = "RAY_TRAIN_CALLBACKS"
+
 # Environment variables to propagate from the driver to the controller,
 # and then from the controller to the workers.
 ENV_VARS_TO_PROPAGATE = {
