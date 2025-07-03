@@ -82,6 +82,7 @@ const Wrapper =
               grafanaHost: grafanaHostDisabled
                 ? "DISABLED"
                 : "http://localhost:3000",
+              grafanaOrgId: "1",
               dashboardUids: {
                 default: "rayDefaultDashboard",
                 serve: "rayServeDashboard",

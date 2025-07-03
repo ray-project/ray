@@ -1,5 +1,3 @@
-import colorama
-from dataclasses import dataclass
 import logging
 import logging.handlers
 import os
@@ -7,16 +5,19 @@ import re
 import sys
 import threading
 import time
-from typing import Callable, Dict, List, Set, Tuple, Any, Optional, Union, Iterable
+from dataclasses import dataclass
+from typing import Any, Callable, Dict, Iterable, List, Optional, Set, Tuple, Union
+
+import colorama
 
 import ray
-from ray.experimental.tqdm_ray import RAY_TQDM_MAGIC
 from ray._private.ray_constants import (
     RAY_DEDUP_LOGS,
     RAY_DEDUP_LOGS_AGG_WINDOW_S,
     RAY_DEDUP_LOGS_ALLOW_REGEX,
     RAY_DEDUP_LOGS_SKIP_REGEX,
 )
+from ray.experimental.tqdm_ray import RAY_TQDM_MAGIC
 from ray.util.debug import log_once
 
 

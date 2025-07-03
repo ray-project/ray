@@ -1,11 +1,12 @@
 import copy
 import os
 import re
+import sys
 import tempfile
-
-import pytest
 from threading import RLock
 from unittest.mock import MagicMock, patch
+
+import pytest
 
 from ray.autoscaler.tags import (
     NODE_KIND_HEAD,
@@ -662,6 +663,4 @@ def test_get_vm_service_ingress():
 
 
 if __name__ == "__main__":
-    import sys
-
     sys.exit(pytest.main(["-v", __file__]))

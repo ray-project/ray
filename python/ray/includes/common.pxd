@@ -164,6 +164,8 @@ cdef extern from "src/ray/protobuf/common.pb.h" nogil:
         pass
     cdef cppclass CTaskType "ray::TaskType":
         pass
+    cdef cppclass CTensorTransport "ray::rpc::TensorTransport":
+        pass
     cdef cppclass CPlacementStrategy "ray::core::PlacementStrategy":
         pass
     cdef cppclass CDefaultSchedulingStrategy "ray::rpc::DefaultSchedulingStrategy":  # noqa: E501
@@ -258,6 +260,9 @@ cdef extern from "src/ray/protobuf/common.pb.h" nogil:
     cdef CTaskType TASK_TYPE_ACTOR_TASK "ray::TaskType::ACTOR_TASK"
 
 cdef extern from "src/ray/protobuf/common.pb.h" nogil:
+    cdef CTensorTransport TENSOR_TRANSPORT_OBJECT_STORE "ray::rpc::TensorTransport::OBJECT_STORE"
+
+cdef extern from "src/ray/protobuf/common.pb.h" nogil:
     cdef CPlacementStrategy PLACEMENT_STRATEGY_PACK \
         "ray::core::PlacementStrategy::PACK"
     cdef CPlacementStrategy PLACEMENT_STRATEGY_SPREAD \
@@ -295,6 +300,7 @@ cdef extern from "ray/common/ray_object.h" nogil:
         const shared_ptr[CBuffer] &GetData()
         const shared_ptr[CBuffer] &GetMetadata() const
         c_bool IsInPlasmaError() const
+        CTensorTransport GetTensorTransport() const
 
 cdef extern from "ray/core_worker/common.h" nogil:
     cdef cppclass CRayFunction "ray::core::RayFunction":
@@ -330,8 +336,11 @@ cdef extern from "ray/core_worker/common.h" nogil:
                      unordered_map[c_string, double] &resources,
                      c_string concurrency_group_name,
                      int64_t generator_backpressure_num_objects,
-                     c_string serialized_runtime_env, c_bool enable_task_events,
-                     const unordered_map[c_string, c_string] &labels)
+                     c_string serialized_runtime_env,
+                     c_bool enable_task_events,
+                     const unordered_map[c_string, c_string] &labels,
+                     const unordered_map[c_string, c_string] &label_selector,
+                     CTensorTransport tensor_transport)
 
     cdef cppclass CActorCreationOptions "ray::core::ActorCreationOptions":
         CActorCreationOptions()
@@ -350,7 +359,8 @@ cdef extern from "ray/core_worker/common.h" nogil:
             c_bool execute_out_of_order,
             int32_t max_pending_calls,
             c_bool enable_task_events,
-            const unordered_map[c_string, c_string] &labels)
+            const unordered_map[c_string, c_string] &labels,
+            const unordered_map[c_string, c_string] &label_selector)
 
     cdef cppclass CPlacementGroupCreationOptions \
             "ray::core::PlacementGroupCreationOptions":
@@ -362,6 +372,7 @@ cdef extern from "ray/core_worker/common.h" nogil:
             c_bool is_detached,
             double max_cpu_fraction_per_node,
             CNodeID soft_target_node_id,
+            const c_vector[unordered_map[c_string, c_string]] &bundle_label_selector,
         )
 
     cdef cppclass CObjectLocation "ray::core::ObjectLocation":
@@ -763,3 +774,4 @@ cdef extern from "ray/common/constants.h" nogil:
     cdef const char[] kGcsAutoscalerStateNamespace
     cdef const char[] kGcsAutoscalerV2EnabledKey
     cdef const char[] kGcsAutoscalerClusterConfigKey
+    cdef const char[] kGcsPidKey

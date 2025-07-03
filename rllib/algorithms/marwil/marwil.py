@@ -166,7 +166,7 @@ class MARWILConfig(AlgorithmConfig):
         }
 
         super().__init__(algo_class=algo_class or MARWIL)
-
+        self._is_online = False
         # fmt: off
         # __sphinx_doc_begin__
         # MARWIL specific settings:
@@ -496,7 +496,7 @@ class MARWIL(Algorithm):
             )
 
             # Log training results.
-            self.metrics.merge_and_log_n_dicts(learner_results, key=LEARNER_RESULTS)
+            self.metrics.aggregate(learner_results, key=LEARNER_RESULTS)
 
     @OldAPIStack
     def _training_step_old_api_stack(self) -> ResultDict:

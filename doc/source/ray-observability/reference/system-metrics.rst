@@ -40,7 +40,7 @@ Ray exports a number of system metrics, which provide introspection into the sta
      - The number of CPU cores per node.
    * - `ray_node_gpus_utilization`
      - `InstanceId`, `GpuDeviceName`, `GpuIndex`
-     - The GPU utilization per GPU as a percentage quantity (0..NGPU*100). `GpuDeviceName` is a name of a GPU device (e.g., Nvidia A10G) and `GpuIndex` is the index of the GPU.
+     - The GPU utilization per GPU as a percentage quantity (0..NGPU*100). `GpuDeviceName` is a name of a GPU device (e.g., NVIDIA A10G) and `GpuIndex` is the index of the GPU.
    * - `ray_node_disk_usage`
      - `InstanceId`
      - The amount of disk space used per node, in bytes.

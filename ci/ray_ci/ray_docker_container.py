@@ -46,8 +46,7 @@ class RayDockerContainer(DockerContainer):
         ]
         if self._should_upload():
             cmds += [
-                "pip install -q aws_requests_auth requests",
-                "python .buildkite/copy_files.py --destination docker_login",
+                "bazel run .buildkite:copy_files -- --destination docker_login",
             ]
             for alias in self._get_image_names():
                 cmds += [

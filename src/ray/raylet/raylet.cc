@@ -25,6 +25,9 @@
 #include "ray/common/client_connection.h"
 #include "ray/common/scheduling/resource_set.h"
 #include "ray/common/status.h"
+#include "ray/core_worker/experimental_mutable_object_provider.h"
+#include "ray/object_manager/object_manager.h"
+#include "ray/object_manager/ownership_object_directory.h"
 #include "ray/util/util.h"
 
 namespace {
@@ -67,19 +70,13 @@ Raylet::Raylet(instrumented_io_context &main_service,
                const std::string &node_name,
                const NodeManagerConfig &node_manager_config,
                const ObjectManagerConfig &object_manager_config,
-               std::shared_ptr<gcs::GcsClient> gcs_client,
+               gcs::GcsClient &gcs_client,
                int metrics_export_port,
                bool is_head_node,
-               std::function<void(const rpc::NodeDeathInfo &)> shutdown_raylet_gracefully)
+               NodeManager &node_manager)
     : self_node_id_(self_node_id),
       gcs_client_(gcs_client),
-      node_manager_(main_service,
-                    self_node_id_,
-                    node_name,
-                    node_manager_config,
-                    object_manager_config,
-                    gcs_client_,
-                    shutdown_raylet_gracefully),
+      node_manager_(node_manager),
       socket_name_(socket_name),
       acceptor_(main_service, ParseUrlEndpoint(socket_name)),
       socket_(main_service) {
@@ -124,7 +121,7 @@ void Raylet::Start() {
 
 void Raylet::UnregisterSelf(const rpc::NodeDeathInfo &node_death_info,
                             std::function<void()> unregister_done_callback) {
-  gcs_client_->Nodes().UnregisterSelf(node_death_info, unregister_done_callback);
+  gcs_client_.Nodes().UnregisterSelf(node_death_info, unregister_done_callback);
 }
 
 void Raylet::Stop() {
@@ -145,8 +142,7 @@ ray::Status Raylet::RegisterGcs() {
     RAY_CHECK_OK(node_manager_.RegisterGcs());
   };
 
-  RAY_RETURN_NOT_OK(
-      gcs_client_->Nodes().RegisterSelf(self_node_info_, register_callback));
+  RAY_RETURN_NOT_OK(gcs_client_.Nodes().RegisterSelf(self_node_info_, register_callback));
   return Status::OK();
 }
 

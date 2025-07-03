@@ -26,6 +26,7 @@
 #include <vector>
 
 #include "absl/time/time.h"
+#include "mock/ray/gcs/gcs_client/gcs_client.h"
 #include "nlohmann/json.hpp"
 #include "ray/common/asio/asio_util.h"
 #include "ray/common/asio/instrumented_io_context.h"
@@ -131,6 +132,7 @@ class WorkerPoolMock : public WorkerPool {
  public:
   explicit WorkerPoolMock(instrumented_io_context &io_service,
                           const WorkerCommandMap &worker_commands,
+                          gcs::GcsClient &gcs_client,
                           absl::flat_hash_map<WorkerID, std::shared_ptr<MockWorkerClient>>
                               &mock_worker_rpc_clients)
       : WorkerPool(
@@ -143,7 +145,7 @@ class WorkerPoolMock : public WorkerPool {
             0,
             0,
             {},
-            nullptr,
+            gcs_client,
             worker_commands,
             "",
             []() {},
@@ -152,7 +154,7 @@ class WorkerPoolMock : public WorkerPool {
             /*enable_resource_isolation=*/false),
         last_worker_process_(),
         instrumented_io_service_(io_service),
-        client_call_manager_(instrumented_io_service_),
+        client_call_manager_(instrumented_io_service_, false),
         mock_worker_rpc_clients_(mock_worker_rpc_clients) {
     SetNodeManagerPort(1);
   }
@@ -460,7 +462,7 @@ class WorkerPoolTest : public ::testing::Test {
 
   void SetWorkerCommands(const WorkerCommandMap &worker_commands) {
     worker_pool_ = std::make_unique<WorkerPoolMock>(
-        io_service_, worker_commands, mock_worker_rpc_clients_);
+        io_service_, worker_commands, *mock_gcs_client_, mock_worker_rpc_clients_);
   }
 
   void TestStartupWorkerProcessCount(Language language, int num_workers_per_process) {
@@ -492,6 +494,8 @@ class WorkerPoolTest : public ::testing::Test {
   instrumented_io_context io_service_;
   std::unique_ptr<std::thread> thread_io_service_;
   std::unique_ptr<WorkerPoolMock> worker_pool_;
+  std::unique_ptr<gcs::MockGcsClient> mock_gcs_client_ =
+      std::make_unique<gcs::MockGcsClient>();
 };
 
 class WorkerPoolDriverRegisteredTest : public WorkerPoolTest {

@@ -24,7 +24,7 @@
 #include "ray/common/ray_config.h"
 #include "ray/common/task/task_spec.h"
 #include "src/ray/protobuf/autoscaler.pb.h"
-#include "src/ray/protobuf/export_api/export_task_event.pb.h"
+#include "src/ray/protobuf/export_task_event.pb.h"
 #include "src/ray/protobuf/gcs.pb.h"
 
 namespace ray {
@@ -227,7 +227,7 @@ inline void FillTaskInfo(rpc::TaskInfoEntry *task_info,
   task_info->set_scheduling_state(rpc::TaskStatus::NIL);
   task_info->set_job_id(task_spec.JobId().Binary());
 
-  task_info->set_task_id(task_spec.TaskId().Binary());
+  task_info->set_task_id(task_spec.TaskIdBinary());
   // NOTE: we set the parent task id of a task to be submitter's task id, where
   // the submitter depends on the owner coreworker's:
   // - if the owner coreworker runs a normal task, the submitter's task id is the task id.
@@ -244,6 +244,11 @@ inline void FillTaskInfo(rpc::TaskInfoEntry *task_info,
   }
   if (task_spec.GetMessage().call_site().size() > 0) {
     task_info->set_call_site(task_spec.GetMessage().call_site());
+  }
+  if (task_spec.GetMessage().label_selector().size() > 0) {
+    task_info->mutable_label_selector()->insert(
+        task_spec.GetMessage().label_selector().begin(),
+        task_spec.GetMessage().label_selector().end());
   }
 }
 
@@ -267,7 +272,7 @@ inline void FillExportTaskInfo(rpc::ExportTaskEventData::TaskInfoEntry *task_inf
   task_info->set_language(task_spec.GetLanguage());
   task_info->set_func_or_class_name(task_spec.FunctionDescriptor()->CallString());
 
-  task_info->set_task_id(task_spec.TaskId().Binary());
+  task_info->set_task_id(task_spec.TaskIdBinary());
   // NOTE: we set the parent task id of a task to be submitter's task id, where
   // the submitter depends on the owner coreworker's:
   // - if the owner coreworker runs a normal task, the submitter's task id is the task id.
@@ -277,6 +282,8 @@ inline void FillExportTaskInfo(rpc::ExportTaskEventData::TaskInfoEntry *task_inf
   const auto &resources_map = task_spec.GetRequiredResources().GetResourceMap();
   task_info->mutable_required_resources()->insert(resources_map.begin(),
                                                   resources_map.end());
+  task_info->mutable_labels()->insert(task_spec.GetLabels().begin(),
+                                      task_spec.GetLabels().end());
 
   auto export_runtime_env_info = task_info->mutable_runtime_env_info();
   export_runtime_env_info->set_serialized_runtime_env(
@@ -297,6 +304,11 @@ inline void FillExportTaskInfo(rpc::ExportTaskEventData::TaskInfoEntry *task_inf
   const auto &pg_id = task_spec.PlacementGroupBundleId().first;
   if (!pg_id.IsNil()) {
     task_info->set_placement_group_id(pg_id.Binary());
+  }
+  if (task_spec.GetMessage().label_selector().size() > 0) {
+    task_info->mutable_label_selector()->insert(
+        task_spec.GetMessage().label_selector().begin(),
+        task_spec.GetMessage().label_selector().end());
   }
 }
 

@@ -6,17 +6,15 @@ import time
 import uuid
 from contextlib import nullcontext
 from enum import Enum
-from pydantic import BaseModel, root_validator
-from typing import Any, Dict, AsyncIterator, Optional, List, Tuple, Type
+from typing import Any, AsyncIterator, Dict, List, Optional, Tuple, Type
 
-from ray.llm._internal.utils import try_import
+from pydantic import BaseModel, root_validator
+
 from ray.llm._internal.batch.stages.base import (
     StatefulStage,
     StatefulStageUDF,
 )
 from ray.llm._internal.batch.stages.common import maybe_convert_ndarray_to_list
-
-sgl = try_import("sglang")
 
 logger = logging.getLogger(__name__)
 
@@ -120,14 +118,16 @@ class SGLangEngineWrapper:
         self.skip_tokenizer_init = kwargs.pop("skip_tokenizer_init", True)
         kwargs["skip_tokenizer_init"] = self.skip_tokenizer_init
 
-        if sgl is None:
+        try:
+            import sglang
+        except ImportError as e:
             raise ImportError(
                 "SGLang is not installed or failed to import. Please run "
                 "`pip install sglang[all]` to install required dependencies."
-            )
+            ) from e
 
         # Initialize the SGLang engine
-        self.engine = sgl.Engine(**kwargs)
+        self.engine = sglang.Engine(**kwargs)
 
         # The performance gets really bad if there are too many requests in the pending queue.
         # We work around it with semaphore to limit the number of concurrent requests in the engine.

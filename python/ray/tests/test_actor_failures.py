@@ -1,22 +1,22 @@
 import atexit
 import asyncio
 import collections
-import numpy as np
 import os
-import pytest
 import signal
 import sys
 import time
+
+import pytest
+import numpy as np
 
 import ray
 from ray.actor import exit_actor
 from ray.exceptions import AsyncioActorExit
 import ray.cluster_utils
+from ray._common.test_utils import SignalActor, wait_for_condition
 from ray._private.test_utils import (
-    wait_for_condition,
     wait_for_pid_to_exit,
     generate_system_config_map,
-    SignalActor,
 )
 
 SIGKILL = signal.SIGKILL if sys.platform != "win32" else signal.SIGTERM
@@ -367,23 +367,34 @@ def test_actor_restart_on_node_failure(ray_start_cluster):
     cluster.wait_for_nodes()
     ray.init(address=cluster.address)
 
+    # Node to place the signal actor.
+    cluster.add_node(num_cpus=1, resources={"signal": 1})
     # Node to place the actor.
-    actor_node = cluster.add_node(num_cpus=1)
+    actor_node = cluster.add_node(num_cpus=1, resources={"actor": 1})
     cluster.wait_for_nodes()
 
     @ray.remote(num_cpus=1, max_restarts=1, max_task_retries=-1)
     class RestartableActor:
         """An actor that will be reconstructed at most once."""
 
+        def __init__(self, signal):
+            self._signal = signal
+
         def echo(self, value):
+            if value >= 50:
+                ray.get(self._signal.wait.remote())
             return value
 
-    actor = RestartableActor.options(lifetime="detached").remote()
+    signal = SignalActor.options(resources={"signal": 1}).remote()
+    actor = RestartableActor.options(
+        lifetime="detached", resources={"actor": 1}
+    ).remote(signal)
     ray.get(actor.__ray_ready__.remote())
     results = [actor.echo.remote(i) for i in range(100)]
     # Kill actor node, while the above task is still being executed.
     cluster.remove_node(actor_node)
-    cluster.add_node(num_cpus=1)
+    ray.get(signal.send.remote())
+    cluster.add_node(num_cpus=1, resources={"actor": 1})
     cluster.wait_for_nodes()
     # All tasks should be executed successfully.
     results = ray.get(results)
@@ -749,12 +760,6 @@ def test_actor_failure_per_type(ray_start_cluster):
         def create_actor(self):
             self.a = Actor.remote()
             return self.a
-
-    # Test actor is dead because its reference is gone.
-    # Q(sang): Should we raise RayACtorError in this case?
-    with pytest.raises(RuntimeError, match="Lost reference to actor") as exc_info:
-        ray.get(Actor.remote().check_alive.remote())
-    print(exc_info._excinfo[1])
 
     # Test actor killed by ray.kill
     a = Actor.remote()
@@ -1244,9 +1249,4 @@ def test_actor_restart_and_partial_task_not_completed(shutdown_only):
 
 
 if __name__ == "__main__":
-    import pytest
-
-    if os.environ.get("PARALLEL_CI"):
-        sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))
-    else:
-        sys.exit(pytest.main(["-sv", __file__]))
+    sys.exit(pytest.main(["-sv", __file__]))

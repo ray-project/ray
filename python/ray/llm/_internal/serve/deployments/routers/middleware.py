@@ -7,10 +7,10 @@ from fastapi.exceptions import RequestValidationError
 from starlette.middleware.base import BaseHTTPMiddleware, RequestResponseEndpoint
 from starlette.responses import JSONResponse, Response
 
-from ray.llm._internal.serve.observability.logging import get_logger
 from ray.llm._internal.serve.deployments.utils.server_utils import (
     get_response_for_error,
 )
+from ray.llm._internal.serve.observability.logging import get_logger
 
 logger = get_logger(__file__)
 

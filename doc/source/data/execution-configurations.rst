@@ -4,9 +4,12 @@
 Execution Configurations
 ========================
 
-Ray Data provides a number of configurations that control various aspects
-of Ray Dataset execution. You can modify these configurations by using
-:class:`~ray.data.ExecutionOptions` and :class:`~ray.data.DataContext`.
+Ray Data provides a number of configuration options that control various aspects
+of execution of Ray Data's :class:`~ray.data.Dataset` on top of configuration of the Ray Core cluster itself.
+
+Ray Data's configuration is primarily controlled through either of :class:`~ray.data.ExecutionOptions`
+or :class:`~ray.data.DataContext`.
+
 This guide describes the most important of these configurations and when to use them.
 
 Configuring :class:`~ray.data.ExecutionOptions`
@@ -40,6 +43,7 @@ For more details on each of the preceding options, see :class:`~ray.data.Executi
 
 Configuring :class:`~ray.data.DataContext`
 ==========================================
+
 The :class:`~ray.data.DataContext` class is used to configure more general options for Ray Data usage, such as observability/logging options,
 error handling/retry behavior, and internal data formats. To use it, modify the attributes in the current :class:`~ray.data.DataContext` object. For example:
 

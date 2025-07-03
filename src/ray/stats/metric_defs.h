@@ -73,6 +73,9 @@ DECLARE_stats(grpc_server_req_finished);
 DECLARE_stats(grpc_server_req_succeeded);
 DECLARE_stats(grpc_server_req_failed);
 
+/// GRPC Client Failures
+DECLARE_stats(grpc_client_req_failed);
+
 /// Object Manager.
 DECLARE_stats(object_manager_bytes);
 DECLARE_stats(object_manager_received_chunks);
@@ -89,7 +92,7 @@ DECLARE_stats(pull_manager_num_object_pins);
 DECLARE_stats(pull_manager_object_request_time_ms);
 
 /// Push Manager
-DECLARE_stats(push_manager_in_flight_pushes);
+DECLARE_stats(push_manager_num_pushes_remaining);
 DECLARE_stats(push_manager_chunks);
 
 /// Scheduler

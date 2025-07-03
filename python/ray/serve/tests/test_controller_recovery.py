@@ -5,12 +5,12 @@ import re
 import sys
 import time
 
+import httpx
 import pytest
-import requests
 
 import ray
 from ray import serve
-from ray._private.test_utils import SignalActor, wait_for_condition
+from ray._common.test_utils import SignalActor, wait_for_condition
 from ray.exceptions import RayTaskError
 from ray.serve._private.common import DeploymentID, ReplicaState
 from ray.serve._private.constants import (
@@ -64,7 +64,7 @@ def test_recover_start_from_replica_actor_names(serve_instance, deployment_optio
     replica_version_hash = None
     for replica in deployment_dict[id]:
         ref = replica.actor_handle.initialize_and_get_metadata.remote()
-        _, version, _, _ = ray.get(ref)
+        _, version, _, _, _ = ray.get(ref)
         if replica_version_hash is None:
             replica_version_hash = hash(version)
         assert replica_version_hash == hash(version), (
@@ -116,7 +116,7 @@ def test_recover_start_from_replica_actor_names(serve_instance, deployment_optio
     for replica_name in recovered_replica_names:
         actor_handle = ray.get_actor(replica_name, namespace=SERVE_NAMESPACE)
         ref = actor_handle.initialize_and_get_metadata.remote()
-        _, version, _, _ = ray.get(ref)
+        _, version, _, _, _ = ray.get(ref)
         assert replica_version_hash == hash(
             version
         ), "Replica version hash should be the same after recover from actor names"
@@ -471,7 +471,7 @@ def test_controller_crashes_with_logging_config(serve_instance):
     proxy_handle = list(proxy_handles.values())[0]
     file_path = ray.get(proxy_handle._get_logging_config.remote())
     # Send request, we should see json logging and debug log message in proxy log.
-    resp = requests.get("http://127.0.0.1:8000")
+    resp = httpx.get("http://127.0.0.1:8000")
     assert resp.status_code == 200
     wait_for_condition(
         check_log_file, log_file=file_path, expected_regex=['.*"message":.*GET / 200.*']

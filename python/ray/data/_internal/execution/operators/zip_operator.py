@@ -1,9 +1,12 @@
 import itertools
-from typing import List, Optional, Tuple
+from typing import TYPE_CHECKING, List, Optional, Tuple
 
 import ray
 from ray.data._internal.delegating_block_builder import DelegatingBlockBuilder
 from ray.data._internal.execution.interfaces import PhysicalOperator, RefBundle
+from ray.data._internal.execution.operators.base_physical_operator import (
+    InternalQueueOperatorMixin,
+)
 from ray.data._internal.remote_fn import cached_remote_fn
 from ray.data._internal.split import _split_at_indices
 from ray.data._internal.stats import StatsDict
@@ -11,14 +14,17 @@ from ray.data.block import (
     Block,
     BlockAccessor,
     BlockExecStats,
-    BlockMetadata,
     BlockPartition,
     to_stats,
 )
 from ray.data.context import DataContext
 
+if TYPE_CHECKING:
 
-class ZipOperator(PhysicalOperator):
+    from ray.data.block import BlockMetadataWithSchema
+
+
+class ZipOperator(InternalQueueOperatorMixin, PhysicalOperator):
     """An operator that zips its inputs together.
 
     NOTE: the implementation is bulk for now, which materializes all its inputs in
@@ -68,6 +74,9 @@ class ZipOperator(PhysicalOperator):
             return left_num_rows
         else:
             return right_num_rows
+
+    def internal_queue_size(self) -> int:
+        return len(self._left_buffer) + len(self._right_buffer)
 
     def _add_input_inner(self, refs: RefBundle, input_index: int) -> None:
         assert not self.completed()
@@ -191,37 +200,41 @@ class ZipOperator(PhysicalOperator):
         zip_one_block = cached_remote_fn(_zip_one_block, num_returns=2)
 
         output_blocks = []
-        output_metadata = []
+        output_metadata_schema = []
         for left_block, right_blocks in zip(left_blocks, right_blocks_list):
             # For each block from left side, zip it together with 1 or more blocks from
             # right side. We're guaranteed to have that left_block has the same number
             # of rows as right_blocks has cumulatively.
-            res, meta = zip_one_block.remote(
+            res, meta_with_schema = zip_one_block.remote(
                 left_block, *right_blocks, inverted=input_side_inverted
             )
             output_blocks.append(res)
-            output_metadata.append(meta)
+            output_metadata_schema.append(meta_with_schema)
 
         # Early release memory.
         del left_blocks, right_blocks_list
 
         # TODO(ekl) it might be nice to have a progress bar here.
-        output_metadata = ray.get(output_metadata)
+        output_metadata_schema: List[BlockMetadataWithSchema] = ray.get(
+            output_metadata_schema
+        )
+
         output_refs = []
         input_owned = all(b.owns_blocks for b in left_input)
-        for block, meta in zip(output_blocks, output_metadata):
+        for block, meta_with_schema in zip(output_blocks, output_metadata_schema):
             output_refs.append(
                 RefBundle(
                     [
                         (
                             block,
-                            meta,
+                            meta_with_schema.metadata,
                         )
                     ],
                     owns_blocks=input_owned,
+                    schema=meta_with_schema.schema,
                 )
             )
-        stats = {self._name: to_stats(output_metadata)}
+        stats = {self._name: to_stats(output_metadata_schema)}
 
         # Clean up inputs.
         for ref in left_input:
@@ -255,7 +268,7 @@ class ZipOperator(PhysicalOperator):
 
 def _zip_one_block(
     block: Block, *other_blocks: Block, inverted: bool = False
-) -> Tuple[Block, BlockMetadata]:
+) -> Tuple[Block, "BlockMetadataWithSchema"]:
     """Zip together `block` with `other_blocks`."""
     stats = BlockExecStats.builder()
     # Concatenate other blocks.
@@ -270,8 +283,9 @@ def _zip_one_block(
         block, other_block = other_block, block
     # Zip block and other blocks.
     result = BlockAccessor.for_block(block).zip(other_block)
-    br = BlockAccessor.for_block(result)
-    return result, br.get_metadata(exec_stats=stats.build())
+    from ray.data.block import BlockMetadataWithSchema
+
+    return result, BlockMetadataWithSchema.from_block(result, stats=stats.build())
 
 
 def _get_num_rows_and_bytes(block: Block) -> Tuple[int, int]:

@@ -1,9 +1,22 @@
+import abc
 import logging
 import uuid
 from abc import ABC, abstractmethod
-from typing import Any, Callable, Dict, Iterator, List, Optional, Tuple, Union
+from dataclasses import dataclass
+from typing import (
+    TYPE_CHECKING,
+    Any,
+    Callable,
+    Dict,
+    Iterator,
+    List,
+    Optional,
+    Tuple,
+    Union,
+)
 
 import ray
+from .ref_bundle import RefBundle
 from ray._raylet import ObjectRefGenerator
 from ray.data._internal.execution.autoscaler.autoscaling_actor_pool import (
     AutoscalingActorPool,
@@ -18,7 +31,9 @@ from ray.data._internal.output_buffer import OutputBlockSizeOption
 from ray.data._internal.stats import StatsDict, Timer
 from ray.data.context import DataContext
 
-from .ref_bundle import RefBundle
+if TYPE_CHECKING:
+
+    from ray.data.block import BlockMetadataWithSchema
 
 logger = logging.getLogger(__name__)
 
@@ -81,12 +96,14 @@ class DataOpTask(OpTask):
         task_done_callback: Callable[[Optional[Exception]], None],
         task_resource_bundle: Optional[ExecutionResources] = None,
     ):
-        """
+        """Create a DataOpTask
         Args:
+            task_index: Index of the task. Used for callbacks.
             streaming_gen: The streaming generator of this task. It should yield blocks.
             output_ready_callback: The callback to call when a new RefBundle is output
                 from the generator.
             task_done_callback: The callback to call when the task is done.
+            task_resource_bundle: The execution resources of this task.
         """
         super().__init__(task_index, task_resource_bundle)
         # TODO(hchen): Right now, the streaming generator is required to yield a Block
@@ -121,7 +138,9 @@ class DataOpTask(OpTask):
                 break
 
             try:
-                meta = ray.get(next(self._streaming_gen))
+                meta_with_schema: "BlockMetadataWithSchema" = ray.get(
+                    next(self._streaming_gen)
+                )
             except StopIteration:
                 # The generator should always yield 2 values (block and metadata)
                 # each time. If we get a StopIteration here, it means an error
@@ -135,10 +154,17 @@ class DataOpTask(OpTask):
                 except Exception as ex:
                     self._task_done_callback(ex)
                     raise ex from None
+
+            meta = meta_with_schema.metadata
             self._output_ready_callback(
-                RefBundle([(block_ref, meta)], owns_blocks=True)
+                RefBundle(
+                    [(block_ref, meta)],
+                    owns_blocks=True,
+                    schema=meta_with_schema.schema,
+                ),
             )
             bytes_read += meta.size_bytes
+
         return bytes_read
 
 
@@ -167,6 +193,21 @@ class MetadataOpTask(OpTask):
     def on_task_finished(self):
         """Callback when the task is finished."""
         self._task_done_callback()
+
+
+@dataclass
+class _ActorPoolInfo:
+    """Breakdown of the state of the actors used by the ``PhysicalOperator``"""
+
+    running: int
+    pending: int
+    restarting: int
+
+    def __str__(self):
+        return (
+            f"running={self.running}, restarting={self.restarting}, "
+            f"pending={self.pending}"
+        )
 
 
 class PhysicalOperator(Operator):
@@ -305,17 +346,32 @@ class PhysicalOperator(Operator):
         return self._execution_finished
 
     def completed(self) -> bool:
-        """Return True when this operator is completed.
+        """Returns whether this operator has been fully completed.
 
-        An operator is completed when all these conditions hold true:
-        * The operator has finished execution (i.e., `execution_finished()` is True).
-        * All outputs have been taken (i.e., `has_next()` is False).
+        An operator is completed iff:
+            * The operator has finished execution (i.e., `execution_finished()` is True).
+            * All outputs have been taken (i.e., `has_next()` is False) from it.
         """
+        from ..operators.base_physical_operator import InternalQueueOperatorMixin
+
+        internal_queue_size = (
+            self.internal_queue_size()
+            if isinstance(self, InternalQueueOperatorMixin)
+            else 0
+        )
+
         if not self._execution_finished:
-            if self._inputs_complete and self.num_active_tasks() == 0:
-                # If all inputs are complete and there are no active tasks,
-                # then the operator has completed execution.
+            if (
+                self._inputs_complete
+                and internal_queue_size == 0
+                and self.num_active_tasks() == 0
+            ):
+                # NOTE: Operator is considered completed iff
+                #   - All input blocks have been ingested
+                #   - Internal queue is empty
+                #   - There are no active or pending tasks
                 self._execution_finished = True
+
         return self._execution_finished and not self.has_next()
 
     def get_stats(self) -> StatsDict:
@@ -332,6 +388,15 @@ class PhysicalOperator(Operator):
         """Subclasses should override this method to report extra metrics
         that are specific to them."""
         return {}
+
+    def _get_logical_args(self) -> Dict[str, Dict[str, Any]]:
+        """Return the logical arguments that were translated to create this
+        PhysicalOperator."""
+        res = {}
+        for i, logical_op in enumerate(self._logical_operators):
+            logical_op_id = f"{logical_op}_{i}"
+            res[logical_op_id] = logical_op._get_args()
+        return res
 
     def progress_str(self) -> str:
         """Return any extra status to be displayed in the operator progress bar.
@@ -479,13 +544,6 @@ class PhysicalOperator(Operator):
         """
         return False
 
-    def internal_queue_size(self) -> int:
-        """If the operator has an internal input queue, return its size.
-
-        This is used to report tasks pending submission to actor pools.
-        """
-        return 0
-
     def shutdown(self, timer: Timer, force: bool = False) -> None:
         """Abort execution and release all resources used by this operator.
 
@@ -607,23 +665,9 @@ class PhysicalOperator(Operator):
         """
         pass
 
-    def actor_info_progress_str(self) -> str:
-        """Returns Actor progress strings for Alive, Restarting and Pending Actors.
-
-        This method will be called in summary_str API in OpState. Subclasses can
-        override it to return Actor progress strings for Alive, Restarting and Pending
-        Actors.
-        """
-        return ""
-
-    def actor_info_counts(self) -> Tuple[int, int, int]:
-        """Returns Actor counts for Alive, Restarting and Pending Actors.
-
-        This method will be called in add_output API in OpState. Subclasses can
-        override it to return counts for Alive, Restarting and Pending
-        Actors.
-        """
-        return 0, 0, 0
+    def get_actor_info(self) -> _ActorPoolInfo:
+        """Returns the current status of actors being used by the operator"""
+        return _ActorPoolInfo(running=0, pending=0, restarting=0)
 
     def _cancel_active_tasks(self, force: bool):
         tasks: List[OpTask] = self.get_active_tasks()
@@ -644,3 +688,10 @@ class PhysicalOperator(Operator):
                     # failed with a different error, or cancellation failed.
                     # In all cases, we swallow the exception.
                     pass
+
+
+class ReportsExtraResourceUsage(abc.ABC):
+    @abc.abstractmethod
+    def extra_resource_usage(self: PhysicalOperator) -> ExecutionResources:
+        """Returns resources used by this operator beyond standard accounting."""
+        ...

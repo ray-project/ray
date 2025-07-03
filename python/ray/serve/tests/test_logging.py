@@ -11,8 +11,8 @@ from pathlib import Path
 from typing import List, Tuple
 from unittest.mock import patch
 
+import httpx
 import pytest
-import requests
 import starlette
 from fastapi import FastAPI
 from starlette.responses import PlainTextResponse
@@ -20,8 +20,8 @@ from starlette.responses import PlainTextResponse
 import ray
 import ray.util.state as state_api
 from ray import serve
+from ray._common.test_utils import wait_for_condition
 from ray._private.ray_logging.formatters import JSONFormatter
-from ray._private.test_utils import wait_for_condition
 from ray.serve._private.common import DeploymentID, ReplicaID, ServeComponentType
 from ray.serve._private.constants import SERVE_LOG_EXTRA_FIELDS, SERVE_LOGGER_NAME
 from ray.serve._private.logging_utils import (
@@ -88,9 +88,11 @@ def test_log_rotation_config(monkeypatch, ray_shutdown):
             handlers = logger.handlers
             res = {}
             for handler in handlers:
-                if isinstance(handler, logging.handlers.RotatingFileHandler):
-                    res["max_bytes"] = handler.maxBytes
-                    res["backup_count"] = handler.backupCount
+                if isinstance(handler, logging.handlers.MemoryHandler):
+                    target = handler.target
+                    assert isinstance(target, logging.handlers.RotatingFileHandler)
+                    res["max_bytes"] = target.maxBytes
+                    res["backup_count"] = target.backupCount
             return res
 
     handle = serve.run(Handle.bind())
@@ -151,14 +153,14 @@ def test_http_access_log(serve_instance):
                 ]
             )
 
-        r = requests.get("http://localhost:8000/")
+        r = httpx.get("http://localhost:8000/")
         assert r.status_code == 200
         replica_id = ReplicaID(unique_id=r.text, deployment_id=DeploymentID(name=name))
         wait_for_condition(
             check_log, replica_id=replica_id, method="GET", route="/", status_code="200"
         )
 
-        r = requests.post("http://localhost:8000/")
+        r = httpx.post("http://localhost:8000/")
         assert r.status_code == 200
         wait_for_condition(
             check_log,
@@ -168,7 +170,7 @@ def test_http_access_log(serve_instance):
             status_code="200",
         )
 
-        r = requests.get("http://localhost:8000/350")
+        r = httpx.get("http://localhost:8000/350")
         assert r.status_code == 350
         wait_for_condition(
             check_log,
@@ -178,7 +180,7 @@ def test_http_access_log(serve_instance):
             status_code="350",
         )
 
-        r = requests.put("http://localhost:8000/fail")
+        r = httpx.put("http://localhost:8000/fail")
         assert r.status_code == 500
         wait_for_condition(
             check_log,
@@ -248,7 +250,10 @@ def test_user_logs(serve_instance):
     def fn(*args):
         logger.info(stderr_msg)
         logger.info(log_file_msg, extra={"log_to_stderr": False})
-        return serve.get_replica_context().replica_id, logger.handlers[1].baseFilename
+        return (
+            serve.get_replica_context().replica_id,
+            logger.handlers[1].target.baseFilename,
+        )
 
     handle = serve.run(fn.bind())
 
@@ -321,7 +326,7 @@ def test_log_filenames_contain_only_posix_characters(serve_instance):
 
     serve.run(A.bind())
 
-    r = requests.get("http://localhost:8000/")
+    r = httpx.get("http://localhost:8000/")
     r.raise_for_status()
     assert r.text == "hi"
 
@@ -346,7 +351,7 @@ def test_context_information_in_logging(serve_and_ray_shutdown, json_log_format)
             "request_id": request_context.request_id,
             "route": request_context.route,
             "app_name": request_context.app_name,
-            "log_file": logger.handlers[1].baseFilename,
+            "log_file": logger.handlers[1].target.baseFilename,
             "replica": serve.get_replica_context().replica_id.unique_id,
             "actor_id": ray.get_runtime_context().get_actor_id(),
             "worker_id": ray.get_runtime_context().get_worker_id(),
@@ -367,7 +372,7 @@ def test_context_information_in_logging(serve_and_ray_shutdown, json_log_format)
                 "request_id": request_context.request_id,
                 "route": request_context.route,
                 "app_name": request_context.app_name,
-                "log_file": logger.handlers[1].baseFilename,
+                "log_file": logger.handlers[1].target.baseFilename,
                 "replica": serve.get_replica_context().replica_id.unique_id,
                 "actor_id": ray.get_runtime_context().get_actor_id(),
                 "worker_id": ray.get_runtime_context().get_worker_id(),
@@ -382,8 +387,8 @@ def test_context_information_in_logging(serve_and_ray_shutdown, json_log_format)
 
     f = io.StringIO()
     with redirect_stderr(f):
-        resp = requests.get("http://127.0.0.1:8000/fn").json()
-        resp2 = requests.get("http://127.0.0.1:8000/class_method").json()
+        resp = httpx.get("http://127.0.0.1:8000/fn").json()
+        resp2 = httpx.get("http://127.0.0.1:8000/class_method").json()
 
         # Check the component log
         expected_log_infos = [
@@ -478,11 +483,11 @@ def test_extra_field(serve_and_ray_shutdown, raise_error):
                 extra={"k1": "my_v1", SERVE_LOG_EXTRA_FIELDS: {"k2": "my_v2"}},
             )
         return {
-            "log_file": logger.handlers[1].baseFilename,
+            "log_file": logger.handlers[1].target.baseFilename,
         }
 
     serve.run(fn.bind(), name="app1", route_prefix="/fn")
-    resp = requests.get("http://127.0.0.1:8000/fn")
+    resp = httpx.get("http://127.0.0.1:8000/fn")
     if raise_error:
         resp.status_code == 500
     else:
@@ -539,12 +544,12 @@ class TestLoggingAPI:
         class Model:
             def __call__(self, req: starlette.requests.Request):
                 return {
-                    "log_file": logger.handlers[1].baseFilename,
+                    "log_file": logger.handlers[1].target.baseFilename,
                     "replica": serve.get_replica_context().replica_id.unique_id,
                 }
 
         serve.run(Model.bind())
-        resp = requests.get("http://127.0.0.1:8000/").json()
+        resp = httpx.get("http://127.0.0.1:8000/").json()
 
         replica_id = resp["replica"].split("#")[-1]
         if encoding_type == "JSON":
@@ -562,11 +567,11 @@ class TestLoggingAPI:
                 logger.info("model_info_level")
                 logger.debug("model_debug_level")
                 return {
-                    "log_file": logger.handlers[1].baseFilename,
+                    "log_file": logger.handlers[1].target.baseFilename,
                 }
 
         serve.run(Model.bind())
-        resp = requests.get("http://127.0.0.1:8000/").json()
+        resp = httpx.get("http://127.0.0.1:8000/").json()
         expected_log_regex = [".*model_info_level.*"]
         check_log_file(resp["log_file"], expected_log_regex)
 
@@ -575,7 +580,7 @@ class TestLoggingAPI:
             check_log_file(resp["log_file"], [".*model_debug_level.*"])
 
         serve.run(Model.options(logging_config={"log_level": "DEBUG"}).bind())
-        resp = requests.get("http://127.0.0.1:8000/").json()
+        resp = httpx.get("http://127.0.0.1:8000/").json()
         expected_log_regex = [".*model_info_level.*", ".*model_debug_level.*"]
         check_log_file(resp["log_file"], expected_log_regex)
 
@@ -586,12 +591,17 @@ class TestLoggingAPI:
         class Model:
             def __call__(self, req: starlette.requests.Request):
                 logger.info("model_info_level")
-                return {
-                    "logs_path": logger.handlers[1].baseFilename,
-                }
+                for handler in logger.handlers:
+                    if isinstance(handler, logging.handlers.MemoryHandler):
+                        target = handler.target
+                        assert isinstance(target, logging.handlers.RotatingFileHandler)
+                        return {
+                            "logs_path": target.baseFilename,
+                        }
+                raise AssertionError("No memory handler found")
 
         serve.run(Model.bind())
-        resp = requests.get("http://127.0.0.1:8000/").json()
+        resp = httpx.get("http://127.0.0.1:8000/").json()
 
         paths = resp["logs_path"].split("/")
         paths[-1] = "new_dir"
@@ -605,7 +615,7 @@ class TestLoggingAPI:
                 }
             ).bind()
         )
-        resp = requests.get("http://127.0.0.1:8000/").json()
+        resp = httpx.get("http://127.0.0.1:8000/").json()
         assert "new_dir" in resp["logs_path"]
 
         check_log_file(resp["logs_path"], [".*model_info_level.*"])
@@ -626,12 +636,12 @@ class TestLoggingAPI:
                 logger.info("model_info_level")
                 logger.info("model_not_show", extra={"serve_access_log": True})
                 return {
-                    "logs_path": logger.handlers[1].baseFilename,
+                    "logs_path": logger.handlers[1].target.baseFilename,
                 }
 
         serve.run(Model.bind())
 
-        resp = requests.get("http://127.0.0.1:8000/")
+        resp = httpx.get("http://127.0.0.1:8000/")
         assert resp.status_code == 200
         resp = resp.json()
         check_log_file(resp["logs_path"], [".*model_info_level.*"])
@@ -660,12 +670,12 @@ class TestLoggingAPI:
                 logger.info("model_info_level")
                 logger.info("model_not_show", extra={"serve_access_log": True})
                 return {
-                    "logs_path": logger.handlers[1].baseFilename,
+                    "logs_path": logger.handlers[1].target.baseFilename,
                 }
 
         serve.run(Model.bind())
 
-        resp = requests.get("http://127.0.0.1:8000/")
+        resp = httpx.get("http://127.0.0.1:8000/")
         assert resp.status_code == 200
         resp = resp.json()
         if encoding_type == "JSON":
@@ -681,11 +691,11 @@ class TestLoggingAPI:
                 logger.info("model_info_level")
                 logger.debug("model_debug_level")
                 return {
-                    "log_file": logger.handlers[1].baseFilename,
+                    "log_file": logger.handlers[1].target.baseFilename,
                 }
 
         serve.run(Model.bind(), logging_config={"log_level": "DEBUG"})
-        resp = requests.get("http://127.0.0.1:8000/").json()
+        resp = httpx.get("http://127.0.0.1:8000/").json()
         expected_log_regex = [".*model_info_level.*", ".*model_debug_level.*"]
         check_log_file(resp["log_file"], expected_log_regex)
 
@@ -699,7 +709,7 @@ class TestLoggingAPI:
                 logger.info("model_info_level")
                 logger.debug("model_debug_level")
                 return {
-                    "log_file": logger.handlers[1].baseFilename,
+                    "log_file": logger.handlers[1].target.baseFilename,
                 }
 
         serve.run(
@@ -708,7 +718,7 @@ class TestLoggingAPI:
             name="app2",
             route_prefix="/app2",
         )
-        resp = requests.get("http://127.0.0.1:8000/app2").json()
+        resp = httpx.get("http://127.0.0.1:8000/app2").json()
         check_log_file(resp["log_file"], [".*model_info_level.*"])
         # Make sure 'model_debug_level' log content does not exist.
         with pytest.raises(AssertionError):
@@ -824,11 +834,11 @@ def test_configure_component_logger_with_log_encoding_env_text(log_encoding):
         )
 
         for handler in logger.handlers:
-            if isinstance(handler, logging.handlers.RotatingFileHandler):
+            if isinstance(handler, logging.handlers.MemoryHandler):
                 if expected_encoding == EncodingType.JSON:
-                    assert isinstance(handler.formatter, JSONFormatter)
+                    assert isinstance(handler.target.formatter, JSONFormatter)
                 else:
-                    assert isinstance(handler.formatter, ServeFormatter)
+                    assert isinstance(handler.target.formatter, ServeFormatter)
 
         # Clean up logger handlers
         logger.handlers.clear()
@@ -863,7 +873,7 @@ def test_logging_disable_stdout(serve_and_ray_shutdown, ray_instance, tmp_dir):
 
     app = disable_stdout.bind()
     serve.run(app)
-    requests.get("http://127.0.0.1:8000")
+    httpx.get("http://localhost:8000/", timeout=None)
 
     # Check if each of the logs exist in Serve's log files.
     from_serve_logger_check = False
@@ -913,7 +923,8 @@ def test_serve_logging_file_names(serve_and_ray_shutdown, ray_instance):
 
     app = app.bind()
     serve.run(app, logging_config=logging_config)
-    requests.get("http://127.0.0.1:8000")
+    r = httpx.get("http://127.0.0.1:8000/")
+    assert r.status_code == 200
 
     # Construct serve log file names.
     client = _get_global_client()
@@ -1010,7 +1021,8 @@ def test_json_logging_with_unpickleable_exc_info(
             return "foo"
 
     serve.run(App.bind())
-    requests.get("http://127.0.0.1:8000/")
+    r = httpx.get("http://127.0.0.1:8000/")
+    assert r.status_code == 200
     for log_file in os.listdir(logs_dir):
         with open(logs_dir / log_file) as f:
             assert "Logging error" not in f.read()

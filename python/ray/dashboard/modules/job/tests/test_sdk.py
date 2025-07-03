@@ -9,7 +9,7 @@ from unittest.mock import Mock, patch
 import pytest
 
 import ray
-from ray.runtime_env.runtime_env import RuntimeEnv
+from ray._common.test_utils import wait_for_condition
 import ray.experimental.internal_kv as kv
 from ray._private.ray_constants import (
     DEFAULT_DASHBOARD_AGENT_LISTEN_PORT,
@@ -17,13 +17,13 @@ from ray._private.ray_constants import (
 )
 from ray._private.test_utils import (
     format_web_url,
-    wait_for_condition,
     wait_until_server_available,
 )
+from ray._raylet import GcsClient
 from ray.dashboard.consts import (
-    RAY_JOB_ALLOW_DRIVER_ON_WORKER_NODES_ENV_VAR,
     DASHBOARD_AGENT_ADDR_NODE_ID_PREFIX,
     GCS_RPC_TIMEOUT_SECONDS,
+    RAY_JOB_ALLOW_DRIVER_ON_WORKER_NODES_ENV_VAR,
 )
 from ray.dashboard.modules.dashboard_sdk import (
     DEFAULT_DASHBOARD_ADDRESS,
@@ -33,9 +33,10 @@ from ray.dashboard.modules.dashboard_sdk import (
 from ray.dashboard.modules.job.pydantic_models import JobType
 from ray.dashboard.modules.job.sdk import JobStatus, JobSubmissionClient
 from ray.dashboard.tests.conftest import *  # noqa
+from ray.runtime_env.runtime_env import RuntimeEnv
 from ray.tests.conftest import _ray_start
 from ray.util.state import list_nodes
-from ray._raylet import GcsClient
+
 import psutil
 
 
@@ -197,9 +198,7 @@ def get_register_agents_number(gcs_client):
     ],
     indirect=True,
 )
-def test_job_head_choose_job_agent_E2E(
-    ray_start_cluster_head_with_env_vars, call_ray_stop_only
-):
+def test_job_head_choose_job_agent_E2E(ray_start_cluster_head_with_env_vars):
     cluster = ray_start_cluster_head_with_env_vars
     assert wait_until_server_available(cluster.webui_url) is True
     webui_url = cluster.webui_url

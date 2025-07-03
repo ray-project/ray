@@ -14,12 +14,12 @@ from ray._private.event.export_event_logger import (
     get_export_event_logger,
 )
 from ray._private.runtime_env.packaging import parse_uri
+from ray._raylet import GcsClient
 from ray.core.generated.export_event_pb2 import ExportEvent
 from ray.core.generated.export_submission_job_event_pb2 import (
     ExportSubmissionJobEventData,
 )
 from ray.util.annotations import PublicAPI
-from ray._raylet import GcsClient
 
 # NOTE(edoakes): these constants should be considered a public API because
 # they're exposed in the snapshot API.

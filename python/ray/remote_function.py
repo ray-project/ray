@@ -424,7 +424,7 @@ class RemoteFunction:
         ):
             _warn_if_using_deprecated_placement_group(task_options, 4)
 
-        resources = ray._private.utils.resources_from_ray_options(task_options)
+        resources = ray._common.utils.resources_from_ray_options(task_options)
 
         if scheduling_strategy is None or isinstance(
             scheduling_strategy, PlacementGroupSchedulingStrategy
@@ -465,6 +465,7 @@ class RemoteFunction:
         # Override enable_task_events to default for actor if not specified (i.e. None)
         enable_task_events = task_options.get("enable_task_events")
         labels = task_options.get("_labels")
+        label_selector = task_options.get("label_selector")
 
         def invocation(args, kwargs):
             if self._is_cross_language:
@@ -496,6 +497,7 @@ class RemoteFunction:
                 generator_backpressure_num_objects,
                 enable_task_events,
                 labels,
+                label_selector,
             )
             # Reset worker's debug context from the last "remote" command
             # (which applies only to this .remote call).

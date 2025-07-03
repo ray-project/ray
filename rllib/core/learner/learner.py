@@ -4,6 +4,7 @@ import copy
 import logging
 import numpy
 import platform
+import tree
 from typing import (
     Any,
     Callable,
@@ -239,6 +240,11 @@ class Learner(Checkpointable):
 
         # Whether self.build has already been called.
         self._is_built = False
+
+        # Attributes to be set separately (not by user's custom `build()` code)
+        # by a LearnerGroup.
+        self._learner_index = 0
+        self._placement_group = None
 
         # These are the attributes that are set during build.
 
@@ -1353,9 +1359,20 @@ class Learner(Checkpointable):
         elif (
             isinstance(training_data.batch, MultiAgentBatch)
             and training_data.batch.policy_batches
-            and isinstance(
-                next(iter(training_data.batch.policy_batches.values()))["obs"],
-                numpy.ndarray,
+            and (
+                any(
+                    tree.map_structure(
+                        lambda a: isinstance(a, numpy.ndarray),
+                        tree.flatten(training_data.batch.policy_batches),
+                    )
+                )
+                or any(
+                    tree.map_structure(
+                        lambda a: isinstance(a, torch.Tensor)
+                        and a.device != self._device,
+                        tree.flatten(training_data.batch.policy_batches),
+                    )
+                )
             )
         ):
             batch = self._convert_batch_type(training_data.batch)
@@ -1645,6 +1662,7 @@ class Learner(Checkpointable):
                 key=(mid, NUM_MODULE_STEPS_TRAINED_LIFETIME),
                 value=module_batch_size,
                 reduce="sum",
+                with_throughput=True,
             )
             # Log module steps (sum of all modules).
             self.metrics.log_value(
@@ -1652,11 +1670,13 @@ class Learner(Checkpointable):
                 value=module_batch_size,
                 reduce="sum",
                 clear_on_reduce=True,
+                with_throughput=True,
             )
             self.metrics.log_value(
                 key=(ALL_MODULES, NUM_MODULE_STEPS_TRAINED_LIFETIME),
                 value=module_batch_size,
                 reduce="sum",
+                with_throughput=True,
             )
         # Log env steps (all modules).
         self.metrics.log_value(
@@ -1671,6 +1691,10 @@ class Learner(Checkpointable):
             reduce="sum",
             with_throughput=True,
         )
+
+    def _set_learner_index_and_placement_group(self, *, learner_index, placement_group):
+        self._learner_index = learner_index
+        self._placement_group = placement_group
 
     @Deprecated(new="Learner.update(batch=.., ..)", error=False)
     def update_from_batch(self, batch, **kwargs):

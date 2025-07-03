@@ -10,8 +10,11 @@ import pandas as pd
 import pytest
 
 import ray
-from ray._private.test_utils import wait_for_condition
+from ray._common.test_utils import wait_for_condition
 from ray.data._internal.compute import ActorPoolStrategy, TaskPoolStrategy
+from ray.data._internal.execution.autoscaler.default_autoscaler import (
+    ActorPoolScalingRequest,
+)
 from ray.data._internal.execution.interfaces import (
     ExecutionOptions,
     PhysicalOperator,
@@ -335,9 +338,9 @@ def test_split_operator_locality_hints(ray_start_regular_shared):
     def get_bundle_loc(bundle):
         block = ray.get(bundle.blocks[0][0])
         fval = list(block["id"])[0]
-        return get_fake_loc(fval)
+        return [get_fake_loc(fval)]
 
-    op._get_location = get_bundle_loc
+    op._get_locations = get_bundle_loc
 
     # Feed data and implement streaming exec.
     output_splits = collections.defaultdict(list)
@@ -547,16 +550,23 @@ def test_map_operator_shutdown(shutdown_only, use_actors):
         run_op_tasks_sync(op)
     op.add_input(input_op.get_next(), 0)
     assert op.num_active_tasks() == 1
-    op.shutdown(timer=Timer())
+    # Regular Ray tasks can be interrupted/cancelled, so graceful shutdown works.
+    # Actors running time.sleep() cannot be interrupted gracefully and need ray.kill() to release resources.
+    # After proper shutdown, both should return the GPU to ray.available_resources().
+    force_shutdown = use_actors
+    op.shutdown(timer=Timer(), force=force_shutdown)
 
     # Tasks/actors should be cancelled/killed.
     wait_for_condition(lambda: (ray.available_resources().get("GPU", 0) == 1.0))
 
 
-def test_actor_pool_map_operator_init(ray_start_regular_shared):
+def test_actor_pool_map_operator_init(ray_start_regular_shared, data_context_override):
     """Tests that ActorPoolMapOperator runs init_fn on start."""
 
     from ray.exceptions import RayActorError
+
+    # Override to block on actor pool provisioning at least min actors
+    data_context_override.wait_for_min_actors_s = 60
 
     def _sleep(block_iter: Iterable[Block]) -> Iterable[Block]:
         time.sleep(999)
@@ -581,23 +591,49 @@ def test_actor_pool_map_operator_init(ray_start_regular_shared):
         op.start(ExecutionOptions())
 
 
-def test_actor_pool_map_operator_should_add_input(ray_start_regular_shared):
+@pytest.mark.parametrize(
+    "max_tasks_in_flight_strategy, max_tasks_in_flight_ctx, max_concurrency, expected_max_tasks_in_flight",
+    [
+        # Compute strategy takes precedence
+        (3, 5, 4, 3),
+        # DataContext.max_tasks_in_flight_per_actor takes precedence
+        (None, 5, 4, 5),
+        # Max tasks in-flight is derived as max_concurrency x 2
+        (None, None, 4, 8),
+    ],
+)
+def test_actor_pool_map_operator_should_add_input(
+    ray_start_regular_shared,
+    max_tasks_in_flight_strategy,
+    max_tasks_in_flight_ctx,
+    max_concurrency,
+    expected_max_tasks_in_flight,
+    restore_data_context,
+):
     """Tests that ActorPoolMapOperator refuses input when actors are pending."""
 
-    def _sleep(block_iter: Iterable[Block]) -> Iterable[Block]:
-        time.sleep(999)
+    ctx = DataContext.get_current()
+    ctx.max_tasks_in_flight_per_actor = max_tasks_in_flight_ctx
 
-    input_op = InputDataBuffer(
-        DataContext.get_current(), make_ref_bundles([[i] for i in range(10)])
+    input_op = InputDataBuffer(ctx, make_ref_bundles([[i] for i in range(10)]))
+
+    compute_strategy = ActorPoolStrategy(
+        size=1,
+        max_tasks_in_flight_per_actor=max_tasks_in_flight_strategy,
     )
-    compute_strategy = ActorPoolStrategy(size=1)
+
+    def _failing_transform(
+        block_iter: Iterable[Block], task_context: TaskContext
+    ) -> Iterable[Block]:
+        raise ValueError("expected failure")
 
     op = MapOperator.create(
-        create_map_transformer_from_block_fn(_sleep),
+        create_map_transformer_from_block_fn(_failing_transform),
         input_op=input_op,
-        data_context=DataContext.get_current(),
+        data_context=ctx,
         name="TestMapper",
         compute_strategy=compute_strategy,
+        ray_remote_args={"max_concurrency": max_concurrency},
     )
 
     op.start(ExecutionOptions())
@@ -607,8 +643,8 @@ def test_actor_pool_map_operator_should_add_input(ray_start_regular_shared):
     run_op_tasks_sync(op)
     assert op.should_add_input()
 
-    # Can accept up to four inputs per actor by default.
-    for _ in range(4):
+    # Assert that single actor can accept up to N tasks
+    for _ in range(expected_max_tasks_in_flight):
         assert op.should_add_input()
         op.add_input(input_op.get_next(), 0)
     assert not op.should_add_input()
@@ -649,7 +685,7 @@ def test_actor_pool_map_operator_num_active_tasks_and_completed(shutdown_only):
     assert op.num_active_tasks() == 0
 
     # Scale up to the max size, the second half of the actors will be pending.
-    actor_pool.scale_up(num_actors)
+    actor_pool.scale(ActorPoolScalingRequest(delta=num_actors))
     assert actor_pool.num_pending_actors() == num_actors
     # `num_active_tasks` should exclude the metadata tasks for the pending actors.
     assert op.num_active_tasks() == 0
@@ -751,55 +787,142 @@ def test_limit_operator(ray_start_regular_shared):
 def _get_bundles(bundle: RefBundle):
     output = []
     for block_ref in bundle.block_refs:
-        output.extend(list(ray.get(block_ref)["id"]))
+        output.append(list(ray.get(block_ref)["id"]))
     return output
+
+
+def _make_ref_bundles(raw_bundles: List[List[List[Any]]]) -> List[RefBundle]:
+    rbs = []
+    for raw_bundle in raw_bundles:
+        blocks = []
+        schema = None
+        for raw_block in raw_bundle:
+            print(f">>> {raw_block=}")
+
+            block = pd.DataFrame({"id": raw_block})
+            blocks.append(
+                (ray.put(block), BlockAccessor.for_block(block).get_metadata())
+            )
+            schema = BlockAccessor.for_block(block).schema()
+
+        rb = RefBundle(blocks=blocks, owns_blocks=True, schema=schema)
+
+        rbs.append(rb)
+
+    return rbs
 
 
 @pytest.mark.parametrize(
     "target,in_bundles,expected_bundles",
     [
         (
-            1,  # Unit target, should leave unchanged.
-            [[1], [2], [3, 4], [5]],
-            [[1], [2], [3, 4], [5]],
+            # Unit target, should leave unchanged.
+            1,
+            [
+                # Input bundles
+                [[1]],
+                [[2]],
+                [[3, 4]],
+                [[5]],
+            ],
+            [
+                # Output bundles
+                [[1]],
+                [[2]],
+                [[3, 4]],
+                [[5]],
+            ],
         ),
         (
-            None,  # No target, should leave unchanged.
-            [[1], [2], [3, 4], [5]],
-            [[1], [2], [3, 4], [5]],
+            # No target, should leave unchanged.
+            None,
+            [
+                # Input bundles
+                [[1]],
+                [[2]],
+                [[3, 4]],
+                [[5]],
+            ],
+            [
+                # Output bundles
+                [[1]],
+                [[2]],
+                [[3, 4]],
+                [[5]],
+            ],
         ),
         (
-            2,  # Empty blocks should be handled.
-            [[1], [], [2, 3], []],
-            [[1], [2, 3]],
+            # Proper handling of empty blocks
+            2,
+            [
+                # Input bundles
+                [[1]],
+                [[]],
+                [[]],
+                [[2, 3]],
+                [[]],
+                [[]],
+            ],
+            [
+                # Output bundles
+                [[1], [], [], [2, 3]],
+                [[], []],
+            ],
         ),
         (
-            2,  # Test bundling, finalizing, passing, leftovers, etc.
-            [[1], [2], [3, 4, 5], [6], [7], [8], [9, 10], [11]],
-            [[1, 2], [3, 4, 5], [6, 7], [8], [9, 10], [11]],
+            # Test bundling, finalizing, passing, leftovers, etc.
+            2,
+            [
+                # Input bundles
+                [[1], [2]],
+                [[3, 4, 5]],
+                [[6], [7]],
+                [[8]],
+                [[9, 10], [11]],
+            ],
+            [[[1], [2]], [[3, 4, 5]], [[6], [7]], [[8], [9, 10], [11]]],
         ),
         (
-            3,  # Test bundling, finalizing, passing, leftovers, etc.
-            [[1], [2, 3], [4, 5, 6, 7], [8, 9], [10, 11]],
-            [[1, 2, 3], [4, 5, 6, 7], [8, 9], [10, 11]],
+            # Test bundling, finalizing, passing, leftovers, etc.
+            3,
+            [
+                # Input bundles
+                [[1]],
+                [[2, 3]],
+                [[4, 5, 6, 7]],
+                [[8, 9], [10, 11]],
+            ],
+            [
+                # Output bundles
+                [[1], [2, 3]],
+                [[4, 5, 6, 7]],
+                [[8, 9], [10, 11]],
+            ],
         ),
     ],
 )
 def test_block_ref_bundler_basic(target, in_bundles, expected_bundles):
     # Test that the bundler creates the expected output bundles.
     bundler = _BlockRefBundler(target)
-    bundles = make_ref_bundles(in_bundles)
+    bundles = _make_ref_bundles(in_bundles)
     out_bundles = []
     for bundle in bundles:
         bundler.add_bundle(bundle)
         while bundler.has_bundle():
             out_bundle = _get_bundles(bundler.get_next_bundle()[1])
             out_bundles.append(out_bundle)
+
     bundler.done_adding_bundles()
+
     if bundler.has_bundle():
         out_bundle = _get_bundles(bundler.get_next_bundle()[1])
         out_bundles.append(out_bundle)
-    assert len(out_bundles) == len(expected_bundles)
+
+    # Assert expected output
+    assert out_bundles == expected_bundles
+    # Assert that all bundles have been ingested
+    assert bundler.num_bundles() == 0
+
     for bundle, expected in zip(out_bundles, expected_bundles):
         assert bundle == expected
 
@@ -808,7 +931,7 @@ def test_block_ref_bundler_basic(target, in_bundles, expected_bundles):
     "target,n,num_bundles,num_out_bundles,out_bundle_size",
     [
         (5, 20, 20, 4, 5),
-        (5, 20, 10, 5, 4),
+        (5, 24, 10, 4, 6),
         (8, 16, 4, 2, 8),
     ],
 )
@@ -1095,9 +1218,12 @@ def test_input_data_buffer_does_not_free_inputs():
     block = pd.DataFrame({"id": [0]})
     block_ref = ray.put(block)
     metadata = BlockAccessor.for_block(block).get_metadata()
+    schema = BlockAccessor.for_block(block).schema()
     op = InputDataBuffer(
         DataContext.get_current(),
-        input_data=[RefBundle([(block_ref, metadata)], owns_blocks=False)],
+        input_data=[
+            RefBundle([(block_ref, metadata)], owns_blocks=False, schema=schema)
+        ],
     )
 
     op.get_next()

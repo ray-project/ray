@@ -35,13 +35,15 @@ py_test_module_list(
     size = "small",
     files = [
         "test_advanced.py",
-        "test_batching.py",
         "test_cluster_node_info_cache.py",
         "test_constructor_failure.py",
         "test_controller.py",
         "test_deployment_version.py",
+        "test_enable_task_events.py",
         "test_expected_versions.py",
         "test_http_cancellation.py",
+        "test_kv_store.py",
+        "test_long_poll.py",
         "test_persistence.py",
         "test_proxy.py",
         "test_proxy_actor_wrapper.py",
@@ -66,9 +68,11 @@ py_test_module_list(
     files = [
         "test_actor_replica_wrapper.py",
         "test_backpressure.py",
+        "test_batching.py",
         "test_callback.py",
         "test_cluster.py",
         "test_controller_recovery.py",
+        "test_deploy_2.py",
         "test_deployment_scheduler.py",
         "test_failure.py",
         "test_handle_1.py",
@@ -83,6 +87,8 @@ py_test_module_list(
         "test_multiplex.py",
         "test_proxy_response_generator.py",
         "test_ray_client.py",
+        "test_record_routing_stats.py",
+        "test_regression.py",
         "test_replica_placement_group.py",
         "test_request_timeout.py",
         "test_streaming_response.py",
@@ -126,7 +132,6 @@ py_test_module_list(
     files = [
         "test_autoscaling_policy.py",
         "test_deploy.py",
-        "test_deploy_2.py",
         "test_grpc.py",
         "test_standalone.py",
         "test_standalone_3.py",
@@ -182,16 +187,14 @@ py_test_module_list(
     ],
 )
 
-# Enormous tests.
+# Run serially on Windows.
 py_test_module_list(
-    size = "enormous",
+    size = "medium",
     files = [
         "test_deploy_app.py",
-        "test_enable_task_events.py",
-        "test_kv_store.py",
-        "test_long_poll.py",
+        "test_deploy_app_2.py",
         "test_metrics.py",
-        "test_regression.py",
+        "test_metrics_2.py",
     ],
     tags = [
         "exclusive",

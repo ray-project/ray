@@ -1,22 +1,21 @@
 import asyncio
-from typing import AsyncGenerator, Optional
-
-
-from ray.llm._internal.serve.observability.logging import get_logger
-from ray.llm._internal.serve.configs.server_models import (
-    BatchedLLMRawResponse,
-    LLMRawResponse,
-)
+from typing import AsyncGenerator, Generic, Iterable, List, Optional, TypeVar
 
 from ray.llm._internal.serve.configs.constants import (
     MODEL_RESPONSE_BATCH_TIMEOUT_MS,
 )
-
+from ray.llm._internal.serve.configs.server_models import (
+    BatchedLLMRawResponse,
+    LLMRawResponse,
+)
+from ray.llm._internal.serve.observability.logging import get_logger
 
 logger = get_logger(__name__)
 
+T = TypeVar("T")
 
-class LLMRawResponsesBatcher:
+
+class Batcher(Generic[T]):
     """This class batches multiple LLMRawResponses from a generator into a
     single response, at some time interval.
 
@@ -30,7 +29,7 @@ class LLMRawResponsesBatcher:
 
     def __init__(
         self,
-        generator: AsyncGenerator[LLMRawResponse, None],
+        generator: AsyncGenerator[T, None],
         interval_ms: Optional[float] = MODEL_RESPONSE_BATCH_TIMEOUT_MS,
     ):
         self.generator = generator
@@ -46,7 +45,10 @@ class LLMRawResponsesBatcher:
         # We are okay with this task getting cancelled (to propagate cancellations)
         self.read_task = asyncio.create_task(self.read())
 
-    async def stream(self) -> AsyncGenerator[BatchedLLMRawResponse, None]:
+    def _merge_results(self, results: List[T]) -> Iterable[T]:
+        return results
+
+    async def stream(self) -> AsyncGenerator[Iterable[T], None]:
         """Drain from the queue every interval_ms and yield the merged results"""
         try:
             while True:
@@ -67,7 +69,7 @@ class LLMRawResponsesBatcher:
 
                 # If there are results, merge and yield them
                 if results:
-                    output: BatchedLLMRawResponse = BatchedLLMRawResponse.merge_stream(*results)  # type: ignore
+                    output = self._merge_results(results)
                     yield output
 
                 # If the read task is done, exit the stream task
@@ -101,3 +103,15 @@ class LLMRawResponsesBatcher:
         except asyncio.QueueEmpty:
             pass
         return results
+
+
+class LLMRawResponseBatcher(Batcher):
+    """This class batches multiple LLMRawResponses into a single BatchedLLMRawResponse."""
+
+    def _merge_results(self, results: List[LLMRawResponse]) -> BatchedLLMRawResponse:
+        output: BatchedLLMRawResponse = BatchedLLMRawResponse.merge_stream(*results)  # type: ignore
+        return output
+
+
+class OpenAIResponseBatcher(Batcher):
+    """This class batches multiple OpenAI responses into a single OpenAI response."""

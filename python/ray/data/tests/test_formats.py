@@ -18,13 +18,26 @@ from ray.data.tests.util import extract_values
 from ray.tests.conftest import *  # noqa
 
 
+@pytest.fixture
+def sample_dataframes():
+    """Fixture providing sample pandas DataFrames for testing.
+
+    Returns:
+        tuple: (df1, df2) where df1 has 3 rows and df2 has 3 rows
+    """
+    df1 = pd.DataFrame({"one": [1, 2, 3], "two": ["a", "b", "c"]})
+    df2 = pd.DataFrame({"one": [4, 5, 6], "two": ["e", "f", "g"]})
+    return df1, df2
+
+
 def df_to_csv(dataframe, path, **kwargs):
     dataframe.to_csv(path, **kwargs)
 
 
-def test_from_arrow(ray_start_regular_shared):
-    df1 = pd.DataFrame({"one": [1, 2, 3], "two": ["a", "b", "c"]})
-    df2 = pd.DataFrame({"one": [4, 5, 6], "two": ["e", "f", "g"]})
+def test_from_arrow(ray_start_regular_shared, sample_dataframes):
+    """Test basic from_arrow functionality with single and multiple tables."""
+    df1, df2 = sample_dataframes
+
     ds = ray.data.from_arrow([pa.Table.from_pandas(df1), pa.Table.from_pandas(df2)])
     values = [(r["one"], r["two"]) for r in ds.take(6)]
     rows = [(r.one, r.two) for _, r in pd.concat([df1, df2]).iterrows()]
@@ -41,9 +54,67 @@ def test_from_arrow(ray_start_regular_shared):
     assert "FromArrow" in ds.stats()
 
 
-def test_from_arrow_refs(ray_start_regular_shared):
-    df1 = pd.DataFrame({"one": [1, 2, 3], "two": ["a", "b", "c"]})
-    df2 = pd.DataFrame({"one": [4, 5, 6], "two": ["e", "f", "g"]})
+@pytest.mark.parametrize(
+    "tables,override_num_blocks,expected_blocks,expected_rows",
+    [
+        # Single table scenarios
+        ("single", 1, 1, 3),  # Single table, 1 block
+        ("single", 2, 2, 3),  # Single table split into 2 blocks
+        ("single", 5, 5, 3),  # Single table, more blocks than rows
+        (
+            "single",
+            10,
+            10,
+            3,
+        ),  # Edge case: 3 rows split into 10 blocks (creates empty blocks)
+        # Multiple tables scenarios
+        ("multiple", 3, 3, 6),  # Multiple tables split into 3 blocks
+        ("multiple", 10, 10, 6),  # Multiple tables, more blocks than rows
+        # Empty table scenarios
+        ("empty", 1, 1, 0),  # Empty table, 1 block
+        ("empty", 5, 5, 0),  # Empty table, more blocks than rows
+    ],
+)
+def test_from_arrow_override_num_blocks(
+    ray_start_regular_shared,
+    sample_dataframes,
+    tables,
+    override_num_blocks,
+    expected_blocks,
+    expected_rows,
+):
+    """Test from_arrow with override_num_blocks parameter."""
+    df1, df2 = sample_dataframes
+    empty_df = pd.DataFrame({"one": [], "two": []})
+
+    # Prepare tables based on test case
+    if tables == "single":
+        arrow_tables = pa.Table.from_pandas(df1)
+        expected_data = [(r.one, r.two) for _, r in df1.iterrows()]
+    elif tables == "multiple":
+        arrow_tables = [pa.Table.from_pandas(df1), pa.Table.from_pandas(df2)]
+        expected_data = [(r.one, r.two) for _, r in pd.concat([df1, df2]).iterrows()]
+    elif tables == "empty":
+        arrow_tables = pa.Table.from_pandas(empty_df)
+        expected_data = []
+
+    # Create dataset with override_num_blocks
+    ds = ray.data.from_arrow(arrow_tables, override_num_blocks=override_num_blocks)
+
+    # Verify number of blocks
+    assert ds.num_blocks() == expected_blocks
+
+    # Verify row count
+    assert ds.count() == expected_rows
+
+    # Verify data integrity (only for non-empty datasets)
+    if expected_rows > 0:
+        values = [(r["one"], r["two"]) for r in ds.take_all()]
+        assert values == expected_data
+
+
+def test_from_arrow_refs(ray_start_regular_shared, sample_dataframes):
+    df1, df2 = sample_dataframes
     ds = ray.data.from_arrow_refs(
         [ray.put(pa.Table.from_pandas(df1)), ray.put(pa.Table.from_pandas(df2))]
     )
@@ -99,18 +170,17 @@ def test_iter_internal_ref_bundles(ray_start_regular_shared):
     assert out == list(range(n)), out
 
 
-def test_fsspec_filesystem(ray_start_regular_shared, tmp_path):
+def test_fsspec_filesystem(ray_start_regular_shared, tmp_path, sample_dataframes):
     """Same as `test_parquet_write` but using a custom, fsspec filesystem.
 
     TODO (Alex): We should write a similar test with a mock PyArrow fs, but
     unfortunately pa.fs._MockFileSystem isn't serializable, so this may require
     some effort.
     """
-    df1 = pd.DataFrame({"one": [1, 2, 3], "two": ["a", "b", "c"]})
+    df1, df2 = sample_dataframes
     table = pa.Table.from_pandas(df1)
     path1 = os.path.join(str(tmp_path), "test1.parquet")
     pq.write_table(table, path1)
-    df2 = pd.DataFrame({"one": [4, 5, 6], "two": ["e", "f", "g"]})
     table = pa.Table.from_pandas(df2)
     path2 = os.path.join(str(tmp_path), "test2.parquet")
     pq.write_table(table, path2)
@@ -203,6 +273,53 @@ def test_from_torch(shutdown_only, local_read, tmp_path):
 
     actual_data = extract_values("item", list(ray_dataset.take_all()))
     assert actual_data == expected_data
+
+
+@pytest.mark.parametrize("local_read", [True, False])
+def test_from_torch_boundary_conditions(shutdown_only, local_read):
+    """
+    Tests that from_torch respects __len__ for map-style datasets
+    """
+    from torch.utils.data import Dataset
+
+    class BoundaryTestMapDataset(Dataset):
+        """A map-style dataset where __len__ is less than the underlying data size."""
+
+        def __init__(self, data, length):
+            super().__init__()
+            self._data = data
+            self._length = length
+            assert self._length <= len(
+                self._data
+            ), "Length must be <= data size to properly test boundary conditions"
+
+        def __len__(self):
+            return self._length
+
+        def __getitem__(self, index):
+            if not (0 <= index < self._length):
+                # Note: don't use IndexError because we want to fail clearly if
+                # Ray Data tries to access beyond __len__ - 1
+                raise RuntimeError(
+                    f"Index {index} out of bounds for dataset with length {self._length}"
+                )
+            return self._data[index]
+
+    source_data = list(range(10))
+    dataset_len = 8  # Intentionally less than len(source_data)
+
+    # --- Test MapDataset ---
+    map_ds = BoundaryTestMapDataset(source_data, dataset_len)
+    # Expected data only includes elements up to dataset_len - 1
+    expected_items = source_data[:dataset_len]
+
+    ray_ds_map = ray.data.from_torch(map_ds, local_read=local_read)
+    actual_items_map = extract_values("item", list(ray_ds_map.take_all()))
+
+    # This assertion verifies that ray_ds_map didn't try to access index 8 or 9,
+    # which would have raised an IndexError in BoundaryTestMapDataset.__getitem__
+    assert actual_items_map == expected_items
+    assert len(actual_items_map) == dataset_len
 
 
 def test_read_s3_file_error(shutdown_only, s3_path):

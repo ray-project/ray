@@ -97,7 +97,7 @@ def get_context() -> TrainContext:
     See the :class:`~ray.train.TrainContext` API reference to see available methods.
     """
     # TODO: Return a dummy train context on the controller and driver process
-    # instead of raising an exception the the train context does not exist.
+    # instead of raising an exception if the train context does not exist.
     return TrainContext()
 
 

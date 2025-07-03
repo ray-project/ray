@@ -1,181 +1,151 @@
-import os
 import pytest
 import sys
 
 import ray
-from ray._private.test_utils import (
+from ray._common.test_utils import (
     wait_for_condition,
 )
 from ray.util.state import list_tasks
 
 
-@pytest.mark.parametrize(
-    "actor_enable_task_events",
-    [True, False, None],
-    ids=["actor_true", "actor_false", "actor_none"],
-)
-@pytest.mark.parametrize(
-    "actor_method_enable_task_events",
-    [True, False, None],
-    ids=["actor_method_true", "actor_method_false", "actor_method_none"],
-)
-@pytest.mark.parametrize(
-    "system_enable_task_events",
-    [True, False, None],
-    ids=["system_true", "system_false", "system_none"],
-)
-def test_enable_task_events_actor(
-    actor_enable_task_events,
-    actor_method_enable_task_events,
-    system_enable_task_events,
+def test_globally_disable_task_events(
     shutdown_only,
 ):
-    """
-    Test that task events is enabled/disabled from the actor's options.
+    """Test that globally disabled task events overrides per-actor/task options."""
+    system_config = {
+        "task_events_report_interval_ms": 0,
+        "metrics_report_interval_ms": 200,
+        "enable_timeline": False,
+    }
+    ray.init(
+        num_cpus=1,
+        _system_config=system_config,
+    )
 
-    - If actor sets enable_task_events=True, all tasks from the actor should be traced.
-    - If actor sets enable_task_events=False, all tasks from the actor should not be
-        traced by default.
-        - But it can be traced if the task explicitly sets enable_task_events=True.
-    - If actor does not set enable_task_events, it should be traced by default.
+    @ray.remote(enable_task_events=True)
+    def noop():
+        pass
 
+    @ray.remote(num_cpus=0, enable_task_events=True)
+    class Actor:
+        def f(self):
+            # This should always be traced.
+            ray.get(noop.options(name="inner-task-traced").remote())
+
+        @ray.method(enable_task_events=True)
+        def g(self):
+            pass
+
+    a = Actor.remote()
+
+    for _ in range(10):
+        ray.get(a.f.remote())
+        ray.get(a.g.remote())
+
+    assert len(list_tasks()) == 0
+
+
+def test_enable_task_events_actor(
+    shutdown_only,
+):
+    """Test enabling/disabling actor task events via actor options.
+
+    - enable_task_events=True should enable all tasks from the actor.
+    - enable_task_events=False should disable all tasks from the actor.
+    - The above can be overridden per method.
     """
-    system_configs = {
+    system_config = {
         "task_events_report_interval_ms": 100,
         "metrics_report_interval_ms": 200,
         "enable_timeline": False,
     }
 
-    if system_enable_task_events is not None:
-        # system_configs["enable_task_events"] = system_enable_task_events
-        if system_enable_task_events is False:
-            system_configs["task_events_report_interval_ms"] = 0
-
     ray.init(
         num_cpus=1,
-        _system_config=system_configs,
+        _system_config=system_config,
     )
 
-    @ray.remote
-    def f():
-        pass
-
     @ray.remote(num_cpus=0)
-    class Actor:
-        def f(self):
-            # This should always be traced.
-            ray.get(f.options(name="inner-task-traced").remote())
-
-        @ray.method(
-            enable_task_events=(
-                actor_method_enable_task_events
-                if actor_method_enable_task_events is not None
-                else actor_enable_task_events  # We don't allow None defaults
-            )
-        )
-        def g(self):
+    class A:
+        def default_method(self):
             pass
 
-    if actor_enable_task_events is not None:
-        a = Actor.options(enable_task_events=actor_enable_task_events).remote()
-    else:
-        a = Actor.remote()
+        @ray.method(enable_task_events=True)
+        def enabled_method(self):
+            pass
 
-    if actor_method_enable_task_events is not None:
-        ray.get(
-            a.f.options(enable_task_events=actor_method_enable_task_events).remote()
-        )
-    else:
-        ray.get(a.f.remote())
+        @ray.method(enable_task_events=False)
+        def disabled_method(self):
+            pass
 
-    ray.get(a.g.remote())
+    a_enabled = A.options(enable_task_events=True).remote()
+    a_disabled = A.options(enable_task_events=False).remote()
 
-    expected_tasks_traced = set()
-    if system_enable_task_events is not False:
-        expected_tasks_traced = {"inner-task-traced"}
+    ray.get(
+        [
+            a_enabled.default_method.remote(),
+            a_enabled.enabled_method.remote(),
+            a_enabled.disabled_method.remote(),
+        ]
+    )
+    ray.get(
+        [
+            a_disabled.default_method.remote(),
+            a_disabled.enabled_method.remote(),
+            a_disabled.disabled_method.remote(),
+        ]
+    )
 
-    if actor_enable_task_events is not False and system_enable_task_events is not False:
-        expected_tasks_traced.add("Actor.__init__")
-        expected_tasks_traced.add("Actor.f")
-        expected_tasks_traced.add("Actor.g")
+    expected_task_events = {
+        # All methods except the override-disabled method should be exported.
+        (a_enabled._actor_id.hex(), "A.__init__"),
+        (a_enabled._actor_id.hex(), "A.default_method"),
+        (a_enabled._actor_id.hex(), "A.enabled_method"),
+        # Only the override-enabled method should be exported.
+        (a_disabled._actor_id.hex(), "A.enabled_method"),
+    }
 
-    if (
-        actor_method_enable_task_events is True
-        and system_enable_task_events is not False
-    ):
-        expected_tasks_traced.add("Actor.f")
-        expected_tasks_traced.add("Actor.g")
-
-    if actor_method_enable_task_events is False:
-        if "Actor.f" in expected_tasks_traced:
-            expected_tasks_traced.remove("Actor.f")
-        if "Actor.g" in expected_tasks_traced:
-            expected_tasks_traced.remove("Actor.g")
-
-    def verify():
-        tasks = list_tasks()
-
-        assert len(tasks) == len(expected_tasks_traced)
-        assert {t["name"] for t in tasks} == expected_tasks_traced
-
+    def _verify():
+        task_events = {(t.actor_id, t.name) for t in list_tasks()}
+        assert task_events == expected_task_events
         return True
 
-    wait_for_condition(verify)
+    wait_for_condition(_verify)
 
 
-@pytest.mark.parametrize(
-    "actor_enable_task_events",
-    [True, False, None],
-    ids=["actor_true", "actor_false", "actor_none"],
-)
-@pytest.mark.parametrize(
-    "remote_task_enable_task_events",
-    [True, False, None],
-    ids=["remote_task_true", "remote_task_false", "remote_task_none"],
-)
-def test_enable_task_events_remote_actor(
-    actor_enable_task_events, remote_task_enable_task_events, shutdown_only
-):
+def test_task_events_actor_called_from_task(shutdown_only):
+    """Call an actor method from within a task, verify events are/aren't exported."""
+
     @ray.remote
     class Actor:
         def f(self):
             pass
 
-    @ray.remote
+    @ray.remote(enable_task_events=False)
     def task(actor):
         actor.f.remote()
 
-    if actor_enable_task_events is not None:
-        a = Actor.options(enable_task_events=actor_enable_task_events).remote()
-    else:
-        a = Actor.remote()
+    a_enabled = Actor.options(enable_task_events=True).remote()
+    a_disabled = Actor.options(enable_task_events=False).remote()
+    ray.get(task.remote(a_enabled))
+    ray.get(task.remote(a_disabled))
 
-    if remote_task_enable_task_events is not None:
-        task = task.options(enable_task_events=remote_task_enable_task_events)
+    # Expect to only see events from a_enabled, not a_disabled.
+    expected_task_events = {
+        (a_enabled._actor_id.hex(), "Actor.__init__"),
+        (a_enabled._actor_id.hex(), "Actor.f"),
+    }
 
-    ray.get(task.remote(a))
-
-    expected_tasks = set()
-    if actor_enable_task_events is not False:
-        expected_tasks.add("Actor.f")
-        expected_tasks.add("Actor.__init__")
-
-    if remote_task_enable_task_events is not False:
-        expected_tasks.add("task")
-
-    def verify():
-        tasks = list_tasks()
-        assert len(tasks) == len(expected_tasks)
-        assert {t["name"] for t in tasks} == expected_tasks
+    def _verify():
+        task_events = {(t.actor_id, t.name) for t in list_tasks()}
+        assert task_events == expected_task_events
         return True
 
-    wait_for_condition(verify)
+    wait_for_condition(_verify)
 
 
 def test_enable_task_events_invalid_options(shutdown_only):
-    """
-    Test the invalid values for the option.
-    """
+    """Test the invalid values for the option."""
 
     @ray.remote
     def f():
@@ -198,72 +168,49 @@ def test_enable_task_events_invalid_options(shutdown_only):
         ray.get(Actor.options(enable_task_events=None).remote())
 
 
-@pytest.mark.parametrize(
-    "enable_task_events", [True, False], ids=["task_enable", "task_disable"]
-)
-@pytest.mark.parametrize(
-    "system_enable_task_events",
-    [True, False, None],
-    ids=["system_true", "system_false", "system_none"],
-)
-def test_enable_task_events_tasks(
-    enable_task_events, system_enable_task_events, shutdown_only
-):
+def test_enable_task_events_tasks(shutdown_only):
+    """Test enabling/disabled task events at the task level."""
     system_config = {
         "task_events_report_interval_ms": 100,
         "metrics_report_interval_ms": 200,
         "enable_timeline": False,
     }
-    if system_enable_task_events is not None:
-        # system_config["enable_task_events"] = system_enable_task_events
-        if system_enable_task_events is False:
-            system_config["task_events_report_interval_ms"] = 0
 
     ray.init(
         num_cpus=1,
         _system_config=system_config,
     )
 
-    @ray.remote
-    def traced():
+    @ray.remote(enable_task_events=True)
+    def inner_enabled():
         pass
 
-    @ray.remote
-    def f():
-        ray.get(traced.remote())
-
-    @ray.remote(enable_task_events=enable_task_events)
-    def g():
+    @ray.remote(enable_task_events=False)
+    def inner_disabled():
         pass
 
-    ray.get([f.options(enable_task_events=enable_task_events).remote(), g.remote()])
+    @ray.remote(enable_task_events=True)
+    def outer_enabled():
+        return ray.get(inner_disabled.remote())
 
-    expected_tasks_traced = set()
-    if system_enable_task_events is not False:
-        expected_tasks_traced.add("traced")
+    @ray.remote(enable_task_events=False)
+    def outer_disabled():
+        return ray.get(inner_enabled.remote())
 
-    if enable_task_events is not False and system_enable_task_events is not False:
-        expected_tasks_traced.add("f")
-        expected_tasks_traced.add("g")
+    ray.get([outer_enabled.remote(), outer_disabled.remote()])
 
-    def verify():
-        tasks = list_tasks()
-        assert len(tasks) == len(expected_tasks_traced)
-        assert {t["name"] for t in tasks} == expected_tasks_traced
+    expected_task_events = {"inner_enabled", "outer_enabled"}
+
+    def _verify():
+        task_events = {t.name for t in list_tasks()}
+        assert task_events == expected_task_events
         return True
 
-    wait_for_condition(verify)
+    wait_for_condition(_verify)
 
 
-@pytest.mark.parametrize("inner_enable_task_events", [True, False])
-@pytest.mark.parametrize("outer_enable_task_events", [True, False])
-def test_enable_task_events_nested_actor(
-    shutdown_only, inner_enable_task_events, outer_enable_task_events
-):
-    """
-    Test that enable_task_events options are independent of each other for
-    nested actors.
-    """
+def test_enable_task_events_nested_actor(shutdown_only):
+    """Test that enabling/disabling is independent for nested actors."""
     ray.init(
         num_cpus=1,
         _system_config={
@@ -273,41 +220,46 @@ def test_enable_task_events_nested_actor(
         },
     )
 
-    @ray.remote(enable_task_events=inner_enable_task_events)
-    class A:
-        def f(self):
+    @ray.remote
+    class Inner:
+        def noop(self):
             pass
 
-    @ray.remote(enable_task_events=outer_enable_task_events)
-    class B:
-        def __init__(self):
-            self.a = A.remote()
+    @ray.remote
+    class Outer:
+        def __init__(self, inner: ray.actor.ActorHandle):
+            self._inner = inner
 
-        def g(self):
-            ray.get(self.a.f.remote())
+        def call_inner(self):
+            ray.get(self._inner.noop.remote())
 
-    b = B.remote()
-    ray.get(b.g.remote())
-    expected_tasks_traced = set()
-    if inner_enable_task_events is not False:
-        expected_tasks_traced.add("A.f")
-        expected_tasks_traced.add("A.__init__")
+    # Create one copy of Outer that has task events enabled, but calls a copy of
+    # inner that has task events disabled.
+    inner_disabled = Inner.options(enable_task_events=False).remote()
+    outer_enabled = Outer.options(enable_task_events=True).remote(inner_disabled)
 
-    if outer_enable_task_events is not False:
-        expected_tasks_traced.add("B.g")
-        expected_tasks_traced.add("B.__init__")
+    # Create another copy of Outer that has task events disabled, but calls a copy of
+    # inner that has task events enabled.
+    inner_enabled = Inner.options(enable_task_events=True).remote()
+    outer_disabled = Outer.options(enable_task_events=False).remote(inner_enabled)
 
-    def verify():
-        tasks = list_tasks()
-        assert len(tasks) == len(expected_tasks_traced)
-        assert {t["name"] for t in tasks} == expected_tasks_traced
+    ray.get(outer_enabled.call_inner.remote())
+    ray.get(outer_disabled.call_inner.remote())
+
+    expected_task_events = {
+        (outer_enabled._actor_id.hex(), "Outer.__init__"),
+        (outer_enabled._actor_id.hex(), "Outer.call_inner"),
+        (inner_enabled._actor_id.hex(), "Inner.__init__"),
+        (inner_enabled._actor_id.hex(), "Inner.noop"),
+    }
+
+    def _verify():
+        task_events = {(t.actor_id, t.name) for t in list_tasks()}
+        assert task_events == expected_task_events
         return True
 
-    wait_for_condition(verify)
+    wait_for_condition(_verify)
 
 
 if __name__ == "__main__":
-    if os.environ.get("PARALLEL_CI"):
-        sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))
-    else:
-        sys.exit(pytest.main(["-sv", __file__]))
+    sys.exit(pytest.main(["-sv", __file__]))
