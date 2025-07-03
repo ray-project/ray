@@ -668,9 +668,9 @@ class RequestIdMiddleware:
         async def send_with_request_id(message: Message):
             if message["type"] == "http.response.start":
                 headers = MutableHeaders(scope=message)
-                headers.append(SERVE_HTTP_REQUEST_ID_HEADER, request_id)
+                headers.append("X-Request-ID", request_id)
             if message["type"] == "websocket.accept":
-                message[SERVE_HTTP_REQUEST_ID_HEADER] = request_id
+                message["X-Request-ID"] = request_id
             await send(message)
 
         await self._app(scope, receive, send_with_request_id)
