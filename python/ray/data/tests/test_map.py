@@ -2010,22 +2010,43 @@ def test_map_names():
         ((lit(10) / (col("id") + 1)).alias("result"), 10.0),  # 10 / (0 + 1) = 10.0
     ],
 )
-def test_with_column(ray_start_regular_shared, batch_format, expr, expected_value):
+def test_with_columns(ray_start_regular_shared, batch_format, expr, expected_value):
     """Verify that `with_column` works for pandas, numpy, and pyarrow batch formats with various operations."""
-    ds = ray.data.range(5).with_column(expr, batch_format=batch_format)
+    ds = ray.data.range(5).with_columns([expr], batch_format=batch_format)
     result = ds.take(1)[0]
     assert result["id"] == 0
     assert result["result"] == expected_value
 
 
-def test_with_column_nonexistent_column(ray_start_regular_shared):
+def test_with_columns_nonexistent_column(ray_start_regular_shared):
     """Verify that referencing a non-existent column with col() raises an exception."""
     # Create a dataset with known column "id"
     ds = ray.data.range(5)
 
     # Try to reference a non-existent column - this should raise an exception
     with pytest.raises(UserCodeException):
-        ds.with_column((col("nonexistent_column") + 1).alias("result")).materialize()
+        ds.with_columns([(col("nonexistent_column") + 1).alias("result")]).materialize()
+
+
+@pytest.mark.parametrize("batch_format", ["pandas", "numpy", "pyarrow"])
+def test_with_columns_multiple_expressions(ray_start_regular_shared, batch_format):
+    """Verify that `with_column` correctly handles multiple expressions at once."""
+    ds = ray.data.range(5)
+
+    expr1 = (col("id") + 1).alias("plus_one")
+    expr2 = (col("id") * 2).alias("times_two")
+    expr3 = (lit(10) - col("id")).alias("ten_minus_id")
+
+    ds = ds.with_columns([expr1, expr2, expr3], batch_format=batch_format)
+
+    first_row = ds.take(1)[0]
+    assert first_row["id"] == 0
+    assert first_row["plus_one"] == 1
+    assert first_row["times_two"] == 0
+    assert first_row["ten_minus_id"] == 10
+
+    # Ensure all new columns exist in the schema.
+    assert set(ds.schema().names) == {"id", "plus_one", "times_two", "ten_minus_id"}
 
 
 if __name__ == "__main__":

@@ -2,11 +2,13 @@ from __future__ import annotations
 
 import operator
 from dataclasses import dataclass
-from typing import Any, Dict, Callable
+from typing import Any, Callable, Dict
+
 import numpy as np
-import pyarrow.compute as pc
 import pandas as pd
 import pyarrow as pa
+import pyarrow.compute as pc
+
 
 # ──────────────────────────────────────
 #  Basic expression node definitions
@@ -18,31 +20,55 @@ class Expr:  # Base class – all expression nodes inherit from this
         return BinaryExpr(op, self, other)
 
     # arithmetic
-    def __add__(self, other): return self._bin(other, "add")
-    def __sub__(self, other): return self._bin(other, "sub")
-    def __mul__(self, other): return self._bin(other, "mul")
-    def __truediv__(self, other): return self._bin(other, "div")
+    def __add__(self, other):
+        return self._bin(other, "add")
+
+    def __sub__(self, other):
+        return self._bin(other, "sub")
+
+    def __mul__(self, other):
+        return self._bin(other, "mul")
+
+    def __truediv__(self, other):
+        return self._bin(other, "div")
+
     # comparison
-    def __gt__(self, other): return self._bin(other, "gt")
-    def __lt__(self, other): return self._bin(other, "lt")
-    def __ge__(self, other): return self._bin(other, "ge")
-    def __le__(self, other): return self._bin(other, "le")
-    def __eq__(self, other): return self._bin(other, "eq")
+    def __gt__(self, other):
+        return self._bin(other, "gt")
+
+    def __lt__(self, other):
+        return self._bin(other, "lt")
+
+    def __ge__(self, other):
+        return self._bin(other, "ge")
+
+    def __le__(self, other):
+        return self._bin(other, "le")
+
+    def __eq__(self, other):
+        return self._bin(other, "eq")
+
     # boolean
-    def __and__(self, other): return self._bin(other, "and")
-    def __or__(self, other):  return self._bin(other, "or")
+    def __and__(self, other):
+        return self._bin(other, "and")
+
+    def __or__(self, other):
+        return self._bin(other, "or")
 
     # Rename the output column
     def alias(self, name: str) -> "AliasExpr":
         return AliasExpr(self, name)
 
+
 @dataclass(frozen=True, eq=False)
 class ColumnExpr(Expr):
     name: str
 
+
 @dataclass(frozen=True, eq=False)
 class LiteralExpr(Expr):
     value: Any
+
 
 @dataclass(frozen=True, eq=False)
 class BinaryExpr(Expr):
@@ -50,10 +76,12 @@ class BinaryExpr(Expr):
     left: Expr
     right: Expr
 
+
 @dataclass(frozen=True, eq=False)
 class AliasExpr(Expr):
     expr: Expr
     name: str
+
 
 # ──────────────────────────────────────
 #  User helpers
@@ -62,9 +90,11 @@ def col(name: str) -> ColumnExpr:
     """Reference an existing column."""
     return ColumnExpr(name)
 
+
 def lit(value: Any) -> LiteralExpr:
     """Create a scalar literal expression (e.g. lit(1))."""
     return LiteralExpr(value)
+
 
 # ──────────────────────────────────────
 #  Local evaluator (pandas batches)
@@ -76,13 +106,13 @@ _PANDAS_OPS: Dict[str, Callable[[Any, Any], Any]] = {
     "sub": operator.sub,
     "mul": operator.mul,
     "div": operator.truediv,
-    "gt":  operator.gt,
-    "lt":  operator.lt,
-    "ge":  operator.ge,
-    "le":  operator.le,
-    "eq":  operator.eq,
+    "gt": operator.gt,
+    "lt": operator.lt,
+    "ge": operator.ge,
+    "le": operator.le,
+    "eq": operator.eq,
     "and": operator.and_,
-    "or":  operator.or_,
+    "or": operator.or_,
 }
 
 _NUMPY_OPS: Dict[str, Callable[[Any, Any], Any]] = {
@@ -113,6 +143,7 @@ _ARROW_OPS: Dict[str, Callable[[Any, Any], Any]] = {
     "or": pc.or_,
 }
 
+
 def _eval_expr_recursive(expr: Expr, batch, ops: Dict[str, Callable]) -> Any:
     """Generic recursive expression evaluator."""
     if isinstance(expr, ColumnExpr):
@@ -122,9 +153,10 @@ def _eval_expr_recursive(expr: Expr, batch, ops: Dict[str, Callable]) -> Any:
     if isinstance(expr, BinaryExpr):
         return ops[expr.op](
             _eval_expr_recursive(expr.left, batch, ops),
-            _eval_expr_recursive(expr.right, batch, ops)
+            _eval_expr_recursive(expr.right, batch, ops),
         )
     raise TypeError(f"Unsupported expression node: {type(expr).__name__}")
+
 
 def eval_expr(expr: Expr, batch) -> Any:
     """Recursively evaluate *expr* against a batch of the appropriate type."""

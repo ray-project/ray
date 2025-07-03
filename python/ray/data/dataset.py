@@ -779,26 +779,28 @@ class Dataset:
         return Dataset(plan, logical_plan)
 
     @PublicAPI(api_group=EXPRESSION_API_GROUP)
-    def with_column(
+    def with_columns(
         self,
-        *exprs: Expr,
+        exprs: List[Expr],
         batch_format: Optional[str] = "pandas",
         compute: Optional[str] = None,
         concurrency: Optional[int] = None,
         **ray_remote_args,
     ) -> "Dataset":
         """
-        Add a new column to the dataset.
+        Add new columns to the dataset.
 
         Examples:
 
             >>> import ray
             >>> ds = ray.data.range(100)
-            >>> ds.with_column((col("id") * 2).alias("new_id")).schema()
+            >>> ds.with_columns([(col("id") * 2).alias("new_id"), (col("id") * 3).alias("new_id_2")]).schema()
             Column  Type
             ------  ----
             id      int64
             new_id  int64
+            new_id_2  int64
+
         Args:
             exprs: The expressions to evaluate to produce the new column values.
             batch_format: If ``"numpy"``, batches are
