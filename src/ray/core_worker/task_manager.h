@@ -38,14 +38,6 @@ namespace core {
 
 class ActorManager;
 
-class TaskResubmissionInterface {
- public:
-  virtual std::optional<rpc::ErrorType> ResubmitTask(
-      const TaskID &task_id, std::vector<ObjectID> *task_deps) = 0;
-
-  virtual ~TaskResubmissionInterface() = default;
-};
-
 using TaskStatusCounter = CounterMap<std::tuple<std::string, rpc::TaskStatus, bool>>;
 using PutInLocalPlasmaCallback =
     std::function<void(const RayObject &object, const ObjectID &object_id)>;
@@ -173,7 +165,7 @@ class ObjectRefStream {
   int64_t total_num_object_consumed_{};
 };
 
-class TaskManager : public TaskFinisherInterface, public TaskResubmissionInterface {
+class TaskManager : public TaskFinisherInterface {
  public:
   TaskManager(CoreWorkerMemoryStore &in_memory_store,
               ReferenceCounter &reference_counter,
@@ -238,8 +230,8 @@ class TaskManager : public TaskFinisherInterface, public TaskResubmissionInterfa
   /// scheduled, but no guarantee on completion), or was already pending. Return the
   /// appopriate error type to propagate for the object if the task was not successfully
   /// resubmitted.
-  std::optional<rpc::ErrorType> ResubmitTask(const TaskID &task_id,
-                                             std::vector<ObjectID> *task_deps) override;
+  virtual std::optional<rpc::ErrorType> ResubmitTask(const TaskID &task_id,
+                                                     std::vector<ObjectID> *task_deps);
 
   /// Wait for all pending tasks to finish, and then shutdown.
   ///
