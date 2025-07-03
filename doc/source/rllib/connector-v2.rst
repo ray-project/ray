@@ -144,9 +144,10 @@ the constructed output batch maps module IDs to the respective module's forward 
     :width: 1000
     :align: left
 
-This way, RLlib's :py:class:`~ray.rllib.core.rl_module.multi_rl_module.MultiRLModule` can easily split up the forward passes into
+This way, RLlib's :py:class:`~ray.rllib.core.rl_module.multi_rl_module.MultiRLModule` can split up the forward passes into
 individual submodules' forward passes using the individual batches under the respective ``ModuleIDs``.
-
+See :ref:`here for how to write your own multi-module or multi-agent forward logic <implementing-custom-multi-rl-modules>`
+and override this default behavior of :py:class:`~ray.rllib.core.rl_module.multi_rl_module.MultiRLModule`.
 
 
 In case you have a stateful :py:class:`~ray.rllib.core.rl_module.rl_module.RLModule`, for example an LSTM, RLlib adds two additional
