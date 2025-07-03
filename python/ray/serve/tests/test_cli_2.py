@@ -17,7 +17,6 @@ from ray import serve
 from ray._common.test_utils import wait_for_condition
 from ray.serve._private.constants import SERVE_DEFAULT_APP_NAME, SERVE_NAMESPACE
 from ray.serve._private.test_utils import (
-    ping_endpoint,
     ping_fruit_stand,
     ping_grpc_another_method,
     ping_grpc_call_method,
@@ -30,6 +29,15 @@ from ray.serve.generated import serve_pb2, serve_pb2_grpc
 from ray.util.state import list_actors
 
 CONNECTION_ERROR_MSG = "connection error"
+
+
+def ping_endpoint(endpoint: str, params: str = ""):
+    endpoint = endpoint.lstrip("/")
+
+    try:
+        return httpx.get(f"http://localhost:8000/{endpoint}{params}").text
+    except httpx.HTTPError:
+        return CONNECTION_ERROR_MSG
 
 
 def check_app_status(app_name: str, expected_status: str):

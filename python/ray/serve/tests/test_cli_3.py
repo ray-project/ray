@@ -13,7 +13,6 @@ from ray import serve
 from ray._common.pydantic_compat import BaseModel
 from ray._common.test_utils import wait_for_condition
 from ray.serve._private.constants import SERVE_DEFAULT_APP_NAME
-from ray.serve._private.test_utils import ping_endpoint
 from ray.serve.handle import DeploymentHandle
 from ray.serve.tests.common.remote_uris import (
     TEST_DAG_PINNED_URI,
@@ -21,6 +20,15 @@ from ray.serve.tests.common.remote_uris import (
 )
 
 CONNECTION_ERROR_MSG = "connection error"
+
+
+def ping_endpoint(endpoint: str, params: str = ""):
+    endpoint = endpoint.lstrip("/")
+
+    try:
+        return httpx.get(f"http://localhost:8000/{endpoint}{params}").text
+    except httpx.HTTPError:
+        return CONNECTION_ERROR_MSG
 
 
 def check_app_status(app_name: str, expected_status: str):
