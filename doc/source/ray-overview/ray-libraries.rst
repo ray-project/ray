@@ -83,15 +83,15 @@ more information.
 
     .. grid-item-card::
 
-        .. figure:: ../images/daft.webp
+        .. figure:: ../images/daft.png
             :class: card-figure
 
         .. div::
 
-            .. image:: https://img.shields.io/github/stars/daft/daft?style=social)]
+            .. image:: https://img.shields.io/github/stars/Eventual-Inc/Daft?style=social)]
                 :target: https://github.com/Eventual-Inc/Daft
 
-            Daft is a high-performance distributed query engine that provides simple and reliable data processing for any modality. Daft's native integration with Ray enables you to run distributed workloads at scale across a cluster of machines. 
+            Daft is a high-performance distributed query engine that provides simple and reliable data processing for any modality. Daft's native integration with Ray enables you to run distributed workloads at scale across a cluster of machines.
 
         +++
         .. button-link:: https://www.daft.ai
