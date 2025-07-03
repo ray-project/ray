@@ -33,7 +33,7 @@ from ray.serve._private.constants import (
 )
 from ray.serve._private.deployment_info import DeploymentInfo
 from ray.serve._private.utils import DEFAULT
-from ray.serve.config import ProxyLocation, RouterConfig
+from ray.serve.config import ProxyLocation, RequestRouterConfig
 from ray.util.annotations import PublicAPI
 
 # Shared amongst multiple schemas.
@@ -405,7 +405,7 @@ class DeploymentSchema(BaseModel, allow_population_by_field_name=True):
         default=DEFAULT.VALUE,
         description="Logging config for configuring serve deployment logs.",
     )
-    router_config: Union[Dict, RouterConfig] = Field(
+    router_config: Union[Dict, RequestRouterConfig] = Field(
         default=DEFAULT.VALUE,
         description="Config for the request router used for this deployment.",
     )

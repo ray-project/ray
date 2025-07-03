@@ -3,7 +3,7 @@ package io.ray.serve.config;
 import io.ray.serve.common.Constants;
 import java.io.Serializable;
 
-public class RouterConfig implements Serializable {
+public class RequestRouterConfig implements Serializable {
   /** Frequency at which the controller will record request routing stats. */
   private Double requestRoutingStatsPeriodS = Constants.DEFAULT_REQUEST_ROUTING_STATS_PERIOD_S;
 
@@ -29,8 +29,8 @@ public class RouterConfig implements Serializable {
     this.requestRoutingStatsTimeoutS = requestRoutingStatsTimeoutS;
   }
 
-  public io.ray.serve.generated.RouterConfig toProto() {
-    return io.ray.serve.generated.RouterConfig.newBuilder()
+  public io.ray.serve.generated.RequestRouterConfig toProto() {
+    return io.ray.serve.generated.RequestRouterConfig.newBuilder()
         .setRequestRoutingStatsPeriodS(requestRoutingStatsPeriodS)
         .setRequestRoutingStatsTimeoutS(requestRoutingStatsTimeoutS)
         .build();

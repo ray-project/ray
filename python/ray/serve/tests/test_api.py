@@ -28,7 +28,7 @@ from ray.serve._private.request_router.request_router import (
     RequestRouter,
 )
 from ray.serve._private.test_utils import get_application_url
-from ray.serve.config import RouterConfig
+from ray.serve.config import RequestRouterConfig
 from ray.serve.deployment import Application
 from ray.serve.exceptions import RayServeException
 from ray.serve.handle import DeploymentHandle
@@ -86,7 +86,9 @@ class FakeRequestRouter(RequestRouter):
         self.test_parameter = test_parameter
 
 
-@serve.deployment(router_config=RouterConfig(request_router_class=FakeRequestRouter))
+@serve.deployment(
+    router_config=RequestRouterConfig(request_router_class=FakeRequestRouter)
+)
 class AppWithCustomRequestRouter:
     def __call__(self) -> str:
         return "Hello, world!"
@@ -1118,7 +1120,7 @@ def test_deploy_app_with_custom_request_router(serve_instance):
 
 
 @serve.deployment(
-    router_config=RouterConfig(
+    router_config=RequestRouterConfig(
         request_router_class="ray.serve.tests.test_api.FakeRequestRouter",
         request_router_kwargs=dict(test_parameter=4848),
     )

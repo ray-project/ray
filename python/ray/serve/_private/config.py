@@ -27,7 +27,7 @@ from ray.serve._private.constants import (
     MAX_REPLICAS_PER_NODE_MAX_VALUE,
 )
 from ray.serve._private.utils import DEFAULT, DeploymentOptionUpdateType
-from ray.serve.config import AutoscalingConfig, RouterConfig
+from ray.serve.config import AutoscalingConfig, RequestRouterConfig
 from ray.serve.generated.serve_pb2 import (
     AutoscalingConfig as AutoscalingConfigProto,
     DeploymentConfig as DeploymentConfigProto,
@@ -35,7 +35,7 @@ from ray.serve.generated.serve_pb2 import (
     EncodingType as EncodingTypeProto,
     LoggingConfig as LoggingConfigProto,
     ReplicaConfig as ReplicaConfigProto,
-    RouterConfig as RouterConfigProto,
+    RequestRouterConfig as RequestRouterConfigProto,
 )
 from ray.util.placement_group import validate_placement_group
 
@@ -162,8 +162,8 @@ class DeploymentConfig(BaseModel):
         default=None, update_type=DeploymentOptionUpdateType.NeedsActorReconfigure
     )
 
-    router_config: RouterConfig = Field(
-        default=RouterConfig(),
+    router_config: RequestRouterConfig = Field(
+        default=RequestRouterConfig(),
         update_type=DeploymentOptionUpdateType.NeedsActorReconfigure,
     )
 
@@ -258,7 +258,7 @@ class DeploymentConfig(BaseModel):
                         "Non-empty request_router_kwargs not supported"
                         f"for cross-language deployments. Got: {router_kwargs}"
                     )
-            data["router_config"] = RouterConfigProto(**data["router_config"])
+            data["router_config"] = RequestRouterConfigProto(**data["router_config"])
         if data.get("logging_config"):
             if "encoding" in data["logging_config"]:
                 data["logging_config"]["encoding"] = EncodingTypeProto.Value(
@@ -308,7 +308,7 @@ class DeploymentConfig(BaseModel):
                 else:
                     data["router_config"]["request_router_kwargs"] = {}
 
-            data["router_config"] = RouterConfig(**data["router_config"])
+            data["router_config"] = RequestRouterConfig(**data["router_config"])
         if "autoscaling_config" in data:
             if not data["autoscaling_config"].get("upscale_smoothing_factor"):
                 data["autoscaling_config"]["upscale_smoothing_factor"] = None

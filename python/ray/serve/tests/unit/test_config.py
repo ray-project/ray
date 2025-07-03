@@ -15,7 +15,7 @@ from ray.serve.config import (
     DeploymentMode,
     HTTPOptions,
     ProxyLocation,
-    RouterConfig,
+    RequestRouterConfig,
     gRPCOptions,
 )
 from ray.serve.generated.serve_pb2 import (
@@ -145,7 +145,7 @@ class TestDeploymentConfig:
 
         # Passing request_router_class as a class.
         deployment_config = DeploymentConfig.from_default(
-            router_config=RouterConfig(request_router_class=FakeRequestRouter)
+            router_config=RequestRouterConfig(request_router_class=FakeRequestRouter)
         )
         assert (
             deployment_config.router_config.request_router_class == request_router_path
@@ -157,7 +157,7 @@ class TestDeploymentConfig:
 
         # Passing request_router_class as an import path.
         deployment_config = DeploymentConfig.from_default(
-            router_config=RouterConfig(request_router_class=request_router_path)
+            router_config=RequestRouterConfig(request_router_class=request_router_path)
         )
         assert (
             deployment_config.router_config.request_router_class == request_router_path

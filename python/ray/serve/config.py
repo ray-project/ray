@@ -35,7 +35,7 @@ logger = logging.getLogger(SERVE_LOGGER_NAME)
 
 
 @PublicAPI(stability="stable")
-class RouterConfig(BaseModel):
+class RequestRouterConfig(BaseModel):
     """Config for the Serve request router.
 
     This class configures how Ray Serve routes requests to deployment replicas. The router is
@@ -49,17 +49,17 @@ class RouterConfig(BaseModel):
     Example:
         .. code-block:: python
 
-            from ray.serve.config import RouterConfig, DeploymentConfig
+            from ray.serve.config import RequestRouterConfig, DeploymentConfig
             from ray import serve
 
             # Use default router with custom stats collection interval
-            router_config = RouterConfig(
+            router_config = RequestRouterConfig(
                 request_routing_stats_period_s=5.0,
                 request_routing_stats_timeout_s=15.0
             )
 
             # Use custom router class
-            router_config = RouterConfig(
+            router_config = RequestRouterConfig(
                 request_router_class="ray.serve._private.request_router.prefix_aware_router.PrefixAwarePow2ReplicaRouter",
                 request_router_kwargs={"imbalanced_threshold": 20}
             )

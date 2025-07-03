@@ -92,7 +92,7 @@ message LoggingConfig {
 //[End] Logging Config
 
 //[Begin] ROUTING CONFIG
-message RouterConfig {
+message RequestRouterConfig {
   // Cloudpickled request router definition.
   bytes serialized_request_router_cls = 1;
 
@@ -157,7 +157,7 @@ message DeploymentConfig {
   LoggingConfig logging_config = 14;
 
   // The deployment's routing configuration.
-  RouterConfig router_config = 19;
+  RequestRouterConfig router_config = 19;
 }
 
 // Deployment language.
