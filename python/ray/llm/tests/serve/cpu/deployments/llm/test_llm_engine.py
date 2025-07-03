@@ -4,13 +4,9 @@ This implicitly tests the consistency of the engine API through time.
 Also tests that our Mock is behaving as expected to ensure that the downstream tests using Mocks are correct from Mock implementation perspective.
 
 
-We have the following Mocks:
+We have the following Mock:
 
 - An engine that returns a string of form "test_i" for i in range(max_tokens)
-- An engine that echos the sent request in its response
-- An engine that excercises the multiplexing logic (e.g. LoRA)
-- An engine that excercise the structured output logic (e.g. JSON mode)
-- An engine that excercises the prefill-disaggregation logic
 """
 
 from ray.llm.tests.serve.mocks.mock_vllm_engine import MockVLLMEngine
