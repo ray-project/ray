@@ -36,12 +36,12 @@ logger = logging.getLogger(SERVE_LOGGER_NAME)
 
 @PublicAPI(stability="stable")
 class RouterConfig(BaseModel):
-    """Config for Serve Router.
+    """Config for Serve router.
 
     Args:
-        request_router_class: The import path of the request router if user passed a string. Will be the
-        concatenation of the request router module and the request router name
-        if user passed a callable.
+        request_router_class: The import path of the request router if user passed a string. Is the
+            concatenation of the request router module and the request router name
+            if user passed a callable.
     """
 
     serialized_request_router_cls: bytes = Field(
@@ -51,16 +51,16 @@ class RouterConfig(BaseModel):
     request_router_class: Union[str, Callable] = Field(
         default=DEFAULT_REQUEST_ROUTER_PATH,
         description=(
-            "The class of the request router used for this deployment. This can be "
-            "a string or a class. All the deployment handle created for this "
-            "deployment will use the routing policy defined by the request router. "
+            "The class of the request router that Ray Serve uses for this deployment. This value can be "
+            "a string or a class. All the deployment handles that you create for this "
+            "deployment use the routing policy defined by the request router. "
             "Default to Serve's PowerOfTwoChoicesRequestRouter."
         ),
     )
     request_router_kwargs: Dict[str, Any] = Field(
         default_factory=dict,
         description=(
-            "Keyword arguments that will be passed to the request router class "
+            "Keyword arguments that Ray Serve passes to the request router class "
             "initialize_state method."
         ),
     )
@@ -101,7 +101,7 @@ class RouterConfig(BaseModel):
     def import_and_serialize_request_router_cls(cls, values) -> Dict[str, Any]:
         """Import and serialize request router class with cloudpickle.
 
-        Import the request router if it's passed in as a string import path.
+        Import the request router if you pass it in as a string import path.
         Then cloudpickle the request router and set to
         `serialized_request_router_cls`.
         """
@@ -121,7 +121,7 @@ class RouterConfig(BaseModel):
         return values
 
     def get_request_router_class(self) -> Callable:
-        """Deserialize request router from cloudpickled bytes."""
+        """Deserialize the request router from cloudpickled bytes."""
         return cloudpickle.loads(self.serialized_request_router_cls)
 
 
