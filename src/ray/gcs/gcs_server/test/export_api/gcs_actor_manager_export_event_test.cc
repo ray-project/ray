@@ -34,6 +34,8 @@
 
 namespace ray {
 
+namespace gcs {
+
 using ::testing::_;
 using ::testing::Return;
 using json = nlohmann::json;
@@ -231,9 +233,13 @@ class GcsActorManagerTest : public ::testing::Test {
     io_service_.post(
         [this, request, &promise]() {
           auto status = gcs_actor_manager_->RegisterActor(
-              request,
-              [&promise](std::shared_ptr<gcs::GcsActor> actor, const Status &status) {
-                promise.set_value(std::move(actor));
+              request, [this, request, &promise](const Status &status) {
+                auto actor_id = ActorID::FromBinary(
+                    request.task_spec().actor_creation_task_spec().actor_id());
+                promise.set_value(
+                    gcs_actor_manager_->registered_actors_.contains(actor_id)
+                        ? gcs_actor_manager_->registered_actors_[actor_id]
+                        : nullptr);
               });
           if (!status.ok()) {
             promise.set_value(nullptr);
@@ -342,5 +348,7 @@ TEST_F(GcsActorManagerTest, TestBasic) {
                      << " lines, but expecting " << num_export_events << ".\nLines:\n"
                      << lines.str();
 }
+
+}  // namespace gcs
 
 }  // namespace ray
