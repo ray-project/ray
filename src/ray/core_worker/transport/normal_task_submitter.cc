@@ -574,12 +574,15 @@ void NormalTaskSubmitter::PushNormalTask(
        scheduling_key,
        addr,
        assigned_resources](Status status, const rpc::PushTaskReply &reply) {
+        bool resubmit_generator = false;
         {
           RAY_LOG(DEBUG) << "Task " << task_id << " finished from worker "
                          << WorkerID::FromBinary(addr.worker_id()) << " of raylet "
                          << NodeID::FromBinary(addr.raylet_id());
           absl::MutexLock lock(&mu_);
           executing_tasks_.erase(task_id);
+
+          resubmit_generator = generators_to_resubmit_.erase(task_id) > 0;
 
           // Decrement the number of tasks in flight to the worker
           auto &lease_entry = worker_to_lease_entry_[addr];
@@ -628,6 +631,10 @@ void NormalTaskSubmitter::PushNormalTask(
             RAY_LOG(DEBUG) << "Task " << task_id
                            << " was cancelled before it started running.";
             task_finisher_.FailPendingTask(task_id, rpc::ErrorType::TASK_CANCELLED);
+          } else if (resubmit_generator) {
+            // If the generator was queued up for resubmission for object recovery,
+            // resubmit as long as we get a valid reply.
+            task_finisher_.MarkGeneratorFailedAndResubmit(task_id);
           } else if (!task_spec.GetMessage().retry_exceptions() ||
                      !reply.is_retryable_error() ||
                      !task_finisher_.RetryTaskIfPossible(
@@ -705,9 +712,17 @@ Status NormalTaskSubmitter::CancelTask(TaskSpecification task_spec,
   std::shared_ptr<rpc::CoreWorkerClientInterface> client = nullptr;
   {
     absl::MutexLock lock(&mu_);
-    if (cancelled_tasks_.find(task_spec.TaskId()) != cancelled_tasks_.end() ||
-        !task_finisher_.MarkTaskCanceled(task_spec.TaskId()) ||
-        !task_finisher_.IsTaskPending(task_spec.TaskId())) {
+    auto task_id = task_spec.TaskId();
+    generators_to_resubmit_.erase(task_id);
+
+    if (cancelled_tasks_.contains(task_id)) {
+      // The task cancel is already in progress. We don't need to do anything.
+      return Status::OK();
+    }
+
+    task_finisher_.MarkTaskCanceled(task_id);
+    if (!task_finisher_.IsTaskPending(task_id)) {
+      // The task is finished or failed so marking the task as cancelled is sufficient.
       return Status::OK();
     }
 
@@ -812,6 +827,16 @@ Status NormalTaskSubmitter::CancelRemoteTask(const ObjectID &object_id,
   request.set_remote_object_id(object_id.Binary());
   client->RemoteCancelTask(request, nullptr);
   return Status::OK();
+}
+
+bool NormalTaskSubmitter::QueueGeneratorForResubmit(const TaskSpecification &spec) {
+  absl::MutexLock lock(&mu_);
+  if (cancelled_tasks_.contains(spec.TaskId())) {
+    // The user cancelled the task.
+    return false;
+  }
+  generators_to_resubmit_.insert(spec.TaskId());
+  return true;
 }
 
 }  // namespace core
