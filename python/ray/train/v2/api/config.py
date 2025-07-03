@@ -3,6 +3,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING, List, Optional, Union
 
+import pyarrow.fs
+
 from ray.air.config import (
     CheckpointConfig,
     FailureConfig as FailureConfigV1,
@@ -20,7 +22,6 @@ from ray.util.annotations import PublicAPI
 if TYPE_CHECKING:
     from ray.train import UserCallback
 
-import pyarrow.fs
 
 logger = logging.getLogger(__name__)
 
