@@ -452,9 +452,7 @@ def process_completed_tasks(
     max_bytes_to_read_per_op: Dict[OpState, int] = {}
     if resource_manager.op_resource_allocator_enabled():
         for op, state in topology.items():
-            max_bytes_to_read = (
-                resource_manager.op_resource_allocator.max_task_output_bytes_to_read(op)
-            )
+            max_bytes_to_read = resource_manager.max_task_output_bytes_to_read(op)
             op._in_task_output_backpressure = max_bytes_to_read == 0
             if max_bytes_to_read is not None:
                 max_bytes_to_read_per_op[state] = max_bytes_to_read
@@ -567,7 +565,6 @@ def update_operator_states(topology: Topology) -> None:
 def get_eligible_operators(
     topology: Topology,
     backpressure_policies: List[BackpressurePolicy],
-    resource_manager: ResourceManager,
     *,
     ensure_liveness: bool,
 ) -> List[PhysicalOperator]:
@@ -590,20 +587,13 @@ def get_eligible_operators(
     eligible_ops: List[PhysicalOperator] = []
 
     for op, state in topology.items():
-        assert resource_manager.op_resource_allocator_enabled(), topology
-
-        # Check whether the operator is under its limits imposed by the
-        # resource manager
-        under_resource_limits = (
-            resource_manager.op_resource_allocator.can_submit_new_task(op)
-        )
-        # Operator is considered being in task-submission back-pressure if
-        # both of the following holds true:
-        #   - It's exceeding its resource limits
-        #   - At least one of the back-pressure policies are violated
-        in_backpressure = not under_resource_limits or not all(
-            p.can_add_input(op) for p in backpressure_policies
-        )
+        # Operator is considered being in task-submission back-pressure any
+        # back-pressure policy is violated
+        in_backpressure = False
+        for p in backpressure_policies:
+            if not p.can_add_input(op):
+                in_backpressure = True
+                break
 
         op_runnable = False
 
@@ -665,7 +655,6 @@ def select_operator_to_run(
     eligible_ops = get_eligible_operators(
         topology,
         backpressure_policies,
-        resource_manager,
         ensure_liveness=ensure_liveness,
     )
 
