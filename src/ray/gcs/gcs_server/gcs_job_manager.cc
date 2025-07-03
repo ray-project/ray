@@ -159,13 +159,16 @@ void GcsJobManager::MarkJobAsFinished(rpc::JobTableData job_table_data,
     WriteDriverJobExportEvent(job_table_data);
 
     // Update running job status.
+    // Note: This operation must be idempotent since MarkJobFinished can be called
+    // multiple times due to network retries (see issue #53645).
     auto iter = running_job_start_times_.find(job_id);
-    RAY_CHECK(iter != running_job_start_times_.end());
-    running_job_start_times_.erase(iter);
-    ray::stats::STATS_job_duration_s.Record(
-        (job_table_data.end_time() - job_table_data.start_time()) / 1000.0,
-        {{"JobId", job_id.Hex()}});
-    ++finished_jobs_count_;
+    if (iter != running_job_start_times_.end()) {
+      running_job_start_times_.erase(iter);
+      ray::stats::STATS_job_duration_s.Record(
+          (job_table_data.end_time() - job_table_data.start_time()) / 1000.0,
+          {{"JobId", job_id.Hex()}});
+      ++finished_jobs_count_;
+    }
 
     done_callback(status);
   };

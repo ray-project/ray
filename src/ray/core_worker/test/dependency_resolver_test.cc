@@ -109,7 +109,7 @@ class MockTaskFinisher : public TaskFinisherInterface {
     num_contained_ids += contained_ids.size();
   }
 
-  bool MarkTaskCanceled(const TaskID &task_id) override { return true; }
+  void MarkTaskCanceled(const TaskID &task_id) override {}
 
   std::optional<TaskSpecification> GetTaskSpec(const TaskID &task_id) const override {
     TaskSpecification task = BuildEmptyTaskSpec();
@@ -123,6 +123,8 @@ class MockTaskFinisher : public TaskFinisherInterface {
                                    const WorkerID &worker_id) override {}
 
   bool IsTaskPending(const TaskID &task_id) const override { return true; }
+
+  void MarkGeneratorFailedAndResubmit(const TaskID &task_id) override {}
 
   int num_tasks_complete = 0;
   int num_tasks_failed = 0;
