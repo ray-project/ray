@@ -17,7 +17,7 @@ from ray.util.scheduling_strategies import (
     PlacementGroupSchedulingStrategy,
     NodeAffinitySchedulingStrategy,
 )
-from ray._common.test_utils import SignalActor, Semaphore, wait_for_condition
+from ray._common.test_utils import SignalActor, wait_for_condition
 from ray._private.test_utils import (
     object_memory_usage,
     get_metric_check_condition,
@@ -78,12 +78,8 @@ def test_hybrid_policy_threshold(ray_start_cluster):
     cluster.wait_for_nodes()
     ray.init(address=cluster.address)
 
-    # `block_task` ensures that scheduled tasks do not return until all are
-    # running.
-    block_task = Semaphore.remote(0)
-    # `block_driver` ensures that the driver does not allow tasks to continue
-    # until all are running.
-    block_driver = Semaphore.remote(0)
+    # Use a SignalActor to ensure that the batches of tasks run in parallel.
+    signal = SignalActor.remote()
 
     # Add the `memory` resource because the CPU will be released when the task is
     # blocked calling `ray.get()`.
@@ -91,24 +87,26 @@ def test_hybrid_policy_threshold(ray_start_cluster):
     # See: https://github.com/ray-project/ray/pull/54271.
     @ray.remote(num_cpus=1, memory=1)
     def get_node_id() -> str:
-        ray.get(block_driver.release.remote())
-        ray.get(block_task.acquire.remote())
+        ray.get(signal.wait.remote())
         return ray.get_runtime_context().get_node_id()
 
     # Submit 1 * PER_NODE_HYBRID_THRESHOLD tasks.
     # They should all be packed on the local node.
     refs = [get_node_id.remote() for _ in range(PER_NODE_HYBRID_THRESHOLD)]
-    ray.get([block_driver.acquire.remote() for _ in refs], timeout=20)
-    ray.get([block_task.release.remote() for _ in refs], timeout=20)
+    wait_for_condition(lambda: ray.get(signal.cur_num_waiters.remote()) == len(refs))
+    ray.get(signal.send.remote())
     nodes = ray.get(refs, timeout=20)
     assert len(set(nodes)) == 1
+
+    # Clear the signal between tests.
+    ray.get(signal.send.remote(clear=True))
 
     # Submit 2 * PER_NODE_HYBRID_THRESHOLD tasks.
     # The first PER_NODE_HYBRID_THRESHOLD tasks should be packed on the local node, then
     # the second PER_NODE_HYBRID_THRESHOLD tasks should be packed on the remote node.
     refs = [get_node_id.remote() for _ in range(int(PER_NODE_HYBRID_THRESHOLD * 2))]
-    ray.get([block_driver.acquire.remote() for _ in refs], timeout=20)
-    ray.get([block_task.release.remote() for _ in refs], timeout=20)
+    wait_for_condition(lambda: ray.get(signal.cur_num_waiters.remote()) == len(refs))
+    ray.get(signal.send.remote())
     counter = collections.Counter(ray.get(refs, timeout=20))
     assert all(v == PER_NODE_HYBRID_THRESHOLD for v in counter.values()), counter
 
