@@ -536,7 +536,6 @@ def test_replica_upgrade_to_cleanup_resource(serve_instance):
             self.record_handle = record_handle
 
         async def __del__(self):
-            await asyncio.sleep(10)
             await self.record_handle.add.remote(self.model_id)
 
         def __eq__(self, model):
